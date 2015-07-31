@@ -1,0 +1,294 @@
+body {
+	background-color: #222;
+	color: #666;
+	font:  14px 'Century Gothic','Tahoma';
+}
+
+a { color: #77A; outline: 0; text-decoration: none;}
+p { margin: 0; padding: 0; }
+div { margin: 0; padding: 0; }
+h1,h2,h3 { margin: 0; padding: 2px; }
+#wrap {
+	width: 100%;
+}
+
+#main {
+	margin: auto;
+	margin-top: 10px;
+	width: 800px;
+	box-shadow: 0 0 4px black;
+}
+
+
+#header {
+	position: relative;
+	background-color: #444;
+	padding: 0;
+	color: #aaa;
+	height: 60px;
+}
+
+#content {
+	position: relative;
+	width: 100%;
+	min-height: 600px;
+	background-color: #333;
+}
+
+#footer {
+	background-color: #111;
+}
+
+#footer p {
+	padding: 2px;
+}
+
+#header .menutools {
+	position: absolute;
+	top: 0;
+	right: 0;
+}
+
+object, embed {
+  outline: 0;
+}
+strong { color: #aaa; }
+
+button {
+	background: #333;
+    background: -moz-linear-gradient(#32302D, #4B4947);
+    background: -webkit-gradient(linear, left top, left bottom, from(#32302D), to(#4B4947));
+    box-shadow: 0 1px 0 #5B5957 inset, 0 -1px 0 black, 0 1px 0 black, -1px 0 0 black, 1px 0 0 black, 0 1px 1px #111111;
+    -moz-box-shadow: inset 0 1px 0 #5B5957, 0 -1px 0 black, 0 1px 0 black, -1px 0 0 black, 1px 0 0 black, 0 1px 1px #111;
+    -webkit-box-shadow: inset 0 1px 0 #5B5957, 0 -1px 0 black, 0 1px 0 black, -1px 0 0 black, 1px 0 0 black, 0 1px 1px #111;
+    border-radius: 2px;
+
+	border: 0;
+    display: inline-block;
+    padding: 2px 2px;
+    vertical-align: top;
+    color: #eee;
+    -moz-text-shadow: 0 1px 0 black; /* in chrome looks bad so no chrome */
+	margin: 2px;
+}
+
+button:hover:not(:disabled) {
+	background: #b5b5b5;
+    -moz-transition: background 0.3s ease 0s;
+}
+
+button:active:not(:disabled) {
+	background-color: white;
+	color: #aaa;
+	box-shadow: inset 0 0 3px black;
+}
+
+button:disabled {
+	color: #aaa;
+	opacity: 0.5;
+}
+
+.final {
+	font-weight: bold;
+	color: white;
+}
+
+.highlight { 
+	box-shadow: inset 0 0 4px white;
+}
+
+.mini {
+	font-size: 0.6em;
+}
+
+input {
+	padding-left: 5px;
+	background-color: #111;
+	color: #5AF;
+	border: 1px solid #aaa;
+	border-radius: 4px;
+}
+
+
+#left_tools {
+	position: absolute;
+	top: 10px;
+	left: 10px;
+}
+
+#right_tools {
+	position: absolute;
+	top: 10px;
+	right: 10px;
+}
+
+#bottom_tools {
+	position: absolute;
+	bottom: 0px;
+	right: 0px;
+	width: 100%;
+}
+
+#statusbar {
+	color: white;
+	font: 14px 'Tahoma';
+	text-align: center;
+}
+
+.infobox {
+	background-color: rgba(0,0,0,0.8);
+	width: 100%;
+	height: 20px;
+	font-size: 18px;
+}
+
+span.number {
+	width: 100px;
+	color: #eee;
+}
+
+/*******************************************/
+
+h1 {
+	color: #AAF;
+	font-size: 24px;
+}
+
+#header {
+	background-color: #333;
+}
+
+#header #title {
+    background: url("../media/logo-webglstudio.png") no-repeat scroll 0 0 transparent;
+    height: 270px;
+    left: -30px;
+    position: absolute;
+    top: 0;
+    width: 30px;		
+}
+
+#header #title h1, #header #title h2 {
+	display: none;
+}
+
+
+/*************************/
+
+#blackModalBG {
+	position: absolute;
+	top: 0px;
+	left: 0px;
+	width: 100%;
+	height: 100%;
+	opacity: 0.8;
+	background-color: black;
+}
+
+#dialogBox {
+	position: absolute;
+	top: 0px;
+	left: 0px;
+	width: 300px;
+	height: 200px;
+
+	background-color: #222;
+	border: 1px solid black;
+	box-shadow: 0 0 4px black;
+}
+
+#dialogBox .header {
+	background-color: #555;
+	color: white;
+	padding: 2px;
+}
+
+#dialogBox .content p {
+	padding: 10px;
+}
+
+#dialogBox .buttons {
+	position: absolute;
+	top: 0;
+	right: 0;
+}
+
+#dialogBox .buttons button {
+	padding: 0;
+	margin: 2px;
+
+}
+
+#messagebox {
+	position: absolute;
+	margin: auto;
+	width: 300px;
+	height: 140px;
+	background-color: #444;
+	border: 1px solid #555;
+	color: white;
+	text-align: center;
+	box-shadow: 0 0 10px black;
+}
+
+#messagebox span {
+	display: block;
+	margin: 30px;
+	font-size: 20px;
+}
+
+
+#messagebox button.close {
+	position: absolute;
+	top: 0;
+	right: 0;
+}
+
+.rgb-color {
+	padding-left: 5px !important;
+}
+
+/********** INTERFACE *********************/
+.ui-slider {
+    border-bottom: 1px solid #333333;
+    border-right: 1px solid #333333;
+    border-top: 1px solid black;
+	border-left: 1px solid black;
+	background-color: black;
+    margin: 8px 0 0;
+	height: 0px;
+	vertical-align: top;
+}
+
+.ui-slider-handle {
+	border: 0 !important;
+    background: -moz-linear-gradient(#4B4947, #32302D) !important;
+    background: -webkit-gradient(linear, left top, left bottom, from(#4B4947), to(#32302D)) !important;
+	
+	border-radius: 7px 7px 7px 7px !important;
+    box-shadow: 0 1px 0 #5B5957 inset, 0 -1px 0 black, 0 1px 0 black, -1px 0 0 black, 1px 0 0 black, 0 1px 1px #111111 !important;
+    cursor: default !important;
+    height: 12px !important;
+    margin: -6px !important;
+    position: absolute !important;
+    width: 12px !important;
+	top: 0 !important;
+}
+
+button.min {
+	padding: 0px;
+	margin: 0 0 4px 4px;
+	color: #aaa;
+	font-size: 0.9em;
+}
+
+
+button.important {
+	font-size: 1.2em;
+}
+
+
+.showroom_widgetcontainer {
+	position: absolute;
+	bottom: 4px;
+	left: 4px;
+}

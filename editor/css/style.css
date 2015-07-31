@@ -1,0 +1,325 @@
+
+
+/* 3D Area */
+#visor {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	overflow: hidden; /* disable this to check for resize errors */
+	background-color: #111;
+	padding: 0;
+}
+
+.opensidepanel-button {
+	position: absolute;
+	top: 50%;
+	height: 100px;
+	right: 0;
+	opacity: 0.5;
+}
+
+/* startup console */
+.startup-console-msg {
+	margin: 0;
+	padding: 0;
+	margin-left: 10px;
+	color: #55b6b7;
+}
+
+/* menubar */
+#mainmenubar > ul {
+	padding-top: 4px;
+	padding-left: 64px;
+}
+
+#mainmenubar > ul > li {
+	padding: 4px 20px;
+}
+
+
+body.player #work-area, body.player #main-area  {
+	height: 100%;
+}
+
+/* for the scene tree */
+.item-list {
+	overflow: auto;
+}
+
+.scene-tree {
+	background-color: #111;
+	width: 100%;
+	height: 100%;
+}
+
+
+.scene-tree .litetree {
+	height: calc( 100% - 26px );
+	overflow: auto;
+}
+
+.scene-tree .litetree .ltreeitem {
+	color: #AAA;
+	border-radius: 1px;
+	margin: 1px;
+	font-size:1.2em;
+	padding: 2px;
+	cursor: pointer;
+}
+
+
+.scene-tree .litetree .ltreeitem .node-name:hover {
+	color: white;
+}
+
+
+.scene-tree .litetree .ltreeitem.selected .node-name {
+    -moz-transition: background-color 0.1s ease 0s, color 0.1s ease 0s;
+	background-color: #8AD;
+	color: white;
+}
+
+.scene-tree .litetree .ltreeitem {
+	/*background: url('../media/tree_lines_16x16.png') no-repeat 10px -2px;*/
+	font-size: 14px;
+	/*
+	padding-left: 30px;
+	margin-left: 0px;
+	*/
+	cursor: pointer;
+	margin-bottom: -4px;
+}
+
+
+
+.scene-tree .nodecontrols {
+	vertical-align: top;
+	width: 20px;
+	display: inline-block;
+	opacity: 0.3;
+}
+
+.scene-tree .nodecontrols:hover {
+	opacity: 1;
+}
+
+.scene-tree .nodecontrols .togglevisible {
+	border-radius: 4px;
+	display: inline-block;
+	vertical-align: top;
+	margin: 2px;
+	margin-top: 4px;
+	margin-bottom: 0;
+	width: 8px;
+	height: 8px;
+	background-color: #555;
+	border: 1px solid rgba(100,100,100,0.5);
+}
+
+.scene-tree .nodecontrols .togglevisible.on {
+	background-color: #5AF;
+}
+
+/*
+.scene-tree .litetree .root_node {
+	background: transparent;
+	padding-left: 5px;
+}
+*/
+
+/* for files */
+
+.resources-tree .ltreeitemtitle {
+	padding: 4px;
+}
+
+.resources-tree .ltreeitem:nth-child(even) {
+	background-color: #111;
+}
+
+.resources-tree .ltreeitem:nth-child(even):hover {
+	background-color: #333;
+}
+
+.resource .extension {
+	opacity: 0.5;
+}
+
+
+#settings-widgets-area .content {
+	padding-left: 20px;
+}
+
+/* Tools inside the work area */
+
+#canvas-tools {
+	position: absolute;
+	top: 50px;
+	left: 10px;
+}
+
+.tool-section {
+	user-select: none;
+	-moz-user-select: none;  
+	-webkit-user-select: none;  
+}
+
+.tool-button {
+	opacity: 0.8;
+	border-radius: 2px;
+	color: #AAA;
+	background-color: #333;
+	min-width: 20px;
+	height: 20px;
+	line-height: 20px;
+	margin-right: 4px;
+	margin-bottom: 4px;
+	cursor:pointer;
+	background-position: center center;
+	background-repeat: no-repeat;
+	text-align: center;
+}
+
+.tool-button.enabled {
+	opacity: 1;
+	background-color: #BBE;
+	color: black;
+}
+
+.tool-button:hover {
+	background-color: #AAF;
+	color: black;
+}
+
+#canvas-tools .tool-section {
+	margin-bottom: 20px;
+}
+
+#canvas-buttons {
+	position: absolute;
+	top: 10px;
+	left: 10px;
+}
+
+#canvas-buttons .tool-section {
+	display: inline-block;
+	margin-right: 20px;
+}
+
+#canvas-buttons .tool-button {
+	display: inline-block;
+}
+
+#canvas-buttons .tool-button.enabled {
+	background-color: #8D7;
+}
+
+#canvas-buttons .tool-button:hover {
+	background-color: #4B3;
+}
+
+textarea.code {
+	margin: 2px;
+	width: calc(100% - 14px);
+	width: -moz-calc(100% - 12px);
+	width: -webkit-calc(100% - 12px);
+	overflow: auto;
+	padding: 4px;
+	color: #7F7;
+	font-family: "Courier New";
+	border: 0;
+	background-color: black;
+}
+
+.tools {
+	line-height: 2em;
+}
+
+.in-client strong {
+	background-color: #338 !important;
+}
+
+.memory .listbox.empty {
+	background-color: #3A3;
+}
+
+
+ul.file-list li.file-item span.progress {
+	position: absolute;
+	top: 20px;
+	left: 0;
+	width: 100%;
+	height: 0%;
+	background-color: #AEF;
+	display: block;
+}
+
+/* side tabs */
+#worktabs {
+	background-color: #222;
+}
+
+#worktabs .wtab {
+	margin-bottom: 8px;
+}
+
+.wsectiontitle .options_section {
+	opacity: 0.5;
+	width: 16px;
+	height: 16px;
+	cursor: pointer;
+    transition: opacity 0.1s ease 0s;
+    -moz-transition: opacity 0.1s ease 0s;
+}
+
+.wsectiontitle .options_section:hover {
+	opacity: 1;
+}
+
+/* lower panel */
+#visorarea .litesplitbar {
+	background-color: #111;
+}
+
+#lowerpaneltabs .wtabcontent {
+	padding: 0;
+}
+
+#lowerpaneltabs .wtabcontainer {
+	background-color: #222;
+}
+
+/* timeline */
+.timeline {
+	background-color: #111;
+	width: 100%;
+	height: 100%;
+}
+
+.keyframe_icon {
+	border: 2px solid rgba(0,0,0,0.4);
+	/*box-shadow: 0 0 2px black;*/
+	border-radius: 10px;
+	width: 12px;
+	height: 12px;
+	background-color: #666;
+	display: inline-block;
+	margin-top: 2px;
+	margin-right: 4px;
+    transition: background-color 0.1s ease 0s;
+    -moz-transition: background-color 0.1s ease 0s;
+}
+
+.wsectiontitle .keyframe_icon {
+	background-color: #333;
+	margin-bottom: -1px;
+	margin-right: 2px;
+	margin-left: 4px;
+}
+
+.keyframe_icon:hover {
+	background-color: #8EA;
+	cursor: pointer;
+}

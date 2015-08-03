@@ -45,7 +45,7 @@ Transform["@inspector"] = function(transform, attributes)
 
 	//var section = attributes.addSection("Transform <span class='buttons'><button class='options_this'>Options</button></span>");
 	attributes.current_section.querySelector('.options_section').addEventListener("click", function(e) { 
-		var menu = new LiteGUI.ContextualMenu(["Copy","Paste","Reset"], {component: transform, event: e, callback: function(v) { EditorModule._onComponentOptionsSelect(v,transform); }});
+		var menu = new LiteGUI.ContextualMenu(["Info","Copy","Paste","Reset"], {component: transform, event: e, callback: function(v) { EditorModule._onComponentOptionsSelect(v,transform); }});
 	});
 
 	attributes.addVector3("Position", transform._position, { 
@@ -105,7 +105,7 @@ Camera["@inspector"] = function(camera, attributes)
 	*/
 
 	attributes.current_section.querySelector('.options_section').addEventListener("click",function(e) { 
-		var menu = new LiteGUI.ContextualMenu(["Copy","Paste","Reset","Delete","Select","Select Center","Preview"], {component: camera, event: e, callback: inner_menu_option });
+		var menu = new LiteGUI.ContextualMenu(["Info","Copy","Paste","Reset","Delete","Select","Select Center","Preview"], {component: camera, event: e, callback: inner_menu_option });
 	});
 
 	attributes.addCombo("Type", camera.type, { values: { "Orthographic" : Camera.ORTHOGRAPHIC, "Perspective": Camera.PERSPECTIVE }, pretitle: AnimationModule.getKeyframeCode( camera, "type"), callback: function (value) { camera.type = value; } });
@@ -204,7 +204,7 @@ CameraFX["@inspector"] = function(camerafx, attributes)
 	var node = camerafx._root;
 
 	attributes.current_section.querySelector('.options_section').addEventListener("click",function(e) { 
-		var menu = new LiteGUI.ContextualMenu(["Copy","Paste","Reset","Delete"], {component: camerafx, event: e, callback: inner_menu_option });
+		var menu = new LiteGUI.ContextualMenu(["Info","Copy","Paste","Reset","Delete"], {component: camerafx, event: e, callback: inner_menu_option });
 	});
 
 	function inner_menu_option(v)
@@ -309,7 +309,7 @@ Light["@inspector"] = function(light, attributes)
 
 	//var section = attributes.addSection("Light <span class='buttons'><button class='options_this'>Options</button></span>");
 	attributes.current_section.querySelector('.options_section').addEventListener("click", function(e) { 
-		var menu = new LiteGUI.ContextualMenu(["Copy","Paste","Reset","Delete","Select","Select Target"], {component: light, event: e, callback: inner_menu_option  });
+		var menu = new LiteGUI.ContextualMenu(["Info","Copy","Paste","Reset","Delete","Select","Select Target"], {component: light, event: e, callback: inner_menu_option  });
 	});
 	$(attributes.current_section).bind("wchange", function() { EditorModule.saveComponentUndo(light); });
 
@@ -366,7 +366,7 @@ Light["@inspector"] = function(light, attributes)
 			light.shadowmap_resolution = parseFloat(v); 
 	}});
 
-	attributes.addTexture("Proj. texture", light.projective_texture, { callback: function(filename) { 
+	attributes.addTexture("Proj. texture", light.projective_texture, { pretitle: AnimationModule.getKeyframeCode( light, "projective_texture"), callback: function(filename) { 
 		light.projective_texture = filename;
 		LS.GlobalScene.refresh();
 	}});
@@ -396,7 +396,7 @@ ParticleEmissor["@inspector"] = function(component, attributes)
 
 	//var section = attributes.addSection("ParticleEmissor <span class='buttons'><button class='options_this'>Options</button></span>");
 	$(attributes.current_section).find('.options_section').click(function(e) { 
-		var menu = new LiteGUI.ContextualMenu(["Copy","Paste","Reset","Delete"], {component: component, event: e, callback: function(v) { 
+		var menu = new LiteGUI.ContextualMenu(["Info","Copy","Paste","Reset","Delete"], {component: component, event: e, callback: function(v) { 
 			EditorModule._onComponentOptionsSelect(v, component);
 		}});
 	});

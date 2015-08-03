@@ -51,9 +51,9 @@ var AnimationModule = {
 
 	getKeyframeCode: function( target, property, options )
 	{
-		if(!target.getLocatorString)
+		if(!target.getLocator)
 			return "";
-		var locator = target.getLocatorString();
+		var locator = target.getLocator();
 		if(!locator)
 			return "";
 		return "<span title='Create keyframe' class='keyframe_icon' data-propertyname='" + property + "' data-propertyuid='" + locator + "/" + property + "' ></span>";

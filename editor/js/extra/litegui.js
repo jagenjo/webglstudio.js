@@ -5980,6 +5980,8 @@ Inspector.prototype.addCombo = function(name, value, options)
 		for(var i in items)
 		{
 			var item = items[i];
+			if(!item || !item.dataset) //weird bug
+				continue;
 			if( item.dataset["value"] == v )
 			{
 				select.selectedIndex = index;
@@ -6271,12 +6273,13 @@ Inspector.prototype.addIcon = function(name, value, options)
 	var that = this;
 
 	var img_url = options.image;
-	var width = options.width || options.size || 18;
-	var height = options.height || options.size || 18;
+	var width = options.width || options.size || 20;
+	var height = options.height || options.size || 20;
 
-	var element = this.createWidget(name,"<span class='icon' tabIndex='"+ this.tab_index + "'></span>", options);
+	var element = this.createWidget(name,"<span class='icon' "+(options.title ? "title='"+options.title+"'" : "" )+" tabIndex='"+ this.tab_index + "'></span>", options);
 	this.tab_index++;
-	var icon = element.querySelector("span");
+	var content = element.querySelector("span.wcontent");
+	var icon = element.querySelector("span.icon");
 
 	var x = options.x || 0;
 	if(options.index)
@@ -6284,8 +6287,9 @@ Inspector.prototype.addIcon = function(name, value, options)
 	var y = value ? height : 0;
 
 	element.style.minWidth = element.style.width = (width) + "px";
-	element.style.margin = "1px";
-	
+	element.style.margin = "0 2px"; element.style.padding = "0";
+	content.style.margin = "0"; content.style.padding = "0";
+
 	icon.style.display = "inline-block"
 	icon.style.cursor = "pointer";
 	icon.style.width = width + "px";
@@ -6293,13 +6297,18 @@ Inspector.prototype.addIcon = function(name, value, options)
 	icon.style.backgroundImage = "url('"+img_url+"')";
 	icon.style.backgroundPosition = x + "px " + y + "px";
 
-	icon.addEventListener("click", function() {
+	icon.addEventListener("mousedown", function(e) {
+		e.preventDefault();
 		value = !value;
 		Inspector.onWidgetChange.call(that,element,name, value, options);
 		LiteGUI.trigger( element, "wclick", value);
 
 		var y = value ? height : 0;
 		icon.style.backgroundPosition = x + "px " + y + "px";
+
+		if(options.toggle === false)
+			setTimeout( function(){ icon.style.backgroundPosition = x + "px 0px"; value = false; },200 );
+
 	});
 	this.append(element,options);
 

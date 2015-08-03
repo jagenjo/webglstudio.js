@@ -350,13 +350,6 @@ var SceneStorageModule = {
 	{
 		var local_scenes = localStorage.removeItem(SceneStorageModule.localscene_prefix + "list");
 		this.local_scenes = {};
-		/*
-		this.saveLocalScene("Empty", { url: "data/scenes/empty.json" });
-		this.saveLocalScene("Lee", { url: "data/scenes/Lee.json" });
-		this.saveLocalScene("Fire particles", { url: "data/scenes/fire.json" });
-		this.saveLocalScene("Dragon", { url: "data/scenes/dragon.json" });
-		this.saveLocalScene("Room", { url: "data/scenes/room.json" });
-		*/
 	},
 
 	loadLocalScene: function(name)
@@ -388,7 +381,7 @@ var SceneStorageModule = {
 			}
 			catch (err)
 			{
-				trace("Error: " + err );
+				console.log("Error: " + err );
 				return;
 			}
 		}
@@ -404,8 +397,8 @@ var SceneStorageModule = {
 
 		function inner(data)
 		{
-			Scene.loadResources();
-			Scene.name = name;
+			LS.GlobalScene.loadResources();
+			LS.GlobalScene.name = name;
 			RenderModule.restoreSceneCamera();
 		}
 	},

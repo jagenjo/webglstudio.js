@@ -1,0 +1,45 @@
+/* this CSS contains only the basic CSS needed to run the app and use it */
+
+.lgraphcanvas {
+	cursor: crosshair;
+	user-select: none;
+	-moz-user-select: none;
+	-webkit-user-select: none;
+}
+
+.graphcontextualmenu {
+	padding: 4px;
+	min-width: 100px;
+}
+
+.graphmenu-entry {
+	box-sizing: border-box;
+	margin: 2px;
+	padding-left: 20px;
+	user-select: none;
+	-moz-user-select: none;
+	-webkit-user-select: none;
+	transition: * linear 0.5s;
+}
+
+.graphmenu-entry.disabled {
+	opacity: 0.3;
+}
+
+.graphmenu-entry.submenu {
+	border-right: 2px solid #EEE;
+}
+
+
+.graphmenu-entry:hover {
+	background-color: #555;
+}
+
+.graphmenu-entry.separator {
+	background-color: #111;
+	border-bottom: 1px solid #666;
+	height: 1px;
+	width: calc( 100% - 20px );
+	-moz-width: calc( 100% - 20px );
+	-webkit-width: calc( 100% - 20px );
+}

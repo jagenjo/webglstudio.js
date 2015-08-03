@@ -898,7 +898,7 @@ LiteWidgets.widget_constructors["script"] = "addScript";
 LS.Components.Script["@inspector"] = function(component, attributes)
 {
 	attributes.current_section.querySelector('.options_section').addEventListener("click", function(e) { 
-		var menu = new LiteGUI.ContextualMenu(["Copy","Paste","Reset","Delete"], {component: component, event: e, callback: function(v) { 
+		var menu = new LiteGUI.ContextualMenu(["Info","Copy","Paste","Reset","Delete"], {component: component, event: e, callback: function(v) { 
 				EditorModule._onComponentOptionsSelect(v, component);
 			}});
 	});
@@ -910,12 +910,14 @@ LS.Components.Script["@inspector"] = function(component, attributes)
 		this.showContainerFields(context, attributes);
 
 		var actions = [];
+		/*
 		for(var i in context)
 		{
 			if( typeof(context[i]) != "function" || LS.Components.Script.exported_callbacks.indexOf(i) != -1 || i == "getResources" )
 				continue;
 			attributes.addButton(null,i, { callback: context[i].bind(context) });
 		}
+		*/
 	}
 
 	//attributes.addString("Module name", component.component_name, { callback: function(v) { component.component_name = v; } });
@@ -926,4 +928,23 @@ LS.Components.Script["@inspector"] = function(component, attributes)
 		CodingModule.editInstanceCode(component, { id: component.uid, title: component._root.id, lang: "javascript", path: path, help: LS.Components.Script.coding_help } );
 	}});
 	//attributes.addCheckbox("Register", component.register_component, { callback: function(v) { component.register_component = v; } });
+}
+
+LS.Components.Script.onComponentInfo = function( component, widgets )
+{
+	widgets.addString("Context Locator", component.getLocator() + "/context", { disabled: true } );
+	var values = [""];
+	var context = component.getContext();
+	if(context)
+	{
+		for(var i in context)
+		{
+			var f = context[i];
+			if( typeof(f) != "function")
+				continue;
+			values.push(i);
+		}
+		widgets.addCombo("Functions", "", { values: values, callback: function(v){ 
+		}});
+	}
 }

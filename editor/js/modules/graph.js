@@ -6,7 +6,7 @@ var GraphModule = {
 	current_graph_info: null,
 
 	litegraph_path: "../../litegraph/",
-	litegraph_css_url: "../../litegraph/css/litegraph.css",
+	litegraph_css_url: "css/litegraph.css",
 	graph_windows: [],
 
 	init: function()

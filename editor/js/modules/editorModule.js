@@ -410,7 +410,7 @@ var EditorModule = {
 		//generic component
 		//button on the right, add generic menu
 		inspector.current_section.querySelector('.options_section').addEventListener("click", function(e) { 
-			var menu = new LiteGUI.ContextualMenu(["Copy","Paste","Delete"], {component: component, event: e, callback: function(v) { 
+			var menu = new LiteGUI.ContextualMenu(["Info","Copy","Paste","Delete"], {component: component, event: e, callback: function(v) { 
 				EditorModule._onComponentOptionsSelect(v, component);
 			}});
 		});
@@ -422,7 +422,9 @@ var EditorModule = {
 	{
 		if(!component) return;
 		var node = component._root;
-		if(v == "Copy") 
+		if(v == "Info") 
+			EditorModule.showComponentInfo(component);
+		else if(v == "Copy") 
 			EditorModule.copyComponentToClipboard(component);
 		else if(v == "Paste") 
 			EditorModule.pasteComponentFromClipboard(component);
@@ -643,6 +645,54 @@ var EditorModule = {
 			EditorModule.resetEditor();
 		});
 	},	
+
+	showNodeInfo: function( node )
+	{
+		var dialog = new LiteGUI.Dialog("node_info",{ title:"Node Info", width: 400, draggable: true, closable: true });
+		
+		var widgets = new LiteGUI.Inspector();
+		widgets.addString("Name", node.name, function(v){ node.name = v; });
+		widgets.addString("UID", node.uid, { disabled: true }  );
+		widgets.addCheckbox("Visible", node.visible, function(v){ node.flags.visible = v; });
+		widgets.addButtons(null,["Close"], function(v){
+			if(v == "Close")
+				dialog.close();
+			return;
+		});
+
+		dialog.add( widgets );
+		dialog.adjustSize();
+		dialog.show();
+	},
+
+	showComponentInfo: function( component )
+	{
+		var dialog = new LiteGUI.Dialog("component_info",{ title:"Component Info", width: 400, draggable: true, closable: true });
+		
+		var widgets = new LiteGUI.Inspector();
+		widgets.addString("Class", LS.getObjectClassName(component), { disabled: true } );
+		if(component.enabled !== undefined)
+			widgets.addCheckbox("Enabled", component.enabled, function(v){ component.enabled = v; });
+		widgets.addString("UID", component.uid, function(v){ component.uid = v; });
+		widgets.addString("Locator", component.getLocator(), { disabled: true } );
+
+		if( component.constructor.onComponentInfo )
+			component.constructor.onComponentInfo( component, widgets );
+
+		widgets.addSeparator();
+
+		widgets.addButtons(null,["Copy Component","Close"], function(v){
+			if(v == "Close")
+				dialog.close();
+			else if(v == "Copy")
+				EditorModule.copyComponentToClipboard( component );
+			return;
+		});
+
+		dialog.add( widgets );
+		dialog.adjustSize();
+		dialog.show();
+	},
 
 	//Resets all, it should leave the app state as if a reload was done
 	resetEditor: function()
@@ -1177,7 +1227,7 @@ var EditorModule = {
 	//key actions
 	onKeyDown: function(e)
 	{
-		console.log(e.keyCode);
+		//console.log(e.keyCode);
 		switch(e.keyCode)
 		{
 			case 32:
@@ -1271,6 +1321,40 @@ LiteGUI.Inspector.prototype.addNode = function(name, value, options)
 	return element;
 }
 LiteGUI.Inspector.widget_constructors["node"] = "addNode";
+
+//to select a component from a node
+LiteGUI.Inspector.prototype.addNodeComponent = function(name, value, options)
+{
+	options = options || {};
+	value = value || "";
+	var that = this;
+	this.values[ name ] = value;
+	
+	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
+	var input = element.querySelector(".wcontent input");
+
+	input.addEventListener("change", function(e) { 
+		LiteGUI.Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
+	});
+	
+	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
+		EditorModule.showSelectNode( inner_onselect );
+		if(options.callback_button)
+			options.callback_button.call(element, $(element).find(".wcontent input").val() );
+	});
+
+	//after selecting a node
+	function inner_onselect( node )
+	{
+		input.value = node ? node._name : "";
+		LiteGUI.trigger( input, "change" );
+	}
+
+	this.tab_index += 1;
+	this.append(element);
+	return element;
+}
+LiteGUI.Inspector.widget_constructors["node_component"] = "addNodeComponent";
 
 //to select a resource
 LiteGUI.Inspector.prototype.addResource = function(name,value, options)
@@ -1501,9 +1585,9 @@ SceneNode.editor_actions["select"] = {
 };
 
 SceneNode.editor_actions["info"] = { 
-	title:"Get Information",
+	title:"Show Information",
 	callback: function( node ){
-		console.log(node.uid);
+		EditorModule.showNodeInfo(node);
 	}
 };
 

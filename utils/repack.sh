@@ -12,6 +12,7 @@ cp -v ../../litegui/build/*.css ../editor/css
 echo "LITEGRAPH"
 ../../litegraph/utils/pack.sh
 cp -v ../../litegraph/build/* ../editor/js/extra
+cp -v ../../litegraph/css/*.css ../editor/css
 echo "LITEFILESERVER"
 cp -v ../../litefileserver/src/litefileserver.js ../editor/js/extra
 echo "WEBGLTOCANVAS2D"

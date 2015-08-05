@@ -40,14 +40,19 @@ var selectTool = {
 	mouseup: function(e) {
 		//if(!this.enabled) return;
 
+		e.preventDefault();
+		e.stopPropagation();
+
 		var now = new Date().getTime();
 		var dist = Math.sqrt( (e.canvasx - this.click_pos[0])<<2 + (e.canvasy - this.click_pos[1])<<2 );
 		if (e.click_time < this.click_time && dist < this.click_dist) //fast click
 		{
 			var instance_info = LS.Picking.getInstanceAtCanvasPosition( LS.GlobalScene, ToolUtils.getCamera(), e.canvasx,e.canvasy);
+			if(!instance_info)
+				return false;
 
 			if(e.button == 2)
-				EditorModule.showContextualNodeMenu( instance_info, e );
+				EditorModule.showContextualNodeMenu( instance_info.instance, e );
 			else if(e.shiftKey)
 			{
 				if( SelectionModule.isSelected( instance_info ) )
@@ -61,8 +66,6 @@ var selectTool = {
 			//console.log("found: ", instance_info );
 		}
 
-		e.preventDefault();
-		e.stopPropagation();
 		return false;
 	}
 };

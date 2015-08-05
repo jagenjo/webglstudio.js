@@ -897,12 +897,6 @@ LiteWidgets.widget_constructors["script"] = "addScript";
 
 LS.Components.Script["@inspector"] = function(component, attributes)
 {
-	attributes.current_section.querySelector('.options_section').addEventListener("click", function(e) { 
-		var menu = new LiteGUI.ContextualMenu(["Info","Copy","Paste","Reset","Delete"], {component: component, event: e, callback: function(v) { 
-				EditorModule._onComponentOptionsSelect(v, component);
-			}});
-	});
-
 	var context = component.getContext();
 	if(context)
 	{

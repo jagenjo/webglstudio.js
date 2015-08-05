@@ -425,12 +425,6 @@ LiteGUI.registerModule( GraphModule );
 
 GraphModule.showGraphComponent = function(component, inspector)
 {
-	$(inspector.current_section).find('.options_section').click(function(e) { 
-		var menu = new LiteGUI.ContextualMenu(["Copy","Paste","Reset","Delete"], {component: component, event: e, callback: function(v) {
-			EditorModule._onComponentOptionsSelect(v,component); 
-		}});
-	});
-
 	if(component.constructor == GraphComponent)
 	{
 		inspector.addCombo("on event", component.on_event, { values: GraphComponent["@on_event"].values , callback: function(v) { component.on_event = v; }});

@@ -29,7 +29,7 @@ GlobalInfo["@inspector"] = function(component, attributes)
 
 	function inner_setTexture(channel)
 	{
-		attributes.addTexture(channel, component.textures[channel], { channel: channel, callback: function(filename) { 
+		attributes.addTexture(channel, component.textures[channel], { pretitle: AnimationModule.getKeyframeCode( component, "textures/" + channel ), channel: channel, callback: function(filename) { 
 			component.textures[this.options.channel] = filename;
 			if(filename && filename[0] != ":")
 				LS.ResourcesManager.load( filename );
@@ -42,11 +42,6 @@ Transform["@inspector"] = function(transform, attributes)
 {
 	if(!transform) return;
 	var node = transform._root;
-
-	//var section = attributes.addSection("Transform <span class='buttons'><button class='options_this'>Options</button></span>");
-	attributes.current_section.querySelector('.options_section').addEventListener("click", function(e) { 
-		var menu = new LiteGUI.ContextualMenu(["Info","Copy","Paste","Reset"], {component: transform, event: e, callback: function(v) { EditorModule._onComponentOptionsSelect(v,transform); }});
-	});
 
 	attributes.addVector3("Position", transform._position, { 
 		pretitle: AnimationModule.getKeyframeCode( transform, "position"),
@@ -98,15 +93,6 @@ Camera["@inspector"] = function(camera, attributes)
 	if(!camera) 
 		return;
 	var node = camera._root;
-	/*
-	var icon = "";
-	if(camera.constructor.icon)	icon = "<img src='"+camera.constructor.icon+"' />";
-	var section = attributes.addSection(icon + "Camera <span class='buttons'><button class='options_this'>Options</button></span>");
-	*/
-
-	attributes.current_section.querySelector('.options_section').addEventListener("click",function(e) { 
-		var menu = new LiteGUI.ContextualMenu(["Info","Copy","Paste","Reset","Delete","Select","Select Center","Preview"], {component: camera, event: e, callback: inner_menu_option });
-	});
 
 	attributes.addCombo("Type", camera.type, { values: { "Orthographic" : Camera.ORTHOGRAPHIC, "Perspective": Camera.PERSPECTIVE }, pretitle: AnimationModule.getKeyframeCode( camera, "type"), callback: function (value) { camera.type = value; } });
 	attributes.widgets_per_row = 2;
@@ -162,7 +148,12 @@ Camera["@inspector"] = function(camera, attributes)
 
 		//Editor camera is not inside a node, but this camera could be, so be careful
 		if(camera._root && camera._root._is_root)
-			camera.configure( RenderModule.camera.serialize() );
+		{
+			camera.eye = RenderModule.camera.eye;
+			camera.center = RenderModule.camera.center;
+			camera.up = RenderModule.camera.up;
+			//camera.configure( RenderModule.camera.serialize() );
+		}
 		else
 		{
 			//if it is inside the node, then change node position
@@ -176,25 +167,6 @@ Camera["@inspector"] = function(camera, attributes)
 
 		EditorModule.refreshAttributes();
 	}
-
-	function inner_menu_option(v)
-	{
-		if( EditorModule._onComponentOptionsSelect(v, camera) )
-			return;
-
-		if (v == "Select Center")
-		{
-			SelectionModule.setSelection({ instance: camera, info: "center"});
-		}
-		else if (v == "Preview")
-		{
-			if(RenderModule.preview_camera != camera)
-				RenderModule.preview_camera = camera;
-			else
-				RenderModule.preview_camera = null;
-			LS.GlobalScene.refresh();
-		}
-	}
 }
 
 CameraFX["@inspector"] = function(camerafx, attributes)
@@ -202,16 +174,6 @@ CameraFX["@inspector"] = function(camerafx, attributes)
 	if(!camerafx)
 		return;
 	var node = camerafx._root;
-
-	attributes.current_section.querySelector('.options_section').addEventListener("click",function(e) { 
-		var menu = new LiteGUI.ContextualMenu(["Info","Copy","Paste","Reset","Delete"], {component: camerafx, event: e, callback: inner_menu_option });
-	});
-
-	function inner_menu_option(v)
-	{
-		if( EditorModule._onComponentOptionsSelect(v, camerafx) )
-			return;
-	}
 
 	attributes.addCheckbox("Viewport Size", camerafx.use_viewport_size, { callback: function(v) { camerafx.use_viewport_size = v; } });
 	attributes.addCheckbox("High Precission", camerafx.use_high_precision, { callback: function(v) { camerafx.use_high_precision = v; } });
@@ -307,12 +269,6 @@ Light["@inspector"] = function(light, attributes)
 	if(!light) return;
 	var node = light._root;
 
-	//var section = attributes.addSection("Light <span class='buttons'><button class='options_this'>Options</button></span>");
-	attributes.current_section.querySelector('.options_section').addEventListener("click", function(e) { 
-		var menu = new LiteGUI.ContextualMenu(["Info","Copy","Paste","Reset","Delete","Select","Select Target"], {component: light, event: e, callback: inner_menu_option  });
-	});
-	$(attributes.current_section).bind("wchange", function() { EditorModule.saveComponentUndo(light); });
-
 	var light_types = ["Omni","Spot","Directional"];
 	attributes.addCombo("Type", light_types[light.type-1], { pretitle: AnimationModule.getKeyframeCode( light, "type"), values: light_types, callback: function(v) { 
 		light.type = light_types.indexOf(v)+1; 
@@ -375,17 +331,6 @@ Light["@inspector"] = function(light, attributes)
 		CodingModule.openTab();
 		CodingModule.editInstanceCode( light, { id: light.uid, title: "Light Shader", lang:"glsl", help: light.constructor.coding_help, getCode: function(){ return light.extra_light_shader_code; }, setCode: function(code){ light.extra_light_shader_code = code; } } );
 	}});
-
-	function inner_menu_option(v)
-	{
-		if( EditorModule._onComponentOptionsSelect(v, light) )
-			return;
-
-		if (v == "Select Target")
-		{
-			SelectionModule.setSelection({ instance: light, info: "target" });
-		}
-	}
 }
 
 
@@ -393,13 +338,6 @@ ParticleEmissor["@inspector"] = function(component, attributes)
 {
 	if(!component) return;
 	var node = component._root;
-
-	//var section = attributes.addSection("ParticleEmissor <span class='buttons'><button class='options_this'>Options</button></span>");
-	$(attributes.current_section).find('.options_section').click(function(e) { 
-		var menu = new LiteGUI.ContextualMenu(["Info","Copy","Paste","Reset","Delete"], {component: component, event: e, callback: function(v) { 
-			EditorModule._onComponentOptionsSelect(v, component);
-		}});
-	});
 
 	attributes.addSlider("Max. Particles", component.max_particles, {step:10,min:10,max:1000, callback: function (value) { component.max_particles = value; }});
 	attributes.addNumber("Warmup time", component.warm_up_time, {step:1,min:0,max:10, callback: function (value) { component.warm_up_time = value; }});
@@ -526,58 +464,3 @@ PlayAnimation.onShowAttributes = function(component, attributes)
 	}});
 }
 
-/*
-PlayAnimation.prototype.showTracks = function()
-{
-	var that = this;
-	var dialog = new LiteGUI.Dialog("dialog_show_tracks", {title:"Animation Tracks", close: true, width: 360, height: 270, scroll: false, draggable: true});
-	dialog.show('fade');
-
-	var widgets = new LiteGUI.Inspector("tracks_widgets",{ });
-
-	var animation = LS.ResourcesManager.resources[ this.animation ];
-	if(animation)
-	{
-		var takes_names = [];
-		for(var i in animation.takes)
-			takes_names.push( i );
-
-		var selected_take = this.take;
-		
-		widgets.addCombo("Takes", selected_take, { values: takes_names, callback: function() {
-
-		}});
-
-		var take = animation.takes[ selected_take ];
-		var selected_track = null;
-		if(take)
-		{
-			widgets.addInfo("Track ", this.take);
-
-			//get the names
-			var track_names = [];
-			for(var i in take.tracks)
-				track_names.push(take.tracks[i].nodename);
-			var list = widgets.addList(null, track_names, { height: 140, callback: function(v) {
-				console.log(v);
-				selected_track = v;
-			}});
-		}
-
-		widgets.addButton(null, "Disable track", { callback: function( v ) {
-			if(!selected_track) return;
-			if(that.disabled_tracks[ selected_track ])
-				delete that.disabled_tracks[ selected_track ];
-			else
-				that.disabled_tracks[ selected_track ] = true;
-		}});
-
-		widgets.addButton(null, "Enable all tracks", { callback: function( v ) {
-			that.disabled_tracks = {};
-		}});
-
-	}
-
-	dialog.content.appendChild(widgets.root);	
-}
-*/

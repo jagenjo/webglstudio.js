@@ -61,7 +61,7 @@ var RenderModule = {
 
 		//create split
 		var visorarea = this.visorarea = new LiteGUI.Area("visorarea",{ height: "100%", autoresize: true, inmediateResize: true});
-		visorarea.split("vertical",[null,300], true);
+		visorarea.split("vertical",[null,260], true);
 		visorarea.getSection(0).content.innerHTML = "<div id='visor'></div>";
 		this.tab.add( visorarea );
 		//visorarea.hideSection(1); //DEFAULT SHOW TIMELINE ***********************************

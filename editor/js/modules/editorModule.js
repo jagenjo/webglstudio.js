@@ -352,7 +352,7 @@ var EditorModule = {
 		var name = LS.getObjectClassName(component);
 		var editor = component_class["@inspector"];
 
-		//create area
+		//Create the title of the component
 		var icon = "";
 		if(component.constructor.icon)	
 			icon = "<span class='icon' style='width: 20px'><img src='"+ this.icons_path + component.constructor.icon+"'/></span>";
@@ -367,14 +367,22 @@ var EditorModule = {
 		if(component.uid)
 			options.id = component.uid.substr(1);
 
+		//show the component collapsed and remember it
 		options.callback = function(v){
-			//console.log(v ? "uncollapsed" : "collapsed");
 			component._collapsed = !v;
 		}
-
 		options.collapsed = component._collapsed;
 
-		var section = inspector.addSection( icon + enabler + title + buttons, options);
+		//create component section in inspector
+		var section = inspector.addSection( icon + enabler + title + buttons, options );
+
+		section.querySelector(".wsectiontitle").addEventListener("contextmenu", (function(e) { 
+			if(e.button != 2) //right button
+				return false;
+			inner_showActions(e);
+			e.preventDefault(); 
+			return false;
+		}).bind(this));
 
 		//checkbox for enable/disable
 		if(component.enabled !== undefined)
@@ -389,6 +397,7 @@ var EditorModule = {
 			enabler.appendChild( checkbox.root );
 		}
 
+		//save UNDO when something changes
 		$(inspector.current_section).bind("wchange", function() { 
 			EditorModule.saveComponentUndo(component);
 		});
@@ -400,42 +409,50 @@ var EditorModule = {
 			return true;
 		});
 
-
-
 		//it has special editor
 		if(editor)
-			return editor.call(this, component, inspector, section);
+			editor.call(this, component, inspector, section);
+		else
+			this.showContainerFields( component, inspector );
 
+		//in case the options button is pressed or the right button, show contextual menu
+		inspector.current_section.querySelector('.options_section').addEventListener("click", inner_showActions );
 
-		//generic component
-		//button on the right, add generic menu
-		inspector.current_section.querySelector('.options_section').addEventListener("click", function(e) { 
-			var menu = new LiteGUI.ContextualMenu(["Info","Copy","Paste","Delete"], {component: component, event: e, callback: function(v) { 
-				EditorModule._onComponentOptionsSelect(v, component);
+		function inner_showActions( e ) { 
+			console.log("Show options");
+			var actions = ["Info","Copy","Paste","Delete","Reset","Select"];
+			if(component.getEditorActions)
+				actions = component.getEditorActions( actions );
+
+			var menu = new LiteGUI.ContextualMenu( actions, { event: event, callback: function(value) {
+
+				var r = null;
+				if(component.doEditorAction)
+					r = component.doEditorAction( value );
+				if(!r)
+					EditorModule.onDefaultComponentAction( component, value );
 			}});
-		});
+		}		
 
-		this.showContainerFields( component, inspector );
 	},
 
-	_onComponentOptionsSelect: function(v, component)
+	onDefaultComponentAction: function(component, action)
 	{
-		if(!component) return;
+		if(!component)
+			return;
 		var node = component._root;
-		if(v == "Info") 
-			EditorModule.showComponentInfo(component);
-		else if(v == "Copy") 
-			EditorModule.copyComponentToClipboard(component);
-		else if(v == "Paste") 
-			EditorModule.pasteComponentFromClipboard(component);
-		else if(v == "Delete") 
-			EditorModule.deleteNodeComponent(component);
-		else if(v == "Reset") 
-			EditorModule.resetNodeComponent(component);
-		else if(v == "Select") 
-			SelectionModule.setSelection(component);
-		else 
-			return false;
+
+		switch(action)
+		{
+			case "Info": EditorModule.showComponentInfo(component); break;
+			case "Copy": EditorModule.copyComponentToClipboard(component); break;
+			case "Paste": EditorModule.pasteComponentFromClipboard(component); break;
+			case "Delete": EditorModule.deleteNodeComponent(component); break;
+			case "Reset": EditorModule.resetNodeComponent(component); break;
+			case "Select": SelectionModule.setSelection(component); break;
+			default:
+				return false;
+		}
 		return true;
 	},
 
@@ -641,8 +658,9 @@ var EditorModule = {
 
 	showResetDialog: function()
 	{
-		LiteGUI.confirm("Are you sure?", function() {
-			EditorModule.resetEditor();
+		LiteGUI.confirm("Are you sure?", function(v) {
+			if(v)
+				EditorModule.resetEditor();
 		});
 	},	
 
@@ -1402,6 +1420,9 @@ LiteGUI.Inspector.prototype.addTexture = function(name, value, options)
 	var tex_name = value;
 	if(value && value.texture)
 		tex_name = value.texture;
+
+	if(value && value.constructor === GL.Texture)
+		tex_name = "@Texture";
 	
 	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+tex_name+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
 	var input = element.querySelector(".wcontent input");
@@ -1419,7 +1440,7 @@ LiteGUI.Inspector.prototype.addTexture = function(name, value, options)
 			options.callback_button.call(element, $(element).find(".wcontent input").val() );
 	});
 
-	function inner_onselect(filename)
+	function inner_onselect( filename )
 	{
 		input.value = filename;
 		LiteGUI.trigger( input, "change" );
@@ -1558,54 +1579,7 @@ LiteGUI.Inspector.prototype.addMaterial = function(name,value, options)
 LiteGUI.Inspector.widget_constructors["material"] = "addMaterial";
 LiteGUI.Inspector.widget_constructors["position"] = LiteGUI.Inspector.prototype.addVector3;
 
-//***** EXTRA ACTIONS FOR THE NODES ***********************
-SceneNode.editor_actions = {};
 
-SceneNode.prototype.getEditorActions = function()
-{
-	return SceneNode.editor_actions;
-}
-
-SceneNode.prototype.doEditorAction = function(name)
-{
-	var actions = this.getEditorActions();
-	if(!actions[name])
-		return false;
-	var action = actions[name];
-	if(action.callback)
-		return action.callback(this);
-	return false;
-}
-
-SceneNode.editor_actions["select"] = { 
-	title:"Select",
-	callback: function( node ){
-		SelectionModule.setSelection( node );
-	}
-};
-
-SceneNode.editor_actions["info"] = { 
-	title:"Show Information",
-	callback: function( node ){
-		EditorModule.showNodeInfo(node);
-	}
-};
-
-SceneNode.editor_actions["addcomponent"] = { 
-	title:"Add Component",
-	callback: function( node ){
-		EditorModule.showAddComponentToNode( node );
-	}
-};
-
-/*
-SceneNode.editor_actions["addcomponent"] { 
-	name:"Add Component",
-	callback: function(){
-	
-	}
-};
-*/
 
 
 

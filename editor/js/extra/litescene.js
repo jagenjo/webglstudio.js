@@ -1592,6 +1592,28 @@ var LS = {
 	},	
 
 	/**
+	* Is a wrapper for callbacks that throws an LS "code_error" in case something goes wrong (needed to catch the error from the system)
+	* @method safeCall
+	* @param {function} callback
+	* @param {array} params
+	* @param {object} instance
+	*/
+	safeCall: function(callback, params, instance)
+	{
+		if(!LS.catch_errors)
+			return callback.apply( instance, params );
+
+		try
+		{
+			return callback.apply( instance, params );
+		}
+		catch (err)
+		{
+			LEvent.trigger(LS,"code_error",err);
+		}
+	},
+
+	/**
 	* Is a wrapper for setTimeout that throws an LS "code_error" in case something goes wrong (needed to catch the error from the system)
 	* @method setTimeout
 	* @param {function} callback
@@ -1886,10 +1908,10 @@ var LS = {
 		if(obj.setAttribute)
 			return obj.setAttribute(name, value);
 
-		var prev = obj[ name ];
-		if(prev && prev.set)
-			prev.set( value ); //for typed-arrays
-		else
+		//var prev = obj[ name ];
+		//if(prev && prev.set)
+		//	prev.set( value ); //for typed-arrays
+		//else
 			obj[ name ] = value; //clone¿?
 	}
 }
@@ -2434,6 +2456,22 @@ var ResourcesManager = {
 	},
 
 	/**
+	* Marks the resource as modified, used in editor to know when a resource data should be updated
+	*
+	* @method resourceModified
+	* @param {Object} resource
+	*/
+	resourceModified: function(resource)
+	{
+		if(!resource)
+			return;
+		delete resource._original_data;
+		delete resource._original_file;
+		resource._modified = true;
+		LEvent.trigger(this, "resource_modified", resource );
+	},
+
+	/**
 	* Loads a generic resource, the type will be infered from the extension, if it is json or wbin it will be processed
 	* Do not use to load regular files (txts, csv, etc), instead use the LS.Network methods
 	*
@@ -2850,7 +2888,12 @@ var ResourcesManager = {
 	*/
 
 	getMesh: function(name) {
-		if(name != null) return this.meshes[name];
+		if(!name)
+			return null;
+		if(name.constructor === String)
+			return this.meshes[name];
+		if(name.constructor === GL.Mesh)
+			return name;
 		return null;
 	},
 
@@ -2858,14 +2901,18 @@ var ResourcesManager = {
 	* returns a texture resource if it is loaded
 	*
 	* @method getTexture
-	* @param {String} filename 
+	* @param {String} filename could be a texture itself in which case returns the same texture
 	* @return {Texture} 
 	*/
 
 	getTexture: function(name) {
 		if(!name)
 			return null;
-		return this.textures[name];
+		if(name.constructor === String)
+			return this.textures[name];
+		if(name.constructor === GL.Texture)
+			return name;
+		return null;
 	},
 
 	//tells to all the components, nodes, materials, etc, that one resource has changed its name
@@ -5184,7 +5231,7 @@ SurfaceMaterial.prototype.onResourceRenamed = function (old_name, new_name, reso
 * @method getProperty
 * @return {Object} object with name:type
 */
-SurfaceMaterial.prototype.getProperty = function(name)
+SurfaceMaterial.prototype.getProperty = function( name )
 {
 	if(this[name])
 		return this[name];
@@ -5227,6 +5274,38 @@ SurfaceMaterial.prototype.setProperty = function(name, value)
 	}
 
 	return false;
+}
+
+SurfaceMaterial.prototype.setPropertyValueFromPath = function( path, value )
+{
+	if( path.length < 3)
+		return;
+	return this.setProperty( path[2], value );
+}
+
+SurfaceMaterial.prototype.getPropertyInfoFromPath = function( path )
+{
+	if( path.length < 3)
+		return;
+
+	var varname = path[2];
+
+	for(var i = 0, l = this.properties.length; i < l; ++i )
+	{
+		var prop = this.properties[i];
+		if(prop.name != varname)
+			continue;
+
+		return {
+			node: this._root,
+			target: this,
+			name: prop.name,
+			value: prop.value,
+			type: prop.type
+		};
+	}
+
+	return;
 }
 
 
@@ -11375,13 +11454,29 @@ LS.registerComponent(GeometricPrimitive);
 
 function GlobalInfo(o)
 {
-	this.ambient_color = new Float32Array( GlobalInfo.DEFAULT_AMBIENT_COLOR );
-	this.background_color = new Float32Array( GlobalInfo.DEFAULT_BACKGROUND_COLOR );
-	this.textures = {};
+	this.createProperty( "ambient_color", GlobalInfo.DEFAULT_AMBIENT_COLOR, "color" );
+	this.createProperty( "background_color", GlobalInfo.DEFAULT_BACKGROUND_COLOR, "color" );
+
+	this._textures = {};
 
 	if(o)
 		this.configure(o);
 }
+
+Object.defineProperty( GlobalInfo.prototype, 'textures', {
+	set: function( v )
+	{
+		if(typeof(v) != "object")
+			return;
+		for(var i in v)
+			if( v[i] === null || v[i].constructor === String || v[i] === GL.Texture )
+				this._textures[i] = v[i];
+	},
+	get: function(){
+		return this._textures;
+	},
+	enumerable: true
+});
 
 GlobalInfo.icon = "mini-icon-bg.png";
 GlobalInfo.DEFAULT_BACKGROUND_COLOR = new Float32Array([0,0,0,1]);
@@ -11400,23 +11495,80 @@ GlobalInfo.prototype.onRemovedFromScene = function(scene)
 
 GlobalInfo.prototype.getResources = function(res)
 {
-	for(var i in this.textures)
+	for(var i in this._textures)
 	{
-		if(typeof(this.textures[i]) == "string")
-			res[ this.textures[i] ] = GL.Texture;
+		if(typeof(this._textures[i]) == "string")
+			res[ this._textures[i] ] = GL.Texture;
 	}
 	return res;
 }
 
-GlobalInfo.prototype.onResourceRenamed = function (old_name, new_name, resource)
+GlobalInfo.prototype.getAttributes = function()
 {
-	for(var i in this.textures)
+	return {
+		ambient_color:"color",
+		background_color:"color",
+		"textures/background": "texture",
+		"textures/foreground": "texture",
+		"textures/environment": "texture",
+		"textures/irradiance": "texture"
+	};
+}
+
+GlobalInfo.prototype.setAttribute = function(name, value)
+{
+	if(name.substr(0,9) == "textures/" && (!value || value.constructor === String || value.constructor === GL.Texture) )
 	{
-		if(this.textures[i] == old_name)
-			this.texture[i] = new_name;
+		this._textures[ name.substr(9) ] = value;
+		return true;
 	}
 }
 
+
+GlobalInfo.prototype.onResourceRenamed = function (old_name, new_name, resource)
+{
+	for(var i in this._textures)
+	{
+		if(this._textures[i] == old_name)
+			this._texture[i] = new_name;
+	}
+}
+
+//used for animation tracks
+GlobalInfo.prototype.getPropertyInfoFromPath = function( path )
+{
+	if(path[2] != "textures")
+		return;
+
+	if(path.length == 3)
+		return {
+			node: this._root,
+			target: this._textures,
+			type: "object"
+		};
+
+	var varname = path[3];
+
+	return {
+		node: this._root,
+		target: this._textures,
+		name: varname,
+		value: this._textures[ varname ] || null,
+		type: "texture"
+	};
+}
+
+GlobalInfo.prototype.setPropertyValueFromPath = function( path, value )
+{
+	if( path.length < 4 )
+		return;
+
+	if( path[2] != "textures" )
+		return;
+
+	var varname = path[3];
+	this._textures[ varname ] = value;
+}
 
 LS.registerComponent( GlobalInfo );
 LS.GlobalInfo = GlobalInfo;
@@ -11472,6 +11624,7 @@ GraphComponent.icon = "mini-icon-graph.png";
 */
 GraphComponent.prototype.configure = function(o)
 {
+	this.uid = o.uid;
 	this.enabled = !!o.enabled;
 	if(o.graph_data)
 	{
@@ -11495,6 +11648,7 @@ GraphComponent.prototype.configure = function(o)
 GraphComponent.prototype.serialize = function()
 {
 	return { 
+		uid: this.uid,
 		enabled: this.enabled, 
 		force_redraw: this.force_redraw , 
 		graph_data: JSON.stringify( this._graph.serialize() ),
@@ -11667,6 +11821,7 @@ FXGraphComponent.prototype.configure = function(o)
 	if(!o.graph_data)
 		return;
 
+	this.uid = o.uid;
 	this.enabled = !!o.enabled;
 	this.use_viewport_size = !!o.use_viewport_size;
 	this.use_high_precision = !!o.use_high_precision;
@@ -11684,6 +11839,7 @@ FXGraphComponent.prototype.configure = function(o)
 FXGraphComponent.prototype.serialize = function()
 {
 	return {
+		uid: this.uid,
 		enabled: this.enabled,
 		use_antialiasing: this.use_antialiasing,
 		use_high_precision: this.use_high_precision,
@@ -13058,6 +13214,7 @@ function PlayAnimation(o)
 	this.mode = "loop";
 	this.play = true;
 	this.current_time = 0;
+	this._last_time = 0;
 
 	this.disabled_tracks = {};
 
@@ -13095,8 +13252,8 @@ PlayAnimation.prototype.onRemoveFromNode = function(node)
 
 PlayAnimation.prototype.getAnimation = function()
 {
-	if(!this.animation) 
-		return null;
+	if(!this.animation || this.animation == "@scene") 
+		return this._root.scene.animation;
 	return LS.ResourcesManager.resources[ this.animation ];
 }
 
@@ -13131,7 +13288,8 @@ PlayAnimation.prototype.onUpdate = function(e, dt)
 		}
 	}
 
-	take.applyTracks( time );
+	take.applyTracks( time, this._last_time );
+	this._last_time = time; //TODO, add support for pingpong events in tracks
 
 	//take.actionPerSample( this.current_time, this._processSample.bind( this ), { disabled_tracks: this.disabled_tracks } );
 
@@ -14525,12 +14683,6 @@ if(typeof(LiteGraph) != "undefined")
 			var v = this.getInputData(i);
 			if(v === undefined)
 				continue;
-
-			switch( input.name )
-			{
-				case "Ambient color": vec3.copy(scene.ambient_color,v); break;
-				case "Bg Color": vec3.copy(scene.background_color,v); break;
-			}
 		}
 
 		//write outputs
@@ -14543,8 +14695,6 @@ if(typeof(LiteGraph) != "undefined")
 			var result = null;
 			switch( output.name )
 			{
-				case "Ambient color": result = scene.ambient_color; break;
-				case "Bg Color": result = scene.background_color; break;
 				case "Time": result = scene.getTime(); break;
 				case "Elapsed": result = (scene._last_dt != null ? scene._last_dt : 0); break;
 				case "Frame": result = (scene._frame != null ? scene._frame : 0); break;
@@ -14555,14 +14705,9 @@ if(typeof(LiteGraph) != "undefined")
 		}
 	}
 
-	LGraphScene.prototype.onGetInputs = function()
-	{
-		return [["Ambient color","color"],["Bg Color","color"]];
-	}
-
 	LGraphScene.prototype.onGetOutputs = function()
 	{
-		var r = [["Ambient color","color"],["Bg Color","color"],["Elapsed","number"],["Frame","number"]];
+		var r = [["Elapsed","number"],["Frame","number"]];
 		return LGraphScene.getComponents( this.graph.getScene().root, r);
 	}
 
@@ -15205,14 +15350,23 @@ Animation.prototype.addTrackToTake = function(takename, track)
 
 Animation.prototype.configure = function(data)
 {
+	if(data.name)
+		this.name = data.name;
+
 	if(data.takes)
 	{
 		for(var i in data.takes)
 		{
 			var take = new LS.Animation.Take( data.takes[i] );
 			this.addTake( take );
+			take.loadResources(); //load associated resources
 		}
 	}
+}
+
+Animation.prototype.serialize = function()
+{
+	return LS.cloneObject(this, null, true);
 }
 
 Animation.fromBinary = function( data )
@@ -15248,7 +15402,7 @@ Animation.prototype.toBinary = function()
 		for(var j in take.tracks)
 		{
 			var track = take.tracks[j];
-			track.packData(); //reduce storage space and speed ups load
+			track.packData(); //reduce storage space and speeds up loading
 
 			if(track.packed_data)
 			{
@@ -15334,6 +15488,7 @@ Take.prototype.applyTracks = function( current_time, last_time )
 			if( !keyframe || keyframe[0] < last_time || keyframe[0] > current_time )
 				return;
 
+			//need info to search for node
 			var info = LS.GlobalScene.getPropertyInfoFromPath( track._property_path );
 			if(!info)
 				return;
@@ -15345,7 +15500,7 @@ Take.prototype.applyTracks = function( current_time, last_time )
 		{
 			var sample = track.getSample( current_time, true );
 			if( sample !== undefined )
-				LS.GlobalScene.setPropertyValueFromPath( track._property_path, sample );
+				track._target = LS.GlobalScene.setPropertyValueFromPath( track._property_path, sample );
 		}
 	}
 }
@@ -15390,13 +15545,32 @@ Take.prototype.getPropertiesSample = function(time, result)
 
 Take.prototype.actionPerSample = function(time, callback, options)
 {
-	for(var i in this.tracks)
+	for(var i = 0; i < this.tracks.length; ++i)
 	{
 		var track = this.tracks[i];
 		var value = track.getSample(time, true);
 		if( options.disabled_tracks && options.disabled_tracks[ track.property ] )
 			continue;
 		callback(track.property, value, options);
+	}
+}
+
+//Ensures all the resources associated to keyframes are loaded in memory
+Take.prototype.loadResources = function()
+{
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+		if(track.type == "texture")
+		{
+			var l = track.getNumberOfKeyframes();
+			for(var j = 0; j < l; ++j)
+			{
+				var keyframe = track.getKeyframe(j);
+				if(keyframe && keyframe[1] && keyframe[1][0] != ":")
+					LS.ResourcesManager.load( keyframe[1] );
+			}
+		}
 	}
 }
 
@@ -15475,10 +15649,11 @@ Track.prototype.configure = function( o )
 
 	if(o.data_table) this.data_table = o.data_table;
 
+	if(o.value_size) this.value_size = o.value_size;
+
 	//data
 	if(o.data)
 	{
-		this.value_size = o.value_size;
 		this.data = o.data;
 		this.packed_data = !!o.packed_data;
 
@@ -15487,8 +15662,8 @@ Track.prototype.configure = function( o )
 			if( this.packed_data )
 				this.data = new Float32Array( o.data );
 		}
-		else
-			this.unpackData();
+		//else
+		//	this.unpackData();
 	}
 
 	if(o.interpolation && !this.value_size)
@@ -15505,17 +15680,20 @@ Track.prototype.serialize = function()
 		interpolation: this.interpolation,
 		looped: this.looped,
 		value_size: this.value_size,
-		packed_data: false,
+		packed_data: this.packed_data,
 		data_table: this.data_table
 	}
 
-	if(this.value_size <= 1)
-		o.data = this.data.concat(); //regular array, clone it
-	else //pack data
+	if(this.data)
 	{
-		this.packData();
-		o.data = new Float32Array( this.data ); //clone it
-		o.packed_data = this.packed_data;
+		if(this.value_size <= 1)
+			o.data = this.data.concat(); //regular array, clone it
+		else //pack data
+		{
+			this.packData();
+			o.data = new Float32Array( this.data ); //clone it
+			o.packed_data = this.packed_data;
+		}
 	}
 
 	return o;
@@ -15523,17 +15701,20 @@ Track.prototype.serialize = function()
 
 Track.prototype.toJSON = Track.prototype.serialize;
 
+Track.prototype.clear = function()
+{
+	this.data = [];
+	this.packed_data = false;
+}
+
+
 Track.prototype.addKeyframe = function( time, value, skip_replace )
 {
 	if(this.value_size > 1)
 		value = new Float32Array( value ); //clone
 
 	if(this.packed_data)
-	{
-		//TODO!!!!!
-		console.warn("TODO: add keyframe in packed data");
-		return -1;
-	}
+		this.unpackData();
 
 	if(!this.data)
 		this.data = [];
@@ -15555,12 +15736,19 @@ Track.prototype.addKeyframe = function( time, value, skip_replace )
 
 Track.prototype.getKeyframe = function( index )
 {
+	if(index < 0 || index >= this.data.length)
+	{
+		console.warn("keyframe index out of bounds");
+		return null;
+	}
+
 	if(this.packed_data)
 	{
 		var pos = index * (1 + this.value_size );
 		if(pos > (this.data.length - this.value_size) )
 			return null;
-		return [ this.data[pos], this.data.subarray(pos+1, pos+this.value_size) ];
+		return [ this.data[pos], this.data.subarray(pos+1, pos+this.value_size+1) ];
+		//return this.data.subarray(pos, pos+this.value_size+1) ];
 	}
 
 	return this.data[ index ];
@@ -15584,7 +15772,7 @@ Track.prototype.moveKeyframe = function(index, new_time)
 		return -1;
 	}
 
-	if(index >= this.data.length)
+	if(index < 0 || index >= this.data.length)
 	{
 		console.warn("keyframe index out of bounds");
 		return -1;
@@ -15618,9 +15806,9 @@ Track.prototype.sortKeyframes = function()
 {
 	if(this.packed_data)
 	{
-		//TODO!!!!!
-		console.warn("TODO: sortKeyframes in packed data");
-		return -1;
+		this.unpackData();
+		this.sortKeyframes();
+		this.packData();
 	}
 	this.data.sort( function(a,b){ return a[0] - b[0];  });
 }
@@ -15628,13 +15816,9 @@ Track.prototype.sortKeyframes = function()
 Track.prototype.removeKeyframe = function(index)
 {
 	if(this.packed_data)
-	{
-		//TODO
-		console.warn("Cannot move keyframes if packed");
-		return;
-	}
+		this.unpackData();
 
-	if(index >= this.data.length)
+	if(index < 0 || index >= this.data.length)
 	{
 		console.warn("keyframe index out of bounds");
 		return;
@@ -15672,6 +15856,13 @@ Track.prototype.computeDuration = function()
 	if(last)
 		return last[0];
 	return 0;
+}
+
+Track.prototype.isInterpolable = function()
+{
+	if( this.value_size > 0 || LS.Interpolators[ this.type ] )
+		return true;
+	return false;
 }
 
 //better for reading
@@ -15771,56 +15962,73 @@ Track.prototype.findTimeIndex = function( time )
 	if(this.packed_data)
 	{
 		var offset = this.value_size + 1;
+		var last = -1;
 		for(i = 0; i < l; i += offset)
 		{
 			var current_time = data[i];
 			if(current_time < time) 
+			{
+				last = i;
 				continue;
-			return i-1; //prev sample
+			}
+			if(last == -1)
+				return -1;
+			return (last/offset); //prev sample
 		}
+		if(last == -1)
+			return -1;
+		return (last/offset);
 	}
 	else //unpacked data
 	{
+		var last = -1;
 		for(i = 0; i < l; ++i )
 		{
 			if(time > data[i][0]) 
+			{
+				last = i;
 				continue;
+			}
 			if(time == data[i][0]) 
 				return i;
-			if(i == 0)
-				return 0;
-			return i-1; //prev sample
+			if(last == -1)
+				return -1;
+			return last;
 		}
+		if(last == -1)
+			return -1;
+		return last;
 	}
 
-	return l-1; //last sample
+	return -1;
 }
 
-
 Track.prototype.getSample = function( time, interpolate, result )
+{
+	if(!this.data || this.data.length === 0)
+		return undefined;
+
+	if(this.packed_data)
+		return this.getSamplePacked( time, interpolate, result);
+	return this.getSampleUnpacked( time, interpolate, result);
+}
+
+Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 {
 	time = Math.clamp( time, 0, this.duration );
 
 	var index = this.findTimeIndex( time );
-	if(index == -1)
-		return null;
+	if(index === -1)
+		index = 0;
 
 	var index_a = index;
 	var index_b = index + 1;
 	var data = this.data;
 
-	if(!interpolate || !this.interpolation || data.length == 1 || this.value_size == 0 || index_b == data.length || (index_a == 0 && this.data[0][0] > time)) //(index_b == this.data.length && !this.looped)
-		return this.data[ index ][1];
+	interpolate = interpolate && this.interpolation && (this.value_size > 0 || LS.Interpolators[ this.type ] );
 
-	/*
-	if(this.looped)
-	{
-		if(index_a == 0 && time < data[0][0])
-			index_a = data.length - 1; //last
-		if(index_b == data.length && time < data[0][0])
-			index_b = 0; //last
-	}
-	*/
+	if(!interpolate || (data.length == 1) || index_b == data.length || (index_a == 0 && this.data[0][0] > time)) //(index_b == this.data.length && !this.looped)
+		return this.data[ index ][1];
 
 	var a = data[ index_a ];
 	var b = data[ index_b ];
@@ -15829,6 +16037,14 @@ Track.prototype.getSample = function( time, interpolate, result )
 
 	if(this.interpolation === LS.LINEAR)
 	{
+		if(this.value_size === 0 && LS.Interpolators[ this.type ] )
+		{
+			var func = LS.Interpolators[ this.type ];
+			var r = func( a[1], b[1], t, this._last_value );
+			this._last_value = r;
+			return r;
+		}
+
 		if(this.value_size == 1)
 			return a[1] * t + b[1] * (1-t);
 
@@ -15847,11 +16063,21 @@ Track.prototype.getSample = function( time, interpolate, result )
 	}
 	else if(this.interpolation === LS.BEZIER)
 	{
+		//bezier not implemented for interpolators
+		if(this.value_size === 0 && LS.Interpolators[ this.type ] )
+		{
+			var func = LS.Interpolators[ this.type ];
+			var r = func( a[1], b[1], t, this._last_value );
+			this._last_value = r;
+			return r;
+		}
+
 		var pre_a = index > 0 ? data[ index - 1 ] : a;
 		var post_b = index < data.length - 2 ? data[ index + 2 ] : b;
 
 		if(this.value_size === 1)
 			return Animation.EvaluateHermiteSpline(a[1],b[1],pre_a[1],post_b[1], 1 - t );
+
 
 		result = result || this._result;
 
@@ -15870,6 +16096,84 @@ Track.prototype.getSample = function( time, interpolate, result )
 
 	return null;
 }
+
+Track.prototype.getSamplePacked = function( time, interpolate, result )
+{
+	time = Math.clamp( time, 0, this.duration );
+
+	var index = this.findTimeIndex( time );
+	if(index == -1)
+		index = 0;
+
+	var offset = (this.value_size+1);
+	var index_a = index;
+	var index_b = index + 1;
+	var data = this.data;
+
+	interpolate = interpolate && this.interpolation && (this.value_size > 0 || LS.Interpolators[ this.type ] );
+
+	if( !interpolate || (data.length == offset) || index_b*offset == data.length || (index_a == 0 && this.data[0] > time)) //(index_b == this.data.length && !this.looped)
+		return this.getKeyframe(index)[1];
+
+	var a = data.subarray( index_a * offset, (index_a + 1) * offset );
+	var b = data.subarray( index_b * offset, (index_b + 1) * offset );
+
+	var t = (b[0] - time) / (b[0] - a[0]);
+
+	if(this.interpolation === LS.LINEAR)
+	{
+		if(this.value_size == 1)
+			return a[1] * t + b[1] * (1-t);
+		else if( LS.Interpolators[ this.type ] )
+		{
+			var func = LS.Interpolators[ this.type ];
+			var r = func( a[1], b[1], t, this._last_v );
+			this._last_v = r;
+			return r;
+		}
+
+		result = result || this._result;
+
+		if(!result || result.length != this.value_size)
+			result = this._result = new Float32Array( this.value_size );
+
+		for(var i = 0; i < this.value_size; i++)
+			result[i] = a[1+i] * t + b[1+i] * (1-t);
+
+		if(this.type == "quat")
+			quat.normalize(result, result);
+
+		return result;
+	}
+	else if(this.interpolation === LS.BEZIER)
+	{
+		if( this.value_size === 0) //bezier not supported in interpolators
+			return a[1];
+
+		var pre_a = index > 0 ? data.subarray( (index-1) * offset, (index) * offset ) : a;
+		var post_b = index < (data.length - offset*2) ? data.subarray( (index+1) * offset, (index+2) * offset ) : b;
+
+		if(this.value_size === 1)
+			return Animation.EvaluateHermiteSpline(a[1],b[1],pre_a[1],post_b[1], 1 - t );
+
+		result = result || this._result;
+
+		//multiple data
+		if(!result || result.length != this.value_size)
+			result = this._result = new Float32Array( this.value_size );
+
+		result = result || this._result;
+		result = Animation.EvaluateHermiteSplineVector(a.subarray(1,offset),b.subarray(1,offset), pre_a.subarray(1,offset), post_b.subarray(1,offset), 1 - t, result );
+
+		if(this.type == "quat")
+			quat.normalize(result, result);
+
+		return result;
+	}
+
+	return null;
+}
+
 
 Track.prototype.getPropertyInfo = function()
 {
@@ -15950,6 +16254,54 @@ Animation.EvaluateHermiteSplineVector = function( p0, p1, pre_p0, post_p1, s, re
 
 	return result;
 }
+
+LS.Interpolators = {};
+
+LS.Interpolators["texture"] = function( a, b, t, last )
+{
+	var texture_a = a ? LS.getTexture( a ) : null;
+	var texture_b = b ? LS.getTexture( b ) : null;
+
+	if(a && !texture_a && a[0] != ":" )
+		LS.ResourcesManager.load(a);
+	if(b && !texture_b && b[0] != ":" )
+		LS.ResourcesManager.load(b);
+
+	var texture = texture_a || texture_b;
+
+	var black = gl.textures[":black"];
+	if(!black)
+		black = gl.textures[":black"] = new GL.Texture(1,1, { format: gl.RGB, pixel_data: [0,0,0], filter: gl.NEAREST });
+
+	if(!texture)
+		return black;
+
+	var w = texture ? texture.width : 256;
+	var h = texture ? texture.height : 256;
+
+	if(!texture_a)
+		texture_a = black;
+	if(!texture_b)
+		texture_b = black;
+
+	if(!last || last.width != w || last.height != h || last.format != texture.format )
+		last = new GL.Texture( w, h, { format: texture.format, type: texture.type, filter: gl.LINEAR } );
+
+	var shader = gl.shaders[":interpolate_texture"];
+	if(!shader)
+		shader = gl.shaders[":interpolate_texture"] = GL.Shader.createFX("color = mix( texture2D( u_texture_b, uv ), color , u_factor );", "uniform sampler2D u_texture_b; uniform float u_factor;" );
+
+	gl.disable( gl.DEPTH_TEST );
+	last.drawTo( function() {
+		gl.clearColor(0,0,0,0);
+		gl.clear( gl.COLOR_BUFFER_BIT );
+		texture_b.bind(1);
+		texture_a.toViewport( shader, { u_texture_b: 1, u_factor: t } );
+	});
+
+	return last;
+}
+
 function Path()
 {
 	this.points = [];
@@ -17017,14 +17369,17 @@ var Renderer = {
 		//render background: maybe this should be moved to a component
 		if(!render_options.is_shadowmap && !render_options.is_picking && scene.info.textures["background"])
 		{
-			var texture = null;
-			if(typeof(scene.info.textures["background"]) == "string")
-				texture = LS.ResourcesManager.textures[ scene.info.textures["background"] ];
+			var texture = scene.info.textures["background"];
 			if(texture)
 			{
-				gl.disable( gl.BLEND );
-				gl.disable( gl.DEPTH_TEST );
-				texture.toViewport();
+				if( texture.constructor === String)
+					texture = LS.ResourcesManager.textures[ scene.info.textures["background"] ];
+				if( texture && texture.constructor === GL.Texture )
+				{
+					gl.disable( gl.BLEND );
+					gl.disable( gl.DEPTH_TEST );
+					texture.toViewport();
+				}
 			}
 		}
 
@@ -17137,17 +17492,21 @@ var Renderer = {
 		//foreground object
 		if(!render_options.is_shadowmap && !render_options.is_picking && scene.info.textures["foreground"])
 		{
-			var texture = null;
-			if(typeof(scene.info.textures["foreground"]) == "string")
-				texture = LS.ResourcesManager.textures[ scene.info.textures["foreground"] ];
-			if(texture)
+			var texture = scene.info.textures["foreground"];
+			if( texture )
 			{
-				gl.enable( gl.BLEND );
-				gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
-				gl.disable( gl.DEPTH_TEST );
-				texture.toViewport();
-				gl.disable( gl.BLEND );
-				gl.enable( gl.DEPTH_TEST );
+				if (texture.constructor === String )
+					texture = LS.ResourcesManager.textures[ scene.info.textures["foreground"] ];
+
+				if(texture && texture.constructor === GL.Texture )
+				{
+					gl.enable( gl.BLEND );
+					gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
+					gl.disable( gl.DEPTH_TEST );
+					texture.toViewport();
+					gl.disable( gl.BLEND );
+					gl.enable( gl.DEPTH_TEST );
+				}
 			}
 		}
 
@@ -21181,7 +21540,10 @@ function SceneTree()
 	this._nodes_by_uid = {};
 	this._nodes_by_uid[ this._root.uid ] = this._root;
 
-	this._paths = [];
+	//FEATURES NOT YET FULLY IMPLEMENTED
+	this._paths = []; //FUTURE FEATURE: to store splines I think
+	this._local_resources = {}; //used to store resources that go with the scene
+	this.animation = null;
 
 	LEvent.bind( this, "treeItemAdded", this.onNodeAdded, this );
 	LEvent.bind( this, "treeItemRemoved", this.onNodeRemoved, this );
@@ -21241,6 +21603,8 @@ SceneTree.prototype.init = function()
 	if(this.selected_node) 
 		delete this.selected_node;
 
+	this.animation = null;
+	this._local_resources = {};
 	this.extra = {};
 
 	this._renderer = LS.Renderer;
@@ -21303,7 +21667,7 @@ SceneTree.prototype.configure = function(scene_info)
 	if(scene_info.root)
 		this.root.configure( scene_info.root );
 
-	//legacy
+	//LEGACY
 	if(scene_info.nodes)
 		this.root.configure( { children: scene_info.nodes } );
 
@@ -21314,7 +21678,7 @@ SceneTree.prototype.configure = function(scene_info)
 			this.materials[ i ] = new Material( scene_info.materials[i] );
 	*/
 
-	//legacy
+	//LEGACY
 	if(scene_info.components)
 		this._root.configureComponents(scene_info);
 
@@ -21343,6 +21707,14 @@ SceneTree.prototype.configure = function(scene_info)
 			this._root.light = null;
 		}
 	}
+
+	//TODO
+	if( scene_info._local_resources )
+	{
+	}
+
+	if(scene_info.animation)
+		this.animation = new LS.Animation( scene_info.animation );
 
 	//if(scene_info.animations)
 	//	this._root.animations = scene_info.animations;
@@ -21380,6 +21752,9 @@ SceneTree.prototype.serialize = function()
 
 	//add nodes
 	o.root = this.root.serialize();
+
+	if(this.animation)
+		o.animation = this.animation.serialize();
 
 	//add shared materials
 	/*
@@ -22311,6 +22686,11 @@ SceneNode.prototype.getPropertyInfoFromPath = function( path )
 			target = this.getMaterial();
 			varname = path[2];
 		}
+		else
+		{
+			target = this.getComponent( path[1] );
+			varname = path[2];
+		}
 
 		if(!target)
 			return null;
@@ -22375,6 +22755,11 @@ SceneNode.prototype.setPropertyValueFromPath = function( path, value )
 		else if( path[1] == "material" )
 		{
 			target = this.getMaterial();
+			varname = path[2];
+		}
+		else 
+		{
+			target = this.getComponent( path[1] );
 			varname = path[2];
 		}
 

@@ -1,3 +1,4 @@
+//Camera Gizmo attached to a camera viewport
 function CameraGizmo( camera )
 {
 	this.name = "camera gizmo";
@@ -116,8 +117,32 @@ CameraGizmo.prototype.checkSide = function(e)
 
 CameraGizmo.prototype.mousedown = function(e)
 {
-	if(this.insideGizmoArea(e))
+	if(!this.insideGizmoArea(e))
+		return;
+
+	e.preventDefault();
+	e.stopPropagation();
+
+	if(e.button == 0)
+	{
 		this.orbiting = true;
+	}
+
+	if(e.button == 2)
+	{
+		var menu = new LiteGUI.ContextualMenu(["Camera Info","Perspective","Orthographic"], {event: e, callback: (function(v) { 
+			var camera = this.camera;
+			switch( v )
+			{
+				case "Camera Info": EditorModule.inspectObject(camera); break;
+				case "Perspective": camera.type = LS.Camera.PERSPECTIVE; break;
+				case "Orthographic": camera.type = LS.Camera.ORTHOGRAPHIC; break;
+			}
+			LS.GlobalScene.refresh();
+		}).bind(this) });
+	}
+
+	return true;
 }
 
 CameraGizmo.prototype.mousemove = function(e)
@@ -153,8 +178,11 @@ CameraGizmo.prototype.mousemove = function(e)
 CameraGizmo.prototype.mouseup = function(e)
 {
 	this.orbiting = false;
-	if(e.click_time > 300)
-		return;
+	e.preventDefault();
+	e.stopPropagation();
+
+	if(e.click_time > 300 || e.button != 0)
+		return true;
 
 	var selected = this.checkSide(e);
 	if(selected)
@@ -168,6 +196,8 @@ CameraGizmo.prototype.mouseup = function(e)
 		camera.up = selected.up;
 		LS.GlobalScene.refresh();
 	}
+
+	return true;
 }
 
 CameraGizmo.prototype.updateTexture = function()

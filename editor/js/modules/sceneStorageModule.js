@@ -25,10 +25,13 @@ var SceneStorageModule = {
 
 	onNewScene: function()
 	{
-		LiteGUI.confirm("Are you sure?", function() {
-			ResourcesManager.reset();
-			Scene.clear();
-			Renderer.reset();
+		LiteGUI.confirm("Are you sure?", function(v) {
+			if(!v)
+				return;
+
+			LS.ResourcesManager.reset();
+			LS.GlobalScene.clear();
+			LS.Renderer.reset();
 		});
 	},
 

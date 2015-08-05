@@ -379,7 +379,7 @@ var DriveModule = {
 		final_fullpath += resource.filename;
 		*/
 
-		var dialog = LiteGUI.alert("<p>Uploading file... <span id='upload_progress'></span></p>");
+		var dialog = LiteGUI.alert("<p>Uploading file... <span id='upload_progress'></span>%</p>");
 
 		var fullpath = folder_fullpath + "/" + resource.filename;
 
@@ -392,7 +392,7 @@ var DriveModule = {
 			},
 			inner_error,
 			function (progress) { 
-				$("#upload_progress").html( ((progress * 100)|0) + "%");
+				$("#upload_progress").html( (progress * 100).toFixed(0) );
 			}
 		);
 
@@ -511,6 +511,9 @@ var DriveModule = {
 			element.className += " in-server";
 		else
 			element.className += " in-client";
+
+		if(resource._modified)
+			element.className += " modified";
 
 		var filename = this.getFilename( resource.filename );
 		if(!filename) 
@@ -1520,7 +1523,7 @@ var DriveModule = {
 				if(on_complete) 
 					on_complete(false);
 			},
-			function (progress) { $("#upload_progress").html(progress + "%"); }
+			function (progress) { $("#upload_progress").html( (progress*100)|0 + "%"); }
 		);
 	},
 
@@ -1647,8 +1650,11 @@ var DriveModule = {
 	{
 		var filename = resource.filename;
 
+		if(resource.in_server && LS.ResourcesManager.resources[fullpath] )
+			resource = LS.ResourcesManager.resources[fullpath];
+
 		//in case we update info of a file we dont have in memory
-		if(resource.in_server)
+		if(resource.in_server && !LS.ResourcesManager.resources[fullpath] )
 		{
 			var info = {};
 

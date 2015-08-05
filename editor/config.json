@@ -8,6 +8,7 @@
 			"js/modules/interface.js",
 			"js/modules/renderModule.js",
 	 		"js/modules/editorModule.js",
+	 		"js/modules/actions.js",
 	 		"js/modules/editorView.js",
 	 		"js/modules/sceneStorageModule.js",
 	 		"js/modules/selectionModule.js",

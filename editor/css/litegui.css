@@ -14,8 +14,11 @@
 	*/
 }
 
-.inspector.one-line {
+.inspector.one_line {
 	margin-bottom: 0;
+	overflow: hidden;
+	/*height: 30px;*/
+	white-space: nowrap;
 }
 
 .inspector .separator {
@@ -27,7 +30,7 @@
 	margin: 5px 0 5px 5px;
 }
 
-.inspector.one-line .separator {
+.inspector.one_line .separator {
 	display: inline-block;
 	width: auto;
 	height: 1em;
@@ -48,7 +51,7 @@
 	min-height: 1.2em;
 }
 
-.inspector.one-line .widget {
+.inspector.one_line .widget {
 	min-width: 100px;
 	display: inline-block;
 }
@@ -248,7 +251,7 @@
 	width: 80px;
 }
 
-.inspector.one-line .wname 
+.inspector.one_line .wname 
 {
 	width: auto;
 }

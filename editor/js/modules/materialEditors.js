@@ -147,7 +147,7 @@ EditorModule.showMaterialNodeInfo = function(node, attributes)
 				return;
 
 			node.material = material;
-			Scene.refresh();
+			LS.GlobalScene.refresh();
 		}
 		else if( v == "Delete" )
 		{
@@ -160,14 +160,14 @@ EditorModule.showMaterialNodeInfo = function(node, attributes)
 					d.node.material = new Material( JSON.parse(d.info) );
 					$(d.node).trigger("changed");
 					EditorModule.inspectNode(Scene.selected_node);
-					Scene.refresh();
+					LS.GlobalScene.refresh();
 				}
 			});
 
 			node.material = null; 
 			//EditorModule.showNodeInfo(node);
 			EditorModule.inspectNode(node);
-			Scene.refresh();
+			LS.GlobalScene.refresh();
 		}
 		else if( v == "Share" )
 		{
@@ -258,7 +258,7 @@ Material["@inspector"] = function( material, attributes )
 			else
 				material.setTexture(this.options["channel"], filename);
 
-			Scene.refresh();
+			LS.GlobalScene.refresh();
 		},callback_button: function(filename) { 
 			EditorModule.showTextureSamplerInfo( material, this.options.channel );
 		}});

@@ -578,12 +578,16 @@ var LiteGUI = {
 
 		var dialog = this.showMessage(content,options);
 		dialog.content.style.paddingBottom = "10px";
-		dialog.content.querySelector("button").addEventListener("click", function() {
+		var buttons = dialog.content.querySelectorAll("button");
+		for(var i = 0; i < buttons.length; i++)
+			buttons[i].addEventListener("click", inner);
+
+		function inner(v) {
 			var v = this.dataset["value"] == "yes";
 			if(callback) 
 				callback(v);
 			dialog.close();
-		});
+		}
 
 		return dialog;
 	},
@@ -606,15 +610,20 @@ var LiteGUI = {
 		content +="<p>"+textinput+"</p><button data-value='accept' style='width:45%; margin-left: 10px; margin-bottom: 10px'>Accept</button><button data-value='cancel' style='width:45%'>Cancel</button>";
 		options.noclose = true;
 		var dialog = this.showMessage(content,options);
-		dialog.content.querySelector("button").addEventListener("click", function() {
-			var input = $(dialog.content).find(options.textarea ? "textarea" : "input").val();
+
+		var buttons = dialog.content.querySelectorAll("button");
+		for(var i = 0; i < buttons.length; i++)
+			buttons[i].addEventListener("click", inner);
+
+		function inner() {
+			var value = dialog.content.querySelector("input,textarea").value;
 			if(this.dataset["value"] == "cancel")
-				input = null;
+				value = null;
 
 			if(callback)
-				callback( input );
+				callback( value );
 			dialog.close();
-		});
+		};
 
 		var elem = dialog.content.querySelector("input,textarea");
 		elem.focus();
@@ -1184,6 +1193,17 @@ function beautifyCode(code, reserved)
 		root.style.minHeight = 100;
 		root.style.pointerEvents = "none";
 		setTimeout(function() { root.style.pointerEvents = "auto"; },100); //delay so the mouse up event is not caugh by this element
+
+		//this prevents the default contextual browser menu to open in case this menu was created when pressing right button 
+		root.addEventListener("mouseup", function(e){ 
+			e.preventDefault(); return true; 
+		}, true);
+		root.addEventListener("contextmenu", function(e) { 
+			if(e.button != 2) //right button
+				return false;
+			e.preventDefault(); 
+			return false;
+		},true);
 
 
 		this.root = root;
@@ -4843,7 +4863,7 @@ function Inspector(id,options)
 	if(options.one_line)
 	{
 		this.one_line = true;
-		this.root.className += " one-line";
+		this.root.className += " one_line";
 	}
 
 	if(id)
@@ -5444,15 +5464,18 @@ Inspector.prototype.addNumber = function(name, value, options)
 
 	var dragger = new LiteGUI.Dragger(value, options);
 	dragger.root.style.width = "calc( 100% - 1px )";
-	$(element).find(".wcontent").append(dragger.root);
+	element.querySelector(".wcontent").appendChild( dragger.root );
 	$(dragger.root).bind("start_dragging", inner_before_change.bind(options) );
+
 	function inner_before_change(e)
 	{
 		if(this.callback_before) 
 			this.callback_before.call(element);
 	}
 
-	$(element).find("input").change( function(e) { 
+	var input = element.querySelector("input");
+	
+	$(input).change( function(e) { 
 		that.values[name] = e.target.value;
 		//Inspector.onWidgetChange.call(that,this,name,ret, options);
 
@@ -5460,15 +5483,22 @@ Inspector.prototype.addNumber = function(name, value, options)
 		{
 			var ret = options.callback.call(element, parseFloat( e.target.value) ); 
 			if( typeof(ret) == "number")
-				$(this).val(ret);
+				this.value = ret;
 		}
 		$(element).trigger("wchange",e.target.value);
 		if(that.onchange) that.onchange(name,e.target.value,element);
 	});
 
-	element.setValue = function(v) { $(this).find("input").val( v + (options.units || "") ).change(); };
-	element.getValue = function() { return parseFloat( $(this).find("input").val() ); };
-	element.focus = function() { $(this).find("input").focus(); };
+	element.setValue = function(v) { 
+		v = parseFloat(v);
+		if(options.precision)
+			v = v.toFixed( options.precision );
+		input.value = v + (options.units || "");
+		LiteGUI.trigger( input,"change" );
+	};
+
+	element.getValue = function() { return parseFloat( input.value ); };
+	element.focus = function() { $(input).focus(); };
 
 	return element;
 }
@@ -5491,17 +5521,19 @@ Inspector.prototype.addVector2 = function(name,value, options)
 	options.full = true;
 	this.tab_index++;
 
+	var wcontent = element.querySelector(".wcontent");
+
 	var dragger1 = new LiteGUI.Dragger(value[0], options);
 	dragger1.root.style.marginLeft = 0;
 	dragger1.root.style.width = "calc( 50% - 1px )";
-	$(element).find(".wcontent").append(dragger1.root);
+	wcontent.appendChild( dragger1.root );
 
 	options.tab_index = this.tab_index;
 	this.tab_index++;
 
 	var dragger2 = new LiteGUI.Dragger(value[1], options);
 	dragger2.root.style.width = "calc( 50% - 1px )";
-	$(element).find(".wcontent").append(dragger2.root);
+	wcontent.appendChild( dragger2.root );
 
 	$(dragger1.root).bind("start_dragging",inner_before_change.bind(options) );
 	$(dragger2.root).bind("start_dragging",inner_before_change.bind(options) );
@@ -5511,6 +5543,7 @@ Inspector.prototype.addVector2 = function(name,value, options)
 		if(this.callback_before) this.callback_before(e);
 	}
 
+	//ALL INPUTS
 	$(element).find("input").change( function(e) { 
 		//gather all three parameters
 		var r = [];

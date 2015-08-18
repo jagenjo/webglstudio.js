@@ -396,6 +396,10 @@ Session.prototype.setUserSpace = function( username, space, on_complete )
 //units
 Session.prototype.createUnit = function(unit_name, size, on_complete)
 {
+	size = parseInt(size);
+	if(size < 1)
+		throw("createUnit: Size cannot be zero or less");
+
 	var that = this;
 	return this.request( this.server_url,{action: "files/createUnit", unit_name: unit_name, size: size }, function(resp){
 		if(resp.unit)
@@ -680,8 +684,16 @@ Session.prototype.getFileInfo = function( fullpath, on_complete )
 	});
 }
 
-//Upload a file to the server
-//extra could be category, metadata (object or string), preview (in base64)
+/**
+* Uploads a file to the server (it allows to send other info too like preview)
+* @method uploadFile
+* @param {String} fullpath
+* @param {ArrayBuffer||Blob||File||String} data 
+* @param {Object} extra could be category, metadata (object or string), preview (in base64)
+* @param {Function} on_complete
+* @param {Function} on_error
+* @param {Function} on_progress receives info about how much data has been sent
+*/
 Session.prototype.uploadFile = function( fullpath, data, extra, on_complete, on_error, on_progress )
 {
 	var info = LFS.parsePath( fullpath );
@@ -699,16 +711,14 @@ Session.prototype.uploadFile = function( fullpath, data, extra, on_complete, on_
 
 	//check size
 	var max_size = LFS.system_info.max_filesize || 1000000;
-	var size = data.byteLength !== undefined ? data.byteLength : data.length;
-
-	if(size === undefined)
-		throw("Data is in unknown format type");
-
+	var size = null;
+	
 	//resolve encoding
 	var encoding = "";
 	if( data.constructor === ArrayBuffer )
 	{
 		data = new Blob([data], {type: "application/octet-binary"});
+		size = data.size;
 		encoding = "file";
 	}
 	else if( data.constructor === File || data.constructor === Blob )
@@ -717,7 +727,10 @@ Session.prototype.uploadFile = function( fullpath, data, extra, on_complete, on_
 		encoding = "file";
 	}
 	else if( data.constructor === String )
-		encoding = "string"
+	{
+		size = data.length;
+		encoding = "string";
+	}
 	else
 		throw("Unknown data format, only string, ArrayBuffer, Blob and File supported");
 

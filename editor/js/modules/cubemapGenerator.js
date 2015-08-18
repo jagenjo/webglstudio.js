@@ -61,9 +61,9 @@ var CubemapGenerator = {
 
 		widgets.addButton("Preview", "Open Window", { callback: function(v) { 
 			var position = computePosition();
-			var image = CubemapGenerator.generateCubemap(resolution, position );
+			var image = CubemapGenerator.generateCubemap( resolution, position );
 
-			var new_window = window.open("","Visualizer","width="+resolution+", height="+(resolution*6));
+			var new_window = window.open("","Visualizer","width="+(resolution + 20)+", height="+(resolution*6));
 			new_window.document.body.appendChild( image );
 			LS.GlobalScene.refresh();
 		}});
@@ -152,7 +152,7 @@ var CubemapGenerator = {
 		}
 	},
 
-	generateCubemap: function(resolution, position )
+	generateCubemap: function( resolution, position )
 	{
 		var position = position || RenderModule.selected_camera.getEye();
 		
@@ -163,6 +163,8 @@ var CubemapGenerator = {
 		//document.body.appendChild(canvas); document.body.scrollTop = 10000;
 
 		var cams = LS.Camera.cubemap_camera_parameters;
+		var render_options = RenderModule.render_options;
+		render_options.skip_viewport = true; //avoids overwriting the viewport and aspect
 
 		for(var i = 0; i < 6; ++i)
 		{
@@ -171,12 +173,13 @@ var CubemapGenerator = {
 			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 			var cam_info = { eye: position, center: [ position[0] + cams[i].dir[0], position[1] + cams[i].dir[1], position[2] + cams[i].dir[2]], up: cams[i].up, fov: 90, aspect: 1.0, near: 0.01, far: 1000 };
 			var camera = new LS.Camera(cam_info);
-			LS.Renderer.renderFrame( camera, RenderModule.render_options );
-			var frame = gl.snapshot( 0, 0, resolution, resolution );
-			//ctx.drawImage( gl.canvas, 0, gl.canvas.height - resolution, resolution, resolution, 0,resolution*i, resolution, resolution );
-			ctx.drawImage( frame, 0, 0, resolution, resolution, 0,resolution*i, resolution, resolution );
+			LS.Renderer.renderFrame( camera, render_options );
+			var frame = gl.snapshot( 0, 0, resolution, resolution, true );
+			//ctx.drawImage( frame, 0, gl.canvas.height - resolution, resolution, resolution, 0,resolution*i, resolution, resolution );
+			ctx.drawImage( frame, 0, 0, resolution, resolution, 0, resolution*i, resolution, resolution );
 		}
 
+		render_options.skip_viewport = false;
 		return canvas;
 
 		/*

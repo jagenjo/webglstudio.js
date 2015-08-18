@@ -147,8 +147,8 @@ body.player #work-area, body.player #main-area  {
 	opacity: 0.5;
 }
 
-resource.modified {
-	background-color: #374;
+.resource.modified {
+	outline: 1px solid #733;
 }
 
 #settings-widgets-area .content {

@@ -286,6 +286,10 @@ var EditorModule = {
 			if(node.flags && node.flags.visible != null)
 				inspector.addCheckbox("visible", node.visible, { pretitle: AnimationModule.getKeyframeCode( node, "visible"), callback: function(v) { node.visible = v; } });
 
+			inspector.addStringButton("layers", node.getLayers().join(","), { callback_button: function() {
+				EditorModule.showLayersEditor( node );
+			}});
+
 			//special node editors
 			for(var i in this.node_editors)
 				this.node_editors[i](node, inspector);
@@ -672,6 +676,47 @@ var EditorModule = {
 		widgets.addString("Name", node.name, function(v){ node.name = v; });
 		widgets.addString("UID", node.uid, { disabled: true }  );
 		widgets.addCheckbox("Visible", node.visible, function(v){ node.flags.visible = v; });
+		widgets.addButtons(null,["Close"], function(v){
+			if(v == "Close")
+				dialog.close();
+			return;
+		});
+
+		dialog.add( widgets );
+		dialog.adjustSize();
+		dialog.show();
+	},
+
+	showLayersEditor: function( instance )
+	{
+		var node = instance._root ? instance._root : instance;
+		var scene = node.scene || LS.GlobalScene;
+
+		var dialog = new LiteGUI.Dialog("layers_editor",{ title:"Layers editor", width: 300, height: 500, draggable: true, closable: true });
+		
+		var widgets = new LiteGUI.Inspector();
+		if(instance.constructor === LS.SceneNode)
+			widgets.addString("Node", node.name, { disabled: true });
+		else
+			widgets.addString("Component", LS.getObjectClassName(instance), { disabled: true });
+
+		widgets.widgets_per_row = 2;
+		for(var i = 0; i < 32; ++i)
+		{
+			widgets.addString(null, scene.layer_names[i] || ("layer"+i), { layer: i, callback: function(v) {
+				scene.layer_names[ this.options.layer ] = v;
+				EditorModule.refreshAttributes();
+				RenderModule.requestFrame();
+			}});
+
+			widgets.addCheckbox( null, node.isInLayer(i), { layer: i, callback: function(v){
+				instance.setLayer( this.options.layer, v );
+				EditorModule.refreshAttributes();
+				RenderModule.requestFrame();
+			}});
+		}
+
+		widgets.widgets_per_row = 1;
 		widgets.addButtons(null,["Close"], function(v){
 			if(v == "Close")
 				dialog.close();

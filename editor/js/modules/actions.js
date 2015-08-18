@@ -51,6 +51,13 @@ LS.SceneNode.editor_actions["addcomponent"] = {
 	}
 };
 
+LS.SceneNode.editor_actions["layers"] = { 
+	title:"Show Layers",
+	callback: function( node ){
+		EditorModule.showLayersEditor( node );
+	}
+};
+
 /* Components *************************/
 
 LS.Transform.prototype.getEditorActions = function( actions )
@@ -80,6 +87,7 @@ LS.Light.prototype.doEditorAction = function( name )
 LS.Camera.prototype.getEditorActions = function( actions )
 {
 	actions.push("Select Center","Preview");
+	actions.push("Edit Layers");
 	return actions;
 }
 
@@ -97,6 +105,8 @@ LS.Camera.prototype.doEditorAction = function( name )
 			RenderModule.preview_camera = null;
 		LS.GlobalScene.refresh();
 	}
+	else if (name == "Edit Layers")
+		EditorModule.showLayersEditor( this );
 	else
 		return false;
 	return true;

@@ -2452,6 +2452,9 @@ var ResourcesManager = {
 	*/
 	getResource: function( url )
 	{
+		if(!url)
+			return null;
+		url = url.split("/").filter(function(v){ return !!v; }).join("/");
 		return this.resources[ url ];
 	},
 
@@ -2469,6 +2472,20 @@ var ResourcesManager = {
 		delete resource._original_file;
 		resource._modified = true;
 		LEvent.trigger(this, "resource_modified", resource );
+	},
+
+	/**
+	* Unmarks the resource as modified
+	*
+	* @method resourceSaved
+	* @param {Object} resource
+	*/
+	resourceSaved: function(resource)
+	{
+		if(!resource)
+			return;
+		delete resource._modified;
+		LEvent.trigger(this, "resource_saved", resource );
 	},
 
 	/**
@@ -2646,20 +2663,23 @@ var ResourcesManager = {
 	* Stores the resource inside the manager containers. This way it will be retrieveble by anybody who needs it.
 	*
 	* @method registerResource
-	* @param {String} filename 
+	* @param {String} filename fullpath 
 	* @param {Object} resource 
 	*/
-	registerResource: function(filename,resource)
+	registerResource: function( filename, resource )
 	{
-		if(this.resources[filename] == resource)
+		filename = filename.split("/").filter(function(v){ return !!v; }).join("/");
+
+		if(this.resources[ filename ] == resource)
 			return; //already registered
 
-		//not sure about this
+		//not sure about this, filename or fullpath
 		resource.filename = filename;
+		resource.fullpath = filename;
 
 		//get which kind of resource
 		if(!resource.object_type)
-			resource.object_type = LS.getObjectClassName(resource);
+			resource.object_type = LS.getObjectClassName( resource );
 		var type = resource.object_type;
 		if(resource.constructor.resource_type)
 			type = resource.constructor.resource_type;
@@ -2670,7 +2690,7 @@ var ResourcesManager = {
 			post_callback(filename, resource);
 
 		//global container
-		this.resources[filename] = resource;
+		this.resources[ filename ] = resource;
 
 		//send message to inform new resource is available
 		LEvent.trigger(this,"resource_registered", resource);
@@ -4918,6 +4938,8 @@ function CustomMaterial(o)
 {
 	Material.call(this, null);
 
+	this.shader_name = "custom";
+
 	//this.shader_name = null; //default shader
 	this.vs_code = "";
 	this.code = "vec4 surf() {\n\treturn u_material_color * vec4(1.0,0.0,0.0,1.0);\n}\n";
@@ -5007,6 +5029,8 @@ function SurfaceMaterial(o)
 {
 	Material.call(this, null);
 
+	this.shader_name = "surface";
+
 	this.vs_code = "";
 	this.code = "void surf(in Input IN, inout SurfaceOutput o) {\n\
 	o.Albedo = vec3(1.0) * IN.color.xyz;\n\
@@ -5077,10 +5101,10 @@ SurfaceMaterial.prototype.computeCode = function()
 		{
 			case 'number': code += "float "; break;
 			case 'vec2': code += "vec2 "; break;
-			case 'vec3': code += "vec3 "; break;
-			case 'vec4':
 			case 'color':
-			 	code += "vec4 "; break;
+			case 'vec3': code += "vec3 "; break;
+			case 'color4':
+			case 'vec4': code += "vec4 "; break;
 			case 'texture': code += "sampler2D "; break;
 			case 'cubemap': code += "samplerCube "; break;
 			default: continue;
@@ -7225,6 +7249,7 @@ LS.Transform = Transform;
 function Camera(o)
 {
 	this.enabled = true;
+	this.layers = 3;
 
 	this.clear_color = true;
 	this.clear_depth = true;
@@ -7248,7 +7273,7 @@ function Camera(o)
 	//orthographics planes (near and far took from ._near and ._far)
 	this._ortho = new Float32Array([-1,1,-1,1]);
 
-	this._aspect = 1.0; //must be one, otherwise it gest deformed, the real one is inside real_aspect
+	this._aspect = 1.0; //must be one, otherwise it gets deformed, the real one is inside real_aspect
 	this._fov = 45; //persp
 	this._frustum_size = 50; //ortho
 	this._real_aspect = 1.0; //the one used when computing the projection matrix
@@ -7290,6 +7315,7 @@ Camera["@type"] = { type: "enum", values: { "perspective": Camera.PERSPECTIVE, "
 Camera["@eye"] = { type: "position" };
 Camera["@center"] = { type: "position" };
 Camera["@texture_name"] = { type: "texture" };
+Camera["@layers"] = { type: "layers" };
 
 // used when rendering a cubemap to set the camera view direction
 Camera.cubemap_camera_parameters = [
@@ -8122,6 +8148,7 @@ Camera.prototype.isPointInCamera = function( x, y, viewport )
 Camera.prototype.configure = function(o)
 {
 	if(o.uid !== undefined) this.uid = o.uid;
+	if(o.layers !== undefined) this.layers = o.layers;
 
 	if(o.enabled !== undefined) this.enabled = o.enabled;
 	if(o.type !== undefined) this._type = o.type;
@@ -8134,6 +8161,7 @@ Camera.prototype.configure = function(o)
 	if(o.far !== undefined) this._far = o.far;
 	if(o.fov !== undefined) this._fov = o.fov;
 	if(o.aspect !== undefined) this._aspect = o.aspect;
+	if(o.real_aspect !== undefined) this._real_aspect = o.real_aspect;
 	if(o.frustum_size !== undefined) this._frustum_size = o.frustum_size;
 	if(o.viewport !== undefined) this._viewport.set( o.viewport );
 
@@ -8150,6 +8178,7 @@ Camera.prototype.serialize = function()
 {
 	var o = {
 		uid: this.uid,
+		layers: this.layers,
 		enabled: this.enabled,
 		type: this._type,
 		eye: vec3.toArray(this._eye),
@@ -8170,6 +8199,36 @@ Camera.prototype.serialize = function()
 
 	//clone
 	return o;
+}
+
+//Layer stuff
+Camera.prototype.checkLayersVisibility = function( layers )
+{
+	return (this.layers & layers) !== 0;
+}
+
+Camera.prototype.getLayers = function()
+{
+	var r = [];
+	for(var i = 0; i < 32; ++i)
+	{
+		if( this.layers & (1<<i) )
+			r.push( this._root.scene.layer_names[i] || ("layer"+i) );
+	}
+	return r;
+}
+
+Camera.prototype.setLayer = function(num, value) 
+{
+	var f = 1<<num;
+	this.layers = (this.layers & (~f));
+	if(value)
+		this.layers |= f;
+}
+
+Camera.prototype.isInLayer = function(num)
+{
+	return (this.layers & (1<<num)) !== 0;
 }
 
 //Mostly used for gizmos
@@ -9088,6 +9147,21 @@ Light.prototype.onResourceRenamed = function (old_name, new_name, resource)
 {
 	if(this.projective_texture == old_name)
 		this.projective_texture = new_name;
+}
+
+//Layer stuff
+Light.prototype.checkLayersVisibility = function( layers )
+{
+	if(!this._root)
+		return false;
+	return (this._root.layers & layers) !== 0;
+}
+
+Light.prototype.isInLayer = function(num)
+{
+	if(!this._root)
+		return false;
+	return (this._root.layers & (1<<num)) !== 0;
 }
 
 /**
@@ -11423,7 +11497,8 @@ GeometricPrimitive.prototype.onCollectInstances = function(e, instances)
 
 	//if(this.size == 0) return;
 	var mesh = null;
-	if(!this._root) return;
+	if(!this._root)
+		return;
 
 	var subdivisions = Math.max(0,this.subdivisions|0);
 	var key = "" + this.geometry + "|" + this.size + "|" + subdivisions + "|" + this.align_z;
@@ -13254,7 +13329,7 @@ PlayAnimation.prototype.getAnimation = function()
 {
 	if(!this.animation || this.animation == "@scene") 
 		return this._root.scene.animation;
-	return LS.ResourcesManager.resources[ this.animation ];
+	return LS.ResourcesManager.getResource( this.animation );
 }
 
 PlayAnimation.prototype.onUpdate = function(e, dt)
@@ -16583,10 +16658,11 @@ var RI_IGNORE_AUTOUPDATE = 1 << 17; //if it could update matrix from scene
 var RI_DEFAULT_FLAGS = RI_CULL_FACE | RI_DEPTH_TEST | RI_DEPTH_WRITE | RI_CAST_SHADOWS | RI_RECEIVE_SHADOWS;
 var RI_2D_FLAGS = RI_RENDER_2D | RI_CULL_FACE | RI_BLEND | RI_IGNORE_LIGHTS | RI_IGNORE_FRUSTUM;
 
-function RenderInstance(node, component)
+function RenderInstance( node, component )
 {
 	this._key = ""; //not used yet
 	this.uid = LS.generateUId("RINS"); //unique identifier for this RI
+	this.layers = 3;
 
 	//info about the mesh
 	this.vertex_buffers = null;
@@ -16773,6 +16849,7 @@ RenderInstance.prototype.setRange = function(start, offset)
 RenderInstance.prototype.applyNodeFlags = function()
 {
 	var node_flags = this.node.flags;
+	this.layers = this.node.layers;
 
 	if(node_flags.two_sided == true) this.flags &= ~RI_CULL_FACE;
 	else this.flags |= RI_CULL_FACE;
@@ -17179,6 +17256,9 @@ var Renderer = {
 		this._visible_cameras = cameras; //the cameras being rendered
 		render_options.main_camera = cameras[0];
 
+		//remove the lights that do not lay in front of any camera (this way we avoid creating shadowmaps)
+		//TODO
+
 		//Event: renderShadowmaps helps to generate shadowMaps that need some camera info (which could be not accessible during processVisibleData)
 		LEvent.trigger(scene, "renderShadows", render_options );
 		scene.triggerInNodes("renderShadows", render_options ); //TODO: remove
@@ -17345,16 +17425,17 @@ var Renderer = {
 		Draw.setCameraPosition( camera.getEye() );
 		Draw.setViewProjectionMatrix( this._view_matrix, this._projection_matrix, this._viewprojection_matrix );
 
-		LEvent.trigger(camera, "afterEnabled", render_options );
+		LEvent.trigger( camera, "afterEnabled", render_options );
 	},
 
 	
-	renderInstances: function(render_options)
+	renderInstances: function( render_options )
 	{
 		var scene = this._current_scene;
 		if(!scene)
 			return console.warn("Renderer.renderInstances: no scene found");
 
+		var camera = this._current_camera;
 		var frustum_planes = geo.extractPlanes( this._viewprojection_matrix, this.frustum_planes );
 		this.frustum_planes = frustum_planes;
 		var apply_frustum_culling = render_options.frustum_culling;
@@ -17415,6 +17496,8 @@ var Renderer = {
 				continue;
 			if(node_flags.selectable == false && render_options.is_picking)
 				continue;
+			if( !camera.checkLayersVisibility( instance.layers ) )
+				continue;
 
 			//done here because sometimes some nodes are moved in this action
 			if(instance.onPreRender)
@@ -17468,6 +17551,8 @@ var Renderer = {
 				for(var j = 0; j < numLights; j++)
 				{
 					var light = lights[j];
+					if( (light._root.layers & instance.layers) == 0 || (light._root.layers & camera.layers) == 0)
+						continue;
 					var light_intensity = light.computeLightIntensity();
 					if(light_intensity < 0.0001)
 						continue;
@@ -18310,7 +18395,7 @@ var Renderer = {
 			scene.root.addChild( node );
 		}
 
-		var node = scene.getNodeById( "sphere") ;
+		var node = scene.getNode( "sphere") ;
 		node.material = material;
 
 		var tex = new GL.Texture(size,size);
@@ -21545,6 +21630,8 @@ function SceneTree()
 	this._local_resources = {}; //used to store resources that go with the scene
 	this.animation = null;
 
+	this.layer_names = ["main","secondary"];
+
 	LEvent.bind( this, "treeItemAdded", this.onNodeAdded, this );
 	LEvent.bind( this, "treeItemRemoved", this.onNodeRemoved, this );
 
@@ -21603,6 +21690,7 @@ SceneTree.prototype.init = function()
 	if(this.selected_node) 
 		delete this.selected_node;
 
+	this.layer_names = ["main","secondary"];
 	this.animation = null;
 	this._local_resources = {};
 	this.extra = {};
@@ -21713,6 +21801,9 @@ SceneTree.prototype.configure = function(scene_info)
 	{
 	}
 
+	if( scene_info.layer_names )
+		this.layer_names = scene_info.layer_names;
+
 	if(scene_info.animation)
 		this.animation = new LS.Animation( scene_info.animation );
 
@@ -21755,6 +21846,8 @@ SceneTree.prototype.serialize = function()
 
 	if(this.animation)
 		o.animation = this.animation.serialize();
+
+	o.layer_names = this.layer_names.concat();
 
 	//add shared materials
 	/*
@@ -22473,6 +22566,7 @@ function SceneNode( name )
 	//Generic
 	this._name = name || ("node_" + (Math.random() * 10000).toFixed(0)); //generate random number
 	this.uid = LS.generateUId("NODE-");
+	this.layers = 3; //32 bits for layers
 
 	this._classList = {};
 	//this.className = "";
@@ -22934,6 +23028,35 @@ SceneNode.prototype.setPrefab = function(prefab_name)
 
 }
 
+/**
+* Assigns this node to one layer
+* @method setLayer
+* @param {number} num layer number
+* @param {boolean} value 
+*/
+SceneNode.prototype.setLayer = function(num, value)
+{
+	var f = 1<<num;
+	this.layers = (this.layers & (~f));
+	if(value)
+		this.layers |= f;
+}
+
+SceneNode.prototype.isInLayer = function(num)
+{
+	return (this.layers & (1<<num)) !== 0;
+}
+
+SceneNode.prototype.getLayers = function()
+{
+	var r = [];
+	for(var i = 0; i < 32; ++i)
+	{
+		if( this.layers & (1<<i) )
+			r.push( this.scene.layer_names[i] || ("layer"+i) );
+	}
+	return r;
+}
 
 /**
 * remember clones this node and returns the new copy (you need to add it to the scene to see it)

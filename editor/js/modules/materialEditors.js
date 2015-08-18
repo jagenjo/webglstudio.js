@@ -367,16 +367,17 @@ StandardMaterial["@inspector"] = function( material, attributes )
 function GenericMaterialEditor( material, attributes )
 {
 	attributes.addTitle("Properties");
+	attributes.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
 	attributes.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { material.opacity = value; }});
 	attributes.addColor("Color", material.color, { pretitle: AnimationModule.getKeyframeCode( material, "color" ), callback: function(color) { vec3.copy(material.color,color); } });
-	attributes.addTextureSampler("Environment", material.textures["environment"], { callback: function(v) { material.textures["environment"] = v; } });
-	attributes.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
 
 	for(var i in material.properties)
 	{
 		var p = material.properties[i];
 		attributes.add( p.type, p.label || p.name, p.value, { pretitle: AnimationModule.getKeyframeCode( material, p.name ), title: p.name, step: p.step, property: p, callback: inner_on_property_change });
 	}
+
+	attributes.addTextureSampler("Environment", material.textures["environment"], { callback: function(v) { material.textures["environment"] = v; } });
 
 	attributes.addButtons(null,["Add Property","Edit"], { callback: function(v) { 
 		if(v == "Add Property")

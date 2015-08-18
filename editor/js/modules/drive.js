@@ -495,6 +495,8 @@ var DriveModule = {
 	//add a new resource to the browser window
 	addItemToBrowser: function(resource)
 	{
+		var memory_resource = LS.ResourcesManager.resources[ resource.fullpath ];
+
 		//if(!this.dialog) return;
 		//var parent = $("#dialog_resources-browser .resources-container ul.file-list")[0];
 		var parent = this.root.querySelector(".resources-container ul.file-list");
@@ -512,7 +514,7 @@ var DriveModule = {
 		else
 			element.className += " in-client";
 
-		if(resource._modified)
+		if(resource._modified  || (memory_resource && memory_resource._modified) )
 			element.className += " modified";
 
 		var filename = this.getFilename( resource.filename );
@@ -786,7 +788,7 @@ var DriveModule = {
 		widgets.addSeparator();
 
 		widgets.addButtons(null,["Update Preview","Update metadata"], { callback: function(v) {
-			var local_resource = LS.ResourcesManager.resources[ resource.fullpath ];
+			var local_resource = LS.ResourcesManager.getResource( resource.fullpath );
 			if(!local_resource)
 			{
 				LiteGUI.alert("You must load the resource before updating it");
@@ -796,7 +798,7 @@ var DriveModule = {
 			if(v == "Update Preview")
 			{
 				//update image
-				var url = DriveModule.generatePreview(resource.fullpath, true);
+				var url = DriveModule.generatePreview( resource.fullpath, true );
 				preview_image.src = url;
 				resource.preview_url = url;
 				//upload it in case is a server side file
@@ -1370,7 +1372,7 @@ var DriveModule = {
 	//returns preview in base64 format
 	generatePreview: function( fullpath, force_read_from_memory )
 	{
-		var resource = LS.ResourcesManager.resources[ fullpath ];
+		var resource = LS.ResourcesManager.getResource( fullpath );
 		if(!resource)
 			return;
 
@@ -1401,7 +1403,11 @@ var DriveModule = {
 				var mini_canvas = createCanvas(this.preview_size,this.preview_size);
 				ctx = mini_canvas.getContext("2d");
 
-				if(img.pixels) //non-native image
+				if(img.height == img.width * 6) //cubemap
+				{
+					return RenderModule.takeScreenshot(this.preview_size,this.preview_size);
+				}
+				else if(img.pixels) //non-native image
 				{
 					var tmp_canvas = createCanvas(img.width,img.height);
 					var tmp_ctx = tmp_canvas.getContext("2d");
@@ -1425,10 +1431,14 @@ var DriveModule = {
 		}
 
 		//a generated texture
-		if( resource.constructor == GL.Texture )
+		if( resource.constructor === GL.Texture )
 		{
 			var w = resource.width;
 			var h = resource.height;
+
+			if( resource.texture_type === gl.TEXTURE_CUBE_MAP )
+				return RenderModule.takeScreenshot(this.preview_size,this.preview_size);
+
 
 			//Read pixels form WebGL
 			var buffer = new Uint8Array(w*h*4);
@@ -1511,6 +1521,8 @@ var DriveModule = {
 		var dialog = LiteGUI.alert("<p>Uploading file... <span id='upload_progress'></span></p>");
 		this.serverUploadResource( resource, resource.fullpath,
 			function(v, msg) { 
+				if(v)
+					LS.ResourcesManager.resourceSaved( resource );
 				$("#upload_progress").remove(); 
 				LiteGUI.alert( v ? "Resource saved" : "Problem saving the resource: " + msg);
 				if(on_complete)

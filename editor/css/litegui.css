@@ -1247,7 +1247,7 @@ a:hover {
 }
 
 .litemenubar ul {
-	font-family: Tahoma;
+	font-family:Tahoma, sans-serif;
 	margin: 0;
 	padding: 0;
 }

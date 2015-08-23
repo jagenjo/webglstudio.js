@@ -1,7 +1,7 @@
 {
 	"version":"0.1a",
-	"server":"../../litefileserver/src/",
-	"resources":"../../litefileserver/files/",
+	"server":"fileserver/src/",
+	"resources":"fileserver/files/",
 	"proxy":"@/redirect/",
 	"shaders":"data/shaders.xml",
 	"modules":[

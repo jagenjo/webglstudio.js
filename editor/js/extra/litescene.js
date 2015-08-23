@@ -1512,13 +1512,14 @@ var LS = {
 
 	/**
 	* validates name string to ensure there is no forbidden characters
+	* valid characters are letters, numbers, spaces, dash, underscore and dot
 	* @method validateName
 	* @param {string} name
 	* @return {boolean} 
 	*/
 	validateName: function(v)
 	{
-		var exp = /^[a-z\s0-9-_]+$/i; //letters digits and dashes
+		var exp = /^[a-z\s0-9-_.]+$/i; //letters digits and dashes
 		return v.match(exp);
 	},
 
@@ -6173,6 +6174,17 @@ Object.defineProperty( Transform.prototype, 'z', {
 	},
 	enumerable: false
 });
+
+/*
+Object.defineProperty( Transform.prototype, 'pitch', {
+	get: function() { return 0; },
+	set: function(v) { 
+		this.rotateX(v);
+		this._must_update_matrix = true; 
+	},
+	enumerable: false
+});
+*/
 
 /**
 * The orientation relative to its parent in quaternion format
@@ -15736,7 +15748,12 @@ Track.prototype.configure = function( o )
 	if(o.data)
 	{
 		this.data = o.data;
-		this.packed_data = !!o.packed_data;
+
+		//this is ugly but makes it easy to work with the collada importer
+		if(o.packed_data === undefined && this.data.constructor !== Array)
+			this.packed_data = true;
+		else
+			this.packed_data = !!o.packed_data;
 
 		if( o.data.constructor == Array )
 		{
@@ -20495,152 +20512,176 @@ global.Collada = {
 
 		var default_take = { tracks: [] };
 		var tracks = default_take.tracks;
-		var max_time = 0;
 
 		for(var i = 0; i < xmlanimation_childs.length; ++i)
 		{
 			var xmlanimation = xmlanimation_childs.item(i);
-			if(xmlanimation.nodeType != 1 ) //no tag
+			if(xmlanimation.nodeType != 1 || xmlanimation.localName != "animation") //no tag
 				continue;
 
 			var anim_id = xmlanimation.getAttribute("id");
-
-			xmlanimation = xmlanimation.querySelector("animation"); //yes... DAE has <animation> inside animation...
-			if(!xmlanimation) continue;
-
-
-			//channels are like animated properties
-			var xmlchannel = xmlanimation.querySelector("channel");
-			if(!xmlchannel) continue;
-
-			var source = xmlchannel.getAttribute("source");
-			var target = xmlchannel.getAttribute("target");
-
-			//sampler, is in charge of the interpolation
-			//var xmlsampler = xmlanimation.querySelector("sampler" + source);
-			xmlsampler = this.findXMLNodeById(xmlanimation, "sampler", source.substr(1) );
-			if(!xmlsampler)
+			if(!anim_id) //nested animation (DAE 1.5)
 			{
-				console.error("Error DAE: Sampler not found in " + source);
-				continue;
-			}
-
-			var inputs = {};
-			var sources = {};
-			var params = {};
-			var xmlinputs = xmlsampler.querySelectorAll("input");
-
-			var time_data = null;
-
-			//iterate inputs
-			for(var j = 0; j < xmlinputs.length; j++)
-			{
-				var xmlinput = xmlinputs.item(j);
-				var source_name =  xmlinput.getAttribute("source");
-				var semantic = xmlinput.getAttribute("semantic");
-
-				//Search for source
-				var xmlsource = this.findXMLNodeById( xmlanimation, "source", source_name.substr(1) );
-				if(!xmlsource)
-					continue;
-
-				var xmlparam = xmlsource.querySelector("param");
-				if(!xmlparam) continue;
-
-				var type = xmlparam.getAttribute("type");
-				inputs[ semantic ] = { source: source_name, type: type };
-
-				var data_array = null;
-
-				if(type == "float" || type == "float4x4")
+				var xmlanimation2_childs = xmlanimation.querySelectorAll("animation");
+				for(var j = 0; j < xmlanimation2_childs.length; ++j)
 				{
-					var xmlfloatarray = xmlsource.querySelector("float_array");
-					var floats = this.readContentAsFloats( xmlfloatarray );
-					sources[ source_name ] = floats;
-					data_array = floats;
-
+					var xmlanimation2 = xmlanimation2_childs.item(j);
+					var anim = this.readAnimationTrack( xmlanimation2 );
+					tracks.push( anim );
 				}
-				else //only floats and matrices are supported in animation
-					continue;
-
-				var param_name = xmlparam.getAttribute("name");
-				if(param_name == "TIME")
-					time_data = data_array;
-				params[ param_name || "OUTPUT" ] = type;
 			}
-
-			if(!time_data)
+			else //no nested (DAE 1.4)
 			{
-				console.error("Error DAE: no TIME info found in animation: " + anim_id);
-				continue;
+				var anim = this.readAnimationTrack( xmlanimation );
+				tracks.push( anim );
 			}
-
-			//construct animation
-			var path = target.split("/");
-
-			var anim = {};
-			var nodename = path[0]; //safeString ?
-			var locator = nodename + "/" + path[1];
-			//anim.nodename = this.safeString( path[0] ); //where it goes
-			anim.name = path[1];
-			anim.property = locator;
-			var node = this._nodes_by_id[ nodename ];
-			var type = "number";
-			var element_size = 1;
-			var param_type = params["OUTPUT"];
-			switch(param_type)
-			{
-				case "float": element_size = 1; break;
-				case "float3x3": element_size = 9; type = "mat3"; break;
-				case "float4x4": element_size = 16; type = "mat4"; break;
-				default: break;
-			}
-
-			anim.type = type;
-			anim.value_size = element_size;
-			anim.duration = time_data[ time_data.length - 1]; //last sample
-			if(max_time < anim.duration)
-				max_time = anim.duration;
-
-			var value_data = sources[ inputs["OUTPUT"].source ];
-			if(!value_data) continue;
-
-			//Pack data ****************
-			var num_samples = time_data.length;
-			var sample_size = element_size + 1;
-			var anim_data = new Float32Array( num_samples * sample_size );
-			//for every sample
-			for(var j = 0; j < time_data.length; ++j)
-			{
-				anim_data[j * sample_size] = time_data[j]; //set time
-				var value = value_data.subarray( j * element_size, (j+1) * element_size );
-				if(param_type == "float4x4")
-				{
-					this.transformMatrix( value, node ? node._depth == 0 : 0 );
-					//mat4.transpose(value, value);
-				}
-				anim_data.set(value, j * sample_size + 1); //set data
-			}
-
-			if(isWorker && this.use_transferables)
-			{
-				var data = anim_data;
-				if(data && data.buffer && data.length > 100)
-					this._transferables.push(data.buffer);
-			}
-
-			anim.data = anim_data;
-			tracks.push(anim);
 		}
 
 		if(!tracks.length) 
 			return null; //empty animation
 
+		//compute animation duration
+		var max_time = 0;
+		for(var i = 0; i < tracks.length; ++i)
+			if( max_time < tracks[i].duration )
+				max_time = anim.duration;
+
 		default_take.name = "default";
 		default_take.duration = max_time;
 		animations.takes[ default_take.name ] = default_take;
 		return animations;
-	},		
+	},
+
+	readAnimationTrack: function( xmlanimation )
+	{
+		if(xmlanimation.localName != "animation")
+			return null;
+
+		var anim_id = xmlanimation.getAttribute("id");
+
+		//channels are like animated properties
+		var xmlchannel = xmlanimation.querySelector("channel");
+		if(!xmlchannel) 
+			return null;
+
+		var source = xmlchannel.getAttribute("source");
+		var target = xmlchannel.getAttribute("target");
+
+		//sampler, is in charge of the interpolation
+		//var xmlsampler = xmlanimation.querySelector("sampler" + source);
+		xmlsampler = this.findXMLNodeById(xmlanimation, "sampler", source.substr(1) );
+		if(!xmlsampler)
+		{
+			console.error("Error DAE: Sampler not found in " + source);
+			return null;
+		}
+
+		var inputs = {};
+		var sources = {};
+		var params = {};
+		var xmlinputs = xmlsampler.querySelectorAll("input");
+
+		var time_data = null;
+
+		//iterate inputs
+		for(var j = 0; j < xmlinputs.length; j++)
+		{
+			var xmlinput = xmlinputs.item(j);
+			var source_name =  xmlinput.getAttribute("source");
+			var semantic = xmlinput.getAttribute("semantic");
+
+			//Search for source
+			var xmlsource = this.findXMLNodeById( xmlanimation, "source", source_name.substr(1) );
+			if(!xmlsource)
+				continue;
+
+			var xmlparam = xmlsource.querySelector("param");
+			if(!xmlparam) continue;
+
+			var type = xmlparam.getAttribute("type");
+			inputs[ semantic ] = { source: source_name, type: type };
+
+			var data_array = null;
+
+			if(type == "float" || type == "float4x4")
+			{
+				var xmlfloatarray = xmlsource.querySelector("float_array");
+				var floats = this.readContentAsFloats( xmlfloatarray );
+				sources[ source_name ] = floats;
+				data_array = floats;
+
+			}
+			else //only floats and matrices are supported in animation
+				continue;
+
+			var param_name = xmlparam.getAttribute("name");
+			if(param_name == "TIME")
+				time_data = data_array;
+			params[ param_name || "OUTPUT" ] = type;
+		}
+
+		if(!time_data)
+		{
+			console.error("Error DAE: no TIME info found in animation: " + anim_id);
+			return null;
+		}
+
+		//construct animation
+		var path = target.split("/");
+
+		var anim = {};
+		var nodename = path[0]; //safeString ?
+		var locator = nodename + "/" + path[1];
+		//anim.nodename = this.safeString( path[0] ); //where it goes
+		anim.name = path[1];
+		anim.property = locator;
+		var node = this._nodes_by_id[ nodename ];
+		var type = "number";
+		var element_size = 1;
+		var param_type = params["OUTPUT"];
+		switch(param_type)
+		{
+			case "float": element_size = 1; break;
+			case "float3x3": element_size = 9; type = "mat3"; break;
+			case "float4x4": element_size = 16; type = "mat4"; break;
+			default: break;
+		}
+
+		anim.type = type;
+		anim.value_size = element_size;
+		anim.duration = time_data[ time_data.length - 1]; //last sample
+
+		var value_data = sources[ inputs["OUTPUT"].source ];
+		if(!value_data)
+			return null;
+
+		//Pack data ****************
+		var num_samples = time_data.length;
+		var sample_size = element_size + 1;
+		var anim_data = new Float32Array( num_samples * sample_size );
+		//for every sample
+		for(var j = 0; j < time_data.length; ++j)
+		{
+			anim_data[j * sample_size] = time_data[j]; //set time
+			var value = value_data.subarray( j * element_size, (j+1) * element_size );
+			if(param_type == "float4x4")
+			{
+				this.transformMatrix( value, node ? node._depth == 0 : 0 );
+				//mat4.transpose(value, value);
+			}
+			anim_data.set(value, j * sample_size + 1); //set data
+		}
+
+		if(isWorker && this.use_transferables)
+		{
+			var data = anim_data;
+			if(data && data.buffer && data.length > 100)
+				this._transferables.push(data.buffer);
+		}
+
+		anim.data = anim_data;
+		return anim;
+	},
 
 	findNode: function(root, id)
 	{
@@ -21328,8 +21369,139 @@ var parserDAE = {
 		}
 		data.meshes = newmeshes;
 
+		//check resources
+		for(var i in data.resources)
+		{
+			var res = data.resources[i];
+			if(res.object_type == "Animation")
+				this.processAnimation( res, renamed );
+		}
+
 		return data;
-	}
+	},
+
+	//depending on the 3D software used, animation tracks could be tricky to handle
+	processAnimation: function( animation, renamed )
+	{
+		for(var i in animation.takes)
+		{
+			var take = animation.takes[i];
+
+			//apply renaming
+			for(var j = 0; j < take.tracks.length; ++j)
+			{
+				var track = take.tracks[j];
+				var pos = track.property.indexOf("/");
+				if(!pos)
+					continue;
+				var nodename = track.property.substr(0,pos);
+				var extra = track.property.substr(pos);
+
+				if(!renamed[nodename])
+					continue;
+				nodename = renamed[nodename];
+				track.property = nodename + extra;
+			}
+
+			//rotations could come in different ways, some of them are accumulative, which doesnt work in litescene, so we have to accumulate them previously
+			var rotated_nodes = {};
+			for(var j = 0; j < take.tracks.length; ++j)
+			{
+				var track = take.tracks[j];
+				track.packed_data = true; //hack: this is how it works my loader
+				if(track.name == "rotateX.ANGLE" || track.name == "rotateY.ANGLE" || track.name == "rotateZ.ANGLE")
+				{
+					var nodename = track.property.split("/")[0];
+					if(!rotated_nodes[nodename])
+						rotated_nodes[nodename] = { tracks: [] };
+					rotated_nodes[nodename].tracks.push( track );
+				}
+			}
+
+			for(var j in rotated_nodes)
+			{
+				var info = rotated_nodes[j];
+				var newtrack = { data: [], type: "quat", value_size: 4, property: j + "/Transform/rotation", name: "rotation" };
+				var times = [];
+
+				//collect timestamps
+				for(var k = 0; k < info.tracks.length; ++k)
+				{
+					var track = info.tracks[k];
+					var data = track.data;
+					for(var w = 0; w < data.length; w+=2)
+						times.push( data[w] );
+				}
+
+				//create list of timestamps and remove repeated ones
+				times.sort();
+				var last_time = -1;
+				var final_times = [];
+				for(var k = 0; k < times.length; ++k)
+				{
+					if(times[k] == last_time)
+						continue;
+					final_times.push( times[k] );
+					last_time = times[k];
+				}
+				times = final_times;
+
+				//create samples
+				newtrack.data.length = times.length;
+				for(var k = 0; k < newtrack.data.length; ++k)
+				{
+					var time = times[k];
+					var value = quat.create();
+					//create keyframe
+					newtrack.data[k] = [time, value];
+
+					for(var w = 0; w < info.tracks.length; ++w)
+					{
+						var track = info.tracks[w];
+						var sample = getTrackSample( track, time );
+						if(!sample) //nothing to do if no sample or 0
+							continue;
+						sample *= 0.0174532925; //degrees to radians
+						switch( track.name )
+						{
+							case "rotateX.ANGLE": quat.rotateX( value, value, -sample ); break;
+							case "rotateY.ANGLE": quat.rotateY( value, value, sample ); break;
+							case "rotateZ.ANGLE": quat.rotateZ( value, value, sample ); break;
+						}
+					}
+				}
+
+				//add track
+				take.tracks.push( newtrack );
+
+				//remove old rotation tracks
+				for(var w = 0; w < info.tracks.length; ++w)
+				{
+					var track = info.tracks[w];
+					var pos = take.tracks.indexOf( track );
+					if(pos == -1)
+						continue;
+					take.tracks.splice(pos,1);
+				}
+
+			}
+
+		}//takes
+
+		function getTrackSample( track, time )
+		{
+			var data = track.data;
+			var l = data.length;
+			for(var t = 0; t < l; t+=2)
+			{
+				if(data[t] == time)
+					return data[t+1];
+				if(data[t] > time)
+					return null;
+			}
+			return null;
+		}
+	} //procesSAnimation
 };
 Parser.registerParser(parserDAE);
 
@@ -22983,10 +23155,19 @@ SceneNode.prototype.setPropertyValueFromPath = function( path, value )
 		if(!target)
 			return null;
 	}
-	else if(path[1] == "matrix") //special case
-		target = this.transform;
-	else
-		target = this;
+	else { //special cases usually after importing from collada
+		switch (path[1])
+		{
+			case "matrix": target = this.transform; break;
+			case "translate.X": target = this.transform; varname = "x"; break;
+			case "translate.Y": target = this.transform; varname = "y"; break;
+			case "translate.Z": target = this.transform; varname = "z"; break;
+			case "rotateX.ANGLE": target = this.transform; varname = "pitch"; break;
+			case "rotateY.ANGLE": target = this.transform; varname = "yaw"; break;
+			case "rotateZ.ANGLE": target = this.transform; varname = "roll"; break;
+			default: target = null;
+		}
+	}
 
 	if(target.setPropertyValueFromPath && target != this)
 		if( target.setPropertyValueFromPath(path, value) === true )

@@ -57,7 +57,8 @@ var DriveModule = {
 			msg.content.style.backgroundColor = "rgba(100,200,150,0.5)";
 			msg.kill(500);
 
-			DriveModule.fetchPreview(url);
+			if( url.substr(0,7) != "http://" )
+				DriveModule.fetchPreview(url);
 		});
 
 		LEvent.bind( LS.ResourcesManager, "resource_not_found", function(e, url) {
@@ -543,6 +544,7 @@ var DriveModule = {
 				{
 					var img = new Image();
 					img.src = preview;
+					img.style.maxWidth = 200;
 					this.generated_previews[ resource.fullpath ] = img;
 					preview = img;
 				}
@@ -565,6 +567,7 @@ var DriveModule = {
 					{
 						var img = new Image();
 						img.src = preview;
+						img.style.maxWidth = 200;
 						this.generated_previews[ resource.fullpath ] = img;
 						preview = img;
 					}
@@ -579,6 +582,7 @@ var DriveModule = {
 			{
 				var img = new Image();
 				img.src = preview;
+				img.style.maxWidth = 200;
 				img.onerror = function() { this.parentNode.removeChild( this ); }
 			}
 			else

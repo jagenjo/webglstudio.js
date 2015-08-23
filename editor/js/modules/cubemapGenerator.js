@@ -99,7 +99,9 @@ var CubemapGenerator = {
 		widgets.addTitle("Load from Image");
 		var url = "";
 		var original_file = null;
+
 		widgets.addString("URL","", { callback: function(v){ url = v; original_file = null; }});
+		widgets.addTexture("From Memory","", { callback: function(name){ url = name; original_file = null; }});
 		widgets.addFile("From File", null, { generate_url: true, callback: function(file_info){ 
 			if(!file_info)
 			{
@@ -124,17 +126,38 @@ var CubemapGenerator = {
 		var info_widget = widgets.addInfo(null, "" );
 
 		widgets.addButton(null, "Load cubemap", { callback: function() {
+			if(!name)
+				return;
+
+			//is a texture in memory
+			var res = LS.ResourcesManager.getResource( url );
+			if(res)
+			{
+				if(!res.img)
+					return console.log("Texture doesnt have the original image attached");
+				var texture = GL.Texture.cubemapFromImage( res.img, cubemap_options );
+				processResult( texture );
+			}
+
+			//is an external filename
 			info_widget.setValue("Loading...");
 			var texture = GL.Texture.cubemapFromURL( LS.ResourcesManager.getFullURL( url ), cubemap_options , function(tex){
-				var fullname = name + "_" + mode + ".png";
-				LS.ResourcesManager.registerResource( fullname, texture );
-				if(original_file)
-					texture._original_file = original_file;
-				else
-					LS.ResourcesManager.getURLasFile( url, function(file) { texture._original_file = file; }); //keep the original file in case we want to save it
-				info_widget.setValue("Cubemap created with name: " + fullname);
+				if(!tex)
+					return LiteGUI.alert("Error creating the cubemap, check the size. Only 1x6 (vertical) or 6x3 (cross) formats supported.");
+				processResult( tex );
 			});
 		}});
+
+		function processResult( texture )
+		{
+			var fullname = name + "_" + mode + ".png";
+			LS.ResourcesManager.registerResource( fullname, texture );
+			if(original_file)
+				texture._original_file = original_file;
+			else
+				LS.ResourcesManager.getURLasFile( url, function(file) { texture._original_file = file; }); //keep the original file in case we want to save it
+			info_widget.setValue("Cubemap created with name: " + fullname);
+		}
 
 		function computePosition()
 		{

@@ -2672,7 +2672,9 @@ var ResourcesManager = {
 	*/
 	registerResource: function( filename, resource )
 	{
-		filename = filename.split("/").filter(function(v){ return !!v; }).join("/");
+		//clean up the filename (to avoid problems with //)
+		if(filename.substr(0,7) != "http://")
+			filename = filename.split("/").filter(function(v){ return !!v; }).join("/");
 
 		if(this.resources[ filename ] == resource)
 			return; //already registered

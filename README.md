@@ -16,7 +16,7 @@ For more information visit http://webglstudio.org
 Installing
 ----------
 
-To install you need to copy the editor files in your server and install also LiteFileServer.js, edit the config.json with the right paths to everything and it is ready to be used.
+To install you need to copy the editor files in your server and install LiteFileSystem.js (the library in charge of handling remote files) in the folder fileserver/ inside editor folder. For more info check LiteFileSystem.js
 
 Feedback
 --------

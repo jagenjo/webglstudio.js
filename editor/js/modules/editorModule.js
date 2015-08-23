@@ -167,7 +167,6 @@ var EditorModule = {
 
 		switch( this.inspector_instance.constructor )
 		{
-
 			case LS.SceneNode: this.inspectNode(this.inspector_instance); break;
 			case Object: 
 			case Array: this.inspectObjects( this.inspector_instance ); break;

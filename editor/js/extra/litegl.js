@@ -7210,7 +7210,7 @@ global.geo = {
 		{
 			var N = planes.subarray(pos,pos+3);
 			var l = vec3.length(N);
-			if(l) return;
+			if(l === 0) return;
 			l = 1.0 / l;
 			planes[pos] *= l;
 			planes[pos+1] *= l;

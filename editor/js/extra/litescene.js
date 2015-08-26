@@ -1464,19 +1464,6 @@ LScript.expandCode = function(code)
 //Global Scope
 var trace = window.console ? console.log.bind(console) : function() {};
 
-function toArray(v) { return Array.apply( [], v ); }
-
-Object.defineProperty(Object.prototype, "merge", { 
-    value: function(v) {
-        for(var i in v)
-			this[i] = v[i];
-		return this;
-    },
-    configurable: false,
-    writable: false,
-	enumerable: false  // uncomment to be explicit, though not necessary
-});
-
 //better array conversion to string for serializing
 var typed_arrays = [ Uint8Array, Int8Array, Uint16Array, Int16Array, Uint32Array, Int32Array, Float32Array, Float64Array ];
 typed_arrays.forEach( function(v) { v.prototype.toJSON = function(){ return Array.prototype.slice.call(this); } } );
@@ -1565,33 +1552,6 @@ var LS = {
 		var name = this.getClassName( comp_class );
 		return !!this.Components[name];
 	},
-
-	/**
-	* Contains all the registered material classes
-	* 
-	* @property MaterialClasses
-	* @type {Object}
-	* @default {}
-	*/
-	MaterialClasses: {},
-
-	/**
-	* Register a Material class so it is listed when searching for new materials to attach
-	*
-	* @method registerMaterialClass
-	* @param {ComponentClass} comp component class to register
-	*/
-	registerMaterialClass: function(material_class) { 
-		//register
-		this.MaterialClasses[ LS.getClassName(material_class) ] = material_class;
-
-		//add extra material methods
-		LS.extendClass( material_class, Material );
-
-		//event
-		LEvent.trigger(LS,"materialclass_registered",material_class);
-		material_class.resource_type = "Material";
-	},	
 
 	/**
 	* Is a wrapper for callbacks that throws an LS "code_error" in case something goes wrong (needed to catch the error from the system)
@@ -1918,8 +1878,62 @@ var LS = {
 		//	prev.set( value ); //for typed-arrays
 		//else
 			obj[ name ] = value; //clone¿?
+	},
+
+	//solution from http://stackoverflow.com/questions/979975/how-to-get-the-value-from-the-url-parameter
+	queryString: function () {
+	  // This function is anonymous, is executed immediately and 
+	  // the return value is assigned to QueryString!
+	  var query_string = {};
+	  var query = window.location.search.substring(1);
+	  var vars = query.split("&");
+	  for (var i=0;i<vars.length;i++) {
+		var pair = vars[i].split("=");
+			// If first entry with this name
+		if (typeof query_string[pair[0]] === "undefined") {
+		  query_string[pair[0]] = decodeURIComponent(pair[1]);
+			// If second entry with this name
+		} else if (typeof query_string[pair[0]] === "string") {
+		  var arr = [ query_string[pair[0]],decodeURIComponent(pair[1]) ];
+		  query_string[pair[0]] = arr;
+			// If third or later entry with this name
+		} else {
+		  query_string[pair[0]].push(decodeURIComponent(pair[1]));
+		}
+	  } 
+		return query_string;
+	}(),
+
+	/**
+	* Contains all the registered material classes
+	* 
+	* @property MaterialClasses
+	* @type {Object}
+	* @default {}
+	*/
+	MaterialClasses: {},
+
+	/**
+	* Register a Material class so it is listed when searching for new materials to attach
+	*
+	* @method registerMaterialClass
+	* @param {ComponentClass} comp component class to register
+	*/
+	registerMaterialClass: function(material_class) { 
+		//register
+		this.MaterialClasses[ LS.getClassName(material_class) ] = material_class;
+
+		//add extra material methods
+		LS.extendClass( material_class, Material );
+
+		//event
+		LEvent.trigger(LS,"materialclass_registered",material_class);
+		material_class.resource_type = "Material";
 	}
 }
+
+
+//MOVE SOMEWHERE ELSE
 
 /**
 * Samples a curve and returns the resulting value 
@@ -2015,6 +2029,21 @@ if( !Object.prototype.hasOwnProperty("defineAttribute") )
 	});
 }
 
+
+
+function toArray(v) { return Array.apply( [], v ); }
+
+Object.defineProperty(Object.prototype, "merge", { 
+    value: function(v) {
+        for(var i in v)
+			this[i] = v[i];
+		return this;
+    },
+    configurable: false,
+    writable: false,
+	enumerable: false  // uncomment to be explicit, though not necessary
+});
+
 //used for hashing keys:TODO move from here somewhere else
 String.prototype.hashCode = function(){
     var hash = 0, i, c, l;
@@ -2026,7 +2055,6 @@ String.prototype.hashCode = function(){
     }
     return hash;
 };
-
 
 var Network = {
 	/**
@@ -3664,6 +3692,7 @@ var ShadersManager = {
 			this.registerSnippet( id, code );
 		}
 
+		this.ready = true;
 	},
 	
 	//adds source code of a shader that could be compiled if needed
@@ -5620,7 +5649,7 @@ ComponentContainer.prototype.getComponent = function(component_class)
 		return null;
 
 	//string
-	if( component_class.constructor === String)
+	if( component_class.constructor === String )
 	{
 		for(var i = 0, l = this._components.length; i < l; ++i)
 			if( this._components[i].constructor.name == component_class )
@@ -15448,6 +15477,7 @@ Animation.prototype.configure = function(data)
 
 	if(data.takes)
 	{
+		this.takes = {};
 		for(var i in data.takes)
 		{
 			var take = new LS.Animation.Take( data.takes[i] );
@@ -15538,19 +15568,31 @@ function Take(o)
 	this.tracks = [];
 	this.duration = 10;
 	
-	if(!o)
-		return;
+	if(o)
+		this.configure(o);
 
-	if( o.name ) this.name = o.name;
+}
+
+Take.prototype.configure = function( o )
+{
+	if( o.name )
+		this.name = o.name;
 	if( o.tracks ) 
 	{
+		this.tracks = []; //clear
 		for(var i in o.tracks)
 		{
 			var track = new LS.Animation.Track( o.tracks[i] );
 			this.addTrack( track );
 		}
 	}
-	if( o.duration ) this.duration = o.duration;
+	if( o.duration )
+		this.duration = o.duration;
+}
+
+Take.prototype.serialize = function()
+{
+	return LS.cloneObject(this, null, true);
 }
 
 Take.prototype.createTrack = function( data )
@@ -15567,12 +15609,12 @@ Take.prototype.createTrack = function( data )
 	return track;
 }
 
-Take.prototype.applyTracks = function( current_time, last_time )
+Take.prototype.applyTracks = function( current_time, last_time, tracks_to_skip, ignore_interpolation )
 {
 	for(var i = 0; i < this.tracks.length; ++i)
 	{
 		var track = this.tracks[i];
-		if( track.enabled === false || !track.data )
+		if( track.enabled === false || !track.data || (tracks_to_skip && tracks_to_skip[i]) )
 			continue;
 
 		if( track.type == "events" )
@@ -15591,7 +15633,7 @@ Take.prototype.applyTracks = function( current_time, last_time )
 		}
 		else
 		{
-			var sample = track.getSample( current_time, true );
+			var sample = track.getSample( current_time, !ignore_interpolation );
 			if( sample !== undefined )
 				track._target = LS.GlobalScene.setPropertyValueFromPath( track._property_path, sample );
 		}
@@ -17249,6 +17291,9 @@ var Renderer = {
 	*/
 	render: function( scene, render_options, cameras )
 	{
+		if(!LS.ShadersManager.ready)
+			return; //not ready
+
 		render_options = render_options || this.default_render_options;
 		render_options.current_renderer = this;
 		render_options.current_scene = scene;
@@ -23777,7 +23822,7 @@ Prefab.packResources = function(resources, base_data)
 LS.Prefab = Prefab;
 
 /**
-* Context class allows to handle the app context easily without having to glue manually all events
+* Player class allows to handle the app context easily without having to glue manually all events
 	There is a list of options
 	==========================
 	- canvas: the canvas where the scene should be rendered, if not specified one will be created
@@ -23799,11 +23844,11 @@ LS.Prefab = Prefab;
 	- onMouse(e): when a mouse event is triggered
 	- onKey(e): when a key event is triggered
 * @namespace LS
-* @class Context
+* @class Player
 * @constructor
 * @param {Object} options settings for the webgl context creation
 */
-function Context(options)
+function Player(options)
 {
 	options = options || {};
 
@@ -23813,17 +23858,20 @@ function Context(options)
 		if(options.container_id)
 			container = document.getElementById(options.container_id);
 
-		if(container)
+		if(!container)
 		{
-			//create canvas
-			var canvas = document.createElement("canvas");
-			canvas.width = container.offsetWidth;
-			canvas.height = container.offsetHeight;
-			if(!canvas.width) canvas.width = options.width || 1;
-			if(!canvas.height) canvas.height = options.height || 1;
-			container.appendChild(canvas);
-			options.canvas = canvas;
+			console.log("No container specified in LS.Player, using BODY as container");
+			container = document.body;
 		}
+
+		//create canvas
+		var canvas = document.createElement("canvas");
+		canvas.width = container.offsetWidth;
+		canvas.height = container.offsetHeight;
+		if(!canvas.width) canvas.width = options.width || 1;
+		if(!canvas.height) canvas.height = options.height || 1;
+		container.appendChild(canvas);
+		options.canvas = canvas;
 	}
 
 	this.gl = GL.create(options);
@@ -23833,8 +23881,13 @@ function Context(options)
 
 	if(options.resources)
 		LS.ResourcesManager.setPath( options.resources );
-	if(options.shaders)
-		LS.ShadersManager.init( options.shaders );
+	else
+		console.warn("LS: no resources path specified");
+
+	LS.ShadersManager.init( options.shaders || "data/shaders.xml" );
+	if(!options.shaders)
+		console.warn("LS: no shaders folder specified, using default file.");
+
 	if(options.proxy)
 		LS.ResourcesManager.setProxy( options.proxy );
 	if(options.filesystems)
@@ -23858,18 +23911,18 @@ function Context(options)
 	this.interactive = true;
 	this.state = "playing";
 
-	//bind all the events 
 	if( this.gl.ondraw )
 		throw("There is already a litegl attached to this context");
 
-	this.gl.ondraw = Context.prototype._ondraw.bind(this);
-	this.gl.onupdate = Context.prototype._onupdate.bind(this);
-	this.gl.onmousedown = Context.prototype._onmouse.bind(this);
-	this.gl.onmousemove = Context.prototype._onmouse.bind(this);
-	this.gl.onmouseup = Context.prototype._onmouse.bind(this);
-	this.gl.onmousewheel = Context.prototype._onmouse.bind(this);
-	this.gl.onkeydown = Context.prototype._onkey.bind(this);
-	this.gl.onkeyup = Context.prototype._onkey.bind(this);
+	//bind all the events 
+	this.gl.ondraw = LS.Player.prototype._ondraw.bind(this);
+	this.gl.onupdate = LS.Player.prototype._onupdate.bind(this);
+	this.gl.onmousedown = LS.Player.prototype._onmouse.bind(this);
+	this.gl.onmousemove = LS.Player.prototype._onmouse.bind(this);
+	this.gl.onmouseup = LS.Player.prototype._onmouse.bind(this);
+	this.gl.onmousewheel = LS.Player.prototype._onmouse.bind(this);
+	this.gl.onkeydown = LS.Player.prototype._onkey.bind(this);
+	this.gl.onkeyup = LS.Player.prototype._onkey.bind(this);
 
 	//capture input
 	gl.captureMouse(true);
@@ -23885,7 +23938,7 @@ function Context(options)
 * @param {String} url url to the JSON file containing all the scene info
 * @param {Function} on_complete callback trigged when the scene and the resources are loaded
 */
-Context.prototype.loadScene = function(url, on_complete)
+Player.prototype.loadScene = function(url, on_complete)
 {
 	var scene = this.scene;
 	scene.load(url, inner_start);
@@ -23905,7 +23958,7 @@ Context.prototype.loadScene = function(url, on_complete)
 * @param {Object} scene
 * @param {Function} on_complete callback trigged when the scene and the resources are loaded
 */
-Context.prototype.setScene = function(scene_info, on_complete)
+Player.prototype.setScene = function(scene_info, on_complete)
 {
 	var scene = this.scene;
 	if(typeof(scene_info) == "string")
@@ -23924,17 +23977,17 @@ Context.prototype.setScene = function(scene_info, on_complete)
 }
 
 
-Context.prototype.pause = function()
+Player.prototype.pause = function()
 {
 	this.state = "paused";
 }
 
-Context.prototype.play = function()
+Player.prototype.play = function()
 {
 	this.state = "playing";
 }
 
-Context.prototype._ondraw = function()
+Player.prototype._ondraw = function()
 {
 	if(this.state != "playing")
 		return;
@@ -23953,7 +24006,7 @@ Context.prototype._ondraw = function()
 		this.onDraw();
 }
 
-Context.prototype._onupdate = function(dt)
+Player.prototype._onupdate = function(dt)
 {
 	if(this.state != "playing")
 		return;
@@ -23968,7 +24021,7 @@ Context.prototype._onupdate = function(dt)
 }
 
 //input
-Context.prototype._onmouse = function(e)
+Player.prototype._onmouse = function(e)
 {
 	//trace(e);
 	if(this.state != "playing")
@@ -24005,7 +24058,7 @@ Context.prototype._onmouse = function(e)
 	}
 }
 
-Context.prototype._onkey = function(e)
+Player.prototype._onkey = function(e)
 {
 	if(this.state != "playing")
 		return;
@@ -24019,6 +24072,6 @@ Context.prototype._onkey = function(e)
 	LEvent.trigger( this.scene,e.eventType,e);
 }
 
-LS.Context = Context;
+LS.Player = Player;
 
 //here goes the ending of commonjs stuff

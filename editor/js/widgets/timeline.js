@@ -58,12 +58,13 @@ Timeline.prototype.createInterface = function()
 	this.current_time_widget = widgets.addNumber("Current", this.session ? this.session.current_time : 0, { units:"s", precision:2, min: 0, callback: function(v){ that.setCurrentTime(v); } } );
 	//widgets.addCheckbox("Preview", this.preview, { callback: function(v){ that.preview = v; } } );
 	//this.play_widget = widgets.addCheckbox("Play", !!this.playing, { callback: function(v){ that.playing = !that.playing ; } } );
-	widgets.addIcon(null, !!this.preview, { image: "imgs/icons-timeline.png", index: 6, title:"preview",  callback: function(v){ that.preview = !that.preview ; } } );
+	this.preview_widget = widgets.addIcon(null, !!this.preview, { image: "imgs/icons-timeline.png", index: 6, title:"preview",  callback: function(v){ that.preview = !that.preview ; } } );
 	this.play_widget = widgets.addIcon(null, !!this.playing, { title:"play", image: "imgs/icons-timeline.png",  callback: function(v){ that.playing = !that.playing ; } } );
 	widgets.addIcon(null, false, { title:"zoom in", image: "imgs/icons-timeline.png", index: 8, toggle: false, callback: function(v){ that.zoom(1.05); 	that.redrawCanvas(); } } );
 	widgets.addIcon(null, false, { title:"zoom out", image: "imgs/icons-timeline.png", index: 7, toggle: false, callback: function(v){ that.zoom(0.95); that.redrawCanvas(); } } );
 	widgets.addIcon(null, false, { title:"previous keyframe", image: "imgs/icons-timeline.png", index: 2, toggle: false, callback: function(v){ that.prevKeyframe(); } } );
 	widgets.addIcon(null, false, { title:"next keyframe", image: "imgs/icons-timeline.png", index: 3, toggle: false, callback: function(v){ that.nextKeyframe(); } } );
+	widgets.addIcon(null, false, { title:"record", image: "imgs/icons-timeline.png", index: 10, toggle: true, callback: function(v){ return that.toggleRecording(v); } } );
 	//this.paths_widget = widgets.addCheckbox("Show Paths", !!this.show_paths, { callback: function(v){ that.show_paths = !that.show_paths ; } } );
 	//widgets.addCheckbox("Curves", this.mode == "curves", { callback: function(v){ that.mode = v ? "curves" : "keyframes"; that.redrawCanvas(); } } );
 
@@ -641,8 +642,10 @@ Timeline.prototype.redrawCanvas = function()
 	}
 }
 
-Timeline.prototype.setCurrentTime = function( time, skip_redraw )
+Timeline.prototype.setCurrentTime = function( time, skip_redraw, tracks_to_skip )
 {
+	//if(!this.session) return;
+
 	var duration = this.current_take ? this.current_take.duration : 0;
 	if(time < 0)
 		time = 0;
@@ -661,7 +664,8 @@ Timeline.prototype.setCurrentTime = function( time, skip_redraw )
 
 	if(this.preview && this.current_take)
 	{
-		this.current_take.applyTracks( this.session.current_time, this.session.last_time );
+		//assign values
+		this.current_take.applyTracks( this.session.current_time, this.session.last_time, tracks_to_skip, this.recording );
 		this.session.last_time = this.session.current_time;
 		LS.GlobalScene.refresh();
 	}
@@ -709,14 +713,46 @@ Timeline.prototype.showPropertyInfo = function( track )
 
 Timeline.prototype.update = function( dt )
 {
-	if(!this.playing || !this.current_take)
+	if(!this.current_take || (!this.recording && !this.playing) )
 		return;
 
-	var time = this.session.current_time + dt;
-	if( time >= this.current_take.duration )
-		time = time - this.current_take.duration;
 
-	this.setCurrentTime( time );
+	if(this.recording)
+	{
+		var elem = document.getElementById("timeline-recording-countdown");
+		if(this._recording_time < 0)
+		{
+			if(elem)
+			{
+				var text = Math.abs(this._recording_time).toFixed(2);
+				elem.innerHTML = text;
+			}
+			this._recording_time += dt;
+		}
+		else
+		{
+			//elem.style.display = "none";
+			elem.innerHTML = "GO";
+			elem.style.opacity = 0;
+
+			//increase
+			var time = this.session.current_time + dt;
+			if( time >= this.current_take.duration )
+				this.current_take.duration = time;
+			var sampled = this.sampleAllTracks(true,time); //sample current values
+			this.setCurrentTime( time, undefined, sampled ); //apply changes if preview is on
+			if( time > this._timeline_data.end_time )
+				this.session.start_time += this._timeline_data.end_time;
+		}
+	}
+	
+	if(this.playing)
+	{
+		var time = this.session.current_time + dt;
+		if( time >= this.current_take.duration )
+			time = time - this.current_take.duration;
+		this.setCurrentTime( time );
+	}
 }
 
 Timeline.prototype.canvasTimeToX = function( time )
@@ -1113,6 +1149,29 @@ Timeline.prototype.addUndoTrackCreated = function( track )
 	});
 }
 
+Timeline.prototype.addUndoTakeEdited = function( info )
+{
+	if(!info)
+		return;
+
+	var that = this;
+
+	LiteGUI.addUndoStep({ 
+		data: { animation: that.current_animation.name, take: info.name, data: info },
+		callback: function(d) {
+			var anim = LS.ResourcesManager.resources[d.animation];
+			if(!anim)
+				return;
+			var take = anim.getTake(d.take);
+			if(!take)
+				return;
+			take.configure( d.data );
+			that.animationModified();
+			that.redrawCanvas();
+		}
+	});
+}
+
 Timeline.prototype.addUndoTrackEdited = function( track )
 {
 	if(!track)
@@ -1159,25 +1218,76 @@ Timeline.prototype.addUndoTrackRemoved = function( track )
 	});
 }
 
-Timeline.prototype.insertKeyframe = function( track )
+Timeline.prototype.insertKeyframe = function( track, only_different, time )
 {
 	if(!track)
 		return;
 
 	//quantize time
-	var time = Math.round( this.session.current_time * this.framerate) / this.framerate;
+	if(time === undefined)
+		time = this.session.current_time;
+	time = Math.round( time * this.framerate ) / this.framerate;
 
 	//sample
 	var info = track.getPropertyInfo();
 	if(!info)
 		return;
 
+	//only store if the value is different
+	if( only_different )
+	{
+		//sample
+		var sample = track.getSample( time );
+		if(sample !== undefined)
+		{
+
+			if( track.value_size == 1)
+			{
+				if( Math.abs(sample - info.value) < 0.0001 )
+					return; //same value
+			}
+			else if(track.value_size > 1)
+			{
+				for(var i = 0; i < track.value_size; ++i)
+				{
+					if( Math.abs(sample[i] - info.value[i]) < 0.0001 )
+						return; //same value
+				}
+			}
+			else
+				if( sample == info.value )
+					return; //same value
+		}
+	}
+
 	//add
 	track.addKeyframe( time , info.value );
 	this.animationModified();
 
-	console.log("Keyframe added");
 	this._must_redraw = true;
+	return true;
+}
+
+Timeline.prototype.sampleAllTracks = function( only_different, time )
+{
+	if(!this.current_take)
+		return false;
+
+	var sampled_tracks = {};
+
+	for(var i = 0; i < this.current_take.tracks.length; ++i)
+	{
+		var track = this.current_take.tracks[i];
+		if(track.enabled === false)
+			continue;
+
+		if( this.insertKeyframe(track, only_different, time) )
+			sampled_tracks[i] = true;
+		//var sample = track.getSample(this.session.current_time, true);
+		//var info = track.getPropertyInfo();
+	}
+
+	return sampled_tracks;
 }
 
 Timeline.prototype.removeSelection = function()
@@ -1486,6 +1596,50 @@ Timeline.prototype.showAddEventKeyframe = function( track, time, keyframe )
 	dialog.add( widgets );
 	dialog.adjustSize();
 	dialog.show();
+}
+
+Timeline.prototype.toggleRecording = function(v)
+{
+	if(!this.current_take)
+		return false;
+
+	this.recording = v;
+
+	if( this.recording )
+	{
+		if(this.current_take.tracks.length == 0)
+		{
+			this.recording = false;
+			LiteGUI.alert("No tracks found, you must create some tracks before recording.");
+			return false;
+		}
+
+		//prepare
+		this._recording_time = -3;
+		var elem = document.createElement("div");
+		elem.id = "timeline-recording-countdown";
+		elem.className = "big-info-popup";
+		elem.innerHTML = "REC";
+		elem.style.pointerEvents = "none";
+		document.body.appendChild(elem);
+		this.preview_widget.setValue(false);
+
+		//save UNDO
+		this._recording_undo = this.current_take.serialize();
+		//this.addUndoTakeEdited(this.current_take);
+	}
+	else //stop recording
+	{
+		var elem = document.getElementById("timeline-recording-countdown");
+		if(elem)
+			elem.parentNode.removeChild(elem);
+		
+		this.preview_widget.setValue(true);
+		this.addUndoTakeEdited( this._recording_undo );
+		delete this._recording_undo;
+	}
+
+	return this.recording;
 }
 
 Timeline.prototype.onReload = function()

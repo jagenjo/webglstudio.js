@@ -6333,22 +6333,27 @@ Inspector.prototype.addIcon = function(name, value, options)
 	icon.addEventListener("mousedown", function(e) {
 		e.preventDefault();
 		value = !value;
-		Inspector.onWidgetChange.call(that,element,name, value, options);
+		var ret = Inspector.onWidgetChange.call(that,element,name, value, options);
 		LiteGUI.trigger( element, "wclick", value);
+
+		if(ret !== undefined)
+			value = ret;
 
 		var y = value ? height : 0;
 		icon.style.backgroundPosition = x + "px " + y + "px";
 
-		if(options.toggle === false)
+		if(options.toggle === false) //blink
 			setTimeout( function(){ icon.style.backgroundPosition = x + "px 0px"; value = false; },200 );
 
 	});
 	this.append(element,options);
 
-	element.setValue = function(v) { 
+	element.setValue = function(v, skip_event ) { 
+		value = v;
 		var y = value ? height : 0;
 		icon.style.backgroundPosition = x + "px " + y + "px";
-		//LiteGUI.trigger(input, "change" );
+		if(!skip_event)
+			Inspector.onWidgetChange.call(that,element,name, value, options);
 	};
 	element.getValue = function() { return value; };
 

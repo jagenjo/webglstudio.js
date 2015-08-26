@@ -1378,7 +1378,7 @@ var DriveModule = {
 	{
 		var resource = LS.ResourcesManager.getResource( fullpath );
 		if(!resource)
-			return;
+			return RenderModule.takeScreenshot( this.preview_size, this.preview_size );
 
 		if( resource.updatePreview )
 		{

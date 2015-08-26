@@ -4572,8 +4572,9 @@ Texture.getBlackTexture = function()
 
 function FBO( textures, depth_texture )
 {
-	this.handler = null;
 
+	this.handler = null;
+	this._old_viewport = new Float32Array(4);
 	this.setTextures( textures, depth_texture);
 }
 
@@ -4655,19 +4656,12 @@ FBO.prototype.setTextures = function( color_textures, depth_texture )
 
 FBO.prototype.bind = function( keep_old )
 {
+	this._old_viewport.set( gl.viewport_data );
+
 	if(keep_old)
-	{
 		this._old_fbo = gl.getParameter( gl.FRAMEBUFFER_BINDING );
-		if(!this._old_viewport)
-			this._old_viewport = gl.getViewport(); 
-		else
-			this._old_viewport.set( gl.viewport_data );
-	}
 	else
-	{
 		this._old_fbo = null;
-		this._old_viewport = null;
-	}
 
 	gl.bindFramebuffer( gl.FRAMEBUFFER, this.handler );
 	gl.viewport( 0,0, this.width, this.height );
@@ -4678,15 +4672,14 @@ FBO.prototype.unbind = function()
 	if(this._old_fbo)
 	{
 		gl.bindFramebuffer( gl.FRAMEBUFFER, this._old_fbo );
-		var v = this._old_viewport;
-		gl.viewport( v[0], v[1], v[2], v[3] );
 		this._old_fbo = null;
 	}
 	else
 	{
 		gl.bindFramebuffer( gl.FRAMEBUFFER, null );
-		gl.viewport( 0,0, gl.canvas.width, gl.canvas.height );
 	}
+
+	gl.setViewport( this._old_viewport );
 }
 
 
@@ -5619,7 +5612,10 @@ GL.create = function(options) {
 	gl._viewport_func = gl.viewport;
 	gl.viewport_data = new Float32Array([0,0,gl.canvas.width,gl.canvas.height]); //32000 max viewport, I guess its fine
 	gl.viewport = function(a,b,c,d) { var v = this.viewport_data; v[0] = a|0; v[1] = b|0; v[2] = c|0; v[3] = d|0; this._viewport_func(a,b,c,d); }
-	gl.getViewport = function() { return new Float32Array( gl.viewport_data ); };
+	gl.getViewport = function(v) { 
+		if(v) { v[0] = gl.viewport_data[0]; v[1] = gl.viewport_data[1]; v[2] = gl.viewport_data[2]; v[3] = gl.viewport_data[3]; return v; }
+		return new Float32Array( gl.viewport_data );
+	};
 	gl.setViewport = function(v) { gl.viewport_data.set(v); this._viewport_func(v[0],v[1],v[2],v[3]); };
 	
 	//just some checks

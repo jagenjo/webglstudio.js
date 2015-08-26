@@ -324,7 +324,8 @@ var SceneStorageModule = {
 	testScene: function()
 	{
 		SceneStorageModule.saveLocalScene("_test", {}, Scene, SceneStorageModule.takeScreenshot(256,256) );
-		window.open("player.html?session=_test",'_blank');
+		var name = SceneStorageModule.localscene_prefix + "_test";
+		window.open("player.html?session=" + name,'_blank');
 	},
 
 	retrieveLocalScenes: function()
@@ -458,12 +459,12 @@ var SceneStorageModule = {
 
 	saveSceneInServer: function()
 	{
-		DriveModule.saveResource(Scene);
+		DriveModule.saveResource( LS.GlobalScene );
 	},
 
 	takeScreenshot: function(width, height)
 	{
-		Renderer.render( Scene, RenderModule.camera, RenderModule.render_options );
+		Renderer.render( LS.GlobalScene, RenderModule.camera, RenderModule.render_options );
 
 		//slow way of reading the pixels, but it is safe even with preserveDrawingBuffer being false
 		var frame = document.createElement("canvas");

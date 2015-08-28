@@ -17,7 +17,10 @@ var SceneStorageModule = {
 		menubar.add("Project/Save in Server", { callback: this.showSaveSceneInServerDialog.bind(this) });
 		menubar.add("Project/Download", { callback: this.showDownloadSceneDialog.bind(this) });
 		menubar.add("Project/Test", { callback: this.testScene.bind(this) });
+		menubar.add("Project/Publish", { callback: this.onPublish.bind(this) });
 
+		menubar.add("Scene/Check JSON", { callback: function() { EditorModule.checkJSON( LS.GlobalScene ); } });
+		
 		//LiteGUI.mainmenu.separator();
 
 		this.retrieveLocalScenes();
@@ -87,10 +90,11 @@ var SceneStorageModule = {
 			{
 				//SceneStorageModule.saveSceneInServer(scene_name);
 				var url = LS.ResourcesManager.path + "/" + selected;
-				Renderer.reset();
-				Scene.clear();
-				Scene.load( url, function(scene, url) {
-					//scene.extra.filename = filename;
+				LS.Renderer.reset();
+				LS.GlobalScene.clear();
+				LS.GlobalScene.load( url, function(scene, url) {
+					scene.extra.folder = LS.ResourcesManager.getFolder( selected );
+					scene.extra.fullpath = selected;
 				});
 				dialog.close();
 			}
@@ -146,7 +150,12 @@ var SceneStorageModule = {
 
 		function inner_tree(tree)
 		{
-			tree_widget.setValue(tree);
+			tree_widget.setValue( tree );
+			if(scene.extra.fullpath)
+			{
+				tree_widget.tree.setSelectedItem( scene.extra.folder , true );
+				scene_folder = scene.extra.folder;
+			}
 		}
 
 		function inner_selected(item)
@@ -326,6 +335,18 @@ var SceneStorageModule = {
 		SceneStorageModule.saveLocalScene("_test", {}, Scene, SceneStorageModule.takeScreenshot(256,256) );
 		var name = SceneStorageModule.localscene_prefix + "_test";
 		window.open("player.html?session=" + name,'_blank');
+	},
+
+	onPublish: function()
+	{
+		//check if it has name
+		if(!LS.GlobalScene.extra.fullpath)
+		{
+			LiteGUI.alert("You must save the scene before publishing it.");
+			return;
+		}
+
+		window.open("player.html?url=" + LS.RM.path + LS.GlobalScene.extra.fullpath,'_blank');
 	},
 
 	retrieveLocalScenes: function()

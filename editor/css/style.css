@@ -22,10 +22,16 @@
 
 /* startup console */
 .startup-console-msg {
+	font-family: Tahoma;
 	margin: 0;
 	padding: 0;
 	margin-left: 10px;
 	color: #55b6b7;
+}
+
+.startup-console-msg.error {
+	color: black;
+	background-color: #FF0000;
 }
 
 /* menubar */
@@ -332,7 +338,7 @@ ul.file-list li.file-item span.progress {
 
 .big-info-popup {
 	background-color: rgba(0,0,0,0.5);
-	border-radius: 40px;
+	border-radius: 20px;
 	font-size: 80px;
 	color: white;
 	text-align: center;

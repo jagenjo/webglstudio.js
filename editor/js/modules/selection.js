@@ -325,6 +325,8 @@ var SelectionModule = {
 		if(!this.selection)
 			return null;
 		//the node part of the selection
+		if(this.selection.node && !this.selection.node.scene)
+			return null; //cannot select a node that is not in a scene
 		return this.selection.node;
 	},
 

@@ -49,7 +49,7 @@ Transform["@inspector"] = function(transform, attributes)
 			if(r.length == 3)
 				transform.setPosition(r[0],r[1],r[2]);
 		},callback_before: function() {
-			EditorModule.saveComponentUndo(transform);
+			UndoModule.saveComponentChangeUndo(transform);
 	}});
 
 	var euler = quat.toEuler( vec3.create(), transform._rotation );
@@ -63,7 +63,7 @@ Transform["@inspector"] = function(transform, attributes)
 			var euler = [r[1],r[2],r[0]];
 			transform.setRotationFromEuler(euler);
 		}, callback_before: function() {
-			EditorModule.saveComponentUndo(transform);
+			UndoModule.saveComponentChangeUndo(transform);
 	}});
 
 	var scale_widget = attributes.addVector3("Scale", transform._scaling, {
@@ -73,7 +73,7 @@ Transform["@inspector"] = function(transform, attributes)
 			transform.setScale(v[0],v[1],v[2]);
 		},
 		callback_before: function() {
-			EditorModule.saveComponentUndo(transform);
+			UndoModule.saveComponentChangeUndo(transform);
 	}});
 
 	attributes.addNumber("Uniform Scale", transform._scaling[0].toFixed(3), {
@@ -83,7 +83,7 @@ Transform["@inspector"] = function(transform, attributes)
 			scale_widget.setValue([v,v,v]);
 			//transform.setScale(v,v,v);
 		}, callback_before: function() {
-			EditorModule.saveComponentUndo(transform);
+			UndoModule.saveComponentChangeUndo(transform);
 	}});
 }
 

@@ -2345,7 +2345,6 @@ var ResourcesManager = {
 	* @param {String} fullpath
 	* @return {String} filename extension
 	*/
-
 	getFilename: function(fullpath)
 	{
 		var pos = fullpath.lastIndexOf("/");
@@ -2353,6 +2352,19 @@ var ResourcesManager = {
 		var question = fullpath.lastIndexOf("?");
 		question = (question == -1 ? fullpath.length : (question - 1) ) - pos;
 		return fullpath.substr(pos+1,question);
+	},	
+
+	/**
+	* Returns the folder from a fullpath
+	*
+	* @method getFolder
+	* @param {String} fullpath
+	* @return {String} folder name
+	*/
+	getFolder: function(fullpath)
+	{
+		var pos = fullpath.lastIndexOf("/");
+		return fullpath.substr(0,pos);
 	},	
 
 	/**
@@ -2371,13 +2383,27 @@ var ResourcesManager = {
 	},
 
 	/**
+	* Cleans resource name (removing double slashes)
+	*
+	* @method cleanFullpath
+	* @param {String} fullpath
+	* @return {String} fullpath cleaned
+	*/
+	cleanFullpath: function(fullpath)
+	{
+		//clean up the filename (to avoid problems with //)
+		if(fullpath.indexOf("://") == -1)
+			return fullpath.split("/").filter(function(v){ return !!v; }).join("/");
+		return fullpath;
+	},
+
+	/**
 	* Loads all the resources in the Object (it uses an object to store not only the filename but also the type)
 	*
 	* @method loadResources
 	* @param {Object} resources contains all the resources, associated with its type
 	* @param {Object}[options={}] options to apply to the loaded resources
 	*/
-
 	loadResources: function(res, options )
 	{
 		for(var i in res)
@@ -2447,6 +2473,7 @@ var ResourcesManager = {
 					full_url = url;
 					if(this.proxy) //proxy external files
 						return this.proxy + url.substr(pos+3); //"://"
+					return full_url;
 					break;
 				case 'blob':
 					return url; //special case for local urls like URL.createObjectURL
@@ -2702,8 +2729,7 @@ var ResourcesManager = {
 	registerResource: function( filename, resource )
 	{
 		//clean up the filename (to avoid problems with //)
-		if(filename.substr(0,7) != "http://")
-			filename = filename.split("/").filter(function(v){ return !!v; }).join("/");
+		filename = this.cleanFullpath( filename );
 
 		if(this.resources[ filename ] == resource)
 			return; //already registered
@@ -3281,6 +3307,7 @@ LS.ResourcesManager.processASCIIMesh = function(filename, data, options) {
 }
 
 LS.ResourcesManager.registerResourcePreProcessor("obj,ase", LS.ResourcesManager.processASCIIMesh, "text","Mesh");
+LS.ResourcesManager.registerResourcePreProcessor("stl", LS.ResourcesManager.processASCIIMesh, "binary","Mesh");
 
 LS.ResourcesManager.processASCIIScene = function(filename, data, options) {
 
@@ -3314,6 +3341,7 @@ LS.ResourcesManager.processASCIIScene = function(filename, data, options) {
 }
 
 LS.ResourcesManager.registerResourcePreProcessor("dae", LS.ResourcesManager.processASCIIScene, "text","Scene");
+
 
 
 
@@ -7240,6 +7268,20 @@ Transform.prototype.applyLocalTransformMatrix = function( M )
 	return;
 }
 
+//centers the node in the mesh bounding box center
+Transform.prototype.centerInMesh = function()
+{
+	var node = this._root;
+	if(!node)
+		return;
+	var mesh = node.getMesh();
+	if(!mesh || !mesh.bounding)
+		return;
+
+	var center = BBox.getCenter(mesh.bounding);
+	vec3.scale( this._position, center, -1 );
+	this._must_update_matrix = true;
+}
 
 
 /*
@@ -10714,12 +10756,14 @@ Collider["@shape"] = { widget:"combo", values: {"Box":1, "Sphere": 2, "Mesh":5 }
 
 Collider.prototype.onAddedToScene = function(scene)
 {
-	LEvent.bind(scene, "collectPhysicInstances", this.onGetColliders, this);
+	LEvent.bind( scene, "collectPhysicInstances", this.onGetColliders, this);
 }
 
 Collider.prototype.onRemovedFromScene = function(node)
 {
-	LEvent.unbind(scene, "collectPhysicInstances", this.onGetColliders, this);
+	var scene = node.scene;
+	if(scene)
+		LEvent.unbind( scene, "collectPhysicInstances", this.onGetColliders, this);
 }
 
 Collider.prototype.getMesh = function() {
@@ -10751,7 +10795,8 @@ Collider.prototype.onGetColliders = function(e, colliders)
 	if(!PI)
 		this._PI = PI = new LS.PhysicsInstance(this._root, this);
 
-	PI.matrix.set( this._root.transform._global_matrix );
+	if(this._root.transform)
+		PI.matrix.set( this._root.transform._global_matrix );
 	PI.type = this.shape;
 
 	//get mesh
@@ -11000,34 +11045,48 @@ LS.registerComponent(Rotator);
 
 function CameraController(o)
 {
+	this.enabled = true;
+
 	this.speed = 10;
 	this.rot_speed = 1;
 	this.wheel_speed = 1;
 	this.smooth = false;
 	this.allow_panning = true;
-	this.cam_type = "orbit"; //"fps"
-	this._moving = vec3.fromValues(0,0,0);
+	this.mode = CameraController.ORBIT;
 	this.orbit_center = null;
+
+	this._moving = vec3.fromValues(0,0,0);
 	this._collision = vec3.create();
 
 	this.configure(o);
 }
 
+CameraController.ORBIT = 1; //orbits around the center
+CameraController.FIRSTPERSON = 2; //moves relative to the camera
+CameraController.PLANE = 3; //moves paralel to a plane
+
 CameraController.icon = "mini-icon-cameracontroller.png";
 
-CameraController.prototype.onAddedToNode = function(node)
+CameraController["@mode"] = { type:"enum", values: { "Orbit": CameraController.ORBIT, "FirstPerson": CameraController.FIRSTPERSON, "Plane": CameraController.PLANE }};
+
+CameraController.prototype.onAddedToScene = function( scene )
 {
-	LEvent.bind(node,"mousedown",this.onMouse,this);
-	LEvent.bind(node,"mousemove",this.onMouse,this);
-	LEvent.bind(node,"mousewheel",this.onMouse,this);
-	LEvent.bind(node,"keydown",this.onKey,this);
-	LEvent.bind(node,"keyup",this.onKey,this);
-	LEvent.bind(node,"update",this.onUpdate,this);
+	LEvent.bind(scene,"mousedown",this.onMouse,this);
+	LEvent.bind(scene,"mousemove",this.onMouse,this);
+	LEvent.bind(scene,"mousewheel",this.onMouse,this);
+	LEvent.bind(scene,"keydown",this.onKey,this);
+	LEvent.bind(scene,"keyup",this.onKey,this);
+	LEvent.bind(scene,"update",this.onUpdate,this);
+}
+
+CameraController.prototype.onRemovedFromScene = function( scene )
+{
+	LEvent.unbindAll( scene, this );
 }
 
 CameraController.prototype.onUpdate = function(e)
 {
-	if(!this._root) 
+	if(!this._root || !this.enabled) 
 		return;
 
 	if(this._root.transform)
@@ -11036,7 +11095,7 @@ CameraController.prototype.onUpdate = function(e)
 	else if(this._root.camera)
 	{
 		var cam = this._root.camera;
-		if(this.cam_type == "fps")
+		if(this.mode == CameraController.FIRSTPERSON)
 		{
 			//move using the delta vector
 			if(this._moving[0] != 0 || this._moving[1] != 0 || this._moving[2] != 0)
@@ -11057,12 +11116,14 @@ CameraController.prototype.onUpdate = function(e)
 
 CameraController.prototype.onMouse = function(e, mouse_event)
 {
-	if(!this._root) return;
+	if(!this._root || !this.enabled) 
+		return;
 	
 	var cam = this._root.camera;
 	if(!cam) return;
 
-	if(!mouse_event) mouse_event = e;
+	if(!mouse_event)
+		mouse_event = e;
 
 	if(mouse_event.eventType == "mousewheel")
 	{
@@ -11074,7 +11135,11 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 
 	if(mouse_event.eventType == "mousedown")
 	{
-		this.testPerpendicularPlane( mouse_event.canvasx, gl.canvas.height - mouse_event.canvasy, cam.getCenter(), this._collision );
+		if(this.mode == CameraController.PLANE)
+			this.testOriginPlane( mouse_event.canvasx, gl.canvas.height - mouse_event.canvasy, this._collision );
+		else
+			this.testPerpendicularPlane( mouse_event.canvasx, gl.canvas.height - mouse_event.canvasy, cam.getCenter(), this._collision );
+		this._button = mouse_event.button;
 	}
 
 	//regular mouse dragging
@@ -11087,7 +11152,7 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 	}
 	else 
 	{
-		if(this.cam_type == "fps")
+		if(this.mode == CameraController.FIRSTPERSON)
 		{
 			cam.rotate(-mouse_event.deltax * this.rot_speed,[0,1,0]);
 			cam.updateMatrices();
@@ -11095,7 +11160,7 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 			cam.rotate(-mouse_event.deltay * this.rot_speed,right);
 			cam.updateMatrices();
 		}
-		else if(this.cam_type == "orbit")
+		else if(this.mode == CameraController.ORBIT)
 		{
 			if(this.allow_panning && (mouse_event.ctrlKey || mouse_event.button == 1)) //pan
 			{
@@ -11115,7 +11180,34 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 
 			}
 		}
+		else if(this.mode == CameraController.PLANE)
+		{
+			if(this._button == 2)
+			{
+				cam.orbit( -mouse_event.deltax * this.rot_speed, [0,1,0], cam.target );
+			}
+			else
+			{
+				var collision = vec3.create();
+				this.testOriginPlane( mouse_event.canvasx, gl.canvas.height - mouse_event.canvasy, collision );
+				var delta = vec3.sub( vec3.create(), this._collision, collision );
+				cam.move( delta );
+				cam.updateMatrices();
+			}
+		}
 	}
+}
+
+CameraController.prototype.testOriginPlane = function(x,y, result)
+{
+	var cam = this._root.camera;
+	var ray = cam.getRayInPixel( x, gl.canvas.height - y );
+	var result = result || vec3.create();
+
+	//test against plane at 0,0,0
+	if( geo.testRayPlane( ray.start, ray.direction, [0,0,0], [0,1,0], result ) )
+		return true;
+	return false;
 }
 
 CameraController.prototype.testPerpendicularPlane = function(x,y, center, result)
@@ -11135,7 +11227,9 @@ CameraController.prototype.testPerpendicularPlane = function(x,y, center, result
 
 CameraController.prototype.onKey = function(e, key_event)
 {
-	if(!this._root) return;
+	if(!this._root || !this.enabled) 
+		return;
+
 	//trace(key_event);
 	if(key_event.keyCode == 87)
 	{
@@ -11179,7 +11273,7 @@ CameraController.prototype.onKey = function(e, key_event)
 	//LEvent.trigger(Scene,"change");
 }
 
-LS.registerComponent(CameraController);
+LS.registerComponent( CameraController );
 /**
 * Node manipulator, allows to rotate it
 * @class NodeManipulator
@@ -12256,6 +12350,8 @@ LS.registerComponent(Knob);
 })();
 function ParticleEmissor(o)
 {
+	this.enabled = true;
+
 	this.max_particles = 1024;
 	this.warm_up_time = 0;
 
@@ -12332,22 +12428,34 @@ ParticleEmissor.MESH_EMISSOR = 3;
 
 ParticleEmissor.prototype.onAddedToNode = function(node)
 {
-	LEvent.bind(node,"update",this.onUpdate,this);
-	LEvent.bind(node,"start",this.onStart,this);
-	LEvent.bind(node, "collectRenderInstances", this.onCollectInstances, this);
 }
 
 ParticleEmissor.prototype.onRemovedFromNode = function(node)
 {
-	LEvent.unbind(node,"update",this.onUpdate,this);
-	LEvent.unbind(node,"start",this.onStart,this);
-	LEvent.unbind(node, "collectRenderInstances", this.onCollectInstances, this);
+}
+
+ParticleEmissor.prototype.onAddedToScene = function(scene)
+{
+	LEvent.bind( scene, "update",this.onUpdate,this);
+	LEvent.bind( scene, "start",this.onStart,this);
+	LEvent.bind( scene, "collectRenderInstances", this.onCollectInstances, this);
+	LEvent.bind( scene, "afterCameraEnabled",this.onAfterCamera, this);
+}
+
+ParticleEmissor.prototype.oRemovedFromScene = function(scene)
+{
+	LEvent.unbind( scene, "update",this.onUpdate,this);
+	LEvent.unbind( scene, "start",this.onStart,this);
+	LEvent.unbind( scene, "collectRenderInstances", this.onCollectInstances, this);
+	LEvent.unbind( scene, "afterCameraEnabled",this.onAfterCamera, this);
 }
 
 ParticleEmissor.prototype.getResources = function(res)
 {
-	if(this.emissor_mesh) res[ this.emissor_mesh ] = Mesh;
-	if(this.texture) res[ this.texture ] = Texture;
+	if(this.emissor_mesh)
+		res[ this.emissor_mesh ] = Mesh;
+	if(this.texture)
+		res[ this.texture ] = Texture;
 }
 
 ParticleEmissor.prototype.onResourceRenamed = function (old_name, new_name, resource)
@@ -12356,6 +12464,15 @@ ParticleEmissor.prototype.onResourceRenamed = function (old_name, new_name, reso
 		this.emissor_mesh = new_name;
 	if(this.texture == old_name)
 		this.texture = new_name;
+}
+
+ParticleEmissor.prototype.onAfterCamera = function(e,camera)
+{
+	if(!this.enabled)
+		return;
+
+	if(this.align_always)
+		this.updateMesh( camera );
 }
 
 ParticleEmissor.prototype.createParticle = function(p)
@@ -12407,15 +12524,25 @@ ParticleEmissor.prototype.createParticle = function(p)
 
 ParticleEmissor.prototype.onStart = function(e)
 {
-	if(this.warm_up_time <= 0) return;
+	if(!this.enabled)
+		return;
+
+	if(this.warm_up_time <= 0)
+		return;
 
 	var delta = 1/30;
 	for(var i = 0; i < this.warm_up_time; i+= delta)
-		this.onUpdate(null,delta,true);
+		this.onUpdate( null, delta, true);
 }
 
-ParticleEmissor.prototype.onUpdate = function(e,dt, do_not_updatemesh )
+ParticleEmissor.prototype.onUpdate = function(e, dt, do_not_updatemesh )
 {
+	if(!this.enabled)
+		return;
+
+	if(!this._root.scene)
+		throw("update without scene? impossible");
+
 	if(this._root.transform)
 		this._root.transform.getGlobalPosition(this._emissor_pos);
 
@@ -12478,9 +12605,10 @@ ParticleEmissor.prototype.onUpdate = function(e,dt, do_not_updatemesh )
 
 	//compute mesh
 	if(!this.align_always && !do_not_updatemesh)
-		this.updateMesh(Renderer._current_camera);
+		this.updateMesh( LS.Renderer._current_camera );
 
-	LEvent.trigger(Scene,"change");
+	//send change
+	LEvent.trigger( this._root.scene , "change");
 }
 
 ParticleEmissor.prototype.createMesh = function ()
@@ -12506,6 +12634,9 @@ ParticleEmissor.prototype.createMesh = function ()
 
 ParticleEmissor.prototype.updateMesh = function (camera)
 {
+	if(!camera) //no main camera specified (happens at early updates)
+		return;
+
 	if( this._mesh_maxparticles != this.max_particles) 
 		this.createMesh();
 
@@ -12710,12 +12841,10 @@ ParticleEmissor._identity = mat4.create();
 //ParticleEmissor.prototype.getRenderInstance = function(options,camera)
 ParticleEmissor.prototype.onCollectInstances = function(e, instances, options)
 {
-	if(!this._root) return;
+	if(!this._root || !this.enabled)
+		return;
 
 	var camera = Renderer._current_camera;
-
-	if(this.align_always)
-		this.updateMesh(camera);
 
 	if(!this._material)
 		this._material = new Material({ shader_name:"lowglobal" });
@@ -13676,6 +13805,7 @@ LS.registerComponent( RealtimeReflector );
 function Script(o)
 {
 	this.enabled = true;
+	this.name = "Unnamed";
 	this.code = "this.update = function(dt)\n{\n\tnode.scene.refresh();\n}";
 
 	this._script = new LScript();
@@ -13755,7 +13885,7 @@ Script.prototype.processCode = function(skip_events)
 	this._script.code = this.code;
 	if(this._root && !Script.block_execution )
 	{
-		var ret = this._script.compile({component:this, node: this._root});
+		var ret = this._script.compile({component:this, node: this._root, scene: this._root.scene });
 		if(	this._script._context )
 		{
 			this._script._context.__proto__.getComponent = (function() { return this; }).bind(this);
@@ -15441,6 +15571,8 @@ function Animation(o)
 		this.configure(o);
 }
 
+Animation.DEFAULT_SCENE_NAME = "@scene";
+
 Animation.prototype.createTake = function( name, duration )
 {
 	var take = new Animation.Take();
@@ -15609,12 +15741,12 @@ Take.prototype.createTrack = function( data )
 	return track;
 }
 
-Take.prototype.applyTracks = function( current_time, last_time, tracks_to_skip, ignore_interpolation )
+Take.prototype.applyTracks = function( current_time, last_time, ignore_interpolation )
 {
 	for(var i = 0; i < this.tracks.length; ++i)
 	{
 		var track = this.tracks[i];
-		if( track.enabled === false || !track.data || (tracks_to_skip && tracks_to_skip[i]) )
+		if( track.enabled === false || !track.data )
 			continue;
 
 		if( track.type == "events" )
@@ -17402,9 +17534,7 @@ var Renderer = {
 
 		scene = scene || this._current_scene;
 
-		LEvent.trigger(scene, "beforeCameraEnabled", camera );
 		this.enableCamera( camera, render_options, render_options.skip_viewport ); //set as active camera and set viewport
-		LEvent.trigger(scene, "afterCameraEnabled", camera ); //used to change stuff according to the current camera (reflection textures)
 
 		//scissors test for the gl.clear, otherwise the clear affects the full viewport
 		gl.scissor( gl.viewport_data[0], gl.viewport_data[1], gl.viewport_data[2], gl.viewport_data[3] );
@@ -17444,7 +17574,10 @@ var Renderer = {
 	*/
 	enableCamera: function(camera, render_options, skip_viewport)
 	{
-		LEvent.trigger(camera, "beforeEnabled", render_options );
+		var scene = this._current_scene;
+
+		LEvent.trigger( camera, "beforeEnabled", render_options );
+		LEvent.trigger( scene, "beforeCameraEnabled", camera );
 
 		//assign viewport manually (shouldnt use camera.getLocalViewport to unify?)
 		var startx = this._full_viewport[0];
@@ -17494,6 +17627,7 @@ var Renderer = {
 		Draw.setViewProjectionMatrix( this._view_matrix, this._projection_matrix, this._viewprojection_matrix );
 
 		LEvent.trigger( camera, "afterEnabled", render_options );
+		LEvent.trigger( scene, "afterCameraEnabled", camera ); //used to change stuff according to the current camera (reflection textures)
 	},
 
 	
@@ -18683,8 +18817,14 @@ var Picking = {
 		return collisions;
 	},
 
-	//you tell what info you want to retrieve associated with this color
-	getNextPickingColor: function(info)
+	/**
+	* Returns a color you should use to paint this node during picking rendering
+	* you tell what info you want to retrieve associated with this object if it is clicked
+	* @method getNextPickingColor
+	* @param {*} info
+	* @return {vec3} array containing all the RenderInstances that collided with the ray
+	*/
+	getNextPickingColor: function( info )
 	{
 		this._picking_next_color_id += 10;
 		var pick_color = new Uint32Array(1); //store four bytes number
@@ -18693,7 +18833,7 @@ var Picking = {
 		//byte_pick_color[3] = 255; //Set the alpha to 1
 
 		this._picking_nodes[ this._picking_next_color_id ] = info;
-		return new Float32Array([byte_pick_color[0] / 255,byte_pick_color[1] / 255,byte_pick_color[2] / 255, 1]);
+		return vec4.fromValues( byte_pick_color[0] / 255, byte_pick_color[1] / 255, byte_pick_color[2] / 255, 1 );
 	}
 };
 
@@ -21898,6 +22038,92 @@ var parserOBJ = {
 };
 Parser.registerParser(parserOBJ);
 
+//***** STL Parser *****************
+//based on https://github.com/tonylukasavage/jsstl
+var parserSTL = {
+	extension: 'stl',
+	data_type: 'mesh',
+	format: 'binary',
+	
+	parse: function( data, options )
+	{
+		options = options || {};
+
+		var positionsArray = [];
+		var normalsArray = [];
+		var indicesArray = [];
+
+		var dv = new DataView(data, 80); // 80 == unused header
+		var isLittleEndian = true;
+		var triangles = dv.getUint32(0, isLittleEndian); 
+		// console.log('arraybuffer length:  ' + stl.byteLength);
+		console.log('number of triangles: ' + triangles);
+		var offset = 4;
+
+		var tempA = vec3.create();
+		var tempB = vec3.create();
+		var tempC = vec3.create();
+		var tempN = vec3.create();
+
+		for (var i = 0; i < triangles; i++) {
+			// Get the normal for this triangle
+			var nx = dv.getFloat32(offset, isLittleEndian);
+			var ny = dv.getFloat32(offset+4, isLittleEndian);
+			var nz = dv.getFloat32(offset+8, isLittleEndian);
+
+			offset += 12;
+			// Get all 3 vertices for this triangle
+			for (var j = 0; j < 3; j++) {
+				var x = dv.getFloat32(offset, isLittleEndian);
+				var y = dv.getFloat32(offset+4, isLittleEndian);
+				var z = dv.getFloat32(offset+8, isLittleEndian);
+				//positionsArray.push(x,y,z);
+				positionsArray.push(x,z,-y); //flipped
+				offset += 12
+			}
+			
+			if(nx == 0 && ny == 0 && nz == 0) //compute normal
+			{
+				var l = positionsArray.length;
+				tempA.set( positionsArray.slice(l-9,l-6) );
+				tempB.set( positionsArray.slice(l-6,l-3) );
+				tempC.set( positionsArray.slice(l-3,l) );
+				vec3.sub( tempB, tempB, tempA );
+				vec3.sub( tempC, tempC, tempA );
+				vec3.cross( tempN, tempC, tempB );
+				nx = tempN[0]; ny = tempN[1]; nz = tempN[2];
+			}
+
+			//normalsArray.push(nx,ny,nz,nx,ny,nz,nx,ny,nz);
+			normalsArray.push(nx,nz,-ny,nx,nz,-ny,nx,nz,-ny); //flipped
+
+			// there's also a Uint16 "attribute byte count" that we
+			// don't need, it should always be zero.
+			offset += 2;   
+			// Create a new face for from the vertices and the normal             
+			//indicesArray.push( i*3, i*3+1, i*3+2 );
+		}
+		// The binary STL I'm testing with seems to have all
+		// zeroes for the normals, unlike its ASCII counterpart.
+		// We can use three.js to compute the normals for us, though,
+		// once we've assembled our geometry. This is a relatively 
+		// expensive operation, but only needs to be done once.
+
+		var mesh = { info: {} };
+
+		mesh.vertices = new Float32Array(positionsArray);
+		if (normalsArray.length > 0)
+			mesh.normals = new Float32Array(normalsArray);
+		if (indicesArray && indicesArray.length > 0)
+			mesh.triangles = new Uint16Array(indicesArray);
+
+		//extra info
+		mesh.bounding = Parser.computeMeshBounding( mesh.vertices );
+		return mesh;
+	}
+};
+Parser.registerParser( parserSTL );
+
 var parserTGA = { 
 	extension: 'tga',
 	data_type: 'image',
@@ -24023,11 +24249,11 @@ Player.prototype._onupdate = function(dt)
 //input
 Player.prototype._onmouse = function(e)
 {
-	//trace(e);
+	//console.log(e);
 	if(this.state != "playing")
 		return;
 
-	//check which node was clicked
+	//Intereactive: check which node was clicked (this is a mode that helps clicking stuff)
 	if(this.interactive && (e.eventType == "mousedown" || e.eventType == "mousewheel" ))
 	{
 		var node = LS.Picking.getNodeAtCanvasPosition( this.scene, null, e.canvasx, e.canvasy );
@@ -24037,24 +24263,26 @@ Player.prototype._onmouse = function(e)
 	var levent = null; //levent dispatched
 
 	//send event to clicked node
-	if(this._clicked_node && this._clicked_node.flags.interactive)
+	if(this._clicked_node) // && this._clicked_node.flags.interactive)
 	{
 		e.scene_node = this._clicked_node;
 		levent = LEvent.trigger(this._clicked_node,e.eventType,e);
 	}
 
-	//send event to root
+	//send event to scene (or to root?)
 	if(!levent || !levent.stop)
-		LEvent.trigger( this.scene.root,e.eventType,e);
+		LEvent.trigger( this.scene, e.eventType, e );
 
 	if(e.eventType == "mouseup")
 		this._clicked_node = null;
 
+	//hardcoded event handlers in the player
 	if(this.onMouse)
 	{
 		e.scene_node = this._clicked_node;
 		var r = this.onMouse(e);
-		if(r) return;
+		if(r)
+			return;
 	}
 }
 
@@ -24063,6 +24291,7 @@ Player.prototype._onkey = function(e)
 	if(this.state != "playing")
 		return;
 
+	//hardcoded event handlers in the player
 	if(this.onKey)
 	{
 		var r = this.onKey(e);

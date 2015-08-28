@@ -197,9 +197,37 @@ var LiteGUI = {
 				this.modules[i].onUnload();
 	},
 
+	//events
+	trigger: function(element, event_name, params)
+	{
+		var evt = document.createEvent( 'CustomEvent' );
+		evt.initCustomEvent( event_name, true,true, params ); //canBubble, cancelable, detail
+		if(element.dispatchEvent)
+			element.dispatchEvent(evt);
+		else
+			throw("trigger can only be called in DOMElements");
+		return evt;
+	},
+
+	bind: function(element, event, callback)
+	{
+		element.addEventListener(event, callback);
+	},
+
+	unbind: function(element, event, callback)
+	{
+		element.removeEventListener(event, callback);
+	},
+
 	add: function( litegui_element )
 	{
 		this.content.appendChild( litegui_element.root || litegui_element );
+	},
+
+	remove: function( element )
+	{
+		if(element.parentNode)
+			element.parentNode.removeChild(element);
 	},
 
 	getById: function(id)
@@ -254,6 +282,7 @@ var LiteGUI = {
 		this.last_undo_time = now;
 		if(this.undo_steps.length > this.max_undo_steps)
 			this.undo_steps.shift();
+		LiteGUI.trigger(this.root, "new_undo", o);
 	},
 
 	doUndo: function()
@@ -264,12 +293,13 @@ var LiteGUI = {
 		if(step.callback != null)
 			step.callback(step.data);
 
-		$(LiteGUI).trigger("undo", step);
+		LiteGUI.trigger(this.root, "undo", step);
 	},
 
 	removeUndoSteps: function()
 	{
 		this.undo_steps = [];
+		LiteGUI.trigger(this.root, "clear_undo" );
 	},
 
 	// Clipboard ******************
@@ -277,12 +307,12 @@ var LiteGUI = {
 	toClipboard: function( object )
 	{
 		if(object == null) return;
-		localStorage.setItem("lite_clipboard", JSON.stringify( object ) );
+		localStorage.setItem("litegui_clipboard", JSON.stringify( object ) );
 	},
 
 	getClipboard: function()
 	{
-		var data = localStorage.getItem("lite_clipboard");
+		var data = localStorage.getItem("litegui_clipboard");
 		if(!data) return null;
 		return JSON.parse(data);
 	},
@@ -651,17 +681,6 @@ var LiteGUI = {
 	focus: function( element )
 	{
 		element.focus();
-	},
-
-	trigger: function(element, event_name, params)
-	{
-		var evt = document.createEvent( 'CustomEvent' );
-		evt.initCustomEvent( event_name, true,true, params ); //canBubble, cancelable, detail
-		if(element.dispatchEvent)
-			element.dispatchEvent(evt);
-		else
-			throw("trigger can only be called in DOMElements");
-		return evt;
 	},
 
 	draggable: function(container, dragger)
@@ -1067,7 +1086,7 @@ if(typeof escapeHtmlEntities == 'undefined') {
         };
     }
 
-function beautifyCode(code, reserved)
+function beautifyCode( code, reserved, skip_css )
 {
 	reserved = reserved || ["abstract", "else", "instanceof", "super", "boolean", "enum", "int", "switch", "break", "export", "interface", "synchronized", "byte", "extends", "let", "this", "case", "false", "long", "throw", "catch", "final", "native", "throws", "char", "finally", "new", "transient", "class", "float", "null", "true", "const", "for", "package", "try", "continue", "function", "private", "typeof", "debugger", "goto", "protected", "var", "default", "if", "public", "void", "delete", "implements", "return", "volatile", "do", "import", "short", "while", "double", "in", "static", "with"];
 
@@ -1104,6 +1123,50 @@ function beautifyCode(code, reserved)
 		return "<span class='cmnt'>" + v + "</span>";
 	});
 
+	if(!skip_css)
+		code = "<style>.obj { color: #79B; } .prop { color: #B97; }	.str,.num { color: #A79; } .cmnt { color: #798; } .rsv { color: #9AB; } </style>" + code;
+
+	return code;
+}
+
+function beautifyJSON( code, skip_css )
+{
+	if(typeof(code) == "object")
+		code = JSON.stringify(code);
+
+	var reserved = ["false", "true", "null"];
+
+	//reserved words
+	code = code.replace(/(\w+)/g, function(v) {
+		if(reserved.indexOf(v) != -1)
+			return "<span class='rsv'>" + v + "</span>";
+		return v;
+	});
+
+
+	//numbers
+	code = code.replace(/([0-9]+)/g, function(v) {
+		return "<span class='num'>" + v + "</span>";
+	});
+
+	//obj.method
+	code = code.replace(/(\w+\.\w+)/g, function(v) {
+		var t = v.split(".");
+		return "<span class='obj'>" + t[0] + "</span>.<span class='prop'>" + t[1] + "</span>";
+	});
+
+	//strings
+	code = code.replace(/(\"(\\.|[^\"])*\")/g, function(v) {
+		return "<span class='str'>" + v + "</span>";
+	});
+
+	//comments
+	code = code.replace(/(\/\/[a-zA-Z0-9\?\!\(\)_ ]*)/g, function(v) {
+		return "<span class='cmnt'>" + v + "</span>";
+	});
+
+	if(!skip_css)
+		code = "<style>.obj { color: #79B; } .prop { color: #B97; }	.str { color: #A79; } .num { color: #B97; } .cmnt { color: #798; } .rsv { color: #9AB; } </style>" + code;
 
 	return code;
 }
@@ -4374,10 +4437,17 @@ function beautifyCode(code, reserved)
 	}
 
 	/****************** DIALOG **********************/
+	/**
+	* Dialog
+	*
+	* @class Dialog
+	* @param {string} id
+	* @param {Object} options useful options are { title, width, height, closable, on_close, }
+	* @constructor
+	*/
 	function Dialog(id, options)
 	{
 		this._ctor( id, options );
-		//this.makeDialog(options);
 	}
 
 	Dialog.MINIMIZED_WIDTH = 200;
@@ -4437,7 +4507,8 @@ function beautifyCode(code, reserved)
 		}
 
 		//if(options.scroll == false)	this.content.style.overflow = "hidden";
-		if(options.scroll == true)	this.content.style.overflow = "auto";
+		if(options.scroll == true)
+			this.content.style.overflow = "auto";
 
 		$(panel).find(".close-button").bind("click", this.close.bind(this) );
 		$(panel).find(".minimize-button").bind("click", this.minimize.bind(this) );
@@ -4447,6 +4518,10 @@ function beautifyCode(code, reserved)
 		this.makeDialog(options);
 	}
 
+	/**
+	* add widget or html to the content of the dialog
+	* @method add
+	*/
 	Dialog.prototype.add = function( litegui_item )
 	{
 		this.content.appendChild( litegui_item.root || litegui_item );
@@ -4652,9 +4727,15 @@ function beautifyCode(code, reserved)
 	}
 	*/	
 
+	/**
+	* destroys the dialog
+	* @method close
+	*/
 	Dialog.prototype.close = function() {
 		$(this.root).remove();
 		$(this).trigger("closed");
+		if(this.on_close)
+			this.on_close();
 	}
 
 	Dialog.prototype.highlight = function(time)
@@ -4741,6 +4822,10 @@ function beautifyCode(code, reserved)
 		parent.attach(this.root);
 	}
 
+	/**
+	* shows a hidden dialog
+	* @method show
+	*/
 	Dialog.prototype.show = function(v,callback)
 	{
 		if(!this.root.parentNode)
@@ -4751,6 +4836,10 @@ function beautifyCode(code, reserved)
 		$(this).trigger("shown");
 	}
 
+	/**
+	* hides the dialog
+	* @method hide
+	*/
 	Dialog.prototype.hide = function(v,callback)
 	{
 		//$(this.root).hide(v,null,100,callback);
@@ -4778,6 +4867,11 @@ function beautifyCode(code, reserved)
 		this.root.style.top = Math.floor(( $(this.root.parentNode).height() - $(this.root).height() ) * 0.5) + "px";
 	}
 
+	/**
+	* Adjust the size of the dialog to the size of the content
+	* @method adjustSize
+	* @param {number} margin
+	*/
 	Dialog.prototype.adjustSize = function( margin )
 	{
 		margin = margin || 0;
@@ -6165,6 +6259,7 @@ Inspector.prototype.addList = function(name, values, options)
 			$(this).toggleClass("selected");
 		else
 		{
+			//batch action, jquery...
 			$(element).find("li").removeClass("selected");
 			$(this).addClass("selected");
 		}
@@ -6205,7 +6300,7 @@ Inspector.prototype.addList = function(name, values, options)
 		for(var i = 0; i < items.length; i++)
 		{
 			if(items[i].dataset["name"] == name)
-				$(items[i]).remove();
+				LiteGUI.remove( items[i] );
 		}
 	}
 
@@ -6221,17 +6316,51 @@ Inspector.prototype.addList = function(name, values, options)
 		return r;
 	}
 
+	element.getIndex = function(num)
+	{
+		var items = this.querySelectorAll("ul li");
+		return items[num];
+	}
+
+	element.selectIndex = function(num)
+	{
+		var items = this.querySelectorAll("ul li");
+		for(var i = 0; i < items.length; ++i)
+		{
+			var item = items[i];
+			if(i == num)
+				item.classList.add("selected");
+			else
+				item.classList.remove("selected");
+		}
+		return items[num];
+	}
+
+	element.scrollToIndex = function(num)
+	{
+		var items = this.querySelectorAll("ul li");
+		var item = items[num];
+		if(!item)
+			return;
+		this.scrollTop = item.offsetTop;
+	}
+
 	element.selectAll = function()
 	{
 		var items = this.querySelectorAll("ul li");
 		for(var i = 0; i < items.length; ++i)
 		{
 			var item = items[i];
-			if($(item).hasClass("selected"))
+			if( item.classList.contains("selected") )
 				continue;
 			$(item).click();
 		}
 		return r;
+	}
+
+	element.setValue = function(v)
+	{
+		this.updateItems(v);
 	}
 
 	if(options.height) 

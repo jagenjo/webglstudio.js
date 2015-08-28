@@ -2764,7 +2764,7 @@ Mesh.plane = function(options) {
 		for (var x = 0; x <= detailX; x++) {
 		  var s = x / detailX;
 		  if(xz)
-			  vertices.push((2 * s - 1) * width, 0, (2 * t - 1) * height);
+			  vertices.push((2 * s - 1) * width, 0, -(2 * t - 1) * height);
 		  else
 			  vertices.push((2 * s - 1) * width, (2 * t - 1) * height, 0);
 		  if (coords) coords.push(s, t);
@@ -2773,8 +2773,8 @@ Mesh.plane = function(options) {
 			var i = x + y * (detailX + 1);
 			if(xz) //horizontal
 			{
-				triangles.push(i + 1, i, i + detailX + 1);
-				triangles.push(i + 1, i + detailX + 1, i + detailX + 2);
+				triangles.push(i + 1, i + detailX + 1, i);
+				triangles.push(i + 1, i + detailX + 2, i + detailX + 1);
 			}
 			else //vertical
 			{

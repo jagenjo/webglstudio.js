@@ -172,7 +172,7 @@ Timeline.prototype.onSceneAnimation = function()
 	if(!LS.GlobalScene.animation)
 	{
 		LS.GlobalScene.animation = new LS.Animation();
-		LS.GlobalScene.animation.name = "@scene";
+		LS.GlobalScene.animation.name = LS.Animation.DEFAULT_SCENE_NAME;
 		var take = LS.GlobalScene.animation.createTake( "default", Timeline.DEFAULT_DURATION );
 	}
 
@@ -642,7 +642,7 @@ Timeline.prototype.redrawCanvas = function()
 	}
 }
 
-Timeline.prototype.setCurrentTime = function( time, skip_redraw, tracks_to_skip )
+Timeline.prototype.setCurrentTime = function( time, skip_redraw )
 {
 	//if(!this.session) return;
 
@@ -659,13 +659,37 @@ Timeline.prototype.setCurrentTime = function( time, skip_redraw, tracks_to_skip 
 	this.session.current_time = time;
 	this.current_time_widget.setValue( time );
 
+	//auto scroll when the cursor exits
+	if( this._timeline_data && time > this._timeline_data.end_time ) 
+		this.session.start_time += this._timeline_data.end_time;
+
+	//redraw only if visible
 	if(!skip_redraw && this.canvas.offsetParent !== null)
 		this.redrawCanvas();
 
+	//preview: apply track samples to scene
 	if(this.preview && this.current_take)
 	{
-		//assign values
-		this.current_take.applyTracks( this.session.current_time, this.session.last_time, tracks_to_skip, this.recording );
+		//recording is special case
+		if(this.recording && this._recording_time >= 0)
+		{
+			//apply tracks and store last value to check if we need to create keyframe
+			for(var i = 0; i < this.current_take.tracks.length; ++i)
+			{
+				var track = this.current_take.tracks[i];
+				if(!track.enabled || !track.data)
+				continue;
+				var sample = track.getSample( time );
+				if( sample !== undefined )
+				{
+					track._target = LS.GlobalScene.setPropertyValueFromPath( track._property_path, sample );
+					track._last_sample = sample; //store last value
+				}
+			}
+		}
+		else
+			this.current_take.applyTracks( this.session.current_time, this.session.last_time );
+
 		this.session.last_time = this.session.current_time;
 		LS.GlobalScene.refresh();
 	}
@@ -719,6 +743,7 @@ Timeline.prototype.update = function( dt )
 
 	if(this.recording)
 	{
+		//update coundown in screen
 		var elem = document.getElementById("timeline-recording-countdown");
 		if(this._recording_time < 0)
 		{
@@ -740,9 +765,7 @@ Timeline.prototype.update = function( dt )
 			if( time >= this.current_take.duration )
 				this.current_take.duration = time;
 			var sampled = this.sampleAllTracks(true,time); //sample current values
-			this.setCurrentTime( time, undefined, sampled ); //apply changes if preview is on
-			if( time > this._timeline_data.end_time )
-				this.session.start_time += this._timeline_data.end_time;
+			this.setCurrentTime( time ); //apply changes if preview is on
 		}
 	}
 	
@@ -1124,6 +1147,31 @@ Timeline.prototype.onContextMenu = function( e )
 	
 }
 
+
+Timeline.prototype.addUndoTakeEdited = function( info )
+{
+	if(!info)
+		return;
+
+	var that = this;
+
+	LiteGUI.addUndoStep({ 
+		title: "Take edited ",
+		data: { animation: that.current_animation.name, take: info.name, data: info },
+		callback: function(d) {
+			var anim = d.animation == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation ];
+			if(!anim)
+				return;
+			var take = anim.getTake(d.take);
+			if(!take)
+				return;
+			take.configure( d.data );
+			that.animationModified();
+			that.redrawCanvas();
+		}
+	});
+}
+
 Timeline.prototype.addUndoTrackCreated = function( track )
 {
 	if(!track)
@@ -1132,9 +1180,10 @@ Timeline.prototype.addUndoTrackCreated = function( track )
 	var that = this;
 
 	LiteGUI.addUndoStep({ 
+		title: "Track created: " + track.name,
 		data: { animation: that.current_animation.name, take: that.current_take.name, index: that.current_take.tracks.indexOf( track ) },
 		callback: function(d) {
-			var anim = LS.ResourcesManager.resources[d.animation];
+			var anim = d.animation == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation ];
 			if(!anim)
 				return;
 			var take = anim.getTake(d.take);
@@ -1149,29 +1198,6 @@ Timeline.prototype.addUndoTrackCreated = function( track )
 	});
 }
 
-Timeline.prototype.addUndoTakeEdited = function( info )
-{
-	if(!info)
-		return;
-
-	var that = this;
-
-	LiteGUI.addUndoStep({ 
-		data: { animation: that.current_animation.name, take: info.name, data: info },
-		callback: function(d) {
-			var anim = LS.ResourcesManager.resources[d.animation];
-			if(!anim)
-				return;
-			var take = anim.getTake(d.take);
-			if(!take)
-				return;
-			take.configure( d.data );
-			that.animationModified();
-			that.redrawCanvas();
-		}
-	});
-}
-
 Timeline.prototype.addUndoTrackEdited = function( track )
 {
 	if(!track)
@@ -1180,9 +1206,10 @@ Timeline.prototype.addUndoTrackEdited = function( track )
 	var that = this;
 
 	LiteGUI.addUndoStep({ 
+		title: "Track edited: " + track.name,
 		data: { animation: that.current_animation.name, take: that.current_take.name, track: track.serialize(), index: that.current_take.tracks.indexOf( track ) },
 		callback: function(d) {
-			var anim = LS.ResourcesManager.resources[d.animation];
+			var anim = d.animation == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation ];
 			if(!anim)
 				return;
 			var take = anim.getTake(d.take);
@@ -1202,9 +1229,10 @@ Timeline.prototype.addUndoTrackRemoved = function( track )
 	var that = this;
 
 	LiteGUI.addUndoStep({ 
+		title: "Track removed: " + track.name,
 		data: { animation: that.current_animation.name, take: that.current_take.name, track: track.serialize(), index: that.current_take.tracks.indexOf( track ) },
 		callback: function(d) {
-			var anim = LS.ResourcesManager.resources[d.animation];
+			var anim = d.animation == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation ];
 			if(!anim)
 				return;
 			var take = anim.getTake(d.take);
@@ -1218,10 +1246,93 @@ Timeline.prototype.addUndoTrackRemoved = function( track )
 	});
 }
 
+Timeline.prototype.onInsertKeyframeButton = function( button, relative )
+{
+	var take = this.current_take;
+	if(!take)
+	{
+		LiteGUI.alert("No track selected, create a new one using the animation editor.");
+		return;
+	}
+
+	//show dialog to select keyframe options (by uid or nodename)
+	//TODO
+
+	var locator = button.dataset["propertyuid"];
+	var original_locator = locator;
+	var name = button.dataset["propertyname"];
+
+	var info = LS.GlobalScene.getPropertyInfo( locator );
+	if(info === null)
+		return console.warn("Property info not found: " + locator );
+
+	//convert absolute to relative locator
+	if( relative )
+	{
+		var t = locator.split("/");
+		if(info.node && info.node.uid == t[0])
+		{
+			t[0] = info.node.name;
+			if(info.target)
+				t[1] = LS.getObjectClassName( info.target );
+			locator = t.join("/");
+		}
+	}
+
+	//quantize time
+	var time = Math.round( this.session.current_time * 30) / 30;
+
+	var size = 0;
+	var value = info.value;
+	var interpolation = LS.BEZIER;
+	if(info.value !== null)
+	{
+		if( info.value.constructor == Float32Array )
+			size = info.value.length;
+		else if( info.value.constructor === Number )
+			size = 1;
+	}
+
+	if(size == 0 || info.type == "enum")
+		interpolation = LS.NONE;
+
+	var track = take.getTrack( locator );
+	var track_created = false;
+	if(!track)
+	{
+		//search for a track that has the same locator (in case you created a relative track and clicked the animation button)
+		for(var i = 0; i < take.tracks.length; ++i)
+		{
+			if( take.tracks[i]._original_locator != original_locator )
+				continue;
+			track = take.tracks[i];
+			break;
+		}
+
+		if(!track)
+		{
+			track = take.createTrack( { name: name, property: locator, type: info.type, value_size: size, interpolation: interpolation, duration: this.session.end_time, data: [] } );
+			track._original_locator = original_locator;
+			track_created = true;
+		}
+	}
+
+	//undo
+	if(track_created)
+		this.addUndoTrackCreated( track );
+	else
+		this.addUndoTrackEdited( track );
+
+	console.log("Keyframe added");
+	track.addKeyframe( time , value );
+
+	this.redrawCanvas();
+}
+
 Timeline.prototype.insertKeyframe = function( track, only_different, time )
 {
 	if(!track)
-		return;
+		return false;
 
 	//quantize time
 	if(time === undefined)
@@ -1231,33 +1342,28 @@ Timeline.prototype.insertKeyframe = function( track, only_different, time )
 	//sample
 	var info = track.getPropertyInfo();
 	if(!info)
-		return;
+		return false;
 
 	//only store if the value is different
-	if( only_different )
+	if( only_different && track._last_sample !== undefined )
 	{
 		//sample
-		var sample = track.getSample( time );
-		if(sample !== undefined)
+		if( track.value_size == 1)
 		{
-
-			if( track.value_size == 1)
-			{
-				if( Math.abs(sample - info.value) < 0.0001 )
-					return; //same value
-			}
-			else if(track.value_size > 1)
-			{
-				for(var i = 0; i < track.value_size; ++i)
-				{
-					if( Math.abs(sample[i] - info.value[i]) < 0.0001 )
-						return; //same value
-				}
-			}
-			else
-				if( sample == info.value )
-					return; //same value
+			if( Math.abs(track._last_sample - info.value) < 0.0001 )
+				return false; //same value
 		}
+		else if(track.value_size > 1)
+		{
+			for(var i = 0; i < track.value_size; ++i)
+			{
+				if( Math.abs(track._last_sample[i] - info.value[i]) < 0.0001 )
+					return false; //same value
+			}
+		}
+		else
+			if( track._last_sample == info.value )
+				return false; //same value
 	}
 
 	//add
@@ -1622,7 +1728,7 @@ Timeline.prototype.toggleRecording = function(v)
 		elem.innerHTML = "REC";
 		elem.style.pointerEvents = "none";
 		document.body.appendChild(elem);
-		this.preview_widget.setValue(false);
+		//this.preview_widget.setValue(false);
 
 		//save UNDO
 		this._recording_undo = this.current_take.serialize();
@@ -1634,7 +1740,7 @@ Timeline.prototype.toggleRecording = function(v)
 		if(elem)
 			elem.parentNode.removeChild(elem);
 		
-		this.preview_widget.setValue(true);
+		//this.preview_widget.setValue(true);
 		this.addUndoTakeEdited( this._recording_undo );
 		delete this._recording_undo;
 	}
@@ -1651,7 +1757,7 @@ Timeline.prototype.onReload = function()
 		return;
 	}
 
-	if(this.current_animation.name == "@scene")
+	if(this.current_animation.name == LS.Animation.DEFAULT_SCENE_NAME )
 		this.setAnimation( LS.GlobalScene.animation );
 }
 

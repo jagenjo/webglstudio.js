@@ -88,16 +88,7 @@ var parentingNodeTool = {
 			return;
 
 		//save undo
-		LiteGUI.addUndoStep({ 
-			data: { node: child.uid, old_parent: child.parentNode.uid },
-			callback: function(d) {
-				var old_parent = scene.getNode( d.old_parent );
-				var node = scene.getNode( d.node );
-				if(!node || !old_parent)
-					return;
-				old_parent.addChild( node, null, true);
-			}
-		});
+		UndoModule.saveNodeParentingUndo( child );
 
 		//change parent
 		parent.addChild(child, null, true);

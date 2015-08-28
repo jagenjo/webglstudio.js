@@ -133,77 +133,7 @@ var AnimationModule = {
 
 	insertKeyframe: function( button, relative )
 	{
-		var take = this.timeline.current_take;
-		if(!take)
-		{
-			LiteGUI.alert("No track selected, create a new one using the animation editor.");
-			return;
-		}
-
-		//show dialog to select keyframe options (by uid or nodename)
-		//TODO
-
-		var locator = button.dataset["propertyuid"];
-		var original_locator = locator;
-		var name = button.dataset["propertyname"];
-
-		var info = LS.GlobalScene.getPropertyInfo( locator );
-		if(info === null)
-			return console.warn("Property info not found: " + locator );
-
-		//convert absolute to relative locator
-		if( relative )
-		{
-			var t = locator.split("/");
-			if(info.node && info.node.uid == t[0])
-			{
-				t[0] = info.node.name;
-				if(info.target)
-					t[1] = LS.getObjectClassName( info.target );
-				locator = t.join("/");
-			}
-		}
-
-		//quantize time
-		var time = Math.round( this.timeline.session.current_time * 30) / 30;
-
-		var size = 0;
-		var value = info.value;
-		var interpolation = LS.BEZIER;
-		if(info.value !== null)
-		{
-			if( info.value.constructor == Float32Array )
-				size = info.value.length;
-			else if( info.value.constructor === Number )
-				size = 1;
-		}
-
-		if(size == 0 || info.type == "enum")
-			interpolation = LS.NONE;
-
-		var track = take.getTrack( locator );
-		if(!track)
-		{
-			//search for a track that has the same locator (in case you created a relative track and clicked the animation button)
-			for(var i = 0; i < take.tracks.length; ++i)
-			{
-				if( take.tracks[i]._original_locator != original_locator )
-					continue;
-				track = take.tracks[i];
-				break;
-			}
-
-			if(!track)
-			{
-				track = take.createTrack( { name: name, property: locator, type: info.type, value_size: size, interpolation: interpolation, duration: this.timeline.session.end_time, data: [] } );
-				track._original_locator = original_locator;
-			}
-		}
-
-		console.log("Keyframe added");
-		track.addKeyframe( time , value );
-
-		this.timeline.redrawCanvas();
+		this.timeline.onInsertKeyframeButton(button, relative);
 	},
 
 	update: function(dt)

@@ -1121,9 +1121,10 @@ var DriveModule = {
 			var folders = [];
 			for(var i in root)
 			{
-				var folder = { id: i, fullpath: fullpath + "/" + i, type:"folder", candrag: true, className: 'folder', folder: i };
+				var clean_fullpath = LS.ResourcesManager.cleanFullpath( fullpath + "/" + i );
+				var folder = { id: clean_fullpath, content: i, fullpath: clean_fullpath, type:"folder", candrag: true, className: 'folder', folder: i };
 				if(root[i])
-					folder.children = get_folders(fullpath + "/" + i, root[i] );
+					folder.children = get_folders( clean_fullpath, root[i] );
 				folders.push( folder );
 			}
 			return folders;
@@ -2129,7 +2130,10 @@ DriveModule.registerAssignResourceCallback("SceneNode", function(fullpath, resty
 DriveModule.registerAssignResourceCallback("SceneTree", function(fullpath, restype, resource_item) {
 	LiteGUI.confirm("Are you sure? you will loose the current scene", function(v) {
 		LS.GlobalScene.clear();
-		LS.GlobalScene.load(ResourcesManager.path + fullpath);
+		LS.GlobalScene.load( LS.ResourcesManager.path + fullpath, function(scene,url){
+			scene.extra.folder = LS.ResourcesManager.getFolder( fullpath );
+			scene.extra.fullpath = fullpath;
+		});
 		DriveModule.closeTab();
 	});
 });

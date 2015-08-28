@@ -1,6 +1,10 @@
-//Actions are commands that you could perform in nodes or components, like copy_&pasted, clone, get info, etc
-//Actions can be seen using the right mouse button over a node.
-//They can be called using the quickbar
+/* Actions system
+Actions are commands that you could perform in nodes or components, like copy,paste, clone, delete, get info, etc
+They could be performed using the right mouse button or the quickbar
+To retrieve the actions the system calls getEditorActions in the instance, this should return an object containing action name and info about the action.
+
+When performing an action the system calls doEditorAction in the instance, passing the name.
+*/
 
 /* Scene Node Actions *********************************************/
 LS.SceneNode.editor_actions = {};
@@ -37,6 +41,13 @@ LS.SceneNode.editor_actions["select_children"] = {
 	}
 };
 
+LS.SceneNode.editor_actions["inspect_in_dialog"] = { 
+	title:"Inspect in dialog",
+	callback: function( node ){
+		EditorModule.inspectInDialog(node);
+	}
+};
+
 LS.SceneNode.editor_actions["info"] = { 
 	title:"Show Information",
 	callback: function( node ){
@@ -66,8 +77,19 @@ LS.Transform.prototype.getEditorActions = function( actions )
 	var pos = actions.indexOf("Delete");
 	if(pos != -1)
 		actions.splice(pos,1);
+	actions.push("Center in Mesh");
 	return actions;
 }
+
+LS.Transform.prototype.doEditorAction = function( name )
+{
+	if (name == "Center in Mesh")
+		this.centerInMesh();
+	else
+		return false;
+	return true;
+}
+
 
 LS.Light.prototype.getEditorActions = function( actions )
 {

@@ -24,13 +24,13 @@ $(function() {
 		toConsole("Loading modules...");
 		var num = 0;
 		for(var i in config.modules)
-			toConsole( "<span id='msg-module-"+ (num++) + "' class='tinybox'></span> " + config.modules[i] );
+			toConsole( "<span id='msg-module-"+ (num++) + "' class='tinybox'></span> <span class='name'>" + config.modules[i] + "</span>" );
 
 		LiteGUI.requireScript( config.modules, onReady, onProgress, onError );
 	}
 
 	//one module loaded
-	function onProgress(name, num)
+	function onProgress( name, num )
 	{
 		//toConsole( " <span class='tinybox' style='background-color: #44ffaa'></span> " + name);
 		$( "#msg-module-" + num + ".tinybox").addClass("ok");
@@ -40,8 +40,11 @@ $(function() {
 	//one module loaded
 	function onError(err, name, num)
 	{
-		$( "#msg-module-" + num + ".tinybox").addClass("error");
-		console.error(err);
+		var box = $( "#msg-module-" + num + ".tinybox");
+		var line = box.parent();
+		line.addClass("error");
+		box.addClass("error");
+		console.error("Error loading module: " + line.find(".name").html() );
 	}
 
 

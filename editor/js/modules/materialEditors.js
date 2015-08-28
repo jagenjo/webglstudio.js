@@ -58,7 +58,7 @@ EditorModule.showMaterialNodeInfo = function(node, attributes)
 	var mat_type = LS.getObjectClassName(material);
 
 	attributes.current_section.querySelector('.options_section').addEventListener("click", inner_show_options_menu );
-	$(attributes.current_section).bind("wchange", function() { EditorModule.saveComponentUndo(material); });
+	$(attributes.current_section).bind("wchange", function() { UndoModule.saveMaterialChangeUndo( material ); });
 
 	attributes.addInfo("Class", mat_type );
 
@@ -146,27 +146,19 @@ EditorModule.showMaterialNodeInfo = function(node, attributes)
 			else
 				return;
 
+			UndoModule.saveNodeMaterialChangeUndo( node );			
 			node.material = material;
+			EditorModule.refreshAttributes();
 			LS.GlobalScene.refresh();
 		}
 		else if( v == "Delete" )
 		{
 			var material = node.getMaterial();
 			if(!material) return;
-			
-			LiteGUI.addUndoStep({ 
-				data: { node: node, info: JSON.stringify( material.serialize()) }, //stringify to save some space
-				callback: function(d) {
-					d.node.material = new Material( JSON.parse(d.info) );
-					$(d.node).trigger("changed");
-					EditorModule.inspectNode(Scene.selected_node);
-					LS.GlobalScene.refresh();
-				}
-			});
 
+			UndoModule.saveNodeMaterialChangeUndo( node );			
 			node.material = null; 
-			//EditorModule.showNodeInfo(node);
-			EditorModule.inspectNode(node);
+			EditorModule.refreshAttributes();
 			LS.GlobalScene.refresh();
 		}
 		else if( v == "Share" )

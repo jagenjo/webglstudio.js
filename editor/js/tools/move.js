@@ -268,7 +268,7 @@ var moveNodeTool = {
 	{
 		if(!e.dragging) return;
 		if(moveNodeTool._on_top_of != "center") return;
-		var node = Scene.selected_node;
+		var node = SelectionModule.getSelectedNode();
 		if(!node) return;
 
 		var camera = ToolUtils.getCamera();

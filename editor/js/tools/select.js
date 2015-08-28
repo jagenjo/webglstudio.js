@@ -52,7 +52,7 @@ var selectTool = {
 				return false;
 
 			if(e.button == 2)
-				EditorModule.showContextualNodeMenu( instance_info.instance, e );
+				EditorModule.showContextualNodeMenu( instance_info.constructor === LS.SceneNode ? instance_info : instance_info.instance, e );
 			else if(e.shiftKey)
 			{
 				if( SelectionModule.isSelected( instance_info ) )

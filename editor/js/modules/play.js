@@ -173,7 +173,8 @@ var PlayModule = {
 		if(!this.inplayer)
 			return;
 		
-		LS.GlobalScene.triggerInNodes(e.eventType, e);
+		LEvent.trigger( LS.GlobalScene, e.eventType, e );
+		//LS.GlobalScene.triggerInNodes(e.eventType, e);
 
 		//block propagation
 		e.preventDefault();

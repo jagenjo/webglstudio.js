@@ -213,7 +213,7 @@ var CodingModule = //do not change
 
 		//compute id
 		var id = options.id || instance.uid || instance.id;
-		var title = options.title || id;
+		var title = options.title || instance.name || id;
 
 		//check if the tab already exists
 		var tab = this.files_tabs.getTab( id );
@@ -241,6 +241,20 @@ var CodingModule = //do not change
 		if(tab.code_info && tab.code_info.pos)
 			this.editor.setCursor( tab.code_info.pos );
 		this.setCodingVisibility(true);
+
+		//global assigments (used for the autocompletion)
+		if(	instance && instance._root )
+		{
+			window.node = instance._root;
+			window.component = instance;
+			window.scene = window.node.scene;
+		}
+		else
+		{
+			window.node = null;
+			window.component = null;
+			window.scene = null;
+		}
 
 		//callbacks ******************************
 		function onTabClicked()
@@ -390,7 +404,7 @@ var CodingModule = //do not change
 		if(!info)
 			return;
 
-		if(info.lang != "javascript")
+		if(info.lang && info.lang != "javascript")
 			return;
 
 		var pos = this.global_context.editor.getCursor();
@@ -485,6 +499,22 @@ var CodingModule = //do not change
 			//in case is open...
 			this.closeInstanceTab( compo );
 		}
+	},
+
+	onScriptRenamed: function( instance )
+	{
+		if(!instance)
+			return;
+
+		var id = instance.uid;
+		if(!id)
+			return;
+		var tab = this.files_tabs.getTab( id );
+		if(!tab)
+			return;
+		var title = tab.tab.querySelector(".tabtitle");
+		if(title && instance.name)
+			title.innerHTML = instance.name;
 	},
 
 	onComponentRemoved: function(evt, compo )
@@ -897,6 +927,8 @@ LiteWidgets.widget_constructors["script"] = "addScript";
 
 LS.Components.Script["@inspector"] = function(component, attributes)
 {
+	attributes.addString("Name", component.name, { callback: function(v) { component.name = v; CodingModule.onScriptRenamed( component ); }});
+
 	var context = component.getContext();
 	if(context)
 	{

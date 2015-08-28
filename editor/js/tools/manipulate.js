@@ -77,7 +77,7 @@ var manipulateNodeTool = {
 		if(e.which != GL.LEFT_MOUSE_BUTTON) 
 			return;
 
-		var node = LS.GlobalScene.selected_node;
+		var node = SelectionModule.getSelectedNode();
 		if(!node) 
 			return;
 
@@ -114,7 +114,7 @@ var manipulateNodeTool = {
 					SelectionModule.setMultipleSelection(instances, false);
 			}
 		}
-		else
+		else if(state) //there is an action performed
 		{
 			if(node._is_bone && node.parentNode && node.parentNode._is_bone && !e.ctrlKey)
 				ToolUtils.saveNodeTransformUndo(node.parentNode);
@@ -169,7 +169,7 @@ var manipulateNodeTool = {
 	mousewheel: function(e)
 	{
 		if(!e.dragging) return;
-		var node = LS.GlobalScene.selected_node;
+		var node = SelectionModule.getSelectedNode();
 		if(!node) return;
 
 		if(this.state == "move")
@@ -192,7 +192,7 @@ var manipulateNodeTool = {
 
 	onMouseDrag: function(e)
 	{
-		var node = LS.GlobalScene.selected_node;
+		var node = SelectionModule.getSelectedNode();
 		if(!node) return;
 
 		var gizmo_model = ToolUtils.getSelectionMatrix();
@@ -261,7 +261,8 @@ var manipulateNodeTool = {
 
 	updateCursor: function()
 	{
-		if(!LS.GlobalScene.selected_node)
+		var node = SelectionModule.getSelectedNode();
+		if(!node)
 		{
 			gl.canvas.style.cursor = null;
 			return;

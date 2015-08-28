@@ -40,10 +40,6 @@ var EditorModule = {
 			EditorModule.inspectNode( scene.root );
 		});
 
-		$(LiteGUI).bind("undo", function() {
-			RenderModule.requestFrame();
-		});
-
 		SelectionModule.setSelection( scene.root );
 
 		document.addEventListener("keydown", this.globalKeyDown.bind(this), false );
@@ -88,15 +84,14 @@ var EditorModule = {
 			EditorModule.inspectNode( LS.GlobalScene.root ); 
 		}});
 
-		mainmenu.add("Edit/Undo", { callback: function() { LiteGUI.doUndo(); }});
 		mainmenu.separator("Edit");
 
-		mainmenu.add("Edit/Copy Node", { callback: function() { EditorModule.copyNodeToClipboard( Scene.selected_node ); }});
+		mainmenu.add("Edit/Copy Node", { callback: function() { EditorModule.copyNodeToClipboard( LS.GlobalScene.selected_node ); }});
 		mainmenu.add("Edit/Paste Node", { callback: function() { EditorModule.pasteNodeFromClipboard(); }});
-		mainmenu.add("Edit/Clone Node", { callback: function() { EditorModule.cloneNode( Scene.selected_node ); }});
+		mainmenu.add("Edit/Clone Node", { callback: function() { EditorModule.cloneNode( LS.GlobalScene.selected_node ); }});
 		mainmenu.add("Edit/Delete Node", { callback: function() { EditorModule.removeSelectedNode(); }});
-		mainmenu.add("Edit/Focus on node", { callback: function() { cameraTool.setFocusPointOnNode( Scene.selected_node, true ); }});
-		mainmenu.add("Edit/Paste component", { callback: function() { EditorModule.pasteComponentInNode( Scene.selected_node ); }});
+		mainmenu.add("Edit/Focus on node", { callback: function() { cameraTool.setFocusPointOnNode( LS.GlobalScene.selected_node, true ); }});
+		mainmenu.add("Edit/Paste component", { callback: function() { EditorModule.pasteComponentInNode( LS.GlobalScene.selected_node ); }});
 
 		mainmenu.add("Node/Create node", { callback: function() { EditorModule.createNullNode(); }});
 		mainmenu.add("Node/Create camera", { callback: function() { EditorModule.createCameraNode(); }});
@@ -113,6 +108,7 @@ var EditorModule = {
 			CodingModule.onNewScript(); 
 			EditorModule.refreshAttributes();
 		}});
+		mainmenu.add("Node/Check JSON", { callback: function() { EditorModule.checkJSON( LS.GlobalScene.selected_node ); }} );
 
 		mainmenu.add("View/Default material properties", { callback: function() { EditorModule.inspectInDialog( LS.Renderer.default_material ); }});
 
@@ -223,6 +219,10 @@ var EditorModule = {
 		var dialog = new LiteGUI.Dialog(id, {title: title, parent:"#visor", close: true, minimize: true, width: 300, height: height, scroll: true, resizable:true, draggable: true});
 		dialog.show('fade');
 		dialog.setPosition(50 + (Math.random() * 10)|0,50 + (Math.random() * 10)|0);
+		dialog.on_close = function()
+		{
+		
+		}
 
 		var inspector = new LiteGUI.Inspector(null,{ name_width: "40%" });
 		var object_class = object.constructor;
@@ -234,7 +234,9 @@ var EditorModule = {
 			icon = "<img src='"+ this.icons_path + object_class.icon+"' class='icon'/>";
 		//var section = inspector.addSection(icon + name + " <span class='buttons'><button class='options_section'>Options</button></span>");
 
-		if(editor)
+		if( object.constructor === LS.SceneNode )
+			this.inspectNode( object, null, inspector );
+		else if(editor)
 			editor.call(this, object, inspector );
 		else
 			inspector.inspectInstance( object );
@@ -244,12 +246,14 @@ var EditorModule = {
 			RenderModule.requestFrame();
 		}
 
-		dialog.content.appendChild(inspector.root);
+		dialog.add(inspector);
+		dialog.adjustSize();
+		return dialog;
 	},
 
-	inspectNode: function(node, component_to_focus )
+	inspectNode: function( node, component_to_focus, inspector )
 	{
-		var inspector = this.inspector;
+		inspector = inspector || this.inspector;
 
 		this.inspector.clear();
 		this.inspector_instance = node;
@@ -271,11 +275,10 @@ var EditorModule = {
 				inspector.addString("name", node._name, { callback: function(v) {
 					if(!v)
 						return node._name;
-
+					var old_name = node.name;
 					if( !node.setName(v) )
 						return node._name;
-
-					EditorModule.saveNodeUndo(node);
+					UndoModule.saveNodeRenamedUndo( node, old_name );
 				}});
 
 			inspector.addString("UId", node.uid, { disabled: true });
@@ -329,7 +332,19 @@ var EditorModule = {
 		AnimationModule.attachKeyframesBehaviour( inspector );
 	},
 
+	checkJSON: function( object )
+	{
+		if(!object)
+			return;
 
+		var w = window.open("",'_blank');
+
+		w.document.write("<style>* { margin: 0; padding: 0; } html,body { margin: 20px; background-color: #222; color: #eee; } </style>");
+
+		var data = beautifyJSON( JSON.stringify( object.serialize(), null, '\t') );
+		w.document.write("<pre>"+data+"</pre>");
+		w.document.close();
+	},
 
 	//inspects all the components in one container
 	showComponentsInterfaces: function(container, inspector)
@@ -402,7 +417,7 @@ var EditorModule = {
 
 		//save UNDO when something changes
 		$(inspector.current_section).bind("wchange", function() { 
-			EditorModule.saveComponentUndo(component);
+			UndoModule.saveComponentChangeUndo( component );
 		});
 
 		//used to avoid collapsing section when clicking button
@@ -764,46 +779,6 @@ var EditorModule = {
 		LEvent.trigger(this,"resetEditor");
 	},
 
-	// UNDO and COPY&PASTE
-	saveSceneUndo: function()
-	{
-		LiteGUI.addUndoStep({ 
-			data: JSON.stringify( LS.GlobalScene.serialize() ), //stringify to save some space
-			callback: function(d) {
-				var selected_node = LS.GlobalScene.selected_node ? LS.GlobalScene.selected_node.uid : null;
-				LS.GlobalScene.clear();
-				LS.GlobalScene.configure( JSON.parse(d) );
-				SelectionModule.setSelection( LS.GlobalScene.getNode( selected_node ) );
-				RenderModule.requestFrame();
-			}
-		});
-	},
-
-	saveNodeUndo: function(node)
-	{
-		LiteGUI.addUndoStep({ 
-			data: { node:node, info: JSON.stringify(node.serialize()) }, //stringify to save some space
-			callback: function(d) {
-				d.node.configure(JSON.parse(d.info));
-				EditorModule.inspectNode(node);
-				RenderModule.requestFrame();
-			}
-		});
-	},	
-
-	saveComponentUndo: function(component)
-	{
-		LiteGUI.addUndoStep({ 
-			data: { component:component, info: JSON.stringify(component.serialize()) }, //stringify to save some space
-			callback: function(d) {
-				d.component.configure( JSON.parse(d.info) );
-				$(component).trigger("changed");
-				EditorModule.inspectNode( LS.GlobalScene.selected_node);
-				RenderModule.requestFrame();
-			}
-		});
-	},
-
 	copyNodeToClipboard: function( node )
 	{
 		if(!node) return;
@@ -832,14 +807,14 @@ var EditorModule = {
 	},
 
 	copyComponentToClipboard: function(component) {
-		this.saveComponentUndo(component);
+		UndoModule.saveComponentChangeUndo(component);
 		var data = component.serialize();
 		data._object_type = LS.getObjectClassName(component);
 		LiteGUI.toClipboard( data );
 	},
 
 	pasteComponentFromClipboard: function(component) {
-		this.saveComponentUndo(component);
+		UndoModule.saveComponentChangeUndo(component);
 		var data = LiteGUI.getClipboard();
 		if( !data ) return;
 		component.configure( data ); 
@@ -850,7 +825,7 @@ var EditorModule = {
 
 	pasteComponentInNode: function(node)
 	{
-		this.saveNodeUndo(node);
+		UndoModule.saveNodeUndo(node);
 		var data = LiteGUI.getClipboard();
 		if(!data || !data._object_type) return;
 
@@ -862,7 +837,7 @@ var EditorModule = {
 	},	
 
 	resetNodeComponent: function(component) {
-		this.saveComponentUndo(component);
+		UndoModule.saveComponentChangeUndo(component);
 		if(component.reset)
 			component.reset();
 		else
@@ -874,17 +849,9 @@ var EditorModule = {
 
 	deleteNodeComponent: function(component) {
 		var node = component._root;
-		if(!node) return;
-
-		LiteGUI.addUndoStep({ 
-			data: { node:component._root, component: LS.getObjectClassName(component), info: JSON.stringify(component.serialize()) }, //stringify to save some space
-			callback: function(d) {
-				d.node.addComponent( new window[d.component](JSON.parse(d.info)) );
-				$(d.node).trigger("changed");
-				EditorModule.inspectNode(Scene.selected_node);
-				RenderModule.requestFrame();
-			}
-		});
+		if(!node)
+			return;
+		UndoModule.saveComponentDeletedUndo( component );
 
 		LEvent.trigger( LS.GlobalScene, "nodeComponentRemoved", component );
 		node.removeComponent(component); 
@@ -927,14 +894,7 @@ var EditorModule = {
 		parent.addChild( new_node );
 
 		if(!skip_undo)
-			LiteGUI.addUndoStep({ 
-				data: { node: new_node.uid },
-				callback: function(d) {
-					var node = Scene.getNode(d.node);
-					if(node && node._parentNode)
-						node._parentNode.removeChild(node);
-				}
-			});
+			UndoModule.saveNodeCreatedUndo( new_node );
 
 		return new_node;
 	},
@@ -950,16 +910,6 @@ var EditorModule = {
 
 	},
 
-	addUndoCreation: function(node)
-	{
-		LiteGUI.addUndoStep({ 
-			data: node,
-			callback: function(d) {
-				LS.GlobalScene.root.removeChild(d);
-			}
-		});
-	},
-
 	// returns the root node
 	getAddRootNode: function()
 	{
@@ -971,7 +921,7 @@ var EditorModule = {
 		var node = new LS.SceneNode( LS.GlobalScene.generateUniqueNodeName("node") );
 		node.material = null;
 		EditorModule.getAddRootNode().addChild(node);
-		EditorModule.addUndoCreation(node);
+		UndoModule.saveNodeCreatedUndo( node );
 		SelectionModule.setSelection(node);
 	},
 
@@ -985,7 +935,7 @@ var EditorModule = {
 			node.setMesh(mesh_name);
 			node.material = new LS.StandardMaterial();
 			EditorModule.getAddRootNode().addChild(node);
-			EditorModule.addUndoCreation(node);
+			UndoModule.saveNodeCreatedUndo(node);
 			SelectionModule.setSelection(node);
 		}
 	},
@@ -998,7 +948,7 @@ var EditorModule = {
 		node.eye = vec3.create();
 		node.center = vec3.fromValues(0,0,-1);
 		EditorModule.getAddRootNode().addChild(node);
-		EditorModule.addUndoCreation(node);
+		UndoModule.saveNodeCreatedUndo(node);
 		SelectionModule.setSelection(node);
 	},
 
@@ -1007,7 +957,7 @@ var EditorModule = {
 		var node = new LS.SceneNode( LS.GlobalScene.generateUniqueNodeName("light") );
 		node.addComponent( new Light() );
 		EditorModule.getAddRootNode().addChild(node);
-		EditorModule.addUndoCreation(node);
+		UndoModule.saveNodeCreatedUndo(node);
 		SelectionModule.setSelection(node);
 	},
 
@@ -1016,7 +966,7 @@ var EditorModule = {
 		var node = new LS.SceneNode( LS.GlobalScene.generateUniqueNodeName("primitive") );
 		node.addComponent( new GeometricPrimitive(info));
 		EditorModule.getAddRootNode().addChild(node);
-		EditorModule.addUndoCreation(node);
+		UndoModule.saveNodeCreatedUndo(node);
 		SelectionModule.setSelection(node);
 	},
 
@@ -1067,13 +1017,16 @@ var EditorModule = {
 		if(!node || !node.getEditorActions)
 			return;
 
-		var actions = node.getEditorActions();
+		var actions = node.getEditorActions([]);
 		if(!actions)
 			return;
 
 		var values = [];
 		for(var i in actions)
 			values.push({action:i, title: actions[i].title || i});
+
+		if(!values.length)
+			return;
 
 		var menu = new LiteGUI.ContextualMenu( values, { event: event, callback: function(value) {
 			if(!node)
@@ -1190,6 +1143,8 @@ var EditorModule = {
 
 			var compo = new selected_component.ctor;
 			root_instance.addComponent( compo );
+			UndoModule.saveComponentCreatedUndo( compo );			
+
 			dialog.close();
 			EditorModule.inspectNode( root_instance, compo );
 			RenderModule.requestFrame();

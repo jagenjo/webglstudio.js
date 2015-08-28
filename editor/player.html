@@ -26,14 +26,16 @@
 
 	//LiteSCENE CODE *************************
 	var player = new LS.Player( {
+		redraw: true, //force to redraw
 		resources: "fileserver/files/",
-		autoresize: true //resize the 3D window if the browser window is resized
+		autoresize: true, //resize the 3D window if the browser window is resized
+		proxy: "@/redirect/" //allows to proxy request to avoid cross domain problems, in this case the @ means same domain, so it will be http://hostname/proxy
 	});
 
 	if( LS.queryString["session"] )
 		player.setScene( JSON.parse( localStorage.getItem( LS.queryString["session"] ) ) );
-	//to use a scene from a URL:
-	//	player.loadScene( url, on_complete );
+	else if( LS.queryString["url"] && LS.queryString["url"].indexOf("://") == -1 ) //for safety measures
+		player.loadScene( LS.queryString["url"] ); //the url must be something like: fileserver/files/guest/projects/Lee_FX.json
 
 
 </script>

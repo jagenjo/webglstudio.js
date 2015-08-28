@@ -477,13 +477,7 @@ var ToolUtils = {
 	//useful generic methods
 	saveNodeTransformUndo: function(node)
 	{
-		if(!node) return;
-		LiteGUI.addUndoStep({ 
-			data: { transform:node.transform, info: node.transform.serialize() },
-			callback: function(d) {
-				d.transform.configure(d.info);
-			}
-		});
+		UndoModule.saveNodeTransformUndo(node);
 	},
 
 	//test if a ray collides circle

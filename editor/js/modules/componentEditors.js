@@ -327,6 +327,11 @@ Light["@inspector"] = function(light, attributes)
 		LS.GlobalScene.refresh();
 	}});
 
+	attributes.addTexture("Extra texture", light.extra_texture, { pretitle: AnimationModule.getKeyframeCode( light, "extra_texture"), callback: function(filename) { 
+		light.extra_texture = filename;
+		LS.GlobalScene.refresh();
+	}});
+
 	attributes.addButton(null, "Edit Shader", { callback: function() { 
 		CodingModule.openTab();
 		CodingModule.editInstanceCode( light, { id: light.uid, title: "Light Shader", lang:"glsl", help: light.constructor.coding_help, getCode: function(){ return light.extra_light_shader_code; }, setCode: function(code){ light.extra_light_shader_code = code; } } );
@@ -343,7 +348,7 @@ ParticleEmissor["@inspector"] = function(component, attributes)
 	attributes.addNumber("Warmup time", component.warm_up_time, {step:1,min:0,max:10, callback: function (value) { component.warm_up_time = value; }});
 
 	attributes.addTitle("Emisor");
-	attributes.addCombo("Type",component.emissor_type, {values:{"Box":ParticleEmissor.BOX_EMISSOR,"Sphere":ParticleEmissor.SPHERE_EMISSOR, "Mesh":ParticleEmissor.MESH_EMISSOR }, callback: function (value) { 
+	attributes.addCombo("Type",component.emissor_type, { values: ParticleEmissor["@emissor_type"].values, callback: function (value) { 
 		component.emissor_type = value; 
 	}});
 	attributes.addNumber("Rate",component.emissor_rate, {step:0.1,min:0,max:100, callback: function (value) { component.emissor_rate = value; }});
@@ -352,6 +357,12 @@ ParticleEmissor["@inspector"] = function(component, attributes)
 		component.emissor_mesh = filename;
 		if(filename)
 			ResourcesManager.loadMesh(filename);
+	}});
+	attributes.addButton("Custom code", "Edit code", { callback: function() {
+		CodingModule.openTab();
+		CodingModule.editInstanceCode( component, { id: component.uid, title: "Emissor", lang:"javascript", getCode: function(){ return component.custom_emissor_code; }, setCode: function(code){ 
+			component.custom_emissor_code = code;
+		}});
 	}});
 
 

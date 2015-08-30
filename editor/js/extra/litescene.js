@@ -8889,6 +8889,8 @@ function Light(o)
 	this.offset = 0;
 	this.spot_cone = true;
 
+	this.projective_texture = null;
+
 	this._attenuation_info = new Float32Array([ this.att_start, this.att_end ]);
 
 	//use target (when attached to node)
@@ -8922,6 +8924,7 @@ function Light(o)
 	this.frustum_size = 50; //ortho
 
 	this.extra_light_shader_code = null;
+	this.extra_texture = null;
 
 	//vectors in world space
 	this._front = vec3.clone( Light.FRONT_VECTOR );
@@ -8939,6 +8942,9 @@ function Light(o)
 			this.shadowmap_resolution = parseInt(o.shadowmap_resolution); //LEGACY: REMOVE
 	}
 }
+
+Light["@projective_texture"] = { type:"Texture" };
+Light["@extra_texture"] = { type:"Texture" };
 
 Object.defineProperty( Light.prototype, 'position', {
 	get: function() { return this._position; },
@@ -9103,9 +9109,6 @@ Light.prototype.getLightCamera = function()
 
 Light.prototype.serialize = function()
 {
-	this.position = vec3.toArray(this.position);
-	this.target = vec3.toArray(this.target);
-	this.color = vec3.toArray(this.color);
 	return LS.cloneObject(this);
 }
 
@@ -9228,7 +9231,9 @@ Light.prototype.getLightRotationMatrix = function()
 Light.prototype.getResources = function (res)
 {
 	if(this.projective_texture)
-		res[ this.projective_texture ] = Texture;
+		res[ this.projective_texture ] = GL.Texture;
+	if(this.extra_texture)
+		res[ this.extra_texture ] = GL.Texture;
 	return res;
 }
 
@@ -9236,6 +9241,8 @@ Light.prototype.onResourceRenamed = function (old_name, new_name, resource)
 {
 	if(this.projective_texture == old_name)
 		this.projective_texture = new_name;
+	if(this.extra_texture == old_name)
+		this.extra_texture = new_name;
 }
 
 //Layer stuff
@@ -9304,6 +9311,19 @@ Light.prototype.prepare = function( render_options )
 				macros.USE_LIGHT_TEXTURE = "";
 		}
 	}
+
+	if(this.extra_texture)
+	{
+		var extra_texture = this.extra_texture.constructor === String ? LS.ResourcesManager.textures[this.extra_texture] : this.extra_texture;
+		if(extra_texture)
+		{
+			if(extra_texture.texture_type == gl.TEXTURE_CUBE_MAP)
+				macros.USE_EXTRA_LIGHT_CUBEMAP = "";
+			else
+				macros.USE_EXTRA_LIGHT_TEXTURE = "";
+		}
+	}
+
 
 	//if(vec3.squaredLength( light.color ) < 0.001 || node.flags.ignore_lights)
 	//	macros.USE_IGNORE_LIGHT = "";
@@ -9380,8 +9400,10 @@ Light.prototype.getMacros = function(instance, render_options)
 	else
 		delete macros["USE_SHADOW_MAP"];
 
-	if(this._last_processed_extra_light_shader_code)
+	if(this._last_processed_extra_light_shader_code && (!this.extra_texture || LS.ResourcesManager.getTexture(this.extra_texture)) )
 		macros["USE_EXTRA_LIGHT_SHADER_CODE"] = this._last_processed_extra_light_shader_code;
+	else
+		delete macros["USE_EXTRA_LIGHT_SHADER_CODE"];
 
 	return macros;
 }
@@ -9421,8 +9443,27 @@ Light.prototype.getUniforms = function( instance, render_options )
 	else
 	{
 		delete uniforms["light_texture"];
-		delete uniforms["light_texture"];
+		delete uniforms["light_cubemap"];
 	}
+
+	if(this.extra_texture)
+	{
+		var extra_texture = this.extra_texture.constructor === String ? LS.ResourcesManager.textures[this.extra_texture] : this.extra_texture;
+		if(extra_texture)
+		{
+			if(extra_texture.texture_type == gl.TEXTURE_CUBE_MAP)
+				uniforms.extra_light_cubemap = extra_texture.bind(12); //fixed slot
+			else
+				uniforms.extra_light_texture = extra_texture.bind(12); //fixed slot
+			//	uniforms.light_rotation_matrix = 
+		}
+	}
+	else
+	{
+		delete uniforms["extra_light_texture"];
+		delete uniforms["extra_light_cubemap"];
+	}
+
 
 	//use shadows?
 	if(use_shadows)
@@ -12348,6 +12389,17 @@ Knob.prototype.onmousemove = function(e, mouse_event) {
 LS.registerComponent(Knob);
 
 })();
+function Particle()
+{
+	this.id = 0;
+	this.pos = vec3.fromValues(0,0,0);
+	this.vel = vec3.fromValues(0,0,0);
+	this.life = 1;
+	this.angle = 0;
+	this.size = 1;
+	this.rot = 0;
+}
+
 function ParticleEmissor(o)
 {
 	this.enabled = true;
@@ -12357,7 +12409,7 @@ function ParticleEmissor(o)
 
 	this.emissor_type = ParticleEmissor.BOX_EMISSOR;
 	this.emissor_rate = 5; //particles per second
-	this.emissor_size = [10,10,10];
+	this.emissor_size = vec3.fromValues(10,10,10);
 	this.emissor_mesh = null;
 
 	this.particle_life = 5;
@@ -12371,6 +12423,8 @@ function ParticleEmissor(o)
 	this.particle_opacity_curve = [[0.5,1]];
 
 	this.texture_grid_size = 1;
+
+	this._custom_emissor_code = null;
 
 	//physics
 	this.physics_gravity = [0,0,0];
@@ -12420,11 +12474,32 @@ function ParticleEmissor(o)
 	*/
 }
 
-ParticleEmissor.icon = "mini-icon-particles.png";
-
 ParticleEmissor.BOX_EMISSOR = 1;
 ParticleEmissor.SPHERE_EMISSOR = 2;
 ParticleEmissor.MESH_EMISSOR = 3;
+ParticleEmissor.CUSTOM_EMISSOR = 10;
+
+ParticleEmissor["@emissor_type"] = { type:"enum", values:{ "Box":ParticleEmissor.BOX_EMISSOR, "Sphere":ParticleEmissor.SPHERE_EMISSOR, "Mesh":ParticleEmissor.MESH_EMISSOR, "Custom": ParticleEmissor.CUSTOM_EMISSOR }};
+ParticleEmissor.icon = "mini-icon-particles.png";
+
+Object.defineProperty( ParticleEmissor.prototype , 'custom_emissor_code', {
+	get: function() { return this._custom_emissor_code; },
+	set: function(v) { 
+		this._custom_emissor_code = v;
+		try
+		{
+			if(v)
+				this._custom_emissor_func = new Function("p",v);
+			else
+				this._custom_emissor_func = null;
+		}
+		catch (err)
+		{
+			console.error("Error in ParticleEmissor custom emissor code: ", err);
+		}
+	},
+	enumerable: true
+});
 
 ParticleEmissor.prototype.onAddedToNode = function(node)
 {
@@ -12442,12 +12517,9 @@ ParticleEmissor.prototype.onAddedToScene = function(scene)
 	LEvent.bind( scene, "afterCameraEnabled",this.onAfterCamera, this);
 }
 
-ParticleEmissor.prototype.oRemovedFromScene = function(scene)
+ParticleEmissor.prototype.onRemovedFromScene = function(scene)
 {
-	LEvent.unbind( scene, "update",this.onUpdate,this);
-	LEvent.unbind( scene, "start",this.onStart,this);
-	LEvent.unbind( scene, "collectRenderInstances", this.onCollectInstances, this);
-	LEvent.unbind( scene, "afterCameraEnabled",this.onAfterCamera, this);
+	LEvent.unbindAll( scene, this );
 }
 
 ParticleEmissor.prototype.getResources = function(res)
@@ -12477,7 +12549,7 @@ ParticleEmissor.prototype.onAfterCamera = function(e,camera)
 
 ParticleEmissor.prototype.createParticle = function(p)
 {
-	p = p || {};
+	p = p || new Particle();
 	
 	switch(this.emissor_type)
 	{
@@ -12485,33 +12557,31 @@ ParticleEmissor.prototype.createParticle = function(p)
 		case ParticleEmissor.SPHERE_EMISSOR: 
 			var gamma = 2 * Math.PI * Math.random();
 			var theta = Math.acos(2 * Math.random() - 1);
-			p.pos = vec3.fromValues(Math.sin(theta) * Math.cos(gamma), Math.sin(theta) * Math.sin(gamma), Math.cos(theta));
+			p.pos.set( [Math.sin(theta) * Math.cos(gamma), Math.sin(theta) * Math.sin(gamma), Math.cos(theta) ]);
 			vec3.multiply( p.pos, p.pos, this.emissor_size); 
 			break;
 			//p.pos = vec3.multiply( vec3.normalize( vec3.create( [(Math.random() - 0.5), ( Math.random() - 0.5 ), (Math.random() - 0.5)])), this.emissor_size); break;
 		case ParticleEmissor.MESH_EMISSOR: 
 			var mesh = this.emissor_mesh;
 			if(mesh && mesh.constructor == String)
-				mesh = ResourcesManager.getMesh(this.emissor_mesh);
+				mesh = LS.ResourcesManager.getMesh(this.emissor_mesh);
 			if(mesh && mesh.vertices)
 			{
 				var v = Math.floor(Math.random() * mesh.vertices.length / 3)*3;
-				p.pos = vec3.fromValues(mesh.vertices[v], mesh.vertices[v+1], mesh.vertices[v+2]);
+				p.pos.set( [mesh.vertices[v], mesh.vertices[v+1], mesh.vertices[v+2]] );
 			}
 			else
-				p.pos = vec3.create();		
+				p.pos.set([0,0,0]);
 			break;
+		case ParticleEmissor.CUSTOM_EMISSOR: //done after the rest
 		default: p.pos = vec3.create();
 	}
 
-	//this._root.transform.transformPoint(p.pos, p.pos);
-	var pos = this.follow_emitter ? [0,0,0] : this._emissor_pos;
-	vec3.add(p.pos,p.pos,pos);
-
-	p.vel = vec3.fromValues( Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5 );
+	p.vel.set( [Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5 ] );
 	p.life = this.particle_life;
 	p.id = this._last_id;
 	p.angle = 0;
+	p.size = 1;
 	p.rot = this.particle_rotation + 0.25 * this.particle_rotation * Math.random();
 
 	this._last_id += 1;
@@ -12519,6 +12589,15 @@ ParticleEmissor.prototype.createParticle = function(p)
 		p.c = vec3.clone( this.particle_start_color );
 
 	vec3.scale(p.vel, p.vel, this.particle_speed);
+
+	//after everything so the user can edit whatever he wants
+	if(this.emissor_type == ParticleEmissor.CUSTOM_EMISSOR && this._custom_emissor_func)
+		this._custom_emissor_func.call( this, p );
+
+	//this._root.transform.transformPoint(p.pos, p.pos);
+	if(this.follow_emitter)
+		vec3.add(p.pos, p.pos, this._emissor_pos);
+
 	return p;
 }
 
@@ -12759,7 +12838,7 @@ ParticleEmissor.prototype.updateMesh = function (camera)
 			if(a < 0.001) continue;
 		}
 
-		var s = this.particle_size * size_curve[(f*size_curve.length)<<0]; //getCurveValueAt(this.particle_size_curve,0,1,0,f);
+		var s = p.size * this.particle_size * size_curve[(f*size_curve.length)<<0]; //getCurveValueAt(this.particle_size_curve,0,1,0,f);
 
 		if(Math.abs(s) < MIN_SIZE) continue; //ignore almost transparent particles
 
@@ -12880,7 +12959,7 @@ ParticleEmissor.prototype.onCollectInstances = function(e, instances, options)
 	instances.push(RI);
 }
 
-
+LS.Particle = Particle;
 LS.registerComponent(ParticleEmissor);
 (function(){
 

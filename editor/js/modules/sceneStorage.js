@@ -195,12 +195,14 @@ var SceneStorageModule = {
 					scene_name = scene_name.substr(0, pos);
 				//reinsert them
 				scene.filename = scene_name + ".scene.json";
+				scene.fullpath = scene_folder + "/" + scene.filename;
 
 				if(scene.extra)
+				{
+					scene.extra.folder = scene_folder;
 					scene.extra.filename = scene.filename;
-
-				//store info
-				scene.fullpath = scene_folder + "/" + scene.filename;
+					scene.extra.fullpath = scene.fullpath;
+				}
 
 				SceneStorageModule.saveSceneInServer();
 				dialog.close();

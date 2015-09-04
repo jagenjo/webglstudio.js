@@ -188,10 +188,13 @@ var CodingModule = //do not change
 	*/
 	
 	//switch coding tab
-	editInstanceCode: function( instance, options )
+	editInstanceCode: function( instance, options, open_tab )
 	{
 		options = options || {};
 		var lang = options.lang || "javascript";
+
+		if(open_tab)
+			this.openTab();
 
 		//used when a tab is closed
 		if(!instance)
@@ -200,8 +203,13 @@ var CodingModule = //do not change
 		var current_code_info = this.current_code_info;
 
 		//check if we are editing the current one
-		if(current_code_info && current_code_info.instance == instance)
-			return;
+		if(current_code_info)
+		{
+			if(options.id && current_code_info.id == options.id)
+				return;
+			if(!options.id && current_code_info.instance == instance)
+				return;
+		}
 
 		//changing from one tab to another? save state of old tab
 		if( current_code_info )

@@ -118,7 +118,7 @@ var UndoModule = {
 
 	saveNodeTransformUndo: function( node )
 	{
-		if(!node)
+		if(!node || !node.transform)
 			return;
 
 		LiteGUI.addUndoStep({
@@ -137,8 +137,9 @@ var UndoModule = {
 
 	saveNodeParentingUndo: function( node )
 	{
-		if(!node)
+		if(!node || !node.parentNode)
 			return;
+
 		LiteGUI.addUndoStep({ 
 			title: "Node parenting: " + node.name,
 			data: { node: node.uid, old_parent: node.parentNode.uid },
@@ -157,7 +158,7 @@ var UndoModule = {
 	saveComponentCreatedUndo: function( component )
 	{
 		if(!component._root)
-			throw("Cannot undo a component without a node");
+			return;
 
 		LiteGUI.addUndoStep({ 
 			title: "Component created: " + LS.getObjectClassName(component),
@@ -178,6 +179,9 @@ var UndoModule = {
 
 	saveComponentChangeUndo: function( component )
 	{
+		if(!component._root)
+			return;
+
 		LiteGUI.addUndoStep({ 
 			title: "Component modified: " + LS.getObjectClassName(component),
 			data: {  node: component._root.uid, component: component.uid, info: JSON.stringify( component.serialize() ) }, //stringify to save some space
@@ -197,12 +201,17 @@ var UndoModule = {
 
 	saveComponentDeletedUndo: function( component )
 	{
+		if(!component._root)
+			return;
+
+		var node = component._root;
+
 		LiteGUI.addUndoStep({ 
 			title: "Component Deleted: " + LS.getObjectClassName(component),
-			data: { node: component._root, component: LS.getObjectClassName(component), info: JSON.stringify(component.serialize()) }, //stringify to save some space
+			data: { node: node, component: LS.getObjectClassName(component), index: node.getIndexOfComponent( component ), info: JSON.stringify( component.serialize()) }, //stringify to save some space
 			callback: function(d) {
-				d.node.addComponent( new window[d.component](JSON.parse(d.info)) );
-				$(d.node).trigger("changed");
+				d.node.addComponent( new window[d.component](JSON.parse(d.info)), d.index );
+				LEvent.trigger(d.node, "changed");
 				EditorModule.refreshAttributes();
 				RenderModule.requestFrame();
 			}

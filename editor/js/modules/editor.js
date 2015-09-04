@@ -8,7 +8,6 @@ var EditorModule = {
 	node_editors: [],
 	material_editors: {},
 
-	inspector_instance: null, //the instance showing its attributes (could be a node, the scene, a tool, ...)
 	selected_data: null, //the extra info about this item selected (which component, which field, etc)
 
 	settings_panel: [ {name:"editor", title:"Editor", icon:null } ],
@@ -32,9 +31,9 @@ var EditorModule = {
 
 		var scene = LS.GlobalScene;
 	
-		LEvent.bind( scene, "selected_node_changed", function(e,node) { 
-			EditorModule.inspectNode( scene.selected_node );
-		});
+		//LEvent.bind( scene, "selected_node_changed", function(e,node) { 
+		//	EditorModule.inspectNode( scene.selected_node );
+		//});
 
 		LEvent.bind( scene, "scene_loaded", function(e) { 
 			EditorModule.inspectNode( scene.root );
@@ -158,16 +157,16 @@ var EditorModule = {
 
 	refreshAttributes: function()
 	{
-		if(!this.inspector_instance)
+		if(!this.inspector.instance)
 			return;
 
-		switch( this.inspector_instance.constructor )
+		switch( this.inspector.instance.constructor )
 		{
-			case LS.SceneNode: this.inspectNode(this.inspector_instance); break;
+			case LS.SceneNode: this.inspectNode(this.inspector.instance); break;
 			case Object: 
-			case Array: this.inspectObjects( this.inspector_instance ); break;
+			case Array: this.inspectObjects( this.inspector.instance ); break;
 			default:
-				this.inspectObject(this.inspector_instance); break;
+				this.inspectObject(this.inspector.instance); break;
 		}
 	},
 
@@ -175,26 +174,31 @@ var EditorModule = {
 	{
 		inspector = inspector || this.inspector;
 
-		this.inspector.clear();
-		this.inspector_instance = objects;
+		inspector.instance = objects;
 
-		for(var i = 0; i < objects.length; i++)
+		inspector.on_refresh = (function()
 		{
-			var object = objects[i];
-			if(!object)
-				continue;
+			inspector.clear();
+			for(var i = 0; i < objects.length; i++)
+			{
+				var object = objects[i];
+				if(!object)
+					continue;
 
-			if( LS.isClassComponent( object.constructor ) )
-				this.showComponentInterface( object, inspector );
-			else
-				this.showContainerFields(object, inspector);
-		}
+				if( LS.isClassComponent( object.constructor ) )
+					this.showComponentInterface( object, inspector );
+				else
+					this.showContainerFields( object, inspector );
+			}
+		}).bind(this);
+
+		inspector.refresh();
 	},
 
 	inspectObject: function(object, inspector)
 	{
 		this.inspectObjects([object],inspector);
-		this.inspector_instance = object;
+		this.inspector.instance = object;
 	},
 
 	inspectInDialog: function(object)
@@ -225,27 +229,25 @@ var EditorModule = {
 		}
 
 		var inspector = new LiteGUI.Inspector(null,{ name_width: "40%" });
-		var object_class = object.constructor;
-		var editor = object_class["@inspector"];
-
-		//create area
-		var icon = "";
-		if(object_class.icon)
-			icon = "<img src='"+ this.icons_path + object_class.icon+"' class='icon'/>";
-		//var section = inspector.addSection(icon + name + " <span class='buttons'><button class='options_section'>Options</button></span>");
-
-		if( object.constructor === LS.SceneNode )
-			this.inspectNode( object, null, inspector );
-		else if(editor)
-			editor.call(this, object, inspector );
-		else
-			inspector.inspectInstance( object );
+		inspector.on_refresh = function()
+		{
+			inspector.clear();
+			var object_class = object.constructor;
+			var editor = object_class["@inspector"];
+			if( object.constructor === LS.SceneNode )
+				this.inspectNode( object, null, inspector );
+			else if(editor)
+				editor.call(this, object, inspector );
+			else
+				inspector.inspectInstance( object );
+		}
 
 		inspector.onchange = function()
 		{
 			RenderModule.requestFrame();
 		}
 
+		inspector.refresh();
 		dialog.add(inspector);
 		dialog.adjustSize();
 		return dialog;
@@ -255,81 +257,88 @@ var EditorModule = {
 	{
 		inspector = inspector || this.inspector;
 
-		this.inspector.clear();
-		this.inspector_instance = node;
-
+		this.inspector.instance = node;
 		if(!node)
+		{
+			inspector.clear();
+			inspector.on_refresh = null;
 			return;
-
-		if(node == LS.GlobalScene.root) //main node use an special editor
-		{
-			this.showSceneInfo(node, this.inspector);
 		}
-		else
-		{
-			if(typeof(node) == "undefined" || node == null) {
-				return;
-			}
 
-			if(node._name !== null)
-				inspector.addString("name", node._name, { callback: function(v) {
-					if(!v)
-						return node._name;
-					var old_name = node.name;
-					if( !node.setName(v) )
-						return node._name;
-					UndoModule.saveNodeRenamedUndo( node, old_name );
+		inspector.on_refresh = (function()
+		{
+			inspector.clear();
+			if(node == LS.GlobalScene.root) //main node use an special editor
+			{
+				this.showSceneInfo(node, inspector);
+			}
+			else
+			{
+				if(typeof(node) == "undefined" || node == null) {
+					return;
+				}
+
+				if(node._name !== null)
+					inspector.addString("name", node._name, { callback: function(v) {
+						if(!v)
+							return node._name;
+						var old_name = node.name;
+						if( !node.setName(v) )
+							return node._name;
+						UndoModule.saveNodeRenamedUndo( node, old_name );
+					}});
+
+				inspector.addString("UId", node.uid, { disabled: true });
+
+				if(node.className != null)
+					inspector.addString("class", node.className, { callback: function(v) { node.className = v; } });
+				if(node.flags && node.flags.visible != null)
+					inspector.addCheckbox("visible", node.visible, { pretitle: AnimationModule.getKeyframeCode( node, "visible"), callback: function(v) { node.visible = v; } });
+
+				inspector.addLayers("layers", node.layers, { callback: function(v) {
+					node.layers = v;
+					RenderModule.requestFrame();
 				}});
 
-			inspector.addString("UId", node.uid, { disabled: true });
+				//special node editors
+				for(var i in this.node_editors)
+					this.node_editors[i](node, inspector);
+			}
 
-			if(node.className != null)
-				inspector.addString("class", node.className, { callback: function(v) { node.className = v; } });
-			if(node.flags && node.flags.visible != null)
-				inspector.addCheckbox("visible", node.visible, { pretitle: AnimationModule.getKeyframeCode( node, "visible"), callback: function(v) { node.visible = v; } });
+			//components
+			this.showComponentsInterfaces(node,inspector);
 
-			inspector.addStringButton("layers", node.getLayers().join(","), { callback_button: function() {
-				EditorModule.showLayersEditor( node );
+			//flags
+			inspector.addSection("Extras", { collapsed: true });
+			if(node.flags)
+			{
+				inspector.addTitle("Flags");
+				inspector.widgets_per_row = 2;
+				inspector.addFlags(node.flags, {seen_by_camera:true, seen_by_reflections:true, depth_test: true, depth_write: true, ignore_lights: false, ignore_fog: false, selectable: true});
+				inspector.widgets_per_row = 1;
+			}
+
+			inspector.addSection();
+
+			//final buttons
+			inspector.addButton(null,"Add component", { callback: function(v) { 
+				EditorModule.showAddComponentToNode();
 			}});
 
-			//special node editors
-			for(var i in this.node_editors)
-				this.node_editors[i](node, inspector);
-		}
+			inspector.addButtons(null,["Add Script","Add Graph"], { callback: function(v) { 
+				if(v == "Add Script")
+					CodingModule.onNewScript( node );
+				else if(v == "Add Graph")
+					GraphModule.onNewGraph( node );
+				inspector.refresh();
+			}});
 
-		//components
-		this.showComponentsInterfaces(node,inspector);
+			if(component_to_focus)
+				inspector.scrollTo( component_to_focus.uid.substr(1) );
+			AnimationModule.attachKeyframesBehaviour( inspector );
+		}).bind(this);
 
-		//flags
-		inspector.addSection("Extras", { collapsed: true });
-		if(node.flags)
-		{
-			inspector.addTitle("Flags");
-			inspector.widgets_per_row = 2;
-			inspector.addFlags(node.flags, {seen_by_camera:true, seen_by_reflections:true, depth_test: true, depth_write: true, ignore_lights: false, ignore_fog: false, selectable: true});
-			inspector.widgets_per_row = 1;
-		}
-
-		inspector.addSection();
-
-		//final buttons
-		inspector.addButton(null,"Add component", { callback: function(v) { 
-			EditorModule.showAddComponentToNode();
-		}});
-
-		inspector.addButtons(null,["Add Script","Add Graph"], { callback: function(v) { 
-			if(v == "Add Script")
-				CodingModule.onNewScript( node );
-			else if(v == "Add Graph")
-				GraphModule.onNewGraph( node );
-			EditorModule.refreshAttributes();
-				
-		}});
-
-		if(component_to_focus)
-			inspector.scrollTo( component_to_focus.uid.substr(1) );
-
-		AnimationModule.attachKeyframesBehaviour( inspector );
+		inspector.refresh();
 	},
 
 	checkJSON: function( object )
@@ -701,32 +710,28 @@ var EditorModule = {
 		dialog.show();
 	},
 
-	showLayersEditor: function( instance )
+	showLayersEditor: function( layers, callback )
 	{
-		var node = instance._root ? instance._root : instance;
-		var scene = node.scene || LS.GlobalScene;
+		var scene = LS.GlobalScene;
 
 		var dialog = new LiteGUI.Dialog("layers_editor",{ title:"Layers editor", width: 300, height: 500, draggable: true, closable: true });
 		
 		var widgets = new LiteGUI.Inspector();
-		if(instance.constructor === LS.SceneNode)
-			widgets.addString("Node", node.name, { disabled: true });
-		else
-			widgets.addString("Component", LS.getObjectClassName(instance), { disabled: true });
-
 		widgets.widgets_per_row = 2;
 		for(var i = 0; i < 32; ++i)
 		{
 			widgets.addString(null, scene.layer_names[i] || ("layer"+i), { layer: i, callback: function(v) {
 				scene.layer_names[ this.options.layer ] = v;
-				EditorModule.refreshAttributes();
-				RenderModule.requestFrame();
 			}});
 
-			widgets.addCheckbox( null, node.isInLayer(i), { layer: i, callback: function(v){
-				instance.setLayer( this.options.layer, v );
-				EditorModule.refreshAttributes();
-				RenderModule.requestFrame();
+			widgets.addCheckbox( null, 1<<i & layers, { layer: i, callback: function(v){
+				var bit = this.options.layer;
+				var f = 1<<bit;
+				layers = (layers & (~f));
+				if(v)
+					layers |= f;
+				if(callback)
+					callback(layers,bit,v);
 			}});
 		}
 
@@ -825,7 +830,7 @@ var EditorModule = {
 
 	pasteComponentInNode: function(node)
 	{
-		UndoModule.saveNodeUndo(node);
+		UndoModule.saveNodeChangeUndo(node);
 		var data = LiteGUI.getClipboard();
 		if(!data || !data._object_type) return;
 
@@ -1037,7 +1042,7 @@ var EditorModule = {
 
 	showAddMaterialToNode: function()
 	{
-		if(!EditorModule.inspector_instance)
+		if( !SelectionModule.getSelectedNode() )
 		{
 			LiteGUI.alert("You must select a node to attach a material");
 			return;
@@ -1071,17 +1076,20 @@ var EditorModule = {
 		widgets.widgets_per_row = 1;
 
 		widgets.addButton(null,"Add", { className:"big", callback: function() { 
-			if(!EditorModule.inspector_instance || !selected )
+
+			var node = SelectionModule.getSelectedNode();
+			if(!node || !selected )
 			{
 				dialog.close();
 				return;
 			}
 
 			var material = new selected.ctor;
-			EditorModule.inspector_instance.material = material;
+			node.material = material;
+			//emit change event?
 
 			dialog.close();
-			EditorModule.inspectNode( EditorModule.inspector_instance );
+			EditorModule.inspectNode( node );
 			RenderModule.requestFrame();
 		}});
 
@@ -1096,9 +1104,9 @@ var EditorModule = {
 
 	showAddComponentToNode: function( root_instance )
 	{
-		root_instance = root_instance || EditorModule.inspector_instance;
+		root_instance = root_instance || this.inspector.instance;
 
-		if(!root_instance)
+		if( !root_instance || root_instance.constructor != LS.SceneNode )
 		{
 			LiteGUI.alert("You must select a node to attach a component");
 			return;
@@ -1578,7 +1586,27 @@ LiteGUI.Inspector.prototype.addMaterial = function(name,value, options)
 LiteGUI.Inspector.widget_constructors["material"] = "addMaterial";
 LiteGUI.Inspector.widget_constructors["position"] = LiteGUI.Inspector.prototype.addVector3;
 
+LiteGUI.Inspector.prototype.addLayers = function(name, value, options)
+{
+	var text = LS.GlobalScene.getLayerNames(value).join(",");
 
+	options.callback = function(v){
+		return LS.GlobalScene.getLayerNames(value).join(",");
+	};
+	options.callback_button = function() {
+		EditorModule.showLayersEditor( value, function (layers,bit,v){
+			value = layers;
+			var text = LS.GlobalScene.getLayerNames(value).join(",");
+			widget.setValue(text);
+			if(options.callback)
+				options.callback(layers,bit,v);
+		});
+	};
+
+	var widget = this.addStringButton(name, text, options);
+	return widget;
+}
+LiteGUI.Inspector.widget_constructors["layers"] = "addLayers";
 
 
 

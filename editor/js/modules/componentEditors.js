@@ -115,7 +115,7 @@ Camera["@inspector"] = function(camera, attributes)
 		attributes.addVector3("Center", camera.center, { pretitle: AnimationModule.getKeyframeCode( camera, "center" ), disabled: is_node_camera, callback: function(v) { 
 			camera.center = v;
 		}});
-		attributes.addVector3("Up", camera.up, { pretitle: AnimationModule.getKeyframeCode( camera, "up" ),disabled: is_node_camera, callback: function(v) { 
+		attributes.addVector3("Up", camera.up, { pretitle: AnimationModule.getKeyframeCode( camera, "up" ), disabled: is_node_camera, callback: function(v) { 
 			camera.up = vec3.normalize(vec3.create(), v);
 		}});
 	}
@@ -123,10 +123,10 @@ Camera["@inspector"] = function(camera, attributes)
 	attributes.addButton("","Copy from current",{disabled: is_node_camera, callback: inner_copy_from_current});
 
 	attributes.addTitle("Viewport");
-	attributes.addVector2("Offset", camera._viewport.subarray(0,2), { min:0, max:1, step: 0.001, callback: function(v) { 
+	attributes.addVector2("Offset", camera._viewport.subarray(0,2), { pretitle: AnimationModule.getKeyframeCode( camera, "viewport_offset" ), min:0, max:1, step: 0.001, callback: function(v) { 
 		camera._viewport.subarray(0,2).set(v);
 	}});
-	attributes.addVector2("Size", camera._viewport.subarray(2,4), { min:0, max:1, step: 0.001, callback: function(v) { 
+	attributes.addVector2("Size", camera._viewport.subarray(2,4), { pretitle: AnimationModule.getKeyframeCode( camera, "viewport_size" ), min:0, max:1, step: 0.001, callback: function(v) { 
 		camera._viewport.subarray(2,4).set(v);
 	}});
 
@@ -136,13 +136,16 @@ Camera["@inspector"] = function(camera, attributes)
 	attributes.widgets_per_row = 1;
 
 	attributes.addTitle("Render to Texture");
-	attributes.addCheckbox("Enable", camera.render_to_texture , { callback: function (v) { camera.render_to_texture = v; } });
-	attributes.addString("Name", camera.texture_name, { callback: function (v) { camera.texture_name = v; } });
-	attributes.addVector2("Size", camera.texture_size, { callback: function(v) { camera.texture_size.set(v); }});
-	attributes.widgets_per_row = 2;
-	attributes.addCheckbox("High precission", camera.texture_high, { callback: function(v) { camera.texture_high = v; }});
-	attributes.addCheckbox("Clone texture", camera.texture_clone, { callback: function(v) { camera.texture_clone = v; }});
-	attributes.widgets_per_row = 1;
+	attributes.addCheckbox("Enable", camera.render_to_texture , { callback: function (v) { camera.render_to_texture = v; attributes.refresh(); } });
+	if(camera.render_to_texture)
+	{
+		attributes.addString("Name", camera.texture_name, { callback: function (v) { camera.texture_name = v; } });
+		attributes.addVector2("Size", camera.texture_size, { callback: function(v) { camera.texture_size.set(v); }});
+		attributes.widgets_per_row = 2;
+		attributes.addCheckbox("High precission", camera.texture_high, { callback: function(v) { camera.texture_high = v; }});
+		attributes.addCheckbox("Clone texture", camera.texture_clone, { callback: function(v) { camera.texture_clone = v; }});
+		attributes.widgets_per_row = 1;
+	}
 
 	function inner_copy_from_current() {
 
@@ -308,20 +311,25 @@ Light["@inspector"] = function(light, attributes)
 	attributes.addCheckbox("Specular", light.use_specular != false, { callback: function(v) { light.use_specular = v; }});
 	attributes.widgets_per_row = 1;
 	attributes.addTitle("Shadow");
-	attributes.widgets_per_row = 2;
-	attributes.addCheckbox("Cast. shadows", light.cast_shadows, { pretitle: AnimationModule.getKeyframeCode( light, "cast_shadows"), callback: function(v) { light.cast_shadows = v; }});
-	attributes.addCheckbox("Hard shadows", light.hard_shadows, { pretitle: AnimationModule.getKeyframeCode( light, "hard_shadows"), callback: function(v) { light.hard_shadows = v; }});
-	attributes.addNumber("Near", light.near, { pretitle: AnimationModule.getKeyframeCode( light, "near"), callback: function (value) { light.near = value;}});
-	attributes.addNumber("Far", light.far, { pretitle: AnimationModule.getKeyframeCode( light, "far"), callback: function (value) { light.far = value; }});
-	attributes.widgets_per_row = 1;
-	attributes.addNumber("Shadow bias", light.shadow_bias, { pretitle: AnimationModule.getKeyframeCode( light, "shadow_bias"), step: 0.001, min:0, callback: function (value) { light.shadow_bias = value; }});
-	attributes.addCombo("Shadowmap size", light.shadowmap_resolution || 1024 , { pretitle: AnimationModule.getKeyframeCode( light, "shadowmap_resolution"), values: [0,256,512,1024,2048,4096], callback: function(v) { 
-		if(v == 0)
-			delete light["shadowmap_resolution"];
-		else
-			light.shadowmap_resolution = parseFloat(v); 
-	}});
+	attributes.addCheckbox("Cast. shadows", light.cast_shadows, { pretitle: AnimationModule.getKeyframeCode( light, "cast_shadows"), callback: function(v) { light.cast_shadows = v; attributes.refresh(); }});
 
+	if(light.cast_shadows)
+	{
+		attributes.addCheckbox("Hard shadows", light.hard_shadows, { pretitle: AnimationModule.getKeyframeCode( light, "hard_shadows"), callback: function(v) { light.hard_shadows = v; }});
+		attributes.widgets_per_row = 2;
+		attributes.addNumber("Near", light.near, { pretitle: AnimationModule.getKeyframeCode( light, "near"), callback: function (value) { light.near = value;}});
+		attributes.addNumber("Far", light.far, { pretitle: AnimationModule.getKeyframeCode( light, "far"), callback: function (value) { light.far = value; }});
+		attributes.widgets_per_row = 1;
+		attributes.addNumber("Shadow bias", light.shadow_bias, { pretitle: AnimationModule.getKeyframeCode( light, "shadow_bias"), step: 0.001, min:0, callback: function (value) { light.shadow_bias = value; }});
+		attributes.addCombo("Shadowmap size", light.shadowmap_resolution || 1024 , { pretitle: AnimationModule.getKeyframeCode( light, "shadowmap_resolution"), values: [0,256,512,1024,2048,4096], callback: function(v) { 
+			if(v == 0)
+				delete light["shadowmap_resolution"];
+			else
+				light.shadowmap_resolution = parseFloat(v); 
+		}});
+	}
+
+	attributes.addTitle("Textures");
 	attributes.addTexture("Proj. texture", light.projective_texture, { pretitle: AnimationModule.getKeyframeCode( light, "projective_texture"), callback: function(filename) { 
 		light.projective_texture = filename;
 		LS.GlobalScene.refresh();
@@ -346,6 +354,7 @@ ParticleEmissor["@inspector"] = function(component, attributes)
 
 	attributes.addSlider("Max. Particles", component.max_particles, {step:10,min:10,max:1000, callback: function (value) { component.max_particles = value; }});
 	attributes.addNumber("Warmup time", component.warm_up_time, {step:1,min:0,max:10, callback: function (value) { component.warm_up_time = value; }});
+	attributes.addCheckbox("Point particles", component.point_particles,  {callback: function (value) { component.point_particles = value; }});
 
 	attributes.addTitle("Emisor");
 	attributes.addCombo("Type",component.emissor_type, { values: ParticleEmissor["@emissor_type"].values, callback: function (value) { 
@@ -356,13 +365,10 @@ ParticleEmissor["@inspector"] = function(component, attributes)
 	attributes.addMesh("Mesh", component.emissor_mesh, { callback: function(filename) { 
 		component.emissor_mesh = filename;
 		if(filename)
-			ResourcesManager.loadMesh(filename);
+			LS.ResourcesManager.loadMesh(filename);
 	}});
 	attributes.addButton("Custom code", "Edit code", { callback: function() {
-		CodingModule.openTab();
-		CodingModule.editInstanceCode( component, { id: component.uid, title: "Emissor", lang:"javascript", getCode: function(){ return component.custom_emissor_code; }, setCode: function(code){ 
-			component.custom_emissor_code = code;
-		}});
+		CodingModule.editInstanceCode( component, { id: component.uid + ":Emit", title: "P.Emit", lang:"javascript", getCode: function(){ return component.custom_emissor_code; }, setCode: function(code){ component.custom_emissor_code = code; }},true);
 	}});
 
 
@@ -379,7 +385,7 @@ ParticleEmissor["@inspector"] = function(component, attributes)
 	attributes.addColor("End Color", component.particle_end_color, { callback: function(color) { component.particle_end_color = color; } });
 	attributes.addSlider("Opacity",component.opacity, {step:0.001,min:0,max:1, callback: function (value) { component.opacity = value; }});
 	attributes.addLine("Opacity Curve",component.particle_opacity_curve, {defaulty:0, width: 120, callback: function (value) { component.particle_opacity_curve = value; }});
-	attributes.addSlider("Grid Texture",component.texture_grid_size, {step:1,min:1,max:5, callback: function (value) { component.texture_grid_size = value; }});
+	attributes.addNumber("Grid Texture",component.texture_grid_size, {step:1,min:1,max:5, callback: function (value) { component.texture_grid_size = value; }});
 	attributes.addTexture("Texture", component.texture, { callback: function(filename) { 
 		component.texture = filename;
 		if(filename)
@@ -405,14 +411,16 @@ ParticleEmissor["@inspector"] = function(component, attributes)
 	attributes.addVector3("Gravity",component.physics_gravity, {step:0.1, callback: function (value) { vec3.copy(component.physics_gravity, value); }});
 	attributes.addNumber("Rotation",component.particle_rotation, {step:0.1, callback: function (value) { component.particle_rotation = value; }});
 	attributes.addSlider("Friction",component.physics_friction, {step:0.001,min:0,max:1, callback: function (value) { component.physics_friction = value; }});
-
+	attributes.addButton("Custom update", "Edit code", { callback: function() {
+		CodingModule.editInstanceCode( component, { id: component.uid + ":Update", title: "P.Update", lang:"javascript", getCode: function(){ return component.custom_update_code; }, setCode: function(code){ component.custom_update_code = code;	}}, true);
+	}});
 	attributes.addTitle("Flags");
 
 	attributes.widgets_per_row = 2;
 
 	attributes.addCheckbox("Align camera", component.align_with_camera, {callback: function (value) { component.align_with_camera = value; }});
 	attributes.addCheckbox("Align always", component.align_always, {callback: function (value) { component.align_always = value; }});
-	attributes.addCheckbox("Follow node", component.follow_emitter, {callback: function (value) { component.follow_emitter = value; }});
+	attributes.addCheckbox("Follow emitter", component.follow_emitter, {callback: function (value) { component.follow_emitter = value; }});
 	attributes.addCheckbox("Sort in Z", component.sort_in_z, {callback: function (value) { component.sort_in_z = value; }});
 	attributes.addCheckbox("Stop", component.stop_update, {callback: function (value) { component.stop_update = value; }});
 

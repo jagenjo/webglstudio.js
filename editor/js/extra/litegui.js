@@ -3525,9 +3525,13 @@ function beautifyJSON( code, skip_css )
 		return element;
 	}
 
+	//element to add, position of the parent node, position inside children, the depth level
 	Tree.prototype._insertInside = function(element, parent_index, offset_index, level )
 	{
 		var parent = this.root.childNodes[ parent_index ];
+		if(!parent)
+			throw("No parent node found, index: " + parent_index +", nodes: " + this.root.childNodes.length );
+
 		var parent_level = parseInt( parent.dataset["level"] );
 		var child_level = level !== undefined ? level : parent_level + 1;
 
@@ -4224,7 +4228,7 @@ function beautifyJSON( code, skip_css )
 		for(var i = 0; i < children.length; i++)
 		{
 			var child = children[i];
-			this._insertInside( child, last_index + i - 1, 0, parseInt( child.dataset["level"] ) );
+			this._insertInside( child, parent_index, last_index + i - 1, parseInt( child.dataset["level"] ) );
 		}
 		
 		this._updateListBox( parent );
@@ -4497,8 +4501,8 @@ function beautifyJSON( code, skip_css )
 		panel.innerHTML = code;
 
 		this.root = panel;
-		this.content = $(panel).find(".content")[0];
-		this.footer = $(panel).find(".panel-footer")[0];
+		this.content = panel.querySelector(".content");
+		this.footer = panel.querySelector(".panel-footer");
 
 		if(options.buttons)
 		{
@@ -4510,10 +4514,22 @@ function beautifyJSON( code, skip_css )
 		if(options.scroll == true)
 			this.content.style.overflow = "auto";
 
-		$(panel).find(".close-button").bind("click", this.close.bind(this) );
-		$(panel).find(".minimize-button").bind("click", this.minimize.bind(this) );
-		$(panel).find(".maximize-button").bind("click", this.maximize.bind(this) );
-		$(panel).find(".hide-button").bind("click", this.hide.bind(this) );
+		//buttons *********************************
+		var close_button = panel.querySelector(".close-button");
+		if(close_button)
+			close_button.addEventListener("click", this.close.bind(this) );
+
+		var maximize_button = panel.querySelector(".maximize-button");
+		if(maximize_button)
+			maximize_button.addEventListener("click", this.maximize.bind(this) );
+
+		var minimize_button = panel.querySelector(".minimize-button");
+		if(minimize_button)
+			minimize_button.addEventListener("click", this.minimize.bind(this) );
+
+		var hide_button = panel.querySelector(".hide-button");
+		if(hide_button)
+			hide_button.addEventListener("click", this.hide.bind(this) );
 
 		this.makeDialog(options);
 	}
@@ -4588,8 +4604,7 @@ function beautifyJSON( code, skip_css )
 		this.resizable = true;
 		var footer = this.footer;
 		footer.style.minHeight = "4px";
-
-		$(footer).addClass("resizable");
+		footer.classList.add("resizable");
 
 		footer.addEventListener("mousedown", inner_mouse);
 
@@ -4685,9 +4700,13 @@ function beautifyJSON( code, skip_css )
 		if(parent.content)
 			parent.content.appendChild(panel);
 		else if( typeof(parent) == "string")
-			$(parent).append(panel)
+		{
+			parent = document.querySelector( parent );
+			if(parent)
+				parent.appendChild( panel )
+		}
 		else
-			parent.appendChild(panel); 
+			parent.appendChild( panel ); 
 	}
 
 	Dialog.prototype.addButton = function(name,options)
@@ -4698,9 +4717,9 @@ function beautifyJSON( code, skip_css )
 		button.innerHTML = name;
 		if(options.className) button.className = options.className;
 
-		$(this.root).find(".panel-footer").append(button);
+		this.root.querySelector(".panel-footer").appendChild( button );
 
-		$(button).bind("click", function(e) { 
+		button.addEventListener("click", function(e) { 
 			if(options.callback)
 				options.callback(this);
 
@@ -4755,12 +4774,17 @@ function beautifyJSON( code, skip_css )
 		this.minimized = true;
 		this.old_pos = $(this.root).position();
 
-		$(this.root).find(".content").hide();
-		$(this.root).draggable({ disabled: true });
-		$(this.root).find(".minimize-button").hide();
-		$(this.root).find(".maximize-button").show();
-		$(this.root).css({width: LiteGUI.Dialog.MINIMIZED_WIDTH});
+		this.root.querySelector(".content").style.display = "none";
+		
+		var minimize_button = this.root.querySelector(".minimize-button");
+		if(minimize_button)	
+			minimize_button.style.display = "none";
 
+		var maximize_button = this.root.querySelector(".maximize-button");
+		if(maximize_button)
+			maximize_button.style.display = null;
+
+		this.root.style.width = LiteGUI.Dialog.MINIMIZED_WIDTH + "px";
 
 		$(this).bind("closed", function() {
 			LiteGUI.Dialog.minimized.splice( LiteGUI.Dialog.minimized.indexOf( this ), 1);
@@ -4780,19 +4804,26 @@ function beautifyJSON( code, skip_css )
 			var dialog = LiteGUI.Dialog.minimized[i];
 			var parent = dialog.root.parentNode;
 			var pos = $(parent).height() - 20;
-			$(panel.root).animate({ left: LiteGUI.Dialog.MINIMIZED_WIDTH * i, top: pos + "px" },100);
+			$(dialog.root).animate({ left: LiteGUI.Dialog.MINIMIZED_WIDTH * i, top: pos + "px" },100);
 		}
 	}
 
 	Dialog.prototype.maximize = function() {
-		if(!this.minimized) return;
+		if(!this.minimized)
+			return;
 		this.minimized = false;
 
-		$(this.root).find(".content").show();
+		this.root.querySelector(".content").style.display = null;
 		$(this.root).draggable({ disabled: false });
 		$(this.root).animate({ left: this.old_pos.left+"px" , top: this.old_pos.top + "px", width: this.width },100);
-		$(this.root).find(".minimize-button").show();
-		$(this.root).find(".maximize-button").hide();
+
+		var minimize_button = this.root.querySelector(".minimize-button");
+		if(minimize_button)
+			minimize_button.style.display = null;
+
+		var maximize_button = this.root.querySelector(".maximize-button");
+		if(maximize_button)
+			maximize_button.style.display = "none";
 
 		LiteGUI.Dialog.minimized.splice( LiteGUI.Dialog.minimized.indexOf( this ), 1);
 		LiteGUI.Dialog.arrangeMinimized();
@@ -4832,7 +4863,7 @@ function beautifyJSON( code, skip_css )
 			LiteGUI.add(this);
 
 		//$(this.root).show(v,null,100,callback);
-		$(this.root).show();
+		this.root.style.display = null;
 		$(this).trigger("shown");
 	}
 
@@ -4843,7 +4874,7 @@ function beautifyJSON( code, skip_css )
 	Dialog.prototype.hide = function(v,callback)
 	{
 		//$(this.root).hide(v,null,100,callback);
-		$(this.root).hide();
+		this.root.style.display = "none";
 		$(this).trigger("hidden");
 	}
 
@@ -5001,6 +5032,16 @@ Inspector.prototype.clear = function()
 	this.widgets = {};
 
 	this.addSection();
+}
+
+/**
+* Tryes to refresh (calls on_refresh)
+* @method clear
+*/
+Inspector.prototype.refresh = function()
+{
+	if(this.on_refresh)
+		this.on_refresh();
 }
 
 Inspector.prototype.append = function(widget, options)
@@ -5356,10 +5397,10 @@ Inspector.prototype.set = function(name, value)
 
 Inspector.prototype.addSection = function(name, options)
 {
-	options = this.processOptions(options);
-
 	if(this.current_group)
 		this.endGroup();
+
+	options = this.processOptions(options);
 
 	var element = document.createElement("DIV");
 	element.className = "wsection";
@@ -5371,6 +5412,8 @@ Inspector.prototype.addSection = function(name, options)
 
 	if(options.id)
 		element.id = options.id;
+	if(options.instance)
+		element.instance = options.instance;
 
 	var code = "";
 	if(name)
@@ -5393,12 +5436,33 @@ Inspector.prototype.addSection = function(name, options)
 	if(options.collapsed)
 		element.querySelector(".wsectioncontent").style.display = "none";
 
+	this.setCurrentSection( element );
+
+	if(options.widgets_per_row)
+		this.widgets_per_row = options.widgets_per_row;
+
+	element.refresh = function()
+	{
+		if(element.on_refresh)
+			element.on_refresh.call(this, element);
+	}
+
+	return element;
+}
+
+Inspector.prototype.setCurrentSection = function(element)
+{
+	if(this.current_group)
+		this.endGroup();
+
 	this.current_section = element;
 	this.current_section_content = element.querySelector(".wsectioncontent");
 	this.content = this.current_section_content; //shortcut
-	if(options.widgets_per_row)
-		this.widgets_per_row = options.widgets_per_row;
-	return element;
+}
+
+Inspector.prototype.getCurrentSection = function()
+{
+	return this.current_section;
 }
 
 Inspector.prototype.beginGroup = function(name, options)
@@ -5517,7 +5581,9 @@ Inspector.prototype.addStringButton = function(name,value, options)
 	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
 	var input = element.querySelector(".wcontent input");
 	input.addEventListener("change", function(e) { 
-		Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
+		var r = Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
+		if(r !== undefined)
+			this.value = r;
 	});
 	
 	var button = element.querySelector(".wcontent button");

@@ -2437,6 +2437,18 @@ Mesh.computeBounding = function( vertices, bb ) {
 }
 
 /**
+* returns the bounding box, if it is not computed, then computes it
+* @method getBoundingBox
+* @return {BBox} bounding box
+*/
+Mesh.prototype.getBoundingBox = function()
+{
+	if(!this.bounding)
+		this.updateBounding();
+	return this.bounding;
+}
+
+/**
 * Update bounding information of this mesh
 * @method updateBounding
 */
@@ -6806,15 +6818,16 @@ global.geo = {
 	* test a ray sphere collision and retrieves the collision point
 	* @method testRaySphere
 	* @param {vec3} start ray start
-	* @param {vec3} direction ray direction
+	* @param {vec3} direction ray direction (normalized)
 	* @param {vec3} center center of the sphere
 	* @param {number} radius radius of the sphere
 	* @param {vec3} result collision position
+	* @param {number} max_dist not fully tested
 	* @return {boolean} returns if the ray collides the sphere
 	*/
 	testRaySphere: (function() { 
 		var temp = vec3.create();
-		return function(start, direction, center, radius, result)
+		return function(start, direction, center, radius, result, max_dist)
 		{
 			// sphere equation (centered at origin) x2+y2+z2=r2
 			// ray equation x(t) = p0 + t*dir
@@ -6840,6 +6853,8 @@ global.geo = {
 				var r1 = ( -b + sq ) * d;
 				var r2 = ( -b - sq ) * d;
 				var t = r1 < r2 ? r1 : r2;
+				if(t > max_dist)
+					return false;
 				vec3.add(result, start, vec3.scale( result, direction, t ) );
 			}
 			return true;//real roots

@@ -118,8 +118,7 @@ var PlayModule = {
 		//play
 		function launch()
 		{
-			demo_window.init({ resources: ResourcesManager.path, shaders: RenderModule.shaders_url, redraw: true, autoresize: true });
-			demo_window.context.setScene( scene_info );
+			demo_window.player.setScene( scene_info );
 		};
 	},
 

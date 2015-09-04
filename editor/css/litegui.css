@@ -1419,6 +1419,12 @@ button.close-button {
 	transition: all 0.3s;
 }
 
+.litetabs li.wtab .tabtitle {
+    overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .litetabs.horizontal > ul.wtabcontainer > li.wtab {
 	display: inline-block;
 	min-width: 50px;

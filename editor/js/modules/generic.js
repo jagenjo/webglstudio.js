@@ -85,7 +85,16 @@ var simpleScripter = {
 
 	showScripter: function()
 	{
-		var dialog = new LiteGUI.Dialog("scripter_panel", {title:'docked panel', width: 400, height: 600, closable: true, resizable: true, draggable: true });
+		var dialog = LiteGUI.Dialog.getDialog("scripter_panel");
+		if(dialog)
+		{
+			dialog.maximize();
+			dialog.highlight(200);
+			return;
+		}
+
+
+		dialog = new LiteGUI.Dialog("scripter_panel", {title:'Scripter', width: 400, height: 600, closable: true, minimize: true, resizable: true, draggable: true });
 
 		dialog.content.style.width = "calc( 100% - 2px )";
 		dialog.content.style.height = "calc( 100% - 50px )";

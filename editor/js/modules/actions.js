@@ -65,7 +65,10 @@ LS.SceneNode.editor_actions["addcomponent"] = {
 LS.SceneNode.editor_actions["layers"] = { 
 	title:"Show Layers",
 	callback: function( node ){
-		EditorModule.showLayersEditor( node );
+		EditorModule.showLayersEditor( node.layers, function(v){
+			node.layers = v;
+			RenderModule.requestFrame();
+		});
 	}
 };
 
@@ -128,7 +131,10 @@ LS.Camera.prototype.doEditorAction = function( name )
 		LS.GlobalScene.refresh();
 	}
 	else if (name == "Edit Layers")
-		EditorModule.showLayersEditor( this );
+		EditorModule.showLayersEditor( instance.layers, function(v){
+			instance.layers = v;
+			RenderModule.requestFrame();
+		});
 	else
 		return false;
 	return true;

@@ -47,7 +47,7 @@ var selectTool = {
 		var dist = Math.sqrt( (e.canvasx - this.click_pos[0])<<2 + (e.canvasy - this.click_pos[1])<<2 );
 		if (e.click_time < this.click_time && dist < this.click_dist) //fast click
 		{
-			var instance_info = LS.Picking.getInstanceAtCanvasPosition( LS.GlobalScene, ToolUtils.getCamera(), e.canvasx,e.canvasy);
+			var instance_info = LS.Picking.getInstanceAtCanvasPosition( e.canvasx, e.canvasy, ToolUtils.getCamera() );
 			if(!instance_info)
 				return false;
 

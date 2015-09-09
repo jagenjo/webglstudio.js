@@ -172,14 +172,101 @@ Camera["@inspector"] = function(camera, attributes)
 	}
 }
 
+Light["@inspector"] = function(light, attributes)
+{
+	if(!light) return;
+	var node = light._root;
+
+	var light_types = ["Omni","Spot","Directional"];
+	attributes.addCombo("Type", light_types[light.type-1], { pretitle: AnimationModule.getKeyframeCode( light, "type"), values: light_types, callback: function(v) { 
+		light.type = light_types.indexOf(v)+1; 
+	}});
+
+	attributes.addColor("Color", light.color, { pretitle: AnimationModule.getKeyframeCode( light, "color"), callback: function(color) { light.color = color; } });
+	attributes.addSlider("Intensity", light.intensity, { pretitle: AnimationModule.getKeyframeCode( light, "intensity"), min:0, max:2, step:0.01, callback: function (value) { light.intensity = value; }});
+	attributes.widgets_per_row = 2;
+	attributes.addNumber("Angle", light.angle, { pretitle: AnimationModule.getKeyframeCode( light, "angle"), callback: function (value) { light.angle = value; }});
+	attributes.addNumber("Angle End", light.angle_end, { pretitle: AnimationModule.getKeyframeCode( light, "angle_end"), callback: function (value) { light.angle_end = value; }});
+	attributes.widgets_per_row = 1;
+	attributes.addCheckbox("Spot cone", light.spot_cone != false, { pretitle: AnimationModule.getKeyframeCode( light, "spot_cone"), callback: function(v) { light.spot_cone = v; }});
+	attributes.addNumber("Frustum size", light.frustum_size || 100, { pretitle: AnimationModule.getKeyframeCode( light, "frustum_size"), callback: function (value) { light.frustum_size = value; }});
+
+	var is_root_camera = node._is_root;
+
+	if(is_root_camera)
+	{
+		attributes.addSeparator();
+
+		attributes.addVector3("Position", light.position, { pretitle: AnimationModule.getKeyframeCode( light, "position"), disabled: !is_root_camera, callback: function(v) { 
+			light.position = v; 
+		}});
+
+		attributes.addVector3("Target", light.target, { pretitle: AnimationModule.getKeyframeCode( light, "target"), disabled: !is_root_camera, callback: function(v) { 
+			light.target = v; 
+		}});
+	}
+
+	attributes.addSeparator();
+	attributes.widgets_per_row = 2;
+	attributes.addCheckbox("Linear att.", light.linear_attenuation != false, { pretitle: AnimationModule.getKeyframeCode( light, "linear_attenuation"), callback: function(v) { light.linear_attenuation = v; }});
+	attributes.addCheckbox("Range att.", light.range_attenuation != false, { pretitle: AnimationModule.getKeyframeCode( light, "range_attenuation"), callback: function(v) { light.range_attenuation = v; }});
+	attributes.addNumber("Att. start", light.att_start, { pretitle: AnimationModule.getKeyframeCode( light, "att_start"), callback: function (value) { light.att_start = value;}});
+	attributes.addNumber("Att. end", light.att_end, { pretitle: AnimationModule.getKeyframeCode( light, "att_end"), callback: function (value) { light.att_end = value; }});
+	attributes.widgets_per_row = 1;
+	attributes.addSlider("Phong Offset", light.offset, { pretitle: AnimationModule.getKeyframeCode( light, "offset"), min: 0, step:0.01, max:1, callback: function (value) { light.offset = value; } });
+	attributes.addSeparator();
+	attributes.widgets_per_row = 2;
+	attributes.addCheckbox("Const Diff.", !!light.constant_diffuse, { callback: function(v) { light.constant_diffuse = v; }});
+	attributes.addCheckbox("Specular", light.use_specular != false, { callback: function(v) { light.use_specular = v; }});
+	attributes.widgets_per_row = 1;
+	attributes.addTitle("Shadow");
+	attributes.addCheckbox("Cast. shadows", light.cast_shadows, { pretitle: AnimationModule.getKeyframeCode( light, "cast_shadows"), callback: function(v) { light.cast_shadows = v; attributes.refresh(); }});
+
+	if(light.cast_shadows)
+	{
+		attributes.addCheckbox("Hard shadows", light.hard_shadows, { pretitle: AnimationModule.getKeyframeCode( light, "hard_shadows"), callback: function(v) { light.hard_shadows = v; }});
+		attributes.widgets_per_row = 2;
+		attributes.addNumber("Near", light.near, { pretitle: AnimationModule.getKeyframeCode( light, "near"), callback: function (value) { light.near = value;}});
+		attributes.addNumber("Far", light.far, { pretitle: AnimationModule.getKeyframeCode( light, "far"), callback: function (value) { light.far = value; }});
+		attributes.widgets_per_row = 1;
+		attributes.addNumber("Shadow bias", light.shadow_bias, { pretitle: AnimationModule.getKeyframeCode( light, "shadow_bias"), step: 0.001, min:0, callback: function (value) { light.shadow_bias = value; }});
+		attributes.addCombo("Shadowmap size", light.shadowmap_resolution || 1024 , { pretitle: AnimationModule.getKeyframeCode( light, "shadowmap_resolution"), values: [0,256,512,1024,2048,4096], callback: function(v) { 
+			if(v == 0)
+				delete light["shadowmap_resolution"];
+			else
+				light.shadowmap_resolution = parseFloat(v); 
+		}});
+	}
+
+	attributes.addTitle("Textures");
+	attributes.addTexture("Proj. texture", light.projective_texture, { pretitle: AnimationModule.getKeyframeCode( light, "projective_texture"), callback: function(filename) { 
+		light.projective_texture = filename;
+		LS.GlobalScene.refresh();
+	}});
+
+	attributes.addTexture("Extra texture", light.extra_texture, { pretitle: AnimationModule.getKeyframeCode( light, "extra_texture"), callback: function(filename) { 
+		light.extra_texture = filename;
+		LS.GlobalScene.refresh();
+	}});
+
+	attributes.addButton(null, "Edit Shader", { callback: function() { 
+		CodingModule.openTab();
+		CodingModule.editInstanceCode( light, { id: light.uid, title: "Light Shader", lang:"glsl", help: light.constructor.coding_help, getCode: function(){ return light.extra_light_shader_code; }, setCode: function(code){ light.extra_light_shader_code = code; } } );
+	}});
+}
+
+
 CameraFX["@inspector"] = function(camerafx, attributes)
 {
 	if(!camerafx)
 		return;
 	var node = camerafx._root;
 
-	attributes.addCheckbox("Viewport Size", camerafx.use_viewport_size, { callback: function(v) { camerafx.use_viewport_size = v; } });
-	attributes.addCheckbox("High Precission", camerafx.use_high_precision, { callback: function(v) { camerafx.use_high_precision = v; } });
+	attributes.widgets_per_row = 2;
+	attributes.addCheckbox("Viewport Size", camerafx.use_viewport_size, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_viewport_size" ), callback: function(v) { camerafx.use_viewport_size = v; } });
+	attributes.addCheckbox("High Precission", camerafx.use_high_precision, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_high_precision" ), callback: function(v) { camerafx.use_high_precision = v; } });
+	attributes.widgets_per_row = 1;
+	attributes.addCheckbox("Use node camera", camerafx.use_node_camera, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_node_camera" ), callback: function(v) { camerafx.use_node_camera = v; } });
 
 	attributes.addTitle("Active FX");
 	for(var i = 0; i < camerafx.fx.length; i++)
@@ -265,87 +352,6 @@ CameraFX["@inspector"] = function(camerafx, attributes)
 		dialog.adjustSize();
 	}
 }
-
-
-Light["@inspector"] = function(light, attributes)
-{
-	if(!light) return;
-	var node = light._root;
-
-	var light_types = ["Omni","Spot","Directional"];
-	attributes.addCombo("Type", light_types[light.type-1], { pretitle: AnimationModule.getKeyframeCode( light, "type"), values: light_types, callback: function(v) { 
-		light.type = light_types.indexOf(v)+1; 
-	}});
-
-	attributes.addColor("Color", light.color, { pretitle: AnimationModule.getKeyframeCode( light, "color"), callback: function(color) { light.color = color; } });
-	attributes.addSlider("Intensity", light.intensity, { pretitle: AnimationModule.getKeyframeCode( light, "intensity"), min:0, max:2, step:0.01, callback: function (value) { light.intensity = value; }});
-	attributes.widgets_per_row = 2;
-	attributes.addNumber("Angle", light.angle, { pretitle: AnimationModule.getKeyframeCode( light, "angle"), callback: function (value) { light.angle = value; }});
-	attributes.addNumber("Angle End", light.angle_end, { pretitle: AnimationModule.getKeyframeCode( light, "angle_end"), callback: function (value) { light.angle_end = value; }});
-	attributes.widgets_per_row = 1;
-	attributes.addCheckbox("Spot cone", light.spot_cone != false, { pretitle: AnimationModule.getKeyframeCode( light, "spot_cone"), callback: function(v) { light.spot_cone = v; }});
-	attributes.addNumber("Frustum size", light.frustum_size || 100, { pretitle: AnimationModule.getKeyframeCode( light, "frustum_size"), callback: function (value) { light.frustum_size = value; }});
-
-	var is_root_camera = node._is_root;
-	attributes.addSeparator();
-
-	attributes.addVector3("Position", light.position, { pretitle: AnimationModule.getKeyframeCode( light, "position"), disabled: !is_root_camera, callback: function(v) { 
-		light.position = v; 
-	}});
-
-	attributes.addVector3("Target", light.target, { pretitle: AnimationModule.getKeyframeCode( light, "target"), disabled: !is_root_camera, callback: function(v) { 
-		light.target = v; 
-	}});
-
-	attributes.addSeparator();
-	attributes.widgets_per_row = 2;
-	attributes.addCheckbox("Linear att.", light.linear_attenuation != false, { pretitle: AnimationModule.getKeyframeCode( light, "linear_attenuation"), callback: function(v) { light.linear_attenuation = v; }});
-	attributes.addCheckbox("Range att.", light.range_attenuation != false, { pretitle: AnimationModule.getKeyframeCode( light, "range_attenuation"), callback: function(v) { light.range_attenuation = v; }});
-	attributes.addNumber("Att. start", light.att_start, { pretitle: AnimationModule.getKeyframeCode( light, "att_start"), callback: function (value) { light.att_start = value;}});
-	attributes.addNumber("Att. end", light.att_end, { pretitle: AnimationModule.getKeyframeCode( light, "att_end"), callback: function (value) { light.att_end = value; }});
-	attributes.widgets_per_row = 1;
-	attributes.addSlider("Phong Offset", light.offset, { pretitle: AnimationModule.getKeyframeCode( light, "offset"), min: 0, step:0.01, max:1, callback: function (value) { light.offset = value; } });
-	attributes.addSeparator();
-	attributes.widgets_per_row = 2;
-	attributes.addCheckbox("Const Diff.", !!light.constant_diffuse, { callback: function(v) { light.constant_diffuse = v; }});
-	attributes.addCheckbox("Specular", light.use_specular != false, { callback: function(v) { light.use_specular = v; }});
-	attributes.widgets_per_row = 1;
-	attributes.addTitle("Shadow");
-	attributes.addCheckbox("Cast. shadows", light.cast_shadows, { pretitle: AnimationModule.getKeyframeCode( light, "cast_shadows"), callback: function(v) { light.cast_shadows = v; attributes.refresh(); }});
-
-	if(light.cast_shadows)
-	{
-		attributes.addCheckbox("Hard shadows", light.hard_shadows, { pretitle: AnimationModule.getKeyframeCode( light, "hard_shadows"), callback: function(v) { light.hard_shadows = v; }});
-		attributes.widgets_per_row = 2;
-		attributes.addNumber("Near", light.near, { pretitle: AnimationModule.getKeyframeCode( light, "near"), callback: function (value) { light.near = value;}});
-		attributes.addNumber("Far", light.far, { pretitle: AnimationModule.getKeyframeCode( light, "far"), callback: function (value) { light.far = value; }});
-		attributes.widgets_per_row = 1;
-		attributes.addNumber("Shadow bias", light.shadow_bias, { pretitle: AnimationModule.getKeyframeCode( light, "shadow_bias"), step: 0.001, min:0, callback: function (value) { light.shadow_bias = value; }});
-		attributes.addCombo("Shadowmap size", light.shadowmap_resolution || 1024 , { pretitle: AnimationModule.getKeyframeCode( light, "shadowmap_resolution"), values: [0,256,512,1024,2048,4096], callback: function(v) { 
-			if(v == 0)
-				delete light["shadowmap_resolution"];
-			else
-				light.shadowmap_resolution = parseFloat(v); 
-		}});
-	}
-
-	attributes.addTitle("Textures");
-	attributes.addTexture("Proj. texture", light.projective_texture, { pretitle: AnimationModule.getKeyframeCode( light, "projective_texture"), callback: function(filename) { 
-		light.projective_texture = filename;
-		LS.GlobalScene.refresh();
-	}});
-
-	attributes.addTexture("Extra texture", light.extra_texture, { pretitle: AnimationModule.getKeyframeCode( light, "extra_texture"), callback: function(filename) { 
-		light.extra_texture = filename;
-		LS.GlobalScene.refresh();
-	}});
-
-	attributes.addButton(null, "Edit Shader", { callback: function() { 
-		CodingModule.openTab();
-		CodingModule.editInstanceCode( light, { id: light.uid, title: "Light Shader", lang:"glsl", help: light.constructor.coding_help, getCode: function(){ return light.extra_light_shader_code; }, setCode: function(code){ light.extra_light_shader_code = code; } } );
-	}});
-}
-
 
 ParticleEmissor["@inspector"] = function(component, attributes)
 {

@@ -6,7 +6,13 @@ var SelectionModule = {
 
 	init: function()
 	{
+		LEvent.bind( LS.GlobalScene, "treeItemRemoved", this.onNodeRemoved, this );
+	},
 
+	onNodeRemoved: function(e, node)
+	{
+		if(this.isSelected( node ))
+			this.removeFromSelection( node );
 	},
 
 	//expect something along { instance: *, node: SceneNode, uid: String, data: * }
@@ -38,7 +44,7 @@ var SelectionModule = {
 		selection = this.convertSelection( selection );
 
 		//same selection
-		if(this.selection && this.selection.uid == selection.uid )
+		if(this.selection && this.selection.uid && this.selection.uid == selection.uid )
 			return;
 
 		//remove selection
@@ -183,6 +189,14 @@ var SelectionModule = {
 		return false;
 	},
 
+	getSelection: function()
+	{
+		if(!this.selection)
+			return null;
+		//the node part of the selection
+		return this.selection;
+	},
+
 	getSelectionCenter: function()
 	{
 		if(!this.selection)
@@ -244,7 +258,7 @@ var SelectionModule = {
 
 		if( this.selection.instance.getTransformMatrix )
 		{
-			var result = this.selection.instance.getTransformMatrix( this.selection.info );
+			var result = this.selection.instance.getTransformMatrix( this.selection.info, null, this.selection );
 			if(result)
 				return result;
 		}
@@ -270,7 +284,7 @@ var SelectionModule = {
 
 			if( selection.instance.applyTransform )
 			{
-				var r =  selection.instance.applyTransform( transform, center, this.selection.info );
+				var r =  selection.instance.applyTransform( transform, center, this.selection.info, this.selection );
 				if(r == true)
 					continue;
 			}
@@ -302,7 +316,7 @@ var SelectionModule = {
 
 			if( selection.instance.applyTransformMatrix )
 			{
-				var r = selection.instance.applyTransformMatrix( matrix, center, selection.info );
+				var r = selection.instance.applyTransformMatrix( matrix, center, selection.info, this.selection );
 				if(r == true)
 					continue;
 			}

@@ -1,6 +1,6 @@
-var moveNodeTool = {
+var moveTool = {
 	name: "move",
-	description: "Translate the node",
+	description: "Translate selection",
 	section: "manipulate",
 	icon: "imgs/mini-icon-gizmo.png",
 	keyShortcut: 87, //W
@@ -18,10 +18,7 @@ var moveNodeTool = {
 
 	renderEditor: function(camera)
 	{
-		var node = SelectionModule.getSelectedNode();
-		if(!node)
-			return;
-
+		var selection = SelectionModule.getSelection();
 		if(!EditorView.mustRenderGizmos()) 
 			return;
 
@@ -36,14 +33,14 @@ var moveNodeTool = {
 		mat4.multiplyVec3(center,gizmo_model,center);
 
 		var f = ToolUtils.computeDistanceFactor(center, camera);
-		vec3.copy(moveNodeTool._center, center);
+		vec3.copy(moveTool._center, center);
 
 		var scale = f *0.15;
 
-		var colorx = moveNodeTool._on_top_of == "x" ? [1,1,1,1] : [1,0,0,1];
-		var colory = moveNodeTool._on_top_of == "y" ? [1,1,1,1] : [0,1,0,1];
-		var colorz = moveNodeTool._on_top_of == "z" ? [1,1,1,1] : [0,0,1,1];
-		if( moveNodeTool._on_top_of == "center" )
+		var colorx = moveTool._on_top_of == "x" ? [1,1,1,1] : [1,0,0,1];
+		var colory = moveTool._on_top_of == "y" ? [1,1,1,1] : [0,1,0,1];
+		var colorz = moveTool._on_top_of == "z" ? [1,1,1,1] : [0,0,1,1];
+		if( moveTool._on_top_of == "center" )
 		{
 			vec3.add(colorx, colorx,[1,1,1]);
 			vec3.add(colory, colory,[1,1,1]);
@@ -57,9 +54,9 @@ var moveNodeTool = {
 		Draw.push();
 			Draw.setMatrix(gizmo_model);
 
-			mat4.multiplyVec3(moveNodeTool._x_axis_end, gizmo_model, [scale,0,0] );
-			mat4.multiplyVec3(moveNodeTool._y_axis_end, gizmo_model, [0,scale,0] );
-			mat4.multiplyVec3(moveNodeTool._z_axis_end, gizmo_model, [0,0,scale] );
+			mat4.multiplyVec3(moveTool._x_axis_end, gizmo_model, [scale,0,0] );
+			mat4.multiplyVec3(moveTool._y_axis_end, gizmo_model, [0,scale,0] );
+			mat4.multiplyVec3(moveTool._z_axis_end, gizmo_model, [0,0,scale] );
 
 			Draw.renderLines( [[0,0,0],[scale,0,0],[0,0,0],[0,scale,0],[0,0,0],[0,0,scale]],
 				[colorx,colorx,colory,colory,colorz,colorz]);
@@ -68,7 +65,7 @@ var moveNodeTool = {
 			Draw.push();
 			Draw.translate(scale,0,0);
 			Draw.rotate(-90,[0,0,1]);
-			if(moveNodeTool._on_top_of == "x")
+			if(moveTool._on_top_of == "x")
 				Draw.scale(2,2,2);
 			Draw.renderCone(5*scale*0.005,15*scale*0.005,8);
 			Draw.pop();
@@ -76,7 +73,7 @@ var moveNodeTool = {
 			Draw.setColor(colory);
 			Draw.push();
 			Draw.translate(0,scale,0);
-			if(moveNodeTool._on_top_of == "y")
+			if(moveTool._on_top_of == "y")
 				Draw.scale(2,2,2);
 			Draw.renderCone(5*scale*0.005,15*scale*0.005,8);
 			Draw.pop();
@@ -85,7 +82,7 @@ var moveNodeTool = {
 			Draw.push();
 			Draw.translate(0,0,scale);
 			Draw.rotate(90,[1,0,0]);
-			if(moveNodeTool._on_top_of == "z")
+			if(moveTool._on_top_of == "z")
 				Draw.scale(2,2,2);
 			Draw.renderCone(5*scale*0.005,15*scale*0.005,8);
 			Draw.pop();
@@ -95,15 +92,19 @@ var moveNodeTool = {
 		gl.enable(gl.DEPTH_TEST);
 	},
 
-	mousedown: function(e) {
+	mousedown: function(e)
+	{
 		if(!this.enabled) 
 			return;
+
 		if(e.which != GL.LEFT_MOUSE_BUTTON) 
 			return;
 
-		var node = SelectionModule.getSelectedNode();
-		if(!node) 
+		var selection = SelectionModule.getSelection();
+		if(!selection)
 			return;
+
+		var node = selection.node;
 
 		if( e.shiftKey && this._on_top_of )
 		{
@@ -113,7 +114,7 @@ var moveNodeTool = {
 		}
 		else
 		{
-			if(node.transform)
+			if(node && node.transform)
 				ToolUtils.saveNodeTransformUndo(node);
 		}
 
@@ -123,7 +124,7 @@ var moveNodeTool = {
 			return;
 
 		var center = vec3.create();
-		mat4.multiplyVec3(center,gizmo_model,center);
+		mat4.multiplyVec3(center, gizmo_model, center);
 
 		if(ToolUtils.testPerpendicularPlane(e.mousex, e.mousey, center, this._click_world_position))
 			vec3.copy(this._debug_pos, this._click_world_position);
@@ -150,15 +151,13 @@ var moveNodeTool = {
 
 		LS.GlobalScene.refresh();
 
-		var node = SelectionModule.getSelectedNode();
-		if(!node) 
+		var selection = SelectionModule.getSelection();
+		if(!selection)
 			return;
 
 		var camera = ToolUtils.getCamera();
 		//camera.updateMatrices();
 
-		if(!node) 
-			return;
 		var gizmo_model = ToolUtils.getSelectionMatrix();
 		if(!gizmo_model)
 			return;
@@ -168,19 +167,19 @@ var moveNodeTool = {
 
 		var ray = camera.getRayInPixel( e.mousex, gl.canvas.height - e.mousey );
 		ray.end = vec3.add( vec3.create(), ray.start, vec3.scale(vec3.create(), ray.direction, 10000) );
-		moveNodeTool._last_ray = ray;
+		moveTool._last_ray = ray;
 
 		if (e.dragging && e.which == GL.LEFT_MOUSE_BUTTON) {
 
 			var f = 0.001 * ToolUtils.computeDistanceFactor(center);
 			var delta = vec3.create();
 
-			if(!moveNodeTool._on_top_of)
+			if(!moveTool._on_top_of)
 			{
 				return;
 			}
 
-			if(moveNodeTool._on_top_of == "center") //parallel to camara
+			if(moveTool._on_top_of == "center") //parallel to camara
 			{
 				var current_position = vec3.create();		
 				ToolUtils.testPerpendicularPlane(e.mousex, e.mousey, center, current_position );
@@ -196,18 +195,18 @@ var moveNodeTool = {
 				var closest = vec3.create();
 				var axis = null;
 				
-				if(moveNodeTool._on_top_of == "y")
-					axis = moveNodeTool._y_axis_end;
-				else if(moveNodeTool._on_top_of == "z")
-					axis = moveNodeTool._z_axis_end;
+				if(moveTool._on_top_of == "y")
+					axis = moveTool._y_axis_end;
+				else if(moveTool._on_top_of == "z")
+					axis = moveTool._z_axis_end;
 				else
-					axis = moveNodeTool._x_axis_end;
+					axis = moveTool._x_axis_end;
 			
-				geo.closestPointBetweenLines( ray.start, ray.end, moveNodeTool._center, axis, null, closest );
-				//trace( vec3.toArray(moveNodeTool._closest));
+				geo.closestPointBetweenLines( ray.start, ray.end, moveTool._center, axis, null, closest );
+				//trace( vec3.toArray(moveTool._closest));
 				//trace( vec3.toArray(closest));
-				vec3.subtract(delta, closest, moveNodeTool._closest);
-				vec3.copy( moveNodeTool._closest, closest );
+				vec3.subtract(delta, closest, moveTool._closest);
+				vec3.copy( moveTool._closest, closest );
 				/*
 				if(use_world)
 					node.transform.translate(delta[0],delta[1],delta[2]);
@@ -230,35 +229,35 @@ var moveNodeTool = {
 		{
 			var result = vec3.create();
 
-			vec3.copy( moveNodeTool._debug_pos, result );
-			var radius = vec3.dist( moveNodeTool._center, moveNodeTool._x_axis_end);
+			vec3.copy( moveTool._debug_pos, result );
+			var radius = vec3.dist( moveTool._center, moveTool._x_axis_end);
 
-			if ( geo.testRaySphere( ray.start, ray.direction, moveNodeTool._center, radius*1.1, result ) ) 
+			if ( geo.testRaySphere( ray.start, ray.direction, moveTool._center, radius*1.1, result ) ) 
 			{
-				vec3.copy( moveNodeTool._closest, result );
-				if ( geo.testRaySphere( ray.start, ray.direction, moveNodeTool._center, radius*0.5, result ) ) 
-					moveNodeTool._on_top_of = "center";
-				else if( geo.testRayCylinder( ray.start, ray.direction, moveNodeTool._center, moveNodeTool._x_axis_end, radius*0.1, result ) )
+				vec3.copy( moveTool._closest, result );
+				if ( geo.testRaySphere( ray.start, ray.direction, moveTool._center, radius*0.5, result ) ) 
+					moveTool._on_top_of = "center";
+				else if( geo.testRayCylinder( ray.start, ray.direction, moveTool._center, moveTool._x_axis_end, radius*0.1, result ) )
 				{
-					geo.closestPointBetweenLines( ray.start, ray.end, moveNodeTool._center, moveNodeTool._x_axis_end, null, moveNodeTool._closest );
-					//vec3.set(moveNodeTool._closest, moveNodeTool._debug_pos );
-					moveNodeTool._on_top_of = "x";
+					geo.closestPointBetweenLines( ray.start, ray.end, moveTool._center, moveTool._x_axis_end, null, moveTool._closest );
+					//vec3.set(moveTool._closest, moveTool._debug_pos );
+					moveTool._on_top_of = "x";
 				}
-				else if( geo.testRayCylinder( ray.start, ray.direction, moveNodeTool._center, moveNodeTool._y_axis_end, radius*0.1, result ) )
+				else if( geo.testRayCylinder( ray.start, ray.direction, moveTool._center, moveTool._y_axis_end, radius*0.1, result ) )
 				{
-					geo.closestPointBetweenLines( ray.start, ray.end, moveNodeTool._center, moveNodeTool._y_axis_end, null, moveNodeTool._closest );
-					moveNodeTool._on_top_of = "y";
+					geo.closestPointBetweenLines( ray.start, ray.end, moveTool._center, moveTool._y_axis_end, null, moveTool._closest );
+					moveTool._on_top_of = "y";
 				}
-				else if( geo.testRayCylinder( ray.start, ray.direction, moveNodeTool._center, moveNodeTool._z_axis_end, radius*0.1, result ) )
+				else if( geo.testRayCylinder( ray.start, ray.direction, moveTool._center, moveTool._z_axis_end, radius*0.1, result ) )
 				{
-					geo.closestPointBetweenLines( ray.start, ray.end, moveNodeTool._center, moveNodeTool._z_axis_end, null, moveNodeTool._closest );
-					moveNodeTool._on_top_of = "z";
+					geo.closestPointBetweenLines( ray.start, ray.end, moveTool._center, moveTool._z_axis_end, null, moveTool._closest );
+					moveTool._on_top_of = "z";
 				}
 				else
-					moveNodeTool._on_top_of = null;
+					moveTool._on_top_of = null;
 			}
 			else
-				moveNodeTool._on_top_of = null;
+				moveTool._on_top_of = null;
 
 			Scene.refresh();
 		}
@@ -267,9 +266,10 @@ var moveNodeTool = {
 	mousewheel: function(e)
 	{
 		if(!e.dragging) return;
-		if(moveNodeTool._on_top_of != "center") return;
-		var node = SelectionModule.getSelectedNode();
-		if(!node) return;
+		if(moveTool._on_top_of != "center") return;
+		var selection = SelectionModule.getSelection();
+		if(!selection)
+			return;
 
 		var camera = ToolUtils.getCamera();
 		var eye = camera.getEye();
@@ -290,6 +290,6 @@ var moveNodeTool = {
 		return true;		
 	}
 };
-ToolsModule.registerTool(moveNodeTool);
+ToolsModule.registerTool( moveTool );
 
 

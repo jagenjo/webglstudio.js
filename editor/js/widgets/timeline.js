@@ -695,6 +695,14 @@ Timeline.prototype.setCurrentTime = function( time, skip_redraw )
 	}
 }
 
+Timeline.prototype.applyTracks = function( force )
+{
+	if(!this.current_take)
+		return;
+
+	if(this.preview || force)
+		this.current_take.applyTracks( this.session.current_time, this.session.last_time );
+}
 
 Timeline.prototype.setDuration = function( time, skip_redraw  )
 {
@@ -1327,6 +1335,7 @@ Timeline.prototype.onInsertKeyframeButton = function( button, relative )
 	track.addKeyframe( time , value );
 
 	this.redrawCanvas();
+	RenderModule.requestFrame();
 }
 
 Timeline.prototype.insertKeyframe = function( track, only_different, time )
@@ -1371,6 +1380,7 @@ Timeline.prototype.insertKeyframe = function( track, only_different, time )
 	this.animationModified();
 
 	this._must_redraw = true;
+	RenderModule.requestFrame();
 	return true;
 }
 

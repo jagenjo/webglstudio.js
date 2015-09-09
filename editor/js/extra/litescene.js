@@ -754,7 +754,7 @@ var Draw = {
 
 		if(colors && colors.constructor != Float32Array)
 		{
-			if(colors.constructor === Array )
+			if(colors.constructor === Array && colors[0].constructor === Number)
 				colors = new Float32Array( colors );
 			else
 				colors = this.linearize(colors);
@@ -1547,21 +1547,31 @@ var LS = {
 	Components: {},
 
 	/**
-	* Register a component so it is listed when searching for new components to attach
+	* Register a component (or several) so it is listed when searching for new components to attach
 	*
 	* @method registerComponent
-	* @param {ComponentClass} comp component class to register
+	* @param {ComponentClass} c component class to register
 	*/
-	registerComponent: function(comp) { 
+	registerComponent: function( c ) { 
+		//allows to register several at the same time
 		for(var i in arguments)
 		{
+			var component = arguments[i];
+			var name = LS.getClassName( component );
+
 			//register
-			this.Components[ LS.getClassName(arguments[i]) ] = arguments[i]; 
+			this.Components[ name ] = component; 
+
+			//checks for errors
+			if( !!component.prototype.onAddedToNode != !!component.prototype.onRemovedFromNode ||
+				!!component.prototype.onAddedToScene != !!component.prototype.onRemovedFromScene )
+				console.warn("Component could have a bug, check events: " + name);
+
 			//add default methods
-			LS.extendClass(comp, LS.Component );
+			LS.extendClass( component, LS.Component );
 
 			//event
-			LEvent.trigger(LS,"component_registered",arguments[i]); 
+			LEvent.trigger(LS, "component_registered", component ); 
 		}
 	},
 
@@ -3471,7 +3481,17 @@ GL.Mesh.prototype.toBinary = function()
 	- Allows to use a global shader
 */
 
+//************************************
+/**
+* ShadersManager is the static class in charge of loading, compiling and storing shaders for reuse.
+*
+* @class ShadersManager
+* @namespace LS
+* @constructor
+*/
+
 var ShadersManager = {
+
 	default_xml_url: "data/shaders.xml",
 
 	snippets: {},//to save source snippets
@@ -3484,6 +3504,12 @@ var ShadersManager = {
 	dump_compile_errors: true, //dump errors in console
 	on_compile_error: null, //callback 
 
+	/**
+	* Initializes the shader manager
+	*
+	* @method init
+	* @param {string} url a url to a shaders.xml can be specified to load the shaders
+	*/
 	init: function(url, ignore_cache)
 	{
 		//set a default shader 
@@ -3508,14 +3534,29 @@ var ShadersManager = {
 		this.loadFromXML(url, false, ignore_cache);
 	},
 
+	/**
+	* Reloads the XML file with the shaders, useful when editing the file
+	*
+	* @method reloadShaders
+	* @param {function} on_complete call when the shaders have been reloaded
+	*/
 	reloadShaders: function(on_complete)
 	{
 		this.loadFromXML( this.last_shaders_url, true,true, on_complete);
 	},
 
+	/**
+	* Returns a compiled shader with this id and this macros
+	*
+	* @method get
+	* @param {string} id
+	* @param {string} macros
+	* @return {GL.Shader} the shader, if not found the default shader is returned
+	*/
 	get: function( id, macros )
 	{
-		if(!id) return null;
+		if(!id)
+			return this.default_shader;
 
 		//if there is no macros, just get the old one
 		if(!macros)
@@ -3555,7 +3596,7 @@ var ShadersManager = {
 
 		//compile and store it
 		var vs_code = extracode + global.vs_code;
-		var ps_code = extracode + global.ps_code;
+		var fs_code = extracode + global.fs_code;
 
 		//expand code
 		if(global.imports)
@@ -3577,28 +3618,48 @@ var ShadersManager = {
 
 			vs_code = vs_code.replace(/#import\s+\"(\w+)\"\s*\n/g, replace_import );
 			already_imported = {}; //clear
-			ps_code	= ps_code.replace(/#import\s+\"(\w+)\"\s*\n/g, replace_import);
+			fs_code	= fs_code.replace(/#import\s+\"(\w+)\"\s*\n/g, replace_import);
 		}
 
-		var shader = this.compileShader( vs_code, ps_code, key );
+		var shader = this.compileShader( vs_code, fs_code, key );
 		if(shader)
 			shader.global = global;
 		return this.registerCompiledShader(shader, hashkey, id);
 	},
 
+	/**
+	* Returns the info of a global shader
+	*
+	* @method getGlobalShaderInfo
+	* @param {string} id
+	* @return {Object} shader info (code, macros supported, flags)
+	*/
 	getGlobalShaderInfo: function(id)
 	{
 		return this.global_shaders[id];
 	},
 
-	compileShader: function( vs_code, ps_code, name )
+	/**
+	* Compiles a shader, the vertex and fragment shader are cached indepently to speed up compilations but a unique name must be provided
+	*
+	* @method compileShader
+	* @param {string} vs_code the final source code for the vertex shader
+	* @param {string} fs_code the final source code for the fragment shader
+	* @param {string} name an unique name that should be associated with this shader
+	* @return {GL.Shader} shader
+	*/
+	compileShader: function( vs_code, fs_code, name )
 	{
-		if(!gl) return null;
+		if(!name)
+			throw("compileShader must have a name specified");
+
+		if(!gl)
+			return null;
 		var shader = null;
 		try
 		{
 			vs_code = this.global_extra_code + vs_code;
-			ps_code = this.global_extra_code + ps_code;
+			fs_code = this.global_extra_code + fs_code;
 
 			//speed up compilations by caching shaders compiled
 			var vs_shader = this.compiled_shaders[name + ":VS"];
@@ -3606,9 +3667,8 @@ var ShadersManager = {
 				vs_shader = this.compiled_shaders[name + ":VS"] = GL.Shader.compileSource(gl.VERTEX_SHADER, vs_code);
 			var fs_shader = this.compiled_shaders[name + ":FS"];
 			if(!fs_shader)
-				fs_shader = this.compiled_shaders[name + ":FS"] = GL.Shader.compileSource(gl.FRAGMENT_SHADER, ps_code);
-
-			shader = new GL.Shader(vs_shader, fs_shader);
+				fs_shader = this.compiled_shaders[name + ":FS"] = GL.Shader.compileSource(gl.FRAGMENT_SHADER, fs_code);
+			shader = new GL.Shader( vs_shader, fs_shader );
 			shader.name = name;
 			//console.log("Shader compiled: " + name);
 		}
@@ -3626,8 +3686,8 @@ var ShadersManager = {
 				console.groupEnd();
 
 				console.groupCollapsed("Fragment Shader Code");
-				//console.log("PS CODE\n************");
-				lines = (this.global_extra_code + ps_code).split("\n");
+				//console.log("FS CODE\n************");
+				lines = (this.global_extra_code + fs_code).split("\n");
 				for(var i in lines)
 					console.log(i + ": " + lines[i]);
 				console.groupEnd();
@@ -3642,7 +3702,15 @@ var ShadersManager = {
 		return shader;
 	},
 
-	// given a compiled shader it caches it for later reuse
+	/**
+	* Stores a compiled shader program, so it can be reused
+	*
+	* @method registerCompiledShader
+	* @param {GL.Shader} shader the compiled shader
+	* @param {string} key unique id 
+	* @param {string} id the shader name
+	* @return {GL.Shader} shader
+	*/
 	registerCompiledShader: function(shader, key, id)
 	{
 		if(shader == null)
@@ -3657,7 +3725,15 @@ var ShadersManager = {
 		return shader;
 	},
 
-	//loads some shaders from an XML
+	/**
+	* Loads shaders code from an XML file
+	*
+	* @method loadFromXML
+	* @param {string} url to the shaders file
+	* @param {boolean} reset_old to reset all the existing shaders once loaded
+	* @param {boolean} ignore_cache force to ignore web cache 
+	* @param {function} on_complete callback once the file has been loaded and processed
+	*/
 	loadFromXML: function (url, reset_old, ignore_cache, on_complete)
 	{
 		var nocache = ignore_cache ? "?nocache=" + getTime() + Math.floor(Math.random() * 1000) : "";
@@ -3683,7 +3759,12 @@ var ShadersManager = {
 		});	
 	},
 
-	// process the XML to include the shaders
+	/**
+	* extracts all the shaders from the XML doc
+	*
+	* @method processShadersXML
+	* @param {XMLDocument} xml
+	*/
 	processShadersXML: function(xml)
 	{
 		//get shaders
@@ -3699,7 +3780,7 @@ var ShadersManager = {
 			id = id.value;
 
 			var vs_code = "";
-			var ps_code = "";
+			var fs_code = "";
 
 			//read all the supported macros
 			var macros_str = "";
@@ -3718,9 +3799,9 @@ var ShadersManager = {
 
 			//read the shaders code
 			vs_code = shader_element.querySelector("code[type='vertex_shader']").textContent;
-			ps_code = shader_element.querySelector("code[type='pixel_shader']").textContent;
+			fs_code = shader_element.querySelector("code[type='pixel_shader']").textContent;
 
-			if(!vs_code || !ps_code)
+			if(!vs_code || !fs_code)
 			{
 				console.log("no code in shader: " + id);
 				continue;
@@ -3735,7 +3816,7 @@ var ShadersManager = {
 			if(imports)
 				options.imports = (imports == "1" || imports == "true");
 
-			LS.ShadersManager.registerGlobalShader(vs_code, ps_code, id, macros, options );
+			LS.ShadersManager.registerGlobalShader(vs_code, fs_code, id, macros, options );
 		}
 
 		var snippets = xml.querySelectorAll('snippet');
@@ -3753,30 +3834,23 @@ var ShadersManager = {
 	//adds source code of a shader that could be compiled if needed
 	//id: name
 	//macros: supported macros by the shader
-	registerGlobalShader: function(vs_code, ps_code, id, macros, options )
+	/**
+	* extracts all the shaders from the XML doc
+	*
+	* @method registerGlobalShader
+	* @param {string} vs_code
+	* @param {string} fs_code
+	*/
+	registerGlobalShader: function(vs_code, fs_code, id, macros, options )
 	{
 		var macros_found = {};
-		/*
-		//TODO: missing #ifndef and #define
-		//regexMap( /USE_\w+/g, vs_code + ps_code, function(v) {
-		regexMap( /#ifdef\s\w+/g, vs_code + ps_code, function(v) {
-			//console.log(v);
-			macros_found[v[0].split(' ')[1]] = true;
-		});
-		*/
-		/*
-		var m = /USE_\w+/g.exec(vs_code + ps_code);
-		if(m)
-			console.log(m);
-		*/
-
 		var num_macros = 0;
 		for(var i in macros)
 			num_macros += 1;
 
 		var global = { 
 			vs_code: vs_code, 
-			ps_code: ps_code,
+			fs_code: fs_code,
 			macros: macros,
 			num_macros: num_macros,
 			macros_found: macros_found
@@ -3791,11 +3865,25 @@ var ShadersManager = {
 		return global;
 	},
 
+	/**
+	* Register a code snippet ready to be used by the #import clause in the shader
+	*
+	* @method registerSnippet
+	* @param {string} id
+	* @param {string} code
+	*/
 	registerSnippet: function(id, code)
 	{
 		this.snippets[ id ] = { id: id, code: code };
 	},
 
+	/**
+	* Returns the code of a snipper
+	*
+	* @method getSnippet
+	* @param {string} id
+	* @return {string} code
+	*/
 	getSnippet: function(id)
 	{
 		return this.snippets[ id ];
@@ -3809,11 +3897,17 @@ var ShadersManager = {
 		attribute vec2 a_coord;\n\
 		uniform mat4 u_mvp;\n\
 	",
-	common_pscode: "\n\
+	common_fscode: "\n\
 		precision mediump float;\n\
 	",
 
-	//some shaders for starters
+	/**
+	* Create some default shaders useful for generic situations (flat, texture and screenspace quad)
+	*
+	* @method createDefaultShaders
+	* @param {string} id
+	* @return {string} code
+	*/
 	createDefaultShaders: function()
 	{
 		//flat
@@ -3821,7 +3915,7 @@ var ShadersManager = {
 			void main() {\
 				gl_Position = u_mvp * vec4(a_vertex,1.0);\
 			}\
-			', this.common_pscode + '\
+			', this.common_fscode + '\
 			uniform vec4 u_material_color;\
 			void main() {\
 			  gl_FragColor = vec4(u_material_color);\
@@ -3835,7 +3929,7 @@ var ShadersManager = {
 				v_uvs = a_coord;\n\
 				gl_Position = u_mvp * vec4(a_vertex,1.0);\
 			}\
-			', this.common_pscode + '\
+			', this.common_fscode + '\
 			uniform vec4 u_material_color;\
 			varying vec2 v_uvs;\
 			uniform sampler2D texture;\
@@ -3850,7 +3944,7 @@ var ShadersManager = {
 			coord = a_coord;\
 			gl_Position = vec4(coord * 2.0 - 1.0, 0.0, 1.0);\
 		}\
-		', this.common_pscode + '\
+		', this.common_fscode + '\
 			uniform sampler2D texture;\
 			uniform vec4 color;\
 			varying vec2 coord;\
@@ -3864,18 +3958,22 @@ var ShadersManager = {
 LS.SM = LS.ShadersManager = ShadersManager;
 
 
-//TODO
+/**
+* ShadersManager is the static class in charge of loading, compiling and storing shaders for reuse.
+*
+* @class ShaderQuery
+* @namespace LS
+* @constructor
+*/
 function ShaderQuery()
 {
-	this.name = "global";
-	this.extra_streams = {};
-	this.extra_uniforms = {};
-	this.hooks = {};
+	this.hooks = {}; //represent points where this shader want to insert code
+	this.macros = {}; //macros to add
 }
 
-ShaderQuery.prototype.resolve = function()
-{
-}
+//ShaderQuery.prototype.addHook = function
+
+LS.ShaderQuery = ShaderQuery;
 
 //blending mode
 var Blend = {
@@ -7396,10 +7494,10 @@ function Camera(o)
 	//orthographics planes (near and far took from ._near and ._far)
 	this._ortho = new Float32Array([-1,1,-1,1]);
 
-	this._aspect = 1.0; //must be one, otherwise it gets deformed, the real one is inside real_aspect
+	this._aspect = 1.0; //must be one, otherwise it gets deformed, the final one used is in final_aspect
 	this._fov = 45; //persp
 	this._frustum_size = 50; //ortho
-	this._real_aspect = 1.0; //the one used when computing the projection matrix
+	this._final_aspect = 1.0; //the one used when computing the projection matrix
 
 	//viewport in normalized coordinates: left, bottom, width, height
 	this._viewport = new Float32Array([0,0,1,1]);
@@ -7735,11 +7833,11 @@ Camera.prototype.lookAt = function(eye,center,up)
 Camera.prototype.updateMatrices = function()
 {
 	if(this.type == Camera.ORTHOGRAPHIC)
-		mat4.ortho(this._projection_matrix, -this._frustum_size*this._real_aspect*0.5, this._frustum_size*this._real_aspect*0.5, -this._frustum_size*0.5, this._frustum_size*0.5, this._near, this._far);
+		mat4.ortho(this._projection_matrix, -this._frustum_size*this._final_aspect*0.5, this._frustum_size*this._final_aspect*0.5, -this._frustum_size*0.5, this._frustum_size*0.5, this._near, this._far);
 	else if (this.type == Camera.ORTHO2D)
 		mat4.ortho(this._projection_matrix, this._ortho[0], this._ortho[1], this._ortho[2], this._ortho[3], this._near, this._far);
 	else
-		mat4.perspective(this._projection_matrix, this._fov * DEG2RAD, this._real_aspect, this._near, this._far);
+		mat4.perspective(this._projection_matrix, this._fov * DEG2RAD, this._final_aspect, this._near, this._far);
 
 	//if (this.type != Camera.ORTHO2D)
 	if(this._root && this._root._is_root) //in root node
@@ -8316,7 +8414,7 @@ Camera.prototype.configure = function(o)
 	if(o.far !== undefined) this._far = o.far;
 	if(o.fov !== undefined) this._fov = o.fov;
 	if(o.aspect !== undefined) this._aspect = o.aspect;
-	if(o.real_aspect !== undefined) this._real_aspect = o.real_aspect;
+	if(o.final_aspect !== undefined) this._final_aspect = o.final_aspect;
 	if(o.frustum_size !== undefined) this._frustum_size = o.frustum_size;
 	if(o.viewport !== undefined) this._viewport.set( o.viewport );
 
@@ -8531,6 +8629,7 @@ function CameraFX(o)
 	this.enabled = true;
 	this.use_viewport_size = true;
 	this.use_high_precision = false;
+	this.use_node_camera = false;
 
 	this.fx = [];
 
@@ -8542,6 +8641,8 @@ function CameraFX(o)
 	//debug
 	//this.addFX("threshold");
 }
+
+//CameraFX["@camera_id"] = { type:"string" };
 
 CameraFX.icon = "mini-icon-fx.png";
 
@@ -8723,69 +8824,133 @@ CameraFX.prototype.removeFX = function( fx )
 	}
 }
 
-
-CameraFX.prototype.onAddedToNode = function(node)
+CameraFX.prototype.onAddedToScene = function( scene )
 {
-	//global
-	LEvent.bind( LS.GlobalScene, "beforeRenderMainPass", this.onBeforeRender, this );
+	LEvent.bind( scene, "enableFrameBuffer", this.onBeforeRender, this );
+	LEvent.bind( scene, "showFrameBuffer", this.onAfterRender, this );
 }
 
-CameraFX.prototype.onRemovedFromNode = function(node)
+CameraFX.prototype.onRemovedFromScene = function( scene )
 {
-	//global
-	LEvent.unbind( LS.GlobalScene, "beforeRenderMainPass", this.onBeforeRender, this );
+	LEvent.unbind( scene, "enableFrameBuffer", this.onBeforeRender, this );
+	LEvent.unbind( scene, "showFrameBuffer", this.onAfterRender, this );
 }
 
 //hook the RFC
 CameraFX.prototype.onBeforeRender = function(e, render_options)
 {
 	if(!this.enabled)
+	{
+		if( this._binded_camera )
+		{
+			LEvent.unbindAll( this._binded_camera, this );
+			this._binded_camera = null;
+		}
+		return;
+	}
+
+	//FBO for one camera
+	if(this.use_node_camera)
+	{
+		var camera = this._root.camera;
+		if(camera && camera != this._binded_camera)
+		{
+			if(this._binded_camera)
+				LEvent.unbindAll( this._binded_camera, this );
+			LEvent.bind( camera, "enableFrameBuffer", this.enableCameraFBO, this );
+			LEvent.bind( camera, "showFrameBuffer", this.showCameraFBO, this );
+		}
+		this._binded_camera = camera;
+		return;
+	}
+	else if( this._binded_camera )
+	{
+		LEvent.unbindAll( this._binded_camera, this );
+		this._binded_camera = null;
+	}
+
+	this.enableGlobalFBO( render_options );
+}
+
+CameraFX.prototype.onAfterRender = function(e, render_options )
+{
+	if(!this.enabled)
 		return;
 
-	if(!this._renderFrameContainer)
-	{
-		this._renderFrameContainer = new LS.RenderFrameContainer();
-		this._renderFrameContainer.component = this;
-		this._renderFrameContainer.postRender = CameraFX.postRender;
-	}
+	if(this.use_node_camera)
+		return;
+
+	this.showFBO();
+}
+
+CameraFX.prototype.enableCameraFBO = function(e, render_options )
+{
+	if(!this.enabled)
+		return;
+
+	var RFC = this._renderFrameContainer;
+	if(!RFC)
+		RFC = this._renderFrameContainer = new LS.RenderFrameContainer();
+	var camera = this._binded_camera;
+	
+	var viewport = this._viewport = camera.getLocalViewport( null, this._viewport );
+	RFC.setSize( viewport[2], viewport[3] );
+	RFC.use_high_precision = this.use_high_precision;
+	RFC.preRender( render_options );
+
+	render_options.ignore_viewports = true;
+}
+
+CameraFX.prototype.showCameraFBO = function(e, render_options )
+{
+	if(!this.enabled)
+		return;
+	render_options.ignore_viewports = false;
+	this.showFBO();
+}
+
+CameraFX.prototype.enableGlobalFBO = function( render_options )
+{
+	if(!this.enabled)
+		return;
+
+	var RFC = this._renderFrameContainer;
+	if(!RFC)
+		RFC = this._renderFrameContainer = new LS.RenderFrameContainer();
 
 	//configure
 	if(this.use_viewport_size)
-		this._renderFrameContainer.useCanvasSize();
-	this._renderFrameContainer.use_high_precision = this.use_high_precision;
+		RFC.useCanvasSize();
+	RFC.use_high_precision = this.use_high_precision;
 
-	LS.Renderer.assignGlobalRenderFrameContainer( this._renderFrameContainer );
+	RFC.preRender( render_options );
 }
 
-//Executed inside RFC
-/*
-CameraFX.prototype.onPreRender = function( cameras, render_options )
+CameraFX.prototype.showFBO = function()
 {
-	var width = CameraFX.buffer_size[0];
-	var height = CameraFX.buffer_size[1];
-	if( this.component.use_viewport_size )
+	if(!this.enabled)
+		return;
+
+	this._renderFrameContainer.endFBO();
+
+	if(this.use_node_camera && this._viewport)
 	{
-		width = gl.canvas.width;
-		height = gl.canvas.height;
+		gl.setViewport( this._viewport );
+		this.applyFX();
+		gl.setViewport( this._renderFrameContainer._fbo._old_viewport );
 	}
-
-	this.width = width;
-	this.height = height;
-	this.use_high_precision = this.component.use_high_precision;
-
-	this.startFBO( cameras[0] );
+	else
+		this.applyFX();
 }
-*/
 
-CameraFX.postRender = function()
+CameraFX.prototype.applyFX = function()
 {
-	this.endFBO();
+	var RFC = this._renderFrameContainer;
 
-	var color_texture = this.color_texture;
-	var depth_texture = this.depth_texture;
+	var color_texture = RFC.color_texture;
+	var depth_texture = RFC.depth_texture;
 
-	var component = this.component;
-	var fxs = component.fx;
+	var fxs = this.fx;
 
 	//shadercode: TODO, do this in a lazy way
 	var key = "";
@@ -8801,7 +8966,7 @@ CameraFX.postRender = function()
 	var included_functions = {};
 	var uniforms_code = "";
 
-	var uniforms = component._uniforms;
+	var uniforms = this._uniforms;
 	uniforms.u_viewport[0] = color_texture.width;
 	uniforms.u_viewport[1] = color_texture.height;
 	uniforms.u_iviewport[0] = 1 / color_texture.width;
@@ -8888,7 +9053,6 @@ CameraFX.postRender = function()
 
 	color_texture.toViewport( shader, uniforms );
 }
-
 
 LS.registerComponent( CameraFX );
 //***** LIGHT ***************************
@@ -10895,11 +11059,9 @@ Collider.prototype.onAddedToScene = function(scene)
 	LEvent.bind( scene, "collectPhysicInstances", this.onGetColliders, this);
 }
 
-Collider.prototype.onRemovedFromScene = function(node)
+Collider.prototype.onRemovedFromScene = function(scene)
 {
-	var scene = node.scene;
-	if(scene)
-		LEvent.unbind( scene, "collectPhysicInstances", this.onGetColliders, this);
+	LEvent.unbind( scene, "collectPhysicInstances", this.onGetColliders, this);
 }
 
 Collider.prototype.getMesh = function() {
@@ -11160,7 +11322,7 @@ Rotator.prototype.onAddedToScene = function(scene)
 }
 
 
-Rotator.prototype.onRemoveFromScene = function(scene)
+Rotator.prototype.onRemovedFromScene = function(scene)
 {
 	LEvent.unbind(scene,"update",this.onUpdate,this);
 }
@@ -11229,12 +11391,12 @@ CameraController["@mode"] = { type:"enum", values: { "Orbit": CameraController.O
 
 CameraController.prototype.onAddedToScene = function( scene )
 {
-	LEvent.bind(scene,"mousedown",this.onMouse,this);
-	LEvent.bind(scene,"mousemove",this.onMouse,this);
-	LEvent.bind(scene,"mousewheel",this.onMouse,this);
-	LEvent.bind(scene,"keydown",this.onKey,this);
-	LEvent.bind(scene,"keyup",this.onKey,this);
-	LEvent.bind(scene,"update",this.onUpdate,this);
+	LEvent.bind( scene, "mousedown",this.onMouse,this);
+	LEvent.bind( scene, "mousemove",this.onMouse,this);
+	LEvent.bind( scene, "mousewheel",this.onMouse,this);
+	LEvent.bind( scene, "keydown",this.onKey,this);
+	LEvent.bind( scene, "keyup",this.onKey,this);
+	LEvent.bind( scene, "update",this.onUpdate,this);
 }
 
 CameraController.prototype.onRemovedFromScene = function( scene )
@@ -11304,7 +11466,9 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 	if(!mouse_event.dragging)
 		return;
 
-	if(this._root.transform)
+	var changed = false;
+
+	if( this._root.transform )
 	{
 		//TODO
 	}
@@ -11317,6 +11481,7 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 			var right = cam.getLocalVector([1,0,0]);
 			cam.rotate(-mouse_event.deltay * this.rot_speed,right);
 			cam.updateMatrices();
+			changed = true;
 		}
 		else if(this.mode == CameraController.ORBIT)
 		{
@@ -11328,6 +11493,7 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 				cam.move( delta );
 				//vec3.copy(  this._collision, collision );
 				cam.updateMatrices();
+				changed = true;
 			}
 			else
 			{
@@ -11335,7 +11501,7 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 				cam.updateMatrices();
 				var right = cam.getLocalVector([1,0,0]);
 				cam.orbit(-mouse_event.deltay * this.rot_speed,right, this.orbit_center);
-
+				changed = true;
 			}
 		}
 		else if(this.mode == CameraController.PLANE)
@@ -11343,6 +11509,7 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 			if(this._button == 2)
 			{
 				cam.orbit( -mouse_event.deltax * this.rot_speed, [0,1,0], cam.target );
+				changed = true;
 			}
 			else
 			{
@@ -11351,9 +11518,13 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 				var delta = vec3.sub( vec3.create(), this._collision, collision );
 				cam.move( delta );
 				cam.updateMatrices();
+				changed = true;
 			}
 		}
 	}
+
+	if(changed)
+		this._root.scene.refresh();
 }
 
 CameraController.prototype.testOriginPlane = function(x,y, result)
@@ -11451,8 +11622,14 @@ NodeManipulator.icon = "mini-icon-rotator.png";
 
 NodeManipulator.prototype.onAddedToNode = function(node)
 {
-	LEvent.bind(node,"mousemove",this.onMouse,this);
-	LEvent.bind(node,"update",this.onUpdate,this);
+	LEvent.bind( node, "mousemove",this.onMouse,this);
+	LEvent.bind( node, "update",this.onUpdate,this);
+}
+
+NodeManipulator.prototype.onRemovedFromNode = function(node)
+{
+	LEvent.unbind( node, "mousemove",this.onMouse,this);
+	LEvent.unbind( node, "update",this.onUpdate,this);
 }
 
 NodeManipulator.prototype.onUpdate = function(e)
@@ -11523,8 +11700,14 @@ Target["@up"] = { type: 'enum', values: { "-Z": Target.NEGZ,"+Z": Target.POSZ, "
 
 Target.prototype.onAddedToNode = function(node)
 {
-	LEvent.bind(node,"computeVisibility",this.updateOrientation,this);
+	LEvent.bind( node, "computeVisibility", this.updateOrientation, this);
 }
+
+Target.prototype.onRemovedFromNode = function(node)
+{
+	LEvent.unbind( node, "computeVisibility", this.updateOrientation, this);
+}
+
 
 Target.prototype.updateOrientation = function(e)
 {
@@ -11676,7 +11859,12 @@ FollowNode.icon = "mini-icon-follow.png";
 
 FollowNode.prototype.onAddedToNode = function(node)
 {
-	LEvent.bind(node,"computeVisibility",this.updatePosition,this);
+	LEvent.bind(node,"computeVisibility", this.updatePosition, this);
+}
+
+FollowNode.prototype.onRemovedFromNode = function(node)
+{
+	LEvent.unbind(node,"computeVisibility", this.updatePosition, this);
 }
 
 FollowNode.prototype.updatePosition = function(e,info)
@@ -12143,6 +12331,8 @@ function FXGraphComponent(o)
 	this.use_high_precision = false;
 	this.use_antialiasing = false;
 	this.use_extra_texture = false;
+	this.use_node_camera = false;
+
 
 	if(typeof(LGraphTexture) == "undefined")
 		return console.error("Cannot use GraphComponent if LiteGraph is not installed");
@@ -12209,7 +12399,7 @@ FXGraphComponent.prototype.configure = function(o)
 	this.use_high_precision = !!o.use_high_precision;
 	this.use_antialiasing = !!o.use_antialiasing;
 	this.use_extra_texture = !!o.use_extra_texture;
-	this.apply_to_node_camera = false;
+	this.use_node_camera = !!o.use_node_camera;
 
 	this._graph.configure( JSON.parse( o.graph_data ) );
 	this._graph_color_texture_node = this._graph.findNodesByTitle("Color Buffer")[0];
@@ -12227,6 +12417,8 @@ FXGraphComponent.prototype.serialize = function()
 		use_high_precision: this.use_high_precision,
 		use_extra_texture: this.use_extra_texture,
 		use_viewport_size: this.use_viewport_size,
+		use_node_camera: this.use_node_camera,
+
 		graph_data: JSON.stringify( this._graph.serialize() )
 	};
 }
@@ -12281,6 +12473,12 @@ FXGraphComponent.prototype.setPropertyValue = function( property, value )
 	}
 }
 
+
+FXGraphComponent.prototype.getGraph = function()
+{
+	return this._graph;
+}
+
 FXGraphComponent.prototype.onResourceRenamed = function(old_name, new_name, res)
 {
 	this._graph.sendEventToAllNodes("onResourceRenamed",[old_name, new_name, res]);
@@ -12290,14 +12488,141 @@ FXGraphComponent.prototype.onAddedToNode = function(node)
 {
 	this._graph._scenenode = node;
 	//catch the global rendering
-	LEvent.bind( LS.GlobalScene, "beforeRenderMainPass", this.onBeforeRender, this );
+	//LEvent.bind( LS.GlobalScene, "beforeRenderMainPass", this.onBeforeRender, this );
 }
 
 FXGraphComponent.prototype.onRemovedFromNode = function(node)
 {
-	LEvent.unbind( LS.GlobalScene, "beforeRenderMainPass", this.onBeforeRender, this );
+	//LEvent.unbind( LS.GlobalScene, "beforeRenderMainPass", this.onBeforeRender, this );
 }
 
+FXGraphComponent.prototype.onAddedToScene = function( scene )
+{
+	LEvent.bind( scene, "enableFrameBuffer", this.onBeforeRender, this );
+	LEvent.bind( scene, "showFrameBuffer", this.onAfterRender, this );
+}
+
+FXGraphComponent.prototype.onRemovedFromScene = function( scene )
+{
+	LEvent.unbind( scene, "enableFrameBuffer", this.onBeforeRender, this );
+	LEvent.unbind( scene, "showFrameBuffer", this.onAfterRender, this );
+}
+
+
+FXGraphComponent.prototype.onBeforeRender = function(e, render_options)
+{
+	if(!this.enabled)
+	{
+		if( this._binded_camera )
+		{
+			LEvent.unbindAll( this._binded_camera, this );
+			this._binded_camera = null;
+		}
+		return;
+	}
+
+	//FBO for one camera
+	if(this.use_node_camera)
+	{
+		var camera = this._root.camera;
+		if(camera && camera != this._binded_camera)
+		{
+			if(this._binded_camera)
+				LEvent.unbindAll( this._binded_camera, this );
+			LEvent.bind( camera, "enableFrameBuffer", this.enableCameraFBO, this );
+			LEvent.bind( camera, "showFrameBuffer", this.showCameraFBO, this );
+		}
+		this._binded_camera = camera;
+		return;
+	}
+	else if( this._binded_camera )
+	{
+		LEvent.unbindAll( this._binded_camera, this );
+		this._binded_camera = null;
+	}
+
+	this.enableGlobalFBO( render_options );
+}
+
+FXGraphComponent.prototype.onAfterRender = function(e, render_options )
+{
+	if(!this.enabled)
+		return;
+
+	if(this.use_node_camera)
+		return;
+
+	this.showFBO();
+}
+
+FXGraphComponent.prototype.enableCameraFBO = function(e, render_options )
+{
+	if(!this.enabled)
+		return;
+
+	if(!this._renderFrameContainer)
+		this._renderFrameContainer = new LS.RenderFrameContainer();
+	var camera = this._binded_camera;
+	
+	var viewport = this._viewport = camera.getLocalViewport( null, this._viewport );
+	this._renderFrameContainer.setSize( viewport[2], viewport[3] );
+	this._renderFrameContainer.use_high_precision = this.use_high_precision;
+	this._renderFrameContainer.preRender( render_options );
+
+	render_options.ignore_viewports = true;
+}
+
+FXGraphComponent.prototype.showCameraFBO = function(e, render_options )
+{
+	if(!this.enabled)
+		return;
+	render_options.ignore_viewports = false;
+	this.showFBO();
+}
+
+FXGraphComponent.prototype.enableGlobalFBO = function( render_options )
+{
+	if(!this.enabled)
+		return;
+
+	var RFC = this._renderFrameContainer;
+	if(!RFC)
+		RFC = this._renderFrameContainer = new LS.RenderFrameContainer();
+
+	//configure
+	if(this.use_viewport_size)
+		RFC.useCanvasSize();
+	RFC.use_high_precision = this.use_high_precision;
+	RFC.use_extra_texture = this.use_extra_texture;
+	RFC.preRender( render_options );
+}
+
+FXGraphComponent.prototype.showFBO = function()
+{
+	if(!this.enabled)
+		return;
+
+	var RFC = this._renderFrameContainer;
+	RFC.endFBO();
+
+	LS.ResourcesManager.textures[":color_" + this.uid] = RFC.color_texture;
+	LS.ResourcesManager.textures[":depth_" + this.uid] = RFC.depth_texture;
+	if(this.extra_texture)
+		LS.ResourcesManager.textures[":extra_" + this.uid] = RFC.extra_texture;
+
+	if(this.use_node_camera && this._viewport)
+	{
+		gl.setViewport( this._viewport );
+		this.applyGraph();
+		gl.setViewport( RFC._fbo._old_viewport );
+	}
+	else
+		this.applyGraph();
+}
+
+
+
+/*
 //used to create the buffers
 FXGraphComponent.prototype.onBeforeRender = function(e, render_options)
 {
@@ -12323,13 +12648,10 @@ FXGraphComponent.prototype.onBeforeRender = function(e, render_options)
 	RFC.use_extra_texture = this.use_extra_texture;
 
 	//assign global render frame container
-	LS.Renderer.assignGlobalRenderFrameContainer( RFC );
+	//LS.Renderer.assignGlobalRenderFrameContainer( RFC );
 }
+*/
 
-FXGraphComponent.prototype.getGraph = function()
-{
-	return this._graph;
-}
 
 //take the resulting textures and pass them through the graph
 FXGraphComponent.prototype.applyGraph = function()
@@ -12340,10 +12662,10 @@ FXGraphComponent.prototype.applyGraph = function()
 	//find graph nodes that contain the texture info
 	if(!this._graph_color_texture_node)
 		this._graph_color_texture_node = this._graph.findNodesByTitle("Color Buffer")[0];
-	if(!this._graph_extra_texture_node)
-		this._graph_extra_texture_node = this._graph.findNodesByTitle("Extra Buffer")[0];
 	if(!this._graph_depth_texture_node)
 		this._graph_depth_texture_node = this._graph.findNodesByTitle("Depth Buffer")[0];
+	if(!this._graph_extra_texture_node)
+		this._graph_extra_texture_node = this._graph.findNodesByTitle("Extra Buffer")[0];
 	if(!this._graph_viewport_node)
 		this._graph_viewport_node = this._graph.findNodesByType("texture/toviewport")[0];
 
@@ -12352,10 +12674,10 @@ FXGraphComponent.prototype.applyGraph = function()
 
 	//fill the graph nodes with proper info
 	this._graph_color_texture_node.properties.name = ":color_" + this.uid;
-	if(this._graph_extra_texture_node)
-		this._graph_extra_texture_node.properties.name = ":extra_" + this.uid;
 	if(this._graph_depth_texture_node)
 		this._graph_depth_texture_node.properties.name = ":depth_" + this.uid;
+	if(this._graph_extra_texture_node)
+		this._graph_extra_texture_node.properties.name = ":extra_" + this.uid;
 	if(this._graph_viewport_node) //force antialiasing
 		this._graph_viewport_node.properties.antialiasing = this.use_antialiasing;
 
@@ -12392,7 +12714,7 @@ FXGraphComponent.prototype.onPreRender = function( cameras, render_options )
 	LS.Renderer.global_aspect = (gl.canvas.width / gl.canvas.height) / (color_texture.width / color_texture.height);
 	//ready to render the scene, which is done from the LS.Renderer.render
 }
-*/
+
 
 //Executed inside RFC
 FXGraphComponent.postRender = function()
@@ -12405,20 +12727,13 @@ FXGraphComponent.postRender = function()
 	if(this.depth_texture)
 		LS.ResourcesManager.textures[":depth_" + this.component.uid] = this.depth_texture;
 
-	/*
-	//disable FBO
-	gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-	LS.Renderer.global_aspect = 1;
-
-	//restore
-	gl.viewport( 0, 0, gl.canvas.width, gl.canvas.height );
-	LS.Renderer._full_viewport.set( gl.viewport_data );
-	*/
-
 	//apply FX
 	this.component.applyGraph();
 }
+*/
+
 //************************************
+
 
 
 
@@ -12772,7 +13087,7 @@ ParticleEmissor.prototype.onUpdate = function(e, dt, do_not_updatemesh )
 		var vel = vec3.create();
 		var rot = this.particle_rotation * dt;
 
-		for(var i = 0; i < this._particles.length; ++i)
+		for(var i = 0, l = this._particles.length; i < l; ++i)
 		{
 			var p = this._particles[i];
 
@@ -12950,14 +13265,20 @@ ParticleEmissor.prototype.updateMesh = function (camera)
 		size_curve[i] = LS.getCurveValueAt(this.particle_size_curve,0,1,0, i * dI );
 	}
 
+	//references
 	var points = this.point_particles;
-	
+	var max_vertices = this._vertices.length;
+	var vertices = this._vertices;
+	var colors = this._colors;
+	var extra2 = this._extra2;
+	var coords = this._coords;
+
 	//used for rotations
 	var rot = quat.create();
 
 	//generate quads
 	var i = 0, f = 0;
-	for(var iParticle = 0; iParticle < particles.length; ++iParticle)
+	for( var iParticle = 0, l = particles.length; iParticle < l; ++iParticle )
 	{
 		var p = particles[iParticle];
 		if(p.life <= 0)
@@ -12992,21 +13313,21 @@ ParticleEmissor.prototype.updateMesh = function (camera)
 
 		if(points)
 		{
-			this._vertices.set(p._pos, i*3);
-			this._colors.set(color, i*4);
+			vertices.set(p._pos, i*3);
+			colors.set(color, i*4);
 			if(recompute_coords)
 			{
 				var iG = (animated_texture ? ((loop_animation?time:f)*grid_frames)<<0 : p.id) % grid_frames;
 				offset_u = iG * d_uvs;
 				offset_v = 1 - (offset_u<<0) * d_uvs - d_uvs;
 				offset_u = offset_u%1;
-				this._coords[i*2] = offset_u;
-				this._coords[i*2+1] = offset_v;
+				coords[i*2] = offset_u;
+				coords[i*2+1] = offset_v;
 			}
-			this._extra2[i*2] = s;
-			this._extra2[i*2+1] = i;
+			extra2[i*2] = s;
+			extra2[i*2+1] = i;
 			++i;
-			if(i*3 >= this._vertices.length)
+			if(i*3 >= max_vertices)
 				break; //too many particles
 			continue;
 		}
@@ -13028,31 +13349,31 @@ ParticleEmissor.prototype.updateMesh = function (camera)
 		}
 
 		vec3.add(temp, p._pos, s_topright);
-		this._vertices.set(temp, i*6*3);
+		vertices.set(temp, i*6*3);
 
 		vec3.add(temp, p._pos, s_topleft);
-		this._vertices.set(temp, i*6*3 + 3);
+		vertices.set(temp, i*6*3 + 3);
 
 		vec3.add(temp, p._pos, s_bottomright);
-		this._vertices.set(temp, i*6*3 + 3*2);
+		vertices.set(temp, i*6*3 + 3*2);
 
 		vec3.add(temp, p._pos, s_topleft);
-		this._vertices.set(temp, i*6*3 + 3*3);
+		vertices.set(temp, i*6*3 + 3*3);
 
 		vec3.add(temp, p._pos, s_bottomleft);
-		this._vertices.set(temp, i*6*3 + 3*4);
+		vertices.set(temp, i*6*3 + 3*4);
 
 		vec3.add(temp, p._pos, s_bottomright);
-		this._vertices.set(temp, i*6*3 + 3*5);
+		vertices.set(temp, i*6*3 + 3*5);
 
 		if(recompute_colors)
 		{
-			this._colors.set(color, i*6*4);
-			this._colors.set(color, i*6*4 + 4);
-			this._colors.set(color, i*6*4 + 4*2);
-			this._colors.set(color, i*6*4 + 4*3);
-			this._colors.set(color, i*6*4 + 4*4);
-			this._colors.set(color, i*6*4 + 4*5);
+			colors.set(color, i*6*4);
+			colors.set(color, i*6*4 + 4);
+			colors.set(color, i*6*4 + 4*2);
+			colors.set(color, i*6*4 + 4*3);
+			colors.set(color, i*6*4 + 4*4);
+			colors.set(color, i*6*4 + 4*5);
 		}
 
 		if(recompute_coords)
@@ -13061,11 +13382,11 @@ ParticleEmissor.prototype.updateMesh = function (camera)
 			offset_u = iG * d_uvs;
 			offset_v = 1 - (offset_u<<0) * d_uvs - d_uvs;
 			offset_u = offset_u%1;
-			this._coords.set([offset_u+d_uvs,offset_v+d_uvs, offset_u,offset_v+d_uvs, offset_u+d_uvs,offset_v,  offset_u,offset_v+d_uvs, offset_u,offset_v, offset_u+d_uvs,offset_v], i*6*2);
+			coords.set([offset_u+d_uvs,offset_v+d_uvs, offset_u,offset_v+d_uvs, offset_u+d_uvs,offset_v,  offset_u,offset_v+d_uvs, offset_u,offset_v, offset_u+d_uvs,offset_v], i*6*2);
 		}
 
 		++i;
-		if(i*6*3 >= this._vertices.length)
+		if(i*6*3 >= max_vertices)
 			break; //too many particles
 	}
 	this._visible_particles = i;
@@ -13085,9 +13406,6 @@ ParticleEmissor.prototype.updateMesh = function (camera)
 		this._mesh.vertexBuffers["coords"].data = this._coords;
 		this._mesh.vertexBuffers["coords"].upload(gl.STREAM_DRAW);
 	}
-
-	//this._mesh.vertices = this._vertices;
-	//this._mesh.upload();
 }
 
 ParticleEmissor._identity = mat4.create();
@@ -13149,7 +13467,7 @@ ParticleEmissor.prototype.onCollectInstances = function(e, instances, options)
 		delete RI.uniforms["u_point_size"];
 	}
 
-	instances.push(RI);
+	instances.push( RI );
 }
 
 LS.Particle = Particle;
@@ -13764,15 +14082,15 @@ PlayAnimation.prototype.configure = function(o)
 
 PlayAnimation.icon = "mini-icon-clock.png";
 
-PlayAnimation.prototype.onAddedToNode = function(node)
+PlayAnimation.prototype.onAddedToScene = function(scene)
 {
-	LEvent.bind(node,"update",this.onUpdate, this);
+	LEvent.bind( scene, "update", this.onUpdate, this);
 }
 
 
-PlayAnimation.prototype.onRemoveFromNode = function(node)
+PlayAnimation.prototype.onRemovedFromScene = function(scene)
 {
-	LEvent.unbind(node,"update",this.onUpdate, this);
+	LEvent.unbind( scene, "update", this.onUpdate, this);
 }
 
 
@@ -13910,9 +14228,9 @@ RealtimeReflector.prototype.onAddedToScene = function(scene)
 }
 
 
-RealtimeReflector.prototype.onRemoveFromScene = function(scene)
+RealtimeReflector.prototype.onRemovedFromScene = function(scene)
 {
-	LEvent.unbindAll( scene, this);
+	LEvent.unbindAll( scene, this );
 	this._textures = {}; //clear textures
 }
 
@@ -14629,7 +14947,7 @@ Cloner.prototype.onAddedToScene = function(scene)
 }
 
 
-Cloner.prototype.onRemovedFromNode = function(scene)
+Cloner.prototype.onRemovedFromScene = function(scene)
 {
 	LEvent.unbind(scene, "collectRenderInstances", this.onCollectInstances, this);
 	LEvent.unbind(scene, "afterCollectData", this.onUpdateInstances, this);
@@ -14859,7 +15177,7 @@ Spherize.prototype.onAddedToNode = function(node)
 }
 
 
-Spherize.prototype.onRemoveFromNode = function(node)
+Spherize.prototype.onRemovedFromNode = function(node)
 {
 	LEvent.unbindAll(node,this);
 }
@@ -16654,6 +16972,7 @@ Track.prototype.findTimeIndex = function( time )
 	return -1;
 }
 
+//Warning: if no result is provided the same result is reused between samples.
 Track.prototype.getSample = function( time, interpolate, result )
 {
 	if(!this.data || this.data.length === 0)
@@ -17572,8 +17891,8 @@ RenderFrameContainer.default_height = 512;
 
 RenderFrameContainer.prototype.useDefaultSize = function()
 {
-	this.width = RenderFrameContainer.default_width;
-	this.height = RenderFrameContainer.default_height;
+	this.width = LS.RenderFrameContainer.default_width;
+	this.height = LS.RenderFrameContainer.default_height;
 }
 
 RenderFrameContainer.prototype.useCanvasSize = function()
@@ -17582,15 +17901,28 @@ RenderFrameContainer.prototype.useCanvasSize = function()
 	this.height = gl.canvas.height;
 }
 
-RenderFrameContainer.prototype.preRender = function( cameras, render_options )
+RenderFrameContainer.prototype.setSize = function( width, height )
 {
+	if(width < 1)
+		width = 1;
+	if(height < 1)
+		height = 1;
+
+	this.width = width;
+	this.height = height;
+}
+
+
+RenderFrameContainer.prototype.preRender = function( render_options )
+{
+	var camera = LS.Renderer._current_camera;
+
 	this.startFBO();
 	//overwrite to create some buffers here attached to the current FBO
 
 	//set depth info inside the texture
-	if(this.depth_texture && cameras[0])
+	if(this.depth_texture && camera)
 	{
-		var camera = cameras[0];
 		if(!this.depth_texture.near_far_planes)
 			this.depth_texture.near_far_planes = vec2.create();
 		this.depth_texture.near_far_planes[0] = camera.near;
@@ -17599,7 +17931,7 @@ RenderFrameContainer.prototype.preRender = function( cameras, render_options )
 
 }
 
-RenderFrameContainer.prototype.postRender = function( cameras, render_options )
+RenderFrameContainer.prototype.postRender = function( render_options )
 {
 	this.endFBO();
 	//detach FBO and render to viewport
@@ -17632,21 +17964,17 @@ RenderFrameContainer.prototype.startFBO = function()
 	else if( !this.use_depth_texture )
 		this.depth_texture = null;
 
+	if( !this._fbo )
+		this._fbo = new GL.FBO();
+	this._fbo.setTextures( [this.color_texture], this.depth_texture, true );
 
-	//create render buffer for depth if there is no depth texture
-	var renderbuffer = null;
-	if(!this.depth_texture)
-	{
-		var renderbuffer = this._renderbuffer = this._renderbuffer || gl.createRenderbuffer();
-		renderbuffer.width = width;
-		renderbuffer.height = height;
-		gl.bindRenderbuffer( gl.RENDERBUFFER, renderbuffer );
-	}
+	this._fbo.bind(); //changes viewport to full FBO size (saves old)
 
-	var color_texture = this.color_texture;
-	var depth_texture = this.depth_texture;
-	var extra_texture = this.extra_texture;
+	LS.Renderer._full_viewport.set( gl.viewport_data );
+	this._old_aspect = LS.Renderer.global_aspect;
+	//LS.Renderer.global_aspect = (gl.canvas.width / gl.canvas.height) / (width / height);
 
+	/*
 	//Setup FBO
 	this._fbo = this._fbo || gl.createFramebuffer();
 	gl.bindFramebuffer( gl.FRAMEBUFFER, this._fbo );
@@ -17681,16 +18009,23 @@ RenderFrameContainer.prototype.startFBO = function()
 
 	if(ext && extra_texture)
 		ext.drawBuffersWEBGL( [ gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT0 + 1] );
+	*/
 }
 
 RenderFrameContainer.prototype.endFBO = function()
 {
+	this._fbo.unbind(); //restores viewport to old saved one
+	LS.Renderer._full_viewport.set( this._fbo._old_viewport );
+	LS.Renderer.global_aspect = this._old_aspect;
+
+	/*
 	//disable FBO
 	gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 	LS.Renderer.global_aspect = 1.0;
 
 	gl.viewport( 0, 0, gl.canvas.width, gl.canvas.height );
 	LS.Renderer._full_viewport.set( gl.viewport_data );
+	*/
 }
 
 //Render this texture to viewport (allows to apply FXAA)
@@ -17727,12 +18062,11 @@ var Renderer = {
 	default_render_options: new RenderOptions(),
 	default_material: new StandardMaterial(), //used for objects without material
 
-	global_render_frame_containers: [],
 	global_aspect: 1, //used when rendering to a texture that doesnt have the same aspect as the screen
 
-	default_point_size: 1,
+	default_point_size: 1, //point size in pixels (could be overwritte by render instances)
 
-	_full_viewport: vec4.create(), //contains info about the full viewport available to render (depends if using FBOs)
+	_full_viewport: vec4.create(), //contains info about the full viewport available to render (current texture size or canvas size)
 
 	_current_scene: null,
 	_current_render_options: null,
@@ -17749,7 +18083,7 @@ var Renderer = {
 	_frame: 0,
 
 	//settings
-	_collect_frequency: 1, //used to reuse info
+	_collect_frequency: 1, //used to reuse info (WIP)
 
 	//reusable locals
 	_view_matrix: mat4.create(),
@@ -17770,19 +18104,6 @@ var Renderer = {
 
 	reset: function()
 	{
-	},
-
-	/**
-	* Overwrites the default rendering to screen function, allowing to render to one or several textures
-	* The callback receives the camera, render_options and the output from the previous renderFrameCallback in case you want to chain them
-	* Callback must return the texture output or null
-	* Warning: this must be set before every frame, becaue this are cleared after rendering the frame
-	* @method assignGlobalRenderFrameContainer
-	* @param {RenderFrameContainer} callback function that will be called one one frame is needed, this function MUST call renderer.renderFrame( current_camera );
-	*/
-	assignGlobalRenderFrameContainer: function( render_frame_container )
-	{
-		this.global_render_frame_containers.push( render_frame_container );
 	},
 
 	//used to store which is the current full viewport available (could be different from the canvas in case is a FBO or the camera has a partial viewport)
@@ -17821,6 +18142,7 @@ var Renderer = {
 
 		this._rendercalls = 0;
 		this._rendered_instances = 0;
+		gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 		this.setFullViewport(0, 0, gl.canvas.width, gl.canvas.height);
 
 		//Event: beforeRender used in actions that could affect which info is collected for the rendering
@@ -17853,26 +18175,16 @@ var Renderer = {
 		LEvent.trigger(scene, "beforeRenderMainPass", render_options );
 		scene.triggerInNodes("beforeRenderMainPass", render_options ); //TODO: remove
 
-		//global renderframe container: used when the whole scene (all cameras included) pass through some postfx)
-		if(render_options.render_fx && this.global_render_frame_containers.length)
-		{
-			var render_frame = this.global_render_frame_containers[0]; //ignore the rest: TODO, as some pipeline flow (I've failed too many times trying to do something here)
-			render_options.current_renderframe = render_frame;
+		//enable FX
+		if(render_options.render_fx)
+			LEvent.trigger( scene, "enableFrameBuffer", render_options );
 
-			if(	render_frame.preRender )
-				render_frame.preRender( cameras, render_options );
+		//render
+		this.renderFrameCameras( cameras, render_options );
 
-			//render all camera views
-			this.renderFrameCameras( cameras, render_options, render_frame );
-
-			if(	render_frame.postRender )
-				render_frame.postRender( cameras, render_options );
-		}
-		else //in case no FX is used
-			this.renderFrameCameras( cameras, render_options );
-
-		//clear render frame callbacks
-		this.global_render_frame_containers.length = 0; //clear
+		//disable and show FX
+		if(render_options.render_fx)
+			LEvent.trigger( scene, "showFrameBuffer", render_options );
 
 		//Event: afterRender to give closure to some actions
 		LEvent.trigger(scene, "afterRender", render_options );
@@ -17897,10 +18209,12 @@ var Renderer = {
 
 			LEvent.trigger(scene, "beforeRenderFrame", render_options );
 			LEvent.trigger(current_camera, "beforeRenderFrame", render_options );
+			LEvent.trigger(current_camera, "enableFrameBuffer", render_options );
 
 			//main render
 			this.renderFrame( current_camera, render_options ); 
 
+			LEvent.trigger(current_camera, "showFrameBuffer", render_options );
 			LEvent.trigger(current_camera, "afterRenderFrame", render_options );
 			LEvent.trigger(scene, "afterRenderFrame", render_options );
 		}
@@ -17981,12 +18295,12 @@ var Renderer = {
 			//force fullscreen viewport?
 			if(render_options && render_options.ignore_viewports )
 			{
-				camera._real_aspect = this.global_aspect * camera._aspect * (width / height);
+				camera._final_aspect = this.global_aspect * camera._aspect * (width / height);
 				gl.viewport( this._full_viewport[0], this._full_viewport[1], this._full_viewport[2], this._full_viewport[3] );
 			}
 			else
 			{
-				camera._real_aspect = this.global_aspect * camera._aspect * (final_width / final_height); //what if we want to change the aspect?
+				camera._final_aspect = this.global_aspect * camera._aspect * (final_width / final_height); //what if we want to change the aspect?
 				gl.viewport( final_x, final_y, final_width, final_height );
 			}
 		}
@@ -22363,6 +22677,9 @@ var parserOBJ = {
 	{
 		options = options || {};
 
+		var support_uint = true;
+		var skip_indices = options.noindex ? options.noindex : false;
+
 		//final arrays (packed, lineal [ax,ay,az, bx,by,bz ...])
 		var positionsArray = [ ];
 		var texcoordsArray = [ ];
@@ -22395,7 +22712,6 @@ var parserOBJ = {
 		var negative_offset = -1; //used for weird objs with negative indices
 		var max_index = 0;
 
-		var skip_indices = options.noindex ? options.noindex : (text.length > 10000000 ? true : false);
 		//trace("SKIP INDICES: " + skip_indices);
 		var flip_axis = (Parser.flipAxis || options.flipAxis);
 		var flip_normals = (flip_axis || options.flipNormals);
@@ -22497,6 +22813,8 @@ var parserOBJ = {
 						z = 0.0;
 						if ((pos * 3 + 2) < positions.length) {
 							hasPos = true;
+							if(pos < 0) //negative indices are relative to the end
+								pos = positions.length / 3 + pos + 1;
 							x = positions[pos*3+0];
 							y = positions[pos*3+1];
 							z = positions[pos*3+2];
@@ -22509,6 +22827,8 @@ var parserOBJ = {
 						y = 0.0;
 						if ((tex * 2 + 1) < texcoords.length) {
 							hasTex = true;
+							if(tex < 0) //negative indices are relative to the end
+								tex = texcoords.length / 2 + tex + 1;
 							x = texcoords[tex*2+0];
 							y = texcoords[tex*2+1];
 						}
@@ -22522,6 +22842,9 @@ var parserOBJ = {
 						{
 							if ((nor * 3 + 2) < normals.length) {
 								hasNor = true;
+
+								if(nor < 0)
+									nor = normals.length / 3 + nor + 1;
 								x = normals[nor*3+0];
 								y = normals[nor*3+1];
 								z = normals[nor*3+2];
@@ -22597,7 +22920,7 @@ var parserOBJ = {
 		}
 
 		//deindex streams
-		if((max_index > 256*256 || skip_indices ) && indicesArray.length > 0)
+		if((max_index > 256*256 || skip_indices ) && indicesArray.length > 0 && !support_uint )
 		{
 			console.log("Deindexing mesh...")
 			var finalVertices = new Float32Array(indicesArray.length * 3);

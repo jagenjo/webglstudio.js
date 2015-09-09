@@ -5263,7 +5263,7 @@ Inspector.prototype.createWidget = function(name, content, options)
 	var contentwidth = "";
 	if(name != null && (this.name_width || options.name_width) && !this.one_line)
 	{
-		var w = this.name_width || options.name_width;
+		var w = options.name_width || this.name_width;
 		if(typeof(w) == "number") w = w.toFixed() + "px";
 		namewidth = "style='width: calc(" + w + " - 0px); width: -webkit-calc(" + w + " - 0px); width: -moz-calc(" + w + " - 0px); '"; //hack 
 		contentwidth = "style='width: calc( 100% - " + w + "); width: -webkit-calc(100% - " + w + "); width: -moz-calc( 100% - " + w + "); '";

@@ -175,9 +175,10 @@ var PlayModule = {
 		LEvent.trigger( LS.GlobalScene, e.eventType, e );
 		//LS.GlobalScene.triggerInNodes(e.eventType, e);
 
-		//block propagation
+		//block propagation (mousemove should be propagated so when dragging panels works)
+		if(e.type != "mousemove")
+			e.stopPropagation();
 		e.preventDefault();
-		e.stopPropagation();
 		return true;
 	},
 

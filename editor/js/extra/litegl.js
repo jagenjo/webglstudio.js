@@ -3408,6 +3408,9 @@ global.Texture = GL.Texture = function Texture(width, height, options, gl) {
 		gl.texParameteri(this.texture_type, gl.TEXTURE_WRAP_S, this.wrapS );
 		gl.texParameteri(this.texture_type, gl.TEXTURE_WRAP_T, this.wrapT );
 
+		if(options.anisotropic && gl.extensions["EXT_texture_filter_anisotropic"])
+			gl.texParameterf(gl.TEXTURE_2D, gl.extensions["EXT_texture_filter_anisotropic"].TEXTURE_MAX_ANISOTROPY_EXT, options.anisotropic);
+
 		//gl.TEXTURE_1D is not supported by WebGL...
 		if(this.texture_type == gl.TEXTURE_2D)
 		{
@@ -3588,6 +3591,9 @@ Texture.cubemap_camera_parameters = [
 
 /**
 * Render to texture using FBO, just pass the callback to a rendering function and the content of the texture will be updated
+* If the texture is a cubemap, the callback will be called six times, once per face, the number of the face is passed as a second parameter
+* for further info about how to set up the propper cubemap camera, check the GL.Texture.cubemap_camera_parameters with the direction and up vector for every face.
+*
 * Keep in mind that it tries to reuse the last renderbuffer for the depth, and if it cannot (different size) it creates a new one (throwing the old)
 * @method drawTo
 * @param {Function} callback function that does all the rendering inside this texture
@@ -4584,22 +4590,59 @@ Texture.getBlackTexture = function()
 
 function FBO( textures, depth_texture )
 {
-
 	this.handler = null;
+	this.width = -1;
+	this.height = -1;
+	this.color_textures = [];
+	this.depth_texture = null;
+
+	//assign textures
+	if(textures && textures.length)
+		this.setTextures( textures, depth_texture );
+
+	//save state
+	this._old_fbo = null;
 	this._old_viewport = new Float32Array(4);
-	this.setTextures( textures, depth_texture);
 }
 
 GL.FBO = FBO;
 
-FBO.prototype.setTextures = function( color_textures, depth_texture )
+FBO.prototype.setTextures = function( color_textures, depth_texture, skip_disable )
 {
+	//test if is already binded
+	var same = this.depth_texture == depth_texture;
+	if( same )
+	{
+		if( color_textures.length == this.color_textures.length )
+		{
+			for(var i = 0; i < color_textures.length; ++i)
+				if( color_textures[i] != this.color_textures[i] )
+				{
+					same = false;
+					break;
+				}
+		}
+		else
+			same = false;
+	}
+		
+	if(same)
+		return;
+
+
+	//save state to restore afterwards
+	this._old_fbo = gl.getParameter( gl.FRAMEBUFFER_BINDING );
+
 	if(!this.handler)
 		this.handler = gl.createFramebuffer();
 
 	var w = -1,
 		h = -1,
 		type = null;
+
+	var previously_attached = 0;
+	if( this.color_textures )
+		previously_attached = this.color_textures.length;
 
 	this.color_textures = color_textures;
 	this.depth_texture = depth_texture;
@@ -4653,21 +4696,31 @@ FBO.prototype.setTextures = function( color_textures, depth_texture )
 		this.order.push( gl.COLOR_ATTACHMENT0 + i );
 	}
 
+	//detach old ones (only is reusing a FBO with a different set of textures)
+	for(var i = color_textures.length; i < previously_attached; ++i)
+		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, null, 0);
+
+	//when using more than one texture you need to use the multidraw extension
 	if(color_textures.length > 1)
 		ext.drawBuffersWEBGL( this.order );
 
+	//check completion
 	var complete = gl.checkFramebufferStatus( gl.FRAMEBUFFER );
 	if(complete !== gl.FRAMEBUFFER_COMPLETE)
 		throw("FBO not complete: " + complete);
 
-	//disable all
-	gl.bindFramebuffer( gl.FRAMEBUFFER, null );
+
+	//restore state
 	gl.bindTexture(gl.TEXTURE_2D, null);
 	gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+	if(!skip_disable)
+		gl.bindFramebuffer( gl.FRAMEBUFFER, this._old_fbo );
 }
 
 FBO.prototype.bind = function( keep_old )
 {
+	if(!this.color_textures.length)
+		throw("FBO: no textures attached to FBO");
 	this._old_viewport.set( gl.viewport_data );
 
 	if(keep_old)
@@ -4675,21 +4728,15 @@ FBO.prototype.bind = function( keep_old )
 	else
 		this._old_fbo = null;
 
-	gl.bindFramebuffer( gl.FRAMEBUFFER, this.handler );
+	if(this._old_fbo != this.handler )
+		gl.bindFramebuffer( gl.FRAMEBUFFER, this.handler );
 	gl.viewport( 0,0, this.width, this.height );
 }
 
 FBO.prototype.unbind = function()
 {
-	if(this._old_fbo)
-	{
-		gl.bindFramebuffer( gl.FRAMEBUFFER, this._old_fbo );
-		this._old_fbo = null;
-	}
-	else
-	{
-		gl.bindFramebuffer( gl.FRAMEBUFFER, null );
-	}
+	gl.bindFramebuffer( gl.FRAMEBUFFER, this._old_fbo );
+	this._old_fbo = null;
 
 	gl.setViewport( this._old_viewport );
 }
@@ -5601,8 +5648,8 @@ GL.create = function(options) {
 	gl.extensions["WEBGL_draw_buffers"] = gl.getExtension("WEBGL_draw_buffers");
 	gl.extensions["EXT_shader_texture_lod"] = gl.getExtension("EXT_shader_texture_lod");
 	gl.extensions["EXT_sRGB"] = gl.getExtension("EXT_sRGB");
-	gl.extensions["EXT_texture_filter_anisotropic"] = gl.getExtension("EXT_texture_filter_anisotropic") || gl.getExtension("WEBKIT_EXT_texture_filter_anisotropic");
-
+	gl.extensions["EXT_texture_filter_anisotropic"] = gl.getExtension("EXT_texture_filter_anisotropic") || gl.getExtension("WEBKIT_EXT_texture_filter_anisotropic") || gl.getExtension("MOZ_EXT_texture_filter_anisotropic");
+	gl.extensions["EXT_lose_context"] = gl.getExtension("EXT_lose_context") || gl.getExtension("WEBKIT_EXT_lose_context") || gl.getExtension("MOZ_EXT_lose_context");
 
 	//for float textures
 	gl.extensions["OES_texture_float_linear"] = gl.getExtension("OES_texture_float_linear");

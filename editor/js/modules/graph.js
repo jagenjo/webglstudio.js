@@ -437,6 +437,7 @@ GraphModule.showGraphComponent = function(component, inspector)
 		inspector.addCheckbox("Extra texture", component.use_extra_texture, { callback: function(v) { component.use_extra_texture = v; } });
 		inspector.addCheckbox("High precisison", component.use_high_precision, { callback: function(v) { component.use_high_precision = v; } });
 		inspector.addCheckbox("Antialiasing", component.use_antialiasing, { callback: function(v) { component.use_antialiasing = v; } });
+		inspector.addCheckbox("Use node camera", component.use_node_camera, { callback: function(v) { component.use_node_camera = v; } });
 		inspector.widgets_per_row = 1;
 	}
 

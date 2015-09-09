@@ -1,4 +1,4 @@
-var manipulateNodeTool = {
+var manipulateTool = {
 	name: "manipulate",
 	description: "Manipulate the node",
 	section: "foo",
@@ -10,27 +10,27 @@ var manipulateNodeTool = {
 	state: null,
 	state_action: false,
 	circle_center: vec3.create(),
-	node_center: vec3.create(),
+	gizmo_center: vec3.create(),
 	click_pos: vec3.create(),
 
 	//called form ToolsModule
 	renderEditor: function(camera)
 	{
-		var node = SelectionModule.getSelectedNode();
-		if(!node) 
-			return;
 		if(!EditorView.mustRenderGizmos()) 
+			return;
+
+		var selection = SelectionModule.getSelection();
+		if(!selection) 
 			return;
 
 		var gizmo_model = ToolUtils.getSelectionMatrix();
 		if(!gizmo_model)
 			return null;
 
-		//var pos = node.transform.getGlobalPosition( this.node_center );
+		//var pos = node.transform.getGlobalPosition( this.gizmo_center );
 		var pos = vec3.create();
 		mat4.multiplyVec3( pos, gizmo_model, pos );
-		this.node_center.set( pos );
-
+		this.gizmo_center.set( pos );
 
 		//ToolUtils.prepareDrawing();
 		//var camera = ToolUtils.getCamera();
@@ -77,9 +77,10 @@ var manipulateNodeTool = {
 		if(e.which != GL.LEFT_MOUSE_BUTTON) 
 			return;
 
-		var node = SelectionModule.getSelectedNode();
-		if(!node) 
+		var selection = SelectionModule.getSelection();
+		if(!selection) 
 			return;
+		var node = selection.node; //could be null
 
 		var gizmo_model = ToolUtils.getSelectionMatrix();
 		if(!gizmo_model)
@@ -116,21 +117,24 @@ var manipulateNodeTool = {
 		}
 		else if(state) //there is an action performed
 		{
-			if(node._is_bone && node.parentNode && node.parentNode._is_bone && !e.ctrlKey)
-				ToolUtils.saveNodeTransformUndo(node.parentNode);
-			else if(node.transform)
-				ToolUtils.saveNodeTransformUndo(node);
+			if(node)
+			{
+				if(node._is_bone && node.parentNode && node.parentNode._is_bone && !e.ctrlKey)
+					ToolUtils.saveNodeTransformUndo(node.parentNode);
+				else if(node.transform)
+					ToolUtils.saveNodeTransformUndo(node);
+			}
 		}
 
 		if(state == "move")
 		{
 			this.state_action = true;
-			ToolUtils.testPerpendicularPlane( e.canvasx, gl.canvas.height - e.canvasy, this.node_center, this.click_pos );
+			ToolUtils.testPerpendicularPlane( e.canvasx, gl.canvas.height - e.canvasy, this.gizmo_center, this.click_pos );
 		}
 		else if(state == "rotate")
 		{
 			this.state_action = true;
-			ToolUtils.testPerpendicularPlane( e.canvasx, gl.canvas.height - e.canvasy, this.node_center, this.click_pos );
+			ToolUtils.testPerpendicularPlane( e.canvasx, gl.canvas.height - e.canvasy, this.gizmo_center, this.click_pos );
 		}
 		else
 			this.state_action = false;
@@ -168,19 +172,24 @@ var manipulateNodeTool = {
 
 	mousewheel: function(e)
 	{
-		if(!e.dragging) return;
-		var node = SelectionModule.getSelectedNode();
-		if(!node) return;
+		if(!e.dragging)
+			return;
+
+
+		var selection = SelectionModule.getSelection();
+		if(!selection) 
+			return;
+		var node = selection.node; //could be null
 
 		if(this.state == "move")
 		{
 			var camera = ToolUtils.getCamera(e);
 			var eye = camera.getEye();
-			var delta = vec3.sub(vec3.create(), eye, this.node_center );
+			var delta = vec3.sub(vec3.create(), eye, this.gizmo_center );
 			vec3.scale(delta,delta, (e.wheel < 0 ? 0.02 : -0.02) );
 			var T = mat4.setTranslation( mat4.create(), delta );
-
-			if(node._is_bone && node.parentNode && node.parentNode._is_bone)
+	
+			if(node && node._is_bone && node.parentNode && node.parentNode._is_bone)
 				ToolUtils.applyTransformMatrixToBone(T);
 			else
 				ToolUtils.applyTransformMatrixToSelection(T);
@@ -192,8 +201,10 @@ var manipulateNodeTool = {
 
 	onMouseDrag: function(e)
 	{
-		var node = SelectionModule.getSelectedNode();
-		if(!node) return;
+		var selection = SelectionModule.getSelection();
+		if(!selection) 
+			return;
+		var node = selection.node; //could be null
 
 		var gizmo_model = ToolUtils.getSelectionMatrix();
 		if(!gizmo_model)
@@ -211,7 +222,7 @@ var manipulateNodeTool = {
 			var T = mat4.create();
 			mat4.translate(T,T,delta);
 
-			if(node._is_bone && node.parentNode && node.parentNode._is_bone && !e.ctrlKey)
+			if(node && node._is_bone && node.parentNode && node.parentNode._is_bone && !e.ctrlKey)
 				ToolUtils.applyTransformMatrixToBone(T);
 			else
 				ToolUtils.applyTransformMatrixToSelection(T);
@@ -221,13 +232,13 @@ var manipulateNodeTool = {
 		{
 			var camera = ToolUtils.getCamera(e);
 			var result = vec3.create();
-			ToolUtils.testPerpendicularPlane( e.canvasx, gl.canvas.height - e.canvasy, this.node_center, result );
-			var A = vec3.sub( vec3.create(), this.click_pos, this.node_center );
-			var B = vec3.sub( vec3.create(), result, this.node_center );
+			ToolUtils.testPerpendicularPlane( e.canvasx, gl.canvas.height - e.canvasy, this.gizmo_center, result );
+			var A = vec3.sub( vec3.create(), this.click_pos, this.gizmo_center );
+			var B = vec3.sub( vec3.create(), result, this.gizmo_center );
 			this.click_pos.set( result );
 			vec3.normalize(A,A);
 			vec3.normalize(B,B);
-			//var axis = vec3.sub( vec3.create(), this.node_center, camera.getEye() );
+			//var axis = vec3.sub( vec3.create(), this.gizmo_center, camera.getEye() );
 			var axis = vec3.cross( result, A,B );
 			var angle = -Math.acos( Math.clamp( vec3.dot(A,B), -1,1) );
 			//var angle = vec2.computeSignedAngle(A,B);
@@ -241,7 +252,7 @@ var manipulateNodeTool = {
 				vec3.normalize(axis,axis);
 				mat4.rotate( R, R, angle, axis );
 
-				ToolUtils.applyTransformMatrixToSelection( R, this.node_center );
+				ToolUtils.applyTransformMatrixToSelection( R, this.gizmo_center );
 			}
 		}
 
@@ -261,8 +272,8 @@ var manipulateNodeTool = {
 
 	updateCursor: function()
 	{
-		var node = SelectionModule.getSelectedNode();
-		if(!node)
+		var selection = SelectionModule.getSelection();
+		if(!selection)
 		{
 			gl.canvas.style.cursor = null;
 			return;
@@ -276,5 +287,6 @@ var manipulateNodeTool = {
 			gl.canvas.style.cursor = null;
 	}
 };
-ToolsModule.registerTool(manipulateNodeTool);
+
+ToolsModule.registerTool(manipulateTool);
 

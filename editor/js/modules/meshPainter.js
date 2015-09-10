@@ -14,10 +14,15 @@ var MeshPainter = {
 		bg_color: [0,0,0],
 	},
 
-	brushcolor: [1,1,1],
-	brushchannels: [1,1,1,1],
-	brushsize: 1,
-	brushalpha: 1.0,
+	brush: {
+		color: vec3.fromValues(1,1,1),
+		alpha: 1,
+		size: 1,
+		channels: [1,1,1,1],
+		spread: 0,
+		texture: null,
+		blending: false
+	},
 
 	pending_sprites: [],
 	pending_sprites3D: [],
@@ -27,6 +32,20 @@ var MeshPainter = {
 		LiteGUI.menubar.add("Actions/Paint mesh", { callback: function() { 
 			MeshPainter.showPaintingDialog();
 		}});
+
+		this.uniforms = {
+			u_model: mat4.create(),
+			u_vp: mat4.create(),
+			u_brushpos: vec3.create(),
+			u_brushpos2: vec3.create(),
+			u_brushsize: 1.0,
+			u_brushcolor: vec4.create(),
+			u_brushtexture: 0
+		}
+
+			LEvent.bind( LS.GlobalScene, "clear", function(){
+				MeshPainter.setPaintedNode(null);
+			});
 	},
 
 	setPaintedNode: function(node)
@@ -187,20 +206,22 @@ var MeshPainter = {
 
 			//Brush info
 			widgets.addTitle("Brush");
-			widgets.addNumber("Size", MeshPainter.brushsize, { min:0.1, step: 0.1, callback: function(v) { 
-				MeshPainter.brushsize = v;
+			widgets.addNumber("Size", MeshPainter.brush.size, { min:0.1, step: 0.1, callback: function(v) { 
+				MeshPainter.brush.size = v;
 			}});
-			widgets.addSlider("Alpha", MeshPainter.brushalpha, { min:0.01, max: 1, callback: function(v) { 
-				MeshPainter.brushalpha = v;
+			//widgets.addNumber("Spread", MeshPainter.brush.spread, { min:0.1, step: 0.1, callback: function(v) { MeshPainter.brush.spread = v; }});
+			widgets.addSlider("Alpha", MeshPainter.brush.alpha, { min:0.01, max: 1, callback: function(v) { 
+				MeshPainter.brush.alpha = v;
 			}});
-			var widget_color = widgets.addColor("Color", MeshPainter.brushcolor, { callback: function (value) { vec3.copy( MeshPainter.brushcolor, value ); }});
+			var widget_color = widgets.addColor("Color", MeshPainter.brush.color, { callback: function (value) { vec3.copy( MeshPainter.brush.color, value ); }});
+			widgets.addCheckbox("Blending", MeshPainter.brush.blending, { callback: function(v) { MeshPainter.brush.blending = v; }});
 
 			widgets.widgets_per_row = 4;
-			widgets.addInfo("Mask",null,{width: 130} );
-			widgets.addCheckbox(null, MeshPainter.brushchannels[0], { label: "R", width: 40, callback: function (value) { MeshPainter.brushchannels[0] = value?1:0; }});
-			widgets.addCheckbox(null, MeshPainter.brushchannels[1], { label: "G", width: 40, callback: function (value) { MeshPainter.brushchannels[1] = value?1:0; }});
-			widgets.addCheckbox(null, MeshPainter.brushchannels[2], { label: "B", width: 40, callback: function (value) { MeshPainter.brushchannels[2] = value?1:0; }});
-			widgets.addCheckbox(null, MeshPainter.brushchannels[3], { label: "A", width: 40, callback: function (value) { MeshPainter.brushchannels[3] = value?1:0; }});
+			widgets.addInfo( "Mask", null, { width: 130 } );
+			widgets.addCheckbox( null, MeshPainter.brush.channels[0], { label: "R", width: 40, callback: function (value) { MeshPainter.brush.channels[0] = value?1:0; }});
+			widgets.addCheckbox( null, MeshPainter.brush.channels[1], { label: "G", width: 40, callback: function (value) { MeshPainter.brush.channels[1] = value?1:0; }});
+			widgets.addCheckbox( null, MeshPainter.brush.channels[2], { label: "B", width: 40, callback: function (value) { MeshPainter.brush.channels[2] = value?1:0; }});
+			widgets.addCheckbox( null, MeshPainter.brush.channels[3], { label: "A", width: 40, callback: function (value) { MeshPainter.brush.channels[3] = value?1:0; }});
 			widgets.widgets_per_row = 1;
 
 			widgets.addButton("Special color","Flat Normal", { callback: function (value) { 
@@ -341,9 +362,9 @@ var MeshPainter = {
 		var sprite = {
 			pos: pos,
 			normal: normal,
-			color: this.brushcolor,
-			alpha: this.brushalpha,
-			size: this.brushsize
+			color: vec3.clone( this.brush.color ),
+			alpha: this.brush.alpha,
+			size: this.brush.size
 		};
 
 		/*
@@ -359,7 +380,7 @@ var MeshPainter = {
 		}
 		*/
 
-		this.pending_sprites3D.push(sprite);
+		this.pending_sprites3D.push( sprite );
 	},
 
 	drawSprites3D: function()
@@ -370,15 +391,20 @@ var MeshPainter = {
 		gl.enable(gl.BLEND);
 		gl.disable(gl.DEPTH_TEST);
 		gl.disable(gl.CULL_FACE);
-		//gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
-		gl.blendFuncSeparate( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.SRC_ALPHA, gl.DST_ALPHA );
+
+		if(this.brush.blending)
+			gl.blendFuncSeparate( gl.SRC_ALPHA, gl.ONE, gl.SRC_ALPHA, gl.DST_ALPHA );
+		else
+			gl.blendFuncSeparate( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.SRC_ALPHA, gl.DST_ALPHA );
 		gl.blendEquation( gl.FUNC_ADD, gl.MAX );
-		gl.colorMask( MeshPainter.brushchannels[0], MeshPainter.brushchannels[1], MeshPainter.brushchannels[2], MeshPainter.brushchannels[3]);
+
+		gl.colorMask( MeshPainter.brush.channels[0], MeshPainter.brush.channels[1], MeshPainter.brush.channels[2], MeshPainter.brush.channels[3]);
 
 		var camera = this.getCamera();
 
 		LS.Renderer.enableCamera( camera, null, true );
 		var mesh = this.painted_mesh;
+		var uniforms = MeshPainter.uniforms;
 
 		var shader_point = this._shader;
 		if(!shader_point)
@@ -391,17 +417,18 @@ var MeshPainter = {
 		var shader = null;
 		var model = this.getPaintedNode().transform.getGlobalMatrix();
 
+
 		for(var i in this.pending_sprites3D)
 		{
 			var sprite = this.pending_sprites3D[i];
 
-			var uniforms = {
-				u_model: model,
-				u_brushpos: sprite.pos,
-				u_brushpos2: sprite.pos2,
-				u_brushsize: sprite.size,
-				u_brushcolor: [sprite.color[0],sprite.color[1],sprite.color[2],sprite.alpha]
-			};
+			uniforms.u_model.set( model );
+			uniforms.u_brushpos.set( sprite.pos );
+			if(sprite.pos2)
+				uniforms.u_brushpos2.set( sprite.pos2 );
+			uniforms.u_brushsize = sprite.size;
+			uniforms.u_brushcolor.set( sprite.color );
+			uniforms.u_brushcolor[3] = sprite.alpha;
 
 			if(sprite.pos2)
 				shader = shader_line;
@@ -413,8 +440,11 @@ var MeshPainter = {
 		}
 
 		this.pending_sprites3D = [];
+
+		//restore state
 		gl.disable(gl.BLEND);
 		gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
+		gl.blendFuncSeparate( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ZERO );
 		gl.blendEquation( gl.FUNC_ADD, gl.FUNC_ADD );
 		gl.colorMask(1,1,1,1);
 	},
@@ -474,6 +504,43 @@ MeshPainter._paint_pixel_shader = "\n\
 	}\n\
 ";
 
+MeshPainter._brush_vertex_shader = "\n\
+	precision highp float;\n\
+	\n\
+	attribute vec3 a_vertex;\n\
+	\n\
+	uniform mat4 u_model;\n\
+	uniform mat4 u_vp;\n\
+	varying vec3 v_pos;\n\
+	\n\
+	void main() {\n\
+		v_pos = (u_model * vec4(a_vertex,1.0)).xyz;\n\
+		gl_Position = u_vp * vec4(v_pos,1.0);\n\
+	}\n\
+	";
+
+MeshPainter._brush_pixel_shader = "\n\
+	precision highp float;\n\
+	\n\
+	varying vec3 v_pos;\n\
+	uniform vec3 u_brushpos;\n\
+	uniform float u_brushsize;\n\
+	uniform vec4 u_brushcolor;\n\
+	void main() {\n\
+		vec3 v = v_pos - u_brushpos;\n\
+		if( abs(v.x) > u_brushsize || abs(v.y) > u_brushsize)\n\
+			discard;\n\
+		\n\
+		float dist = length(v);\n\
+		if( dist > u_brushsize )\n\
+			discard;\n\
+		\n\
+		vec4 color = u_brushcolor;\n\
+		color.a *= 1.0 - (dist / u_brushsize);\n\
+		gl_FragColor = color;\n\
+	}\n\
+";
+
 LiteGUI.registerModule( MeshPainter );
 
 var meshPainterTool = {
@@ -516,26 +583,59 @@ var meshPainterTool = {
 
 	render: function()
 	{
-		if(!RenderModule.frame_updated) return;
-		if(!MeshPainter.current_texture) return;
+		if(!RenderModule.frame_updated || !MeshPainter.current_texture)
+			return;
 
 		var camera = MeshPainter.getCamera();
 
 		//Draw.setViewProjectionMatrix( Renderer._view_matrix, Renderer._projection_matrix, Renderer._viewprojection_matrix );
 		Draw.setCamera( camera );
+		var uniforms = MeshPainter.uniforms;
+
+		MeshPainter.uniforms.u_vp.set( camera._viewprojection_matrix );
 
 		gl.disable( gl.BLEND );
 		gl.enable( gl.DEPTH_TEST );
+
 		if(MeshPainter.sphere_mesh && MeshPainter._mouse_over_the_mesh)
 		{
-			Draw.setColor(MeshPainter.brushcolor);
-			Draw.setAlpha(1);
+			var shader_brush = this._shader_brush;
+			if(!shader_brush)
+				shader_brush = this._shader_brush = new GL.Shader( MeshPainter._brush_vertex_shader, MeshPainter._brush_pixel_shader); 
+			var model = MeshPainter.getPaintedNode().transform.getGlobalMatrix();
+
+			gl.enable( gl.BLEND );
+			gl.depthFunc( gl.LEQUAL );
+			gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
+
+			uniforms.u_model.set( model );
+			uniforms.u_brushpos.set( MeshPainter.collision_pos );
+			uniforms.u_brushsize = MeshPainter.brush.size;
+			uniforms.u_brushcolor.set( MeshPainter.brush.color );
+			uniforms.u_brushcolor[3] = MeshPainter.brush.alpha * 3.0;
+
 			Draw.push();
-			Draw.translate(MeshPainter.collision_pos);
-			Draw.scale([MeshPainter.brushsize, MeshPainter.brushsize, MeshPainter.brushsize]);
-			Draw.renderMesh( MeshPainter.sphere_mesh, gl.TRIANGLES );
+			Draw.setMatrix( model );
+			shader_brush.uniforms( uniforms );
+			Draw.renderMesh( MeshPainter.painted_mesh, gl.TRIANGLES, shader_brush );
 			Draw.pop();
+
+			gl.depthFunc( gl.LESS );
+
+			if(1) //render brush sphere
+			{
+				Draw.setColor( MeshPainter.brush.color );
+				Draw.setAlpha(0.1);
+				Draw.push();
+				Draw.translate( MeshPainter.collision_pos );
+				Draw.scale( [MeshPainter.brush.size, MeshPainter.brush.size, MeshPainter.brush.size] );
+				Draw.renderMesh( MeshPainter.sphere_mesh, gl.TRIANGLES );
+				Draw.pop();
+			}
+			gl.disable( gl.BLEND );
 		}
+
+
 
 		if( MeshPainter.pending_sprites.length > 0 || MeshPainter.pending_sprites3D.length > 0 )
 		{
@@ -618,9 +718,9 @@ var meshPainterTool = {
 
 		//console.log(e);
 		if(e.wheelDelta > 0)
-			MeshPainter.brushsize *= 1.2;
+			MeshPainter.brush.size *= 1.2;
 		else
-			MeshPainter.brushsize *= 0.8;
+			MeshPainter.brush.size *= 0.8;
 
 		RenderModule.requestFrame();
 	},

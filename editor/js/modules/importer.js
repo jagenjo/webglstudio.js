@@ -287,22 +287,27 @@ var ImporterModule  = {
 				filename = resource.filename;
 			if(insert_into)
 			{
-				if(resource.constructor == Mesh)
+				if(resource.constructor == GL.Mesh)
 					EditorModule.createNodeWithMesh(filename);
-				else if(resource.constructor == Texture)
+				else if(resource.constructor == GL.Texture)
 				{
-					if(Scene.selected_node)
+					var selected_node = SelectionModule.getSelectedNode();
+					if(selected_node)
 					{
-						var mat = Scene.selected_node.getMaterial();
+						var mat = selected_node.getMaterial();
 						if(!mat)
 						{
-							mat = new StandardMaterial();
-							Scene.selected_node.material = mat;
+							mat = new LS.StandardMaterial();
+							selected_node.material = mat;
 						}
-						mat.setTexture(target, resource.filename);
-						LEvent.trigger(Scene.selected_node,"changed");
-						EditorModule.inspectNode(Scene.selected_node);
+						mat.setTexture( target, resource.filename );
+						LEvent.trigger( selected_node, "changed" );
+						EditorModule.inspectNode( selected_node );
 					}
+				}
+				else if(resource.constructor == LS.SceneTree)
+				{
+					LS.GlobalScene.configure( resource.serialize() );
 				}
 			}
 

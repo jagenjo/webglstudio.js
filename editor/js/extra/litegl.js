@@ -4800,7 +4800,7 @@ Texture.getBlackTexture = function()
 	return gl.textures[":black"] = new GL.Texture(1,1,{ pixel_data: color });
 }
 
-/* FBO for FrameBufferObjects
+/** FBO for FrameBufferObjects, FBOs are used to store the render inside one or several textures (include the depth buffer)
 * @class FBO
 * @param {Array} color_textures an array containing the color textures, if not supplied a render buffer will be used
 * @param {GL.Texture} depth_texture the depth texture, if not supplied a render buffer will be used

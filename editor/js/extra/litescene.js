@@ -2878,7 +2878,12 @@ var ResourcesManager = {
 			encoding = "base64";
 		}
 		else if(resource.serialize) //a json object
-			data = JSON.stringify( resource.serialize() );
+		{
+			var obj = resource.serialize();
+			if(obj.preview_url) //special case...
+				delete obj.preview_url;
+			data = JSON.stringify( obj );
+		}
 		else if(resource.data) //regular string data
 			data = resource.data;
 		else

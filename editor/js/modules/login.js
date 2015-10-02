@@ -12,7 +12,7 @@ var LoginModule = {
 		loginarea.style.position = "absolute";
 		loginarea.style.top = 0;
 		loginarea.style.right = 0;
-		this.server_path = LiteGUI.config.server;
+		this.server_path = CORE.config.server;
 		this.loginarea = loginarea;
 		$("#mainmenubar").append(loginarea);
 
@@ -155,4 +155,4 @@ var LoginModule = {
 	}
 };
 
-LiteGUI.registerModule( LoginModule );
+CORE.registerModule( LoginModule );

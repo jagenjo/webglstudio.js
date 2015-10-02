@@ -145,4 +145,4 @@ var fpsCounter = {
 	},
 };
 
-LiteGUI.registerModule( fpsCounter );
+CORE.registerModule( fpsCounter );

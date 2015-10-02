@@ -71,7 +71,7 @@ var genericFX = {
 	}
 }
 
-LiteGUI.registerModule( genericFX );
+CORE.registerModule( genericFX );
 
 //***********************************************
 
@@ -208,4 +208,4 @@ var simpleScripter = {
 	},
 };
 
-LiteGUI.registerModule( simpleScripter );
+CORE.registerModule( simpleScripter );

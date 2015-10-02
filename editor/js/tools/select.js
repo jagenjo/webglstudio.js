@@ -20,7 +20,19 @@ var selectTool = {
 	mousedown: function(e) {
 		this.click_pos = [e.canvasx,e.canvasy];
 
-
+		/* if done here then we cannot use the right mouse for camera panning
+		if(e.button == 2)
+		{
+			var instance_info = LS.Picking.getInstanceAtCanvasPosition( e.canvasx, e.canvasy, ToolUtils.getCamera() );
+			if(instance_info)
+			{
+				EditorModule.showContextualNodeMenu( instance_info.constructor === LS.SceneNode ? instance_info : instance_info.instance, e );
+				e.preventDefault();
+				e.stopPropagation();
+				return true;
+			}
+		}
+		*/
 	},
 
 	mousemove: function(e) {
@@ -52,7 +64,10 @@ var selectTool = {
 				return false;
 
 			if(e.button == 2)
+			{
 				EditorModule.showContextualNodeMenu( instance_info.constructor === LS.SceneNode ? instance_info : instance_info.instance, e );
+				return true;
+			}
 			else if(e.shiftKey)
 			{
 				if( SelectionModule.isSelected( instance_info ) )

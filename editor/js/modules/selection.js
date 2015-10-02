@@ -131,20 +131,23 @@ var SelectionModule = {
 			var selection = this.selection_array[i];
 			if(selection.instance == instance )
 			{
-				selection.splice(i,1);
+				this.selection_array.splice(i,1);
 				if(selection.node)
 					selection.node._is_selected = false;
 
+
+				if(selection == this.selection)
+				{
+					this.selection = this.selection_array[0];
+					EditorModule.inspectNode( null );
+				}
+
 				if(!skip_events)
 				{
-					this.selected = this.selection_array[0];
 					if(i == 0)
-					{
-						LEvent.trigger( LS.GlobalScene, "selected_node_changed", this.selection.node);
-						EditorModule.inspectNode( this.selection.node );
-					}
+						LEvent.trigger( LS.GlobalScene, "selected_node_changed", this.selection ? this.selection.node : null );
 					else
-						LEvent.trigger( LS.GlobalScene, "other_node_deselected", this.selection.node);
+						LEvent.trigger( LS.GlobalScene, "other_node_deselected", this.selection ? this.selection.node : null );
 				}
 				return;			
 			}
@@ -404,7 +407,7 @@ var SelectionModule = {
 				new_component.configure( data );
 				selection.node.addComponent( new_component );
 
-				LiteGUI.addUndoStep({ 
+				UndoModule.addUndoStep({ 
 					data: { compo_uid: new_component._uid },
 					callback: function(d) {
 						var compo = scene.root.getComponentByUid( d.compo_uid );
@@ -424,7 +427,7 @@ var SelectionModule = {
 			for(var i in result)
 				created_uids.push( result[i].uid );
 			//DELETE NODES
-			LiteGUI.addUndoStep({ 
+			UndoModule.addUndoStep({ 
 				data: { uids: created_uids, old_selection: old_selection },
 				callback: function(d) {
 					for(var i in d.uids)
@@ -457,7 +460,7 @@ var SelectionModule = {
 			if( selection.instance.constructor === SceneNode && !selection.instance._is_root )
 			{
 				//DELETE NODE
-				LiteGUI.addUndoStep({ 
+				UndoModule.addUndoStep({ 
 					data: { node: node, parent: parent, index: parent.childNodes.indexOf(node) },
 					callback: function(d) {
 						d.parent.addChild( d.node, d.index );
@@ -470,7 +473,7 @@ var SelectionModule = {
 			else if( selection.instance._root && selection.instance._root.constructor === SceneNode )
 			{
 				//DELETE COMPONENT
-				LiteGUI.addUndoStep({ 
+				UndoModule.addUndoStep({ 
 					data: { comp: selection.instance, node: node },
 					callback: function(d) {
 						d.node.addComponent( d.comp );
@@ -484,5 +487,55 @@ var SelectionModule = {
 
 		EditorModule.inspectNode();
 		SelectionModule.setSelection(null);
+	},
+
+	selectParentNode: function()
+	{
+		var node = this.getSelectedNode();
+		if(!node)
+			return;
+		var selected = node.parentNode;
+		if(selected)
+			this.setSelection( selected );
+	},
+
+	selectChildNode: function()
+	{
+		var node = this.getSelectedNode();
+		if(!node)
+			return;
+		var selected = node.childNodes[0] ;
+		if(selected)
+			this.setSelection( selected );
+	},
+
+	selectSiblingNode: function( previous )
+	{
+		var node = this.getSelectedNode();
+		if(!node)
+			return;
+		var parent = node.parentNode;
+		if(!parent)
+			return;
+
+		var children = parent._children;
+		if( !children || !children.length )
+			return;
+		var index = children.indexOf( node );
+		if(previous)
+		{
+			if(index == -1)
+				return;
+			index -= 1;
+			if(index < 0)
+				index = children.length - 1;
+		}
+		else
+			index += 1;
+		var selected = children[ index % children.length ];
+		if(selected)
+			this.setSelection( selected );
 	}
 };
+
+CORE.registerModule( SelectionModule );

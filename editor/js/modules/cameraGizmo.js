@@ -130,7 +130,7 @@ CameraGizmo.prototype.mousedown = function(e)
 
 	if(e.button == 2)
 	{
-		var menu = new LiteGUI.ContextualMenu(["Camera Info","Perspective","Orthographic"], {event: e, callback: (function(v) { 
+		var menu = new LiteGUI.ContextualMenu(["Camera Info","Perspective","Orthographic"], {event: e, title: "Cameras", callback: (function(v) { 
 			var camera = this.camera;
 			switch( v )
 			{
@@ -140,9 +140,8 @@ CameraGizmo.prototype.mousedown = function(e)
 			}
 			LS.GlobalScene.refresh();
 		}).bind(this) });
+		return true;
 	}
-
-	return true;
 }
 
 CameraGizmo.prototype.mousemove = function(e)

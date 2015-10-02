@@ -23,6 +23,7 @@ var EditorView = {
 	render_debug_info: true,
 	render_gizmos: true,
 	render_helpers: true, //icons, grid, cones, etc
+	render_graph: false,
 	textures_display: [],
 
 	debug_points: [], //used for debugging, allows to draw points easily
@@ -114,7 +115,7 @@ var EditorView = {
 		if(this.render_helpers && !RenderModule.render_options.in_player && RenderModule.frame_updated)
 			return true;
 		return false;
-	},	
+	},
 
 	sendToGizmos: function(name, params)
 	{
@@ -127,8 +128,11 @@ var EditorView = {
 			for(var j = 0; j < camera.gizmos.length; j++)
 			{
 				var gizmo = camera.gizmos[j];
+				var r = null;
 				if(gizmo[name])
-					gizmo[name].apply(gizmo, params);
+					r = gizmo[name].apply(gizmo, params);
+				if(r === true)
+					return true; //break
 			}
 		}
 	},
@@ -140,22 +144,22 @@ var EditorView = {
 
 	mousedown: function(e)
 	{
-		this.sendToGizmos("mousedown",[e]);
+		return this.sendToGizmos("mousedown",[e]);
 	},
 
 	mousemove: function(e)
 	{
-		this.sendToGizmos("mousemove",[e]);
+		return this.sendToGizmos("mousemove",[e]);
 	},
 
 	mouseup: function(e)
 	{
-		this.sendToGizmos("mouseup",[e]);
+		return this.sendToGizmos("mouseup",[e]);
 	},
 
 	mousewheel: function(e)
 	{
-		this.sendToGizmos("mousewheel",[e]);
+		return this.sendToGizmos("mousewheel",[e]);
 	},
 
 	_points: [], //linear array with x,y,z, x,y,z, ...
@@ -643,7 +647,7 @@ var EditorView = {
 };
 
 
-LiteGUI.registerModule( EditorView );
+CORE.registerModule( EditorView );
 
 
 

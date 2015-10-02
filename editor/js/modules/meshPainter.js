@@ -123,13 +123,13 @@ var MeshPainter = {
 			{
 				var selected_material_class = LS.Material;
 				widgets.addInfo(null,"Material not found in object");
-				widgets.addCombo("MaterialClasses", "Material", { values: LS.MaterialClasses, callback: function(material_class) { 
+				widgets.addCombo("MaterialClasses", "StandardMaterial", { values: LS.MaterialClasses, callback: function(material_class) { 
 					selected_material_class = material_class;
 				}});
 
 				widgets.addButton("No material", "Create Material", function(){
 					var mat = new selected_material_class();
-					node.setMaterial( mat );
+					node.material = mat;
 					inner_update();
 				});
 				dialog.adjustSize(10);
@@ -238,7 +238,7 @@ var MeshPainter = {
 		}//inner update
 
 
-		$(dialog.content).append(widgets.root);
+		dialog.add( widgets );
 		dialog.adjustSize();		
 
 		//widgets.addString("Name", last_file ? last_file.name : "");
@@ -541,7 +541,7 @@ MeshPainter._brush_pixel_shader = "\n\
 	}\n\
 ";
 
-LiteGUI.registerModule( MeshPainter );
+CORE.registerModule( MeshPainter );
 
 var meshPainterTool = {
 	name: "painter",
@@ -726,4 +726,4 @@ var meshPainterTool = {
 	},
 };
 
-ToolsModule.registerTool(meshPainterTool);
+ToolsModule.registerTool( meshPainterTool );

@@ -310,13 +310,16 @@ var cameraTool = {
 	},
 	*/
 
-	setFocusPoint: function( point ) {
+	setFocusPoint: function( point, distance ) {
 		var camera = this.last_camera || ToolUtils.getCamera();
 
 		if(!this.smooth_camera)
 			camera.center = point;
 		else
 			camera.editor.destination_center.set( point );
+
+		if(distance)
+			camera.setDistanceToCenter( distance, true );
 	}
 
 };

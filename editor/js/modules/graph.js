@@ -23,6 +23,8 @@ var GraphModule = {
 			GraphModule.graphcanvas.pause_rendering = true;
 		}});
 
+		RenderModule.viewport3d.addModule(this);
+
 		LiteGraph.node_images_path = this.litegraph_path + "/nodes_data/";
 
 		this.root = LiteGUI.main_tabs.root.querySelector("#graphtab");
@@ -350,9 +352,8 @@ var GraphModule = {
 		function inner_assign(v)
 		{
 			//safe way
-			LS.setObjectAttribute( node.properties, this.options.field_name, v );
+			LS.setObjectProperty( node.properties, this.options.field_name, v );
 		}
-
 	},
 
 	onOpenInWindow: function()
@@ -412,14 +413,65 @@ var GraphModule = {
 
 	onEditGlobalGraph: function()
 	{
-		var global_graph = Scene.root.getComponent( GraphComponent );
+		var global_graph = LS.GlobalScene.root.getComponent( GraphComponent );
 		if(global_graph)
 			this.editInstanceGraph( global_graph, { id: global_graph.uid, title: "Global" } );
+	},
+
+	render: function()
+	{
+		if( !this.graph || !EditorView.render_graph || RenderModule.render_options.in_player || !RenderModule.frame_updated )
+			return;
+		
+		if(!this.view_canvas)
+		{
+			this.view_canvas = new LGraphCanvas( null, null, true );
+			this.view_canvas.setCanvas( gl.canvas, true );
+			this.view_canvas.onNodeSelected = function(node) { GraphModule.onNodeSelected(node); };
+			this.view_canvas.pause_rendering = true;
+			this.view_canvas.clear_background = false;
+		}
+
+		this.view_canvas.setGraph( this.graph, true );
+		this.view_canvas.draw(true);
+	},
+
+	mousedown: function(e)
+	{
+		if(EditorView.render_graph && this.view_canvas)
+		{
+			this.view_canvas.processMouseDown( e );
+			if(this.view_canvas.dirty_canvas)
+				RenderModule.requestFrame();
+			return true;
+		}
+	},
+
+	mousemove: function(e)
+	{
+		if(EditorView.render_graph && this.view_canvas)
+		{
+			this.view_canvas.processMouseMove( e );
+			if(this.view_canvas.dirty_canvas)
+				RenderModule.requestFrame();
+			return true;
+		}
+	},
+
+	mousewheel: function(e)
+	{
+		if(EditorView.render_graph && this.view_canvas)
+		{
+			this.view_canvas.processMouseWheel( e );
+			if(this.view_canvas.dirty_canvas)
+				RenderModule.requestFrame();
+			return true;
+		}
 	}
 
 };
 
-LiteGUI.registerModule( GraphModule );
+CORE.registerModule( GraphModule );
 
 //UPDATE GRAPH
 

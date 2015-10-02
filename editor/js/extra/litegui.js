@@ -20,13 +20,8 @@ var LiteGUI = {
 	//used for blacken when a modal dialog is shown
 	modalbg_div: null,
 
-	_modules_initialized: false,
-
 	//the top menu
 	mainmenu: null,
-
-	//registered modules
-	modules: [],
 
 	/**
 	* initializes the lib, must be called
@@ -75,10 +70,6 @@ var LiteGUI = {
 		if(options.gui_callback)
 			options.gui_callback();
 
-		//init all modules attached to the GUI
-		if(options.initModules != false) 
-			this.initModules();
-
 		//maximize
 		if( this.root.classList.contains("fullscreen") )
 		{
@@ -86,137 +77,62 @@ var LiteGUI = {
 				LiteGUI.maximizeWindow();
 			});
 		}
-
-		//grab some keys
-		document.addEventListener("keydown",function(e){
-			if(e.target.nodeName.toLowerCase() == "input" || e.target.nodeName.toLowerCase() == "textarea")
-				return;
-			if(e.keyCode == 17) return; //ctrl
-
-			if(e.keyCode == 26 || (e.keyCode == 90 && (e.ctrlKey || e.metaKey)) || (e.charCode == 122 && e.ctrlKey) ) //undo
-				LiteGUI.doUndo();
-			if(e.keyCode == 27) //esc
-				$(LiteGUI).trigger("escape");
-
-		});
-
-		//some modules may need to be unloaded
-		window.onbeforeunload = this.onUnload.bind(this);
 	},
 
-
-	initModules: function()
-	{
-		var catch_exceptions = false;
-
-		//pre init
-		for(var i in this.modules)
-			if (this.modules[i].preInit)
-			{
-				if(!catch_exceptions)
-				{
-					this.modules[i].preInit();
-					continue;
-				}
-				try
-				{
-					this.modules[i].preInit();
-				}
-				catch (err)
-				{
-					console.error(err);
-				}
-			}
-
-		//init
-		for(var i in this.modules)
-			if (this.modules[i].init && !this.modules[i]._initialized)
-			{
-				if(!catch_exceptions)
-				{
-					this.modules[i].init();
-				}
-				else
-				{
-					try
-					{
-						this.modules[i].init();
-					}
-					catch (err)
-					{
-						console.error(err);
-					}
-				}
-				this.modules[i]._initialized = true;
-			}
-
-		//post init
-		for(var i in this.modules)
-			if (this.modules[i].postInit)
-			{
-				if(!catch_exceptions)
-				{
-					this.modules[i].postInit();
-				}
-				else
-				{
-					try
-					{
-						this.modules[i].postInit();
-					}
-					catch (err)
-					{
-						console.error(err);
-					}
-				}
-			}
-
-
-		this._modules_initialized = true;
-	},
-
-	registerModule: function(module)
-	{
-		this.modules.push(module);
-
-		//initialize on late registration
-		if(this._modules_initialized)
-		{
-			if (module.preInit) module.preInit();
-			if (module.init) module.init();
-			if (module.postInit) module.postInit();
-		}
-
-		$(this).trigger("module_registered",module);
-	},
-
-	onUnload: function()
-	{
-		for(var i in this.modules)
-			if (this.modules[i].onUnload)
-				this.modules[i].onUnload();
-	},
-
-	//events
+	/**
+	* Triggers a simple event in an object (similar to jQuery.trigger)
+	* @method trigger
+	* @param {Object} element could be an HTMLEntity or a regular object
+	* @param {Object} element could be an HTMLEntity or a regular object
+	* @param {Object} element could be an HTMLEntity or a regular object
+	*/
 	trigger: function(element, event_name, params)
 	{
 		var evt = document.createEvent( 'CustomEvent' );
 		evt.initCustomEvent( event_name, true,true, params ); //canBubble, cancelable, detail
-		if(element.dispatchEvent)
+		if( element.dispatchEvent )
 			element.dispatchEvent(evt);
+		else if( element.__events )
+			element.__events.dispatchEvent(evt);
 		else
-			throw("trigger can only be called in DOMElements");
+			throw("Event couldnt be dispatched");
 		return evt;
 	},
 
-	bind: function(element, event, callback)
+	/**
+	* Binds an event in an object (similar to jQuery.bind)
+	* If the element is not an HTML entity a new one is created, attached to the object (as non-enumerable, called __events) and used
+	* @method trigger
+	* @param {Object} element could be an HTMLEntity or a regular object
+	* @param {String} event the string defining the event
+	* @param {Function} callback where to call
+	*/
+	bind: function( element, event, callback )
 	{
-		element.addEventListener(event, callback);
+		if(element.addEventListener)
+			element.addEventListener(event, callback);
+		else if(element.__events)
+			element.__events.addEventListener( event, callback );
+		else
+		{
+			//create a dummy HTMLentity so we can use it to bind HTML events
+			var dummy = document.createElement("span");
+			Object.defineProperty( element, "__events", {
+				enumerable: false,
+				configurable: false,
+				writable: false,
+				value: dummy
+			});
+			element.__events.addEventListener( event, callback );
+		}
 	},
 
 	unbind: function(element, event, callback)
 	{
-		element.removeEventListener(event, callback);
+		if( element.removeEventListener )
+			element.removeEventListener( event, callback );
+		else if( element.__events && element.__events.removeEventListener )
+			element.__events.removeEventListener( event, callback );
 	},
 
 	add: function( litegui_element )
@@ -226,7 +142,17 @@ var LiteGUI = {
 
 	remove: function( element )
 	{
-		if(element.parentNode)
+		if(element && element.constructor === String)
+		{
+			var elements = document.querySelectorAll( element );
+			for(var i = 0; i < elements.length; ++i)
+			{
+				var element = elements[i];
+				if(element && element.parentNode)
+					element.parentNode.removeChild(element);
+			}
+		}
+		else if(element.parentNode)
 			element.parentNode.removeChild(element);
 	},
 
@@ -268,53 +194,42 @@ var LiteGUI = {
 		this.root.style.cursor = name;
 	},
 
-	//UNDO **********************
-	max_undo_steps: 100,
-	min_time_between_undos: 500,
-	last_undo_time: 0, //to avoid doing too many undo steps simultaneously
-
-	addUndoStep: function(o)
-	{
-		var now =  new Date().getTime();
-		if( (now - this.last_undo_time) < this.min_time_between_undos) 
-			return;
-		this.undo_steps.push(o);
-		this.last_undo_time = now;
-		if(this.undo_steps.length > this.max_undo_steps)
-			this.undo_steps.shift();
-		LiteGUI.trigger(this.root, "new_undo", o);
-	},
-
-	doUndo: function()
-	{
-		if(!this.undo_steps.length) return;
-
-		var step = this.undo_steps.pop();
-		if(step.callback != null)
-			step.callback(step.data);
-
-		LiteGUI.trigger(this.root, "undo", step);
-	},
-
-	removeUndoSteps: function()
-	{
-		this.undo_steps = [];
-		LiteGUI.trigger(this.root, "clear_undo" );
-	},
-
 	// Clipboard ******************
-
 	toClipboard: function( object )
 	{
-		if(object == null) return;
-		localStorage.setItem("litegui_clipboard", JSON.stringify( object ) );
+		if(object && object.constructor !== String )
+			object = JSON.stringify( object );
+
+		var input = null;
+		var in_clipboard = false;
+		try
+		{
+			var copySupported = document.queryCommandSupported('copy');
+			input = document.createElement("input");
+			input.type = "text";
+			input.style.opacity = 0;
+			input.value = object;
+			document.body.appendChild( input );
+			input.select();
+			in_clipboard = document.execCommand('copy');
+			console.log( in_clipboard ? "saved to clipboard" : "problem saving to clipboard");
+			document.body.removeChild( input );
+		} catch (err) {
+			if(input)
+				document.body.removeChild( input );
+			console.log('Oops, unable to copy using the true clipboard');
+		}
+
+		//old system
+		localStorage.setItem("litegui_clipboard", object );
 	},
 
 	getClipboard: function()
 	{
 		var data = localStorage.getItem("litegui_clipboard");
-		if(!data) return null;
-		return JSON.parse(data);
+		if(!data) 
+			return null;
+		return JSON.parse( data );
 	},
 
 	// CSS ************************
@@ -487,14 +402,19 @@ var LiteGUI = {
 		return this.createElement("div",id,code);
 	},
 
-	createElement: function(tag, id, content)
+	createElement: function(tag, id, content, style)
 	{
 		var elem = document.createElement( tag );
-		elem.id = id;
+		if(id)
+			elem.id = id;
 		elem.root = elem;
-		if(content !== undefined)
+		if(content)
 			elem.innerHTML = content;
 		elem.add = function(v) { this.appendChild( v.root || v ); };
+
+		if(style)
+			for(var i in style)
+				elem.style[i] = style[i];
 		return elem;
 	},
 
@@ -779,6 +699,10 @@ var LiteGUI = {
 			}
 		}
 		return o;
+	},
+
+	special_codes: {
+		close: "&#10005;"
 	}
 };
 
@@ -1268,9 +1192,18 @@ function beautifyJSON( code, skip_css )
 			return false;
 		},true);
 
-
 		this.root = root;
-		
+
+		//title
+		if(options.title)
+		{
+			var element = document.createElement("div");
+			element.className = "litemenu-title";
+			element.innerHTML = options.title;
+			root.appendChild(element);
+		}
+
+		//entries
 		for(var i in values)
 		{
 			var element = document.createElement("div");
@@ -1332,6 +1265,8 @@ function beautifyJSON( code, skip_css )
 		{
 			left = (options.event.pageX - 10);
 			top = (options.event.pageY - 10);
+			if(options.title)
+				top -= 20;
 
 			var rect = document.body.getClientRects()[0];
 			if(left > (rect.width - $(root).width() - 10))
@@ -2901,6 +2836,14 @@ function beautifyJSON( code, skip_css )
 		return this.tabs[id];
 	}
 
+	Tabs.prototype.getNumOfTabs = function()
+	{
+		var num = 0;
+		for(var i in this.tabs)
+			num++;
+		return num;
+	}
+
 	Tabs.prototype.getTabContent = function(id)
 	{
 		var tab = this.tabs[id];
@@ -2932,16 +2875,20 @@ function beautifyJSON( code, skip_css )
 		//the tab element
 		var element = document.createElement("LI");
 		var safe_id = id.replace(/ /gi,"_");
-		element.className = "wtab wtab-" + safe_id;
+		element.className = "wtab wtab-" + safe_id + " ";
 		//if(options.selected) element.className += " selected";
 		element.dataset["id"] = id;
 		element.innerHTML = "<span class='tabtitle'>" + (options.title || id) + "</span>";
 
+		if(options.button)
+			element.className += "button ";
+		if(options.tab_className)
+			element.className += options.tab_className;
 		if(options.bigicon)
 			element.innerHTML = "<img class='tabbigicon' src='" + options.bigicon+"'/>" + element.innerHTML;
 		if(options.closable)
 		{
-			element.innerHTML += "<span class='tabclose'>X</span>";
+			element.innerHTML += "<span class='tabclose'>" + LiteGUI.special_codes.close + "</span>";
 			element.querySelector("span.tabclose").addEventListener("click", function(e) { 
 				that.removeTab(id);
 				e.preventDefault();
@@ -2950,12 +2897,22 @@ function beautifyJSON( code, skip_css )
 		}
 		//WARNING: do not modify element.innerHTML or event will be lost
 
-		if(options.index && options.index != -1)
+		if( options.index !== undefined )
 		{
-			this.list.insertBefore(element, this.list.childNodes[options.index]);
+			var after = this.list.childNodes[options.index];
+			if(after)
+				this.list.insertBefore(element,after);
+			else
+				this.list.appendChild(element);
 		}
 		else
 			this.list.appendChild(element);
+
+		if(options.tab_width)
+		{
+			element.style.width = options.tab_width.constructor === Number ? ( options.tab_width.toFixed(0) + "px" ) : options.tab_width;
+			element.style.minWidth = "0";
+		}
 
 		//the content of the tab
 		var content = document.createElement("div");
@@ -3017,11 +2974,17 @@ function beautifyJSON( code, skip_css )
 		this.root.appendChild(content);
 
 		//when clicked
-		element.addEventListener("click", Tabs.prototype.onTabClicked );
+		if(!options.button)
+			element.addEventListener("click", Tabs.prototype.onTabClicked );
+		else
+			element.addEventListener("click", function(e){ 
+				var tab_id = this.dataset["id"];
+				if(options.callback)
+					options.callback( tab_id, e );
+			});
+
 		element.options = options;
 		element.tabs = this;
-
-		this.list.appendChild(element);
 
 		var tab_info = {id: id, tab: element, content: content, add: function(v) { this.content.appendChild(v.root || v); }};
 		if(options.onclose)
@@ -3092,7 +3055,7 @@ function beautifyJSON( code, skip_css )
 		{
 			//launch callback
 			if(options.callback) 
-				options.callback(tab_id, tab_content);
+				options.callback(tab_id, tab_content,e);
 
 			$(that).trigger("wchange",[tab_id, tab_content]);
 			if(that.onchange)
@@ -4486,13 +4449,14 @@ function beautifyJSON( code, skip_css )
 		{
 			code += "<div class='panel-header'>"+options.title+"</div><div class='buttons'>";
 			if(options.minimize){
-				code += "<button class='mini-button minimize-button'></button>";
+				code += "<button class='mini-button minimize-button'>-</button>";
 				code += "<button class='mini-button maximize-button' style='display:none'></button>";
 			}
 			if(options.hide)
 				code += "<button class='mini-button hide-button'></button>";
 			
-			if(options.close || options.closable) code += "<button class='mini-button close-button'></button>";
+			if(options.close || options.closable)
+				code += "<button class='mini-button close-button'>"+ LiteGUI.special_codes.close +"</button>";
 			code += "</div>";
 		}
 
@@ -4503,6 +4467,12 @@ function beautifyJSON( code, skip_css )
 		this.root = panel;
 		this.content = panel.querySelector(".content");
 		this.footer = panel.querySelector(".panel-footer");
+
+		if(options.fullcontent)
+		{
+			this.content.style.width = "100%";		
+			this.content.style.height = "100%";		
+		}
 
 		if(options.buttons)
 		{
@@ -4730,22 +4700,6 @@ function beautifyJSON( code, skip_css )
 		return button;
 	}
 
-	/*
-	Panel.prototype.open = function(v) {
-		$(this).trigger("opened");
-
-		if(!v)
-		{
-			$(this.root).remove();
-			return
-		}
-
-		$(this.root).hide('fade',null,function() {
-			$(this).remove();
-		});
-	}
-	*/	
-
 	/**
 	* destroys the dialog
 	* @method close
@@ -4848,7 +4802,7 @@ function beautifyJSON( code, skip_css )
 
 	Dialog.prototype.bringToFront = function()
 	{
-		var parent = $(this.root).parent();
+		var parent = this.root.parentNode;
 		parent.detach(this.root);
 		parent.attach(this.root);
 	}
@@ -4860,7 +4814,7 @@ function beautifyJSON( code, skip_css )
 	Dialog.prototype.show = function(v,callback)
 	{
 		if(!this.root.parentNode)
-			LiteGUI.add(this);
+			LiteGUI.add( this );
 
 		//$(this.root).show(v,null,100,callback);
 		this.root.style.display = null;
@@ -4885,17 +4839,31 @@ function beautifyJSON( code, skip_css )
 		this.root.style.top = y + "px";
 	}
 
-	Dialog.prototype.setSize = function(w,h)
+	Dialog.prototype.setSize = function( w, h )
 	{
-		this.root.style.width = w + "px";
-		this.root.style.height = h + "px";
+		this.root.style.width = typeof(w) == "number" ? w + "px" : w;
+		this.root.style.height = typeof(h) == "number" ? h + "px" : h;
+	}
+
+	Dialog.prototype.setTitle = function(text)
+	{
+		if(!this.header)
+			return;
+		this.header.innerHTML = text;
 	}
 
 	Dialog.prototype.center = function()
 	{
+		if(!this.root.parentNode)
+			return;
+
 		this.root.position = "absolute";
-		this.root.style.left = Math.floor(( $(this.root.parentNode).width() - $(this.root).width() ) * 0.5) + "px";
-		this.root.style.top = Math.floor(( $(this.root.parentNode).height() - $(this.root).height() ) * 0.5) + "px";
+		var width = this.root.offsetWidth;
+		var height = this.root.offsetHeight;
+		var parent_width = this.root.parentNode.offsetWidth;
+		var parent_height = this.root.parentNode.offsetHeight;
+		this.root.style.left = Math.floor(( parent_width - width ) * 0.5) + "px";
+		this.root.style.top = Math.floor(( parent_height - height ) * 0.5) + "px";
 	}
 
 	/**
@@ -4903,13 +4871,22 @@ function beautifyJSON( code, skip_css )
 	* @method adjustSize
 	* @param {number} margin
 	*/
-	Dialog.prototype.adjustSize = function( margin )
+	Dialog.prototype.adjustSize = function( margin, skip_timeout )
 	{
 		margin = margin || 0;
 		this.content.style.height = "auto";
-		var width = $(this.content).width();
-		var height = $(this.content).height() + 20 + margin;
-		this.setSize(width,height);
+
+		if(this.content.offsetHeight == 0 && !skip_timeout) //happens sometimes if the dialog is not yet visible
+		{
+			var that = this;
+			setTimeout( function(){ that.adjustSize( margin, true ); }, 1 );
+			return;
+		}
+
+		var width = this.content.offsetWidth;
+		var height = this.content.offsetHeight + 20 + margin;
+
+		this.setSize( width, height );
 	}
 
 	Dialog.prototype.clear = function()
@@ -5024,13 +5001,15 @@ Inspector.prototype.appendTo = function(parent, at_front)
 */
 Inspector.prototype.clear = function()
 {
-	purgeElement(this.root, true); //hack, but doesnt seem to work
-	$(this.root).empty();
+	purgeElement( this.root, true ); //hack, but doesnt seem to work
+	this.root.innerHTML = "";
 
 	this.sections = [];
 	this.values = {};
 	this.widgets = {};
 
+	this.current_container = null;
+	this._current_container_stack = null;
 	this.addSection();
 }
 
@@ -5047,15 +5026,38 @@ Inspector.prototype.refresh = function()
 Inspector.prototype.append = function(widget, options)
 {
 	var root = this.root;
-	if(this.current_group_content)
+	if( this.current_container )
+		root = this.current_container;
+	else if( this.current_group_content )
 		root = this.current_group_content;
-	else if(this.current_section_content)
+	else if( this.current_section_content )
 		root = this.current_section_content;
 
 	if(options && options.replace)
-		options.replace.parentNode.replaceChild(widget, options.replace);
+		options.replace.parentNode.replaceChild( widget, options.replace );
 	else
-		root.appendChild(widget);
+		root.appendChild( widget );
+}
+
+Inspector.prototype.pushContainer = function( element )
+{
+	if(!this._current_container_stack)
+		this._current_container_stack = [ element ];
+	else
+		this._current_container_stack.push( element );
+
+	this.current_container = element;
+}
+
+Inspector.prototype.popContainer = function()
+{
+	if(this._current_container_stack && this._current_container_stack.length)
+	{
+		this._current_container_stack.pop();
+		this.current_container = this._current_container_stack[ this._current_container_stack.length - 1 ];
+	}
+	else
+		this.current_container = null;
 }
 
 Inspector.prototype.setup = function(info)
@@ -5395,6 +5397,37 @@ Inspector.prototype.set = function(name, value)
 	//TODO
 }
 
+Inspector.prototype.addContainer = function(name, options)
+{
+	options = this.processOptions(options);
+
+	var element = document.createElement("DIV");
+	element.className = "wcontainer";
+	if(options.className)
+		element.className += " " + options.className;
+	if(options.id)
+		element.id = options.id;
+
+	this.append( element );
+	this.pushContainer( element );
+
+	if(options.widgets_per_row)
+		this.widgets_per_row = options.widgets_per_row;
+
+	element.refresh = function()
+	{
+		if(element.on_refresh)
+			element.on_refresh.call(this, element);
+	}
+	return element;
+}
+
+Inspector.prototype.endContainer = function(name, options)
+{
+	this.popContainer();
+}
+
+
 Inspector.prototype.addSection = function(name, options)
 {
 	if(this.current_group)
@@ -5450,6 +5483,7 @@ Inspector.prototype.addSection = function(name, options)
 	return element;
 }
 
+
 Inspector.prototype.setCurrentSection = function(element)
 {
 	if(this.current_group)
@@ -5482,7 +5516,7 @@ Inspector.prototype.beginGroup = function(name, options)
 	if(options.collapsed)
 		content.style.display = "none";
 
-	element.appendChild(content);
+	element.appendChild( content );
 
 	var collapsed = options.collapsed || false;
 	element.querySelector(".wgroupheader").addEventListener("click", function() { 
@@ -6419,9 +6453,9 @@ Inspector.prototype.addList = function(name, values, options)
 			var item = items[i];
 			if( item.classList.contains("selected") )
 				continue;
-			$(item).click();
+			//$(item).click();
+			LiteGUI.trigger( item, "click" );
 		}
-		return r;
 	}
 
 	element.setValue = function(v)

@@ -1,5 +1,5 @@
 {
-	"version":"0.1a",
+	"version":"0.2",
 	"server":"fileserver/src/",
 	"resources":"fileserver/files/",
 	"proxy":"@/redirect/",
@@ -13,6 +13,13 @@
 	 		"js/modules/sceneStorage.js",
 	 		"js/modules/selection.js",
 	 		"js/modules/tools.js",
+			"js/tools/move.js",
+			"js/tools/rotate.js",
+			"js/tools/scale.js",
+			"js/tools/select.js",
+			"js/tools/manipulate.js",
+			"js/tools/parenting.js",
+			"js/tools/generic.js",
 	 		"js/modules/cameraTools.js",
 	 		"js/modules/canvasConsole.js",
 	 		"js/modules/settings.js",
@@ -34,18 +41,12 @@
 			"js/modules/generic.js",
 			"js/modules/debug.js",
 			"js/modules/meshPainter.js",
-			"js/modules/annotation.js",
+			"js/modules/meshTools.js",
 	 		"js/modules/animation.js",
 	 		"js/modules/undo.js",
-			"js/tools/select.js",
-			"js/tools/manipulate.js",
-			"js/tools/move.js",
-			"js/tools/rotate.js",
-			"js/tools/scale.js",
-			"js/tools/parenting.js",
-			"js/tools/generic.js",
+			"js/modules/annotation.js",
 	 		"js/widgets/sceneTree.js",
 	 		"js/widgets/timeline.js",
-	 		"js/widgets/codingArea.js"
+	 		"js/widgets/codingWidget.js"
 		]
 }

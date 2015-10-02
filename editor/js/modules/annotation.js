@@ -157,7 +157,7 @@ var AnnotationModule = {
 	}
 };
 
-LiteGUI.registerModule( AnnotationModule );
+CORE.registerModule( AnnotationModule );
 
 /*** COMPONENT **********************************/
 

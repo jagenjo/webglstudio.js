@@ -23,7 +23,9 @@ var PlayModule = {
 
 		LEvent.bind( LS.GlobalScene, "clear", this.onSceneStop, this);
 
-		container.innerHTML = "<button id='play-button'>Play</button><button id='pause-button' disabled>Pause</button><button id='stopkeep-button'>Keep</button><button id='launch-button'>Launch</button>";
+		RenderModule.viewport3d.addModule( PlayModule ); //capture render from square, and update and events
+
+		container.innerHTML = "<button id='play-button'>Play</button><button id='pause-button' disabled>Pause</button><button id='stopkeep-button' disabled>Keep</button><button id='launch-button'>Launch</button>";
 		this.play_button = container.querySelector("#play-button");
 		this.pause_button = container.querySelector("#pause-button");
 		this.stopkeep_button = container.querySelector("#stopkeep-button");
@@ -32,8 +34,6 @@ var PlayModule = {
 		this.pause_button.addEventListener("click", this.onPause.bind(this) );
 		this.stopkeep_button.addEventListener("click", this.onStopKeep.bind(this) );
 		this.launch_button.addEventListener("click", this.onLaunch.bind(this) );
-
-		RenderModule.viewport3d.addModule( PlayModule ); //capture render, update and mouse.
 
 		setTimeout( function() { //timeout because some weird glitch
 			document.getElementById("mainmenubar").appendChild( container );
@@ -62,33 +62,51 @@ var PlayModule = {
 		this.tab.content.style.overflow = "hidden";
 	},
 
+	//play clicked
 	onPlay: function()
 	{
 		if(this.state == "stop") //play
 		{
-			this._backup = Scene.serialize(); //serialize before launching
+			//send ready signal
+			var result = LEvent.trigger( LS.GlobalScene, "prepare_play" );
+			if( result === false )
+			{
+				console.log("Play aborted");
+				return;
+			}
+
+			//serialize before launching
+			this._backup = LS.GlobalScene.serialize();
+			var selected_node = SelectionModule.getSelectedNode();
+			this._selected_node_uid = selected_node ? selected_node.uid : null;
+
 			this.changeState("play");
 			this.play_button.innerHTML = "Stop";
-			$(this.pause_button).removeAttr('disabled');
+			this.pause_button.removeAttribute('disabled');
+			this.stopkeep_button.removeAttribute('disabled');
 		}
 		else //stop
 		{
 			this.changeState("stop");
 			this.play_button.innerHTML = "Play";
-			$(this.pause_button).attr('disabled','disabled');
-
-			var selected_node = SelectionModule.getSelectedNode();
+			this.pause_button.setAttribute('disabled','disabled');
+			this.stopkeep_button.setAttribute('disabled','disabled');
 
 			//restore old scene
 			if(this.restore_state)
 			{
-				var selected_node_id = selected_node ? selected_node.id : null;
 				var scene = LS.GlobalScene;
 				LEvent.trigger(scene,"beforeReload");
 				scene.clear();
 				scene.configure(this._backup);
 				LEvent.trigger(scene,"reload");
-				SelectionModule.setSelection( scene.getNode( selected_node_id ) );
+
+				if(this._selected_node_uid)
+				{
+					var old_selected_node = scene.getNodeByUId( this._selected_node_uid );
+					if(old_selected_node)
+						SelectionModule.setSelection( old_selected_node );
+				}
 				EditorModule.refreshAttributes();
 			}
 		}
@@ -182,6 +200,18 @@ var PlayModule = {
 		return true;
 	},
 
+	render: function()
+	{
+		if(!RenderModule.frame_updated || this.inplayer || LS.GlobalScene._state == LS.STOPPED )
+			return;
+
+		var ctx = gl;
+		ctx.start2D();
+		ctx.strokeColor = [0,1,1,0.8];
+		ctx.strokeRect(1,1,gl.canvas.width-2,gl.canvas.height-2);
+		ctx.finish2D();
+	},
+
 	update: function(dt)
 	{
 		if(dt > PlayModule.max_delta_time)
@@ -200,4 +230,4 @@ var PlayModule = {
 	},
 };
 
-LiteGUI.registerModule( PlayModule );
+CORE.registerModule( PlayModule );

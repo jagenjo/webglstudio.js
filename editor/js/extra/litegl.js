@@ -1130,6 +1130,12 @@ Math.clamp = function(v,a,b) { return (a > v ? a : (b < v ? b : v)); }
 var V3 = vec3.create;
 var M4 = vec3.create;
 
+
+vec3.ZERO = vec3.fromValues(0,0,0);
+vec3.FRONT = vec3.fromValues(0,0,-1);
+vec3.UP = vec3.fromValues(0,1,0);
+vec3.RIGHT = vec3.fromValues(1,0,0);
+
 vec2.rotate = function(out,vec,angle_in_rad)
 {
 	var x = vec[0], y = vec[1];
@@ -1554,27 +1560,31 @@ quat.fromMat4 = function(out,m)
 	quat.normalize(out,out);
 }
 
-/* doesnt work 
-quat.lookAt = function(target, up, quat) {
-	var forward = vec3.normalize( target, vec3.create() );
-	up = vec3.normalize( up, vec3.create() );
+quat.fromMat4.lookAt = (function(){ 
+	var axis = vec3.create();
+	
+	return function( out, forwardVector, up )
+	{
+		var dot = vec3.dot( vec3.FRONT, forwardVector );
 
-	var right = vec3.cross(up,forward, vec3.create() );
-	vec3.normalize( right );
-	vec3.cross(forward, right, up );
+		if ( Math.abs( dot - (-1.0)) < 0.000001 )
+		{
+			out.set( vec3.UP );
+			out[3] = Math.PI;
+			return out;
+		}
+		if ( Math.abs(dot - 1.0) < 0.000001 )
+		{
+			return quat.identity( out );
+		}
 
-	quat = quat || quat.create();
-
-	quat[3] = Math.sqrt(1.0 + right[0] + up[1] + forward[2]) * 0.5;
-	var w4_recip = 1.0 / (4.0 * quat[3]);
-	quat[0] = (forward[1] - up[2]) * w4_recip;
-	quat[1] = (right[2] - forward[0]) * w4_recip;
-	quat[2] = (up[0] - right[1]) * w4_recip;
-	 
-	return quat;
-}
-*/
-
+		var rotAngle = Math.acos( dot );
+		vec3.cross( axis, vec3.FRONT, forwardVector );
+		vec3.normalize( axis, axis );
+		quat.setAxisAngle( out, axis, rotAngle );
+		return out;
+	}
+})();
 
 
 
@@ -1673,6 +1683,9 @@ GL.Buffer.prototype.upload = function(stream_type) { //default gl.STATIC_DRAW (o
 
 	//I store some stuff inside the WebGL buffer instance, it is supported
 	this.buffer = this.buffer || gl.createBuffer();
+	if(!this.buffer)
+		return; //if the context is lost...
+
 	this.buffer.length = data.length;
 	this.buffer.spacing = spacing;
 
@@ -1718,7 +1731,35 @@ GL.Buffer.prototype.uploadRange = function(start, size) {
 	gl.bufferSubData(this.target, start, view );
 };
 
-
+/**
+* Clones one buffer (it allows to share the same data between both buffers)
+* @method clone
+* @param {boolean} share if you want that both buffers share the same data (default false)
+* return {GL.Buffer} buffer cloned
+*/
+GL.Buffer.prototype.clone = function(share) {
+	var buffer = new GL.Buffer();
+	if(share)
+	{
+		for(var i in this)
+			buffer[i] = this[i];
+	}
+	else
+	{
+		if(this.target)
+			buffer.target = this.target;
+		if(this.gl)
+			buffer.gl = this.gl;
+		if(this.spacing)
+			buffer.spacing = this.spacing;
+		if(this.data) //clone data
+		{
+			buffer.data = new global[ this.data.constructor ]( this.data );
+			buffer.upload();
+		}
+	}
+	return buffer;
+}
 
 /**
 * Mesh class to upload geometry to the GPU
@@ -2004,6 +2045,23 @@ Mesh.prototype.upload = function(buffer_type) {
 Mesh.prototype.compile = Mesh.prototype.upload;
 
 
+Mesh.prototype.deleteBuffers = function()
+{
+	for(var i in this.vertexBuffers)
+	{
+		var buffer = this.vertexBuffers[i];
+		this.gl.deleteBuffer( buffer.buffer );
+		delete this.vertexBuffers[i];
+	}
+
+	for(var i in this.indexBuffers)
+	{
+		var buffer = this.indexBuffers[i];
+		this.gl.deleteBuffer( buffer.buffer );
+		delete this.vertexBuffers[i];
+	}
+}
+
 
 
 Mesh.prototype.bindBuffers = function( shader )
@@ -2227,6 +2285,138 @@ Mesh.prototype.computeWireframe = function() {
 	this.createIndexBuffer('wireframe', buffer);
 	return this;
 }
+
+
+/**
+* Multiplies every normal vy -1 and uploads it
+* @method flipNormals
+* @param {enum} stream_type default gl.STATIC_DRAW (other: gl.DYNAMIC_DRAW, gl.STREAM_DRAW)
+*/
+Mesh.prototype.flipNormals = function( stream_type  ) {
+	var normals_buffer = this.vertexBuffers["normals"];
+	if(!normals_buffer)
+		return;
+	var data = normals_buffer.data;
+	var l = data.length;
+	for(var i = 0; i < l; ++i)
+		data[i] *= -1;
+	normals_buffer.upload( stream_type );
+
+	//reverse indices too
+	if(!this.indexBuffers["triangles"])
+		this.computeIndices();
+
+	var triangles_buffer = this.indexBuffers["triangles"];
+	var data = triangles_buffer.data;
+	var l = data.length;
+	for(var i = 0; i < l; i += 3)
+	{
+		var tmp = data[i];
+		data[i] = data[i+1];
+		data[i+1] = tmp;
+		//the [i+2] stays the same
+	}
+	triangles_buffer.upload( stream_type );
+}
+
+
+/**
+* Compute indices for a mesh where vertices are shared
+* @method computeIndices
+*/
+Mesh.prototype.computeIndices = function() {
+
+	//cluster by distance
+	var new_vertices = [];
+	var new_normals = [];
+	var new_coords = [];
+
+	var indices = [];
+
+	var old_vertices_buffer = this.vertexBuffers["vertices"];
+	var old_normals_buffer = this.vertexBuffers["normals"];
+	var old_coords_buffer = this.vertexBuffers["coords"];
+
+	var old_vertices_data = old_vertices_buffer.data;
+
+	var old_normals_data = null;
+	if( old_normals_buffer )
+		old_normals_data = old_normals_buffer.data;
+
+	var old_coords_data = null;
+	if( old_coords_buffer )
+		old_coords_data = old_coords_buffer.data;
+
+
+	var indexer = {};
+
+	var l = old_vertices_data.length / 3;
+	for(var i = 0; i < l; ++i)
+	{
+		var v = old_vertices_data.subarray( i*3,(i+1)*3 );
+		var key = (v[0] * 1000)|0;
+
+		//search in new_vertices
+		var j = 0;
+		var candidates = indexer[key];
+		if(candidates)
+		{
+			var l2 = candidates.length;
+			for(; j < l2; j++)
+			{
+				var v2 = new_vertices[ candidates[j] ];
+				//same vertex
+				if( vec3.sqrDist( v, v2 ) < 0.01 )
+				{
+					indices.push(j);
+					break;
+				}
+			}
+		}
+
+		/*
+		var l2 = new_vertices.length;
+		for(var j = 0; j < l2; j++)
+		{
+			//same vertex
+			if( vec3.sqrDist( v, new_vertices[j] ) < 0.001 )
+			{
+				indices.push(j);
+				break;
+			}
+		}
+		*/
+
+		if(candidates && j != l2)
+			continue;
+
+		var index = j;
+		new_vertices.push(v);
+		if( indexer[ key ] )
+			indexer[ key ].push( index );
+		else
+			indexer[ key ] = [ index ];
+
+		if(old_normals_data)
+			new_normals.push( old_normals_data.subarray(i*3, (i+1)*3) );
+		if(old_coords_data)
+			new_coords.push( old_coords_data.subarray(i*2, (i+1)*2) );
+		indices.push(index);
+	}
+
+	this.vertexBuffers = {}; //erase all
+
+	//new buffers
+	this.createVertexBuffer( 'vertices', GL.Mesh.common_buffers["vertices"].attribute, 3, linearizeArray( new_vertices ) );	
+	if(old_normals_data)
+		this.createVertexBuffer( 'normals', GL.Mesh.common_buffers["normals"].attribute, 3, linearizeArray( new_normals ) );	
+	if(old_coords_data)
+		this.createVertexBuffer( 'coords', GL.Mesh.common_buffers["coords"].attribute, 2, linearizeArray( new_coords ) );	
+
+	this.createIndexBuffer( "triangles", indices );
+}
+
+
 
 /**
 * Creates a stream with the normals
@@ -3060,41 +3250,50 @@ Mesh.cylinder = function(options) {
 	var pos_uv = i*6*2;
 
 	//caps
-	var top_center = vec3.fromValues(0,height*0.5,0);
-	var bottom_center = vec3.fromValues(0,height*-0.5,0);
-	var up = vec3.fromValues(0,1,0);
-	var down = vec3.fromValues(0,-1,0);
-	for(var i = 0; i < subdivisions; ++i)
+	if( options.caps === false )
 	{
-		var angle = i * delta;
+		vertices = vertices.subarray(0,pos);
+		normals = normals.subarray(0,pos);
+		coords = coords.subarray(0,pos_uv);
+	}
+	else
+	{
+		var top_center = vec3.fromValues(0,height*0.5,0);
+		var bottom_center = vec3.fromValues(0,height*-0.5,0);
+		var up = vec3.fromValues(0,1,0);
+		var down = vec3.fromValues(0,-1,0);
+		for(var i = 0; i < subdivisions; ++i)
+		{
+			var angle = i * delta;
 
-		var uv = vec3.fromValues( Math.sin(angle), 0, Math.cos(angle) );
-		var uv2 = vec3.fromValues( Math.sin(angle+delta), 0, Math.cos(angle+delta) );
+			var uv = vec3.fromValues( Math.sin(angle), 0, Math.cos(angle) );
+			var uv2 = vec3.fromValues( Math.sin(angle+delta), 0, Math.cos(angle+delta) );
 
-		vertices.set([ uv[0]*radius, height*0.5, uv[2]*radius], pos + i*6*3);
-		normals.set(up, pos + i*6*3 );
-		coords.set( [ -uv[0] * 0.5 + 0.5,uv[2] * 0.5 + 0.5], pos_uv + i*6*2 );
+			vertices.set([ uv[0]*radius, height*0.5, uv[2]*radius], pos + i*6*3);
+			normals.set(up, pos + i*6*3 );
+			coords.set( [ -uv[0] * 0.5 + 0.5,uv[2] * 0.5 + 0.5], pos_uv + i*6*2 );
 
-		vertices.set([ uv2[0]*radius, height*0.5, uv2[2]*radius], pos + i*6*3 + 3);
-		normals.set(up, pos + i*6*3 + 3 );
-		coords.set( [ -uv2[0] * 0.5 + 0.5,uv2[2] * 0.5 + 0.5], pos_uv + i*6*2 + 2 );
+			vertices.set([ uv2[0]*radius, height*0.5, uv2[2]*radius], pos + i*6*3 + 3);
+			normals.set(up, pos + i*6*3 + 3 );
+			coords.set( [ -uv2[0] * 0.5 + 0.5,uv2[2] * 0.5 + 0.5], pos_uv + i*6*2 + 2 );
 
-		vertices.set( top_center, pos + i*6*3 + 6 );
-		normals.set(up, pos + i*6*3 + 6);
-		coords.set([0.5,0.5], pos_uv + i*6*2 + 4);
-		
-		//bottom
-		vertices.set([ uv2[0]*radius, height*-0.5, uv2[2]*radius], pos + i*6*3 + 9);
-		normals.set(down, pos + i*6*3 + 9);
-		coords.set( [ uv2[0] * 0.5 + 0.5,uv2[2] * 0.5 + 0.5], pos_uv + i*6*2 + 6);
+			vertices.set( top_center, pos + i*6*3 + 6 );
+			normals.set(up, pos + i*6*3 + 6);
+			coords.set([0.5,0.5], pos_uv + i*6*2 + 4);
+			
+			//bottom
+			vertices.set([ uv2[0]*radius, height*-0.5, uv2[2]*radius], pos + i*6*3 + 9);
+			normals.set(down, pos + i*6*3 + 9);
+			coords.set( [ uv2[0] * 0.5 + 0.5,uv2[2] * 0.5 + 0.5], pos_uv + i*6*2 + 6);
 
-		vertices.set([ uv[0]*radius, height*-0.5, uv[2]*radius], pos + i*6*3 + 12);
-		normals.set(down, pos + i*6*3 + 12 );
-		coords.set( [ uv[0] * 0.5 + 0.5,uv[2] * 0.5 + 0.5], pos_uv + i*6*2 + 8 );
+			vertices.set([ uv[0]*radius, height*-0.5, uv[2]*radius], pos + i*6*3 + 12);
+			normals.set(down, pos + i*6*3 + 12 );
+			coords.set( [ uv[0] * 0.5 + 0.5,uv[2] * 0.5 + 0.5], pos_uv + i*6*2 + 8 );
 
-		vertices.set( bottom_center, pos + i*6*3 + 15 );
-		normals.set( down, pos + i*6*3 + 15);
-		coords.set( [0.5,0.5], pos_uv + i*6*2 + 10);
+			vertices.set( bottom_center, pos + i*6*3 + 15 );
+			normals.set( down, pos + i*6*3 + 15);
+			coords.set( [0.5,0.5], pos_uv + i*6*2 + 10);
+		}
 	}
 
 	var buffers = {
@@ -3467,7 +3666,7 @@ Texture.prototype.toJSON = function()
 */
 Texture.isDepthSupported = function()
 {
-	return (gl.getExtension("WEBGL_depth_texture") || gl.getExtension("WEBKIT_WEBGL_depth_texture") || gl.getExtension("MOZ_WEBGL_depth_texture")) != null;
+	return gl.extensions["WEBGL_depth_texture"] != null;
 }
 
 /**
@@ -4411,21 +4610,36 @@ Texture.prototype.getPixels = function( type, force_rgba )
 * Copy texture content to a canvas
 * @method toCanvas
 * @param {Canvas} canvas must have the same size, if different the canvas will be resized
+* @param {boolean} flip_y optional, flip vertically
+* @param {Number} max_size optional, if it is supplied the canvas wont be bigger of max_size (the iamge will be scaled down)
 */
-Texture.prototype.toCanvas = function( canvas, flip_y )
+Texture.prototype.toCanvas = function( canvas, flip_y, max_size )
 {
+	max_size = max_size || 8192;
 	var gl = this.gl;
 
 	if(this.texture_type != gl.TEXTURE_2D)
 		return null;
 
-	var w = this.width;
-	var h = this.height;
-	canvas = canvas || createCanvas(w,h);
-	if(canvas.width != w) canvas.width = w;
-	if(canvas.height != h) canvas.height = h;
+	var w = Math.min( this.width, max_size );
+	var h = Math.min( this.height, max_size );
 
-	var buffer = this.getPixels( gl.UNSIGNED_BYTE, true );
+	canvas = canvas || createCanvas(w,h);
+	if(canvas.width != w) 
+		canvas.width = w;
+	if(canvas.height != h)
+		canvas.height = h;
+
+	var buffer = null;
+	if(this.width != w || this.height != h )
+	{
+		//create a temporary texture
+		var temp = new GL.Texture(w,h,{ format: gl.RGBA, filter: gl.NEAREST });
+		this.copyTo( temp );	
+		buffer = temp.getPixels( gl.UNSIGNED_BYTE, true );
+	}
+	else
+		buffer = this.getPixels( gl.UNSIGNED_BYTE, true );
 
 	var ctx = canvas.getContext("2d");
 	var pixels = ctx.getImageData(0,0,w,h);
@@ -4586,10 +4800,18 @@ Texture.getBlackTexture = function()
 	return gl.textures[":black"] = new GL.Texture(1,1,{ pixel_data: color });
 }
 
-//FBO.js for FrameBufferObjects
-
-function FBO( textures, depth_texture )
+/* FBO for FrameBufferObjects
+* @class FBO
+* @param {Array} color_textures an array containing the color textures, if not supplied a render buffer will be used
+* @param {GL.Texture} depth_texture the depth texture, if not supplied a render buffer will be used
+* @constructor
+*/
+function FBO( textures, depth_texture, gl )
 {
+	gl = gl || global.gl;
+	this.gl = gl;
+	this._context_id = gl.context_id; 
+
 	this.handler = null;
 	this.width = -1;
 	this.height = -1;
@@ -4597,7 +4819,7 @@ function FBO( textures, depth_texture )
 	this.depth_texture = null;
 
 	//assign textures
-	if(textures && textures.length)
+	if((textures && textures.length) || depth_texture)
 		this.setTextures( textures, depth_texture );
 
 	//save state
@@ -4607,11 +4829,17 @@ function FBO( textures, depth_texture )
 
 GL.FBO = FBO;
 
+/**
+* Changes the textures binded to this FBO
+* @method setTextures
+* @param {Array} color_textures an array containing the color textures, if not supplied a render buffer will be used
+* @param {GL.Texture} depth_texture the depth texture, if not supplied a render buffer will be used
+*/
 FBO.prototype.setTextures = function( color_textures, depth_texture, skip_disable )
 {
 	//test if is already binded
 	var same = this.depth_texture == depth_texture;
-	if( same )
+	if( same && color_textures)
 	{
 		if( color_textures.length == this.color_textures.length )
 		{
@@ -4644,24 +4872,31 @@ FBO.prototype.setTextures = function( color_textures, depth_texture, skip_disabl
 	if( this.color_textures )
 		previously_attached = this.color_textures.length;
 
-	this.color_textures = color_textures;
+	this.color_textures = color_textures || [];
 	this.depth_texture = depth_texture;
 
-	for(var i = 0; i < color_textures.length; i++)
+	//compute the W and H (and check they have the same size)
+	if(color_textures)
+		for(var i = 0; i < color_textures.length; i++)
+		{
+			var t = color_textures[i];
+			if(w == -1) 
+				w = t.width;
+			else if(w != t.width)
+				throw("Cannot use Texture.drawTo if textures have different dimensions");
+			if(h == -1) 
+				h = t.height;
+			else if(h != t.height)
+				throw("Cannot use Texture.drawTo if textures have different dimensions");
+			if(type == null) //first one defines the type
+				type = t.type;
+			else if (type != t.type)
+				throw("Cannot use Texture.drawTo if textures have different data type, all must have the same type");
+		}
+	else
 	{
-		var t = color_textures[i];
-		if(w == -1) 
-			w = t.width;
-		else if(w != t.width)
-			throw("Cannot use Texture.drawTo if textures have different dimensions");
-		if(h == -1) 
-			h = t.height;
-		else if(h != t.height)
-			throw("Cannot use Texture.drawTo if textures have different dimensions");
-		if(type == null) //first one defines the type
-			type = t.type;
-		else if (type != t.type)
-			throw("Cannot use Texture.drawTo if textures have different data type, all must have the same type");
+		w = depth_texture.width;
+		h = depth_texture.height;
 	}
 
 	this.width = w;
@@ -4669,9 +4904,13 @@ FBO.prototype.setTextures = function( color_textures, depth_texture, skip_disabl
 
 	gl.bindFramebuffer( gl.FRAMEBUFFER, this.handler );
 
+	if(depth_texture && !gl.extensions["WEBGL_depth_texture"])
+		throw("Rendering to depth texture not supported by your browser");
+
+	//draw_buffers allow to have more than one color texture binded in a FBO
 	var ext = gl.extensions["WEBGL_draw_buffers"];
-	if(!ext && color_textures.length > 1)
-		throw("Rendering to several textures not supported");
+	if(!ext && color_textures && color_textures.length > 1)
+		throw("Rendering to several textures not supported by your browser");
 
 	if( depth_texture )
 	{
@@ -4687,28 +4926,39 @@ FBO.prototype.setTextures = function( color_textures, depth_texture, skip_disabl
 		gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, renderbuffer );
 	}
 
-	this.order = []; //draw_buffers request the use of an array with the order of the attachments
-	for(var i = 0; i < color_textures.length; i++)
+	if(color_textures)
 	{
-		var t = color_textures[i];
+		this.order = []; //draw_buffers request the use of an array with the order of the attachments
+		for(var i = 0; i < color_textures.length; i++)
+		{
+			var t = color_textures[i];
 
-		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, t.handler, 0);
-		this.order.push( gl.COLOR_ATTACHMENT0 + i );
+			gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, t.handler, 0);
+			this.order.push( gl.COLOR_ATTACHMENT0 + i );
+		}
+
+		//detach old ones (only is reusing a FBO with a different set of textures)
+		for(var i = color_textures.length; i < previously_attached; ++i)
+			gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, null, 0);
+	}
+	else //create renderbuffer to store color
+	{
+		var renderbuffer = this._renderbuffer = this._renderbuffer || gl.createRenderbuffer();
+		renderbuffer.width = w;
+		renderbuffer.height = h;
+		gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffer );
+		gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA4, w, h);
+		gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, renderbuffer );
 	}
 
-	//detach old ones (only is reusing a FBO with a different set of textures)
-	for(var i = color_textures.length; i < previously_attached; ++i)
-		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, null, 0);
-
 	//when using more than one texture you need to use the multidraw extension
-	if(color_textures.length > 1)
+	if(color_textures && color_textures.length > 1)
 		ext.drawBuffersWEBGL( this.order );
 
 	//check completion
 	var complete = gl.checkFramebufferStatus( gl.FRAMEBUFFER );
 	if(complete !== gl.FRAMEBUFFER_COMPLETE)
 		throw("FBO not complete: " + complete);
-
 
 	//restore state
 	gl.bindTexture(gl.TEXTURE_2D, null);
@@ -4717,9 +4967,15 @@ FBO.prototype.setTextures = function( color_textures, depth_texture, skip_disabl
 		gl.bindFramebuffer( gl.FRAMEBUFFER, this._old_fbo );
 }
 
+/**
+* Enables this FBO (from now on all the render will be stored in the textures attached to this FBO
+* It stores the previous viewport to restore it afterwards, and changes it to full FBO size
+* @method bind
+* @param {boolean} keep_old keeps the previous FBO is one was attached to restore it afterwards
+*/
 FBO.prototype.bind = function( keep_old )
 {
-	if(!this.color_textures.length)
+	if(!this.color_textures.length && !this.depth_texture)
 		throw("FBO: no textures attached to FBO");
 	this._old_viewport.set( gl.viewport_data );
 
@@ -4733,6 +4989,11 @@ FBO.prototype.bind = function( keep_old )
 	gl.viewport( 0,0, this.width, this.height );
 }
 
+/**
+* Disables this FBO, if it was binded with keep_old then the old FBO is enabled, otherwise it will render to the screen
+* Restores viewport to previous
+* @method unbind
+*/
 FBO.prototype.unbind = function()
 {
 	gl.bindFramebuffer( gl.FRAMEBUFFER, this._old_fbo );
@@ -5649,7 +5910,8 @@ GL.create = function(options) {
 	gl.extensions["EXT_shader_texture_lod"] = gl.getExtension("EXT_shader_texture_lod");
 	gl.extensions["EXT_sRGB"] = gl.getExtension("EXT_sRGB");
 	gl.extensions["EXT_texture_filter_anisotropic"] = gl.getExtension("EXT_texture_filter_anisotropic") || gl.getExtension("WEBKIT_EXT_texture_filter_anisotropic") || gl.getExtension("MOZ_EXT_texture_filter_anisotropic");
-	gl.extensions["EXT_lose_context"] = gl.getExtension("EXT_lose_context") || gl.getExtension("WEBKIT_EXT_lose_context") || gl.getExtension("MOZ_EXT_lose_context");
+	gl.extensions["EXT_frag_depth"] = gl.getExtension("EXT_frag_depth") || gl.getExtension("WEBKIT_EXT_frag_depth") || gl.getExtension("MOZ_EXT_frag_depth");
+	gl.extensions["WEBGL_lose_context"] = gl.getExtension("WEBGL_lose_context") || gl.getExtension("WEBKIT_WEBGL_lose_context") || gl.getExtension("MOZ_WEBGL_lose_context");
 
 	//for float textures
 	gl.extensions["OES_texture_float_linear"] = gl.getExtension("OES_texture_float_linear");
@@ -5717,7 +5979,14 @@ GL.create = function(options) {
 	* example: gl.ondraw = function(){ ... }   or  gl.onupdate = function(dt) { ... }
 	* @method animate
 	*/
-	gl.animate = function() {
+	gl.animate = function(v) {
+		if(v === false)
+		{
+			global.cancelAnimationFrame( this._requestFrame_id );
+			this._requestFrame_id = null;
+			return;
+		}
+
 		var post = global.requestAnimationFrame;
 		var time = getTime();
 		var context = this;
@@ -5727,7 +5996,7 @@ GL.create = function(options) {
 			if(gl.destroyed) //to stop rendering once it is destroyed
 				return;
 
-			post(loop); //do it first, in case it crashes
+			context._requestFrame_id = post(loop); //do it first, in case it crashes
 
 			var now = getTime();
 			var dt = (now - time) * 0.001;
@@ -5748,7 +6017,7 @@ GL.create = function(options) {
 			}
 			time = now;
 		}
-		post(loop); //launch main loop
+		this._requestFrame_id = post(loop); //launch main loop
 	}	
 
 	//store binded to be able to remove them if destroyed
@@ -6073,6 +6342,8 @@ GL.create = function(options) {
 				xbox.axes["ly"] = gamepad.axes[1];
 				xbox.axes["rx"] = gamepad.axes[2];
 				xbox.axes["ry"] = gamepad.axes[3];
+				xbox.axes["triggers"] = gamepad.axes[4];
+
 				for(var i = 0; i < gamepad.buttons.length; i++)
 				{
 					switch(i) //I use a switch to ensure that a player with another gamepad could play
@@ -6245,6 +6516,12 @@ GL.create = function(options) {
 			shader.draw( mesh, gl.TRIANGLES );
 		});
 	})();
+
+	gl.canvas.addEventListener("webglcontextlost", function(e) {
+		e.preventDefault();
+		if(gl.onlosecontext)
+			gl.onlosecontext(e);
+	}, false);
 
 	/**
 	* use it to reset the the initial gl state
@@ -7508,11 +7785,16 @@ global.BBox = GL.BBox = {
 		bb[10] = max[1];
 		bb[11] = max[2];
 
-		var center = bb.subarray(0,3);
-		vec3.sub( center, max, min );
-		vec3.scale( center, center, 0.5 );
-		bb.set( [max[0]-center[0],max[1]-center[1],max[2]-center[2]], 3);
-		vec3.sub( bb.subarray(3,6), max, center );
+		//halfsize
+		var halfsize = bb.subarray(3,6); 
+		vec3.sub( halfsize, max, min ); //range
+		vec3.scale( halfsize, halfsize, 0.5 );
+
+		//center
+		bb[0] = max[0] - halfsize[0];
+		bb[1] = max[1] - halfsize[1];
+		bb[2] = max[2] - halfsize[2];
+
 		bb[12] = vec3.length(bb.subarray(3,6)); //radius
 		return bb;
 	},
@@ -7601,6 +7883,16 @@ global.BBox = GL.BBox = {
 
 		return corners;
 	},	
+
+	merge: function( out, a, b )
+	{
+		out = out || BBox.create();
+		var min = out.subarray(6,9);
+		var max = out.subarray(9,12);
+		vec3.min( min, a.subarray(6,9), b.subarray(6,9) );
+		vec3.max( max, a.subarray(9,12), b.subarray(9,12) );
+		return BBox.setMinMax( out, min, max );
+	},
 
 	getCenter: function(bb) { return bb.subarray(0,3); },
 	getHalfsize: function(bb) { return bb.subarray(3,6); },

@@ -74,4 +74,4 @@ var PrefabMaker = {
 	}
 };
 
-LiteGUI.registerModule( PrefabMaker );
+CORE.registerModule( PrefabMaker );

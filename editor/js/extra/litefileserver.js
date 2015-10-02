@@ -108,9 +108,54 @@ var LiteFileServer = {
 		});
 	},
 
-	//create a new account if it is enabled or if you are admin
-	createAccount: function(user, password, email, on_complete, on_error, admin_token)
+	forgotPassword: function( email, on_complete, redirect_url )
 	{
+		var params = { action: "user/forgotPassword", email: email };
+		if(redirect_url)
+			params.redirect = redirect_url;
+
+		return this.request( this.server_url, params, function(resp){
+			console.log(resp);
+			if(on_complete)
+				on_complete( resp.status == 1, resp );
+		});
+
+		return true;
+	},
+
+	//create a new account if it is enabled or if you are admin
+	createAccount: function( user, password, email, on_complete, on_error, admin_token )
+	{
+		//validate username
+		if( !user.match(/^[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)*$/) )
+		{
+			if(on_error)
+				on_error("Invalid username");
+			if(on_complete)
+				on_complete( null, {msg:"Invalid username"} );
+			return false;
+		}
+
+		//validate password
+		if( password.length < 3 )
+		{
+			if(on_error)
+				on_error("Password is too short");
+			if(on_complete)
+				on_complete( null, {msg:"Password too short"} );
+			return false;
+		}
+
+		//validate email
+		if( !email.match(/^([\w-]+(?:\.[\w-]+)*)@((?:[\w-]+\.)*\w[\w-]{0,66})\.([a-z]{2,6}(?:\.[a-z]{2})?)$/i) )
+		{
+			if(on_error)
+				on_error("Invalid email");
+			if(on_complete)
+				on_complete( null, {msg:"Invalid email"} );
+			return false;
+		}
+
 		var params = {action: "user/create", username: user, password: password, email: email };
 		if(admin_token)
 			params.admin_token = admin_token;
@@ -119,6 +164,8 @@ var LiteFileServer = {
 			if(on_complete)
 				on_complete( resp.status == 1, resp );
 		});
+
+		return true;
 	},
 
 	generatePreview: function( file, on_complete )
@@ -353,7 +400,7 @@ Session.prototype.logout = function(on_complete, on_error)
 	if(	localStorage.getItem( LiteFileServer.TOKEN_NAME ) == this.token)
 		localStorage.removeItem( LiteFileServer.TOKEN_NAME );	
 
-	return this.request( this.server_url,{action: "user/logout" }, function(resp){
+	return this.request( this.server_url,{ action: "user/logout" }, function(resp){
 		if(resp.status != 1)
 		{
 			if(on_error)
@@ -363,6 +410,19 @@ Session.prototype.logout = function(on_complete, on_error)
 		if(on_complete)
 			on_complete(resp.status == 1);
 	});
+}
+
+Session.prototype.setPassword = function( oldpass, newpass, on_complete )
+{
+	var params = { action: "user/setPassword", oldpass: oldpass, newpass: newpass };
+
+	return this.request( this.server_url, params, function(resp){
+		console.log(resp);
+		if(on_complete)
+			on_complete( resp.status == 1, resp );
+	});
+
+	return true;
 }
 
 Session.prototype.deleteAccount = function( password, on_complete )
@@ -466,8 +526,10 @@ Session.prototype.setUnitInfo = function(unit_name, info, on_complete)
 			info.metadata = JSON.stringify( info.metadata );
 		params.metadata = info.metadata;
 	}
-	if(info.total_size && typeof(info.total_size) == "number")
+	
+	if(info.total_size)
 		params.total_size = parseInt( info.total_size );
+
 	return this.request( this.server_url,params, function(resp){
 
 		if(resp.unit)

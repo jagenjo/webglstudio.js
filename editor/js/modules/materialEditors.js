@@ -1,11 +1,20 @@
 // Materials need special editors
 // ******************************
 
-EditorModule.showMaterialNodeInfo = function(node, attributes)
+EditorModule.showMaterialNodeInfo = function( node, inspector )
 {
 	var icon = "";
 	if(Material.icon) icon = "<span class='icon' style='width: 20px'><img src='"+ EditorModule.icons_path + Material.icon +"' class='icon'/></span>";
-	var section = attributes.addSection(icon + " Material <span class='buttons'><img class='options_section' src='imgs/mini-cog.png'></span>");
+	var section = inspector.addSection(icon + " Material <span class='buttons'><img class='options_section' src='imgs/mini-cog.png'></span>");
+
+	section.querySelector(".wsectiontitle").addEventListener("contextmenu", (function(e) { 
+		if(e.button != 2) //right button
+			return false;
+		inner_showActions(e);
+		e.preventDefault(); 
+		return false;
+	}).bind(this));
+
 
 	var mat_ref = "";
 	if(node.material)
@@ -16,17 +25,19 @@ EditorModule.showMaterialNodeInfo = function(node, attributes)
 			mat_ref = "@Instance";
 	}
 
-	attributes.addMaterial("Ref", mat_ref, { callback: function(v) {
+	inspector.addMaterial("Ref", mat_ref, { callback: function(v) {
 		node.material = v;
-		EditorModule.refreshAttributes();
+		inspector.refresh();
 	}});
 
 	if(!node.material)
 	{
 		if(!node.material && node.constructor == LS.SceneNode )
 		{
-			attributes.addButton(null,"Create Material", { callback: function(v) { 
-				EditorModule.showAddMaterialToNode();
+			inspector.addButton(null,"Create Material", { callback: function(v) { 
+				EditorModule.showAddMaterialToNode( node, function( mat ){ 
+					inspector.refresh();
+				});
 			}});
 		}
 		return;
@@ -34,61 +45,54 @@ EditorModule.showMaterialNodeInfo = function(node, attributes)
 
 	var material = node.getMaterial();
 
-	/*
-	attributes.addString("Name", mat_name, { callback: function(v) {
-		node.material = v;
-		EditorModule.refreshAttributes();
-	}});
-*/
-
 	if(!material) 
 	{
 		if( LS.ResourcesManager.isLoading( node.material ) )
 		{
-			attributes.addInfo("", "Loading...");
-			LS.ResourcesManager.onceLoaded( node.material, function() { EditorModule.refreshAttributes(); } );
+			inspector.addInfo("", "Loading...");
+			LS.ResourcesManager.onceLoaded( node.material, function() { inspector.refresh(); } );
 		}
 		else
-			attributes.addInfo("", "Material not found");
+			inspector.addInfo("", "Material not found");
 		return;
 	}
 
 
 	//there is a material
-	var mat_type = LS.getObjectClassName(material);
+	var mat_type = LS.getObjectClassName( material );
 
-	attributes.current_section.querySelector('.options_section').addEventListener("click", inner_show_options_menu );
-	$(attributes.current_section).bind("wchange", function() { UndoModule.saveMaterialChangeUndo( material ); });
+	inspector.current_section.querySelector('.options_section').addEventListener("click", inner_showActions );
+	$(inspector.current_section).bind("wchange", function() { UndoModule.saveMaterialChangeUndo( material ); });
 
-	attributes.addInfo("Class", mat_type );
+	inspector.addInfo("Class", mat_type );
 
 	/*
 	if(typeof(node.material) == "string")
 	{
-		attributes.addButton("Convert","Instantiate", { callback: function() {
+		inspector.addButton("Convert","Instantiate", { callback: function() {
 			var material = node.getMaterial();
 			if(!material) return;
 
 			node.material = material.clone();
-			EditorModule.refreshAttributes();
+			inspector.refresh();
 		} });
 	}
 	*/
 
 	if(material._server_info)
-		attributes.addButton("Reference","Update Server",{ callback: function(){
+		inspector.addButton("Reference","Update Server",{ callback: function(){
 			var material = node.getMaterial();
 			DriveModule.saveResource(material);
 		}});	
 
 	if(!node._show_mat)
 	{
-		attributes.addButtons(null, ["Edit Material","Expand"], { callback: function(v) { 
+		inspector.addButtons(null, ["Edit Material","Expand"], { callback: function(v) { 
 			if(v == "Edit Material")
 				EditorModule.inspectInDialog( material );
 			else
 				node._show_mat = true;
-			EditorModule.refreshAttributes();
+			inspector.refresh();
 		}});
 		return;
 	}
@@ -97,19 +101,67 @@ EditorModule.showMaterialNodeInfo = function(node, attributes)
 	var mat_class = material.constructor;
 	var editor = mat_class["@inspector"];
 
-	attributes.addButton(null, "Hide Editor", { callback: function(v) { 
+	inspector.addButton(null, "Hide Editor", { callback: function(v) { 
 		node._show_mat = false;
-		EditorModule.refreshAttributes();
+		inspector.refresh();
 	}});
 
-	if(editor)
-		editor.call(EditorModule, material, attributes);
-
-	//attributes.addButtons(null,["Make Global","Copy","Paste"],{});	
-
-	function inner_show_options_menu(e)
+	//start container in case we want to lock it
+	var editor_container = null;
+	var background_container = null;
+	if(material.fullpath && !material._unlocked)
 	{
-		var menu = new LiteGUI.ContextualMenu(["Copy","Paste","Delete","Share","Instance"], {component: material, event: e, callback: inner_menu_select });
+		editor_container = inspector.addContainer(null,{ className: "material_editor_container locked_container" });
+		background_container = inspector.addContainer(null,{ className: "background blur" });
+	}
+
+	if(editor)
+		editor.call( EditorModule, material, inspector );
+
+	if(material.fullpath)
+		inspector.addButtons(null,["Save changes","Lock"],function(v){
+			if(v == "Save changes")
+			{
+				//if(background_container)
+				//	background_container.classList.remove("edited");
+				DriveModule.saveResource( material );
+			}
+			else if(v == "Lock")
+			{
+				delete material._unlocked;
+				background_container.classList.add("blur");
+				background_container.classList.remove("edited");
+				blocker.style.display = null;
+			}
+		});
+
+	if(editor_container)
+	{
+		inspector.endContainer(); //background
+		inspector.endContainer(); //locked
+		editor_container.style.position = "relative";
+		var blocker = LiteGUI.createElement("div",null,"<p>Shared Material</p>");
+		blocker.className = "foreground";
+		var unlock_button = LiteGUI.createButton(null,"Unlock Material", function(){
+			material._unlocked = true;
+			background_container.classList.remove("blur");
+			background_container.classList.add("edited");
+			blocker.style.display = "none";
+		});
+		blocker.appendChild( unlock_button );
+		var clone_button = LiteGUI.createButton(null,"Clone", function(){
+			inner_menu_select("Clone");
+		});
+		blocker.appendChild( clone_button );
+
+		editor_container.appendChild( blocker );
+	}
+
+	//inspector.addButtons(null,["Make Global","Copy","Paste"],{});	
+
+	function inner_showActions(e)
+	{
+		var menu = new LiteGUI.ContextualMenu(["Copy","Paste","Delete","Share","Instance"], {component: material, title: mat_type || "Material", event: e, callback: inner_menu_select });
 		e.preventDefault();
 		e.stopPropagation();
 		return true;
@@ -148,7 +200,7 @@ EditorModule.showMaterialNodeInfo = function(node, attributes)
 
 			UndoModule.saveNodeMaterialChangeUndo( node );			
 			node.material = material;
-			EditorModule.refreshAttributes();
+			inspector.refresh();
 			LS.GlobalScene.refresh();
 		}
 		else if( v == "Delete" )
@@ -158,7 +210,7 @@ EditorModule.showMaterialNodeInfo = function(node, attributes)
 
 			UndoModule.saveNodeMaterialChangeUndo( node );			
 			node.material = null; 
-			EditorModule.refreshAttributes();
+			inspector.refresh();
 			LS.GlobalScene.refresh();
 		}
 		else if( v == "Share" )
@@ -170,6 +222,8 @@ EditorModule.showMaterialNodeInfo = function(node, attributes)
 			{
 				var material = node.getMaterial();
 				resource = material.clone();
+				delete resource.filename;
+				delete resource.fullpath;
 				resource.object_type = LS.getObjectClassName( resource );
 			}
 			else
@@ -179,7 +233,7 @@ EditorModule.showMaterialNodeInfo = function(node, attributes)
 
 			EditorModule.showCreateResource( resource, function(name, res){
 				node.material = name;			
-				EditorModule.inspectNode(node);
+				inspector.refresh();
 			});
 		}
 		else if( v == "Clone" || v == "Instance" )
@@ -187,21 +241,21 @@ EditorModule.showMaterialNodeInfo = function(node, attributes)
 			var material = node.getMaterial();
 			material = material.clone();
 			delete material["filename"]; //no name
+			delete material["fullpath"]; //no name
 			node.material = material;
-			EditorModule.inspectNode( node );
+			inspector.refresh();
 		}
 		else
 			LiteGUI.alert("Unknown option");
-
 	}
 }
 
 EditorModule.registerNodeEditor( EditorModule.showMaterialNodeInfo );
 
 
-Material["@inspector"] = function( material, attributes )
+Material["@inspector"] = function( material, inspector )
 {
-	attributes.addCombo("Shader", material.shader_name || "default", { values: Material.available_shaders, callback: function(v) { 
+	inspector.addCombo("Shader", material.shader_name || "default", { values: Material.available_shaders, callback: function(v) { 
 		if(!material) return;
 
 		if(v != "default")
@@ -210,23 +264,23 @@ Material["@inspector"] = function( material, attributes )
 			material.shader_name = null;
 	}});
 
-	attributes.addTitle("Properties");
-	attributes.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { 
+	inspector.addTitle("Properties");
+	inspector.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { 
 		material.opacity = value; 
 		if(material.opacity < 1 && material.blend_mode == Blend.NORMAL)
 			material.blend_mode = LS.Blend.ALPHA;
 		if(material.opacity >= 1 && material.blend_mode == Blend.ALPHA)
 			material.blend_mode = LS.Blend.NORMAL;
 	}});
-	//attributes.addCheckbox("two-sided", node.flags.two_sided, { callback: function(v) { node.flags.two_sided = v; } });
-	attributes.addSeparator();
-	attributes.addColor("Color", material.color, { pretitle: AnimationModule.getKeyframeCode( material, "color" ), callback: function(color) { material.color.set(color); } });
-	attributes.addSlider("Specular", material.specular_factor, { pretitle: AnimationModule.getKeyframeCode( material, "specular_factor" ), min: 0, step:0.01, max:2, callback: function (value) { material.specular_factor = value; } });
-	attributes.addSlider("Spec. gloss", material.specular_gloss, { pretitle: AnimationModule.getKeyframeCode( material, "specular_gloss" ), min:1,max:20, callback: function (value) { material.specular_gloss = value; } });
+	//inspector.addCheckbox("two-sided", node.flags.two_sided, { callback: function(v) { node.flags.two_sided = v; } });
+	inspector.addSeparator();
+	inspector.addColor("Color", material.color, { pretitle: AnimationModule.getKeyframeCode( material, "color" ), callback: function(color) { material.color.set(color); } });
+	inspector.addSlider("Specular", material.specular_factor, { pretitle: AnimationModule.getKeyframeCode( material, "specular_factor" ), min: 0, step:0.01, max:2, callback: function (value) { material.specular_factor = value; } });
+	inspector.addSlider("Spec. gloss", material.specular_gloss, { pretitle: AnimationModule.getKeyframeCode( material, "specular_gloss" ), min:1,max:20, callback: function (value) { material.specular_gloss = value; } });
 
-	attributes.addCombo("Blend mode", material.blend_mode, {  pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
+	inspector.addCombo("Blend mode", material.blend_mode, {  pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
 
-	attributes.beginGroup("Textures",{title:true});
+	inspector.beginGroup("Textures",{title:true});
 
 	var texture_channels = material.getTextureChannels();
 
@@ -244,7 +298,7 @@ Material["@inspector"] = function( material, attributes )
 				tex = "@Instance";
 		}
 
-		attributes.addStringButton(channel, tex, { channel: channel, callback: function(filename) {
+		inspector.addStringButton(channel, tex, { channel: channel, callback: function(filename) {
 			if(!filename)
 				material.setTexture(this.options["channel"], null);
 			else
@@ -256,15 +310,15 @@ Material["@inspector"] = function( material, attributes )
 		}});
 	}
 
-	attributes.endGroup();
+	inspector.endGroup();
 
-	//attributes.addTitle("Actions");
-	//attributes.addButtons(null,["Make Global","Copy","Paste"],{});
+	//inspector.addTitle("Actions");
+	//inspector.addButtons(null,["Make Global","Copy","Paste"],{});
 }
 
-StandardMaterial["@inspector"] = function( material, attributes )
+StandardMaterial["@inspector"] = function( material, inspector )
 {
-	attributes.addCombo("Shader", material.shader_name || "default", { values: StandardMaterial.available_shaders, callback: function(v) { 
+	inspector.addCombo("Shader", material.shader_name || "default", { values: StandardMaterial.available_shaders, callback: function(v) { 
 		if(!material) return;
 
 		if(v != "default")
@@ -273,65 +327,65 @@ StandardMaterial["@inspector"] = function( material, attributes )
 			material.shader_name = null;
 	}});
 
-	attributes.addTitle("Properties");
-	attributes.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { 
+	inspector.addTitle("Properties");
+	inspector.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { 
 		material.opacity = value; 
 		if(material.opacity < 1 && material.blend_mode == Blend.NORMAL)
 			material.blend_mode = LS.Blend.ALPHA;
 		if(material.opacity >= 1 && material.blend_mode == Blend.ALPHA)
 			material.blend_mode = LS.Blend.NORMAL;
 	}});
-	attributes.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
+	inspector.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
 
-	//attributes.addCheckbox("two-sided", node.flags.two_sided, { callback: function(v) { node.flags.two_sided = v; } });
-	attributes.addSeparator();
-	attributes.addColor("Color", material.color, { pretitle: AnimationModule.getKeyframeCode( material, "color" ), callback: function(color) { material.color = color; } });
-	attributes.addColor("Ambient", material.ambient, { pretitle: AnimationModule.getKeyframeCode( material, "ambient" ),callback: function(color) { material.ambient = color; } });
-	attributes.addSlider("Backlight", material.backlight_factor, { pretitle: AnimationModule.getKeyframeCode( material, "backlight_factor" ),min: 0, step:0.01, max:1, callback: function (value) { material.backlight_factor = value; } });
-	attributes.addCheckbox("Constant diffuse", material.constant_diffuse, { pretitle: AnimationModule.getKeyframeCode( material, "constant_diffuse" ), callback: function (value) { material.constant_diffuse = value; }});
+	//inspector.addCheckbox("two-sided", node.flags.two_sided, { callback: function(v) { node.flags.two_sided = v; } });
+	inspector.addSeparator();
+	inspector.addColor("Color", material.color, { pretitle: AnimationModule.getKeyframeCode( material, "color" ), callback: function(color) { material.color = color; } });
+	inspector.addColor("Ambient", material.ambient, { pretitle: AnimationModule.getKeyframeCode( material, "ambient" ),callback: function(color) { material.ambient = color; } });
+	inspector.addSlider("Backlight", material.backlight_factor, { pretitle: AnimationModule.getKeyframeCode( material, "backlight_factor" ),min: 0, step:0.01, max:1, callback: function (value) { material.backlight_factor = value; } });
+	inspector.addCheckbox("Constant diffuse", material.constant_diffuse, { pretitle: AnimationModule.getKeyframeCode( material, "constant_diffuse" ), callback: function (value) { material.constant_diffuse = value; }});
 
-	attributes.addSlider("Specular", material.specular_factor, { pretitle: AnimationModule.getKeyframeCode( material, "specular_factor" ), min: 0, step:0.01, max:2, callback: function (value) { material.specular_factor = value; } });
-	attributes.addSlider("Spec. gloss", material.specular_gloss, { pretitle: AnimationModule.getKeyframeCode( material, "specular_gloss" ), min:1,max:20, callback: function (value) { material.specular_gloss = value; } });
+	inspector.addSlider("Specular", material.specular_factor, { pretitle: AnimationModule.getKeyframeCode( material, "specular_factor" ), min: 0, step:0.01, max:2, callback: function (value) { material.specular_factor = value; } });
+	inspector.addSlider("Spec. gloss", material.specular_gloss, { pretitle: AnimationModule.getKeyframeCode( material, "specular_gloss" ), min:1,max:20, callback: function (value) { material.specular_gloss = value; } });
 
-	attributes.widgets_per_row = 2;
-	attributes.addCheckbox("Spec. ontop", material.specular_ontop, { pretitle: AnimationModule.getKeyframeCode( material, "specular_ontop" ), callback: function (value) { material.specular_ontop = value; }});
-	attributes.addCheckbox("Spec. alpha", material.specular_on_alpha, { pretitle: AnimationModule.getKeyframeCode( material, "specular_on_alpha" ), callback: function (value) { material.specular_on_alpha = value; }});
-	attributes.widgets_per_row = 1;
-	attributes.addSlider("Reflection", material.reflection_factor, { pretitle: AnimationModule.getKeyframeCode( material, "reflection_factor" ), callback: function (value) { material.reflection_factor = value; } });
-	attributes.addSlider("Reflection exp.", material.reflection_fresnel, { pretitle: AnimationModule.getKeyframeCode( material, "reflection_fresnel" ), min:0, max:20, callback: function (value) { material.reflection_fresnel = value; }});
-	attributes.widgets_per_row = 2;
-	attributes.addCheckbox("Reflec. add", material.reflection_additive, { pretitle: AnimationModule.getKeyframeCode( material, "reflection_additive" ),callback: function (value) { material.reflection_additive = value; }});
-	attributes.addCheckbox("Reflec. specular", material.reflection_specular, { pretitle: AnimationModule.getKeyframeCode( material, "reflection_specular" ),callback: function (value) { material.reflection_specular = value; }});
-	attributes.widgets_per_row = 1;
-	attributes.addCheckbox("Reflec. gloss", material.reflection_gloss, { callback: function (value) { material.reflection_gloss = value; }});
+	inspector.widgets_per_row = 2;
+	inspector.addCheckbox("Spec. ontop", material.specular_ontop, { pretitle: AnimationModule.getKeyframeCode( material, "specular_ontop" ), callback: function (value) { material.specular_ontop = value; }});
+	inspector.addCheckbox("Spec. alpha", material.specular_on_alpha, { pretitle: AnimationModule.getKeyframeCode( material, "specular_on_alpha" ), callback: function (value) { material.specular_on_alpha = value; }});
+	inspector.widgets_per_row = 1;
+	inspector.addSlider("Reflection", material.reflection_factor, { pretitle: AnimationModule.getKeyframeCode( material, "reflection_factor" ), callback: function (value) { material.reflection_factor = value; } });
+	inspector.addSlider("Reflection exp.", material.reflection_fresnel, { pretitle: AnimationModule.getKeyframeCode( material, "reflection_fresnel" ), min:0, max:20, callback: function (value) { material.reflection_fresnel = value; }});
+	inspector.widgets_per_row = 2;
+	inspector.addCheckbox("Reflec. add", material.reflection_additive, { pretitle: AnimationModule.getKeyframeCode( material, "reflection_additive" ),callback: function (value) { material.reflection_additive = value; }});
+	inspector.addCheckbox("Reflec. specular", material.reflection_specular, { pretitle: AnimationModule.getKeyframeCode( material, "reflection_specular" ),callback: function (value) { material.reflection_specular = value; }});
+	inspector.widgets_per_row = 1;
+	inspector.addCheckbox("Reflec. gloss", material.reflection_gloss, { callback: function (value) { material.reflection_gloss = value; }});
 
-	attributes.widgets_per_row = 1;
-	attributes.addColor("Emissive", material.emissive, { pretitle: AnimationModule.getKeyframeCode( material, "emissive" ), callback: function(color) { 
+	inspector.widgets_per_row = 1;
+	inspector.addColor("Emissive", material.emissive, { pretitle: AnimationModule.getKeyframeCode( material, "emissive" ), callback: function(color) { 
 		vec3.copy(material.emissive, color); 
 	}});
 
-	attributes.addSlider("Normalmap factor", material.normalmap_factor, { pretitle: AnimationModule.getKeyframeCode( material, "normalmap_factor" ), min: 0, step:0.01, max:1.5, callback: function (value) { material.normalmap_factor = value; } });
+	inspector.addSlider("Normalmap factor", material.normalmap_factor, { pretitle: AnimationModule.getKeyframeCode( material, "normalmap_factor" ), min: 0, step:0.01, max:1.5, callback: function (value) { material.normalmap_factor = value; } });
 
-	attributes.addTitle("Velvet");
-	attributes.addColor("Velvet", material.velvet, { pretitle: AnimationModule.getKeyframeCode( material, "velvet" ), callback: function(color) { vec3.copy(material.velvet,color); }});
-	attributes.addSlider("Velvet exp.", material.velvet_exp, { pretitle: AnimationModule.getKeyframeCode( material, "velvet_exp" ), max:5, callback: function (value) { material.velvet_exp = value; }});
-	attributes.addCheckbox("Velvet add", material.velvet_additive, { pretitle: AnimationModule.getKeyframeCode( material, "velvet_additive" ), callback: function (value) { material.velvet_additive = value; }});
+	inspector.addTitle("Velvet");
+	inspector.addColor("Velvet", material.velvet, { pretitle: AnimationModule.getKeyframeCode( material, "velvet" ), callback: function(color) { vec3.copy(material.velvet,color); }});
+	inspector.addSlider("Velvet exp.", material.velvet_exp, { pretitle: AnimationModule.getKeyframeCode( material, "velvet_exp" ), max:5, callback: function (value) { material.velvet_exp = value; }});
+	inspector.addCheckbox("Velvet add", material.velvet_additive, { pretitle: AnimationModule.getKeyframeCode( material, "velvet_additive" ), callback: function (value) { material.velvet_additive = value; }});
 
-	attributes.addTitle("Detail");
-	attributes.addSlider("Detail", material.detail_factor, { pretitle: AnimationModule.getKeyframeCode( material, "detail_factor" ), min:-2,max:2,step:0.01, callback: function (value) { material.detail_factor = value; }});
-	attributes.addVector2("Det. Tiling", material.detail_scale, { pretitle: AnimationModule.getKeyframeCode( material, "detail_scale" ), min:-40,max:40,step:0.1, callback: function (value) { material.detail_scale = value; }});
+	inspector.addTitle("Detail");
+	inspector.addSlider("Detail", material.detail_factor, { pretitle: AnimationModule.getKeyframeCode( material, "detail_factor" ), min:-2,max:2,step:0.01, callback: function (value) { material.detail_factor = value; }});
+	inspector.addVector2("Det. Tiling", material.detail_scale, { pretitle: AnimationModule.getKeyframeCode( material, "detail_scale" ), min:-40,max:40,step:0.1, callback: function (value) { material.detail_scale = value; }});
 
-	attributes.addTitle("Extra");
-	attributes.addSlider("Extra factor", material.extra_factor, { pretitle: AnimationModule.getKeyframeCode( material, "extra_factor" ), callback: function (value) { material.extra_factor = value; }});
-	attributes.addColor("Extra color", material.extra_color, { pretitle: AnimationModule.getKeyframeCode( material, "extra_color" ), callback: function(color) { vec3.copy(material.extra_color,color); } });
+	inspector.addTitle("Extra");
+	inspector.addSlider("Extra factor", material.extra_factor, { pretitle: AnimationModule.getKeyframeCode( material, "extra_factor" ), callback: function (value) { material.extra_factor = value; }});
+	inspector.addColor("Extra color", material.extra_color, { pretitle: AnimationModule.getKeyframeCode( material, "extra_color" ), callback: function(color) { vec3.copy(material.extra_color,color); } });
 
-	attributes.addTitle("Shader");
-	attributes.addButton(null, "Edit Shader", { callback: function() { 
+	inspector.addTitle("Shader");
+	inspector.addButton(null, "Edit Shader", { callback: function() { 
 		CodingModule.openTab();
 		CodingModule.editInstanceCode( material, { id: material.uid, title: "Shader", lang:"glsl", help: material.constructor.coding_help, getCode: function(){ return material.extra_surface_shader_code; }, setCode: function(code){ material.extra_surface_shader_code = code; } } );
 	}});
 
-	attributes.beginGroup("Textures",{title:true});
+	inspector.beginGroup("Textures",{title:true});
 
 	var texture_channels = material.getTextureChannels();
 	
@@ -340,54 +394,54 @@ StandardMaterial["@inspector"] = function( material, attributes )
 		var channel = texture_channels[i];
 		var sampler = material.getTextureSampler(channel);
 
-		attributes.addTextureSampler( channel, sampler, { channel: channel, material: material, callback: function(sampler) {
+		inspector.addTextureSampler( channel, sampler, { channel: channel, material: material, callback: function(sampler) {
 			if(!sampler.texture)
 				sampler = null;
 			material.setTextureSampler( this.channel, sampler );
 		}});
 	}
 
-	attributes.endGroup();
+	inspector.endGroup();
 
-	//attributes.addTitle("Actions");
-	//attributes.addButtons(null,["Make Global","Copy","Paste"],{});
+	//inspector.addTitle("Actions");
+	//inspector.addButtons(null,["Make Global","Copy","Paste"],{});
 }
 
 //EditorModule.registerMaterialEditor("Material", EditorModule.showGlobalMaterialInfo );
 
 //Used in SurfaceMaterial and CustomMaterial
-function GenericMaterialEditor( material, attributes )
+function GenericMaterialEditor( material, inspector )
 {
-	attributes.addTitle("Properties");
-	attributes.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
-	attributes.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { material.opacity = value; }});
-	attributes.addColor("Color", material.color, { pretitle: AnimationModule.getKeyframeCode( material, "color" ), callback: function(color) { vec3.copy(material.color,color); } });
+	inspector.addTitle("Properties");
+	inspector.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
+	inspector.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { material.opacity = value; }});
+	inspector.addColor("Color", material.color, { pretitle: AnimationModule.getKeyframeCode( material, "color" ), callback: function(color) { vec3.copy(material.color,color); } });
 
 	for(var i in material.properties)
 	{
 		var p = material.properties[i];
-		attributes.add( p.type, p.label || p.name, p.value, { pretitle: AnimationModule.getKeyframeCode( material, p.name ), title: p.name, step: p.step, property: p, callback: inner_on_property_change });
+		inspector.add( p.type, p.label || p.name, p.value, { pretitle: AnimationModule.getKeyframeCode( material, p.name ), title: p.name, step: p.step, property: p, callback: inner_on_property_change });
 	}
 
-	attributes.addTextureSampler("Environment", material.textures["environment"], { callback: function(v) { material.textures["environment"] = v; } });
+	inspector.addTextureSampler("Environment", material.textures["environment"], { callback: function(v) { material.textures["environment"] = v; } });
 
-	attributes.addButtons(null,["Add Property","Edit"], { callback: function(v) { 
+	inspector.addButtons(null,["Add Property","Edit"], { callback: function(v) { 
 		if(v == "Add Property")
 			EditorModule.showAddPropertyDialog(inner_on_newproperty, ["number","vec2","vec3","vec4","color","texture","cubemap","sampler"] );
 		else 
 			EditorModule.showEditPropertiesDialog( material.properties, ["number","vec2","vec3","vec4","color","texture","cubemap","sampler"], inner_on_editproperties );
 	}});
 
-	attributes.addTitle("Shader");
-	attributes.addButton("", "Edit Shader", { callback: function() { 
+	inspector.addTitle("Shader");
+	inspector.addButton("", "Edit Shader", { callback: function() { 
 		CodingModule.openTab();
 		CodingModule.editInstanceCode( material, { id: material.uid, title: "Shader", lang:"glsl", help: material.constructor.coding_help } );
 	}});
 
-	attributes.addTitle("Flags");
-	//attributes.addCheckbox("Reflective", false );
+	inspector.addTitle("Flags");
+	//inspector.addCheckbox("Reflective", false );
 
-	attributes.addSeparator();
+	inspector.addSeparator();
 
 	function inner_on_newproperty(p)
 	{
@@ -402,7 +456,7 @@ function GenericMaterialEditor( material, attributes )
 		else
 			material[ p.name ] = p.value;
 
-		EditorModule.refreshAttributes();
+		inspector.refresh();
 	}
 
 	function inner_on_editproperties(p)
@@ -416,7 +470,7 @@ function GenericMaterialEditor( material, attributes )
 			else
 				material[ p.name ] = p.value;
 		}
-		EditorModule.refreshAttributes();
+		inspector.refresh();
 		
 		/*
 		material.properties.push(p);

@@ -67,15 +67,27 @@ var AnimationModule = {
 
 		function inner_rightclick(e)
 		{
-			var menu = new LiteGUI.ContextualMenu( ["Add UID track","Add name track","Show Info"], { event: e, callback: function(value) {
+			var menu = new LiteGUI.ContextualMenu( ["Add UID track","Add name track","Show Info","Copy Query","Copy Unique Query"], { event: e, title:"Keyframe", callback: function(value) {
 				if(value == "Add UID track")
 					AnimationModule.insertKeyframe(e.target);
 				else if(value == "Add name track")
 					AnimationModule.insertKeyframe(e.target, true);
+				else if(value == "Copy Query")
+					AnimationModule.copyQueryToClipboard( e.target.dataset["propertyuid"], true );
+				else if(value == "Copy Unique Query")
+					AnimationModule.copyQueryToClipboard( e.target.dataset["propertyuid"] );
 				else
 					AnimationModule.showPropertyInfo( e.target.dataset["propertyuid"] );
 			}});
 		}
+	},
+
+	copyQueryToClipboard: function( locator, shorten )
+	{
+		//shortify query
+		if(shorten)
+			locator = LSQ.shortify( locator );
+		LiteGUI.toClipboard( locator );
 	},
 
 	showPropertyInfo: function( property )
@@ -88,8 +100,8 @@ var AnimationModule = {
 		var dialog = new LiteGUI.Dialog("property_info",{ title:"Property Info", width: 400, draggable: true, closable: true });
 		
 		var widgets = new LiteGUI.Inspector();
-		widgets.addString("Locator", property, function(v){ 
-		});
+		widgets.addString("Locator", property, function(v){});
+		widgets.addString("Short Locator", LSQ.shortify( property ), function(v){});
 
 		widgets.widgets_per_row = 2;
 		widgets.addString("Parent", info.node ? info.node.name : "", { disabled: true } );
@@ -135,7 +147,7 @@ var AnimationModule = {
 		var locator = target.getLocator();
 		if(!locator)
 			return "";
-		return "<span title='Create keyframe' class='keyframe_icon' data-propertyname='" + property + "' data-propertyuid='" + locator + "/" + property + "' ></span>";
+		return "<span title='Create keyframe for "+property+"' class='keyframe_icon' data-propertyname='" + property + "' data-propertyuid='" + locator + "/" + property + "' ></span>";
 	},
 
 	insertKeyframe: function( button, relative )
@@ -157,20 +169,30 @@ var AnimationModule = {
 		if(!EditorView.render_helpers)
 			return;
 
+		var temp = vec3.create();
+
 		for(var i = 0; i < this._trajectories.length; ++i)
 		{
-			var track = this._trajectories[i];
-			var points = track.points;
+			var traj = this._trajectories[i];
+
+			var info = LS.GlobalScene.getPropertyInfoFromPath( traj.track._property_path );
+			var parent_matrix = null;
+			if( info.node && info.node.parentNode && info.node.parentNode.transform )
+				parent_matrix = info.node.parentNode.transform.getGlobalMatrixRef();
+
+			var points = traj.points;
 			var num = points.length;
 			for(var j = 0; j < num; ++j)
 			{
 				var pos = points[j];
-				EditorView.addPickingPoint( pos, 10, { type: "keyframe", traj:i, instance: this, track: track.index, num: j } );
+				if( parent_matrix )
+					pos = vec3.transformMat4( vec3.create(), pos, parent_matrix );
+				EditorView.addPickingPoint( pos, 10, { pos: pos, value: points[j], type: "keyframe", traj:i, instance: this, track: traj.index, num: j } );
 			}
 		}
 	},
 
-	renderTrajectories: function(camera)
+	renderTrajectories: function( camera )
 	{
 		LS.Renderer.resetGLState();
 
@@ -204,6 +226,15 @@ var AnimationModule = {
 			if( selection && selection.track == i )
 				colors = [];
 
+			var info = LS.GlobalScene.getPropertyInfoFromPath( track._property_path );
+			var parent_node = null;
+			if( info.node && info.node.parentNode && info.node.parentNode.transform )
+			{
+				parent_node = info.node.parentNode;
+				Draw.push();
+				Draw.setMatrix( parent_node.transform.getGlobalMatrixRef() );
+			}
+
 			for(var j = 0; j < num; ++j)
 			{
 				var keyframe = track.getKeyframe(j);
@@ -221,7 +252,7 @@ var AnimationModule = {
 
 			Draw.setColor( colors ? white : colorA );
 			Draw.renderPoints( points, colors );
-			this._trajectories.push( { index: i, points: points } );
+			this._trajectories.push( { index: i, points: points, track: track } );
 
 			if(track.interpolation == LS.Animation.NONE)
 				continue;
@@ -264,6 +295,9 @@ var AnimationModule = {
 				Draw.setColor(colorA);
 				Draw.renderLines( points, null, false );
 			}
+
+			if( parent_node )
+				Draw.pop();
 		}
 	},
 
@@ -272,12 +306,8 @@ var AnimationModule = {
 		if(!this._trajectories.length)
 			return false;
 
-		var track = this._trajectories[ selection.traj ];
-		if(!track)
-			return null;
-
 		var T = mat || mat4.create();
-		mat4.setTranslation( T, track.points[ selection.num ] );
+		mat4.setTranslation( T, selection.pos );
 		return T;
 	},
 
@@ -292,6 +322,8 @@ var AnimationModule = {
 
 		var point = track.points[ selection.num ];
 		vec3.transformMat4( point, point, matrix );
+		if(selection.pos != selection.value) //update the visual point
+			vec3.transformMat4( selection.pos, selection.pos, matrix );
 		this.timeline.applyTracks();
 		return true;
 	},
@@ -304,4 +336,4 @@ var AnimationModule = {
 
 };
 
-LiteGUI.registerModule( AnimationModule );
+CORE.registerModule( AnimationModule );

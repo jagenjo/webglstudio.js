@@ -58,7 +58,7 @@ LS.SceneNode.editor_actions["info"] = {
 LS.SceneNode.editor_actions["addcomponent"] = { 
 	title:"Add Component",
 	callback: function( node ){
-		EditorModule.showAddComponentToNode( node );
+		EditorModule.showAddComponentToNode( node, function(){ EditorModule.refreshAttributes(); } );
 	}
 };
 
@@ -80,19 +80,9 @@ LS.Transform.prototype.getEditorActions = function( actions )
 	var pos = actions.indexOf("Delete");
 	if(pos != -1)
 		actions.splice(pos,1);
-	actions.push("Center in Mesh");
+	//push actions here
 	return actions;
 }
-
-LS.Transform.prototype.doEditorAction = function( name )
-{
-	if (name == "Center in Mesh")
-		this.centerInMesh();
-	else
-		return false;
-	return true;
-}
-
 
 LS.Light.prototype.getEditorActions = function( actions )
 {
@@ -118,6 +108,8 @@ LS.Camera.prototype.getEditorActions = function( actions )
 
 LS.Camera.prototype.doEditorAction = function( name )
 {
+	var camera = this;
+
 	if (name == "Select Center")
 	{
 		SelectionModule.setSelection({ instance: this, info: "center"});
@@ -131,12 +123,26 @@ LS.Camera.prototype.doEditorAction = function( name )
 		LS.GlobalScene.refresh();
 	}
 	else if (name == "Edit Layers")
-		EditorModule.showLayersEditor( instance.layers, function(v){
-			instance.layers = v;
+	{
+		EditorModule.showLayersEditor( this.layers, function(v){
+			camera.layers = v;
 			RenderModule.requestFrame();
 		});
+	}
 	else
 		return false;
 	return true;
 }
 
+LS.Components.SkinDeformer.prototype.getEditorActions = function( actions )
+{
+	actions.push("Convert Bones to Relative");
+	return actions;
+}
+
+LS.Components.SkinDeformer.prototype.doEditorAction = function( name )
+{
+	var component = this;
+	if (name == "Convert Bones to Relative")
+		this.convertBonesToRelative();
+}

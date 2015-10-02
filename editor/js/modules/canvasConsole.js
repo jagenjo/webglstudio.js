@@ -1,3 +1,4 @@
+//DEPRECATED
 var CanvasConsole = {
 	init: function()
 	{
@@ -92,4 +93,4 @@ var CanvasConsole = {
 	}
 };
 
-LiteGUI.registerModule( CanvasConsole );
+CORE.registerModule( CanvasConsole );

@@ -47,16 +47,20 @@ var AppSettings = {
 
 		var sections = [];
 		var already_created = {};
-		for(var i in LiteGUI.modules)
+		for(var i in CORE.modules)
 		{
-			if(!LiteGUI.modules[i].settings_panel) continue;
+			var module = CORE.modules[i];
+			if(!module.settings_panel)
+				continue;
 
-			for(var j in LiteGUI.modules[i].settings_panel)
+			for(var j in module.settings_panel)
 			{
-				if (already_created[LiteGUI.modules[i].settings_panel[j].name]) //avoid repeated
+				var settings = module.settings_panel[j];
+
+				if (already_created[ settings.name ]) //avoid repeated
 					continue;
-				sections.push( LiteGUI.modules[i].settings_panel[j] );
-				already_created[ LiteGUI.modules[i].settings_panel[j].name ] = true;
+				sections.push( settings );
+				already_created[ settings.name ] = true;
 			}
 		}
 
@@ -87,14 +91,14 @@ var AppSettings = {
 
 		root.append(widgets.root);
 
-		for(var i in LiteGUI.modules)
+		for(var i in CORE.modules)
 		{
-			if (!LiteGUI.modules[i].onShowSettingsPanel)
+			if (!CORE.modules[i].onShowSettingsPanel)
 				continue;
-			LiteGUI.modules[i].onShowSettingsPanel(name, widgets);
+			CORE.modules[i].onShowSettingsPanel(name, widgets);
 		}
 	},
 }
 
 
-LiteGUI.registerModule( AppSettings );
+CORE.registerModule( AppSettings );

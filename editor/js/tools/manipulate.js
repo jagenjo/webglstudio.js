@@ -194,6 +194,7 @@ var manipulateTool = {
 			else
 				ToolUtils.applyTransformMatrixToSelection(T);
 
+			ToolUtils.testPerpendicularPlane( e.canvasx, gl.canvas.height - e.canvasy, this.gizmo_center, this.click_pos );
 			LS.GlobalScene.refresh();
 			return true;		
 		}

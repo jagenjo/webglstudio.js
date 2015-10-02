@@ -1,4 +1,4 @@
-/* This module allows to load external modules on the fly as plugins. */
+ /* This module allows to load external modules on the fly as plugins. */
 
 var PluginsModule  = {
 	settings_panel: [ {name:"plugins", title:"Plugins", icon:null } ],
@@ -22,9 +22,10 @@ var PluginsModule  = {
 	loadPlugin: function(url, on_complete )
 	{
 		var last_plugin = null;
-		if(LiteGUI.modules.length)
-			last_plugin = LiteGUI.modules[ LiteGUI.modules.length - 1];
+		if(CORE.modules.length)
+			last_plugin = CORE.modules[ CORE.modules.length - 1];
 
+		//TODO: migrate to LiteGUI
 		$.getScript(url, function(){
 			trace("Running...");
 			inner();
@@ -59,7 +60,7 @@ var PluginsModule  = {
 
 		function inner()
 		{
-			var loaded_plugin = LiteGUI.modules[ LiteGUI.modules.length - 1];
+			var loaded_plugin = CORE.modules[ CORE.modules.length - 1 ];
 			if(loaded_plugin != last_plugin)
 			{
 				PluginsModule.loaded_plugins.push( { name: loaded_plugin.name || url , url: url });
@@ -78,4 +79,4 @@ var PluginsModule  = {
 	},
 }
 
-LiteGUI.registerModule( PluginsModule );
+CORE.registerModule( PluginsModule );

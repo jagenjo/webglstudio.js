@@ -85,7 +85,9 @@ var CodingModule = //do not change
 		LEvent.bind( LS.GlobalScene, "reload", this.onReload.bind(this) );
 		LEvent.bind( LS.GlobalScene, "nodeRemoved", this.onNodeRemoved.bind(this) );
 		LEvent.bind( LS.GlobalScene, "nodeComponentRemoved", this.onComponentRemoved.bind(this) );
-		
+		LEvent.bind( LS.GlobalScene, "prepare_play", this.onPreparePlay.bind(this) );
+		LEvent.bind( LS.Components.Script, "renamed", function(e,component) { CodingModule.onScriptRenamed( component ) } );
+	
 
 		//register some APIs used for autocompletion
 		this.registerAPI("glsl", ["texture2D","sampler2D","uniform","varying","radians","degrees","sin","cos","tan","asin","acos","atan","pow","exp","log","exp2"] );
@@ -95,6 +97,7 @@ var CodingModule = //do not change
 		LEvent.bind( LS.Components.Script, "code_error", this.onScriptError.bind(this) );
 		LEvent.bind( LS, "code_error", this.onGlobalError.bind(this) );
 
+		LiteGUI.menubar.add("Window/Coding Panel", { callback: function(){ CodingWidget.createDialog(); }});
 		LiteGUI.menubar.add("Actions/Catch Errors", { type: "checkbox", instance: LS, property: "catch_errors" });
 
 		//LEvent.bind(Scene,"start", this.onStart.bind(this));
@@ -132,61 +135,6 @@ var CodingModule = //do not change
 		LiteGUI.main_tabs.selectTab( RenderModule.name );
 	},
 
-	//call to say which instance do you want to edit
-	//instance must have a function called getCode
-	/*
-	editInstanceCode: function(instance, options )
-	{
-		//if instance is null then deselect this one (deprecated?)
-		if(!instance)
-		{
-			this._edited_instance = null;
-			this._code_options = null;
-			this._code_lang = null;
-			this._current_API = null;
-			window.node = null;
-			this.global_context.editor.setValue("");
-			return;
-			this.updateCodingVisibility();
-			this.global_context.editor.refresh();
-		}
-
-		options = options || {};
-		var lang = options.lang || "javascript";
-
-		//check for existing tab with this instance
-		if(options.id)
-		{
-			//create tab
-			if(!this.files_tabs.getTab(options.id))
-				this.files_tabs.addTab(options.id, { title: options.title, instance: instance, selected: true, closable: true, callback: function(){ 
-					//save current
-					CodingModule.assignCurrentCode(true); //save the current state of the codemirror inside the instance (otherwise changes would be lost)
-					CodingModule.editInstanceCode(instance, options); 
-				},
-				onclose: function(tab){
-					if(tab.selected)
-						CodingModule.editInstanceCode(null); 
-				}});
-		}
-
-		//save current state
-
-		this._edited_instance = instance;
-		this._code_options = options;
-		this._code_lang = lang;
-		this._current_API = this.APIs[ options.lang ];
-		window.node = instance._root;
-		var code = instance.getCode();
-		this.global_context.editor.setValue( code );
-		this.updateCodingVisibility();
-		this.global_context.editor.refresh();
-
-		if(this.external_window)
-			this.external_window.focus();
-	},
-	*/
-	
 	//switch coding tab
 	editInstanceCode: function( instance, options, open_tab )
 	{
@@ -530,6 +478,12 @@ var CodingModule = //do not change
 		this.closeInstanceTab( compo );
 	},
 
+	onPreparePlay: function()
+	{
+		//test that all codes are valid
+
+	},
+
 	onShowHelp: function()
 	{
 		var info = this.getCurrentCodeInfo();
@@ -712,7 +666,6 @@ var CodingModule = //do not change
 		context.area = coding_area;
 
 		//CODING AREA *********************************
-
 		CodeMirror.commands.autocomplete = function(cm) {
 			var API = CodingModule._current_API;
 			if(!API)
@@ -815,11 +768,6 @@ var CodingModule = //do not change
 			CodingModule.show3DWindow(!CodingModule.sceneview_visible);
 		}});
 
-		/*
-		this.top_widget.addString("Search","",{ callback: function(v) { 
-			//TODO
-		}});
-		*/
 		//this.top_widget.addButton(null,"Close Editor", { callback: function() { CodingModule.closeTab(); }});
 		//this.top_widget.addButton(null,"Execute", { callback: null });
 
@@ -863,7 +811,7 @@ var CodingModule = //do not change
 	}
 };
 
-LiteGUI.registerModule( CodingModule );
+CORE.registerModule( CodingModule );
 
 
 
@@ -935,7 +883,11 @@ LiteWidgets.widget_constructors["script"] = "addScript";
 
 LS.Components.Script["@inspector"] = function(component, attributes)
 {
-	attributes.addString("Name", component.name, { callback: function(v) { component.name = v; CodingModule.onScriptRenamed( component ); }});
+	attributes.addString("Name", component.name, { callback: function(v) { 
+		component.name = v;
+		LEvent.trigger( LS.Components.Script, "renamed", component );
+		//CodingModule.onScriptRenamed( component );
+	}});
 
 	var context = component.getContext();
 	if(context)

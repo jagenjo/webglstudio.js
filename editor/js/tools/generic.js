@@ -15,7 +15,7 @@ var worldSpaceButton = {
 	}
 };
 
-ToolsModule.registerButton(worldSpaceButton);
+ToolsModule.registerButton( worldSpaceButton );
 
 var objectSpaceButton = {
 	name: "object-space",
@@ -30,7 +30,7 @@ var objectSpaceButton = {
 	}
 };
 
-ToolsModule.registerButton(objectSpaceButton);
+ToolsModule.registerButton( objectSpaceButton );
 
 
 var fxEnabledButton = {
@@ -45,7 +45,7 @@ var fxEnabledButton = {
 	}
 };
 
-ToolsModule.registerButton(fxEnabledButton);
+ToolsModule.registerButton( fxEnabledButton );
 
 var lightsEnabledButton = {
 	name: "lights",
@@ -59,8 +59,21 @@ var lightsEnabledButton = {
 	}
 };
 
-ToolsModule.registerButton(lightsEnabledButton);
+ToolsModule.registerButton( lightsEnabledButton );
 
+var showGraphButton = {
+	name: "graph",
+	description: "Overlap Graph",
+	section: "visibility",
+	icon: "imgs/mini-icon-graph.png",
+	enabled: false,
+	callback: function()
+	{
+		EditorView.render_graph = !EditorView.render_graph;
+	}
+};
+
+ToolsModule.registerButton( showGraphButton );
 
 var helpersEnabledButton = {
 	name: "helpers",
@@ -74,7 +87,10 @@ var helpersEnabledButton = {
 	}
 };
 
-ToolsModule.registerButton(helpersEnabledButton);
+ToolsModule.registerButton( helpersEnabledButton );
+
+
+
 
 var centerInObjectButton = {
 	name: "center-in-object",

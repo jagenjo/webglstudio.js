@@ -519,5 +519,5 @@ var SceneStorageModule = {
 
 };
 
-LiteGUI.registerModule( SceneStorageModule );
+CORE.registerModule( SceneStorageModule );
 

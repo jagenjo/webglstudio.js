@@ -15,6 +15,13 @@ var LFSBridge = {
 				DriveModule.refreshTree();
 			});
 		}
+
+		DriveModule.top_widget.addButton(null,"Open LiteFileServer", { callback: LFSBridge.onOpenLiteFileServer });
+	},
+
+	onOpenLiteFileServer: function()
+	{
+		window.open( CORE.config.server, "_blank" );
 	},
 
 	onFolderSelected: function(item)
@@ -283,4 +290,4 @@ var LFSBridge = {
 
 //register
 DriveModule.registerDriveBridge( LFSBridge );
-LiteGUI.registerModule( LFSBridge );
+CORE.registerModule( LFSBridge );

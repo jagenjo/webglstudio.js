@@ -35,8 +35,8 @@ var DriveModule = {
 
 	init: function()
 	{
-		this.server_url = LiteGUI.config.server;
-		LS.ResourcesManager.setProxy( LiteGUI.config.proxy );
+		this.server_url = CORE.config.server;
+		LS.ResourcesManager.setProxy( CORE.config.proxy );
 		LS.ResourcesManager.keep_files = true;
 		var that = this;
 
@@ -136,7 +136,6 @@ var DriveModule = {
 
 		this.top_widget.addSeparator();
 		this.top_widget.addButton(null,"Insert in scene", { callback: DriveModule.onInsertResourceInScene });
-		this.top_widget.addButton(null,"Create folder", { callback: DriveModule.onCreateFolderInServer });
 		this.top_widget.addButton(null,"From URL", { callback: DriveModule.onUseProxyResource });
 
 		//resources container (browser)
@@ -552,23 +551,25 @@ var DriveModule = {
 		}
 		else
 		{
+			var filename = resource.fullpath || resource.filename;
+
 			if(resource.in_server)
 				preview = this.getServerPreviewURL( resource );
-			else
+			else 
 			{
-				if( this.generated_previews[ resource.fullpath ] )
+				if( this.generated_previews[ filename ] )
 				{
-					preview = this.generated_previews[ resource.fullpath ];
+					preview = this.generated_previews[ filename ];
 				}
-				else
+				else if( !resource.fullpath ) //is hosted somewhere
 				{
-					preview = this.generatePreview( resource.fullpath );
+					preview = this.generatePreview( filename );
 					if(preview)
 					{
 						var img = new Image();
 						img.src = preview;
 						img.style.maxWidth = 200;
-						this.generated_previews[ resource.fullpath ] = img;
+						this.generated_previews[ filename ] = img;
 						preview = img;
 					}
 				}
@@ -632,6 +633,7 @@ var DriveModule = {
 			ev.dataTransfer.setData("res-filename", resource.filename);
 			if(resource.fullpath)
 				ev.dataTransfer.setData("res-fullpath", resource.fullpath);
+			ev.dataTransfer.setData("res-type", type);
 		});
 	},
 
@@ -1388,9 +1390,10 @@ var DriveModule = {
 				return resource.preview_url;
 		}
 
-		if( resource.toCanvas )
+		if( resource.toCanvas ) //careful, big textures stall the app for few seconds
 		{
-			var canvas = resource.toCanvas();
+			console.log("Generating resource preview using a canvas: ", resource.filename );
+			var canvas = resource.toCanvas(null,null,256);
 			if(canvas)
 			{
 				resource.preview_url = canvas.toDataURL( this.preview_format );
@@ -1667,11 +1670,11 @@ var DriveModule = {
 	{
 		var filename = resource.filename;
 
-		if(resource.in_server && LS.ResourcesManager.resources[fullpath] )
-			resource = LS.ResourcesManager.resources[fullpath];
+		if(resource.in_server && LS.ResourcesManager.resources[ fullpath ] )
+			resource = LS.ResourcesManager.resources[ fullpath ];
 
 		//in case we update info of a file we dont have in memory
-		if(resource.in_server && !LS.ResourcesManager.resources[fullpath] )
+		if(resource.in_server && !LS.ResourcesManager.resources[ fullpath ] )
 		{
 			var info = {};
 
@@ -2023,20 +2026,23 @@ var DriveModule = {
 	},
 
 	//OVERWRITES THE FUNCTION IN EditorModule
-	showSelectResource: function(type, on_complete)
+	showSelectResource: function(type, on_complete, on_load )
 	{
 		var last_tab = LiteGUI.main_tabs.getCurrentTab();
 		DriveModule.openTab();
 		LiteGUI.Dialog.hideAll();
 		var visibility = InterfaceModule.getSidePanelVisibility();
 		InterfaceModule.setSidePanelVisibility(false);
-		DriveModule.filterResources(type);
+		DriveModule.filterResources( type );
 		
-		DriveModule.on_resource_selected_callback = function(filename) {
+		DriveModule.on_resource_selected_callback = function( filename ) {
 			InterfaceModule.setSidePanelVisibility(visibility);
 
 			if(on_complete)
 				on_complete(filename);
+
+			if(filename)
+				LS.ResourcesManager.load( filename, null, on_load );
 
 			DriveModule.on_resource_selected_callback = null;
 			LiteGUI.Dialog.showAll();
@@ -2068,7 +2074,7 @@ var DriveModule = {
 
 };
 
-LiteGUI.registerModule( DriveModule );
+CORE.registerModule( DriveModule );
 
 
 //Resource Insert button

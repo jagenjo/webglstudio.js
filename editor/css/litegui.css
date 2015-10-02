@@ -122,7 +122,7 @@
 }
 
 .inspector .wcontent button.single {
-	padding: 4px;
+	padding: 2px;
 }
 
 .inspector .icon {
@@ -1275,14 +1275,14 @@ a:hover {
 	top: 5px;
 	left: 5px;
 	min-width: 200px;
-	background-color: #555;
+	background-color: #444;
 	box-shadow: 0 0 3px black;
 	padding: 4px;
 	border-bottom: 2px solid #AAF;
 	z-index: 10;
 }
 
-.litemenu-entry {
+.litemenu-entry, .litemenu-title {
 	font-size: 12px;
 	color: #AAA;
 	padding: 0 0 0 4px;
@@ -1313,6 +1313,30 @@ a:hover {
 
 .litemenu-entry.disabled {
 	opacity: 0.5;
+}
+
+
+.litecontextualmenu {
+	position: fixed;
+	top: 100px;
+	left: 100px;
+	min-width: 100px;
+	color: #AAF;
+	padding: 0;
+	box-shadow: 0 0 10px black !important;
+}
+
+.litecontextualmenu .litemenu-entry {
+	margin: 0;
+	padding: 2px;
+}
+
+.litemenu-title {
+	color: #DDE;
+	background-color: #222;	
+	margin: 0;
+	padding: 2px;
+	cursor: default;
 }
 
 
@@ -1365,6 +1389,7 @@ button:disabled {
 
 .litedialog button.mini-button {
 	margin: 2px 2px 0 0;
+	line-height: 0;
 	padding: 0;
 	width: 1.1em;
 	height: 1.1em;
@@ -1373,7 +1398,6 @@ button:disabled {
 }
 
 button.close-button {
-    background: #32302D url('../imgs/close-icon.png') no-repeat;
 	background-size: 100% auto;
 }
 
@@ -1428,9 +1452,11 @@ button.close-button {
 .litetabs.horizontal > ul.wtabcontainer > li.wtab {
 	display: inline-block;
 	min-width: 50px;
-	height: 100%;
+	min-height: 20px;
+	height: calc( 100% - 2px ); 
 	margin-right: 2px;
 	margin-top: 2px;
+	vertical-align: top;
 	padding: 4px 8px 2px 4px;
 	border-radius: 3px 3px 0 0;
 }
@@ -1452,11 +1478,17 @@ button.close-button {
 }
 
 .litetabs li.wtab.selected {
-	color: #EEE;
+	color: #EEE !important;
 	background-color: #777;
 	/*border: 1px solid #888;*/
 	border-bottom: 0;
 	/*box-shadow: 0 -2px 2px rgba(0,0,0,0.5);*/
+}
+
+.litetabs li.wtab.button {
+	color: #EEE;
+	background-color: #333;
+	border-bottom: 2px;
 }
 
 .litetabs li.wtab:hover:not(.selected) {
@@ -1804,16 +1836,6 @@ ul.file-list li.file-item span.info {
 	cursor: n-resize;
 	width: 100%;
 	height: 2px;
-}
-
-.litecontextualmenu {
-	position: fixed;
-	top: 100px;
-	left: 100px;
-	min-width: 100px;
-	color: #AAF;
-	padding: 2px;
-	padding-right: 6px;
 }
 
 input {

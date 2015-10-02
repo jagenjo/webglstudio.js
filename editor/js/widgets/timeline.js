@@ -133,6 +133,7 @@ Timeline.prototype.animationModified = function()
 
 	this.current_animation._modified = true;
 	LS.ResourcesManager.resourceModified( this.current_animation );
+	LS.GlobalScene.refresh();
 }
 
 Timeline.prototype.onLoadAnimation = function()
@@ -1163,7 +1164,7 @@ Timeline.prototype.addUndoTakeEdited = function( info )
 
 	var that = this;
 
-	LiteGUI.addUndoStep({ 
+	UndoModule.addUndoStep({ 
 		title: "Take edited ",
 		data: { animation: that.current_animation.name, take: info.name, data: info },
 		callback: function(d) {
@@ -1187,7 +1188,7 @@ Timeline.prototype.addUndoTrackCreated = function( track )
 
 	var that = this;
 
-	LiteGUI.addUndoStep({ 
+	UndoModule.addUndoStep({ 
 		title: "Track created: " + track.name,
 		data: { animation: that.current_animation.name, take: that.current_take.name, index: that.current_take.tracks.indexOf( track ) },
 		callback: function(d) {
@@ -1213,7 +1214,7 @@ Timeline.prototype.addUndoTrackEdited = function( track )
 
 	var that = this;
 
-	LiteGUI.addUndoStep({ 
+	UndoModule.addUndoStep({ 
 		title: "Track edited: " + track.name,
 		data: { animation: that.current_animation.name, take: that.current_take.name, track: track.serialize(), index: that.current_take.tracks.indexOf( track ) },
 		callback: function(d) {
@@ -1236,7 +1237,7 @@ Timeline.prototype.addUndoTrackRemoved = function( track )
 {
 	var that = this;
 
-	LiteGUI.addUndoStep({ 
+	UndoModule.addUndoStep({ 
 		title: "Track removed: " + track.name,
 		data: { animation: that.current_animation.name, take: that.current_take.name, track: track.serialize(), index: that.current_take.tracks.indexOf( track ) },
 		callback: function(d) {
@@ -1436,6 +1437,7 @@ Timeline.prototype.removeSelection = function()
 			this.redrawCanvas();
 		}
 	}
+	LS.GlobalScene.refresh();
 }
 
 

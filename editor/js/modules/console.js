@@ -1,3 +1,8 @@
+/* Console module 
+
+	It shows the QuickBar when pressing Contrl + Space and allows to launch commands (not JS commands, but special editor commands)
+*/
+
 var ConsoleModule = {
 
 	commands: {},
@@ -52,12 +57,13 @@ var ConsoleModule = {
 		cmd = cmd.trim();
 		var tokens = cmd.split(" ");
 
-		for(var i in LiteGUI.modules)
+		for(var i in CORE.modules)
 		{
-			if(!LiteGUI.modules[i].commands)
+			var module = CORE.modules[i];
+			if(!module.commands)
 				continue;
 
-			var commands = LiteGUI.modules[i].commands;
+			var commands = module.commands;
 			var callback = commands[ tokens[0] ];
 			if(!callback)
 				continue;
@@ -90,4 +96,4 @@ var ConsoleModule = {
 
 };
 
-LiteGUI.registerModule( ConsoleModule );
+CORE.registerModule( ConsoleModule );

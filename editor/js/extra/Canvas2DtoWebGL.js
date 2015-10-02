@@ -581,7 +581,7 @@ function enableWebGLCanvas( canvas, options )
 
 		//gl.setLineWidth( this.lineWidth );
 		uniforms.u_color = this._strokecolor;
-		flat_primitive_shader.uniforms(uniforms).drawRange(lines_mesh, gl.TRIANGLE_STRIP, 0, pos / 3 );
+		flat_primitive_shader.uniforms( uniforms ).drawRange(lines_mesh, gl.TRIANGLE_STRIP, 0, pos / 3 );
 	}
 
 

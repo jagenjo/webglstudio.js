@@ -219,10 +219,12 @@ var ToolsModule = {
 	{
 		var root = document.getElementById("canvas-buttons");
 
-		var element = this.createButton(button, root);
+		var element = this.createButton( button, root );
 		element.className += " tool-" + button.name + " " + (button.enabled ? "enabled":"");
+		element.addEventListener("click", inner_onClick );
 
-		$(element).click(function(e){
+		function inner_onClick( e )
+		{
 			if(button.combo)
 			{
 				var section_name = "tool-section-" + button.section;
@@ -233,25 +235,22 @@ var ToolsModule = {
 				return;
 
 			var ret = button.callback();
-			if(typeof(ret) != "undefined")
+			if( ret !== undefined )
 			{
 				if(ret)
-					$(this).addClass("enabled");
+					this.classList.add("enabled");
 				else
-					$(this).removeClass("enabled");
+					this.classList.remove("enabled");
 			}
 			else if(!button.combo)
-				$(this).toggleClass("enabled");
+				this.classList.toggle("enabled");
 			else
-				$(this).addClass("enabled");
+				this.classList.add("enabled");
 			LS.GlobalScene.refresh();
 
 			e.preventDefault();
 			return false;
-		});
-
-		//if(button.enabled)
-		//	$(element).click();
+		}
 	},
 
 	createButton: function(button, root)
@@ -262,28 +261,40 @@ var ToolsModule = {
 		if (button.icon) {
 			element.style.backgroundImage = "url('" + button.icon + "')";
 		}
-		//element.innerHTML = button.name;
-		if(button.description) element.title = button.description;
+
+		if(button.description)
+			element.title = button.description;
 
 		if(!button.section)
 			button.section = "general";
 
-		var section = root.querySelector(".tool-section-" + button.section);
-
+		var section = this.getSection( button.section, root );
 		if( !section )
-		{
-			var section_element = document.createElement("div");
-			section_element.className = "tool-section tool-section-" + button.section;
-			root.appendChild(section_element);
-			section = section_element;
-		}
+			section = this.createSection( button.section, root );
 
-		$(section).append(element);
+		section.appendChild( element );
 		return element;
+	},
+
+	getSection: function( name, root )
+	{
+		return root.querySelector(".tool-section-" + name);
+	},
+
+	createSection: function( name, root )
+	{
+		var section = root.querySelector(".tool-section-" + name);
+		if( section )
+			return section;
+
+		var section_element = document.createElement("div");
+		section_element.className = "tool-section tool-section-" + name;
+		root.appendChild( section_element );
+		return section_element;
 	}
 };
 
-LiteGUI.registerModule( ToolsModule );
+CORE.registerModule( ToolsModule );
 
 //************* TOOLS *******************
 var ToolUtils = {

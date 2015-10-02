@@ -333,6 +333,38 @@ ul.file-list li.file-item span.progress {
 	cursor: pointer;
 }
 
+/* locks */
+.locked_container {
+	position: relative;
+}
+
+.locked_container .background.edited {
+	background-color: #334;
+}
+
+.locked_container .background.blur {
+    -webkit-filter: blur(2px);
+    -moz-filter: blur(2px);
+    -ms-filter: blur(2px);
+    -o-filter: blur(2px);
+    filter: blur(2px);
+}
+
+.locked_container .foreground {
+	text-align: center;
+	padding: 20px;
+	position: absolute;
+	background-color: rgba(40,40,40,0.8);
+	top:0;
+	left:0;
+	width:100%;
+	height:100%;
+}
+
+.locked_container .foreground button {
+	padding: 10px;
+}
+
 
 /* global */
 

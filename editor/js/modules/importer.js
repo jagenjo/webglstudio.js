@@ -356,4 +356,4 @@ var ImporterModule  = {
 	},
 };
 
-LiteGUI.registerModule( ImporterModule );
+CORE.registerModule( ImporterModule );

@@ -74,7 +74,7 @@ var RenderModule = {
 
 		//CANVAS
 		var canvas = this.viewport3d.canvas;
-		this.shaders_url = LiteGUI.config.shaders || this.shaders_url;
+		this.shaders_url = CORE.config.shaders || this.shaders_url;
 		LS.ShadersManager.init( this.shaders_url ); //load shaders
 		LS.Renderer.init();
 		LS.catch_errors = false; //helps coding
@@ -525,7 +525,7 @@ var RenderModule = {
 	}
 };
 
-LiteGUI.registerModule( RenderModule );
+CORE.registerModule( RenderModule );
 
 
 

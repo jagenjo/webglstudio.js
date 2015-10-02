@@ -260,6 +260,6 @@ var CubemapGenerator = {
 	}
 }
 
-LiteGUI.registerModule( CubemapGenerator );
+CORE.registerModule( CubemapGenerator );
 
 

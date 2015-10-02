@@ -64,7 +64,7 @@ var InterfaceModule = {
 		LiteGUI.sidepanel = docked;
 
 		//close button
-		var close_button = new LiteGUI.Button("X", function() { InterfaceModule.setSidePanelVisibility(); });
+		var close_button = new LiteGUI.Button( LiteGUI.special_codes.close , function() { InterfaceModule.setSidePanelVisibility(); });
 		close_button.root.style.float = "right";
 		close_button.content.style.width = "20px";
 		docked.header.appendChild( close_button.root );
@@ -232,7 +232,7 @@ var InterfaceModule = {
 		this.lower_tabs_widget = lower_tabs_widget;
 
 		//add close button
-		var button = LiteGUI.createButton("close_lowerpanel","X", function(){
+		var button = LiteGUI.createButton("close_lowerpanel", LiteGUI.special_codes.close , function(){
 			InterfaceModule.setLowerPanelVisibility(false);
 		});
 		button.style.float = "right";
@@ -255,4 +255,4 @@ var InterfaceModule = {
 	},
 };
 
-LiteGUI.registerModule( InterfaceModule );
+CORE.registerModule( InterfaceModule );

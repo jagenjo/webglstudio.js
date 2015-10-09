@@ -4,7 +4,8 @@
 EditorModule.showMaterialNodeInfo = function( node, inspector )
 {
 	var icon = "";
-	if(Material.icon) icon = "<span class='icon' style='width: 20px'><img src='"+ EditorModule.icons_path + Material.icon +"' class='icon'/></span>";
+	if(Material.icon)
+		icon = "<span class='icon' style='width: 20px'><img src='"+ EditorModule.icons_path + Material.icon +"' class='icon'/></span>";
 	var section = inspector.addSection(icon + " Material <span class='buttons'><img class='options_section' src='imgs/mini-cog.png'></span>");
 
 	section.querySelector(".wsectiontitle").addEventListener("contextmenu", (function(e) { 
@@ -66,19 +67,6 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 
 	inspector.addInfo("Class", mat_type );
 
-	/*
-	if(typeof(node.material) == "string")
-	{
-		inspector.addButton("Convert","Instantiate", { callback: function() {
-			var material = node.getMaterial();
-			if(!material) return;
-
-			node.material = material.clone();
-			inspector.refresh();
-		} });
-	}
-	*/
-
 	if(material._server_info)
 		inspector.addButton("Reference","Update Server",{ callback: function(){
 			var material = node.getMaterial();
@@ -87,11 +75,12 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 
 	if(!node._show_mat)
 	{
-		inspector.addButtons(null, ["Edit Material","Expand"], { callback: function(v) { 
-			if(v == "Edit Material")
-				EditorModule.inspectInDialog( material );
-			else
+		inspector.addButtons(null, ["See Properties"], { callback: function(v) { 
+			if(v == "See Properties")
 				node._show_mat = true;
+			else
+				EditorModule.inspectInDialog( material );
+
 			inspector.refresh();
 		}});
 		return;
@@ -99,65 +88,15 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 
 	var name = LS.getObjectClassName(material);
 	var mat_class = material.constructor;
-	var editor = mat_class["@inspector"];
 
 	inspector.addButton(null, "Hide Editor", { callback: function(v) { 
 		node._show_mat = false;
 		inspector.refresh();
 	}});
 
-	//start container in case we want to lock it
-	var editor_container = null;
-	var background_container = null;
-	if(material.fullpath && !material._unlocked)
-	{
-		editor_container = inspector.addContainer(null,{ className: "material_editor_container locked_container" });
-		background_container = inspector.addContainer(null,{ className: "background blur" });
-	}
 
-	if(editor)
-		editor.call( EditorModule, material, inspector );
+	EditorModule.showMaterialProperties( material, inspector, node );
 
-	if(material.fullpath)
-		inspector.addButtons(null,["Save changes","Lock"],function(v){
-			if(v == "Save changes")
-			{
-				//if(background_container)
-				//	background_container.classList.remove("edited");
-				DriveModule.saveResource( material );
-			}
-			else if(v == "Lock")
-			{
-				delete material._unlocked;
-				background_container.classList.add("blur");
-				background_container.classList.remove("edited");
-				blocker.style.display = null;
-			}
-		});
-
-	if(editor_container)
-	{
-		inspector.endContainer(); //background
-		inspector.endContainer(); //locked
-		editor_container.style.position = "relative";
-		var blocker = LiteGUI.createElement("div",null,"<p>Shared Material</p>");
-		blocker.className = "foreground";
-		var unlock_button = LiteGUI.createButton(null,"Unlock Material", function(){
-			material._unlocked = true;
-			background_container.classList.remove("blur");
-			background_container.classList.add("edited");
-			blocker.style.display = "none";
-		});
-		blocker.appendChild( unlock_button );
-		var clone_button = LiteGUI.createButton(null,"Clone", function(){
-			inner_menu_select("Clone");
-		});
-		blocker.appendChild( clone_button );
-
-		editor_container.appendChild( blocker );
-	}
-
-	//inspector.addButtons(null,["Make Global","Copy","Paste"],{});	
 
 	function inner_showActions(e)
 	{
@@ -238,11 +177,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 		}
 		else if( v == "Clone" || v == "Instance" )
 		{
-			var material = node.getMaterial();
-			material = material.clone();
-			delete material["filename"]; //no name
-			delete material["fullpath"]; //no name
-			node.material = material;
+			EditorModule.cloneNodeMaterial( node );
 			inspector.refresh();
 		}
 		else
@@ -251,6 +186,69 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 }
 
 EditorModule.registerNodeEditor( EditorModule.showMaterialNodeInfo );
+
+
+EditorModule.showMaterialProperties = function( material, inspector, node )
+{
+	var mat_class = material.constructor;
+	var editor = mat_class["@inspector"];
+
+	//start container in case we want to lock it
+	var editor_container = inspector.addContainer(null,{ className: "material_editor_container" });
+	var background_container = inspector.addContainer(null,{ className: "background" });
+	var blocker = null;
+
+	if(material.fullpath && !material._unlocked)
+	{
+		editor_container.classList.add("locked_container");
+		background_container.classList.add("blur");
+		background_container.classList.add("edited");
+	}
+
+	if(editor)
+		editor.call( EditorModule, material, inspector );
+
+	if(material.fullpath)
+		inspector.addButtons(null,["Save changes","Lock"],function(v){
+			if(v == "Save changes")
+				DriveModule.saveResource( material );
+			else if(v == "Lock")
+			{
+				delete material._unlocked;
+				inspector.refresh();
+			}
+		});
+
+	inspector.endContainer(); //background
+	inspector.endContainer(); //material_editor_container
+
+	if(material.fullpath) //add locked window
+	{
+		editor_container.style.position = "relative";
+		var blocker = LiteGUI.createElement("div",null,"<p>Shared Material</p>");
+		blocker.className = "foreground";
+		var unlock_button = LiteGUI.createButton(null,"Unlock Material", function(){
+			material._unlocked = true;
+			background_container.classList.remove("blur");
+			blocker.style.display = "none";
+		});
+		blocker.appendChild( unlock_button );
+		var clone_button = LiteGUI.createButton(null,"Clone", function(){
+			EditorModule.cloneNodeMaterial( node );
+			inspector.refresh();
+		});
+		blocker.appendChild( clone_button );
+		editor_container.appendChild( blocker );
+
+		if(material._unlocked)
+		{
+			background_container.classList.remove("blur");
+			background_container.classList.add("edited");
+			blocker.style.display = "none";
+		}
+	}
+}
+
 
 
 Material["@inspector"] = function( material, inspector )

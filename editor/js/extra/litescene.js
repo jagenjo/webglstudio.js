@@ -632,6 +632,8 @@ var Draw = {
 			}\
 		');
 
+		this.shader_phong.uniforms({u_ambient_color:[0.1,0.1,0.1], u_light_color:[0.8,0.8,0.8], u_light_dir: [0,1,0] });
+
 		//create shaders
 		this.shader_depth = new Shader('\
 			precision mediump float;\n\
@@ -6564,6 +6566,24 @@ CompositePattern.prototype.findChildNodeByName = function( name )
 	if(this.name == name)
 		return this;
 
+	var children = this._children;
+
+	if(children)
+		for(var i = 0; i < children.length; ++i)
+		{
+			var node = children[i];
+			if( node.name == name )
+				return node;
+			if(node._children)
+			{
+				var r = node.findChildNodeByName(name);
+				if(r)
+					return r;
+			}
+		}
+	return null;
+
+	/* slow
 	var nodes = this.getDescendants();
 	for(var i = 0; i < nodes.length; i++)
 	{
@@ -6571,6 +6591,7 @@ CompositePattern.prototype.findChildNodeByName = function( name )
 		if( node.name == name )
 			return node;
 	}
+	*/
 }
 
 
@@ -6673,7 +6694,7 @@ LS.Component = Component;
 /** Transform that contains the position (vec3), rotation (quat) and scale (vec3) 
 * @class Transform
 * @constructor
-* @param {String} object to configure from
+* @param {Object} object to configure from
 */
 
 function Transform(o)
@@ -6732,6 +6753,10 @@ Transform.prototype.onRemovedFromNode = function(node)
 		delete node["transform"];
 }
 
+/**
+* Force object to update matrices
+* @method mustUpdate
+*/
 Transform.prototype.mustUpdate = function()
 {
 	this._must_update_matrix = true;
@@ -7706,7 +7731,10 @@ Transform.prototype.globalVectorToLocal = function(vec, dest) {
 	return vec3.transformQuat(dest || vec3.create(), vec, Q );
 }
 
-
+/**
+* Apply a transform to this transform
+* @method applyTransform
+*/
 Transform.prototype.applyTransform = function( transform, center, is_global )
 {
 	//is local
@@ -11373,6 +11401,7 @@ LS.MorphDeformer = MorphDeformer;
 function SkinDeformer(o)
 {
 	this.enabled = true;
+	this.search_bones_in_parent = false;
 	this.skeleton_root_node = null;
 	this.cpu_skinning = false;
 	this.ignore_transform = true;
@@ -11416,7 +11445,8 @@ SkinDeformer.prototype.onRemovedFromNode = function(node)
 
 SkinDeformer.prototype.getBoneNode = function( name )
 {
-	var scene = this._root.scene;
+	var root_node = this._root;
+	var scene = root_node.scene;
 	if(!scene)
 		return null;
 
@@ -11424,9 +11454,13 @@ SkinDeformer.prototype.getBoneNode = function( name )
 
 	if( this.skeleton_root_node )
 	{
-		var root_node = scene.getNode( this.skeleton_root_node );
+		root_node = scene.getNode( this.skeleton_root_node );
 		if(root_node)
 			return root_node.findChildNodeByName( name );
+	}
+	else if(this.search_bones_in_parent)
+	{
+		return root_node.parentNode.findChildNodeByName( name );
 	}
 	else
 		return scene.getNode( name );
@@ -26289,7 +26323,12 @@ SceneNode.prototype.getBoundingBox = function( bbox )
 	var render_instances = this._instances;
 	if(render_instances)
 		for(var i = 0; i < render_instances.length; ++i)
-			BBox.merge( bbox, bbox, render_instances[i].aabb );
+		{
+			if(i == 0)
+				bbox.set( render_instances[i].aabb );
+			else
+				BBox.merge( bbox, bbox, render_instances[i].aabb );
+		}
 	return bbox;
 }
 

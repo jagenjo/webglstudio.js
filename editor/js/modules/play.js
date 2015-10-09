@@ -7,6 +7,7 @@ var PlayModule = {
 	settings_panel: [{name:"play", title:"Play", icon:null }],
 
 	restore_state: true,
+	render_border: true,
 	max_delta_time: 1/15,
 	inplayer: false,
 
@@ -202,7 +203,7 @@ var PlayModule = {
 
 	render: function()
 	{
-		if(!RenderModule.frame_updated || this.inplayer || LS.GlobalScene._state == LS.STOPPED )
+		if(!RenderModule.frame_updated || this.inplayer || LS.GlobalScene._state == LS.STOPPED || !this.render_border)
 			return;
 
 		var ctx = gl;
@@ -222,12 +223,18 @@ var PlayModule = {
 
 	onShowSettingsPanel: function(name,widgets)
 	{
- 		if(name != "play") return;
+ 		if(name != "play")
+			return;
 
-		widgets.addCheckbox("Reset Scene",PlayModule.restore_state, { callback: function(value) { 
+		widgets.addCheckbox("Reset scene after play",PlayModule.restore_state, { callback: function(value) { 
 			PlayModule.restore_state = value;
 		}});
-	},
+
+		widgets.addCheckbox("Show Play window border",PlayModule.render_border, { callback: function(value) { 
+			PlayModule.render_border = value;
+		}});
+
+	}
 };
 
 CORE.registerModule( PlayModule );

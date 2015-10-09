@@ -434,6 +434,15 @@ Session.prototype.deleteAccount = function( password, on_complete )
 	});
 }
 
+Session.prototype.deleteUserAccount = function( username, on_complete )
+{
+	var that = this;
+	return this.request( this.server_url,{action: "user/delete", username: username }, function(resp){
+		if(on_complete)
+			on_complete(resp.status == 1, resp);
+	});
+}
+
 Session.prototype.getUserInfo = function( username, on_complete )
 {
 	var that = this;

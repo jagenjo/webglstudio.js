@@ -181,12 +181,16 @@ var DebugModule = {
 		gl.textAlign = "left";
 		gl.font = "14px Arial";
 
+
 		var mesh_camera = new LS.Camera();
 
 		var old_viewport = gl.getViewport();
 
 		var matrix = mat4.create();
-		mat4.rotateY( matrix, matrix, getTime() * 0.001 );
+		if(this.meshes_axis == "Y")
+			mat4.rotateY( matrix, matrix, getTime() * 0.0005 );
+		else
+			mat4.rotateZ( matrix, matrix, getTime() * 0.0005 );
 
 		for(var i in LS.RM.meshes)
 		{
@@ -194,34 +198,57 @@ var DebugModule = {
 			var w = size;
 			var h = size;
 
-			if(!mesh.indexBuffers["wireframe"])
-				mesh.computeWireframe();
-
-			//move camera to bounding area
-			var bounding = mesh.bounding;
-			var halfsize = BBox.getHalfsize( bounding );
-			var center = BBox.getCenter( bounding );
-			var radius = vec3.length( halfsize );
-			mesh_camera.setPerspective( 45,1,0.1,radius * 4 );
-			mesh_camera.lookAt([ 0, radius * 0.5, radius * 2 ],[0,0,0],[0,1,0]);
-
-			Draw.pushCamera();
-			Draw.setCamera( mesh_camera );
-			Draw.setMatrix( matrix );
-			Draw.translate( -center[0], -center[1], -center[2]);
 			var startx = gl._matrix[6] + (posx) * gl._matrix[0];
-			var starty = gl.canvas.height - gl._matrix[7] + (posy - h - 20) * gl._matrix[4];
-			gl.viewport( startx, starty, w * gl._matrix[0], h * gl._matrix[4] );
-			Draw.renderMesh( mesh, gl.LINES, null, "wireframe" );
-			gl.setViewport( old_viewport );
-			Draw.popCamera();
+			var starty = gl.canvas.height - gl._matrix[7] + (-posy - h) * gl._matrix[4];
+			var sizex = w * gl._matrix[0];
+			var sizey = h * gl._matrix[4];
 
-			var filename = LS.RM.getFilename(i).substr(0,24);
-			var text = filename;
-			gl.globalAlpha = 0.5;
-			gl.strokeRect( posx, posy, w, h );
-			gl.globalAlpha = 1;
-			gl.fillText(text,posx + 5,posy + 15);
+			if(startx <= gl.canvas.width && starty <= gl.canvas.height || 
+				startx + sizex > 0 && starty + sizey > 0 )
+			{
+				//move camera to bounding area
+				var bounding = mesh.bounding;
+				var halfsize = BBox.getHalfsize( bounding );
+				var center = BBox.getCenter( bounding );
+				var radius = vec3.length( halfsize );
+				mesh_camera.setPerspective( 45,1,0.1,radius * 4 );
+
+				if(this.meshes_axis == "Y")
+					mesh_camera.lookAt([ 0, radius * 0.5, radius * 2 ],[0,0,0],[0,1,0]);
+				else
+					mesh_camera.lookAt([ radius * 0.5, radius * 2, 0 ],[0,0,0],[0,0,1]);
+
+				Draw.pushCamera();
+				Draw.setCamera( mesh_camera );
+				Draw.setMatrix( matrix );
+				Draw.translate( -center[0], -center[1], -center[2]);
+
+				gl.viewport( startx, starty, sizex, sizey );
+
+				gl.disable( gl.BLEND );
+				gl.enable( gl.DEPTH_TEST );
+				Draw.renderMesh( mesh, gl.TRIANGLES, Draw.shader_phong );
+				gl.enable( gl.BLEND );
+
+				if(1) //wireframe
+				{
+					if(!mesh.indexBuffers["wireframe"])
+						mesh.computeWireframe();
+					Draw.renderMesh( mesh, gl.LINES, null, "wireframe" );
+				}
+
+				gl.disable( gl.DEPTH_TEST );
+
+				gl.setViewport( old_viewport );
+				Draw.popCamera();
+
+				var filename = LS.RM.getFilename(i).substr(0,24);
+				var text = filename;
+				gl.globalAlpha = 0.5;
+				gl.strokeRect( posx, posy, w, h );
+				gl.globalAlpha = 1;
+				gl.fillText(text,posx + 5,posy + 15);
+			}
 
 			posx += w + margin;
 			if(posx > gl.canvas.width - size + margin)

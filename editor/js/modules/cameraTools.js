@@ -116,30 +116,34 @@ var cameraTool = {
 		for(var i = 0, l = cameras.length; i < l; ++i)
 		{
 			var camera = cameras[i];
+			if( !camera._editor )
+				continue;
+
+
 			if(this.smooth_camera)
 			{
 				var factor = Math.clamp( this.settings.smooth_camera_factor, 0.1, 1); //clamp otherwise bad things would happend
-				if(!camera.editor)
+				if(!camera._editor)
 					continue;
 
-				if(vec3.distance(camera.eye, camera.editor.destination_eye) > 0.001)
+				if(vec3.distance(camera.eye, camera._editor.destination_eye) > 0.001)
 				{
-					vec3.lerp( camera.eye, camera.eye, camera.editor.destination_eye, factor );
+					vec3.lerp( camera.eye, camera.eye, camera._editor.destination_eye, factor );
 					camera._must_update_view_matrix = true; //force must_update
 					update_frame = true;
 				}
 
-				if(vec3.distance(camera.center, camera.editor.destination_center) > 0.001)
+				if(vec3.distance(camera.center, camera._editor.destination_center) > 0.001)
 				{
-					vec3.lerp( camera.center, camera.center, camera.editor.destination_center, factor );
+					vec3.lerp( camera.center, camera.center, camera._editor.destination_center, factor );
 					camera._must_update_view_matrix = true; //force must_update
 					update_frame = true;
 				}
 			}
 			else
 			{
-				camera.editor.destination_eye.set( camera.eye );
-				camera.editor.destination_center.set( camera.center );
+				camera._editor.destination_eye.set( camera.eye );
+				camera._editor.destination_center.set( camera.center );
 			}
 		}
 
@@ -215,14 +219,15 @@ var cameraTool = {
 		var center = camera.getCenter();
 
 		var right = camera.getLocalVector([1,0,0]);
-		var dist = vec3.sub( vec3.create(), this.smooth_camera ? camera.editor.destination_eye : camera.getEye(), center );
+		var dist = vec3.sub( vec3.create(), this.smooth_camera && camera._editor ? camera._editor.destination_eye : camera.getEye(), center );
 
 		vec3.rotateY( dist, dist, yaw );
 		var R = quat.create();
 		quat.setAxisAngle( R, right, pitch );
 
 		vec3.transformQuat( dist, dist, R );
-		var new_eye = vec3.add( camera.editor.destination_eye, dist, center );
+
+		var new_eye = vec3.add( camera._editor ? camera._editor.destination_eye : camera._eye, dist, center );
 
 		if(!this.smooth_camera)
 			camera.eye = new_eye;
@@ -232,8 +237,8 @@ var cameraTool = {
 	{
 		camera = camera || ToolUtils.getCamera();
 
-		//var eye = this.smooth_camera ? camera.editor.destination_eye : camera.getEye();
-		//var center = this.smooth_camera ? camera.editor.destination_center : camera.getCenter();
+		//var eye = this.smooth_camera ? camera._editor.destination_eye : camera.getEye();
+		//var center = this.smooth_camera ? camera._editor.destination_center : camera.getCenter();
 
 		var eye = camera.getEye();
 		var center = camera.getCenter();
@@ -241,8 +246,17 @@ var cameraTool = {
 		if(in_local_space)
 			delta = camera.getLocalVector(delta);
 
-		var new_eye = vec3.add( camera.editor.destination_eye, delta, eye );
-		var new_center = vec3.add( camera.editor.destination_center, delta, center );
+		var new_eye = camera._eye;
+		var new_center = camera._center;
+
+		if(camera._editor)
+		{
+			new_eye = camera._editor.destination_eye;
+			new_center = camera._editor.destination_center;
+		}
+
+		vec3.add( new_eye, delta, eye );
+		vec3.add( new_center, delta, center );
 
 		if(!this.smooth_camera)
 		{
@@ -257,10 +271,10 @@ var cameraTool = {
 		camera.rotate( -yaw, [0,1,0] );
 		camera.rotate( pitch, [1,0,0], true );
 
-		if(camera.editor)
+		if(camera._editor)
 		{
-			camera.editor.destination_eye.set( camera.eye );
-			camera.editor.destination_center.set( camera.center );
+			camera._editor.destination_eye.set( camera.eye );
+			camera._editor.destination_center.set( camera.center );
 		}
 	},
 
@@ -275,7 +289,11 @@ var cameraTool = {
 		if(camera.type == LS.Camera.ORTHOGRAPHIC)
 			camera.frustum_size = vec3.length(dist);
 
-		var new_eye = vec3.add( camera.editor.destination_eye, dist, center );
+		var new_eye = camera._eye;
+
+		if(camera._editor)
+			new_eye = camera._editor.destination_eye;
+		vec3.add( new_eye, dist, center );
 
 		if(!this.smooth_camera)
 			camera.eye = new_eye;
@@ -313,10 +331,10 @@ var cameraTool = {
 	setFocusPoint: function( point, distance ) {
 		var camera = this.last_camera || ToolUtils.getCamera();
 
-		if(!this.smooth_camera)
+		if(!this.smooth_camera || !camera._editor)
 			camera.center = point;
 		else
-			camera.editor.destination_center.set( point );
+			camera._editor.destination_center.set( point );
 
 		if(distance)
 			camera.setDistanceToCenter( distance, true );

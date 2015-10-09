@@ -153,8 +153,22 @@ var RenderModule = {
 	setViewportLayout: function(mode)
 	{
 		var old_cameras = this.cameras;
+
+		//in case we changed something in the cameras that we want to recover
+		for(var i in old_cameras)
+		{
+			var camera = old_cameras[i];
+			if(camera._prev_viewport)
+			{
+				camera._viewport.set( camera._prev_viewport );
+				delete camera._prev_viewport;
+			}
+		}
+
+		//clear cameras
 		this.cameras = [];
 
+		//create new ones
 		if(mode == 2)
 		{
 			this.camera = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0,0,0.5,1]});
@@ -176,7 +190,7 @@ var RenderModule = {
 			this.camera4 = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0.5,0.5,0.5,0.5]});
 			this.cameras.push( this.camera, this.camera2, this.camera3 , this.camera4 );
 		}
-		else if(mode == 16)
+		else if(mode == 16) //benchmark
 		{
 			for(var i = 0; i < 4; i++)
 				for(var j = 0; j < 4; j++)
@@ -189,28 +203,64 @@ var RenderModule = {
 		}
 
 		//add to the cameras useful editor info
-		for(var i in this.cameras)
+		for(var i = 0; i < this.cameras.length; i++)
 		{
 			var camera = this.cameras[i];
-			if(camera.editor)
-				continue;
-			camera.uid = LS.generateUId("CAM");
-			camera.editor = { 
-				name: "perspective",
-				corner: "bottom-right",
-				destination_eye: vec3.clone( camera.eye ),
-				destination_center: vec3.clone( camera.center ),
-				render_options: null,
-				flags: {},
+			//copy from first camera
+			if(old_cameras && old_cameras.length)
+			{
+				camera._eye.set( old_cameras[0]._eye );
+				camera._center.set( old_cameras[0]._center );
+				camera._up.set( old_cameras[0]._up );
 			}
-
-			//add gizmos
-			camera.gizmos = [ new CameraGizmo( camera ) ];
+			this.processEditorCamera( camera, i );
 		}
 
 		this.selected_camera = this.cameras[0];
 
 		this.requestFrame();
+	},
+
+	//it prepares a camera to be used in the editor
+	processEditorCamera: function( camera, index )
+	{
+		if( camera._root ) //is a scene camera
+			camera._prev_viewport = new Float32Array( camera._viewport );
+		else //is an editor camera
+			camera.uid = LS.generateUId("CAM");
+
+		camera._editor = { 
+			index: index,
+			name: "perspective",
+			corner: "bottom-right",
+			destination_eye: vec3.clone( camera.eye ),
+			destination_center: vec3.clone( camera.center ),
+			render_options: null,
+			flags: {},
+		};
+
+		//add gizmos
+		camera._gizmos = [ new CameraGizmo( camera ) ];
+	},
+
+	setViewportCamera: function( index, new_camera )
+	{
+		var old = this.cameras[ index ];
+		if(!old)
+		{
+			console.warn("Unknown camera index");
+			return;
+		}
+
+		this.cameras[ index ] = new_camera;
+		this.processEditorCamera( new_camera, index );
+		new_camera._viewport.set( old._viewport );
+
+		if( old && old._prev_viewport )
+		{
+			old._viewport.set( old._prev_viewport );
+			delete old._prev_viewport;
+		}
 	},
 	
 	relaunch: function() { 

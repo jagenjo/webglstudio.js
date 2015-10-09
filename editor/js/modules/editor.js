@@ -93,6 +93,9 @@ var EditorModule = {
 		this.commands["focus"] = function() {
 			EditorModule.focusCameraInSelection();
 		};
+		this.commands["frame"] = function() {
+			EditorModule.focusCameraInAll();
+		};
 	},
 
 	createMenuEntries: function()
@@ -941,6 +944,17 @@ var EditorModule = {
 		return new_node;
 	},
 
+	cloneNodeMaterial: function( node, skip_undo )
+	{
+		var material = node.getMaterial();
+		material = material.clone();
+		delete material["filename"]; //no name
+		delete material["fullpath"]; //no name
+		node.material = material;
+		if(!skip_undo)
+			UndoModule.saveNodeCreatedUndo( node );
+	},
+
 	//interaction
 	removeSelectedNode: function()
 	{
@@ -1314,20 +1328,40 @@ var EditorModule = {
 		RenderModule.requestFrame();
 	},
 
-	focusCameraInSelection: function()
+	focusCameraInBoundingBox: function( bbox )
 	{
-		var node = SelectionModule.getSelectedNode();
-		if(!node)
-			return;
-		var bbox = node.getBoundingBox();
 		var radius = BBox.getRadius( bbox );		
 		if(radius == 0)
 			return;
 
 		var center = BBox.getCenter( bbox );
 		cameraTool.setFocusPoint( center, radius * 2 );
-
 		RenderModule.requestFrame();
+	},
+
+	focusCameraInSelection: function()
+	{
+		var node = SelectionModule.getSelectedNode();
+		if(!node)
+			return;
+		var bbox = node.getBoundingBox();
+		this.focusCameraInBoundingBox( bbox );
+	},
+
+	focusCameraInAll: function()
+	{
+		var bbox = BBox.create();
+
+		var render_instances = LS.GlobalScene._instances;
+		if(render_instances)
+			for(var i = 0; i < render_instances.length; ++i)
+			{
+				if(i == 0)
+					bbox.set( render_instances[i].aabb );
+				else
+					BBox.merge( bbox, bbox, render_instances[i].aabb );
+			}
+		this.focusCameraInBoundingBox( bbox );
 	},
 
 	/* send keydown to current tab */
@@ -1363,7 +1397,10 @@ var EditorModule = {
 					ConsoleModule.toggle();
 				break;
 			case 70: //F
-				EditorModule.centerCameraInSelection();
+				if(e.shiftKey)
+					EditorModule.focusCameraInAll();
+				else
+					EditorModule.focusCameraInSelection();
 				break;
 			case 9: //tab
 				InterfaceModule.toggleInspectorTab();

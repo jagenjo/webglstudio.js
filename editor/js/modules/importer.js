@@ -6,7 +6,7 @@
 var ImporterModule  = {
 	name: "importer",
 
-	settings_panel: [ {name:"importer", title:"Importer", icon:null } ],
+	//settings_panel: [ {name:"importer", title:"Importer", icon:null } ],
 
 	skip_import_dialog: false,
 

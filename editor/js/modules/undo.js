@@ -4,8 +4,6 @@ var UndoModule = {
 	min_time_between_undos: 500,
 	last_undo_time: 0, //to avoid doing too many undo steps simultaneously
 
-	settings_panel: [{name:"undo", title:"Undo", icon:null }],
-
 	history: [],
 
 	init: function()
@@ -30,6 +28,15 @@ var UndoModule = {
 				e.preventDefault();
 			}
 		});
+	},
+
+	onShowSettingsPanel: function(name,widgets)
+	{
+		if(name != "editor")
+			return;
+
+		widgets.addTitle( "Undo" );
+		widgets.addNumber( "History steps", UndoModule.max_history, { step: 1, min: 0, max: 500, callback: function(v){ UndoModule.max_history = v; }});
 	},
 
 	addUndoStep: function(o)

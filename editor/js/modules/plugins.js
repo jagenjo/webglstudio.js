@@ -2,81 +2,147 @@
 
 var PluginsModule  = {
 	settings_panel: [ {name:"plugins", title:"Plugins", icon:null } ],
-	loaded_plugins: [],
+	plugins: [],
 
 	init: function()
 	{
+		if(	CORE.user_preferences.plugins )
+		{
+			var plugins = CORE.user_preferences.plugins;
+			for(var i in plugins)
+			{
+				this.loadPlugin( plugins[i] );
+			}
+		}
+
 	},
 
 	onShowSettingsPanel: function(name,widgets)
 	{
- 		if(name != "plugins") return;
+ 		if(name != "plugins")
+			return;
 
-		widgets.addList("Installed", this.loaded_plugins, { height: 400 } );
-		widgets.addStringButton("Plugin URL","js/modules/", { callback_button: function(value) { 
-			trace("Loading: " + value);
-			PluginsModule.loadPlugin(value);
+		var selected = null;
+		var list = widgets.addList("Installed", this.plugins, { height: 380, callback: function(v){
+			selected = v;
+		}});
+
+		widgets.addButtons("", ["Remove","Refresh"], function(v){
+			if(!selected)
+				return;
+
+			if( v == "Remove" )
+			{
+				PluginsModule.removePlugin( selected );
+				SettingsModule.updateDialogContent();
+			}
+			else if( v == "Refresh" )
+			{
+				var plugin = PluginsModule.removePlugin( selected );
+				if(!plugin || !plugin.url)
+					return;
+				PluginsModule.loadPlugin( plugin.url, function(){ SettingsModule.updateDialogContent(); } );
+				SettingsModule.updateDialogContent();
+			}
+		});
+
+		widgets.addStringButton("Add Plugin URL","js/plugins/", { button:"+", callback_button: function(value) { 
+			console.log("Loading: " + value);
+			PluginsModule.loadPlugin( value, function(){
+				SettingsModule.updateDialogContent();
+				SettingsModule.changeSection("plugins");
+			}, function(){
+				LiteGUI.alert("Plugin cannot be loaded");
+			});
 		}});
 	},
 
-	loadPlugin: function(url, on_complete )
+	loadPlugin: function( url, on_complete, on_error )
 	{
-		var last_plugin = null;
+		var last_module = null;
 		if(CORE.modules.length)
-			last_plugin = CORE.modules[ CORE.modules.length - 1];
+			last_module = CORE.modules[ CORE.modules.length - 1];
 
-		//TODO: migrate to LiteGUI
-		$.getScript(url, function(){
-			trace("Running...");
-			inner();
-		}).fail( function(response) {
-			if(response.status == 200)
-			{
-				try
-				{
-					eval(response.responseText);
-					inner();
-				}
-				catch (err)
-				{
-					trace("Error parsing code");
-					LiteGUI.alert("Problem, plugin has errors. Check log for more info.");
-					trace(err);
-				}
-			}
-			else if(response.status == 404)
-			{
-				trace("Error loading plugin");
-				LiteGUI.alert("Problem, plugin not found.");
-			}
-			else
-			{
-				trace("Error loading plugin");
-				LiteGUI.alert("Problem, plugin cannot be loaded. [Error: " + response.status + "]");
-			}
+		LiteGUI.requireScript( url, inner_loaded, on_error );
 
-			if(on_complete) on_complete(false);
-		});
-
-		function inner()
+		function inner_loaded()
 		{
-			var loaded_plugin = CORE.modules[ CORE.modules.length - 1 ];
-			if(loaded_plugin != last_plugin)
+			var module = CORE.modules[ CORE.modules.length - 1 ];
+			if( last_module != module )
 			{
-				PluginsModule.loaded_plugins.push( { name: loaded_plugin.name || url , url: url });
-				trace("Plugin loaded OK");
-				AppSettings.updateDialogContent();
-				AppSettings.changeSection("plugins");
-				if(on_complete) on_complete(true);
+				//somethign loaded
+				console.log( "Plugin loaded: " + module.name );
+				PluginsModule.registerPlugin( module, url );
+				if(on_complete)
+					on_complete(true);
 			}
 			else
 			{
-				trace("Error loading plugin");
-				LiteGUI.alert("Plugin File loaded but it doesnt looks like a plugin");
-				if(on_complete) on_complete(false);
+				console.log("Plugin without module?");
+				if(on_complete)
+					on_complete(false);
 			}
 		}
 	},
+
+	registerPlugin: function( plugin, url )
+	{
+		plugin.url = url;
+		this.plugins.push( plugin );
+		return plugin;
+	},
+
+	removePlugin: function( name_or_plugin )
+	{
+		var index = -1;
+		var plugin = null;
+		if(name_or_plugin.constructor === String)
+		{
+			for(var i = 0; i < this.plugins.length; ++i)
+			{
+				var item = this.plugins[i];
+				if(item.name != name_or_plugin && item.url != name_or_plugin)
+					continue;
+				index = i;
+				plugin = item;
+				break;
+			}
+		}
+		else
+		{
+			plugin = name_or_plugin;
+			index = this.plugins.indexOf( plugin );
+		}
+
+		if(!plugin)
+		{
+			console.warn("Not found: ", name_or_plugin );
+			return;
+		}
+
+		this.plugins.splice( index,1 );
+		CORE.removeModule( plugin );
+		return plugin;
+	},
+
+	onUnload: function()
+	{
+		var data = [];
+		for(var i in this.plugins)
+		{
+			var plugin = this.plugins[i];
+			if(!plugin.url)
+				console.warn("Plugin without url, cannot be saved");
+			else
+				data.push( plugin.url );
+		}
+		CORE.user_preferences.plugins = data;
+	},
+
+	reset: function()
+	{
+		this.plugins = [];
+	}
 }
 
 CORE.registerModule( PluginsModule );

@@ -122,12 +122,12 @@ var EditorView = {
 		for(var i = 0; i < RenderModule.cameras.length; i++)
 		{
 			var camera = RenderModule.cameras[i];
-			if(!camera.gizmos || !camera.gizmos.length )
+			if(!camera._gizmos || !camera._gizmos.length )
 				continue;
 
-			for(var j = 0; j < camera.gizmos.length; j++)
+			for(var j = 0; j < camera._gizmos.length; j++)
 			{
-				var gizmo = camera.gizmos[j];
+				var gizmo = camera._gizmos[j];
 				var r = null;
 				if(gizmo[name])
 					r = gizmo[name].apply(gizmo, params);

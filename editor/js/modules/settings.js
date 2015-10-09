@@ -3,27 +3,31 @@
 	It allow to configure every one of them using a common interface and to use a localStorage
 	to save the previous configuration.
 */
+var SettingsModule = {
 
-var AppSettings = {
+	sections: {},
+	current_section: "editor",
+
 	init: function()
 	{
-		LiteGUI.menubar.separator("Edit",20);
-		LiteGUI.menubar.add("Edit/Preferences", { order:20, callback: function() { AppSettings.showSettings(); }});
+		LiteGUI.menubar.add("Edit/Preferences", { order:20, callback: function() { SettingsModule.showSettings(); }});
 	},
 
 	showSettings: function()
 	{
-		$("#work-area").children().hide();
+		if(SettingsModule.dialog)
+		{
+			SettingsModule.dialog.highlight();
+			return;
+		}
 
-		var dialog = new LiteGUI.Dialog("dialog_settings", {title:"Settings", width: 800, height: 500, close: true, minimize: false, scroll: false, draggable: false });
+		var dialog = new LiteGUI.Dialog("dialog_settings", {title:"Settings", width: 800, height: 500, close: true, minimize: true, scroll: false, draggable: true });
 		this.dialog = dialog;
 
 		dialog.show();
-		$(dialog).bind("closed",function() {
-			$("#work-area").children().show();
-			AppSettings.dialog = null;
-			RenderModule.requestFrame();
-		});
+		dialog.on_close = function() {
+			SettingsModule.dialog = null;
+		}
 
 		this.updateDialogContent();
 	},
@@ -40,8 +44,9 @@ var AppSettings = {
 		//content
 		var split = new LiteGUI.Split("settings-content",[30,70]);
 		dialog.content.appendChild(split.root);
-		dialog.content.style.height = "100%";
+		dialog.content.style.height = "calc( 100% - 20px )";
 		split.root.style.height = "100%";
+		split.sections[1].style.overflow = "auto";
 		split.sections[1].id = "settings-widgets-area";
 		split.sections[1].innerHTML = "<div class='content'></div>";
 
@@ -60,28 +65,32 @@ var AppSettings = {
 				if (already_created[ settings.name ]) //avoid repeated
 					continue;
 				sections.push( settings );
+				this.sections[ settings.name ] = settings;
 				already_created[ settings.name ] = true;
 			}
 		}
 
 		var list = new LiteGUI.List("settings-list", sections );
 		list.root.style.fontSize = "20px";
-		split.sections[0].appendChild(list.root);
-		split.sections[1].style.fontSize = "18px";
+		split.sections[0].appendChild( list.root );
+		split.sections[1].style.fontSize = "16px";
 
 		list.callback = function(v) {
-			AppSettings.changeSection(v.name );
+			SettingsModule.changeSection( v.name );
 		};
+
+		list.setSelectedItem( this.sections[ this.current_section ] );
 	},
 
-	changeSection: function(name)
+	changeSection: function( name )
 	{
 		if(!this.dialog)
 			return;
 
-		var root = $("#settings-widgets-area .content");
-		root.empty();
-		root.append("<h2>"+name+"</h2>");
+		this.current_section = name;
+
+		var root = this.dialog.root.querySelector("#settings-widgets-area .content");
+		root.innerHTML = "";
 
 		var widgets = new LiteGUI.Inspector("settings-widgets",{ name_width:"40%" });
 		widgets.onchange = function()
@@ -89,7 +98,7 @@ var AppSettings = {
 			RenderModule.requestFrame();
 		}
 
-		root.append(widgets.root);
+		root.appendChild( widgets.root );
 
 		for(var i in CORE.modules)
 		{
@@ -101,4 +110,4 @@ var AppSettings = {
 }
 
 
-CORE.registerModule( AppSettings );
+CORE.registerModule( SettingsModule );

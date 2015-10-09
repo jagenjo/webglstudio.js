@@ -19,6 +19,7 @@ var selectTool = {
 
 	mousedown: function(e) {
 		this.click_pos = [e.canvasx,e.canvasy];
+		this._got_mousedown = true;
 
 		/* if done here then we cannot use the right mouse for camera panning
 		if(e.button == 2)
@@ -54,6 +55,11 @@ var selectTool = {
 
 		e.preventDefault();
 		e.stopPropagation();
+
+		if(!this._got_mousedown)
+			return; //somebody else captured the mousedown
+		
+		this._got_mousedown = false;
 
 		var now = new Date().getTime();
 		var dist = Math.sqrt( (e.canvasx - this.click_pos[0])<<2 + (e.canvasy - this.click_pos[1])<<2 );

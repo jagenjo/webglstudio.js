@@ -10,7 +10,7 @@ var DriveModule = {
 
 	registered_drive_bridges: {},
 
-	tree: { id:"Files", skipdrag:true, children:[ {id:"Memory", skipdrag:true, className:"memory", children:[], callback: function() { DriveModule.showMemoryResources(); return true; } } ]},
+	tree: { id:"Files", skipdrag:true, visible: false, children:[ {id:"Memory", skipdrag:true, className:"memory", children:[], callback: function() { DriveModule.showMemoryResources(); return true; } } ]},
 
 	server_resources: {}, //indexed by filename (includes all resources on the server) 
 	server_resources_by_id: {}, //indexed by id in DB
@@ -261,7 +261,7 @@ var DriveModule = {
 	{
 		this.registered_drive_bridges[ bridge.name ] = bridge;
 		bridge.tree_root = { id: bridge.name , skipdrag:true, className: bridge.className, children:[], bridge: bridge };
-		this.tree.children.unshift( bridge.tree_root );
+		this.tree.children.push( bridge.tree_root );
 	},
 
 	getDriveBridge: function(name)
@@ -470,6 +470,8 @@ var DriveModule = {
 		if(resources_container)
 			for(var i in resources_container)
 			{
+				if(i[0] == ":") //local resource
+					continue;
 				var resource = resources_container[i];
 				if(!resource.name)
 					resource.name = i;

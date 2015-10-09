@@ -130,13 +130,33 @@ CameraGizmo.prototype.mousedown = function(e)
 
 	if(e.button == 2)
 	{
-		var menu = new LiteGUI.ContextualMenu(["Camera Info","Perspective","Orthographic"], {event: e, title: "Cameras", callback: (function(v) { 
+		var options = ["Camera Info","Perspective","Orthographic",null,"Editor Cam"];
+
+		var scene_cameras = LS.GlobalScene._cameras;
+		for(var i = 0; i < scene_cameras.length; i++)
+		{
+			var scene_camera = scene_cameras[i];
+			options.push( { title: "Cam " + scene_camera._root.name, camera: scene_camera } );
+		}
+
+
+		var menu = new LiteGUI.ContextualMenu( options, {event: e, title: "Cameras", callback: (function(v) { 
 			var camera = this.camera;
 			switch( v )
 			{
-				case "Camera Info": EditorModule.inspectObject(camera); break;
+				case "Camera Info": EditorModule.inspectObject( camera ); break;
 				case "Perspective": camera.type = LS.Camera.PERSPECTIVE; break;
 				case "Orthographic": camera.type = LS.Camera.ORTHOGRAPHIC; break;
+				case "Editor Cam": 
+					var cam = new LS.Camera();
+					cam._viewport.set( this.camera._viewport );
+					RenderModule.setViewportCamera( this.camera._editor.index, cam );
+					this.camera = cam;
+					break;
+				default:
+					RenderModule.setViewportCamera( this.camera._editor.index, v.camera );
+					this.camera = v.camera;
+					break;
 			}
 			LS.GlobalScene.refresh();
 		}).bind(this) });

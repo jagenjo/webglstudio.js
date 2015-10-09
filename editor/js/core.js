@@ -1,7 +1,7 @@
 var CORE = {
 
 	config: null, //internal configuration
-	user_preferences: {},
+	user_preferences: {}, //stuff that the user can change
 
 	//registered modules
 	modules: [],
@@ -33,7 +33,7 @@ var CORE = {
 		for(var i in config.modules)
 			CORE.log( "<span id='msg-module-"+ (num++) + "' class='tinybox'></span> <span class='name'>" + config.modules[i] + "</span>" );
 
-		LiteGUI.requireScript( config.modules, onReady, onProgress, onError );
+		LiteGUI.requireScript( config.modules, onReady, onError, onProgress );
 
 		//one module loaded
 		function onProgress( name, num )
@@ -68,6 +68,20 @@ var CORE = {
 		//launch LiteGUI
 		LiteGUI.init(); 
 
+		//load user settings
+		var data = localStorage.getItem("wgl_user_preferences" );
+		if( data )
+		{
+			try
+			{
+				this.user_preferences = JSON.parse( data );
+			}
+			catch (err)
+			{
+			}
+		}
+		
+
 		//Init all modules
 		this.initModules();
 
@@ -76,6 +90,7 @@ var CORE = {
 
 		//config folders
 		LS.ResourcesManager.setPath( CORE.config.resources );
+
 
 		//If you launch with a loading url
 		/* UNSAFE
@@ -160,7 +175,7 @@ var CORE = {
 		this._modules_initialized = true;
 	},
 
-	registerModule: function(module)
+	registerModule: function( module )
 	{
 		this.modules.push(module);
 
@@ -175,11 +190,37 @@ var CORE = {
 		LiteGUI.trigger( CORE.root, "module_registered", module );
 	},
 
+	//used mostly to reload plugins
+	removeModule: function( module )
+	{
+		var index = this.modules.indexOf( module );
+		if(index == -1)
+			return;
+		if(module.deinit)
+			module.deinit();
+		this.modules.splice(index,1);
+		LiteGUI.trigger( CORE.root, "module_removed", module );
+	},
+
+	isModule: function( module )
+	{
+		var index = this.modules.indexOf( module );
+		if(index == -1)
+			return false;
+		return true;
+	},
+
 	onUnload: function()
 	{
 		for(var i in this.modules)
 			if (this.modules[i].onUnload)
 				this.modules[i].onUnload();
+
+		if(this.user_preferences)
+		{
+			var data = JSON.stringify( this.user_preferences );
+			localStorage.setItem("wgl_user_preferences", data );
+		}
 	},
 
 	//show in launching console ******************

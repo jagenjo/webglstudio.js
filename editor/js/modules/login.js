@@ -14,7 +14,7 @@ var LoginModule = {
 		loginarea.style.right = 0;
 		this.server_path = CORE.config.server;
 		this.loginarea = loginarea;
-		$("#mainmenubar").append(loginarea);
+		document.querySelector("#mainmenubar").appendChild( loginarea );
 
 		LFS.setup( this.server_path, function(v){
 			if(!v)
@@ -73,15 +73,35 @@ var LoginModule = {
 
 	showLoginDialog: function()
 	{
-		var dialog = new LiteGUI.Dialog("dialog_login", {title:"Login", close: true, width: 300, scroll: false, draggable: true});
-		dialog.show('fade');
+		if(this.login_dialog)
+		{
+			this.login_dialog.highlight();
+		}
+		else
+		{
+			this.login_dialog = new LiteGUI.Dialog("dialog_login", {title:"Login", close: true, width: 300, scroll: false, draggable: true});
+			this.login_dialog.on_close = function()
+			{
+				LoginModule.login_dialog = null;
+			}
+			this.login_dialog.show('fade');
+			this.login_dialog.widgets = new LiteGUI.Inspector();
+		}
 
-		var widgets = new LiteGUI.Inspector();
+		var dialog = this.login_dialog;
+		var widgets = dialog.widgets;
+		widgets.clear();
+
 		widgets.addString("Username", "", {});
 		widgets.addString("Password", "", { password:true });
-		widgets.addButton(null,"Login", { callback: inner_login } );
-		widgets.addButton(null,"Login as Guest", { callback: inner_login_guest } );
-		var info = widgets.addInfo(null,"Enter your account");
+		widgets.addButtons(null, ["Login","Guest"], { callback: function(v){ 
+			if(v == "Login")
+				inner_login();
+			else
+				inner_login_guest();
+		}});
+		widgets.addButton(null,"Create Account", { callback: inner_create_account } );
+		var info = widgets.addInfo( null, "" );
 
 		dialog.content.appendChild(widgets.root);
 
@@ -97,6 +117,29 @@ var LoginModule = {
 		{
 			LoginModule.login("guest","guest", inner_result );
 			info.setValue("Waiting server...");
+		}
+
+		function inner_create_account()
+		{
+			widgets.clear();
+			widgets.addInfo( null, "Fill the profile information" );
+			var username_widget = widgets.addString("Username", "");
+			var email_widget = widgets.addString("Email", "");
+			var password_widget = widgets.addString("Password", "", { password:true });
+			widgets.addButton(null,"Create Account", { callback: function()	{
+				LFS.createAccount( username_widget.getValue(), password_widget.getValue(), email_widget.getValue(), function(v, resp){
+					if(v)
+					{
+						create_info.setValue("Account created!");
+						LoginModule.login( username_widget.getValue(), password_widget.getValue() );
+					}
+					else if(resp)
+						create_info.setValue("Problem: " + resp.msg);
+				}, function(v){
+					create_info.setValue("Problem: " + v);
+				});
+			}});
+			var create_info = widgets.addInfo( null, "" );
 		}
 
 		function inner_result(user)
@@ -152,6 +195,11 @@ var LoginModule = {
 			if(callback) 
 				callback();
 		}
+	},
+
+	createAccount: function()
+	{
+
 	}
 };
 

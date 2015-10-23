@@ -18,7 +18,7 @@ function SceneTreeWidget( id )
 
 	var root_uid = LS.GlobalScene.root.uid;
 
-	this.tree = new LiteGUI.Tree(null, { id: "uid_" + root_uid.replace(/\W/g, ''), uid: root_uid, content:"root", precontent: "<span class='nodecontrols'></span>" }, { allow_rename: false, allow_multiselection: true } );
+	this.tree = new LiteGUI.Tree(null, { id: "uid_" + root_uid.replace(/\W/g, ''), uid: root_uid, content:"root", precontent: "<span class='nodecontrols'></span>" }, { allow_rename: false, allow_drag: true, allow_multiselection: true } );
 	this.content = this.tree;
 	this.root.appendChild( this.tree.root );
 	this.tree.onContextMenu = function(e){
@@ -157,24 +157,23 @@ function SceneTreeWidget( id )
 		node.setName( data.new_name );
 		item.parentNode.data.node_name = data.new_name;
 	}
+}
 
-	/*
-	$(node).bind(":resource_loaded", function() {
-
-		$(element).removeClass("loading");
-	});
-
-	$(node).bind(":id_changed", function() {
-		$(element).html(node.id);
-		$(element).addClass("scene_node_" + node.id.hashCode());
-		element.data = node.id;
-	});
-	*/
+SceneTreeWidget.createDialog = function()
+{
+	var dialog = new LiteGUI.Dialog( null, { title:"Select Node", fullcontent: true, closable: true, draggable: true, minimize: true, resizable: true, parent: parent, width: 500, height: 500 });
+	var widget = new SceneTreeWidget();
+	dialog.add( widget );
+	dialog.on_close = function()
+	{
+		widget.unbindEvents();
+	}
+	return dialog;
 }
 
 SceneTreeWidget.prototype.destroy = function()
 {
-	LEvent.unbindAll( LS.GlobalScene, this );
+	this.unbindEvents();
 	if(this.root.parentNode)
 		this.root.parentNode.removeChild( this.root );
 }
@@ -243,7 +242,11 @@ SceneTreeWidget.prototype.bindEvents = function()
 		var unique_id = "uid_" + node.uid.replace(/\W/g, '');
 		this.tree.updateItem( unique_id, {id: unique_id, uid: node.uid, node_name: node._name, content: node.name });
 	},this);
+}
 
+SceneTreeWidget.prototype.unbindEvents = function()
+{
+	LEvent.unbindAll( LS.GlobalScene, this );
 }
 
 SceneTreeWidget.prototype.clear = function()
@@ -277,12 +280,16 @@ SceneTreeWidget.prototype.addNode = function(node)
 	var is_selected = SelectionModule.isSelected(node);
 
 	var element = this.tree.insertItem({
-		id: node_unique_id,
-		uid: node.uid,
-		node_name: node._name,
-		content: node.name,
-		precontent: "<span class='nodecontrols'><span class='togglevisible "+(node.flags.visible ? "on":"")+"'></span></span>",
-		allow_rename: (parent_id != null) }, parent_id, undefined, {selected: is_selected} );
+			id: node_unique_id,
+			uid: node.uid,
+			node_name: node._name,
+			content: node.name,
+			precontent: "<span class='nodecontrols'><span class='togglevisible "+(node.flags.visible ? "on":"")+"'></span></span>",
+			allow_rename: (parent_id != null),
+			onDragData: function(){ 
+				return { node_name: node._name, node_id: node._uid }
+			}
+		}, parent_id, undefined, {selected: is_selected} );
 	var that = this;
 
 	//controls

@@ -145,7 +145,7 @@ var LFSBridge = {
 		});
 	},
 
-	updateTree: function(callback)
+	updateTree: function( callback )
 	{
 		if(!this.session)
 			return;
@@ -155,7 +155,7 @@ var LFSBridge = {
 		if(!server_root)
 			return;
 
-		this.getServerFoldersTree(inner);
+		this.getServerFoldersTree( inner );
 
 		function inner( tree )
 		{
@@ -165,7 +165,7 @@ var LFSBridge = {
 				server_root.folders = [];
 
 			if(callback) 
-				callback(tree);
+				callback( tree );
 		}
 	},
 

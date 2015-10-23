@@ -9,7 +9,7 @@ EditorModule.registerNodeEditor( EditorModule.showSceneInfo );
 
 
 
-GlobalInfo["@inspector"] = function( component, inspector )
+LS.Components.GlobalInfo["@inspector"] = function( component, inspector )
 {
 	var node = component._root;
 	if(!node)
@@ -38,7 +38,7 @@ GlobalInfo["@inspector"] = function( component, inspector )
 }
 
 // Some components need special inspectors
-Transform["@inspector"] = function(transform, inspector)
+LS.Components.Transform["@inspector"] = function(transform, inspector)
 {
 	if(!transform) return;
 	var node = transform._root;
@@ -88,7 +88,7 @@ Transform["@inspector"] = function(transform, inspector)
 }
 
 
-Camera["@inspector"] = function(camera, inspector)
+LS.Components.Camera["@inspector"] = function(camera, inspector)
 {
 	if(!camera) 
 		return;
@@ -172,7 +172,7 @@ Camera["@inspector"] = function(camera, inspector)
 	}
 }
 
-Light["@inspector"] = function(light, inspector)
+LS.Components.Light["@inspector"] = function(light, inspector)
 {
 	if(!light) return;
 	var node = light._root;
@@ -256,7 +256,57 @@ Light["@inspector"] = function(light, inspector)
 }
 
 
-CameraFX["@inspector"] = function(camerafx, inspector)
+LS.Components.CustomData["@inspector"] = function( component, inspector )
+{
+	//show properties
+	for(var i = 0; i < component.properties.length; i++)
+	{
+		var p = component.properties[i];
+		inspector.add( p.type, p.label || p.name, p.value, { pretitle: AnimationModule.getKeyframeCode( component, p.name ), title: p.name, step: p.step, property: p, callback: inner_on_property_value_change });
+	}
+
+	var valid_properties = ["number","vec2","vec3","vec4","color","texture","cubemap","node","string","sampler"];
+
+	inspector.addButtons(null,["Add Property","Edit"], { callback: function(v) { 
+		if(v == "Add Property")
+			EditorModule.showAddPropertyDialog( inner_on_newproperty, valid_properties );
+		else 
+			EditorModule.showEditPropertiesDialog( component.properties, valid_properties, inner_on_editproperties );
+	}});
+
+	function inner_on_newproperty( p )
+	{
+		if (component[ p.name ])
+		{
+			LiteGUI.alert("There is already a property with that name.");
+			return;
+		}
+		else
+		{
+			component.properties.push( p );
+		}
+
+		inspector.refresh();
+	}
+
+	function inner_on_editproperties(p)
+	{
+		if( component[ p.name ] && component[ p.name ].set) 
+			component[ p.name ].set( p.value );
+		else
+			component[ p.name ] = p.value;
+		inspector.refresh();
+	}	
+
+	function inner_on_property_value_change(v)
+	{
+		var p = this.options.property;
+		p.value = v;
+		LS.GlobalScene.refresh();
+	}
+}
+
+LS.Components.CameraFX["@inspector"] = function(camerafx, inspector)
 {
 	if(!camerafx)
 		return;
@@ -353,7 +403,7 @@ CameraFX["@inspector"] = function(camerafx, inspector)
 	}
 }
 
-MorphDeformer["@inspector"] = function(component, inspector)
+LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 {
 	if( component.morph_targets.length )
 	{
@@ -386,7 +436,7 @@ MorphDeformer["@inspector"] = function(component, inspector)
 	}});
 }
 
-SkinDeformer.onShowAttributes = SkinnedMeshRenderer.onShowAttributes = function( component, inspector )
+LS.Components.SkinDeformer.onShowAttributes = SkinnedMeshRenderer.onShowAttributes = function( component, inspector )
 {
 	inspector.addButton("","See bones", { callback: function() { 
 		EditorModule.showBones( component.getMesh() );

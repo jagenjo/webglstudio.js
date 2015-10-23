@@ -249,7 +249,7 @@ CodingWidget.prototype.assignCurrentCode = function( skip_events )
 }
 
 CodingWidget.prototype.showInFooter = function(msg) {
-	this.workarea.query("#code-footer").innerHTML = msg;
+	this.workarea.query(".code-footer").innerHTML = msg;
 }
 
 CodingWidget.prototype.getCurrentCodeInfo = function()
@@ -622,7 +622,7 @@ CodingWidget.prototype.createCodingArea = function( container )
 
 	var that = this;
 
-	var coding_area = this.coding_area = new LiteGUI.Area("codearea",{content_id:"", height: -30});
+	var coding_area = this.coding_area = new LiteGUI.Area(null,{className: "codearea", content_id:"", height: -30});
 	container.appendChild( coding_area.root );
 
 	//top bar
@@ -685,7 +685,7 @@ CodingWidget.prototype.createCodingArea = function( container )
 	coding_workarea_root.add( coding_workarea );
 
 	//TODO: this could be improved to use LiteGUI instead
-	$(coding_workarea.content).append("<div class='code-container' style='height: calc(100% - 54px); height: -moz-calc(100% - 54px); height: -webkit-calc(100% - 54px); overflow: auto'></div><div id='code-footer' style='height:18px; padding: 4px 0 0 4px; background-color: #222;'></div>");
+	$(coding_workarea.content).append("<div class='code-container' style='height: calc(100% - 54px); height: -moz-calc(100% - 54px); height: -webkit-calc(100% - 54px); overflow: auto'></div><div class='code-footer' style='height:18px; padding: 4px 0 0 4px; background-color: #222;'></div>");
 	var code_container = this.code_container = coding_workarea.query(".code-container");
 
 	this.editor = CodeMirror( code_container, {

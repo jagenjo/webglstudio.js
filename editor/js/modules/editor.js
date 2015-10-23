@@ -531,7 +531,7 @@ var EditorModule = {
 
 	showAddPropertyDialog: function(callback, valid_fields )
 	{
-		valid_fields = valid_fields || ["string","number","vec2","vec3","vec4","color","texture"];
+		valid_fields = valid_fields || ["string","number","vec2","vec3","vec4","color","texture","node"];
 
 		var uid = Math.random().toString();
 		var id = "dialog_inspector_properties";
@@ -541,56 +541,66 @@ var EditorModule = {
 
 		var dialog = new LiteGUI.Dialog(id, {title: "Properties", parent:"#visor", close: true, minimize: true, width: 300, height: 200, scroll: true, resizable:true, draggable: true});
 		dialog.show('fade');
-		//dialog.setPosition(50 + (Math.random() * 10)|0,50 + (Math.random() * 10)|0);
-		var inspector = new LiteGUI.Inspector();
 
 		var property = { name: "myVar", type: "number", value: 0, step: 0.1 };
 		var value_widget = null;
 
-		inspector.addString("Name", property.name, { callback: function(v){ property.name = v; } });
-		inspector.addString("Label", property.label, { callback: function(v){ property.label = v; } });
-		inspector.addCombo("Type", property.type, { values: valid_fields, callback: function(v){ 
-			property.type = v;
-			var value = null;
-			if(v == "number")
+		var inspector = new LiteGUI.Inspector();
+		inspector.on_refresh = inner_refresh;
+		inner_refresh();
+
+		function inner_refresh()
+		{
+			inspector.clear();
+
+
+			inspector.addString("Name", property.name, { callback: function(v){ property.name = v; } });
+			inspector.addString("Label", property.label, { callback: function(v){ property.label = v; } });
+			inspector.addCombo("Type", property.type, { values: valid_fields, callback: function(v){ 
+				property.type = v;
+				inspector.refresh();
+			}});
+
+			switch(property.type)
 			{
-				value = 0.0;
-				value_widget = inspector.addNumber("Value", value, { step: property.step, replace: value_widget, callback: function(v){ property.value = v; }});
-			}
-			else if(v == "vec2")
-			{
-				value = vec2.fromValues(0,0);
-				value_widget = inspector.addVector2("Value", value, { step: property.step, replace: value_widget, callback: function(v){ property.value[0] = v[0]; property.value[1] = v[1]; }});
-			}
-			else if(v == "vec3")
-			{
-				value = vec3.fromValues(0,0,0);
-				value_widget = inspector.addVector3("Value", value, { step: property.step, replace: value_widget, callback: function(v){ property.value[0] = v[0]; property.value[1] = v[1]; property.value[2] = v[2]; }});
-			}
-			else if(v == "color")
-			{
-				value = vec3.fromValues(0,0,0);
-				value_widget = inspector.addColor("Value", value, { replace: value_widget, callback: function(v){ property.value[0] = v[0]; property.value[1] = v[1]; property.value[2] = v[2]; }});
-			}
-			else
-			{
-				value = "";
-				value_widget = inspector.add(property.type, "Value", value, { replace: value_widget, callback: function(v){ property.value = v; }});
+				case "number":
+					value = 0.0;
+					value_widget = inspector.addNumber("Value", value, { callback: function(v){ property.value = v; }});
+					break;
+				case "vec2":
+					value = vec2.fromValues(0,0);
+					value_widget = inspector.addVector2("Value", value, { callback: function(v){ property.value[0] = v[0]; property.value[1] = v[1]; }});
+					break;
+				case "vec3":
+					value = vec3.fromValues(0,0,0);
+					value_widget = inspector.addVector3("Value", value, { callback: function(v){ property.value[0] = v[0]; property.value[1] = v[1]; property.value[2] = v[2]; }});
+					break;
+				case "vec4":
+					value = vec4.fromValues(0,0,0);
+					value_widget = inspector.addVector4("Value", value, { callback: function(v){ property.value[0] = v[0]; property.value[1] = v[1]; property.value[2] = v[2]; property.value[3] = v[3]; }});
+					break;
+				case "color":
+					value = vec3.fromValues(0,0,0);
+					value_widget = inspector.addColor("Value", value, { callback: function(v){ property.value[0] = v[0]; property.value[1] = v[1]; property.value[2] = v[2]; }});
+					break;
+				default:
+					value = "";
+					value_widget = inspector.add(property.type, "Value", value, { callback: function(v){ property.value = v; }});
 			}
 			property.value = value;
-		}});
-		
-		value_widget = inspector.addNumber("Value", property.value, { step: property.step, callback: function(v){ property.value = v; }});
-		inspector.addNumber("Step", property.step, { callback: function(v){ property.step = v; }});
 
-		//inspector.addCombo("Widget","";);
+			if(property.type == "number" || property.type == "vec2" || property.type == "vec3")
+			{
+				inspector.addNumber("Step", property.step, { callback: function(v){ property.step = v; }});
+			}
 
-		inspector.addButton(null,"Create",{ callback: function() {
-			if(callback) callback(property);
-			dialog.close();
-		}});
+			inspector.addButton(null,"Create",{ callback: function() {
+				if(callback) callback(property);
+				dialog.close();
+			}});
+		}
 
-		dialog.content.appendChild(inspector.root);
+		dialog.add( inspector );
 		dialog.adjustSize();
 	},
 
@@ -1481,6 +1491,32 @@ CORE.registerModule( EditorModule );
 
 //EXTRA WIDGETS for the Inspector ************************************************
 
+//to write a tiny code snippet
+LiteGUI.Inspector.prototype.addCode = function(name, value, options)
+{
+	options = options || {};
+	value = value || "";
+	var that = this;
+	this.values[ name ] = value;
+	
+	var element = this.createWidget( name,"<span class='inputfield button'><textarea tabIndex='"+this.tab_index+"' class='text string' "+(options.disabled?"disabled":"")+">"+value+"<textarea/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
+	var input = element.querySelector(".wcontent input");
+
+	input.addEventListener("change", function(e) { 
+		LiteGUI.Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
+	});
+	
+	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
+		if(options.callback_button)
+			options.callback_button.call(element, $(element).find(".wcontent input").val() );
+	});
+
+	this.tab_index += 1;
+	this.append(element);
+	return element;
+}
+LiteGUI.Inspector.widget_constructors["code"] = "addCode";
+
 //to select a node, value must be a valid node identifier (not the node itself)
 LiteGUI.Inspector.prototype.addNode = function(name, value, options)
 {
@@ -1501,6 +1537,16 @@ LiteGUI.Inspector.prototype.addNode = function(name, value, options)
 		if(options.callback_button)
 			options.callback_button.call(element, $(element).find(".wcontent input").val() );
 	});
+
+	element.addEventListener("drop", function(e){
+		e.preventDefault();
+		e.stopPropagation();
+		var node_id = e.dataTransfer.getData("node_name");
+		input.value = node_id;
+		LiteGUI.trigger( input, "change" );
+		return false;
+	}, true);
+
 
 	//after selecting a node
 	function inner_onselect( node )

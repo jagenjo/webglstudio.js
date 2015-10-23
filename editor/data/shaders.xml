@@ -1613,7 +1613,7 @@
 						discard;
 				#endif
 				
-				o.Ambient = u_ambient_color;
+				o.Ambient = vec3(1.0);
 				o.Extra = vec4(0.0);
 
 				// Surface color **************************

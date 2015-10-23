@@ -48,6 +48,7 @@
 			"js/modules/annotation.js",
 	 		"js/widgets/sceneTree.js",
 	 		"js/widgets/timeline.js",
+	 		"js/widgets/resourcesPanel.js",
 	 		"js/widgets/codingWidget.js"
 		]
 }

@@ -13,7 +13,7 @@ var GraphModule = {
 	{
 		this.tab = LiteGUI.main_tabs.addTab( this.name, {id:"graphtab", bigicon: this.bigicon, size: "full",  module: GraphModule, callback: function(tab) {
 			GraphModule.openTab();
-			InterfaceModule.setSidePanelVisibility(false);
+			InterfaceModule.setSidePanelVisibility(true);
 			GraphModule._force_render = true;
 			GraphModule.graphcanvas.pause_rendering = false;
 		},
@@ -45,6 +45,13 @@ var GraphModule = {
 	{
 		var area = new LiteGUI.Area("graphsarea",{content_id:""});
 		this.root.appendChild(area.root);
+		area.root.style.overflow = "hidden";
+
+		LiteGUI.bind( area, "split_moved", function(){
+			GraphModule.onResize();
+		});
+
+		/*
 		area.split("horizontal",[null,"230px"],true);
 
 		// TREE AREA **********************************
@@ -57,37 +64,34 @@ var GraphModule = {
 		}
 		area.sections[1].content.appendChild(this.inspector.root);
 		this.inspector.addInfo("select a node to see its properties");
+		*/
 
 		// CANVAS AREA *******************************
 		var graph_tabs = new LiteGUI.Tabs("graphstabs", {});
-		area.getSection(0).add( graph_tabs );
+		//area.getSection(0).add( graph_tabs );
+		area.add( graph_tabs );
 		graph_tabs.root.style.marginTop = "4px";
 		graph_tabs.root.style.backgroundColor = "#111";
 		this.graph_tabs = graph_tabs;
 
 		var canvas = createCanvas(100,100);
 		this.canvas = canvas;
-		area.getSection(0).add( this.canvas );
-		area.getSection(0).content.style.backgroundColor = "#222";
+		area.add( this.canvas );
+		area.content.style.backgroundColor = "#222";
 
 		LiteGraph.throw_errors = true;
 		this.graphcanvas = new LGraphCanvas(this.canvas, null );
 		this.graphcanvas.background_image = this.litegraph_path + "demo/imgs/grid.png";
 		this.graphcanvas.onNodeSelected = function(node) { GraphModule.onNodeSelected(node); };
 
-		$(LiteGUI).bind("resized", function(e ) { 
-			var rect = GraphModule.canvas.parentNode.getClientRects()[0];
-			if(rect)
-				GraphModule.graphcanvas.resize( rect.width, rect.height );
-		});
+		$(LiteGUI).bind("resized", this.onResize );
 	},
 
 	openTab: function()
 	{
 		LiteGUI.main_tabs.selectTab("Graph");
 		var rect = this.canvas.parentNode.getClientRects()[0];
-		this.graphcanvas.resize( rect.width, rect.height );
-		this.updateSidebar();
+		this.graphcanvas.resize( rect.width, rect.height - 20 );
 	},
 
 	closeTab: function()
@@ -95,12 +99,27 @@ var GraphModule = {
 		LiteGUI.main_tabs.selectTab("Scene");
 	},
 
+	onResize: function()
+	{
+		var rect = GraphModule.canvas.parentNode.getClientRects()[0];
+		if(rect)
+			GraphModule.graphcanvas.resize( rect.width, rect.height - 20 );
+	},
+
 	editInstanceGraph: function(instance, options)
 	{
 		options = options || {};
 
 		if(!instance)
+		{
+			/*
+			this.current_graph_info = byll;
+			this.onNodeSelected(null); //TODO: store old selected node id
+			this.graph = null;
+			this.graphcanvas.setGraph( null );
+			*/
 			return;
+		}
 
 		var current_graph_info = this.current_graph_info;
 
@@ -184,7 +203,13 @@ var GraphModule = {
 
 	onClear: function()
 	{
-		this.editInstanceGraph(null);
+		console.log("graph cleared");
+
+		//close all tabs
+		this.graph_tabs.clear();
+		this.current_graph_info = null;
+		this.graph = null;
+		this.graphcanvas.setGraph( null );
 		this.selected_node = null;
 	},
 
@@ -255,12 +280,12 @@ var GraphModule = {
 	onKeyDown: function(e)
 	{
 		if(this.graphcanvas)
-			this.graphcanvas.processKeyDown(e);
+			this.graphcanvas.processKey(e);
 	},
 
 	updateSidebar: function()
 	{
-		var inspector = this.inspector;
+		var inspector = InterfaceModule.inspector;
 
 		inspector.clear();
 
@@ -504,6 +529,9 @@ GraphModule.showGraphComponent = function(component, inspector)
 
 			inspector.add(type, n.properties.name, n.properties.value, { pretitle: AnimationModule.getKeyframeCode( component, n.properties.name ), min: n.properties.min, max: n.properties.max, step:0.01, node:n, callback: function(v) {
 				this.options.node.properties.value = v;
+				if(component.on_event == "render")
+					component._graph.runStep(1);
+				LS.GlobalScene.refresh();
 			}});
 		}
 	}

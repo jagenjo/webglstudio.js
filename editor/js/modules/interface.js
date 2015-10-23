@@ -3,6 +3,9 @@ var InterfaceModule = {
 
 	init: function()
 	{
+		if(!CORE.user_preferences.interface)
+			CORE.user_preferences.interface = {};
+
 		//create menubar
 		LiteGUI.createMenubar();
 
@@ -14,12 +17,18 @@ var InterfaceModule = {
 		LiteGUI.menubar.add("Scene");
 		LiteGUI.menubar.add("Actions");
 
+		var side_panel_width = CORE.user_preferences.interface.side_panel_width || 300;
+
 		//create a main container and split it in two (workarea: leftwork, sidebar)
-		var mainarea = new LiteGUI.Area("mainarea",{content_id:"workarea", height: "calc(100% - 30px)", autoresize: true, inmediateResize: true});
-		mainarea.split("horizontal",[null,300], true);
+		var mainarea = new LiteGUI.Area("mainarea",{content_id:"workarea", height: "calc(100% - 30px)", autoresize: true, inmediateResize: true, minSplitSize: 200 });
+		mainarea.split("horizontal",[null, side_panel_width], true);
 		this.mainarea = mainarea;
 		//globalarea.getSection(1).add( mainarea );
 		LiteGUI.add( mainarea );
+
+		LiteGUI.bind( mainarea, "split_moved", function(e){
+			CORE.user_preferences.interface.side_panel_width = InterfaceModule.mainarea.getSection(1).getWidth();
+		});
 
 		//var workarea_split = mainarea.getSection(0);
 		//workarea_split.content.innerHTML = "<div id='visor'></div>";
@@ -51,7 +60,7 @@ var InterfaceModule = {
 
 		visorarea.split("vertical",[null,200], true);
 		visorarea.getSection(0).content.innerHTML = "<div id='visor'></div>";
-		visorarea.getSection(1).content.innerHTML = "FOO";
+		visorarea.getSection(1).content.innerHTML = "";
 	},
 
 	createSidePanel: function()
@@ -251,6 +260,7 @@ var InterfaceModule = {
 		else
 			this.visorarea.hideSection(1);
 
+		CORE.user_preferences.interface.show_timeline = v;
 		LiteGUI.trigger( this.visorarea.root, "visibility_change" );
 	},
 };

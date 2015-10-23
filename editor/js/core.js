@@ -1,7 +1,7 @@
 var CORE = {
 
 	config: null, //internal configuration
-	user_preferences: {}, //stuff that the user can change
+	user_preferences: {}, //stuff that the user can change and wants to keep
 
 	//registered modules
 	modules: [],

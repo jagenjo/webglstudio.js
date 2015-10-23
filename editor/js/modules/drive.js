@@ -10,6 +10,7 @@ var DriveModule = {
 
 	registered_drive_bridges: {},
 
+	//this tree contains all the info about the files in the system
 	tree: { id:"Files", skipdrag:true, visible: false, children:[ {id:"Memory", skipdrag:true, className:"memory", children:[], callback: function() { DriveModule.showMemoryResources(); return true; } } ]},
 
 	server_resources: {}, //indexed by filename (includes all resources on the server) 
@@ -102,6 +103,8 @@ var DriveModule = {
 			that.updateServerTreePanel();
 			that.showInBrowserContent();
 		});
+
+		LiteGUI.menubar.add("Window/Resources Panel", { callback: function(){ ResourcesPanelWidget.createDialog(); }});
 	},
 
 	createWindow: function()
@@ -259,8 +262,13 @@ var DriveModule = {
 	//Bridges represent places to store resources (LiteFileServer, localStorage, Dropbox...)
 	registerDriveBridge: function(bridge)
 	{
+		//register bridge
 		this.registered_drive_bridges[ bridge.name ] = bridge;
+
+		//create a tree entry
 		bridge.tree_root = { id: bridge.name , skipdrag:true, className: bridge.className, children:[], bridge: bridge };
+
+		//add entry to global tree
 		this.tree.children.push( bridge.tree_root );
 	},
 
@@ -2092,7 +2100,7 @@ DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], 
 	if( LS.GlobalScene.selected_node )
 	{
 		if(!LS.GlobalScene.selected_node.material)
-			LS.GlobalScene.selected_node.material = new Material();
+			LS.GlobalScene.selected_node.material = new LS.StandardMaterial();
 		var material = Scene.selected_node.getMaterial();
 		material.setTexture( Material.COLOR_TEXTURE, fullpath );
 	}

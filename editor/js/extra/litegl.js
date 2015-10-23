@@ -2720,6 +2720,58 @@ Mesh.prototype.totalMemory = function()
 }
 
 /**
+* returns a low poly version of the mesh that takes much less memory (but breaks tiling of uvs and smoothing groups)
+* @method simplify
+* @return {Mesh} simplified mesh
+*/
+Mesh.prototype.simplify = function()
+{
+	//compute bounding box
+	var bb = this.getBoundingBox();
+	var min = BBox.getMin( bb );
+	var halfsize = BBox.getHalfsize( bb );
+	var range = vec3.scale( vec3.create(), halfsize, 2 );
+
+	var newmesh = new GL.Mesh();
+	var temp = vec3.create();
+
+	for(var i in this.vertexBuffers)
+	{
+		//take every vertex and normalize it to the bounding box
+		var buffer = this.vertexBuffers[i];
+		var data = buffer.data;
+
+		var new_data = new Float32Array( data.length );
+
+		if(i == "vertices")
+		{
+			for(var j = 0, l = data.length; j < l; j+=3 )
+			{
+				var v = data.subarray(j,j+3);
+				vec3.sub( temp, v, min );
+				vec3.div( temp, temp, range );
+				temp[0] = Math.round(temp[0] * 256) / 256;
+				temp[1] = Math.round(temp[1] * 256) / 256;
+				temp[2] = Math.round(temp[2] * 256) / 256;
+				vec3.mul( temp, temp, range );
+				vec3.add( temp, temp, min );
+				new_data.set( temp, j );
+			}
+		}
+		else
+		{
+		}
+
+		newmesh.addBuffer();
+	}
+
+	//search for repeated vertices
+		//compute the average normal and coord
+	//reindex the triangles
+	//return simplified mesh	
+}
+
+/**
 * Static method for the class Mesh to create a mesh from a list of common streams
 * @method Mesh.load
 * @param {Object} buffers object will all the buffers

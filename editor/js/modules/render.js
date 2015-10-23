@@ -55,7 +55,7 @@ var RenderModule = {
 					InterfaceModule.setSidePanelVisibility(true);
 					RenderModule.viewport3d.resize(); //adapt to parent size
 					RenderModule.requestFrame();
-					EditorModule.refreshAttributes();
+					//EditorModule.refreshAttributes();
 				}
 		});
 
@@ -64,7 +64,9 @@ var RenderModule = {
 		visorarea.split("vertical",[null,260], true);
 		visorarea.getSection(0).content.innerHTML = "<div id='visor'></div>";
 		this.tab.add( visorarea );
-		//visorarea.hideSection(1); //DEFAULT SHOW TIMELINE ***********************************
+
+		if(CORE.user_preferences.interface && !CORE.user_preferences.interface.show_timeline)
+			visorarea.hideSection(1); //DEFAULT SHOW TIMELINE ***********************************
 		var visor_container = document.getElementById("visor");
 		InterfaceModule.setVisorArea( visorarea );
 
@@ -82,6 +84,7 @@ var RenderModule = {
 		this.render_options.render_all_cameras = false;
 		this.render_options.in_player = false;
 
+		//LiteGUI.bind( window, "resize", function() {  RenderModule.requestFrame(); }); //dont work
 		$(window).resize( function() {  RenderModule.requestFrame(); });
 
 		$(LiteGUI).bind("resized",function(){

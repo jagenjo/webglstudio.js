@@ -9123,6 +9123,7 @@ function CameraFX(o)
 	this.use_viewport_size = true;
 	this.use_high_precision = false;
 	this.use_node_camera = false;
+	this.apply_fxaa = false;
 
 	this.fx = [];
 
@@ -9551,7 +9552,23 @@ CameraFX.prototype.applyFX = function()
 	if(shader.hasUniform("u_texture_depth"))
 		depth_texture.bind(1);
 
-	color_texture.toViewport( shader, uniforms );
+
+	if(this.apply_fxaa)
+	{
+		if(!this.temp_tex || this.temp_tex.width != gl.viewport_data[2] || this.temp_tex.height != gl.viewport_data[3])
+			this.temp_tex = new GL.Texture(gl.viewport_data[2],gl.viewport_data[3]);
+		this.temp_tex.drawTo(function(){
+			color_texture.toViewport( shader, uniforms );
+		});
+		var fx_aa_shader = GL.Shader.getFXAAShader();
+		fx_aa_shader.setup();
+		this.temp_tex.toViewport( fx_aa_shader );
+	}
+	else
+	{
+		this.temp_tex = null;
+		color_texture.toViewport( shader, uniforms );
+	}
 }
 
 LS.registerComponent( CameraFX );
@@ -19674,7 +19691,15 @@ var Renderer = {
 		//clear buffer
 		var info = scene.info;
 		if(info)
-			gl.clearColor( info.background_color[0],info.background_color[1],info.background_color[2], info.background_color[3] );
+		{
+			if(info.linear_pipeline)
+			{
+				var gamma = 2.2;
+				gl.clearColor( Math.pow( info.background_color[0], gamma ), Math.pow( info.background_color[1], gamma ), Math.pow( info.background_color[2], gamma ), info.background_color[3] );
+			}
+			else
+				gl.clearColor( info.background_color[0],info.background_color[1],info.background_color[2], info.background_color[3] );
+		}
 		else
 			gl.clearColor(0,0,0,0);
 

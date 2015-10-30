@@ -5887,7 +5887,7 @@ Shader.FXAA_FUNC = "\n\
 
 /**
 * Returns a shader to apply FXAA antialiasing
-* params are vec2 u_viewportSize, mat4 u_iViewportSize
+* params are vec2 u_viewportSize, vec2 u_iViewportSize or you can call shader.setup()
 * @method Shader.getFXAAShader
 */
 Shader.getFXAAShader = function(gl)
@@ -5908,6 +5908,16 @@ Shader.getFXAAShader = function(gl)
 			}\n\
 			");
 
+	var viewport = vec2.fromValues( gl.viewport_data[2], gl.viewport_data[3] );
+	var iviewport = vec2.fromValues( 1/gl.viewport_data[2], 1/gl.viewport_data[3] );
+
+	shader.setup = function() {
+		viewport[0] = gl.viewport_data[2];
+		viewport[1] = gl.viewport_data[3];
+		iviewport[0] = 1/gl.viewport_data[2];
+		iviewport[1] = 1/gl.viewport_data[3];
+		this.uniforms({ u_viewportSize: viewport, u_iViewportSize: iviewport });	
+	}
 	return gl.shaders[":fxaa"] = shader;
 }
 

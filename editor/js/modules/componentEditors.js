@@ -28,7 +28,7 @@ LS.Components.GlobalInfo["@inspector"] = function( component, inspector )
 	inner_setTexture("irradiance");
 
 	inspector.addSeparator();
-	inspector.addCheckbox("Linear Pipeline", component.linear_pipeline, { pretitle: AnimationModule.getKeyframeCode( component, "linear_pipeline"), callback: function(v) { component.linear_pipeline = v; } });
+	//inspector.addCheckbox("Linear Pipeline", component.linear_pipeline, { pretitle: AnimationModule.getKeyframeCode( component, "linear_pipeline"), callback: function(v) { component.linear_pipeline = v; } });
 
 	function inner_setTexture(channel)
 	{
@@ -317,8 +317,9 @@ LS.Components.CameraFX["@inspector"] = function(camerafx, inspector)
 	inspector.widgets_per_row = 2;
 	inspector.addCheckbox("Viewport Size", camerafx.use_viewport_size, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_viewport_size" ), callback: function(v) { camerafx.use_viewport_size = v; } });
 	inspector.addCheckbox("High Precission", camerafx.use_high_precision, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_high_precision" ), callback: function(v) { camerafx.use_high_precision = v; } });
-	inspector.widgets_per_row = 1;
 	inspector.addCheckbox("Use node camera", camerafx.use_node_camera, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_node_camera" ), callback: function(v) { camerafx.use_node_camera = v; } });
+	inspector.addCheckbox("Apply FXAA", camerafx.apply_fxaa, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "apply_fxaa" ), callback: function(v) { camerafx.apply_fxaa = v; } });
+	inspector.widgets_per_row = 1;
 
 	inspector.addTitle("Active FX");
 	for(var i = 0; i < camerafx.fx.length; i++)

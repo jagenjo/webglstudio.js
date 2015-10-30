@@ -27,6 +27,9 @@ LS.Components.GlobalInfo["@inspector"] = function( component, inspector )
 	inner_setTexture("environment");
 	inner_setTexture("irradiance");
 
+	inspector.addSeparator();
+	inspector.addCheckbox("Linear Pipeline", component.linear_pipeline, { pretitle: AnimationModule.getKeyframeCode( component, "linear_pipeline"), callback: function(v) { component.linear_pipeline = v; } });
+
 	function inner_setTexture(channel)
 	{
 		inspector.addTexture(channel, component.textures[channel], { pretitle: AnimationModule.getKeyframeCode( component, "textures/" + channel ), channel: channel, callback: function(filename) { 
@@ -283,18 +286,16 @@ LS.Components.CustomData["@inspector"] = function( component, inspector )
 		}
 		else
 		{
-			component.properties.push( p );
+			component.addProperty( p );
 		}
 
 		inspector.refresh();
 	}
 
-	function inner_on_editproperties(p)
+	function inner_on_editproperties( p )
 	{
-		if( component[ p.name ] && component[ p.name ].set) 
-			component[ p.name ].set( p.value );
-		else
-			component[ p.name ] = p.value;
+		//component.updateProperty( p );
+		//TODO
 		inspector.refresh();
 	}	
 
@@ -302,6 +303,7 @@ LS.Components.CustomData["@inspector"] = function( component, inspector )
 	{
 		var p = this.options.property;
 		p.value = v;
+		component.updateProperty( p );
 		LS.GlobalScene.refresh();
 	}
 }

@@ -57,9 +57,9 @@ var ConsoleModule = {
 		cmd = cmd.trim();
 		var tokens = cmd.split(" ");
 
-		for(var i in CORE.modules)
+		for(var i in CORE.Modules)
 		{
-			var module = CORE.modules[i];
+			var module = CORE.Modules[i];
 			if(!module.commands)
 				continue;
 

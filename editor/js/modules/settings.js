@@ -52,9 +52,9 @@ var SettingsModule = {
 
 		var sections = [];
 		var already_created = {};
-		for(var i in CORE.modules)
+		for(var i in CORE.Modules)
 		{
-			var module = CORE.modules[i];
+			var module = CORE.Modules[i];
 			if(!module.settings_panel)
 				continue;
 
@@ -100,11 +100,11 @@ var SettingsModule = {
 
 		root.appendChild( widgets.root );
 
-		for(var i in CORE.modules)
+		for(var i in CORE.Modules)
 		{
-			if (!CORE.modules[i].onShowSettingsPanel)
+			if (!CORE.Modules[i].onShowSettingsPanel)
 				continue;
-			CORE.modules[i].onShowSettingsPanel(name, widgets);
+			CORE.Modules[i].onShowSettingsPanel(name, widgets);
 		}
 	},
 }

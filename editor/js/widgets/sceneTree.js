@@ -313,18 +313,6 @@ SceneTreeWidget.prototype.addNode = function(node)
 		this.classList.toggle('on');
 		LS.GlobalScene.refresh();
 	});
-
-	/*
-	$(node).bind(":resource_loaded", function() {
-		$(element).removeClass("loading");
-	});
-
-	$(node).bind(":id_changed", function() {
-		$(element).html(node.id);
-		$(element).addClass("scene_node_" + node.id.hashCode());
-		element.data = node.id;
-	});
-	*/
 }
 
 SceneTreeWidget.prototype.removeNode = function(node)

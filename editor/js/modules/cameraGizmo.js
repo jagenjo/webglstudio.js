@@ -240,7 +240,7 @@ CameraGizmo.prototype.updateTexture = function()
 	ctx.fillStyle = "white";
 	var size = canvas.width / 4;
 	ctx.lineWidth = 2;
-	for(i = 0; i < text.length; i++)
+	for(var i = 0; i < text.length; i++)
 	{
 		var is_selected = false;
 		if( this.selected_axis && text[i] == this.selected_axis.name )

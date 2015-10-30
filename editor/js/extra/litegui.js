@@ -527,7 +527,7 @@ var LiteGUI = {
 	* @param {String} content
 	* @param {Object} style
 	**/
-	createElement: function(tag, id, content, style)
+	createElement: function(tag, id, content, style, events)
 	{
 		var elem = document.createElement( tag );
 		if(id)
@@ -538,8 +538,19 @@ var LiteGUI = {
 		elem.add = function(v) { this.appendChild( v.root || v ); };
 
 		if(style)
-			for(var i in style)
-				elem.style[i] = style[i];
+		{
+			if(style.constructor === String)
+				elem.setAttribute("style",style);
+			else
+				for(var i in style)
+					elem.style[i] = style[i];
+		}
+
+		if(events)
+		{
+			for(var i in events)
+				elem.addEventListener(i, events[i]);
+		}
 		return elem;
 	},
 
@@ -555,6 +566,7 @@ var LiteGUI = {
 		var elem = document.createElement("button");
 		elem.id = id;
 		elem.root = elem;
+		elem.className = "litegui button";
 		if(content !== undefined)
 			elem.innerHTML = content;
 		if(callback)
@@ -654,7 +666,7 @@ var LiteGUI = {
 		if (typeof(content) == "string")
 			content = "<p>" + content + "</p>";
 		$(".litepanel.alert").remove(); //kill other panels
-		return this.showMessage(content,options);
+		return LiteGUI.showMessage(content,options);
 	},
 
 	/**
@@ -3961,6 +3973,10 @@ function beautifyJSON( code, skip_css )
 			root.dataset["item_id"] = data.id;
 		}
 
+		if(data.dataset)
+			for(var i in data.dataset)
+				root.dataset[i] = data.dataset[i];
+
 		data.DOM = root; //double link
 		root.data = data;
 
@@ -4027,7 +4043,7 @@ function beautifyJSON( code, skip_css )
 				//check if selected
 				if( that.isNodeSelected( node ) )
 				{
-					node.title_element.classList.remove("selected");
+					node.classList.remove("selected");
 					LiteGUI.trigger(that.root, "item_remove_from_selection", { item: node, data: node.data} );
 					return;
 				}
@@ -4102,10 +4118,10 @@ function beautifyJSON( code, skip_css )
 			e.stopPropagation();
 		}
 
-		//dragging tree
+		//dragging element on tree
+		var draggable_element = title_element;
 		if(this.options.allow_drag)
 		{
-			var draggable_element = title_element;
 			draggable_element.draggable = true;
 
 			//starts dragging this element
@@ -4123,66 +4139,66 @@ function beautifyJSON( code, skip_css )
 						ev.dataTransfer.setData(i,drag_data[i]);
 				}
 			});
+		}
 
-			//something being dragged entered
-			draggable_element.addEventListener("dragenter", function (ev)
+		//something being dragged entered
+		draggable_element.addEventListener("dragenter", function (ev)
+		{
+			ev.preventDefault();
+			if(data.skipdrag)
+				return false;
+
+			title_element.classList.add("dragover");
+		});
+
+		draggable_element.addEventListener("dragleave", function (ev)
+		{
+			ev.preventDefault();
+			//console.log(data.id);
+			title_element.classList.remove("dragover");
+			//if(ev.srcElement == this) return;
+		});
+
+		//test if allows to drag stuff on top?
+		draggable_element.addEventListener("dragover", on_drag_over );
+		function on_drag_over(ev)
+		{
+			ev.preventDefault();
+		}
+
+		draggable_element.addEventListener("drop", function (ev)
+		{
+			title_element.classList.remove("dragover");
+			ev.preventDefault();
+			if(data.skipdrag)
+				return false;
+
+			var item_id = ev.dataTransfer.getData("item_id");
+
+			//var data = ev.dataTransfer.getData("Text");
+			if(!item_id)
 			{
-				ev.preventDefault();
-				if(data.skipdrag)
-					return false;
-
-				title_element.classList.add("dragover");
-			});
-
-			draggable_element.addEventListener("dragleave", function (ev)
-			{
-				ev.preventDefault();
-				//console.log(data.id);
-				title_element.classList.remove("dragover");
-				//if(ev.srcElement == this) return;
-			});
-
-			//test if allows to drag stuff on top?
-			draggable_element.addEventListener("dragover", on_drag_over );
-			function on_drag_over(ev)
-			{
-				ev.preventDefault();
+				LiteGUI.trigger( that.root, "drop_on_item", { item: this, event: ev });
+				return;
 			}
 
-			draggable_element.addEventListener("drop", function (ev)
+			//try
 			{
-				title_element.classList.remove("dragover");
-				ev.preventDefault();
-				if(data.skipdrag)
-					return false;
+				var parent_id = this.parentNode.dataset["item_id"];
 
-				var item_id = ev.dataTransfer.getData("item_id");
-
-				//var data = ev.dataTransfer.getData("Text");
-				if(!item_id)
+				if( !that.onMoveItem || (that.onMoveItem && that.onMoveItem( that.getItem( item_id ), that.getItem( parent_id ) ) != false))
 				{
-					LiteGUI.trigger( that.root, "drop_on_item", { item: this, event: ev });
-					return;
+					if( that.moveItem( item_id, parent_id ) )
+						LiteGUI.trigger( that.root, "item_moved", { item: that.getItem( item_id ), parent_item: that.getItem( parent_id ) } );
 				}
-
-				//try
-				{
-					var parent_id = this.parentNode.dataset["item_id"];
-
-					if( !that.onMoveItem || (that.onMoveItem && that.onMoveItem( that.getItem( item_id ), that.getItem( parent_id ) ) != false))
-					{
-						if( that.moveItem( item_id, parent_id ) )
-							LiteGUI.trigger( that.root, "item_moved", { item: that.getItem( item_id ), parent_item: that.getItem( parent_id ) } );
-					}
-				}
-				/*
-				catch (err)
-				{
-					console.error("Error: " + err );
-				}
-				*/
-			});
-		} //allow drag
+			}
+			/*
+			catch (err)
+			{
+				console.error("Error: " + err );
+			}
+			*/
+		});
 
 		return root;
 	}
@@ -4370,7 +4386,7 @@ function beautifyJSON( code, skip_css )
 	* @method setSelectedItem
 	* @param {string} id
 	*/
-	Tree.prototype.setSelectedItem = function( id, scroll )
+	Tree.prototype.setSelectedItem = function( id, scroll, send_event )
 	{
 		if(!id)
 		{
@@ -4390,6 +4406,9 @@ function beautifyJSON( code, skip_css )
 		this.markAsSelected(node);
 		if( scroll && !this._skip_scroll )
 			this.scrollToItem(node);
+
+		if(send_event)
+			LiteGUI.trigger( node, "click" );
 
 		return node;
 	}
@@ -4424,7 +4443,7 @@ function beautifyJSON( code, skip_css )
 		var node = this.getItem(id);
 		if(!node) //not found
 			return null;
-		node.title_element.classList.remove("selected");
+		node.classList.remove("selected");
 	}
 
 	/**
@@ -4434,7 +4453,7 @@ function beautifyJSON( code, skip_css )
 	*/
 	Tree.prototype.getSelectedItem = function()
 	{
-		return this.root.querySelector(".ltreeitemtitle.selected");
+		return this.root.querySelector(".ltreeitem.selected");
 	}
 
 	/**
@@ -4444,7 +4463,7 @@ function beautifyJSON( code, skip_css )
 	*/
 	Tree.prototype.getSelectedItems = function()
 	{
-		return this.root.querySelectorAll(".ltreeitemtitle.selected");
+		return this.root.querySelectorAll(".ltreeitem.selected");
 	}
 
 	/**
@@ -4628,13 +4647,13 @@ function beautifyJSON( code, skip_css )
 	Tree.prototype.unmarkAllAsSelected = function()
 	{
 		this.root.classList.remove("selected");
-		var selected_array = this.root.querySelectorAll(".ltreeitemtitle.selected");
+		var selected_array = this.root.querySelectorAll(".ltreeitem.selected");
 		if(selected_array)
 		{
 			for(var i = 0; i < selected_array.length; i++)
 				selected_array[i].classList.remove("selected");
 		}
-		var semiselected = this.root.querySelectorAll(".ltreeitemtitle.semiselected");
+		var semiselected = this.root.querySelectorAll(".ltreeitem.semiselected");
 		for(var i = 0; i < semiselected.length; i++)
 			semiselected[i].classList.remove("semiselected");
 	}
@@ -4657,8 +4676,8 @@ function beautifyJSON( code, skip_css )
 		if(!add_to_existing_selection)
 			this.unmarkAllAsSelected();
 
-		//mark as selected
-		node.title_element.classList.add("selected");
+		//mark as selected (it was node.title_element?)
+		node.classList.add("selected");
 
 		//go up and semiselect
 		var parent = node.parentNode.parentNode; //two elements per level
@@ -6853,12 +6872,14 @@ Inspector.prototype.addButtons = function(name, value, options)
 	var that = this;
 
 	var code = "";
-	var w = "calc("+(100/value.length).toFixed(3)+"% - "+Math.floor(16/value.length)+"px);";
+	//var w = "calc("+(100/value.length).toFixed(3)+"% - "+Math.floor(16/value.length)+"px);";
+	var w = "calc( " + (100/value.length).toFixed(3) + "% - 4px )";
+	var style = "width:"+w+"; width: -moz-"+w+"; width: -webkit-"+w+"; margin: 2px;";
 	if(value && typeof(value) == "object")
 	{
 		for(var i in value)
 		{
-			code += "<button tabIndex='"+this.tab_index+"' style=' width:"+w+" width: -moz-"+w+" width: -webkit-calc("+(89/value.length).toFixed(3)+"%)'>"+value[i]+"</button>";
+			code += "<button tabIndex='"+this.tab_index+"' style='"+style+"'>"+value[i]+"</button>";
 			this.tab_index++;
 		}
 	}

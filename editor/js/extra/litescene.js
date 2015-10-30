@@ -2264,6 +2264,46 @@ var Network = {
 			callback = data;
 		}
 		return LS.Network.request({url:url, dataType:"txt", success: callback, success: callback, error: callback_error});
+	},
+
+	/**
+	* Request script and inserts it in the DOM
+	* @method requireScript
+	* @param {String} url could be an array with urls to load in order
+	* @param {Function} on_complete
+	* @param {Function} on_error
+	* @param {Function} on_progress (if several files are required, on_progress is called after every file is added to the DOM)
+	**/
+	requestScript: function(url, on_complete, on_error, on_progress )
+	{
+		if(typeof(url)=="string")
+			url = [url];
+
+		var total = url.length;
+		var size = total;
+		for(var i in url)
+		{
+			var script = document.createElement('script');
+			script.num = i;
+			script.type = 'text/javascript';
+			script.src = url[i];
+			script.async = false;
+			script.onload = function(e) { 
+				total--;
+				if(total)
+				{
+					if(on_progress)
+						on_progress(this.src, this.num);
+				}
+				else if(on_complete)
+					on_complete();
+			};
+			if(on_error)
+				script.onerror = function(err) { 
+					on_error(err, this.src, this.num );
+				}
+			document.getElementsByTagName('head')[0].appendChild( script );
+		}
 	}
 };
 
@@ -2657,7 +2697,10 @@ var ResourcesManager = {
 				LS.ResourcesManager.processResource( url, response, options, ResourcesManager._resourceLoadedSuccess );
 			},
 			error: function(err) { 	LS.ResourcesManager._resourceLoadedError(url,err); },
-			progress: function(e) { LEvent.trigger( LS.ResourcesManager, "resource_loading_progress", { url: url, event: e } ); }
+			progress: function(e) { 
+				if( LEvent.hasBind(  LS.ResourcesManager, "resource_loading_progress" ) ) //used to avoid creating objects during loading
+					LEvent.trigger( LS.ResourcesManager, "resource_loading_progress", { url: url, event: e, progress: e.loaded / e.total } );
+			}
 		};
 
 		//in case we need to force a response format 
@@ -4637,6 +4680,8 @@ Material.getTextureFromSampler = function(sampler)
 * @param {Object} sampler { texture, uvs, wrap, filter }
 */
 Material.prototype.setTextureSampler = function(channel, sampler) {
+	if(!channel)
+		throw("Cannot call Material setTextureSampler without channel");
 	if(!sampler)
 		delete this.textures[ channel ];
 	else
@@ -9192,6 +9237,13 @@ CameraFX.available_fx = {
 			"Log. B Factor": { name: "u_logfactor_b", type: "float", value: 2, step: 0.01 }
 		},
 		code:"color.xyz = log( color.xyz * u_logfactor_a@ ) * u_logfactor_b@;"
+	},
+	"gamma": {
+		name: "Gamma",
+		uniforms: {
+			"Gamma": { name: "u_gamma", type: "float", value: 2.2, step: 0.01 }
+		},
+		code:"color.xyz = pow( color.xyz, vec3( 1.0 / u_gamma@) );"
 	}
 	/*
 	,
@@ -12199,15 +12251,27 @@ CustomData.prototype.getResources = function(res)
 	return res;
 }
 
-CustomData.prototype.getProperties = function()
+CustomData.prototype.addProperties = function( property )
 {
-	var result = {};
-	//TODO
-	return result;
+	this.properties.push( property );
 }
 
-CustomData.prototype.setProperty = function( name, value )
+CustomData.prototype.getProperty = function( name )
 {
+	for(var i = 0; i < this.properties.length; i++)
+		if(this.properties[i].name == name)
+			return this.properties[i];
+	return null;
+}
+
+CustomData.prototype.getProperties = function()
+{
+	return this.properties;
+}
+
+CustomData.prototype.updateProperty = function( p )
+{
+	//TODO
 }
 
 //used for animation tracks
@@ -13111,6 +13175,8 @@ function GlobalInfo(o)
 	this.createProperty( "ambient_color", GlobalInfo.DEFAULT_AMBIENT_COLOR, "color" );
 	this.createProperty( "background_color", GlobalInfo.DEFAULT_BACKGROUND_COLOR, "color" );
 
+	this.linear_pipeline = false;
+
 	this._textures = {};
 
 	if(o)
@@ -13165,7 +13231,8 @@ GlobalInfo.prototype.getProperties = function()
 		"textures/background": "texture",
 		"textures/foreground": "texture",
 		"textures/environment": "texture",
-		"textures/irradiance": "texture"
+		"textures/irradiance": "texture",
+		"linear_pipeline":"boolean"
 	};
 }
 
@@ -15316,6 +15383,7 @@ function RealtimeReflector(o)
 	this.ignore_this_mesh = true;
 	this.high_precision = false;
 	this.refresh_rate = 1; //in frames
+	this.layers = 0xFF;
 
 	this._textures = {};
 
@@ -15326,6 +15394,7 @@ function RealtimeReflector(o)
 RealtimeReflector.icon = "mini-icon-reflector.png";
 
 RealtimeReflector["@texture_size"] = { type:"enum", values:["viewport",64,128,256,512,1024,2048] };
+RealtimeReflector["@layers"] = { type:"layers" };
 
 RealtimeReflector.prototype.onAddedToScene = function(scene)
 {
@@ -15337,6 +15406,8 @@ RealtimeReflector.prototype.onAddedToScene = function(scene)
 RealtimeReflector.prototype.onRemovedFromScene = function(scene)
 {
 	LEvent.unbindAll( scene, this );
+	for(var i in this._textures)
+		LS.ResourcesManager.unregisterResource( ":reflection_" + i );
 	this._textures = {}; //clear textures
 }
 
@@ -15367,6 +15438,7 @@ RealtimeReflector.prototype.onRenderReflection = function(e, render_options)
 	render_options.is_reflection = true;
 	render_options.brightness_factor = this.brightness_factor;
 	render_options.colorclip_factor = this.colorclip_factor;
+	render_options.layers = this.layers;
 
 	var cameras = LS.Renderer._visible_cameras;
 
@@ -15390,10 +15462,10 @@ RealtimeReflector.prototype.onRenderReflection = function(e, render_options)
 		var type = this.high_precision ? gl.HIGH_PRECISION_FORMAT : gl.UNSIGNED_BYTE;
 
 		var texture = this._textures[ camera.uid ];
-		if(!texture || texture.width != texture_width || texture.height != texture_height || texture.type != type || texture.texture_type != texture_type || texture.mipmaps != this.generate_mipmaps)
+		if(!texture || texture.width != texture_width || texture.height != texture_height || texture.type != type || texture.texture_type != texture_type || texture.minFilter != (this.generate_mipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR) )
 		{
-			texture = new GL.Texture(texture_width, texture_height, { type: type, texture_type: texture_type, minFilter: this.generate_mipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR });
-			texture.mipmaps = this.generate_mipmaps;
+			texture = new GL.Texture( texture_width, texture_height, { type: type, texture_type: texture_type, minFilter: this.generate_mipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR });
+			texture.has_mipmaps = this.generate_mipmaps;
 			this._textures[ camera.uid ] = texture;
 		}
 
@@ -15440,23 +15512,22 @@ RealtimeReflector.prototype.onRenderReflection = function(e, render_options)
 		else //spherical reflection
 		{
 			reflected_camera.eye = plane_center;
-			LS.Renderer.renderInstancesToRT(reflected_camera, texture, render_options );
+			LS.Renderer.renderInstancesToRT( reflected_camera, texture, render_options );
 		}
 
 		if(this.blur)
 		{
 			var blur_texture = this._textures[ "blur_" + camera.uid ];
-			if( blur_texture && !GL.Texture.compareFormats( blur_texture, texture) )
-				blur_texture = null;	 //remove old one
+			if( blur_texture && ( Texture.compareFormats( texture, blur_texture ) ||  blur_texture.minFilter != texture.minFilter ))
+				blur_texture = null; //remove old one
 			blur_texture = texture.applyBlur( this.blur, this.blur, 1, blur_texture );
-			this._textures[ "blur_" + camera.uid ] = blur_texture;
+			//this._textures[ "blur_" + camera.uid ] = blur_texture;
 			//LS.ResourcesManager.registerResource(":BLUR" + camera.uid, blur_texture);//debug
 		}
 
 		if(this.generate_mipmaps && isPowerOfTwo( texture_width ) && isPowerOfTwo( texture_height ) )
 		{
-			texture.bind();
-			gl.texParameteri( texture.texture_type, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR );
+			texture.setParameter( gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR );
 			gl.generateMipmap(texture.texture_type);
 			texture.unbind();
 		}
@@ -15475,6 +15546,7 @@ RealtimeReflector.prototype.onRenderReflection = function(e, render_options)
 	delete render_options.is_reflection;
 	delete render_options.brightness_factor;
 	delete render_options.colorclip_factor;
+	delete render_options.layers;
 
 	//make it visible again
 	this._root.flags.visible = visible;
@@ -15506,7 +15578,7 @@ function Script(o)
 {
 	this.enabled = true;
 	this.name = "Unnamed";
-	this.code = "this.update = function(dt)\n{\n\tnode.scene.refresh();\n}";
+	this.code = "this.update = function(dt)\n{\n\t//node.scene.refresh();\n}";
 
 	this._script = new LScript();
 
@@ -15729,8 +15801,8 @@ Script.prototype.setPropertyValueFromPath = function( path, value )
 Script.prototype.hookEvents = function()
 {
 	var hookable = LS.Script.exported_callbacks;
-	var node = this._root;
-	var scene = node.scene;
+	var root = this._root;
+	var scene = root.scene;
 	if(!scene)
 		scene = LS.GlobalScene; //hack
 
@@ -15744,15 +15816,14 @@ Script.prototype.hookEvents = function()
 	{
 		var name = hookable[i];
 		var event_name = LS.Script.translate_events[name] || name;
-
+		var target = event_name == "trigger" ? root : scene; //some events are triggered in the scene, others in the node
 		if( context[name] && context[name].constructor === Function )
 		{
-			var target = event_name == "trigger" ? node : scene; //some events are triggered in the scene, others in the node
 			if( !LEvent.isBind( target, event_name, this.onScriptEvent, this )  )
 				LEvent.bind( target, event_name, this.onScriptEvent, this );
 		}
 		else
-			LEvent.unbind( scene, event_name, this.onScriptEvent, this );
+			LEvent.unbind( target, event_name, this.onScriptEvent, this );
 	}
 }
 
@@ -15777,6 +15848,29 @@ Script.prototype.onRemovedFromScene = function(scene)
 
 	//unbind evends
 	LEvent.unbindAll( scene, this );
+}
+
+Script.prototype.onAddedToProject = function( project )
+{
+	try
+	{
+		//just in case the script saved had an error, do not block the flow
+		this.processCode();
+	}
+	catch (err)
+	{
+		console.error(err);
+	}
+}
+
+Script.prototype.onRemovedFromProject = function( project )
+{
+	//ensures no binded events
+	if(this._context)
+		LEvent.unbindAll( project, this._context, this );
+
+	//unbind evends
+	LEvent.unbindAll( project, this );
 }
 
 Script.prototype.onScriptEvent = function(event_type, params)
@@ -19433,7 +19527,12 @@ var Renderer = {
 	//used to store which is the current full viewport available (could be different from the canvas in case is a FBO or the camera has a partial viewport)
 	setFullViewport: function(x,y,w,h)
 	{
-		this._full_viewport[0] = x; this._full_viewport[1] = y; this._full_viewport[2] = w; this._full_viewport[3] = h;
+		if(x.constructor === Number)
+		{
+			this._full_viewport[0] = x; this._full_viewport[1] = y; this._full_viewport[2] = w; this._full_viewport[3] = h;
+		}
+		else if(x.length)
+			this._full_viewport.set(x);
 	},
 
 	/**
@@ -19466,8 +19565,14 @@ var Renderer = {
 
 		this._rendercalls = 0;
 		this._rendered_instances = 0;
-		gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-		this.setFullViewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+		if( !render_options.keep_viewport )
+		{
+			gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+			this.setFullViewport(0, 0, gl.canvas.width, gl.canvas.height);
+		}
+		else
+			this.setFullViewport( gl.viewport_data );
 
 		//Event: beforeRender used in actions that could affect which info is collected for the rendering
 		LEvent.trigger(scene, "beforeRender", render_options );
@@ -19675,7 +19780,7 @@ var Renderer = {
 		this.frustum_planes = frustum_planes;
 		var apply_frustum_culling = render_options.frustum_culling;
 		var layers_filter = camera.layers;
-		if( render_options.layers )
+		if( render_options.layers !== undefined )
 			layers_filter = render_options.layers;
 		var is_color_render = !render_options.is_shadowmap && !render_options.is_picking;
 
@@ -20292,8 +20397,11 @@ var Renderer = {
 			query.setMacro("USE_ORTHOGRAPHIC_CAMERA");
 
 		//camera info
-		if(render_options == "color")
+		if(render_options.current_pass == "color")
 		{
+			if(scene.info && scene.info.linear_pipeline)
+				query.setMacro("USE_LINEAR_PIPELINE");
+
 			if(render_options.brightness_factor && render_options.brightness_factor != 1)
 				query.setMacro("USE_BRIGHTNESS_FACTOR");
 
@@ -20326,6 +20434,9 @@ var Renderer = {
 
 		if(render_options.clipping_plane)
 			uniforms.u_clipping_plane = render_options.clipping_plane;
+
+		if(render_options.current_pass == "color" && scene.info && scene.info.linear_pipeline)
+			uniforms.u_gamma = 2.2;
 
 		scene._uniforms = uniforms;
 		scene._samplers = {};
@@ -24616,7 +24727,9 @@ function SceneTree()
 	this._nodes_by_uid = {};
 	this._nodes_by_uid[ this._root.uid ] = this._root;
 
+
 	//FEATURES NOT YET FULLY IMPLEMENTED
+	this.external_scripts = [];
 	this._paths = []; //FUTURE FEATURE: to store splines I think
 	this._local_resources = {}; //used to store resources that go with the scene
 	this.animation = null;
@@ -24789,9 +24902,12 @@ SceneTree.prototype.configure = function(scene_info)
 	}
 
 	//TODO
-	if( scene_info._local_resources )
+	if( scene_info.local_resources )
 	{
 	}
+
+	if( scene_info.external_scripts )
+		this.external_scripts = scene_info.external_scripts;
 
 	if( scene_info.layer_names )
 		this.layer_names = scene_info.layer_names;
@@ -24840,6 +24956,7 @@ SceneTree.prototype.serialize = function()
 		o.animation = this.animation.serialize();
 
 	o.layer_names = this.layer_names.concat();
+	o.external_scripts = this.external_scripts.concat();
 
 	//add shared materials
 	/*
@@ -24881,11 +24998,10 @@ SceneTree.prototype.load = function(url, on_complete, on_error)
 	if(nocache)
 		url += (url.indexOf("?") == -1 ? "?" : "&") + nocache;
 
-
 	LS.Network.request({
 		url: url,
 		dataType: 'json',
-		success: inner_success,
+		success: inner_json_loaded,
 		error: inner_error
 	});
 
@@ -24895,11 +25011,20 @@ SceneTree.prototype.load = function(url, on_complete, on_error)
 	 */
 	LEvent.trigger(this,"beforeLoad");
 
-	function inner_success(response)
+	function inner_json_loaded( response )
+	{
+		//check JSON for special scripts
+		if ( response.external_scripts && response.external_scripts.length )
+			that.loadExternalScripts( response.external_scripts, function(){ inner_success(response); }, on_error );
+		else
+			inner_success( response );
+	}
+
+	function inner_success( response )
 	{
 		that.init();
 		that.configure(response);
-		that.loadResources(inner_all_loaded);
+		that.loadResources( inner_all_loaded );
 		/**
 		 * Fired when the scene has been loaded but before the resources
 		 * @event load
@@ -24924,6 +25049,11 @@ SceneTree.prototype.load = function(url, on_complete, on_error)
 		if(on_error)
 			on_error(url);
 	}
+}
+
+SceneTree.prototype.loadExternalScripts = function( scripts, on_complete, on_error )
+{
+	LS.Network.requestScript( scripts, on_complete, on_error );
 }
 
 SceneTree.prototype.appendScene = function(scene)
@@ -26598,6 +26728,7 @@ Player.prototype.loadScene = function(url, on_complete)
 
 	function inner_start()
 	{
+		//start playing once loaded
 		scene.start();
 		if(on_complete)
 			on_complete();

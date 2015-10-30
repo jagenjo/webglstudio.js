@@ -255,6 +255,44 @@ textarea.code {
 }
 
 
+.drive-info {
+	font-size: 1.4em;
+	padding: 20px;
+}
+
+.drive-info h2 {
+	color: white;
+}
+
+.drive-info h2 button {
+	font-size: 1em;
+	margin-left: 20px;
+}
+
+.drive-info .unit-item {
+	width: 100%;
+	background-color: #368;
+	border-radius: 8px;
+	margin: 10px;
+	padding: 0.4em;
+	cursor: pointer;
+}
+
+.drive-info .unit-item .title {
+	color: white;
+	font-size: 1.4em;
+	min-width: 30%;
+	display: inline-block;	
+}
+
+.drive-info .unit-item .info {
+	color: #FEFEFE;
+	background-color: #222;
+	padding: 2px 10px ;
+	margin-left: 10px;
+	border-radius: 4px;
+}
+
 ul.file-list li.file-item span.progress {
 	position: absolute;
 	top: 20px;

@@ -803,7 +803,7 @@ var DDS = (function () {
 			{
 				width = header[off_width];
 				height = header[off_height];
-				for(i = 0; i < mipmapCount; ++i) {
+				for(var i = 0; i < mipmapCount; ++i) {
 					if(fourCC)
 					{
 						dataLength = Math.max( 4, width )/4 * Math.max( 4, height )/4 * blockBytes;
@@ -829,7 +829,7 @@ var DDS = (function () {
 		{
 			if(ext) {
 				gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true );
-				for(i = 0; i < mipmapCount; ++i) {
+				for(var i = 0; i < mipmapCount; ++i) {
 					if(fourCC)
 					{
 						dataLength = Math.max( 4, width )/4 * Math.max( 4, height )/4 * blockBytes;
@@ -932,11 +932,11 @@ var DDS = (function () {
 
 		if(is_cubemap)
 		{
-			for(face = 0; face < 6; ++face)
+			for(var face = 0; face < 6; ++face)
 			{
 				width = header[off_width];
 				height = header[off_height];
-				for(i = 0; i < mipmapCount; ++i)
+				for(var i = 0; i < mipmapCount; ++i)
 				{
 					if(fourCC)
 					{
@@ -961,7 +961,7 @@ var DDS = (function () {
 		{
 			if(!compressed_not_supported)
 			{
-				for(i = 0; i < mipmapCount; ++i) {
+				for(var i = 0; i < mipmapCount; ++i) {
 					dataLength = Math.max( 4, width )/4 * Math.max( 4, height )/4 * blockBytes;
 					byteArray = new Uint8Array(arrayBuffer, dataOffset, dataLength);
 					//gl.compressedTexImage2D(gl.TEXTURE_2D, i, internalFormat, width, height, 0, byteArray);
@@ -3751,7 +3751,15 @@ Texture.prototype.unbind = function(unit) {
 
 
 Texture.prototype.setParameter = function(param,value) {
-	this.gl.texParameteri(this.texture_type, param, value);
+	this.bind(0);
+	this.gl.texParameteri( this.texture_type, param, value );
+	switch(param)
+	{
+		case this.gl.TEXTURE_MAG_FILTER: this.magFilter = value; break;
+		case this.gl.TEXTURE_MIN_FILTER: this.minFilter = value; break;
+		case this.gl.TEXTURE_WRAP_S: this.wrapS = value; break;
+		case this.gl.TEXTURE_WRAP_T: this.wrapT = value; break;
+	}
 }
 
 /**
@@ -3858,6 +3866,8 @@ Texture.prototype.drawTo = function(callback, params)
 
 	var v = gl.getViewport();
 	var now = GL.getTime();
+
+	var old_fbo = gl.getParameter( gl.FRAMEBUFFER_BINDING );
 
 	var framebuffer = gl._framebuffer = gl._framebuffer || gl.createFramebuffer();
 	gl.bindFramebuffer( gl.FRAMEBUFFER, framebuffer );
@@ -3977,7 +3987,7 @@ Texture.prototype.drawTo = function(callback, params)
 	gl._current_fbo_color = null;
 	gl._current_fbo_depth = null;
 
-	gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+	gl.bindFramebuffer( gl.FRAMEBUFFER, old_fbo );
 	gl.bindRenderbuffer(gl.RENDERBUFFER, null);
 	gl.viewport(v[0], v[1], v[2], v[3]);
 
@@ -4224,7 +4234,7 @@ Texture.prototype.applyBlur = function(offsetx, offsety, intensity, temp_texture
 	gl.disable( gl.BLEND );
 
 	temp_texture.drawTo( function() {
-		self.toViewport(shader, {u_intensity: intensity, u_offset: [0, offsety ] });
+		self.toViewport(shader, {u_texture: 0, u_intensity: intensity, u_offset: [0, offsety ] });
 	});	
 
 	output_texture = output_texture || this;
@@ -6678,7 +6688,6 @@ GL.augmentEvent = function(e, root_element)
 */
 
 var LEvent = global.LEvent = GL.LEvent = {
-	jQuery: false, //dispatch as jQuery events (enable this if you want to hook regular jQuery events to instances, they are dispatches as ":eventname" to avoid collisions)
 	//map: new Weakmap(),
 
 	/**
@@ -6808,14 +6817,28 @@ var LEvent = global.LEvent = GL.LEvent = {
 	},
 
 	/**
+	* Tells if there is any callback binded to this event
+	* @method LEvent.hasBind
+	* @param {Object} instance where the are the events binded
+	* @param {String} event_name string defining the event name
+	* @return {boolean} true is there is at least one
+	**/
+	hasBind: function( instance, event_type )
+	{
+		var name = "__on_" + event_type;
+		if(!instance || !instance.hasOwnProperty(name) || !instance[name].length) 
+			return false;
+		return true;
+	},
+
+	/**
 	* Triggers and event in an instance
 	* @method LEvent.trigger
 	* @param {Object} instance that triggers the event
 	* @param {String} event_name string defining the event name
 	* @param {*} parameters that will be received by the binded function
-	* @param {boolean} skip_jquery [optional] force to skip jquery triggering
 	**/
-	trigger: function( instance, event_type, params, skip_jquery )
+	trigger: function( instance, event_type, params )
 	{
 		if(!instance) 
 			throw("cannot trigger event from null");
@@ -6826,10 +6849,6 @@ var LEvent = global.LEvent = GL.LEvent = {
 		//	event = { type: event, target: instance, stopPropagation: LEvent._stopPropagation };
 		//var event_type = event.type;
 
-		//you can resend the events as jQuery events, but to avoid collisions with system events, we use ":" at the begining
-		if(LEvent.jQuery && !skip_jquery)
-			$(instance).trigger( ":" + event_type, params );
-
 		var name = "__on_" + event_type;
 		if(!instance.hasOwnProperty(name)) 
 			return;
@@ -6837,7 +6856,7 @@ var LEvent = global.LEvent = GL.LEvent = {
 		for(var i = 0, l = inst.length; i < l; ++i)
 		{
 			var v = inst[i];
-			if( v[0].call(v[1], event_type, params) == false)// || event.stop)
+			if( v && v[0].call(v[1], event_type, params) == false)// || event.stop)
 				break; //stopPropagation
 		}
 	},
@@ -6848,11 +6867,9 @@ var LEvent = global.LEvent = GL.LEvent = {
 	* @param {Array} array contains all instances to triggers the event
 	* @param {String} event_name string defining the event name
 	* @param {*} parameters that will be received by the binded function
-	* @param {boolean} skip_jquery [optional] force to skip jquery triggering
 	**/
-	triggerArray: function( instances, event_type, params, skip_jquery )
+	triggerArray: function( instances, event_type, params )
 	{
-		var use_jquery = LEvent.jQuery && !skip_jquery;
 		var name = "__on_" + event_type;
 
 		for(var i = 0, l = instances.length; i < l; ++i)
@@ -6866,10 +6883,6 @@ var LEvent = global.LEvent = GL.LEvent = {
 			//if(typeof(event) == "string")
 			//	event = { type: event, target: instance, stopPropagation: LEvent._stopPropagation };
 			//var event_type = event.type;
-
-			//you can resend the events as jQuery events, but to avoid collisions with system events, we use ":" at the begining
-			if(use_jquery)
-				$(instance).trigger( ":" + event_type, params );
 
 			if(!instance.hasOwnProperty(name)) 
 				continue;

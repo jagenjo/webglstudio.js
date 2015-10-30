@@ -60,14 +60,14 @@ var PluginsModule  = {
 	loadPlugin: function( url, on_complete, on_error )
 	{
 		var last_module = null;
-		if(CORE.modules.length)
-			last_module = CORE.modules[ CORE.modules.length - 1];
+		if(CORE.Modules.length)
+			last_module = CORE.Modules[ CORE.Modules.length - 1];
 
 		LiteGUI.requireScript( url, inner_loaded, on_error );
 
 		function inner_loaded()
 		{
-			var module = CORE.modules[ CORE.modules.length - 1 ];
+			var module = CORE.Modules[ CORE.Modules.length - 1 ];
 			if( last_module != module )
 			{
 				//somethign loaded

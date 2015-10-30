@@ -1602,11 +1602,11 @@ li.ltreeitem div.ltreeitemtitle .incontent:hover {
 	color: white;
 }
 
-li.ltreeitem div.ltreeitemtitle.selected .incontent {
+li.ltreeitem.selected  div.ltreeitemtitle .incontent {
 	color: #EC6;
 }
 
-li.ltreeitem div.ltreeitemtitle.semiselected .incontent {
+li.ltreeitem.semiselected div.ltreeitemtitle .incontent {
 	color: #A96;
 }
 

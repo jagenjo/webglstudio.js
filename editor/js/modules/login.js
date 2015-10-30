@@ -42,13 +42,10 @@ var LoginModule = {
 
 	setSession: function(session)
 	{
-		if (session)
-		{
-			this.session = session;
-			this.user = session.user;
-		}
+		this.session = session;
+		this.user = session ? session.user : null;
 		this.updateLoginArea();
-		$(this).trigger( session ? "user-login" : "user-logout" );
+		LiteGUI.trigger( this, session ? "user-login" : "user-logout" );
 	},
 
 	updateLoginArea: function()
@@ -56,16 +53,14 @@ var LoginModule = {
 		if (this.user)
 		{
 			this.loginarea.innerHTML = "logged as <a href='#'>"+this.user.username+"</a> <button class='btn'>Logout</button>";
-			$(this.loginarea).find("button").click(function()
-			{
+			this.loginarea.querySelector("button").addEventListener( "click", function() {
 				LoginModule.showLogoutDialog();
 			});
 		}
 		else
 		{
 			this.loginarea.innerHTML = "not logged in <button class='btn'>Login</button>";
-			$(this.loginarea).find("button").click(function()
-			{
+			this.loginarea.querySelector("button").addEventListener("click", function() {
 				LoginModule.showLoginDialog();
 			});
 		}
@@ -85,7 +80,7 @@ var LoginModule = {
 				LoginModule.login_dialog = null;
 			}
 			this.login_dialog.show('fade');
-			this.login_dialog.widgets = new LiteGUI.Inspector();
+			this.login_dialog.widgets = new LiteGUI.Inspector(null,{ name_width: "40%" });
 		}
 
 		var dialog = this.login_dialog;
@@ -100,7 +95,9 @@ var LoginModule = {
 			else
 				inner_login_guest();
 		}});
-		widgets.addButton(null,"Create Account", { callback: inner_create_account } );
+		widgets.addSeparator();
+		widgets.addButton("Forgot password","Reset my password", { callback: inner_forget_password } );
+		widgets.addButton("Don't have account","Create Account", { callback: inner_create_account } );
 		var info = widgets.addInfo( null, "" );
 
 		dialog.content.appendChild(widgets.root);
@@ -122,7 +119,9 @@ var LoginModule = {
 		function inner_create_account()
 		{
 			widgets.clear();
+			widgets.addTitle( "New account" );
 			widgets.addInfo( null, "Fill the profile information" );
+			widgets.addTitle( "User profile" );
 			var username_widget = widgets.addString("Username", "");
 			var email_widget = widgets.addString("Email", "");
 			var password_widget = widgets.addString("Password", "", { password:true });
@@ -140,6 +139,20 @@ var LoginModule = {
 				});
 			}});
 			var create_info = widgets.addInfo( null, "" );
+		}
+
+		function inner_forget_password()
+		{
+			widgets.clear();
+			widgets.addTitle( "Reset password" );
+			var info_widget = widgets.addInfo( null, "Fill your email address" );
+			var email_widget = widgets.addString("Email", "");
+			var button_widget = widgets.addButton(null,"Request reset password", { callback: function()	{
+				LFS.forgotPassword( email_widget.getValue(), function(v){
+					info_widget.setValue("A reset password has been send, check your email to get the reset code.");
+				});
+				info_widget.setValue("Sending request...");
+			}});
 		}
 
 		function inner_result(user)
@@ -189,9 +202,8 @@ var LoginModule = {
 			this.session.logout( inner_success );
 		function inner_success()
 		{
-			LoginModule.session = null;
 			LoginModule.user = null;
-			LoginModule.updateLoginArea();
+			LoginModule.setSession(null);
 			if(callback) 
 				callback();
 		}

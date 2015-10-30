@@ -48,8 +48,16 @@ var DriveModule = {
 		});
 
 		LEvent.bind( LS.ResourcesManager, "resource_loading", function( e, url ) {
-			CanvasConsole.sendMessage("FILE: " + url, 0, { id: "res-msg-" + url.hashCode(), closable: true } );
+			NotifyModule.show("FILE: " + url, { id: "res-msg-" + url.hashCode(), closable: true, time: 0, left: 60, top: 30, parent: "#visor" } );
 		});
+
+		LEvent.bind( LS.ResourcesManager, "resource_loading_progress", function( e, data ) {
+			var id = "res-msg-" + data.url.hashCode();
+			var msg = NotifyModule.get(id);
+			if(msg)
+				msg.setProgress( data.progress );
+		});
+		
 
 		LEvent.bind( LS.ResourcesManager, "resource_loaded", function(e, url) {
 			var msg = document.getElementById( "res-msg-" + url.hashCode() );
@@ -83,7 +91,7 @@ var DriveModule = {
 					DriveModule.onResourceSelected(null);
 			}
 		});
-		this.root = $(LiteGUI.main_tabs.root).find("#drivetab")[0];
+		this.root = LiteGUI.main_tabs.root.querySelector("#drivetab");
 
 		LEvent.bind(ResourcesManager,"resource_registered",function(e,res) { 
 			DriveModule.onResourceRegistered(res); 
@@ -96,13 +104,6 @@ var DriveModule = {
 		EditorModule.showSelectResource = DriveModule.showSelectResource;
 
 		this.createWindow(); //creates tree too
-
-		var that = this;
-		//fetch content
-		$(LoginModule).bind("user-login", function(){
-			that.updateServerTreePanel();
-			that.showInBrowserContent();
-		});
 
 		LiteGUI.menubar.add("Window/Resources Panel", { callback: function(){ ResourcesPanelWidget.createDialog(); }});
 	},
@@ -143,12 +144,65 @@ var DriveModule = {
 
 		//resources container (browser)
 		var res_root = area.sections[1].content;
-		$(res_root).append(this.top_widget.root);
-		$(res_root).append("<div class='resources-container' style='height: calc(100% - 50px); height: -webkit-calc(100% - 50px); overflow: auto'></div>");
+		res_root.appendChild( this.top_widget.root );
+		var res_container = LiteGUI.createElement("div",null,null,"height: calc(100% - 50px); height: -webkit-calc(100% - 50px); overflow: auto");
+		res_container.className = "resources-container";
+		res_root.appendChild( res_container );
+		this.browser_container = res_container;
+
+		this.addDropArea( this.browser_container, function(e) {
+			var fullpath = DriveModule.current_folder;
+			var bridge = DriveModule.current_bridge;
+			if(!bridge)
+				return false;
+			if(bridge.onDropInFolder)
+			{
+				var r = bridge.onDropInFolder(fullpath, e);
+				if(r)
+					e.stopPropagation();
+				return r;
+			}
+		});
 
 		//add drop action to automatically upload to server
-		var drop_zone = res_root.querySelector(".resources-container");
-		ImporterModule.addFileDropArea(drop_zone, this.onFileDropInBrowser.bind(this) );
+		this.addDropArea( res_container, this.onFileDropInBrowser.bind(this) );
+	},
+
+	addDropArea: function( element, callback )
+	{
+		element.addEventListener("dragenter", onDragEvent);
+
+		function onDragEvent(evt)
+		{
+			element.addEventListener("dragexit", onDragEvent);
+			element.addEventListener("dragover", onDragEvent);
+			element.addEventListener("drop", onDrop);
+			evt.stopPropagation();
+			evt.preventDefault();
+		}
+
+		function onDrop(evt)
+		{
+			evt.stopPropagation();
+			evt.preventDefault();
+
+			element.removeEventListener("dragexit", onDragEvent);
+			element.removeEventListener("dragover", onDragEvent);
+			element.removeEventListener("drop", onDrop);
+
+			var r = undefined;
+			//load file in memory
+			if(callback)
+				r = callback(evt);
+			if(r)
+			{
+				evt.stopPropagation();
+				evt.stopImmediatePropagation();
+				return true;
+			}
+			//if (r === false)
+			//	ImporterModule.onFileDrop(evt);
+		}
 	},
 
 	guessCategoryFromFile: function(file)
@@ -164,89 +218,6 @@ var DriveModule = {
 				category = "Mesh";
 		}
 		return category;
-	},
-
-	//user drags a file into the browser area -> gets uploaded inmediately (according to the bridge)
-	onFileDropInBrowser: function(evt)
-	{
-		var drop_zone = evt.currentTarget;
-
-		var current_folder = this.current_folder;
-		var bridge = this.current_bridge;
-		if(!bridge || !bridge.uploadFile)
-			return false;
-
-		var exp = /[^a-zA-Z0-9]/g;
-
-		//for every file dropped
-		if(evt.dataTransfer.files.length)
-		{
-			for(var i = 0; i < evt.dataTransfer.files.length; i++)
-			{
-				var file = evt.dataTransfer.files[i];
-				var fullpath = current_folder + "/" + file.name;
-
-				//guess a category
-				var category = this.guessCategoryFromFile( file )
-				if(!category)
-				{
-					console.log("Category cannot be found: " + file.name );
-					continue;
-				}
-
-				//create a place holder element of the file in the files-browser
-				var element = document.createElement("li");
-				var safe_id = fullpath.replace( exp , "_");
-				element.className = "resource file-item file-loading-" + safe_id;
-				element.innerHTML = "<span class='progress'></span><span class='title'>"+file.name+"</span>";
-				drop_zone.querySelector("ul").appendChild(element);
-
-				file.category = category;
-
-				//call the bridge to upload the file
-				bridge.uploadFile(fullpath, file, function( fullpath, preview_url){
-						//mark as finished uploading
-						var safe_id = fullpath.replace( exp , "_");
-						var item = drop_zone.querySelector(".file-loading-" + safe_id + " .progress");
-						if(item)
-						{
-							item.style.backgroundColor = "transparent";
-							item.innerHTML = "<img src='" + preview_url + "'/>";
-						}
-					}, function(err){
-						//in case of error
-						var safe_id = fullpath.replace( exp , "_");
-						var item = drop_zone.querySelector(".file-loading-" + safe_id + " .progress");
-						if(item)
-						{
-							item.backgroundColor = "red";
-							item.style.height = "100%";
-						}
-					}, function(v, fullpath){
-						//show progress
-						var safe_id = fullpath.replace( exp , "_");
-						var item = drop_zone.querySelector(".file-loading-" + safe_id + " .progress");
-						if(item)
-							item.style.height = (v*100).toFixed() + "%";
-				});
-			}//for
-		}
-		else if( evt.dataTransfer.items.length )
-		{
-			var url = evt.dataTransfer.getData("text/uri-list");
-			if(url)
-			{
-				var file_info = LFS.parsePath(url);
-				var target_fullpath = current_folder + "/" + file_info.filename;
-
-				bridge.uploadRemoteFile( url, target_fullpath, function(v){
-					//refresh tab?
-				});
-			}
-		}
-
-		evt.preventDefault();
-		evt.stopPropagation();
 	},
 
 	openTab: function()
@@ -283,20 +254,22 @@ var DriveModule = {
 		tree_widget.root.classList.add("resources-tree");
 		tree_widget.root.style.backgroundColor = "black";
 		tree_widget.root.style.padding = "5px";
-		tree_widget.root.style.width = "calc( 100% - 10px )";
 		tree_widget.root.style.height = "calc( 100% - 50px )";
 		tree_widget.root.style.height = "-webkit-calc( 100% - 50px )";
+		tree_widget.root.style.overflow = "auto";
 		this.tree_widget = tree_widget;
 		var that = this;
 
 		this.tree_widget.onItemContextMenu = function(e)
 		{
-			var menu = new LiteGUI.ContextualMenu(["Create Folder","Delete Folder","Rename"], { event: e, callback: function(v) {
-				if(v == "Create Folder")
-					that.onCreateFolderInServer();
-				else if(v == "Delete Folder")
-					that.onDeleteFolderInServer();
-			}});
+			var path = e.currentTarget.dataset["item_id"];
+			var bridge = DriveModule.getDriveBridge( e.currentTarget.dataset["bridge"] );
+
+			if(bridge && bridge.onContextualMenu)
+			{
+				bridge.onContextualMenu(path, e);
+			}
+
 			e.preventDefault();
 			return false;
 		}
@@ -334,7 +307,9 @@ var DriveModule = {
 			if(!bridge || !bridge.onDropInFolder)
 				return;
 
-			bridge.onDropInFolder( folder_fullpath, drop );
+			var r = bridge.onDropInFolder( folder_fullpath, drop );
+			if(r)
+				e.stopPropagation();
 		});
 
 		tree_widget.root.addEventListener("item_renamed", function(e)	{
@@ -361,9 +336,46 @@ var DriveModule = {
 		return tree_widget;
 	},
 
+	showStartUploadingFile: function( fullpath )
+	{
+		NotifyModule.show("UPLOAD: " + fullpath, { id: "res-msg-" + fullpath.hashCode(), closable: true, time: 0, left: 80, top: 30 } );
+	},
+
+	showProgressUploadingFile: function( fullpath, progress )
+	{
+		var msg = NotifyModule.get( "res-msg-" + fullpath.hashCode() );
+		if(msg)
+			msg.setProgress( progress );
+	},
+
+	showEndUploadingFile: function( fullpath )
+	{
+		var msg = NotifyModule.get( "res-msg-" + fullpath.hashCode() );
+		if(!msg)
+			return;
+		msg.content.style.backgroundColor = "rgba(100,200,150,0.5)";
+		msg.kill(500);
+	},
+
+	showErrorUploadingFile: function( fullpath, error )
+	{
+		var msg = NotifyModule.get( "res-msg-" + fullpath.hashCode() );
+		if(!msg)
+			return;
+		msg.content.style.backgroundColor = "rgba(200,100,100,0.5)";
+		msg.kill(1000);
+		LiteGUI.alert( error );
+	},
+
 	refreshTree: function()
 	{
+		var selected = this.tree_widget.getSelectedItem();
+		if(selected)
+			selected = selected.dataset["item_id"];
 		this.tree_widget.updateTree( this.tree );
+		if(selected)
+			this.tree_widget.setSelectedItem(selected);
+
 	},
 
 	refreshContent: function()
@@ -461,49 +473,34 @@ var DriveModule = {
 	},
 
 	//clear and rebuild the resources items shown in the browser screen from a list of resources
-	showInBrowserContent: function( resources_container )
+	showInBrowserContent: function( items )
 	{
 		//var dialog = this.dialog;
 		//if(!dialog) return;
 
 		//var parent = $("#dialog_resources-browser .resources-container")[0];
-		var parent = this.root.querySelector(".resources-container");
+		var parent = this.browser_container;
 		parent.innerHTML = "";
 		var root =  document.createElement("ul");
 		root.className = "file-list";
 		parent.appendChild( root );
 
-		this.visible_resources = resources_container;
+		this.visible_resources = items;
 
-		if(resources_container)
-			for(var i in resources_container)
+		if(items)
+			for(var i in items)
 			{
 				if(i[0] == ":") //local resource
 					continue;
-				var resource = resources_container[i];
-				if(!resource.name)
-					resource.name = i;
-				this.addItemToBrowser(resource);
+				var item = items[i];
+				if(!item.name)
+					item.name = i;
+				this.addItemToBrowser( item );
 			}
 	},
 
-	getFilename: function(fullpath)
-	{
-		var pos = fullpath.lastIndexOf("/");
-		if(pos == -1) 
-			return fullpath;
-		return fullpath.substr(pos+1);
-	},
-
-	getExtension: function (filename)
-	{
-		var pos = filename.lastIndexOf(".");
-		if(pos == -1) return "";
-		return filename.substr(pos+1).toLowerCase();
-	},
-
 	//add a new resource to the browser window
-	addItemToBrowser: function(resource)
+	addItemToBrowser: function( resource )
 	{
 		var memory_resource = LS.ResourcesManager.resources[ resource.fullpath ];
 
@@ -647,14 +644,139 @@ var DriveModule = {
 		});
 	},
 
-	
+	//user drags a file into the browser area -> gets passed to the bridge
+	onFileDropInBrowser: function( evt )
+	{
+		var drop_zone = evt.currentTarget;
+
+		var current_folder = this.current_folder;
+		var bridge = this.current_bridge;
+		if(!bridge)
+			return false;
+
+		if(bridge.onDropInFolder)
+		{
+			var r = bridge.onDropInFolder( current_folder, evt );
+			if(r)
+				evt.stopPropagation();
+			return r;
+		}
+
+		if(!bridge.uploadFile)
+			return false;
+
+		var exp = /[^a-zA-Z0-9]/g;
+
+		//for every file dropped
+		if(evt.dataTransfer.files.length)
+		{
+			for(var i = 0; i < evt.dataTransfer.files.length; i++)
+			{
+				var file = evt.dataTransfer.files[i];
+				var fullpath = current_folder + "/" + file.name;
+
+				//guess a category
+				var category = this.guessCategoryFromFile( file )
+				if(!category)
+				{
+					console.log("Category cannot be found: " + file.name );
+					continue;
+				}
+
+				//create a place holder element of the file in the files-browser
+				var element = document.createElement("li");
+				var safe_id = fullpath.replace( exp , "_");
+				element.className = "resource file-item file-loading-" + safe_id;
+				element.innerHTML = "<span class='progress'></span><span class='title'>"+file.name+"</span>";
+				drop_zone.querySelector("ul").appendChild(element);
+
+				file.category = category;
+
+				//call the bridge to upload the file
+				bridge.uploadFile( fullpath, file, function( fullpath, preview_url ){
+						//mark as finished uploading
+						var safe_id = fullpath.replace( exp , "_");
+						var item = drop_zone.querySelector(".file-loading-" + safe_id + " .progress");
+						if(item)
+						{
+							item.style.backgroundColor = "transparent";
+							item.innerHTML = "<img src='" + preview_url + "'/>";
+						}
+					}, function(err){
+						//in case of error
+						var safe_id = fullpath.replace( exp , "_");
+						var item = drop_zone.querySelector(".file-loading-" + safe_id + " .progress");
+						if(item)
+						{
+							item.backgroundColor = "red";
+							item.style.height = "100%";
+						}
+					}, function(v, fullpath){
+						//show progress
+						var safe_id = fullpath.replace( exp , "_");
+						var item = drop_zone.querySelector(".file-loading-" + safe_id + " .progress");
+						if(item)
+							item.style.height = (v*100).toFixed() + "%";
+				});
+			}//for
+		}
+		else if( evt.dataTransfer.items.length )
+		{
+			var url = evt.dataTransfer.getData("text/uri-list");
+			if(url)
+			{
+				var file_info = LFS.parsePath(url);
+				var target_fullpath = current_folder + "/" + file_info.filename;
+
+				bridge.uploadRemoteFile( url, target_fullpath, function(v){
+					//refresh tab?
+				});
+			}
+		}
+
+		evt.preventDefault();
+		evt.stopPropagation();
+	},
+
+	selectFolder: function( fullpath )
+	{
+		this.tree_widget.setSelectedItem( fullpath, true, true );
+	},
+
+	getFilename: function(fullpath)
+	{
+		var pos = fullpath.lastIndexOf("/");
+		if(pos == -1) 
+			return fullpath;
+		return fullpath.substr(pos+1);
+	},
+
+	getExtension: function (filename)
+	{
+		var pos = filename.lastIndexOf(".");
+		if(pos == -1) return "";
+		return filename.substr(pos+1).toLowerCase();
+	},	
+
+	getDriveBridgeFromFullpath: function( fullpath )
+	{
+		if(!fullpath)
+			return null;
+		for(var i in this.registered_drive_bridges)
+		{
+			var bridge = this.registered_drive_bridges[i];
+			if( bridge.isPath && bridge.isPath( fullpath ) )
+				return bridge;
+		}
+		return null;
+	},
 
 	filterResources: function(type)
 	{
 		//if(!this.dialog) return;
 
 		//var parent = $("#dialog_resources-browser .resources-container ul.file-list")[0];
-		var parent = $(this.root).find(".resources-container ul.file-list")[0];
+		var parent = this.root.querySelector(".resources-container ul.file-list");
 
 		$(parent).find(".resource").show();
 		if(!type)
@@ -672,7 +794,7 @@ var DriveModule = {
 		//if(!this.dialog) return;
 
 		//var parent = $("#dialog_resources-browser .resources-container ul.file-list")[0];
-		var parent = $(this.root).find(".resources-container ul.file-list")[0];
+		var parent = this.root.querySelector(".resources-container ul.file-list");
 
 		$(parent).find(".resource").show();
 		if(!text)
@@ -722,7 +844,7 @@ var DriveModule = {
 		var img = new Image();
 		img.src = preview_url;
 		img.className = "preview_image";
-		img.on_error = function(){ this.parentNode.removeChild(this); }
+		img.onerror = function(){ this.parentNode.removeChild(this); }
 
 		widgets.addInfo(null, img);
 		var preview_image = widgets.root.querySelector(".preview_image");
@@ -837,6 +959,13 @@ var DriveModule = {
 			var restype = resource.category || resource.object_type;
 			DriveModule.loadResource(resource.fullpath,restype);
 		}});
+
+		/*
+		if(resource.fullpath)
+			widgets.addButton(null,"Open in Code Editor", {callback: function(v){
+				
+			}});
+		*/
 
 		widgets.addButtons(null,["Save","Delete"], {callback: function(v){
 			if (v == "Save")
@@ -1280,7 +1409,7 @@ var DriveModule = {
 
 	//SERVER ACTIONS *************************************************
 
-	onCreateFolderInServer: function()
+	onCreateFolderInServer: function( root_path )
 	{
 		LiteGUI.prompt("Folder name", inner);
 		function inner(name)
@@ -1288,8 +1417,8 @@ var DriveModule = {
 			if(DriveModule.current_folder == null)
 				return;
 
-			var folder = DriveModule.current_folder + "/" + name;
-			DriveModule.serverCreateFolder(folder, inner_complete);
+			var folder = root_path + "/" + name;
+			DriveModule.serverCreateFolder( folder, inner_complete );
 		}
 
 		function inner_complete(v)
@@ -1308,7 +1437,7 @@ var DriveModule = {
 		{
 			if(!v)
 				return;
-			LoginModule.session.moveFolder(origin_fullpath, target_fullpath, inner_complete);
+			LoginModule.session.moveFolder( origin_fullpath, target_fullpath, inner_complete);
 		}
 
 		function inner_complete(v)
@@ -1320,7 +1449,7 @@ var DriveModule = {
 		}
 	},
 
-	onDeleteFolderInServer: function()
+	onDeleteFolderInServer: function( fullpath )
 	{
 		LiteGUI.confirm("Are you sure you want to delete the folder? All files will be lost", inner);
 		function inner(v)
@@ -1328,11 +1457,10 @@ var DriveModule = {
 			if(!v)
 				return;
 
-			if(DriveModule.current_folder == null)
+			if(fullpath == null)
 				return;
 
-			var folder = DriveModule.current_folder;
-			DriveModule.serverDeleteFolder(folder, inner_complete);
+			DriveModule.serverDeleteFolder( fullpath, inner_complete );
 		}
 
 		function inner_complete(v)

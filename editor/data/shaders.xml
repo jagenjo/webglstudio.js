@@ -605,6 +605,20 @@
 		]]>
 	</snippet>
 
+	<snippet id="gamma">
+		<![CDATA[
+			vec4 degamma( vec4 color )
+			{
+				return pow( color, 2.2 ); 
+			}
+
+			vec4 finalGamma( vec3 color, float alpha )
+			{
+				return vec4( pow( color, 1.0 / 2.2 ), alpha );
+			}
+		]]>
+	</snippet>
+
 
 		<shader id="base" tags="instance" macros="NO_NORMALS,NO_COORDS,USE_COORDS1_STREAM,USE_COLOR_STREAM,USE_TANGENT_STREAM,USE_EXTRA_STREAMS,USE_CLIPPING_PLANE,USE_ALPHA_TEST,USE_ORTHOGRAPHIC_CAMERA,USE_VERTEX_SHADER_UNIFORMS,USE_VERTEX_SHADER_FUNCTIONS,USE_VERTEX_SHADER_CODE,USE_PIXEL_SHADER_UNIFORMS,USE_PIXEL_SHADER_FUNCTIONS,USE_PIXEL_SHADER_CODE,USE_SURFACE_SHADER,USE_IRRADIANCE_CUBEMAP,USE_ENVIRONMENT_TEXTURE,USE_ENVIRONMENT_CUBEMAP,USE_MORPHING,USE_SKINNING,MAX_BONES,USE_SKINNING_TEXTURE,USE_DRAW_BUFFERS,USE_POINTS,USE_TEXTURED_POINTS,USE_CIRCLE_POINTS" multipass="false" imports="true" events="true">
 		<code type="vertex_shader">
@@ -878,6 +892,9 @@
 					if(o.Alpha < USE_ALPHA_TEST)
 						discard;
 				#endif
+
+				//final pass
+				#import 
 
 				//generate lighting
 				#ifndef USE_DRAW_BUFFERS
@@ -1234,7 +1251,7 @@
 			USE_ORTHOGRAPHIC_CAMERA, USE_SOFT_PARTICLES, FIRST_PASS,LAST_PASS, USE_EXTRA_SURFACE_SHADER_CODE, USE_VERTEX_SHADER_UNIFORMS, 
 			USE_VERTEX_SHADER_FUNCTIONS,USE_VERTEX_SHADER_CODE,USE_MORPHING,USE_SKINNING,MAX_BONES,USE_SKINNING_TEXTURE,
 			USE_EXTRA_LIGHT_SHADER_CODE, USE_EXTRA_LIGHT_TEXTURE, USE_EXTRA_LIGHT_CUBEMAP,
-			USE_DRAW_BUFFERS,USE_POINTS,USE_TEXTURED_POINTS
+			USE_DRAW_BUFFERS,USE_POINTS,USE_TEXTURED_POINTS,USE_LINEAR_PIPELINE
 		</macros>
 		<code type="vertex_shader">
 		<![CDATA[
@@ -1569,6 +1586,10 @@
 
 			#import "structs"
 
+			#ifdef USE_LINEAR_PIPELINE
+				uniform float u_gamma;
+			#endif
+
 			#ifdef USE_SPOT_LIGHT
 				#import "spotFalloff"
 			#endif
@@ -1769,6 +1790,10 @@
 
 				//Surface properties
 				o.Albedo = color;
+
+				#ifdef USE_LINEAR_PIPELINE
+					o.Albedo = pow( o.Albedo, vec3(u_gamma) );
+				#endif
 
 				IN.vertex = v_local_pos;
 				IN.normal = v_local_normal;

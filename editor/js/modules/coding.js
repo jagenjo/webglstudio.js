@@ -934,3 +934,59 @@ LS.Components.Script.onComponentInfo = function( component, widgets )
 		}});
 	}
 }
+
+//to write a tiny code snippet
+LiteGUI.Inspector.prototype.addCode = function(name, value, options)
+{
+	options = options || {};
+	value = value || "";
+	var that = this;
+	this.values[ name ] = value;
+	
+	var element = this.createWidget( name,"<span class='inputfield button'><textarea tabIndex='"+this.tab_index+"' class='text string' "+(options.disabled?"disabled":"")+">"+value+"<textarea/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
+	var input = element.querySelector(".wcontent textarea");
+
+	input.addEventListener("change", function(e) { 
+		LiteGUI.Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
+	});
+	
+	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
+		if(options.callback_button)
+			options.callback_button.call(element, $(element).find(".wcontent input").val() );
+	});
+
+
+	var code_container = textarea;
+
+	var editor = CodeMirror(code_container, {
+		value: "",
+		mode:  "javascript",
+		theme: "blackboard",
+		lineWrapping: true,
+		gutter: true,
+		tabSize: 2,
+		lineNumbers: true,
+		matchBrackets: true,
+		styleActiveLine: true,
+		extraKeys: {
+			"Ctrl-Enter": "compile",
+			"Ctrl-Space": "autocomplete",
+			"Cmd-Space": "autocomplete",
+			//"Ctrl-F": "insert_function",
+			"Cmd-F": "insert_function",
+			"Ctrl-P": "playstop_scene",
+			},
+		onCursorActivity: function(e) {
+			CodingModule.editor.matchHighlight("CodeMirror-matchhighlight");
+		}
+	});
+
+	editor.on("change", function(e){
+		value = editor.getValue();	
+	});
+
+	this.tab_index += 1;
+	this.append(element);
+	return element;
+}
+LiteGUI.Inspector.widget_constructors["code"] = "addCode";

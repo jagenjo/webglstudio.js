@@ -4,7 +4,7 @@ var CORE = {
 	user_preferences: {}, //stuff that the user can change and wants to keep
 
 	//registered modules
-	modules: [],
+	Modules: [],
 	_modules_initialized: false,
 
 	//called from index.html
@@ -111,17 +111,17 @@ var CORE = {
 		var catch_exceptions = false;
 
 		//pre init
-		for(var i in this.modules)
-			if (this.modules[i].preInit)
+		for(var i in this.Modules)
+			if (this.Modules[i].preInit)
 			{
 				if(!catch_exceptions)
 				{
-					this.modules[i].preInit();
+					this.Modules[i].preInit();
 					continue;
 				}
 				try
 				{
-					this.modules[i].preInit();
+					this.Modules[i].preInit();
 				}
 				catch (err)
 				{
@@ -130,40 +130,40 @@ var CORE = {
 			}
 
 		//init
-		for(var i in this.modules)
-			if (this.modules[i].init && !this.modules[i]._initialized)
+		for(var i in this.Modules)
+			if (this.Modules[i].init && !this.Modules[i]._initialized)
 			{
 				if(!catch_exceptions)
 				{
-					this.modules[i].init();
+					this.Modules[i].init();
 				}
 				else
 				{
 					try
 					{
-						this.modules[i].init();
+						this.Modules[i].init();
 					}
 					catch (err)
 					{
 						console.error(err);
 					}
 				}
-				this.modules[i]._initialized = true;
+				this.Modules[i]._initialized = true;
 			}
 
 		//post init
-		for(var i in this.modules)
-			if (this.modules[i].postInit)
+		for(var i in this.Modules)
+			if (this.Modules[i].postInit)
 			{
 				if(!catch_exceptions)
 				{
-					this.modules[i].postInit();
+					this.Modules[i].postInit();
 				}
 				else
 				{
 					try
 					{
-						this.modules[i].postInit();
+						this.Modules[i].postInit();
 					}
 					catch (err)
 					{
@@ -177,7 +177,7 @@ var CORE = {
 
 	registerModule: function( module )
 	{
-		this.modules.push(module);
+		this.Modules.push(module);
 
 		//initialize on late registration
 		if(this._modules_initialized)
@@ -193,18 +193,18 @@ var CORE = {
 	//used mostly to reload plugins
 	removeModule: function( module )
 	{
-		var index = this.modules.indexOf( module );
+		var index = this.Modules.indexOf( module );
 		if(index == -1)
 			return;
 		if(module.deinit)
 			module.deinit();
-		this.modules.splice(index,1);
+		this.Modules.splice(index,1);
 		LiteGUI.trigger( CORE.root, "module_removed", module );
 	},
 
 	isModule: function( module )
 	{
-		var index = this.modules.indexOf( module );
+		var index = this.Modules.indexOf( module );
 		if(index == -1)
 			return false;
 		return true;
@@ -212,9 +212,9 @@ var CORE = {
 
 	onUnload: function()
 	{
-		for(var i in this.modules)
-			if (this.modules[i].onUnload)
-				this.modules[i].onUnload();
+		for(var i in this.Modules)
+			if (this.Modules[i].onUnload)
+				this.Modules[i].onUnload();
 
 		if(this.user_preferences)
 		{

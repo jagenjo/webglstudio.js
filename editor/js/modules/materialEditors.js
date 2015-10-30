@@ -395,7 +395,7 @@ StandardMaterial["@inspector"] = function( material, inspector )
 		inspector.addTextureSampler( channel, sampler, { channel: channel, material: material, callback: function(sampler) {
 			if(!sampler.texture)
 				sampler = null;
-			material.setTextureSampler( this.channel, sampler );
+			material.setTextureSampler( this.channel, sampler ); //this is the options because the callback is there
 		}});
 	}
 

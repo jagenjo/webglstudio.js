@@ -52,7 +52,7 @@ var SceneStorageModule = {
 		dialog.add( split );
 
 		var widgets = new LiteGUI.Inspector();
-		var scenes = [];
+		var scenes = ["Loading..."];
 		var list = widgets.addList(null,scenes, { height: 230, callback: inner_selected});
 		widgets.addButtons(null,["Load","Delete"], { className:"big", callback: inner_button });
 

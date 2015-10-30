@@ -8016,11 +8016,8 @@ if(typeof(LiteGraph) != "undefined")
 	function LGraphTextureToViewport()
 	{
 		this.addInput("Texture","Texture");
-		this.properties = { additive: false, antialiasing: false, disable_alpha: false };
+		this.properties = { additive: false, antialiasing: false, disable_alpha: false, gamma: 1.0 };
 		this.size[0] = 130;
-
-		if(!LGraphTextureToViewport._shader)
-			LGraphTextureToViewport._shader = new GL.Shader( Shader.SCREEN_VERTEX_SHADER, LGraphTextureToViewport.pixel_shader );
 	}
 
 	LGraphTextureToViewport.title = "to Viewport";
@@ -8044,23 +8041,46 @@ if(typeof(LiteGraph) != "undefined")
 		}
 
 		gl.disable( gl.DEPTH_TEST );
+		var gamma = this.properties.gamma || 1.0;
+		if( this.isInputConnected(1) )
+			gamma = this.getInputData(1);
+
+
 		if(this.properties.antialiasing)
 		{
+			if(!LGraphTextureToViewport._shader)
+				LGraphTextureToViewport._shader = new GL.Shader( Shader.SCREEN_VERTEX_SHADER, LGraphTextureToViewport.aa_pixel_shader );
+
 			var viewport = gl.getViewport(); //gl.getParameter(gl.VIEWPORT);
 			var mesh = Mesh.getScreenQuad();
 			tex.bind(0);
-			LGraphTextureToViewport._shader.uniforms({u_texture:0, uViewportSize:[tex.width,tex.height], inverseVP: [1/tex.width,1/tex.height] }).draw(mesh);
+			LGraphTextureToViewport._shader.uniforms({u_texture:0, uViewportSize:[tex.width,tex.height], u_igamma: 1 / gamma,  inverseVP: [1/tex.width,1/tex.height] }).draw(mesh);
 		}
 		else
-			tex.toViewport();
+		{
+			if(gamma != 1.0)
+			{
+				if(!LGraphTextureToViewport._gamma_shader)
+					LGraphTextureToViewport._gamma_shader = new GL.Shader( Shader.SCREEN_VERTEX_SHADER, LGraphTextureToViewport.gamma_pixel_shader );
+				tex.toViewport(LGraphTextureToViewport._gamma_shader, { u_texture:0, u_igamma: 1 / gamma });
+			}
+			else
+				tex.toViewport();
+		}
 	}
 
-	LGraphTextureToViewport.pixel_shader = "precision highp float;\n\
+	LGraphTextureGradient.prototype.onGetInputs = function()
+	{
+		return [["gamma","number"]];
+	}
+
+	LGraphTextureToViewport.aa_pixel_shader = "precision highp float;\n\
 			precision highp float;\n\
 			varying vec2 v_coord;\n\
 			uniform sampler2D u_texture;\n\
 			uniform vec2 uViewportSize;\n\
 			uniform vec2 inverseVP;\n\
+			uniform float u_igamma;\n\
 			#define FXAA_REDUCE_MIN   (1.0/ 128.0)\n\
 			#define FXAA_REDUCE_MUL   (1.0 / 8.0)\n\
 			#define FXAA_SPAN_MAX     8.0\n\
@@ -8098,17 +8118,31 @@ if(typeof(LiteGraph) != "undefined")
 				vec3 rgbB = rgbA * 0.5 + 0.25 * (texture2D(tex, fragCoord * inverseVP + dir * -0.5).xyz + \n\
 					texture2D(tex, fragCoord * inverseVP + dir * 0.5).xyz);\n\
 				\n\
-				return vec4(rgbA,1.0);\n\
+				//return vec4(rgbA,1.0);\n\
 				float lumaB = dot(rgbB, luma);\n\
 				if ((lumaB < lumaMin) || (lumaB > lumaMax))\n\
 					color = vec4(rgbA, 1.0);\n\
 				else\n\
 					color = vec4(rgbB, 1.0);\n\
+				if(u_igamma != 1.0)\n\
+					color.xyz = pow( color.xyz, vec3(u_igamma) );\n\
 				return color;\n\
 			}\n\
 			\n\
 			void main() {\n\
 			   gl_FragColor = applyFXAA( u_texture, v_coord * uViewportSize) ;\n\
+			}\n\
+			";
+
+	LGraphTextureToViewport.gamma_pixel_shader = "precision highp float;\n\
+			precision highp float;\n\
+			varying vec2 v_coord;\n\
+			uniform sampler2D u_texture;\n\
+			uniform float u_igamma;\n\
+			void main() {\n\
+				vec4 color = texture2D( u_texture, v_coord);\n\
+				color.xyz = pow(color.xyz, vec3(u_igamma) );\n\
+			   gl_FragColor = color;\n\
 			}\n\
 			";
 

@@ -38,7 +38,7 @@ var PlayModule = {
 
 		setTimeout( function() { //timeout because some weird glitch
 			document.getElementById("mainmenubar").appendChild( container );
-		}, 200);
+		}, 1000);
 
 		this.tab = LiteGUI.main_tabs.addTab("Player", {id:"ingametab", bigicon: this.bigicon, size: "full", module: EditorModule, callback: function() {
 			//get the canvas

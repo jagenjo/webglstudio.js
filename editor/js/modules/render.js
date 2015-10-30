@@ -83,6 +83,7 @@ var RenderModule = {
 
 		this.render_options.render_all_cameras = false;
 		this.render_options.in_player = false;
+		this.render_options.keep_viewport = true;
 
 		//LiteGUI.bind( window, "resize", function() {  RenderModule.requestFrame(); }); //dont work
 		$(window).resize( function() {  RenderModule.requestFrame(); });
@@ -110,6 +111,7 @@ var RenderModule = {
 		//this.viewport3d.addModule(this); 
 
 		//DEPRECATED: Move to Widget or Helper
+		/*
 		LEvent.bind( LS.ResourcesManager, "resource_not_found", function(e,data) { RenderModule.assetNotFound(data) ; });
 		LEvent.bind( LS.ResourcesManager, "start_loading_resources", function(e ) { 
 			$("#loading_asset_icon").show();
@@ -119,6 +121,7 @@ var RenderModule = {
 			if(status)
 				RenderModule.requestFrame();
 		});
+		*/
 
 
 		LEvent.bind( LS.ResourcesManager, "resource_loaded", function(e ) { 
@@ -303,6 +306,8 @@ var RenderModule = {
 		}
 
 		this.frame_updated = true;
+
+		//gl.viewport(0,0,500,500); //test
 
 		//check if render one single camera or multiple cameras
 		var cameras = null;

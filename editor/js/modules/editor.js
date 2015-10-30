@@ -104,7 +104,7 @@ var EditorModule = {
 		//buttons
 
 		mainmenu.add("Scene/Settings", { callback: function() { 
-			EditorModule.inspectNode( LS.GlobalScene.root ); 
+			EditorModule.inspectScene( LS.GlobalScene ); 
 		}});
 
 		mainmenu.separator("Edit");
@@ -281,6 +281,63 @@ var EditorModule = {
 		return dialog;
 	},
 
+	inspectScene: function( scene, inspector )
+	{
+		inspector = inspector || this.inspector;
+		inspector.instance = scene;
+
+		if(!scene)
+		{
+			inspector.clear();
+			inspector.on_refresh = null;
+			return;
+		}
+
+		inspector.on_refresh = function()
+		{
+			inspector.clear();
+			inspector.addString("Author", scene.extra.author || "", function(v) { scene.extra.author = v; });
+			inspector.addTextarea("Comments", scene.extra.comments || "", { callback: function(v) { scene.extra.comments = v; } });
+			inspector.addSeparator();
+			inspector.addTitle("External Scripts");
+			for(var i in scene.external_scripts)
+			{			
+				inspector.addStringButton(null, scene.external_scripts[i], { index: i, callback: function(v){
+						if(!v)
+							return;
+						scene.external_scripts[this.options.index] = v;
+					}, callback_button: function(){
+						//delete imported
+						scene.external_scripts.splice(this.options.index,1);
+						inspector.refresh();
+					},
+					button: "<img src='imgs/mini-icon-trash.png'/>"
+				});
+			}
+			inspector.addStringButton(null, "", { callback: function(v){
+				}, callback_button: function(v){
+					if(!v)
+						return;
+					//add script
+					scene.external_scripts.push(v);
+					LS.GlobalScene.loadExternalScripts( v, null, function(){
+						LiteGUI.alert("Error loading script");
+						scene.external_scripts.pop();
+						inspector.refresh();
+					});
+					inspector.refresh();
+				},
+				button: "+"
+			});
+			if(scene.external_scripts && scene.external_scripts.length)
+				inspector.addButton(null,"Reload scripts", function(){
+					LS.GlobalScene.loadExternalScripts( scene.external_scripts, null, LiteGUI.alert );
+				});
+		}
+
+		inspector.refresh();
+	},
+
 	inspectNode: function( node, component_to_focus, inspector )
 	{
 		inspector = inspector || this.inspector;
@@ -432,6 +489,10 @@ var EditorModule = {
 
 		//create component section in inspector
 		var section = inspector.addSection( icon + enabler + title + buttons, options );
+
+		var icon = section.querySelector(".icon img");
+		if(icon)
+			icon.onerror = function() { this.src = "imgs/mini-icon-question.png"; }
 
 		//right click in title launches the context menu
 		section.querySelector(".wsectiontitle").addEventListener("contextmenu", (function(e) { 
@@ -1245,6 +1306,11 @@ var EditorModule = {
 		list_widget = widgets.addList(null, compos, { height: 240, callback: inner_selected });
 		widgets.widgets_per_row = 1;
 
+		var icons = list_widget.querySelectorAll(".icon");
+		for(var i = 0; i < icons.length; i++)
+			icons[i].onerror = function() { this.src = "imgs/mini-icon-question.png"; }
+
+
 		widgets.addButton(null,"Add", { className:"big", callback: function() { 
 			if(!root_instance|| !selected_component)
 			{
@@ -1490,32 +1556,6 @@ CORE.registerModule( EditorModule );
 
 
 //EXTRA WIDGETS for the Inspector ************************************************
-
-//to write a tiny code snippet
-LiteGUI.Inspector.prototype.addCode = function(name, value, options)
-{
-	options = options || {};
-	value = value || "";
-	var that = this;
-	this.values[ name ] = value;
-	
-	var element = this.createWidget( name,"<span class='inputfield button'><textarea tabIndex='"+this.tab_index+"' class='text string' "+(options.disabled?"disabled":"")+">"+value+"<textarea/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
-	var input = element.querySelector(".wcontent input");
-
-	input.addEventListener("change", function(e) { 
-		LiteGUI.Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
-	});
-	
-	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
-		if(options.callback_button)
-			options.callback_button.call(element, $(element).find(".wcontent input").val() );
-	});
-
-	this.tab_index += 1;
-	this.append(element);
-	return element;
-}
-LiteGUI.Inspector.widget_constructors["code"] = "addCode";
 
 //to select a node, value must be a valid node identifier (not the node itself)
 LiteGUI.Inspector.prototype.addNode = function(name, value, options)
@@ -1818,11 +1858,9 @@ LiteGUI.Inspector.widget_constructors["position"] = LiteGUI.Inspector.prototype.
 
 LiteGUI.Inspector.prototype.addLayers = function(name, value, options)
 {
+	options = options || {};
 	var text = LS.GlobalScene.getLayerNames(value).join(",");
 
-	options.callback = function(v){
-		return LS.GlobalScene.getLayerNames(value).join(",");
-	};
 	options.callback_button = function() {
 		EditorModule.showLayersEditor( value, function (layers,bit,v){
 			value = layers;

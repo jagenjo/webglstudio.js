@@ -15,59 +15,14 @@ var ImporterModule  = {
 		//attributes.addButton("Save to BIN", true, { callback: function() { EditorModule.saveToDisk(node,true); }});
 		//LiteGUI.menubar.add("Scene/Import resource", { callback: function() { ImporterModule.showImportResourceDialog();} });
 
-		this.addFileDropArea( document.body, ImporterModule.onFileDrop.bind(this) );
-	},
-
-	addFileDropArea: function( dropbox, callback )
-	{
-		dropbox.addEventListener("dragenter", onDragEvent, false);
-
-		function onDragEvent(evt)
-		{
-			dropbox.addEventListener("dragexit", onDragEvent, false);
-			dropbox.addEventListener("dragover", onDragEvent, false);
-			dropbox.addEventListener("drop", onDrop, false);
-			evt.stopPropagation();
-			evt.preventDefault();
-			/*
-			for(var i in evt.dataTransfer.types)
-				if(evt.dataTransfer.types[i] == "Files")
-				{
-					if(evt.type != "dragover")
-						console.log("Drag event: " + evt.type);
-					evt.stopPropagation();
-					evt.preventDefault();
-
-					dropbox.addEventListener("dragexit", onDragEvent, false);
-					dropbox.addEventListener("dragover", onDragEvent, false);
-					dropbox.addEventListener("drop", onDrop, false);
-				}
-			*/
-		}
-
-		function onDrop(evt)
-		{
-			evt.stopPropagation();
-			evt.preventDefault();
-
-			dropbox.removeEventListener("dragexit", onDragEvent, false);
-			dropbox.removeEventListener("dragover", onDragEvent, false);
-			dropbox.removeEventListener("drop", onDrop, false);
-
-			var r = undefined;
-			//load file in memory
-			if(callback)
-				r = callback(evt);
-
-			if (r === false)
-				ImporterModule.onFileDrop(evt);
-		}
-
+		DriveModule.addDropArea( document.body, ImporterModule.onFileDrop.bind(this) );
 		//triggered when a dropped file has been loaded and processed (used mostly to refresh stuff)
+		/*
 		$(this).bind("file_dropped", function(evt, file) {
 			//process resource (add to the library, attach to node, etc)
 			ImporterModule.onResourceDropped(evt, file);
 		});
+		*/
 	},
 
 	/* Loads in memory the content of a File dropped from the Hard drive */

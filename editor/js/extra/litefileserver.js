@@ -115,7 +115,18 @@ var LiteFileServer = {
 			params.redirect = redirect_url;
 
 		return this.request( this.server_url, params, function(resp){
-			console.log(resp);
+			if(on_complete)
+				on_complete( resp.status == 1, resp );
+		});
+
+		return true;
+	},
+
+	validateResetPassword: function( email, token, on_complete )
+	{
+		var params = { action: "user/resetPassword", email: email, token: token };
+
+		return this.request( this.server_url, params, function(resp){
 			if(on_complete)
 				on_complete( resp.status == 1, resp );
 		});

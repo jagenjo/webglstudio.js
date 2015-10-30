@@ -19692,13 +19692,7 @@ var Renderer = {
 		var info = scene.info;
 		if(info)
 		{
-			if(info.linear_pipeline)
-			{
-				var gamma = 2.2;
-				gl.clearColor( Math.pow( info.background_color[0], gamma ), Math.pow( info.background_color[1], gamma ), Math.pow( info.background_color[2], gamma ), info.background_color[3] );
-			}
-			else
-				gl.clearColor( info.background_color[0],info.background_color[1],info.background_color[2], info.background_color[3] );
+			gl.clearColor( info.background_color[0],info.background_color[1],info.background_color[2], info.background_color[3] );
 		}
 		else
 			gl.clearColor(0,0,0,0);

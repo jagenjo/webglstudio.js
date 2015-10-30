@@ -143,9 +143,10 @@ var RenderModule = {
 		LiteGUI.menubar.add("View/Camera properties", { callback: function() { EditorModule.inspectObjects( RenderModule.cameras ); }});
 
 		LiteGUI.menubar.add("View/Layout/One", { callback: function(){ RenderModule.setViewportLayout(1); } });
-		LiteGUI.menubar.add("View/Layout/Two", { callback: function(){ RenderModule.setViewportLayout(2); } });
-		LiteGUI.menubar.add("View/Layout/Three", { callback: function(){ RenderModule.setViewportLayout(3); } });
-		LiteGUI.menubar.add("View/Layout/Four", { callback: function(){ RenderModule.setViewportLayout(4); } });
+		LiteGUI.menubar.add("View/Layout/Two Vertical", { callback: function(){ RenderModule.setViewportLayout(2); } });
+		LiteGUI.menubar.add("View/Layout/Two Horitzontal", { callback: function(){ RenderModule.setViewportLayout(3); } });
+		LiteGUI.menubar.add("View/Layout/Three", { callback: function(){ RenderModule.setViewportLayout(4); } });
+		LiteGUI.menubar.add("View/Layout/Four", { callback: function(){ RenderModule.setViewportLayout(5); } });
 
 		LiteGUI.menubar.separator("View");
 		LiteGUI.menubar.add("Actions/System/Relaunch", { callback: RenderModule.relaunch });
@@ -183,12 +184,18 @@ var RenderModule = {
 		}
 		else if(mode == 3)
 		{
+			this.camera = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0,0,1,0.5]});
+			this.camera2 = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0,0.5,1,0.5]});
+			this.cameras.push( this.camera, this.camera2 );
+		}
+		else if(mode == 4)
+		{
 			this.camera = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0,0,0.5,0.5]});
 			this.camera2 = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0,0.5,0.5,0.5]});
 			this.camera3 = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0.5,0,0.5,1]});
 			this.cameras.push( this.camera, this.camera2, this.camera3 );
 		}
-		else if(mode == 4)
+		else if(mode == 5)
 		{
 			this.camera = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0,0,0.5,0.5]});
 			this.camera2 = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0.5,0,0.5,0.5]});

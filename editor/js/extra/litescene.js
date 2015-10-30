@@ -1258,7 +1258,9 @@ var Draw = {
 	{
 		if(arguments.length == 3)
 			mat4.scale(this.model_matrix,this.model_matrix,[x,y,z]);
-		else //one argument: x-> vec3
+		else if(x.length)//one argument: x is vec3
+			mat4.scale(this.model_matrix,this.model_matrix,x);
+		else //is number
 			mat4.scale(this.model_matrix,this.model_matrix,[x,x,x]);
 	},
 

@@ -582,6 +582,7 @@ var EditorView = {
 		//circle
 		this.circle_mesh = GL.Mesh.circle({size:1,slices:50});
 		this.circle_empty_mesh = GL.Mesh.circle({size:1,slices:50,empty:1});
+		this.sphere_mesh = GL.Mesh.icosahedron({size:1, subdivisions: 3});
 
 		//dummy
 		vertices = [];

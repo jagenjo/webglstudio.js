@@ -492,19 +492,27 @@ var ToolUtils = {
 	},
 
 	//test if a ray collides circle
-	testCircle: function(ray, axis, center, radius, result )
-	{
-		//test with the plane containing the circle
-		if( geo.testRayPlane( ray.start, ray.direction, center, axis, result ) )
+	testCircle: (function(){ 
+		var temp = vec3.create();
+		return function(ray, axis, center, radius, result, tolerance )
 		{
-			var dist = vec3.dist( result, center );
-			var diff = vec3.subtract( result, result, center );
-			vec3.scale(diff, diff, 1 / dist); //normalize?
-			if( Math.abs(radius - dist) < radius * 0.1 && vec3.dot(diff, ray.direction) < 0.0 )
-				return true;
+			tolerance = tolerance || 0.1;
+			//test with the plane containing the circle
+			if( geo.testRayPlane( ray.start, ray.direction, center, axis, result ) )
+			{
+				var dist = vec3.dist( result, center );
+				var diff = vec3.subtract( temp, result, center );
+				vec3.scale(diff, diff, 1 / dist); //normalize?
+				if( Math.abs(radius - dist) < radius * tolerance && vec3.dot(diff, ray.direction) < 0.0 )
+				{
+					result.set( diff );
+					vec3.scale( result, result, radius );
+					return true;
+				}
+			}
+			return false;
 		}
-		return false;
-	}
+	})()
 };
 
 var notoolButton = {

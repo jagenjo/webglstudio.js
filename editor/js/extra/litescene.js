@@ -908,8 +908,8 @@ var Draw = {
 
 	renderWireSphere: function(radius, segments)
 	{
-		var mesh = this.createSphereMesh(radius, segments);
-		return this.renderMesh(mesh, gl.LINES);
+		var mesh = this.createSphereMesh( radius, segments );
+		return this.renderMesh( mesh, gl.LINES );
 	},
 
 	createWireBoxMesh: function(sizex,sizey,sizez)
@@ -1259,7 +1259,7 @@ var Draw = {
 		if(arguments.length == 3)
 			mat4.scale(this.model_matrix,this.model_matrix,[x,y,z]);
 		else //one argument: x-> vec3
-			mat4.scale(this.model_matrix,this.model_matrix,x);
+			mat4.scale(this.model_matrix,this.model_matrix,[x,x,x]);
 	},
 
 	translate: function(x,y,z)

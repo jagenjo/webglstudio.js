@@ -893,9 +893,6 @@
 						discard;
 				#endif
 
-				//final pass
-				#import 
-
 				//generate lighting
 				#ifndef USE_DRAW_BUFFERS
 					gl_FragColor = vec4( o.Albedo, o.Alpha );

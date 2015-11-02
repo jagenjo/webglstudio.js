@@ -342,8 +342,12 @@ var RenderModule = {
 			this.render_options.main_camera = this.selected_camera;
 		}
 
+		//theoretically this is not necessary, but just in case
+		gl.viewport(0,0,gl.canvas.width, gl.canvas.height);
+
 		LEvent.trigger(this,"pre_scene_render");
 		gl.clear( gl.DEPTH_BUFFER_BIT ); //¿?
+		//render frame
 		LS.Renderer.render( LS.GlobalScene, this.render_options, cameras );
 		LEvent.trigger(this,"post_scene_render");
 	},

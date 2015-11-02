@@ -304,7 +304,7 @@ var SelectionModule = {
 		}
 	},
 
-	applyTransformMatrixToSelection: function( matrix, center, node, selection_array)
+	applyTransformMatrixToSelection: function( matrix, center, node, selection_array )
 	{
 		selection_array = selection_array || this.selection_array;
 		if(!selection_array || selection_array.length == 0)

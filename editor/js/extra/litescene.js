@@ -7807,58 +7807,64 @@ Transform.prototype.applyTransform = function( transform, center, is_global )
 * @param {vec3} center different pivot [optional] if omited 0,0,0 will be used
 * @param {bool} is_global (optional) tells if the transformation should be applied in global space or local space
 */
-Transform.prototype.applyTransformMatrix = function(matrix, center, is_global)
-{
-	var M = matrix;
-
-	if(center)
+Transform.prototype.applyTransformMatrix = (function(){ 
+	var T = mat4.create();
+	var inv_center = vec3.create();
+	var iT = mat4.create();
+	var M = mat4.create();
+	var temp = mat4.create();
+	
+	return function(matrix, center, is_global)
 	{
-		var T = mat4.setTranslation( mat4.create(), center);
-		var inv_center = vec3.scale( vec3.create(), center, -1 );
-		var iT = mat4.setTranslation( mat4.create(), inv_center);
+		var M = matrix;
 
-		M = mat4.create();
-		mat4.multiply( M, T, matrix );
-		mat4.multiply( M, M, iT );
-	}
-
-
-	if(!this._parent)
-	{
-		if(is_global)
+		if(center)
 		{
+			mat4.setTranslation( T, center);
+			vec3.scale( inv_center, center, -1 );
+			mat4.setTranslation( iT, inv_center);
+
+			mat4.multiply( M, T, matrix );
+			mat4.multiply( M, M, iT );
+		}
+
+
+		if(!this._parent)
+		{
+			if(is_global)
+			{
+				this.applyLocalTransformMatrix( M );
+				return;
+			}
+
+			//is local
 			this.applyLocalTransformMatrix( M );
 			return;
 		}
 
-		//is local
-		this.applyLocalTransformMatrix( M );
-		return;
-	}
+		/*
+		//convert transform to local coordinates
+		var GM = this.getGlobalMatrix();
+		var temp_mat = mat4.multiply( mat4.create(), M, GM );
 
-	/*
-	//convert transform to local coordinates
-	var GM = this.getGlobalMatrix();
-	var temp_mat = mat4.multiply( mat4.create(), M, GM );
+		var PGM = this._parent._global_matrix;
+		var inv_pgm = mat4.invert( mat4.create(), PGM );
 
-	var PGM = this._parent._global_matrix;
-	var inv_pgm = mat4.invert( mat4.create(), PGM );
+		mat4.multiply(temp_mat, inv_pgm, temp_mat );
+		this.applyLocalTransformMatrix( temp_mat );
+		//*/
 
-	mat4.multiply(temp_mat, inv_pgm, temp_mat );
-	this.applyLocalTransformMatrix( temp_mat );
-	//*/
+		//*
+		var GM = this.getGlobalMatrix();
+		var PGM = this._parent._global_matrix;
+		mat4.multiply( this._global_matrix, M, GM );
 
-	//*
-	var GM = this.getGlobalMatrix();
-	var PGM = this._parent._global_matrix;
-	var temp = mat4.create();
-	mat4.multiply( this._global_matrix, M, GM );
-
-	mat4.invert(temp,PGM);
-	mat4.multiply(this._local_matrix, temp, this._global_matrix );
-	this.fromMatrix(this._local_matrix);
-	//*/
-}
+		mat4.invert(temp,PGM);
+		mat4.multiply( this._local_matrix, temp, this._global_matrix );
+		this.fromMatrix( this._local_matrix );
+		//*/
+	};
+})();
 
 //applies matrix to position, rotation and scale individually, doesnt take into account parents
 Transform.prototype.applyLocalTransformMatrix = function( M )
@@ -7927,7 +7933,7 @@ Transform.prototype.applyTransformMatrix = function(matrix, center, is_global)
 }
 */
 
-LS.registerComponent(Transform);
+LS.registerComponent( Transform );
 LS.Transform = Transform;
 
 // ******* CAMERA **************************
@@ -18927,6 +18933,7 @@ function RenderOptions(o)
 	//rendering properties
 	this.ignore_viewports = false;
 	this.ignore_clear = false;
+	this.keep_viewport = false; //do not force a full viewport (use the current one as the full)
 
 	this.force_wireframe = false;	//render everything in wireframe
 	this.shadows_disabled = false; //no shadows on the render
@@ -19503,6 +19510,7 @@ var Renderer = {
 
 	default_point_size: 1, //point size in pixels (could be overwritte by render instances)
 
+	_global_viewport: vec4.create(), //the viewport we have available to render the full frame (including subviewports), usually is the 0,0,gl.canvas.width,gl.canvas.height
 	_full_viewport: vec4.create(), //contains info about the full viewport available to render (current texture size or canvas size)
 
 	_current_scene: null,
@@ -19592,6 +19600,7 @@ var Renderer = {
 		}
 		else
 			this.setFullViewport( gl.viewport_data );
+		this._global_viewport.set( gl.viewport_data );
 
 		//Event: beforeRender used in actions that could affect which info is collected for the rendering
 		LEvent.trigger(scene, "beforeRender", render_options );
@@ -19629,6 +19638,10 @@ var Renderer = {
 
 		//render
 		this.renderFrameCameras( cameras, render_options );
+
+		if( render_options.keep_viewport )
+			gl.setViewport( this._global_viewport );
+
 
 		//disable and show FX
 		if(render_options.render_fx)

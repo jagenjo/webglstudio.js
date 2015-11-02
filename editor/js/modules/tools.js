@@ -457,26 +457,29 @@ var ToolUtils = {
 		return false;
 	},
 
-	computeRotationBetweenPoints: function(center, pointA, pointB, axis )
+	computeRotationBetweenPoints: function(center, pointA, pointB, axis, reverse )
 	{
 		var A = vec3.sub( vec3.create(), pointA, center );
 		var B = vec3.sub( vec3.create(), pointB, center );
 		vec3.normalize(A,A);
 		vec3.normalize(B,B);
 		var AcrossB = vec3.cross(vec3.create(),A,B);
-		if(!axis)
-			axis = AcrossB;
-
-		vec3.normalize(axis, axis);
 
 		var AdotB = vec3.dot(A,B); //clamp
-		var angle = -Math.acos( AdotB );
-		//if( vec3.dot(AcrossB, axis) < 0 )
-		//	angle *= -1;
-		var Q = quat.create();
-		if(!isNaN(angle))
-			quat.setAxisAngle(Q, axis, angle );
-		return Q;
+		//var angle = -Math.acos( AdotB );
+		var angle = -Math.acos( Math.clamp( vec3.dot(A,B), -1,1) );
+		if(angle)
+		{
+			if(!axis)
+				axis = AcrossB;
+			vec3.normalize(axis, axis);
+			if( reverse && vec3.dot(AcrossB, axis) < 0 )
+				angle *= -1;
+			if(!isNaN(angle) && angle)
+				return quat.setAxisAngle( quat.create(), axis, angle );
+		}
+
+		return quat.create();
 	},
 
 	computeDistanceFactor: function(v, camera)

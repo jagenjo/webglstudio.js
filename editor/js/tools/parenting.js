@@ -54,7 +54,7 @@ var parentingNodeTool = {
 		if (e.which != GL.LEFT_MOUSE_BUTTON)
 			return;
 
-		var instance_info = LS.Picking.getInstanceAtCanvasPosition( LS.GlobalScene, ToolUtils.getCamera(), e.canvasx, e.canvasy );
+		var instance_info = LS.Picking.getInstanceAtCanvasPosition( e.canvasx, e.canvasy, ToolUtils.getCamera() );
 		SelectionModule.setSelection( instance_info );
 		if(!instance_info)
 			return;
@@ -75,7 +75,7 @@ var parentingNodeTool = {
 		if(!child) 
 			return;
 
-		var instance_info = LS.Picking.getInstanceAtCanvasPosition( scene, ToolUtils.getCamera(e), e.canvasx, e.canvasy );
+		var instance_info = LS.Picking.getInstanceAtCanvasPosition( e.canvasx, e.canvasy, ToolUtils.getCamera(e) );
 		if(instance_info)
 		{
 			var selection = SelectionModule.convertSelection( instance_info );

@@ -176,7 +176,9 @@ var rotateNodeTool = {
 
 			if(this._on_top_of == "center")
 			{
-				geo.testRaySphere( ray.start, ray.direction, this._center, this._radius*1.1, result );
+				if(!geo.testRaySphere( ray.start, ray.direction, this._center, this._radius*1.1, result ))
+					return true;
+
 				quat.copy(Q, ToolUtils.computeRotationBetweenPoints(center, this._closest, result) );
 				vec3.copy(this._closest,result);
 				//node.transform.rotate(e.deltax * rotateSpeed, rotateNodeTool._x_axis_normal );
@@ -186,21 +188,21 @@ var rotateNodeTool = {
 			{
 				//compute angle between closest_ring and current point
 				geo.testRayPlane( ray.start, ray.direction, this._center, xaxis, result );
-				quat.copy(Q, ToolUtils.computeRotationBetweenPoints(center, this._closest_ring, result) );
+				quat.copy(Q, ToolUtils.computeRotationBetweenPoints( center, this._closest_ring, result, xaxis, true) );
 				vec3.copy(this._closest_ring,result);
 			}
 			else if( this._on_top_of == "y" )
 			{
 				//compute angle between closest_ring and current point
 				geo.testRayPlane( ray.start, ray.direction, this._center, yaxis, result );
-				quat.copy(Q, ToolUtils.computeRotationBetweenPoints(center, this._closest_ring, result) );
+				quat.copy(Q, ToolUtils.computeRotationBetweenPoints(center, this._closest_ring, result, yaxis, true) );
 				vec3.copy(this._closest_ring,result);
 			}
 			else if( this._on_top_of == "z" )
 			{
 				//compute angle between closest_ring and current point
 				geo.testRayPlane( ray.start, ray.direction, this._center, zaxis, result );
-				quat.copy(Q, ToolUtils.computeRotationBetweenPoints(center, this._closest_ring, result) );
+				quat.copy(Q, ToolUtils.computeRotationBetweenPoints(center, this._closest_ring, result, zaxis, true) );
 				vec3.copy(this._closest_ring,result);
 			}
 			else if( this._on_top_of == "f" )
@@ -223,7 +225,7 @@ var rotateNodeTool = {
 			node.transform.applyTransformMatrix(M, true);
 			*/
 
-			ToolUtils.applyTransformMatrixToSelection(R, center);
+			ToolUtils.applyTransformMatrixToSelection( R, center );
 
 			return true;
 		}
@@ -237,17 +239,20 @@ var rotateNodeTool = {
 					vec3.copy( this._closest, result );
 					if( ToolUtils.testCircle(ray, this._x_axis_normal, this._center, this._radius, result) )
 					{
-						this._closest_ring.set( result );
+						//this._closest_ring.set( result );
+						vec3.add( this._closest_ring, result, this._center );
 						this._on_top_of = "x";
 					}
 					else if( ToolUtils.testCircle(ray, this._y_axis_normal, this._center, this._radius,  result) )
 					{
-						this._closest_ring.set( result );
+						//this._closest_ring.set( result );
+						vec3.add( this._closest_ring, result, this._center );
 						this._on_top_of = "y";
 					}
 					else if( ToolUtils.testCircle(ray, this._z_axis_normal, this._center, this._radius,  result) )
 					{
-						this._closest_ring.set( result );
+						//this._closest_ring.set( result );
+						vec3.add( this._closest_ring, result, this._center );
 						this._on_top_of = "z";
 					}
 					else

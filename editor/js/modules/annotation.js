@@ -120,7 +120,7 @@ var AnnotationModule = {
 		$(attributes.current_section).find('.options_section').click(function(e) { 
 			var menu = new LiteGUI.ContextualMenu(["Copy","Paste","Reset","Delete"], {component: comp, event: e, callback: EditorModule._onComponentOptionsSelect });
 		});
-		$(attributes.current_section).bind("wchange", function() { EditorModule.saveComponentUndo(comp); });
+		$(attributes.current_section).bind("wchange", function() { UndoModule.saveComponentChangeUndo(comp); });
 
 		attributes.addTextarea("Node notes", comp.text, { callback: function(v) { comp.text = v; } });
 		attributes.addTitle("Point annotations");
@@ -311,6 +311,7 @@ var AnnotationTool = {
 	//in world coordinates of the object
 	start_position: null,
 	end_position: null,
+	start_position2D: vec2.create(),
 
 	mode: 0, //0: nothing, 1: dragging
 
@@ -368,7 +369,7 @@ var AnnotationTool = {
 
 		var camera = RenderModule.selected_camera;
 		//check object
-		var node = LS.Picking.getNodeAtCanvasPosition( LS.GlobalScene, camera, e.canvasx, e.canvasy );
+		var node = LS.Picking.getNodeAtCanvasPosition( e.canvasx, e.canvasy, camera );
 		if(!node) 
 			return;
 
@@ -376,6 +377,8 @@ var AnnotationTool = {
 		var pos = this.testRay(ray, node);
 		if(!pos)
 			return;
+
+		this.start_position2D.set([e.canvasx, e.canvasy]);
 
 		this.node_annotated = node;
 		this.start_position = pos;
@@ -420,7 +423,6 @@ var AnnotationTool = {
 			{
 				vec3.copy( this.end_position, result );
 			}
-
 			LS.GlobalScene.refresh();
 		}
 
@@ -432,8 +434,10 @@ var AnnotationTool = {
 		if(!this.mode)
 			return;
 
-		var dist = vec3.dist( AnnotationTool.start_position, AnnotationTool.end_position ) ;
-		if( dist < 10 )
+		var endpos = vec2.fromValues( e.canvasx, e.canvasy );
+
+		var dist = vec2.dist( AnnotationTool.start_position2D, endpos );
+		if( dist < 10 ) //rare cases
 		{
 			this.start_position = null;
 			this.end_position = null;

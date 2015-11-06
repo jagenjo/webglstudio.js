@@ -194,8 +194,8 @@ EditorModule.showMaterialProperties = function( material, inspector, node )
 	var editor = mat_class["@inspector"];
 
 	//start container in case we want to lock it
-	var editor_container = inspector.addContainer(null,{ className: "material_editor_container" });
-	var background_container = inspector.addContainer(null,{ className: "background" });
+	var editor_container = inspector.startContainer(null,{ className: "material_editor_container" });
+	var background_container = inspector.startContainer(null,{ className: "background" });
 	var blocker = null;
 
 	if(material.fullpath && !material._unlocked)
@@ -377,6 +377,24 @@ StandardMaterial["@inspector"] = function( material, inspector )
 	inspector.addSlider("Extra factor", material.extra_factor, { pretitle: AnimationModule.getKeyframeCode( material, "extra_factor" ), callback: function (value) { material.extra_factor = value; }});
 	inspector.addColor("Extra color", material.extra_color, { pretitle: AnimationModule.getKeyframeCode( material, "extra_color" ), callback: function(color) { vec3.copy(material.extra_color,color); } });
 
+	/*
+	inspector.addTitle("Shader");
+	if( material._view_shader_code )
+	{
+		var coding_container = inspector.addContainer( null,null, { height: 300} );
+		var codepad = new CodingPadWidget();
+		coding_container.appendChild( codepad.root );
+		codepad.editInstanceCode( material, { id: material.uid, title: "Shader", lang:"glsl", help: material.constructor.coding_help, getCode: function(){ return material.extra_surface_shader_code; }, setCode: function(code){ material.extra_surface_shader_code = code; } } );
+	}
+	inspector.addButton("", !material._view_shader_code ? "Edit Shader" : "Hide Shader", { callback: function() { 
+		material._view_shader_code = !material._view_shader_code;
+		inspector.refresh();
+		//CodingModule.openTab();
+		//CodingModule.editInstanceCode( material, { id: material.uid, title: "Shader", lang:"glsl", help: material.constructor.coding_help } );
+	}});
+	*/
+
+
 	inspector.addTitle("Shader");
 	inspector.addButton(null, "Edit Shader", { callback: function() { 
 		CodingModule.openTab();
@@ -395,7 +413,9 @@ StandardMaterial["@inspector"] = function( material, inspector )
 		inspector.addTextureSampler( channel, sampler, { channel: channel, material: material, callback: function(sampler) {
 			if(!sampler.texture)
 				sampler = null;
-			material.setTextureSampler( this.channel, sampler ); //this is the options because the callback is there
+			var channel = this.options ? this.options.channel : this.channel;
+			if(channel)
+				material.setTextureSampler( channel, sampler ); //this is the options because the callback is there
 		}});
 	}
 
@@ -431,9 +451,25 @@ function GenericMaterialEditor( material, inspector )
 	}});
 
 	inspector.addTitle("Shader");
-	inspector.addButton("", "Edit Shader", { callback: function() { 
-		CodingModule.openTab();
-		CodingModule.editInstanceCode( material, { id: material.uid, title: "Shader", lang:"glsl", help: material.constructor.coding_help } );
+
+	if( material._view_shader_code )
+	{
+		var coding_container = inspector.addContainer( null,null, { height: 300} );
+		var codepad = new CodingPadWidget();
+		coding_container.appendChild( codepad.root );
+		codepad.editInstanceCode( material, { id: material.uid, title: "Shader", lang:"glsl", help: material.constructor.coding_help } );
+		codepad.top_widgets.addButton(null,"In Editor",{ callback: function(v) { 
+			material._view_shader_code = !material._view_shader_code;
+			inspector.refresh();
+			CodingModule.openTab();
+			CodingModule.editInstanceCode( material, { id: material.uid, title: "Shader", lang:"glsl", help: material.constructor.coding_help } );
+		}});
+	}
+	inspector.addButton("", !material._view_shader_code ? "Edit Shader" : "Hide Shader", { callback: function() { 
+		material._view_shader_code = !material._view_shader_code;
+		inspector.refresh();
+		//CodingModule.openTab();
+		//CodingModule.editInstanceCode( material, { id: material.uid, title: "Shader", lang:"glsl", help: material.constructor.coding_help } );
 	}});
 
 	inspector.addTitle("Flags");

@@ -668,6 +668,48 @@ var Draw = {
 		this.ready = true;
 	},
 
+	createSurfaceShader: function( surface_function, macros )
+	{
+		//"vec4 surface_function( vec3 pos, vec3 normal, vec2 coord ) { return vec4(1.0); } ";
+
+		if( surface_function.indexOf("surface_function") == -1 )
+			surface_function = "vec4 surface_function( vec3 pos, vec3 normal, vec2 coord ) { " + surface_function + "\n } ";
+
+		var vertex_shader = "\
+			precision mediump float;\n\
+			attribute vec3 a_vertex;\n\
+			attribute vec3 a_normal;\n\
+			attribute vec2 a_coord;\n\
+			varying vec2 v_coord;\n\
+			varying vec3 v_pos;\n\
+			varying vec3 v_normal;\n\
+			uniform mat4 u_mvp;\n\
+			uniform mat4 u_model;\n\
+			void main() {\n\
+				v_coord = a_coord;\n\
+				v_pos = (u_model * vec4(a_vertex,1.0)).xyz;\n\
+				v_normal = (u_model * vec4(a_normal,0.0)).xyz;\n\
+				gl_Position = u_mvp * vec4(a_vertex,1.0);\n\
+			}\
+			";
+
+		var pixel_shader = "\
+			precision mediump float;\n\
+			varying vec2 v_coord;\n\
+			varying vec3 v_pos;\n\
+			varying vec3 v_normal;\n\
+			uniform vec4 u_color;\n\
+			uniform vec3 u_camera_position;\n\
+			uniform sampler2D u_texture;\n\
+			"+ surface_function +"\n\
+			void main() {\n\
+				gl_FragColor = surface_function(v_pos,v_normal,v_coord);\n\
+			}\
+		";	
+
+		return new GL.Shader( vertex_shader, pixel_shader, macros );
+	},
+
 	reset: function()
 	{
 		if(!this.ready)
@@ -706,6 +748,18 @@ var Draw = {
 	setCameraPosition: function(center)
 	{
 		vec3.copy( this.camera_position, center);
+	},
+
+	pushCamera: function()
+	{
+		this.camera_stack.push( mat4.create( this.viewprojection_matrix ) );
+	},
+
+	popCamera: function()
+	{
+		if(this.camera_stack.length == 0)
+			throw("too many pops");
+		this.viewprojection_matrix.set( this.camera_stack.pop() );
 	},
 
 	setViewProjectionMatrix: function(view, projection, vp)
@@ -1110,9 +1164,10 @@ var Draw = {
 				u_model: this.model_matrix,
 				u_mvp: this.mvp_matrix,
 				u_color: this.color,
+				u_camera_position: this.camera_position,
 				u_point_size: this.point_size,
 				u_texture: 0
-		}).draw(mesh, primitive === undefined ? gl.LINES : primitive, indices );
+		}).draw(mesh, primitive === undefined ? gl.TRIANGLES : primitive, indices );
 		this.last_mesh = mesh;
 		return mesh;
 	},
@@ -1236,19 +1291,6 @@ var Draw = {
 		this.model_matrix = new Float32Array(this.stack.buffer,this.model_matrix.byteOffset - 16*4,16);
 	},
 
-
-	pushCamera: function()
-	{
-		this.camera_stack.push( mat4.create( this.viewprojection_matrix ) );
-	},
-
-	popCamera: function()
-	{
-		if(this.camera_stack.length == 0)
-			throw("too many pops");
-		this.viewprojection_matrix.set( this.camera_stack.pop() );
-	},
-
 	identity: function()
 	{
 		mat4.identity(this.model_matrix);
@@ -1282,8 +1324,8 @@ var Draw = {
 
 	lookAt: function(position, target, up)
 	{
-		mat4.lookAt(this.model_matrix, position, target, up);
-		mat4.invert(this.model_matrix, this.model_matrix);
+		mat4.lookAt( this.model_matrix, position, target, up );
+		mat4.invert( this.model_matrix, this.model_matrix );
 	},
 
 	billboard: function(position)
@@ -2496,7 +2538,7 @@ var ResourcesManager = {
 		{
 			if( typeof(i) != "string" || i[0] == ":" )
 				continue;
-			this.load(i, options );
+			this.load( i, options );
 		}
 	},	
 
@@ -2589,7 +2631,7 @@ var ResourcesManager = {
 	*/
 	registerFileSystem: function(name, url)
 	{
-		this.virtual_file_systems[name] = url;
+		this.virtual_file_systems[ name ] = url;
 	},
 
 	/**
@@ -2770,17 +2812,15 @@ var ResourcesManager = {
 			}
 		}
 
-		var callback = this.resource_pre_callbacks[extension.toLowerCase()];
-		if(!callback)
+		var callback = this.resource_pre_callbacks[ extension.toLowerCase() ];
+		if(callback)
 		{
-			console.log("Resource format unknown: " + extension)
-			return false;
+			var resource = callback( url, data, options, inner_onResource );
+			if(resource)
+				inner_onResource(url, resource);
 		}
-
-		//parse
-		var resource = callback(url, data, options, inner_onResource);
-		if(resource)
-			inner_onResource(url, resource);
+		else //unknown resource: convert to object
+			inner_onResource( url, { data: data } );
 
 		//callback when the resource is ready
 		function inner_onResource( fullpath, resource )
@@ -2863,6 +2903,7 @@ var ResourcesManager = {
 		if(!this.resources[filename])
 			return false; //not found
 
+		var resource = this.resources[filename];
 		delete this.resources[filename];
 
 		//ugly: too hardcoded
@@ -4487,7 +4528,7 @@ Material.prototype.getProperties = function()
 
 	var textures = this.getTextureChannels();
 	for(var i in textures)
-		o["tex_" + textures[i]] = "Sampler";
+		o["tex_" + textures[i]] = "Texture"; //changed from Sampler
 	return o;
 }
 
@@ -4513,7 +4554,8 @@ Material.prototype.setProperty = function(name, value)
 {
 	if(name.substr(0,4) == "tex_")
 	{
-		this.textures[ name.substr(4) ] = value;
+		if( (value && (value.constructor === String || value.constructor === GL.Texture)) || !value)
+			this.setTexture( name.substr(4), value );
 		return true;
 	}
 
@@ -9688,7 +9730,7 @@ function Light(o)
 	*/
 	this.cast_shadows = false;
 	this.shadow_bias = 0.05;
-	this.shadowmap_resolution = 1024;
+	this.shadowmap_resolution = 0;
 	this.type = Light.OMNI;
 	this.frustum_size = 50; //ortho
 
@@ -9707,7 +9749,7 @@ function Light(o)
 	if(o) 
 	{
 		this.configure(o);
-		if(o.shadowmap_resolution)
+		if(o.shadowmap_resolution !== undefined)
 			this.shadowmap_resolution = parseInt(o.shadowmap_resolution); //LEGACY: REMOVE
 	}
 }
@@ -10033,7 +10075,7 @@ Light.prototype.prepare = function( render_options )
 	if(this.projective_texture || this.cast_shadows)
 		this.updateLightCamera();
 
-	if(!this.cast_shadows && this._shadowmap)
+	if( (!render_options.shadows_enabled || !this.cast_shadows) && this._shadowmap)
 	{
 		this._shadowmap = null;
 		delete LS.ResourcesManager.textures[":shadowmap_" + this.uid ];
@@ -10308,8 +10350,8 @@ Light.prototype.generateShadowmap = function (render_options)
 
 	//create the texture
 	var shadowmap_resolution = this.shadowmap_resolution;
-	if(!shadowmap_resolution)
-		shadowmap_resolution = Light.DEFAULT_SHADOWMAP_RESOLUTION;
+	if(shadowmap_resolution == 0)
+		shadowmap_resolution = render_options.default_shadowmap_resolution;
 
 	var tex_type = this.type == Light.OMNI ? gl.TEXTURE_CUBE_MAP : gl.TEXTURE_2D;
 	if(this._shadowmap == null || this._shadowmap.width != shadowmap_resolution || this._shadowmap.texture_type != tex_type)
@@ -12654,13 +12696,27 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 				cam.updateMatrices();
 				changed = true;
 			}
-			else
+			else //regular orbit
 			{
-				cam.orbit(-mouse_event.deltax * this.rot_speed,[0,1,0], this.orbit_center);
-				cam.updateMatrices();
-				var right = cam.getLocalVector([1,0,0]);
-				cam.orbit(-mouse_event.deltay * this.rot_speed,right, this.orbit_center);
-				changed = true;
+				var yaw = mouse_event.deltax * this.rot_speed;
+				var pitch = -mouse_event.deltay * this.rot_speed;
+
+				if( Math.abs(yaw) > 0.0001 )
+				{
+					cam.orbit( -yaw, [0,1,0], this.orbit_center );
+					cam.updateMatrices();
+					changed = true;
+				}
+
+				var right = cam.getRight();
+				var front = cam.getFront();
+				var up = cam.getUp();
+				var problem_angle = vec3.dot( up, front );
+				if( !(problem_angle > 0.99 && pitch > 0 || problem_angle < -0.99 && pitch < 0)) //avoid strange behaviours
+				{
+					cam.orbit( -pitch, right, this.orbit_center );
+					changed = true;
+				}
 			}
 		}
 		else if(this.mode == CameraController.PLANE)
@@ -12762,6 +12818,7 @@ CameraController.prototype.onKey = function(e, key_event)
 }
 
 LS.registerComponent( CameraController );
+
 /**
 * Node manipulator, allows to rotate it
 * @class NodeManipulator
@@ -13524,6 +13581,18 @@ function FXGraphComponent(o)
 	}
 	else //default
 	{
+		this._graph_frame_node = LiteGraph.createNode("scene/frame","Rendered Frame");
+		this._graph_frame_node.ignore_remove = true;
+		this._graph_frame_node.ignore_rename = true;
+		this._graph.add( this._graph_frame_node );
+
+		this._graph_viewport_node = LiteGraph.createNode("texture/toviewport","Viewport");
+		this._graph_viewport_node.pos[0] = 500;
+		this._graph.add( this._graph_viewport_node );
+
+		this._graph_frame_node.connect(0, this._graph_viewport_node );
+
+		/*
 		this._graph_color_texture_node = LiteGraph.createNode("texture/texture","Color Buffer");
 		this._graph_color_texture_node.ignore_remove = true;
 
@@ -13544,6 +13613,7 @@ function FXGraphComponent(o)
 		this._graph.add( this._graph_viewport_node );
 
 		this._graph_color_texture_node.connect(0, this._graph_viewport_node );
+		*/
 	}
 
 	if(FXGraphComponent.high_precision_format == null)
@@ -13579,10 +13649,40 @@ FXGraphComponent.prototype.configure = function(o)
 	this.use_node_camera = !!o.use_node_camera;
 
 	this._graph.configure( JSON.parse( o.graph_data ) );
-	this._graph_color_texture_node = this._graph.findNodesByTitle("Color Buffer")[0];
-	this._graph_depth_texture_node = this._graph.findNodesByTitle("Depth Buffer")[0];
-	this._graph_extra_texture_node = this._graph.findNodesByTitle("Extra Buffer")[0];
+
+	this._graph_frame_node = this._graph.findNodesByTitle("Rendered Frame")[0];
 	this._graph_viewport_node = this._graph.findNodesByType("texture/toviewport")[0];
+
+	if(!this._graph_frame_node) //LEGACY CODE, DELETE AT SOME POINT
+	{
+		console.log("CONVERTING LEGACY DATA TO NEW FORMAT");
+		
+		this._graph_frame_node = LiteGraph.createNode("scene/frame","Rendered Frame");
+		this._graph_frame_node.ignore_remove = true;
+		this._graph_frame_node.ignore_rename = true;
+		this._graph.add( this._graph_frame_node );
+
+		var old_nodes = ["Color Buffer","Depth Buffer","Extra Buffer"];
+		for(var j = 0; j < old_nodes.length; ++j)
+		{
+			var old_node = this._graph.findNodesByTitle(old_nodes[j])[0];
+			if(!old_node)
+				continue;
+
+			var connection_info = old_node.getOutputInfo(0);
+			if(!connection_info.links)
+				continue;
+			var links = connection_info.links.concat();
+			for(var i in links)
+			{
+				var link = this._graph.links[ links[i] ];
+				if(!link)
+					continue;
+				this._graph_frame_node.connect( j, link.target_id, link.target_slot ); 
+			}
+			this._graph.remove( old_node );
+		}
+	}
 }
 
 FXGraphComponent.prototype.serialize = function()
@@ -13683,11 +13783,17 @@ FXGraphComponent.prototype.onRemovedFromScene = function( scene )
 {
 	LEvent.unbind( scene, "enableFrameBuffer", this.onBeforeRender, this );
 	LEvent.unbind( scene, "showFrameBuffer", this.onAfterRender, this );
+
+	LS.ResourcesManager.unregisterResource( ":color_" + this.uid );
+	LS.ResourcesManager.unregisterResource( ":depth_" + this.uid );
+	LS.ResourcesManager.unregisterResource( ":extra_" + this.uid );
 }
 
 
 FXGraphComponent.prototype.onBeforeRender = function(e, render_options)
 {
+	this._last_camera = LS.Renderer._current_camera;
+
 	if(!this.enabled)
 	{
 		if( this._binded_camera )
@@ -13836,7 +13942,18 @@ FXGraphComponent.prototype.applyGraph = function()
 	if(!this._graph)
 		return;
 
+	if(!this._graph_frame_node)
+		this._graph_frame_node = this._graph.findNodesByTitle("Rendered Frame")[0];
+	this._graph_frame_node._color_texture = ":color_" + this.uid;
+	this._graph_frame_node._depth_texture = ":depth_" + this.uid;
+	this._graph_frame_node._extra_texture = ":extra_" + this.uid;
+	this._graph_frame_node._camera = this._last_camera;
+
+	if(this._graph_viewport_node) //force antialiasing
+		this._graph_viewport_node.properties.antialiasing = this.use_antialiasing;
+
 	//find graph nodes that contain the texture info
+	/*
 	if(!this._graph_color_texture_node)
 		this._graph_color_texture_node = this._graph.findNodesByTitle("Color Buffer")[0];
 	if(!this._graph_depth_texture_node)
@@ -13857,6 +13974,7 @@ FXGraphComponent.prototype.applyGraph = function()
 		this._graph_extra_texture_node.properties.name = ":extra_" + this.uid;
 	if(this._graph_viewport_node) //force antialiasing
 		this._graph_viewport_node.properties.antialiasing = this.use_antialiasing;
+	*/
 
 	//execute graph
 	this._graph.runStep(1);
@@ -17519,6 +17637,80 @@ if(typeof(LiteGraph) != "undefined")
 	window.LGraphGlobal = LGraphGlobal;
 
 	//************************************
+
+	//************************************
+
+	function LGraphFrame()
+	{
+		this.addOutput("Color","Texture");
+		this.addOutput("Depth","Texture");
+		this.addOutput("Extra","Texture");
+		this.addOutput("Camera","Camera");
+		this.properties = {};
+	}
+
+	LGraphFrame.title = "Frame";
+	LGraphFrame.desc = "One frame rendered from the scene renderer";
+
+	LGraphFrame.prototype.onExecute = function()
+	{
+		this.setOutputData(0, LGraphTexture.getTexture( this._color_texture ) );
+		this.setOutputData(1, LGraphTexture.getTexture( this._depth_texture ) );
+		this.setOutputData(2, LGraphTexture.getTexture( this._extra_texture ) );
+		this.setOutputData(3, this._camera );
+	}
+
+	LGraphFrame.prototype.onDrawBackground = function( ctx )
+	{
+		if( this.flags.collapsed || this.size[1] <= 20 )
+			return;
+
+		if(!this._color_texture)
+			return;
+
+		//Different texture? then get it from the GPU
+		if(this._last_preview_tex != this._last_tex || !this._last_preview_tex)
+		{
+			if( ctx.webgl && this._canvas && this._canvas.constructor === GL.Texture )
+			{
+				this._canvas = this._last_tex;
+			}
+			else
+			{
+				var texture = LGraphTexture.getTexture( this._color_texture );
+				if(!texture)
+					return;
+
+				var tex_canvas = LGraphTexture.generateLowResTexturePreview( texture );
+				if(!tex_canvas) 
+					return;
+				this._last_preview_tex = this._last_tex;
+				this._canvas = cloneCanvas( tex_canvas );
+			}
+		}
+
+		if(!this._canvas)
+			return;
+
+		//render to graph canvas
+		ctx.save();
+		if(!ctx.webgl) //reverse image
+		{
+			if( this._canvas.constructor === GL.Texture )
+			{
+				this._canvas = null;
+				return;
+			}
+
+			ctx.translate( 0,this.size[1] );
+			ctx.scale(1,-1);
+		}
+		ctx.drawImage( this._canvas, 0, 0, this.size[0], this.size[1] );
+		ctx.restore();
+	}
+
+	LiteGraph.registerNodeType("scene/frame", LGraphFrame );
+	window.LGraphFrame = LGraphFrame;
 };
 
 //Interpolation methods
@@ -18924,19 +19116,19 @@ function RenderOptions(o)
 {
 	//this.renderer = null; //which renderer is in use
 
-	//info
+	//info about the current rendering stage (this should be moved)
 	this.main_camera = null; //this camera is the primary camera, some actions require to know the primary user point of view
 	this.current_camera = null; //this camera is the one being rendered at this moment
 	this.current_pass = null; //name of the current pass ("color","shadow","depth","picking")
 	this.current_renderer = null; //current renderer being used
 
-	//rendering properties
+	//global render settings
+	this.default_shadowmap_resolution = Light.DEFAULT_SHADOWMAP_RESOLUTION;
 	this.ignore_viewports = false;
 	this.ignore_clear = false;
 	this.keep_viewport = false; //do not force a full viewport (use the current one as the full)
-
+	this.shadows_enabled = true; 
 	this.force_wireframe = false;	//render everything in wireframe
-	this.shadows_disabled = false; //no shadows on the render
 	this.lights_disabled = false; //flat lighting
 	this.low_quality = false;	//try to use low quality shaders
 
@@ -23189,7 +23381,8 @@ global.Collada = {
 			else //no nested (DAE 1.4)
 			{
 				var anim = this.readAnimationTrack( xmlanimation );
-				tracks.push( anim );
+				if(anim)
+					tracks.push( anim );
 			}
 		}
 

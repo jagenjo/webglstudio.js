@@ -112,7 +112,7 @@ var NotifyModule = {
 	get: function( id, parent )
 	{
 		var elem = document.getElementById( id );
-		if(!elem.classList.contains("notify-msg"))
+		if(!elem || !elem.classList.contains("notify-msg"))
 			return null;
 		return elem;
 	}

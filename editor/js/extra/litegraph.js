@@ -1769,8 +1769,14 @@ LGraphNode.prototype.connect = function(slot, node, target_slot)
 		return false;
 	}
 
+	if(node && node.constructor === Number)
+		node = this.graph.getNodeById( node );
+	if(!node)
+		throw("Node not found");
+
 	//avoid loopback
-	if(node == this) return false; 
+	if(node == this)
+		return false; 
 	//if( node.constructor != LGraphNode ) throw ("LGraphNode.connect: node is not of type LGraphNode");
 
 	if(target_slot.constructor === String)
@@ -1855,6 +1861,11 @@ LGraphNode.prototype.disconnectOutput = function(slot, target_node)
 
 	if(target_node)
 	{
+		if(target_node.constructor === Number)
+			target_node = this.graph.getNodeById( target_node );
+		if(!target_node)
+			throw("Target Node not found");
+
 		for(var i = 0, l = output.links.length; i < l; i++)
 		{
 			var link_id = output.links[i];
@@ -8069,7 +8080,7 @@ if(typeof(LiteGraph) != "undefined")
 		}
 	}
 
-	LGraphTextureGradient.prototype.onGetInputs = function()
+	LGraphTextureToViewport.prototype.onGetInputs = function()
 	{
 		return [["gamma","number"]];
 	}
@@ -9062,7 +9073,7 @@ if(typeof(LiteGraph) != "undefined")
 		{
 			video = document.createElement("video");
 			video.autoplay = true;
-		    video.src = window.URL.createObjectURL(localMediaStream);
+		    video.src = window.URL.createObjectURL( localMediaStream );
 			this._video = video;
 			//document.body.appendChild( video ); //debug
 			//when video info is loaded (size and so)

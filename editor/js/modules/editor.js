@@ -39,6 +39,11 @@ var EditorModule = {
 			EditorModule.inspectNode( scene.root );
 		});
 
+		LEvent.bind( scene, "node_clicked", function(e, node) { 
+			EditorModule.inspectNode( node );
+		});
+		
+
 		SelectionModule.setSelection( scene.root );
 
 		document.addEventListener("keydown", this.globalKeyDown.bind(this), false );
@@ -153,17 +158,15 @@ var EditorModule = {
 			return (EditorModule.coordinates_system == v.value);
 		}
 
-		mainmenu.add("View/Show Icons", {  instance: EditorModule.settings, property: "render_icons", type:"checkbox" });
-		mainmenu.add("View/Show Grid", {  instance: EditorModule.settings, property: "render_grid", type:"checkbox" });
-		mainmenu.add("View/Show Gizmos", {  instance: EditorModule.settings, property: "render_gizmos", type:"checkbox" });
 		mainmenu.add("View/Show All Gizmos", {  instance: EditorModule.settings, property: "render_all_gizmos", type:"checkbox" });
-		mainmenu.add("View/Hide Shadows", {  instance: RenderModule.render_options, property: "shadows_disabled", type:"checkbox" });
 
 		mainmenu.add("View/Render Mode/Wireframe", {  value: "wireframe", isChecked: inner_is_renderMode, callback: inner_change_renderMode });
 		mainmenu.add("View/Render Mode/Flat", {  value: "flat", isChecked: inner_is_renderMode, callback: inner_change_renderMode });
 		mainmenu.add("View/Render Mode/Solid", { value: "solid", isChecked: inner_is_renderMode, callback: inner_change_renderMode });
 		mainmenu.add("View/Render Mode/Texture", { value: "texture", isChecked: inner_is_renderMode, callback: inner_change_renderMode });
 		mainmenu.add("View/Render Mode/Full", { value: "full", isChecked: inner_is_renderMode, callback: inner_change_renderMode });
+
+
 
 		/*
 		mainmenu.add("Edit/Coordinates/Object", { value: "object", isChecked: inner_is_systemMode, callback: function() { EditorModule.coordinates_system = 'object'; RenderModule.requestFrame(); }});
@@ -538,7 +541,8 @@ var EditorModule = {
 		inspector.current_section.querySelector('.options_section').addEventListener("click", inner_showActions );
 
 		function inner_showActions( e ) { 
-			console.log("Show options");
+			//console.log("Show options");
+			window.SELECTED = component; //useful trick
 			var actions = ["Info","Copy","Paste","Delete","Reset","Select"];
 			if(component.getEditorActions)
 				actions = component.getEditorActions( actions );
@@ -918,7 +922,7 @@ var EditorModule = {
 		parent.addChild(node);
 
 		SelectionModule.setSelection( node );
-		EditorModule.inspectNode(Scene.selected_node); //update interface
+		EditorModule.inspectNode( LS.GlobalScene.selected_node); //update interface
 		RenderModule.requestFrame();
 	},
 
@@ -1745,7 +1749,7 @@ LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
 		if(v && v[0] != ":")
 			LS.ResourcesManager.load(v);
 		value.texture = v;
-		LiteGUI.Inspector.onWidgetChange.call(that,element,name,value, options);
+		LiteGUI.Inspector.onWidgetChange.call( that, element, name, value, options);
 	});
 	
 	element.querySelector(".wcontent button").addEventListener("click", function(e) { 
@@ -1796,7 +1800,7 @@ LiteGUI.Inspector.prototype.addMesh = function(name,value, options)
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
 		EditorModule.showSelectResource( "Mesh", inner_onselect, inner_onload );
 		if(options.callback_button)
-			options.callback_button.call(element, input.value);
+			options.callback_button.call( element, input.value);
 	});
 
 	function inner_onselect(filename)
@@ -1833,7 +1837,7 @@ LiteGUI.Inspector.prototype.addMaterial = function(name,value, options)
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
 		EditorModule.showSelectResource("Material", inner_onselect );
 		if(options.callback_button)
-			options.callback_button.call(element, input.value );
+			options.callback_button.call( element, input.value );
 	});
 
 	function inner_onchange(e)
@@ -1867,7 +1871,7 @@ LiteGUI.Inspector.prototype.addLayers = function(name, value, options)
 			var text = LS.GlobalScene.getLayerNames(value).join(",");
 			widget.setValue(text);
 			if(options.callback)
-				options.callback(layers,bit,v);
+				options.callback.call( widget, layers, bit, v );
 		});
 	};
 

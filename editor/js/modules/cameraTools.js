@@ -213,17 +213,23 @@ var cameraTool = {
 		this.moveCamera( delta, false, camera );
 	},
 
-	orbitCamera: function(yaw,pitch, camera)
+	orbitCamera: function( yaw, pitch, camera )
 	{
 		camera = camera || ToolUtils.getCamera();
-		var center = camera.getCenter();
 
+		var front = camera.getFront();
+		var up = camera.getUp();
+		var problem_angle = vec3.dot( front, up );
+
+		var center = camera.getCenter();
 		var right = camera.getLocalVector([1,0,0]);
 		var dist = vec3.sub( vec3.create(), this.smooth_camera && camera._editor ? camera._editor.destination_eye : camera.getEye(), center );
 
 		vec3.rotateY( dist, dist, yaw );
 		var R = quat.create();
-		quat.setAxisAngle( R, right, pitch );
+
+		if( !(problem_angle > 0.99 && pitch > 0 || problem_angle < -0.99 && pitch < 0)) //avoid strange behaviours
+			quat.setAxisAngle( R, right, pitch );
 
 		vec3.transformQuat( dist, dist, R );
 

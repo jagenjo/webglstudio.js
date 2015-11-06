@@ -15,14 +15,13 @@ var ImporterModule  = {
 		//attributes.addButton("Save to BIN", true, { callback: function() { EditorModule.saveToDisk(node,true); }});
 		//LiteGUI.menubar.add("Scene/Import resource", { callback: function() { ImporterModule.showImportResourceDialog();} });
 
-		DriveModule.addDropArea( document.body, ImporterModule.onFileDrop.bind(this) );
+		DriveModule.addDropArea( gl.canvas, ImporterModule.onFileDrop.bind(this) );
+
 		//triggered when a dropped file has been loaded and processed (used mostly to refresh stuff)
-		/*
-		$(this).bind("file_dropped", function(evt, file) {
+		LiteGUI.bind( gl.canvas, "file_dropped", function(evt, file) {
 			//process resource (add to the library, attach to node, etc)
-			ImporterModule.onResourceDropped(evt, file);
+			ImporterModule.onResourceDropped(evt, evt.detail);
 		});
-		*/
 	},
 
 	/* Loads in memory the content of a File dropped from the Hard drive */
@@ -62,18 +61,17 @@ var ImporterModule  = {
 				reader.readAsArrayBuffer(file);
 		}
 
-		$("#content").removeClass("highlight");
 		return true;
 	},
 
 	//once FileReader has read the file from the HD...
 	processFileDropped: function (e, file) { 
-		trace("File loaded: " + file.name);
+		console.log("File loaded in memory, processing: " + file.name);
 		var data = e.target.result;
 
 		//throw event: it will be get by onResourceDropped
 		file.data = data;
-		$(this).trigger("file_dropped", file);
+		LiteGUI.trigger( gl.canvas, "file_dropped", file);
 	},
 
 	/*

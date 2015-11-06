@@ -38,7 +38,7 @@ var LiteFileServer = {
 		var userpass = btoa( username + "|" + password );
 
 		//fetch info
-		this.request(this.server_url, { action:"user/login", loginkey: userpass}, function(resp){
+		return this.request(this.server_url, { action:"user/login", loginkey: userpass}, function(resp){
 			console.log(resp);
 			session.last_resp = resp;
 			session.user = resp.user;
@@ -51,15 +51,13 @@ var LiteFileServer = {
 			if(LFS.onNewSession)
 				LFS.onNewSession(session);
 		});
-
-		return session;
 	},
 
 	//get server info status and config
 	checkServer: function( on_complete )
 	{
 		console.log("Checking Server");
-		this.request(this.server_url, { action:"system/ready" }, function(resp) {
+		return this.request(this.server_url, { action:"system/ready" }, function(resp) {
 			LFS.system_info = resp.info;
 			LFS.files_path = resp.info.files_path;
 			LFS.preview_prefix = resp.info.preview_prefix;
@@ -83,7 +81,7 @@ var LiteFileServer = {
 			return;
 		}
 
-		this.request( this.server_url,{action: "user/checkToken", token: old_token}, function(resp){
+		return this.request( this.server_url,{action: "user/checkToken", token: old_token}, function(resp){
 			if(!resp.user)
 				localStorage.removeItem( LiteFileServer.TOKEN_NAME );
 
@@ -103,8 +101,6 @@ var LiteFileServer = {
 			}
 			else
 				on_complete(null);
-
-
 		});
 	},
 
@@ -118,8 +114,6 @@ var LiteFileServer = {
 			if(on_complete)
 				on_complete( resp.status == 1, resp );
 		});
-
-		return true;
 	},
 
 	validateResetPassword: function( email, token, on_complete )
@@ -130,8 +124,6 @@ var LiteFileServer = {
 			if(on_complete)
 				on_complete( resp.status == 1, resp );
 		});
-
-		return true;
 	},
 
 	//create a new account if it is enabled or if you are admin
@@ -175,8 +167,6 @@ var LiteFileServer = {
 			if(on_complete)
 				on_complete( resp.status == 1, resp );
 		});
-
-		return true;
 	},
 
 	generatePreview: function( file, on_complete )
@@ -778,6 +768,9 @@ Session.prototype.getFileInfo = function( fullpath, on_complete )
 */
 Session.prototype.uploadFile = function( fullpath, data, extra, on_complete, on_error, on_progress )
 {
+	if(!data)
+		throw("Data cannot be null");
+
 	var info = LFS.parsePath( fullpath );
 	var unit = info.unit;
 	if(!unit)
@@ -793,15 +786,17 @@ Session.prototype.uploadFile = function( fullpath, data, extra, on_complete, on_
 
 	//check size
 	var max_size = LFS.system_info.max_filesize || 1000000;
+	var allow_big_files = LFS.system_info.allow_big_files;
 	var size = null;
 	
 	//resolve encoding
 	var encoding = "";
 	if( data.constructor === ArrayBuffer )
 	{
-		data = new Blob([data], {type: "application/octet-binary"});
-		size = data.size;
-		encoding = "file";
+		//data = new Blob([data], {type: "application/octet-binary"});
+		//size = data.size;
+		size = data.byteLength;
+		encoding = "arraybuffer";
 	}
 	else if( data.constructor === File || data.constructor === Blob )
 	{
@@ -816,18 +811,13 @@ Session.prototype.uploadFile = function( fullpath, data, extra, on_complete, on_
 	else
 		throw("Unknown data format, only string, ArrayBuffer, Blob and File supported");
 
-	if(size > max_size)
-	{
-		if(on_error)
-			on_error('File too large (limit of ' + (max_size/(1024*1024)).toFixed(1) + ' MBs).');
-		return;
-	}
+	if(size === undefined)
+		throw("Size is undefined");
 
 	var ext = filename.split('.').pop().toLowerCase();
 	var extensions = ["png","jpg","jpeg","webp"]; //generate previews of this formats
-
 	var params = { action: "files/uploadFile", unit: unit, folder: folder, filename: filename, encoding: encoding, data: data, extra: extra };
-	
+
 	if(extra)
 	{
 		if( typeof(extra) == "string")
@@ -843,6 +833,113 @@ Session.prototype.uploadFile = function( fullpath, data, extra, on_complete, on_
 	}
 
 	var that = this;
+
+	//check size for file splitting in several files in case the size is bigger than what HTTP can support
+	if(size > max_size)
+	{
+		if(!allow_big_files)
+		{
+			if(on_error)
+				on_error('File too large (limit of ' + (max_size/(1024*1024)).toFixed(1) + ' MBs).');
+			return;
+		}
+
+		//convert
+		if(data.constructor == Blob || data.constructor == File)
+		{
+			//convert to ArrayBuffer
+			var fileReader = new FileReader();
+			fileReader.onload = function() {
+				var arrayBuffer = this.result;
+				that.uploadFile( fullpath, arrayBuffer, extra, on_complete, on_error, on_progress );
+			};
+			fileReader.readAsArrayBuffer( data );
+			return null;
+		}
+
+		//segment file
+		var num_parts = Math.ceil( size / max_size) + 1; //extra part to ensure no problems
+		var part_size = Math.ceil( size / num_parts );
+		var file_parts = [];
+
+		if(data.constructor === String)
+		{
+			//TODO
+			throw("String big file split not implemented yet");
+		}
+		else if(data.constructor === ArrayBuffer)
+		{
+			var data_buffer = new Uint8Array( data );
+			for(var i = 0; i < num_parts; ++i)
+			{
+				var part_start = i*part_size;
+				var part_end = (i+1)*part_size;
+				if( (part_end - part_start) > max_size)
+					part_end = part_start + max_size;
+				var part_size = part_end - part_start;
+				var part_data = data_buffer.subarray( part_start, part_end ); //second parameter is end, no size
+				if(!part_size || !part_data.length)
+					break;
+				file_parts.push({part: i, start: part_start, end: part_end, size: part_size, data: part_data});
+			}
+		}
+
+		//create empty file before filling it
+		delete params["data"];
+		params.total_size = size;
+
+		var req = that.request( that.server_url, params, function(resp){
+			
+			if(resp.status == -1)
+			{
+				if(on_error)
+					on_error(resp.msg,resp);
+				return;
+			}
+
+			var total_parts = file_parts.length;
+			var remaining_parts = total_parts;
+
+			inner_send_part();
+
+			function inner_send_part()
+			{
+				var part = file_parts.shift();
+				params.action = "files/updateFilePart";
+				params.fullpath = fullpath;
+				params.offset = part.start;
+				params.total_size = size;
+				params.data = new Blob([part.data], {type: "application/octet-binary"});
+				params.encoding = "file";
+				var first_error = true;
+
+				var req = that.request( that.server_url, params, function(){
+					remaining_parts--;
+					if(on_progress)
+						on_progress(fullpath, remaining_parts / total_parts);
+					if( file_parts.length )
+						inner_send_part();
+					else
+					{
+						//FINISH
+						if(on_complete)
+							on_complete(fullpath);
+					}
+				}, function(err){
+					if(first_error && on_error)
+						on_error(fullpath, err);
+					first_error = false; //avoid multiple error messages
+				}, function(fullpath, v){
+					if(on_progress)
+						on_progress(fullpath, (remaining_parts - (1 - v) ) / total_parts);
+				});
+			}
+
+
+		}, on_error);
+
+		return null;
+	}
 
 	//generate preview and request if they are images
 	if(LFS.generate_preview && LFS.previews == "local" && extensions.indexOf(ext) != -1 )

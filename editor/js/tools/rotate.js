@@ -151,6 +151,11 @@ var rotateNodeTool = {
 		var rotateSpeed = 1;
 		var result = vec3.create();
 
+		//this is a HACK for a bug I cannot understand, if the object hast parent it rotates backwards
+		var scalar = 1;
+		if (node.transform._parent)
+			scalar = -1;
+
 		LS.GlobalScene.refresh();
 
 		//is mouse clicked
@@ -188,26 +193,25 @@ var rotateNodeTool = {
 			{
 				//compute angle between closest_ring and current point
 				geo.testRayPlane( ray.start, ray.direction, this._center, xaxis, result );
-				quat.copy(Q, ToolUtils.computeRotationBetweenPoints( center, this._closest_ring, result, xaxis, true) );
+				quat.copy(Q, ToolUtils.computeRotationBetweenPoints( center, this._closest_ring, result, xaxis, true, scalar) );
 				vec3.copy(this._closest_ring,result);
 			}
 			else if( this._on_top_of == "y" )
 			{
 				//compute angle between closest_ring and current point
 				geo.testRayPlane( ray.start, ray.direction, this._center, yaxis, result );
-				quat.copy(Q, ToolUtils.computeRotationBetweenPoints(center, this._closest_ring, result, yaxis, true) );
+				quat.copy(Q, ToolUtils.computeRotationBetweenPoints( center, this._closest_ring, result, yaxis, true, scalar) );
 				vec3.copy(this._closest_ring,result);
 			}
 			else if( this._on_top_of == "z" )
 			{
 				//compute angle between closest_ring and current point
 				geo.testRayPlane( ray.start, ray.direction, this._center, zaxis, result );
-				quat.copy(Q, ToolUtils.computeRotationBetweenPoints(center, this._closest_ring, result, zaxis, true) );
+				quat.copy(Q, ToolUtils.computeRotationBetweenPoints( center, this._closest_ring, result, zaxis, true, scalar) );
 				vec3.copy(this._closest_ring,result);
 			}
 			else if( this._on_top_of == "f" )
 			{
-				//FIX THIS
 				geo.testRayPlane( ray.start, ray.direction, center, ToolUtils.camera_front, result );
 				//closest should be projected to the plane
 				var point = geo.projectPointOnPlane(this._closest, center, ToolUtils.camera_front );

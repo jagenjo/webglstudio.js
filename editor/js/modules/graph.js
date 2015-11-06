@@ -287,6 +287,7 @@ var GraphModule = {
 	{
 		var inspector = InterfaceModule.inspector;
 
+		inspector.instance = this.selected_node;
 		inspector.clear();
 
 		var global_graph = Scene.root.getComponent( GraphComponent );
@@ -302,7 +303,7 @@ var GraphModule = {
 					GraphModule.graph.runStep(1);
 					GraphModule.graphcanvas.setDirty(true,true);
 					if(GraphModule.selected_node)
-						GraphModule.inspectNode(GraphModule.selected_node);
+						GraphModule.inspectNode( GraphModule.selected_node );
 				}
 				else //"Render Frame"
 				{
@@ -313,7 +314,7 @@ var GraphModule = {
 		inspector.addButton(null,"Open in Window", {callback: this.onOpenInWindow.bind(this) });
 
 		if(this.selected_node)
-			this.inspectNode(inspector, this.selected_node);
+			this.inspectNode( inspector, this.selected_node );
 	},
 
 	//inspect graph node properties
@@ -323,7 +324,7 @@ var GraphModule = {
 			return;
 
 		inspector.addSection("Node");
-		inspector.addString("Title", node.title, { callback: function(v) { node.title = v; }});
+		inspector.addString("Title", node.title, { disabled: node.ignore_rename, callback: function(v) { node.title = v; }});
 		inspector.addSeparator();
 
 		var widgets_info = node.constructor.widgets_info || node.widgets_info;

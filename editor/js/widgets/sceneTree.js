@@ -72,7 +72,11 @@ function SceneTreeWidget( id )
 		{
 			node = LS.GlobalScene.getNodeByUId( item.uid );
 			if(node)
+			{
+				if(that.trigger_clicks) //special case
+					LEvent.trigger( LS.GlobalScene, "node_clicked", node );
 				SelectionModule.setSelection( node ); //this triggers the selected_node event
+			}
 			else
 			{
 				console.warn( "Node uid not found in SceneTree: " + item.uid );

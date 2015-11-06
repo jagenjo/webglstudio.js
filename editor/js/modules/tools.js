@@ -457,8 +457,9 @@ var ToolUtils = {
 		return false;
 	},
 
-	computeRotationBetweenPoints: function(center, pointA, pointB, axis, reverse )
+	computeRotationBetweenPoints: function( center, pointA, pointB, axis, reverse, scalar )
 	{
+		scalar = scalar || 1;
 		var A = vec3.sub( vec3.create(), pointA, center );
 		var B = vec3.sub( vec3.create(), pointB, center );
 		vec3.normalize(A,A);
@@ -475,6 +476,7 @@ var ToolUtils = {
 			vec3.normalize(axis, axis);
 			if( reverse && vec3.dot(AcrossB, axis) < 0 )
 				angle *= -1;
+			angle *= scalar;
 			if(!isNaN(angle) && angle)
 				return quat.setAxisAngle( quat.create(), axis, angle );
 		}

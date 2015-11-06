@@ -233,9 +233,9 @@ LS.Components.Light["@inspector"] = function(light, inspector)
 		inspector.addNumber("Far", light.far, { pretitle: AnimationModule.getKeyframeCode( light, "far"), callback: function (value) { light.far = value; }});
 		inspector.widgets_per_row = 1;
 		inspector.addNumber("Shadow bias", light.shadow_bias, { pretitle: AnimationModule.getKeyframeCode( light, "shadow_bias"), step: 0.001, min:0, callback: function (value) { light.shadow_bias = value; }});
-		inspector.addCombo("Shadowmap size", light.shadowmap_resolution || 1024 , { pretitle: AnimationModule.getKeyframeCode( light, "shadowmap_resolution"), values: [0,256,512,1024,2048,4096], callback: function(v) { 
-			if(v == 0)
-				delete light["shadowmap_resolution"];
+		inspector.addCombo("Shadowmap size", !light.shadowmap_resolution ? "Default" : light.shadowmap_resolution, { pretitle: AnimationModule.getKeyframeCode( light, "shadowmap_resolution"), values: ["Default",256,512,1024,2048,4096], callback: function(v) { 
+			if(v == "Default")
+				light.shadowmap_resolution = 0; 
 			else
 				light.shadowmap_resolution = parseFloat(v); 
 		}});
@@ -481,7 +481,7 @@ EditorModule.showBones = function( mesh )
 	dialog.show('fade');
 }
 
-ParticleEmissor["@inspector"] = function(component, inspector)
+LS.Components.ParticleEmissor["@inspector"] = function(component, inspector)
 {
 	if(!component) return;
 	var node = component._root;
@@ -561,13 +561,20 @@ ParticleEmissor["@inspector"] = function(component, inspector)
 	inspector.widgets_per_row = 1;
 }
 
-/** for animations ****/
+/** extras ****/
 
-PlayAnimation.onShowAttributes = function(component, inspector)
+LS.Components.PlayAnimation.onShowAttributes = function(component, inspector)
 {
 	inspector.addButton("","Edit Animation", { callback: function() { 
 		var anim = component.getAnimation();
 		AnimationModule.showTimeline( anim );
 	}});
+}
+
+
+LS.Components.CameraController.onShowAttributes = function(component, inspector)
+{
+	if(!component._root || !component._root.camera)
+		inspector.addInfo(null,"<span class='alert'>Warning: No camera found in node</span>");
 }
 

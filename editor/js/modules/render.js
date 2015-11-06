@@ -440,7 +440,7 @@ var RenderModule = {
 	{
 		//console.error("Asset not found: " + url);
 		return;
-
+		/*
 		this.assets_missing.push(url);
 
 		var str = "";
@@ -453,6 +453,7 @@ var RenderModule = {
 		{
 			RenderModule.assets_missing = [];
 		}
+		*/
 	},
 
 	requestFrame: function()
@@ -537,7 +538,8 @@ var RenderModule = {
 		}
 	},
 
-	takeScreenshot: function(width, height)
+	//returns string
+	takeScreenshot: function( width, height, get_blob )
 	{
 		width = width || 256;
 		height = height || 256;
@@ -547,7 +549,12 @@ var RenderModule = {
 		v3d.resize(width,height);
 		
 		this.render(true);
-		var data = v3d.canvas.toDataURL("image/png");
+		var data = null;
+		
+		if(get_blob)
+			data = v3d.canvas.toBlob();
+		else
+			data = v3d.canvas.toDataURL("image/png");
 		v3d.resize(old[0],old[1]);
 		this.render(true); //force render a frame to clean 
 		return data;

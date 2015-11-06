@@ -453,11 +453,15 @@ var LiteGUI = {
 	**/
 	requireScript: function(url, on_complete, on_error, on_progress )
 	{
-		if(typeof(url)=="string")
+		if(!url)
+			throw("invalid URL");
+
+		if( url.constructor === String )
 			url = [url];
 
 		var total = url.length;
 		var size = total;
+
 		for(var i in url)
 		{
 			var script = document.createElement('script');
@@ -523,15 +527,26 @@ var LiteGUI = {
 	* Request script and inserts it in the DOM
 	* @method createElement
 	* @param {String} tag
-	* @param {String} id
+	* @param {String} id_class string containing id and classes, example: "myid .someclass .anotherclass"
 	* @param {String} content
 	* @param {Object} style
 	**/
-	createElement: function(tag, id, content, style, events)
+	createElement: function(tag, id_class, content, style, events)
 	{
 		var elem = document.createElement( tag );
-		if(id)
-			elem.id = id;
+		if(id_class)
+		{
+			var t = id_class.split(" ");
+			for(var i = 0; i < t.length; i++)
+			{
+				if(t[i][0] == ".")
+					elem.classList.add( t[i].substr(1) );
+				else if(t[i][0] == "#")
+					elem.id = t[i].substr(1);
+				else
+					elem.id = t[i];
+			}
+		}
 		elem.root = elem;
 		if(content)
 			elem.innerHTML = content;
@@ -5553,7 +5568,7 @@ Inspector.prototype.showAttributes = function( instance, attrs_info )
 		if(!options.callback)
 		{
 			var o = { instance: instance, name: i, options: options };
-			options.callback = Inspector.assignValue.bind(o);
+			options.callback = Inspector.assignValue.bind( o );
 
 		}
 		options.instance = instance;
@@ -5616,7 +5631,7 @@ Inspector.prototype.createWidget = function(name, content, options)
 	var width = options.width || this.widgets_width;
 	if(width)
 	{
-		element.style.width = typeof(width) == "string" ? width : width + "px";
+		element.style.width = width.constructor === String ? width : width + "px";
 		element.style.minWidth = element.style.width;
 	}
 
@@ -5635,7 +5650,8 @@ Inspector.prototype.createWidget = function(name, content, options)
 	if(name != null && (this.name_width || options.name_width) && !this.one_line)
 	{
 		var w = options.name_width || this.name_width;
-		if(typeof(w) == "number") w = w.toFixed() + "px";
+		if(w !== undefined && w.constructor === Number)
+			w = w.toFixed() + "px";
 		namewidth = "style='width: calc(" + w + " - 0px); width: -webkit-calc(" + w + " - 0px); width: -moz-calc(" + w + " - 0px); '"; //hack 
 		contentwidth = "style='width: calc( 100% - " + w + "); width: -webkit-calc(100% - " + w + "); width: -moz-calc( 100% - " + w + "); '";
 	}
@@ -5658,14 +5674,15 @@ Inspector.prototype.createWidget = function(name, content, options)
 	else
 		code += "<span class='wname' title='"+title+"' "+namewidth+">"+ pretitle + name + filling + "</span>";
 
-	if(typeof(content) == "string")
+	if( content.constructor === String )
 		element.innerHTML = code + "<span class='info_content "+content_class+"' "+contentwidth+">"+content+"</span>";
 	else
 	{
 		element.innerHTML = code + "<span class='info_content "+content_class+"' "+contentwidth+"></span>";
-		$(element).find("span.info_content").append(content);
+		element.querySelector("span.info_content").appendChild( content );
 	}
 
+	element.content = element.querySelector("span.info_content");
 	return element;
 }
 
@@ -5761,12 +5778,17 @@ Inspector.prototype.getValue = function(name)
 	return this.values[name];
 }
 
-Inspector.prototype.set = function(name, value)
+
+//it is like an empty widget
+Inspector.prototype.addContainer = function(name, options)
 {
-	//TODO
+	var element = this.startContainer();
+	this.endContainer();
+	return element;
 }
 
-Inspector.prototype.addContainer = function(name, options)
+//creates a container that will be used to next widgets
+Inspector.prototype.startContainer = function(name, options)
 {
 	options = this.processOptions(options);
 
@@ -5796,7 +5818,7 @@ Inspector.prototype.endContainer = function(name, options)
 	this.popContainer();
 }
 
-
+//it is like a group but it is collapsable and has a padding to differenciate from other sections
 Inspector.prototype.addSection = function(name, options)
 {
 	if(this.current_group)
@@ -5822,7 +5844,8 @@ Inspector.prototype.addSection = function(name, options)
 		code += "<div class='wsectiontitle'>"+(options.no_collapse ? "" : "<span class='switch-section-button'></span>")+name+"</div>";
 	code += "<div class='wsectioncontent'></div>";
 	element.innerHTML = code;
-	this.root.appendChild(element);
+	//this.append( element ); ??
+	this.root.appendChild( element );
 
 	if(name)
 		element.querySelector(".wsectiontitle").addEventListener("click",function(e) {
@@ -5852,8 +5875,8 @@ Inspector.prototype.addSection = function(name, options)
 	return element;
 }
 
-
-Inspector.prototype.setCurrentSection = function(element)
+//change current section (allows to add widgets to previous sections)
+Inspector.prototype.setCurrentSection = function( element )
 {
 	if(this.current_group)
 		this.endGroup();
@@ -5868,6 +5891,7 @@ Inspector.prototype.getCurrentSection = function()
 	return this.current_section;
 }
 
+//similar to addSection ?
 Inspector.prototype.beginGroup = function(name, options)
 {
 	options = this.processOptions(options);
@@ -5992,7 +6016,7 @@ Inspector.prototype.addStringButton = function(name,value, options)
 	var button = element.querySelector(".wcontent button");
 	button.addEventListener("click", function(e) { 
 		if(options.callback_button)
-			options.callback_button.call(element, input.value );
+			options.callback_button.call( element, input.value );
 	});
 
 	this.tab_index += 1;
@@ -6028,7 +6052,10 @@ Inspector.prototype.addNumber = function(name, value, options)
 	var dragger = new LiteGUI.Dragger(value, options);
 	dragger.root.style.width = "calc( 100% - 1px )";
 	element.querySelector(".wcontent").appendChild( dragger.root );
-	$(dragger.root).bind("start_dragging", inner_before_change.bind(options) );
+	dragger.root.addEventListener("start_dragging", inner_before_change.bind(options) );
+
+	if( options.disabled )
+		dragger.input.setAttribute("disabled","disabled");
 
 	function inner_before_change(e)
 	{
@@ -6044,7 +6071,7 @@ Inspector.prototype.addNumber = function(name, value, options)
 
 		if(options.callback)
 		{
-			var ret = options.callback.call(element, parseFloat( e.target.value) ); 
+			var ret = options.callback.call( element, parseFloat( e.target.value) ); 
 			if( typeof(ret) == "number")
 				this.value = ret;
 		}
@@ -6118,7 +6145,7 @@ Inspector.prototype.addVector2 = function(name,value, options)
 
 		if(options.callback)
 		{
-			var new_val = options.callback.call(element,r); 
+			var new_val = options.callback.call( element, r ); 
 			
 			if(typeof(new_val) == "object" && new_val.length >= 2)
 			{
@@ -6199,7 +6226,7 @@ Inspector.prototype.addVector3 = function(name,value, options)
 
 		if(options.callback)
 		{
-			var new_val = options.callback.call(element,r); 
+			var new_val = options.callback.call( element,r ); 
 			
 			if(typeof(new_val) == "object" && new_val.length >= 3)
 			{
@@ -6271,7 +6298,7 @@ Inspector.prototype.addVector4 = function(name,value, options)
 
 		if(options.callback)
 		{
-			var new_val = options.callback.call(element,r); 
+			var new_val = options.callback.call( element, r ); 
 			if(typeof(new_val) == "object" && new_val.length >= 4)
 			{
 				for(var i = 0; i < elems.length; i++)
@@ -6670,7 +6697,8 @@ Inspector.prototype.addTags = function(name, value, options)
 		element.querySelector(".wtagscontainer").appendChild(tag);
 
 		that.values[name] = element.tags;
-		if(options.callback) options.callback.call(element,element.tags); 
+		if(options.callback)
+			options.callback.call( element, element.tags ); 
 		$(element).trigger("wchange",element.tags);
 		$(element).trigger("wadded",tagname);
 		if(that.onchange) that.onchange(name, element.tags, element);
@@ -7008,7 +7036,7 @@ Inspector.prototype.addColor = function(name,value,options)
 
 		that.values[name] = v;
 		if(options.callback)
-			options.callback.call(element, v.concat(), "#" + myColor.toString(), myColor);
+			options.callback.call( element, v.concat(), "#" + myColor.toString(), myColor );
 		$(element).trigger("wchange",[v.concat(), myColor.toString()]);
 		if(that.onchange) that.onchange(name, v.concat(), element);
 	}
@@ -7079,7 +7107,8 @@ Inspector.prototype.addLine = function(name, value, options)
 	$(element).find("span.line-editor").append(line_editor);
 
 	$(line_editor).change( function(e) { 
-		if(options.callback) options.callback.call(element,e.target.value);
+		if(options.callback)
+			options.callback.call( element,e.target.value );
 		$(element).trigger("wchange",[e.target.value]);
 		Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
 	});
@@ -7107,7 +7136,7 @@ Inspector.prototype.addTree = function(name, value, options)
 	var tree = element.tree = new LiteGUI.Tree(null,value, options.tree_options);
 	tree.onItemSelected = function(node, data) {
 		if(options.callback)
-			options.callback(node,data);
+			options.callback.call( element, node, data);
 	};
 
 	tree_root.appendChild(tree.root);

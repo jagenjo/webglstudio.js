@@ -217,19 +217,45 @@ var EditorView = {
 		//Draw.setCameraPosition(camera.getEye());
 		//Draw.setViewProjectionMatrix(Renderer._view_matrix, Renderer._projection_matrix, Renderer._viewprojection_matrix);
 
-		if(EditorView.settings.render_grid)
+		if(EditorView.settings.render_grid && this.settings.grid_alpha > 0)
 		{
-			gl.enable(gl.BLEND);
-			Draw.setColor([0.3,0.3,0.3, this.settings.grid_alpha ]);
+			//textured grid
+			if(!this.grid_shader)
+			{
+				//this.grid_shader = Draw.createSurfaceShader("float PI2 = 6.283185307179586; return vec4( vec3( max(0.0, cos(pos.x * PI2 * 0.1) - 0.95) * 10.0 + max(0.0, cos(pos.z * PI2 * 0.1) - 0.95) * 10.0 ),1.0);");
+				this.grid_shader = Draw.createSurfaceShader("vec2 f = vec2(1.0/64.0,-1.0/64.0); float brightness = texture2D(u_texture, pos.xz + f).x * 0.6 + texture2D(u_texture, pos.xz * 0.1 + f ).x * 0.3 + texture2D(u_texture, pos.xz * 0.01 + f ).x * 0.2; brightness /= max(1.0,0.001 * length(u_camera_position.xz - pos.xz));return u_color * vec4(vec3(1.0),brightness);");
+				this.grid_shader.uniforms({u_texture:0});
+
+				if( this.grid_img && this.grid_img.loaded )
+					this.grid_texture = GL.Texture.fromImage( this.grid_img, {format: gl.RGB, wrap: gl.REPEAT, anisotropic: 4, minFilter: gl.LINEAR_MIPMAP_LINEAR } );
+				else
+					this.grid_texture = GL.Texture.fromURL( "imgs/grid.png", {format: gl.RGB, wrap: gl.REPEAT, anisotropic: 4, minFilter: gl.LINEAR_MIPMAP_LINEAR } );
+			}
+
 			Draw.push();
-			Draw.scale( this.settings.grid_scale, this.settings.grid_scale, this.settings.grid_scale );
-			Draw.renderMesh( this.grid_mesh );
-			//Draw.renderGrid(20,12);
-			Draw.setColor([0.2,0.2,0.2, this.settings.grid_alpha * 0.75]);
-			Draw.scale(10,10,10);
-			Draw.renderMesh( this.grid_mesh );
+
+			if(!this.grid_texture || this.grid_texture.ready === false)
+			{
+				//lines grid
+				Draw.setColor([0.2,0.2,0.2, this.settings.grid_alpha * 0.75]);
+				Draw.scale( this.settings.grid_scale , this.settings.grid_scale , this.settings.grid_scale );
+				Draw.renderMesh( this.grid_mesh, gl.LINES );
+				Draw.scale(10,10,10);
+				Draw.renderMesh( this.grid_mesh, gl.LINES );
+			}
+			else
+			{
+				//texture grid
+				gl.enable(gl.BLEND);
+				this.grid_texture.bind(0);
+				Draw.setColor([1,1,1, this.settings.grid_alpha ]);
+				Draw.translate( Draw.camera_position[0], 0, Draw.camera_position[2] ); //follow camera
+				Draw.scale( 10000, 10000, 10000 );
+				Draw.renderMesh( this.plane_mesh, gl.TRIANGLES, this.grid_shader );
+			}
+
 			Draw.pop();
-			//Draw.renderGrid(80,20);
+
 
 			Draw.setColor([0.2,0.2,0.2,1.0]);
 			Draw.push();
@@ -294,7 +320,7 @@ var EditorView = {
 				Draw.push();
 				Draw.multMatrix(global);
 				Draw.setColor([1,1,1,1]);
-				Draw.renderMesh( EditorView.axis_mesh );
+				Draw.renderMesh( EditorView.axis_mesh, gl.LINES );
 				Draw.pop();
 			}
 		}
@@ -390,7 +416,7 @@ var EditorView = {
 			Draw.setMatrix( R );
 			Draw.setColor([1,1,1,1]);
 			Draw.scale(10,10,10);
-			Draw.renderMesh( this.axis_mesh );
+			Draw.renderMesh( this.axis_mesh, gl.LINES );
 			Draw.pop();
 		}
 
@@ -561,6 +587,9 @@ var EditorView = {
 
 	createMeshes: function()
 	{
+		//plane
+		this.plane_mesh = GL.Mesh.plane({xz:true});
+
 		//grid
 		var dist = 10;
 		var num = 10;
@@ -682,7 +711,7 @@ LS.SceneNode.prototype.renderEditor = function( node_selected )
 				//oobb
 				var halfsize = BBox.getHalfsize(oobb);
 				Draw.scale( halfsize );
-				Draw.renderMesh( EditorView.box_mesh );
+				Draw.renderMesh( EditorView.box_mesh, gl.LINES );
 				//Draw.renderMesh( EditorView.circle_mesh, gl.TRIANGLES );
 				Draw.pop();
 
@@ -938,6 +967,7 @@ Camera.prototype.renderEditor = function(node_selected, component_selected)
 		var near = this.near;
 		var far = this.far;
 		var mid_frustum = this.frustum_size * 0.5;
+		var aspect = this._aspect;
 
 		var temp = vec3.create();
 		var delta = vec3.create();
@@ -960,35 +990,35 @@ Camera.prototype.renderEditor = function(node_selected, component_selected)
 		if( this.type == Camera.ORTHOGRAPHIC)
 		{
 			Draw.renderLines([[0,0,-near],[0,0,-focus_dist],
-				[-mid_frustum,mid_frustum,-near],[-mid_frustum,mid_frustum,-focus_dist],
-				[mid_frustum,mid_frustum,-near],[mid_frustum,mid_frustum,-focus_dist],
-				[-mid_frustum,-mid_frustum,-near],[-mid_frustum,-mid_frustum,-focus_dist],
-				[mid_frustum,-mid_frustum,-near],[mid_frustum,-mid_frustum,-focus_dist],
+				[-mid_frustum * aspect,mid_frustum,-near],[-mid_frustum * aspect,mid_frustum,-focus_dist],
+				[mid_frustum * aspect,mid_frustum,-near],[mid_frustum * aspect,mid_frustum,-focus_dist],
+				[-mid_frustum * aspect,-mid_frustum,-near],[-mid_frustum * aspect,-mid_frustum,-focus_dist],
+				[mid_frustum * aspect,-mid_frustum,-near],[mid_frustum * aspect,-mid_frustum,-focus_dist],
 			]);
 		}
 		else
 		{
 			Draw.renderLines([[0,0,0],[0,0,-focus_dist],
-				[-f * near,f * near,-near],[-f * focus_dist,f * focus_dist,-focus_dist],
-				[f * near,f * near,-near],[f * focus_dist,f * focus_dist,-focus_dist],
-				[-f * near,-f * near,-near],[-f * focus_dist,-f * focus_dist,-focus_dist],
-				[f * near,-f * near,-near],[f * focus_dist,-f * focus_dist,-focus_dist],
+				[-f * near * aspect,f * near,-near],[-f * focus_dist * aspect,f * focus_dist,-focus_dist],
+				[f * near * aspect,f * near,-near],[f * focus_dist * aspect,f * focus_dist,-focus_dist],
+				[-f * near * aspect,-f * near,-near],[-f * focus_dist * aspect,-f * focus_dist,-focus_dist],
+				[f * near * aspect,-f * near,-near],[f * focus_dist * aspect,-f * focus_dist,-focus_dist],
 			]);
 		}
 
 		Draw.translate(0,0,-this.near);
 
 		if( this.type == Camera.ORTHOGRAPHIC)
-			Draw.renderRectangle( mid_frustum * 2, mid_frustum * 2);
+			Draw.renderRectangle( mid_frustum * 2 * aspect, mid_frustum * 2);
 		else
-			Draw.renderRectangle( f * near * 2, f * near * 2);
+			Draw.renderRectangle( f * near * 2 * aspect, f * near * 2);
 
 		Draw.translate(0,0,near-focus_dist);
 
 		if( this.type == Camera.ORTHOGRAPHIC)
-			Draw.renderRectangle( mid_frustum * 2, mid_frustum * 2);
+			Draw.renderRectangle( mid_frustum * 2 * aspect, mid_frustum * 2);
 		else
-			Draw.renderRectangle( f * focus_dist * 2, f * focus_dist * 2);
+			Draw.renderRectangle( f * focus_dist * 2 * aspect, f * focus_dist * 2);
 
 		Draw.pop();
 
@@ -996,30 +1026,8 @@ Camera.prototype.renderEditor = function(node_selected, component_selected)
 	}
 }
 
-
-
-
-/*
-MeshRenderer.prototype.renderEditor = function(node_selected)
-{
-	if(!node_selected) return;
-
-	Draw.setColor([0.3,0.3,0.3,0.5]);
-	gl.enable(gl.BLEND);
-	var mesh = this.getMesh();
-	if(!mesh) return;
-
-	var bounding = mesh.bounding || mesh.info;
-	if(!bounding) return;
-
-	Draw.push();
-	if(this._root)
-		Draw.multMatrix( this._root.transform.getGlobalMatrix() );
-
-	Draw.translate(bounding.aabb_center);
-	Draw.renderWireBox(bounding.aabb_halfsize[0]*2,bounding.aabb_halfsize[1]*2,bounding.aabb_halfsize[2]*2);
-	Draw.pop();
-	gl.disable(gl.BLEND);
-}
-*/
+//PRELOAD STUFF
+EditorView.grid_img = new Image();
+EditorView.grid_img.src = "imgs/grid.png";
+EditorView.grid_img.onload = function(){ this.loaded = true; }
 

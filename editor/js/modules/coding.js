@@ -18,8 +18,8 @@ var CodingModule = //do not change
 
 	windows: [], //external windows
 
-	codemirror_scripts: ["js/extra/codemirror/codemirror.js",
-								"js/extra/codemirror/hint/show-hint.js",
+	codemirror_base: "js/extra/codemirror/codemirror.js",
+	codemirror_scripts: [		"js/extra/codemirror/hint/show-hint.js",
 								"js/extra/codemirror/hint/javascript-hint.js",
 								"js/extra/codemirror/selection/active-line.js",
 								"js/extra/codemirror/javascript.js"],
@@ -70,10 +70,13 @@ var CodingModule = //do not change
 		//coding area is created after loading CodeMirror
 
 		//include codemirror
-		LiteGUI.requireScript( this.codemirror_scripts,
-								function() { 
-									CodingModule.onCodeMirrorLoaded(); 
-								});
+		LiteGUI.requireScript( this.codemirror_base, function(){
+			//two stages
+			LiteGUI.requireScript( CodingModule.codemirror_scripts,
+									function() { 
+										CodingModule.onCodeMirrorLoaded(); 
+									});
+		});
 		LiteGUI.requireCSS( this.codemirror_css );
 		LiteGUI.addCSS(".error-line { background-color: #511; }\n\
 						.CodeMirror div.CodeMirror-cursor, .CodeMirror pre { z-index: 0 !important; }\n\
@@ -97,7 +100,7 @@ var CodingModule = //do not change
 		LEvent.bind( LS.Components.Script, "code_error", this.onScriptError.bind(this) );
 		LEvent.bind( LS, "code_error", this.onGlobalError.bind(this) );
 
-		LiteGUI.menubar.add("Window/Coding Panel", { callback: function(){ CodingWidget.createDialog(); }});
+		LiteGUI.menubar.add("Window/Coding Panel", { callback: function(){ CodingTabsWidget.createDialog(); }});
 		LiteGUI.menubar.add("Actions/Catch Errors", { type: "checkbox", instance: LS, property: "catch_errors" });
 
 		//LEvent.bind(Scene,"start", this.onStart.bind(this));
@@ -305,11 +308,12 @@ var CodingModule = //do not change
 	getCurrentCodeInfo: function()
 	{
 		return this.current_code_info;
-
+		/*
 		var current_tab = this.files_tabs.getCurrentTab();
 		if(current_tab && current_tab.code_info)
 			return current_tab.code_info;
 		return null;
+		*/
 	},
 
 	evalueCode: function()
@@ -628,13 +632,13 @@ var CodingModule = //do not change
 
 		if(v)
 		{
-			RenderModule.appendViewportTo( this.coding_area.sections[1].content );
-			this.coding_area.showSection(1);
+			RenderModule.appendViewportTo( this.coding_area.sections[0].content );
+			this.coding_area.showSection(0);
 		}
 		else
 		{
 			RenderModule.appendViewportTo(null);
-			this.coding_area.hideSection(1);
+			this.coding_area.hideSection(0);
 		}
 	},
 
@@ -711,8 +715,9 @@ var CodingModule = //do not change
 		}		
 
 		CodeMirror.commands.compile = function(cm) {
-			CodingModule.evalueCode();
-			Scene.refresh();
+			var pad = cm.coding_area;
+			pad.evalueCode();
+			LS.GlobalScene.refresh();
 		}
 
 		//top bar
@@ -771,7 +776,7 @@ var CodingModule = //do not change
 		//this.top_widget.addButton(null,"Close Editor", { callback: function() { CodingModule.closeTab(); }});
 		//this.top_widget.addButton(null,"Execute", { callback: null });
 
-		var coding_workarea_root = coding_area.sections[0];
+		var coding_workarea_root = coding_area.getSection(1);
 
 		var coding_workarea = context.workarea = new LiteGUI.Area("coding-workarea");
 		coding_workarea.add( top_widget );
@@ -805,7 +810,7 @@ var CodingModule = //do not change
 		  });
 
 		  editor.on("change", CodingModule.onCodeChange.bind(CodingModule) );
-
+		 editor.coding_area = CodingModule;
 		 context.editor = editor;
 		 return context;
 	}

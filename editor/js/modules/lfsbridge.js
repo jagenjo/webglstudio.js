@@ -203,11 +203,13 @@ var LFSBridge = {
 			},
 			function(err,resp){ //on_error
 				console.error(err);
+				if(on_error)
+					on_error( fullpath, err );
 			},
 			function(v,e,params){ //on_progress
 				//console.log("Progress",v);
 				if(on_progress)
-					on_progress(v,fullpath);
+					on_progress( fullpath, v);
 		});
 	},
 
@@ -368,16 +370,16 @@ var LFSBridge = {
 					return function(e) {
 						var data =  e.currentTarget.result;
 						var path = folder_fullpath + "/" + theFile.name;
+						DriveModule.showStartUploadingFile( path );
 						LFSBridge.uploadFile( path, data, function(){
 							//refresh
 							DriveModule.showEndUploadingFile( path );
 							DriveModule.refreshContent();
-						}, function(err){
+						}, function( path, err){
 							DriveModule.showErrorUploadingFile( path, err );
-						}, function(v){
-							DriveModule.showProgressUploadingFile( path, v );
+						}, function( path, progress){
+							DriveModule.showProgressUploadingFile( path, progress );
 						});
-						DriveModule.showStartUploadingFile( path );
 					};
 				})(file);
 				reader.readAsArrayBuffer(file);

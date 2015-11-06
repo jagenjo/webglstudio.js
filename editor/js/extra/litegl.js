@@ -3669,6 +3669,12 @@ global.Texture = GL.Texture = function Texture(width, height, options, gl) {
 			if(data && !data.buffer)
 				data = new (this.type == gl.FLOAT ? Float32Array : Uint8Array)( data );
 			gl.texImage2D(gl.TEXTURE_2D, 0, this.format, width, height, 0, this.format, this.type, data || null );
+
+			//only generate mipmaps if pixel_data is provided
+			if (GL.isPowerOfTwo(width) && GL.isPowerOfTwo(height) && options.minFilter && options.minFilter != gl.NEAREST && options.minFilter != gl.LINEAR) {
+				gl.generateMipmap(this.texture_type);
+				this.has_mipmaps = true;
+			}
 		}
 		else if(this.texture_type == gl.TEXTURE_CUBE_MAP)
 		{
@@ -4626,7 +4632,11 @@ Texture.prototype.getPixels = function( type, force_rgba )
 {
 	var gl = this.gl;
 	var v = gl.getViewport();
+	var old_fbo = gl.getParameter( gl.FRAMEBUFFER_BINDING );
+
 	type = type || this.type;
+
+	
 
 	var framebuffer = gl.createFramebuffer();
 	var renderbuffer = gl.createRenderbuffer();
@@ -4651,6 +4661,8 @@ Texture.prototype.getPixels = function( type, force_rgba )
 	var channels = this.format == gl.RGB ? 3 : 4;
 	if(force_rgba)
 		channels = 4;
+	channels = 4; //WEBGL DOES NOT SUPPORT READING 3 CHANNELS ONLY, YET...
+	//type = gl.UNSIGNED_BYTE; //WEBGL DOES NOT SUPPORT READING FLOAT seems, YET...
 
 	var buffer = null;
 	if(type == gl.UNSIGNED_BYTE)
@@ -4658,11 +4670,12 @@ Texture.prototype.getPixels = function( type, force_rgba )
 	else //half float and float forced to float
 		buffer = new Float32Array( this.width * this.height * channels );
 
-	gl.readPixels(0,0, this.width, this.height, force_rgba ? gl.RGBA : this.format, type, buffer );
+	//gl.readPixels(0,0, this.width, this.height, gl.RGBA, gl.UNSIGNED_BYTE, buffer ); 
+	gl.readPixels(0,0, this.width, this.height, channels == 3 ? gl.RGB : gl.RGBA, type, buffer ); //NOT SUPPORTED FLOAT or RGB BY WEBGL YET
 
-	gl.bindFramebuffer(gl.FRAMEBUFFER, gl._current_fbo_color );
-	gl.bindRenderbuffer(gl.RENDERBUFFER, gl._current_fbo_depth );
-
+	//restore
+	gl.bindRenderbuffer(gl.RENDERBUFFER, null );
+	gl.bindFramebuffer(gl.FRAMEBUFFER, old_fbo );
 	gl.viewport(v[0], v[1], v[2], v[3]);
 	return buffer;
 }

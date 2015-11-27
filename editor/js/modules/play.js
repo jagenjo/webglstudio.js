@@ -18,14 +18,13 @@ var PlayModule = {
 			#play-tools button { padding: 0 0.5em; } \
 		");
 
+		LEvent.bind( LS.GlobalScene, "clear", this.onSceneStop, this);
+		RenderModule.viewport3d.addModule( PlayModule ); //capture render from square, and update and events
+
+		//tools
 		var container = document.createElement("div");
 		container.id = "play-tools";
 		container.className = "big-buttons";
-
-		LEvent.bind( LS.GlobalScene, "clear", this.onSceneStop, this);
-
-		RenderModule.viewport3d.addModule( PlayModule ); //capture render from square, and update and events
-
 		container.innerHTML = "<button id='play-button'>Play</button><button id='pause-button' disabled>Pause</button><button id='stopkeep-button' disabled>Keep</button><button id='launch-button'>Launch</button>";
 		this.play_button = container.querySelector("#play-button");
 		this.pause_button = container.querySelector("#pause-button");
@@ -43,7 +42,6 @@ var PlayModule = {
 		this.tab = LiteGUI.main_tabs.addTab("Player", {id:"ingametab", bigicon: this.bigicon, size: "full", module: EditorModule, callback: function() {
 			//get the canvas
 			var canvas = RenderModule.appendViewportTo( PlayModule.tab.content );
-
 			RenderModule.render_options.in_player = true;
 			PlayModule.inplayer = true;
 
@@ -59,6 +57,22 @@ var PlayModule = {
 			PlayModule.inplayer = false;
 			RenderModule.appendViewportTo(null);
 		}});
+
+		//overwrite method to add the module to the right place
+		LS.getGUIElement = function()
+		{
+			if( LS._gui_element )
+				return LS._gui_element;
+
+			var gui = document.createElement("div");
+			gui.className = "litescene-gui";
+			gui.style.position = "absolute";
+			gui.style.top = "0";
+			gui.style.left = "0";
+			PlayModule.tab.content.appendChild( gui );
+			LS._gui_element = gui;
+			return gui;
+		},
 
 		this.tab.content.style.overflow = "hidden";
 	},
@@ -81,17 +95,17 @@ var PlayModule = {
 			var selected_node = SelectionModule.getSelectedNode();
 			this._selected_node_uid = selected_node ? selected_node.uid : null;
 
-			this.changeState("play");
 			this.play_button.innerHTML = "Stop";
 			this.pause_button.removeAttribute('disabled');
 			this.stopkeep_button.removeAttribute('disabled');
+			this.changeState("play");
 		}
 		else //stop
 		{
-			this.changeState("stop");
 			this.play_button.innerHTML = "Play";
 			this.pause_button.setAttribute('disabled','disabled');
 			this.stopkeep_button.setAttribute('disabled','disabled');
+			this.changeState("stop");
 
 			//restore old scene
 			if(this.restore_state)
@@ -161,8 +175,8 @@ var PlayModule = {
 		if(state == "play")
 		{
 			this.state = "play";
-			console.log("Starting...");
-			LEvent.bind( scene,"stop", this.onSceneStop );
+			console.log("%c + START ", 'background: #222; color: #AAF; font-size: 2em');
+			LEvent.bind( scene,"finish", this.onSceneStop );
 			scene.start();
 			EditorModule.render_debug_info = false;
 			EditorModule.refreshAttributes();
@@ -171,12 +185,12 @@ var PlayModule = {
 		else if(state == "stop")
 		{
 			this.state = "stop";
-			console.log("Stopped...");
-
-			scene.stop();
+			console.log("%c + FINISH ", 'background: #222; color: #AAF; font-size: 2em');
+			scene.finish();
 			EditorModule.render_debug_info = true;
 			RenderModule.requestFrame();
-			LEvent.unbind( scene,"stop", this.onSceneStop );
+			LEvent.unbind( scene,"finish", this.onSceneStop );
+			LS.removeGUIElement();
 		}
 	},
 
@@ -190,7 +204,7 @@ var PlayModule = {
 	{
 		if(!this.inplayer)
 			return;
-		
+
 		LEvent.trigger( LS.GlobalScene, e.eventType, e );
 		//LS.GlobalScene.triggerInNodes(e.eventType, e);
 

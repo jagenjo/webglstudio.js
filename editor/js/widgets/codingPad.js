@@ -12,16 +12,6 @@ function CodingPadWidget()
 }
 
 
-
-CodingPadWidget.codemirror_scripts = ["js/extra/codemirror/codemirror.js",
-								"js/extra/codemirror/hint/show-hint.js",
-								"js/extra/codemirror/hint/javascript-hint.js",
-								"js/extra/codemirror/selection/active-line.js",
-								"js/extra/codemirror/javascript.js"];
-CodingPadWidget.codemirror_css = ["js/extra/codemirror/codemirror.css",
-							"js/extra/codemirror/blackboard.css",
-							"js/extra/codemirror/hint/show-hint.css"];
-
 CodingPadWidget.prototype.init = function()
 {
 	//create area
@@ -29,19 +19,7 @@ CodingPadWidget.prototype.init = function()
 	
 	//load codemirror
 	if(typeof(CodeMirror) === undefined)
-	{
-		var that = this;
-		LiteGUI.requireScript( CodingPadWidget.codemirror_scripts,
-								function() {
-									that.prepareCodeMirror();
-									that.createCodingArea(); 
-								});
-		LiteGUI.requireCSS( CodingPadWidget.codemirror_css );
-		LiteGUI.addCSS(".error-line { background-color: #511; }\n\
-						.CodeMirror div.CodeMirror-cursor, .CodeMirror pre { z-index: 0 !important; }\n\
-						.CodeMirror-selected { background-color: rgba(100,100,100,0.5) !important; outline: 1px dashed rgba(255,255,255,0.8); }\n\
-					   ");
-	}
+		console.warn("CodeMirror missing");
 	else
 		this.createCodingArea(); 
 
@@ -129,6 +107,14 @@ CodingPadWidget.prototype.editInstanceCode = function( instance, options )
 		//store in current_tab
 	}
 
+	this.replaceInstanceCode( instance, options );
+}
+
+CodingPadWidget.prototype.replaceInstanceCode = function( instance, options )
+{
+	options = options || {};
+	var lang = options.lang || "javascript";
+
 	//compute id
 	var id = options.id || instance.uid || instance.id;
 	var title = options.title || instance.name || id;
@@ -142,10 +128,16 @@ CodingPadWidget.prototype.editInstanceCode = function( instance, options )
 		code = instance.getCode();
 	if(!code)
 		code = "";
-	this.editor.setValue( code );
-	this.editor.refresh();
-	if(this.current_code_info && this.current_code_info.pos)
-		this.editor.setCursor( this.current_code_info.pos );
+
+	if(this.editor)
+	{
+		this.editor.setValue( code );
+		this.editor.refresh();
+		if(this.current_code_info && this.current_code_info.pos)
+			this.editor.setCursor( this.current_code_info.pos );
+	}
+	else
+		console.warn("CodeMirror missing");
 
 	//global assigments (used for the autocompletion)
 	if(	instance && instance._root )
@@ -162,6 +154,43 @@ CodingPadWidget.prototype.editInstanceCode = function( instance, options )
 	}
 }
 
+
+//save the current state of the codemirror inside the instance (otherwise changes would be lost)
+CodingPadWidget.prototype.assignCurrentCode = function( skip_events )
+{
+	var info = this.getCurrentCodeInfo();
+	if(!info)
+		return;
+
+	var instance = info.instance;
+	var code = this.editor.getValue();
+	info.pos = this.editor.getCursor();
+
+	var old_code = null;
+	if(info.options.getCode)
+		old_code = info.options.getCode();
+	else
+		old_code = instance.getCode();
+
+	//ignore this: sometimes we call assignCurrentCode after assigning the code
+	//if(code == old_code)
+	//	return;
+
+	if(info.options.setCode)
+		info.options.setCode( code );
+	else
+		instance.code = code;
+
+	if(skip_events) 
+		return true; 
+
+	LEvent.trigger( instance, "code_changed", code );
+	if( instance.onCodeChange )
+		return instance.onCodeChange( code );
+	return true;
+} 
+
+
 CodingPadWidget.prototype.onCodeChange = function( editor )
 {
 	if(this.autocompile)
@@ -176,6 +205,21 @@ CodingPadWidget.prototype.assignCurrentCode = function( skip_events )
 		return;
 
 	var instance = info.instance;
+	if( instance.constructor === String ) //uid
+		instance = LS.GlobalScene.findComponentByUId( instance );
+
+	if( !instance )
+	{
+		console.warn( "Instance being edited in coding pad not found" );
+		return;
+	}
+
+	if(instance && ( !instance._root || !instance._root.scene) )
+	{
+		console.warn( "Instance being edited is not in the scene" );
+		return;
+	}
+
 	var code = this.editor.getValue();
 	info.pos = this.editor.getCursor();
 
@@ -309,19 +353,34 @@ CodingPadWidget.prototype.markLine = function(num)
 //save the state 
 CodingPadWidget.prototype.onBeforeReload = function(e)
 {
+	//console.log("before reload");
 	this._saved_state = this.current_code_info;
 }
 
 	//reload all the codes open
 CodingPadWidget.prototype.onReload = function(e)
 {
+	//console.log("reload");
 	if(!this._saved_state)
 		return;
 
 	var state = this._saved_state;
 
-	var instance = LS.GlobalScene.findComponentByUId( state.id );
-	this.editInstanceCode( instance, state.options );
+	//refresh instance after reloading the scene 
+	var instance = null;
+	if( state.getInstance )
+		instance = state.getInstance();
+	if(!instance)
+	{
+		if( state.id.substr(0,6) == "@COMP-" )
+			instance = LS.GlobalScene.findComponentByUId( state.id );
+		else if( state.id.substr(0,6) == "@MAT-" )
+			instance = LS.GlobalScene.findMaterialByUId( state.id );
+	}
+	if(instance)
+		this.replaceInstanceCode( instance, state.options );
+	else
+		console.warn("CodingPad: cannot find instance by uid: " + state.uid );
 	this._saved_state = null;
 }
 
@@ -481,9 +540,15 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 {
 	container = container || this.root;
 
+	if(typeof(CodeMirror) == "undefined")
+	{
+		console.warn("CodeMirror missing");
+		return;
+	}
+
 	var that = this;
 
-	var coding_area = this.coding_area = new LiteGUI.Area(null,{className: "codearea", content_id:"", height: -30});
+	var coding_area = this.coding_area = new LiteGUI.Area(null,{ className: "codearea", content_id:"", height: "100%"});
 	container.appendChild( coding_area.root );
 
 	//top bar
@@ -554,9 +619,78 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 	 this.editor.on("change", that.onCodeChange.bind( this ) );
 }
 
-CodingPadWidget.prototype.prepareCodeMirror = function()
+
+function getCompletions( token, context ) {
+  var found = [], start = token.string;
+  function maybeAdd(str) {
+    if (str.indexOf(start) == 0) found.push(str);
+  }
+  function gatherCompletions(obj) {
+    if (typeof obj == "string") forEach(stringProps, maybeAdd);
+    else if (obj instanceof Array) forEach(arrayProps, maybeAdd);
+    else if (obj instanceof Function) forEach(funcProps, maybeAdd);
+    for (var name in obj) maybeAdd(name);
+  }
+
+  if (context) {
+    // If this is a property, see if it belongs to some object we can
+    // find in the current environment.
+    var obj = context.pop(), base;
+    if (obj.className == "js-variable")
+      base = window[obj.string];
+    else if (obj.className == "js-string")
+      base = "";
+    else if (obj.className == "js-atom")
+      base = 1;
+    while (base != null && context.length)
+      base = base[context.pop().string];
+    if (base != null) gatherCompletions(base);
+  }
+  else {
+    // If not, just look in the window object and any local scope
+    // (reading into JS mode internals to get at the local variables)
+    for (var v = token.state.localVars; v; v = v.next) maybeAdd(v.name);
+    gatherCompletions(window);
+    forEach(keywords, maybeAdd);
+  }
+  return found;
+}
+
+
+
+/* CODEMIRROR STUFF *******************************************************/
+CodingPadWidget.codemirror_scripts = ["js/extra/codemirror/codemirror.js",
+								"js/extra/codemirror/hint/show-hint.js",
+								"js/extra/codemirror/hint/javascript-hint.js",
+								"js/extra/codemirror/selection/active-line.js",
+								"js/extra/codemirror/javascript.js"];
+CodingPadWidget.codemirror_css = ["js/extra/codemirror/codemirror.css",
+							"js/extra/codemirror/blackboard.css",
+							"js/extra/codemirror/hint/show-hint.css"];
+
+CodingPadWidget.loadCodeMirror = function()
 {
-	//CODING AREA *********************************
+	//load codemirror
+	if(typeof(CodeMirror) === "undefined")
+	{
+		console.log("Loading CodeMirror...");
+		LiteGUI.requireScript( CodingPadWidget.codemirror_scripts,
+								function() {
+									console.log("CodeMirror loaded");
+									CodingPadWidget.prepareCodeMirror();
+								});
+		LiteGUI.requireCSS( CodingPadWidget.codemirror_css );
+		LiteGUI.addCSS(".error-line { background-color: #511; }\n\
+						.CodeMirror div.CodeMirror-cursor, .CodeMirror pre { z-index: 0 !important; }\n\
+						.CodeMirror-selected { background-color: rgba(100,100,100,0.5) !important; outline: 1px dashed rgba(255,255,255,0.8); }\n\
+					   ");
+	}
+	else
+		console.log("CodeMirror found");
+}
+
+CodingPadWidget.prepareCodeMirror = function()
+{
 	CodeMirror.commands.autocomplete = function(cm) {
 		var API = CodingModule._current_API;
 		if(!API)
@@ -608,42 +742,5 @@ CodingPadWidget.prototype.prepareCodeMirror = function()
 	}
 }
 
-
-
-
-
-function getCompletions( token, context ) {
-  var found = [], start = token.string;
-  function maybeAdd(str) {
-    if (str.indexOf(start) == 0) found.push(str);
-  }
-  function gatherCompletions(obj) {
-    if (typeof obj == "string") forEach(stringProps, maybeAdd);
-    else if (obj instanceof Array) forEach(arrayProps, maybeAdd);
-    else if (obj instanceof Function) forEach(funcProps, maybeAdd);
-    for (var name in obj) maybeAdd(name);
-  }
-
-  if (context) {
-    // If this is a property, see if it belongs to some object we can
-    // find in the current environment.
-    var obj = context.pop(), base;
-    if (obj.className == "js-variable")
-      base = window[obj.string];
-    else if (obj.className == "js-string")
-      base = "";
-    else if (obj.className == "js-atom")
-      base = 1;
-    while (base != null && context.length)
-      base = base[context.pop().string];
-    if (base != null) gatherCompletions(base);
-  }
-  else {
-    // If not, just look in the window object and any local scope
-    // (reading into JS mode internals to get at the local variables)
-    for (var v = token.state.localVars; v; v = v.next) maybeAdd(v.name);
-    gatherCompletions(window);
-    forEach(keywords, maybeAdd);
-  }
-  return found;
-}
+CodingPadWidget.loadCodeMirror();
+/****************************************************************************/

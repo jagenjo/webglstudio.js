@@ -47,10 +47,10 @@ var ToolsModule = {
 
 	registerTool: function(tool)
 	{
-		this.tools[tool.name] = tool;
+		this.tools[ tool.name ] = tool;
 	},
 
-	registerButton: function(button)
+	registerButton: function( button )
 	{
 		this.buttons[button.name] = button;
 	},
@@ -96,7 +96,8 @@ var ToolsModule = {
 
 		this.current_tool = null;
 		var tool = this.tools[name];
-		if(!tool) return;
+		if(!tool)
+			return;
 
 		//$("#canvas-tools .tool-" + name).addClass("selected");
 
@@ -127,7 +128,7 @@ var ToolsModule = {
 		if(!this._active_camera)
 			return;
 		var camera = this._active_camera;
-		LS.Renderer.enableCamera(camera); //sets viewport, update matrices and set Draw
+		LS.Renderer.enableCamera( camera ); //sets viewport, update matrices and set Draw
 		/*
 		var viewport = camera.getLocalViewport( LS.Renderer._full_viewport );
 		gl.viewport( viewport[0], viewport[1], viewport[2], viewport[3] );
@@ -188,14 +189,16 @@ var ToolsModule = {
 		for(var i in this.tools)
 		{
 			var tool = this.tools[i];
-			if(tool.display == false) continue;
+			if(tool.display == false)
+				continue;
 			this.addToolButton(tool);
 		}
 
 		for(var i in this.buttons)
 		{
 			var button = this.buttons[i];
-			if(button.display == false) continue;
+			if(button.display == false)
+				continue;
 			this.addStateButton(button);
 		}
 	},
@@ -349,7 +352,7 @@ var ToolUtils = {
 
 		camera2d.setOrthographic( viewport[0], viewport[0] + viewport[2], viewport[1], viewport[1] + viewport[3], -1, 1);
 		camera2d.updateMatrices();
-		Draw.setViewProjectionMatrix( camera2d._view_matrix, camera2d._projection_matrix, camera2d._viewprojection_matrix );
+		LS.Draw.setViewProjectionMatrix( camera2d._view_matrix, camera2d._projection_matrix, camera2d._viewprojection_matrix );
 		
 		return camera2d;
 	},

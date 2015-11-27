@@ -6,13 +6,13 @@ var CubemapGenerator = {
 	{
 		LiteGUI.menubar.add("Actions/Cubemap generator", { callback: function() { CubemapGenerator.showDialog(); }});
 
-		LS.ShadersManager.registerGlobalShader( ShadersManager.common_vscode + '\
+		LS.ShadersManager.registerGlobalShader( LS.ShadersManager.common_vscode + '\
 			varying vec2 coord;\
 			void main() {\
 			coord = a_coord;\
 			gl_Position = vec4(coord * 2.0 - 1.0, 0.0, 1.0);\
 		}\
-		', ShadersManager.common_pscode + '\
+		', LS.ShadersManager.common_pscode + '\
 			#define PI 3.14159265358979323846264\n\
 			uniform samplerCube texture;\
 			uniform vec4 color;\
@@ -31,7 +31,7 @@ var CubemapGenerator = {
 		if(this.dialog)
 			this.dialog.close();
 
-		var dialog = new LiteGUI.Dialog("dialog_cubemap", {title:"Cubemap generator", parent:"#visor", close: true, minimize: true, width: 300, min_height: 160, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog( "dialog_cubemap", { title:"Cubemap generator", parent:"#visor", close: true, minimize: true, width: 300, min_height: 160, scroll: false, draggable: true});
 		dialog.show('fade');
 		dialog.setPosition(100,100);
 		this.dialog = dialog;

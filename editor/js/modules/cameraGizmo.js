@@ -15,7 +15,7 @@ function CameraGizmo( camera )
 	this.vp = mat4.create();
 
 	//camera used for rendering the gizmo
-	this.render_camera = new Camera({near: 0.1, far: 100, frustum_size:2} );
+	this.render_camera = new LS.Camera({near: 0.1, far: 100, frustum_size:2} );
 
 	this.updateTexture();
 	this.updateMesh();
@@ -36,7 +36,7 @@ CameraGizmo.prototype.render = function()
 	if(this.mesh && this.mesh.gizmo_size != this.gizmo_size)
 		this.updateMesh();
 
-	Draw.push();
+	LS.Draw.push();
 	gl.disable( gl.DEPTH_TEST );
 	gl.enable( gl.BLEND );
 	gl.enable( gl.CULL_FACE );
@@ -56,21 +56,21 @@ CameraGizmo.prototype.render = function()
 
 	this.viewport[0] =  this.camera_viewport[0] +  this.camera_viewport[2] - this.viewport[2];
 	this.viewport[1] =  this.camera_viewport[1] +  this.camera_viewport[3] - this.viewport[3];
-	gl.viewport(this.viewport[0],this.viewport[1],this.viewport[2],this.viewport[3]);
+	gl.viewport( this.viewport[0], this.viewport[1], this.viewport[2], this.viewport[3] );
 
-	Draw.pushCamera();
-	Draw.setCamera( this.render_camera );
-	//Draw.setAlpha(this.selected_axis ? 0.8 : 0.5);
-	Draw.setAlpha( camera == RenderModule.under_camera ? 0.6 : 0.4);
-	Draw.setColor([1,1,1]);
+	LS.Draw.pushCamera();
+	LS.Draw.setCamera( this.render_camera );
+	//LS.Draw.setAlpha(this.selected_axis ? 0.8 : 0.5);
+	LS.Draw.setAlpha( camera == RenderModule.under_camera ? 0.6 : 0.4);
+	LS.Draw.setColor([1,1,1]);
 	if(this.texture)
 		this.texture.bind(0);
 	if(this.mesh)
-		Draw.renderMesh( this.mesh, gl.TRIANGLES, Draw.shader_texture );
-	Draw.popCamera();
+		LS.Draw.renderMesh( this.mesh, gl.TRIANGLES, LS.Draw.shader_texture );
+	LS.Draw.popCamera();
 
-	Draw.pop();
-	gl.viewport(0,0,gl.canvas.width,gl.canvas.height);
+	LS.Draw.pop();
+	gl.viewport( 0, 0, gl.canvas.width, gl.canvas.height );
 	gl.enable( gl.DEPTH_TEST );
 	gl.disable( gl.BLEND  );
 };
@@ -140,11 +140,11 @@ CameraGizmo.prototype.mousedown = function(e)
 		}
 
 
-		var menu = new LiteGUI.ContextualMenu( options, {event: e, title: "Cameras", callback: (function(v) { 
+		var menu = new LiteGUI.ContextualMenu( options, { event: e, title: "Cameras", callback: (function(v) { 
 			var camera = this.camera;
 			switch( v )
 			{
-				case "Camera Info": EditorModule.inspectObject( camera ); break;
+				case "Camera Info": EditorModule.inspect( camera ); break;
 				case "Perspective": camera.type = LS.Camera.PERSPECTIVE; break;
 				case "Orthographic": camera.type = LS.Camera.ORTHOGRAPHIC; break;
 				case "Editor Cam": 

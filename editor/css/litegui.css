@@ -51,13 +51,18 @@
 	min-height: 1.2em;
 }
 
+.inspector:not(.one_line) .widget.even {
+	background-color: rgba(40,40,40,0.5);
+}
+
+
 .inspector.one_line .widget {
 	min-width: 100px;
 	display: inline-block;
 }
 
 .inspector .widget:hover {
-	background-color: #556;
+	background-color: #556 !important;
 }
 
 .inspector .wtitle, .inspector .wsectiontitle {
@@ -727,6 +732,7 @@ div {
 
 .litedialog {
 	position: absolute;
+	z-index: 10;
 }
 
 .litepanel, .litedialog {
@@ -799,6 +805,18 @@ div {
 
 .litedialog .panel-footer.resizable {
 	cursor: s-resize;
+}
+
+.litedialog  .resizable-corner {
+	display: inline-block;
+	position: absolute;
+	bottom: 0;
+	right: 0;
+	width: 10px;
+	height: 10px;
+	cursor: se-resize;
+	opacity: 0;
+	background-color: red;
 }
 
 .litedialog .panel-footer button {
@@ -1874,7 +1892,26 @@ textarea.textfield {
 	background-color: #33FF99;	
 	opacity: 1;
 }
-/********************/
+
+
+.litepad {
+	position: relative;
+	background-color: #222;
+	cursor: pointer;
+}
+
+.litepad .litepad-handler {
+	position: absolute;
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	background-color: #660;
+	border: 2px solid #AAF;
+	border-radius: 10px;
+	top: 0;
+	left: 0;
+	pointer-events: none;
+}/********************/
 .ui-slider {
     position: relative;
     text-align: left;

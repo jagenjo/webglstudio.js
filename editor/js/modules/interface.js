@@ -106,7 +106,7 @@ var InterfaceModule = {
 		}});
 		*/
 		LiteGUI.menubar.add("About", { callback: function() { 
-			LiteGUI.showMessage("<p>Application created by <a href='http://blog.tamats.com' target='_blank'>Javi Agenjo</a></p><p><a href='http://gti.upf.edu/' target='_blank'>GTI department</a> of <a href='http://www.upf.edu' target='_blank'>Universitat Pompeu Fabra</a></p><p><a href='#'>Github</a></a>", {title:"About info"});
+			LiteGUI.showMessage("<p>WebGLStudio version "+CORE.config.version+"</p><p>Created by <a href='http://blog.tamats.com' target='_blank'>Javi Agenjo</a></p><p><a href='http://gti.upf.edu/' target='_blank'>GTI department</a> of <a href='http://www.upf.edu' target='_blank'>Universitat Pompeu Fabra</a></p><p><a href='#'>Github</a></a>", {title:"About info"});
 		}});
 
 		//split in top-bottom for header and workarea
@@ -121,6 +121,10 @@ var InterfaceModule = {
 		tabs_widget.getTab("Scene Tree").add( this.scene_tree );
 
 		//create inspector
+		EditorModule.inspector = this.inspector_widget = new InspectorWidget();
+		tabs_widget.getTab("Inspector").add( this.inspector_widget );
+
+		/*
 		this.inspector = new LiteGUI.Inspector("sidepanel-inspector", {name_width: "40%" });
 		this.inspector.onchange = function()
 		{
@@ -129,6 +133,7 @@ var InterfaceModule = {
 		tabs_widget.getTab("Inspector").add( this.inspector );
 		this.inspector.addInfo(null,"select something to see its attributes");
 		EditorModule.inspector = this.inspector; //LEGACY
+		*/
 
 		//default
 		tabs_widget.selectTab("Inspector");
@@ -141,7 +146,7 @@ var InterfaceModule = {
 		var sidepanelarea = LiteGUI.sidepanel.splitarea;
 
 		var tree = this.scene_tree.root;
-		var attr = this.inspector.root;
+		var attr = this.inspector_widget.root;
 
 		if(!this.is_sidepanel_splitted)
 		{

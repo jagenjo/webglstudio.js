@@ -2076,7 +2076,9 @@
 					uvs = gl_PointCoord.st;
 					uvs.y = 1.0 - uvs.y;
 					uvs = (u_texture_matrix * vec3(uvs,1.0)).xy;
-					uvs += v_uvs;
+					#ifndef NO_COORDS
+						uvs += v_uvs; //particles have offset
+					#endif
 				#endif
 
 

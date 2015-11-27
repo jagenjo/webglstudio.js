@@ -308,7 +308,7 @@ var MeshPainter = {
 		gl.texParameteri(this.current_texture.texture_type, gl.TEXTURE_MIN_FILTER, gl.LINEAR );
 		this.current_texture.unbind();
 
-		ResourcesManager.registerResource(tex_name, this.current_texture);
+		LS.ResourcesManager.registerResource(tex_name, this.current_texture);
 
 		var mat = node.getMaterial();
 		if(!mat)
@@ -325,7 +325,7 @@ var MeshPainter = {
 		});
 
 		RenderModule.requestFrame();
-		EditorModule.inspectNode( node );
+		EditorModule.inspect( node );
 	},
 
 	//*********************
@@ -588,8 +588,8 @@ var meshPainterTool = {
 
 		var camera = MeshPainter.getCamera();
 
-		//Draw.setViewProjectionMatrix( Renderer._view_matrix, Renderer._projection_matrix, Renderer._viewprojection_matrix );
-		Draw.setCamera( camera );
+		//LS.Draw.setViewProjectionMatrix( Renderer._view_matrix, Renderer._projection_matrix, Renderer._viewprojection_matrix );
+		LS.Draw.setCamera( camera );
 		var uniforms = MeshPainter.uniforms;
 
 		MeshPainter.uniforms.u_vp.set( camera._viewprojection_matrix );
@@ -614,23 +614,23 @@ var meshPainterTool = {
 			uniforms.u_brushcolor.set( MeshPainter.brush.color );
 			uniforms.u_brushcolor[3] = MeshPainter.brush.alpha * 3.0;
 
-			Draw.push();
-			Draw.setMatrix( model );
+			LS.Draw.push();
+			LS.Draw.setMatrix( model );
 			shader_brush.uniforms( uniforms );
-			Draw.renderMesh( MeshPainter.painted_mesh, gl.TRIANGLES, shader_brush );
-			Draw.pop();
+			LS.Draw.renderMesh( MeshPainter.painted_mesh, gl.TRIANGLES, shader_brush );
+			LS.Draw.pop();
 
 			gl.depthFunc( gl.LESS );
 
 			if(1) //render brush sphere
 			{
-				Draw.setColor( MeshPainter.brush.color );
-				Draw.setAlpha(0.1);
-				Draw.push();
-				Draw.translate( MeshPainter.collision_pos );
-				Draw.scale( [MeshPainter.brush.size, MeshPainter.brush.size, MeshPainter.brush.size] );
-				Draw.renderMesh( MeshPainter.sphere_mesh, gl.TRIANGLES );
-				Draw.pop();
+				LS.Draw.setColor( MeshPainter.brush.color );
+				LS.Draw.setAlpha(0.1);
+				LS.Draw.push();
+				LS.Draw.translate( MeshPainter.collision_pos );
+				LS.Draw.scale( [MeshPainter.brush.size, MeshPainter.brush.size, MeshPainter.brush.size] );
+				LS.Draw.renderMesh( MeshPainter.sphere_mesh, gl.TRIANGLES );
+				LS.Draw.pop();
 			}
 			gl.disable( gl.BLEND );
 		}

@@ -7,64 +7,86 @@ When performing an action the system calls doEditorAction in the instance, passi
 */
 
 /* Scene Node Actions *********************************************/
-LS.SceneNode.editor_actions = {};
+LS.SceneNode.actions = {};
 
-LS.SceneNode.prototype.getEditorActions = function()
+LS.SceneNode.prototype.getActions = function( actions )
 {
-	return LS.SceneNode.editor_actions;
+	actions = actions || {};
+	for(var i in LS.SceneNode.actions)
+		actions[i] = LS.SceneNode.actions[i];
+	return actions;
 }
 
-LS.SceneNode.prototype.doEditorAction = function( name )
+LS.SceneNode.prototype.doAction = function( name_action )
 {
-	var actions = this.getEditorActions();
-	if(!actions[name])
-		return false;
-	var action = actions[name];
+	if(!name_action)
+		return;
+
+	var action = null;
+	if(name_action.constructor === String)
+	{
+		var actions = this.getActions();
+		if(!actions || !actions[name_action])
+			return false;
+		action = actions[name_action];
+	}
+	else
+		action = name_action;
+
 	if(action.callback)
-		return action.callback(this);
+		return action.callback.call(this);
+
 	return false;
 }
 
-LS.SceneNode.editor_actions["select"] = { 
+LS.SceneNode.actions["select"] = { 
 	title:"Select",
-	callback: function( node ){
-		SelectionModule.setSelection( node );
+	callback: function(){
+		SelectionModule.setSelection( this );
 	}
 };
 
-LS.SceneNode.editor_actions["select_children"] = { 
+LS.SceneNode.actions["select_children"] = { 
 	title:"Select Children",
-	callback: function( node ){
-		var children = node.getDescendants();
-		children.push( node );
+	callback: function(){
+		var children = this.getDescendants();
+		children.push( this );
 		SelectionModule.setMultipleSelection( children );
 	}
 };
 
-LS.SceneNode.editor_actions["inspect_in_dialog"] = { 
+LS.SceneNode.actions["create_prefab"] = { 
+	title:"Create Prefab",
+	callback: function(){
+		PrefabMaker.showCreatePrefabDialog( this );
+	}
+};
+
+LS.SceneNode.actions["inspect_in_dialog"] = { 
 	title:"Inspect in dialog",
-	callback: function( node ){
-		EditorModule.inspectInDialog(node);
+	callback: function(){
+		EditorModule.inspectInDialog(this);
 	}
 };
 
-LS.SceneNode.editor_actions["info"] = { 
+LS.SceneNode.actions["info"] = { 
 	title:"Show Information",
-	callback: function( node ){
-		EditorModule.showNodeInfo(node);
+	callback: function(){
+		EditorModule.showNodeInfo(this);
 	}
 };
 
-LS.SceneNode.editor_actions["addcomponent"] = { 
+LS.SceneNode.actions["addcomponent"] = { 
 	title:"Add Component",
-	callback: function( node ){
-		EditorModule.showAddComponentToNode( node, function(){ EditorModule.refreshAttributes(); } );
+	callback: function(){
+		EditorModule.showAddComponentToNode( this, function(){ EditorModule.refreshAttributes(); } );
 	}
 };
 
-LS.SceneNode.editor_actions["layers"] = { 
+LS.SceneNode.actions["layers"] = { 
 	title:"Show Layers",
-	callback: function( node ){
+	callback: function(){
+		var node = this;
 		EditorModule.showLayersEditor( node.layers, function(v){
 			node.layers = v;
 			RenderModule.requestFrame();
@@ -73,76 +95,129 @@ LS.SceneNode.editor_actions["layers"] = {
 };
 
 /* Components *************************/
+LS.Component.actions = {};
 
-LS.Transform.prototype.getEditorActions = function( actions )
+LS.Component.getActions = function( component )
 {
-	//transform cannot be deleted
-	var pos = actions.indexOf("Delete");
-	if(pos != -1)
-		actions.splice(pos,1);
-	//push actions here
+	var actions = {};
+
+	//global component actions (like copy, paste, delete)
+	for(var i in LS.Component.actions)
+		actions[i] = LS.Component.actions[i];
+
+	//specific actions of a component
+	if( component.constructor.actions )
+		for(var i in component.constructor.actions)
+			actions[i] = component.constructor.actions[i];
+
+	//actions specific of this component
+	if( component.getActions )
+		actions = component.getActions( actions );
+
 	return actions;
 }
 
-LS.Light.prototype.getEditorActions = function( actions )
+LS.Component.doAction = function( component, name_action )
 {
-	actions.push("Select Target");
-	return actions;
-}
+	if(!name_action)
+		return;
 
-LS.Light.prototype.doEditorAction = function( name )
-{
-	if (name == "Select Target")
-		SelectionModule.setSelection({ instance: this, info: "target" });
-	else
-		return false;
-	return true;
-}
-
-LS.Camera.prototype.getEditorActions = function( actions )
-{
-	actions.push("Select Center","Preview");
-	actions.push("Edit Layers");
-	return actions;
-}
-
-LS.Camera.prototype.doEditorAction = function( name )
-{
-	var camera = this;
-
-	if (name == "Select Center")
+	var action = null;
+	if(name_action.constructor === String)
 	{
-		SelectionModule.setSelection({ instance: this, info: "center"});
+		var actions = this.getActions( component );
+		if(!actions || !actions[name_action])
+			return false;
+		action = actions[name_action];
 	}
-	else if (name == "Preview")
-	{
+	else
+		action = name_action;
+	if(action.callback)
+		return action.callback.call(component);
+	return false;
+}
+
+
+
+LS.Component.actions["info"] = { 
+	title:"Show Information",
+	callback: function(){
+		EditorModule.showComponentInfo(this);
+	}
+};
+
+LS.Component.actions["copy"] = { 
+	title:"Copy",
+	callback: function(){
+		EditorModule.copyComponentToClipboard(this);
+	}
+};
+
+LS.Component.actions["paste"] = { 
+	title:"Paste",
+	callback: function(){
+		EditorModule.pasteComponentFromClipboard(this);
+	}
+};
+
+LS.Component.actions["paste"] = { 
+	title:"Paste",
+	callback: function(){
+		EditorModule.pasteComponentFromClipboard(this);
+	}
+};
+
+LS.Component.actions["delete"] = { 
+	title:"Delete",
+	callback: function(){
+		EditorModule.deleteNodeComponent(this);
+	}
+};
+
+LS.Component.actions["reset"] = { 
+	title:"Reset",
+	callback: function(){
+		EditorModule.resetNodeComponent(this);
+	}
+};
+
+LS.Component.actions["select"] = { 
+	title:"Select",
+	callback: function(){
+		SelectionModule.setSelection(this); break;
+	}
+};
+
+
+
+/*
+LS.Components.Transform.prototype.getEditorActions = function( actions )
+{
+	delete actions["delete"];
+	return actions;
+}
+*/
+
+LS.Components.Light.actions["select_target"] = { title: "Select Target", callback: function() { SelectionModule.setSelection({ instance: this, info: "target" }); }};
+
+LS.Components.Camera.actions["select_center"] = { title: "Select Center", callback: function() { SelectionModule.setSelection({ instance: this, info: "center"}); }};
+LS.Components.Camera.actions["preview"] = { title: "Preview", callback: function() { 
 		if(RenderModule.preview_camera != this)
 			RenderModule.preview_camera = this;
 		else
 			RenderModule.preview_camera = null;
 		LS.GlobalScene.refresh();
 	}
-	else if (name == "Edit Layers")
-	{
+};
+
+LS.Components.Camera.actions["edit_layers"] = { title: "Edit Layers", callback: function() { 
+		var camera = this;
 		EditorModule.showLayersEditor( this.layers, function(v){
 			camera.layers = v;
 			RenderModule.requestFrame();
-		});
+		});	
 	}
-	else
-		return false;
-	return true;
-}
+};
 
-LS.Components.SkinDeformer.prototype.getEditorActions = function( actions )
-{
-	actions.push("Convert Bones to Relative");
-	return actions;
-}
 
-LS.Components.SkinDeformer.prototype.doEditorAction = function( name )
-{
-	var component = this;
-	if (name == "Convert Bones to Relative")
-		this.convertBonesToRelative();
-}
+LS.Components.SkinDeformer.actions["convert_bones"] = { title: "Convert Bones to Relative", callback: function() { this.convertBonesToRelative(); }};

@@ -93,12 +93,12 @@ var DriveModule = {
 		});
 		this.root = LiteGUI.main_tabs.root.querySelector("#drivetab");
 
-		LEvent.bind(ResourcesManager,"resource_registered",function(e,res) { 
+		LEvent.bind( LS.ResourcesManager, "resource_registered", function(e,res) { 
 			DriveModule.onResourceRegistered(res); 
 		});
 
 		//keep original files to store on server
-		ResourcesManager.keep_original = true;
+		LS.ResourcesManager.keep_original = true;
 
 		//use this component to select resources
 		EditorModule.showSelectResource = DriveModule.showSelectResource;
@@ -139,7 +139,7 @@ var DriveModule = {
 		}});
 
 		this.top_widget.addSeparator();
-		this.top_widget.addButton(null,"Insert in scene", { callback: DriveModule.onInsertResourceInScene });
+		this.top_widget.addButton(null,"Insert in scene", { callback: function() { DriveModule.onInsertResourceInScene( DriveModule.selected_resource ); } });
 		this.top_widget.addButton(null,"From URL", { callback: DriveModule.onUseProxyResource });
 
 		//resources container (browser)
@@ -364,7 +364,7 @@ var DriveModule = {
 			return;
 		msg.content.style.backgroundColor = "rgba(200,100,100,0.5)";
 		msg.kill(1000);
-		LiteGUI.alert( error );
+		LiteGUI.alert( error, { title: "Error uploading file" } );
 	},
 
 	refreshTree: function()
@@ -514,8 +514,8 @@ var DriveModule = {
 		element.dataset["filename"] = resource.filename;
 		if(resource.fullpath)
 			element.dataset["fullpath"] = resource.fullpath;
-		element.dataset["restype"] = (resource.object_type || resource.category || LS.getObjectClassName(resource));
-		element.className = "resource file-item resource-" + element.dataset["restype"];
+		var type = element.dataset["restype"] = (resource.object_type || resource.category || LS.getObjectClassName(resource));
+		element.className = "resource file-item resource-" + type;
 		if(resource.id)
 			element.className += " in-server";
 		else
@@ -528,7 +528,6 @@ var DriveModule = {
 		if(!filename) 
 			filename = resource.fullpath;
 
-		var type = resource.object_type || LS.getObjectClassName(resource);
 		element.title = type + ": " + resource.filename;
 		if(filename)
 		{
@@ -549,6 +548,7 @@ var DriveModule = {
 				else
 				{
 					var img = new Image();
+					img.setAttribute("draggable",false);
 					img.src = preview;
 					img.style.maxWidth = 200;
 					this.generated_previews[ resource.fullpath ] = img;
@@ -574,6 +574,7 @@ var DriveModule = {
 					if(preview)
 					{
 						var img = new Image();
+						img.setAttribute("draggable",false);
 						img.src = preview;
 						img.style.maxWidth = 200;
 						this.generated_previews[ filename ] = img;
@@ -589,6 +590,7 @@ var DriveModule = {
 			if( typeof(preview) == "string") 
 			{
 				var img = new Image();
+				img.setAttribute("draggable",false);
 				img.src = preview;
 				img.style.maxWidth = 200;
 				img.onerror = function() { this.parentNode.removeChild( this ); }
@@ -620,7 +622,7 @@ var DriveModule = {
 			{
 				//$("#dialog_resources-browser .resources-container").find(".selected").removeClass("selected");
 				$(parent).find(".selected").removeClass("selected");
-				$(this).addClass("selected");
+				this.classList.add("selected");
 				DriveModule.showResourceInfo( resource );
 			}
 			else
@@ -640,7 +642,7 @@ var DriveModule = {
 			ev.dataTransfer.setData("res-filename", resource.filename);
 			if(resource.fullpath)
 				ev.dataTransfer.setData("res-fullpath", resource.fullpath);
-			ev.dataTransfer.setData("res-type", type);
+			ev.dataTransfer.setData( "res-type", type );
 		});
 	},
 
@@ -754,7 +756,8 @@ var DriveModule = {
 	getExtension: function (filename)
 	{
 		var pos = filename.lastIndexOf(".");
-		if(pos == -1) return "";
+		if(pos == -1)
+			return "";
 		return filename.substr(pos+1).toLowerCase();
 	},	
 
@@ -834,42 +837,45 @@ var DriveModule = {
 			preview.src = preview_url;
 		*/
 
-		//widgets
-		var widgets = InterfaceModule.inspector;
-		widgets.clear();
+		var inspector = InterfaceModule.inspector_widget.inspector;
+		InterfaceModule.inspector_widget.setTitle("Resource");
+		inspector.clear();
 
-		widgets.addTitle("Resource");
-		widgets.addString("Fullpath", resource.fullpath, {disabled:true} );
+		inspector.addTitle("Resource");
+		inspector.addString("Fullpath", resource.fullpath, {disabled:true} );
 
 		var img = new Image();
 		img.src = preview_url;
 		img.className = "preview_image";
 		img.onerror = function(){ this.parentNode.removeChild(this); }
 
-		widgets.addInfo(null, img);
-		var preview_image = widgets.root.querySelector(".preview_image");
+		inspector.addInfo(null, img);
+		var preview_image = inspector.root.querySelector(".preview_image");
 
 		var filename = resource.filename;
 		if(!filename && server_resource)
 			filename = server_resource.filename;
 
-		widgets.addString("Filename", filename, { callback: function(v) { 
+		inspector.addString("Filename", filename, { callback: function(v) { 
 			//rename
 			DriveModule.renameResource( resource.filename, v );
 			DriveModule.refreshContent();
 		}});
-		widgets.addFolder("Folder", resource.folder || "", { disabled: true, callback: function(v) {
+		inspector.addFolder("Folder", resource.folder || "", { disabled: true, callback: function(v) {
 			var newname = v + "/" + LS.ResourcesManager.getFilename( resource.filename );
 			DriveModule.renameResource( resource.filename, newname );
 		}});
 
-		widgets.addString("Category", resource.category || resource.object_type, { callback: function(v) {
+		inspector.addString("Category", resource.category || resource.object_type, { callback: function(v) {
 			resource.category = v;
 		}});
 
+		if( resource.size )
+			inspector.addInfo("Size", DriveModule.beautifySize( resource.size ) );
+
 		if(resource.metadata && typeof(resource.metadata) == "object")
 		{
-			widgets.addTextarea("Description",resource.metadata["description"] , { callback: function(v) { 
+			inspector.addTextarea("Description",resource.metadata["description"] , { callback: function(v) { 
 				resource.metadata["description"] = v;
 			}});
 
@@ -881,7 +887,7 @@ var DriveModule = {
 			}
 		}
 
-		widgets.addSeparator();
+		inspector.addSeparator();
 
 		if(resource._original_data || resource._original_file)
 		{
@@ -895,22 +901,18 @@ var DriveModule = {
 			else if(data.constructor == ArrayBuffer)
 				bytes = data.byteLength;
 
-			if(bytes > 1024*1024) bytes = (bytes / (1024*1024)).toFixed(1) + " MBs";
-			else if(bytes > 1024) bytes = (bytes / 1024).toFixed() + " KBs";
-			else bytes += " bytes";
-
-			widgets.addInfo("Bytes", bytes );
+			inspector.addInfo("Bytes", DriveModule.beautifySize( bytes ) );
 		}
 
-		widgets.addInfo("Metadata", metadata, {height:50});
+		inspector.addInfo("Metadata", metadata, {height:50});
 		var link = resource.url;
 		if(!link && resource.fullpath)
 			link = LS.ResourcesManager.getFullURL( resource.fullpath );
 
-
-		widgets.addInfo("Link", "<a target='_blank' href='"+link+"'>link to the file</a>" );
+		if(link)
+			inspector.addInfo("Link", "<a target='_blank' href='"+link+"'>link to the file</a>" );
 		/*
-		widgets.addButton("Show", "Open Window", { callback: function(){
+		inspector.addButton("Show", "Open Window", { callback: function(){
 			var new_window = window.open("","Visualizer","width=400, height=300");
 			if(resource.appendChild) //is HTML element
 				new_window.document.body.appendChild( resource );
@@ -923,9 +925,9 @@ var DriveModule = {
 		}});
 		*/
 
-		widgets.addSeparator();
+		inspector.addSeparator();
 
-		widgets.addButtons(null,["Update Preview","Update metadata"], { callback: function(v) {
+		inspector.addButtons(null,["Update Preview","Update metadata"], { callback: function(v) {
 			var local_resource = LS.ResourcesManager.getResource( resource.fullpath );
 			if(!local_resource)
 			{
@@ -955,22 +957,22 @@ var DriveModule = {
 			}
 		}});
 
-		widgets.addButton(null,"Load in memory", {callback: function(v){
+		inspector.addButton(null,"Load in memory", {callback: function(v){
 			var restype = resource.category || resource.object_type;
 			DriveModule.loadResource(resource.fullpath,restype);
 		}});
 
 		/*
 		if(resource.fullpath)
-			widgets.addButton(null,"Open in Code Editor", {callback: function(v){
+			inspector.addButton(null,"Open in Code Editor", {callback: function(v){
 				
 			}});
 		*/
 
-		widgets.addButtons(null,["Save","Delete"], {callback: function(v){
+		inspector.addButtons(null,["Save","Delete"], {callback: function(v){
 			if (v == "Save")
 			{
-				//var res = ResourcesManager.resources[resource.fullpath];
+				//var res = LS.ResourcesManager.resources[resource.fullpath];
 				if(!resource.fullpath)
 					return LiteGUI.alert("Resource must have a folder assigned");
 				DriveModule.saveResource( resource );
@@ -1111,7 +1113,7 @@ var DriveModule = {
 
 					if (v == "Save")
 					{
-						//var res = ResourcesManager.resources[resource.fullpath];
+						//var res = LS.ResourcesManager.resources[resource.fullpath];
 						DriveModule.saveResource(resource);
 					}
 					else if (v == "Delete")
@@ -1313,16 +1315,16 @@ var DriveModule = {
 	//Retrieve a resource from the server and stores it for later use, it shoudnt do anything with it, just ensure is in memory.
 	loadResource: function(fullpath, res_type, on_complete)
 	{
-		if(!ResourcesManager.resources[fullpath])
+		if(!LS.ResourcesManager.resources[fullpath])
 		{
-			ResourcesManager.load(fullpath, null, function(data) { 
+			LS.ResourcesManager.load(fullpath, null, function(data) { 
 				if(on_complete)
 					on_complete(data);
 			});
 		}
 		else
 			if(on_complete)
-				on_complete(ResourcesManager.resources[fullpath]);
+				on_complete(LS.ResourcesManager.resources[fullpath]);
 
 	},
 
@@ -1366,10 +1368,11 @@ var DriveModule = {
 	},
 
 	//called when clicking the "Insert in scene" button after selecting a resource
-	onInsertResourceInScene: function() 
+	onInsertResourceInScene: function( resource_item, evt ) 
 	{
-		var resource_item = DriveModule.selected_resource;
-		if(!resource_item) { LiteGUI.alert("No resource selected"); return };
+		if(!resource_item)
+			{ LiteGUI.alert("No resource selected"); return };
+
 		var fullpath = resource_item.dataset["fullpath"] || resource_item.dataset["filename"];
 		var restype = resource_item.dataset["restype"];
 
@@ -1379,7 +1382,7 @@ var DriveModule = {
 			var info = DriveModule.insert_resource_callbacks[i];
 			if(info[0] == restype || !info[0] )
 			{
-				var ret = info[1].call(DriveModule, fullpath, restype, resource_item);
+				var ret = info[1].call( DriveModule, fullpath, restype, resource_item, evt );
 				if(ret == false)
 					continue;
 
@@ -1685,7 +1688,7 @@ var DriveModule = {
 		);
 	},
 
-	viewResource: function(resource)
+	viewResource: function( resource )
 	{
 		var url = resource.url;
 		if(!url)
@@ -1709,8 +1712,8 @@ var DriveModule = {
 		resource.preview_url = DriveModule.server_url + "resources/_pics/_" + resource.id + ".png";
 
 		this.server_resources[ resource.fullpath ] = resource;
-		if(ResourcesManager.resources[ resource.fullpath ])
-			ResourcesManager.resources[ resource.fullpath ]._server_info = resource;
+		if( LS.ResourcesManager.resources[ resource.fullpath ] )
+			LS.ResourcesManager.resources[ resource.fullpath ]._server_info = resource;
 
 		return resource;
 	},
@@ -1804,15 +1807,15 @@ var DriveModule = {
 	},
 
 	//takes into account if the file is already uploaded
-	serverUploadResource: function(resource, fullpath, on_complete, on_error, on_progress )
+	serverUploadResource: function( resource, fullpath, on_complete, on_error, on_progress )
 	{
 		var filename = resource.filename;
 
-		if(resource.in_server && LS.ResourcesManager.resources[ fullpath ] )
+		if( resource.in_server && LS.ResourcesManager.resources[ fullpath ] )
 			resource = LS.ResourcesManager.resources[ fullpath ];
 
 		//in case we update info of a file we dont have in memory
-		if(resource.in_server && !LS.ResourcesManager.resources[ fullpath ] )
+		if( resource.in_server && !LS.ResourcesManager.resources[ fullpath ] )
 		{
 			var info = {};
 
@@ -1846,7 +1849,7 @@ var DriveModule = {
 		//get the data
 		var internal_data = LS.ResourcesManager.computeResourceInternalData( resource );
 		var data = internal_data.data;
-		if(internal_data.extension && internal_data.extension != extension)
+		if( internal_data.extension && internal_data.extension != extension )
 		{
 			filename += "." + internal_data.extension;
 			fullpath += "." + internal_data.extension;;
@@ -1854,7 +1857,7 @@ var DriveModule = {
 
 		extension = getExtension( filename ); //recompute it in case it changed
 		//if the file doesnt have an extension...
-		if(!extension)
+		if( !extension )
 		{
 			var ext = "";
 			if( data.constructor == ArrayBuffer || data.constructor == Blob || data.constructor == File )
@@ -1869,7 +1872,7 @@ var DriveModule = {
 		resource.filename = filename;
 
 		//generate preview
-		if(resource.preview_url && resource.preview_url.substr(0,11) == "data:image/")
+		if( resource.preview_url && resource.preview_url.substr(0,11) == "data:image/" )
 			extra_info.preview = resource.preview_url;
 		else
 			extra_info.preview = this.generatePreview( resource.fullpath );
@@ -2207,51 +2210,90 @@ var DriveModule = {
 			if(DriveModule.on_resource_selected_callback)
 				DriveModule.onResourceSelected( url );
 		}
+	},
+
+	beautifySize: function ( bytes )
+	{
+		bytes = parseInt( bytes );
+		if(bytes > 1024*1024)
+			bytes = (bytes / (1024*1024)).toFixed(1) + " <span class='bytes'>MBs</span>";
+		else if(bytes > 1024)
+			bytes = (bytes / 1024).toFixed() + " <span class='bytes'>KBs</span>";
+		else
+			bytes += " <span class='bytes'>bytes</span>";
+		return bytes;
 	}
-
-
 };
 
 CORE.registerModule( DriveModule );
 
 
 //Resource Insert button
-DriveModule.registerAssignResourceCallback("Mesh", function(fullpath, restype, resource_item) {
-	DriveModule.loadResource(fullpath, restype);
-	var node = LS.newMeshNode( LS.GlobalScene.generateUniqueNodeName(), fullpath);
+DriveModule.registerAssignResourceCallback("Mesh", function(fullpath, restype, resource_item, event) {
+
+	DriveModule.loadResource( fullpath, restype );
+	var node = LS.newMeshNode( LS.GlobalScene.generateUniqueNodeName(), fullpath );
 	EditorModule.getAddRootNode().addChild(node);
+
+	if(event)
+	{
+		//test collision with grid
+		GL.augmentEvent(event);
+		var position = RenderModule.testGridCollision(event.canvasx, event.canvasy);
+		if(position)
+			node.transform.position = position;
+	}
+
 	SelectionModule.setSelection(node);
 });
 
-DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], function(fullpath, restype, resource_item) {
-	DriveModule.loadResource(fullpath, restype);
-	if( LS.GlobalScene.selected_node )
+DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], function(fullpath, restype, resource_item, event) {
+
+	var node = LS.GlobalScene.selected_node;
+
+	if(event)
 	{
-		if(!LS.GlobalScene.selected_node.material)
-			LS.GlobalScene.selected_node.material = new LS.StandardMaterial();
-		var material = Scene.selected_node.getMaterial();
-		material.setTexture( Material.COLOR_TEXTURE, fullpath );
+		GL.augmentEvent(event);
+		node = RenderModule.getNodeAtCanvasPosition( event.canvasx, event.canvasy );
 	}
-	EditorModule.inspectNode( LS.GlobalScene.selected_node );
+
+	
+	DriveModule.loadResource( fullpath, restype );
+	if( node )
+	{
+		if(!node.material)
+			node.material = new LS.StandardMaterial();
+		var material = node.getMaterial();
+		material.setTexture( LS.Material.COLOR_TEXTURE, fullpath );
+	}
+	EditorModule.inspect( node );
 });
 
 //Materials
-DriveModule.onInsertMaterial = function(fullpath, restype, resource_item) 
+DriveModule.onInsertMaterial = function(fullpath, restype, resource_item, event) 
 {
+	var node = LS.GlobalScene.selected_node;
+
 	//class not supported?
 	if(!LS.MaterialClasses[restype])
 		return false;
 
+	if(event)
+	{
+		GL.augmentEvent(event);
+		node = RenderModule.getNodeAtCanvasPosition( event.canvasx, event.canvasy );
+	}
+
 	DriveModule.loadResource(fullpath, restype, function(material) { 
 		LS.ResourcesManager.resources[fullpath] = material; //material in Material format (textures and all loaded)
 
-		EditorModule.inspectNode( LS.GlobalScene.selected_node );
+		EditorModule.inspect( node );
 	});
 
-	if( LS.GlobalScene.selected_node )
+	if( node )
 	{
-		LS.GlobalScene.selected_node.material = fullpath;
-		EditorModule.inspectNode( LS.GlobalScene.selected_node );
+		node.material = fullpath;
+		EditorModule.inspect( node );
 	}
 };
 
@@ -2263,10 +2305,10 @@ DriveModule.registerAssignResourceCallback("SceneNode", function(fullpath, resty
 	DriveModule.loadResource(fullpath, restype, function(data) { 
 		var node = new LS.SceneNode();
 		node.configure(data);
-		ResourcesManager.loadResources( node.getResources({}) );
+		LS.ResourcesManager.loadResources( node.getResources({}) );
 
 		Scene.root.addChild(node);
-		EditorModule.inspectNode(node);
+		EditorModule.inspect(node);
 	});
 });
 */
@@ -2282,13 +2324,24 @@ DriveModule.registerAssignResourceCallback("SceneTree", function(fullpath, resty
 	});
 });
 
-DriveModule.registerAssignResourceCallback("Prefab", function(fullpath, restype, resource_item) {
+DriveModule.registerAssignResourceCallback("Prefab", function(fullpath, restype, resource_item, event) {
+
+	var position = null;
+	if(event)
+	{
+		//test collision with grid
+		GL.augmentEvent(event);
+		position = RenderModule.testGridCollision(event.canvasx, event.canvasy);
+	}
+
 	//prefab
 	DriveModule.loadResource(fullpath, restype, function(resource) { 
 		console.log(resource);
 		var node = resource.createObject();
 		LS.GlobalScene.root.addChild(node);
-		EditorModule.inspectNode(node);
+		if(position)
+			node.transform.position = position;
+		EditorModule.inspect(node);
 	});
 });
 

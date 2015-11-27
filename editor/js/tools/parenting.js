@@ -42,9 +42,9 @@ var parentingNodeTool = {
 		gl.disable(gl.DEPTH_TEST);
 		gl.enable(gl.BLEND);
 		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-		Draw.setColor([1,0,1,1]);
+		LS.Draw.setColor([1,0,1,1]);
 
-		Draw.renderLines([pos2D, this.mouse_pos]);
+		LS.Draw.renderLines([pos2D, this.mouse_pos]);
 
 		gl.enable(gl.DEPTH_TEST);
 	},

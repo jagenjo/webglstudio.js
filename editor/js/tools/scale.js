@@ -45,26 +45,26 @@ var scaleNodeTool = {
 		}
 
 		gl.disable(gl.DEPTH_TEST);
-		Draw.setColor([0.5,0.5,0.5]);
-		Draw.push();
-			Draw.setMatrix(gizmo_model);
+		LS.Draw.setColor([0.5,0.5,0.5]);
+		LS.Draw.push();
+			LS.Draw.setMatrix(gizmo_model);
 
 			mat4.multiplyVec3(scaleNodeTool._x_axis_end, gizmo_model, [scale,0,0] );
 			mat4.multiplyVec3(scaleNodeTool._y_axis_end, gizmo_model, [0,scale,0] );
 			mat4.multiplyVec3(scaleNodeTool._z_axis_end, gizmo_model, [0,0,scale] );
 
-			Draw.renderLines( [[0,0,0],[scale,0,0],[0,0,0],[0,scale,0],[0,0,0],[0,0,scale]]);
+			LS.Draw.renderLines( [[0,0,0],[scale,0,0],[0,0,0],[0,scale,0],[0,0,0],[0,0,scale]]);
 
-			Draw.setColor(colorx);
-			Draw.translate([scale,0,0]);
-			Draw.renderSolidBox(scale*0.1,scale*0.1,scale*0.1);
-			Draw.setColor(colory);
-			Draw.translate([-scale,scale,0]);
-			Draw.renderSolidBox(scale*0.1,scale*0.1,scale*0.1);
-			Draw.setColor(colorz);
-			Draw.translate([0,-scale,scale]);
-			Draw.renderSolidBox(scale*0.1,scale*0.1,scale*0.1);
-		Draw.pop();
+			LS.Draw.setColor(colorx);
+			LS.Draw.translate([scale,0,0]);
+			LS.Draw.renderSolidBox(scale*0.1,scale*0.1,scale*0.1);
+			LS.Draw.setColor(colory);
+			LS.Draw.translate([-scale,scale,0]);
+			LS.Draw.renderSolidBox(scale*0.1,scale*0.1,scale*0.1);
+			LS.Draw.setColor(colorz);
+			LS.Draw.translate([0,-scale,scale]);
+			LS.Draw.renderSolidBox(scale*0.1,scale*0.1,scale*0.1);
+		LS.Draw.pop();
 
 		gl.enable(gl.DEPTH_TEST);
 	},
@@ -89,8 +89,9 @@ var scaleNodeTool = {
 	},
 
 	mouseup: function(e) {
-		if(!this.enabled) return;
-		EditorModule.inspectNode(Scene.selected_node);
+		if(!this.enabled)
+			return;
+		EditorModule.inspect( LS.GlobalScene.selected_node );
 	},
 
 	mousemove: function(e) 

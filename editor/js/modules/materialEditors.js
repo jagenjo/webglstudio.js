@@ -4,8 +4,8 @@
 EditorModule.showMaterialNodeInfo = function( node, inspector )
 {
 	var icon = "";
-	if(Material.icon)
-		icon = "<span class='icon' style='width: 20px'><img src='"+ EditorModule.icons_path + Material.icon +"' class='icon'/></span>";
+	if( LS.Material.icon)
+		icon = "<span class='icon' style='width: 20px'><img src='" + EditorModule.icons_path + LS.Material.icon + "' class='icon'/></span>";
 	var section = inspector.addSection(icon + " Material <span class='buttons'><img class='options_section' src='imgs/mini-cog.png'></span>");
 
 	section.querySelector(".wsectiontitle").addEventListener("contextmenu", (function(e) { 
@@ -86,7 +86,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 		return;
 	}
 
-	var name = LS.getObjectClassName(material);
+	var name = LS.getObjectClassName( material );
 	var mat_class = material.constructor;
 
 	inspector.addButton(null, "Hide Editor", { callback: function(v) { 
@@ -251,9 +251,9 @@ EditorModule.showMaterialProperties = function( material, inspector, node )
 
 
 
-Material["@inspector"] = function( material, inspector )
+LS.MaterialClasses.Material["@inspector"] = function( material, inspector )
 {
-	inspector.addCombo("Shader", material.shader_name || "default", { values: Material.available_shaders, callback: function(v) { 
+	inspector.addCombo("Shader", material.shader_name || "default", { values: LS.Material.available_shaders, callback: function(v) { 
 		if(!material) return;
 
 		if(v != "default")
@@ -314,10 +314,11 @@ Material["@inspector"] = function( material, inspector )
 	//inspector.addButtons(null,["Make Global","Copy","Paste"],{});
 }
 
-StandardMaterial["@inspector"] = function( material, inspector )
+LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspector )
 {
-	inspector.addCombo("Shader", material.shader_name || "default", { values: StandardMaterial.available_shaders, callback: function(v) { 
-		if(!material) return;
+	inspector.addCombo("Shader", material.shader_name || "default", { values: LS.MaterialClasses.StandardMaterial.available_shaders, callback: function(v) { 
+		if(!material)
+			return;
 
 		if(v != "default")
 			material.shader_name = v; 
@@ -398,7 +399,14 @@ StandardMaterial["@inspector"] = function( material, inspector )
 	inspector.addTitle("Shader");
 	inspector.addButton(null, "Edit Shader", { callback: function() { 
 		CodingModule.openTab();
-		CodingModule.editInstanceCode( material, { id: material.uid, title: "Shader", lang:"glsl", help: material.constructor.coding_help, getCode: function(){ return material.extra_surface_shader_code; }, setCode: function(code){ material.extra_surface_shader_code = code; } } );
+		CodingModule.editInstanceCode( material, { 
+			id: material.uid, 
+			title: "Shader", 
+			lang:"glsl", 
+			help: material.constructor.coding_help, 
+			getCode: function(){ return material.extra_surface_shader_code; },
+			setCode: function(code){ material.extra_surface_shader_code = code; }
+		});
 	}});
 
 	inspector.beginGroup("Textures",{title:true});
@@ -524,8 +532,8 @@ function GenericMaterialEditor( material, inspector )
 
 }
 
-CustomMaterial["@inspector"] = GenericMaterialEditor;
-SurfaceMaterial["@inspector"] = GenericMaterialEditor;
+LS.MaterialClasses.CustomMaterial["@inspector"] = GenericMaterialEditor;
+LS.MaterialClasses.SurfaceMaterial["@inspector"] = GenericMaterialEditor;
 
 //shows a dialog to configure a texture sampler (channel and material is passed to add extra fields in normalmap, displacement, etc)
 EditorModule.showTextureSamplerInfo = function( sampler, options )
@@ -565,7 +573,7 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 
 	widgets.addSeparator();
 
-	widgets.addCombo("UVs", sampler["uvs"] || Material.DEFAULT_UVS[ channel ], { values: Material.TEXTURE_COORDINATES, callback: function(v) {
+	widgets.addCombo("UVs", sampler["uvs"] || LS.Material.DEFAULT_UVS[ channel ], { values: LS.Material.TEXTURE_COORDINATES, callback: function(v) {
 		sampler["uvs"] = v;
 		LS.GlobalScene.refresh();
 	}});

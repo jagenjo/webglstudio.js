@@ -13,9 +13,9 @@ var AnnotationModule = {
 
 	onAnnotateNode: function(node, text)
 	{
-		if(!node.getComponent( AnnotationComponent ))
+		if(!node.getComponent( LS.Components.AnnotationComponent ))
 		{
-			var comp = new AnnotationComponent();
+			var comp = new LS.Components.AnnotationComponent();
 			node.addComponent(comp);
 			comp.setStartTransform();
 		}
@@ -31,7 +31,7 @@ var AnnotationModule = {
 		if(!node)
 			return;
 
-		var comp = node.getComponent( AnnotationComponent );
+		var comp = node.getComponent( LS.Components.AnnotationComponent );
 		if(!comp)
 			return;
 
@@ -52,17 +52,17 @@ var AnnotationModule = {
 			comp.text = this.value;
 			if(window.EditorModule)
 				EditorModule.refreshAttributes();
-			Scene.refresh();
+			LS.GlobalScene.refresh();
 		});
 
 		dialog.addButton("Delete", { className: "big", callback: function() { 
 			node.removeComponent( comp );
-			Scene.refresh();
+			LS.GlobalScene.refresh();
 			dialog.close(); 
 		}});
 
 		dialog.addButton("Save", { className: "big", callback: function() { 
-			Scene.refresh();
+			LS.GlobalScene.refresh();
 			dialog.close(); 
 		}});
 
@@ -159,146 +159,6 @@ var AnnotationModule = {
 
 CORE.registerModule( AnnotationModule );
 
-/*** COMPONENT **********************************/
-
-
-
-AnnotationComponent.prototype.renderEditor = function(selected)
-{
-	if(!this.text && !this.notes.length) return;
-
-	var center = vec3.create();
-	var mesh = this._root.getMesh();
-	if(mesh)
-		vec3.copy( center, BBox.getCenter(mesh.bounding) );
-
-	var camera = LS.Renderer._current_camera;
-
-	var pos = this._root.transform.getGlobalPosition();
-	var object_center = this.getObjectCenter();
-	var camera_eye = camera.getEye();
-	var right = camera.getLocalVector([1,0,0]);
-	var top = 	camera.getLocalVector([0,1,0]);
-	var front = camera.getLocalVector([0,0,1]);
-
-	var f = Math.tan(camera.fov*DEG2RAD) * vec3.dist( pos, camera_eye );
-
-	//why? to scale the icon?
-	var icon_top = vec3.scale(vec3.create(), top, f * 0.2);
-	var icon_right = vec3.scale(vec3.create(), right, f * 0.2);
-	var icon_pos = vec3.add( vec3.create(), pos, icon_top );
-	vec3.add( icon_pos, icon_right, icon_pos);
-
-	camera.project( icon_pos, null, this._screen_pos );
-	//var right = camera.getLocalVector([10,0,0]);
-	//trace(this._screen_pos);
-
-	gl.enable(gl.BLEND);
-	gl.enable(gl.DEPTH_TEST);
-	Draw.setColor([1,1,1,1]);
-
-	var lines = [];
-	var lines_colors = [];
-	var points = [];
-	var points_colors = [];
-
-	if(this.text)
-	{
-		lines.push(pos, icon_pos);
-		lines_colors.push( [1,1,1,0],[1,1,1,1]);
-		//Draw.setColor([0.33,0.874,0.56,1.0]);
-		Draw.renderImage( icon_pos, EditorModule.icons_path + "/mini-icon-script.png",f * 0.03);
-	}
-
-	var model = this._root.transform.getGlobalMatrix();
-
-	//notes
-	for(var i in this.notes)
-	{
-		var note = this.notes[i];
-		var start = mat4.multiplyVec3( vec3.create(), model, note.start );
-		var end = mat4.multiplyVec3( vec3.create(), model, note.end );
-		note.end_world = end;
-
-		points.push( end );
-		lines.push( start, end );
-
-		if(this._selected == note)
-		{
-			points_colors.push( [1,1,1,1] );
-			lines_colors.push( [1,1,1,0.2],[1,1,0.8,1]);
-		}
-		else
-		{
-			points_colors.push( AnnotationComponent.editor_color );
-			lines_colors.push( [0,0,0,0.2], AnnotationComponent.editor_color );
-		}
-		note._end_screen = camera.project( end );
-	}
-
-	//transform
-	var start = this.start_position;
-	if(start && vec3.dist(start, object_center) > 1)
-	{
-		//dashed line...
-		var dist = vec3.dist(start, object_center);
-		var line_dist = dist / 20.0;
-		var delta = vec3.subtract(vec3.create(), object_center, start );
-		vec3.normalize(delta, delta);
-		for(var i = 0; i < 20; i += 2)
-		{
-			var temp = vec3.scale(vec3.create(), delta, i*line_dist );
-			vec3.add(temp, temp, start);
-			lines.push(temp);
-			
-			temp = vec3.scale(vec3.create(), delta,(i+1)*line_dist );
-			vec3.add(temp, temp, start);
-			lines.push(temp);
-			lines_colors.push( [0,1,0,0.2],[0,1,0,1]);
-		}
-	}
-
-	//render in two passes to have the cool semitransparent effect 
-	Draw.setPointSize( 12 );
-	Draw.renderPoints(points, points_colors);
-
-	Draw.setColor( [0,0,0,0.5] );
-	Draw.setPointSize( 10 );
-	Draw.renderPoints(points, points_colors);
-
-	Draw.setColor([1,1,1,1]);
-	Draw.renderLines(lines, lines_colors);
-
-	gl.depthFunc( gl.GREATER );
-
-	Draw.setAlpha(0.1);
-	Draw.renderPoints(points, points_colors);
-	Draw.renderLines(lines, lines_colors);
-
-	gl.depthFunc( gl.LESS );
-
-	//texts
-	gl.disable( gl.CULL_FACE );
-	Draw.setColor(AnnotationComponent.editor_color);
-	for(var i in this.notes)
-	{
-		var note = this.notes[i];
-		Draw.push();
-		//Draw.lookAt( note.end_world, camera_eye, [0,1,0] );
-		Draw.fromTranslationFrontTop(note.end_world, front, top );
-
-		Draw.translate( [-1,-1,0] );
-		Draw.scale( [-0.0004 * f,0.0004 * f,0.0004 * f] );
-		var first_line = note.text.split("\n")[0];
-		Draw.renderText( first_line );
-		//Draw.renderWireBox(10,10,10);
-		Draw.pop();
-	}
-
-	gl.disable(gl.BLEND);
-}
-
-
 //****************************** ANNOTATION TOOL ***********************************
 
 var AnnotationTool = {
@@ -338,26 +198,26 @@ var AnnotationTool = {
 			return;
 
 		var camera = RenderModule.selected_camera;
-		Draw.setCamera( camera );
+		LS.Draw.setCamera( camera );
 		//Draw.setCameraPosition(camera.getEye());
 		//Draw.setViewProjectionMatrix(Renderer._viewprojection_matrix);
 
 		gl.enable(gl.DEPTH_TEST);
 		gl.enable(gl.BLEND);
-		Draw.setColor([0.33,0.874,0.56,1.0]);
+		LS.Draw.setColor([0.33,0.874,0.56,1.0]);
 
 		if(this.start_position && this.end_position)
 		{
-			Draw.setColor(AnnotationComponent.editor_color);
-			Draw.setPointSize( 12 );
-			Draw.renderPoints([this.end_position]);
+			LS.Draw.setColor( LS.Components.AnnotationComponent.editor_color);
+			LS.Draw.setPointSize( 12 );
+			LS.Draw.renderPoints( [this.end_position]);
 
-			Draw.setColor( [0,0,0,0.5] );
-			Draw.setPointSize( 10 );
-			Draw.renderPoints([this.end_position]);
+			LS.Draw.setColor( [0,0,0,0.5] );
+			LS.Draw.setPointSize( 10 );
+			LS.Draw.renderPoints( [this.end_position]);
 
-			Draw.setColor(AnnotationComponent.editor_color);
-			Draw.renderLines([this.start_position, this.end_position],[[1,1,1,0.1],[1,1,1,1]]);
+			LS.Draw.setColor( LS.Components.AnnotationComponent.editor_color );
+			LS.Draw.renderLines([this.start_position, this.end_position],[[1,1,1,0.1],[1,1,1,1]]);
 		}
 		gl.disable(gl.BLEND);
 	},
@@ -386,10 +246,10 @@ var AnnotationTool = {
 		vec3.copy(this.end_position, pos);
 		this.mode = 1;
 
-		var comp = node.getComponent( AnnotationComponent );
+		var comp = node.getComponent( LS.Components.AnnotationComponent );
 		if(!comp)
 		{
-			comp = new AnnotationComponent();
+			comp = new LS.Components.AnnotationComponent();
 			node.addComponent( comp );
 			comp.setStartTransform();
 		}
@@ -469,19 +329,18 @@ var AnnotationTool = {
 
 	addAnnotation: function(node, start, end, text)
 	{
-		var comp = node.getComponent( AnnotationComponent );
+		var comp = node.getComponent( LS.Components.AnnotationComponent );
 		var camera = RenderModule.selected_camera;
 
 		if(!comp)
 		{
-			comp = new AnnotationComponent();
+			comp = new LS.Components.AnnotationComponent();
 			node.addComponent( comp );
 			comp.setStartTransform();
 		}
 		var item = { start: start, end: end, text:text, cam_eye: camera.getEye(), cam_fov: camera.fov, cam_center: camera.getCenter() };
 		comp.addAnnotation(item);
-		if(window.EditorModule)
-			EditorModule.refreshAttributes();
+		EditorModule.refreshAttributes();
 	},
 
 	editAnnotation: function( annotation, comp )
@@ -497,6 +356,5 @@ ToolsModule.registerTool(AnnotationTool);
 
 /**************************/
 
-AnnotationComponent.icon = "mini-icon-script.png";
-
-AnnotationComponent["@inspector"] = AnnotationModule.showAnnotationInfo;
+LS.Components.AnnotationComponent.icon = "mini-icon-script.png";
+LS.Components.AnnotationComponent["@inspector"] = AnnotationModule.showAnnotationInfo;

@@ -13,6 +13,7 @@ var LiteGUI = {
 	content: null,
 
 	panels: {},
+	windows: [], //windows opened by the GUI (we need to know about them to close them once the app closes)
 
 	//undo
 	undo_steps: [],
@@ -77,6 +78,12 @@ var LiteGUI = {
 				LiteGUI.maximizeWindow();
 			});
 		}
+
+		window.addEventListener("beforeunload", function(e) {
+			for(var i in LiteGUI.windows)
+				LiteGUI.windows[i].close();
+			LiteGUI.windows = [];
+		});
 	},
 
 	/**
@@ -674,10 +681,11 @@ var LiteGUI = {
 	{
 		options = options || {};
 
+		
 		options.className = "alert";
-		options.title = "Alert";
-		options.width = 280;
-		options.height = 140;
+		options.title = options.title || "Alert";
+		options.width = options.width || 280;
+		options.height = options.height || 140;
 		if (typeof(content) == "string")
 			content = "<p>" + content + "</p>";
 		$(".litepanel.alert").remove(); //kill other panels
@@ -695,8 +703,8 @@ var LiteGUI = {
 	{
 		options = options || {};
 		options.className = "alert";
-		options.title = "Confirm";
-		options.width = 280;
+		options.title = options.title || "Confirm";
+		options.width = options.width || 280;
 		//options.height = 100;
 		if (typeof(content) == "string")
 			content = "<p>" + content + "</p>";
@@ -731,8 +739,9 @@ var LiteGUI = {
 	{
 		options = options || {};
 		options.className = "alert";
-		options.title = "Prompt" || options.title;
-		options.width = 280;
+		options.title = options.title || "Prompt";
+		options.width = options.width || 280;
+
 		//options.height = 140 + (options.textarea ? 40 : 0);
 		if (typeof(content) == "string")
 			content = "<p>" + content + "</p>";
@@ -913,6 +922,19 @@ var LiteGUI = {
 
 	special_codes: {
 		close: "&#10005;"
+	},
+
+	//used to convert sizes
+	sizeToCSS: function( v )
+	{
+		if( v ===  undefined || v === null )
+			return null;
+		if(v.constructor === String )
+			return v;
+		if(v > 0 )
+			return (v|0) + "px";
+		if(v < 0 )
+			return "calc( 100% - " + Math.abs(v|0) + "px )";
 	}
 };
 
@@ -1377,8 +1399,13 @@ function beautifyJSON( code, skip_css )
 	* @class ContextualMenu
 	* @constructor
 	* @param {Array} values (allows object { title: "Nice text", callback: function ... })
+	* @param {Object} options [optional] Some options:\
+	* - title: title to show on top of the menu
+	* - callback: function to call when an option is clicked, it receives the item information
+	* - ignore_item_callbacks: ignores the callback inside the item, it just calls the options.callback 
+	* - event: you can pass a MouseEvent, this way the ContextualMenu appears in that position
 	*/
-	function ContextualMenu(values,options)
+	function ContextualMenu( values, options )
 	{
 		options = options || {};
 		this.options = options;
@@ -1389,7 +1416,7 @@ function beautifyJSON( code, skip_css )
 		root.style.minWidth = 100;
 		root.style.minHeight = 100;
 		root.style.pointerEvents = "none";
-		setTimeout(function() { root.style.pointerEvents = "auto"; },100); //delay so the mouse up event is not caugh by this element
+		setTimeout( function() { root.style.pointerEvents = "auto"; },100); //delay so the mouse up event is not caugh by this element
 
 		//this prevents the default contextual browser menu to open in case this menu was created when pressing right button 
 		root.addEventListener("mouseup", function(e){ 
@@ -1414,6 +1441,7 @@ function beautifyJSON( code, skip_css )
 		}
 
 		//entries
+		var num = 0;
 		for(var i in values)
 		{
 			var element = document.createElement("div");
@@ -1440,7 +1468,7 @@ function beautifyJSON( code, skip_css )
 				}
 				else if(typeof(value) == "object")
 				{
-					if(value.callback)
+					if(value.callback && !options.ignore_item_callbacks)
 						element.addEventListener("click", function(e) { this.value.callback.apply( this, this.value ); });
 				}
 				else
@@ -1449,13 +1477,17 @@ function beautifyJSON( code, skip_css )
 
 			root.appendChild(element);
 			element.addEventListener("click", inner_onclick);
+			num++;
 		}
+
+		//if(num == 0)
+		//	return;
 
 		//option clicked
 		function inner_onclick(e) {
 			var value = this.value;
 			if(options.callback)
-				options.callback.call(that, value, options );
+				options.callback.call(that, value, options, e );
 			if(root.parentNode)
 				root.parentNode.removeChild( root );
 		}
@@ -1467,7 +1499,13 @@ function beautifyJSON( code, skip_css )
 		});
 
 		//insert before checking position
-		document.body.appendChild(root);
+		var root_document = document;
+		if(options.event)
+			root_document = options.event.target.ownerDocument; 
+
+		if(!root_document)
+			root_document = document;
+		root_document.body.appendChild(root);
 
 		var left = options.left || 0;
 		var top = options.top || 0;
@@ -2096,7 +2134,7 @@ function beautifyJSON( code, skip_css )
 		if(id)
 			root.id = id;
 		if(options.className)
-			root.className += options.className;
+			root.className +=  " " + options.className;
 
 		this.root = root;
 		this.root.litearea = this; //dbl link
@@ -3071,6 +3109,10 @@ function beautifyJSON( code, skip_css )
 			}
 		}
 
+		if(options.width)
+			this.root.style.width = options.width.constructor === Number ? options.width.toFixed(0) + "px" : options.width;
+		if(options.height)
+			this.root.style.height = options.height.constructor === Number ? options.height.toFixed(0) + "px" : options.height;
 
 		//container of tab elements
 		var list = document.createElement("UL");
@@ -3692,23 +3734,23 @@ function beautifyJSON( code, skip_css )
 
 
 /**
-* To create interactive trees (useful for folders or hierarchies).
-* Options are:
-*	+ allow_multiselection: allow to select multiple elements using the shift key
-*	+ allow_rename: double click to rename items in the tree
-*	+ allow_drag: drag elements around
-*	+ height
-* Item data should be in the next format:
-* {
-*    id: unique_identifier,
-*    content: what to show in the HTML (if omited id will be shown)
-*	 children: []  array with another object with the same structure
-*	 className: class
-*    precontent: HTML inserted before the content
-*	 visible: boolean, to hide it
-*	 dataset: dataset for the element
-*	 onDragData: callback in case the user drags this item somewhere else
-* }
+* To create interactive trees (useful for folders or hierarchies).<br>
+* Options are:<br>
+*	+ allow_multiselection: allow to select multiple elements using the shift key<br>
+*	+ allow_rename: double click to rename items in the tree<br>
+*	+ allow_drag: drag elements around<br>
+*	+ height<br>
+* Item data should be in the next format:<br>
+* {<br>
+*    id: unique_identifier,<br>
+*    content: what to show in the HTML (if omited id will be shown)<br>
+*	 children: []  array with another object with the same structure<br>
+*	 className: class<br>
+*    precontent: HTML inserted before the content<br>
+*	 visible: boolean, to hide it<br>
+*	 dataset: dataset for the element<br>
+*	 onDragData: callback in case the user drags this item somewhere else<br>
+* }<br>
 *
 * @class Tree
 * @constructor
@@ -3770,9 +3812,14 @@ function beautifyJSON( code, skip_css )
 	{
 		this.root.innerHTML = "";
 		var root_item = this.createAndInsert( data, this.options, null);
-		root_item.className += " root_item";
-		//this.root.appendChild(root_item);
-		this.root_item = root_item;
+		if(root_item)
+		{
+			root_item.className += " root_item";
+			//this.root.appendChild(root_item);
+			this.root_item = root_item;
+		}
+		else
+			this.root_item = null;
 	}
 
 	/**
@@ -3823,6 +3870,9 @@ function beautifyJSON( code, skip_css )
 
 		//create
 		var element = this.createTreeItem( data, options, child_level );
+		if(!element) //error creating element
+			return;
+
 		element.parent_id = parent_id;
 
 		//insert
@@ -3974,6 +4024,12 @@ function beautifyJSON( code, skip_css )
 	
 	Tree.prototype.createTreeItem = function(data, options, level)
 	{
+		if(data === null || data === undefined)
+		{
+			console.error("Tree item cannot be null");
+			return;
+		}
+
 		options = options || this.options;
 
 		var root = document.createElement("li");
@@ -4156,21 +4212,27 @@ function beautifyJSON( code, skip_css )
 			});
 		}
 
+		var count = 0;
+
 		//something being dragged entered
 		draggable_element.addEventListener("dragenter", function (ev)
 		{
 			ev.preventDefault();
 			if(data.skipdrag)
 				return false;
-
-			title_element.classList.add("dragover");
+			
+			if(count == 0)
+				title_element.classList.add("dragover");
+			count++;
 		});
 
 		draggable_element.addEventListener("dragleave", function (ev)
 		{
 			ev.preventDefault();
 			//console.log(data.id);
-			title_element.classList.remove("dragover");
+			count--;
+			if(count == 0)
+				title_element.classList.remove("dragover");
 			//if(ev.srcElement == this) return;
 		});
 
@@ -4194,6 +4256,8 @@ function beautifyJSON( code, skip_css )
 			if(!item_id)
 			{
 				LiteGUI.trigger( that.root, "drop_on_item", { item: this, event: ev });
+				if( that.onDropItem )
+					that.onDropItem( ev, this.parentNode.data );
 				return;
 			}
 
@@ -4213,6 +4277,9 @@ function beautifyJSON( code, skip_css )
 				console.error("Error: " + err );
 			}
 			*/
+
+			if( that.onDropItem )
+				that.onDropItem( ev, this.parentNode.data );
 		});
 
 		return root;
@@ -4814,6 +4881,7 @@ function beautifyJSON( code, skip_css )
 
 	Dialog.prototype._ctor = function(id, options)
 	{
+		var that = this;
 		this.width = options.width;
 		this.height = options.height;
 		this.minWidth = options.minWidth || 150;
@@ -4838,6 +4906,8 @@ function beautifyJSON( code, skip_css )
 			}
 			if(options.hide)
 				code += "<button class='mini-button hide-button'></button>";
+			if(options.detachable)
+				code += "<button class='mini-button detach-button'></button>";
 			
 			if(options.close || options.closable)
 				code += "<button class='mini-button close-button'>"+ LiteGUI.special_codes.close +"</button>";
@@ -4855,7 +4925,7 @@ function beautifyJSON( code, skip_css )
 		if(options.fullcontent)
 		{
 			this.content.style.width = "100%";		
-			this.content.style.height = "100%";		
+			this.content.style.height = options.title ? "calc( 100% - "+Dialog.title_height+" )" : "100%";
 		}
 
 		if(options.buttons)
@@ -4884,6 +4954,10 @@ function beautifyJSON( code, skip_css )
 		var hide_button = panel.querySelector(".hide-button");
 		if(hide_button)
 			hide_button.addEventListener("click", this.hide.bind(this) );
+
+		var detach_button = panel.querySelector(".detach-button");
+		if(detach_button)
+			detach_button.addEventListener("click", function() { that.detachWindow(); });
 
 		this.makeDialog(options);
 	}
@@ -4959,25 +5033,42 @@ function beautifyJSON( code, skip_css )
 		footer.style.minHeight = "4px";
 		footer.classList.add("resizable");
 
+		var corner = document.createElement("div");
+		corner.className = "resizable-corner";
+		this.root.appendChild( corner );
+
 		footer.addEventListener("mousedown", inner_mouse);
+		corner.addEventListener("mousedown", inner_mouse, true);
 
 		var mouse = [0,0];
 		var that = this;
 
+		var is_corner = false;
+
 		function inner_mouse(e)
 		{
+			//console.log( getTime(), is_corner );
+
 			if(e.type == "mousedown")
 			{
 				document.body.addEventListener("mousemove", inner_mouse);
 				document.body.addEventListener("mouseup", inner_mouse);
+				is_corner = this == corner;
 				mouse[0] = e.pageX;
 				mouse[1] = e.pageY;
 			}
 			else if(e.type == "mousemove")
 			{
+				var w = $(root).width();
+				var neww = w - (mouse[0] - e.pageX);
+	
 				var h = $(root).height();
 				var newh = h - (mouse[1] - e.pageY);
+
+				if(is_corner)
+					$(root).width(neww + "px");
 				$(root).height(newh + "px");
+
 				mouse[0] = e.pageX;
 				mouse[1] = e.pageY;
 				that.content.style.height = "calc( 100% - 24px )";
@@ -4986,8 +5077,10 @@ function beautifyJSON( code, skip_css )
 			{
 				document.body.removeEventListener("mousemove", inner_mouse);
 				document.body.removeEventListener("mouseup", inner_mouse);
+				is_corner = false;
 			}
 			e.preventDefault();
+			e.stopPropagation();
 			return false;
 		}
 	}
@@ -5094,6 +5187,11 @@ function beautifyJSON( code, skip_css )
 			this.on_close();
 		if(this.onclose)
 			console.warn("Dialog: Do not use onclose, use on_close instead");
+		if(this.dialog_window)
+		{
+			this.dialog_window.close();
+			this.dialog_window = null;
+		}
 	}
 
 	Dialog.prototype.highlight = function(time)
@@ -5202,8 +5300,11 @@ function beautifyJSON( code, skip_css )
 			LiteGUI.add( this );
 
 		//$(this.root).show(v,null,100,callback);
-		this.root.style.display = null;
-		LiteGUI.trigger( this, "shown" );
+		if(!this.detach_window)
+		{
+			this.root.style.display = null;
+			LiteGUI.trigger( this, "shown" );
+		}
 	}
 
 	/**
@@ -5278,6 +5379,71 @@ function beautifyJSON( code, skip_css )
 		this.content.innerHTML = "";
 	}
 
+	Dialog.prototype.detachWindow = function( on_complete, on_close )
+	{
+		if(this.dialog_window)
+			return;
+
+		//create window
+		var rect = this.root.getClientRects()[0];
+		var w = rect.width;
+		var h = rect.height;
+		var title = "Window";
+		var header = this.root.querySelector(".panel-header");
+		if(header)
+			title = header.textContent;
+
+		var dialog_window = window.open("","","width="+w+", height="+h+", location=no, status=no, menubar=no, titlebar=no, fullscreen=yes");
+		dialog_window.document.write( "<head><title>"+title+"</title>" );
+		this.dialog_window = dialog_window;
+
+		//transfer style
+		var styles = document.querySelectorAll("link[rel='stylesheet'],style");
+		for(var i = 0; i < styles.length; i++)
+			dialog_window.document.write( styles[i].outerHTML );
+		dialog_window.document.write( "</head><body></body>" );
+		dialog_window.document.close();
+
+		var that = this;
+
+		//closing event
+		dialog_window.onbeforeunload = function(){
+			var index = LiteGUI.windows.indexOf( dialog_window );
+			if(index != -1)
+				LiteGUI.windows.splice( index, 1 );
+			if(on_close)
+				on_close();
+		}
+
+		//move the content there
+		dialog_window.document.body.appendChild( this.content );
+		this.root.style.display = "none"; //hide
+
+		LiteGUI.windows.push( dialog_window );
+
+		if(on_complete)
+			on_complete();
+
+		return dialog_window;		
+	}
+
+	Dialog.prototype.reattachWindow = function( on_complete )
+	{
+		if(!this.dialog_window)
+			return;
+
+		this.root.appendChild( this.content );
+		this.root.style.display = null; //show
+		this.dialog_window.close();
+		var index = LiteGUI.windows.indexOf( this.dialog_window );
+		if(index != -1)
+			LiteGUI.windows.splice( index, 1 );
+		this.dialog_window = null;
+	}
+
+
+	//*********************************************
+
 	Dialog.showAll = function()
 	{
 		var dialogs = document.body.querySelectorAll("litedialog");
@@ -5308,14 +5474,12 @@ function beautifyJSON( code, skip_css )
 		}
 	}
 
-
 	LiteGUI.Panel = Panel;
 	LiteGUI.Dialog = Dialog;
 })();
 /* Attributes editor panel 
 	Dependencies: 
 		- jQuery
-		- jQuery UI (sliders)
 		- jscolor.js
 */
 
@@ -5337,7 +5501,16 @@ jQuery.fn.wclick = function(callback) {
 *
 * @class Inspector
 * @param {string} id
-* @param {Object} options useful options are { width, widgets_width, name_width, full, widgets_per_row }
+* @param {Object} options object with a set of options { 
+	width: total width
+	height: total height
+	widgets_width: width of every widget (used mostly in horizontal inspectors)
+	name_width: width of the name part of widgets
+	full: set to true if you want the inspector to use all the parent width and height
+	widgets_per_row: number of widgets per row, default is 1 but you can change it if you want to pack several widgets in a row (useful for small widgets like checkboxes)
+	one_line: widgets are place one next to the other horizontaly
+	onchange: callback to call when something changes
+   }
 * @constructor
 */
 
@@ -5358,16 +5531,31 @@ function Inspector(id,options)
 	this.values = {};
 	this.sections = [];
 	this.widgets = {};
+	this.row_number = 0; //used to detect if element is even (cannot use CSS, special cases everywhere)
 
 	this.addSection();
 	this.tab_index = Math.floor(Math.random() * 10000);
+
+	if(options.width)
+		this.root.style.width = LiteGUI.sizeToCSS( options.width );
+	if(options.height)
+	{
+		this.root.style.height = LiteGUI.sizeToCSS( options.height );
+		if(!options.one_line)
+			this.root.style.overflow = "auto";
+	}
 
 	if(options.name_width)
 		this.name_width = options.name_width;
 	if(options.widgets_width)
 		this.widgets_width = options.widgets_width;
 
-	if(options.parent) this.appendTo(options.parent);
+	if(options.onchange)
+		this.onchange = options.onchange;
+
+	if(options.parent)
+		this.appendTo(options.parent);
+
 	this.widgets_per_row = options.widgets_per_row || 1;
 }
 
@@ -5386,7 +5574,9 @@ Inspector.prototype.appendTo = function(parent, at_front)
 Inspector.prototype.clear = function()
 {
 	purgeElement( this.root, true ); //hack, but doesnt seem to work
-	this.root.innerHTML = "";
+
+	while(this.root.hasChildNodes())
+		this.root.removeChild( this.root.lastChild );
 
 	this.sections = [];
 	this.values = {};
@@ -5399,7 +5589,7 @@ Inspector.prototype.clear = function()
 
 /**
 * Tryes to refresh (calls on_refresh)
-* @method clear
+* @method refresh
 */
 Inspector.prototype.refresh = function()
 {
@@ -5449,7 +5639,7 @@ Inspector.prototype.setup = function(info)
 	for(var i in info)
 	{
 		var w = info[i];
-		var widget = this.add(w.type,w.name,w.value,w.options);
+		var widget = this.add( w.type, w.name, w.value, w.options );
 	}
 }
 
@@ -5457,75 +5647,83 @@ Inspector.prototype.setup = function(info)
 *
 * @method inspectInstance
 * @param {Object} instance the instance that you want to inspect, attributes will be collected from this object
-* @param {Array} attrs an array with all the names of the properties you want to inspect, 
-*		  if not specified then it calls getAttributes, othewise collect them and tries to guess the type
-* @param {Object} attrs_info_example it overwrites the info about properties found in the object (in case the guessed type is wrong)
+* @param {Array} properties an array with all the names of the properties you want to inspect, 
+*		  if not specified then it calls getProperties, othewise collect them and tries to guess the type
+* @param {Object} properties_info_example it overwrites the info about properties found in the object (in case the automaticaly guessed type is wrong)
+* @param {Array} properties_to_skip this properties will be ignored
 */
-Inspector.prototype.inspectInstance = function(instance, attrs, attrs_info_example, attributes_to_skip ) 
+Inspector.prototype.inspectInstance = function( instance, properties, properties_info_example, properties_to_skip ) 
 {
 	if(!instance)
 		return;
 
-	if( !attrs && instance.getAttributes )
-		attrs = instance.getAttributes();
+	if( !properties )
+	{	if( instance.getProperties )
+			properties = instance.getProperties();
+		else
+			properties = this.collectProperties( instance );
+	}
 	else
-		attrs = this.collectAttributes(instance);
+	{
+	}
 
 	var classObject = instance.constructor;
-	if(!attrs_info_example && classObject.attributes)
-		attrs_info_example = classObject.attributes;
+	if(!properties_info_example && classObject.properties)
+		properties_info_example = classObject.properties;
 
-	//clone to ensure there is no overlap between widgets reusing the same container
-	var attrs_info = {};
+	//Properties info contains  name:type for every property
+	//Must be cloned to ensure there is no overlap between widgets reusing the same container
+	var properties_info = {};
 
-	//add to attrs_info the ones that are not specified 
-	for(var i in attrs)
+	//add to properties_info the ones that are not specified 
+	for(var i in properties)
 	{
-		if(attrs_info_example && attrs_info_example[i])
+		if( properties_info_example && properties_info_example[i] )
 		{
 			//clone
-			attrs_info[i] = inner_clone( attrs_info_example[i] );
+			properties_info[i] = inner_clone( properties_info_example[i] );
 			continue;
 		}
 
-		var v = attrs[i];
+		var v = properties[i];
 
-		if(classObject["@" + i]) //in class object
+		if(classObject["@" + i]) //guess from class object info
 		{
 			var shared_options = classObject["@" + i];
-			attrs_info[i] = inner_clone( shared_options );
-			/*
-			for(var j in shared_options) //clone, because cannot be shared or errors could appear
-				options[j] = shared_options[j];
-				attrs_info[i] = options;
-			*/
+			properties_info[i] = inner_clone( shared_options );
 		}
-		else if(instance["@" + i])
-			attrs_info[i] = instance["@" + i];
-		else if (typeof(v) == "number")
-			attrs_info[i] = { type: "number", step: 0.1 };
-		else if (typeof(v) == "string")
-			attrs_info[i] = { type: "string" };
-		else if (typeof(v) == "boolean")
-			attrs_info[i] = { type: "boolean" };
-		else if( v && v.length )
+		else if(instance["@" + i]) //guess from instance info
+			properties_info[i] = instance["@" + i];
+		else if(v === null || v === undefined) //are you sure?
+			continue;
+		else 
 		{
-			switch(v.length)
+			switch( v.constructor )
 			{
-				case 2: attrs_info[i] = { type: "vec2", step: 0.1 }; break;
-				case 3: attrs_info[i] = { type: "vec3", step: 0.1 }; break;
-				case 4: attrs_info[i] = { type: "vec4", step: 0.1 }; break;
-				default: continue;
+				case Number: properties_info[i] = { type: "number", step: 0.1 }; break;
+				case String: properties_info[i] = { type: "string" }; break;
+				case Boolean: properties_info[i] = { type: "boolean" }; break;
+				default:
+					if( v && v.length )
+					{
+						switch(v.length)
+						{
+							case 2: properties_info[i] = { type: "vec2", step: 0.1 }; break;
+							case 3: properties_info[i] = { type: "vec3", step: 0.1 }; break;
+							case 4: properties_info[i] = { type: "vec4", step: 0.1 }; break;
+							default: continue;
+						}
+					}
 			}
 		}
 	}
 
-	if(attributes_to_skip)
-		for(var i in attributes_to_skip)
-			delete attrs_info[ attributes_to_skip[i] ];
+	if(properties_to_skip)
+		for(var i in properties_to_skip)
+			delete properties_info[ properties_to_skip[i] ];
 
 	//showAttributes doesnt return anything but just in case...
-	return this.showAttributes( instance, attrs_info );
+	return this.showProperties( instance, properties_info );
 
 	//basic cloner
 	function inner_clone(original, target)
@@ -5539,11 +5737,13 @@ Inspector.prototype.inspectInstance = function(instance, attrs, attrs_info_examp
 
 /**  extract all attributes from an instance (enumerable properties that are not function and a name starting with alphabetic character)
 *
-* @method collectAttributes
+* @method collectPropertier
+* @param {Object} instance extract enumerable and public (name do not start with '_' ) properties from an object
+* return {Object} object with "name" : value for every property
 **/
-Inspector.prototype.collectAttributes = function(instance)
+Inspector.prototype.collectProperties = function( instance )
 {
-	var attrs = {};
+	var properties = {};
 
 	for(var i in instance)
 	{
@@ -5553,19 +5753,29 @@ Inspector.prototype.collectAttributes = function(instance)
 		var v = instance[i];
 		if ( v && v.constructor == Function )
 			continue;
-		attrs[i] = v;
+		properties[i] = v;
 	}
-	return attrs;
+	return properties;
 }
 
-//adds the widgets for the attributes specified in attrs_info of instance
-Inspector.prototype.showAttributes = function( instance, attrs_info ) 
+/** Adds the widgets for the properties specified in properties_info of instance
+*
+* @method showProperties
+* @param {Object} instance the instance that you want to inspect
+* @param {Object} properties_info object containing   "property_name" :{ type: value, widget:..., min:..., max:... }  or just "property":"type"
+* @param {Array} properties_to_skip this properties will be ignored
+*/
+Inspector.prototype.showProperties = function( instance, properties_info ) 
 {
 	//for every enumerable property create widget
-	for(var i in attrs_info)
+	for(var i in properties_info)
 	{
-		var options = attrs_info[i];
-		if(!options.callback)
+		var options = properties_info[i];
+		if(!options)
+			continue;
+		if(options.constructor === String) //it allows to just specify the type
+			options = { type: options };
+		if(!options.callback) //generate default callback to modify data
 		{
 			var o = { instance: instance, name: i, options: options };
 			options.callback = Inspector.assignValue.bind( o );
@@ -5573,12 +5783,11 @@ Inspector.prototype.showAttributes = function( instance, attrs_info )
 		}
 		options.instance = instance;
 
-		var type = options.type || options.widget || "string";
+		var type = options.widget || options.type || "string";
 
 		//used to hook stuff on special occasions
-		if( this.on_addAttribute )
-			this.on_addAttribute( type, instance, i, instance[i], options );
-
+		if( this.on_addProperty )
+			this.on_addProperty( type, instance, i, instance[i], options );
 		this.add( type, i, instance[i], options );
 	}
 
@@ -5590,18 +5799,21 @@ Inspector.prototype.showAttributes = function( instance, attrs_info )
 			this.add( w.widget, w.name, w.value, w );
 		}
 
-	//used to add extra widgets
-	if(instance.onShowAttributes)
-		instance.onShowAttributes(this);
-
-	if(instance.constructor.onShowAttributes)
-		instance.constructor.onShowAttributes(instance, this);
+	//used to add extra widgets at the end
+	if(instance.onShowProperties)
+		instance.onShowProperties(this);
+	if(instance.constructor.onShowProperties)
+		instance.constructor.onShowProperties(instance, this);
 }
 
+/**
+* Tryes to assigns a value to the instance stored in this.instance
+* @method assignValue
+*/
 Inspector.assignValue = function(value)
 {
 	var instance = this.instance;
-	var current_value = instance[this.name];
+	var current_value = instance[ this.name ];
 
 	if(current_value == null || value == null || this.options.type == "enum")
 		instance[this.name] = value;
@@ -5609,7 +5821,9 @@ Inspector.assignValue = function(value)
 		instance[this.name] = parseFloat(value);
 	else if(typeof(current_value) == "string")
 		instance[this.name] = value;
-	else if(value && value.length && current_value && current_value.length)
+	else if( value && value.length && current_value && current_value.length && 
+		( !Object.getOwnPropertyDescriptor( instance, this.name ) || !Object.getOwnPropertyDescriptor( instance, this.name ).set ) &&  //no setters
+		( !Object.getOwnPropertyDescriptor( instance.__proto__, this.name ) || !Object.getOwnPropertyDescriptor( instance.__proto__, this.name ).set ) ) 
 	{
 		for(var i = 0; i < value.length; ++i)
 			current_value[i] = value[i];
@@ -5618,6 +5832,17 @@ Inspector.assignValue = function(value)
 		instance[this.name] = value;
 }
 
+/**
+* Used by all widgets to create the container of one widget
+* @method createWidget
+* @param {string} name the string to show at the left side of the widget, if null this element wont be created and the value part will use the full width
+* @param {string} content the string with the html of the elements that conform the interactive part of the widget
+* @param {object} options some generic options that any widget could have:
+* - width: the width of the widget (if omited it will use the Inspector widgets_width, otherwise 100%
+* - name_width: the width of the name part of the widget, if not specified it will use Inspector name_width, otherwise css default
+* - pre_title: string to append to the left side of the name, this is helpful if you want to add icons with behaviour when clicked
+* - title: string to replace the name, sometimes you want to supply a different name than the one you want to show (this is helpful to retrieve values from an inspector)
+*/
 Inspector.prototype.createWidget = function(name, content, options) 
 {
 	options = options || {};
@@ -5627,6 +5852,10 @@ Inspector.prototype.createWidget = function(name, content, options)
 	element.inspector = this;
 	element.options = options;
 	element.name = name;
+	
+	this.row_number += this.widgets_per_row;
+	if(this.row_number % 2 == 0)
+		element.className += " even";
 
 	var width = options.width || this.widgets_width;
 	if(width)
@@ -5658,7 +5887,7 @@ Inspector.prototype.createWidget = function(name, content, options)
 
 	var code = "";
 	var pretitle = "";
-	var filling = this.one_line ? "" : "<span class='filling'>....................</span>";
+	var filling = this.one_line ? "" : "<span class='filling'></span>";
 
 	if(options.pretitle)
 		pretitle = options.pretitle;
@@ -5687,9 +5916,9 @@ Inspector.prototype.createWidget = function(name, content, options)
 }
 
 //calls callback, triggers wchange, calls onchange in Inspector
-Inspector.onWidgetChange = function(element, name, value, options, expand_value )
+Inspector.onWidgetChange = function( element, name, value, options, expand_value )
 {
-	this.values[name] = value;
+	this.values[ name ] = value;
 	//LiteGUI.trigger( this.current_section, "wchange", value );
 	$(this.current_section).trigger("wchange",value); //used for undo //TODO: REMOVE
 	var r = undefined;
@@ -5735,6 +5964,7 @@ Inspector.widget_constructors = {
 	list: 'addList',
 	tree: 'addTree',
 	datatree: 'addDataTree',
+	pad: 'addPad',
 	separator: 'addSeparator'
 };
 
@@ -5746,9 +5976,23 @@ Inspector.registerWidget = function(name, callback)
 	Inspector.widget_constructors[name] = func_name;
 }
 
-Inspector.prototype.add = function(type,name,value,options)
+
+/**
+* Adds a widgete to the inspector, its a way to provide the widget type from a string
+* @method add
+* @param {string} type string specifying the name of the widget to use (check Inspector.widget_constructors for a complete list)
+* @param {string} name the string to show at the left side of the widget, if null this element wont be created and the value part will use the full width
+* @param {string} value the value to assign to the widget
+* @param {object} options: some generic options that any widget could have:
+* - type: overwrites the type
+* - callback: function to call when the user interacts with the widget and changes the value
+* [For a bigger list check createWidget and every widget in particular]
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
+Inspector.prototype.add = function( type, name, value, options )
 {
-	if(typeof(type) == "object" && arguments.length == 1)
+	//type could be an object with every parameter contained inside
+	if( arguments.length == 1 && typeof(type) == "object" )
 	{
 		options = type;
 		type = options.type;
@@ -5756,21 +6000,23 @@ Inspector.prototype.add = function(type,name,value,options)
 		value = options.value;
 	}
 
-	var func = Inspector.widget_constructors[type];
+	var func = LiteGUI.Inspector.widget_constructors[type];
 	if(!func){
 		console.warn("LiteGUI.Inspector do not have a widget called",type);
 		return;
 	}
 
-	if(typeof(func) == "string")
-		func = Inspector.prototype[func];
-	if(!func) return;
-	if(typeof(func) != "function") return;
+	if( func.constructor === String )
+		func = LiteGUI.Inspector.prototype[func];
+	if( !func )
+		return;
+	if( func.constructor !== Function )
+		return;
 
-	if(typeof(options) == 'function')
+	if( options && options.constructor === Function )
 		options = { callback: options };
 	
-	return func.call(this, name,value, options);
+	return func.call( this, name,value, options );
 }
 
 Inspector.prototype.getValue = function(name)
@@ -5935,6 +6181,13 @@ Inspector.prototype.endGroup = function(options)
 	this.content = this.current_section_content; //shortcut
 }
 
+/**
+* Creates a title bar in the widgets list to help separate widgets
+* @method addTitle
+* @param {string} title 
+* @param {Object} options
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
 Inspector.prototype.addTitle = function(title,options)
 {
 	options = this.processOptions(options);
@@ -5949,11 +6202,16 @@ Inspector.prototype.addTitle = function(title,options)
 	element.innerHTML = code;
 
 	element.setValue = function(v) { $(this).find(".text").html(v); };
-
+	this.row_number = 0;
 	this.append(element, options);
 	return element;
 }
 
+/**
+* Creates a line
+* @method addSeparator
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
 Inspector.prototype.addSeparator = function()
 {
 	var element = document.createElement("DIV");
@@ -5962,6 +6220,19 @@ Inspector.prototype.addSeparator = function()
 	return element;
 }
 
+/**
+* Widget to edit strings
+* @method addString
+* @param {string} name 
+* @param {string} value
+* @param {Object} options, here is a list for this widget (check createWidget for a list of generic options):
+* - focus: true if you want the cursor to be here
+* - password: true if you want to hide the string 
+* - immediate: calls the callback once every keystroke
+* - disabled: shows the widget disabled
+* - callback: function to call when the widget changes
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
 Inspector.prototype.addString = function(name,value, options)
 {
 	options = this.processOptions(options);
@@ -5984,6 +6255,16 @@ Inspector.prototype.addString = function(name,value, options)
 			this.value = r;
 	});
 
+	if(options.callback_enter)
+		input.addEventListener( "keydown" , function(e) { 
+			if(e.keyCode == 13)
+			{
+				var r = Inspector.onWidgetChange.call(that, element, name, e.target.value, options);
+				options.callback_enter();
+				e.preventDefault();
+			}
+		});
+
 	this.tab_index += 1;
 
 	element.setValue = function(v) { 
@@ -5997,6 +6278,18 @@ Inspector.prototype.addString = function(name,value, options)
 	return element;
 }
 
+/**
+* Widget to edit strings, but it adds a button behind (useful to search values somewhere in case the user do not remember the name)
+* @method addStringButton
+* @param {string} name 
+* @param {string} value the string to show
+* @param {Object} options, here is a list for this widget (check createWidget for a list of generic options):
+* - disabled: shows the widget disabled
+* - button: string to show inside the button, default is "..."
+* - callback: function to call when the string is edited
+* - callback_button: function to call when the button is pressed
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
 Inspector.prototype.addStringButton = function(name,value, options)
 {
 	options = this.processOptions(options);
@@ -6029,6 +6322,58 @@ Inspector.prototype.addStringButton = function(name,value, options)
 	return element;
 }
 
+/**
+* Widget to edit strings with multiline support
+* @method addTextarea
+* @param {string} name 
+* @param {string} value
+* @param {Object} options, here is a list for this widget (check createWidget for a list of generic options):
+* - focus: true if you want the cursor to be here
+* - password: true if you want to hide the string 
+* - immediate: calls the callback once every keystroke
+* - disabled: shows the widget disabled
+* - callback: function to call when the widget changes
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
+Inspector.prototype.addTextarea = function(name,value, options)
+{
+	options = this.processOptions(options);
+
+	value = value || "";
+	var that = this;
+	this.values[name] = value;
+	;
+
+	var element = this.createWidget(name,"<span class='inputfield textarea "+(options.disabled?"disabled":"")+"'><textarea tabIndex='"+this.tab_index+"' "+(options.disabled?"disabled":"")+">"+value+"</textarea></span>", options);
+	this.tab_index++;
+
+	element.querySelector(".wcontent textarea").addEventListener( options.immediate ? "keyup" : "change", function(e) { 
+		Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
+	});
+
+	if(options.height)
+		$(element).find("textarea").css({height: options.height });
+	this.append(element,options);
+
+	element.setValue = function(v) { $(this).find("textarea").val(v).change(); };
+	return element;
+}
+
+/**
+* Widget to edit numbers (it adds a dragging mini widget in the right side)
+* @method addNumber
+* @param {string} name 
+* @param {number} value 
+* @param {Object} options, here is a list for this widget (check createWidget for a list of generic options):
+* - disabled: shows the widget disabled
+* - callback: function to call when the string is edited
+* - precision: number of digits after the colon
+* - units: string to show after the number
+* - min: minimum value accepted
+* - max: maximum value accepted
+* - step: increments when draggin the mouse (default is 0.1)
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
 Inspector.prototype.addNumber = function(name, value, options)
 {
 	options = this.processOptions(options);
@@ -6093,6 +6438,22 @@ Inspector.prototype.addNumber = function(name, value, options)
 	return element;
 }
 
+/**
+* Widget to edit two numbers (it adds a dragging mini widget in the right side)
+* @method addVector2
+* @param {string} name 
+* @param {vec2} value 
+* @param {Object} options, here is a list for this widget (check createWidget for a list of generic options):
+* - callback: function to call once the value changes
+* - disabled: shows the widget disabled
+* - callback: function to call when the string is edited
+* - precision: number of digits after the colon
+* - units: string to show after the number
+* - min: minimum value accepted
+* - max: maximum value accepted
+* - step: increments when draggin the mouse (default is 0.1)
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
 Inspector.prototype.addVector2 = function(name,value, options)
 {
 	options = this.processOptions(options);
@@ -6169,6 +6530,22 @@ Inspector.prototype.addVector2 = function(name,value, options)
 	return element;
 }
 
+/**
+* Widget to edit two numbers (it adds a dragging mini widget in the right side)
+* @method addVector3
+* @param {string} name 
+* @param {vec3} value 
+* @param {Object} options, here is a list for this widget (check createWidget for a list of generic options):
+* - callback: function to call once the value changes
+* - disabled: shows the widget disabled
+* - callback: function to call when the string is edited
+* - precision: number of digits after the colon
+* - units: string to show after the number
+* - min: minimum value accepted
+* - max: maximum value accepted
+* - step: increments when draggin the mouse (default is 0.1)
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
 Inspector.prototype.addVector3 = function(name,value, options)
 {
 	options = this.processOptions(options);
@@ -6250,6 +6627,22 @@ Inspector.prototype.addVector3 = function(name,value, options)
 	return element;
 }
 
+/**
+* Widget to edit two numbers (it adds a dragging mini widget in the right side)
+* @method addVector4
+* @param {string} name 
+* @param {vec4} value 
+* @param {Object} options, here is a list for this widget (check createWidget for a list of generic options):
+* - callback: function to call once the value changes
+* - disabled: shows the widget disabled
+* - callback: function to call when the string is edited
+* - precision: number of digits after the colon
+* - units: string to show after the number
+* - min: minimum value accepted
+* - max: maximum value accepted
+* - step: increments when draggin the mouse (default is 0.1)
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
 Inspector.prototype.addVector4 = function(name,value, options)
 {
 	options = this.processOptions(options);
@@ -6320,30 +6713,157 @@ Inspector.prototype.addVector4 = function(name,value, options)
 	return element;
 }
 
-Inspector.prototype.addTextarea = function(name,value, options)
+/**
+* Widget to edit two numbers using a rectangular pad where you can drag horizontaly and verticaly a handler
+* @method addPad
+* @param {string} name 
+* @param {vec2} value 
+* @param {Object} options, here is a list for this widget (check createWidget for a list of generic options):
+* - callback: function to call once the value changes
+* - disabled: shows the widget disabled
+* - callback: function to call when the string is edited
+* - precision: number of digits after the colon
+* - units: string to show after the number
+* - min: minimum value accepted
+* - minx: minimum x value accepted
+* - miny: minimum y value accepted
+* - max: maximum value accepted
+* - maxx: maximum x value accepted
+* - maxy: maximum y value accepted
+* - step: increments when draggin the mouse (default is 0.1)
+* - background: url of image to use as background (it will be streched)
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
+Inspector.prototype.addPad = function(name,value, options)
 {
 	options = this.processOptions(options);
+	if(!options.step)
+		options.step = 0.1;
 
-	value = value || "";
+	value = value || [0,0];
 	var that = this;
 	this.values[name] = value;
-	;
+	
+	var element = this.createWidget(name,"", options);
 
-	var element = this.createWidget(name,"<span class='inputfield textarea "+(options.disabled?"disabled":"")+"'><textarea tabIndex='"+this.tab_index+"' "+(options.disabled?"disabled":"")+">"+value+"</textarea></span>", options);
+	options.step = options.step ||0.1;
+	//options.dragger_class = "medium";
+	options.tab_index = this.tab_index;
+	options.full = true;
 	this.tab_index++;
 
-	element.querySelector(".wcontent textarea").addEventListener( options.immediate ? "keyup" : "change", function(e) { 
-		Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
-	});
+	var minx = options.minx || options.min || 0;
+	var miny = options.miny || options.min || 0;
+	var maxx = options.maxx || options.max || 1;
+	var maxy = options.maxy || options.max || 1;
 
-	if(options.height)
-		$(element).find("textarea").css({height: options.height });
+	var wcontent = element.querySelector(".wcontent");
+
+	var pad = document.createElement("div");
+	pad.className = "litepad";
+	wcontent.appendChild( pad );
+	pad.style.width = "100%";
+	pad.style.height = "100px";
+	if (options.background)
+	{
+		pad.style.backgroundImage = "url('" + options.background + "')";
+		pad.style.backgroundSize = "100%";
+		pad.style.backgroundRepeat = "no-repeat";
+	}
+
+	var handler = document.createElement("div");
+	handler.className = "litepad-handler";
+	pad.appendChild( handler );
+
+	options.tab_index = this.tab_index;
+	this.tab_index++;
+
+	var dragging = false;
+
+	pad._onMouseEvent = function(e)
+	{
+		var b = pad.getBoundingClientRect();
+		e.mousex = e.pageX - b.left;
+		e.mousey = e.pageY - b.top;
+		e.preventDefault();
+		e.stopPropagation();
+
+		if(e.type == "mousedown")
+		{
+			document.body.addEventListener("mousemove", pad._onMouseEvent );
+			document.body.addEventListener("mouseup", pad._onMouseEvent );
+			dragging = true;
+		}
+		else if(e.type == "mousemove")
+		{
+			var x = e.mousex / (b.width);
+			var y = e.mousey / (b.height);
+
+			x = x * (maxx - minx) + minx;
+			y = y * (maxy - miny) + minx;
+
+			var r = [x,y];
+			element.setValue(r);
+
+			if(options.callback)
+			{
+				var new_val = options.callback.call( element, r ); 
+				if( new_val && new_val.length >= 2)
+				{
+					for(var i = 0; i < elems.length; i++)
+						element.setValue( new_val );
+				}
+			}
+			$(element).trigger("wchange",[r]);
+			if(that.onchange)
+				that.onchange(name,r,element);
+		}
+		else if(e.type == "mouseup")
+		{
+			dragging = false;
+			document.body.removeEventListener("mousemove", pad._onMouseEvent );
+			document.body.removeEventListener("mouseup", pad._onMouseEvent );
+		}
+
+		return true;
+	}
+
+	pad.addEventListener("mousedown", pad._onMouseEvent );
+
+	element.setValue = function(v)
+	{
+		var b = pad.getBoundingClientRect();
+
+		var x = (v[0] - minx) / (maxx - minx);
+		var y = (v[1] - miny) / (maxy - miny);
+		x = Math.max( 0, Math.min( x, 1 ) ); //clamp
+		y = Math.max( 0, Math.min( y, 1 ) );
+
+		//handler.style.left = (x * (b.width - 10)) + "px";
+		//handler.style.top = (y * (b.height - 10)) + "px";
+		var w = ((b.width - 10) / b.width) * 100;
+		var h = ((b.height - 10) / b.height) * 100;
+		handler.style.left = (x * w).toFixed(1) + "%";
+		handler.style.top = (y * h).toFixed(1) + "%";
+	}
+
 	this.append(element,options);
 
-	element.setValue = function(v) { $(this).find("textarea").val(v).change(); };
+	element.setValue( value );
+
 	return element;
 }
 
+/**
+* Widget to show plain information in HTML (not interactive)
+* @method addInfo
+* @param {string} name 
+* @param {string} value HTML code
+* @param {Object} options, here is a list for this widget (check createWidget for a list of generic options):
+* - className: to specify a classname of the content
+* - height: to specify a height
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
 Inspector.prototype.addInfo = function(name,value, options)
 {
 	options = this.processOptions(options);
@@ -6381,6 +6901,18 @@ Inspector.prototype.addInfo = function(name,value, options)
 	return element;
 }
 
+/**
+* Widget to edit a number using a slider
+* @method addSlider
+* @param {string} name 
+* @param {number} value 
+* @param {Object} options, here is a list for this widget (check createWidget for a list of generic options):
+* - min: min value
+* - max: max value
+* - step: increments when dragging
+* - callback: function to call once the value changes
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
 Inspector.prototype.addSlider = function(name, value, options)
 {
 	options = this.processOptions(options);
@@ -6411,15 +6943,6 @@ Inspector.prototype.addSlider = function(name, value, options)
 		if(skip_change) return;
 
 		var v = parseFloat( $(this).val() );
-		/*
-		if(v > options.max)
-		{
-			skip_change = true;
-			slider.setValue( options.max );
-			skip_change = false;
-		}
-		else
-		*/
 		slider.setValue( v );
 
 		Inspector.onWidgetChange.call(that,element,name,v, options);
@@ -6430,67 +6953,23 @@ Inspector.prototype.addSlider = function(name, value, options)
 		Inspector.onWidgetChange.call(that,element,name,v, options);
 	});
 
-	
-	/*
-	//var element = this.createWidget(name,"<span class='inputfield'><input tabIndex='"+this.tab_index+"' type='text' class='fixed nano' value='"+value+"' /></span><div class='wslider'></div>", options);
-	var element = this.createWidget(name,"<span class='inputfield'>\
-				<input tabIndex='"+this.tab_index+"' type='text' class='slider-text fixed nano' value='"+value+"' /></span>\
-				<span class='ui-slider'>\
-				<input class='slider-input' type='range' step='"+options.step+"' min='"+ options.min +"' max='"+ options.max +"'/><span class='slider-thumb'></span></span>", options);
-
-	this.tab_index++;
-
-	var text_input = $(element).find(".slider-text");
-	var slider_input = $(element).find(".slider-input");
-	var slider_thumb = $(element).find(".slider-thumb");
-
-	slider_input.bind('input', inner_slider_move );
-
-	var skip_change = false; //used to avoid recursive loops
-	text_input.bind('change', function() {
-		if(skip_change) return;
-
-		var v = parseFloat( $(this).val() );
-		if(v > options.max)
-		{
-			skip_change = true;
-			slider_input.val( options.max );
-			skip_change = false;
-		}
-		else
-			slider_input.val(v);
-
-		var vnormalized = (v - options.min) / (options.max - options.min);
-		if(vnormalized > 1) vnormalized = 1;
-		else if(vnormalized < 0) vnormalized = 0;
-
-		slider_thumb.css({left: (vnormalized * ($(slider_input).width() - 12)) });
-		Inspector.onWidgetChange.call(that,element,name,v, options);
-	});
-
-	function inner_slider_move(e)
-	{
-		var v = parseFloat( e.target.value );
-		var vnormalized = (v - options.min) / (options.max - options.min);
-		if(!skip_change)
-		{
-			text_input.val(v);
-			Inspector.onWidgetChange.call(that,element,name,v, options);
-		}
-		slider_thumb.css({left: (vnormalized * 90).toFixed(2) + "%" });
-	}
-
-	*/
-
 	this.append(element,options);
 	element.setValue = function(v) { slider.setValue(v); };
-	//skip_change = true;
-	//slider_input.val(value).trigger("input");
-	//skip_change = false;
 	return element;
 }
 
-
+/**
+* Widget to edit a boolean value using a checkbox
+* @method addCheckbox
+* @param {string} name 
+* @param {boolean} value 
+* @param {Object} options, here is a list for this widget (check createWidget for a list of generic options):
+* - label: text to show, otherwise it shows on/off
+* - label_on: text to show when on
+* - label_off: text to show when off
+* - callback: function to call once the value changes
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
 Inspector.prototype.addCheckbox = function(name, value, options)
 {
 	options = this.processOptions(options);
@@ -6535,6 +7014,13 @@ Inspector.prototype.addCheckbox = function(name, value, options)
 	return element;
 }
 
+/**
+* Widget to edit a set of boolean values using checkboxes
+* @method addFlags
+* @param {Object} value object that contains all the booleans 
+* @param {Object} optional object with extra flags to insert
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
 Inspector.prototype.addFlags = function(flags, force_flags)
 {
 	var f = {};
@@ -6556,6 +7042,17 @@ Inspector.prototype.addFlags = function(flags, force_flags)
 	}
 }
 
+/**
+* Widget to edit an enumeration using a combobox
+* @method addCombo
+* @param {string} name 
+* @param {*} value 
+* @param {Object} options, here is a list for this widget (check createWidget for a list of generic options):
+* - values: a list with all the possible values, it could be an array, or an object, in case of an object, the key is the string to show, the value is the value to assign
+* - disabled: true to disable
+* - callback: function to call once an items is clicked
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
 Inspector.prototype.addCombo = function(name, value, options)
 {
 	options = this.processOptions(options);
@@ -6708,6 +7205,16 @@ Inspector.prototype.addTags = function(name, value, options)
 	return element;
 }
 
+/**
+* Widget to select from a list of items
+* @method addList
+* @param {string} name 
+* @param {*} value [Array or Object]
+* @param {Object} options, here is a list for this widget (check createWidget for a list of generic options):
+* - multiselection: allow multiple selection
+* - callback: function to call once an items is clicked
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
 Inspector.prototype.addList = function(name, values, options)
 {
 	options = this.processOptions(options);
@@ -6775,16 +7282,20 @@ Inspector.prototype.addList = function(name, values, options)
 			for(var i in values)
 			{
 				var item_name = values[i]; //array
+				var item_title = item_name;
 
 				var icon = "";
 				if(	values[i].length == null ) //object
 				{
-					item_name = values[i].name ? values[i].name : i;
+					item_title = values[i].name || i;
 					if(values[i].icon)
 						icon = "<img src='"+values[i].icon+"' class='icon' />";
 				}
 
-				code += "<li className='item-"+i+" "+(typeof(values[i]) == "object" && values[i].selected ? "selected":"") + "' data-name='"+item_name+"' data-pos='"+i+"'>" + icon + item_name + "</li>";
+				var selected = false;
+				if( (typeof(values[i]) == "object" && values[i].selected) || (options.selected == values[i] ))
+					selected = true;
+				code += "<li class='item-" + i + " " + (selected ? "selected":"") + "' data-name='" + item_name + "' data-pos='"+i+"'>" + icon + item_title + "</li>";
 			}
 
 		this.querySelector("ul").innerHTML = code;

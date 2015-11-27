@@ -231,8 +231,8 @@ var AnimationModule = {
 			if( info.node && info.node.parentNode && info.node.parentNode.transform )
 			{
 				parent_node = info.node.parentNode;
-				Draw.push();
-				Draw.setMatrix( parent_node.transform.getGlobalMatrixRef() );
+				LS.Draw.push();
+				LS.Draw.setMatrix( parent_node.transform.getGlobalMatrixRef() );
 			}
 
 			for(var j = 0; j < num; ++j)
@@ -250,8 +250,8 @@ var AnimationModule = {
 					colors.push( j == selection.index ? colorB : colorA );
 			}
 
-			Draw.setColor( colors ? white : colorA );
-			Draw.renderPoints( points, colors );
+			LS.Draw.setColor( colors ? white : colorA );
+			LS.Draw.renderPoints( points, colors );
 			this._trajectories.push( { index: i, points: points, track: track } );
 
 			if(track.interpolation == LS.Animation.NONE)
@@ -260,7 +260,7 @@ var AnimationModule = {
 			if(track.interpolation == LS.Animation.LINEAR)
 			{
 				if(points.length > 1)
-					Draw.renderLines( points, null, true );
+					LS.Draw.renderLines( points, null, true );
 				continue;
 			}
 
@@ -292,12 +292,12 @@ var AnimationModule = {
 
 			if(points.length > 1)
 			{
-				Draw.setColor(colorA);
-				Draw.renderLines( points, null, false );
+				LS.Draw.setColor(colorA);
+				LS.Draw.renderLines( points, null, false );
 			}
 
 			if( parent_node )
-				Draw.pop();
+				LS.Draw.pop();
 		}
 	},
 

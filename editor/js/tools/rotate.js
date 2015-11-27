@@ -55,8 +55,8 @@ var rotateNodeTool = {
 		gl.disable(gl.DEPTH_TEST);
 		gl.enable(gl.BLEND);
 		gl.enable(gl.CULL_FACE);
-		Draw.push();
-			Draw.setMatrix(gizmo_model);
+		LS.Draw.push();
+			LS.Draw.setMatrix(gizmo_model);
 
 			var radius = scale*0.8;
 			rotateNodeTool._radius = radius;
@@ -67,47 +67,47 @@ var rotateNodeTool = {
 			mat4.multiplyVec3(rotateNodeTool._z_axis_end, gizmo_model, [0,0,radius] );
 
 			//three axis lines
-			Draw.setColor([1,1,1]);
-			Draw.renderLines( [[0,0,0],[radius,0,0],[0,0,0],[0,radius,0],[0,0,0],[0,0,radius]],
+			LS.Draw.setColor([1,1,1]);
+			LS.Draw.renderLines( [[0,0,0],[radius,0,0],[0,0,0],[0,radius,0],[0,0,0],[0,0,radius]],
 				[colorz,colorz,colorx,colorx,colory,colory]);
 
-			Draw.setColor(colorx);
-			//Draw.renderCylinder(radius, 0.05*scale, 40);
-			Draw.renderCircle( radius, 40, true);
-			mat4.rotateVec3( rotateNodeTool._x_axis_normal, Draw.model_matrix, [0,1,0] );
+			LS.Draw.setColor(colorx);
+			//LS.Draw.renderCylinder(radius, 0.05*scale, 40);
+			LS.Draw.renderCircle( radius, 40, true);
+			mat4.rotateVec3( rotateNodeTool._x_axis_normal, LS.Draw.model_matrix, [0,1,0] );
 
-			Draw.setColor(colory);
-			Draw.rotate(90,[1,0,0]);
-			Draw.renderCircle( radius, 40, true);
-			mat4.rotateVec3( rotateNodeTool._y_axis_normal, Draw.model_matrix, [0,1,0] );
-			//Draw.renderCylinder(radius, 0.05*scale, 40);
+			LS.Draw.setColor(colory);
+			LS.Draw.rotate(90,[1,0,0]);
+			LS.Draw.renderCircle( radius, 40, true);
+			mat4.rotateVec3( rotateNodeTool._y_axis_normal, LS.Draw.model_matrix, [0,1,0] );
+			//LS.Draw.renderCylinder(radius, 0.05*scale, 40);
 
-			Draw.setColor(colorz);
-			Draw.rotate(90,[0,0,1]);
-			Draw.renderCircle( radius, 40, true);
-			mat4.rotateVec3( rotateNodeTool._z_axis_normal, Draw.model_matrix, [0,1,0] );
-			//Draw.renderCylinder(radius, 0.05*scale, 40);
+			LS.Draw.setColor(colorz);
+			LS.Draw.rotate(90,[0,0,1]);
+			LS.Draw.renderCircle( radius, 40, true);
+			mat4.rotateVec3( rotateNodeTool._z_axis_normal, LS.Draw.model_matrix, [0,1,0] );
+			//LS.Draw.renderCylinder(radius, 0.05*scale, 40);
 
 			//draw interior sphere
-			Draw.setColor([0,0,0,0.2]);
-			Draw.push();
-			Draw.scale(radius * 0.99);
-			Draw.renderMesh( EditorView.sphere_mesh, gl.TRIANGLES );
-			Draw.pop();
+			LS.Draw.setColor([0,0,0,0.2]);
+			LS.Draw.push();
+			LS.Draw.scale(radius * 0.99);
+			LS.Draw.renderMesh( EditorView.sphere_mesh, gl.TRIANGLES );
+			LS.Draw.pop();
 
 			//*
-			Draw.setColor(colorf);
+			LS.Draw.setColor(colorf);
 			mat4.fromTranslationFrontTop(gizmo_model, center, ToolUtils.camera_front, ToolUtils.camera_top );
-			Draw.setMatrix(gizmo_model);
-			Draw.renderCircle(radius * 1.2, 40 );
+			LS.Draw.setMatrix(gizmo_model);
+			LS.Draw.renderCircle(radius * 1.2, 40 );
 			//*/
 
-		Draw.pop();
+		LS.Draw.pop();
 
 		/* DEBUG
-		Draw.setPointSize( 20 );
-		Draw.setColor([1,0.5,1,0.8]);
-		Draw.renderRoundPoints( this._closest_ring );
+		LS.Draw.setPointSize( 20 );
+		LS.Draw.setColor([1,0.5,1,0.8]);
+		LS.Draw.renderRoundPoints( this._closest_ring );
 		*/
 
 		gl.enable(gl.DEPTH_TEST);
@@ -129,13 +129,20 @@ var rotateNodeTool = {
 			return;
 
 		var node = SelectionModule.getSelectedNode();
-		EditorModule.inspectNode(node);
+		EditorModule.inspect(node);
 	},
 
 	mousemove: function(e) 
 	{
 		if(!this.enabled) 
 			return;
+
+		if( e.metaKey || e.altKey )
+		{
+			this._on_top_of = null;
+			return;
+		}
+
 		var node = SelectionModule.getSelectedNode();
 		if(!node || !node.transform) 
 			return;

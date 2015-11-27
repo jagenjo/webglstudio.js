@@ -22,6 +22,7 @@ var manipulateTool = {
 		var selection = SelectionModule.getSelection();
 		if(!selection) 
 			return;
+		var node = selection.node; //could be null
 
 		var gizmo_model = ToolUtils.getSelectionMatrix();
 		if(!gizmo_model)
@@ -37,7 +38,7 @@ var manipulateTool = {
 		var camera2D = ToolUtils.enableCamera2D( camera );
 		var pos2D = camera.project(pos);
 
-		if(pos2D[2] < 0) 
+		if( pos2D[2] < 0 ) 
 			return;
 		pos2D[2] = 0;
 		this.circle_center.set(pos2D);
@@ -46,26 +47,29 @@ var manipulateTool = {
 		gl.disable(gl.DEPTH_TEST);
 		gl.enable(gl.BLEND);
 		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-		Draw.push();
-		Draw.translate(pos2D);
+		LS.Draw.push();
+		LS.Draw.translate(pos2D);
 
 		var circle_size = this.circle_size;
 
+		var color = (node && node._is_bone) ? [1,0.1,1] : [1,0.6,0.1];
+
 		//center circle
-		Draw.scale(5,5,5);
-		Draw.setColor([0.3,0.8,1.0,0.5]);
-		Draw.renderMesh( EditorView.circle_mesh, gl.TRIANGLES );
+		LS.Draw.scale(5,5,5);
+		LS.Draw.setColor( color );
+		LS.Draw.setAlpha(0.5);
+		LS.Draw.renderMesh( EditorView.circle_mesh, gl.TRIANGLES );
 
 		//rotate line
-		Draw.scale(circle_size / 5.0, circle_size / 5.0, circle_size / 5.0);
-		Draw.setColor([1,0.8,0.1,this.state == "rotate" ? 0.6 : 0.3]);
-		Draw.renderMesh( EditorView.circle_empty_mesh, gl.LINE_LOOP );
+		LS.Draw.scale(circle_size / 5.0, circle_size / 5.0, circle_size / 5.0);
+		LS.Draw.setAlpha( this.state == "rotate" ? 0.6 : 0.3 );
+		LS.Draw.renderMesh( EditorView.circle_empty_mesh, gl.LINE_LOOP );
 
 		//move circle
-		Draw.setColor([1,0.5,0.1, this.state == "move" ? 0.4 : 0.2]);
-		Draw.scale(0.95,0.95,0.95);
-		Draw.renderMesh( EditorView.circle_mesh, gl.TRIANGLES );
-		Draw.pop();
+		LS.Draw.scale(0.95,0.95,0.95);
+		LS.Draw.setAlpha( this.state == "move" ? 0.4 : 0.2 );
+		LS.Draw.renderMesh( EditorView.circle_mesh, gl.TRIANGLES );
+		LS.Draw.pop();
 
 		gl.enable(gl.DEPTH_TEST);
 	},
@@ -189,7 +193,7 @@ var manipulateTool = {
 			vec3.scale(delta,delta, (e.wheel < 0 ? 0.02 : -0.02) );
 			var T = mat4.setTranslation( mat4.create(), delta );
 	
-			if(node && node._is_bone && node.parentNode && node.parentNode._is_bone)
+			if( node && node._is_bone && node.parentNode && node.parentNode._is_bone && !e.ctrlKey )
 				ToolUtils.applyTransformMatrixToBone(T);
 			else
 				ToolUtils.applyTransformMatrixToSelection(T);

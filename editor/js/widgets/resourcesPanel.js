@@ -21,7 +21,11 @@ function ResourcesPanelWidget( id )
 
 	//files
 	var files_section = this.area.getSection(1);
-	files_section.root.classList.add("file-list");
+
+	var browser_root =  document.createElement("ul");
+	browser_root.className = "file-list";
+	files_section.content.appendChild( browser_root );
+	this.browser_container = browser_root;
 
 	//EVENTS
 	this.bindEvents();
@@ -30,7 +34,7 @@ function ResourcesPanelWidget( id )
 
 ResourcesPanelWidget.createDialog = function( parent )
 {
-	var dialog = new LiteGUI.Dialog( null, { title:"Resources", fullcontent: true, closable: true, draggable: true, minimize: true, resizable: true, parent: parent, width: 800, height: 500 });
+	var dialog = new LiteGUI.Dialog( null, { title:"Resources", fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, parent: parent, width: 870, height: 500 });
 	var widget = new ResourcesPanelWidget();
 	dialog.add( widget );
 	dialog.widget = widget;
@@ -93,7 +97,7 @@ ResourcesPanelWidget.prototype.createTreeWidget = function()
 		if(item.className)
 		{
 			if(item.bridge && item.bridge.onFolderSelected)
-				item.bridge.onFolderSelected(item);
+				item.bridge.onFolderSelected( item, that );
 		}
 	});
 
@@ -137,13 +141,13 @@ ResourcesPanelWidget.prototype.createTreeWidget = function()
 }
 
 //add a new resource to the browser window
-ResourcesPanelWidget.prototype.addItemToBrowser = function(resource)
+ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 {
 	var memory_resource = LS.ResourcesManager.resources[ resource.fullpath ];
 
 	//if(!this.dialog) return;
 	//var parent = $("#dialog_resources-browser .resources-container ul.file-list")[0];
-	var parent = this.root.querySelector(".resources-container ul.file-list");
+	var parent = this.browser_container.querySelector(".file-list");
 
 	var element =  document.createElement("li");
 	if(resource.id)
@@ -151,8 +155,8 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function(resource)
 	element.dataset["filename"] = resource.filename;
 	if(resource.fullpath)
 		element.dataset["fullpath"] = resource.fullpath;
-	element.dataset["restype"] = (resource.object_type || resource.category || LS.getObjectClassName(resource));
-	element.className = "resource file-item resource-" + element.dataset["restype"];
+	var type = element.dataset["restype"] = (resource.object_type || resource.category || LS.getObjectClassName(resource));
+	element.className = "resource file-item resource-" + type;
 	if(resource.id)
 		element.className += " in-server";
 	else
@@ -161,11 +165,10 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function(resource)
 	if(resource._modified  || (memory_resource && memory_resource._modified) )
 		element.className += " modified";
 
-	var filename = this.getFilename( resource.filename );
+	var filename = DriveModule.getFilename( resource.filename );
 	if(!filename) 
 		filename = resource.fullpath;
 
-	var type = resource.object_type || LS.getObjectClassName(resource);
 	element.title = type + ": " + resource.filename;
 	if(filename)
 	{
@@ -181,14 +184,14 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function(resource)
 	{
 		if(typeof(preview) == "string" && preview.substr(0,11) == "data:image/")
 		{
-			if(this.generated_previews[ resource.fullpath ])
-				preview = this.generated_previews[ resource.fullpath ];
+			if(DriveModule.generated_previews[ resource.fullpath ])
+				preview = DriveModule.generated_previews[ resource.fullpath ];
 			else
 			{
 				var img = new Image();
 				img.src = preview;
 				img.style.maxWidth = 200;
-				this.generated_previews[ resource.fullpath ] = img;
+				DriveModule.generated_previews[ resource.fullpath ] = img;
 				preview = img;
 			}
 		}
@@ -198,22 +201,22 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function(resource)
 		var filename = resource.fullpath || resource.filename;
 
 		if(resource.in_server)
-			preview = this.getServerPreviewURL( resource );
+			preview = DriveModule.getServerPreviewURL( resource );
 		else 
 		{
-			if( this.generated_previews[ filename ] )
+			if( DriveModule.generated_previews[ filename ] )
 			{
-				preview = this.generated_previews[ filename ];
+				preview = DriveModule.generated_previews[ filename ];
 			}
 			else if( !resource.fullpath ) //is hosted somewhere
 			{
-				preview = this.generatePreview( filename );
+				preview = DriveModule.generatePreview( filename );
 				if(preview)
 				{
 					var img = new Image();
 					img.src = preview;
 					img.style.maxWidth = 200;
-					this.generated_previews[ filename ] = img;
+					DriveModule.generated_previews[ filename ] = img;
 					preview = img;
 				}
 			}
@@ -252,6 +255,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function(resource)
 	//when the resources is clicked
 	function item_selected(e)
 	{
+		/*
 		DriveModule.selected_resource = this;
 		if(!DriveModule.on_resource_selected_callback)
 		{
@@ -267,6 +271,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function(resource)
 				path = this.dataset["filename"];
 			DriveModule.onResourceSelected( path );
 		}
+		*/
 	}
 
 	//dragging
@@ -283,7 +288,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function(resource)
 
 ResourcesPanelWidget.prototype.refreshTree = function()
 {
-	this.tree_widget.updateTree( this.tree );
+	this.tree_widget.updateTree( DriveModule.tree );
 }
 
 ResourcesPanelWidget.prototype.refreshContent = function()
@@ -327,8 +332,29 @@ ResourcesPanelWidget.prototype.showContextualMenu = function(e){
 	}});
 }
 
+ResourcesPanelWidget.prototype.showInBrowserContent = function( items )
+{
+	var parent = this.browser_container;
+	parent.innerHTML = "";
+	var root =  document.createElement("ul");
+	root.className = "file-list";
+	parent.appendChild( root );
+
+	this.visible_resources = items;
+
+	if(items)
+		for(var i in items)
+		{
+			if(i[0] == ":") //local resource
+				continue;
+			var item = items[i];
+			if(!item.name)
+				item.name = i;
+			this.addItemToBrowser( item );
+		}
+}
+
 ResourcesPanelWidget.prototype.refresh = function()
 {
 	//TODO
 }
-

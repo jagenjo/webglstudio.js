@@ -5,16 +5,16 @@ var PrefabMaker = {
 		LiteGUI.menubar.add("Node/Create Prefab", { callback: function() { PrefabMaker.showCreatePrefabDialog(); }} );
 	},
 
-	showCreatePrefabDialog: function()
+	showCreatePrefabDialog: function( node )
 	{
-		var node = SelectionModule.getSelectedNode();
+		node = node || SelectionModule.getSelectedNode();
 		if(!node)
 		{
 			LiteGUI.alert("No node selected");
 			return;
 		}
 
-		var dialog = new LiteGUI.Dialog("dialog_create_prefab", {title:"Create Prefab", close: true, width: 360, height: 270, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog("dialog_create_prefab", {title:"Create Prefab", close: true, width: 360, height: 270, scroll: false, draggable: true, resizable: true});
 		dialog.show('fade');
 
 		var widgets = new LiteGUI.Inspector("prefab_widgets",{ });
@@ -41,7 +41,7 @@ var PrefabMaker = {
 		for(var i in resources)
 			res_names.push(i);
 
-		var old_name = "";
+		var old_name = node.name;
 		if(node.prefab)
 			old_name = LS.ResourcesManager.getBasename(node.prefab);
 		var filename = widgets.addString("Filename", old_name );
@@ -58,16 +58,18 @@ var PrefabMaker = {
 			dialog.close();
 		}});
 
-		dialog.content.appendChild(widgets.root);
+		dialog.add(widgets);
+		dialog.adjustSize(5);
 	},
 
 	createPrefab: function(filename, data, resources)
 	{
-		if(!filename) return;
+		if(!filename)
+			return;
 		filename = filename.replace(/ /gi,"_");
 
 		//create
-		var prefab = Prefab.createPrefab(filename, data, resources);
+		var prefab = LS.Prefab.createPrefab(filename, data, resources);
 
 		//register in the system
 		LS.ResourcesManager.registerResource( prefab.filename, prefab ); 

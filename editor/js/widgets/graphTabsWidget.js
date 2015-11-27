@@ -1,10 +1,10 @@
-function CodingTabsWidget()
+function GraphTabsWidget()
 {
 	this.root = null;
 	this.init();
 }
 
-CodingTabsWidget.prototype.init = function()
+GraphTabsWidget.prototype.init = function()
 {
 	//create area
 	this.root = LiteGUI.createElement("div",null,null,{ width:"100%", height:"100%" });
@@ -15,26 +15,24 @@ CodingTabsWidget.prototype.init = function()
 	this.plus_tab = tabs.addTab( "plus_tab", { title: "+", tab_width: 20, button: true, callback: this.onPlusTab.bind(this), skip_callbacks: true });
 	tabs.root.style.marginTop = "4px";
 	tabs.root.style.backgroundColor = "#111";
-	//tabs.addTab("+", { });
 
 	this.bindEvents();
 }
 
-CodingTabsWidget.createDialog = function( parent )
+GraphTabsWidget.createDialog = function( parent )
 {
-	var dialog = new LiteGUI.Dialog( null, { title:"Coding", fullcontent: true, closable: true, detachable: true, draggable: true, minimize: true, resizable: true, parent: parent, width: 500, height: 500 });
-	var coding_widget = new CodingTabsWidget();
-	window.CODING_DIALOG = dialog; //debug
-	dialog.add( coding_widget );
-	dialog.coding_area = coding_widget;
+	var dialog = new LiteGUI.Dialog( null, { title:"Graph", fullcontent: true, closable: true, detachable: true, draggable: true, minimize: true, resizable: true, parent: parent, width: 500, height: 500 });
+	var graph_widget = new GraphTabsWidget();
+	dialog.add( graph_widget );
+	dialog.graph_area = graph_widget;
 	dialog.on_close = function()
 	{
-		coding_widget.unbindEvents();		
+		graph_widget.unbindEvents();		
 	}
 	return dialog;
 }
 
-CodingTabsWidget.prototype.bindEvents = function()
+GraphTabsWidget.prototype.bindEvents = function()
 {
 	/*
 	LEvent.bind( LS.GlobalScene, "beforeReload", this.onBeforeReload, this );
@@ -49,7 +47,7 @@ CodingTabsWidget.prototype.bindEvents = function()
 	LEvent.bind( LS, "code_error", this.onGlobalError, this );
 }
 
-CodingTabsWidget.prototype.unbindEvents = function()
+GraphTabsWidget.prototype.unbindEvents = function()
 {
 	LEvent.unbindAll( LS.GlobalScene, this );
 	LEvent.unbindAll( LS.Components.Script, this );
@@ -57,7 +55,7 @@ CodingTabsWidget.prototype.unbindEvents = function()
 }
 
 //switch coding tab
-CodingTabsWidget.prototype.editInstanceCode = function( instance, options )
+GraphTabsWidget.prototype.editInstanceCode = function( instance, options )
 {
 	options = options || {};
 	var lang = options.lang || "javascript";
@@ -94,15 +92,15 @@ CodingTabsWidget.prototype.editInstanceCode = function( instance, options )
 	var title = options.title || instance.name || id;
 
 	//check if the tab already exists
-	var tab = this.tabs.getTab( id );
+	var tab = this.files_tabs.getTab( id );
 	if(tab)
 	{
-		this.tabs.selectTab( id ); //this calls onTabClicked
+		this.files_tabs.selectTab( id ); //this calls onTabClicked
 	}
 	else //doesnt exist? then create a tab for this code
 	{
-		var num = this.tabs.getNumOfTabs();
-		tab = this.tabs.addTab( id, { title: title, selected: true, closable: true, size: "full", callback: onTabClicked, onclose: onTabClosed, skip_callbacks: true, index: num - 1});
+		var num = this.files_tabs.getNumOfTabs();
+		tab = this.files_tabs.addTab( id, { title: title, selected: true, closable: true, size: "full", callback: onTabClicked, onclose: onTabClosed, skip_callbacks: true, index: num - 1});
 		tab.code_info = { id: id, instance: instance, options: options };
 		tab.pad = this.createCodingPad( tab.content );
 		tab.pad.editInstanceCode( instance, options ); 
@@ -123,7 +121,7 @@ CodingTabsWidget.prototype.editInstanceCode = function( instance, options )
 	}
 }
 
-CodingTabsWidget.prototype.closeInstanceTab = function( instance, options )
+GraphTabsWidget.prototype.closeInstanceTab = function( instance, options )
 {
 	options = options || {};
 
@@ -131,12 +129,12 @@ CodingTabsWidget.prototype.closeInstanceTab = function( instance, options )
 	var title = options.title || id;
 
 	//check if the tab already exists
-	var tab = this.tabs.getTab( id );
+	var tab = this.files_tabs.getTab( id );
 	if(!tab)
 		return false;
 
 	var info = tab.code_info;
-	this.tabs.removeTab( id );
+	this.files_tabs.removeTab( id );
 
 	//open next tab or clear the codemirror editor content
 	if(this.current_code_info == info )
@@ -148,7 +146,7 @@ CodingTabsWidget.prototype.closeInstanceTab = function( instance, options )
 	return true;
 }
 
-CodingTabsWidget.prototype.getCurrentCodeInfo = function()
+GraphTabsWidget.prototype.getCurrentCodeInfo = function()
 {
 	return this.current_code_info;
 }
@@ -160,9 +158,9 @@ CodingTabsWidget.prototype.onBeforeReload = function(e)
 	var state = { tabs: [] };
 
 	//for every tab open
-	for(var i in this.tabs.tabs)
+	for(var i in this.files_tabs.tabs)
 	{
-		var tab = this.tabs.tabs[i];
+		var tab = this.files_tabs.tabs[i];
 		if(!tab.id)
 			continue;
 		//get the uid of the component and the cursor info
@@ -179,7 +177,7 @@ CodingTabsWidget.prototype.onReload = function(e)
 		return;
 
 	var state = this._saved_state;
-	this.tabs.removeAllTabs();
+	this.files_tabs.removeAllTabs();
 
 	for(var i in state.tabs)
 	{
@@ -194,7 +192,7 @@ CodingTabsWidget.prototype.onReload = function(e)
 }
 */
 
-CodingTabsWidget.prototype.onNodeRemoved = function(evt, node)
+GraphTabsWidget.prototype.onNodeRemoved = function(evt, node)
 {
 	//check if we are using one script in a tab
 	if(!node)
@@ -209,7 +207,7 @@ CodingTabsWidget.prototype.onNodeRemoved = function(evt, node)
 	}
 }
 
-CodingTabsWidget.prototype.onScriptRenamed = function( e, instance )
+GraphTabsWidget.prototype.onScriptRenamed = function( e, instance )
 {
 	if(!instance)
 		return;
@@ -217,7 +215,7 @@ CodingTabsWidget.prototype.onScriptRenamed = function( e, instance )
 	var id = instance.uid;
 	if(!id)
 		return;
-	var tab = this.tabs.getTab( id );
+	var tab = this.files_tabs.getTab( id );
 	if(!tab)
 		return;
 	var title = tab.tab.querySelector(".tabtitle");
@@ -225,7 +223,7 @@ CodingTabsWidget.prototype.onScriptRenamed = function( e, instance )
 		title.innerHTML = instance.name;
 }
 
-CodingTabsWidget.prototype.onCodeChanged = function( e, instance )
+GraphTabsWidget.prototype.onCodeChanged = function( e, instance )
 {
 	//check to see if we have that instance
 	if(!instance)
@@ -233,7 +231,7 @@ CodingTabsWidget.prototype.onCodeChanged = function( e, instance )
 	var id = instance.uid;
 	if(!id)
 		return;
-	var tab = this.tabs.getTab( id );
+	var tab = this.files_tabs.getTab( id );
 	if(!tab)
 		return;
 	var current = this.current_code_info;
@@ -244,18 +242,18 @@ CodingTabsWidget.prototype.onCodeChanged = function( e, instance )
 	}
 }
 
-CodingTabsWidget.prototype.onComponentRemoved = function(evt, compo )
+GraphTabsWidget.prototype.onComponentRemoved = function(evt, compo )
 {
 	this.closeInstanceTab( compo );
 }
 
-CodingTabsWidget.prototype.onPreparePlay = function()
+GraphTabsWidget.prototype.onPreparePlay = function()
 {
 	//test that all codes are valid
 
 }
 
-CodingTabsWidget.prototype.onPlusTab = function(tab_id, e)
+GraphTabsWidget.prototype.onPlusTab = function(tab_id, e)
 {
 	var that = this;
 
@@ -289,7 +287,7 @@ CodingTabsWidget.prototype.onPlusTab = function(tab_id, e)
 	}});
 }
 
-CodingTabsWidget.prototype.onNewScript = function( node )
+GraphTabsWidget.prototype.onNewScript = function( node )
 {
 	var component = new LS.Components.Script();
 	node = node || SelectionModule.getSelectedNode();
@@ -301,7 +299,7 @@ CodingTabsWidget.prototype.onNewScript = function( node )
 }
 
 //search for all the components that have a getCode function and inserts them
-CodingTabsWidget.prototype.onOpenAllScripts =function()
+GraphTabsWidget.prototype.onOpenAllScripts =function()
 {
 	var nodes = LS.GlobalScene.getNodes();
 	for(var i in nodes)
@@ -313,7 +311,7 @@ CodingTabsWidget.prototype.onOpenAllScripts =function()
 			var component = comps[j];
 			if(!component.getCode)
 				continue;
-			if(this.tabs.getTab( component.uid ))
+			if(this.files_tabs.getTab( component.uid ))
 				continue;
 
 			var code = component.getCode();
@@ -322,7 +320,7 @@ CodingTabsWidget.prototype.onOpenAllScripts =function()
 	}
 }
 
-CodingTabsWidget.prototype.onScriptError = function(e, instance_err)
+GraphTabsWidget.prototype.onScriptError = function(e, instance_err)
 {
 	console.trace("Script crashed");
 	var code_info = this.getCurrentCodeInfo();
@@ -331,7 +329,7 @@ CodingTabsWidget.prototype.onScriptError = function(e, instance_err)
 	this.showError(instance_err[1]);
 }
 
-CodingTabsWidget.prototype.onGlobalError = function(e, err)
+GraphTabsWidget.prototype.onGlobalError = function(e, err)
 {
 	console.error("Global error");
 	console.trace();
@@ -344,7 +342,7 @@ CodingTabsWidget.prototype.onGlobalError = function(e, err)
 	this.showError(err);
 }
 
-CodingTabsWidget.prototype.detachWindow = function()
+GraphTabsWidget.prototype.detachWindow = function()
 {
 	var that = this;
 	var main_window = window;
@@ -362,15 +360,15 @@ CodingTabsWidget.prototype.detachWindow = function()
 	}
 }
 
-CodingTabsWidget.prototype.createCodingWindow = function()
+GraphTabsWidget.prototype.createCodingWindow = function()
 {
-	var extra_window = LiteGUI.newWindow("Code",800,600);
+	var extra_window = LiteGUI.newWindow("Graph",800,600);
 	this.windows.push( extra_window );
 }
 
 
 //creates the area containing the buttons and the codemirror
-CodingTabsWidget.prototype.createCodingPad = function( container )
+GraphTabsWidget.prototype.createCodingPad = function( container )
 {
 	container = container || this.root;
 

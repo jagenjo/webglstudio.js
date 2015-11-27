@@ -88,7 +88,7 @@ var LoginModule = {
 		widgets.clear();
 
 		widgets.addString("Username", "", {});
-		widgets.addString("Password", "", { password:true });
+		widgets.addString("Password", "", { password:true, callback_enter: inner_login });
 		widgets.addButtons(null, ["Login","Guest"], { callback: function(v){ 
 			if(v == "Login")
 				inner_login();

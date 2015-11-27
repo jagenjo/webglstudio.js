@@ -14,7 +14,7 @@ var RenderModule = {
 	render_mode: "full",
 	shaders_url: "../litescene/data/shaders.xml",
 
-	render_options: new RenderOptions(),
+	render_options: new LS.RenderOptions(),
 	cameras: [],
 	selected_camera: null, //last viewport clicked by the mouse
 	under_camera: null, //camera below the mouse
@@ -107,7 +107,7 @@ var RenderModule = {
 		this.setViewportLayout(1);
 
 		//LS.GlobalScene.init();
-		LEvent.bind( LS.GlobalScene, "change", function() { Scene.refresh(); }); //refresh image when something changes
+		LEvent.bind( LS.GlobalScene, "change", function() { LS.GlobalScene.refresh(); }); //refresh image when something changes
 		//this.viewport3d.addModule(this); 
 
 		//DEPRECATED: Move to Widget or Helper
@@ -134,13 +134,14 @@ var RenderModule = {
 
 		//init GUI
 		LiteGUI.menubar.add("View/Autorender", { type: "checkbox", instance:RenderModule, property:"auto_render" });
-		if(window.cameraTool)
-			LiteGUI.menubar.add("View/Smooth Camera", { type: "checkbox", instance:cameraTool, property:"smooth_camera" });
 		LiteGUI.menubar.add("View/Fullscreen", { callback: function() { RenderModule.goFullscreen(); }});
 		LiteGUI.menubar.separator("View");
-		LiteGUI.menubar.add("View/Orthographic", { callback: function() { RenderModule.changeCameraType( LS.Camera.ORTHOGRAPHIC ); }});
-		LiteGUI.menubar.add("View/Perspective", { callback: function() { RenderModule.changeCameraType( LS.Camera.PERSPECTIVE ); }});
-		LiteGUI.menubar.add("View/Camera properties", { callback: function() { EditorModule.inspectObjects( RenderModule.cameras ); }});
+		LiteGUI.menubar.add("View/Camera/Orthographic", { callback: function() { RenderModule.changeCameraType( LS.Camera.ORTHOGRAPHIC ); }});
+		LiteGUI.menubar.add("View/Camera/Perspective", { callback: function() { RenderModule.changeCameraType( LS.Camera.PERSPECTIVE ); }});
+		LiteGUI.menubar.add("View/Camera/Properties", { callback: function() { EditorModule.inspect( RenderModule.cameras ); }});
+		LiteGUI.menubar.add("View/Camera/Smooth", { type: "checkbox", instance: cameraTool, property:"smooth_camera" });
+		LiteGUI.menubar.add("View/Camera/Lock Angle", { type: "checkbox", instance: cameraTool.settings, property:"lock_angle" });
+
 
 		LiteGUI.menubar.add("View/Layout/One", { callback: function(){ RenderModule.setViewportLayout(1); } });
 		LiteGUI.menubar.add("View/Layout/Two Vertical", { callback: function(){ RenderModule.setViewportLayout(2); } });
@@ -596,8 +597,28 @@ var RenderModule = {
 	registerCommands: function()
 	{
 		this.commands["layout"] = function(cmd, tokens) { 
-			EditorModule.inspectObjects( RenderModule.cameras );
+			EditorModule.inspect( RenderModule.cameras );
 		};
+	},
+
+	getNodeAtCanvasPosition: function(x,y)
+	{
+		var instance_info = LS.Picking.getInstanceAtCanvasPosition( x, y, ToolUtils.getCamera() );
+		if(!instance_info)
+			return null;
+		if( instance_info.constructor == LS.SceneNode)
+			return instance_info;
+		return instance_info.node;
+	},
+
+	testGridCollision: function(x,y)
+	{
+		var camera = ToolUtils.getCamera();
+		var ray = camera.getRayInPixel( x, y );
+		var position = vec3.create();
+		if( geo.testRayPlane( ray.start, ray.direction, vec3.create(), vec3.fromValues(0,1,0), position ) )
+			return position;
+		return null;
 	}
 };
 

@@ -78,3 +78,7 @@ span.CodeMirror-matchhighlight { background: rgba(50,50,80,0.5); border-radius: 
 .CodeMirror pre {
 	/*z-index: auto !important;*/
 }
+
+.CodeMirror-activeline-background {
+	background-color: inherit;
+}

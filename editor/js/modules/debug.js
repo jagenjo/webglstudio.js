@@ -46,7 +46,7 @@ var DebugModule = {
 		//enable WebGL Canvas2D renderer
 		enableWebGLCanvas( RenderModule.viewport3d.canvas );
 
-		this.camera = new Camera();
+		this.camera = new LS.Camera();
 		this.camera.lookAt([0,0,0],[0,0,-1],[0,1,0]);
 
 		this._cubemap_shader = new GL.Shader('\
@@ -102,9 +102,9 @@ var DebugModule = {
 		this.camera.setOrthographic(0, gl.canvas.width, gl.canvas.height, 0, -1, 1 );
 		this.camera.updateMatrices();
 
-		Draw.push();
-		Draw.setCamera( this.camera );
-		Draw.setColor([1,1,1,1]);
+		LS.Draw.push();
+		LS.Draw.setCamera( this.camera );
+		LS.Draw.setColor([1,1,1,1]);
 		gl.disable(gl.DEPTH_TEST);
 		gl.disable(gl.CULL_FACE);
 
@@ -120,7 +120,7 @@ var DebugModule = {
 
 		gl.restore();
 		gl.finish2D(); //WebGLtoCanvas2D
-		Draw.pop();
+		LS.Draw.pop();
 		return true;
 	},
 
@@ -144,13 +144,13 @@ var DebugModule = {
 
 			if(tex.texture_type == gl.TEXTURE_2D)
 			{
-				//Draw.renderPlane([posx + size*0.6, posy + size*0.6, 0], [size*0.5,-size*0.5], tex );
+				//LS.Draw.renderPlane([posx + size*0.6, posy + size*0.6, 0], [size*0.5,-size*0.5], tex );
 				gl.drawImage(tex, posx, posy, w, h );
 			}
 			else
 			{
 				this._cubemap_shader.uniforms({u_rotation: getTime() * 0.001 });
-				Draw.renderPlane([ gl._matrix[6] + (posx + w*0.5) * gl._matrix[0], gl._matrix[7] + (posy + h*0.5) * gl._matrix[4], 0], [ w*0.5 * gl._matrix[0], -h*0.5 * gl._matrix[4] ], tex, this._cubemap_shader );
+				LS.Draw.renderPlane([ gl._matrix[6] + (posx + w*0.5) * gl._matrix[0], gl._matrix[7] + (posy + h*0.5) * gl._matrix[4], 0], [ w*0.5 * gl._matrix[0], -h*0.5 * gl._matrix[4] ], tex, this._cubemap_shader );
 			}
 
 			var filename = LS.RM.getFilename(i).substr(0,24);
@@ -218,29 +218,29 @@ var DebugModule = {
 				else
 					mesh_camera.lookAt([ radius * 0.5, radius * 2, 0 ],[0,0,0],[0,0,1]);
 
-				Draw.pushCamera();
-				Draw.setCamera( mesh_camera );
-				Draw.setMatrix( matrix );
-				Draw.translate( -center[0], -center[1], -center[2]);
+				LS.Draw.pushCamera();
+				LS.Draw.setCamera( mesh_camera );
+				LS.Draw.setMatrix( matrix );
+				LS.Draw.translate( -center[0], -center[1], -center[2]);
 
 				gl.viewport( startx, starty, sizex, sizey );
 
 				gl.disable( gl.BLEND );
 				gl.enable( gl.DEPTH_TEST );
-				Draw.renderMesh( mesh, gl.TRIANGLES, Draw.shader_phong );
+				LS.Draw.renderMesh( mesh, gl.TRIANGLES, LS.Draw.shader_phong );
 				gl.enable( gl.BLEND );
 
 				if(1) //wireframe
 				{
 					if(!mesh.indexBuffers["wireframe"])
 						mesh.computeWireframe();
-					Draw.renderMesh( mesh, gl.LINES, null, "wireframe" );
+					LS.Draw.renderMesh( mesh, gl.LINES, null, "wireframe" );
 				}
 
 				gl.disable( gl.DEPTH_TEST );
 
 				gl.setViewport( old_viewport );
-				Draw.popCamera();
+				LS.Draw.popCamera();
 
 				var filename = LS.RM.getFilename(i).substr(0,24);
 				var text = filename;

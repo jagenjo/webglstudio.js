@@ -20,6 +20,10 @@ var SceneStorageModule = {
 		menubar.add("Project/Publish", { callback: this.onPublish.bind(this) });
 
 		menubar.add("Scene/Check JSON", { callback: function() { EditorModule.checkJSON( LS.GlobalScene ); } });
+
+		//feature in development...
+		menubar.add("Scene/Create", { callback: function() { SceneStorageModule.showCreateSceneDialog(); } });
+		menubar.add("Scene/Select active", { callback: function() { SceneStorageModule.showSelectSceneDialog(); } });
 		
 		//LiteGUI.mainmenu.separator();
 
@@ -40,6 +44,12 @@ var SceneStorageModule = {
 
 	showLoadSceneFromServerDialog: function()
 	{
+		if(!LoginModule.session)
+		{
+			LiteGUI.alert("You must be logged in to load scenes");
+			return;
+		}
+
 		var selected = "";
 		var dialog = LiteGUI.Dialog.getDialog("dialog_load_scene");
 		if(dialog)
@@ -270,8 +280,9 @@ var SceneStorageModule = {
 		dialog.show('fade');
 
 		var name = "";
-		if(Scene.extra && Scene.extra.name)
-			name = Scene.extra.name;
+		var scene = LS.GlobalScene;
+		if(scene.extra && scene.extra.name)
+			name = scene.extra.name;
 
 		var widgets = new LiteGUI.Inspector();
 		widgets.addString("Name",name);
@@ -280,7 +291,7 @@ var SceneStorageModule = {
 		widgets.addSeparator();
 		widgets.addButton(null,"Save", { className: "big", callback: inner_save });
 
-		$(dialog.content).append(widgets.root);
+		dialog.add( widgets );
 
 		var preview_info = null;
 		inner_preview();
@@ -290,8 +301,8 @@ var SceneStorageModule = {
 			var name = widgets.getValue("Name");
 			if(!name) return;
 
-			Scene.extra.name = name;
-			SceneStorageModule.saveLocalScene(name, {}, Scene, preview_info);
+			scene.extra.name = name;
+			SceneStorageModule.saveLocalScene(name, {}, scene, preview_info);
 			LiteGUI.alert("Scene saved locally");
 			dialog.close();
 		}
@@ -308,7 +319,7 @@ var SceneStorageModule = {
 
 	showDownloadSceneDialog: function()
 	{
-		var data = JSON.stringify( Scene.serialize() );
+		var data = JSON.stringify( LS.GlobalScene.serialize() );
 		var dataType = "string";
 		var filename = "scene.json";
 
@@ -332,9 +343,86 @@ var SceneStorageModule = {
 		dialog.add(link);
 	},
 
+	showCreateSceneDialog: function()
+	{
+		var dialog = new LiteGUI.Dialog("dialog_create_scene", {title:"New Scene", close: true, minimize: true, width: 200, scroll: false, draggable: true});
+
+		var widgets = new LiteGUI.Inspector();
+
+		var name = "";
+
+		widgets.addString("Title",name, function(v){ name = v; });
+
+		widgets.addButton(null,"Create", { className:"big", callback: function() { 
+
+			var new_scene = new LS.SceneTree();
+			new_scene.extra.title = name;
+			CORE.addScene( new_scene );
+
+			dialog.close();
+			EditorModule.inspect( null );
+			RenderModule.requestFrame();
+		}});
+
+		dialog.content.appendChild(widgets.root);
+
+		function inner_selected(value)
+		{
+			selected_scene = value;
+		}
+
+		dialog.add(widgets);
+		dialog.show();
+		dialog.adjustSize(10);
+	},
+
+	showSelectSceneDialog: function()
+	{
+		var dialog = new LiteGUI.Dialog("dialog_select_scene", {title:"Select Scene", close: true, minimize: true, width: 200, scroll: false, draggable: true});
+
+		var widgets = new LiteGUI.Inspector();
+
+		var scenes = [];
+		for(var i in CORE.Scenes)
+		{
+			var scene = CORE.Scenes[i];
+			scenes.push( { name: scene.extra.title || "Unnamed_" + i, scene: scene });
+		}
+
+		list_widget = widgets.addList(null, scenes, { height: 140, callback: inner_selected });
+
+		widgets.addButton(null,"Set active", { className:"big", callback: function() { 
+			if(!selected_scene)
+			{
+				dialog.close();
+				return;
+			}
+
+			if( selected_scene.scene != LS.GlobalScene )
+			{
+				CORE.selectScene( selected_scene.scene );
+			}
+
+			dialog.close();
+			EditorModule.inspect( null );
+			RenderModule.requestFrame();
+		}});
+
+		dialog.content.appendChild(widgets.root);
+
+		function inner_selected(value)
+		{
+			selected_scene = value;
+		}
+
+		dialog.add(widgets);
+		dialog.show();
+		dialog.adjustSize(10);
+	},
+
 	testScene: function()
 	{
-		SceneStorageModule.saveLocalScene("_test", {}, Scene, SceneStorageModule.takeScreenshot(256,256) );
+		SceneStorageModule.saveLocalScene("_test", {}, LS.GlobalScene, SceneStorageModule.takeScreenshot(256,256) );
 		var name = SceneStorageModule.localscene_prefix + "_test";
 		window.open("player.html?session=" + name,'_blank');
 	},
@@ -381,10 +469,11 @@ var SceneStorageModule = {
 
 	loadLocalScene: function(name)
 	{
-		Renderer.reset();
-		Scene.clear();
+		LS.Renderer.reset();
+		LS.GlobalScene.clear();
 
-		if(!this.local_scenes) return;
+		if(!this.local_scenes)
+			return;
 
 		var scene_info = this.local_scenes[name];
 		if(!scene_info)
@@ -414,12 +503,13 @@ var SceneStorageModule = {
 		}
 		else if( scene_info.url )
 		{
-			Scene.load(scene_info.url, inner);
+			LS.GlobalScene.load(scene_info.url, inner);
 			return;
 		}
 
-		if(!data) return;
-		Scene.configure(data);
+		if(!data)
+			return;
+		LS.GlobalScene.configure(data);
 		inner(data);
 
 		function inner(data)
@@ -487,7 +577,7 @@ var SceneStorageModule = {
 
 	takeScreenshot: function(width, height)
 	{
-		Renderer.render( LS.GlobalScene, RenderModule.camera, RenderModule.render_options );
+		LS.Renderer.render( LS.GlobalScene, RenderModule.camera, RenderModule.render_options );
 
 		//slow way of reading the pixels, but it is safe even with preserveDrawingBuffer being false
 		var frame = document.createElement("canvas");

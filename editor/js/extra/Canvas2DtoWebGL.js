@@ -1054,6 +1054,8 @@ function enableWebGLCanvas( canvas, options )
 			{
 				this._font_mode = t[0];
 				this._font_size = parseFloat(t[1]);
+				if( Number.isNaN( this._font_size ) )
+					this._font_size = 14;
 				if(this._font_size < 10) 
 					this._font_size = 10;
 				this._font_family = t[2];
@@ -1062,6 +1064,8 @@ function enableWebGLCanvas( canvas, options )
 			{
 				this._font_mode = "normal";
 				this._font_size = parseFloat(t[0]);
+				if( Number.isNaN( this._font_size ) )
+					this._font_size = 14;
 				if(this._font_size < 10) 
 					this._font_size = 10;
 				this._font_family = t[1];

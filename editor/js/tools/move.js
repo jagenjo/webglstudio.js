@@ -49,45 +49,45 @@ var moveTool = {
 
 
 		gl.disable(gl.DEPTH_TEST);
-		Draw.setColor([1,1,1]);
+		LS.Draw.setColor([1,1,1]);
 
-		Draw.push();
-			Draw.setMatrix(gizmo_model);
+		LS.Draw.push();
+			LS.Draw.setMatrix(gizmo_model);
 
 			mat4.multiplyVec3(moveTool._x_axis_end, gizmo_model, [scale,0,0] );
 			mat4.multiplyVec3(moveTool._y_axis_end, gizmo_model, [0,scale,0] );
 			mat4.multiplyVec3(moveTool._z_axis_end, gizmo_model, [0,0,scale] );
 
-			Draw.renderLines( [[0,0,0],[scale,0,0],[0,0,0],[0,scale,0],[0,0,0],[0,0,scale]],
+			LS.Draw.renderLines( [[0,0,0],[scale,0,0],[0,0,0],[0,scale,0],[0,0,0],[0,0,scale]],
 				[colorx,colorx,colory,colory,colorz,colorz]);
 			
-			Draw.setColor(colorx);
-			Draw.push();
-			Draw.translate(scale,0,0);
-			Draw.rotate(-90,[0,0,1]);
+			LS.Draw.setColor(colorx);
+			LS.Draw.push();
+			LS.Draw.translate(scale,0,0);
+			LS.Draw.rotate(-90,[0,0,1]);
 			if(moveTool._on_top_of == "x")
-				Draw.scale(2,2,2);
-			Draw.renderCone(5*scale*0.005,15*scale*0.005,8);
-			Draw.pop();
+				LS.Draw.scale(2,2,2);
+			LS.Draw.renderCone(5*scale*0.005,15*scale*0.005,8);
+			LS.Draw.pop();
 			
-			Draw.setColor(colory);
-			Draw.push();
-			Draw.translate(0,scale,0);
+			LS.Draw.setColor(colory);
+			LS.Draw.push();
+			LS.Draw.translate(0,scale,0);
 			if(moveTool._on_top_of == "y")
-				Draw.scale(2,2,2);
-			Draw.renderCone(5*scale*0.005,15*scale*0.005,8);
-			Draw.pop();
+				LS.Draw.scale(2,2,2);
+			LS.Draw.renderCone(5*scale*0.005,15*scale*0.005,8);
+			LS.Draw.pop();
 
-			Draw.setColor(colorz);
-			Draw.push();
-			Draw.translate(0,0,scale);
-			Draw.rotate(90,[1,0,0]);
+			LS.Draw.setColor(colorz);
+			LS.Draw.push();
+			LS.Draw.translate(0,0,scale);
+			LS.Draw.rotate(90,[1,0,0]);
 			if(moveTool._on_top_of == "z")
-				Draw.scale(2,2,2);
-			Draw.renderCone(5*scale*0.005,15*scale*0.005,8);
-			Draw.pop();
+				LS.Draw.scale(2,2,2);
+			LS.Draw.renderCone(5*scale*0.005,15*scale*0.005,8);
+			LS.Draw.pop();
 
-		Draw.pop();
+		LS.Draw.pop();
 
 		gl.enable(gl.DEPTH_TEST);
 	},
@@ -103,6 +103,12 @@ var moveTool = {
 		var selection = SelectionModule.getSelection();
 		if(!selection)
 			return;
+
+		if( e.metaKey || e.altKey )
+		{
+			this._on_top_of = null;
+			return;
+		}
 
 		var node = selection.node;
 
@@ -133,7 +139,6 @@ var moveTool = {
 	},
 
 	mouseup: function(e) {
-		var action = this._action;
 		this._action = false;
 
 		if(!this.enabled) 
@@ -163,7 +168,7 @@ var moveTool = {
 			return;
 
 		var center = vec3.create();
-		mat4.multiplyVec3(center,gizmo_model,center);
+		mat4.multiplyVec3( center,gizmo_model,center );
 
 		var ray = camera.getRayInPixel( e.mousex, gl.canvas.height - e.mousey );
 		ray.end = vec3.add( vec3.create(), ray.start, vec3.scale(vec3.create(), ray.direction, 10000) );
@@ -225,7 +230,7 @@ var moveTool = {
 
 			return true;
 		}
-		else
+		else //not dragging
 		{
 			var result = vec3.create();
 
@@ -259,7 +264,7 @@ var moveTool = {
 			else
 				moveTool._on_top_of = null;
 
-			Scene.refresh();
+			LS.GlobalScene.refresh();
 		}
 	},
 
@@ -286,7 +291,7 @@ var moveTool = {
 
 		vec3.add( this._click_world_position, this._click_world_position, delta );
 
-		Scene.refresh();
+		LS.GlobalScene.refresh();
 		return true;		
 	}
 };

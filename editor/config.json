@@ -49,6 +49,7 @@
 	 		"js/widgets/sceneTree.js",
 	 		"js/widgets/timeline.js",
 	 		"js/widgets/resourcesPanel.js",
+	 		"js/widgets/inspectorWidget.js",
 	 		"js/widgets/codingPad.js",
 	 		"js/widgets/codingTabsWidget.js"
 		]

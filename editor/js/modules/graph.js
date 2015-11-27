@@ -83,6 +83,7 @@ var GraphModule = {
 		this.graphcanvas = new LGraphCanvas(this.canvas, null );
 		this.graphcanvas.background_image = this.litegraph_path + "demo/imgs/grid.png";
 		this.graphcanvas.onNodeSelected = function(node) { GraphModule.onNodeSelected(node); };
+		this.graphcanvas.onDropItem = function(event) { GraphModule.onDropItem( event ); };
 
 		$(LiteGUI).bind("resized", this.onResize );
 	},
@@ -195,15 +196,54 @@ var GraphModule = {
 		return true;
 	},
 
-	onNodeSelected: function(node)
+	onNodeSelected: function( node )
 	{
 		this.selected_node = node;
 		this.updateSidebar();
 	},
 
+	onDropItem: function( e )
+	{
+		e.preventDefault();
+		e.stopPropagation();
+
+		if(!this.graph)
+			return;
+
+		//scene node
+		var item_uid = e.dataTransfer.getData("uid");
+		var item_type = e.dataTransfer.getData("type");
+		var item_class = e.dataTransfer.getData("class");
+		var item_node_uid = e.dataTransfer.getData("node_uid");
+
+		if(item_type == "SceneNode")
+		{
+			var graphnode = LiteGraph.createNode("scene/node");
+			graphnode.properties.node_id = item_uid;
+			graphnode.pos[0] = e.canvasX;
+			graphnode.pos[1] = e.canvasY;
+			this.graph.add( graphnode );
+			graphnode.onExecute();
+			return;
+		}
+
+		if(item_type == "Component")
+		{
+			var graphnode = LiteGraph.createNode( item_class == "Transform" ? "scene/transform" : "scene/component");
+			graphnode.properties.node = item_node_uid;
+			graphnode.properties.component = item_uid;
+			graphnode.pos[0] = e.canvasX;
+			graphnode.pos[1] = e.canvasY;
+			this.graph.add( graphnode );
+			graphnode.onExecute();
+		}
+
+		return false;
+	},
+
 	onClear: function()
 	{
-		console.log("graph cleared");
+		//console.log("graph cleared");
 
 		//close all tabs
 		this.graph_tabs.clear();
@@ -285,12 +325,13 @@ var GraphModule = {
 
 	updateSidebar: function()
 	{
-		var inspector = InterfaceModule.inspector;
-
+		var inspector = InterfaceModule.inspector_widget.inspector;
 		inspector.instance = this.selected_node;
 		inspector.clear();
 
-		var global_graph = Scene.root.getComponent( GraphComponent );
+		InterfaceModule.inspector_widget.setTitle("Graph");
+
+		var global_graph = LS.GlobalScene.root.getComponent( LS.Components.GraphComponent );
 		if(global_graph)
 			inspector.addButton(null,"Edit global graph", {callback: this.onEditGlobalGraph.bind(this) });
 		else
@@ -303,7 +344,7 @@ var GraphModule = {
 					GraphModule.graph.runStep(1);
 					GraphModule.graphcanvas.setDirty(true,true);
 					if(GraphModule.selected_node)
-						GraphModule.inspectNode( GraphModule.selected_node );
+						GraphModule.updateSidebar();
 				}
 				else //"Render Frame"
 				{
@@ -314,22 +355,22 @@ var GraphModule = {
 		inspector.addButton(null,"Open in Window", {callback: this.onOpenInWindow.bind(this) });
 
 		if(this.selected_node)
-			this.inspectNode( inspector, this.selected_node );
+			this.showNodeInInspector( this.selected_node, inspector );
 	},
 
 	//inspect graph node properties
-	inspectNode: function(inspector, node)
+	showNodeInInspector: function( graphnode, inspector )
 	{
-		if(!node)
+		if(!graphnode)
 			return;
 
 		inspector.addSection("Node");
-		inspector.addString("Title", node.title, { disabled: node.ignore_rename, callback: function(v) { node.title = v; }});
+		inspector.addString("Title", graphnode.title, { disabled: graphnode.ignore_rename, callback: function(v) { graphnode.title = v; }});
 		inspector.addSeparator();
 
-		var widgets_info = node.constructor.widgets_info || node.widgets_info;
+		var widgets_info = graphnode.constructor.widgets_info || graphnode.widgets_info;
 
-		for(var i in node.properties)
+		for(var i in graphnode.properties)
 		{
 			//do we have info?
 			if(widgets_info && widgets_info[i])
@@ -338,47 +379,47 @@ var GraphModule = {
 				options = LS.cloneObject( options );
 				options.field_name = i;
 				options.callback = inner_assign;
-				inspector.add(widgets_info[i].widget || widgets_info[i].type, i, node.properties[i], options);
+				inspector.add(widgets_info[i].widget || widgets_info[i].type, i, graphnode.properties[i], options);
 			}
-			else if(node.constructor["@" + i])
+			else if(graphnode.constructor["@" + i])
 			{
-				var options = node.constructor["@" + i] || {type:"number"};
+				var options = graphnode.constructor["@" + i] || {type:"number"};
 				options = LS.cloneObject( options );
 				options.field_name = i;
 				options.callback = inner_assign;
-				inspector.add( options.widget || options.type, options.title || i, node.properties[i], options );
+				inspector.add( options.widget || options.type, options.title || i, graphnode.properties[i], options );
 			}
-			else if(node.properties[i] !== null) //can we guess it from the current value?
+			else if(graphnode.properties[i] !== null) //can we guess it from the current value?
 			{
-				if(typeof(node.properties[i]) == "boolean")
-					inspector.addCheckbox(i, node.properties[i], { field_name: i, callback: inner_assign });
-				else if(typeof(node.properties[i]) == "string")
-					inspector.addString(i, node.properties[i], { field_name: i, callback: inner_assign });
-				else if(typeof(node.properties[i]) == "number")
-					inspector.addNumber(i, node.properties[i], { step: 0.01, field_name: i, callback: inner_assign });
-				else if( node.properties[i].length == 3)
-					inspector.addVector3(i, node.properties[i], { step: 0.01, field_name: i, callback: inner_assign });
-				else if( node.properties[i].length == 2)
-					inspector.addVector2(i, node.properties[i], { step: 0.01, field_name: i, callback: inner_assign });
+				if(typeof(graphnode.properties[i]) == "boolean")
+					inspector.addCheckbox(i, graphnode.properties[i], { field_name: i, callback: inner_assign });
+				else if(typeof(graphnode.properties[i]) == "string")
+					inspector.addString(i, graphnode.properties[i], { field_name: i, callback: inner_assign });
+				else if(typeof(graphnode.properties[i]) == "number")
+					inspector.addNumber(i, graphnode.properties[i], { step: 0.01, field_name: i, callback: inner_assign });
+				else if( graphnode.properties[i].length == 3)
+					inspector.addVector3(i, graphnode.properties[i], { step: 0.01, field_name: i, callback: inner_assign });
+				else if( graphnode.properties[i].length == 2)
+					inspector.addVector2(i, graphnode.properties[i], { step: 0.01, field_name: i, callback: inner_assign });
 			}
 		}
 
-		if(node.help)
-			inspector.addInfo(null, node.help);
+		if(graphnode.help)
+			inspector.addInfo(null, graphnode.help);
 
 		inspector.addSeparator();
 
 		inspector.addButtons(null, ["Collapse","Remove"], { callback: function(v) { 
 			if(v == "Collapse")
-				node.collapse();
+				graphnode.collapse();
 			else if(v == "Remove")
-				node.graph.remove(node);
+				graphnode.graph.remove(graphnode);
 		}});
 
 		function inner_assign(v)
 		{
 			//safe way
-			LS.setObjectProperty( node.properties, this.options.field_name, v );
+			LS.setObjectProperty( graphnode.properties, this.options.field_name, v );
 		}
 	},
 
@@ -421,8 +462,8 @@ var GraphModule = {
 
 	onNewGlobalGraph: function()
 	{
-		var component = new GraphComponent();
-		Scene.root.addComponent( component );
+		var component = new LS.Components.GraphComponent();
+		LS.GlobalScene.root.addComponent( component );
 		this.editInstanceGraph( component, { id: component.uid, title: "Global" } );
 	},
 
@@ -431,7 +472,7 @@ var GraphModule = {
 		node = node || SelectionModule.getSelectedNode();
 		if(!node)
 			node = LS.GlobalScene.root;
-		var component = new GraphComponent();
+		var component = new LS.Components.GraphComponent();
 		node.addComponent( component );
 		this.editInstanceGraph( component, { id: component.uid, title: node.id } );
 		this.openTab();
@@ -439,7 +480,7 @@ var GraphModule = {
 
 	onEditGlobalGraph: function()
 	{
-		var global_graph = LS.GlobalScene.root.getComponent( GraphComponent );
+		var global_graph = LS.GlobalScene.root.getComponent( LS.Components.GraphComponent );
 		if(global_graph)
 			this.editInstanceGraph( global_graph, { id: global_graph.uid, title: "Global" } );
 	},
@@ -503,12 +544,12 @@ CORE.registerModule( GraphModule );
 
 GraphModule.showGraphComponent = function(component, inspector)
 {
-	if(component.constructor == GraphComponent)
+	if(component.constructor == LS.Components.GraphComponent)
 	{
-		inspector.addCombo("on event", component.on_event, { values: GraphComponent["@on_event"].values , callback: function(v) { component.on_event = v; }});
+		inspector.addCombo("on event", component.on_event, { values: LS.Components.GraphComponent["@on_event"].values , callback: function(v) { component.on_event = v; }});
 		inspector.addCheckbox("Force redraw", component.force_redraw, { callback: function(v) { component.force_redraw = v; }});
 	}
-	else if(component.constructor == FXGraphComponent)
+	else if(component.constructor == LS.Components.FXGraphComponent)
 	{
 		inspector.widgets_per_row = 2;
 		inspector.addCheckbox("Viewport Size", component.use_viewport_size, { callback: function(v) { component.use_viewport_size = v; } });
@@ -543,5 +584,5 @@ GraphModule.showGraphComponent = function(component, inspector)
 	}});
 }
 
-GraphComponent["@inspector"] = GraphModule.showGraphComponent;
-FXGraphComponent["@inspector"] = GraphModule.showGraphComponent;
+LS.Components.GraphComponent["@inspector"] = GraphModule.showGraphComponent;
+LS.Components.FXGraphComponent["@inspector"] = GraphModule.showGraphComponent;

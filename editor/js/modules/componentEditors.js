@@ -1,14 +1,6 @@
 //Inspector Editors for the most common Components plus Materials and Scene.
 //Editors are not included in LiteScene because they do not depend on them
 
-EditorModule.showSceneInfo = function(scene, inspector)
-{
-}
-
-EditorModule.registerNodeEditor( EditorModule.showSceneInfo );
-
-
-
 LS.Components.GlobalInfo["@inspector"] = function( component, inspector )
 {
 	var node = component._root;
@@ -97,7 +89,7 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 		return;
 	var node = camera._root;
 
-	inspector.addCombo("Type", camera.type, { values: { "Orthographic" : Camera.ORTHOGRAPHIC, "Perspective": Camera.PERSPECTIVE }, pretitle: AnimationModule.getKeyframeCode( camera, "type"), callback: function (value) { camera.type = value; } });
+	inspector.addCombo("Type", camera.type, { values: { "Orthographic" : LS.Camera.ORTHOGRAPHIC, "Perspective": LS.Camera.PERSPECTIVE }, pretitle: AnimationModule.getKeyframeCode( camera, "type"), callback: function (value) { camera.type = value; } });
 	inspector.widgets_per_row = 2;
 	inspector.addNumber("Fov", camera.fov, { pretitle: AnimationModule.getKeyframeCode( camera, "fov"), min: 2, max: 180, units:'º', callback: function (value) { camera.fov = value; }});
 	inspector.addNumber("Aspect", camera.aspect, { pretitle: AnimationModule.getKeyframeCode( camera, "aspect" ), min: 0.1, max: 10, step: 0.01, callback: function (value) { camera.aspect = value; }});
@@ -325,7 +317,12 @@ LS.Components.CameraFX["@inspector"] = function(camerafx, inspector)
 	for(var i = 0; i < camerafx.fx.length; i++)
 	{
 		var fx = camerafx.fx[i];
-		var fx_info = CameraFX.available_fx[ fx.name ];
+		var fx_info = LS.Components.CameraFX.available_fx[ fx.name ];
+		if(!fx_info)
+		{
+			console.warn("Unknown FX: " + fx.name);
+			continue;
+		}
 		if(fx_info.uniforms)
 			for(var j in fx_info.uniforms)
 			{
@@ -352,8 +349,10 @@ LS.Components.CameraFX["@inspector"] = function(camerafx, inspector)
 			}
 	}
 
-	inspector.addButton(null,"Add FX", { callback: inner });
+	inspector.addButton(null,"Edit FX", { callback: inner });
 	//inspector.addButton(null,"Remove FX", {});
+
+	var selected_enabled_fx = "";
 
 	//show camera fx dialog
 	function inner()
@@ -373,30 +372,40 @@ LS.Components.CameraFX["@inspector"] = function(camerafx, inspector)
 		var widgets_left = new LiteGUI.Inspector("camera_fx_list",{});
 		widgets_left.addTitle("Available FX");
 		split.getSection(0).add(widgets_left);
-		var fx = CameraFX.available_fx;
+		var fx = LS.Components.CameraFX.available_fx;
 		var available_fx = [];
 		for(var i in fx)
 			available_fx.push(i);
 		var selected_available_fx = "";
-		var available_list = widgets_left.addList(null, available_fx, { height: 140, callback: function(v) {
+		var available_list = widgets_left.addList( null, available_fx, { height: 140, callback: function(v) {
 			selected_available_fx = v;
 		}});
 		widgets_left.addButton(null,"Add FX", { callback: function(){
-			camerafx.addFX(selected_available_fx);
+			camerafx.addFX( selected_available_fx );
 			inspector.refresh();
 			LS.GlobalScene.refresh();
 			inner();
 		}});
 
 		var widgets_right = new LiteGUI.Inspector("camera_fx_enabled",{});
-		var selected_enabled_fx = "";
 		widgets_right.addTitle("Current FX");
-		var enabled_list = widgets_right.addList(null, camerafx.fx, { height: 140, callback: function(v) {
+		var enabled_list = widgets_right.addList(null, camerafx.fx, { selected: selected_enabled_fx, height: 140, callback: function(v) {
 			selected_enabled_fx = v;
 		}});
 		split.getSection(1).add(widgets_right);
-		widgets_right.addButton(null,"Delete", { callback: function(){
-			camerafx.removeFX( selected_enabled_fx );
+		widgets_right.addButtons(null,["Up","Down","Delete"], { callback: function(v){
+			if(v == "Delete")
+			{
+				camerafx.removeFX( selected_enabled_fx );
+			}
+			else if(v == "Up")
+			{
+				camerafx.moveFX( selected_enabled_fx );
+			}
+			else if(v == "Down")
+			{
+				camerafx.moveFX( selected_enabled_fx, 1 );
+			}
 			inspector.refresh();
 			LS.GlobalScene.refresh();
 			inner();
@@ -439,7 +448,7 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 	}});
 }
 
-LS.Components.SkinDeformer.onShowAttributes = SkinnedMeshRenderer.onShowAttributes = function( component, inspector )
+LS.Components.SkinDeformer.onShowProperties = LS.Components.SkinnedMeshRenderer.onShowProperties = function( component, inspector )
 {
 	inspector.addButton("","See bones", { callback: function() { 
 		EditorModule.showBones( component.getMesh() );
@@ -491,7 +500,7 @@ LS.Components.ParticleEmissor["@inspector"] = function(component, inspector)
 	inspector.addCheckbox("Point particles", component.point_particles,  {callback: function (value) { component.point_particles = value; }});
 
 	inspector.addTitle("Emisor");
-	inspector.addCombo("Type",component.emissor_type, { values: ParticleEmissor["@emissor_type"].values, callback: function (value) { 
+	inspector.addCombo("Type",component.emissor_type, { values: LS.Components.ParticleEmissor["@emissor_type"].values, callback: function (value) { 
 		component.emissor_type = value; 
 	}});
 	inspector.addNumber("Rate",component.emissor_rate, {step:0.1,min:0,max:100, callback: function (value) { component.emissor_rate = value; }});
@@ -523,7 +532,7 @@ LS.Components.ParticleEmissor["@inspector"] = function(component, inspector)
 	inspector.addTexture("Texture", component.texture, { callback: function(filename) { 
 		component.texture = filename;
 		if(filename)
-			ResourcesManager.load(filename);
+			LS.ResourcesManager.load(filename);
 	}});
 
 	inspector.widgets_per_row = 2;
@@ -563,7 +572,7 @@ LS.Components.ParticleEmissor["@inspector"] = function(component, inspector)
 
 /** extras ****/
 
-LS.Components.PlayAnimation.onShowAttributes = function(component, inspector)
+LS.Components.PlayAnimation.onShowProperties = function(component, inspector)
 {
 	inspector.addButton("","Edit Animation", { callback: function() { 
 		var anim = component.getAnimation();
@@ -572,7 +581,7 @@ LS.Components.PlayAnimation.onShowAttributes = function(component, inspector)
 }
 
 
-LS.Components.CameraController.onShowAttributes = function(component, inspector)
+LS.Components.CameraController.onShowProperties = function(component, inspector)
 {
 	if(!component._root || !component._root.camera)
 		inspector.addInfo(null,"<span class='alert'>Warning: No camera found in node</span>");

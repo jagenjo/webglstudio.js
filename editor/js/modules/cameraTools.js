@@ -16,7 +16,23 @@ var cameraTool = {
 		rotate_speed: 0.2,
 		orbit_speed: 0.01,
 		smooth_camera_factor: 0.3,
-		mouse_wheel_factor: 0.002
+		mouse_wheel_factor: -0.002,
+		lock_angle: false
+	},
+
+	controls: {
+		LEFT_MOUSE: {
+			"default": "orbit",
+			metakey: "panning",
+			right_mouse: "frontal_panning",
+		},
+		MIDDLE_MOUSE: {
+			"default": "panning",
+			metakey: "orbit"
+		},
+		RIGHT_MOUSE: {
+			"default": "rotate"
+		}
 	},
 	
 	collision: vec3.create(),
@@ -159,6 +175,52 @@ var cameraTool = {
 		//console.log(gl.mouse_buttons);
 		var camera = this.last_camera || ToolUtils.getCamera(e);
 
+
+		var controls = null;
+		if (e.isButtonPressed(GL.LEFT_MOUSE_BUTTON))
+			controls = this.controls[ "LEFT_MOUSE" ];
+		else if (e.isButtonPressed(GL.MIDDLE_MOUSE_BUTTON))
+			controls = this.controls[ "MIDDLE_MOUSE" ];
+		else if (e.isButtonPressed(GL.RIGHT_MOUSE_BUTTON))
+			controls = this.controls[ "RIGHT_MOUSE" ];
+		if(!controls)
+			return;
+
+		var action = null;
+		if( (e.altKey || e.metaKey) && controls.metakey )
+			action = controls.metakey;
+		else if( e.isButtonPressed(GL.RIGHT_MOUSE_BUTTON) && controls.right_mouse )
+			action = controls.right_mouse;
+		else if( e.isButtonPressed(GL.MIDDLE_MOUSE_BUTTON) && controls.middle_mouse )
+			action = controls.middle_mouse;
+		else
+			action = controls["default"];
+
+		if(!action)
+			return;
+
+		if( this.settings.lock_angle && (action == "orbit" || action == "rotate") )
+			action = "panning";
+
+		switch(action)
+		{
+			case "frontal_panning":
+				cameraTool.moveCamera([0,0,e.deltay],true, camera);
+				break;
+			case "orbit":
+				this.orbit(e, camera);
+				break;
+			case "panning":
+				LiteGUI.setCursor("move");
+				this.panning(e, camera);
+				break;
+			case "rotate":
+				cameraTool.rotateCamera( e.deltax * this.settings.rotate_speed, e.deltay * -this.settings.rotate_speed, camera );
+				break;
+		}
+
+
+		/*
 		if(e.isButtonPressed(GL.LEFT_MOUSE_BUTTON) && e.isButtonPressed(GL.RIGHT_MOUSE_BUTTON))  //left and right
 		{
 			cameraTool.moveCamera([0,0,e.deltay],true, camera);
@@ -186,14 +248,6 @@ var cameraTool = {
 				else
 					this.orbit(e, camera);
 			}
-		}
-		/*
-		else if(e.button == 2) //right mouse
-		{
-			if(e.altKey || e.metaKey) //orbit
-				cameraTool.rotateCamera( e.deltax * this.settings.rotate_speed, e.deltay * -this.settings.rotate_speed );
-			else
-				cameraTool.orbitCamera( e.deltax * this.settings.orbit_speed, e.deltay * -this.settings.orbit_speed );
 		}
 		*/
 	},

@@ -16,7 +16,7 @@ function SceneTreeWidget( id )
 
 	this.root.appendChild( this.search.root );
 
-	var root_uid = LS.GlobalScene.root.uid;
+	var root_uid = scene.root.uid;
 
 	this.tree = new LiteGUI.Tree(null, { id: "uid_" + root_uid.replace(/\W/g, ''), uid: root_uid, content:"root", precontent: "<span class='nodecontrols'></span>" }, { allow_rename: false, allow_drag: true, allow_multiselection: true } );
 	this.content = this.tree;
@@ -33,6 +33,15 @@ function SceneTreeWidget( id )
 		SelectionModule.setSelection(null);
 	}
 
+	this.root.addEventListener("DOMNodeInsertedIntoDocument", function(){ 
+		LEvent.bind( CORE, "global_scene_selected", that.onGlobalSceneSelected, that );
+	});
+	this.root.addEventListener("DOMNodeRemovedFromDocument", function(){ 
+		that.unbindEvents();
+		LEvent.unbind( CORE, "global_scene_selected", that.onGlobalSceneSelected, that );
+	});
+
+
 	this.tree.root.addEventListener("item_selected", onItemSelected.bind(this) );
 	this.tree.root.addEventListener("item_add_to_selection", onItemAddToSelection.bind(this) );
 	this.tree.root.addEventListener("item_moved", onItemMoved.bind(this) );
@@ -48,17 +57,23 @@ function SceneTreeWidget( id )
 		if(!node)
 			return;
 
-		EditorModule.showContextualNodeMenu(node, e);
+		EditorModule.showNodeContextualMenu(node, e);
 		e.preventDefault();
 		return false;
 	}
 
-	this.bindEvents();
+	this.bindEvents( LS.GlobalScene );
 
 	function onItemSelected(e)
 	{
 		if(this._ignore_events) 
 			return;
+
+		if(!that._scene)
+		{
+			console.error("how??!");
+			return;
+		}
 
 		var info = e.detail;
 		if(!info.item) 
@@ -70,11 +85,11 @@ function SceneTreeWidget( id )
 
 		if( item.uid )
 		{
-			node = LS.GlobalScene.getNodeByUId( item.uid );
+			node = that._scene.getNodeByUId( item.uid );
 			if(node)
 			{
 				if(that.trigger_clicks) //special case
-					LEvent.trigger( LS.GlobalScene, "node_clicked", node );
+					LEvent.trigger( that._scene, "node_clicked", node );
 				SelectionModule.setSelection( node ); //this triggers the selected_node event
 			}
 			else
@@ -84,7 +99,7 @@ function SceneTreeWidget( id )
 			}
 		}
 		else
-			SelectionModule.setSelection( LS.GlobalScene._root );
+			SelectionModule.setSelection( that._scene._root );
 	}
 
 	function onItemAddToSelection(e)
@@ -102,7 +117,7 @@ function SceneTreeWidget( id )
 
 		if( item.uid )
 		{
-			node = LS.GlobalScene.getNodeByUId( item.uid );
+			node = that._scene.getNodeByUId( item.uid );
 			if(node)
 				SelectionModule.addToSelection(node); //this triggers the selected_node event
 			else
@@ -119,10 +134,10 @@ function SceneTreeWidget( id )
 		if(this._ignore_events) 
 			return;
 
-		var node = LS.GlobalScene.getNode( item.data.uid );
-		var parent_node = LS.GlobalScene.getNode( parent_item.data.uid );
+		var node = that._scene.getNode( item.data.uid );
+		var parent_node = that._scene.getNode( parent_item.data.uid );
 		if(!parent_node) 
-			parent_node = LS.GlobalScene._root;
+			parent_node = that._scene._root;
 		if(!node || !parent_node) 
 			return;
 
@@ -155,11 +170,20 @@ function SceneTreeWidget( id )
 		var item_data = e.detail;
 		var item = data.item;
 
-		var node = LS.GlobalScene.getNode( data.old_name );
+		var node = that._scene.getNode( data.old_name );
 		if(!node) 
 			return;
 		node.setName( data.new_name );
 		item.parentNode.data.node_name = data.new_name;
+	}
+
+	this.tree.onDropItem = function( e, item_data )
+	{
+		var tree_item_uid = item_data.uid;
+		var node = LS.GlobalScene.getNode( tree_item_uid );
+		if(!node)
+			return;
+		EditorModule.onDropOnNode( node, event );
 	}
 }
 
@@ -182,11 +206,28 @@ SceneTreeWidget.prototype.destroy = function()
 		this.root.parentNode.removeChild( this.root );
 }
 
-//Catch events from the LS.SceneTree to update the tree automatically
-SceneTreeWidget.prototype.bindEvents = function()
+SceneTreeWidget.prototype.onGlobalSceneSelected = function(e, scene)
 {
+	if(this._scene == scene)
+		return;
+
+	console.log("updating tree after global scene change");
+	this.bindEvents( scene );
+	//this.refresh();
+}
+
+//Catch events from the LS.SceneTree to update the tree automatically
+SceneTreeWidget.prototype.bindEvents = function( scene )
+{
+	if( !scene || scene.constructor !== LS.SceneTree )
+		throw("bindEvents require SceneTree");
+
 	var that = this;
-	var scene = LS.GlobalScene;
+	//scene = scene || LS.GlobalScene;
+	if(this._scene && this._scene != scene)
+		this.unbindEvents();
+
+	this._scene = scene;
 
 	//events
 	LEvent.bind( scene, "nodeAdded", function(e,node) {
@@ -215,7 +256,7 @@ SceneTreeWidget.prototype.bindEvents = function()
 	{
 		var root = that.tree.getNodeByIndex(0);
 		if(root)
-			root.data.uid = LS.GlobalScene.root.uid;
+			root.data.uid = that._scene.root.uid;
 	}
 
 
@@ -250,7 +291,9 @@ SceneTreeWidget.prototype.bindEvents = function()
 
 SceneTreeWidget.prototype.unbindEvents = function()
 {
-	LEvent.unbindAll( LS.GlobalScene, this );
+	if(this._scene)
+		LEvent.unbindAll( this._scene, this );
+	this._scene = null;
 }
 
 SceneTreeWidget.prototype.clear = function()
@@ -278,7 +321,7 @@ SceneTreeWidget.prototype.addNode = function(node)
 	var node_unique_id = "uid_" + node.uid.replace(/\W/g, '');
 
 	var parent_id = null;
-	if(node._parentNode && node._parentNode != LS.GlobalScene.root)
+	if(node._parentNode && node._parentNode != this._scene.root )
 		parent_id = "uid_" + node._parentNode.uid.replace(/\W/g, '');
 
 	var is_selected = SelectionModule.isSelected(node);
@@ -291,7 +334,7 @@ SceneTreeWidget.prototype.addNode = function(node)
 			precontent: "<span class='nodecontrols'><span class='togglevisible "+(node.flags.visible ? "on":"")+"'></span></span>",
 			allow_rename: (parent_id != null),
 			onDragData: function(){ 
-				return { node_name: node._name, node_id: node._uid }
+				return { uid: node._uid, "class": "SceneNode", type: "SceneNode", node_name: node._name, node_id: node._uid };
 			}
 		}, parent_id, undefined, {selected: is_selected} );
 	var that = this;
@@ -328,8 +371,11 @@ SceneTreeWidget.prototype.removeNode = function(node)
 
 SceneTreeWidget.prototype.refresh = function()
 {
+	if(!this._scene)
+		return;
+
 	this.clear();
-	var nodes = LS.GlobalScene.getNodes();
+	var nodes = this._scene.getNodes();
 	for(var i = 0; i < nodes.length; ++i)
 		this.addNode( nodes[i] );
 }

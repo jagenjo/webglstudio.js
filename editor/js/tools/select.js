@@ -43,7 +43,7 @@ var selectTool = {
 		var camera = ToolUtils.getCamera();
 		var ray = camera.getRayInPixel( e.mousex, gl.canvas.height - e.mousey );
 		ray.end = vec3.add( vec3.create(), ray.start, vec3.scale(vec3.create(), ray.direction, 10000) );
-		var collisions = Physics.raycast(Scene, ray.start, ray.end);
+		var collisions = Physics.raycast( LS.GlobalScene, ray.start, ray.end);
 
 		if(collisions.length)
 			EditorView.debug_points.push( collisions[0][1] );
@@ -71,7 +71,14 @@ var selectTool = {
 
 			if(e.button == 2)
 			{
-				EditorModule.showContextualNodeMenu( instance_info.constructor === LS.SceneNode ? instance_info : instance_info.instance, e );
+				var object = instance_info.instance || instance_info;
+				if(object)
+				{
+					if( object.constructor === LS.SceneNode )
+						EditorModule.showNodeContextualMenu( object, e );
+					else if( object.constructor.is_component )
+						EditorModule.showComponentContextualMenu( object, e );
+				}
 				return true;
 			}
 			else if(e.shiftKey)

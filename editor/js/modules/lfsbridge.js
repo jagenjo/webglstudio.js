@@ -31,12 +31,14 @@ var LFSBridge = {
 		//DriveModule.top_widget.addButton(null,"Open LiteFileServer", { callback: LFSBridge.onOpenLiteFileServer });
 	},
 
-	updateContent: function(folder, callback)
+	updateContent: function(folder, callback, panel)
 	{
 		//this.updateBrowserContent(null);
 		//this.showLoadingBrowserContent();
 
-		this.getFiles(folder, inner.bind(this));
+		panel = panel || DriveModule;
+
+		this.getFiles( folder, inner.bind(this) );
 
 		function inner(data)
 		{
@@ -52,10 +54,10 @@ var LFSBridge = {
 					//this.server_resources_by_id[ resource.server_id ] = resource;
 				}
 
-				DriveModule.showInBrowserContent( resources );
+				panel.showInBrowserContent( resources );
 			}
 			else
-				DriveModule.showInBrowserContent( null );
+				panel.showInBrowserContent( null );
 
 			if(callback) 
 				callback();
@@ -180,17 +182,6 @@ var LFSBridge = {
 		});
 	},
 
-	uploadRemoteFile: function( url, target_fullpath, on_complete)
-	{
-		if(!this.session)
-			return;
-
-		this.session.uploadRemoteFile( url, target_fullpath, function(v){
-			if(on_complete)
-				on_complete(v == 1);
-		});
-	},
-
 	uploadFile: function(fullpath, file, on_complete, on_error, on_progress)
 	{
 		if(!this.session)
@@ -209,9 +200,22 @@ var LFSBridge = {
 			function(v,e,params){ //on_progress
 				//console.log("Progress",v);
 				if(on_progress)
-					on_progress( fullpath, v);
+					on_progress( fullpath, v, params );
 		});
 	},
+
+	/*
+	uploadRemoteFile: function( url, target_fullpath, on_complete)
+	{
+		if(!this.session)
+			return;
+
+		this.session.uploadRemoteFile( url, target_fullpath, function(v){
+			if(on_complete)
+				on_complete(v == 1);
+		});
+	},
+	*/
 
 	uploadRemoteFile: function(url, fullpath, on_complete, on_error)
 	{
@@ -229,9 +233,10 @@ var LFSBridge = {
 		);
 	},
 
-	showDriveInfo: function()
+	showDriveInfo: function( panel )
 	{
-		var root = DriveModule.browser_container;
+		panel = panel || DriveModule;
+		var root = panel.browser_container;
 		root.innerHTML = "";
 
 		var container = LiteGUI.createElement("div");
@@ -328,26 +333,39 @@ var LFSBridge = {
 		window.open( CORE.config.server, "_blank" );
 	},
 
-	onFolderSelected: function(item)
+	onFolderSelected: function( item, panel )
 	{
 		//console.log(item);
 		var that = this;
 
-		DriveModule.current_folder = item.fullpath;
-		DriveModule.current_bridge = this;
+		panel = panel || DriveModule;
+
+		panel.current_folder = item.fullpath;
+		panel.current_bridge = this;
 
 		if(item == this.tree_root) //Server
 		{
 			this.updateTree( function() {
-				DriveModule.refreshTree();
-				that.showDriveInfo();
+				panel.refreshTree();
+				that.showDriveInfo( panel );
 			});
 			return;
 		}
 		else if(item.type == "unit")
 			this.showUnitInfo( item.fullpath );
 		else
-			this.updateContent( item.fullpath );
+			this.updateContent( item.fullpath, null, panel );
+	},
+
+	processDroppedFile: function( file, data )
+	{
+		var ext = DriveModule.getExtension( file.name );
+		var format = LS.Formats.supported[ ext ];
+		if(format)
+		{
+			if( format.resource )
+				file.category = format.resource;
+		}
 	},
 
 	//something dropped in a folder (could be the tree of the context)
@@ -364,13 +382,29 @@ var LFSBridge = {
 			for(var i=0; i < files.length; i++)
 			{
 				var file = files[i];
+
+				var path = folder_fullpath + "/" + file.name;
+				DriveModule.showStartUploadingFile( path );
+				that.processDroppedFile( file );
+				LFSBridge.uploadFile( path, file, function( path ){
+					//refresh
+					DriveModule.showEndUploadingFile( path );
+					DriveModule.refreshContent();
+				}, function( path, err){
+					DriveModule.showErrorUploadingFile( path, err );
+				}, function( path, progress){
+					DriveModule.showProgressUploadingFile( path, progress );
+				});
+
 				
+				/* why do we need to read it if we are just going to upload it to the server?
 				var reader = new FileReader();
 				reader.onload = (function(theFile) {
 					return function(e) {
 						var data =  e.currentTarget.result;
 						var path = folder_fullpath + "/" + theFile.name;
 						DriveModule.showStartUploadingFile( path );
+						that.processDroppedFile( theFile, data );
 						LFSBridge.uploadFile( path, data, function(){
 							//refresh
 							DriveModule.showEndUploadingFile( path );
@@ -383,6 +417,7 @@ var LFSBridge = {
 					};
 				})(file);
 				reader.readAsArrayBuffer(file);
+				*/
 			}
 			return true;
 		}

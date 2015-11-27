@@ -15,7 +15,7 @@ var ImporterModule  = {
 		//attributes.addButton("Save to BIN", true, { callback: function() { EditorModule.saveToDisk(node,true); }});
 		//LiteGUI.menubar.add("Scene/Import resource", { callback: function() { ImporterModule.showImportResourceDialog();} });
 
-		DriveModule.addDropArea( gl.canvas, ImporterModule.onFileDrop.bind(this) );
+		DriveModule.addDropArea( gl.canvas, ImporterModule.onItemDrop.bind(this) );
 
 		//triggered when a dropped file has been loaded and processed (used mostly to refresh stuff)
 		LiteGUI.bind( gl.canvas, "file_dropped", function(evt, file) {
@@ -25,40 +25,71 @@ var ImporterModule  = {
 	},
 
 	/* Loads in memory the content of a File dropped from the Hard drive */
-	onFileDrop: function (evt)
+	onItemDrop: function (evt)
 	{
-		console.log("processing filedrop...");
+		console.log("processing item drop...");
 
+		//files
 		var files = evt.dataTransfer.files;
-		var count = files.length;
-		
-		for(var i=0; i < files.length; i++)
+		if(files)
+			for(var i=0; i < files.length; i++)
+			{
+				var file = files[i];
+				
+				var reader = new FileReader();
+				reader.onload = (function(theFile) {
+					return function(e) {
+						try
+						{
+							ImporterModule.processFileDropped(e, theFile);
+						}
+						catch (err)
+						{
+							trace("Error processing data: " + err);
+						}
+					};
+				})(file);
+
+				var extension = LS.ResourcesManager.getExtension( file.name );
+				var format_info = LS.Formats.supported[ extension ];
+				var format_type = "binary";
+				if(format_info)
+					format_type = format_info.format;
+
+				if(format_type == "string" || format_type == "text" || format_type == "json" || format_type == "xml")
+					reader.readAsText(file);
+				else
+					reader.readAsArrayBuffer(file);
+				return true;
+			}
+
+
+		//drag something on the canvas
+		//check if they are resources from other folder
+		if( event.dataTransfer.getData("res-fullpath") )
 		{
-			var file = files[i];
-			
-			var reader = new FileReader();
-			reader.onload = (function(theFile) {
-				return function(e) {
-					try
-					{
-						ImporterModule.processFileDropped(e, theFile);
-					}
-					catch (err)
-					{
-						trace("Error processing data: " + err);
-					}
-				};
-			})(file);
+			var res_filename = event.dataTransfer.getData("res-filename");
+			var res_fullpath = event.dataTransfer.getData("res-fullpath");
+			var res_type = event.dataTransfer.getData("res-type");
+			if(!res_fullpath)
+				res_fullpath = event.dataTransfer.getData("text/uri-list");
 
-			var extension = LS.ResourcesManager.getExtension( file.name );
-			var format_type = LS.ResourcesManager.formats[extension];
-			if(!format_type)
-				format_type = "binary";
+			//if already has a fullpath (one with a unit...), could be a remote file or to move to other folder
+			if(res_fullpath && res_fullpath.split("/").length > 1)
+			{
+				var res_info = LFS.parsePath(res_fullpath);
+				console.log( res_fullpath );
+				DriveModule.onInsertResourceInScene( { dataset: { restype: res_type, fullpath: res_fullpath}}, evt );
+				return true;
+			}
+		}
 
-			if(format_type == "text" || format_type == "json" || format_type == "xml")
-				reader.readAsText(file);
-			else
-				reader.readAsArrayBuffer(file);
+		if( event.dataTransfer.getData("uid") )
+		{
+			GL.augmentEvent(event);
+			var node = RenderModule.getNodeAtCanvasPosition( event.canvasx, event.canvasy );
+			if(node)
+				EditorModule.onDropOnNode( node, event );
 		}
 
 		return true;
@@ -73,71 +104,6 @@ var ImporterModule  = {
 		file.data = data;
 		LiteGUI.trigger( gl.canvas, "file_dropped", file);
 	},
-
-	/*
-	saveToDisk: function(node,binary)
-	{
-		if(node == null || node.mesh == null) return;
-
-		//var data = JSON.stringify( selected_node.mesh.info,"Mesh JS Code");
-		var data = null;
-		var extension = ".js";
-		var dataType = 'string';
-		var mesh = ResourcesManager.meshes[node.mesh];
-
-		if(!mesh)return;
-
-		if(binary)
-		{
-			data = mesh.toBinary();
-			data = encode64Array(data);
-			dataType = 'base64';
-			extension = ".bin";
-		}
-		else //json
-		{
-			var o = {};
-			o.vertices = typedArrayToArray( mesh.vertices );
-			if(mesh.normals) o.normals = typedArrayToArray( mesh.normals );
-			if(mesh.coords) o.coords = typedArrayToArray( mesh.coords );
-			if(mesh.colors) o.colors = typedArrayToArray( mesh.colors );
-			if(mesh.triangles) o.triangles = typedArrayToArray( mesh.triangles );
-			o.info = mesh.info;
-			data = JSON.stringify(o);
-		}
-
-		var f = mesh.info.filename;
-		if(f == null)
-			f = mesh.name;
-		var end = f.lastIndexOf(".");
-		var start = f.lastIndexOf("/",end);
-		var filename = f.substr(start+1,end-start-1);
-		filename += extension;
-
-		LiteGUI.showMessage("<p>Click the button to save the file as a JSON object.</p><p id='downloadify'>You must have Flash 10 installed to download this file</p>",{close:1});
-
-		$("#downloadify").downloadify({
-			filename: filename,
-			data: data,
-			dataType: dataType,
-			onComplete: function(){ LiteGUI.showMessage("<p>Saved!</p>"); },
-			onCancel: function(){  },
-			onError: function(){ LiteGUI.showMessage("Error saving, file empty?",{close:1}); },
-			transparent: false,
-			swf: 'media/downloadify.swf',
-			downloadImage: 'media/download.png',
-			width: 100,
-			height: 30,
-			transparent: true,
-			append: false
-		});
-
-		function inner_end()
-		{
-			$("#messagebox").hide();
-		}
-	},
-	*/
 
 	/* called when the file from HardDrive is loaded in memory (after being dropped) */
 	onResourceDropped: function(e, file)
@@ -166,24 +132,24 @@ var ImporterModule  = {
 		widgets.addString("Name", file ? file.name : "");
 		widgets.addString("Filename", file ? file.name : "");
 
-		var target = Material.COLOR_TEXTURE;
+		var target = LS.Material.COLOR_TEXTURE;
 		var insert_into = false;
 		var upload_file = false;
 		var optimize_data = true;
 
-		var node = Scene.selected_node;
+		var node = LS.GlobalScene.selected_node;
 		var mat = node ? node.getMaterial() : null;
 
 		if( file )
 		{
-			var info = Parser.getFileFormatInfo( file.name );
-			if(info.type == Parser.MESH_DATA )
+			var info = LS.Formats.getFileFormatInfo( file.name );
+			if(info.type == LS.Formats.MESH_DATA )
 			{
 				widgets.addTitle("Mesh");
 				widgets.addCheckbox("Optimize data", optimize_data, { callback: function(v) { optimize_data = v; }});
 				//widgets.addCheckbox("Insert into scene", insert_into, { callback: function(v) { insert_into = v; }});
 			}
-			if(info.type == Parser.IMAGE_DATA || info.type == Parser.NONATIVE_IMAGE_DATA)
+			if(info.type == LS.Formats.IMAGE_DATA || info.type == LS.Formats.NONATIVE_IMAGE_DATA)
 			{
 				widgets.addTitle("Texture");
 				widgets.addCheckbox("Add to selected node", insert_into, { callback: function(v) { insert_into = v; }});
@@ -197,7 +163,7 @@ var ImporterModule  = {
 				}
 				widgets.addCheckbox("Optimize data", optimize_data, { callback: function(v) { optimize_data = v; }});
 			}
-			if(info.type == Parser.SCENE_DATA )
+			if(info.type == LS.Formats.SCENE_DATA )
 			{
 				widgets.addTitle("Scene");
 				widgets.addCheckbox("Optimize data", optimize_data, { callback: function(v) { optimize_data = v; }});
@@ -255,7 +221,7 @@ var ImporterModule  = {
 						}
 						mat.setTexture( target, resource.filename );
 						LEvent.trigger( selected_node, "changed" );
-						EditorModule.inspectNode( selected_node );
+						EditorModule.inspect( selected_node );
 					}
 				}
 				else if(resource.constructor == LS.SceneTree)

@@ -338,6 +338,54 @@ ul.file-list li.file-item span.progress {
 	background-color: #222;
 }
 
+/* inspector */
+.inspector_widget .header {
+	width: 100%;
+	overflow: hidden;
+	background-color: #26292E;
+}
+
+.inspector_widget .header button {
+	background: transparent;
+	border-radius: 0;
+	box-shadow: 0 0 0 transparent;
+	display: inline-block;
+	width: 30px;
+	height: 100%;
+	margin: 0;
+	text-align: center;
+	font-size: 1.6em;
+	color: #444;
+	text-shadow: 0 0 0 transparent;
+	line-height: 10px;
+}
+
+.inspector_widget .header button:hover {
+	background-color: #444 !important;
+	color: black;
+}
+
+.inspector_widget .header button:focus {
+	outline: 0;
+}
+
+.inspector_widget .header button.active {
+	background: #356A99;
+	color: #DDD;
+}
+
+.inspector_widget .header .title {
+	display: inline-block;
+	width: calc( 100% - 90px );
+	height: 100%;
+	margin: 0;
+	font-size: 1.7em;
+	text-align: left;
+	padding-left: 10px;
+	color: #4F7098;
+}
+
+
 /* timeline */
 .timeline {
 	background-color: #111;

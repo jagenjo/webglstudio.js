@@ -11,7 +11,7 @@ var fpsCounter = {
 	{
 		LiteGUI.menubar.add("View/FPS Counter", {  instance: fpsCounter , property: "show_counter", type:"checkbox", callback: fpsCounter.onEnableFPS });
 		LiteGUI.menubar.add("View/Render Stats", {  instance: fpsCounter , property: "show_stats", type:"checkbox", callback: fpsCounter.onEnableStats });
-		LEvent.bind(Scene, "afterRender", fpsCounter.frameRendered.bind(this) );
+		LEvent.bind( LS.GlobalScene, "afterRender", fpsCounter.frameRendered.bind(this) );
 	},
 
 	onEnableFPS: function(v)
@@ -111,7 +111,7 @@ var fpsCounter = {
 	updateStats: function()
 	{
 		if(!this.stats) return;
-		this.stats.innerHTML = "RIs: <span class='important'>" + Renderer._visible_instances.length + "</span> Visible: <span class='important'>" + Renderer._rendered_instances + "</span> DrawCalls: <span class='important'>" + Renderer._rendercalls + "</span>";
+		this.stats.innerHTML = "RIs: <span class='important'>" + LS.Renderer._visible_instances.length + "</span> Visible: <span class='important'>" + LS.Renderer._rendered_instances + "</span> DrawCalls: <span class='important'>" + LS.Renderer._rendercalls + "</span>";
 	},
 
 	last_time: 0,

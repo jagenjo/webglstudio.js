@@ -266,7 +266,7 @@ var LiteFileServer = {
 				var progress = 0;
 				if (e.lengthComputable)
 					progress = e.loaded / e.total;
-				on_progress(progress, e, params);
+				on_progress( progress, e, params );
 			}, false);
 
 		xhr.send(formdata);
@@ -816,7 +816,7 @@ Session.prototype.uploadFile = function( fullpath, data, extra, on_complete, on_
 
 	var ext = filename.split('.').pop().toLowerCase();
 	var extensions = ["png","jpg","jpeg","webp"]; //generate previews of this formats
-	var params = { action: "files/uploadFile", unit: unit, folder: folder, filename: filename, encoding: encoding, data: data, extra: extra };
+	var params = { action: "files/uploadFile", unit: unit, folder: folder, filename: filename, encoding: encoding, data: data }; //, extra: extra
 
 	if(extra)
 	{
@@ -898,7 +898,7 @@ Session.prototype.uploadFile = function( fullpath, data, extra, on_complete, on_
 			}
 
 			var total_parts = file_parts.length;
-			var remaining_parts = total_parts;
+			var parts_sent = 0;
 
 			inner_send_part();
 
@@ -911,12 +911,17 @@ Session.prototype.uploadFile = function( fullpath, data, extra, on_complete, on_
 				params.total_size = size;
 				params.data = new Blob([part.data], {type: "application/octet-binary"});
 				params.encoding = "file";
-				var first_error = true;
 
-				var req = that.request( that.server_url, params, function(){
-					remaining_parts--;
+				var req = that.request( that.server_url, params, function(resp){
+					if(resp.status == -1)
+					{
+						if(on_error)
+							on_error( resp.msg, resp );
+						return;
+					}
+					parts_sent++;
 					if(on_progress)
-						on_progress(fullpath, remaining_parts / total_parts);
+						on_progress(fullpath, parts_sent / total_parts);
 					if( file_parts.length )
 						inner_send_part();
 					else
@@ -926,12 +931,11 @@ Session.prototype.uploadFile = function( fullpath, data, extra, on_complete, on_
 							on_complete(fullpath);
 					}
 				}, function(err){
-					if(first_error && on_error)
-						on_error(fullpath, err);
-					first_error = false; //avoid multiple error messages
-				}, function(fullpath, v){
+					if(on_error)
+						on_error( err );
+				}, function(v, e){
 					if(on_progress)
-						on_progress(fullpath, (remaining_parts - (1 - v) ) / total_parts);
+						on_progress((parts_sent + v) / total_parts, e, params );
 				});
 			}
 
@@ -940,6 +944,14 @@ Session.prototype.uploadFile = function( fullpath, data, extra, on_complete, on_
 
 		return null;
 	}
+
+	//force FILE
+	if( params.encoding == "arraybuffer" )
+	{
+		params.encoding = "file";
+		params.data = new Blob([params.data], {type: "application/octet-binary"});
+	}
+
 
 	//generate preview and request if they are images
 	if(LFS.generate_preview && LFS.previews == "local" && extensions.indexOf(ext) != -1 )

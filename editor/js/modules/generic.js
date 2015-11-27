@@ -36,7 +36,7 @@ var GenericTools = {
 		this.textarea = textarea;
 
 		var first_time = true;
-		var backup = Scene.serialize();
+		var backup = LS.GlobalScene.serialize();
 
 		textarea.bind("keydown",function(e) {
 			var keyCode = e.keyCode || e.which;
@@ -59,22 +59,22 @@ var GenericTools = {
 			}
 			else if (keyCode == 13 && e.ctrlKey)
 			{
-				$(docked.content).find("button.compile").click();
+				$(dialog.content).find("button.compile").click();
 			}
 		});
 
 		$(dialog.content).find("button.update").click(function() {
-			backup = Scene.serialize();
+			backup = LS.GlobalScene.serialize();
 		});
 
 		$(dialog.content).find("button.reset").click(function() {
 			var id = null;
-			if(Scene.selected_node)
-				id = Scene.selected_node.id;
-			Scene.clear();
-			Scene.configure( backup );
+			if(LS.GlobalScene.selected_node)
+				id = LS.GlobalScene.selected_node.id;
+			LS.GlobalScene.clear();
+			LS.GlobalScene.configure( backup );
 			if(id != null)
-				Scene.selected_node = Scene.getNode(id);
+				LS.GlobalScene.selected_node = LS.GlobalScene.getNode( id );
 			RenderModule.requestFrame();
 		});
 
@@ -96,7 +96,7 @@ var GenericTools = {
 				UndoModule.saveSceneUndo();
 				GenericTools._autocompile_timer = setInterval(function() {
 					GenericTools.compileCode();
-					if(Scene.nodes.length > 200)
+					if(LS.GlobalScene.nodes.length > 200)
 						$("button.auto-compile").click(); //fail safe
 				}, 1000/60);
 			}
@@ -114,7 +114,7 @@ var GenericTools = {
 	{
 		var code = this.textarea.val();
 		localStorage.setItem("wglstudio-scripter-code",code);
-		code =  "var $1 = Scene.selected_node;\n" + code;
+		code =  "var $1 = LS.GlobalScene.selected_node;\n" + code;
 
 		try
 		{
@@ -194,7 +194,7 @@ var GenericTools = {
 			RenderModule.render_options.default_shadowmap_resolution = v;
 		}});
 		inspector.addButton(null,"set all shadowmaps size to default", function(){
-			var lights = Scene._lights;
+			var lights = LS.GlobalScene._lights;
 			for(var i in lights)
 				lights[i].shadowmap_resolution = 0; //default
 		});

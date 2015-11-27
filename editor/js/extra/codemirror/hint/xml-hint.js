@@ -1,118 +1,110 @@
-(function() {
+// CodeMirror, copyright (c) by Marijn Haverbeke and others
+// Distributed under an MIT license: http://codemirror.net/LICENSE
 
-    CodeMirror.xmlHints = [];
+(function(mod) {
+  if (typeof exports == "object" && typeof module == "object") // CommonJS
+    mod(require("../../lib/codemirror"));
+  else if (typeof define == "function" && define.amd) // AMD
+    define(["../../lib/codemirror"], mod);
+  else // Plain browser env
+    mod(CodeMirror);
+})(function(CodeMirror) {
+  "use strict";
 
-    CodeMirror.xmlHint = function(cm) {
+  var Pos = CodeMirror.Pos;
 
-        var cursor = cm.getCursor();
+  function getHints(cm, options) {
+    var tags = options && options.schemaInfo;
+    var quote = (options && options.quoteChar) || '"';
+    if (!tags) return;
+    var cur = cm.getCursor(), token = cm.getTokenAt(cur);
+    if (token.end > cur.ch) {
+      token.end = cur.ch;
+      token.string = token.string.slice(0, cur.ch - token.start);
+    }
+    var inner = CodeMirror.innerMode(cm.getMode(), token.state);
+    if (inner.mode.name != "xml") return;
+    var result = [], replaceToken = false, prefix;
+    var tag = /\btag\b/.test(token.type) && !/>$/.test(token.string);
+    var tagName = tag && /^\w/.test(token.string), tagStart;
 
-        if (cursor.ch > 0) {
+    if (tagName) {
+      var before = cm.getLine(cur.line).slice(Math.max(0, token.start - 2), token.start);
+      var tagType = /<\/$/.test(before) ? "close" : /<$/.test(before) ? "open" : null;
+      if (tagType) tagStart = token.start - (tagType == "close" ? 2 : 1);
+    } else if (tag && token.string == "<") {
+      tagType = "open";
+    } else if (tag && token.string == "</") {
+      tagType = "close";
+    }
 
-            var text = cm.getRange(CodeMirror.Pos(0, 0), cursor);
-            var typed = '';
-            var simbol = '';
-            for(var i = text.length - 1; i >= 0; i--) {
-                if(text[i] == ' ' || text[i] == '<') {
-                    simbol = text[i];
-                    break;
-                }
-                else {
-                    typed = text[i] + typed;
-                }
-            }
-
-            text = text.slice(0, text.length - typed.length);
-
-            var path = getActiveElement(text) + simbol;
-            var hints = CodeMirror.xmlHints[path];
-
-            if(typeof hints === 'undefined')
-                hints = [''];
-            else {
-                hints = hints.slice(0);
-                for (var i = hints.length - 1; i >= 0; i--) {
-                    if(hints[i].indexOf(typed) != 0)
-                        hints.splice(i, 1);
-                }
-            }
-
-            return {
-                list: hints,
-                from: CodeMirror.Pos(cursor.line, cursor.ch - typed.length),
-                to: cursor
-            };
+    if (!tag && !inner.state.tagName || tagType) {
+      if (tagName)
+        prefix = token.string;
+      replaceToken = tagType;
+      var cx = inner.state.context, curTag = cx && tags[cx.tagName];
+      var childList = cx ? curTag && curTag.children : tags["!top"];
+      if (childList && tagType != "close") {
+        for (var i = 0; i < childList.length; ++i) if (!prefix || childList[i].lastIndexOf(prefix, 0) == 0)
+          result.push("<" + childList[i]);
+      } else if (tagType != "close") {
+        for (var name in tags)
+          if (tags.hasOwnProperty(name) && name != "!top" && name != "!attrs" && (!prefix || name.lastIndexOf(prefix, 0) == 0))
+            result.push("<" + name);
+      }
+      if (cx && (!prefix || tagType == "close" && cx.tagName.lastIndexOf(prefix, 0) == 0))
+        result.push("</" + cx.tagName + ">");
+    } else {
+      // Attribute completion
+      var curTag = tags[inner.state.tagName], attrs = curTag && curTag.attrs;
+      var globalAttrs = tags["!attrs"];
+      if (!attrs && !globalAttrs) return;
+      if (!attrs) {
+        attrs = globalAttrs;
+      } else if (globalAttrs) { // Combine tag-local and global attributes
+        var set = {};
+        for (var nm in globalAttrs) if (globalAttrs.hasOwnProperty(nm)) set[nm] = globalAttrs[nm];
+        for (var nm in attrs) if (attrs.hasOwnProperty(nm)) set[nm] = attrs[nm];
+        attrs = set;
+      }
+      if (token.type == "string" || token.string == "=") { // A value
+        var before = cm.getRange(Pos(cur.line, Math.max(0, cur.ch - 60)),
+                                 Pos(cur.line, token.type == "string" ? token.start : token.end));
+        var atName = before.match(/([^\s\u00a0=<>\"\']+)=$/), atValues;
+        if (!atName || !attrs.hasOwnProperty(atName[1]) || !(atValues = attrs[atName[1]])) return;
+        if (typeof atValues == 'function') atValues = atValues.call(this, cm); // Functions can be used to supply values for autocomplete widget
+        if (token.type == "string") {
+          prefix = token.string;
+          var n = 0;
+          if (/['"]/.test(token.string.charAt(0))) {
+            quote = token.string.charAt(0);
+            prefix = token.string.slice(1);
+            n++;
+          }
+          var len = token.string.length;
+          if (/['"]/.test(token.string.charAt(len - 1))) {
+            quote = token.string.charAt(len - 1);
+            prefix = token.string.substr(n, len - 2);
+          }
+          replaceToken = true;
         }
-    };
-
-    var getActiveElement = function(text) {
-
-        var element = '';
-
-        if(text.length >= 0) {
-
-            var regex = new RegExp('<([^!?][^\\s/>]*)[\\s\\S]*?>', 'g');
-
-            var matches = [];
-            var match;
-            while ((match = regex.exec(text)) != null) {
-                matches.push({
-                    tag: match[1],
-                    selfclose: (match[0].slice(match[0].length - 2) === '/>')
-                });
-            }
-
-            for (var i = matches.length - 1, skip = 0; i >= 0; i--) {
-
-                var item = matches[i];
-
-                if (item.tag[0] == '/')
-                {
-                    skip++;
-                }
-                else if (item.selfclose == false)
-                {
-                    if (skip > 0)
-                    {
-                        skip--;
-                    }
-                    else
-                    {
-                        element = '<' + item.tag + '>' + element;
-                    }
-                }
-            }
-
-            element += getOpenTag(text);
+        for (var i = 0; i < atValues.length; ++i) if (!prefix || atValues[i].lastIndexOf(prefix, 0) == 0)
+          result.push(quote + atValues[i] + quote);
+      } else { // An attribute name
+        if (token.type == "attribute") {
+          prefix = token.string;
+          replaceToken = true;
         }
-
-        return element;
+        for (var attr in attrs) if (attrs.hasOwnProperty(attr) && (!prefix || attr.lastIndexOf(prefix, 0) == 0))
+          result.push(attr);
+      }
+    }
+    return {
+      list: result,
+      from: replaceToken ? Pos(cur.line, tagStart == null ? token.start : tagStart) : cur,
+      to: replaceToken ? Pos(cur.line, token.end) : cur
     };
+  }
 
-    var getOpenTag = function(text) {
-
-        var open = text.lastIndexOf('<');
-        var close = text.lastIndexOf('>');
-
-        if (close < open)
-        {
-            text = text.slice(open);
-
-            if(text != '<') {
-
-                var space = text.indexOf(' ');
-                if(space < 0)
-                    space = text.indexOf('\t');
-                if(space < 0)
-                    space = text.indexOf('\n');
-
-                if (space < 0)
-                    space = text.length;
-
-                return text.slice(0, space);
-            }
-        }
-
-        return '';
-    };
-
-})();
+  CodeMirror.registerHelper("hint", "xml", getHints);
+});

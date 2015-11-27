@@ -33,7 +33,7 @@ var SelectionModule = {
 			if(!skip_events)
 			{
 				LEvent.trigger( LS.GlobalScene, "selected_node_changed");
-				EditorModule.inspectNode( null );
+				EditorModule.inspect( null );
 			}
 
 			RenderModule.requestFrame();
@@ -52,7 +52,7 @@ var SelectionModule = {
 
 		//store
 		this.selection = selection;
-		this.selection_array = [selection];
+		this.selection_array = [ selection ];
 
 		var scene = LS.GlobalScene;
 
@@ -66,7 +66,7 @@ var SelectionModule = {
 		if(!skip_events)
 		{
 			LEvent.trigger( scene, "selected_node_changed", selection.node);
-			EditorModule.inspectNode( selection.node );
+			EditorModule.inspect( selection.node );
 		}
 
 		//repaint
@@ -91,9 +91,9 @@ var SelectionModule = {
 		for(var i = 0; i < selection.length; i++)
 		{
 			if(i == 0)
-				this.setSelection(selection[i], skip_events)
+				this.setSelection( selection[i], skip_events )
 			else
-				this.addToSelection(selection[i], skip_events)
+				this.addToSelection( selection[i], skip_events )
 		}
 	},
 
@@ -139,7 +139,7 @@ var SelectionModule = {
 				if(selection == this.selection)
 				{
 					this.selection = this.selection_array[0];
-					EditorModule.inspectNode( null );
+					EditorModule.inspect( null );
 				}
 
 				if(!skip_events)
@@ -163,9 +163,9 @@ var SelectionModule = {
 		var instance = selection.instance;
 
 		//selecting a generic scene node
-		if(instance.constructor === SceneNode)
+		if(instance.constructor === LS.SceneNode)
 			selection.node = instance;
-		else if(instance._root && instance._root.constructor === SceneNode) //it is a component
+		else if(instance._root && instance._root.constructor === LS.SceneNode) //it is a component
 			selection.node = instance._root;
 
 		//if no unique id is received, just try to create one
@@ -457,7 +457,7 @@ var SelectionModule = {
 			var node = selection.node;
 			var parent = node ? node.parentNode : null;
 
-			if( selection.instance.constructor === SceneNode && !selection.instance._is_root )
+			if( selection.instance.constructor === LS.SceneNode && !selection.instance._is_root )
 			{
 				//DELETE NODE
 				UndoModule.addUndoStep({ 
@@ -470,7 +470,7 @@ var SelectionModule = {
 
 				parent.removeChild(node);
 			}
-			else if( selection.instance._root && selection.instance._root.constructor === SceneNode )
+			else if( selection.instance._root && selection.instance._root.constructor === LS.SceneNode )
 			{
 				//DELETE COMPONENT
 				UndoModule.addUndoStep({ 
@@ -485,7 +485,7 @@ var SelectionModule = {
 			}
 		}
 
-		EditorModule.inspectNode();
+		EditorModule.inspect();
 		SelectionModule.setSelection(null);
 	},
 

@@ -32,15 +32,15 @@ var EditorModule = {
 		var scene = LS.GlobalScene;
 	
 		//LEvent.bind( scene, "selected_node_changed", function(e,node) { 
-		//	EditorModule.inspectNode( scene.selected_node );
+		//	EditorModule.inspect( scene.selected_node );
 		//});
 
 		LEvent.bind( scene, "scene_loaded", function(e) { 
-			EditorModule.inspectNode( scene.root );
+			EditorModule.inspect( scene.root );
 		});
 
 		LEvent.bind( scene, "node_clicked", function(e, node) { 
-			EditorModule.inspectNode( node );
+			EditorModule.inspect( node );
 		});
 		
 
@@ -54,34 +54,34 @@ var EditorModule = {
 	registerCommands: function()
 	{
 		this.commands["set"] = this.setPropertyValueToSelectedNode.bind(this);
-		this.commands["create"] = function(cmd,tokens)
+		this.commands["create"] = function( cmd, tokens )
 		{
 			var that = EditorModule;
 			switch(tokens[1])
 			{
 				case "node": that.createNullNode(); break;
 				case "light": that.createLightNode(); break;
-				case "plane": that.createPrimitive({ geometry: GeometricPrimitive.PLANE, size: 10, xz: true, subdivisions: 2 }); break;
-				case "cube": that.createPrimitive({ geometry: GeometricPrimitive.CUBE, size: 10, subdivisions: 10 }); break;
-				case "sphere": that.createPrimitive({ geometry: GeometricPrimitive.SPHERE, size: 10, subdivisions: 32 }); break;
+				case "plane": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.PLANE, size: 10, xz: true, subdivisions: 2 }); break;
+				case "cube": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.CUBE, size: 10, subdivisions: 10 }); break;
+				case "sphere": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.SPHERE, size: 10, subdivisions: 32 }); break;
 				default: break;
 			}
 		}
-		this.commands["addComponent"] = function(cmd, tokens) { 
+		this.commands["addComponent"] = function( cmd, tokens) { 
 			EditorModule.addComponentToNode( SelectionModule.getSelectedNode(), tokens[1] );
-			EditorModule.inspectNode( LS.GlobalScene.selected_node );
+			EditorModule.inspect( LS.GlobalScene.selected_node );
 		};
-		this.commands["selectNode"] = function(cmd, tokens) { 
+		this.commands["selectNode"] = function( cmd, tokens) { 
 			var node = LS.GlobalScene.getNode( tokens[1] );
 			SelectionModule.setSelection( node );
 		};
-		this.commands["lights"] = function(cmd, tokens) { 
+		this.commands["lights"] = function( cmd, tokens) { 
 			var lights = LS.GlobalScene._lights;
 			if(!lights)
 				return;
-			EditorModule.inspectObjects(lights);
+			EditorModule.inspectObjects( lights );
 		};
-		this.commands["cameras"] = function(cmd, tokens) { 
+		this.commands["cameras"] = function( cmd, tokens) { 
 			var cameras = RenderModule.cameras;
 			if(!cameras)
 				return;
@@ -109,7 +109,7 @@ var EditorModule = {
 		//buttons
 
 		mainmenu.add("Scene/Settings", { callback: function() { 
-			EditorModule.inspectScene( LS.GlobalScene ); 
+			EditorModule.inspect( LS.GlobalScene ); 
 		}});
 
 		mainmenu.separator("Edit");
@@ -125,10 +125,10 @@ var EditorModule = {
 		mainmenu.add("Node/Create camera", { callback: function() { EditorModule.createCameraNode(); }});
 		mainmenu.add("Node/Create light", { callback: function() { EditorModule.createLightNode(); }} );
 		//mainmenu.separator("Node");
-		mainmenu.add("Node/Primitive/Plane", { callback: function() { EditorModule.createPrimitive( { geometry: GeometricPrimitive.PLANE, size: 10, subdivisions: 10, align_z: true}); }});
-		mainmenu.add("Node/Primitive/Cube", { callback: function() { EditorModule.createPrimitive( { geometry: GeometricPrimitive.CUBE, size: 10, subdivisions: 10 }); }});
-		mainmenu.add("Node/Primitive/Sphere", { callback: function() { EditorModule.createPrimitive( { geometry: GeometricPrimitive.SPHERE, size: 10, subdivisions: 32 }); }});
-		mainmenu.add("Node/Primitive/Hemisphere", { callback: function() { EditorModule.createPrimitive( { geometry: GeometricPrimitive.HEMISPHERE, size: 10, subdivisions: 32 }); }});
+		mainmenu.add("Node/Primitive/Plane", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.PLANE, size: 10, subdivisions: 10, align_z: true}); }});
+		mainmenu.add("Node/Primitive/Cube", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.CUBE, size: 10, subdivisions: 10 }); }});
+		mainmenu.add("Node/Primitive/Sphere", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.SPHERE, size: 10, subdivisions: 32 }); }});
+		mainmenu.add("Node/Primitive/Hemisphere", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.HEMISPHERE, size: 10, subdivisions: 32 }); }});
 		mainmenu.add("Node/Templates/ParticleEmissor", { callback: function() { EditorModule.createTemplate("Particles",[{ component: "ParticleEmissor" }]); }});
 		mainmenu.add("Node/Templates/MeshRenderer", { callback: function() { EditorModule.createTemplate("Mesh",[{ component: "MeshRenderer" }]); }});
 
@@ -144,7 +144,7 @@ var EditorModule = {
 		mainmenu.add("View/Layers", { callback: function() { EditorModule.showLayersEditor(); }});
 
 		mainmenu.add("Actions/Reload Shaders", { callback: function() { 
-			ShadersManager.reloadShaders(function() { RenderModule.requestFrame(); }); 
+			LS.ShadersManager.reloadShaders(function() { RenderModule.requestFrame(); }); 
 		}});
 
 		mainmenu.separator("Project");
@@ -159,6 +159,8 @@ var EditorModule = {
 		}
 
 		mainmenu.add("View/Show All Gizmos", {  instance: EditorModule.settings, property: "render_all_gizmos", type:"checkbox" });
+
+		mainmenu.add("View/Render Options/Shadows", { type: "checkbox", instance: RenderModule.render_options, property: "shadows_enabled" });
 
 		mainmenu.add("View/Render Mode/Wireframe", {  value: "wireframe", isChecked: inner_is_renderMode, callback: inner_change_renderMode });
 		mainmenu.add("View/Render Mode/Flat", {  value: "flat", isChecked: inner_is_renderMode, callback: inner_change_renderMode });
@@ -192,7 +194,7 @@ var EditorModule = {
 
 		switch( this.inspector.instance.constructor )
 		{
-			case LS.SceneNode: this.inspectNode(this.inspector.instance); break;
+			case LS.SceneNode: this.inspect(this.inspector.instance); break;
 			case Object: 
 			case Array: this.inspectObjects( this.inspector.instance ); break;
 			default:
@@ -200,38 +202,38 @@ var EditorModule = {
 		}
 	},
 
-	inspectObjects: function(objects, inspector)
+	inspect: function( objects, inspector )
 	{
-		inspector = inspector || this.inspector;
+		if(inspector)
+			console.warn("deprecated: inspector cannot be passed");
+		return this.inspector.inspect( objects );
+	},
 
-		inspector.instance = objects;
-
-		inspector.on_refresh = (function()
-		{
-			inspector.clear();
-			for(var i = 0; i < objects.length; i++)
-			{
-				var object = objects[i];
-				if(!object)
-					continue;
-
-				if( LS.isClassComponent( object.constructor ) )
-					this.showComponentInterface( object, inspector );
-				else
-					this.showContainerFields( object, inspector );
-			}
-		}).bind(this);
-
-		inspector.refresh();
+	inspectObjects: function( objects, inspector )
+	{
+		console.warn("Deprecated, use EditorModule.inspect() instead");
+		return this.inspect( objects, inspector );
 	},
 
 	inspectObject: function(object, inspector)
 	{
-		this.inspectObjects([object],inspector);
-		this.inspector.instance = object;
+		console.warn("Deprecated, use EditorModule.inspect() instead");
+		return this.inspect( object, inspector );
 	},
 
-	inspectInDialog: function(object)
+	inspectScene: function(scene, inspector)
+	{
+		console.warn("Deprecated, use EditorModule.inspect() instead");
+		return this.inspect( scene, inspector );
+	},
+
+	inspectNode: function(node, inspector)
+	{
+		console.warn("Deprecated, use EditorModule.inspect() instead");
+		return this.inspect( node, inspector );
+	},
+
+	inspectInDialog: function( object )
 	{
 		if(!object)
 			return;
@@ -255,33 +257,52 @@ var EditorModule = {
 		dialog.setPosition(50 + (Math.random() * 10)|0,50 + (Math.random() * 10)|0);
 		dialog.on_close = function()
 		{
-		
 		}
 
-		var inspector = new LiteGUI.Inspector(null,{ name_width: "40%" });
-		inspector.on_refresh = function()
+		var inspector_widget = new InspectorWidget();
+		var inspector = inspector_widget.inspector;
+		inspector_widget.inspector.on_refresh = function()
 		{
-			inspector.clear();
-			var object_class = object.constructor;
-			var editor = object_class["@inspector"];
-			if( object.constructor === LS.SceneNode )
-				EditorModule.inspectNode( object, null, inspector );
-			else if(editor)
-				editor.call(this, object, inspector );
-			else
-				inspector.inspectInstance( object );
+			inspector_widget.inspect( object );
 			dialog.adjustSize();
 		}
 
-		inspector.onchange = function()
-		{
-			RenderModule.requestFrame();
-		}
-
-		inspector.refresh();
-		dialog.add(inspector);
+		inspector_widget.inspector.refresh();
+		dialog.add( inspector_widget );
 		dialog.adjustSize();
 		return dialog;
+	},
+
+	/*
+	inspectObjects: function(objects, inspector)
+	{
+		inspector = inspector || this.inspector;
+
+		inspector.instance = objects;
+
+		inspector.on_refresh = (function()
+		{
+			inspector.clear();
+			for(var i = 0; i < objects.length; i++)
+			{
+				var object = objects[i];
+				if(!object)
+					continue;
+
+				if( LS.isClassComponent( object.constructor ) )
+					this.showComponentInterface( object, inspector );
+				else
+					this.showObjectFields( object, inspector );
+			}
+		}).bind(this);
+
+		inspector.refresh();
+	},
+
+	inspectObject: function(object, inspector)
+	{
+		this.inspectObjects([object],inspector);
+		this.inspector.instance = object;
 	},
 
 	inspectScene: function( scene, inspector )
@@ -299,6 +320,7 @@ var EditorModule = {
 		inspector.on_refresh = function()
 		{
 			inspector.clear();
+			inspector.addString("Title", scene.extra.title || "", function(v) { scene.extra.title = v; });
 			inspector.addString("Author", scene.extra.author || "", function(v) { scene.extra.author = v; });
 			inspector.addTextarea("Comments", scene.extra.comments || "", { callback: function(v) { scene.extra.comments = v; } });
 			inspector.addSeparator();
@@ -431,20 +453,6 @@ var EditorModule = {
 		inspector.refresh();
 	},
 
-	checkJSON: function( object )
-	{
-		if(!object)
-			return;
-
-		var w = window.open("",'_blank');
-
-		w.document.write("<style>* { margin: 0; padding: 0; } html,body { margin: 20px; background-color: #222; color: #eee; } </style>");
-
-		var data = beautifyJSON( JSON.stringify( object.serialize(), null, '\t') );
-		w.document.write("<pre>"+data+"</pre>");
-		w.document.close();
-	},
-
 	//inspects all the components in one container
 	showComponentsInterfaces: function(container, inspector)
 	{
@@ -470,9 +478,11 @@ var EditorModule = {
 		var editor = component_class["@inspector"];
 
 		//Create the title of the component
-		var icon = "";
+		var icon_url = "imgs/mini-icon-question.png";
 		if(component.constructor.icon)	
-			icon = "<span class='icon' style='width: 20px'><img src='"+ this.icons_path + component.constructor.icon+"'/></span>";
+			icon_url = component.constructor.icon;
+
+		var icon_code = "<span class='icon' style='width: 20px' draggable='true'><img src='"+ this.icons_path + icon_url+"'/></span>";
 		var enabler = component.enabled !== undefined ? AnimationModule.getKeyframeCode(component,"enabled") + "<span class='enabler'></span>" : "";
 		var is_selected = SelectionModule.isSelected( component );
 		var options = {};
@@ -491,11 +501,20 @@ var EditorModule = {
 		options.collapsed = component._collapsed;
 
 		//create component section in inspector
-		var section = inspector.addSection( icon + enabler + title + buttons, options );
+		var section = inspector.addSection( icon_code + enabler + title + buttons, options );
 
-		var icon = section.querySelector(".icon img");
-		if(icon)
-			icon.onerror = function() { this.src = "imgs/mini-icon-question.png"; }
+		var icon = section.querySelector(".icon");
+		icon.addEventListener("dragstart", function(event) { 
+			event.dataTransfer.setData("uid", component.uid);
+			event.dataTransfer.setData("type", "Component");
+			event.dataTransfer.setData("node_uid", component.root.uid);
+			event.dataTransfer.setData("class", LS.getObjectClassName(component));
+		});
+
+
+		var icon_img = section.querySelector(".icon img");
+		if(icon_img)
+			icon_img.onerror = function() { this.src = "imgs/mini-icon-question.png"; }
 
 		//right click in title launches the context menu
 		section.querySelector(".wsectiontitle").addEventListener("contextmenu", (function(e) { 
@@ -535,7 +554,7 @@ var EditorModule = {
 		if(editor)
 			editor.call(this, component, inspector, section);
 		else
-			this.showContainerFields( component, inspector );
+			this.showObjectFields( component, inspector );
 
 		//in case the options button is pressed or the right button, show contextual menu
 		inspector.current_section.querySelector('.options_section').addEventListener("click", inner_showActions );
@@ -557,41 +576,73 @@ var EditorModule = {
 			}});
 		}		
 
+		var drag_counter = 0; //hack because HTML5 sux sometimes
+
+		//drop component
+		inspector.current_section.addEventListener("dragover", function(e) { 
+			e.preventDefault();
+		});
+		inspector.current_section.addEventListener("dragenter", function(e) { 
+			drag_counter++;
+			if( event.dataTransfer.types.indexOf("type") != -1 && drag_counter == 1 )
+			{
+				this.style.opacity = "0.5";
+			}
+			e.preventDefault();
+		},true);
+		inspector.current_section.addEventListener("dragleave", function(e) { 
+			drag_counter--;
+			if(drag_counter == 0)
+				this.style.opacity = null;
+			e.preventDefault();
+		},true);
+		inspector.current_section.addEventListener("drop", function(event) { 
+			this.style.opacity = null;
+			var item_uid = event.dataTransfer.getData("uid");
+			var item_type = event.dataTransfer.getData("type");
+			if( item_type == "Component" )
+			{
+				var dragged_component = LS.GlobalScene.findComponentByUId( item_uid );
+				if( component != dragged_component && component.root == dragged_component.root )
+				{
+					console.log("Rearranging components");
+					var index = component.root.getIndexOfComponent();
+					component.root.setComponentIndex( dragged_component, index - 1 );
+					EditorModule.refreshAttributes();
+				}
+			}
+		});
 	},
 
-	onDefaultComponentAction: function(component, action)
+	showObjectFields: function(container, inspector)
 	{
-		if(!component)
-			return;
-		var node = component._root;
-
-		switch(action)
-		{
-			case "Info": EditorModule.showComponentInfo(component); break;
-			case "Copy": EditorModule.copyComponentToClipboard(component); break;
-			case "Paste": EditorModule.pasteComponentFromClipboard(component); break;
-			case "Delete": EditorModule.deleteNodeComponent(component); break;
-			case "Reset": EditorModule.resetNodeComponent(component); break;
-			case "Select": SelectionModule.setSelection(component); break;
-			default:
-				return false;
-		}
-		return true;
-	},
-
-	showContainerFields: function(container, inspector)
-	{
-		inspector.on_addAttribute = inner;
+		inspector.on_addProperty = inner;
 
 		inspector.inspectInstance(container, null,null, ["enabled"] );
 
-		inspector.on_addAttribute = null;
+		inspector.on_addProperty = null;
 
 		//used to hook the keyframe thing on automatic generated inspectors
 		function inner( widget, object, property, value, options )
 		{
 			options.pretitle = AnimationModule.getKeyframeCode( object, property, options );
 		}
+	},
+	
+	*/
+
+	checkJSON: function( object )
+	{
+		if(!object)
+			return;
+
+		var w = window.open("",'_blank');
+
+		w.document.write("<style>* { margin: 0; padding: 0; } html,body { margin: 20px; background-color: #222; color: #eee; } </style>");
+
+		var data = beautifyJSON( JSON.stringify( object.serialize(), null, '\t') );
+		w.document.write("<pre>"+data+"</pre>");
+		w.document.close();
 	},
 
 	showAddPropertyDialog: function(callback, valid_fields )
@@ -650,7 +701,7 @@ var EditorModule = {
 					break;
 				default:
 					value = "";
-					value_widget = inspector.add(property.type, "Value", value, { callback: function(v){ property.value = v; }});
+					value_widget = inspector.add( property.type, "Value", value, { callback: function(v){ property.value = v; }});
 			}
 			property.value = value;
 
@@ -891,11 +942,54 @@ var EditorModule = {
 		dialog.show();
 	},
 
+	onDropOnNode: function( node, event )
+	{
+		if(!node)
+			return;
+
+		var item_uid = event.dataTransfer.getData("uid");
+		var item_type = event.dataTransfer.getData("type");
+		var item = null;
+		if(item_type == "SceneNode")
+			item = LSQ.get( item_uid );
+		else if(item_type == "Component")
+			item = LS.GlobalScene.findComponentByUId( item_uid );
+
+		if(item && item.constructor == LS.SceneNode && node != item )
+		{
+			node.addChild( item );		
+			console.log("Change parent");
+		}
+
+		if(item && item.constructor.is_component)
+		{
+			var component = item;
+			console.log(component);
+			if(node != component.root)
+			{
+				if(event.shiftKey)
+				{
+					var new_component = component.clone();
+					node.addComponent( new_component );
+					console.log("Component cloned");
+				}
+				else
+				{
+					component.root.removeComponent( component );
+					node.addComponent( component );
+					console.log("Component moved");
+				}
+			}
+		}
+		RenderModule.requestFrame();
+		EditorModule.refreshAttributes();
+	},
+
 	//Resets all, it should leave the app state as if a reload was done
 	resetEditor: function()
 	{
 		LS.GlobalScene.clear();
-		ResourcesManager.reset();
+		LS.ResourcesManager.reset();
 		LEvent.trigger(this,"resetEditor");
 	},
 
@@ -922,7 +1016,7 @@ var EditorModule = {
 		parent.addChild(node);
 
 		SelectionModule.setSelection( node );
-		EditorModule.inspectNode( LS.GlobalScene.selected_node); //update interface
+		EditorModule.inspect( LS.GlobalScene.selected_node); //update interface
 		RenderModule.requestFrame();
 	},
 
@@ -939,7 +1033,7 @@ var EditorModule = {
 		if( !data ) return;
 		component.configure( data ); 
 		$(component).trigger("changed");
-		EditorModule.inspectNode(Scene.selected_node); //update interface
+		EditorModule.inspect(LS.GlobalScene.selected_node); //update interface
 		RenderModule.requestFrame();
 	},
 
@@ -947,12 +1041,13 @@ var EditorModule = {
 	{
 		UndoModule.saveNodeChangeUndo(node);
 		var data = LiteGUI.getClipboard();
-		if(!data || !data._object_type) return;
+		if(!data || !data._object_type)
+			return;
 
-		var component = new window[data._object_type]();
+		var component = new LS.Components[ data._object_type ]();
 		node.addComponent(component);
 		component.configure(data); 
-		EditorModule.inspectNode(node); //update interface
+		EditorModule.inspect(node); //update interface
 		RenderModule.requestFrame();
 	},	
 
@@ -961,9 +1056,9 @@ var EditorModule = {
 		if(component.reset)
 			component.reset();
 		else
-			component.configure( (new window[ LS.getObjectClassName(component)]()).serialize() ); 
+			component.configure( (new LS.Components[ LS.getObjectClassName(component)]()).serialize() ); 
 		$(component).trigger("changed");
-		EditorModule.inspectNode(Scene.selected_node); //update interface
+		EditorModule.inspect(LS.GlobalScene.selected_node); //update interface
 		RenderModule.requestFrame();
 	},
 
@@ -974,8 +1069,8 @@ var EditorModule = {
 		UndoModule.saveComponentDeletedUndo( component );
 
 		LEvent.trigger( LS.GlobalScene, "nodeComponentRemoved", component );
-		node.removeComponent(component); 
-		EditorModule.inspectNode(node);
+		node.removeComponent( component ); 
+		EditorModule.inspect( node );
 		RenderModule.requestFrame(); 
 	},
 
@@ -985,7 +1080,7 @@ var EditorModule = {
 	{
 		if(!data)
 		{
-			if (ResourcesManager.textures[name])
+			if (LS.ResourcesManager.textures[name])
 			{
 				node[attr] = name;
 				return;
@@ -998,7 +1093,7 @@ var EditorModule = {
 		img.onload = function(e)
 		{
 			img.onload = null;
-			var tex = ResourcesManager.processImage(name,img);
+			var tex = LS.ResourcesManager.processImage(name,img);
 			node[attr] = name;
 		}
 		img.src = data;
@@ -1010,7 +1105,7 @@ var EditorModule = {
 		
 		var new_node = node.clone();
 		//new_node.transform.fromMatrix( node.transform.getGlobalMatrix(), true );
-		var parent = use_same_parent ? node.parentNode : Scene.root;
+		var parent = use_same_parent ? node.parentNode : LS.GlobalScene.root;
 		parent.addChild( new_node );
 
 		if(!skip_undo)
@@ -1077,7 +1172,7 @@ var EditorModule = {
 
 	createNodeWithMesh: function(mesh_name, options)
 	{
-		ResourcesManager.load(mesh_name, options, on_load);
+		LS.ResourcesManager.load(mesh_name, options, on_load);
 
 		function on_load(mesh)
 		{
@@ -1093,7 +1188,7 @@ var EditorModule = {
 	createCameraNode: function()
 	{
 		var node = new LS.SceneNode( LS.GlobalScene.generateUniqueNodeName("camera") );
-		node.addComponent( new Camera( LS.GlobalScene.current_camera ) );
+		node.addComponent( new LS.Camera( LS.GlobalScene.current_camera ) );
 		node.transform.lookAt( LS.GlobalScene.current_camera.eye, LS.GlobalScene.current_camera.center, LS.GlobalScene.current_camera.up );
 		node.eye = vec3.create();
 		node.center = vec3.fromValues(0,0,-1);
@@ -1105,7 +1200,7 @@ var EditorModule = {
 	createLightNode: function()
 	{
 		var node = new LS.SceneNode( LS.GlobalScene.generateUniqueNodeName("light") );
-		node.addComponent( new Light() );
+		node.addComponent( new LS.Light() );
 		EditorModule.getAddRootNode().addChild(node);
 		UndoModule.saveNodeCreatedUndo(node);
 		SelectionModule.setSelection(node);
@@ -1114,7 +1209,7 @@ var EditorModule = {
 	createPrimitive: function(info)
 	{
 		var node = new LS.SceneNode( LS.GlobalScene.generateUniqueNodeName("primitive") );
-		node.addComponent( new GeometricPrimitive(info));
+		node.addComponent( new LS.Components.GeometricPrimitive( info ) );
 		EditorModule.getAddRootNode().addChild(node);
 		UndoModule.saveNodeCreatedUndo(node);
 		SelectionModule.setSelection(node);
@@ -1184,26 +1279,31 @@ var EditorModule = {
 		}
 	},
 
-	showContextualNodeMenu: function(node, event)
+	showNodeContextualMenu: function( node, event )
 	{
-		if(!node || !node.getEditorActions)
+		if(!node || node.constructor !== LS.SceneNode || !node.getActions)
 			return;
 
-		var actions = node.getEditorActions([]);
+		var actions = node.getActions();
 		if(!actions)
 			return;
 
-		var values = [];
-		for(var i in actions)
-			values.push({action:i, title: actions[i].title || i});
+		var menu = new LiteGUI.ContextualMenu( actions, { ignore_item_callbacks: true, event: event, title:"Node", callback: function(action) {
+			node.doAction( action );
+		}});
+	},
 
-		if(!values.length)
+	showComponentContextualMenu: function( component, event )
+	{
+		if( !component || !component.constructor.is_component )
 			return;
 
-		var menu = new LiteGUI.ContextualMenu( values, { event: event, title:"Node", callback: function(value) {
-			if(!node)
-				return;
-			node.doEditorAction(value.action);
+		var actions = LS.Component.getActions( component );
+		if(!actions)
+			return;
+
+		var menu = new LiteGUI.ContextualMenu( actions, { ignore_item_callbacks: true, event: event, title: LS.getObjectClassName( component ), callback: function(action, options, event) {
+			LS.Component.doAction( component, action );
 		}});
 	},
 
@@ -1334,7 +1434,7 @@ var EditorModule = {
 			dialog.close();
 			if(on_complete)
 				on_complete( compo );
-			//EditorModule.inspectNode( root_instance, compo );
+			//EditorModule.inspect( root_instance, compo );
 			RenderModule.requestFrame();
 		}});
 
@@ -1411,8 +1511,8 @@ var EditorModule = {
 	focusCameraInBoundingBox: function( bbox )
 	{
 		var radius = BBox.getRadius( bbox );		
-		if(radius == 0)
-			return;
+		//if(radius == 0)
+		//	return;
 
 		var center = BBox.getCenter( bbox );
 		cameraTool.setFocusPoint( center, radius * 2 );
@@ -1499,7 +1599,7 @@ var EditorModule = {
 				break;
 			case 116: //F5
 				if(EditorModule.settings.save_on_exit)
-					SceneStorageModule.saveLocalScene("last", {}, Scene, SceneStorageModule.takeScreenshot(256,256) );
+					SceneStorageModule.saveLocalScene("last", {}, LS.GlobalScene, SceneStorageModule.takeScreenshot(256,256) );
 
 				if(EditorModule.settings.save_on_exit && EditorModule.settings.reload_on_start)
 				{
@@ -1512,7 +1612,7 @@ var EditorModule = {
 			case 117: 
 				console.log("recompiling shaders...");
 				Shaders.reloadShaders(); 
-				Scene.refresh();
+				LS.GlobalScene.refresh();
 				e.preventDefault();
 				e.stopPropagation();
 				return false;
@@ -1560,6 +1660,8 @@ CORE.registerModule( EditorModule );
 
 
 //EXTRA WIDGETS for the Inspector ************************************************
+LiteGUI.Inspector.widget_constructors["position"] = LiteGUI.Inspector.prototype.addVector3;
+
 
 //to select a node, value must be a valid node identifier (not the node itself)
 LiteGUI.Inspector.prototype.addNode = function(name, value, options)
@@ -1668,6 +1770,23 @@ LiteGUI.Inspector.prototype.addResource = function(name,value, options)
 		LiteGUI.trigger( input, "change" );
 	}
 
+	element.setAttribute("draggable","true");
+	element.addEventListener("dragover",function(e){ 
+		var path = e.dataTransfer.getData("res-fullpath");
+		var type = e.dataTransfer.getData( "res-type" );
+		if(path) // && (type == "Texture" || type == "Image") )
+			e.preventDefault();
+	},true);
+	element.addEventListener("drop", function(e){
+		var path = e.dataTransfer.getData("res-fullpath");
+		input.value = path;
+		LiteGUI.trigger( input, "change" );
+
+		e.preventDefault();
+		e.stopPropagation();
+		return false;
+	}, true);
+
 	this.tab_index += 1;
 	this.append(element, options);
 	return element;
@@ -1689,7 +1808,7 @@ LiteGUI.Inspector.prototype.addTexture = function(name, value, options)
 	if(value && value.constructor === GL.Texture)
 		tex_name = "@Texture";
 	
-	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+tex_name+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
+	var element = this.createWidget( name, "<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+tex_name+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options );
 	var input = element.querySelector(".wcontent input");
 
 	input.addEventListener("change", function(e) { 
@@ -1711,6 +1830,14 @@ LiteGUI.Inspector.prototype.addTexture = function(name, value, options)
 		LiteGUI.trigger( input, "change" );
 		//$(element).find("input").val(filename).change();
 	}
+
+	element.setAttribute("draggable","true");
+	element.addEventListener("dragover",function(e){ 
+		var path = e.dataTransfer.getData( "res-fullpath" );
+		var type = e.dataTransfer.getData( "res-type" );
+		if(path)// && (type == "Texture" || type == "Image") )
+			e.preventDefault();
+	},true);
 
 	element.addEventListener("drop", function(e){
 		var path = e.dataTransfer.getData("res-fullpath");
@@ -1761,6 +1888,23 @@ LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
 			options.callback_button.call(element, $(element).find(".wcontent input").val() );
 		*/
 	});
+
+	element.setAttribute("draggable","true");
+	element.addEventListener("dragover",function(e){ 
+		var path = e.dataTransfer.getData("res-fullpath");
+		var type = e.dataTransfer.getData( "res-type" );
+		if(path) // && (type == "Texture" || type == "Image") )
+			e.preventDefault();
+	},true);
+	element.addEventListener("drop", function(e){
+		var path = e.dataTransfer.getData("res-fullpath");
+		input.value = path;
+		LiteGUI.trigger( input, "change" );
+
+		e.preventDefault();
+		e.stopPropagation();
+		return false;
+	}, true);
 
 	function inner_onselect( sampler )
 	{
@@ -1815,6 +1959,23 @@ LiteGUI.Inspector.prototype.addMesh = function(name,value, options)
 			options.callback_load.call( element, filename );
 	}
 
+	element.setAttribute("draggable","true");
+	element.addEventListener("dragover",function(e){ 
+		var path = e.dataTransfer.getData("res-fullpath");
+		var type = e.dataTransfer.getData( "res-type" );
+		if(path) // && (type == "Texture" || type == "Image") )
+			e.preventDefault();
+	},true);
+	element.addEventListener("drop", function(e){
+		var path = e.dataTransfer.getData("res-fullpath");
+		input.value = path;
+		LiteGUI.trigger( input, "change" );
+
+		e.preventDefault();
+		e.stopPropagation();
+		return false;
+	}, true);
+
 	this.tab_index += 1;
 	this.append(element, options);
 	return element;
@@ -1852,6 +2013,23 @@ LiteGUI.Inspector.prototype.addMaterial = function(name,value, options)
 		input.value = filename;
 		LiteGUI.trigger( input, "change" );
 	}
+
+	element.setAttribute("draggable","true");
+	element.addEventListener("dragover",function(e){ 
+		var path = e.dataTransfer.getData("res-fullpath");
+		var type = e.dataTransfer.getData( "res-type" );
+		if(path) // && (type == "Texture" || type == "Image") )
+			e.preventDefault();
+	},true);
+	element.addEventListener("drop", function(e){
+		var path = e.dataTransfer.getData("res-fullpath");
+		input.value = path;
+		LiteGUI.trigger( input, "change" );
+
+		e.preventDefault();
+		e.stopPropagation();
+		return false;
+	}, true);
 
 	this.tab_index += 1;
 	this.append(element, options);

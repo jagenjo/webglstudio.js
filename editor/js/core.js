@@ -5,6 +5,8 @@ var CORE = {
 
 	//registered modules
 	Modules: [],
+	Scenes: [],
+
 	_modules_initialized: false,
 
 	//called from index.html
@@ -91,6 +93,8 @@ var CORE = {
 		//config folders
 		LS.ResourcesManager.setPath( CORE.config.resources );
 
+		this.addScene( LS.GlobalScene );
+		this.selectScene( LS.GlobalScene );
 
 		//If you launch with a loading url
 		/* UNSAFE
@@ -221,6 +225,30 @@ var CORE = {
 			var data = JSON.stringify( this.user_preferences );
 			localStorage.setItem("wgl_user_preferences", data );
 		}
+	},
+
+	addScene: function( scene )
+	{
+		if( this.Scenes.indexOf( scene ) != -1 )
+			return;
+
+		this.Scenes.push( scene );
+	},
+
+	selectScene: function( scene )
+	{
+		if(scene.constructor !== LS.SceneTree)
+			throw("Not an scene");
+
+		var old_scene = LS.GlobalScene;
+		LEvent.trigger( this, "global_scene_selected", scene );
+		LS.GlobalScene = scene;
+	},
+
+	// hub to redirect to the propper place
+	inspect: function( object )
+	{
+		EditorModule.inspect( object );
 	},
 
 	//show in launching console ******************

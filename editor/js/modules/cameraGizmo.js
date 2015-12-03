@@ -30,7 +30,7 @@ CameraGizmo.axis = [{name:"+X",v:[1,0,0],up:[0,1,0]},
 
 CameraGizmo.prototype.render = function()
 {
-	if(RenderModule.render_options.ingame)
+	if(RenderModule.render_settings.ingame)
 		return;
 
 	if(this.mesh && this.mesh.gizmo_size != this.gizmo_size)

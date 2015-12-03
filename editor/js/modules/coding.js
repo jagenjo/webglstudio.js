@@ -28,7 +28,6 @@ var CodingModule = //do not change
 					CodingModule.show3DWindow( CodingModule.default_sceneview );
 
 				InterfaceModule.setSidePanelVisibility(false);
-				CodingModule.setCodingVisibility(true);
 			},
 			callback_canopen: function(){
 				//avoid opening the tab if it is in another window
@@ -76,7 +75,6 @@ var CodingModule = //do not change
 	{
 		LiteGUI.main_tabs.selectTab( this.name );
 		this.show3DWindow( true );
-		CodingModule.setCodingVisibility(true);
 	},
 
 	//close coding tab ( back to scene view )
@@ -155,16 +153,6 @@ var CodingModule = //do not change
 		}
 	},
 
-	setCodingVisibility: function(v)
-	{
-		/*
-		var coding_area = this.global_context.code_container;
-		if(!coding_area) 
-			return;
-		coding_area.style.display = v ? "block" : "none";
-		*/
-	},
-
 	onUnload: function()
 	{
 		if(this.external_window)
@@ -232,57 +220,54 @@ LS.Components.Script.onComponentInfo = function( component, widgets )
 }
 
 //to write a tiny code snippet
-LiteGUI.Inspector.prototype.addCode = function(name, value, options)
+LiteGUI.Inspector.prototype.addCode = function( name, value, options )
 {
 	options = options || {};
 	value = value || "";
 	var that = this;
 	this.values[ name ] = value;
-	
-	var element = this.createWidget( name,"<span class='inputfield button'><textarea tabIndex='"+this.tab_index+"' class='text string' "+(options.disabled?"disabled":"")+">"+value+"<textarea/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
-	var input = element.querySelector(".wcontent textarea");
 
-	input.addEventListener("change", function(e) { 
-		LiteGUI.Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
-	});
-	
-	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
-		if(options.callback_button)
-			options.callback_button.call(element, $(element).find(".wcontent input").val() );
-	});
+	var element = null;
 
+	var instance = options.instance || {};
+	var uid = instance.uid || ("code_" + this.tab_index);
+	var instance_settings = { 
+		id: uid,
+		path: instance.uid,
+		title: uid
+	};
+	//getCode: function(){ return instance[name];},
+	//setCode: function(v){ instance[name] = v;}
 
-	var code_container = textarea;
+	if(!options.allow_inline)
+	{
+		var text = "Edit Code";
+		element = this.createWidget(name,"<button class='single' tabIndex='"+ this.tab_index + "'>"+text+"</button>", options);
+		var button = element.querySelector("button");
+		button.addEventListener("click", function() {
+			CodingModule.openTab();
+			CodingModule.editInstanceCode( instance, instance_settings );
+		});
+	}
+	else
+	{
+		element = inspector.addContainer( null, { height: 300} );
 
-	var editor = CodeMirror(code_container, {
-		value: "",
-		mode:  "javascript",
-		theme: "blackboard",
-		lineWrapping: true,
-		gutter: true,
-		tabSize: 2,
-		lineNumbers: true,
-		matchBrackets: true,
-		styleActiveLine: true,
-		extraKeys: {
-			"Ctrl-Enter": "compile",
-			"Ctrl-Space": "autocomplete",
-			"Cmd-Space": "autocomplete",
-			//"Ctrl-F": "insert_function",
-			"Cmd-F": "insert_function",
-			"Ctrl-P": "playstop_scene",
-			},
-		onCursorActivity: function(e) {
-			CodingModule.editor.matchHighlight("CodeMirror-matchhighlight");
-		}
-	});
-
-	editor.on("change", function(e){
-		value = editor.getValue();	
-	});
+		var codepad = new CodingPadWidget();
+		element.appendChild( codepad.root );
+		codepad.editInstanceCode( instance, instance_settings );
+		codepad.top_widgets.addButton(null,"In Editor",{ callback: function() { 
+			if(options.callback_button)
+				options.callback_button();
+			inspector.refresh();
+			CodingModule.openTab();
+			CodingModule.editInstanceCode( instance, instance_settings );
+		}});
+	}
 
 	this.tab_index += 1;
-	this.append(element);
+	this.append( element );
 	return element;
 }
+
 LiteGUI.Inspector.widget_constructors["code"] = "addCode";

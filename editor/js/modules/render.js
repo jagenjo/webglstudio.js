@@ -14,7 +14,7 @@ var RenderModule = {
 	render_mode: "full",
 	shaders_url: "../litescene/data/shaders.xml",
 
-	render_options: new LS.RenderOptions(),
+	render_settings: new LS.RenderSettings(),
 	cameras: [],
 	selected_camera: null, //last viewport clicked by the mouse
 	under_camera: null, //camera below the mouse
@@ -81,9 +81,9 @@ var RenderModule = {
 		LS.Renderer.init();
 		LS.catch_errors = false; //helps coding
 
-		this.render_options.render_all_cameras = false;
-		this.render_options.in_player = false;
-		this.render_options.keep_viewport = true;
+		this.render_settings.render_all_cameras = false;
+		this.render_settings.in_player = false;
+		this.render_settings.keep_viewport = true;
 
 		//LiteGUI.bind( window, "resize", function() {  RenderModule.requestFrame(); }); //dont work
 		$(window).resize( function() {  RenderModule.requestFrame(); });
@@ -249,7 +249,7 @@ var RenderModule = {
 			corner: "bottom-right",
 			destination_eye: vec3.clone( camera.eye ),
 			destination_center: vec3.clone( camera.center ),
-			render_options: null,
+			render_settings: null,
 			flags: {},
 		};
 
@@ -315,11 +315,16 @@ var RenderModule = {
 
 		this.frame_updated = true;
 
+		var global_render_settings = this.render_settings;
+		var scene_render_settings = LS.GlobalScene.info ? LS.GlobalScene.info.render_settings : global_render_settings;
+		render_settings = global_render_settings.in_player ? scene_render_settings : global_render_settings;
+
+
 		//gl.viewport(0,0,500,500); //test
 
 		//check if render one single camera or multiple cameras
 		var cameras = null;
-		if(!this.render_options.in_player)
+		if(!global_render_settings.in_player)
 		{
 			cameras = this.cameras.concat(); //clone
 			//search for render to texture cameras, puts them at the beginning
@@ -340,7 +345,7 @@ var RenderModule = {
 				this.temp_camera.center = this.preview_camera.getCenter();
 				cameras.push( this.temp_camera );
 			}
-			this.render_options.main_camera = this.selected_camera;
+			render_settings.main_camera = this.selected_camera;
 		}
 
 		//theoretically this is not necessary, but just in case
@@ -349,7 +354,7 @@ var RenderModule = {
 		LEvent.trigger(this,"pre_scene_render");
 		gl.clear( gl.DEPTH_BUFFER_BIT ); //¿?
 		//render frame
-		LS.Renderer.render( LS.GlobalScene, this.render_options, cameras );
+		LS.Renderer.render( LS.GlobalScene, render_settings, cameras );
 		LEvent.trigger(this,"post_scene_render");
 	},
 
@@ -396,34 +401,34 @@ var RenderModule = {
 	{
 		this.render_mode = v;
 
-		this.render_options.force_shader = null;
-		this.render_options.force_wireframe = false;
-		this.render_options.shadows_disabled = false;
-		this.render_options.lights_disabled = false;
+		this.render_settings.force_shader = null;
+		this.render_settings.force_wireframe = false;
+		this.render_settings.shadows_disabled = false;
+		this.render_settings.lights_disabled = false;
 
 		if(v == "wireframe")
 		{
-			this.render_options.force_shader = "flat";
-			this.render_options.force_wireframe = true;
-			this.render_options.shadows_disabled = true;
-			this.render_options.lights_disabled = true;
+			this.render_settings.force_shader = "flat";
+			this.render_settings.force_wireframe = true;
+			this.render_settings.shadows_disabled = true;
+			this.render_settings.lights_disabled = true;
 		}
 		else if(v == "flat")
 		{
-			this.render_options.force_shader = "flat";
-			this.render_options.shadows_disabled = true;
-			this.render_options.lights_disabled = true;
+			this.render_settings.force_shader = "flat";
+			this.render_settings.shadows_disabled = true;
+			this.render_settings.lights_disabled = true;
 		}
 		else if(v == "solid")
 		{
-			this.render_options.force_shader = "phong";
-			this.render_options.shadows_disabled = true;
+			this.render_settings.force_shader = "phong";
+			this.render_settings.shadows_disabled = true;
 		}
 		else if(v == "texture")
 		{
-			this.render_options.force_shader = "flat_texture";
-			this.render_options.shadows_disabled = true;
-			this.render_options.lights_disabled = true;
+			this.render_settings.force_shader = "flat_texture";
+			this.render_settings.shadows_disabled = true;
+			this.render_settings.lights_disabled = true;
 		}
 
 		this.requestFrame();

@@ -22,6 +22,8 @@ var ImporterModule  = {
 			//process resource (add to the library, attach to node, etc)
 			ImporterModule.onResourceDropped(evt, evt.detail);
 		});
+
+		LiteGUI.menubar.add("Actions/Import File", { callback: function() { ImporterModule.showImportResourceDialog(); }});
 	},
 
 	/* Loads in memory the content of a File dropped from the Hard drive */
@@ -32,6 +34,7 @@ var ImporterModule  = {
 		//files
 		var files = evt.dataTransfer.files;
 		if(files)
+		{
 			for(var i=0; i < files.length; i++)
 			{
 				var file = files[i];
@@ -62,17 +65,17 @@ var ImporterModule  = {
 					reader.readAsArrayBuffer(file);
 				return true;
 			}
-
+		}
 
 		//drag something on the canvas
 		//check if they are resources from other folder
-		if( event.dataTransfer.getData("res-fullpath") )
+		if( evt.dataTransfer.getData("res-fullpath") )
 		{
-			var res_filename = event.dataTransfer.getData("res-filename");
-			var res_fullpath = event.dataTransfer.getData("res-fullpath");
-			var res_type = event.dataTransfer.getData("res-type");
+			var res_filename = evt.dataTransfer.getData("res-filename");
+			var res_fullpath = evt.dataTransfer.getData("res-fullpath");
+			var res_type = evt.dataTransfer.getData("res-type");
 			if(!res_fullpath)
-				res_fullpath = event.dataTransfer.getData("text/uri-list");
+				res_fullpath = evt.dataTransfer.getData("text/uri-list");
 
 			//if already has a fullpath (one with a unit...), could be a remote file or to move to other folder
 			if(res_fullpath && res_fullpath.split("/").length > 1)
@@ -84,12 +87,21 @@ var ImporterModule  = {
 			}
 		}
 
-		if( event.dataTransfer.getData("uid") )
+		if( evt.dataTransfer.getData("uid") )
 		{
-			GL.augmentEvent(event);
-			var node = RenderModule.getNodeAtCanvasPosition( event.canvasx, event.canvasy );
+			GL.augmentEvent(evt);
+			var node = RenderModule.getNodeAtCanvasPosition( evt.canvasx, evt.canvasy );
 			if(node)
-				EditorModule.onDropOnNode( node, event );
+				EditorModule.onDropOnNode( node, evt );
+		}
+
+		if( evt.dataTransfer.getData("text/uri-list") )
+		{
+			GL.augmentEvent(evt);
+			var node = RenderModule.getNodeAtCanvasPosition( evt.canvasx, evt.canvasy );
+			var url = evt.dataTransfer.getData("text/uri-list");
+			var filename = DriveModule.getFilename(url);
+			ImporterModule.showImportResourceDialog({name:filename,url:url}, {node: node});
 		}
 
 		return true;
@@ -121,62 +133,158 @@ var ImporterModule  = {
 		ImporterModule.showImportResourceDialog( file );
 	},
 
-	showImportResourceDialog: function(file, options)
+	showImportResourceDialog: function( file, options )
 	{
 		options = options || {};
 
-		var dialog = new LiteGUI.Dialog("dialog_import_resource", {title:"Import Resource", close: true, minimize: true, width: 360, height: 240, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog("dialog_import_resource", {title:"Import File", close: true, minimize: true, width: 480, height: 340, scroll: false, draggable: true});
 		dialog.show();
-
-		var widgets = new LiteGUI.Inspector("import_widgets",{ name_width: "50%" });
-		widgets.addString("Name", file ? file.name : "");
-		widgets.addString("Filename", file ? file.name : "");
 
 		var target = LS.Material.COLOR_TEXTURE;
 		var insert_into = false;
 		var upload_file = false;
 		var optimize_data = true;
+		var file_content = file ? file.data : null;
+		var url = "";
+		var drop_node = options.node;
+		var material = drop_node ? drop_node.getMaterial() : null;
 
-		var node = LS.GlobalScene.selected_node;
-		var mat = node ? node.getMaterial() : null;
+		var inspector = new LiteGUI.Inspector(null,{ name_width: "50%" });
+		inspector.on_refresh = inner_refresh;
+		inspector.refresh();
 
-		if( file )
+		/* no va...
+		var drop_area = dialog.content;
+		drop_area.addEventListener("dragenter", function (evt) {
+			evt.stopPropagation();
+			evt.preventDefault();
+			return true;
+		},false);
+
+		drop_area.addEventListener("drop", function(evt){
+			evt.preventDefault();
+			evt.stopPropagation();
+			evt.stopImmediatePropagation();
+			var files = evt.dataTransfer.files;
+			if(files && fileslength)
+			{
+				file = files[0];
+				widgets.refresh();
+			}
+			return true;
+		}, false);
+		*/
+
+		if(file.url)
+			inner_setFile(file.url);
+
+		//function that loads the data
+		function inner_setFile( v )
 		{
-			var info = LS.Formats.getFileFormatInfo( file.name );
-			if(info.type == LS.Formats.MESH_DATA )
+			file = v;
+			file_content = null;
+			if(!file)
+				return;
+
+			if(v.constructor == String) //URL
 			{
-				widgets.addTitle("Mesh");
-				widgets.addCheckbox("Optimize data", optimize_data, { callback: function(v) { optimize_data = v; }});
-				//widgets.addCheckbox("Insert into scene", insert_into, { callback: function(v) { insert_into = v; }});
-			}
-			if(info.type == LS.Formats.IMAGE_DATA || info.type == LS.Formats.NONATIVE_IMAGE_DATA)
-			{
-				widgets.addTitle("Texture");
-				widgets.addCheckbox("Add to selected node", insert_into, { callback: function(v) { insert_into = v; }});
-				if(mat)
-				{
-					var channels = mat.getTextureChannels();
-					target = channels[0];
-					widgets.addCombo("Channel", target, { values: channels, callback: function(v) { 
-						target = v;
-					}});
-				}
-				widgets.addCheckbox("Optimize data", optimize_data, { callback: function(v) { optimize_data = v; }});
-			}
-			if(info.type == LS.Formats.SCENE_DATA )
-			{
-				widgets.addTitle("Scene");
-				widgets.addCheckbox("Optimize data", optimize_data, { callback: function(v) { optimize_data = v; }});
+				var filename = DriveModule.getFilename(v);
+				file = { name: filename, size: 0, type: "?", data: null };
+				var info = LS.Formats.getFileFormatInfo( file.name );
+				var proxy_url = LS.RM.getFullURL( v );
+				if(info && info.format == "text")
+					LiteGUI.requestText( proxy_url, function(v, response) { inner_setContent(v, response.getResponseHeader("Content-Type") ); });
+				else
+					LiteGUI.requestBinary( proxy_url, function(v, response) { inner_setContent(v, response.getResponseHeader("Content-Type") ); });
+				return;
 			}
 
+			var reader = new FileReader();
+			reader.onload = function(e) { inner_setContent( e.target.result ); inspector.refresh(); }
+			var info = LS.Formats.getFileFormatInfo( file.name );
+			if(info && info.format == "text")
+				reader.readAsText( file );
+			else
+				reader.readAsArrayBuffer( file );
+		}
+
+		function inner_setContent(v, type)
+		{
+			file_content = v;
+			if(file)
+			{
+				file.data = file_content;
+				file.size = file_content.length || file_content.byteLength;
+				if(type)
+					file.type = type;
+			}
+			inspector.refresh();
+		}
+
+		function inner_refresh()
+		{
+			inspector.clear();
+			//inspector.addInfo(null, "Drag a File into the window or click the button");
+			inspector.addTitle("Select a file" );
+			inspector.addFile("Import from Harddrive", file ? file.name : "", function(v){
+				//console.log(v);
+				inner_setFile( file = v ? v.file : null );
+				inspector.refresh();
+			});
+			inspector.addStringButton("Import from URL", url, { callback_button: function(v){
+				url = v;
+				inner_setFile( v );
+				inspector.refresh();
+			}});
+
+			if(file)
+			{
+				inspector.addTitle("File Information" );
+				inspector.addString("Filename", file.name );
+				inspector.addInfo("Bytes", DriveModule.beautifySize( file.size ) );
+				inspector.addInfo("Type", file.type );
+
+				var info = LS.Formats.getFileFormatInfo( file.name );
+				if(!info)
+				{
+					inspector.addTitle("Unknown resource");
+				}
+				else if(info.resource == "Mesh" )
+				{
+					inspector.addTitle("Mesh");
+					inspector.addCheckbox("Optimize data", optimize_data, { callback: function(v) { optimize_data = v; }});
+					//inspector.addCheckbox("Insert into scene", insert_into, { callback: function(v) { insert_into = v; }});
+				}
+				else if(info.resource == "Texture" )
+				{
+					inspector.addTitle("Texture");
+					if(drop_node)
+					{
+						inspector.addCheckbox("Add to node material", insert_into, { callback: function(v) { insert_into = v; }});
+						if(material)
+						{
+							var channels = material.getTextureChannels();
+							target = channels[0];
+							inspector.addCombo("Channel", target, { values: channels, callback: function(v) { 
+								target = v;
+							}});
+						}
+					}
+					inspector.addCheckbox("Optimize data", optimize_data, { callback: function(v) { optimize_data = v; }});
+				}
+				else if(info.resource == "SceneTree" )
+				{
+					inspector.addTitle("Scene");
+					inspector.addCheckbox("Optimize data", optimize_data, { callback: function(v) { optimize_data = v; }});
+				}
+			}
 		}
 
 		dialog.addButton("Import", { className: "big", callback: inner_import });
 		var imp_and_upload = dialog.addButton("Import & Upload", { className: "big", callback: inner_import });
 		var imp_and_insert = dialog.addButton("Import and Insert", { className: "big", callback: inner_import });
 		dialog.addButton("Cancel", { className: "big", callback: function() { dialog.close(); } });
-
-		dialog.add(widgets);
+		dialog.add( inspector );
 
 		var filename = "";
 
@@ -187,8 +295,7 @@ var ImporterModule  = {
 			if(button == imp_and_upload)
 				upload_file = true;
 
-			var name = widgets.getValue("Name");
-			filename = widgets.getValue("Filename");
+			filename = inspector.getValue("Filename");
 			filename = filename.replace(/ /g,"_"); //no spaces in names			
 
 			options.optimize_data = optimize_data;
@@ -196,7 +303,7 @@ var ImporterModule  = {
 			options.target = target; //if its texture
 			file.filename = filename;
 
-			ImporterModule.processResource(name, file, options, inner_processed);
+			ImporterModule.processResource(name, file, options, inner_processed );
 			dialog.close();
 		}
 
@@ -210,7 +317,7 @@ var ImporterModule  = {
 					EditorModule.createNodeWithMesh(filename);
 				else if(resource.constructor == GL.Texture)
 				{
-					var selected_node = SelectionModule.getSelectedNode();
+					var selected_node = drop_node || SelectionModule.getSelectedNode();
 					if(selected_node)
 					{
 						var mat = selected_node.getMaterial();
@@ -248,6 +355,9 @@ var ImporterModule  = {
 	processResource: function (name, file, options, on_complete)
 	{ 
 		options = options || {};
+
+		if(!file.data)
+			return console.error("File data missing, use FileReader");
 
 		var filename = options.filename || file.name;
 		var resource = LS.ResourcesManager.processResource(filename, file.data, options, inner);

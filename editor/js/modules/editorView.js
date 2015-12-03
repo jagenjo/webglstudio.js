@@ -102,17 +102,17 @@ var EditorView = {
 
 	mustRenderGizmos: function()
 	{
-		//if(RenderModule.frame_updated && this.render_debug_info && !RenderModule.render_options.ingame && (!Renderer.color_rendertarget || !Renderer.render_fx) )
+		//if(RenderModule.frame_updated && this.render_debug_info && !RenderModule.render_settings.ingame && (!Renderer.color_rendertarget || !Renderer.render_fx) )
 		//	return true;
 
-		if(this.render_gizmos && !RenderModule.render_options.in_player && RenderModule.frame_updated)
+		if(this.render_gizmos && !RenderModule.render_settings.in_player && RenderModule.frame_updated)
 			return true;
 		return false;
 	},	
 
 	mustRenderHelpers: function()
 	{
-		if(this.render_helpers && !RenderModule.render_options.in_player && RenderModule.frame_updated)
+		if(this.render_helpers && !RenderModule.render_settings.in_player && RenderModule.frame_updated)
 			return true;
 		return false;
 	},

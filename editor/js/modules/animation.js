@@ -157,7 +157,7 @@ var AnimationModule = {
 
 	renderView: function(e, camera)
 	{
-		if( !EditorView.render_helpers || !this.render_helpers || RenderModule.render_options.in_player || !RenderModule.frame_updated )
+		if( !EditorView.render_helpers || !this.render_helpers || RenderModule.render_settings.in_player || !RenderModule.frame_updated )
 			return;
 
 		this.renderTrajectories(camera);

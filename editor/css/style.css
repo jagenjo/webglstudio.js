@@ -75,6 +75,11 @@ body.player #work-area, body.player #main-area  {
 	cursor: pointer;
 }
 
+.scene-tree .litetree .ltreeitem:nth-child(even):not(:hover)
+{
+	background-color: rgba(0,0,0,0.5);
+}
+
 
 .scene-tree .litetree .ltreeitem .node-name:hover {
 	color: white;
@@ -222,12 +227,14 @@ body.player #work-area, body.player #main-area  {
 }
 
 #canvas-buttons .tool-button.enabled {
-	background-color: #8D7;
+	background-color: #6E9;
 }
 
 #canvas-buttons .tool-button:hover {
 	background-color: #4B3;
 }
+
+
 
 textarea.code {
 	margin: 2px;

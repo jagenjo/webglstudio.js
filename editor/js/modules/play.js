@@ -42,7 +42,7 @@ var PlayModule = {
 		this.tab = LiteGUI.main_tabs.addTab("Player", {id:"ingametab", bigicon: this.bigicon, size: "full", module: EditorModule, callback: function() {
 			//get the canvas
 			var canvas = RenderModule.appendViewportTo( PlayModule.tab.content );
-			RenderModule.render_options.in_player = true;
+			RenderModule.render_settings.in_player = true;
 			PlayModule.inplayer = true;
 
 			//RenderModule.viewport3d.addModule(PlayModule); //capture render, update and mouse.
@@ -52,7 +52,7 @@ var PlayModule = {
 			//EditorModule.refreshAttributes();
 		},
 		callback_leave: function() {
-			RenderModule.render_options.in_player = false;
+			RenderModule.render_settings.in_player = false;
 			//RenderModule.viewport3d.removeModule(PlayModule); //remove capture render, update and mouse
 			PlayModule.inplayer = false;
 			RenderModule.appendViewportTo(null);

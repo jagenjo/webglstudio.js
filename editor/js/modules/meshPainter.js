@@ -331,7 +331,8 @@ var MeshPainter = {
 	//*********************
 	testRay: function(ray)
 	{
-		if(!this.painted_node || !this.collision_mesh || !this.collision_mesh.octree) return null;
+		if(!this.painted_node || !this.collision_mesh || !this.collision_mesh.octree)
+			return null;
 
 		var node = this.painted_node;
 

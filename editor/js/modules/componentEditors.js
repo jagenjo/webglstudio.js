@@ -30,12 +30,15 @@ LS.Components.GlobalInfo["@inspector"] = function( component, inspector )
 				LS.ResourcesManager.load( filename );
 		}});
 	}
+
+	inspector.addButton( "Render Settings", "Edit", function(){ EditorModule.showRenderSettingsDialog( component.render_settings ); } );
 }
 
 // Some components need special inspectors
 LS.Components.Transform["@inspector"] = function(transform, inspector)
 {
-	if(!transform) return;
+	if(!transform)
+		return;
 	var node = transform._root;
 
 	inspector.addVector3("Position", transform._position, { 
@@ -45,7 +48,11 @@ LS.Components.Transform["@inspector"] = function(transform, inspector)
 				transform.setPosition(r[0],r[1],r[2]);
 		},callback_before: function() {
 			UndoModule.saveComponentChangeUndo(transform);
-	}});
+		},callback_update: function() {
+			return transform._position;
+		},
+		precision: 3
+	});
 
 	var euler = quat.toEuler( vec3.create(), transform._rotation );
 	vec3.scale(euler,euler, RAD2DEG );
@@ -310,14 +317,17 @@ LS.Components.CameraFX["@inspector"] = function(camerafx, inspector)
 	inspector.addCheckbox("Viewport Size", camerafx.use_viewport_size, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_viewport_size" ), callback: function(v) { camerafx.use_viewport_size = v; } });
 	inspector.addCheckbox("High Precission", camerafx.use_high_precision, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_high_precision" ), callback: function(v) { camerafx.use_high_precision = v; } });
 	inspector.addCheckbox("Use node camera", camerafx.use_node_camera, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_node_camera" ), callback: function(v) { camerafx.use_node_camera = v; } });
-	inspector.addCheckbox("Apply FXAA", camerafx.apply_fxaa, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "apply_fxaa" ), callback: function(v) { camerafx.apply_fxaa = v; } });
+	inspector.addCheckbox("Antialiasing", camerafx.use_antialiasing, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_antialiasing" ), callback: function(v) { camerafx.use_antialiasing = v; } });
 	inspector.widgets_per_row = 1;
 
 	inspector.addTitle("Active FX");
-	for(var i = 0; i < camerafx.fx.length; i++)
+
+	var enabled_fx = camerafx.fx.fx;
+
+	for(var i = 0; i < enabled_fx.length; i++)
 	{
-		var fx = camerafx.fx[i];
-		var fx_info = LS.Components.CameraFX.available_fx[ fx.name ];
+		var fx = enabled_fx[i];
+		var fx_info = LS.TextureFX.available_fx[ fx.name ];
 		if(!fx_info)
 		{
 			console.warn("Unknown FX: " + fx.name);
@@ -340,6 +350,14 @@ LS.Components.CameraFX["@inspector"] = function(camerafx, inspector)
 					});
 				else if(uniform.type == "color3")
 					inspector.addColor( j, fx[j] !== undefined ? fx[j] : uniform.value, {
+						fx_name: j,
+						fx: fx,
+						callback: function(v){
+							this.options.fx[ this.options.fx_name ] = v;
+						}				
+					});
+				else if(uniform.type == "sampler2D")
+					inspector.addTexture( j, fx[j] !== undefined ? fx[j] : uniform.value, {
 						fx_name: j,
 						fx: fx,
 						callback: function(v){
@@ -372,7 +390,7 @@ LS.Components.CameraFX["@inspector"] = function(camerafx, inspector)
 		var widgets_left = new LiteGUI.Inspector("camera_fx_list",{});
 		widgets_left.addTitle("Available FX");
 		split.getSection(0).add(widgets_left);
-		var fx = LS.Components.CameraFX.available_fx;
+		var fx = LS.TextureFX.available_fx;
 		var available_fx = [];
 		for(var i in fx)
 			available_fx.push(i);
@@ -389,7 +407,7 @@ LS.Components.CameraFX["@inspector"] = function(camerafx, inspector)
 
 		var widgets_right = new LiteGUI.Inspector("camera_fx_enabled",{});
 		widgets_right.addTitle("Current FX");
-		var enabled_list = widgets_right.addList(null, camerafx.fx, { selected: selected_enabled_fx, height: 140, callback: function(v) {
+		var enabled_list = widgets_right.addList(null, enabled_fx, { selected: selected_enabled_fx, height: 140, callback: function(v) {
 			selected_enabled_fx = v;
 		}});
 		split.getSection(1).add(widgets_right);
@@ -508,7 +526,7 @@ LS.Components.ParticleEmissor["@inspector"] = function(component, inspector)
 	inspector.addMesh("Mesh", component.emissor_mesh, { callback: function(filename) { 
 		component.emissor_mesh = filename;
 		if(filename)
-			LS.ResourcesManager.loadMesh(filename);
+			LS.ResourcesManager.load(filename);
 	}});
 	inspector.addButton("Custom code", "Edit code", { callback: function() {
 		CodingModule.editInstanceCode( component, { id: component.uid + ":Emit", title: "P.Emit", lang:"javascript", getCode: function(){ return component.custom_emissor_code; }, setCode: function(code){ component.custom_emissor_code = code; }},true);

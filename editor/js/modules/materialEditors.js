@@ -16,6 +16,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 		return false;
 	}).bind(this));
 
+	inspector.current_section.querySelector('.options_section').addEventListener("click", inner_showActions );
 
 	var mat_ref = "";
 	if(node.material)
@@ -62,7 +63,6 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 	//there is a material
 	var mat_type = LS.getObjectClassName( material );
 
-	inspector.current_section.querySelector('.options_section').addEventListener("click", inner_showActions );
 	$(inspector.current_section).bind("wchange", function() { UndoModule.saveMaterialChangeUndo( material ); });
 
 	inspector.addInfo("Class", mat_type );
@@ -100,7 +100,11 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 
 	function inner_showActions(e)
 	{
-		var menu = new LiteGUI.ContextualMenu(["Copy","Paste","Delete","Share","Instance"], {component: material, title: mat_type || "Material", event: e, callback: inner_menu_select });
+		var actions = ["Paste"];
+		if(material)
+			actions.push("Copy","Paste","Delete","Share","Instance");
+
+		var menu = new LiteGUI.ContextualMenu( actions, {component: material, title: mat_type || "Material", event: e, callback: inner_menu_select });
 		e.preventDefault();
 		e.stopPropagation();
 		return true;
@@ -329,9 +333,9 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 	inspector.addTitle("Properties");
 	inspector.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { 
 		material.opacity = value; 
-		if(material.opacity < 1 && material.blend_mode == Blend.NORMAL)
+		if(material.opacity < 1 && material.blend_mode == LS.Blend.NORMAL)
 			material.blend_mode = LS.Blend.ALPHA;
-		if(material.opacity >= 1 && material.blend_mode == Blend.ALPHA)
+		if(material.opacity >= 1 && material.blend_mode == LS.Blend.ALPHA)
 			material.blend_mode = LS.Blend.NORMAL;
 	}});
 	inspector.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});

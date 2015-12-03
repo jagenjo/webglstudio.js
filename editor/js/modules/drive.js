@@ -612,6 +612,7 @@ var DriveModule = {
 		*/
 
 		element.addEventListener("click", item_selected);
+		element.addEventListener("dblclick", item_dblclick);
 		parent.appendChild(element);
 
 		//when the resources is clicked
@@ -632,6 +633,11 @@ var DriveModule = {
 					path = this.dataset["filename"];
 				DriveModule.onResourceSelected( path );
 			}
+		}
+
+		function item_dblclick(e)
+		{
+			DriveModule.onInsertResourceInScene( this );
 		}
 
 		//dragging
@@ -747,7 +753,10 @@ var DriveModule = {
 
 	getFilename: function(fullpath)
 	{
-		var pos = fullpath.lastIndexOf("/");
+		var pos = fullpath.indexOf("?");
+		if(pos != -1)
+			fullpath = fullpath.substr(0,pos); //remove params
+		pos = fullpath.lastIndexOf("/");
 		if(pos == -1) 
 			return fullpath;
 		return fullpath.substr(pos+1);

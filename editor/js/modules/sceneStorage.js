@@ -577,7 +577,7 @@ var SceneStorageModule = {
 
 	takeScreenshot: function(width, height)
 	{
-		LS.Renderer.render( LS.GlobalScene, RenderModule.camera, RenderModule.render_options );
+		LS.Renderer.render( LS.GlobalScene, RenderModule.camera, RenderModule.render_settings );
 
 		//slow way of reading the pixels, but it is safe even with preserveDrawingBuffer being false
 		var frame = document.createElement("canvas");

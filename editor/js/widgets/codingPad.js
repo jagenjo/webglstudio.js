@@ -75,6 +75,7 @@ CodingPadWidget.prototype.unbindEvents = function()
 	LEvent.unbindAll( LS, this );
 }
 
+//where instance is the recipient of the code
 CodingPadWidget.prototype.editInstanceCode = function( instance, options )
 {
 	options = options || {};
@@ -124,8 +125,11 @@ CodingPadWidget.prototype.replaceInstanceCode = function( instance, options )
 	var code = null;
 	if(this.current_code_info.options.getCode)
 		code = this.current_code_info.options.getCode();
-	else
+	else if( instance.getCode )
 		code = instance.getCode();
+	else
+		code = instance.code;
+
 	if(!code)
 		code = "";
 
@@ -169,8 +173,10 @@ CodingPadWidget.prototype.assignCurrentCode = function( skip_events )
 	var old_code = null;
 	if(info.options.getCode)
 		old_code = info.options.getCode();
-	else
+	else if( instance.getCode )
 		old_code = instance.getCode();
+	else
+		old_code = instance.code;
 
 	//ignore this: sometimes we call assignCurrentCode after assigning the code
 	//if(code == old_code)
@@ -227,7 +233,7 @@ CodingPadWidget.prototype.assignCurrentCode = function( skip_events )
 	if(info.options.getCode)
 		old_code = info.options.getCode();
 	else
-		old_code = instance.getCode();
+		old_code = instance.code;
 
 	if(code == old_code)
 		return;
@@ -243,7 +249,7 @@ CodingPadWidget.prototype.assignCurrentCode = function( skip_events )
 	LEvent.trigger( instance, "code_changed", code );
 	if( instance.onCodeChange )
 		return instance.onCodeChange( code );
-	LEvent.trigger( CodingArea, "code_changed", info );
+	LEvent.trigger( CodingPadWidget, "code_changed", info );
 	return true;
 }
 

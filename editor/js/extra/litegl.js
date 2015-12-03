@@ -282,8 +282,12 @@ global.extendClass = GL.extendClass = function extendClass( target, origin ) {
 
 
 //simple http request
-global.HttpRequest = GL.request = function HttpRequest(url,params, callback, error, sync)
+global.HttpRequest = GL.request = function HttpRequest(url,params, callback, error, options)
 {
+	var async = true;
+	if(options && options.async !== undefined)
+		async = options.async;
+
 	if(params)
 	{
 		var params_str = null;
@@ -295,10 +299,11 @@ global.HttpRequest = GL.request = function HttpRequest(url,params, callback, err
 	}
 
 	var xhr = new XMLHttpRequest();
-	xhr.open('GET', url, !sync);
-	xhr.onload = function()
+	xhr.open('GET', url, async);
+	xhr.onload = function(e)
 	{
 		var response = this.response;
+		var type = this.getResponseHeader("Content-Type");
 		if(this.status != 200)
 		{
 			LEvent.trigger(xhr,"fail",this.status);
@@ -316,6 +321,14 @@ global.HttpRequest = GL.request = function HttpRequest(url,params, callback, err
 	xhr.onerror = function(err)
 	{
 		LEvent.trigger(xhr,"fail",err);
+	}
+	
+	if(options)
+	{
+		for(var i in options)
+			xhr[i] = options[i];
+		if(options.binary)
+			xhr.responseType = "arraybuffer";
 	}
 
 	xhr.send();
@@ -1285,6 +1298,9 @@ vec3.polarToCartesian = function(out, v)
 
 
 /** MATRIX ********************/
+mat3.IDENTITY = mat3.create();
+mat4.IDENTITY = mat4.create();
+
 mat4.toArray = function(mat)
 {
 	return [mat[0],mat[1],mat[2],mat[3],mat[4],mat[5],mat[6],mat[7],mat[8],mat[9],mat[10],mat[11],mat[12],mat[13],mat[14],mat[15]];
@@ -2971,8 +2987,9 @@ Mesh.encoders = {};
 * @method Mesh.fromOBJ
 * @param {Array} meshes array containing all the meshes
 */
-Mesh.fromURL = function(url, on_complete, gl)
+Mesh.fromURL = function(url, on_complete, gl, options)
 {
+	options = options || {};
 	gl = gl || global.gl;
 	var mesh = new GL.Mesh(undefined,undefined,undefined,gl);
 	mesh.ready = false;
@@ -2983,11 +3000,11 @@ Mesh.fromURL = function(url, on_complete, gl)
 		mesh.parse( data, ext );
 		delete mesh["ready"];
 		if(on_complete)
-			on_complete(mesh, url);
+			on_complete.call(mesh,mesh, url);
 	}, function(err){
 		if(on_complete)
 			on_complete(null);
-	});
+	},options);
 	return mesh;
 }
 
@@ -6866,12 +6883,11 @@ var LEvent = global.LEvent = GL.LEvent = {
 		for(var i in events)
 		{
 			var array = events[i];
-			for(var j = 0; j < array.length; ++j)
+			for(var j = array.length - 1; j >= 0; --j) //iterate backwards to avoid problems after removing
 			{
 				if( array[j][1] != target_instance ) 
 					continue;
 				array.splice(j,1);//remove
-				--j;//iterate from the gap
 			}
 
 			//if(array.length == 0) //add two passes to avoid read and delete
@@ -6923,6 +6939,33 @@ var LEvent = global.LEvent = GL.LEvent = {
 		if(!events || !events.hasOwnProperty( event_type ) || !events[event_type].length) 
 			return false;
 		return true;
+	},
+
+	/**
+	* Tells if there is any callback binded to this object pointing to a method in the target object
+	* @method LEvent.hasBindTo
+	* @param {Object} instance where there are the events binded
+	* @param {Object} target instance to check to
+	* @return {boolean} true is there is at least one
+	**/
+	hasBindTo: function( instance, target )
+	{
+		if(!instance)
+			throw("LEvent cannot have null as instance");
+		var events = instance.__events;
+
+		//no events binded
+		if(!events || !events.hasOwnProperty( event_type ) || !events[event_type].length) 
+			return false;
+
+		var binds = events[event_type];
+		for(var i = 0; i < binds.length; ++i)
+		{
+			if(binds[i][1] == target) //one found
+				return true;
+		}
+
+		return false;
 	},
 
 	/**

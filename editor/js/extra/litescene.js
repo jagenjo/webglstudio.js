@@ -277,9 +277,9 @@ WBin.load = function( data_array, skip_classname )
 			case "ArrayBuffer": lump_final = new Uint8Array(lump_data).buffer; break; //clone
 			default:
 				lump_data = new Uint8Array(lump_data); //clone to avoid problems with bytes alignment
-				var ctor = window[data_class_name];
-				if(!ctor) throw("ctor not found in WBin: " + data_class_name );
-
+				var ctor = WBin.classes[ data_class_name ] || window[ data_class_name ];
+				if(!ctor)
+					throw("WBin referenced class not found: " + data_class_name );
 				if( (lump_data.length / ctor.BYTES_PER_ELEMENT)%1 != 0)
 					throw("WBin: size do not match type");
 				lump_final = new ctor(lump_data.buffer);
@@ -466,7 +466,7 @@ WBin.progressiveLoad = function(url, on_header, on_lump, on_complete, on_error)
 function LScript()
 {
 	this.code = "function update(dt) {\n\n}";
-	this.exported_callbacks = ["start","update"]; //detects if there is a function with this name and exports it as a property
+	this.exported_callbacks = []; //detects if there is a function with this name and exports it as a property
 	this.extracode = "";
 	this.extra_methods = null; //add object with methods here to attach methods
 	this.catch_exceptions = true;
@@ -476,7 +476,7 @@ LScript.onerror = null; //global used to catch errors in scripts
 
 LScript.show_errors_in_console = true;
 
-LScript.prototype.compile = function( arg_vars )
+LScript.prototype.compile = function( arg_vars, save_context_vars )
 {
 	var argv_names = [];
 	var argv_values = [];
@@ -501,6 +501,8 @@ LScript.prototype.compile = function( arg_vars )
 	}
 	code += extra_code;
 	this._last_executed_code = code;
+
+	var old_context = this._context;
 	
 	try
 	{
@@ -523,6 +525,15 @@ LScript.prototype.compile = function( arg_vars )
 			LScript.onerror(err, this._last_executed_code, this);
 		return false;
 	}
+
+
+	if(save_context_vars && old_context)
+	{
+		for(var i in old_context)
+			if( this._context[i] !== undefined && old_context[i] && old_context[i].constructor !== Function && (!this._context[i] || this._context[i].constructor !== Function) )
+				this._context[i] = old_context[i];
+	}
+
 	return true;
 }
 
@@ -1126,10 +1137,16 @@ var LS = {
 		LS.extendClass( material_class, Material );
 
 		//event
-		LEvent.trigger(LS,"materialclass_registered",material_class);
+		LEvent.trigger( LS, "materialclass_registered", material_class );
 		material_class.resource_type = "Material";
 	},
 
+	/**
+	* Returns the DOM element responsible for the GUI of the app. This is helpful because this GUI will be automatically remove if the app finishes.
+	*
+	* @method getGUIElement
+	* @return {HTMLElement} 
+	*/
 	getGUIElement: function()
 	{
 		if( LS._gui_element )
@@ -1146,6 +1163,13 @@ var LS = {
 		return gui;
 	},
 
+	/**
+	* Returns an script context using the script name (not the node name), usefull to pass data between scripts.
+	*
+	* @method getScript
+	* @param {String} name the name of the script according to the Script component.
+	* @return {Object} the context of the script.
+	*/
 	removeGUIElement: function()
 	{
 		if( !LS._gui_element )
@@ -1157,9 +1181,19 @@ var LS = {
 		return;
 	},
 
+	/**
+	* Returns an script context using the script name (not the node name), usefull to pass data between scripts.
+	*
+	* @method getScript
+	* @param {String} name the name of the script according to the Script component.
+	* @return {Object} the context of the script.
+	*/
 	getScript: function( name )
 	{
-		return LS.Script.active_scripts[name];
+		var script = LS.Script.active_scripts[name];
+		if(script)
+			return script.context;
+		return null;
 	}
 }
 
@@ -4828,11 +4862,11 @@ Material.prototype.fillShaderQuery = function(scene)
 // This is hard to precompute and reuse because here macros depend on the node (receive_shadows?), on the scene (shadows enabled?), on the material (contant diffuse?) 
 // and on the light itself
 /*
-Material.prototype.getLightShaderMacros = function(light, node, scene, render_options)
+Material.prototype.getLightShaderMacros = function(light, node, scene, render_settings)
 {
 	var macros = {};
 
-	var use_shadows = light.cast_shadows && light._shadowmap && light._light_matrix != null && !render_options.shadows_disabled;
+	var use_shadows = light.cast_shadows && light._shadowmap && light._light_matrix != null && !render_settings.shadows_disabled;
 
 	//light macros
 	if(light.use_diffuse && !this.constant_diffuse)
@@ -6897,12 +6931,15 @@ ComponentContainer.prototype.setComponentIndex = function( component, index )
 
 	this._components.splice( old_index, 1 );
 
+	/*
 	if(index >= old_index)
 		index--; 
+	*/
 	if(index >= this._components.length)
 		this._components.push( component );
 	else
 		this._components.splice( index, 0, component );
+
 }
 
 
@@ -7361,6 +7398,10 @@ Component.prototype.serialize = function()
 	return o;
 }
 
+/**
+* Create a clone of this node (the UID is removed to avoid collisions)
+* @method clone
+**/
 Component.prototype.clone = function()
 {
 	var data = this.serialize();
@@ -7434,11 +7475,98 @@ Component.prototype.createProperty = function( name, value, type, setter, getter
 	}
 }
 
+/**
+* Returns the locator string of this component
+* @method getLocator
+* @return {String} the locator string of this component
+**/
 Component.prototype.getLocator = function()
 {
 	if(!this._root)
 		return "";
 	return this._root.uid + "/" + this.uid;
+}
+
+/**
+* Bind one object event to a method in this component
+* @method bind
+* @param {*} object the dispatcher of the event you want to react to
+* @param {String} event the name of the event to bind to
+* @param {Function} callback the callback to call
+* @param {String|Object} type [optional] an string identifying the type of the variable, could be "number","string","Texture","vec3","mat4", or an object with all the info
+* @param {Function} setter [optional] setter function, otherwise one will be created
+* @param {Function} getter [optional] getter function, otherwise one will be created
+**/
+Component.prototype.bind = function( object, method, callback )
+{
+	var instance = this;
+
+	if(!object)
+	{
+		console.error("Cannot bind to null.");
+		return;
+	}
+
+	if(!callback)
+	{
+		console.error("You cannot bind a method before defining it.");
+		return;
+	}
+
+	/*
+	var found = false;
+	for(var i in this)
+	{
+		if(this[i] == callback)
+		{
+			found = true;
+			break;
+		}
+	}
+	if(!found)
+		console.warn("Callback function not found in this object, this is dangerous, remember to unbind it manually or use LEvent instead.");
+	*/
+
+	//store info about which objects have events pointing to this instance
+	if(!this.__targeted_instances)
+		Object.defineProperty( this,"__targeted_instances", { value: [], enumerable: false });
+	var index = this.__targeted_instances.indexOf( object );
+	if(index == -1)
+		this.__targeted_instances.push( object );
+
+	return LEvent.bind( object, method, callback, instance );
+}
+
+Component.prototype.unbind = function( object, method, callback )
+{
+	var instance = this;
+
+	var r = LEvent.unbind( object, method, callback, instance );
+
+	//erase from targeted instances
+	if( this.__targeted_instances )
+	{
+		if( !LEvent.hasBindTo( object, this ) )
+			return r;
+
+		var index = this.__targeted_instances.indexOf( object );
+		if(index == -1)
+			this.__targeted_instances.splice( index, 1 );
+		if(this.__targeted_instances.length == 0)
+			delete this.__targeted_instances;
+	}
+
+	return r;
+}
+
+Component.prototype.unbindAll = function()
+{
+	if( !this.__targeted_instances )
+		return;
+
+	for( var i = 0; i < this.__targeted_instances.length; ++i )
+		LEvent.unbindAll( this.__targeted_instances[i], this );
+	delete this.__targeted_instances;
 }
 
 //called by register component to add setters and getters to registered Component Classes
@@ -7854,7 +7982,7 @@ Transform.prototype.getScale = function(out)
 }
 
 /**
-* Returns a copy of the global scale
+* Returns a copy of the global scale (this is not correct, there is no global_scale factor, because due to rotations the axis could change)
 * @method getGlobalScale
 * @param {vec3} out [optional] where to store the result, otherwise one vec3 is created and returned
 * @return {vec3} the scale
@@ -8741,6 +8869,8 @@ function Camera(o)
 	this._must_update_view_matrix = true;
 	this._must_update_projection_matrix = true;
 
+	this._rendering_index = -1; //tells the number of this camera in the rendering process
+
 	//render to texture
 	this.render_to_texture = false;
 	this.texture_name = ""; //name
@@ -8760,6 +8890,9 @@ function Camera(o)
 		u_camera_planes: vec2.fromValues( this.near, this.far ),
 		u_camera_perspective: vec3.create()
 	};
+
+	this.updateMatrices();
+	this._frustum_planes = geo.extractPlanes( this._viewprojection_matrix );
 
 	//LEvent.bind(this,"cameraEnabled", this.onCameraEnabled.bind(this));
 }
@@ -9098,6 +9231,17 @@ Camera.prototype.updateMatrices = function()
 
 	this._must_update_view_matrix = false;
 	this._must_update_projection_matrix = false;
+}
+
+/**
+* Update the frustum planes according to viewprojection_matrix, used for visibility testing
+* @method updateFrustumPlanes
+* @return {Float32Array} planes
+*/
+Camera.prototype.updateFrustumPlanes = function()
+{
+	geo.extractPlanes( this._viewprojection_matrix, this._frustum_planes );
+	return this._frustum_planes;
 }
 
 /**
@@ -9885,274 +10029,44 @@ LS.Camera = Camera;
 function CameraFX(o)
 {
 	this.enabled = true;
+
+	this.fx = new LS.TextureFX( o ? o.fx : null );
+
 	this.use_viewport_size = true;
 	this.use_high_precision = false;
 	this.use_node_camera = false;
-	this.apply_fxaa = false;
-
-	this.fx = [];
-
-	this._uniforms = { u_aspect: 1, u_viewport: vec2.create(), u_iviewport: vec2.create(), u_texture: 0, u_texture_depth: 1 };
+	this.use_antialiasing = false;
 
 	if(o)
 		this.configure(o);
-
-	//debug
-	//this.addFX("threshold");
 }
-
-//CameraFX["@camera_id"] = { type:"string" };
 
 CameraFX.icon = "mini-icon-fx.png";
 
-CameraFX.available_fx = {
-	"brightness_contrast": {
-		name: "Brightness & Contrast",
-		uniforms: {
-			brightness: { name: "u_brightness", type: "float", value: 1, min: 0, max: 2, step: 0.01 },
-			contrast: { name: "u_contrast", type: "float", value: 1, min: 0, max: 2, step: 0.01 }
-		},
-		code:"color.xyz = (color.xyz * u_brightness@ - vec3(0.5)) * u_contrast@ + vec3(0.5);"
-	},
-	"invert": {
-		name: "Invert color",
-		code:"color.xyz = vec3(1.0) - color.xyz;"
-	},
-	"threshold": {
-		name: "Threshold",
-		uniforms: {
-			threshold: { name: "u_threshold", type: "float", value: 0.5, min: 0, max: 2, step: 0.01 },
-			threshold_width: { name: "u_threshold_width", type: "float", value: 0.01, min: 0, max: 1, step: 0.001 }
-		},
-		code:"color.xyz = vec3( smoothstep( u_threshold@ - u_threshold_width@ * 0.5, u_threshold@ + u_threshold_width@ * 0.5,  length(color.xyz) ));"
-	},
-	"colorize": {
-		name: "Colorize",
-		uniforms: {
-			colorize: { name: "u_colorize", type: "color3", value: [1,1,1] },
-			vibrance: { name: "u_vibrance", type: "float", value: 0.0, min: 0, max: 2, step: 0.01 }
-		},
-		code:"color.xyz = color.xyz * (u_colorize@ + vec3(u_vibrance@ * 0.1)) * (1.0 + u_vibrance@);"
-	},
-	"halftone": {
-		name: "Halftone",
-		uniforms: {
-			"Halftone angle": { name: "u_halftone_angle", type: "float", value: 0, step: 0.01 },
-			"Halftone size": { name: "u_halftone_size", type: "float", value: 1, step: 0.01 }
-		},
-		functions: ["pattern"],
-		code:"color.x = ( (color.x * 10.0 - 5.0) + pattern( u_halftone_angle@, u_halftone_size@ ) );" + 
-			"color.y = ( (color.y * 10.0 - 5.0) + pattern( u_halftone_angle@ + 0.167, u_halftone_size@ ) );" + 
-			"color.z = ( (color.z * 10.0 - 5.0) + pattern( u_halftone_angle@ + 0.333, u_halftone_size@ ) );"
-	},
-	"halftoneBN": {
-		name: "Halftone B/N",
-		uniforms: {
-			"Halftone angle": { name: "u_halftone_angle", type: "float", value: 0, step: 0.01 },
-			"Halftone size": { name: "u_halftone_size", type: "float", value: 1, step: 0.01 }
-		},
-		functions: ["pattern"],
-		code:"color.xyz = vec3( (length(color.xyz) * 10.0 - 5.0) + pattern( u_halftone_angle@, u_halftone_size@ ) );"
-	},
-	"lens": {
-		name: "Lens Distortion",
-		uniforms: {
-			lens_k: { name: "u_lens_k", type: "float", value: -0.15 },
-			lens_kcube: { name: "u_lens_kcube", type: "float", value: 0.8 },
-			lens_scale: { name: "u_lens_scale", type: "float", value: 1 }
-		},
-		uv_code:"float r2 = u_aspect * u_aspect * (uv.x-0.5) * (uv.x-0.5) + (uv.y-0.5) * (uv.y-0.5); float distort@ = 1. + r2 * (u_lens_k@ + u_lens_kcube@ * sqrt(r2)); uv = vec2( u_lens_scale@ * distort@ * (uv.x-0.5) + 0.5, u_lens_scale@  * distort@ * (uv.y-0.5) + 0.5 );"
-	},
-	"warp": {
-		name: "Warp",
-		uniforms: {
-			warp_freq: { name: "u_warp_freq", type: "float", value: 50 },
-			warp_amp: { name: "u_warp_amp", type: "float", value: 0.01 }
-		},
-		uv_code:"uv = uv + u_warp_amp@ * (vec2(0.5) + 0.5 * vec2( sin(uv.x * u_warp_freq@) * sin(uv.y * u_warp_freq@)));"
-	},
-	"pixelate": {
-		name: "Pixelate",
-		uniforms: {
-			width: { name: "u_width", type: "float", value: 256, step: 1, min: 1 },
-			height: { name: "u_height", type: "float", value: 256, step: 1, min: 1 }
-		},
-		uv_code:"uv = vec2( floor(uv.x * u_width@) / u_width@, floor(uv.y * u_height@) / u_height@ );"
-	},
-	"quantize": {
-		name: "Quantize",
-		uniforms: {
-			levels: { name: "u_levels", type: "float", value: 8, step: 1, min: 1 }
-		},
-		code:"color.xyz = floor(color.xyz * u_levels@) / u_levels@;"
-	},
-	"edges": {
-		name: "Edges",
-		uniforms: {
-			"Edges factor": { name: "u_edges_factor", type: "float", value: 1 }
-		},
-		code:"vec4 color@ = texture2D(u_texture, uv );\n\
-				vec4 color_up@ = texture2D(u_texture, uv + vec2(0., u_iviewport.y));\n\
-				vec4 color_right@ = texture2D(u_texture, uv + vec2(u_iviewport.x,0.));\n\
-				vec4 color_down@ = texture2D(u_texture, uv + vec2(0., -u_iviewport.y));\n\
-				vec4 color_left@ = texture2D(u_texture, uv + vec2(-u_iviewport.x,0.));\n\
-				color = u_edges_factor@ * (abs(color@ - color_up@) + abs(color@ - color_down@) + abs(color@ - color_left@) + abs(color@ - color_right@));"
-	},
-	"depth": {
-		name: "Depth",
-		uniforms: {
-			"near": { name: "u_near", type: "float", value: 0.01, step: 0.1 },
-			"far": { name: "u_far", type: "float", value: 1000, step: 1 }
-		},
-		code:"color.xyz = vec3( (2.0 * u_near@) / (u_far@ + u_near@ - texture2D(u_texture_depth, uv ).x * (u_far@ - u_near@)) );"
-	},
-	"logarithmic": {
-		name: "Logarithmic",
-		uniforms: {
-			"Log. A Factor": { name: "u_logfactor_a", type: "float", value: 2, step: 0.01 },
-			"Log. B Factor": { name: "u_logfactor_b", type: "float", value: 2, step: 0.01 }
-		},
-		code:"color.xyz = log( color.xyz * u_logfactor_a@ ) * u_logfactor_b@;"
-	},
-	"ditherBN": {
-		name: "dither B/N",
-		functions: ["dither"],
-		uniforms: {
-		},
-		code:"color.xyz = vec3( dither( color.x ) );"
-	},
-	"dither": {
-		name: "Dither",
-		functions: ["dither"],
-		uniforms: {
-		},
-		code:"color.xyz = vec3( dither( color.x ), dither( color.y ), dither( color.z ) );"
-	},
-	"gamma": {
-		name: "Gamma",
-		uniforms: {
-			"Gamma": { name: "u_gamma", type: "float", value: 2.2, step: 0.01 }
-		},
-		code:"color.xyz = pow( color.xyz, vec3( 1.0 / u_gamma@) );"
-	}
-	/*
-	,
-	"fast_edges": {
-		name: "Edges (fast)",
-		code:"color.xyz = abs( dFdx(color.xyz) ) + abs( dFdy(color.xyz) );"
-	}
-	*/
-};
+Object.defineProperty( CameraFX.prototype, "use_antialiasing", { 
+	set: function(v) { this.fx.apply_fxaa = v; },
+	get: function() { return this.fx.apply_fxaa; },
+	enumerable: true
+});
 
-CameraFX.available_functions = {
-	pattern: "float pattern(float angle, float size) {\n\
-				float s = sin(angle * 3.1415), c = cos(angle * 3.1415);\n\
-				vec2 tex = v_coord * u_viewport.xy;\n\
-				vec2 point = vec2( c * tex.x - s * tex.y , s * tex.x + c * tex.y ) * size;\n\
-				return (sin(point.x) * sin(point.y)) * 4.0;\n\
-			}\n\
-		",
-	dither: "float dither(float v) {\n\
-				vec2 pixel = v_coord * u_viewport;\n\
-				int i = int(floor(v * 16.0 + 0.5));\n\
-				if(i < 1)\n\
-					return 0.0;\n\
-				if(i >= 15)\n\
-					return 1.0;\n\
-				float x = floor(pixel.x);\n\
-				float y = floor(pixel.y);\n\
-				bool xmod4 = mod(x, 4.0) == 0.0;\n\
-				bool ymod4 = mod(y, 4.0) == 0.0;\n\
-				bool xmod2 = mod(x, 2.0) == 0.0;\n\
-				bool ymod2 = mod(y, 2.0) == 0.0;\n\
-				bool xmod4_2 = mod(x + 2.0, 4.0) == 0.0;\n\
-				bool ymod4_2 = mod(y + 2.0, 4.0) == 0.0;\n\
-				bool xmod2_1 = mod(x + 1.0, 2.0) == 0.0;\n\
-				bool ymod2_1 = mod(y + 1.0, 2.0) == 0.0;\n\
-				bool xmod4_1 = mod(x + 1.0, 4.0) == 0.0;\n\
-				bool ymod4_1 = mod(y + 1.0, 4.0) == 0.0;\n\
-				bool xmod4_3 = mod(x + 3.0, 4.0) == 0.0;\n\
-				bool ymod4_3 = mod(y + 3.0, 4.0) == 0.0;\n\
-				\n\
-				if(i < 9)\n\
-				{\n\
-					if(i >= 1 && xmod4 && ymod4 )\n\
-						return 1.0;\n\
-					if(i >= 2 && xmod4_2 && ymod4_2)\n\
-						return 1.0;\n\
-					if(i >= 3 && xmod4_2 && ymod2 )\n\
-						return 1.0;\n\
-					if(i >= 4 && xmod2 && ymod2 )\n\
-						return 1.0;\n\
-					if(i >= 5 && xmod4_1 && ymod4_1 )\n\
-						return 1.0;\n\
-					if(i >= 6 && xmod4_3 && ymod4_3 )\n\
-						return 1.0;\n\
-					if(i >= 7 && xmod4_1 && ymod4_3 )\n\
-						return 1.0;\n\
-					if(i >= 8 && xmod4_3 && ymod4_1 )\n\
-						return 1.0;\n\
-					return 0.0;\n\
-				}\n\
-				else\n\
-				{\n\
-					if(i < 15 && xmod4_1 && ymod4 )\n\
-						return 0.0;\n\
-					if(i < 14 && xmod4_3 && ymod4_2)\n\
-						return 0.0;\n\
-					if(i < 13 && xmod4_3 && ymod2 )\n\
-						return 0.0;\n\
-					if(i < 12 && xmod2_1 && ymod2 )\n\
-						return 0.0;\n\
-					if(i < 11 && xmod4_2 && ymod4_1 )\n\
-						return 0.0;\n\
-					if(i < 10 && xmod4 && ymod4_3 )\n\
-						return 0.0;\n\
-					return 1.0;\n\
-				}\n\
-			}\n\
-		"
-}
-
-/*
-				if(i >= 4 && mod(y + 2.0,4.0) == 0.0)\n\
-					return 1.0;\n\
-				if(i >= 5 && mod(x + 1.0,4.0) == 0.0 && mod(y + 1.0,4.0) == 0.0)\n\
-					return 1.0;\n\
-				if(i >= 6 && mod(x + 1.0,4.0) == 0.0)\n\
-					return 1.0;\n\
-				if(i >= 7 && mod(y + 1.0,4.0) == 0.0)\n\
-					return 1.0;\n\
-
-					if(i >= 9 && xmod4_1 && ymod4 )\n\
-						return 1.0;\n\
-
-*/
-
-/**
-* Returns the first component of this container that is of the same class
-* @method configure
-* @param {Object} o object with the configuration info from a previous serialization
-*/
 CameraFX.prototype.configure = function(o)
 {
 	this.enabled = !!o.enabled;
 	this.use_viewport_size = !!o.use_viewport_size;
 	this.use_high_precision = !!o.use_high_precision;
-
+	this.use_node_camera = !!o.use_node_camera;
 	if(o.fx)
-		this.fx = o.fx.concat();
-
+		this.fx.configure(o.fx);
 }
 
 CameraFX.prototype.serialize = function()
 {
 	return { 
 		enabled: this.enabled,
-		use_antialiasing: this.use_antialiasing,
 		use_high_precision: this.use_high_precision,
 		use_viewport_size: this.use_viewport_size,
-		fx: this.fx.concat()
+		use_node_camera: this.use_node_camera,
+		fx: this.fx.serialize()
 	};
 }
 
@@ -10164,51 +10078,22 @@ CameraFX.prototype.getResources = function(res)
 
 CameraFX.prototype.addFX = function( name )
 {
-	if(!name)
-		return;
-
-	if( !CameraFX.available_fx[ name ] )
-	{
-		console.warn( "CameraFX not found: " + name );
-		return;
-	}
-
-	this.fx.push({ name: name });
+	this.fx.addFX(name);
 }
 
 CameraFX.prototype.getFX = function(index)
 {
-	return this.fx[ index ];
+	return this.fx.getFX( index );
 }
 
 CameraFX.prototype.moveFX = function( fx, offset )
 {
-	offset = offset || -1;
-
-	var index = this.fx.indexOf(fx);
-	if( index == -1 )
-		return;
-
-	this.fx.splice(index,1);
-	index += offset;
-
-
-	if(index >= 0 && index < this.fx.length)
-		this.fx.splice(index,0,fx);
-	else
-		this.fx.push(fx);
+	return this.fx.moveFX(fx,offset);
 }
 
 CameraFX.prototype.removeFX = function( fx )
 {
-	for(var i = 0; i < this.fx.length; i++)
-	{
-		if(this.fx[i] !== fx)
-			continue;
-
-		this.fx.splice(i,1);
-		return;
-	}
+	return this.fx.removeFX( fx );
 }
 
 CameraFX.prototype.onAddedToScene = function( scene )
@@ -10224,7 +10109,7 @@ CameraFX.prototype.onRemovedFromScene = function( scene )
 }
 
 //hook the RFC
-CameraFX.prototype.onBeforeRender = function(e, render_options)
+CameraFX.prototype.onBeforeRender = function(e, render_settings)
 {
 	if(!this.enabled)
 	{
@@ -10256,10 +10141,10 @@ CameraFX.prototype.onBeforeRender = function(e, render_options)
 		this._binded_camera = null;
 	}
 
-	this.enableGlobalFBO( render_options );
+	this.enableGlobalFBO( render_settings );
 }
 
-CameraFX.prototype.onAfterRender = function(e, render_options )
+CameraFX.prototype.onAfterRender = function(e, render_settings )
 {
 	if(!this.enabled)
 		return;
@@ -10270,7 +10155,7 @@ CameraFX.prototype.onAfterRender = function(e, render_options )
 	this.showFBO();
 }
 
-CameraFX.prototype.enableCameraFBO = function(e, render_options )
+CameraFX.prototype.enableCameraFBO = function(e, render_settings )
 {
 	if(!this.enabled)
 		return;
@@ -10283,20 +10168,20 @@ CameraFX.prototype.enableCameraFBO = function(e, render_options )
 	var viewport = this._viewport = camera.getLocalViewport( null, this._viewport );
 	RFC.setSize( viewport[2], viewport[3] );
 	RFC.use_high_precision = this.use_high_precision;
-	RFC.preRender( render_options );
+	RFC.preRender( render_settings );
 
-	render_options.ignore_viewports = true;
+	render_settings.ignore_viewports = true;
 }
 
-CameraFX.prototype.showCameraFBO = function(e, render_options )
+CameraFX.prototype.showCameraFBO = function(e, render_settings )
 {
 	if(!this.enabled)
 		return;
-	render_options.ignore_viewports = false;
+	render_settings.ignore_viewports = false;
 	this.showFBO();
 }
 
-CameraFX.prototype.enableGlobalFBO = function( render_options )
+CameraFX.prototype.enableGlobalFBO = function( render_settings )
 {
 	if(!this.enabled)
 		return;
@@ -10310,7 +10195,7 @@ CameraFX.prototype.enableGlobalFBO = function( render_options )
 		RFC.useCanvasSize();
 	RFC.use_high_precision = this.use_high_precision;
 
-	RFC.preRender( render_options );
+	RFC.preRender( render_settings );
 }
 
 CameraFX.prototype.showFBO = function()
@@ -10337,125 +10222,8 @@ CameraFX.prototype.applyFX = function()
 	var color_texture = RFC.color_texture;
 	var depth_texture = RFC.depth_texture;
 
-	var fxs = this.fx;
-
-	//shadercode: TODO, do this in a lazy way
-	var key = "";
-	var update_shader = true;
-	for(var i = 0; i < fxs.length; i++)
-		key += fxs[i].name + "|";
-	if(key == this._last_shader_key)
-		update_shader = false;
-	this._last_shader_key = key;
-
-	var uv_code = "";
-	var color_code = "";
-	var included_functions = {};
-	var uniforms_code = "";
-
-	var uniforms = this._uniforms;
-	uniforms.u_viewport[0] = color_texture.width;
-	uniforms.u_viewport[1] = color_texture.height;
-	uniforms.u_iviewport[0] = 1 / color_texture.width;
-	uniforms.u_iviewport[1] = 1 / color_texture.height;
-	uniforms.u_aspect = color_texture.width / color_texture.height;
-
-	var fx_id = 0;
-	for(var i = 0; i < fxs.length; i++)
-	{
-		var fx = fxs[i];
-		fx_id = i;
-		var fx_info = CameraFX.available_fx[ fx.name ];
-		if(!fx_info)
-			continue;
-		if(update_shader)
-		{
-			if(fx_info.functions)
-				for(var z in fx_info.functions)
-					included_functions[ fx_info.functions[z] ] = true;
-			if( fx_info.code )
-				color_code += fx_info.code.split("@").join( fx_id ) + ";\n";
-			if( fx_info.uv_code )
-				uv_code += fx_info.uv_code.split("@").join( fx_id ) + ";\n";
-		}
-		if(fx_info.uniforms)
-			for(var j in fx_info.uniforms)
-			{
-				var uniform = fx_info.uniforms[j];
-				var varname = uniform.name + fx_id;
-				if(update_shader)
-				{
-					uniforms_code += "uniform " + uniform.type + " " + varname + ";\n";
-				}
-				uniforms[ varname ] = fx[j] !== undefined ? fx[j] : uniform.value;
-			}
-	}
-
-
-	var shader = null;
-	if(update_shader)
-	{
-		var functions_code = "";
-		for(var i in included_functions)
-		{
-			var func = CameraFX.available_functions[ i ];
-			if(!func)
-			{
-				console.error("CameraFX: Function not found: " + i);
-				continue;
-			}
-			functions_code += func + "\n";
-		}
-
-		var fullcode = "\n\
-			#extension GL_OES_standard_derivatives : enable\n\
-			precision highp float;\n\
-			#define color3 vec3\n\
-			#define color4 vec4\n\
-			uniform sampler2D u_texture;\n\
-			uniform sampler2D u_texture_depth;\n\
-			varying vec2 v_coord;\n\
-			uniform vec2 u_viewport;\n\
-			uniform vec2 u_iviewport;\n\
-			uniform float u_aspect;\n\
-			vec2 uv;\n\
-			" + uniforms_code + "\n\
-			" + functions_code + "\n\
-			void main() {\n\
-				uv = v_coord;\n\
-				" + uv_code + "\n\
-				vec4 color = texture2D(u_texture, uv);\n\
-				float temp = 0.0;\n\
-				" + color_code + "\n\
-				gl_FragColor = color;\n\
-			}\n\
-			";
-
-		this._last_shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, fullcode );
-	}
-
-	shader = this._last_shader;
-
-	if(shader.hasUniform("u_texture_depth"))
-		depth_texture.bind(1);
-
-
-	if(this.apply_fxaa)
-	{
-		if(!this.temp_tex || this.temp_tex.width != gl.viewport_data[2] || this.temp_tex.height != gl.viewport_data[3])
-			this.temp_tex = new GL.Texture(gl.viewport_data[2],gl.viewport_data[3]);
-		this.temp_tex.drawTo(function(){
-			color_texture.toViewport( shader, uniforms );
-		});
-		var fx_aa_shader = GL.Shader.getFXAAShader();
-		fx_aa_shader.setup();
-		this.temp_tex.toViewport( fx_aa_shader );
-	}
-	else
-	{
-		this.temp_tex = null;
-		color_texture.toViewport( shader, uniforms );
-	}
+	this.fx.apply_fxaa = this.use_antialiasing;
+	this.fx.applyFX( color_texture, null, { depth_texture: depth_texture } );
 }
 
 LS.registerComponent( CameraFX );
@@ -10569,7 +10337,7 @@ function Light(o)
 	*/
 	this.cast_shadows = false;
 	this.shadow_bias = 0.05;
-	this.shadowmap_resolution = 0;
+	this.shadowmap_resolution = 0; //use automatic shadowmap size
 	this.type = Light.OMNI;
 	this.frustum_size = 50; //ortho
 
@@ -10900,11 +10668,11 @@ Light.prototype.isInLayer = function(num)
 }
 
 /**
-* This method is called by the Renderer when the light needs to be prepared to be used during render (compute light camera, create shadowmaps, prepare macros, etc)
+* This method is called by the LS.Renderer when the light needs to be prepared to be used during render (compute light camera, create shadowmaps, prepare macros, etc)
 * @method prepare
-* @param {Object} render_options info about how the scene will be rendered
+* @param {Object} render_settings info about how the scene will be rendered
 */
-Light.prototype.prepare = function( render_options )
+Light.prototype.prepare = function( render_settings )
 {
 	var uniforms = this._uniforms;
 	var query = this._query;
@@ -10914,7 +10682,7 @@ Light.prototype.prepare = function( render_options )
 	if(this.projective_texture || this.cast_shadows)
 		this.updateLightCamera();
 
-	if( (!render_options.shadows_enabled || !this.cast_shadows) && this._shadowmap)
+	if( (!render_settings.shadows_enabled || !this.cast_shadows) && this._shadowmap)
 	{
 		this._shadowmap = null;
 		delete LS.ResourcesManager.textures[":shadowmap_" + this.uid ];
@@ -10996,9 +10764,33 @@ Light.prototype.prepare = function( render_options )
 		this._last_processed_extra_light_shader_code = null;
 
 	//generate shadowmaps
-	if( render_options.update_shadowmaps && render_options.shadows_enabled && !render_options.lights_disabled && !render_options.low_quality )
-		this.generateShadowmap( render_options );
-	if(this._shadowmap && !this.cast_shadows)
+	var must_update_shadowmap = render_settings.update_shadowmaps && render_settings.shadows_enabled && !render_settings.lights_disabled && !render_settings.low_quality;
+
+	if(must_update_shadowmap)
+	{
+		var cameras = LS.Renderer._visible_cameras;
+		var is_inside_one_camera = false;
+
+		if( !render_settings.update_all_shadowmaps && cameras && this.type == Light.OMNI && this.range_attenuation )
+		{
+			var closest_far = this.computeShadowmapFar();
+			for(var i = 0; i < cameras.length; i++)
+			{
+				if( geo.frustumTestSphere( cameras[i]._frustum_planes, this.position, closest_far ) != CLIP_OUTSIDE )
+				{
+					is_inside_one_camera = true;
+					break;
+				}
+			}
+		}
+		else //we only check for omnis, cone frustum collision not developed yet
+			is_inside_one_camera = true;
+
+		if( is_inside_one_camera )
+			this.generateShadowmap( render_settings );
+	}
+
+	if( this._shadowmap && !this.cast_shadows )
 		this._shadowmap = null; //remove shadowmap
 
 	this._uniforms = uniforms;
@@ -11008,14 +10800,14 @@ Light.prototype.prepare = function( render_options )
 * Collects and returns the shader query of the light (some macros have to be computed now because they depend not only on the light, also on the node or material)
 * @method getQuery
 * @param {RenderInstance} instance the render instance where this light will be applied
-* @param {Object} render_options info about how the scene will be rendered
+* @param {Object} render_settings info about how the scene will be rendered
 * @return {ShaderQuery} the macros
 */
-Light.prototype.getQuery = function(instance, render_options)
+Light.prototype.getQuery = function(instance, render_settings)
 {
 	var query = this._query;
 
-	var use_shadows = this.cast_shadows && this._shadowmap && this._light_matrix != null && !render_options.shadows_disabled;
+	var use_shadows = this.cast_shadows && this._shadowmap && this._light_matrix != null && !render_settings.shadows_disabled;
 
 	if(!this.constant_diffuse && !instance.material.constant_diffuse)
 		query.macros.USE_DIFFUSE_LIGHT = "";
@@ -11051,16 +10843,16 @@ Light.prototype.getQuery = function(instance, render_options)
 * Collects and returns the uniforms for the light (some uniforms have to be computed now because they depend not only on the light, also on the node or material)
 * @method getUniforms
 * @param {RenderInstance} instance the render instance where this light will be applied
-* @param {Object} render_options info about how the scene will be rendered
+* @param {Object} render_settings info about how the scene will be rendered
 * @return {Object} the uniforms
 */
-Light.prototype.getUniforms = function( instance, render_options )
+Light.prototype.getUniforms = function( instance, render_settings )
 {
 	var uniforms = this._uniforms;
 	var use_shadows = this.cast_shadows && 
 					instance.flags & RI_RECEIVE_SHADOWS && 
 					this._shadowmap && this._light_matrix != null && 
-					!render_options.shadows_disabled;
+					!render_settings.shadows_disabled;
 
 	//compute the light mvp
 	if(this._light_matrix)
@@ -11133,7 +10925,9 @@ Light.prototype.computeShadowmapFar = function()
 	{
 		//Math.SQRT2 because in a 45º triangle the hypotenuse is sqrt(1+1) * side
 		if( this.range_attenuation && (this.att_end * Math.SQRT2) < closest_far)
-			closest_far = this.att_end * Math.SQRT2;
+			closest_far = this.att_end / Math.SQRT2;
+
+		//TODO, if no range_attenuation but linear_attenuation also check intensity to reduce the far
 	}
 	else 
 	{
@@ -11174,9 +10968,9 @@ Light.prototype.computeLightRadius = function()
 /**
 * Generates the shadowmap for this light
 * @method generateShadowmap
-* @return {Object} render_options
+* @return {Object} render_settings
 */
-Light.prototype.generateShadowmap = function (render_options)
+Light.prototype.generateShadowmap = function (render_settings)
 {
 	if(!this.cast_shadows)
 		return;
@@ -11185,12 +10979,10 @@ Light.prototype.generateShadowmap = function (render_options)
 	if( light_intensity < 0.0001 )
 		return;
 
-	var renderer = render_options.current_renderer;
-
 	//create the texture
 	var shadowmap_resolution = this.shadowmap_resolution;
 	if(shadowmap_resolution == 0)
-		shadowmap_resolution = render_options.default_shadowmap_resolution;
+		shadowmap_resolution = render_settings.default_shadowmap_resolution;
 
 	var tex_type = this.type == Light.OMNI ? gl.TEXTURE_CUBE_MAP : gl.TEXTURE_2D;
 	if(this._shadowmap == null || this._shadowmap.width != shadowmap_resolution || this._shadowmap.texture_type != tex_type)
@@ -11204,35 +10996,38 @@ Light.prototype.generateShadowmap = function (render_options)
 	{
 		var closest_far = this.computeShadowmapFar();
 
-		render_options.current_pass = "shadow";
-		render_options.is_shadowmap = true;
+		LS.Renderer._current_pass = "shadow";
+		LS.Renderer._is_shadowmap = true;
 		this._shadowmap.unbind(); 
-		renderer.renderToCubemap( this.getPosition(), shadowmap_resolution, this._shadowmap, render_options, this.near, closest_far );
-		render_options.is_shadowmap = false;
+		LS.Renderer.renderToCubemap( this.getPosition(), shadowmap_resolution, this._shadowmap, render_settings, this.near, closest_far );
+		LS.Renderer._is_shadowmap = false;
 	}
 	else //DIRECTIONAL and SPOTLIGHT
 	{
 		var shadow_camera = this.getLightCamera();
-		renderer.enableCamera( shadow_camera, render_options, true );
+		LS.Renderer.enableCamera( shadow_camera, render_settings, true );
 
 		// Render the object viewed from the light using a shader that returns the
 		// fragment depth.
 		this._shadowmap.unbind(); 
-		renderer._current_target = this._shadowmap;
+		LS.Renderer._current_target = this._shadowmap;
 		this._shadowmap.drawTo(function() {
 
 			gl.clearColor(0, 0, 0, 0);
 			//gl.clearColor(1, 1, 1, 1);
 			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-			render_options.current_pass = "shadow";
-			render_options.is_shadowmap = true;
+			LS.Renderer._current_pass = "shadow";
+			LS.Renderer._is_shadowmap = true;
 
 			//RENDER INSTANCES in the shadowmap
-			renderer.renderInstances( render_options );
-			render_options.is_shadowmap = false;
+			LS.Renderer.renderInstances( render_settings );
+
+			//restore
+			LS.Renderer._current_pass = "color";
+			LS.Renderer._is_shadowmap = false;
 		});
-		renderer._current_target = null;
+		LS.Renderer._current_target = null;
 	}
 }
 
@@ -11359,7 +11154,7 @@ LightFX.prototype.getVolumetricRenderInstance = function()
 
 	var RI = this._volumetric_render_instance;
 	if(!RI)
-		this._volumetric_render_instance = RI = new RenderInstance(this._root, this);
+		this._volumetric_render_instance = RI = new LS.RenderInstance(this._root, this);
 
 	RI.flags = RenderInstance.ALPHA; //reset and set
 	
@@ -11432,9 +11227,9 @@ LightFX.prototype.getGlareRenderInstance = function(light)
 }
 
 //render on RenderInstance
-LightFX.onGlarePreRender = function(render_options)
+LightFX.onGlarePreRender = function( render_settings )
 {
-	if(render_options.current_pass != "color")
+	if( LS.Renderer._current_pass != "color" )
 		return; 
 
 	//project point to 2D in normalized space
@@ -11445,8 +11240,8 @@ LightFX.onGlarePreRender = function(render_options)
 	//this.material.opacity = 1 / (2*vec3.distance(this.pos2D, [0,0,0])); //attenuate by distance
 
 	var center = this.center;
-	var eye = Renderer._current_camera.getEye();
-	var scene = Renderer._current_scene;
+	var eye = LS.Renderer._current_camera.getEye();
+	var scene = LS.Renderer._current_scene;
 	var dir = vec3.sub(vec3.create(), eye, center );
 	var dist = vec3.length(dir);
 	vec3.scale(dir,dir,1/dist);
@@ -11455,7 +11250,7 @@ LightFX.onGlarePreRender = function(render_options)
 	var coll = 0;
 	
 	if(this.test_visibility)
-		coll = LS.Picking.raycast( center, dir, dist );
+		coll = LS.Picking.raycast( center, dir, { max_distance: dist } );
 
 	if(coll.length)
 	{
@@ -11498,6 +11293,7 @@ function MeshRenderer(o)
 	this._primitive = -1;
 	this.two_sided = false;
 	this.point_size = 0.1;
+	this.textured_points = false;
 
 	if(o)
 		this.configure(o);
@@ -11565,8 +11361,11 @@ MeshRenderer.prototype.configure = function(o)
 	this.submesh_id = o.submesh_id;
 	this.primitive = o.primitive; //gl.TRIANGLES
 	this.two_sided = !!o.two_sided;
+	if(o.point_size !== undefined) //legacy
+		this.point_size = o.point_size;
+	this.textured_points = !!o.textured_points;
 	if(o.material)
-		this.material = typeof(o.material) == "string" ? o.material : new Material(o.material);
+		this.material = typeof(o.material) == "string" ? o.material : new LS.Material(o.material);
 }
 
 /**
@@ -11591,6 +11390,8 @@ MeshRenderer.prototype.serialize = function()
 		o.submesh_id = this.submesh_id;
 	if(this.two_sided)
 		o.two_sided = this.two_sided;
+	o.point_size = this.point_size;
+	o.textured_points = this.textured_points;
 	return o;
 }
 
@@ -11692,9 +11493,14 @@ MeshRenderer.prototype.onCollectInstances = function(e, instances)
 	{
 		RI.uniforms.u_point_size = this.point_size;
 		RI.query.macros["USE_POINTS"] = "";
+		if(this.textured_points)
+			RI.query.macros["USE_TEXTURED_POINTS"] = "";
 	}
+	
+	if(!this.textured_points && RI.query.macros["USE_TEXTURED_POINTS"])
+		delete RI.query.macros["USE_TEXTURED_POINTS"];
 
-	instances.push(RI);
+	instances.push( RI );
 }
 
 
@@ -12888,8 +12694,8 @@ Skybox.prototype.onCollectInstances = function(e, instances)
 		this._render_instance = RI = new LS.RenderInstance(this._root, this);
 		RI.priority = 100;
 
-		RI.onPreRender = function(render_options) { 
-			var cam_pos = render_options.current_camera.getEye();
+		RI.onPreRender = function(render_settings) { 
+			var cam_pos = LS.Renderer._current_camera.getEye();
 			mat4.identity(this.matrix);
 			mat4.setTranslation( this.matrix, cam_pos );
 			if(this.node.transform)
@@ -14273,7 +14079,7 @@ function GlobalInfo(o)
 	this.createProperty( "ambient_color", GlobalInfo.DEFAULT_AMBIENT_COLOR, "color" );
 	this.createProperty( "background_color", GlobalInfo.DEFAULT_BACKGROUND_COLOR, "color" );
 
-	this.linear_pipeline = false;
+	this.render_settings = new LS.RenderSettings();
 
 	this._textures = {};
 
@@ -14330,7 +14136,7 @@ GlobalInfo.prototype.getProperties = function()
 		"textures/foreground": "texture",
 		"textures/environment": "texture",
 		"textures/irradiance": "texture",
-		"linear_pipeline":"boolean"
+		"render_settings":"RenderSettings"
 	};
 }
 
@@ -14818,7 +14624,7 @@ FXGraphComponent.prototype.onRemovedFromScene = function( scene )
 }
 
 
-FXGraphComponent.prototype.onBeforeRender = function(e, render_options)
+FXGraphComponent.prototype.onBeforeRender = function(e, render_settings)
 {
 	this._last_camera = LS.Renderer._current_camera;
 
@@ -14852,10 +14658,10 @@ FXGraphComponent.prototype.onBeforeRender = function(e, render_options)
 		this._binded_camera = null;
 	}
 
-	this.enableGlobalFBO( render_options );
+	this.enableGlobalFBO( render_settings );
 }
 
-FXGraphComponent.prototype.onAfterRender = function(e, render_options )
+FXGraphComponent.prototype.onAfterRender = function(e, render_settings )
 {
 	if(!this.enabled)
 		return;
@@ -14866,7 +14672,7 @@ FXGraphComponent.prototype.onAfterRender = function(e, render_options )
 	this.showFBO();
 }
 
-FXGraphComponent.prototype.enableCameraFBO = function(e, render_options )
+FXGraphComponent.prototype.enableCameraFBO = function(e, render_settings )
 {
 	if(!this.enabled)
 		return;
@@ -14878,20 +14684,20 @@ FXGraphComponent.prototype.enableCameraFBO = function(e, render_options )
 	var viewport = this._viewport = camera.getLocalViewport( null, this._viewport );
 	this._renderFrameContainer.setSize( viewport[2], viewport[3] );
 	this._renderFrameContainer.use_high_precision = this.use_high_precision;
-	this._renderFrameContainer.preRender( render_options );
+	this._renderFrameContainer.preRender( render_settings );
 
-	render_options.ignore_viewports = true;
+	render_settings.ignore_viewports = true;
 }
 
-FXGraphComponent.prototype.showCameraFBO = function(e, render_options )
+FXGraphComponent.prototype.showCameraFBO = function(e, render_settings )
 {
 	if(!this.enabled)
 		return;
-	render_options.ignore_viewports = false;
+	render_settings.ignore_viewports = false;
 	this.showFBO();
 }
 
-FXGraphComponent.prototype.enableGlobalFBO = function( render_options )
+FXGraphComponent.prototype.enableGlobalFBO = function( render_settings )
 {
 	if(!this.enabled)
 		return;
@@ -14905,7 +14711,7 @@ FXGraphComponent.prototype.enableGlobalFBO = function( render_options )
 		RFC.useCanvasSize();
 	RFC.use_high_precision = this.use_high_precision;
 	RFC.use_extra_texture = this.use_extra_texture;
-	RFC.preRender( render_options );
+	RFC.preRender( render_settings );
 }
 
 FXGraphComponent.prototype.showFBO = function()
@@ -14935,9 +14741,9 @@ FXGraphComponent.prototype.showFBO = function()
 
 /*
 //used to create the buffers
-FXGraphComponent.prototype.onBeforeRender = function(e, render_options)
+FXGraphComponent.prototype.onBeforeRender = function(e, render_settings)
 {
-	if(!this._graph || !render_options.render_fx || !this.enabled ) 
+	if(!this._graph || !render_settings.render_fx || !this.enabled ) 
 		return;
 
 	//create RenderFrameContainer
@@ -15010,7 +14816,7 @@ FXGraphComponent.prototype.applyGraph = function()
 
 //Executed inside RenderFrameContainer **********
 /*
-FXGraphComponent.prototype.onPreRender = function( cameras, render_options )
+FXGraphComponent.prototype.onPreRender = function( cameras, render_settings )
 {
 	//TODO: MIGRATE TO RenderFrameContainer
 
@@ -15358,12 +15164,13 @@ ParticleEmissor.prototype.createParticle = function(p)
 			//p.pos = vec3.multiply( vec3.normalize( vec3.create( [(Math.random() - 0.5), ( Math.random() - 0.5 ), (Math.random() - 0.5)])), this.emissor_size); break;
 		case ParticleEmissor.MESH_EMISSOR: 
 			var mesh = this.emissor_mesh;
-			if(mesh && mesh.constructor == String)
+			if(mesh && mesh.constructor === String)
 				mesh = LS.ResourcesManager.getMesh(this.emissor_mesh);
-			if(mesh && mesh.vertices)
+			if(mesh && mesh.getBuffer("vertices") )
 			{
-				var v = Math.floor(Math.random() * mesh.vertices.length / 3)*3;
-				p._pos.set( [mesh.vertices[v], mesh.vertices[v+1], mesh.vertices[v+2]] );
+				var vertices = mesh.getBuffer("vertices").data;				
+				var v = Math.floor(Math.random() * vertices.length / 3)*3;
+				p._pos.set( [vertices[v] + Math.random() * 0.001, vertices[v+1] + Math.random() * 0.001, vertices[v+2] + Math.random() * 0.001] );
 			}
 			else
 				p._pos.set([0,0,0]);
@@ -15868,7 +15675,7 @@ Label.prototype.onRemovedFromScene = function(scene)
 }
 
 
-Label.prototype.render = function(e, render_options)
+Label.prototype.render = function(e, render_settings)
 {
 	if(!this._element)
 		return;
@@ -15890,7 +15697,7 @@ Label.prototype.render = function(e, render_options)
 	if(this._element.className != classname)
 		this._element.className = classname;
 
-	var camera = render_options.main_camera;
+	var camera = LS.Renderer._main_camera;
 	node.transform.getGlobalPosition(this._world_pos);
 	camera.project(this._world_pos, null, this._screen_pos );
 
@@ -15924,6 +15731,8 @@ function PointCloud(o)
 	this.in_world_coordinates = false;
 	this.sort_in_z = false; //slower
 
+	this.serialize_points = true; //disable if the points shouldnt be stored (if they are generated by another component on runtime)
+
 	if(o)
 		this.configure(o);
 
@@ -15945,8 +15754,16 @@ function PointCloud(o)
 PointCloud.icon = "mini-icon-points.png";
 PointCloud["@texture"] = { widget: "texture" };
 PointCloud["@color"] = { widget: "color" };
+PointCloud["@num_points"] = { widget: "info" };
+PointCloud["@size"] = { type: "number", step: 0.001 };
 
 PointCloud.default_color = vec4.fromValues(1,1,1,1);
+
+Object.defineProperty( PointCloud.prototype, "num_points", {
+	set: function(v) {},
+	get: function() { return this._points.length; },
+	enumerable: true
+});
 
 PointCloud.prototype.addPoint = function( position, color, size, frame_id )
 {
@@ -15975,6 +15792,8 @@ PointCloud.prototype.clear = function()
 {
 	this._points.length = 0;
 }
+
+PointCloud.prototype.reset = PointCloud.prototype.clear;
 
 PointCloud.prototype.setPoint = function(id, position, color, size, frame_id )
 {
@@ -16154,7 +15973,7 @@ PointCloud.prototype.onCollectInstances = function(e, instances, options)
 	if(!RI)
 		this._render_instance = RI = new LS.RenderInstance(this._root, this);
 
-	if(this.in_world_coordinates)
+	if(this.in_world_coordinates && this._root.transform )
 		RI.matrix.set( this._root.transform._global_matrix );
 	else
 		mat4.copy( RI.matrix, PointCloud._identity );
@@ -16185,8 +16004,42 @@ PointCloud.prototype.onCollectInstances = function(e, instances, options)
 	instances.push(RI);
 }
 
+PointCloud.prototype.serialize = function()
+{
+	var o = LS.cloneObject(this);
+	if(this.uid) //special case, not enumerable
+		o.uid = this.uid;
+	if(this.serialize_points)
+	{
+		var points = Array(this._points.length);
+		for(var i = 0; i < this._points.length; i++)
+		{
+			points[i] = typedArrayToArray( this._points[i] );
+		}
+		o.points = points;
+	}
+	return o;
+}
 
-LS.registerComponent(PointCloud);
+PointCloud.prototype.configure = function(o)
+{
+	if(!o)
+		return;
+	if(o.uid) 
+		this.uid = o.uid;
+
+	if(o.points && o.serialize_points)
+	{
+		this._points = Array( o.points.length );
+		for(var i = 0; i < o.points.length; i++)
+			this._points[i] = new Float32Array( o.points[i] );
+		o.points = null;
+	}
+	LS.cloneObject( o, this );
+}
+
+
+LS.registerComponent( PointCloud );
 /* lineCloud.js */
 
 function LineCloud(o)
@@ -16224,10 +16077,37 @@ function LineCloud(o)
 LineCloud.icon = "mini-icon-lines.png";
 LineCloud["@color"] = { widget: "color" };
 
+Object.defineProperty( LineCloud.prototype, "num_lines", {
+	set: function(v) {},
+	get: function() { return this._lines.length; },
+	enumerable: true
+});
 
 LineCloud.prototype.clear = function()
 {
 	this._lines.length = 0;
+}
+
+LineCloud.prototype.reset = LineCloud.prototype.clear;
+
+//Adds a point connect to the last one
+LineCloud.prototype.addPoint = function( point, color )
+{
+	//last
+	var start = null;
+	var start_color = null;
+	if(this._lines.length)
+	{
+		var last = this._lines[ this._lines.length - 1 ];
+		start = new Float32Array( last.subarray(3,6) );
+		start_color = new Float32Array( last.subarray(10,14) );
+	}
+	else
+	{
+		start = point;
+		start_color = color;
+	}
+	this.addLine( start, point, start_color, color );
 }
 
 LineCloud.prototype.addLine = function( start, end, start_color, end_color )
@@ -16368,7 +16248,7 @@ LineCloud.prototype.onCollectInstances = function(e, instances, options)
 	if(!RI)
 		this._render_instance = RI = new RenderInstance(this._root, this);
 
-	if(this.in_world_coordinates)
+	if(this.in_world_coordinates && this._root.transform )
 		RI.matrix.set( this._root.transform._global_matrix );
 	else
 		mat4.copy( RI.matrix, LineCloud._identity );
@@ -16390,7 +16270,7 @@ LineCloud.prototype.onCollectInstances = function(e, instances, options)
 }
 
 
-LS.registerComponent(LineCloud);
+LS.registerComponent( LineCloud );
 /**
 * Reads animation tracks from an Animation resource and applies the properties to the objects referenced
 * @class PlayAnimation
@@ -16588,7 +16468,7 @@ RealtimeReflector.prototype.onRemovedFromScene = function(scene)
 }
 
 
-RealtimeReflector.prototype.onRenderReflection = function(e, render_options)
+RealtimeReflector.prototype.onRenderReflection = function( e, render_settings )
 {
 	if(!this.enabled || !this._root)
 		return;
@@ -16610,17 +16490,16 @@ RealtimeReflector.prototype.onRenderReflection = function(e, render_options)
 		this._root.flags.seen_by_reflections = false;
 
 	//add flags
-	render_options.is_rt = true;
-	render_options.is_reflection = true;
-	render_options.brightness_factor = this.brightness_factor;
-	render_options.colorclip_factor = this.colorclip_factor;
-	render_options.layers = this.layers;
+	LS.Renderer._is_reflection = true;
+	render_settings.brightness_factor = this.brightness_factor;
+	render_settings.colorclip_factor = this.colorclip_factor;
+	var old_layers = render_settings.layers;
+	render_settings.layers = this.layers;
 
 	var cameras = LS.Renderer._visible_cameras;
 
 	for(var i = 0; i < cameras.length; i++)
 	{
-		//var camera = render_options.main_camera;
 		var camera = cameras[i];
 
 		if( isNaN( texture_size ) && this.texture_size == "viewport")
@@ -16682,13 +16561,13 @@ RealtimeReflector.prototype.onRenderReflection = function(e, render_options)
 			//little offset
 			vec3.add(plane_center, plane_center,vec3.scale(vec3.create(), plane_normal, -this.clip_offset));
 			var clipping_plane = [plane_normal[0], plane_normal[1], plane_normal[2], vec3.dot(plane_center, plane_normal)  ];
-			render_options.clipping_plane = clipping_plane;
-			LS.Renderer.renderInstancesToRT(reflected_camera, texture, render_options);
+			render_settings.clipping_plane = clipping_plane;
+			LS.Renderer.renderInstancesToRT(reflected_camera, texture, render_settings);
 		}
 		else //spherical reflection
 		{
 			reflected_camera.eye = plane_center;
-			LS.Renderer.renderInstancesToRT( reflected_camera, texture, render_options );
+			LS.Renderer.renderInstancesToRT( reflected_camera, texture, render_settings );
 		}
 
 		if(this.blur)
@@ -16717,12 +16596,11 @@ RealtimeReflector.prototype.onRenderReflection = function(e, render_options)
 	}
 
 	//remove flags
-	delete render_options.clipping_plane;
-	delete render_options.is_rt;
-	delete render_options.is_reflection;
-	delete render_options.brightness_factor;
-	delete render_options.colorclip_factor;
-	delete render_options.layers;
+	LS.Renderer._is_reflection = false;
+	render_settings.clipping_plane = null;
+	render_settings.layers = old_layers;
+	delete render_settings.brightness_factor;
+	delete render_settings.colorclip_factor;
 
 	//make it visible again
 	this._root.flags.visible = visible;
@@ -16750,6 +16628,15 @@ RealtimeReflector.prototype.onCameraEnabled = function(e, camera)
 }
 
 LS.registerComponent( RealtimeReflector );
+
+/** Script is the component in charge of executing scripts to control the behaviour of the application.
+* Script must be coded in Javascript and they have full access to all the engine, so one script could replace the behaviour of any part of the engine.
+* Scripts are executed inside their own context, the context is local to the script so any variable defined in the context that is not attached to the context wont be accessible from other parts of the engine.
+* To interact with the engine Scripts must bind callback to events so the callbacks will be called when those events are triggered, however, there are some generic methods that will be called
+* @class Script
+* @constructor
+* @param {Object} object to configure from
+*/
 function Script(o)
 {
 	this.enabled = true;
@@ -16761,7 +16648,10 @@ function Script(o)
 	this._script.extra_methods = {
 		getComponent: (function() { return this; }).bind(this),
 		getLocator: function() { return this.getComponent().getLocator() + "/context"; },
-		createProperty: LS.Component.prototype.createProperty
+		createProperty: LS.Component.prototype.createProperty,
+		bind: LS.Component.prototype.bind,
+		unbind: LS.Component.prototype.unbind,
+		unbindAll: LS.Component.prototype.unbindAll
 	};
 
 	this._script.catch_exceptions = false; //during execution
@@ -16772,6 +16662,7 @@ function Script(o)
 	if(o)
 		this.configure(o);
 
+	/* code must not be executed if it is not attached to the scene
 	if(this.code)
 	{
 		try
@@ -16784,6 +16675,7 @@ function Script(o)
 			console.error(err);
 		}
 	}
+	*/
 }
 
 Script.secure_module = false; //this module is not secure (it can execute code)
@@ -16866,11 +16758,20 @@ Script.prototype.setCode = function( code, skip_events )
 	this.processCode( skip_events );
 }
 
-Script.prototype.processCode = function(skip_events)
+/**
+* This is the method in charge of compiling the code and executing the constructor, which also creates the context.
+* It is called everytime the code is modified, that implies that the context is created when the component is configured.
+* @method processCode
+*/
+Script.prototype.processCode = function( skip_events )
 {
 	this._script.code = this.code;
-	if(this._root && !Script.block_execution )
+	if(this._root && !LS.Script.block_execution )
 	{
+		//unbind old stuff
+		if(this._script && this._script._context)
+			this._script._context.unbindAll();
+
 		//compiles and executes the context
 		var ret = this._script.compile({component:this, node: this._root, scene: this._root.scene });
 		/*
@@ -17990,7 +17891,7 @@ InteractiveController.prototype.getNodeUnderMouse = function( e )
 			return null;
 
 		var ray = camera.getRayInPixel( e.canvasx, e.canvasy );
-		var collisions = LS.Picking.raycast( ray.start, ray.direction, null, layers );
+		var collisions = LS.Picking.raycast( ray.start, ray.direction, { layers: layers } );
 		if(!collisions || !collisions.length)
 			return null;
 		return collisions[0].node;
@@ -18002,7 +17903,7 @@ InteractiveController.prototype.getNodeUnderMouse = function( e )
 		if(!camera)
 			return null;
 		var ray = camera.getRayInPixel( e.canvasx, e.canvasy );
-		var collisions = LS.Physics.raycast( ray.start, ray.direction, null, layers );
+		var collisions = LS.Physics.raycast( ray.start, ray.direction, { layers: layers } );
 		if(!collisions || !collisions.length)
 			return null;
 		return collisions[0].node;
@@ -20253,44 +20154,598 @@ Prefab.packResources = function( resources, base_data )
 
 LS.Classes["Prefab"] = LS.Prefab = Prefab;
 
-/** RenderOptions contains info about how to render the FULL scene (not just a render pass)
-* It is used to store info about which passes should be applied, and what actions performed
-* It could occasionally contain info about the current pass
-* it should not be associated with an scene (the same RenderOptions could be used with different scenes)
-* @class RenderOptions
+//Work in progress
+
+/**
+* helps apply basic effects to a texture with as fewer render calls as possible with low memory footprint
+* used by CameraFX but also available for any other use
+* @class TextureFX
+*/
+function TextureFX( o )
+{
+	this.apply_fxaa = false;
+	this.fx = [];
+
+	this._uniforms = { u_aspect: 1, u_viewport: vec2.create(), u_iviewport: vec2.create(), u_texture: 0, u_texture_depth: 1, u_random: vec2.create() };
+	if(o)
+		this.configure(o);
+}
+
+TextureFX.available_fx = {
+	"brightness_contrast": {
+		name: "Brightness & Contrast",
+		uniforms: {
+			brightness: { name: "u_brightness", type: "float", value: 1, step: 0.01 },
+			contrast: { name: "u_contrast", type: "float", value: 1, step: 0.01 }
+		},
+		code:"color.xyz = (color.xyz * u_brightness@ - vec3(0.5)) * u_contrast@ + vec3(0.5);"
+	},
+	"invert": {
+		name: "Invert color",
+		code:"color.xyz = vec3(1.0) - color.xyz;"
+	},
+	"threshold": {
+		name: "Threshold",
+		uniforms: {
+			threshold: { name: "u_threshold", type: "float", value: 0.5, min: 0, max: 2, step: 0.01 },
+			threshold_width: { name: "u_threshold_width", type: "float", value: 0.01, min: 0, max: 1, step: 0.001 }
+		},
+		code:"color.xyz = vec3( smoothstep( u_threshold@ - u_threshold_width@ * 0.5, u_threshold@ + u_threshold_width@ * 0.5,  length(color.xyz) ));"
+	},
+	"colorize": {
+		name: "Colorize",
+		uniforms: {
+			colorize: { name: "u_colorize", type: "color3", value: [1,1,1] },
+			vibrance: { name: "u_vibrance", type: "float", value: 0.0, min: 0, max: 2, step: 0.01 }
+		},
+		code:"color.xyz = color.xyz * (u_colorize@ + vec3(u_vibrance@ * 0.1)) * (1.0 + u_vibrance@);"
+	},
+	"color_add": {
+		name: "Color add",
+		uniforms: {
+			color_add: { name: "u_coloradd", type: "color3", value: [0.1,0.1,0.1] }
+		},
+		code:"color.xyz = color.xyz + u_coloradd@;"
+	},
+	"vigneting": {
+		name: "Vigneting",
+		uniforms: {
+			radius: { name: "u_radius", type: "float", value: 1 },
+			intensity: { name: "u_vigneting", type: "float", value: 1, min: 0, max: 2, step: 0.01 }
+		},
+		code:"color.xyz = mix( color.xyz * max( 1.0 - (dist_to_center * u_radius@ / 0.7071), 0.0), color.xyz, u_vigneting@);"
+	},
+	"aberration": {
+		name: "Chromatic Aberration",
+		pass: "before",
+		uniforms: {
+			difraction: { name: "u_difraction", type: "float", value: 1 }
+		},
+		code: "color.x = texture2D(u_texture, uv - to_center * 0.001 * u_difraction@ ).x;" + 
+			"color.z = texture2D(u_texture, uv + to_center * 0.001 * u_difraction@ ).z;"
+	},
+	"halftone": {
+		name: "Halftone",
+		uniforms: {
+			"Halftone angle": { name: "u_halftone_angle", type: "float", value: 0, step: 0.01 },
+			"Halftone size": { name: "u_halftone_size", type: "float", value: 1, step: 0.01 }
+		},
+		functions: ["pattern"],
+		code:"color.x = ( (color.x * 10.0 - 5.0) + pattern( u_halftone_angle@, u_halftone_size@ ) );" + 
+			"color.y = ( (color.y * 10.0 - 5.0) + pattern( u_halftone_angle@ + 0.167, u_halftone_size@ ) );" + 
+			"color.z = ( (color.z * 10.0 - 5.0) + pattern( u_halftone_angle@ + 0.333, u_halftone_size@ ) );"
+	},
+	"halftoneBN": {
+		name: "Halftone B/N",
+		uniforms: {
+			"Halftone angle": { name: "u_halftone_angle", type: "float", value: 0, step: 0.01 },
+			"Halftone size": { name: "u_halftone_size", type: "float", value: 1, step: 0.01 }
+		},
+		functions: ["pattern"],
+		code:"color.xyz = vec3( (length(color.xyz) * 10.0 - 5.0) + pattern( u_halftone_angle@, u_halftone_size@ ) );"
+	},
+	"lens": {
+		name: "Lens Distortion",
+		uniforms: {
+			lens_k: { name: "u_lens_k", type: "float", value: -0.15 },
+			lens_kcube: { name: "u_lens_kcube", type: "float", value: 0.8 },
+			lens_scale: { name: "u_lens_scale", type: "float", value: 1 }
+		},
+		uv_code:"float r2 = u_aspect * u_aspect * (uv.x-0.5) * (uv.x-0.5) + (uv.y-0.5) * (uv.y-0.5); float distort@ = 1. + r2 * (u_lens_k@ + u_lens_kcube@ * sqrt(r2)); uv = vec2( u_lens_scale@ * distort@ * (uv.x-0.5) + 0.5, u_lens_scale@  * distort@ * (uv.y-0.5) + 0.5 );"
+	},
+	"warp": {
+		name: "Warp",
+		uniforms: {
+			warp_amp: { name: "u_warp_amp", type: "float", value: 0.01, step: 0.001 },
+			warp_texture: { name: "u_warp_texture", type: "sampler2D", widget: "Texture", value: "" },
+		},
+		uv_code:"uv = uv + u_warp_amp@ * (texture2D( u_warp_texture@, uv ).xy - vec2(0.5));"
+		//uv_code:"uv = uv + u_warp_amp@ * (vec2(0.5) + 0.5 * vec2( sin(uv.x * u_warp_freq@) * sin(uv.y * u_warp_freq@)));"
+	},
+	"LUT": {
+		name: "LUT",
+		functions: ["LUT"],
+		uniforms: {
+			lut_intensity: { name: "u_lut_intensity", type: "float", value: 1, step: 0.01 },
+			lut_texture: { name: "u_lut_texture", type: "sampler2D", filter: "nearest", wrap: "clamp", widget: "Texture", value: "" },
+		},
+		code:"color.xyz = mix(color.xyz, LUT( color.xyz, u_lut_texture@ ), u_lut_intensity@);"
+		//uv_code:"uv = uv + u_warp_amp@ * (vec2(0.5) + 0.5 * vec2( sin(uv.x * u_warp_freq@) * sin(uv.y * u_warp_freq@)));"
+	},
+	"pixelate": {
+		name: "Pixelate",
+		uniforms: {
+			width: { name: "u_width", type: "float", value: 256, step: 1, min: 1 },
+			height: { name: "u_height", type: "float", value: 256, step: 1, min: 1 }
+		},
+		uv_code:"uv = vec2( floor(uv.x * u_width@) / u_width@, floor(uv.y * u_height@) / u_height@ );"
+	},
+	"quantize": {
+		name: "Quantize",
+		uniforms: {
+			levels: { name: "u_levels", type: "float", value: 8, step: 1, min: 1 }
+		},
+		code:"color.xyz = floor(color.xyz * u_levels@) / u_levels@;"
+	},
+	"edges": {
+		name: "Edges",
+		uniforms: {
+			"Edges factor": { name: "u_edges_factor", type: "float", value: 1 }
+		},
+		code:"vec4 color@ = texture2D(u_texture, uv );\n\
+				vec4 color_up@ = texture2D(u_texture, uv + vec2(0., u_iviewport.y));\n\
+				vec4 color_right@ = texture2D(u_texture, uv + vec2(u_iviewport.x,0.));\n\
+				vec4 color_down@ = texture2D(u_texture, uv + vec2(0., -u_iviewport.y));\n\
+				vec4 color_left@ = texture2D(u_texture, uv + vec2(-u_iviewport.x,0.));\n\
+				color = u_edges_factor@ * (abs(color@ - color_up@) + abs(color@ - color_down@) + abs(color@ - color_left@) + abs(color@ - color_right@));"
+	},
+	"depth": {
+		name: "Depth",
+		uniforms: {
+			"near": { name: "u_near", type: "float", value: 0.01, step: 0.1 },
+			"far": { name: "u_far", type: "float", value: 1000, step: 1 }
+		},
+		code:"color.xyz = vec3( (2.0 * u_near@) / (u_far@ + u_near@ - texture2D(u_texture_depth, uv ).x * (u_far@ - u_near@)) );"
+	},
+	"logarithmic": {
+		name: "Logarithmic",
+		uniforms: {
+			"Log. A Factor": { name: "u_logfactor_a", type: "float", value: 2, step: 0.01 },
+			"Log. B Factor": { name: "u_logfactor_b", type: "float", value: 2, step: 0.01 }
+		},
+		code:"color.xyz = log( color.xyz * u_logfactor_a@ ) * u_logfactor_b@;"
+	},
+	"ditherBN": {
+		name: "dither B/N",
+		functions: ["dither"],
+		uniforms: {
+		},
+		code:"color.xyz = vec3( dither( color.x ) );"
+	},
+	"dither": {
+		name: "Dither",
+		functions: ["dither"],
+		uniforms: {
+		},
+		code:"color.xyz = vec3( dither( color.x ), dither( color.y ), dither( color.z ) );"
+	},
+	"gamma": {
+		name: "Gamma",
+		uniforms: {
+			"Gamma": { name: "u_gamma", type: "float", value: 2.2, step: 0.01 }
+		},
+		code:"color.xyz = pow( color.xyz, vec3( 1.0 / u_gamma@) );"
+	},
+	"noiseBN": {
+		name: "Noise B&N",
+		functions: ["noise"],
+		uniforms: {
+			"noise": { name: "u_noise", type: "float", value: 0.1, step: 0.01 }
+		},
+		code:"color.xyz += u_noise@ * vec3( noise( (u_random + v_coord) * u_viewport) );"
+	}
+	/*
+	,
+	"fast_edges": {
+		name: "Edges (fast)",
+		code:"color.xyz = abs( dFdx(color.xyz) ) + abs( dFdy(color.xyz) );"
+	}
+	*/
+};
+
+TextureFX.available_functions = {
+	pattern: "float pattern(float angle, float size) {\n\
+				float s = sin(angle * 3.1415), c = cos(angle * 3.1415);\n\
+				vec2 tex = v_coord * u_viewport.xy;\n\
+				vec2 point = vec2( c * tex.x - s * tex.y , s * tex.x + c * tex.y ) * size;\n\
+				return (sin(point.x) * sin(point.y)) * 4.0;\n\
+			}\n\
+		",
+	dither: "float dither(float v) {\n\
+				vec2 pixel = v_coord * u_viewport;\n\
+				int i = int(floor(clamp(v,0.0,1.0) * 16.0 + 0.5));\n\
+				if(i < 1)\n\
+					return 0.0;\n\
+				if(i >= 15)\n\
+					return 1.0;\n\
+				float x = floor(pixel.x);\n\
+				float y = floor(pixel.y);\n\
+				bool xmod4 = mod(x, 4.0) == 0.0;\n\
+				bool ymod4 = mod(y, 4.0) == 0.0;\n\
+				bool xmod2 = mod(x, 2.0) == 0.0;\n\
+				bool ymod2 = mod(y, 2.0) == 0.0;\n\
+				bool xmod4_2 = mod(x + 2.0, 4.0) == 0.0;\n\
+				bool ymod4_2 = mod(y + 2.0, 4.0) == 0.0;\n\
+				bool xmod2_1 = mod(x + 1.0, 2.0) == 0.0;\n\
+				bool ymod2_1 = mod(y + 1.0, 2.0) == 0.0;\n\
+				bool xmod4_1 = mod(x + 1.0, 4.0) == 0.0;\n\
+				bool ymod4_1 = mod(y + 1.0, 4.0) == 0.0;\n\
+				bool xmod4_3 = mod(x + 3.0, 4.0) == 0.0;\n\
+				bool ymod4_3 = mod(y + 3.0, 4.0) == 0.0;\n\
+				\n\
+				if(i < 9)\n\
+				{\n\
+					if(i >= 1 && xmod4 && ymod4 )\n\
+						return 1.0;\n\
+					if(i >= 2 && xmod4_2 && ymod4_2)\n\
+						return 1.0;\n\
+					if(i >= 3 && xmod4_2 && ymod2 )\n\
+						return 1.0;\n\
+					if(i >= 4 && xmod2 && ymod2 )\n\
+						return 1.0;\n\
+					if(i >= 5 && xmod4_1 && ymod4_1 )\n\
+						return 1.0;\n\
+					if(i >= 6 && xmod4_3 && ymod4_3 )\n\
+						return 1.0;\n\
+					if(i >= 7 && xmod4_1 && ymod4_3 )\n\
+						return 1.0;\n\
+					if(i >= 8 && xmod4_3 && ymod4_1 )\n\
+						return 1.0;\n\
+					return 0.0;\n\
+				}\n\
+				else\n\
+				{\n\
+					if(i < 15 && xmod4_1 && ymod4 )\n\
+						return 0.0;\n\
+					if(i < 14 && xmod4_3 && ymod4_2)\n\
+						return 0.0;\n\
+					if(i < 13 && xmod4_3 && ymod2 )\n\
+						return 0.0;\n\
+					if(i < 12 && xmod2_1 && ymod2 )\n\
+						return 0.0;\n\
+					if(i < 11 && xmod4_2 && ymod4_1 )\n\
+						return 0.0;\n\
+					if(i < 10 && xmod4 && ymod4_3 )\n\
+						return 0.0;\n\
+					return 1.0;\n\
+				}\n\
+			}\n\
+		",
+	LUT:  "vec3 LUT(in vec3 color, in sampler2D textureB) {\n\
+		 lowp vec3 textureColor = clamp( color, vec3(0.0), vec3(1.0) );\n\
+		 mediump float blueColor = textureColor.b * 63.0;\n\
+		 mediump vec2 quad1;\n\
+		 quad1.y = floor(floor(blueColor) / 8.0);\n\
+		 quad1.x = floor(blueColor) - (quad1.y * 8.0);\n\
+		 mediump vec2 quad2;\n\
+		 quad2.y = floor(ceil(blueColor) / 8.0);\n\
+		 quad2.x = ceil(blueColor) - (quad2.y * 8.0);\n\
+		 highp vec2 texPos1;\n\
+		 texPos1.x = (quad1.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.r);\n\
+		 texPos1.y = 1.0 - ((quad1.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.g));\n\
+		 highp vec2 texPos2;\n\
+		 texPos2.x = (quad2.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.r);\n\
+		 texPos2.y = 1.0 - ((quad2.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.g));\n\
+		 lowp vec3 newColor1 = texture2D(textureB, texPos1).xyz;\n\
+		 lowp vec3 newColor2 = texture2D(textureB, texPos2).xyz;\n\
+		 lowp vec3 newColor = mix(newColor1, newColor2, fract(blueColor));\n\
+		 return newColor.rgb;\n\
+	 }",
+	noise:  "\n\
+		float hash(float n) { return fract(sin(n) * 1e4); }\n\
+		float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }\n\
+		float noise(float x) {\n\
+			float i = floor(x);\n\
+			float f = fract(x);\n\
+			float u = f * f * (3.0 - 2.0 * f);\n\
+			return mix(hash(i), hash(i + 1.0), u);\n\
+		}\n\
+		float noise(vec2 x) {\n\
+			vec2 i = floor(x);\n\
+			vec2 f = fract(x);\n\
+			float a = hash(i);\n\
+			float b = hash(i + vec2(1.0, 0.0));\n\
+			float c = hash(i + vec2(0.0, 1.0));\n\
+			float d = hash(i + vec2(1.0, 1.0));\n\
+			vec2 u = f * f * (3.0 - 2.0 * f);\n\
+			return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;\n\
+		}\n\
+	"
+}
+
+/**
+* Returns the first component of this container that is of the same class
+* @method configure
+* @param {Object} o object with the configuration info from a previous serialization
+*/
+TextureFX.prototype.configure = function(o)
+{
+	this.apply_fxaa = !!o.apply_fxaa;
+	if(o.fx)
+		this.fx = o.fx.concat();
+}
+
+TextureFX.prototype.serialize = function()
+{
+	return { 
+		apply_fxaa: this.apply_fxaa,
+		fx: this.fx.concat()
+	};
+}
+
+TextureFX.prototype.getResources = function(res)
+{
+	//TODO
+	return res;
+}
+
+TextureFX.prototype.addFX = function( name )
+{
+	if(!name)
+		return;
+	if( !TextureFX.available_fx[ name ] )
+	{
+		console.warn( "TextureFX not found: " + name );
+		return;
+	}
+	this.fx.push({ name: name });
+}
+
+TextureFX.prototype.getFX = function(index)
+{
+	return this.fx[ index ];
+}
+
+TextureFX.prototype.moveFX = function( fx, offset )
+{
+	offset = offset || -1;
+
+	var index = this.fx.indexOf(fx);
+	if( index == -1 )
+		return;
+
+	this.fx.splice(index,1);
+	index += offset;
+
+
+	if(index >= 0 && index < this.fx.length)
+		this.fx.splice(index,0,fx);
+	else
+		this.fx.push(fx);
+}
+
+TextureFX.prototype.removeFX = function( fx )
+{
+	for(var i = 0; i < this.fx.length; i++)
+	{
+		if(this.fx[i] !== fx)
+			continue;
+
+		this.fx.splice(i,1);
+		return;
+	}
+}
+
+TextureFX.prototype.applyFX = function( input_texture, output_texture, options )
+{
+	var color_texture = input_texture;
+	var depth_texture = options.depth_texture;
+
+	var fxs = this.fx;
+
+	//shadercode: TODO, do this in a lazy way
+	var key = "";
+	var update_shader = true;
+	for(var i = 0; i < fxs.length; i++)
+		key += fxs[i].name + "|";
+	if(key == this._last_shader_key)
+		update_shader = false;
+	this._last_shader_key = key;
+
+	var uv_code = "";
+	var color_code = "";
+	var included_functions = {};
+	var uniforms_code = "";
+	var texture_slot = 2;
+
+	var uniforms = this._uniforms;
+	uniforms.u_viewport[0] = color_texture.width;
+	uniforms.u_viewport[1] = color_texture.height;
+	uniforms.u_iviewport[0] = 1 / color_texture.width;
+	uniforms.u_iviewport[1] = 1 / color_texture.height;
+	uniforms.u_aspect = color_texture.width / color_texture.height;
+	uniforms.u_random[0] = Math.random();
+	uniforms.u_random[1] = Math.random();
+
+	var fx_id = 0;
+	for(var i = 0; i < fxs.length; i++)
+	{
+		var fx = fxs[i];
+		fx_id = i;
+		var fx_info = TextureFX.available_fx[ fx.name ];
+		if(!fx_info)
+			continue;
+		if(update_shader)
+		{
+			if(fx_info.functions)
+				for(var z in fx_info.functions)
+					included_functions[ fx_info.functions[z] ] = true;
+			if( fx_info.code )
+				color_code += fx_info.code.split("@").join( fx_id ) + ";\n";
+			if( fx_info.uv_code )
+				uv_code += fx_info.uv_code.split("@").join( fx_id ) + ";\n";
+		}
+		if(fx_info.uniforms)
+			for(var j in fx_info.uniforms)
+			{
+				var uniform = fx_info.uniforms[j];
+				var varname = uniform.name + fx_id;
+				if(update_shader)
+				{
+					uniforms_code += "uniform " + uniform.type + " " + varname + ";\n";
+				}
+
+				if(uniform.type == "sampler2D")
+				{
+					uniforms[ varname ] = texture_slot;
+					var tex = this.getTexture( fx[j] );
+					if(tex)
+					{
+						tex.bind( texture_slot );
+						if(uniform.filter == "nearest")
+						{
+							gl.texParameteri( tex.texture_type, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
+							gl.texParameteri( tex.texture_type, gl.TEXTURE_MIN_FILTER, gl.NEAREST );
+						}
+						if(uniform.wrap == "clamp")
+						{
+							gl.texParameteri( tex.texture_type, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
+							gl.texParameteri( tex.texture_type, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE );
+						}
+						texture_slot++;
+					}
+				}
+				else
+					uniforms[ varname ] = fx[j] !== undefined ? fx[j] : uniform.value;
+			}
+	}
+
+
+	var shader = null;
+	if(update_shader)
+	{
+		var functions_code = "";
+		for(var i in included_functions)
+		{
+			var func = TextureFX.available_functions[ i ];
+			if(!func)
+			{
+				console.error("TextureFX: Function not found: " + i);
+				continue;
+			}
+			functions_code += func + "\n";
+		}
+
+		var fullcode = "\n\
+			#extension GL_OES_standard_derivatives : enable\n\
+			precision highp float;\n\
+			#define color3 vec3\n\
+			#define color4 vec4\n\
+			uniform sampler2D u_texture;\n\
+			uniform sampler2D u_texture_depth;\n\
+			varying vec2 v_coord;\n\
+			uniform vec2 u_viewport;\n\
+			uniform vec2 u_iviewport;\n\
+			uniform float u_aspect;\n\
+			uniform vec2 u_random;\n\
+			vec2 uv;\n\
+			" + uniforms_code + "\n\
+			" + functions_code + "\n\
+			void main() {\n\
+				uv = v_coord;\n\
+				vec2 to_center = vec2(0.5) - uv;\n\
+				float dist_to_center = length(to_center);\n\
+				" + uv_code + "\n\
+				vec4 color = texture2D(u_texture, uv);\n\
+				float temp = 0.0;\n\
+				" + color_code + "\n\
+				gl_FragColor = color;\n\
+			}\n\
+			";
+
+		this._last_shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, fullcode );
+	}
+
+	shader = this._last_shader;
+
+	if(shader.hasUniform("u_texture_depth"))
+		depth_texture.bind(1);
+
+	color_texture.setParameter( gl.TEXTURE_MAG_FILTER, gl.LINEAR );
+	color_texture.setParameter( gl.TEXTURE_MIN_FILTER, gl.LINEAR );
+
+	if( this.apply_fxaa )
+	{
+		if(!this.temp_tex || this.temp_tex.width != gl.viewport_data[2] || this.temp_tex.height != gl.viewport_data[3])
+			this.temp_tex = new GL.Texture(gl.viewport_data[2],gl.viewport_data[3]);
+		this.temp_tex.drawTo(function(){
+			color_texture.toViewport( shader, uniforms );
+		});
+		var fx_aa_shader = GL.Shader.getFXAAShader();
+		fx_aa_shader.setup();
+
+		if(!output_texture)
+			this.temp_tex.toViewport( fx_aa_shader );
+		else
+			this.temp_tex.copyTo( output_texture, fx_aa_shader );
+	}
+	else
+	{
+		this.temp_tex = null;
+		if(!output_texture)
+			color_texture.toViewport( shader, uniforms );
+		else
+		{
+			shader.uniforms( uniforms );
+			this.temp_tex.copyTo( output_texture, shader );
+		}
+	}
+}
+
+TextureFX.prototype.getTexture = function( name )
+{
+	return LS.ResourcesManager.getTexture( name );
+}
+
+LS.TextureFX = TextureFX;
+/** RenderSettings contains how the scene should be renderer 
+* There could be different renderSettings for different scene quality.
+* @class RenderSettings
 * @constructor
 **/
 
-function RenderOptions(o)
+function RenderSettings( o )
 {
-	//this.renderer = null; //which renderer is in use
-
-	//info about the current rendering stage (this should be moved)
-	this.main_camera = null; //this camera is the primary camera, some actions require to know the primary user point of view
-	this.current_camera = null; //this camera is the one being rendered at this moment
-	this.current_pass = null; //name of the current pass ("color","shadow","depth","picking")
-	this.current_renderer = null; //current renderer being used
+	this.renderer_name = null; //null means default
 
 	//global render settings
-	this.default_shadowmap_resolution = Light.DEFAULT_SHADOWMAP_RESOLUTION;
-	this.ignore_viewports = false;
-	this.ignore_clear = false;
-	this.keep_viewport = false; //do not force a full viewport (use the current one as the full)
-	this.shadows_enabled = true; 
-	this.force_wireframe = false;	//render everything in wireframe
-	this.lights_disabled = false; //flat lighting
-	this.low_quality = false;	//try to use low quality shaders
+	this.default_shadowmap_resolution = LS.Light.DEFAULT_SHADOWMAP_RESOLUTION; //let the system decide best shadowmap resolution according to quality settings
+	this.ignore_viewports = false;	//render to full viewport, ignoring the viewport in the cameras
+	this.ignore_clear = false;	//skip global clear, used in case you want to mix LiteScene with another renderer
+	this.keep_viewport = false; //do not force a full canvas viewport at render start (use the current one in WebGL as the full)
+	this.linear_pipeline = false; //tries to degamma all the albedo textures.
 
+	this.shadows_enabled = true; //allow shadowmaps
 	this.update_shadowmaps = true; //automatically update shadowmaps in every frame (enable if there are dynamic objects)
+	this.update_all_shadowmaps = false; //update shadowmaps even if they are not visible
+
+	this.force_wireframe = false; //render everything in wireframe
+	this.lights_disabled = false; //flat lighting
+	this.low_quality = false;	//try to use low quality shaders (where available)
+
 	this.update_materials = true; //update info in materials in every frame
 	this.render_all_cameras = true; //render secundary cameras too
 	this.render_fx = true; //postprocessing fx
-	this.in_player = true; //is in the player (not in the editor)
 
-	this.sort_instances_by_distance = true;
-	this.sort_instances_by_priority = true;
+	this.sort_instances_by_distance = true; //sort render instances by distance 
+	this.sort_instances_by_priority = true; //sort render instances by priority
 	this.z_pass = false; //enable when the shaders are too complex (normalmaps, etc) to reduce work of the GPU (still some features missing)
-	this.frustum_culling = true;
+	this.frustum_culling = true; //test bounding box by frustum to determine visibility
+
+	this.clipping_plane = null;
+
+	//info
+	this.in_player = true; //is in the player (not in the editor)
 
 	//this should change one day...
 	this.default_shader_id = "global";
@@ -20302,7 +20757,14 @@ function RenderOptions(o)
 			this[i] = o[i];
 }
 
-LS.RenderOptions = RenderOptions;
+RenderSettings["@default_shadowmap_resolution"] = { widget: "combo", values: [0,256,512,1024,2048,4096] };
+
+RenderSettings.prototype.toJSON = function()
+{
+		
+}
+
+LS.RenderSettings = RenderSettings;
 /**
 * RenderInstance contains info of one object to be rendered on the scene.
 *
@@ -20385,6 +20847,9 @@ function RenderInstance( node, component )
 	this.query = new LS.ShaderQuery();
 	this.uniforms = {};
 	this.samplers = {};
+
+	this._camera_visibility = 0; //tells in which camera was visible this instance during the last rendering
+	this._is_visible = false; //used during the rendering
 
 	//for internal use
 	this._dist = 0; //computed during rendering, tells the distance to the current camera
@@ -20643,6 +21108,20 @@ RenderInstance.prototype.overlapsSphere = function(center, radius)
 	return geo.testSphereBBox( center, radius, this.aabb );
 }
 
+/**
+* Checks if this object was visible by a camera during the last frame
+*
+* @method wasVisibleByCamera
+* @param {LS.Camera} camera [optional] if a camera is supplied it checks if it was visible by that camera, otherwise tells you if it was visible by any camera
+* @return {Boolean} true if it was visible by the camera (or any camera if no camera supplied), false otherwise
+*/
+RenderInstance.prototype.wasVisibleByCamera = function( camera )
+{
+	if(!camera)
+		return this._camera_visibility != 0;
+	return (this._camera_visibility | (1<<(camera._rendering_index))) ? true : false;
+}
+
 
 /* moved to PhysicsInstance
 RenderInstance.prototype.setCollisionMesh = function(mesh)
@@ -20698,7 +21177,7 @@ RenderFrameContainer.prototype.setSize = function( width, height )
 }
 
 
-RenderFrameContainer.prototype.preRender = function( render_options )
+RenderFrameContainer.prototype.preRender = function( render_settings )
 {
 	var camera = LS.Renderer._current_camera;
 
@@ -20716,7 +21195,7 @@ RenderFrameContainer.prototype.preRender = function( render_options )
 
 }
 
-RenderFrameContainer.prototype.postRender = function( render_options )
+RenderFrameContainer.prototype.postRender = function( render_settings )
 {
 	this.endFBO();
 	//detach FBO and render to viewport
@@ -20843,8 +21322,7 @@ LS.RenderFrameContainer = RenderFrameContainer;
 */
 
 var Renderer = {
-
-	default_render_options: new RenderOptions(),
+	default_render_settings: new LS.RenderSettings(), //overwritten by the global info or the editor one
 	default_material: new StandardMaterial(), //used for objects without material
 
 	global_aspect: 1, //used when rendering to a texture that doesnt have the same aspect as the screen
@@ -20855,17 +21333,20 @@ var Renderer = {
 	_full_viewport: vec4.create(), //contains info about the full viewport available to render (current texture size or canvas size)
 
 	_current_scene: null,
-	_current_render_options: null,
+	_current_render_settings: null,
 	_current_camera: null,
 	_current_target: null, //texture where the image is being rendered
+	_current_pass: null,
+
+	_main_camera: null,
 
 	_visible_cameras: null,
 	_visible_lights: null,
 	_visible_instances: null,
 
 	//stats
-	_rendercalls: 0,
-	_rendered_instances: 0,
+	_rendercalls: 0, //calls to instance.render
+	_rendered_instances: 0, //instances processed
 	_frame: 0,
 
 	//settings
@@ -20884,8 +21365,8 @@ var Renderer = {
 	init: function()
 	{
 		this._missing_texture = new GL.Texture(1,1, { pixel_data: [128,128,128,255] });
-		Draw.init();
-		Draw.onRequestFrame = function() { LS.GlobalScene.refresh(); }
+		LS.Draw.init();
+		LS.Draw.onRequestFrame = function() { LS.GlobalScene.refresh(); }
 	},
 
 	reset: function()
@@ -20909,22 +21390,18 @@ var Renderer = {
 	*
 	* @method render
 	* @param {SceneTree} scene
-	* @param {RenderOptions} render_options
+	* @param {RenderSettings} render_settings
 	* @param {Array} [cameras=null] if no cameras are specified the cameras are taken from the scene
 	*/
-	render: function( scene, render_options, cameras )
+	render: function( scene, render_settings, cameras )
 	{
 		if(!LS.ShadersManager.ready)
 			return; //not ready
 
-		render_options = render_options || this.default_render_options;
-		render_options.current_renderer = this;
-		render_options.current_scene = scene;
-		this._current_render_options = render_options;
+		render_settings = render_settings || this.default_render_settings;
+		this._current_render_settings = render_settings;
 		this._current_scene = scene;
-
 		this._main_camera = cameras ? cameras[0] : null;
-		render_options.main_camera = this._main_camera;
 
 		//done at the beginning just in case it crashes
 		scene._frame += 1;
@@ -20934,7 +21411,7 @@ var Renderer = {
 		this._rendercalls = 0;
 		this._rendered_instances = 0;
 
-		if( !render_options.keep_viewport )
+		if( !render_settings.keep_viewport )
 		{
 			gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
 			this.setFullViewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
@@ -20944,55 +21421,55 @@ var Renderer = {
 		this._global_viewport.set( gl.viewport_data );
 
 		//Event: beforeRender used in actions that could affect which info is collected for the rendering
-		LEvent.trigger(scene, "beforeRender", render_options );
-		scene.triggerInNodes("beforeRender", render_options );
+		LEvent.trigger(scene, "beforeRender", render_settings );
+		scene.triggerInNodes("beforeRender", render_settings );
 
 		//get render instances, cameras, lights, materials and all rendering info ready: computeVisibility
-		this.processVisibleData(scene, render_options);
+		this.processVisibleData( scene, render_settings, cameras );
 
 		//Define the main camera, the camera that should be the most important (used for LOD info, or shadowmaps)
 		cameras = cameras || this._visible_cameras;
 		this._visible_cameras = cameras; //the cameras being rendered
-		render_options.main_camera = cameras[0];
+		this._main_camera = cameras[0];
 
 		//remove the lights that do not lay in front of any camera (this way we avoid creating shadowmaps)
 		//TODO
 
 		//Event: renderShadowmaps helps to generate shadowMaps that need some camera info (which could be not accessible during processVisibleData)
-		LEvent.trigger(scene, "renderShadows", render_options );
-		scene.triggerInNodes("renderShadows", render_options ); //TODO: remove
+		LEvent.trigger(scene, "renderShadows", render_settings );
+		scene.triggerInNodes("renderShadows", render_settings ); //TODO: remove
 
 		//Event: afterVisibility allows to cull objects according to the main camera
-		scene.triggerInNodes("afterVisibility", render_options ); //TODO: remove	
+		scene.triggerInNodes("afterVisibility", render_settings ); //TODO: remove	
 
 		//Event: renderReflections in case some realtime reflections are needed, this is the moment to render them inside textures
-		LEvent.trigger(scene, "renderReflections", render_options );
-		scene.triggerInNodes("renderReflections", render_options ); //TODO: remove
+		LEvent.trigger(scene, "renderReflections", render_settings );
+		scene.triggerInNodes("renderReflections", render_settings ); //TODO: remove
 
 		//Event: beforeRenderMainPass in case a last step is missing
-		LEvent.trigger(scene, "beforeRenderMainPass", render_options );
-		scene.triggerInNodes("beforeRenderMainPass", render_options ); //TODO: remove
+		LEvent.trigger(scene, "beforeRenderMainPass", render_settings );
+		scene.triggerInNodes("beforeRenderMainPass", render_settings ); //TODO: remove
 
 		//enable FX
-		if(render_options.render_fx)
-			LEvent.trigger( scene, "enableFrameBuffer", render_options );
+		if(render_settings.render_fx)
+			LEvent.trigger( scene, "enableFrameBuffer", render_settings );
 
 		//render
-		this.renderFrameCameras( cameras, render_options );
+		this.renderFrameCameras( cameras, render_settings );
 
-		if( render_options.keep_viewport )
+		if( render_settings.keep_viewport )
 			gl.setViewport( this._global_viewport );
 
 
 		//disable and show FX
-		if(render_options.render_fx)
-			LEvent.trigger( scene, "showFrameBuffer", render_options );
+		if(render_settings.render_fx)
+			LEvent.trigger( scene, "showFrameBuffer", render_settings );
 
-		LEvent.trigger( scene, "renderGUI", render_options );
+		LEvent.trigger( scene, "renderGUI", render_settings );
 
 		//Event: afterRender to give closure to some actions
-		LEvent.trigger(scene, "afterRender", render_options );
-		scene.triggerInNodes("afterRender", render_options ); //TODO: remove
+		LEvent.trigger(scene, "afterRender", render_settings );
+		scene.triggerInNodes("afterRender", render_settings ); //TODO: remove
 	},
 
 	/**
@@ -21000,9 +21477,9 @@ var Renderer = {
 	*
 	* @method renderFrameCameras
 	* @param {Array} cameras
-	* @param {RenderOptions} render_options
+	* @param {RenderSettings} render_settings
 	*/
-	renderFrameCameras: function( cameras, render_options, global_render_frame )
+	renderFrameCameras: function( cameras, render_settings, global_render_frame )
 	{
 		var scene = this._current_scene;
 
@@ -21011,16 +21488,16 @@ var Renderer = {
 		{
 			var current_camera = cameras[i];
 
-			LEvent.trigger(scene, "beforeRenderFrame", render_options );
-			LEvent.trigger(current_camera, "beforeRenderFrame", render_options );
-			LEvent.trigger(current_camera, "enableFrameBuffer", render_options );
+			LEvent.trigger(scene, "beforeRenderFrame", render_settings );
+			LEvent.trigger(current_camera, "beforeRenderFrame", render_settings );
+			LEvent.trigger(current_camera, "enableFrameBuffer", render_settings );
 
 			//main render
-			this.renderFrame( current_camera, render_options ); 
+			this.renderFrame( current_camera, render_settings ); 
 
-			LEvent.trigger(current_camera, "showFrameBuffer", render_options );
-			LEvent.trigger(current_camera, "afterRenderFrame", render_options );
-			LEvent.trigger(scene, "afterRenderFrame", render_options );
+			LEvent.trigger(current_camera, "showFrameBuffer", render_settings );
+			LEvent.trigger(current_camera, "afterRenderFrame", render_settings );
+			LEvent.trigger(scene, "afterRenderFrame", render_settings );
 		}
 	},
 
@@ -21029,16 +21506,16 @@ var Renderer = {
 	*
 	* @method renderFrame
 	* @param {Camera} camera 
-	* @param {Object} render_options
+	* @param {Object} render_settings
 	*/
-	renderFrame: function ( camera, render_options, scene )
+	renderFrame: function ( camera, render_settings, scene )
 	{
 		if(scene) //in case we use another scene
-			this.processVisibleData(scene, render_options);
+			this.processVisibleData(scene, render_settings);
 
 		scene = scene || this._current_scene;
 
-		this.enableCamera( camera, render_options, render_options.skip_viewport ); //set as active camera and set viewport
+		this.enableCamera( camera, render_settings, render_settings.skip_viewport ); //set as active camera and set viewport
 
 		//scissors test for the gl.clear, otherwise the clear affects the full viewport
 		gl.scissor( gl.viewport_data[0], gl.viewport_data[1], gl.viewport_data[2], gl.viewport_data[3] );
@@ -21053,20 +21530,20 @@ var Renderer = {
 		else
 			gl.clearColor(0,0,0,0);
 
-		if(render_options.ignore_clear != true && (camera.clear_color || camera.clear_depth) )
+		if(render_settings.ignore_clear != true && (camera.clear_color || camera.clear_depth) )
 			gl.clear( ( camera.clear_color ? gl.COLOR_BUFFER_BIT : 0) | (camera.clear_depth ? gl.DEPTH_BUFFER_BIT : 0) );
 
 		gl.disable(gl.SCISSOR_TEST);
 
 		//render scene
-		render_options.current_pass = "color";
+		this._current_pass = "color";
 
 		LEvent.trigger(scene, "beforeRenderScene", camera );
 		scene.triggerInNodes("beforeRenderScene", camera ); //TODO remove
 		LEvent.trigger(this, "beforeRenderScene", camera );
 
 		//here we render all the instances
-		this.renderInstances(render_options);
+		this.renderInstances(render_settings);
 
 		LEvent.trigger(scene, "afterRenderScene", camera );
 		scene.triggerInNodes("afterRenderScene", camera ); //TODO remove
@@ -21078,13 +21555,13 @@ var Renderer = {
 	*
 	* @method enableCamera
 	* @param {Camera} camera
-	* @param {RenderOptions} render_options
+	* @param {RenderSettings} render_settings
 	*/
-	enableCamera: function(camera, render_options, skip_viewport)
+	enableCamera: function(camera, render_settings, skip_viewport)
 	{
 		var scene = this._current_scene;
 
-		LEvent.trigger( camera, "beforeEnabled", render_options );
+		LEvent.trigger( camera, "beforeEnabled", render_settings );
 		LEvent.trigger( scene, "beforeCameraEnabled", camera );
 
 		//assign viewport manually (shouldnt use camera.getLocalViewport to unify?)
@@ -21101,7 +21578,7 @@ var Renderer = {
 		if(!skip_viewport)
 		{
 			//force fullscreen viewport?
-			if(render_options && render_options.ignore_viewports )
+			if(render_settings && render_settings.ignore_viewports )
 			{
 				camera._final_aspect = this.global_aspect * camera._aspect * (width / height);
 				gl.viewport( this._full_viewport[0], this._full_viewport[1], this._full_viewport[2], this._full_viewport[3] );
@@ -21126,8 +21603,6 @@ var Renderer = {
 
 		//set as the current camera
 		this._current_camera = camera;
-		if(render_options)
-			render_options.current_camera = camera;
 
 		//prepare camera
 		camera.fillCameraShaderUniforms( scene );
@@ -21137,7 +21612,7 @@ var Renderer = {
 		Draw.setCameraPosition( camera.getEye() );
 		Draw.setViewProjectionMatrix( this._view_matrix, this._projection_matrix, this._viewprojection_matrix );
 
-		LEvent.trigger( camera, "afterEnabled", render_options );
+		LEvent.trigger( camera, "afterEnabled", render_settings );
 		LEvent.trigger( scene, "afterCameraEnabled", camera ); //used to change stuff according to the current camera (reflection textures)
 	},
 
@@ -21145,30 +21620,30 @@ var Renderer = {
 	* Calls the render method for every instance (it also takes into account events and frustrum culling 
 	*
 	* @method renderInstances
-	* @param {RenderOptions} render_options
+	* @param {RenderSettings} render_settings
 	* @param {Array} instances array of RIs, if not specified the last visible_instances are rendered
 	*/
-	renderInstances: function( render_options, instances )
+	renderInstances: function( render_settings, instances )
 	{
 		var scene = this._current_scene;
 		if(!scene)
 			return console.warn("Renderer.renderInstances: no scene found");
 
 		var camera = this._current_camera;
-		var frustum_planes = geo.extractPlanes( this._viewprojection_matrix, this.frustum_planes );
-		this.frustum_planes = frustum_planes;
-		var apply_frustum_culling = render_options.frustum_culling;
+		var camera_index_flag = camera._rendering_index != -1 ? (1<<(camera._rendering_index)) : 0;
+		var apply_frustum_culling = render_settings.frustum_culling;
+		var frustum_planes = camera.updateFrustumPlanes();
 		var layers_filter = camera.layers;
-		if( render_options.layers !== undefined )
-			layers_filter = render_options.layers;
-		var is_color_render = !render_options.is_shadowmap && !render_options.is_picking;
+		if( render_settings.layers !== undefined )
+			layers_filter = render_settings.layers;
+		var is_color_render = !this._is_shadowmap && !this._is_picking;
 
-		LEvent.trigger(scene, "beforeRenderInstances", render_options);
-		scene.triggerInNodes("beforeRenderInstances", render_options);
+		LEvent.trigger( scene, "beforeRenderInstances", render_settings );
+		scene.triggerInNodes( "beforeRenderInstances", render_settings );
 
 		//compute global scene info
-		this.fillSceneShaderQuery( scene, render_options );
-		this.fillSceneShaderUniforms( scene, render_options );
+		this.fillSceneShaderQuery( scene, render_settings );
+		this.fillSceneShaderUniforms( scene, render_settings );
 
 		//render background: maybe this should be moved to a component
 		if(is_color_render && scene.info.textures["background"])
@@ -21195,7 +21670,8 @@ var Renderer = {
 		var numLights = lights.length;
 		var render_instances = instances || this._visible_instances;
 
-		LEvent.trigger( scene, "renderInstances", render_options );
+		LEvent.trigger( scene, "renderInstances", render_settings );
+		LEvent.trigger( this, "renderInstances", render_settings );
 
 		//reset again!
 		this.resetGLState();
@@ -21206,25 +21682,25 @@ var Renderer = {
 			//render instance
 			var instance = render_instances[i];
 			var node_flags = instance.node.flags;
-			instance._in_camera = false;
+			instance._is_visible = false;
 
 			//hidden nodes
-			if(render_options.is_rt && node_flags.seen_by_reflections == false)
+			if( this._is_reflection && node_flags.seen_by_reflections == false)
 				continue;
-			if(render_options.is_shadowmap && !(instance.flags & RI_CAST_SHADOWS))
+			if( this._is_shadowmap && !(instance.flags & RI_CAST_SHADOWS) )
 				continue;
-			if(node_flags.seen_by_camera == false && is_color_render && !render_options.is_reflection)
+			if( node_flags.seen_by_camera == false && is_color_render && !this._is_reflection )
 				continue;
-			if(node_flags.seen_by_picking == false && render_options.is_picking)
+			if( node_flags.seen_by_picking == false && this._is_picking )
 				continue;
-			if(node_flags.selectable == false && render_options.is_picking)
+			if( node_flags.selectable == false && this._is_picking )
 				continue;
 			if( (layers_filter & instance.layers) === 0 )
 				continue;
 
 			//done here because sometimes some nodes are moved in this action
 			if(instance.onPreRender)
-				if( instance.onPreRender(render_options) === false)
+				if( instance.onPreRender( render_settings ) === false)
 					continue;
 
 			if(instance.material.opacity <= 0) //TODO: remove this, do it somewhere else
@@ -21233,12 +21709,14 @@ var Renderer = {
 			//test visibility against camera frustum
 			if(apply_frustum_culling && !(instance.flags & RI_IGNORE_FRUSTUM))
 			{
-				if(geo.frustumTestBox( frustum_planes, instance.aabb ) == CLIP_OUTSIDE)
+				if(geo.frustumTestBox( frustum_planes, instance.aabb ) == CLIP_OUTSIDE )
 					continue;
 			}
 
 			//save visibility info
-			instance._in_camera = true;
+			instance._is_visible = true;
+			if(camera_index_flag) //shadowmap cameras dont have an index
+				instance._camera_visibility |= camera_index_flag;
 		}
 
 		var close_lights = [];
@@ -21249,24 +21727,24 @@ var Renderer = {
 			//render instance
 			var instance = render_instances[i];
 
-			if(!instance._in_camera)
+			if(!instance._is_visible)
 				continue;
 
 			if(instance.flags & RI_RENDER_2D)
 			{
-				this.render2DInstance(instance, scene, render_options );
+				this.render2DInstance(instance, scene, render_settings );
 				if(instance.onPostRender)
-					instance.onPostRender(render_options);
+					instance.onPostRender(render_settings);
 				continue;
 			}
 
 			this._rendered_instances += 1;
 
 			//choose the appropiate render pass
-			if(render_options.is_shadowmap)
-				this.renderShadowPassInstance( instance, render_options );
-			else if(render_options.is_picking)
-				this.renderPickingInstance( instance, render_options );
+			if(this._is_shadowmap)
+				this.renderShadowPassInstance( instance, render_settings );
+			else if(this._is_picking)
+				this.renderPickingInstance( instance, render_settings );
 			else
 			{
 				//Compute lights affecting this RI (by proximity, only takes into account spherical bounding)
@@ -21291,14 +21769,14 @@ var Renderer = {
 				//	close_lights = lights;
 
 				//render multipass
-				this.renderColorPassInstance( instance, close_lights, scene, render_options );
+				this.renderColorPassInstance( instance, close_lights, scene, render_settings );
 			}
 
 			if(instance.onPostRender)
-				instance.onPostRender(render_options);
+				instance.onPostRender(render_settings);
 		}
 
-		LEvent.trigger(scene, "renderScreenSpace", render_options);
+		LEvent.trigger(scene, "renderScreenSpace", render_settings);
 
 		//foreground object
 		if(is_color_render && scene.info.textures["foreground"])
@@ -21324,8 +21802,8 @@ var Renderer = {
 		//restore state
 		this.resetGLState();
 
-		LEvent.trigger(scene, "afterRenderInstances", render_options);
-		scene.triggerInNodes("afterRenderInstances", render_options);
+		LEvent.trigger(scene, "afterRenderInstances", render_settings);
+		scene.triggerInNodes("afterRenderInstances", render_settings);
 
 		//and finally again
 		this.resetGLState();
@@ -21335,7 +21813,7 @@ var Renderer = {
 	* To set gl state to a known and constant state in every render pass
 	*
 	* @method resetGLState
-	* @param {RenderOptions} render_options
+	* @param {RenderSettings} render_settings
 	*/
 	resetGLState: function()
 	{
@@ -21411,9 +21889,9 @@ var Renderer = {
 	* @param {RenderInstance} instance
 	* @param {Array} lights array containing al the lights affecting this RI
 	* @param {SceneTree} scene
-	* @param {RenderOptions} render_options
+	* @param {RenderSettings} render_settings
 	*/
-	renderColorPassInstance: function(instance, lights, scene, render_options)
+	renderColorPassInstance: function( instance, lights, scene, render_settings )
 	{
 		var camera = this._current_camera;
 		var node = instance.node;
@@ -21440,7 +21918,7 @@ var Renderer = {
 
 
 		//FLAGS: enable GL flags like cull_face, CCW, etc
-		this.enableInstanceFlags(instance, render_options);
+		this.enableInstanceFlags(instance, render_settings);
 
 		//set blend flags
 		if(material.blend_mode !== Blend.NORMAL)
@@ -21460,9 +21938,9 @@ var Renderer = {
 		var sampler_uniforms = this.bindSamplers( samplers );
 
 		//find shader name
-		var shader_name = render_options.default_shader_id;
-		if(render_options.low_quality)
-			shader_name = render_options.default_low_shader_id;
+		var shader_name = render_settings.default_shader_id;
+		if(render_settings.low_quality)
+			shader_name = render_settings.default_low_shader_id;
 		if( material.shader_name )
 			shader_name = material.shader_name;
 
@@ -21470,7 +21948,7 @@ var Renderer = {
 		var num_lights = lights.length;
 
 		//no lights rendering (flat light)
-		var ignore_lights = node.flags.ignore_lights || (instance.flags & RI_IGNORE_LIGHTS) || render_options.lights_disabled;
+		var ignore_lights = node.flags.ignore_lights || (instance.flags & RI_IGNORE_LIGHTS) || render_settings.lights_disabled;
 		if(!num_lights || ignore_lights)
 		{
 			var query = new LS.ShaderQuery( shader_name, { FIRST_PASS:"", LAST_PASS:"", USE_AMBIENT_ONLY:"" });
@@ -21479,7 +21957,7 @@ var Renderer = {
 
 			if( ignore_lights )
 				query.setMacro( "USE_IGNORE_LIGHTS" );
-			if(render_options.clipping_plane && !(instance.flags & RI_IGNORE_CLIPPING_PLANE) )
+			if(render_settings.clipping_plane && !(instance.flags & RI_IGNORE_CLIPPING_PLANE) )
 				query.setMacro( "USE_CLIPPING_PLANE" );
 
 			if( material.onModifyQuery )
@@ -21490,6 +21968,9 @@ var Renderer = {
 
 			//assign uniforms
 			shader.uniformsArray( [ sampler_uniforms, scene._uniforms, camera._uniforms, instance_final_uniforms ] );
+
+			if(instance.flags & RI_IGNORE_VIEWPROJECTION)
+				shader.setUniform("u_viewprojection", mat4.IDENTITY );
 
 			//render
 			instance.render( shader );
@@ -21504,7 +21985,7 @@ var Renderer = {
 
 			var query = new LS.ShaderQuery( shader_name );
 
-			var light_query = light.getQuery( instance, render_options );
+			var light_query = light.getQuery( instance, render_settings );
 
 			if(iLight === 0)
 				query.setMacro("FIRST_PASS");
@@ -21515,7 +21996,7 @@ var Renderer = {
 			query.add( instance_final_query ); //contains node, material and instance macros
 			query.add( light_query );
 
-			if(render_options.clipping_plane && !(instance.flags & RI_IGNORE_CLIPPING_PLANE) )
+			if(render_settings.clipping_plane && !(instance.flags & RI_IGNORE_CLIPPING_PLANE) )
 				query.setMacro("USE_CLIPPING_PLANE");
 
 			if( material.onModifyQuery )
@@ -21524,7 +22005,7 @@ var Renderer = {
 			var shader = LS.ShadersManager.resolve( query );
 
 			//fill shader data
-			var light_uniforms = light.getUniforms( instance, render_options );
+			var light_uniforms = light.getUniforms( instance, render_settings );
 
 			//secondary pass flags to make it additive
 			if(iLight > 0)
@@ -21560,9 +22041,9 @@ var Renderer = {
 	*
 	* @method renderShadowPassInstance
 	* @param {RenderInstance} instance
-	* @param {RenderOptions} render_options
+	* @param {RenderSettings} render_settings
 	*/
-	renderShadowPassInstance: function(instance, render_options)
+	renderShadowPassInstance: function(instance, render_settings)
 	{
 		var scene = this._current_scene;
 		var camera = this._current_camera;
@@ -21586,7 +22067,7 @@ var Renderer = {
 		instance_final_uniforms.u_mvp = this._mvp_matrix;
 
 		//FLAGS
-		this.enableInstanceFlags( instance, render_options );
+		this.enableInstanceFlags( instance, render_settings );
 
 		var query = new ShaderQuery("depth");
 		query.add( scene._query );
@@ -21645,7 +22126,7 @@ var Renderer = {
 	* @method render2DInstance
 	* @param {RenderInstance} instance
 	* @param {SceneTree} scene
-	* @param {RenderOptions} render_options
+	* @param {RenderSettings} render_settings
 	*/
 	render2DInstance:  function(instance, scene, options)
 	{
@@ -21728,9 +22209,9 @@ var Renderer = {
 	*
 	* @method renderPickingInstance
 	* @param {RenderInstance} instance
-	* @param {RenderOptions} render_options
+	* @param {RenderSettings} render_settings
 	*/
-	renderPickingInstance: function( instance, render_options )
+	renderPickingInstance: function( instance, render_settings )
 	{
 		var scene = this._current_scene;
 		var camera = this._current_camera;
@@ -21766,29 +22247,29 @@ var Renderer = {
 	*
 	* @method fillSceneShaderQuery
 	* @param {SceneTree} scene
-	* @param {RenderOptions} render_options
+	* @param {RenderSettings} render_settings
 	*/
-	fillSceneShaderQuery: function( scene, render_options )
+	fillSceneShaderQuery: function( scene, render_settings )
 	{
 		var query = new ShaderQuery();
 
-		if( render_options.current_camera.type == Camera.ORTHOGRAPHIC )
+		if( this._current_camera.type == Camera.ORTHOGRAPHIC )
 			query.setMacro("USE_ORTHOGRAPHIC_CAMERA");
 
 		//camera info
-		if(render_options.current_pass == "color")
+		if(this._current_pass == "color")
 		{
-			if(scene.info && scene.info.linear_pipeline)
+			if(render_settings.linear_pipeline)
 				query.setMacro("USE_LINEAR_PIPELINE");
 
-			if(render_options.brightness_factor && render_options.brightness_factor != 1)
+			if(render_settings.brightness_factor && render_settings.brightness_factor != 1)
 				query.setMacro("USE_BRIGHTNESS_FACTOR");
 
-			if(render_options.colorclip_factor)
+			if(render_settings.colorclip_factor)
 				query.setMacro("USE_COLORCLIP_FACTOR");
 		}
 
-		if(render_options.current_renderframe && render_options.current_renderframe.use_extra_texture)
+		if(this._current_renderframe && this._current_renderframe.use_extra_texture )
 			query.setMacro("USE_DRAW_BUFFERS");
 
 		LEvent.trigger( scene, "fillSceneQuery", query );
@@ -21798,23 +22279,23 @@ var Renderer = {
 
 	//Called at the beginning of renderInstances (once per renderFrame)
 	//DO NOT CACHE, parameters can change between render passes
-	fillSceneShaderUniforms: function( scene, render_options )
+	fillSceneShaderUniforms: function( scene, render_settings )
 	{
 		//global uniforms
 		var uniforms = {
 			u_point_size: this.default_point_size,
 			u_time: scene._time || getTime() * 0.001,
-			u_brightness_factor: render_options.brightness_factor != null ? render_options.brightness_factor : 1,
-			u_colorclip_factor: render_options.colorclip_factor != null ? render_options.colorclip_factor : 0,
+			u_brightness_factor: render_settings.brightness_factor != null ? render_settings.brightness_factor : 1,
+			u_colorclip_factor: render_settings.colorclip_factor != null ? render_settings.colorclip_factor : 0,
 			u_ambient_light: scene.info.ambient_color,
 			u_background_color: scene.info.background_color.subarray(0,3),
 			u_viewport: gl.viewport_data
 		};
 
-		if(render_options.clipping_plane)
-			uniforms.u_clipping_plane = render_options.clipping_plane;
+		if(render_settings.clipping_plane)
+			uniforms.u_clipping_plane = render_settings.clipping_plane;
 
-		if(render_options.current_pass == "color" && scene.info && scene.info.linear_pipeline)
+		if(this._current_pass == "color" && render_settings.linear_pipeline)
 			uniforms.u_gamma = 2.2;
 
 		scene._uniforms = uniforms;
@@ -21844,9 +22325,9 @@ var Renderer = {
 	*
 	* @method enableInstanceFlags
 	* @param {RenderInstance} instance
-	* @param {RenderOptions} render_options
+	* @param {RenderSettings} render_settings
 	*/
-	enableInstanceFlags: function(instance, render_options)
+	enableInstanceFlags: function(instance, render_settings)
 	{
 		var flags = instance.flags;
 
@@ -21872,7 +22353,7 @@ var Renderer = {
 		var order = gl.CCW;
 		if(flags & RI_CW)
 			order = gl.CW;
-		if(render_options.reverse_backfacing)
+		if(render_settings.reverse_backfacing)
 			order = order == gl.CW ? gl.CCW : gl.CW;
 		gl.frontFace(order);
 	},
@@ -21884,9 +22365,10 @@ var Renderer = {
 	*
 	* @method processVisibleData
 	* @param {SceneTree} scene
-	* @param {RenderOptions} render_options
+	* @param {RenderSettings} render_settings
+	* @param {Array} cameras in case you dont want to use the scene cameras
 	*/
-	processVisibleData: function(scene, render_options)
+	processVisibleData: function( scene, render_settings, cameras )
 	{
 		//options = options || {};
 		//options.scene = scene;
@@ -21898,13 +22380,23 @@ var Renderer = {
 			scene.updateCollectedData();
 		LEvent.trigger(scene, "afterCollectData", scene );
 
-		//meh!
-		if(!render_options.main_camera)
+		cameras = cameras || scene._cameras;
+
+		//prepare cameras
+		for(var i = 0, l = cameras.length; i < l; ++i)
 		{
-			if( scene._cameras.length )
-				render_options.main_camera = scene._cameras[0];
+			var camera = cameras[i];
+			camera._rendering_index = i;
+		}
+
+
+		//meh!
+		if(!this._main_camera)
+		{
+			if( cameras.length )
+				this._main_camera = cameras[0];
 			else
-				render_options.main_camera = new LS.Camera();
+				this._main_camera = new LS.Camera(); // ??
 		}
 
 		var opaque_instances = [];
@@ -21912,7 +22404,7 @@ var Renderer = {
 		var materials = {}; //I dont want repeated materials here
 
 		var instances = scene._instances;
-		var camera = render_options.main_camera; // || scene.getCamera();
+		var camera = this._main_camera; // || scene.getCamera();
 		var camera_eye = camera.getEye();
 
 		//process render instances (add stuff if needed)
@@ -21932,7 +22424,7 @@ var Renderer = {
 			instance._dist = vec3.dist( instance.center, camera_eye );
 
 			//change conditionaly
-			if(render_options.force_wireframe && instance.primitive != gl.LINES ) 
+			if(render_settings.force_wireframe && instance.primitive != gl.LINES ) 
 			{
 				instance.primitive = gl.LINES;
 				if(instance.mesh)
@@ -21967,21 +22459,23 @@ var Renderer = {
 				query.macros.USE_COLOR_STREAM = "";
 			if(("tangents" in buffers))
 				query.macros.USE_TANGENT_STREAM = "";
+
+			instance._camera_visibility = 0|0;
 		}
 
 		//Sorting
-		if(render_options.sort_instances_by_distance) //sort RIs in Z for alpha sorting
+		if(render_settings.sort_instances_by_distance) //sort RIs in Z for alpha sorting
 		{
 			opaque_instances.sort(this._sort_near_to_far_func);
 			blend_instances.sort(this._sort_far_to_near_func);
 		}
 		var all_instances = opaque_instances.concat(blend_instances); //merge
-		if(render_options.sort_instances_by_priority) //sort by priority
+		if(render_settings.sort_instances_by_priority) //sort by priority
 			all_instances.sort( this._sort_by_priority_func );
 
 
 		//update materials info only if they are in use
-		if(render_options.update_materials)
+		if(render_settings.update_materials)
 			this._prepareMaterials( materials, scene );
 
 		//pack all macros, uniforms, and samplers relative to this instance in single containers
@@ -22016,13 +22510,13 @@ var Renderer = {
 		this._blend_instances = blend_instances;
 		this._opaque_instances = opaque_instances;
 		this._visible_instances = all_instances; //sorted version
-		this._visible_lights = scene._lights; //sorted version
-		this._visible_cameras = scene._cameras; //sorted version
+		this._visible_lights = scene._lights;
+		this._visible_cameras = cameras; 
 		this._visible_materials = materials;
 
 		//prepare lights (collect data and generate shadowmaps)
 		for(var i = 0, l = lights.length; i < l; ++i)
-			lights[i].prepare( render_options );
+			lights[i].prepare( render_settings );
 	},
 
 	//outside of processVisibleData to allow optimizations in processVisibleData
@@ -22051,30 +22545,30 @@ var Renderer = {
 	* @method renderInstancesToRT
 	* @param {Camera} cam
 	* @param {Texture} texture
-	* @param {RenderOptions} render_options
+	* @param {RenderSettings} render_settings
 	*/
-	renderInstancesToRT: function(cam, texture, render_options)
+	renderInstancesToRT: function(cam, texture, render_settings)
 	{
-		render_options = render_options || this.default_render_options;
+		render_settings = render_settings || this.default_render_settings;
 		this._current_target = texture;
 		var scene = LS.Renderer._current_scene;
 
 		if(texture.texture_type == gl.TEXTURE_2D)
 		{
-			this.enableCamera(cam, render_options);
+			this.enableCamera(cam, render_settings);
 			texture.drawTo( inner_draw_2d );
 		}
 		else if( texture.texture_type == gl.TEXTURE_CUBE_MAP)
-			this.renderToCubemap(cam.getEye(), texture.width, texture, render_options, cam.near, cam.far);
+			this.renderToCubemap(cam.getEye(), texture.width, texture, render_settings, cam.near, cam.far);
 		this._current_target = null;
 
 		function inner_draw_2d()
 		{
 			gl.clearColor(scene.info.background_color[0], scene.info.background_color[1], scene.info.background_color[2], scene.info.background_color[3] );
-			if(render_options.ignore_clear != true)
+			if(render_settings.ignore_clear != true)
 				gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 			//render scene
-			LS.Renderer.renderInstances( render_options );
+			LS.Renderer.renderInstances( render_settings );
 		}
 	},
 
@@ -22085,38 +22579,38 @@ var Renderer = {
 	* @param {vec3} position center of the camera where to render the cubemap
 	* @param {number} size texture size
 	* @param {Texture} texture to reuse the same texture
-	* @param {RenderOptions} render_options
+	* @param {RenderSettings} render_settings
 	* @param {number} near
 	* @param {number} far
 	* @return {Texture} the resulting texture
 	*/
-	renderToCubemap: function(position, size, texture, render_options, near, far)
+	renderToCubemap: function(position, size, texture, render_settings, near, far)
 	{
 		size = size || 256;
 		near = near || 1;
 		far = far || 1000;
 
 		var eye = position;
-		if( !texture || texture.constructor != Texture)
+		if( !texture || texture.constructor != GL.Texture)
 			texture = null;
 
 		var scene = this._current_scene;
 
-		texture = texture || new Texture(size,size,{texture_type: gl.TEXTURE_CUBE_MAP, minFilter: gl.NEAREST});
+		texture = texture || new GL.Texture(size,size,{texture_type: gl.TEXTURE_CUBE_MAP, minFilter: gl.NEAREST});
 		this._current_target = texture;
 		texture.drawTo( function(texture, side) {
 
 			var cams = Camera.cubemap_camera_parameters;
-			if(render_options.is_shadowmap || !scene.info )
+			if(this._is_shadowmap || !scene.info )
 				gl.clearColor(0,0,0,0);
 			else
 				gl.clearColor( scene.info.background_color[0], scene.info.background_color[1], scene.info.background_color[2], scene.info.background_color[3] );
 
 			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-			var cubemap_cam = new Camera({ eye: eye, center: [ eye[0] + cams[side].dir[0], eye[1] + cams[side].dir[1], eye[2] + cams[side].dir[2]], up: cams[side].up, fov: 90, aspect: 1.0, near: near, far: far });
+			var cubemap_cam = new LS.Camera({ eye: eye, center: [ eye[0] + cams[side].dir[0], eye[1] + cams[side].dir[1], eye[2] + cams[side].dir[2]], up: cams[side].up, fov: 90, aspect: 1.0, near: near, far: far });
 
-			Renderer.enableCamera( cubemap_cam, render_options, true );
-			Renderer.renderInstances( render_options );
+			Renderer.enableCamera( cubemap_cam, render_settings, true );
+			Renderer.renderInstances( render_settings );
 		});
 
 		this._current_target = null;
@@ -22270,16 +22764,19 @@ var Picking = {
 	* @method raycast
 	* @param {vec3} origin in world space
 	* @param {vec3} direction in world space
-	* @param {number} max_dist maxium distance
-	* @param {SceneTree} scene
+	* @param {Object} options ( max_distance: maxium ray distance, layers, scene, max_distance, first_collision : returns the first collision (which could be not the closest one) )
 	* @return {Array} array containing all the RenderInstances that collided with the ray in the form [SceneNode, RenderInstance, collision point, distance]
 	*/
-	raycast: function( origin, direction, max_dist, layers, scene )
+	raycast: function( origin, direction, options )
 	{
-		max_dist = max_dist || Number.MAX_VALUE;
+		options = options || {};
+		var layers = options.layers;
 		if(layers === undefined)
 			layers = 0xFFFF;
-		scene = scene || LS.GlobalScene;
+		var max_distance = options.max_distance || Number.MAX_VALUE;
+		var scene = options.scene || LS.GlobalScene;
+		var triangle_collision = options.triangle_collision;
+		var first_collision = options.first_collision;
 
 		var instances = scene._instances;
 		if(!instances || !instances.length)
@@ -22303,7 +22800,7 @@ var Picking = {
 
 			//test against AABB
 			var collision_point = vec3.create();
-			if( !geo.testRayBBox( origin, direction, instance.aabb, null, collision_point, max_dist) )
+			if( !geo.testRayBBox( origin, direction, instance.aabb, null, collision_point, max_distance ) )
 				continue;
 
 			var model = instance.matrix;
@@ -22314,17 +22811,22 @@ var Picking = {
 			mat4.rotateVec3( local_direction, inv, direction );
 
 			//test against OOBB (a little bit more expensive)
-			if( !geo.testRayBBox(local_start, local_direction, instance.oobb, null, collision_point, max_dist) )
+			if( !geo.testRayBBox(local_start, local_direction, instance.oobb, null, collision_point, max_distance) )
 				continue;
 
 			//test against mesh
-			if( instance.collision_mesh )
+			var collision_mesh = instance.collision_mesh;
+			
+			if(triangle_collision)
+				collision_mesh = instance.lod_mesh || instance.mesh;
+
+			if( collision_mesh )
 			{
-				var mesh = instance.collision_mesh;
+				var mesh = collision_mesh;
 				var octree = mesh.octree;
 				if(!octree)
-					octree = mesh.octree = new Octree( mesh );
-				var hit = octree.testRay( local_start, local_direction, 0.0, max_dist );
+					octree = mesh.octree = new GL.Octree( mesh );
+				var hit = octree.testRay( local_start, local_direction, 0.0, max_distance );
 				if(!hit)
 					continue;
 				mat4.multiplyVec3(collision_point, model, hit.pos);
@@ -22333,11 +22835,14 @@ var Picking = {
 				vec3.transformMat4(collision_point, collision_point, model);
 
 			var distance = vec3.distance( origin, collision_point );
-			if(distance < max_dist)
+			if(distance < max_distance)
 				collisions.push( new LS.Collision( instance.node, instance, collision_point, distance ) );
+
+			if(first_collision)
+				return collisions;
 		}
 
-		collisions.sort( Collision.isCloser );
+		collisions.sort( LS.Collision.isCloser );
 		return collisions;
 	},
 
@@ -22366,7 +22871,7 @@ var Picking = {
 	_picking_depth: 0,
 	_picking_next_color_id: 0,
 	_picking_nodes: {},
-	_picking_render_options: new RenderOptions({is_picking: true}),
+	_picking_render_settings: new RenderSettings({is_picking: true}),
 
 	renderPickingBuffer: function( scene, camera, x, y, layers )
 	{
@@ -22384,14 +22889,14 @@ var Picking = {
 		var small_area = true;
 		this._picking_next_color_id = 0;
 
-		this._current_target = this._pickingMap;
+		LS.Renderer._current_target = this._pickingMap;
 
 		this._pickingMap.drawTo(function() {
 			//var viewport = camera.getLocalViewport();
 			//camera._real_aspect = viewport[2] / viewport[3];
 			//gl.viewport( viewport[0], viewport[1], viewport[2], viewport[3] );
 
-			LS.Renderer.enableCamera( camera, that._picking_render_options );
+			LS.Renderer.enableCamera( camera, that._picking_render_settings );
 
 			if(small_area)
 			{
@@ -22403,13 +22908,14 @@ var Picking = {
 			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
 			//gl.viewport(x-20,y-20,40,40);
-			that._picking_render_options.current_pass = "picking";
-			that._picking_render_options.layers = layers;
+			LS.Renderer._current_pass = "picking";
+			LS.Renderer._is_picking = true;
+			that._picking_render_settings.layers = layers;
 
 			//check instances colliding with cursor using a ray against AABBs
 			//TODO
 
-			LS.Renderer.renderInstances( that._picking_render_options )//, cursor_instances );
+			LS.Renderer.renderInstances( that._picking_render_settings )//, cursor_instances );
 			//gl.scissor(0,0,gl.canvas.width,gl.canvas.height);
 
 			LEvent.trigger( scene, "renderPicking", [x,y] );
@@ -22419,8 +22925,12 @@ var Picking = {
 
 			if(small_area)
 				gl.disable(gl.SCISSOR_TEST);
+
+			LS.Renderer._is_picking = false;
+			LS.Renderer._current_pass = "picking";
 		});
-		this._current_target = null;
+
+		LS.Renderer._current_target = null;
 
 		//if(!this._picking_color) this._picking_color = new Uint8Array(4); //debug
 		//trace(" END Rendering: ", this._picking_color );
@@ -22529,20 +23039,24 @@ var Physics = {
 	* @method raycast
 	* @param {vec3} origin in world space
 	* @param {vec3} direction in world space
-	* @param {number} max_dist maxium distance
-	* @param {number} layers which layers to check
-	* @param {SceneTree} scene
+	* @param {Object} options ( max_dist maxium distance, layers which layers to check, scene, first_collision )
 	* @return {Array} Array of Collision objects containing all the nodes that collided with the ray or null in the form [SceneNode, Collider, collision point, distance]
 	*/
-	raycast: function( origin, direction, max_dist, layers, scene)
+	raycast: function( origin, direction, options )
 	{
-		max_dist = max_dist || Number.MAX_VALUE;
+		options = options || {};
+		var layers = options.layers;
 		if(layers === undefined)
 			layers = 0xFFFF;
-		scene = scene || LS.GlobalScene;
+		var max_distance = options.max_distance || Number.MAX_VALUE;
+		var scene = options.scene || LS.GlobalScene;
+		var first_collision = options.first_collision;
 
-		var colliders = scene._colliders;
+		var colliders = options.colliders || scene._colliders;
 		var collisions = [];
+
+		if(!colliders)
+			return null;
 
 		var local_start = vec3.create();
 		var local_direction = vec3.create();
@@ -22557,7 +23071,7 @@ var Physics = {
 
 			//test against AABB
 			var collision_point = vec3.create();
-			if( !geo.testRayBBox(origin, direction, instance.aabb, null, collision_point, max_dist) )
+			if( !geo.testRayBBox(origin, direction, instance.aabb, null, collision_point, max_distance) )
 				continue;
 
 			var model = instance.matrix;
@@ -22568,35 +23082,38 @@ var Physics = {
 			mat4.rotateVec3( local_direction, inv, direction);
 
 			//test in world space, is cheaper
-			if( instance.type == PhysicsInstance.SPHERE)
+			if( instance.type == PhysicsInstance.SPHERE )
 			{
-				if(!geo.testRaySphere( local_start, local_direction, instance.center, instance.oobb[3], collision_point, max_dist))
+				if(!geo.testRaySphere( local_start, local_direction, instance.center, instance.oobb[3], collision_point, max_distance))
 					continue;
 				vec3.transformMat4(collision_point, collision_point, model);
 			}
 			else //the rest test first with the local BBox
 			{
 				//test against OOBB (a little bit more expensive)
-				if( !geo.testRayBBox( local_start, local_direction, instance.oobb, null, collision_point, max_dist) )
+				if( !geo.testRayBBox( local_start, local_direction, instance.oobb, null, collision_point, max_distance) )
 					continue;
 
 				if( instance.type == PhysicsInstance.MESH)
 				{
 					var octree = instance.mesh.octree;
 					if(!octree)
-						octree = instance.mesh.octree = new Octree( instance.mesh );
-					var hit = octree.testRay( local_start, local_direction, 0.0, max_dist );
+						octree = instance.mesh.octree = new GL.Octree( instance.mesh );
+					var hit = octree.testRay( local_start, local_direction, 0.0, max_distance );
 					if(!hit)
 						continue;
 
-					mat4.multiplyVec3(collision_point, model, hit.pos);
+					mat4.multiplyVec3( collision_point, model, hit.pos );
 				}
 				else
-					vec3.transformMat4(collision_point, collision_point, model);
+					vec3.transformMat4( collision_point, collision_point, model );
 			}
 
 			var distance = vec3.distance( origin, collision_point );
 			collisions.push( new LS.Collision( instance.node, instance, collision_point, distance ));
+
+			if(first_collision)
+				return collisions;
 		}
 
 		//sort collisions by distance
@@ -22609,20 +23126,24 @@ var Physics = {
 	* @method testSphere
 	* @param {vec3} origin in world space
 	* @param {radius} radius
-	* @param {number} layers which layers to check [optional all layers]
-	* @param {SceneTree} scene [optional]
-	* @return {PhysicsInstance} the PhysicsObject that collided with, otherwise null
+	* @param {Object} options layers, colliders, scene
+	* @return {PhysicsInstance} the first PhysicsObject that collided with, otherwise null
 	*/
-	testSphere: function( origin, radius, layers, scene)
+	testSphere: function( origin, radius, options )
 	{
+		options = options || {};
+		var layers = options.layers;
 		if(layers === undefined)
 			layers = 0xFFFF;
-		scene = scene || LS.GlobalScene;
+		var scene = options.scene || LS.GlobalScene;
 
-		var colliders = scene._colliders;
+		var colliders = options.colliders || scene._colliders;
 		var collisions = [];
 
 		var local_start = vec3.create();
+
+		if(!colliders)
+			return null;
 
 		//for every instance
 		for(var i = 0; i < colliders.length; ++i)
@@ -22643,9 +23164,9 @@ var Physics = {
 			mat4.multiplyVec3( local_start, inv, origin);
 
 			//test in world space, is cheaper
-			if( instance.type == PhysicsInstance.SPHERE)
+			if( instance.type == LS.PhysicsInstance.SPHERE)
 			{
-				if( vec3.distance(origin, local_start) > (radius + BBox.getRadius(instance.oobb)) )
+				if( vec3.distance( origin, local_start ) > (radius + BBox.getRadius(instance.oobb)) )
 					continue;
 			}
 			else //the rest test first with the local BBox
@@ -22658,7 +23179,7 @@ var Physics = {
 				{
 					var octree = instance.mesh.octree;
 					if(!octree)
-						octree = instance.mesh.octree = new Octree( instance.mesh );
+						octree = instance.mesh.octree = new GL.Octree( instance.mesh );
 					if( !octree.testSphere( local_start, radius ) )
 						continue;
 				}
@@ -27318,6 +27839,14 @@ SceneTree.prototype.collectData = function()
 	LEvent.trigger(this, "collectLights", lights );
 	LEvent.trigger(this, "collectCameras", cameras );
 
+	//for each camera
+	/*
+	for(var i = 0, l = cameras.length; i < l; ++i)
+	{
+		var camera = cameras[i];
+	}
+	*/
+	
 	//for each render instance collected
 	for(var i = 0, l = instances.length; i < l; ++i)
 	{
@@ -28456,7 +28985,7 @@ function Player(options)
 
 	this.gl = GL.create(options); //create or reuse
 	this.canvas = this.gl.canvas;
-	this.render_options = new RenderOptions();
+	this.render_settings = new LS.RenderSettings(); //this will be replaced by the scene ones.
 	this.scene = LS.GlobalScene;
 	this.autoplay = options.autoplay !== undefined ? options.autoplay : true;
 
@@ -28601,7 +29130,7 @@ Player.prototype._ondraw = function()
 
 	if(scene._must_redraw || this.force_redraw )
 	{
-		scene.render( this.render_options );
+		scene.render( scene.info ? scene.info.render_settings : this.render_settings );
 	}
 
 	if(this.onDraw)

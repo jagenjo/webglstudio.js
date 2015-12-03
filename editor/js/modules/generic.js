@@ -190,8 +190,8 @@ var GenericTools = {
 		var height_widget = inspector.addNumber("Height", gl.canvas.height, { min:64,step:1 });
 
 		inspector.addTitle("Shadowmaps");
-		inspector.addCombo("Shadowmap Resolution", RenderModule.render_options.default_shadowmap_resolution , { values:[ 256,512,1024,2048,4096], callback: function(v){
-			RenderModule.render_options.default_shadowmap_resolution = v;
+		inspector.addCombo("Shadowmap Resolution", RenderModule.render_settings.default_shadowmap_resolution , { values:[ 256,512,1024,2048,4096], callback: function(v){
+			RenderModule.render_settings.default_shadowmap_resolution = v;
 		}});
 		inspector.addButton(null,"set all shadowmaps size to default", function(){
 			var lights = LS.GlobalScene._lights;

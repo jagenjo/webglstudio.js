@@ -399,12 +399,10 @@ var SelectionModule = {
 			var scene = LS.GlobalScene;
 
 			//root component
-			if(selection.instance && selection.node == LS.GlobalScene.root) 
+			if(selection.instance && selection.instance.constructor.is_component && selection.node == LS.GlobalScene.root) 
 			{
 				var component = selection.instance;
-				var data = component.serialize();
-				var new_component = new window[ LS.getObjectClassName(component) ]();
-				new_component.configure( data );
+				new_component = component.clone();
 				selection.node.addComponent( new_component );
 
 				UndoModule.addUndoStep({ 

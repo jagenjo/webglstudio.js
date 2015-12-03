@@ -145,8 +145,12 @@
 	margin-bottom: 4px;
 }
 
-.inspector .wsection.selected {
-	outline: 1px solid rgba(255,255,255,0.5);
+.inspector .wsection.selected .wsectiontitle {
+	background-color: #434959;
+}
+
+.inspector .wsection.selected .wsectioncontent {
+	border: 2px solid #434959;
 }
 
 .inspector .wsection.collapsed {
@@ -556,6 +560,9 @@
 .inspector .whidden .filename {
 	padding-left: 4px;
 	cursor: pointer;
+	display: inline-block;
+	height: 1.2em;
+	overflow: hidden;
 }
 
 .inspector input.file {

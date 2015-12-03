@@ -41,7 +41,7 @@ var fxEnabledButton = {
 	enabled: true,
 	callback: function()
 	{
-		RenderModule.render_options.render_fx = !RenderModule.render_options.render_fx;
+		RenderModule.render_settings.render_fx = !RenderModule.render_settings.render_fx;
 	}
 };
 
@@ -55,7 +55,7 @@ var lightsEnabledButton = {
 	enabled: true,
 	callback: function()
 	{
-		RenderModule.render_options.lights_disabled = !RenderModule.render_options.lights_disabled;
+		RenderModule.render_settings.lights_disabled = !RenderModule.render_settings.lights_disabled;
 	}
 };
 
@@ -89,7 +89,19 @@ var helpersEnabledButton = {
 
 ToolsModule.registerButton( helpersEnabledButton );
 
+var autorenderEnabledButton = {
+	name: "autorender",
+	description: "Force to render all frames",
+	section: "visibility",
+	icon: "imgs/mini-icon-rotator.png",
+	enabled: false,
+	callback: function()
+	{
+		RenderModule.auto_render = !RenderModule.auto_render;
+	}
+};
 
+ToolsModule.registerButton( autorenderEnabledButton );
 
 
 var centerInObjectButton = {
@@ -184,72 +196,3 @@ var TestCollisionsTool = {
 ToolsModule.registerTool( TestCollisionsTool );
 
 
-var AddPointsTool = {
-	name: "addPoints",
-	description: "Add points to component",
-	section: "modify",
-	icon: "imgs/mini-icon-points_tool.png",
-
-	enabled: false,
-
-	points: null,
-	click_pos: vec2.create(),
-
-	onEnable: function()
-	{
-	},
-
-	onClick: function()
-	{
-		this._component = null;
-		var node = SelectionModule.getSelectedNode();
-		if(!node)
-		{
-			LiteGUI.alert("No node selected");
-			return;
-		}
-
-		var components = node.getComponents();
-		for(var i = 0; i < components.length; i++)
-		{
-			var component = components[i];	
-			if( !component.addPoint )
-				continue;
-			this._component = component;
-			return;
-		}
-
-		if(!this._component)
-			LiteGUI.alert("No component found in node " + node.name + " that has addPoints support. Add PointsCloud Component.");
-	},
-
-	mousedown: function(e) {
-		this.click_pos[0] = e.canvasx;
-		this.click_pos[1] = e.canvasy;
-	},
-
-	mousemove: function(e) {
-
-		if(!this._component)
-			return;
-		
-		//test
-		if(e.dragging && e.which == GL.LEFT_MOUSE_BUTTON && !e.ctrlKey)
-		{
-			var camera = ToolUtils.getCamera();
-			var ray = camera.getRayInPixel( e.canvasx, e.canvasy );
-			var collisions = LS.Physics.raycast( ray.start, ray.direction ); //max_dist, layers, scene
-
-			if(collisions.length)
-				this._component.addPoint( collisions[0].position );
-
-			LS.GlobalScene.refresh();
-			return true;
-		}
-	},
-
-	mouseup: function(e) {
-	}
-};
-
-ToolsModule.registerTool( AddPointsTool );

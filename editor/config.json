@@ -19,6 +19,7 @@
 			"js/tools/select.js",
 			"js/tools/manipulate.js",
 			"js/tools/parenting.js",
+			"js/tools/addPoints.js",
 			"js/tools/generic.js",
 	 		"js/modules/cameraTools.js",
 	 		"js/modules/notify.js",

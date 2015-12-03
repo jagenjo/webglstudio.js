@@ -487,7 +487,7 @@ var GraphModule = {
 
 	render: function()
 	{
-		if( !this.graph || !EditorView.render_graph || RenderModule.render_options.in_player || !RenderModule.frame_updated )
+		if( !this.graph || !EditorView.render_graph || RenderModule.render_settings.in_player || !RenderModule.frame_updated )
 			return;
 		
 		if(!this.view_canvas)

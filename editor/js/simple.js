@@ -71,7 +71,7 @@ function init()
 		$("#showscenes").trigger("click");
 
 	if(vars["low"])
-		context.render_options["low_quality"] = true;
+		context.render_settings["low_quality"] = true;
 }
 
 function onReady()

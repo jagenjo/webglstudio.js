@@ -227,7 +227,7 @@ var moveTool = {
 
 			ToolUtils.applyTransformMatrixToSelection(T);
 			//node.transform.applyTransformMatrix(T, true);
-
+			EditorModule.updateInspector();
 			return true;
 		}
 		else //not dragging
@@ -263,7 +263,7 @@ var moveTool = {
 			}
 			else
 				moveTool._on_top_of = null;
-
+			EditorModule.updateInspector();
 			LS.GlobalScene.refresh();
 		}
 	},
@@ -290,7 +290,7 @@ var moveTool = {
 		ToolUtils.applyTransformMatrixToSelection(T);
 
 		vec3.add( this._click_world_position, this._click_world_position, delta );
-
+		EditorModule.updateInspector();
 		LS.GlobalScene.refresh();
 		return true;		
 	}

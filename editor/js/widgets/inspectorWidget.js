@@ -110,6 +110,11 @@ InspectorWidget.prototype.inspect = function( object, skip_history )
 
 	if( !object )
 		this.clear();
+	else if( object.inspect )
+	{
+		this.inspector.clear();
+		object.inspect( this.inspector );
+	}
 	else if( object.constructor == LS.SceneTree )
 		this.inspectScene( object );
 	else if( object.constructor == LS.SceneNode )
@@ -121,7 +126,7 @@ InspectorWidget.prototype.inspect = function( object, skip_history )
 
 	var title = "";
 	if(object)
-		title = LS.getObjectClassName(object) + " : " + (object.name || "");
+		title = (object.className || LS.getObjectClassName(object)) + " : " + (object.name || "");
 	this.setTitle( title );
 }
 
@@ -129,6 +134,15 @@ InspectorWidget.prototype.clear = function()
 {
 	this.inspector.clear();
 	this.inspector.instance = null;
+}
+
+InspectorWidget.prototype.update = function( object )
+{
+	if(!this.instance)
+		return;
+	if(object && object != this.instance)
+		return;
+	this.inspector.updateWidgets();
 }
 
 InspectorWidget.prototype.inspectObject = function( object )
@@ -158,15 +172,15 @@ InspectorWidget.prototype.inspectObjectsArray = function( objects_array )
 	inspector.refresh();
 }
 
-InspectorWidget.prototype.showObjectInterface = function( object )
+InspectorWidget.prototype.showObjectInterface = function( object, inspector )
 {
-	inspector = this.inspector;
+	inspector = inspector || this.inspector;
 
 	//check type of object
 	if( LS.isClassComponent( object.constructor ) )
-		this.showComponentInterface( object, inspector );
+		this.inspector.showComponent( object, inspector );
 	else
-		this.showObjectFields( object, inspector );
+		this.inspector.showObjectFields( object, inspector );
 }
 
 //inspects all the components in one container
@@ -180,166 +194,7 @@ InspectorWidget.prototype.showComponentsInterface = function( object, inspector 
 	for(var i in components)
 	{
 		var component = components[i];
-		this.showComponentInterface( component, inspector );
-	}
-}
-
-//shows the inspector of one component
-InspectorWidget.prototype.showComponentInterface = function(component, inspector)
-{
-	if(!component)
-		return;
-
-	var node = component._root;
-
-	var component_class = component.constructor;
-	var name = LS.getObjectClassName(component);
-	var editor = component_class["@inspector"];
-
-	//Create the title of the component
-	var icon_url = "imgs/mini-icon-question.png";
-	if(component.constructor.icon)	
-		icon_url = component.constructor.icon;
-
-	var icon_code = "<span class='icon' style='width: 20px' draggable='true'><img src='"+ EditorModule.icons_path + icon_url+"'/></span>";
-	var enabler = component.enabled !== undefined ? AnimationModule.getKeyframeCode(component,"enabled") + "<span class='enabler'></span>" : "";
-	var is_selected = SelectionModule.isSelected( component );
-	var options = {};
-	if(is_selected)
-		options.className = "selected";
-	var title = "<span class='title'>"+name+"</span>";
-	var buttons = " <span class='buttons'><img class='options_section' src='imgs/mini-cog.png'></span>";
-
-	if(component.uid)
-		options.id = component.uid.substr(1);
-
-	//show the component collapsed and remember it
-	options.callback = function(v){
-		component._collapsed = !v;
-	}
-	options.collapsed = component._collapsed;
-
-	//create component section in inspector
-	var section = inspector.addSection( icon_code + enabler + title + buttons, options );
-
-	var icon = section.querySelector(".icon");
-	icon.addEventListener("dragstart", function(event) { 
-		event.dataTransfer.setData("uid", component.uid);
-		event.dataTransfer.setData("type", "Component");
-		event.dataTransfer.setData("node_uid", component.root.uid);
-		event.dataTransfer.setData("class", LS.getObjectClassName(component));
-	});
-
-
-	var icon_img = section.querySelector(".icon img");
-	if(icon_img)
-		icon_img.onerror = function() { this.src = "imgs/mini-icon-question.png"; }
-
-	//right click in title launches the context menu
-	section.querySelector(".wsectiontitle").addEventListener("contextmenu", (function(e) { 
-		if(e.button != 2) //right button
-			return false;
-		inner_showActions(e);
-		e.preventDefault(); 
-		return false;
-	}).bind(this));
-
-	//checkbox for enable/disable component
-	if(component.enabled !== undefined)
-	{
-		enabler = inspector.current_section.querySelector('.enabler');
-		var checkbox = new LiteGUI.Checkbox( component.enabled, function(v){ 
-			component.enabled = v; 
-			$(inspector.current_section).trigger("wchange");
-			RenderModule.requestFrame();
-		});
-		checkbox.root.title ="Enable / Disable";
-		enabler.appendChild( checkbox.root );
-	}
-
-	//save UNDO when something changes
-	$(inspector.current_section).bind("wchange", function() { 
-		UndoModule.saveComponentChangeUndo( component );
-	});
-
-	//used to avoid collapsing section when clicking button
-	/*
-	inspector.current_section.querySelector('.options_section').addEventListener("click", function(e) { 
-		e.preventDefault();
-		e.stopPropagation();
-		return true;
-	});
-	*/
-
-	//it has special editor
-	if(editor)
-		editor.call(this, component, inspector, section);
-	else
-		this.showObjectFields( component, inspector );
-
-	//in case the options button is pressed or the right button, show contextual menu
-	inspector.current_section.querySelector('.options_section').addEventListener("click", inner_showActions );
-
-	function inner_showActions( e ) { 
-		//console.log("Show options");
-		window.SELECTED = component; //useful trick
-		EditorModule.showComponentContextualMenu( component, e );
-		e.preventDefault();
-		e.stopPropagation();
-	}		
-
-	var drag_counter = 0; //hack because HTML5 sux sometimes
-
-	//drop component
-	inspector.current_section.addEventListener("dragover", function(e) { 
-		e.preventDefault();
-	});
-	inspector.current_section.addEventListener("dragenter", function(e) { 
-		drag_counter++;
-		if( event.dataTransfer.types.indexOf("type") != -1 && drag_counter == 1 )
-		{
-			this.style.opacity = "0.5";
-		}
-		e.preventDefault();
-	},true);
-	inspector.current_section.addEventListener("dragleave", function(e) { 
-		drag_counter--;
-		if(drag_counter == 0)
-			this.style.opacity = null;
-		e.preventDefault();
-	},true);
-	inspector.current_section.addEventListener("drop", function(event) { 
-		this.style.opacity = null;
-		var item_uid = event.dataTransfer.getData("uid");
-		var item_type = event.dataTransfer.getData("type");
-		if( item_type == "Component" )
-		{
-			var dragged_component = LS.GlobalScene.findComponentByUId( item_uid );
-			if( component != dragged_component && component.root == dragged_component.root )
-			{
-				console.log("Rearranging components");
-				var index = component.root.getIndexOfComponent();
-				component.root.setComponentIndex( dragged_component, index - 1 );
-				EditorModule.refreshAttributes();
-			}
-		}
-	});
-}
-
-InspectorWidget.prototype.showObjectFields = function( object )
-{
-	inspector = this.inspector;
-
-	inspector.on_addProperty = inner;
-
-	inspector.inspectInstance( object, null,null, ["enabled"] );
-
-	inspector.on_addProperty = null;
-
-	//used to hook the keyframe thing on automatic generated inspectors
-	function inner( widget, object, property, value, options )
-	{
-		options.pretitle = AnimationModule.getKeyframeCode( object, property, options );
+		this.inspector.showComponent( component, inspector );
 	}
 }
 
@@ -420,7 +275,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 		inspector.clear();
 		if(node == LS.GlobalScene.root) //main node use an special editor
 		{
-			this.showSceneInfo(node, inspector);
+			this.showSceneRootInfo(node, inspector);
 		}
 		else
 		{
@@ -449,7 +304,8 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 			if(node.flags && node.flags.visible != null)
 				inspector.addCheckbox("visible", node.visible, { pretitle: AnimationModule.getKeyframeCode( node, "visible"), callback: function(v) { node.visible = v; } });
 
-			//special node editors
+			//Special node editors ****************************************
+			//like Materials mostly
 			for(var i in EditorModule.node_editors)
 				EditorModule.node_editors[i](node, inspector);
 		}
@@ -495,7 +351,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 	inspector.refresh();
 }
 
-InspectorWidget.prototype.showSceneInfo = function( scene )
+InspectorWidget.prototype.showSceneRootInfo = function( scene )
 {
 	//nothing
 }
@@ -521,4 +377,179 @@ InspectorWidget.createDialog = function( parent )
 	{
 	}
 	return dialog;
+}
+
+
+// ADD STUFF TO LiteGUI.Inspector *******************************************
+LiteGUI.Inspector.prototype.showObjectFields = function( object, inspector )
+{
+	inspector = inspector || this;
+
+	inspector.on_addProperty = inner;
+
+	inspector.inspectInstance( object, null,null, ["enabled"] );
+
+	inspector.on_addProperty = null;
+
+	//used to hook the keyframe thing on automatic generated inspectors
+	function inner( widget, object, property, value, options )
+	{
+		options.pretitle = AnimationModule.getKeyframeCode( object, property, options );
+	}
+}
+
+LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
+{
+	if(!component)
+		return;
+
+	var inspector = inspector || this;
+
+	var node = component._root;
+
+	var component_class = component.constructor;
+	var name = LS.getObjectClassName(component);
+
+	//Create the title of the component
+	if(!LiteGUI.missing_icons)
+		LiteGUI.missing_icons = {};
+	var icon_url = "imgs/mini-icon-question.png";
+	if(component.constructor.icon && !LiteGUI.missing_icons[ component.constructor.icon ] )	
+		icon_url = component.constructor.icon;
+
+	var icon_code = "<span class='icon' style='width: 20px' draggable='true'><img src='"+ EditorModule.icons_path + icon_url+"'/></span>";
+	var enabler = component.enabled !== undefined ? AnimationModule.getKeyframeCode(component,"enabled") + "<span class='enabler'></span>" : "";
+	var is_selected = SelectionModule.isSelected( component );
+	var options = {};
+	if(is_selected)
+		options.className = "selected";
+	var title = "<span class='title'>"+name+"</span>";
+	var buttons = " <span class='buttons'><img class='options_section' src='imgs/mini-cog.png'></span>";
+
+	if(component.uid)
+		options.id = component.uid.substr(1);
+
+	//show the component collapsed and remember it
+	options.callback = function(v){
+		component._collapsed = !v;
+	}
+	options.collapsed = component._collapsed;
+
+	//create component section in inspector
+	var section = inspector.addSection( icon_code + enabler + title + buttons, options );
+
+	var icon = section.querySelector(".icon");
+	icon.addEventListener("dragstart", function(event) { 
+		event.dataTransfer.setData("uid", component.uid);
+		event.dataTransfer.setData("type", "Component");
+		event.dataTransfer.setData("node_uid", component.root.uid);
+		event.dataTransfer.setData("class", LS.getObjectClassName(component));
+	});
+
+
+	var icon_img = section.querySelector(".icon img");
+	if(icon_img)
+		icon_img.onerror = function() { 
+			LiteGUI.missing_icons[ component.constructor.icon ] = true;
+			this.src = "imgs/mini-icon-question.png";
+		}
+
+	//right click in title launches the context menu
+	section.querySelector(".wsectiontitle").addEventListener("contextmenu", (function(e) { 
+		if(e.button != 2) //right button
+			return false;
+		inner_showActions(e);
+		e.preventDefault(); 
+		return false;
+	}).bind(this));
+
+	//checkbox for enable/disable component
+	if(component.enabled !== undefined)
+	{
+		enabler = inspector.current_section.querySelector('.enabler');
+		var checkbox = new LiteGUI.Checkbox( component.enabled, function(v){ 
+			component.enabled = v; 
+			$(inspector.current_section).trigger("wchange");
+			RenderModule.requestFrame();
+		});
+		checkbox.root.title ="Enable / Disable";
+		enabler.appendChild( checkbox.root );
+	}
+
+	//save UNDO when something changes
+	$(inspector.current_section).bind("wchange", function() { 
+		UndoModule.saveComponentChangeUndo( component );
+	});
+
+	//used to avoid collapsing section when clicking button
+	/*
+	inspector.current_section.querySelector('.options_section').addEventListener("click", function(e) { 
+		e.preventDefault();
+		e.stopPropagation();
+		return true;
+	});
+	*/
+
+	//it has special editor
+	if( component_class.inspect )
+		component_class.inspect( component, inspector, section );
+	else if (component.inspect)
+		component.inspect( inspector, section );
+	else if( component_class["@inspector"] )
+		component_class["@inspector"].call( this, component, inspector, section );
+	else
+		this.showObjectFields( component, inspector );
+
+	//in case the options button is pressed or the right button, show contextual menu
+	inspector.current_section.querySelector('.options_section').addEventListener("click", inner_showActions );
+
+	function inner_showActions( e ) { 
+		//console.log("Show options");
+		window.SELECTED = component; //useful trick
+		EditorModule.showComponentContextualMenu( component, e );
+		e.preventDefault();
+		e.stopPropagation();
+	}		
+
+	var drag_counter = 0; //hack because HTML5 sux sometimes
+
+	//drop component
+	inspector.current_section.addEventListener("dragover", function(e) { 
+		e.preventDefault();
+	});
+	inspector.current_section.addEventListener("dragenter", function(e) { 
+		drag_counter++;
+		if( event.dataTransfer.types.indexOf("type") != -1 && drag_counter == 1 )
+		{
+			this.style.opacity = "0.5";
+		}
+		e.preventDefault();
+	},true);
+	inspector.current_section.addEventListener("dragleave", function(e) { 
+		drag_counter--;
+		if(drag_counter == 0)
+			this.style.opacity = null;
+		e.preventDefault();
+	},true);
+	inspector.current_section.addEventListener("drop", function(event) { 
+		console.log("drop");
+		event.preventDefault();
+		this.style.opacity = null;
+		var item_uid = event.dataTransfer.getData("uid");
+		var item_type = event.dataTransfer.getData("type");
+		if( item_type == "Component" )
+		{
+			var dragged_component = LS.GlobalScene.findComponentByUId( item_uid );
+			if( component != dragged_component && component.root == dragged_component.root )
+			{
+				console.log("Rearranging components");
+				var index = dragged_component.root.getIndexOfComponent( dragged_component );
+				if(index != -1)
+					component.root.setComponentIndex( dragged_component, index - 1 );
+				else
+					console.error("component not found when rearranging");
+				EditorModule.refreshAttributes();
+			}
+		}
+	});
 }

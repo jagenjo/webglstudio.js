@@ -160,7 +160,7 @@ var EditorModule = {
 
 		mainmenu.add("View/Show All Gizmos", {  instance: EditorModule.settings, property: "render_all_gizmos", type:"checkbox" });
 
-		mainmenu.add("View/Render Options/Shadows", { type: "checkbox", instance: RenderModule.render_options, property: "shadows_enabled" });
+		mainmenu.add("View/Render Settings", { callback: function() { EditorModule.showRenderSettingsDialog( RenderModule.render_settings) }} );
 
 		mainmenu.add("View/Render Mode/Wireframe", {  value: "wireframe", isChecked: inner_is_renderMode, callback: inner_change_renderMode });
 		mainmenu.add("View/Render Mode/Flat", {  value: "flat", isChecked: inner_is_renderMode, callback: inner_change_renderMode });
@@ -191,15 +191,12 @@ var EditorModule = {
 	{
 		if(!this.inspector.instance)
 			return;
+		this.inspect(this.inspector.instance);
+	},
 
-		switch( this.inspector.instance.constructor )
-		{
-			case LS.SceneNode: this.inspect(this.inspector.instance); break;
-			case Object: 
-			case Array: this.inspectObjects( this.inspector.instance ); break;
-			default:
-				this.inspectObject(this.inspector.instance); break;
-		}
+	updateInspector: function( object )
+	{
+		this.inspector.update( object );
 	},
 
 	inspect: function( objects, inspector )
@@ -272,364 +269,6 @@ var EditorModule = {
 		dialog.adjustSize();
 		return dialog;
 	},
-
-	/*
-	inspectObjects: function(objects, inspector)
-	{
-		inspector = inspector || this.inspector;
-
-		inspector.instance = objects;
-
-		inspector.on_refresh = (function()
-		{
-			inspector.clear();
-			for(var i = 0; i < objects.length; i++)
-			{
-				var object = objects[i];
-				if(!object)
-					continue;
-
-				if( LS.isClassComponent( object.constructor ) )
-					this.showComponentInterface( object, inspector );
-				else
-					this.showObjectFields( object, inspector );
-			}
-		}).bind(this);
-
-		inspector.refresh();
-	},
-
-	inspectObject: function(object, inspector)
-	{
-		this.inspectObjects([object],inspector);
-		this.inspector.instance = object;
-	},
-
-	inspectScene: function( scene, inspector )
-	{
-		inspector = inspector || this.inspector;
-		inspector.instance = scene;
-
-		if(!scene)
-		{
-			inspector.clear();
-			inspector.on_refresh = null;
-			return;
-		}
-
-		inspector.on_refresh = function()
-		{
-			inspector.clear();
-			inspector.addString("Title", scene.extra.title || "", function(v) { scene.extra.title = v; });
-			inspector.addString("Author", scene.extra.author || "", function(v) { scene.extra.author = v; });
-			inspector.addTextarea("Comments", scene.extra.comments || "", { callback: function(v) { scene.extra.comments = v; } });
-			inspector.addSeparator();
-			inspector.addTitle("External Scripts");
-			for(var i in scene.external_scripts)
-			{			
-				inspector.addStringButton(null, scene.external_scripts[i], { index: i, callback: function(v){
-						if(!v)
-							return;
-						scene.external_scripts[this.options.index] = v;
-					}, callback_button: function(){
-						//delete imported
-						scene.external_scripts.splice(this.options.index,1);
-						inspector.refresh();
-					},
-					button: "<img src='imgs/mini-icon-trash.png'/>"
-				});
-			}
-			inspector.addStringButton(null, "", { callback: function(v){
-				}, callback_button: function(v){
-					if(!v)
-						return;
-					//add script
-					scene.external_scripts.push(v);
-					LS.GlobalScene.loadExternalScripts( v, null, function(){
-						LiteGUI.alert("Error loading script");
-						scene.external_scripts.pop();
-						inspector.refresh();
-					});
-					inspector.refresh();
-				},
-				button: "+"
-			});
-			if(scene.external_scripts && scene.external_scripts.length)
-				inspector.addButton(null,"Reload scripts", function(){
-					LS.GlobalScene.loadExternalScripts( scene.external_scripts, null, LiteGUI.alert );
-				});
-		}
-
-		inspector.refresh();
-	},
-
-	inspectNode: function( node, component_to_focus, inspector )
-	{
-		inspector = inspector || this.inspector;
-		inspector.instance = node;
-
-		if(!node)
-		{
-			inspector.clear();
-			inspector.on_refresh = null;
-			return;
-		}
-
-		inspector.on_refresh = (function()
-		{
-			inspector.clear();
-			if(node == LS.GlobalScene.root) //main node use an special editor
-			{
-				this.showSceneInfo(node, inspector);
-			}
-			else
-			{
-				if(typeof(node) == "undefined" || node == null) {
-					return;
-				}
-
-				if(node._name !== null)
-					inspector.addString("name", node._name, { callback: function(v) {
-						if(!v)
-							return node._name;
-						var old_name = node.name;
-						if( !node.setName(v) )
-							return node._name;
-						UndoModule.saveNodeRenamedUndo( node, old_name );
-					}});
-
-				inspector.addString("UId", node.uid, { disabled: true });
-
-				if(node.className != null)
-					inspector.addString("class", node.className, { callback: function(v) { node.className = v; } });
-				if(node.flags && node.flags.visible != null)
-					inspector.addCheckbox("visible", node.visible, { pretitle: AnimationModule.getKeyframeCode( node, "visible"), callback: function(v) { node.visible = v; } });
-
-				inspector.addLayers("layers", node.layers, { callback: function(v) {
-					node.layers = v;
-					RenderModule.requestFrame();
-				}});
-
-				//special node editors
-				for(var i in this.node_editors)
-					this.node_editors[i](node, inspector);
-			}
-
-			//components
-			this.showComponentsInterfaces( node,inspector );
-
-			//flags
-			inspector.addSection("Extras", { collapsed: true });
-			if(node.flags)
-			{
-				inspector.addTitle("Flags");
-				inspector.widgets_per_row = 2;
-				inspector.addFlags( node.flags, {seen_by_camera:true, seen_by_reflections:true, depth_test: true, depth_write: true, ignore_lights: false, ignore_fog: false, selectable: true} );
-				inspector.widgets_per_row = 1;
-			}
-
-			inspector.addSection();
-
-			//final buttons
-			inspector.addButton(null,"Add component", { callback: function(v) { 
-				EditorModule.showAddComponentToNode( node, function(){
-					inspector.refresh();
-				});
-			}});
-
-			inspector.addButtons(null,["Add Script","Add Graph"], { callback: function(v) { 
-				if(v == "Add Script")
-					CodingModule.onNewScript( node );
-				else if(v == "Add Graph")
-					GraphModule.onNewGraph( node );
-				inspector.refresh();
-			}});
-
-			if(component_to_focus)
-				inspector.scrollTo( component_to_focus.uid.substr(1) );
-			AnimationModule.attachKeyframesBehaviour( inspector );
-		}).bind(this);
-
-		inspector.refresh();
-	},
-
-	//inspects all the components in one container
-	showComponentsInterfaces: function(container, inspector)
-	{
-		//component editors
-		var components = container.getComponents();
-		for(var i in components)
-		{
-			var component = components[i];
-			this.showComponentInterface(component, inspector);
-		}
-	},
-
-	//shows the inspector of one component
-	showComponentInterface: function(component, inspector)
-	{
-		if(!component)
-			return;
-
-		var node = component._root;
-
-		var component_class = component.constructor;
-		var name = LS.getObjectClassName(component);
-		var editor = component_class["@inspector"];
-
-		//Create the title of the component
-		var icon_url = "imgs/mini-icon-question.png";
-		if(component.constructor.icon)	
-			icon_url = component.constructor.icon;
-
-		var icon_code = "<span class='icon' style='width: 20px' draggable='true'><img src='"+ this.icons_path + icon_url+"'/></span>";
-		var enabler = component.enabled !== undefined ? AnimationModule.getKeyframeCode(component,"enabled") + "<span class='enabler'></span>" : "";
-		var is_selected = SelectionModule.isSelected( component );
-		var options = {};
-		if(is_selected)
-			options.className = "selected";
-		var title = "<span class='title'>"+name+"</span>";
-		var buttons = " <span class='buttons'><img class='options_section' src='imgs/mini-cog.png'></span>";
-
-		if(component.uid)
-			options.id = component.uid.substr(1);
-
-		//show the component collapsed and remember it
-		options.callback = function(v){
-			component._collapsed = !v;
-		}
-		options.collapsed = component._collapsed;
-
-		//create component section in inspector
-		var section = inspector.addSection( icon_code + enabler + title + buttons, options );
-
-		var icon = section.querySelector(".icon");
-		icon.addEventListener("dragstart", function(event) { 
-			event.dataTransfer.setData("uid", component.uid);
-			event.dataTransfer.setData("type", "Component");
-			event.dataTransfer.setData("node_uid", component.root.uid);
-			event.dataTransfer.setData("class", LS.getObjectClassName(component));
-		});
-
-
-		var icon_img = section.querySelector(".icon img");
-		if(icon_img)
-			icon_img.onerror = function() { this.src = "imgs/mini-icon-question.png"; }
-
-		//right click in title launches the context menu
-		section.querySelector(".wsectiontitle").addEventListener("contextmenu", (function(e) { 
-			if(e.button != 2) //right button
-				return false;
-			inner_showActions(e);
-			e.preventDefault(); 
-			return false;
-		}).bind(this));
-
-		//checkbox for enable/disable component
-		if(component.enabled !== undefined)
-		{
-			enabler = inspector.current_section.querySelector('.enabler');
-			var checkbox = new LiteGUI.Checkbox( component.enabled, function(v){ 
-				component.enabled = v; 
-				$(inspector.current_section).trigger("wchange");
-				RenderModule.requestFrame();
-			});
-			checkbox.root.title ="Enable / Disable";
-			enabler.appendChild( checkbox.root );
-		}
-
-		//save UNDO when something changes
-		$(inspector.current_section).bind("wchange", function() { 
-			UndoModule.saveComponentChangeUndo( component );
-		});
-
-		//used to avoid collapsing section when clicking button
-		inspector.current_section.querySelector('.options_section').addEventListener("click", function(e) { 
-			e.preventDefault();
-			e.stopPropagation();
-			return true;
-		});
-
-		//it has special editor
-		if(editor)
-			editor.call(this, component, inspector, section);
-		else
-			this.showObjectFields( component, inspector );
-
-		//in case the options button is pressed or the right button, show contextual menu
-		inspector.current_section.querySelector('.options_section').addEventListener("click", inner_showActions );
-
-		function inner_showActions( e ) { 
-			//console.log("Show options");
-			window.SELECTED = component; //useful trick
-			var actions = ["Info","Copy","Paste","Delete","Reset","Select"];
-			if(component.getEditorActions)
-				actions = component.getEditorActions( actions );
-
-			var menu = new LiteGUI.ContextualMenu( actions, { event: event, title: name, callback: function(value) {
-
-				var r = null;
-				if(component.doEditorAction)
-					r = component.doEditorAction( value );
-				if(!r)
-					EditorModule.onDefaultComponentAction( component, value );
-			}});
-		}		
-
-		var drag_counter = 0; //hack because HTML5 sux sometimes
-
-		//drop component
-		inspector.current_section.addEventListener("dragover", function(e) { 
-			e.preventDefault();
-		});
-		inspector.current_section.addEventListener("dragenter", function(e) { 
-			drag_counter++;
-			if( event.dataTransfer.types.indexOf("type") != -1 && drag_counter == 1 )
-			{
-				this.style.opacity = "0.5";
-			}
-			e.preventDefault();
-		},true);
-		inspector.current_section.addEventListener("dragleave", function(e) { 
-			drag_counter--;
-			if(drag_counter == 0)
-				this.style.opacity = null;
-			e.preventDefault();
-		},true);
-		inspector.current_section.addEventListener("drop", function(event) { 
-			this.style.opacity = null;
-			var item_uid = event.dataTransfer.getData("uid");
-			var item_type = event.dataTransfer.getData("type");
-			if( item_type == "Component" )
-			{
-				var dragged_component = LS.GlobalScene.findComponentByUId( item_uid );
-				if( component != dragged_component && component.root == dragged_component.root )
-				{
-					console.log("Rearranging components");
-					var index = component.root.getIndexOfComponent();
-					component.root.setComponentIndex( dragged_component, index - 1 );
-					EditorModule.refreshAttributes();
-				}
-			}
-		});
-	},
-
-	showObjectFields: function(container, inspector)
-	{
-		inspector.on_addProperty = inner;
-
-		inspector.inspectInstance(container, null,null, ["enabled"] );
-
-		inspector.on_addProperty = null;
-
-		//used to hook the keyframe thing on automatic generated inspectors
-		function inner( widget, object, property, value, options )
-		{
-			options.pretitle = AnimationModule.getKeyframeCode( object, property, options );
-		}
-	},
-	
-	*/
 
 	checkJSON: function( object )
 	{
@@ -942,6 +581,22 @@ var EditorModule = {
 		dialog.show();
 	},
 
+	showRenderSettingsDialog: function( render_settings )
+	{
+		var dialog = new LiteGUI.Dialog(null,{ title:"Render Settings", width: 400, draggable: true, closable: true });
+		
+		var inspector = new LiteGUI.Inspector(null,{name_width:"50%"});
+		inspector.showObjectFields( render_settings );
+
+		inspector.onchange = function(){
+			LS.GlobalScene.refresh();
+		}
+
+		dialog.add( inspector );
+		dialog.adjustSize();
+		dialog.show();
+	},
+
 	onDropOnNode: function( node, event )
 	{
 		if(!node)
@@ -1057,8 +712,8 @@ var EditorModule = {
 			component.reset();
 		else
 			component.configure( (new LS.Components[ LS.getObjectClassName(component)]()).serialize() ); 
-		$(component).trigger("changed");
-		EditorModule.inspect(LS.GlobalScene.selected_node); //update interface
+		LiteGUI.trigger(component, "changed");
+		EditorModule.inspect( LS.GlobalScene.selected_node ); //update interface
 		RenderModule.requestFrame();
 	},
 
@@ -1841,11 +1496,13 @@ LiteGUI.Inspector.prototype.addTexture = function(name, value, options)
 
 	element.addEventListener("drop", function(e){
 		var path = e.dataTransfer.getData("res-fullpath");
-		input.value = path;
-		LiteGUI.trigger( input, "change" );
-
+		if(path)
+		{
+			input.value = path;
+			LiteGUI.trigger( input, "change" );
+			e.stopPropagation();
+		}
 		e.preventDefault();
-		e.stopPropagation();
 		return false;
 	}, true);
 
@@ -1898,11 +1555,13 @@ LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
 	},true);
 	element.addEventListener("drop", function(e){
 		var path = e.dataTransfer.getData("res-fullpath");
-		input.value = path;
-		LiteGUI.trigger( input, "change" );
-
+		if(path)
+		{
+			input.value = path;
+			LiteGUI.trigger( input, "change" );
+			e.stopPropagation();
+		}
 		e.preventDefault();
-		e.stopPropagation();
 		return false;
 	}, true);
 
@@ -1968,11 +1627,13 @@ LiteGUI.Inspector.prototype.addMesh = function(name,value, options)
 	},true);
 	element.addEventListener("drop", function(e){
 		var path = e.dataTransfer.getData("res-fullpath");
-		input.value = path;
-		LiteGUI.trigger( input, "change" );
-
+		if(path)
+		{
+			input.value = path;
+			LiteGUI.trigger( input, "change" );
+			e.stopPropagation();
+		}
 		e.preventDefault();
-		e.stopPropagation();
 		return false;
 	}, true);
 
@@ -2023,11 +1684,13 @@ LiteGUI.Inspector.prototype.addMaterial = function(name,value, options)
 	},true);
 	element.addEventListener("drop", function(e){
 		var path = e.dataTransfer.getData("res-fullpath");
-		input.value = path;
-		LiteGUI.trigger( input, "change" );
-
+		if(path)
+		{
+			input.value = path;
+			LiteGUI.trigger( input, "change" );
+			e.stopPropagation();
+		}
 		e.preventDefault();
-		e.stopPropagation();
 		return false;
 	}, true);
 
@@ -2058,6 +1721,15 @@ LiteGUI.Inspector.prototype.addLayers = function(name, value, options)
 }
 LiteGUI.Inspector.widget_constructors["layers"] = "addLayers";
 
+
+LiteGUI.Inspector.prototype.addRenderSettings = function(name, value, options)
+{
+	var widget = this.addButton(name,"Edit", function(){
+		EditorModule.showRenderSettingsDialog(value);
+	});
+	return widget;
+}
+LiteGUI.Inspector.widget_constructors["RenderSettings"] = "addRenderSettings";
 
 
 

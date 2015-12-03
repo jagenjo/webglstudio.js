@@ -1,4 +1,4 @@
-//this is a file that is not included in the config.json, the purpose is to test the 
+//this is a file that is not included in the config.json, the purpose is to test the CTM Parser
 
 //http://fractalfantasy.net/#/4/uncanny_valley
 //http://fractalfantasy.net/uncannyvalley/assets/Head_03.ctm
@@ -25,7 +25,7 @@ var CTMParser = {
 
 		function inner()
 		{
-			var request = retrieve("http://www.tamats.com/uploads/bigdata/Head_03.ctm", loaded );
+			//var request = retrieve("url to ctm file to test", loaded );
 		}
 
 		function loaded(data)
@@ -37,7 +37,7 @@ var CTMParser = {
 				return;
 			console.log( file );
 			var mesh = GL.Mesh.load({ vertices: file.body.vertices, triangles: file.body.indices, normals: file.body.normals, coords: file.body.uvMaps[0].uv });
-			LS.RM.registerResource( "head.ctm", mesh );
+			LS.RM.registerResource( "test.ctm", mesh );
 			console.log("Mesh registered");
 		}
 	},

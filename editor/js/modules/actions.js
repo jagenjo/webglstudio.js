@@ -221,3 +221,15 @@ LS.Components.Camera.actions["edit_layers"] = { title: "Edit Layers", callback: 
 
 
 LS.Components.SkinDeformer.actions["convert_bones"] = { title: "Convert Bones to Relative", callback: function() { this.convertBonesToRelative(); }};
+
+
+
+//*********** Material Actions *************************************
+/*
+LS.Material.actions = {};
+
+LS.Material.actions["copy"] = { title: "Copy", callback: function() { 
+};
+
+"Copy","Paste","Delete","Share","Instance"
+*/

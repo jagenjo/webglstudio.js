@@ -168,6 +168,8 @@ var manipulateTool = {
 		if(e.dragging && this.state_action && e.which == GL.LEFT_MOUSE_BUTTON)
 			ret = this.onMouseDrag(e);
 
+		EditorModule.updateInspector();
+
 		if(this.state != old)
 			LS.GlobalScene.refresh();
 
@@ -199,6 +201,7 @@ var manipulateTool = {
 				ToolUtils.applyTransformMatrixToSelection(T);
 
 			ToolUtils.testPerpendicularPlane( e.canvasx, gl.canvas.height - e.canvasy, this.gizmo_center, this.click_pos );
+			EditorModule.updateInspector();
 			LS.GlobalScene.refresh();
 			return true;		
 		}

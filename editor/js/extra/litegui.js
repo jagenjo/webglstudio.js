@@ -468,6 +468,7 @@ var LiteGUI = {
 
 		var total = url.length;
 		var size = total;
+		var loaded_scripts = [];
 
 		for(var i in url)
 		{
@@ -478,13 +479,14 @@ var LiteGUI = {
 			script.async = false;
 			script.onload = function(e) { 
 				total--;
+				loaded_scripts.push(this);
 				if(total)
 				{
 					if(on_progress)
 						on_progress(this.src, this.num);
 				}
 				else if(on_complete)
-					on_complete();
+					on_complete( loaded_scripts );
 			};
 			if(on_error)
 				script.onerror = function(err) { 
@@ -501,6 +503,7 @@ var LiteGUI = {
 		if(typeof(url)=="string")
 			url = [url];
 
+		var loaded_scripts = [];
 		function addScript()
 		{
 			var script = document.createElement('script');
@@ -515,9 +518,11 @@ var LiteGUI = {
 					addScript();
 					return;
 				}
+
+				loaded_scripts.push(this);
 				
 				if(on_complete)
-					on_complete();
+					on_complete( loaded_scripts );
 			};
 			document.getElementsByTagName('head')[0].appendChild(script);
 		}
@@ -1746,7 +1751,7 @@ function beautifyJSON( code, skip_css )
 		var that = this;
 		this.value = value;
 
-		this.setValue = function(value)
+		this.setValue = function(value, skip_event)
 		{
 			//var width = canvas.getClientRects()[0].width;
 			var ctx = canvas.getContext("2d");
@@ -1765,7 +1770,8 @@ function beautifyJSON( code, skip_css )
 			if(value != this.value)
 			{
 				this.value = value;
-				$(this.root).trigger("change", value );
+				if(!skip_event)
+					LiteGUI.trigger(this.root, "change", value );
 			}
 		}
 
@@ -2455,6 +2461,9 @@ function beautifyJSON( code, skip_css )
 	{
 		var section = this.sections[num];
 		var size = 0;
+
+		if( section && section.root.style.display != "none" )
+			return; //already visible
 		
 		if(this.direction == "horizontal")
 			size = section.root.style.width;
@@ -3378,6 +3387,16 @@ function beautifyJSON( code, skip_css )
 			tab_info.onclose = options.onclose;
 		this.tabs[id] = tab_info;
 
+		//context
+		element.addEventListener("contextmenu", (function(e) { 
+			if(e.button != 2) //right button
+				return false;
+			e.preventDefault(); 
+			if(options.callback_context)
+				options.callback_context.call(tab_info);
+			return false;
+		}).bind(this));
+
 		if ( options.selected == true || this.selected == null )
 			this.selectTab( id, options.skip_callbacks );
 
@@ -3609,7 +3628,10 @@ function beautifyJSON( code, skip_css )
 	/***** DRAGGER **********/
 	function Dragger(value, options)
 	{
-		options = options || {};
+		this.value = value || 0;
+		var that = this;
+
+		this.options = options = options || {};
 		var element = document.createElement("div");
 		element.className = "dragger " + (options.extraclass ? options.extraclass : "");
 		this.root = element;
@@ -3635,11 +3657,7 @@ function beautifyJSON( code, skip_css )
 			input.tabIndex = options.tab_index;
 		wrap.appendChild(input);
 
-		this.setValue = function(v) { 
-			$(input).val(v).trigger("change");
-		}
-		
-		$(input).bind("keydown",function(e) {
+		input.addEventListener("keydown",function(e) {
 			if(e.keyCode == 38)
 				inner_inc(1,e);
 			else if(e.keyCode == 40)
@@ -3659,21 +3677,21 @@ function beautifyJSON( code, skip_css )
 		wrap.appendChild(dragger);
 		element.dragger = dragger;
 
-		$(dragger).bind("mousedown",inner_down);
+		dragger.addEventListener("mousedown",inner_down);
 
 		function inner_down(e)
 		{
-			$(document).unbind("mousemove", inner_move);
-			$(document).unbind("mouseup", inner_up);
+			document.removeEventListener("mousemove", inner_move);
+			document.removeEventListener("mouseup", inner_up);
 
 			if(!options.disabled)
 			{
-				$(document).bind("mousemove", inner_move);
-				$(document).bind("mouseup", inner_up);
+				document.addEventListener("mousemove", inner_move);
+				document.addEventListener("mouseup", inner_up);
 
 				dragger.data = [e.screenX, e.screenY];
 
-				$(element).trigger("start_dragging");
+				LiteGUI.trigger( element,"start_dragging");
 			}
 
 			e.stopPropagation();
@@ -3695,10 +3713,10 @@ function beautifyJSON( code, skip_css )
 
 		function inner_up(e)
 		{
-			$(element).trigger("stop_dragging");
-			$(document).unbind("mousemove", inner_move);
-			$(document).unbind("mouseup", inner_up);
-			$(dragger).trigger("blur");
+			LiteGUI.trigger(element, "stop_dragging");
+			document.removeEventListener("mousemove", inner_move);
+			document.removeEventListener("mouseup", inner_up);
+			LiteGUI.trigger(dragger,"blur");
 			e.stopPropagation();
 			e.preventDefault();
 			return false;
@@ -3723,9 +3741,27 @@ function beautifyJSON( code, skip_css )
 				input.value = ((value * 1000)<<0) / 1000; //remove ugly decimals
 			if(options.units)
 				input.value += options.units;
-			$(input).change();
+			LiteGUI.trigger(input,"change");
 		}
 	}
+
+	Dragger.prototype.setValue = function(v, skip_event) { 
+		v = parseFloat(v);
+		this.value = v;
+		if(this.options.precision)
+			v = v.toFixed(this.options.precision);
+		if(this.options.units)
+			v += this.options.units;
+		this.input.value = v;
+		if(!skip_event)
+			LiteGUI.trigger( this.input, "change" );
+	}
+
+	Dragger.prototype.getValue = function()
+	{
+		return this.value;
+	}
+
 	LiteGUI.Dragger = Dragger;
 
 })();
@@ -3751,6 +3787,11 @@ function beautifyJSON( code, skip_css )
 *	 dataset: dataset for the element<br>
 *	 onDragData: callback in case the user drags this item somewhere else<br>
 * }<br>
+* To catch events use tree.root.addEventListener(...)<br>
+* item_selected : receive { item: node, data: node.data }<br>
+* item_dblclicked<br>
+* item_renamed<br>
+* item_moved<br>
 *
 * @class Tree
 * @constructor
@@ -3842,6 +3883,7 @@ function beautifyJSON( code, skip_css )
 
 		var element = this.createAndInsert( data, options, parent_id, position );
 
+		//update parent collapse button
 		if(parent_id)
 			this._updateListBox( this._findElement(parent_id) );
 
@@ -3890,6 +3932,7 @@ function beautifyJSON( code, skip_css )
 			}
 		}
 
+		//update collapse button
 		this._updateListBox( element );
 
 		if(options && options.selected)
@@ -4565,12 +4608,14 @@ function beautifyJSON( code, skip_css )
 	/**
 	* returns the children of an item
 	* @method getChildren
-	* @param {string} id
+	* @param {string} id could be string or node directly
 	* @param {bool} [only_direct=false] to get only direct children
 	* @return {Array}
 	*/
 	Tree.prototype.getChildren = function(id, only_direct )
 	{
+		if( id && id.constructor !== String && id.dataset )
+			id = id.dataset["node_id"];
 		return this._findChildElements( id, only_direct );
 	}
 
@@ -4617,33 +4662,37 @@ function beautifyJSON( code, skip_css )
 		//replace parent info
 		node.parent_id = parent_id;
 
-		//get all children and subchildren
+		//get all children and subchildren and reinsert them in the new level
 		var children = this.getChildren( node );
-		children.unshift(node); //add the node at the beginning
-
-		//remove all children
-		for(var i = 0; i < children.length; i++)
-			children[i].parentNode.removeChild( children[i] );
-
-		//update levels
-		for(var i = 0; i < children.length; i++)
+		if(children)
 		{
-			var child = children[i];
-			var new_level = parseInt(child.dataset["level"]) + level_offset;
-			child.dataset["level"] = new_level;
-		}
+			children.unshift( node ); //add the node at the beginning
 
-		//reinsert
-		parent_index = this._findElementIndex( parent ); //update parent index
-		var last_index = this._findElementLastChildIndex( parent_index );
-		if(last_index == -1)
-			last_index = 0;
-		for(var i = 0; i < children.length; i++)
-		{
-			var child = children[i];
-			this._insertInside( child, parent_index, last_index + i - 1, parseInt( child.dataset["level"] ) );
+			//remove all children
+			for(var i = 0; i < children.length; i++)
+				children[i].parentNode.removeChild( children[i] );
+
+			//update levels
+			for(var i = 0; i < children.length; i++)
+			{
+				var child = children[i];
+				var new_level = parseInt(child.dataset["level"]) + level_offset;
+				child.dataset["level"] = new_level;
+			}
+
+			//reinsert
+			parent_index = this._findElementIndex( parent ); //update parent index
+			var last_index = this._findElementLastChildIndex( parent_index );
+			if(last_index == -1)
+				last_index = 0;
+			for(var i = 0; i < children.length; i++)
+			{
+				var child = children[i];
+				this._insertInside( child, parent_index, last_index + i - 1, parseInt( child.dataset["level"] ) );
+			}
 		}
 		
+		//update collapse button
 		this._updateListBox( parent );
 		if(old_parent)
 			this._updateListBox( old_parent );
@@ -4657,19 +4706,35 @@ function beautifyJSON( code, skip_css )
 	* @param {string} id
 	* @return {bool}
 	*/
-	Tree.prototype.removeItem = function(id_or_node)
+	Tree.prototype.removeItem = function( id_or_node, remove_children )
 	{
 		var node = id_or_node;
 		if(typeof(id_or_node) == "string")
-			node = this.getItem(id_or_node);
+			node = this.getItem( id_or_node );
 		if(!node)
 			return false;
 
-		var parent = this.getParent(node);
+		//get parent
+		var parent = this.getParent( node );
+
+		//get all descendants
+		var child_nodes = null;
+		if(remove_children)
+			child_nodes = this.getChildren( node );
+
+		//remove html element
 		this.root.removeChild( node );
 
+		//remove all children
+		if( child_nodes )
+		{
+			for( var i = 0; i < child_nodes.length; i++ )
+				this.root.removeChild( child_nodes[i] );
+		}
+
+		//update parent collapse button
 		if(parent)
-			this._updateListBox(parent);
+			this._updateListBox( parent );
 		return true;
 	}
 
@@ -4770,6 +4835,7 @@ function beautifyJSON( code, skip_css )
 		}
 	}
 
+	//updates the widget to collapse
 	Tree.prototype._updateListBox = function( node )
 	{
 		if(!node)
@@ -4802,8 +4868,9 @@ function beautifyJSON( code, skip_css )
 		var children = this.getChildren( node );
 		var status = node.listbox.getValue();
 
-		for(var i = 0; i < children.length; ++i)
-			children[i].style.display = status == "open" ? null : "none";
+		if(children)
+			for(var i = 0; i < children.length; ++i)
+				children[i].style.display = status == "open" ? null : "none";
 	}
 
 	LiteGUI.Tree = Tree;
@@ -5181,7 +5248,7 @@ function beautifyJSON( code, skip_css )
 	* @method close
 	*/
 	Dialog.prototype.close = function() {
-		LiteGUI.remove( this );
+		LiteGUI.remove( this.root );
 		LiteGUI.trigger( this, "closed", this);
 		if(this.on_close)
 			this.on_close();
@@ -5497,24 +5564,29 @@ jQuery.fn.wclick = function(callback) {
 };
 
 /**
-* Inspector allows to create a list of widgets easily
+* Inspector allows to create a list of widgets easily, it also provides methods to create the widgets automatically.<br/>
+* Every widget is created calling the function add followed by the widget name, p.e. addSlider or addVector3 or addNumber.<br/>
+* Widgets always receive three parameters:<br/>
+* - name: String that defines the name at that it will be shown in the left side of the widget.<br/>
+* - value: the value that will be displayed in the widget.<br/>
+* - options: Object containing all the values .<br/>
 *
 * @class Inspector
 * @param {string} id
-* @param {Object} options object with a set of options { 
-	width: total width
-	height: total height
-	widgets_width: width of every widget (used mostly in horizontal inspectors)
-	name_width: width of the name part of widgets
-	full: set to true if you want the inspector to use all the parent width and height
-	widgets_per_row: number of widgets per row, default is 1 but you can change it if you want to pack several widgets in a row (useful for small widgets like checkboxes)
-	one_line: widgets are place one next to the other horizontaly
-	onchange: callback to call when something changes
-   }
+* @param {Object} options object with a set of options { <br/>
+	width: total width <br/>
+	height: total height <br/>
+	widgets_width: width of every widget (used mostly in horizontal inspectors) <br/>
+	name_width: width of the name part of widgets <br/>
+	full: set to true if you want the inspector to use all the parent width and height <br/>
+	widgets_per_row: number of widgets per row, default is 1 but you can change it if you want to pack several widgets in a row (useful for small widgets like checkboxes) <br/>
+	one_line: widgets are place one next to the other horizontaly <br/>
+	onchange: callback to call when something changes <br/>
+   } <br/>
 * @constructor
 */
 
-function Inspector(id,options)
+function Inspector( id,options )
 {
 	options = options || {};
 	this.root = document.createElement("DIV");
@@ -5530,7 +5602,8 @@ function Inspector(id,options)
 
 	this.values = {};
 	this.sections = [];
-	this.widgets = {};
+	this.widgets = [];
+	this.widgets_by_name = {};
 	this.row_number = 0; //used to detect if element is even (cannot use CSS, special cases everywhere)
 
 	this.addSection();
@@ -5562,9 +5635,9 @@ function Inspector(id,options)
 Inspector.prototype.appendTo = function(parent, at_front)
 {
 	if(at_front)
-		$(parent).prepend(this.root);
+		parent.insertBefore( this.root, parent.firstChild );
 	else
-		$(parent).append(this.root);
+		parent.appendChild(this.root);
 }
 
 /**
@@ -5580,8 +5653,8 @@ Inspector.prototype.clear = function()
 
 	this.sections = [];
 	this.values = {};
-	this.widgets = {};
-
+	this.widgets = [];
+	this.widgets_by_name = {};
 	this.current_container = null;
 	this._current_container_stack = null;
 	this.addSection();
@@ -5758,7 +5831,7 @@ Inspector.prototype.collectProperties = function( instance )
 	return properties;
 }
 
-/** Adds the widgets for the properties specified in properties_info of instance
+/** Adds the widgets for the properties specified in properties_info of instance, it will create callback and callback_update
 *
 * @method showProperties
 * @param {Object} instance the instance that you want to inspect
@@ -5781,7 +5854,14 @@ Inspector.prototype.showProperties = function( instance, properties_info )
 			options.callback = Inspector.assignValue.bind( o );
 
 		}
+		if(!options.callback_update) //generate default refresh
+		{
+			var o = { instance: instance, name: i };
+			options.callback_update = (function(){ return this.instance[ this.name ]; }).bind(o);
+		}
+
 		options.instance = instance;
+		options.varname = i;
 
 		var type = options.widget || options.type || "string";
 
@@ -5829,7 +5909,7 @@ Inspector.assignValue = function(value)
 			current_value[i] = value[i];
 	}
 	else
-		instance[this.name] = value;
+		instance[ this.name ] = value;
 }
 
 /**
@@ -5864,8 +5944,10 @@ Inspector.prototype.createWidget = function(name, content, options)
 		element.style.minWidth = element.style.width;
 	}
 
+	//store widgets 
+	this.widgets.push( element );
 	if(name)
-		this.widgets[name] = element;
+		this.widgets_by_name[name] = element;
 
 	if(this.widgets_per_row != 1)
 	{
@@ -5903,12 +5985,14 @@ Inspector.prototype.createWidget = function(name, content, options)
 	else
 		code += "<span class='wname' title='"+title+"' "+namewidth+">"+ pretitle + name + filling + "</span>";
 
-	if( content.constructor === String )
+	if( content.constructor === String || content.constructor === Number || content.constructor === Boolean )
 		element.innerHTML = code + "<span class='info_content "+content_class+"' "+contentwidth+">"+content+"</span>";
 	else
 	{
 		element.innerHTML = code + "<span class='info_content "+content_class+"' "+contentwidth+"></span>";
-		element.querySelector("span.info_content").appendChild( content );
+		var content_element = element.querySelector("span.info_content");
+		if(content_element)
+			content_element.appendChild( content );
 	}
 
 	element.content = element.querySelector("span.info_content");
@@ -6025,10 +6109,25 @@ Inspector.prototype.getValue = function(name)
 }
 
 
+Inspector.prototype.applyOptions = function( element, options )
+{
+	if(!element || !options)
+		return;
+
+	if(options.className)
+		element.className += " " + options.className;
+	if(options.id)
+		element.id = options.id;
+	if(options.width)
+		element.style.width = LiteGUI.sizeToCSS( options.width );
+	if(options.height)
+		element.style.height = LiteGUI.sizeToCSS( options.height );
+}
+
 //it is like an empty widget
 Inspector.prototype.addContainer = function(name, options)
 {
-	var element = this.startContainer();
+	var element = this.startContainer(null,options);
 	this.endContainer();
 	return element;
 }
@@ -6040,10 +6139,7 @@ Inspector.prototype.startContainer = function(name, options)
 
 	var element = document.createElement("DIV");
 	element.className = "wcontainer";
-	if(options.className)
-		element.className += " " + options.className;
-	if(options.id)
-		element.id = options.id;
+	this.applyOptions(element, options);
 
 	this.append( element );
 	this.pushContainer( element );
@@ -6200,8 +6296,9 @@ Inspector.prototype.addTitle = function(title,options)
 	}
 	code += "</span>";
 	element.innerHTML = code;
-
-	element.setValue = function(v) { $(this).find(".text").html(v); };
+	element.setValue = function(v) { 
+		this.querySelector(".text").innerHTML = v;
+	};
 	this.row_number = 0;
 	this.append(element, options);
 	return element;
@@ -6267,14 +6364,20 @@ Inspector.prototype.addString = function(name,value, options)
 
 	this.tab_index += 1;
 
-	element.setValue = function(v) { 
+	element.setValue = function(v,skip_event) { 
+		if(v === undefined )
+			return;
+		if(v === input.value)
+			return;
 		input.value = v; 
-		LiteGUI.trigger(input, "change" );
+		if(!skip_event)
+			LiteGUI.trigger(input, "change" );
 	};
 	element.getValue = function() { return input.value; };
 	element.focus = function() { $(this).find("input").focus(); };
 	element.wchange = function(callback) { $(this).wchange(callback); }
 	this.append(element,options);
+	this.processElement(element, options);
 	return element;
 }
 
@@ -6316,9 +6419,14 @@ Inspector.prototype.addStringButton = function(name,value, options)
 	this.append(element,options);
 	element.wchange = function(callback) { $(this).wchange(callback); }
 	element.wclick = function(callback) { $(this).wclick(callback); }
-	element.setValue = function(v) { input.value = v; LiteGUI.trigger(input, "change" ); };
+	element.setValue = function(v,skip_event) { 
+		input.value = v;
+		if(!skip_event)
+			LiteGUI.trigger(input, "change" );
+	};
 	element.getValue = function() { return input.value; };
-	element.focus = function() { $(this).find("input").focus(); };
+	element.focus = function() { LiteGUI.focus(input); };
+	this.processElement(element, options);
 	return element;
 }
 
@@ -6346,16 +6454,23 @@ Inspector.prototype.addTextarea = function(name,value, options)
 
 	var element = this.createWidget(name,"<span class='inputfield textarea "+(options.disabled?"disabled":"")+"'><textarea tabIndex='"+this.tab_index+"' "+(options.disabled?"disabled":"")+">"+value+"</textarea></span>", options);
 	this.tab_index++;
-
-	element.querySelector(".wcontent textarea").addEventListener( options.immediate ? "keyup" : "change", function(e) { 
+	var textarea = element.querySelector(".wcontent textarea");
+	textarea.addEventListener( options.immediate ? "keyup" : "change", function(e) { 
 		Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
 	});
-
 	if(options.height)
-		$(element).find("textarea").css({height: options.height });
+		textarea.style.height = LiteGUI.sizeToCSS( options.height );
 	this.append(element,options);
-
-	element.setValue = function(v) { $(this).find("textarea").val(v).change(); };
+	element.setValue = function(v,skip_event) { 
+		if(v === undefined)
+			return;
+		if(v == textarea.value)
+			return;
+		textarea.value = v;
+		if(!skip_event)
+			LiteGUI.trigger( textarea,"change" );
+	};
+	this.processElement(element, options);
 	return element;
 }
 
@@ -6424,17 +6539,23 @@ Inspector.prototype.addNumber = function(name, value, options)
 		if(that.onchange) that.onchange(name,e.target.value,element);
 	});
 
-	element.setValue = function(v) { 
+	element.setValue = function(v,skip_event) { 
+		if(v === undefined)
+			return;
 		v = parseFloat(v);
 		if(options.precision)
 			v = v.toFixed( options.precision );
-		input.value = v + (options.units || "");
-		LiteGUI.trigger( input,"change" );
+		v += (options.units || "");
+		if(input.value == v)
+			return;
+		input.value = v;
+		if(!skip_event)
+			LiteGUI.trigger( input,"change" );
 	};
 
 	element.getValue = function() { return parseFloat( input.value ); };
-	element.focus = function() { $(input).focus(); };
-
+	element.focus = function() { LiteGUI.focus(input); };
+	this.processElement(element, options);
 	return element;
 }
 
@@ -6494,7 +6615,7 @@ Inspector.prototype.addVector2 = function(name,value, options)
 		if(this.callback_before) this.callback_before(e);
 	}
 
-	//ALL INPUTS
+	//jQUERY for ALL INPUTS
 	$(element).find("input").change( function(e) { 
 		//gather all three parameters
 		var r = [];
@@ -6522,11 +6643,15 @@ Inspector.prototype.addVector2 = function(name,value, options)
 
 	this.append(element,options);
 
-	element.setValue = function(v) { 
-		dragger1.setValue(v[0]);
-		dragger2.setValue(v[1]);
+	element.setValue = function(v,skip_event) { 
+		if(!v)
+			return;
+		if(dragger1.getValue() != v[0])
+			dragger1.setValue(v[0],true);
+		if(dragger2.getValue() != v[1])
+			dragger2.setValue(v[1],skip_event); //last one triggers the event
 	}
-
+	this.processElement(element, options);
 	return element;
 }
 
@@ -6567,31 +6692,32 @@ Inspector.prototype.addVector3 = function(name,value, options)
 	var dragger1 = new LiteGUI.Dragger(value[0], options );
 	dragger1.root.style.marginLeft = 0;
 	dragger1.root.style.width = "calc( 33% - 1px )";
-	$(element).find(".wcontent").append(dragger1.root);
+	element.querySelector(".wcontent").appendChild( dragger1.root );
 
 	options.tab_index = this.tab_index;
 	this.tab_index++;
 
 	var dragger2 = new LiteGUI.Dragger(value[1], options );
 	dragger2.root.style.width = "calc( 33% - 1px )";
-	$(element).find(".wcontent").append(dragger2.root);
+	element.querySelector(".wcontent").appendChild( dragger2.root );
 
 	options.tab_index = this.tab_index;
 	this.tab_index++;
 
 	var dragger3 = new LiteGUI.Dragger(value[2], options );
 	dragger3.root.style.width = "calc( 33% - 1px )";
-	$(element).find(".wcontent").append(dragger3.root);
+	element.querySelector(".wcontent").appendChild( dragger3.root );
 
-	$(dragger1.root).bind("start_dragging", inner_before_change.bind(options) );
-	$(dragger2.root).bind("start_dragging", inner_before_change.bind(options) );
-	$(dragger3.root).bind("start_dragging", inner_before_change.bind(options) );
+	dragger1.root.addEventListener( "start_dragging", inner_before_change.bind(options) );
+	dragger2.root.addEventListener( "start_dragging", inner_before_change.bind(options) );
+	dragger3.root.addEventListener( "start_dragging", inner_before_change.bind(options) );
 
 	function inner_before_change(e)
 	{
 		if(this.callback_before) this.callback_before();
 	}
 
+	//JQUERY for all three
 	$(element).find("input").change( function(e) { 
 		//gather all three parameters
 		var r = [];
@@ -6619,11 +6745,15 @@ Inspector.prototype.addVector3 = function(name,value, options)
 
 	this.append(element,options);
 
-	element.setValue = function(v) { 
-		dragger1.setValue(v[0]);
-		dragger2.setValue(v[1]);
-		dragger3.setValue(v[2]);
+	element.setValue = function(v,skip_event) { 
+		if(!v)
+			return;
+		dragger1.setValue(v[0],true);
+		dragger2.setValue(v[1],true);
+		dragger3.setValue(v[2],skip_event); //last triggers
 	}
+
+	this.processElement(element, options);
 	return element;
 }
 
@@ -6653,7 +6783,7 @@ Inspector.prototype.addVector4 = function(name,value, options)
 	var that = this;
 	this.values[name] = value;
 	
-	var element = this.createWidget(name,"", options);
+	var element = this.createWidget( name,"", options );
 
 	options.step = options.step || 0.1;
 	//options.dragger_class = "mini";
@@ -6668,16 +6798,17 @@ Inspector.prototype.addVector4 = function(name,value, options)
 		var dragger = new LiteGUI.Dragger(value[i], options );
 		dragger.root.style.marginLeft = 0;
 		dragger.root.style.width = "calc( 25% - 1px )";
-		$(element).find(".wcontent").append(dragger.root);
+		element.querySelector(".wcontent").appendChild( dragger.root );
 		options.tab_index = this.tab_index;
 		this.tab_index++;
-		$(dragger.root).bind("start_dragging", inner_before_change.bind(options) );
+		dragger.root.addEventListener("start_dragging", inner_before_change.bind(options) );
 		draggers.push(dragger);
 	}
 
 	function inner_before_change(e)
 	{
-		if(this.callback_before) this.callback_before();
+		if(this.callback_before)
+			this.callback_before();
 	}
 
 	$(element).find("input").change( function(e) { 
@@ -6701,15 +6832,20 @@ Inspector.prototype.addVector4 = function(name,value, options)
 		}
 
 		$(element).trigger("wchange",[r]);
-		if(that.onchange) that.onchange(name,r,element);
+		if(that.onchange)
+			that.onchange(name,r,element);
 	});
 
 	this.append(element,options);
 
-	element.setValue = function(v) { 
+	element.setValue = function(v,skip_event) { 
+		if(!v)
+			return;
 		for(var i = 0; i < draggers.length; i++)
-			draggers[i].setValue(v[i]);
+			draggers[i].setValue(v[i],skip_event);
 	}
+
+	this.processElement(element, options);
 	return element;
 }
 
@@ -6830,10 +6966,12 @@ Inspector.prototype.addPad = function(name,value, options)
 
 	pad.addEventListener("mousedown", pad._onMouseEvent );
 
-	element.setValue = function(v)
+	element.setValue = function(v,skip_event)
 	{
-		var b = pad.getBoundingClientRect();
+		if(v === undefined)
+			return;
 
+		var b = pad.getBoundingClientRect();
 		var x = (v[0] - minx) / (maxx - minx);
 		var y = (v[1] - miny) / (maxy - miny);
 		x = Math.max( 0, Math.min( x, 1 ) ); //clamp
@@ -6845,12 +6983,16 @@ Inspector.prototype.addPad = function(name,value, options)
 		var h = ((b.height - 10) / b.height) * 100;
 		handler.style.left = (x * w).toFixed(1) + "%";
 		handler.style.top = (y * h).toFixed(1) + "%";
+
+		//if(!skip_event)
+		//	LiteGUI.trigger(this,"change");
 	}
 
 	this.append(element,options);
 
 	element.setValue( value );
 
+	this.processElement(element, options);
 	return element;
 }
 
@@ -6886,18 +7028,26 @@ Inspector.prototype.addInfo = function(name,value, options)
 			element.innerHTML = "<span class='winfo'>"+value+"</span>";
 	}
 
-	var info = element.querySelector(".winfo");
+	var info = element.querySelector(".winfo") || element.querySelector(".wcontent");
 
-	element.setValue = function(v) { info.innerHTML = v; };
+	element.setValue = function(v) { 
+		if(v === undefined)
+			return;
+		if(info)
+			info.innerHTML = v;
+	};
 
 	if(options.height)
 	{
 		var content = element.querySelector("span.info_content");
-		content.style.height = typeof(options.height) == "string" ? options.height : options.height + "px";
+		if(!content)
+			return;
+		content.style.height = LiteGUI.sizeToCSS(options.height);
 		content.style.overflow = "auto";
 	}
 
 	this.append(element,options);
+	this.processElement(element, options);
 	return element;
 }
 
@@ -6937,24 +7087,38 @@ Inspector.prototype.addSlider = function(name, value, options)
 	var slider = new LiteGUI.Slider(value,options);
 	slider_container.appendChild(slider.root);
 
+	//Text change -> update slider
 	var skip_change = false; //used to avoid recursive loops
 	var text_input = element.querySelector(".slider-text");
-	$(text_input).on('change', function() {
-		if(skip_change) return;
-
-		var v = parseFloat( $(this).val() );
+	text_input.addEventListener('change', function(e) {
+		if(skip_change)
+			return;
+		var v = parseFloat( this.value );
+		value = v;
 		slider.setValue( v );
-
 		Inspector.onWidgetChange.call(that,element,name,v, options);
 	});
 
-	$(slider.root).on("change", function(e,v) {
-		text_input.value = v;
-		Inspector.onWidgetChange.call(that,element,name,v, options);
+	//Slider change -> update Text
+	slider.root.addEventListener("change", function(e) {
+		value = e.detail;
+		text_input.value = value;
+		Inspector.onWidgetChange.call(that,element,name,value, options);
 	});
 
 	this.append(element,options);
-	element.setValue = function(v) { slider.setValue(v); };
+
+	element.setValue = function(v,skip_event) { 
+		if(v === undefined)
+			return;
+		value = v;
+		slider.setValue(v,skip_event);
+	};
+	element.getValue = function() { 
+		return value;
+	};
+
+	this.processElement(element, options);
 	return element;
 }
 
@@ -7005,12 +7169,15 @@ Inspector.prototype.addCheckbox = function(name, value, options)
 	
 	element.data = value;
 
-	element.setValue = function(v) { 
-		if(	that.values[name] != v)
+	element.setValue = function(v,skip_event) { 
+		if(v === undefined)
+			return;
+		if(	that.values[name] != v && !skip_event)
 			LiteGUI.trigger( checkbox, "click" ); 
 	};
 
 	this.append(element,options);
+	this.processElement(element, options);
 	return element;
 }
 
@@ -7068,50 +7235,76 @@ Inspector.prototype.addCombo = function(name, value, options)
 	element.options = options;
 
 	var values = options.values || [];
+	if(values.constructor === Function)
+		values = options.values();
 
-	if(options.values)
+	if(!values)
+		values = [];
+
+	var index = 0;
+	for(var i in values)
 	{
-		if (typeof(values) == "function")
-			values = options.values();
-		else
-			values = options.values;
-		if(values) 
-			for(var i in values)
-			{
-				var item_value = values[i];
-				code += "<option data-value='" + item_value + "' "+( item_value == value ? " selected":"")+">" + ( values.length ? item_value : i) + "</option>";
-			}
+		var item_value = values[i];
+		var item_index = values.constructor === Array ? index : i;
+		var item_title = values.constructor === Array ? item_value : i;
+		if(item_value && item_value.title)
+			item_title = item_value.title;
+		code += "<option value='"+item_index+"' "+( item_value == value ? " selected":"")+">" + item_title + "</option>";
+		index++;
 	}
 	code += "</select>";
 
 	element.querySelector("span.inputcombo").innerHTML = code;
 
-	$(element).find(".wcontent select").change( function(e) { 
-		var value = e.target.value;
-		if(values && values.constructor != Array)
-			value = values[value];
+	var select = element.querySelector(".wcontent select");
+	select.addEventListener("change", function(e) { 
+		var index = e.target.value;
+		var value = values[index];
 		Inspector.onWidgetChange.call(that,element,name,value, options);
 	});
 
-	element.setValue = function(v) { 
+	element.setValue = function(v,skip_event) { 
+		if(v === undefined)
+			return;
 		var select = element.querySelector("select");
 		var items = select.querySelectorAll("option");
-		var index = 0;
+		var index =  -1;
+		if(values.constructor === Array)
+			index = values.indexOf(v);
+		else
+		{
+			//search the element index in the values
+			var j = 0;
+			for(var i in values)
+			{
+				if(values[j] == v)
+				{
+					index = j;
+					break;
+				}
+				else
+					j++;
+			}
+		}
+
+		if(index == -1)
+			return;
+
 		for(var i in items)
 		{
 			var item = items[i];
 			if(!item || !item.dataset) //weird bug
 				continue;
-			if( item.dataset["value"] == v )
+			if( parseFloat(item.dataset["index"]) == index )
 			{
 				select.selectedIndex = index;
 				return;
 			}
-			index++;
 		}
 	};
 
 	this.append(element,options);
+	this.processElement(element, options);
 	return element;
 }
 
@@ -7135,12 +7328,13 @@ Inspector.prototype.addComboButtons = function(name, value, options)
 		that.values[name] = buttonname;
 
 		$(element).find(".selected").removeClass("selected");
-		$(this).addClass("selected");
+		this.classList.add("selected");
 
-		Inspector.onWidgetChange.call(that,element,name,buttonname, options);
+		Inspector.onWidgetChange.call( that,element,name,buttonname, options );
 	});
 
 	this.append(element,options);
+	this.processElement(element, options);
 	return element;
 }
 
@@ -7202,6 +7396,7 @@ Inspector.prototype.addTags = function(name, value, options)
 	}
 
 	this.append(element,options);
+	this.processElement(element, options);
 	return element;
 }
 
@@ -7368,11 +7563,14 @@ Inspector.prototype.addList = function(name, values, options)
 
 	element.setValue = function(v)
 	{
+		if(v === undefined)
+			return;
 		this.updateItems(v);
 	}
 
 	if(options.height) 
 		$(element).scroll(0);
+	this.processElement(element, options);
 	return element;
 }
 
@@ -7400,6 +7598,15 @@ Inspector.prototype.addButton = function(name, value, options)
 		if(!options.disabled)
 			$(this).wclick(callback); 
 	}
+
+	element.setValue = function(v)
+	{
+		if(v === undefined)
+			return;
+		button.innerHTML = v;
+	}
+
+	this.processElement(element, options);
 	return element;
 }
 
@@ -7434,6 +7641,7 @@ Inspector.prototype.addButtons = function(name, value, options)
 	}
 
 	this.append(element,options);
+	this.processElement(element, options);
 	return element;
 }
 
@@ -7488,6 +7696,8 @@ Inspector.prototype.addIcon = function(name, value, options)
 	this.append(element,options);
 
 	element.setValue = function(v, skip_event ) { 
+		if(v === undefined)
+			return;
 		value = v;
 		var y = value ? height : 0;
 		icon.style.backgroundPosition = x + "px " + y + "px";
@@ -7495,7 +7705,7 @@ Inspector.prototype.addIcon = function(name, value, options)
 			Inspector.onWidgetChange.call(that,element,name, value, options);
 	};
 	element.getValue = function() { return value; };
-
+	this.processElement(element, options);
 	return element;
 }
 
@@ -7566,11 +7776,13 @@ Inspector.prototype.addColor = function(name,value,options)
 			myColor.onImmediateChange();
 	});
 
-	element.setValue = function(value) { 
+	element.setValue = function(value,skip_event) { 
 		myColor.fromRGB(value[0],value[1],value[2]);
-		$(dragger.input).change(); 
+		if(!skip_event)
+			LiteGUI.trigger( dragger.input, "change" ); 
 	};
 
+	this.processElement(element, options);
 	return element;
 }
 
@@ -7582,12 +7794,16 @@ Inspector.prototype.addFile = function(name, value, options)
 	var that = this;
 	this.values[name] = value;
 	
-	var element = this.createWidget(name,"<span class='inputfield full whidden'><span class='filename'>"+value+"</span><input type='file' size='100' class='file' value='"+value+"'/></span>", options);
+	var element = this.createWidget(name,"<span class='inputfield full whidden' style='width: calc(100% - 26px)'><span class='filename'>"+value+"</span></span><button style='width:20px; margin-left: 2px;'>...</button><input type='file' size='100' class='file' value='"+value+"'/>", options);
+	var content = element.querySelector(".wcontent");
+	content.style.position = "relative";
 	var input = element.querySelector(".wcontent input");
+	var filename_element = element.querySelector(".wcontent .filename");
 	input.addEventListener("change", function(e) { 
 		if(!e.target.files.length)
 		{
-			$(element).find(".filename").html("");
+			//nothing
+			filename_element.innerHTML = "";
 			Inspector.onWidgetChange.call(that, element, name, null, options);
 			return;
 		}
@@ -7596,7 +7812,7 @@ Inspector.prototype.addFile = function(name, value, options)
 		if( options.generate_url )
 			url = URL.createObjectURL( e.target.files[0] );
 		var data = { url: url, filename: e.target.value, file: e.target.files[0], files: e.target.files };
-		$(element).find(".filename").html( e.target.value );
+		filename_element.innerHTML = e.target.files[0].name;
 		Inspector.onWidgetChange.call(that, element, name, data, options);
 	});
 
@@ -7657,6 +7873,7 @@ Inspector.prototype.addTree = function(name, value, options)
 	};
 
 	this.append(element,options);
+	this.processElement(element, options);
 	return element;
 }
 
@@ -7780,6 +7997,26 @@ Inspector.prototype.processOptions = function(options)
 	if(typeof(options) == "function")
 		options = { callback: options };
 	return options || {};
+}
+
+Inspector.prototype.processElement = function(element, options)
+{
+	if(options.callback_update && element.setValue)
+	{
+		element.on_update = function(){
+			this.setValue( options.callback_update.call(this), true );
+		}
+	}
+}
+
+Inspector.prototype.updateWidgets = function()
+{
+	for(var i = 0; i < this.widgets.length; ++i)
+	{
+		var widget = this.widgets[i];
+		if(widget.on_update)
+			widget.on_update();
+	}
 }
 
 Inspector.parseColor = function(color)

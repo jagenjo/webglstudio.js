@@ -92,14 +92,14 @@ var ToolsModule = {
 				this.current_tool.onDisable();
 		}
 
-		$("#canvas-tools .tool-button.enabled").removeClass("enabled");
+		var enabled = document.querySelectorAll("#canvas-tools .tool-button.enabled");
+		for(var i = 0; i < enabled.length; i++)
+			enabled[i].classList.remove("enabled");
 
 		this.current_tool = null;
 		var tool = this.tools[name];
 		if(!tool)
 			return;
-
-		//$("#canvas-tools .tool-" + name).addClass("selected");
 
 		this.current_tool = tool;
 		if( this.current_tool.onClick )
@@ -115,8 +115,20 @@ var ToolsModule = {
 
 		if (this.current_tool.onEnable)
 			this.current_tool.onEnable();
-		$(this).trigger("tool_enabled", this.current_tool );
+
+		LiteGUI.trigger( this, "tool_enabled", this.current_tool );
 		LS.GlobalScene.refresh();
+	},
+
+	showToolProperties: function( tool_name )
+	{
+		var tool = this.tools[tool_name];
+		if(!tool)
+			return;
+
+		if(!tool.inspect)
+			return;
+		EditorModule.inspect( tool );
 	},
 
 	//every frame
@@ -129,23 +141,7 @@ var ToolsModule = {
 			return;
 		var camera = this._active_camera;
 		LS.Renderer.enableCamera( camera ); //sets viewport, update matrices and set Draw
-		/*
-		var viewport = camera.getLocalViewport( LS.Renderer._full_viewport );
-		gl.viewport( viewport[0], viewport[1], viewport[2], viewport[3] );
-		*/
 		this.renderView(null, camera);
-
-		/*
-		var cameras = RenderModule.cameras;
-		var viewport = vec4.create();
-		for(var i = 0; i < cameras.length; i++)
-		{
-			var camera = cameras[i];
-			camera.getLocalViewport( LS.Renderer._full_viewport, viewport );
-			gl.viewport( viewport[0], viewport[1], viewport[2], viewport[3] );
-			this.renderView(null, camera);
-		}
-		*/
 	},
 
 	renderView: function(e, camera)
@@ -173,8 +169,8 @@ var ToolsModule = {
 	createToolbar: function()
 	{
 		//in case they exist
-		$("#canvas-tools").remove();
-		$("#canvas-buttons").remove();
+		LiteGUI.remove("#canvas-tools");
+		LiteGUI.remove("#canvas-buttons");
 
 		var root = LiteGUI.getById("visor");
 		if(!root)
@@ -210,12 +206,23 @@ var ToolsModule = {
 		var element = this.createButton(tool, root );
 		element.className += " tool-" + tool.name + " " + (tool.enabled ? "enabled":"");
 
-		$(element).click(function(e){
-			ToolsModule.enableTool(this.data);
+		if(!tool.className)
+			tool.className = "tool";
+		element.addEventListener("click", function(e){
+			ToolsModule.enableTool( this.data );
 			LS.GlobalScene.refresh();
 			$("#canvas-tools .enabled").removeClass("enabled");
-			$(this).addClass("enabled");
+			this.classList.add("enabled");
 		});
+
+		element.addEventListener("contextmenu", function(e) { 
+			if(e.button != 2) //right button
+				return false;
+			e.preventDefault(); 
+			ToolsModule.showToolProperties( this.data );
+			return false;
+		} );
+
 	},
 
 	addStateButton: function( button )

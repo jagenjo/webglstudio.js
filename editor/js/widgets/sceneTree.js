@@ -42,6 +42,7 @@ function SceneTreeWidget( id )
 	});
 
 
+	//bind tree interaction stuff
 	this.tree.root.addEventListener("item_selected", onItemSelected.bind(this) );
 	this.tree.root.addEventListener("item_add_to_selection", onItemAddToSelection.bind(this) );
 	this.tree.root.addEventListener("item_moved", onItemMoved.bind(this) );
@@ -229,27 +230,44 @@ SceneTreeWidget.prototype.bindEvents = function( scene )
 
 	this._scene = scene;
 
-	//events
+	//Events from the scene
+
+	//Triggered when a new node is attached to the scene tree
 	LEvent.bind( scene, "nodeAdded", function(e,node) {
 		if(this._ignore_events) 
 			return;
 
-		this.addNode(node);
+		//add to tree
+		var node_id = this.addNode( node );
+
+		//special feature, allows to put stuff in the tree that is not directly related to the SceneTree structure
+		if(!node.getSpecialTreeChilds)
+			return;
+		var tree_childs = node.getSpecialTreeChilds();
+		for(var i in tree_childs)
+		{
+			var child = tree_childs[i];
+			this.addNode( child, node_id );
+		}
+
 	}, this);
 
+	//Triggered when a node is removed from the scene tree
 	LEvent.bind( scene, "nodeRemoved", function(e,node) {
 		if(this._ignore_events) 
 			return;
 		
-		this.removeNode(node);
+		this.removeNode( node );
 	}, this);
 
+	//Triggered when the scene is cleared
 	LEvent.bind( scene, "clear", function(e) {
 		this.clear();
 		SelectionModule.setSelection(null);
 		update_root_uid();
 	}, this);
 
+	//Triggered when the scene is reloaded
 	LEvent.bind( scene, "configure", update_root_uid , this );
 
 	function update_root_uid()
@@ -259,20 +277,22 @@ SceneTreeWidget.prototype.bindEvents = function( scene )
 			root.data.uid = that._scene.root.uid;
 	}
 
-
+	//Triggered when the user selects a node in the scene
 	LEvent.bind( scene, "selected_node_changed", function(e,node) { 
 		this.tree.setSelectedItem( node ? "uid_" + node.uid.replace(/\W/g, '') : null, true );
 	},this);
 
+	//Triggered when the user selects another node in the scene (multi-selection)
 	LEvent.bind( scene, "other_node_selected", function(e,node) { 
 		this.tree.addItemToSelection(node ? "uid_" + node.uid.replace(/\W/g, '') : null);
 	},this);
 
+	//Triggered when the user deselects another node in the scene (multi-selection)
 	LEvent.bind( scene, "other_node_deselected", function(e,node) { 
 		this.tree.removeItemFromSelection(node ? "uid_" + node.uid.replace(/\W/g, '') : null);
 	},this);
 
-
+	//Triggered when ??
 	LEvent.bind( scene, "nodeChangeParent", function(e,parent,node) { 
 		/* NODE?! no two parameters supported
 		if(node && parent)
@@ -282,7 +302,7 @@ SceneTreeWidget.prototype.bindEvents = function( scene )
 		*/
 	},this);
 
-	//catch id change so we can update the text in the html with the name
+	//Catch if the name of a node has changed to update it in the tree
 	LEvent.bind( scene, "node_name_changed", function(e,node) {
 		var unique_id = "uid_" + node.uid.replace(/\W/g, '');
 		this.tree.updateItem( unique_id, {id: unique_id, uid: node.uid, node_name: node._name, content: node.name });
@@ -315,13 +335,12 @@ SceneTreeWidget.prototype.showContextualMenu = function(e){
 	}});
 }
 
-//add node to tree
-SceneTreeWidget.prototype.addNode = function(node)
+//Create the object prepared for the LiteGUI.Tree and add some extra controls
+SceneTreeWidget.prototype.addNode = function( node, parent_id )
 {
 	var node_unique_id = "uid_" + node.uid.replace(/\W/g, '');
 
-	var parent_id = null;
-	if(node._parentNode && node._parentNode != this._scene.root )
+	if(!parent_id && node._parentNode && node._parentNode != this._scene.root )
 		parent_id = "uid_" + node._parentNode.uid.replace(/\W/g, '');
 
 	var is_selected = SelectionModule.isSelected(node);
@@ -360,13 +379,15 @@ SceneTreeWidget.prototype.addNode = function(node)
 		this.classList.toggle('on');
 		LS.GlobalScene.refresh();
 	});
+
+	return node_unique_id;
 }
 
 SceneTreeWidget.prototype.removeNode = function(node)
 {
 	if(!this.tree) return;
 	var uid = node.uid.replace(/\W/g, '');
-	this.tree.removeItem( "uid_" + uid );
+	this.tree.removeItem( "uid_" + uid, true );
 }
 
 SceneTreeWidget.prototype.refresh = function()

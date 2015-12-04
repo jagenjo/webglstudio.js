@@ -264,7 +264,10 @@ var UndoModule = {
 			title: "Component Deleted: " + LS.getObjectClassName(component),
 			data: { node: node, component: LS.getObjectClassName(component), index: node.getIndexOfComponent( component ), info: JSON.stringify( component.serialize()) }, //stringify to save some space
 			callback: function(d) {
-				d.node.addComponent( new window[d.component](JSON.parse(d.info)), d.index );
+				var class_object = LS.Components[d.component];
+				if(!class_object)
+					return console.warn("Class not found for UNDO",d.component);
+				d.node.addComponent( new class_object( JSON.parse(d.info) ), d.index );
 				LEvent.trigger(d.node, "changed");
 				EditorModule.refreshAttributes();
 				RenderModule.requestFrame();

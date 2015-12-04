@@ -6784,7 +6784,8 @@ GL.augmentEvent = function(e, root_element)
 }
 
 /**
-* LEvent is a lightweight events library focused in low memory footprint
+* LEvent is a lightweight events library focused in low memory footprint and fast delivery
+* it works by crating a property called __levents inside the object that has the bindings
 * @class LEvent
 * @constructor
 */
@@ -6809,9 +6810,12 @@ var LEvent = global.LEvent = GL.LEvent = {
 		if(instance.constructor === String ) 
 			throw("cannot bind event to a string");
 
-		var events = instance.__events;
+		var events = instance.__levents;
 		if(!events)
-			events = instance.__events = {};
+		{
+			Object.defineProperty( instance, "__levents", {value: {}, enumerable: false });
+			events = instance.__levents;
+		}
 
 		if( events.hasOwnProperty( event_type ) )
 			events[event_type].push([callback,target_instance]);
@@ -6836,7 +6840,7 @@ var LEvent = global.LEvent = GL.LEvent = {
 		if(instance.constructor === String ) 
 			throw("cannot bind event to a string");
 
-		var events = instance.__events;
+		var events = instance.__levents;
 		if(!events)
 			return;
 
@@ -6868,13 +6872,13 @@ var LEvent = global.LEvent = GL.LEvent = {
 		if(!instance) 
 			throw("cannot unbind events in null");
 
-		var events = instance.__events;
+		var events = instance.__levents;
 		if(!events)
 			return;
 
 		if(!target_instance) //remove all
 		{
-			delete instance.__events;
+			delete instance.__levents;
 			return;
 		}
 
@@ -6908,7 +6912,7 @@ var LEvent = global.LEvent = GL.LEvent = {
 		if(!instance)
 			throw("LEvent cannot have null as instance");
 
-		var events = instance.__events;
+		var events = instance.__levents;
 		if( !events )
 			return;
 
@@ -6935,7 +6939,7 @@ var LEvent = global.LEvent = GL.LEvent = {
 	{
 		if(!instance)
 			throw("LEvent cannot have null as instance");
-		var events = instance.__events;
+		var events = instance.__levents;
 		if(!events || !events.hasOwnProperty( event_type ) || !events[event_type].length) 
 			return false;
 		return true;
@@ -6952,7 +6956,7 @@ var LEvent = global.LEvent = GL.LEvent = {
 	{
 		if(!instance)
 			throw("LEvent cannot have null as instance");
-		var events = instance.__events;
+		var events = instance.__levents;
 
 		//no events binded
 		if(!events || !events.hasOwnProperty( event_type ) || !events[event_type].length) 
@@ -6982,7 +6986,7 @@ var LEvent = global.LEvent = GL.LEvent = {
 		if(instance.constructor === String ) 
 			throw("cannot bind event to a string");
 
-		var events = instance.__events;
+		var events = instance.__levents;
 		if( !events || !events.hasOwnProperty(event_type) )
 			return true;
 
@@ -7014,7 +7018,7 @@ var LEvent = global.LEvent = GL.LEvent = {
 			if(instance.constructor === String ) 
 				throw("cannot bind event to a string");
 
-			var events = instance.__events;
+			var events = instance.__levents;
 			if( !events || !events.hasOwnProperty( event_type ) )
 				continue;
 

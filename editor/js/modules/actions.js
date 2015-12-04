@@ -184,7 +184,7 @@ LS.Component.actions["reset"] = {
 LS.Component.actions["select"] = { 
 	title:"Select",
 	callback: function(){
-		SelectionModule.setSelection(this); break;
+		SelectionModule.setSelection(this);
 	}
 };
 

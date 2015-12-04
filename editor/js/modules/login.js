@@ -45,7 +45,7 @@ var LoginModule = {
 		this.session = session;
 		this.user = session ? session.user : null;
 		this.updateLoginArea();
-		LiteGUI.trigger( this, session ? "user-login" : "user-logout" );
+		LiteGUI.trigger( CORE, session ? "user-login" : "user-logout", this.user );
 	},
 
 	updateLoginArea: function()

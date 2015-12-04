@@ -27,6 +27,21 @@ function ResourcesPanelWidget( id )
 	files_section.content.appendChild( browser_root );
 	this.browser_container = browser_root;
 
+	var login_callback = this.onLoginEvent.bind(this);
+	var tree_update_callback = this.onTreeUpdate.bind(this);
+
+	this.root.addEventListener("DOMNodeInsertedIntoDocument", function(){ 
+		LiteGUI.bind( CORE, "user-login", login_callback );
+		LiteGUI.bind( CORE, "user-logout", login_callback );
+		LiteGUI.bind( DriveModule, "tree_updated", tree_update_callback );
+
+	});
+	this.root.addEventListener("DOMNodeRemovedFromDocument", function(){ 
+		LiteGUI.unbind( CORE, "user-login", login_callback );
+		LiteGUI.unbind( CORE, "user-logout", login_callback );
+		LiteGUI.unbind( DriveModule, "tree_updated", tree_update_callback );
+	});
+
 	//EVENTS
 	this.bindEvents();
 }
@@ -356,5 +371,17 @@ ResourcesPanelWidget.prototype.showInBrowserContent = function( items )
 
 ResourcesPanelWidget.prototype.refresh = function()
 {
-	//TODO
+	this.tree_widget.updateTree( DriveModule.tree );
 }
+
+ResourcesPanelWidget.prototype.onLoginEvent = function(e)
+{
+}
+
+ResourcesPanelWidget.prototype.onTreeUpdate = function(e)
+{
+	this.refresh();
+}
+
+
+

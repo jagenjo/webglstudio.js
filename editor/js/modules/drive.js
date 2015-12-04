@@ -367,6 +367,12 @@ var DriveModule = {
 		LiteGUI.alert( error, { title: "Error uploading file" } );
 	},
 
+	onTreeUpdated: function()
+	{
+		this.refreshTree();
+		LiteGUI.trigger( DriveModule, "tree_updated", this.tree );
+	},
+
 	refreshTree: function()
 	{
 		var selected = this.tree_widget.getSelectedItem();
@@ -435,34 +441,9 @@ var DriveModule = {
 			var bridge = this.registered_drive_bridges[i];
 			if( bridge && bridge.updateTree )
 				bridge.updateTree(function() {
-					DriveModule.tree_widget.updateTree( DriveModule.tree );
+					DriveModule.onTreeUpdated();
 				});
 		}
-		/*
-		this.getServerFoldersTree(inner);
-
-		function inner( tree )
-		{
-			if(!tree)
-			{
-				DriveModule.tree.children[0].folders = [];
-				if(callback) 
-					callback(null);
-			}
-
-			//server root node in the list
-			var bridge = DriveModule.getDriveBridge("Server");
-
-			var server_root = bridge.tree_root;
-			server_root.children = tree.children;
-
-			//refresh tree using updated data
-			DriveModule.tree_widget.updateTree( DriveModule.tree );
-
-			if(callback) 
-				callback(tree);
-		}
-		*/
 	},
 
 	showMemoryResources: function()

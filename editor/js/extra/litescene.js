@@ -20257,7 +20257,7 @@ TextureFX.available_fx = {
 		name: "Warp",
 		uniforms: {
 			warp_amp: { name: "u_warp_amp", type: "float", value: 0.01, step: 0.001 },
-			warp_texture: { name: "u_warp_texture", type: "sampler2D", widget: "Texture", value: "" },
+			warp_texture: { name: "u_warp_texture", type: "sampler2D", widget: "Texture", value: "" }
 		},
 		uv_code:"uv = uv + u_warp_amp@ * (texture2D( u_warp_texture@, uv ).xy - vec2(0.5));"
 		//uv_code:"uv = uv + u_warp_amp@ * (vec2(0.5) + 0.5 * vec2( sin(uv.x * u_warp_freq@) * sin(uv.y * u_warp_freq@)));"
@@ -20267,7 +20267,7 @@ TextureFX.available_fx = {
 		functions: ["LUT"],
 		uniforms: {
 			lut_intensity: { name: "u_lut_intensity", type: "float", value: 1, step: 0.01 },
-			lut_texture: { name: "u_lut_texture", type: "sampler2D", filter: "nearest", wrap: "clamp", widget: "Texture", value: "" },
+			lut_texture: { name: "u_lut_texture", type: "sampler2D", filter: "nearest", wrap: "clamp", widget: "Texture", value: "" }
 		},
 		code:"color.xyz = mix(color.xyz, LUT( color.xyz, u_lut_texture@ ), u_lut_intensity@);"
 		//uv_code:"uv = uv + u_warp_amp@ * (vec2(0.5) + 0.5 * vec2( sin(uv.x * u_warp_freq@) * sin(uv.y * u_warp_freq@)));"
@@ -23425,7 +23425,7 @@ LS.Formats = {
 };
 
 //native formats do not need parser
-LS.Formats.addSupportedFormat( "png,jpg,webp,bmp,gif", { native: true, dataType: "arraybuffer", resource: "Texture", type: "image" } );
+LS.Formats.addSupportedFormat( "png,jpg,webp,bmp,gif", { "native": true, dataType: "arraybuffer", resource: "Texture", type: "image" } );
 LS.Formats.addSupportedFormat( "wbin", { dataType: "arraybuffer" } );
 WBin.classes = LS.Classes; //WBin need to know which classes are accesible to be instantiated right from the WBin data info, in case the class is not a global class
 
@@ -27164,9 +27164,11 @@ SceneTree.prototype.configure = function(scene_info)
 	}
 
 	//TODO
+	/*
 	if( scene_info.local_resources )
 	{
 	}
+	*/
 
 	if( scene_info.external_scripts )
 		this.external_scripts = scene_info.external_scripts;

@@ -153,7 +153,7 @@ var ImporterModule  = {
 		inspector.on_refresh = inner_refresh;
 		inspector.refresh();
 
-		/* no va...
+		//* no va...
 		var drop_area = dialog.content;
 		drop_area.addEventListener("dragenter", function (evt) {
 			evt.stopPropagation();
@@ -166,16 +166,16 @@ var ImporterModule  = {
 			evt.stopPropagation();
 			evt.stopImmediatePropagation();
 			var files = evt.dataTransfer.files;
-			if(files && fileslength)
+			if(files && files.length)
 			{
-				file = files[0];
-				widgets.refresh();
+				inner_setFile(files[0]);
+				inspector.refresh();
 			}
 			return true;
 		}, false);
-		*/
+		//*/
 
-		if(file.url)
+		if(file && file.url)
 			inner_setFile(file.url);
 
 		//function that loads the data

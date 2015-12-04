@@ -13,17 +13,17 @@ var LFSBridge = {
 		{
 			LFSBridge.session = session;
 			LFSBridge.updateTree(function() {
-				DriveModule.refreshTree();
+				DriveModule.onTreeUpdated();
 			});
 		}
 
 		//fetch content
-		LiteGUI.bind( LoginModule, "user-login", function(){
+		LiteGUI.bind( CORE, "user-login", function(e, user_info){
 			DriveModule.updateServerTreePanel();
 			DriveModule.showInBrowserContent();
 		});
 
-		LiteGUI.bind( LoginModule, "user-logout", function(){
+		LiteGUI.bind( CORE, "user-logout", function(){
 			DriveModule.updateServerTreePanel();
 			DriveModule.showInBrowserContent();
 		});
@@ -346,7 +346,7 @@ var LFSBridge = {
 		if(item == this.tree_root) //Server
 		{
 			this.updateTree( function() {
-				panel.refreshTree();
+				panel.onTreeUpdated();
 				that.showDriveInfo( panel );
 			});
 			return;

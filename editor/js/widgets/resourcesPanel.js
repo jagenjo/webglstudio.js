@@ -265,6 +265,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 	*/
 
 	element.addEventListener("click", item_selected);
+	element.addEventListener("dblclick", item_dblclick);
 	parent.appendChild(element);
 
 	//when the resources is clicked
@@ -287,6 +288,11 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 			DriveModule.onResourceSelected( path );
 		}
 		*/
+	}
+
+	function item_dblclick(e)
+	{
+		DriveModule.onInsertResourceInScene( this );
 	}
 
 	//dragging

@@ -939,7 +939,7 @@ LS.Camera.prototype.renderPicking = function(ray)
 LS.Camera.prototype.renderEditor = function( node_selected, component_selected )
 {
 	//do not render active camera frustum
-	if(LS.Renderer.active_camera == this)
+	if(LS.Renderer._current_camera == this)
 		return;
 
 	//get world space coordinates

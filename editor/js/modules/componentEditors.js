@@ -307,7 +307,7 @@ LS.Components.CustomData["@inspector"] = function( component, inspector )
 	}
 }
 
-LS.Components.CameraFX["@inspector"] = function(camerafx, inspector)
+LS.Components.CameraFX["@inspector"] = function( camerafx, inspector)
 {
 	if(!camerafx)
 		return;
@@ -316,13 +316,35 @@ LS.Components.CameraFX["@inspector"] = function(camerafx, inspector)
 	inspector.widgets_per_row = 2;
 	inspector.addCheckbox("Viewport Size", camerafx.use_viewport_size, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_viewport_size" ), callback: function(v) { camerafx.use_viewport_size = v; } });
 	inspector.addCheckbox("High Precission", camerafx.use_high_precision, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_high_precision" ), callback: function(v) { camerafx.use_high_precision = v; } });
-	inspector.addCheckbox("Use node camera", camerafx.use_node_camera, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_node_camera" ), callback: function(v) { camerafx.use_node_camera = v; } });
 	inspector.addCheckbox("Antialiasing", camerafx.use_antialiasing, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_antialiasing" ), callback: function(v) { camerafx.use_antialiasing = v; } });
 	inspector.widgets_per_row = 1;
 
+	inspector.addString("Camera UID", camerafx.camera_uid, { pretitle: AnimationModule.getKeyframeCode( camerafx, "camera_uid" ), callback: function(v) { camerafx.camera_uid = v; } });
+
+	EditorModule.showFXInfo( camerafx, inspector );
+}
+
+
+LS.Components.GlobalFX["@inspector"] = function( component, inspector)
+{
+	if(!component)
+		return;
+	var node = component._root;
+
+	inspector.widgets_per_row = 2;
+	inspector.addCheckbox("Viewport Size", component.use_viewport_size, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( component, "use_viewport_size" ), callback: function(v) { component.use_viewport_size = v; } });
+	inspector.addCheckbox("High Precission", component.use_high_precision, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( component, "use_high_precision" ), callback: function(v) { component.use_high_precision = v; } });
+	inspector.addCheckbox("Antialiasing", component.use_antialiasing, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( component, "use_antialiasing" ), callback: function(v) { component.use_antialiasing = v; } });
+	inspector.widgets_per_row = 1;
+
+	EditorModule.showFXInfo( component, inspector );
+}
+
+EditorModule.showFXInfo = function( component, inspector )
+{
 	inspector.addTitle("Active FX");
 
-	var enabled_fx = camerafx.fx.fx;
+	var enabled_fx = component.fx.fx;
 
 	for(var i = 0; i < enabled_fx.length; i++)
 	{
@@ -375,11 +397,11 @@ LS.Components.CameraFX["@inspector"] = function(camerafx, inspector)
 	//show camera fx dialog
 	function inner()
 	{
-		var dialog = LiteGUI.Dialog.getDialog("dialog_show_cameraFX");
+		var dialog = LiteGUI.Dialog.getDialog("dialog_show_fx");
 		if(dialog)
 			dialog.clear();
 		else
-			dialog = new LiteGUI.Dialog("dialog_show_cameraFX", { title:"CameraFX", close: true, width: 360, height: 270, scroll: false, draggable: true});
+			dialog = new LiteGUI.Dialog("dialog_show_fx", { title:"FX Settings", close: true, width: 360, height: 270, scroll: false, draggable: true});
 
 		dialog.show();
 
@@ -389,7 +411,7 @@ LS.Components.CameraFX["@inspector"] = function(camerafx, inspector)
 		//left side
 		var widgets_left = new LiteGUI.Inspector("camera_fx_list",{});
 		widgets_left.addTitle("Available FX");
-		split.getSection(0).add(widgets_left);
+		split.getSection(0).add( widgets_left );
 		var fx = LS.TextureFX.available_fx;
 		var available_fx = [];
 		for(var i in fx)
@@ -399,7 +421,7 @@ LS.Components.CameraFX["@inspector"] = function(camerafx, inspector)
 			selected_available_fx = v;
 		}});
 		widgets_left.addButton(null,"Add FX", { callback: function(){
-			camerafx.addFX( selected_available_fx );
+			component.addFX( selected_available_fx );
 			inspector.refresh();
 			LS.GlobalScene.refresh();
 			inner();
@@ -414,15 +436,15 @@ LS.Components.CameraFX["@inspector"] = function(camerafx, inspector)
 		widgets_right.addButtons(null,["Up","Down","Delete"], { callback: function(v){
 			if(v == "Delete")
 			{
-				camerafx.removeFX( selected_enabled_fx );
+				component.removeFX( selected_enabled_fx );
 			}
 			else if(v == "Up")
 			{
-				camerafx.moveFX( selected_enabled_fx );
+				component.moveFX( selected_enabled_fx );
 			}
 			else if(v == "Down")
 			{
-				camerafx.moveFX( selected_enabled_fx, 1 );
+				component.moveFX( selected_enabled_fx, 1 );
 			}
 			inspector.refresh();
 			LS.GlobalScene.refresh();
@@ -605,3 +627,14 @@ LS.Components.CameraController.onShowProperties = function(component, inspector)
 		inspector.addInfo(null,"<span class='alert'>Warning: No camera found in node</span>");
 }
 
+
+LS.Components.ThreeJS.onShowProperties = function( component, inspector )
+{
+	//add to inspector the vars
+	var context = component._script ? component._script._context : null;
+	if(context)
+	{
+		inspector.addTitle("Variables");
+		inspector.showObjectFields( context );
+	}
+}

@@ -150,7 +150,8 @@ var DriveModule = {
 		res_root.appendChild( res_container );
 		this.browser_container = res_container;
 
-		this.addDropArea( this.browser_container, function(e) {
+		//drop in browser container
+		LiteGUI.createDropArea( this.browser_container, function(e) {
 			var fullpath = DriveModule.current_folder;
 			var bridge = DriveModule.current_bridge;
 			if(!bridge)
@@ -165,44 +166,7 @@ var DriveModule = {
 		});
 
 		//add drop action to automatically upload to server
-		this.addDropArea( res_container, this.onFileDropInBrowser.bind(this) );
-	},
-
-	addDropArea: function( element, callback )
-	{
-		element.addEventListener("dragenter", onDragEvent);
-
-		function onDragEvent(evt)
-		{
-			element.addEventListener("dragexit", onDragEvent);
-			element.addEventListener("dragover", onDragEvent);
-			element.addEventListener("drop", onDrop);
-			evt.stopPropagation();
-			evt.preventDefault();
-		}
-
-		function onDrop(evt)
-		{
-			evt.stopPropagation();
-			evt.preventDefault();
-
-			element.removeEventListener("dragexit", onDragEvent);
-			element.removeEventListener("dragover", onDragEvent);
-			element.removeEventListener("drop", onDrop);
-
-			var r = undefined;
-			//load file in memory
-			if(callback)
-				r = callback(evt);
-			if(r)
-			{
-				evt.stopPropagation();
-				evt.stopImmediatePropagation();
-				return true;
-			}
-			//if (r === false)
-			//	ImporterModule.onFileDrop(evt);
-		}
+		LiteGUI.createDropArea( res_container, this.onFileDropInBrowser.bind(this) );
 	},
 
 	guessCategoryFromFile: function(file)
@@ -947,9 +911,15 @@ var DriveModule = {
 			}
 		}});
 
-		inspector.addButton(null,"Load in memory", {callback: function(v){
+		inspector.addButtons(null,["Load","Unload"], {callback: function(v){
 			var restype = resource.category || resource.object_type;
-			DriveModule.loadResource(resource.fullpath,restype);
+			if(v == "Load")
+				DriveModule.loadResource(resource.fullpath,restype);
+			else
+			{
+				DriveModule.unloadResource(resource.fullpath);
+				DriveModule.refreshContent();
+			}
 		}});
 
 		/*
@@ -1314,8 +1284,15 @@ var DriveModule = {
 		}
 		else
 			if(on_complete)
-				on_complete(LS.ResourcesManager.resources[fullpath]);
+				on_complete( LS.ResourcesManager.resources[fullpath] );
 
+	},
+
+	unloadResource: function(fullpath)
+	{
+		if(!LS.ResourcesManager.resources[fullpath])
+			return;
+		LS.ResourcesManager.unregisterResource( fullpath );
 	},
 
 	//called when a resource is loaded into memory, used to fetch info from the server
@@ -1358,21 +1335,36 @@ var DriveModule = {
 	},
 
 	//called when clicking the "Insert in scene" button after selecting a resource
-	onInsertResourceInScene: function( resource_item, evt ) 
+	onInsertResourceInScene: function( resource, options ) 
 	{
-		if(!resource_item)
-			{ LiteGUI.alert("No resource selected"); return };
+		if(!resource)
+		{
+			LiteGUI.alert("No resource selected");
+			return;
+		}
 
-		var fullpath = resource_item.dataset["fullpath"] || resource_item.dataset["filename"];
-		var restype = resource_item.dataset["restype"];
+		options = options || {};
+		var fullpath = null;
+		var restype = null;
+
+		if( resource.dataset ) //item from the drive
+		{
+			fullpath = resource.dataset["fullpath"] || resource.dataset["filename"];
+			restype = resource.dataset["restype"];
+		}
+		else if( resource.fullpath ) //resource
+		{
+			fullpath = resource.fullpath || resource.filename;
+			restype = LS.ResourcesManager.getResourceType( resource );
+		}
 
 		var found = false;
-		for(var i in DriveModule.insert_resource_callbacks)
+		for( var i in DriveModule.insert_resource_callbacks )
 		{
 			var info = DriveModule.insert_resource_callbacks[i];
 			if(info[0] == restype || !info[0] )
 			{
-				var ret = info[1].call( DriveModule, fullpath, restype, resource_item, evt );
+				var ret = info[1].call( DriveModule, fullpath, restype, options );
 				if(ret == false)
 					continue;
 
@@ -1389,7 +1381,7 @@ var DriveModule = {
 	},
 
 	//if className is omited, it will be call with all
-	registerAssignResourceCallback: function(className, callback)
+	registerAssignResourceCallback: function( className, callback )
 	{
 		if( className && className.constructor === Array )
 		{
@@ -1892,264 +1884,26 @@ var DriveModule = {
 		}
 	},
 
-	/*
-	serverUploadResource: function(resource, on_complete, on_error, on_progress )
-	{
-		var data = {
-			action:"resources:uploadFile",
-			data:"",
-			encoding:"text",
-			filename: resource.filename,
-			folder: resource.folder || "",
-			metadata:"{}",
-			category: resource.object_type || LS.getObjectClassName(resource)
-		};
-
-		//remove that annoying slash!
-		if(data.folder[0] == "/")
-			data.folder = data.folder.substr(1);
-
-		var extension = getExtension( data.filename );
-
-		//get the data
-		var internal_data = LS.ResourcesManager.computeResourceInternalData( resource );
-		data.data = internal_data.data;
-		data.encoding = internal_data.encoding;
-
-		//Arraybuffers are transformed in blobs to be transfered as files...
-		if(data.data.constructor == ArrayBuffer)
-		{
-			data.data = new Blob([data.data], {type: "application/octet-binary"});
-			data.encoding = "file";
-		}
-
-		if(internal_data.extension && internal_data.extension != extension)
-		{
-			data.filename = data.filename + "." + internal_data.extension;
-		}
-
-		extension = getExtension( data.filename ); //recompute it
-		if(!extension)
-		{
-			if(data.encoding == "file" || data.encoding == "binary")
-				data.filename = data.filename + ".wbin"; //add binary extension
-			else if(data.encoding == "json")
-				data.filename = data.filename + ".json"; //add json
-			else
-				data.filename = data.filename + ".txt"; //add text
-		}
-
-		//generate preview
-		data.preview = this.generatePreview(resource);
-
-		//generate form to upload file to server
-		var formdata = new FormData();
-		for(var i in data)
-			formdata.append(i, data[i]);
-
-		var xhr = new XMLHttpRequest();
-		if(on_progress)
-			xhr.upload.addEventListener("progress", function(evt) { 
-					if (!evt.lengthComputable) return;
-					var percentComplete = Math.round(evt.loaded * 100 / evt.total);
-					on_progress( percentComplete );
-	            }, false);
-		if(on_error)
-		{
-			xhr.upload.addEventListener("error", on_error, false);
-			xhr.addEventListener("error", on_error, false);
-		}
-		xhr.addEventListener("load", inner, false);
-		xhr.open("POST", DriveModule.server_url + "ajax.php");
-		xhr.send(formdata);
-
-		function inner(e)
-		{
-			if(e.target.status != 200)
-			{
-				if(on_error)
-					on_error(e.target.responseText, e.target.status);
-				return;
-			}
-
-			try
-			{
-				var response = JSON.parse( e.target.responseText );
-				if(response.status == 1)
-				{
-					trace("saved");
-					resource.id = response.id;
-				}
-			}
-			catch(err)
-			{
-				trace(e.target.responseText);
-				if(on_complete) 
-					on_complete(false, "error parsing" );
-				return;
-			}
-
-			if(on_complete) on_complete(response.status == 1, response.msg);
-		}
-
-		function changeExtension(filename, new_extension)
-		{
-			var filename = filename.substr(0, filename.lastIndexOf("."));
-			return filename + "." + new_extension;
-		}
-
-		function getExtension(filename)
-		{
-			var pos = filename.lastIndexOf(".");
-			if(pos == -1) return "";
-			return filename.substr(pos+1).toLowerCase();
-		}
-	},
-	*/
-
-	/*
-	//update an alredy saved resource
-	serverUpdateResource: function(resource, on_complete, on_error, on_progress )
-	{
-		var res_info = resource._server_info;
-		if(!res_info) return on_error("File not found in server");
-
-		var server_id = res_info.server_id || res_info.id;
-
-		var data = {
-			action:"resources:updateFile",
-			file_id: server_id,
-			data:"",
-			encoding:"text",
-			filename: res_info.filename,
-			folder: res_info.folder || "",
-			category: res_info.category || resource.object_type || LS.getObjectClassName(resource)
-		};
-
-		if(res_info.metadata)
-			data.metadata = JSON.stringify(res_info.metadata);
-		else 
-			data.metadata = "{}";
-
-		var extension = getExtension( data.filename );
-
-		//get the data
-		var internal_data = LS.ResourcesManager.computeResourceInternalData(resource);
-		data.data = internal_data.data;
-		data.encoding = internal_data.encoding;
-
-		//Arraybuffers are transformed in blobs to be transfered as files...
-		if(data.data.constructor == ArrayBuffer)
-		{
-			data.data = new Blob([data.data], {type: "application/octet-binary"});
-			data.encoding = "file";
-		}
-
-		//generate preview
-		if(resource.img)
-		{
-			//probably a texture
-			var img = resource.img;
-			try //avoid safety problems when no CORS enabled 
-			{
-				//preview
-				var mini_canvas = createCanvas(this.preview_size,this.preview_size);
-				ctx = mini_canvas.getContext("2d");
-				ctx.drawImage(img,0,0,mini_canvas.width,mini_canvas.height);
-				data.preview = mini_canvas.toDataURL("image/png");
-
-				//save them in png
-				//data.filename = changeExtension(data.filename,"png");
-			}
-			catch (err)
-			{
-				if(on_complete) on_complete(-1, "Image doesnt come from a safe source");
-				return;
-			}
-		}
-
-		if(!data.preview)
-			data.preview = RenderModule.takeScreenshot(256,256);
-
-		var formdata = new FormData();
-		for(var i in data)
-			formdata.append(i, data[i]);
-
-		var xhr = new XMLHttpRequest();
-		if(on_progress) //upload progress
-			xhr.upload.addEventListener("progress", function(evt) { 
-					if (!evt.lengthComputable) return;
-					var percentComplete = Math.round(evt.loaded * 100 / evt.total);
-					on_progress( percentComplete );
-	            }, false);
-		if(on_error)
-		{
-			xhr.upload.addEventListener("error", on_error, false);
-			xhr.addEventListener("error", on_error, false);
-		}
-		xhr.addEventListener("load", inner, false);
-		xhr.open("POST", DriveModule.server_url + "ajax.php");
-		xhr.send(formdata);
-
-		function inner(e)
-		{
-			if(e.target.status != 200)
-			{
-				if(on_error)
-					on_error(e.target.responseText, e.target.status);
-			}
-
-			try
-			{
-				var response = JSON.parse( e.target.responseText );
-				if(response.status == 1)
-				{
-					console.log("Saved");
-					resource.id = response.id;
-				}
-			}
-			catch(err)
-			{
-				console.error(e.target.responseText);
-				if(on_complete) 
-					on_complete(false, "error parsing" );
-				return;
-			}
-
-			if(on_complete) on_complete(response.status == 1, response.msg);
-		}
-
-		function changeExtension(filename, new_extension)
-		{
-			var filename = filename.substr(0, filename.lastIndexOf("."));
-			return filename + "." + new_extension;
-		}
-
-		function getExtension(filename)
-		{
-			var pos = filename.lastIndexOf(".");
-			if(pos == -1) return "";
-			return filename.substr(pos+1).toLowerCase();
-		}
-	},
-	*/
+	//QUARANTINE
 
 	serverUpdatePreview: function( fullpath, preview, on_complete, on_error)
 	{
+		console.warn("Quarantine method");
 		LoginModule.session.updateFilePreview( fullpath, preview, on_complete, on_error);
 	},
 
 	serverCreateFolder: function(name, on_complete)
 	{
+		console.warn("Quarantine method");
 		LoginModule.session.createFolder( name, function(v,resp){
 			if(on_complete)
 				on_complete(v);
 		});
 	},
 
-
 	serverDeleteFolder: function(name, on_complete)
 	{
+		console.warn("Quarantine method");
 		LoginModule.session.deleteFolder( name, function(v,resp){
 			if(on_complete)
 				on_complete(v);
@@ -2218,35 +1972,62 @@ var DriveModule = {
 CORE.registerModule( DriveModule );
 
 
-//Resource Insert button
-DriveModule.registerAssignResourceCallback("Mesh", function(fullpath, restype, resource_item, event) {
+//Resource Insert button ***********************************
+DriveModule.registerAssignResourceCallback( "Mesh", function( fullpath, restype, options ) {
 
 	DriveModule.loadResource( fullpath, restype );
-	var node = LS.newMeshNode( LS.GlobalScene.generateUniqueNodeName(), fullpath );
-	EditorModule.getAddRootNode().addChild(node);
 
-	if(event)
+	var action = options.mesh_action || "replace";
+
+	var node = null;
+	if( action == "replace" && options.node )
 	{
-		//test collision with grid
-		GL.augmentEvent(event);
-		var position = RenderModule.testGridCollision(event.canvasx, event.canvasy);
-		if(position)
-			node.transform.position = position;
+		node = options.node;
+		var component = node.getComponent( LS.Components.MeshRenderer );
+		if(!component)
+		{
+			component = new LS.Components.MeshRenderer();
+			node.addComponent( component );
+			component.mesh = fullpath;
+		}
+		else
+			component.mesh = fullpath;
+	}
+	else
+	{
+		if( action == "replace") //to prioritize
+			action = "plane";
+
+		//create new node
+		node = LS.newMeshNode( LS.GlobalScene.generateUniqueNodeName(), fullpath );
+		EditorModule.getAddRootNode().addChild( node );
+
+		if( options.event )
+		{
+			//test collision with grid
+			GL.augmentEvent( options.event );
+			var position =  null;
+			if( action == "plane")
+				position = RenderModule.testGridCollision( options.event.canvasx, options.event.canvasy );
+			if(position)
+				node.transform.position = position;
+		}
 	}
 
-	SelectionModule.setSelection(node);
+	SelectionModule.setSelection( node );
 });
 
-DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], function(fullpath, restype, resource_item, event) {
+DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], function( fullpath, restype, options ) {
 
 	var node = LS.GlobalScene.selected_node;
 
-	if(event)
+	if(options.event)
 	{
-		GL.augmentEvent(event);
-		node = RenderModule.getNodeAtCanvasPosition( event.canvasx, event.canvasy );
+		GL.augmentEvent(options.event);
+		node = RenderModule.getNodeAtCanvasPosition( options.event.canvasx, options.event.canvasy );
 	}
 
+	var channel = options.channel || LS.Material.COLOR_TEXTURE;
 	
 	DriveModule.loadResource( fullpath, restype );
 	if( node )
@@ -2254,13 +2035,16 @@ DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], 
 		if(!node.material)
 			node.material = new LS.StandardMaterial();
 		var material = node.getMaterial();
-		material.setTexture( LS.Material.COLOR_TEXTURE, fullpath );
+		var channels = material.getTextureChannels();
+		if( channels.indexOf( channel ) == -1 )
+			channel = channels[0];
+		material.setTexture( channel , fullpath );
 	}
 	EditorModule.inspect( node );
 });
 
 //Materials
-DriveModule.onInsertMaterial = function(fullpath, restype, resource_item, event) 
+DriveModule.onInsertMaterial = function(fullpath, restype, options ) 
 {
 	var node = LS.GlobalScene.selected_node;
 
@@ -2268,13 +2052,13 @@ DriveModule.onInsertMaterial = function(fullpath, restype, resource_item, event)
 	if(!LS.MaterialClasses[restype])
 		return false;
 
-	if(event)
+	if( options.event )
 	{
-		GL.augmentEvent(event);
-		node = RenderModule.getNodeAtCanvasPosition( event.canvasx, event.canvasy );
+		GL.augmentEvent( options.event );
+		node = RenderModule.getNodeAtCanvasPosition( options.event.canvasx, options.event.canvasy );
 	}
 
-	DriveModule.loadResource(fullpath, restype, function(material) { 
+	DriveModule.loadResource( fullpath, restype, function(material) { 
 		LS.ResourcesManager.resources[fullpath] = material; //material in Material format (textures and all loaded)
 
 		EditorModule.inspect( node );
@@ -2287,7 +2071,7 @@ DriveModule.onInsertMaterial = function(fullpath, restype, resource_item, event)
 	}
 };
 
-DriveModule.registerAssignResourceCallback(null, DriveModule.onInsertMaterial );
+DriveModule.registerAssignResourceCallback( null, DriveModule.onInsertMaterial );
 
 /*
 DriveModule.registerAssignResourceCallback("SceneNode", function(fullpath, restype, resource_item) {
@@ -2303,10 +2087,11 @@ DriveModule.registerAssignResourceCallback("SceneNode", function(fullpath, resty
 });
 */
 
-DriveModule.registerAssignResourceCallback("SceneTree", function(fullpath, restype, resource_item) {
+DriveModule.registerAssignResourceCallback( "SceneTree", function( fullpath, restype, options ) {
+
 	LiteGUI.confirm("Are you sure? you will loose the current scene", function(v) {
 		LS.GlobalScene.clear();
-		LS.GlobalScene.load( LS.ResourcesManager.path + fullpath, function(scene,url){
+		LS.GlobalScene.load( LS.ResourcesManager.path + fullpath, function( scene, url ){
 			scene.extra.folder = LS.ResourcesManager.getFolder( fullpath );
 			scene.extra.fullpath = fullpath;
 		});
@@ -2314,24 +2099,24 @@ DriveModule.registerAssignResourceCallback("SceneTree", function(fullpath, resty
 	});
 });
 
-DriveModule.registerAssignResourceCallback("Prefab", function(fullpath, restype, resource_item, event) {
+DriveModule.registerAssignResourceCallback("Prefab", function( fullpath, restype, options ) {
 
 	var position = null;
-	if(event)
+	if(options.event)
 	{
 		//test collision with grid
-		GL.augmentEvent(event);
-		position = RenderModule.testGridCollision(event.canvasx, event.canvasy);
+		GL.augmentEvent( options.event );
+		position = RenderModule.testGridCollision( options.event.canvasx, options.event.canvasy );
 	}
 
 	//prefab
-	DriveModule.loadResource(fullpath, restype, function(resource) { 
-		console.log(resource);
+	DriveModule.loadResource( fullpath, restype, function(resource) { 
+		console.log(resource); //log
 		var node = resource.createObject();
 		LS.GlobalScene.root.addChild(node);
 		if(position)
 			node.transform.position = position;
-		EditorModule.inspect(node);
+		EditorModule.inspect( node );
 	});
 });
 

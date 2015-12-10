@@ -1820,7 +1820,7 @@ GL.Buffer.prototype.clone = function(share)
 }
 
 /**
-* Mesh class to upload geometry to the GPU
+* Base class for meshes, it wraps several buffers and some global info like the bounding box
 * @class Mesh
 * @param {Object} vertexBuffers object with all the vertex streams
 * @param {Object} indexBuffers object with all the indices streams
@@ -3638,7 +3638,7 @@ Mesh.icosahedron = function(options) {
 	return new GL.Mesh.load({vertices: vertices, coords: coords, normals: normals, triangles: indices},options);
 }
 /**
-* Texture class to upload images to the GPU, default is gl.TEXTURE_2D, gl.RGBAof gl.UNSIGNED_BYTE with filter gl.LINEAR, and gl.CLAMP_TO_EDGE
+* Texture class to upload images to the GPU, default is gl.TEXTURE_2D, gl.RGBA of gl.UNSIGNED_BYTE with filters set to gl.LINEAR and wrap to gl.CLAMP_TO_EDGE
 	There is a list of options
 	==========================
 	- texture_type: gl.TEXTURE_2D, gl.TEXTURE_CUBE_MAP, default gl.TEXTURE_2D
@@ -3647,9 +3647,11 @@ Mesh.icosahedron = function(options) {
 	- filter: filtering for mag and min: gl.NEAREST or gl.LINEAR, default gl.NEAREST
 	- magFilter: magnifying filter: gl.NEAREST, gl.LINEAR, default gl.NEAREST
 	- minFilter: minifying filter: gl.NEAREST, gl.LINEAR, gl.LINEAR_MIPMAP_LINEAR, default gl.NEAREST
-	- wrap: texture wrapping: gl.CLAMP_TO_EDGE, gl.REPEAT, gl.MIRROR, default gl.CLAMP_TO_EDGE
-	- premultiply_alpha : multiply the color by the alpha value, default FALSE
+	- wrap: texture wrapping: gl.CLAMP_TO_EDGE, gl.REPEAT, gl.MIRROR, default gl.CLAMP_TO_EDGE (also accepts wrapT and wrapS for separate settings)
+	- pixel_data: ArrayBufferView with the pixel data to upload to the texture, otherwise the texture will be black
+	- premultiply_alpha : multiply the color by the alpha value when uploading, default FALSE
 	- no_flip : do not flip in Y, default TRUE
+	- anisotropic : number of anisotropic fetches, default 0
 
 * @class Texture
 * @param {number} width texture width (any supported but Power of Two allows to have mipmaps), 0 means no memory reserved till its filled
@@ -3721,28 +3723,30 @@ global.Texture = GL.Texture = function Texture(width, height, options, gl) {
 		if(options.anisotropic && gl.extensions["EXT_texture_filter_anisotropic"])
 			gl.texParameterf(gl.TEXTURE_2D, gl.extensions["EXT_texture_filter_anisotropic"].TEXTURE_MAX_ANISOTROPY_EXT, options.anisotropic);
 
+		var pixel_data = options.pixel_data;
+		if(pixel_data && !pixel_data.buffer)
+			pixel_data = new (this.type == gl.FLOAT ? Float32Array : Uint8Array)( pixel_data );
+
 		//gl.TEXTURE_1D is not supported by WebGL...
 		if(this.texture_type == gl.TEXTURE_2D)
 		{
-			var data = options.pixel_data;
-			if(data && !data.buffer)
-				data = new (this.type == gl.FLOAT ? Float32Array : Uint8Array)( data );
-			gl.texImage2D(gl.TEXTURE_2D, 0, this.format, width, height, 0, this.format, this.type, data || null );
+			gl.texImage2D(gl.TEXTURE_2D, 0, this.format, width, height, 0, this.format, this.type, pixel_data || null );
 
-			//only generate mipmaps if pixel_data is provided
-			if (GL.isPowerOfTwo(width) && GL.isPowerOfTwo(height) && options.minFilter && options.minFilter != gl.NEAREST && options.minFilter != gl.LINEAR) {
-				gl.generateMipmap(this.texture_type);
+			//only generate mipmaps if pixel_data is provided?
+			if ( GL.isPowerOfTwo(width) && GL.isPowerOfTwo(height) && options.minFilter && options.minFilter != gl.NEAREST && options.minFilter != gl.LINEAR)
+			{
+				gl.generateMipmap( this.texture_type );
 				this.has_mipmaps = true;
 			}
 		}
 		else if(this.texture_type == gl.TEXTURE_CUBE_MAP)
 		{
-			gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X, 0, this.format, this.width, this.height, 0, this.format, this.type, null);
-			gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_Y, 0, this.format, this.width, this.height, 0, this.format, this.type, null);
-			gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_Z, 0, this.format, this.width, this.height, 0, this.format, this.type, null);
-			gl.texImage2D(gl.TEXTURE_CUBE_MAP_NEGATIVE_X, 0, this.format, this.width, this.height, 0, this.format, this.type, null);
-			gl.texImage2D(gl.TEXTURE_CUBE_MAP_NEGATIVE_Y, 0, this.format, this.width, this.height, 0, this.format, this.type, null);
-			gl.texImage2D(gl.TEXTURE_CUBE_MAP_NEGATIVE_Z, 0, this.format, this.width, this.height, 0, this.format, this.type, null);
+			gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+			gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_Y, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+			gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_Z, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+			gl.texImage2D(gl.TEXTURE_CUBE_MAP_NEGATIVE_X, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+			gl.texImage2D(gl.TEXTURE_CUBE_MAP_NEGATIVE_Y, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+			gl.texImage2D(gl.TEXTURE_CUBE_MAP_NEGATIVE_Z, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
 		}
 		gl.bindTexture(this.texture_type, null); //disable
 		gl.activeTexture(gl.TEXTURE0);
@@ -4944,7 +4948,9 @@ Texture.getBlackTexture = function()
 	return gl.textures[":black"] = new GL.Texture(1,1,{ pixel_data: color });
 }
 
-/** FBO for FrameBufferObjects, FBOs are used to store the render inside one or several textures (include the depth buffer)
+/** 
+* FBO for FrameBufferObjects, FBOs are used to store the render inside one or several textures 
+* Supports multibuffer and depthbuffer texture, useful for deferred rendering
 * @class FBO
 * @param {Array} color_textures an array containing the color textures, if not supplied a render buffer will be used
 * @param {GL.Texture} depth_texture the depth texture, if not supplied a render buffer will be used
@@ -6803,8 +6809,8 @@ GL.augmentEvent = function(e, root_element)
 }
 
 /**
-* LEvent is a lightweight events library focused in low memory footprint and fast delivery
-* it works by crating a property called __levents inside the object that has the bindings
+* LEvent is a lightweight events library focused in low memory footprint and fast delivery.
+* It works by creating a property called "__levents" inside the object that has the bindings, and storing arrays with all the bindings.
 * @class LEvent
 * @constructor
 */
@@ -6916,6 +6922,24 @@ var LEvent = global.LEvent = GL.LEvent = {
 			//if(array.length == 0) //add two passes to avoid read and delete
 			//	delete events[i];
 		}
+	},
+
+	/**
+	* Unbinds all callbacks associated to one specific event from this instance
+	* @method LEvent.unbindAll
+	* @param {Object} instance where the events are binded
+	* @param {String} event name of the event you want to remove all binds
+	**/
+	unbindAllEvent: function( instance, event )
+	{
+		if(!instance) 
+			throw("cannot unbind events in null");
+
+		var events = instance.__levents;
+		if(!events)
+			return;
+		delete events[ event ];
+		return;
 	},
 
 	/**
@@ -8896,11 +8920,11 @@ Raytracer.hitTestTriangle = function(origin, ray, a, b, c) {
 };
 //***** OBJ parser adapted from SpiderGL implementation *****************
 /**
-* A data buffer to be stored in the GPU
-* @class Mesh
+* Parses a OBJ string and returns an object with the info ready to be passed to GL.Mesh.load
 * @method Mesh.parseOBJ
 * @param {String} data all the OBJ info to be parsed
 * @param {Object} options
+* @return {Object} mesh information (vertices, coords, normals, indices)
 */
 
 Mesh.parseOBJ = function(text, options)

@@ -140,7 +140,7 @@ var EditorModule = {
 		}});
 		mainmenu.add("Node/Check JSON", { callback: function() { EditorModule.checkJSON( SelectionModule.getSelectedNode() ); }} );
 
-		mainmenu.add("View/Default material properties", { callback: function() { EditorModule.inspectInDialog( LS.Renderer.default_material ); }});
+		//mainmenu.add("View/Default material properties", { callback: function() { EditorModule.inspectInDialog( LS.Renderer.default_material ); }});
 		mainmenu.add("View/Layers", { callback: function() { EditorModule.showLayersEditor(); }});
 
 		mainmenu.add("Actions/Reload Shaders", { callback: function() { 
@@ -729,6 +729,15 @@ var EditorModule = {
 		RenderModule.requestFrame(); 
 	},
 
+	deleteNode: function(node) {
+		if( !node || !node.parentNode )
+			return;
+		UndoModule.saveNodeDeletedUndo( node );
+		node.parentNode.removeChild( node ); 
+		EditorModule.inspect();
+		RenderModule.requestFrame(); 
+	},
+
 	//************************
 
 	loadAndSetTexture: function (node, attr, name, data)
@@ -932,6 +941,29 @@ var EditorModule = {
 			if(on_complete)
 				on_complete( resource.filename, resource );
 		}
+	},
+
+	//generic
+	showContextualMenu: function( instance, event )
+	{
+		if(!instance)
+			return;
+
+		var actions = null;
+		if( instance.getActions )
+			actions = instance.getActions();
+		else if( instance.constructor.getActions )
+			actions = instance.constructor.getActions();
+
+		if(!actions)
+			return;
+
+		var menu = new LiteGUI.ContextualMenu( actions, { ignore_item_callbacks: true, event: event, title: LS.getObjectClassName( instance ) , callback: function( action ) {
+			if( instance.doAction )
+				instance.doAction( action );
+			else if( instance.constructor.doAction )
+				instance.constructor.doAction( action );
+		}});
 	},
 
 	showNodeContextualMenu: function( node, event )
@@ -1236,6 +1268,13 @@ var EditorModule = {
 					EditorModule.focusCameraInAll();
 				else
 					EditorModule.focusCameraInSelection();
+				break;
+			case 80: //P
+				if(e.ctrlKey)
+					PlayModule.onPlay();
+				e.preventDefault();
+				e.stopPropagation();
+				return false;
 				break;
 			case 9: //tab
 				InterfaceModule.toggleInspectorTab();

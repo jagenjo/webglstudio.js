@@ -94,6 +94,13 @@ LS.SceneNode.actions["layers"] = {
 	}
 };
 
+LS.SceneNode.actions["delete"] = { 
+	title:"Delete",
+	callback: function(){
+		EditorModule.deleteNode( this );
+	}
+};
+
 /* Components *************************/
 LS.Component.actions = {};
 

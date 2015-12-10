@@ -4,32 +4,35 @@
 */
 
 var ImporterModule  = {
+
 	name: "importer",
-
-	//settings_panel: [ {name:"importer", title:"Importer", icon:null } ],
-
-	skip_import_dialog: false,
+	
+	preferences: {
+		optimize_data: true,
+		mesh_action: "origin"
+	},
 
 	init: function()
 	{
-		//attributes.addButton("Save to BIN", true, { callback: function() { EditorModule.saveToDisk(node,true); }});
-		//LiteGUI.menubar.add("Scene/Import resource", { callback: function() { ImporterModule.showImportResourceDialog();} });
-
-		DriveModule.addDropArea( gl.canvas, ImporterModule.onItemDrop.bind(this) );
-
-		//triggered when a dropped file has been loaded and processed (used mostly to refresh stuff)
-		LiteGUI.bind( gl.canvas, "file_dropped", function(evt, file) {
-			//process resource (add to the library, attach to node, etc)
-			ImporterModule.onResourceDropped(evt, evt.detail);
-		});
-
+		//save user preferences
+		if(!CORE.user_preferences.importer)
+			CORE.user_preferences.importer = this.preferences;
+		else
+			this.preferences = CORE.user_preferences.importer;
+		
+		LiteGUI.createDropArea( gl.canvas, ImporterModule.onItemDrop.bind(this) );
 		LiteGUI.menubar.add("Actions/Import File", { callback: function() { ImporterModule.showImportResourceDialog(); }});
 	},
 
-	/* Loads in memory the content of a File dropped from the Hard drive */
+	// Launched when something is drag&drop inside the canvas (could be files, links, or elements of the interface) 
 	onItemDrop: function (evt)
 	{
 		console.log("processing item drop...");
+
+		//compute on top of which node it was dropped
+		GL.augmentEvent( evt );
+		var node = RenderModule.getNodeAtCanvasPosition( evt.canvasx, evt.canvasy );
+		var options = { node: node, event: evt };
 
 		//files
 		var files = evt.dataTransfer.files;
@@ -44,11 +47,13 @@ var ImporterModule  = {
 					return function(e) {
 						try
 						{
-							ImporterModule.processFileDropped(e, theFile);
+							file.data = e.target.result;
+							ImporterModule.showImportResourceDialog( file, options );
+							//ImporterModule.processFileDropped( e, theFile );
 						}
 						catch (err)
 						{
-							trace("Error processing data: " + err);
+							console.log("Error processing data: " + err);
 						}
 					};
 				})(file);
@@ -82,17 +87,19 @@ var ImporterModule  = {
 			{
 				var res_info = LFS.parsePath(res_fullpath);
 				console.log( res_fullpath );
-				DriveModule.onInsertResourceInScene( { dataset: { restype: res_type, fullpath: res_fullpath}}, evt );
+				DriveModule.onInsertResourceInScene( { dataset: { restype: res_type, fullpath: res_fullpath } }, options );
 				return true;
 			}
 		}
 
+		//dragging component or node
 		if( evt.dataTransfer.getData("uid") )
 		{
 			GL.augmentEvent(evt);
 			var node = RenderModule.getNodeAtCanvasPosition( evt.canvasx, evt.canvasy );
 			if(node)
 				EditorModule.onDropOnNode( node, evt );
+			return true; //dragging node and not inside a component
 		}
 
 		if( evt.dataTransfer.getData("text/uri-list") )
@@ -107,37 +114,11 @@ var ImporterModule  = {
 		return true;
 	},
 
-	//once FileReader has read the file from the HD...
-	processFileDropped: function (e, file) { 
-		console.log("File loaded in memory, processing: " + file.name);
-		var data = e.target.result;
-
-		//throw event: it will be get by onResourceDropped
-		file.data = data;
-		LiteGUI.trigger( gl.canvas, "file_dropped", file);
-	},
-
-	/* called when the file from HardDrive is loaded in memory (after being dropped) */
-	onResourceDropped: function(e, file)
-	{
-		/*
-		if(ImporterModule.skip_import_dialog)
-		{
-			var res = ImporterModule.processFileContent(e,file);
-			if(res.filename) filename = res.filename;
-			EditorModule.createNodeWithMesh(filename);
-			return;
-		}
-		*/
-
-		ImporterModule.showImportResourceDialog( file );
-	},
-
 	showImportResourceDialog: function( file, options )
 	{
 		options = options || {};
 
-		var dialog = new LiteGUI.Dialog("dialog_import_resource", {title:"Import File", close: true, minimize: true, width: 480, height: 340, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog("dialog_import_resource", {title: "Import File", close: true, minimize: true, width: 480, height: 340, scroll: false, draggable: true});
 		dialog.show();
 
 		var target = LS.Material.COLOR_TEXTURE;
@@ -152,6 +133,7 @@ var ImporterModule  = {
 		var inspector = new LiteGUI.Inspector(null,{ name_width: "50%" });
 		inspector.on_refresh = inner_refresh;
 		inspector.refresh();
+		dialog.add( inspector );
 
 		//* no va...
 		var drop_area = dialog.content;
@@ -175,15 +157,16 @@ var ImporterModule  = {
 		}, false);
 		//*/
 
+		//file data and it has a URL associated (comes from dragging a link to this tab)
 		if(file && file.url)
 			inner_setFile(file.url);
 
-		//function that loads the data
+		//Function that loads the data
 		function inner_setFile( v )
 		{
 			file = v;
 			file_content = null;
-			if(!file)
+			if(!file || file.data)
 				return;
 
 			if(v.constructor == String) //URL
@@ -199,6 +182,7 @@ var ImporterModule  = {
 				return;
 			}
 
+			//file without data
 			var reader = new FileReader();
 			reader.onload = function(e) { inner_setContent( e.target.result ); inspector.refresh(); }
 			var info = LS.Formats.getFileFormatInfo( file.name );
@@ -208,6 +192,7 @@ var ImporterModule  = {
 				reader.readAsArrayBuffer( file );
 		}
 
+		//function to assign the content of the file
 		function inner_setContent(v, type)
 		{
 			file_content = v;
@@ -221,6 +206,7 @@ var ImporterModule  = {
 			inspector.refresh();
 		}
 
+		//refresh the inspector information
 		function inner_refresh()
 		{
 			inspector.clear();
@@ -252,6 +238,9 @@ var ImporterModule  = {
 				else if(info.resource == "Mesh" )
 				{
 					inspector.addTitle("Mesh");
+					inspector.addCombo("Action", ImporterModule.preferences.mesh_action, { values: {"Insert in Origin":"origin","Insert in intersection":"plane","Replace Mesh":"replace"}, callback: function(v) { 
+						ImporterModule.preferences.mesh_action = v;
+					}});
 					inspector.addCheckbox("Optimize data", optimize_data, { callback: function(v) { optimize_data = v; }});
 					//inspector.addCheckbox("Insert into scene", insert_into, { callback: function(v) { insert_into = v; }});
 				}
@@ -284,11 +273,10 @@ var ImporterModule  = {
 		var imp_and_upload = dialog.addButton("Import & Upload", { className: "big", callback: inner_import });
 		var imp_and_insert = dialog.addButton("Import and Insert", { className: "big", callback: inner_import });
 		dialog.addButton("Cancel", { className: "big", callback: function() { dialog.close(); } });
-		dialog.add( inspector );
 
 		var filename = "";
 
-		function inner_import(button, callback)
+		function inner_import( button, callback )
 		{
 			if(button == imp_and_insert)
 				insert_into = true;
@@ -303,38 +291,20 @@ var ImporterModule  = {
 			options.target = target; //if its texture
 			file.filename = filename;
 
-			ImporterModule.processResource(name, file, options, inner_processed );
+			ImporterModule.processResource( name, file, options, inner_processed );
 			dialog.close();
 		}
 
-		function inner_processed(filename, resource, options)
+		function inner_processed( filename, resource, options)
 		{
+			options = options || {};
+
 			if(resource.filename)
 				filename = resource.filename;
 			if(insert_into)
 			{
-				if(resource.constructor == GL.Mesh)
-					EditorModule.createNodeWithMesh(filename);
-				else if(resource.constructor == GL.Texture)
-				{
-					var selected_node = drop_node || SelectionModule.getSelectedNode();
-					if(selected_node)
-					{
-						var mat = selected_node.getMaterial();
-						if(!mat)
-						{
-							mat = new LS.StandardMaterial();
-							selected_node.material = mat;
-						}
-						mat.setTexture( target, resource.filename );
-						LEvent.trigger( selected_node, "changed" );
-						EditorModule.inspect( selected_node );
-					}
-				}
-				else if(resource.constructor == LS.SceneTree)
-				{
-					LS.GlobalScene.configure( resource.serialize() );
-				}
+				options.mesh_action = ImporterModule.preferences.mesh_action;
+				DriveModule.onInsertResourceInScene( resource, options );
 			}
 
 			if(upload_file)
@@ -349,9 +319,9 @@ var ImporterModule  = {
 		}
 	},
 
-	// Called when the user decides to import the resource after clicking Import in the dialog
-	// This function is called when the resource is loaded (async due to img.onload) 
-	// It has to create the resource from the file and call the callback
+	// Called from showImportResourceDialog when a file is loaded in memory
+	// This function wraps the processResource from LS.ResourcesManager to add some extra behaviours
+	// Mostly conversions, optimizations, and so
 	processResource: function (name, file, options, on_complete)
 	{ 
 		options = options || {};
@@ -360,7 +330,7 @@ var ImporterModule  = {
 			return console.error("File data missing, use FileReader");
 
 		var filename = options.filename || file.name;
-		var resource = LS.ResourcesManager.processResource(filename, file.data, options, inner);
+		var resource = LS.ResourcesManager.processResource( filename, file.data, options, inner );
 
 		return null;
 
@@ -380,9 +350,10 @@ var ImporterModule  = {
 			}
 
 			if(on_complete)
-				on_complete(filename, resource);
+				on_complete(filename, resource, options);
 		}
-	},
+	}
+
 };
 
 CORE.registerModule( ImporterModule );

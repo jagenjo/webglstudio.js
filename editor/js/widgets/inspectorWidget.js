@@ -13,6 +13,7 @@ InspectorWidget.MAX_HISTORY = 10;
 
 InspectorWidget.prototype.init = function()
 {
+	var that = this;
 	
 	//create area
 	this.root = LiteGUI.createElement( "div", null, null, { width:"100%", height:"100%" });
@@ -25,6 +26,14 @@ InspectorWidget.prototype.init = function()
 	this.header.querySelector(".next").addEventListener("click", this.onNext.bind(this) );
 	this.header.querySelector(".lock").addEventListener("click", this.onLock.bind(this) );
 
+	this.header.addEventListener("contextmenu", (function(e) { 
+		if(e.button != 2) //right button
+			return false;
+		EditorModule.showContextualMenu( that.instance , e );
+		e.preventDefault(); 
+		return false;
+	}).bind(this));
+
 	//create inspector
 	this.inspector = new LiteGUI.Inspector( null,{ height: -26, name_width: "40%" });
 	this.inspector.onchange = function()
@@ -33,8 +42,6 @@ InspectorWidget.prototype.init = function()
 	}
 	this.inspector.addInfo(null,"select something to see its attributes");
 	
-	var that = this;
-
 	this.root.appendChild( this.inspector.root );
 
 	this.root.addEventListener("DOMNodeInsertedIntoDocument", function(){ that.bindEvents(); });
@@ -147,7 +154,7 @@ InspectorWidget.prototype.update = function( object )
 
 InspectorWidget.prototype.inspectObject = function( object )
 {
-	this.inspectObjects( [ object ], inspector );
+	this.inspectObjectsArray( [ object ], inspector );
 	this.inspector.instance = object;
 }
 
@@ -297,6 +304,14 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 
 			if(node.className != null)
 				inspector.addString("class", node.className, { callback: function(v) { node.className = v; } });
+			if(node.prefab)
+				inspector.addStringButton("prefab", node.prefab, { callback_button: function(v,evt) {
+					var menu = new LiteGUI.ContextualMenu( ["Unlink prefab"], { event: evt, callback: function(action) {
+						delete node["prefab"];
+						inspector.refresh();
+					}});
+				}});
+
 			inspector.addLayers("layers", node.layers, { pretitle: AnimationModule.getKeyframeCode( node, "layers"), callback: function(v) {
 				node.layers = v;
 				RenderModule.requestFrame();

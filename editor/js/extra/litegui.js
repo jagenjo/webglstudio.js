@@ -929,17 +929,66 @@ var LiteGUI = {
 		close: "&#10005;"
 	},
 
-	//used to convert sizes
+	/**
+	* Convert sizes in any format to a valid CSS format (number to string, negative number to calc( 100% - number px )
+	* @method sizeToCSS
+	* @param {String||Number} size
+	* @return {String} valid css size string
+	**/
 	sizeToCSS: function( v )
 	{
 		if( v ===  undefined || v === null )
 			return null;
 		if(v.constructor === String )
 			return v;
-		if(v > 0 )
+		if(v >= 0 )
 			return (v|0) + "px";
-		if(v < 0 )
-			return "calc( 100% - " + Math.abs(v|0) + "px )";
+		return "calc( 100% - " + Math.abs(v|0) + "px )";
+	},
+
+	/**
+	* Helper, makes drag and drop easier by enabling drag and drop in a given element
+	* @method createDropArea
+	* @param {HTMLElement} element the element where users could drop items
+	* @param {Function} callback_drop function to call when the user drops the item
+	* @param {Function} callback_enter [optional] function to call when the user drags something inside
+	**/
+	createDropArea: function( element, callback_drop, callback_enter, callback_exit )
+	{
+		element.addEventListener("dragenter", onDragEvent);
+
+		function onDragEvent(evt)
+		{
+			element.addEventListener("dragexit", onDragEvent);
+			element.addEventListener("dragover", onDragEvent);
+			element.addEventListener("drop", onDrop);
+			evt.stopPropagation();
+			evt.preventDefault();
+			if(evt.type == "dragenter" && callback_enter)
+				callback_enter(evt, this);
+			if(evt.type == "dragexit" && callback_exit)
+				callback_exit(evt, this);
+		}
+
+		function onDrop(evt)
+		{
+			evt.stopPropagation();
+			evt.preventDefault();
+
+			element.removeEventListener("dragexit", onDragEvent);
+			element.removeEventListener("dragover", onDragEvent);
+			element.removeEventListener("drop", onDrop);
+
+			var r = undefined;
+			if(callback_drop)
+				r = callback_drop(evt);
+			if(r)
+			{
+				evt.stopPropagation();
+				evt.stopImmediatePropagation();
+				return true;
+			}
+		}
 	}
 };
 
@@ -1634,7 +1683,7 @@ function beautifyJSON( code, skip_css )
 		}
 
 		function onClick(e) {
-			console.log("CLICK");
+			//console.log("CLICK");
 			var box = e.target;
 			box.setValue( this.dataset["value"] == "open" ? false : true );
 			if(this.stopPropagation)
@@ -4615,7 +4664,7 @@ function beautifyJSON( code, skip_css )
 	Tree.prototype.getChildren = function(id, only_direct )
 	{
 		if( id && id.constructor !== String && id.dataset )
-			id = id.dataset["node_id"];
+			id = id.dataset["item_id"];
 		return this._findChildElements( id, only_direct );
 	}
 
@@ -6412,7 +6461,7 @@ Inspector.prototype.addStringButton = function(name,value, options)
 	var button = element.querySelector(".wcontent button");
 	button.addEventListener("click", function(e) { 
 		if(options.callback_button)
-			options.callback_button.call( element, input.value );
+			options.callback_button.call( element, input.value, e );
 	});
 
 	this.tab_index += 1;

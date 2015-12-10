@@ -138,6 +138,32 @@ var UndoModule = {
 		});
 	},
 
+	saveNodeDeletedUndo: function( node )
+	{
+		if(!node)
+			return;
+
+		var parent = node.parentNode;
+		if(!parent)
+			return;
+
+		UndoModule.addUndoStep({ 
+			title: "Node deleted: " + node.name,
+			data: { node_data: JSON.stringify( node.serialize() ), parent_uid: parent.uid, index: parent.childNodes.indexOf( node ) },
+			callback: function(d) {
+				var parent_node = LS.GlobalScene.getNodeByUId( d.parent_uid );
+				if(!parent_node)
+					return;
+				var new_node = new LS.SceneNode();
+				new_node.configure( JSON.parse( d.node_data ) );
+				parent_node.addChild( new_node, d.index );
+				SelectionModule.setSelection( new_node );
+				EditorModule.refreshAttributes();
+				RenderModule.requestFrame();
+			}
+		});
+	},
+
 	saveNodeChangeUndo: function(node)
 	{
 		this.addUndoStep({ 

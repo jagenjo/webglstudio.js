@@ -1834,6 +1834,8 @@ var DriveModule = {
 		//get the data
 		var internal_data = LS.ResourcesManager.computeResourceInternalData( resource );
 		var data = internal_data.data;
+		if(data.data) //HACK, ugly, but sometimes computeResourceInternalData returns an object with about the file, but I want the data
+			data = data.data;
 		if( internal_data.extension && internal_data.extension != extension )
 		{
 			filename += "." + internal_data.extension;

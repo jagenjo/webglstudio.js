@@ -37,7 +37,10 @@ var DriveModule = {
 	init: function()
 	{
 		this.server_url = CORE.config.server;
-		LS.ResourcesManager.setProxy( CORE.config.proxy );
+
+		if(CORE.config.proxy)
+			LS.ResourcesManager.setProxy( CORE.config.proxy );
+
 		LS.ResourcesManager.keep_files = true;
 		var that = this;
 

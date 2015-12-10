@@ -171,6 +171,12 @@ var LiteFileServer = {
 
 	generatePreview: function( file, on_complete )
 	{
+		if(!file || file.constructor != File)
+		{
+			console.error("LiteFileServer GeneratePreview requires a file");
+			return;
+		}
+
 		var reader = new FileReader();
 		reader.onload = loaded;
 		reader.readAsDataURL(file);
@@ -770,6 +776,8 @@ Session.prototype.uploadFile = function( fullpath, data, extra, on_complete, on_
 {
 	if(!data)
 		throw("Data cannot be null");
+
+	var original_data = data;
 
 	var info = LFS.parsePath( fullpath );
 	var unit = info.unit;

@@ -171,11 +171,14 @@ var LiteFileServer = {
 
 	generatePreview: function( file, on_complete )
 	{
-		if(!file || file.constructor != File)
+		if(!file)
 		{
 			console.error("LiteFileServer GeneratePreview requires a file");
 			return;
 		}
+
+		if(file.constructor === ArrayBuffer )
+			file = new Blob([file], {type: "application/octet-binary"});
 
 		var reader = new FileReader();
 		reader.onload = loaded;

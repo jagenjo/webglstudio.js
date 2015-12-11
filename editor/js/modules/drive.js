@@ -143,7 +143,7 @@ var DriveModule = {
 
 		this.top_widget.addSeparator();
 		this.top_widget.addButton(null,"Insert in scene", { callback: function() { DriveModule.onInsertResourceInScene( DriveModule.selected_resource ); } });
-		this.top_widget.addButton(null,"Import File", { callback: ImporterModule.showImportResourceDialog(); });
+		this.top_widget.addButton(null,"Import File", { callback: function(){ ImporterModule.showImportResourceDialog(); }});
 
 		//resources container (browser)
 		var res_root = area.sections[1].content;

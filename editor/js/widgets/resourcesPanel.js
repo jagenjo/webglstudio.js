@@ -3,6 +3,8 @@ function ResourcesPanelWidget( id )
 {
 	var that = this;
 
+	this.selected_item = null;
+
 	this.root = document.createElement("div");
 	this.root.className = "resources-panel";
 	this.root.style.width = "100%";
@@ -11,7 +13,7 @@ function ResourcesPanelWidget( id )
 		this.root.id = id;
 
 	this.area = new LiteGUI.Area(null);
-	this.area.split("horizontal",[300,null]);
+	this.area.split("horizontal",[320,null],{draggable: true});
 	this.area.getSection(0).content.style.overflow = "auto";
 	this.area.getSection(0).content.style.backgroundColor = "black";
 	this.root.appendChild( this.area.root );
@@ -21,11 +23,25 @@ function ResourcesPanelWidget( id )
 
 	//files
 	var files_section = this.area.getSection(1);
+	this.area.root.addEventListener("contextmenu", function(e) { e.preventDefault(); });
 
-	var browser_root =  document.createElement("ul");
-	browser_root.className = "file-list";
-	files_section.content.appendChild( browser_root );
-	this.browser_container = browser_root;
+	var browser_root = new LiteGUI.Area(null,{ full: true });
+	files_section.add( browser_root );
+	browser_root.split("vertical",[30,null]);
+
+	var top_inspector = new LiteGUI.Inspector(null,{ one_line: true });
+	top_inspector.addString("Filter","",{ callback: function(v) { 
+		that.filterByName(v);
+	}});
+	top_inspector.addSeparator();
+	top_inspector.addButton(null,"New", function(){ DriveModule.showNewResourceDialog(); });
+	top_inspector.addButton(null,"Insert in scene", function(){ DriveModule.onInsertResourceInScene( that.selected_item ); });
+	top_inspector.addButton(null,"Import File", function(){ ImporterModule.showImportResourceDialog(); });
+
+	browser_root.sections[0].add( top_inspector );
+
+	this.browser_container = browser_root.sections[1].content;
+	this.showInBrowserContent(null); //make it ready
 
 	var login_callback = this.onLoginEvent.bind(this);
 	var tree_update_callback = this.onTreeUpdate.bind(this);
@@ -49,7 +65,7 @@ function ResourcesPanelWidget( id )
 
 ResourcesPanelWidget.createDialog = function( parent )
 {
-	var dialog = new LiteGUI.Dialog( null, { title:"Resources", fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, parent: parent, width: 870, height: 500 });
+	var dialog = new LiteGUI.Dialog( null, { title:"Resources", fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, parent: parent, width: 900, height: 500 });
 	var widget = new ResourcesPanelWidget();
 	dialog.add( widget );
 	dialog.widget = widget;
@@ -158,6 +174,7 @@ ResourcesPanelWidget.prototype.createTreeWidget = function()
 //add a new resource to the browser window
 ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 {
+	var that = this;
 	var memory_resource = LS.ResourcesManager.resources[ resource.fullpath ];
 
 	//if(!this.dialog) return;
@@ -176,6 +193,8 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 		element.className += " in-server";
 	else
 		element.className += " in-client";
+
+	element.resource = resource;
 
 	if(resource._modified  || (memory_resource && memory_resource._modified) )
 		element.className += " modified";
@@ -271,6 +290,12 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 	//when the resources is clicked
 	function item_selected(e)
 	{
+		var items = parent.querySelectorAll(".selected");
+		for(var i = 0; i < items.length; ++i)
+			items[i].classList.remove("selected");
+		element.classList.add("selected");
+		LiteGUI.trigger( that, "item_selected", element );
+		that.selected_item = element;
 		/*
 		DriveModule.selected_resource = this;
 		if(!DriveModule.on_resource_selected_callback)
@@ -305,6 +330,53 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 			ev.dataTransfer.setData("res-fullpath", resource.fullpath);
 		ev.dataTransfer.setData("res-type", type);
 	});
+
+	element.addEventListener("contextmenu", function(e) { 
+		if(e.button != 2) //right button
+			return false;
+		that.showItemContextualMenu(this,e);
+		e.preventDefault(); 
+		return false;
+	});
+}
+
+ResourcesPanelWidget.prototype.showItemContextualMenu = function( item, event )
+{
+	var actions = ["Insert","Clone","Move","Properties",null,"Delete"];
+
+	var menu = new LiteGUI.ContextualMenu( actions, { ignore_item_callbacks: true, event: event, title: "Resource", callback: function(action, options, event) {
+		var fullpath = item.dataset["fullpath"] || item.dataset["filename"];
+		if(!fullpath)
+			return;
+
+		if(action == "Insert")
+		{
+			DriveModule.onInsertResourceInScene( item );
+		}
+		else if(action == "Clone")
+		{
+			LiteGUI.alert("Not implemented yet");
+		}
+		else if(action == "Move")
+		{
+			LiteGUI.alert("Not implemented yet");
+		}
+		else if(action == "Properties")
+		{
+			DriveModule.showResourceInfoInDialog( item.resource );
+		}
+		else if(action == "Delete")
+		{
+			DriveModule.serverDeleteFile( fullpath );
+		}
+		else
+			LiteGUI.alert("Unknown action");
+	}});
+}
+
+ResourcesPanelWidget.prototype.onTreeUpdated = function()
+{
+	this.refreshTree();
 }
 
 ResourcesPanelWidget.prototype.refreshTree = function()
@@ -373,6 +445,25 @@ ResourcesPanelWidget.prototype.showInBrowserContent = function( items )
 				item.name = i;
 			this.addItemToBrowser( item );
 		}
+}
+
+ResourcesPanelWidget.prototype.filterByName = function( text )
+{
+	text = text.toLowerCase();
+	var parent = this.root.querySelector("ul.file-list");
+	var items = parent.querySelectorAll(".file-item");
+	for(var i = 0; i < items.length; ++i )
+	{
+		var item = items[i];
+		var filename = item.dataset["filename"];
+		if(!filename)
+			continue;
+		filename = filename.toLowerCase();
+		if( !text || filename.indexOf(text) != -1 )
+			item.style.display = null;
+		else
+			item.style.display = "none";
+	}
 }
 
 ResourcesPanelWidget.prototype.refresh = function()

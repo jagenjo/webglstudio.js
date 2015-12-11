@@ -609,6 +609,8 @@ var EditorModule = {
 			item = LSQ.get( item_uid );
 		else if(item_type == "Component")
 			item = LS.GlobalScene.findComponentByUId( item_uid );
+		else if(item_type == "Material")
+			item = LS.GlobalScene.findMaterialByUId( item_uid );
 
 		if(item && item.constructor == LS.SceneNode && node != item )
 		{
@@ -619,7 +621,6 @@ var EditorModule = {
 		if(item && item.constructor.is_component)
 		{
 			var component = item;
-			console.log(component);
 			if(node != component.root)
 			{
 				if(event.shiftKey)
@@ -636,6 +637,24 @@ var EditorModule = {
 				}
 			}
 		}
+
+		if( item && item.constructor.is_material )
+		{
+			var material = item;
+			if(material._root) //belong to one node
+			{
+				var new_material = material.clone();
+				node.material = new_material;
+				console.log("Material cloned");
+			}
+			else
+			{
+				node.material = material.uid;
+				console.log("Material assigned");
+			}
+
+		}
+
 		RenderModule.requestFrame();
 		EditorModule.refreshAttributes();
 	},

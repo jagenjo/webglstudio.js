@@ -6,7 +6,15 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 	var icon = "";
 	if( LS.Material.icon)
 		icon = "<span class='icon' style='width: 20px'><img src='" + EditorModule.icons_path + LS.Material.icon + "' class='icon'/></span>";
-	var section = inspector.addSection(icon + " Material <span class='buttons'><img class='options_section' src='imgs/mini-cog.png'></span>");
+
+	var options = {};
+	options.callback = function(v){
+		node._material_collapsed = !v;
+	}
+	options.collapsed = node._material_collapsed;
+	var title = "Material";
+	var buttons = "<span class='buttons'><img class='options_section' src='imgs/mini-cog.png'></span>";
+	var section = inspector.addSection(icon + " " + title + buttons, options);
 
 	section.querySelector(".wsectiontitle").addEventListener("contextmenu", (function(e) { 
 		if(e.button != 2) //right button
@@ -59,9 +67,17 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 		return;
 	}
 
-
 	//there is a material
 	var mat_type = LS.getObjectClassName( material );
+
+
+	var icon = section.querySelector(".icon");
+	icon.addEventListener("dragstart", function(event) { 
+		event.dataTransfer.setData("uid", material.uid);
+		event.dataTransfer.setData("type", "Material");
+		event.dataTransfer.setData("node_uid", node.uid);
+		event.dataTransfer.setData("class", mat_type );
+	});
 
 	$(inspector.current_section).bind("wchange", function() { UndoModule.saveMaterialChangeUndo( material ); });
 

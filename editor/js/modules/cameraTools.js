@@ -16,7 +16,7 @@ var cameraTool = {
 		rotate_speed: 0.2,
 		orbit_speed: 0.01,
 		smooth_camera_factor: 0.3,
-		mouse_wheel_factor: -0.002,
+		mouse_wheel_factor: -0.05,
 		lock_angle: false
 	},
 
@@ -105,12 +105,15 @@ var cameraTool = {
 	//different browsers and OSs behave different	
 	getWheelDelta: function(e)
 	{
+		/*
 		var amount = e.wheel;
 		if(amount == 120 || amount == -120)
 			amount = 1 + this.settings.mouse_wheel_factor * (amount > 0 ? 1 : -1);
 		else
 			amount = 1.0 + amount * this.settings.mouse_wheel_factor;	
 		return amount;
+		*/
+		return (1 + e.delta * this.settings.mouse_wheel_factor);
 	},
 
 	update: function(dt)
@@ -398,10 +401,21 @@ var cameraTool = {
 
 		if(distance)
 			camera.setDistanceToCenter( distance, true );
-	}
+	},
 
+	onShowSettingsPanel: function(name,widgets)
+	{
+		if(name != "editor")
+			return;
+
+		widgets.addTitle("Interaction");
+		widgets.inspectInstance( this.settings );
+
+		//RenderModule.requestFrame();
+	}
 };
 
+CORE.registerModule( cameraTool );
 ToolsModule.registerTool({ name: "camera_control", display: false, module: cameraTool });
 
 

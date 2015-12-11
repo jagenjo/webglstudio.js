@@ -1126,8 +1126,8 @@ var LS = {
 	* @method registerMaterialClass
 	* @param {ComponentClass} comp component class to register
 	*/
-	registerMaterialClass: function(material_class) { 
-
+	registerMaterialClass: function( material_class )
+	{ 
 		var class_name = LS.getClassName( material_class );
 
 		//register
@@ -1140,6 +1140,7 @@ var LS = {
 		//event
 		LEvent.trigger( LS, "materialclass_registered", material_class );
 		material_class.resource_type = "Material";
+		material_class.is_material = true;
 	},
 
 	/**
@@ -27966,7 +27967,7 @@ SceneTree.prototype.findMaterialByUId = function(uid)
 	for(var i = 0; i < this._nodes.length; ++i)
 	{
 		var material = this._nodes[i].getMaterial();
-		if(material.uid == uid)
+		if(material && material.uid == uid)
 			return material;
 	}
 
@@ -29040,7 +29041,13 @@ SceneNode.prototype.getMaterial = function()
 	if (!this.material)
 		return null;
 	if(this.material.constructor === String)
-		return this._in_tree ? LS.ResourcesManager.materials[ this.material ] : null;
+	{
+		if( !this._in_tree )
+			return null;
+		if( this.material[0] == "@" )//uid
+			return LS.ResourcesManager.materials_by_uid[ this.material ];
+		return LS.ResourcesManager.materials[ this.material ];
+	}
 	return this.material;
 }
 

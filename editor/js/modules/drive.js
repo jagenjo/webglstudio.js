@@ -777,26 +777,41 @@ var DriveModule = {
 
 	},
 
-	showResourceInfo: function(resource)
+	showResourceInfoInDialog: function( resource )
+	{
+		var dialog = new LiteGUI.Dialog( null, { title:"Properties", fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, width: 400, height: 500, scroll: true });
+		var inspector = new LiteGUI.Inspector();
+		dialog.add( inspector );
+		this.showResourceInfo( resource, inspector );
+		dialog.on_close = function()
+		{
+
+		}
+		dialog.show();
+		return dialog;
+	},
+
+	showResourceInfo: function( resource, inspector )
 	{
 		if(!resource)
 			return;
 
-		var fullpath = resource.fullpath || resource.filename;
+		var fullpath = null;
+
+		if(resource.constructor === String)
+			fullpath = resource;
+		else
+			fullpath = resource.fullpath || resource.filename;
+
 		var server_resource = DriveModule.server_resources[ fullpath ];
-		var preview_url = resource.preview_url || LFS.getPreviewPath( resource.fullpath );
+		var preview_url = resource.preview_url || LFS.getPreviewPath( fullpath );
 
-		/*
-		if(!preview_url && server_resource)
-			preview_url = server_resource.preview_url;
-		var preview = new Image();
-		if(preview_url)
-			preview.src = preview_url;
-		*/
-
-		var inspector = InterfaceModule.inspector_widget.inspector;
-		InterfaceModule.inspector_widget.setTitle("Resource");
-		inspector.clear();
+		if(!inspector)
+		{
+			inspector = InterfaceModule.inspector_widget.inspector;
+			InterfaceModule.inspector_widget.setTitle("Resource");
+			inspector.clear();
+		}
 
 		inspector.addTitle("Resource");
 		inspector.addString("Fullpath", resource.fullpath, {disabled:true} );
@@ -953,6 +968,55 @@ var DriveModule = {
 				}
 			});
 		}});
+	},
+
+	showNewResourceDialog: function()
+	{
+		var dialog = new LiteGUI.Dialog( null, { title:"New Resource", fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, width: 300, height: 300, scroll: true });
+		var inspector = new LiteGUI.Inspector();
+		dialog.add( inspector );
+
+		var valid_types = ["Text","Script"];
+		var type = valid_types[0];
+		var filename = "unknown.txt";
+
+		inspector.on_refresh = function()
+		{
+			inspector.clear();
+			inspector.addCombo("Type", type, { values: valid_types, callback: function(v){
+				type = v;
+				//inspector.refresh();
+			}});
+
+			inspector.addString("Filename",filename, function(v){
+				filename = v;
+			});
+
+			inspector.addButtons(null,["Create","Cancel"], function(v){
+				if(v == "Cancel")
+				{
+					dialog.close();
+					return;
+				}
+				if(v == "Create")
+				{
+					//TODO
+					LiteGUI.alert("Feature not finished");
+					dialog.close();
+				}
+			});
+
+			dialog.adjustSize();
+		}
+
+		inspector.refresh();
+
+		dialog.on_close = function()
+		{
+
+		}
+		dialog.show();
+		return dialog;
 	},
 
 	/*

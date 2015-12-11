@@ -2318,11 +2318,19 @@ function beautifyJSON( code, skip_css )
 		this.root.style.height = "calc( 100% - " + y + "px )";
 	}
 
-	Area.prototype.split = function(direction, sizes, editable)
+	Area.prototype.split = function( direction, sizes, editable )
 	{
-		direction = direction || "vertical";
+		if( !direction || direction.constructor !== String )
+			throw ("First parameter must be a string: 'vertical' or 'horizontal'");
 
-		if(this.sections.length) throw "cannot split twice";
+		if( !sizes )
+			throw ("sizes must be an array");
+
+		if( direction != "vertical" && direction != "horizontal" )
+			throw ("First parameter must be a string: 'vertical' or 'horizontal'");
+
+		if(this.sections.length)
+			throw "cannot split twice";
 
 		//create areas
 		var area1 = new LiteGUI.Area(null, { content_id: this.content.id });
@@ -4976,7 +4984,7 @@ function beautifyJSON( code, skip_css )
 	*
 	* @class Dialog
 	* @param {string} id
-	* @param {Object} options useful options are { title, width, height, closable, on_close, }
+	* @param {Object} options useful options are { title, width, height, closable, on_close, scroll }
 	* @constructor
 	*/
 	function Dialog(id, options)

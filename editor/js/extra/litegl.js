@@ -6341,8 +6341,13 @@ GL.create = function(options) {
 				e.wheel = -e.deltaY;
 			else
 				e.wheel = (e.wheelDeltaY != null ? e.wheelDeltaY : e.detail * -60);
+
+			//from stack overflow
+			e.delta = e.wheelDelta ? e.wheelDelta/40 : e.deltaY ? -e.deltaY/3 : 0;
+			//console.log(e.delta);
 			if(gl.onmousewheel)
 				gl.onmousewheel(e);
+
 			LEvent.trigger(gl, "mousewheel", e);
 		}
 

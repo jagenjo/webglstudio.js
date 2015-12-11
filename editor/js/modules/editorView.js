@@ -423,10 +423,12 @@ var EditorView = {
 			//texture grid
 			gl.enable(gl.BLEND);
 			this.grid_texture.bind(0);
+			gl.depthMask( false );
 			LS.Draw.setColor([1,1,1, this.settings.grid_alpha ]);
 			LS.Draw.translate( LS.Draw.camera_position[0], 0, LS.Draw.camera_position[2] ); //follow camera
 			LS.Draw.scale( 10000, 10000, 10000 );
 			LS.Draw.renderMesh( this.plane_mesh, gl.TRIANGLES, this.grid_shader );
+			gl.depthMask( true );
 		}
 
 		LS.Draw.pop();

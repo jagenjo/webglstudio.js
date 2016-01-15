@@ -43,20 +43,24 @@ var CodingModule = //do not change
 
 		//tabs for every file
 		//register some APIs used for autocompletion
-		this.registerAPI("glsl", ["texture2D","sampler2D","uniform","varying","radians","degrees","sin","cos","tan","asin","acos","atan","pow","exp","log","exp2"] );
+		
+		//this.registerAPI("glsl", ["uniform","varying","sampler2D","samplerCube"] );
+		this.registerAPI("glsl", ["texture2D","textureCube","radians","degrees","sin","cos","tan","asin","acos","atan","pow","exp","log","exp2","length"] );
 		this.registerAPI("glsl", ["IN.color","IN.vertex","IN.normal","IN.uv","IN.uv1","IN.camPos","IN.viewDir","IN.worldPos","IN.worldNormal","IN.screenPos"] );
-		this.registerAPI("glsl", ["OUT.Albedo","OUT.Normal","OUT.Emission","OUT.Specular","OUT.Gloss","OUT.Alpha","OUT.Reflectivity"] );
+		this.registerAPI("glsl", ["o.Albedo","o.Normal","o.Emission","o.Specular","o.Gloss","o.Alpha","o.Reflectivity"] );
 
 		LiteGUI.menubar.add("Window/Coding Panel", { callback: function(){ CodingTabsWidget.createDialog(); }});
-		LiteGUI.menubar.add("Actions/Catch Errors", { type: "checkbox", instance: LS, property: "catch_errors" });
+		LiteGUI.menubar.add("Actions/Catch Exceptions", { type: "checkbox", instance: LS, property: "catch_exceptions" });
 
-		var coding_area = this.coding_area = new LiteGUI.Area("codearea",{height: -30});
+		var coding_area = this.coding_area = new LiteGUI.Area("codearea",{height: "100%"});
 		this.root.appendChild( coding_area.root );
 		coding_area.split("horizontal",[null,"50%"],true);
 		this.coding_3D_area = coding_area.getSection(0).content;
 
 		var coding_tabs_widget = this.coding_tabs_widget = new CodingTabsWidget();
 		coding_area.getSection(1).add( coding_tabs_widget );
+
+		LS.catch_exceptions = true;
 	},
 
 	//registers a coding API (help, links to wiki, autocompletion, etc)

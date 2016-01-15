@@ -9,7 +9,8 @@ var ImporterModule  = {
 	
 	preferences: {
 		optimize_data: true,
-		mesh_action: "origin"
+		mesh_action: "origin",
+		texture_action: "replace"
 	},
 
 	init: function()
@@ -36,40 +37,24 @@ var ImporterModule  = {
 
 		//files
 		var files = evt.dataTransfer.files;
-		if(files)
+		if(files && files.length)
 		{
-			for(var i=0; i < files.length; i++)
+			//more than one file
+			if(files.length > 1)
 			{
-				var file = files[i];
-				
-				var reader = new FileReader();
-				reader.onload = (function(theFile) {
-					return function(e) {
-						try
-						{
-							file.data = e.target.result;
-							ImporterModule.showImportResourceDialog( file, options );
-							//ImporterModule.processFileDropped( e, theFile );
-						}
-						catch (err)
-						{
-							console.log("Error processing data: " + err);
-						}
-					};
-				})(file);
-
-				var extension = LS.ResourcesManager.getExtension( file.name );
-				var format_info = LS.Formats.supported[ extension ];
-				var format_type = "binary";
-				if(format_info)
-					format_type = format_info.format;
-
-				if(format_type == "string" || format_type == "text" || format_type == "json" || format_type == "xml")
-					reader.readAsText(file);
-				else
-					reader.readAsArrayBuffer(file);
-				return true;
+				for(var i=0; i < files.length; i++)
+				{
+					this.loadFileToMemory( files[i], function(file,options){
+						ImporterModule.processResource( file.name, file, options );
+					},options);
+				}
+				return;
 			}
+
+			//one single file
+			var file = files[0];
+			this.loadFileToMemory( file, this.showImportResourceDialog.bind(this), options );
+			return true;
 		}
 
 		//drag something on the canvas
@@ -114,6 +99,39 @@ var ImporterModule  = {
 		return true;
 	},
 
+	//just guesses the type and loads it into memory
+	loadFileToMemory: function(file, callback, options)
+	{
+		if(!file)
+			return;
+
+		var reader = new FileReader();
+		reader.onload = function(e) {
+			try
+			{
+				file.data = e.target.result;
+				if(callback)
+					callback(file,options);
+			}
+			catch (err)
+			{
+				console.log("Error processing data: " + err);
+			}
+		};
+
+		var extension = LS.ResourcesManager.getExtension( file.name );
+		var format_info = LS.Formats.supported[ extension ];
+		var format_type = "binary";
+		if(format_info)
+			format_type = format_info.format;
+
+		if(format_type == "string" || format_type == "text" || format_type == "json" || format_type == "xml")
+			reader.readAsText(file);
+		else
+			reader.readAsArrayBuffer(file);
+	},
+
+	//show the dialog to perform actions to the imported file
 	showImportResourceDialog: function( file, options )
 	{
 		options = options || {};
@@ -249,7 +267,11 @@ var ImporterModule  = {
 					inspector.addTitle("Texture");
 					if(drop_node)
 					{
-						inspector.addCheckbox("Add to node material", insert_into, { callback: function(v) { insert_into = v; }});
+						inspector.addCombo("Action", ImporterModule.preferences.texture_action, { values: {"Replace in material":"replace","Insert as Sprite":"sprite"}, callback: function(v) { 
+							ImporterModule.preferences.texture_action = v;
+						}});
+
+						//inspector.addCheckbox("Add to node material", insert_into, { callback: function(v) { insert_into = v; }});
 						if(material)
 						{
 							var channels = material.getTextureChannels();
@@ -304,6 +326,7 @@ var ImporterModule  = {
 			if(insert_into)
 			{
 				options.mesh_action = ImporterModule.preferences.mesh_action;
+				options.texture_action = ImporterModule.preferences.texture_action;
 				DriveModule.onInsertResourceInScene( resource, options );
 			}
 

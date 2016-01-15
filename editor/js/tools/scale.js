@@ -72,7 +72,6 @@ var scaleNodeTool = {
 	mousedown: function(e) {
 		if(!this.enabled || e.which != GL.LEFT_MOUSE_BUTTON) return;
 
-
 		var node = SelectionModule.getSelectedNode();
 		if(!node || !node.transform) 
 			return;

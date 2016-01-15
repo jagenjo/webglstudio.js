@@ -126,9 +126,11 @@ var EditorModule = {
 		mainmenu.add("Node/Create light", { callback: function() { EditorModule.createLightNode(); }} );
 		//mainmenu.separator("Node");
 		mainmenu.add("Node/Primitive/Plane", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.PLANE, size: 10, subdivisions: 10, align_z: true}); }});
+		mainmenu.add("Node/Primitive/Plane Y", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.PLANE, size: 10, subdivisions: 10, align_z: false}); }});
 		mainmenu.add("Node/Primitive/Cube", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.CUBE, size: 10, subdivisions: 10 }); }});
 		mainmenu.add("Node/Primitive/Sphere", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.SPHERE, size: 10, subdivisions: 32 }); }});
 		mainmenu.add("Node/Primitive/Hemisphere", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.HEMISPHERE, size: 10, subdivisions: 32 }); }});
+		mainmenu.add("Node/Templates/Sprite", { callback: function() { EditorModule.createTemplate("Sprite",[{ component: "Sprite" }]); }});
 		mainmenu.add("Node/Templates/ParticleEmissor", { callback: function() { EditorModule.createTemplate("Particles",[{ component: "ParticleEmissor" }]); }});
 		mainmenu.add("Node/Templates/MeshRenderer", { callback: function() { EditorModule.createTemplate("Mesh",[{ component: "MeshRenderer" }]); }});
 
@@ -268,6 +270,11 @@ var EditorModule = {
 		dialog.add( inspector_widget );
 		dialog.adjustSize();
 		return dialog;
+	},
+
+	getInspectedInstance: function()
+	{
+		return this.inspector.instance;
 	},
 
 	checkJSON: function( object )
@@ -516,12 +523,16 @@ var EditorModule = {
 		
 		var widgets = new LiteGUI.Inspector();
 
+		var container = widgets.startContainer();
+		container.style.height = "300px";
+		container.style.overflow = "auto";
+
 		if(layers !== undefined)
 			widgets.widgets_per_row = 2;
 
 		for(var i = 0; i < 32; ++i)
 		{
-			widgets.addString(null, scene.layer_names[i] || ("layer"+i), { layer: i, width: "80%", callback: function(v) {
+			widgets.addString(null, scene.layer_names[i] || ("layer"+i), { layer: i, width: layers !== undefined ? "80%" : null, callback: function(v) {
 				scene.layer_names[ this.options.layer ] = v;
 			}});
 
@@ -538,6 +549,8 @@ var EditorModule = {
 		}
 
 		widgets.widgets_per_row = 1;
+		widgets.endContainer();
+
 		widgets.addButtons(null,["Close"], function(v){
 			if(v == "Close")
 				dialog.close();
@@ -1206,6 +1219,86 @@ var EditorModule = {
 		//*/
 	},
 
+	//shows a dialog to select an existing component
+	showSelectComponent: function( selected_component, filter_type, on_complete )
+	{
+		var dialog = new LiteGUI.Dialog("dialog_component", {title:"Select Component", close: true, minimize: true, width: 400, height: 610, scroll: false, draggable: true});
+		dialog.show('fade');
+
+		var area = new LiteGUI.Area();
+		dialog.add( area );
+
+		area.split("horizontal",["50%",null]);
+
+		var selected_node = selected_component ? selected_component._root : null;
+		var scene = LS.GlobalScene;
+
+		var filter_component = null;
+		if(filter_type)
+			filter_component = LS.Components[ filter_type ];
+
+		var nodes = [];
+		for(var i = 0; i < scene._nodes.length; i++ ) //skip root node
+		{
+			var node = scene._nodes[i];
+			var v = { name: node._name, node: node };
+			if( filter_component && !node.getComponent( filter_component ) )
+				continue;
+			if(node == selected_node)
+				v.selected = true;
+			nodes.push( v );
+		}
+
+		var widgets = new LiteGUI.Inspector();
+		widgets.addTitle( "Nodes ");
+		widgets.addList( null, nodes, { height: 160, callback: inner_selected_node });
+		area.getSection(0).add( widgets );
+
+		var widgets_right = new LiteGUI.Inspector();
+		var components_list = [];
+		widgets_right.addTitle( "Components");
+		var widget_components_list = widgets_right.addList( null, components_list, { height: 140, callback: inner_selected_component });
+		widgets_right.addButton(null,"Select", { className:"big", callback: function() { 
+			if(!selected_component)
+			{
+				dialog.close();
+				return;
+			}
+			dialog.close();
+			if(on_complete)
+				on_complete( selected_component );
+			RenderModule.requestFrame();
+		}});
+		area.getSection(1).add( widgets_right );
+
+		dialog.adjustSize();
+
+		function inner_selected_node(value)
+		{
+			if(!value)
+				return;
+
+			selected_node = value.node;
+
+			var components = selected_node.getComponents();
+			components_list = [];
+			for(var i = 0; i < components.length; i++)
+			{
+				var compo = components[i];
+				var type = LS.getObjectClassName(compo);
+				if(filter_component && filter_component != compo.constructor)
+					continue;
+				components_list.push( { name: type, uid: compo.uid, component: compo });
+			}
+			widget_components_list.updateItems( components_list );
+		}
+
+		function inner_selected_component(value)
+		{
+			selected_component = value.component;
+		}
+	},
+
 	centerCameraInSelection: function()
 	{
 		var center = SelectionModule.getSelectionCenter();
@@ -1789,7 +1882,49 @@ LiteGUI.Inspector.prototype.addRenderSettings = function(name, value, options)
 }
 LiteGUI.Inspector.widget_constructors["RenderSettings"] = "addRenderSettings";
 
+//to select a node, value must be a valid node identifier (not the node itself)
+LiteGUI.Inspector.prototype.addComponent = function( name, value, options)
+{
+	options = options || {};
+	value = value || "";
+	var that = this;
+	this.values[ name ] = value;
+	
+	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
+	var input = element.querySelector(".wcontent input");
 
+	input.addEventListener("change", function(e) { 
+		LiteGUI.Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
+	});
+	
+	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
+		EditorModule.showSelectComponent( value, options.filter, options.callback );
+		if(options.callback_button)
+			options.callback_button.call(element, $(element).find(".wcontent input").val() );
+	});
+
+	element.addEventListener("drop", function(e){
+		e.preventDefault();
+		e.stopPropagation();
+		var node_id = e.dataTransfer.getData("uid");
+		input.value = node_id;
+		LiteGUI.trigger( input, "change" );
+		return false;
+	}, true);
+
+
+	//after selecting a node
+	function inner_onselect( node )
+	{
+		input.value = node ? node._name : "";
+		LiteGUI.trigger( input, "change" );
+	}
+
+	this.tab_index += 1;
+	this.append(element);
+	return element;
+}
+LiteGUI.Inspector.widget_constructors["component"] = "addComponent";
 
 
 

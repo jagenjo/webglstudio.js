@@ -115,25 +115,44 @@ var LiteGUI = {
 	*/
 	bind: function( element, event, callback )
 	{
+		if(!element)
+			throw("Cannot bind to null");
+		if(!event)
+			throw("Event bind missing");
 		if(!callback)
-			throw("bind callback missing");
-		if(element.addEventListener)
-			element.addEventListener(event, callback);
-		else if(element.__events)
-			element.__events.addEventListener( event, callback );
-		else
-		{
-			//create a dummy HTMLentity so we can use it to bind HTML events
-			var dummy = document.createElement("span");
-			dummy.widget = element; //double link
-			Object.defineProperty( element, "__events", {
-				enumerable: false,
-				configurable: false,
-				writable: false,
-				value: dummy
-			});
+			throw("Bind callback missing");
 
-			element.__events.addEventListener( event, callback );
+		if(element.constructor === String)
+			element = document.querySelectorAll( element );
+			
+		if(element.constructor === NodeList)
+		{
+			for(var i = 0; i < element.length; ++i)
+				inner( element[i] );
+		}
+		else
+			inner( element );
+
+		function inner( element )
+		{
+			if(element.addEventListener)
+				element.addEventListener(event, callback);
+			else if(element.__events)
+				element.__events.addEventListener( event, callback );
+			else
+			{
+				//create a dummy HTMLentity so we can use it to bind HTML events
+				var dummy = document.createElement("span");
+				dummy.widget = element; //double link
+				Object.defineProperty( element, "__events", {
+					enumerable: false,
+					configurable: false,
+					writable: false,
+					value: dummy
+				});
+
+				element.__events.addEventListener( event, callback );
+			}
 		}
 	},
 
@@ -3137,7 +3156,7 @@ function beautifyJSON( code, skip_css )
 	* @class Tabs
 	* @constructor
 	*/
-	function Tabs(id,options)
+	function Tabs( id, options )
 	{
 		options = options || {};
 		this.options = options;
@@ -3310,7 +3329,7 @@ function beautifyJSON( code, skip_css )
 	/**
 	* Create a new tab, where id is a unique identifier
 	* @method addTab
-	* @param {String} id
+	* @param {String} id could be null then a random id is generated
 	* @param {Object} options { title: tab text, callback: called when selected, callback_leave: callback when leaving, content: HTML content, closable: if it can be closed (callback is onclose), tab_width: size of the tab, tab_className: classes for the tab element, id: content id, size: full means all, mode: "vertical" or "horizontal", button: if it is a button tab, not a selectable tab}
 	* @param {bool} skip_event prevent dispatching events
 	* @return {Object} an object containing { id, tab, content }
@@ -3322,6 +3341,8 @@ function beautifyJSON( code, skip_css )
 			options = { callback: options };
 
 		var that = this;
+		if(id === undefined || id === null)
+			id = "rand_" + ((Math.random() * 1000000)|0);
 
 		//the tab element
 		var element = document.createElement("LI");
@@ -3356,6 +3377,8 @@ function beautifyJSON( code, skip_css )
 			else
 				this.list.appendChild(element);
 		}
+		else if( this.plus_tab )
+			this.list.insertBefore( element, this.plus_tab );
 		else
 			this.list.appendChild(element);
 
@@ -3424,6 +3447,7 @@ function beautifyJSON( code, skip_css )
 			else
 				content.appendChild(options.content);
 		}
+
 		this.root.appendChild(content);
 
 		//when clicked
@@ -3442,7 +3466,7 @@ function beautifyJSON( code, skip_css )
 		var tab_info = {id: id, tab: element, content: content, add: function(v) { this.content.appendChild(v.root || v); }};
 		if(options.onclose)
 			tab_info.onclose = options.onclose;
-		this.tabs[id] = tab_info;
+		this.tabs[ id ] = tab_info;
 
 		//context
 		element.addEventListener("contextmenu", (function(e) { 
@@ -3458,6 +3482,13 @@ function beautifyJSON( code, skip_css )
 			this.selectTab( id, options.skip_callbacks );
 
 		return tab_info;
+	}
+
+	Tabs.prototype.addPlusTab = function( callback )
+	{
+		if(this.plus_tab)
+			console.warn("There is already a plus tab created in this tab widget");
+		this.plus_tab = this.addTab( "plus_tab", { title: "+", tab_width: 20, button: true, callback: callback, skip_callbacks: true });
 	}
 
 	//this is tab
@@ -3867,6 +3898,7 @@ function beautifyJSON( code, skip_css )
 		var that = this;
 		options = options || {allow_rename: false, allow_drag: true, allow_multiselection: false};
 		this.options = options;
+		this.indent_offset = options.indent_offset || 0;
 
 		if(options.height)
 			this.root.style.height = typeof(options.height) == "string" ? options.height : Math.round(options.height) + "px";
@@ -3929,7 +3961,7 @@ function beautifyJSON( code, skip_css )
 	* @param {object} options
 	* @return {DIVElement}
 	*/
-	Tree.prototype.insertItem = function(data, parent_id, position, options)
+	Tree.prototype.insertItem = function( data, parent_id, position, options)
 	{
 		if(!parent_id)
 		{
@@ -3948,7 +3980,7 @@ function beautifyJSON( code, skip_css )
 		return element;
 	}
 
-	Tree.prototype.createAndInsert = function(data, options, parent_id, element_index )
+	Tree.prototype.createAndInsert = function( data, options, parent_id, element_index )
 	{
 		//find parent
 		var parent_element_index = -1;
@@ -4010,7 +4042,7 @@ function beautifyJSON( code, skip_css )
 
 		var indent = element.querySelector(".indentblock");
 		if(indent)
-			indent.style.paddingLeft = (child_level * Tree.INDENT ) + "px"; //inner padding
+			indent.style.paddingLeft = ((child_level + this.indent_offset) * Tree.INDENT ) + "px"; //inner padding
 		
 		element.dataset["level"] = child_level;
 
@@ -4409,7 +4441,7 @@ function beautifyJSON( code, skip_css )
 					if(name)
 						indent.style.paddingLeft = 0;
 					else
-						indent.style.paddingLeft = paddingLeft = (parseInt(childNode.dataset["level"]) * Tree.INDENT) + "px";
+						indent.style.paddingLeft = paddingLeft = ( (parseInt(childNode.dataset["level"]) + this.indent_offset) * Tree.INDENT) + "px";
 				}
 			}
 			else
@@ -4554,7 +4586,7 @@ function beautifyJSON( code, skip_css )
 			return false;
 		var r = rects[0];
 		var h = r.height;
-		var x = parseInt( item.dataset["level"] ) * Tree.INDENT + 50;
+		var x = ( parseInt( item.dataset["level"] ) + this.indent_offset) * Tree.INDENT + 50;
 
 		this.root.scrollTop = item.offsetTop - (h * 0.5)|0;
 		if( r.width * 0.75 < x )
@@ -4978,6 +5010,9 @@ function beautifyJSON( code, skip_css )
 		this.content.appendChild( litegui_item.root );
 	}
 
+	LiteGUI.Panel = Panel;
+})();
+(function(){
 	/****************** DIALOG **********************/
 	/**
 	* Dialog
@@ -5083,7 +5118,20 @@ function beautifyJSON( code, skip_css )
 		if(detach_button)
 			detach_button.addEventListener("click", function() { that.detachWindow(); });
 
-		this.makeDialog(options);
+		//size, draggable, resizable, etc
+		this.enableProperties(options);
+
+		//attach
+		if(options.attach || options.parent)
+		{
+			var parent = null;
+			if(options.parent)
+				parent = typeof(options.parent) == "string" ? document.querySelector(options.parent) : options.parent;
+			if(!parent)
+				parent = LiteGUI.root;
+			parent.appendChild( this.root );
+			this.center();
+		}
 	}
 
 	/**
@@ -5095,7 +5143,8 @@ function beautifyJSON( code, skip_css )
 		this.content.appendChild( litegui_item.root || litegui_item );
 	}
 
-	Dialog.prototype.makeDialog = function(options)
+	//takes the info from the parent to 
+	Dialog.prototype.enableProperties = function(options)
 	{
 		options = options || {};
 
@@ -5134,16 +5183,6 @@ function beautifyJSON( code, skip_css )
 
 		if(options.resizable)
 			this.setResizable();
-
-		var parent = null;
-		if(options.parent)
-			parent = typeof(options.parent) == "string" ? document.querySelector(options.parent) : options.parent;
-
-		if(!parent)
-			parent = LiteGUI.root;
-
-		parent.appendChild( this.root );
-		this.center();
 	}
 
 	Dialog.prototype.setResizable = function()
@@ -5322,6 +5361,9 @@ function beautifyJSON( code, skip_css )
 	{
 		time = time || 100;
 		this.root.style.outline = "1px solid white";
+		var doc = this.root.ownerDocument;
+		var w = doc.defaultView || doc.parentWindow;
+		w.focus();
 		setTimeout( (function(){
 			this.root.style.outline = null;
 		}).bind(this), time );
@@ -5418,10 +5460,22 @@ function beautifyJSON( code, skip_css )
 	* shows a hidden dialog
 	* @method show
 	*/
-	Dialog.prototype.show = function(v,callback)
+	Dialog.prototype.show = function( v, reference_element )
 	{
 		if(!this.root.parentNode)
-			LiteGUI.add( this );
+		{
+			if(!reference_element)
+				LiteGUI.add( this );
+			else
+			{
+				var doc = reference_element.ownerDocument;
+				var parent = doc.querySelector(".litegui-wrap") || doc.body;
+				parent.appendChild( this.root );
+				var w = doc.defaultView || doc.parentWindow;
+				w.focus();
+			}
+			this.center();
+		}
 
 		//$(this.root).show(v,null,100,callback);
 		if(!this.detach_window)
@@ -5435,7 +5489,7 @@ function beautifyJSON( code, skip_css )
 	* hides the dialog
 	* @method hide
 	*/
-	Dialog.prototype.hide = function(v,callback)
+	Dialog.prototype.hide = function( v )
 	{
 		this.root.style.display = "none";
 		LiteGUI.trigger(this, "hidden");
@@ -5598,7 +5652,6 @@ function beautifyJSON( code, skip_css )
 		}
 	}
 
-	LiteGUI.Panel = Panel;
 	LiteGUI.Dialog = Dialog;
 })();
 /* Attributes editor panel 
@@ -5612,6 +5665,7 @@ function beautifyJSON( code, skip_css )
 
 */
 
+//TODO: remove jQuery
 jQuery.fn.wchange = function(callback) {
 	$(this[0]).on("wchange",callback);
 };
@@ -5643,7 +5697,7 @@ jQuery.fn.wclick = function(callback) {
 * @constructor
 */
 
-function Inspector( id,options )
+function Inspector( id, options )
 {
 	options = options || {};
 	this.root = document.createElement("DIV");
@@ -5657,13 +5711,13 @@ function Inspector( id,options )
 	if(id)
 		this.root.id = id;
 
-	this.values = {};
 	this.sections = [];
+	this.values = {};
 	this.widgets = [];
 	this.widgets_by_name = {};
 	this.row_number = 0; //used to detect if element is even (cannot use CSS, special cases everywhere)
 
-	this.addSection();
+	this.addContainer(); //add empty container
 	this.tab_index = Math.floor(Math.random() * 10000);
 
 	if(options.width)
@@ -5689,12 +5743,13 @@ function Inspector( id,options )
 	this.widgets_per_row = options.widgets_per_row || 1;
 }
 
-Inspector.prototype.appendTo = function(parent, at_front)
+//append the inspector to a parent
+Inspector.prototype.appendTo = function( parent, at_front)
 {
-	if(at_front)
+	if( at_front )
 		parent.insertBefore( this.root, parent.firstChild );
 	else
-		parent.appendChild(this.root);
+		parent.appendChild( this.root );
 }
 
 /**
@@ -5708,13 +5763,14 @@ Inspector.prototype.clear = function()
 	while(this.root.hasChildNodes())
 		this.root.removeChild( this.root.lastChild );
 
-	this.sections = [];
 	this.values = {};
 	this.widgets = [];
 	this.widgets_by_name = {};
-	this.current_container = null;
+	this.sections = [];
+	this.current_section = null;
+	this._current_container = null;
 	this._current_container_stack = null;
-	this.addSection();
+	this.addContainer();
 }
 
 /**
@@ -5727,15 +5783,10 @@ Inspector.prototype.refresh = function()
 		this.on_refresh();
 }
 
-Inspector.prototype.append = function(widget, options)
+//append widget to this inspector (TODO: rename to appendWidget)
+Inspector.prototype.append = function( widget, options )
 {
-	var root = this.root;
-	if( this.current_container )
-		root = this.current_container;
-	else if( this.current_group_content )
-		root = this.current_group_content;
-	else if( this.current_section_content )
-		root = this.current_section_content;
+	var root = this._current_container || this.root;
 
 	if(options && options.replace)
 		options.replace.parentNode.replaceChild( widget, options.replace );
@@ -5743,21 +5794,47 @@ Inspector.prototype.append = function(widget, options)
 		root.appendChild( widget );
 }
 
-Inspector.prototype.pushContainer = function( element )
+Inspector.prototype.pushContainer = function( container )
 {
-	if(!this._current_container_stack)
-		this._current_container_stack = [ element ];
+	if( !this._current_container_stack )
+		this._current_container_stack = [ container ];
 	else
-		this._current_container_stack.push( element );
+	{
+		if( this._current_container_stack.indexOf( container ) != -1 )
+		{
+			console.warn("Container already in the stack");
+			return;
+		}
 
-	this.current_container = element;
+		this._current_container_stack.push( container );
+	}
+
+	this._current_container = container;
 }
 
-Inspector.prototype.popContainer = function()
+Inspector.prototype.isContainerInStack = function( container )
+{
+	if(!this._current_container_stack)
+		return false;
+	if( this._current_container_stack.indexOf( container ) != -1 )
+		return true;
+	return false;
+}
+
+Inspector.prototype.popContainer = function( container )
 {
 	if(this._current_container_stack && this._current_container_stack.length)
 	{
-		this._current_container_stack.pop();
+		if(container)
+		{
+			var aux = this._current_container_stack.pop();
+			while(aux && aux != container)
+				aux = this._current_container_stack.pop();
+		}
+		else
+		{
+			this._current_container_stack.pop();
+		}
 		this.current_container = this._current_container_stack[ this._current_container_stack.length - 1 ];
 	}
 	else
@@ -6060,8 +6137,6 @@ Inspector.prototype.createWidget = function(name, content, options)
 Inspector.onWidgetChange = function( element, name, value, options, expand_value )
 {
 	this.values[ name ] = value;
-	//LiteGUI.trigger( this.current_section, "wchange", value );
-	$(this.current_section).trigger("wchange",value); //used for undo //TODO: REMOVE
 	var r = undefined;
 	if(options.callback)
 	{
@@ -6071,6 +6146,8 @@ Inspector.onWidgetChange = function( element, name, value, options, expand_value
 			r = options.callback.call( element, value );
 	}
 
+	//LiteGUI.trigger( this.current_section, "wchange", value );
+	$(this.current_section).trigger("wchange",value); //used for undo //TODO: use LiteGUI.trigger
 	//LiteGUI.trigger( element, "wchange", value );
 	$(element).trigger("wchange",value); //TODO: REPLACE by LiteGUI.trigger
 	if(this.onchange) 
@@ -6181,185 +6258,6 @@ Inspector.prototype.applyOptions = function( element, options )
 		element.style.height = LiteGUI.sizeToCSS( options.height );
 }
 
-//it is like an empty widget
-Inspector.prototype.addContainer = function(name, options)
-{
-	var element = this.startContainer(null,options);
-	this.endContainer();
-	return element;
-}
-
-//creates a container that will be used to next widgets
-Inspector.prototype.startContainer = function(name, options)
-{
-	options = this.processOptions(options);
-
-	var element = document.createElement("DIV");
-	element.className = "wcontainer";
-	this.applyOptions(element, options);
-
-	this.append( element );
-	this.pushContainer( element );
-
-	if(options.widgets_per_row)
-		this.widgets_per_row = options.widgets_per_row;
-
-	element.refresh = function()
-	{
-		if(element.on_refresh)
-			element.on_refresh.call(this, element);
-	}
-	return element;
-}
-
-Inspector.prototype.endContainer = function(name, options)
-{
-	this.popContainer();
-}
-
-//it is like a group but it is collapsable and has a padding to differenciate from other sections
-Inspector.prototype.addSection = function(name, options)
-{
-	if(this.current_group)
-		this.endGroup();
-
-	options = this.processOptions(options);
-
-	var element = document.createElement("DIV");
-	element.className = "wsection";
-	if(!name) element.className += " notitle";
-	if(options.className)
-		element.className += " " + options.className;
-	if(options.collapsed)
-		element.className += " collapsed";
-
-	if(options.id)
-		element.id = options.id;
-	if(options.instance)
-		element.instance = options.instance;
-
-	var code = "";
-	if(name)
-		code += "<div class='wsectiontitle'>"+(options.no_collapse ? "" : "<span class='switch-section-button'></span>")+name+"</div>";
-	code += "<div class='wsectioncontent'></div>";
-	element.innerHTML = code;
-	//this.append( element ); ??
-	this.root.appendChild( element );
-
-	if(name)
-		element.querySelector(".wsectiontitle").addEventListener("click",function(e) {
-			if(e.target.localName == "button") 
-				return;
-			element.classList.toggle("collapsed");
-			var seccont = element.querySelector(".wsectioncontent");
-			seccont.style.display = seccont.style.display === "none" ? null : "none";
-			if(options.callback)
-				options.callback.call( element, !element.classList.contains("collapsed") );
-		});
-
-	if(options.collapsed)
-		element.querySelector(".wsectioncontent").style.display = "none";
-
-	this.setCurrentSection( element );
-
-	if(options.widgets_per_row)
-		this.widgets_per_row = options.widgets_per_row;
-
-	element.refresh = function()
-	{
-		if(element.on_refresh)
-			element.on_refresh.call(this, element);
-	}
-
-	return element;
-}
-
-//change current section (allows to add widgets to previous sections)
-Inspector.prototype.setCurrentSection = function( element )
-{
-	if(this.current_group)
-		this.endGroup();
-
-	this.current_section = element;
-	this.current_section_content = element.querySelector(".wsectioncontent");
-	this.content = this.current_section_content; //shortcut
-}
-
-Inspector.prototype.getCurrentSection = function()
-{
-	return this.current_section;
-}
-
-//similar to addSection ?
-Inspector.prototype.beginGroup = function(name, options)
-{
-	options = this.processOptions(options);
-
-	if(this.current_group)
-		this.endGroup();
-
-	var element = document.createElement("DIV");
-	element.className = "wgroup";
-	name = name || "";
-	element.innerHTML = "<div class='wgroupheader "+ (options.title ? "wtitle" : "") +"'><span class='wgrouptoggle'>-</span>"+name+"</div>";
-
-	var content = document.createElement("DIV");
-	content.className = "wgroupcontent";
-	if(options.collapsed)
-		content.style.display = "none";
-
-	element.appendChild( content );
-
-	var collapsed = options.collapsed || false;
-	element.querySelector(".wgroupheader").addEventListener("click", function() { 
-		var style = element.querySelector(".wgroupcontent").style;
-		style.display = style.display === "none" ? "" : "none";
-		collapsed = !collapsed;
-		element.querySelector(".wgrouptoggle").innerHTML = (collapsed ? "+" : "-");
-	});
-
-	this.append(element, options);
-
-	this.current_group = element;
-	this.current_group_content = content;
-	this.content = this.current_group_content; //shortcut
-
-	return element;
-}
-
-Inspector.prototype.endGroup = function(options)
-{
-	this.current_group = null;
-	this.current_group_content = null;
-	this.content = this.current_section_content; //shortcut
-}
-
-/**
-* Creates a title bar in the widgets list to help separate widgets
-* @method addTitle
-* @param {string} title 
-* @param {Object} options
-* @return {HTMLElement} the widget in the form of the DOM element that contains it
-**/
-Inspector.prototype.addTitle = function(title,options)
-{
-	options = this.processOptions(options);
-
-	var element = document.createElement("DIV");
-	var code = "<span class='wtitle'><span class='text'>"+title+"</span>";
-	if(options.help)
-	{
-		code += "<span class='help'><div class='help-content'>"+options.help+"</div></span>";
-	}
-	code += "</span>";
-	element.innerHTML = code;
-	element.setValue = function(v) { 
-		this.querySelector(".text").innerHTML = v;
-	};
-	this.row_number = 0;
-	this.append(element, options);
-	return element;
-}
 
 /**
 * Creates a line
@@ -7512,12 +7410,12 @@ Inspector.prototype.addList = function(name, values, options)
 	function inner_item_click(e) { 
 
 		if(options.multiselection)
-			$(this).toggleClass("selected");
+			this.classList.toggle("selected");
 		else
 		{
 			//batch action, jquery...
 			$(element).find("li").removeClass("selected");
-			$(this).addClass("selected");
+			this.classList.add("selected");
 		}
 
 		var value = values[ this.dataset["pos"] ];
@@ -7526,8 +7424,9 @@ Inspector.prototype.addList = function(name, values, options)
 		$(element).trigger("wadded",value);
 	}
 
-	element.updateItems = function(new_values)
+	element.updateItems = function( new_values, item_selected )
 	{
+		item_selected = item_selected || options.selected;
 		var code = "";
 		values = new_values;
 		if(values)
@@ -7545,18 +7444,20 @@ Inspector.prototype.addList = function(name, values, options)
 				}
 
 				var selected = false;
-				if( (typeof(values[i]) == "object" && values[i].selected) || (options.selected == values[i] ))
+				if( (typeof(values[i]) == "object" && values[i].selected) || (item_selected == values[i]) )
 					selected = true;
 				code += "<li class='item-" + i + " " + (selected ? "selected":"") + "' data-name='" + item_name + "' data-pos='"+i+"'>" + icon + item_title + "</li>";
 			}
 
-		this.querySelector("ul").innerHTML = code;
-		$(this).find(".wcontent li").click( inner_item_click );
+		var ul = this.querySelector("ul");
+		ul.innerHTML = code;
+		LiteGUI.bind( ul.querySelectorAll("li"), "click", inner_item_click );
+		//$(this).find(".wcontent li").click( inner_item_click );
 	}
 
 	element.removeItem = function(name)
 	{
-		var items = $(element).find(".wcontent li");
+		var items = element.querySelectorAll(".wcontent li");
 		for(var i = 0; i < items.length; i++)
 		{
 			if(items[i].dataset["name"] == name)
@@ -7966,6 +7867,217 @@ Inspector.prototype.addDataTree = function(name, value, options)
 	this.append(element,options);
 	return element;
 }
+
+//***** containers ********/
+//creates an empty container but it is not set active
+Inspector.prototype.addContainer = function(name, options)
+{
+	var element = this.startContainer(null,options);
+	this.endContainer();
+	return element;
+}
+
+//creates an empty container and sets its as active
+Inspector.prototype.startContainer = function(name, options)
+{
+	options = this.processOptions(options);
+
+	var element = document.createElement("DIV");
+	element.className = "wcontainer";
+	this.applyOptions(element, options);
+
+	this.append( element );
+	this.pushContainer( element );
+
+	if(options.widgets_per_row)
+		this.widgets_per_row = options.widgets_per_row;
+
+	element.refresh = function()
+	{
+		if(element.on_refresh)
+			element.on_refresh.call(this, element);
+	}
+	return element;
+}
+
+Inspector.prototype.endContainer = function(name, options)
+{
+	this.popContainer();
+}
+
+//it is like a group but they cant be nested inside containers
+Inspector.prototype.addSection = function( name, options )
+{
+	options = this.processOptions(options);
+	var that = this;
+
+	if(this.current_section)
+		this.current_section.end();
+
+	var element = document.createElement("DIV");
+	element.className = "wsection";
+	if(!name) 
+		element.className += " notitle";
+	if(options.className)
+		element.className += " " + options.className;
+	if(options.collapsed)
+		element.className += " collapsed";
+
+	if(options.id)
+		element.id = options.id;
+	if(options.instance)
+		element.instance = options.instance;
+
+	var code = "";
+	if(name)
+		code += "<div class='wsectiontitle'>"+(options.no_collapse ? "" : "<span class='switch-section-button'></span>")+name+"</div>";
+	code += "<div class='wsectioncontent'></div>";
+	element.innerHTML = code;
+
+	//append to inspector
+	element._last_container_stack = this._current_container_stack.concat();
+	//this.append( element ); //sections are added to the root, not to the current container
+	this.root.appendChild( element );
+	this.sections.push( element );
+
+	if(name)
+		element.querySelector(".wsectiontitle").addEventListener("click",function(e) {
+			if(e.target.localName == "button") 
+				return;
+			element.classList.toggle("collapsed");
+			var seccont = element.querySelector(".wsectioncontent");
+			seccont.style.display = seccont.style.display === "none" ? null : "none";
+			if(options.callback)
+				options.callback.call( element, !element.classList.contains("collapsed") );
+		});
+
+	if(options.collapsed)
+		element.querySelector(".wsectioncontent").style.display = "none";
+
+	this.setCurrentSection( element );
+
+	if(options.widgets_per_row)
+		this.widgets_per_row = options.widgets_per_row;
+
+	element.refresh = function()
+	{
+		if(element.on_refresh)
+			element.on_refresh.call(this, element);
+	}
+
+	element.end = function()
+	{
+		if(that.current_section != this)
+			return;
+
+		that._current_container_stack = this._last_container_stack;
+
+		var content = this.querySelector(".wsectioncontent");
+		if(!content)
+			return;
+		if( that.isContainerInStack( content ) )
+			that.popContainer( content );
+		that.current_section = null;
+	}
+
+	return element;
+}
+
+//change current section (allows to add widgets to previous sections)
+Inspector.prototype.setCurrentSection = function( section )
+{
+	if( this.current_section == section )
+		return;
+
+	this.current_section = section;
+
+	var parent = section.parentNode;
+	this.popContainer( parent ); //go back till that container
+
+	var content = section.querySelector(".wsectioncontent");
+	this.pushContainer( content );
+}
+
+Inspector.prototype.getCurrentSection = function()
+{
+	for(var i = this._current_container_stack.length - 1; i >= 0; --i)
+	{
+		var container = this._current_container_stack[i];
+		if(container.classList.contains("wsectioncontent"))
+			return container.parentNode;
+	}
+	return null;
+}
+
+Inspector.prototype.endCurrentSection = function()
+{
+	if(this.current_section)
+		this.current_section.end();
+}
+
+//A container of widgets with a title 
+Inspector.prototype.beginGroup = function( name, options )
+{
+	options = this.processOptions(options);
+
+	var element = document.createElement("DIV");
+	element.className = "wgroup";
+	name = name || "";
+	element.innerHTML = "<div class='wgroupheader "+ (options.title ? "wtitle" : "") +"'><span class='wgrouptoggle'>-</span>"+name+"</div>";
+	element.group = true;
+
+	var content = document.createElement("DIV");
+	content.className = "wgroupcontent";
+	if(options.collapsed)
+		content.style.display = "none";
+	element.appendChild( content );
+
+	var collapsed = options.collapsed || false;
+	element.querySelector(".wgroupheader").addEventListener("click", function() { 
+		var style = element.querySelector(".wgroupcontent").style;
+		style.display = style.display === "none" ? "" : "none";
+		collapsed = !collapsed;
+		element.querySelector(".wgrouptoggle").innerHTML = (collapsed ? "+" : "-");
+	});
+
+	this.append( element, options );
+	this.pushContainer( content );
+	return element;
+}
+
+Inspector.prototype.endGroup = function()
+{
+	while( this._current_container && !this._current_container.classList.contains("wgroupcontent") )
+		this.popContainer();
+}
+
+/**
+* Creates a title bar in the widgets list to help separate widgets
+* @method addTitle
+* @param {string} title 
+* @param {Object} options
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
+Inspector.prototype.addTitle = function(title,options)
+{
+	options = this.processOptions(options);
+
+	var element = document.createElement("DIV");
+	var code = "<span class='wtitle'><span class='text'>"+title+"</span>";
+	if(options.help)
+	{
+		code += "<span class='help'><div class='help-content'>"+options.help+"</div></span>";
+	}
+	code += "</span>";
+	element.innerHTML = code;
+	element.setValue = function(v) { 
+		this.querySelector(".text").innerHTML = v;
+	};
+	this.row_number = 0;
+	this.append(element, options);
+	return element;
+}
+
 
 Inspector.prototype.scrollTo = function( id )
 {

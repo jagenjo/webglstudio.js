@@ -11,6 +11,9 @@ function CodingPadWidget()
 	this._binded = false;
 }
 
+CodingPadWidget.widget_name = "Coding";
+
+CORE.registerWidget( CodingPadWidget );
 
 CodingPadWidget.prototype.init = function()
 {
@@ -27,7 +30,6 @@ CodingPadWidget.prototype.init = function()
 
 	this.root.addEventListener("DOMNodeInsertedIntoDocument", function(){ that.bindEvents(); });
 	this.root.addEventListener("DOMNodeRemovedFromDocument", function(){ 
-		console.log("REMOVED FROM DOM");
 		that.unbindEvents();
 	});
 
@@ -37,7 +39,7 @@ CodingPadWidget.prototype.init = function()
 
 CodingPadWidget.createDialog = function( parent )
 {
-	var dialog = new LiteGUI.Dialog( null, { title:"Coding", fullcontent: true, closable: true, draggable: true, minimize: true, resizable: true, parent: parent, width: 500, height: 500 });
+	var dialog = new LiteGUI.Dialog( null, { title: CodingPadWidget.widget_name, fullcontent: true, closable: true, draggable: true, minimize: true, resizable: true, parent: parent, width: 500, height: 500 });
 	var coding_widget = new CodingPadWidget();
 	dialog.add( coding_widget );
 	dialog.coding_area = coding_widget;
@@ -58,11 +60,11 @@ CodingPadWidget.prototype.bindEvents = function()
 	LEvent.bind( LS.GlobalScene, "reload", this.onReload, this );
 	LEvent.bind( LS.GlobalScene, "nodeRemoved", this.onNodeRemoved, this );
 	LEvent.bind( LS.GlobalScene, "nodeComponentRemoved", this.onComponentRemoved, this );
-	LEvent.bind( LS.Components.Script, "code_error", this.onScriptError, this );
 	LEvent.bind( LS.Components.Script, "renamed", this.onScriptRenamed, this );
 	LEvent.bind( CodingPadWidget, "code_changed", this.onCodeChanged, this);
 
-	LEvent.bind( LS, "code_error", this.onGlobalError, this );
+	LEvent.bind( LS.Components.Script, "code_error", this.onScriptError, this );
+	LEvent.bind( LS, "exception", this.onGlobalError, this );
 }
 
 CodingPadWidget.prototype.unbindEvents = function()
@@ -462,9 +464,8 @@ CodingPadWidget.prototype.onShowHelp = function()
 
 CodingPadWidget.prototype.onScriptError = function(e, instance_err)
 {
-	console.trace("Script crashed");
-	var code_info = this.getCurrentCodeInfo();
-	if( code_info.instance != instance_err[0] )
+	var info = this.getCurrentCodeInfo();
+	if(!info || info.instance != instance_err[0])
 		return;
 	this.showError(instance_err[1]);
 }
@@ -484,36 +485,10 @@ CodingPadWidget.prototype.onGlobalError = function(e, err)
 
 CodingPadWidget.prototype.showError = function(err)
 {
-	//LiteGUI.alert("Error in script\n" + err);
-	console.log("Coding ", err );
 	this.showInFooter("<span style='color: #F55'>Error: " + err.message + "</span>");
-	var num = this.computeLineFromError(err);
+	var num = LScript.computeLineFromError(err);
 	if(num >= 0)
 		this.markLine(num);
-}
-
-CodingPadWidget.prototype.computeLineFromError = function(err)
-{
-	if(err.lineNumber !== undefined)
-	{
-		return err.lineNumber;
-	}
-	else if(err.stack)
-	{
-		var lines = err.stack.split("\n");
-		var line = lines[1].trim();
-		var tokens = line.split(" ");
-		var pos = line.lastIndexOf(":");
-		var pos2 = line.lastIndexOf(":",pos-1);
-		var num = parseInt( line.substr(pos2+1,pos-pos2-1) );
-		var ch = parseInt( line.substr(pos+1, line.length - 2 - pos) );
-		if(tokens[1] == "Object.CodingModule.eval")
-			return -1;
-		if (line.indexOf("LScript") != -1 || line.indexOf("<anonymous>") != -1 )
-			num -= 3; //ignore the header lines of the LScript class
-		return num;
-	}
-	return -1;
 }
 
 CodingPadWidget.prototype.detachWindow = function()
@@ -532,6 +507,53 @@ CodingPadWidget.prototype.detachWindow = function()
 	{
 		this.external_window.close();
 	}
+}
+
+CodingPadWidget.prototype.onOpenCode = function()
+{
+	var that = this;
+	var dialog = new LiteGUI.Dialog(null,{ title:"Select Code", draggable: true, closable: true });
+	
+	var widgets = new LiteGUI.Inspector();
+
+	/*
+	widgets.addTitle("New Script");
+	widgets.addNode("Node", LS.GlobalScene.root.name );
+	widgets.addString("Name","unnamed");
+	widgets.addButton(null,"Create", function(){
+		//TODO
+		dialog.close();
+	});
+
+	widgets.addTitle("Open Script");
+	*/
+
+	var selected = null;
+
+	var script_components = LS.GlobalScene.findNodeComponents( LS.Components.Script );
+	var scripts = [];
+	for(var i in script_components)
+		scripts.push({ name: script_components[i].name, component: script_components[i] });
+
+	widgets.addList(null, scripts, { height: 200, callback: function(value){
+		selected = value.component;
+	}});
+
+	widgets.addButton(null,"Open Script", function(){
+		if(selected)
+		{
+			var component = selected;
+			var node = component._root;
+			that.editInstanceCode( component, { id: component.uid, title: node.id, lang: "javascript", path: component.uid, help: LS.Components.Script.coding_help });
+		}
+		dialog.close();
+	});
+
+
+	dialog.add( widgets );
+	dialog.adjustSize();
+	dialog.show( null, this.root );
+	
 }
 
 CodingPadWidget.prototype.createCodingWindow = function()
@@ -558,7 +580,12 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 	container.appendChild( coding_area.root );
 
 	//top bar
-	var top_widgets = this.top_widgets = new LiteGUI.Inspector("coding-top-widgets", { one_line: true });
+	var top_widgets = this.top_widgets = new LiteGUI.Inspector( null, { one_line: true });
+
+	//check for parsing errors
+	top_widgets.addButton(null,"Open",{ width: 60, callback: function(v) { 
+		that.onOpenCode();
+	}});
 
 	//check for parsing errors
 	top_widgets.addButton(null,"Compile",{ callback: function(v) { 
@@ -697,27 +724,58 @@ CodingPadWidget.loadCodeMirror = function()
 
 CodingPadWidget.prepareCodeMirror = function()
 {
-	CodeMirror.commands.autocomplete = function(cm) {
-		var API = CodingModule._current_API;
-		if(!API)
-			CodeMirror.showHint(editor, CodeMirror.javascriptHint);
+	CodeMirror.commands.autocomplete = function( cm ) {
+		var pad = cm.coding_area;
+		var info = pad.current_code_info;
+		if(!info)
+			return;
+
+		var lang = "javascript";
+		if(info.options && info.options.lang)
+			lang = info.options.lang;
+
+		if(lang != "javascript")
+			CodeMirror.showHint( cm, CodeMirror.hintAPI );
 		else
-			CodeMirror.showHint(cm, CodeMirror.hintAPI );
+		{
+			window.component = info.instance;
+			if(window.component)
+				window.node = window.component._root;
+			window.scene = LS.GlobalScene;
+
+			CodeMirror.showHint( cm, CodeMirror.javascriptHint );
+		}
 	}
 
-	CodeMirror.hintAPI = function(editor, options)
+	CodeMirror.hintAPI = function( cm, options)
 	{
 		var Pos = CodeMirror.Pos;
 		function getToken(e, cur) {return e.getTokenAt(cur);}
 
-		var API = CodingModule._current_API;
+		var pad = cm.coding_area;
+		var info = pad.current_code_info;
+		if(!info || !info.options || !info.options.lang )
+			return;
 
-		var cur = editor.getCursor(), token = getToken(editor, cur), tprop = token;
+		var API = CodingModule.APIs[ info.options.lang ];
+		if(!API)
+			return;
+
+		var cur = cm.getCursor(), token = getToken(cm, cur), tprop = token;
 		var found = [], start = token.string;
 
-		for(var i in API)
-			if( i.indexOf( start ) == 0)
-				found.push( i );
+		if(start == ".")
+		{
+			for(var i in API)
+				if( i.indexOf( start ) != -1)
+					found.push( i );
+		}
+		else
+		{
+			for(var i in API)
+				if( i.indexOf( start ) == 0)
+					found.push( i );
+		}
 
 		return {
 			from: Pos(cur.line, token.start),
@@ -725,16 +783,6 @@ CodingPadWidget.prepareCodeMirror = function()
 			list: found 
 		};
 	}
-
-	/* example of replace
-	CodeMirror.commands.insert_function = function(cm) {
-		//trace(cm);
-		cm.replaceRange("function() {}",cm.getCursor(),cm.getCursor());
-		var newpos = cm.getCursor();
-		newpos.ch -= 1; //set cursor inside
-		cm.setCursor(newpos);
-	}
-	*/
 
 	CodeMirror.commands.playstop_scene = function(cm) {
 		if(window.PlayModule)

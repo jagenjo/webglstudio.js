@@ -23,7 +23,7 @@ function CameraGizmo( camera )
 
 CameraGizmo.axis = [{name:"+X",v:[1,0,0],up:[0,1,0]},
 		{name:"-X",v:[-1,0,0],up:[0,1,0]},
-		{name:"+Y",v:[0,1,0],up:[0,0,1]},
+		{name:"+Y",v:[0,1,0],up:[0,0,-1]},
 		{name:"-Y",v:[0,-1,0],up:[0,0,-1]},
 		{name:"+Z",v:[0,0,1],up:[0,1,0]},
 		{name:"-Z",v:[0,0,-1],up:[0,1,0]}];
@@ -285,20 +285,27 @@ CameraGizmo.prototype.updateMesh = function()
 		[+sizex,-sizey,-sizez],[-sizex,-sizey,+sizez],[-sizex,-sizey,-sizez],[+sizex,-sizey,-sizez],[+sizex,-sizey,+sizez],[-sizex,-sizey,+sizez],
 		];
 	var coords = [];
-	addCoords(0,0);
-	addCoords(uv_size,0);
-	addCoords(uv_size*2,0);
-	addCoords(uv_size*3,0);
-	addCoords(0,uv_size);
-	addCoords(uv_size,uv_size);
+	addCoords( 0, 0);
+	addCoords( uv_size, 0);
+	addCoords( uv_size*2, 0);
+	addCoords( uv_size*3, 0);
+	addCoords( 0,uv_size );
+	addCoords( uv_size, uv_size );
 
 	var mesh = GL.Mesh.load({ vertices: vertices, coords: coords });
 	this.mesh = mesh;
 	mesh.gizmo_size = size;
 
-	function addCoords(startx, starty)
+	function addCoords(startx, starty, reverse)
 	{
-		coords.push([startx,starty],[startx+uv_size,starty+uv_size],[startx+uv_size,starty],[startx,starty],[startx,starty+uv_size],[startx+uv_size,starty+uv_size]);
+		var y = starty;
+		var y2 = starty + uv_size;
+		if(reverse)
+		{
+			y = y2;
+			y2 = starty;
+		}
+		coords.push([startx,y],[startx+uv_size,y2],[startx+uv_size,y],[startx,y],[startx,y2],[startx+uv_size,y2]);
 	}
 }
 

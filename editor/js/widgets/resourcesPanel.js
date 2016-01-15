@@ -5,6 +5,12 @@ function ResourcesPanelWidget( id )
 
 	this.selected_item = null;
 
+	this.current_folder = null;
+	this.current_bridge = null;
+
+	this.filter_by_name = null;
+	this.filter_by_category = null;
+
 	this.root = document.createElement("div");
 	this.root.className = "resources-panel";
 	this.root.style.width = "100%";
@@ -58,14 +64,32 @@ function ResourcesPanelWidget( id )
 		LiteGUI.unbind( DriveModule, "tree_updated", tree_update_callback );
 	});
 
+	//drop in browser container
+	LiteGUI.createDropArea( this.browser_container, function(e) {
+		var fullpath = that.current_folder;
+		var bridge = that.current_bridge;
+		if(!bridge)
+			return false;
+		if(bridge.onDropInFolder)
+		{
+			var r = bridge.onDropInFolder(fullpath, e);
+			if(r)
+				e.stopPropagation();
+			return r;
+		}
+	});
+
 	//EVENTS
 	this.bindEvents();
 }
 
+ResourcesPanelWidget.widget_name = "Resources";
+
+CORE.registerWidget( ResourcesPanelWidget );
 
 ResourcesPanelWidget.createDialog = function( parent )
 {
-	var dialog = new LiteGUI.Dialog( null, { title:"Resources", fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, parent: parent, width: 900, height: 500 });
+	var dialog = new LiteGUI.Dialog( null, { title: ResourcesPanelWidget.widget_name, fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, parent: parent, width: 900, height: 500 });
 	var widget = new ResourcesPanelWidget();
 	dialog.add( widget );
 	dialog.widget = widget;
@@ -73,6 +97,7 @@ ResourcesPanelWidget.createDialog = function( parent )
 	{
 		widget.unbindEvents();		
 	}
+	dialog.show();
 	return dialog;
 }
 
@@ -88,7 +113,7 @@ ResourcesPanelWidget.prototype.update = function( callback )
 
 ResourcesPanelWidget.prototype.createTreeWidget = function()
 {
-	var tree_widget = new LiteGUI.Tree( null, this.getTreeData(), {allow_rename:true} );
+	var tree_widget = new LiteGUI.Tree( null, this.getTreeData(), { allow_rename: true, indent_offset: -1 } );
 	tree_widget.root.classList.add("resources-tree");
 	tree_widget.root.style.backgroundColor = "black";
 	tree_widget.root.style.padding = "5px";
@@ -99,13 +124,17 @@ ResourcesPanelWidget.prototype.createTreeWidget = function()
 
 	this.area.add( tree_widget );
 
-	this.tree_widget.onItemContextMenu = function(e)
+	this.tree_widget.onItemContextMenu = function(e, item)
 	{
+		var fullpath = item.data.fullpath;
+		if(!fullpath)
+			return;
+
 		var menu = new LiteGUI.ContextualMenu(["Create Folder","Delete Folder","Rename"], { event: e, callback: function(v) {
 			if(v == "Create Folder")
-				that.onCreateFolderInServer();
+				DriveModule.onCreateFolderInServer( fullpath, function(){ that.refreshTree(); });
 			else if(v == "Delete Folder")
-				that.onDeleteFolderInServer();
+				DriveModule.onDeleteFolderInServer( fullpath, function(){ that.refreshTree(); });
 		}});
 		e.preventDefault();
 		return false;
@@ -128,7 +157,11 @@ ResourcesPanelWidget.prototype.createTreeWidget = function()
 		if(item.className)
 		{
 			if(item.bridge && item.bridge.onFolderSelected)
+			{
+				that.current_folder = item.fullpath;
+				that.current_bridge = item.bridge;
 				item.bridge.onFolderSelected( item, that );
+			}
 		}
 	});
 
@@ -176,6 +209,8 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 {
 	var that = this;
 	var memory_resource = LS.ResourcesManager.resources[ resource.fullpath ];
+	if(memory_resource && memory_resource.is_preview)
+		return;
 
 	//if(!this.dialog) return;
 	//var parent = $("#dialog_resources-browser .resources-container ul.file-list")[0];
@@ -188,6 +223,9 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 	if(resource.fullpath)
 		element.dataset["fullpath"] = resource.fullpath;
 	var type = element.dataset["restype"] = (resource.object_type || resource.category || LS.getObjectClassName(resource));
+	if(resource.category)
+		element.dataset["category"] = resource.category;
+
 	element.className = "resource file-item resource-" + type;
 	if(resource.id)
 		element.className += " in-server";
@@ -290,29 +328,22 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 	//when the resources is clicked
 	function item_selected(e)
 	{
-		var items = parent.querySelectorAll(".selected");
-		for(var i = 0; i < items.length; ++i)
-			items[i].classList.remove("selected");
-		element.classList.add("selected");
-		LiteGUI.trigger( that, "item_selected", element );
-		that.selected_item = element;
-		/*
-		DriveModule.selected_resource = this;
-		if(!DriveModule.on_resource_selected_callback)
+		if(!that.on_resource_selected_callback)
 		{
-			//$("#dialog_resources-browser .resources-container").find(".selected").removeClass("selected");
-			$(parent).find(".selected").removeClass("selected");
-			$(this).addClass("selected");
-			DriveModule.showResourceInfo( resource );
+			var items = parent.querySelectorAll(".selected");
+			for(var i = 0; i < items.length; ++i)
+				items[i].classList.remove("selected");
+			element.classList.add("selected");
+			LiteGUI.trigger( that, "item_selected", element );
+			that.selected_item = element;
 		}
 		else
 		{
-			var path = this.dataset["fullpath"];
-			if(!path)
-				path = this.dataset["filename"];
-			DriveModule.onResourceSelected( path );
+			var path = element.dataset["fullpath"];
+			var callback = that.on_resource_selected_callback;
+			that.on_resource_selected_callback = null;
+			callback( path );
 		}
-		*/
 	}
 
 	function item_dblclick(e)
@@ -367,7 +398,10 @@ ResourcesPanelWidget.prototype.showItemContextualMenu = function( item, event )
 		}
 		else if(action == "Delete")
 		{
-			DriveModule.serverDeleteFile( fullpath );
+			DriveModule.serverDeleteFile( fullpath, function(v) { 
+				if(v)
+					DriveModule.refreshContent();
+			});
 		}
 		else
 			LiteGUI.alert("Unknown action");
@@ -377,6 +411,7 @@ ResourcesPanelWidget.prototype.showItemContextualMenu = function( item, event )
 ResourcesPanelWidget.prototype.onTreeUpdated = function()
 {
 	this.refreshTree();
+	this.refreshContent();
 }
 
 ResourcesPanelWidget.prototype.refreshTree = function()
@@ -449,6 +484,8 @@ ResourcesPanelWidget.prototype.showInBrowserContent = function( items )
 
 ResourcesPanelWidget.prototype.filterByName = function( text )
 {
+	this.filter_by_name = text;
+
 	text = text.toLowerCase();
 	var parent = this.root.querySelector("ul.file-list");
 	var items = parent.querySelectorAll(".file-item");
@@ -466,6 +503,28 @@ ResourcesPanelWidget.prototype.filterByName = function( text )
 	}
 }
 
+ResourcesPanelWidget.prototype.filterByCategory = function( category )
+{
+	this.filter_by_category = category;
+
+	category = category.toLowerCase();
+	var parent = this.root.querySelector("ul.file-list");
+	var items = parent.querySelectorAll(".file-item");
+	for(var i = 0; i < items.length; ++i )
+	{
+		var item = items[i];
+		var item_category = item.dataset["category"];
+		if(!item_category)
+			continue;
+		item_category = item_category.toLowerCase();
+		if( item_category == category )
+			item.style.display = null;
+		else
+			item.style.display = "none";
+	}
+}
+
+
 ResourcesPanelWidget.prototype.refresh = function()
 {
 	this.tree_widget.updateTree( DriveModule.tree );
@@ -479,6 +538,7 @@ ResourcesPanelWidget.prototype.onTreeUpdate = function(e)
 {
 	this.refresh();
 }
+
 
 
 

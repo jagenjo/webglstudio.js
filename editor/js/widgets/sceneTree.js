@@ -30,10 +30,11 @@ function SceneTreeWidget( id )
 
 
 	this.tree.onBackgroundClicked = function() {
-		SelectionModule.setSelection(null);
+		EditorModule.inspect( LS.GlobalScene ); 
 	}
 
 	this.root.addEventListener("DOMNodeInsertedIntoDocument", function(){ 
+		that.bindEvents( LS.GlobalScene );
 		LEvent.bind( CORE, "global_scene_selected", that.onGlobalSceneSelected, that );
 	});
 	this.root.addEventListener("DOMNodeRemovedFromDocument", function(){ 
@@ -91,7 +92,10 @@ function SceneTreeWidget( id )
 			{
 				if(that.trigger_clicks) //special case
 					LEvent.trigger( that._scene, "node_clicked", node );
-				SelectionModule.setSelection( node ); //this triggers the selected_node event
+				SelectionModule.setSelection( node );//this triggers the selected_node event
+
+				if( EditorModule.getInspectedInstance() != node )
+					EditorModule.inspect( node );
 			}
 			else
 			{
@@ -186,7 +190,13 @@ function SceneTreeWidget( id )
 			return;
 		EditorModule.onDropOnNode( node, event );
 	}
+
+	this.refresh();
 }
+
+SceneTreeWidget.widget_name = "Scene Tree";
+
+CORE.registerWidget( SceneTreeWidget );
 
 SceneTreeWidget.createDialog = function()
 {
@@ -329,9 +339,12 @@ SceneTreeWidget.prototype.clear = function()
 }
 
 SceneTreeWidget.prototype.showContextualMenu = function(e){
-	var menu = new LiteGUI.ContextualMenu( ["Refresh"], { event: event, callback: function(value) {
+	var that = this;
+	var menu = new LiteGUI.ContextualMenu( ["Refresh","Scene"], { event: event, callback: function(value) {
 		if(value == "Refresh")
-			this.refresh();
+			that.refresh();
+		else if(value == "Scene")
+			EditorModule.inspect( LS.GlobalScene );
 	}});
 }
 
@@ -397,7 +410,8 @@ SceneTreeWidget.prototype.refresh = function()
 
 	this.clear();
 	var nodes = this._scene.getNodes();
-	for(var i = 0; i < nodes.length; ++i)
+	//skip root node
+	for(var i = 1; i < nodes.length; ++i)
 		this.addNode( nodes[i] );
 }
 

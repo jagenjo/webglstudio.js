@@ -45,7 +45,7 @@ var SelectionModule = {
 
 		//same selection
 		if(this.selection && this.selection.uid && this.selection.uid == selection.uid )
-			return;
+			return false;
 
 		//remove selection
 		clear_selection();
@@ -81,6 +81,8 @@ var SelectionModule = {
 					node._is_selected = false;
 			}
 		}
+
+		return true;
 	},
 
 	setMultipleSelection: function( selection, skip_events )

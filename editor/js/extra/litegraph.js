@@ -70,6 +70,19 @@ var LiteGraph = {
 	},
 
 	/**
+	* Adds this method to all nodetypes, existing and to be created
+	* (You can add it to LGraphNode.prototype but then existing node types wont have it)
+	* @method addNodeMethod
+	* @param {Function} func
+	*/
+	addNodeMethod: function( name, func )
+	{
+		LGraphNode.prototype[name] = func;
+		for(var i in this.registered_node_types)
+			this.registered_node_types[i].prototype[name] = func;
+	},
+
+	/**
 	* Create a node of a given type with a name. The node is not attached to any graph yet.
 	* @method createNode
 	* @param {String} type full name of the node class. p.e. "math/sin"
@@ -1884,6 +1897,7 @@ LGraphNode.prototype.disconnectOutput = function(slot, target_node)
 	if(!output.links || output.links.length == 0)
 		return false;
 
+	//one of the links
 	if(target_node)
 	{
 		if(target_node.constructor === Number)
@@ -1906,7 +1920,7 @@ LGraphNode.prototype.disconnectOutput = function(slot, target_node)
 			}
 		}
 	}
-	else
+	else //all the links
 	{
 		for(var i = 0, l = output.links.length; i < l; i++)
 		{
@@ -1916,6 +1930,7 @@ LGraphNode.prototype.disconnectOutput = function(slot, target_node)
 			var target_node = this.graph.getNodeById( link_info.target_id );
 			if(target_node)
 				target_node.inputs[ link_info.target_slot ].link = null; //remove other side link
+			delete this.graph.links[ link_id ]; //remove the link from the links pool
 		}
 		output.links = null;
 	}
@@ -2159,14 +2174,18 @@ LGraphNode.prototype.localToScreen = function(x,y, graphcanvas)
 
 /**
 * The Global Scope. It contains all the registered node classes.
+* Valid callbacks are: onNodeSelected, onNodeDeselected, onShowNodePanel, onNodeDblClicked
 *
 * @class LGraphCanvas
 * @constructor
 * @param {HTMLCanvas} canvas the canvas where you want to render (it accepts a selector in string format or the canvas itself)
 * @param {LGraph} graph [optional]
+* @param {Object} options [optional] { skip_rendering, autoresize }
 */
-function LGraphCanvas( canvas, graph, skip_render )
+function LGraphCanvas( canvas, graph, options )
 {
+	options = options || {};
+
 	//if(graph === undefined)
 	//	throw ("No graph assigned");
 
@@ -2183,8 +2202,10 @@ function LGraphCanvas( canvas, graph, skip_render )
 	this.setCanvas( canvas );
 	this.clear();
 
-	if(!skip_render)
+	if(!options.skip_render)
 		this.startRendering();
+
+	this.autoresize = options.autoresize;
 }
 
 LGraphCanvas.link_type_colors = {'number':"#AAC",'node':"#DCA"};
@@ -2794,7 +2815,11 @@ LGraphCanvas.prototype.processMouseDown = function(e)
 
 LGraphCanvas.prototype.processMouseMove = function(e)
 {
-	if(!this.graph) return;
+	if(this.autoresize)
+		this.resize();
+
+	if(!this.graph)
+		return;
 
 	this.adjustMouseEvent(e);
 	var mouse = [e.localX, e.localY];
@@ -3562,6 +3587,13 @@ LGraphCanvas.prototype.renderInfo = function( ctx, x, y )
 LGraphCanvas.prototype.drawBackCanvas = function()
 {
 	var canvas = this.bgcanvas;
+	if(canvas.width != this.canvas.width ||
+		canvas.height != this.canvas.height)
+	{
+		canvas.width = this.canvas.width;
+		canvas.height = this.canvas.height;
+	}
+
 	if(!this.bgctx)
 		this.bgctx = this.bgcanvas.getContext("2d");
 	var ctx = this.bgctx;
@@ -4779,11 +4811,13 @@ LiteGraph.createContextualMenu = function(values,options, ref_window)
 
 	root.addEventListener("mouseout", function(e) {
 		//console.log("OUT!");
-		var aux = e.toElement;
+		//check if mouse leave a inner element
+		var aux = e.relatedTarget || e.toElement;
 		while(aux != this && aux != ref_window.document)
 			aux = aux.parentNode;
 
-		if(aux == this) return;
+		if(aux == this)
+			return;
 		this.mouse_inside = false;
 		if(!this.block_close)
 			this.closeMenu();
@@ -7764,13 +7798,13 @@ if(typeof(LiteGraph) != "undefined")
 	function LGraphTexture()
 	{
 		this.addOutput("Texture","Texture");
-		this.properties = {name:""};
+		this.properties = { name:"", filter: true };
 		this.size = [LGraphTexture.image_preview_size, LGraphTexture.image_preview_size];
 	}
 
 	LGraphTexture.title = "Texture";
 	LGraphTexture.desc = "Texture";
-	LGraphTexture.widgets_info = {"name": { widget:"texture"} };
+	LGraphTexture.widgets_info = {"name": { widget:"texture"}, "filter": { widget:"checkbox"} };
 
 	//REPLACE THIS TO INTEGRATE WITH YOUR FRAMEWORK
 	LGraphTexture.loadTextureCallback = null; //function in charge of loading textures when not present in the container
@@ -7924,6 +7958,12 @@ if(typeof(LiteGraph) != "undefined")
 			return;
 
 		this._last_tex = tex;
+
+		if(this.properties.filter === false)
+			tex.setParameter( gl.TEXTURE_MAG_FILTER, gl.NEAREST );
+		else 
+			tex.setParameter( gl.TEXTURE_MAG_FILTER, gl.LINEAR );
+
 		this.setOutputData(0, tex);
 
 		for(var i = 1; i < this.outputs.length; i++)

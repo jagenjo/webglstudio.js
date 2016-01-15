@@ -40,17 +40,11 @@ GraphTabsWidget.prototype.bindEvents = function()
 	*/
 	LEvent.bind( LS.GlobalScene, "nodeRemoved", this.onNodeRemoved, this );
 	LEvent.bind( LS.GlobalScene, "nodeComponentRemoved", this.onComponentRemoved, this );
-	LEvent.bind( LS.Components.Script, "code_error", this.onScriptError, this );
-	LEvent.bind( LS.Components.Script, "renamed", this.onScriptRenamed, this );
-	LEvent.bind( CodingTabsWidget, "code_changed", this.onCodeChanged, this);
-
-	LEvent.bind( LS, "code_error", this.onGlobalError, this );
 }
 
 GraphTabsWidget.prototype.unbindEvents = function()
 {
 	LEvent.unbindAll( LS.GlobalScene, this );
-	LEvent.unbindAll( LS.Components.Script, this );
 	LEvent.unbindAll( LS, this );
 }
 

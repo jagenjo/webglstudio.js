@@ -52,12 +52,15 @@ var RenderModule = {
 					if(!RenderModule.viewport3d)
 						return;
 
+					RenderModule.render_settings.in_player = false;
 					InterfaceModule.setSidePanelVisibility(true);
 					RenderModule.viewport3d.resize(); //adapt to parent size
 					RenderModule.requestFrame();
 					//EditorModule.refreshAttributes();
 				}
 		});
+
+		this.tab.content.style.overflow = "hidden";
 
 		//create split
 		var visorarea = this.visorarea = new LiteGUI.Area("visorarea",{ height: "100%", autoresize: true, inmediateResize: true});
@@ -88,9 +91,9 @@ var RenderModule = {
 		//LiteGUI.bind( window, "resize", function() {  RenderModule.requestFrame(); }); //dont work
 		$(window).resize( function() {  RenderModule.requestFrame(); });
 
-		$(LiteGUI).bind("resized",function(){
-			canvas.width = $(canvas.parentNode).width();
-			canvas.height = $(canvas.parentNode).height();
+		LiteGUI.bind( LiteGUI, "resized",function(){
+			canvas.width = canvas.parentNode.offsetHeight;
+			canvas.height = canvas.parentNode.offsetWidth;
 			RenderModule.requestFrame();
 		});
 
@@ -108,29 +111,10 @@ var RenderModule = {
 
 		//LS.GlobalScene.init();
 		LEvent.bind( LS.GlobalScene, "change", function() { LS.GlobalScene.refresh(); }); //refresh image when something changes
-		//this.viewport3d.addModule(this); 
-
-		//DEPRECATED: Move to Widget or Helper
-		/*
-		LEvent.bind( LS.ResourcesManager, "resource_not_found", function(e,data) { RenderModule.assetNotFound(data) ; });
-		LEvent.bind( LS.ResourcesManager, "start_loading_resources", function(e ) { 
-			$("#loading_asset_icon").show();
-		});
-		LEvent.bind( LS.ResourcesManager, "end_loading_resources", function(e, status ) { 
-			$("#loading_asset_icon").hide();
-			if(status)
-				RenderModule.requestFrame();
-		});
-		*/
-
 
 		LEvent.bind( LS.ResourcesManager, "resource_loaded", function(e ) { 
 			RenderModule.requestFrame();
 		});
-
-		//cameraTool.init();
-		//this.viewport3d.modules.push(cameraTool);
-		//ToolsModule.enableTool("orbit_camera");
 
 		//init GUI
 		LiteGUI.menubar.add("View/Autorender", { type: "checkbox", instance:RenderModule, property:"auto_render" });
@@ -150,7 +134,7 @@ var RenderModule = {
 		LiteGUI.menubar.add("View/Layout/Four", { callback: function(){ RenderModule.setViewportLayout(5); } });
 
 		LiteGUI.menubar.separator("View");
-		LiteGUI.menubar.add("Actions/System/Relaunch", { callback: RenderModule.relaunch });
+		//LiteGUI.menubar.add("Actions/System/Relaunch", { callback: RenderModule.relaunch });
 
 		this.registerCommands();
 

@@ -89,15 +89,11 @@ var LoginModule = {
 
 		widgets.addString("Username", "", {});
 		widgets.addString("Password", "", { password:true, callback_enter: inner_login });
-		widgets.addButtons(null, ["Login","Guest"], { callback: function(v){ 
-			if(v == "Login")
-				inner_login();
-			else
-				inner_login_guest();
-		}});
+		widgets.addButton(null, "Login", { callback: function(v){ inner_login(); }});
 		widgets.addSeparator();
 		widgets.addButton("Forgot password","Reset my password", { callback: inner_forget_password } );
 		widgets.addButton("Don't have account","Create Account", { callback: inner_create_account } );
+		widgets.addButton("Just visiting","Login as GUEST", { callback: function(v){ inner_login_guest(); }});
 		var info = widgets.addInfo( null, "" );
 
 		dialog.content.appendChild(widgets.root);
@@ -106,8 +102,15 @@ var LoginModule = {
 		{
 			var username = widgets.values["Username"];
 			var password = widgets.values["Password"];
-			LoginModule.login(username,password, inner_result );
-			info.setValue("Waiting server...");
+			if(!username || !password)
+			{
+				info.setValue("You must specify username and password");
+			}
+			else
+			{
+				LoginModule.login(username,password, inner_result );
+				info.setValue("Waiting server...");
+			}
 		}
 
 		function inner_login_guest()

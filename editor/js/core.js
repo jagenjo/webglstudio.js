@@ -3,9 +3,9 @@ var CORE = {
 	config: null, //internal configuration
 	user_preferences: {}, //stuff that the user can change and wants to keep
 
-	//registered modules
-	Modules: [],
-	Scenes: [],
+	Modules: [], //registered modules
+	Widgets: [], //valid tab widgets (used by GenericTabsWidget)
+	Scenes: [], //current scenes
 
 	_modules_initialized: false,
 
@@ -243,6 +243,11 @@ var CORE = {
 		var old_scene = LS.GlobalScene;
 		LEvent.trigger( this, "global_scene_selected", scene );
 		LS.GlobalScene = scene;
+	},
+
+	registerWidget: function( widget )
+	{
+		this.Widgets.push( { title: widget.widget_name || widget.name, "class": widget });
 	},
 
 	// hub to redirect to the propper place

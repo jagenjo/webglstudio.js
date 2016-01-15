@@ -14,8 +14,6 @@ LS.Components.GlobalInfo["@inspector"] = function( component, inspector )
 	inspector.addColor("Ambient light", component.ambient_color, { pretitle: AnimationModule.getKeyframeCode( component, "ambient_color"), callback: function(color) { vec3.copy(component.ambient_color,color); } });
 	inspector.addSeparator();
 
-	inner_setTexture("background");
-	inner_setTexture("foreground");
 	inner_setTexture("environment");
 	inner_setTexture("irradiance");
 

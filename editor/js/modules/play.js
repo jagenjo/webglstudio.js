@@ -33,7 +33,7 @@ var PlayModule = {
 		this.play_button.addEventListener("click", this.onPlay.bind(this) );
 		this.pause_button.addEventListener("click", this.onPause.bind(this) );
 		this.stopkeep_button.addEventListener("click", this.onStopKeep.bind(this) );
-		this.launch_button.addEventListener("click", this.onLaunch.bind(this) );
+		this.launch_button.addEventListener("click", this.launch.bind(this) );
 
 		setTimeout( function() { //timeout because some weird glitch
 			document.getElementById("mainmenubar").appendChild( container );
@@ -52,7 +52,7 @@ var PlayModule = {
 			//EditorModule.refreshAttributes();
 		},
 		callback_leave: function() {
-			RenderModule.render_settings.in_player = false;
+			//RenderModule.render_settings.in_player = false;
 			//RenderModule.viewport3d.removeModule(PlayModule); //remove capture render, update and mouse
 			PlayModule.inplayer = false;
 			RenderModule.appendViewportTo(null);
@@ -139,7 +139,7 @@ var PlayModule = {
 		$(this.pause_button).attr('disabled','disabled');
 	},
 
-	onLaunch: function()
+	launch: function()
 	{
 		//open window
 		var demo_window = window.open("player.html", "", "width=800, height=600");
@@ -220,6 +220,7 @@ var PlayModule = {
 		if(!RenderModule.frame_updated || this.inplayer || LS.GlobalScene._state == LS.STOPPED || !this.render_border)
 			return;
 
+		//render inplayer border
 		var ctx = gl;
 		ctx.start2D();
 		ctx.strokeColor = [0,1,1,0.8];

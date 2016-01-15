@@ -5,16 +5,18 @@ var AddPointsTool = {
 	icon: "imgs/mini-icon-points_tool.png",
 
 	enabled: false,
-	continuous: false,
+	continuous: true,
 	mode: "camera_plane", //"colliders","render_instances","camera_plane","XZ","YZ","XY"
-	min_distance: 0,
+	min_distance: 0.1,
 	valid_modes: ["colliders","render_instances","camera_plane","XZ","YZ","XY"],
-
 	color: vec4.fromValues(1,1,1,1), //color and alpha
 	size: 1,
+	offset: 0,
 
 	last_point: null,	
+	last_normal: vec3.fromValues(0,1,0),	
 	click_pos: vec2.create(),
+	raycast_options: { normal: true },
 
 	onEnable: function()
 	{
@@ -32,7 +34,10 @@ var AddPointsTool = {
 			AddPointsTool.mode = v;
 		}});
 		inspector.addCheckbox("Continuous", this.continuous, function(v) { AddPointsTool.continuous = v; });
+		inspector.widgets_per_row = 2;
 		inspector.addNumber("Min. distance", this.min_distance, { min: 0, callback: function(v) { AddPointsTool.min_distance = v; } });
+		inspector.addNumber("Offset", this.offset, { callback: function(v) { AddPointsTool.offset = v; } });
+		inspector.widgets_per_row = 1;
 		inspector.addSeparator();
 		inspector.addColor("Color", this.color, function(v) { AddPointsTool.color.set(v); });
 		inspector.addSlider("Opacity", this.color[3], function(v) { AddPointsTool.color[3] = v; });
@@ -75,11 +80,20 @@ var AddPointsTool = {
 			EditorModule.refreshAttributes();
 			return;
 		});
-		inspector.addButton("Change flags","Set node flags", function(){
+		inspector.addButtons("Actions",["Set node flags","Clear"], function(v){
 			if(!AddPointsTool._component)
 				return;
 			var component = AddPointsTool._component;
-			component._root.flags.depth_write = false;
+
+			if(v == "Clear")
+			{
+				component.reset();
+			}
+			else //set node flags
+			{
+				component._root.flags.depth_write = false;
+			}
+
 			EditorModule.refreshAttributes();
 		});
 		inspector.addSeparator();
@@ -168,7 +182,11 @@ var AddPointsTool = {
 		if(!point || !this._component)
 			return;
 
-		if(this._component.in_world_coordinates)
+		//apply offset
+		if(this.offset)
+			vec3.scaleAndAdd( point, point, this.last_normal, this.offset );			
+
+		if( this._component.in_world_coordinates )
 		{
 			//convert to local coordinates
 			var node = this._component._root;
@@ -202,17 +220,31 @@ var AddPointsTool = {
 
 		if(this.mode == "colliders")
 		{
-			var collisions = LS.Physics.raycast( ray.start, ray.direction ); 
+			var collisions = LS.Physics.raycast( ray.start, ray.direction, this.raycast_options ); 
+			this.last_collisions = collisions;
 			if(collisions.length)
+			{
+				if( collisions[0].normal )
+					this.last_normal.set( collisions[0].normal );
+				else
+					this.last_normal.set([0,0,0]);
 				return collisions[0].position;
+			}
 			return null;
 		}
-
+		
 		if(this.mode == "render_instances")
 		{
-			var collisions = LS.Picking.raycast( ray.start, ray.direction ); 
+			var collisions = LS.Picking.raycast( ray.start, ray.direction, this.raycast_options ); 
+			this.last_collisions = collisions;
 			if(collisions.length)
+			{
+				if( collisions[0].normal )
+					this.last_normal.set( collisions[0].normal );
+				else
+					this.last_normal.set([0,0,0]);
 				return collisions[0].position;
+			}
 			return null;
 		}
 
@@ -242,6 +274,8 @@ var AddPointsTool = {
 		}
 		else
 			return null;
+
+		this.last_normal.set( plane_normal );
 
 		var result = vec3.create();
 		if( geo.testRayPlane( ray.start, ray.direction, plane_center, plane_normal, result ) )

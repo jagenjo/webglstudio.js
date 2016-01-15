@@ -13,6 +13,7 @@ var EditorView = {
 		render_all_components: false, //render gizmos even for non selected components
 		grid_scale: 1.0,
 		grid_alpha: 0.5,
+		grid_plane: "xz",
 		render_null_nodes: true,
 		render_aabb: false,
 		render_tree: false,
@@ -399,6 +400,8 @@ var EditorView = {
 		{
 			//this.grid_shader = LS.Draw.createSurfaceShader("float PI2 = 6.283185307179586; return vec4( vec3( max(0.0, cos(pos.x * PI2 * 0.1) - 0.95) * 10.0 + max(0.0, cos(pos.z * PI2 * 0.1) - 0.95) * 10.0 ),1.0);");
 			this.grid_shader = LS.Draw.createSurfaceShader("vec2 f = vec2(1.0/64.0,-1.0/64.0); float brightness = texture2D(u_texture, pos.xz + f).x * 0.6 + texture2D(u_texture, pos.xz * 0.1 + f ).x * 0.3 + texture2D(u_texture, pos.xz * 0.01 + f ).x * 0.2; brightness /= max(1.0,0.001 * length(u_camera_position.xz - pos.xz));return u_color * vec4(vec3(1.0),brightness);");
+			this.grid_shader_xy = LS.Draw.createSurfaceShader("vec2 f = vec2(1.0/64.0,-1.0/64.0); float brightness = texture2D(u_texture, pos.xy + f).x * 0.6 + texture2D(u_texture, pos.xy * 0.1 + f ).x * 0.3 + texture2D(u_texture, pos.xy * 0.01 + f ).x * 0.2; brightness /= max(1.0,0.001 * length(u_camera_position.xy - pos.xy));return u_color * vec4(vec3(1.0),brightness);");
+			this.grid_shader_yz = LS.Draw.createSurfaceShader("vec2 f = vec2(1.0/64.0,-1.0/64.0); float brightness = texture2D(u_texture, pos.yz + f).x * 0.6 + texture2D(u_texture, pos.yz * 0.1 + f ).x * 0.3 + texture2D(u_texture, pos.yz * 0.01 + f ).x * 0.2; brightness /= max(1.0,0.001 * length(u_camera_position.yz - pos.yz));return u_color * vec4(vec3(1.0),brightness);");
 			this.grid_shader.uniforms({u_texture:0});
 
 			if( this.grid_img && this.grid_img.loaded )
@@ -408,6 +411,11 @@ var EditorView = {
 		}
 
 		LS.Draw.push();
+
+		if(this.settings.grid_plane == "xy")
+			LS.Draw.rotate(90,1,0,0);
+		else if(this.settings.grid_plane == "yz")
+			LS.Draw.rotate(90,0,0,1);
 
 		if(!this.grid_texture || this.grid_texture.ready === false)
 		{
@@ -427,7 +435,7 @@ var EditorView = {
 			LS.Draw.setColor([1,1,1, this.settings.grid_alpha ]);
 			LS.Draw.translate( LS.Draw.camera_position[0], 0, LS.Draw.camera_position[2] ); //follow camera
 			LS.Draw.scale( 10000, 10000, 10000 );
-			LS.Draw.renderMesh( this.plane_mesh, gl.TRIANGLES, this.grid_shader );
+			LS.Draw.renderMesh( this.plane_mesh, gl.TRIANGLES, this.settings.grid_plane == "xy" ? this.grid_shader_xy : this.grid_shader );
 			gl.depthMask( true );
 		}
 

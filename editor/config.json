@@ -30,6 +30,7 @@
 			"js/modules/cubemapGenerator.js",
 			"js/modules/drive.js",
 			"js/modules/lfsbridge.js",
+			"js/modules/localFilesBridge.js",
 			"js/modules/importer.js",
 			"js/modules/plugins.js",
 			"js/modules/fpsCounter.js",
@@ -51,7 +52,9 @@
 	 		"js/widgets/timeline.js",
 	 		"js/widgets/resourcesPanel.js",
 	 		"js/widgets/inspectorWidget.js",
+	 		"js/widgets/graphWidget.js",
 	 		"js/widgets/codingPad.js",
-	 		"js/widgets/codingTabsWidget.js"
+	 		"js/widgets/codingTabsWidget.js",
+	 		"js/widgets/genericTabs.js"
 		]
 }

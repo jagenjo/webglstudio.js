@@ -80,7 +80,7 @@ var GraphModule = {
 		area.content.style.backgroundColor = "#222";
 
 		LiteGraph.throw_errors = true;
-		this.graphcanvas = new LGraphCanvas(this.canvas, null );
+		this.graphcanvas = new LGraphCanvas( this.canvas, null );
 		this.graphcanvas.background_image = this.litegraph_path + "demo/imgs/grid.png";
 		this.graphcanvas.onNodeSelected = function(node) { GraphModule.onNodeSelected(node); };
 		this.graphcanvas.onDropItem = function(event) { GraphModule.onDropItem( event ); };
@@ -492,7 +492,7 @@ var GraphModule = {
 		
 		if(!this.view_canvas)
 		{
-			this.view_canvas = new LGraphCanvas( null, null, true );
+			this.view_canvas = new LGraphCanvas( null, null, { skip_render: true } );
 			this.view_canvas.setCanvas( gl.canvas, true );
 			this.view_canvas.onNodeSelected = function(node) { GraphModule.onNodeSelected(node); };
 			this.view_canvas.pause_rendering = true;

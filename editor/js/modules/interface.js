@@ -92,8 +92,10 @@ var InterfaceModule = {
 		docked.add( tabs_widget );
 		this.sidepaneltabs = tabs_widget;
 
-		LiteGUI.menubar.add("Window/Sidepanel", { callback: function() { InterfaceModule.setSidePanelVisibility(); } });
-		LiteGUI.menubar.add("Window/Animation panel", { callback: function() { InterfaceModule.setLowerPanelVisibility(); } });
+		LiteGUI.menubar.add("Window/Side panel", { callback: function() { InterfaceModule.setSidePanelVisibility(); } });
+		LiteGUI.menubar.add("Window/Low panel", { callback: function() { InterfaceModule.setLowerPanelVisibility(); } });
+		LiteGUI.menubar.add("Window/Floating panel", { callback: function() { GenericTabsWidget.createDialog(); } });
+		LiteGUI.menubar.add("Window/Inspector panel", { callback: function() { InspectorWidget.createDialog(); } });
 
 		//LiteGUI.menubar.add("Window/show view app", { callback: function() { window.open("simple.html"); } });
 
@@ -240,10 +242,15 @@ var InterfaceModule = {
 	{
 		this.visorarea = area;
 
+		var lower_tabs_widget = this.lower_tabs_widget = new GenericTabsWidget();
+		this.visorarea.getSection(1).add( lower_tabs_widget );
+
+		/*
 		//add lower panel tabs
 		var lower_tabs_widget = new LiteGUI.Tabs("lowerpaneltabs", { size: "full" });
 		this.visorarea.getSection(1).add( lower_tabs_widget );
 		this.lower_tabs_widget = lower_tabs_widget;
+		*/
 
 		//add close button
 		var button = LiteGUI.createButton("close_lowerpanel", LiteGUI.special_codes.close , function(){
@@ -251,7 +258,7 @@ var InterfaceModule = {
 		});
 		button.style.float = "right";
 		button.style.minWidth = "20px";
-		this.lower_tabs_widget.tabs_root.appendChild(button);
+		this.lower_tabs_widget.tabs.tabs_root.appendChild(button);
 	},
 
 	setLowerPanelVisibility: function(v)

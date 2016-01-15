@@ -26,6 +26,7 @@ var RendeerEngine = {
 function Rendeer( o )
 {
 	this.enabled = true;
+	this.shaders = "";
 
 	var rd_scene = this._rd_scene = new RD.Scene();
 	this._rd_renderer = new RD.Renderer( gl );
@@ -68,10 +69,29 @@ Rendeer.prototype.onRender = function( e )
 	this._rd_renderer.render( this._rd_scene, this._rd_camera );
 }
 
+Rendeer.prototype.setShaders = function(v)
+{
+	this.shaders = v;
+	if( this._rd_renderer )
+		this._rd_renderer.setShadersFromFile(v);
+}
 
 LS.registerComponent( Rendeer );
 
 CORE.registerModule( RendeerEngine );
+
+
+Rendeer.prototype.inspect = function( inspector )
+{
+	var node = this._root;
+	var component = this;
+	inspector.addButton(null,"Edit Shaders", function(){
+		CodingModule.editInstanceCode( component, { id: component.uid, title: node.id, lang: "text", path: component.uid, help: LS.Components.Rendeer.help, 
+			setCode: function(v) { component.setShaders( v ); }, 
+			getCode: function() { return this.shaders; }});
+	});
+	inspector.addButton(null,"Select Node");
+}
 
 
 })();

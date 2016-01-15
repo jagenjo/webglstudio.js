@@ -11,6 +11,9 @@ function InspectorWidget()
 
 InspectorWidget.MAX_HISTORY = 10;
 
+InspectorWidget.widget_name = "Inspector";
+CORE.registerWidget( InspectorWidget );
+
 InspectorWidget.prototype.init = function()
 {
 	var that = this;
@@ -48,6 +51,8 @@ InspectorWidget.prototype.init = function()
 	this.root.addEventListener("DOMNodeRemovedFromDocument", function(){  that.unbindEvents(); });
 	if(this.root._parentNode)
 		this.bindEvents();
+
+	LiteGUI.createDropArea( this.root, this.onItemDrop.bind(this) );
 }
 
 InspectorWidget.prototype.onPrevious = function()
@@ -93,6 +98,29 @@ InspectorWidget.prototype.onLock = function(e)
 		e.target.classList.remove("active");
 }
 
+InspectorWidget.prototype.onItemDrop = function(e)
+{
+	var uid = e.dataTransfer.getData("uid");
+	var class_type = e.dataTransfer.getData("class");
+
+	var instance = null;
+
+	switch(class_type)
+	{
+		case "SceneNode": instance = LS.GlobalScene.getNode( uid ); break;
+		case "Material": instance = LS.ResourcesManager.getMaterial( uid ); break;
+		default: 
+			if( LS.Components[class_type] )
+				instance = LS.GlobalScene.findComponentByUId( uid );
+			else if( LS.MaterialClasses[class_type] )
+				instance = LS.ResourcesManager.getMaterial( uid );
+		break;
+	}
+
+	if(!instance)
+		return;
+	this.inspect( instance );
+}
 
 InspectorWidget.prototype.setTitle = function( v )
 {
@@ -121,6 +149,11 @@ InspectorWidget.prototype.inspect = function( object, skip_history )
 	{
 		this.inspector.clear();
 		object.inspect( this.inspector );
+	}
+	else if( object.constructor.inspect )
+	{
+		this.inspector.clear();
+		object.constructor.inspect( object, this.inspector );
 	}
 	else if( object.constructor == LS.SceneTree )
 		this.inspectScene( object );
@@ -225,6 +258,11 @@ InspectorWidget.prototype.inspectScene = function( scene )
 		inspector.addString("Author", scene.extra.author || "", function(v) { scene.extra.author = v; });
 		inspector.addTextarea("Comments", scene.extra.comments || "", { callback: function(v) { scene.extra.comments = v; } });
 		inspector.addSeparator();
+		if( window.PlayModule )
+		inspector.addStringButton("Test URL", scene.extra.test_url || "", { callback: function(v) { scene.extra.test_url = v; }, callback_button: function(){
+			PlayModule.launch();
+		}});
+		inspector.addSeparator();
 		inspector.addTitle("External Scripts");
 		for(var i in scene.external_scripts)
 		{			
@@ -291,7 +329,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 			}
 
 			if(node._name !== null)
-				inspector.addString("name", node._name, { callback: function(v) {
+				inspector.addString("name", node._name, { name_width: "20%", callback: function(v) {
 					if(!v)
 						return node._name;
 					var old_name = node.name;
@@ -300,10 +338,18 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 					UndoModule.saveNodeRenamedUndo( node, old_name );
 				}});
 
-			inspector.addString("UId", node.uid, { disabled: true });
+			inspector.addString("UId", node.uid, { name_width: "20%", disabled: true });
+	
+			inspector.widgets_per_row = 2;
+			
+			inspector.addString("class", node.className, { callback: function(v) { node.className = v; } });
+			inspector.addLayers("layers", node.layers, { pretitle: AnimationModule.getKeyframeCode( node, "layers"), callback: function(v) {
+				node.layers = v;
+				RenderModule.requestFrame();
+			}});
 
-			if(node.className != null)
-				inspector.addString("class", node.className, { callback: function(v) { node.className = v; } });
+			inspector.widgets_per_row = 1;
+
 			if(node.prefab)
 				inspector.addStringButton("prefab", node.prefab, { callback_button: function(v,evt) {
 					var menu = new LiteGUI.ContextualMenu( ["Unlink prefab"], { event: evt, callback: function(action) {
@@ -312,10 +358,6 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 					}});
 				}});
 
-			inspector.addLayers("layers", node.layers, { pretitle: AnimationModule.getKeyframeCode( node, "layers"), callback: function(v) {
-				node.layers = v;
-				RenderModule.requestFrame();
-			}});
 			if(node.flags && node.flags.visible != null)
 				inspector.addCheckbox("visible", node.visible, { pretitle: AnimationModule.getKeyframeCode( node, "visible"), callback: function(v) { node.visible = v; } });
 
@@ -334,7 +376,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 		{
 			inspector.addTitle("Flags");
 			inspector.widgets_per_row = 2;
-			inspector.addFlags( node.flags, {seen_by_camera:true, seen_by_reflections:true, depth_test: true, depth_write: true, ignore_lights: false, ignore_fog: false, selectable: true} );
+			inspector.addFlags( node.flags, { depth_test: true, depth_write: true, ignore_lights: false, ignore_fog: false, selectable: true } );
 			inspector.widgets_per_row = 1;
 		}
 
@@ -391,6 +433,7 @@ InspectorWidget.createDialog = function( parent )
 	dialog.on_close = function()
 	{
 	}
+	dialog.show();
 	return dialog;
 }
 
@@ -481,10 +524,10 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 	//checkbox for enable/disable component
 	if(component.enabled !== undefined)
 	{
-		enabler = inspector.current_section.querySelector('.enabler');
+		enabler = section.querySelector('.enabler');
 		var checkbox = new LiteGUI.Checkbox( component.enabled, function(v){ 
 			component.enabled = v; 
-			$(inspector.current_section).trigger("wchange");
+			$(section).trigger("wchange");
 			RenderModule.requestFrame();
 		});
 		checkbox.root.title ="Enable / Disable";
@@ -492,18 +535,9 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 	}
 
 	//save UNDO when something changes
-	$(inspector.current_section).bind("wchange", function() { 
+	$(section).bind("wchange", function() { 
 		UndoModule.saveComponentChangeUndo( component );
 	});
-
-	//used to avoid collapsing section when clicking button
-	/*
-	inspector.current_section.querySelector('.options_section').addEventListener("click", function(e) { 
-		e.preventDefault();
-		e.stopPropagation();
-		return true;
-	});
-	*/
 
 	//it has special editor
 	if( component_class.inspect )
@@ -516,7 +550,7 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 		this.showObjectFields( component, inspector );
 
 	//in case the options button is pressed or the right button, show contextual menu
-	inspector.current_section.querySelector('.options_section').addEventListener("click", inner_showActions );
+	section.querySelector('.options_section').addEventListener("click", inner_showActions );
 
 	function inner_showActions( e ) { 
 		//console.log("Show options");
@@ -529,10 +563,10 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 	var drag_counter = 0; //hack because HTML5 sux sometimes
 
 	//drop component
-	inspector.current_section.addEventListener("dragover", function(e) { 
+	section.addEventListener("dragover", function(e) { 
 		e.preventDefault();
 	});
-	inspector.current_section.addEventListener("dragenter", function(e) { 
+	section.addEventListener("dragenter", function(e) { 
 		drag_counter++;
 		if( event.dataTransfer.types.indexOf("type") != -1 && drag_counter == 1 )
 		{
@@ -540,13 +574,13 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 		}
 		e.preventDefault();
 	},true);
-	inspector.current_section.addEventListener("dragleave", function(e) { 
+	section.addEventListener("dragleave", function(e) { 
 		drag_counter--;
 		if(drag_counter == 0)
 			this.style.opacity = null;
 		e.preventDefault();
 	},true);
-	inspector.current_section.addEventListener("drop", function(event) { 
+	section.addEventListener("drop", function(event) { 
 		console.log("drop");
 		event.preventDefault();
 		this.style.opacity = null;
@@ -567,4 +601,5 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 			}
 		}
 	});
+
 }

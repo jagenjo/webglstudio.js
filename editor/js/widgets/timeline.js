@@ -1,5 +1,7 @@
 function Timeline()
 {
+	this.root = null;
+
 	this.canvas_info = {
 		timeline_height: 30,
 		row_height: 20
@@ -8,6 +10,7 @@ function Timeline()
 	this.mode = "keyframes";
 	this.preview = true;
 	this.paths_widget = false;
+	this.autoresize = true;
 
 	this.current_take = null;
 
@@ -20,6 +23,23 @@ function Timeline()
 
 	this.createInterface();
 	//this.onNewAnimation();
+}
+
+Timeline.widget_name = "Timeline";
+
+CORE.registerWidget( Timeline );
+
+Timeline.createDialog = function( parent )
+{
+	var dialog = new LiteGUI.Dialog( null, { title: Timeline.widget_name, fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, parent: parent, width: 900, height: 500 });
+	var widget = new Timeline();
+	dialog.add( widget );
+	dialog.widget = widget;
+	dialog.on_close = function()
+	{
+		//widget.unbindEvents();		
+	}
+	return dialog;
 }
 
 Timeline.prototype.destroy = function()
@@ -40,6 +60,7 @@ Timeline.prototype.createInterface = function()
 	//add tool bar
 	var widgets = this.top_widgets = new LiteGUI.Inspector( null, { height: 30, widgets_width: 140, name_width: 60, one_line: true } );
 	this.root.appendChild( widgets.root );
+	this.root.style.backgroundColor = "#2a2a2a";
 
 	widgets.addButtons(null,["New","Load","Scene"], function(v) { 
 		if(v == "New")
@@ -799,8 +820,24 @@ Timeline.prototype.canvasXToTime = function( x )
 
 Timeline.prototype.onMouse = function(e)
 {
+	if( this.autoresize )
+	{
+		var w = this.canvas.parentNode.offsetWidth;
+		var h = this.canvas.parentNode.offsetHeight;
+		if(this.canvas.width != w || this.canvas.height != h)
+		{
+			this.canvas.width = w;
+			this.canvas.height = h;
+			this._must_redraw = true;
+		}
+	}
+
 	if(!this.session)
+	{
+		if(this._must_redraw)
+			this.redrawCanvas();
 		return;
+	}
 
 	var root_element = this.canvas;//e.target;
 	var b = root_element.getBoundingClientRect();
@@ -1552,16 +1589,16 @@ Timeline.prototype.showNewAnimationDialog = function()
 			return;
 		}
 
-		var name = widgets.widgets["Name"].getValue() + ".wbin";
-		var folder = widgets.widgets["Folder"].getValue();
-		var duration = parseFloat( widgets.widgets["Duration"].getValue() );
+		var name = widgets.widgets_by_name["Name"].getValue() + ".wbin";
+		var folder = widgets.widgets_by_name["Folder"].getValue();
+		var duration = parseFloat( widgets.widgets_by_name["Duration"].getValue() );
 		that.onNewAnimation( name, duration, folder );
 		dialog.close();
 	});
 
 	dialog.add( widgets );
 	dialog.adjustSize();
-	dialog.show();
+	dialog.show( null, this.root );
 }
 
 Timeline.prototype.showNewTrack = function()
@@ -1623,7 +1660,7 @@ Timeline.prototype.showNewTrack = function()
 
 	dialog.add( widgets );
 	dialog.adjustSize();
-	dialog.show();
+	dialog.show( null, this.root );
 }
 
 Timeline.prototype.showTrackOptions = function( track )
@@ -1663,7 +1700,7 @@ Timeline.prototype.showTrackOptions = function( track )
 
 	dialog.add( widgets );
 	dialog.adjustSize();
-	dialog.show();
+	dialog.show( null, this.root);
 }
 
 Timeline.prototype.showAddEventKeyframe = function( track, time, keyframe )
@@ -1713,7 +1750,7 @@ Timeline.prototype.showAddEventKeyframe = function( track, time, keyframe )
 
 	dialog.add( widgets );
 	dialog.adjustSize();
-	dialog.show();
+	dialog.show( null, this.root );
 }
 
 Timeline.prototype.toggleRecording = function(v)

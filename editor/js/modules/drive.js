@@ -27,7 +27,6 @@ var DriveModule = {
 	categories_by_type: { "image/jpeg":"Texture", "image/jpg":"Texture", "image/webp": "Texture", "image/png": "Texture" },
 	categories_by_extension: { "obj": "Mesh", "txt": "Text", "dds":"Texture" },
 
-	on_resource_selected_callback: null, //callback to catch when a resource is selected
 	selected_resource: null, //seletec item in the browser
 
 	root: null,
@@ -47,7 +46,7 @@ var DriveModule = {
 		//Notifications when loading
 		LEvent.bind( LS.ResourcesManager, "resource_registered", function() {
 			if( that.current_folder == null ) //loaded
-				that.showInBrowserContent( LS.ResourcesManager.resources );
+				that.resources_panel.showInBrowserContent( LS.ResourcesManager.resources );
 		});
 
 		LEvent.bind( LS.ResourcesManager, "resource_loading", function( e, url ) {
@@ -81,17 +80,36 @@ var DriveModule = {
 			msg.kill(1000);
 		});
 
-		//initGUI **********************
-		LiteGUI.menubar.add("Window/Resources", { callback: DriveModule.openTab.bind(this) });
+		//this uses the texture thumbnails as a low resolution version while loading the high res
+		LEvent.bind( LS.ResourcesManager, "load_resource_preview", function(e, url) {
+			if(url.indexOf("http") != -1)
+				return; //external file
 
+			var folder = LS.RM.getFolder( url );
+			var basename = LS.RM.getBasename( url );
+			var filename = LS.RM.getFilename( url );
+			var extension = LS.RM.getExtension( url );
+			var format_info = LS.Formats.getFileFormatInfo( extension );
+			if(format_info.resourceClass === GL.Texture)
+			{
+				var preview_url = folder + "/_th_" + filename + ".jpg";
+				LS.ResourcesManager.load( preview_url, { is_preview: true, preview_of: url } );				
+			}
+		});
+
+
+		//initGUI **********************
 		this.tab = LiteGUI.main_tabs.addTab( this.name, {id:"drivetab", bigicon: this.bigicon, size: "full", content:"", 
 			callback: function(tab){
 				InterfaceModule.setSidePanelVisibility(true);		
 				InterfaceModule.sidepaneltabs.selectTab("Inspector");
 			},
 			callback_leave: function(tab) {
-				if(DriveModule.on_resource_selected_callback)
-					DriveModule.onResourceSelected(null);
+				if(DriveModule.resources_panel.on_resource_selected_callback)
+				{
+					DriveModule.resources_panel.on_resource_selected_callback(null);
+					DriveModule.resources_panel.on_resource_selected_callback = null;
+				}
 			}
 		});
 		this.root = LiteGUI.main_tabs.root.querySelector("#drivetab");
@@ -106,70 +124,26 @@ var DriveModule = {
 		//use this component to select resources
 		EditorModule.showSelectResource = DriveModule.showSelectResource;
 
-		this.createWindow(); //creates tree too
+		this.createPanel(); //creates tree too
 
 		LiteGUI.menubar.add("Window/Resources Panel", { callback: function(){ ResourcesPanelWidget.createDialog(); }});
 	},
 
-	createWindow: function()
+	createPanel: function()
 	{
 		var resources_area = this.root;
 		var that = this;
 
-		var area = new LiteGUI.Area("resarea",{content_id:""});
-		resources_area.appendChild(area.root);
-		area.split("horizontal",[300,null],true);
+		//create
+		this.resources_panel = new ResourcesPanelWidget();
+		this.root.appendChild( this.resources_panel.root );
 
-		//TREE
-		this.treetop_widget = new LiteGUI.Inspector("resources-treetop-widgets",{name_width: 0, one_line: true });
-		this.treetop_widget.addCombo(null,"Folders", { width: 120, values: ["Folders","Categories"], callback: function(){
-		}});
-		this.treetop_widget.addButton(null,"Refresh", { width: 70, callback: function(){
-			DriveModule.updateServerTreePanel();
-		}});
-		area.sections[0].content.appendChild( this.treetop_widget.root );
-
-		//tree widget
-		var tree_widget = this.createTreeWidget();
-		area.sections[0].content.appendChild( tree_widget.root );
-
-		//top bar
-		var filter_string = "";
-		this.top_widget = new LiteGUI.Inspector("resources-top-widgets", { one_line: true });
-		this.top_widget.addString("Filter by","",{ callback: function(v) { 
-			filter_string = v;
-			DriveModule.filterResourcesByName(filter_string);
-		}});
-
-		this.top_widget.addSeparator();
-		this.top_widget.addButton(null,"Insert in scene", { callback: function() { DriveModule.onInsertResourceInScene( DriveModule.selected_resource ); } });
-		this.top_widget.addButton(null,"Import File", { callback: function(){ ImporterModule.showImportResourceDialog(); }});
-
-		//resources container (browser)
-		var res_root = area.sections[1].content;
-		res_root.appendChild( this.top_widget.root );
-		var res_container = LiteGUI.createElement("div",null,null,"height: calc(100% - 50px); height: -webkit-calc(100% - 50px); overflow: auto");
-		res_container.className = "resources-container";
-		res_root.appendChild( res_container );
-		this.browser_container = res_container;
-
-		//drop in browser container
-		LiteGUI.createDropArea( this.browser_container, function(e) {
-			var fullpath = DriveModule.current_folder;
-			var bridge = DriveModule.current_bridge;
-			if(!bridge)
-				return false;
-			if(bridge.onDropInFolder)
-			{
-				var r = bridge.onDropInFolder(fullpath, e);
-				if(r)
-					e.stopPropagation();
-				return r;
-			}
+		//bind
+		LiteGUI.bind( this.resources_panel, "item_selected", function(e){
+			var element = e.detail;
+			if(element && element.dataset["fullpath"])
+				that.showResourceInfo( element.dataset["fullpath"] );
 		});
-
-		//add drop action to automatically upload to server
-		LiteGUI.createDropArea( res_container, this.onFileDropInBrowser.bind(this) );
 	},
 
 	guessCategoryFromFile: function(file)
@@ -215,94 +189,6 @@ var DriveModule = {
 		return this.registered_drive_bridges[ name ];
 	},
 
-	createTreeWidget: function()
-	{
-		var tree_widget = new LiteGUI.Tree("resources-tree",this.tree, {allow_rename:true} );
-		tree_widget.root.classList.add("resources-tree");
-		tree_widget.root.style.backgroundColor = "black";
-		tree_widget.root.style.padding = "5px";
-		tree_widget.root.style.height = "calc( 100% - 50px )";
-		tree_widget.root.style.height = "-webkit-calc( 100% - 50px )";
-		tree_widget.root.style.overflow = "auto";
-		this.tree_widget = tree_widget;
-		var that = this;
-
-		this.tree_widget.onItemContextMenu = function(e)
-		{
-			var path = e.currentTarget.dataset["item_id"];
-			var bridge = DriveModule.getDriveBridge( e.currentTarget.dataset["bridge"] );
-
-			if(bridge && bridge.onContextualMenu)
-			{
-				bridge.onContextualMenu(path, e);
-			}
-
-			e.preventDefault();
-			return false;
-		}
-
-		//to check if it should be moved
-		/*
-		this.tree_widget.onMoveItem = function(item, parent)
-		{
-			if(item.data.candrag && parent.data.candrag )
-				return true;
-			return false;
-		}
-		*/
-
-		tree_widget.root.addEventListener("item_selected", function(e) {
-			var info = e.detail;
-			var item = info.data;
-
-			if(item.className)
-			{
-				if(item.bridge && item.bridge.onFolderSelected)
-					item.bridge.onFolderSelected(item);
-			}
-		});
-
-		tree_widget.root.addEventListener("drop_on_item", function(e) {
-
-			var item = e.detail.item;
-			var drop = e.detail.event;
-
-			var folder_element = item.parentNode.data;
-			var folder_fullpath = folder_element.fullpath;
-
-			var bridge = folder_element.bridge;
-			if(!bridge || !bridge.onDropInFolder)
-				return;
-
-			var r = bridge.onDropInFolder( folder_fullpath, drop );
-			if(r)
-				e.stopPropagation();
-		});
-
-		tree_widget.root.addEventListener("item_renamed", function(e)	{
-			var info = e.detail;
-			//old_name, new_name, item
-			//TODO
-		});
-
-		/*
-		tree_widget.root.addEventListener("item_moved", function(e)
-		{
-			var data = e.detail;
-			var item = data.item;
-			var parent_item = data.parent_item;
-
-			//console.log(item.data, parent_item.data);
-			var origin = item.data.fullpath;
-			var target = parent_item.data.fullpath;
-			//WRONG!! target must be parent + "/" + last_part_folder
-			//that.onMoveFolderInServer( origin, target );
-		});
-		*/
-
-		return tree_widget;
-	},
-
 	showStartUploadingFile: function( fullpath )
 	{
 		NotifyModule.show("UPLOAD: " + fullpath, { id: "res-msg-" + fullpath.hashCode(), closable: true, time: 0, left: 80, top: 30 } );
@@ -342,21 +228,23 @@ var DriveModule = {
 
 	refreshTree: function()
 	{
-		var selected = this.tree_widget.getSelectedItem();
-		if(selected)
-			selected = selected.dataset["item_id"];
-		this.tree_widget.updateTree( this.tree );
-		if(selected)
-			this.tree_widget.setSelectedItem(selected);
-
+		//this.resources_panel.refreshTree();
 	},
 
 	refreshContent: function()
 	{
+		this.resources_panel.refreshContent();
+		/*
 		if( this.current_bridge )
 			this.current_bridge.updateContent( this.current_folder );
 		else
 			this.showInBrowserContent( this.visible_resources );
+		*/
+	},
+
+	showInBrowserContent: function(v)
+	{
+		this.resources_panel.showInBrowserContent( v );
 	},
 
 	uploadAndShowProgress: function( resource, folder_fullpath, callback )
@@ -364,16 +252,7 @@ var DriveModule = {
 		if(!folder_fullpath)
 			return;
 
-		/*	
-		resource.folder = folder_fullpath;
-		var final_fullpath = folder_fullpath;
-		if( folder_fullpath.length && folder_fullpath[ folder_fullpath.length - 1 ] != "/") //add slash
-			final_fullpath += "/";
-		final_fullpath += resource.filename;
-		*/
-
 		var dialog = LiteGUI.alert("<p>Uploading file... <span id='upload_progress'></span>%</p>");
-
 		var fullpath = folder_fullpath + "/" + resource.filename;
 
 		DriveModule.serverUploadResource( resource, fullpath,
@@ -417,286 +296,12 @@ var DriveModule = {
 	{
 		this.current_folder = null;
 		this.current_bridge = null;
-		this.showInBrowserContent( LS.ResourcesManager.resources );
-	},
-
-	//clear and rebuild the resources items shown in the browser screen from a list of resources
-	showInBrowserContent: function( items )
-	{
-		//var dialog = this.dialog;
-		//if(!dialog) return;
-
-		//var parent = $("#dialog_resources-browser .resources-container")[0];
-		var parent = this.browser_container;
-		parent.innerHTML = "";
-		var root =  document.createElement("ul");
-		root.className = "file-list";
-		parent.appendChild( root );
-
-		this.visible_resources = items;
-
-		if(items)
-			for(var i in items)
-			{
-				if(i[0] == ":") //local resource
-					continue;
-				var item = items[i];
-				if(!item.name)
-					item.name = i;
-				this.addItemToBrowser( item );
-			}
-	},
-
-	//add a new resource to the browser window
-	addItemToBrowser: function( resource )
-	{
-		var memory_resource = LS.ResourcesManager.resources[ resource.fullpath ];
-
-		//if(!this.dialog) return;
-		//var parent = $("#dialog_resources-browser .resources-container ul.file-list")[0];
-		var parent = this.root.querySelector(".resources-container ul.file-list");
-
-		var element =  document.createElement("li");
-		if(resource.id)
-			element.dataset["id"] = resource.id;
-		element.dataset["filename"] = resource.filename;
-		if(resource.fullpath)
-			element.dataset["fullpath"] = resource.fullpath;
-		var type = element.dataset["restype"] = (resource.object_type || resource.category || LS.getObjectClassName(resource));
-		element.className = "resource file-item resource-" + type;
-		if(resource.id)
-			element.className += " in-server";
-		else
-			element.className += " in-client";
-
-		if(resource._modified  || (memory_resource && memory_resource._modified) )
-			element.className += " modified";
-
-		var filename = this.getFilename( resource.filename );
-		if(!filename) 
-			filename = resource.fullpath;
-
-		element.title = type + ": " + resource.filename;
-		if(filename)
-		{
-			var clean_name = filename.split(".");
-			clean_name = clean_name.shift() + "<span class='extension'>." + clean_name.join(".") + "</span>";
-			element.innerHTML = "<span class='title'>"+clean_name+"</span>";
-		}
-
-		//REFACTOR THIS FOR GOD SAKE!!!!!!!!!!!!!!!!!!!!!!!
-		var preview = resource.preview_url;
-		
-		if(preview)
-		{
-			if(typeof(preview) == "string" && preview.substr(0,11) == "data:image/")
-			{
-				if(this.generated_previews[ resource.fullpath ])
-					preview = this.generated_previews[ resource.fullpath ];
-				else
-				{
-					var img = new Image();
-					img.setAttribute("draggable",false);
-					img.src = preview;
-					img.style.maxWidth = 200;
-					this.generated_previews[ resource.fullpath ] = img;
-					preview = img;
-				}
-			}
-		}
-		else
-		{
-			var filename = resource.fullpath || resource.filename;
-
-			if(resource.in_server)
-				preview = this.getServerPreviewURL( resource );
-			else 
-			{
-				if( this.generated_previews[ filename ] )
-				{
-					preview = this.generated_previews[ filename ];
-				}
-				else if( !resource.fullpath ) //is hosted somewhere
-				{
-					preview = this.generatePreview( filename );
-					if(preview)
-					{
-						var img = new Image();
-						img.setAttribute("draggable",false);
-						img.src = preview;
-						img.style.maxWidth = 200;
-						this.generated_previews[ filename ] = img;
-						preview = img;
-					}
-				}
-			}
-		}
-
-		//generate a thumbnail 
-		if(preview)
-		{
-			if( typeof(preview) == "string") 
-			{
-				var img = new Image();
-				img.setAttribute("draggable",false);
-				img.src = preview;
-				img.style.maxWidth = 200;
-				img.onerror = function() { this.parentNode.removeChild( this ); }
-			}
-			else
-				img = preview;
-			element.appendChild(img);
-		}
-		
-		$(element).append("<span class='info'>"+type+"</span>");
-
-		/*
-		var button = document.createElement("button");
-		button.className = "info-button";
-		button.innerHTML = "info";
-		button.resource = resource;
-		$(element).append(button);
-		$(button).click( function() { DriveModule.showResourceDialog( this.resource ); });
-		*/
-
-		element.addEventListener("click", item_selected);
-		element.addEventListener("dblclick", item_dblclick);
-		parent.appendChild(element);
-
-		//when the resources is clicked
-		function item_selected(e)
-		{
-			DriveModule.selected_resource = this;
-			if(!DriveModule.on_resource_selected_callback)
-			{
-				//$("#dialog_resources-browser .resources-container").find(".selected").removeClass("selected");
-				$(parent).find(".selected").removeClass("selected");
-				this.classList.add("selected");
-				DriveModule.showResourceInfo( resource );
-			}
-			else
-			{
-				var path = this.dataset["fullpath"];
-				if(!path)
-					path = this.dataset["filename"];
-				DriveModule.onResourceSelected( path );
-			}
-		}
-
-		function item_dblclick(e)
-		{
-			DriveModule.onInsertResourceInScene( this );
-		}
-
-		//dragging
-		element.draggable = true;
-		element.addEventListener("dragstart", function(ev) {
-			//trace("DRAGSTART!");
-			//this.removeEventListener("dragover", on_drag_over ); //avoid being drag on top of himself
-			ev.dataTransfer.setData("res-filename", resource.filename);
-			if(resource.fullpath)
-				ev.dataTransfer.setData("res-fullpath", resource.fullpath);
-			ev.dataTransfer.setData( "res-type", type );
-		});
-	},
-
-	//user drags a file into the browser area -> gets passed to the bridge
-	onFileDropInBrowser: function( evt )
-	{
-		var drop_zone = evt.currentTarget;
-
-		var current_folder = this.current_folder;
-		var bridge = this.current_bridge;
-		if(!bridge)
-			return false;
-
-		if(bridge.onDropInFolder)
-		{
-			var r = bridge.onDropInFolder( current_folder, evt );
-			if(r)
-				evt.stopPropagation();
-			return r;
-		}
-
-		if(!bridge.uploadFile)
-			return false;
-
-		var exp = /[^a-zA-Z0-9]/g;
-
-		//for every file dropped
-		if(evt.dataTransfer.files.length)
-		{
-			for(var i = 0; i < evt.dataTransfer.files.length; i++)
-			{
-				var file = evt.dataTransfer.files[i];
-				var fullpath = current_folder + "/" + file.name;
-
-				//guess a category
-				var category = this.guessCategoryFromFile( file )
-				if(!category)
-				{
-					console.log("Category cannot be found: " + file.name );
-					continue;
-				}
-
-				//create a place holder element of the file in the files-browser
-				var element = document.createElement("li");
-				var safe_id = fullpath.replace( exp , "_");
-				element.className = "resource file-item file-loading-" + safe_id;
-				element.innerHTML = "<span class='progress'></span><span class='title'>"+file.name+"</span>";
-				drop_zone.querySelector("ul").appendChild(element);
-
-				file.category = category;
-
-				//call the bridge to upload the file
-				bridge.uploadFile( fullpath, file, function( fullpath, preview_url ){
-						//mark as finished uploading
-						var safe_id = fullpath.replace( exp , "_");
-						var item = drop_zone.querySelector(".file-loading-" + safe_id + " .progress");
-						if(item)
-						{
-							item.style.backgroundColor = "transparent";
-							item.innerHTML = "<img src='" + preview_url + "'/>";
-						}
-					}, function(err){
-						//in case of error
-						var safe_id = fullpath.replace( exp , "_");
-						var item = drop_zone.querySelector(".file-loading-" + safe_id + " .progress");
-						if(item)
-						{
-							item.backgroundColor = "red";
-							item.style.height = "100%";
-						}
-					}, function(v, fullpath){
-						//show progress
-						var safe_id = fullpath.replace( exp , "_");
-						var item = drop_zone.querySelector(".file-loading-" + safe_id + " .progress");
-						if(item)
-							item.style.height = (v*100).toFixed() + "%";
-				});
-			}//for
-		}
-		else if( evt.dataTransfer.items.length )
-		{
-			var url = evt.dataTransfer.getData("text/uri-list");
-			if(url)
-			{
-				var file_info = LFS.parsePath(url);
-				var target_fullpath = current_folder + "/" + file_info.filename;
-
-				bridge.uploadRemoteFile( url, target_fullpath, function(v){
-					//refresh tab?
-				});
-			}
-		}
-
-		evt.preventDefault();
-		evt.stopPropagation();
+		this.resources_panel.showInBrowserContent( LS.ResourcesManager.resources );
 	},
 
 	selectFolder: function( fullpath )
 	{
-		this.tree_widget.setSelectedItem( fullpath, true, true );
+		this.resources_panel.tree_widget.setSelectedItem( fullpath, true, true );
 	},
 
 	getFilename: function(fullpath)
@@ -731,6 +336,7 @@ var DriveModule = {
 		return null;
 	},
 
+	/*
 	filterResources: function(type)
 	{
 		//if(!this.dialog) return;
@@ -771,6 +377,7 @@ var DriveModule = {
 				$(e).show();
 		});
 	},
+	*/
 
 	showUploadDialog: function(resource)
 	{
@@ -803,7 +410,12 @@ var DriveModule = {
 		else
 			fullpath = resource.fullpath || resource.filename;
 
+		var resource = LS.ResourcesManager.resources[ fullpath ];
 		var server_resource = DriveModule.server_resources[ fullpath ];
+		resource = resource || server_resource;
+		if(!resource)
+			return;
+
 		var preview_url = resource.preview_url || LFS.getPreviewPath( fullpath );
 
 		if(!inspector)
@@ -1210,52 +822,6 @@ var DriveModule = {
 			if(default_folder)
 				tree_widget.setSelectedItem( default_folder, true );
 		}
-
-		
-		/*
-		function inner(data)
-		{
-			var folders_tree = {id:"Server",className:"folder",folder:"",fullpath:"/", children:[]};
-			build_tree(folders_tree, data, "/");
-
-			var dialog = new LiteGUI.Dialog("select-folder-dialog", {title:"Select folder", close: true, width: 360, height: 240, scroll: false, draggable: true});
-			dialog.show('fade');
-
-			var tree_widget = new LiteGUI.Tree("resources-tree", folders_tree, {allow_rename:false} );
-			tree_widget.root.style.backgroundColor = "black";
-			tree_widget.root.style.padding = "5px";
-			tree_widget.root.style.width = "100%";
-			tree_widget.root.style.height = "calc( 100% - 22px )";
-			tree_widget.root.style.height = "-webkit-calc( 100% - 22px )";
-			tree_widget.root.style.overflow = "auto";
-
-			$(tree_widget.root).bind("item_selected", function(e) {
-				var data = e.detail;
-				selected = data.item.data;
-			});
-
-			dialog.addButton("Select", { className: "big", callback: function ()
-			{
-				if(callback)
-					callback( selected ? selected.fullpath : null );
-				dialog.close();
-			}});
-			dialog.content.appendChild( tree_widget.root );
-		}
-
-		function build_tree(root, data, fullpath)
-		{
-			var pos = 0;
-			for(var i in data)
-			{
-				var newroot = {id: i, className:"folder", fullpath: fullpath + i + "/", data: data[i], children:[]};
-				root.children[pos] = newroot;
-				if(data[i] != null)
-					build_tree( newroot, data[i], newroot.fullpath );
-				pos++;
-			}
-		}
-		*/
 	},
 
 	getServerFoldersTree: function(callback)
@@ -1461,14 +1027,11 @@ var DriveModule = {
 
 	//SERVER ACTIONS *************************************************
 
-	onCreateFolderInServer: function( root_path )
+	onCreateFolderInServer: function( root_path, on_complete )
 	{
 		LiteGUI.prompt("Folder name", inner);
 		function inner(name)
 		{
-			if(DriveModule.current_folder == null)
-				return;
-
 			var folder = root_path + "/" + name;
 			DriveModule.serverCreateFolder( folder, inner_complete );
 		}
@@ -1479,10 +1042,12 @@ var DriveModule = {
 				DriveModule.updateServerTreePanel();
 			else
 				LiteGUI.alert("Cannot be done (are you logged?)");
+			if(on_complete)
+				on_complete(v);
 		}
 	},
 
-	onMoveFolderInServer: function(origin_fullpath, target_fullpath)
+	onMoveFolderInServer: function( origin_fullpath, target_fullpath, on_complete )
 	{
 		LiteGUI.confirm("Are you sure? All projects using the files inside this folder will have broken references.", inner);
 		function inner(v)
@@ -1498,20 +1063,20 @@ var DriveModule = {
 				DriveModule.updateServerTreePanel();
 			else
 				LiteGUI.alert("Cannot be done (are you logged?)");
+			if(on_complete)
+				on_complete(v);
 		}
 	},
 
-	onDeleteFolderInServer: function( fullpath )
+	onDeleteFolderInServer: function( fullpath, on_complete )
 	{
 		LiteGUI.confirm("Are you sure you want to delete the folder? All files will be lost", inner);
 		function inner(v)
 		{
 			if(!v)
 				return;
-
 			if(fullpath == null)
 				return;
-
 			DriveModule.serverDeleteFolder( fullpath, inner_complete );
 		}
 
@@ -1521,6 +1086,8 @@ var DriveModule = {
 				DriveModule.updateServerTreePanel();
 			else
 				LiteGUI.alert("Cannot be done (are you logged?)");
+			if(on_complete)
+				on_complete(v);
 		}
 	},
 
@@ -1566,11 +1133,16 @@ var DriveModule = {
 		}
 	},
 
+	filterByCategory: function(category)
+	{
+		this.resources_panel.filterByCategory( category );
+	},
+
 	//returns preview in base64 format
 	generatePreview: function( fullpath, force_read_from_memory )
 	{
 		var resource = LS.ResourcesManager.getResource( fullpath );
-		if(!resource)
+		if(!resource) //take from the screen
 			return RenderModule.takeScreenshot( this.preview_size, this.preview_size );
 
 		if( resource.updatePreview )
@@ -1583,7 +1155,7 @@ var DriveModule = {
 		if( resource.toCanvas ) //careful, big textures stall the app for few seconds
 		{
 			console.log("Generating resource preview using a canvas: ", resource.filename );
-			var canvas = resource.toCanvas(null,null,256);
+			var canvas = resource.toCanvas(null,true,256); 
 			if(canvas)
 			{
 				resource.preview_url = canvas.toDataURL( this.preview_format );
@@ -1987,41 +1559,15 @@ var DriveModule = {
 		LiteGUI.Dialog.hideAll();
 		var visibility = InterfaceModule.getSidePanelVisibility();
 		InterfaceModule.setSidePanelVisibility(false);
-		DriveModule.filterResources( type );
-		
-		DriveModule.on_resource_selected_callback = function( filename ) {
+		DriveModule.resources_panel.filterByCategory( type );
+		DriveModule.resources_panel.on_resource_selected_callback = function( filename ) {
 			InterfaceModule.setSidePanelVisibility(visibility);
-
 			if(on_complete)
 				on_complete(filename);
-
 			if(filename)
 				LS.ResourcesManager.load( filename, null, on_load );
-
-			DriveModule.on_resource_selected_callback = null;
 			LiteGUI.Dialog.showAll();
 			LiteGUI.main_tabs.selectTab( last_tab.id );
-		}
-	},
-
-	onResourceSelected: function(filename)
-	{
-		if(DriveModule.on_resource_selected_callback)
-			DriveModule.on_resource_selected_callback( filename );
-		DriveModule.on_resource_selected_callback = null;
-	},
-
-	onUseProxyResource: function()
-	{
-		LiteGUI.prompt("URL", inner);
-		function inner(url)
-		{
-			var pos = url.indexOf("//");
-			if(pos != -1) //cut http
-				url = url.substr(pos+1);
-			url = DriveModule.proxy_url + url;
-			if(DriveModule.on_resource_selected_callback)
-				DriveModule.onResourceSelected( url );
 		}
 	},
 
@@ -2090,25 +1636,38 @@ DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], 
 
 	var node = LS.GlobalScene.selected_node;
 
+	var action = options.texture_action || "material";
+
 	if(options.event)
 	{
 		GL.augmentEvent(options.event);
 		node = RenderModule.getNodeAtCanvasPosition( options.event.canvasx, options.event.canvasy );
 	}
-
-	var channel = options.channel || LS.Material.COLOR_TEXTURE;
 	
 	DriveModule.loadResource( fullpath, restype );
-	if( node )
+
+	if( action == "replace" || action == "material" )
 	{
-		if(!node.material)
-			node.material = new LS.StandardMaterial();
-		var material = node.getMaterial();
-		var channels = material.getTextureChannels();
-		if( channels.indexOf( channel ) == -1 )
-			channel = channels[0];
-		material.setTexture( channel , fullpath );
+		var channel = options.channel || LS.Material.COLOR_TEXTURE;
+		if( node )
+		{
+			if(!node.material)
+				node.material = new LS.StandardMaterial();
+			var material = node.getMaterial();
+			var channels = material.getTextureChannels();
+			if( channels.indexOf( channel ) == -1 )
+				channel = channels[0];
+			material.setTexture( channel , fullpath );
+		}
 	}
+	else if(action == "sprite")
+	{
+		node = new LS.SceneNode();
+		var component = new LS.Component.Sprite();
+		node.addComponent( component );
+		EditorModule.getAddRootNode().addChild( node );
+	}
+
 	EditorModule.inspect( node );
 });
 

@@ -13,7 +13,7 @@ CodingTabsWidget.prototype.init = function()
 	var tabs = this.tabs = new LiteGUI.Tabs( null, { height: "100%" });
 	this.root.add( tabs );
 	this.plus_tab = tabs.addTab( "plus_tab", { title: "+", tab_width: 20, button: true, callback: this.onPlusTab.bind(this), skip_callbacks: true });
-	tabs.root.style.marginTop = "4px";
+	//tabs.root.style.marginTop = "4px";
 	tabs.root.style.backgroundColor = "#111";
 	//tabs.addTab("+", { });
 
@@ -31,6 +31,7 @@ CodingTabsWidget.createDialog = function( parent )
 	{
 		coding_widget.unbindEvents();		
 	}
+	dialog.show();
 	return dialog;
 }
 
@@ -42,10 +43,10 @@ CodingTabsWidget.prototype.bindEvents = function()
 	*/
 	LEvent.bind( LS.GlobalScene, "nodeRemoved", this.onNodeRemoved, this );
 	LEvent.bind( LS.GlobalScene, "nodeComponentRemoved", this.onComponentRemoved, this );
-	LEvent.bind( LS.Components.Script, "code_error", this.onScriptError, this );
 	LEvent.bind( LS.Components.Script, "renamed", this.onScriptRenamed, this );
 	LEvent.bind( CodingTabsWidget, "code_changed", this.onCodeChanged, this);
 
+	LEvent.bind( LS.Components.Script, "code_error", this.onScriptError, this );
 	LEvent.bind( LS, "code_error", this.onGlobalError, this );
 }
 
@@ -324,11 +325,18 @@ CodingTabsWidget.prototype.onOpenAllScripts =function()
 
 CodingTabsWidget.prototype.onScriptError = function(e, instance_err)
 {
-	console.trace("Script crashed");
-	var code_info = this.getCurrentCodeInfo();
-	if( code_info.instance != instance_err[0] )
-		return;
-	this.showError(instance_err[1]);
+	//check if it is open in any tab
+	var instance = instance_err[0];
+	for(var i in this.tabs.tabs)
+	{
+		var tab = this.tabs.tabs[i];
+		if(tab.code_info && tab.code_info.instance == instance)
+		{
+			//this.tabs.showTab( i );
+			//tab.pad.showError( instance_err[1] ); //this is done by the pad itself
+			return;
+		}
+	}
 }
 
 CodingTabsWidget.prototype.onGlobalError = function(e, err)
@@ -373,29 +381,9 @@ CodingTabsWidget.prototype.createCodingWindow = function()
 CodingTabsWidget.prototype.createCodingPad = function( container )
 {
 	container = container || this.root;
-
 	var that = this;
-
 	var pad = new CodingPadWidget();
 	container.appendChild( pad.root );
-
-	/*
-	pad.top_widgets.addButton(null,"Open All",{ callback: function(v) { 
-		that.onOpenAllScripts();
-	}});
-
-	top_widgets.addButton(null,"Detach",{ width: 80, callback: function(v) { 
-		//console.log(CodingModule.area);
-		setTimeout( function() { CodingModule.detachWindow(); },500 );
-	}});
-	*/
-
-	/*
-	top_widget.addButton(null,"New",{ width: 50, callback: function(v) { 
-		CodingModule.createCodingWindow();
-	}});
-	*/
-
 	return pad;
 }
 

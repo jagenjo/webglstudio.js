@@ -1,36 +1,26 @@
 //connects DriveModule with LiteFileSystem
 
-var LFSBridge = {
-	name: "Server",
-	className: "server",
+var LocalFilesBridge = {
+	name: "Local",
+	className: "local",
 	tree_root: null, //where the tree root will be added
 	units: {},
-	session: null,
 
 	init: function()
 	{
-		LiteGUI.requireCSS("css/drive.css");
+		var requestFileSystem = window.requestFileSystem || window.webkitRequestFileSystem || window.mozRequestFileSystem;
+		requestFileSystem( window.PERSISTENT , 10*1024*1024, inner );
 
-		LFS.onNewSession = function(session)
+		function inner( local_storage )
 		{
-			LFSBridge.session = session;
-			LFSBridge.updateTree(function() {
-				DriveModule.onTreeUpdated();
+			LocalFilesBridge.local_storage = local_storage;
+			local_storage.root.getFile("test.txt", {create: true}, function(file){
+				file.createWriter(function(file_content) {
+				    var blob = new Blob(["Lorem Ipsum"], {type: "text/plain"});
+					file_content.write( blob );
+				});
 			});
 		}
-
-		//fetch content
-		LiteGUI.bind( CORE, "user-login", function(e, user_info){
-			DriveModule.updateServerTreePanel();
-			DriveModule.showInBrowserContent();
-		});
-
-		LiteGUI.bind( CORE, "user-logout", function(){
-			DriveModule.updateServerTreePanel();
-			DriveModule.showInBrowserContent();
-		});
-
-		//DriveModule.top_widget.addButton(null,"Open LiteFileServer", { callback: LFSBridge.onOpenLiteFileServer });
 	},
 
 	updateContent: function(folder, callback, panel)
@@ -52,8 +42,8 @@ var LFSBridge = {
 					var resource = data[i];
 					resource.in_server = true;
 					resources[ resource.fullpath ] = resource;
-					DriveModule.server_resources[ resource.fullpath ] = resource;
-					DriveModule.server_resources_by_id[ resource.server_id ] = resource;
+					//DriveModule.server_resources[ resource.fullpath ] = resource;
+					//DriveModule.server_resources_by_id[ resource.server_id ] = resource;
 				}
 
 				panel.showInBrowserContent( resources );
@@ -493,5 +483,5 @@ var LFSBridge = {
 };
 
 //register
-DriveModule.registerDriveBridge( LFSBridge );
-CORE.registerModule( LFSBridge );
+//DriveModule.registerDriveBridge( LocalFilesBridge );
+//CORE.registerModule( LocalFilesBridge );

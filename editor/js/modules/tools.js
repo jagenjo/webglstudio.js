@@ -38,11 +38,6 @@ var ToolsModule = {
 		//place to put all the icons of the tools
 		RenderModule.viewport3d.addModule(this);
 		this.createToolbar();
-
-		//testing features
-		//LEvent.bind( LS.GlobalScene, "afterRenderScene", this.renderView.bind(this));
-
-		LiteGUI.menubar.add("View/Tools menu", { callback: function() { $("#visor .tool-section").fadeIn(); }});
 	},
 
 	registerTool: function(tool)

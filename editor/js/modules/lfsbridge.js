@@ -439,7 +439,11 @@ var LFSBridge = {
 		var res_fullpath = event.dataTransfer.getData("res-fullpath");
 
 		if(!res_fullpath)
-			res_fullpath = event.dataTransfer.getData("text/uri-list");
+		{
+			var file_url = event.dataTransfer.getData("text/uri-list"); //in case a file is dragged? not sure
+			if(file_url.substr(0,5) != "data:") //WARNING: when dragging a thumbnail uri-list returns a image in base64...
+				res_fullpath = file_url;
+		}
 
 		//if already has a fullpath (one with a unit...), could be a remote file or to move to other folder
 		if(res_fullpath && res_fullpath.split("/").length > 1)

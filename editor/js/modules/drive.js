@@ -1007,7 +1007,7 @@ var DriveModule = {
 		}
 
 		if(!found)
-			LiteGUI.alert("Insert not implemented for this resource type.");
+			LiteGUI.alert("Insert not implemented for this resource type: " + LS.getObjectClassName( resource ) );
 
 		DriveModule.closeTab();
 		LS.GlobalScene.refresh();

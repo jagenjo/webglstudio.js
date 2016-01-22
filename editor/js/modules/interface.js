@@ -255,9 +255,7 @@ var InterfaceModule = {
 		//add close button
 		var button = LiteGUI.createButton("close_lowerpanel", LiteGUI.special_codes.close , function(){
 			InterfaceModule.setLowerPanelVisibility(false);
-		});
-		button.style.float = "right";
-		button.style.minWidth = "20px";
+		}, "position: absolute; top: 0; right: 2px; margin: 0; min-width: 20px; background: #333; box-shadow: 0 0 0 transparent;");
 		this.lower_tabs_widget.tabs.tabs_root.appendChild(button);
 	},
 

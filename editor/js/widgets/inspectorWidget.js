@@ -456,6 +456,7 @@ LiteGUI.Inspector.prototype.showObjectFields = function( object, inspector )
 	}
 }
 
+//add to the LiteGUI.Inspector
 LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 {
 	if(!component)
@@ -534,7 +535,7 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 		enabler.appendChild( checkbox.root );
 	}
 
-	//save UNDO when something changes
+	//save UNDO when something changes TODO remove this 
 	$(section).bind("wchange", function() { 
 		UndoModule.saveComponentChangeUndo( component );
 	});
@@ -544,7 +545,7 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 		component_class.inspect( component, inspector, section );
 	else if (component.inspect)
 		component.inspect( inspector, section );
-	else if( component_class["@inspector"] )
+	else if( component_class["@inspector"] ) //deprecated
 		component_class["@inspector"].call( this, component, inspector, section );
 	else
 		this.showObjectFields( component, inspector );
@@ -599,6 +600,8 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 					console.error("component not found when rearranging");
 				EditorModule.refreshAttributes();
 			}
+			event.stopPropagation();
+			event.stopImmediatePropagation();
 		}
 	});
 

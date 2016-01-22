@@ -21,6 +21,14 @@
 			"js/tools/parenting.js",
 			"js/tools/addPoints.js",
 			"js/tools/generic.js",
+	 		"js/widgets/sceneTree.js",
+	 		"js/widgets/timeline.js",
+	 		"js/widgets/resourcesPanel.js",
+	 		"js/widgets/inspectorWidget.js",
+	 		"js/widgets/graphWidget.js",
+	 		"js/widgets/codingPad.js",
+	 		"js/widgets/codingTabsWidget.js",
+	 		"js/widgets/genericTabs.js",
 	 		"js/modules/cameraTools.js",
 	 		"js/modules/notify.js",
 	 		"js/modules/settings.js",
@@ -47,14 +55,6 @@
 	 		"js/modules/animation.js",
 	 		"js/modules/undo.js",
 			"js/modules/actors.js",
-			"js/modules/annotation.js",
-	 		"js/widgets/sceneTree.js",
-	 		"js/widgets/timeline.js",
-	 		"js/widgets/resourcesPanel.js",
-	 		"js/widgets/inspectorWidget.js",
-	 		"js/widgets/graphWidget.js",
-	 		"js/widgets/codingPad.js",
-	 		"js/widgets/codingTabsWidget.js",
-	 		"js/widgets/genericTabs.js"
+			"js/modules/annotation.js"
 		]
 }

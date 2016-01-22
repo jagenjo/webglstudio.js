@@ -14,12 +14,16 @@ GraphWidget.prototype.init = function()
 {
 	var that = this;
 
+	this.inspector = null;
+
 	//create area
 	this.root = LiteGUI.createElement("div",null,null,{ width:"100%", height:"100%" });
 
 	//top bar
 	var top_widgets = this.top_widgets = new LiteGUI.Inspector( null, { one_line: true });
+	top_widgets.addButton(null,"New", { callback: this.onNewGraph.bind(this), width: 50 });
 	top_widgets.addButton(null,"Open", this.onOpenGraph.bind(this) );
+	top_widgets.addButton(null,"Run Step", this.onStepGraph.bind(this) );
 	this.root.appendChild( top_widgets.root );
 
 	//create area
@@ -35,12 +39,21 @@ GraphWidget.prototype.init = function()
 	this.graphcanvas.onNodeSelected = this.onNodeSelected.bind(this);
 	this.graphcanvas.onShowNodePanel = this.onShowNodePanel.bind(this);
 	this.graphcanvas.onDropItem = this.onDropItem.bind(this);
+	this.graphcanvas.onConnectionChange = function() { setTimeout( function(){LS.GlobalScene.refresh();},100); }
+	this.graphcanvas.onMouseDown = function(){ LiteGUI.focus_widget = this; }
+	this.graphcanvas.onKeyDown = function(e){ return this.processKey(e); }
 
 	this.root.addEventListener("DOMNodeInsertedIntoDocument", function(){ 
 		that.bindEvents(); 
+		if(that._old_graph)
+			that.graphcanvas.setGraph( that._old_graph );
 		setTimeout( function() { that.resizeCanvas(); },10 ); 
 	});
-	this.root.addEventListener("DOMNodeRemovedFromDocument", function(){ that.unbindEvents(); });
+	this.root.addEventListener("DOMNodeRemovedFromDocument", function(){ 
+		that.unbindEvents();
+		that._old_graph = that.graphcanvas.graph;
+		that.graphcanvas.setGraph(null);
+	});
 }
 
 GraphWidget.createDialog = function( parent )
@@ -56,10 +69,17 @@ GraphWidget.createDialog = function( parent )
 	return dialog;
 }
 
+GraphWidget.prototype.destroy = function()
+{
+	this.graphcanvas.setGraph( null );
+}
+
 GraphWidget.prototype.bindEvents = function()
 {
 	LEvent.bind( LS.GlobalScene, "nodeRemoved", this.onNodeRemoved, this );
 	LEvent.bind( LS.GlobalScene, "nodeComponentRemoved", this.onComponentRemoved, this );
+	LEvent.bind( LS.GlobalScene, "beforeReload", this.onBeforeReload, this );
+	LEvent.bind( LS.GlobalScene, "reload", this.onReload, this );
 }
 
 GraphWidget.prototype.resizeCanvas = function()
@@ -86,6 +106,8 @@ GraphWidget.prototype.editInstanceGraph = function( instance, options )
 {
 	options = options || {};
 
+	this._old_graph = null;
+
 	if(!instance)
 	{
 		this.current_graph_info = null;
@@ -109,18 +131,25 @@ GraphWidget.prototype.editInstanceGraph = function( instance, options )
 	this.onNodeSelected(null); //TODO: store old selected node id
 	this.graph = instance.getGraph() || instance.graph;
 	this.graphcanvas.setGraph( this.graph );
+
+	if(this.onRename)
+		this.onRename( (instance && instance._root) ? instance._root.name : "Empty");
 }
 
-GraphWidget.prototype.onNodeSelected = function( node )
+GraphWidget.prototype.isInstance = function(instance, options)
 {
+	if(this.current_graph_info && this.current_graph_info.instance == instance)
+		return true;
+	return false;
 }
 
 GraphWidget.prototype.onShowNodePanel = function( node )
 {
-	EditorModule.inspect( node );
+	var inspector = this.inspector || EditorModule.inspector;
+	inspector.inspect( node );
 }
 
-GraphWidget.prototype.onDropItem = function( event )
+GraphWidget.prototype.onDropItem = function( e )
 {
 	e.preventDefault();
 	e.stopPropagation();
@@ -144,8 +173,7 @@ GraphWidget.prototype.onDropItem = function( event )
 		graphnode.onExecute();
 		return;
 	}
-
-	if(item_type == "Component")
+	else if(item_type == "Component")
 	{
 		var graphnode = LiteGraph.createNode( item_class == "Transform" ? "scene/transform" : "scene/component");
 		graphnode.properties.node = item_node_uid;
@@ -155,16 +183,94 @@ GraphWidget.prototype.onDropItem = function( event )
 		this.graph.add( graphnode );
 		graphnode.onExecute();
 	}
+	else if(item_type == "property")
+	{
+		var graphnode = LiteGraph.createNode( "scene/property" );
+		graphnode.properties.locator = item_uid;
+		graphnode.pos[0] = e.canvasX;
+		graphnode.pos[1] = e.canvasY;
+		this.graph.add( graphnode );
+		graphnode.onExecute();
+	}
 
 	return false;
 }
 
+GraphWidget.prototype.onBeforeReload = function( e )
+{
+	//save state
+	this._saved_state = this.current_graph_info;
+}
+
+GraphWidget.prototype.onReload = function( e )
+{
+	//restore state
+	if(!this._saved_state)
+		return;
+
+	var state = this._saved_state;
+	var id = null;
+
+	var instance = null;
+	if( state.getInstance )
+		instance = state.getInstance();
+	if(!instance)
+	{
+		if(state && state.options.id && state.options.id)
+			id = state && state.options.id && state.options.id;
+		if( id && id.substr(0,6) == "@COMP-" )
+			instance = LS.GlobalScene.findComponentByUId( id );
+	}
+	if(instance)
+		this.editInstanceGraph( instance, state.options );
+	else
+		console.warn("GraphWidget: cannot find instance by uid " + id );
+	this._saved_state = null;
+}
+
+
+GraphWidget.prototype.onNodeSelected = function( node )
+{
+	//TODO
+}
+
 GraphWidget.prototype.onNodeRemoved = function( node )
 {
+	//TODO
 }
 
 GraphWidget.prototype.onComponentRemoved = function( component )
 {
+	//TODO
+}
+
+GraphWidget.prototype.onNewGraph = function()
+{
+	var that = this;
+	var dialog = new LiteGUI.Dialog(null,{ title:"New Graph", draggable: true, closable: true });
+	
+	var graph_type = "GraphComponent";
+	var node = LS.GlobalScene.root;
+
+	var widgets = new LiteGUI.Inspector();
+	widgets.addCombo("Graph Type",graph_type, { values: ["GraphComponent","FXGraphComponent"], callback: function(v) { graph_type = v; }});
+	widgets.addNode("Node",node, { use_node: true, callback: function(v) { 
+		node = v;
+	}});
+	widgets.addButton(null,"Create Graph", inner);
+
+	dialog.add( widgets );
+	dialog.adjustSize();
+	dialog.show( null, this.root );
+
+	function inner(v){
+		var component = new LS.Components[graph_type]();
+		var root = node || LS.GlobalScene.root;
+		root.addComponent( component );
+		EditorModule.refreshAttributes();
+		that.editInstanceGraph( component, { id: component.uid, title: root.name } );
+		dialog.close();
+	}
 }
 
 GraphWidget.prototype.onOpenGraph = function()
@@ -215,6 +321,16 @@ GraphWidget.prototype.onOpenGraph = function()
 	dialog.show( null, this.root );
 }
 
+GraphWidget.prototype.onStepGraph = function()
+{
+	if(!this.graph)
+		return;
+	this.graph.runStep(1);
+	this.graphcanvas.setDirty(true,true);
+
+	LS.GlobalScene.refresh();
+}
+
 LiteGraph.addNodeMethod( "inspect", function( inspector )
 {
 	var graphnode = this;
@@ -227,6 +343,8 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 
 	for(var i in graphnode.properties)
 	{
+		var value = graphnode.properties[i];
+
 		//do we have info?
 		if(widgets_info && widgets_info[i])
 		{
@@ -244,18 +362,18 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 			options.callback = inner_assign;
 			inspector.add( options.widget || options.type, options.title || i, graphnode.properties[i], options );
 		}
-		else if(graphnode.properties[i] !== null) //can we guess it from the current value?
+		else if(value !== null && value !== undefined) //can we guess it from the current value?
 		{
-			if(typeof(graphnode.properties[i]) == "boolean")
-				inspector.addCheckbox(i, graphnode.properties[i], { field_name: i, callback: inner_assign });
-			else if(typeof(graphnode.properties[i]) == "string")
-				inspector.addString(i, graphnode.properties[i], { field_name: i, callback: inner_assign });
-			else if(typeof(graphnode.properties[i]) == "number")
-				inspector.addNumber(i, graphnode.properties[i], { step: 0.01, field_name: i, callback: inner_assign });
-			else if( graphnode.properties[i].length == 3)
-				inspector.addVector3(i, graphnode.properties[i], { step: 0.01, field_name: i, callback: inner_assign });
-			else if( graphnode.properties[i].length == 2)
-				inspector.addVector2(i, graphnode.properties[i], { step: 0.01, field_name: i, callback: inner_assign });
+			if(typeof(value) == "boolean")
+				inspector.addCheckbox(i, value, { field_name: i, callback: inner_assign });
+			else if(typeof(value) == "string")
+				inspector.addString(i, value, { field_name: i, callback: inner_assign });
+			else if(typeof(value) == "number")
+				inspector.addNumber(i, value, { step: 0.01, field_name: i, callback: inner_assign });
+			else if( value.length == 3)
+				inspector.addVector3(i, value, { step: 0.01, field_name: i, callback: inner_assign });
+			else if( value.length == 2)
+				inspector.addVector2(i, value, { step: 0.01, field_name: i, callback: inner_assign });
 		}
 	}
 
@@ -275,6 +393,8 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 	{
 		//safe way
 		LS.setObjectProperty( graphnode.properties, this.options.field_name, v );
+		if( graphnode.onPropertyChanged )
+			graphnode.onPropertyChanged( this.options.field_name, v );
 	}
 });
 

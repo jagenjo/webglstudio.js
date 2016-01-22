@@ -1,6 +1,7 @@
-function GenericTabsWidget(id,options)
+function GenericTabsWidget( id, options )
 {
 	this.root = null;
+	this.supported_widgets = null;
 	this.init(options);
 
 	//helful
@@ -18,7 +19,7 @@ GenericTabsWidget.prototype.init = function( options )
 	var tabs = this.tabs = new LiteGUI.Tabs( null, { height: "100%" });
 	tabs.addPlusTab( this.onPlusTab.bind(this) );
 	this.root.add( tabs );
-	tabs.root.style.marginTop = "4px";
+	/*tabs.root.style.marginTop = "4px";*/
 	tabs.root.style.backgroundColor = "#111";
 
 	this.bindEvents();
@@ -65,21 +66,51 @@ GenericTabsWidget.prototype.unbindEvents = function()
 	*/
 }
 
-GenericTabsWidget.prototype.onPlusTab = function(tab_id, e)
+GenericTabsWidget.prototype.onPlusTab = function( tab_id, e )
 {
 	var that = this;
 
-	var options = [];
+	var widgets = this.supported_widgets;
 
-	for(var i in CORE.Widgets)
+	if(!widgets)
 	{
-		var type = CORE.Widgets[i];
-		options.push( type );
+		widgets = [];
+		for(var i in CORE.Widgets)
+		{
+			var type = CORE.Widgets[i];
+			widgets.push( type );
+		}
 	}
 
-	var menu = new LiteGUI.ContextualMenu( options, { event: e, callback: function(value, options) {
+	if( !widgets.length )
+		return;
+
+	if( widgets.length == 1 )
+	{
+		this.addWidgetTab( widgets[0] );
+		return;
+	}
+
+	var menu = new LiteGUI.ContextualMenu( widgets, { event: e, callback: function(value, options) {
 		that.addWidgetTab( value["class"] );
 	}});
+}
+
+GenericTabsWidget.prototype.openInstanceTab = function( instance )
+{
+	for(var i in this.tabs.tabs)
+	{
+		var tab = this.tabs.tabs[i];
+		var widget = tab.widget;
+		if(!widget || !widget.isInstance )
+			continue;
+		if(!widget.isInstance(instance))
+			continue;
+		this.tabs.selectTab( tab );
+		return true;
+	}
+
+	return false;
 }
 
 GenericTabsWidget.prototype.addWidgetTab = function( widget_class, options )
@@ -101,8 +132,9 @@ GenericTabsWidget.prototype.addWidgetTab = function( widget_class, options )
 	var widget = new widget_class();
 	tab = this.tabs.addTab( null, { title: title, selected: true, closable: true, size: "full", content: widget.root, callback: onTabClicked, onclose: onTabClosed, skip_callbacks: true, index: num - 1});
 	tab.widget = widget;
-	//tab.add( tab.widget );
-	//tab.content.appendChild( tab.widget.root );
+	widget.onRename = function(new_name) { 
+		tab.setTitle(new_name);
+	}
 
 	//callbacks ******************************
 	var that = this;
@@ -116,6 +148,9 @@ GenericTabsWidget.prototype.addWidgetTab = function( widget_class, options )
 		if( !tab.selected )
 			return;
 	}
+
+	if(this.onWidgetCreated)
+		this.onWidgetCreated( widget );
 
 	return tab;
 }

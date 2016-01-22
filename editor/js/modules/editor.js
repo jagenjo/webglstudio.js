@@ -1174,8 +1174,7 @@ var EditorModule = {
 	showSelectNode: function(on_complete)
 	{
 		var dialog = new LiteGUI.Dialog("dialog_nodes", {title:"Scene nodes", close: true, minimize: true, width: 300, height: 310, scroll: false, draggable: true});
-		dialog.show('fade');
-
+		dialog.show( null, this.root );
 
 		/*
 		var tree = new SceneTreeWidget();
@@ -1187,7 +1186,7 @@ var EditorModule = {
 		//*
 		var selected_value = null;
 		var nodes = [];
-		for(var i = 1; i < scene._nodes.length; i++ ) //skip root node
+		for(var i = 0; i < scene._nodes.length; i++ )
 		{
 			var node = scene._nodes[i];
 			nodes.push( { name: node._name, node: node } );
@@ -1209,7 +1208,7 @@ var EditorModule = {
 			RenderModule.requestFrame();
 		}});
 
-		dialog.content.appendChild(widgets.root);
+		dialog.add( widgets );
 		dialog.adjustSize();
 
 		function inner_selected(value)
@@ -1469,19 +1468,30 @@ CORE.registerModule( EditorModule );
 LiteGUI.Inspector.widget_constructors["position"] = LiteGUI.Inspector.prototype.addVector3;
 
 
-//to select a node, value must be a valid node identifier (not the node itself)
-LiteGUI.Inspector.prototype.addNode = function(name, value, options)
+//to select a node, it uses identifiers, if you want to use nodes then add options.use_node
+LiteGUI.Inspector.prototype.addNode = function( name, value, options )
 {
 	options = options || {};
 	value = value || "";
 	var that = this;
 	this.values[ name ] = value;
+
+	var node_name = "";
+	if( value && value.constructor == LS.SceneNode )
+		node_name = value.name;
+	else if(value && value.constructor == String)
+	{
+		node_name = value;
+		value = LS.GlobalScene.getNode(node_name);
+	}
 	
-	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
+	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+node_name+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
 	var input = element.querySelector(".wcontent input");
 
 	input.addEventListener("change", function(e) { 
-		LiteGUI.Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
+		if(options.use_node)
+			value = LS.GlobalScene.getNode( e.target.value );
+		LiteGUI.Inspector.onWidgetChange.call(that, element, name, value, options);
 	});
 	
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
@@ -1493,9 +1503,18 @@ LiteGUI.Inspector.prototype.addNode = function(name, value, options)
 	element.addEventListener("drop", function(e){
 		e.preventDefault();
 		e.stopPropagation();
-		var node_id = e.dataTransfer.getData("node_name");
-		input.value = node_id;
-		LiteGUI.trigger( input, "change" );
+		var node_uid = e.dataTransfer.getData("node_uid");
+		if(options.use_node)
+		{
+			value = LS.GlobalScene.getNode( node_uid );
+			input.value = value ? value.name : value;
+		}
+		else
+		{
+			value = node_uid;
+			input.value = value;
+		}
+		LiteGUI.Inspector.onWidgetChange.call(that, element, name, value, options);
 		return false;
 	}, true);
 
@@ -1503,9 +1522,22 @@ LiteGUI.Inspector.prototype.addNode = function(name, value, options)
 	//after selecting a node
 	function inner_onselect( node )
 	{
-		input.value = node ? node._name : "";
-		LiteGUI.trigger( input, "change" );
+		if(options.use_node)
+		{
+			value = node;
+			input.value = node ? node.name : "";
+		}
+		else
+		{
+			value = node ? node.name : null;
+			input.value = value;
+		}
+
+		LiteGUI.Inspector.onWidgetChange.call(that, element, name, value, options);
+		//LiteGUI.trigger( input, "change" );
 	}
+
+	this.getValue = function() { return value; }
 
 	this.tab_index += 1;
 	this.append(element);
@@ -1679,10 +1711,19 @@ LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
 	var input = element.querySelector(".wcontent input");
 	element.options = options;
 
+	var callback = options.callback;
+
+	options.callback = function(v)
+	{
+		input.value = (v && v.texture) ? v.texture : "";
+		if(callback)
+			callback.call(element, v);
+	}
+
 	input.addEventListener("change", function(e) { 
 		var v = e.target.value;
 		if(v && v[0] != ":")
-			LS.ResourcesManager.load(v);
+			LS.ResourcesManager.load( v );
 		value.texture = v;
 		LiteGUI.Inspector.onWidgetChange.call( that, element, name, value, options);
 	});
@@ -1850,7 +1891,7 @@ LiteGUI.Inspector.prototype.addMaterial = function(name,value, options)
 	return element;
 }
 LiteGUI.Inspector.widget_constructors["material"] = "addMaterial";
-LiteGUI.Inspector.widget_constructors["position"] = LiteGUI.Inspector.prototype.addVector3;
+LiteGUI.Inspector.widget_constructors["position"] = "addVector3";
 
 LiteGUI.Inspector.prototype.addLayers = function(name, value, options)
 {
@@ -1922,6 +1963,7 @@ LiteGUI.Inspector.prototype.addComponent = function( name, value, options)
 
 	this.tab_index += 1;
 	this.append(element);
+	LiteGUI.focus( input );
 	return element;
 }
 LiteGUI.Inspector.widget_constructors["component"] = "addComponent";

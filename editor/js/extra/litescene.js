@@ -1136,12 +1136,9 @@ var LS = {
 	{
 		if(obj.setProperty)
 			return obj.setProperty(name, value);
-
-		//var prev = obj[ name ];
-		//if(prev && prev.set)
-		//	prev.set( value ); //for typed-arrays
-		//else
-			obj[ name ] = value; //clone¿?
+		obj[ name ] = value; //clone¿?
+		if(obj.onPropertyChanged)
+			obj.onPropertyChanged( name, value );
 	},
 
 	//solution from http://stackoverflow.com/questions/979975/how-to-get-the-value-from-the-url-parameter
@@ -1332,8 +1329,43 @@ var LSQ = {
 			}
 		}
 		return t.join("/");
+	},
+
+	setFromInfo: function( info, value )
+	{
+		if(!info || !info.target)
+			return;
+		var target = info.target;
+		if( target.setPropertyValue  )
+			if( target.setPropertyValue( info.name, value ) === true )
+				return target;
+		if( target[ info.name ] === undefined )
+			return;
+		target[ info.name ] = value;	
+	},
+
+	getFromInfo: function( info )
+	{
+		if(!info || !info.target)
+			return;
+		var target = info.target;
+		var varname = info.name;
+		var v = undefined;
+		if( target.getPropertyValue )
+			v = target.getPropertyValue( varname );
+		if( v === undefined && target[ varname ] === undefined )
+			return null;
+		return v !== undefined ? v : target[ varname ];
 	}
 };
+
+//register classes
+if(global.GL)
+{
+	LS.Classes["Mesh"] = GL.Mesh;
+	LS.Classes["Texture"] = GL.Texture;
+}
+
 
 global.LSQ = LSQ;
 global.trace = trace;
@@ -2036,7 +2068,9 @@ var ResourcesManager = {
 	processResource: function( url, data, options, on_complete )
 	{
 		options = options || {};
-		if(!data) throw("No data found when processing resource: " + url);
+		if(!data)
+			throw("No data found when processing resource: " + url);
+
 		var resource = null;
 		var extension = this.getExtension(url);
 
@@ -2057,23 +2091,26 @@ var ResourcesManager = {
 			}
 			else
 			{
-				var type = data.object_type;
-				if(type && window[type])
+				var class_name = data.object_type;
+				if(class_name && LS.Classes[class_name] )
 				{
-					var ctor = window[type];
+					var ctor = LS.Classes[class_name];
 					var resource = null;
 					if(ctor.prototype.configure)
 					{
-						resource = new window[type]();
+						resource = new LS.Classes[class_name]();
 						resource.configure( data );
 					}
 					else
-						resource = new window[type]( data );
+						resource = new LS.Classes[class_name]( data );
 					inner_onResource(url, resource);
 					return;
 				}
 				else
+				{
+					console.warn("Resource Class name unknown: " + class_name );
 					return false;
+				}
 			}
 		}
 
@@ -2084,7 +2121,7 @@ var ResourcesManager = {
 			var resource = callback( url, data, options, inner_onResource );
 			if(resource === true)
 				return;
-			if(resource)
+			if( resource )
 				inner_onResource(url, resource);
 			else //resource is null
 			{
@@ -2755,11 +2792,18 @@ LS.ResourcesManager.processASCIIScene = function(filename, data, options) {
 		LS.ResourcesManager.processResource(i,res);
 	}
 
+	for(var i in scene_data.materials)
+	{
+		var material = scene_data.materials[i];
+		LS.ResourcesManager.processResource(i,material);
+	}
+
 	var node = new LS.SceneNode();
 	node.configure(scene_data.root);
 
 	LS.GlobalScene.root.addChild(node);
-	return node;
+
+	return true;
 }
 
 LS.ResourcesManager.registerResourcePreProcessor("dae", LS.ResourcesManager.processASCIIScene, "text","Scene");
@@ -5281,7 +5325,8 @@ Material.prototype.setProperty = function(name, value)
 		//strings
 		case "shader_name":
 		//bools
-			this[name] = value; 
+			if(value.constructor === Number)
+				this[name] = value; 
 			break;
 		//vectors
 		case "uvs_matrix":
@@ -18914,7 +18959,7 @@ if(typeof(LiteGraph) != "undefined")
 		if(this.inputs)
 		for(var i = 0; i < this.inputs.length; ++i)
 		{
-			var input = this.inputs[i];
+			var input = this.inputs[i]; //??
 			var v = this.getInputData(i);
 			if(v === undefined)
 				continue;
@@ -19597,6 +19642,37 @@ if(typeof(LiteGraph) != "undefined")
 	window.LGraphGlobal = LGraphGlobal;
 
 	//************************************
+
+	function LGraphLocatorProperty()
+	{
+		this.addInput("in");
+		this.addOutput("out");
+		this.size = [80,20];
+		this.properties = {locator:""};
+	}
+
+	LGraphLocatorProperty.title = "Property";
+	LGraphLocatorProperty.desc = "A property of a node or component of the scene specified by its locator string";
+
+	LGraphLocatorProperty.prototype.onExecute = function()
+	{
+		var locator = this.properties.locator;
+		if(!this.properties.locator)
+			return;
+
+		var info = this._locator_info = LS.GlobalScene.getPropertyInfo( locator );
+
+		if(info && info.target)
+		{
+			this.title = info.name;
+			if( this.inputs.length && this.inputs[0].link )
+				LSQ.setFromInfo( info, this.getInputData(0) );
+			if( this.outputs.length && this.outputs[0].links && this.outputs[0].links.length )
+				this.setOutputData( 0, LSQ.getFromInfo( info ));
+		}
+	}
+
+	LiteGraph.registerNodeType("scene/property", LGraphLocatorProperty );
 
 	//************************************
 
@@ -26965,6 +27041,8 @@ var parserDAE = {
 			}
 		}
 
+		//Materials doesnt need anything special
+
 		//check resources
 		for(var i in scene.resources)
 		{
@@ -27099,7 +27177,7 @@ var parserDAE = {
 			}
 			return null;
 		}
-	} //procesSAnimation
+	}
 };
 
 LS.Formats.registerParser( parserDAE );
@@ -29599,39 +29677,46 @@ SceneNode.prototype.configure = function(info)
 	if(info.mesh)
 	{
 		var mesh_id = info.mesh;
-
 		var mesh = LS.ResourcesManager.meshes[ mesh_id ];
-		var mesh_render_config = { mesh: mesh_id };
 
-		if(info.submesh_id !== undefined)
-			mesh_render_config.submesh_id = info.submesh_id;
-		if(info.morph_targets !== undefined)
-			mesh_render_config.morph_targets = info.morph_targets;
-
-		var compo = new LS.Components.MeshRenderer(mesh_render_config);
-
-		//parsed meshes have info about primitive
-		if( mesh.primitive === "line_strip" )
+		if(mesh)
 		{
-			compo.primitive = 3;
-			delete mesh.primitive;
-		}
+			var mesh_render_config = { mesh: mesh_id };
 
-		//add MeshRenderer
-		this.addComponent( compo );
+			if(info.submesh_id !== undefined)
+				mesh_render_config.submesh_id = info.submesh_id;
+			if(info.morph_targets !== undefined)
+				mesh_render_config.morph_targets = info.morph_targets;
 
-		//skinning
-		if(mesh && mesh.bones)
-		{
-			compo = new LS.Components.SkinDeformer();
+			var compo = new LS.Components.MeshRenderer(mesh_render_config);
+
+			//parsed meshes have info about primitive
+			if( mesh.primitive === "line_strip" )
+			{
+				compo.primitive = 3;
+				delete mesh.primitive;
+			}
+
+			//add MeshRenderer
 			this.addComponent( compo );
-		}
 
-		//morph
-		if( mesh && mesh.morph_targets )
+			//skinning
+			if(mesh && mesh.bones)
+			{
+				compo = new LS.Components.SkinDeformer();
+				this.addComponent( compo );
+			}
+
+			//morph
+			if( mesh && mesh.morph_targets )
+			{
+				var compo = new LS.Components.MorphDeformer( { morph_targets: mesh.morph_targets } );
+				this.addComponent( compo );
+			}
+		}
+		else
 		{
-			var compo = new LS.Components.MorphDeformer( { morph_targets: mesh.morph_targets } );
-			this.addComponent( compo );
+			console.warn( "SceneNode mesh not found: " + mesh_id );
 		}
 	}
 

@@ -51,6 +51,10 @@ GL.ONE_MINUS_CONSTANT_COLOR = 32770;
 GL.CONSTANT_ALPHA = 32771;
 GL.ONE_MINUS_CONSTANT_ALPHA = 32772;
 
+GL.temp_vec3 = vec3.create();
+GL.temp2_vec3 = vec3.create();
+GL.temp_vec4 = vec4.create();
+GL.temp_mat4 = mat4.create();
 
 
 global.DEG2RAD = 0.0174532925;
@@ -2500,8 +2504,8 @@ Mesh.prototype.computeNormals = function( stream_type  ) {
 	if(this.indexBuffers["triangles"])
 		triangles = this.indexBuffers["triangles"].data;
 
-	var temp = vec3.create();
-	var temp2 = vec3.create();
+	var temp = GL.temp_vec3;
+	var temp2 = GL.temp2_vec3;
 
 	var i1,i2,i3,v1,v2,v3,n1,n2,n3;
 
@@ -2685,7 +2689,7 @@ Mesh.computeBounding = function( vertices, bb ) {
 		vec3.max( max,v, max);
 	}
 
-	var center = vec3.add(vec3.create(), min,max );
+	var center = vec3.add( vec3.create(), min,max );
 	vec3.scale( center, center, 0.5);
 	var half_size = vec3.subtract( vec3.create(), max, center );
 
@@ -4201,8 +4205,9 @@ Texture.drawToColorAndDepth = function(color_texture, depth_texture, callback) {
 * @method copyTo
 * @param {GL.Texture} target_texture
 * @param {GL.Shader} [shader=null] optional shader to apply while copying
+* @param {Object} [uniforms=null] optional uniforms for the shader
 */
-Texture.prototype.copyTo = function(target_texture, shader) {
+Texture.prototype.copyTo = function( target_texture, shader, uniforms ) {
 	var that = this;
 	var gl = this.gl;
 
@@ -4219,6 +4224,8 @@ Texture.prototype.copyTo = function(target_texture, shader) {
 	//render
 	gl.disable( gl.BLEND );
 	gl.disable( gl.DEPTH_TEST );
+	if(shader && uniforms)
+		shader.uniforms( uniforms );
 	this.toViewport( shader );
 	
 	//restore previous state

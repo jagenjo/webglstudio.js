@@ -49,6 +49,10 @@ function SceneTreeWidget( id )
 	this.tree.root.addEventListener("item_moved", onItemMoved.bind(this) );
 	this.tree.root.addEventListener("item_renamed", onItemRenamed.bind(this) ); //renamed from the list
 
+	this.tree.root.addEventListener("mousedown", function(){
+		LiteGUI.focus_widget = that;
+	});
+
 	this.tree.onItemContextMenu = function(e, item_info)
 	{
 		if(!item_info || !item_info.data)
@@ -226,6 +230,16 @@ SceneTreeWidget.prototype.onGlobalSceneSelected = function(e, scene)
 	this.bindEvents( scene );
 	//this.refresh();
 }
+
+SceneTreeWidget.prototype.onKeyDown = function( e )
+{
+	if(e.keyCode == 8 || e.keyCode == 46)
+	{
+		EditorModule.removeSelectedNode(); 
+		return false;
+	}
+}
+
 
 //Catch events from the LS.SceneTree to update the tree automatically
 SceneTreeWidget.prototype.bindEvents = function( scene )

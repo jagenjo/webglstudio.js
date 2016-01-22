@@ -356,9 +356,9 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 	element.addEventListener("dragstart", function(ev) {
 		//trace("DRAGSTART!");
 		//this.removeEventListener("dragover", on_drag_over ); //avoid being drag on top of himself
-		ev.dataTransfer.setData("res-filename", resource.filename);
+		ev.dataTransfer.setData("res-filename", resource.filename );
 		if(resource.fullpath)
-			ev.dataTransfer.setData("res-fullpath", resource.fullpath);
+			ev.dataTransfer.setData("res-fullpath", resource.fullpath );
 		ev.dataTransfer.setData("res-type", type);
 	});
 

@@ -606,17 +606,38 @@ var LiteGUI = {
 	* @param {String} id
 	* @param {String} content
 	* @param {Function} callback when the button is pressed
+	* @param {Object|String} style
 	**/
-	createButton: function( id, content, callback )
+	createButton: function( id_class, content, callback, style )
 	{
 		var elem = document.createElement("button");
-		elem.id = id;
-		elem.root = elem;
 		elem.className = "litegui button";
+		if(id_class)
+		{
+			var t = id_class.split(" ");
+			for(var i = 0; i < t.length; i++)
+			{
+				if(t[i][0] == ".")
+					elem.classList.add( t[i].substr(1) );
+				else if(t[i][0] == "#")
+					elem.id = t[i].substr(1);
+				else
+					elem.id = t[i];
+			}
+		}
+		elem.root = elem;
 		if(content !== undefined)
 			elem.innerHTML = content;
 		if(callback)
 			elem.addEventListener("click", callback );
+		if(style)
+		{
+			if(style.constructor === String)
+				elem.setAttribute("style",style);
+			else
+				for(var i in style)
+					elem.style[i] = style[i];
+		}
 		return elem;
 	},
 
@@ -3463,7 +3484,18 @@ function beautifyJSON( code, skip_css )
 		element.options = options;
 		element.tabs = this;
 
-		var tab_info = {id: id, tab: element, content: content, add: function(v) { this.content.appendChild(v.root || v); }};
+		var title = element.querySelector("span.tabtitle");
+
+		//tab object
+		var tab_info = {
+			id: id,
+			tab: element,
+			content: content,
+			title: title,
+			add: function(v) { this.content.appendChild(v.root || v); },
+			setTitle: function( title )	{ this.title.innerHTML = title; }
+		};
+
 		if(options.onclose)
 			tab_info.onclose = options.onclose;
 		this.tabs[ id ] = tab_info;
@@ -4154,7 +4186,7 @@ function beautifyJSON( code, skip_css )
 		return result;
 	}
 	
-	Tree.prototype.createTreeItem = function(data, options, level)
+	Tree.prototype.createTreeItem = function( data, options, level )
 	{
 		if(data === null || data === undefined)
 		{
@@ -4241,7 +4273,7 @@ function beautifyJSON( code, skip_css )
 			if(title._editing) 
 				return;
 
-			if(e.shiftKey && that.options.allow_multiselection)
+			if(e.ctrlKey && that.options.allow_multiselection)
 			{
 				//check if selected
 				if( that.isNodeSelected( node ) )
@@ -4253,7 +4285,6 @@ function beautifyJSON( code, skip_css )
 
 				//mark as selected
 				that.markAsSelected( node, true );
-
 				LiteGUI.trigger(that.root, "item_add_to_selection", { item: node, data: node.data} );
 				var r = false;
 				if(data.callback) 
@@ -4261,6 +4292,31 @@ function beautifyJSON( code, skip_css )
 
 				if(!r && that.onItemAddToSelection)
 					that.onItemAddToSelection(node.data, node);
+			}
+			if(e.shiftKey && that.options.allow_multiselection)
+			{
+				//select from current selection till here
+				//current
+				var last_item = that.getSelectedItem();
+				if(!last_item)
+					return;
+
+				if(last_item === node)
+					return;
+
+				var nodeList = Array.prototype.slice.call( last_item.parentNode.children );
+				var last_index = nodeList.indexOf( last_item );
+				var current_index = nodeList.indexOf( node );
+
+				var items = current_index > last_index ? nodeList.slice( last_index, current_index ) : nodeList.slice( current_index, last_index );
+				for( var i = 0; i < items.length; ++i )
+				{
+					var item = items[i];
+					//console.log(item);
+					//mark as selected
+					that.markAsSelected( item, true );
+					LiteGUI.trigger( that.root, "item_add_to_selection", { item: item, data: item.data } );
+				}
 			}
 			else
 			{
@@ -5882,45 +5938,50 @@ Inspector.prototype.inspectInstance = function( instance, properties, properties
 	//Must be cloned to ensure there is no overlap between widgets reusing the same container
 	var properties_info = {};
 
-	//add to properties_info the ones that are not specified 
-	for(var i in properties)
+	if( instance.getInspectorProperties )
+		properties_info = instance.getInspectorProperties();
+	else
 	{
-		if( properties_info_example && properties_info_example[i] )
+		//add to properties_info the ones that are not specified 
+		for(var i in properties)
 		{
-			//clone
-			properties_info[i] = inner_clone( properties_info_example[i] );
-			continue;
-		}
-
-		var v = properties[i];
-
-		if(classObject["@" + i]) //guess from class object info
-		{
-			var shared_options = classObject["@" + i];
-			properties_info[i] = inner_clone( shared_options );
-		}
-		else if(instance["@" + i]) //guess from instance info
-			properties_info[i] = instance["@" + i];
-		else if(v === null || v === undefined) //are you sure?
-			continue;
-		else 
-		{
-			switch( v.constructor )
+			if( properties_info_example && properties_info_example[i] )
 			{
-				case Number: properties_info[i] = { type: "number", step: 0.1 }; break;
-				case String: properties_info[i] = { type: "string" }; break;
-				case Boolean: properties_info[i] = { type: "boolean" }; break;
-				default:
-					if( v && v.length )
-					{
-						switch(v.length)
+				//clone
+				properties_info[i] = inner_clone( properties_info_example[i] );
+				continue;
+			}
+
+			var v = properties[i];
+
+			if(classObject["@" + i]) //guess from class object info
+			{
+				var shared_options = classObject["@" + i];
+				properties_info[i] = inner_clone( shared_options );
+			}
+			else if(instance["@" + i]) //guess from instance info
+				properties_info[i] = instance["@" + i];
+			else if(v === null || v === undefined) //are you sure?
+				continue;
+			else 
+			{
+				switch( v.constructor )
+				{
+					case Number: properties_info[i] = { type: "number", step: 0.1 }; break;
+					case String: properties_info[i] = { type: "string" }; break;
+					case Boolean: properties_info[i] = { type: "boolean" }; break;
+					default:
+						if( v && v.length )
 						{
-							case 2: properties_info[i] = { type: "vec2", step: 0.1 }; break;
-							case 3: properties_info[i] = { type: "vec3", step: 0.1 }; break;
-							case 4: properties_info[i] = { type: "vec4", step: 0.1 }; break;
-							default: continue;
+							switch(v.length)
+							{
+								case 2: properties_info[i] = { type: "vec2", step: 0.1 }; break;
+								case 3: properties_info[i] = { type: "vec3", step: 0.1 }; break;
+								case 4: properties_info[i] = { type: "vec4", step: 0.1 }; break;
+								default: continue;
+							}
 						}
-					}
+				}
 			}
 		}
 	}
@@ -5977,32 +6038,35 @@ Inspector.prototype.showProperties = function( instance, properties_info )
 	//for every enumerable property create widget
 	for(var i in properties_info)
 	{
+		var varname = i;
 		var options = properties_info[i];
 		if(!options)
 			continue;
 		if(options.constructor === String) //it allows to just specify the type
 			options = { type: options };
+		if(options.name)
+			varname = options.name;
 		if(!options.callback) //generate default callback to modify data
 		{
-			var o = { instance: instance, name: i, options: options };
+			var o = { instance: instance, name: varname, options: options };
 			options.callback = Inspector.assignValue.bind( o );
 
 		}
 		if(!options.callback_update) //generate default refresh
 		{
-			var o = { instance: instance, name: i };
+			var o = { instance: instance, name: varname };
 			options.callback_update = (function(){ return this.instance[ this.name ]; }).bind(o);
 		}
 
 		options.instance = instance;
-		options.varname = i;
+		options.varname = varname;
 
 		var type = options.widget || options.type || "string";
 
 		//used to hook stuff on special occasions
 		if( this.on_addProperty )
-			this.on_addProperty( type, instance, i, instance[i], options );
-		this.add( type, i, instance[i], options );
+			this.on_addProperty( type, instance, varname, instance[varname], options );
+		this.add( type, varname, instance[varname], options );
 	}
 
 	//extra widgets inserted by the object (stored in the constructor)

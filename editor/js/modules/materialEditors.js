@@ -578,7 +578,7 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 			tex = "@Instance";
 	}
 
-	var widgets = new LiteGUI.Inspector("import_widgets",{ name_width: "50%" });
+	var widgets = new LiteGUI.Inspector( null, { name_width: "50%" });
 	widgets.onchange = function()
 	{
 		if(options.callback)
@@ -588,6 +588,8 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 
 	widgets.addTexture("Texture", sampler.texture || "", { callback: function(v) {
 		sampler["texture"] = v;
+		if(options.callback)
+			options.callback( sampler );
 		LS.GlobalScene.refresh();
 	}});
 

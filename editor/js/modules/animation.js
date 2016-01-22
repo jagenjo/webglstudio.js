@@ -52,8 +52,10 @@ var AnimationModule = {
 		var elements = inspector.root.querySelectorAll(".keyframe_icon");
 		for(var i = 0; i < elements.length; i++)
 		{
-			elements[i].addEventListener("click", inner_click );
-			elements[i].addEventListener("contextmenu", (function(e) { 
+			var element = elements[i];
+			element.draggable = true;
+			element.addEventListener("click", inner_click );
+			element.addEventListener("contextmenu", (function(e) { 
 				if(e.button != 2) //right button
 					return false;
 				inner_rightclick(e);
@@ -61,6 +63,7 @@ var AnimationModule = {
 				e.stopPropagation();
 				return false;
 			}).bind(this));
+			element.addEventListener("dragstart", inner_dragstart);
 		}
 
 		function inner_click(e)
@@ -85,6 +88,12 @@ var AnimationModule = {
 				else
 					AnimationModule.showPropertyInfo( e.target.dataset["propertyuid"] );
 			}});
+		}
+
+		function inner_dragstart(e)
+		{
+			e.dataTransfer.setData("type", "property" );
+			e.dataTransfer.setData("uid", e.target.dataset["propertyuid"] );
 		}
 	},
 
@@ -233,6 +242,9 @@ var AnimationModule = {
 				colors = [];
 
 			var info = LS.GlobalScene.getPropertyInfoFromPath( track._property_path );
+			if(!info) //unknown case but it happened sometimes
+				continue;
+
 			var parent_node = null;
 			if( info.node && info.node.parentNode && info.node.parentNode.transform )
 			{

@@ -15,12 +15,12 @@ var GraphModule = {
 			GraphModule.openTab();
 			InterfaceModule.setSidePanelVisibility(true);
 			GraphModule._force_render = true;
-			GraphModule.graphcanvas.pause_rendering = false;
+			//GraphModule.graphcanvas.pause_rendering = false;
 		},
 		callback_leave: function(tab) {
 			//not visible
 			GraphModule._force_render = false;
-			GraphModule.graphcanvas.pause_rendering = true;
+			//GraphModule.graphcanvas.pause_rendering = true;
 		}});
 
 		RenderModule.viewport3d.addModule(this);
@@ -33,13 +33,54 @@ var GraphModule = {
 		LiteGUI.requireCSS([ this.litegraph_css_url ]);
 
 		//events that affect graphs
+		/*
 		LEvent.bind( LS.GlobalScene, "update", function(e,dt) { GraphModule.onUpdate(dt); });
 		LEvent.bind( LS.GlobalScene, "clear", this.onClear.bind(this) );
 		LEvent.bind( LS.GlobalScene, "beforeReload", this.onBeforeReload.bind(this) );
 		LEvent.bind( LS.GlobalScene, "reload", this.onReload.bind() );
 		LEvent.bind( LS.GlobalScene, "nodeRemoved", this.onNodeRemoved.bind(this) );
 		LEvent.bind( LS.GlobalScene, "nodeComponentRemoved", this.onComponentRemoved.bind(this) );
+		*/
 	},
+
+	buildGUI: function()
+	{
+		this.tabs_widget = new GenericTabsWidget();
+		this.root.appendChild( this.tabs_widget.root );
+		this.tabs_widget.supported_widgets = [ GraphWidget ];
+		this.tabs_widget.addWidgetTab( GraphWidget );
+	},
+
+	openTab: function()
+	{
+		LiteGUI.main_tabs.selectTab("Graph");
+		//var rect = this.canvas.parentNode.getClientRects()[0];
+		//this.graphcanvas.resize( rect.width, rect.height - 20 );
+	},
+
+	//switch coding tab
+	editInstanceGraph: function( instance, options, open_tab )
+	{
+		options = options || {};
+
+		if(open_tab)
+			this.openTab();
+
+		var found = this.tabs_widget.openInstanceTab( instance, options );
+		if(!found)
+		{
+			//create and open
+			var tab = this.tabs_widget.addWidgetTab( GraphWidget );
+			tab.widget.editInstanceGraph( instance, options );
+		}
+	},
+
+	closeInstanceTab: function( instance, options )
+	{
+		return this.tabs_widget.closeInstanceTab( instance, options );
+	},
+
+	/*
 
 	buildGUI: function()
 	{
@@ -50,21 +91,6 @@ var GraphModule = {
 		LiteGUI.bind( area, "split_moved", function(){
 			GraphModule.onResize();
 		});
-
-		/*
-		area.split("horizontal",[null,"230px"],true);
-
-		// TREE AREA **********************************
-		area.sections[1].content.innerHTML = "";
-		this.inspector = new LiteGUI.Inspector();
-		this.inspector.onchange = function()
-		{
-			GraphModule.graphcanvas.setDirty(true,true);
-			RenderModule.requestFrame();
-		}
-		area.sections[1].content.appendChild(this.inspector.root);
-		this.inspector.addInfo("select a node to see its properties");
-		*/
 
 		// CANVAS AREA *******************************
 		var graph_tabs = new LiteGUI.Tabs("graphstabs", {});
@@ -113,12 +139,6 @@ var GraphModule = {
 
 		if(!instance)
 		{
-			/*
-			this.current_graph_info = byll;
-			this.onNodeSelected(null); //TODO: store old selected node id
-			this.graph = null;
-			this.graphcanvas.setGraph( null );
-			*/
 			return;
 		}
 
@@ -535,7 +555,7 @@ var GraphModule = {
 			return true;
 		}
 	}
-
+*/
 };
 
 CORE.registerModule( GraphModule );

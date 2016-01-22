@@ -6,6 +6,7 @@ function GraphWidget()
 
 GraphWidget.litegraph_path = "../../litegraph/";
 GraphWidget.litegraph_css_url = "css/litegraph.css";
+GraphWidget.litegraph_background = "imgs/litegraph_grid.png";
 
 GraphWidget.widget_name = "Graph";
 CORE.registerWidget( GraphWidget );
@@ -35,7 +36,7 @@ GraphWidget.prototype.init = function()
 	area.content.style.backgroundColor = "#222";
 
 	this.graphcanvas = new LGraphCanvas( this.canvas, null, { autoresize: true } );
-	this.graphcanvas.background_image = GraphWidget.litegraph_path + "demo/imgs/grid.png";
+	this.graphcanvas.background_image = GraphWidget.litegraph_background;
 	this.graphcanvas.onNodeSelected = this.onNodeSelected.bind(this);
 	this.graphcanvas.onShowNodePanel = this.onShowNodePanel.bind(this);
 	this.graphcanvas.onDropItem = this.onDropItem.bind(this);

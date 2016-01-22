@@ -1087,7 +1087,7 @@ LGraph.prototype.serialize = function()
 		nodes_info.push( this._nodes[i].serialize() );
 
 	//remove data from links, we dont want to store it
-	for(var i = 0, l = this.links.length; i < l; ++i)
+	for(var i in this.links) //links is an OBJECT
 		this.links[i].data = null;
 
 

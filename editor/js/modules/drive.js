@@ -84,6 +84,8 @@ var DriveModule = {
 		LEvent.bind( LS.ResourcesManager, "load_resource_preview", function(e, url) {
 			if(url.indexOf("http") != -1)
 				return; //external file
+			if(url.toLowerCase().indexOf("cubemap") != -1)
+				return;
 
 			var folder = LS.RM.getFolder( url );
 			var basename = LS.RM.getBasename( url );

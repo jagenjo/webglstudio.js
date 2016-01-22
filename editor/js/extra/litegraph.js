@@ -341,8 +341,12 @@ LGraph.prototype.attachCanvas = function(graphcanvas)
 
 LGraph.prototype.detachCanvas = function(graphcanvas)
 {
-	var pos = this.list_of_graphcanvas.indexOf(graphcanvas);
-	if(pos == -1) return;
+	if(!this.list_of_graphcanvas)
+		return;
+
+	var pos = this.list_of_graphcanvas.indexOf( graphcanvas );
+	if(pos == -1)
+		return;
 	graphcanvas.graph = null;
 	this.list_of_graphcanvas.splice(pos,1);
 }
@@ -605,7 +609,7 @@ LGraph.prototype.sendActionToCanvas = function(action, params)
 	if(!this.list_of_graphcanvas) 
 		return;
 
-	for(var i in this.list_of_graphcanvas)
+	for(var i = 0; i < this.list_of_graphcanvas.length; ++i)
 	{
 		var c = this.list_of_graphcanvas[i];
 		if( c[action] )
@@ -703,13 +707,16 @@ LGraph.prototype.remove = function(node)
 	node.graph = null;
 
 	//remove from canvas render
-	for(var i = 0; i < this.list_of_graphcanvas.length; ++i)
+	if(this.list_of_graphcanvas)
 	{
-		var canvas = this.list_of_graphcanvas[i];
-		if(canvas.selected_nodes[node.id])
-			delete canvas.selected_nodes[node.id];
-		if(canvas.node_dragged == node)
-			canvas.node_dragged = null;
+		for(var i = 0; i < this.list_of_graphcanvas.length; ++i)
+		{
+			var canvas = this.list_of_graphcanvas[i];
+			if(canvas.selected_nodes[node.id])
+				delete canvas.selected_nodes[node.id];
+			if(canvas.node_dragged == node)
+				canvas.node_dragged = null;
+		}
 	}
 
 	//remove from containers
@@ -1038,10 +1045,14 @@ LGraph.prototype.connectionChange = function( node )
 
 LGraph.prototype.isLive = function()
 {
-	for(var i in this.list_of_graphcanvas)
+	if(!this.list_of_graphcanvas)
+		return false;
+
+	for(var i = 0; i < this.list_of_graphcanvas.length; ++i)
 	{
 		var c = this.list_of_graphcanvas[i];
-		if(c.live_mode) return true;
+		if(c.live_mode)
+			return true;
 	}
 	return false;
 }
@@ -2136,7 +2147,7 @@ LGraphNode.prototype.captureInput = function(v)
 
 	var list = this.graph.list_of_graphcanvas;
 
-	for(var i in list)
+	for(var i = 0; i < list.length; ++i)
 	{
 		var c = list[i];
 		//releasing somebody elses capture?!

@@ -56,6 +56,7 @@ var DriveModule = {
 		});
 		
 		LEvent.bind( LS.ResourcesManager, "resource_loaded", function(e, url) {
+			EditorModule.refreshAttributes();
 			var msg = document.getElementById( "res-msg-" + url.hashCode() );
 			if(!msg)
 				return;

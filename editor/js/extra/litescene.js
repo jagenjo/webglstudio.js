@@ -1623,8 +1623,19 @@ function Resource()
 {
 	this.filename = null;
 	this.fullpath = null;
-	this.data = null;
+	this._data = null;
 }
+
+Object.defineProperty( Resource.prototype, "data", {
+	set: function(v){ 
+		this._data = v;
+		this._resource_modified = true;
+	},
+	get: function() { 
+		return this._data;
+	},
+	enumerable: true
+});
 
 //makes this resource available 
 Resource.prototype.register = function()
@@ -1712,15 +1723,17 @@ Resource.getDataToStore = function( resource )
 //used in the coding pad to assign content to generic text files
 Resource.prototype.getData = function()
 {
-	return this.data;
+	return this._data;
 }
 
-Resource.prototype.setData = function(v)
+Resource.prototype.setData = function( v, skip_modified_flag )
 {
 	//remove old file
 	if( this._original_data )
 		this._original_data = null;
-	this.data = v;
+	this._data = v;
+	if(!skip_modified_flag)
+		this._resource_modified = true;
 }
 
 Resource.prototype.getDataToStore = function()
@@ -2097,16 +2110,23 @@ var ResourcesManager = {
 	* @method load
 	* @param {String} url where the resource is located (if its a relative url it depends on the path attribute)
 	* @param {Object}[options={}] options to apply to the loaded resource when processing it
-	* @param {Function} [on_complete=null] callback when the resource is loaded and cached, params: callback( url, resource, options )
+	* @param {Function} [on_complete=null] callback when the resource is loaded and cached, params: callback( resource, url  ) //( url, resource, options )
 	*/
 	load: function( url, options, on_complete )
 	{
+		//parameter swap...
+		if(options && options.constructor === Function && !on_complete )
+		{
+			on_complete = options;
+			options = null;
+		}
+
 		//if we already have it, then nothing to do
 		var resource = this.resources[url];
 		if( resource != null && !resource.is_preview )
 		{
 			if(on_complete)
-				on_complete(resource);
+				on_complete(resource,url);
 			return true;
 		}
 
@@ -2257,7 +2277,7 @@ var ResourcesManager = {
 		{
 			var resource = new LS.Resource();
 			resource.filename = resource.fullpath = url;
-			resource.data = data;
+			resource._data = data;
 			inner_onResource( url, resource );
 		}
 
@@ -2370,65 +2390,6 @@ var ResourcesManager = {
 		return true;
 	},
 
-	/* moved to LS.Resource as getDataToStore
-	computeResourceInternalData: function(resource)
-	{
-		if(!resource)
-			throw("Resource is null");
-
-		var data = null;
-		var encoding = "text";
-		var extension = "";
-
-		//get the data
-		if (resource.getStoringData) //function
-		{
-			data = resource.getDataToStore();
-			if(data && data.constructor == ArrayBuffer)
-				encoding = "binary";
-		}
-		else if (resource._original_file) //file
-		{
-			data = resource._original_file;
-			encoding = "file";
-		}
-		else if(resource._original_data) //file in ArrayBuffer format
-			data = resource._original_data;
-		else if(resource.toBinary) //a function to compute the ArrayBuffer format
-		{
-			data = resource.toBinary();
-			encoding = "binary";
-			extension = "wbin";
-		}
-		else if(resource.toBlob) //a blob (Canvas should have this)
-		{
-			data = resource.toBlob();
-			encoding = "file";
-		}
-		else if(resource.toBase64) //a base64 string
-		{
-			data = resource.toBase64();
-			encoding = "base64";
-		}
-		else if(resource.serialize) //a json object
-		{
-			var obj = resource.serialize();
-			if(obj.preview_url) //special case...
-				delete obj.preview_url;
-			data = JSON.stringify( obj );
-		}
-		else if(resource.data) //regular string data
-			data = resource.data;
-		else
-			data = JSON.stringify( resource );
-
-		if(data.buffer && data.buffer.constructor == ArrayBuffer)
-			data = data.buffer; //store the data in the arraybuffer
-
-		return {data:data, encoding: encoding, extension: extension};
-	},
-	*/
-		
 	/**
 	* Used to load files and get them as File (or Blob)
 	* @method getURLasFile
@@ -2613,7 +2574,7 @@ var ResourcesManager = {
 		for(var i in LS.ResourcesManager.resources_being_loaded[url])
 		{
 			if( LS.ResourcesManager.resources_being_loaded[url][i].callback != null )
-				LS.ResourcesManager.resources_being_loaded[url][i].callback(res);
+				LS.ResourcesManager.resources_being_loaded[url][i].callback( res, url );
 		}
 
 		//triggers 'once' callbacks
@@ -9336,6 +9297,16 @@ Camera.cubemap_camera_parameters = [
 	{ name: "negy", dir: vec3.fromValues(0,1,0), up: vec3.fromValues(0,0,1), right: vec3.fromValues(-1,0,0), crossx:1, crossy:0 },
 	{ name: "posz", dir: vec3.fromValues(0,0,-1), up: vec3.fromValues(0,1,0), right: vec3.fromValues(1,0,0), crossx:1, crossy:1 },
 	{ name: "negz", dir: vec3.fromValues(0,0,1), up: vec3.fromValues(0,1,0), right: vec3.fromValues(-1,0,0), crossx:3, crossy:1 }
+];
+
+//OLD VERSION
+Camera.cubemap_camera_parameters = [
+	{ dir: vec3.fromValues(1,0,0), 	up: vec3.fromValues(0,-1,0) }, //positive X
+	{ dir: vec3.fromValues(-1,0,0), up: vec3.fromValues(0,-1,0) }, //negative X
+	{ dir: vec3.fromValues(0,1,0), 	up: vec3.fromValues(0,0,1) }, //positive Y
+	{ dir: vec3.fromValues(0,-1,0), up: vec3.fromValues(0,0,-1) }, //negative Y
+	{ dir: vec3.fromValues(0,0,1), 	up: vec3.fromValues(0,-1,0) }, //positive Z
+	{ dir: vec3.fromValues(0,0,-1), up: vec3.fromValues(0,-1,0) } //negative Z
 ];
 //*/
 /*
@@ -17921,21 +17892,6 @@ function Script(o)
 
 	if(o)
 		this.configure(o);
-
-	/* code must not be executed if it is not attached to the scene
-	if(this.code)
-	{
-		try
-		{
-			//just in case the script saved had an error, do not block the flow
-			this.processCode();
-		}
-		catch (err)
-		{
-			console.error(err);
-		}
-	}
-	*/
 }
 
 Script.secure_module = false; //this module is not secure (it can execute code)
@@ -18003,7 +17959,7 @@ Object.defineProperty( Script.prototype, "context", {
 Script.prototype.getContext = function()
 {
 	if(this._script)
-			return this._script._context;
+		return this._script._context;
 	return null;
 }
 
@@ -18034,14 +17990,6 @@ Script.prototype.processCode = function( skip_events )
 
 		//compiles and executes the context
 		var ret = this._script.compile({component:this, node: this._root, scene: this._root.scene });
-		/*
-		if(	this._script._context )
-		{
-			this._script._context.__proto__.getComponent = (function() { return this; }).bind(this);
-			this._script._context.__proto__.getLocator = function() { return this.getComponent().getLocator() + "/context"; };
-			this._script._context.__proto__.createProperty = LS.Component.prototype.createProperty;
-		}
-		*/
 		if(!skip_events)
 			this.hookEvents();
 		return ret;
@@ -18328,6 +18276,148 @@ Script.prototype.getResources = function(res)
 
 LS.registerComponent( Script );
 LS.Script = Script;
+
+//*****************
+
+function ScriptInFile(o)
+{
+	this.enabled = true;
+	this._filename = "";
+
+	this._script = new LScript();
+
+	this._script.extra_methods = {
+		getComponent: (function() { return this; }).bind(this),
+		getLocator: function() { return this.getComponent().getLocator() + "/context"; },
+		createProperty: LS.Component.prototype.createProperty,
+		createAction: LS.Component.prototype.createAction,
+		bind: LS.Component.prototype.bind,
+		unbind: LS.Component.prototype.unbind,
+		unbindAll: LS.Component.prototype.unbindAll
+	};
+
+	this._script.onerror = this.onError.bind(this);
+	this._script.exported_callbacks = [];//this.constructor.exported_callbacks;
+	this._last_error = null;
+
+	if(o)
+		this.configure(o);
+}
+
+Object.defineProperty( ScriptInFile.prototype, "filename", {
+	set: function(v){ 
+		this._filename = v;
+		this.processCode();
+	},
+	get: function() { 
+		return this._filename;
+	},
+	enumerable: true
+});
+
+Object.defineProperty( ScriptInFile.prototype, "context", {
+	set: function(v){ 
+		console.error("ScriptInFile: context cannot be assigned");
+	},
+	get: function() { 
+		if(this._script)
+				return this._script._context;
+		return null;
+	},
+	enumerable: false //if it was enumerable it would be serialized
+});
+
+ScriptInFile.prototype.onAddedToScene = function( scene )
+{
+	if( !this.constructor.catch_important_exceptions )
+	{
+		this.processCode();
+		return;
+	}
+
+	//catch
+	try
+	{
+		//careful, if the code saved had an error, do not block the flow of the configure or the rest will be lost
+		this.processCode();
+	}
+	catch (err)
+	{
+		console.error(err);
+	}
+}
+
+ScriptInFile.prototype.processCode = function( skip_events )
+{
+	var that = this;
+	if(!this.filename)
+		return;
+
+	var script_resource = LS.ResourcesManager.getResource( this.filename );
+	if(!script_resource)
+	{
+		LS.ResourcesManager.load( this.filename, null, function( res, url ){
+			if( url != that.filename )
+				return;
+			that.processCode( skip_events );
+		});
+		return;
+	}
+
+	var code = script_resource.data;
+	if( code === undefined || this._script.code == code )
+		return;
+
+	this._script.code = code;
+	if(this._root && !LS.Script.block_execution )
+	{
+		//unbind old stuff
+		if( this._script && this._script._context )
+			this._script._context.unbindAll();
+
+		//compiles and executes the context
+		var ret = this._script.compile({component:this, node: this._root, scene: this._root.scene });
+		if(!skip_events)
+			this.hookEvents();
+		return ret;
+	}
+	return true;
+}
+
+ScriptInFile.prototype.getResources = function(res)
+{
+	
+	if(this.filename)
+		res[this.filename] = LS.Resource;
+
+	//script resources
+	var ctx = this.getContext();
+	if(!ctx || !ctx.getResources )
+		return;
+	ctx.getResources( res );
+}
+
+ScriptInFile.prototype.getCode = function()
+{
+	var script_resource = LS.ResourcesManager.getResource( this.filename );
+	if(!script_resource)
+		return "";
+	return script_resource.data;
+}
+
+ScriptInFile.prototype.setCode = function( code, skip_events )
+{
+	var script_resource = LS.ResourcesManager.getResource( this.filename );
+	if(!script_resource)
+		return "";
+	script_resource.data = code;
+	this.processCode( skip_events );
+}
+
+LS.extendClass( ScriptInFile, Script );
+
+LS.registerComponent( ScriptInFile );
+LS.ScriptInFile = ScriptInFile;
 
 
 function TerrainRenderer(o)

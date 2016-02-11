@@ -9618,11 +9618,16 @@ if(typeof(LiteGraph) != "undefined")
 			aspect = gl.canvas.height / gl.canvas.width;
 		if(!aspect)
 			aspect = 1;
+		aspect = this.properties.preserve_aspect ? aspect : 1;
 
 		var start_texture = tex;
 		var scale = this.properties.scale || [1,1];
+		var origin = start_texture;
 		for(var i = 0; i < iterations; ++i)
-			start_texture.applyBlur( aspect * scale[0] , scale[1] , intensity, this._temp_texture, this._final_texture );
+		{
+			origin.applyBlur( aspect * scale[0] * i, scale[1] * i, intensity, this._temp_texture, this._final_texture );
+			origin = this._final_texture;
+		}
 
 		/*
 		gl.disable( gl.BLEND );

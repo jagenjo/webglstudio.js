@@ -179,33 +179,44 @@ LS.Components.Script["@inspector"] = function(component, attributes)
 		//CodingModule.onScriptRenamed( component );
 	}});
 
-	//attributes.addString("Module name", component.component_name, { callback: function(v) { component.component_name = v; } });
-	//attributes.addTextarea(null, component.code, { disabled: true, height: 100 });
 	attributes.addButton(null,"Edit Code", { callback: function() {
 		CodingModule.openTab();
 		var path = component.uid;
 		CodingModule.editInstanceCode(component, { id: component.uid, title: component._root.id, lang: "javascript", path: path, help: LS.Components.Script.coding_help } );
 	}});
-	//attributes.addCheckbox("Register", component.register_component, { callback: function(v) { component.register_component = v; } });
 	attributes.widgets_per_row = 1;
 
 	var context = component.getContext();
 	if(context)
-	{
-		//attributes.addTitle("Variables");
 		this.showObjectFields(context, attributes);
+}
 
-		var actions = [];
-		/*
-		for(var i in context)
-		{
-			if( typeof(context[i]) != "function" || LS.Components.Script.exported_callbacks.indexOf(i) != -1 || i == "getResources" )
-				continue;
-			attributes.addButton(null,i, { callback: context[i].bind(context) });
-		}
-		*/
+if( LS.Components.ScriptInFile )
+{
+	LS.Components.ScriptInFile["@inspector"] = function(component, attributes)
+	{
+		attributes.widgets_per_row = 2;
+		attributes.addResource("Filename", component.filename, { callback: function(v) { 
+			component.filename = v;
+		}});
+
+		attributes.addButton(null,"Edit Code", { callback: function() {
+			var path = component.uid;
+			if(!component.filename)
+				return;
+			CodingModule.openTab();
+			var res = LS.ResourcesManager.load( component.filename, null, function(res){
+				CodingModule.editInstanceCode( res, { id: component.filename, title: component.filename, lang: "javascript", path: path, help: LS.Components.Script.coding_help,
+					setCode: function(c) { component.setCode(c); }	//to force reload
+				});
+			});
+		}});
+		attributes.widgets_per_row = 1;
+
+		var context = component.getContext();
+		if(context)
+			this.showObjectFields(context, attributes);
 	}
-
 }
 
 LS.Components.Script.onComponentInfo = function( component, widgets )

@@ -56,7 +56,7 @@ var RenderModule = {
 					InterfaceModule.setSidePanelVisibility(true);
 					RenderModule.viewport3d.resize(); //adapt to parent size
 					RenderModule.requestFrame();
-					//EditorModule.refreshAttributes();
+					EditorModule.refreshAttributes(); //why not? it was commented
 				}
 		});
 

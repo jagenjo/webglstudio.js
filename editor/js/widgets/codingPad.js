@@ -308,7 +308,7 @@ CodingPadWidget.prototype.saveCode = function()
 	{
 		DriveModule.saveResource( info.instance, function(){
 			that.editor.focus();
-			this.showInFooter("saved");
+			that.showInFooter("saved");
 		}, { skip_alerts: true });
 		this.showInFooter("saving...");
 	}

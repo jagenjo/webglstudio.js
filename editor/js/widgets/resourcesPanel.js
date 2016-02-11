@@ -29,7 +29,7 @@ function ResourcesPanelWidget( id )
 
 	//files
 	var files_section = this.area.getSection(1);
-	this.area.root.addEventListener("contextmenu", function(e) { e.preventDefault(); });
+	this.area.root.addEventListener("contextmenu", (function(e) { this.showFolderContextualMenu(e); e.preventDefault(); }).bind(that) );
 
 	var browser_root = new LiteGUI.Area(null,{ full: true });
 	files_section.add( browser_root );
@@ -47,6 +47,7 @@ function ResourcesPanelWidget( id )
 	browser_root.sections[0].add( top_inspector );
 
 	this.browser_container = browser_root.sections[1].content;
+	this.browser_container.classList.add("resources-panel-container");
 	this.showInBrowserContent(null); //make it ready
 
 	var login_callback = this.onLoginEvent.bind(this);
@@ -56,12 +57,13 @@ function ResourcesPanelWidget( id )
 		LiteGUI.bind( CORE, "user-login", login_callback );
 		LiteGUI.bind( CORE, "user-logout", login_callback );
 		LiteGUI.bind( DriveModule, "tree_updated", tree_update_callback );
-
+		LEvent.bind( LS.ResourcesManager, "resource_registered", that.onResourceRegistered, that );
 	});
 	this.root.addEventListener("DOMNodeRemovedFromDocument", function(){ 
 		LiteGUI.unbind( CORE, "user-login", login_callback );
 		LiteGUI.unbind( CORE, "user-logout", login_callback );
 		LiteGUI.unbind( DriveModule, "tree_updated", tree_update_callback );
+		LEvent.unbind( LS.ResourcesManager, "resource_registered", that.onResourceRegistered, that );
 	});
 
 	//drop in browser container
@@ -99,6 +101,14 @@ ResourcesPanelWidget.createDialog = function( parent )
 	}
 	dialog.show();
 	return dialog;
+}
+
+ResourcesPanelWidget.prototype.selectFolder = function( name )
+{
+	//search in the tree and click it
+	var folder = this.tree_widget.getItem( name );
+	if(folder)
+		LiteGUI.trigger( folder, "click" );
 }
 
 ResourcesPanelWidget.prototype.getTreeData = function()
@@ -204,6 +214,69 @@ ResourcesPanelWidget.prototype.createTreeWidget = function()
 	return tree_widget;
 }
 
+
+ResourcesPanelWidget.prototype.showInBrowserContent = function( items, options )
+{
+	options = options || {};
+
+	var parent = this.browser_container;
+
+	if(options.preserve)
+	{
+		var block = document.createElement("div");
+		block.className = "file-list-block";
+		parent.appendChild( block );
+		if(options.info)
+		{
+			var info = document.createElement("div");
+			info.className = "info";
+			info.innerHTML = options.info;
+			block.appendChild(info);
+		}
+		return;
+	}
+	else
+		parent.innerHTML = "";
+
+	var title = document.createElement("div");
+	title.className = "file-list-title";
+	if(options.title)
+		title.innerHTML = options.title;
+	else if(options.folder)
+	{
+		title.innerHTML = "<span class='foldername'>" + options.folder.split("/").join("<span class='foldername-slash'>/</span>") + "</span>";
+	}
+	parent.appendChild( title );
+
+	var root =  document.createElement("ul");
+	root.className = "file-list";
+	root.style.height = "calc( 100% - 24px )";
+	parent.appendChild( root );
+
+	this.visible_resources = items;
+	this._last_options = options;
+
+	if(items)
+		for(var i in items)
+		{
+			if(i[0] == ":") //local resource
+				continue;
+			var item = items[i];
+			if(!item.name)
+				item.name = i;
+			this.addItemToBrowser( item );
+		}
+	else
+	{
+		if(options.content)
+			root.innerHTML = options.content;
+		else if(options.info)
+			root.innerHTML = "<div class='file-list-info'>"+options.info+"</div>";
+		else
+			root.innerHTML = "<div class='file-list-info'>No items</div>";
+	}
+}
+
 //add a new resource to the browser window
 ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 {
@@ -248,6 +321,13 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 		clean_name = clean_name.shift() + "<span class='extension'>." + clean_name.join(".") + "</span>";
 		element.innerHTML = "<span class='title'>"+clean_name+"</span>";
 	}
+
+	var type_title = LS.RM.getExtension(filename);
+	if(!type_title)
+		type_title = type;
+	else
+		type_title = type_title.toUpperCase();
+	
 
 	//REFACTOR THIS FOR GOD SAKE!!!!!!!!!!!!!!!!!!!!!!!
 	var preview = resource.preview_url;
@@ -310,7 +390,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 		element.appendChild(img);
 	}
 	
-	$(element).append("<span class='info'>"+type+"</span>");
+	$(element).append("<span class='info'>"+type_title+"</span>");
 
 	/*
 	var button = document.createElement("button");
@@ -339,7 +419,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 		}
 		else
 		{
-			var path = element.dataset["fullpath"];
+			var path = element.dataset["fullpath"] || element.dataset["filename"];
 			var callback = that.on_resource_selected_callback;
 			that.on_resource_selected_callback = null;
 			callback( path );
@@ -366,6 +446,8 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 		if(e.button != 2) //right button
 			return false;
 		that.showItemContextualMenu(this,e);
+		e.stopImmediatePropagation();
+		e.stopPropagation();
 		e.preventDefault(); 
 		return false;
 	});
@@ -373,7 +455,8 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 
 ResourcesPanelWidget.prototype.showItemContextualMenu = function( item, event )
 {
-	var actions = ["Insert","Clone","Move","Properties",null,"Delete"];
+	var that = this;
+	var actions = ["Insert","Load","Clone","Move","Properties",null,"Delete"];
 
 	var menu = new LiteGUI.ContextualMenu( actions, { ignore_item_callbacks: true, event: event, title: "Resource", callback: function(action, options, event) {
 		var fullpath = item.dataset["fullpath"] || item.dataset["filename"];
@@ -383,6 +466,10 @@ ResourcesPanelWidget.prototype.showItemContextualMenu = function( item, event )
 		if(action == "Insert")
 		{
 			DriveModule.onInsertResourceInScene( item );
+		}
+		else if(action == "Load")
+		{
+			LS.ResourcesManager.load( fullpath );
 		}
 		else if(action == "Clone")
 		{
@@ -400,11 +487,30 @@ ResourcesPanelWidget.prototype.showItemContextualMenu = function( item, event )
 		{
 			DriveModule.serverDeleteFile( fullpath, function(v) { 
 				if(v)
-					DriveModule.refreshContent();
+					that.refreshContent();
 			});
 		}
 		else
 			LiteGUI.alert("Unknown action");
+	}});
+}
+
+ResourcesPanelWidget.prototype.showFolderContextualMenu = function(e)
+{
+	var that = this;
+	var menu = new LiteGUI.ContextualMenu( ["Create Script","Create Text File","Refresh"], { ignore_item_callbacks: true, event: event, title: "Folder", callback: function(action, options, event) {
+		if(action == "Create Script")
+		{
+			that.onShowCreateFileDialog({filename: "script.js" });
+		}
+		else if(action == "Create Text File")
+		{
+			that.onShowCreateFileDialog({filename: "text.txt" });
+		}
+		else if(action == "Refresh")
+		{
+			that.refreshContent();
+		}
 	}});
 }
 
@@ -424,7 +530,7 @@ ResourcesPanelWidget.prototype.refreshContent = function()
 	if( this.current_bridge )
 		this.current_bridge.updateContent( this.current_folder );
 	else
-		this.showInBrowserContent( this.visible_resources );
+		this.showInBrowserContent( this.visible_resources, this._last_options );
 }
 
 
@@ -446,6 +552,12 @@ ResourcesPanelWidget.prototype.unbindEvents = function()
 	var that = this;
 }
 
+ResourcesPanelWidget.prototype.onResourceRegistered = function(e,res)
+{
+	if(!this.current_folder)
+		this.refreshContent();
+}
+
 ResourcesPanelWidget.prototype.clear = function()
 {
 	if(!this.tree)
@@ -458,28 +570,6 @@ ResourcesPanelWidget.prototype.showContextualMenu = function(e){
 		if(value == "Refresh")
 			this.refresh();
 	}});
-}
-
-ResourcesPanelWidget.prototype.showInBrowserContent = function( items )
-{
-	var parent = this.browser_container;
-	parent.innerHTML = "";
-	var root =  document.createElement("ul");
-	root.className = "file-list";
-	parent.appendChild( root );
-
-	this.visible_resources = items;
-
-	if(items)
-		for(var i in items)
-		{
-			if(i[0] == ":") //local resource
-				continue;
-			var item = items[i];
-			if(!item.name)
-				item.name = i;
-			this.addItemToBrowser( item );
-		}
 }
 
 ResourcesPanelWidget.prototype.filterByName = function( text )
@@ -539,6 +629,49 @@ ResourcesPanelWidget.prototype.onTreeUpdate = function(e)
 	this.refresh();
 }
 
+ResourcesPanelWidget.prototype.onShowCreateFileDialog = function( options )
+{
+	var that = this;
+	options = options || {};
+	var filename = options.filename || "unnamed.txt";
+	var folder = options.folder || this.current_folder;
+
+	var dialog = new LiteGUI.Dialog( null, { title: "New File", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
+	var inspector = new LiteGUI.Inspector();
+
+	inspector.addString("Filename",filename, function(v){ filename = v; });
+	inspector.addString("Folder",folder, function(v){ folder = v; });
+	inspector.addButton(null,"Create", inner);
+
+	function inner()
+	{
+		folder = folder || "";
+		//create dummy file
+		var resource = new LS.Resource();
+		resource.filename = filename;
+		if(folder && folder != "")
+			resource.fullpath = folder + "/" + filename;
+		resource.data = "";
+
+		//upload to server? depends if it is local or not
+		resource.register();
+		if(resource.fullpath)
+		{
+			DriveModule.saveResource( resource, function(v){
+				that.refreshContent();
+			}, { skip_alerts: true });
+		}
+
+		//refresh
+		//close
+		dialog.close();
+	}
+
+	dialog.add( inspector );
+	dialog.show( null, this._root );
+	dialog.adjustSize();
+	return dialog;
+}
 
 
 

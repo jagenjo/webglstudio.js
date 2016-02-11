@@ -532,7 +532,7 @@
 		]]>
 	</snippet>
 
-	<snippet id="morphing">
+	<snippet id="morphing_streams">
 		<![CDATA[
 				//max vertex attribs are 16 usually, so 10 are available after using 6 for V,N,UV,UV2,BW,BI
 				attribute vec3 a_vertex_morph0;
@@ -548,8 +548,6 @@
 
 				void applyMorphing( inout vec4 position, inout vec3 normal )
 				{
-					//position.x += sin( position.y ) * u_morph_weights[0];
-
 					vec3 original_vertex = position.xyz;
 					vec3 original_normal = normal.xyz;
 
@@ -569,6 +567,27 @@
 					{
 						position.xyz += (a_vertex_morph3 - original_vertex) * u_morph_weights[3]; normal.xyz += (a_normal_morph3 - original_normal) * u_morph_weights[3];
 					}
+				}
+		]]>
+	</snippet>
+
+	<snippet id="morphing_texture">
+		<![CDATA[
+				attribute float a_morphing_ids;
+
+				uniform sampler2D u_morph_vertices_texture;
+				uniform sampler2D u_morph_normals_texture;
+				uniform vec4 u_morphing_texture_size;
+
+				void applyMorphing( inout vec4 position, inout vec3 normal )
+				{
+					vec2 coord;
+					float inv_width = u_morphing_texture_size.z;
+					float inv_height = u_morphing_texture_size.w;
+					coord.x = mod( a_morphing_ids, u_morphing_texture_size.x ) * inv_width;
+					coord.y = floor( a_morphing_ids / u_morphing_texture_size.x ) * inv_height;
+					position.xyz += texture2D( u_morph_vertices_texture, coord ).xyz;
+					normal.xyz += texture2D( u_morph_normals_texture, coord ).xyz;
 				}
 		]]>
 	</snippet>
@@ -768,9 +787,7 @@
 		</code>
 	</template>
 
-
-
-	<shader id="base" tags="instance" macros="NO_NORMALS,NO_COORDS,USE_COORDS1_STREAM,USE_COLOR_STREAM,USE_TANGENT_STREAM,USE_EXTRA_STREAMS,USE_CLIPPING_PLANE,USE_ALPHA_TEST,USE_ORTHOGRAPHIC_CAMERA,USE_VERTEX_SHADER_UNIFORMS,USE_VERTEX_SHADER_FUNCTIONS,USE_VERTEX_SHADER_CODE,USE_PIXEL_SHADER_UNIFORMS,USE_PIXEL_SHADER_FUNCTIONS,USE_PIXEL_SHADER_CODE,USE_SURFACE_SHADER,USE_IRRADIANCE_CUBEMAP,USE_ENVIRONMENT_TEXTURE,USE_ENVIRONMENT_CUBEMAP,USE_MORPHING,USE_SKINNING,MAX_BONES,USE_SKINNING_TEXTURE,USE_DRAW_BUFFERS,USE_POINTS,USE_TEXTURED_POINTS,USE_CIRCLE_POINTS,USE_LINEAR_PIPELINE" multipass="false" imports="true">
+	<shader id="base" tags="instance" macros="NO_NORMALS,NO_COORDS,USE_COORDS1_STREAM,USE_COLOR_STREAM,USE_TANGENT_STREAM,USE_EXTRA_STREAMS,USE_CLIPPING_PLANE,USE_ALPHA_TEST,USE_ORTHOGRAPHIC_CAMERA,USE_VERTEX_SHADER_UNIFORMS,USE_VERTEX_SHADER_FUNCTIONS,USE_VERTEX_SHADER_CODE,USE_PIXEL_SHADER_UNIFORMS,USE_PIXEL_SHADER_FUNCTIONS,USE_PIXEL_SHADER_CODE,USE_SURFACE_SHADER,USE_IRRADIANCE_CUBEMAP,USE_ENVIRONMENT_TEXTURE,USE_ENVIRONMENT_CUBEMAP,USE_MORPHING_STREAMS,USE_MORPHING_TEXTURE,USE_SKINNING,MAX_BONES,USE_SKINNING_TEXTURE,USE_DRAW_BUFFERS,USE_POINTS,USE_TEXTURED_POINTS,USE_CIRCLE_POINTS,USE_LINEAR_PIPELINE" multipass="false" imports="true">
 		<code type="vertex_shader">
 		<![CDATA[
 			precision mediump float;
@@ -828,9 +845,10 @@
 				varying vec4 v_light_coord;
 			#endif		
 			
-
-			#ifdef USE_MORPHING
-				#import "morphing"
+			#ifdef USE_MORPHING_STREAMS
+				#import "morphing_streams"
+			#elif defined( USE_MORPHING_TEXTURE )
+				#import "morphing_texture"
 			#endif
 
 			#ifdef USE_SKINNING
@@ -877,7 +895,7 @@
 					USE_VERTEX_SHADER_CODE
 				#endif
 
-				#ifdef USE_MORPHING
+				#if defined( USE_MORPHING_STREAMS ) || defined( USE_MORPHING_TEXTURE )
 					applyMorphing(vertex4, normal);
 				#endif
 
@@ -1053,7 +1071,7 @@
 		</code>
 	</shader>
 
-	<shader id="surface" tags="instance" macros="NO_NORMALS,NO_COORDS,USE_COORDS1_STREAM,USE_COLOR_STREAM,USE_TANGENT_STREAM,USE_EXTRA_STREAMS,USE_CLIPPING_PLANE,USE_ALPHA_TEST,USE_ORTHOGRAPHIC_CAMERA,USE_VERTEX_SHADER_UNIFORMS,USE_VERTEX_SHADER_FUNCTIONS,USE_VERTEX_SHADER_CODE,USE_PIXEL_SHADER_UNIFORMS,USE_PIXEL_SHADER_FUNCTIONS,USE_PIXEL_SHADER_CODE,USE_SURFACE_SHADER,USE_SHADOW_MAP,SHADOWMAP_OFFSET,USE_SHADOW_CUBEMAP,USE_LIGHT_TEXTURE,USE_LIGHT_CUBEMAP,USE_IGNORE_LIGHTS,USE_LIGHT_OFFSET,USE_BACKLIGHT,FIRST_PASS,LAST_PASS,USE_AMBIENT_ONLY,USE_HARD_SHADOWS,USE_SPOT_CONE,USE_SPOT_LIGHT,USE_DIRECTIONAL_LIGHT,USE_OMNI_LIGHT,USE_DIFFUSE_LIGHT,USE_SPECULAR_LIGHT,USE_IRRADIANCE_CUBEMAP,USE_LINEAR_ATTENUATION,USE_RANGE_ATTENUATION,USE_ENVIRONMENT_TEXTURE,USE_ENVIRONMENT_CUBEMAP,USE_SPECULAR_ONTOP,USE_MORPHING,USE_SKINNING,MAX_BONES,USE_SKINNING_TEXTURE,USE_EXTRA_LIGHT_SHADER_CODE, USE_EXTRA_LIGHT_TEXTURE, USE_EXTRA_LIGHT_CUBEMAP,USE_DRAW_BUFFERS,USE_POINTS,USE_TEXTURED_POINTS,USE_CIRCLE_POINTS,USE_LINEAR_PIPELINE" multipass="true" imports="true">
+	<shader id="surface" tags="instance" macros="NO_NORMALS,NO_COORDS,USE_COORDS1_STREAM,USE_COLOR_STREAM,USE_TANGENT_STREAM,USE_EXTRA_STREAMS,USE_CLIPPING_PLANE,USE_ALPHA_TEST,USE_ORTHOGRAPHIC_CAMERA,USE_VERTEX_SHADER_UNIFORMS,USE_VERTEX_SHADER_FUNCTIONS,USE_VERTEX_SHADER_CODE,USE_PIXEL_SHADER_UNIFORMS,USE_PIXEL_SHADER_FUNCTIONS,USE_PIXEL_SHADER_CODE,USE_SURFACE_SHADER,USE_SHADOW_MAP,SHADOWMAP_OFFSET,USE_SHADOW_CUBEMAP,USE_LIGHT_TEXTURE,USE_LIGHT_CUBEMAP,USE_IGNORE_LIGHTS,USE_LIGHT_OFFSET,USE_BACKLIGHT,FIRST_PASS,LAST_PASS,USE_AMBIENT_ONLY,USE_HARD_SHADOWS,USE_SPOT_CONE,USE_SPOT_LIGHT,USE_DIRECTIONAL_LIGHT,USE_OMNI_LIGHT,USE_DIFFUSE_LIGHT,USE_SPECULAR_LIGHT,USE_IRRADIANCE_CUBEMAP,USE_LINEAR_ATTENUATION,USE_RANGE_ATTENUATION,USE_ENVIRONMENT_TEXTURE,USE_ENVIRONMENT_CUBEMAP,USE_SPECULAR_ONTOP,USE_MORPHING_STREAMS,USE_MORPHING_TEXTURE,USE_SKINNING,MAX_BONES,USE_SKINNING_TEXTURE,USE_EXTRA_LIGHT_SHADER_CODE, USE_EXTRA_LIGHT_TEXTURE, USE_EXTRA_LIGHT_CUBEMAP,USE_DRAW_BUFFERS,USE_POINTS,USE_TEXTURED_POINTS,USE_CIRCLE_POINTS,USE_LINEAR_PIPELINE" multipass="true" imports="true">
 		<code type="vertex_shader">
 		<![CDATA[
 			precision mediump float;
@@ -1111,9 +1129,10 @@
 				varying vec4 v_light_coord;
 			#endif		
 			
-
-			#ifdef USE_MORPHING
-				#import "morphing"
+			#ifdef USE_MORPHING_STREAMS
+				#import "morphing_streams"
+			#elif defined( USE_MORPHING_TEXTURE )
+				#import "morphing_texture"
 			#endif
 
 			#ifdef USE_SKINNING
@@ -1160,7 +1179,7 @@
 					USE_VERTEX_SHADER_CODE
 				#endif
 
-				#ifdef USE_MORPHING
+				#if defined( USE_MORPHING_STREAMS ) || defined( USE_MORPHING_TEXTURE )
 					applyMorphing(vertex4, normal);
 				#endif
 
@@ -1393,7 +1412,7 @@
 			USE_LIGHT_TEXTURE, USE_LIGHT_CUBEMAP,
 			USE_FOG, USE_FOG_EXP, USE_FOG_EXP2,
 			USE_ORTHOGRAPHIC_CAMERA, USE_SOFT_PARTICLES, FIRST_PASS,LAST_PASS, USE_EXTRA_SURFACE_SHADER_CODE, USE_VERTEX_SHADER_UNIFORMS, 
-			USE_VERTEX_SHADER_FUNCTIONS,USE_VERTEX_SHADER_CODE,USE_MORPHING,USE_SKINNING,MAX_BONES,USE_SKINNING_TEXTURE,
+			USE_VERTEX_SHADER_FUNCTIONS,USE_VERTEX_SHADER_CODE,USE_MORPHING_STREAMS,USE_MORPHING_TEXTURE,USE_SKINNING,MAX_BONES,USE_SKINNING_TEXTURE,
 			USE_EXTRA_LIGHT_SHADER_CODE, USE_EXTRA_LIGHT_TEXTURE, USE_EXTRA_LIGHT_CUBEMAP,
 			USE_DRAW_BUFFERS,USE_POINTS,USE_TEXTURED_POINTS,USE_LINEAR_PIPELINE
 		</macros>
@@ -1462,8 +1481,10 @@
 				varying vec4 v_light_coord;
 			#endif
 
-			#ifdef USE_MORPHING
-				#import "morphing"
+			#ifdef USE_MORPHING_STREAMS
+				#import "morphing_streams"
+			#elif defined( USE_MORPHING_TEXTURE )
+				#import "morphing_texture"
 			#endif			
 
 			#ifdef USE_SKINNING
@@ -1514,10 +1535,10 @@
 
 				vec3 normal = v_normal;
 
-				#ifdef USE_MORPHING
-					applyMorphing(vertex4, normal);
-				#endif				
-
+				#if defined( USE_MORPHING_STREAMS ) || defined( USE_MORPHING_TEXTURE )
+					applyMorphing( vertex4, normal );
+				#endif			
+				
 				#ifdef USE_SKINNING
 					applySkinning(vertex4, normal);
 				#endif				
@@ -2277,7 +2298,7 @@
 		</code>
 	</shader>
 
-	<shader id="depth" tags="" macros="NO_COORDS,USE_ORTHOGRAPHIC_CAMERA,USE_COLOR_TEXTURE,USE_OPACITY_TEXTURE,USE_ALPHA_TEST,USE_LINEAR_SHADOWMAP,USE_VERTEX_SHADER_UNIFORMS,USE_VERTEX_SHADER_FUNCTIONS,USE_VERTEX_SHADER_CODE,USE_MORPHING,USE_SKINNING,MAX_BONES,USE_SKINNING_TEXTURE" imports="true">
+	<shader id="depth" tags="" macros="NO_COORDS,USE_ORTHOGRAPHIC_CAMERA,USE_COLOR_TEXTURE,USE_OPACITY_TEXTURE,USE_ALPHA_TEST,USE_LINEAR_SHADOWMAP,USE_VERTEX_SHADER_UNIFORMS,USE_VERTEX_SHADER_FUNCTIONS,USE_VERTEX_SHADER_CODE,USE_MORPHING_STREAMS,USE_MORPHING_TEXTURE,USE_SKINNING,MAX_BONES,USE_SKINNING_TEXTURE" imports="true">
 		<code type="vertex_shader">
 		<![CDATA[
 			precision highp float;
@@ -2307,8 +2328,10 @@
 
 			#import "computePointSize"
 
-			#ifdef USE_MORPHING
-				#import "morphing"
+			#ifdef USE_MORPHING_STREAMS
+				#import "morphing_streams"
+			#elif defined( USE_MORPHING_TEXTURE )
+				#import "morphing_texture"
 			#endif
 
 			#ifdef USE_SKINNING
@@ -2341,7 +2364,7 @@
 
 				vec3 v_normal; //not used but needed in case the deformer affects it
 
-				#ifdef USE_MORPHING
+				#if defined ( USE_MORPHING_STREAMS ) || defined ( USE_MORPHING_TEXTURE )
 					applyMorphing(vertex4, v_normal);
 				#endif	
 
@@ -2486,37 +2509,6 @@
 		</code>
 	</shader>
 
-	<shader id="cell_outline" tags="instance">
-		<code type="vertex_shader">
-		<![CDATA[
-			precision highp float;
-
-			attribute vec3 a_vertex;
-			attribute vec3 a_normal;
-			uniform mat4 u_mvp;
-
-			varying vec2 v_uvs;
-			uniform float u_extra_factor;
-
-			void main() {
-				vec3 normal = a_normal;
-				gl_Position = u_mvp * (vec4(a_vertex,1.0) + vec4(normal * u_extra_factor,0.0));
-			}
-		]]>
-		</code>
-		<code type="pixel_shader">
-		<![CDATA[
-			precision highp float;
-
-			uniform vec4 u_material_color;
-
-			void main() {
-				gl_FragColor = u_material_color;
-			}
-		]]>
-		</code>
-	</shader>
-
 	<shader id="flat_texture" tags="instance">
 		<code type="vertex_shader">
 		<![CDATA[
@@ -2550,7 +2542,7 @@
 		</code>
 	</shader>
 
-	<shader id="normal" tags="debug,instance" macros="NO_NORMALS,USE_MORPHING,USE_SKINNING,MAX_BONES,USE_SKINNING_TEXTURE,USE_NORMAL_TEXTURE,USE_NORMALMAP_FACTOR,USE_TANGENT_NORMALMAP" imports="true">
+	<shader id="normal" tags="debug,instance" macros="NO_NORMALS,USE_MORPHING_STREAMS,USE_MORPHING_TEXTURE,USE_SKINNING,MAX_BONES,USE_SKINNING_TEXTURE,USE_NORMAL_TEXTURE,USE_NORMALMAP_FACTOR,USE_TANGENT_NORMALMAP" imports="true">
 		<code type="vertex_shader">
 		<![CDATA[
 			precision highp float;
@@ -2571,8 +2563,10 @@
 			varying vec3 v_pos;
 			varying vec3 v_normal;
 
-			#ifdef USE_MORPHING
-				#import "morphing"
+			#ifdef USE_MORPHING_STREAMS
+				#import "morphing_streams"
+			#elif defined( USE_MORPHING_TEXTURE )
+				#import "morphing_texture"
 			#endif
 
 			#ifdef USE_SKINNING
@@ -2596,8 +2590,8 @@
 				//position
 				vec3 normal = v_normal;
 
-				#ifdef USE_MORPHING
-					applyMorphing(vertex4, normal);
+				#if defined( USE_MORPHING_STREAMS ) || defined( USE_MORPHING_TEXTURE )
+					applyMorphing( vertex4, normal );
 				#endif
 
 				#ifdef USE_SKINNING
@@ -2997,81 +2991,6 @@
 		]]>
 		</code>
 	</shader>
-
-
-	<shader id="hueFX" tags="fx">
-		<code type="vertex_shader">
-			precision highp float;
-			attribute vec3 a_vertex;
-			attribute vec2 a_coord;
-			varying vec2 coord;
-			void main() {
-				coord = a_coord; gl_Position = vec4(coord * 2.0 - 1.0, 0.0, 1.0);
-			}
-		</code>
-
-		<code type="pixel_shader">
-			precision highp float;
-
-			uniform sampler2D texture;
-			varying vec2 coord;
-			uniform vec4 color;
-			uniform float u_hue;
-			uniform float u_saturation;
-
-			const mat3 rgb2yiq = mat3(0.299, 0.587, 0.114, 0.595716, -0.274453, -0.321263, 0.211456, -0.522591, 0.311135);
-			const mat3 yiq2rgb = mat3(1.0, 0.9563, 0.6210, 1.0, -0.2721, -0.6474, 1.0, -1.1070, 1.7046);
-
-			void main() {
-				vec4 final = texture2D(texture, coord);
-				vec3 yColor = rgb2yiq * final.xyz;
-
-				float originalHue = atan(yColor.b, yColor.g);
-				float finalHue = originalHue + u_hue * 2.0 * 3.141592653589;
-				float chroma = sqrt(yColor.b*yColor.b+yColor.g*yColor.g);
-
-				vec3 yFinalColor = vec3(yColor.r, chroma * cos(finalHue), chroma * sin(finalHue));
-
-				yFinalColor = yiq2rgb * yFinalColor;
-				float lum = yFinalColor.r * 0.333 + yFinalColor.g * 0.333 + yFinalColor.b * 0.333;
-				yFinalColor = mix(vec3(lum),yFinalColor,u_saturation);
-
-				gl_FragColor = vec4(yFinalColor, final.a) * color;
-			}
-		</code>
-	</shader>
-
-	<shader id="curvesFX" tags="fx">
-		<code type="vertex_shader">
-			precision highp float;
-			attribute vec3 a_vertex;
-			attribute vec2 a_coord;
-			varying vec2 coord;
-			void main() {
-				coord = a_coord; gl_Position = vec4(coord * 2.0 - 1.0, 0.0, 1.0);
-			}
-		</code>
-
-		<code type="pixel_shader">
-			precision highp float;
-
-			uniform sampler2D texture;
-			varying vec2 coord;
-			uniform vec4 color;
-
-			uniform sampler2D u_curves;
-
-			void main() {
-				vec4 final = texture2D(texture, coord);
-				final.r = texture2D(u_curves, vec2(final.r,0.0) ).r;
-				final.g = texture2D(u_curves, vec2(final.g,0.0) ).g;
-				final.b = texture2D(u_curves, vec2(final.b,0.0) ).b;
-				gl_FragColor = final * color;
-			}
-		</code>
-	</shader>
-
-
 
 	<!--
 	<shader id="" tags="">

@@ -777,7 +777,7 @@ Session.prototype.getFileInfo = function( fullpath, on_complete )
 */
 Session.prototype.uploadFile = function( fullpath, data, extra, on_complete, on_error, on_progress )
 {
-	if(!data)
+	if(data == null || data == undefined)
 		throw("Data cannot be null");
 
 	var original_data = data;

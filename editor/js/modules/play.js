@@ -136,7 +136,7 @@ var PlayModule = {
 			return;
 		this.changeState("stop");
 		this.play_button.innerHTML = "Play";
-		$(this.pause_button).attr('disabled','disabled');
+		this.pause_button.setAttribute('disabled','disabled');
 	},
 
 	launch: function()
@@ -175,7 +175,7 @@ var PlayModule = {
 		if(state == "play")
 		{
 			this.state = "play";
-			console.log("%c + START ", 'background: #222; color: #AAF; font-size: 2em');
+			console.log("%c + START ", 'background: #222; color: #AFA; font-size: 1.4em');
 			LEvent.bind( scene,"finish", this.onSceneStop );
 			scene.start();
 			EditorModule.render_debug_info = false;
@@ -185,7 +185,7 @@ var PlayModule = {
 		else if(state == "stop")
 		{
 			this.state = "stop";
-			console.log("%c + FINISH ", 'background: #222; color: #AAF; font-size: 2em');
+			console.log("%c + FINISH ", 'background: #222; color: #AAF; font-size: 1.4em');
 			scene.finish();
 			EditorModule.render_debug_info = true;
 			RenderModule.requestFrame();
@@ -233,7 +233,10 @@ var PlayModule = {
 		if(dt > PlayModule.max_delta_time)
 			dt = PlayModule.max_delta_time;
 		if( this.state == 'play' )
+		{
 			LS.GlobalScene.update(dt);
+			LS.Tween.update(dt);
+		}
 	},
 
 	onShowSettingsPanel: function(name,widgets)

@@ -102,6 +102,15 @@ CodingPadWidget.prototype.editInstanceCode = function( instance, options )
 			return;
 	}
 
+	//adapt interface
+	this.compile_button.style.display = (lang != "javascript") ? "none" : null;
+	this.save_button.style.display = instance.fullpath ? null : "none";
+
+	if(lang == "javascript" || lang == "glsl")
+		this.editor.setOption( "mode", "javascript" );
+	else
+		this.editor.setOption( "mode", lang );
+
 	//changing from one tab to another? save state of old tab
 	if( current_code_info )
 	{
@@ -124,20 +133,22 @@ CodingPadWidget.prototype.replaceInstanceCode = function( instance, options )
 
 	//update coding context
 	this.current_code_info = { id: id, instance: instance, options: options };
-	var code = null;
+	var text_content = null;
 	if(this.current_code_info.options.getCode)
-		code = this.current_code_info.options.getCode();
+		text_content = this.current_code_info.options.getCode();
 	else if( instance.getCode )
-		code = instance.getCode();
+		text_content = instance.getCode();
+	else if( instance.getData )
+		text_content = instance.getData();
 	else
-		code = instance.code;
+		text_content = instance.code;
 
-	if(!code)
-		code = "";
+	if(!text_content)
+		text_content = "";
 
 	if(this.editor)
 	{
-		this.editor.setValue( code );
+		this.editor.setValue( text_content );
 		this.editor.refresh();
 		if(this.current_code_info && this.current_code_info.pos)
 			this.editor.setCursor( this.current_code_info.pos );
@@ -159,45 +170,6 @@ CodingPadWidget.prototype.replaceInstanceCode = function( instance, options )
 		window.scene = null;
 	}
 }
-
-
-//save the current state of the codemirror inside the instance (otherwise changes would be lost)
-CodingPadWidget.prototype.assignCurrentCode = function( skip_events )
-{
-	var info = this.getCurrentCodeInfo();
-	if(!info)
-		return;
-
-	var instance = info.instance;
-	var code = this.editor.getValue();
-	info.pos = this.editor.getCursor();
-
-	var old_code = null;
-	if(info.options.getCode)
-		old_code = info.options.getCode();
-	else if( instance.getCode )
-		old_code = instance.getCode();
-	else
-		old_code = instance.code;
-
-	//ignore this: sometimes we call assignCurrentCode after assigning the code
-	//if(code == old_code)
-	//	return;
-
-	if(info.options.setCode)
-		info.options.setCode( code );
-	else
-		instance.code = code;
-
-	if(skip_events) 
-		return true; 
-
-	LEvent.trigger( instance, "code_changed", code );
-	if( instance.onCodeChange )
-		return instance.onCodeChange( code );
-	return true;
-} 
-
 
 CodingPadWidget.prototype.onCodeChange = function( editor )
 {
@@ -222,35 +194,52 @@ CodingPadWidget.prototype.assignCurrentCode = function( skip_events )
 		return;
 	}
 
-	if(instance && ( !instance._root || !instance._root.scene) )
+	var uid = instance.uid;
+
+	if(instance)
 	{
-		console.warn( "Instance being edited is not in the scene" );
-		return;
+		if( uid.substr(0,5) == "COMP-" && (!instance._root || !instance._root.scene) )
+		{
+			console.warn( "Instance being edited is not in the scene" );
+			return;
+		}
 	}
 
-	var code = this.editor.getValue();
+	var text_content = this.editor.getValue();
 	info.pos = this.editor.getCursor();
 
-	var old_code = null;
+	var old_text_content = null;
 	if(info.options.getCode)
-		old_code = info.options.getCode();
+		old_text_content = info.options.getCode();
+	else if(info.options.getData)
+		old_text_content = info.options.getData();
+	else if(instance.getCode)
+		old_text_content = instance.getCode();
+	else if(instance.getData)
+		old_text_content = instance.getData();
 	else
-		old_code = instance.code;
+		old_text_content = instance.code;
 
-	if(code == old_code)
+	if(text_content == old_text_content)
 		return;
 
 	if(info.options.setCode)
-		info.options.setCode( code );
+		info.options.setCode( text_content );
+	else if(info.options.setData)
+		info.options.setData( text_content );
+	else if(instance.setCode)
+		instance.setCode( text_content );
+	else if(instance.setData)
+		instance.setData( text_content );
 	else
-		instance.code = code;
+		instance.code = text_content;
 
 	if(skip_events) 
 		return true; 
 
-	LEvent.trigger( instance, "code_changed", code );
+	LEvent.trigger( instance, "code_changed", text_content );
 	if( instance.onCodeChange )
-		return instance.onCodeChange( code );
+		return instance.onCodeChange( text_content );
 	LEvent.trigger( CodingPadWidget, "code_changed", info );
 	return true;
 }
@@ -304,6 +293,27 @@ CodingPadWidget.prototype.evalueCode = function()
 
 	//put editor code in instance (it will be evaluated)
 	this.assignCurrentCode(); //this will trigger the error handling during execution
+}
+
+CodingPadWidget.prototype.saveCode = function()
+{
+	var that = this;
+	var info = this.getCurrentCodeInfo();
+	if(!info)
+		return;
+
+	this.assignCurrentCode(true); //true? not sure
+
+	if( info.instance && info.instance.constructor == LS.Resource )
+	{
+		DriveModule.saveResource( info.instance, function(){
+			that.editor.focus();
+			this.showInFooter("saved");
+		}, { skip_alerts: true });
+		this.showInFooter("saving...");
+	}
+	else
+		this.showInFooter("stored");
 }
 
 CodingPadWidget.prototype.addBreakPoint = function()
@@ -530,21 +540,39 @@ CodingPadWidget.prototype.onOpenCode = function()
 
 	var selected = null;
 
-	var script_components = LS.GlobalScene.findNodeComponents( LS.Components.Script );
-	var scripts = [];
-	for(var i in script_components)
-		scripts.push({ name: script_components[i].name, component: script_components[i] });
+	var codes = [];
 
-	widgets.addList(null, scripts, { height: 200, callback: function(value){
-		selected = value.component;
+	//scripts in the scene
+	var script_components = LS.GlobalScene.findNodeComponents( LS.Components.Script );
+	for(var i in script_components)
+		codes.push({ name: script_components[i].name, component: script_components[i] });
+
+	//resources
+	for(var i in LS.ResourcesManager.resources)
+	{
+		var resource = LS.ResourcesManager.resources[i];
+		if( resource && resource.constructor === LS.Resource && resource.data && resource.data.constructor === String)
+			codes.push({ name: i, resource: resource });
+	}
+
+	widgets.addList(null, codes, { height: 200, callback: function(value){
+		selected = value;
 	}});
 
-	widgets.addButton(null,"Open Script", function(){
+	widgets.addButton(null,"Open", function(){
 		if(selected)
 		{
-			var component = selected;
-			var node = component._root;
-			that.editInstanceCode( component, { id: component.uid, title: node.id, lang: "javascript", path: component.uid, help: LS.Components.Script.coding_help });
+			if( selected.component )
+			{
+				var component = selected.component;
+				var node = component._root;
+				that.editInstanceCode( component, { id: component.uid, title: node.id, lang: "javascript", path: component.uid, help: LS.Components.Script.coding_help });
+			}
+			else if( selected.resource )
+			{
+				var resource = selected.resource;
+				that.editInstanceCode( resource, { id: selected.name, title: LS.RM.getFilename(selected.name) });
+			}
 		}
 		dialog.close();
 	});
@@ -588,10 +616,17 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 	}});
 
 	//check for parsing errors
-	top_widgets.addButton(null,"Compile",{ callback: function(v) { 
+	this.compile_button = top_widgets.addButton(null,"Compile",{ callback: function(v) { 
 		that.evalueCode();
 		LS.GlobalScene.refresh();
-	}}).title = "(Ctrl+Enter)";
+	}});
+	this.compile_button.title = "(Ctrl+Enter)";
+
+	this.save_button = top_widgets.addButton(null,"Save",{ callback: function(v) { 
+		that.saveCode();
+		LS.GlobalScene.refresh();
+	}});
+	this.save_button.title = "(Ctrl+S)";
 
 	/*
 	top_widgets.addButton(null,"Breakpoint",{ callback: function(v) { 
@@ -637,6 +672,7 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 		styleActiveLine: true,
 		extraKeys: {
 			"Ctrl-Enter": "compile",
+			"Ctrl-S": "save",
 			"Ctrl-Space": "autocomplete",
 			"Cmd-Space": "autocomplete",
 			//"Ctrl-F": "insert_function",
@@ -788,6 +824,12 @@ CodingPadWidget.prepareCodeMirror = function()
 		if(window.PlayModule)
 			PlayModule.onPlay();
 	}		
+
+	CodeMirror.commands.save = function(cm) {
+		var pad = cm.coding_area;
+		pad.saveCode();
+		LS.GlobalScene.refresh();
+	}
 
 	CodeMirror.commands.compile = function(cm) {
 		var pad = cm.coding_area;

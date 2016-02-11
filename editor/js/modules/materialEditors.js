@@ -118,7 +118,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 	{
 		var actions = ["Paste"];
 		if(material)
-			actions.push("Copy","Paste","Delete","Share","Instance");
+			actions.push("Copy","Paste","Delete","Share","Instance","Info");
 
 		var menu = new LiteGUI.ContextualMenu( actions, {component: material, title: mat_type || "Material", event: e, callback: inner_menu_select });
 		e.preventDefault();
@@ -198,6 +198,13 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 		else if( v == "Clone" || v == "Instance" )
 		{
 			EditorModule.cloneNodeMaterial( node );
+			inspector.refresh();
+		}
+		else if( v == "Info" )
+		{
+			var material = node.getMaterial();
+			if(material)
+				EditorModule.checkJSON( material );
 			inspector.refresh();
 		}
 		else

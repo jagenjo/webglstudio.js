@@ -206,9 +206,9 @@ var InterfaceModule = {
 		if(!visor)
 			return;
 
-		var open_button = this.opensidepanel_button = document.createElement("button");
+		var open_button = this.opensidepanel_button = document.createElement("div");
 		open_button.className = "opensidepanel-button";
-		open_button.innerHTML = "<";
+		open_button.innerHTML = "&#10096;";
 		visor.appendChild( open_button );
 		open_button.style.display = "none";
 		open_button.addEventListener("click", function() { InterfaceModule.setSidePanelVisibility(true); });

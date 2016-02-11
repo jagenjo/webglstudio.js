@@ -1420,6 +1420,23 @@ function beautifyJSON( code, skip_css )
 
 	return code;
 }
+
+function dataURItoBlob( dataURI ) {
+	var pos = dataURI.indexOf(",");
+	//convert to binary
+    var byteString = atob( dataURI.substr(pos+1) ); 
+	//copy from string to array
+    var ab = new ArrayBuffer( byteString.length ); 
+    var ia = new Uint8Array(ab);
+	var l = byteString.length;
+    for (var i = 0; i < l; i++) {
+        ia[i] = byteString.charCodeAt(i);
+    }
+
+	var mime = dataURI.substr(5,pos-5);
+	mime = mime.substr(0, mime.length - 7); //strip ";base64"
+    return new Blob([ab], { type: mime });
+}
 //enclose in a scope
 (function(){
 
@@ -4972,12 +4989,20 @@ function beautifyJSON( code, skip_css )
 		node.classList.add("selected");
 
 		//go up and semiselect
+		var parent = this.getParent( node );
+		while(parent)
+		{
+			parent.classList.add("semiselected");
+			parent = this.getParent( parent );
+		}
+		/*
 		var parent = node.parentNode.parentNode; //two elements per level
 		while(parent && parent.classList.contains("ltreeitem"))
 		{
 			parent.title_element.classList.add("semiselected");
 			parent = parent.parentNode.parentNode;
 		}
+		*/
 	}
 
 	//updates the widget to collapse
@@ -5839,12 +5864,16 @@ Inspector.prototype.refresh = function()
 		this.on_refresh();
 }
 
-//append widget to this inspector (TODO: rename to appendWidget)
+// Append widget to this inspector (TODO: rename to appendWidget)
+// + widget_parent
+// + replace
 Inspector.prototype.append = function( widget, options )
 {
-	var root = this._current_container || this.root;
+	options = options || {};
 
-	if(options && options.replace)
+	var root = options.widget_parent || this._current_container || this.root;
+
+	if(options.replace)
 		options.replace.parentNode.replaceChild( widget, options.replace );
 	else
 		root.appendChild( widget );
@@ -6019,7 +6048,7 @@ Inspector.prototype.collectProperties = function( instance )
 			continue;
 
 		var v = instance[i];
-		if ( v && v.constructor == Function )
+		if ( v && v.constructor == Function && !instance.constructor["@" + i])
 			continue;
 		properties[i] = v;
 	}
@@ -6156,7 +6185,7 @@ Inspector.prototype.createWidget = function(name, content, options)
 
 	var namewidth = "";
 	var contentwidth = "";
-	if(name != null && (this.name_width || options.name_width) && !this.one_line)
+	if( (name !== undefined && name !== null) && (this.name_width || options.name_width) && !this.one_line)
 	{
 		var w = options.name_width || this.name_width;
 		if(w !== undefined && w.constructor === Number)
@@ -6176,9 +6205,9 @@ Inspector.prototype.createWidget = function(name, content, options)
 	var title = name;
 	if(options.title)
 		title = options.title;
-	if(name == null)
+	if( name === null || name === undefined )
 		content_class += " full";
-	else if(name == "")
+	else if(name === "") //three equals because 0 == "" 
 		code += "<span class='wname' title='"+title+"' "+namewidth+">"+ pretitle +"</span>";
 	else
 		code += "<span class='wname' title='"+title+"' "+namewidth+">"+ pretitle + name + filling + "</span>";
@@ -6194,6 +6223,11 @@ Inspector.prototype.createWidget = function(name, content, options)
 	}
 
 	element.content = element.querySelector("span.info_content");
+	element.remove = function() { 
+		if( this.parentNode ) 
+			this.parentNode.removeChild( this );
+	};
+
 	return element;
 }
 
@@ -6247,6 +6281,8 @@ Inspector.widget_constructors = {
 	tree: 'addTree',
 	datatree: 'addDataTree',
 	pad: 'addPad',
+	array: 'addArray',
+	"Array": 'addArray',
 	separator: 'addSeparator'
 };
 
@@ -6416,7 +6452,8 @@ Inspector.prototype.addStringButton = function(name,value, options)
 {
 	options = this.processOptions(options);
 
-	value = value || "";
+	if(value === undefined)
+		value = "";
 	var that = this;
 	this.values[name] = value;
 	
@@ -7096,6 +7133,8 @@ Inspector.prototype.addSlider = function(name, value, options)
 		options.step = 0.01;
 
 	var that = this;
+	if(value === undefined || value === null)
+		value = 0;
 	this.values[name] = value;
 
 	var element = this.createWidget(name,"<span class='inputfield full'>\
@@ -7399,7 +7438,7 @@ Inspector.prototype.addTags = function(name, value, options)
 		tag.querySelector(".close").addEventListener("click", function(e) {
 			var tagname = $(this).parent()[0].data;
 			delete element.tags[tagname];
-			$(this).parent().remove();
+			LiteGUI.remove(this.parentNode);
 			$(element).trigger("wremoved", tagname );
 			Inspector.onWidgetChange.call(that,element,name,element.tags, options);
 		});
@@ -7600,7 +7639,7 @@ Inspector.prototype.addButton = function(name, value, options)
 {
 	options = this.processOptions(options);
 
-	value = value || "";
+	value = options.button_text || value || "";
 	var that = this;
 
 	var c = "";
@@ -7906,7 +7945,7 @@ Inspector.prototype.addDataTree = function(name, value, options)
 	value = value || "";
 	var element = this.createWidget(name,"<div class='wtree'></div>", options);
 	
-	var node = $(element).find(".wtree")[0];
+	var node = element.querySelector(".wtree");
 	var current = value;
 
 	inner_recursive(node,value);
@@ -7930,6 +7969,114 @@ Inspector.prototype.addDataTree = function(name, value, options)
 
 	this.append(element,options);
 	return element;
+}
+
+/**
+* Widget to edit an array of values of a certain type
+* @method addArray
+* @param {string} name 
+* @param {Array} value 
+* @param {Object} options, here is a list for this widget (check createWidget for a list of generic options):
+* - data_type: the type of every value inside the array
+* - data_options: options for the widgets of every item in the array
+* - max_items: max number of items to show from the array, default is 100
+* - callback: function to call once an items inside the array has changed
+* @return {HTMLElement} the widget in the form of the DOM element that contains it
+**/
+Inspector.prototype.addArray = function( name, value, options )
+{
+	var that = this;
+
+	if( !value || value.constructor !== Array )
+	{
+		console.error("Inspector: Array widget value must be a valid array" );
+		return;
+	}
+
+	options = this.processOptions(options);
+
+	var container = this.addContainer( name, options );
+	var widgets = [];
+	var type = options.data_type || "string";
+	container.value = value;
+	var max_items = options.max_items || 100;
+
+	//length widget
+	this.widgets_per_row = 3;
+	this.addInfo(name,null,{width: 100});
+	var length_widget = this.addString( "length", value.length || "0", function(v){ 
+		value.length = parseInt(v);
+		refresh.call( container );
+	});
+
+	this.addButtons( null,["+","-"], function(v){
+		if(v == "+")
+			value.length = value.length + 1;
+		else if(value.length > 0)
+			value.length = value.length - 1;
+		length_widget.setValue( value.length );
+		refresh.call( container );
+	});
+
+	this.widgets_per_row = 1;
+
+	refresh.call( container );
+
+	function refresh()
+	{
+		var value = this.value;
+		var old_size = widgets.length;
+		var new_size = value.length;
+
+		//clear extra widgets
+		if(new_size < old_size)
+		{
+			for(var i = new_size; i < widgets.length; ++i)
+			{
+				if(	widgets[ i ] )
+					widgets[ i ].remove();
+			}
+			widgets.length = new_size;
+		}
+
+		if(new_size > old_size)
+		{
+			for(var i = old_size; i < new_size && i < max_items; ++i)
+			{
+				var v = null;
+				if (value[i] !== undefined)
+					v = value[i];
+				var item_options = { widget_parent: container, name_width: 30, callback: assign.bind({value: this.value, index: i}) };
+				if(options.data_options)
+					for(var j in options.data_options)
+						item_options[j] = options.data_options[j];
+				var w = that.add( type, i, v, item_options );
+				widgets.push( w );
+			}
+		}
+	}
+
+	function assign(v)
+	{
+		this.value[ this.index ] = v;
+		if(options.callback)
+			options.callback.call( container, this.value, this.index );
+		//todo: trigger change
+	}
+
+	container.setValue = function(v)
+	{
+		this.value = v;
+		refresh.call(this);
+	}
+
+	container.getValue = function()
+	{
+		return this.value = v;
+	}
+
+	//this.append(element,options);
+	return container;
 }
 
 //***** containers ********/

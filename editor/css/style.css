@@ -1,5 +1,7 @@
 
 
+.icon { font-family: Lucida Sans Unicode }
+
 /* 3D Area */
 #visor {
 	position: absolute;
@@ -10,14 +12,6 @@
 	overflow: hidden; /* disable this to check for resize errors */
 	background-color: #111;
 	padding: 0;
-}
-
-.opensidepanel-button {
-	position: absolute;
-	top: 50%;
-	height: 100px;
-	right: 0;
-	opacity: 0.5;
 }
 
 /* startup console */
@@ -133,6 +127,31 @@ body.player #work-area, body.player #main-area  {
 	background-color: #5AF;
 }
 
+.opensidepanel-button {
+	color: #AAA;
+    background-color: #444;
+    border-radius: 10px 0px 0 10px;
+    display: block;
+    width: 20px;
+    height: 80px;
+    font-size: 2em;
+    text-align: center;
+    line-height: 80px;
+
+	position: absolute;
+	top: 50%;
+	right: 0;
+	opacity: 0.4;
+	transition: all 0.2s;
+}
+
+.opensidepanel-button:hover {
+	opacity: 1;
+	color: #EEE;
+    background-color: #666;
+	cursor: pointer;
+}
+
 /*
 .scene-tree .litetree .root_node {
 	background: transparent;
@@ -160,6 +179,56 @@ body.player #work-area, body.player #main-area  {
 
 .resource.modified {
 	outline: 1px solid #733;
+}
+
+.file-list-info {
+	color: #4F4F4F;
+	font-size: 30px;
+	margin: 10px;
+}
+
+.file-list-title {
+	background-color: black;
+	height: 24px;
+	overflow: hidden;
+}
+
+.foldername {
+	display: inline-block;
+	margin-left: 8px;
+	margin-top: 4px;
+	font-size: 1.2em;
+	color: #EEE;
+}
+
+.foldername-slash {
+	color: #ABC;
+	padding: 0 3px;
+}
+
+.file-list-block {
+	background-color: black;
+	opacity: 0.8;
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+}
+
+.file-list .file-item 
+{
+	transition: all 0.2s;
+}
+
+.file-list .file-item:hover {
+	transform: scale(1.1);
+}
+
+
+.file-list-block .info {
+	margin: 20px;
+	font-size: 4em;
 }
 
 #settings-widgets-area .content {
@@ -335,13 +404,15 @@ textarea.code {
 
 .inspector_widget .header .title {
 	display: inline-block;
-	width: calc( 100% - 90px );
+	width: calc( 100% - 120px );
 	height: 100%;
 	margin: 0;
 	font-size: 1.7em;
 	text-align: left;
 	padding-left: 10px;
 	color: #4F7098;
+	overflow: hidden;
+	white-space: nowrap;
 }
 
 

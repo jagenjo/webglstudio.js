@@ -171,16 +171,28 @@ CORE.registerModule( CodingModule );
 
 LS.Components.Script["@inspector"] = function(component, attributes)
 {
+
+	attributes.widgets_per_row = 2;
 	attributes.addString("Name", component.name, { callback: function(v) { 
 		component.name = v;
 		LEvent.trigger( LS.Components.Script, "renamed", component );
 		//CodingModule.onScriptRenamed( component );
 	}});
 
+	//attributes.addString("Module name", component.component_name, { callback: function(v) { component.component_name = v; } });
+	//attributes.addTextarea(null, component.code, { disabled: true, height: 100 });
+	attributes.addButton(null,"Edit Code", { callback: function() {
+		CodingModule.openTab();
+		var path = component.uid;
+		CodingModule.editInstanceCode(component, { id: component.uid, title: component._root.id, lang: "javascript", path: path, help: LS.Components.Script.coding_help } );
+	}});
+	//attributes.addCheckbox("Register", component.register_component, { callback: function(v) { component.register_component = v; } });
+	attributes.widgets_per_row = 1;
+
 	var context = component.getContext();
 	if(context)
 	{
-		attributes.addTitle("Variables");
+		//attributes.addTitle("Variables");
 		this.showObjectFields(context, attributes);
 
 		var actions = [];
@@ -194,14 +206,6 @@ LS.Components.Script["@inspector"] = function(component, attributes)
 		*/
 	}
 
-	//attributes.addString("Module name", component.component_name, { callback: function(v) { component.component_name = v; } });
-	//attributes.addTextarea(null, component.code, { disabled: true, height: 100 });
-	attributes.addButton(null,"Edit Code", { callback: function() {
-		CodingModule.openTab();
-		var path = component.uid;
-		CodingModule.editInstanceCode(component, { id: component.uid, title: component._root.id, lang: "javascript", path: path, help: LS.Components.Script.coding_help } );
-	}});
-	//attributes.addCheckbox("Register", component.register_component, { callback: function(v) { component.register_component = v; } });
 }
 
 LS.Components.Script.onComponentInfo = function( component, widgets )

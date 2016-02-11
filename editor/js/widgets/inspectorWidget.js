@@ -22,11 +22,12 @@ InspectorWidget.prototype.init = function()
 	this.root = LiteGUI.createElement( "div", null, null, { width:"100%", height:"100%" });
 	this.root.className = "inspector_widget";
 
-	this.header = LiteGUI.createElement( "div", ".header", "<button class='prev' title='Previous'>&#10096;</button><span class='title'></span><button class='lock' title='Lock'>&#128274;</button><button class='next' title='Next'>&#10097;</button>", { height: "26px" });
+	this.header = LiteGUI.createElement( "div", ".header", "<button class='prev icon' title='Previous'>&#10096;</button><span class='title'></span><button class='refresh icon' title='Refresh'>&#8635;</button><button class='lock icon' title='Lock'>&#128274;</button><button class='next icon' title='Next'>&#10097;</button>", { height: "26px" });
 	this.root.appendChild( this.header );
 	this.title = this.header.querySelector(".title");
 	this.header.querySelector(".prev").addEventListener("click", this.onPrevious.bind(this) );
 	this.header.querySelector(".next").addEventListener("click", this.onNext.bind(this) );
+	this.header.querySelector(".refresh").addEventListener("click", this.onRefresh.bind(this) );
 	this.header.querySelector(".lock").addEventListener("click", this.onLock.bind(this) );
 
 	this.header.addEventListener("contextmenu", (function(e) { 
@@ -88,6 +89,12 @@ InspectorWidget.prototype.onNext = function()
 
 	this.inspect( next, true );
 }
+
+InspectorWidget.prototype.onRefresh = function(e)
+{
+	this.inspector.refresh();
+}
+
 
 InspectorWidget.prototype.onLock = function(e)
 {
@@ -254,6 +261,7 @@ InspectorWidget.prototype.inspectScene = function( scene )
 	inspector.on_refresh = function()
 	{
 		inspector.clear();
+		inspector.addTitle("Metadata");
 		inspector.addString("Title", scene.extra.title || "", function(v) { scene.extra.title = v; });
 		inspector.addString("Author", scene.extra.author || "", function(v) { scene.extra.author = v; });
 		inspector.addTextarea("Comments", scene.extra.comments || "", { callback: function(v) { scene.extra.comments = v; } });
@@ -297,6 +305,32 @@ InspectorWidget.prototype.inspectScene = function( scene )
 			inspector.addButton(null,"Reload scripts", function(){
 				LS.GlobalScene.loadExternalScripts( scene.external_scripts, null, LiteGUI.alert );
 			});
+
+		inspector.addTitle("Preloaded Resources");
+		for(var i in scene.preloaded_resources)
+		{			
+			inspector.addStringButton(null, scene.preloaded_resources[i], { index: i, callback: function(v){
+					if(!v)
+						return;
+					scene.preloaded_resources[this.options.index] = v;
+				}, callback_button: function(){
+					//delete imported
+					delete scene.preloaded_resources[ this.options.index ];
+					inspector.refresh();
+				},
+				button: "<img src='imgs/mini-icon-trash.png'/>"
+			});
+		}
+		inspector.addStringButton(null, "", { callback: function(v){
+			}, callback_button: function(v){
+				if(!v)
+					return;
+				//add resource
+				scene.preloaded_resources[v] = true;
+				inspector.refresh();
+			},
+			button: "+"
+		});
 	}
 
 	inspector.refresh();
@@ -328,35 +362,42 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 				return;
 			}
 
-			if(node._name !== null)
-				inspector.addString("name", node._name, { name_width: "20%", callback: function(v) {
-					if(!v)
-						return node._name;
-					var old_name = node.name;
-					if( !node.setName(v) )
-						return node._name;
-					UndoModule.saveNodeRenamedUndo( node, old_name );
-				}});
-
-			inspector.addString("UId", node.uid, { name_width: "20%", disabled: true });
-	
 			inspector.widgets_per_row = 2;
+			inspector.addString("name", node._name || "", { name_width: 80, callback: function(v) {
+				if(!v)
+					return node._name;
+				var old_name = node.name;
+				if( !node.setName(v) )
+					return node._name;
+				UndoModule.saveNodeRenamedUndo( node, old_name );
+			}});
+
+			var uid_widget = inspector.addString("UId", node.uid, { name_width: 40, disabled: true });
+			//uid_widget.addEventListener("click", function( e ){ this.querySelector("input").select(); }); //dont work
 			
-			inspector.addString("class", node.className, { callback: function(v) { node.className = v; } });
 			inspector.addLayers("layers", node.layers, { pretitle: AnimationModule.getKeyframeCode( node, "layers"), callback: function(v) {
 				node.layers = v;
 				RenderModule.requestFrame();
 			}});
+			inspector.addString("class", node.className, { name_width: 80, callback: function(v) { node.className = v; } });
 
 			inspector.widgets_per_row = 1;
 
 			if(node.prefab)
-				inspector.addStringButton("prefab", node.prefab, { callback_button: function(v,evt) {
+			{
+				inspector.widgets_per_row = 2;
+				inspector.addStringButton("prefab", node.prefab, {  name_width: 80, width: "80%", callback_button: function(v,evt) {
 					var menu = new LiteGUI.ContextualMenu( ["Unlink prefab"], { event: evt, callback: function(action) {
 						delete node["prefab"];
 						inspector.refresh();
 					}});
 				}});
+				inspector.addButton(null, "Reload", { width: "20%", callback: function(v,evt) {
+					UndoModule.saveNodeChangeUndo( node );
+					node.reloadFromPrefab();
+				}});
+				inspector.widgets_per_row = 1;
+			}
 
 			if(node.flags && node.flags.visible != null)
 				inspector.addCheckbox("visible", node.visible, { pretitle: AnimationModule.getKeyframeCode( node, "visible"), callback: function(v) { node.visible = v; } });

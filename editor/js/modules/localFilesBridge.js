@@ -1,26 +1,124 @@
 //connects DriveModule with LiteFileSystem
+//work in progress, not finished yet
+//http://www.html5rocks.com/es/tutorials/file/filesystem/
+
+var requestFileSystem = window.requestFileSystem || window.webkitRequestFileSystem || window.mozRequestFileSystem;
+var persistentStorage = navigator.persistentStorage || navigator.mozPersistentStorage || navigator.webkitPersistentStorage;
 
 var LocalFilesBridge = {
 	name: "Local",
 	className: "local",
 	tree_root: null, //where the tree root will be added
-	units: {},
+
+	DEFAULT_SIZE_MBS: 64,
+	current_quota: 0,
+	local_storage: null,
 
 	init: function()
 	{
-		var requestFileSystem = window.requestFileSystem || window.webkitRequestFileSystem || window.mozRequestFileSystem;
-		requestFileSystem( window.PERSISTENT , 10*1024*1024, inner );
+		//should add something to enable disable this
 
-		function inner( local_storage )
+		this.requestQuota( function(size){ 
+			LocalFilesBridge.current_quota = size;
+			LocalFilesBridge.requestFileSystem( LocalFilesBridge.ready.bind(LocalFilesBridge) );
+		});
+	},
+
+	requestQuota: function( callback )
+	{
+		persistentStorage.requestQuota( this.DEFAULT_SIZE_MBS * 1024 * 1024, callback, this.errorHandler);	
+	},
+
+	requestFileSystem: function( callback )
+	{
+		requestFileSystem( window.PERSISTENT , this.DEFAULT_SIZE_MBS * 1024*1024, callback, this.errorHandler );
+	},
+
+	ready: function( fileSystem )
+	{
+		console.log("Local FS ready");
+		this.local_storage = fileSystem;
+		this.createFolder("temp");
+		//this.createFile("temp/temp.txt","silly foo");
+		//this.readFolder();
+	},
+
+	createFolder: function(folder, callback)
+	{
+		if(!this.local_storage)
+			return;
+
+		var lfs = this.local_storage;
+		var partial_folders = folder.split("/").filter(function(v){ return !!v;});
+		var current = partial_folders.shift();
+
+		function inner()
 		{
-			LocalFilesBridge.local_storage = local_storage;
-			local_storage.root.getFile("test.txt", {create: true}, function(file){
-				file.createWriter(function(file_content) {
-				    var blob = new Blob(["Lorem Ipsum"], {type: "text/plain"});
-					file_content.write( blob );
-				});
-			});
+			lfs.root.getDirectory( current, {create: true}, function(dirEntry) {
+				if(partial_folders.length)
+				{
+					current = current + "/" + partial_folders.shift();
+					inner();
+				}
+				else if(callback)
+					callback(folder, dirEntry);
+			}, LocalFilesBridge.errorHandler );
 		}
+	},
+
+	createFile: function(filename, data, callback)
+	{
+		var type = "application/octet-stream";
+		if(data && data.constructor === String)
+			type = "text/plain";
+
+		if(!this.local_storage)
+			return console.error("Local Storage not created");
+
+		this.local_storage.root.getFile( filename, {create: true}, function(file){
+			if(data)
+				file.createWriter(function(file_content) {
+					var blob = new Blob([data], {type: type});
+					file_content.write( blob );
+					if(callback)
+						callback(filename,file);
+				});
+			else if(callback)
+				callback(filename,file);
+		},this.errorHandler);
+	},
+	
+	readFolder: function()
+	{
+		var dirReader = this.local_storage.root.createReader();
+		var entries = [];
+
+		function toArray(list) {
+		  return Array.prototype.slice.call(list || [], 0);
+		}
+
+		function listResults( result )
+		{
+			for(var i in result)
+			{
+				var entry = result[i];
+				console.log("FILE:",entry.name);
+			}
+		}
+
+		// Call the reader.readEntries() until no more results are returned.
+		var readEntries = function() {
+		 dirReader.readEntries (function(results) {
+		  if (!results.length) {
+			listResults(entries.sort());
+		  } else {
+			entries = entries.concat(toArray(results));
+			readEntries();
+		  }
+		},  LocalFilesBridge.errorHandler);
+		};
+
+		readEntries(); // Start reading dirs.
 	},
 
 	updateContent: function(folder, callback, panel)
@@ -56,7 +154,7 @@ var LocalFilesBridge = {
 		}
 	},
 
-	getFiles: function(folder, on_complete)
+	getFiles: function( folder, on_complete )
 	{
 		var that = this;
 		if(!this.session)
@@ -75,16 +173,7 @@ var LocalFilesBridge = {
 		if(!server_root)
 			return;
 
-		if(!this.session)
-		{
-			server_root.children = [];
-			server_root.folders = [];
-			if(callback) 
-				callback( null );
-			return;
-		}
-
-		this.getServerFoldersTree( inner );
+		this.getFoldersTree( inner );
 
 		function inner( tree )
 		{
@@ -99,133 +188,95 @@ var LocalFilesBridge = {
 	},
 
 	//fill the tree data with the units and folders
-	getServerFoldersTree: function(callback)
+	getFoldersTree: function(callback)
 	{
-		var server_root = this.tree_root;  //{ id: "Server", children:[] };
 		var bridge = this;
+		var server_root = this.tree_root;
+		if(!server_root)
+			return;
 
 		//request folders
-		this.getFolders(inner);
+		this.getFolders( inner );
 
-		function inner( units )
+		function inner( folders )
 		{
-			bridge.units = units;
-
-			if(!units)
-			{
-				if(callback) 
-					callback(null);
-			}
-
 			//server root node in the list
 			server_root.children = []; //reset
 
-			for(var i in units)
+			for(var i in folders)
 			{
-				var unit = units[i];
-				var name = unit.name;
-				if( unit.metadata && unit.metadata.name )
-					name = unit.metadata.name;
-				var item = { id: unit.name, content: name, unit: unit, type:"unit", dataset: { bridge: LFSBridge.name }, candrag: false, className: 'folder unit', fullpath: unit.name, bridge: bridge };
-				item.children = get_folders( unit.name, unit.folders );
+				var folder = folders[i];
+				var item = { id: folder.name, content: folder.name, dataset: { bridge: LocalFilesBridge.name }, candrag: false, type: "folder", className: 'folder', fullpath: folder.name, bridge: bridge };
+				//item.children = get_folders( unit.name, unit.folders );
 				server_root.children.push( item );
 			}
 
 			if(callback) 
 				callback(server_root);
 		}
-
-		//recursive function
-		function get_folders(fullpath, root)
-		{
-			var folders = [];
-			for(var i in root)
-			{
-				var folder_path =  fullpath + "/" + i;
-				var folder = { id: folder_path, content: i, dataset: { bridge: LFSBridge.name }, fullpath: folder_path, type:"folder", candrag: true, className: 'folder', folder: i, bridge: bridge };
-				if(root[i])
-					folder.children = get_folders(fullpath + "/" + i, root[i] );
-				folders.push( folder );
-			}
-			return folders;
-		}
 	},
 
 	getFolders: function(on_complete)
 	{
 		var that = this;
-		if(!this.session)
+		if(!this.local_storage || !on_complete)
 			return;
-		this.session.getUnitsAndFolders(function(units){
-			var data = {};
-			for(var i in units)
-				data[ units[i].name ] = units[i];
-			that.units = data;
-			if(on_complete)
-				on_complete(data);
-		});
+
+		var reader = this.local_storage.root.createReader();
+		var entries = {};
+
+		// Call the reader.readEntries() until no more results are returned.
+		var readEntries = function() {
+			reader.readEntries (function(results) {
+				if (!results.length) {
+					on_complete(entries);
+				} else {
+					  for(var i in results)
+					{
+						  var entry = results[i];
+						  if(entry.isDirectory)
+							  entries[i] = entry;
+					}
+					readEntries(); //get more
+				}
+			},  LocalFilesBridge.errorHandler);
+		};
+
+		readEntries(); // Start reading dirs.
 	},
 
 	moveFile: function(fullpath, target_fullpath, on_complete)
 	{
-		if(!this.session)
+		if(!this.local_storage)
 			return;
-
-		this.session.moveFile( fullpath, target_fullpath, function(v){
-			if(on_complete)
-				on_complete(v == 1);
-		});
+		//TODO
 	},
 
-	uploadFile: function(fullpath, file, on_complete, on_error, on_progress)
+	uploadFile: function( fullpath, data, on_complete, on_error )
 	{
-		if(!this.session)
+		if(!this.local_storage)
 			return;
 
-		this.session.uploadFile( fullpath, file, { category: file.category || file.type, generate_preview: true, fullpath: fullpath }, 
-			function(v,resp){ //on_complete
-				if(on_complete)
-					on_complete( fullpath, LFS.getPreviewPath(fullpath) );
-			},
-			function(err,resp){ //on_error
-				console.error(err);
-				if(on_error)
-					on_error( fullpath, err );
-			},
-			function(v,e,params){ //on_progress
-				//console.log("Progress",v);
-				if(on_progress)
-					on_progress( fullpath, v, params );
-		});
-	},
+		var type = "application/octet-stream";
+		if(data && data.constructor === String)
+			type = "text/plain";
 
-	/*
-	uploadRemoteFile: function( url, target_fullpath, on_complete)
-	{
-		if(!this.session)
-			return;
-
-		this.session.uploadRemoteFile( url, target_fullpath, function(v){
-			if(on_complete)
-				on_complete(v == 1);
-		});
+		this.local_storage.root.getFile( fullpath, {create: true}, function(file){
+			if(data)
+				file.createWriter(function(file_content) {
+					var blob = new Blob([data], {type: type});
+					file_content.write( blob );
+					if(callback)
+						callback(filename,file);
+				});
+			else if(callback)
+				callback(filename,file);
+		}, on_error );
 	},
-	*/
 
 	uploadRemoteFile: function(url, fullpath, on_complete, on_error)
 	{
-		if(!this.session)
-			return;
-
-		this.session.uploadRemoteFile( url, fullpath,  
-			function(v,resp){ //on_complete
-				if(on_complete)
-					on_complete( fullpath, LFS.getPreviewPath(fullpath) );
-			},
-			function(err,resp){ //on_error
-				console.error(err);
-			}
-		);
+		LiteGUI.alert("TODO");
 	},
 
 	showDriveInfo: function( panel )
@@ -240,44 +291,7 @@ var LocalFilesBridge = {
 		container.className = "drive-info";
 		root.appendChild( container );
 
-		container.innerHTML = "<h2>LiteFileServer</h2>";
-		var button = LiteGUI.createButton(null, "Go to LFS Panel", LFSBridge.onOpenLiteFileServer );
-		container.querySelector("h2").appendChild( button.root );
-
-		container.appendChild( LiteGUI.createElement("h3",null,"Units") );
-
-		if(!this.tree_root.children)
-			return;
-		
-		for(var i = 0; i < this.tree_root.children.length; ++i)
-		{
-			var unit = this.tree_root.children[i];
-			var element = this.createUnitInfo( unit.unit );
-			container.appendChild( element );
-		}
-	},
-
-	createUnitInfo: function( unit )
-	{
-		var percentage = (unit.used_size / unit.total_size * 100).toFixed(0) + '%';
-		var size = Math.floor( unit.used_size / (1024*1024) ).toFixed(2) + " of " + Math.floor( unit.total_size / (1024*1024) ).toFixed(2) + " MBs";
-		var name = unit.name;
-		if( unit.metadata && unit.metadata.name )
-			name = unit.metadata.name;
-		var content = "<span class='title'>" + name + "</span> <span class='space info'>" + size + "</span> Used <span class='amount info'>" + percentage + "</span>";
-		var element = LiteGUI.createElement( "div",null, content );
-		element.className = "unit-item";
-		element.dataset["unit"] = unit.name;
-		element.addEventListener("click", function(){ DriveModule.selectFolder( this.dataset["unit"]); });
-		var button = LiteGUI.createButton( null, "Open In LFS", function(e){ 
-			var unit = this.parentNode.dataset["unit"];
-			//TODO: open LFS in this unit
-			e.preventDefault();
-			e.stopPropagation();
-		});
-		button.style.float = "right";
-		element.appendChild( button.root );
-		return element;
+		container.innerHTML = "<h2>Local</h2><p>QUota: <strong>" + DriveModule.beautifySize(this.current_quota) + "</strong></p>";
 	},
 
 	isPath: function( fullpath )
@@ -291,34 +305,6 @@ var LocalFilesBridge = {
 		
 	},
 
-	getUnitInfo: function( fullpath )
-	{
-		return this.units[ fullpath ];
-	},
-
-	showUnitInfo: function( fullpath, panel )
-	{
-		if(!panel)
-			return;
-
-		var root = panel.browser_container;//DriveModule.browser_container;
-		root.innerHTML = "";
-
-		var container = LiteGUI.createElement("div");
-		container.className = "drive-info";
-		container.innerHTML = "<h2>LiteFileServer</h2>";
-		root.appendChild( container );
-
-		var unit = this.getUnitInfo( fullpath );
-		if(!unit)
-			return;
-
-		var element = this.createUnitInfo( unit );
-		container.appendChild( element );
-
-		container.appendChild( LiteGUI.createElement("h3",null,"Information") );
-	},
-
 	onContextualMenu: function( fullpath, event )
 	{
 		var options = ["Create Folder","Delete Folder","Rename"];
@@ -329,11 +315,6 @@ var LocalFilesBridge = {
 			else if(v == "Delete Folder")
 				DriveModule.onDeleteFolderInServer( fullpath );
 		}});
-	},
-
-	onOpenLiteFileServer: function()
-	{
-		window.open( CORE.config.server, "_blank" );
 	},
 
 	//called from ResourcesPanel tree when a folder is clicked
@@ -353,8 +334,6 @@ var LocalFilesBridge = {
 			});
 			return;
 		}
-		else if(item.type == "unit")
-			this.showUnitInfo( item.fullpath, panel );
 		else
 			this.updateContent( item.fullpath, null, panel );
 	},
@@ -479,6 +458,33 @@ var LocalFilesBridge = {
 				return true;
 			}
 		}
+	},
+
+	errorHandler: function(e) {
+		if(e.message)
+			return console.error(e.message);
+	  var msg = '';
+	  switch (e.code) {
+		case FileError.QUOTA_EXCEEDED_ERR:
+		  msg = 'QUOTA_EXCEEDED_ERR';
+		  break;
+		case FileError.NOT_FOUND_ERR:
+		  msg = 'NOT_FOUND_ERR';
+		  break;
+		case FileError.SECURITY_ERR:
+		  msg = 'SECURITY_ERR';
+		  break;
+		case FileError.INVALID_MODIFICATION_ERR:
+		  msg = 'INVALID_MODIFICATION_ERR';
+		  break;
+		case FileError.INVALID_STATE_ERR:
+		  msg = 'INVALID_STATE_ERR';
+		  break;
+		default:
+		  msg = 'Unknown Error';
+		  break;
+	  };
+	  console.log('Local File System Error: ' + msg);
 	}
 };
 

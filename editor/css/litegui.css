@@ -6,7 +6,7 @@
 .inspector {
 	/* margin-top: 10px; */
 	/*margin-bottom: 20px;*/
-	color: #AAA;
+	color: #999;
 	/*
 	user-select: none;
 	-moz-user-select: none;
@@ -26,7 +26,7 @@
 	width: -webkit-calc(100% - 10px);
 	width: calc(100% - 10px);
 	border-top: 1px solid #111;
-	border-bottom: 1px solid #777;
+	border-bottom: 1px solid #555;
 	margin: 5px 0 5px 5px;
 }
 
@@ -301,7 +301,7 @@
 	background-color: #222;
 	border: 0;
 	border-top: 1px solid #000; 
-	border-bottom: 1px solid #888; 
+	border-bottom: 1px solid #3f3f3f; 
 	border-radius: 3px;	
 }
 
@@ -417,7 +417,7 @@
 .inspector .wcontent .checkbox {
 	width: 4em;
 	display: inline-block;
-	background-color: black;
+	background-color: #222;
 	border: 0;
 	border-radius: 2px;
 	margin: 0 !important;

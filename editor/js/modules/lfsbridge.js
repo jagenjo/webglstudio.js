@@ -33,13 +33,14 @@ var LFSBridge = {
 		//DriveModule.top_widget.addButton(null,"Open LiteFileServer", { callback: LFSBridge.onOpenLiteFileServer });
 	},
 
-	updateContent: function(folder, callback, panel)
+	updateContent: function( folder, callback, panel )
 	{
 		//this.updateBrowserContent(null);
 		//this.showLoadingBrowserContent();
 
 		panel = panel || DriveModule;
 
+		panel.showInBrowserContent( null, { folder: folder, info: "Loading...", preserve: true } );
 		this.getFiles( folder, inner.bind(this) );
 
 		function inner(data)
@@ -56,10 +57,10 @@ var LFSBridge = {
 					DriveModule.server_resources_by_id[ resource.server_id ] = resource;
 				}
 
-				panel.showInBrowserContent( resources );
+				panel.showInBrowserContent( resources, { folder: folder } );
 			}
 			else
-				panel.showInBrowserContent( null );
+				panel.showInBrowserContent( null, { folder: folder } );
 
 			if(callback) 
 				callback();
@@ -187,12 +188,13 @@ var LFSBridge = {
 		});
 	},
 
-	uploadFile: function(fullpath, file, on_complete, on_error, on_progress)
+	//this allows to upload a file but DriveModule bypasses it an uses LFS directly
+	uploadFile: function( fullpath, file, on_complete, on_error, on_progress )
 	{
 		if(!this.session)
 			return;
 
-		this.session.uploadFile( fullpath, file, { category: file.category || file.type, generate_preview: true, fullpath: fullpath }, 
+		this.session.uploadFile( fullpath, file, { category: file.category || file.type, generate_preview: false, fullpath: fullpath }, 
 			function(v,resp){ //on_complete
 				if(on_complete)
 					on_complete( fullpath, LFS.getPreviewPath(fullpath) );
@@ -363,8 +365,8 @@ var LFSBridge = {
 			});
 			return;
 		}
-		else if(item.type == "unit")
-			this.showUnitInfo( item.fullpath, panel );
+//		else if(item.type == "unit")
+//			this.showUnitInfo( item.fullpath, panel );
 		else
 			this.updateContent( item.fullpath, null, panel );
 	},
@@ -441,7 +443,7 @@ var LFSBridge = {
 		if(!res_fullpath)
 		{
 			var file_url = event.dataTransfer.getData("text/uri-list"); //in case a file is dragged? not sure
-			if(file_url.substr(0,5) != "data:") //WARNING: when dragging a thumbnail uri-list returns a image in base64...
+			if(file_url.length && file_url.substr(0,5) != "data:") //WARNING: when dragging a thumbnail uri-list returns a image in base64...
 				res_fullpath = file_url;
 		}
 

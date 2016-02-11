@@ -43,12 +43,7 @@ var DriveModule = {
 		LS.ResourcesManager.keep_files = true;
 		var that = this;
 
-		//Notifications when loading
-		LEvent.bind( LS.ResourcesManager, "resource_registered", function() {
-			if( that.current_folder == null ) //loaded
-				that.resources_panel.showInBrowserContent( LS.ResourcesManager.resources );
-		});
-
+		//Loading notifications
 		LEvent.bind( LS.ResourcesManager, "resource_loading", function( e, url ) {
 			NotifyModule.show("FILE: " + url, { id: "res-msg-" + url.hashCode(), closable: true, time: 0, left: 60, top: 30, parent: "#visor" } );
 		});
@@ -60,7 +55,6 @@ var DriveModule = {
 				msg.setProgress( data.progress );
 		});
 		
-
 		LEvent.bind( LS.ResourcesManager, "resource_loaded", function(e, url) {
 			var msg = document.getElementById( "res-msg-" + url.hashCode() );
 			if(!msg)
@@ -244,9 +238,9 @@ var DriveModule = {
 		*/
 	},
 
-	showInBrowserContent: function(v)
+	showInBrowserContent: function( items, options )
 	{
-		this.resources_panel.showInBrowserContent( v );
+		this.resources_panel.showInBrowserContent( items, options );
 	},
 
 	uploadAndShowProgress: function( resource, folder_fullpath, callback )
@@ -435,8 +429,10 @@ var DriveModule = {
 		img.className = "preview_image";
 		img.onerror = function(){ this.parentNode.removeChild(this); }
 
-		inspector.addInfo(null, img);
+		var img_container = inspector.addInfo(null, img);
 		var preview_image = inspector.root.querySelector(".preview_image");
+		img_container.style.backgroundColor = "black";
+		img_container.style.textAlign = "center";
 
 		var filename = resource.filename;
 		if(!filename && server_resource)
@@ -444,7 +440,7 @@ var DriveModule = {
 
 		inspector.addString("Filename", filename, { callback: function(v) { 
 			//rename
-			DriveModule.renameResource( resource.filename, v );
+			DriveModule.renameResource( resource.filename, v, resource );
 			DriveModule.refreshContent();
 		}});
 		inspector.addFolder("Folder", resource.folder || "", { disabled: true, callback: function(v) {
@@ -775,12 +771,25 @@ var DriveModule = {
 	},
 	*/
 
-	renameResource: function(old_name, new_name)
+	renameResource: function( old_name, new_name, resource )
 	{
+		//HARDCODED WITH LFS
+		if(resource && resource.fullpath)
+		{
+			//rename in server
+			console.log("Renaming server file");
+			console.log(resource);	
+			old_name = resource.fullpath;
+			new_name = LFS.getFullpath( resource.unit, resource.folder, new_name );
+			this.serverMoveFile( old_name, new_name, function(){
+				DriveModule.refreshContent();
+			});
+		}
+
 		var res = LS.ResourcesManager.resources[ old_name ];
 		if(!res)
 			return;
-		LS.ResourcesManager.renameResource(old_name, new_name); //rename and inform
+		LS.ResourcesManager.renameResource( old_name, new_name ); //rename and inform
 		//res.filename = new_name;
 		//LS.ResourcesManager.registerResource(new_name, res);
 	},
@@ -970,9 +979,9 @@ var DriveModule = {
 	},
 
 	//called when clicking the "Insert in scene" button after selecting a resource
-	onInsertResourceInScene: function( resource, options ) 
+	onInsertResourceInScene: function( resource_item, options ) 
 	{
-		if(!resource)
+		if(!resource_item)
 		{
 			LiteGUI.alert("No resource selected");
 			return;
@@ -981,18 +990,34 @@ var DriveModule = {
 		options = options || {};
 		var fullpath = null;
 		var restype = null;
+		var resource = null;
 
-		if( resource.dataset ) //item from the drive
+		if( resource_item.dataset ) //item from the drive
 		{
-			fullpath = resource.dataset["fullpath"] || resource.dataset["filename"];
-			restype = resource.dataset["restype"];
+			fullpath = resource_item.dataset["fullpath"] || resource_item.dataset["filename"];
+			restype = resource_item.dataset["restype"];
+			resource = LS.ResourcesManager.getResource( fullpath );
 		}
-		else if( resource.fullpath ) //resource
+		else if( resource_item.fullpath ) //resource
 		{
+			resource = resource_item;
 			fullpath = resource.fullpath || resource.filename;
 			restype = LS.ResourcesManager.getResourceType( resource );
 		}
 
+		DriveModule.closeTab();
+		LS.GlobalScene.refresh();
+
+		//resource is not in memory
+		/*
+		if(!resource)
+		{
+			LS.ResourcesManager.load( fullpath, null, function(url,resource){ DriveModule.onInsertResourceInScene(url,resource); });
+			return;
+		}
+		*/
+
+		//search for function in charge or processing this file
 		var found = false;
 		for( var i in DriveModule.insert_resource_callbacks )
 		{
@@ -1004,15 +1029,13 @@ var DriveModule = {
 					continue;
 
 				found = true;
-				break;
+				return;
 			}
 		}
 
 		if(!found)
 			LiteGUI.alert("Insert not implemented for this resource type: " + LS.getObjectClassName( resource ) );
 
-		DriveModule.closeTab();
-		LS.GlobalScene.refresh();
 	},
 
 	//if className is omited, it will be call with all
@@ -1272,8 +1295,9 @@ var DriveModule = {
 
 	//called when the resource should be saved (after modifications)
 	//no path is passed because all the info must be inside
-	saveResource: function(resource, on_complete)
+	saveResource: function(resource, on_complete, options)
 	{
+		options = options || {};
 		if(!resource)
 		{
 			console.error("DriveModule.saveResource: error, resource is null");
@@ -1290,24 +1314,29 @@ var DriveModule = {
 		//var func_name = resource._server_info ? "serverUpdateResource" : "serverUploadResource";
 
 		//uploading dialog...
-		var dialog = LiteGUI.alert("<p>Uploading file... <span id='upload_progress'></span></p>");
+		var dialog = LiteGUI.alert("<p>Uploading file... <span class='upload_progress'></span></p>");
+		var upload_progress = dialog.root.querySelector(".upload_progress");
 		this.serverUploadResource( resource, resource.fullpath,
 			function(v, msg) { 
 				if(v)
 					LS.ResourcesManager.resourceSaved( resource );
-				$("#upload_progress").remove(); 
-				LiteGUI.alert( v ? "Resource saved" : "Problem saving the resource: " + msg);
+				LiteGUI.remove( upload_progress ); 
+				dialog.close();
+				if(!options.skip_alerts)
+					LiteGUI.alert( v ? "Resource saved" : "Problem saving the resource: " + msg);
 				if(on_complete)
 					on_complete(true);
 			},
 			function (err, status) { 
 				if(status == 413)
 					err = "File too big";
-				$("#upload_progress").html("Error: " + err); 
+				upload_progress.innerHTML = "Error: " + err; 
 				if(on_complete) 
 					on_complete(false);
 			},
-			function (progress) { $("#upload_progress").html( (progress*100)|0 + "%"); }
+			function (progress) { 
+				upload_progress.innerHTML = ((progress*100)|0) + "%";
+			}
 		);
 	},
 
@@ -1424,12 +1453,18 @@ var DriveModule = {
 		}
 	},
 
-	serverDeleteFile: function(fullpath, on_complete)
+	serverMoveFile: function( fullpath, new_fullpath, on_complete )
 	{
-		LoginModule.session.deleteFile(fullpath, on_complete );
+		LoginModule.session.moveFile( fullpath, new_fullpath, on_complete );
 	},
 
-	//takes into account if the file is already uploaded
+	serverDeleteFile: function(fullpath, on_complete)
+	{
+		LoginModule.session.deleteFile( fullpath, on_complete );
+	},
+
+	//Takes into account if the file is already uploaded
+	//TODO: this functions goes directly to LiteFileSystem, make it more generic
 	serverUploadResource: function( resource, fullpath, on_complete, on_error, on_progress )
 	{
 		var filename = resource.filename;
@@ -1470,9 +1505,9 @@ var DriveModule = {
 		var extension = getExtension( filename );
 
 		//get the data
-		var internal_data = LS.ResourcesManager.computeResourceInternalData( resource );
+		var internal_data = LS.Resource.getDataToStore( resource );
 		var data = internal_data.data;
-		if(data.data) //HACK, ugly, but sometimes computeResourceInternalData returns an object with about the file, but I want the data
+		if(data.data) //HACK, ugly, but sometimes returns an object with info about the file, but I want the data
 			data = data.data;
 		if( internal_data.extension && internal_data.extension != extension )
 		{
@@ -1497,10 +1532,13 @@ var DriveModule = {
 		resource.filename = filename;
 
 		//generate preview
-		if( resource.preview_url && resource.preview_url.substr(0,11) == "data:image/" )
-			extra_info.preview = resource.preview_url;
-		else
-			extra_info.preview = this.generatePreview( resource.fullpath );
+		if(resource.constructor.hasPreview !== false)
+		{
+			if( resource.preview_url && resource.preview_url.substr(0,11) == "data:image/" )
+				extra_info.preview = resource.preview_url;
+			else
+				extra_info.preview = this.generatePreview( resource.fullpath );
+		}
 
 		LoginModule.session.uploadFile( fullpath, data, extra_info, 
 			function(v,resp){ //on_complete
@@ -1514,7 +1552,7 @@ var DriveModule = {
 					on_error(err);
 			},
 			function(v){ //on_progress
-				console.log("Progress",v);
+				//console.log("Progress",v);
 				if(on_progress)
 					on_progress(v);
 		});
@@ -1554,20 +1592,24 @@ var DriveModule = {
 	},
 
 	//OVERWRITES THE FUNCTION IN EditorModule
-	showSelectResource: function(type, on_complete, on_load )
+	showSelectResource: function( options )
 	{
+		options = options || {};
+
 		var last_tab = LiteGUI.main_tabs.getCurrentTab();
 		DriveModule.openTab();
 		LiteGUI.Dialog.hideAll();
 		var visibility = InterfaceModule.getSidePanelVisibility();
 		InterfaceModule.setSidePanelVisibility(false);
-		DriveModule.resources_panel.filterByCategory( type );
+		if(options.type)
+			DriveModule.resources_panel.filterByCategory( options.type );
+
 		DriveModule.resources_panel.on_resource_selected_callback = function( filename ) {
-			InterfaceModule.setSidePanelVisibility(visibility);
-			if(on_complete)
-				on_complete(filename);
-			if(filename)
-				LS.ResourcesManager.load( filename, null, on_load );
+			InterfaceModule.setSidePanelVisibility( visibility );
+			if(options.on_complete)
+				options.on_complete(filename);
+			if(filename && !options.skip_load)
+				LS.ResourcesManager.load( filename, null, options.on_load );
 			LiteGUI.Dialog.showAll();
 			LiteGUI.main_tabs.selectTab( last_tab.id );
 		}
@@ -1741,13 +1783,44 @@ DriveModule.registerAssignResourceCallback("Prefab", function( fullpath, restype
 
 	//prefab
 	DriveModule.loadResource( fullpath, restype, function(resource) { 
-		console.log(resource); //log
+		//console.log(resource); //log
 		var node = resource.createObject();
 		LS.GlobalScene.root.addChild(node);
 		if(position)
 			node.transform.position = position;
 		EditorModule.inspect( node );
 	});
+});
+
+//generic unknown resource
+DriveModule.registerAssignResourceCallback(["Resource","application/javascript","text/plain","text/csv"], function( fullpath, restype, options ) {
+
+	var resource = LS.RM.getResource( fullpath );
+	if(!resource)
+	{
+		LS.ResourcesManager.load( fullpath, null, function(url,resource){ DriveModule.onInsertResourceInScene(url,resource); });
+		return;
+	}
+
+	if(resource)
+	{
+		var extension = LS.RM.getExtension( fullpath );
+		var lang = "text";
+		if( extension == "json" || extension == "js")
+			lang = "javascript";
+		var title = LS.ResourcesManager.getFilename( fullpath );
+		CodingModule.editInstanceCode( resource, { title: title, lang: lang }, true );
+	}
+	else
+		console.warn("Assigning resource without loading it");
+
+	/*
+	//prefab
+	DriveModule.loadResource( fullpath, restype, function(resource) { 
+		console.log(resource); //log
+		CodingModule.editInstanceCode( resource, { lang: "text" }, true );
+	});
+	*/
 });
 
 

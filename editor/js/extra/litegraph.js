@@ -698,7 +698,7 @@ LGraph.prototype.remove = function(node)
 				node.disconnectOutput(i);
 		}
 
-	node.id = -1;
+	//node.id = -1; //why?
 
 	//callback
 	if(node.onRemoved)
@@ -2682,19 +2682,25 @@ LGraphCanvas.prototype.processMouseDown = function(e)
 
 	var n = this.graph.getNodeOnPos( e.canvasX, e.canvasY, this.visible_nodes );
 	var skip_dragging = false;
+    
+    LiteGraph.closeAllContextualMenus();
 
 	if(e.which == 1) //left button mouse
 	{
-		//another node selected
+
 		if(!e.shiftKey) //REFACTOR: integrate with function
 		{
-			var todeselect = [];
-			for(var i in this.selected_nodes)
-				if (this.selected_nodes[i] != n)
-						todeselect.push(this.selected_nodes[i]);
-			//two passes to avoid problems modifying the container
-			for(var i in todeselect)
-				this.processNodeDeselected(todeselect[i]);
+            //no node or another node selected
+            if (!n || !this.selected_nodes[n.id]) {
+
+                var todeselect = [];
+                for (var i in this.selected_nodes)
+                    if (this.selected_nodes[i] != n)
+                        todeselect.push(this.selected_nodes[i]);
+                //two passes to avoid problems modifying the container
+                for (var i in todeselect)
+                    this.processNodeDeselected(todeselect[i]);
+            }
 		}
 		var clicking_canvas_bg = false;
 
@@ -3277,11 +3283,9 @@ LGraphCanvas.prototype.processNodeDeselected = function(n)
 	delete this.selected_nodes[n.id];
 
 	if(this.onNodeDeselected)
-		this.onNodeDeselected();
+		this.onNodeDeselected(n);
 
 	this.dirty_canvas = true;
-
-	//this.showNodePanel(null);
 }
 
 LGraphCanvas.prototype.processNodeDblClicked = function(n)
@@ -3661,7 +3665,7 @@ LGraphCanvas.prototype.drawBackCanvas = function()
 			}
 
 			var pattern = null;
-			if(this._bg_img != this._pattern_img && this._bg_img.width > 0)
+			if(this._pattern == null && this._bg_img.width > 0)
 			{
 				pattern = ctx.createPattern( this._bg_img, 'repeat' );
 				this._pattern_img = this._bg_img;
@@ -4772,8 +4776,16 @@ LiteGraph.createContextualMenu = function(values,options, ref_window)
 	//allows to create graph canvas in separate window
 	ref_window = ref_window || window;
 
-	if(!options.from)
-		LiteGraph.closeAllContextualMenus();
+    if (!options.from)
+        LiteGraph.closeAllContextualMenus();
+    else {
+        //closing submenus
+        var menus = document.querySelectorAll(".graphcontextualmenu");
+        for (var key in menus) {
+            if (menus[key].previousSibling == options.from)
+                menus[key].closeMenu();
+        }
+    }
 
 	var root = ref_window.document.createElement("div");
 	root.className = "graphcontextualmenu graphmenubar-panel";
@@ -8132,6 +8144,9 @@ if(typeof(LiteGraph) != "undefined")
 		if(this.flags.collapsed)
 			return;
 
+		if(!ctx.webgl)
+			return; //not working well
+
 		var tex = this.getInputData(0);
 		if(!tex) return;
 
@@ -9597,18 +9612,24 @@ if(typeof(LiteGraph) != "undefined")
 			this.properties.intensity = intensity;
 		}
 
-		gl.disable( gl.BLEND );
-		gl.disable( gl.DEPTH_TEST );
-		var mesh = Mesh.getScreenQuad();
-		var shader = LGraphTextureBlur._shader;
-		var scale = this.properties.scale || [1,1];
-
 		//blur sometimes needs an aspect correction
 		var aspect = LiteGraph.camera_aspect;
 		if(!aspect && window.gl !== undefined)
 			aspect = gl.canvas.height / gl.canvas.width;
 		if(!aspect)
 			aspect = 1;
+
+		var start_texture = tex;
+		var scale = this.properties.scale || [1,1];
+		for(var i = 0; i < iterations; ++i)
+			start_texture.applyBlur( aspect * scale[0] , scale[1] , intensity, this._temp_texture, this._final_texture );
+
+		/*
+		gl.disable( gl.BLEND );
+		gl.disable( gl.DEPTH_TEST );
+		var mesh = Mesh.getScreenQuad();
+		var shader = LGraphTextureBlur._shader;
+		var scale = this.properties.scale || [1,1];
 
 		//iterate
 		var start_texture = tex;
@@ -9628,6 +9649,7 @@ if(typeof(LiteGraph) != "undefined")
 			});
 			start_texture = this._final_texture;
 		}
+		*/
 		
 		this.setOutputData(0, this._final_texture);
 	}

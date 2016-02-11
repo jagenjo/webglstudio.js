@@ -208,8 +208,8 @@ LS.Components.Light["@inspector"] = function(light, inspector)
 
 	inspector.addSeparator();
 	inspector.widgets_per_row = 2;
-	inspector.addCheckbox("Linear att.", light.linear_attenuation != false, { pretitle: AnimationModule.getKeyframeCode( light, "linear_attenuation"), callback: function(v) { light.linear_attenuation = v; }});
-	inspector.addCheckbox("Range att.", light.range_attenuation != false, { pretitle: AnimationModule.getKeyframeCode( light, "range_attenuation"), callback: function(v) { light.range_attenuation = v; }});
+	inspector.addCheckbox("Linear att.", light.linear_attenuation != false, { pretitle: AnimationModule.getKeyframeCode( light, "linear_attenuation"), name_width: "70%", callback: function(v) { light.linear_attenuation = v; }});
+	inspector.addCheckbox("Range att.", light.range_attenuation != false, { pretitle: AnimationModule.getKeyframeCode( light, "range_attenuation"), name_width: "70%", callback: function(v) { light.range_attenuation = v; }});
 	inspector.addNumber("Att. start", light.att_start, { pretitle: AnimationModule.getKeyframeCode( light, "att_start"), callback: function (value) { light.att_start = value;}});
 	inspector.addNumber("Att. end", light.att_end, { pretitle: AnimationModule.getKeyframeCode( light, "att_end"), callback: function (value) { light.att_end = value; }});
 	inspector.widgets_per_row = 1;
@@ -458,7 +458,7 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 	if( component.morph_targets.length )
 	{
 		inspector.widgets_per_row = 3;
-		for(var i in component.morph_targets)
+		for(var i = 0; i < component.morph_targets.length; i++)
 		{
 			var morph = component.morph_targets[i];
 			inspector.addMesh("", morph.mesh, { pretitle: AnimationModule.getKeyframeCode( component, "morphs/"+i+"/mesh" ), name_width: 20, width: "60%", morph_index: i, callback: function(v) { 

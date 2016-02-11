@@ -260,18 +260,22 @@ CodingTabsWidget.prototype.onPlusTab = function(tab_id, e)
 {
 	var that = this;
 
-	var options = ["Create in Root","Create in Node","Open All"];
+	var options = ["New Tab","Create Script in Root","Create Script in Node","Open All Scripts"];
 
 	var scripts = LS.GlobalScene.findNodeComponents( LS.Components.Script );
 	if( scripts.length )
 		options.push("Open");
 
 	var menu = new LiteGUI.ContextualMenu( options, { event: e, callback: function(value, options) {
-		if(value == "Create in Root")
+		if(value == "New Tab")
+		{
+			that.onNewTab();
+		}
+		else if(value == "Create Script in Root")
 			that.onNewScript( LS.GlobalScene.root );
-		else if(value == "Create in Node")
+		else if(value == "Create Script in Node")
 			that.onNewScript( null ); //it will choose selected node by default
-		else if(value == "Open All")
+		else if(value == "Open All Scripts")
 		{
 			that.onOpenAllScripts();
 		}
@@ -288,6 +292,13 @@ CodingTabsWidget.prototype.onPlusTab = function(tab_id, e)
 			}});
 		}
 	}});
+}
+
+CodingTabsWidget.prototype.onNewTab = function()
+{
+	var num = this.tabs.getNumOfTabs();
+	var tab = this.tabs.addTab( null, { title: "Code", selected: true, closable: true, size: "full", skip_callbacks: true, index: num - 1});
+	tab.pad = this.createCodingPad( tab.content );
 }
 
 CodingTabsWidget.prototype.onNewScript = function( node )

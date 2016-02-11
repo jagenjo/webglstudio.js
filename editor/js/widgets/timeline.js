@@ -160,7 +160,7 @@ Timeline.prototype.animationModified = function()
 Timeline.prototype.onLoadAnimation = function()
 {
 	var that = this;
-	EditorModule.showSelectResource("animation", inner.bind(this) );
+	EditorModule.showSelectResource( { type:"animation", on_complete: inner.bind(this) } );
 
 	function inner( name )
 	{
@@ -507,6 +507,7 @@ Timeline.prototype.redrawCanvas = function()
 					ctx.fillStyle = "#FC6";
 				else
 					ctx.fillStyle = "#9AF";
+				ctx.strokeStyle = ctx.fillStyle;
 
 				var posx = this.canvasTimeToX( keyframe[0] );
 
@@ -516,12 +517,16 @@ Timeline.prototype.redrawCanvas = function()
 						continue;
 
 					ctx.save();
-					ctx.translate( posx, y + line_height * 0.5 );
+					var offset_y = y + line_height * 0.5;
 					ctx.beginPath();
-					ctx.moveTo(0,5);
-					ctx.lineTo(5,0);
-					ctx.lineTo(0,-5);
-					ctx.lineTo(-5,0);
+					ctx.moveTo( posx + 0.5, 10);
+					ctx.lineTo( posx + 0.5, timeline_height);
+					ctx.stroke();
+					ctx.beginPath();
+					ctx.moveTo( posx, offset_y + 5);
+					ctx.lineTo( posx + 5, offset_y);
+					ctx.lineTo( posx, offset_y - 5);
+					ctx.lineTo( posx - 5, offset_y );
 					ctx.fill();
 					ctx.restore();
 				}

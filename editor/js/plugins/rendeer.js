@@ -12,7 +12,6 @@ var RendeerEngine = {
 
 		function inner(v)
 		{
-			console.log(v);
 			console.log("Rendeer engine loaded");
 		}
 	},

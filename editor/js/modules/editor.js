@@ -1165,9 +1165,10 @@ var EditorModule = {
 		}
 	},
 
-	showSelectResource: function(type, on_complete, on_load )
+	showSelectResource: function()
 	{
 		//FUNCTION REPLACED BY DRIVE MODULE
+		LiteGUI.alert("If you can read this is because Drive Module is not installed");
 	},
 
 	//shows a dialog to select a node
@@ -1339,6 +1340,16 @@ var EditorModule = {
 				else
 					BBox.merge( bbox, bbox, render_instances[i].aabb );
 			}
+
+		for(var i = 0; i < LS.GlobalScene._nodes.length; ++i)
+		{
+			var node = LS.GlobalScene._nodes[i];
+			if(!node.transform)
+				continue;
+			var pos = node.transform.getGlobalPosition();
+			BBox.extendToPoint( bbox, pos );
+		}
+
 		this.focusCameraInBoundingBox( bbox );
 	},
 
@@ -1597,7 +1608,7 @@ LiteGUI.Inspector.prototype.addResource = function(name,value, options)
 	});
 	
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
-		EditorModule.showSelectResource("Mesh", inner_onselect );
+		EditorModule.showSelectResource( { type:"Mesh", on_complete: inner_onselect } );
 		if(options.callback_button)
 			options.callback_button.call(element, $(element).find(".wcontent input").val() );
 	});
@@ -1608,7 +1619,7 @@ LiteGUI.Inspector.prototype.addResource = function(name,value, options)
 		LiteGUI.trigger( input, "change" );
 	}
 
-	element.setAttribute("draggable","true");
+	//element.setAttribute("draggable","true");
 	element.addEventListener("dragover",function(e){ 
 		var path = e.dataTransfer.getData("res-fullpath");
 		var type = e.dataTransfer.getData( "res-type" );
@@ -1651,15 +1662,15 @@ LiteGUI.Inspector.prototype.addTexture = function(name, value, options)
 
 	input.addEventListener("change", function(e) { 
 		var v = e.target.value;
-		if(v && v[0] != ":")
+		if(v && v[0] != ":" && !options.skip_load)
 			LS.ResourcesManager.load(v);
 		LiteGUI.Inspector.onWidgetChange.call(that,element,name,v, options);
 	});
 	
 	element.querySelector(".wcontent button").addEventListener("click", function(e) { 
-		EditorModule.showSelectResource("Texture", inner_onselect );
+		EditorModule.showSelectResource( { type:"Texture", on_complete: inner_onselect, skip_load: true } );
 		if(options.callback_button)
-			options.callback_button.call(element, $(element).find(".wcontent input").val() );
+			options.callback_button.call(element, input.value );
 	});
 
 	function inner_onselect( filename )
@@ -1669,7 +1680,7 @@ LiteGUI.Inspector.prototype.addTexture = function(name, value, options)
 		//$(element).find("input").val(filename).change();
 	}
 
-	element.setAttribute("draggable","true");
+	//element.setAttribute("draggable","true");
 	element.addEventListener("dragover",function(e){ 
 		var path = e.dataTransfer.getData( "res-fullpath" );
 		var type = e.dataTransfer.getData( "res-type" );
@@ -1722,7 +1733,7 @@ LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
 
 	input.addEventListener("change", function(e) { 
 		var v = e.target.value;
-		if(v && v[0] != ":")
+		if(v && v[0] != ":" && !options.skip_load)
 			LS.ResourcesManager.load( v );
 		value.texture = v;
 		LiteGUI.Inspector.onWidgetChange.call( that, element, name, value, options);
@@ -1730,15 +1741,9 @@ LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
 	
 	element.querySelector(".wcontent button").addEventListener("click", function(e) { 
 		EditorModule.showTextureSamplerInfo( value, options );
-
-		/*
-		EditorModule.showSelectResource("Texture", inner_onselect );
-		if(options.callback_button)
-			options.callback_button.call(element, $(element).find(".wcontent input").val() );
-		*/
 	});
 
-	element.setAttribute("draggable","true");
+	//element.setAttribute("draggable","true");
 	element.addEventListener("dragover",function(e){ 
 		var path = e.dataTransfer.getData("res-fullpath");
 		var type = e.dataTransfer.getData( "res-type" );
@@ -1787,13 +1792,20 @@ LiteGUI.Inspector.prototype.addMesh = function(name,value, options)
 	var input = element.querySelector(".wcontent input");
 
 	input.addEventListener( "change", function(e) { 
-		if(e.target.value)
-			LS.ResourcesManager.load(e.target.value);
-		LiteGUI.Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
+		var v = e.target.value;
+		if(v && v[0] != ":" && !options.skip_load)
+			LS.ResourcesManager.load(v);
+		LiteGUI.Inspector.onWidgetChange.call(that,element,name,v, options);
 	});
 	
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
-		EditorModule.showSelectResource( "Mesh", inner_onselect, inner_onload );
+		var o = { type:"Mesh", on_complete: inner_onselect };
+		if(options.skip_load)
+			o.skip_load = true;
+		else
+			o.on_load = inner_onload;
+		EditorModule.showSelectResource( o );
+
 		if(options.callback_button)
 			options.callback_button.call( element, input.value);
 	});
@@ -1804,13 +1816,13 @@ LiteGUI.Inspector.prototype.addMesh = function(name,value, options)
 		LiteGUI.trigger( input, "change" );
 	}
 
-	function inner_onload( filename )
+	function inner_onload( filename ) //shouldnt this be moved to the "change" event?
 	{
 		if(options.callback_load)
 			options.callback_load.call( element, filename );
 	}
 
-	element.setAttribute("draggable","true");
+	//element.setAttribute("draggable","true");
 	element.addEventListener("dragover",function(e){ 
 		var path = e.dataTransfer.getData("res-fullpath");
 		var type = e.dataTransfer.getData( "res-type" );
@@ -1849,16 +1861,17 @@ LiteGUI.Inspector.prototype.addMaterial = function(name,value, options)
 	input.addEventListener( "change", inner_onchange );
 	
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
-		EditorModule.showSelectResource("Material", inner_onselect );
+		EditorModule.showSelectResource({ type: "Material", on_complete: inner_onselect, skip_load: true });
 		if(options.callback_button)
 			options.callback_button.call( element, input.value );
 	});
 
 	function inner_onchange(e)
 	{
-		if(this.value)
-			LS.ResourcesManager.load(this.value);
-		LiteGUI.Inspector.onWidgetChange.call(that,element,name,this.value, options);
+		var v = this.value;
+		if(v && v[0] != ":" && !options.skip_load)
+			LS.ResourcesManager.load( v );
+		LiteGUI.Inspector.onWidgetChange.call(that,element,name, v , options);
 	}
 
 	function inner_onselect(filename)
@@ -1867,7 +1880,7 @@ LiteGUI.Inspector.prototype.addMaterial = function(name,value, options)
 		LiteGUI.trigger( input, "change" );
 	}
 
-	element.setAttribute("draggable","true");
+	//element.setAttribute("draggable","true");
 	element.addEventListener("dragover",function(e){ 
 		var path = e.dataTransfer.getData("res-fullpath");
 		var type = e.dataTransfer.getData( "res-type" );

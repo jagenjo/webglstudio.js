@@ -97,6 +97,7 @@ function SceneTreeWidget( id )
 				if(that.trigger_clicks) //special case
 					LEvent.trigger( that._scene, "node_clicked", node );
 				SelectionModule.setSelection( node );//this triggers the selected_node event
+				window.NODE = node;
 
 				if( EditorModule.getInspectedInstance() != node )
 					EditorModule.inspect( node );

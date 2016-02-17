@@ -597,7 +597,7 @@ LGraph.prototype.sendEventToAllNodes = function(eventname, params)
 			if(params === undefined)
 				node[eventname]();
 			else if(params && params.constructor === Array)
-				node[eventname].apply(M[j], params);
+				node[eventname].apply( node, params );
 			else
 				node[eventname](params);
 		}

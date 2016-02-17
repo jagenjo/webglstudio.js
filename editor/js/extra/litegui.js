@@ -3596,7 +3596,7 @@ function dataURItoBlob( dataURI ) {
 			if( i == tab_id )
 			{
 				tab_info.selected = true;
-				tab_info.content.style.display = null;
+				tab_info.content.style.display = "";
 				tab_content = tab_info.content;
 			}
 			else
@@ -5277,7 +5277,7 @@ function dataURItoBlob( dataURI ) {
 					panel.style.height = this.height;
 			}
 
-			this.content.style.height = "calc( " + this.height + " - 24px )";
+			this.content.style.height = "calc( " + this.height + "px - 24px )";
 		}
 
 		panel.style.boxShadow = "0 0 3px black";
@@ -5492,7 +5492,7 @@ function dataURItoBlob( dataURI ) {
 
 		var maximize_button = this.root.querySelector(".maximize-button");
 		if(maximize_button)
-			maximize_button.style.display = null;
+			maximize_button.style.display = "";
 
 		this.root.style.width = LiteGUI.Dialog.MINIMIZED_WIDTH + "px";
 
@@ -5523,13 +5523,13 @@ function dataURItoBlob( dataURI ) {
 			return;
 		this.minimized = false;
 
-		this.root.querySelector(".content").style.display = null;
+		this.root.querySelector(".content").style.display = "";
 		$(this.root).draggable({ disabled: false });
 		$(this.root).animate({ left: this.old_pos.left+"px" , top: this.old_pos.top + "px", width: this.width },100);
 
 		var minimize_button = this.root.querySelector(".minimize-button");
 		if(minimize_button)
-			minimize_button.style.display = null;
+			minimize_button.style.display = "";
 
 		var maximize_button = this.root.querySelector(".maximize-button");
 		if(maximize_button)
@@ -5587,7 +5587,7 @@ function dataURItoBlob( dataURI ) {
 		//$(this.root).show(v,null,100,callback);
 		if(!this.detach_window)
 		{
-			this.root.style.display = null;
+			this.root.style.display = "";
 			LiteGUI.trigger( this, "shown" );
 		}
 	}
@@ -5718,7 +5718,7 @@ function dataURItoBlob( dataURI ) {
 			return;
 
 		this.root.appendChild( this.content );
-		this.root.style.display = null; //show
+		this.root.style.display = ""; //show
 		this.dialog_window.close();
 		var index = LiteGUI.windows.indexOf( this.dialog_window );
 		if(index != -1)

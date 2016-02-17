@@ -924,7 +924,7 @@
 		</code>
 		<code type="pixel_shader">
 		<![CDATA[
-		#ifdef USE_DRAW_BUFFERS
+			#ifdef USE_DRAW_BUFFERS
 				#extension GL_EXT_draw_buffers : require
 			#endif
 
@@ -1210,7 +1210,7 @@
 		<![CDATA[
 
 			#ifdef USE_DRAW_BUFFERS
-				#extension GL_EXT_draw_buffers : require
+				#extension GL_EXT_draw_buffers : enable
 			#endif
 
 			precision mediump float;

@@ -213,7 +213,12 @@ var CubemapGenerator = {
 		function processResult( texture )
 		{
 			var fullname = name + "_" + mode + ".png";
-			LS.ResourcesManager.registerResource( fullname, texture );
+			if(texture.fullpath)
+			{
+				name = fullname = texture.fullpath;
+			}
+			else
+				LS.ResourcesManager.registerResource( fullname, texture );
 			if(original_file)
 				texture._original_file = original_file;
 			else

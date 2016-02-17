@@ -23,7 +23,9 @@ function enableWebGLCanvas( canvas, options )
 
 
 	//get the context	
-	var gl = canvas.getContext("webgl");
+	var gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+	if(!gl)
+		throw("enableWebGLCanvas: cannot obtain webgl context from canvas");
 	if(canvas.canvas2DtoWebGL_enabled)
 		return gl;
 

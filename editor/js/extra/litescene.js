@@ -1565,7 +1565,7 @@ var Network = {
 			data = null;
 			callback = data;
 		}
-		return LS.Network.request({url:url, dataType:"txt", success: callback, success: callback, error: callback_error});
+		return LS.Network.request({url:url, dataType:"txt", success: callback, error: callback_error});
 	},
 
 	/**
@@ -1622,8 +1622,9 @@ LS.Network = Network;
 
 function Resource()
 {
-	this.filename = null; //contains a local name
-	this.fullpath = null; //contains the unique name as is to be used to fetch it by the resources manager, only remote resources have this property
+	this.filename = null; //name of file without folder or path
+	this.fullpath = null; //contains the unique name as is to be used to fetch it by the resources manager
+	this.remotepath = null; //the string to fetch this resource in internet (local resources do not have this name)
 	this._data = null;
 }
 
@@ -2176,7 +2177,7 @@ var ResourcesManager = {
 		var settings = {
 			url: full_url,
 			success: function(response){
-				LS.ResourcesManager.processResource( url, response, options, ResourcesManager._resourceLoadedSuccess );
+				LS.ResourcesManager.processResource( url, response, options, ResourcesManager._resourceLoadedSuccess, true );
 			},
 			error: function(err) { 	LS.ResourcesManager._resourceLoadedError(url,err); },
 			progress: function(e) { 
@@ -2210,7 +2211,7 @@ var ResourcesManager = {
 	* @param {Function} on_complete once the resource is ready
 	*/
 
-	processResource: function( url, data, options, on_complete )
+	processResource: function( url, data, options, on_complete, was_loaded )
 	{
 		options = options || {};
 		if( data === null || data === undefined )
@@ -2295,10 +2296,10 @@ var ResourcesManager = {
 			resource.filename = fullpath;
 			if(options.filename) //used to overwrite
 				resource.filename = options.filename;
-
-			//if(!resource.fullpath) //why??
 			if(!options.is_local)
 				resource.fullpath = fullpath;
+			if(was_loaded)
+				resource.remotepath = url;
 
 			if(options.is_preview)
 				resource.is_preview = true;
@@ -3427,6 +3428,10 @@ var ShadersManager = {
 		var num_macros = 0;
 		for(var i in macros)
 			num_macros += 1;
+
+		//HACK for IE
+		if(!gl.extensions["WEBGL_draw_buffers"])
+			fs_code = fs_code.replace("#extension GL_EXT_draw_buffers : enable", '');
 
 		var global = { 
 			vs_code: vs_code, 
@@ -21602,6 +21607,10 @@ LS.Path = Path;
 
 function Prefab(o)
 {
+	this.resources = {}; 
+	this.prefab_json = null;
+	this.prefab_data = null;
+
 	if(o)
 		this.configure(o);
 }
@@ -21696,7 +21705,7 @@ Prefab.prototype.createObject = function()
 
 	var node = new LS.SceneNode();
 	node.configure(conf_data);
-	ResourcesManager.loadResources( node.getResources({},true) );
+	LS.ResourcesManager.loadResources( node.getResources({},true) );
 
 	if(this.fullpath)
 		node.prefab = this.fullpath;
@@ -23093,7 +23102,7 @@ RenderFrameContainer.prototype.startFBO = function()
 		this.extra_texture = null;
 
 	//for the depth
-	if( this.use_depth_texture && (!this.depth_texture || this.depth_texture.width != width || this.depth_texture.height != height) )
+	if( this.use_depth_texture && (!this.depth_texture || this.depth_texture.width != width || this.depth_texture.height != height) && gl.extensions["WEBGL_depth_texture"] )
 		this.depth_texture = new GL.Texture( width, height, { filter: gl.NEAREST, format: gl.DEPTH_COMPONENT, type: gl.UNSIGNED_INT });
 	else if( !this.use_depth_texture )
 		this.depth_texture = null;
@@ -24029,7 +24038,7 @@ var Renderer = {
 				query.setMacro("USE_COLORCLIP_FACTOR");
 		}
 
-		if(this._current_renderframe && this._current_renderframe.use_extra_texture )
+		if(this._current_renderframe && this._current_renderframe.use_extra_texture && gl.extensions["WEBGL_draw_buffers"])
 			query.setMacro("USE_DRAW_BUFFERS");
 
 		LEvent.trigger( scene, "fillSceneQuery", query );
@@ -26476,7 +26485,7 @@ global.Collada = {
 
 		//get streams
 		var xmlvertices = xmlmesh.querySelector("vertices input");
-		vertices_source = sources[ xmlvertices.getAttribute("source").substr(1) ];
+		var vertices_source = sources[ xmlvertices.getAttribute("source").substr(1) ];
 		sources[ xmlmesh.querySelector("vertices").getAttribute("id") ] = vertices_source;
 
 		var mesh = null;
@@ -27049,7 +27058,7 @@ global.Collada = {
 
 		//sampler, is in charge of the interpolation
 		//var xmlsampler = xmlanimation.querySelector("sampler" + source);
-		xmlsampler = this.findXMLNodeById( xmlanimation, "sampler", source.substr(1) );
+		var xmlsampler = this.findXMLNodeById( xmlanimation, "sampler", source.substr(1) );
 		if(!xmlsampler)
 		{
 			console.error("Error DAE: Sampler not found in " + source);

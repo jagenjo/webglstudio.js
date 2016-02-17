@@ -113,7 +113,9 @@ var cameraTool = {
 			amount = 1.0 + amount * this.settings.mouse_wheel_factor;	
 		return amount;
 		*/
-		return (1 + e.delta * this.settings.mouse_wheel_factor);
+		var delta = e.wheel !== undefined ? (e.wheel / 100) : e.delta;
+
+		return (1 + delta * this.settings.mouse_wheel_factor);
 	},
 
 	update: function(dt)

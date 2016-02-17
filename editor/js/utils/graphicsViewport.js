@@ -185,8 +185,9 @@ GraphicsViewport.prototype.dispatchEvent = function(e)
 	if(event_name == "mousedown")
 	{
 		LiteGUI.focus_widget = this.canvas;
-		document.activeElement.blur();
-		//$("input").blur(); //remove focus on anything writable
+		var elem = document.activeElement;
+		if(elem && elem.blur)
+			elem.blur();
 	}
 
 	/*

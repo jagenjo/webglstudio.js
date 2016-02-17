@@ -378,13 +378,14 @@ var DriveModule = {
 		else
 			fullpath = resource.fullpath || resource.filename;
 
-		var resource = LS.ResourcesManager.resources[ fullpath ];
+		var local_resource = LS.ResourcesManager.resources[ fullpath ];
 		var server_resource = DriveModule.server_resources[ fullpath ];
-		resource = resource || server_resource;
+		var resource = local_resource || server_resource;
 		if(!resource)
 			return;
 
 		var preview_url = resource.preview_url || LFS.getPreviewPath( fullpath );
+		var category = resource.category || resource.object_type;
 
 		if(!inspector)
 		{
@@ -423,7 +424,7 @@ var DriveModule = {
 			DriveModule.renameResource( resource.filename, newname );
 		}});
 
-		inspector.addString("Category", resource.category || resource.object_type, { callback: function(v) {
+		inspector.addString("Category", category, { callback: function(v) {
 			resource.category = v;
 		}});
 
@@ -465,6 +466,9 @@ var DriveModule = {
 		var link = resource.url;
 		if(!link && resource.fullpath)
 			link = LS.ResourcesManager.getFullURL( resource.fullpath );
+
+		if(category == "Prefab" && local_resource)
+			inspector.addButton("Prefab","Show content", function(){ DriveModule.showPrefabContent(local_resource); });
 
 		if(link)
 			inspector.addInfo("Link", "<a target='_blank' href='"+link+"'>link to the file</a>" );
@@ -604,148 +608,6 @@ var DriveModule = {
 		return dialog;
 	},
 
-	/*
-	showResourceDialog: function(resource)
-	{
-		if(!resource) return;
-
-		var fullpath = resource.fullpath || resource.filename;
-		var server_resource = DriveModule.server_resources[ fullpath ];
-
-		var dialog = new LiteGUI.Dialog("dialog_resource_info", {title:"Resource Info", close: true, width: 520, height: 320, scroll: false, draggable: true});
-		dialog.show('fade');
-
-		var split = new LiteGUI.Split("load_scene_split",[50,50]);
-		$(dialog.content).append(split.root);
-
-		var preview_url = resource.preview_url;
-		if(!preview_url && server_resource)
-			preview_url = server_resource.preview_url;
-		var preview = new Image();
-		if(preview_url)
-			preview.src = preview_url;
-
-		var widgets = new LiteGUI.Inspector();
-		$(split.sections[0]).append(preview);
-		$(split.sections[1]).append(widgets.root);
-
-		if(!resource.metadata)
-			resource.metadata = {};
-
-		generate_content();
-
-		//separated so can be called when "update metadata"
-		function generate_content()
-		{
-			widgets.clear();
-			var filename = resource.filename;
-			if(!filename && server_resource)
-				filename = server_resource.filename;
-
-			widgets.addString("Filename", filename, { callback: function(v) { 
-				//rename
-				DriveModule.renameResource(resource.filename, v);
-
-			}});
-			widgets.addInfo("Folder",resource.folder || "");
-			widgets.addInfo("Category",resource.category || resource.object_type);
-
-			if(resource.metadata)
-				widgets.addTextarea("Description",resource.metadata["description"] , { callback: function(v) { 
-					resource.metadata["description"] = v;
-				}});
-
-			var metadata = "";
-			for(var i in resource.metadata)
-			{
-				if(i != "description")
-					metadata += "<p style='padding:0'><strong>"+i+"</strong>: " + resource.metadata[i] + "</p>\n";
-			}
-
-			widgets.addSeparator();
-
-			if(resource._original_data || resource._original_file)
-			{
-				var data = resource._original_data || resource._original_file;
-				if(data.buffer)
-					data = data.buffer;
-
-				var bytes = 0;
-				if(typeof(data) == "string")
-					bytes = data.length;
-				else if(data.constructor == ArrayBuffer)
-					bytes = data.byteLength;
-
-				if(bytes > 1024*1024) bytes = (bytes / (1024*1024)).toFixed(1) + " MBs";
-				else if(bytes > 1024) bytes = (bytes / 1024).toFixed() + " KBs";
-				else bytes += " bytes";
-
-				widgets.addInfo("Bytes", bytes );
-			}
-
-			widgets.addInfo("Metadata", metadata, {height:50});
-			var link = resource.url;
-			if(!link)
-				link = LS.ResourcesManager.getFullURL( resource.filename );
-
-
-			widgets.addInfo("Link", "<a target='_blank' href='"+link+"'>link to the file</a>" );
-
-			widgets.addSeparator();
-
-			widgets.addButtons(null,["Update Snapshot","Update metadata"], { callback: function(v) {
-				if(v == "Update Snapshot")
-				{
-					//update image
-					var url = DriveModule.generatePreview(resource, true);
-					preview.src = url;
-					resource.preview_url = url;
-					//upload it in case is a server side file
-					DriveModule.onUpdatePreview(function() {
-						//preview.src = resource.preview_url;
-					});
-				}
-				else if(v == "Update metadata")
-				{
-					if(resource.generateMetadata)
-					{
-						resource.generateMetadata();
-						generate_content();
-					}
-				}
-			}});
-
-			widgets.addButton(null,"Load in memory", {callback: function(v){
-				var restype = resource.category || resource.object_type;
-				DriveModule.loadResource(resource.fullpath,restype);
-			}});
-
-			widgets.addButtons(null,["Save","Delete"], {callback: function(v){
-				LiteGUI.confirm("Are you sure?", function() {
-
-					if (v == "Save")
-					{
-						//var res = LS.ResourcesManager.resources[resource.fullpath];
-						DriveModule.saveResource(resource);
-					}
-					else if (v == "Delete")
-					{
-						DriveModule.serverDeleteFile(resource.id, function(v) { 
-							LiteGUI.alert(v?"File deleted":"Error deleting file");
-							if(v)
-							{
-								dialog.close();
-								DriveModule.showResourcesInFolder(DriveModule.current_folder);
-								//dialog.hide('fade');
-							}
-						});
-					}
-				});
-			}});
-		}
-	},
-	*/
-
 	renameResource: function( old_name, new_name, resource )
 	{
 		//HARDCODED WITH LFS
@@ -808,6 +670,32 @@ var DriveModule = {
 			if(default_folder)
 				tree_widget.setSelectedItem( default_folder, true );
 		}
+	},
+
+	showPrefabContent: function( prefab )
+	{
+		var dialog = new LiteGUI.Dialog(null, {title:"Prefab content", close: true, width: 360, height: 240, draggable: true});
+		var inspector = new LiteGUI.Inspector();
+		inspector.addString( "Name", prefab.filename );
+		var info = null;
+		var list = [];
+		for(var i in prefab.resources)
+			list.push(i);
+		inspector.addList( null, list, { height: 200, callback: function(v){
+			console.log(v);
+			var res = prefab.resources[v];
+			if(!res)
+				return;
+			console.log(res);
+		}});
+		info = inspector.addInfo( "Info", "No info" );
+		inspector.addButton(null,"Close", function(){
+			dialog.close();
+		});
+
+		dialog.add( inspector );
+		dialog.show();
+		dialog.adjustSize();
 	},
 
 	getServerFoldersTree: function(callback)

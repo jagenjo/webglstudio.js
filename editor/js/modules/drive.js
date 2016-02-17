@@ -138,8 +138,12 @@ var DriveModule = {
 		//bind
 		LiteGUI.bind( this.resources_panel, "item_selected", function(e){
 			var element = e.detail;
-			if(element && element.dataset["fullpath"])
-				that.showResourceInfo( element.dataset["fullpath"] );
+			if(!element)
+				return;
+
+			var filename = element.dataset["fullpath"] || element.dataset["filename"];
+			if(filename)
+				that.showResourceInfo( filename );
 		});
 	},
 
@@ -242,39 +246,6 @@ var DriveModule = {
 	showInBrowserContent: function( items, options )
 	{
 		this.resources_panel.showInBrowserContent( items, options );
-	},
-
-	uploadAndShowProgress: function( resource, folder_fullpath, callback )
-	{
-		if(!folder_fullpath)
-			return;
-
-		var dialog = LiteGUI.alert("<p>Uploading file... <span id='upload_progress'></span>%</p>");
-		var fullpath = folder_fullpath + "/" + resource.filename;
-
-		DriveModule.serverUploadResource( resource, fullpath,
-			function(v, final_fullpath) { 
-				dialog.close();
-				LiteGUI.alert( v ? "Resource saved" : "Problem saving the resource: " + msg);
-				if(callback)
-					callback(v, folder_fullpath, final_fullpath);
-			},
-			inner_error,
-			function (progress) { 
-				$("#upload_progress").html( (progress * 100).toFixed(0) );
-			}
-		);
-
-		function inner_error(err, status)
-		{
-			if(status == 413)
-				LiteGUI.alert("Error: file too big");
-			else
-				LiteGUI.alert("Error: file cannot be uploaded");
-			console.error(err);
-			if(callback)
-				callback(false);
-		}
 	},
 
 	updateServerTreePanel: function(callback)
@@ -425,15 +396,18 @@ var DriveModule = {
 		inspector.addTitle("Resource");
 		inspector.addString("Fullpath", resource.fullpath, {disabled:true} );
 
-		var img = new Image();
-		img.src = preview_url;
-		img.className = "preview_image";
-		img.onerror = function(){ this.parentNode.removeChild(this); }
+		if(preview_url)
+		{
+			var img = new Image();
+			img.src = preview_url;
+			img.className = "preview_image";
+			img.onerror = function(){ this.parentNode.removeChild(this); }
 
-		var img_container = inspector.addInfo(null, img);
-		var preview_image = inspector.root.querySelector(".preview_image");
-		img_container.style.backgroundColor = "black";
-		img_container.style.textAlign = "center";
+			var img_container = inspector.addInfo(null, img);
+			var preview_image = inspector.root.querySelector(".preview_image");
+			img_container.style.backgroundColor = "black";
+			img_container.style.textAlign = "center";
+		}
 
 		var filename = resource.filename;
 		if(!filename && server_resource)
@@ -1140,7 +1114,7 @@ var DriveModule = {
 			{
 				LiteGUI.alert("Preview updated");
 				//force reload the thumbnail without cache
-				var img = $(DriveModule.selected_resource).find("img")[0];
+				var img = DriveModule.selected_resource.querySelector("img");
 				if(img)
 				{
 					resource.preview_url = preview;
@@ -1165,11 +1139,15 @@ var DriveModule = {
 	},
 
 	//returns preview in base64 format
-	generatePreview: function( fullpath, force_read_from_memory )
+	generatePreview: function( fullpath, force_read_from_memory, skip_screenshot )
 	{
 		var resource = LS.ResourcesManager.getResource( fullpath );
-		if(!resource) //take from the screen
-			return RenderModule.takeScreenshot( this.preview_size, this.preview_size );
+		if(!resource) //take from the screen (reuse old ones)
+		{
+			if(!skip_screenshot)
+				return this.takeScreenshotUsingCache( this.preview_size,this.preview_size, fullpath );
+			return null;
+		}
 
 		if( resource.updatePreview )
 		{
@@ -1237,6 +1215,8 @@ var DriveModule = {
 
 
 			//Read pixels form WebGL
+			var buffer = resource.getPixels();
+			/*
 			var buffer = new Uint8Array(w*h*4);
 			resource.drawTo( function() {
 				try
@@ -1247,6 +1227,7 @@ var DriveModule = {
 				{
 				}
 			});
+			*/
 
 			//dump to canvas
 			var canvas = createCanvas(w,h);
@@ -1266,7 +1247,20 @@ var DriveModule = {
 		}
 
 		//other form of resource, then do a snapshot of the viewport
-		return RenderModule.takeScreenshot(this.preview_size,this.preview_size);
+		if(!skip_screenshot)
+			return this.takeScreenshotUsingCache( this.preview_size, this.preview_size, fullpath );
+		return null;
+	},
+
+	takeScreenshotUsingCache: function(w,h, fullpath)
+	{
+		var now = getTime();
+		if( this._last_screenshot && (now - this._last_screenshot.time) < 2000 )
+			return this._last_screenshot.data;
+		console.log("Screenshot taken for resource: " + (fullpath || "") );
+		var screenshot = RenderModule.takeScreenshot( w,h );
+		this._last_screenshot = { time: now, data: screenshot };
+		return screenshot;
 	},
 
 	fetchPreview: function( url )
@@ -1295,7 +1289,7 @@ var DriveModule = {
 	},
 
 	//called when the resource should be saved (after modifications)
-	//no path is passed because all the info must be inside
+	//no path is passed because all the info must be inside (including fullpath)
 	saveResource: function(resource, on_complete, options)
 	{
 		options = options || {};
@@ -1326,12 +1320,12 @@ var DriveModule = {
 				if(!options.skip_alerts)
 					LiteGUI.alert( v ? "Resource saved" : "Problem saving the resource: " + msg);
 				if(on_complete)
-					on_complete(true);
+					on_complete( resource );
 			},
 			function (err, status) { 
 				if(status == 413)
 					err = "File too big";
-				upload_progress.innerHTML = "Error: " + err; 
+				dialog.content.innerHTML = "Error Uploading: " + err; 
 				if(on_complete) 
 					on_complete(false);
 			},

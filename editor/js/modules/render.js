@@ -54,8 +54,12 @@ var RenderModule = {
 
 					RenderModule.render_settings.in_player = false;
 					InterfaceModule.setSidePanelVisibility(true);
-					RenderModule.viewport3d.resize(); //adapt to parent size
-					RenderModule.requestFrame();
+
+					if(window.gl && window.gl.canvas)
+					{
+						RenderModule.viewport3d.resize(); //adapt to parent size
+						RenderModule.requestFrame();
+					}
 					EditorModule.refreshAttributes(); //why not? it was commented
 				}
 		});
@@ -70,11 +74,16 @@ var RenderModule = {
 
 		if(CORE.user_preferences.interface && !CORE.user_preferences.interface.show_timeline)
 			visorarea.hideSection(1); //DEFAULT SHOW TIMELINE ***********************************
-		var visor_container = document.getElementById("visor");
+		var visor_container = this.visor_container = document.getElementById("visor");
 		InterfaceModule.setVisorArea( visorarea );
 
 		//create 3D canvas and store inside the #visor
 		this.viewport3d = new GraphicsViewport( visor_container, {full: true, antialiasing:true} );
+		if(!this.viewport3d.gl)
+		{
+			this.onWebGLNotEnabled();
+			return;
+		}
 		this.viewport3d.addModule(this); //capture render, update and mouse
 
 		//CANVAS
@@ -269,6 +278,9 @@ var RenderModule = {
 	appendViewportTo: function(parent)
 	{
 		var canvas = this.viewport3d.canvas;
+		if(!canvas)
+			return;
+
 		if(parent)
 			parent.appendChild(canvas);
 		else
@@ -608,6 +620,15 @@ var RenderModule = {
 		if( geo.testRayPlane( ray.start, ray.direction, vec3.create(), vec3.fromValues(0,1,0), position ) )
 			return position;
 		return null;
+	},
+
+	onWebGLNotEnabled: function()
+	{
+		var dialog = LiteGUI.alert("WebGL is disabled in your browser.<br/> You must use a recent browser like Chrome or Firefox updated to the last version in order to use this tool.");
+		dialog.setSize(400,200);
+
+		this.visor_container.innerHTML = "WEBGL is disabled</br><a href='http://superuser.com/questions/836832/how-can-i-enable-webgl-in-my-browser'>Do you need help?</a>";
+		this.visor_container.setAttribute("style","font-size: 4em; padding: 50px; color: #444; text-align: center; width: 100%;");
 	}
 };
 

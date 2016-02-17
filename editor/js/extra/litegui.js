@@ -2849,6 +2849,7 @@ function dataURItoBlob( dataURI ) {
 		this.root.appendChild( this.content );
 
 		this.is_open = false;
+		this.auto_open = false;
 	}
 
 	Menubar.closing_time = 500;
@@ -3030,7 +3031,7 @@ function dataURItoBlob( dataURI ) {
 
 			element.addEventListener("mouseover", function(e) {
 				that.hidePanels();
-				if(that.is_open)
+				if(that.is_open || that.auto_open)
 					that.showMenu( this.data, e, this );
 			});
 		}
@@ -3053,6 +3054,7 @@ function dataURItoBlob( dataURI ) {
 
 		if(!menu.children || !menu.children.length)
 			return;
+
 		var that = this;
 		if(that.closing_by_leave)
 			clearInterval(that.closing_by_leave);
@@ -3080,8 +3082,13 @@ function dataURItoBlob( dataURI ) {
 			var menu_item = sorted_entries[i];
 
 			item.className = 'litemenu-entry ' + ( item.children ? " submenu" : "" );
+			var has_submenu = menu_item.children && menu_item.children.length;
+
+			if(has_submenu)
+				item.classList.add("has_submenu");
+
 			if(menu_item && menu_item.name)
-				item.innerHTML = "<span class='icon'></span><span class='name'>" + menu_item.name + (menu_item.children && menu_item.children.length ? "<span class='more'>+</span>":"") + "</span>";
+				item.innerHTML = "<span class='icon'></span><span class='name'>" + menu_item.name + (has_submenu ? "<span class='more'>+</span>":"") + "</span>";
 			else
 				item.innerHTML = "<span class='separator'></span>";
 
@@ -3155,13 +3162,22 @@ function dataURItoBlob( dataURI ) {
 					that.hidePanels();
 				}
 			});
+
+			item.addEventListener("mouseenter",function(e){
+				/*
+				if( that.auto_open && this.classList.contains("has_submenu") )
+					LiteGUI.trigger( this, "click" );
+				*/
+			});
+
 			element.appendChild( item );
 		}
 
 		element.addEventListener("mouseleave",function(e){
-			//if( $(e.target).hasClass("litemenubar-panel") || $(e.target).parents().hasClass("litemenubar-panel") ) 	return;
-			
-			if(that.closing_by_leave) clearInterval(that.closing_by_leave);
+		
+			if(that.closing_by_leave)
+				clearInterval(that.closing_by_leave);
+
 			that.closing_by_leave = setTimeout( function() { 
 				that.is_open = false;
 				that.hidePanels();
@@ -3169,17 +3185,27 @@ function dataURItoBlob( dataURI ) {
 		});
 
 		element.addEventListener("mouseenter",function(e){
-			if(that.closing_by_leave) clearInterval(that.closing_by_leave);
+			if(that.closing_by_leave)
+				clearInterval(that.closing_by_leave);
 			that.closing_by_leave = null;
 		});
 
+		//compute X and Y for menu
 		var jQ = $(root); //$(menu.element);
 		element.style.left = jQ.offset().left + ( is_submenu ? 200 : 0 ) + "px";
-		element.style.top = jQ.offset().top + jQ.height() + ( is_submenu ? -20 : 2 ) + "px";
+		element.style.top = jQ.offset().top + jQ.height() + ( is_submenu ? -20 : 10 ) + "px";
+		/* animation, not working well, flickers
+		element.style.opacity = "0.1";
+		element.style.transform = "translate(0,-10px)";
+		element.style.transition = "all 0.2s";
+		setTimeout( function(){ 
+			element.style.opacity = "1"; 
+			element.style.transform = "translate(0,0)";
+		},1);
+		*/
 
 		this.panels.push(element);
 		document.body.appendChild( element );
-		$(element).hide().show();
 	}
 
 	LiteGUI.Menubar = Menubar;

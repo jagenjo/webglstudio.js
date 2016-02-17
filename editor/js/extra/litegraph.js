@@ -9629,33 +9629,6 @@ if(typeof(LiteGraph) != "undefined")
 			origin = this._final_texture;
 		}
 
-		/*
-		gl.disable( gl.BLEND );
-		gl.disable( gl.DEPTH_TEST );
-		var mesh = Mesh.getScreenQuad();
-		var shader = LGraphTextureBlur._shader;
-		var scale = this.properties.scale || [1,1];
-
-		//iterate
-		var start_texture = tex;
-		aspect = this.properties.preserve_aspect ? aspect : 1;
-		for(var i = 0; i < iterations; ++i)
-		{
-			this._temp_texture.drawTo( function() {
-				start_texture.bind(0);
-				shader.uniforms({u_texture:0, u_intensity: 1, u_offset: [0, 1/start_texture.height * scale[1] ] })
-					.draw(mesh);
-			});
-
-			this._temp_texture.bind(0);
-			this._final_texture.drawTo( function() {
-				shader.uniforms({u_texture:0, u_intensity: intensity, u_offset: [aspect/start_texture.width * scale[0], 0] })
-					.draw(mesh);
-			});
-			start_texture = this._final_texture;
-		}
-		*/
-		
 		this.setOutputData(0, this._final_texture);
 	}
 

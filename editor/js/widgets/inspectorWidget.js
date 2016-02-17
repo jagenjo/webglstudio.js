@@ -386,7 +386,13 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 			if(node.prefab)
 			{
 				inspector.widgets_per_row = 2;
-				inspector.addStringButton("prefab", node.prefab, {  name_width: 80, width: "80%", callback_button: function(v,evt) {
+				inspector.addStringButton("prefab", node.prefab, { name_width: 80, width: "80%", callback: function(v){
+					if(v)
+						node.prefab = v;
+					else
+						delete node["prefab"];
+					inspector.refresh();
+				},callback_button: function(v,evt) {
 					var menu = new LiteGUI.ContextualMenu( ["Unlink prefab"], { event: evt, callback: function(action) {
 						delete node["prefab"];
 						inspector.refresh();

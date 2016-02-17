@@ -305,8 +305,27 @@ var LiteFileServer = {
 		return this.clearPath(unit + "/" + folder + "/" + filename);
 	},
 
+	validateFilename: function( filename )
+	{
+		var rg = /^[0-9a-zA-Z\_\- ... ]+$/;
+		return rg.test(fullpath);
+	},
+
+	validateFolder: function( folder )
+	{
+		if(!folder)
+			return true;
+		var rg = /^[0-9a-zA-Z\/\_\- ... ]+$/;
+		return rg.test(folder);
+	},
+
 	parsePath: function(fullpath, is_folder)
 	{
+		//check for invalid characters (slashes supported)
+		var rg = /^[0-9a-zA-Z\/\_\- ... ]+$/;
+		if(!rg.test(fullpath))
+			return null; //invalid name
+
 		fullpath = this.clearPath(fullpath); //remove slashes
 
 		//remove url stuff
@@ -335,11 +354,15 @@ var LiteFileServer = {
 		};
 	},
 
-	getPreviewPath: function(fullpath)
+	getPreviewPath: function( fullpath )
 	{
 		if(!fullpath)
 			return "";
 		var info = this.parsePath(fullpath);
+		if(!info)
+			return null;
+		if(!info.unit)
+			return;
 		var folder = info.folder;
 		if(folder == "/")
 			folder = "";
@@ -783,6 +806,14 @@ Session.prototype.uploadFile = function( fullpath, data, extra, on_complete, on_
 	var original_data = data;
 
 	var info = LFS.parsePath( fullpath );
+	if(!info)
+	{
+		if(on_error)
+			on_error("Filename has invalid characters");
+		console.error("Filename has invalid characters");
+		return;
+	}
+
 	var unit = info.unit;
 	if(!unit)
 	{
@@ -1032,6 +1063,15 @@ Session.prototype.updateFileContent = function( fullpath, data, on_complete, on_
 	if(fullpath.substr(0,5) == "http://")
 		throw("LFS does not support full URLs as fullpath");
 
+	var info = LFS.parsePath( fullpath );
+	if(!info)
+	{
+		if(on_error)
+			on_error("Filename has invalid characters");
+		console.error("Filename has invalid characters");
+		return;
+	}
+
 	//resolve encoding
 	var encoding = "";
 	if( data.constructor == ArrayBuffer )
@@ -1084,6 +1124,16 @@ Session.prototype.copyFile = function( fullpath, target_fullpath, on_complete, o
 	if(fullpath.substr(0,5) == "http://")
 		throw("LFS does not support full URLs as fullpath");
 
+	var info = LFS.parsePath( fullpath );
+	var target_info = LFS.parsePath( fullpath );
+	if( !info || !target_info )
+	{
+		if(on_error)
+			on_error("Filename has invalid characters");
+		console.error("Filename has invalid characters");
+		return;
+	}
+
 	return this.request( this.server_url,{ action: "files/copyFile", fullpath: fullpath, target_fullpath: target_fullpath }, function(resp){
 
 		if(resp.status != 1)
@@ -1103,6 +1153,14 @@ Session.prototype.moveFile = function( fullpath, target_fullpath, on_complete, o
 	if(fullpath.substr(0,5) == "http://")
 		throw("LFS does not support full URLs as fullpath");
 
+	var info = LFS.parsePath( fullpath );
+	if( !info )
+	{
+		if(on_error)
+			on_error("Filename has invalid characters");
+		console.error("Filename has invalid characters");
+		return;
+	}
 
 	return this.request( this.server_url,{ action: "files/moveFile", fullpath: fullpath, target_fullpath: target_fullpath }, function(resp){
 

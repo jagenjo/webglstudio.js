@@ -483,14 +483,15 @@ var LFSBridge = {
 			var resource = LS.ResourcesManager.resources[res_filename];
 			if(resource)
 			{
+				resource.fullpath = folder_fullpath + "/" + res_filename;
 				//UPLOAD AND SHOW PROGRESS
-				DriveModule.uploadAndShowProgress(resource, folder_fullpath, function( v, folder, fullpath ) {
-					if(!v)
+				DriveModule.saveResource( resource, function( resource ) {
+					if(!resource)
 						return;
 
 					console.log("renaming or moving resource...");
-					LS.ResourcesManager.sendResourceRenamedEvent( res_filename, fullpath, resource );
-					LS.ResourcesManager.load( fullpath );
+					LS.ResourcesManager.sendResourceRenamedEvent( res_filename, resource.fullpath );
+					LS.ResourcesManager.load( resource.fullpath );
 				});
 				return true;
 			}

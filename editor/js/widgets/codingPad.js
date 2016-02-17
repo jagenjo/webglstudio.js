@@ -133,15 +133,7 @@ CodingPadWidget.prototype.replaceInstanceCode = function( instance, options )
 
 	//update coding context
 	this.current_code_info = { id: id, instance: instance, options: options };
-	var text_content = null;
-	if(this.current_code_info.options.getCode)
-		text_content = this.current_code_info.options.getCode();
-	else if( instance.getCode )
-		text_content = instance.getCode();
-	else if( instance.getData )
-		text_content = instance.getData();
-	else
-		text_content = instance.code;
+	var text_content = this.getCodeFromInfo( this.current_code_info );
 
 	if(!text_content)
 		text_content = "";
@@ -169,12 +161,6 @@ CodingPadWidget.prototype.replaceInstanceCode = function( instance, options )
 		window.component = null;
 		window.scene = null;
 	}
-}
-
-CodingPadWidget.prototype.onCodeChange = function( editor )
-{
-	if(this.autocompile)
-		this.assignCurrentCode();
 }
 
 //puts the codemirror code inside the instance (component) and triggers event (which will evaluate it)
@@ -208,20 +194,49 @@ CodingPadWidget.prototype.assignCurrentCode = function( skip_events )
 	var text_content = this.editor.getValue();
 	info.pos = this.editor.getCursor();
 
-	var old_text_content = null;
-	if(info.options.getCode)
-		old_text_content = info.options.getCode();
-	else if(info.options.getData)
-		old_text_content = info.options.getData();
-	else if(instance.getCode)
-		old_text_content = instance.getCode();
-	else if(instance.getData)
-		old_text_content = instance.getData();
-	else
-		old_text_content = instance.code;
+	var old_text_content = this.getCodeFromInfo( info );
 
 	if(text_content == old_text_content)
 		return;
+
+	this.setCodeFromInfo( info, text_content );
+
+	//update all the ScriptFromFile if we are editing a js file
+	if(instance.constructor == LS.Resource && instance.filename.indexOf(".js") != -1 )
+		LS.ScriptFromFile.updateComponents( instance );
+
+	if(skip_events) 
+		return true; 
+
+	if( instance && instance.constructor != LS.Resource )
+		LiteGUI.trigger( this, "stored" );
+
+	LEvent.trigger( instance, "code_changed", text_content );
+	if( instance.onCodeChange )
+		return instance.onCodeChange( text_content );
+	LEvent.trigger( CodingPadWidget, "code_changed", info );
+	return true;
+}
+
+CodingPadWidget.prototype.getCodeFromInfo = function( info )
+{
+	var instance = info.instance;
+
+	if(info.options.getCode)
+		return info.options.getCode();
+	else if(info.options.getData)
+		return info.options.getData();
+	else if(instance.getCode)
+		return instance.getCode();
+	else if(instance.getData)
+		return instance.getData();
+	else
+		return instance.code;
+}
+
+CodingPadWidget.prototype.setCodeFromInfo = function( info, text_content )
+{
+	var instance = info.instance;
 
 	if(info.options.setCode)
 		info.options.setCode( text_content );
@@ -233,25 +248,32 @@ CodingPadWidget.prototype.assignCurrentCode = function( skip_events )
 		instance.setData( text_content );
 	else
 		instance.code = text_content;
-
-	if(skip_events) 
-		return true; 
-
-	LEvent.trigger( instance, "code_changed", text_content );
-	if( instance.onCodeChange )
-		return instance.onCodeChange( text_content );
-	LEvent.trigger( CodingPadWidget, "code_changed", info );
-	return true;
 }
 
-CodingPadWidget.prototype.showInFooter = function(msg) {
-	this.workarea.query(".code-footer").innerHTML = msg;
+
+CodingPadWidget.prototype.showInFooter = function(msg, time) {
+	var footer = this.workarea.query(".code-footer");
+	footer.innerHTML = msg;
+	if(time)
+	{
+		setTimeout( function(){ 
+			if( footer.innerHTML == msg )
+				footer.innerHTML = "";
+		}, time );
+	}
 }
 
 CodingPadWidget.prototype.getCurrentCodeInfo = function()
 {
 	return this.current_code_info;
 }
+
+CodingPadWidget.prototype.getCurrentCodeInstance = function()
+{
+	return this.current_code_info ? this.current_code_info.instance : null;
+}
+
+
 
 CodingPadWidget.prototype.evalueCode = function()
 {
@@ -281,7 +303,7 @@ CodingPadWidget.prototype.evalueCode = function()
 		EVAL(code); //this eval is in a line easier to control
 
 		//no errors parsing (but there could be errors in execution)
-		this.showInFooter("code ok");
+		this.showInFooter("code ok",2000);
 		this.markLine(); 
 	}
 	catch (err)
@@ -309,11 +331,15 @@ CodingPadWidget.prototype.saveCode = function()
 		DriveModule.saveResource( info.instance, function(){
 			that.editor.focus();
 			that.showInFooter("saved");
+			LiteGUI.trigger( this, "stored" );
 		}, { skip_alerts: true });
 		this.showInFooter("saving...");
 	}
 	else
+	{
 		this.showInFooter("stored");
+		LiteGUI.trigger( this, "stored" );
+	}
 }
 
 CodingPadWidget.prototype.addBreakPoint = function()
@@ -388,13 +414,26 @@ CodingPadWidget.prototype.onReload = function(e)
 	var instance = null;
 	if( state.getInstance )
 		instance = state.getInstance();
+	//cannot take state.instance because it could be a dead instance, we must recapture it
+
 	if(!instance)
 	{
-		if( state.id.substr(0,6) == "@COMP-" )
-			instance = LS.GlobalScene.findComponentByUId( state.id );
-		else if( state.id.substr(0,6) == "@MAT-" )
+		if(state.instance && state.instance.constructor == LS.Resource) //is resource
+			instance = state.instance;
+		else if( state.id.substr(0,6) == "@COMP-" ) //is script component
+		{
+			instance = LS.GlobalScene.findComponentByUId( state.id ); //reloaded component
+			if(state.instance && state.instance.code != instance.code) //special case, coded has been edited while the app was running
+			{
+				console.log("code changed during play!");
+				instance.code = state.instance.code;
+				instance.processCode(true);
+			}
+		}
+		else if( state.id.substr(0,6) == "@MAT-" ) //is material shader
 			instance = LS.GlobalScene.findMaterialByUId( state.id );
 	}
+
 	if(instance)
 		this.replaceInstanceCode( instance, state.options );
 	else
@@ -405,7 +444,7 @@ CodingPadWidget.prototype.onReload = function(e)
 CodingPadWidget.prototype.onNodeRemoved = function(evt, node)
 {
 	//check if we are using one script in a tab
-	if(!node)
+	if(!node || !this.current_code_info)
 		return;
 
 	var components = node.getComponents();
@@ -424,6 +463,22 @@ CodingPadWidget.prototype.onScriptRenamed = function( e, instance )
 		return;
 }
 
+
+CodingPadWidget.prototype.onEditorContentChange = function( editor )
+{
+	//let the tab know this code has been changed
+	var code = this.getCodeFromInfo( this.current_code_info );
+	var value = editor.getValue();
+	if(code != value)
+		LiteGUI.trigger( this, "modifyed", value );
+	else
+		LiteGUI.trigger( this, "stored", value );
+
+	if(this.autocompile)
+		this.assignCurrentCode();
+}
+
+//code changed externally
 CodingPadWidget.prototype.onCodeChanged = function( e, instance )
 {
 	//check to see if we have that instance
@@ -522,9 +577,9 @@ CodingPadWidget.prototype.detachWindow = function()
 CodingPadWidget.prototype.onOpenCode = function()
 {
 	var that = this;
-	var dialog = new LiteGUI.Dialog(null,{ title:"Select Code", draggable: true, closable: true });
+	var dialog = new LiteGUI.Dialog(null,{ title:"Select Code", width: 400, draggable: true, closable: true });
 	
-	var widgets = new LiteGUI.Inspector();
+	var widgets = new LiteGUI.Inspector(null, { name_width: 100 });
 
 	/*
 	widgets.addTitle("New Script");
@@ -554,6 +609,18 @@ CodingPadWidget.prototype.onOpenCode = function()
 		if( resource && resource.constructor === LS.Resource && resource.data && resource.data.constructor === String)
 			codes.push({ name: i, resource: resource });
 	}
+
+	widgets.addResource("From resource","",{
+		callback: function(fullpath){
+			if(!fullpath)
+				return;
+			LS.RM.load( fullpath, function(resource){
+				dialog.close();
+				if(resource && resource.constructor === LS.Resource)
+					that.editInstanceCode( resource, { id: resource.filename, title: resource.filename } );
+			});
+		}
+	});
 
 	widgets.addList(null, codes, { height: 200, callback: function(value){
 		selected = value;
@@ -590,19 +657,19 @@ CodingPadWidget.prototype.createCodingWindow = function()
 	this.windows.push( extra_window );
 }
 
-
 //creates the area containing the buttons and the codemirror
 CodingPadWidget.prototype.createCodingArea = function( container )
 {
 	container = container || this.root;
+	var that = this;
 
 	if(typeof(CodeMirror) == "undefined")
 	{
-		console.warn("CodeMirror missing");
+		//console.warn("CodeMirror missing");
+		setTimeout( function(){ that.createCodingArea( container ); }, 1000 );
 		return;
 	}
 
-	var that = this;
 
 	var coding_area = this.coding_area = new LiteGUI.Area(null,{ className: "codearea", content_id:"", height: "100%"});
 	container.appendChild( coding_area.root );
@@ -679,13 +746,13 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 			"Cmd-F": "insert_function",
 			"Ctrl-P": "playstop_scene",
 			},
-		onCursorActivity: function(e) {
+		onCursorActivity: function(e) { //key pressed
 			that.editor.matchHighlight("CodeMirror-matchhighlight");
 		}
 	  });
 
 	 this.editor.coding_area = this;
-	 this.editor.on("change", that.onCodeChange.bind( this ) );
+	 this.editor.on("change", that.onEditorContentChange.bind( this ) );
 }
 
 
@@ -742,10 +809,10 @@ CodingPadWidget.loadCodeMirror = function()
 	//load codemirror
 	if(typeof(CodeMirror) === "undefined")
 	{
-		console.log("Loading CodeMirror...");
+		//console.log("Loading CodeMirror...");
 		LiteGUI.requireScript( CodingPadWidget.codemirror_scripts,
 								function() {
-									console.log("CodeMirror loaded");
+									//console.log("CodeMirror loaded");
 									CodingPadWidget.prepareCodeMirror();
 								});
 		LiteGUI.requireCSS( CodingPadWidget.codemirror_css );
@@ -755,7 +822,9 @@ CodingPadWidget.loadCodeMirror = function()
 					   ");
 	}
 	else
-		console.log("CodeMirror found");
+	{
+		//console.log("CodeMirror found");
+	}
 }
 
 CodingPadWidget.prepareCodeMirror = function()

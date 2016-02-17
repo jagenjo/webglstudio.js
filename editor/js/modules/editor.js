@@ -48,6 +48,13 @@ var EditorModule = {
 
 		document.addEventListener("keydown", this.globalKeyDown.bind(this), false );
 
+		var scene = localStorage.getItem("_refresh_scene");
+		if(scene)
+			setTimeout(function(){ 
+				SceneStorageModule.setSceneFromJSON(scene); 
+				localStorage.removeItem("_refresh_scene");
+			},1000);
+
 		this.registerCommands();
 	},
 
@@ -1424,11 +1431,16 @@ var EditorModule = {
 					e.stopPropagation();
 					return false;
 				}
-				break; //F6
-			case 117: 
+				break;
+			case 117:  //F6
+				localStorage.setItem("_refresh_scene", JSON.stringify( LS.GlobalScene.serialize() ) );
+				location.reload();
+
+				/*
 				console.log("recompiling shaders...");
 				Shaders.reloadShaders(); 
 				LS.GlobalScene.refresh();
+				*/
 				e.preventDefault();
 				e.stopPropagation();
 				return false;

@@ -295,7 +295,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 	element.dataset["filename"] = resource.filename;
 	if(resource.fullpath)
 		element.dataset["fullpath"] = resource.fullpath;
-	var type = element.dataset["restype"] = (resource.object_type || resource.category || LS.getObjectClassName(resource));
+	var type = element.dataset["restype"] = resource.object_type || resource.category || LS.getObjectClassName( resource );
 	if(resource.category)
 		element.dataset["category"] = resource.category;
 
@@ -322,8 +322,8 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 		element.innerHTML = "<span class='title'>"+clean_name+"</span>";
 	}
 
-	var type_title = LS.RM.getExtension(filename);
-	if(!type_title)
+	var type_title = LS.RM.getExtension( filename );
+	if(!type_title || type_title.toUpperCase() == "JSON")
 		type_title = type;
 	else
 		type_title = type_title.toUpperCase();
@@ -331,44 +331,45 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 
 	//REFACTOR THIS FOR GOD SAKE!!!!!!!!!!!!!!!!!!!!!!!
 	var preview = resource.preview_url;
+	var res_name = resource.fullpath || resource.filename;
 	
 	if(preview)
 	{
+		//we cache imgs from previews to speed up when changing folders
 		if(typeof(preview) == "string" && preview.substr(0,11) == "data:image/")
 		{
-			if(DriveModule.generated_previews[ resource.fullpath ])
-				preview = DriveModule.generated_previews[ resource.fullpath ];
+			var res_name = resource.fullpath || resource.filename;
+			if(DriveModule.generated_previews[ res_name ])
+				preview = DriveModule.generated_previews[ res_name ];
 			else
 			{
 				var img = new Image();
 				img.src = preview;
 				img.style.maxWidth = 200;
-				DriveModule.generated_previews[ resource.fullpath ] = img;
+				DriveModule.generated_previews[ res_name ] = img;
 				preview = img;
 			}
 		}
 	}
-	else
+	else //if no preview we generate it
 	{
-		var filename = resource.fullpath || resource.filename;
-
 		if(resource.in_server)
 			preview = DriveModule.getServerPreviewURL( resource );
 		else 
 		{
-			if( DriveModule.generated_previews[ filename ] )
+			if( DriveModule.generated_previews[ res_name ] )
 			{
-				preview = DriveModule.generated_previews[ filename ];
+				preview = DriveModule.generated_previews[ res_name ];
 			}
-			else if( !resource.fullpath ) //is hosted somewhere
+			else if( !resource.fullpath ) //is a local resource
 			{
-				preview = DriveModule.generatePreview( filename );
+				preview = DriveModule.generatePreview( res_name, undefined, true );
 				if(preview)
 				{
 					var img = new Image();
 					img.src = preview;
 					img.style.maxWidth = 200;
-					DriveModule.generated_previews[ filename ] = img;
+					DriveModule.generated_previews[ res_name ] = img;
 					preview = img;
 				}
 			}
@@ -390,7 +391,10 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 		element.appendChild(img);
 	}
 	
-	$(element).append("<span class='info'>"+type_title+"</span>");
+	var info = document.createElement("span");
+	info.className = "info";
+	info.innerHTML = type_title;
+	element.appendChild(info);
 
 	/*
 	var button = document.createElement("button");

@@ -447,14 +447,7 @@ var LocalFilesBridge = {
 			if(resource)
 			{
 				//UPLOAD AND SHOW PROGRESS
-				DriveModule.uploadAndShowProgress(resource, folder_fullpath, function( v, folder, fullpath ) {
-					if(!v)
-						return;
-
-					console.log("renaming or moving resource...");
-					LS.ResourcesManager.sendResourceRenamedEvent( res_filename, fullpath, resource );
-					LS.ResourcesManager.load( fullpath );
-				});
+				//....
 				return true;
 			}
 		}

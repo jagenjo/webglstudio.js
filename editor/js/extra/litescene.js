@@ -5,6 +5,7 @@
 //Here goes the licence and some info
 //************************************************
 //and the commonJS header...
+'use strict';
 
 (function(global){
 
@@ -1621,8 +1622,8 @@ LS.Network = Network;
 
 function Resource()
 {
-	this.filename = null;
-	this.fullpath = null;
+	this.filename = null; //contains a local name
+	this.fullpath = null; //contains the unique name as is to be used to fetch it by the resources manager, only remote resources have this property
 	this._data = null;
 }
 
@@ -2004,7 +2005,7 @@ var ResourcesManager = {
 				//external urls
 				case 'http':
 				case 'https':
-					full_url = url;
+					var full_url = url;
 					var extension = this.getExtension( url ).toLowerCase();
 					if(this.proxy && this.skip_proxy_extensions.indexOf( extension ) == -1 ) //proxy external files
 						return this.proxy + url.substr(pos+3); //"://"
@@ -2296,7 +2297,9 @@ var ResourcesManager = {
 				resource.filename = options.filename;
 
 			//if(!resource.fullpath) //why??
-			resource.fullpath = fullpath;
+			if(!options.is_local)
+				resource.fullpath = fullpath;
+
 			if(options.is_preview)
 				resource.is_preview = true;
 
@@ -4716,7 +4719,7 @@ var Draw = {
 		var coords = new Float32Array( num_valid_chars * 6 * 2);
 
 		var pos = 0;
-		var x = 0; y = 0;
+		var x = 0, y = 0;
 		for(var i = 0; i < l; ++i)
 		{
 			var c = atlas.atlas[ text.charCodeAt(i) ];
@@ -7491,8 +7494,9 @@ CompositePattern.prototype.removeChild = function(node, param1, param2)
 */
 CompositePattern.prototype.removeAllChildren = function(param1, param2)
 {
-	while( this._children.length )
-		this.removeChild( this._children[0], param1, param2 );
+	if(this._children)
+		while( this._children.length )
+			this.removeChild( this._children[0], param1, param2 );
 }
 
 
@@ -9289,7 +9293,17 @@ Camera["@layers"] = { type: "layers" };
 
 // used when rendering a cubemap to set the camera view direction (crossx and crossy are for when generating a CROSS cubemap image)
 
-//*
+//OLD VERSION
+Camera.cubemap_camera_parameters = [
+	{ name: "posx", dir: vec3.fromValues(1,0,0), up: vec3.fromValues(0,-1,0), crossx:2, crossy:1 },
+	{ name: "negx", dir: vec3.fromValues(-1,0,0), up: vec3.fromValues(0,-1,0), crossx:0, crossy:1 },
+	{ name: "posy", dir: vec3.fromValues(0,1,0), up: vec3.fromValues(0,0,1), crossx:1, crossy:0 },
+	{ name: "negy", dir: vec3.fromValues(0,-1,0), up: vec3.fromValues(0,0,-1), crossx:1, crossy:2 },
+	{ name: "posz", dir: vec3.fromValues(0,0,1), up: vec3.fromValues(0,-1,0), crossx:1, crossy:1 },
+	{ name: "negz", dir: vec3.fromValues(0,0,-1), up: vec3.fromValues(0,-1,0), crossx:3, crossy:1 }
+];
+//*/
+/*
 Camera.cubemap_camera_parameters = [
 	{ name: "posx", dir: vec3.fromValues(-1,0,0), up: vec3.fromValues(0,1,0), right: vec3.fromValues(0,0,-1), crossx:0, crossy:1 },
 	{ name: "negx", dir: vec3.fromValues(1,0,0), up: vec3.fromValues(0,1,0), right: vec3.fromValues(0,0,1), crossx:2, crossy:1 },
@@ -9299,25 +9313,6 @@ Camera.cubemap_camera_parameters = [
 	{ name: "negz", dir: vec3.fromValues(0,0,1), up: vec3.fromValues(0,1,0), right: vec3.fromValues(-1,0,0), crossx:3, crossy:1 }
 ];
 
-//OLD VERSION
-Camera.cubemap_camera_parameters = [
-	{ dir: vec3.fromValues(1,0,0), 	up: vec3.fromValues(0,-1,0) }, //positive X
-	{ dir: vec3.fromValues(-1,0,0), up: vec3.fromValues(0,-1,0) }, //negative X
-	{ dir: vec3.fromValues(0,1,0), 	up: vec3.fromValues(0,0,1) }, //positive Y
-	{ dir: vec3.fromValues(0,-1,0), up: vec3.fromValues(0,0,-1) }, //negative Y
-	{ dir: vec3.fromValues(0,0,1), 	up: vec3.fromValues(0,-1,0) }, //positive Z
-	{ dir: vec3.fromValues(0,0,-1), up: vec3.fromValues(0,-1,0) } //negative Z
-];
-//*/
-/*
-Camera.cubemap_camera_parameters = [
-	{ name: "posx", dir: vec3.fromValues(1,0,0), up: vec3.fromValues(0,-1,0), crossx:2, crossy:1 },
-	{ name: "negx", dir: vec3.fromValues(-1,0,0), up: vec3.fromValues(0,-1,0), crossx:0, crossy:1 },
-	{ name: "posy", dir: vec3.fromValues(0,1,0), up: vec3.fromValues(0,0,1), crossx:1, crossy:0 },
-	{ name: "negy", dir: vec3.fromValues(0,-1,0), up: vec3.fromValues(0,0,-1), crossx:1, crossy:2 },
-	{ name: "posz", dir: vec3.fromValues(0,0,1), up: vec3.fromValues(0,-1,0), crossx:1, crossy:1 },
-	{ name: "negz", dir: vec3.fromValues(0,0,-1), up: vec3.fromValues(0,-1,0), crossx:3, crossy:1 }
-];
 //*/
 
 /*
@@ -18155,7 +18150,7 @@ Script.prototype.hookEvents = function()
 
 Script.prototype.onAddedToNode = function( node )
 {
-	if(node.script)
+	if(!node.script)
 		node.script = this;
 }
 
@@ -18279,7 +18274,7 @@ LS.Script = Script;
 
 //*****************
 
-function ScriptInFile(o)
+function ScriptFromFile(o)
 {
 	this.enabled = true;
 	this._filename = "";
@@ -18304,7 +18299,7 @@ function ScriptInFile(o)
 		this.configure(o);
 }
 
-Object.defineProperty( ScriptInFile.prototype, "filename", {
+Object.defineProperty( ScriptFromFile.prototype, "filename", {
 	set: function(v){ 
 		this._filename = v;
 		this.processCode();
@@ -18315,9 +18310,9 @@ Object.defineProperty( ScriptInFile.prototype, "filename", {
 	enumerable: true
 });
 
-Object.defineProperty( ScriptInFile.prototype, "context", {
+Object.defineProperty( ScriptFromFile.prototype, "context", {
 	set: function(v){ 
-		console.error("ScriptInFile: context cannot be assigned");
+		console.error("ScriptFromFile: context cannot be assigned");
 	},
 	get: function() { 
 		if(this._script)
@@ -18327,7 +18322,7 @@ Object.defineProperty( ScriptInFile.prototype, "context", {
 	enumerable: false //if it was enumerable it would be serialized
 });
 
-ScriptInFile.prototype.onAddedToScene = function( scene )
+ScriptFromFile.prototype.onAddedToScene = function( scene )
 {
 	if( !this.constructor.catch_important_exceptions )
 	{
@@ -18347,7 +18342,7 @@ ScriptInFile.prototype.onAddedToScene = function( scene )
 	}
 }
 
-ScriptInFile.prototype.processCode = function( skip_events )
+ScriptFromFile.prototype.processCode = function( skip_events )
 {
 	var that = this;
 	if(!this.filename)
@@ -18368,9 +18363,11 @@ ScriptInFile.prototype.processCode = function( skip_events )
 	if( code === undefined || this._script.code == code )
 		return;
 
-	this._script.code = code;
 	if(this._root && !LS.Script.block_execution )
 	{
+		//assigned inside because otherwise if it gets modified before it is attached to the scene tree then it wont be compiled
+		this._script.code = code;
+
 		//unbind old stuff
 		if( this._script && this._script._context )
 			this._script._context.unbindAll();
@@ -18384,7 +18381,7 @@ ScriptInFile.prototype.processCode = function( skip_events )
 	return true;
 }
 
-ScriptInFile.prototype.getResources = function(res)
+ScriptFromFile.prototype.getResources = function(res)
 {
 	
 	if(this.filename)
@@ -18397,7 +18394,7 @@ ScriptInFile.prototype.getResources = function(res)
 	ctx.getResources( res );
 }
 
-ScriptInFile.prototype.getCode = function()
+ScriptFromFile.prototype.getCode = function()
 {
 	var script_resource = LS.ResourcesManager.getResource( this.filename );
 	if(!script_resource)
@@ -18405,7 +18402,7 @@ ScriptInFile.prototype.getCode = function()
 	return script_resource.data;
 }
 
-ScriptInFile.prototype.setCode = function( code, skip_events )
+ScriptFromFile.prototype.setCode = function( code, skip_events )
 {
 	var script_resource = LS.ResourcesManager.getResource( this.filename );
 	if(!script_resource)
@@ -18414,10 +18411,25 @@ ScriptInFile.prototype.setCode = function( code, skip_events )
 	this.processCode( skip_events );
 }
 
-LS.extendClass( ScriptInFile, Script );
+ScriptFromFile.updateComponents = function( script, skip_events )
+{
+	if(!script)
+		return;
+	var filename = script.filename;
+	var components = LS.GlobalScene.findNodeComponents( LS.ScriptFromFile );
+	for(var i = 0; i < components.length; ++i)
+	{
+		var compo = components[i];
+		var filename = script.fullpath || script.filename;
+		if( compo.filename == filename )
+			compo.processCode(skip_events);
+	}
+}
 
-LS.registerComponent( ScriptInFile );
-LS.ScriptInFile = ScriptInFile;
+LS.extendClass( ScriptFromFile, Script );
+
+LS.registerComponent( ScriptFromFile );
+LS.ScriptFromFile = ScriptFromFile;
 
 
 function TerrainRenderer(o)
@@ -19536,7 +19548,7 @@ if(typeof(LiteGraph) != "undefined")
 {
 	/* Scene LNodes ***********************/
 
-	function LGraphScene()
+	global.LGraphScene = function()
 	{
 		this.addOutput("Time","number");
 	}
@@ -19601,11 +19613,10 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LiteGraph.registerNodeType("scene/scene", LGraphScene );
-	window.LGraphScene = LGraphScene;
 
 	//********************************************************
 
-	function LGraphSceneNode()
+	global.LGraphSceneNode = function()
 	{
 		this.properties = {node_id:""};
 		this.size = [100,20];
@@ -19773,14 +19784,12 @@ if(typeof(LiteGraph) != "undefined")
 	*/
 
 	LiteGraph.registerNodeType("scene/node", LGraphSceneNode );
-	window.LGraphSceneNode = LGraphSceneNode;
-
 
 	//********************************************************
 
 	/* LGraphNode representing an object in the Scene */
 
-	function LGraphTransform()
+	global.LGraphTransform = function()
 	{
 		this.properties = {node_id:""};
 		if(LGraphSceneNode._current_node_id)
@@ -19885,11 +19894,10 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LiteGraph.registerNodeType("scene/transform", LGraphTransform );
-	window.LGraphTransform = LGraphTransform;
 
 	//***********************************************************************
 
-	function LGraphMaterial()
+	global.LGraphMaterial = function()
 	{
 		this.properties = {mat_name:""};
 		this.addInput("Material","Material");
@@ -20016,12 +20024,11 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LiteGraph.registerNodeType("scene/material", LGraphMaterial );
-	window.LGraphMaterial = LGraphMaterial;
+	global.LGraphMaterial = LGraphMaterial;
 
 	//********************************************************
 
-
-	function LGraphComponent()
+	global.LGraphComponent = function()
 	{
 		this.properties = {
 			node: "",
@@ -20135,11 +20142,10 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphComponent.prototype.onGetOutputs = function() { return this.getComponentProperties("output"); }
 
 	LiteGraph.registerNodeType("scene/component", LGraphComponent );
-	window.LGraphComponent = LGraphComponent;
 
 	//************************************************************
 
-	function LGraphLight()
+	global.LGraphLight = function()
 	{
 		this.properties = {mat_name:""};
 		this.addInput("Light","Light");
@@ -20219,11 +20225,10 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LiteGraph.registerNodeType("scene/light", LGraphLight );
-	window.LGraphLight = LGraphLight;
 
 	//************************************
 
-	function LGraphGlobal()
+	global.LGraphGlobal = function()
 	{
 		this.addOutput("Value");
 		this.properties = {name:"myvar", value: 0, type: "number", min:0, max:1 };
@@ -20248,11 +20253,10 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LiteGraph.registerNodeType("scene/global", LGraphGlobal );
-	window.LGraphGlobal = LGraphGlobal;
 
 	//************************************
 
-	function LGraphLocatorProperty()
+	global.LGraphLocatorProperty = function()
 	{
 		this.addInput("in");
 		this.addOutput("out");
@@ -20285,7 +20289,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	//************************************
 
-	function LGraphFrame()
+	global.LGraphFrame = function()
 	{
 		this.addOutput("Color","Texture");
 		this.addOutput("Depth","Texture");
@@ -20358,7 +20362,6 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LiteGraph.registerNodeType("scene/frame", LGraphFrame );
-	window.LGraphFrame = LGraphFrame;
 };
 
 //Interpolation methods
@@ -21674,7 +21677,7 @@ Prefab.prototype.processResources = function()
 			console.warn("resource data in prefab is undefined, skipping it:" + resname);
 			continue;
 		}
-		LS.ResourcesManager.processResource( resname, resdata );
+		LS.ResourcesManager.processResource( resname, resdata, { is_local: true } );
 	}
 }
 
@@ -21752,7 +21755,7 @@ Prefab.packResources = function( resources, base_data )
 			data = resource._original_data;
 		else
 		{
-			var data_info = LS.ResourcesManager.computeResourceInternalData(resource);
+			var data_info = LS.ResourcesManager.computeResourceInternalData( resource );
 			data = data_info.data;
 		}
 
@@ -22582,6 +22585,7 @@ function RenderSettings( o )
 	this.render_all_cameras = true; //render secundary cameras too
 	this.render_fx = true; //postprocessing fx
 	this.render_gui = true; //render gui
+	this.render_helpers = true; //render helpers (for the editor)
 
 	this.sort_instances_by_distance = true; //sort render instances by distance 
 	this.sort_instances_by_priority = true; //sort render instances by priority
@@ -23430,6 +23434,9 @@ var Renderer = {
 		LEvent.trigger(scene, "afterRenderScene", camera );
 		scene.triggerInNodes("afterRenderScene", camera ); //TODO remove
 		LEvent.trigger(this, "afterRenderScene", camera );
+
+		if(render_settings.render_helpers)
+			LEvent.trigger(this, "renderHelpers", camera );
 	},
 
 	/**
@@ -23532,7 +23539,7 @@ var Renderer = {
 	{
 		var scene = this._current_scene;
 		if(!scene)
-			return console.warn("Renderer.renderInstances: no scene found");
+			return console.warn("LS.Renderer.renderInstances: no scene found");
 
 		var pass = this._current_pass;
 		var camera = this._current_camera;
@@ -24363,7 +24370,7 @@ var Renderer = {
 		texture.drawTo( function(texture, side) {
 
 			var info = LS.Camera.cubemap_camera_parameters[side];
-			if(this._is_shadowmap || !scene.info )
+			if(texture._is_shadowmap || !scene.info )
 				gl.clearColor(0,0,0,0);
 			else
 				gl.clearColor( scene.info.background_color[0], scene.info.background_color[1], scene.info.background_color[2], scene.info.background_color[3] );
@@ -24371,8 +24378,8 @@ var Renderer = {
 			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 			var cubemap_cam = new LS.Camera({ eye: eye, center: [ eye[0] + info.dir[0], eye[1] + info.dir[1], eye[2] + info.dir[2]], up: info.up, fov: 90, aspect: 1.0, near: near, far: far });
 
-			Renderer.enableCamera( cubemap_cam, render_settings, true );
-			Renderer.renderInstances( render_settings );
+			LS.Renderer.enableCamera( cubemap_cam, render_settings, true );
+			LS.Renderer.renderInstances( render_settings );
 		});
 
 		this._current_target = null;
@@ -24408,10 +24415,15 @@ var Renderer = {
 		var node = scene.getNode( "sphere") ;
 		node.material = material;
 
-		var tex = new GL.Texture(size,size);
+		var tex = this._material_preview_texture || new GL.Texture(size,size);
+		if(!this._material_preview_texture)
+			this._material_preview_texture = tex;
+
 		tex.drawTo( function()
 		{
-			LS.Renderer.renderFrame( scene.root.camera, { skip_viewport: true }, scene );
+			//it already clears everything
+			//just render
+			LS.Renderer.renderFrame( scene.root.camera, { skip_viewport: true, render_helpers: false }, scene );
 		});
 
 		var canvas = tex.toCanvas(null, true);
@@ -31206,16 +31218,22 @@ Object.defineProperty(Object.prototype, "merge", {
 });
 
 //used for hashing keys:TODO move from here somewhere else
-String.prototype.hashCode = function(){
-    var hash = 0, i, c, l;
-    if (this.length == 0) return hash;
-    for (i = 0, l = this.length; i < l; ++i) {
-        c  = this.charCodeAt(i);
-        hash  = ((hash<<5)-hash)+c;
-        hash |= 0; // Convert to 32bit integer
-    }
-    return hash;
-};
+if( !String.prototype.hasOwnProperty( "hashCode" ) )
+{
+	Object.defineProperty( String.prototype, "hashCode", {
+		value: function(){
+			var hash = 0, i, c, l;
+			if (this.length == 0) return hash;
+			for (i = 0, l = this.length; i < l; ++i) {
+				c  = this.charCodeAt(i);
+				hash  = ((hash<<5)-hash)+c;
+				hash |= 0; // Convert to 32bit integer
+			}
+			return hash;
+		},
+		enumerable: false
+	});
+}
 
 Object.equals = function( x, y ) {
   if ( x === y ) return true;

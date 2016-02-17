@@ -13,7 +13,7 @@ function GraphicsViewport( container, options)
 	this.modules = [];
 	this.keys = {};
 
-	this.init(container,options);
+	this.init(container,options)
 }
 
 GraphicsViewport.prototype.init = function( container, options)
@@ -22,10 +22,17 @@ GraphicsViewport.prototype.init = function( container, options)
 
 	container = container || "body";
 
+	if(container.constructor === String)
+	{
+		container = document.querySelector( container );
+		if(!container)
+			return false;
+	}
+
 	if( options.full )
 	{
-		options.width = $(container).width();
-		options.height = $(container).height();
+		options.width = container.offsetWidth; //$(container).width();
+		options.height = container.offsetHeight;// $(container).height();
 	}
 
 	options.width = options.width || 500;
@@ -41,10 +48,11 @@ GraphicsViewport.prototype.init = function( container, options)
 	//create canvas and attach events
 	try
 	{
-		gl = GL.create({antialias: antialiasing, alpha:false, premultipliedAlpha: false, debug: true, preserveDrawingBuffer: allow_read});
+		window.gl = GL.create({antialias: antialiasing, alpha:false, premultipliedAlpha: false, debug: true, preserveDrawingBuffer: allow_read});
 	}
 	catch (err)
 	{
+		console.error("WebGL not supported");
 		return false;
 	}
 
@@ -76,7 +84,7 @@ GraphicsViewport.prototype.init = function( container, options)
 	gl.enable( gl.DEPTH_TEST );
 
 	//attach
-	$(container).append(gl.canvas);
+	container.appendChild( gl.canvas );
 
 	//enable Canvas2DtoWebGL
 
@@ -97,6 +105,9 @@ GraphicsViewport.prototype.onCheckSize = function()
 
 GraphicsViewport.prototype.resize = function(w,h)
 {
+	if(!this.gl || !this.gl.canvas)
+		return;
+
 	var parent = this.gl.canvas.parentNode;
 	w = w || $(parent).width();
 	h = h || $(parent).height();

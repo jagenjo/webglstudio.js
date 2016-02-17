@@ -183,9 +183,11 @@ Timeline.prototype.onLoadAnimation = function()
 			console.warn("Resource must be Animation");
 		return;
 
+		/*
 		LS.ResourcesManager.load( name, function(url, resource) {
 			console.log( url, resource );
 		});
+		*/
 	}
 }
 

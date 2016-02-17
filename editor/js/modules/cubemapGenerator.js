@@ -22,7 +22,7 @@ var CubemapGenerator = {
 			return;
 		}
 
-		RenderModule.viewport3d.addModule( CubemapGenerator );
+		//RenderModule.viewport3d.addModule( CubemapGenerator );
 
 		var dialog = new LiteGUI.Dialog( "dialog_cubemap", { title:"Cubemap generator", parent:"#visor", close: true, minimize: true, width: 300, min_height: 160, scroll: false, draggable: true});
 		dialog.show('fade');
@@ -30,7 +30,7 @@ var CubemapGenerator = {
 		dialog.on_close = function(){ 
 
 			CubemapGenerator.dialog = null;
-			RenderModule.viewport3d.removeModule( CubemapGenerator );
+			//RenderModule.viewport3d.removeModule( CubemapGenerator );
 		}
 		this.dialog = dialog;
 
@@ -47,8 +47,7 @@ var CubemapGenerator = {
 		var original_file = null;
 		var cubemap_options = { keep_image: true, is_cross: 1 };
 
-		var widgets = new LiteGUI.Inspector("cubemapgen_widgets",{  });
-		widgets.name_width = 150;
+		var widgets = new LiteGUI.Inspector("cubemapgen_widgets",{ name_width: 100 });
 		dialog.content.appendChild( widgets.root );
 		widgets.on_refresh = refresh;
 
@@ -65,7 +64,7 @@ var CubemapGenerator = {
 			if( CubemapGenerator.current_cubemap )
 			{
 				widgets.widgets_per_row = 1;
-				widgets.addCombo("Resolution", CubemapGenerator.current_cubemap.width, { values: [32,64,128,256,512,1024], disabled: true, callback: function(v) { 
+				widgets.addCombo("Resolution", CubemapGenerator.current_cubemap.width, { values: [32,64,128,256,512,1024], callback: function(v) { 
 				}});
 				/*
 				widgets.addCheckbox("Preview", CubemapGenerator.preview_in_viewport, { callback: function(v) { 
@@ -300,6 +299,8 @@ var CubemapGenerator = {
 				ctx.drawImage( frame, 0, 0, size, size, 0, size*i, size, size );
 			else if(mode == "CUBECROSSL")
 				ctx.drawImage( frame, 0, 0, size, size, face.crossx * size, face.crossy * size, size, size );
+			else
+				console.log("Unknown mode: " + mode );
 		}
 
 		render_settings.skip_viewport = false;
@@ -506,6 +507,8 @@ var CubemapGenerator = {
 
 	render: function()
 	{
+		//disabled
+
 		if(!this.dialog || !this.current_cubemap || !this.preview_in_viewport)
 			return;
 

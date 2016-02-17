@@ -80,6 +80,17 @@ var GraphModule = {
 		return this.tabs_widget.closeInstanceTab( instance, options );
 	},
 
+	onNewGraph: function( node )
+	{
+		node = node || SelectionModule.getSelectedNode();
+		if(!node)
+			node = LS.GlobalScene.root;
+		var component = new LS.Components.GraphComponent();
+		node.addComponent( component );
+		this.editInstanceGraph( component, { id: component.uid, title: node.id } );
+		this.openTab();
+	}
+
 	/*
 
 	buildGUI: function()

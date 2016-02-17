@@ -11,9 +11,6 @@ var CodingModule = //do not change
 
 	init: function()
 	{
-		if(!gl)
-			return;
-
 		this.tab = LiteGUI.main_tabs.addTab( this.name, {
 			id:"codingtab",
 			bigicon: this.bigicon,
@@ -59,6 +56,7 @@ var CodingModule = //do not change
 
 		var coding_tabs_widget = this.coding_tabs_widget = new CodingTabsWidget();
 		coding_area.getSection(1).add( coding_tabs_widget );
+		coding_tabs_widget.onNewTab();
 
 		LS.catch_exceptions = true;
 	},
@@ -191,9 +189,9 @@ LS.Components.Script["@inspector"] = function(component, attributes)
 		this.showObjectFields(context, attributes);
 }
 
-if( LS.Components.ScriptInFile )
+if( LS.Components.ScriptFromFile )
 {
-	LS.Components.ScriptInFile["@inspector"] = function(component, attributes)
+	LS.Components.ScriptFromFile["@inspector"] = function(component, attributes)
 	{
 		attributes.widgets_per_row = 2;
 		attributes.addResource("Filename", component.filename, { callback: function(v) { 

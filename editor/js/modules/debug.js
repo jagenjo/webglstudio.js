@@ -10,10 +10,6 @@ var DebugModule = {
 
 	init: function()
 	{
-		//return; //disabled till new order
-		if(!gl)
-			return;
-		
 		this.tab = LiteGUI.main_tabs.addTab("Debug", {id:"debugtab", bigicon: this.bigicon, size: "full", callback: function(tab) {
 			DebugModule.enabled = true;
 			RenderModule.viewport3d.addModule( DebugModule );
@@ -44,6 +40,12 @@ var DebugModule = {
 
 
 		//enable WebGL Canvas2D renderer
+		if( RenderModule.viewport3d.canvas )
+			this.prepareGL();
+	},
+
+	prepareGL: function()
+	{
 		enableWebGLCanvas( RenderModule.viewport3d.canvas );
 
 		this.camera = new LS.Camera();

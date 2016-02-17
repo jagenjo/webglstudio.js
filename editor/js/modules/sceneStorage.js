@@ -451,7 +451,7 @@ var SceneStorageModule = {
 			}
 			catch (err)
 			{
-				trace("Error parsing local scenes list");
+				console.log("Error parsing local scenes list");
 			}
 		}
 		else //no local scene found
@@ -467,7 +467,7 @@ var SceneStorageModule = {
 		this.local_scenes = {};
 	},
 
-	loadLocalScene: function(name)
+	loadLocalScene: function( name )
 	{
 		LS.Renderer.reset();
 		LS.GlobalScene.clear();
@@ -518,6 +518,28 @@ var SceneStorageModule = {
 			LS.GlobalScene.name = name;
 			RenderModule.restoreSceneCamera();
 		}
+	},
+
+	setSceneFromJSON: function( data )
+	{
+		if(!data)
+			return;
+
+		try
+		{
+			data = JSON.parse( data );
+		}
+		catch (err)
+		{
+			console.log("Error: " + err );
+			return;
+		}
+
+		LS.Renderer.reset();
+		LS.GlobalScene.clear();
+		LS.GlobalScene.configure(data);
+		LS.GlobalScene.loadResources();
+		RenderModule.restoreSceneCamera();
 	},
 
 	deleteServerScene: function(filename)

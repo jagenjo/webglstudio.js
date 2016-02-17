@@ -46,7 +46,7 @@ var EditorView = {
 		this.createMeshes();
 		RenderModule.viewport3d.addModule(this);
 
-		LEvent.bind( LS.Renderer, "afterRenderScene", this.renderView.bind(this));
+		LEvent.bind( LS.Renderer, "renderHelpers", this.renderView.bind(this));
 		LEvent.bind( LS.Renderer, "renderPicking", this.renderPicking.bind(this));
 	},
 
@@ -95,6 +95,9 @@ var EditorView = {
 	//renders the gizmos that belong to world space
 	renderView: function(e, camera)
 	{
+		if(LS.Renderer._current_scene != LS.GlobalScene)
+			return;
+
 		if(this.mustRenderHelpers())
 			this.renderEditor( camera );
 

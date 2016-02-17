@@ -226,6 +226,39 @@ CodingTabsWidget.prototype.onScriptRenamed = function( e, instance )
 		title.innerHTML = instance.name;
 }
 
+CodingTabsWidget.prototype.onContentModifyed = function( e, instance )
+{
+	if(!instance)
+		return;
+
+	var id = instance.uid;
+	if(!id)
+		return;
+	var tab = this.tabs.getTab( id );
+	if(!tab)
+		return;
+	var div = tab.tab;
+	if(div)
+		div.style.backgroundColor = "#955";	
+}
+
+CodingTabsWidget.prototype.onContentStored = function( e, instance )
+{
+	if(!instance)
+		return;
+
+	var id = instance.uid;
+	if(!id)
+		return;
+	var tab = this.tabs.getTab( id );
+	if(!tab)
+		return;
+	var div = tab.tab;
+	if(div)
+		div.style.backgroundColor = null;	
+}
+
+
 CodingTabsWidget.prototype.onCodeChanged = function( e, instance )
 {
 	//check to see if we have that instance
@@ -395,6 +428,11 @@ CodingTabsWidget.prototype.createCodingPad = function( container )
 	var that = this;
 	var pad = new CodingPadWidget();
 	container.appendChild( pad.root );
+
+	LiteGUI.bind( pad, "modifyed", function(e){ that.onContentModifyed(e, pad.getCurrentCodeInstance() ); });
+	LiteGUI.bind( pad, "stored", function(e){ that.onContentStored(e, pad.getCurrentCodeInstance() ); });
+	LiteGUI.bind( pad, "compiled", function(e){ that.onContentStored(e, pad.getCurrentCodeInstance() ); });
+
 	return pad;
 }
 

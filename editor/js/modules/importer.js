@@ -20,8 +20,9 @@ var ImporterModule  = {
 			CORE.user_preferences.importer = this.preferences;
 		else
 			this.preferences = CORE.user_preferences.importer;
-		
-		LiteGUI.createDropArea( gl.canvas, ImporterModule.onItemDrop.bind(this) );
+
+		if(window.gl && window.gl.canvas )
+			LiteGUI.createDropArea( gl.canvas, ImporterModule.onItemDrop.bind(this) );
 		LiteGUI.menubar.add("Actions/Import File", { callback: function() { ImporterModule.showImportResourceDialog(); }});
 	},
 
@@ -297,6 +298,7 @@ var ImporterModule  = {
 		dialog.addButton("Cancel", { className: "big", callback: function() { dialog.close(); } });
 
 		var filename = "";
+		var resource = null;
 
 		function inner_import( button, callback )
 		{
@@ -333,9 +335,14 @@ var ImporterModule  = {
 			if(upload_file)
 			{
 				DriveModule.showSelectFolderDialog( function(folder) {
-					if(!folder) return;
-					if(!resource.filename) return;
-					DriveModule.uploadAndShowProgress( resource, folder );
+					if(!folder)
+						return;
+					if(!resource.filename)
+						return;
+					var fullpath = folder + "/" + resource.filename;
+					LS.ResourcesManager.renameResource( resource.filename, fullpath );
+					resource.fullpath = fullpath;
+					DriveModule.saveResource( resource );
 				});
 			}
 			dialog.close();
@@ -361,7 +368,7 @@ var ImporterModule  = {
 		{
 			if(resource)
 			{
-				if(options.optimize_data && resource.constructor == Mesh)
+				if(options.optimize_data && resource.constructor == GL.Mesh )
 				{
 					resource._original_data = resource.toBinary().buffer; //ArrayBuffer
 					filename = filename + ".wbin";

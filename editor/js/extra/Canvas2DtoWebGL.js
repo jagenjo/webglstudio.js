@@ -96,18 +96,32 @@ function enableWebGLCanvas( canvas, options )
 			}\n\
 		", extra_macros );
 
+	var	textured_transform_shader = new GL.Shader(GL.Shader.QUAD_VERTEX_SHADER,"\n\
+			precision highp float;\n\
+			uniform sampler2D u_texture;\n\
+			uniform vec4 u_color;\n\
+			uniform vec4 u_texture_transform;\n\
+			varying vec2 v_coord;\n\
+			void main() {\n\
+				vec2 uv = v_coord * u_texture_transform.zw + vec2(u_texture_transform.x,0.0);\n\
+				uv.y = uv.y - u_texture_transform.y + (1.0 - u_texture_transform.w);\n\
+				uv = clamp(uv,vec2(0.0),vec2(1.0));\n\
+				gl_FragColor = u_color * texture2D(u_texture, uv);\n\
+			}\n\
+		", extra_macros );
+
 	var	textured_primitive_shader = new GL.Shader(vertex_shader,"\n\
 			precision highp float;\n\
 			varying float v_visible;\n\
 			uniform vec4 u_color;\n\
 			uniform sampler2D u_texture;\n\
-			uniform vec2 u_itexture_size;\n\
+			uniform vec4 u_texture_transform;\n\
 			uniform vec2 u_viewport;\n\
 			uniform mat3 u_itransform;\n\
 			void main() {\n\
 				vec2 pos = (u_itransform * vec3( gl_FragCoord.s, u_viewport.y - gl_FragCoord.t,1.0)).xy;\n\
-				pos *= vec2( (u_viewport.x * u_itexture_size.x), (u_viewport.y * u_itexture_size.y) );\n\
-				vec2 uv = fract(pos / u_viewport);\n\
+				pos *= vec2( (u_viewport.x * u_texture_transform.z), (u_viewport.y * u_texture_transform.w) );\n\
+				vec2 uv = fract(pos / u_viewport) + u_texture_transform.xy;\n\
 				uv.y = 1.0 - uv.y;\n\
 				gl_FragColor = u_color * texture2D( u_texture, uv);\n\
 			}\n\
@@ -121,6 +135,7 @@ function enableWebGLCanvas( canvas, options )
 	var tmp_mat3 = mat3.create();
 	var tmp_vec2 = vec2.create();
 	var tmp_vec4 = vec4.create();
+	var tmp_vec4b = vec4.create();
 	var tmp_vec2b = vec2.create();
 	ctx._stack = [];
 	var global_angle = 0;
@@ -240,23 +255,36 @@ function enableWebGLCanvas( canvas, options )
 		if(!tex)
 			return;
 
+		if(arguments.length == 9) //img, sx,sy,sw,sh, x,y,w,h
+		{
+			tmp_vec4b.set([x/img.width,y/img.height,w/img.width,h/img.height]);
+			x = arguments[5];
+			y = arguments[6];
+			w = arguments[7];
+			h = arguments[8];
+			shader = textured_transform_shader;
+		}
+		else
+			tmp_vec4b.set([0,0,1,1]); //reset texture transform
+
 		tmp_vec2[0] = x; tmp_vec2[1] = y;
 		tmp_vec2b[0] = w === undefined ? tex.width : w;
 		tmp_vec2b[1] = h === undefined ? tex.height : h;
 
 		tex.bind(0);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, this.imageSmoothingEnabled ? gl.LINEAR : gl.NEAREST );
+		if(tex !== img) //only apply the imageSmoothingEnabled if we are dealing with images, not textures
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, this.imageSmoothingEnabled ? gl.LINEAR : gl.NEAREST );
 
 		if(!this.tintImages)
 		{
-			tmp_vec4[0] = tmp_vec4[1] = tmp_vec4[2] = 1.0;
-			tmp_vec4[3] = this._globalAlpha;
+			tmp_vec4[0] = tmp_vec4[1] = tmp_vec4[2] = 1.0;	tmp_vec4[3] = this._globalAlpha;
 		}
 
 		uniforms.u_color = this.tintImages ? this._fillcolor : tmp_vec4;
 		uniforms.u_position = tmp_vec2;
 		uniforms.u_size = tmp_vec2b;
 		uniforms.u_transform = this._matrix;
+		uniforms.u_texture_transform = tmp_vec4b;
 		uniforms.u_viewport = viewport;
 
 		shader = shader || texture_shader;
@@ -418,7 +446,8 @@ function enableWebGLCanvas( canvas, options )
 			var tex = this.fillStyle;
 			uniforms.u_color = [1,1,1, this.globalAlpha]; 
 			uniforms.u_texture = 0;
-			uniforms.u_itexture_size = [1/tex.width, 1/tex.height];
+			tmp_vec4.set([0,0,1/tex.width, 1/tex.height]);
+			uniforms.u_texture_transform = tmp_vec4;
 			uniforms.u_itransform = mat3.invert( tmp_mat3, this._matrix );
 			tex.bind(0);
 			shader = textured_primitive_shader;

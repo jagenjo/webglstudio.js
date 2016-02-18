@@ -295,7 +295,13 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 	element.dataset["filename"] = resource.filename;
 	if(resource.fullpath)
 		element.dataset["fullpath"] = resource.fullpath;
-	var type = element.dataset["restype"] = resource.object_type || resource.category || LS.getObjectClassName( resource );
+	var type = resource.object_type || resource.category || LS.getObjectClassName( resource );
+	if(type == "Object") //in server_side resources that dont have category
+		type = LS.Formats.guessType( resource.fullpath || resource.filename );
+	if(!type)
+		type = "unknown";
+	element.dataset["restype"] = type;
+
 	if(resource.category)
 		element.dataset["category"] = resource.category;
 
@@ -489,9 +495,13 @@ ResourcesPanelWidget.prototype.showItemContextualMenu = function( item, event )
 		}
 		else if(action == "Delete")
 		{
-			DriveModule.serverDeleteFile( fullpath, function(v) { 
-				if(v)
-					that.refreshContent();
+			LiteGUI.confirm("Do you want to delete this file?", function(v){
+				if(!v)
+					return;
+				DriveModule.serverDeleteFile( fullpath, function(v) { 
+					if(v)
+						that.refreshContent();
+				});
 			});
 		}
 		else

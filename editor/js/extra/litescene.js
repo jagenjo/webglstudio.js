@@ -25180,6 +25180,18 @@ LS.Formats = {
 		return this.supported[ extension ];
 	},
 
+	guessType: function( filename )
+	{
+		if(!filename)
+			return null;
+
+		var ext = LS.RM.getExtension( filename ).toLowerCase();
+		var info = this.supported[ ext ];
+		if(!info)
+			return null;
+		return info.resource;
+	},
+
 	//Helpers ******************************
 
 	//gets raw image information {width,height,pixels:ArrayBuffer} and create a dataurl to use in images

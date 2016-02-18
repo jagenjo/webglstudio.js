@@ -920,6 +920,9 @@ var DriveModule = {
 		LiteGUI.prompt("Folder name", inner);
 		function inner(name)
 		{
+			if(!name)
+				return;
+
 			var folder = root_path + "/" + name;
 			DriveModule.serverCreateFolder( folder, inner_complete );
 		}
@@ -1459,6 +1462,8 @@ var DriveModule = {
 	serverCreateFolder: function(name, on_complete)
 	{
 		console.warn("Quarantine method");
+		if(!name)
+			return;
 		LoginModule.session.createFolder( name, function(v,resp){
 			if(on_complete)
 				on_complete(v);
@@ -1468,6 +1473,8 @@ var DriveModule = {
 	serverDeleteFolder: function(name, on_complete)
 	{
 		console.warn("Quarantine method");
+		if(!name)
+			return;
 		LoginModule.session.deleteFolder( name, function(v,resp){
 			if(on_complete)
 				on_complete(v);

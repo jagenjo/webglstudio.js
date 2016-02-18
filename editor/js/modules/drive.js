@@ -1218,7 +1218,7 @@ var DriveModule = {
 					err = "File too big";
 				dialog.content.innerHTML = "Error Uploading: " + err; 
 				if(on_complete) 
-					on_complete(false);
+					on_complete(false, err);
 			},
 			function (progress) { 
 				upload_progress.innerHTML = ((progress*100)|0) + "%";

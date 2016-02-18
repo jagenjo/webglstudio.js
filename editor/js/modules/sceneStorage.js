@@ -103,7 +103,6 @@ var SceneStorageModule = {
 		{
 			if(button == "Load")
 			{
-				//SceneStorageModule.saveSceneInServer(scene_name);
 				var url = LS.ResourcesManager.path + "/" + selected;
 				LS.Renderer.reset();
 				LS.GlobalScene.clear();
@@ -131,6 +130,17 @@ var SceneStorageModule = {
 		var scene_name = "";
 		var scene_folder = "";
 		var scene = LS.GlobalScene;
+
+		if(!LoginModule.session)
+		{
+			var dialog = LiteGUI.alert("You must be logged in to load scenes, click the <button>Login</button> button.");
+			var button = dialog.content.querySelector("button");
+			button.addEventListener("click", function(){
+				dialog.close();
+				LoginModule.showLoginDialog();
+			});
+			return;
+		}
 
 		var dialog = new LiteGUI.Dialog("dialog_save_scene", {title:"Save Scene", close: true, minimize: true, width: 600, height: 300, scroll: false, draggable: true});
 		dialog.show('fade');
@@ -176,18 +186,6 @@ var SceneStorageModule = {
 		function inner_selected(item)
 		{
 			scene_folder = item.fullpath;
-			/*
-			scene_name = item.filename;
-			string_widget.setValue(scene_name);
-
-			$(split.sections[1]).empty();
-			if(item.preview_url)
-			{
-				var img = new Image();
-				img.src = item.preview_url;
-				split.sections[1].appendChild(img);
-			}
-			*/
 		}
 
 		function inner_button(button)
@@ -597,9 +595,23 @@ var SceneStorageModule = {
 		localStorage.setItem(SceneStorageModule.localscene_prefix + "list", local_scenes);
 	},
 
-	saveSceneInServer: function()
+	saveSceneInServer: function(on_complete, on_error)
 	{
-		DriveModule.saveResource( LS.GlobalScene );
+		DriveModule.saveResource( LS.GlobalScene, inner );
+
+		function inner(v,err)
+		{
+			if(!v)
+			{
+				LiteGUI.alert("Error: " + err );
+				if(on_error)
+					on_error(err);
+				return;
+			}
+
+			if(on_complete)
+				on_complete();
+		}
 	},
 
 	takeScreenshot: function(width, height)

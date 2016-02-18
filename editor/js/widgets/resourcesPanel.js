@@ -591,7 +591,7 @@ ResourcesPanelWidget.prototype.filterByName = function( text )
 			continue;
 		filename = filename.toLowerCase();
 		if( !text || filename.indexOf(text) != -1 )
-			item.style.display = null;
+			item.style.display = "";
 		else
 			item.style.display = "none";
 	}
@@ -612,7 +612,7 @@ ResourcesPanelWidget.prototype.filterByCategory = function( category )
 			continue;
 		item_category = item_category.toLowerCase();
 		if( item_category == category )
-			item.style.display = null;
+			item.style.display = "";
 		else
 			item.style.display = "none";
 	}

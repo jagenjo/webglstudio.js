@@ -74,7 +74,9 @@ var LoginModule = {
 		}
 		else
 		{
-			this.login_dialog = new LiteGUI.Dialog("dialog_login", {title:"Login", close: true, width: 300, scroll: false, draggable: true});
+			this.login_dialog = new LiteGUI.Dialog("dialog_login", {title:"Login", close: true, width: 400, scroll: false, draggable: true});
+			this.login_dialog.root.style.fontSize = "1.4em";
+
 			this.login_dialog.on_close = function()
 			{
 				LoginModule.login_dialog = null;

@@ -1,5 +1,5 @@
 {
-	"version":"0.3",
+	"version":"0.3b",
 	"server":"fileserver/src/",
 	"resources":"fileserver/files/",
 	"proxy":"@/redirect/",
@@ -29,6 +29,7 @@
 	 		"js/widgets/codingPad.js",
 	 		"js/widgets/codingTabsWidget.js",
 	 		"js/widgets/genericTabs.js",
+			"js/modules/intro.js",
 	 		"js/modules/cameraTools.js",
 	 		"js/modules/notify.js",
 	 		"js/modules/settings.js",

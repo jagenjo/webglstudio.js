@@ -4533,7 +4533,7 @@ function dataURItoBlob( dataURI ) {
 			if(!name || str.indexOf( name.toLowerCase() ) != -1)
 			{
 				if( childNode.data && childNode.data.visible !== false )
-					childNode.style.display = null;
+					childNode.style.display = "";
 				var indent = childNode.querySelector(".indentblock");
 				if(indent)
 				{
@@ -4562,7 +4562,7 @@ function dataURItoBlob( dataURI ) {
 
 			if(!name || str.indexOf(name) != -1)
 			{
-				parent.style.display = null;
+				parent.style.display = "";
 				parent.parentNode.style.paddingLeft = (parseInt(parent.parentNode.dataset["level"]) * Tree.INDENT) + "px";
 			}
 			else
@@ -5427,11 +5427,16 @@ function dataURItoBlob( dataURI ) {
 
 	Dialog.prototype.addButton = function(name,options)
 	{
+		options = options || {};
+		if( options.constructor === Function )
+			options = { callback: options };
+
 		var that = this;
 		var button = document.createElement("button");
 
 		button.innerHTML = name;
-		if(options.className) button.className = options.className;
+		if(options.className)
+			button.className = options.className;
 
 		this.root.querySelector(".panel-footer").appendChild( button );
 
@@ -5600,6 +5605,18 @@ function dataURItoBlob( dataURI ) {
 	{
 		this.root.style.display = "none";
 		LiteGUI.trigger(this, "hidden");
+	}
+
+	Dialog.prototype.fadeIn = function(time)
+	{
+		time = time || 1000;
+		this.root.style.display = "";
+		this.root.style.opacity = 0;
+		var that = this;
+		setTimeout(function(){
+			that.root.style.transition = "opacity "+time+"ms";
+			that.root.style.opacity = 1;
+		},100);
 	}
 
 	Dialog.prototype.setPosition = function(x,y)

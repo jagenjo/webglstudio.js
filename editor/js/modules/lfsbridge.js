@@ -26,6 +26,7 @@ var LFSBridge = {
 		});
 
 		LiteGUI.bind( CORE, "user-logout", function(){
+			LFSBridge.session = null;
 			DriveModule.updateServerTreePanel();
 			DriveModule.showInBrowserContent();
 		});
@@ -253,9 +254,23 @@ var LFSBridge = {
 		root.appendChild( container );
 
 		container.innerHTML = "<h2>LiteFileServer</h2>";
+
+		if(!this.session)
+		{
+			var warning = document.createElement("div");
+			warning.style.backgroundColor = "#644";
+			warning.style.color = "#FAA";
+			warning.style.padding = "10px";
+			warning.innerHTML = "<p>You must be logged to see the files in the server.</p><p>Click <button>Login</button> to enter your username and password or enter as <a href=\"javascript:LoginModule.login('guest','guest');\">GUEST</a>.</p>";
+			var button = warning.querySelector("button");
+			button.style.verticalAlign = "initial";
+			button.addEventListener("click", LoginModule.showLoginDialog.bind( LoginModule ) );
+			container.appendChild( warning );	
+			return;
+		}
+
 		var button = LiteGUI.createButton(null, "Go to LFS Panel", LFSBridge.onOpenLiteFileServer );
 		container.querySelector("h2").appendChild( button.root );
-
 		container.appendChild( LiteGUI.createElement("h3",null,"Units") );
 
 		if(!this.tree_root.children)

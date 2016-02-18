@@ -34,10 +34,11 @@ var CubemapGenerator = {
 		}
 		this.dialog = dialog;
 
-		this.enableDragDropCubemapImages( dialog );
+		LiteGUI.createDropArea( dialog.content, enableDragDropCubemapImages );
 
 		var name = "cubemap_" + (Math.random() * 1000).toFixed(0);
 		var resolution = CubemapGenerator.default_resolution;
+		var loaded_resolution = CubemapGenerator.default_resolution;
 		var center = "camera eye";
 		var result = "cubemap";
 		var cubemap_modes = { "Cross Left": "CUBECROSSL", "Vertical": "CUBEVERT" };
@@ -51,7 +52,6 @@ var CubemapGenerator = {
 		dialog.content.appendChild( widgets.root );
 		widgets.on_refresh = refresh;
 
-
 		var info_widget = null;
 
 		function refresh()
@@ -64,7 +64,8 @@ var CubemapGenerator = {
 			if( CubemapGenerator.current_cubemap )
 			{
 				widgets.widgets_per_row = 1;
-				widgets.addCombo("Resolution", CubemapGenerator.current_cubemap.width, { values: [32,64,128,256,512,1024], callback: function(v) { 
+				widgets.addCombo("Resolution", CubemapGenerator.current_cubemap.width, { values: [1,2,4,8,16,32,64,128,256,512,1024,2048], callback: function(v) { 
+					loaded_resolution = v;
 				}});
 				/*
 				widgets.addCheckbox("Preview", CubemapGenerator.preview_in_viewport, { callback: function(v) { 
@@ -75,14 +76,27 @@ var CubemapGenerator = {
 				widgets.widgets_per_row = 1;
 
 				widgets.addButtons("Actions", ["Blur","Resize"], { callback: function(v) { 
+					var cubemap = CubemapGenerator.current_cubemap;
+					if(!cubemap)
+						return;
+
 					if(v == "Blur")
 					{
-						var cubemap = CubemapGenerator.current_cubemap;
 						var tmp = cubemap.applyBlur( 1,1,1, null, cubemap._tmp );
 						cubemap._tmp = tmp;
 						tmp.copyTo( cubemap );
-						LS.GlobalScene.refresh();
 					}
+					else if(v == "Resize")
+					{
+						var copy_cubemap = new GL.Texture( loaded_resolution, loaded_resolution, cubemap.getProperties() );
+						cubemap.copyTo( copy_cubemap );
+						copy_cubemap.filename = cubemap.filename;
+						copy_cubemap.fullpath = cubemap.fullpath;
+						copy_cubemap.remotepath = cubemap.remotepath;
+						CubemapGenerator.current_cubemap = copy_cubemap;
+						LS.RM.registerResource( copy_cubemap.fullpath || copy_cubemap.filename, copy_cubemap );
+					}
+					LS.GlobalScene.refresh();
 				}});
 			}
 
@@ -173,30 +187,7 @@ var CubemapGenerator = {
 
 			info_widget = widgets.addInfo(null, "" );
 
-			widgets.addButton(null, "Load cubemap", { callback: function() {
-				if(!name)
-					return;
-
-				//is a texture in memory
-				var res = LS.ResourcesManager.getResource( url );
-				if(res)
-				{
-					if(!res.img)
-						return console.log("Texture doesnt have the original image attached");
-					var texture = GL.Texture.cubemapFromImage( res.img, cubemap_options );
-					processResult( texture );
-				}
-
-				//is an external filename
-				info_widget.setValue("Loading...");
-				var texture = GL.Texture.cubemapFromURL( LS.ResourcesManager.getFullURL( url ), cubemap_options , function(tex){
-					if(!tex)
-						return LiteGUI.alert("Error creating the cubemap, check the size. Only 1x6 (vertical) or 6x3 (cross) formats supported.");
-					processResult( tex );
-					CubemapGenerator.current_cubemap = tex;
-					widgets.refresh();
-				});
-			}});
+			widgets.addButton( null, "Load cubemap", { callback: loadCubemap });
 
 			widgets.addSeparator();
 			widgets.addInfo(null,"You can also drag a set of six images containing every side of a cubemap where the files contains the string posx,posy,posz,negx,negy,negz depending on the side");
@@ -209,6 +200,39 @@ var CubemapGenerator = {
 		}//refresh
 
 		widgets.refresh();
+
+		function loadCubemap()
+		{
+			if(!name)
+				return;
+
+			//is a texture in memory
+			var res = LS.ResourcesManager.getResource( url );
+			if(res)
+			{
+				if( res.texture_type == gl.TEXTURE_CUBE_MAP )
+				{
+					CubemapGenerator.current_cubemap = res;
+					widgets.refresh();
+					return;
+				}
+
+				if(!res.img)
+					return console.log("Texture doesnt have the original image attached");
+				var texture = GL.Texture.cubemapFromImage( res.img, cubemap_options );
+				processResult( texture );
+			}
+
+			//is an external filename
+			info_widget.setValue("Loading...");
+			var texture = GL.Texture.cubemapFromURL( LS.ResourcesManager.getFullURL( url ), cubemap_options , function(tex){
+				if(!tex)
+					return LiteGUI.alert("Error creating the cubemap, check the size. Only 1x6 (vertical) or 6x3 (cross) formats supported.");
+				processResult( tex );
+				CubemapGenerator.current_cubemap = tex;
+				widgets.refresh();
+			});
+		}
 
 		function processResult( texture )
 		{
@@ -240,25 +264,29 @@ var CubemapGenerator = {
 				position = node.transform.getGlobalPosition();
 			return position;
 		}
-	},
 
-	enableDragDropCubemapImages: function( dialog )
-	{
-		var that = this;
-		LiteGUI.createDropArea( dialog.content, function(e){
+		function enableDragDropCubemapImages( dialog )
+		{
 			console.log(e.dataTransfer);
-			if(e.dataTransfer.files.length != 6)
+			var path = e.dataTransfer.getData("res-fullpath");
+			if( path )
 			{
-				LiteGUI.alert("You need six images to create a cubemap");
-				return;
+				var res = LS.RM.getResource(path);
 			}
-
-			var name = dialog.cubemap_name;
-			var size = dialog.cubemap_resolution;
-			that.generateCubemapFromFiles( e.dataTransfer.files, null, { name: name, size: size } );
+			else if( e.dataTransfer.files.length )
+			{
+				if(e.dataTransfer.files.length != 6)
+				{
+					LiteGUI.alert("You need six images to create a cubemap");
+					return;
+				}
+				var name = dialog.cubemap_name;
+				var size = dialog.cubemap_resolution;
+				that.generateCubemapFromFiles( e.dataTransfer.files, null, { name: name, size: size } );
+			}
 			e.preventDefault();
 			e.stopPropagation();
-		});
+		}
 	},
 
 	//generate cubemap from current view

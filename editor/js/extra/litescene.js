@@ -3430,7 +3430,7 @@ var ShadersManager = {
 			num_macros += 1;
 
 		//HACK for IE
-		if(!gl.extensions["WEBGL_draw_buffers"])
+		if(gl && !gl.extensions["WEBGL_draw_buffers"])
 			fs_code = fs_code.replace("#extension GL_EXT_draw_buffers : enable", '');
 
 		var global = { 

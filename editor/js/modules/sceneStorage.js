@@ -46,7 +46,12 @@ var SceneStorageModule = {
 	{
 		if(!LoginModule.session)
 		{
-			LiteGUI.alert("You must be logged in to load scenes");
+			var dialog = LiteGUI.alert("You must be logged in to load scenes, click the <button>Login</button> button.");
+			var button = dialog.content.querySelector("button");
+			button.addEventListener("click", function(){
+				dialog.close();
+				LoginModule.showLoginDialog();
+			});
 			return;
 		}
 

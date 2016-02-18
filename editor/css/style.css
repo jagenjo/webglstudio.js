@@ -509,3 +509,23 @@ textarea.code {
 	color: #E5C348;
 	padding: 5px;
 }
+
+#intro_dialog {
+	cursor: pointer;
+	font-size: 1.5em;
+	color: #999;
+	background: linear-gradient(-45deg, #121212, #303335); 
+}
+
+#intro_dialog .msg {
+	padding: 10px;
+}
+
+#intro_dialog .center {
+	text-align: center;
+}
+
+#intro_dialog .header {
+	font-size: 1.5em;
+	color: #EEE;
+}

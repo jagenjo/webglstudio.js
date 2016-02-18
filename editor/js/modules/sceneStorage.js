@@ -161,7 +161,7 @@ var SceneStorageModule = {
 		}});
 		var scenes = { id:"Server", children: [] };
 		var tree_widget = widgets.addTree("Scenes",scenes, { height: 200, callback: inner_selected});
-		widgets.addButtons("",["Save","Delete"], { className:"big", callback: inner_button });
+		widgets.addButton(null,"Save", { className:"big", callback: inner_button });
 
 		split.getSection(0).add( widgets );
 
@@ -193,33 +193,34 @@ var SceneStorageModule = {
 			var scene = LS.GlobalScene;
 
 			if(!scene_name)
-				return;
-
-			if(button == "Save")
 			{
-				if(!scene_name){
-					LiteGUI.alert("Scene must have a name");
-					return;
-				}
-
-				//remove extension
-				var pos = scene_name.indexOf(".");
-				if(pos != -1) //strip extensions
-					scene_name = scene_name.substr(0, pos);
-				//reinsert them
-				scene.filename = scene_name + ".scene.json";
-				scene.fullpath = scene_folder + "/" + scene.filename;
-
-				if(scene.extra)
-				{
-					scene.extra.folder = scene_folder;
-					scene.extra.filename = scene.filename;
-					scene.extra.fullpath = scene.fullpath;
-				}
-
-				SceneStorageModule.saveSceneInServer();
-				dialog.close();
+				LiteGUI.alert("Scene must have a name");
+				return;
 			}
+
+			if(!scene_folder)
+			{
+				LiteGUI.alert("You must choose a folder");
+				return;
+			}
+
+			//remove extension
+			var pos = scene_name.indexOf(".");
+			if(pos != -1) //strip extensions
+				scene_name = scene_name.substr(0, pos);
+			//reinsert them
+			scene.filename = scene_name + ".scene.json";
+			scene.fullpath = scene_folder + "/" + scene.filename;
+
+			if(scene.extra)
+			{
+				scene.extra.folder = scene_folder;
+				scene.extra.filename = scene.filename;
+				scene.extra.fullpath = scene.fullpath;
+			}
+
+			SceneStorageModule.saveSceneInServer();
+			dialog.close();
 		}
 	},
 

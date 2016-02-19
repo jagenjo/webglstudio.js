@@ -774,7 +774,7 @@ var LS = {
 	*/
 	registerComponent: function( c ) { 
 		//allows to register several at the same time
-		for(var i in arguments)
+		for(var i = 0; i < arguments.length; ++i)
 		{
 			var component = arguments[i];
 			var name = LS.getClassName( component );
@@ -25263,6 +25263,7 @@ LS.Formats = {
 //native formats do not need parser
 LS.Formats.addSupportedFormat( "png,jpg,webp,bmp,gif", { "native": true, dataType: "arraybuffer", resource: "Texture", "resourceClass": GL.Texture, has_preview: true, type: "image" } );
 LS.Formats.addSupportedFormat( "wbin", { dataType: "arraybuffer" } );
+LS.Formats.addSupportedFormat( "json,js,txt,csv", { dataType: "string" } );
 WBin.classes = LS.Classes; //WBin need to know which classes are accesible to be instantiated right from the WBin data info, in case the class is not a global class
 
 /*
@@ -25305,6 +25306,7 @@ var parserASE = {
 	type: "mesh",
 	resource: "Mesh",
 	format: 'text',
+	dataType:'string',
 	
 	parse: function( text, options, filename )
 	{
@@ -27840,6 +27842,7 @@ var parserDAE = {
 	type: "scene",
 	resource: "SceneTree",
 	format: "text",
+	dataType:'string',
 
 	parse: function( data, options, filename )
 	{
@@ -28119,6 +28122,7 @@ var parserJSMesh = {
 	extension: 'jsmesh',
 	type: 'mesh',
 	format: 'text',
+	dataType:'string',
 
 	parse: function(data,options)
 	{
@@ -28156,6 +28160,7 @@ var parserOBJ = {
 	type: 'mesh',
 	resource: 'Mesh',
 	format: 'text',
+	dataType:'string',
 
 	flipAxis: false,
 
@@ -28623,6 +28628,7 @@ var parserCGArtMesh = {
 	extension: 'cgart',
 	type: 'mesh',
 	format: 'text',
+	dataType:'string',
 
 	parse: function(data,options)
 	{
@@ -28797,6 +28803,7 @@ var parserGR2 = {
 	extension: 'gr2',
 	type: 'mesh',
 	format: 'text',
+	dataType:'string',
 
 	parse: function(data, options)
 	{

@@ -120,11 +120,11 @@ var ImporterModule  = {
 			}
 		};
 
-		var extension = LS.ResourcesManager.getExtension( file.name );
+		var extension = LS.ResourcesManager.getExtension( file.name ).toLowerCase();
 		var format_info = LS.Formats.supported[ extension ];
 		var format_type = "binary";
 		if(format_info)
-			format_type = format_info.format;
+			format_type = format_info.dataType || format_info.format;
 
 		if(format_type == "string" || format_type == "text" || format_type == "json" || format_type == "xml")
 			reader.readAsText(file);

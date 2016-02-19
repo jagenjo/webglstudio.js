@@ -529,14 +529,17 @@ var SceneStorageModule = {
 		if(!data)
 			return;
 
-		try
+		if(data.constructor === String)
 		{
-			data = JSON.parse( data );
-		}
-		catch (err)
-		{
-			console.log("Error: " + err );
-			return;
+			try
+			{
+				data = JSON.parse( data );
+			}
+			catch (err)
+			{
+				console.log("Error: " + err );
+				return;
+			}
 		}
 
 		LS.Renderer.reset();

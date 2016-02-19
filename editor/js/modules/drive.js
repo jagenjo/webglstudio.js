@@ -1653,12 +1653,19 @@ DriveModule.registerAssignResourceCallback( "SceneTree", function( fullpath, res
 
 	LiteGUI.confirm("Are you sure? you will loose the current scene", function(v) {
 		LS.GlobalScene.clear();
-		LS.GlobalScene.load( LS.ResourcesManager.path + fullpath, function( scene, url ){
-			scene.extra.folder = LS.ResourcesManager.getFolder( fullpath );
-			scene.extra.fullpath = fullpath;
-		});
+
+		var res = LS.RM.resources[ fullpath ];
+		if(!res)//load
+			LS.GlobalScene.load( LS.ResourcesManager.path + fullpath, inner);
+		SceneStorageModule.setSceneFromJSON( res.serialize() ); //ugly but we cannot replace the current scene
+		inner( LS.GlobalScene, url );
 		DriveModule.closeTab();
 	});
+
+	function inner( scene, url ){
+		scene.extra.folder = LS.ResourcesManager.getFolder( fullpath );
+		scene.extra.fullpath = fullpath;
+	}
 });
 
 DriveModule.registerAssignResourceCallback("Prefab", function( fullpath, restype, options ) {

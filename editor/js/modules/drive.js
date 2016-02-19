@@ -179,7 +179,7 @@ var DriveModule = {
 		this.registered_drive_bridges[ bridge.name ] = bridge;
 
 		//create a tree entry
-		bridge.tree_root = { id: bridge.name , skipdrag:true, className: bridge.className, children:[], bridge: bridge };
+		bridge.tree_root = { id: bridge.name , skipdrag:true, className: bridge.className + " drive-name", children:[], bridge: bridge };
 
 		//add entry to global tree
 		this.tree.children.push( bridge.tree_root );

@@ -6,6 +6,11 @@ var LoginModule = {
 
 	init: function()
 	{
+		if( !CORE.user_preferences.login )
+			CORE.user_preferences.login = {
+				show_guest_warning: true
+			};
+
 		var loginarea = document.createElement("div");
 		loginarea.id = "login-area";
 		loginarea.style.lineHeight = "2em";
@@ -46,6 +51,35 @@ var LoginModule = {
 		this.user = session ? session.user : null;
 		this.updateLoginArea();
 		LiteGUI.trigger( CORE, session ? "user-login" : "user-logout", this.user );
+		if(session && session.user.username == "guest" && CORE.user_preferences.login.show_guest_warning)
+			this.showGuestWarning();
+	},
+
+	showGuestWarning: function()
+	{
+		var dialog = LiteGUI.alert("You are connected as <span style='color:white'>GUEST</span> user. Remember that guest users cannot save their work so if you want to save your creations or your resources consider creating a free account.", {title:"Welcome GUEST"});
+		dialog.setSize(400,210);
+		var info = document.createElement("p");
+		info.innerHTML = "Do not show again";
+		info.style.color = "#747E94";
+		info.style.paddingLeft = "10px";
+		dialog.add(info);
+		var checkbox = new LiteGUI.Checkbox(false,function(v){
+			CORE.user_preferences.login.show_guest_warning = !v;
+		});
+		info.appendChild( checkbox.root );
+	},
+
+	showGuestAlert: function()
+	{
+		var dialog = LiteGUI.alert("<p>You are connected as <span style='color:white'>GUEST</span> user. Guest users cannot save their work so if you want to save your creations or your resources consider going to <button>Create Account</button> (its free).</p>", {title:"We have a problem"});
+		dialog.content.querySelector("button").addEventListener("click", function(e){
+			dialog.close();
+			LoginModule.logout( function(){ 
+				LoginModule.showLoginDialog(false,"create");
+			});
+		});
+		dialog.setSize(400,200);
 	},
 
 	updateLoginArea: function()
@@ -66,7 +100,7 @@ var LoginModule = {
 		}
 	},
 
-	showLoginDialog: function()
+	showLoginDialog: function( force_login, section )
 	{
 		if(this.login_dialog)
 		{
@@ -74,7 +108,8 @@ var LoginModule = {
 		}
 		else
 		{
-			this.login_dialog = new LiteGUI.Dialog("dialog_login", {title:"Login", close: true, width: 400, scroll: false, draggable: true});
+			var title = force_login ? null : "Login";
+			this.login_dialog = new LiteGUI.Dialog("dialog_login", {title:title, close: !force_login, width: 400, scroll: false, draggable: !force_login });
 			this.login_dialog.root.style.fontSize = "1.4em";
 
 			this.login_dialog.on_close = function()
@@ -83,22 +118,39 @@ var LoginModule = {
 			}
 			this.login_dialog.show('fade');
 			this.login_dialog.widgets = new LiteGUI.Inspector(null,{ name_width: "40%" });
+			if(force_login)
+				this.login_dialog.makeModal();
 		}
 
 		var dialog = this.login_dialog;
 		var widgets = dialog.widgets;
-		widgets.clear();
+		dialog.add(widgets);
 
-		widgets.addString("Username", "", {});
-		widgets.addString("Password", "", { password:true, callback_enter: inner_login });
-		widgets.addButton(null, "Login", { callback: function(v){ inner_login(); }});
-		widgets.addSeparator();
-		widgets.addButton("Forgot password","Reset my password", { callback: inner_forget_password } );
-		widgets.addButton("Don't have account","Create Account", { callback: inner_create_account } );
-		widgets.addButton("Just visiting","Login as GUEST", { callback: function(v){ inner_login_guest(); }});
-		var info = widgets.addInfo( null, "" );
+		var info = null;
+		var username_widget = null;
+		var password_widget = null;
 
-		dialog.content.appendChild(widgets.root);
+		if(section == "create")
+			inner_create_account();
+		else if(section == "forgot")
+			inner_forgot_password();
+		else
+			inner_show_login();
+
+		function inner_show_login()
+		{
+			widgets.clear();
+			if(force_login)
+				widgets.addInfo(null,"You must be logged in, use your account or create a new one",{ className:"dialog-info-warning"} );
+			username_widget = widgets.addString("Username", "", {});
+			password_widget = widgets.addString("Password", "", { password:true, callback_enter: inner_login });
+			widgets.addButton(null, "Login", { callback: function(v){ inner_login(); }});
+			widgets.addSeparator();
+			widgets.addButton("Forgot password","Reset my password", { callback: inner_forgot_password } );
+			widgets.addButton("Don't have account","Create Account", { callback: inner_create_account } );
+			widgets.addButton("Just visiting","Login as GUEST", { callback: function(v){ inner_login_guest(); }});
+			info = widgets.addInfo( null, "" );
+		}
 
 		function inner_login()
 		{
@@ -144,9 +196,13 @@ var LoginModule = {
 				});
 			}});
 			var create_info = widgets.addInfo( null, "" );
+			widgets.addSeparator();
+			widgets.addButton( null, "Back to login", function(){
+				inner_show_login();
+			});
 		}
 
-		function inner_forget_password()
+		function inner_forgot_password()
 		{
 			widgets.clear();
 			widgets.addTitle( "Reset password" );
@@ -158,14 +214,16 @@ var LoginModule = {
 				});
 				info_widget.setValue("Sending request...");
 			}});
+			widgets.addSeparator();
+			widgets.addButton( null, "Back to login", function(){
+				inner_show_login();
+			});
 		}
 
 		function inner_result(user)
 		{
 			if(user)
-			{
 				dialog.close();
-			}
 			else
 				info.setValue("Wrong user/pass");
 		}

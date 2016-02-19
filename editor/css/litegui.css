@@ -1412,6 +1412,10 @@ button:disabled {
 	opacity: 0.5;
 }
 
+.litedialog .content button {
+    vertical-align: initial;
+}
+
 .litedialog button.mini-button {
 	margin: 2px 2px 0 0;
 	line-height: 0;
@@ -2067,7 +2071,7 @@ input[type="range"]::-moz-slider-thumb {
 	height: 1em;
 	display: inline-block;
 	vertical-align: top;
-	background-color: black;
+	background-color: #1f1f1f;
 	border: 0;
 	border-radius: 2px;
 	margin: 0 4px;

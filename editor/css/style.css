@@ -161,6 +161,18 @@ body.player #work-area, body.player #main-area  {
 
 /* for files */
 
+.resources-tree .ltree-level-1 {
+	font-size: 1.4em;
+	background-color: #223 !important;
+	border-radius: 2px;
+	margin-top: 2px;
+}
+
+.resources-tree .ltree-level-1 .incontent {
+	color: #EEE;
+	font-weight: bold;
+}
+
 .resources-tree .ltreeitemtitle {
 	padding: 4px;
 }
@@ -528,4 +540,11 @@ textarea.code {
 #intro_dialog .header {
 	font-size: 1.5em;
 	color: #EEE;
+}
+
+.dialog-info-warning {
+	background-color: #596D7E;
+    padding: 2px;
+	margin: 2px;
+    color: #C0D1EA;
 }

@@ -258,13 +258,13 @@ var LFSBridge = {
 		if(!this.session)
 		{
 			var warning = document.createElement("div");
-			warning.style.backgroundColor = "#644";
-			warning.style.color = "#FAA";
+			warning.style.backgroundColor = "#346";
+			warning.style.color = "#ABF";
 			warning.style.padding = "10px";
 			warning.innerHTML = "<p>You must be logged to see the files in the server.</p><p>Click <button>Login</button> to enter your username and password or enter as <a href=\"javascript:LoginModule.login('guest','guest');\">GUEST</a>.</p>";
 			var button = warning.querySelector("button");
 			button.style.verticalAlign = "initial";
-			button.addEventListener("click", LoginModule.showLoginDialog.bind( LoginModule ) );
+			button.addEventListener("click", function(){ LoginModule.showLoginDialog(); });
 			container.appendChild( warning );	
 			return;
 		}

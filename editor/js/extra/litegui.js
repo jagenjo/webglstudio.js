@@ -1650,7 +1650,7 @@ function dataURItoBlob( dataURI ) {
 		root.className = "litecheckbox inputfield";
 		root.dataset["value"] = value;
 
-		var element = this.element =document.createElement("span");
+		var element = this.element = document.createElement("span");
 		element.className = "fixed flag checkbox "+(value ? "on" : "off");
 		root.appendChild( element );
 		
@@ -4259,7 +4259,10 @@ function dataURItoBlob( dataURI ) {
 		root.data = data;
 
 		if(level !== undefined)
+		{
 			root.dataset["level"] = level;
+			root.classList.add("ltree-level-" + level);
+		}
 
 		var title_element = document.createElement("div");
 		title_element.className = "ltreeitemtitle";

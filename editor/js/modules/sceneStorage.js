@@ -4,9 +4,15 @@
 var SceneStorageModule = {
 	name: "scene_storage",
 	localscene_prefix: "wgl_localscenes_",
+	
 
 	init: function()
 	{
+		if( !CORE.user_preferences.sceneStorage )
+			CORE.user_preferences.sceneStorage = {
+				show_guest_warning: true
+			};
+
 		var menubar = LiteGUI.menubar;
 		
 		menubar.add("Project/New", {callback: this.onNewScene.bind(this) });
@@ -142,7 +148,7 @@ var SceneStorageModule = {
 			return;
 		}
 
-		if(LoginModule.session.user.username == "guest")
+		if(LoginModule.session.user.username == "guest" && CORE.user_preferences.sceneStorage.show_guest_warning )
 		{
 			LoginModule.showGuestAlert();
 			return;

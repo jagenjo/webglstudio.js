@@ -1226,12 +1226,111 @@ var DriveModule = {
 		);
 	},
 
+	saveResourcesToFolder: function( list, folder, on_complete, on_error, on_progress )
+	{
+		var total = list.length;
+		inner(true);
+
+		function inner(v,msg)
+		{
+			if(!list.length)
+			{
+				if(on_complete)
+					on_complete();
+				return;
+			}
+
+			if(!v)
+			{
+				if(on_error)
+					on_error(v,msg);
+				return;
+			}
+
+			if(on_progress)
+				on_progress( list.length / total );
+		
+			var resource = list.shift();
+			if(!resource)
+			{
+				inner(true);
+				return;
+			}
+			if(resource.constructor === String)
+				resource = LS.ResourcesManager.resources[resource];
+			var new_name = folder + "/" + resource.filename;
+			LS.RM.renameResource( resource.fullpath || resource.filename, new_name );
+			DriveModule.saveResource( resource, inner );
+		}
+	},
+
 	viewResource: function( resource )
 	{
 		var url = resource.url;
 		if(!url)
 			url = LS.ResourcesManager.getFullURL( resource.filename );
 		window.open(url,'_blank');
+	},
+
+	getResourcesNotSaved: function()
+	{
+		var missing = [];
+		for(var i in LS.RM.resources)
+		{
+			var resource = LS.RM.resources[i];
+			var name = resource.fullpath || resource.filename;
+			if(name[0] == ":" || resource.remotepath || resource.from_prefab)
+				continue;
+			missing.push( name );
+		}
+
+		if(!missing.length)
+			return null;
+		return missing;
+	},
+
+	checkResourcesSaved: function()
+	{
+		var missing = this.getResourcesNotSaved();
+		if(!missing)
+			return true;
+
+		var dialog = new LiteGUI.Dialog(null,{ title:"Resources not saved", closable: true, draggable: true, width: 400 });
+		var widgets = new LiteGUI.Inspector();
+		dialog.add( widgets );
+		widgets.addInfo(null,"There are some resources in this scene that are not stored in the server, this resources will be lost if you close the application or wont be seen by other users if you share your scene.<br/>Please go to Drive and drag the files in Memory to your folders in the server.");
+		widgets.addTitle("Resources not saved in server");
+		widgets.addList(null,missing,{height:200});
+
+		var folder_to_store = null;
+		widgets.widgets_per_row = 2;
+		widgets.addFolder("Save all at this folder","", { name_width: 120, width: "75%", callback: function(v){
+			folder_to_store = v;
+		}});
+		widgets.addButton(null,"Save all now", { width: "25%", callback: function(){
+			if(!folder_to_store)
+				return LiteGUI.alert("You must select a folder");
+			dialog.close();
+			inner_save_all();
+		}});
+
+		widgets.addButton(null,"Close");
+		dialog.show();
+
+		function inner_save_all()
+		{
+			var alert_dialog = LiteGUI.alert("Saving...");
+			DriveModule.saveResourcesToFolder( missing, folder_to_store, function(){
+				alert_dialog.close();
+				LiteGUI.alert("All resources saved");
+			}, function(v,err){ //error
+				alert_dialog.content.innerHTML = "Error saving resources: " + err;
+			}, function(v){
+				alert_dialog.content.innerHTML = "Saving..." + (Math.floor(v * 100)) + "%";
+			});
+		}
+
+		return false;
 	},
 
 	//called after the server gets a file info

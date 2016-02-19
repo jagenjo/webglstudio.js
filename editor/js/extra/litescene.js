@@ -2298,6 +2298,8 @@ var ResourcesManager = {
 				resource.filename = options.filename;
 			if(!options.is_local)
 				resource.fullpath = fullpath;
+			if(options.from_prefab)
+				resource.from_prefab = options.from_prefab;
 			if(was_loaded)
 				resource.remotepath = url;
 
@@ -21686,7 +21688,7 @@ Prefab.prototype.processResources = function()
 			console.warn("resource data in prefab is undefined, skipping it:" + resname);
 			continue;
 		}
-		LS.ResourcesManager.processResource( resname, resdata, { is_local: true } );
+		var resource = LS.ResourcesManager.processResource( resname, resdata, { is_local: true, from_prefab: true } );
 	}
 }
 

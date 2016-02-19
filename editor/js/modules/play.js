@@ -141,6 +141,9 @@ var PlayModule = {
 
 	launch: function()
 	{
+		if(!DriveModule.checkResourcesSaved())
+			return;
+
 		//open window
 		var demo_window = window.open("player.html", "", "width=800, height=600");
 		demo_window.onload = launch;

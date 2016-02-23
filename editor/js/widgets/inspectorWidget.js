@@ -307,30 +307,32 @@ InspectorWidget.prototype.inspectScene = function( scene )
 			});
 
 		inspector.addTitle("Preloaded Resources");
+		var container = inspector.startContainer(null,{height:200});
+		container.style.backgroundColor = "#252525";
 		for(var i in scene.preloaded_resources)
 		{			
-			inspector.addStringButton(null, scene.preloaded_resources[i], { index: i, callback: function(v){
-					if(!v)
+			inspector.addStringButton(null, i, { callback: function(v){
+					var old = this.getValue();
+					if(old == v)
 						return;
-					scene.preloaded_resources[this.options.index] = v;
+					delete scene.preloaded_resources[old];
+					scene.preloaded_resources[v] = true;
+					inspector.refresh();
 				}, callback_button: function(){
-					//delete imported
-					delete scene.preloaded_resources[ this.options.index ];
+					delete scene.preloaded_resources[ this.getValue() ];
 					inspector.refresh();
 				},
 				button: "<img src='imgs/mini-icon-trash.png'/>"
 			});
 		}
-		inspector.addStringButton(null, "", { callback: function(v){
-			}, callback_button: function(v){
-				if(!v)
-					return;
-				//add resource
-				scene.preloaded_resources[v] = true;
-				inspector.refresh();
-			},
-			button: "+"
-		});
+		inspector.endContainer();
+		inspector.addResource( null, "", { allow_multiple: true, callback: function(v){
+			if(!v)
+				return;
+			//add resource
+			scene.preloaded_resources[v] = true;
+			inspector.refresh();
+		}});
 	}
 
 	inspector.refresh();

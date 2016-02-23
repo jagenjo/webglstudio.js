@@ -2102,6 +2102,7 @@ var ResourcesManager = {
 		if(!resource)
 			return;
 		delete resource._modified;
+		resource.remotepath = resource.fullpath;
 		LEvent.trigger(this, "resource_saved", resource );
 	},
 
@@ -2292,7 +2293,6 @@ var ResourcesManager = {
 				return;
 			}
 
-			resource.remote = true;
 			resource.filename = fullpath;
 			if(options.filename) //used to overwrite
 				resource.filename = options.filename;
@@ -2300,6 +2300,8 @@ var ResourcesManager = {
 				resource.fullpath = fullpath;
 			if(options.from_prefab)
 				resource.from_prefab = options.from_prefab;
+			if(options.from_pack)
+				resource.from_pack = options.from_pack;
 			if(was_loaded)
 				resource.remotepath = url;
 
@@ -2834,7 +2836,7 @@ LS.ResourcesManager.registerResourcePreProcessor( "dds,tga", function(filename, 
 	var cloned_data = new Uint8Array(data).buffer;
 	var texture_data = LS.Formats.parse( filename, cloned_data, options );
 
-	if(texture_data.constructor == Texture)
+	if(texture_data.constructor == GL.Texture)
 	{
 		var texture = texture_data;
 		texture.filename = filename;
@@ -2864,7 +2866,8 @@ LS.ResourcesManager.processASCIIMesh = function(filename, data, options) {
 LS.ResourcesManager.registerResourcePreProcessor("obj,ase", LS.ResourcesManager.processASCIIMesh, "text","Mesh");
 LS.ResourcesManager.registerResourcePreProcessor("stl", LS.ResourcesManager.processASCIIMesh, "binary","Mesh");
 
-LS.ResourcesManager.processASCIIScene = function(filename, data, options) {
+LS.ResourcesManager.processASCIIScene = function(filename, data, options ) {
+	//options = options || {};
 
 	var scene_data = LS.Formats.parse(filename, data, options);
 
@@ -2897,12 +2900,13 @@ LS.ResourcesManager.processASCIIScene = function(filename, data, options) {
 	var node = new LS.SceneNode();
 	node.configure(scene_data.root);
 
-	LS.GlobalScene.root.addChild(node);
+	//if(options.insert)
+	//	LS.GlobalScene.root.addChild( node );
 
-	return true;
+	return node;
 }
 
-LS.ResourcesManager.registerResourcePreProcessor("dae", LS.ResourcesManager.processASCIIScene, "text","Scene");
+LS.ResourcesManager.registerResourcePreProcessor("dae", LS.ResourcesManager.processASCIIScene, "text", "SceneTree");
 
 
 GL.Mesh.fromBinary = function( data_array )
@@ -21735,8 +21739,6 @@ Prefab.createPrefab = function( filename, node_data, resources)
 	filename += ".wbin";
 
 	//checkfilenames and rename them to short names
-	
-
 	prefab.filename = filename;
 	prefab.resources = resources;
 	prefab.prefab_json = JSON.stringify( node_data );
@@ -21766,7 +21768,7 @@ Prefab.packResources = function( resources, base_data )
 			data = resource._original_data;
 		else
 		{
-			var data_info = LS.ResourcesManager.computeResourceInternalData( resource );
+			var data_info = LS.Resource.getDataToStore( resource );
 			data = data_info.data;
 		}
 
@@ -21786,6 +21788,202 @@ Prefab.packResources = function( resources, base_data )
 }
 
 LS.Classes["Prefab"] = LS.Prefab = Prefab;
+
+
+/**
+* Pack is an object that contain several resources, helpful when you want to carry a whole scene in one single file
+* 
+* @class Pack
+* @constructor
+*/
+
+function Pack(o)
+{
+	this.resource_names = []; 
+	this.metadata = {};
+	this._resources_data = {};
+	if(o)
+		this.configure(o);
+}
+
+Pack.version = "0.1"; //used to know where the file comes from 
+
+/**
+* configure the pack from an unpacked WBin
+* @method configure
+* @param {*} data
+**/
+Pack.prototype.configure = function( data )
+{
+	var version = data["@version"];
+	var metadata = data["@metadata"];
+	if(metadata)
+		this.metadata = metadata.constructor === String ? JSON.parse( metadata ) : metadata;
+
+	//extract resource names
+	this.resource_names = data["@resource_names"];
+	this._resources_data = {};
+	if(this.resource_names)
+	{
+		for(var i in this.resource_names)
+			this._resources_data[ this.resource_names[i] ] = data[ "@RES_" + i ];
+	}
+
+	//store resources in LS.ResourcesManager
+	this.processResources();
+}
+
+Pack.fromBinary = function(data)
+{
+	if(data.constructor == ArrayBuffer)
+		data = WBin.load(data, true);
+	return new LS.Pack(data);
+}
+
+//given a list of resources that come from the Pack (usually a wbin) it extracts, process and register them 
+Pack.prototype.processResources = function()
+{
+	if(!this.resource_names)
+		return;
+
+	//block this resources of being loaded, this is to avoid chain reactions when a resource uses 
+	//another one contained in this pack
+	for(var i = 0; i < this.resource_names.length; ++i)
+	{
+		var resname = this.resource_names[i];
+		if( LS.ResourcesManager.resources[ resname ] )
+			continue; //already loaded
+		LS.ResourcesManager.resources_being_processed[ resname ] = true;
+	}
+
+	//process and store in LS.ResourcesManager
+	for(var i = 0; i < this.resource_names.length; ++i)
+	{
+		var resname = this.resource_names[i];
+		if( LS.ResourcesManager.resources[resname] )
+			continue; //already loaded
+
+		var resdata = this._resources_data[ resname ];
+		if(!resdata)
+		{
+			console.warn("resource data in Pack is undefined, skipping it:" + resname);
+			continue;
+		}
+		var resource = LS.ResourcesManager.processResource( resname, resdata, { is_local: true, from_pack: true } );
+	}
+}
+
+Pack.prototype.setResources = function( resource_names, mark_them )
+{
+	this.resource_names = [];
+	this._resources_data = {};
+
+	//get resources
+	for(var i = 0; i < resource_names.length; ++i)
+	{
+		var res_name = resource_names[i];
+		if(this.resource_names.indexOf(res_name) != -1)
+			continue;
+		var resource = LS.ResourcesManager.resources[ res_name ];
+		if(!resource)
+			continue;
+		if(mark_them)
+			resource.from_pack = true;
+		this.resource_names.push( res_name );
+	}
+
+	//repack the pack info
+	this._original_data = LS.Pack.packResources( resource_names, { "@metadata": JSON.stringify( this.metadata ), "@version": LS.Pack.version } );
+	this._modified = true;
+}
+
+Pack.prototype.addResources = function( resource_names, mark_them )
+{
+	this.setResources( this.resource_names.concat( resource_names ), mark_them );
+}
+
+/**
+* to create a WBin containing all the resource and metadata
+* @method Pack.createWBin
+* @param {String} fullpath for the pack
+* @param {Array} resource_names array with the names of all the resources to store
+* @param {Object} metadata [optional] extra data to store
+* @param {boolean} mark_them [optional] marks all the resources as if they come from a pack
+* @return object containing the pack data ready to be converted to WBin
+**/
+Pack.createPack = function( filename, resource_names, metadata, mark_them )
+{
+	if(!filename)
+		return;
+
+	if(!resource_names || resource_names.constructor !== Array)
+		throw("Pack.createPack resources must be array with names");
+
+	filename = filename.replace(/ /gi,"_");
+
+	var pack = new LS.Pack();
+	filename += ".wbin";
+	pack.filename = filename;
+	if(metadata)
+		pack.metadata = metadata;
+	var metadata_json = JSON.stringify( pack.metadata );
+
+	pack.resource_names = resource_names;
+	for(var i = 0; i < resource_names.length; ++i)
+	{
+		var res_name = resource_names[i];
+		var resource = LS.ResourcesManager.resources[ res_name ];
+		if(!resource)
+			continue;
+		if(mark_them)
+			resource.from_pack = true;
+	}
+
+	//create the WBIN in case this pack gets stored
+	var bindata = LS.Pack.packResources( resource_names, { "@metadata": metadata_json, "@version": LS.Pack.version } );
+	pack._original_data = bindata;
+
+	return pack;
+}
+
+//Given a bunch of resource names it creates a WBin with all inside
+Pack.packResources = function( resource_names, base_object )
+{
+	var to_binary = base_object || {};
+	var final_resource_names = [];
+
+	for(var i = 0; i < resource_names.length; ++i)
+	{
+		var res_name = resource_names[i];
+		var resource = LS.ResourcesManager.resources[ res_name ];
+		if(!resource)
+			continue;
+
+		var data = null;
+		if(resource._original_data) //must be string or bytes
+			data = resource._original_data;
+		else
+		{
+			var data_info = LS.Resource.getDataToStore( resource );
+			data = data_info.data;
+		}
+
+		if(!data)
+		{
+			console.warning("Wrong data in resource");
+			continue;
+		}
+
+		to_binary["@RES_" + final_resource_names.length ] = data;
+		final_resource_names.push( res_name );
+		//to_binary[res_name] = data;
+	}
+
+	to_binary["@resource_names"] = final_resource_names;
+	return WBin.create( to_binary, "Pack" );
+}
+
+LS.Classes["Pack"] = LS.Pack = Pack;
 
 //Work in progress
 
@@ -29559,7 +29757,7 @@ SceneTree.prototype.getResources = function( resources )
 	//resources that must be preloaded (because they will be used in the future)
 	if(this.preloaded_resources)
 		for(var i in this.preloaded_resources)
-			resources[ this.preloaded_resources[i] ] = true;
+			resources[ i ] = true;
 
 	//resources from nodes
 	for(var i in this._nodes)
@@ -29608,6 +29806,29 @@ SceneTree.prototype.loadResources = function( on_complete )
 			on_complete();
 	}
 }
+
+/**
+* Adds a resource that must be loaded when the scene is loaded
+*
+* @method addPreloadResource
+* @param {String} fullpath the name of the resource
+*/
+SceneTree.prototype.addPreloadResource = function( fullpath )
+{
+	this.preloaded_resources[ fullpath ] = true;
+}
+
+/**
+* Remove a resource from the list of resources to preload
+*
+* @method removePreloadResource
+* @param {String} fullpath the name of the resource
+*/
+SceneTree.prototype.removePreloadResource = function( fullpath )
+{
+	delete this.preloaded_resources[ fullpath ];
+}
+
 
 /**
 * start the scene (triggers an "start" event)
@@ -30902,6 +31123,8 @@ function Player(options)
 		options.canvas = canvas;
 	}
 
+	this.debug = false;
+
 	this.gl = GL.create(options); //create or reuse
 	this.canvas = this.gl.canvas;
 	this.render_settings = new LS.RenderSettings(); //this will be replaced by the scene ones.
@@ -31041,6 +31264,8 @@ Player.prototype.pause = function()
 
 Player.prototype.play = function()
 {
+	if(this.debug)
+		console.log("Start");
 	this.state = "playing";
 	this.scene.start();
 }
@@ -31134,6 +31359,12 @@ Player.prototype.renderLoadingBar = function()
 	gl.fillColor = this.loadingbar_color || [0.9,0.5,1.0,1.0];
 	gl.fillRect(0,y,gl.drawingBufferWidth * this.loading_bar,6);
 	gl.finish2D();
+}
+
+Player.prototype.enableDebug = function()
+{
+	LS.Script.catch_important_exceptions = false;
+	LS.catch_exceptions = false;
 }
 
 LS.Player = Player;

@@ -141,21 +141,23 @@ var PlayModule = {
 
 	launch: function()
 	{
-		if(!DriveModule.checkResourcesSaved())
-			return;
+		DriveModule.checkResourcesSaved( true, inner_ready );
 
-		//open window
-		var demo_window = window.open("player.html", "", "width=800, height=600");
-		demo_window.onload = launch;
-
-		//pass current scene
-		var scene_info = LS.GlobalScene.serialize();
-
-		//play
-		function launch()
+		function inner_ready()
 		{
-			demo_window.player.setScene( scene_info );
-		};
+			//open window
+			var demo_window = window.open("player.html", "", "width=800, height=600");
+			demo_window.onload = launch;
+
+			//pass current scene
+			var scene_info = LS.GlobalScene.serialize();
+
+			//play
+			function launch()
+			{
+				demo_window.player.setScene( scene_info );
+			};
+		}
 	},
 
 	play: function()

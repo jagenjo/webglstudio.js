@@ -1620,7 +1620,7 @@ LiteGUI.Inspector.prototype.addResource = function(name,value, options)
 	});
 	
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
-		EditorModule.showSelectResource( { type:"Mesh", on_complete: inner_onselect } );
+		EditorModule.showSelectResource( { type:"Mesh", on_complete: inner_onselect, allow_multiple: options.allow_multiple } );
 		if(options.callback_button)
 			options.callback_button.call(element, $(element).find(".wcontent input").val() );
 	});

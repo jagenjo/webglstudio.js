@@ -5890,6 +5890,7 @@ Inspector.prototype.clear = function()
 	while(this.root.hasChildNodes())
 		this.root.removeChild( this.root.lastChild );
 
+	this.row_number = 0;
 	this.values = {};
 	this.widgets = [];
 	this.widgets_by_name = {};
@@ -5954,6 +5955,7 @@ Inspector.prototype.isContainerInStack = function( container )
 
 Inspector.prototype.popContainer = function( container )
 {
+	this.row_number = 0;
 	if(this._current_container_stack && this._current_container_stack.length)
 	{
 		if(container)
@@ -5966,10 +5968,10 @@ Inspector.prototype.popContainer = function( container )
 		{
 			this._current_container_stack.pop();
 		}
-		this.current_container = this._current_container_stack[ this._current_container_stack.length - 1 ];
+		this._current_container = this._current_container_stack[ this._current_container_stack.length - 1 ];
 	}
 	else
-		this.current_container = null;
+		this._current_container = null;
 }
 
 Inspector.prototype.setup = function(info)
@@ -6494,7 +6496,7 @@ Inspector.prototype.addString = function(name,value, options)
 * - callback_button: function to call when the button is pressed
 * @return {HTMLElement} the widget in the form of the DOM element that contains it
 **/
-Inspector.prototype.addStringButton = function(name,value, options)
+Inspector.prototype.addStringButton = function( name, value, options)
 {
 	options = this.processOptions(options);
 
@@ -7581,15 +7583,26 @@ Inspector.prototype.addList = function(name, values, options)
 		if(values)
 			for(var i in values)
 			{
-				var item_name = values[i]; //array
-				var item_title = item_name;
+				var	value = values[i];
+				var item_name = values.constructor === Array ? value : i;
+				if(!item_name)
+					item_name = i;
+				var item_title = item_name.constructor === String ? item_name : i;
 
 				var icon = "";
-				if(	values[i].length == null ) //object
+				if( value === null || value === undefined )
 				{
-					item_title = values[i].name || i;
-					if(values[i].icon)
-						icon = "<img src='"+values[i].icon+"' class='icon' />";
+				
+				}
+				else if( value.constructor === String || value.constructor === Number || value.constructor === Boolean )
+				{
+					//?
+				}
+				else if( value )
+				{
+					item_title = value.content || value.name || i;
+					if(value.icon)
+						icon = "<img src='"+value.icon+"' class='icon' />";
 				}
 
 				var selected = false;
@@ -8142,6 +8155,7 @@ Inspector.prototype.startContainer = function(name, options)
 	var element = document.createElement("DIV");
 	element.className = "wcontainer";
 	this.applyOptions(element, options);
+	this.row_number = 0;
 
 	this.append( element );
 	this.pushContainer( element );
@@ -8149,11 +8163,18 @@ Inspector.prototype.startContainer = function(name, options)
 	if(options.widgets_per_row)
 		this.widgets_per_row = options.widgets_per_row;
 
+	if(options.height)
+	{
+		element.style.height = LiteGUI.sizeToCSS( options.height );
+		element.style.overflow = "auto";
+	}
+
 	element.refresh = function()
 	{
 		if(element.on_refresh)
 			element.on_refresh.call(this, element);
 	}
+
 	return element;
 }
 

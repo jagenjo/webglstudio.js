@@ -402,15 +402,6 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 	info.innerHTML = type_title;
 	element.appendChild(info);
 
-	/*
-	var button = document.createElement("button");
-	button.className = "info-button";
-	button.innerHTML = "info";
-	button.resource = resource;
-	$(element).append(button);
-	$(button).click( function() { DriveModule.showResourceDialog( this.resource ); });
-	*/
-
 	element.addEventListener("click", item_selected);
 	element.addEventListener("dblclick", item_dblclick);
 	parent.appendChild(element);
@@ -432,7 +423,9 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 			var path = element.dataset["fullpath"] || element.dataset["filename"];
 			var callback = that.on_resource_selected_callback;
 			that.on_resource_selected_callback = null;
-			callback( path );
+			if( callback( path, e ) ) //for multiple files selection, keep the callback
+				that.on_resource_selected_callback = callback;
+
 		}
 	}
 

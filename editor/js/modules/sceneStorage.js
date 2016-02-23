@@ -24,6 +24,7 @@ var SceneStorageModule = {
 		menubar.add("Project/Download", { callback: this.showDownloadSceneDialog.bind(this) });
 		menubar.add("Project/Test", { callback: this.testScene.bind(this) });
 		menubar.add("Project/Publish", { callback: this.onPublish.bind(this) });
+		menubar.add("Project/Export", { callback: this.onExport.bind(this) });
 
 		menubar.add("Scene/Check JSON", { callback: function() { EditorModule.checkJSON( LS.GlobalScene ); } });
 
@@ -455,6 +456,11 @@ var SceneStorageModule = {
 		window.open("player.html?url=" + LS.RM.path + LS.GlobalScene.extra.fullpath,'_blank');
 	},
 
+	onExport: function(e)
+	{
+		LiteGUI.alert("Feature not finished");
+	},
+
 	retrieveLocalScenes: function()
 	{
 		var local_scenes = localStorage.getItem(SceneStorageModule.localscene_prefix + "list");
@@ -613,9 +619,13 @@ var SceneStorageModule = {
 
 	saveSceneInServer: function(on_complete, on_error)
 	{
-		DriveModule.saveResource( LS.GlobalScene, inner );
+		DriveModule.checkResourcesSaved(true, inner_save );
 
-		function inner(v,err)
+		function inner_save(){
+			DriveModule.saveResource( LS.GlobalScene, inner_complete );
+		}
+
+		function inner_complete(v,err)
 		{
 			if(!v)
 			{

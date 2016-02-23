@@ -431,6 +431,7 @@ var DriveModule = {
 		if( resource.size )
 			inspector.addInfo("Size", DriveModule.beautifySize( resource.size ) );
 
+		/*
 		if(resource.metadata && typeof(resource.metadata) == "object")
 		{
 			inspector.addTextarea("Description",resource.metadata["description"] , { callback: function(v) { 
@@ -444,6 +445,7 @@ var DriveModule = {
 					metadata += "<p style='padding:0'><strong>"+i+"</strong>: " + resource.metadata[i] + "</p>\n";
 			}
 		}
+		*/
 
 		inspector.addSeparator();
 
@@ -462,13 +464,13 @@ var DriveModule = {
 			inspector.addInfo("Bytes", DriveModule.beautifySize( bytes ) );
 		}
 
-		inspector.addInfo("Metadata", metadata, {height:50});
+		//inspector.addInfo("Metadata", metadata, {height:50});
 		var link = resource.url;
 		if(!link && resource.fullpath)
 			link = LS.ResourcesManager.getFullURL( resource.fullpath );
 
-		if(category == "Prefab" && local_resource)
-			inspector.addButton("Prefab","Show content", function(){ DriveModule.showPrefabContent(local_resource); });
+		if( (category == "Prefab" || category == "Pack") && local_resource)
+			inspector.addButton( category,"Show content", function(){ PrefabMaker.showPackDialog( local_resource ); });
 
 		if(link)
 			inspector.addInfo("Link", "<a target='_blank' href='"+link+"'>link to the file</a>" );
@@ -611,7 +613,7 @@ var DriveModule = {
 	renameResource: function( old_name, new_name, resource )
 	{
 		//HARDCODED WITH LFS
-		if(resource && resource.fullpath)
+		if(resource && resource.remotepath)
 		{
 			//rename in server
 			console.log("Renaming server file");
@@ -633,6 +635,12 @@ var DriveModule = {
 
 	showSelectFolderDialog: function(callback, callback_close, default_folder )
 	{
+		if(!LoginModule.session)
+		{
+			LiteGUI.alert("You must be logged in to select a folder");
+			return;
+		}
+
 		this.serverGetFolders( inner );
 
 		function inner( tree_data )
@@ -670,32 +678,6 @@ var DriveModule = {
 			if(default_folder)
 				tree_widget.setSelectedItem( default_folder, true );
 		}
-	},
-
-	showPrefabContent: function( prefab )
-	{
-		var dialog = new LiteGUI.Dialog(null, {title:"Prefab content", close: true, width: 360, height: 240, draggable: true});
-		var inspector = new LiteGUI.Inspector();
-		inspector.addString( "Name", prefab.filename );
-		var info = null;
-		var list = [];
-		for(var i in prefab.resources)
-			list.push(i);
-		inspector.addList( null, list, { height: 200, callback: function(v){
-			console.log(v);
-			var res = prefab.resources[v];
-			if(!res)
-				return;
-			console.log(res);
-		}});
-		info = inspector.addInfo( "Info", "No info" );
-		inspector.addButton(null,"Close", function(){
-			dialog.close();
-		});
-
-		dialog.add( inspector );
-		dialog.show();
-		dialog.adjustSize();
 	},
 
 	getServerFoldersTree: function(callback)
@@ -896,8 +878,10 @@ var DriveModule = {
 			}
 		}
 
+		var type = resource ? LS.getObjectClassName( resource ) : restype;
+
 		if(!found)
-			LiteGUI.alert("Insert not implemented for this resource type: " + LS.getObjectClassName( resource ) );
+			LiteGUI.alert("Insert not implemented for this resource type: " + type );
 
 	},
 
@@ -1272,14 +1256,28 @@ var DriveModule = {
 		window.open(url,'_blank');
 	},
 
-	getResourcesNotSaved: function()
+	//returns a list of resources in memory that are not stored in the server (so they will be lost if the app closes)
+	getResourcesNotSaved: function( only_in_scene )
 	{
+		var resources = null;
+
+		if(only_in_scene)
+			resources = LS.GlobalScene.getResources();
+		else
+			resources = LS.RM.resources;
+
 		var missing = [];
-		for(var i in LS.RM.resources)
+		for(var i in resources)
 		{
-			var resource = LS.RM.resources[i];
+			var resource = null;
+			if(only_in_scene) 
+				resource = LS.RM.resources[i];
+			else
+				resource = resources[i];
+			if(!resource)
+				continue;
 			var name = resource.fullpath || resource.filename;
-			if(name[0] == ":" || resource.remotepath || resource.from_prefab)
+			if(name[0] == ":" || resource.remotepath || resource.from_prefab || resource.from_pack)
 				continue;
 			missing.push( name );
 		}
@@ -1289,45 +1287,101 @@ var DriveModule = {
 		return missing;
 	},
 
-	checkResourcesSaved: function()
+	//Shows a warning dialog if you have resources in memory that are not stored in the server
+	checkResourcesSaved: function( only_in_scene, on_complete )
 	{
-		var missing = this.getResourcesNotSaved();
+		var missing = this.getResourcesNotSaved(true);
 		if(!missing)
+		{
+			if(on_complete)
+				on_complete();
 			return true;
+		}
 
 		var dialog = new LiteGUI.Dialog(null,{ title:"Resources not saved", closable: true, draggable: true, width: 400 });
 		var widgets = new LiteGUI.Inspector();
 		dialog.add( widgets );
-		widgets.addInfo(null,"There are some resources in this scene that are not stored in the server, this resources will be lost if you close the application or wont be seen by other users if you share your scene.<br/>Please go to Drive and drag the files in Memory to your folders in the server.");
+		widgets.addInfo(null,"There are some resources in this scene that are not stored in the server, this resources will be lost if you close the application or wont be seen by other users if you share your scene.<br/>You must save them.");
 		widgets.addTitle("Resources not saved in server");
 		widgets.addList(null,missing,{height:200});
 
-		var folder_to_store = null;
+		widgets.addTitle("Pack generation");
+
+		//extra from scene
+		var folder = "";
+		if( LS.GlobalScene.extra.folder )
+			folder = LS.GlobalScene.extra.folder;
+		var filename = LS.generateUId("").substr(1) + ".PACK";
+		if( LS.GlobalScene.extra.filename )
+			filename = LS.RM.getBasename( LS.GlobalScene.extra.filename ) + ".PACK";
+
 		widgets.widgets_per_row = 2;
-		widgets.addFolder("Save all at this folder","", { name_width: 120, width: "75%", callback: function(v){
-			folder_to_store = v;
+		widgets.addFolder("Folder", folder, { name_width: 60, callback: function(v){
+			folder = v;
 		}});
-		widgets.addButton(null,"Save all now", { width: "25%", callback: function(){
-			if(!folder_to_store)
+		widgets.addString("Filename", filename, { callback: function(v){
+			filename = v;
+		}});
+		widgets.widgets_per_row = 1;
+		widgets.addButton(null,"Create PACK", { callback: function(){
+			if(!folder)
 				return LiteGUI.alert("You must select a folder");
+			if(!filename)
+				return LiteGUI.alert("You must choose a filename");
 			dialog.close();
-			inner_save_all();
+			inner_save_to_pack();
 		}});
 
-		widgets.addButton(null,"Close");
+		widgets.widgets_per_row = 1;
+		widgets.addButtons(null,["Close","Ignore"], function(v){ 
+			dialog.close();
+			if(v == "Ignore" && on_complete)
+				on_complete();
+		});
 		dialog.show();
 
-		function inner_save_all()
+		//not used
+		function inner_save_individually()
 		{
 			var alert_dialog = LiteGUI.alert("Saving...");
-			DriveModule.saveResourcesToFolder( missing, folder_to_store, function(){
+			DriveModule.saveResourcesToFolder( missing, folder, function(){
 				alert_dialog.close();
 				LiteGUI.alert("All resources saved");
+				if(on_complete)
+					on_complete();
 			}, function(v,err){ //error
 				alert_dialog.content.innerHTML = "Error saving resources: " + err;
 			}, function(v){
 				alert_dialog.content.innerHTML = "Saving..." + (Math.floor(v * 100)) + "%";
 			});
+		}
+
+		function inner_save_to_pack()
+		{
+			var alert_dialog = LiteGUI.alert("Saving...");
+
+			var fullpath = folder + "/" + filename;
+			if( fullpath.toLowerCase().indexOf(".wbin") == -1 )
+				fullpath += ".wbin";
+
+			//create pack
+			var pack = LS.Pack.createPack( filename, missing, null, true );
+			if(pack)
+			{
+				pack.fullpath = fullpath;
+				DriveModule.saveResource( pack, inner_complete );
+			}
+		}
+
+		function inner_complete( res )
+		{
+			if(res)
+			{
+				LS.GlobalScene.addPreloadResource( res.fullpath );
+				LiteGUI.alert("Pack created: " + res.fullpath );
+			}
+			if(on_complete)
+				on_complete(res);
 		}
 
 		return false;
@@ -1593,14 +1647,21 @@ var DriveModule = {
 		if(options.type)
 			DriveModule.resources_panel.filterByCategory( options.type );
 
-		DriveModule.resources_panel.on_resource_selected_callback = function( filename ) {
-			InterfaceModule.setSidePanelVisibility( visibility );
+		DriveModule.resources_panel.on_resource_selected_callback = function( filename, event ) {
+			var multiple = options.allow_multiple && event && event.shiftKey;
+			if(!multiple)
+				InterfaceModule.setSidePanelVisibility( visibility );
 			if(options.on_complete)
 				options.on_complete(filename);
 			if(filename && !options.skip_load)
 				LS.ResourcesManager.load( filename, null, options.on_load );
-			LiteGUI.Dialog.showAll();
-			LiteGUI.main_tabs.selectTab( last_tab.id );
+			if(!multiple)
+			{
+				LiteGUI.Dialog.showAll();
+				LiteGUI.main_tabs.selectTab( last_tab.id );
+			}
+			else
+				return true;
 		}
 	},
 
@@ -1734,19 +1795,21 @@ DriveModule.onInsertMaterial = function(fullpath, restype, options )
 
 DriveModule.registerAssignResourceCallback( null, DriveModule.onInsertMaterial );
 
-/*
-DriveModule.registerAssignResourceCallback("SceneNode", function(fullpath, restype, resource_item) {
-	//prefab
-	DriveModule.loadResource(fullpath, restype, function(data) { 
-		var node = new LS.SceneNode();
-		node.configure(data);
-		LS.ResourcesManager.loadResources( node.getResources({}) );
-
-		Scene.root.addChild(node);
-		EditorModule.inspect(node);
-	});
+DriveModule.registerAssignResourceCallback( "SceneNode", function( fullpath, restype ) {
+	var root = SelectionModule.getSelectedNode() || LS.GlobalScene.root;
+	var res = LS.RM.resources[ fullpath ];
+	if(res && res.constructor === LS.SceneNode )
+	{
+		root.addChild( res );
+	}
+	else
+	{
+		LS.GlobalScene.load( fullpath, function(v,res){
+			if(res && res.constructor === LS.SceneNode )
+				root.addChild( res );
+		});
+	}
 });
-*/
 
 DriveModule.registerAssignResourceCallback( "SceneTree", function( fullpath, restype, options ) {
 
@@ -1755,7 +1818,10 @@ DriveModule.registerAssignResourceCallback( "SceneTree", function( fullpath, res
 
 		var res = LS.RM.resources[ fullpath ];
 		if(!res)//load
-			LS.GlobalScene.load( LS.ResourcesManager.path + fullpath, inner);
+		{
+			LS.GlobalScene.load( fullpath, inner); 
+			//LS.GlobalScene.load( LS.ResourcesManager.path + fullpath, inner); //special case??
+		}
 		SceneStorageModule.setSceneFromJSON( res.serialize() ); //ugly but we cannot replace the current scene
 		inner( LS.GlobalScene, url );
 		DriveModule.closeTab();
@@ -1765,6 +1831,10 @@ DriveModule.registerAssignResourceCallback( "SceneTree", function( fullpath, res
 		scene.extra.folder = LS.ResourcesManager.getFolder( fullpath );
 		scene.extra.fullpath = fullpath;
 	}
+});
+
+DriveModule.registerAssignResourceCallback("Pack", function( fullpath, restype, options ) {
+	DriveModule.loadResource( fullpath );
 });
 
 DriveModule.registerAssignResourceCallback("Prefab", function( fullpath, restype, options ) {

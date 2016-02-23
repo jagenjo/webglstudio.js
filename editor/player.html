@@ -36,6 +36,9 @@
 	//allow to use Canvas2D call in the WebGLCanvas (this is not mandatory, just useful)
 	enableWebGLCanvas( gl.canvas );
 
+	if( LS.queryString["debug"] )
+		player.enableDebug();
+
 	if( LS.queryString["session"] )
 		player.setScene( JSON.parse( localStorage.getItem( LS.queryString["session"] ) ) );
 	else if( LS.queryString["url"] && LS.queryString["url"].indexOf("://") == -1 ) //for safety measures

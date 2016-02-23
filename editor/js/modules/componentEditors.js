@@ -109,13 +109,13 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 	if(!is_node_camera)
 	{
 		inspector.addSeparator();
-		inspector.addVector3("Eye", camera.eye, { pretitle: AnimationModule.getKeyframeCode( camera, "eye" ), disabled: is_node_camera, callback: function(v) { 
+		inspector.addVector3("Eye", camera.eye, { name_width: 80, pretitle: AnimationModule.getKeyframeCode( camera, "eye" ), disabled: is_node_camera, callback: function(v) { 
 			camera.eye = v;
 		}});
-		inspector.addVector3("Center", camera.center, { pretitle: AnimationModule.getKeyframeCode( camera, "center" ), disabled: is_node_camera, callback: function(v) { 
+		inspector.addVector3("Center", camera.center, { name_width: 80, pretitle: AnimationModule.getKeyframeCode( camera, "center" ), disabled: is_node_camera, callback: function(v) { 
 			camera.center = v;
 		}});
-		inspector.addVector3("Up", camera.up, { pretitle: AnimationModule.getKeyframeCode( camera, "up" ), disabled: is_node_camera, callback: function(v) { 
+		inspector.addVector3("Up", camera.up, { name_width: 80, pretitle: AnimationModule.getKeyframeCode( camera, "up" ), disabled: is_node_camera, callback: function(v) { 
 			camera.up = vec3.normalize(vec3.create(), v);
 		}});
 	}

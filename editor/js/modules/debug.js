@@ -37,6 +37,9 @@ var DebugModule = {
 		mode_tabs.addTab("Meshes",function(){
 			DebugModule.mode = "meshes";
 		});
+		mode_tabs.addTab("Materials",function(){
+			DebugModule.mode = "materials";
+		});
 
 
 		//enable WebGL Canvas2D renderer
@@ -110,15 +113,23 @@ var DebugModule = {
 		gl.disable(gl.DEPTH_TEST);
 		gl.disable(gl.CULL_FACE);
 
-		gl.start2D(); //WebGLtoCanvas2D
-		gl.save();
-		gl.scale( this.scale, this.scale );
-		gl.translate( this.offset[0], this.offset[1] );
+		var ctx = gl; //nicer
+
+		ctx.start2D(); //WebGLtoCanvas2D
+		ctx.save();
+		ctx.scale( this.scale, this.scale );
+		ctx.translate( this.offset[0], this.offset[1] );
+
+		ctx.fillStyle = "black";
+		ctx.font = "80px Arial";
+		ctx.fillText( this.mode, 0, -40 );
 
 		if(this.mode == "textures")
 			this.renderTextures();
 		else if (this.mode == "meshes")
 			this.renderMeshes();
+		else if (this.mode == "materials")
+			this.renderMaterials();
 
 		gl.restore();
 		gl.finish2D(); //WebGLtoCanvas2D
@@ -184,7 +195,9 @@ var DebugModule = {
 		gl.font = "14px Arial";
 
 
-		var mesh_camera = new LS.Camera();
+		var mesh_camera = this._mesh_camera;
+		if(!mesh_camera)
+			mesh_camera = this._mesh_camera = new LS.Camera();
 
 		var old_viewport = gl.getViewport();
 
@@ -259,7 +272,62 @@ var DebugModule = {
 				posy += h + margin;
 			}
 		}
+	},
 
+	renderMaterials: function()
+	{
+		var posx = 0;
+		var posy = 10;
+		var size = 200;
+		var margin = 20;
+		gl.strokeStyle = "gray";
+		gl.fillStyle = "white";
+		gl.textAlign = "left";
+		gl.font = "14px Arial";
+
+		LS.Draw.reset_stack_on_reset = false;
+
+		var old_viewport = gl.getViewport();
+
+		for(var i in LS.RM.materials)
+		{
+			var material = LS.RM.materials[i];
+			var w = size;
+			var h = size;
+
+			var startx = gl._matrix[6] + (posx) * gl._matrix[0];
+			var starty = gl.canvas.height - gl._matrix[7] + (-posy - h) * gl._matrix[4];
+			var sizex = w * gl._matrix[0];
+			var sizey = h * gl._matrix[4];
+
+			if(startx <= gl.canvas.width && starty <= gl.canvas.height || 
+				startx + sizex > 0 && starty + sizey > 0 )
+			{
+				gl.viewport( startx, starty, sizex, sizey );
+
+				//render
+				LS.Renderer.renderMaterialPreview( material, 1, { to_viewport: true, background_color: [0.1,0.1,0.1,1.0], rotate: 0.02 } );
+
+				gl.setViewport( old_viewport );
+
+				gl.enable( gl.BLEND );
+				gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
+
+				var filename = LS.RM.getFilename(i).substr(0,24);
+				var text = filename;
+				gl.globalAlpha = 0.5;
+				gl.strokeRect( posx, posy, w, h );
+				gl.globalAlpha = 1;
+				gl.fillText(text,posx + 5,posy + 15);
+			}
+
+			posx += w + margin;
+			if(posx > gl.canvas.width - size + margin)
+			{
+				posx = 0;
+				posy += h + margin;
+			}
+		}
 	},
 
 	mousedown: function(e)

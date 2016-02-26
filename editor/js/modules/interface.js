@@ -7,7 +7,7 @@ var InterfaceModule = {
 			CORE.user_preferences.interface = {};
 
 		//create menubar
-		LiteGUI.createMenubar();
+		LiteGUI.createMenubar(null,{sort_entries: false});
 
 		//fill menubar with sections
 		LiteGUI.menubar.add("Project");

@@ -2836,8 +2836,10 @@ function dataURItoBlob( dataURI ) {
 (function(){
 
 	/************** MENUBAR ************************/
-	function Menubar(id)
+	function Menubar(id, options)
 	{
+		options = options || {};
+
 		this.menu = [];
 		this.panels = [];
 
@@ -2849,7 +2851,8 @@ function dataURItoBlob( dataURI ) {
 		this.root.appendChild( this.content );
 
 		this.is_open = false;
-		this.auto_open = false;
+		this.auto_open = options.auto_open || false;
+		this.sort_entries = options.sort_entries || false;
 	}
 
 	Menubar.closing_time = 500;
@@ -3066,15 +3069,16 @@ function dataURItoBlob( dataURI ) {
 		for(var i in menu.children)
 			sorted_entries.push(menu.children[i]);
 
-		sorted_entries.sort(function(a,b) {
-			var a_order = 10;
-			var b_order = 10;
-			if(a && a.data && a.data.order != null) a_order = a.data.order;
-			if(a && a.separator && a.order != null) a_order = a.order;
-			if(b && b.data && b.data.order != null) b_order = b.data.order;
-			if(b && b.separator && b.order != null) b_order = b.order;
-			return a_order - b_order;
-		});
+		if(this.sort_entries)
+			sorted_entries.sort(function(a,b) {
+				var a_order = 10;
+				var b_order = 10;
+				if(a && a.data && a.data.order != null) a_order = a.data.order;
+				if(a && a.separator && a.order != null) a_order = a.order;
+				if(b && b.data && b.data.order != null) b_order = b.data.order;
+				if(b && b.separator && b.order != null) b_order = b.order;
+				return a_order - b_order;
+			});
 
 		for(var i in sorted_entries)
 		{

@@ -215,7 +215,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 EditorModule.registerNodeEditor( EditorModule.showMaterialNodeInfo );
 
 
-EditorModule.showMaterialProperties = function( material, inspector, node )
+EditorModule.showMaterialProperties = function( material, inspector, node, force_unlock )
 {
 	var mat_class = material.constructor;
 	var editor = mat_class["@inspector"];
@@ -225,7 +225,9 @@ EditorModule.showMaterialProperties = function( material, inspector, node )
 	var background_container = inspector.startContainer(null,{ className: "background" });
 	var blocker = null;
 
-	if(material.fullpath && !material._unlocked)
+	var locked = material.fullpath && !material._unlocked && !force_unlock;
+
+	if(locked)
 	{
 		editor_container.classList.add("locked_container");
 		background_container.classList.add("blur");
@@ -260,11 +262,14 @@ EditorModule.showMaterialProperties = function( material, inspector, node )
 			blocker.style.display = "none";
 		});
 		blocker.appendChild( unlock_button );
-		var clone_button = LiteGUI.createButton(null,"Clone", function(){
-			EditorModule.cloneNodeMaterial( node );
-			inspector.refresh();
-		});
-		blocker.appendChild( clone_button );
+		if(node)
+		{
+			var clone_button = LiteGUI.createButton(null,"Clone", function(){
+				EditorModule.cloneNodeMaterial( node );
+				inspector.refresh();
+			});
+			blocker.appendChild( clone_button );
+		}
 		editor_container.appendChild( blocker );
 
 		if(material._unlocked)

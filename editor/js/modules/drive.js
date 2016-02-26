@@ -465,14 +465,16 @@ var DriveModule = {
 		}
 
 		//inspector.addInfo("Metadata", metadata, {height:50});
-		var link = resource.url;
+		var link = resource.remotepath;
 		if(!link && resource.fullpath)
 			link = LS.ResourcesManager.getFullURL( resource.fullpath );
 
 		if( (category == "Prefab" || category == "Pack") && local_resource)
-			inspector.addButton( category,"Show content", function(){ PrefabMaker.showPackDialog( local_resource ); });
+			inspector.addButton( category,"Show content", function(){ PackTools.showPackDialog( local_resource ); });
+		else if( category == "json" && local_resource )
+			inspector.addButton( category,"Show content", function(){ EditorModule.checkJSON( local_resource._data ); });
 
-		if(link)
+		if(resource.fullpath)
 			inspector.addInfo("Link", "<a target='_blank' href='"+link+"'>link to the file</a>" );
 		/*
 		inspector.addButton("Show", "Open Window", { callback: function(){
@@ -1804,10 +1806,16 @@ DriveModule.registerAssignResourceCallback( "SceneNode", function( fullpath, res
 	}
 	else
 	{
+		LS.RM.load( fullpath, function(res,fullpath){
+			if(res && res.constructor === LS.SceneNode )
+				root.addChild( res );
+		});
+		/*
 		LS.GlobalScene.load( fullpath, function(v,res){
 			if(res && res.constructor === LS.SceneNode )
 				root.addChild( res );
 		});
+		*/
 	}
 });
 
@@ -1819,8 +1827,11 @@ DriveModule.registerAssignResourceCallback( "SceneTree", function( fullpath, res
 		var res = LS.RM.resources[ fullpath ];
 		if(!res)//load
 		{
-			LS.GlobalScene.load( fullpath, inner); 
-			//LS.GlobalScene.load( LS.ResourcesManager.path + fullpath, inner); //special case??
+			//the SceneTree.load function bypasses the LS.RM (uses relative urls), something that is a problem when loading an scene stored in the Drive
+			//SceneStorage also includes the url
+			LS.GlobalScene.load( LS.ResourcesManager.path + "/" + fullpath, inner); 
+			//LS.GlobalScene.load( fullpath, inner ); 
+			return;
 		}
 		SceneStorageModule.setSceneFromJSON( res.serialize() ); //ugly but we cannot replace the current scene
 		inner( LS.GlobalScene, url );
@@ -1868,7 +1879,8 @@ DriveModule.registerAssignResourceCallback(["Resource","application/javascript",
 		return;
 	}
 
-	if(resource)
+	//editor
+	if(resource && resource._data && resource._data.constructor === String)
 	{
 		var extension = LS.RM.getExtension( fullpath );
 		var lang = "text";

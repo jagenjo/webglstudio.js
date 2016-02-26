@@ -26,6 +26,9 @@ var SceneStorageModule = {
 		menubar.add("Project/Publish", { callback: this.onPublish.bind(this) });
 		menubar.add("Project/Export", { callback: this.onExport.bind(this) });
 
+		menubar.separator("Project");
+		menubar.add("Project/Reset All", { callback: EditorModule.showResetDialog.bind(EditorModule) });
+
 		menubar.add("Scene/Check JSON", { callback: function() { EditorModule.checkJSON( LS.GlobalScene ); } });
 
 		//feature in development...
@@ -525,7 +528,7 @@ var SceneStorageModule = {
 		}
 		else if( scene_info.url )
 		{
-			LS.GlobalScene.load(scene_info.url, inner);
+			LS.GlobalScene.load( scene_info.url, inner);
 			return;
 		}
 

@@ -75,7 +75,7 @@ var CubemapGenerator = {
 				*/
 				widgets.widgets_per_row = 1;
 
-				widgets.addButtons("Actions", ["Blur","Resize"], { callback: function(v) { 
+				widgets.addButtons("Actions", ["Blur","Resize","Clone"], { callback: function(v) { 
 					var cubemap = CubemapGenerator.current_cubemap;
 					if(!cubemap)
 						return;
@@ -85,6 +85,7 @@ var CubemapGenerator = {
 						var tmp = cubemap.applyBlur( 1,1,1, null, cubemap._tmp );
 						cubemap._tmp = tmp;
 						tmp.copyTo( cubemap );
+						LS.RM.resourceModified( cubemap );
 					}
 					else if(v == "Resize")
 					{
@@ -95,6 +96,14 @@ var CubemapGenerator = {
 						copy_cubemap.remotepath = cubemap.remotepath;
 						CubemapGenerator.current_cubemap = copy_cubemap;
 						LS.RM.registerResource( copy_cubemap.fullpath || copy_cubemap.filename, copy_cubemap );
+					}
+					else if(v == "Clone")
+					{
+						var copy_cubemap = cubemap.clone();
+						copy_cubemap.filename = "copy_" + cubemap.filename;
+						CubemapGenerator.current_cubemap = copy_cubemap;
+						LS.RM.registerResource( copy_cubemap.filename, copy_cubemap );
+						widgets.refresh();
 					}
 					LS.GlobalScene.refresh();
 				}});
@@ -236,6 +245,11 @@ var CubemapGenerator = {
 
 		function processResult( texture )
 		{
+			if(!texture)
+			{
+				LiteGUI.alert("Texture is not CUBEMAP, check that the name has CUBECROSSL in it to specify the cubemap type.");
+				return;
+			}
 			var fullname = name + "_" + mode + ".png";
 			if(texture.fullpath)
 			{

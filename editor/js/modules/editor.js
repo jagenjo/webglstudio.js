@@ -54,6 +54,13 @@ var EditorModule = {
 				SceneStorageModule.setSceneFromJSON(scene); 
 				localStorage.removeItem("_refresh_scene");
 			},1000);
+		else
+		{
+			//set default scene
+			LS.GlobalScene.root.addComponent( new LS.Components.Skybox() );
+		}
+
+		EditorModule.refreshAttributes();
 
 		this.registerCommands();
 	},
@@ -156,8 +163,8 @@ var EditorModule = {
 			LS.ShadersManager.reloadShaders(function() { RenderModule.requestFrame(); }); 
 		}});
 
-		mainmenu.separator("Project");
-		mainmenu.add("Project/Reset", { callback: this.showResetDialog.bind(this) });
+		//mainmenu.separator("Project", 100);
+		//mainmenu.add("Project/Reset", { order: 101, callback: this.showResetDialog.bind(this) });
 
 		function inner_change_renderMode(v) { RenderModule.setRenderMode(v.value); }
 		function inner_is_renderMode(v) { 
@@ -293,8 +300,9 @@ var EditorModule = {
 
 		w.document.write("<style>* { margin: 0; padding: 0; } html,body { margin: 20px; background-color: #222; color: #eee; } </style>");
 
-		var data = beautifyJSON( JSON.stringify( object.serialize(), null, '\t') );
-		w.document.write("<pre>"+data+"</pre>");
+		var data = JSON.stringify( object.serialize ? object.serialize() : object, null, '\t');
+		var str = beautifyJSON( data );
+		w.document.write("<pre>"+str+"</pre>");
 		w.document.close();
 	},
 
@@ -579,10 +587,22 @@ var EditorModule = {
 		if(component.enabled !== undefined)
 			widgets.addCheckbox("Enabled", component.enabled, function(v){ component.enabled = v; });
 		widgets.addString("UID", component.uid, function(v){ component.uid = v; });
-		widgets.addString("Locator", component.getLocator(), { disabled: true } );
+		var locator_widget = widgets.addString("Locator", component.getLocator(), { disabled: true } );
+		/*
+		locator_widget.style.cursor = "pointer";
+		locator_widget.setAttribute("draggable","true");
+		locator_widget.addEventListener("dragstart", function(event) { 
+			event.dataTransfer.setData("uid", component.uid );
+			event.dataTransfer.setData("locator", component.getLocator() );
+			event.dataTransfer.setData("type", "Component");
+			if(component.root)
+				event.dataTransfer.setData("node_uid", component.root.uid);
+			event.preventDefault();
+		});
+		*/
 
-		if( component.constructor.onComponentInfo )
-			component.constructor.onComponentInfo( component, widgets );
+		if( component.onComponentInfo )
+			component.onComponentInfo( widgets );
 
 		widgets.addSeparator();
 
@@ -1708,6 +1728,15 @@ LiteGUI.Inspector.prototype.addTexture = function(name, value, options)
 			LiteGUI.trigger( input, "change" );
 			e.stopPropagation();
 		}
+		else if (e.dataTransfer.files.length)//(e.dataTransfer.getData("text/uri-list"))
+		{
+			ImporterModule.importFile( e.dataTransfer.files[0], function(fullpath){
+				input.value = fullpath;
+				LiteGUI.trigger( input, "change" );
+			});
+			e.stopPropagation();
+		}
+
 		e.preventDefault();
 		return false;
 	}, true);

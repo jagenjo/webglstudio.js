@@ -169,9 +169,10 @@ CORE.registerModule( CodingModule );
 
 LS.Components.Script["@inspector"] = function(component, attributes)
 {
+	var context = component.getContext();
 
 	attributes.widgets_per_row = 2;
-	attributes.addString("Name", component.name, { callback: function(v) { 
+	attributes.addString("Name", component.name, { pretitle: AnimationModule.getKeyframeCode( component, "context"), callback: function(v) { 
 		component.name = v;
 		LEvent.trigger( LS.Components.Script, "renamed", component );
 		//CodingModule.onScriptRenamed( component );
@@ -184,44 +185,52 @@ LS.Components.Script["@inspector"] = function(component, attributes)
 	}});
 	attributes.widgets_per_row = 1;
 
+	if(context)
+		this.showObjectFields(context, attributes);
+}
+
+LS.Components.ScriptFromFile["@inspector"] = function(component, attributes)
+{
+	attributes.widgets_per_row = 2;
+	attributes.addResource("Filename", component.filename, { callback: function(v) { 
+		component.filename = v;
+	}});
+
+	attributes.addButton(null,"Edit Code", { callback: function() {
+		var path = component.uid;
+		if(!component.filename)
+			return;
+		CodingModule.openTab();
+		var res = LS.ResourcesManager.load( component.filename, null, function(res){
+			CodingModule.editInstanceCode( res, { id: component.filename, title: component.filename, lang: "javascript", path: path, help: LS.Components.Script.coding_help,
+				setCode: function(c) { component.setCode(c); }	//to force reload
+			});
+		});
+	}});
+	attributes.widgets_per_row = 1;
+
 	var context = component.getContext();
 	if(context)
 		this.showObjectFields(context, attributes);
 }
 
-if( LS.Components.ScriptFromFile )
+LS.Components.Script.prototype.onComponentInfo = function( widgets )
 {
-	LS.Components.ScriptFromFile["@inspector"] = function(component, attributes)
-	{
-		attributes.widgets_per_row = 2;
-		attributes.addResource("Filename", component.filename, { callback: function(v) { 
-			component.filename = v;
-		}});
+	var component = this;
 
-		attributes.addButton(null,"Edit Code", { callback: function() {
-			var path = component.uid;
-			if(!component.filename)
-				return;
-			CodingModule.openTab();
-			var res = LS.ResourcesManager.load( component.filename, null, function(res){
-				CodingModule.editInstanceCode( res, { id: component.filename, title: component.filename, lang: "javascript", path: path, help: LS.Components.Script.coding_help,
-					setCode: function(c) { component.setCode(c); }	//to force reload
-				});
-			});
-		}});
-		attributes.widgets_per_row = 1;
+	var locator_widget = widgets.addString("Context Locator", this.getLocator() + "/context", { disabled: true } );
+	/*
+	locator_widget.style.cursor = "pointer";
+	locator_widget.setAttribute("draggable","true");
+	locator_widget.addEventListener("dragstart", function(event) { 
+		event.dataTransfer.setData("locator", component.getContext().getLocator() );
+		event.dataTransfer.setData("type", "property");
+		event.dataTransfer.setData("node_uid", component.root.uid);
+	});
+	*/
 
-		var context = component.getContext();
-		if(context)
-			this.showObjectFields(context, attributes);
-	}
-}
-
-LS.Components.Script.onComponentInfo = function( component, widgets )
-{
-	widgets.addString("Context Locator", component.getLocator() + "/context", { disabled: true } );
 	var values = [""];
-	var context = component.getContext();
+	var context = this.getContext();
 	if(context)
 	{
 		for(var i in context)
@@ -232,6 +241,7 @@ LS.Components.Script.onComponentInfo = function( component, widgets )
 			values.push(i);
 		}
 		widgets.addCombo("Functions", "", { values: values, callback: function(v){ 
+			//TODO
 		}});
 	}
 }

@@ -109,19 +109,40 @@ InspectorWidget.prototype.onItemDrop = function(e)
 {
 	var uid = e.dataTransfer.getData("uid");
 	var class_type = e.dataTransfer.getData("class");
+	var res_fullpath = e.dataTransfer.getData("res-fullpath");
 
 	var instance = null;
+	var that = this;
 
-	switch(class_type)
+	if(res_fullpath)
 	{
-		case "SceneNode": instance = LS.GlobalScene.getNode( uid ); break;
-		case "Material": instance = LS.ResourcesManager.getMaterial( uid ); break;
-		default: 
-			if( LS.Components[class_type] )
-				instance = LS.GlobalScene.findComponentByUId( uid );
-			else if( LS.MaterialClasses[class_type] )
-				instance = LS.ResourcesManager.getMaterial( uid );
-		break;
+		instance = LS.ResourcesManager.resources[ res_fullpath ];
+		if(!instance)
+		{
+			LS.ResourcesManager.load( res_fullpath, function(res){ that.inspect( res ); });
+			return;
+		}
+		//if(instance && instance.constructor.is_material )
+		//	class_type = "Material";
+	}
+
+	if(class_type)
+	{
+		switch(class_type)
+		{
+			case "SceneNode": instance = LS.GlobalScene.getNode( uid ); break;
+			case "Material": instance = LS.ResourcesManager.getMaterial( uid ); break;
+			default: 
+				if( LS.Components[class_type] )
+					instance = LS.GlobalScene.findComponentByUId( uid );
+				else if( LS.MaterialClasses[class_type] )
+					instance = LS.ResourcesManager.getMaterial( uid );
+			break;
+		}
+	}
+	else
+	{
+		console.log("No uid found on dropped item");
 	}
 
 	if(!instance)
@@ -152,6 +173,8 @@ InspectorWidget.prototype.inspect = function( object, skip_history )
 
 	if( !object )
 		this.clear();
+	else if(object.constructor == String || object.constructor == Number || object.constructor == Boolean ) //basic types?
+		return;
 	else if( object.inspect )
 	{
 		this.inspector.clear();
@@ -166,6 +189,8 @@ InspectorWidget.prototype.inspect = function( object, skip_history )
 		this.inspectScene( object );
 	else if( object.constructor == LS.SceneNode )
 		this.inspectNode( object );
+	else if( object.constructor.is_material )
+		this.inspectMaterial( object );
 	else if( object.constructor == Array )
 		this.inspectObjectsArray( object );
 	else 
@@ -457,6 +482,12 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 	inspector.refresh();
 }
 
+InspectorWidget.prototype.inspectMaterial = function(material)
+{
+	this.inspector.clear();
+	EditorModule.showMaterialProperties( material, this.inspector );
+}
+
 InspectorWidget.prototype.showSceneRootInfo = function( scene )
 {
 	//nothing
@@ -549,9 +580,12 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 	var icon = section.querySelector(".icon");
 	icon.addEventListener("dragstart", function(event) { 
 		event.dataTransfer.setData("uid", component.uid);
+		event.dataTransfer.setData("locator", component.getLocator() );
 		event.dataTransfer.setData("type", "Component");
 		event.dataTransfer.setData("node_uid", component.root.uid);
 		event.dataTransfer.setData("class", LS.getObjectClassName(component));
+		if(component.setDragData)
+			component.setDragData(event);
 	});
 
 

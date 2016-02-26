@@ -22,6 +22,7 @@ function Timeline()
 	//LEvent.bind( LS.GlobalScene, "reload", this.onReload, this );
 
 	this.createInterface();
+	LiteGUI.createDropArea( this.canvas, this.onItemDrop.bind(this) );
 	//this.onNewAnimation();
 }
 
@@ -61,6 +62,7 @@ Timeline.prototype.createInterface = function()
 	var widgets = this.top_widgets = new LiteGUI.Inspector( null, { height: 30, widgets_width: 140, name_width: 60, one_line: true } );
 	this.root.appendChild( widgets.root );
 	this.root.style.backgroundColor = "#2a2a2a";
+	widgets.root.style.paddingTop = "4px";
 
 	widgets.addButtons(null,["New","Load","Scene"], function(v) { 
 		if(v == "New")
@@ -1655,10 +1657,7 @@ Timeline.prototype.showNewTrack = function()
 					info.type = "events";
 			}
 
-			var track = new LS.Animation.Track({ name: widgets.values["Name"], property: locator, type: info ? info.type : "number", value_size: value_size, interpolation: widgets.values["Interpolation"] });
-			that.current_take.addTrack( track );
-			that.addUndoTrackCreated( track );
-			that.animationModified();
+			that.createTrack({ name: widgets.values["Name"], locator: locator, type: (info ? info.type : null), value_size: value_size, interpolation: widgets.values["Interpolation"] });
 		}
 		dialog.close();
 		that.redrawCanvas();
@@ -1668,6 +1667,25 @@ Timeline.prototype.showNewTrack = function()
 	dialog.add( widgets );
 	dialog.adjustSize();
 	dialog.show( null, this.root );
+}
+
+Timeline.prototype.createTrack = function( options )
+{
+	if(!options || !this.current_take)
+		return;
+
+	var name = options.name;
+	var locator = options.locator;
+	var interpolation = options.interpolation || LS.NONE;
+	var type = options.type || "number";
+	var value_size = options.value_size || 0;
+
+	var track = new LS.Animation.Track({ name: name, property: locator, type: type, value_size: value_size, interpolation: interpolation });
+	this.current_take.addTrack( track );
+	this.addUndoTrackCreated( track );
+	this.animationModified();
+
+	return track;
 }
 
 Timeline.prototype.showTrackOptions = function( track )
@@ -1838,3 +1856,34 @@ Timeline.prototype.showAddEventsTrack = function()
 	dialog.show();
 }
 */
+
+Timeline.prototype.onItemDrop = function(e)
+{
+	if(!this.current_animation)
+		this.onSceneAnimation(); //create scene animation
+
+
+	var type = e.dataTransfer.getData("type");
+	var locator = e.dataTransfer.getData("locator");
+	if(!locator && e.dataTransfer.getData("text/plain"))
+		locator = e.dataTransfer.getData("text/plain");
+
+	if( locator )
+	{
+		var info = LS.GlobalScene.getPropertyInfo( locator );
+		if(!info)
+			return;
+
+		if(info && info.type == "component" )
+		{
+			this.createTrack({ name: info.name, locator: locator, type: "events" });
+		}
+		else
+		{
+			var type = info.type;
+			if(type == "object")
+				type = "events";
+			this.createTrack({ name: info.name, locator: locator, type: type });
+		}
+	}
+}

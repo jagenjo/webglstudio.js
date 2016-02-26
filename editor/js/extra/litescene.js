@@ -391,6 +391,7 @@ WBin.Uint8ArrayToString = function(typed_array, same_size)
 			break;
 		else
 			r += String.fromCharCode( typed_array[i] );
+	//return String.fromCharCode.apply(null,typed_array)
 	return r;
 }
 
@@ -456,6 +457,8 @@ WBin.progressiveLoad = function(url, on_header, on_lump, on_complete, on_error)
 }
 */
 
+//WBin is not registered in LS here, because WBin is included before LS
+//IT is done from LS
 // ******* LScript  **************************
 
 /**
@@ -922,6 +925,7 @@ var LS = {
 	/**
 	* Clones an object (no matter where the object came from)
 	* - It skip attributes starting with "_" or "jQuery" or functions
+	* - it tryes to see which is the best copy to perform
 	* - to the rest it applies JSON.parse( JSON.stringify ( obj ) )
 	* - use it carefully
 	* @method cloneObject
@@ -929,12 +933,15 @@ var LS = {
 	* @param {Object} target=null optional, the destination object
 	* @return {Object} returns the cloned object
 	*/
-	cloneObject: function(object, target, recursive)
+	cloneObject: function( object, target, recursive, only_existing )
 	{
 		var o = target || {};
 		for(var i in object)
 		{
 			if(i[0] == "_" || i.substr(0,6) == "jQuery") //skip vars with _ (they are private)
+				continue;
+
+			if(only_existing && target[i] === undefined)
 				continue;
 
 			var v = object[i];
@@ -974,7 +981,12 @@ var LS = {
 					}
 				}
 				else //slow but safe
-					o[i] = JSON.parse( JSON.stringify(v) );
+				{
+					if(v.constructor !== Object && LS.Classes[ LS.getObjectClassName(v) ])
+						console.warn("Cannot clone internal classes: " + LS.getObjectClassName(v) );
+					else
+						o[i] = JSON.parse( JSON.stringify(v) );
+				}
 			}
 		}
 		return o;
@@ -1071,7 +1083,7 @@ var LS = {
 	},
 
 	/**
-	* Returns the public properties of one object and the type
+	* Returns the public properties of one object and the type (not the values)
 	* @method getObjectProperties
 	* @param {Object} object
 	* @return {Object} returns object with attribute name and its type
@@ -1253,6 +1265,19 @@ var LS = {
 		if(script)
 			return script.context;
 		return null;
+	},
+
+	convertToString: function( data )
+	{
+		if(!data)
+			return "";
+		if(data.constructor === String)
+			return data;
+		if(data.constructor === Object)
+			return JSON.stringify( object.serialize ? object.serialize() : object );
+		if(data.constructor === ArrayBuffer)
+			data = new Uint8Array(data);
+		return String.fromCharCode.apply(null,data);
 	}
 }
 
@@ -1261,6 +1286,9 @@ Object.defineProperty( LS, "catch_exceptions", {
 	get: function() { return this._catch_exceptions; },
 	enumerable: true
 });
+
+//Add some classes
+LS.Classes.WBin = LS.WBin = WBin;
 
 /**
 * LSQ allows to set or get values easily from the global scene, using short strings as identifiers
@@ -1403,6 +1431,9 @@ LS.RUNNING = 1;
 LS.PAUSED = 2;
 
 var Network = {
+
+	default_dataType: "arraybuffer",
+
 	/**
 	* A front-end for XMLHttpRequest so it is simpler and more cross-platform
 	*
@@ -1415,7 +1446,7 @@ var Network = {
 	{
 		if(typeof(request) === "string")
 			throw("LS.Network.request expects object, not string. Use LS.Network.requestText or LS.Network.requestJSON");
-		var dataType = request.dataType || "text";
+		var dataType = request.dataType || this.default_dataType;
 		if(dataType == "json") //parse it locally
 			dataType = "text";
 		else if(dataType == "xml") //parse it locally
@@ -1518,20 +1549,20 @@ var Network = {
 	},
 
 	/**
-	* retrieve a file from url (you can bind LEvents to done and fail)
-	* @method requestFile
+	* retrieve a text file from url (you can bind LEvents to done and fail)
+	* @method requestText
 	* @param {string} url
 	* @param {object} params form params
 	* @param {function} callback
 	*/
-	requestFile: function(url, data, callback, callback_error)
+	requestText: function(url, data, callback, callback_error)
 	{
 		if(typeof(data) == "function")
 		{
-			data = null;
 			callback = data;
+			data = null;
 		}
-		return LS.Network.request({url:url, data:data, success: callback, error: callback_error });
+		return LS.Network.request({url:url, dataType:"text", success: callback, error: callback_error});
 	},
 
 	/**
@@ -1545,27 +1576,27 @@ var Network = {
 	{
 		if(typeof(data) == "function")
 		{
-			data = null;
 			callback = data;
+			data = null;
 		}
 		return LS.Network.request({url:url, data:data, dataType:"json", success: callback, error: callback_error });
 	},
 
 	/**
-	* retrieve a text file from url (you can bind LEvents to done and fail)
-	* @method requestText
+	* retrieve a file from url (you can bind LEvents to done and fail)
+	* @method requestFile
 	* @param {string} url
 	* @param {object} params form params
 	* @param {function} callback
 	*/
-	requestText: function(url, data, callback, callback_error)
+	requestFile: function(url, data, callback, callback_error)
 	{
 		if(typeof(data) == "function")
 		{
-			data = null;
 			callback = data;
+			data = null;
 		}
-		return LS.Network.request({url:url, dataType:"txt", success: callback, error: callback_error});
+		return LS.Network.request({url:url, data:data, success: callback, error: callback_error });
 	},
 
 	/**
@@ -1606,6 +1637,39 @@ var Network = {
 				}
 			document.getElementsByTagName('head')[0].appendChild( script );
 		}
+	},
+
+	requestFont: function( name, url )
+	{
+		if(!name || !url)
+			throw("LS.Network.requestFont: Wrong font name or url");
+
+		var fonts = this._loaded_fonts;
+		if(!fonts)
+			fonts = this._loaded_fonts = {};
+
+		if(fonts[name] == url)
+			return;
+		fonts[name] = url;
+
+		var style = document.getElementById("ls_fonts");
+		if(!style)
+		{
+			style = document.createElement("style");
+			style.id = "ls_fonts";
+			style.setAttribute("type","text/css");
+			document.head.appendChild(style);
+		}
+		var str = "";
+		for(var i in fonts)
+		{
+			var url = fonts[i];
+			str += "@font-face {\n" +
+					"\tfont-family: \""+i+"\";\n" + 
+					"\tsrc: url('"+url+"');\n" + 
+			"}\n";
+		}
+		style.innerHTML = str;
 	}
 };
 
@@ -1740,7 +1804,10 @@ Resource.prototype.setData = function( v, skip_modified_flag )
 
 Resource.prototype.getDataToStore = function()
 {
-	return this.data || "";
+	var data = this.data || "";
+	if(data.constructor === Object )
+		data = JSON.stringify( data );
+	return data;
 }
 
 Resource.hasPreview = false; //should this resource use a preview image?
@@ -1940,7 +2007,7 @@ var ResourcesManager = {
 	{
 		for(var i in res)
 		{
-			if( typeof(i) != "string" || i[0] == ":" )
+			if( i[0] == ":" || i[0] == "_" )
 				continue;
 			this.load( i, options );
 		}
@@ -2009,7 +2076,7 @@ var ResourcesManager = {
 					var full_url = url;
 					var extension = this.getExtension( url ).toLowerCase();
 					if(this.proxy && this.skip_proxy_extensions.indexOf( extension ) == -1 ) //proxy external files
-						return this.proxy + url.substr(pos+3); //"://"
+						return this.proxy + url; //this.proxy + url.substr(pos+3); //"://"
 					return full_url;
 					break;
 				case 'blob':
@@ -2018,7 +2085,7 @@ var ResourcesManager = {
 					return url;
 					break;
 				default:
-					if(url[0] == ":") //local resource
+					if(url[0] == ":" || url[0] == "_") //local resource
 						return url;
 					//test for virtual file system address
 					var root_path = this.virtual_file_systems[ protocol ] || resources_path;
@@ -2180,7 +2247,9 @@ var ResourcesManager = {
 			success: function(response){
 				LS.ResourcesManager.processResource( url, response, options, ResourcesManager._resourceLoadedSuccess, true );
 			},
-			error: function(err) { 	LS.ResourcesManager._resourceLoadedError(url,err); },
+			error: function(err) { 	
+				LS.ResourcesManager._resourceLoadedError(url,err);
+			},
 			progress: function(e) { 
 				if( LEvent.hasBind(  LS.ResourcesManager, "resource_loading_progress" ) ) //used to avoid creating objects during loading
 					LEvent.trigger( LS.ResourcesManager, "resource_loading_progress", { url: url, event: e, progress: e.loaded / e.total } );
@@ -2261,6 +2330,8 @@ var ResourcesManager = {
 			}
 		}
 
+		var format_info = LS.Formats.supported[ extension ];
+
 		var callback = this.resource_pre_callbacks[ extension.toLowerCase() ];
 		if(callback)
 		{
@@ -2275,6 +2346,13 @@ var ResourcesManager = {
 				this._resourceLoadedError( url, "Resource couldnt be processed" );
 				return;
 			}
+		}
+		else if( format_info && format_info.parse )
+		{
+			console.warn("Fallback to parser");
+			var resource = format_info.parse( data );
+			if(resource)
+				inner_onResource( url, resource );
 		}
 		else //unknown resource: convert to object
 		{
@@ -2739,6 +2817,15 @@ LS.ResourcesManager.registerResourcePreProcessor("json", function(filename, data
 		}
 		else
 			console.warn( "JSON object_type class not found: " + data.object_type );
+	}
+	else
+	{
+		//unknown JSON, create a resource
+		resource = new LS.Resource();
+		resource.filename = filename;
+		resource._data = data;
+		resource.type = "json";
+		resource.category = "json";
 	}
 	return resource;
 });
@@ -3753,6 +3840,7 @@ var Draw = {
 	image_last_id: 1,
 
 	onRequestFrame: null,
+	reset_stack_on_reset: true,
 
 	/**
 	* Sets up everything (prepare meshes, shaders, and so)
@@ -4045,8 +4133,11 @@ var Draw = {
 		if( reset_memory )
 			this.images = {}; //clear images
 
-		this.model_matrix = new Float32Array(this.stack.buffer,0,16);
-		mat4.identity( this.model_matrix );
+		if(this.reset_stack_on_reset)
+		{
+			this.model_matrix = new Float32Array(this.stack.buffer,0,16);
+			mat4.identity( this.model_matrix );
+		}
 	},
 
 	/**
@@ -11919,6 +12010,8 @@ function MeshRenderer(o)
 	*/
 	this.textured_points = false;
 
+	this.material = null;
+
 	if(o)
 		this.configure(o);
 
@@ -11943,6 +12036,7 @@ MeshRenderer.icon = "mini-icon-teapot.png";
 //vars
 MeshRenderer["@mesh"] = { type: "mesh" };
 MeshRenderer["@lod_mesh"] = { type: "mesh" };
+MeshRenderer["@material"] = { type: "material" };
 MeshRenderer["@primitive"] = { type:"enum", values: {"Default":-1, "Points": 0, "Lines":1, "LineLoop":2, "LineStrip":3, "Triangles":4, "TriangleStrip":5, "TriangleFan":6, "Wireframe":10 }};
 MeshRenderer["@submesh_id"] = { type:"enum", values: function() {
 	var component = this.instance;
@@ -11986,6 +12080,7 @@ MeshRenderer.prototype.configure = function(o)
 	this.submesh_id = o.submesh_id;
 	this.primitive = o.primitive; //gl.TRIANGLES
 	this.two_sided = !!o.two_sided;
+	this.material = o.material;
 	if(o.point_size !== undefined) //legacy
 		this.point_size = o.point_size;
 	this.textured_points = !!o.textured_points;
@@ -12017,6 +12112,7 @@ MeshRenderer.prototype.serialize = function()
 		o.two_sided = this.two_sided;
 	o.point_size = this.point_size;
 	o.textured_points = this.textured_points;
+	o.material = this.material;
 	return o;
 }
 
@@ -12095,7 +12191,10 @@ MeshRenderer.prototype.onCollectInstances = function(e, instances)
 		RI.flags &= ~RI_CULL_FACE;
 
 	//material (after flags because it modifies the flags)
-	RI.setMaterial( this.material || this._root.getMaterial() );
+	var material = null;
+	if(this.material)
+		material = LS.ResourcesManager.getResource( this.material );
+	RI.setMaterial( material || this._root.getMaterial() );
 
 	//if(!mesh.indexBuffers["wireframe"])
 	//	mesh.computeWireframe();
@@ -18070,6 +18169,7 @@ Script.prototype.getPropertyInfoFromPath = function( path )
 
 	if(path.length == 1)
 		return {
+			name:"context",
 			node: this._root,
 			target: context,
 			type: "object"
@@ -18384,17 +18484,60 @@ ScriptFromFile.prototype.processCode = function( skip_events )
 			this._script._context.unbindAll();
 
 		//compiles and executes the context
+		var old = this._stored_properties || this.getContextProperties();
 		var ret = this._script.compile({component:this, node: this._root, scene: this._root.scene });
 		if(!skip_events)
 			this.hookEvents();
+		this.setContextProperties( old );
+		this._stored_properties = null;
 		return ret;
 	}
 	return true;
 }
 
+Script.prototype.getContextProperties = function()
+{
+	var ctx = this.getContext();
+	if(!ctx)
+		return;
+	return LS.cloneObject( ctx );
+}
+
+Script.prototype.setContextProperties = function( properties )
+{
+	if(!properties)
+		return;
+	var ctx = this.getContext();
+	if(!ctx) //maybe the context hasnt been crated yet
+	{
+		this._stored_properties = properties;
+		return;
+	}
+	LS.cloneObject( properties, ctx, false, true );
+}
+
+ScriptFromFile.prototype.configure = function(o)
+{
+	if(o.enabled !== undefined)
+		this.enabled = o.enabled;
+	if(o.filename !== undefined)
+		this.filename = o.filename;
+	if(o.properties)
+		 this.setContextProperties( o.properties );
+}
+
+ScriptFromFile.prototype.serialize = function()
+{
+	return {
+		enabled: this.enabled,
+		filename: this.filename,
+		properties: LS.cloneObject( this.getContextProperties() )
+	};
+}
+
+
 ScriptFromFile.prototype.getResources = function(res)
 {
-	
 	if(this.filename)
 		res[this.filename] = LS.Resource;
 
@@ -21744,7 +21887,7 @@ Prefab.createPrefab = function( filename, node_data, resources)
 	prefab.prefab_json = JSON.stringify( node_data );
 
 	//get all the resources and store them in a WBin
-	var bindata = Prefab.packResources( resources, { "@json": prefab.prefab_json, "@version": Prefab.version } );
+	var bindata = LS.Prefab.packResources( resources, { "@json": prefab.prefab_json, "@version": Prefab.version } );
 	prefab._original_data = bindata;
 
 	return prefab;
@@ -24596,13 +24739,13 @@ var Renderer = {
 	},
 
 	/**
-	* Renders the material preview to an image
+	* Renders the material preview to an image (or to the screen)
 	*
 	* @method renderMaterialPreview
 	* @param {Material} material
 	* @param {number} size image size
-	* @param {Object} options could be environment_texture
-	* @return {Image} the preview image (in canvas format)
+	* @param {Object} options could be environment_texture, to_viewport
+	* @return {Image} the preview image (in canvas format) or null if it was rendered to the viewport
 	*/
 	renderMaterialPreview: function( material, size, options )
 	{
@@ -24612,7 +24755,10 @@ var Renderer = {
 		if(!scene)
 		{
 			scene = this._material_scene = new LS.SceneTree();
-			scene.info.background_color.set([0,0,0,0]);
+			if(options.background_color)
+				scene.info.background_color.set(options.background_color);
+			else
+				scene.info.background_color.set([0.0,0.0,0.0,0]);
 			if(options.environment_texture)
 				scene.info.textures.environment = options.environment_texture;
 			var node = new LS.SceneNode( "sphere" );
@@ -24621,8 +24767,16 @@ var Renderer = {
 			scene.root.addChild( node );
 		}
 
-		var node = scene.getNode( "sphere") ;
+		var node = scene.getNode( "sphere");
+		if(options.rotate)
+			node.transform.rotateY( options.rotate );
 		node.material = material;
+
+		if(options.to_viewport)
+		{
+			LS.Renderer.renderFrame( scene.root.camera, { skip_viewport: true, render_helpers: false, update_materials: true }, scene );
+			return;
+		}
 
 		var tex = this._material_preview_texture || new GL.Texture(size,size);
 		if(!this._material_preview_texture)
@@ -25461,7 +25615,7 @@ LS.Formats = {
 };
 
 //native formats do not need parser
-LS.Formats.addSupportedFormat( "png,jpg,webp,bmp,gif", { "native": true, dataType: "arraybuffer", resource: "Texture", "resourceClass": GL.Texture, has_preview: true, type: "image" } );
+LS.Formats.addSupportedFormat( "png,jpg,jpeg,webp,bmp,gif", { "native": true, dataType: "arraybuffer", resource: "Texture", "resourceClass": GL.Texture, has_preview: true, type: "image" } );
 LS.Formats.addSupportedFormat( "wbin", { dataType: "arraybuffer" } );
 LS.Formats.addSupportedFormat( "json,js,txt,csv", { dataType: "string" } );
 WBin.classes = LS.Classes; //WBin need to know which classes are accesible to be instantiated right from the WBin data info, in case the class is not a global class
@@ -25506,7 +25660,7 @@ var parserASE = {
 	type: "mesh",
 	resource: "Mesh",
 	format: 'text',
-	dataType:'string',
+	dataType:'text',
 	
 	parse: function( text, options, filename )
 	{
@@ -26790,7 +26944,7 @@ global.Collada = {
 		var buffers = [];
 		var last_index = 0;
 		var facemap = {};
-		var vertex_remap = [];
+		var vertex_remap = []; //maps DAE vertex index to Mesh vertex index (because when meshes are triangulated indices are changed
 		var indicesArray = [];
 		var last_start = 0;
 		var group_name = "";
@@ -26828,8 +26982,9 @@ global.Collada = {
 				var current_index = -1;
 				var prev_index = -1;
 
-				if(use_indices && last_index >= 256*256)
-					break;
+				//discomment to force 16bits indices
+				//if(use_indices && last_index >= 256*256)
+				//	break;
 
 				//for every pack of indices in the polygon (vertex, normal, uv, ... )
 				for(var k = 0, l = data.length; k < l; k += num_data_vertex)
@@ -26841,14 +26996,16 @@ global.Collada = {
 						current_index = facemap[vertex_id];
 					else
 					{
+						//for every data buffer associated to this vertex
 						for(var j = 0; j < buffers.length; ++j)
 						{
 							var buffer = buffers[j];
 							var index = parseInt(data[k + j]);
-							var array = buffer[1]; //array with all the data
+							var array = buffer[1]; //array where we accumulate the final data as we extract if from sources
 							var source = buffer[3]; //where to read the data from
 							if(j == 0)
-								vertex_remap[ array.length / num_data_vertex ] = index;
+								vertex_remap[ array.length / buffer[2] ] = index; //not sure if buffer[2], it should be number of floats per vertex (usually 3)
+//								vertex_remap[ array.length / num_data_vertex ] = index;
 							index *= buffer[2]; //stride
 							for(var x = 0; x < buffer[2]; ++x)
 								array.push( source[index+x] );
@@ -26859,7 +27016,7 @@ global.Collada = {
 						facemap[vertex_id] = current_index;
 					}
 
-					if(!triangles) //split polygons then
+					if(!triangles) //the xml element is not triangles? then split polygons in triangles
 					{
 						if(k == 0)
 							first_index = current_index;
@@ -27094,8 +27251,8 @@ global.Collada = {
 			var current_index = -1;
 			var prev_index = -1;
 
-			if(use_indices && last_index >= 256*256)
-				break;
+			//if(use_indices && last_index >= 256*256)
+			//	break;
 
 			//for every pack of indices in the polygon (vertex, normal, uv, ... )
 			for(var k = 0, l = data.length; k < l; k += num_data_vertex)
@@ -27585,6 +27742,7 @@ global.Collada = {
 			var final_bone_indices = new Uint8Array(4 * num_vertices); //4 bones per vertex
 			var used_joints = [];
 
+			//for every vertex in the mesh, process bone indices and weights
 			for(var i = 0; i < num_vertices; ++i)
 			{
 				var p = remap[ i ] * 4;
@@ -28042,7 +28200,7 @@ var parserDAE = {
 	type: "scene",
 	resource: "SceneTree",
 	format: "text",
-	dataType:'string',
+	dataType:'text',
 
 	parse: function( data, options, filename )
 	{
@@ -28360,7 +28518,7 @@ var parserOBJ = {
 	type: 'mesh',
 	resource: 'Mesh',
 	format: 'text',
-	dataType:'string',
+	dataType:'text',
 
 	flipAxis: false,
 
@@ -28626,7 +28784,7 @@ var parserOBJ = {
 			}
 			else
 			{
-				trace("unknown code: " + line);
+				console.warn("unknown code: " + line);
 			}
 		}
 
@@ -28673,7 +28831,7 @@ var parserOBJ = {
 			mesh.triangles = new Uint16Array(indicesArray);
 
 		//extra info
-		mesh.bounding = Mesh.computeBounding(mesh.vertices);
+		mesh.bounding = GL.Mesh.computeBounding(mesh.vertices);
 		var info = {};
 		if(groups.length > 1)
 			info.groups = groups;
@@ -28686,12 +28844,96 @@ var parserOBJ = {
 
 LS.Formats.registerParser( parserOBJ );
 
+
+
+
+//***** MTL parser *****************
+//info from: http://paulbourke.net/dataformats/mtl/
+var parserMTL = {
+	extension: 'mtl',
+	type: 'material',
+	resource: 'StandardMaterial',
+	format: 'text',
+	dataType:'text',
+
+	parse: function( text, options )
+	{
+		var lines = text.split("\n");
+		var length = lines.length;
+
+		var materials = {};
+		var current_material = null;
+
+		for (var lineIndex = 0;  lineIndex < length; ++lineIndex)
+		{
+			var line = lines[lineIndex].replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //trim
+
+			if (line[0] == "#" || line == "")
+				continue;
+
+			var tokens = line.split(" ");
+			var c = tokens[0];
+			switch(c)
+			{
+				case "newmtl":
+					current_material = { filename: tokens[1], textures: {} };
+					materials[ tokens[1] ] = current_material;
+					break;
+				case "Ka":
+					current_material.ambient = readVector3(tokens);
+					break;
+				case "Kd":
+					current_material.color = readVector3(tokens);
+					break;
+				case "Ks":
+					current_material.specular_factor = parseFloat(tokens[1]); //readVector3(tokens);
+					break;
+				case "Ns": //glossiness
+					current_material.specular_gloss = parseFloat(tokens[1]);
+					break;
+				case "map_Kd":
+					current_material.textures["color"] = tokens[1];
+					break;
+				case "map_Ka":
+					current_material.textures["ambient"] = tokens[1];
+					break;
+				case "map_Ks":
+					current_material.textures["specular"] = tokens[1];
+					break;
+				case "d": //disolve is like transparency
+					current_material.opacity = parseFloat( tokens[1] );
+					break;
+				//Not supported stuff
+				case "illum": //illumination model (raytrace related)
+				case "Ni": //refraction coefficient
+					break;
+			}
+		}
+
+		for(var i in materials)
+		{
+			var material_info = materials[i];
+			var material = new LS.StandardMaterial(material_info);
+			LS.RM.registerResource( material_info.filename, material );
+		}
+
+		return null;
+
+		function readVector3(v)
+		{
+			return [ parseFloat(v[1]), parseFloat(v[2]), parseFloat(v[3]) ];
+		}
+	}
+};
+
+LS.Formats.registerParser( parserMTL );
 //***** STL Parser *****************
 //based on https://github.com/tonylukasavage/jsstl
 var parserSTL = {
 	extension: 'stl',
 	type: 'mesh',
 	format: 'binary',
+	dataType:'arraybuffer',
 	
 	parse: function( data, options )
 	{
@@ -29023,6 +29265,75 @@ var parserGR2 = {
 };
 
 LS.Formats.registerParser( parserGR2 );
+
+
+
+//GR2
+var parserMview = { 
+	extension: 'mview',
+	type: 'pack',
+	format: 'binary',
+	dataType:'arraybuffer',
+
+	parse: function(data, options)
+	{
+		var pos = 0;
+		var files = [];
+
+		var tmp_uint32 = new Uint32Array(1);
+		var tmp_uint32v = new Uint8Array(tmp_uint32.buffer);
+
+		if(data.constructor === ArrayBuffer)
+			data = new Uint8Array(data);
+
+		while(pos < data.length)
+		{
+			var filename = readNullString();
+			var type = readNullString();
+			var id = readUint32();
+			var size = readUint32();
+			var ff = readUint32();
+			var file_data = readData(size); //test
+			if( type == "application/json")
+				file_data = String.fromCharCode.apply(null, file_data);
+			files.push({name: filename, type: type, size: size, data: file_data});
+		}
+		console.log(files);
+
+		function readNullString()
+		{
+			var start = pos;
+			while(data[pos] != 0)
+				++pos;
+			return String.fromCharCode.apply(null, data.subarray(start, pos++));
+		}
+
+		function readUint32()
+		{
+			tmp_uint32v.set( data.subarray(pos,pos+4) );
+			pos += 4;
+			return tmp_uint32[0];
+		}
+
+		function readData( size )
+		{
+			var d = data.subarray(pos, pos+size);
+			pos += size;
+			return d;
+		}
+
+		for(var i in files)
+		{
+			var file = files[i];
+			LS.RM.processResource( file.name, file.data );
+		}
+
+		//return { type: "Files", files: files };
+		return null;
+	}
+};
+
+LS.Formats.registerParser( parserMview );
 /**
 * The SceneTree contains all the info about the Scene and nodes
 *
@@ -29068,6 +29379,26 @@ Object.defineProperty( SceneTree.prototype, "root", {
 	},
 	set: function(v) {
 		throw("Root node cannot be replaced");
+	}
+});
+
+Object.defineProperty( SceneTree.prototype, "time", {
+	enumerable: true,
+	get: function() {
+		return this._time;
+	},
+	set: function(v) {
+		throw("Cannot set time directly");
+	}
+});
+
+Object.defineProperty( SceneTree.prototype, "globalTime", {
+	enumerable: true,
+	get: function() {
+		return this._global_time;
+	},
+	set: function(v) {
+		throw("Cannot set global_time directly");
 	}
 });
 
@@ -29317,7 +29648,8 @@ SceneTree.prototype.serialize = function()
 }
 
 /**
-* loads a scene from a JSON description
+* Loads a scene from a relative url pointing to a JSON description
+* Warning: this url is not passed through the LS.ResourcesManager so the url is absolute
 *
 * @method load
 * @param {String} url where the JSON object containing the scene is stored

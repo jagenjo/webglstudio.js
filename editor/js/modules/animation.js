@@ -94,6 +94,7 @@ var AnimationModule = {
 		{
 			e.dataTransfer.setData("type", "property" );
 			e.dataTransfer.setData("uid", e.target.dataset["propertyuid"] );
+			e.dataTransfer.setData("locator", e.target.dataset["propertyuid"] );
 		}
 	},
 
@@ -115,7 +116,19 @@ var AnimationModule = {
 		var dialog = new LiteGUI.Dialog("property_info",{ title:"Property Info", width: 400, draggable: true, closable: true });
 		
 		var widgets = new LiteGUI.Inspector();
-		widgets.addString("Locator", property, function(v){});
+		var locator_widget = widgets.addString("Locator", property, function(v){});
+		/*
+		locator_widget.style.cursor = "pointer";
+		locator_widget.setAttribute("draggable","true");
+		locator_widget.addEventListener("dragstart", function(event) { 
+			event.dataTransfer.setData("locator", property );
+			event.dataTransfer.setData("type", "property");
+			if(info.node)
+				event.dataTransfer.setData("node_uid", info.node.uid);
+			//event.preventDefault();
+		});
+		*/
+		
 		widgets.addString("Short Locator", LSQ.shortify( property ), function(v){});
 
 		widgets.widgets_per_row = 2;

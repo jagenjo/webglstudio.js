@@ -2,7 +2,7 @@
 	"version":"0.3b",
 	"server":"fileserver/src/",
 	"resources":"fileserver/files/",
-	"proxy":"@/redirect/",
+	"proxy":"@/proxy.php?url=",
 	"shaders":"data/shaders.xml",
 	"modules":[
 			"js/modules/interface.js",
@@ -48,7 +48,7 @@
 			"js/modules/graph.js",
 			"js/modules/play.js",
 			"js/modules/console.js",
-			"js/modules/prefabMaker.js",
+			"js/modules/packTools.js",
 			"js/modules/generic.js",
 			"js/modules/debug.js",
 			"js/modules/meshPainter.js",

@@ -58,7 +58,7 @@ LS.SceneNode.actions["select_children"] = {
 LS.SceneNode.actions["create_prefab"] = { 
 	title:"Create Prefab",
 	callback: function(){
-		PrefabMaker.showCreatePrefabDialog( this );
+		PackTools.showCreatePrefabDialog( this );
 	}
 };
 

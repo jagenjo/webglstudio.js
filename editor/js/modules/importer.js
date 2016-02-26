@@ -132,6 +132,15 @@ var ImporterModule  = {
 			reader.readAsArrayBuffer(file);
 	},
 
+	importFile: function( file, on_complete, options )
+	{
+		this.loadFileToMemory( file, function(file,options){
+			var res = ImporterModule.processResource( file.name, file, options, on_complete );
+			if(res && on_complete)
+				on_complete(res);
+		},options);
+	},
+
 	//show the dialog to perform actions to the imported file
 	showImportResourceDialog: function( file, options )
 	{

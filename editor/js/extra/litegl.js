@@ -5022,47 +5022,11 @@ Texture.prototype.toCanvas = function( canvas, flip_y, max_size )
 */
 Texture.prototype.toBlob = function()
 {
-	var w = this.width;
-	var h = this.height;
-
-	if(this.texture_type == gl.TEXTURE_CUBE_MAP)
-	{
-		if(!this.image)
-		{
-			console.warning("Litegl: cannot call toBlob of a cubemap GL.Texture");
-			return null; //cannot blob
-		}
-		else
-		{
-			//use the associated image
-			var final_canvas = createCanvas(this.image.width,this.image.height);
-			var final_ctx = final_canvas.getContext("2d");
-			final_ctx.drawImage( this.image, 0, 0 );
-			return final_canvas.toBlob();
-		}
-	}
-
-	//Read pixels form WebGL
-	var buffer = this.getPixels();
-
 	//dump to canvas
-	var canvas = createCanvas(w,h);
+	var canvas = this.toCanvas();
 	if(!canvas.toBlob)
 		throw "toBlob not supported on Canvas element";
-
-	var ctx = canvas.getContext("2d");
-	var pixels = ctx.getImageData(0,0,w,h);
-	pixels.data.set( buffer );
-	ctx.putImageData(pixels,0,0);
-
-	//reverse
-	var final_canvas = createCanvas(w,h);
-	var final_ctx = final_canvas.getContext("2d");
-	final_ctx.translate(0,final_canvas.height);
-	final_ctx.scale(1,-1);
-	final_ctx.drawImage( canvas, 0, 0 );
-
-	return final_canvas.toBlob();
+	return canvas.toBlob();
 }
 
 /**

@@ -980,7 +980,9 @@
 			vec2 polarToCartesian(in vec3 V)
 			{
 				return vec2( 0.5 - (atan(V.z, V.x) / -6.28318531), asin(V.y) / 1.57079633 * 0.5 + 0.5);
-			}					
+			}	
+			
+			#import "getSkyboxColor"
 			
 			//to use normalmaps
 			#import "perturbNormal"
@@ -1305,6 +1307,8 @@
 			{
 				return vec2( 0.5 - (atan(V.z, V.x) / -6.28318531), asin(V.y) / 1.57079633 * 0.5 + 0.5);
 			}					
+
+			#import "getSkyboxColor"
 			
 			#import "computeLight"
 
@@ -1775,6 +1779,8 @@
 				return vec2( 0.5 - (atan(V.z, V.x) / -6.28318531), asin(V.y) / 1.57079633 * 0.5 + 0.5);
 			}					
 			
+			#import "getSkyboxColor"
+
 			#import "computeLight"
 
 			//to use normalmaps

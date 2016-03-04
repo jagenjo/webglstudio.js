@@ -221,7 +221,7 @@ var LiteFileServer = {
 	},
 
 	//http request wrapper
-	request: function(url, params, on_complete, on_error, on_progress )
+	request: function(url, params, on_complete, on_error, on_progress, skip_parse )
 	{
 		var xhr = new XMLHttpRequest();
 		xhr.open( params ? 'POST' : 'GET' , url, true );
@@ -246,7 +246,7 @@ var LiteFileServer = {
 			}
 
 			var type = this.getResponseHeader('content-type');
-			if(type == "application/json")
+			if(!skip_parse && type == "application/json")
 			{
 				try
 				{
@@ -381,7 +381,7 @@ var LiteFileServer = {
 
 	requestFile: function(fullpath, on_complete, on_error)
 	{
-		this.request( this.files_path + "/" + fullpath, null, on_complete, on_error );
+		this.request( this.files_path + "/" + fullpath, null, on_complete, on_error, null, true );
 	}
 };
 	
@@ -787,6 +787,7 @@ Session.prototype.getFileInfo = function( fullpath, on_complete )
 			on_complete(resp.data, resp);
 	});
 }
+
 
 /**
 * Uploads a file to the server (it allows to send other info too like preview)
@@ -1194,6 +1195,48 @@ Session.prototype.deleteFile = function( fullpath, on_complete, on_error )
 			on_complete(resp.status == 1, resp);
 	}, on_error );
 }
+
+//ADMIN BACKUPS STUFF
+Session.prototype.getBackupsList = function( on_complete )
+{
+	var params = {action: "system/backups"};
+	return this.request( this.server_url, params, function(resp){
+		console.log(resp);
+		if(on_complete)
+			on_complete( resp.status == 1, resp );
+	});
+}
+
+Session.prototype.createBackup = function( name, on_complete )
+{
+	var params = {action: "system/createBackup", name: name };
+	return this.request( this.server_url, params, function(resp){
+		console.log(resp);
+		if(on_complete)
+			on_complete( resp.status == 1, resp );
+	});
+}
+
+Session.prototype.restoreBackup = function( name, on_complete )
+{
+	var params = {action: "system/restoreBackup", name: name };
+	return this.request( this.server_url, params, function(resp){
+		console.log(resp);
+		if(on_complete)
+			on_complete( resp.status == 1, resp );
+	});
+}
+
+Session.prototype.deleteBackup = function( name, on_complete )
+{
+	var params = {action: "system/deleteBackup", name: name };
+	return this.request( this.server_url, params, function(resp){
+		console.log(resp);
+		if(on_complete)
+			on_complete( resp.status == 1, resp );
+	});
+}
+
 
 global.LFS = global.LiteFileServer = LiteFileServer;
 

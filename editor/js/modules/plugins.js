@@ -78,6 +78,8 @@ var PluginsModule  = {
 			}
 			else
 			{
+				var placeholder_plugin = { name: LS.RM.getFilename(url) };
+				PluginsModule.registerPlugin( placeholder_plugin, url );
 				console.log("Plugin without module?");
 				if(on_complete)
 					on_complete(false);

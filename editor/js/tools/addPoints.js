@@ -281,6 +281,10 @@ var AddPointsTool = {
 		if( geo.testRayPlane( ray.start, ray.direction, plane_center, plane_normal, result ) )
 			return result;
 		return null;
+	},
+
+	renderEditor: function()
+	{
 	}
 };
 

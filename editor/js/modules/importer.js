@@ -10,7 +10,8 @@ var ImporterModule  = {
 	preferences: {
 		optimize_data: true,
 		mesh_action: "origin",
-		texture_action: "replace"
+		texture_action: "replace",
+		use_names_in_animations: false
 	},
 
 	init: function()
@@ -152,7 +153,12 @@ var ImporterModule  = {
 		var target = LS.Material.COLOR_TEXTURE;
 		var insert_into = false;
 		var upload_file = false;
-		var optimize_data = true;
+
+		var import_options = {
+			optimize_data: this.preferences.optimize_data
+		};
+
+
 		var file_content = file ? file.data : null;
 		var url = "";
 		var drop_node = options.node;
@@ -269,7 +275,7 @@ var ImporterModule  = {
 					inspector.addCombo("Action", ImporterModule.preferences.mesh_action, { values: {"Insert in Origin":"origin","Insert in intersection":"plane","Replace Mesh":"replace"}, callback: function(v) { 
 						ImporterModule.preferences.mesh_action = v;
 					}});
-					inspector.addCheckbox("Optimize data", optimize_data, { callback: function(v) { optimize_data = v; }});
+					inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { import_options.optimize_data = v; }});
 					//inspector.addCheckbox("Insert into scene", insert_into, { callback: function(v) { insert_into = v; }});
 				}
 				else if(info.resource == "Texture" )
@@ -291,12 +297,13 @@ var ImporterModule  = {
 							}});
 						}
 					}
-					inspector.addCheckbox("Optimize data", optimize_data, { callback: function(v) { optimize_data = v; }});
+					inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { import_options.optimize_data = v; }});
 				}
 				else if(info.resource == "SceneTree" )
 				{
 					inspector.addTitle("Scene");
-					inspector.addCheckbox("Optimize data", optimize_data, { callback: function(v) { optimize_data = v; }});
+					inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { import_options.optimize_data = v; }});
+					inspector.addCheckbox("Use names in animations", import_options.use_names_in_animations, { callback: function(v) { import_options.use_names_in_animations = v; }});
 				}
 			}
 		}
@@ -319,12 +326,14 @@ var ImporterModule  = {
 			filename = inspector.getValue("Filename");
 			filename = filename.replace(/ /g,"_"); //no spaces in names			
 
-			options.optimize_data = optimize_data;
-			options.filename = filename;
-			options.target = target; //if its texture
+			for(var i in options)
+				import_options[i] = options[i];
+
+			import_options.filename = filename;
+			import_options.target = target; //if its texture
 			file.filename = filename;
 
-			ImporterModule.processResource( name, file, options, inner_processed );
+			ImporterModule.processResource( name, file, import_options, inner_processed );
 			dialog.close();
 		}
 
@@ -377,6 +386,7 @@ var ImporterModule  = {
 		{
 			if(resource)
 			{
+				console.log( "Imported resource: " + LS.getObjectClassName(resource) );
 				if(options.optimize_data && resource.constructor == GL.Mesh )
 				{
 					resource._original_data = resource.toBinary().buffer; //ArrayBuffer
@@ -386,6 +396,16 @@ var ImporterModule  = {
 				}
 				else
 					resource._original_file = file;
+
+				if( options.use_names_in_animations && (resource.constructor === LS.SceneTree || resource.constructor === LS.SceneNode) )
+				{
+					if(resource.animations)
+					{
+						var animation = LS.RM.getResource(resource.animations);
+						if(animation)
+							animation.convertIDstoNames( true, resource );
+					}
+				}
 			}
 
 			if(on_complete)

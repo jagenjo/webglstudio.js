@@ -1534,6 +1534,8 @@ LiteGUI.Inspector.prototype.addNode = function( name, value, options )
 	input.addEventListener("change", function(e) { 
 		if(options.use_node)
 			value = LS.GlobalScene.getNode( e.target.value );
+		else
+			value = e.target.value;
 		LiteGUI.Inspector.onWidgetChange.call(that, element, name, value, options);
 	});
 	

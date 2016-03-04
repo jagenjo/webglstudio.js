@@ -674,7 +674,8 @@ var LiteGUI = {
 	//* DIALOGS *******************
 	showModalBackground: function(v)
 	{
-		LiteGUI.modalbg_div.style.display = v ? "block" : "none";
+		if(LiteGUI.modalbg_div)
+			LiteGUI.modalbg_div.style.display = v ? "block" : "none";
 	},
 
 	showMessage: function(content, options)
@@ -1561,16 +1562,24 @@ function dataURItoBlob( dataURI ) {
 			var name = values.constructor == Array ? values[i] : i;
 			var value = values[i];
 
+			var disabled = false;
+
 			if(value === null)
 			{
-				element.className += "separator";
-				element.innerHTML = "<hr/>"
+				element.classList.add("separator");
+				//element.innerHTML = "<hr/>"
 				//continue;
 			}
 			else
 			{
 				element.innerHTML = value && value.title ? value.title : name;
 				element.value = value;
+
+				if(value && value.disabled)
+				{
+					disabled = true;
+					element.classList.add("disabled");
+				}
 
 				if(typeof(value) == "function")
 				{
@@ -1579,7 +1588,7 @@ function dataURItoBlob( dataURI ) {
 				}
 				else if(typeof(value) == "object")
 				{
-					if(value.callback && !options.ignore_item_callbacks)
+					if(value.callback && !options.ignore_item_callbacks && !disabled)
 						element.addEventListener("click", function(e) { this.value.callback.apply( this, this.value ); });
 				}
 				else
@@ -1587,7 +1596,8 @@ function dataURItoBlob( dataURI ) {
 			}
 
 			root.appendChild(element);
-			element.addEventListener("click", inner_onclick);
+			if(!disabled)
+				element.addEventListener("click", inner_onclick);
 			num++;
 		}
 
@@ -3094,7 +3104,10 @@ function dataURItoBlob( dataURI ) {
 			if(menu_item && menu_item.name)
 				item.innerHTML = "<span class='icon'></span><span class='name'>" + menu_item.name + (has_submenu ? "<span class='more'>+</span>":"") + "</span>";
 			else
-				item.innerHTML = "<span class='separator'></span>";
+			{
+				item.classList.add("separator");
+				//item.innerHTML = "<span class='separator'></span>";
+			}
 
 			item.data = menu_item;
 
@@ -6205,7 +6218,7 @@ Inspector.assignValue = function(value)
 Inspector.prototype.createWidget = function(name, content, options) 
 {
 	options = options || {};
-	content = content || "";
+	content = (content === undefined || content === null) ? "" : content;
 	var element = document.createElement("DIV");
 	element.className = "widget " + (options.className || "");
 	element.inspector = this;
@@ -6284,7 +6297,7 @@ Inspector.prototype.createWidget = function(name, content, options)
 }
 
 //calls callback, triggers wchange, calls onchange in Inspector
-Inspector.onWidgetChange = function( element, name, value, options, expand_value )
+Inspector.onWidgetChange = function( element, name, value, options, expand_value, event )
 {
 	this.values[ name ] = value;
 	var r = undefined;
@@ -6293,7 +6306,7 @@ Inspector.onWidgetChange = function( element, name, value, options, expand_value
 		if(expand_value)
 			r = options.callback.apply( element, value );
 		else
-			r = options.callback.call( element, value );
+			r = options.callback.call( element, value, event );
 	}
 
 	//LiteGUI.trigger( this.current_section, "wchange", value );
@@ -7118,7 +7131,7 @@ Inspector.prototype.addInfo = function(name,value, options)
 {
 	options = this.processOptions(options);
 
-	value = value || "";
+	value = (value === undefined || value === null) ? "" : value;
 	var element = null;
 	if(name != null)
 		element = this.createWidget(name,value, options);
@@ -7712,8 +7725,8 @@ Inspector.prototype.addButton = function(name, value, options)
 	var element = this.createWidget(name,"<button class='"+c+"' tabIndex='"+ this.tab_index + "'>"+value+"</button>", options);
 	this.tab_index++;
 	var button = element.querySelector("button");
-	button.addEventListener("click", function() {
-		Inspector.onWidgetChange.call(that,element,name,this.innerHTML, options);
+	button.addEventListener("click", function(event) {
+		Inspector.onWidgetChange.call( that, element, name, this.innerHTML, options, false, event);
 		LiteGUI.trigger( button, "wclick", value );
 	});
 	this.append(element,options);

@@ -63,8 +63,9 @@ var DriveModule = {
 			msg.content.style.backgroundColor = "rgba(100,200,150,0.5)";
 			msg.kill(500);
 
-			if( url.substr(0,7) != "http://" )
-				DriveModule.fetchPreview(url);
+			//we fetch asset previews in case the user browses the assets in the drive
+			//if( url.substr(0,7) != "http://" )
+			//	DriveModule.fetchPreview(url);
 		});
 
 		LEvent.bind( LS.ResourcesManager, "resource_not_found", function(e, url) {
@@ -85,6 +86,8 @@ var DriveModule = {
 			var folder = LS.RM.getFolder( url );
 			var basename = LS.RM.getBasename( url );
 			var filename = LS.RM.getFilename( url );
+			if(filename.substr(0,4) == "_th_")
+				return;
 			var extension = LS.RM.getExtension( url );
 			var format_info = LS.Formats.getFileFormatInfo( extension );
 			if(format_info.resourceClass === GL.Texture)
@@ -394,6 +397,9 @@ var DriveModule = {
 			inspector.clear();
 		}
 
+		var old_name_width = inspector.name_width;
+		inspector.name_width = 100;
+
 		inspector.addTitle("Resource");
 		inspector.addString("Fullpath", resource.fullpath, {disabled:true} );
 
@@ -465,17 +471,16 @@ var DriveModule = {
 		}
 
 		//inspector.addInfo("Metadata", metadata, {height:50});
-		var link = resource.remotepath;
-		if(!link && resource.fullpath)
-			link = LS.ResourcesManager.getFullURL( resource.fullpath );
-
 		if( (category == "Prefab" || category == "Pack") && local_resource)
 			inspector.addButton( category,"Show content", function(){ PackTools.showPackDialog( local_resource ); });
 		else if( category == "json" && local_resource )
 			inspector.addButton( category,"Show content", function(){ EditorModule.checkJSON( local_resource._data ); });
 
 		if(resource.fullpath)
+		{
+			var link = LS.ResourcesManager.getFullURL( resource.remotepath || resource.fullpath );
 			inspector.addInfo("Link", "<a target='_blank' href='"+link+"'>link to the file</a>" );
+		}
 		/*
 		inspector.addButton("Show", "Open Window", { callback: function(){
 			var new_window = window.open("","Visualizer","width=400, height=300");
@@ -561,6 +566,8 @@ var DriveModule = {
 				}
 			});
 		}});
+
+		inspector.name_width = old_name_width;
 	},
 
 	showNewResourceDialog: function()
@@ -682,6 +689,43 @@ var DriveModule = {
 		}
 	},
 
+	showSelectFolderFilenameDialog: function( fullpath, on_complete, options )
+	{
+		options = options || {};
+		var folder = "";
+		var filename = "";
+		if(fullpath)
+		{
+			folder = LS.RM.getFolder(fullpath);
+			filename = LS.RM.getFilename(fullpath);
+		}
+
+		var dialog = new LiteGUI.Dialog("select-folder-filename-dialog", {title:"Select folder and filename", close: true, width: 360, height: 240, scroll: false, draggable: true});
+		var widgets = new LiteGUI.Inspector();
+		if(options.text)
+			widgets.addInfo(null,options.text);
+		widgets.addFolder("Folder",folder,{ callback: function(v){
+			if(!v)
+				return;
+			folder = v;
+		}});
+		widgets.addString("Filename",filename,{ callback: function(v){
+			if(!v)
+				return;
+			filename = v;
+		}});
+
+		widgets.addButton(null,"Continue",function(){
+			dialog.close();
+			if(on_complete)
+				on_complete( folder, filename );
+		});
+
+		dialog.add(widgets);
+		dialog.adjustSize(20);
+		dialog.show();
+	},
+
 	getServerFoldersTree: function(callback)
 	{
 		//request folders
@@ -725,37 +769,6 @@ var DriveModule = {
 		}
 	},
 
-	/*
-	showResourcesInFolder: function(folder, callback)
-	{
-		this.current_folder = folder;
-		//this.showInBrowserContent(null);
-		this.showLoadingBrowserContent();
-		this.serverGetFiles(folder, inner.bind(this));
-
-		function inner(data)
-		{
-			if(data)
-			{
-				var resources = {};
-				for(var i = 0; i < data.length; i++)
-				{
-					var resource = data[i];
-					resources[ resource.fullpath ] = resource;
-					this.server_resources[ resource.fullpath ] = resource;
-					this.server_resources_by_id[ resource.server_id ] = resource;
-				}
-
-				this.showInBrowserContent(resources);
-			}
-			else
-				this.showInBrowserContent(null);
-
-			if(callback) callback();
-		}
-	},
-	*/
-
 	showLoadingBrowserContent: function()
 	{
 		var parent = $(this.root).find(".resources-container")[0];
@@ -796,8 +809,6 @@ var DriveModule = {
 		if(fullpath[0] == "#") 
 			return;
 
-		//console.log("FULLPATH: \"" + fullpath + "\"",fullpath.length);
-
 		if( this.server_resources[ fullpath ] )
 		{
 			resource._server_info = this.server_resources[ fullpath ];
@@ -810,19 +821,6 @@ var DriveModule = {
 				if(info)
 					DriveModule.processServerResource(info); 
 			});
-		/*
-		$.getJSON( DriveModule.server_url + "ajax.php?action=resources:getFileInfo&fullpath=" + fullpath )
-		.done(function (response) {
-			//change the Tree Server item
-			if(response.status == 1)
-			{
-				DriveModule.processServerResource(response.data);
-			}
-		})
-		.fail(function (err) {
-			console.error("Error in getFileInfo: " + err.responseText );
-		});
-		*/
 	},
 
 	//called when clicking the "Insert in scene" button after selecting a resource
@@ -1146,6 +1144,10 @@ var DriveModule = {
 		if(this.generated_previews[ url ])
 			return;
 
+		//already a preview
+		if(url.indexOf("_th_") != -1)
+			return;
+
 		var path = LFS.getPreviewPath( url );
 		var img = new Image();
 		img.src = path;
@@ -1196,6 +1198,7 @@ var DriveModule = {
 				dialog.close();
 				if(!options.skip_alerts)
 					LiteGUI.alert( v ? "Resource saved" : "Problem saving the resource: " + msg);
+
 				if(on_complete)
 					on_complete( resource );
 			},
@@ -1834,7 +1837,7 @@ DriveModule.registerAssignResourceCallback( "SceneTree", function( fullpath, res
 			return;
 		}
 		SceneStorageModule.setSceneFromJSON( res.serialize() ); //ugly but we cannot replace the current scene
-		inner( LS.GlobalScene, url );
+		inner( LS.GlobalScene, fullpath );
 		DriveModule.closeTab();
 	});
 
@@ -1870,7 +1873,7 @@ DriveModule.registerAssignResourceCallback("Prefab", function( fullpath, restype
 });
 
 //generic unknown resource
-DriveModule.registerAssignResourceCallback(["Resource","application/javascript","text/plain","text/csv"], function( fullpath, restype, options ) {
+DriveModule.registerAssignResourceCallback(["Resource","application/javascript","text/plain","text/csv","TEXT"], function( fullpath, restype, options ) {
 
 	var resource = LS.RM.getResource( fullpath );
 	if(!resource)

@@ -489,7 +489,7 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 LS.Components.SkinDeformer.onShowProperties = LS.Components.SkinnedMeshRenderer.onShowProperties = function( component, inspector )
 {
 	inspector.addButton("","See bones", { callback: function() { 
-		EditorModule.showBones( component.getMesh() );
+		EditorModule.showBones( component.getMesh() ); //right below this function
 	}});
 }
 
@@ -513,6 +513,8 @@ EditorModule.showBones = function( mesh )
 	var list = widgets.addList(null, bone_names, { height: 140, callback: function(v) {
 		selected = v;
 	}});
+
+	widgets.addInfo("Num. of bones", bone_names.length );
 
 	widgets.addButton(null,"Select Bone", function(){
 		if(!selected)

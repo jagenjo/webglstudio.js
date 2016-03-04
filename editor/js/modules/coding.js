@@ -56,7 +56,7 @@ var CodingModule = //do not change
 
 		var coding_tabs_widget = this.coding_tabs_widget = new CodingTabsWidget();
 		coding_area.getSection(1).add( coding_tabs_widget );
-		coding_tabs_widget.onNewTab();
+		//coding_tabs_widget.onNewTab();
 
 		LS.catch_exceptions = true;
 	},

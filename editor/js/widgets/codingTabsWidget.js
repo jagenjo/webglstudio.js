@@ -293,7 +293,7 @@ CodingTabsWidget.prototype.onPlusTab = function(tab_id, e)
 {
 	var that = this;
 
-	var options = ["New Tab","Create Script in Root","Create Script in Node","Open All Scripts"];
+	var options = ["New Tab","Create Script File","Create Script in Root","Create Script in Node","Open All Scripts"];
 
 	var scripts = LS.GlobalScene.findNodeComponents( LS.Components.Script );
 	if( scripts.length )
@@ -304,6 +304,8 @@ CodingTabsWidget.prototype.onPlusTab = function(tab_id, e)
 		{
 			that.onNewTab();
 		}
+		else if(value == "Create Script File")
+			that.onNewScriptFile();
 		else if(value == "Create Script in Root")
 			that.onNewScript( LS.GlobalScene.root );
 		else if(value == "Create Script in Node")
@@ -343,6 +345,14 @@ CodingTabsWidget.prototype.onNewScript = function( node )
 	node.addComponent( component );
 	this.editInstanceCode( component, { id: component.uid, title: node.id, lang: "javascript", path: component.uid, help: LS.Components.Script.coding_help });
 	EditorModule.refreshAttributes();
+}
+
+CodingTabsWidget.prototype.onNewScriptFile = function()
+{
+	var script_resource = new LS.Resource();
+	script_resource.filename = "unnamed_script.js";
+	script_resource.register();
+	this.editInstanceCode( script_resource, { id: script_resource.filename, title: script_resource.filename, lang: "javascript", help: LS.Components.Script.coding_help });
 }
 
 //search for all the components that have a getCode function and inserts them

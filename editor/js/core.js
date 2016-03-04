@@ -14,28 +14,57 @@ var CORE = {
 	{
 		this.root = document.body;
 
-		//Load Configuration file
+		//Load config file
 		LiteGUI.request({
 			url:"config.json",
 			dataType:"json",
-			success: this.loadFiles.bind(this)
+			success: this.configLoaded.bind(this)
+		});
+	},
+
+	configLoaded: function( config )
+	{
+		if(!config)
+		{
+			LiteGUI.alert("config.json not found");
+			throw("config file missing");
+		}
+		this.config = config;
+
+		//if inline modules
+		if( config.modules && config.modules.constructor === Array )
+		{
+			this.loadModules( config );
+			return;
+		}
+
+		//Load modules list from modules.json
+		LiteGUI.request({
+			url: config.modules || "modules.json",
+			dataType:"json",
+			success: this.loadModules.bind(this)
 		});
 	},
 
 	//Loads all the files ***********************
-	loadFiles: function( config )
+	loadModules: function( modules_info )
 	{
-		if(!config)
-			throw("config file missing");
-		this.config = config;
+		if(!modules_info || !modules_info.modules)
+		{
+			LiteGUI.alert("modules.json not found");
+			throw("modules file missing");
+		}
+
+		var modules_list = modules_info.modules;
+		this.config.modules = modules_info;
 
 		//intro loading text
 		this.log("Loading modules...");
 		var num = 0;
-		for(var i in config.modules)
-			CORE.log( "<span id='msg-module-"+ (num++) + "' class='tinybox'></span> <span class='name'>" + config.modules[i] + "</span>" );
+		for(var i in modules_list)
+			CORE.log( "<span id='msg-module-"+ (num++) + "' class='tinybox'></span> <span class='name'>" + modules_list[i] + "</span>" );
 
-		LiteGUI.requireScript( config.modules, onReady, onError, onProgress );
+		LiteGUI.requireScript( modules_list, onReady, onError, onProgress );
 
 		//one module loaded
 		function onProgress( name, num )

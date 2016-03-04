@@ -30,7 +30,7 @@
 		resources: "fileserver/files/",
 		autoresize: true, //resize the 3D window if the browser window is resized
 		loadingbar: true, //shows loading bar progress
-		proxy: "@/redirect/" //allows to proxy request to avoid cross domain problems, in this case the @ means same domain, so it will be http://hostname/proxy
+		proxy: "@/proxy.php?url=" //allows to proxy request to avoid cross domain problems, in this case the @ means same domain, so it will be http://hostname/proxy
 	});
 
 	//allow to use Canvas2D call in the WebGLCanvas (this is not mandatory, just useful)

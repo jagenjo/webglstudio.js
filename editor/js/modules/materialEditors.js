@@ -302,13 +302,19 @@ LS.MaterialClasses.Material["@inspector"] = function( material, inspector )
 		if(material.opacity >= 1 && material.blend_mode == Blend.ALPHA)
 			material.blend_mode = LS.Blend.NORMAL;
 	}});
+
+
+	inspector.widgets_per_row = 2;
+	inspector.addCombo("Blend mode", material.blend_mode, {  pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
+	inspector.addCheckbox("Alpha Test", material.alpha_test, { pretitle: AnimationModule.getKeyframeCode( material, "alpha_test" ), callback: function (value) { material.alpha_test = value; } });
+	inspector.widgets_per_row = 1;
+
 	//inspector.addCheckbox("two-sided", node.flags.two_sided, { callback: function(v) { node.flags.two_sided = v; } });
 	inspector.addSeparator();
 	inspector.addColor("Color", material.color, { pretitle: AnimationModule.getKeyframeCode( material, "color" ), callback: function(color) { material.color.set(color); } });
 	inspector.addSlider("Specular", material.specular_factor, { pretitle: AnimationModule.getKeyframeCode( material, "specular_factor" ), min: 0, step:0.01, max:2, callback: function (value) { material.specular_factor = value; } });
 	inspector.addSlider("Spec. gloss", material.specular_gloss, { pretitle: AnimationModule.getKeyframeCode( material, "specular_gloss" ), min:1,max:20, callback: function (value) { material.specular_gloss = value; } });
 
-	inspector.addCombo("Blend mode", material.blend_mode, {  pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
 
 	inspector.beginGroup("Textures",{title:true});
 
@@ -366,7 +372,10 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 		if(material.opacity >= 1 && material.blend_mode == LS.Blend.ALPHA)
 			material.blend_mode = LS.Blend.NORMAL;
 	}});
+	inspector.widgets_per_row = 2;
 	inspector.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
+	inspector.addCheckbox("Alpha Test", material.alpha_test, { pretitle: AnimationModule.getKeyframeCode( material, "alpha_test" ), callback: function (value) { material.alpha_test = value; } });
+	inspector.widgets_per_row = 1;
 
 	//inspector.addCheckbox("two-sided", node.flags.two_sided, { callback: function(v) { node.flags.two_sided = v; } });
 	inspector.addSeparator();

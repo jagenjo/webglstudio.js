@@ -324,20 +324,35 @@ CodingPadWidget.prototype.saveCode = function()
 	if(!info)
 		return;
 
+	var instance = info.instance;
+
 	this.assignCurrentCode(true); //true? not sure
 
-	if( info.instance && info.instance.constructor == LS.Resource )
+	if( instance && instance.constructor == LS.Resource )
 	{
-		DriveModule.saveResource( info.instance, function(){
-			that.editor.focus();
-			that.showInFooter("saved");
-			LiteGUI.trigger( this, "stored" );
-		}, { skip_alerts: true });
+		if(!instance.fullpath)
+		{
+			DriveModule.showSelectFolderFilenameDialog( instance.filename, function(folder,filename){
+				instance.filename = filename;
+				instance.fullpath = folder + "/" + filename;
+				DriveModule.saveResource( instance, inner_after_save, { skip_alerts: true });
+			}, { text: "This file is not stored in the server, choose a folder and a filename"} );
+			return;
+		}
+
+		DriveModule.saveResource( info.instance, inner_after_save, { skip_alerts: true });
 		this.showInFooter("saving...");
 	}
 	else
 	{
 		this.showInFooter("stored");
+		LiteGUI.trigger( this, "stored" );
+	}
+
+	function inner_after_save()
+	{
+		that.editor.focus();
+		that.showInFooter("saved");
 		LiteGUI.trigger( this, "stored" );
 	}
 }
@@ -799,9 +814,18 @@ CodingPadWidget.codemirror_scripts = ["js/extra/codemirror/codemirror.js",
 								"js/extra/codemirror/hint/show-hint.js",
 								"js/extra/codemirror/hint/javascript-hint.js",
 								"js/extra/codemirror/selection/active-line.js",
+								"js/extra/codemirror/scroll/annotatescrollbar.js",
+								"js/extra/codemirror/scroll/simplescrollbars.js",
+								"js/extra/codemirror/search/search.js",
+								"js/extra/codemirror/search/searchcursor.js",
+								"js/extra/codemirror/search/matchesonscrollbar.js",
+								"js/extra/codemirror/search/match-highlighter.js",
+								"js/extra/codemirror/search/jump-to-line.js",
 								"js/extra/codemirror/javascript.js"];
 CodingPadWidget.codemirror_css = ["js/extra/codemirror/codemirror.css",
 							"js/extra/codemirror/blackboard.css",
+							"js/extra/codemirror/search/matchesonscrollbar.css",
+							"js/extra/codemirror/scroll/simplescrollbars.css",
 							"js/extra/codemirror/hint/show-hint.css"];
 
 CodingPadWidget.loadCodeMirror = function()

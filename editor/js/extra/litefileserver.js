@@ -48,7 +48,7 @@ var LiteFileServer = {
 			if(on_complete)
 				on_complete(session, resp);
 
-			if(LFS.onNewSession)
+			if(session && session.status == 1 && LFS.onNewSession)
 				LFS.onNewSession(session);
 		});
 	},

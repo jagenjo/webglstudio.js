@@ -47,7 +47,7 @@ var LoginModule = {
 
 	setSession: function(session)
 	{
-		if(!session.status)
+		if(!session || !session.status)
 			session = null;
 
 		this.session = session;

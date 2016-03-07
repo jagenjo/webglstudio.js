@@ -64,8 +64,8 @@ var DriveModule = {
 			msg.kill(500);
 
 			//we fetch asset previews in case the user browses the assets in the drive
-			//if( url.substr(0,7) != "http://" )
-			//	DriveModule.fetchPreview(url);
+			if( url.substr(0,7) != "http://" && url.indexOf("_th_") == -1 )
+				DriveModule.fetchPreview(url);
 		});
 
 		LEvent.bind( LS.ResourcesManager, "resource_not_found", function(e, url) {
@@ -530,7 +530,7 @@ var DriveModule = {
 		inspector.addButtons(null,["Load","Unload"], {callback: function(v){
 			var restype = resource.category || resource.object_type;
 			if(v == "Load")
-				DriveModule.loadResource(resource.fullpath,restype);
+				DriveModule.loadResource( resource.fullpath, restype,null,true );
 			else
 			{
 				DriveModule.unloadResource(resource.fullpath);
@@ -777,19 +777,14 @@ var DriveModule = {
 	},
 
 	//Retrieve a resource from the server and stores it for later use, it shoudnt do anything with it, just ensure is in memory.
-	loadResource: function(fullpath, res_type, on_complete)
+	loadResource: function(fullpath, res_type, on_complete, force_reload)
 	{
-		if(!LS.ResourcesManager.resources[fullpath])
-		{
-			LS.ResourcesManager.load(fullpath, null, function(data) { 
-				if(on_complete)
-					on_complete(data);
-			});
-		}
-		else
+		if(force_reload)
+			LS.ResourcesManager.unregisterResource( fullpath );
+		LS.ResourcesManager.load(fullpath, null, function(data) { 
 			if(on_complete)
-				on_complete( LS.ResourcesManager.resources[fullpath] );
-
+				on_complete(data);
+		});
 	},
 
 	unloadResource: function(fullpath)

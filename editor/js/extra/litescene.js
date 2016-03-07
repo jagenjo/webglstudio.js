@@ -26079,9 +26079,9 @@ var parserBVH = {
 	
 	parse: function( text, options, filename )
 	{
-		const MODE_HIERARCHY = 1;
-		const MODE_MOTION = 2;
-		const MODE_MOTION_DATA = 3;
+		var MODE_HIERARCHY = 1;
+		var MODE_MOTION = 2;
+		var MODE_MOTION_DATA = 3;
 
 		var mode = 0;
 		var root = null;

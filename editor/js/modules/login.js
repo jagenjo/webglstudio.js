@@ -47,11 +47,14 @@ var LoginModule = {
 
 	setSession: function(session)
 	{
+		if(!session.status)
+			session = null;
+
 		this.session = session;
 		this.user = session ? session.user : null;
 		this.updateLoginArea();
 		LiteGUI.trigger( CORE, session ? "user-login" : "user-logout", this.user );
-		if(session && session.user.username == "guest" && CORE.user_preferences.login.show_guest_warning)
+		if(session && session.user && session.user.username == "guest" && CORE.user_preferences.login.show_guest_warning)
 			this.showGuestWarning();
 	},
 

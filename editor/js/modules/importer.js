@@ -120,6 +120,10 @@ var ImporterModule  = {
 				console.log("Error processing data: " + err);
 			}
 		};
+		reader.onerror = function(err)
+		{
+			console.error(err);
+		}
 
 		var extension = LS.ResourcesManager.getExtension( file.name ).toLowerCase();
 		var format_info = LS.Formats.supported[ extension ];
@@ -224,6 +228,10 @@ var ImporterModule  = {
 				reader.readAsText( file );
 			else
 				reader.readAsArrayBuffer( file );
+			reader.onerror = function(err)
+			{
+				console.error(err);
+			}
 		}
 
 		//function to assign the content of the file

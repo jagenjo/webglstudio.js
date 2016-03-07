@@ -489,11 +489,11 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 LS.Components.SkinDeformer.onShowProperties = LS.Components.SkinnedMeshRenderer.onShowProperties = function( component, inspector )
 {
 	inspector.addButton("","See bones", { callback: function() { 
-		EditorModule.showBones( component.getMesh() ); //right below this function
+		EditorModule.showBonesDialog( component.getMesh() ); //right below this function
 	}});
 }
 
-EditorModule.showBones = function( mesh )
+EditorModule.showBonesDialog = function( mesh )
 {
 	if(!mesh && !mesh.bones)
 	{
@@ -504,30 +504,44 @@ EditorModule.showBones = function( mesh )
 	var dialog = new LiteGUI.Dialog("dialog_show_bones", {title:"Bones in Mesh", close: true, width: 360, height: 270, scroll: false, draggable: true});
 
 	var widgets = new LiteGUI.Inspector("bones_widgets",{ });
-
-	//get the names
-	var selected = null;
-	var bone_names = [];
-	for(var i in mesh.bones)
-		bone_names.push( mesh.bones[i][0] );
-	var list = widgets.addList(null, bone_names, { height: 140, callback: function(v) {
-		selected = v;
-	}});
-
-	widgets.addInfo("Num. of bones", bone_names.length );
-
-	widgets.addButton(null,"Select Bone", function(){
-		if(!selected)
-			return;
-		var node = LS.GlobalScene.getNode(selected);
-		if(!node)
-			return;
-		SelectionModule.setSelection( node );
-	});
-
 	dialog.add( widgets );
-	dialog.adjustSize();
 	dialog.show('fade');
+	widgets.on_refresh = inner_refresh;
+	widgets.refresh();
+
+	function inner_refresh()
+	{
+		widgets.clear();
+
+		//get the names
+		var selected = null;
+		var bone_names = [];
+		for(var i in mesh.bones)
+			bone_names.push( mesh.bones[i][0] );
+		var list = widgets.addList(null, bone_names, { height: 140, callback: function(v) {
+			selected = v;
+		}});
+
+		widgets.addInfo("Num. of bones", bone_names.length );
+
+		widgets.addButton(null,"Select Bone", function(){
+			if(!selected)
+				return;
+			var node = LS.GlobalScene.getNode(selected);
+			if(!node)
+				return;
+			SelectionModule.setSelection( node );
+		});
+
+		widgets.addButton("Action","Convert UIDs to Names", function(){
+			mesh.convertBonesToNames();
+			widgets.refresh();
+		});
+
+		dialog.adjustSize(10);
+	}
+
+	return dialog;
 }
 
 LS.Components.ParticleEmissor["@inspector"] = function(component, inspector)

@@ -3087,96 +3087,6 @@ LS.ResourcesManager.registerResourcePostProcessor("Material", function(filename,
 	LS.ResourcesManager.materials_by_uid[ material.uid ] = material;
 });
 
-//Extra methods for LiteGL Classes *************************************************************
-
-GL.Mesh.fromBinary = function( data_array )
-{
-	var o = null;
-	if(data_array.constructor == ArrayBuffer )
-		o = WBin.load( data_array );
-	else
-		o = data_array;
-
-	var vertex_buffers = {};
-	for(var i in o.vertex_buffers)
-		vertex_buffers[ o.vertex_buffers[i] ] = o[ o.vertex_buffers[i] ];
-
-	var index_buffers = {};
-	for(var i in o.index_buffers)
-		index_buffers[ o.index_buffers[i] ] = o[ o.index_buffers[i] ];
-
-	var mesh = new GL.Mesh(vertex_buffers, index_buffers);
-	mesh.info = o.info;
-	mesh.bounding = o.bounding;
-	if(o.bones)
-	{
-		mesh.bones = o.bones;
-		//restore Float32array
-		for(var i = 0; i < mesh.bones.length; ++i)
-			mesh.bones[i][1] = mat4.clone(mesh.bones[i][1]);
-		if(o.bind_matrix)
-			mesh.bind_matrix = mat4.clone( o.bind_matrix );		
-	}
-	
-	return mesh;
-}
-
-GL.Mesh.prototype.toBinary = function()
-{
-	if(!this.info)
-		this.info = {};
-
-	//clean data
-	var o = {
-		object_type: "Mesh",
-		info: this.info,
-		groups: this.groups
-	};
-
-	if(this.bones)
-	{
-		var bones = [];
-		//convert to array
-		for(var i = 0; i < this.bones.length; ++i)
-			bones.push([ this.bones[i][0], mat4.toArray( this.bones[i][1] ) ]);
-		o.bones = bones;
-		if(this.bind_matrix)
-			o.bind_matrix = this.bind_matrix;
-	}
-
-	//bounding box
-	if(!this.bounding)	
-		this.updateBounding();
-	o.bounding = this.bounding;
-
-	var vertex_buffers = [];
-	var index_buffers = [];
-
-	for(var i in this.vertexBuffers)
-	{
-		var stream = this.vertexBuffers[i];
-		o[ stream.name ] = stream.data;
-		vertex_buffers.push( stream.name );
-
-		if(stream.name == "vertices")
-			o.info.num_vertices = stream.data.length / 3;
-	}
-
-	for(var i in this.indexBuffers)
-	{
-		var stream = this.indexBuffers[i];
-		o[i] = stream.data;
-		index_buffers.push( i );
-	}
-
-	o.vertex_buffers = vertex_buffers;
-	o.index_buffers = index_buffers;
-
-	//create pack file
-	var bin = WBin.create(o, "Mesh");
-
-	return bin;
-}
 
 
 /* Basic shader manager 
@@ -5210,6 +5120,130 @@ var Draw = {
 
 if(typeof(LS) != "undefined")
 	LS.Draw = Draw;
+
+//Add some functions to the classes in LiteGL to fit better in the LiteScene engine
+
+//when working with animations sometimes you want the bones to be referenced by node name and no node uid, because otherwise you cannot reuse
+//the same animation with different characters in the same scene.
+GL.Mesh.prototype.convertBonesToNames = function( root_node )
+{
+	if(!this.bones || !this.bones.length)
+		return 0;
+
+	var modifyed = false;
+
+	//Rename the id to a relative name
+	for(var i = 0; i < this.bones.length; ++i)
+	{
+		var bone = this.bones[i];
+		var bone_name = bone[0];
+		if( bone_name[0] != LS._uid_prefix)
+			continue; //already using a name, not a uid
+		var node = root_node ? root_node.findNode( bone_name ) : LS.GlobalScene.getNode( bone_name );
+		if(!node)
+		{
+			console.warn("Bone node not found: " + bone_name );
+			continue;
+		}
+
+		bone[0] = node.name;
+		modifyed = true;
+	}
+
+	//flag it
+	if(modifyed)
+		LS.RM.resourceModified( this );
+}
+
+GL.Mesh.fromBinary = function( data_array )
+{
+	var o = null;
+	if(data_array.constructor == ArrayBuffer )
+		o = WBin.load( data_array );
+	else
+		o = data_array;
+
+	var vertex_buffers = {};
+	for(var i in o.vertex_buffers)
+		vertex_buffers[ o.vertex_buffers[i] ] = o[ o.vertex_buffers[i] ];
+
+	var index_buffers = {};
+	for(var i in o.index_buffers)
+		index_buffers[ o.index_buffers[i] ] = o[ o.index_buffers[i] ];
+
+	var mesh = new GL.Mesh(vertex_buffers, index_buffers);
+	mesh.info = o.info;
+	mesh.bounding = o.bounding;
+	if(o.bones)
+	{
+		mesh.bones = o.bones;
+		//restore Float32array
+		for(var i = 0; i < mesh.bones.length; ++i)
+			mesh.bones[i][1] = mat4.clone(mesh.bones[i][1]);
+		if(o.bind_matrix)
+			mesh.bind_matrix = mat4.clone( o.bind_matrix );		
+	}
+	
+	return mesh;
+}
+
+GL.Mesh.prototype.toBinary = function()
+{
+	if(!this.info)
+		this.info = {};
+
+	//clean data
+	var o = {
+		object_type: "Mesh",
+		info: this.info,
+		groups: this.groups
+	};
+
+	if(this.bones)
+	{
+		var bones = [];
+		//convert to array
+		for(var i = 0; i < this.bones.length; ++i)
+			bones.push([ this.bones[i][0], mat4.toArray( this.bones[i][1] ) ]);
+		o.bones = bones;
+		if(this.bind_matrix)
+			o.bind_matrix = this.bind_matrix;
+	}
+
+	//bounding box
+	if(!this.bounding)	
+		this.updateBounding();
+	o.bounding = this.bounding;
+
+	var vertex_buffers = [];
+	var index_buffers = [];
+
+	for(var i in this.vertexBuffers)
+	{
+		var stream = this.vertexBuffers[i];
+		o[ stream.name ] = stream.data;
+		vertex_buffers.push( stream.name );
+
+		if(stream.name == "vertices")
+			o.info.num_vertices = stream.data.length / 3;
+	}
+
+	for(var i in this.indexBuffers)
+	{
+		var stream = this.indexBuffers[i];
+		o[i] = stream.data;
+		index_buffers.push( i );
+	}
+
+	o.vertex_buffers = vertex_buffers;
+	o.index_buffers = index_buffers;
+
+	//create pack file
+	var bin = WBin.create(o, "Mesh");
+
+	return bin;
+}
+
 
 
 
@@ -13403,7 +13437,7 @@ SkinDeformer.prototype.getBoneNode = function( name )
 	}
 	else if(this.search_bones_in_parent)
 	{
-		return root_node.parentNode.findNodeByName( name );
+		return root_node.parentNode.findNode( name );
 	}
 	else
 		return scene.getNode( name );
@@ -13681,22 +13715,6 @@ SkinDeformer.prototype.applySoftwareSkinning = function(ref_mesh, skin_mesh)
 SkinDeformer.prototype.extractSkeleton = function()
 {
 	//TODO
-}
-
-SkinDeformer.prototype.convertBonesToRelative = function()
-{
-	//Check bones affecting this mesh
-	var bones = this.getBones();
-	if(!bones || !bones.length )
-		return;
-
-	//Rename the id to a relative name
-	for(var i = 0; i < bones.length; ++i)
-	{
-		//TODO
-		//replace the names in the mesh.bones so they point to relative names
-		//other option would be to hardcode the bone names inside the component as long as the mesh is the same
-	}
 }
 
 SkinDeformer.prototype.getBones = function()
@@ -17782,6 +17800,8 @@ PlayAnimation.prototype.configure = function(o)
 		this.playback_speed = parseFloat( o.playback_speed );
 	if(o.root_node !== undefined)
 		this.root_node = o.root_node;
+	if(o.playing !== undefined)
+		this.playing = o.playing;
 }
 
 
@@ -17812,9 +17832,10 @@ PlayAnimation.prototype.onUpdate = function(e, dt)
 	if(!animation) 
 		return;
 
-	//var time = Scene.getTime() * this.playback_speed;
-	if(this.playing)
-		this.current_time += dt * this.playback_speed;
+	if(!this.playing)
+		return;
+
+	this.current_time += dt * this.playback_speed;
 
 	var take = animation.takes[ this.take ];
 	if(!take) 
@@ -18241,6 +18262,29 @@ Object.defineProperty( Script.prototype, "context", {
 	enumerable: false //if it was enumerable it would be serialized
 });
 
+Script.prototype.configure = function(o)
+{
+	if(o.enabled !== undefined)
+		this.enabled = o.enabled;
+	if(o.name !== undefined)
+		this.name = o.name;
+	if(o.code !== undefined)
+		this.code = o.code;
+	if(o.properties)
+		 this.setContextProperties( o.properties );
+}
+
+Script.prototype.serialize = function()
+{
+	return {
+		enabled: this.enabled,
+		name: this.name,
+		code: this.code,
+		properties: LS.cloneObject( this.getContextProperties() )
+	};
+}
+
+
 
 Script.prototype.getContext = function()
 {
@@ -18274,13 +18318,41 @@ Script.prototype.processCode = function( skip_events )
 		if(this._script && this._script._context)
 			this._script._context.unbindAll();
 
+		//save old state
+		var old = this._stored_properties || this.getContextProperties();
+
 		//compiles and executes the context
 		var ret = this._script.compile({component:this, node: this._root, scene: this._root.scene });
 		if(!skip_events)
 			this.hookEvents();
+
+		this.setContextProperties( old );
+		this._stored_properties = null;
+
 		return ret;
 	}
 	return true;
+}
+
+Script.prototype.getContextProperties = function()
+{
+	var ctx = this.getContext();
+	if(!ctx)
+		return;
+	return LS.cloneObject( ctx );
+}
+
+Script.prototype.setContextProperties = function( properties )
+{
+	if(!properties)
+		return;
+	var ctx = this.getContext();
+	if(!ctx) //maybe the context hasnt been crated yet
+	{
+		this._stored_properties = properties;
+		return;
+	}
+	LS.cloneObject( properties, ctx, false, true );
 }
 
 //used for graphs
@@ -18674,27 +18746,6 @@ ScriptFromFile.prototype.processCode = function( skip_events )
 		return ret;
 	}
 	return true;
-}
-
-Script.prototype.getContextProperties = function()
-{
-	var ctx = this.getContext();
-	if(!ctx)
-		return;
-	return LS.cloneObject( ctx );
-}
-
-Script.prototype.setContextProperties = function( properties )
-{
-	if(!properties)
-		return;
-	var ctx = this.getContext();
-	if(!ctx) //maybe the context hasnt been crated yet
-	{
-		this._stored_properties = properties;
-		return;
-	}
-	LS.cloneObject( properties, ctx, false, true );
 }
 
 ScriptFromFile.prototype.configure = function(o)

@@ -100,12 +100,25 @@ var CubemapGenerator = {
 					else if(v == "Clone")
 					{
 						var copy_cubemap = cubemap.clone();
-						copy_cubemap.filename = "copy_" + cubemap.filename;
+						copy_cubemap.filename = "copy_" + LS.RM.getFilename( cubemap.filename );
 						CubemapGenerator.current_cubemap = copy_cubemap;
 						LS.RM.registerResource( copy_cubemap.filename, copy_cubemap );
 						widgets.refresh();
 					}
 					LS.GlobalScene.refresh();
+				}});
+
+				widgets.addButton("Helper", "Set as Environment", { callback: function(v) {
+					var cubemap = CubemapGenerator.current_cubemap;
+					if(!cubemap)
+						return;
+					if(!LS.GlobalScene.info)
+						LS.GlobalScene.root.addComponent( LS.Components.GlobalInfo() );
+					LS.GlobalScene.info.textures.environment = cubemap.fullpath || cubemap.filename;
+					if( !LS.GlobalScene.root.getComponent( LS.Components.Skybox ) )
+						LS.GlobalScene.root.addComponent( new LS.Components.Skybox() );
+					LS.GlobalScene.refresh();
+					EditorModule.refreshAttributes();
 				}});
 			}
 

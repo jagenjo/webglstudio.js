@@ -1609,12 +1609,12 @@ Timeline.prototype.onShowAnimationOptionsDialog = function()
 		return;
 	}
 
-	dialog = new LiteGUI.Dialog("animation_options",{ title:"Animation Options", draggable: true, closable: true });
+	dialog = new LiteGUI.Dialog("animation_options",{ title:"Animation Options", width: 400, draggable: true, closable: true });
 	
 	var widgets = new LiteGUI.Inspector();
 	widgets.addString("Name", this.current_animation.filename, { disabled: true } );
 	widgets.addInfo("Tracks", this.current_take.tracks.length );
-	widgets.addButtons("Actions",["Use names as ids"], function(v){
+	widgets.addButtons("Actions",["Use names as ids","Optimize Tracks"], function(v){
 		if(v == "Use names as ids")
 		{
 			var total = that.current_take.convertIDstoNames(true);
@@ -1622,6 +1622,14 @@ Timeline.prototype.onShowAnimationOptionsDialog = function()
 			if(total)
 				LS.ResourcesManager.resourceModified( that.current_animation );
 		}
+		else if(v == "Optimize Tracks")
+		{
+			var total = that.current_take.optimizeTracks();
+			LiteGUI.alert("Tracks optimized: " + total);
+			if(total)
+				LS.ResourcesManager.resourceModified( that.current_animation );
+		}
+
 	});
 	widgets.addSeparator();
 	widgets.addButton(null,"Close", function(){

@@ -273,7 +273,8 @@ InspectorWidget.prototype.showComponentsInterface = function( object, inspector 
 //special cases
 InspectorWidget.prototype.inspectScene = function( scene )
 {
-	inspector = this.inspector;
+	var that = this;
+	var inspector = this.inspector;
 	inspector.instance = scene;
 
 	if(!scene)
@@ -296,6 +297,7 @@ InspectorWidget.prototype.inspectScene = function( scene )
 			PlayModule.launch();
 		}});
 		inspector.addSeparator();
+
 		inspector.addTitle("External Scripts");
 		for(var i in scene.external_scripts)
 		{			
@@ -317,7 +319,7 @@ InspectorWidget.prototype.inspectScene = function( scene )
 					return;
 				//add script
 				scene.external_scripts.push(v);
-				LS.GlobalScene.loadExternalScripts( v, null, function(){
+				LS.GlobalScene.loadScripts( null, null, function(){
 					LiteGUI.alert("Error loading script");
 					scene.external_scripts.pop();
 					inspector.refresh();
@@ -328,11 +330,59 @@ InspectorWidget.prototype.inspectScene = function( scene )
 		});
 		if(scene.external_scripts && scene.external_scripts.length)
 			inspector.addButton(null,"Reload scripts", function(){
-				LS.GlobalScene.loadExternalScripts( scene.external_scripts, null, LiteGUI.alert );
+				LS.GlobalScene.loadScripts( null, null, LiteGUI.alert );
 			});
 
+		inspector.addTitle("Global Scripts");
+		for(var i in scene.global_scripts)
+		{			
+			inspector.addResource(null, scene.global_scripts[i], { index: i, callback: function(v){
+					if(!v)
+					{
+						scene.global_scripts.splice(this.options.index,1);
+						inspector.refresh();
+						return;
+					}
+					scene.global_scripts[this.options.index] = v;
+				}
+			});
+		}
+
+		inspector.addResource(null, "", { callback: function(v){
+				if(!v || v.indexOf(".js") == -1)
+					return;
+				//add script
+				scene.global_scripts.push(v);
+				LS.GlobalScene.loadScripts( null, null, function(){
+					LiteGUI.alert("Error loading script");
+					scene.global_scripts.pop();
+					inspector.refresh();
+				});
+				inspector.refresh();
+			}
+		});
+
+		if(scene.global_scripts && scene.global_scripts.length)
+			inspector.addButton(null,"Reload scripts", function(){
+				LS.GlobalScene.loadScripts( null, function(){
+					if(0) //refresh_scene
+					{
+						var scene_data = LS.GlobalScene.serialize();
+						LS.GlobalScene.clear();
+						LS.GlobalScene.configure(scene_data);
+					}
+				}, LiteGUI.alert );
+			});
+
+		/*
+		inspector.addTitle("Global Scripts");
+		inspector.addArray(null,scene.global_scripts, { data_type:"resource", callback: function(v){
+			console.log(v);
+		}});
+		*/
+
 		inspector.addTitle("Preloaded Resources");
-		var container = inspector.startContainer(null,{height:200});
+		var container = inspector.startContainer(null,{height:100});
 		container.style.backgroundColor = "#252525";
 		for(var i in scene.preloaded_resources)
 		{			
@@ -358,6 +408,10 @@ InspectorWidget.prototype.inspectScene = function( scene )
 			scene.preloaded_resources[v] = true;
 			inspector.refresh();
 		}});
+
+		inspector.addButton(null,"Show Root Node", function(){
+			that.inspect(LS.GlobalScene.root);
+		});
 	}
 
 	inspector.refresh();
@@ -490,7 +544,10 @@ InspectorWidget.prototype.inspectMaterial = function(material)
 
 InspectorWidget.prototype.showSceneRootInfo = function( scene )
 {
-	//nothing
+	var that = this;
+	this.inspector.addButton("Scene Settings","Show Scene Settings", function(){
+		that.inspect( LS.GlobalScene );
+	});
 }
 
 

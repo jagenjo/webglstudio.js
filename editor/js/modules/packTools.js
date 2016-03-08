@@ -63,6 +63,7 @@ var PackTools = {
 		dialog.adjustSize(5);
 	},
 
+	//not called when saving a scene, thats in DriveModule.checkResourcesSaved
 	createPrefab: function(filename, data, resources)
 	{
 		if(!filename)
@@ -78,6 +79,8 @@ var PackTools = {
 
 	showCreatePackDialog: function( options )
 	{
+		options = options || {};
+
 		var dialog = new LiteGUI.Dialog("dialog_create_prefab", {title:"Create Pack", close: true, width: 360, height: 270, scroll: false, draggable: true, resizable: true});
 
 		var filename = options.filename || "unnamed_pack";

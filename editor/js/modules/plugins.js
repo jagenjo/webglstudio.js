@@ -1,20 +1,25 @@
  /* This module allows to load external modules on the fly as plugins. */
 
 var PluginsModule  = {
+	name: "plugins",
+
 	settings_panel: [ {name:"plugins", title:"Plugins", icon:null } ],
 	plugins: [],
 
+	preferences: {
+		plugins: []
+	},
+
 	init: function()
 	{
-		if(	CORE.user_preferences.plugins )
+		if(	this.preferences.plugins && this.preferences.plugins.length )
 		{
-			var plugins = CORE.user_preferences.plugins;
+			var plugins = this.preferences.plugins;
 			for(var i in plugins)
 			{
 				this.loadPlugin( plugins[i] );
 			}
 		}
-
 	},
 
 	onShowSettingsPanel: function(name,widgets)
@@ -125,20 +130,6 @@ var PluginsModule  = {
 		this.plugins.splice( index,1 );
 		CORE.removeModule( plugin );
 		return plugin;
-	},
-
-	onUnload: function()
-	{
-		var data = [];
-		for(var i in this.plugins)
-		{
-			var plugin = this.plugins[i];
-			if(!plugin.url)
-				console.warn("Plugin without url, cannot be saved");
-			else
-				data.push( plugin.url );
-		}
-		CORE.user_preferences.plugins = data;
 	},
 
 	reset: function()

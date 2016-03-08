@@ -72,7 +72,7 @@ var RenderModule = {
 		visorarea.getSection(0).content.innerHTML = "<div id='visor'></div>";
 		this.tab.add( visorarea );
 
-		if(CORE.user_preferences.interface && !CORE.user_preferences.interface.show_timeline)
+		if( !InterfaceModule.preferences.show_low_panel )
 			visorarea.hideSection(1); //DEFAULT SHOW TIMELINE ***********************************
 		var visor_container = this.visor_container = document.getElementById("visor");
 		InterfaceModule.setVisorArea( visorarea );

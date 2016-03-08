@@ -4,13 +4,12 @@ var LoginModule = {
 	server_ready: false,
 	session: null,
 
+	preferences: {
+		show_guest_warning: true
+	},
+
 	init: function()
 	{
-		if( !CORE.user_preferences.login )
-			CORE.user_preferences.login = {
-				show_guest_warning: true
-			};
-
 		var loginarea = document.createElement("div");
 		loginarea.id = "login-area";
 		loginarea.style.lineHeight = "2em";
@@ -54,7 +53,7 @@ var LoginModule = {
 		this.user = session ? session.user : null;
 		this.updateLoginArea();
 		LiteGUI.trigger( CORE, session ? "user-login" : "user-logout", this.user );
-		if(session && session.user && session.user.username == "guest" && CORE.user_preferences.login.show_guest_warning)
+		if( session && session.user && session.user.username == "guest" && this.preferences.show_guest_warning )
 			this.showGuestWarning();
 	},
 
@@ -68,7 +67,7 @@ var LoginModule = {
 		info.style.paddingLeft = "10px";
 		dialog.add(info);
 		var checkbox = new LiteGUI.Checkbox(false,function(v){
-			CORE.user_preferences.login.show_guest_warning = !v;
+			LoginModule.preferences.show_guest_warning = !v;
 		});
 		info.appendChild( checkbox.root );
 	},

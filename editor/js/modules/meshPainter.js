@@ -123,7 +123,7 @@ var MeshPainter = {
 			{
 				var selected_material_class = LS.Material;
 				widgets.addInfo(null,"Material not found in object");
-				widgets.addCombo("MaterialClasses", "StandardMaterial", { values: LS.MaterialClasses, callback: function(material_class) { 
+				widgets.addCombo("MaterialClasses", LS.MaterialClasses["StandardMaterial"], { values: LS.MaterialClasses, callback: function(material_class) { 
 					selected_material_class = material_class;
 				}});
 

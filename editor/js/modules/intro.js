@@ -1,12 +1,13 @@
 var IntroModule = {
+	name: "intro",
+
+	preferences: {
+		show_intro_dialog: true
+	},
+
 	init: function()
 	{
-		if( !CORE.user_preferences.intro )
-			CORE.user_preferences.intro = {
-				show_intro_dialog: true
-			};
-
-		if( CORE.user_preferences.intro.show_intro_dialog !== false)
+		if( this.preferences.show_intro_dialog !== false)
 			this.showIntroDialog();	
 	},
 
@@ -21,7 +22,7 @@ var IntroModule = {
 
 		dialog.on_close = function()
 		{
-			CORE.user_preferences.intro.show_intro_dialog = false;
+			IntroModule.preferences.show_intro_dialog = false;
 		}
 	
 		dialog.addButton("Close");
@@ -43,11 +44,6 @@ var IntroModule = {
 		function close_this(){
 			dialog.close();
 		}
-	},
-
-	reset: function()
-	{
-		delete CORE.user_preferences.intro;
 	}
 }
 

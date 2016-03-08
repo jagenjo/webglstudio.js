@@ -1,11 +1,14 @@
 //This module is in charge of creating the application interface (menus, sidepanels, tabs, statusbar, etc)
 var InterfaceModule = {
+	name: "interface",
+
+	preferences: { 
+		show_low_panel: true,
+		side_panel_width: 300
+	},
 
 	init: function()
 	{
-		if(!CORE.user_preferences.interface)
-			CORE.user_preferences.interface = {};
-
 		//create menubar
 		LiteGUI.createMenubar(null,{sort_entries: false});
 
@@ -17,7 +20,7 @@ var InterfaceModule = {
 		LiteGUI.menubar.add("Scene");
 		LiteGUI.menubar.add("Actions");
 
-		var side_panel_width = CORE.user_preferences.interface.side_panel_width || 300;
+		var side_panel_width = this.preferences.side_panel_width;
 
 		//create a main container and split it in two (workarea: leftwork, sidebar)
 		var mainarea = new LiteGUI.Area("mainarea",{content_id:"workarea", height: "calc(100% - 30px)", autoresize: true, inmediateResize: true, minSplitSize: 200 });
@@ -27,7 +30,7 @@ var InterfaceModule = {
 		LiteGUI.add( mainarea );
 
 		LiteGUI.bind( mainarea, "split_moved", function(e){
-			CORE.user_preferences.interface.side_panel_width = InterfaceModule.mainarea.getSection(1).getWidth();
+			InterfaceModule.preferences.side_panel_width = InterfaceModule.mainarea.getSection(1).getWidth();
 		});
 
 		//var workarea_split = mainarea.getSection(0);
@@ -83,7 +86,6 @@ var InterfaceModule = {
 		split_button.root.style.float = "right";
 		split_button.content.style.width = "20px";
 		docked.header.appendChild( split_button.root );
-
 
 		//tabs 
 		var tabs_widget = new LiteGUI.Tabs("paneltabs", { size: "full" });
@@ -270,7 +272,7 @@ var InterfaceModule = {
 		else
 			this.visorarea.hideSection(1);
 
-		CORE.user_preferences.interface.show_timeline = v;
+		this.preferences.show_low_panel = v;
 		LiteGUI.trigger( this.visorarea.root, "visibility_change" );
 	},
 };

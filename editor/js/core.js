@@ -99,19 +99,8 @@ var CORE = {
 		//launch LiteGUI
 		LiteGUI.init(); 
 
-		//load user settings
-		var data = localStorage.getItem("wgl_user_preferences" );
-		if( data )
-		{
-			try
-			{
-				this.user_preferences = JSON.parse( data );
-			}
-			catch (err)
-			{
-			}
-		}
-		
+		//load local user preferences for every module
+		this.loadUserPreferences();
 
 		//Init all modules
 		this.initModules();
@@ -211,6 +200,8 @@ var CORE = {
 	registerModule: function( module )
 	{
 		this.Modules.push(module);
+		//if(!module.name)
+		//	console.warn("Module without name, some features wouldnt be available");
 
 		//initialize on late registration
 		if(this._modules_initialized)
@@ -235,6 +226,14 @@ var CORE = {
 		LiteGUI.trigger( CORE.root, "module_removed", module );
 	},
 
+	getModule: function( module_name )
+	{
+		for(var i = 0; i < this.Modules.length; ++i)
+			if(this.Modules[i].name == module_name )
+				return this.Modules[i];
+		return null;
+	},
+
 	isModule: function( module )
 	{
 		var index = this.Modules.indexOf( module );
@@ -249,13 +248,70 @@ var CORE = {
 			if (this.Modules[i].onUnload)
 				this.Modules[i].onUnload();
 
-		if(this.user_preferences)
-		{
-			var data = JSON.stringify( this.user_preferences );
-			localStorage.setItem("wgl_user_preferences", data );
-		}
+		//save preferences
+		this.saveUserPreferences();
 	},
 
+	resetUserPreferences: function()
+	{
+		localStorage.removeItem("wgl_user_preferences" );
+	},
+
+	loadUserPreferences: function()
+	{
+		var preferences = null;
+
+		//load user settings
+		var data = localStorage.getItem("wgl_user_preferences" );
+		if( data )
+		{
+			try
+			{
+				preferences = JSON.parse( data );
+				this.user_preferences = preferences;
+			}
+			catch (err)
+			{
+			}
+		}
+		//removing preferences could mean that the preferences will be lost
+		//localStorage.removeItem("wgl_user_preferences" );
+		if(!preferences)
+			return;
+
+		if(preferences.modules)
+			for(var i in preferences.modules)
+			{
+				var module_preferences = preferences.modules[i];
+				var module = this.getModule(i);
+				if(!module || !module.preferences)
+					continue;
+				LS.cloneObject( module_preferences, module.preferences, true, true ); //clone recursive and only_existing
+			}
+	},
+
+	saveUserPreferences: function()
+	{
+		var preferences = { modules: {} };
+		for(var i in this.Modules)
+		{
+			var module = this.Modules[i];
+			var module_name = module.name;
+			if(!module.preferences)
+				continue;
+
+			if(!module_name)
+				console.warn("Module with preferences but without name, skipping saving preferences");
+			else
+				preferences.modules[ module_name ] = module.preferences;
+		}
+
+		var data = JSON.stringify( preferences );
+		localStorage.setItem("wgl_user_preferences", data );
+		return preferences;
+	},
+
+	//Scenes ****************************************
 	addScene: function( scene )
 	{
 		if( this.Scenes.indexOf( scene ) != -1 )

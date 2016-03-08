@@ -86,7 +86,7 @@ var DriveModule = {
 			var folder = LS.RM.getFolder( url );
 			var basename = LS.RM.getBasename( url );
 			var filename = LS.RM.getFilename( url );
-			if(filename.substr(0,4) == "_th_")
+			if(filename.substr(0,4) == "_th_" || filename.indexOf("CUBECROSS") != -1)
 				return;
 			var extension = LS.RM.getExtension( url );
 			var format_info = LS.Formats.getFileFormatInfo( extension );
@@ -475,6 +475,15 @@ var DriveModule = {
 			inspector.addButton( category,"Show content", function(){ PackTools.showPackDialog( local_resource ); });
 		else if( category == "json" && local_resource )
 			inspector.addButton( category,"Show content", function(){ EditorModule.checkJSON( local_resource._data ); });
+
+		if(local_resource)
+		{
+			if( local_resource.from_pack )
+				inspector.addInfo( "From Pack" , local_resource.from_pack );
+			if( local_resource.from_prefab )
+				inspector.addInfo( "From Prefab" , local_resource.from_prefab );
+		}
+
 
 		if(resource.fullpath)
 		{
@@ -1369,6 +1378,7 @@ var DriveModule = {
 			if(pack)
 			{
 				pack.fullpath = fullpath;
+				LS.ResourcesManager.registerResource(  pack.fullpath || pack.filename, pack ); 
 				DriveModule.saveResource( pack, inner_complete );
 			}
 		}
@@ -1795,11 +1805,12 @@ DriveModule.onInsertMaterial = function(fullpath, restype, options )
 
 DriveModule.registerAssignResourceCallback( null, DriveModule.onInsertMaterial );
 
-DriveModule.registerAssignResourceCallback( "SceneNode", function( fullpath, restype ) {
+DriveModule.registerAssignResourceCallback( "SceneNode", function( fullpath, restype, options ) {
 	var root = SelectionModule.getSelectedNode() || LS.GlobalScene.root;
 	var res = LS.RM.resources[ fullpath ];
 	if(res && res.constructor === LS.SceneNode )
 	{
+		//apply position?
 		root.addChild( res );
 	}
 	else

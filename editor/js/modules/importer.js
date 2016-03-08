@@ -7,21 +7,16 @@ var ImporterModule  = {
 
 	name: "importer",
 	
+	//this are saved between sessions
 	preferences: {
 		optimize_data: true,
 		mesh_action: "origin",
 		texture_action: "replace",
-		use_names_in_animations: false
+		use_names_to_reference: true
 	},
 
 	init: function()
 	{
-		//save user preferences
-		if(!CORE.user_preferences.importer)
-			CORE.user_preferences.importer = this.preferences;
-		else
-			this.preferences = CORE.user_preferences.importer;
-
 		if(window.gl && window.gl.canvas )
 			LiteGUI.createDropArea( gl.canvas, ImporterModule.onItemDrop.bind(this) );
 		LiteGUI.menubar.add("Actions/Import File", { callback: function() { ImporterModule.showImportResourceDialog(); }});
@@ -147,7 +142,7 @@ var ImporterModule  = {
 	},
 
 	//show the dialog to perform actions to the imported file
-	showImportResourceDialog: function( file, options )
+	showImportResourceDialog: function( file, options, on_complete )
 	{
 		options = options || {};
 
@@ -156,7 +151,10 @@ var ImporterModule  = {
 
 		var target = LS.Material.COLOR_TEXTURE;
 		var insert_into = false;
-		var upload_file = false;
+
+		var filename = "";
+		var folder = options.folder;
+		var resource = null;
 
 		var import_options = {
 			optimize_data: this.preferences.optimize_data
@@ -265,6 +263,11 @@ var ImporterModule  = {
 				inspector.refresh();
 			}});
 
+			inspector.addTitle("Destination" );
+			inspector.addFolder("Save to folder", folder || "", { callback: function(v){
+				folder = v;
+			}});
+
 			if(file)
 			{
 				inspector.addTitle("File Information" );
@@ -311,25 +314,19 @@ var ImporterModule  = {
 				{
 					inspector.addTitle("Scene");
 					inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { import_options.optimize_data = v; }});
-					inspector.addCheckbox("Use names in animations", import_options.use_names_in_animations, { callback: function(v) { import_options.use_names_in_animations = v; }});
+					inspector.addCheckbox("Use names to reference nodes", import_options.use_names_to_reference, { callback: function(v) { import_options.use_names_to_reference = v; }});
 				}
 			}
 		}
 
-		dialog.addButton("Import", { className: "big", callback: inner_import });
-		var imp_and_upload = dialog.addButton("Import & Upload", { className: "big", callback: inner_import });
-		var imp_and_insert = dialog.addButton("Import and Insert", { className: "big", callback: inner_import });
+		dialog.addButton("Import to Memory", { className: "big", callback: inner_import });
+		var imp_and_insert = dialog.addButton("Import and Insert in Scene", { className: "big", callback: inner_import });
 		dialog.addButton("Cancel", { className: "big", callback: function() { dialog.close(); } });
-
-		var filename = "";
-		var resource = null;
 
 		function inner_import( button, callback )
 		{
 			if(button == imp_and_insert)
 				insert_into = true;
-			if(button == imp_and_upload)
-				upload_file = true;
 
 			filename = inspector.getValue("Filename");
 			filename = filename.replace(/ /g,"_"); //no spaces in names			
@@ -358,20 +355,37 @@ var ImporterModule  = {
 				DriveModule.onInsertResourceInScene( resource, options );
 			}
 
-			if(upload_file)
+			if(1)
 			{
-				DriveModule.showSelectFolderDialog( function(folder) {
-					if(!folder)
-						return;
-					if(!resource.filename)
-						return;
-					var fullpath = folder + "/" + resource.filename;
-					LS.ResourcesManager.renameResource( resource.filename, fullpath );
-					resource.fullpath = fullpath;
-					DriveModule.saveResource( resource );
-				});
+				if(folder)
+					inner_saveToFolder( resource, folder );
+				else
+				{
+					if(on_complete)
+						on_complete();
+				}
+				/*
+				else
+					DriveModule.showSelectFolderDialog(function(folder){
+						if(folder)
+							inner_saveToFolder(resource, folder);
+					});
+				*/
 			}
 			dialog.close();
+		}
+
+		function inner_saveToFolder( resource, folder )
+		{
+			if(!folder)
+				return;
+			if(!resource.filename)
+				return;
+			var fullpath = folder + "/" + resource.filename;
+			LS.ResourcesManager.renameResource( resource.filename, fullpath );
+			resource.fullpath = fullpath;
+
+			DriveModule.saveResource( resource, on_complete );
 		}
 	},
 
@@ -399,21 +413,51 @@ var ImporterModule  = {
 				{
 					resource._original_data = resource.toBinary().buffer; //ArrayBuffer
 					filename = filename + ".wbin";
-
 					LS.ResourcesManager.renameResource( resource.filename, filename );
 				}
 				else
 					resource._original_file = file;
 
-				if( options.use_names_in_animations && (resource.constructor === LS.SceneTree || resource.constructor === LS.SceneNode) )
+				if(resource.constructor === LS.SceneTree || resource.constructor === LS.SceneNode )
 				{
-					if(resource.animations)
+					var resources = resource.getResources({},true);
+
+					if(options.optimize_data)
 					{
-						var animation = LS.RM.getResource(resource.animations);
-						if(animation)
-							animation.convertIDstoNames( true, resource );
+						for(var i in resources)
+						{
+							var res = LS.ResourcesManager.getResource(i);
+							if(res.constructor === LS.Animation)
+							{
+								var anim = res;
+								anim.optimizeTracks();
+							}
+						}
+					}
+
+					if( options.use_names_to_reference)
+					{
+						//rename bone references
+						for(var i in resources)
+						{
+							var res = LS.ResourcesManager.getResource(i);
+							if(res.constructor === GL.Mesh && res.bones)
+							{
+								var mesh = res;
+								mesh.convertBonesToNames( resource );
+							}
+						}
+
+						//rename animation tracks
+						if(resource.animations)
+						{
+							var animation = LS.RM.getResource(resource.animations);
+							if(animation)
+								animation.convertIDstoNames( true, resource );
+						}
 					}
 				}
+
 			}
 
 			if(on_complete)

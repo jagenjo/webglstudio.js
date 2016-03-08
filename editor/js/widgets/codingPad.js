@@ -196,14 +196,14 @@ CodingPadWidget.prototype.assignCurrentCode = function( skip_events )
 
 	var old_text_content = this.getCodeFromInfo( info );
 
-	if(text_content == old_text_content)
-		return;
+	//why?
+	//if(text_content == old_text_content)
+	//	return;
 
 	this.setCodeFromInfo( info, text_content );
 
 	//update all the ScriptFromFile if we are editing a js file
-	if(instance.constructor == LS.Resource && instance.filename.indexOf(".js") != -1 )
-		LS.ScriptFromFile.updateComponents( instance );
+	this.processCodeInScripts();
 
 	if(skip_events) 
 		return true; 
@@ -351,6 +351,7 @@ CodingPadWidget.prototype.saveCode = function()
 
 	function inner_after_save()
 	{
+		that.processCodeInScripts();
 		that.editor.focus();
 		that.showInFooter("saved");
 		LiteGUI.trigger( this, "stored" );
@@ -382,6 +383,34 @@ CodingPadWidget.prototype.changeFontSize = function(num)
 		size = parseInt(size);
 	size += num;
 	root.style.fontSize = size + "px";
+}
+
+CodingPadWidget.prototype.processCodeInScripts = function()
+{
+	var info = this.getCurrentCodeInfo();
+	if(!info)
+		return;
+
+	var instance = info.instance;
+
+	if(instance.constructor != LS.Resource || instance.filename.indexOf(".js") == -1 )
+		return;
+
+	//if it is modified we dont care about reloading scripts, it wont change anything
+	if(!instance._modified)
+	{
+		//if it is a global script, we need to reload them
+		if( LS.GlobalScene.global_scripts.indexOf( instance.fullpath || instance.filename ) != -1 )
+		{
+			LS.GlobalScene.loadScripts(null,function(){
+				LS.GlobalScene.checkComponentsCodeModification();
+				EditorModule.refreshAttributes();
+			});
+		}
+	}
+
+	//replace the components using this script
+	LS.ScriptFromFile.updateComponents( instance );
 }
 
 //errors
@@ -617,6 +646,10 @@ CodingPadWidget.prototype.onOpenCode = function()
 	for(var i in script_components)
 		codes.push({ name: script_components[i].name, component: script_components[i] });
 
+	//global scripts
+	for(var i in LS.GlobalScene.global_scripts)
+		codes.push({ name: LS.GlobalScene.global_scripts[i], fullpath: LS.GlobalScene.global_scripts[i] });
+
 	//resources
 	for(var i in LS.ResourcesManager.resources)
 	{
@@ -624,6 +657,8 @@ CodingPadWidget.prototype.onOpenCode = function()
 		if( resource && resource.constructor === LS.Resource && resource.data && resource.data.constructor === String)
 			codes.push({ name: i, resource: resource });
 	}
+
+
 
 	widgets.addResource("From resource","",{
 		callback: function(fullpath){
@@ -654,6 +689,13 @@ CodingPadWidget.prototype.onOpenCode = function()
 			{
 				var resource = selected.resource;
 				that.editInstanceCode( resource, { id: selected.name, title: LS.RM.getFilename(selected.name) });
+			}
+			else if( selected.fullpath )
+			{
+				LS.RM.load( selected.fullpath, function(resource){
+					if(resource && resource.constructor === LS.Resource)
+						that.editInstanceCode( resource, { id: resource.filename, title: resource.filename } );
+				});
 			}
 		}
 		dialog.close();

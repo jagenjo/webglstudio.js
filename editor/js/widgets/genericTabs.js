@@ -130,7 +130,17 @@ GenericTabsWidget.prototype.addWidgetTab = function( widget_class, options )
 	var title = options.title || widget_class.widget_name || widget_class.name;
 	var num = this.tabs.getNumOfTabs();
 	var widget = new widget_class();
-	tab = this.tabs.addTab( null, { title: title, selected: true, closable: true, size: "full", content: widget.root, callback: onTabClicked, onclose: onTabClosed, skip_callbacks: true, index: num - 1});
+	tab = this.tabs.addTab( null, { 
+		title: title, 
+		selected: true, closable: true, size: "full", 
+		content: widget.root, 
+		callback: onTabClicked, 
+		onclose: onTabClosed, 
+		skip_callbacks: true, 
+		widget: widget,
+		index: num - 1
+	});
+
 	tab.widget = widget;
 	widget.onRename = function(new_name) { 
 		tab.setTitle(new_name);
@@ -141,6 +151,9 @@ GenericTabsWidget.prototype.addWidgetTab = function( widget_class, options )
 
 	function onTabClicked()
 	{
+		var widget = this.widget;
+		if(widget.onShow)
+			widget.onShow();
 	}
 
 	function onTabClosed( tab )

@@ -1194,7 +1194,7 @@ var EditorModule = {
 
 	showSelectResource: function()
 	{
-		//FUNCTION REPLACED BY DRIVE MODULE
+		//FUNCTION REPLACED BY DriveModule
 		LiteGUI.alert("If you can read this is because Drive Module is not installed");
 	},
 
@@ -1625,7 +1625,7 @@ LiteGUI.Inspector.prototype.addNodeComponent = function(name, value, options)
 LiteGUI.Inspector.widget_constructors["node_component"] = "addNodeComponent";
 
 //to select a resource
-LiteGUI.Inspector.prototype.addResource = function(name,value, options)
+LiteGUI.Inspector.prototype.addResource = function( name, value, options)
 {
 	options = options || {};
 	value = value || "";
@@ -1637,8 +1637,8 @@ LiteGUI.Inspector.prototype.addResource = function(name,value, options)
 
 	input.addEventListener( "change", function(e) { 
 		if(e.target.value)
-			LS.ResourcesManager.load(e.target.value);
-		LiteGUI.Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
+			LS.ResourcesManager.load( e.target.value );
+		LiteGUI.Inspector.onWidgetChange.call( that, element, name, e.target.value, options);
 	});
 	
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 

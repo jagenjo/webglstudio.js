@@ -27,6 +27,7 @@ function Timeline()
 }
 
 Timeline.widget_name = "Timeline";
+Timeline.interpolation_values = {"none": LS.NONE, "linear": LS.LINEAR, "bezier": LS.BEZIER }
 
 CORE.registerWidget( Timeline );
 
@@ -95,7 +96,7 @@ Timeline.prototype.createInterface = function()
 
 	this.property_widget = widgets.addString("Property", "", { disabled: true, width: "auto" } );
 	this.property_widget.style.marginLeft = "10px";
-	this.interpolation_widget = widgets.addCombo("Interpolation", "none", { values: {"none": LS.NONE, "linear": LS.LINEAR, "bezier": LS.BEZIER }, width: 200, callback: function(v){ 
+	this.interpolation_widget = widgets.addCombo("Interpolation", "none", { values: Timeline.interpolation_values, width: 200, callback: function(v){ 
 		if( !that.current_track || that.current_track.interpolation == v )
 			return;
 		if( that.current_track.isInterpolable() )
@@ -255,7 +256,7 @@ Timeline.prototype.setAnimation = function( animation, take_name )
 	this.redrawCanvas();
 }
 
-Timeline.prototype.resize = function()
+Timeline.prototype.resize = function( skip_redraw )
 {
 	//console.log("timeline resize");
 	var canvas = this.canvas;
@@ -274,8 +275,24 @@ Timeline.prototype.resize = function()
 
 	canvas.width = rect.width;
 	canvas.height = rect.height;
-	this.redrawCanvas();
+
+	if(!skip_redraw)
+		this.redrawCanvas();
 }
+
+/*
+Timeline.prototype.resize = function()
+{
+	var w = this.canvas.parentNode.offsetWidth;
+	var h = this.canvas.parentNode.offsetHeight;
+	if(this.canvas.width != w || this.canvas.height != h)
+	{
+		this.canvas.width = w;
+		this.canvas.height = h;
+		this._must_redraw = true;
+	}
+}
+*/
 
 //globals used for rendering and interaction
 Timeline.prototype.updateTimelineData = function()
@@ -832,16 +849,7 @@ Timeline.prototype.canvasXToTime = function( x )
 Timeline.prototype.onMouse = function(e)
 {
 	if( this.autoresize )
-	{
-		var w = this.canvas.parentNode.offsetWidth;
-		var h = this.canvas.parentNode.offsetHeight;
-		if(this.canvas.width != w || this.canvas.height != h)
-		{
-			this.canvas.width = w;
-			this.canvas.height = h;
-			this._must_redraw = true;
-		}
-	}
+		this.resize();
 
 	if(!this.session)
 	{
@@ -1061,6 +1069,11 @@ Timeline.prototype.nextKeyframe = function()
 	}
 
 	this.setCurrentTime( closest_time );
+}
+
+Timeline.prototype.onShow = function()
+{
+	this.resize();
 }
 
 
@@ -1614,23 +1627,47 @@ Timeline.prototype.onShowAnimationOptionsDialog = function()
 	var widgets = new LiteGUI.Inspector();
 	widgets.addString("Name", this.current_animation.filename, { disabled: true } );
 	widgets.addInfo("Tracks", this.current_take.tracks.length );
-	widgets.addButtons("Actions",["Use names as ids","Optimize Tracks"], function(v){
-		if(v == "Use names as ids")
-		{
-			var total = that.current_take.convertIDstoNames(true);
-			LiteGUI.alert("Tracks converted: " + total);
-			if(total)
-				LS.ResourcesManager.resourceModified( that.current_animation );
-		}
-		else if(v == "Optimize Tracks")
-		{
-			var total = that.current_take.optimizeTracks();
-			LiteGUI.alert("Tracks optimized: " + total);
-			if(total)
-				LS.ResourcesManager.resourceModified( that.current_animation );
-		}
 
-	});
+	//actions
+	widgets.widgets_per_row = 2;
+	var values = ["Use names as ids","Optimize Tracks","Match Translation"];
+	var action = values[0];
+	widgets.addCombo("Actions", action,{ values: values, width: "80%", callback: function(v){
+		action = v;	
+	}});
+
+	widgets.addButton(null,"Go",{ width: "20%", callback: function(){
+		var total = 0;
+
+		if(action == "Use names as ids")
+			total = that.current_take.convertIDstoNames(true);
+		else if(action == "Optimize Tracks")
+			total = that.current_take.optimizeTracks();
+		else if(action == "Match Translation")
+			total = that.current_take.matchTranslation();
+
+		LiteGUI.alert("Tracks modifyed: " + total);
+		if(total)
+			LS.ResourcesManager.resourceModified( that.current_animation );
+	}});
+	widgets.widgets_per_row = 1;
+
+	//interpolation
+	widgets.widgets_per_row = 2;
+	var interpolation = Timeline.interpolation_values["linear"];
+	widgets.addCombo("Set Interpolation to all tracks", interpolation, { values: Timeline.interpolation_values, width: "80%", callback: function(v){
+		interpolation = v;	
+	}});
+
+	widgets.addButton(null,"Go",{ width: "20%", callback: function(){
+		var total = that.current_take.setInterpolationToAllTracks( interpolation );
+		LiteGUI.alert("Tracks modifyed: " + total);
+		if(total)
+			LS.ResourcesManager.resourceModified( that.current_animation );
+	}});
+	widgets.widgets_per_row = 1;
+
+	
 	widgets.addSeparator();
 	widgets.addButton(null,"Close", function(){
 		dialog.close();	
@@ -1705,7 +1742,7 @@ Timeline.prototype.showNewTrack = function()
 	var node_widget = widgets.addString("Node", "", { disabled: true } );
 	var type_widget = widgets.addString("Type", "", { disabled: true } );
 
-	widgets.addCombo("Interpolation", "none", { values: {"none": LS.NONE, "linear": LS.LINEAR, "bezier": LS.BEZIER }, callback: function(v){ 
+	widgets.addCombo("Interpolation", "none", { values: Timeline.interpolation_values, callback: function(v){ 
 		
 	}});
 	widgets.addButtons(null,["Create","Cancel"], function(v){
@@ -1795,7 +1832,7 @@ Timeline.prototype.showTrackOptionsDialog = function( track )
 		}});
 
 		widgets.addString("Type", track.type, { disabled: true } );
-		widgets.addCombo("Interpolation", track.interpolation, { disabled: !track.isInterpolable(), values: {"none": LS.NONE, "linear": LS.LINEAR, "bezier": LS.BEZIER }, callback: function(v){ 
+		widgets.addCombo("Interpolation", track.interpolation, { disabled: !track.isInterpolable(), values: Timeline.interpolation_values, callback: function(v){ 
 			if(track.interpolation == v)
 				return;
 			track.interpolation = v;

@@ -1362,16 +1362,21 @@ a:hover {
 	color: #AAF;
 	padding: 0;
 	box-shadow: 0 0 10px black !important;
+	background-color: #2E2E2E !important;
 }
 
 .litecontextualmenu .litemenu-entry {
-	margin: 0;
+	margin: 2px;
 	padding: 2px;
+}
+
+.litecontextualmenu .litemenu-entry.submenu {
+	background-color: #2E2E2E !important;
 }
 
 .litemenu-title {
 	color: #DDE;
-	background-color: #222;	
+	background-color: #111;	
 	margin: 0;
 	padding: 2px;
 	cursor: default;
@@ -1385,7 +1390,7 @@ a:hover {
 */
 
 .litemenu-entry:hover:not(.disabled):not(.separator) {
-	background-color: #777;
+	background-color: #555;
 	color: #EEE;
 }
 
@@ -1547,9 +1552,14 @@ button.close-button {
 	margin-left:6px;
 	margin-right:-6px;
 	border-radius: 2px;
-	opacity: 0.5;
+	opacity: 0.2;
 	transition: all 0.3s;
 	padding: 2px;
+}
+
+.litetabs ul.wtabcontainer li.wtab:hover .tabclose
+{
+	opacity: 0.5;
 }
 
 .litetabs ul.wtabcontainer li.wtab .tabclose:hover {

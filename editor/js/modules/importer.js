@@ -157,9 +157,9 @@ var ImporterModule  = {
 		var resource = null;
 
 		var import_options = {
-			optimize_data: this.preferences.optimize_data
+			optimize_data: this.preferences.optimize_data,
+			use_names_to_reference: this.preferences.use_names_to_reference
 		};
-
 
 		var file_content = file ? file.data : null;
 		var url = "";
@@ -314,7 +314,7 @@ var ImporterModule  = {
 				{
 					inspector.addTitle("Scene");
 					inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { import_options.optimize_data = v; }});
-					inspector.addCheckbox("Use names to reference nodes", import_options.use_names_to_reference, { callback: function(v) { import_options.use_names_to_reference = v; }});
+					inspector.addCheckbox("Use node names to reference nodes", import_options.use_names_to_reference, { callback: function(v) { import_options.use_names_to_reference = v; }});
 				}
 			}
 		}

@@ -3553,7 +3553,9 @@ function dataURItoBlob( dataURI ) {
 			content: content,
 			title: title,
 			add: function(v) { this.content.appendChild(v.root || v); },
-			setTitle: function( title )	{ this.title.innerHTML = title; }
+			setTitle: function( title )	{ this.title.innerHTML = title; },
+			click: function(){ LiteGUI.trigger( this.tab, "click" ); },
+			destroy: function(){ that.removeTab(this.id) }
 		};
 
 		if(options.onclose)
@@ -5740,6 +5742,8 @@ function dataURItoBlob( dataURI ) {
 		//move the content there
 		dialog_window.document.body.appendChild( this.content );
 		this.root.style.display = "none"; //hide
+		this._old_height = this.content.style.height;
+		this.content.style.height = "100%";
 
 		LiteGUI.windows.push( dialog_window );
 
@@ -5756,6 +5760,8 @@ function dataURItoBlob( dataURI ) {
 
 		this.root.appendChild( this.content );
 		this.root.style.display = ""; //show
+		this.content.style.height = this._old_height;
+		delete this._old_height;
 		this.dialog_window.close();
 		var index = LiteGUI.windows.indexOf( this.dialog_window );
 		if(index != -1)
@@ -7662,7 +7668,7 @@ Inspector.prototype.addList = function(name, values, options)
 		return items[num];
 	}
 
-	element.selectIndex = function(num)
+	element.selectIndex = function( num, add_to_selection )
 	{
 		var items = this.querySelectorAll("ul li");
 		for(var i = 0; i < items.length; ++i)
@@ -7670,7 +7676,7 @@ Inspector.prototype.addList = function(name, values, options)
 			var item = items[i];
 			if(i == num)
 				item.classList.add("selected");
-			else
+			else if(!add_to_selection)
 				item.classList.remove("selected");
 		}
 		return items[num];

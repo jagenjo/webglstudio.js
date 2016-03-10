@@ -1346,7 +1346,7 @@ var LSQ = {
 	{
 		var info;
 		if(!root)
-			info = root.getPropertyInfo( locator );
+			info = LS.GlobalScene.getPropertyInfo( locator );
 		else
 		{
 			if(root.constructor === LS.SceneNode)
@@ -2204,7 +2204,7 @@ var ResourcesManager = {
 	{
 		if(!url)
 			return null;
-		url = url.split("/").filter(function(v){ return !!v; }).join("/");
+		url = this.cleanFullpath( url );
 		return this.resources[ url ];
 	},
 
@@ -2238,7 +2238,10 @@ var ResourcesManager = {
 			return;
 		delete resource._original_data;
 		delete resource._original_file;
-		resource._modified = true;
+
+		if(resource.remote_path)
+			resource._modified = true;
+
 		LEvent.trigger(this, "resource_modified", resource );
 		
 		if(resource.from_pack)
@@ -2300,7 +2303,10 @@ var ResourcesManager = {
 		//extract the filename extension
 		var extension = this.getExtension( url );
 		if(!extension) //unknown file type
+		{
+			console.warn("Cannot load a file without extension: " + url );
 			return false;
+		}
 
 		if( this.resources_not_found[url] )
 			return;
@@ -2542,13 +2548,13 @@ var ResourcesManager = {
 		if(resource.constructor.resource_type)
 			type = resource.constructor.resource_type;
 
+		//Add to global container
+		this.resources[ filename ] = resource;
+
 		//POST-PROCESS resources extra final action (done here to ensure any registered resource is post-processed)
 		var post_callback = this.resource_post_callbacks[ type ];
 		if(post_callback)
 			post_callback( filename, resource );
-
-		//Add to global container
-		this.resources[ filename ] = resource;
 
 		//send message to inform new resource is available
 		if(!resource.is_preview)
@@ -2906,16 +2912,32 @@ LS.ResourcesManager.processDataResource = function( url, data, options, callback
 LS.ResourcesManager.processImage = function( filename, data, options, callback ) {
 
 	var extension = LS.ResourcesManager.getExtension(filename);
-	var mimetype = 'image/png';
+	var mimetype = "application/octet-stream";
 	if(extension == "jpg" || extension == "jpeg")
 		mimetype = "image/jpg";
-	if(extension == "webp")
+	else if(extension == "webp")
 		mimetype = "image/webp";
-	if(extension == "gif")
+	else if(extension == "gif")
 		mimetype = "image/gif";
+	else if(extension == "png")
+		mimetype = "image/png";
+	else {
+		var format = LS.Formats.supported[ extension ];
+		if(format.mimetype)
+			mimetype = format.mimetype;
+		else
+		{
+			var texture = this.processImageNonNative( filename, data, options );
+			inner_on_texture( texture );
+			return;
+		}
+	}
 
+	//blob and load
 	var blob = new Blob([data],{type: mimetype});
 	var objectURL = URL.createObjectURL( blob );
+
+	//regular image
 	var image = new Image();
 	image.src = objectURL;
 	image.real_filename = filename; //hard to get the original name from the image
@@ -2923,6 +2945,17 @@ LS.ResourcesManager.processImage = function( filename, data, options, callback )
 	{
 		var filename = this.real_filename;
 		var texture = LS.ResourcesManager.processTexture( filename, this, options );
+		inner_on_texture( texture );
+	}
+	image.onerror = function(err){
+		URL.revokeObjectURL(objectURL); //free memory
+		if(callback)
+			callback( filename, null, options );
+		throw("Error loading image: " + filename); //error if image is not an image I guess
+	}
+
+	function inner_on_texture( texture )
+	{
 		if(texture)
 		{
 			//LS.ResourcesManager.registerResource( filename, texture ); //this is done already by processResource
@@ -2933,17 +2966,12 @@ LS.ResourcesManager.processImage = function( filename, data, options, callback )
 		if(callback)
 			callback(filename,texture,options);
 	}
-	image.onerror = function(err){
-		URL.revokeObjectURL(objectURL); //free memory
-		if(callback)
-			callback( filename, null, options );
-		throw("Error loading image: " + filename); //error if image is not an image I guess
-	}
+
 	return true;
 }
 
 //Similar to processImage but for non native file formats
-LS.ResourcesManager.processImageNonNative = function(filename, data, options) {
+LS.ResourcesManager.processImageNonNative = function( filename, data, options ) {
 
 	//clone because DDS changes the original data
 	var cloned_data = new Uint8Array(data).buffer;
@@ -2953,6 +2981,7 @@ LS.ResourcesManager.processImageNonNative = function(filename, data, options) {
 	{
 		var texture = texture_data;
 		texture.filename = filename;
+		texture._original_data = cloned_data;
 		return texture;
 	}
 
@@ -3089,20 +3118,25 @@ LS.ResourcesManager.registerResourcePostProcessor("Mesh", function(filename, mes
 	LS.ResourcesManager.meshes[filename] = mesh;
 });
 
-LS.ResourcesManager.registerResourcePostProcessor("Texture", function(filename, texture ) {
+LS.ResourcesManager.registerResourcePostProcessor("Texture", function( filename, texture ) {
 	//store
 	LS.ResourcesManager.textures[filename] = texture;
 });
 
-LS.ResourcesManager.registerResourcePostProcessor("Material", function(filename, material ) {
+LS.ResourcesManager.registerResourcePostProcessor("Material", function( filename, material ) {
 	//store
 	LS.ResourcesManager.materials[filename] = material;
 	LS.ResourcesManager.materials_by_uid[ material.uid ] = material;
 });
 
-LS.ResourcesManager.registerResourcePostProcessor("Pack", function(filename, pack ) {
+LS.ResourcesManager.registerResourcePostProcessor("Pack", function( filename, pack ) {
 	//flag contents to specify where do they come from
 	pack.flagResources();
+});
+
+LS.ResourcesManager.registerResourcePostProcessor("Prefab", function( filename, prefab ) {
+	//apply to nodes in the scene
+	prefab.applyToNodes();
 });
 
 /* Basic shader manager 
@@ -7930,6 +7964,7 @@ CompositePattern.prototype.findNode = function( name_or_uid )
 	return this.findNodeByUId( name_or_uid );
 }
 
+//this function gets called a lot when using animations
 CompositePattern.prototype.findNodeByName = function( name )
 {
 	if(!name)
@@ -7941,18 +7976,20 @@ CompositePattern.prototype.findNodeByName = function( name )
 	var children = this._children;
 
 	if(children)
-		for(var i = 0; i < children.length; ++i)
+	{
+		for(var i = 0, l = children.length; i < l; ++i)
 		{
 			var node = children[i];
 			if( node.name == name )
 				return node;
 			if(node._children)
 			{
-				var r = node.findNodeByName(name);
+				var r = node.findNodeByName( name );
 				if(r)
 					return r;
 			}
 		}
+	}
 	return null;
 }
 
@@ -8740,7 +8777,7 @@ Transform.prototype.updateGlobalMatrix = function (fast)
 	if(this._must_update_matrix)
 		this.updateMatrix();
 	if (this._parent)
-		mat4.multiply( this._global_matrix, fast ? this._parent._global_matrix : this._parent.getGlobalMatrix(), this._local_matrix );
+		mat4.multiply( this._global_matrix, fast ? this._parent._global_matrix : this._parent.getGlobalMatrix( this._parent._global_matrix ), this._local_matrix );
 	else
 		this._global_matrix.set( this._local_matrix ); 
 }
@@ -8786,7 +8823,7 @@ Transform.prototype.getGlobalMatrix = function (out, fast)
 		this.updateMatrix();
 	out = out || mat4.create();
 	if (this._parent)
-		mat4.multiply( this._global_matrix, fast ? this._parent._global_matrix : this._parent.getGlobalMatrix(), this._local_matrix );
+		mat4.multiply( this._global_matrix, fast ? this._parent._global_matrix : this._parent.getGlobalMatrix( this._parent._global_matrix ), this._local_matrix );
 	else
 		mat4.copy( this._global_matrix, this._local_matrix ); 
 	return mat4.copy(out, this._global_matrix);
@@ -9006,10 +9043,14 @@ Transform.fromMatrix4ToTransformData = (function() {
 		M.set(m);
 		mat4.multiplyVec3( position, M, LS.ZERO );
 
+		//extract scaling by 
 		scaling[0] = vec3.length( mat4.rotateVec3( temp_vec3, M, LS.RIGHT) );
 		scaling[1] = vec3.length( mat4.rotateVec3( temp_vec3, M, LS.TOP) );
 		scaling[2] = vec3.length( mat4.rotateVec3( temp_vec3, M, LS.BACK) );
 
+		//quat.fromMat4( rotation, M ); //doesnt work
+
+		//normalize axis vectors
 		vec3.normalize( M.subarray(0,3), M.subarray(0,3) );
 		vec3.normalize( M.subarray(4,7), M.subarray(4,7) );
 		vec3.normalize( M.subarray(8,11), M.subarray(8,11) );
@@ -17878,8 +17919,9 @@ function PlayAnimation(o)
 PlayAnimation.LOOP = 1;
 PlayAnimation.PINGPONG = 2;
 PlayAnimation.ONCE = 3;
+PlayAnimation.PAUSED = 4;
 
-PlayAnimation.MODES = {"loop":PlayAnimation.LOOP, "pingpong":PlayAnimation.PINGPONG, "once":PlayAnimation.ONCE };
+PlayAnimation.MODES = {"loop":PlayAnimation.LOOP, "pingpong":PlayAnimation.PINGPONG, "once":PlayAnimation.ONCE, "paused":PlayAnimation.PAUSED };
 
 PlayAnimation["@animation"] = { widget: "resource" };
 PlayAnimation["@root_node"] = { type: "node" };
@@ -17922,7 +17964,10 @@ PlayAnimation.prototype.getAnimation = function()
 {
 	if(!this.animation || this.animation == "@scene") 
 		return this._root.scene.animation;
-	return LS.ResourcesManager.getResource( this.animation );
+	var anim = LS.ResourcesManager.getResource( this.animation );
+	if( anim && anim.constructor === LS.Animation )
+		return anim;
+	return null;
 }
 
 PlayAnimation.prototype.onUpdate = function(e, dt)
@@ -17934,7 +17979,8 @@ PlayAnimation.prototype.onUpdate = function(e, dt)
 	if(!this.playing)
 		return;
 
-	this.current_time += dt * this.playback_speed;
+	if( this.mode != PlayAnimation.PAUSED )
+		this.current_time += dt * this.playback_speed;
 
 	var take = animation.takes[ this.take ];
 	if(!take) 
@@ -17968,9 +18014,13 @@ PlayAnimation.prototype.onUpdate = function(e, dt)
 					else
 						time = duration - (this.current_time % duration);
 					break;
-			default: break;
+			default: 
+					time = end_time; 
+				break;
 		}
 	}
+	else if(time < start_time)
+		time = start_time;
 
 	var root_node = null;
 	if(this.root_node && this._root.scene)
@@ -21203,9 +21253,9 @@ Take.prototype.optimizeTracks = function()
 	var num = 0;
 	var temp = new Float32Array(10);
 
-	for(var j = 0; j < this.tracks.length; ++j)
+	for(var i = 0; i < this.tracks.length; ++i)
 	{
-		var track = this.tracks[j];
+		var track = this.tracks[i];
 		if( track.value_size != 16 )
 			continue;
 
@@ -21215,7 +21265,7 @@ Take.prototype.optimizeTracks = function()
 			continue;
 		path[ path.length - 1 ] = "Transform/data";
 		track.property = path.join("/");
-		track.type = "float16";
+		track.type = "trans10";
 		track.value_size = 10;
 
 		//convert samples
@@ -21227,16 +21277,71 @@ Take.prototype.optimizeTracks = function()
 
 		var data = track.data;
 		var num_samples = data.length / 17;
-		for(var i = 0; i < num_samples; ++i)
+		for(var k = 0; k < num_samples; ++k)
 		{
-			var sample = data.subarray(i*17+1,(i*17)+17);
+			var sample = data.subarray(k*17+1,(k*17)+17);
 			var new_data = LS.Transform.fromMatrix4ToTransformData( sample, temp );
-			data[i*11] = data[i*17]; //timestamp
-			data.set(temp,i*11+1); //overwrite inplace (because the output is less big that the input)
+			data[k*11] = data[k*17]; //timestamp
+			data.set(temp,k*11+1); //overwrite inplace (because the output is less big that the input)
 		}
 		track.data = new Float32Array( data.subarray(0,num_samples*11) );
 		num += 1;
 	}
+	return num;
+}
+
+Take.prototype.matchTranslation = function( root )
+{
+	var num = 0;
+
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+
+		if(track.type != "trans10" && track.type != "mat4")
+			continue;
+
+		if( !track._property_path || !track._property_path.length )
+			continue;
+
+		var node = LSQ.get( track._property_path[0], root );
+		if(!node)
+			continue;
+		
+		var position = node.transform.position;
+		var offset = track.value_size + 1;
+
+		var data = track.data;
+		var num_samples = data.length / offset;
+		if(track.type == "trans10")
+		{
+			for(var j = 0; j < num_samples; ++j)
+				data.set( position, j*offset + 1 );
+		}
+		else if(track.type == "mat4")
+		{
+			for(var j = 0; j < num_samples; ++j)
+				data.set( position, j*offset + 1 + 12 ); //12,13,14 contain translation
+		}
+
+		num += 1;
+	}
+
+	return num;
+}
+
+Take.prototype.setInterpolationToAllTracks = function( interpolation )
+{
+	var num = 0;
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+		if(track.interpolation == interpolation)
+			continue;
+		track.interpolation = interpolation;
+		num += 1;
+	}
+
 	return num;
 }
 
@@ -21762,11 +21867,25 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 		if(!result || result.length != this.value_size)
 			result = this._result = new Float32Array( this.value_size );
 
-		for(var i = 0; i < this.value_size; i++)
-			result[i] = a[1][i] * t + b[1][i] * (1-t);
-
-		if(this.type == "quat")
-			quat.normalize(result, result);
+		switch(this.type)
+		{
+			case "quat": 
+				quat.lerp( result, a[1], b[1], t );
+				quat.normalize( result, result );
+				break;
+			case "trans10": 
+				for(var i = 0; i < this.value_size; i++)
+					result[i] = a[1][i] * t + b[1][i] * (1-t);
+				var rotA = a[1].subarray(3,7);
+				var rotB = a[1].subarray(3,7);
+				var rotR = result.subarray(3,7);
+				quat.lerp( rotR, rotA, rotB, t );
+				quat.normalize( rotR, rotR );
+				break;
+			default:
+				for(var i = 0; i < this.value_size; i++)
+					result[i] = a[1][i] * t + b[1][i] * (1-t);
+		}
 
 		return result;
 	}
@@ -21799,6 +21918,11 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 
 		if(this.type == "quat")
 			quat.normalize(result, result);
+		else if(this.type == "trans10")
+		{
+			var rot = result.subarray(3,7);
+			quat.normalize(rot, rot);
+		}
 
 		return result;
 	}
@@ -21847,11 +21971,25 @@ Track.prototype.getSamplePacked = function( time, interpolate, result )
 		if(!result || result.length != this.value_size)
 			result = this._result = new Float32Array( this.value_size );
 
-		for(var i = 0; i < this.value_size; i++)
-			result[i] = a[1+i] * t + b[1+i] * (1-t);
-
-		if(this.type == "quat")
-			quat.normalize(result, result);
+		switch(this.type)
+		{
+			case "quat": 
+				quat.lerp( result, a.subarray(i+1,i+5), b.subarray(i+1,i+5), t );
+				quat.normalize( result, result );
+				break;
+			case "trans10": 
+				for(var i = 0; i < this.value_size; i++)
+					result[i] = a[1+i] * t + b[1+i] * (1-t);
+				var rotA = a.subarray(i+4,i+8);
+				var rotB = b.subarray(i+4,i+8);
+				var rotR = result.subarray(i+4,i+8);
+				quat.lerp( rotR, rotA, rotB, t );
+				quat.normalize( rotR, rotR );
+				break;
+			default:
+				for(var i = 0; i < this.value_size; i++)
+					result[i] = a[1+i] * t + b[1+i] * (1-t);
+		}
 
 		return result;
 	}
@@ -21877,6 +22015,11 @@ Track.prototype.getSamplePacked = function( time, interpolate, result )
 
 		if(this.type == "quat")
 			quat.normalize(result, result);
+		else if(this.type == "trans10")
+		{
+			var rot = result.subarray(3,7);
+			quat.normalize(rot, rot);
+		}
 
 		return result;
 	}
@@ -22224,7 +22367,7 @@ function Prefab(o)
 {
 	this.resources = {}; 
 	this.prefab_json = null;
-	this.prefab_data = null;
+	this.prefab_data = null; //json object
 
 	if(o)
 		this.configure(o);
@@ -22409,6 +22552,21 @@ Prefab.prototype.flagResources = function()
 			continue;
 
 		resource.from_prefab = this.fullpath || this.filename || true;
+	}
+}
+
+//search for nodes using this prefab and creates the nodes
+Prefab.prototype.applyToNodes = function( scene )
+{
+	scene = scene || LS.GlobalScene;	
+	var name = this.fullpath || this.filename;
+
+	for(var i = 0; i < scene._nodes.length; ++i)
+	{
+		var node = scene._nodes[i];
+		if(node.prefab != name)
+			continue;
+		node.reloadFromPrefab();
 	}
 }
 
@@ -25990,9 +26148,11 @@ LS.Formats = {
 		var info = this.getFileFormatInfo( filename );
 		if(options.extension)
 			info.extension = options.extension; //force a format
+		else
+			info.extension = LS.ResourcesManager.getExtension( filename );
 
 		var format = this.supported[ info.extension ];
-		if(!format.parse)
+		if(!format || !format.parse)
 		{
 			console.error("Parser Error: No parser found for " + info.extension + " format");
 			return null;
@@ -30441,8 +30601,10 @@ SceneTree.prototype.onNodeAdded = function(e,node)
 	*/
 
 	//store by uid
-	if(!node.uid)
-		node.uid = LS.generateUId("NODE-");
+	if(!node.uid || this._nodes_by_uid[ node.uid ])
+		node._uid = LS.generateUId("NODE-");
+	//if( this._nodes_by_uid[ node.uid ] )
+	//	console.warn("There are more than one node with the same UID: ", node.uid );
 	this._nodes_by_uid[ node.uid ] = node;
 
 	//store nodes linearly
@@ -31314,6 +31476,20 @@ Object.defineProperty( SceneNode.prototype, 'material', {
 	enumerable: true
 });
 
+Object.defineProperty( SceneNode.prototype, 'prefab', {
+	set: function(name)
+	{
+		this._prefab = name;
+		var prefab = LS.RM.getResource(name);
+		if(prefab)
+			this.reloadFromPrefab();
+	},
+	get: function(){
+		return this._prefab;
+	},
+	enumerable: true
+});
+
 SceneNode.prototype.clear = function()
 {
 	this.removeAllComponents();
@@ -31768,6 +31944,7 @@ SceneNode.prototype.getMaterial = function()
 	return this.material;
 }
 
+//apply prefab info (skipping the root components) to node
 SceneNode.prototype.reloadFromPrefab = function()
 {
 	if(!this.prefab)
@@ -31780,9 +31957,9 @@ SceneNode.prototype.reloadFromPrefab = function()
 	//apply info
 	this.removeAllChildren();
 	this.init( true );
-	var data = LS.cloneObject( prefab.prefab_data );
-	delete data.components;
-	this.configure( data );
+	//remove all but children info (prefabs overwrite only children info)
+	var prefab_data = { children: prefab.prefab_data.children };
+	this.configure( prefab_data );
 }
 
 
@@ -31961,8 +32138,10 @@ SceneNode.prototype.configure = function(info)
 	if(info.components)
 		this.configureComponents(info);
 
-	//configure children too
-	this.configureChildren(info);
+	if(info.prefab) //prefabs ignore children config
+		this.reloadFromPrefab();
+	else //configure children too
+		this.configureChildren(info);
 
 	LEvent.trigger(this,"configure",info);
 }
@@ -32008,7 +32187,7 @@ SceneNode.prototype.serialize = function()
 	if(this.comments) 
 		o.comments = this.comments;
 
-	if(this._children)
+	if(this._children && !this.prefab)
 		o.children = this.serializeChildren();
 
 	//save components

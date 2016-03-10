@@ -18,7 +18,7 @@ function SceneTreeWidget( id )
 
 	var root_uid = scene.root.uid;
 
-	this.tree = new LiteGUI.Tree(null, { id: "uid_" + root_uid.replace(/\W/g, ''), uid: root_uid, content:"root", precontent: "<span class='nodecontrols'></span>" }, { allow_rename: false, allow_drag: true, allow_multiselection: true } );
+	this.tree = new LiteGUI.Tree(null, { id: this.getIdString( root_uid ), uid: root_uid, content:"root", precontent: "<span class='nodecontrols'></span>" }, { allow_rename: false, allow_drag: true, allow_multiselection: true } );
 	this.content = this.tree;
 	this.root.appendChild( this.tree.root );
 	this.tree.onContextMenu = function(e){
@@ -199,6 +199,11 @@ function SceneTreeWidget( id )
 	this.refresh();
 }
 
+SceneTreeWidget.prototype.getIdString = function(id)
+{
+	return "uid_" + id.replace(/\W/g, '_');
+}
+
 SceneTreeWidget.widget_name = "Scene Tree";
 
 CORE.registerWidget( SceneTreeWidget );
@@ -304,17 +309,17 @@ SceneTreeWidget.prototype.bindEvents = function( scene )
 
 	//Triggered when the user selects a node in the scene
 	LEvent.bind( scene, "selected_node_changed", function(e,node) { 
-		this.tree.setSelectedItem( node ? "uid_" + node.uid.replace(/\W/g, '') : null, true );
+		this.tree.setSelectedItem( node ? that.getIdString( node.uid ) : null, true );
 	},this);
 
 	//Triggered when the user selects another node in the scene (multi-selection)
 	LEvent.bind( scene, "other_node_selected", function(e,node) { 
-		this.tree.addItemToSelection(node ? "uid_" + node.uid.replace(/\W/g, '') : null);
+		this.tree.addItemToSelection(node ? that.getIdString( node.uid ) : null);
 	},this);
 
 	//Triggered when the user deselects another node in the scene (multi-selection)
 	LEvent.bind( scene, "other_node_deselected", function(e,node) { 
-		this.tree.removeItemFromSelection(node ? "uid_" + node.uid.replace(/\W/g, '') : null);
+		this.tree.removeItemFromSelection(node ? that.getIdString( node.uid ) : null);
 	},this);
 
 	//Triggered when ??
@@ -329,8 +334,8 @@ SceneTreeWidget.prototype.bindEvents = function( scene )
 
 	//Catch if the name of a node has changed to update it in the tree
 	LEvent.bind( scene, "node_name_changed", function(e,node) {
-		var unique_id = "uid_" + node.uid.replace(/\W/g, '');
-		this.tree.updateItem( unique_id, {id: unique_id, uid: node.uid, node_name: node._name, content: node.name });
+		var unique_id = that.getIdString( node.uid );
+		this.tree.updateItem( unique_id, { id: unique_id, uid: node.uid, node_name: node._name, content: node.name });
 	},this);
 }
 
@@ -366,10 +371,10 @@ SceneTreeWidget.prototype.showContextualMenu = function(e){
 //Create the object prepared for the LiteGUI.Tree and add some extra controls
 SceneTreeWidget.prototype.addNode = function( node, parent_id )
 {
-	var node_unique_id = "uid_" + node.uid.replace(/\W/g, '');
+	var node_unique_id = this.getIdString( node.uid );
 
 	if(!parent_id && node._parentNode && node._parentNode != this._scene.root )
-		parent_id = "uid_" + node._parentNode.uid.replace(/\W/g, '');
+		parent_id = this.getIdString( node._parentNode.uid );
 
 	var is_selected = SelectionModule.isSelected(node);
 
@@ -413,9 +418,10 @@ SceneTreeWidget.prototype.addNode = function( node, parent_id )
 
 SceneTreeWidget.prototype.removeNode = function(node)
 {
-	if(!this.tree) return;
-	var uid = node.uid.replace(/\W/g, '');
-	this.tree.removeItem( "uid_" + uid, true );
+	if(!this.tree)
+		return;
+	var uid = this.getIdString( node.uid );
+	this.tree.removeItem( uid, true );
 }
 
 SceneTreeWidget.prototype.refresh = function()

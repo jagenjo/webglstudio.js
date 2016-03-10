@@ -39,6 +39,7 @@ function ResourcesPanelWidget( id )
 	top_inspector.addString("Filter","",{ callback: function(v) { 
 		that.filterByName(v);
 	}});
+	top_inspector.root.style.marginTop = "4px";
 	top_inspector.addSeparator();
 	top_inspector.addButton(null,"New", function(){ DriveModule.showNewResourceDialog(); });
 	top_inspector.addButton(null,"Insert in scene", function(){ DriveModule.onInsertResourceInScene( that.selected_item ); });
@@ -542,8 +543,11 @@ ResourcesPanelWidget.prototype.refreshContent = function()
 {
 	if( this.current_bridge )
 		this.current_bridge.updateContent( this.current_folder );
-	else
-		this.showInBrowserContent( this.visible_resources, this._last_options );
+	else {
+		//memory
+		this.showInBrowserContent( LS.ResourcesManager.resources );
+		//this.showInBrowserContent( this.visible_resources, this._last_options );
+	}
 }
 
 

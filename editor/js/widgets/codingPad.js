@@ -385,6 +385,8 @@ CodingPadWidget.prototype.changeFontSize = function(num)
 	root.style.fontSize = size + "px";
 }
 
+//update all the ScriptFromFile if we are editing a js file
+//also if it is a Global Script then force a global scripts reload 
 CodingPadWidget.prototype.processCodeInScripts = function()
 {
 	var info = this.getCurrentCodeInfo();
@@ -396,7 +398,7 @@ CodingPadWidget.prototype.processCodeInScripts = function()
 	if(instance.constructor != LS.Resource || instance.filename.indexOf(".js") == -1 )
 		return;
 
-	//if it is modified we dont care about reloading scripts, it wont change anything
+	//if it is modified we dont want to reload the server scripts, they wont be updated
 	if(!instance._modified)
 	{
 		//if it is a global script, we need to reload them
@@ -640,6 +642,7 @@ CodingPadWidget.prototype.onOpenCode = function()
 	var selected = null;
 
 	var codes = [];
+	var codes_url = {}; //to avoid repeating codes (because they can be in the global_scripts and in the resources
 
 	//scripts in the scene
 	var script_components = LS.GlobalScene.findNodeComponents( LS.Components.Script );
@@ -648,17 +651,26 @@ CodingPadWidget.prototype.onOpenCode = function()
 
 	//global scripts
 	for(var i in LS.GlobalScene.global_scripts)
-		codes.push({ name: LS.GlobalScene.global_scripts[i], fullpath: LS.GlobalScene.global_scripts[i] });
+	{
+		var url = LS.GlobalScene.global_scripts[i];
+		codes.push({ name: url, fullpath: url });
+		codes_url[ url ] = true;
+	}
 
 	//resources
 	for(var i in LS.ResourcesManager.resources)
 	{
 		var resource = LS.ResourcesManager.resources[i];
-		if( resource && resource.constructor === LS.Resource && resource.data && resource.data.constructor === String)
-			codes.push({ name: i, resource: resource });
+		if( resource && resource.constructor === LS.Resource && resource.data && resource.data.constructor === String )
+		{
+			var fullpath = url;
+			if( !codes_url[url] )
+			{
+				codes.push({ name: i, resource: resource });
+				codes_url[url] = true;
+			}
+		}
 	}
-
-
 
 	widgets.addResource("From resource","",{
 		callback: function(fullpath){
@@ -776,7 +788,7 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 	coding_workarea_root.add( coding_workarea );
 
 	//TODO: this could be improved to use LiteGUI instead
-	var code_container_element = LiteGUI.createElement("div",".code-container",null, { height: "calc(100% - 54px)", overflow: "overflow: auto" });
+	var code_container_element = LiteGUI.createElement("div",".code-container",null, { height: "calc(100% - 44px)", overflow: "overflow: auto" });
 	var code_footer_element = LiteGUI.createElement("div",".code-footer",null, "height:18px; padding: 4px 0 0 4px; background-color: #222;");
 	coding_workarea.content.appendChild( code_container_element );
 	coding_workarea.content.appendChild( code_footer_element );

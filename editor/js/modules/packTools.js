@@ -15,7 +15,7 @@ var PackTools = {
 			return;
 		}
 
-		var dialog = new LiteGUI.Dialog("dialog_create_prefab", {title:"Create Prefab", close: true, width: 360, height: 270, scroll: false, draggable: true, resizable: true});
+		var dialog = new LiteGUI.Dialog("dialog_create_prefab", {title:"Create Prefab", close: true, width: 500, height: 270, scroll: false, draggable: true, resizable: true});
 		dialog.show();
 
 		var widgets = new LiteGUI.Inspector("prefab_widgets",{ });
@@ -47,16 +47,49 @@ var PackTools = {
 			old_name = LS.ResourcesManager.getBasename(node.prefab);
 		var filename = widgets.addString("Filename", old_name );
 		var list = widgets.addList("Include assets", res_names, { multiselection: true, height: 140 });
-		widgets.addButton(null,"Select all", { callback: function(){
-			list.selectAll();
+		widgets.addButtons("Select",["Meshes","Textures","Materials","Animations","All"], { callback: function(v){
+			if(v == "All")
+				list.selectAll();
+			else
+			{
+				for(var i = 0; i < res_names.length; ++i)
+				{
+					var res = res_names[i];
+					var resource = LS.RM.getResource(res);
+					if(!resource)
+						continue;
+					if( (resource.constructor === GL.Mesh && v == "Meshes") ||
+						(resource.constructor === GL.Texture && v == "Textures") ||
+						(resource.constructor.is_material && v == "Materials") ||
+						(resource.constructor === LS.Animation && v == "Animations") )
+						list.selectIndex( i, true );
+				}
+			}
 		}});
 
+		var folder = "";
+		widgets.addFolder("Save to",folder,{ callback: function(v){
+			folder = v;
+		}});
+
+		widgets.addSeparator();
 		widgets.addButton(null,"Create Prefab", { callback: function() {
 			var filename_str = filename.getValue(); //change spaces by underscores
 			var data = node.serialize();
 			var resources = list.getSelected();
-			PackTools.createPrefab(filename_str, data, resources);
+
+			if( LS.RM.getExtension( filename_str ) != "wbin" )
+				filename_str = filename_str + ".wbin";
+
+			var prefab = PackTools.createPrefab( filename_str, data, resources);
 			dialog.close();
+
+			if(!folder)
+				return;
+
+			var fullpath = LS.RM.cleanFullpath( folder + "/" + prefab.filename );
+			prefab.fullpath = fullpath;
+			DriveModule.saveResource( prefab );
 		}});
 
 		dialog.add(widgets);
@@ -71,10 +104,12 @@ var PackTools = {
 		filename = filename.replace(/ /gi,"_");
 
 		//create
-		var prefab = LS.Prefab.createPrefab(filename, data, resources);
+		var prefab = LS.Prefab.createPrefab( filename, data, resources );
 
 		//register in the system
 		LS.ResourcesManager.registerResource( prefab.filename, prefab ); 
+
+		return prefab;
 	},
 
 	showCreatePackDialog: function( options )

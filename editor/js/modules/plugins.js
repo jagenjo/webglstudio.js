@@ -96,6 +96,8 @@ var PluginsModule  = {
 	{
 		plugin.url = url;
 		this.plugins.push( plugin );
+		if( this.preferences.plugins.indexOf( url ) == -1 )
+			this.preferences.plugins.push( url );
 		return plugin;
 	},
 
@@ -128,6 +130,8 @@ var PluginsModule  = {
 		}
 
 		this.plugins.splice( index,1 );
+		this.preferences.plugins.splice( index,1 );
+
 		CORE.removeModule( plugin );
 		return plugin;
 	},

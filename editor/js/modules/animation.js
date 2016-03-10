@@ -9,15 +9,9 @@ var AnimationModule = {
 
 	init: function()
 	{
+		//create the timeline
 		this.tab = InterfaceModule.lower_tabs_widget.addWidgetTab( Timeline );
 		this.timeline = this.tab.widget;
-		//this.tab.content.style.overflow = "hidden"; 
-
-		/*
-		this.tab = InterfaceModule.lower_tabs_widget.addTab("Animation", {selected:true, size: "full", width: "100%"});
-		this.tab.content.style.overflow = "hidden"; 
-		this.createTimeline();
-		*/
 
 		LEvent.bind( LS.GlobalScene, "afterRenderScene", this.renderView.bind(this));
 		LEvent.bind( LS.GlobalScene, "renderPicking", this.renderPicking.bind(this));
@@ -181,6 +175,7 @@ var AnimationModule = {
 	insertKeyframe: function( button, relative )
 	{
 		this.timeline.onInsertKeyframeButton(button, relative);
+		this.tab.click();
 	},
 
 	renderView: function(e, camera)

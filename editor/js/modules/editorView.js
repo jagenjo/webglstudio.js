@@ -769,6 +769,7 @@ LS.Light.prototype.renderEditor = function(node_selected, component_selected )
 	var target = this.getTarget();
 
 	LS.Draw.setColor([1,1,1, component_selected ? 0.8 : 0.5 ]);
+	gl.depthMask( false );
 
 	if(EditorView.settings.render_icons)
 	{
@@ -785,7 +786,10 @@ LS.Light.prototype.renderEditor = function(node_selected, component_selected )
 	}
 
 	if(!node_selected || !this.enabled) 
+	{
+		gl.depthMask( true );
 		return;
+	}
 
 	if(this.type == LS.Light.OMNI)
 	{
@@ -901,6 +905,8 @@ LS.Light.prototype.renderEditor = function(node_selected, component_selected )
 
 		gl.disable( gl.BLEND );
 	}
+
+	gl.depthMask( true );
 }
 
 LS.Light.prototype.renderPicking = function(ray)
@@ -960,6 +966,7 @@ LS.Camera.prototype.renderEditor = function( node_selected, component_selected )
 	var target = this.getCenter();
 
 	LS.Draw.setColor([0.33,0.874,0.56, component_selected ? 0.8 : 0.5 ]);
+	gl.depthMask( false );
 
 	//render camera icon
 	if(EditorView.settings.render_icons)
@@ -1040,6 +1047,8 @@ LS.Camera.prototype.renderEditor = function( node_selected, component_selected )
 
 		gl.disable(gl.BLEND);
 	}
+
+	gl.depthMask( true );
 }
 
 //PRELOAD STUFF

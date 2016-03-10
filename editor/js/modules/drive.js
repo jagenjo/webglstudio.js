@@ -16,10 +16,6 @@ var DriveModule = {
 	server_resources: {}, //indexed by filename (includes all resources on the server) 
 	server_resources_by_id: {}, //indexed by id in DB
 
-	visible_resources: null, //resources shown on the browser window
-	current_folder: null, //current selected server folder
-	current_bridge: null, //bridge in charge of this folder
-	jpeg_quality: 0.8, //when encoding previews
 	preview_format: "image/jpg",
 	preview_size: 256,
 	generated_previews: {}, //cache generated previews 
@@ -43,7 +39,7 @@ var DriveModule = {
 		LS.ResourcesManager.keep_files = true;
 		var that = this;
 
-		//Loading notifications
+		// Events related to resources being loaded **********************************
 		LEvent.bind( LS.ResourcesManager, "resource_loading", function( e, url ) {
 			NotifyModule.show("FILE: " + url, { id: "res-msg-" + url.hashCode(), closable: true, time: 0, left: 60, top: 30, parent: "#visor" } );
 		});
@@ -118,6 +114,9 @@ var DriveModule = {
 			DriveModule.onResourceRegistered(res); 
 		});
 
+		//create a lower panel too
+		InterfaceModule.lower_tabs_widget.addWidgetTab( ResourcesPanelWidget );
+
 		//keep original files to store on server
 		LS.ResourcesManager.keep_original = true;
 
@@ -148,6 +147,7 @@ var DriveModule = {
 			if(filename)
 				that.showResourceInfo( filename );
 		});
+		this.showMemoryResources();
 	},
 
 	guessCategoryFromFile: function(file)
@@ -265,8 +265,6 @@ var DriveModule = {
 
 	showMemoryResources: function()
 	{
-		this.current_folder = null;
-		this.current_bridge = null;
 		this.resources_panel.showInBrowserContent( LS.ResourcesManager.resources );
 	},
 
@@ -490,19 +488,6 @@ var DriveModule = {
 			var link = LS.ResourcesManager.getFullURL( resource.remotepath || resource.fullpath );
 			inspector.addInfo("Link", "<a target='_blank' href='"+link+"'>link to the file</a>" );
 		}
-		/*
-		inspector.addButton("Show", "Open Window", { callback: function(){
-			var new_window = window.open("","Visualizer","width=400, height=300");
-			if(resource.appendChild) //is HTML element
-				new_window.document.body.appendChild( resource );
-			else
-			{
-				var image = new Image();
-				image.src = resource.path;
-				new_window.document.body.appendChild( image );
-			}
-		}});
-		*/
 
 		inspector.addSeparator();
 
@@ -631,13 +616,16 @@ var DriveModule = {
 	renameResource: function( old_name, new_name, resource )
 	{
 		//HARDCODED WITH LFS
-		if(resource && resource.remotepath)
+		if(resource && (resource.in_server || resource.remote_path) )
 		{
 			//rename in server
 			console.log("Renaming server file");
 			console.log(resource);	
 			old_name = resource.fullpath;
-			new_name = LFS.getFullpath( resource.unit, resource.folder, new_name );
+			if(resource.in_server)
+				new_name = LFS.getFullpath( resource.unit, resource.folder, new_name );
+			else
+				new_name = LS.RM.cleanPath( LS.RM.getFolder( resource.fullpath ) + "/" + new_name );
 			this.serverMoveFile( old_name, new_name, function(){
 				DriveModule.refreshContent();
 			});
@@ -1656,6 +1644,7 @@ var DriveModule = {
 		InterfaceModule.setSidePanelVisibility(false);
 		if(options.type)
 			DriveModule.resources_panel.filterByCategory( options.type );
+		DriveModule.resources_panel.refreshContent();
 
 		DriveModule.resources_panel.on_resource_selected_callback = function( filename, event ) {
 			var multiple = options.allow_multiple && event && event.shiftKey;
@@ -1810,6 +1799,7 @@ DriveModule.registerAssignResourceCallback( "SceneNode", function( fullpath, res
 	var res = LS.RM.resources[ fullpath ];
 	if(res && res.constructor === LS.SceneNode )
 	{
+		UndoModule.saveNodeCreatedUndo( res );
 		//apply position?
 		root.addChild( res );
 	}
@@ -1817,7 +1807,10 @@ DriveModule.registerAssignResourceCallback( "SceneNode", function( fullpath, res
 	{
 		LS.RM.load( fullpath, function(res,fullpath){
 			if(res && res.constructor === LS.SceneNode )
+			{
+				UndoModule.saveNodeCreatedUndo( res );
 				root.addChild( res );
+			}
 		});
 		/*
 		LS.GlobalScene.load( fullpath, function(v,res){

@@ -198,7 +198,7 @@ InspectorWidget.prototype.inspect = function( object, skip_history )
 
 	var title = "";
 	if(object)
-		title = (object.className || LS.getObjectClassName(object)) + " : " + (object.name || "");
+		title = "<span class='classname'>" + (object.className || LS.getObjectClassName(object)) + "</span> : <span class='name'>" + (object.name || "") + "</span>";
 	this.setTitle( title );
 }
 
@@ -609,7 +609,7 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 	//Create the title of the component
 	if(!LiteGUI.missing_icons)
 		LiteGUI.missing_icons = {};
-	var icon_url = "imgs/mini-icon-question.png";
+	var icon_url = "mini-icon-question.png";
 	if(component.constructor.icon && !LiteGUI.missing_icons[ component.constructor.icon ] )	
 		icon_url = component.constructor.icon;
 

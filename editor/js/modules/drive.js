@@ -1330,9 +1330,9 @@ var DriveModule = {
 		}});
 
 		widgets.widgets_per_row = 1;
-		widgets.addButtons(null,["Close","Ignore"], function(v){ 
+		widgets.addButtons(null,["Close","Save anyway"], function(v){ 
 			dialog.close();
-			if(v == "Ignore" && on_complete)
+			if(v == "Save anyway" && on_complete)
 				on_complete();
 		});
 		dialog.show();

@@ -494,6 +494,7 @@ ResourcesPanelWidget.prototype.showItemContextualMenu = function( item, event )
 			LiteGUI.confirm("Do you want to delete this file?", function(v){
 				if(!v)
 					return;
+				LS.RM.unregisterResource( fullpath );
 				DriveModule.serverDeleteFile( fullpath, function(v) { 
 					if(v)
 						that.refreshContent();

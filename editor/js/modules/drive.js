@@ -553,6 +553,7 @@ var DriveModule = {
 
 				if (v == "Delete")
 				{
+					LS.RM.unregisterResource( resource.fullpath );
 					DriveModule.serverDeleteFile(resource.fullpath, function(v) { 
 						if(v)
 							DriveModule.refreshContent();
@@ -570,7 +571,7 @@ var DriveModule = {
 		var inspector = new LiteGUI.Inspector();
 		dialog.add( inspector );
 
-		var valid_types = ["Text","Script"];
+		var valid_types = ["Text","Script","Material"];
 		var type = valid_types[0];
 		var filename = "unknown.txt";
 

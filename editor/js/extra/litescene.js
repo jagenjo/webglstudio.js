@@ -2583,6 +2583,8 @@ var ResourcesManager = {
 			delete this.meshes[ filename ];
 		if( this.textures[filename] )
 			delete this.textures[ filename ];
+		if( this.materials[filename] )
+			delete this.materials[ filename ];
 
 		LEvent.trigger(this,"resource_unregistered", resource);
 		LS.GlobalScene.refresh(); //render scene

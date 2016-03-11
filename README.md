@@ -1,3 +1,7 @@
+<p align="center">
+    <img src="https://raw.githubusercontent.com/jagenjo/webglstudio.js/master/press/images/logo.png" alt="WebGLStudio">
+</p>
+
 # WebGLStudio.js
 
 WebGLStudio.js is an open source full 3D graphics suite inside the browser. You can edit the scene, the materials, code behaviours, design effects, shaders, and share it, all inside the browser using standard technologies.

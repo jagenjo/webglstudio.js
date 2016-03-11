@@ -1883,7 +1883,7 @@ DriveModule.registerAssignResourceCallback(["Resource","application/javascript",
 	}
 
 	//editor
-	if(resource && resource._data && resource._data.constructor === String)
+	if(resource && (resource._data !== null && resource._data !== undefined) && resource._data.constructor === String)
 	{
 		var extension = LS.RM.getExtension( fullpath );
 		var lang = "text";

@@ -509,24 +509,27 @@ ResourcesPanelWidget.prototype.showItemContextualMenu = function( item, event )
 ResourcesPanelWidget.prototype.showFolderContextualMenu = function(e)
 {
 	var that = this;
-	var menu = new LiteGUI.ContextualMenu( ["Create Script","Create Text File","Create Pack","Refresh"], { ignore_item_callbacks: true, event: event, title: "Folder", callback: function(action, options, event) {
-		if(action == "Create Script")
-		{
+
+	var options = [
+		{ title: "Create", submenu: {
+				options: ["Script","Text","Pack"],
+				callback: inner_create
+			}
+		},
+		{ title: "Refresh", function(){ that.refreshContent(); } }
+	];
+
+	var menu = new LiteGUI.ContextualMenu( options, { event: e, title: "Folder" });
+	
+	function inner_create( action, options, event )
+	{
+		if(action == "Script")
 			that.onShowCreateFileDialog({filename: "script.js" });
-		}
-		else if(action == "Create Text File")
-		{
+		else if(action == "Text")
 			that.onShowCreateFileDialog({filename: "text.txt" });
-		}
-		else if(action == "Create Pack")
-		{
-			PackTools.onShowCreatePackDialog({folder: that.current_folder});
-		}
-		else if(action == "Refresh")
-		{
-			that.refreshContent();
-		}
-	}});
+		else if(action == "Pack")
+			PackTools.showCreatePackDialog({folder: that.current_folder});
+	}
 }
 
 ResourcesPanelWidget.prototype.onTreeUpdated = function()

@@ -18415,6 +18415,8 @@ Object.defineProperty( Script.prototype, "context", {
 
 Script.prototype.configure = function(o)
 {
+	if(o.uid)
+		this.uid = o.uid;
 	if(o.enabled !== undefined)
 		this.enabled = o.enabled;
 	if(o.name !== undefined)
@@ -18428,6 +18430,7 @@ Script.prototype.configure = function(o)
 Script.prototype.serialize = function()
 {
 	return {
+		uid: this.uid,
 		enabled: this.enabled,
 		name: this.name,
 		code: this.code,
@@ -18901,6 +18904,8 @@ ScriptFromFile.prototype.processCode = function( skip_events )
 
 ScriptFromFile.prototype.configure = function(o)
 {
+	if(o.uid)
+		this.uid = o.uid;
 	if(o.enabled !== undefined)
 		this.enabled = o.enabled;
 	if(o.filename !== undefined)
@@ -18912,6 +18917,7 @@ ScriptFromFile.prototype.configure = function(o)
 ScriptFromFile.prototype.serialize = function()
 {
 	return {
+		uid: this.uid,
 		enabled: this.enabled,
 		filename: this.filename,
 		properties: LS.cloneObject( this.getContextProperties() )

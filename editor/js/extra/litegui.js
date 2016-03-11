@@ -254,6 +254,27 @@ var LiteGUI = {
 	},
 
 	/**
+	* Test if the cursor is inside an element
+	* @method setCursor
+	* @param {String} cursor
+	**/
+	isCursorOverElement: function( event, element )
+	{
+		var left = event.pageX;
+		var top = event.pageY;
+		var rect = element.getClientRects()[0];
+		if(top > rect.top && top < (rect.top + rect.height) &&
+			left > rect.left && left < (rect.left + rect.width) )
+			return true;
+		return false;
+	},
+
+	getRect: function(element)
+	{
+		return element.getClientRects()[0];
+	},
+
+	/**
 	* Copy a string to the clipboard (it needs to be invoqued from a click event)
 	* @method toClipboard
 	* @param {String} data
@@ -1523,6 +1544,14 @@ function dataURItoBlob( dataURI ) {
 		this.options = options;
 		var that = this;
 
+		//to link a menu with its parent
+		if(options.parentMenu)
+		{
+			this.parentMenu = options.parentMenu;
+			this.parentMenu.lock = true;
+			this.parentMenu.openSubmenu = this;
+		}
+
 		var root = document.createElement("div");
 		root.className = "litecontextualmenu litemenubar-panel";
 		root.style.minWidth = 100;
@@ -1586,11 +1615,6 @@ function dataURItoBlob( dataURI ) {
 					element.dataset["value"] = name;
 					element.onclick_callback = value;
 				}
-				else if(typeof(value) == "object")
-				{
-					if(value.callback && !options.ignore_item_callbacks && !disabled)
-						element.addEventListener("click", function(e) { this.value.callback.apply( this, this.value ); });
-				}
 				else
 					element.dataset["value"] = value;
 			}
@@ -1601,22 +1625,55 @@ function dataURItoBlob( dataURI ) {
 			num++;
 		}
 
-		//if(num == 0)
-		//	return;
-
-		//option clicked
+		//menu option clicked
 		function inner_onclick(e) {
 			var value = this.value;
-			if(options.callback)
-				options.callback.call(that, value, options, e );
-			if(root.parentNode)
-				root.parentNode.removeChild( root );
+			var close_parent = true;
+
+			if(that.openSubmenu)
+				that.openSubmenu.close();
+
+			//global callback
+			if(options.callback) 
+			{
+				var r = options.callback.call(that, value, options, e );
+				if(r === true)
+					close_parent = false;
+			}
+
+			//special cases
+			if(value)
+			{
+				if (value.callback && !options.ignore_item_callbacks && value.disabled !== true )  //item callback
+				{
+					var r = value.callback.call( this, value, options, e );
+					if(r === true)
+						close_parent = false;
+				}
+				if(value.submenu)
+				{
+					if(!value.submenu.options)
+						throw("ContextualMenu submenu needs options");
+					var submenu = new LiteGUI.ContextualMenu( value.submenu.options, {
+						callback: value.submenu.callback,
+						event: e,
+						parentMenu: that,
+						ignore_item_callbacks: value.submenu.ignore_item_callbacks,
+						title: value.submenu.title
+					});
+					close_parent = false;
+				}
+			}
+		
+			if(close_parent)
+				that.close();
 		}
 
-		//if(0)
+		//close on leave
 		root.addEventListener("mouseleave", function(e) {
-			if(this.parentNode)
-				this.parentNode.removeChild( this );
+			if(that.lock)
+				return;
+			that.close(e);
 		});
 
 		//insert before checking position
@@ -1628,6 +1685,7 @@ function dataURItoBlob( dataURI ) {
 			root_document = document;
 		root_document.body.appendChild(root);
 
+		//compute best position
 		var left = options.left || 0;
 		var top = options.top || 0;
 		if(options.event)
@@ -1636,6 +1694,9 @@ function dataURItoBlob( dataURI ) {
 			top = (options.event.pageY - 10);
 			if(options.title)
 				top -= 20;
+
+			if(options.parentMenu)
+				left = $(options.parentMenu.root).position().left + $(options.parentMenu.root).width();
 
 			var rect = document.body.getClientRects()[0];
 			if(left > (rect.width - $(root).width() - 10))
@@ -1646,6 +1707,21 @@ function dataURItoBlob( dataURI ) {
 
 		root.style.left = left + "px";
 		root.style.top = top  + "px";
+	}
+
+	ContextualMenu.prototype.close = function(e)
+	{
+		if(this.root.parentNode)
+			this.root.parentNode.removeChild( this.root );
+		if(this.parentMenu)
+		{
+			this.parentMenu.lock = false;
+			this.parentMenu.openSubmenu = null;
+			if( e === undefined )
+				this.parentMenu.close();
+			else if( e && !LiteGUI.isCursorOverElement( e, this.parentMenu.root) )
+				LiteGUI.trigger( this.parentMenu.root, "mouseleave", e );
+		}
 	}
 
 	LiteGUI.ContextualMenu = ContextualMenu;

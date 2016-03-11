@@ -88,7 +88,11 @@ var AnimationModule = {
 		{
 			e.dataTransfer.setData("type", "property" );
 			e.dataTransfer.setData("uid", e.target.dataset["propertyuid"] );
-			e.dataTransfer.setData("locator", e.target.dataset["propertyuid"] );
+
+			var locator = e.target.dataset["propertyuid"];
+			if(e.shiftKey)
+				locator = LSQ.shortify( locator );
+			e.dataTransfer.setData("locator", locator );
 		}
 	},
 
@@ -174,7 +178,7 @@ var AnimationModule = {
 
 	insertKeyframe: function( button, relative )
 	{
-		this.timeline.onInsertKeyframeButton(button, relative);
+		this.timeline.onInsertKeyframeButton( button, relative );
 		this.tab.click();
 	},
 

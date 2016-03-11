@@ -105,6 +105,16 @@ CodingPadWidget.prototype.editInstanceCode = function( instance, options )
 	//adapt interface
 	this.compile_button.style.display = (lang != "javascript") ? "none" : null;
 	this.save_button.style.display = instance.fullpath ? null : "none";
+	var filename = "";
+	if(instance)
+	{
+		if(instance.fullpath || instance.filename )
+			filename = instance.fullpath || instance.filename;
+		else if(instance.name)
+			filename = instance.name;
+	}
+
+	this.file_name_widget.setValue( filename );
 
 	if(lang == "javascript" || lang == "glsl")
 		this.editor.setOption( "mode", "javascript" );
@@ -273,7 +283,36 @@ CodingPadWidget.prototype.getCurrentCodeInstance = function()
 	return this.current_code_info ? this.current_code_info.instance : null;
 }
 
+CodingPadWidget.prototype.onItemDrop = function(cm, event)
+{
+	console.log("Item Drop in Code");
+	var str = null;
+	
+	var locator = event.dataTransfer.getData("locator");
+	var node_uid = event.dataTransfer.getData("node_id");
+	if(locator)
+		str = "LSQ.get(\"" + locator + "\")";
+	else if(node_uid)
+		str = "LS.GlobalScene.getNode(\""+node_uid+"\")";
+	else
+		return;
 
+	var pos = cm.coordsChar({ left: event.pageX, top: event.pageY});
+	this.insertInCursor( str, pos );
+
+	event.preventDefault();
+	event.stopPropagation();
+	event.stopImmediatePropagation();
+}
+
+CodingPadWidget.prototype.insertInCursor = function(text, pos)
+{
+	var cm = this.editor;
+	if(!cm)
+		return;
+	var cursor = pos || cm.getCursor(); 
+	cm.replaceRange( text, cursor );
+}
 
 CodingPadWidget.prototype.evalueCode = function()
 {
@@ -469,7 +508,9 @@ CodingPadWidget.prototype.onReload = function(e)
 		else if( state.id.substr(0,6) == "@COMP-" ) //is script component
 		{
 			instance = LS.GlobalScene.findComponentByUId( state.id ); //reloaded component
-			if(state.instance && state.instance.code != instance.code) //special case, coded has been edited while the app was running
+			if(!instance)
+				console.warn("Instance component not found after Reload: ", state.id );
+			else if(state.instance && state.instance.code != instance.code) //special case, coded has been edited while the app was running
 			{
 				console.log("code changed during play!");
 				instance.code = state.instance.code;
@@ -620,6 +661,14 @@ CodingPadWidget.prototype.detachWindow = function()
 	}
 }
 
+CodingPadWidget.prototype.createFile = function(filename)
+{
+	var resource = new LS.Resource();
+	resource.filename = filename;
+	LS.ResourcesManager.registerResource( filename, resource );
+	return resource;
+}
+
 CodingPadWidget.prototype.onOpenCode = function()
 {
 	var that = this;
@@ -627,17 +676,14 @@ CodingPadWidget.prototype.onOpenCode = function()
 	
 	var widgets = new LiteGUI.Inspector(null, { name_width: 100 });
 
-	/*
-	widgets.addTitle("New Script");
-	widgets.addNode("Node", LS.GlobalScene.root.name );
-	widgets.addString("Name","unnamed");
-	widgets.addButton(null,"Create", function(){
-		//TODO
+	widgets.addStringButton("New script","unnamed.js", { button:"GO",callback_button: function(v){
+		var filename = v;
+		if(!filename)
+			return;
+		var resource = that.createFile(filename);
+		that.editInstanceCode( resource, { id: resource.filename, title: resource.filename } );
 		dialog.close();
-	});
-
-	widgets.addTitle("Open Script");
-	*/
+	}});
 
 	var selected = null;
 
@@ -663,11 +709,11 @@ CodingPadWidget.prototype.onOpenCode = function()
 		var resource = LS.ResourcesManager.resources[i];
 		if( resource && resource.constructor === LS.Resource && resource.data && resource.data.constructor === String )
 		{
-			var fullpath = url;
-			if( !codes_url[url] )
+			var fullpath = resource.fullpath || resource.filename;
+			if( !codes_url[fullpath] )
 			{
 				codes.push({ name: i, resource: resource });
-				codes_url[url] = true;
+				codes_url[fullpath] = true;
 			}
 		}
 	}
@@ -751,6 +797,8 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 		that.onOpenCode();
 	}});
 
+	this.file_name_widget = top_widgets.addString(null,"",{ disabled: true });
+
 	//check for parsing errors
 	this.compile_button = top_widgets.addButton(null,"Compile",{ callback: function(v) { 
 		that.evalueCode();
@@ -820,8 +868,12 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 		}
 	  });
 
-	 this.editor.coding_area = this;
-	 this.editor.on("change", that.onEditorContentChange.bind( this ) );
+	this.editor.coding_area = this;
+	this.editor.on("change", this.onEditorContentChange.bind( this ) );
+	this.editor.on("drop", this.onItemDrop.bind( this ) );
+
+	//var wrapper = this.editor.display.wrapper;
+	//LiteGUI.createDropArea( wrapper, this.onItemDrop.bind(this) );
 }
 
 

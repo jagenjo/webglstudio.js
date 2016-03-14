@@ -49,6 +49,9 @@ var LoginModule = {
 		if(!session || !session.status)
 			session = null;
 
+		if(session && this.session && session.user.username === this.session.user.username)
+			return;
+
 		this.session = session;
 		this.user = session ? session.user : null;
 		this.updateLoginArea();

@@ -21338,6 +21338,70 @@ Take.prototype.matchTranslation = function( root )
 	return num;
 }
 
+Take.prototype.onlyRotations = function()
+{
+	var num = 0;
+	var temp = new Float32Array(10);
+	var final_quat = temp.subarray(3,7);
+
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+
+		//convert locator
+		var path = track.property.split("/");
+		var last_path = path[ path.length - 1 ];
+		var old_size = track.value_size;
+		if( track.type != "mat4" && track.type != "trans10" )
+			continue;
+
+		if(last_path == "matrix")
+			path[ path.length - 1 ] = "Transform/rotation";
+		else if (last_path == "data")
+			path[ path.length - 1 ] = "rotation";
+
+		track.property = path.join("/");
+		var old_type = track.type;
+		track.type = "quat";
+		track.value_size = 4;
+
+		//convert samples
+		if(!track.packed_data)
+		{
+			console.warn("convertMatricesToData only works with packed data");
+			continue;
+		}
+
+		var data = track.data;
+		var num_samples = data.length / (old_size+1);
+
+		if( old_type == "mat4" )
+		{
+			for(var k = 0; k < num_samples; ++k)
+			{
+				var sample = data.subarray(k*17+1,(k*17)+17);
+				var new_data = LS.Transform.fromMatrix4ToTransformData( sample, temp );
+				data[k*11] = data[k*17]; //timestamp
+				data.set( final_quat, k*5+1); //overwrite inplace (because the output is less big that the input)
+			}
+		}
+		else if( old_type == "trans10" )
+		{
+			for(var k = 0; k < num_samples; ++k)
+			{
+				var sample = data.subarray(k*11+4,(k*11)+8);
+				data[k*5] = data[k*11]; //timestamp
+				data.set( sample, k*5+1); //overwrite inplace (because the output is less big that the input)
+			}
+		}
+		
+		track.data = new Float32Array( data.subarray(0,num_samples*5) );
+		num += 1;
+	}
+	return num;
+}
+
+
 Take.prototype.setInterpolationToAllTracks = function( interpolation )
 {
 	var num = 0;
@@ -21982,16 +22046,16 @@ Track.prototype.getSamplePacked = function( time, interpolate, result )
 		switch(this.type)
 		{
 			case "quat": 
-				quat.lerp( result, a.subarray(i+1,i+5), b.subarray(i+1,i+5), t );
+				quat.lerp( result, b.subarray(1,5), a.subarray(1,5), t );
 				quat.normalize( result, result );
 				break;
 			case "trans10": 
 				for(var i = 0; i < this.value_size; i++)
 					result[i] = a[1+i] * t + b[1+i] * (1-t);
-				var rotA = a.subarray(i+4,i+8);
-				var rotB = b.subarray(i+4,i+8);
-				var rotR = result.subarray(i+4,i+8);
-				quat.lerp( rotR, rotA, rotB, t );
+				var rotA = a.subarray(4,8);
+				var rotB = b.subarray(4,8);
+				var rotR = result.subarray(3,7);
+				quat.lerp( rotR, rotB, rotA, t );
 				quat.normalize( rotR, rotR );
 				break;
 			default:
@@ -30541,9 +30605,12 @@ SceneTree.prototype.checkComponentsCodeModification = function()
 				continue;
 			//replace class instance in-place
 			var data = compo.serialize();
+
+			var new_compo = new last_class( data );
+
 			var index = node.getIndexOfComponent( compo );
 			node.removeComponent( compo );
-			var new_compo = new last_class( data );
+			
 			node.addComponent( new_compo, index );
 			console.log("Class replaced: " + class_name );
 		}
@@ -31968,6 +32035,10 @@ SceneNode.prototype.reloadFromPrefab = function()
 	//remove all but children info (prefabs overwrite only children info)
 	var prefab_data = { children: prefab.prefab_data.children };
 	this.configure( prefab_data );
+
+	//load secondary resources 
+	var resources = this.getResources( {}, true );
+	LS.ResourcesManager.loadResources( resources );
 }
 
 

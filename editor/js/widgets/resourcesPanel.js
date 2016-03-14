@@ -532,12 +532,6 @@ ResourcesPanelWidget.prototype.showFolderContextualMenu = function(e)
 	}
 }
 
-ResourcesPanelWidget.prototype.onTreeUpdated = function()
-{
-	this.refreshTree();
-	this.refreshContent();
-}
-
 ResourcesPanelWidget.prototype.refreshTree = function()
 {
 	this.tree_widget.updateTree( DriveModule.tree );
@@ -636,18 +630,28 @@ ResourcesPanelWidget.prototype.filterByCategory = function( category )
 }
 
 
-ResourcesPanelWidget.prototype.refresh = function()
+ResourcesPanelWidget.prototype.refresh = function( update_from_server )
 {
-	this.tree_widget.updateTree( DriveModule.tree );
+	var that = this;
+	if(update_from_server)
+	{
+		DriveModule.getServerFoldersTree( function(){
+			that.tree_widget.updateTree( DriveModule.tree );
+		});
+	}
+	else
+		this.tree_widget.updateTree( DriveModule.tree );
 }
 
 ResourcesPanelWidget.prototype.onLoginEvent = function(e)
 {
+	//nothing to do, everything done in onTreeUpdate
 }
 
 ResourcesPanelWidget.prototype.onTreeUpdate = function(e)
 {
-	this.refresh();
+	this.refreshTree();
+	this.refreshContent();
 }
 
 ResourcesPanelWidget.prototype.onShowCreateFileDialog = function( options )

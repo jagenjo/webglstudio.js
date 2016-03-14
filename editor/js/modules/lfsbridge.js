@@ -368,6 +368,7 @@ var LFSBridge = {
 	{
 		//console.log(item);
 		var that = this;
+		panel = panel || DriveModule;
 
 		//panel.current_folder = item.fullpath;
 		//panel.current_bridge = this;

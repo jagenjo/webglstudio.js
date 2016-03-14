@@ -1630,7 +1630,7 @@ Timeline.prototype.onShowAnimationOptionsDialog = function()
 
 	//actions
 	widgets.widgets_per_row = 2;
-	var values = ["Use names as ids","Optimize Tracks","Match Translation"];
+	var values = ["Use names as ids","Optimize Tracks","Match Translation","Only Rotations"];
 	var action = values[0];
 	widgets.addCombo("Actions", action,{ values: values, width: "80%", callback: function(v){
 		action = v;	
@@ -1645,6 +1645,8 @@ Timeline.prototype.onShowAnimationOptionsDialog = function()
 			total = that.current_take.optimizeTracks();
 		else if(action == "Match Translation")
 			total = that.current_take.matchTranslation();
+		else if(action == "Only Rotations")
+			total = that.current_take.onlyRotations();
 
 		LiteGUI.alert("Tracks modifyed: " + total);
 		if(total)

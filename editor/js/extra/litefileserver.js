@@ -42,14 +42,13 @@ var LiteFileServer = {
 			console.log(resp);
 			session.last_resp = resp;
 			session.user = resp.user;
-			session.status = resp.status == 1 ? LiteFileServer.LOGGED : LiteFileServer.NOT_LOGGED;
+			session.status = resp.status > 0 ? LiteFileServer.LOGGED : LiteFileServer.NOT_LOGGED;
 			if(resp.session_token)
 				session.setToken(resp.session_token);
+			if(session && session.status > 0 && LFS.onNewSession)
+				LFS.onNewSession(session);
 			if(on_complete)
 				on_complete(session, resp);
-
-			if(session && session.status == 1 && LFS.onNewSession)
-				LFS.onNewSession(session);
 		});
 	},
 

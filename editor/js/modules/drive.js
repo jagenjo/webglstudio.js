@@ -258,7 +258,7 @@ var DriveModule = {
 			var bridge = this.registered_drive_bridges[i];
 			if( bridge && bridge.updateTree )
 				bridge.updateTree(function() {
-					DriveModule.onTreeUpdated();
+					DriveModule.onTreeUpdated(); //triggers events
 				});
 		}
 	},
@@ -651,7 +651,13 @@ var DriveModule = {
 		this.serverGetFolders( inner );
 
 		function inner( tree_data )
-		{
+		{	
+			if(!tree_data)
+			{
+				LiteGUI.alert("Not logged to server");
+				return;
+			}
+
 			var data = DriveModule.convertToTree( tree_data );
 
 			var dialog = new LiteGUI.Dialog("select-folder-dialog", {title:"Select folder", close: true, width: 360, height: 240, scroll: false, draggable: true});
@@ -726,13 +732,21 @@ var DriveModule = {
 
 	getServerFoldersTree: function(callback)
 	{
+		//HARDCODED WITH LFS
+
 		//request folders
 		this.serverGetFolders(inner);
 
 		function inner( units )
 		{
+			//index of the server tree info
+			var index = DriveModule.tree.children.findIndex( function(v) { return v.id == "Server" } );
+
 			if(!units)
 			{
+				//if(index != -1)
+				//	DriveModule.tree.children[index].children = [];
+
 				if(callback) 
 					callback(null);
 			}
@@ -746,6 +760,14 @@ var DriveModule = {
 				item.children = get_folders( unit.name + "/", unit.folders );
 				server_root.children.push( item );
 			}
+
+			//replace in tree
+			/*
+			if(index != -1)
+				DriveModule.tree.children[index] = server_root;
+			else
+				DriveModule.tree.children.push( server_root );
+			*/
 
 			if(callback) 
 				callback(server_root);
@@ -1446,12 +1468,17 @@ var DriveModule = {
 		return o;
 	},
 
-	//**** SERVER CALLS **************
+	//**** LFS SERVER CALLS **************
 	serverGetFolders: function(on_complete)
 	{
 		var that = this;
 		if(!LoginModule.session)
-			throw("Session not found");
+		{
+			if(on_complete)
+				on_complete(null);
+			return;
+		}
+
 		LoginModule.session.getUnitsAndFolders(function(units){
 			that.units = units;
 			if(on_complete)
@@ -1866,6 +1893,8 @@ DriveModule.registerAssignResourceCallback("Prefab", function( fullpath, restype
 		//console.log(resource); //log
 		var node = resource.createObject();
 		LS.GlobalScene.root.addChild(node);
+		var resources = node.getResources({});
+		LS.ResourcesManager.loadResources( resources );
 		if(position)
 			node.transform.position = position;
 		EditorModule.inspect( node );

@@ -7301,6 +7301,7 @@ function ComponentContainer()
 	//this function never will be called (because only the methods are attached to other classes)
 	//unless you instantiate this class directly, something that would be weird
 	this._components = [];
+	this._missing_components = null; //here we store info about components with missing info
 	//this._components_by_uid = {}; //TODO
 }
 
@@ -7313,25 +7314,27 @@ function ComponentContainer()
 
 ComponentContainer.prototype.configureComponents = function(info)
 {
-	if(!info.components)
-		return;
-
-	for(var i = 0, l = info.components.length; i < l; ++i)
-	{
-		var comp_info = info.components[i];
-		var comp_class = comp_info[0];
-		if(comp_class == "Transform" && i == 0) //special case: this is the only component that comes by default
+	if(info.components)
+		for(var i = 0, l = info.components.length; i < l; ++i)
 		{
-			this.transform.configure(comp_info[1]);
-			continue;
+			var comp_info = info.components[i];
+			var comp_class = comp_info[0];
+			if(comp_class == "Transform" && i == 0) //special case: this is the only component that comes by default
+			{
+				this.transform.configure(comp_info[1]);
+				continue;
+			}
+			var classObject = LS.Components[comp_class];
+			if(!classObject){
+				console.error("Unknown component found: " + comp_class);
+				if(!this._missing_components)
+					this._missing_components = [];
+				this._missing_components.push( comp_info );
+				continue;
+			}
+			var comp = new LS.Components[comp_class]( comp_info[1] );
+			this.addComponent(comp);
 		}
-		if(!LS.Components[comp_class]){
-			console.error("Unknown component found: " + comp_class);
-			continue;
-		}
-		var comp = new LS.Components[comp_class]( comp_info[1] );
-		this.addComponent(comp);
-	}
 }
 
 /**
@@ -7359,6 +7362,9 @@ ComponentContainer.prototype.serializeComponents = function(o)
 
 		o.components.push([LS.getObjectClassName(comp), obj]);
 	}
+
+	if(this._missing_components && this._missing_components.length)
+		o.components = o.components.concat( this._missing_components );
 }
 
 /**
@@ -7461,6 +7467,7 @@ ComponentContainer.prototype.removeAllComponents = function()
 {
 	while(this._components.length)
 		this.removeComponent( this._components[0] );
+	this._missing_components = null;
 }
 
 
@@ -29093,7 +29100,7 @@ if(isWorker)
 var parserDAE = {
 	extension: "dae",
 	type: "scene",
-	resource: "SceneTree",
+	resource: "SceneNode",
 	format: "text",
 	dataType:'text',
 
@@ -29113,11 +29120,13 @@ var parserDAE = {
 			diffuse: "color"
 		}; //this is done to match LS specification
 
+		var clean_filename = LS.RM.getFilename(filename);
+
 		//parser moved to Collada.js library
-		var scene = Collada.parse( data, options, filename );
+		var scene = Collada.parse( data, options, clean_filename );
 		console.log( scene ); 
 
-		scene.root.name = filename;
+		scene.root.name = clean_filename;
 
 		//apply 90 degrees rotation to match the Y UP AXIS of the system
 		if( scene.metadata && scene.metadata.up_axis == "Z_UP" )
@@ -29129,7 +29138,7 @@ var parserDAE = {
 
 		//rename meshes, nodes, etc
 		var renamed = {};
-		var basename = filename.substr(0, filename.indexOf("."));
+		var basename = clean_filename.substr(0, clean_filename.indexOf("."));
 
 		//rename meshes names
 		var renamed_meshes = {};
@@ -30595,24 +30604,46 @@ SceneTree.prototype.checkComponentsCodeModification = function()
 {
 	for(var i = 0; i < this._nodes.length; ++i )
 	{
+		//current components
 		var node = this._nodes[i];
 		for(var j = 0; j < node._components.length; ++j)
 		{
 			var compo = node._components[j];
 			var class_name = LS.getObjectClassName( compo );
-			var last_class = LS.Components[ class_name ];
-			if( last_class == compo.constructor )
+			var current_class = LS.Components[ class_name ];
+			if( current_class == compo.constructor )
 				continue;
 			//replace class instance in-place
 			var data = compo.serialize();
 
-			var new_compo = new last_class( data );
+			var new_compo = new current_class( data );
 
 			var index = node.getIndexOfComponent( compo );
 			node.removeComponent( compo );
 			
 			node.addComponent( new_compo, index );
 			console.log("Class replaced: " + class_name );
+		}
+
+		//missing
+		if(node._missing_components && node._missing_components.length)
+		{
+			var still_missing = [];
+			for(var j = 0; j < node._missing_components.length; ++j)
+			{
+				var compo_info = node._missing_components[j];
+				var class_name = compo_info[0];
+				var current_class = LS.Components[ class_name ];
+				if(!current_class)
+				{
+					still_missing.push(compo_info);
+					continue; //still missing
+				}
+				var new_compo = new current_class( compo_info[1] );
+				node.addComponent( new_compo );
+				console.log("Missing repaired: " + class_name );
+			}
+			node._missing_components = still_missing.length ? still_missing : null;
 		}
 	}
 }
@@ -31453,6 +31484,7 @@ SceneNode.prototype.init = function( keep_components )
 		if( this._components && this._components.length )
 			console.warn("SceneNode.init() should not be called if it contains components, call clear instead");
 		this._components = []; //used for logic actions
+		this._missing_components = null;
 		this.addComponent( new LS.Transform() );
 	}
 

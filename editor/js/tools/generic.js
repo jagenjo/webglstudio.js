@@ -61,6 +61,21 @@ var lightsEnabledButton = {
 
 ToolsModule.registerButton( lightsEnabledButton );
 
+var guiEnabledButton = {
+	name: "gui",
+	description: "Show GUI in editor",
+	section: "visibility",
+	icon: "imgs/mini-icon-gui.png",
+	enabled: true,
+	callback: function()
+	{
+		RenderModule.render_settings.render_gui = !RenderModule.render_settings.render_gui;
+	}
+};
+
+ToolsModule.registerButton( guiEnabledButton );
+
+
 var showGraphButton = {
 	name: "graph",
 	description: "Overlap Graph",

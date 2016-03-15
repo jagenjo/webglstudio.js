@@ -352,6 +352,10 @@ textarea.code {
 	margin-bottom: 8px;
 }
 
+.wsection.error .wsectiontitle {
+	background-color: #A33 !important;
+}
+
 .wsectiontitle .options_section {
 	opacity: 0.5;
 	width: 16px;

@@ -268,6 +268,19 @@ InspectorWidget.prototype.showComponentsInterface = function( object, inspector 
 		var component = components[i];
 		this.inspector.showComponent( component, inspector );
 	}
+
+	if(object._missing_components)
+	{
+		for(var i in object._missing_components)
+		{
+			var comp_info = object._missing_components[i];
+			var name = comp_info[0];
+			var title = "<span class='title'>"+name+"</span>";
+			var buttons = " <span class='buttons'><img class='options_section' src='imgs/mini-cog.png'></span>";
+			var section = inspector.addSection( title );
+			section.classList.add("error");
+		}
+	}
 }
 
 //special cases
@@ -643,6 +656,12 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 		event.dataTransfer.setData("class", LS.getObjectClassName(component));
 		if(component.setDragData)
 			component.setDragData(event);
+	});
+
+	icon.addEventListener("click", function(e){
+		SelectionModule.setSelection( component );
+		e.stopPropagation();
+		e.stopImmediatePropagation();
 	});
 
 

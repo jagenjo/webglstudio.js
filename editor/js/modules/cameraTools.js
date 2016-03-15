@@ -10,6 +10,7 @@ var cameraTool = {
 	auto_select: true,
 	smooth_camera: false,
 
+	wsad_controls: false,
 	last_camera: null,
 
 	settings: {
@@ -125,6 +126,16 @@ var cameraTool = {
 			speed *= 10;
 
 		var update_frame = false;
+
+		if(gl.mouse.right_button || this.wsad_controls)
+		{
+			if( gl.keys["W"] ) { this.moveCamera([0,0,-speed*dt], true); update_frame = true; }
+			else if( gl.keys["S"]  ) { this.moveCamera([0,0,speed*dt], true); update_frame = true; }
+			if( gl.keys["A"]  ) { this.moveCamera([-speed*dt,0,0],true); update_frame = true; }
+			else if( gl.keys["D"]  ) { this.moveCamera([speed*dt,0,0],true); update_frame = true; }
+			if( gl.keys["Q"]  ) { this.moveCamera([0,speed*dt,0],false); update_frame = true; }
+			else if( gl.keys["E"]  ) { this.moveCamera([0,-speed*dt,0],false); update_frame = true; }
+		}
 
 		if( gl.keys["UP"] ) { this.moveCamera([0,0,-speed*dt], true); update_frame = true; }
 		else if( gl.keys["DOWN"]  ) { this.moveCamera([0,0,speed*dt], true); update_frame = true; }

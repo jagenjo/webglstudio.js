@@ -43,6 +43,7 @@ GraphWidget.prototype.init = function()
 	this.graphcanvas.onConnectionChange = function() { setTimeout( function(){LS.GlobalScene.refresh();},100); }
 	this.graphcanvas.onMouseDown = function(){ LiteGUI.focus_widget = this; }
 	this.graphcanvas.onKeyDown = function(e){ return this.processKey(e); }
+	this.graphcanvas.getExtraMenuOptions = this.onGetExtraMenuOptions.bind(this);
 
 	this.root.addEventListener("DOMNodeInsertedIntoDocument", function(){ 
 		that.bindEvents(); 
@@ -330,6 +331,51 @@ GraphWidget.prototype.onStepGraph = function()
 	this.graphcanvas.setDirty(true,true);
 
 	LS.GlobalScene.refresh();
+}
+
+GraphWidget.prototype.onGetExtraMenuOptions = function(options)
+{
+	var selection = SelectionModule.getSelection();
+	if(!selection)
+		return;
+	var instance = selection.instance;
+	var locator = null;
+	var className = null;
+	if(instance.getLocator)
+	{
+		locator = instance.getLocator();
+		className = LS.getObjectClassName( instance );
+	}
+
+	return [null,{ content: "Add " + className, callback: inner_add.bind(this) }];
+
+	function inner_add( node, e )
+	{
+		var graphnode = null;
+
+		if(instance.constructor.is_component && selection.node)
+		{
+			graphnode = LiteGraph.createNode( className == "Transform" ? "scene/transform" : "scene/component");
+			graphnode.properties.node = selection.node.uid;
+			graphnode.properties.component = instance.uid;
+		}
+		else if(instance.constructor == LS.SceneNode )
+		{
+			graphnode = LiteGraph.createNode("scene/node");
+			graphnode.properties.node_id = instance.uid;
+		}
+		else
+		{
+			LiteGUI.alert("Unknown object");
+			return;
+		}
+
+		this.graphcanvas.adjustMouseEvent(e);
+		graphnode.pos[0] = e.canvasX;
+		graphnode.pos[1] = e.canvasY;
+		this.graph.add( graphnode );
+		graphnode.onExecute();
+	}
 }
 
 LiteGraph.addNodeMethod( "inspect", function( inspector )

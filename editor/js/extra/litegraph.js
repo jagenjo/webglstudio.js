@@ -4535,12 +4535,9 @@ LGraphCanvas.prototype.getCanvasMenuOptions = function()
 
 	if(this.getExtraMenuOptions)
 	{
-		var extra = this.getExtraMenuOptions(this);
+		var extra = this.getExtraMenuOptions(this,options);
 		if(extra)
-		{
-			extra.push(null);
-			options = extra.concat( options );
-		}
+			options = options.concat( extra );
 	}
 
 	return options;
@@ -6604,9 +6601,12 @@ MathOperation.prototype.onExecute = function()
 	{
 		case '+': result = A+B; break;
 		case '-': result = A-B; break;
+		case '*': result = A*B; break;
 		case '/': result = A/B; break;
 		case '%': result = A%B; break;
 		case '^': result = Math.pow(A,B); break;
+		default:
+			console.warn("Unknown operation: " + this.properties.OP);
 	}
 	this.setOutputData(0, result );
 }

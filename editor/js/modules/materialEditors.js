@@ -79,11 +79,15 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 		event.dataTransfer.setData("class", mat_type );
 	});
 
-	$(inspector.current_section).bind("wchange", function() { UndoModule.saveMaterialChangeUndo( material ); });
+	$(inspector.current_section).bind("wchange", function() { 
+		if(material.remotepath)
+			LS.RM.resourceModified( material );
+		UndoModule.saveMaterialChangeUndo( material );
+	});
 
 	inspector.addInfo("Class", mat_type );
 
-	if(material._server_info)
+	if(material.remotepath)
 		inspector.addButton("Reference","Update Server",{ callback: function(){
 			var material = node.getMaterial();
 			DriveModule.saveResource(material);
@@ -227,12 +231,9 @@ EditorModule.showMaterialProperties = function( material, inspector, node, force
 
 	var locked = material.fullpath && !material._unlocked && !force_unlock;
 
-	if(locked)
-	{
-		editor_container.classList.add("locked_container");
-		background_container.classList.add("blur");
-		background_container.classList.add("edited");
-	}
+	editor_container.classList.add("locked_container");
+	background_container.classList.add("blur");
+	background_container.classList.add("edited");
 
 	if(editor)
 		editor.call( EditorModule, material, inspector );

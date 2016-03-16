@@ -557,7 +557,7 @@ CodingPadWidget.prototype.onEditorContentChange = function( editor )
 	var code = this.getCodeFromInfo( this.current_code_info );
 	var value = editor.getValue();
 	if(code != value)
-		LiteGUI.trigger( this, "modifyed", value );
+		LiteGUI.trigger( this, "modified", value );
 	else
 		LiteGUI.trigger( this, "stored", value );
 

@@ -15,10 +15,10 @@ var SceneStorageModule = {
 		
 		menubar.add("Project/New", {callback: this.onNewScene.bind(this) });
 
-		menubar.add("Project/Load Local", { callback: this.showLoadLocalSceneDialog.bind(this) });
-		menubar.add("Project/Save Local", { callback: this.showSaveSceneInLocalDialog.bind(this) });
-		menubar.add("Project/Load from Server", { callback: this.showLoadSceneFromServerDialog.bind(this) });
-		menubar.add("Project/Save in Server", { callback: this.showSaveSceneInServerDialog.bind(this) });
+		menubar.add("Project/Load/From Server", { callback: this.showLoadSceneFromServerDialog.bind(this) });
+		menubar.add("Project/Load/Local", { callback: this.showLoadLocalSceneDialog.bind(this) });
+		menubar.add("Project/Save/In Server", { callback: this.showSaveSceneInServerDialog.bind(this) });
+		menubar.add("Project/Save/Local", { callback: this.showSaveSceneInLocalDialog.bind(this) });
 		menubar.add("Project/Download", { callback: this.showDownloadSceneDialog.bind(this) });
 		menubar.add("Project/Test", { callback: this.testScene.bind(this) });
 		menubar.add("Project/Publish", { callback: this.onPublish.bind(this) });

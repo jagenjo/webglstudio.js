@@ -2236,10 +2236,18 @@ var ResourcesManager = {
 	{
 		if(!resource)
 			return;
+
+		if(resource.constructor === String)
+		{
+			console.warn("resourceModified parameter must be a resource, not a string");
+			return;
+		}
+
+
 		delete resource._original_data;
 		delete resource._original_file;
 
-		if(resource.remote_path)
+		if(resource.remotepath)
 			resource._modified = true;
 
 		LEvent.trigger(this, "resource_modified", resource );
@@ -5182,7 +5190,7 @@ GL.Mesh.prototype.convertBonesToNames = function( root_node )
 	if(!this.bones || !this.bones.length)
 		return 0;
 
-	var modifyed = false;
+	var modified = false;
 
 	//Rename the id to a relative name
 	for(var i = 0; i < this.bones.length; ++i)
@@ -5199,11 +5207,11 @@ GL.Mesh.prototype.convertBonesToNames = function( root_node )
 		}
 
 		bone[0] = node.name;
-		modifyed = true;
+		modified = true;
 	}
 
 	//flag it
-	if(modifyed)
+	if(modified)
 		LS.RM.resourceModified( this );
 }
 
@@ -8348,7 +8356,7 @@ function Transform( o )
 
 	this._must_update_matrix = false; //matrix must be redone?
 
-	//Testing using observers (DO NOT WORK IN FIREFOX)
+	/* deprecated
 	if(Object.observe)
 	{
 		var inner_transform_change = (function(c) { 
@@ -8359,6 +8367,7 @@ function Transform( o )
 		Object.observe( this._scaling, inner_transform_change );
 		Object.observe( this._data, inner_transform_change );
 	}
+	*/
 
 	if(o)
 		this.configure(o);
@@ -17942,6 +17951,8 @@ PlayAnimation.prototype.configure = function(o)
 		delete o.play;
 	if(o.range) 
 		this.range = o.range.concat();
+	if(o.mode !== undefined) 
+		this.mode = o.mode;
 	if(o.animation)
 		this.animation = o.animation;
 	if(o.take)

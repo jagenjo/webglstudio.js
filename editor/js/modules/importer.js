@@ -23,14 +23,19 @@ var ImporterModule  = {
 	},
 
 	// Launched when something is drag&drop inside the canvas (could be files, links, or elements of the interface) 
-	onItemDrop: function (evt)
+	onItemDrop: function (evt, options)
 	{
+		options = options || {};
 		console.log("processing item drop...");
 
 		//compute on top of which node it was dropped
 		GL.augmentEvent( evt );
-		var node = RenderModule.getNodeAtCanvasPosition( evt.canvasx, evt.canvasy );
-		var options = { node: node, event: evt };
+		var node = null;
+		if(evt.canvasx !== undefined ) //canvas drop
+			node = RenderModule.getNodeAtCanvasPosition( evt.canvasx, evt.canvasy );
+	
+		options.node = node;
+		options.event = evt;
 
 		//files
 		var files = evt.dataTransfer.files;
@@ -418,8 +423,12 @@ var ImporterModule  = {
 				else
 					resource._original_file = file;
 
+				//scenes require to rename some stuff 
 				if(resource.constructor === LS.SceneTree || resource.constructor === LS.SceneNode )
 				{
+					//remove node root, dragging to canvas should add to scene.root
+					options.node = null;
+
 					var resources = resource.getResources({},true);
 
 					if(options.optimize_data)

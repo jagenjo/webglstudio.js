@@ -1648,7 +1648,7 @@ Timeline.prototype.onShowAnimationOptionsDialog = function()
 		else if(action == "Only Rotations")
 			total = that.current_take.onlyRotations();
 
-		LiteGUI.alert("Tracks modifyed: " + total);
+		LiteGUI.alert("Tracks modified: " + total);
 		if(total)
 			LS.ResourcesManager.resourceModified( that.current_animation );
 	}});
@@ -1663,7 +1663,7 @@ Timeline.prototype.onShowAnimationOptionsDialog = function()
 
 	widgets.addButton(null,"Go",{ width: "20%", callback: function(){
 		var total = that.current_take.setInterpolationToAllTracks( interpolation );
-		LiteGUI.alert("Tracks modifyed: " + total);
+		LiteGUI.alert("Tracks modified: " + total);
 		if(total)
 			LS.ResourcesManager.resourceModified( that.current_animation );
 	}});

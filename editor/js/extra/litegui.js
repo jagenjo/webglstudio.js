@@ -109,7 +109,7 @@ var LiteGUI = {
 	* Binds an event in an object (similar to jQuery.bind)
 	* If the element is not an HTML entity a new one is created, attached to the object (as non-enumerable, called __events) and used
 	* @method trigger
-	* @param {Object} element could be an HTMLEntity or a regular object
+	* @param {Object} element could be an HTMLEntity, a regular object, a query string or a regular Array of entities
 	* @param {String} event the string defining the event
 	* @param {Function} callback where to call
 	*/
@@ -125,7 +125,7 @@ var LiteGUI = {
 		if(element.constructor === String)
 			element = document.querySelectorAll( element );
 			
-		if(element.constructor === NodeList)
+		if(element.constructor === NodeList || element.constructor === Array)
 		{
 			for(var i = 0; i < element.length; ++i)
 				inner( element[i] );
@@ -1604,10 +1604,15 @@ function dataURItoBlob( dataURI ) {
 				element.innerHTML = value && value.title ? value.title : name;
 				element.value = value;
 
-				if(value && value.disabled)
+				if(value)
 				{
-					disabled = true;
-					element.classList.add("disabled");
+					if(value.disabled)
+					{
+						disabled = true;
+						element.classList.add("disabled");
+					}
+					if(value.submenu)
+						element.classList.add("has_submenu");
 				}
 
 				if(typeof(value) == "function")

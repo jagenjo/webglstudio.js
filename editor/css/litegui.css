@@ -1353,6 +1353,9 @@ a:hover {
 	cursor: default !important;
 }
 
+.litemenu-entry.has_submenu {
+	border-right: 2px solid cyan;
+}
 
 .litecontextualmenu {
 	position: fixed;
@@ -1937,6 +1940,14 @@ textarea.textfield {
 	top: 0;
 	left: 0;
 	pointer-events: none;
+}
+
+
+.ellipsis {
+  width: 250px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }/********************/
 .ui-slider {
     position: relative;

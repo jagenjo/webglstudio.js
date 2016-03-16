@@ -246,9 +246,7 @@ ResourcesPanelWidget.prototype.showInBrowserContent = function( items, options )
 	if(options.title)
 		title.innerHTML = options.title;
 	else if(options.folder)
-	{
-		title.innerHTML = "<span class='foldername'>" + options.folder.split("/").join("<span class='foldername-slash'>/</span>") + "</span>";
-	}
+		title.innerHTML = DriveModule.beautifyPath( options.folder );
 	parent.appendChild( title );
 
 	var root =  document.createElement("ul");
@@ -530,6 +528,11 @@ ResourcesPanelWidget.prototype.showFolderContextualMenu = function(e)
 		else if(action == "Pack")
 			PackTools.showCreatePackDialog({folder: that.current_folder});
 	}
+}
+
+ResourcesPanelWidget.prototype.onTreeUpdated = function()
+{
+	this.tree_widget.updateTree( DriveModule.tree );
 }
 
 ResourcesPanelWidget.prototype.refreshTree = function()

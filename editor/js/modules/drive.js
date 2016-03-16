@@ -97,6 +97,7 @@ var DriveModule = {
 		//initGUI **********************
 		this.tab = LiteGUI.main_tabs.addTab( this.name, {id:"drivetab", bigicon: this.bigicon, size: "full", content:"", 
 			callback: function(tab){
+				DriveModule.refreshContent();
 				InterfaceModule.setSidePanelVisibility(true);		
 				InterfaceModule.sidepaneltabs.selectTab("Inspector");
 			},
@@ -617,7 +618,7 @@ var DriveModule = {
 	renameResource: function( old_name, new_name, resource )
 	{
 		//HARDCODED WITH LFS
-		if(resource && (resource.in_server || resource.remote_path) )
+		if(resource && (resource.in_server || resource.remotepath) )
 		{
 			//rename in server
 			console.log("Renaming server file");
@@ -1297,8 +1298,13 @@ var DriveModule = {
 			if(!resource)
 				continue;
 			var name = resource.fullpath || resource.filename;
-			if(name[0] == ":" || resource.remotepath || resource.from_prefab || resource.from_pack)
+			if(name[0] == ":" || name[0] == "_") //local
 				continue;
+			if(resource.remotepath && !resource._modified)
+				continue;
+			if(resource.from_prefab || resource.from_pack)
+				continue;
+
 			missing.push( name );
 		}
 
@@ -1310,6 +1316,7 @@ var DriveModule = {
 	//Shows a warning dialog if you have resources in memory that are not stored in the server
 	checkResourcesSaved: function( only_in_scene, on_complete )
 	{
+		var that = this;
 		var missing = this.getResourcesNotSaved(true);
 		if(!missing)
 		{
@@ -1318,53 +1325,124 @@ var DriveModule = {
 			return true;
 		}
 
+		//extra from scene
+		var pack_folder = "";
+		if( LS.GlobalScene.extra.folder )
+			pack_folder = LS.GlobalScene.extra.folder;
+		var pack_filename = LS.generateUId("").substr(1) + ".PACK";
+		if( LS.GlobalScene.extra.filename )
+			pack_filename = LS.RM.getBasename( LS.GlobalScene.extra.filename ) + ".PACK";
+		var files_folder = pack_folder;
+
 		var dialog = new LiteGUI.Dialog(null,{ title:"Resources not saved", closable: true, draggable: true, width: 400 });
 		var widgets = new LiteGUI.Inspector();
+		widgets.on_refresh = inner_refresh;
 		dialog.add( widgets );
-		widgets.addInfo(null,"There are some resources in this scene that are not stored in the server, this resources will be lost if you close the application or wont be seen by other users if you share your scene.<br/>You must save them.");
-		widgets.addTitle("Resources not saved in server");
-		widgets.addList(null,missing,{height:200});
-
-		widgets.addTitle("Pack generation");
-
-		//extra from scene
-		var folder = "";
-		if( LS.GlobalScene.extra.folder )
-			folder = LS.GlobalScene.extra.folder;
-		var filename = LS.generateUId("").substr(1) + ".PACK";
-		if( LS.GlobalScene.extra.filename )
-			filename = LS.RM.getBasename( LS.GlobalScene.extra.filename ) + ".PACK";
-
-		widgets.widgets_per_row = 2;
-		widgets.addFolder("Folder", folder, { name_width: 60, callback: function(v){
-			folder = v;
-		}});
-		widgets.addString("Filename", filename, { callback: function(v){
-			filename = v;
-		}});
-		widgets.widgets_per_row = 1;
-		widgets.addButton(null,"Create PACK", { callback: function(){
-			if(!folder)
-				return LiteGUI.alert("You must select a folder");
-			if(!filename)
-				return LiteGUI.alert("You must choose a filename");
-			dialog.close();
-			inner_save_to_pack();
-		}});
-
-		widgets.widgets_per_row = 1;
-		widgets.addButtons(null,["Close","Save anyway"], function(v){ 
-			dialog.close();
-			if(v == "Save anyway" && on_complete)
-				on_complete();
-		});
+		widgets.refresh();
 		dialog.show();
 
-		//not used
+
+		function inner_refresh()
+		{
+			missing = that.getResourcesNotSaved(true);
+			if(!missing)
+			{
+				dialog.close();
+				if(on_complete)
+					on_complete();
+				return true;
+			}
+
+			widgets.clear();
+			widgets.addInfo(null,"There are some resources in this scene that are not stored in the server, this resources will be lost if you close the application or wont be seen by other users if you share your scene.<br/>You must save them.");
+			widgets.addTitle("Resources not saved in server");
+
+			var missing_list = [];
+			for(var i in missing)
+			{
+				var res_name = missing[i];
+				var resource = LS.RM.resources[ res_name ];
+				var str = DriveModule.beautifyPath( res_name, { "class":"ellipsis", style:"max-width: 80%;"} );
+				if( resource._modified && resource.remotepath )
+					str += "<button class='save-item' data-path='"+res_name+"' style='float:right; width: 60px; margin-top: 3px;'>Save</button>";
+				missing_list.push({content: str });
+			}
+
+			var list_widget = widgets.addList(null,missing_list,{height:200});
+			var rows = list_widget.querySelector(".save-item");
+			LiteGUI.bind( rows, "click", function(e){
+				console.log(this.dataset["path"]);
+				var resource = LS.RM.resources[ res_name ];
+				DriveModule.saveResource( resource, function() { widgets.refresh() }, { skip_alerts: true } );
+			});
+
+			widgets.addTitle("Save individually");
+			widgets.addButton(null,"Save only modified ones", inner_save_modified );
+			widgets.widgets_per_row = 2;
+			widgets.addFolder("Folder", files_folder, { name_width: 60, callback: function(v){
+				files_folder = v;
+			}});
+			widgets.addButton(null,"Save them", inner_save_individually );
+			widgets.widgets_per_row = 1;
+
+			widgets.addTitle("Save all inside a Pack");
+
+			widgets.widgets_per_row = 2;
+			widgets.addFolder("Folder", pack_folder, { name_width: 60, callback: function(v){
+				pack_folder = v;
+			}});
+			widgets.addString("Filename", pack_filename, { callback: function(v){
+				pack_filename = v;
+			}});
+			widgets.widgets_per_row = 1;
+			widgets.addButton(null,"Create PACK & Save", { callback: function(){
+				if(!pack_folder)
+					return LiteGUI.alert("You must select a folder");
+				if(!pack_filename)
+					return LiteGUI.alert("You must choose a filename");
+				dialog.close();
+				inner_save_to_pack();
+			}});
+
+			widgets.widgets_per_row = 1;
+			widgets.addSeparator();
+			widgets.addButtons(null,["Close","Save anyway"], function(v){ 
+				dialog.close();
+				if(v == "Save anyway" && on_complete)
+					on_complete();
+			});
+		}
+
+		function inner_save_modified()
+		{
+			var alert_dialog = LiteGUI.alert("Saving...");
+			var modified = [];
+			for(var i in missing)
+			{
+				var res_filename = missing[i];
+				var resource = LS.RM.resources[res_filename];
+				if(!resource)
+					continue;
+				if(!resource.remotepah || !resource._modified)
+					modified.push( res_filename );
+			}		
+
+			DriveModule.saveResourcesToFolder( modified, files_folder, function(){
+				alert_dialog.close();
+				LiteGUI.alert("Modified resources saved");
+				widgets.refresh();
+			}, function(v,err){ //error
+				alert_dialog.content.innerHTML = "Error saving resources: " + err;
+			}, function(v){
+				alert_dialog.content.innerHTML = "Saving..." + (Math.floor(v * 100)) + "%";
+			});
+		}
+
 		function inner_save_individually()
 		{
 			var alert_dialog = LiteGUI.alert("Saving...");
-			DriveModule.saveResourcesToFolder( missing, folder, function(){
+			DriveModule.saveResourcesToFolder( missing, files_folder, function(){
+				widgets.refresh();
 				alert_dialog.close();
 				LiteGUI.alert("All resources saved");
 				if(on_complete)
@@ -1374,18 +1452,19 @@ var DriveModule = {
 			}, function(v){
 				alert_dialog.content.innerHTML = "Saving..." + (Math.floor(v * 100)) + "%";
 			});
+			widgets.refresh();
 		}
 
 		function inner_save_to_pack()
 		{
 			var alert_dialog = LiteGUI.alert("Saving...");
 
-			var fullpath = folder + "/" + filename;
+			var fullpath = pack_folder + "/" + pack_filename;
 			if( fullpath.toLowerCase().indexOf(".wbin") == -1 )
 				fullpath += ".wbin";
 
 			//create pack
-			var pack = LS.Pack.createPack( filename, missing, null, true );
+			var pack = LS.Pack.createPack( pack_filename, missing, null, true );
 			if(pack)
 			{
 				pack.fullpath = fullpath;
@@ -1690,6 +1769,23 @@ var DriveModule = {
 			else
 				return true;
 		}
+	},
+
+	beautifyPath: function ( path, extra )
+	{
+		var str = "";
+		var extra_class = "";
+		if(extra)
+		{
+			for(var i in extra)
+			{
+				if(i == 'class')
+					extra_class = extra[i];
+				else
+					str += " " + i + "='" + extra[i] + "'";
+			}
+		}
+		return "<span class='path "+extra_class+"' "+str+"><span class='foldername'>" + path.split("/").join("<span class='foldername-slash'>/</span>") + "</span></span>"
 	},
 
 	beautifySize: function ( bytes )

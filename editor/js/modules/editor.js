@@ -692,7 +692,11 @@ var EditorModule = {
 				node.material = material.uid;
 				console.log("Material assigned");
 			}
+		}
 
+		if(event.dataTransfer.files && event.dataTransfer.files.length)
+		{
+			ImporterModule.onItemDrop( event, { node: node });
 		}
 
 		RenderModule.requestFrame();

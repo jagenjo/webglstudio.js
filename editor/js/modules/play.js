@@ -192,6 +192,7 @@ var PlayModule = {
 			this.state = "stop";
 			console.log("%c + FINISH ", 'background: #222; color: #AAF; font-size: 1.4em');
 			scene.finish();
+			LS.Tween.reset();
 			EditorModule.render_debug_info = true;
 			RenderModule.requestFrame();
 			LEvent.unbind( scene,"finish", this.onSceneStop );

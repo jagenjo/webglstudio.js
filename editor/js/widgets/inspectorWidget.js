@@ -479,24 +479,43 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 
 			if(node.prefab)
 			{
-				inspector.widgets_per_row = 2;
-				inspector.addStringButton("prefab", node.prefab, { name_width: 80, width: "80%", callback: function(v){
+				inspector.addStringButton("prefab", node.prefab, { name_width: 80, callback: function(v){
 					if(v)
 						node.prefab = v;
 					else
 						delete node["prefab"];
 					inspector.refresh();
 				},callback_button: function(v,evt) {
-					var menu = new LiteGUI.ContextualMenu( ["Unlink prefab"], { event: evt, callback: function(action) {
-						delete node["prefab"];
-						inspector.refresh();
+
+					var menu = new LiteGUI.ContextualMenu( ["Select Prefab","Unlink prefab","Reload from Prefab","Update to Prefab"], { event: evt, callback: function(action) {
+						if(action == "Select Prefab")
+						{
+							EditorModule.showSelectResource( { type:"Prefab", on_complete: function(v){
+								if(v)
+									node.prefab = v;
+								else
+									delete node["prefab"];
+								inspector.refresh();
+							}});
+						}
+						if(action == "Unlink prefab")
+						{
+							delete node["prefab"];
+							inspector.refresh();
+						}
+						if(action == "Reload from Prefab")
+						{
+							node.reloadFromPrefab();
+							inspector.refresh();
+						}
+						if(action == "Update to Prefab")
+						{
+							PackTools.updatePrefabFromNode(node);
+							inspector.refresh();
+							RenderModule.requestFrame();
+						}
 					}});
 				}});
-				inspector.addButton(null, "Reload", { width: "20%", callback: function(v,evt) {
-					UndoModule.saveNodeChangeUndo( node );
-					node.reloadFromPrefab();
-				}});
-				inspector.widgets_per_row = 1;
 			}
 
 			if(node.flags && node.flags.visible != null)

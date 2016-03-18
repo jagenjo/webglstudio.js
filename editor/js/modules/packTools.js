@@ -104,12 +104,27 @@ var PackTools = {
 		filename = filename.replace(/ /gi,"_");
 
 		//create
+		LS.clearUIds( data ); //remove uids of nodes and components
 		var prefab = LS.Prefab.createPrefab( filename, data, resources );
 
 		//register in the system
 		LS.ResourcesManager.registerResource( prefab.filename, prefab ); 
 
 		return prefab;
+	},
+
+	updatePrefabFromNode: function(node)
+	{
+		if(!node || !node.prefab)
+			return;
+
+		var prefab = LS.RM.resources[ node.prefab ];
+		if(!prefab)
+			return;
+
+		prefab.updateFromNode( node );
+		LS.RM.resourceModified( prefab );
+		prefab.applyToNodes( LS.GlobalScene );
 	},
 
 	showCreatePackDialog: function( options )
@@ -172,6 +187,9 @@ var PackTools = {
 					resources.push( fullpath );
 				widgets.refresh();
 			}});
+
+			widgets.addFolder("Save to folder", folder, { callback: function(v){ folder = v; } });
+
 			widgets.addButton(null,"Create Pack", function(){
 				dialog.close();
 				var pack = PackTools.createPack( filename, resources );
@@ -179,6 +197,12 @@ var PackTools = {
 				{
 					var fullpath = folder + "/" + filename;
 					pack.fullpath = fullpath;
+					if( LS.RM.getExtension( pack.fullpath ) != "wbin" )
+					{
+						pack.filename += ".wbin";
+						pack.fullpath += ".wbin";
+					}
+
 					DriveModule.saveResource(pack);
 				}
 				else
@@ -237,9 +261,14 @@ var PackTools = {
 			var container = widgets.startContainer(null,{ height: 200 });
 			container.style.backgroundColor = "#252525";
 
+			widgets.widgets_per_row = 2;
 			for(var i = 0; i < resource_names.length; ++i)
 			{
-				widgets.addStringButton(null, resource_names[i], { index: i, callback: function(v){
+				widgets.addButton(null,"o",{ width: 40, index: i, callback: function(){
+					var name = resource_names[this.options.index];
+					window.RESOURCE = LS.RM.resources[name];
+				}});
+				widgets.addStringButton(null, resource_names[i], { index: i, width: "calc(100% - 40px)", callback: function(v){
 						if(!v)
 							return;
 						resource_names[this.options.index] = v;
@@ -251,6 +280,8 @@ var PackTools = {
 					button: "<img src='imgs/mini-icon-trash.png'/>"
 				});
 			}
+			widgets.widgets_per_row = 1;
+
 			widgets.endContainer();
 			widgets.addButtons(null,["Add locals","Add all"],{ callback: function(v){
 				for(var i in LS.RM.resources)

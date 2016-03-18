@@ -620,9 +620,10 @@ var SceneStorageModule = {
 
 	saveSceneInServer: function(on_complete, on_error)
 	{
-		DriveModule.checkResourcesSaved(true, inner_save );
+		DriveModule.checkResourcesSaved( true, inner_save );
 
 		function inner_save(){
+			//grab the scene info here 
 			DriveModule.saveResource( LS.GlobalScene, inner_complete );
 		}
 

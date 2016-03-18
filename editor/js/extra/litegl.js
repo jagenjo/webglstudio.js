@@ -466,7 +466,7 @@ global.hexColorToRGBA = (function() {
 			color[3] = alpha;
 		else
 			color[3] *= alpha;
-		return;
+		return color;
 	}
 
 	//rgba colors
@@ -2731,7 +2731,8 @@ Mesh.prototype.getNumVertices = function() {
 */
 Mesh.computeBounding = function( vertices, bb ) {
 
-	if(!vertices) return;
+	if(!vertices)
+		return;
 
 	var min = vec3.clone( vertices.subarray(0,3) );
 	var max = vec3.clone( vertices.subarray(0,3) );
@@ -2741,6 +2742,14 @@ Mesh.computeBounding = function( vertices, bb ) {
 		v = vertices.subarray(i,i+3);
 		vec3.min( min,v, min);
 		vec3.max( max,v, max);
+	}
+
+	if( isNaN(min[0]) || isNaN(min[1]) || isNaN(min[2]) ||
+		isNaN(max[0]) || isNaN(max[1]) || isNaN(max[2]) )
+	{
+		min[0] = min[1] = min[2] = 0;
+		max[0] = max[1] = max[2] = 0;
+		console.warn("Warning: GL.Mesh has NaN values in vertices");
 	}
 
 	var center = vec3.add( vec3.create(), min,max );
@@ -5020,10 +5029,10 @@ Texture.prototype.toCanvas = function( canvas, flip_y, max_size )
 * @method toBlob
 * @return {Blob} the blob containing the data
 */
-Texture.prototype.toBlob = function()
+Texture.prototype.toBlob = function(flip_y)
 {
 	//dump to canvas
-	var canvas = this.toCanvas();
+	var canvas = this.toCanvas(null,flip_y);
 	if(!canvas.toBlob)
 		throw "toBlob not supported on Canvas element";
 	return canvas.toBlob();
@@ -7238,14 +7247,17 @@ var LEvent = global.LEvent = GL.LEvent = {
 		var events = instance.__levents;
 
 		//no events binded
-		if(!events || !events.hasOwnProperty( event_type ) || !events[event_type].length) 
+		if(!events) 
 			return false;
 
-		var binds = events[event_type];
-		for(var i = 0; i < binds.length; ++i)
+		for(var j in events)
 		{
-			if(binds[i][1] == target) //one found
-				return true;
+			var binds = events[j];
+			for(var i = 0; i < binds.length; ++i)
+			{
+				if(binds[i][1] === target) //one found
+					return true;
+			}
 		}
 
 		return false;

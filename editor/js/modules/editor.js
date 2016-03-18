@@ -713,19 +713,23 @@ var EditorModule = {
 
 	copyNodeToClipboard: function( node )
 	{
-		if(!node) return;
+		if(!node)
+			return;
 
 		var data = node.serialize();
+		data.uid = null; //remove UID
 		data._object_type = LS.getObjectClassName(node);
 		LiteGUI.toClipboard( data );
 	},
 
 	pasteNodeFromClipboard: function( parent ) {
 		var data = LiteGUI.getClipboard();
-		if( !data ) return;
-
+		if( !data )
+			return;
 		if(data._object_type != "SceneNode")
 			return;
+
+		data.uid = null; //remove UID
 
 		var node = new SceneNode();
 		node.configure(data);
@@ -742,13 +746,16 @@ var EditorModule = {
 		UndoModule.saveComponentChangeUndo(component);
 		var data = component.serialize();
 		data._object_type = LS.getObjectClassName(component);
+		data.uid = null; //remove UID
 		LiteGUI.toClipboard( data );
 	},
 
 	pasteComponentFromClipboard: function(component) {
 		UndoModule.saveComponentChangeUndo(component);
 		var data = LiteGUI.getClipboard();
-		if( !data ) return;
+		if( !data )
+			return;
+		data.uid = null; //remove UID
 		component.configure( data ); 
 		$(component).trigger("changed");
 		EditorModule.inspect(LS.GlobalScene.selected_node); //update interface
@@ -761,7 +768,7 @@ var EditorModule = {
 		var data = LiteGUI.getClipboard();
 		if(!data || !data._object_type)
 			return;
-
+		data.uid = null; //remove UID
 		var component = new LS.Components[ data._object_type ]();
 		node.addComponent(component);
 		component.configure(data); 

@@ -25,6 +25,7 @@ var ImporterModule  = {
 	// Launched when something is drag&drop inside the canvas (could be files, links, or elements of the interface) 
 	onItemDrop: function (evt, options)
 	{
+		var that = this;
 		options = options || {};
 		console.log("processing item drop...");
 
@@ -44,10 +45,12 @@ var ImporterModule  = {
 			//more than one file
 			if(files.length > 1)
 			{
+				//show dialog?
 				for(var i=0; i < files.length; i++)
 				{
 					this.loadFileToMemory( files[i], function(file,options){
-						ImporterModule.processResource( file.name, file, options );
+						NotifyModule.show("FILE: " + file.name, { id: "res-msg-" + file.name.hashCode(), closable: true, time: 3000, left: 60, top: 30, parent: "#visor" } );
+						ImporterModule.processResource( file.name, file, that.getImporterOptions( file.name ) );
 					},options);
 				}
 				return;
@@ -146,6 +149,14 @@ var ImporterModule  = {
 		},options);
 	},
 
+	getImporterOptions: function()
+	{
+		var import_options = {};
+		for(var i in this.preferences)
+			import_options[i] = this.preferences[i];
+		return import_options;
+	},
+
 	//show the dialog to perform actions to the imported file
 	showImportResourceDialog: function( file, options, on_complete )
 	{
@@ -161,10 +172,7 @@ var ImporterModule  = {
 		var folder = options.folder;
 		var resource = null;
 
-		var import_options = {
-			optimize_data: this.preferences.optimize_data,
-			use_names_to_reference: this.preferences.use_names_to_reference
-		};
+		var import_options = this.getImporterOptions();
 
 		var file_content = file ? file.data : null;
 		var url = "";
@@ -411,16 +419,36 @@ var ImporterModule  = {
 
 		function inner(filename, resource)
 		{
+			var extension = LS.RM.getExtension( filename );
+			var format = LS.Formats.supported[ extension ];
+
 			if(resource)
 			{
 				console.log( "Imported resource: " + LS.getObjectClassName(resource) );
-				if(options.optimize_data && resource.constructor == GL.Mesh )
+				if(options.optimize_data)
 				{
-					resource._original_data = resource.toBinary().buffer; //ArrayBuffer
-					filename = filename + ".wbin";
-					LS.ResourcesManager.renameResource( resource.filename, filename );
+					if( resource.constructor == GL.Mesh && extension != "wbin" )
+					{
+						resource._original_data = resource.toBinary().buffer; //ArrayBuffer
+						filename = filename + ".wbin";
+						LS.ResourcesManager.renameResource( resource.filename, filename );
+					}
+					if( resource.constructor == GL.Texture && (!format || !format["native"]) )
+					{
+						resource._original_data = null;
+						var blob = resource.toBlob(true);
+						var reader = new FileReader();
+						reader.onload = function() {
+							resource._original_data = this.result;
+						};
+						reader.readAsArrayBuffer( blob );
+
+						filename = filename + ".png";
+						LS.ResourcesManager.renameResource( resource.filename, filename );
+					}
 				}
-				else
+				
+				if(!resource._original_file && !resource._original_data)
 					resource._original_file = file;
 
 				//scenes require to rename some stuff 
@@ -470,7 +498,7 @@ var ImporterModule  = {
 			}
 
 			if(on_complete)
-				on_complete(filename, resource, options);
+				on_complete( filename, resource, options );
 		}
 	}
 

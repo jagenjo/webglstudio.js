@@ -23,8 +23,6 @@ var DriveModule = {
 	categories_by_type: { "image/jpeg":"Texture", "image/jpg":"Texture", "image/webp": "Texture", "image/png": "Texture" },
 	categories_by_extension: { "obj": "Mesh", "txt": "Text", "dds":"Texture" },
 
-	selected_resource: null, //seletec item in the browser
-
 	root: null,
 
 	insert_resource_callbacks: [],
@@ -484,11 +482,16 @@ var DriveModule = {
 		}
 
 
-		if(resource.fullpath)
+		if( server_resource )
 		{
 			var link = LS.ResourcesManager.getFullURL( resource.remotepath || resource.fullpath );
 			inspector.addInfo("Link", "<a target='_blank' href='"+link+"'>link to the file</a>" );
 		}
+
+		if(local_resource)
+			inspector.addButton(null,"Open in Inspector", function(){
+				EditorModule.inspect( local_resource );
+			});
 
 		inspector.addSeparator();
 
@@ -627,7 +630,7 @@ var DriveModule = {
 			if(resource.in_server)
 				new_name = LFS.getFullpath( resource.unit, resource.folder, new_name );
 			else
-				new_name = LS.RM.cleanPath( LS.RM.getFolder( resource.fullpath ) + "/" + new_name );
+				new_name = LS.RM.cleanFullpath( LS.RM.getFolder( resource.fullpath ) + "/" + new_name );
 			this.serverMoveFile( old_name, new_name, function(){
 				DriveModule.refreshContent();
 			});
@@ -1005,11 +1008,14 @@ var DriveModule = {
 			{
 				LiteGUI.alert("Preview updated");
 				//force reload the thumbnail without cache
-				var img = DriveModule.selected_resource.querySelector("img");
-				if(img)
+				if(DriveModule.resources_panel.selected_item)
 				{
-					resource.preview_url = preview;
-					img.src = preview;
+					var img = DriveModule.resources_panel.selected_item.querySelector("img");
+					if(img)
+					{
+						resource.preview_url = preview;
+						img.src = preview;
+					}
 				}
 			}
 			else
@@ -1264,6 +1270,7 @@ var DriveModule = {
 			if(resource.constructor === String)
 				resource = LS.ResourcesManager.resources[resource];
 			var new_name = folder + "/" + resource.filename;
+			//ensure the scene info gets updated
 			LS.RM.renameResource( resource.fullpath || resource.filename, new_name );
 			DriveModule.saveResource( resource, inner );
 		}
@@ -1370,11 +1377,12 @@ var DriveModule = {
 
 			var list_widget = widgets.addList(null,missing_list,{height:200});
 			var rows = list_widget.querySelector(".save-item");
-			LiteGUI.bind( rows, "click", function(e){
-				console.log(this.dataset["path"]);
-				var resource = LS.RM.resources[ res_name ];
-				DriveModule.saveResource( resource, function() { widgets.refresh() }, { skip_alerts: true } );
-			});
+			if(rows && rows.length)
+				LiteGUI.bind( rows, "click", function(e){
+					console.log(this.dataset["path"]);
+					var resource = LS.RM.resources[ res_name ];
+					DriveModule.saveResource( resource, function() { widgets.refresh() }, { skip_alerts: true } );
+				});
 
 			widgets.addTitle("Save individually");
 			widgets.addButton(null,"Save only modified ones", inner_save_modified );
@@ -1480,6 +1488,12 @@ var DriveModule = {
 				LS.GlobalScene.addPreloadResource( res.fullpath );
 				LiteGUI.alert("Pack created: " + res.fullpath );
 			}
+			else
+			{
+				LiteGUI.alert("Error creating Pack, check size in LFS");
+				return;
+			}
+
 			if(on_complete)
 				on_complete(res);
 		}
@@ -1682,6 +1696,14 @@ var DriveModule = {
 				extra_info.preview = resource.preview_url;
 			else
 				extra_info.preview = this.generatePreview( resource.fullpath );
+		}
+
+		//check sizae
+		if(data.length > LFS.system_info.max_filesize)
+		{
+			if(on_error)
+				on_error("File too big");
+			return;
 		}
 
 		LoginModule.session.uploadFile( fullpath, data, extra_info, 

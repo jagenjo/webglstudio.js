@@ -35,7 +35,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 			mat_ref = "@Instance";
 	}
 
-	inspector.addMaterial("Ref", mat_ref, { callback: function(v) {
+	inspector.addMaterial("Ref", mat_ref, { name_width: 100, callback: function(v) {
 		node.material = v;
 		inspector.refresh();
 	}});
@@ -88,7 +88,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 	inspector.addInfo("Class", mat_type );
 
 	if(material.remotepath)
-		inspector.addButton("Reference","Update Server",{ callback: function(){
+		inspector.addButton("Reference","Save to Server",{ callback: function(){
 			var material = node.getMaterial();
 			DriveModule.saveResource(material);
 		}});	
@@ -229,16 +229,21 @@ EditorModule.showMaterialProperties = function( material, inspector, node, force
 	var background_container = inspector.startContainer(null,{ className: "background" });
 	var blocker = null;
 
-	var locked = material.fullpath && !material._unlocked && !force_unlock;
+	var can_be_locked = material.fullpath;
+	var is_locked = can_be_locked && !material._unlocked && !force_unlock;
 
 	editor_container.classList.add("locked_container");
-	background_container.classList.add("blur");
-	background_container.classList.add("edited");
+
+	if(is_locked)
+	{
+		background_container.classList.add("blur");
+		background_container.classList.add("edited");
+	}
 
 	if(editor)
 		editor.call( EditorModule, material, inspector );
 
-	if(material.fullpath)
+	if(can_be_locked)
 		inspector.addButtons(null,["Save changes","Lock"],function(v){
 			if(v == "Save changes")
 				DriveModule.saveResource( material );
@@ -252,7 +257,7 @@ EditorModule.showMaterialProperties = function( material, inspector, node, force
 	inspector.endContainer(); //background
 	inspector.endContainer(); //material_editor_container
 
-	if(material.fullpath) //add locked window
+	if(can_be_locked) //add locked window
 	{
 		editor_container.style.position = "relative";
 		var blocker = LiteGUI.createElement("div",null,"<p>Shared Material</p>");
@@ -273,7 +278,7 @@ EditorModule.showMaterialProperties = function( material, inspector, node, force
 		}
 		editor_container.appendChild( blocker );
 
-		if(material._unlocked)
+		if(!is_locked)
 		{
 			background_container.classList.remove("blur");
 			background_container.classList.add("edited");
@@ -298,9 +303,9 @@ LS.MaterialClasses.Material["@inspector"] = function( material, inspector )
 	inspector.addTitle("Properties");
 	inspector.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { 
 		material.opacity = value; 
-		if(material.opacity < 1 && material.blend_mode == Blend.NORMAL)
+		if(material.opacity < 1 && material.blend_mode == LS.Blend.NORMAL)
 			material.blend_mode = LS.Blend.ALPHA;
-		if(material.opacity >= 1 && material.blend_mode == Blend.ALPHA)
+		if(material.opacity >= 1 && material.blend_mode == LS.Blend.ALPHA)
 			material.blend_mode = LS.Blend.NORMAL;
 	}});
 

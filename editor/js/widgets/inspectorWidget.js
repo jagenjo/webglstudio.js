@@ -487,20 +487,17 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 					inspector.refresh();
 				},callback_button: function(v,evt) {
 
-					var menu = new LiteGUI.ContextualMenu( ["Select Prefab","Unlink prefab","Reload from Prefab","Update to Prefab"], { event: evt, callback: function(action) {
-						if(action == "Select Prefab")
+					var menu = new LiteGUI.ContextualMenu( ["Choose Prefab","Unlink prefab","Reload from Prefab","Update to Prefab"], { event: evt, callback: function(action) {
+						if(action == "Choose Prefab")
 						{
 							EditorModule.showSelectResource( { type:"Prefab", on_complete: function(v){
-								if(v)
-									node.prefab = v;
-								else
-									delete node["prefab"];
+								node.prefab = v;
 								inspector.refresh();
 							}});
 						}
 						if(action == "Unlink prefab")
 						{
-							delete node["prefab"];
+							node.prefab = null;
 							inspector.refresh();
 						}
 						if(action == "Reload from Prefab")

@@ -352,6 +352,19 @@ var DriveModule = {
 
 	},
 
+	showCloneResourceDialog: function( resource )
+	{
+		LiteGUI.prompt("Choose filename", function (v){
+			if(!v)
+				return;
+			var folder = LS.RM.getFolder( resource.fullpath || resource.filename );
+			var new_filename = LS.RM.cleanFullpath( folder + "/" + v );
+			DriveModule.cloneResource( resource, new_filename, function(){
+				DriveModule.refreshContent();			
+			});
+		}, { value: LS.RM.getFilename( resource.fullpath || resource.filename ), width: 400 });
+	},
+
 	showResourceInfoInDialog: function( resource )
 	{
 		var dialog = new LiteGUI.Dialog( null, { title:"Properties", fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, width: 400, height: 500, scroll: true });
@@ -565,8 +578,46 @@ var DriveModule = {
 				}
 			});
 		}});
+		
+		if(local_resource)
+			inspector.addButton(null,"Download", {callback: function(v){
+				var file = DriveModule.getResourceAsBlob( resource );
+				if(!file)
+					return;
+				LiteGUI.downloadFile(file.filename, file);
+			}});
 
 		inspector.name_width = old_name_width;
+	},
+
+	getResourceAsBlob: function( resource )
+	{
+		if(!resource)
+			return null;
+
+		var filename = resource.filename;
+		var internal_data = LS.Resource.getDataToStore( resource );
+		var data = internal_data.data;
+		if(data.data) //HACK, ugly, but sometimes returns an object with info about the file, but I want the data
+			data = data.data;
+		if( internal_data.extension && internal_data.extension != extension )
+			filename += "." + internal_data.extension;
+
+		var extension = LS.RM.getExtension( filename ); //recompute it in case it changed
+		//if the file doesnt have an extension...
+		if( !extension )
+		{
+			var ext = "";
+			if( data.constructor == ArrayBuffer || data.constructor == Blob || data.constructor == File )
+				ext = ".wbin"; //add binary extension
+			else
+				ext = ".txt"; //add text
+			filename += ext;
+		}
+
+		var blob = new Blob( [ data ], {type : "application/octet-stream"});
+		blob.filename = filename;
+		return blob;
 	},
 
 	showNewResourceDialog: function()
@@ -642,6 +693,34 @@ var DriveModule = {
 		LS.ResourcesManager.renameResource( old_name, new_name ); //rename and inform
 		//res.filename = new_name;
 		//LS.ResourcesManager.registerResource(new_name, res);
+	},
+
+	cloneResource: function( resource, cloned_name, callback )
+	{
+		if(!resource)
+			return;
+
+		var fullpath = resource.fullpath || resource.filename;
+
+		//it is a server file
+		if(resource.in_server)
+		{
+			DriveModule.serverCopyFile( fullpath, cloned_name, callback );
+			return;
+		}
+
+		//is local
+		if(!resource.clone)
+		{
+			console.log("Resource type cannot be cloned: " + LS.getObjectClassName( resource ) );
+			return;
+		}
+
+		var cloned = resource.clone();
+		LS.RM.registerResource( cloned_name, cloned );
+
+		if(resource.remotepath) //save in server
+			DriveModule.saveResource( cloned );
 	},
 
 	showSelectFolderDialog: function(callback, callback_close, default_folder )
@@ -1611,6 +1690,11 @@ var DriveModule = {
 		}
 	},
 
+	serverCopyFile: function( fullpath, new_fullpath, on_complete )
+	{
+		LoginModule.session.copyFile( fullpath, new_fullpath, on_complete );
+	},
+
 	serverMoveFile: function( fullpath, new_fullpath, on_complete )
 	{
 		LoginModule.session.moveFile( fullpath, new_fullpath, on_complete );
@@ -1660,7 +1744,7 @@ var DriveModule = {
 			category: resource.object_type || LS.getObjectClassName(resource)
 		};
 
-		var extension = getExtension( filename );
+		var extension = LS.RM.getExtension( filename );
 
 		//get the data
 		var internal_data = LS.Resource.getDataToStore( resource );
@@ -1673,7 +1757,7 @@ var DriveModule = {
 			fullpath += "." + internal_data.extension;;
 		}
 
-		extension = getExtension( filename ); //recompute it in case it changed
+		extension = LS.RM.getExtension( filename ); //recompute it in case it changed
 		//if the file doesnt have an extension...
 		if( !extension )
 		{
@@ -1722,13 +1806,6 @@ var DriveModule = {
 				if(on_progress)
 					on_progress(v);
 		});
-
-		function getExtension(filename)
-		{
-			var pos = filename.lastIndexOf(".");
-			if(pos == -1) return "";
-			return filename.substr(pos+1).toLowerCase();
-		}
 	},
 
 	//QUARANTINE
@@ -2016,6 +2093,7 @@ DriveModule.registerAssignResourceCallback("Prefab", function( fullpath, restype
 		if(position)
 			node.transform.position = position;
 		EditorModule.inspect( node );
+		SelectionModule.setSelection( node );
 	});
 });
 

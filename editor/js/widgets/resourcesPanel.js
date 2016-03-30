@@ -477,7 +477,7 @@ ResourcesPanelWidget.prototype.showItemContextualMenu = function( item, event )
 		}
 		else if(action == "Clone")
 		{
-			LiteGUI.alert("Not implemented yet");
+			DriveModule.showCloneResourceDialog( item.resource );
 		}
 		else if(action == "Move")
 		{

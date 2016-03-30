@@ -1857,7 +1857,7 @@ Resource.getDataToStore = function( resource )
 	else if (resource._original_file) //file
 	{
 		data = resource._original_file;
-		if(data && (data.constructor !== File || data.constructor !== Blob))
+		if(data && data.constructor !== File && data.constructor !== Blob)
 			console.warn("Resource._original_file is not File or Blob");
 		encoding = "file";
 	}
@@ -1924,6 +1924,14 @@ Resource.prototype.getDataToStore = function()
 		data = JSON.stringify( data );
 	return data;
 }
+
+Resource.prototype.clone = function()
+{
+	var r = new LS.Resource();
+	r._data = this._data;
+	return r;
+}
+
 
 Resource.hasPreview = false; //should this resource use a preview image?
 
@@ -3040,11 +3048,12 @@ LS.ResourcesManager.processImageNonNative = function( filename, data, options ) 
 		return texture;
 	}
 
+	//texture in object format
 	var texture = LS.ResourcesManager.processTexture( filename, texture_data );
 	return texture;
 }
 
-//Takes one image (or canvas) as input and creates a GL.Texture
+//Takes one image (or canvas or object with width,height,pixels) as input and creates a GL.Texture
 LS.ResourcesManager.processTexture = function(filename, img, options)
 {
 	if(img.width == (img.height / 6) || filename.indexOf("CUBECROSS") != -1) //cubemap
@@ -6057,6 +6066,9 @@ Material.prototype.updatePreview = function(size, options)
 
 	size = size || 256;
 	var preview = LS.Renderer.renderMaterialPreview( this, size, options );
+	if(!preview)
+		return;
+
 	this.preview = preview;
 	if(preview.toDataURL)
 		this.preview_url = preview.toDataURL("image/png");
@@ -17323,6 +17335,7 @@ function Label(o)
 {
 	this.text = "";
 	this.className = "";
+	this.use_html = false;
 	this._world_pos = vec3.create();
 	this._screen_pos = vec3.create();
 	this.configure(o);
@@ -17334,8 +17347,17 @@ Label.CSS_classname = "LS3D_label";
 Label.prototype.onAddedToScene = function( scene )
 {
 	//events
-	LEvent.bind( scene,"beforeRender",this.render,this);
+	LEvent.bind( scene,"renderGUI",this.render,this);
+}
 
+Label.prototype.onRemovedFromScene = function(scene)
+{
+	LEvent.unbind( scene, "renderGUI", this.render, this);
+	this.removeHTML();
+}
+
+Label.prototype.createHTML = function()
+{
 	//create html
 	var elem = document.createElement("div");
 	elem.innerHTML = this.text;
@@ -17347,57 +17369,80 @@ Label.prototype.onAddedToScene = function( scene )
 	style.fontSize = "20px";
 	style.padding = "10px";
 	style.color = "white";
+	style.minWidth = "100px";
 	style.pointerEvents = "none";
 	style.backgroundColor = "rgba(0,0,0,0.5)";
 	style.borderRadius = "2px";
 
-	if(gl && gl.canvas && gl.canvas.parentNode)
-		gl.canvas.parentNode.appendChild( elem );
+	var parent = LS.getGUIElement();
+	parent.appendChild( elem );
 
 	this._element = elem;
 }
 
-Label.prototype.onRemovedFromScene = function(scene)
-{
-	LEvent.unbind( scene, "beforeRender", this.render, this);
-
-	if(this._element)
-	{
-		if(this._element.parentNode)
-			this._element.parentNode.removeChild( this._element );
-		this._element = null;
-	}
-}
-
-
-Label.prototype.render = function(e, render_settings)
+Label.prototype.removeHTML = function()
 {
 	if(!this._element)
 		return;
+	if(this._element.parentNode)
+		this._element.parentNode.removeChild( this._element );
+	this._element = null;
+}
 
+Label.prototype.render = function(e, render_settings)
+{
 	var node = this._root;
 
-
-	if(this._element.innerHTML != this.text)
-		this._element.innerHTML = this.text;
-
-	this._element.style.display = node.flags.visible === false ? "none" : "block";
-	if(!this.text)
-	{
-		this._element.style.display = "none";
-		return;
-	}
-
-	var classname = this.constructor.CSS_classname + " " + this.className;
-	if(this._element.className != classname)
-		this._element.className = classname;
-
 	var camera = LS.Renderer._main_camera;
+	if(!camera)
+		return;
+
 	node.transform.getGlobalPosition(this._world_pos);
 	camera.project(this._world_pos, null, this._screen_pos );
 
-	this._element.style.left = this._screen_pos[0].toFixed(0) + "px";
-	this._element.style.top = (gl.canvas.height - (this._screen_pos[1]|0) - 10) + "px";
+	if(this.use_html)
+	{
+		if(!this._element)
+			this.createHTML();
+
+		if(this._element.innerHTML != this.text)
+			this._element.innerHTML = this.text;
+
+		this._element.style.display = node.flags.visible === false ? "none" : "block";
+		if(!this.text)
+		{
+			this._element.style.display = "none";
+			return;
+		}
+
+		var classname = this.constructor.CSS_classname + " " + this.className;
+		if(this._element.className != classname)
+			this._element.className = classname;
+
+		this._element.style.left = this._screen_pos[0].toFixed(0) + "px";
+		this._element.style.top = (gl.canvas.height - (this._screen_pos[1]|0) - 10) + "px";
+	}
+	else
+	{
+		if(this._element)
+			this.removeHTML();
+
+		if(gl.start2D)
+		{
+			var x = this._screen_pos[0] + 5;
+			var y = gl.canvas.height - this._screen_pos[1] + 10;
+			gl.start2D();
+			gl.font = "20px Arial";
+			var info = gl.measureText( this.text );
+			gl.fillStyle = "black";
+			gl.globalAlpha = 0.5;
+			gl.fillRect( x - 5, y - 20, info.width + 10, 26 );
+			gl.globalAlpha = 1;
+			gl.fillStyle = "white";
+			gl.fillText( this.text, x, y );
+			gl.finish2D();
+		}
+	}
 }
 
 LS.registerComponent(Label);
@@ -19056,7 +19101,7 @@ function TerrainRenderer(o)
 	this.height = 2;
 	this.size = 10;
 
-	this.subdivisions = 10;
+	this.subdivisions = 100;
 	this.heightmap = "";
 	this._primitive = -1;
 	this.auto_update = true;
@@ -19117,7 +19162,8 @@ TerrainRenderer.prototype.onResourceRenamed = function (old_name, new_name, reso
 
 TerrainRenderer.prototype.updateMesh = function()
 {
-	trace("updating terrain mesh...");
+	//console.log("updating terrain mesh...");
+
 	//check that we have all the data
 	if(!this.heightmap) 
 		return;
@@ -19135,7 +19181,8 @@ TerrainRenderer.prototype.updateMesh = function()
 	if(this.subdivisions > img.height)
 		this.subdivisions = img.height;
 
-	if(this.subdivisions > 255)	this.subdivisions = 255; //MAX because of indexed nature
+	if(this.subdivisions > 255 && !gl.extensions.OES_element_index_uint )
+		this.subdivisions = 255; //MAX because of indexed nature
 
 	//optimize it
 	var hsize = this.size * 0.5;
@@ -19158,7 +19205,8 @@ TerrainRenderer.prototype.updateMesh = function()
 	var normals = [];
 	var coords = [];
 
-	var detailY = detailX = subdivisions-1;
+	var detailX, detailY;
+	detailY = detailX = subdivisions-1;
 	var h,lh,th,rh,bh = 0;
 
 	var yScale = height;
@@ -22531,11 +22579,30 @@ Prefab.version = "0.1"; //used to know where the file comes from
 
 Prefab.prototype.configure = function(data)
 {
-	var prefab_json = data["@json"];
-	var resources_names = data["@resources_name"];
-	var version = data["@version"];
-	this.prefab_json = prefab_json;
-	this.prefab_data = JSON.parse( prefab_json );
+	if(data.hasOwnProperty("prefab_data"))
+	{
+		this.prefab_data = data.prefab_data;
+		this.prefab_json = data.prefab_json || JSON.stringify( this.prefab_data );
+	}
+	else
+	{
+		//read from WBin info
+		var prefab_json = data["@json"];
+		if(!prefab_json)
+		{
+			console.warn("No JSON found in prefab");
+			return;
+		}
+
+		var version = data["@version"]; //not used yet
+		this.prefab_json = prefab_json;
+		this.prefab_data = JSON.parse( prefab_json );
+	}
+
+	LS.clearUIds( this.prefab_data ); //Legacy: now this is done also when saving
+
+	var resources_names = data["@resources_name"] || data.resources_name;
+
 
 	//extract resource names
 	if(resources_names)
@@ -22622,9 +22689,12 @@ Prefab.prototype.createObject = function()
 /**
 * to create a new prefab, it packs all the data an instantiates the resource
 * @method Prefab.createPrefab
-* @return object containing the prefab data ready to be converted to WBin
+* @param {String} filename a name for this prefab (if wbin is not appended, it will)
+* @param {Object} node_data an object containing all the node data to store
+* @param {Object} resources an object containing all the resources in { filename:Resource } format
+* @return object containing the prefab data ready to be converted to WBin (it also stores _original_data with the WBin)
 **/
-Prefab.createPrefab = function( filename, node_data, resources)
+Prefab.createPrefab = function( filename, node_data, resources )
 {
 	if(!filename)
 		return;
@@ -22652,7 +22722,7 @@ Prefab.createPrefab = function( filename, node_data, resources)
 	return prefab;
 }
 
-//adds resources to the Prefab
+//Given a list of resources and some base data, it creates a WBin with all the data
 Prefab.packResources = function( resources, base_data )
 {
 	var to_binary = base_data || {};
@@ -22698,7 +22768,7 @@ Prefab.packResources = function( resources, base_data )
 Prefab.prototype.updateFromNode = function(node)
 {
 	var data = node.serialize(true);
-	LS.clearUIds(data);
+	LS.clearUIds(data); //remove UIDs
 	this.prefab_data = data;
 	this.prefab_json = JSON.stringify( data );
 }
@@ -22747,6 +22817,12 @@ Prefab.prototype.applyToNodes = function( scene )
 			continue;
 		node.reloadFromPrefab();
 	}
+}
+
+Prefab.prototype.getDataToStore = function()
+{
+	this.prefab_json = JSON.stringify( this.prefab_data );
+	return LS.Prefab.packResources( this.resources, { "@json": this.prefab_json, "@version": LS.Prefab.version } );
 }
 
 LS.Classes["Prefab"] = LS.Prefab = Prefab;
@@ -25649,6 +25725,12 @@ var Renderer = {
 		}
 
 		var node = scene.getNode( "sphere");
+		if(!node)
+		{
+			console.error("Node not found in Material Preview Scene");
+			return null;
+		}
+
 		if(options.rotate)
 			node.transform.rotateY( options.rotate );
 		node.material = material;
@@ -26555,15 +26637,18 @@ var parserASE = {
 
 		//final arrays (packed, lineal [ax,ay,az, bx,by,bz ...])
 		var positionsArray = [ ];
-		var texcoordsArray = [ ];
 		var normalsArray   = [ ];
 		var indicesArray   = [ ];
 
+		var uvs_container = [ ];
+		var current_uvs = null;
+
+
 		//unique arrays (not packed, lineal)
 		var positions = [ ];
-		var texcoords = [ ];
 		var normals   = [ ];
 		var indices = [ ];
+		var tvertlist = [ ];
 		var facemap   = { };
 		var index     = 0;
 
@@ -26603,9 +26688,9 @@ var parserASE = {
 			{
 				mesh_index += 1;
 				positions = [];
-				texcoords = [];
 
-				if(mesh_index > 1) break; //parse only the first mesh
+				if(mesh_index > 1)
+					break; //parse only the first mesh
 			}
 			else if (tokens[0] == "*NODE_NAME") {
 				current_mesh_name =  tokens[1].substr(1, tokens[1].length - 2);
@@ -26647,18 +26732,34 @@ var parserASE = {
 				vertex = positions[ parseInt(tokens[7]) ];
 				positionsArray.push( vertex[0], vertex[1], vertex[2] );
 			}
+			else if(tokens[0] == "*MESH_TVERTLIST")
+			{
+				tvertlist = [];
+			}
 			else if(tokens[0] == "*MESH_TVERT")
 			{
-				texcoords.push( [parseFloat(tokens[2]), parseFloat(tokens[3])] );
+				tvertlist.push( [parseFloat(tokens[2]), parseFloat(tokens[3])] );
+			}
+			else if(tokens[0] == "*MESH_TFACELIST")
+			{
+				if( current_uvs && current_uvs.length )
+					uvs_container.push( current_uvs );
+				current_uvs = [];
 			}
 			else if(tokens[0] == "*MESH_TFACE")
 			{
-				var coord = texcoords[ parseInt(tokens[2]) ];
-				texcoordsArray.push( coord[0], coord[1] );
-				coord = texcoords[ parseInt(tokens[3]) ];
-				texcoordsArray.push( coord[0], coord[1] );
-				coord = texcoords[ parseInt(tokens[4]) ];
-				texcoordsArray.push( coord[0], coord[1] );
+				var coord = tvertlist[ parseInt(tokens[2]) ];
+				current_uvs.push( coord[0], coord[1] );
+				coord = tvertlist[ parseInt(tokens[3]) ];
+				current_uvs.push( coord[0], coord[1] );
+				coord = tvertlist[ parseInt(tokens[4]) ];
+				current_uvs.push( coord[0], coord[1] );
+			}
+			else if(tokens[0] == "*MESH_MAPPINGCHANNEL")
+			{
+				if( current_uvs )
+					uvs_container.push( current_uvs );
+				current_uvs = [];
 			}
 			else if(tokens[0] == "*MESH_VERTEXNORMAL")
 			{
@@ -26668,6 +26769,9 @@ var parserASE = {
 					normalsArray.push(parseFloat(tokens[2]),parseFloat(tokens[3]),parseFloat(tokens[4]));
 			}
 		}
+
+		if(current_uvs)
+			uvs_container.push( current_uvs );
 
 		var total_primitives = positionsArray.length / 3 - group.start;
 		if(group && total_primitives > 1)
@@ -26681,8 +26785,13 @@ var parserASE = {
 		mesh.vertices = new Float32Array(positionsArray);
 		if (normalsArray.length > 0)
 			mesh.normals = new Float32Array(normalsArray);
-		if (texcoordsArray.length > 0)
-			mesh.coords = new Float32Array(texcoordsArray);
+		for(var i = 0; i < uvs_container.length; ++i )
+		{
+			var channel = "";
+			if(i > 0)
+				channel = i+1;
+			mesh[ "coords" + channel ] = new Float32Array( uvs_container[i] );
+		}
 
 		//extra info
 		mesh.bounding = LS.Formats.computeMeshBounding( mesh.vertices );
@@ -30155,6 +30264,7 @@ var parserTGA = {
 		img.bytesPerPixel = img.bpp / 8;
 		img.imageSize = img.width * img.height * img.bytesPerPixel;
 		img.pixels = data.subarray(18,18+img.imageSize);
+		img.pixels = new Uint8Array( img.pixels ); 	//clone
 
 		if(	(header[5] & (1<<4)) == 0) //hack, needs swap
 		{
@@ -31662,7 +31772,7 @@ function SceneNode( name )
 	this.layers = 3|0; //32 bits for layers (force to int)
 	this.node_type = null; //used to store a string defining the node info
 
-	this.init();
+	this.init(true,true);
 }
 
 SceneNode.prototype.init = function( keep_components, keep_info )
@@ -31740,25 +31850,37 @@ Object.defineProperty( SceneNode.prototype, 'fullname', {
 	enumerable: false
 });
 
+//Changing the UID  has lots of effects (because nodes are indexed by UID in the scene)
+//If you want to catch the event of the uid_change, remember, the previous uid is stored in LS.SceneNode._last_uid_changed (it is not passed in the event)
 Object.defineProperty( SceneNode.prototype, 'uid', {
 	set: function(uid)
 	{
 		if(!uid)
 			return;
 
+		//valid uid?
 		if(uid[0] != LS._uid_prefix)
 		{
 			console.warn("Invalid UID, renaming it to: " + uid );
 			uid = LS._uid_prefix + uid;
 		}
 
+		//no changes?
 		if(uid == this._uid)
 			return;
+
+		SceneNode._last_uid_changed = this._uid; //hack, in case we want the previous uid of a node 
+
+		//update scene tree indexing
 		if( this._in_tree && this._in_tree._nodes_by_uid[ this.uid ] )
 			delete this._in_tree._nodes_by_uid[ this.uid ];
 		this._uid = uid;
 		if( this._in_tree )
 			this._in_tree._nodes_by_uid[ this.uid ] = this;
+		//events
+		LEvent.trigger( this, "uid_changed", uid );
+		if(this._in_tree)
+			LEvent.trigger( this._in_tree, "node_uid_changed", this );
 	},
 	get: function(){
 		return this._uid;
@@ -32265,7 +32387,8 @@ SceneNode.prototype.getMaterial = function()
 	return this.material;
 }
 
-//apply prefab info (skipping the root components) to node
+//Apply prefab info (skipping the root components) to node
+//It is called from prefab.applyToNodes when a prefab is loaded in memory
 SceneNode.prototype.reloadFromPrefab = function()
 {
 	if(!this.prefab)
@@ -32280,6 +32403,7 @@ SceneNode.prototype.reloadFromPrefab = function()
 	this.init( true, true );
 	//remove all but children info (prefabs overwrite only children info)
 	var prefab_data = { children: prefab.prefab_data.children };
+	//uid data is already removed from the prefab
 	this.configure( prefab_data );
 
 	//load secondary resources 

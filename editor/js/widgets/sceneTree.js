@@ -28,7 +28,6 @@ function SceneTreeWidget( id )
 	var tree = this.tree;
 	this._ignore_events = false; //used to avoid recursions
 
-
 	this.tree.onBackgroundClicked = function() {
 		EditorModule.inspect( LS.GlobalScene ); 
 	}
@@ -336,6 +335,11 @@ SceneTreeWidget.prototype.bindEvents = function( scene )
 	LEvent.bind( scene, "node_name_changed", function(e,node) {
 		var unique_id = that.getIdString( node.uid );
 		this.tree.updateItem( unique_id, { id: unique_id, uid: node.uid, node_name: node._name, content: node.name });
+	},this);
+	LEvent.bind( scene, "node_uid_changed", function(e,node) {
+		var old_uid = that.getIdString( LS.SceneNode._last_uid_changed );
+		var new_uid = that.getIdString( node.uid );
+		this.tree.updateItem( old_uid, { id: new_uid, uid: node.uid, node_name: node._name, content: node.name });
 	},this);
 }
 

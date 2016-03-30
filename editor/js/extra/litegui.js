@@ -853,6 +853,39 @@ var LiteGUI = {
 		return dialog;
 	},
 
+	downloadFile: function( filename, data, dataType )
+	{
+		if(!data)
+		{
+			console.warn("No file provided to download");
+			return;
+		}
+
+		if(!dataType)
+		{
+			if(data.constructor === String )
+				dataType = 'text/plain';
+			else
+				dataType = 'application/octet-stream';
+		}
+
+		var file = null;
+		if(data.constructor !== File && data.constructor !== Blob)
+			file = new Blob( [ data ], {type : dataType});
+		else
+			file = data;
+
+		var url = URL.createObjectURL( file );
+		var element = document.createElement("a");
+		element.setAttribute('href', url);
+		element.setAttribute('download', filename );
+		element.style.display = 'none';
+		document.body.appendChild(element);
+		element.click();
+		document.body.removeChild(element);
+		setTimeout( function(){ URL.revokeObjectURL( url ); }, 1000*60 ); //wait one minute to revoke url
+	},
+
 	/**
 	* Returns the URL vars ( ?foo=faa&foo2=etc )
 	* @method getUrlVars
@@ -4181,6 +4214,11 @@ function dataURItoBlob( dataURI ) {
 
 		element.parent_id = parent_id;
 
+		//check
+		var existing_item = this.getItem( element.dataset["item_id"] );
+		if( existing_item )
+			console.warn("There another item with the same ID in this tree");
+
 		//insert
 		if(parent_element_index == -1)
 			this.root.appendChild( element );
@@ -5039,7 +5077,7 @@ function dataURItoBlob( dataURI ) {
 	{
 		var node = this.getItem(id);
 		if(!node)
-			return;
+			return false;
 
 		node.data = data;
 		if(data.id)
@@ -5050,6 +5088,8 @@ function dataURItoBlob( dataURI ) {
 			var incontent = node.title_element.querySelector(".incontent");
 			incontent.innerHTML = data.content;
 		}
+
+		return true;
 	}
 
 	/**

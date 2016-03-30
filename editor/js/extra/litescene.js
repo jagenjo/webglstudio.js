@@ -31772,7 +31772,10 @@ function SceneNode( name )
 	this.layers = 3|0; //32 bits for layers (force to int)
 	this.node_type = null; //used to store a string defining the node info
 
-	this.init(true,true);
+	this._components = []; //used for logic actions
+	this._missing_components = null;
+
+	this.init(false,true);
 }
 
 SceneNode.prototype.init = function( keep_components, keep_info )

@@ -540,25 +540,47 @@ var RenderModule = {
 		}
 	},
 
-	//returns string
+	//returns string or blob
 	takeScreenshot: function( width, height, get_blob )
 	{
 		width = width || 256;
 		height = height || 256;
-
 		var v3d = RenderModule.viewport3d;
-		var old = [v3d.canvas.width,v3d.canvas.height];
-		v3d.resize(width,height);
-		
-		this.render(true);
-		var data = null;
-		
-		if(get_blob)
-			data = v3d.canvas.toBlob();
-		else
-			data = v3d.canvas.toDataURL("image/png");
-		v3d.resize(old[0],old[1]);
-		this.render(true); //force render a frame to clean 
+
+		if( v3d.canvas.width > width ) //render big and downscale
+		{
+			this.render(true); //change render_settings?
+			var canvas = createCanvas( width, height );
+			var ctx = canvas.getContext("2d");
+			var scalew = width / v3d.canvas.width;
+			var scaleh = height / v3d.canvas.height;
+			var scale = Math.max( scalew, scaleh ); //the biggest so it fits all
+			if(scale == scaleh )
+				ctx.translate( ((scale * v3d.canvas.width) - width) * -0.5, 0 );
+			else
+				ctx.translate( 0, ((scale * v3d.canvas.height) - height) * -0.5 );
+			ctx.scale( scale, scale );
+			ctx.drawImage( v3d.canvas, 0, 0 );
+			if(get_blob)
+				data = canvas.toBlob();
+			else
+				data = canvas.toDataURL("image/png");
+		}
+		else //render to specific size
+		{
+			var old = [v3d.canvas.width,v3d.canvas.height];
+			v3d.resize(width,height);
+			
+			this.render(true);
+			var data = null;
+			
+			if(get_blob)
+				data = v3d.canvas.toBlob();
+			else
+				data = v3d.canvas.toDataURL("image/png");
+			v3d.resize(old[0],old[1]);
+			this.render(true); //force render a frame to clean 
+		}
 		return data;
 	},
 

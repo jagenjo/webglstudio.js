@@ -732,7 +732,7 @@ Timeline.prototype.setCurrentTime = function( time, skip_redraw )
 				var sample = track.getSample( time );
 				if( sample !== undefined )
 				{
-					track._target = LS.GlobalScene.setPropertyValueFromPath( track._property_path, sample );
+					track._target = LS.GlobalScene.setPropertyValueFromPath( track._property_path, sample, 0 );
 					track._last_sample = sample; //store last value
 				}
 			}

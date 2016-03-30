@@ -952,7 +952,7 @@ var LS = {
 		}
 
 		var o = target;
-		if(o === undefined)
+		if(o === undefined || o === null)
 		{
 			if(object.constructor === Array)
 				o = [];
@@ -980,7 +980,13 @@ var LS = {
 				o[i] = v;
 			else if( v.buffer && v.byteLength && v.buffer.constructor === ArrayBuffer ) //typed arrays are ugly when serialized
 			{
-				o[i] = new v.constructor(v); //clone typed array
+				if(o[i] && v && only_existing) 
+				{
+					if(o[i].length == v.length) //typed arrays force to fit in the same container
+						o[i].set( v );
+				}
+				else
+					o[i] = new v.constructor(v); //clone typed array
 			}
 			else if ( v.constructor === Array ) //clone regular array (container and content!)
 			{
@@ -2404,11 +2410,13 @@ var ResourcesManager = {
 				LS.ResourcesManager._resourceLoadedError(url,err);
 			},
 			progress: function(e) { 
+				var partial_load = 0;
+				if(e.total) //sometimes we dont have the total so we dont know the amount
+					partial_load = e.loaded / e.total;
 				if( LEvent.hasBind(  LS.ResourcesManager, "resource_loading_progress" ) ) //used to avoid creating objects during loading
-					LEvent.trigger( LS.ResourcesManager, "resource_loading_progress", { url: url, event: e, progress: e.loaded / e.total } );
+					LEvent.trigger( LS.ResourcesManager, "resource_loading_progress", { url: url, event: e, progress: partial_load } );
 				if( LEvent.hasBind(  LS.ResourcesManager, "loading_resources_progress" ) ) //used to avoid creating objects during loading
-					LEvent.trigger( LS.ResourcesManager, "loading_resources_progress", 1.0 - (LS.ResourcesManager.num_resources_being_loaded - e.loaded / e.total) / LS.ResourcesManager._total_resources_to_load );
-
+					LEvent.trigger( LS.ResourcesManager, "loading_resources_progress", 1.0 - (LS.ResourcesManager.num_resources_being_loaded - partial_load) / LS.ResourcesManager._total_resources_to_load );
 			}
 		};
 
@@ -5747,7 +5755,7 @@ Material.prototype.getProperty = function(name)
 * @method getProperty
 * @return {Object} object with name:type
 */
-Material.prototype.setProperty = function(name, value)
+Material.prototype.setProperty = function( name, value )
 {
 	if(name.substr(0,4) == "tex_")
 	{
@@ -5798,6 +5806,20 @@ Material.prototype.setProperty = function(name, value)
 			return false;
 	}
 	return true;
+}
+
+Material.prototype.setPropertyValueFromPath = function( path, value, offset )
+{
+	offset = offset || 0;
+
+	if( path.length < (offset+1) )
+		return;
+
+	//maybe check if path is texture?
+	//TODO
+
+	//assign
+	this.setProperty( path[ offset ], value );
 }
 
 Material.prototype.getPropertyInfoFromPath = function( path )
@@ -6831,12 +6853,14 @@ CustomMaterial.prototype.setProperty = function(name, value)
 	return false;
 }
 
-CustomMaterial.prototype.setPropertyValueFromPath = function( path, value )
+/*
+CustomMaterial.prototype.setPropertyValueFromPath = function( path, value, offset )
 {
-	if( path.length < 1)
+	if( path.length < (offset+1) )
 		return;
-	return this.setProperty( path[0], value );
+	return this.setProperty( path[offset], value );
 }
+*/
 
 CustomMaterial.prototype.getPropertyInfoFromPath = function( path )
 {
@@ -7226,12 +7250,15 @@ SurfaceMaterial.prototype.setProperty = function(name, value)
 	return false;
 }
 
-SurfaceMaterial.prototype.setPropertyValueFromPath = function( path, value )
+/*
+SurfaceMaterial.prototype.setPropertyValueFromPath = function( path, value, offset )
 {
-	if( path.length < 1)
+	offset = offset || 0;
+	if( path.length < (offset+1) )
 		return;
-	return this.setProperty( path[0], value );
+	return this.setProperty( path[offset], value );
 }
+*/
 
 SurfaceMaterial.prototype.getPropertyInfoFromPath = function( path )
 {
@@ -13534,19 +13561,21 @@ MorphDeformer.prototype.getPropertyInfoFromPath = function( path )
 	};
 }
 
-MorphDeformer.prototype.setPropertyValueFromPath = function( path, value )
+MorphDeformer.prototype.setPropertyValueFromPath = function( path, value, offset )
 {
-	if( path.length < 1 )
+	offset = offset || 0;
+
+	if( path.length < (offset+1) )
 		return;
 
-	if( path[0] != "morphs" )
+	if( path[offset] != "morphs" )
 		return;
 
-	var num = parseInt( path[1] );
+	var num = parseInt( path[offset+1] );
 	if(num >= this.morph_targets.length)
 		return;
 
-	var varname = path[2];
+	var varname = path[offset+2];
 	this.morph_targets[num][ varname ] = value;
 }
 
@@ -14325,6 +14354,10 @@ Collider.prototype.onGetColliders = function(e, colliders)
 LS.registerComponent( Collider );
 /** 
 * This module allows to store custom data inside a node
+* properties have the form of:
+* - name:
+* - value:
+* - type:
 * @class CustomData
 * @constructor
 * @param {Object} object to configure from
@@ -14372,10 +14405,33 @@ CustomData.prototype.updateProperty = function( p )
 //used for animation tracks
 CustomData.prototype.getPropertyInfoFromPath = function( path )
 {
+	var varname = path[0];
+	var property = this.getProperty( varname );
+	if(!property)
+		return null;
+	return {
+		node: this._root,
+		target: this,
+		name: varname,
+		value: property.value,
+		type: property.type
+	};
 }
 
-CustomData.prototype.setPropertyValueFromPath = function( path, value )
+CustomData.prototype.setPropertyValueFromPath = function( path, value, offset )
 {
+	offset = offset || 0;
+
+	var varname = path[offset];
+	var property = this.getProperty( varname );
+	if(!property)
+		return;
+
+	//assign
+	if(property.value && property.value.set)
+		property.value.set( value ); //typed arrays
+	else
+		property.value = value;
 }
 
 
@@ -15880,15 +15936,16 @@ GlobalInfo.prototype.getPropertyInfoFromPath = function( path )
 	};
 }
 
-GlobalInfo.prototype.setPropertyValueFromPath = function( path, value )
+GlobalInfo.prototype.setPropertyValueFromPath = function( path, value, offset )
 {
-	if( path.length < 1 )
+	offset = offset || 0;
+	if( path.length < (offset+1) )
 		return;
 
-	if( path[0] != "textures" )
+	if( path[offset] != "textures" )
 		return;
 
-	var varname = path[1];
+	var varname = path[offset+1];
 	this._textures[ varname ] = value;
 }
 
@@ -18736,16 +18793,18 @@ Script.prototype.getPropertyInfoFromPath = function( path )
 	};
 }
 
-Script.prototype.setPropertyValueFromPath = function( path, value )
+Script.prototype.setPropertyValueFromPath = function( path, value, offset )
 {
-	if(path.length < 1)
+	offset = offset || 0;
+
+	if( path.length < (offset+1) )
 		return;
 
-	if(path[0] != "context" )
+	if(path[offset] != "context" )
 		return;
 
 	var context = this.getContext();
-	var varname = path[1];
+	var varname = path[offset+1];
 	if(!context || context[ varname ] === undefined )
 		return;
 
@@ -21256,7 +21315,7 @@ Take.prototype.createTrack = function( data )
 }
 
 /**
-* Assigns a value to the property of a component in a node based on the locator of that property
+* For every track, gets the interpolated value between keyframes and applies the value to the property associated with the track locator
 * Locators are in the form of "{NODE_UID}/{COMPONENT_UID}/{property_name}"
 *
 * @method applyTracks
@@ -21274,6 +21333,7 @@ Take.prototype.applyTracks = function( current_time, last_time, ignore_interpola
 		if( track.enabled === false || !track.data )
 			continue;
 
+		//events are an special kind of tracks, they execute actions
 		if( track.type == "events" )
 		{
 			var keyframe = track.getKeyframeByTime( current_time );
@@ -21288,12 +21348,13 @@ Take.prototype.applyTracks = function( current_time, last_time, ignore_interpola
 			if(info.node && info.target && info.target[ keyframe[1][0] ] )
 				info.target[ keyframe[1][0] ].call( info.target, keyframe[1][1] );
 		}
-		else
+		else //regular tracks
 		{
-			//read from the animation
+			//read from the animation track the value
 			var sample = track.getSample( current_time, !ignore_interpolation );
-			if( sample !== undefined ) //apply to node
-				track._target = LS.GlobalScene.setPropertyValueFromPath( track._property_path, sample, root_node );
+			//apply the value to the property specified by the locator
+			if( sample !== undefined ) 
+				track._target = LS.GlobalScene.setPropertyValueFromPath( track._property_path, sample, root_node, 0 );
 		}
 	}
 }
@@ -31270,20 +31331,7 @@ SceneTree.prototype.getPropertyInfoFromPath = function( path )
 SceneTree.prototype.setPropertyValue = function( locator, value, root_node )
 {
 	var path = locator.split("/");
-
-	if(path[0].substr(0,5) == "@MAT-")
-	{
-		var material = LS.RM.materials_by_uid[ path[0] ];
-		if(!material)
-			return null;
-		return material.setPropertyValueFromPath( path.slice(1), value );
-	}
-
-	//get node
-	var node = root_node ? root_node.findNode( path[0] ) : this.getNode( path[0] );
-	if(!node)
-		return null;
-	return node.setPropertyValueFromPath( path.slice(1), value );
+	this.setPropertyValueFromPath( path, value, root_node, 0 );
 }
 
 /**
@@ -31293,24 +31341,30 @@ SceneTree.prototype.setPropertyValue = function( locator, value, root_node )
 * @method setPropertyValueFromPath
 * @param {Array} path a property locator split by "/"
 * @param {*} value the value to assign
+* @param {SceneNode} root_node [optional] the root node where you want to search the locator (this is to limit the locator to a branch of the scene tree)
+* @param {Number} offset [optional] used to avoir generating garbage, instead of slicing the array every time, we pass the array index
 * @return {Component} the target where the action was performed
 */
-SceneTree.prototype.setPropertyValueFromPath = function( path, value, root_node )
+SceneTree.prototype.setPropertyValueFromPath = function( path, value, root_node, offset )
 {
-	if(path[0].substr(0,5) == "@MAT-")
+	offset = offset || 0;
+	if(path.length < (offset+1))
+		return;
+
+	if(path[offset].substr(0,5) == "@MAT-")
 	{
-		var material = LS.RM.materials_by_uid[ path[0] ];
+		var material = LS.RM.materials_by_uid[ path[offset] ];
 		if(!material)
 			return null;
-		return material.setPropertyValueFromPath( path.slice(1), value );
+		return material.setPropertyValueFromPath( path, value, offset + 1 );
 	}
 
 	//get node
-	var node = root_node ? root_node.findNode( path[0] ) : this.getNode( path[0] );
+	var node = root_node ? root_node.findNode( path[offset] ) : this.getNode( path[offset] );
 	if(!node)
 		return null;
 
-	return node.setPropertyValueFromPath( path.slice(1), value );
+	return node.setPropertyValueFromPath( path, value, offset + 1 );
 }
 
 
@@ -31759,12 +31813,18 @@ LS.Classes.SceneTree = SceneTree;
 * Is the base class for all objects in the scene as meshes, lights, cameras, and so
 *
 * @class SceneNode
-* @param{String} id the id (otherwise a random one is computed)
+* @param {String} name the name for this node (otherwise a random one is computed)
 * @constructor
 */
 
 function SceneNode( name )
 {
+	if(name && name.constructor !== String)
+	{
+		name = null;
+		console.warn("SceneNode cosntructor first parameter must be a String with the name");
+	}
+
 	//Generic
 	this._name = name || ("node_" + (Math.random() * 10000).toFixed(0)); //generate random number
 	this._uid = LS.generateUId("NODE-");
@@ -31774,6 +31834,10 @@ function SceneNode( name )
 
 	this._components = []; //used for logic actions
 	this._missing_components = null;
+
+	this._prefab = null;
+	this._parentNode = null;
+	this._children = null;
 
 	this.init(false,true);
 }
@@ -32172,42 +32236,44 @@ SceneNode.prototype.getPropertyInfoFromPath = function( path )
 SceneNode.prototype.setPropertyValue = function( locator, value )
 {
 	var path = locator.split("/");
-	return this.setPropertyValueFromPath(path, value);
+	return this.setPropertyValueFromPath(path, value, 0);
 }
 
-SceneNode.prototype.setPropertyValueFromPath = function( path, value )
+SceneNode.prototype.setPropertyValueFromPath = function( path, value, offset )
 {
-	var target = null;
-	var varname = path[0];
+	offset = offset || 0;
 
-	if(path.length > 1)
+	var target = null;
+	var varname = path[offset];
+
+	if(path.length > (offset+1))
 	{
-		if(path[0][0] == "@")
+		if(path[offset][0] == "@")
 		{
-			varname = path[1];
-			target = this.getComponentByUId( path[0] );
+			varname = path[offset+1];
+			target = this.getComponentByUId( path[offset] );
 		}
-		else if( path[1] == "material" )
+		else if( path[offset] == "material" )
 		{
 			target = this.getMaterial();
-			varname = path[1];
+			varname = path[offset+1];
 		}
-		else if( path[1] == "flags" )
+		else if( path[offset] == "flags" )
 		{
 			target = this.flags;
-			varname = path[1];
+			varname = path[offset+1];
 		}
 		else 
 		{
-			target = this.getComponent( path[0] );
-			varname = path[1];
+			target = this.getComponent( path[offset] );
+			varname = path[offset+1];
 		}
 
 		if(!target)
 			return null;
 	}
 	else { //special cases 
-		switch ( path[0] )
+		switch ( path[offset] )
 		{
 			case "matrix": target = this.transform; break;
 			case "x":
@@ -32217,7 +32283,7 @@ SceneNode.prototype.setPropertyValueFromPath = function( path, value )
 			case "yrotation": 
 			case "zrotation": 
 				target = this.transform; 
-				varname = path[0];
+				varname = path[offset];
 				break;
 			case "translate.X": target = this.transform; varname = "x"; break;
 			case "translate.Y": target = this.transform; varname = "y"; break;
@@ -32233,7 +32299,7 @@ SceneNode.prototype.setPropertyValueFromPath = function( path, value )
 		return null;
 
 	if(target.setPropertyValueFromPath && target != this)
-		if( target.setPropertyValueFromPath( path.slice(1), value ) === true )
+		if( target.setPropertyValueFromPath( path, value, offset+1 ) === true )
 			return target;
 	
 	if(target.setPropertyValue  && target != this)
@@ -32446,6 +32512,19 @@ SceneNode.prototype.getLayers = function()
 			r.push( this.scene.layer_names[i] || ("layer"+i) );
 	}
 	return r;
+}
+
+
+SceneNode.prototype.insidePrefab = function()
+{
+	var aux = this;
+	while( aux )
+	{
+		if(aux.prefab)
+			return aux.prefab;
+		aux = aux._parentNode;
+	}
+	return null;
 }
 
 /**

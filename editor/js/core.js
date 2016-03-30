@@ -62,7 +62,11 @@ var CORE = {
 		this.log("Loading modules...");
 		var num = 0;
 		for(var i in modules_list)
-			CORE.log( "<span id='msg-module-"+ (num++) + "' class='tinybox'></span> <span class='name'>" + modules_list[i] + "</span>" );
+		{
+			var module_name = modules_list[i];
+			module_name = module_name.split("/").join("<span class='foldername-slash'>/</span>");
+			CORE.log( "<span id='msg-module-"+ (num++) + "' class='tinybox'></span> <span class='name'>" + module_name + "</span>" );
+		}
 
 		LiteGUI.requireScript( modules_list, onReady, onError, onProgress );
 

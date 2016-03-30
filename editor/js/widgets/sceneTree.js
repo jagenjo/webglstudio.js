@@ -395,6 +395,12 @@ SceneTreeWidget.prototype.addNode = function( node, parent_id )
 		}, parent_id, undefined, {selected: is_selected} );
 	var that = this;
 
+	if( node.insidePrefab() )
+	{
+		var listbox = element.querySelector(".listbox");
+		listbox.classList.add("prefab");
+	}
+
 	//controls
 	element.querySelector('.nodecontrols').addEventListener('click', function(e){
 		e.stopPropagation();

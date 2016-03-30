@@ -342,6 +342,10 @@ textarea.code {
 	background-color: #3A3;
 }
 
+.listbox.prefab.empty {
+	background-color: #53432E !important;
+}
+
 
 /* side tabs */
 #worktabs {

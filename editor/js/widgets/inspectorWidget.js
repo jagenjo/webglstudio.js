@@ -514,6 +514,11 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 					}});
 				}});
 			}
+			else if(node.insidePrefab())
+			{
+				var prefab_name = node.insidePrefab();
+				inspector.addInfo("From Prefab",prefab_name);
+			}
 
 			if(node.flags && node.flags.visible != null)
 				inspector.addCheckbox("visible", node.visible, { pretitle: AnimationModule.getKeyframeCode( node, "visible"), callback: function(v) { node.visible = v; } });

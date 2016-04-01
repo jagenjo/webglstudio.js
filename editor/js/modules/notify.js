@@ -1,12 +1,16 @@
 var NotifyModule = {
 	init: function()
 	{
-		LiteGUI.addCSS(".notify-msg { position: absolute; opacity: 0; color: #9AB; margin: 2px; margin-left: 6px; transform: scale(2) translate(0, -100px); transition: all ease-in-out 0.2s; }" + 
-			".notify-msg .content { position: relative; color: #EEE; white-space: nowrap; opacity: 0.9; background-color: rgba(80,80,80,0.4); border-left: 4px solid rgba(100,100,100,0.4); display: inline-block; overflow: hidden; padding: 4px; min-width: 100px; min-height: 20px; margin: 2px; padding: 2px; padding-left: 10px; transition: background-color 0.5s; }" +
+		LiteGUI.addCSS(".notify-msg { position: absolute; opacity: 0; color: #9AB; margin: 2px; margin-left: 6px; transform: scale(1) translate(0, -100px); transition: all ease-in-out 0.2s; }" + 
+			".notify-msg .content { font-size: 1em; position: relative; color: #EEE; white-space: nowrap; opacity: 0.9; background-color: rgba(80,80,80,0.4); border-left: 4px solid rgba(100,100,100,0.4); display: inline-block; overflow: hidden; padding: 4px; min-width: 100px; min-height: 20px; margin: 2px; padding: 2px 10px; transition: background-color 0.5s; }" +
 			".notify-msg .close { width: 20px; height: 20px; pointer-events: auto; position: absolute; left: -20px; top: 2px; cursor: pointer; background-color: #333; }" +
 			".notify-msg .close .cross { display: block; transform: translate(8px,12px) rotate(45deg) scale(2); opacity: 0.5; }"  +
 			".notify-msg .progress { pointer-events: none; width: 100%; height: 2px; position: absolute; bottom: 2px; left: 0; opacity: 0.5; background-color: #3FA; display: inline-block; transition: all ease-in-out 0.2s; }"  +
-			".notify-msg.footer { bottom: 100px; top: auto; }" 
+			".notify-msg.footer { bottom: 100px; top: auto; }" +
+			".notify-msg.good .content { color: white; background-color: rgba(100,200,100,0.8); box-shadow: 0 0 4px black; }" +
+			".notify-msg.bad .content { color: white; background-color: rgba(200,100,100,0.8); box-shadow: 0 0 4px black; }" +
+			".notify-msg.warn .content { color: white; background-color: rgba(200,200,100,0.8); box-shadow: 0 0 4px black; }" +
+			".notify-msg.big .content { font-size: 2em; }"
 			);
 
 		if(0)
@@ -22,6 +26,9 @@ var NotifyModule = {
 	show: function( text, options )
 	{
 		options = options || {};
+
+		if(options.constructor === String)
+			options = { className: options };
 
 		var time = options.time !== undefined ? options.time : 3000;
 
@@ -42,12 +49,18 @@ var NotifyModule = {
 			return;
 		}
 
+		var total_height = 0;
 		var others = root.querySelectorAll(".notify-msg");
-		var num = others.length;
+		for(var i = 0; i < others.length; ++i)
+		{
+			var rect = LiteGUI.getRect( others[i] );
+			var height = rect ? rect.height : 20;
+			total_height += height + 2;
+		}
 
 		root.appendChild( msg );
 
-		msg.style.top = "calc( " + (options.top !== undefined ? ( options.top.constructor === String ?  options.left : options.left + "px" ) : "20px") + " + " + (num * 24) + "px )";
+		msg.style.top = "calc( " + (options.top !== undefined ? ( options.top.constructor === String ?  options.left : options.left + "px" ) : "20px") + " + " + (total_height) + "px )";
 		msg.style.left = options.left !== undefined ? ( options.left.constructor === String ?  options.left : options.left + "px" ) : "20px";
 		setTimeout(function(){ 
 			msg.style.opacity = "1"; 
@@ -94,9 +107,17 @@ var NotifyModule = {
 						msg.parentNode.removeChild( msg );
 
 					//rearrange all messages
+					var top = 0;
+
 					var others = root.querySelectorAll(".notify-msg");
 					for(var i = 0; i < others.length; i++)
-						others[i].style.top = "calc( " + (options.top !== undefined ? ( options.top.constructor === String ?  options.left : options.left + "px" ) : "20px") + " + " + (i * 24) + "px )";
+					{
+						var elem = others[i];
+						elem.style.top = "calc( " + (options.top !== undefined ? ( options.top.constructor === String ?  options.left : options.left + "px" ) : "20px") + " + " + (top) + "px )";
+						var rect = LiteGUI.getRect( elem );
+						var height = rect ? rect.height : 20;
+						top += height + 2;
+					}
 				},200);
 			},delay);
 		}

@@ -45,7 +45,7 @@
 			"js/modules/console.js",
 			"js/modules/packTools.js",
 			"js/modules/generic.js",
-			"js/modules/debug.js",
+			"js/modules/lab.js",
 			"js/modules/meshPainter.js",
 			"js/modules/meshTools.js",
 	 		"js/modules/animation.js",

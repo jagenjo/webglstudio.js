@@ -1665,6 +1665,7 @@ function dataURItoBlob( dataURI ) {
 
 		//menu option clicked
 		function inner_onclick(e) {
+
 			var value = this.value;
 			var close_parent = true;
 

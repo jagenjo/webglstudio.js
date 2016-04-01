@@ -90,6 +90,9 @@ var AnimationModule = {
 			e.dataTransfer.setData("uid", e.target.dataset["propertyuid"] );
 
 			var locator = e.target.dataset["propertyuid"];
+
+			//var info = LS.
+
 			if(e.shiftKey)
 				locator = LSQ.shortify( locator );
 			e.dataTransfer.setData("locator", locator );

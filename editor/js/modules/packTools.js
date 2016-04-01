@@ -67,6 +67,9 @@ var PackTools = {
 			}
 		}});
 
+		var clear_uids = true;
+		widgets.addCheckbox("Clear UIDs", clear_uids, { callback: function(v) { clear_uids = v; }});
+
 		var folder = "";
 		widgets.addFolder("Save to",folder,{ callback: function(v){
 			folder = v;
@@ -76,6 +79,9 @@ var PackTools = {
 		widgets.addButton(null,"Create Prefab", { callback: function() {
 			var filename_str = filename.getValue(); //change spaces by underscores
 			var data = node.serialize();
+			if(clear_uids)
+				LS.clearUIds(data);
+
 			var resources = list.getSelected();
 
 			if( LS.RM.getExtension( filename_str ) != "wbin" )
@@ -84,10 +90,15 @@ var PackTools = {
 			var prefab = PackTools.createPrefab( filename_str, data, resources);
 			dialog.close();
 
+			NotifyModule.show("Prefab Created","good big");
+
 			if(!folder)
 				return;
 
 			var fullpath = LS.RM.cleanFullpath( folder + "/" + prefab.filename );
+
+			LS.RM.renameResource( prefab.filename, fullpath );
+
 			prefab.fullpath = fullpath;
 			DriveModule.saveResource( prefab );
 		}});
@@ -104,7 +115,7 @@ var PackTools = {
 		filename = filename.replace(/ /gi,"_");
 
 		//create
-		LS.clearUIds( data ); //remove uids of nodes and components
+		//LS.clearUIds( data ); //remove uids of nodes and components
 		var prefab = LS.Prefab.createPrefab( filename, data, resources );
 
 		//register in the system
@@ -122,7 +133,11 @@ var PackTools = {
 		if(!prefab)
 			return;
 
-		prefab.updateFromNode( node );
+		var clear_uids = true;
+		if(prefab.prefab_data && prefab.prefab_data.uid)
+			clear_uids = false;
+
+		prefab.updateFromNode( node, clear_uids );
 		LS.RM.resourceModified( prefab );
 		prefab.applyToNodes( LS.GlobalScene );
 	},
@@ -241,12 +256,17 @@ var PackTools = {
 		if(!pack)
 			return;
 
-		var dialog = new LiteGUI.Dialog("dialog_show_prefab", {title:"Pack", close: true, width: 360, height: 270, scroll: false, draggable: true, resizable: true});
+		//if(pack.constructor !== LS.Pack)
+		//	return console.error("This is not a LS.Pack");
+
+		var class_type = LS.getObjectClassName( pack );
+
+		var dialog = new LiteGUI.Dialog("dialog_show_pack", {title: class_type, close: true, width: 360, height: 270, scroll: false, draggable: true, resizable: true});
 
 		var filename = pack.fullpath || pack.filename;
 		var resource_names = pack.resource_names;
 
-		var widgets = new LiteGUI.Inspector("prefab_widgets",{ });
+		var widgets = new LiteGUI.Inspector( null, {} );
 		widgets.on_refresh = inner_update;
 
 		function inner_update()
@@ -297,21 +317,27 @@ var PackTools = {
 				}
 				widgets.refresh();
 			}});
+
+			if(class_type == "Prefab")
+				widgets.addButton( null, "Show JSON Data", { callback: function(v){
+					EditorModule.checkJSON( pack.prefab_data );
+				}});
+
 			widgets.addSeparator();
 			widgets.addResource("Add Resource","",{ name_width: 140, callback: function( fullpath ){
 				if(resource_names.indexOf( fullpath ) == -1)
 					resource_names.push( fullpath );
 				widgets.refresh();
 			}});
-			widgets.addButton(null,"Update Pack", function(){
+			widgets.addButton(null,"Update " + class_type, function(){
 				pack.setResources( resource_names, true );
 				dialog.close();
 				if(pack.fullpath)
 					DriveModule.saveResource( pack, function(v){
-						LiteGUI.alert("Pack updated & saved");
+						LiteGUI.alert( class_type + " updated & saved");
 					});
 				else
-					LiteGUI.alert("Pack updated");
+					LiteGUI.alert( class_type + " updated");
 			});
 			dialog.adjustSize(5);
 		}

@@ -1,5 +1,5 @@
-var DebugModule = {
-	name: "debug",
+var LabModule = {
+	name: "Lab",
 	bigicon: "imgs/tabicon-debug.png",
 
 	enabled: false,
@@ -8,37 +8,42 @@ var DebugModule = {
 	offset: vec2.create(0,0),
 	scale: 1,
 
+	items: [],
+	selected_item: null,
+
+	_last_mouseup: 0,
+
 	init: function()
 	{
-		this.tab = LiteGUI.main_tabs.addTab("Debug", {id:"debugtab", bigicon: this.bigicon, size: "full", callback: function(tab) {
-			DebugModule.enabled = true;
-			RenderModule.viewport3d.addModule( DebugModule );
-			RenderModule.appendViewportTo( DebugModule.tab.content );
+		this.tab = LiteGUI.main_tabs.addTab( this.name , {id:"labtab", bigicon: this.bigicon, size: "full", callback: function(tab) {
+			LabModule.enabled = true;
+			RenderModule.viewport3d.addModule( LabModule );
+			RenderModule.appendViewportTo( LabModule.tab.content );
 		},
 		callback_leave: function() {
-			DebugModule.enabled = false;
+			LabModule.enabled = false;
 			RenderModule.appendViewportTo( null );
-			RenderModule.viewport3d.removeModule( DebugModule );
+			RenderModule.viewport3d.removeModule( LabModule );
 		}});
 
-		var content = document.getElementById("debugtab");
+		var content = document.getElementById("labtab");
 		content.style.padding = "0px";
 		content.style.overflow = "hidden";
 
-		var mode_tabs = new LiteGUI.Tabs("debugmodetabs", { callback: function(v) {   }});
+		var mode_tabs = new LiteGUI.Tabs("labmodetabs", { callback: function(v) {   }});
 		this.tab.add( mode_tabs );
 		mode_tabs.root.style.marginTop = "4px";
 		mode_tabs.root.style.backgroundColor = "#111";
 		this.mode_tabs = mode_tabs;
 
 		mode_tabs.addTab("Textures", function(){
-			DebugModule.mode = "textures";
+			LabModule.mode = "textures";
 		});
 		mode_tabs.addTab("Meshes",function(){
-			DebugModule.mode = "meshes";
+			LabModule.mode = "meshes";
 		});
 		mode_tabs.addTab("Materials",function(){
-			DebugModule.mode = "materials";
+			LabModule.mode = "materials";
 		});
 
 
@@ -101,7 +106,7 @@ var DebugModule = {
 		if(!this.enabled) 
 			return;
 
-		gl.clearColor(0.1,0.1,0.1,1.0);
+		gl.clearColor(0.02,0.02,0.02,1.0);
 		gl.clear( gl.COLOR_BUFFER_BIT );
 
 		this.camera.setOrthographic(0, gl.canvas.width, gl.canvas.height, 0, -1, 1 );
@@ -120,7 +125,7 @@ var DebugModule = {
 		ctx.scale( this.scale, this.scale );
 		ctx.translate( this.offset[0], this.offset[1] );
 
-		ctx.fillStyle = "black";
+		ctx.fillStyle = "#444";
 		ctx.font = "80px Arial";
 		ctx.fillText( this.mode, 0, -40 );
 
@@ -148,12 +153,14 @@ var DebugModule = {
 		gl.textAlign = "left";
 		gl.font = "14px Arial";
 
+		this.items.length = 0;
+
 		for(var i in LS.RM.textures)
 		{
-			var tex = LS.RM.textures[i];
+			var item = LS.RM.textures[i];
+			var tex = item;
 			var w = size * tex.width / tex.height;
 			var h = size;
-
 
 			if(tex.texture_type == gl.TEXTURE_2D)
 			{
@@ -168,10 +175,11 @@ var DebugModule = {
 
 			var filename = LS.RM.getFilename(i).substr(0,24);
 			var text = filename;
-			gl.globalAlpha = 0.5;
+			gl.globalAlpha = (this.selected_item && this.selected_item.item == item) ? 1 : 0.5;
 			gl.strokeRect( posx, posy, w, h );
 			gl.globalAlpha = 1;
 			gl.fillText(text,posx + 5,posy + 15);
+			this.items.push({id:i,type:"Texture",item: tex, x:posx,y:posy,w:w,h:h});
 
 			posx += w + margin;
 
@@ -194,7 +202,6 @@ var DebugModule = {
 		gl.textAlign = "left";
 		gl.font = "14px Arial";
 
-
 		var mesh_camera = this._mesh_camera;
 		if(!mesh_camera)
 			mesh_camera = this._mesh_camera = new LS.Camera();
@@ -207,9 +214,12 @@ var DebugModule = {
 		else
 			mat4.rotateZ( matrix, matrix, getTime() * 0.0005 );
 
+		this.items.length = 0;
+
 		for(var i in LS.RM.meshes)
 		{
-			var mesh = LS.RM.meshes[i];
+			var item = LS.RM.meshes[i];
+			var mesh = item;
 			var w = size;
 			var h = size;
 
@@ -259,10 +269,11 @@ var DebugModule = {
 
 				var filename = LS.RM.getFilename(i).substr(0,24);
 				var text = filename;
-				gl.globalAlpha = 0.5;
+				gl.globalAlpha = (this.selected_item && this.selected_item.item == item) ? 1 : 0.5;
 				gl.strokeRect( posx, posy, w, h );
 				gl.globalAlpha = 1;
 				gl.fillText(text,posx + 5,posy + 15);
+				this.items.push({id:i,type:"Mesh",item: mesh, x:posx,y:posy,w:w,h:h});
 			}
 
 			posx += w + margin;
@@ -289,9 +300,12 @@ var DebugModule = {
 
 		var old_viewport = gl.getViewport();
 
+		this.items.length = 0;
+
 		for(var i in LS.RM.materials)
 		{
-			var material = LS.RM.materials[i];
+			var item = LS.RM.materials[i];
+			var material = item;
 			var w = size;
 			var h = size;
 
@@ -315,10 +329,12 @@ var DebugModule = {
 
 				var filename = LS.RM.getFilename(i).substr(0,24);
 				var text = filename;
-				gl.globalAlpha = 0.5;
+				gl.globalAlpha = (this.selected_item && this.selected_item.item == item) ? 1 : 0.5;
 				gl.strokeRect( posx, posy, w, h );
 				gl.globalAlpha = 1;
 				gl.fillText(text,posx + 5,posy + 15);
+
+				this.items.push({id:i, item: material, type:"Material",x:posx,y:posy,w:w,h:h});
 			}
 
 			posx += w + margin;
@@ -332,49 +348,20 @@ var DebugModule = {
 
 	mousedown: function(e)
 	{
-		return true;
-		/*
-		if (e.which != GL.LEFT_MOUSE_BUTTON)
-			return;
+		if(	(getTime() - this._last_mouseup) < 200 && this.selected_item ) //dblclick
+			EditorModule.inspect( this.selected_item.item );
 
-		var instance_info = Renderer.getInstanceAtCanvasPosition(Scene, ToolUtils.getCamera(), e.mousex, e.mousey );
-		SelectionModule.setSelection( instance_info );
-		if(!instance_info)
-			return;
-
-		this.mouse_pos.set([e.canvasx, e.canvasy, 0]);
-		this.state = "dragging";
 		return true;
-		*/
 	},
 
 	mouseup: function(e)
 	{
-		return true;
-		/*
-		this.state = null;
-		Scene.refresh();
-
-		var parent = Scene.root;
-		var child = SelectionModule.getSelectedNode();
-		if(!child) 
-			return;
-
-		var instance_info = Renderer.getInstanceAtCanvasPosition(Scene, ToolUtils.getCamera(), e.mousex, e.mousey );
-		if(instance_info)
+		if(e.click_time < 200)
 		{
-			var selection = SelectionModule.convertSelection( instance_info );
-			parent = selection.node;
-			if(!parent) 
-				return;
+			this.selected_item = this.getItemAtPos(e.mousex, e.mousey);
+			this._last_mouseup = getTime(); //for dblclick
 		}
-
-		if(parent == child)
-			return;
-
-		parent.addChild(child, null, true);
 		return true;
-		*/
 	},
 
 	mousemove: function(e)
@@ -386,15 +373,6 @@ var DebugModule = {
 		}
 
 		return true;
-
-		/*
-		if(!this.state)
-			return;
-
-		this.mouse_pos.set([e.canvasx, e.canvasy, 0]);
-		Scene.refresh();
-		return true;
-		*/
 	},
 		
 	mousewheel: function(e)
@@ -405,6 +383,21 @@ var DebugModule = {
 		this.changeScale( this.scale * (e.wheel > 0 ? 1.1 : 0.9), [e.canvasx, gl.canvas.height - e.canvasy] );
 		e.stopPropagation();
 		return true;
+	},
+
+	getItemAtPos: function(x,y)
+	{
+		var pos = this.convertOffsetToCanvas([x,y]);
+		x = pos[0];
+		y = pos[1];
+		for( var i = 0; i < this.items.length; ++i)
+		{
+			var item = this.items[i];
+			if( item.x < x && item.y < y && 
+				x < (item.x + item.w) && y < (item.y + item.h))
+				return item;
+		}
+		return null;
 	},
 
 	convertOffsetToCanvas: function(pos)
@@ -434,4 +427,4 @@ var DebugModule = {
 };
 
 
-CORE.registerModule( DebugModule );
+CORE.registerModule( LabModule );

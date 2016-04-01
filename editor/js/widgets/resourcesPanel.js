@@ -508,9 +508,24 @@ ResourcesPanelWidget.prototype.showFolderContextualMenu = function(e)
 {
 	var that = this;
 
+	var materials_classes = [];
+	for(var i in LS.MaterialClasses)
+		materials_classes.push( i );
+
 	var options = [
 		{ title: "Create", submenu: {
-				options: ["Script","Text","Pack"],
+				options: [
+					"Script",
+					"Text",
+					"Pack",
+					{
+						title: "Material",
+						submenu: { 
+							options: materials_classes,
+							callback: inner_create_material
+						}
+					}
+				],
 				callback: inner_create
 			}
 		},
@@ -527,6 +542,19 @@ ResourcesPanelWidget.prototype.showFolderContextualMenu = function(e)
 			that.onShowCreateFileDialog({filename: "text.txt" });
 		else if(action == "Pack")
 			PackTools.showCreatePackDialog({folder: that.current_folder});
+	}
+
+	function inner_create_material( material_classname, options, event )
+	{
+		console.log( material_classname );
+
+		var material_class = LS.MaterialClasses[ material_classname ];
+		if(!material_class)
+			return;
+		var material = new material_class();
+		material.filename = "unnammed_material.json";
+		LS.RM.registerResource( material.filename, material );
+		that.refreshContent();
 	}
 }
 

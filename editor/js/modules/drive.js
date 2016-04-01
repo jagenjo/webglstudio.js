@@ -1281,8 +1281,10 @@ var DriveModule = {
 
 		if(!resource.fullpath)
 		{
-			console.error("DriveModule.saveResource: fullpath is null");
-			return;
+			console.warn("DriveModule.saveResource: resource without fullpath.");
+			if(!LS.RM.getFolder(resource.filename)) //it doesnt has a folder, cannot be saved
+				return;
+			resource.fullpath = resource.filename;
 		}
 
 		//used to change between upload or update (incase the file exist)
@@ -2087,6 +2089,8 @@ DriveModule.registerAssignResourceCallback("Prefab", function( fullpath, restype
 	DriveModule.loadResource( fullpath, restype, function(resource) { 
 		//console.log(resource); //log
 		var node = resource.createObject();
+		if(!node)
+			return LiteGUI.alert("Error in Prefab, cannot be inserted");
 		LS.GlobalScene.root.addChild(node);
 		var resources = node.getResources({});
 		LS.ResourcesManager.loadResources( resources );

@@ -47,29 +47,7 @@ var MeshTools = {
 
 			if(mesh)
 			{
-				widgets.addTitle("Vertex Buffers");
-				for(var i in mesh.vertexBuffers)
-				{
-					var buffer = mesh.vertexBuffers[i];
-					widgets.addInfo(i, (buffer.data.length / buffer.spacing) );
-				}
-				widgets.addTitle("Indices Buffers");
-				for(var i in mesh.indexBuffers)
-				{
-					var buffer = mesh.indexBuffers[i];
-					widgets.addInfo(i, buffer.data.length );
-				}
-
-				widgets.addTitle("Actions");
-				widgets.addButton(null, "Smooth Normals", function(){
-					mesh.computeNormals();
-					RenderModule.requestFrame();
-				} );
-				widgets.addButton(null, "Flip Normals", function(){
-					mesh.flipNormals();
-					RenderModule.requestFrame();
-				} );
-				widgets.addButton(null, "Weld", function(){} );
+				mesh.inspect( widgets, true );
 			}
 			else
 			{
@@ -105,5 +83,37 @@ var MeshTools = {
 		LiteGUI.downloadFile("export.OBJ", data );
 	}
 };
+
+GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
+{
+	var mesh = this;
+
+	widgets.addTitle("Vertex Buffers");
+	for(var i in mesh.vertexBuffers)
+	{
+		var buffer = mesh.vertexBuffers[i];
+		widgets.addInfo(i, (buffer.data.length / buffer.spacing) );
+	}
+	widgets.addTitle("Indices Buffers");
+	for(var i in mesh.indexBuffers)
+	{
+		var buffer = mesh.indexBuffers[i];
+		widgets.addInfo(i, buffer.data.length );
+	}
+
+	widgets.addTitle("Actions");
+	widgets.addButton(null, "Smooth Normals", function(){
+		mesh.computeNormals();
+		RenderModule.requestFrame();
+	} );
+	widgets.addButton(null, "Flip Normals", function(){
+		mesh.flipNormals();
+		RenderModule.requestFrame();
+	} );
+	//widgets.addButton(null, "Weld", function(){} );
+
+	if(!skip_default_widgets)
+		DriveModule.addResourceInspectorFields( this, widgets );
+}
 
 CORE.registerModule( MeshTools );

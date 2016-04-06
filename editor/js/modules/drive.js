@@ -11,7 +11,9 @@ var DriveModule = {
 	registered_drive_bridges: {},
 
 	//this tree contains all the info about the files in the system
-	tree: { id:"Files", skipdrag:true, visible: false, children:[ {id:"Memory", skipdrag:true, className:"memory", children:[], callback: function() { DriveModule.showMemoryResources(); return true; } } ]},
+	tree: { 
+		id:"Files", skipdrag:true, visible: false, children:[]
+	},
 
 	server_resources: {}, //indexed by filename (includes all resources on the server) 
 	server_resources_by_id: {}, //indexed by id in DB
@@ -25,7 +27,13 @@ var DriveModule = {
 
 	root: null,
 
-	insert_resource_callbacks: [],
+	insert_resource_callbacks: [], //when inserting a resource from the drive to the scene, what should we do?
+
+	settings_panel: [ {name:"drive", title:"Drive", icon:null } ],
+
+	preferences: {
+		show_leaving_warning: true
+	},
 
 	init: function()
 	{
@@ -36,6 +44,10 @@ var DriveModule = {
 
 		LS.ResourcesManager.keep_files = true;
 		var that = this;
+
+		//prepare tree
+		this.tree.children.unshift({ id:"Memory", skipdrag:true, className:"memory", children:[], callback: DriveModule.onShowMemoryResources.bind(DriveModule) });
+
 
 		// Events related to resources being loaded **********************************
 		LEvent.bind( LS.ResourcesManager, "resource_loading", function( e, url ) {
@@ -100,11 +112,6 @@ var DriveModule = {
 				InterfaceModule.sidepaneltabs.selectTab("Inspector");
 			},
 			callback_leave: function(tab) {
-				if(DriveModule.resources_panel.on_resource_selected_callback)
-				{
-					DriveModule.resources_panel.on_resource_selected_callback(null);
-					DriveModule.resources_panel.on_resource_selected_callback = null;
-				}
 			}
 		});
 		this.root = LiteGUI.main_tabs.root.querySelector("#drivetab");
@@ -118,9 +125,6 @@ var DriveModule = {
 
 		//keep original files to store on server
 		LS.ResourcesManager.keep_original = true;
-
-		//use this component to select resources
-		EditorModule.showSelectResource = DriveModule.showSelectResource;
 
 		this.createPanel(); //creates tree too
 
@@ -146,7 +150,7 @@ var DriveModule = {
 			if(filename)
 				that.showResourceInfo( filename );
 		});
-		this.showMemoryResources();
+		this.resources_panel.showMemoryResources();
 	},
 
 	guessCategoryFromFile: function(file)
@@ -262,11 +266,6 @@ var DriveModule = {
 		}
 	},
 
-	showMemoryResources: function()
-	{
-		this.resources_panel.showInBrowserContent( LS.ResourcesManager.resources );
-	},
-
 	selectFolder: function( fullpath )
 	{
 		this.resources_panel.tree_widget.setSelectedItem( fullpath, true, true );
@@ -379,18 +378,23 @@ var DriveModule = {
 		return dialog;
 	},
 
+	onShowMemoryResources: function( node )
+	{
+		while ((node = node.parentElement) && !node.classList.contains("resources-panel"));
+
+		var panel = DriveModule.resources_panel;
+		if(node && node.panel)
+			panel = node.panel;
+		panel.showMemoryResources();
+		return true; 
+	},
+
 	showResourceInfo: function( resource, inspector )
 	{
 		if(!resource)
 			return;
 
-		var fullpath = null;
-
-		if(resource.constructor === String)
-			fullpath = resource;
-		else
-			fullpath = resource.fullpath || resource.filename;
-
+		var fullpath = resource.constructor === String ? resource : resource.fullpath || resource.filename;
 		var local_resource = LS.ResourcesManager.resources[ fullpath ];
 		var server_resource = DriveModule.server_resources[ fullpath ];
 		var resource = local_resource || server_resource;
@@ -399,6 +403,8 @@ var DriveModule = {
 
 		var preview_url = resource.preview_url || LFS.getPreviewPath( fullpath );
 		var category = resource.category || resource.object_type;
+		if(resource.getCategory)
+			category = resource.getCategory();
 
 		if(!inspector)
 		{
@@ -465,21 +471,6 @@ var DriveModule = {
 
 		inspector.addSeparator();
 
-		if(resource._original_data || resource._original_file)
-		{
-			var data = resource._original_data || resource._original_file;
-			if(data.buffer)
-				data = data.buffer;
-
-			var bytes = 0;
-			if(typeof(data) == "string")
-				bytes = data.length;
-			else if(data.constructor == ArrayBuffer)
-				bytes = data.byteLength;
-
-			inspector.addInfo("Bytes", DriveModule.beautifySize( bytes ) );
-		}
-
 		//inspector.addInfo("Metadata", metadata, {height:50});
 		if( (category == "Prefab" || category == "Pack") && local_resource)
 			inspector.addButton( category,"Show content", function(){ PackTools.showPackDialog( local_resource ); });
@@ -497,7 +488,7 @@ var DriveModule = {
 
 		if( server_resource )
 		{
-			var link = LS.ResourcesManager.getFullURL( resource.remotepath || resource.fullpath );
+			var link = LS.ResourcesManager.getFullURL( resource.remotepath || resource.fullpath || resource.filename );
 			inspector.addInfo("Link", "<a target='_blank' href='"+link+"'>link to the file</a>" );
 		}
 
@@ -506,10 +497,40 @@ var DriveModule = {
 				EditorModule.inspect( local_resource );
 			});
 
+		this.addResourceInspectorFields( resource, inspector );
+
+		inspector.name_width = old_name_width;
+	},
+
+	addResourceInspectorFields: function( resource, inspector )
+	{
+		if(!resource)
+			return;
+
+		inspector = inspector || InterfaceModule.inspector_widget.inspector;
+
 		inspector.addSeparator();
 
+		if(resource._original_data || resource._original_file)
+		{
+			var data = resource._original_data || resource._original_file;
+			if(data.buffer)
+				data = data.buffer;
+
+			var bytes = 0;
+			if(typeof(data) == "string")
+				bytes = data.length;
+			else if(data.constructor == ArrayBuffer)
+				bytes = data.byteLength;
+
+			inspector.addInfo("Bytes", DriveModule.beautifySize( bytes ) );
+		}
+
+		var fullpath = resource.constructor === String ? resource : resource.fullpath || resource.filename;
+		var local_resource = LS.ResourcesManager.resources[ fullpath ];
+		var server_resource = DriveModule.server_resources[ fullpath ];
+
 		inspector.addButtons(null,["Update Preview","Update metadata"], { callback: function(v) {
-			var local_resource = LS.ResourcesManager.getResource( resource.fullpath );
 			if(!local_resource)
 			{
 				LiteGUI.alert("You must load the resource before updating it");
@@ -541,7 +562,7 @@ var DriveModule = {
 		inspector.addButtons(null,["Load","Unload"], {callback: function(v){
 			var restype = resource.category || resource.object_type;
 			if(v == "Load")
-				DriveModule.loadResource( resource.fullpath, restype,null,true );
+				DriveModule.loadResource( resource.fullpath, null, true );
 			else
 			{
 				DriveModule.unloadResource(resource.fullpath);
@@ -586,8 +607,6 @@ var DriveModule = {
 					return;
 				LiteGUI.downloadFile(file.filename, file);
 			}});
-
-		inspector.name_width = old_name_width;
 	},
 
 	getResourceAsBlob: function( resource )
@@ -880,7 +899,7 @@ var DriveModule = {
 	},
 
 	//Retrieve a resource from the server and stores it for later use, it shoudnt do anything with it, just ensure is in memory.
-	loadResource: function(fullpath, res_type, on_complete, force_reload)
+	loadResource: function( fullpath, on_complete, force_reload )
 	{
 		if(force_reload)
 			LS.ResourcesManager.unregisterResource( fullpath );
@@ -1429,7 +1448,6 @@ var DriveModule = {
 		widgets.refresh();
 		dialog.show();
 
-
 		function inner_refresh()
 		{
 			missing = that.getResourcesNotSaved(true);
@@ -1642,6 +1660,23 @@ var DriveModule = {
 		return o;
 	},
 
+	onShowSettingsPanel: function(name,widgets)
+	{
+		if(name != "drive")
+			return;
+		widgets.addFlags( this.preferences );
+	},
+
+	onUnload: function()
+	{
+		if(!this.preferences.show_leaving_warning)
+			return;
+
+		var res = this.getResourcesNotSaved();
+		if(res && res.length)
+			return "There are Resources in memory that must be saved or they will be lost. Are you sure you want to exit?";
+	},
+
 	//**** LFS SERVER CALLS **************
 	serverGetFolders: function(on_complete)
 	{
@@ -1716,6 +1751,13 @@ var DriveModule = {
 		if( resource.in_server && LS.ResourcesManager.resources[ fullpath ] )
 			resource = LS.ResourcesManager.resources[ fullpath ];
 
+		//guess category
+		var category = resource.category;
+		if(!category && resource.getCategory)
+			category = resource.getCategory();
+		else
+			category = resource.object_type || LS.getObjectClassName(resource);
+
 		//in case we update info of a file we dont have in memory
 		if( resource.in_server && !LS.ResourcesManager.resources[ fullpath ] )
 		{
@@ -1743,7 +1785,7 @@ var DriveModule = {
 
 		var extra_info = {
 			metadata: {},
-			category: resource.object_type || LS.getObjectClassName(resource)
+			category: category
 		};
 
 		var extension = LS.RM.getExtension( filename );
@@ -1840,38 +1882,6 @@ var DriveModule = {
 		});
 	},
 
-	//OVERWRITES THE FUNCTION IN EditorModule
-	showSelectResource: function( options )
-	{
-		options = options || {};
-
-		var last_tab = LiteGUI.main_tabs.getCurrentTab();
-		DriveModule.openTab();
-		LiteGUI.Dialog.hideAll();
-		var visibility = InterfaceModule.getSidePanelVisibility();
-		InterfaceModule.setSidePanelVisibility(false);
-		if(options.type)
-			DriveModule.resources_panel.filterByCategory( options.type );
-		DriveModule.resources_panel.refreshContent();
-
-		DriveModule.resources_panel.on_resource_selected_callback = function( filename, event ) {
-			var multiple = options.allow_multiple && event && event.shiftKey;
-			if(!multiple)
-				InterfaceModule.setSidePanelVisibility( visibility );
-			if(options.on_complete)
-				options.on_complete(filename);
-			if(filename && !options.skip_load)
-				LS.ResourcesManager.load( filename, null, options.on_load );
-			if(!multiple)
-			{
-				LiteGUI.Dialog.showAll();
-				LiteGUI.main_tabs.selectTab( last_tab.id );
-			}
-			else
-				return true;
-		}
-	},
-
 	beautifyPath: function ( path, extra )
 	{
 		var str = "";
@@ -1908,7 +1918,7 @@ CORE.registerModule( DriveModule );
 //Resource Insert button ***********************************
 DriveModule.registerAssignResourceCallback( "Mesh", function( fullpath, restype, options ) {
 
-	DriveModule.loadResource( fullpath, restype );
+	DriveModule.loadResource( fullpath );
 
 	var action = options.mesh_action || "replace";
 
@@ -1962,7 +1972,7 @@ DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], 
 		node = RenderModule.getNodeAtCanvasPosition( options.event.canvasx, options.event.canvasy );
 	}
 	
-	DriveModule.loadResource( fullpath, restype );
+	DriveModule.loadResource( fullpath );
 
 	if( action == "replace" || action == "material" )
 	{
@@ -1981,8 +1991,9 @@ DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], 
 	else if(action == "sprite")
 	{
 		node = new LS.SceneNode();
-		var component = new LS.Component.Sprite();
+		var component = new LS.Components.Sprite();
 		node.addComponent( component );
+		component.texture = fullpath;
 		EditorModule.getAddRootNode().addChild( node );
 	}
 
@@ -2004,7 +2015,7 @@ DriveModule.onInsertMaterial = function(fullpath, restype, options )
 		node = RenderModule.getNodeAtCanvasPosition( options.event.canvasx, options.event.canvasy );
 	}
 
-	DriveModule.loadResource( fullpath, restype, function(material) { 
+	DriveModule.loadResource( fullpath, function(material) { 
 		LS.ResourcesManager.resources[fullpath] = material; //material in Material format (textures and all loaded)
 
 		EditorModule.inspect( node );
@@ -2054,25 +2065,32 @@ DriveModule.registerAssignResourceCallback( "SceneTree", function( fullpath, res
 		var res = LS.RM.resources[ fullpath ];
 		if(!res)//load
 		{
-			//the SceneTree.load function bypasses the LS.RM (uses relative urls), something that is a problem when loading an scene stored in the Drive
-			//SceneStorage also includes the url
-			LS.GlobalScene.load( LS.ResourcesManager.path + "/" + fullpath, inner); 
-			//LS.GlobalScene.load( fullpath, inner ); 
+			SceneStorageModule.loadScene( fullpath, null, true ); 
 			return;
 		}
 		SceneStorageModule.setSceneFromJSON( res.serialize() ); //ugly but we cannot replace the current scene
-		inner( LS.GlobalScene, fullpath );
+		res.extra.folder = LS.ResourcesManager.getFolder( fullpath );
+		res.extra.fullpath = fullpath;
 		DriveModule.closeTab();
 	});
 
-	function inner( scene, url ){
-		scene.extra.folder = LS.ResourcesManager.getFolder( fullpath );
-		scene.extra.fullpath = fullpath;
-	}
 });
 
 DriveModule.registerAssignResourceCallback("Pack", function( fullpath, restype, options ) {
-	DriveModule.loadResource( fullpath );
+	DriveModule.loadResource( fullpath, function(pack){
+		if(!pack)
+			return;
+
+		if(!pack._data || !pack._data["scene.json"])
+			return;
+
+		LiteGUI.confirm("Do you want to load the scene inside the PACK? Current scene will be lost", function(v) {
+			var json_data = pack._data["scene.json"];
+			var data = JSON.parse(json_data);
+			LS.GlobalScene.clear();
+			LS.GlobalScene.configure(data);
+		});
+	});
 });
 
 DriveModule.registerAssignResourceCallback("Prefab", function( fullpath, restype, options ) {
@@ -2086,7 +2104,7 @@ DriveModule.registerAssignResourceCallback("Prefab", function( fullpath, restype
 	}
 
 	//prefab
-	DriveModule.loadResource( fullpath, restype, function(resource) { 
+	DriveModule.loadResource( fullpath, function(resource) { 
 		//console.log(resource); //log
 		var node = resource.createObject();
 		if(!node)
@@ -2101,8 +2119,9 @@ DriveModule.registerAssignResourceCallback("Prefab", function( fullpath, restype
 	});
 });
 
-//generic unknown resource
-DriveModule.registerAssignResourceCallback(["Resource","application/javascript","text/plain","text/csv","TEXT"], function( fullpath, restype, options ) {
+//textual resource
+
+DriveModule._textResourceCallback = function( fullpath, restype, options ) {
 
 	var resource = LS.RM.getResource( fullpath );
 	if(!resource)
@@ -2111,28 +2130,38 @@ DriveModule.registerAssignResourceCallback(["Resource","application/javascript",
 		return;
 	}
 
-	//editor
-	if(resource && (resource._data !== null && resource._data !== undefined) && resource._data.constructor === String)
+	if(!resource)
+	{
+		console.warn("Assigning resource without loading it");
+		return;
+	}
+
+	//open in text editor
+	var data = null;
+	
+	if(resource.getData)
+		data = resource.getData();
+	else if(resource._data)
+		data = resource._data;
+
+	if( (data !== undefined && data !== null) && data.constructor === String )
 	{
 		var extension = LS.RM.getExtension( fullpath );
 		var lang = "text";
 		if( extension == "json" || extension == "js")
 			lang = "javascript";
+		else if( extension == "glsl" )
+			lang = "glsl";
+
 		var title = LS.ResourcesManager.getFilename( fullpath );
 		CodingModule.editInstanceCode( resource, { title: title, lang: lang }, true );
 	}
 	else
-		console.warn("Assigning resource without loading it");
+		console.warn("No data found in resource");
+}
 
-	/*
-	//prefab
-	DriveModule.loadResource( fullpath, restype, function(resource) { 
-		console.log(resource); //log
-		CodingModule.editInstanceCode( resource, { lang: "text" }, true );
-	});
-	*/
-});
-
+DriveModule.registerAssignResourceCallback(["Resource","application/javascript","text/plain","text/csv","TEXT"], DriveModule._textResourceCallback );
+DriveModule.registerAssignResourceCallback(["ShaderCode"], DriveModule._textResourceCallback );
 
 LiteGUI.Inspector.prototype.addFolder = function( name,value, options )
 {

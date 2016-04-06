@@ -468,22 +468,13 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 
 			var uid_widget = inspector.addString("UId", node.uid, { name_width: 40, disabled: true });
 			//uid_widget.addEventListener("click", function( e ){ this.querySelector("input").select(); }); //dont work
-			
-			inspector.addLayers("layers", node.layers, { pretitle: AnimationModule.getKeyframeCode( node, "layers"), callback: function(v) {
-				node.layers = v;
-				RenderModule.requestFrame();
-			}});
-			inspector.addString("class", node.className, { name_width: 80, callback: function(v) { node.className = v; } });
 
 			inspector.widgets_per_row = 1;
 
 			if(node.prefab)
 			{
 				inspector.addStringButton("prefab", node.prefab, { name_width: 80, callback: function(v){
-					if(v)
-						node.prefab = v;
-					else
-						delete node["prefab"];
+					node.prefab = v;
 					inspector.refresh();
 				},callback_button: function(v,evt) {
 
@@ -516,9 +507,24 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 			}
 			else if(node.insidePrefab())
 			{
-				var prefab_name = node.insidePrefab();
-				inspector.addInfo("From Prefab",prefab_name);
+				var prefab_node = node.insidePrefab();
+				inspector.widgets_per_row = 2;
+				inspector.addString("From Prefab", prefab_node.prefab, { name_width: 80, disabled: true, width: "75%" } );
+				inspector.addButton(null,"Go to Node", { width: "25%", callback: function(){
+					SelectionModule.setSelection( prefab_node );
+				}});
+				inspector.widgets_per_row = 1;
 			}
+
+			inspector.widgets_per_row = 2;
+
+			inspector.addLayers("layers", node.layers, { pretitle: AnimationModule.getKeyframeCode( node, "layers"), callback: function(v) {
+				node.layers = v;
+				RenderModule.requestFrame();
+			}});
+			inspector.addString("class", node.className, { name_width: 80, callback: function(v) { node.className = v; } });
+
+			inspector.widgets_per_row = 1;
 
 			if(node.flags && node.flags.visible != null)
 				inspector.addCheckbox("visible", node.visible, { pretitle: AnimationModule.getKeyframeCode( node, "visible"), callback: function(v) { node.visible = v; } });

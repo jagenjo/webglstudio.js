@@ -240,7 +240,7 @@ var moveTool = {
 			if ( geo.testRaySphere( ray.start, ray.direction, moveTool._center, radius*1.1, result ) ) 
 			{
 				vec3.copy( moveTool._closest, result );
-				if ( geo.testRaySphere( ray.start, ray.direction, moveTool._center, radius*0.5, result ) ) 
+				if ( geo.testRaySphere( ray.start, ray.direction, moveTool._center, radius*0.25, result ) ) 
 					moveTool._on_top_of = "center";
 				else if( geo.testRayCylinder( ray.start, ray.direction, moveTool._center, moveTool._x_axis_end, radius*0.1, result ) )
 				{

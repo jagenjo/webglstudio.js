@@ -582,6 +582,55 @@ function GenericMaterialEditor( material, inspector )
 LS.MaterialClasses.CustomMaterial["@inspector"] = GenericMaterialEditor;
 LS.MaterialClasses.SurfaceMaterial["@inspector"] = GenericMaterialEditor;
 
+
+LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector )
+{
+	inspector.addTitle("Properties");
+
+	inspector.widgets_per_row = 2;
+
+	inspector.addResource("Shader", material.shader, { pretitle: AnimationModule.getKeyframeCode( material, "shader" ), width: "90%", callback: function(v) { 
+		material.shader = v; 
+		//material.processShaderCode();
+		inspector.refresh();
+	}});
+
+	inspector.addButton( null, LiteGUI.special_codes.refresh, { width: "10%", callback: function(){
+		material.processShaderCode();
+		inspector.refresh();
+	}});
+
+	inspector.widgets_per_row = 1;
+	inspector.addSeparator();
+
+	if( !material._shader )
+		return;
+	
+	if( !LS.RM.resources[ material._shader ] )
+		inspector.addInfo(null,"Shader not loaded");
+	else
+	{
+		inspector.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
+		inspector.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { material.opacity = value; }});
+		inspector.addColor("Color", material.color, { pretitle: AnimationModule.getKeyframeCode( material, "color" ), callback: function(color) { vec3.copy(material.color,color); } });
+
+		for(var i in material._properties )
+		{
+			var p = material._properties[i];
+			inspector.add( p.type, p.label || p.name, p.value, { pretitle: AnimationModule.getKeyframeCode( material, p.name ), title: p.name, step: p.step, property: p, callback: inner_on_property_change });
+		}
+	}
+
+	function inner_on_property_change(v)
+	{
+		var p = this.options.property;
+		p.value = v;
+		if(p.type == "texture" || p.type == "cubemap")
+			material.textures[p.name] = p.value;
+	}
+}
+
+
 //shows a dialog to configure a texture sampler (channel and material is passed to add extra fields in normalmap, displacement, etc)
 EditorModule.showTextureSamplerInfo = function( sampler, options )
 {

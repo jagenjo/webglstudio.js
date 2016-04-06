@@ -65,6 +65,7 @@ CodingPadWidget.prototype.bindEvents = function()
 
 	LEvent.bind( LS.Components.Script, "code_error", this.onScriptError, this );
 	LEvent.bind( LS, "exception", this.onGlobalError, this );
+	LEvent.bind( LS, "code_error", this.onCodeError, this );
 }
 
 CodingPadWidget.prototype.unbindEvents = function()
@@ -116,10 +117,14 @@ CodingPadWidget.prototype.editInstanceCode = function( instance, options )
 
 	this.file_name_widget.setValue( filename );
 
-	if(lang == "javascript" || lang == "glsl")
+	if(lang == "javascript")
 		this.editor.setOption( "mode", "javascript" );
-	else
+	else if(lang == "glsl")
+		this.editor.setOption( "mode", "x-shader/x-fragment" );
+	else if(lang)
 		this.editor.setOption( "mode", lang );
+	else 
+		this.editor.setOption( "mode", null );
 
 	//changing from one tab to another? save state of old tab
 	if( current_code_info )
@@ -190,9 +195,9 @@ CodingPadWidget.prototype.assignCurrentCode = function( skip_events )
 		return;
 	}
 
-	var uid = instance.uid;
+	var uid = instance.uid || instance.fullpath || instance.filename;
 
-	if(instance)
+	if(instance && uid)
 	{
 		if( uid.substr(0,5) == "COMP-" && (!instance._root || !instance._root.scene) )
 		{
@@ -218,12 +223,15 @@ CodingPadWidget.prototype.assignCurrentCode = function( skip_events )
 	if(skip_events) 
 		return true; 
 
-	if( instance && instance.constructor != LS.Resource )
+	if( instance && !instance.constructor.is_resource )
 		LiteGUI.trigger( this, "stored" );
 
 	LEvent.trigger( instance, "code_changed", text_content );
 	if( instance.onCodeChange )
 		return instance.onCodeChange( text_content );
+	if(instance.fullpath || instance.filename)
+		LS.ResourcesManager.resourceModified( instance );
+
 	LEvent.trigger( CodingPadWidget, "code_changed", info );
 	return true;
 }
@@ -367,7 +375,7 @@ CodingPadWidget.prototype.saveCode = function()
 
 	this.assignCurrentCode(true); //true? not sure
 
-	if( instance && instance.constructor == LS.Resource )
+	if( instance && instance.constructor.is_resource )
 	{
 		if(!instance.fullpath)
 		{
@@ -503,13 +511,15 @@ CodingPadWidget.prototype.onReload = function(e)
 
 	if(!instance)
 	{
-		if(state.instance && state.instance.constructor == LS.Resource) //is resource
+		var id = state.id;
+
+		if(state.instance && state.instance.constructor.is_resource) //is resource
 			instance = state.instance;
-		else if( state.id.substr(0,6) == "@COMP-" ) //is script component
+		else if( id && id.substr(0,6) == "@COMP-" ) //is script component
 		{
-			instance = LS.GlobalScene.findComponentByUId( state.id ); //reloaded component
+			instance = LS.GlobalScene.findComponentByUId( id ); //reloaded component
 			if(!instance)
-				console.warn("Instance component not found after Reload: ", state.id );
+				console.warn("Instance component not found after Reload: ", id );
 			else if(state.instance && state.instance.code != instance.code) //special case, coded has been edited while the app was running
 			{
 				console.log("code changed during play!");
@@ -517,8 +527,8 @@ CodingPadWidget.prototype.onReload = function(e)
 				instance.processCode(true);
 			}
 		}
-		else if( state.id.substr(0,6) == "@MAT-" ) //is material shader
-			instance = LS.GlobalScene.findMaterialByUId( state.id );
+		else if( id && id.substr(0,6) == "@MAT-" ) //is material shader
+			instance = LS.GlobalScene.findMaterialByUId( id );
 	}
 
 	if(instance)
@@ -614,12 +624,22 @@ CodingPadWidget.prototype.onShowHelp = function()
 	dialog.show();
 }
 
-CodingPadWidget.prototype.onScriptError = function(e, instance_err)
+CodingPadWidget.prototype.onScriptError = function( e, instance_err )
 {
 	var info = this.getCurrentCodeInfo();
 	if(!info || info.instance != instance_err[0])
 		return;
 	this.showError(instance_err[1]);
+}
+
+CodingPadWidget.prototype.onCodeError = function( e, error_info )
+{
+	/*
+	var info = this.getCurrentCodeInfo();
+	if(!info || info.instance != instance_err[0])
+		return;
+	this.showError(instance_err[1]);
+	*/
 }
 
 CodingPadWidget.prototype.onGlobalError = function(e, err)
@@ -793,7 +813,7 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 	var top_widgets = this.top_widgets = new LiteGUI.Inspector( null, { one_line: true });
 
 	//check for parsing errors
-	top_widgets.addButton(null,"Open",{ width: 60, callback: function(v) { 
+	top_widgets.addButton(null, LiteGUI.special_codes.navicon,{ width: 30, callback: function(v) { 
 		that.onOpenCode();
 	}});
 
@@ -919,6 +939,7 @@ function getCompletions( token, context ) {
 CodingPadWidget.codemirror_scripts = ["js/extra/codemirror/codemirror.js",
 								"js/extra/codemirror/hint/show-hint.js",
 								"js/extra/codemirror/hint/javascript-hint.js",
+								"js/extra/codemirror/lint/javascript-lint.js",
 								"js/extra/codemirror/selection/active-line.js",
 								"js/extra/codemirror/scroll/annotatescrollbar.js",
 								"js/extra/codemirror/scroll/simplescrollbars.js",
@@ -927,6 +948,7 @@ CodingPadWidget.codemirror_scripts = ["js/extra/codemirror/codemirror.js",
 								"js/extra/codemirror/search/matchesonscrollbar.js",
 								"js/extra/codemirror/search/match-highlighter.js",
 								"js/extra/codemirror/search/jump-to-line.js",
+								"js/extra/codemirror/clike.js",
 								"js/extra/codemirror/javascript.js"];
 CodingPadWidget.codemirror_css = ["js/extra/codemirror/codemirror.css",
 							"js/extra/codemirror/blackboard.css",

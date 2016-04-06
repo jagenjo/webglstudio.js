@@ -1020,8 +1020,11 @@ var LiteGUI = {
 		return o;
 	},
 
+	//those useful HTML unicode codes that I never remeber but I always need
 	special_codes: {
-		close: "&#10005;"
+		close: "&#10005;",
+		navicon: "&#9776;",
+		refresh: "&#8634;",
 	},
 
 	/**
@@ -4021,6 +4024,8 @@ function dataURItoBlob( dataURI ) {
 
 		function inner_inc(v,e)
 		{
+			if(!options.linear)
+				v = v > 0 ? Math.pow(v,1.2) : Math.pow( Math.abs(v), 1.2) * -1;
 			var scale = (options.step ? options.step : 1.0);
 			if(e && e.shiftKey)
 				scale *= 10;
@@ -6446,6 +6451,7 @@ Inspector.onWidgetChange = function( element, name, value, options, expand_value
 	return r;
 }
 
+//must be lowercase
 Inspector.widget_constructors = {
 	title: 'addTitle',
 	info: 'addInfo',
@@ -6475,7 +6481,6 @@ Inspector.widget_constructors = {
 	datatree: 'addDataTree',
 	pad: 'addPad',
 	array: 'addArray',
-	"Array": 'addArray',
 	separator: 'addSeparator'
 };
 
@@ -6511,7 +6516,7 @@ Inspector.prototype.add = function( type, name, value, options )
 		value = options.value;
 	}
 
-	var func = LiteGUI.Inspector.widget_constructors[type];
+	var func = LiteGUI.Inspector.widget_constructors[type.toLowerCase()];
 	if(!func){
 		console.warn("LiteGUI.Inspector do not have a widget called",type);
 		return;

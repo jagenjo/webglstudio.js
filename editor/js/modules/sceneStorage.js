@@ -17,11 +17,12 @@ var SceneStorageModule = {
 
 		menubar.add("Project/Load/From Server", { callback: this.showLoadSceneFromServerDialog.bind(this) });
 		menubar.add("Project/Load/Local", { callback: this.showLoadLocalSceneDialog.bind(this) });
+		menubar.add("Project/Load/From URL", { callback: this.showLoadFromURLDialog.bind(this) });
 		menubar.add("Project/Save/In Server", { callback: this.showSaveSceneInServerDialog.bind(this) });
 		menubar.add("Project/Save/Local", { callback: this.showSaveSceneInLocalDialog.bind(this) });
 		menubar.add("Project/Download", { callback: this.showDownloadSceneDialog.bind(this) });
 		menubar.add("Project/Test", { callback: this.testScene.bind(this) });
-		menubar.add("Project/Publish", { callback: this.onPublish.bind(this) });
+		menubar.add("Project/Publish", { callback: this.showPublishDialog.bind(this) });
 		menubar.add("Project/Export", { callback: this.onExport.bind(this) });
 
 		menubar.separator("Project");
@@ -111,14 +112,15 @@ var SceneStorageModule = {
 		{
 			if(button == "Load")
 			{
+				/*
 				var url = LS.ResourcesManager.path + "/" + selected;
-				LS.Renderer.reset();
-				LS.GlobalScene.clear();
 				LS.GlobalScene.load( url, function(scene, url) {
 					scene.extra.folder = LS.ResourcesManager.getFolder( selected );
 					scene.extra.fullpath = selected;
 				});
+				*/
 				dialog.close();
+				SceneStorageModule.loadScene( selected );
 			}
 			if(button == "Delete")
 			{
@@ -131,6 +133,70 @@ var SceneStorageModule = {
 				});
 			}
 		}
+
+	},
+
+	//loads scene from server (it has warning, and progress)
+	loadScene: function( fullpath, on_complete, skip_warning )
+	{
+		var msg_id = "res-msg-" + fullpath.hashCode(); //used for notification
+		var msg = null;
+		var real_path = fullpath;
+		if( real_path.indexOf(":") == -1 ) //is a local path
+			real_path = LS.ResourcesManager.path + "/" + fullpath;
+
+		if(skip_warning)
+			inner_load();
+		else
+			LiteGUI.confirm("Are you sure? you will loose the current scene", function(v) {
+				if(!v)
+					return;
+				inner_load();
+			});
+
+		function inner_load()
+		{
+			//clear
+			LS.Renderer.reset();
+			LS.GlobalScene.clear();
+
+			//the SceneTree.load function bypasses the LS.RM (uses relative urls), something that is a problem when loading an scene stored in the Drive
+			//SceneStorage also includes the url
+			msg = NotifyModule.show("FILE: " + fullpath, { id: msg_id, closable: true, time: 0, left: 60, top: 30, parent: "#visor" } );
+			LS.GlobalScene.load( real_path, inner_complete, null, inner_progress ); 
+		};
+
+		function inner_complete( scene, url )
+		{
+			if(msg)
+				msg.kill();
+			scene.extra.folder = LS.ResourcesManager.getFolder( fullpath );
+			scene.extra.fullpath = fullpath;
+			if(on_complete)
+				on_complete();
+		}
+
+		function inner_progress(e)
+		{
+			var partial_load = 0;
+			if(e.total) //sometimes we dont have the total so we dont know the amount
+				partial_load = e.loaded / e.total;
+			if(msg)
+				msg.setProgress( partial_load );
+		}
+	},
+
+	showLoadFromURLDialog: function()
+	{
+		LiteGUI.prompt("Which URL? (Only load scenes from trusted sources", function(v){
+			if(!v)
+				return;
+			LS.Renderer.reset();
+			LS.GlobalScene.clear();
+			LS.GlobalScene.load( v, function(scene, url) {
+				//loaded...
+			});
+		});
 	},
 
 	showSaveSceneInServerDialog: function()
@@ -340,25 +406,7 @@ var SceneStorageModule = {
 		var data = JSON.stringify( LS.GlobalScene.serialize() );
 		var dataType = "string";
 		var filename = "scene.json";
-
-		window.saveAs || (window.saveAs = window.navigator.msSaveBlob || window.webkitSaveAs || window.mozSaveAs || window.msSaveAs );
-		if(window.saveAs)
-		{
-			var blob = new Blob([data]);
-			window.saveAs(blob, "scene.json");
-			return;
-		}
-
-		var dialog = new LiteGUI.Dialog("dialog_download_scene", {title:"Download Scene", close: true, minimize: true, width: 200, height: 80, scroll: false, draggable: true});
-		dialog.show('fade');
-
-		var link = document.createElement("A");
-		link.href = "data:application/text," + escape(data);
-		link.download = "scene.json";
-		link.innerHTML = "<p><h3>Click to download the file</h3></p>";
-		link.addEventListener("click", function() { dialog.close(); });
-
-		dialog.add(link);
+		LiteGUI.downloadFile( filename, data );
 	},
 
 	showCreateSceneDialog: function()
@@ -426,8 +474,6 @@ var SceneStorageModule = {
 			RenderModule.requestFrame();
 		}});
 
-		dialog.content.appendChild(widgets.root);
-
 		function inner_selected(value)
 		{
 			selected_scene = value;
@@ -445,16 +491,82 @@ var SceneStorageModule = {
 		window.open("player.html?session=" + name,'_blank');
 	},
 
-	onPublish: function()
+	showPublishDialog: function()
 	{
+		var scene = LS.GlobalScene;
+
+		if(LS.RM.isLoading())
+		{
+			LiteGUI.alert("Cannot publish while loading assets.");
+			return;
+		}
+
 		//check if it has name
-		if(!LS.GlobalScene.extra.fullpath)
+		if(!scene.extra.fullpath)
 		{
 			LiteGUI.alert("You must save the scene before publishing it.");
 			return;
 		}
 
-		window.open("player.html?url=" + LS.RM.path + LS.GlobalScene.extra.fullpath,'_blank');
+		var dialog = new LiteGUI.Dialog("dialog_publish_scene", {title:"Publish Scene", close: true, minimize: true, width: 400, scroll: false, draggable: true});
+
+		var filename = LS.RM.getBasename( scene.extra.publish_name || scene.extra.filename );
+		var folder = scene.extra.folder;
+		var as_pack = false;
+
+		var widgets = new LiteGUI.Inspector(null,{name_width:120});
+
+		widgets.addString("Filename", filename, function(v){
+			filename = v;
+		});
+
+		widgets.addFolder("Folder", folder, { callback: function(v){
+			folder = v;
+		}});
+
+		widgets.addCheckbox("Publish as PACK", as_pack, function(v){
+			as_pack = v;
+		});
+
+		widgets.addButton(null,"Publish", { className:"big", callback: inner_publish });
+		widgets.addButton(null,"Download PACK", { callback: inner_download });
+
+		function inner_publish(){
+			dialog.close();
+			RenderModule.requestFrame();
+			var fullpath = LS.RM.cleanFullpath( folder + "/" + filename );
+			SceneStorageModule.publishScene( fullpath, as_pack );
+		}
+
+		function inner_download(){
+			dialog.close();
+			var fullpath = LS.RM.cleanFullpath( folder + "/" + filename );
+			LS.GlobalScene.extra.publish_name = fullpath;
+			var pack = LS.GlobalScene.toPack( fullpath );
+			LiteGUI.downloadFile( LS.RM.getFilename(pack.fullpath), pack.bindata );
+		}
+
+		dialog.add(widgets);
+		dialog.show();
+		dialog.adjustSize(10);
+	},
+
+	publishScene: function( fullpath, as_pack )
+	{
+		if(!as_pack)
+			return window.open("player.html?url=" + LS.RM.path + LS.GlobalScene.extra.fullpath,'_blank');
+		
+		LS.GlobalScene.extra.publish_name = fullpath;
+		var pack = LS.GlobalScene.toPack( fullpath );
+
+		//save
+		DriveModule.saveResource( pack, function(v){
+			if(!v)
+				return;
+
+			//open in popup
+			window.open("player.html?url=" + LS.RM.path + pack.fullpath,'_blank');
+		});
 	},
 
 	onExport: function(e)

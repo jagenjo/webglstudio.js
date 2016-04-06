@@ -342,12 +342,16 @@ textarea.code {
 	background-color: #3A3;
 }
 
-.listbox.prefab.empty {
+.prefab .listbox.empty {
 	background-color: #53432E !important;
 }
 
-.listbox.prefab {
+.prefab .listbox {
 	color: #53432E !important;
+}
+
+.prefab .incontent {
+	opacity: 0.8;
 }
 
 

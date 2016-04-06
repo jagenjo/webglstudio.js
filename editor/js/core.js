@@ -110,7 +110,7 @@ var CORE = {
 		this.initModules();
 
 		//some modules may need to be unloaded
-		window.onbeforeunload = CORE.onUnload.bind(this);
+		window.onbeforeunload = CORE.onBeforeUnload.bind(this);
 
 		//config folders
 		LS.ResourcesManager.setPath( CORE.config.resources );
@@ -246,14 +246,17 @@ var CORE = {
 		return true;
 	},
 
-	onUnload: function()
+	onBeforeUnload: function()
 	{
+		var warning = false;
 		for(var i in this.Modules)
 			if (this.Modules[i].onUnload)
-				this.Modules[i].onUnload();
+				warning = warning || this.Modules[i].onUnload();
 
 		//save preferences
 		this.saveUserPreferences();
+
+		return warning;
 	},
 
 	resetUserPreferences: function()

@@ -385,41 +385,33 @@ global.loadFileAtlas = GL.loadFileAtlas = function loadFileAtlas(url, callback, 
 	return { done: function(callback) { deferred_callback = callback; } };
 }
 
-global.processFileAtlas = GL.processFileAtlas = function(data)
+//This parses a text file that contains several text files (they are separated by "\filename"), and returns an object with every file separatly
+global.processFileAtlas = GL.processFileAtlas = function(data, skip_trim)
 {
-	//var reg = /^[a-z0-9/_]+$/i;
 	var lines = data.split("\n");
 	var files = {};
-	var file = [];
-	var filename = "";
+
+	var current_file_lines = [];
+	var current_file_name = "";
 	for(var i = 0, l = lines.length; i < l; i++)
 	{
-		var line = lines[i].trim();
+		var line = skip_trim ? lines[i] : lines[i].trim();
 		if(!line.length)
 			continue;
-		if( line[0] == "\\") // || (line[0] == '/' && reg.test( line[1] ) ) //allow to use forward slash instead of backward slash
+		if( line[0] != "\\")
 		{
-			if(!filename)
-			{
-				filename = line.substr(1);
-				continue;
-			}
-			inner_newfile();
+			current_file_lines.push(line);
+			continue;
 		}
-		else
-			file.push(line);
+
+		if( current_file_lines.length )
+			files[ current_file_name ] = current_file_lines.join("\n");
+		current_file_lines.length = 0;
+		current_file_name = line.substr(1);
 	}
 
-	if(filename)
-		inner_newfile();
-
-	function inner_newfile()
-	{
-		var resource = file.join("\n");
-		files[ filename ] = resource;
-		file.length = 0;
-		filename = line.substr(1);
-	}
+	if( current_file_lines.length )
+		files[ current_file_name ] = current_file_lines.join("\n");
 
 	return files;
 }

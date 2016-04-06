@@ -464,7 +464,7 @@ var ImporterModule  = {
 						for(var i in resources)
 						{
 							var res = LS.ResourcesManager.getResource(i);
-							if(res.constructor === LS.Animation)
+							if(res && res.constructor === LS.Animation)
 							{
 								var anim = res;
 								anim.optimizeTracks();
@@ -478,7 +478,7 @@ var ImporterModule  = {
 						for(var i in resources)
 						{
 							var res = LS.ResourcesManager.getResource(i);
-							if(res.constructor === GL.Mesh && res.bones)
+							if(res && res.constructor === GL.Mesh && res.bones)
 							{
 								var mesh = res;
 								mesh.convertBonesToNames( resource );

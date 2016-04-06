@@ -47,7 +47,7 @@ CodingTabsWidget.prototype.bindEvents = function()
 	LEvent.bind( CodingTabsWidget, "code_changed", this.onCodeChanged, this);
 
 	LEvent.bind( LS.Components.Script, "code_error", this.onScriptError, this );
-	LEvent.bind( LS, "code_error", this.onGlobalError, this );
+	//LEvent.bind( LS, "code_error", this.onGlobalError, this );
 }
 
 CodingTabsWidget.prototype.unbindEvents = function()
@@ -293,12 +293,28 @@ CodingTabsWidget.prototype.onPlusTab = function(tab_id, e)
 {
 	var that = this;
 
-	var options = ["New Tab","Open",{ title: "Create", submenu: { callback: inner_create, options: ["Script File", "Script in Root","Script in Node"] }},"Open All Scripts"];
+	var options = [
+		"Open",
+		{ title: "Create", submenu: 
+			{ callback: inner_create,
+			options: [
+				{ title: "Script", submenu:[
+					"In File",
+					"In Node",
+					"In Root"],
+					callback: inner_create
+				},
+				"Data File",
+				"Shader"
+			]}},
+		"Open All Scripts",
+		"Empty Tab"
+	];
 
 	var scripts = LS.GlobalScene.findNodeComponents( LS.Components.Script );
 
 	var menu = new LiteGUI.ContextualMenu( options, { event: e, callback: function(value, options) {
-		if(value == "New Tab")
+		if(value == "Empty Tab")
 		{
 			that.onNewTab();
 		}
@@ -313,14 +329,19 @@ CodingTabsWidget.prototype.onPlusTab = function(tab_id, e)
 		}
 	}});
 
+	//used by both sublevels (because there are no options with the same name
 	function inner_create(value,e)
 	{
-		if(value == "Script File")
+		if(value == "In File")
 			that.onNewScriptFile();
-		else if(value == "Script in Root")
+		else if(value == "In Root")
 			that.onNewScript( LS.GlobalScene.root );
-		else if(value == "Script in Node")
+		else if(value == "In Node")
 			that.onNewScript( null ); //it will choose selected node by default
+		else if(value == "Data File")
+			that.onNewDataFile();
+		else if(value == "Shader")
+			that.onNewShader();
 	}
 }
 
@@ -349,6 +370,22 @@ CodingTabsWidget.prototype.onNewScriptFile = function()
 	script_resource.filename = "unnamed_script.js";
 	script_resource.register();
 	this.editInstanceCode( script_resource, { id: script_resource.filename, title: script_resource.filename, lang: "javascript", help: LS.Components.Script.coding_help });
+}
+
+CodingTabsWidget.prototype.onNewDataFile = function()
+{
+	var resource = new LS.Resource();
+	resource.filename = "unnamed_data.txt";
+	resource.register();
+	this.editInstanceCode( resource, { id: resource.filename, title: resource.filename, lang: "text" });
+}
+
+CodingTabsWidget.prototype.onNewShaderFile = function()
+{
+	var resource = new LS.Resource();
+	resource.filename = "unnamed_shader.sh";
+	resource.register();
+	this.editInstanceCode( resource, { id: resource.filename, title: resource.filename, lang: "glsl" });
 }
 
 //search for all the components that have a getCode function and inserts them
@@ -391,15 +428,16 @@ CodingTabsWidget.prototype.onScriptError = function(e, instance_err)
 
 CodingTabsWidget.prototype.onGlobalError = function(e, err)
 {
+	/*
 	console.error("Global error");
 	console.trace();
 	console.error(err);
 	var stack = err.stack.split("\n");
 	if(stack[1].indexOf("<anonymous>") == -1)
 		return;
-
-	//could be a error triggered by an async callback
 	this.showError(err);
+	*/
+	//could be a error triggered by an async callback
 }
 
 CodingTabsWidget.prototype.detachWindow = function()

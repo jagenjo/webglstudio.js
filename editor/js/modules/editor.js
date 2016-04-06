@@ -75,9 +75,9 @@ var EditorModule = {
 			{
 				case "node": that.createNullNode(); break;
 				case "light": that.createLightNode(); break;
-				case "plane": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.PLANE, size: 10, xz: true, subdivisions: 2 }); break;
-				case "cube": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.CUBE, size: 10, subdivisions: 10 }); break;
-				case "sphere": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.SPHERE, size: 10, subdivisions: 32 }); break;
+				case "plane": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.PLANE, size: 10, xz: true, subdivisions: 2 },"plane"); break;
+				case "cube": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.CUBE, size: 10, subdivisions: 10 },"cube"); break;
+				case "sphere": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.SPHERE, size: 10, subdivisions: 32 },"sphere"); break;
 				default: break;
 			}
 		}
@@ -291,6 +291,7 @@ var EditorModule = {
 		return this.inspector.instance;
 	},
 
+	//given a string or object of a JSON, it opens a popup with the code beautified
 	checkJSON: function( object )
 	{
 		if(!object)
@@ -300,6 +301,8 @@ var EditorModule = {
 
 		w.document.write("<style>* { margin: 0; padding: 0; } html,body { margin: 20px; background-color: #222; color: #eee; } </style>");
 
+		if(object.constructor === String)
+			object = JSON.parse(object); //transform to object so we can use the propper stringify function
 		var data = JSON.stringify( object.serialize ? object.serialize() : object, null, '\t');
 		var str = beautifyJSON( data );
 		w.document.write("<pre>"+str+"</pre>");
@@ -731,10 +734,10 @@ var EditorModule = {
 
 		data.uid = null; //remove UID
 
-		var node = new SceneNode();
+		var node = new LS.SceneNode();
 		node.configure(data);
 
-		parent = parent || Scene.root;
+		parent = parent || LS.GlobalScene.root;
 		parent.addChild(node);
 
 		SelectionModule.setSelection( node );
@@ -940,9 +943,9 @@ var EditorModule = {
 		SelectionModule.setSelection(node);
 	},
 
-	createPrimitive: function(info)
+	createPrimitive: function(info, name)
 	{
-		var node = new LS.SceneNode( LS.GlobalScene.generateUniqueNodeName("primitive") );
+		var node = new LS.SceneNode( LS.GlobalScene.generateUniqueNodeName(name || "primitive") );
 		node.addComponent( new LS.Components.GeometricPrimitive( info ) );
 		EditorModule.getAddRootNode().addChild(node);
 		UndoModule.saveNodeCreatedUndo(node);
@@ -990,8 +993,10 @@ var EditorModule = {
 		RenderModule.requestFrame();
 	},
 
-	showCreateResource: function(resource, on_complete )
+	showCreateResource: function(resource, on_complete, extension )
 	{
+		extension = extension || "json";
+
 		LiteGUI.prompt("Resource name", inner);
 
 		function inner(name)
@@ -1001,7 +1006,9 @@ var EditorModule = {
 			{
 				resource.id = null;
 				resource.name = name;
-				var filename = name + ".json";
+				var filename = name;
+				if( LS.RM.getExtension( filename ) != extension )
+					filename = name + "." + extension;
 				resource.filename = filename;
 			}
 
@@ -1203,10 +1210,31 @@ var EditorModule = {
 		}
 	},
 
-	showSelectResource: function()
+	showSelectResource: function( options )
 	{
-		//FUNCTION REPLACED BY DriveModule
-		LiteGUI.alert("If you can read this is because Drive Module is not installed");
+		var dialog = new LiteGUI.Dialog("select-resource-dialog", {title: "Select resource", close: true, width: 800, height: 500, scroll: false, draggable: true});
+		var resources_widget = new ResourcesPanelWidget(null,{skip_actions:true});
+		if(options.type)
+			resources_widget.filterByCategory( options.type );
+		resources_widget.showMemoryResources();
+
+		LiteGUI.bind( resources_widget, "resource_selected", inner_selected );
+		dialog.add( resources_widget );
+		dialog.show();
+		return dialog;
+
+		function inner_selected( event )
+		{
+			var fullpath = event.detail;
+			var multiple = options.allow_multiple && event && event.shiftKey; //not used now
+			if(!multiple)
+				dialog.close();
+			if(options.on_complete)
+				options.on_complete(fullpath);
+			if(fullpath && !options.skip_load)
+				LS.ResourcesManager.load( fullpath, null, options.on_load );
+			return true;
+		}
 	},
 
 	//shows a dialog to select a node
@@ -1653,7 +1681,7 @@ LiteGUI.Inspector.prototype.addResource = function( name, value, options)
 	});
 	
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
-		EditorModule.showSelectResource( { type:"Mesh", on_complete: inner_onselect, allow_multiple: options.allow_multiple } );
+		EditorModule.showSelectResource( { on_complete: inner_onselect, allow_multiple: options.allow_multiple } );
 		if(options.callback_button)
 			options.callback_button.call(element, $(element).find(".wcontent input").val() );
 	});

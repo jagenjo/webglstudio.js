@@ -1,6 +1,8 @@
 //Represents the tree view of the Scene Tree, and controls basic events like dragging or double clicking
-function ResourcesPanelWidget( id )
+function ResourcesPanelWidget( id, options )
 {
+	options = options || {};
+
 	var that = this;
 
 	this.selected_item = null;
@@ -13,6 +15,7 @@ function ResourcesPanelWidget( id )
 
 	this.root = document.createElement("div");
 	this.root.className = "resources-panel";
+	this.root.panel = this; //link
 	this.root.style.width = "100%";
 	this.root.style.height = "100%";
 	if(id)
@@ -35,19 +38,22 @@ function ResourcesPanelWidget( id )
 	files_section.add( browser_root );
 	browser_root.split("vertical",[30,null]);
 
-	var top_inspector = new LiteGUI.Inspector(null,{ one_line: true });
-	top_inspector.addString("Filter","",{ callback: function(v) { 
-		that.filterByName(v);
-	}});
-	top_inspector.root.style.marginTop = "4px";
-	top_inspector.addSeparator();
-	top_inspector.addButton(null,"New", function(){ DriveModule.showNewResourceDialog(); });
-	top_inspector.addButton(null,"Insert in scene", function(){ DriveModule.onInsertResourceInScene( that.selected_item ); });
-	top_inspector.addButton(null,"Import File", function(){ 
-		ImporterModule.showImportResourceDialog(null,{ folder: that.current_folder }, function(){ that.refreshContent(); });
-	});
+		var top_inspector = new LiteGUI.Inspector(null,{ one_line: true });
+		top_inspector.addString("Filter","",{ callback: function(v) { 
+			that.filterByName(v);
+		}});
+		top_inspector.root.style.marginTop = "4px";
+		if(!options.skip_actions)
+		{
+			top_inspector.addSeparator();
+			top_inspector.addButton(null,"New", function(){ DriveModule.showNewResourceDialog(); });
+			top_inspector.addButton(null,"Insert in scene", function(){ DriveModule.onInsertResourceInScene( that.selected_item ); });
+			top_inspector.addButton(null,"Import File", function(){ 
+				ImporterModule.showImportResourceDialog(null,{ folder: that.current_folder }, function(){ that.refreshContent(); });
+			});
+		}
 
-	browser_root.sections[0].add( top_inspector );
+		browser_root.sections[0].add( top_inspector );
 
 	this.browser_container = browser_root.sections[1].content;
 	this.browser_container.classList.add("resources-panel-container");
@@ -169,7 +175,7 @@ ResourcesPanelWidget.prototype.createTreeWidget = function()
 
 		if(item.className)
 		{
-			if(item.bridge && item.bridge.onFolderSelected)
+			if( item.bridge && item.bridge.onFolderSelected )
 			{
 				that.current_folder = item.fullpath;
 				that.current_bridge = item.bridge;
@@ -405,29 +411,23 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 
 	element.addEventListener("click", item_selected);
 	element.addEventListener("dblclick", item_dblclick);
+
+
+	this.applyFilters([element]);
 	parent.appendChild(element);
 
 	//when the resources is clicked
 	function item_selected(e)
 	{
-		if(!that.on_resource_selected_callback)
-		{
-			var items = parent.querySelectorAll(".selected");
-			for(var i = 0; i < items.length; ++i)
-				items[i].classList.remove("selected");
-			element.classList.add("selected");
-			LiteGUI.trigger( that, "item_selected", element );
-			that.selected_item = element;
-		}
-		else
-		{
-			var path = element.dataset["fullpath"] || element.dataset["filename"];
-			var callback = that.on_resource_selected_callback;
-			that.on_resource_selected_callback = null;
-			if( callback( path, e ) ) //for multiple files selection, keep the callback
-				that.on_resource_selected_callback = callback;
+		var path = element.dataset["fullpath"] || element.dataset["filename"];
 
-		}
+		var items = parent.querySelectorAll(".selected");
+		for(var i = 0; i < items.length; ++i)
+			items[i].classList.remove("selected");
+		element.classList.add("selected");
+		LiteGUI.trigger( that, "item_selected", element );
+		LiteGUI.trigger( that, "resource_selected", path );
+		that.selected_item = element;
 	}
 
 	function item_dblclick(e)
@@ -508,24 +508,28 @@ ResourcesPanelWidget.prototype.showFolderContextualMenu = function(e)
 {
 	var that = this;
 
+	//create available options
 	var materials_classes = [];
 	for(var i in LS.MaterialClasses)
 		materials_classes.push( i );
 
+	var create_available_options = [
+		"Script",
+		"Text",
+		"Shader",
+		"Pack",
+		{
+			title: "Material",
+			submenu: { 
+				options: materials_classes,
+				callback: inner_create_material
+			}
+		}
+	];
+
 	var options = [
 		{ title: "Create", submenu: {
-				options: [
-					"Script",
-					"Text",
-					"Pack",
-					{
-						title: "Material",
-						submenu: { 
-							options: materials_classes,
-							callback: inner_create_material
-						}
-					}
-				],
+				options: create_available_options,
 				callback: inner_create
 			}
 		},
@@ -537,23 +541,24 @@ ResourcesPanelWidget.prototype.showFolderContextualMenu = function(e)
 	function inner_create( action, options, event )
 	{
 		if(action == "Script")
-			that.onShowCreateFileDialog({filename: "script.js" });
+			that.onShowCreateFileDialog({filename: "script.js", folder: that.current_folder });
 		else if(action == "Text")
-			that.onShowCreateFileDialog({filename: "text.txt" });
+			that.onShowCreateFileDialog({filename: "text.txt", folder: that.current_folder });
 		else if(action == "Pack")
 			PackTools.showCreatePackDialog({folder: that.current_folder});
+		else if(action == "Shader")
+			that.onShowCreateShaderDialog({filename: "shader.glsl", folder: that.current_folder });
 	}
 
 	function inner_create_material( material_classname, options, event )
 	{
-		console.log( material_classname );
-
 		var material_class = LS.MaterialClasses[ material_classname ];
 		if(!material_class)
 			return;
 		var material = new material_class();
 		material.filename = "unnammed_material.json";
 		LS.RM.registerResource( material.filename, material );
+		LS.RM.resourceModified( material );
 		that.refreshContent();
 	}
 }
@@ -579,6 +584,10 @@ ResourcesPanelWidget.prototype.refreshContent = function()
 	}
 }
 
+ResourcesPanelWidget.prototype.showMemoryResources = function()
+{
+	this.showInBrowserContent( LS.ResourcesManager.resources );
+}
 
 ResourcesPanelWidget.prototype.destroy = function()
 {
@@ -618,46 +627,52 @@ ResourcesPanelWidget.prototype.showContextualMenu = function(e){
 	}});
 }
 
-ResourcesPanelWidget.prototype.filterByName = function( text )
+ResourcesPanelWidget.prototype.applyFilters = function( items )
 {
-	this.filter_by_name = text;
+	if(!items)
+	{
+		var parent = this.root.querySelector("ul.file-list");
+		items = parent.querySelectorAll(".file-item");
+	}
 
-	text = text.toLowerCase();
-	var parent = this.root.querySelector("ul.file-list");
-	var items = parent.querySelectorAll(".file-item");
 	for(var i = 0; i < items.length; ++i )
 	{
 		var item = items[i];
+		var must_be_filtered = false;
+
+		//filter by name
 		var filename = item.dataset["filename"];
-		if(!filename)
-			continue;
-		filename = filename.toLowerCase();
-		if( !text || filename.indexOf(text) != -1 )
-			item.style.display = "";
-		else
-			item.style.display = "none";
+		if( this.filter_by_name && filename )
+		{
+			filename = filename.toLowerCase();
+			if( this.filter_by_name && filename.indexOf( this.filter_by_name ) != -1 )
+				must_be_filtered = true;
+		}
+
+		//filter by category
+		var item_category = item.dataset["category"];
+		if( this.filter_by_category && item_category )
+		{
+			item_category = item_category.toLowerCase();
+			if( item_category != this.filter_by_category )
+				must_be_filtered = true;
+		}
+
+		//apply filter
+		item.style.display = must_be_filtered ? "none" : "";
 	}
+}
+
+ResourcesPanelWidget.prototype.filterByName = function( text )
+{
+	this.filter_by_name = text ? text.toLowerCase() : null;
+	this.applyFilters();
 }
 
 ResourcesPanelWidget.prototype.filterByCategory = function( category )
 {
-	this.filter_by_category = category;
-
-	category = category.toLowerCase();
-	var parent = this.root.querySelector("ul.file-list");
-	var items = parent.querySelectorAll(".file-item");
-	for(var i = 0; i < items.length; ++i )
-	{
-		var item = items[i];
-		var item_category = item.dataset["category"];
-		if(!item_category)
-			continue;
-		item_category = item_category.toLowerCase();
-		if( item_category == category )
-			item.style.display = "";
-		else
-			item.style.display = "none";
-	}
+	this.filter_by_category = category ? category.toLowerCase() : null;
+	this.applyFilters();
 }
 
 
@@ -707,7 +722,7 @@ ResourcesPanelWidget.prototype.onShowCreateFileDialog = function( options )
 		resource.filename = filename;
 		if(folder && folder != "")
 			resource.fullpath = folder + "/" + filename;
-		resource.data = "";
+		resource.data = options.content || "";
 
 		//upload to server? depends if it is local or not
 		resource.register();
@@ -729,5 +744,47 @@ ResourcesPanelWidget.prototype.onShowCreateFileDialog = function( options )
 	return dialog;
 }
 
+ResourcesPanelWidget.prototype.onShowCreateShaderDialog = function( options )
+{
+	var that = this;
+	options = options || {};
+	var filename = options.filename || "shader.glsl";
+	var folder = options.folder || this.current_folder;
 
+	var dialog = new LiteGUI.Dialog( null, { title: "New Shader", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
+	var inspector = new LiteGUI.Inspector();
+
+	inspector.addString("Filename",filename, function(v){ filename = v; });
+	inspector.addString("Folder",folder, function(v){ folder = v; });
+	inspector.addButton(null,"Create", inner);
+
+	function inner()
+	{
+		folder = folder || "";
+		//create dummy file
+		var shader_code = new LS.ShaderCode();
+		shader_code.filename = filename;
+		if(folder && folder != "")
+			shader_code.fullpath = folder + "/" + filename;
+		shader_code.code = options.content || LS.ShaderCode.example;
+
+		//upload to server? depends if it is local or not
+		LS.ResourcesManager.registerResource( shader_code.fullpath || shader_code.filename, shader_code );
+		if(shader_code.fullpath)
+		{
+			DriveModule.saveResource( shader_code, function(v){
+				that.refreshContent();
+			}, { skip_alerts: true });
+		}
+
+		//refresh
+		//close
+		dialog.close();
+	}
+
+	dialog.add( inspector );
+	dialog.show( null, this._root );
+	dialog.adjustSize();
+	return dialog;
+}
 

@@ -5387,6 +5387,9 @@ global.Shader = GL.Shader = function Shader( vertexSource, fragmentSource, macro
 		throw 'link error: ' + gl.getProgramInfoLog(this.program);
 	}
 
+	this.vs_shader = vs;
+	this.fs_shader = fs;
+
 	//Extract info from the shader
 	this.attributes = {}; 
 	this.uniformInfo = {};
@@ -5412,18 +5415,58 @@ Shader.expandMacros = function(macros)
 * @method Shader.compileSource
 * @param {Number} type could be gl.VERTEX_SHADER or gl.FRAGMENT_SHADER
 * @param {String} source the source file to compile
-* @return {WebGLHandler}
+* @return {WebGLShader} the handler from webgl
 */
-Shader.compileSource = function(type, source, gl)
+Shader.compileSource = function( type, source, gl, shader )
 {
 	gl = gl || global.gl;
-	var shader = gl.createShader(type);
+	shader = shader || gl.createShader(type);
 	gl.shaderSource(shader, source);
 	gl.compileShader(shader);
 	if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
 		throw (type == gl.VERTEX_SHADER ? "Vertex" : "Fragment") + ' shader compile error: ' + gl.getShaderInfoLog(shader);
 	}
 	return shader;
+}
+
+/**
+* It updates the code inside one shader
+* @method updateShader
+* @param {String} vertexSource 
+* @param {String} fragmentSource 
+* @param {Object} macros [optional]
+*/
+Shader.prototype.updateShader = function( vertexSource, fragmentSource, macros )
+{
+	var gl = this.gl || global.gl;
+
+	//expand macros
+	var extra_code = Shader.expandMacros( macros );
+
+	if(this.program)
+		this.program = gl.createProgram();
+
+	var vs = vertexSource.constructor === String ? GL.Shader.compileSource( gl.VERTEX_SHADER, extra_code + vertexSource, gl, this.vs_shader ) : vertexSource;
+	var fs = fragmentSource.constructor === String ? GL.Shader.compileSource( gl.FRAGMENT_SHADER, extra_code + fragmentSource, gl, this.fs_shader ) : fragmentSource;
+
+	gl.attachShader( this.program, vs, gl );
+	gl.attachShader( this.program, fs, gl );
+	gl.linkProgram( this.program );
+	if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) {
+		throw 'link error: ' + gl.getProgramInfoLog( this.program );
+	}
+
+	//store shaders separated
+	this.vs_shader = vs;
+	this.fs_shader = fs;
+
+	//Extract info from the shader
+	this.attributes = {}; 
+	this.uniformInfo = {};
+	this.samplers = {};
+
+	//extract info about the shader to speed up future processes
+	this.extractShaderInfo();
 }
 
 /**
@@ -5435,7 +5478,7 @@ Shader.prototype.extractShaderInfo = function()
 {
 	var gl = this.gl;
 	
-	var l = gl.getProgramParameter(this.program, gl.ACTIVE_UNIFORMS);
+	var l = gl.getProgramParameter( this.program, gl.ACTIVE_UNIFORMS );
 
 	//extract uniforms info
 	for(var i = 0; i < l; ++i)
@@ -6029,13 +6072,16 @@ Shader.FLAT_FRAGMENT_SHADER = "\n\
 * @param {string} code string containg code, like "color = color * 2.0;"
 * @param {string} [uniforms=null] string containg extra uniforms, like "uniform vec3 u_pos;"
 */
-Shader.createFX = function(code, uniforms)
+Shader.createFX = function(code, uniforms, shader)
 {
 	var macros = {
 		FX_CODE: code,
 		FX_UNIFORMS: uniforms || ""
 	}
-	return new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, GL.Shader.SCREEN_FRAGMENT_FX, macros );
+	if(!shader)
+		return new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, GL.Shader.SCREEN_FRAGMENT_FX, macros );
+	shader.updateShader( GL.Shader.SCREEN_VERTEX_SHADER, GL.Shader.SCREEN_FRAGMENT_FX, macros );
+	return shader;
 }
 
 /**

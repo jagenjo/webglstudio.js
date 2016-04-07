@@ -38,22 +38,35 @@ function ResourcesPanelWidget( id, options )
 	files_section.add( browser_root );
 	browser_root.split("vertical",[30,null]);
 
-		var top_inspector = new LiteGUI.Inspector(null,{ one_line: true });
-		top_inspector.addString("Filter","",{ callback: function(v) { 
-			that.filterByName(v);
-		}});
-		top_inspector.root.style.marginTop = "4px";
-		if(!options.skip_actions)
-		{
-			top_inspector.addSeparator();
-			top_inspector.addButton(null,"New", function(){ DriveModule.showNewResourceDialog(); });
-			top_inspector.addButton(null,"Insert in scene", function(){ DriveModule.onInsertResourceInScene( that.selected_item ); });
-			top_inspector.addButton(null,"Import File", function(){ 
-				ImporterModule.showImportResourceDialog(null,{ folder: that.current_folder }, function(){ that.refreshContent(); });
-			});
-		}
+	//craete top bar
+	var top_inspector = new LiteGUI.Inspector(null,{ one_line: true });
+	top_inspector.root.style.marginTop = "4px";
 
-		browser_root.sections[0].add( top_inspector );
+	//filter by name
+	top_inspector.addString("Filter","",{ callback: function(v) { 
+		that.filterByName(v);
+	}});
+
+	//filter by category
+	var valid_categories = [""];
+	for(var i in LS.ResourceClasses)
+		valid_categories.push( LS.ResourceClasses[i] );
+	//should be a combo but chrome keeps crashing when I use a combo, so it will be a string
+	this.filter_by_category_widget = top_inspector.addString("Category","",{ width: 200, values: valid_categories, callback: function(v) { 
+		that.filterByCategory( v, true );
+	}});
+
+	if(!options.skip_actions)
+	{
+		top_inspector.addSeparator();
+		top_inspector.addButton(null,"New", function(){ DriveModule.showNewResourceDialog(); });
+		top_inspector.addButton(null,"Insert in scene", function(){ DriveModule.onInsertResourceInScene( that.selected_item ); });
+		top_inspector.addButton(null,"Import File", function(){ 
+			ImporterModule.showImportResourceDialog(null,{ folder: that.current_folder }, function(){ that.refreshContent(); });
+		});
+	}
+
+	browser_root.sections[0].add( top_inspector );
 
 	this.browser_container = browser_root.sections[1].content;
 	this.browser_container.classList.add("resources-panel-container");
@@ -669,10 +682,12 @@ ResourcesPanelWidget.prototype.filterByName = function( text )
 	this.applyFilters();
 }
 
-ResourcesPanelWidget.prototype.filterByCategory = function( category )
+ResourcesPanelWidget.prototype.filterByCategory = function( category, skip_widget_update )
 {
 	this.filter_by_category = category ? category.toLowerCase() : null;
 	this.applyFilters();
+	if(!skip_widget_update && this.filter_by_category_widget)
+		this.filter_by_category_widget.setValue( category );
 }
 
 

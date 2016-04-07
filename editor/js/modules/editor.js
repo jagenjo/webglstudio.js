@@ -1212,7 +1212,7 @@ var EditorModule = {
 
 	showSelectResource: function( options )
 	{
-		var dialog = new LiteGUI.Dialog("select-resource-dialog", {title: "Select resource", close: true, width: 800, height: 500, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog("select-resource-dialog", {title: "Select resource", close: true, width: 800, height: 500, scroll: false, resizable: true, draggable: true});
 		var resources_widget = new ResourcesPanelWidget(null,{skip_actions:true});
 		if(options.type)
 			resources_widget.filterByCategory( options.type );
@@ -1664,7 +1664,7 @@ LiteGUI.Inspector.prototype.addNodeComponent = function(name, value, options)
 LiteGUI.Inspector.widget_constructors["node_component"] = "addNodeComponent";
 
 //to select a resource
-LiteGUI.Inspector.prototype.addResource = function( name, value, options)
+LiteGUI.Inspector.prototype.addResource = function( name, value, options )
 {
 	options = options || {};
 	value = value || "";
@@ -1681,7 +1681,7 @@ LiteGUI.Inspector.prototype.addResource = function( name, value, options)
 	});
 	
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
-		EditorModule.showSelectResource( { on_complete: inner_onselect, allow_multiple: options.allow_multiple } );
+		EditorModule.showSelectResource( { type: options.category, on_complete: inner_onselect, allow_multiple: options.allow_multiple } );
 		if(options.callback_button)
 			options.callback_button.call(element, $(element).find(".wcontent input").val() );
 	});

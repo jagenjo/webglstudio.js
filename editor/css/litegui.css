@@ -1462,6 +1462,9 @@ button.close-button {
 	list-style-type: none;
 	border-bottom: 2px solid #666;
 
+	overflow: hidden;
+    white-space: nowrap;
+
 	-moz-box-sizing: border-box;	
 	-webkit-box-sizing: border-box;	
 	box-sizing: border-box;	

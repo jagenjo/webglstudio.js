@@ -364,7 +364,8 @@ CodingPadWidget.prototype.evalueCode = function()
 	this.assignCurrentCode(); //this will trigger the error handling during execution
 }
 
-CodingPadWidget.prototype.saveCode = function()
+//When the user does Control + S
+CodingPadWidget.prototype.saveInstance = function()
 {
 	var that = this;
 	var info = this.getCurrentCodeInfo();
@@ -375,27 +376,35 @@ CodingPadWidget.prototype.saveCode = function()
 
 	this.assignCurrentCode(true); //true? not sure
 
+	//is a resource? 
 	if( instance && instance.constructor.is_resource )
 	{
+		//does it have a fullpath?
 		if(!instance.fullpath)
 		{
+			//ask the user to give it a name
 			DriveModule.showSelectFolderFilenameDialog( instance.filename, function(folder,filename){
-				instance.filename = filename;
-				instance.fullpath = folder + "/" + filename;
-				DriveModule.saveResource( instance, inner_after_save, { skip_alerts: true });
-			}, { text: "This file is not stored in the server, choose a folder and a filename"} );
+					//set name
+					instance.filename = filename;
+					instance.fullpath = folder + "/" + filename;
+					//save resource
+					DriveModule.saveResource( instance, inner_after_save, { skip_alerts: true });
+				}, { extension: "js", text: "This file is not stored in the server, choose a folder and a filename"});
 			return;
 		}
 
+		//if it has, just save it
 		DriveModule.saveResource( info.instance, inner_after_save, { skip_alerts: true });
 		this.showInFooter("saving...");
 	}
 	else
 	{
+		//it is not a resource, then just assign it and nothing else
 		this.showInFooter("stored");
 		LiteGUI.trigger( this, "stored" );
 	}
 
+	//after the resource has been saved in the server
 	function inner_after_save()
 	{
 		that.processCodeInScripts();
@@ -494,7 +503,7 @@ CodingPadWidget.prototype.onBeforeReload = function(e)
 	this._saved_state = this.current_code_info;
 }
 
-	//reload all the codes open
+//Check for changes in the code instances after the scene is reload
 CodingPadWidget.prototype.onReload = function(e)
 {
 	//console.log("reload");
@@ -504,38 +513,44 @@ CodingPadWidget.prototype.onReload = function(e)
 	var state = this._saved_state;
 
 	//refresh instance after reloading the scene 
-	var instance = null;
+	var old_instance = null;
 	if( state.getInstance )
-		instance = state.getInstance();
-	//cannot take state.instance because it could be a dead instance, we must recapture it
+		old_instance = state.getInstance();
+	else
+		old_instance = state.instance; //Warning: this instasnce could be dead (out of the tree and replaced by a new one with the same properties)
 
-	if(!instance)
+	//if the instance was a resources do not need to be reloaded (they are not reloaded)
+	if(old_instance && old_instance.constructor.is_resource)
+		return;
+
+	//check if the instance must be replaced using the ID
+	var found_instance = null;
+	var id = state.id;
+	if(id)
 	{
-		var id = state.id;
-
-		if(state.instance && state.instance.constructor.is_resource) //is resource
-			instance = state.instance;
-		else if( id && id.substr(0,6) == "@COMP-" ) //is script component
+		if( id.substr(0,6) == "@COMP-" ) //is Script component
 		{
-			instance = LS.GlobalScene.findComponentByUId( id ); //reloaded component
-			if(!instance)
+			found_instance = LS.GlobalScene.findComponentByUId( id ); //reloaded component
+			if(!found_instance)
 				console.warn("Instance component not found after Reload: ", id );
-			else if(state.instance && state.instance.code != instance.code) //special case, coded has been edited while the app was running
+			else if( old_instance && found_instance.code != old_instance.code) //special case, coded has been edited while the app was running
 			{
 				console.log("code changed during play!");
-				instance.code = state.instance.code;
-				instance.processCode(true);
+				found_instance.code = old_instance.code; //old instance
+				if(found_instance.processCode)
+					found_instance.processCode(true);
 			}
 		}
 		else if( id && id.substr(0,6) == "@MAT-" ) //is material shader
-			instance = LS.GlobalScene.findMaterialByUId( id );
+			found_instance = LS.GlobalScene.findMaterialByUId( id );
 	}
 
-	if(instance)
-		this.replaceInstanceCode( instance, state.options );
-	else
-		console.warn("CodingPad: cannot find instance by uid: " + state.uid );
 	this._saved_state = null;
+
+	if(found_instance)
+		this.replaceInstanceCode( found_instance, state.options );
+	else
+		console.warn("CodingPad: cannot find instance by uid: " + id );
 }
 
 CodingPadWidget.prototype.onNodeRemoved = function(evt, node)
@@ -812,7 +827,6 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 	//top bar
 	var top_widgets = this.top_widgets = new LiteGUI.Inspector( null, { one_line: true });
 
-	//check for parsing errors
 	top_widgets.addButton(null, LiteGUI.special_codes.navicon,{ width: 30, callback: function(v) { 
 		that.onOpenCode();
 	}});
@@ -827,7 +841,7 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 	this.compile_button.title = "(Ctrl+Enter)";
 
 	this.save_button = top_widgets.addButton(null,"Save",{ callback: function(v) { 
-		that.saveCode();
+		that.saveInstance();
 		LS.GlobalScene.refresh();
 	}});
 	this.save_button.title = "(Ctrl+S)";
@@ -1048,7 +1062,7 @@ CodingPadWidget.prepareCodeMirror = function()
 
 	CodeMirror.commands.save = function(cm) {
 		var pad = cm.coding_area;
-		pad.saveCode();
+		pad.saveInstance();
 		LS.GlobalScene.refresh();
 	}
 

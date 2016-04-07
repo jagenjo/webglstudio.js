@@ -95,7 +95,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 
 	if(!node._show_mat)
 	{
-		inspector.addButtons(null, ["See Properties"], { callback: function(v) { 
+		inspector.addButtons(null, ["See Properties"], { skip_wchange: true, callback: function(v) { 
 			if(v == "See Properties")
 				node._show_mat = true;
 			else
@@ -109,7 +109,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 	var name = LS.getObjectClassName( material );
 	var mat_class = material.constructor;
 
-	inspector.addButton(null, "Hide Editor", { callback: function(v) { 
+	inspector.addButton(null, "Hide Editor", { skip_wchange: true, callback: function(v) { 
 		node._show_mat = false;
 		inspector.refresh();
 	}});
@@ -589,14 +589,21 @@ LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector 
 
 	inspector.widgets_per_row = 2;
 
-	inspector.addResource("Shader", material.shader, { pretitle: AnimationModule.getKeyframeCode( material, "shader" ), width: "90%", callback: function(v) { 
+	inspector.addResource("Shader", material.shader, { pretitle: AnimationModule.getKeyframeCode( material, "shader" ), width: "80%", callback: function(v) { 
 		material.shader = v; 
 		//material.processShaderCode();
 		inspector.refresh();
 	}});
 
-	inspector.addButton( null, LiteGUI.special_codes.refresh, { width: "10%", callback: function(){
-		material.processShaderCode();
+	inspector.addButtons( null, [LiteGUI.special_codes.refresh, LiteGUI.special_codes.open_folder], { skip_wchange: true, width: "20%", callback: function(v){
+		if( v == LiteGUI.htmlEncode( LiteGUI.special_codes.refresh ) )
+			material.processShaderCode();
+		else if( v == LiteGUI.htmlEncode( LiteGUI.special_codes.open_folder ) )
+		{
+			var shader_code = LS.RM.resources[ material.shader ];
+			if(shader_code)
+				CodingModule.editInstanceCode( shader_code, null, true );
+		}
 		inspector.refresh();
 	}});
 

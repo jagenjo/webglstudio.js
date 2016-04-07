@@ -557,11 +557,18 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 			});
 		}});
 
-		inspector.addButtons(null,["Add Script","Add Graph"], { callback: function(v) { 
+		inspector.addButtons(null,["Add Script","Add Graph"], { callback: function(v,evt) { 
 			if(v == "Add Script")
 			{
-				CodingModule.onNewScript( node );
-				inspector.refresh();
+				var menu = new LiteGUI.ContextualMenu( ["Inner Script","Script From File","Global Script"], { event: evt, callback: function(action) {
+					if(action == "Inner Script")
+						CodingModule.onNewScript( node );
+					else if(action == "Script From File")
+						CodingModule.onNewScript( node, "ScriptFromFile" );
+					else if(action == "Global Script")
+						CodingModule.onNewScript( node, "Global" );
+					inspector.refresh();
+				}});
 			}
 			else if(v == "Add Graph")
 				GraphModule.onNewGraph( node );

@@ -1025,6 +1025,23 @@ var LiteGUI = {
 		close: "&#10005;",
 		navicon: "&#9776;",
 		refresh: "&#8634;",
+		open_folder: "&#128194;"
+	},
+	
+	//given a html entity string it returns the equivalent unicode character
+	htmlEncode: function( html_code )
+	{
+		var e = document.createElement("div");
+		e.innerHTML = html_code;
+		return e.innerText;
+	},
+
+	//given a unicode character it returns the equivalent html encoded string
+	htmlDecode: function( unicode_character )
+	{
+		var e = document.createElement("div");
+		e.innerText = unicode_character;
+		return e.innerHTML;
 	},
 
 	/**
@@ -3405,6 +3422,14 @@ function dataURItoBlob( dataURI ) {
 			list.style.width = LiteGUI.Tabs.tabs_width + "px";
 		else
 			list.style.height = LiteGUI.Tabs.tabs_height + "px";
+
+		//allows to use the wheel to see hidden tabs
+		list.addEventListener("wheel", onMouseWheel);
+		list.addEventListener("mousewheel", onMouseWheel);
+		function onMouseWheel(e){
+			if(e.deltaY)
+				list.scrollLeft += e.deltaY;
+		}
 
 		this.list = list;
 		this.root.appendChild(this.list);
@@ -6442,10 +6467,13 @@ Inspector.onWidgetChange = function( element, name, value, options, expand_value
 			r = options.callback.call( element, value, event );
 	}
 
-	//LiteGUI.trigger( this.current_section, "wchange", value );
-	$(this.current_section).trigger("wchange",value); //used for undo //TODO: use LiteGUI.trigger
-	//LiteGUI.trigger( element, "wchange", value );
-	$(element).trigger("wchange",value); //TODO: REPLACE by LiteGUI.trigger
+	if(!options.skip_wchange)
+	{
+		//LiteGUI.trigger( this.current_section, "wchange", value );
+		$(this.current_section).trigger("wchange",value); //used for undo //TODO: use LiteGUI.trigger
+		//LiteGUI.trigger( element, "wchange", value );
+		$(element).trigger("wchange",value); //TODO: REPLACE by LiteGUI.trigger
+	}
 	if(this.onchange) 
 		this.onchange(name, value, element);
 	return r;
@@ -6704,14 +6732,16 @@ Inspector.prototype.addTextarea = function(name,value, options)
 	value = value || "";
 	var that = this;
 	this.values[name] = value;
-	;
 
 	var element = this.createWidget(name,"<span class='inputfield textarea "+(options.disabled?"disabled":"")+"'><textarea tabIndex='"+this.tab_index+"' "+(options.disabled?"disabled":"")+">"+value+"</textarea></span>", options);
 	this.tab_index++;
 	var textarea = element.querySelector(".wcontent textarea");
 	textarea.addEventListener( options.immediate ? "keyup" : "change", function(e) { 
-		Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
+		Inspector.onWidgetChange.call(that,element,name,e.target.value, options, false, e);
 	});
+	if(options.callback_keydown)
+		textarea.addEventListener( "keydown", options.callback_keydown );
+
 	if(options.height)
 		textarea.style.height = LiteGUI.sizeToCSS( options.height );
 	this.append(element,options);
@@ -7904,8 +7934,8 @@ Inspector.prototype.addButtons = function(name, value, options)
 	for(var i = 0; i < buttons.length; ++i)
 	{
 		var button = buttons[i];
-		button.addEventListener("click", function() {
-			Inspector.onWidgetChange.call(that,element,name,this.innerHTML, options);
+		button.addEventListener("click", function(evt) {
+			Inspector.onWidgetChange.call(that, element, name, this.innerHTML, options, null, evt);
 			LiteGUI.trigger( element, "wclick",this.innerHTML );
 		});
 	}

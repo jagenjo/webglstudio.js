@@ -20,7 +20,7 @@ var InterfaceModule = {
 		LiteGUI.menubar.add("Scene");
 		LiteGUI.menubar.add("Actions");
 
-		var side_panel_width = this.preferences.side_panel_width;
+		var side_panel_width = this.preferences.side_panel_width || 300;
 
 		//create a main container and split it in two (workarea: leftwork, sidebar)
 		var mainarea = new LiteGUI.Area("mainarea",{content_id:"workarea", height: "calc(100% - 30px)", autoresize: true, inmediateResize: true, minSplitSize: 200 });
@@ -30,7 +30,9 @@ var InterfaceModule = {
 		LiteGUI.add( mainarea );
 
 		LiteGUI.bind( mainarea, "split_moved", function(e){
-			InterfaceModule.preferences.side_panel_width = InterfaceModule.mainarea.getSection(1).getWidth();
+			var w = InterfaceModule.mainarea.getSection(1).getWidth();
+			if(w)
+				InterfaceModule.preferences.side_panel_width = w;
 		});
 
 		//var workarea_split = mainarea.getSection(0);

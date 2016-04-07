@@ -48,6 +48,7 @@
 			"js/modules/lab.js",
 			"js/modules/meshPainter.js",
 			"js/modules/meshTools.js",
+			"js/modules/textureTools.js",
 	 		"js/modules/animation.js",
 	 		"js/modules/undo.js",
 			"js/modules/actors.js",

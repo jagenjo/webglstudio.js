@@ -1504,7 +1504,7 @@ var LSQ = {
 	}
 };
 
-//register classes
+//register resource classes
 if(global.GL)
 {
 	LS.registerResourceClass( GL.Mesh );
@@ -2476,7 +2476,7 @@ var ResourcesManager = {
 				resource = new LS.Resource();
 
 			if(resource.setData)
-				resource.setData(data)
+				resource.setData(data, true)
 			else
 				throw("Resource without setData, cannot assign");
 
@@ -6137,7 +6137,8 @@ Material.prototype.prepareMaterial = function( scene )
 }
 
 
-LS.registerMaterialClass(Material);
+LS.registerMaterialClass( Material );
+LS.registerResourceClass( Material );
 LS.Material = Material;
 
 
@@ -7594,14 +7595,22 @@ ShaderMaterial.prototype.renderInstance = function( instance, lights, scene, ren
 	else
 		gl.disable( gl.BLEND );
 
-	//gather uniforms
+	//gather uniforms & samplers
+	var samplers = [];
 	for(var i = 0; i < this._properties.length; ++i)
 	{
 		var p = this._properties[i];
-		this._uniforms[ p.uniform ] = p.value;
+		if(p.is_texture)
+		{
+			if(p.value)
+				samplers.push(p.value);
+		}
+		else
+			this._uniforms[ p.uniform ] = p.value;
 	}
 
 	//assign
+	LS.Renderer.bindSamplers( samplers, shader );
 	shader.uniformsArray( [ scene._uniforms, camera._uniforms, this._uniforms, instance_final_uniforms ] );
 
 	//render
@@ -20662,8 +20671,12 @@ Resource.getDataToStore = function( resource )
 	else if(resource.serialize) //a json object
 	{
 		var obj = resource.serialize();
-		if(obj.preview_url) //special case...
-			delete obj.preview_url;
+		//remove inner stuff from the editor
+		delete obj.filename;
+		delete obj.fullpath;
+		delete obj.remotepath;
+		delete obj.preview_url;
+		//convert to string
 		data = JSON.stringify( obj );
 	}
 	else if(resource.data) //regular string data
@@ -20708,6 +20721,14 @@ Resource.prototype.clone = function()
 	return r;
 }
 
+Resource.prototype.getCategory = function()
+{
+	var filename = this.fullpath || this.filename;
+	var ext = LS.ResourcesManager.getExtension( filename );
+	if(ext == "js")
+		return "Script";
+	return "Data";
+}
 
 Resource.hasPreview = false; //should this resource use a preview image?
 
@@ -22671,9 +22692,11 @@ ShaderCode.prototype.processCode = function()
 	LEvent.trigger( LS.ShaderCode, "modified", this );
 }
 
-ShaderCode.prototype.setData = function(v)
+ShaderCode.prototype.setData = function(v, skip_modified_flag)
 {
 	this.code = v;
+	if(!skip_modified_flag)
+		this._modified = true;
 }
 
 ShaderCode.prototype.getData = function()
@@ -26024,7 +26047,7 @@ var Renderer = {
 		instance.render(shader);
 	},
 
-	bindSamplers: function(samplers, shader)
+	bindSamplers: function( samplers, shader )
 	{
 		var sampler_uniforms = {};
 		var slot = 0;
@@ -26040,7 +26063,7 @@ var Renderer = {
 
 			//REFACTOR THIS
 			var tex = null;
-			if(sampler.constructor === String || sampler.constructor === Texture) //old way
+			if(sampler.constructor === String || sampler.constructor === GL.Texture) //old way
 			{
 				tex = sampler;
 				sampler = null;
@@ -30797,6 +30820,7 @@ var parserOBJ = {
 			if(finalTexCoords)
 				texcoordsArray = finalTexCoords;
 			indicesArray = null;
+			max_index = 0;
 		}
 
 		//Create final mesh object
@@ -30810,7 +30834,7 @@ var parserOBJ = {
 		if (hasTex && texcoordsArray.length > 0)
 			mesh.coords = new Float32Array(texcoordsArray);
 		if (indicesArray && indicesArray.length > 0)
-			mesh.triangles = new Uint16Array(indicesArray);
+			mesh.triangles = new (support_uint && max_index > 256*256 ? Uint32Array : Uint16Array)(indicesArray);
 
 		//extra info
 		mesh.bounding = GL.Mesh.computeBounding(mesh.vertices);

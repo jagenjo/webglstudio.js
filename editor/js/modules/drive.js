@@ -541,7 +541,9 @@ var DriveModule = {
 			{
 				//update image
 				var url = DriveModule.generatePreview( resource.fullpath, true );
-				preview_image.src = url;
+				var preview_image = inspector.root.querySelector(".preview_image");
+				if(preview_image)
+					preview_image.src = url;
 				resource.preview_url = url;
 				//upload it in case is a server side file
 				DriveModule.onUpdatePreview(resource, function() {
@@ -822,7 +824,17 @@ var DriveModule = {
 		}});
 
 		widgets.addButton(null,"Continue",function(){
+			if(!folder || !filename)
+				return;
+
 			dialog.close();
+			//force extension
+			if(options.extension)
+			{
+				var ext = LS.RM.getExtension( filename );
+				if(ext != options.extension)
+					filename += options.extension;
+			}
 			if(on_complete)
 				on_complete( folder, filename );
 		});

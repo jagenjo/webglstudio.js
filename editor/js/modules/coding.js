@@ -88,8 +88,32 @@ var CodingModule = //do not change
 	//switch coding tab
 	editInstanceCode: function( instance, options, open_tab )
 	{
+		if(!instance)
+			return;
 		options = options || {};
-		var lang = options.lang || "javascript";
+
+		//is resource?
+		var filename = instance.fullpath || instance.filename;
+
+		if(!options.id && filename)
+			options.id = filename;
+
+		//compute lang
+		if(!options.lang)
+		{
+			var lang = null;
+			if(filename)
+			{
+				var ext = LS.RM.getExtension( filename );
+				if( ext == "glsl" )
+					lang = "glsl";
+				else if( ext == "js" )
+					lang = "javascript";
+			}
+			else
+				lang = "";
+			options.lang = lang;
+		}
 
 		if(open_tab)
 			this.openTab();
@@ -102,15 +126,29 @@ var CodingModule = //do not change
 		return this.coding_tabs_widget.closeInstanceTab( instance, options );
 	},
 
-	onNewScript: function( node )
+	onNewScript: function( node, type )
 	{
-		var component = new LS.Components.Script();
+		type = type || "Script";
 		node = node || SelectionModule.getSelectedNode();
 		if(!node)
 			node = LS.GlobalScene.root;
-		node.addComponent( component );
-		this.openTab();
-		this.editInstanceCode( component, { id: component.uid, title: node.id, lang: "javascript", path: component.uid, help: LS.Components.Script.coding_help });
+
+		if(type == "Script")
+		{
+			var component = new LS.Components.Script();
+			node.addComponent( component );
+			this.editInstanceCode( component, { id: component.uid, title: node.id, lang: "javascript", path: component.uid, help: LS.Components.Script.coding_help });
+			this.openTab();
+		} 
+		else if (type == "ScriptFromFile")
+		{
+			var component = new LS.Components.ScriptFromFile();
+			node.addComponent( component );
+		}
+		else if (type == "Global")
+		{
+			LiteGUI.alert("TO DO");
+		}
 	},
 
 	/*
@@ -192,14 +230,31 @@ LS.Components.Script["@inspector"] = function(component, attributes)
 LS.Components.ScriptFromFile["@inspector"] = function(component, attributes)
 {
 	attributes.widgets_per_row = 2;
-	attributes.addResource("Filename", component.filename, { callback: function(v) { 
+	attributes.addResource( "Filename", component.filename, { category: "Script", callback: function(v) { 
 		component.filename = v;
 	}});
 
 	attributes.addButton(null,"Edit Code", { callback: function() {
 		var path = component.uid;
 		if(!component.filename)
+		{
+			LiteGUI.prompt("Choose a filename", function(filename){
+				if(!filename)
+					return;
+				CodingModule.openTab();
+				var res = new LS.Resource();
+				var extension = LS.RM.getExtension(filename);
+				if(extension != "js")
+					filename = filename + ".js";
+				component.filename = filename;
+				LS.RM.registerResource(filename,res);
+				CodingModule.editInstanceCode( res, { id: res.filename, title: filename, lang: "javascript", help: LS.Components.Script.coding_help,
+					setCode: function(c) { res.setData(c); } //to force reload
+				});
+			});
 			return;
+		}
+
 		CodingModule.openTab();
 		var res = LS.ResourcesManager.load( component.filename, null, function(res){
 			CodingModule.editInstanceCode( res, { id: component.filename, title: component.filename, lang: "javascript", path: path, help: LS.Components.Script.coding_help,

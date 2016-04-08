@@ -2173,7 +2173,7 @@ DriveModule._textResourceCallback = function( fullpath, restype, options ) {
 }
 
 DriveModule.registerAssignResourceCallback(["Resource","application/javascript","text/plain","text/csv","TEXT"], DriveModule._textResourceCallback );
-DriveModule.registerAssignResourceCallback(["ShaderCode"], DriveModule._textResourceCallback );
+DriveModule.registerAssignResourceCallback(["ShaderCode","Script"], DriveModule._textResourceCallback );
 
 LiteGUI.Inspector.prototype.addFolder = function( name,value, options )
 {

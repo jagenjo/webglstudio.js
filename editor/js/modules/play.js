@@ -19,7 +19,7 @@ var PlayModule = {
 		");
 
 		LEvent.bind( LS.GlobalScene, "clear", this.onSceneStop, this);
-		RenderModule.viewport3d.addModule( PlayModule ); //capture render from square, and update and events
+		RenderModule.canvas_manager.addModule( PlayModule ); //capture render from square, and update and events
 
 		//tools
 		var container = document.createElement("div");
@@ -45,7 +45,7 @@ var PlayModule = {
 			RenderModule.render_settings.in_player = true;
 			PlayModule.inplayer = true;
 
-			//RenderModule.viewport3d.addModule(PlayModule); //capture render, update and mouse.
+			//RenderModule.canvas_manager.addModule(PlayModule); //capture render, update and mouse.
 
 			//canvas.width = canvas.width - 20;
 			//RenderModule.requestFrame();
@@ -53,7 +53,7 @@ var PlayModule = {
 		},
 		callback_leave: function() {
 			//RenderModule.render_settings.in_player = false;
-			//RenderModule.viewport3d.removeModule(PlayModule); //remove capture render, update and mouse
+			//RenderModule.canvas_manager.removeModule(PlayModule); //remove capture render, update and mouse
 			PlayModule.inplayer = false;
 			RenderModule.appendViewportTo(null);
 		}});

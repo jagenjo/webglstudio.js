@@ -31,49 +31,49 @@ var CORE = {
 		}
 		this.config = config;
 
-		//if inline modules
-		if( config.modules && config.modules.constructor === Array )
+		//if inline imports
+		if( config.imports && config.imports.constructor === Array )
 		{
-			this.loadModules( config );
+			this.loadImports( config );
 			return;
 		}
 
 		//Load modules list from modules.json
 		LiteGUI.request({
-			url: config.modules || "modules.json",
+			url: config.imports || "imports.json",
 			dataType:"json",
-			success: this.loadModules.bind(this)
+			success: this.loadImports.bind(this)
 		});
 	},
 
 	//Loads all the files ***********************
-	loadModules: function( modules_info )
+	loadImports: function( imports_info )
 	{
-		if(!modules_info || !modules_info.modules)
+		if(!imports_info || !imports_info.imports)
 		{
-			LiteGUI.alert("modules.json not found");
-			throw("modules file missing");
+			LiteGUI.alert("imports.json not found");
+			throw("imports file missing");
 		}
 
-		var modules_list = modules_info.modules;
-		this.config.modules = modules_info;
+		var imports_list = imports_info.imports;
+		this.config.imports = imports_info;
 
 		//intro loading text
-		this.log("Loading modules...");
+		this.log("Loading imports...");
 		var num = 0;
-		for(var i in modules_list)
+		for(var i in imports_list)
 		{
-			var module_name = modules_list[i];
-			module_name = module_name.split("/").join("<span class='foldername-slash'>/</span>");
-			CORE.log( "<span id='msg-module-"+ (num++) + "' class='tinybox'></span> <span class='name'>" + module_name + "</span>" );
+			var import_name = imports_list[i];
+			import_name = import_name.split("/").join("<span class='foldername-slash'>/</span>");
+			CORE.log( "<span id='msg-import-"+ (num++) + "' class='tinybox'></span> <span class='name'>" + import_name + "</span>" );
 		}
 
-		LiteGUI.requireScript( modules_list, onReady, onError, onProgress );
+		LiteGUI.requireScript( imports_list, onReady, onError, onProgress );
 
 		//one module loaded
 		function onProgress( name, num )
 		{
-			var elem = document.querySelector( "#msg-module-" + num + ".tinybox" );
+			var elem = document.querySelector( "#msg-import-" + num + ".tinybox" );
 			if(elem)
 				elem.classList.add("ok");
 		}
@@ -81,11 +81,11 @@ var CORE = {
 		//one module loaded
 		function onError(err, name, num)
 		{
-			var box = document.querySelector( "#msg-module-" + num + ".tinybox");
+			var box = document.querySelector( "#msg-import-" + num + ".tinybox");
 			var line = box.parentNode;
 			line.classList.add("error");
 			box.classList.add("error");
-			console.error("Error loading module: " + line.querySelector(".name").innerHTML );
+			console.error("Error loading import: " + line.querySelector(".name").innerHTML );
 		}
 
 		function onReady()
@@ -94,7 +94,7 @@ var CORE = {
 		}
 	},
 
-	//all modules loaded
+	//all imports loaded
 	launch: function()
 	{
 		//remove loading info
@@ -103,10 +103,10 @@ var CORE = {
 		//launch LiteGUI
 		LiteGUI.init(); 
 
-		//load local user preferences for every module
+		//load local user preferences for every systemo module
 		this.loadUserPreferences();
 
-		//Init all modules
+		//Init all system modules
 		this.initModules();
 
 		//some modules may need to be unloaded
@@ -118,17 +118,7 @@ var CORE = {
 		this.addScene( LS.GlobalScene );
 		this.selectScene( LS.GlobalScene );
 
-		//If you launch with a loading url
-		/* UNSAFE
-		if( LiteGUI.getUrlVar("session") )
-			SceneStorageModule.loadLocalScene( LiteGUI.getUrlVar("session"));
-		else if( LiteGUI.getUrlVar("server") )
-			Scene.loadScene( ResourcesManager.path + "/scenes/" + LiteGUI.getUrlVar("server") );
-		else if( LiteGUI.getUrlVar("scene") )
-			Scene.loadScene( LiteGUI.getUrlVar("scene") );
-		else if(window.SceneStorageModule && 0)
-			SceneStorageModule.loadLocalScene("test");
-		*/
+		LiteGUI.trigger( CORE, "system_ready" );
 	},
 
 	// Modules system *******************************
@@ -137,23 +127,7 @@ var CORE = {
 		var catch_exceptions = false;
 
 		//pre init
-		for(var i in this.Modules)
-			if (this.Modules[i].preInit)
-			{
-				if(!catch_exceptions)
-				{
-					this.Modules[i].preInit();
-					continue;
-				}
-				try
-				{
-					this.Modules[i].preInit();
-				}
-				catch (err)
-				{
-					console.error(err);
-				}
-			}
+		LiteGUI.trigger( CORE, "modules_preinit" );
 
 		//init
 		for(var i in this.Modules)
@@ -178,25 +152,7 @@ var CORE = {
 			}
 
 		//post init
-		for(var i in this.Modules)
-			if (this.Modules[i].postInit)
-			{
-				if(!catch_exceptions)
-				{
-					this.Modules[i].postInit();
-				}
-				else
-				{
-					try
-					{
-						this.Modules[i].postInit();
-					}
-					catch (err)
-					{
-						console.error(err);
-					}
-				}
-			}
+		LiteGUI.trigger( CORE, "modules_postinit" );
 
 		this._modules_initialized = true;
 	},

@@ -14,7 +14,8 @@ var selectTool = {
 
 	onRegister: function()
 	{
-		RenderModule.viewport3d.addModule(this);
+		//RenderModule.canvas_manager.addModule(this);
+		ToolsModule.addBackgroundTool(this);
 	},
 
 	mousedown: function(e) {
@@ -61,27 +62,19 @@ var selectTool = {
 		
 		this._got_mousedown = false;
 
+		if(e.button != 0)
+			return;
+
 		var now = new Date().getTime();
 		var dist = Math.sqrt( (e.canvasx - this.click_pos[0])<<2 + (e.canvasy - this.click_pos[1])<<2 );
+
 		if (e.click_time < this.click_time && dist < this.click_dist) //fast click
 		{
-			var instance_info = LS.Picking.getInstanceAtCanvasPosition( e.canvasx, e.canvasy, ToolUtils.getCamera() );
+			var instance_info = LS.Picking.getInstanceAtCanvasPosition( e.canvasx, e.canvasy, ToolUtils.getCamera(e) );
 			if(!instance_info)
 				return false;
 
-			if(e.button == 2)
-			{
-				var object = instance_info.instance || instance_info;
-				if(object)
-				{
-					if( object.constructor === LS.SceneNode )
-						EditorModule.showNodeContextualMenu( object, e );
-					else if( object.constructor.is_component )
-						EditorModule.showComponentContextualMenu( object, e );
-				}
-				return true;
-			}
-			else if(e.shiftKey)
+			if(e.shiftKey)
 			{
 				if( SelectionModule.isSelected( instance_info ) )
 					SelectionModule.removeFromSelection( instance_info );
@@ -90,8 +83,6 @@ var selectTool = {
 			}
 			else
 				SelectionModule.setSelection( instance_info );
-
-			//console.log("found: ", instance_info );
 		}
 
 		return false;

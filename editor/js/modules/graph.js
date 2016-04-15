@@ -23,7 +23,7 @@ var GraphModule = {
 			//GraphModule.graphcanvas.pause_rendering = true;
 		}});
 
-		RenderModule.viewport3d.addModule(this);
+		RenderModule.canvas_manager.addModule( this );
 
 		LiteGraph.node_images_path = this.litegraph_path + "/nodes_data/";
 
@@ -601,7 +601,8 @@ GraphModule.showGraphComponent = function(component, inspector)
 			var type = n.properties.type;
 
 			inspector.add(type, n.properties.name, n.properties.value, { pretitle: AnimationModule.getKeyframeCode( component, n.properties.name ), min: n.properties.min, max: n.properties.max, step:0.01, node:n, callback: function(v) {
-				this.options.node.properties.value = v;
+				var graph_node = this.options.node;
+				graph_node.properties.value = v;
 				if(component.on_event == "render")
 					component._graph.runStep(1);
 				LS.GlobalScene.refresh();

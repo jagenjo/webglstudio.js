@@ -22,7 +22,7 @@ var CubemapGenerator = {
 			return;
 		}
 
-		//RenderModule.viewport3d.addModule( CubemapGenerator );
+		//RenderModule.canvas_manager.addModule( CubemapGenerator );
 
 		var dialog = new LiteGUI.Dialog( "dialog_cubemap", { title:"Cubemap generator", parent:"#visor", close: true, minimize: true, width: 300, min_height: 160, scroll: false, draggable: true});
 		dialog.show('fade');
@@ -30,7 +30,7 @@ var CubemapGenerator = {
 		dialog.on_close = function(){ 
 
 			CubemapGenerator.dialog = null;
-			//RenderModule.viewport3d.removeModule( CubemapGenerator );
+			//RenderModule.canvas_manager.removeModule( CubemapGenerator );
 		}
 		this.dialog = dialog;
 
@@ -395,7 +395,7 @@ var CubemapGenerator = {
 				throw("No shader");
 
 			cubemap_texture.toViewport( shader );
-			//shader.uniforms({color:[1,1,1,1], texture: 0}).draw( RenderModule.viewport3d.screen_plane );
+			//shader.uniforms({color:[1,1,1,1], texture: 0}).draw( RenderModule.canvas_manager.screen_plane );
 
 			var ctx = canvas.getContext("2d");
 			var pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);

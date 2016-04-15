@@ -14,6 +14,7 @@ var ToolsModule = {
 	tool: 'select',
 
 	current_tool: null,
+	background_tools: [],
 	tools: {},
 	buttons: {},
 
@@ -36,7 +37,7 @@ var ToolsModule = {
 
 		//initGUI
 		//place to put all the icons of the tools
-		RenderModule.viewport3d.addModule(this);
+		RenderModule.canvas_manager.addModule(this);
 		this.createToolbar();
 	},
 
@@ -48,6 +49,12 @@ var ToolsModule = {
 	registerButton: function( button )
 	{
 		this.buttons[button.name] = button;
+	},
+
+	// a tool that is always active (used for selection tool)
+	addBackgroundTool: function( tool )
+	{
+		this.background_tools.push( tool );
 	},
 
 	keydown: function(e)
@@ -77,11 +84,11 @@ var ToolsModule = {
 			if(this.current_tool.module) 
 			{
 				if(!this.current_tool.keep_module)
-					RenderModule.viewport3d.removeModule(this.current_tool.module);
+					RenderModule.canvas_manager.removeModule(this.current_tool.module);
 				this.current_tool.module.enabled = false;
 			}
 			else if(!this.current_tool.keep_module)
-				RenderModule.viewport3d.removeModule(this.current_tool);
+				RenderModule.canvas_manager.removeModule(this.current_tool);
 			this.current_tool.enabled = false;
 			if (this.current_tool.onDisable)
 				this.current_tool.onDisable();
@@ -102,10 +109,10 @@ var ToolsModule = {
 
 		if(tool.module)
 		{ 
-			RenderModule.viewport3d.addModule(tool.module);
+			RenderModule.canvas_manager.addModule(tool.module);
 			tool.module.enabled = true;
 		}
-		else RenderModule.viewport3d.addModule(tool);
+		else RenderModule.canvas_manager.addModule(tool);
 		this.current_tool.enabled = true;
 
 		if (this.current_tool.onEnable)
@@ -148,17 +155,47 @@ var ToolsModule = {
 			this.current_tool.renderEditor( camera );
 	},
 
+	mouseevent: function(e)
+	{
+		if(this.background_tools.length)
+		{
+			for(var i = 0; i < this.background_tools.length; ++i)
+			{
+				var tool = this.background_tools[i];
+				if(tool[e.type])
+					if( tool[e.type](e) )
+						break;
+			}
+		}
+	},
+
+	mousedown: function(e)
+	{
+		return this.mouseevent(e);
+	},
+
+	mouseup: function(e)
+	{
+		return this.mouseevent(e);
+	},
+
 	mousemove: function(e)
 	{
-		if(e.dragging)
-			return;
+		//when the mouse is not dragging we update active camera
+		if(!e.dragging)
+		{
+			//active camera is the camera which viewport is below the mouse
+			var camera = RenderModule.getCameraUnderMouse(e);
+			if(!camera || camera == this._active_camera)
+				return;
 
-		var camera = RenderModule.getCameraUnderMouse(e);
-		if(!camera || camera == this._active_camera)
-			return;
-
-		this._active_camera = camera;
-		LS.GlobalScene.refresh();
+			this._active_camera = camera;
+			LS.GlobalScene.refresh();
+		}
+		else
+		{
+			return this.mouseevent(e);
+		}
 	},
 
 	createToolbar: function()

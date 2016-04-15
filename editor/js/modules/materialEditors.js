@@ -289,7 +289,7 @@ EditorModule.showMaterialProperties = function( material, inspector, node, force
 
 
 
-LS.MaterialClasses.Material["@inspector"] = function( material, inspector )
+LS.Material["@inspector"] = function( material, inspector )
 {
 	inspector.addCombo("Shader", material.shader_name || "default", { values: LS.Material.available_shaders, callback: function(v) { 
 		if(!material) return;
@@ -301,6 +301,7 @@ LS.MaterialClasses.Material["@inspector"] = function( material, inspector )
 	}});
 
 	inspector.addTitle("Properties");
+	inspector.addColor("Color", material.color, { pretitle: AnimationModule.getKeyframeCode( material, "color" ), callback: function(color) { material.color.set(color); } });
 	inspector.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { 
 		material.opacity = value; 
 		if(material.opacity < 1 && material.blend_mode == LS.Blend.NORMAL)
@@ -316,43 +317,40 @@ LS.MaterialClasses.Material["@inspector"] = function( material, inspector )
 	inspector.widgets_per_row = 1;
 
 	//inspector.addCheckbox("two-sided", node.flags.two_sided, { callback: function(v) { node.flags.two_sided = v; } });
-	inspector.addSeparator();
-	inspector.addColor("Color", material.color, { pretitle: AnimationModule.getKeyframeCode( material, "color" ), callback: function(color) { material.color.set(color); } });
-	inspector.addSlider("Specular", material.specular_factor, { pretitle: AnimationModule.getKeyframeCode( material, "specular_factor" ), min: 0, step:0.01, max:2, callback: function (value) { material.specular_factor = value; } });
-	inspector.addSlider("Spec. gloss", material.specular_gloss, { pretitle: AnimationModule.getKeyframeCode( material, "specular_gloss" ), min:1,max:20, callback: function (value) { material.specular_gloss = value; } });
-
-
-	inspector.beginGroup("Textures",{title:true});
 
 	var texture_channels = material.getTextureChannels();
 
-	for(var i in texture_channels)
+	if(texture_channels && texture_channels.length)
 	{
-		var channel = texture_channels[i];
-		var tex = "";
-		var texture_info = material.getTextureSampler(channel);
-		if( texture_info )
+		inspector.addSeparator();
+		inspector.beginGroup("Textures",{title:true});
+		for(var i in texture_channels)
 		{
-			var texture = texture_info.texture;
-			if(typeof( texture ) == "string")
-				tex = texture;
-			else
-				tex = "@Instance";
+			var channel = texture_channels[i];
+			var tex = "";
+			var texture_info = material.getTextureSampler(channel);
+			if( texture_info )
+			{
+				var texture = texture_info.texture;
+				if(typeof( texture ) == "string")
+					tex = texture;
+				else
+					tex = "@Instance";
+			}
+
+			inspector.addStringButton(channel, tex, { channel: channel, callback: function(filename) {
+				if(!filename)
+					material.setTexture(this.options["channel"], null);
+				else
+					material.setTexture(this.options["channel"], filename);
+
+				LS.GlobalScene.refresh();
+			},callback_button: function(filename) { 
+				EditorModule.showTextureSamplerInfo( material, this.options.channel );
+			}});
 		}
-
-		inspector.addStringButton(channel, tex, { channel: channel, callback: function(filename) {
-			if(!filename)
-				material.setTexture(this.options["channel"], null);
-			else
-				material.setTexture(this.options["channel"], filename);
-
-			LS.GlobalScene.refresh();
-		},callback_button: function(filename) { 
-			EditorModule.showTextureSamplerInfo( material, this.options.channel );
-		}});
+		inspector.endGroup();
 	}
-
-	inspector.endGroup();
 
 	//inspector.addTitle("Actions");
 	//inspector.addButtons(null,["Make Global","Copy","Paste"],{});

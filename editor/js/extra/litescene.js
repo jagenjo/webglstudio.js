@@ -1546,6 +1546,18 @@ LS.STOPPED = 0;
 LS.RUNNING = 1;
 LS.PAUSED = 2;
 
+//types
+LS.TYPES = {
+	BOOLEAN: "boolean",
+	NUMBER : "number",
+	STRING : "string",
+	VEC2 : "vec2",
+	VEC3 : "vec3",
+	VEC4 : "vec3",
+	COLOR : "color",
+	TEXTURE : "texture"
+};
+
 var Network = {
 
 	default_dataType: "arraybuffer",
@@ -2319,7 +2331,10 @@ var ResourcesManager = {
 			return; //nothing to load, just waiting for the callback to process it
 
 		if(!this.allow_base_files && url.indexOf("/") == -1)
+		{
+			console.warn("Cannot load resource, filename has no folder and LS.ResourcesManager.allow_base_files is set to false: ", url );
 			return; //this is not a valid file to load
+		}
 
 		//otherwise we have to load it
 		//set the callback
@@ -5343,12 +5358,9 @@ GL.Mesh.prototype.toBinary = function()
 
 
 //Material class **************************
-/* Warning: a material is not a component, because it can be shared by multiple nodes */
-
 /**
-* Material class contains all the info about how a mesh should be rendered, more in a highlevel format.
-* Most of the info is Colors, factors and Textures but it can also specify a shader or some flags.
-* Materials could be shared among different objects.
+* A Material is a class in charge of defining how to render an object, there are several classes for Materials
+* but this class is more like a template for other material classes.
 * @namespace LS
 * @class Material
 * @constructor
@@ -5363,7 +5375,6 @@ function Material(o)
 	this._color = new Float32Array([1.0,1.0,1.0,1.0]);
 	this.createProperty( "diffuse", new Float32Array([1.0,1.0,1.0]), "color" );
 	this.blend_mode = LS.Blend.NORMAL;
-	this._specular_data = vec2.fromValues( 0.1, 10.0 );
 
 	//flags
 	this.alpha_test = false;
@@ -5386,18 +5397,6 @@ function Material(o)
 	Object.defineProperty( this, 'opacity', {
 		get: function() { return this._color[3]; },
 		set: function(v) { this._color[3] = v; },
-		enumerable: true
-	});
-
-	Object.defineProperty( this, 'specular_factor', {
-		get: function() { return this._specular_data[0]; },
-		set: function(v) { this._specular_data[0] = v; },
-		enumerable: true
-	});
-
-	Object.defineProperty( this, 'specular_gloss', {
-		get: function() { return this._specular_data[1]; },
-		set: function(v) { this._specular_data[1] = v; },
 		enumerable: true
 	});
 
@@ -5470,7 +5469,7 @@ Material.TEXTURE_COORDINATES = [ Material.COORDS_UV0, Material.COORDS_UV1, Mater
 Material.DEFAULT_UVS = { "normal":Material.COORDS_UV0, "displacement":Material.COORDS_UV0, "environment": Material.COORDS_POLAR_REFLECTED, "irradiance" : Material.COORDS_POLAR };
 
 Material.available_shaders = ["default","global","lowglobal","phong_texture","flat","normal","phong","flat_texture","cell_outline"];
-Material.texture_channels = [ Material.COLOR_TEXTURE, Material.OPACITY_TEXTURE, Material.AMBIENT_TEXTURE, Material.SPECULAR_TEXTURE, Material.EMISSIVE_TEXTURE, Material.ENVIRONMENT_TEXTURE ];
+Material.texture_channels = []; //base material doesnt support any texture
 
 Material.prototype.applyToRenderInstance = function(ri)
 {
@@ -5585,11 +5584,10 @@ Material.prototype.fillUniforms = function( scene, options )
 	uniforms.u_material_color = this._color;
 	uniforms.u_ambient_color = scene.info ? scene.info.ambient_color : this._diffuse;
 	uniforms.u_diffuse_color = this._diffuse;
-
-	uniforms.u_specular = this._specular_data;
 	uniforms.u_texture_matrix = this.uvs_matrix;
 
-	uniforms.u_reflection = this.reflection_factor;
+	uniforms.u_specular = vec2.create([1,50]);
+	uniforms.u_reflection = 0.0;
 
 	//iterate through textures in the material
 	for(var i in this.textures) 
@@ -5694,8 +5692,6 @@ Material.prototype.getProperties = function()
 		color:"vec3",
 		opacity:"number",
 		blend_mode: "number",
-		specular_factor:"number",
-		specular_gloss:"number",
 		alpha_test:"boolean",
 		alpha_test_shadows:"boolean",
 		uvs_matrix:"mat3"
@@ -6137,7 +6133,7 @@ Material.prototype.prepareMaterial = function( scene )
 }
 
 
-LS.registerMaterialClass( Material );
+//LS.registerMaterialClass( Material );
 LS.registerResourceClass( Material );
 LS.Material = Material;
 
@@ -6151,7 +6147,7 @@ LS.Material = Material;
 * @namespace LS
 * @class StandardMaterial
 * @constructor
-* @param {String} object to configure from
+* @param {Object} object [optional] to configure from
 */
 
 function StandardMaterial(o)
@@ -6165,6 +6161,7 @@ function StandardMaterial(o)
 	//this.emissive = new Float32Array([0.0,0.0,0.0]);
 	this.backlight_factor = 0;
 
+	this._specular_data = vec2.fromValues( 0.1, 10.0 );
 	this.specular_ontop = false;
 	this.reflection_factor = 0.0;
 	this.reflection_fresnel = 1.0;
@@ -6215,6 +6212,19 @@ Object.defineProperty( StandardMaterial.prototype, 'extra_color', {
 	set: function(v) { this._extra_data.set( v ); },
 	enumerable: true
 });
+
+Object.defineProperty( StandardMaterial.prototype, 'specular_factor', {
+	get: function() { return this._specular_data[0]; },
+	set: function(v) { this._specular_data[0] = v; },
+	enumerable: true
+});
+
+Object.defineProperty( StandardMaterial.prototype, 'specular_gloss', {
+	get: function() { return this._specular_data[1]; },
+	set: function(v) { this._specular_data[1] = v; },
+	enumerable: true
+});
+
 
 
 StandardMaterial.DETAIL_TEXTURE = "detail";
@@ -6449,6 +6459,8 @@ StandardMaterial.prototype.setProperty = function(name, value)
 	switch(name)
 	{
 		//numbers
+		case "specular_factor":
+		case "specular_gloss":
 		case "backlight_factor":
 		case "reflection_factor":
 		case "reflection_fresnel":
@@ -6499,29 +6511,31 @@ StandardMaterial.prototype.getProperties = function()
 
 	//add some more
 	o.merge({
-		shader_name: "string",
-		backlight_factor:"number",
-		reflection_factor:"number",
-		reflection_fresnel:"number",
-		velvet_exp:"number",
+		shader_name:  LS.TYPES.STRING,
+		specular_factor: LS.TYPES.NUMBER,
+		specular_gloss: LS.TYPES.NUMBER,
+		backlight_factor: LS.TYPES.NUMBER,
+		reflection_factor: LS.TYPES.NUMBER,
+		reflection_fresnel: LS.TYPES.NUMBER,
+		velvet_exp: LS.TYPES.NUMBER,
 
-		normalmap_factor:"number",
-		displacementmap_factor:"number",
-		extra_factor:"number",
-		extra_surface_shader_code:"string",
+		normalmap_factor: LS.TYPES.NUMBER,
+		displacementmap_factor: LS.TYPES.NUMBER,
+		extra_factor: LS.TYPES.NUMBER,
+		extra_surface_shader_code: LS.TYPES.STRING,
 
-		ambient:"vec3",
-		emissive:"vec3",
-		velvet:"vec3",
-		extra_color:"vec3",
-		detail_factor:"number",
-		detail_scale:"vec2",
+		ambient: LS.TYPES.VEC3,
+		emissive: LS.TYPES.VEC3,
+		velvet: LS.TYPES.VEC3,
+		extra_color: LS.TYPES.VEC3,
+		detail_factor: LS.TYPES.NUMBER,
+		detail_scale: LS.TYPES.VEC2,
 
-		specular_ontop:"boolean",
-		normalmap_tangent:"boolean",
-		reflection_specular:"boolean",
-		use_scene_ambient:"boolean",
-		velvet_additive:"boolean"
+		specular_ontop: LS.TYPES.BOOLEAN,
+		normalmap_tangent: LS.TYPES.BOOLEAN,
+		reflection_specular: LS.TYPES.BOOLEAN,
+		use_scene_ambient: LS.TYPES.BOOLEAN,
+		velvet_additive: LS.TYPES.BOOLEAN
 	});
 
 	return o;
@@ -6548,22 +6562,22 @@ SurfaceMaterial.prototype.getPropertyInfoFromPath = function( path )
 		case "displacementmap_factor":
 		case "extra_factor":
 		case "detail_factor":
-			type = "number"; break;
+			type = LS.TYPES.NUMBER; break;
 		case "extra_surface_shader_code":
-			type = "string"; break;
+			type = LS.TYPES.STRING; break;
 		case "ambient":
 		case "emissive":
 		case "velvet":
 		case "extra_color":
-			type = "vec3"; break;
+			type = LS.TYPES.VEC3; break;
 		case "detail_scale":
-			type = "vec2"; break;
+			type = LS.TYPES.VEC2; break;
 		case "specular_ontop":
 		case "normalmap_tangent":
 		case "reflection_specular":
 		case "use_scene_ambient":
 		case "velvet_additive":
-			type = "boolean"; break;
+			type = LS.TYPES.BOOLEAN; break;
 		default:
 			return null;
 	}
@@ -7381,7 +7395,15 @@ SurfaceMaterial.prototype.getResources = function (res)
 
 LS.registerMaterialClass( SurfaceMaterial );
 LS.SurfaceMaterial = SurfaceMaterial;
-/* This material is aimed to use your own shader instead of using the global one */
+/*
+
+/**
+* ShaderMaterial allows to use your own shader from scratch, but you loose some of the benefits of using the dynamic shader system of LS
+* @namespace LS
+* @class ShaderMaterial
+* @constructor
+* @param {Object} object [optional] to configure from
+*/
 function ShaderMaterial( o )
 {
 	Material.call( this, null );
@@ -7425,41 +7447,16 @@ Object.defineProperty( ShaderMaterial.prototype, "properties", {
 	}
 });
 
-/*
-ShaderMaterial.prototype.serialize = function()
-{
-	var o = LS.cloneObject(this);
-	o.material_class = LS.getObjectClassName(this);
-	o.properties = LS.cloneObject( this._properties );
-	return o;
-}
-*/
-
-/*
-ShaderMaterial.prototype.configure = function( o )
-{
-	if( Material.prototype.setProperty.call(this,name,value) )
-		return true;
-
-	this._shader = o.shader;
-	if(o.properties)
-	{
-		this._properties = o.properties;
-		this._properties_by_name = {};
-		for(var i in this._properties)
-			this._properties_by_name[ this._properties[i].name ] = this._properties[i];
-	}
-	this.processShaderCode();
-}
-*/
-
-ShaderMaterial.prototype.createUniform = function(name, uniform, value, type, options )
+ShaderMaterial.prototype.createUniform = function( name, uniform, type, value, options )
 {
 	if(!name || !uniform)
 		throw("parameter missing in createUniform");
 
-	value = value || 0;
 	type = type || "Number";
+	value = value || 0;
+
+	if( type.constructor !== String )
+		throw("type must be string");
 
 	if(value && value.length)
 		value = new Float32Array( value );//cast them always
@@ -8694,6 +8691,6749 @@ Component.addExtraMethods = function( component )
 
 
 LS.Component = Component;
+
+/**
+* This class contains all the info about a resource and it works as a template for any resource class
+* Keep in mind that there are many resource classes like Meshes or Textures that dont inherit from this class.
+* This class is used mainly to generic file resources like text files (scripts, csvs, etc)
+*
+* @class Resource
+* @constructor
+*/
+
+function Resource()
+{
+	this.filename = null; //name of file without folder or path
+	this.fullpath = null; //contains the unique name as is to be used to fetch it by the resources manager
+	this.remotepath = null; //the string to fetch this resource in internet (local resources do not have this name)
+	this._data = null;
+	//this.type = 0;
+}
+
+//Resource.DATA = 1;
+//Resource.SCRIPT = 2;
+
+Object.defineProperty( Resource.prototype, "data", {
+	set: function(v){ 
+		this._data = v;
+		this._modified = true;
+	},
+	get: function() { 
+		return this._data;
+	},
+	enumerable: true
+});
+
+//makes this resource available 
+Resource.prototype.register = function()
+{
+	LS.ResourcesManager.registerResource( this.fullpath || this.filename, this );
+}
+
+Object.defineProperty( Resource.prototype, "uid", { 
+	get: function(){ return this.fullpath || this.filename },
+	set: function(v){},
+	enumerable: true
+});
+
+/**
+* Returns an object with a representation of the resource internal data
+* The order to obtain that object is:
+* 0. checks if getDataToStore function in resource
+* 1. test for _original_file (File or Blob)
+* 2. test for _original_data (ArrayBuffer)
+* 3. toBinary() (ArrayBuffer)
+* 4. toBlob() (Blob)
+* 5. toBase64() (String)
+* 6. serialize() (Object in JSON format)
+* 7. data property 
+* 8. JSON.stringify(...)
+*
+* @method Resource.getDataToStore
+* @param {Object} resource 
+* @return {Object} it has two fields: data and encoding
+*/
+Resource.getDataToStore = function( resource )
+{
+	var data = null;
+	var encoding = "text";
+	var extension = "";
+
+	//get the data
+	if (resource.getDataToStore) //function
+	{
+		data = resource.getDataToStore();
+		if(data && data.constructor == ArrayBuffer)
+			encoding = "binary";
+	}
+	else if (resource._original_file) //file
+	{
+		data = resource._original_file;
+		if(data && data.constructor !== File && data.constructor !== Blob)
+			console.warn("Resource._original_file is not File or Blob");
+		encoding = "file";
+	}
+	else if( resource._original_data ) //file in ArrayBuffer format
+	{
+		data = resource._original_data;
+		if( data && data.constructor === ArrayBuffer )
+			encoding = "binary";
+	}
+	else if(resource.toBinary) //a function to compute the ArrayBuffer format
+	{
+		data = resource.toBinary();
+		encoding = "binary";
+		extension = "wbin";
+	}
+	else if(resource.toBlob) //a blob (Canvas should have this)
+	{
+		data = resource.toBlob();
+		encoding = "file";
+	}
+	else if(resource.toBase64) //a base64 string
+	{
+		data = resource.toBase64();
+		encoding = "base64";
+	}
+	else if(resource.serialize) //a json object
+	{
+		var obj = resource.serialize();
+		//remove inner stuff from the editor
+		delete obj.filename;
+		delete obj.fullpath;
+		delete obj.remotepath;
+		delete obj.preview_url;
+		//convert to string
+		data = JSON.stringify( obj );
+	}
+	else if(resource.data) //regular string data
+		data = resource.data;
+	else
+		data = JSON.stringify( resource );
+
+	if(data.buffer && data.buffer.constructor == ArrayBuffer)
+		data = data.buffer; //store the data in the arraybuffer
+
+	return { data:data, encoding: encoding, extension: extension };
+}
+
+//used in the coding pad to assign content to generic text files
+Resource.prototype.getData = function()
+{
+	return this._data;
+}
+
+Resource.prototype.setData = function( v, skip_modified_flag )
+{
+	//remove old file
+	if( this._original_data )
+		this._original_data = null;
+	this._data = v;
+	if(!skip_modified_flag)
+		this._modified = true;
+}
+
+Resource.prototype.getDataToStore = function()
+{
+	var data = this.data || "";
+	if(data.constructor === Object )
+		data = JSON.stringify( data );
+	return data;
+}
+
+Resource.prototype.clone = function()
+{
+	var r = new LS.Resource();
+	r._data = this._data;
+	return r;
+}
+
+Resource.prototype.getCategory = function()
+{
+	var filename = this.fullpath || this.filename;
+	var ext = LS.ResourcesManager.getExtension( filename );
+	if(ext == "js")
+		return "Script";
+	return "Data";
+}
+
+Resource.hasPreview = false; //should this resource use a preview image?
+
+LS.Resource = Resource;
+LS.registerResourceClass( Resource );
+
+//Interpolation methods
+LS.NONE = 0;
+LS.LINEAR = 1;
+LS.TRIGONOMETRIC = 2;
+LS.BEZIER = 3;
+LS.SPLINE = 4;
+
+/**
+* An Animation is a resource that contains samples of properties over time, similar to animation curves
+* Values could be associated to an specific node.
+* Data is contained in tracks
+*
+* @class Animation
+* @namespace LS
+* @constructor
+*/
+
+function Animation(o)
+{
+	this.name = "";
+	this.takes = {}; //packs of tracks
+	if(o)
+		this.configure(o);
+}
+
+Animation.DEFAULT_SCENE_NAME = "@scene";
+
+Animation.prototype.createTake = function( name, duration )
+{
+	var take = new Animation.Take();
+	take.name = name;
+	take.duration = duration || 0;
+	this.addTake( take );
+	return take;
+}
+
+Animation.prototype.addTake = function(take)
+{
+	this.takes[ take.name ] = take;
+	return take;
+}
+
+Animation.prototype.getTake = function( name )
+{
+	return this.takes[ name ];
+}
+
+Animation.prototype.addTrackToTake = function(takename, track)
+{
+	var take = this.takes[ takename ];
+	if(!take)
+		take = this.createTake( takename );
+	take.addTrack( track );
+}
+
+
+Animation.prototype.configure = function(data)
+{
+	if(data.name)
+		this.name = data.name;
+
+	if(data.takes)
+	{
+		this.takes = {};
+		for(var i in data.takes)
+		{
+			var take = new LS.Animation.Take( data.takes[i] );
+			if(!take.name)
+				console.warn("Take without name");
+			else
+			{
+				this.addTake( take );
+				take.loadResources(); //load associated resources
+			}
+		}
+	}
+}
+
+Animation.prototype.serialize = function()
+{
+	return LS.cloneObject(this, null, true);
+}
+
+Animation.fromBinary = function( data )
+{
+	if(data.constructor == ArrayBuffer)
+		data = WBin.load(data, true);
+
+	var o = data["@json"];
+	for(var i in o.takes)
+	{
+		var take = o.takes[i];
+		for(var j in take.tracks)
+		{
+			var track = take.tracks[j];
+			var name = "@take_" + i + "_track_" + j;
+			if( data[name] )
+				track.data = data[name];
+		}
+	}
+
+	return new LS.Animation( o );
+}
+
+Animation.prototype.toBinary = function()
+{
+	var o = {};
+	var tracks_data = [];
+
+	//we need to remove the bin data to generate the JSON
+	for(var i in this.takes)
+	{
+		var take = this.takes[i];
+		for(var j in take.tracks)
+		{
+			var track = take.tracks[j];
+			track.packData(); //reduce storage space and speeds up loading
+
+			if(track.packed_data)
+			{
+				var bindata = track.data;
+				var name = "@take_" + i + "_track_" + j;
+				o[name] = bindata;
+				track.data = null;
+				tracks_data.push( bindata );
+			}
+		}
+	}
+
+	//create the binary
+	o["@json"] = LS.cloneObject(this, null, true);
+	var bin = WBin.create(o, "Animation");
+
+	//restore the bin data state in this instance
+	for(var i in this.takes)
+	{
+		var take = this.takes[i];
+		for(var j in take.tracks)
+		{
+			var track = take.tracks[j];
+			var name = "@take_" + i + "_track_" + j;
+			if(o[name])
+				track.data = o[name];
+		}
+	}
+
+	return bin;
+}
+
+//Used when the animation tracks use UIDs instead of node names
+//to convert the track locator to node names, so they can be reused between nodes in the same scene
+Animation.prototype.convertIDstoNames = function( use_basename, root )
+{
+	var num = 0;
+	for(var i in this.takes)
+	{
+		var take = this.takes[i];
+		num += take.convertIDstoNames( use_basename, root );
+	}
+	return num;
+}
+
+Animation.prototype.optimizeTracks = function()
+{
+	var num = 0;
+	for(var i in this.takes)
+	{
+		var take = this.takes[i];
+		num += take.optimizeTracks();
+	}
+	return num;
+}
+
+
+LS.Classes["Animation"] = LS.Animation = Animation;
+
+/** Represents a set of animations **/
+function Take(o)
+{
+	this.name = null;
+	this.tracks = [];
+	this.duration = 10;
+	
+	if(o)
+		this.configure(o);
+
+}
+
+Take.prototype.configure = function( o )
+{
+	if( o.name )
+		this.name = o.name;
+	if( o.tracks ) 
+	{
+		this.tracks = []; //clear
+		for(var i in o.tracks)
+		{
+			var track = new LS.Animation.Track( o.tracks[i] );
+			this.addTrack( track );
+		}
+	}
+	if( o.duration )
+		this.duration = o.duration;
+}
+
+Take.prototype.serialize = function()
+{
+	return LS.cloneObject(this, null, true);
+}
+
+Take.prototype.createTrack = function( data )
+{
+	if(!data)
+		throw("Data missing when creating track");
+
+	var track = this.getTrack( data.property );
+	if( track )
+		return track;
+
+	var track = new LS.Animation.Track( data );
+	this.addTrack( track );
+	return track;
+}
+
+/**
+* For every track, gets the interpolated value between keyframes and applies the value to the property associated with the track locator
+* Locators are in the form of "{NODE_UID}/{COMPONENT_UID}/{property_name}"
+*
+* @method applyTracks
+* @param {number} current_time the time of the anim to sample
+* @param {number} last_time this is used for events, we need to know where you were before
+* @param {boolean} ignore_interpolation in case you want to sample the nearest one
+* @param {SceneNode} root [Optional] if you want to limit the locator to search inside a node
+* @return {Component} the target where the action was performed
+*/
+Take.prototype.applyTracks = function( current_time, last_time, ignore_interpolation, root_node )
+{
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+		if( track.enabled === false || !track.data )
+			continue;
+
+		//events are an special kind of tracks, they execute actions
+		if( track.type == "events" )
+		{
+			var keyframe = track.getKeyframeByTime( current_time );
+			if( !keyframe || keyframe[0] < last_time || keyframe[0] > current_time )
+				return;
+
+			//need info to search for node
+			var info = LS.GlobalScene.getPropertyInfoFromPath( track._property_path );
+			if(!info)
+				return;
+
+			if(info.node && info.target && info.target[ keyframe[1][0] ] )
+				info.target[ keyframe[1][0] ].call( info.target, keyframe[1][1] );
+		}
+		else //regular tracks
+		{
+			//read from the animation track the value
+			var sample = track.getSample( current_time, !ignore_interpolation );
+			//apply the value to the property specified by the locator
+			if( sample !== undefined ) 
+				track._target = LS.GlobalScene.setPropertyValueFromPath( track._property_path, sample, root_node, 0 );
+		}
+	}
+}
+
+
+
+Take.prototype.addTrack = function( track )
+{
+	this.tracks.push( track );
+}
+
+Take.prototype.getTrack = function( property )
+{
+	for(var i = 0; i < this.tracks.length; ++i)
+		if(this.tracks[i].property == property)
+			return this.tracks[i];
+	return null;
+}
+
+Take.prototype.removeTrack = function( track )
+{
+	for(var i = 0; i < this.tracks.length; ++i)
+		if(this.tracks[i] == track)
+		{
+			this.tracks.splice( i, 1 );
+			return;
+		}
+}
+
+
+Take.prototype.getPropertiesSample = function(time, result)
+{
+	result = result || [];
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+		var value = track.getSample( time );
+		result.push([track.property, value]);
+	}
+	return result;
+}
+
+Take.prototype.actionPerSample = function(time, callback, options)
+{
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+		var value = track.getSample(time, true);
+		if( options.disabled_tracks && options.disabled_tracks[ track.property ] )
+			continue;
+		callback(track.property, value, options);
+	}
+}
+
+//Ensures all the resources associated to keyframes are loaded in memory
+Take.prototype.loadResources = function()
+{
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+		if(track.type == "texture")
+		{
+			var l = track.getNumberOfKeyframes();
+			for(var j = 0; j < l; ++j)
+			{
+				var keyframe = track.getKeyframe(j);
+				if(keyframe && keyframe[1] && keyframe[1][0] != ":")
+					LS.ResourcesManager.load( keyframe[1] );
+			}
+		}
+	}
+}
+
+//convert track locators from using UIDs to use node names (this way the same animation can be used in several parts of the scene)
+Take.prototype.convertIDstoNames = function( use_basename, root )
+{
+	var num = 0;
+	for(var j = 0; j < this.tracks.length; ++j)
+	{
+		var track = this.tracks[j];
+		num += track.convertIDtoName( use_basename, root )
+	}
+	return num;
+}
+
+//optimize animations
+Take.prototype.optimizeTracks = function()
+{
+	var num = 0;
+	var temp = new Float32Array(10);
+
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+		if( track.value_size != 16 )
+			continue;
+
+		//convert locator
+		var path = track.property.split("/");
+		if( path[ path.length - 1 ] != "matrix")
+			continue;
+		path[ path.length - 1 ] = "Transform/data";
+		track.property = path.join("/");
+		track.type = "trans10";
+		track.value_size = 10;
+
+		//convert samples
+		if(!track.packed_data)
+		{
+			console.warn("convertMatricesToData only works with packed data");
+			continue;
+		}
+
+		var data = track.data;
+		var num_samples = data.length / 17;
+		for(var k = 0; k < num_samples; ++k)
+		{
+			var sample = data.subarray(k*17+1,(k*17)+17);
+			var new_data = LS.Transform.fromMatrix4ToTransformData( sample, temp );
+			data[k*11] = data[k*17]; //timestamp
+			data.set(temp,k*11+1); //overwrite inplace (because the output is less big that the input)
+		}
+		track.data = new Float32Array( data.subarray(0,num_samples*11) );
+		num += 1;
+	}
+	return num;
+}
+
+Take.prototype.matchTranslation = function( root )
+{
+	var num = 0;
+
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+
+		if(track.type != "trans10" && track.type != "mat4")
+			continue;
+
+		if( !track._property_path || !track._property_path.length )
+			continue;
+
+		var node = LSQ.get( track._property_path[0], root );
+		if(!node)
+			continue;
+		
+		var position = node.transform.position;
+		var offset = track.value_size + 1;
+
+		var data = track.data;
+		var num_samples = data.length / offset;
+		if(track.type == "trans10")
+		{
+			for(var j = 0; j < num_samples; ++j)
+				data.set( position, j*offset + 1 );
+		}
+		else if(track.type == "mat4")
+		{
+			for(var j = 0; j < num_samples; ++j)
+				data.set( position, j*offset + 1 + 12 ); //12,13,14 contain translation
+		}
+
+		num += 1;
+	}
+
+	return num;
+}
+
+Take.prototype.onlyRotations = function()
+{
+	var num = 0;
+	var temp = new Float32Array(10);
+	var final_quat = temp.subarray(3,7);
+
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+
+		//convert locator
+		var path = track.property.split("/");
+		var last_path = path[ path.length - 1 ];
+		var old_size = track.value_size;
+		if( track.type != "mat4" && track.type != "trans10" )
+			continue;
+
+		if(last_path == "matrix")
+			path[ path.length - 1 ] = "Transform/rotation";
+		else if (last_path == "data")
+			path[ path.length - 1 ] = "rotation";
+
+		track.property = path.join("/");
+		var old_type = track.type;
+		track.type = "quat";
+		track.value_size = 4;
+
+		//convert samples
+		if(!track.packed_data)
+		{
+			console.warn("convertMatricesToData only works with packed data");
+			continue;
+		}
+
+		var data = track.data;
+		var num_samples = data.length / (old_size+1);
+
+		if( old_type == "mat4" )
+		{
+			for(var k = 0; k < num_samples; ++k)
+			{
+				var sample = data.subarray(k*17+1,(k*17)+17);
+				var new_data = LS.Transform.fromMatrix4ToTransformData( sample, temp );
+				data[k*11] = data[k*17]; //timestamp
+				data.set( final_quat, k*5+1); //overwrite inplace (because the output is less big that the input)
+			}
+		}
+		else if( old_type == "trans10" )
+		{
+			for(var k = 0; k < num_samples; ++k)
+			{
+				var sample = data.subarray(k*11+4,(k*11)+8);
+				data[k*5] = data[k*11]; //timestamp
+				data.set( sample, k*5+1); //overwrite inplace (because the output is less big that the input)
+			}
+		}
+		
+		track.data = new Float32Array( data.subarray(0,num_samples*5) );
+		num += 1;
+	}
+	return num;
+}
+
+
+Take.prototype.setInterpolationToAllTracks = function( interpolation )
+{
+	var num = 0;
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+		if(track.interpolation == interpolation)
+			continue;
+		track.interpolation = interpolation;
+		num += 1;
+	}
+
+	return num;
+}
+
+Animation.Take = Take;
+
+
+/**
+* Represents one track with data over time about one property
+* Data could be stored in two forms, or an array containing arrays of [time,data] or in a single typed array, depends on the attribute typed_mode
+*
+* @class Animation.Track
+* @namespace LS
+* @constructor
+*/
+
+function Track(o)
+{
+	this.enabled = true;
+	this.name = ""; //title
+	this.type = null; //type of data (number, vec2, color, texture, etc)
+	this.interpolation = LS.NONE;
+	this.looped = false; //interpolate last keyframe with first
+
+	//data
+	this.packed_data = false; //this means the data is stored in one continuous datatype, faster to load but not editable
+	this.value_size = 0; //how many numbers contains every sample of this property, 0 means basic type (string, boolean)
+	this.data = null; //array or typed array where you have the time value followed by this.value_size bytes of data
+	this.data_table = null; //used to index data when storing it
+
+	//to speed up sampling
+	Object.defineProperty( this, '_property', {
+		value: "",
+		enumerable: false,
+		writable: true
+	});
+
+	Object.defineProperty( this, '_property_path', {
+		value: [],
+		enumerable: false,
+		writable: true
+	});
+
+	if(o)
+		this.configure(o);
+}
+
+Track.FRAMERATE = 30;
+
+//string identifying the property being animated in a locator form ( node/component_uid/property )
+Object.defineProperty( Track.prototype, 'property', {
+	set: function( property )
+	{
+		this._property = property.trim();
+		this._property_path = this._property.split("/");
+	},
+	get: function(){
+		return this._property;
+	},
+	enumerable: true
+});
+
+Track.prototype.configure = function( o )
+{
+	if(!o.property)
+		console.warn("Track with property name");
+
+	if(o.enabled !== undefined) this.enabled = o.enabled;
+	if(o.name) this.name = o.name;
+	if(o.property) this.property = o.property;
+	if(o.type) this.type = o.type;
+	if(o.looped) this.looped = o.looped;
+	if(o.interpolation !== undefined)
+		this.interpolation = o.interpolation;
+	else
+		this.interpolation = LS.LINEAR;
+
+	if(o.data_table) this.data_table = o.data_table;
+
+	if(o.value_size) this.value_size = o.value_size;
+
+	//data
+	if(o.data)
+	{
+		this.data = o.data;
+
+		//this is ugly but makes it easy to work with the collada importer
+		if(o.packed_data === undefined && this.data.constructor !== Array)
+			this.packed_data = true;
+		else
+			this.packed_data = !!o.packed_data;
+
+		if( o.data.constructor == Array )
+		{
+			if( this.packed_data )
+				this.data = new Float32Array( o.data );
+		}
+		//else
+		//	this.unpackData();
+	}
+
+	if(o.interpolation && !this.value_size)
+		o.interpolation = LS.NONE;
+}
+
+Track.prototype.serialize = function()
+{
+	var o = {
+		enabled: this.enabled,
+		name: this.name,
+		property: this.property, 
+		type: this.type,
+		interpolation: this.interpolation,
+		looped: this.looped,
+		value_size: this.value_size,
+		packed_data: this.packed_data,
+		data_table: this.data_table
+	}
+
+	if(this.data)
+	{
+		if(this.value_size <= 1)
+			o.data = this.data.concat(); //regular array, clone it
+		else //pack data
+		{
+			this.packData();
+			o.data = new Float32Array( this.data ); //clone it
+			o.packed_data = this.packed_data;
+		}
+	}
+
+	return o;
+}
+
+Track.prototype.toJSON = Track.prototype.serialize;
+
+Track.prototype.clear = function()
+{
+	this.data = [];
+	this.packed_data = false;
+}
+
+
+//used to change every track so instead of using UIDs for properties it uses node names
+//this is used when you want to apply the same animation to different nodes in the scene
+Track.prototype.convertIDtoName = function( use_basename, root )
+{
+	if( !this._property_path || !this._property_path.length )
+		return false;
+
+	if(this._property_path[0][0] !== LS._uid_prefix)
+		return false; //is already using names
+
+	var node = LSQ.get( this._property_path[0], root );
+	if(!node)
+	{
+		console.warn("convertIDtoName: node not found in LS.GlobalScene: " + this._property_path[0] );
+		return false;
+	}
+
+	if(!node.name)
+	{
+		console.warn("convertIDtoName: node without name?");
+		return false;
+	}
+
+	if(use_basename)
+	{
+		this._property_path[0] = node.name;
+		this._property = this._property_path.join("/");
+	}
+	else
+	{
+		this._property_path[0] = node.fullname;
+		this._property = this._property_path.join("/");
+	}
+
+	return true;
+}
+
+Track.prototype.addKeyframe = function( time, value, skip_replace )
+{
+	if(this.value_size > 1)
+		value = new Float32Array( value ); //clone
+
+	if(this.packed_data)
+		this.unpackData();
+
+	if(!this.data)
+		this.data = [];
+
+	for(var i = 0; i < this.data.length; ++i)
+	{
+		if(this.data[i][0] < time )
+			continue;
+		if(this.data[i][0] == time && !skip_replace )
+			this.data[i][1] = value;
+		else
+			this.data.splice(i,0, [time,value]);
+		return i;
+	}
+
+	this.data.push( [time,value] );
+	return this.data.length - 1;
+}
+
+Track.prototype.getKeyframe = function( index )
+{
+	if(index < 0 || index >= this.data.length)
+	{
+		console.warn("keyframe index out of bounds");
+		return null;
+	}
+
+	if(this.packed_data)
+	{
+		var pos = index * (1 + this.value_size );
+		if(pos > (this.data.length - this.value_size) )
+			return null;
+		return [ this.data[pos], this.data.subarray(pos+1, pos+this.value_size+1) ];
+		//return this.data.subarray(pos, pos+this.value_size+1) ];
+	}
+
+	return this.data[ index ];
+}
+
+Track.prototype.getKeyframeByTime = function( time )
+{
+	var index = this.findTimeIndex( time );
+	if(index == -1)
+		return;
+	return this.getKeyframe( index );
+}
+
+
+Track.prototype.moveKeyframe = function(index, new_time)
+{
+	if(this.packed_data)
+	{
+		//TODO
+		console.warn("Cannot move keyframes if packed");
+		return -1;
+	}
+
+	if(index < 0 || index >= this.data.length)
+	{
+		console.warn("keyframe index out of bounds");
+		return -1;
+	}
+
+	var new_index = this.findTimeIndex( new_time );
+	var keyframe = this.data[ index ];
+	var old_time = keyframe[0];
+	if(old_time == new_time)
+		return index;
+	keyframe[0] = new_time; //set time
+	if(old_time > new_time)
+		new_index += 1;
+	if(index == new_index)
+	{
+		//console.warn("same index");
+		return index;
+	}
+
+	//extract
+	this.data.splice(index, 1);
+	//reinsert
+	index = this.addKeyframe( keyframe[0], keyframe[1], true );
+
+	this.sortKeyframes();
+	return index;
+}
+
+//solve bugs
+Track.prototype.sortKeyframes = function()
+{
+	if(this.packed_data)
+	{
+		this.unpackData();
+		this.sortKeyframes();
+		this.packData();
+	}
+	this.data.sort( function(a,b){ return a[0] - b[0];  });
+}
+
+Track.prototype.removeKeyframe = function(index)
+{
+	if(this.packed_data)
+		this.unpackData();
+
+	if(index < 0 || index >= this.data.length)
+	{
+		console.warn("keyframe index out of bounds");
+		return;
+	}
+
+	this.data.splice(index, 1);
+}
+
+
+Track.prototype.getNumberOfKeyframes = function()
+{
+	if(!this.data || this.data.length == 0)
+		return 0;
+
+	if(this.packed_data)
+		return this.data.length / (1 + this.value_size );
+	return this.data.length;
+}
+
+//check for the last sample time
+Track.prototype.computeDuration = function()
+{
+	if(!this.data || this.data.length == 0)
+		return 0;
+
+	if(this.packed_data)
+	{
+		var time = this.data[ this.data.length - 2 - this.value_size ];
+		this.duration = time;
+		return time;
+	}
+
+	//not typed
+	var last = this.data[ this.data.length - 1 ];
+	if(last)
+		return last[0];
+	return 0;
+}
+
+Track.prototype.isInterpolable = function()
+{
+	if( this.value_size > 0 || LS.Interpolators[ this.type ] )
+		return true;
+	return false;
+}
+
+//better for reading
+Track.prototype.packData = function()
+{
+	if(!this.data || this.data.length == 0)
+		return 0;
+
+	if(this.packed_data)
+		return;
+
+	if(this.value_size == 0)
+		return; //cannot be packed (bools and strings cannot be packed)
+
+	var offset = this.value_size + 1;
+	var data = this.data;
+	var typed_data = new Float32Array( data.length * offset );
+
+	for(var i = 0; i < data.length; ++i)
+	{
+		typed_data[i*offset] = data[i][0];
+		if( this.value_size == 1 )
+			typed_data[i*offset+1] = data[i][1];
+		else
+			typed_data.set( data[i][1], i*offset+1 );
+	}
+
+	this.data = typed_data;
+	this.packed_data = true;
+}
+
+//better for writing
+Track.prototype.unpackData = function()
+{
+	if(!this.data || this.data.length == 0)
+		return 0;
+
+	if(!this.packed_data)
+		return;
+
+	var offset = this.value_size + 1;
+	var typed_data = this.data;
+	var data = Array( typed_data.length / offset );
+
+	for(var i = 0; i < typed_data.length; i += offset )
+		data[i/offset] = [ typed_data[i], typed_data.subarray( i+1, i+offset ) ];
+
+	this.data = data;
+	this.packed_data = false;
+}
+
+/* not tested
+Track.prototype.findSampleIndex = function(time)
+{
+	var data = this.data;
+	var offset = this.value_size + 1;
+	var l = data.length;
+	var n = l / offset;
+	var imin = 0;
+	var imax = n;
+	var imid = 0;
+
+	//dichotimic search
+	// continue searching while [imin,imax] is not empty
+	while (imax >= imin)
+	{
+		// calculate the midpoint for roughly equal partition
+		imid = (((imax - imin)*0.5)|0) + imin;
+		var v = data[ imid * offset ];
+		if( v == time )
+			return imid * offset; 
+			// determine which subarray to search
+		else if (v < key)
+			// change min index to search upper subarray
+			imin = imid + 1;
+		else         
+			// change max index to search lower subarray
+			imax = imid - 1;
+	}
+
+	return imid * offset;
+}
+*/
+
+//TODO: IMPROVE WITH DICOTOMIC SEARCH
+//Returns the index of the last sample with a time less or equal to time
+Track.prototype.findTimeIndex = function( time )
+{
+	if(!this.data || this.data.length == 0)
+		return -1;
+
+	var data = this.data;
+	var l = this.data.length;
+	if(!l)
+		return -1;
+	var i = 0;
+	if(this.packed_data)
+	{
+		var offset = this.value_size + 1;
+		var last = -1;
+		for(i = 0; i < l; i += offset)
+		{
+			var current_time = data[i];
+			if(current_time < time) 
+			{
+				last = i;
+				continue;
+			}
+			if(last == -1)
+				return -1;
+			return (last/offset); //prev sample
+		}
+		if(last == -1)
+			return -1;
+		return (last/offset);
+	}
+
+	var last = -1;
+	for(i = 0; i < l; ++i )
+	{
+		if(time > data[i][0]) 
+		{
+			last = i;
+			continue;
+		}
+		if(time == data[i][0]) 
+			return i;
+		if(last == -1)
+			return -1;
+		return last;
+	}
+	if(last == -1)
+		return -1;
+	return last;
+}
+
+//Warning: if no result is provided the same result is reused between samples.
+Track.prototype.getSample = function( time, interpolate, result )
+{
+	if(!this.data || this.data.length === 0)
+		return undefined;
+
+	if(this.packed_data)
+		return this.getSamplePacked( time, interpolate, result);
+	return this.getSampleUnpacked( time, interpolate, result);
+}
+
+Track.prototype.getSampleUnpacked = function( time, interpolate, result )
+{
+	time = Math.clamp( time, 0, this.duration );
+
+	var index = this.findTimeIndex( time );
+	if(index === -1)
+		index = 0;
+
+	var index_a = index;
+	var index_b = index + 1;
+	var data = this.data;
+
+	interpolate = interpolate && this.interpolation && (this.value_size > 0 || LS.Interpolators[ this.type ] );
+
+	if(!interpolate || (data.length == 1) || index_b == data.length || (index_a == 0 && this.data[0][0] > time)) //(index_b == this.data.length && !this.looped)
+		return this.data[ index ][1];
+
+	var a = data[ index_a ];
+	var b = data[ index_b ];
+
+	var t = (b[0] - time) / (b[0] - a[0]);
+
+	if(this.interpolation === LS.LINEAR)
+	{
+		if(this.value_size === 0 && LS.Interpolators[ this.type ] )
+		{
+			var func = LS.Interpolators[ this.type ];
+			var r = func( a[1], b[1], t, this._last_value );
+			this._last_value = r;
+			return r;
+		}
+
+		if(this.value_size == 1)
+			return a[1] * t + b[1] * (1-t);
+
+		result = result || this._result;
+
+		if(!result || result.length != this.value_size)
+			result = this._result = new Float32Array( this.value_size );
+
+		switch(this.type)
+		{
+			case "quat": 
+				quat.lerp( result, a[1], b[1], t );
+				quat.normalize( result, result );
+				break;
+			case "trans10": 
+				for(var i = 0; i < this.value_size; i++)
+					result[i] = a[1][i] * t + b[1][i] * (1-t);
+				var rotA = a[1].subarray(3,7);
+				var rotB = a[1].subarray(3,7);
+				var rotR = result.subarray(3,7);
+				quat.lerp( rotR, rotA, rotB, t );
+				quat.normalize( rotR, rotR );
+				break;
+			default:
+				for(var i = 0; i < this.value_size; i++)
+					result[i] = a[1][i] * t + b[1][i] * (1-t);
+		}
+
+		return result;
+	}
+	else if(this.interpolation === LS.BEZIER)
+	{
+		//bezier not implemented for interpolators
+		if(this.value_size === 0 && LS.Interpolators[ this.type ] )
+		{
+			var func = LS.Interpolators[ this.type ];
+			var r = func( a[1], b[1], t, this._last_value );
+			this._last_value = r;
+			return r;
+		}
+
+		var pre_a = index > 0 ? data[ index - 1 ] : a;
+		var post_b = index < data.length - 2 ? data[ index + 2 ] : b;
+
+		if(this.value_size === 1)
+			return Animation.EvaluateHermiteSpline(a[1],b[1],pre_a[1],post_b[1], 1 - t );
+
+
+		result = result || this._result;
+
+		//multiple data
+		if(!result || result.length != this.value_size)
+			result = this._result = new Float32Array( this.value_size );
+
+		result = result || this._result;
+		result = Animation.EvaluateHermiteSplineVector(a[1],b[1], pre_a[1], post_b[1], 1 - t, result );
+
+		if(this.type == "quat")
+			quat.normalize(result, result);
+		else if(this.type == "trans10")
+		{
+			var rot = result.subarray(3,7);
+			quat.normalize(rot, rot);
+		}
+
+		return result;
+	}
+
+	return null;
+}
+
+Track.prototype.getSamplePacked = function( time, interpolate, result )
+{
+	time = Math.clamp( time, 0, this.duration );
+
+	var index = this.findTimeIndex( time );
+	if(index == -1)
+		index = 0;
+
+	var offset = (this.value_size+1);
+	var index_a = index;
+	var index_b = index + 1;
+	var data = this.data;
+	var num_keyframes = data.length / offset;
+
+	interpolate = interpolate && this.interpolation && (this.value_size > 0 || LS.Interpolators[ this.type ] );
+
+	if( !interpolate || num_keyframes == 1 || index_b == num_keyframes || (index_a == 0 && this.data[0] > time)) //(index_b == this.data.length && !this.looped)
+		return this.getKeyframe( index )[1];
+
+	var a = data.subarray( index_a * offset, (index_a + 1) * offset );
+	var b = data.subarray( index_b * offset, (index_b + 1) * offset );
+
+	var t = (b[0] - time) / (b[0] - a[0]);
+
+	if(this.interpolation === LS.LINEAR)
+	{
+		if(this.value_size == 1)
+			return a[1] * t + b[1] * (1-t);
+		else if( LS.Interpolators[ this.type ] )
+		{
+			var func = LS.Interpolators[ this.type ];
+			var r = func( a[1], b[1], t, this._last_v );
+			this._last_v = r;
+			return r;
+		}
+
+		result = result || this._result;
+
+		if(!result || result.length != this.value_size)
+			result = this._result = new Float32Array( this.value_size );
+
+		switch(this.type)
+		{
+			case "quat": 
+				quat.lerp( result, b.subarray(1,5), a.subarray(1,5), t );
+				quat.normalize( result, result );
+				break;
+			case "trans10": 
+				for(var i = 0; i < this.value_size; i++)
+					result[i] = a[1+i] * t + b[1+i] * (1-t);
+				var rotA = a.subarray(4,8);
+				var rotB = b.subarray(4,8);
+				var rotR = result.subarray(3,7);
+				quat.lerp( rotR, rotB, rotA, t );
+				quat.normalize( rotR, rotR );
+				break;
+			default:
+				for(var i = 0; i < this.value_size; i++)
+					result[i] = a[1+i] * t + b[1+i] * (1-t);
+		}
+
+		return result;
+	}
+	else if(this.interpolation === LS.BEZIER)
+	{
+		if( this.value_size === 0) //bezier not supported in interpolators
+			return a[1];
+
+		var pre_a = index > 0 ? data.subarray( (index-1) * offset, (index) * offset ) : a;
+		var post_b = index_b < (num_keyframes - 1) ? data.subarray( (index_b+1) * offset, (index_b+2) * offset ) : b;
+
+		if(this.value_size === 1)
+			return Animation.EvaluateHermiteSpline( a[1], b[1], pre_a[1], post_b[1], 1 - t );
+
+		result = result || this._result;
+
+		//multiple data
+		if(!result || result.length != this.value_size)
+			result = this._result = new Float32Array( this.value_size );
+
+		result = result || this._result;
+		result = Animation.EvaluateHermiteSplineVector( a.subarray(1,offset), b.subarray(1,offset), pre_a.subarray(1,offset), post_b.subarray(1,offset), 1 - t, result );
+
+		if(this.type == "quat")
+			quat.normalize(result, result);
+		else if(this.type == "trans10")
+		{
+			var rot = result.subarray(3,7);
+			quat.normalize(rot, rot);
+		}
+
+		return result;
+	}
+
+	return null;
+}
+
+
+Track.prototype.getPropertyInfo = function()
+{
+	return LS.GlobalScene.getPropertyInfo( this.property );
+}
+
+Track.prototype.getSampledData = function( start_time, end_time, num_samples )
+{
+	var delta = (end_time - start_time) / num_samples;
+	if(delta <= 0)
+		return null;
+
+	var samples = [];
+	for(var i = 0; i < num_samples; ++i)
+	{
+		var t = i * delta + start_time;
+		var sample = this.getSample( t, true );
+		if(this.value_size > 1)
+			sample = new sample.constructor( sample );
+		samples.push(sample);
+	}
+
+	return samples;
+}
+
+
+Animation.Track = Track;
+
+/*
+vec3f EvaluateHermiteSpline(const vec3f& p0, const vec3f& p1, const vec3f& t0, const vec3f& t1, float s)
+{
+	float s2 = s * s;
+	float s3 = s2 * s;
+	float h1 =  2*s3 - 3*s2 + 1;          // calculate basis function 1
+	float h2 = -2*s3 + 3*s2;              // calculate basis function 2
+	float h3 =   s3 - 2*s2 + s;         // calculate basis function 3
+	float h4 =   s3 -  s2;              // calculate basis function 4
+	vec3f p = h1*p0+                    // multiply and sum all funtions
+						 h2*p1 +                    // together to build the interpolated
+						 h3*t0 +                    // point along the curve.
+						 h4*t1;
+	return p;
+}
+*/
+
+
+Animation.EvaluateHermiteSpline = function( p0, p1, pre_p0, post_p1, s )
+{
+	var s2 = s * s;
+	var s3 = s2 * s;
+	var h1 =  2*s3 - 3*s2 + 1;          // calculate basis function 1
+	var h2 = -2*s3 + 3*s2;              // calculate basis function 2
+	var h3 =   s3 - 2*s2 + s;         // calculate basis function 3
+	var h4 =   s3 -  s2;              // calculate basis function 4
+	
+	var t0 = p1 - pre_p0;
+	var t1 = post_p1 - p0;
+
+	return h1 * p0 + h2 * p1 + h3 * t0 + h4 * t1;
+}
+
+Animation.EvaluateHermiteSplineVector = function( p0, p1, pre_p0, post_p1, s, result )
+{
+	result = result || new Float32Array( result.length );
+
+	var s2 = s * s;
+	var s3 = s2 * s;
+	var h1 =  2*s3 - 3*s2 + 1;          // calculate basis function 1
+	var h2 = -2*s3 + 3*s2;              // calculate basis function 2
+	var h3 =   s3 - 2*s2 + s;         // calculate basis function 3
+	var h4 =   s3 -  s2;              // calculate basis function 4
+
+	for(var i = 0; i < result.length; ++i)
+	{
+		var t0 = p1[i] - pre_p0[i];
+		var t1 = post_p1[i] - p0[i];
+		result[i] = h1 * p0[i] + h2 * p1[i] + h3 * t0 + h4 * t1;
+	}
+
+	return result;
+}
+
+
+LS.registerResourceClass( Animation );
+
+
+LS.Interpolators = {};
+
+LS.Interpolators["texture"] = function( a, b, t, last )
+{
+	var texture_a = a ? LS.getTexture( a ) : null;
+	var texture_b = b ? LS.getTexture( b ) : null;
+
+	if(a && !texture_a && a[0] != ":" )
+		LS.ResourcesManager.load(a);
+	if(b && !texture_b && b[0] != ":" )
+		LS.ResourcesManager.load(b);
+
+	var texture = texture_a || texture_b;
+
+	var black = gl.textures[":black"];
+	if(!black)
+		black = gl.textures[":black"] = new GL.Texture(1,1, { format: gl.RGB, pixel_data: [0,0,0], filter: gl.NEAREST });
+
+	if(!texture)
+		return black;
+
+	var w = texture ? texture.width : 256;
+	var h = texture ? texture.height : 256;
+
+	if(!texture_a)
+		texture_a = black;
+	if(!texture_b)
+		texture_b = black;
+
+	if(!last || last.width != w || last.height != h || last.format != texture.format )
+		last = new GL.Texture( w, h, { format: texture.format, type: texture.type, filter: gl.LINEAR } );
+
+	var shader = gl.shaders[":interpolate_texture"];
+	if(!shader)
+		shader = gl.shaders[":interpolate_texture"] = GL.Shader.createFX("color = mix( texture2D( u_texture_b, uv ), color , u_factor );", "uniform sampler2D u_texture_b; uniform float u_factor;" );
+
+	gl.disable( gl.DEPTH_TEST );
+	last.drawTo( function() {
+		gl.clearColor(0,0,0,0);
+		gl.clear( gl.COLOR_BUFFER_BIT );
+		texture_b.bind(1);
+		texture_a.toViewport( shader, { u_texture_b: 1, u_factor: t } );
+	});
+
+	return last;
+}
+
+
+/**
+* Prefab work in two ways: 
+* - It can contain a node structure and all the associated resources (textures, meshes, animations, etc)
+* - When a node in the scene was created from a Prefab, the prefab is loaded so the associated resources are recovered, but the node structure is not modified.
+* 
+* @class Prefab
+* @constructor
+*/
+
+function Prefab(o)
+{
+	this.resource_names = []; 
+	this.prefab_json = null;
+	this.prefab_data = null; //json object
+	this._resources_data = {}; //data as it was loaded from the WBin
+
+	if(o)
+		this.configure(o);
+}
+
+Prefab.version = "0.2"; //used to know where the file comes from 
+
+/**
+* configure the prefab
+* @method configure
+* @param {*} data
+**/
+
+Prefab.prototype.configure = function(data)
+{
+	if(!data)
+		throw("No prefab data found");
+
+	if(data.hasOwnProperty("prefab_data"))
+	{
+		this.prefab_data = data.prefab_data;
+		this.prefab_json = data.prefab_json || JSON.stringify( this.prefab_data );
+	}
+	else
+	{
+		//read from WBin info
+		var prefab_json = data["@json"];
+		if(!prefab_json)
+		{
+			console.warn("No JSON found in prefab");
+			return;
+		}
+
+		var version = data["@version"]; //not used yet
+		this.prefab_json = prefab_json;
+		this.prefab_data = JSON.parse( prefab_json );
+	}
+
+	this.resource_names = data["@resources_name"] || data.resource_names;
+
+	//extract resource names
+	if(this.resource_names)
+	{
+		var resources = {};
+		for(var i in this.resource_names)
+		{
+			if(!version) //legacy
+				resources[ this.resource_names[i] ] = data[ this.resource_names[i] ];
+			else
+				resources[ this.resource_names[i] ] = data[ "@RES_" + i ];
+		}
+		this._resources_data = resources;
+	}
+
+	//store resources in ResourcesManager
+	this.processResources();
+}
+
+Prefab.fromBinary = function(data)
+{
+	if(data.constructor == ArrayBuffer)
+		data = WBin.load(data, true);
+
+	return new LS.Prefab(data);
+}
+
+//given a list of resources that come from a Prefab (usually a wbin) it extracts, process and register them 
+Prefab.prototype.processResources = function()
+{
+	if(!this._resources_data)
+		return;
+
+	var resources = this._resources_data;
+
+	//block this resources of being loaded, this is to avoid chain reactions when a resource uses 
+	//another one contained in this Prefab
+	for(var resname in resources)
+	{
+		if( LS.ResourcesManager.resources[ resname ] )
+			continue; //already loaded
+		LS.ResourcesManager.resources_being_processed[ resname ] = true;
+	}
+
+	//process and store in ResourcesManager
+	for(var resname in resources)
+	{
+		if( LS.ResourcesManager.resources[resname] )
+			continue; //already loaded
+
+		var resdata = resources[resname];
+		if(!resdata)
+		{
+			console.warn("resource data in prefab is undefined, skipping it:" + resname);
+			continue;
+		}
+		var resource = LS.ResourcesManager.processResource( resname, resdata, { is_local: true, from_prefab: true } );
+	}
+}
+
+/**
+* Creates an instance of the object inside the prefab
+* @method createObject
+* @return object contained 
+**/
+
+Prefab.prototype.createObject = function()
+{
+	if(!this.prefab_json)
+		throw("No prefab_json data found");
+
+	var conf_data = JSON.parse(this.prefab_json);
+
+	if(!conf_data)
+	{
+		console.error("Prefab data is null");
+		return null;
+	}
+
+	var node = new LS.SceneNode();
+	node.configure(conf_data);
+	LS.ResourcesManager.loadResources( node.getResources({},true) );
+
+	if(this.fullpath)
+		node.prefab = this.fullpath;
+
+	return node;
+}
+
+/**
+* to create a new prefab, it packs all the data an instantiates the resource
+* @method Prefab.createPrefab
+* @param {String} filename a name for this prefab (if wbin is not appended, it will)
+* @param {Object} node_data an object containing all the node data to store
+* @param {Array} resource_names_list an array with the name of the resources to store
+* @return object containing the prefab data ready to be converted to WBin (it also stores _original_data with the WBin)
+**/
+Prefab.createPrefab = function( filename, node_data, resource_names_list )
+{
+	if(!filename)
+		return;
+
+	if(!node_data)
+		throw("No node_data in prefab");
+
+	filename = filename.replace(/ /gi,"_");
+	resource_names_list = resource_names_list || [];
+
+	//LS.clearUIds( node_data ); //remove uids of nodes and components
+	node_data.object_type = "SceneNode";
+
+	var prefab = new LS.Prefab();
+	var ext = LS.ResourcesManager.getExtension(filename);
+	if(ext != "wbin")
+		filename += ".wbin";
+
+	//checkfilenames and rename them to short names
+	prefab.filename = filename;
+	prefab.resource_names = resource_names_list;
+	prefab.prefab_data = node_data;
+	prefab.prefab_json = JSON.stringify( prefab.prefab_data );
+
+	//get all the resources and store them in a WBin
+	var bindata = LS.Prefab.packResources( resource_names_list, { "@json": prefab.prefab_json, "@version": Prefab.version } );
+	prefab._original_data = bindata;
+
+	return prefab;
+}
+
+//Given a list of resources and some base data, it creates a WBin with all the data
+Prefab.packResources = function( resource_names_list, base_data )
+{
+	var to_binary = base_data || {};
+	var resource_names = [];
+
+	if(resource_names_list && resource_names_list.length)
+	{
+		for(var i = 0; i < resource_names_list.length; ++i)
+		{
+			var res_name = resource_names_list[i];
+			var resource = LS.ResourcesManager.resources[ res_name ];
+			if(!resource)
+				continue;
+
+			var data = null;
+			if(resource._original_data) //must be string or bytes
+				data = resource._original_data;
+			else
+			{
+				var data_info = LS.Resource.getDataToStore( resource );
+				data = data_info.data;
+			}
+
+			if(!data)
+			{
+				console.warning("Wrong data in resource");
+				continue;
+			}
+
+			if(data.constructor === Blob || data.constructor === File)
+			{
+				console.warning("WBin does not support to store File or Blob, please convert to ArrayBuffer using FileReader");
+				continue;
+			}
+
+			to_binary["@RES_" + resource_names.length ] = data;
+			resource_names.push( res_name );
+		}
+	}
+
+	to_binary["@resources_name"] = resource_names;
+	return WBin.create( to_binary, "Prefab" );
+}
+
+Prefab.prototype.updateFromNode = function( node, clear_uids )
+{
+	var data = node.serialize(true);
+	if(clear_uids)
+		LS.clearUIds(data); //remove UIDs
+	this.prefab_data = data;
+	this.prefab_json = JSON.stringify( data );
+}
+
+Prefab.prototype.flagResources = function()
+{
+	if(!this.resource_names)
+		return;
+
+	for(var i = 0; i < this.resource_names.length; ++i)
+	{
+		var res_name = this.resource_names[i];
+		var resource = LS.ResourcesManager.resources[ res_name ];
+		if(!resource)
+			continue;
+
+		resource.from_prefab = this.fullpath || this.filename || true;
+	}
+}
+
+Prefab.prototype.setResourcesLink = function( value )
+{
+	for(var i = 0; i < this.resource_names.length; ++i)
+	{
+		var res_name = this.resource_names[i];
+		var resource = LS.ResourcesManager.resources[ res_name ];
+		if(!resource)
+			continue;
+		if(value)
+			resource.from_prefab = value;
+		else
+			delete resource.from_prefab;
+	}
+}
+
+//search for nodes using this prefab and creates the nodes
+Prefab.prototype.applyToNodes = function( scene )
+{
+	scene = scene || LS.GlobalScene;	
+	var name = this.fullpath || this.filename;
+
+	for(var i = 0; i < scene._nodes.length; ++i)
+	{
+		var node = scene._nodes[i];
+		if(node.prefab != name)
+			continue;
+		node.reloadFromPrefab();
+	}
+}
+
+Prefab.prototype.getDataToStore = function()
+{
+	this.prefab_json = JSON.stringify( this.prefab_data );
+	return LS.Prefab.packResources( this.resource_names, { "@json": this.prefab_json, "@version": LS.Prefab.version } );
+}
+
+LS.Prefab = Prefab;
+LS.registerResourceClass( Prefab );
+
+
+/**
+* Pack is an object that contain several resources, helpful when you want to carry a whole scene in one single file
+* 
+* @class Pack
+* @constructor
+*/
+
+function Pack(o)
+{
+	this.resource_names = []; 
+	this._data = {}; //here we store the original chunks from the WBin
+	this._resources_data = {};
+	if(o)
+		this.configure(o);
+}
+
+Pack.version = "0.2"; //used to know where the file comes from 
+
+/**
+* configure the pack from an unpacked WBin
+* @method configure
+* @param {*} data
+**/
+Pack.prototype.configure = function( data )
+{
+	this._data = LS.cloneObject( data );
+
+	//extract resource names
+	this.resource_names = data["@resource_names"];
+	this._resources_data = {};
+	if(this.resource_names)
+	{
+		delete this._data["@resource_names"];
+		for(var i in this.resource_names)
+		{
+			this._resources_data[ this.resource_names[i] ] = data[ "@RES_" + i ];
+			delete this._data[ "@RES_" + i ];
+		}
+	}
+
+	//store resources in LS.ResourcesManager
+	this.processResources();
+}
+
+Object.defineProperty( Pack.prototype, 'bindata', {
+	set: function(name)
+	{
+		throw("Pack bindata cannot be assigned");
+	},
+	get: function(){
+		if(!this._original_data)
+			this._original_data = LS.Pack.packResources( this.resource_names, this._data );
+		return this._original_data;
+	},
+	enumerable: true
+});
+
+
+Pack.fromBinary = function(data)
+{
+	if(data.constructor == ArrayBuffer)
+		data = WBin.load(data, true);
+	return new LS.Pack(data);
+}
+
+//given a list of resources that come from the Pack (usually a wbin) it extracts, process and register them 
+Pack.prototype.processResources = function()
+{
+	if(!this.resource_names)
+		return;
+
+	//block this resources of being loaded, this is to avoid chain reactions when a resource uses 
+	//another one contained in this pack
+	for(var i = 0; i < this.resource_names.length; ++i)
+	{
+		var resname = this.resource_names[i];
+		if( LS.ResourcesManager.resources[ resname ] )
+			continue; //already loaded
+		LS.ResourcesManager.resources_being_processed[ resname ] = true;
+	}
+
+	//process and store in LS.ResourcesManager
+	for(var i = 0; i < this.resource_names.length; ++i)
+	{
+		var resname = this.resource_names[i];
+		if( LS.ResourcesManager.resources[resname] )
+			continue; //already loaded
+
+		var resdata = this._resources_data[ resname ];
+		if(!resdata)
+		{
+			console.warn("resource data in Pack is undefined, skipping it:" + resname);
+			continue;
+		}
+		var resource = LS.ResourcesManager.processResource( resname, resdata, { is_local: true, from_pack: true } );
+	}
+}
+
+Pack.prototype.setResources = function( resource_names, mark_them )
+{
+	this.resource_names = [];
+	this._resources_data = {};
+
+	//get resources
+	for(var i = 0; i < resource_names.length; ++i)
+	{
+		var res_name = resource_names[i];
+		if(this.resource_names.indexOf(res_name) != -1)
+			continue;
+		var resource = LS.ResourcesManager.resources[ res_name ];
+		if(!resource)
+			continue;
+		if(mark_them)
+			resource.from_pack = true;
+		this.resource_names.push( res_name );
+	}
+
+	//repack the pack info
+	this._original_data = LS.Pack.packResources( resource_names, { "@metadata": JSON.stringify( this.metadata ), "@version": LS.Pack.version } );
+	this._modified = true;
+}
+
+Pack.prototype.setResourcesLink = function( value )
+{
+	for(var i = 0; i < this.resource_names.length; ++i)
+	{
+		var res_name = this.resource_names[i];
+		var resource = LS.ResourcesManager.resources[ res_name ];
+		if(!resource)
+			continue;
+		if(value)
+			resource.from_pack = value;
+		else
+			delete resource.from_pack;
+	}
+}
+
+Pack.prototype.addResources = function( resource_names, mark_them )
+{
+	this.setResources( this.resource_names.concat( resource_names ), mark_them );
+}
+
+/**
+* to create a WBin containing all the resource and metadata
+* @method Pack.createWBin
+* @param {String} fullpath for the pack
+* @param {Array} resource_names array with the names of all the resources to store
+* @param {Object} metadata [optional] extra data to store
+* @param {boolean} mark_them [optional] marks all the resources as if they come from a pack
+* @return object containing the pack data ready to be converted to WBin
+**/
+Pack.createPack = function( filename, resource_names, extra_data, mark_them )
+{
+	if(!filename)
+		return;
+
+	if(!resource_names || resource_names.constructor !== Array)
+		throw("Pack.createPack resources must be array with names");
+	if(extra_data && extra_data.constructor !== Object)
+		throw("Pack.createPack extra_data must be an object with the chunks to store");
+
+	filename = filename.replace(/ /gi,"_");
+
+	var pack = new LS.Pack();
+	filename += ".wbin";
+	pack.filename = filename;
+	if(extra_data)
+		pack._data = extra_data;
+
+	pack.resource_names = resource_names;
+	for(var i = 0; i < resource_names.length; ++i)
+	{
+		var res_name = resource_names[i];
+		var resource = LS.ResourcesManager.resources[ res_name ];
+		if(!resource)
+			continue;
+		if(mark_them)
+			resource.from_pack = true;
+	}
+
+	//create the WBIN in case this pack gets stored
+	var bindata = LS.Pack.packResources( resource_names, extra_data );
+	pack._original_data = bindata;
+
+	return pack;
+}
+
+//Given a bunch of resource names it creates a WBin with all inside
+Pack.packResources = function( resource_names, base_object )
+{
+	var to_binary = base_object || {};
+	var final_resource_names = [];
+
+	for(var i = 0; i < resource_names.length; ++i)
+	{
+		var res_name = resource_names[i];
+		var resource = LS.ResourcesManager.resources[ res_name ];
+		if(!resource)
+			continue;
+
+		var data = null;
+		if(resource._original_data) //must be string or bytes
+			data = resource._original_data;
+		else
+		{
+			var data_info = LS.Resource.getDataToStore( resource );
+			data = data_info.data;
+		}
+
+		if(!data)
+		{
+			console.warning("Wrong data in resource");
+			continue;
+		}
+
+		if(data.constructor === Blob || data.constructor === File)
+		{
+			console.warning("WBin does not support to store File or Blob, please, use ArrayBuffer");
+			continue;
+		}
+
+		to_binary["@RES_" + final_resource_names.length ] = data;
+		final_resource_names.push( res_name );
+		//to_binary[res_name] = data;
+	}
+
+	to_binary["@resource_names"] = final_resource_names;
+	return WBin.create( to_binary, "Pack" );
+}
+
+//just tells the resources where they come from, we cannot do that before because we didnt have the name of the pack
+Pack.prototype.flagResources = function()
+{
+	if(!this.resource_names)
+		return;
+
+	for(var i = 0; i < this.resource_names.length; ++i)
+	{
+		var res_name = this.resource_names[i];
+		var resource = LS.ResourcesManager.resources[ res_name ];
+		if(!resource)
+			continue;
+
+		resource.from_pack = this.fullpath || this.filename || true;
+	}
+}
+
+LS.Pack = Pack;
+LS.registerResourceClass( Pack );
+
+
+
+/**
+* ShaderCode is a resource containing all the code associated to a shader
+* It is used to define special ways to render scene objects, having full control of the rendering algorithm
+* Having a special class helps to parse the data in advance and share it between different materials
+* 
+* @class ShaderCode
+* @constructor
+*/
+
+function ShaderCode( code )
+{
+	this._code = null;
+
+	this._init_function = null;
+	this._code_parts = {};
+	this._compiled_shaders = {};
+
+	if(code)
+		this.code = code;
+}
+
+Object.defineProperty( ShaderCode.prototype, "code", {
+	enumerable: true,
+	get: function() {
+		return this._code;
+	},
+	set: function(v) {
+		if(this._code == v)
+			return;
+		this._code = v;
+		this.processCode();
+	}
+});
+
+//parse the code
+//store in a easy to use way
+ShaderCode.prototype.processCode = function()
+{
+	var code = this._code;
+	this._code_parts = {};
+	this._compiled_shaders = {};
+	this._init_function = null;
+
+	var subfiles = GL.processFileAtlas( this._code );
+	for(var i in subfiles)
+	{
+		var subfiles_name = i;
+		var subfiles_data = subfiles[i];
+
+		if(!subfiles_name) //empty subfiles, is javascript code to initialize
+			continue;
+
+		var name = LS.ResourcesManager.removeExtension(i);
+		var extension = LS.ResourcesManager.getExtension(i);
+		var code_part = this._code_parts[name];
+		if(!code_part)
+			code_part = this._code_parts[name] = {};
+
+		if(extension != "vs" && extension != "fs")
+		{
+			console.warn("Unknown extension in GLSL file, only vs & fs supported, ignoring subfile: " + name);
+			continue;
+		}
+
+		//parse data (extract pragmas and stuff)
+		var blocks = LS.ShaderCode.parseGLSLCode( subfiles_data );
+
+		code_part[ extension ] = { code: subfiles_data, blocks: blocks };
+	}
+
+	//compile the shader before using it to ensure there is no errors
+	this.getShader();
+
+	//process init code
+	var init_code = subfiles[""]; //the empty block is the init block
+	if(init_code)
+	{
+		if(LS.catch_exceptions)
+		{
+			try
+			{
+				this._init_function = new Function( init_code );
+			}
+			catch (err)
+			{
+				LS.dispatchCodeError( err, LScript.computeLineFromError(err), this );
+			}
+		}
+		else
+			this._init_function = new Function( init_code );
+	}
+
+	//to alert all the materials out there using this shader that they must update themselves.
+	LEvent.trigger( LS.ShaderCode, "modified", this );
+}
+
+//used when storing/retrieving the resource
+ShaderCode.prototype.setData = function(v, skip_modified_flag)
+{
+	this.code = v;
+	if(!skip_modified_flag)
+		this._modified = true;
+}
+
+ShaderCode.prototype.getData = function()
+{
+	return this._code;
+}
+
+ShaderCode.prototype.getDataToStore = function()
+{
+	return this._code;
+}
+
+//compile the shader, cache and return
+ShaderCode.prototype.getShader = function( render_mode, flags )
+{
+	render_mode = render_mode || "default";
+	flags = flags || 0;
+
+	//search for a compiled version of the shader
+	var shader = this._compiled_shaders[ render_mode ];
+	if(shader)
+		return shader;
+
+	//search for the code
+	var code = this._code_parts[ render_mode ];
+	if(!code)
+		return null;
+	if(!code.vs || !code.fs)
+		return null;
+
+	//compile the shader and return it
+	if(!LS.catch_exceptions)
+		shader = new GL.Shader( code.vs.code, code.fs.code );
+
+	try
+	{
+		shader = new GL.Shader( code.vs.code, code.fs.code );
+	}
+	catch(err)
+	{
+		console.error(err);
+		LS.dispatchCodeError(err);
+		return;
+	}
+
+	this._compiled_shaders[ render_mode ] = shader;
+	return shader;
+}
+
+//searches for materials using this ShaderCode and forces them to be updated (update the properties)
+ShaderCode.prototype.applyToMaterials = function( scene )
+{
+	scene = scene || LS.GlobalScene;
+	var filename = this.fullpath || this.filename;
+
+	//materials in the resources
+	for(var i in LS.ResourcesManager.resources)
+	{
+		var res = LS.ResourcesManager.resources[i];
+		if( res.constructor !== LS.ShaderMaterial || res._shader != filename )
+			continue;
+
+		res.processShaderCode();
+	}
+
+	//embeded materials
+	var nodes = LS.GlobalScene.getNodes();
+	for(var i = 0; i < nodes.length; ++i)
+	{
+		var node = nodes[i];
+		if(node.material && node.material.constructor === LS.ShaderMaterial && node.material._shader == filename )
+			node.material.processShaderCode();
+	}
+}
+
+//given a code with some pragmas, it separates them
+ShaderCode.parseGLSLCode = function( code )
+{
+	//remove comments
+	code = code.replace(/(\/\*([\s\S]*?)\*\/)|(\/\/(.*)$)/gm, '');
+
+	var blocks = [];
+	var current_block = [];
+	var pragmas = {};
+	var is_dynamic = false; //means this shader has no variations using pragmas or macros
+
+	var lines = code.split("\n");
+	for(var i = 0; i < lines.length; i++)
+	{
+		var line = lines[i].trim();
+		if(!line.length)
+			continue;//empty line
+		if(line[0] != "#")
+		{
+			current_block.push(line);
+			continue;
+		}
+
+		var t = line.split(" ");
+		if(t[0] == "#pragma")
+		{
+			is_dynamic = true;
+			pragmas[ t[2] ] = true;
+			blocks.push( { type: 1, code: current_block.join("\n") } );
+			current_block.length = 0;
+			blocks.push( { type: 2, line: line, action: t[1], param: t[2] });
+		}
+		else
+			current_block.push( line ); //regular line
+	}
+
+	return {
+		is_dynamic: is_dynamic,
+		code: code,
+		blocks: blocks,
+		pragmas: pragmas
+	};
+}
+
+//Example code for a shader
+ShaderCode.example = "\n\
+\n\
+\\default.vs\n\
+\n\
+precision mediump float;\n\
+attribute vec3 a_vertex;\n\
+attribute vec3 a_normal;\n\
+attribute vec2 a_coord;\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+\n\
+//matrices\n\
+uniform mat4 u_model;\n\
+uniform mat4 u_normal_model;\n\
+uniform mat4 u_view;\n\
+uniform mat4 u_viewprojection;\n\
+uniform mat4 u_mvp;\n\
+\n\
+//globals\n\
+uniform float u_time;\n\
+uniform vec4 u_viewport;\n\
+uniform float u_point_size;\n\
+\n\
+//camera\n\
+uniform vec3 u_camera_eye;\n\
+void main() {\n\
+	\n\
+	vec4 vertex4 = vec4(a_vertex,1.0);\n\
+	v_normal = a_normal;\n\
+	v_uvs = a_coord;\n\
+	\n\
+	//vertex\n\
+	v_pos = (u_model * vertex4).xyz;\n\
+	//normal\n\
+	v_normal = (u_normal_model * vec4(v_normal,1.0)).xyz;\n\
+	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
+}\n\
+\n\
+\\default.fs\n\
+\n\
+precision mediump float;\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+//globals\n\
+uniform vec4 u_clipping_plane;\n\
+uniform float u_time;\n\
+uniform vec3 u_background_color;\n\
+uniform vec3 u_ambient_light;\n\
+\n\
+//material\n\
+uniform vec4 u_material_color; //color and alpha\n\
+void main() {\n\
+	gl_FragColor = u_material_color;\n\
+}\n\
+\n\
+";
+
+LS.ShaderCode = ShaderCode;
+LS.registerResourceClass( ShaderCode );
+if(typeof(LiteGraph) != "undefined")
+{
+	/* Scene LNodes ***********************/
+
+	global.LGraphScene = function()
+	{
+		this.addOutput("Time","number");
+	}
+
+	LGraphScene.title = "Scene";
+	LGraphScene.desc = "Scene";
+
+	LGraphScene.getComponents = function(node, result)
+	{
+		result = result || [];
+		var compos = node.getComponents();
+		if(!compos)
+			return result;
+
+		for(var i = 0; i < compos.length; ++i)
+		{
+			var name = LS.getClassName( compos[i].constructor );
+			result.push( [name, name] );
+		}
+
+		return result;
+	}
+
+	LGraphScene.prototype.onExecute = function()
+	{
+		var scene = this.graph.getScene();
+
+		//read inputs
+		if(this.inputs)
+		for(var i = 0; i < this.inputs.length; ++i)
+		{
+			var input = this.inputs[i]; //??
+			var v = this.getInputData(i);
+			if(v === undefined)
+				continue;
+		}
+
+		//write outputs
+		if(this.outputs)
+		for(var i = 0; i < this.outputs.length; ++i)
+		{
+			var output = this.outputs[i];
+			if(!output.links || !output.links.length)
+				continue;
+			var result = null;
+			switch( output.name )
+			{
+				case "Time": result = scene.getTime(); break;
+				case "Elapsed": result = (scene._last_dt != null ? scene._last_dt : 0); break;
+				case "Frame": result = (scene._frame != null ? scene._frame : 0); break;
+				default:
+					result = scene.root.getComponent(output.name);
+			}
+			this.setOutputData(i,result);
+		}
+	}
+
+	LGraphScene.prototype.onGetOutputs = function()
+	{
+		var r = [["Elapsed","number"],["Frame","number"]];
+		return LGraphScene.getComponents( this.graph.getScene().root, r);
+	}
+
+	LiteGraph.registerNodeType("scene/scene", LGraphScene );
+
+	//********************************************************
+
+	global.LGraphSceneNode = function()
+	{
+		this.properties = {node_id:""};
+		this.size = [100,20];
+
+		this._node = null;
+
+		this.addInput("node_id", "string", { locked: true });
+
+		if(LGraphSceneNode._current_node_id)
+			this.properties.node_id = LGraphSceneNode._current_node_id;
+	}
+
+	LGraphSceneNode.title = "SceneNode";
+	LGraphSceneNode.desc = "Node on the scene";
+
+	LGraphSceneNode.prototype.getNode = function()
+	{
+		var node_id = null;
+
+		//first check input
+		if(this.inputs && this.inputs[0])
+			node_id = this.getInputData(0);
+		if(node_id)
+			this.properties.node_id = node_id;
+
+		var scene = this.graph.getScene();
+		var node = null;
+
+		//then check properties
+		if(	!node_id && this.properties.node_id )
+			node_id = this.properties.node_id;
+
+		if(node_id)
+			node = scene.getNode( node_id );
+
+		//otherwise use the graph node
+		if(!node)
+			node = this.graph._scenenode;
+		return node;
+	}
+
+	LGraphSceneNode.prototype.onExecute = function()
+	{
+		var node = this.getNode();
+
+		//read inputs
+		if(this.inputs) //there must be inputs always but just in case
+		{
+			for(var i = 1; i < this.inputs.length; ++i)
+			{
+				var input = this.inputs[i];
+				var v = this.getInputData(i);
+				if(v === undefined)
+					continue;
+				switch( input.name )
+				{
+					case "Transform": node.transform.copyFrom(v); break;
+					case "Material": node.material = v;	break;
+					case "Visible": node.flags.visible = v; break;
+					default:
+
+						break;
+				}
+			}
+		}
+
+		//write outputs
+		if(this.outputs)
+		for(var i = 0; i < this.outputs.length; ++i)
+		{
+			var output = this.outputs[i];
+			if(!output.links || !output.links.length)
+				continue;
+			switch( output.name )
+			{
+				case "Material": this.setOutputData( i, node.getMaterial() ); break;
+				case "Transform": this.setOutputData( i, node.transform ); break;
+				case "Mesh": this.setOutputData(i, node.getMesh()); break;
+				case "Visible": this.setOutputData(i, node.flags.visible ); break;
+				default:
+					var compo = node.getComponentByUId( output.name );
+					if(!compo)
+					{
+						//SPECIAL CASE: maybe the node id changed so the output.name contains the uid of another node, in that case replace it
+						var old_compo = node.scene.findComponentByUId( output.name );
+						if(old_compo)
+						{
+							var class_name = LS.getObjectClassName( old_compo );
+							compo = node.getComponent( class_name );
+							if( compo )
+								output.name = compo.uid; //replace the uid
+						}
+					}
+
+					this.setOutputData(i, compo );
+					break;
+			}
+		}
+	}
+
+	LGraphSceneNode.prototype.getComponents = function(result)
+	{
+		result = result || [];
+		var node = this.getNode();
+		if(!node)
+			return result;
+		var compos = node.getComponents();
+		if(!compos)
+			return result;
+
+		for(var i = 0; i < compos.length; ++i)
+		{
+			var name = LS.getClassName( compos[i].constructor );
+			result.push( [ compos[i].uid, name, { label: name } ] );
+		}
+
+		return result;
+	}
+
+	LGraphSceneNode.prototype.onDropItem = function( event )
+	{
+		var node_id = event.dataTransfer.getData("node_id");
+		if(!node_id)
+			return;
+		this.properties.node_id = node_id;
+		this.onExecute();
+		return true;
+	}
+
+	LGraphSceneNode.prototype.onPropertyChanged = function(name,value)
+	{
+		if(name == "node_id")
+		{
+			var scene = this.graph.getScene();
+			this._node = scene.getNode( name );
+		}
+	}
+
+	LGraphSceneNode.prototype.onGetInputs = function()
+	{
+		var result = [["Visible","boolean"],["Material","Material"]];
+		return this.getComponents(result);
+		//return [["Transform","Transform"],["Material","Material"],["Mesh","Mesh"],["Enabled","boolean"]];
+	}
+
+	LGraphSceneNode.prototype.onGetOutputs = function()
+	{
+		var result = [["Visible","boolean"],["Material","Material"],["onClicked",LiteGraph.EVENT]];
+		return this.getComponents(result);
+		//return [["Transform","Transform"],["Material","Material"],["Mesh","Mesh"],["Enabled","boolean"]];
+	}
+
+	/*
+	LGraphSceneNode.prototype.onGetOutputs = function()
+	{
+		var node = this.getNode();
+		var r = [];
+		for(var i = 0; i < node._components.length; ++i)
+		{
+			var comp = node._components[i];
+			var classname = getObjectClassName(comp);
+			var vars = getObjectAttributes(comp);
+			r.push([classname,vars]);
+		}
+		return r;
+		*/
+
+		/*
+		var r = [["Transform","Transform"],["Material","Material"],["Mesh","Mesh"],["Enabled","boolean"]];
+		if(node.light)
+			r.push(["Light","Light"]);
+		if(node.camera)
+			r.push(["Camera","Camera"]);
+		return r;
+	}
+	*/
+
+	LiteGraph.registerNodeType("scene/node", LGraphSceneNode );
+
+	//********************************************************
+
+	/* LGraphNode representing an object in the Scene */
+
+	global.LGraphTransform = function()
+	{
+		this.properties = {node_id:""};
+		if(LGraphSceneNode._current_node_id)
+			this.properties.node = LGraphSceneNode._current_node_id;
+		this.addInput("Transform", "Transform", { locked: true });
+		this.addOutput("Position","vec3");
+	}
+
+	LGraphTransform.title = "Transform";
+	LGraphTransform.desc = "Transform info of a node";
+
+	LGraphTransform.prototype.onExecute = function()
+	{
+		var transform = null;
+
+		if(this.inputs && this.inputs[0])
+			transform = this.getInputData(0);
+
+		if(!transform)
+		{
+			var scene = this.graph.getScene();
+			if(!scene)
+				return;
+
+			var node = this._node;
+			if(	this.properties.node )
+			{
+				node = scene.getNode( this.properties.node );
+				if(!node)
+					return;
+			}
+
+			if(!node)
+				node = this.graph._scenenode;
+
+			transform = node.transform;
+		}
+
+		if(!transform)
+			return;
+
+		//read inputs
+		if(this.inputs)
+		for(var i = 1; i < this.inputs.length; ++i)
+		{
+			var input = this.inputs[i];
+			var v = this.getInputData(i);
+			if(v === undefined)
+				continue;
+			switch( input.name )
+			{
+				case "x": transform.x = v; break;
+				case "y": transform.y = v; break;
+				case "z": transform.z = v; break;
+				case "Position": transform.setPosition(v); break;
+				case "Rotation": transform.setRotation(v); break;
+				case "Scale": transform.setScale(v); break;
+				case "Matrix": transform.fromMatrix(v); break;
+				case "Translate": transform.translate(v); break;
+				case "Translate Local": transform.translateLocal(v); break;
+				case "RotateY": transform.rotateY(v); break;
+			}
+		}
+
+		//write outputs
+		if(this.outputs)
+		for(var i = 0; i < this.outputs.length; ++i)
+		{
+			var output = this.outputs[i];
+			if(!output.links || !output.links.length)
+				continue;
+
+			var value = undefined;
+			switch( output.name )
+			{
+				case "x": value = transform.x; break;
+				case "y": value = transform.y; break;
+				case "z": value = transform.z; break;
+				case "Position": value = transform.position; break;
+				case "Global Position": value = transform.getGlobalPosition(); break;
+				case "Rotation": value = transform.rotation; break;
+				case "Global Rotation": value = transform.getGlobalRotation(); break;
+				case "Scale": value = transform.scaling; break;
+				case "Matrix": value = transform.getMatrix(); break;
+				default:
+					break;
+			}
+
+			if(value !== undefined)
+				this.setOutputData( i, value );
+		}
+	}
+
+	LGraphTransform.prototype.onGetInputs = function()
+	{
+		return [["Position","vec3"],["Rotation","quat"],["Scale","number"],["x","number"],["y","number"],["z","number"],["Global Position","vec3"],["Global Rotation","quat"],["Matrix","mat4"],["Translate","vec3"],["Translate Local","vec3"],["RotateY","number"]];
+	}
+
+	LGraphTransform.prototype.onGetOutputs = function()
+	{
+		return [["Position","vec3"],["Rotation","quat"],["Scale","number"],["x","number"],["y","number"],["z","number"],["Global Position","vec3"],["Global Rotation","quat"],["Matrix","mat4"]];
+	}
+
+	LiteGraph.registerNodeType("scene/transform", LGraphTransform );
+
+	//***********************************************************************
+
+	global.LGraphMaterial = function()
+	{
+		this.properties = {mat_name:""};
+		this.addInput("Material","Material");
+		this.size = [100,20];
+	}
+
+	LGraphMaterial.title = "Material";
+	LGraphMaterial.desc = "Material of a node";
+
+	LGraphMaterial.prototype.onExecute = function()
+	{
+		var mat = this.getMaterial();
+		if(!mat)
+			return;
+
+		//read inputs
+		for(var i = 0; i < this.inputs.length; ++i)
+		{
+			var input = this.inputs[i];
+			var v = this.getInputData(i);
+			if(v === undefined)
+				continue;
+
+			if(input.name == "Material")
+				continue;
+
+			mat.setProperty(input.name, v);
+
+			/*
+			switch( input.name )
+			{
+				case "Alpha": mat.alpha = v; break;
+				case "Specular f.": mat.specular_factor = v; break;
+				case "Diffuse": vec3.copy(mat.diffuse,v); break;
+				case "Ambient": vec3.copy(mat.ambient,v); break;
+				case "Emissive": vec3.copy(mat.emissive,v); break;
+				case "UVs trans.": mat.uvs_matrix.set(v); break;
+				default:
+					if(input.name.substr(0,4) == "tex_")
+					{
+						var channel = input.name.substr(4);
+						mat.setTexture(v, channel);
+					}
+					break;
+			}
+			*/
+		}
+
+		//write outputs
+		if(this.outputs)
+		for(var i = 0; i < this.outputs.length; ++i)
+		{
+			var output = this.outputs[i];
+			if(!output.links || !output.links.length)
+				continue;
+			var v = mat.getProperty( output.name );
+			/*
+			var v;
+			switch( output.name )
+			{
+				case "Material": v = mat; break;
+				case "Alpha": v = mat.alpha; break;
+				case "Specular f.": v = mat.specular_factor; break;
+				case "Diffuse": v = mat.diffuse; break;
+				case "Ambient": v = mat.ambient; break;
+				case "Emissive": v = mat.emissive; break;
+				case "UVs trans.": v = mat.uvs_matrix; break;
+				default: continue;
+			}
+			*/
+			this.setOutputData( i, v );
+		}
+
+		//this.setOutputData(0, parseFloat( this.properties["value"] ) );
+	}
+
+	LGraphMaterial.prototype.getMaterial = function()
+	{
+		//if it has an input material, use that one
+		var slot = this.findInputSlot("Material");
+		if( slot != -1)
+			return this.getInputData( slot );
+
+		if(	this.properties.mat_name )
+			return LS.RM.materials[ this.properties.mat_name ];
+
+		return null;
+	}
+
+	LGraphMaterial.prototype.onGetInputs = function()
+	{
+		var mat = this.getMaterial();
+		if(!mat) return;
+		var o = mat.getProperties();
+		var results = [["Material","Material"]];
+		for(var i in o)
+			results.push([i,o[i]]);
+		return results;
+
+		/*
+		var results = [["Material","Material"],["Alpha","number"],["Specular f.","number"],["Diffuse","color"],["Ambient","color"],["Emissive","color"],["UVs trans.","texmatrix"]];
+		for(var i in Material.TEXTURE_CHANNELS)
+			results.push(["Tex." + Material.TEXTURE_CHANNELS[i],"Texture"]);
+		return results;
+		*/
+	}
+
+	LGraphMaterial.prototype.onGetOutputs = function()
+	{
+		var mat = this.getMaterial();
+		if(!mat) return;
+		var o = mat.getProperties();
+		var results = [["Material","Material"]];
+		for(var i in o)
+			results.push([i,o[i]]);
+		return results;
+
+		/*
+		var results = [["Material","Material"],["Alpha","number"],["Specular f.","number"],["Diffuse","color"],["Ambient","color"],["Emissive","color"],["UVs trans.","texmatrix"]];
+		for(var i in Material.TEXTURE_CHANNELS)
+			results.push(["Tex." + Material.TEXTURE_CHANNELS[i],"Texture"]);
+		return results;
+		*/
+	}
+
+	LiteGraph.registerNodeType("scene/material", LGraphMaterial );
+	global.LGraphMaterial = LGraphMaterial;
+
+	//********************************************************
+
+	global.LGraphComponent = function()
+	{
+		this.properties = {
+			node: "",
+			component: ""
+		};
+
+		this.addInput("Component", undefined, { locked: true });
+
+		this._component = null;
+	}
+
+	LGraphComponent.title = "Component";
+	LGraphComponent.desc = "A component from a node";
+
+	LGraphComponent.prototype.onConnectInput = function( slot, type )
+	{
+		if (slot == 0 && !LS.Components[type])
+			return false;
+	}
+
+	LGraphComponent.prototype.onExecute = function()
+	{
+		var compo = this.getComponent();
+		if(!compo)
+			return;
+
+		//read inputs (skip 1, is the component)
+		for(var i = 1; i < this.inputs.length; i++)
+		{
+			var input = this.inputs[i];
+			var v = this.getInputData(i);
+			if(v === undefined)
+				continue;
+			LS.setObjectProperty( compo, input.name, v );
+		}
+
+		//write outputs
+		for(var i in this.outputs)
+		{
+			var output = this.outputs[i];
+			if(!output.links || !output.links.length)
+				continue;
+
+			//could be better...
+			this.setOutputData(i, compo[ output.name ] );
+		}
+	}
+
+	LGraphComponent.prototype.onDrawBackground = function()
+	{
+		var compo = this.getComponent();
+		if(compo)
+			this.title = LS.getClassName( compo.constructor );
+	}
+
+	LGraphComponent.prototype.getComponent = function()
+	{
+		var v = this.getInputData(0);
+		if(v)
+			return v;
+
+		var scene = this.graph._scene;
+		if(!scene) 
+			return null;
+
+		var node_id = this.properties.node;
+		if(!node_id)
+			return;
+
+		//find node
+		var node = scene.getNode( node_id );
+		if(!node)
+			return null;
+
+		//find compo
+		var compo_id = this.properties.component;
+		var compo = null;
+		if(compo_id.charAt(0) == "@")
+			compo = node.getComponentByUId( compo_id );
+		else if( LS.Components[ compo_id ] )
+			compo = node.getComponent( LS.Components[ compo_id ] );
+		else
+			return null;
+
+		if(compo && !compo.constructor.is_component)
+			return null;
+
+		this._component = compo;
+		return compo;
+	}
+
+	LGraphComponent.prototype.getComponentProperties = function( v )
+	{
+		var compo = this.getComponent();
+		if(!compo)
+			return null;
+
+		var attrs = null;
+		if(compo.getProperties)
+			attrs = compo.getProperties( v );
+		else
+			attrs = LS.getObjectProperties( compo );
+
+		var result = [];
+		for(var i in attrs)
+			result.push( [i, attrs[i]] );
+		return result;
+	}
+
+	LGraphComponent.prototype.onGetInputs = function() { return this.getComponentProperties("input"); }
+	LGraphComponent.prototype.onGetOutputs = function() { return this.getComponentProperties("output"); }
+
+	LiteGraph.registerNodeType("scene/component", LGraphComponent );
+
+	//************************************************************
+
+	global.LGraphLight = function()
+	{
+		this.properties = {mat_name:""};
+		this.addInput("Light","Light");
+		this.addOutput("Intensity","number");
+		this.addOutput("Color","color");
+	}
+
+	LGraphLight.title = "Light";
+	LGraphLight.desc = "Light from a scene";
+
+	LGraphLight.prototype.onExecute = function()
+	{
+		var scene = this.graph.getScene();
+		if(!scene)
+			return;
+
+		var node = this._node;
+		if(	this.properties.node_id )
+			node = scene.getNode( this.properties.node_id );
+
+		if(!node)
+			node = this.graph._scenenode;
+
+		var light = null;
+		if(node) //use light of the node
+			light = node.getLight();
+		//if it has an input light
+		var slot = this.findInputSlot("Light");
+		if( slot != -1 )
+			light = this.getInputData(slot);
+		if(!light)
+			return;
+
+		//read inputs
+		for(var i = 0; i < this.inputs.length; ++i)
+		{
+			var input = this.inputs[i];
+			var v = this.getInputData(i);
+			if(v === undefined)
+				continue;
+
+			switch( input.name )
+			{
+				case "Intensity": light.intensity = v; break;
+				case "Color": vec3.copy(light.color,v); break;
+				case "Eye": vec3.copy(light.eye,v); break;
+				case "Center": vec3.copy(light.center,v); break;
+			}
+		}
+
+		//write outputs
+		for(var i = 0; i < this.outputs.length; ++i)
+		{
+			var output = this.outputs[i];
+			if(!output.links || !output.links.length)
+				continue;
+
+			switch( output.name )
+			{
+				case "Light": this.setOutputData(i, light ); break;
+				case "Intensity": this.setOutputData(i, light.intensity ); break;
+				case "Color": this.setOutputData(i, light.color ); break;
+				case "Eye": this.setOutputData(i, light.eye ); break;
+				case "Center": this.setOutputData(i, light.center ); break;
+			}
+		}
+	}
+
+	LGraphLight.prototype.onGetInputs = function()
+	{
+		return [["Light","Light"],["Intensity","number"],["Color","color"],["Eye","vec3"],["Center","vec3"]];
+	}
+
+	LGraphLight.prototype.onGetOutputs = function()
+	{
+		return [["Light","Light"],["Intensity","number"],["Color","color"],["Eye","vec3"],["Center","vec3"]];
+	}
+
+	LiteGraph.registerNodeType("scene/light", LGraphLight );
+
+	//************************************
+
+	global.LGraphGlobal = function()
+	{
+		this.addOutput("Value");
+		this.properties = {name:"myvar", value: 0, type: "number", min:0, max:1 };
+	}
+
+	LGraphGlobal.title = "Global";
+	LGraphGlobal.desc = "Global var for the graph";
+	LGraphGlobal["@type"] = { type:"enum", values:["number","string","node","vec2","vec3","vec4","color","texture"]};
+
+	LGraphGlobal.prototype.onExecute = function()
+	{
+		if(!this.properties.name)
+			return;
+
+		this.setOutputData(0, this.properties.value);
+	}
+
+	LGraphGlobal.prototype.onDrawBackground = function()
+	{
+		var name = this.properties.name;
+		this.outputs[0].label = name;
+	}
+
+	LiteGraph.registerNodeType("scene/global", LGraphGlobal );
+
+	//************************************
+
+	global.LGraphLocatorProperty = function()
+	{
+		this.addInput("in");
+		this.addOutput("out");
+		this.size = [80,20];
+		this.properties = {locator:""};
+	}
+
+	LGraphLocatorProperty.title = "Property";
+	LGraphLocatorProperty.desc = "A property of a node or component of the scene specified by its locator string";
+
+	LGraphLocatorProperty.prototype.onExecute = function()
+	{
+		var locator = this.properties.locator;
+		if(!this.properties.locator)
+			return;
+
+		var info = this._locator_info = LS.GlobalScene.getPropertyInfo( locator );
+
+		if(info && info.target)
+		{
+			this.title = info.name;
+			if( this.inputs.length && this.inputs[0].link !== null )
+				LSQ.setFromInfo( info, this.getInputData(0) );
+			if( this.outputs.length && this.outputs[0].links && this.outputs[0].links.length )
+				this.setOutputData( 0, LSQ.getFromInfo( info ));
+		}
+	}
+
+	LiteGraph.registerNodeType("scene/property", LGraphLocatorProperty );
+
+	//************************************
+
+	global.LGraphFrame = function()
+	{
+		this.addOutput("Color","Texture");
+		this.addOutput("Depth","Texture");
+		this.addOutput("Extra","Texture");
+		this.addOutput("Camera","Camera");
+		this.properties = {};
+	}
+
+	LGraphFrame.title = "Frame";
+	LGraphFrame.desc = "One frame rendered from the scene renderer";
+
+	LGraphFrame.prototype.onExecute = function()
+	{
+		this.setOutputData(0, LGraphTexture.getTexture( this._color_texture ) );
+		this.setOutputData(1, LGraphTexture.getTexture( this._depth_texture ) );
+		this.setOutputData(2, LGraphTexture.getTexture( this._extra_texture ) );
+		this.setOutputData(3, this._camera );
+	}
+
+	LGraphFrame.prototype.onDrawBackground = function( ctx )
+	{
+		if( this.flags.collapsed || this.size[1] <= 20 )
+			return;
+
+		if(!this._color_texture)
+			return;
+
+		if( !ctx.webgl )
+			return; //is not working well
+
+		//Different texture? then get it from the GPU
+		if(this._last_preview_tex != this._last_tex || !this._last_preview_tex)
+		{
+			if( ctx.webgl && this._canvas && this._canvas.constructor === GL.Texture )
+			{
+				this._canvas = this._last_tex;
+			}
+			else
+			{
+				var texture = LGraphTexture.getTexture( this._color_texture );
+				if(!texture)
+					return;
+
+				var tex_canvas = LGraphTexture.generateLowResTexturePreview( texture );
+				if(!tex_canvas) 
+					return;
+				this._last_preview_tex = this._last_tex;
+				this._canvas = cloneCanvas( tex_canvas );
+			}
+		}
+
+		if(!this._canvas)
+			return;
+
+		//render to graph canvas
+		ctx.save();
+		if(!ctx.webgl) //reverse image
+		{
+			if( this._canvas.constructor === GL.Texture )
+			{
+				this._canvas = null;
+				return;
+			}
+
+			ctx.translate( 0,this.size[1] );
+			ctx.scale(1,-1);
+		}
+		ctx.drawImage( this._canvas, 0, 0, this.size[0], this.size[1] );
+		ctx.restore();
+	}
+
+	LiteGraph.registerNodeType("scene/frame", LGraphFrame );
+};
+function Path()
+{
+	this.points = [];
+	this.closed = false;
+	this.type = Path.LINE;
+}
+
+Path.LINE = 1;
+Path.SPLINE = 2;
+Path.BEZIER = 3;
+
+
+Path.prototype.addPoint = function(p)
+{
+	var pos = vec3.create();
+	pos[0] = p[0];
+	pos[1] = p[1];
+	if(p.length > 2)
+		pos[2] = p[2];
+	this.points.push( pos );
+}
+
+Path.prototype.getSegments = function()
+{
+	var l = this.points.length;
+
+	switch(this.type)
+	{
+		case Path.LINE: 
+			if(l < 2) 
+				return 0;
+			return l - 1; 
+			break;
+		case Path.SPLINE:
+			if(l < 3) 
+				return 0;
+			return (((l-1)/3)|0); 
+			break;
+	}
+	return 0;
+}
+
+Path.prototype.computePoint = function(f, out)
+{
+	switch(this.type)
+	{
+		case Path.LINE: return this.getLinearPoint(f,out); break;
+		case Path.SPLINE: 
+		default:
+			return this.getSplinePoint(f,out); break;
+	}
+	//throw("Impossible path type");
+}
+
+
+Path.prototype.getLinearPoint = function(f, out)
+{
+	out = out || vec3.create();
+	var l = this.points.length;
+	if(l < 2)
+		return out;
+
+	if(f <= 0)
+		return vec3.copy(out, this.points[0]);
+	if(f >= 1)
+		return vec3.copy(out, this.points[l-1]);
+
+	var v = ((l-1) * f);
+	var i = v|0;
+	var fract = v-i;
+	var p = this.points[ i ];
+	var p2 = this.points[ i+1 ];
+	return vec3.lerp(out, p, p2, fract);
+}
+
+Path.prototype.getSplinePoint = function(f, out)
+{
+	out = out || vec3.create();
+	var l = this.points.length;
+	if(l < 4)
+		return out;
+	l = (((l-1)/3)|0) * 3 + 1; //take only useful points
+	if(f <= 0)
+		return vec3.copy(out, this.points[0]);
+	if(f >= 1)
+		return vec3.copy(out, this.points[l-1]);
+
+	var v = ((l-1)/3*f); 
+	var i = v|0;//spline number
+	var t = v-i;//weight
+	var p = this.points[ i ];
+	var p1 = this.points[ i+1 ];
+	var p2 = this.points[ i+2 ];
+	var p3 = this.points[ i+3 ];
+
+	var b1 = (1-t)*(1-t)*(1-t);
+	var b2 = 3*t*(1-t)*(1-t);
+	var b3 = 3*t*t*(1-t);
+	var b4 = t*t*t;
+
+	out[0] = p[0] * b1 + p1[0] * b2 + p2[0] * b3 + p3[0] * b4;
+	out[1] = p[1] * b1 + p1[1] * b2 + p2[1] * b3 + p3[1] * b4;
+	out[2] = p[2] * b1 + p1[2] * b2 + p2[2] * b3 + p3[2] * b4;
+	return out;
+}
+
+/*
+Path.prototype.getSplinePoint = function(f, out)
+{
+	out = out || vec3.create();
+	var l = this.points.length;
+	if(l < 4)
+		return out;
+	l = (((l-1)/3)|0) * 3 + 1; //take only useful points
+	if(f <= 0)
+		return vec3.copy(out, this.points[0]);
+	if(f >= 1)
+		return vec3.copy(out, this.points[l-1]);
+
+	var v = ((l-1)/3*f); 
+	var i = v|0;//spline number
+	var fract = v-i;//weight
+	var p = this.points[ i ];
+	var p1 = this.points[ i+1 ];
+	var p2 = this.points[ i+2 ];
+	var p3 = this.points[ i+3 ];
+	var w = fract;
+	var w2 = w*w;
+	var w3 = w2*w;
+	out[0] = Path.interpolate( p[0], p1[0], p2[0], p3[0], w,w2,w3 );
+	out[1] = Path.interpolate( p[1], p1[1], p2[1], p3[1], w,w2,w3 );
+	out[2] = Path.interpolate( p[2], p1[2], p2[2], p3[2], w,w2,w3 );
+	return out;
+}
+
+//catmull-rom
+Path.interpolate = function ( p0, p1, p2, p3, t, t2, t3 ) {
+	var v0 = ( p2 - p0 ) * 0.5;
+	var v1 = ( p3 - p1 ) * 0.5;
+	return ( 2 * ( p1 - p2 ) + v0 + v1 ) * t3 + ( - 3 * ( p1 - p2 ) - 2 * v0 - v1 ) * t2 + v0 * t + p1;
+};
+
+*/
+
+
+Path.prototype.samplePoints = function(n)
+{
+	if(n <= 0)
+	{
+		var segments = this.getSegments();
+		if(this.type == LS.Path.LINE)
+			n = segments + 1;
+		else
+			n = segments * 20;
+	}
+
+	var result = Array(n);
+	for(var i = 0; i < n; i++)
+		result[i] = this.computePoint(i/(n-1));
+	return result;
+}
+
+
+Path.prototype.serialize = function()
+{
+	var o = {};
+	var points = Array( this.points.length * 3 );
+	for(var i = 0; i < this.points.length; i++)
+	{
+		var p = this.points[i];
+		points[i*3] = p[0];
+		points[i*3+1] = p[1];
+		points[i*3+2] = p[2];
+	}
+
+	o.points = points;
+	o.type = this.type;
+	o.closed = this.closed;
+	return o;
+}
+
+Path.prototype.configure = function(o)
+{
+	this.type = o.type;
+	this.closed = o.closed;
+
+	if(o.points)
+	{
+		this.points.length = o.points.length / 3;
+		var points = o.points;
+		for(var i = 0; i < this.points.length; i++)
+			this.points[i] = vec3.fromValues( points[i*3], points[i*3+1], points[i*3+2] );
+	}
+}
+
+
+LS.Path = Path;
+//Work in progress
+
+/**
+* helps apply basic effects to a texture with as fewer render calls as possible with low memory footprint
+* used by CameraFX but also available for any other use
+* @class TextureFX
+*/
+function TextureFX( o )
+{
+	this.apply_fxaa = false;
+	this.fx = [];
+
+	this._uniforms = { u_aspect: 1, u_viewport: vec2.create(), u_iviewport: vec2.create(), u_texture: 0, u_texture_depth: 1, u_random: vec2.create() };
+	if(o)
+		this.configure(o);
+}
+
+TextureFX.available_fx = {
+	"brightness_contrast": {
+		name: "Brightness & Contrast",
+		uniforms: {
+			brightness: { name: "u_brightness", type: "float", value: 1, step: 0.01 },
+			contrast: { name: "u_contrast", type: "float", value: 1, step: 0.01 }
+		},
+		code:"color.xyz = (color.xyz * u_brightness@ - vec3(0.5)) * u_contrast@ + vec3(0.5);"
+	},
+	"invert": {
+		name: "Invert color",
+		code:"color.xyz = vec3(1.0) - color.xyz;"
+	},
+	"threshold": {
+		name: "Threshold",
+		uniforms: {
+			threshold: { name: "u_threshold", type: "float", value: 0.5, min: 0, max: 2, step: 0.01 },
+			threshold_width: { name: "u_threshold_width", type: "float", value: 0.01, min: 0, max: 1, step: 0.001 }
+		},
+		code:"color.xyz = vec3( smoothstep( u_threshold@ - u_threshold_width@ * 0.5, u_threshold@ + u_threshold_width@ * 0.5,  length(color.xyz) ));"
+	},
+	"colorize": {
+		name: "Colorize",
+		uniforms: {
+			colorize: { name: "u_colorize", type: "color3", value: [1,1,1] },
+			vibrance: { name: "u_vibrance", type: "float", value: 0.0, min: 0, max: 2, step: 0.01 }
+		},
+		code:"color.xyz = color.xyz * (u_colorize@ + vec3(u_vibrance@ * 0.1)) * (1.0 + u_vibrance@);"
+	},
+	"color_add": {
+		name: "Color add",
+		uniforms: {
+			color_add: { name: "u_coloradd", type: "color3", value: [0.1,0.1,0.1] }
+		},
+		code:"color.xyz = color.xyz + u_coloradd@;"
+	},
+	"vigneting": {
+		name: "Vigneting",
+		uniforms: {
+			radius: { name: "u_radius", type: "float", value: 1 },
+			intensity: { name: "u_vigneting", type: "float", value: 1, min: 0, max: 2, step: 0.01 }
+		},
+		code:"color.xyz = mix( color.xyz * max( 1.0 - (dist_to_center * u_radius@ / 0.7071), 0.0), color.xyz, u_vigneting@);"
+	},
+	"aberration": {
+		name: "Chromatic Aberration",
+		pass: "before",
+		uniforms: {
+			difraction: { name: "u_difraction", type: "float", value: 1 }
+		},
+		code: "color.x = texture2D(u_texture, uv - to_center * 0.001 * u_difraction@ ).x;" + 
+			"color.z = texture2D(u_texture, uv + to_center * 0.001 * u_difraction@ ).z;"
+	},
+	"halftone": {
+		name: "Halftone",
+		uniforms: {
+			"Halftone angle": { name: "u_halftone_angle", type: "float", value: 0, step: 0.01 },
+			"Halftone size": { name: "u_halftone_size", type: "float", value: 1, step: 0.01 }
+		},
+		functions: ["pattern"],
+		code:"color.x = ( (color.x * 10.0 - 5.0) + pattern( u_halftone_angle@, u_halftone_size@ ) );" + 
+			"color.y = ( (color.y * 10.0 - 5.0) + pattern( u_halftone_angle@ + 0.167, u_halftone_size@ ) );" + 
+			"color.z = ( (color.z * 10.0 - 5.0) + pattern( u_halftone_angle@ + 0.333, u_halftone_size@ ) );"
+	},
+	"halftoneBN": {
+		name: "Halftone B/N",
+		uniforms: {
+			"Halftone angle": { name: "u_halftone_angle", type: "float", value: 0, step: 0.01 },
+			"Halftone size": { name: "u_halftone_size", type: "float", value: 1, step: 0.01 }
+		},
+		functions: ["pattern"],
+		code:"color.xyz = vec3( (length(color.xyz) * 10.0 - 5.0) + pattern( u_halftone_angle@, u_halftone_size@ ) );"
+	},
+	"lens": {
+		name: "Lens Distortion",
+		uniforms: {
+			lens_k: { name: "u_lens_k", type: "float", value: -0.15 },
+			lens_kcube: { name: "u_lens_kcube", type: "float", value: 0.8 },
+			lens_scale: { name: "u_lens_scale", type: "float", value: 1 }
+		},
+		uv_code:"float r2 = u_aspect * u_aspect * (uv.x-0.5) * (uv.x-0.5) + (uv.y-0.5) * (uv.y-0.5); float distort@ = 1. + r2 * (u_lens_k@ + u_lens_kcube@ * sqrt(r2)); uv = vec2( u_lens_scale@ * distort@ * (uv.x-0.5) + 0.5, u_lens_scale@  * distort@ * (uv.y-0.5) + 0.5 );"
+	},
+	"warp": {
+		name: "Warp",
+		uniforms: {
+			warp_amp: { name: "u_warp_amp", type: "float", value: 0.01, step: 0.001 },
+			warp_texture: { name: "u_warp_texture", type: "sampler2D", widget: "Texture", value: "" }
+		},
+		uv_code:"uv = uv + u_warp_amp@ * (texture2D( u_warp_texture@, uv ).xy - vec2(0.5));"
+		//uv_code:"uv = uv + u_warp_amp@ * (vec2(0.5) + 0.5 * vec2( sin(uv.x * u_warp_freq@) * sin(uv.y * u_warp_freq@)));"
+	},
+	"LUT": {
+		name: "LUT",
+		functions: ["LUT"],
+		uniforms: {
+			lut_intensity: { name: "u_lut_intensity", type: "float", value: 1, step: 0.01 },
+			lut_texture: { name: "u_lut_texture", type: "sampler2D", filter: "nearest", wrap: "clamp", widget: "Texture", value: "" }
+		},
+		code:"color.xyz = mix(color.xyz, LUT( color.xyz, u_lut_texture@ ), u_lut_intensity@);"
+		//uv_code:"uv = uv + u_warp_amp@ * (vec2(0.5) + 0.5 * vec2( sin(uv.x * u_warp_freq@) * sin(uv.y * u_warp_freq@)));"
+	},
+	"pixelate": {
+		name: "Pixelate",
+		uniforms: {
+			width: { name: "u_width", type: "float", value: 256, step: 1, min: 1 },
+			height: { name: "u_height", type: "float", value: 256, step: 1, min: 1 }
+		},
+		uv_code:"uv = vec2( floor(uv.x * u_width@) / u_width@, floor(uv.y * u_height@) / u_height@ );"
+	},
+	"quantize": {
+		name: "Quantize",
+		uniforms: {
+			levels: { name: "u_levels", type: "float", value: 8, step: 1, min: 1 }
+		},
+		code:"color.xyz = floor(color.xyz * u_levels@) / u_levels@;"
+	},
+	"edges": {
+		name: "Edges",
+		uniforms: {
+			"Edges factor": { name: "u_edges_factor", type: "float", value: 1 }
+		},
+		code:"vec4 color@ = texture2D(u_texture, uv );\n\
+				vec4 color_up@ = texture2D(u_texture, uv + vec2(0., u_iviewport.y));\n\
+				vec4 color_right@ = texture2D(u_texture, uv + vec2(u_iviewport.x,0.));\n\
+				vec4 color_down@ = texture2D(u_texture, uv + vec2(0., -u_iviewport.y));\n\
+				vec4 color_left@ = texture2D(u_texture, uv + vec2(-u_iviewport.x,0.));\n\
+				color = u_edges_factor@ * (abs(color@ - color_up@) + abs(color@ - color_down@) + abs(color@ - color_left@) + abs(color@ - color_right@));"
+	},
+	"depth": {
+		name: "Depth",
+		uniforms: {
+			"near": { name: "u_near", type: "float", value: 0.01, step: 0.1 },
+			"far": { name: "u_far", type: "float", value: 1000, step: 1 }
+		},
+		code:"color.xyz = vec3( (2.0 * u_near@) / (u_far@ + u_near@ - texture2D(u_texture_depth, uv ).x * (u_far@ - u_near@)) );"
+	},
+	"logarithmic": {
+		name: "Logarithmic",
+		uniforms: {
+			"Log. A Factor": { name: "u_logfactor_a", type: "float", value: 2, step: 0.01 },
+			"Log. B Factor": { name: "u_logfactor_b", type: "float", value: 2, step: 0.01 }
+		},
+		code:"color.xyz = log( color.xyz * u_logfactor_a@ ) * u_logfactor_b@;"
+	},
+	"ditherBN": {
+		name: "dither B/N",
+		functions: ["dither"],
+		uniforms: {
+		},
+		code:"color.xyz = vec3( dither( color.x ) );"
+	},
+	"dither": {
+		name: "Dither",
+		functions: ["dither"],
+		uniforms: {
+		},
+		code:"color.xyz = vec3( dither( color.x ), dither( color.y ), dither( color.z ) );"
+	},
+	"gamma": {
+		name: "Gamma",
+		uniforms: {
+			"Gamma": { name: "u_gamma", type: "float", value: 2.2, step: 0.01 }
+		},
+		code:"color.xyz = pow( color.xyz, vec3( 1.0 / u_gamma@) );"
+	},
+	"noiseBN": {
+		name: "Noise B&N",
+		functions: ["noise"],
+		uniforms: {
+			"noise": { name: "u_noise", type: "float", value: 0.1, step: 0.01 }
+		},
+		code:"color.xyz += u_noise@ * vec3( noise( (u_random + v_coord) * u_viewport) );"
+	}
+	/*
+	,
+	"fast_edges": {
+		name: "Edges (fast)",
+		code:"color.xyz = abs( dFdx(color.xyz) ) + abs( dFdy(color.xyz) );"
+	}
+	*/
+};
+
+TextureFX.available_functions = {
+	pattern: "float pattern(float angle, float size) {\n\
+				float s = sin(angle * 3.1415), c = cos(angle * 3.1415);\n\
+				vec2 tex = v_coord * u_viewport.xy;\n\
+				vec2 point = vec2( c * tex.x - s * tex.y , s * tex.x + c * tex.y ) * size;\n\
+				return (sin(point.x) * sin(point.y)) * 4.0;\n\
+			}\n\
+		",
+	dither: "float dither(float v) {\n\
+				vec2 pixel = v_coord * u_viewport;\n\
+				int i = int(floor(clamp(v,0.0,1.0) * 16.0 + 0.5));\n\
+				if(i < 1)\n\
+					return 0.0;\n\
+				if(i >= 15)\n\
+					return 1.0;\n\
+				float x = floor(pixel.x);\n\
+				float y = floor(pixel.y);\n\
+				bool xmod4 = mod(x, 4.0) == 0.0;\n\
+				bool ymod4 = mod(y, 4.0) == 0.0;\n\
+				bool xmod2 = mod(x, 2.0) == 0.0;\n\
+				bool ymod2 = mod(y, 2.0) == 0.0;\n\
+				bool xmod4_2 = mod(x + 2.0, 4.0) == 0.0;\n\
+				bool ymod4_2 = mod(y + 2.0, 4.0) == 0.0;\n\
+				bool xmod2_1 = mod(x + 1.0, 2.0) == 0.0;\n\
+				bool ymod2_1 = mod(y + 1.0, 2.0) == 0.0;\n\
+				bool xmod4_1 = mod(x + 1.0, 4.0) == 0.0;\n\
+				bool ymod4_1 = mod(y + 1.0, 4.0) == 0.0;\n\
+				bool xmod4_3 = mod(x + 3.0, 4.0) == 0.0;\n\
+				bool ymod4_3 = mod(y + 3.0, 4.0) == 0.0;\n\
+				\n\
+				if(i < 9)\n\
+				{\n\
+					if(i >= 1 && xmod4 && ymod4 )\n\
+						return 1.0;\n\
+					if(i >= 2 && xmod4_2 && ymod4_2)\n\
+						return 1.0;\n\
+					if(i >= 3 && xmod4_2 && ymod2 )\n\
+						return 1.0;\n\
+					if(i >= 4 && xmod2 && ymod2 )\n\
+						return 1.0;\n\
+					if(i >= 5 && xmod4_1 && ymod4_1 )\n\
+						return 1.0;\n\
+					if(i >= 6 && xmod4_3 && ymod4_3 )\n\
+						return 1.0;\n\
+					if(i >= 7 && xmod4_1 && ymod4_3 )\n\
+						return 1.0;\n\
+					if(i >= 8 && xmod4_3 && ymod4_1 )\n\
+						return 1.0;\n\
+					return 0.0;\n\
+				}\n\
+				else\n\
+				{\n\
+					if(i < 15 && xmod4_1 && ymod4 )\n\
+						return 0.0;\n\
+					if(i < 14 && xmod4_3 && ymod4_2)\n\
+						return 0.0;\n\
+					if(i < 13 && xmod4_3 && ymod2 )\n\
+						return 0.0;\n\
+					if(i < 12 && xmod2_1 && ymod2 )\n\
+						return 0.0;\n\
+					if(i < 11 && xmod4_2 && ymod4_1 )\n\
+						return 0.0;\n\
+					if(i < 10 && xmod4 && ymod4_3 )\n\
+						return 0.0;\n\
+					return 1.0;\n\
+				}\n\
+			}\n\
+		",
+	LUT:  "vec3 LUT(in vec3 color, in sampler2D textureB) {\n\
+		 lowp vec3 textureColor = clamp( color, vec3(0.0), vec3(1.0) );\n\
+		 mediump float blueColor = textureColor.b * 63.0;\n\
+		 mediump vec2 quad1;\n\
+		 quad1.y = floor(floor(blueColor) / 8.0);\n\
+		 quad1.x = floor(blueColor) - (quad1.y * 8.0);\n\
+		 mediump vec2 quad2;\n\
+		 quad2.y = floor(ceil(blueColor) / 8.0);\n\
+		 quad2.x = ceil(blueColor) - (quad2.y * 8.0);\n\
+		 highp vec2 texPos1;\n\
+		 texPos1.x = (quad1.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.r);\n\
+		 texPos1.y = 1.0 - ((quad1.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.g));\n\
+		 highp vec2 texPos2;\n\
+		 texPos2.x = (quad2.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.r);\n\
+		 texPos2.y = 1.0 - ((quad2.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.g));\n\
+		 lowp vec3 newColor1 = texture2D(textureB, texPos1).xyz;\n\
+		 lowp vec3 newColor2 = texture2D(textureB, texPos2).xyz;\n\
+		 lowp vec3 newColor = mix(newColor1, newColor2, fract(blueColor));\n\
+		 return newColor.rgb;\n\
+	 }",
+	noise:  "\n\
+		float hash(float n) { return fract(sin(n) * 1e4); }\n\
+		float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }\n\
+		float noise(float x) {\n\
+			float i = floor(x);\n\
+			float f = fract(x);\n\
+			float u = f * f * (3.0 - 2.0 * f);\n\
+			return mix(hash(i), hash(i + 1.0), u);\n\
+		}\n\
+		float noise(vec2 x) {\n\
+			vec2 i = floor(x);\n\
+			vec2 f = fract(x);\n\
+			float a = hash(i);\n\
+			float b = hash(i + vec2(1.0, 0.0));\n\
+			float c = hash(i + vec2(0.0, 1.0));\n\
+			float d = hash(i + vec2(1.0, 1.0));\n\
+			vec2 u = f * f * (3.0 - 2.0 * f);\n\
+			return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;\n\
+		}\n\
+	"
+}
+
+/**
+* Returns the first component of this container that is of the same class
+* @method configure
+* @param {Object} o object with the configuration info from a previous serialization
+*/
+TextureFX.prototype.configure = function(o)
+{
+	this.apply_fxaa = !!o.apply_fxaa;
+	if(o.fx)
+		this.fx = o.fx.concat();
+}
+
+TextureFX.prototype.serialize = function()
+{
+	return { 
+		apply_fxaa: this.apply_fxaa,
+		fx: this.fx.concat()
+	};
+}
+
+TextureFX.prototype.getResources = function(res)
+{
+	//TODO
+	return res;
+}
+
+TextureFX.prototype.addFX = function( name )
+{
+	if(!name)
+		return;
+	if( !TextureFX.available_fx[ name ] )
+	{
+		console.warn( "TextureFX not found: " + name );
+		return;
+	}
+	this.fx.push({ name: name });
+}
+
+TextureFX.prototype.getFX = function(index)
+{
+	return this.fx[ index ];
+}
+
+TextureFX.prototype.moveFX = function( fx, offset )
+{
+	offset = offset || -1;
+
+	var index = this.fx.indexOf(fx);
+	if( index == -1 )
+		return;
+
+	this.fx.splice(index,1);
+	index += offset;
+
+
+	if(index >= 0 && index < this.fx.length)
+		this.fx.splice(index,0,fx);
+	else
+		this.fx.push(fx);
+}
+
+TextureFX.prototype.removeFX = function( fx )
+{
+	for(var i = 0; i < this.fx.length; i++)
+	{
+		if(this.fx[i] !== fx)
+			continue;
+
+		this.fx.splice(i,1);
+		return;
+	}
+}
+
+TextureFX.prototype.applyFX = function( input_texture, output_texture, options )
+{
+	var color_texture = input_texture;
+	var depth_texture = options.depth_texture;
+
+	var fxs = this.fx;
+
+	//shadercode: TODO, do this in a lazy way
+	var key = "";
+	var update_shader = true;
+	for(var i = 0; i < fxs.length; i++)
+		key += fxs[i].name + "|";
+	if(key == this._last_shader_key)
+		update_shader = false;
+	this._last_shader_key = key;
+
+	var uv_code = "";
+	var color_code = "";
+	var included_functions = {};
+	var uniforms_code = "";
+	var texture_slot = 2;
+
+	var uniforms = this._uniforms;
+	uniforms.u_viewport[0] = color_texture.width;
+	uniforms.u_viewport[1] = color_texture.height;
+	uniforms.u_iviewport[0] = 1 / color_texture.width;
+	uniforms.u_iviewport[1] = 1 / color_texture.height;
+	uniforms.u_aspect = color_texture.width / color_texture.height;
+	uniforms.u_random[0] = Math.random();
+	uniforms.u_random[1] = Math.random();
+
+	var fx_id = 0;
+	for(var i = 0; i < fxs.length; i++)
+	{
+		var fx = fxs[i];
+		fx_id = i;
+		var fx_info = TextureFX.available_fx[ fx.name ];
+		if(!fx_info)
+			continue;
+		if(update_shader)
+		{
+			if(fx_info.functions)
+				for(var z in fx_info.functions)
+					included_functions[ fx_info.functions[z] ] = true;
+			if( fx_info.code )
+				color_code += fx_info.code.split("@").join( fx_id ) + ";\n";
+			if( fx_info.uv_code )
+				uv_code += fx_info.uv_code.split("@").join( fx_id ) + ";\n";
+		}
+		if(fx_info.uniforms)
+			for(var j in fx_info.uniforms)
+			{
+				var uniform = fx_info.uniforms[j];
+				var varname = uniform.name + fx_id;
+				if(update_shader)
+				{
+					uniforms_code += "uniform " + uniform.type + " " + varname + ";\n";
+				}
+
+				if(uniform.type == "sampler2D")
+				{
+					uniforms[ varname ] = texture_slot;
+					var tex = this.getTexture( fx[j] );
+					if(tex)
+					{
+						tex.bind( texture_slot );
+						if(uniform.filter == "nearest")
+						{
+							gl.texParameteri( tex.texture_type, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
+							gl.texParameteri( tex.texture_type, gl.TEXTURE_MIN_FILTER, gl.NEAREST );
+						}
+						if(uniform.wrap == "clamp")
+						{
+							gl.texParameteri( tex.texture_type, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
+							gl.texParameteri( tex.texture_type, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE );
+						}
+						texture_slot++;
+					}
+				}
+				else
+					uniforms[ varname ] = fx[j] !== undefined ? fx[j] : uniform.value;
+			}
+	}
+
+
+	var shader = null;
+	if(update_shader)
+	{
+		var functions_code = "";
+		for(var i in included_functions)
+		{
+			var func = TextureFX.available_functions[ i ];
+			if(!func)
+			{
+				console.error("TextureFX: Function not found: " + i);
+				continue;
+			}
+			functions_code += func + "\n";
+		}
+
+		var fullcode = "\n\
+			#extension GL_OES_standard_derivatives : enable\n\
+			precision highp float;\n\
+			#define color3 vec3\n\
+			#define color4 vec4\n\
+			uniform sampler2D u_texture;\n\
+			uniform sampler2D u_texture_depth;\n\
+			varying vec2 v_coord;\n\
+			uniform vec2 u_viewport;\n\
+			uniform vec2 u_iviewport;\n\
+			uniform float u_aspect;\n\
+			uniform vec2 u_random;\n\
+			vec2 uv;\n\
+			" + uniforms_code + "\n\
+			" + functions_code + "\n\
+			void main() {\n\
+				uv = v_coord;\n\
+				vec2 to_center = vec2(0.5) - uv;\n\
+				float dist_to_center = length(to_center);\n\
+				" + uv_code + "\n\
+				vec4 color = texture2D(u_texture, uv);\n\
+				float temp = 0.0;\n\
+				" + color_code + "\n\
+				gl_FragColor = color;\n\
+			}\n\
+			";
+
+		this._last_shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, fullcode );
+	}
+
+	shader = this._last_shader;
+
+	if(shader.hasUniform("u_texture_depth"))
+		depth_texture.bind(1);
+
+	color_texture.setParameter( gl.TEXTURE_MAG_FILTER, gl.LINEAR );
+	color_texture.setParameter( gl.TEXTURE_MIN_FILTER, gl.LINEAR );
+
+	if( this.apply_fxaa )
+	{
+		if(!this.temp_tex || this.temp_tex.width != gl.viewport_data[2] || this.temp_tex.height != gl.viewport_data[3])
+			this.temp_tex = new GL.Texture(gl.viewport_data[2],gl.viewport_data[3]);
+		this.temp_tex.drawTo(function(){
+			color_texture.toViewport( shader, uniforms );
+		});
+		var fx_aa_shader = GL.Shader.getFXAAShader();
+		fx_aa_shader.setup();
+
+		if(!output_texture)
+			this.temp_tex.toViewport( fx_aa_shader );
+		else
+			this.temp_tex.copyTo( output_texture, fx_aa_shader );
+	}
+	else
+	{
+		this.temp_tex = null;
+		if(!output_texture)
+			color_texture.toViewport( shader, uniforms );
+		else
+		{
+			shader.uniforms( uniforms );
+			this.temp_tex.copyTo( output_texture, shader );
+		}
+	}
+}
+
+TextureFX.prototype.getTexture = function( name )
+{
+	return LS.ResourcesManager.getTexture( name );
+}
+
+LS.TextureFX = TextureFX;
+LS.Tween = {
+
+	EASE_IN_QUAD: 1,
+	EASE_OUT_QUAD: 2,
+	EASE_IN_OUT_QUAD: 3,
+	QUAD: 3,
+
+	EASE_IN_CUBIC: 4,
+	EASE_OUT_CUBIC: 5,
+	EASE_IN_OUT_CUBIC: 6,
+	CUBIC: 6,
+
+	EASE_IN_QUART: 7,
+	EASE_OUT_QUART: 8,
+	EASE_IN_OUT_QUART: 9,
+	QUART: 9,
+
+	EASE_IN_SINE: 10,
+	EASE_OUT_SINE: 11,
+	EASE_IN_OUT_SINE: 12,
+	SINE: 12,
+
+	EASE_IN_EXPO: 13,
+	EASE_OUT_EXPO: 14,
+	EASE_IN_OUT_EXPO: 15,
+	EXPO: 15,
+
+	EASE_IN_BACK: 16,
+	EASE_OUT_BACK: 17,
+	EASE_IN_OUT_BACK: 18,
+	BACK: 18,
+
+	current_easings: [],
+	_alife: [], //temporal array
+
+	reset: function()
+	{
+		this.current_easings = [];
+		this._alife = [];
+	},
+
+	easeProperty: function( object, property, target, time, easing_function, on_complete, on_progress )
+	{
+		if( !object )
+			throw("ease object cannot be null");
+		if( target === undefined )
+			throw("target vaue must be defined");
+		if(object[property] === undefined)
+			throw("property not found in object, must be initialized to a value");
+
+		easing_function = easing_function || this.EASE_IN_OUT_QUAD;
+
+		//clone to avoid problems
+		var origin = null;
+		
+		if(property)
+			origin = LS.cloneObject( object[ property ] );
+		else
+			origin = LS.cloneObject( object );
+		target = LS.cloneObject( target );
+
+		//precompute target value size
+		var size = 0;
+		if(target.constructor === Number)
+			size = -1;
+		else if(target && target.length !== undefined)
+			size = target.length;
+
+		var data = { object: object, property: property, origin: origin, target: target, current: 0, time: time, easing: easing_function, on_complete: on_complete, on_progress: on_progress, size: size };
+
+		for(var i = 0; i < this.current_easings.length; ++i)
+		{
+			if( this.current_easings[i].object == object && this.current_easings[i].property == property )
+			{
+				this.current_easings[i] = data; //replace old easing
+				break;
+			}
+		}
+
+		this.current_easings.push( data );
+		return data;
+	},
+
+	easeObject: function( object, target, time, easing_function, on_complete, on_progress )
+	{
+		if( !object || !target )
+			throw("ease object cannot be null");
+
+		easing_function = easing_function || this.EASE_IN_OUT_QUAD;
+
+		//clone to avoid problems
+		var origin = LS.cloneObject( object );
+		target = LS.cloneObject( target );
+
+		//precompute size
+		var size = 0;
+		if(target.length !== undefined)
+			size = target.length;
+
+		var data = { object: object, origin: origin, target: target, current: 0, time: time, easing: easing_function, on_complete: on_complete, on_progress: on_progress, size: size };
+
+		for(var i = 0; i < this.current_easings.length; ++i)
+		{
+			if( this.current_easings[i].object == object )
+			{
+				this.current_easings[i] = data; //replace old easing
+				break;
+			}
+		}
+
+		this.current_easings.push( data );
+		return data;
+	},
+
+	update: function( dt )
+	{
+		if( !this.current_easings.length )
+			return;
+
+		var easings = this.current_easings;
+		var alive = this._alife;
+		alive.length = easings.length;
+		var pos = 0;
+
+		for(var i = 0, l = easings.length; i < l; ++i)
+		{
+			var item = easings[i];
+			item.current += dt;
+			var t = 1;
+			if(item.current < item.time)
+			{
+				t = item.current / item.time;
+				alive[ pos ] = item;
+				pos += 1;
+			}
+
+			var f = this.getEaseFactor( t, item.easing );
+
+			var result = null;
+
+			if(item.size)
+			{
+				if(item.size == -1) //number
+					item.object[ item.property ] = item.target * f + item.origin * ( 1.0 - f );
+				else
+				{
+					var property = item.object[ item.property ];
+					for(var j = 0; j < item.size; ++j)
+						property[j] = item.target[j] * f + item.origin[j] * ( 1.0 - f );
+				}
+				if(item.object.mustUpdate !== undefined)
+					item.object.mustUpdate = true;
+			}
+
+			if(item.on_progress)
+				item.on_progress( item );
+
+			if(t == 1 && item.on_complete)
+				item.on_complete( item );
+		}
+
+		alive.length = pos; //trim
+
+		this.current_easings = alive;
+		this._alife = easings;
+	},
+
+	getEaseFactor: function(t,type)
+	{
+		if(t>1) 
+			t = 1;
+		else if(t < 0)
+			t = 0;
+		var s = 1.70158;
+		type = type || this.QUAD;
+		switch(type)
+		{
+			case this.EASE_IN_QUAD: return (t*t);
+			case this.EASE_OUT_QUAD: return 1-(t*t);
+			case this.EASE_IN_OUT_QUAD: { 
+				t *= 2;
+				if( t < 1 ) return 0.5 * t * t;
+				t -= 1;
+				return -0.5 * ((t)*(t-2) - 1);
+			};
+
+			case this.EASE_IN_CUBIC: return t*t*t;
+			case this.EASE_OUT_CUBIC: {
+				t -= 1;
+				return t*t*t + 1;
+			};
+			case this.EASE_IN_OUT_CUBIC: {
+				t *= 2;
+				if( t < 1 )
+					return 0.5 * t*t*t;
+				t -= 2;
+				return 0.5*(t*t*t + 2);
+			};
+
+			case this.EASE_IN_QUART: return t*t*t*t;
+			case this.EASE_OUT_QUART: {
+				t -= 1;
+				return -(t*t*t*t - 1);
+			}
+			case this.EASE_IN_OUT_QUART: {
+				t *= 2;
+				if( t < 1 ) return 0.5*t*t*t*t;
+				else {
+					t -= 2;
+					return -0.5 * (t*t*t*t - 2);
+				}
+			}
+
+			case this.EASE_IN_SINE:	return 1-Math.cos( t * Math.PI / 2 );
+			case this.EASE_OUT_SINE:	return Math.sin( t * Math.PI / 2 );
+			case this.EASE_IN_OUT_SINE: return -0.5 * ( Math.cos( Math.PI * t ) - 1 );
+
+			case this.EASE_IN_EXPO: return t == 0 ? 0 : Math.pow( 2, 10 * (t - 1) );
+			case this.EASE_OUT_EXPO: return t == 1 ? 1 : 1 - Math.pow( 2, -10 * t );
+			case this.EASE_IN_OUT_EXPO: {
+				if( t == 0 ) return 0;
+				if( t == 1 ) return 1;
+				t *= 2;
+				if( t < 1 ) return 0.5 * Math.pow( 2, 10 * (t - 1) );
+				return 0.5 * ( -Math.pow( 2, -10 * (t - 1)) + 2);
+			}
+
+			case this.EASE_IN_BACK: return t * t * ((s+1)*t - s);
+			case this.EASE_OUT_BACK: return (t*t*((s+1)*t + s) + 1);
+			case this.EASE_IN_OUT_BACK: {
+				t *= 2;
+				if( t < 1 ) {
+					s *= 1.525;
+					return 0.5*(t*t*((s+1)*t - s));
+				}
+				else {
+					t -= 2;
+					s *= 1.525;
+					return 0.5*(t*t*((s+1)*t+ s) + 2);
+				}
+			};
+		}
+		return t;
+	}
+};
+
+/** RenderSettings contains how the scene should be renderer 
+* There could be different renderSettings for different scene quality.
+* @class RenderSettings
+* @constructor
+**/
+
+function RenderSettings( o )
+{
+	this.renderer_name = null; //null means default
+
+	//global render settings
+	this.default_shadowmap_resolution = LS.RenderSettings.default_shadowmap_resolution; //let the system decide best shadowmap resolution according to quality settings
+	this.ignore_viewports = false;	//render to full viewport, ignoring the viewport in the cameras
+	this.ignore_clear = false;	//skip global clear, used in case you want to mix LiteScene with another renderer
+	this.keep_viewport = false; //do not force a full canvas viewport at render start (use the current one in WebGL as the full)
+	this.linear_pipeline = false; //tries to degamma all the albedo textures.
+
+	this.shadows_enabled = true; //allow shadowmaps
+	this.update_shadowmaps = true; //automatically update shadowmaps in every frame (enable if there are dynamic objects)
+	this.update_all_shadowmaps = false; //update shadowmaps even if they are not visible
+
+	this.force_wireframe = false; //render everything in wireframe
+	this.lights_disabled = false; //flat lighting
+	this.low_quality = false;	//try to use low quality shaders (where available)
+
+	this.update_materials = true; //update info in materials in every frame
+	this.render_all_cameras = true; //render secundary cameras too
+	this.render_fx = true; //postprocessing fx
+	this.render_gui = true; //render gui
+	this.render_helpers = true; //render helpers (for the editor)
+
+	this.sort_instances_by_distance = true; //sort render instances by distance 
+	this.sort_instances_by_priority = true; //sort render instances by priority
+	this.z_pass = false; //enable when the shaders are too complex (normalmaps, etc) to reduce work of the GPU (still some features missing)
+	this.frustum_culling = true; //test bounding box by frustum to determine visibility
+	this.depth_test = true;	//do depth test when rendering
+
+	this.clipping_plane = null;
+
+	//info
+	this.in_player = true; //is in the player (not in the editor)
+
+	//this should change one day...
+	this.default_shader_id = "global";
+	this.default_low_shader_id = "lowglobal";
+
+	if(o)
+		this.configure(o);
+}
+
+RenderSettings.default_shadowmap_resolution = 1024;
+
+RenderSettings["@default_shadowmap_resolution"] = { widget: "combo", values: [0,256,512,1024,2048,4096] };
+
+RenderSettings.prototype.serialize = function()
+{
+	return LS.cloneObject(this);
+}
+
+RenderSettings.prototype.configure = function(o)
+{
+	if(o)
+		for(var i in o)
+			this[i] = o[i];
+}
+
+RenderSettings.prototype.toJSON = RenderSettings.prototype.serialize;
+
+LS.RenderSettings = RenderSettings;
+/**
+* RenderInstance contains info of one object to be rendered on the scene.
+*
+* @class RenderInstance
+* @namespace LS
+* @constructor
+*/
+
+//Flags to control rendering states
+//0-7: render state flags
+var RI_CULL_FACE =			1;		//for two sided
+var RI_CW =					1 << 1; //reverse normals
+var RI_DEPTH_TEST =			1 << 2; //use depth test
+var RI_DEPTH_WRITE = 		1 << 3; //write in the depth buffer
+var RI_ALPHA_TEST =			1 << 4; //do alpha test
+var RI_BLEND = 				1 << 5; //use blend function
+
+//8-16: rendering pipeline flags
+var RI_CAST_SHADOWS = 		1 << 8;	//render in shadowmaps
+var RI_RECEIVE_SHADOWS =	1 << 9;	//receive shadowmaps
+var RI_IGNORE_LIGHTS = 		1 << 10;//render without taking into account light info
+var RI_IGNORE_FRUSTUM = 	1 << 11;//render even when outside of frustum //CHANGE TO VALID_BOUNDINGBOX
+//var RI_RENDER_2D = 			1 << 12;//render in screen space using the position projection (similar to billboard)
+var RI_IGNORE_VIEWPROJECTION = 1 << 13; //do not multiply by viewprojection, use model as mvp
+var RI_IGNORE_CLIPPING_PLANE = 1 << 14; //ignore the plane clipping (in reflections)
+
+//16-24: instance properties
+var RI_RAYCAST_ENABLED = 1 << 16; //if it could be raycasted
+var RI_IGNORE_AUTOUPDATE = 1 << 17; //if it could update matrix from scene
+
+
+//default flags for any instance
+var RI_DEFAULT_FLAGS = RI_CULL_FACE | RI_DEPTH_TEST | RI_DEPTH_WRITE | RI_CAST_SHADOWS | RI_RECEIVE_SHADOWS;
+//var RI_2D_FLAGS = RI_RENDER_2D | RI_CULL_FACE | RI_BLEND | RI_IGNORE_LIGHTS | RI_IGNORE_FRUSTUM;
+
+function RenderInstance( node, component )
+{
+	this._key = ""; //not used yet
+	this.uid = LS.generateUId("RINS"); //unique identifier for this RI
+	this.layers = 3;
+	this.index = -1; //used to know the rendering order
+
+	//info about the mesh
+	this.vertex_buffers = {};
+	this.index_buffer = null;
+	this.wireframe_index_buffer = null;
+	this.range = new Int32Array([0,-1]); //start, offset
+	this.primitive = gl.TRIANGLES;
+
+	this.mesh = null; //shouldnt be used (buffers are added manually), but just in case
+	this.collision_mesh = null; //in case of raycast
+
+	//used in case the object has a secondary mesh
+	this.lod_mesh = null;
+	this.lod_vertex_buffers = {};
+	this.lod_index_buffer = null;
+
+	//where does it come from
+	this.node = node;
+	this.component = component;
+	this.priority = 10; //instances are rendered from higher to lower priority
+
+	//rendering flags
+	this.flags = RI_DEFAULT_FLAGS;
+	this.blend_func = LS.BlendFunctions["normal"]; //Blend.funcs["add"], ...
+
+	//transformation
+	this.matrix = mat4.create();
+	this.normal_matrix = mat4.create();
+	this.center = vec3.create();
+
+	//for visibility computation
+	this.oobb = BBox.create(); //object space bounding box
+	this.aabb = BBox.create(); //axis aligned bounding box
+
+	//info about the material
+	this.material = null;
+	//this.materials = null; //for multimaterial rendering, LONG FUTURE...
+
+	//for extra data for the shader
+	this.query = new LS.ShaderQuery();
+	this.uniforms = {};
+	this.samplers = {};
+
+	this._camera_visibility = 0; //tells in which camera was visible this instance during the last rendering
+	this._is_visible = false; //used during the rendering
+
+	//for internal use
+	this._dist = 0; //computed during rendering, tells the distance to the current camera
+	this._final_query = new LS.ShaderQuery();
+	this._final_uniforms = {};
+	this._final_samplers = {};
+}
+
+/*
+//not used
+RenderInstance.prototype.generateKey = function(step, options)
+{
+	this._key = step + "|" + this.node.uid + "|" + this.material.uid + "|";
+	return this._key;
+}
+*/
+
+//set the material and apply material flags to render instance
+RenderInstance.prototype.setMatrix = function(matrix, normal_matrix)
+{
+	this.matrix.set( matrix );
+
+	if( normal_matrix )
+		this.normal_matrix.set( normal_matrix )
+	else
+		this.computeNormalMatrix();
+}
+
+/**
+* Updates the normal matrix using the matrix
+*
+* @method computeNormalMatrix
+*/
+RenderInstance.prototype.computeNormalMatrix = function()
+{
+	var m = mat4.invert(this.normal_matrix, this.matrix);
+	if(m)
+		mat4.transpose(this.normal_matrix, m);
+}
+
+//set the material and apply material flags to render instance
+RenderInstance.prototype.setMaterial = function(material)
+{
+	this.material = material;
+	if(material)
+		material.applyToRenderInstance(this);
+}
+
+//sets the buffers to render, the primitive, and the bounding
+RenderInstance.prototype.setMesh = function(mesh, primitive)
+{
+	if( primitive == -1 || primitive === undefined )
+		primitive = gl.TRIANGLES;
+	this.primitive = primitive;
+
+	if(mesh != this.mesh)
+	{
+		this.mesh = mesh;
+		this.vertex_buffers = {};
+	}
+	//this.vertex_buffers = mesh.vertexBuffers;
+	for(var i in mesh.vertexBuffers)
+		this.vertex_buffers[i] = mesh.vertexBuffers[i];
+
+	switch(primitive)
+	{
+		case gl.TRIANGLES: 
+			this.index_buffer = mesh.indexBuffers["triangles"]; //works for indexed and non-indexed
+			break;
+		case gl.LINES: 
+			/*
+			if(!mesh.indexBuffers["lines"])
+				mesh.computeWireframe();
+			*/
+			this.index_buffer = mesh.indexBuffers["lines"];
+			break;
+		case 10:  //wireframe
+			this.primitive = gl.LINES;
+			if(!mesh.indexBuffers["wireframe"])
+				mesh.computeWireframe();
+			this.index_buffer = mesh.indexBuffers["wireframe"];
+			break;
+
+		case gl.POINTS: 
+		default:
+			this.index_buffer = null;
+			break;
+	}
+
+	if(mesh.bounding)
+	{
+		this.oobb.set( mesh.bounding ); //copy
+		this.flags &= ~RI_IGNORE_FRUSTUM; //test against frustum
+	}
+	else
+		this.flags |= RI_IGNORE_FRUSTUM; //no frustum, no test
+}
+
+//assigns a secondary mesh in case the object is too small on the screen
+RenderInstance.prototype.setLODMesh = function(lod_mesh)
+{
+	if(!lod_mesh)
+	{
+		this.lod_mesh = null;
+		this.lod_vertex_buffers = null;
+		this.lod_index_buffer = null;
+		return;
+	}
+
+	if(lod_mesh != this.lod_mesh)
+	{
+		this.lod_mesh = lod_mesh;
+		this.lod_vertex_buffers = {};
+	}
+	//this.vertex_buffers = mesh.vertexBuffers;
+	for(var i in lod_mesh.vertexBuffers)
+		this.lod_vertex_buffers[i] = lod_mesh.vertexBuffers[i];
+
+	switch(this.primitive)
+	{
+		case gl.TRIANGLES: 
+			this.lod_index_buffer = lod_mesh.indexBuffers["triangles"]; //works for indexed and non-indexed
+			break;
+		case gl.LINES: 
+			/*
+			if(!mesh.indexBuffers["lines"])
+				mesh.computeWireframe();
+			*/
+			this.lod_index_buffer = lod_mesh.indexBuffers["lines"];
+			break;
+		case 10:  //wireframe
+			if(!lod_mesh.indexBuffers["wireframe"])
+				lod_mesh.computeWireframe();
+			this.lod_index_buffer = lod_mesh.indexBuffers["wireframe"];
+			break;
+		case gl.POINTS: 
+		default:
+			this.lod_index_buffer = null;
+			break;
+	}
+}
+
+RenderInstance.prototype.setRange = function(start, offset)
+{
+	this.range[0] = start;
+	this.range[1] = offset;
+}
+
+/**
+* takes the flags on the node and update the render instance flags
+*
+* @method applyNodeFlags
+*/
+RenderInstance.prototype.applyNodeFlags = function()
+{
+	var node_flags = this.node.flags;
+	this.layers = this.node.layers;
+
+	if(node_flags.two_sided == true) this.flags &= ~RI_CULL_FACE;
+	else this.flags |= RI_CULL_FACE;
+
+	if(node_flags.flip_normals == true) this.flags |= RI_CW;
+	else this.flags &= ~RI_CW;
+
+	if(node_flags.depth_test == false) this.flags &= ~RI_DEPTH_TEST;
+	else this.flags |= RI_DEPTH_TEST;
+
+	if(node_flags.depth_write == false) this.flags &= ~RI_DEPTH_WRITE;
+	else this.flags |= RI_DEPTH_WRITE;
+
+	//if(node_flags.alpha_test == true) this.flags |= RI_ALPHA_TEST;
+	//else this.flags &= ~RI_ALPHA_TEST;
+
+	if(node_flags.cast_shadows == false) this.flags &= ~RI_CAST_SHADOWS;
+	else this.flags |= RI_CAST_SHADOWS;
+
+	if(node_flags.receive_shadows == false) this.flags &= ~RI_RECEIVE_SHADOWS;	
+	else this.flags |= RI_RECEIVE_SHADOWS;	
+}
+
+/**
+* Enable flag in the flag bit field
+*
+* @method enableFlag
+* @param {number} flag id
+*/
+RenderInstance.prototype.enableFlag = function(flag)
+{
+	this.flags |= flag;
+}
+
+/**
+* Disable flag in the flag bit field
+*
+* @method enableFlag
+* @param {number} flag id
+*/
+RenderInstance.prototype.disableFlag = function(flag)
+{
+	this.flags &= ~flag;
+}
+
+/**
+* Tells if a flag is enabled
+*
+* @method enableFlag
+* @param {number} flag id
+* @return {boolean} flag value
+*/
+RenderInstance.prototype.isFlag = function(flag)
+{
+	return (this.flags & flag);
+}
+
+/**
+* Computes the instance bounding box in world space from the one in local space
+*
+* @method updateAABB
+*/
+RenderInstance.prototype.updateAABB = function()
+{
+	BBox.transformMat4(this.aabb, this.oobb, this.matrix );
+}
+
+/**
+* Used to update the RI info without having to go through the collectData process, it is faster but some changes may take a while
+*
+* @method update
+*/
+RenderInstance.prototype.update = function()
+{
+	if(!this.node || !this.node.transform)
+		return;
+	this.setMatrix( this.node.transform._global_matrix );
+}
+
+/**
+* Calls render taking into account primitive and range
+*
+* @method render
+* @param {Shader} shader
+*/
+RenderInstance.prototype.render = function(shader)
+{
+	if(this.lod_mesh)
+	{
+		//very bad LOD function...
+		var f = this.oobb[12] / Math.max(0.1, this._dist);
+		if( f < 0.1 )
+		{
+			shader.drawBuffers( this.lod_vertex_buffers,
+			  this.lod_index_buffer,
+			  this.primitive);
+			return;
+		}
+	}
+
+	shader.drawBuffers( this.vertex_buffers,
+	  this.index_buffer,
+	  this.primitive, this.range[0], this.range[1] );
+}
+
+RenderInstance.prototype.overlapsSphere = function(center, radius)
+{
+	//we dont know if the bbox of the instance is valid
+	if(this.flags & RI_IGNORE_FRUSTUM)
+		return true;
+	return geo.testSphereBBox( center, radius, this.aabb );
+}
+
+/**
+* Checks if this object was visible by a camera during the last frame
+*
+* @method wasVisibleByCamera
+* @param {LS.Camera} camera [optional] if a camera is supplied it checks if it was visible by that camera, otherwise tells you if it was visible by any camera
+* @return {Boolean} true if it was visible by the camera (or any camera if no camera supplied), false otherwise
+*/
+RenderInstance.prototype.wasVisibleByCamera = function( camera )
+{
+	if(!camera)
+		return this._camera_visibility != 0;
+	return (this._camera_visibility | (1<<(camera._rendering_index))) ? true : false;
+}
+
+
+/* moved to PhysicsInstance
+RenderInstance.prototype.setCollisionMesh = function(mesh)
+{
+	this.flags |= RI_USE_MESH_AS_COLLIDER;
+	this.collision_mesh = mesh;
+}
+*/
+
+LS.RenderInstance = RenderInstance;
+/*	
+	RenderFrameContainer
+	This class is used when you want to render the scene not to the screen but to some texture for postprocessing
+	Check the CameraFX components to see it in action.
+*/
+
+function RenderFrameContainer()
+{
+	this.width = RenderFrameContainer.default_width;
+	this.height = RenderFrameContainer.default_height;
+
+	this.use_high_precision = false;
+	this.use_depth_texture = true;
+	this.use_extra_texture = false;
+
+	this.camera = null;
+}
+
+RenderFrameContainer.default_width = 1024;
+RenderFrameContainer.default_height = 512;
+
+RenderFrameContainer.prototype.useDefaultSize = function()
+{
+	this.width = LS.RenderFrameContainer.default_width;
+	this.height = LS.RenderFrameContainer.default_height;
+}
+
+RenderFrameContainer.prototype.useCanvasSize = function()
+{
+	this.width = gl.canvas.width;
+	this.height = gl.canvas.height;
+}
+
+RenderFrameContainer.prototype.setSize = function( width, height )
+{
+	if(width < 1)
+		width = 1;
+	if(height < 1)
+		height = 1;
+
+	this.width = width;
+	this.height = height;
+}
+
+
+RenderFrameContainer.prototype.preRender = function( render_settings )
+{
+	var camera = LS.Renderer._current_camera;
+
+	this.startFBO();
+	//overwrite to create some buffers here attached to the current FBO
+
+	//set depth info inside the texture
+	if(this.depth_texture && camera)
+	{
+		if(!this.depth_texture.near_far_planes)
+			this.depth_texture.near_far_planes = vec2.create();
+		this.depth_texture.near_far_planes[0] = camera.near;
+		this.depth_texture.near_far_planes[1] = camera.far;
+	}
+
+}
+
+RenderFrameContainer.prototype.postRender = function( render_settings )
+{
+	this.endFBO();
+	//detach FBO and render to viewport
+	//render to screen
+	//this.renderToViewport( this.textures["color"], true );
+}
+
+//helper in case you want have a Color and Depth texture
+RenderFrameContainer.prototype.startFBO = function()
+{
+	//Create textures
+	var format = gl.RGBA;
+	var type = this.use_high_precision ? gl.HIGH_PRECISION_FORMAT : gl.UNSIGNED_BYTE;
+	var width = this.width;
+	var height = this.height;
+
+	//for the color
+	if(!this.color_texture || this.color_texture.width != width || this.color_texture.height != height || this.color_texture.type != type)
+		this.color_texture = new GL.Texture( width, height, { filter: gl.LINEAR, format: format, type: type });
+
+	//extra color texture (multibuffer rendering)
+	if( this.use_extra_texture && (!this.extra_texture || this.extra_texture.width != width || this.extra_texture.height != height || this.extra_texture.type != type) )
+		this.extra_texture = new GL.Texture( width, height, { filter: gl.LINEAR, format: format, type: type });
+	else if( !this.use_extra_texture )
+		this.extra_texture = null;
+
+	//for the depth
+	if( this.use_depth_texture && (!this.depth_texture || this.depth_texture.width != width || this.depth_texture.height != height) && gl.extensions["WEBGL_depth_texture"] )
+		this.depth_texture = new GL.Texture( width, height, { filter: gl.NEAREST, format: gl.DEPTH_COMPONENT, type: gl.UNSIGNED_INT });
+	else if( !this.use_depth_texture )
+		this.depth_texture = null;
+
+	if( !this._fbo )
+		this._fbo = new GL.FBO();
+	this._fbo.setTextures( [this.color_texture], this.depth_texture, true );
+
+	this._fbo.bind(); //changes viewport to full FBO size (saves old)
+
+	LS.Renderer._full_viewport.set( gl.viewport_data );
+	this._old_aspect = LS.Renderer.global_aspect;
+	//LS.Renderer.global_aspect = (gl.canvas.width / gl.canvas.height) / (width / height);
+
+	/*
+	//Setup FBO
+	this._fbo = this._fbo || gl.createFramebuffer();
+	gl.bindFramebuffer( gl.FRAMEBUFFER, this._fbo );
+
+	//Adjust viewport and aspect
+	gl.viewport(0, 0, color_texture.width, color_texture.height );
+	LS.Renderer._full_viewport.set( gl.viewport_data );
+	LS.Renderer.global_aspect = (gl.canvas.width / gl.canvas.height) / (color_texture.width / color_texture.height);
+
+	var ext = gl.extensions["WEBGL_draw_buffers"];
+
+	//bind COLOR BUFFER
+	gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, color_texture.handler, 0);
+
+	//bind EXTRA COLOR TEXTURE?
+	if(ext && extra_texture)
+		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + 1, gl.TEXTURE_2D, extra_texture.handler, 0);
+
+	//bind DEPTH texture or depth renderbuffer
+	if(depth_texture)
+		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT,  gl.TEXTURE_2D, depth_texture.handler, 0);
+	else
+	{
+		gl.renderbufferStorage( gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height );
+		gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, renderbuffer );
+	}
+
+	//Check completeness
+	var complete = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+	if(complete !== gl.FRAMEBUFFER_COMPLETE)
+		throw("FBO not complete: " + complete);
+
+	if(ext && extra_texture)
+		ext.drawBuffersWEBGL( [ gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT0 + 1] );
+	*/
+}
+
+RenderFrameContainer.prototype.endFBO = function()
+{
+	this._fbo.unbind(); //restores viewport to old saved one
+	LS.Renderer._full_viewport.set( this._fbo._old_viewport );
+	LS.Renderer.global_aspect = this._old_aspect;
+
+	/*
+	//disable FBO
+	gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+	LS.Renderer.global_aspect = 1.0;
+
+	gl.viewport( 0, 0, gl.canvas.width, gl.canvas.height );
+	LS.Renderer._full_viewport.set( gl.viewport_data );
+	*/
+}
+
+//Render this texture to viewport (allows to apply FXAA)
+RenderFrameContainer.prototype.renderToViewport = function( texture, use_antialiasing )
+{
+	if(!use_antialiasing)
+	{
+		texture.toViewport();
+		return;
+	}
+
+	var shader = GL.Shader.getFXAAShader();
+	var viewport = gl.getViewport();
+	var mesh = Mesh.getScreenQuad();
+	texture.bind(0);
+	shader.uniforms( {u_texture:0, uViewportSize: viewport.subarray(2,4), inverseVP: [1 / tex.width, 1 / tex.height]} ).draw(mesh);
+}
+
+
+LS.RenderFrameContainer = RenderFrameContainer;
+
+
+//************************************
+/**
+* The Renderer is in charge of generating one frame of the scene. Contains all the passes and intermediate functions to create the frame.
+*
+* @class Renderer
+* @namespace LS
+* @constructor
+*/
+
+//passes
+var COLOR_PASS = 1;
+var SHADOW_PASS = 2;
+var PICKING_PASS = 3;
+
+var Renderer = {
+
+	default_render_settings: new LS.RenderSettings(), //overwritten by the global info or the editor one
+	default_material: new StandardMaterial(), //used for objects without material
+
+	render_passes: {}, //used to specify the render function for every kind of render pass (color, shadow, picking, etc)
+	renderPassFunction: null, //function to call when rendering instances
+
+	global_aspect: 1, //used when rendering to a texture that doesnt have the same aspect as the screen
+
+	default_point_size: 1, //point size in pixels (could be overwritte by render instances)
+
+	_global_viewport: vec4.create(), //the viewport we have available to render the full frame (including subviewports), usually is the 0,0,gl.canvas.width,gl.canvas.height
+	_full_viewport: vec4.create(), //contains info about the full viewport available to render (current texture size or canvas size)
+
+	//temporal info
+	_current_scene: null,
+	_current_render_settings: null,
+	_current_camera: null,
+	_current_target: null, //texture where the image is being rendered
+	_current_pass: null,
+
+	_main_camera: null,
+
+	_visible_cameras: null,
+	_visible_lights: null,
+	_visible_instances: null,
+
+	//stats
+	_rendercalls: 0, //calls to instance.render
+	_rendered_instances: 0, //instances processed
+	_frame: 0,
+
+	//settings
+	_collect_frequency: 1, //used to reuse info (WIP)
+
+	//reusable locals
+	_view_matrix: mat4.create(),
+	_projection_matrix: mat4.create(),
+	_viewprojection_matrix: mat4.create(),
+	_2Dviewprojection_matrix: mat4.create(),
+	_mvp_matrix: mat4.create(),
+	_temp_matrix: mat4.create(),
+	_identity_matrix: mat4.create(),
+
+	_near_lights: [],
+
+	//called from...
+	init: function()
+	{
+		this._missing_texture = new GL.Texture(1,1, { pixel_data: [128,128,128,255] });
+		LS.Draw.init();
+		LS.Draw.onRequestFrame = function() { LS.GlobalScene.refresh(); }
+
+		this.registerRenderPass( "color", { id: COLOR_PASS, render_instance: this.renderColorPassInstance } );
+		this.registerRenderPass( "shadow", { id: SHADOW_PASS, render_instance: this.renderShadowPassInstance } );
+		this.registerRenderPass( "picking", { id: PICKING_PASS, render_instance: this.renderPickingPassInstance } );
+	},
+
+	reset: function()
+	{
+	},
+
+	//used to store which is the current full viewport available (could be different from the canvas in case is a FBO or the camera has a partial viewport)
+	setFullViewport: function(x,y,w,h)
+	{
+		if(x.constructor === Number)
+		{
+			this._full_viewport[0] = x; this._full_viewport[1] = y; this._full_viewport[2] = w; this._full_viewport[3] = h;
+		}
+		else if(x.length)
+			this._full_viewport.set(x);
+	},
+
+	/**
+	* Renders the current scene to the screen
+	* Many steps are involved, from gathering info from the scene tree, generating shadowmaps, setup FBOs, render every camera
+	*
+	* @method render
+	* @param {SceneTree} scene
+	* @param {RenderSettings} render_settings
+	* @param {Array} [cameras=null] if no cameras are specified the cameras are taken from the scene
+	*/
+	render: function( scene, render_settings, cameras )
+	{
+		if(!LS.ShadersManager.ready)
+			return; //not ready
+
+		render_settings = render_settings || this.default_render_settings;
+		this._current_render_settings = render_settings;
+		this._current_scene = scene;
+		this._main_camera = cameras ? cameras[0] : null;
+
+		//done at the beginning just in case it crashes
+		scene._frame += 1;
+		this._frame += 1;
+		scene._must_redraw = false;
+
+		this._rendercalls = 0;
+		this._rendered_instances = 0;
+
+		//force fullscreen viewport
+		if( !render_settings.keep_viewport )
+		{
+			gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+			this.setFullViewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+		}
+		else
+			this.setFullViewport( gl.viewport_data );
+		this._global_viewport.set( gl.viewport_data );
+
+		//Event: beforeRender used in actions that could affect which info is collected for the rendering
+		LEvent.trigger(scene, "beforeRender", render_settings );
+		scene.triggerInNodes("beforeRender", render_settings );
+
+		//get render instances, cameras, lights, materials and all rendering info ready: computeVisibility
+		this.processVisibleData( scene, render_settings, cameras );
+
+		//Define the main camera, the camera that should be the most important (used for LOD info, or shadowmaps)
+		cameras = cameras || this._visible_cameras;
+		this._visible_cameras = cameras; //the cameras being rendered
+		this._main_camera = cameras[0];
+
+		//remove the lights that do not lay in front of any camera (this way we avoid creating shadowmaps)
+		//TODO
+
+		//Event: renderShadowmaps helps to generate shadowMaps that need some camera info (which could be not accessible during processVisibleData)
+		LEvent.trigger(scene, "renderShadows", render_settings );
+		scene.triggerInNodes("renderShadows", render_settings ); //TODO: remove
+
+		//Event: afterVisibility allows to cull objects according to the main camera
+		scene.triggerInNodes("afterVisibility", render_settings ); //TODO: remove	
+
+		//Event: renderReflections in case some realtime reflections are needed, this is the moment to render them inside textures
+		LEvent.trigger(scene, "renderReflections", render_settings );
+		scene.triggerInNodes("renderReflections", render_settings ); //TODO: remove
+
+		//Event: beforeRenderMainPass in case a last step is missing
+		LEvent.trigger(scene, "beforeRenderMainPass", render_settings );
+		scene.triggerInNodes("beforeRenderMainPass", render_settings ); //TODO: remove
+
+		//allows to overwrite renderer
+		if(this.custom_renderer && this.custom_renderer.render && render_settings.custom_renderer )
+		{
+			this.custom_renderer.render( cameras, render_settings );
+		}
+		else
+		{
+			//enable FX
+			if(render_settings.render_fx)
+				LEvent.trigger( scene, "enableFrameBuffer", render_settings );
+
+			//render
+			this.renderFrameCameras( cameras, render_settings );
+
+			//keep original viewport
+			if( render_settings.keep_viewport )
+				gl.setViewport( this._global_viewport );
+
+			//disable and show FX
+			if(render_settings.render_fx)
+				LEvent.trigger( scene, "showFrameBuffer", render_settings );
+		}
+
+		if(render_settings.render_gui)
+			LEvent.trigger( scene, "renderGUI", render_settings );
+
+		//Event: afterRender to give closure to some actions
+		LEvent.trigger(scene, "afterRender", render_settings );
+		scene.triggerInNodes("afterRender", render_settings ); //TODO: remove
+	},
+
+	/**
+	* Calls renderFrame of every camera in the cameras list (triggering the appropiate events)
+	*
+	* @method renderFrameCameras
+	* @param {Array} cameras
+	* @param {RenderSettings} render_settings
+	*/
+	renderFrameCameras: function( cameras, render_settings )
+	{
+		var scene = this._current_scene;
+
+		//for each camera
+		for(var i = 0; i < cameras.length; ++i)
+		{
+			var current_camera = cameras[i];
+
+			LEvent.trigger(scene, "beforeRenderFrame", render_settings );
+			LEvent.trigger(current_camera, "beforeRenderFrame", render_settings );
+			LEvent.trigger(current_camera, "enableFrameBuffer", render_settings );
+
+			//main render
+			this.renderFrame( current_camera, render_settings ); 
+
+			LEvent.trigger(current_camera, "showFrameBuffer", render_settings );
+			LEvent.trigger(current_camera, "afterRenderFrame", render_settings );
+			LEvent.trigger(scene, "afterRenderFrame", render_settings );
+		}
+	},
+
+	/**
+	* renders the view from one camera to the current viewport (could be a texture)
+	*
+	* @method renderFrame
+	* @param {Camera} camera 
+	* @param {Object} render_settings
+	*/
+	renderFrame: function ( camera, render_settings, scene )
+	{
+		if(scene) //in case we use another scene
+			this.processVisibleData(scene, render_settings);
+
+		scene = scene || this._current_scene;
+
+		this.enableCamera( camera, render_settings, render_settings.skip_viewport ); //set as active camera and set viewport
+
+		//scissors test for the gl.clear, otherwise the clear affects the full viewport
+		gl.scissor( gl.viewport_data[0], gl.viewport_data[1], gl.viewport_data[2], gl.viewport_data[3] );
+		gl.enable(gl.SCISSOR_TEST);
+
+		//clear buffer
+		var info = scene.info;
+		if(info)
+		{
+			gl.clearColor( info.background_color[0],info.background_color[1],info.background_color[2], info.background_color[3] );
+		}
+		else
+			gl.clearColor(0,0,0,0);
+
+		if(render_settings.ignore_clear != true && (camera.clear_color || camera.clear_depth) )
+			gl.clear( ( camera.clear_color ? gl.COLOR_BUFFER_BIT : 0) | (camera.clear_depth ? gl.DEPTH_BUFFER_BIT : 0) );
+
+		gl.disable(gl.SCISSOR_TEST);
+
+		//render scene
+
+		LEvent.trigger(scene, "beforeRenderScene", camera );
+		scene.triggerInNodes("beforeRenderScene", camera ); //TODO remove
+		LEvent.trigger(this, "beforeRenderScene", camera );
+
+		//here we render all the instances
+		this.renderInstances(render_settings);
+
+		LEvent.trigger(scene, "afterRenderScene", camera );
+		scene.triggerInNodes("afterRenderScene", camera ); //TODO remove
+		LEvent.trigger(this, "afterRenderScene", camera );
+
+		if(render_settings.render_helpers)
+			LEvent.trigger(this, "renderHelpers", camera );
+	},
+
+	/**
+	* Set camera as the current camera, sets the viewport according to camera info, updates matrices, and prepares LS.Draw
+	*
+	* @method enableCamera
+	* @param {Camera} camera
+	* @param {RenderSettings} render_settings
+	*/
+	enableCamera: function(camera, render_settings, skip_viewport)
+	{
+		var scene = this._current_scene;
+
+		LEvent.trigger( camera, "beforeEnabled", render_settings );
+		LEvent.trigger( scene, "beforeCameraEnabled", camera );
+
+		//assign viewport manually (shouldnt use camera.getLocalViewport to unify?)
+		var startx = this._full_viewport[0];
+		var starty = this._full_viewport[1];
+		var width = this._full_viewport[2];
+		var height = this._full_viewport[3];
+
+		var final_x = Math.floor(width * camera._viewport[0] + startx);
+		var final_y = Math.floor(height * camera._viewport[1] + starty);
+		var final_width = Math.ceil(width * camera._viewport[2]);
+		var final_height = Math.ceil(height * camera._viewport[3]);
+
+		if(!skip_viewport)
+		{
+			//force fullscreen viewport?
+			if(render_settings && render_settings.ignore_viewports )
+			{
+				camera._final_aspect = this.global_aspect * camera._aspect * (width / height);
+				gl.viewport( this._full_viewport[0], this._full_viewport[1], this._full_viewport[2], this._full_viewport[3] );
+			}
+			else
+			{
+				camera._final_aspect = this.global_aspect * camera._aspect * (final_width / final_height); //what if we want to change the aspect?
+				gl.viewport( final_x, final_y, final_width, final_height );
+			}
+		}
+
+		//compute matrices
+		camera.updateMatrices();
+
+		//store matrices locally
+		mat4.copy( this._view_matrix, camera._view_matrix );
+		mat4.copy( this._projection_matrix, camera._projection_matrix );
+		mat4.copy( this._viewprojection_matrix, camera._viewprojection_matrix );
+
+		//2D Camera: TODO: MOVE THIS SOMEWHERE ELSE
+		mat4.ortho( this._2Dviewprojection_matrix, -1, 1, -1, 1, 1, -1 );
+
+		//set as the current camera
+		this._current_camera = camera;
+
+		//prepare camera
+		camera.fillCameraShaderUniforms( scene );
+
+		//Draw allows to render debug info easily
+		Draw.reset(); //clear 
+		Draw.setCameraPosition( camera.getEye() );
+		Draw.setViewProjectionMatrix( this._view_matrix, this._projection_matrix, this._viewprojection_matrix );
+
+		LEvent.trigger( camera, "afterEnabled", render_settings );
+		LEvent.trigger( scene, "afterCameraEnabled", camera ); //used to change stuff according to the current camera (reflection textures)
+	},
+	
+	/**
+	* To set gl state to a known and constant state in every render pass
+	*
+	* @method resetGLState
+	* @param {RenderSettings} render_settings
+	*/
+	resetGLState: function( render_settings )
+	{
+		render_settings = render_settings || this._current_render_settings;
+
+		gl.enable( gl.CULL_FACE );
+		if(render_settings.depth_test)
+			gl.enable( gl.DEPTH_TEST );
+		else
+			gl.disable( gl.DEPTH_TEST );
+		gl.disable( gl.BLEND );
+		gl.depthFunc( gl.LESS );
+		gl.depthMask(true);
+		gl.frontFace(gl.CCW);
+		gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
+		//gl.lineWidth(1);
+	},
+
+	/**
+	* Calls the render method for every instance (it also takes into account events and frustrum culling)
+	*
+	* @method renderInstances
+	* @param {RenderSettings} render_settings
+	* @param {Array} instances array of RIs, if not specified the last visible_instances are rendered
+	*/
+	renderInstances: function( render_settings, instances )
+	{
+		var scene = this._current_scene;
+		if(!scene)
+			return console.warn("LS.Renderer.renderInstances: no scene found");
+
+		var pass = this._current_pass;
+		var camera = this._current_camera;
+		var camera_index_flag = camera._rendering_index != -1 ? (1<<(camera._rendering_index)) : 0;
+		var apply_frustum_culling = render_settings.frustum_culling;
+		var frustum_planes = camera.updateFrustumPlanes();
+		var layers_filter = camera.layers;
+		if( render_settings.layers !== undefined )
+			layers_filter = render_settings.layers;
+
+		LEvent.trigger( scene, "beforeRenderInstances", render_settings );
+		scene.triggerInNodes( "beforeRenderInstances", render_settings );
+
+		//compute global scene info
+		this.fillSceneShaderQuery( scene, render_settings );
+		this.fillSceneShaderUniforms( scene, render_settings );
+
+		//reset state of everything!
+		this.resetGLState( render_settings );
+
+		//this.updateVisibleInstances(scene,options);
+		var render_instances = instances || this._visible_instances;
+
+		LEvent.trigger( scene, "renderInstances", render_settings );
+		LEvent.trigger( this, "renderInstances", render_settings );
+
+		//reset again!
+		this.resetGLState( render_settings );
+
+		var render_instance_func = pass.render_instance;
+		if(!render_instance_func)
+			return;
+
+		//compute visibility pass
+		for(var i = 0, l = render_instances.length; i < l; ++i)
+		{
+			//render instance
+			var instance = render_instances[i];
+			var node_flags = instance.node.flags;
+			instance._is_visible = false;
+
+			//hidden nodes
+			if( pass.id == SHADOW_PASS && !(instance.flags & RI_CAST_SHADOWS) )
+				continue;
+			if( pass.id == PICKING_PASS && node_flags.selectable === false )
+				continue;
+			if( (layers_filter & instance.layers) === 0 )
+				continue;
+
+			//done here because sometimes some nodes are moved in this action
+			if(instance.onPreRender)
+				if( instance.onPreRender( render_settings ) === false)
+					continue;
+
+			if(instance.material.opacity <= 0) //TODO: remove this, do it somewhere else
+				continue;
+
+			//test visibility against camera frustum
+			if(apply_frustum_culling && !(instance.flags & RI_IGNORE_FRUSTUM))
+			{
+				if(geo.frustumTestBox( frustum_planes, instance.aabb ) == CLIP_OUTSIDE )
+					continue;
+			}
+
+			//save visibility info
+			instance._is_visible = true;
+			if(camera_index_flag) //shadowmap cameras dont have an index
+				instance._camera_visibility |= camera_index_flag;
+		}
+
+		//for each render instance
+		for(var i = 0, l = render_instances.length; i < l; ++i)
+		{
+			//render instance
+			var instance = render_instances[i];
+
+			if(!instance._is_visible || !instance.mesh)
+				continue;
+
+			this._rendered_instances += 1;
+
+			//choose the appropiate render pass
+			render_instance_func.call( this, instance, render_settings ); //by default calls renderColorInstance but it could call renderShadowPassInstance
+
+			//some instances do a post render action
+			if(instance.onPostRender)
+				instance.onPostRender( render_settings );
+		}
+
+		LEvent.trigger( scene, "renderScreenSpace", render_settings);
+
+		//restore state
+		this.resetGLState( render_settings );
+
+		LEvent.trigger( scene, "afterRenderInstances", render_settings);
+		scene.triggerInNodes("afterRenderInstances", render_settings);
+
+		//and finally again
+		this.resetGLState( render_settings );
+	},
+
+	/**
+	* returns a list of all he lights overlapping this instance (it uses sperical bounding so it could returns lights that are not really overlapping)
+	* It is used by the multipass lighting to iterate 
+	*
+	* @method getNearLights
+	* @param {RenderInstance} instance the render instance
+	* @param {Array} result [optional] the output array
+	* @return {Array} array containing a list of LS.Light affecting this RenderInstance
+	*/
+	getNearLights: function( instance, result )
+	{
+		result = result || [];
+
+		//it uses the lights gathered by prepareVisibleData
+		var lights = this._visible_lights;
+		if(!lights || !lights.length)
+			return result;
+
+		//Compute lights affecting this RI (by proximity, only takes into account spherical bounding)
+		result.length = 0;
+		var numLights = lights.length;
+		for(var j = 0; j < numLights; j++)
+		{
+			var light = lights[j];
+			//same layer?
+			if( (light._root.layers & instance.layers) == 0 || (light._root.layers & this._current_camera.layers) == 0)
+				continue;
+			var light_intensity = light.computeLightIntensity();
+			//light intensity too low?
+			if(light_intensity < 0.0001)
+				continue;
+			var light_radius = light.computeLightRadius();
+			var light_pos = light.position;
+			//overlapping?
+			if( light_radius == -1 || instance.overlapsSphere( light_pos, light_radius ) )
+				result.push( light );
+		}
+
+		return result;
+	},
+
+	//this function is in charge of rendering the regular color pass (used also for reflections)
+	renderColorPassInstance: function( instance, render_settings )
+	{
+
+		var near_lights = this.getNearLights( instance, this._near_lights );
+
+		//render instance
+		var renderered = false;
+		if( instance.material && instance.material.renderInstance )
+			renderered = instance.material.renderInstance( instance, near_lights, this._current_scene, render_settings );
+
+		//render using default system (slower but it works)
+		if(!renderered)
+			this.renderColorMultiPassLightingInstance( instance, near_lights, this._current_scene, render_settings );
+	},
+
+	/**
+	* Renders the RenderInstance taking into account all the lights that affect it and doing a render for every light
+	*
+	* @method renderColorMultiPassLightingInstance
+	* @param {RenderInstance} instance
+	* @param {Array} lights array containing al the lights affecting this RI
+	* @param {SceneTree} scene
+	* @param {RenderSettings} render_settings
+	*/
+	renderColorMultiPassLightingInstance: function( instance, lights, scene, render_settings )
+	{
+		var camera = this._current_camera;
+		var node = instance.node;
+		var material = instance.material;
+
+		//compute matrices
+		var model = instance.matrix;
+		if(instance.flags & RI_IGNORE_VIEWPROJECTION)
+			this._mvp_matrix.set( model );
+		else
+			mat4.multiply(this._mvp_matrix, this._viewprojection_matrix, model );
+
+		//node matrix info
+		var instance_final_query = instance._final_query;
+		var instance_final_uniforms = instance._final_uniforms;
+		var instance_final_samplers = instance._final_samplers;
+
+		//maybe this two should be somewhere else
+		instance_final_uniforms.u_model = model; 
+		instance_final_uniforms.u_normal_model = instance.normal_matrix; 
+
+		//update matrices (because they depend on the camera) 
+		instance_final_uniforms.u_mvp = this._mvp_matrix;
+
+
+		//FLAGS: enable GL flags like cull_face, CCW, etc
+		this.enableInstanceFlags(instance, render_settings);
+
+		//set blend flags
+		if(material.blend_mode !== Blend.NORMAL)
+		{
+			gl.enable( gl.BLEND );
+			if(instance.blend_func)
+				gl.blendFunc( instance.blend_func[0], instance.blend_func[1] );
+		}
+		else
+			gl.disable( gl.BLEND );
+
+		//pack material samplers 
+		var samplers = {};
+		samplers.merge( scene._samplers );
+		samplers.merge( instance_final_samplers );
+
+		//enable samplers and store where [TODO: maybe they are not used..., improve here]
+		var sampler_uniforms = this.bindSamplers( samplers );
+
+		//find shader name
+		var shader_name = render_settings.default_shader_id;
+		if(render_settings.low_quality)
+			shader_name = render_settings.default_low_shader_id;
+		if( material.shader_name )
+			shader_name = material.shader_name;
+
+		//multi pass instance rendering
+		var num_lights = lights.length;
+
+		//no lights rendering (flat light)
+		var ignore_lights = node.flags.ignore_lights || (instance.flags & RI_IGNORE_LIGHTS) || render_settings.lights_disabled;
+		if(!num_lights || ignore_lights)
+		{
+			var query = new LS.ShaderQuery( shader_name, { FIRST_PASS:"", LAST_PASS:"", USE_AMBIENT_ONLY:"" });
+			query.add( scene._query );
+			query.add( instance_final_query ); //contains node, material and instance macros
+
+			if( ignore_lights )
+				query.setMacro( "USE_IGNORE_LIGHTS" );
+			if(render_settings.clipping_plane && !(instance.flags & RI_IGNORE_CLIPPING_PLANE) )
+				query.setMacro( "USE_CLIPPING_PLANE" );
+
+			if( material.onModifyQuery )
+				material.onModifyQuery( query );
+
+			//resolve the shader
+			var shader = ShadersManager.resolve( query );
+
+			//assign uniforms
+			shader.uniformsArray( [ sampler_uniforms, scene._uniforms, camera._uniforms, instance_final_uniforms ] );
+
+			if(instance.flags & RI_IGNORE_VIEWPROJECTION)
+				shader.setUniform("u_viewprojection", mat4.IDENTITY );
+
+			//render
+			instance.render( shader );
+			this._rendercalls += 1;
+			return;
+		}
+
+		//Regular rendering (multipass)
+		for(var iLight = 0; iLight < num_lights; iLight++)
+		{
+			var light = lights[iLight];
+
+			var query = new LS.ShaderQuery( shader_name );
+
+			var light_query = light.getQuery( instance, render_settings );
+
+			if(iLight === 0)
+				query.setMacro("FIRST_PASS");
+			if(iLight === (num_lights-1))
+				query.setMacro("LAST_PASS");
+
+			query.add( scene._query );
+			query.add( instance_final_query ); //contains node, material and instance macros
+			query.add( light_query );
+
+			if(render_settings.clipping_plane && !(instance.flags & RI_IGNORE_CLIPPING_PLANE) )
+				query.setMacro("USE_CLIPPING_PLANE");
+
+			if( material.onModifyQuery )
+				material.onModifyQuery( query );
+
+			var shader = LS.ShadersManager.resolve( query );
+
+			//fill shader data
+			var light_uniforms = light.getUniforms( instance, render_settings );
+
+			//secondary pass flags to make it additive
+			if(iLight > 0)
+			{
+				gl.enable(gl.BLEND);
+				gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+				if(render_settings.depth_test)
+				{
+					gl.depthFunc( gl.LEQUAL );
+					//gl.depthMask(true);
+					if( node.flags.depth_test )
+						gl.enable( gl.DEPTH_TEST );
+					else
+						gl.disable( gl.DEPTH_TEST );
+				}
+			}
+			//set depth func
+			if(material.depth_func)
+				gl.depthFunc( gl[material.depth_func] );
+
+			//assign uniforms
+			shader.uniformsArray( [sampler_uniforms, scene._uniforms, camera._uniforms, instance_final_uniforms, light_uniforms] );
+
+			//render the instance
+			instance.render( shader );
+			this._rendercalls += 1;
+
+			//avoid multipass in simple shaders
+			if(shader.global && !shader.global.multipass)
+				break; 
+		}
+	},
+
+	/**
+	* Renders this RenderInstance into the shadowmap
+	*
+	* @method renderShadowPassInstance
+	* @param {RenderInstance} instance
+	* @param {RenderSettings} render_settings
+	*/
+	renderShadowPassInstance: function(instance, render_settings)
+	{
+		var scene = this._current_scene;
+		var camera = this._current_camera;
+		var node = instance.node;
+		var material = instance.material;
+
+		//compute matrices
+		var model = instance.matrix;
+		mat4.multiply(this._mvp_matrix, this._viewprojection_matrix, model );
+
+		//node matrix info
+		var instance_final_query = instance._final_query;
+		var instance_final_uniforms = instance._final_uniforms;
+		var instance_final_samplers = instance._final_samplers;
+
+		//maybe this two should be somewhere else
+		instance_final_uniforms.u_model = model; 
+		instance_final_uniforms.u_normal_model = instance.normal_matrix; 
+
+		//update matrices (because they depend on the camera) 
+		instance_final_uniforms.u_mvp = this._mvp_matrix;
+
+		//FLAGS
+		this.enableInstanceFlags( instance, render_settings );
+
+		var query = new ShaderQuery("depth");
+		query.add( scene._query );
+		query.add( instance_final_query );
+
+		//if(this._current_target && this._current_target.texture_type === gl.TEXTURE_CUBE_MAP)
+		//	query.setMacro("USE_LINEAR_SHADOWMAP");
+
+		//not fully supported yet
+		if(material.alpha_test_shadows == true )
+		{
+			query.setMacro("USE_ALPHA_TEST","0.5");
+			var color = material.getTexture("color");
+			if(color)
+			{
+				var color_uvs = material.textures["color_uvs"] || Material.DEFAULT_UVS["color"] || "0";
+				query.setMacro("USE_COLOR_TEXTURE","uvs_" + color_uvs);
+				color.bind(0);
+			}
+
+			var opacity = material.getTexture("opacity");
+			if(opacity)	{
+				var opacity_uvs = material.textures["opacity_uvs"] || Material.DEFAULT_UVS["opacity"] || "0";
+				query.setMacro("USE_OPACITY_TEXTURE","uvs_" + opacity_uvs);
+				opacity.bind(1);
+			}
+			//shader.uniforms({ texture: 0, opacity_texture: 1 });
+		}
+
+		var shader = ShadersManager.resolve( query );
+
+		var samplers = {};
+		samplers.merge( scene._samplers );
+		samplers.merge( instance_final_samplers );
+		var sampler_uniforms = this.bindSamplers( samplers, shader );
+		/*
+		var slot = 1;
+		for(var i in samplers)
+			if(shader.samplers[i]) //only enable a texture if the shader uses it
+				sampler_uniforms[ i ] = samplers[i].bind( slot++ );
+		*/
+
+		shader.uniformsArray([ sampler_uniforms, scene._uniforms, camera._uniforms, instance._final_uniforms ]);
+
+		instance.render(shader);
+		this._rendercalls += 1;
+	},
+
+	/**
+	* Render instance into the picking buffer
+	*
+	* @method renderPickingInstance
+	* @param {RenderInstance} instance
+	* @param {RenderSettings} render_settings
+	*/
+	renderPickingPassInstance: function( instance, render_settings )
+	{
+		var scene = this._current_scene;
+		var camera = this._current_camera;
+		var node = instance.node;
+		var model = instance.matrix;
+		mat4.multiply(this._mvp_matrix, this._viewprojection_matrix, model );
+		var pick_color = LS.Picking.getNextPickingColor( node );
+		/*
+		this._picking_next_color_id += 10;
+		var pick_color = new Uint32Array(1); //store four bytes number
+		pick_color[0] = this._picking_next_color_id; //with the picking color for this object
+		var byte_pick_color = new Uint8Array( pick_color.buffer ); //read is as bytes
+		//byte_pick_color[3] = 255; //Set the alpha to 1
+		this._picking_nodes[this._picking_next_color_id] = node;
+		*/
+
+		var query = new LS.ShaderQuery("flat");
+		query.add( scene._query );
+		query.add( instance._final_query );
+
+		var shader = ShadersManager.resolve( query );
+		shader.uniforms(scene._uniforms);
+		shader.uniforms(camera._uniforms);
+		shader.uniforms(instance.uniforms);
+		shader.uniforms({u_model: model, u_mvp: this._mvp_matrix, u_material_color: pick_color });
+
+		instance.render(shader);
+	},
+
+	bindSamplers: function( samplers, shader )
+	{
+		var sampler_uniforms = {};
+		var slot = 0;
+		for(var i in samplers)
+		{
+			var sampler = samplers[i];
+			if(!sampler) //weird case
+			{
+				throw("Samplers should always be valid values"); //assert
+			}
+
+			//if(shader && !shader[i]) continue; ¿?
+
+			//REFACTOR THIS
+			var tex = null;
+			if(sampler.constructor === String || sampler.constructor === GL.Texture) //old way
+			{
+				tex = sampler;
+				sampler = null;
+			}
+			else if(sampler.texture)
+				tex = sampler.texture;
+			else
+				continue;
+
+			if(tex.constructor === String)
+				tex = LS.ResourcesManager.textures[ tex ];
+			if(!tex)
+			{
+				tex = this._missing_texture;
+				//continue;
+			}
+
+			//bind
+			sampler_uniforms[ i ] = tex.bind( slot++ );
+
+			//texture properties
+			if(sampler)
+			{
+				if(sampler.minFilter)
+					gl.texParameteri(tex.texture_type, gl.TEXTURE_MIN_FILTER, sampler.minFilter);
+				if(sampler.magFilter)
+					gl.texParameteri(tex.texture_type, gl.TEXTURE_MAG_FILTER, sampler.magFilter);
+				if(sampler.wrap)
+				{
+					gl.texParameteri(tex.texture_type, gl.TEXTURE_WRAP_S, sampler.wrap);
+					gl.texParameteri(tex.texture_type, gl.TEXTURE_WRAP_T, sampler.wrap);
+				}
+			}
+		}
+
+		return sampler_uniforms;
+	},
+
+	/**
+	* Update the scene shader query according to the render pass
+	* Do not reuse the query, they change between rendering passes (shadows, reflections, etc)
+	*
+	* @method fillSceneShaderQuery
+	* @param {SceneTree} scene
+	* @param {RenderSettings} render_settings
+	*/
+	fillSceneShaderQuery: function( scene, render_settings )
+	{
+		var query = new ShaderQuery();
+
+		if( this._current_camera.type == Camera.ORTHOGRAPHIC )
+			query.setMacro("USE_ORTHOGRAPHIC_CAMERA");
+
+		//camera info
+		if( this._current_pass.id == COLOR_PASS )
+		{
+			if(render_settings.linear_pipeline)
+				query.setMacro("USE_LINEAR_PIPELINE");
+
+			if(render_settings.brightness_factor && render_settings.brightness_factor != 1)
+				query.setMacro("USE_BRIGHTNESS_FACTOR");
+
+			if(render_settings.colorclip_factor)
+				query.setMacro("USE_COLORCLIP_FACTOR");
+		}
+
+		if(this._current_renderframe && this._current_renderframe.use_extra_texture && gl.extensions["WEBGL_draw_buffers"])
+			query.setMacro("USE_DRAW_BUFFERS");
+
+		LEvent.trigger( scene, "fillSceneQuery", query );
+
+		scene._query = query;
+	},
+
+	//Called at the beginning of renderInstances (once per renderFrame)
+	//DO NOT CACHE, parameters can change between render passes
+	fillSceneShaderUniforms: function( scene, render_settings )
+	{
+		//global uniforms
+		var uniforms = {
+			u_point_size: this.default_point_size,
+			u_time: scene._time || getTime() * 0.001,
+			u_brightness_factor: render_settings.brightness_factor != null ? render_settings.brightness_factor : 1,
+			u_colorclip_factor: render_settings.colorclip_factor != null ? render_settings.colorclip_factor : 0,
+			u_ambient_light: scene.info.ambient_color,
+			u_background_color: scene.info.background_color.subarray(0,3),
+			u_viewport: gl.viewport_data
+		};
+
+		if(render_settings.clipping_plane)
+			uniforms.u_clipping_plane = render_settings.clipping_plane;
+
+		if( this._current_pass.id == COLOR_PASS && render_settings.linear_pipeline )
+			uniforms.u_gamma = 2.2;
+
+		scene._uniforms = uniforms;
+		scene._samplers = {};
+
+		for(var i in scene.info.textures)
+		{
+			var texture = LS.getTexture( scene.info.textures[i] );
+			if(!texture)
+				continue;
+			if(i != "environment" && i != "irradiance") continue; //TO DO: improve this, I dont want all textures to be binded 
+			var type = (texture.texture_type == gl.TEXTURE_2D ? "_texture" : "_cubemap");
+			if(texture.texture_type == gl.TEXTURE_2D)
+			{
+				texture.bind(0);
+				texture.setParameter( gl.TEXTURE_MIN_FILTER, gl.LINEAR ); //avoid artifact
+			}
+			scene._samplers[i + type] = texture;
+			scene._query.macros[ "USE_" + (i + type).toUpperCase() ] = "uvs_polar_reflected";
+		}
+
+		LEvent.trigger( scene, "fillSceneUniforms", scene._uniforms );
+	},	
+
+	/**
+	* Switch flags according to the RenderInstance flags
+	*
+	* @method enableInstanceFlags
+	* @param {RenderInstance} instance
+	* @param {RenderSettings} render_settings
+	*/
+	enableInstanceFlags: function(instance, render_settings)
+	{
+		var flags = instance.flags;
+
+		//backface culling
+		if( flags & RI_CULL_FACE )
+			gl.enable( gl.CULL_FACE );
+		else
+			gl.disable( gl.CULL_FACE );
+
+		//  depth
+		if(render_settings.depth_test)
+		{
+			gl.depthFunc( gl.LEQUAL );
+			if( flags & RI_DEPTH_TEST )
+				gl.enable( gl.DEPTH_TEST );
+			else
+				gl.disable( gl.DEPTH_TEST );
+
+			if(flags & RI_DEPTH_WRITE)
+				gl.depthMask(true);
+			else
+				gl.depthMask(false);
+		}
+
+		//when to reverse the normals?
+		var order = gl.CCW;
+		if(flags & RI_CW)
+			order = gl.CW;
+		if(render_settings.reverse_backfacing)
+			order = order == gl.CW ? gl.CCW : gl.CW;
+		gl.frontFace(order);
+	},
+
+
+	/**
+	* Collects and process the rendering instances, cameras and lights that are visible
+	* Its a prepass shared among all rendering passes
+	* Warning: rendering order is computed here, so it is shared among all the cameras (TO DO, move somewhere else)
+	*
+	* @method processVisibleData
+	* @param {SceneTree} scene
+	* @param {RenderSettings} render_settings
+	* @param {Array} cameras in case you dont want to use the scene cameras
+	*/
+	processVisibleData: function( scene, render_settings, cameras )
+	{
+		//options = options || {};
+		//options.scene = scene;
+
+		//update info about scene (collecting it all or reusing the one collected in the frame before)
+		if( this._frame % this._collect_frequency == 0)
+			scene.collectData();
+		else
+			scene.updateCollectedData();
+		LEvent.trigger( scene, "afterCollectData", scene );
+
+		cameras = cameras || scene._cameras;
+
+		//prepare cameras
+		for(var i = 0, l = cameras.length; i < l; ++i)
+		{
+			var camera = cameras[i];
+			camera._rendering_index = i;
+		}
+
+		//meh!
+		if(!this._main_camera)
+		{
+			if( cameras.length )
+				this._main_camera = cameras[0];
+			else
+				this._main_camera = new LS.Camera(); // ??
+		}
+
+		var opaque_instances = [];
+		var blend_instances = [];
+		var materials = {}; //I dont want repeated materials here
+
+		var instances = scene._instances;
+		var camera = this._main_camera; // || scene.getCamera();
+		var camera_eye = camera.getEye();
+
+		//process render instances (add stuff if needed)
+		for(var i = 0, l = instances.length; i < l; ++i)
+		{
+			var instance = instances[i];
+			if(!instance)
+				continue;
+			var node_flags = instance.node.flags;
+
+			if(!instance.mesh)
+			{
+				console.warn("RenderInstance must have mesh");
+				continue;
+			}
+
+			//materials
+			if(!instance.material)
+				instance.material = this.default_material;
+			materials[ instance.material.uid ] = instance.material;
+
+			//add extra info
+			instance._dist = vec3.dist( instance.center, camera_eye );
+
+			//change conditionaly
+			if(render_settings.force_wireframe && instance.primitive != gl.LINES ) 
+			{
+				instance.primitive = gl.LINES;
+				if(instance.mesh)
+				{
+					if(!instance.mesh.indexBuffers["wireframe"])
+						instance.mesh.computeWireframe();
+					instance.index_buffer = instance.mesh.indexBuffers["wireframe"];
+				}
+			}
+
+			//and finally, the alpha thing to determine if it is visible or not
+			if(instance.flags & RI_BLEND)
+				blend_instances.push(instance);
+			else
+				opaque_instances.push(instance);
+
+			//node & mesh constant information
+			var query = instance.query;
+			if(instance.flags & RI_ALPHA_TEST || instance.material.alpha_test)
+				query.macros.USE_ALPHA_TEST = "0.5";
+			else if(query.macros["USE_ALPHA_TEST"])
+				delete query.macros["USE_ALPHA_TEST"];
+
+			var buffers = instance.vertex_buffers;
+			if(!("normals" in buffers))
+				query.macros.NO_NORMALS = "";
+			if(!("coords" in buffers))
+				query.macros.NO_COORDS = "";
+			if(("coords1" in buffers))
+				query.macros.USE_COORDS1_STREAM = "";
+			if(("colors" in buffers))
+				query.macros.USE_COLOR_STREAM = "";
+			if(("tangents" in buffers))
+				query.macros.USE_TANGENT_STREAM = "";
+
+			instance._camera_visibility = 0|0;
+		}
+
+		//Sorting: (defining rendering order based on RIs priority and distance to camera)
+		if(render_settings.sort_instances_by_distance) //sort RIs in Z for alpha sorting
+		{
+			opaque_instances.sort(this._sort_near_to_far_func);
+			blend_instances.sort(this._sort_far_to_near_func);
+		}
+
+		if(render_settings.sort_instances_by_priority) //sort by priority (we do this before merging because otherwise the distance sorting gest messed up
+		{
+			opaque_instances.sort(this._sort_by_priority_and_near_to_far_func);
+			blend_instances.sort(this._sort_by_priority_and_far_to_near_func);
+		}
+
+		var all_instances = opaque_instances.concat(blend_instances); //merge
+
+		//update materials info only if they are in use
+		if(render_settings.update_materials)
+			this._prepareMaterials( materials, scene );
+
+		//pack all macros, uniforms, and samplers relative to this instance in single containers
+		for(var i = 0, l = instances.length; i < l; ++i)
+		{
+			var instance = instances[i];
+			var node = instance.node;
+			var material = instance.material;
+			instance.index = i;
+
+			var query = instance._final_query;
+			query.clear();
+			query.add( node._query );
+			query.add( material._query );
+			query.add( instance.query );
+
+			var uniforms = instance._final_uniforms;
+			wipeObject( uniforms );
+			uniforms.merge( node._uniforms );
+			uniforms.merge( material._uniforms );
+			uniforms.merge( instance.uniforms );
+
+			var samplers = instance._final_samplers;
+			wipeObject(samplers);
+			//samplers.merge( node._samplers );
+			samplers.merge( material._samplers );
+			samplers.merge( instance.samplers );			
+		}
+
+		//store all the info
+		var lights = scene._lights;
+
+		this._blend_instances = blend_instances;
+		this._opaque_instances = opaque_instances;
+		this._visible_instances = all_instances; //sorted version
+		this._visible_lights = scene._lights;
+		this._visible_cameras = cameras; 
+		this._visible_materials = materials;
+
+		//prepare lights (collect data and generate shadowmaps)
+		for(var i = 0, l = lights.length; i < l; ++i)
+			lights[i].prepare( render_settings );
+	},
+
+	//outside of processVisibleData to allow optimizations in processVisibleData
+	_prepareMaterials: function( materials, scene )
+	{
+		for(var i in materials)
+		{
+			var material = materials[i];
+			material.prepareMaterial( scene );
+		}
+	},
+
+	_sort_far_to_near_func: function(a,b) { return b._dist - a._dist; },
+	_sort_near_to_far_func: function(a,b) { return a._dist - b._dist; },
+	_sort_by_priority_func: function(a,b) { return b.priority - a.priority; },
+	_sort_by_priority_and_near_to_far_func: function(a,b) { var r = b.priority - a.priority; return r ? r : (a._dist - b._dist) },
+	_sort_by_priority_and_far_to_near_func: function(a,b) { var r = b.priority - a.priority; return r ? r : (b._dist - a._dist) },
+
+	/**
+	* Renders a frame into a texture (could be a cubemap, in which case does the six passes)
+	*
+	* @method renderInstancesToRT
+	* @param {Camera} cam
+	* @param {Texture} texture
+	* @param {RenderSettings} render_settings
+	*/
+	renderInstancesToRT: function(cam, texture, render_settings)
+	{
+		render_settings = render_settings || this.default_render_settings;
+		this._current_target = texture;
+		var scene = LS.Renderer._current_scene;
+
+		if(texture.texture_type == gl.TEXTURE_2D)
+		{
+			this.enableCamera(cam, render_settings);
+			texture.drawTo( inner_draw_2d );
+		}
+		else if( texture.texture_type == gl.TEXTURE_CUBE_MAP)
+			this.renderToCubemap( cam.getEye(), texture.width, texture, render_settings, cam.near, cam.far );
+		this._current_target = null;
+
+		function inner_draw_2d()
+		{
+			gl.clearColor(scene.info.background_color[0], scene.info.background_color[1], scene.info.background_color[2], scene.info.background_color[3] );
+			if(render_settings.ignore_clear != true)
+				gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+			//render scene
+			LS.Renderer.renderInstances( render_settings );
+		}
+	},
+
+	/**
+	* Renders the current scene to a cubemap centered in the given position
+	*
+	* @method renderToCubemap
+	* @param {vec3} position center of the camera where to render the cubemap
+	* @param {number} size texture size
+	* @param {Texture} texture to reuse the same texture
+	* @param {RenderSettings} render_settings
+	* @param {number} near
+	* @param {number} far
+	* @return {Texture} the resulting texture
+	*/
+	renderToCubemap: function(position, size, texture, render_settings, near, far)
+	{
+		size = size || 256;
+		near = near || 1;
+		far = far || 1000;
+
+		var eye = position;
+		if( !texture || texture.constructor != GL.Texture)
+			texture = null;
+
+		var scene = this._current_scene;
+
+		texture = texture || new GL.Texture(size,size,{texture_type: gl.TEXTURE_CUBE_MAP, minFilter: gl.NEAREST});
+		this._current_target = texture;
+		texture.drawTo( function(texture, side) {
+
+			var info = LS.Camera.cubemap_camera_parameters[side];
+			if(texture._is_shadowmap || !scene.info )
+				gl.clearColor(0,0,0,0);
+			else
+				gl.clearColor( scene.info.background_color[0], scene.info.background_color[1], scene.info.background_color[2], scene.info.background_color[3] );
+
+			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+			var cubemap_cam = new LS.Camera({ eye: eye, center: [ eye[0] + info.dir[0], eye[1] + info.dir[1], eye[2] + info.dir[2]], up: info.up, fov: 90, aspect: 1.0, near: near, far: far });
+
+			LS.Renderer.enableCamera( cubemap_cam, render_settings, true );
+			LS.Renderer.renderInstances( render_settings );
+		});
+
+		this._current_target = null;
+		return texture;
+	},
+
+	/**
+	* Renders the material preview to an image (or to the screen)
+	*
+	* @method renderMaterialPreview
+	* @param {Material} material
+	* @param {number} size image size
+	* @param {Object} options could be environment_texture, to_viewport
+	* @return {Image} the preview image (in canvas format) or null if it was rendered to the viewport
+	*/
+	renderMaterialPreview: function( material, size, options )
+	{
+		options = options || {};
+
+		var scene = this._material_scene;
+		if(!scene)
+		{
+			scene = this._material_scene = new LS.SceneTree();
+			if(options.background_color)
+				scene.info.background_color.set(options.background_color);
+			else
+				scene.info.background_color.set([0.0,0.0,0.0,0]);
+			if(options.environment_texture)
+				scene.info.textures.environment = options.environment_texture;
+			var node = new LS.SceneNode( "sphere" );
+			var compo = new LS.Components.GeometricPrimitive( { size: 40, subdivisions: 50, geometry: LS.Components.GeometricPrimitive.SPHERE } );
+			node.addComponent( compo );
+			scene.root.addChild( node );
+		}
+
+		var node = scene.getNode( "sphere");
+		if(!node)
+		{
+			console.error("Node not found in Material Preview Scene");
+			return null;
+		}
+
+		if(options.rotate)
+			node.transform.rotateY( options.rotate );
+		node.material = material;
+
+		if(options.to_viewport)
+		{
+			LS.Renderer.renderFrame( scene.root.camera, { skip_viewport: true, render_helpers: false, update_materials: true }, scene );
+			return;
+		}
+
+		var tex = this._material_preview_texture || new GL.Texture(size,size);
+		if(!this._material_preview_texture)
+			this._material_preview_texture = tex;
+
+		tex.drawTo( function()
+		{
+			//it already clears everything
+			//just render
+			LS.Renderer.renderFrame( scene.root.camera, { skip_viewport: true, render_helpers: false }, scene );
+		});
+
+		var canvas = tex.toCanvas(null, true);
+		//document.body.appendChild( canvas ); //debug
+		return canvas;
+	},
+
+	/**
+	* Returns the last camera that falls into a given screen position
+	*
+	* @method getCameraAtPosition
+	* @param {number} x
+	* @param {number} y
+	* @param {SceneTree} scene if not specified last rendered scene will be used
+	* @return {Camera} the camera
+	*/
+	getCameraAtPosition: function(x,y, cameras)
+	{
+		cameras = cameras || this._visible_cameras;
+		if(!cameras || !cameras.length)
+			return null;
+
+		for(var i = cameras.length - 1; i >= 0; --i)
+		{
+			var camera = cameras[i];
+			if(!camera.enabled || camera.render_to_texture)
+				continue;
+
+			if( camera.isPointInCamera(x,y) )
+				return camera;
+		}
+		return null;
+	},
+
+	/**
+	* Sets the render pass to use, this allow to change between "color","shadow","picking",etc
+	*
+	* @method setRenderPass
+	* @param {String} name name of the render pass as in render_passes
+	*/
+	setRenderPass: function( name )
+	{
+		this._current_pass = this.render_passes[ name ] || this.render_passes[ "color" ];
+	},
+
+	/**
+	* Register a render pass to be used during the rendering
+	*
+	* @method registerRenderPass
+	* @param {String} name name of the render pass as in render_passes
+	* @param {Object} info render pass info, { render_instance: Function( instance, render_settings ) }
+	*/
+	registerRenderPass: function( name, info )
+	{
+		info.name = name;
+		this.render_passes[ name ] = info;
+		if(!this._current_pass)
+			this._current_pass = info;
+	}
+};
+
+//Add to global Scope
+LS.Renderer = Renderer;
+
+//
+/**
+* Picking is used to detect which element is below one pixel (used the GPU) or using raycast
+*
+* @class Picking
+* @namespace LS
+* @constructor
+*/
+var Picking = {
+
+	picking_color_offset: 10, //color difference between picking objects
+
+	/**
+	* Renders the pixel and retrieves the color to detect which object it was, slow but accurate
+	* @method getNodeAtCanvasPosition
+	* @param {number} x in canvas coordinates
+	* @param {number} y in canvas coordinates
+	* @param {Camera} camera default is all cameras
+	* @param {number} layers default is 0xFFFF which is all
+	* @param {SceneTree} scene default is GlobalScene
+	*/
+	getNodeAtCanvasPosition: function( x, y, camera, layers, scene )
+	{
+		var instance = this.getInstanceAtCanvasPosition( x, y, camera, layers, scene );
+		if(!instance)
+			return null;
+
+		if(instance.constructor == LS.SceneNode)
+			return instance;
+
+		if(instance._root && instance._root.constructor == LS.SceneNode)
+			return instance._root;
+
+		if(instance.node)
+			return instance.node;
+
+		return null;
+	},
+
+	/**
+	* Returns the instance under a screen position
+	* @method getInstanceAtCanvasPosition
+	* @param {number} x in canvas coordinates
+	* @param {number} y in canvas coordinates
+	* @param {Camera} camera
+	* @param {number} layers default is 0xFFFF which is all
+	* @param {SceneTree} scene
+	* @return {Object} the info supplied by the picker (usually a SceneNode)
+	*/
+	getInstanceAtCanvasPosition: function( x, y, camera, layers, scene )
+	{
+		scene = scene || LS.GlobalScene;
+
+		if(!camera)
+			camera = LS.Renderer.getCameraAtPosition( x, y, scene._cameras );
+
+		if(!camera)
+			return null;
+
+		this._picking_nodes = {};
+
+		//render all Render Instances
+		this.getPickingColorFromBuffer( scene, camera, x,y, layers );
+
+		this._picking_color[3] = 0; //remove alpha, because alpha is always 255
+		var id = new Uint32Array(this._picking_color.buffer)[0]; //get only element
+
+		var instance_info = this._picking_nodes[id];
+		this._picking_nodes = {};
+		return instance_info;
+	},	
+
+	/**
+	* Cast a ray that traverses the scene checking for collisions with RenderInstances
+	* Similar to Physics.raycast but using only the bounding boxes of the visible meshes
+	* @method raycast
+	* @param {vec3} origin in world space
+	* @param {vec3} direction in world space
+	* @param {Object} options ( max_distance: maxium ray distance, layers, scene, max_distance, first_collision : returns the first collision (which could be not the closest one) )
+	* @return {Array} array containing all the RenderInstances that collided with the ray in the form [SceneNode, RenderInstance, collision point, distance]
+	*/
+	raycast: function( origin, direction, options )
+	{
+		options = options || {};
+		var layers = options.layers;
+		if(layers === undefined)
+			layers = 0xFFFF;
+		var max_distance = options.max_distance || Number.MAX_VALUE;
+		var scene = options.scene || LS.GlobalScene;
+		var triangle_collision = options.triangle_collision;
+		var first_collision = options.first_collision;
+
+		var instances = scene._instances;
+		if(!instances || !instances.length)
+			return null;
+
+		var collisions = [];
+
+		var local_start = vec3.create();
+		var local_direction = vec3.create();
+
+		var compute_normal = !!options.normal;
+
+		//for every instance
+		for(var i = 0; i < instances.length; ++i)
+		{
+			var instance = instances[i];
+
+			if(!(instance.flags & RI_RAYCAST_ENABLED) || (layers & instance.layers) === 0 )
+				continue;
+
+			if(instance.flags & RI_BLEND)
+				continue; //avoid semitransparent
+
+			//test against AABB
+			var collision_point = vec3.create();
+			if( !geo.testRayBBox( origin, direction, instance.aabb, null, collision_point, max_distance ) )
+				continue;
+
+			var model = instance.matrix;
+
+			//ray to local
+			var inv = mat4.invert( mat4.create(), model );
+			mat4.multiplyVec3( local_start, inv, origin );
+			mat4.rotateVec3( local_direction, inv, direction );
+
+			//test against OOBB (a little bit more expensive)
+			if( !geo.testRayBBox(local_start, local_direction, instance.oobb, null, collision_point, max_distance) )
+				continue;
+
+			//test against mesh
+			var collision_mesh = instance.collision_mesh;
+			var collision_normal = null;
+			
+			if(triangle_collision)
+				collision_mesh = instance.lod_mesh || instance.mesh;
+
+			if( collision_mesh )
+			{
+				var mesh = collision_mesh;
+				var octree = mesh.octree;
+				if(!octree)
+					octree = mesh.octree = new GL.Octree( mesh );
+				var hit = octree.testRay( local_start, local_direction, 0.0, max_distance );
+				if(!hit)
+					continue;
+				mat4.multiplyVec3( collision_point, model, hit.pos );
+				if(compute_normal)
+					collision_normal = mat4.rotateVec3( vec3.create(), model, hit.normal );
+			}
+			else
+				vec3.transformMat4(collision_point, collision_point, model);
+
+			var distance = vec3.distance( origin, collision_point );
+			if(distance < max_distance)
+				collisions.push( new LS.Collision( instance.node, instance, collision_point, distance, collision_normal ) );
+
+			if(first_collision)
+				return collisions;
+		}
+
+		collisions.sort( LS.Collision.isCloser );
+		return collisions;
+	},
+
+	/**
+	* Returns a color you should use to paint this node during picking rendering
+	* you tell what info you want to retrieve associated with this object if it is clicked
+	* @method getNextPickingColor
+	* @param {*} info
+	* @return {vec3} array containing all the RenderInstances that collided with the ray
+	*/
+	getNextPickingColor: function( info )
+	{
+		this._picking_next_color_id += this.picking_color_offset;
+		var pick_color = new Uint32Array(1); //store four bytes number
+		pick_color[0] = this._picking_next_color_id; //with the picking color for this object
+		var byte_pick_color = new Uint8Array( pick_color.buffer ); //read is as bytes
+		//byte_pick_color[3] = 255; //Set the alpha to 1
+
+		this._picking_nodes[ this._picking_next_color_id ] = info;
+		return vec4.fromValues( byte_pick_color[0] / 255, byte_pick_color[1] / 255, byte_pick_color[2] / 255, 1 );
+	},
+
+	//picking
+	_pickingMap: null,
+	_picking_color: new Uint8Array(4),
+	_picking_depth: 0,
+	_picking_next_color_id: 0,
+	_picking_nodes: {},
+	_picking_render_settings: new RenderSettings(),
+
+	getPickingColorFromBuffer: function( scene, camera, x, y, layers )
+	{
+		//create texture
+		if(this._pickingMap == null || this._pickingMap.width != gl.canvas.width || this._pickingMap.height != gl.canvas.height )
+		{
+			this._pickingMap = new GL.Texture( gl.canvas.width, gl.canvas.height, { format: gl.RGBA, filter: gl.NEAREST });
+			this._pickingFBO = new GL.FBO([this._pickingMap]);
+			//LS.ResourcesManager.textures[":picking"] = this._pickingMap; //debug the texture
+		}
+
+		//y = gl.canvas.height - y; //reverse Y
+		var small_area = true;
+
+		LS.Renderer._current_target = this._pickingMap;
+
+		this._pickingFBO.bind();
+
+			//var viewport = camera.getLocalViewport();
+			//camera._real_aspect = viewport[2] / viewport[3];
+			//gl.viewport( viewport[0], viewport[1], viewport[2], viewport[3] );
+
+			if(small_area)
+			{
+				gl.scissor(x-1,y-1,2,2);
+				gl.enable(gl.SCISSOR_TEST);
+			}
+
+			this.renderPickingBuffer( scene, camera, layers, [x,y] );
+
+			gl.readPixels(x,y,1,1,gl.RGBA,gl.UNSIGNED_BYTE, this._picking_color );
+
+			if(small_area)
+				gl.disable(gl.SCISSOR_TEST);
+
+		this._pickingFBO.unbind();
+
+		LS.Renderer._current_target = null; //??? deprecated
+
+		//if(!this._picking_color) this._picking_color = new Uint8Array(4); //debug
+		//trace(" END Rendering: ", this._picking_color );
+		return this._picking_color;
+	},
+
+	renderPickingBuffer: function( scene, camera, layers, mouse_pos )
+	{
+		if(layers === undefined)
+			layers = 0xFFFF;
+		var picking_render_settings = this._picking_render_settings;
+
+		LS.Renderer.enableCamera( camera, this._picking_render_settings );
+
+		gl.clearColor(0,0,0,0);
+		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+		//gl.viewport(x-20,y-20,40,40);
+		this._picking_next_color_id = 0;
+		LS.Renderer.setRenderPass("picking");
+		picking_render_settings.layers = layers;
+
+		//check instances colliding with cursor using a ray against AABBs
+		//TODO
+
+		LS.Renderer.renderInstances( picking_render_settings )//, cursor_instances );
+		//gl.scissor(0,0,gl.canvas.width,gl.canvas.height);
+
+		LEvent.trigger( scene, "renderPicking", mouse_pos );
+		LEvent.trigger( LS.Renderer, "renderPicking", mouse_pos );
+
+		LS.Renderer.setRenderPass("color");
+	}
+};
+
+LS.Picking = Picking;
+/* This is in charge of basic physics actions like ray tracing against the colliders */
+
+/**
+* Contains information about the collision of a ray and the scene
+* - position: vec3
+* - node: SceneNode
+* - instance: could be a RenderInstance or a PhysicsInstance
+* - distance: number
+* @class Collision
+* @namespace LS
+* @constructor
+* @param {SceneNode} node
+* @param {PhysicsInstance|RenderInstance} instance
+* @param {vec3} position collision position
+* @param {number} distance
+*/
+function Collision( node, instance, position, distance, normal )
+{
+	this.position = vec3.create();
+	if(position)
+		this.position.set(position);
+	this.node = node || null; //the node belonging to this colliding object
+	this.instance = instance || null; //could be a RenderInstance or a PhysicsInstance
+	this.distance = distance || 0; //distance from the ray start
+	this.normal = normal;
+}
+
+Collision.isCloser = function(a,b) { return a.distance - b.distance; }
+
+LS.Collision = Collision;
+
+
+
+
+
+/**
+* PhysicsInstance contains info of a colliding object. Used to test collisions with the scene
+*
+* @class PhysicsInstance
+* @namespace LS
+* @constructor
+*/
+function PhysicsInstance(node, component)
+{
+	this.uid = LS.generateUId("PHSX"); //unique identifier for this RI
+	this.layers = 3|0;
+
+	this.type = PhysicsInstance.BOX; //SPHERE, MESH
+	this.mesh = null; 
+
+	//where does it come from
+	this.node = node;
+	this.component = component;
+
+	//transformation
+	this.matrix = mat4.create();
+	this.center = vec3.create(); //in world space
+
+	//for visibility computation
+	this.oobb = BBox.create(); //local object oriented bounding box
+	this.aabb = BBox.create(); //world axis aligned bounding box
+}
+
+PhysicsInstance.BOX = 1;
+PhysicsInstance.SPHERE = 2;
+PhysicsInstance.PLANE = 3;
+PhysicsInstance.CAPSULE = 4;
+PhysicsInstance.MESH = 5;
+PhysicsInstance.FUNCTION = 6; //used to test against a internal function
+
+/**
+* Computes the instance bounding box in world space from the one in local space
+*
+* @method updateAABB
+*/
+PhysicsInstance.prototype.updateAABB = function()
+{
+	BBox.transformMat4( this.aabb, this.oobb, this.matrix );
+}
+
+PhysicsInstance.prototype.setMesh = function(mesh)
+{
+	this.mesh = mesh;
+	this.type = PhysicsInstance.MESH;	
+	BBox.setCenterHalfsize( this.oobb, BBox.getCenter( mesh.bounding ), BBox.getHalfsize( mesh.bounding ) );
+}
+
+LS.PhysicsInstance = PhysicsInstance;
+
+
+
+/**
+* Physics is in charge of all physics testing methods
+*
+* @class Physics
+* @namespace LS
+* @constructor
+*/
+var Physics = {
+
+	/**
+	* Cast a ray that traverses the scene checking for collisions with Colliders
+	* @method raycast
+	* @param {vec3} origin in world space
+	* @param {vec3} direction in world space
+	* @param {Object} options ( max_dist maxium distance, layers which layers to check, scene, first_collision )
+	* @return {Array} Array of Collision objects containing all the nodes that collided with the ray or null in the form [SceneNode, Collider, collision point, distance]
+	*/
+	raycast: function( origin, direction, options )
+	{
+		options = options || {};
+
+		if(!origin || !direction)
+			throw("Physics.raycast: origin or direction missing.");
+
+		var layers = options.layers;
+		if(layers === undefined)
+			layers = 0xFFFF;
+		var max_distance = options.max_distance || Number.MAX_VALUE;
+		var scene = options.scene || LS.GlobalScene;
+		var first_collision = options.first_collision;
+
+		var colliders = options.colliders || scene._colliders;
+		var collisions = [];
+
+		var compute_normal = !!options.normal;
+
+		if(!colliders)
+			return null;
+
+		var local_start = vec3.create();
+		var local_direction = vec3.create();
+
+		//for every instance
+		for(var i = 0; i < colliders.length; ++i)
+		{
+			var instance = colliders[i];
+
+			if( (layers & instance.layers) === 0 )
+				continue;
+
+			//test against AABB
+			var collision_point = vec3.create();
+			var collision_normal = null;
+			if( !geo.testRayBBox(origin, direction, instance.aabb, null, collision_point, max_distance) )
+				continue;
+
+			var model = instance.matrix;
+
+			//spheres are tested in world space, is cheaper (if no non-uniform scales...)
+			if( instance.type == PhysicsInstance.SPHERE )
+			{
+				if(!geo.testRaySphere( origin, direction, instance.center, instance.oobb[3], collision_point, max_distance))
+					continue;
+				if(compute_normal)
+					collision_normal = vec3.sub( vec3.create(), collision_point, instance.center );
+			}
+			else //the rest test first with the local BBox
+			{
+				//ray to local instance coordinates
+				var inv = mat4.invert( mat4.create(), model );
+				mat4.multiplyVec3( local_start, inv, origin);
+				mat4.rotateVec3( local_direction, inv, direction);
+
+				//test against OOBB (a little bit more expensive)
+				if( !geo.testRayBBox( local_start, local_direction, instance.oobb, null, collision_point, max_distance) )
+					continue;
+
+				//if mesh use Octree
+				if( instance.type == PhysicsInstance.MESH )
+				{
+					var octree = instance.mesh.octree;
+					if(!octree)
+						octree = instance.mesh.octree = new GL.Octree( instance.mesh );
+					var hit = octree.testRay( local_start, local_direction, 0.0, max_distance );
+					if(!hit)
+						continue;
+
+					mat4.multiplyVec3( collision_point, model, hit.pos );
+					if(compute_normal)
+						collision_normal = mat4.rotateVec3( vec3.create(), model, hit.normal );
+				}
+				else //if just a BBox collision
+				{
+					vec3.transformMat4( collision_point, collision_point, model );
+				}
+			}
+
+			var distance = vec3.distance( origin, collision_point );
+			collisions.push( new LS.Collision( instance.node, instance, collision_point, distance, collision_normal ));
+
+			if(first_collision)
+				return collisions;
+		}
+
+		//sort collisions by distance
+		collisions.sort( Collision.isCloser );
+		return collisions;
+	},
+
+	/**
+	* Test if a sphere collides with any of the colliders in the scene
+	* @method testSphere
+	* @param {vec3} origin in world space
+	* @param {radius} radius
+	* @param {Object} options layers, colliders, scene
+	* @return {PhysicsInstance} the first PhysicsObject that collided with, otherwise null
+	*/
+	testSphere: function( origin, radius, options )
+	{
+		options = options || {};
+		var layers = options.layers;
+		if(layers === undefined)
+			layers = 0xFFFF;
+		var scene = options.scene || LS.GlobalScene;
+
+		var colliders = options.colliders || scene._colliders;
+		var collisions = [];
+
+		var local_start = vec3.create();
+
+		if(!colliders)
+			return null;
+
+		//for every instance
+		for(var i = 0; i < colliders.length; ++i)
+		{
+			var instance = colliders[i];
+
+			if( (layers & instance.layers) === 0 )
+				continue;
+
+			//test against AABB
+			if( !geo.testSphereBBox( origin, radius, instance.aabb ) )
+				continue;
+
+			var model = instance.matrix;
+
+			//ray to local
+			var inv = mat4.invert( mat4.create(), model );
+			mat4.multiplyVec3( local_start, inv, origin);
+
+			//test in world space, is cheaper
+			if( instance.type == LS.PhysicsInstance.SPHERE)
+			{
+				if( vec3.distance( origin, local_start ) > (radius + BBox.getRadius(instance.oobb)) )
+					continue;
+			}
+			else //the rest test first with the local BBox
+			{
+				//test against OOBB (a little bit more expensive)
+				if( !geo.testSphereBBox( local_start, radius, instance.oobb) )
+					continue;
+
+				if( instance.type == LS.PhysicsInstance.MESH )
+				{
+					var octree = instance.mesh.octree;
+					if(!octree)
+						octree = instance.mesh.octree = new GL.Octree( instance.mesh );
+					if( !octree.testSphere( local_start, radius ) )
+						continue;
+				}
+			}
+
+			return instance;
+		}
+
+		return null;
+	},
+
+	//test collision between two PhysicsInstance 
+	testCollision: function( A, B )
+	{
+		//test AABBs
+		if( !geo.testBBoxBBox( A.aabb, B.aabb ) )
+			return false;
+
+		return true; //TODO
+
+		//conver A to B local Space
+
+		//test box box
+
+		//test box sphere
+
+		//test box mesh
+
+		//test sphere box
+
+		//test sphere sphere
+
+		//mesh mesh not supported
+
+		//return true;
+	},
+
+	testAllCollisions: function( on_collision, layers, scene )
+	{
+		if(layers === undefined)
+			layers = 0xFFFF;
+		scene = scene || LS.GlobalScene;
+
+		var colliders = scene._colliders;
+		var l = colliders.length;
+
+		var collisions = false;
+
+		for(var i = 0; i < l; ++i)
+		{
+			var instance_A = colliders[i];
+
+			if( (layers & instance_A.layers) === 0 )
+				continue;
+
+			for(var j = i+1; j < l; ++j)
+			{
+				var instance_B = colliders[j];
+
+				if( (layers & instance_B.layers) === 0 )
+					continue;
+
+				if( this.testCollision( instance_A, instance_B ) )
+				{
+					if(on_collision)
+						on_collision( instance_A, instance_B );
+					collisions = true;
+				}
+			}
+		}
+
+		return collisions;
+	}
+}
+
+
+LS.Physics = Physics;
 /** Transform that contains the position (vec3), rotation (quat) and scale (vec3) 
 * @class Transform
 * @constructor
@@ -11779,8 +18519,9 @@ Light.OMNI = 1;
 Light.SPOT = 2;
 Light.DIRECTIONAL = 3;
 
-Light.DEFAULT_SHADOWMAP_RESOLUTION = 1024;
 Light.DEFAULT_DIRECTIONAL_FRUSTUM_SIZE = 50;
+
+Light.shadowmap_depth_texture = true;
 
 Light.coding_help = "\
 LightInfo LIGHT -> light info before applying equation\n\
@@ -12208,6 +18949,8 @@ Light.prototype.getQuery = function(instance, render_settings)
 			query.macros.USE_SHADOW_CUBEMAP = "";
 		if(this.hard_shadows)// || macros.USE_SHADOW_CUBEMAP != null)
 			query.macros.USE_HARD_SHADOWS = "";
+		if(this._shadowmap && this._shadowmap.format == gl.DEPTH_COMPONENT)
+			query.macros.USE_SHADOW_DEPTH_TEXTURE = "";
 		query.macros.SHADOWMAP_OFFSET = "";
 	}
 	else
@@ -12367,10 +19110,18 @@ Light.prototype.generateShadowmap = function (render_settings)
 		shadowmap_resolution = render_settings.default_shadowmap_resolution;
 
 	var tex_type = this.type == Light.OMNI ? gl.TEXTURE_CUBE_MAP : gl.TEXTURE_2D;
-	if(this._shadowmap == null || this._shadowmap.width != shadowmap_resolution || this._shadowmap.texture_type != tex_type)
+	if(this._shadowmap == null || this._shadowmap.width != shadowmap_resolution || this._shadowmap.texture_type != tex_type )
 	{
-		var format = gl.RGBA; //gl.extensions.WEBGL_depth_texture ? gl.DEPTH_COMPONENT16 : gl.RGBA;
-		this._shadowmap = new GL.Texture( shadowmap_resolution, shadowmap_resolution, { texture_type: tex_type, format: format, magFilter: gl.NEAREST, minFilter: gl.NEAREST });
+		var type = gl.UNSIGNED_BYTE;
+		var format = gl.RGBA;
+		//not all webgl implementations support depth textures
+		if( LS.Light.shadowmap_depth_texture && gl.extensions.WEBGL_depth_texture && this.type != LS.Light.OMNI )
+		{
+			format = gl.DEPTH_COMPONENT;
+			type = gl.UNSIGNED_INT;
+		}
+		//create texture to store the shadowmap
+		this._shadowmap = new GL.Texture( shadowmap_resolution, shadowmap_resolution, { type: type, texture_type: tex_type, format: format, magFilter: gl.NEAREST, minFilter: gl.NEAREST });
 		LS.ResourcesManager.textures[":shadowmap_" + this.uid ] = this._shadowmap; //debug
 		if( this._shadowmap.texture_type == gl.TEXTURE_2D )
 		{
@@ -14218,6 +20969,7 @@ SkinDeformer.prototype.applySoftwareSkinning = function(ref_mesh, skin_mesh)
 		}
 		
 		//we could also multiply the normal but this is already superslow...
+		/*
 		if(0)
 		{
 			//apply weights
@@ -14231,6 +20983,7 @@ SkinDeformer.prototype.applySoftwareSkinning = function(ref_mesh, skin_mesh)
 					vec3.scaleAndAdd( v, v, temp, w[j] );
 				}
 		}
+		*/
 
 		//if(factor != 1) vec3.lerp( v, ov, v, factor);
 	}
@@ -14510,11 +21263,15 @@ function Collider(o)
 
 Collider.icon = "mini-icon-collider.png";
 
+Collider.BOX = LS.PhysicsInstance.BOX;
+Collider.SPHERE = LS.PhysicsInstance.SPHERE;
+Collider.MESH = LS.PhysicsInstance.MESH;
+
 //vars
 Collider["@size"] = { type: "vec3", step: 0.01 };
 Collider["@center"] = { type: "vec3", step: 0.01 };
 Collider["@mesh"] = { type: "mesh" };
-Collider["@shape"] = { type:"enum", values: {"Box":1, "Sphere": 2, "Mesh":5 }};
+Collider["@shape"] = { type:"enum", values: {"Box": Collider.BOX, "Sphere": Collider.SPHERE, "Mesh": Collider.MESH }};
 
 //Collider["@adjustToNodeBounding"] = { type:"action" };
 
@@ -16934,6 +23691,8 @@ function Knob(o)
 	this.max_angle = 120;
 	this.axis = vec3.fromValues(0,0,1);
 
+	this._dragging = false;
+
 	if(o)
 		this.configure(o);
 }
@@ -16942,7 +23701,9 @@ Knob.icon = "mini-icon-knob.png";
 
 Knob.prototype.onAddedToScene = function(scene)
 {
-	LEvent.bind( scene, "mousemove", this.onmousemove, this );
+	LEvent.bind( scene, "mousedown", this.onMouse, this );
+	LEvent.bind( scene, "mouseup", this.onMouse, this );
+	LEvent.bind( scene, "mousemove", this.onMouse, this );
 	this.updateKnob();
 }
 
@@ -16952,27 +23713,59 @@ Knob.prototype.onRemovedFromScene = function(scene)
 }
 
 
-Knob.prototype.updateKnob = function() {
+Knob.prototype.updateKnob = function()
+{
 	if(!this._root)
 		return;
-	var f = this.value / (this.max_value - this.min_value)
-	quat.setAxisAngle(this._root.transform._rotation,this.axis, (this.min_angle + (this.max_angle - this.min_angle) * f )* DEG2RAD);
-	this._root.transform._dirty = true;
+
+	var f = this.value / (this.max_value - this.min_value);
+	var angle = (this.min_angle + (this.max_angle - this.min_angle) * f );
+	quat.setAxisAngle(this._root.transform._rotation,this.axis, angle * DEG2RAD);
+	this._root.transform.mustUpdate = true;
 }
 
-Knob.prototype.onmousemove = function(e, mouse_event) { 
-	this.value -= mouse_event.deltay * this.delta;
+Knob.prototype.onMouse = function(e, mouse_event)
+{ 
+	if( e == "mousedown")
+	{
+		if(!this._root || !this._root._instances || !this._root._instances.length)
+			return;
 
-	if(this.value > this.max_value) this.value = this.max_value;
-	else if(this.value < this.min_value) this.value = this.min_value;
+		var instance = this._root._instances[0];
 
-	this.updateKnob();
+		var cam = LS.Renderer.getCameraAtPosition( mouse_event.canvasx, mouse_event.canvasy );
+		if(!cam)
+			return;
+		var ray = cam.getRayInPixel( mouse_event.canvasx, mouse_event.canvasy );
+		if(!ray)
+			return;
 
-	LEvent.trigger( this, "change", this.value);
-	if(this._root)
-		LEvent.trigger( this._root, "knobChange", this.value );
+		this._dragging = geo.testRayBBox( ray.start, ray.direction, instance.aabb);
+	}
+	else if( e == "mouseup")
+	{
+		this._dragging = false;
+	}
+	else //mouse move
+	{
+		if(!mouse_event.dragging || !this._dragging)
+			return;
 
-	return false;
+		this.value -= mouse_event.deltay * this.delta;
+
+		if(this.value > this.max_value)
+			this.value = this.max_value;
+		else if(this.value < this.min_value)
+			this.value = this.min_value;
+
+		this.updateKnob();
+
+		LEvent.trigger( this, "change", this.value );
+		if(this._root)
+			LEvent.trigger( this._root, "knobChange", this.value );
+
+		return false;
+	}
 };
 
 LS.registerComponent( Knob );
@@ -18811,8 +25604,8 @@ Script.icon = "mini-icon-script.png";
 
 Script["@code"] = {type:'script'};
 
-Script.exported_callbacks = ["start","prefabReady","update","trigger","sceneRender", "render","afterRender","renderGUI","finish","collectRenderInstances"];
-Script.node_triggered_events = { "trigger":true, "prefabReady": true };
+Script.exported_callbacks = ["start","prefabReady","update","clicked","sceneRender", "render","afterRender","renderGUI","finish","collectRenderInstances"];
+Script.node_triggered_events = { "clicked":true, "prefabReady": true };
 
 Script.translate_events = {
 	"sceneRender": "beforeRender",
@@ -18831,8 +25624,9 @@ Global vars:\n\
 Exported functions:\n\
  + start: when the Scene starts\n\
  + update: when updating\n\
- + trigger : if this node is triggered\n\
+ + clicked : if this node is clicked\n\
  + render : before rendering the node\n\
+ + renderGUI : to render something in the GUI using canvas2D\n\
  + getRenderInstances: when collecting instances\n\
  + afterRender : after rendering the node\n\
  + prefabReady: when the prefab has been loaded\n\
@@ -20460,12 +27254,18 @@ ThreeJS.prototype.processCode = function( skip_events )
 
 LS.registerComponent( ThreeJS );
 
+/**
+* Allows to easily test interaction between the user and the scene, attach the InteractiveController to the root and the mouse down,move and up events will
+* be processed using a raycast and trigger events.
+* @namespace LS
+* @class InteractiveController
+* @constructor
+* @param {Object} last serialized data [optional]
+*/
 function InteractiveController(o)
 {
 	this.enabled = true;
 	this.mode = InteractiveController.PICKING;
-	this.send_trigger = true;
-	this.self_trigger = true;
 	this.layers = 3;
 
 	if(o)
@@ -20541,10 +27341,9 @@ InteractiveController.prototype._onMouse = function(type, e)
 		this._clicked_node = node;
 		if(this._clicked_node && e.eventType == "mousedown" && e.button == 0 )
 		{
-			if( this.send_trigger )
-				LEvent.trigger( this._clicked_node, "trigger", e );
-			if( this.self_trigger )
-				LEvent.trigger( this._root, "trigger", this._clicked_node );
+			console.log("Node clicked: " + this._clicked_node.name );
+			LEvent.trigger( this._clicked_node, "clicked", e );
+			LEvent.trigger( this._root.scene, "node_clicked", this._clicked_node );
 		}
 	}
 
@@ -20559,6641 +27358,14 @@ InteractiveController.prototype._onMouse = function(type, e)
 
 	if(e.eventType == "mouseup")
 		this._clicked_node = null;
+
+	if(this._clicked_node)
+		return true;
 }
 
 
 LS.registerComponent( InteractiveController );
 
-
-/**
-* This class contains all the info about a resource and it works as a template for any resource class
-* Keep in mind that there are many resource classes like Meshes or Textures that dont inherit from this class.
-* This class is used mainly to generic file resources like text files (scripts, csvs, etc)
-*
-* @class Resource
-* @constructor
-*/
-
-function Resource()
-{
-	this.filename = null; //name of file without folder or path
-	this.fullpath = null; //contains the unique name as is to be used to fetch it by the resources manager
-	this.remotepath = null; //the string to fetch this resource in internet (local resources do not have this name)
-	this._data = null;
-	//this.type = 0;
-}
-
-//Resource.DATA = 1;
-//Resource.SCRIPT = 2;
-
-Object.defineProperty( Resource.prototype, "data", {
-	set: function(v){ 
-		this._data = v;
-		this._modified = true;
-	},
-	get: function() { 
-		return this._data;
-	},
-	enumerable: true
-});
-
-//makes this resource available 
-Resource.prototype.register = function()
-{
-	LS.ResourcesManager.registerResource( this.fullpath || this.filename, this );
-}
-
-Object.defineProperty( Resource.prototype, "uid", { 
-	get: function(){ return this.fullpath || this.filename },
-	set: function(v){},
-	enumerable: true
-});
-
-/**
-* Returns an object with a representation of the resource internal data
-* The order to obtain that object is:
-* 0. checks if getDataToStore function in resource
-* 1. test for _original_file (File or Blob)
-* 2. test for _original_data (ArrayBuffer)
-* 3. toBinary() (ArrayBuffer)
-* 4. toBlob() (Blob)
-* 5. toBase64() (String)
-* 6. serialize() (Object in JSON format)
-* 7. data property 
-* 8. JSON.stringify(...)
-*
-* @method Resource.getDataToStore
-* @param {Object} resource 
-* @return {Object} it has two fields: data and encoding
-*/
-Resource.getDataToStore = function( resource )
-{
-	var data = null;
-	var encoding = "text";
-	var extension = "";
-
-	//get the data
-	if (resource.getDataToStore) //function
-	{
-		data = resource.getDataToStore();
-		if(data && data.constructor == ArrayBuffer)
-			encoding = "binary";
-	}
-	else if (resource._original_file) //file
-	{
-		data = resource._original_file;
-		if(data && data.constructor !== File && data.constructor !== Blob)
-			console.warn("Resource._original_file is not File or Blob");
-		encoding = "file";
-	}
-	else if( resource._original_data ) //file in ArrayBuffer format
-	{
-		data = resource._original_data;
-		if( data && data.constructor === ArrayBuffer )
-			encoding = "binary";
-	}
-	else if(resource.toBinary) //a function to compute the ArrayBuffer format
-	{
-		data = resource.toBinary();
-		encoding = "binary";
-		extension = "wbin";
-	}
-	else if(resource.toBlob) //a blob (Canvas should have this)
-	{
-		data = resource.toBlob();
-		encoding = "file";
-	}
-	else if(resource.toBase64) //a base64 string
-	{
-		data = resource.toBase64();
-		encoding = "base64";
-	}
-	else if(resource.serialize) //a json object
-	{
-		var obj = resource.serialize();
-		//remove inner stuff from the editor
-		delete obj.filename;
-		delete obj.fullpath;
-		delete obj.remotepath;
-		delete obj.preview_url;
-		//convert to string
-		data = JSON.stringify( obj );
-	}
-	else if(resource.data) //regular string data
-		data = resource.data;
-	else
-		data = JSON.stringify( resource );
-
-	if(data.buffer && data.buffer.constructor == ArrayBuffer)
-		data = data.buffer; //store the data in the arraybuffer
-
-	return { data:data, encoding: encoding, extension: extension };
-}
-
-//used in the coding pad to assign content to generic text files
-Resource.prototype.getData = function()
-{
-	return this._data;
-}
-
-Resource.prototype.setData = function( v, skip_modified_flag )
-{
-	//remove old file
-	if( this._original_data )
-		this._original_data = null;
-	this._data = v;
-	if(!skip_modified_flag)
-		this._modified = true;
-}
-
-Resource.prototype.getDataToStore = function()
-{
-	var data = this.data || "";
-	if(data.constructor === Object )
-		data = JSON.stringify( data );
-	return data;
-}
-
-Resource.prototype.clone = function()
-{
-	var r = new LS.Resource();
-	r._data = this._data;
-	return r;
-}
-
-Resource.prototype.getCategory = function()
-{
-	var filename = this.fullpath || this.filename;
-	var ext = LS.ResourcesManager.getExtension( filename );
-	if(ext == "js")
-		return "Script";
-	return "Data";
-}
-
-Resource.hasPreview = false; //should this resource use a preview image?
-
-LS.Resource = Resource;
-LS.registerResourceClass( Resource );
-
-//Interpolation methods
-LS.NONE = 0;
-LS.LINEAR = 1;
-LS.TRIGONOMETRIC = 2;
-LS.BEZIER = 3;
-LS.SPLINE = 4;
-
-/**
-* An Animation is a resource that contains samples of properties over time, similar to animation curves
-* Values could be associated to an specific node.
-* Data is contained in tracks
-*
-* @class Animation
-* @namespace LS
-* @constructor
-*/
-
-function Animation(o)
-{
-	this.name = "";
-	this.takes = {}; //packs of tracks
-	if(o)
-		this.configure(o);
-}
-
-Animation.DEFAULT_SCENE_NAME = "@scene";
-
-Animation.prototype.createTake = function( name, duration )
-{
-	var take = new Animation.Take();
-	take.name = name;
-	take.duration = duration || 0;
-	this.addTake( take );
-	return take;
-}
-
-Animation.prototype.addTake = function(take)
-{
-	this.takes[ take.name ] = take;
-	return take;
-}
-
-Animation.prototype.getTake = function( name )
-{
-	return this.takes[ name ];
-}
-
-Animation.prototype.addTrackToTake = function(takename, track)
-{
-	var take = this.takes[ takename ];
-	if(!take)
-		take = this.createTake( takename );
-	take.addTrack( track );
-}
-
-
-Animation.prototype.configure = function(data)
-{
-	if(data.name)
-		this.name = data.name;
-
-	if(data.takes)
-	{
-		this.takes = {};
-		for(var i in data.takes)
-		{
-			var take = new LS.Animation.Take( data.takes[i] );
-			if(!take.name)
-				console.warn("Take without name");
-			else
-			{
-				this.addTake( take );
-				take.loadResources(); //load associated resources
-			}
-		}
-	}
-}
-
-Animation.prototype.serialize = function()
-{
-	return LS.cloneObject(this, null, true);
-}
-
-Animation.fromBinary = function( data )
-{
-	if(data.constructor == ArrayBuffer)
-		data = WBin.load(data, true);
-
-	var o = data["@json"];
-	for(var i in o.takes)
-	{
-		var take = o.takes[i];
-		for(var j in take.tracks)
-		{
-			var track = take.tracks[j];
-			var name = "@take_" + i + "_track_" + j;
-			if( data[name] )
-				track.data = data[name];
-		}
-	}
-
-	return new LS.Animation( o );
-}
-
-Animation.prototype.toBinary = function()
-{
-	var o = {};
-	var tracks_data = [];
-
-	//we need to remove the bin data to generate the JSON
-	for(var i in this.takes)
-	{
-		var take = this.takes[i];
-		for(var j in take.tracks)
-		{
-			var track = take.tracks[j];
-			track.packData(); //reduce storage space and speeds up loading
-
-			if(track.packed_data)
-			{
-				var bindata = track.data;
-				var name = "@take_" + i + "_track_" + j;
-				o[name] = bindata;
-				track.data = null;
-				tracks_data.push( bindata );
-			}
-		}
-	}
-
-	//create the binary
-	o["@json"] = LS.cloneObject(this, null, true);
-	var bin = WBin.create(o, "Animation");
-
-	//restore the bin data state in this instance
-	for(var i in this.takes)
-	{
-		var take = this.takes[i];
-		for(var j in take.tracks)
-		{
-			var track = take.tracks[j];
-			var name = "@take_" + i + "_track_" + j;
-			if(o[name])
-				track.data = o[name];
-		}
-	}
-
-	return bin;
-}
-
-//Used when the animation tracks use UIDs instead of node names
-//to convert the track locator to node names, so they can be reused between nodes in the same scene
-Animation.prototype.convertIDstoNames = function( use_basename, root )
-{
-	var num = 0;
-	for(var i in this.takes)
-	{
-		var take = this.takes[i];
-		num += take.convertIDstoNames( use_basename, root );
-	}
-	return num;
-}
-
-Animation.prototype.optimizeTracks = function()
-{
-	var num = 0;
-	for(var i in this.takes)
-	{
-		var take = this.takes[i];
-		num += take.optimizeTracks();
-	}
-	return num;
-}
-
-
-LS.Classes["Animation"] = LS.Animation = Animation;
-
-/** Represents a set of animations **/
-function Take(o)
-{
-	this.name = null;
-	this.tracks = [];
-	this.duration = 10;
-	
-	if(o)
-		this.configure(o);
-
-}
-
-Take.prototype.configure = function( o )
-{
-	if( o.name )
-		this.name = o.name;
-	if( o.tracks ) 
-	{
-		this.tracks = []; //clear
-		for(var i in o.tracks)
-		{
-			var track = new LS.Animation.Track( o.tracks[i] );
-			this.addTrack( track );
-		}
-	}
-	if( o.duration )
-		this.duration = o.duration;
-}
-
-Take.prototype.serialize = function()
-{
-	return LS.cloneObject(this, null, true);
-}
-
-Take.prototype.createTrack = function( data )
-{
-	if(!data)
-		throw("Data missing when creating track");
-
-	var track = this.getTrack( data.property );
-	if( track )
-		return track;
-
-	var track = new LS.Animation.Track( data );
-	this.addTrack( track );
-	return track;
-}
-
-/**
-* For every track, gets the interpolated value between keyframes and applies the value to the property associated with the track locator
-* Locators are in the form of "{NODE_UID}/{COMPONENT_UID}/{property_name}"
-*
-* @method applyTracks
-* @param {number} current_time the time of the anim to sample
-* @param {number} last_time this is used for events, we need to know where you were before
-* @param {boolean} ignore_interpolation in case you want to sample the nearest one
-* @param {SceneNode} root [Optional] if you want to limit the locator to search inside a node
-* @return {Component} the target where the action was performed
-*/
-Take.prototype.applyTracks = function( current_time, last_time, ignore_interpolation, root_node )
-{
-	for(var i = 0; i < this.tracks.length; ++i)
-	{
-		var track = this.tracks[i];
-		if( track.enabled === false || !track.data )
-			continue;
-
-		//events are an special kind of tracks, they execute actions
-		if( track.type == "events" )
-		{
-			var keyframe = track.getKeyframeByTime( current_time );
-			if( !keyframe || keyframe[0] < last_time || keyframe[0] > current_time )
-				return;
-
-			//need info to search for node
-			var info = LS.GlobalScene.getPropertyInfoFromPath( track._property_path );
-			if(!info)
-				return;
-
-			if(info.node && info.target && info.target[ keyframe[1][0] ] )
-				info.target[ keyframe[1][0] ].call( info.target, keyframe[1][1] );
-		}
-		else //regular tracks
-		{
-			//read from the animation track the value
-			var sample = track.getSample( current_time, !ignore_interpolation );
-			//apply the value to the property specified by the locator
-			if( sample !== undefined ) 
-				track._target = LS.GlobalScene.setPropertyValueFromPath( track._property_path, sample, root_node, 0 );
-		}
-	}
-}
-
-
-
-Take.prototype.addTrack = function( track )
-{
-	this.tracks.push( track );
-}
-
-Take.prototype.getTrack = function( property )
-{
-	for(var i = 0; i < this.tracks.length; ++i)
-		if(this.tracks[i].property == property)
-			return this.tracks[i];
-	return null;
-}
-
-Take.prototype.removeTrack = function( track )
-{
-	for(var i = 0; i < this.tracks.length; ++i)
-		if(this.tracks[i] == track)
-		{
-			this.tracks.splice( i, 1 );
-			return;
-		}
-}
-
-
-Take.prototype.getPropertiesSample = function(time, result)
-{
-	result = result || [];
-	for(var i = 0; i < this.tracks.length; ++i)
-	{
-		var track = this.tracks[i];
-		var value = track.getSample( time );
-		result.push([track.property, value]);
-	}
-	return result;
-}
-
-Take.prototype.actionPerSample = function(time, callback, options)
-{
-	for(var i = 0; i < this.tracks.length; ++i)
-	{
-		var track = this.tracks[i];
-		var value = track.getSample(time, true);
-		if( options.disabled_tracks && options.disabled_tracks[ track.property ] )
-			continue;
-		callback(track.property, value, options);
-	}
-}
-
-//Ensures all the resources associated to keyframes are loaded in memory
-Take.prototype.loadResources = function()
-{
-	for(var i = 0; i < this.tracks.length; ++i)
-	{
-		var track = this.tracks[i];
-		if(track.type == "texture")
-		{
-			var l = track.getNumberOfKeyframes();
-			for(var j = 0; j < l; ++j)
-			{
-				var keyframe = track.getKeyframe(j);
-				if(keyframe && keyframe[1] && keyframe[1][0] != ":")
-					LS.ResourcesManager.load( keyframe[1] );
-			}
-		}
-	}
-}
-
-//convert track locators from using UIDs to use node names (this way the same animation can be used in several parts of the scene)
-Take.prototype.convertIDstoNames = function( use_basename, root )
-{
-	var num = 0;
-	for(var j = 0; j < this.tracks.length; ++j)
-	{
-		var track = this.tracks[j];
-		num += track.convertIDtoName( use_basename, root )
-	}
-	return num;
-}
-
-//optimize animations
-Take.prototype.optimizeTracks = function()
-{
-	var num = 0;
-	var temp = new Float32Array(10);
-
-	for(var i = 0; i < this.tracks.length; ++i)
-	{
-		var track = this.tracks[i];
-		if( track.value_size != 16 )
-			continue;
-
-		//convert locator
-		var path = track.property.split("/");
-		if( path[ path.length - 1 ] != "matrix")
-			continue;
-		path[ path.length - 1 ] = "Transform/data";
-		track.property = path.join("/");
-		track.type = "trans10";
-		track.value_size = 10;
-
-		//convert samples
-		if(!track.packed_data)
-		{
-			console.warn("convertMatricesToData only works with packed data");
-			continue;
-		}
-
-		var data = track.data;
-		var num_samples = data.length / 17;
-		for(var k = 0; k < num_samples; ++k)
-		{
-			var sample = data.subarray(k*17+1,(k*17)+17);
-			var new_data = LS.Transform.fromMatrix4ToTransformData( sample, temp );
-			data[k*11] = data[k*17]; //timestamp
-			data.set(temp,k*11+1); //overwrite inplace (because the output is less big that the input)
-		}
-		track.data = new Float32Array( data.subarray(0,num_samples*11) );
-		num += 1;
-	}
-	return num;
-}
-
-Take.prototype.matchTranslation = function( root )
-{
-	var num = 0;
-
-	for(var i = 0; i < this.tracks.length; ++i)
-	{
-		var track = this.tracks[i];
-
-		if(track.type != "trans10" && track.type != "mat4")
-			continue;
-
-		if( !track._property_path || !track._property_path.length )
-			continue;
-
-		var node = LSQ.get( track._property_path[0], root );
-		if(!node)
-			continue;
-		
-		var position = node.transform.position;
-		var offset = track.value_size + 1;
-
-		var data = track.data;
-		var num_samples = data.length / offset;
-		if(track.type == "trans10")
-		{
-			for(var j = 0; j < num_samples; ++j)
-				data.set( position, j*offset + 1 );
-		}
-		else if(track.type == "mat4")
-		{
-			for(var j = 0; j < num_samples; ++j)
-				data.set( position, j*offset + 1 + 12 ); //12,13,14 contain translation
-		}
-
-		num += 1;
-	}
-
-	return num;
-}
-
-Take.prototype.onlyRotations = function()
-{
-	var num = 0;
-	var temp = new Float32Array(10);
-	var final_quat = temp.subarray(3,7);
-
-	for(var i = 0; i < this.tracks.length; ++i)
-	{
-		var track = this.tracks[i];
-
-		//convert locator
-		var path = track.property.split("/");
-		var last_path = path[ path.length - 1 ];
-		var old_size = track.value_size;
-		if( track.type != "mat4" && track.type != "trans10" )
-			continue;
-
-		if(last_path == "matrix")
-			path[ path.length - 1 ] = "Transform/rotation";
-		else if (last_path == "data")
-			path[ path.length - 1 ] = "rotation";
-
-		track.property = path.join("/");
-		var old_type = track.type;
-		track.type = "quat";
-		track.value_size = 4;
-
-		//convert samples
-		if(!track.packed_data)
-		{
-			console.warn("convertMatricesToData only works with packed data");
-			continue;
-		}
-
-		var data = track.data;
-		var num_samples = data.length / (old_size+1);
-
-		if( old_type == "mat4" )
-		{
-			for(var k = 0; k < num_samples; ++k)
-			{
-				var sample = data.subarray(k*17+1,(k*17)+17);
-				var new_data = LS.Transform.fromMatrix4ToTransformData( sample, temp );
-				data[k*11] = data[k*17]; //timestamp
-				data.set( final_quat, k*5+1); //overwrite inplace (because the output is less big that the input)
-			}
-		}
-		else if( old_type == "trans10" )
-		{
-			for(var k = 0; k < num_samples; ++k)
-			{
-				var sample = data.subarray(k*11+4,(k*11)+8);
-				data[k*5] = data[k*11]; //timestamp
-				data.set( sample, k*5+1); //overwrite inplace (because the output is less big that the input)
-			}
-		}
-		
-		track.data = new Float32Array( data.subarray(0,num_samples*5) );
-		num += 1;
-	}
-	return num;
-}
-
-
-Take.prototype.setInterpolationToAllTracks = function( interpolation )
-{
-	var num = 0;
-	for(var i = 0; i < this.tracks.length; ++i)
-	{
-		var track = this.tracks[i];
-		if(track.interpolation == interpolation)
-			continue;
-		track.interpolation = interpolation;
-		num += 1;
-	}
-
-	return num;
-}
-
-Animation.Take = Take;
-
-
-/**
-* Represents one track with data over time about one property
-* Data could be stored in two forms, or an array containing arrays of [time,data] or in a single typed array, depends on the attribute typed_mode
-*
-* @class Animation.Track
-* @namespace LS
-* @constructor
-*/
-
-function Track(o)
-{
-	this.enabled = true;
-	this.name = ""; //title
-	this.type = null; //type of data (number, vec2, color, texture, etc)
-	this.interpolation = LS.NONE;
-	this.looped = false; //interpolate last keyframe with first
-
-	//data
-	this.packed_data = false; //this means the data is stored in one continuous datatype, faster to load but not editable
-	this.value_size = 0; //how many numbers contains every sample of this property, 0 means basic type (string, boolean)
-	this.data = null; //array or typed array where you have the time value followed by this.value_size bytes of data
-	this.data_table = null; //used to index data when storing it
-
-	//to speed up sampling
-	Object.defineProperty( this, '_property', {
-		value: "",
-		enumerable: false,
-		writable: true
-	});
-
-	Object.defineProperty( this, '_property_path', {
-		value: [],
-		enumerable: false,
-		writable: true
-	});
-
-	if(o)
-		this.configure(o);
-}
-
-Track.FRAMERATE = 30;
-
-//string identifying the property being animated in a locator form ( node/component_uid/property )
-Object.defineProperty( Track.prototype, 'property', {
-	set: function( property )
-	{
-		this._property = property.trim();
-		this._property_path = this._property.split("/");
-	},
-	get: function(){
-		return this._property;
-	},
-	enumerable: true
-});
-
-Track.prototype.configure = function( o )
-{
-	if(!o.property)
-		console.warn("Track with property name");
-
-	if(o.enabled !== undefined) this.enabled = o.enabled;
-	if(o.name) this.name = o.name;
-	if(o.property) this.property = o.property;
-	if(o.type) this.type = o.type;
-	if(o.looped) this.looped = o.looped;
-	if(o.interpolation !== undefined)
-		this.interpolation = o.interpolation;
-	else
-		this.interpolation = LS.LINEAR;
-
-	if(o.data_table) this.data_table = o.data_table;
-
-	if(o.value_size) this.value_size = o.value_size;
-
-	//data
-	if(o.data)
-	{
-		this.data = o.data;
-
-		//this is ugly but makes it easy to work with the collada importer
-		if(o.packed_data === undefined && this.data.constructor !== Array)
-			this.packed_data = true;
-		else
-			this.packed_data = !!o.packed_data;
-
-		if( o.data.constructor == Array )
-		{
-			if( this.packed_data )
-				this.data = new Float32Array( o.data );
-		}
-		//else
-		//	this.unpackData();
-	}
-
-	if(o.interpolation && !this.value_size)
-		o.interpolation = LS.NONE;
-}
-
-Track.prototype.serialize = function()
-{
-	var o = {
-		enabled: this.enabled,
-		name: this.name,
-		property: this.property, 
-		type: this.type,
-		interpolation: this.interpolation,
-		looped: this.looped,
-		value_size: this.value_size,
-		packed_data: this.packed_data,
-		data_table: this.data_table
-	}
-
-	if(this.data)
-	{
-		if(this.value_size <= 1)
-			o.data = this.data.concat(); //regular array, clone it
-		else //pack data
-		{
-			this.packData();
-			o.data = new Float32Array( this.data ); //clone it
-			o.packed_data = this.packed_data;
-		}
-	}
-
-	return o;
-}
-
-Track.prototype.toJSON = Track.prototype.serialize;
-
-Track.prototype.clear = function()
-{
-	this.data = [];
-	this.packed_data = false;
-}
-
-
-//used to change every track so instead of using UIDs for properties it uses node names
-//this is used when you want to apply the same animation to different nodes in the scene
-Track.prototype.convertIDtoName = function( use_basename, root )
-{
-	if( !this._property_path || !this._property_path.length )
-		return false;
-
-	if(this._property_path[0][0] !== LS._uid_prefix)
-		return false; //is already using names
-
-	var node = LSQ.get( this._property_path[0], root );
-	if(!node)
-	{
-		console.warn("convertIDtoName: node not found in LS.GlobalScene: " + this._property_path[0] );
-		return false;
-	}
-
-	if(!node.name)
-	{
-		console.warn("convertIDtoName: node without name?");
-		return false;
-	}
-
-	if(use_basename)
-	{
-		this._property_path[0] = node.name;
-		this._property = this._property_path.join("/");
-	}
-	else
-	{
-		this._property_path[0] = node.fullname;
-		this._property = this._property_path.join("/");
-	}
-
-	return true;
-}
-
-Track.prototype.addKeyframe = function( time, value, skip_replace )
-{
-	if(this.value_size > 1)
-		value = new Float32Array( value ); //clone
-
-	if(this.packed_data)
-		this.unpackData();
-
-	if(!this.data)
-		this.data = [];
-
-	for(var i = 0; i < this.data.length; ++i)
-	{
-		if(this.data[i][0] < time )
-			continue;
-		if(this.data[i][0] == time && !skip_replace )
-			this.data[i][1] = value;
-		else
-			this.data.splice(i,0, [time,value]);
-		return i;
-	}
-
-	this.data.push( [time,value] );
-	return this.data.length - 1;
-}
-
-Track.prototype.getKeyframe = function( index )
-{
-	if(index < 0 || index >= this.data.length)
-	{
-		console.warn("keyframe index out of bounds");
-		return null;
-	}
-
-	if(this.packed_data)
-	{
-		var pos = index * (1 + this.value_size );
-		if(pos > (this.data.length - this.value_size) )
-			return null;
-		return [ this.data[pos], this.data.subarray(pos+1, pos+this.value_size+1) ];
-		//return this.data.subarray(pos, pos+this.value_size+1) ];
-	}
-
-	return this.data[ index ];
-}
-
-Track.prototype.getKeyframeByTime = function( time )
-{
-	var index = this.findTimeIndex( time );
-	if(index == -1)
-		return;
-	return this.getKeyframe( index );
-}
-
-
-Track.prototype.moveKeyframe = function(index, new_time)
-{
-	if(this.packed_data)
-	{
-		//TODO
-		console.warn("Cannot move keyframes if packed");
-		return -1;
-	}
-
-	if(index < 0 || index >= this.data.length)
-	{
-		console.warn("keyframe index out of bounds");
-		return -1;
-	}
-
-	var new_index = this.findTimeIndex( new_time );
-	var keyframe = this.data[ index ];
-	var old_time = keyframe[0];
-	if(old_time == new_time)
-		return index;
-	keyframe[0] = new_time; //set time
-	if(old_time > new_time)
-		new_index += 1;
-	if(index == new_index)
-	{
-		//console.warn("same index");
-		return index;
-	}
-
-	//extract
-	this.data.splice(index, 1);
-	//reinsert
-	index = this.addKeyframe( keyframe[0], keyframe[1], true );
-
-	this.sortKeyframes();
-	return index;
-}
-
-//solve bugs
-Track.prototype.sortKeyframes = function()
-{
-	if(this.packed_data)
-	{
-		this.unpackData();
-		this.sortKeyframes();
-		this.packData();
-	}
-	this.data.sort( function(a,b){ return a[0] - b[0];  });
-}
-
-Track.prototype.removeKeyframe = function(index)
-{
-	if(this.packed_data)
-		this.unpackData();
-
-	if(index < 0 || index >= this.data.length)
-	{
-		console.warn("keyframe index out of bounds");
-		return;
-	}
-
-	this.data.splice(index, 1);
-}
-
-
-Track.prototype.getNumberOfKeyframes = function()
-{
-	if(!this.data || this.data.length == 0)
-		return 0;
-
-	if(this.packed_data)
-		return this.data.length / (1 + this.value_size );
-	return this.data.length;
-}
-
-//check for the last sample time
-Track.prototype.computeDuration = function()
-{
-	if(!this.data || this.data.length == 0)
-		return 0;
-
-	if(this.packed_data)
-	{
-		var time = this.data[ this.data.length - 2 - this.value_size ];
-		this.duration = time;
-		return time;
-	}
-
-	//not typed
-	var last = this.data[ this.data.length - 1 ];
-	if(last)
-		return last[0];
-	return 0;
-}
-
-Track.prototype.isInterpolable = function()
-{
-	if( this.value_size > 0 || LS.Interpolators[ this.type ] )
-		return true;
-	return false;
-}
-
-//better for reading
-Track.prototype.packData = function()
-{
-	if(!this.data || this.data.length == 0)
-		return 0;
-
-	if(this.packed_data)
-		return;
-
-	if(this.value_size == 0)
-		return; //cannot be packed (bools and strings cannot be packed)
-
-	var offset = this.value_size + 1;
-	var data = this.data;
-	var typed_data = new Float32Array( data.length * offset );
-
-	for(var i = 0; i < data.length; ++i)
-	{
-		typed_data[i*offset] = data[i][0];
-		if( this.value_size == 1 )
-			typed_data[i*offset+1] = data[i][1];
-		else
-			typed_data.set( data[i][1], i*offset+1 );
-	}
-
-	this.data = typed_data;
-	this.packed_data = true;
-}
-
-//better for writing
-Track.prototype.unpackData = function()
-{
-	if(!this.data || this.data.length == 0)
-		return 0;
-
-	if(!this.packed_data)
-		return;
-
-	var offset = this.value_size + 1;
-	var typed_data = this.data;
-	var data = Array( typed_data.length / offset );
-
-	for(var i = 0; i < typed_data.length; i += offset )
-		data[i/offset] = [ typed_data[i], typed_data.subarray( i+1, i+offset ) ];
-
-	this.data = data;
-	this.packed_data = false;
-}
-
-/* not tested
-Track.prototype.findSampleIndex = function(time)
-{
-	var data = this.data;
-	var offset = this.value_size + 1;
-	var l = data.length;
-	var n = l / offset;
-	var imin = 0;
-	var imax = n;
-	var imid = 0;
-
-	//dichotimic search
-	// continue searching while [imin,imax] is not empty
-	while (imax >= imin)
-	{
-		// calculate the midpoint for roughly equal partition
-		imid = (((imax - imin)*0.5)|0) + imin;
-		var v = data[ imid * offset ];
-		if( v == time )
-			return imid * offset; 
-			// determine which subarray to search
-		else if (v < key)
-			// change min index to search upper subarray
-			imin = imid + 1;
-		else         
-			// change max index to search lower subarray
-			imax = imid - 1;
-	}
-
-	return imid * offset;
-}
-*/
-
-//TODO: IMPROVE WITH DICOTOMIC SEARCH
-//Returns the index of the last sample with a time less or equal to time
-Track.prototype.findTimeIndex = function( time )
-{
-	if(!this.data || this.data.length == 0)
-		return -1;
-
-	var data = this.data;
-	var l = this.data.length;
-	if(!l)
-		return -1;
-	var i = 0;
-	if(this.packed_data)
-	{
-		var offset = this.value_size + 1;
-		var last = -1;
-		for(i = 0; i < l; i += offset)
-		{
-			var current_time = data[i];
-			if(current_time < time) 
-			{
-				last = i;
-				continue;
-			}
-			if(last == -1)
-				return -1;
-			return (last/offset); //prev sample
-		}
-		if(last == -1)
-			return -1;
-		return (last/offset);
-	}
-	else //unpacked data
-	{
-		var last = -1;
-		for(i = 0; i < l; ++i )
-		{
-			if(time > data[i][0]) 
-			{
-				last = i;
-				continue;
-			}
-			if(time == data[i][0]) 
-				return i;
-			if(last == -1)
-				return -1;
-			return last;
-		}
-		if(last == -1)
-			return -1;
-		return last;
-	}
-
-	return -1;
-}
-
-//Warning: if no result is provided the same result is reused between samples.
-Track.prototype.getSample = function( time, interpolate, result )
-{
-	if(!this.data || this.data.length === 0)
-		return undefined;
-
-	if(this.packed_data)
-		return this.getSamplePacked( time, interpolate, result);
-	return this.getSampleUnpacked( time, interpolate, result);
-}
-
-Track.prototype.getSampleUnpacked = function( time, interpolate, result )
-{
-	time = Math.clamp( time, 0, this.duration );
-
-	var index = this.findTimeIndex( time );
-	if(index === -1)
-		index = 0;
-
-	var index_a = index;
-	var index_b = index + 1;
-	var data = this.data;
-
-	interpolate = interpolate && this.interpolation && (this.value_size > 0 || LS.Interpolators[ this.type ] );
-
-	if(!interpolate || (data.length == 1) || index_b == data.length || (index_a == 0 && this.data[0][0] > time)) //(index_b == this.data.length && !this.looped)
-		return this.data[ index ][1];
-
-	var a = data[ index_a ];
-	var b = data[ index_b ];
-
-	var t = (b[0] - time) / (b[0] - a[0]);
-
-	if(this.interpolation === LS.LINEAR)
-	{
-		if(this.value_size === 0 && LS.Interpolators[ this.type ] )
-		{
-			var func = LS.Interpolators[ this.type ];
-			var r = func( a[1], b[1], t, this._last_value );
-			this._last_value = r;
-			return r;
-		}
-
-		if(this.value_size == 1)
-			return a[1] * t + b[1] * (1-t);
-
-		result = result || this._result;
-
-		if(!result || result.length != this.value_size)
-			result = this._result = new Float32Array( this.value_size );
-
-		switch(this.type)
-		{
-			case "quat": 
-				quat.lerp( result, a[1], b[1], t );
-				quat.normalize( result, result );
-				break;
-			case "trans10": 
-				for(var i = 0; i < this.value_size; i++)
-					result[i] = a[1][i] * t + b[1][i] * (1-t);
-				var rotA = a[1].subarray(3,7);
-				var rotB = a[1].subarray(3,7);
-				var rotR = result.subarray(3,7);
-				quat.lerp( rotR, rotA, rotB, t );
-				quat.normalize( rotR, rotR );
-				break;
-			default:
-				for(var i = 0; i < this.value_size; i++)
-					result[i] = a[1][i] * t + b[1][i] * (1-t);
-		}
-
-		return result;
-	}
-	else if(this.interpolation === LS.BEZIER)
-	{
-		//bezier not implemented for interpolators
-		if(this.value_size === 0 && LS.Interpolators[ this.type ] )
-		{
-			var func = LS.Interpolators[ this.type ];
-			var r = func( a[1], b[1], t, this._last_value );
-			this._last_value = r;
-			return r;
-		}
-
-		var pre_a = index > 0 ? data[ index - 1 ] : a;
-		var post_b = index < data.length - 2 ? data[ index + 2 ] : b;
-
-		if(this.value_size === 1)
-			return Animation.EvaluateHermiteSpline(a[1],b[1],pre_a[1],post_b[1], 1 - t );
-
-
-		result = result || this._result;
-
-		//multiple data
-		if(!result || result.length != this.value_size)
-			result = this._result = new Float32Array( this.value_size );
-
-		result = result || this._result;
-		result = Animation.EvaluateHermiteSplineVector(a[1],b[1], pre_a[1], post_b[1], 1 - t, result );
-
-		if(this.type == "quat")
-			quat.normalize(result, result);
-		else if(this.type == "trans10")
-		{
-			var rot = result.subarray(3,7);
-			quat.normalize(rot, rot);
-		}
-
-		return result;
-	}
-
-	return null;
-}
-
-Track.prototype.getSamplePacked = function( time, interpolate, result )
-{
-	time = Math.clamp( time, 0, this.duration );
-
-	var index = this.findTimeIndex( time );
-	if(index == -1)
-		index = 0;
-
-	var offset = (this.value_size+1);
-	var index_a = index;
-	var index_b = index + 1;
-	var data = this.data;
-	var num_keyframes = data.length / offset;
-
-	interpolate = interpolate && this.interpolation && (this.value_size > 0 || LS.Interpolators[ this.type ] );
-
-	if( !interpolate || num_keyframes == 1 || index_b == num_keyframes || (index_a == 0 && this.data[0] > time)) //(index_b == this.data.length && !this.looped)
-		return this.getKeyframe( index )[1];
-
-	var a = data.subarray( index_a * offset, (index_a + 1) * offset );
-	var b = data.subarray( index_b * offset, (index_b + 1) * offset );
-
-	var t = (b[0] - time) / (b[0] - a[0]);
-
-	if(this.interpolation === LS.LINEAR)
-	{
-		if(this.value_size == 1)
-			return a[1] * t + b[1] * (1-t);
-		else if( LS.Interpolators[ this.type ] )
-		{
-			var func = LS.Interpolators[ this.type ];
-			var r = func( a[1], b[1], t, this._last_v );
-			this._last_v = r;
-			return r;
-		}
-
-		result = result || this._result;
-
-		if(!result || result.length != this.value_size)
-			result = this._result = new Float32Array( this.value_size );
-
-		switch(this.type)
-		{
-			case "quat": 
-				quat.lerp( result, b.subarray(1,5), a.subarray(1,5), t );
-				quat.normalize( result, result );
-				break;
-			case "trans10": 
-				for(var i = 0; i < this.value_size; i++)
-					result[i] = a[1+i] * t + b[1+i] * (1-t);
-				var rotA = a.subarray(4,8);
-				var rotB = b.subarray(4,8);
-				var rotR = result.subarray(3,7);
-				quat.lerp( rotR, rotB, rotA, t );
-				quat.normalize( rotR, rotR );
-				break;
-			default:
-				for(var i = 0; i < this.value_size; i++)
-					result[i] = a[1+i] * t + b[1+i] * (1-t);
-		}
-
-		return result;
-	}
-	else if(this.interpolation === LS.BEZIER)
-	{
-		if( this.value_size === 0) //bezier not supported in interpolators
-			return a[1];
-
-		var pre_a = index > 0 ? data.subarray( (index-1) * offset, (index) * offset ) : a;
-		var post_b = index_b < (num_keyframes - 1) ? data.subarray( (index_b+1) * offset, (index_b+2) * offset ) : b;
-
-		if(this.value_size === 1)
-			return Animation.EvaluateHermiteSpline( a[1], b[1], pre_a[1], post_b[1], 1 - t );
-
-		result = result || this._result;
-
-		//multiple data
-		if(!result || result.length != this.value_size)
-			result = this._result = new Float32Array( this.value_size );
-
-		result = result || this._result;
-		result = Animation.EvaluateHermiteSplineVector( a.subarray(1,offset), b.subarray(1,offset), pre_a.subarray(1,offset), post_b.subarray(1,offset), 1 - t, result );
-
-		if(this.type == "quat")
-			quat.normalize(result, result);
-		else if(this.type == "trans10")
-		{
-			var rot = result.subarray(3,7);
-			quat.normalize(rot, rot);
-		}
-
-		return result;
-	}
-
-	return null;
-}
-
-
-Track.prototype.getPropertyInfo = function()
-{
-	return LS.GlobalScene.getPropertyInfo( this.property );
-}
-
-Track.prototype.getSampledData = function( start_time, end_time, num_samples )
-{
-	var delta = (end_time - start_time) / num_samples;
-	if(delta <= 0)
-		return null;
-
-	var samples = [];
-	for(var i = 0; i < num_samples; ++i)
-	{
-		var t = i * delta + start_time;
-		var sample = this.getSample( t, true );
-		if(this.value_size > 1)
-			sample = new sample.constructor( sample );
-		samples.push(sample);
-	}
-
-	return samples;
-}
-
-
-Animation.Track = Track;
-
-/*
-vec3f EvaluateHermiteSpline(const vec3f& p0, const vec3f& p1, const vec3f& t0, const vec3f& t1, float s)
-{
-	float s2 = s * s;
-	float s3 = s2 * s;
-	float h1 =  2*s3 - 3*s2 + 1;          // calculate basis function 1
-	float h2 = -2*s3 + 3*s2;              // calculate basis function 2
-	float h3 =   s3 - 2*s2 + s;         // calculate basis function 3
-	float h4 =   s3 -  s2;              // calculate basis function 4
-	vec3f p = h1*p0+                    // multiply and sum all funtions
-						 h2*p1 +                    // together to build the interpolated
-						 h3*t0 +                    // point along the curve.
-						 h4*t1;
-	return p;
-}
-*/
-
-
-Animation.EvaluateHermiteSpline = function( p0, p1, pre_p0, post_p1, s )
-{
-	var s2 = s * s;
-	var s3 = s2 * s;
-	var h1 =  2*s3 - 3*s2 + 1;          // calculate basis function 1
-	var h2 = -2*s3 + 3*s2;              // calculate basis function 2
-	var h3 =   s3 - 2*s2 + s;         // calculate basis function 3
-	var h4 =   s3 -  s2;              // calculate basis function 4
-	
-	var t0 = p1 - pre_p0;
-	var t1 = post_p1 - p0;
-
-	return h1 * p0 + h2 * p1 + h3 * t0 + h4 * t1;
-}
-
-Animation.EvaluateHermiteSplineVector = function( p0, p1, pre_p0, post_p1, s, result )
-{
-	result = result || new Float32Array( result.length );
-
-	var s2 = s * s;
-	var s3 = s2 * s;
-	var h1 =  2*s3 - 3*s2 + 1;          // calculate basis function 1
-	var h2 = -2*s3 + 3*s2;              // calculate basis function 2
-	var h3 =   s3 - 2*s2 + s;         // calculate basis function 3
-	var h4 =   s3 -  s2;              // calculate basis function 4
-
-	for(var i = 0; i < result.length; ++i)
-	{
-		var t0 = p1[i] - pre_p0[i];
-		var t1 = post_p1[i] - p0[i];
-		result[i] = h1 * p0[i] + h2 * p1[i] + h3 * t0 + h4 * t1;
-	}
-
-	return result;
-}
-
-
-LS.registerResourceClass( Animation );
-
-
-LS.Interpolators = {};
-
-LS.Interpolators["texture"] = function( a, b, t, last )
-{
-	var texture_a = a ? LS.getTexture( a ) : null;
-	var texture_b = b ? LS.getTexture( b ) : null;
-
-	if(a && !texture_a && a[0] != ":" )
-		LS.ResourcesManager.load(a);
-	if(b && !texture_b && b[0] != ":" )
-		LS.ResourcesManager.load(b);
-
-	var texture = texture_a || texture_b;
-
-	var black = gl.textures[":black"];
-	if(!black)
-		black = gl.textures[":black"] = new GL.Texture(1,1, { format: gl.RGB, pixel_data: [0,0,0], filter: gl.NEAREST });
-
-	if(!texture)
-		return black;
-
-	var w = texture ? texture.width : 256;
-	var h = texture ? texture.height : 256;
-
-	if(!texture_a)
-		texture_a = black;
-	if(!texture_b)
-		texture_b = black;
-
-	if(!last || last.width != w || last.height != h || last.format != texture.format )
-		last = new GL.Texture( w, h, { format: texture.format, type: texture.type, filter: gl.LINEAR } );
-
-	var shader = gl.shaders[":interpolate_texture"];
-	if(!shader)
-		shader = gl.shaders[":interpolate_texture"] = GL.Shader.createFX("color = mix( texture2D( u_texture_b, uv ), color , u_factor );", "uniform sampler2D u_texture_b; uniform float u_factor;" );
-
-	gl.disable( gl.DEPTH_TEST );
-	last.drawTo( function() {
-		gl.clearColor(0,0,0,0);
-		gl.clear( gl.COLOR_BUFFER_BIT );
-		texture_b.bind(1);
-		texture_a.toViewport( shader, { u_texture_b: 1, u_factor: t } );
-	});
-
-	return last;
-}
-
-
-/**
-* Prefab work in two ways: 
-* - It can contain a node structure and all the associated resources (textures, meshes, animations, etc)
-* - When a node in the scene was created from a Prefab, the prefab is loaded so the associated resources are recovered, but the node structure is not modified.
-* 
-* @class Prefab
-* @constructor
-*/
-
-function Prefab(o)
-{
-	this.resource_names = []; 
-	this.prefab_json = null;
-	this.prefab_data = null; //json object
-	this._resources_data = {}; //data as it was loaded from the WBin
-
-	if(o)
-		this.configure(o);
-}
-
-Prefab.version = "0.2"; //used to know where the file comes from 
-
-/**
-* configure the prefab
-* @method configure
-* @param {*} data
-**/
-
-Prefab.prototype.configure = function(data)
-{
-	if(!data)
-		throw("No prefab data found");
-
-	if(data.hasOwnProperty("prefab_data"))
-	{
-		this.prefab_data = data.prefab_data;
-		this.prefab_json = data.prefab_json || JSON.stringify( this.prefab_data );
-	}
-	else
-	{
-		//read from WBin info
-		var prefab_json = data["@json"];
-		if(!prefab_json)
-		{
-			console.warn("No JSON found in prefab");
-			return;
-		}
-
-		var version = data["@version"]; //not used yet
-		this.prefab_json = prefab_json;
-		this.prefab_data = JSON.parse( prefab_json );
-	}
-
-	this.resource_names = data["@resources_name"] || data.resource_names;
-
-	//extract resource names
-	if(this.resource_names)
-	{
-		var resources = {};
-		for(var i in this.resource_names)
-		{
-			if(!version) //legacy
-				resources[ this.resource_names[i] ] = data[ this.resource_names[i] ];
-			else
-				resources[ this.resource_names[i] ] = data[ "@RES_" + i ];
-		}
-		this._resources_data = resources;
-	}
-
-	//store resources in ResourcesManager
-	this.processResources();
-}
-
-Prefab.fromBinary = function(data)
-{
-	if(data.constructor == ArrayBuffer)
-		data = WBin.load(data, true);
-
-	return new LS.Prefab(data);
-}
-
-//given a list of resources that come from a Prefab (usually a wbin) it extracts, process and register them 
-Prefab.prototype.processResources = function()
-{
-	if(!this._resources_data)
-		return;
-
-	var resources = this._resources_data;
-
-	//block this resources of being loaded, this is to avoid chain reactions when a resource uses 
-	//another one contained in this Prefab
-	for(var resname in resources)
-	{
-		if( LS.ResourcesManager.resources[ resname ] )
-			continue; //already loaded
-		LS.ResourcesManager.resources_being_processed[ resname ] = true;
-	}
-
-	//process and store in ResourcesManager
-	for(var resname in resources)
-	{
-		if( LS.ResourcesManager.resources[resname] )
-			continue; //already loaded
-
-		var resdata = resources[resname];
-		if(!resdata)
-		{
-			console.warn("resource data in prefab is undefined, skipping it:" + resname);
-			continue;
-		}
-		var resource = LS.ResourcesManager.processResource( resname, resdata, { is_local: true, from_prefab: true } );
-	}
-}
-
-/**
-* Creates an instance of the object inside the prefab
-* @method createObject
-* @return object contained 
-**/
-
-Prefab.prototype.createObject = function()
-{
-	if(!this.prefab_json)
-		throw("No prefab_json data found");
-
-	var conf_data = JSON.parse(this.prefab_json);
-
-	if(!conf_data)
-	{
-		console.error("Prefab data is null");
-		return null;
-	}
-
-	var node = new LS.SceneNode();
-	node.configure(conf_data);
-	LS.ResourcesManager.loadResources( node.getResources({},true) );
-
-	if(this.fullpath)
-		node.prefab = this.fullpath;
-
-	return node;
-}
-
-/**
-* to create a new prefab, it packs all the data an instantiates the resource
-* @method Prefab.createPrefab
-* @param {String} filename a name for this prefab (if wbin is not appended, it will)
-* @param {Object} node_data an object containing all the node data to store
-* @param {Array} resource_names_list an array with the name of the resources to store
-* @return object containing the prefab data ready to be converted to WBin (it also stores _original_data with the WBin)
-**/
-Prefab.createPrefab = function( filename, node_data, resource_names_list )
-{
-	if(!filename)
-		return;
-
-	if(!node_data)
-		throw("No node_data in prefab");
-
-	filename = filename.replace(/ /gi,"_");
-	resource_names_list = resource_names_list || [];
-
-	//LS.clearUIds( node_data ); //remove uids of nodes and components
-	node_data.object_type = "SceneNode";
-
-	var prefab = new LS.Prefab();
-	var ext = LS.ResourcesManager.getExtension(filename);
-	if(ext != "wbin")
-		filename += ".wbin";
-
-	//checkfilenames and rename them to short names
-	prefab.filename = filename;
-	prefab.resource_names = resource_names_list;
-	prefab.prefab_data = node_data;
-	prefab.prefab_json = JSON.stringify( prefab.prefab_data );
-
-	//get all the resources and store them in a WBin
-	var bindata = LS.Prefab.packResources( resource_names_list, { "@json": prefab.prefab_json, "@version": Prefab.version } );
-	prefab._original_data = bindata;
-
-	return prefab;
-}
-
-//Given a list of resources and some base data, it creates a WBin with all the data
-Prefab.packResources = function( resource_names_list, base_data )
-{
-	var to_binary = base_data || {};
-	var resource_names = [];
-
-	if(resource_names_list && resource_names_list.length)
-	{
-		for(var i = 0; i < resource_names_list.length; ++i)
-		{
-			var res_name = resource_names_list[i];
-			var resource = LS.ResourcesManager.resources[ res_name ];
-			if(!resource)
-				continue;
-
-			var data = null;
-			if(resource._original_data) //must be string or bytes
-				data = resource._original_data;
-			else
-			{
-				var data_info = LS.Resource.getDataToStore( resource );
-				data = data_info.data;
-			}
-
-			if(!data)
-			{
-				console.warning("Wrong data in resource");
-				continue;
-			}
-
-			if(data.constructor === Blob || data.constructor === File)
-			{
-				console.warning("WBin does not support to store File or Blob, please convert to ArrayBuffer using FileReader");
-				continue;
-			}
-
-			to_binary["@RES_" + resource_names.length ] = data;
-			resource_names.push( res_name );
-		}
-	}
-
-	to_binary["@resources_name"] = resource_names;
-	return WBin.create( to_binary, "Prefab" );
-}
-
-Prefab.prototype.updateFromNode = function( node, clear_uids )
-{
-	var data = node.serialize(true);
-	if(clear_uids)
-		LS.clearUIds(data); //remove UIDs
-	this.prefab_data = data;
-	this.prefab_json = JSON.stringify( data );
-}
-
-Prefab.prototype.flagResources = function()
-{
-	if(!this.resource_names)
-		return;
-
-	for(var i = 0; i < this.resource_names.length; ++i)
-	{
-		var res_name = this.resource_names[i];
-		var resource = LS.ResourcesManager.resources[ res_name ];
-		if(!resource)
-			continue;
-
-		resource.from_prefab = this.fullpath || this.filename || true;
-	}
-}
-
-Prefab.prototype.setResourcesLink = function( value )
-{
-	for(var i = 0; i < this.resource_names.length; ++i)
-	{
-		var res_name = this.resource_names[i];
-		var resource = LS.ResourcesManager.resources[ res_name ];
-		if(!resource)
-			continue;
-		if(value)
-			resource.from_prefab = value;
-		else
-			delete resource.from_prefab;
-	}
-}
-
-//search for nodes using this prefab and creates the nodes
-Prefab.prototype.applyToNodes = function( scene )
-{
-	scene = scene || LS.GlobalScene;	
-	var name = this.fullpath || this.filename;
-
-	for(var i = 0; i < scene._nodes.length; ++i)
-	{
-		var node = scene._nodes[i];
-		if(node.prefab != name)
-			continue;
-		node.reloadFromPrefab();
-	}
-}
-
-Prefab.prototype.getDataToStore = function()
-{
-	this.prefab_json = JSON.stringify( this.prefab_data );
-	return LS.Prefab.packResources( this.resource_names, { "@json": this.prefab_json, "@version": LS.Prefab.version } );
-}
-
-LS.Prefab = Prefab;
-LS.registerResourceClass( Prefab );
-
-
-/**
-* Pack is an object that contain several resources, helpful when you want to carry a whole scene in one single file
-* 
-* @class Pack
-* @constructor
-*/
-
-function Pack(o)
-{
-	this.resource_names = []; 
-	this._data = {}; //here we store the original chunks from the WBin
-	this._resources_data = {};
-	if(o)
-		this.configure(o);
-}
-
-Pack.version = "0.2"; //used to know where the file comes from 
-
-/**
-* configure the pack from an unpacked WBin
-* @method configure
-* @param {*} data
-**/
-Pack.prototype.configure = function( data )
-{
-	this._data = LS.cloneObject( data );
-
-	//extract resource names
-	this.resource_names = data["@resource_names"];
-	this._resources_data = {};
-	if(this.resource_names)
-	{
-		delete this._data["@resource_names"];
-		for(var i in this.resource_names)
-		{
-			this._resources_data[ this.resource_names[i] ] = data[ "@RES_" + i ];
-			delete this._data[ "@RES_" + i ];
-		}
-	}
-
-	//store resources in LS.ResourcesManager
-	this.processResources();
-}
-
-Object.defineProperty( Pack.prototype, 'bindata', {
-	set: function(name)
-	{
-		throw("Pack bindata cannot be assigned");
-	},
-	get: function(){
-		if(!this._original_data)
-			this._original_data = LS.Pack.packResources( this.resource_names, this._data );
-		return this._original_data;
-	},
-	enumerable: true
-});
-
-
-Pack.fromBinary = function(data)
-{
-	if(data.constructor == ArrayBuffer)
-		data = WBin.load(data, true);
-	return new LS.Pack(data);
-}
-
-//given a list of resources that come from the Pack (usually a wbin) it extracts, process and register them 
-Pack.prototype.processResources = function()
-{
-	if(!this.resource_names)
-		return;
-
-	//block this resources of being loaded, this is to avoid chain reactions when a resource uses 
-	//another one contained in this pack
-	for(var i = 0; i < this.resource_names.length; ++i)
-	{
-		var resname = this.resource_names[i];
-		if( LS.ResourcesManager.resources[ resname ] )
-			continue; //already loaded
-		LS.ResourcesManager.resources_being_processed[ resname ] = true;
-	}
-
-	//process and store in LS.ResourcesManager
-	for(var i = 0; i < this.resource_names.length; ++i)
-	{
-		var resname = this.resource_names[i];
-		if( LS.ResourcesManager.resources[resname] )
-			continue; //already loaded
-
-		var resdata = this._resources_data[ resname ];
-		if(!resdata)
-		{
-			console.warn("resource data in Pack is undefined, skipping it:" + resname);
-			continue;
-		}
-		var resource = LS.ResourcesManager.processResource( resname, resdata, { is_local: true, from_pack: true } );
-	}
-}
-
-Pack.prototype.setResources = function( resource_names, mark_them )
-{
-	this.resource_names = [];
-	this._resources_data = {};
-
-	//get resources
-	for(var i = 0; i < resource_names.length; ++i)
-	{
-		var res_name = resource_names[i];
-		if(this.resource_names.indexOf(res_name) != -1)
-			continue;
-		var resource = LS.ResourcesManager.resources[ res_name ];
-		if(!resource)
-			continue;
-		if(mark_them)
-			resource.from_pack = true;
-		this.resource_names.push( res_name );
-	}
-
-	//repack the pack info
-	this._original_data = LS.Pack.packResources( resource_names, { "@metadata": JSON.stringify( this.metadata ), "@version": LS.Pack.version } );
-	this._modified = true;
-}
-
-Pack.prototype.setResourcesLink = function( value )
-{
-	for(var i = 0; i < this.resource_names.length; ++i)
-	{
-		var res_name = this.resource_names[i];
-		var resource = LS.ResourcesManager.resources[ res_name ];
-		if(!resource)
-			continue;
-		if(value)
-			resource.from_pack = value;
-		else
-			delete resource.from_pack;
-	}
-}
-
-Pack.prototype.addResources = function( resource_names, mark_them )
-{
-	this.setResources( this.resource_names.concat( resource_names ), mark_them );
-}
-
-/**
-* to create a WBin containing all the resource and metadata
-* @method Pack.createWBin
-* @param {String} fullpath for the pack
-* @param {Array} resource_names array with the names of all the resources to store
-* @param {Object} metadata [optional] extra data to store
-* @param {boolean} mark_them [optional] marks all the resources as if they come from a pack
-* @return object containing the pack data ready to be converted to WBin
-**/
-Pack.createPack = function( filename, resource_names, extra_data, mark_them )
-{
-	if(!filename)
-		return;
-
-	if(!resource_names || resource_names.constructor !== Array)
-		throw("Pack.createPack resources must be array with names");
-	if(extra_data && extra_data.constructor !== Object)
-		throw("Pack.createPack extra_data must be an object with the chunks to store");
-
-	filename = filename.replace(/ /gi,"_");
-
-	var pack = new LS.Pack();
-	filename += ".wbin";
-	pack.filename = filename;
-	if(extra_data)
-		pack._data = extra_data;
-
-	pack.resource_names = resource_names;
-	for(var i = 0; i < resource_names.length; ++i)
-	{
-		var res_name = resource_names[i];
-		var resource = LS.ResourcesManager.resources[ res_name ];
-		if(!resource)
-			continue;
-		if(mark_them)
-			resource.from_pack = true;
-	}
-
-	//create the WBIN in case this pack gets stored
-	var bindata = LS.Pack.packResources( resource_names, extra_data );
-	pack._original_data = bindata;
-
-	return pack;
-}
-
-//Given a bunch of resource names it creates a WBin with all inside
-Pack.packResources = function( resource_names, base_object )
-{
-	var to_binary = base_object || {};
-	var final_resource_names = [];
-
-	for(var i = 0; i < resource_names.length; ++i)
-	{
-		var res_name = resource_names[i];
-		var resource = LS.ResourcesManager.resources[ res_name ];
-		if(!resource)
-			continue;
-
-		var data = null;
-		if(resource._original_data) //must be string or bytes
-			data = resource._original_data;
-		else
-		{
-			var data_info = LS.Resource.getDataToStore( resource );
-			data = data_info.data;
-		}
-
-		if(!data)
-		{
-			console.warning("Wrong data in resource");
-			continue;
-		}
-
-		if(data.constructor === Blob || data.constructor === File)
-		{
-			console.warning("WBin does not support to store File or Blob, please, use ArrayBuffer");
-			continue;
-		}
-
-		to_binary["@RES_" + final_resource_names.length ] = data;
-		final_resource_names.push( res_name );
-		//to_binary[res_name] = data;
-	}
-
-	to_binary["@resource_names"] = final_resource_names;
-	return WBin.create( to_binary, "Pack" );
-}
-
-//just tells the resources where they come from, we cannot do that before because we didnt have the name of the pack
-Pack.prototype.flagResources = function()
-{
-	if(!this.resource_names)
-		return;
-
-	for(var i = 0; i < this.resource_names.length; ++i)
-	{
-		var res_name = this.resource_names[i];
-		var resource = LS.ResourcesManager.resources[ res_name ];
-		if(!resource)
-			continue;
-
-		resource.from_pack = this.fullpath || this.filename || true;
-	}
-}
-
-LS.Pack = Pack;
-LS.registerResourceClass( Pack );
-
-
-
-/**
-* ShaderCode is a resource containing all the code associated to a shader
-* It is used to define special ways to render scene objects, having full control of the rendering algorithm
-* Having a special class helps to parse the data in advance and share it between different materials
-* 
-* @class ShaderCode
-* @constructor
-*/
-
-function ShaderCode( code )
-{
-	this._code = null;
-
-	this._init_function = null;
-	this._code_parts = {};
-	this._compiled_shaders = {};
-
-	if(code)
-		this.code = code;
-}
-
-Object.defineProperty( ShaderCode.prototype, "code", {
-	enumerable: true,
-	get: function() {
-		return this._code;
-	},
-	set: function(v) {
-		if(this._code == v)
-			return;
-		this._code = v;
-		this.processCode();
-	}
-});
-
-ShaderCode.prototype.processCode = function()
-{
-	var code = this._code;
-	this._code_parts = {};
-	this._compiled_shaders = {};
-	this._init_function = null;
-
-	var blocks = GL.processFileAtlas( this._code );
-	for(var i in blocks)
-	{
-		var block_name = i;
-		var block_data = blocks[i];
-
-		if(!block_name) //empty block, is javascript code to initialize
-			continue;
-
-		var name = LS.ResourcesManager.removeExtension(i);
-		var extension = LS.ResourcesManager.getExtension(i);
-		var code_part = this._code_parts[name];
-		if(!code_part)
-			code_part = this._code_parts[name] = {};
-		code_part[ extension ] = block_data;
-	}
-
-	//compile the shader before using it to ensure there is no errors
-	this.getShader();
-
-	//process init code
-	var init_code = blocks[""]; //the empty block is the init block
-	if(init_code)
-	{
-		if(LS.catch_exceptions)
-		{
-			try
-			{
-				this._init_function = new Function( init_code );
-			}
-			catch (err)
-			{
-				LS.dispatchCodeError( err, LScript.computeLineFromError(err), this );
-			}
-		}
-		else
-			this._init_function = new Function( init_code );
-	}
-
-	//to alert all the materials out there using this shader that they must update themselves.
-	LEvent.trigger( LS.ShaderCode, "modified", this );
-}
-
-ShaderCode.prototype.setData = function(v, skip_modified_flag)
-{
-	this.code = v;
-	if(!skip_modified_flag)
-		this._modified = true;
-}
-
-ShaderCode.prototype.getData = function()
-{
-	return this._code;
-}
-
-ShaderCode.prototype.getDataToStore = function()
-{
-	return this._code;
-}
-
-ShaderCode.prototype.getShader = function( render_mode, flags )
-{
-	render_mode = render_mode || "default";
-	flags = flags || 0;
-
-	//search for a compiled version of the shader
-	var shader = this._compiled_shaders[render_mode];
-	if(shader)
-		return shader;
-
-	//search for the code
-	var code = this._code_parts[ render_mode ];
-	if(!code)
-		return null;
-	if(!code.vs || !code.fs)
-		return null;
-
-	//compile the shader and return it
-	if(!LS.catch_exceptions)
-		return this._compiled_shaders[ render_mode ] = shader = new GL.Shader( code.vs, code.fs );
-
-	try
-	{
-		return this._compiled_shaders[ render_mode ] = shader = new GL.Shader( code.vs, code.fs );
-	}
-	catch(err)
-	{
-		console.error(err);
-		LS.dispatchCodeError(err);
-	}
-}
-
-//searches for materials using this ShaderCode and forces them to be updated (update the properties)
-ShaderCode.prototype.applyToMaterials = function( scene )
-{
-	scene = scene || LS.GlobalScene;
-	var filename = this.fullpath || this.filename;
-
-	//materials in the resources
-	for(var i in LS.ResourcesManager.resources)
-	{
-		var res = LS.ResourcesManager.resources[i];
-		if( res.constructor !== LS.ShaderMaterial || res._shader != filename )
-			continue;
-
-		res.processShaderCode();
-	}
-
-	//embeded materials
-	var nodes = LS.GlobalScene.getNodes();
-	for(var i = 0; i < nodes.length; ++i)
-	{
-		var node = nodes[i];
-		if(node.material && node.material.constructor === LS.ShaderMaterial && node.material._shader == filename )
-			node.material.processShaderCode();
-	}
-}
-
-//Example code for a shader
-ShaderCode.example = "\n\
-\n\
-\\default.vs\n\
-\n\
-precision mediump float;\n\
-attribute vec3 a_vertex;\n\
-attribute vec3 a_normal;\n\
-attribute vec2 a_coord;\n\
-\n\
-//varyings\n\
-varying vec3 v_pos;\n\
-varying vec3 v_normal;\n\
-varying vec2 v_uvs;\n\
-\n\
-//matrices\n\
-uniform mat4 u_model;\n\
-uniform mat4 u_normal_model;\n\
-uniform mat4 u_view;\n\
-uniform mat4 u_viewprojection;\n\
-uniform mat4 u_mvp;\n\
-\n\
-//globals\n\
-uniform float u_time;\n\
-uniform vec4 u_viewport;\n\
-uniform float u_point_size;\n\
-\n\
-//camera\n\
-uniform vec3 u_camera_eye;\n\
-void main() {\n\
-	\n\
-	vec4 vertex4 = vec4(a_vertex,1.0);\n\
-	v_normal = a_normal;\n\
-	v_uvs = a_coord;\n\
-	\n\
-	//vertex\n\
-	v_pos = (u_model * vertex4).xyz;\n\
-	//normal\n\
-	v_normal = (u_normal_model * vec4(v_normal,1.0)).xyz;\n\
-	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
-}\n\
-\n\
-\\default.fs\n\
-\n\
-precision mediump float;\n\
-//varyings\n\
-varying vec3 v_pos;\n\
-varying vec3 v_normal;\n\
-varying vec2 v_uvs;\n\
-//globals\n\
-uniform vec4 u_clipping_plane;\n\
-uniform float u_time;\n\
-uniform vec3 u_background_color;\n\
-uniform vec3 u_ambient_light;\n\
-\n\
-//material\n\
-uniform vec4 u_material_color; //color and alpha\n\
-void main() {\n\
-	gl_FragColor = u_material_color;\n\
-}\n\
-\n\
-";
-
-LS.ShaderCode = ShaderCode;
-LS.registerResourceClass( ShaderCode );
-if(typeof(LiteGraph) != "undefined")
-{
-	/* Scene LNodes ***********************/
-
-	global.LGraphScene = function()
-	{
-		this.addOutput("Time","number");
-	}
-
-	LGraphScene.title = "Scene";
-	LGraphScene.desc = "Scene";
-
-	LGraphScene.getComponents = function(node, result)
-	{
-		result = result || [];
-		var compos = node.getComponents();
-		if(!compos)
-			return result;
-
-		for(var i = 0; i < compos.length; ++i)
-		{
-			var name = LS.getClassName( compos[i].constructor );
-			result.push( [name, name] );
-		}
-
-		return result;
-	}
-
-	LGraphScene.prototype.onExecute = function()
-	{
-		var scene = this.graph.getScene();
-
-		//read inputs
-		if(this.inputs)
-		for(var i = 0; i < this.inputs.length; ++i)
-		{
-			var input = this.inputs[i]; //??
-			var v = this.getInputData(i);
-			if(v === undefined)
-				continue;
-		}
-
-		//write outputs
-		if(this.outputs)
-		for(var i = 0; i < this.outputs.length; ++i)
-		{
-			var output = this.outputs[i];
-			if(!output.links || !output.links.length)
-				continue;
-			var result = null;
-			switch( output.name )
-			{
-				case "Time": result = scene.getTime(); break;
-				case "Elapsed": result = (scene._last_dt != null ? scene._last_dt : 0); break;
-				case "Frame": result = (scene._frame != null ? scene._frame : 0); break;
-				default:
-					result = scene.root.getComponent(output.name);
-			}
-			this.setOutputData(i,result);
-		}
-	}
-
-	LGraphScene.prototype.onGetOutputs = function()
-	{
-		var r = [["Elapsed","number"],["Frame","number"]];
-		return LGraphScene.getComponents( this.graph.getScene().root, r);
-	}
-
-	LiteGraph.registerNodeType("scene/scene", LGraphScene );
-
-	//********************************************************
-
-	global.LGraphSceneNode = function()
-	{
-		this.properties = {node_id:""};
-		this.size = [100,20];
-
-		this.addInput("node_id", "string", { locked: true });
-
-		if(LGraphSceneNode._current_node_id)
-			this.properties.node_id = LGraphSceneNode._current_node_id;
-	}
-
-	LGraphSceneNode.title = "SceneNode";
-	LGraphSceneNode.desc = "Node on the scene";
-
-	LGraphSceneNode.prototype.getNode = function()
-	{
-		var node_id = null;
-
-		//first check input
-		if(this.inputs && this.inputs[0])
-			node_id = this.getInputData(0);
-		if(node_id)
-			this.properties.node_id = node_id;
-
-		var scene = this.graph.getScene();
-		var node = null;
-
-		//then check properties
-		if(	!node_id && this.properties.node_id )
-			node_id = this.properties.node_id;
-
-		if(node_id)
-			node = scene.getNode( node_id );
-
-		//otherwise use the graph node
-		if(!node)
-			node = this.graph._scenenode;
-		return node;
-	}
-
-	LGraphSceneNode.prototype.onExecute = function()
-	{
-		var node = this.getNode();
-
-		//read inputs
-		if(this.inputs) //there must be inputs always but just in case
-		{
-			for(var i = 1; i < this.inputs.length; ++i)
-			{
-				var input = this.inputs[i];
-				var v = this.getInputData(i);
-				if(v === undefined)
-					continue;
-				switch( input.name )
-				{
-					case "Transform": node.transform.copyFrom(v); break;
-					case "Material": node.material = v;	break;
-					case "Visible": node.flags.visible = v; break;
-					default:
-
-						break;
-				}
-			}
-		}
-
-		//write outputs
-		if(this.outputs)
-		for(var i = 0; i < this.outputs.length; ++i)
-		{
-			var output = this.outputs[i];
-			if(!output.links || !output.links.length)
-				continue;
-			switch( output.name )
-			{
-				case "Material": this.setOutputData( i, node.getMaterial() ); break;
-				case "Transform": this.setOutputData( i, node.transform ); break;
-				case "Mesh": this.setOutputData(i, node.getMesh()); break;
-				case "Visible": this.setOutputData(i, node.flags.visible ); break;
-				default:
-					var compo = node.getComponentByUId( output.name );
-					if(!compo)
-					{
-						//SPECIAL CASE: maybe the node id changed so the output.name contains the uid of another node, in that case replace it
-						var old_compo = node.scene.findComponentByUId( output.name );
-						if(old_compo)
-						{
-							var class_name = LS.getObjectClassName( old_compo );
-							compo = node.getComponent( class_name );
-							if( compo )
-								output.name = compo.uid; //replace the uid
-						}
-					}
-
-					this.setOutputData(i, compo );
-					break;
-			}
-		}
-	}
-
-	LGraphSceneNode.prototype.getComponents = function(result)
-	{
-		result = result || [];
-		var node = this.getNode();
-		if(!node)
-			return result;
-		var compos = node.getComponents();
-		if(!compos)
-			return result;
-
-		for(var i = 0; i < compos.length; ++i)
-		{
-			var name = LS.getClassName( compos[i].constructor );
-			result.push( [ compos[i].uid, name, { label: name } ] );
-		}
-
-		return result;
-	}
-
-	LGraphSceneNode.prototype.onDropItem = function( event )
-	{
-		var node_id = event.dataTransfer.getData("node_id");
-		if(!node_id)
-			return;
-		this.properties.node_id = node_id;
-		this.onExecute();
-		return true;
-	}
-
-	LGraphSceneNode.prototype.onGetInputs = function()
-	{
-		var result = [["Visible","boolean"],["Material","Material"]];
-		return this.getComponents(result);
-		//return [["Transform","Transform"],["Material","Material"],["Mesh","Mesh"],["Enabled","boolean"]];
-	}
-
-	LGraphSceneNode.prototype.onGetOutputs = function()
-	{
-		var result = [["Visible","boolean"],["Material","Material"]];
-		return this.getComponents(result);
-		//return [["Transform","Transform"],["Material","Material"],["Mesh","Mesh"],["Enabled","boolean"]];
-	}
-
-	/*
-	LGraphSceneNode.prototype.onGetOutputs = function()
-	{
-		var node = this.getNode();
-		var r = [];
-		for(var i = 0; i < node._components.length; ++i)
-		{
-			var comp = node._components[i];
-			var classname = getObjectClassName(comp);
-			var vars = getObjectAttributes(comp);
-			r.push([classname,vars]);
-		}
-		return r;
-		*/
-
-		/*
-		var r = [["Transform","Transform"],["Material","Material"],["Mesh","Mesh"],["Enabled","boolean"]];
-		if(node.light)
-			r.push(["Light","Light"]);
-		if(node.camera)
-			r.push(["Camera","Camera"]);
-		return r;
-	}
-	*/
-
-	LiteGraph.registerNodeType("scene/node", LGraphSceneNode );
-
-	//********************************************************
-
-	/* LGraphNode representing an object in the Scene */
-
-	global.LGraphTransform = function()
-	{
-		this.properties = {node_id:""};
-		if(LGraphSceneNode._current_node_id)
-			this.properties.node = LGraphSceneNode._current_node_id;
-		this.addInput("Transform", "Transform", { locked: true });
-		this.addOutput("Position","vec3");
-	}
-
-	LGraphTransform.title = "Transform";
-	LGraphTransform.desc = "Transform info of a node";
-
-	LGraphTransform.prototype.onExecute = function()
-	{
-		var transform = null;
-
-		if(this.inputs && this.inputs[0])
-			transform = this.getInputData(0);
-
-		if(!transform)
-		{
-			var scene = this.graph.getScene();
-			if(!scene)
-				return;
-
-			var node = this._node;
-			if(	this.properties.node )
-			{
-				node = scene.getNode( this.properties.node );
-				if(!node)
-					return;
-			}
-
-			if(!node)
-				node = this.graph._scenenode;
-
-			transform = node.transform;
-		}
-
-		if(!transform)
-			return;
-
-		//read inputs
-		if(this.inputs)
-		for(var i = 1; i < this.inputs.length; ++i)
-		{
-			var input = this.inputs[i];
-			var v = this.getInputData(i);
-			if(v === undefined)
-				continue;
-			switch( input.name )
-			{
-				case "x": transform.x = v; break;
-				case "y": transform.y = v; break;
-				case "z": transform.z = v; break;
-				case "Position": transform.setPosition(v); break;
-				case "Rotation": transform.setRotation(v); break;
-				case "Scale": transform.setScale(v); break;
-				case "Matrix": transform.fromMatrix(v); break;
-				case "Translate": transform.translate(v); break;
-				case "Translate Local": transform.translateLocal(v); break;
-				case "RotateY": transform.rotateY(v); break;
-			}
-		}
-
-		//write outputs
-		if(this.outputs)
-		for(var i = 0; i < this.outputs.length; ++i)
-		{
-			var output = this.outputs[i];
-			if(!output.links || !output.links.length)
-				continue;
-
-			var value = undefined;
-			switch( output.name )
-			{
-				case "x": value = transform.x; break;
-				case "y": value = transform.y; break;
-				case "z": value = transform.z; break;
-				case "Position": value = transform.position; break;
-				case "Global Position": value = transform.getGlobalPosition(); break;
-				case "Rotation": value = transform.rotation; break;
-				case "Global Rotation": value = transform.getGlobalRotation(); break;
-				case "Scale": value = transform.scaling; break;
-				case "Matrix": value = transform.getMatrix(); break;
-				default:
-					break;
-			}
-
-			if(value !== undefined)
-				this.setOutputData( i, value );
-		}
-	}
-
-	LGraphTransform.prototype.onGetInputs = function()
-	{
-		return [["Position","vec3"],["Rotation","quat"],["Scale","number"],["x","number"],["y","number"],["z","number"],["Global Position","vec3"],["Global Rotation","quat"],["Matrix","mat4"],["Translate","vec3"],["Translate Local","vec3"],["RotateY","number"]];
-	}
-
-	LGraphTransform.prototype.onGetOutputs = function()
-	{
-		return [["Position","vec3"],["Rotation","quat"],["Scale","number"],["x","number"],["y","number"],["z","number"],["Global Position","vec3"],["Global Rotation","quat"],["Matrix","mat4"]];
-	}
-
-	LiteGraph.registerNodeType("scene/transform", LGraphTransform );
-
-	//***********************************************************************
-
-	global.LGraphMaterial = function()
-	{
-		this.properties = {mat_name:""};
-		this.addInput("Material","Material");
-		this.size = [100,20];
-	}
-
-	LGraphMaterial.title = "Material";
-	LGraphMaterial.desc = "Material of a node";
-
-	LGraphMaterial.prototype.onExecute = function()
-	{
-		var mat = this.getMaterial();
-		if(!mat)
-			return;
-
-		//read inputs
-		for(var i = 0; i < this.inputs.length; ++i)
-		{
-			var input = this.inputs[i];
-			var v = this.getInputData(i);
-			if(v === undefined)
-				continue;
-
-			if(input.name == "Material")
-				continue;
-
-			mat.setProperty(input.name, v);
-
-			/*
-			switch( input.name )
-			{
-				case "Alpha": mat.alpha = v; break;
-				case "Specular f.": mat.specular_factor = v; break;
-				case "Diffuse": vec3.copy(mat.diffuse,v); break;
-				case "Ambient": vec3.copy(mat.ambient,v); break;
-				case "Emissive": vec3.copy(mat.emissive,v); break;
-				case "UVs trans.": mat.uvs_matrix.set(v); break;
-				default:
-					if(input.name.substr(0,4) == "tex_")
-					{
-						var channel = input.name.substr(4);
-						mat.setTexture(v, channel);
-					}
-					break;
-			}
-			*/
-		}
-
-		//write outputs
-		if(this.outputs)
-		for(var i = 0; i < this.outputs.length; ++i)
-		{
-			var output = this.outputs[i];
-			if(!output.links || !output.links.length)
-				continue;
-			var v = mat.getProperty( output.name );
-			/*
-			var v;
-			switch( output.name )
-			{
-				case "Material": v = mat; break;
-				case "Alpha": v = mat.alpha; break;
-				case "Specular f.": v = mat.specular_factor; break;
-				case "Diffuse": v = mat.diffuse; break;
-				case "Ambient": v = mat.ambient; break;
-				case "Emissive": v = mat.emissive; break;
-				case "UVs trans.": v = mat.uvs_matrix; break;
-				default: continue;
-			}
-			*/
-			this.setOutputData( i, v );
-		}
-
-		//this.setOutputData(0, parseFloat( this.properties["value"] ) );
-	}
-
-	LGraphMaterial.prototype.getMaterial = function()
-	{
-		//if it has an input material, use that one
-		var slot = this.findInputSlot("Material");
-		if( slot != -1)
-			return this.getInputData( slot );
-
-		if(	this.properties.mat_name )
-			return LS.RM.materials[ this.properties.mat_name ];
-
-		return null;
-	}
-
-	LGraphMaterial.prototype.onGetInputs = function()
-	{
-		var mat = this.getMaterial();
-		if(!mat) return;
-		var o = mat.getProperties();
-		var results = [["Material","Material"]];
-		for(var i in o)
-			results.push([i,o[i]]);
-		return results;
-
-		/*
-		var results = [["Material","Material"],["Alpha","number"],["Specular f.","number"],["Diffuse","color"],["Ambient","color"],["Emissive","color"],["UVs trans.","texmatrix"]];
-		for(var i in Material.TEXTURE_CHANNELS)
-			results.push(["Tex." + Material.TEXTURE_CHANNELS[i],"Texture"]);
-		return results;
-		*/
-	}
-
-	LGraphMaterial.prototype.onGetOutputs = function()
-	{
-		var mat = this.getMaterial();
-		if(!mat) return;
-		var o = mat.getProperties();
-		var results = [["Material","Material"]];
-		for(var i in o)
-			results.push([i,o[i]]);
-		return results;
-
-		/*
-		var results = [["Material","Material"],["Alpha","number"],["Specular f.","number"],["Diffuse","color"],["Ambient","color"],["Emissive","color"],["UVs trans.","texmatrix"]];
-		for(var i in Material.TEXTURE_CHANNELS)
-			results.push(["Tex." + Material.TEXTURE_CHANNELS[i],"Texture"]);
-		return results;
-		*/
-	}
-
-	LiteGraph.registerNodeType("scene/material", LGraphMaterial );
-	global.LGraphMaterial = LGraphMaterial;
-
-	//********************************************************
-
-	global.LGraphComponent = function()
-	{
-		this.properties = {
-			node: "",
-			component: ""
-		};
-
-		this.addInput("Component", undefined, { locked: true });
-
-		this._component = null;
-	}
-
-	LGraphComponent.title = "Component";
-	LGraphComponent.desc = "A component from a node";
-
-	LGraphComponent.prototype.onConnectInput = function( slot, type )
-	{
-		if (slot == 0 && !LS.Components[type])
-			return false;
-	}
-
-	LGraphComponent.prototype.onExecute = function()
-	{
-		var compo = this.getComponent();
-		if(!compo)
-			return;
-
-		//read inputs (skip 1, is the component)
-		for(var i = 1; i < this.inputs.length; i++)
-		{
-			var input = this.inputs[i];
-			var v = this.getInputData(i);
-			if(v === undefined)
-				continue;
-			LS.setObjectProperty( compo, input.name, v );
-		}
-
-		//write outputs
-		for(var i in this.outputs)
-		{
-			var output = this.outputs[i];
-			if(!output.links || !output.links.length)
-				continue;
-
-			//could be better...
-			this.setOutputData(i, compo[ output.name ] );
-		}
-	}
-
-	LGraphComponent.prototype.onDrawBackground = function()
-	{
-		var compo = this.getComponent();
-		if(compo)
-			this.title = LS.getClassName( compo.constructor );
-	}
-
-	LGraphComponent.prototype.getComponent = function()
-	{
-		var v = this.getInputData(0);
-		if(v)
-			return v;
-
-		var scene = this.graph._scene;
-		if(!scene) 
-			return null;
-
-		var node_id = this.properties.node;
-		if(!node_id)
-			return;
-
-		//find node
-		var node = scene.getNode( node_id );
-		if(!node)
-			return null;
-
-		//find compo
-		var compo_id = this.properties.component;
-		var compo = null;
-		if(compo_id.charAt(0) == "@")
-			compo = node.getComponentByUId( compo_id );
-		else if( LS.Components[ compo_id ] )
-			compo = node.getComponent( LS.Components[ compo_id ] );
-		else
-			return null;
-
-		if(compo && !compo.constructor.is_component)
-			return null;
-
-		this._component = compo;
-		return compo;
-	}
-
-	LGraphComponent.prototype.getComponentProperties = function( v )
-	{
-		var compo = this.getComponent();
-		if(!compo)
-			return null;
-
-		var attrs = null;
-		if(compo.getProperties)
-			attrs = compo.getProperties( v );
-		else
-			attrs = LS.getObjectProperties( compo );
-
-		var result = [];
-		for(var i in attrs)
-			result.push( [i, attrs[i]] );
-		return result;
-	}
-
-	LGraphComponent.prototype.onGetInputs = function() { return this.getComponentProperties("input"); }
-	LGraphComponent.prototype.onGetOutputs = function() { return this.getComponentProperties("output"); }
-
-	LiteGraph.registerNodeType("scene/component", LGraphComponent );
-
-	//************************************************************
-
-	global.LGraphLight = function()
-	{
-		this.properties = {mat_name:""};
-		this.addInput("Light","Light");
-		this.addOutput("Intensity","number");
-		this.addOutput("Color","color");
-	}
-
-	LGraphLight.title = "Light";
-	LGraphLight.desc = "Light from a scene";
-
-	LGraphLight.prototype.onExecute = function()
-	{
-		var scene = this.graph.getScene();
-		if(!scene)
-			return;
-
-		var node = this._node;
-		if(	this.properties.node_id )
-			node = scene.getNode( this.properties.node_id );
-
-		if(!node)
-			node = this.graph._scenenode;
-
-		var light = null;
-		if(node) //use light of the node
-			light = node.getLight();
-		//if it has an input light
-		var slot = this.findInputSlot("Light");
-		if( slot != -1 )
-			light = this.getInputData(slot);
-		if(!light)
-			return;
-
-		//read inputs
-		for(var i = 0; i < this.inputs.length; ++i)
-		{
-			var input = this.inputs[i];
-			var v = this.getInputData(i);
-			if(v === undefined)
-				continue;
-
-			switch( input.name )
-			{
-				case "Intensity": light.intensity = v; break;
-				case "Color": vec3.copy(light.color,v); break;
-				case "Eye": vec3.copy(light.eye,v); break;
-				case "Center": vec3.copy(light.center,v); break;
-			}
-		}
-
-		//write outputs
-		for(var i = 0; i < this.outputs.length; ++i)
-		{
-			var output = this.outputs[i];
-			if(!output.links || !output.links.length)
-				continue;
-
-			switch( output.name )
-			{
-				case "Light": this.setOutputData(i, light ); break;
-				case "Intensity": this.setOutputData(i, light.intensity ); break;
-				case "Color": this.setOutputData(i, light.color ); break;
-				case "Eye": this.setOutputData(i, light.eye ); break;
-				case "Center": this.setOutputData(i, light.center ); break;
-			}
-		}
-	}
-
-	LGraphLight.prototype.onGetInputs = function()
-	{
-		return [["Light","Light"],["Intensity","number"],["Color","color"],["Eye","vec3"],["Center","vec3"]];
-	}
-
-	LGraphLight.prototype.onGetOutputs = function()
-	{
-		return [["Light","Light"],["Intensity","number"],["Color","color"],["Eye","vec3"],["Center","vec3"]];
-	}
-
-	LiteGraph.registerNodeType("scene/light", LGraphLight );
-
-	//************************************
-
-	global.LGraphGlobal = function()
-	{
-		this.addOutput("Value");
-		this.properties = {name:"myvar", value: 0, type: "number", min:0, max:1 };
-	}
-
-	LGraphGlobal.title = "Global";
-	LGraphGlobal.desc = "Global var for the graph";
-	LGraphGlobal["@type"] = { type:"enum", values:["number","string","node","vec2","vec3","vec4","color","texture"]};
-
-	LGraphGlobal.prototype.onExecute = function()
-	{
-		if(!this.properties.name)
-			return;
-
-		this.setOutputData(0, this.properties.value);
-	}
-
-	LGraphGlobal.prototype.onDrawBackground = function()
-	{
-		var name = this.properties.name;
-		this.outputs[0].label = name;
-	}
-
-	LiteGraph.registerNodeType("scene/global", LGraphGlobal );
-
-	//************************************
-
-	global.LGraphLocatorProperty = function()
-	{
-		this.addInput("in");
-		this.addOutput("out");
-		this.size = [80,20];
-		this.properties = {locator:""};
-	}
-
-	LGraphLocatorProperty.title = "Property";
-	LGraphLocatorProperty.desc = "A property of a node or component of the scene specified by its locator string";
-
-	LGraphLocatorProperty.prototype.onExecute = function()
-	{
-		var locator = this.properties.locator;
-		if(!this.properties.locator)
-			return;
-
-		var info = this._locator_info = LS.GlobalScene.getPropertyInfo( locator );
-
-		if(info && info.target)
-		{
-			this.title = info.name;
-			if( this.inputs.length && this.inputs[0].link !== null )
-				LSQ.setFromInfo( info, this.getInputData(0) );
-			if( this.outputs.length && this.outputs[0].links && this.outputs[0].links.length )
-				this.setOutputData( 0, LSQ.getFromInfo( info ));
-		}
-	}
-
-	LiteGraph.registerNodeType("scene/property", LGraphLocatorProperty );
-
-	//************************************
-
-	global.LGraphFrame = function()
-	{
-		this.addOutput("Color","Texture");
-		this.addOutput("Depth","Texture");
-		this.addOutput("Extra","Texture");
-		this.addOutput("Camera","Camera");
-		this.properties = {};
-	}
-
-	LGraphFrame.title = "Frame";
-	LGraphFrame.desc = "One frame rendered from the scene renderer";
-
-	LGraphFrame.prototype.onExecute = function()
-	{
-		this.setOutputData(0, LGraphTexture.getTexture( this._color_texture ) );
-		this.setOutputData(1, LGraphTexture.getTexture( this._depth_texture ) );
-		this.setOutputData(2, LGraphTexture.getTexture( this._extra_texture ) );
-		this.setOutputData(3, this._camera );
-	}
-
-	LGraphFrame.prototype.onDrawBackground = function( ctx )
-	{
-		if( this.flags.collapsed || this.size[1] <= 20 )
-			return;
-
-		if(!this._color_texture)
-			return;
-
-		if( !ctx.webgl )
-			return; //is not working well
-
-		//Different texture? then get it from the GPU
-		if(this._last_preview_tex != this._last_tex || !this._last_preview_tex)
-		{
-			if( ctx.webgl && this._canvas && this._canvas.constructor === GL.Texture )
-			{
-				this._canvas = this._last_tex;
-			}
-			else
-			{
-				var texture = LGraphTexture.getTexture( this._color_texture );
-				if(!texture)
-					return;
-
-				var tex_canvas = LGraphTexture.generateLowResTexturePreview( texture );
-				if(!tex_canvas) 
-					return;
-				this._last_preview_tex = this._last_tex;
-				this._canvas = cloneCanvas( tex_canvas );
-			}
-		}
-
-		if(!this._canvas)
-			return;
-
-		//render to graph canvas
-		ctx.save();
-		if(!ctx.webgl) //reverse image
-		{
-			if( this._canvas.constructor === GL.Texture )
-			{
-				this._canvas = null;
-				return;
-			}
-
-			ctx.translate( 0,this.size[1] );
-			ctx.scale(1,-1);
-		}
-		ctx.drawImage( this._canvas, 0, 0, this.size[0], this.size[1] );
-		ctx.restore();
-	}
-
-	LiteGraph.registerNodeType("scene/frame", LGraphFrame );
-};
-function Path()
-{
-	this.points = [];
-	this.closed = false;
-	this.type = Path.LINE;
-}
-
-Path.LINE = 1;
-Path.SPLINE = 2;
-Path.BEZIER = 3;
-
-
-Path.prototype.addPoint = function(p)
-{
-	var pos = vec3.create();
-	pos[0] = p[0];
-	pos[1] = p[1];
-	if(p.length > 2)
-		pos[2] = p[2];
-	this.points.push( pos );
-}
-
-Path.prototype.getSegments = function()
-{
-	var l = this.points.length;
-
-	switch(this.type)
-	{
-		case Path.LINE: 
-			if(l < 2) 
-				return 0;
-			return l - 1; 
-			break;
-		case Path.SPLINE:
-			if(l < 3) 
-				return 0;
-			return (((l-1)/3)|0); 
-			break;
-	}
-	return 0;
-}
-
-Path.prototype.computePoint = function(f, out)
-{
-	switch(this.type)
-	{
-		case Path.LINE: return this.getLinearPoint(f,out); break;
-		case Path.SPLINE: 
-		default:
-			return this.getSplinePoint(f,out); break;
-	}
-	throw("Impossible path type");
-}
-
-
-Path.prototype.getLinearPoint = function(f, out)
-{
-	out = out || vec3.create();
-	var l = this.points.length;
-	if(l < 2)
-		return out;
-
-	if(f <= 0)
-		return vec3.copy(out, this.points[0]);
-	if(f >= 1)
-		return vec3.copy(out, this.points[l-1]);
-
-	var v = ((l-1) * f);
-	var i = v|0;
-	var fract = v-i;
-	var p = this.points[ i ];
-	var p2 = this.points[ i+1 ];
-	return vec3.lerp(out, p, p2, fract);
-}
-
-Path.prototype.getSplinePoint = function(f, out)
-{
-	out = out || vec3.create();
-	var l = this.points.length;
-	if(l < 4)
-		return out;
-	l = (((l-1)/3)|0) * 3 + 1; //take only useful points
-	if(f <= 0)
-		return vec3.copy(out, this.points[0]);
-	if(f >= 1)
-		return vec3.copy(out, this.points[l-1]);
-
-	var v = ((l-1)/3*f); 
-	var i = v|0;//spline number
-	var t = v-i;//weight
-	var p = this.points[ i ];
-	var p1 = this.points[ i+1 ];
-	var p2 = this.points[ i+2 ];
-	var p3 = this.points[ i+3 ];
-
-	var b1 = (1-t)*(1-t)*(1-t);
-	var b2 = 3*t*(1-t)*(1-t);
-	var b3 = 3*t*t*(1-t);
-	var b4 = t*t*t;
-
-	out[0] = p[0] * b1 + p1[0] * b2 + p2[0] * b3 + p3[0] * b4;
-	out[1] = p[1] * b1 + p1[1] * b2 + p2[1] * b3 + p3[1] * b4;
-	out[2] = p[2] * b1 + p1[2] * b2 + p2[2] * b3 + p3[2] * b4;
-	return out;
-}
-
-/*
-Path.prototype.getSplinePoint = function(f, out)
-{
-	out = out || vec3.create();
-	var l = this.points.length;
-	if(l < 4)
-		return out;
-	l = (((l-1)/3)|0) * 3 + 1; //take only useful points
-	if(f <= 0)
-		return vec3.copy(out, this.points[0]);
-	if(f >= 1)
-		return vec3.copy(out, this.points[l-1]);
-
-	var v = ((l-1)/3*f); 
-	var i = v|0;//spline number
-	var fract = v-i;//weight
-	var p = this.points[ i ];
-	var p1 = this.points[ i+1 ];
-	var p2 = this.points[ i+2 ];
-	var p3 = this.points[ i+3 ];
-	var w = fract;
-	var w2 = w*w;
-	var w3 = w2*w;
-	out[0] = Path.interpolate( p[0], p1[0], p2[0], p3[0], w,w2,w3 );
-	out[1] = Path.interpolate( p[1], p1[1], p2[1], p3[1], w,w2,w3 );
-	out[2] = Path.interpolate( p[2], p1[2], p2[2], p3[2], w,w2,w3 );
-	return out;
-}
-
-//catmull-rom
-Path.interpolate = function ( p0, p1, p2, p3, t, t2, t3 ) {
-	var v0 = ( p2 - p0 ) * 0.5;
-	var v1 = ( p3 - p1 ) * 0.5;
-	return ( 2 * ( p1 - p2 ) + v0 + v1 ) * t3 + ( - 3 * ( p1 - p2 ) - 2 * v0 - v1 ) * t2 + v0 * t + p1;
-};
-
-*/
-
-
-Path.prototype.samplePoints = function(n)
-{
-	if(n <= 0)
-	{
-		var segments = this.getSegments();
-		if(this.type == LS.Path.LINE)
-			n = segments + 1;
-		else
-			n = segments * 20;
-	}
-
-	var result = Array(n);
-	for(var i = 0; i < n; i++)
-		result[i] = this.computePoint(i/(n-1));
-	return result;
-}
-
-
-Path.prototype.serialize = function()
-{
-	var o = {};
-	var points = Array( this.points.length * 3 );
-	for(var i = 0; i < this.points.length; i++)
-	{
-		var p = this.points[i];
-		points[i*3] = p[0];
-		points[i*3+1] = p[1];
-		points[i*3+2] = p[2];
-	}
-
-	o.points = points;
-	o.type = this.type;
-	o.closed = this.closed;
-	return o;
-}
-
-Path.prototype.configure = function(o)
-{
-	this.type = o.type;
-	this.closed = o.closed;
-
-	if(o.points)
-	{
-		this.points.length = o.points.length / 3;
-		var points = o.points;
-		for(var i = 0; i < this.points.length; i++)
-			this.points[i] = vec3.fromValues( points[i*3], points[i*3+1], points[i*3+2] );
-	}
-}
-
-
-LS.Path = Path;
-//Work in progress
-
-/**
-* helps apply basic effects to a texture with as fewer render calls as possible with low memory footprint
-* used by CameraFX but also available for any other use
-* @class TextureFX
-*/
-function TextureFX( o )
-{
-	this.apply_fxaa = false;
-	this.fx = [];
-
-	this._uniforms = { u_aspect: 1, u_viewport: vec2.create(), u_iviewport: vec2.create(), u_texture: 0, u_texture_depth: 1, u_random: vec2.create() };
-	if(o)
-		this.configure(o);
-}
-
-TextureFX.available_fx = {
-	"brightness_contrast": {
-		name: "Brightness & Contrast",
-		uniforms: {
-			brightness: { name: "u_brightness", type: "float", value: 1, step: 0.01 },
-			contrast: { name: "u_contrast", type: "float", value: 1, step: 0.01 }
-		},
-		code:"color.xyz = (color.xyz * u_brightness@ - vec3(0.5)) * u_contrast@ + vec3(0.5);"
-	},
-	"invert": {
-		name: "Invert color",
-		code:"color.xyz = vec3(1.0) - color.xyz;"
-	},
-	"threshold": {
-		name: "Threshold",
-		uniforms: {
-			threshold: { name: "u_threshold", type: "float", value: 0.5, min: 0, max: 2, step: 0.01 },
-			threshold_width: { name: "u_threshold_width", type: "float", value: 0.01, min: 0, max: 1, step: 0.001 }
-		},
-		code:"color.xyz = vec3( smoothstep( u_threshold@ - u_threshold_width@ * 0.5, u_threshold@ + u_threshold_width@ * 0.5,  length(color.xyz) ));"
-	},
-	"colorize": {
-		name: "Colorize",
-		uniforms: {
-			colorize: { name: "u_colorize", type: "color3", value: [1,1,1] },
-			vibrance: { name: "u_vibrance", type: "float", value: 0.0, min: 0, max: 2, step: 0.01 }
-		},
-		code:"color.xyz = color.xyz * (u_colorize@ + vec3(u_vibrance@ * 0.1)) * (1.0 + u_vibrance@);"
-	},
-	"color_add": {
-		name: "Color add",
-		uniforms: {
-			color_add: { name: "u_coloradd", type: "color3", value: [0.1,0.1,0.1] }
-		},
-		code:"color.xyz = color.xyz + u_coloradd@;"
-	},
-	"vigneting": {
-		name: "Vigneting",
-		uniforms: {
-			radius: { name: "u_radius", type: "float", value: 1 },
-			intensity: { name: "u_vigneting", type: "float", value: 1, min: 0, max: 2, step: 0.01 }
-		},
-		code:"color.xyz = mix( color.xyz * max( 1.0 - (dist_to_center * u_radius@ / 0.7071), 0.0), color.xyz, u_vigneting@);"
-	},
-	"aberration": {
-		name: "Chromatic Aberration",
-		pass: "before",
-		uniforms: {
-			difraction: { name: "u_difraction", type: "float", value: 1 }
-		},
-		code: "color.x = texture2D(u_texture, uv - to_center * 0.001 * u_difraction@ ).x;" + 
-			"color.z = texture2D(u_texture, uv + to_center * 0.001 * u_difraction@ ).z;"
-	},
-	"halftone": {
-		name: "Halftone",
-		uniforms: {
-			"Halftone angle": { name: "u_halftone_angle", type: "float", value: 0, step: 0.01 },
-			"Halftone size": { name: "u_halftone_size", type: "float", value: 1, step: 0.01 }
-		},
-		functions: ["pattern"],
-		code:"color.x = ( (color.x * 10.0 - 5.0) + pattern( u_halftone_angle@, u_halftone_size@ ) );" + 
-			"color.y = ( (color.y * 10.0 - 5.0) + pattern( u_halftone_angle@ + 0.167, u_halftone_size@ ) );" + 
-			"color.z = ( (color.z * 10.0 - 5.0) + pattern( u_halftone_angle@ + 0.333, u_halftone_size@ ) );"
-	},
-	"halftoneBN": {
-		name: "Halftone B/N",
-		uniforms: {
-			"Halftone angle": { name: "u_halftone_angle", type: "float", value: 0, step: 0.01 },
-			"Halftone size": { name: "u_halftone_size", type: "float", value: 1, step: 0.01 }
-		},
-		functions: ["pattern"],
-		code:"color.xyz = vec3( (length(color.xyz) * 10.0 - 5.0) + pattern( u_halftone_angle@, u_halftone_size@ ) );"
-	},
-	"lens": {
-		name: "Lens Distortion",
-		uniforms: {
-			lens_k: { name: "u_lens_k", type: "float", value: -0.15 },
-			lens_kcube: { name: "u_lens_kcube", type: "float", value: 0.8 },
-			lens_scale: { name: "u_lens_scale", type: "float", value: 1 }
-		},
-		uv_code:"float r2 = u_aspect * u_aspect * (uv.x-0.5) * (uv.x-0.5) + (uv.y-0.5) * (uv.y-0.5); float distort@ = 1. + r2 * (u_lens_k@ + u_lens_kcube@ * sqrt(r2)); uv = vec2( u_lens_scale@ * distort@ * (uv.x-0.5) + 0.5, u_lens_scale@  * distort@ * (uv.y-0.5) + 0.5 );"
-	},
-	"warp": {
-		name: "Warp",
-		uniforms: {
-			warp_amp: { name: "u_warp_amp", type: "float", value: 0.01, step: 0.001 },
-			warp_texture: { name: "u_warp_texture", type: "sampler2D", widget: "Texture", value: "" }
-		},
-		uv_code:"uv = uv + u_warp_amp@ * (texture2D( u_warp_texture@, uv ).xy - vec2(0.5));"
-		//uv_code:"uv = uv + u_warp_amp@ * (vec2(0.5) + 0.5 * vec2( sin(uv.x * u_warp_freq@) * sin(uv.y * u_warp_freq@)));"
-	},
-	"LUT": {
-		name: "LUT",
-		functions: ["LUT"],
-		uniforms: {
-			lut_intensity: { name: "u_lut_intensity", type: "float", value: 1, step: 0.01 },
-			lut_texture: { name: "u_lut_texture", type: "sampler2D", filter: "nearest", wrap: "clamp", widget: "Texture", value: "" }
-		},
-		code:"color.xyz = mix(color.xyz, LUT( color.xyz, u_lut_texture@ ), u_lut_intensity@);"
-		//uv_code:"uv = uv + u_warp_amp@ * (vec2(0.5) + 0.5 * vec2( sin(uv.x * u_warp_freq@) * sin(uv.y * u_warp_freq@)));"
-	},
-	"pixelate": {
-		name: "Pixelate",
-		uniforms: {
-			width: { name: "u_width", type: "float", value: 256, step: 1, min: 1 },
-			height: { name: "u_height", type: "float", value: 256, step: 1, min: 1 }
-		},
-		uv_code:"uv = vec2( floor(uv.x * u_width@) / u_width@, floor(uv.y * u_height@) / u_height@ );"
-	},
-	"quantize": {
-		name: "Quantize",
-		uniforms: {
-			levels: { name: "u_levels", type: "float", value: 8, step: 1, min: 1 }
-		},
-		code:"color.xyz = floor(color.xyz * u_levels@) / u_levels@;"
-	},
-	"edges": {
-		name: "Edges",
-		uniforms: {
-			"Edges factor": { name: "u_edges_factor", type: "float", value: 1 }
-		},
-		code:"vec4 color@ = texture2D(u_texture, uv );\n\
-				vec4 color_up@ = texture2D(u_texture, uv + vec2(0., u_iviewport.y));\n\
-				vec4 color_right@ = texture2D(u_texture, uv + vec2(u_iviewport.x,0.));\n\
-				vec4 color_down@ = texture2D(u_texture, uv + vec2(0., -u_iviewport.y));\n\
-				vec4 color_left@ = texture2D(u_texture, uv + vec2(-u_iviewport.x,0.));\n\
-				color = u_edges_factor@ * (abs(color@ - color_up@) + abs(color@ - color_down@) + abs(color@ - color_left@) + abs(color@ - color_right@));"
-	},
-	"depth": {
-		name: "Depth",
-		uniforms: {
-			"near": { name: "u_near", type: "float", value: 0.01, step: 0.1 },
-			"far": { name: "u_far", type: "float", value: 1000, step: 1 }
-		},
-		code:"color.xyz = vec3( (2.0 * u_near@) / (u_far@ + u_near@ - texture2D(u_texture_depth, uv ).x * (u_far@ - u_near@)) );"
-	},
-	"logarithmic": {
-		name: "Logarithmic",
-		uniforms: {
-			"Log. A Factor": { name: "u_logfactor_a", type: "float", value: 2, step: 0.01 },
-			"Log. B Factor": { name: "u_logfactor_b", type: "float", value: 2, step: 0.01 }
-		},
-		code:"color.xyz = log( color.xyz * u_logfactor_a@ ) * u_logfactor_b@;"
-	},
-	"ditherBN": {
-		name: "dither B/N",
-		functions: ["dither"],
-		uniforms: {
-		},
-		code:"color.xyz = vec3( dither( color.x ) );"
-	},
-	"dither": {
-		name: "Dither",
-		functions: ["dither"],
-		uniforms: {
-		},
-		code:"color.xyz = vec3( dither( color.x ), dither( color.y ), dither( color.z ) );"
-	},
-	"gamma": {
-		name: "Gamma",
-		uniforms: {
-			"Gamma": { name: "u_gamma", type: "float", value: 2.2, step: 0.01 }
-		},
-		code:"color.xyz = pow( color.xyz, vec3( 1.0 / u_gamma@) );"
-	},
-	"noiseBN": {
-		name: "Noise B&N",
-		functions: ["noise"],
-		uniforms: {
-			"noise": { name: "u_noise", type: "float", value: 0.1, step: 0.01 }
-		},
-		code:"color.xyz += u_noise@ * vec3( noise( (u_random + v_coord) * u_viewport) );"
-	}
-	/*
-	,
-	"fast_edges": {
-		name: "Edges (fast)",
-		code:"color.xyz = abs( dFdx(color.xyz) ) + abs( dFdy(color.xyz) );"
-	}
-	*/
-};
-
-TextureFX.available_functions = {
-	pattern: "float pattern(float angle, float size) {\n\
-				float s = sin(angle * 3.1415), c = cos(angle * 3.1415);\n\
-				vec2 tex = v_coord * u_viewport.xy;\n\
-				vec2 point = vec2( c * tex.x - s * tex.y , s * tex.x + c * tex.y ) * size;\n\
-				return (sin(point.x) * sin(point.y)) * 4.0;\n\
-			}\n\
-		",
-	dither: "float dither(float v) {\n\
-				vec2 pixel = v_coord * u_viewport;\n\
-				int i = int(floor(clamp(v,0.0,1.0) * 16.0 + 0.5));\n\
-				if(i < 1)\n\
-					return 0.0;\n\
-				if(i >= 15)\n\
-					return 1.0;\n\
-				float x = floor(pixel.x);\n\
-				float y = floor(pixel.y);\n\
-				bool xmod4 = mod(x, 4.0) == 0.0;\n\
-				bool ymod4 = mod(y, 4.0) == 0.0;\n\
-				bool xmod2 = mod(x, 2.0) == 0.0;\n\
-				bool ymod2 = mod(y, 2.0) == 0.0;\n\
-				bool xmod4_2 = mod(x + 2.0, 4.0) == 0.0;\n\
-				bool ymod4_2 = mod(y + 2.0, 4.0) == 0.0;\n\
-				bool xmod2_1 = mod(x + 1.0, 2.0) == 0.0;\n\
-				bool ymod2_1 = mod(y + 1.0, 2.0) == 0.0;\n\
-				bool xmod4_1 = mod(x + 1.0, 4.0) == 0.0;\n\
-				bool ymod4_1 = mod(y + 1.0, 4.0) == 0.0;\n\
-				bool xmod4_3 = mod(x + 3.0, 4.0) == 0.0;\n\
-				bool ymod4_3 = mod(y + 3.0, 4.0) == 0.0;\n\
-				\n\
-				if(i < 9)\n\
-				{\n\
-					if(i >= 1 && xmod4 && ymod4 )\n\
-						return 1.0;\n\
-					if(i >= 2 && xmod4_2 && ymod4_2)\n\
-						return 1.0;\n\
-					if(i >= 3 && xmod4_2 && ymod2 )\n\
-						return 1.0;\n\
-					if(i >= 4 && xmod2 && ymod2 )\n\
-						return 1.0;\n\
-					if(i >= 5 && xmod4_1 && ymod4_1 )\n\
-						return 1.0;\n\
-					if(i >= 6 && xmod4_3 && ymod4_3 )\n\
-						return 1.0;\n\
-					if(i >= 7 && xmod4_1 && ymod4_3 )\n\
-						return 1.0;\n\
-					if(i >= 8 && xmod4_3 && ymod4_1 )\n\
-						return 1.0;\n\
-					return 0.0;\n\
-				}\n\
-				else\n\
-				{\n\
-					if(i < 15 && xmod4_1 && ymod4 )\n\
-						return 0.0;\n\
-					if(i < 14 && xmod4_3 && ymod4_2)\n\
-						return 0.0;\n\
-					if(i < 13 && xmod4_3 && ymod2 )\n\
-						return 0.0;\n\
-					if(i < 12 && xmod2_1 && ymod2 )\n\
-						return 0.0;\n\
-					if(i < 11 && xmod4_2 && ymod4_1 )\n\
-						return 0.0;\n\
-					if(i < 10 && xmod4 && ymod4_3 )\n\
-						return 0.0;\n\
-					return 1.0;\n\
-				}\n\
-			}\n\
-		",
-	LUT:  "vec3 LUT(in vec3 color, in sampler2D textureB) {\n\
-		 lowp vec3 textureColor = clamp( color, vec3(0.0), vec3(1.0) );\n\
-		 mediump float blueColor = textureColor.b * 63.0;\n\
-		 mediump vec2 quad1;\n\
-		 quad1.y = floor(floor(blueColor) / 8.0);\n\
-		 quad1.x = floor(blueColor) - (quad1.y * 8.0);\n\
-		 mediump vec2 quad2;\n\
-		 quad2.y = floor(ceil(blueColor) / 8.0);\n\
-		 quad2.x = ceil(blueColor) - (quad2.y * 8.0);\n\
-		 highp vec2 texPos1;\n\
-		 texPos1.x = (quad1.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.r);\n\
-		 texPos1.y = 1.0 - ((quad1.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.g));\n\
-		 highp vec2 texPos2;\n\
-		 texPos2.x = (quad2.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.r);\n\
-		 texPos2.y = 1.0 - ((quad2.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.g));\n\
-		 lowp vec3 newColor1 = texture2D(textureB, texPos1).xyz;\n\
-		 lowp vec3 newColor2 = texture2D(textureB, texPos2).xyz;\n\
-		 lowp vec3 newColor = mix(newColor1, newColor2, fract(blueColor));\n\
-		 return newColor.rgb;\n\
-	 }",
-	noise:  "\n\
-		float hash(float n) { return fract(sin(n) * 1e4); }\n\
-		float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }\n\
-		float noise(float x) {\n\
-			float i = floor(x);\n\
-			float f = fract(x);\n\
-			float u = f * f * (3.0 - 2.0 * f);\n\
-			return mix(hash(i), hash(i + 1.0), u);\n\
-		}\n\
-		float noise(vec2 x) {\n\
-			vec2 i = floor(x);\n\
-			vec2 f = fract(x);\n\
-			float a = hash(i);\n\
-			float b = hash(i + vec2(1.0, 0.0));\n\
-			float c = hash(i + vec2(0.0, 1.0));\n\
-			float d = hash(i + vec2(1.0, 1.0));\n\
-			vec2 u = f * f * (3.0 - 2.0 * f);\n\
-			return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;\n\
-		}\n\
-	"
-}
-
-/**
-* Returns the first component of this container that is of the same class
-* @method configure
-* @param {Object} o object with the configuration info from a previous serialization
-*/
-TextureFX.prototype.configure = function(o)
-{
-	this.apply_fxaa = !!o.apply_fxaa;
-	if(o.fx)
-		this.fx = o.fx.concat();
-}
-
-TextureFX.prototype.serialize = function()
-{
-	return { 
-		apply_fxaa: this.apply_fxaa,
-		fx: this.fx.concat()
-	};
-}
-
-TextureFX.prototype.getResources = function(res)
-{
-	//TODO
-	return res;
-}
-
-TextureFX.prototype.addFX = function( name )
-{
-	if(!name)
-		return;
-	if( !TextureFX.available_fx[ name ] )
-	{
-		console.warn( "TextureFX not found: " + name );
-		return;
-	}
-	this.fx.push({ name: name });
-}
-
-TextureFX.prototype.getFX = function(index)
-{
-	return this.fx[ index ];
-}
-
-TextureFX.prototype.moveFX = function( fx, offset )
-{
-	offset = offset || -1;
-
-	var index = this.fx.indexOf(fx);
-	if( index == -1 )
-		return;
-
-	this.fx.splice(index,1);
-	index += offset;
-
-
-	if(index >= 0 && index < this.fx.length)
-		this.fx.splice(index,0,fx);
-	else
-		this.fx.push(fx);
-}
-
-TextureFX.prototype.removeFX = function( fx )
-{
-	for(var i = 0; i < this.fx.length; i++)
-	{
-		if(this.fx[i] !== fx)
-			continue;
-
-		this.fx.splice(i,1);
-		return;
-	}
-}
-
-TextureFX.prototype.applyFX = function( input_texture, output_texture, options )
-{
-	var color_texture = input_texture;
-	var depth_texture = options.depth_texture;
-
-	var fxs = this.fx;
-
-	//shadercode: TODO, do this in a lazy way
-	var key = "";
-	var update_shader = true;
-	for(var i = 0; i < fxs.length; i++)
-		key += fxs[i].name + "|";
-	if(key == this._last_shader_key)
-		update_shader = false;
-	this._last_shader_key = key;
-
-	var uv_code = "";
-	var color_code = "";
-	var included_functions = {};
-	var uniforms_code = "";
-	var texture_slot = 2;
-
-	var uniforms = this._uniforms;
-	uniforms.u_viewport[0] = color_texture.width;
-	uniforms.u_viewport[1] = color_texture.height;
-	uniforms.u_iviewport[0] = 1 / color_texture.width;
-	uniforms.u_iviewport[1] = 1 / color_texture.height;
-	uniforms.u_aspect = color_texture.width / color_texture.height;
-	uniforms.u_random[0] = Math.random();
-	uniforms.u_random[1] = Math.random();
-
-	var fx_id = 0;
-	for(var i = 0; i < fxs.length; i++)
-	{
-		var fx = fxs[i];
-		fx_id = i;
-		var fx_info = TextureFX.available_fx[ fx.name ];
-		if(!fx_info)
-			continue;
-		if(update_shader)
-		{
-			if(fx_info.functions)
-				for(var z in fx_info.functions)
-					included_functions[ fx_info.functions[z] ] = true;
-			if( fx_info.code )
-				color_code += fx_info.code.split("@").join( fx_id ) + ";\n";
-			if( fx_info.uv_code )
-				uv_code += fx_info.uv_code.split("@").join( fx_id ) + ";\n";
-		}
-		if(fx_info.uniforms)
-			for(var j in fx_info.uniforms)
-			{
-				var uniform = fx_info.uniforms[j];
-				var varname = uniform.name + fx_id;
-				if(update_shader)
-				{
-					uniforms_code += "uniform " + uniform.type + " " + varname + ";\n";
-				}
-
-				if(uniform.type == "sampler2D")
-				{
-					uniforms[ varname ] = texture_slot;
-					var tex = this.getTexture( fx[j] );
-					if(tex)
-					{
-						tex.bind( texture_slot );
-						if(uniform.filter == "nearest")
-						{
-							gl.texParameteri( tex.texture_type, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
-							gl.texParameteri( tex.texture_type, gl.TEXTURE_MIN_FILTER, gl.NEAREST );
-						}
-						if(uniform.wrap == "clamp")
-						{
-							gl.texParameteri( tex.texture_type, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
-							gl.texParameteri( tex.texture_type, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE );
-						}
-						texture_slot++;
-					}
-				}
-				else
-					uniforms[ varname ] = fx[j] !== undefined ? fx[j] : uniform.value;
-			}
-	}
-
-
-	var shader = null;
-	if(update_shader)
-	{
-		var functions_code = "";
-		for(var i in included_functions)
-		{
-			var func = TextureFX.available_functions[ i ];
-			if(!func)
-			{
-				console.error("TextureFX: Function not found: " + i);
-				continue;
-			}
-			functions_code += func + "\n";
-		}
-
-		var fullcode = "\n\
-			#extension GL_OES_standard_derivatives : enable\n\
-			precision highp float;\n\
-			#define color3 vec3\n\
-			#define color4 vec4\n\
-			uniform sampler2D u_texture;\n\
-			uniform sampler2D u_texture_depth;\n\
-			varying vec2 v_coord;\n\
-			uniform vec2 u_viewport;\n\
-			uniform vec2 u_iviewport;\n\
-			uniform float u_aspect;\n\
-			uniform vec2 u_random;\n\
-			vec2 uv;\n\
-			" + uniforms_code + "\n\
-			" + functions_code + "\n\
-			void main() {\n\
-				uv = v_coord;\n\
-				vec2 to_center = vec2(0.5) - uv;\n\
-				float dist_to_center = length(to_center);\n\
-				" + uv_code + "\n\
-				vec4 color = texture2D(u_texture, uv);\n\
-				float temp = 0.0;\n\
-				" + color_code + "\n\
-				gl_FragColor = color;\n\
-			}\n\
-			";
-
-		this._last_shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, fullcode );
-	}
-
-	shader = this._last_shader;
-
-	if(shader.hasUniform("u_texture_depth"))
-		depth_texture.bind(1);
-
-	color_texture.setParameter( gl.TEXTURE_MAG_FILTER, gl.LINEAR );
-	color_texture.setParameter( gl.TEXTURE_MIN_FILTER, gl.LINEAR );
-
-	if( this.apply_fxaa )
-	{
-		if(!this.temp_tex || this.temp_tex.width != gl.viewport_data[2] || this.temp_tex.height != gl.viewport_data[3])
-			this.temp_tex = new GL.Texture(gl.viewport_data[2],gl.viewport_data[3]);
-		this.temp_tex.drawTo(function(){
-			color_texture.toViewport( shader, uniforms );
-		});
-		var fx_aa_shader = GL.Shader.getFXAAShader();
-		fx_aa_shader.setup();
-
-		if(!output_texture)
-			this.temp_tex.toViewport( fx_aa_shader );
-		else
-			this.temp_tex.copyTo( output_texture, fx_aa_shader );
-	}
-	else
-	{
-		this.temp_tex = null;
-		if(!output_texture)
-			color_texture.toViewport( shader, uniforms );
-		else
-		{
-			shader.uniforms( uniforms );
-			this.temp_tex.copyTo( output_texture, shader );
-		}
-	}
-}
-
-TextureFX.prototype.getTexture = function( name )
-{
-	return LS.ResourcesManager.getTexture( name );
-}
-
-LS.TextureFX = TextureFX;
-LS.Tween = {
-
-	EASE_IN_QUAD: 1,
-	EASE_OUT_QUAD: 2,
-	EASE_IN_OUT_QUAD: 3,
-	QUAD: 3,
-
-	EASE_IN_CUBIC: 4,
-	EASE_OUT_CUBIC: 5,
-	EASE_IN_OUT_CUBIC: 6,
-	CUBIC: 6,
-
-	EASE_IN_QUART: 7,
-	EASE_OUT_QUART: 8,
-	EASE_IN_OUT_QUART: 9,
-	QUART: 9,
-
-	EASE_IN_SINE: 10,
-	EASE_OUT_SINE: 11,
-	EASE_IN_OUT_SINE: 12,
-	SINE: 12,
-
-	EASE_IN_EXPO: 13,
-	EASE_OUT_EXPO: 14,
-	EASE_IN_OUT_EXPO: 15,
-	EXPO: 15,
-
-	EASE_IN_BACK: 16,
-	EASE_OUT_BACK: 17,
-	EASE_IN_OUT_BACK: 18,
-	BACK: 18,
-
-	current_easings: [],
-	_alife: [], //temporal array
-
-	reset: function()
-	{
-		this.current_easings = [];
-		this._alife = [];
-	},
-
-	easeProperty: function( object, property, target, time, easing_function, on_complete, on_progress )
-	{
-		if( !object )
-			throw("ease object cannot be null");
-		if( target === undefined )
-			throw("target vaue must be defined");
-		if(object[property] === undefined)
-			throw("property not found in object, must be initialized to a value");
-
-		easing_function = easing_function || this.EASE_IN_OUT_QUAD;
-
-		//clone to avoid problems
-		var origin = null;
-		
-		if(property)
-			origin = LS.cloneObject( object[ property ] );
-		else
-			origin = LS.cloneObject( object );
-		target = LS.cloneObject( target );
-
-		//precompute target value size
-		var size = 0;
-		if(target.constructor === Number)
-			size = -1;
-		else if(target && target.length !== undefined)
-			size = target.length;
-
-		var data = { object: object, property: property, origin: origin, target: target, current: 0, time: time, easing: easing_function, on_complete: on_complete, on_progress: on_progress, size: size };
-
-		for(var i = 0; i < this.current_easings.length; ++i)
-		{
-			if( this.current_easings[i].object == object && this.current_easings[i].property == property )
-			{
-				this.current_easings[i] = data; //replace old easing
-				break;
-			}
-		}
-
-		this.current_easings.push( data );
-		return data;
-	},
-
-	easeObject: function( object, target, time, easing_function, on_complete, on_progress )
-	{
-		if( !object || !target )
-			throw("ease object cannot be null");
-
-		easing_function = easing_function || this.EASE_IN_OUT_QUAD;
-
-		//clone to avoid problems
-		var origin = LS.cloneObject( object );
-		target = LS.cloneObject( target );
-
-		//precompute size
-		var size = 0;
-		if(target.length !== undefined)
-			size = target.length;
-
-		var data = { object: object, origin: origin, target: target, current: 0, time: time, easing: easing_function, on_complete: on_complete, on_progress: on_progress, size: size };
-
-		for(var i = 0; i < this.current_easings.length; ++i)
-		{
-			if( this.current_easings[i].object == object )
-			{
-				this.current_easings[i] = data; //replace old easing
-				break;
-			}
-		}
-
-		this.current_easings.push( data );
-		return data;
-	},
-
-	update: function( dt )
-	{
-		if( !this.current_easings.length )
-			return;
-
-		var easings = this.current_easings;
-		var alive = this._alife;
-		alive.length = easings.length;
-		var pos = 0;
-
-		for(var i = 0, l = easings.length; i < l; ++i)
-		{
-			var item = easings[i];
-			item.current += dt;
-			var t = 1;
-			if(item.current < item.time)
-			{
-				t = item.current / item.time;
-				alive[ pos ] = item;
-				pos += 1;
-			}
-
-			var f = this.getEaseFactor( t, item.easing );
-
-			var result = null;
-
-			if(item.size)
-			{
-				if(item.size == -1) //number
-					item.object[ item.property ] = item.target * f + item.origin * ( 1.0 - f );
-				else
-				{
-					var property = item.object[ item.property ];
-					for(var j = 0; j < item.size; ++j)
-						property[j] = item.target[j] * f + item.origin[j] * ( 1.0 - f );
-				}
-				if(item.object.mustUpdate !== undefined)
-					item.object.mustUpdate = true;
-			}
-
-			if(item.on_progress)
-				item.on_progress( item );
-
-			if(t == 1 && item.on_complete)
-				item.on_complete( item );
-		}
-
-		alive.length = pos; //trim
-
-		this.current_easings = alive;
-		this._alife = easings;
-	},
-
-	getEaseFactor: function(t,type)
-	{
-		if(t>1) 
-			t = 1;
-		else if(t < 0)
-			t = 0;
-		var s = 1.70158;
-		type = type || this.QUAD;
-		switch(type)
-		{
-			case this.EASE_IN_QUAD: return (t*t);
-			case this.EASE_OUT_QUAD: return 1-(t*t);
-			case this.EASE_IN_OUT_QUAD: { 
-				t *= 2;
-				if( t < 1 ) return 0.5 * t * t;
-				t -= 1;
-				return -0.5 * ((t)*(t-2) - 1);
-			};
-
-			case this.EASE_IN_CUBIC: return t*t*t;
-			case this.EASE_OUT_CUBIC: {
-				t -= 1;
-				return t*t*t + 1;
-			};
-			case this.EASE_IN_OUT_CUBIC: {
-				t *= 2;
-				if( t < 1 )
-					return 0.5 * t*t*t;
-				t -= 2;
-				return 0.5*(t*t*t + 2);
-			};
-
-			case this.EASE_IN_QUART: return t*t*t*t;
-			case this.EASE_OUT_QUART: {
-				t -= 1;
-				return -(t*t*t*t - 1);
-			}
-			case this.EASE_IN_OUT_QUART: {
-				t *= 2;
-				if( t < 1 ) return 0.5*t*t*t*t;
-				else {
-					t -= 2;
-					return -0.5 * (t*t*t*t - 2);
-				}
-			}
-
-			case this.EASE_IN_SINE:	return 1-Math.cos( t * Math.PI / 2 );
-			case this.EASE_OUT_SINE:	return Math.sin( t * Math.PI / 2 );
-			case this.EASE_IN_OUT_SINE: return -0.5 * ( Math.cos( Math.PI * t ) - 1 );
-
-			case this.EASE_IN_EXPO: return t == 0 ? 0 : Math.pow( 2, 10 * (t - 1) );
-			case this.EASE_OUT_EXPO: return t == 1 ? 1 : 1 - Math.pow( 2, -10 * t );
-			case this.EASE_IN_OUT_EXPO: {
-				if( t == 0 ) return 0;
-				if( t == 1 ) return 1;
-				t *= 2;
-				if( t < 1 ) return 0.5 * Math.pow( 2, 10 * (t - 1) );
-				return 0.5 * ( -Math.pow( 2, -10 * (t - 1)) + 2);
-			}
-
-			case this.EASE_IN_BACK: return t * t * ((s+1)*t - s);
-			case this.EASE_OUT_BACK: return (t*t*((s+1)*t + s) + 1);
-			case this.EASE_IN_OUT_BACK: {
-				t *= 2;
-				if( t < 1 ) {
-					s *= 1.525;
-					return 0.5*(t*t*((s+1)*t - s));
-				}
-				else {
-					t -= 2;
-					s *= 1.525;
-					return 0.5*(t*t*((s+1)*t+ s) + 2);
-				}
-			};
-		}
-		return t;
-	}
-};
-
-/** RenderSettings contains how the scene should be renderer 
-* There could be different renderSettings for different scene quality.
-* @class RenderSettings
-* @constructor
-**/
-
-function RenderSettings( o )
-{
-	this.renderer_name = null; //null means default
-
-	//global render settings
-	this.default_shadowmap_resolution = LS.Light.DEFAULT_SHADOWMAP_RESOLUTION; //let the system decide best shadowmap resolution according to quality settings
-	this.ignore_viewports = false;	//render to full viewport, ignoring the viewport in the cameras
-	this.ignore_clear = false;	//skip global clear, used in case you want to mix LiteScene with another renderer
-	this.keep_viewport = false; //do not force a full canvas viewport at render start (use the current one in WebGL as the full)
-	this.linear_pipeline = false; //tries to degamma all the albedo textures.
-
-	this.shadows_enabled = true; //allow shadowmaps
-	this.update_shadowmaps = true; //automatically update shadowmaps in every frame (enable if there are dynamic objects)
-	this.update_all_shadowmaps = false; //update shadowmaps even if they are not visible
-
-	this.force_wireframe = false; //render everything in wireframe
-	this.lights_disabled = false; //flat lighting
-	this.low_quality = false;	//try to use low quality shaders (where available)
-
-	this.update_materials = true; //update info in materials in every frame
-	this.render_all_cameras = true; //render secundary cameras too
-	this.render_fx = true; //postprocessing fx
-	this.render_gui = true; //render gui
-	this.render_helpers = true; //render helpers (for the editor)
-
-	this.sort_instances_by_distance = true; //sort render instances by distance 
-	this.sort_instances_by_priority = true; //sort render instances by priority
-	this.z_pass = false; //enable when the shaders are too complex (normalmaps, etc) to reduce work of the GPU (still some features missing)
-	this.frustum_culling = true; //test bounding box by frustum to determine visibility
-	this.depth_test = true;	//do depth test when rendering
-
-	this.clipping_plane = null;
-
-	//info
-	this.in_player = true; //is in the player (not in the editor)
-
-	//this should change one day...
-	this.default_shader_id = "global";
-	this.default_low_shader_id = "lowglobal";
-
-	if(o)
-		this.configure(o);
-}
-
-RenderSettings["@default_shadowmap_resolution"] = { widget: "combo", values: [0,256,512,1024,2048,4096] };
-
-RenderSettings.prototype.serialize = function()
-{
-	return LS.cloneObject(this);
-}
-
-RenderSettings.prototype.configure = function(o)
-{
-	if(o)
-		for(var i in o)
-			this[i] = o[i];
-}
-
-RenderSettings.prototype.toJSON = RenderSettings.prototype.serialize;
-
-LS.RenderSettings = RenderSettings;
-/**
-* RenderInstance contains info of one object to be rendered on the scene.
-*
-* @class RenderInstance
-* @namespace LS
-* @constructor
-*/
-
-//Flags to control rendering states
-//0-7: render state flags
-var RI_CULL_FACE =			1;		//for two sided
-var RI_CW =					1 << 1; //reverse normals
-var RI_DEPTH_TEST =			1 << 2; //use depth test
-var RI_DEPTH_WRITE = 		1 << 3; //write in the depth buffer
-var RI_ALPHA_TEST =			1 << 4; //do alpha test
-var RI_BLEND = 				1 << 5; //use blend function
-
-//8-16: rendering pipeline flags
-var RI_CAST_SHADOWS = 		1 << 8;	//render in shadowmaps
-var RI_RECEIVE_SHADOWS =	1 << 9;	//receive shadowmaps
-var RI_IGNORE_LIGHTS = 		1 << 10;//render without taking into account light info
-var RI_IGNORE_FRUSTUM = 	1 << 11;//render even when outside of frustum //CHANGE TO VALID_BOUNDINGBOX
-//var RI_RENDER_2D = 			1 << 12;//render in screen space using the position projection (similar to billboard)
-var RI_IGNORE_VIEWPROJECTION = 1 << 13; //do not multiply by viewprojection, use model as mvp
-var RI_IGNORE_CLIPPING_PLANE = 1 << 14; //ignore the plane clipping (in reflections)
-
-//16-24: instance properties
-var RI_RAYCAST_ENABLED = 1 << 16; //if it could be raycasted
-var RI_IGNORE_AUTOUPDATE = 1 << 17; //if it could update matrix from scene
-
-
-//default flags for any instance
-var RI_DEFAULT_FLAGS = RI_CULL_FACE | RI_DEPTH_TEST | RI_DEPTH_WRITE | RI_CAST_SHADOWS | RI_RECEIVE_SHADOWS;
-//var RI_2D_FLAGS = RI_RENDER_2D | RI_CULL_FACE | RI_BLEND | RI_IGNORE_LIGHTS | RI_IGNORE_FRUSTUM;
-
-function RenderInstance( node, component )
-{
-	this._key = ""; //not used yet
-	this.uid = LS.generateUId("RINS"); //unique identifier for this RI
-	this.layers = 3;
-
-	//info about the mesh
-	this.vertex_buffers = {};
-	this.index_buffer = null;
-	this.wireframe_index_buffer = null;
-	this.range = new Int32Array([0,-1]); //start, offset
-	this.primitive = gl.TRIANGLES;
-
-	this.mesh = null; //shouldnt be used (buffers are added manually), but just in case
-	this.collision_mesh = null; //in case of raycast
-
-	//used in case the object has a secondary mesh
-	this.lod_mesh = null;
-	this.lod_vertex_buffers = {};
-	this.lod_index_buffer = null;
-
-	//where does it come from
-	this.node = node;
-	this.component = component;
-	this.priority = 10; //instances are rendered from higher to lower priority
-
-	//rendering flags
-	this.flags = RI_DEFAULT_FLAGS;
-	this.blend_func = LS.BlendFunctions["normal"]; //Blend.funcs["add"], ...
-
-	//transformation
-	this.matrix = mat4.create();
-	this.normal_matrix = mat4.create();
-	this.center = vec3.create();
-
-	//for visibility computation
-	this.oobb = BBox.create(); //object space bounding box
-	this.aabb = BBox.create(); //axis aligned bounding box
-
-	//info about the material
-	this.material = null;
-	//this.materials = null; //for multimaterial rendering, LONG FUTURE...
-
-	//for extra data for the shader
-	this.query = new LS.ShaderQuery();
-	this.uniforms = {};
-	this.samplers = {};
-
-	this._camera_visibility = 0; //tells in which camera was visible this instance during the last rendering
-	this._is_visible = false; //used during the rendering
-
-	//for internal use
-	this._dist = 0; //computed during rendering, tells the distance to the current camera
-	this._final_query = new LS.ShaderQuery();
-	this._final_uniforms = {};
-	this._final_samplers = {};
-}
-
-/*
-//not used
-RenderInstance.prototype.generateKey = function(step, options)
-{
-	this._key = step + "|" + this.node.uid + "|" + this.material.uid + "|";
-	return this._key;
-}
-*/
-
-//set the material and apply material flags to render instance
-RenderInstance.prototype.setMatrix = function(matrix, normal_matrix)
-{
-	this.matrix.set( matrix );
-
-	if( normal_matrix )
-		this.normal_matrix.set( normal_matrix )
-	else
-		this.computeNormalMatrix();
-}
-
-/**
-* Updates the normal matrix using the matrix
-*
-* @method computeNormalMatrix
-*/
-RenderInstance.prototype.computeNormalMatrix = function()
-{
-	var m = mat4.invert(this.normal_matrix, this.matrix);
-	if(m)
-		mat4.transpose(this.normal_matrix, m);
-}
-
-//set the material and apply material flags to render instance
-RenderInstance.prototype.setMaterial = function(material)
-{
-	this.material = material;
-	if(material)
-		material.applyToRenderInstance(this);
-}
-
-//sets the buffers to render, the primitive, and the bounding
-RenderInstance.prototype.setMesh = function(mesh, primitive)
-{
-	if( primitive == -1 || primitive === undefined )
-		primitive = gl.TRIANGLES;
-	this.primitive = primitive;
-
-	if(mesh != this.mesh)
-	{
-		this.mesh = mesh;
-		this.vertex_buffers = {};
-	}
-	//this.vertex_buffers = mesh.vertexBuffers;
-	for(var i in mesh.vertexBuffers)
-		this.vertex_buffers[i] = mesh.vertexBuffers[i];
-
-	switch(primitive)
-	{
-		case gl.TRIANGLES: 
-			this.index_buffer = mesh.indexBuffers["triangles"]; //works for indexed and non-indexed
-			break;
-		case gl.LINES: 
-			/*
-			if(!mesh.indexBuffers["lines"])
-				mesh.computeWireframe();
-			*/
-			this.index_buffer = mesh.indexBuffers["lines"];
-			break;
-		case 10:  //wireframe
-			this.primitive = gl.LINES;
-			if(!mesh.indexBuffers["wireframe"])
-				mesh.computeWireframe();
-			this.index_buffer = mesh.indexBuffers["wireframe"];
-			break;
-
-		case gl.POINTS: 
-		default:
-			this.index_buffer = null;
-			break;
-	}
-
-	if(mesh.bounding)
-	{
-		this.oobb.set( mesh.bounding ); //copy
-		this.flags &= ~RI_IGNORE_FRUSTUM; //test against frustum
-	}
-	else
-		this.flags |= RI_IGNORE_FRUSTUM; //no frustum, no test
-}
-
-//assigns a secondary mesh in case the object is too small on the screen
-RenderInstance.prototype.setLODMesh = function(lod_mesh)
-{
-	if(!lod_mesh)
-	{
-		this.lod_mesh = null;
-		this.lod_vertex_buffers = null;
-		this.lod_index_buffer = null;
-		return;
-	}
-
-	if(lod_mesh != this.lod_mesh)
-	{
-		this.lod_mesh = lod_mesh;
-		this.lod_vertex_buffers = {};
-	}
-	//this.vertex_buffers = mesh.vertexBuffers;
-	for(var i in lod_mesh.vertexBuffers)
-		this.lod_vertex_buffers[i] = lod_mesh.vertexBuffers[i];
-
-	switch(this.primitive)
-	{
-		case gl.TRIANGLES: 
-			this.lod_index_buffer = lod_mesh.indexBuffers["triangles"]; //works for indexed and non-indexed
-			break;
-		case gl.LINES: 
-			/*
-			if(!mesh.indexBuffers["lines"])
-				mesh.computeWireframe();
-			*/
-			this.lod_index_buffer = lod_mesh.indexBuffers["lines"];
-			break;
-		case 10:  //wireframe
-			if(!lod_mesh.indexBuffers["wireframe"])
-				lod_mesh.computeWireframe();
-			this.lod_index_buffer = lod_mesh.indexBuffers["wireframe"];
-			break;
-		case gl.POINTS: 
-		default:
-			this.lod_index_buffer = null;
-			break;
-	}
-}
-
-RenderInstance.prototype.setRange = function(start, offset)
-{
-	this.range[0] = start;
-	this.range[1] = offset;
-}
-
-/**
-* takes the flags on the node and update the render instance flags
-*
-* @method applyNodeFlags
-*/
-RenderInstance.prototype.applyNodeFlags = function()
-{
-	var node_flags = this.node.flags;
-	this.layers = this.node.layers;
-
-	if(node_flags.two_sided == true) this.flags &= ~RI_CULL_FACE;
-	else this.flags |= RI_CULL_FACE;
-
-	if(node_flags.flip_normals == true) this.flags |= RI_CW;
-	else this.flags &= ~RI_CW;
-
-	if(node_flags.depth_test == false) this.flags &= ~RI_DEPTH_TEST;
-	else this.flags |= RI_DEPTH_TEST;
-
-	if(node_flags.depth_write == false) this.flags &= ~RI_DEPTH_WRITE;
-	else this.flags |= RI_DEPTH_WRITE;
-
-	//if(node_flags.alpha_test == true) this.flags |= RI_ALPHA_TEST;
-	//else this.flags &= ~RI_ALPHA_TEST;
-
-	if(node_flags.cast_shadows == false) this.flags &= ~RI_CAST_SHADOWS;
-	else this.flags |= RI_CAST_SHADOWS;
-
-	if(node_flags.receive_shadows == false) this.flags &= ~RI_RECEIVE_SHADOWS;	
-	else this.flags |= RI_RECEIVE_SHADOWS;	
-}
-
-/**
-* Enable flag in the flag bit field
-*
-* @method enableFlag
-* @param {number} flag id
-*/
-RenderInstance.prototype.enableFlag = function(flag)
-{
-	this.flags |= flag;
-}
-
-/**
-* Disable flag in the flag bit field
-*
-* @method enableFlag
-* @param {number} flag id
-*/
-RenderInstance.prototype.disableFlag = function(flag)
-{
-	this.flags &= ~flag;
-}
-
-/**
-* Tells if a flag is enabled
-*
-* @method enableFlag
-* @param {number} flag id
-* @return {boolean} flag value
-*/
-RenderInstance.prototype.isFlag = function(flag)
-{
-	return (this.flags & flag);
-}
-
-/**
-* Computes the instance bounding box in world space from the one in local space
-*
-* @method updateAABB
-*/
-RenderInstance.prototype.updateAABB = function()
-{
-	BBox.transformMat4(this.aabb, this.oobb, this.matrix );
-}
-
-/**
-* Used to update the RI info without having to go through the collectData process, it is faster but some changes may take a while
-*
-* @method update
-*/
-RenderInstance.prototype.update = function()
-{
-	if(!this.node || !this.node.transform)
-		return;
-	this.setMatrix( this.node.transform._global_matrix );
-}
-
-/**
-* Calls render taking into account primitive and range
-*
-* @method render
-* @param {Shader} shader
-*/
-RenderInstance.prototype.render = function(shader)
-{
-	if(this.lod_mesh)
-	{
-		//very bad LOD function...
-		var f = this.oobb[12] / Math.max(0.1, this._dist);
-		if( f < 0.1 )
-		{
-			shader.drawBuffers( this.lod_vertex_buffers,
-			  this.lod_index_buffer,
-			  this.primitive);
-			return;
-		}
-	}
-
-	shader.drawBuffers( this.vertex_buffers,
-	  this.index_buffer,
-	  this.primitive, this.range[0], this.range[1] );
-}
-
-RenderInstance.prototype.overlapsSphere = function(center, radius)
-{
-	//we dont know if the bbox of the instance is valid
-	if(this.flags & RI_IGNORE_FRUSTUM)
-		return true;
-	return geo.testSphereBBox( center, radius, this.aabb );
-}
-
-/**
-* Checks if this object was visible by a camera during the last frame
-*
-* @method wasVisibleByCamera
-* @param {LS.Camera} camera [optional] if a camera is supplied it checks if it was visible by that camera, otherwise tells you if it was visible by any camera
-* @return {Boolean} true if it was visible by the camera (or any camera if no camera supplied), false otherwise
-*/
-RenderInstance.prototype.wasVisibleByCamera = function( camera )
-{
-	if(!camera)
-		return this._camera_visibility != 0;
-	return (this._camera_visibility | (1<<(camera._rendering_index))) ? true : false;
-}
-
-
-/* moved to PhysicsInstance
-RenderInstance.prototype.setCollisionMesh = function(mesh)
-{
-	this.flags |= RI_USE_MESH_AS_COLLIDER;
-	this.collision_mesh = mesh;
-}
-*/
-
-LS.RenderInstance = RenderInstance;
-/*	
-	RenderFrameContainer
-	This class is used when you want to render the scene not to the screen but to some texture for postprocessing
-	Check the CameraFX components to see it in action.
-*/
-
-function RenderFrameContainer()
-{
-	this.width = RenderFrameContainer.default_width;
-	this.height = RenderFrameContainer.default_height;
-
-	this.use_high_precision = false;
-	this.use_depth_texture = true;
-	this.use_extra_texture = false;
-
-	this.camera = null;
-}
-
-RenderFrameContainer.default_width = 1024;
-RenderFrameContainer.default_height = 512;
-
-RenderFrameContainer.prototype.useDefaultSize = function()
-{
-	this.width = LS.RenderFrameContainer.default_width;
-	this.height = LS.RenderFrameContainer.default_height;
-}
-
-RenderFrameContainer.prototype.useCanvasSize = function()
-{
-	this.width = gl.canvas.width;
-	this.height = gl.canvas.height;
-}
-
-RenderFrameContainer.prototype.setSize = function( width, height )
-{
-	if(width < 1)
-		width = 1;
-	if(height < 1)
-		height = 1;
-
-	this.width = width;
-	this.height = height;
-}
-
-
-RenderFrameContainer.prototype.preRender = function( render_settings )
-{
-	var camera = LS.Renderer._current_camera;
-
-	this.startFBO();
-	//overwrite to create some buffers here attached to the current FBO
-
-	//set depth info inside the texture
-	if(this.depth_texture && camera)
-	{
-		if(!this.depth_texture.near_far_planes)
-			this.depth_texture.near_far_planes = vec2.create();
-		this.depth_texture.near_far_planes[0] = camera.near;
-		this.depth_texture.near_far_planes[1] = camera.far;
-	}
-
-}
-
-RenderFrameContainer.prototype.postRender = function( render_settings )
-{
-	this.endFBO();
-	//detach FBO and render to viewport
-	//render to screen
-	//this.renderToViewport( this.textures["color"], true );
-}
-
-//helper in case you want have a Color and Depth texture
-RenderFrameContainer.prototype.startFBO = function()
-{
-	//Create textures
-	var format = gl.RGBA;
-	var type = this.use_high_precision ? gl.HIGH_PRECISION_FORMAT : gl.UNSIGNED_BYTE;
-	var width = this.width;
-	var height = this.height;
-
-	//for the color
-	if(!this.color_texture || this.color_texture.width != width || this.color_texture.height != height || this.color_texture.type != type)
-		this.color_texture = new GL.Texture( width, height, { filter: gl.LINEAR, format: format, type: type });
-
-	//extra color texture (multibuffer rendering)
-	if( this.use_extra_texture && (!this.extra_texture || this.extra_texture.width != width || this.extra_texture.height != height || this.extra_texture.type != type) )
-		this.extra_texture = new GL.Texture( width, height, { filter: gl.LINEAR, format: format, type: type });
-	else if( !this.use_extra_texture )
-		this.extra_texture = null;
-
-	//for the depth
-	if( this.use_depth_texture && (!this.depth_texture || this.depth_texture.width != width || this.depth_texture.height != height) && gl.extensions["WEBGL_depth_texture"] )
-		this.depth_texture = new GL.Texture( width, height, { filter: gl.NEAREST, format: gl.DEPTH_COMPONENT, type: gl.UNSIGNED_INT });
-	else if( !this.use_depth_texture )
-		this.depth_texture = null;
-
-	if( !this._fbo )
-		this._fbo = new GL.FBO();
-	this._fbo.setTextures( [this.color_texture], this.depth_texture, true );
-
-	this._fbo.bind(); //changes viewport to full FBO size (saves old)
-
-	LS.Renderer._full_viewport.set( gl.viewport_data );
-	this._old_aspect = LS.Renderer.global_aspect;
-	//LS.Renderer.global_aspect = (gl.canvas.width / gl.canvas.height) / (width / height);
-
-	/*
-	//Setup FBO
-	this._fbo = this._fbo || gl.createFramebuffer();
-	gl.bindFramebuffer( gl.FRAMEBUFFER, this._fbo );
-
-	//Adjust viewport and aspect
-	gl.viewport(0, 0, color_texture.width, color_texture.height );
-	LS.Renderer._full_viewport.set( gl.viewport_data );
-	LS.Renderer.global_aspect = (gl.canvas.width / gl.canvas.height) / (color_texture.width / color_texture.height);
-
-	var ext = gl.extensions["WEBGL_draw_buffers"];
-
-	//bind COLOR BUFFER
-	gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, color_texture.handler, 0);
-
-	//bind EXTRA COLOR TEXTURE?
-	if(ext && extra_texture)
-		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + 1, gl.TEXTURE_2D, extra_texture.handler, 0);
-
-	//bind DEPTH texture or depth renderbuffer
-	if(depth_texture)
-		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT,  gl.TEXTURE_2D, depth_texture.handler, 0);
-	else
-	{
-		gl.renderbufferStorage( gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height );
-		gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, renderbuffer );
-	}
-
-	//Check completeness
-	var complete = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-	if(complete !== gl.FRAMEBUFFER_COMPLETE)
-		throw("FBO not complete: " + complete);
-
-	if(ext && extra_texture)
-		ext.drawBuffersWEBGL( [ gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT0 + 1] );
-	*/
-}
-
-RenderFrameContainer.prototype.endFBO = function()
-{
-	this._fbo.unbind(); //restores viewport to old saved one
-	LS.Renderer._full_viewport.set( this._fbo._old_viewport );
-	LS.Renderer.global_aspect = this._old_aspect;
-
-	/*
-	//disable FBO
-	gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-	LS.Renderer.global_aspect = 1.0;
-
-	gl.viewport( 0, 0, gl.canvas.width, gl.canvas.height );
-	LS.Renderer._full_viewport.set( gl.viewport_data );
-	*/
-}
-
-//Render this texture to viewport (allows to apply FXAA)
-RenderFrameContainer.prototype.renderToViewport = function( texture, use_antialiasing )
-{
-	if(!use_antialiasing)
-	{
-		texture.toViewport();
-		return;
-	}
-
-	var shader = GL.Shader.getFXAAShader();
-	var viewport = gl.getViewport();
-	var mesh = Mesh.getScreenQuad();
-	texture.bind(0);
-	shader.uniforms( {u_texture:0, uViewportSize: viewport.subarray(2,4), inverseVP: [1 / tex.width, 1 / tex.height]} ).draw(mesh);
-}
-
-
-LS.RenderFrameContainer = RenderFrameContainer;
-
-
-//************************************
-/**
-* The Renderer is in charge of generating one frame of the scene. Contains all the passes and intermediate functions to create the frame.
-*
-* @class Renderer
-* @namespace LS
-* @constructor
-*/
-
-//passes
-var COLOR_PASS = 1;
-var SHADOW_PASS = 2;
-var PICKING_PASS = 3;
-
-var Renderer = {
-
-	default_render_settings: new LS.RenderSettings(), //overwritten by the global info or the editor one
-	default_material: new StandardMaterial(), //used for objects without material
-
-	render_passes: {}, //used to specify the render function for every kind of render pass (color, shadow, picking, etc)
-	renderPassFunction: null, //function to call when rendering instances
-
-	global_aspect: 1, //used when rendering to a texture that doesnt have the same aspect as the screen
-
-	default_point_size: 1, //point size in pixels (could be overwritte by render instances)
-
-	_global_viewport: vec4.create(), //the viewport we have available to render the full frame (including subviewports), usually is the 0,0,gl.canvas.width,gl.canvas.height
-	_full_viewport: vec4.create(), //contains info about the full viewport available to render (current texture size or canvas size)
-
-	//temporal info
-	_current_scene: null,
-	_current_render_settings: null,
-	_current_camera: null,
-	_current_target: null, //texture where the image is being rendered
-	_current_pass: null,
-
-	_main_camera: null,
-
-	_visible_cameras: null,
-	_visible_lights: null,
-	_visible_instances: null,
-
-	//stats
-	_rendercalls: 0, //calls to instance.render
-	_rendered_instances: 0, //instances processed
-	_frame: 0,
-
-	//settings
-	_collect_frequency: 1, //used to reuse info (WIP)
-
-	//reusable locals
-	_view_matrix: mat4.create(),
-	_projection_matrix: mat4.create(),
-	_viewprojection_matrix: mat4.create(),
-	_2Dviewprojection_matrix: mat4.create(),
-	_mvp_matrix: mat4.create(),
-	_temp_matrix: mat4.create(),
-	_identity_matrix: mat4.create(),
-
-	_near_lights: [],
-
-	//called from...
-	init: function()
-	{
-		this._missing_texture = new GL.Texture(1,1, { pixel_data: [128,128,128,255] });
-		LS.Draw.init();
-		LS.Draw.onRequestFrame = function() { LS.GlobalScene.refresh(); }
-
-		this.registerRenderPass( "color", { id: COLOR_PASS, render_instance: this.renderColorPassInstance } );
-		this.registerRenderPass( "shadow", { id: SHADOW_PASS, render_instance: this.renderShadowPassInstance } );
-		this.registerRenderPass( "picking", { id: PICKING_PASS, render_instance: this.renderPickingPassInstance } );
-	},
-
-	reset: function()
-	{
-	},
-
-	//used to store which is the current full viewport available (could be different from the canvas in case is a FBO or the camera has a partial viewport)
-	setFullViewport: function(x,y,w,h)
-	{
-		if(x.constructor === Number)
-		{
-			this._full_viewport[0] = x; this._full_viewport[1] = y; this._full_viewport[2] = w; this._full_viewport[3] = h;
-		}
-		else if(x.length)
-			this._full_viewport.set(x);
-	},
-
-	/**
-	* Renders the current scene to the screen
-	* Many steps are involved, from gathering info from the scene tree, generating shadowmaps, setup FBOs, render every camera
-	*
-	* @method render
-	* @param {SceneTree} scene
-	* @param {RenderSettings} render_settings
-	* @param {Array} [cameras=null] if no cameras are specified the cameras are taken from the scene
-	*/
-	render: function( scene, render_settings, cameras )
-	{
-		if(!LS.ShadersManager.ready)
-			return; //not ready
-
-		render_settings = render_settings || this.default_render_settings;
-		this._current_render_settings = render_settings;
-		this._current_scene = scene;
-		this._main_camera = cameras ? cameras[0] : null;
-
-		//done at the beginning just in case it crashes
-		scene._frame += 1;
-		this._frame += 1;
-		scene._must_redraw = false;
-
-		this._rendercalls = 0;
-		this._rendered_instances = 0;
-
-		if( !render_settings.keep_viewport )
-		{
-			gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
-			this.setFullViewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
-		}
-		else
-			this.setFullViewport( gl.viewport_data );
-		this._global_viewport.set( gl.viewport_data );
-
-		//Event: beforeRender used in actions that could affect which info is collected for the rendering
-		LEvent.trigger(scene, "beforeRender", render_settings );
-		scene.triggerInNodes("beforeRender", render_settings );
-
-		//get render instances, cameras, lights, materials and all rendering info ready: computeVisibility
-		this.processVisibleData( scene, render_settings, cameras );
-
-		//Define the main camera, the camera that should be the most important (used for LOD info, or shadowmaps)
-		cameras = cameras || this._visible_cameras;
-		this._visible_cameras = cameras; //the cameras being rendered
-		this._main_camera = cameras[0];
-
-		//remove the lights that do not lay in front of any camera (this way we avoid creating shadowmaps)
-		//TODO
-
-		//Event: renderShadowmaps helps to generate shadowMaps that need some camera info (which could be not accessible during processVisibleData)
-		LEvent.trigger(scene, "renderShadows", render_settings );
-		scene.triggerInNodes("renderShadows", render_settings ); //TODO: remove
-
-		//Event: afterVisibility allows to cull objects according to the main camera
-		scene.triggerInNodes("afterVisibility", render_settings ); //TODO: remove	
-
-		//Event: renderReflections in case some realtime reflections are needed, this is the moment to render them inside textures
-		LEvent.trigger(scene, "renderReflections", render_settings );
-		scene.triggerInNodes("renderReflections", render_settings ); //TODO: remove
-
-		//Event: beforeRenderMainPass in case a last step is missing
-		LEvent.trigger(scene, "beforeRenderMainPass", render_settings );
-		scene.triggerInNodes("beforeRenderMainPass", render_settings ); //TODO: remove
-
-		//enable FX
-		if(render_settings.render_fx)
-			LEvent.trigger( scene, "enableFrameBuffer", render_settings );
-
-		//render
-		this.renderFrameCameras( cameras, render_settings );
-
-		if( render_settings.keep_viewport )
-			gl.setViewport( this._global_viewport );
-
-
-		//disable and show FX
-		if(render_settings.render_fx)
-			LEvent.trigger( scene, "showFrameBuffer", render_settings );
-
-		if(render_settings.render_gui)
-			LEvent.trigger( scene, "renderGUI", render_settings );
-
-		//Event: afterRender to give closure to some actions
-		LEvent.trigger(scene, "afterRender", render_settings );
-		scene.triggerInNodes("afterRender", render_settings ); //TODO: remove
-	},
-
-	/**
-	* Calls renderFrame of every camera in the cameras list (triggering the appropiate events)
-	*
-	* @method renderFrameCameras
-	* @param {Array} cameras
-	* @param {RenderSettings} render_settings
-	*/
-	renderFrameCameras: function( cameras, render_settings, global_render_frame )
-	{
-		var scene = this._current_scene;
-
-		//for each camera
-		for(var i = 0; i < cameras.length; ++i)
-		{
-			var current_camera = cameras[i];
-
-			LEvent.trigger(scene, "beforeRenderFrame", render_settings );
-			LEvent.trigger(current_camera, "beforeRenderFrame", render_settings );
-			LEvent.trigger(current_camera, "enableFrameBuffer", render_settings );
-
-			//main render
-			this.renderFrame( current_camera, render_settings ); 
-
-			LEvent.trigger(current_camera, "showFrameBuffer", render_settings );
-			LEvent.trigger(current_camera, "afterRenderFrame", render_settings );
-			LEvent.trigger(scene, "afterRenderFrame", render_settings );
-		}
-	},
-
-	/**
-	* renders the view from one camera to the current viewport (could be a texture)
-	*
-	* @method renderFrame
-	* @param {Camera} camera 
-	* @param {Object} render_settings
-	*/
-	renderFrame: function ( camera, render_settings, scene )
-	{
-		if(scene) //in case we use another scene
-			this.processVisibleData(scene, render_settings);
-
-		scene = scene || this._current_scene;
-
-		this.enableCamera( camera, render_settings, render_settings.skip_viewport ); //set as active camera and set viewport
-
-		//scissors test for the gl.clear, otherwise the clear affects the full viewport
-		gl.scissor( gl.viewport_data[0], gl.viewport_data[1], gl.viewport_data[2], gl.viewport_data[3] );
-		gl.enable(gl.SCISSOR_TEST);
-
-		//clear buffer
-		var info = scene.info;
-		if(info)
-		{
-			gl.clearColor( info.background_color[0],info.background_color[1],info.background_color[2], info.background_color[3] );
-		}
-		else
-			gl.clearColor(0,0,0,0);
-
-		if(render_settings.ignore_clear != true && (camera.clear_color || camera.clear_depth) )
-			gl.clear( ( camera.clear_color ? gl.COLOR_BUFFER_BIT : 0) | (camera.clear_depth ? gl.DEPTH_BUFFER_BIT : 0) );
-
-		gl.disable(gl.SCISSOR_TEST);
-
-		//render scene
-
-		LEvent.trigger(scene, "beforeRenderScene", camera );
-		scene.triggerInNodes("beforeRenderScene", camera ); //TODO remove
-		LEvent.trigger(this, "beforeRenderScene", camera );
-
-		//here we render all the instances
-		this.renderInstances(render_settings);
-
-		LEvent.trigger(scene, "afterRenderScene", camera );
-		scene.triggerInNodes("afterRenderScene", camera ); //TODO remove
-		LEvent.trigger(this, "afterRenderScene", camera );
-
-		if(render_settings.render_helpers)
-			LEvent.trigger(this, "renderHelpers", camera );
-	},
-
-	/**
-	* Set camera as the current camera, sets the viewport according to camera info, updates matrices, and prepares LS.Draw
-	*
-	* @method enableCamera
-	* @param {Camera} camera
-	* @param {RenderSettings} render_settings
-	*/
-	enableCamera: function(camera, render_settings, skip_viewport)
-	{
-		var scene = this._current_scene;
-
-		LEvent.trigger( camera, "beforeEnabled", render_settings );
-		LEvent.trigger( scene, "beforeCameraEnabled", camera );
-
-		//assign viewport manually (shouldnt use camera.getLocalViewport to unify?)
-		var startx = this._full_viewport[0];
-		var starty = this._full_viewport[1];
-		var width = this._full_viewport[2];
-		var height = this._full_viewport[3];
-
-		var final_x = Math.floor(width * camera._viewport[0] + startx);
-		var final_y = Math.floor(height * camera._viewport[1] + starty);
-		var final_width = Math.ceil(width * camera._viewport[2]);
-		var final_height = Math.ceil(height * camera._viewport[3]);
-
-		if(!skip_viewport)
-		{
-			//force fullscreen viewport?
-			if(render_settings && render_settings.ignore_viewports )
-			{
-				camera._final_aspect = this.global_aspect * camera._aspect * (width / height);
-				gl.viewport( this._full_viewport[0], this._full_viewport[1], this._full_viewport[2], this._full_viewport[3] );
-			}
-			else
-			{
-				camera._final_aspect = this.global_aspect * camera._aspect * (final_width / final_height); //what if we want to change the aspect?
-				gl.viewport( final_x, final_y, final_width, final_height );
-			}
-		}
-
-		//compute matrices
-		camera.updateMatrices();
-
-		//store matrices locally
-		mat4.copy( this._view_matrix, camera._view_matrix );
-		mat4.copy( this._projection_matrix, camera._projection_matrix );
-		mat4.copy( this._viewprojection_matrix, camera._viewprojection_matrix );
-
-		//2D Camera: TODO: MOVE THIS SOMEWHERE ELSE
-		mat4.ortho( this._2Dviewprojection_matrix, -1, 1, -1, 1, 1, -1 );
-
-		//set as the current camera
-		this._current_camera = camera;
-
-		//prepare camera
-		camera.fillCameraShaderUniforms( scene );
-
-		//Draw allows to render debug info easily
-		Draw.reset(); //clear 
-		Draw.setCameraPosition( camera.getEye() );
-		Draw.setViewProjectionMatrix( this._view_matrix, this._projection_matrix, this._viewprojection_matrix );
-
-		LEvent.trigger( camera, "afterEnabled", render_settings );
-		LEvent.trigger( scene, "afterCameraEnabled", camera ); //used to change stuff according to the current camera (reflection textures)
-	},
-	
-	/**
-	* To set gl state to a known and constant state in every render pass
-	*
-	* @method resetGLState
-	* @param {RenderSettings} render_settings
-	*/
-	resetGLState: function( render_settings )
-	{
-		render_settings = render_settings || this._current_render_settings;
-
-		gl.enable( gl.CULL_FACE );
-		if(render_settings.depth_test)
-			gl.enable( gl.DEPTH_TEST );
-		else
-			gl.disable( gl.DEPTH_TEST );
-		gl.disable( gl.BLEND );
-		gl.depthFunc( gl.LESS );
-		gl.depthMask(true);
-		gl.frontFace(gl.CCW);
-		gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
-		//gl.lineWidth(1);
-	},
-
-	/**
-	* Calls the render method for every instance (it also takes into account events and frustrum culling)
-	*
-	* @method renderInstances
-	* @param {RenderSettings} render_settings
-	* @param {Array} instances array of RIs, if not specified the last visible_instances are rendered
-	*/
-	renderInstances: function( render_settings, instances )
-	{
-		var scene = this._current_scene;
-		if(!scene)
-			return console.warn("LS.Renderer.renderInstances: no scene found");
-
-		var pass = this._current_pass;
-		var camera = this._current_camera;
-		var camera_index_flag = camera._rendering_index != -1 ? (1<<(camera._rendering_index)) : 0;
-		var apply_frustum_culling = render_settings.frustum_culling;
-		var frustum_planes = camera.updateFrustumPlanes();
-		var layers_filter = camera.layers;
-		if( render_settings.layers !== undefined )
-			layers_filter = render_settings.layers;
-
-		LEvent.trigger( scene, "beforeRenderInstances", render_settings );
-		scene.triggerInNodes( "beforeRenderInstances", render_settings );
-
-		//compute global scene info
-		this.fillSceneShaderQuery( scene, render_settings );
-		this.fillSceneShaderUniforms( scene, render_settings );
-
-		//reset state of everything!
-		this.resetGLState( render_settings );
-
-		//this.updateVisibleInstances(scene,options);
-		var render_instances = instances || this._visible_instances;
-
-		LEvent.trigger( scene, "renderInstances", render_settings );
-		LEvent.trigger( this, "renderInstances", render_settings );
-
-		//reset again!
-		this.resetGLState( render_settings );
-
-		var render_instance_func = pass.render_instance;
-		if(!render_instance_func)
-			return;
-
-		//compute visibility pass
-		for(var i = 0, l = render_instances.length; i < l; ++i)
-		{
-			//render instance
-			var instance = render_instances[i];
-			var node_flags = instance.node.flags;
-			instance._is_visible = false;
-
-			//hidden nodes
-			if( pass.id == SHADOW_PASS && !(instance.flags & RI_CAST_SHADOWS) )
-				continue;
-			if( pass.id == PICKING_PASS && node_flags.selectable === false )
-				continue;
-			if( (layers_filter & instance.layers) === 0 )
-				continue;
-
-			//done here because sometimes some nodes are moved in this action
-			if(instance.onPreRender)
-				if( instance.onPreRender( render_settings ) === false)
-					continue;
-
-			if(instance.material.opacity <= 0) //TODO: remove this, do it somewhere else
-				continue;
-
-			//test visibility against camera frustum
-			if(apply_frustum_culling && !(instance.flags & RI_IGNORE_FRUSTUM))
-			{
-				if(geo.frustumTestBox( frustum_planes, instance.aabb ) == CLIP_OUTSIDE )
-					continue;
-			}
-
-			//save visibility info
-			instance._is_visible = true;
-			if(camera_index_flag) //shadowmap cameras dont have an index
-				instance._camera_visibility |= camera_index_flag;
-		}
-
-		//for each render instance
-		for(var i = 0, l = render_instances.length; i < l; ++i)
-		{
-			//render instance
-			var instance = render_instances[i];
-
-			if(!instance._is_visible || !instance.mesh)
-				continue;
-
-			this._rendered_instances += 1;
-
-			//choose the appropiate render pass
-			render_instance_func.call( this, instance, render_settings ); //by default calls renderColorInstance but it could call renderShadowPassInstance
-
-			//some instances do a post render action
-			if(instance.onPostRender)
-				instance.onPostRender( render_settings );
-		}
-
-		LEvent.trigger( scene, "renderScreenSpace", render_settings);
-
-		//restore state
-		this.resetGLState( render_settings );
-
-		LEvent.trigger( scene, "afterRenderInstances", render_settings);
-		scene.triggerInNodes("afterRenderInstances", render_settings);
-
-		//and finally again
-		this.resetGLState( render_settings );
-	},
-
-	getNearLights: function( instance, result )
-	{
-		var lights = this._visible_lights;
-
-		//Compute lights affecting this RI (by proximity, only takes into account spherical bounding)
-		result.length = 0;
-		var numLights = lights.length;
-		for(var j = 0; j < numLights; j++)
-		{
-			var light = lights[j];
-			if( (light._root.layers & instance.layers) == 0 || (light._root.layers & this._current_camera.layers) == 0)
-				continue;
-			var light_intensity = light.computeLightIntensity();
-			if(light_intensity < 0.0001)
-				continue;
-			var light_radius = light.computeLightRadius();
-			var light_pos = light.position;
-			if( light_radius == -1 || instance.overlapsSphere( light_pos, light_radius ) )
-				result.push( light );
-		}
-
-		return result;
-	},
-
-	//this function is in charge of rendering the regular color pass (used also for reflections)
-	renderColorPassInstance: function( instance, render_settings )
-	{
-		var near_lights = this.getNearLights( instance, this._near_lights );
-
-		//render instance
-		var renderered = false;
-		if( instance.material && instance.material.renderInstance )
-			renderered = instance.material.renderInstance( instance, near_lights, this._current_scene, render_settings );
-
-		//render using default system (slower but it works)
-		if(!renderered)
-			this.renderColorMultiPassLightingInstance( instance, near_lights, this._current_scene, render_settings );
-	},
-
-	/**
-	* Renders this render instance taking into account all the lights that affect it and doing a render for every light
-	*
-	* @method renderColorMultiPassLightingInstance
-	* @param {RenderInstance} instance
-	* @param {Array} lights array containing al the lights affecting this RI
-	* @param {SceneTree} scene
-	* @param {RenderSettings} render_settings
-	*/
-	renderColorMultiPassLightingInstance: function( instance, lights, scene, render_settings )
-	{
-		var camera = this._current_camera;
-		var node = instance.node;
-		var material = instance.material;
-
-		//compute matrices
-		var model = instance.matrix;
-		if(instance.flags & RI_IGNORE_VIEWPROJECTION)
-			this._mvp_matrix.set( model );
-		else
-			mat4.multiply(this._mvp_matrix, this._viewprojection_matrix, model );
-
-		//node matrix info
-		var instance_final_query = instance._final_query;
-		var instance_final_uniforms = instance._final_uniforms;
-		var instance_final_samplers = instance._final_samplers;
-
-		//maybe this two should be somewhere else
-		instance_final_uniforms.u_model = model; 
-		instance_final_uniforms.u_normal_model = instance.normal_matrix; 
-
-		//update matrices (because they depend on the camera) 
-		instance_final_uniforms.u_mvp = this._mvp_matrix;
-
-
-		//FLAGS: enable GL flags like cull_face, CCW, etc
-		this.enableInstanceFlags(instance, render_settings);
-
-		//set blend flags
-		if(material.blend_mode !== Blend.NORMAL)
-		{
-			gl.enable( gl.BLEND );
-			if(instance.blend_func)
-				gl.blendFunc( instance.blend_func[0], instance.blend_func[1] );
-		}
-		else
-			gl.disable( gl.BLEND );
-
-		//pack material samplers 
-		var samplers = {};
-		samplers.merge( scene._samplers );
-		samplers.merge( instance_final_samplers );
-
-		//enable samplers and store where [TODO: maybe they are not used..., improve here]
-		var sampler_uniforms = this.bindSamplers( samplers );
-
-		//find shader name
-		var shader_name = render_settings.default_shader_id;
-		if(render_settings.low_quality)
-			shader_name = render_settings.default_low_shader_id;
-		if( material.shader_name )
-			shader_name = material.shader_name;
-
-		//multi pass instance rendering
-		var num_lights = lights.length;
-
-		//no lights rendering (flat light)
-		var ignore_lights = node.flags.ignore_lights || (instance.flags & RI_IGNORE_LIGHTS) || render_settings.lights_disabled;
-		if(!num_lights || ignore_lights)
-		{
-			var query = new LS.ShaderQuery( shader_name, { FIRST_PASS:"", LAST_PASS:"", USE_AMBIENT_ONLY:"" });
-			query.add( scene._query );
-			query.add( instance_final_query ); //contains node, material and instance macros
-
-			if( ignore_lights )
-				query.setMacro( "USE_IGNORE_LIGHTS" );
-			if(render_settings.clipping_plane && !(instance.flags & RI_IGNORE_CLIPPING_PLANE) )
-				query.setMacro( "USE_CLIPPING_PLANE" );
-
-			if( material.onModifyQuery )
-				material.onModifyQuery( query );
-
-			//resolve the shader
-			var shader = ShadersManager.resolve( query );
-
-			//assign uniforms
-			shader.uniformsArray( [ sampler_uniforms, scene._uniforms, camera._uniforms, instance_final_uniforms ] );
-
-			if(instance.flags & RI_IGNORE_VIEWPROJECTION)
-				shader.setUniform("u_viewprojection", mat4.IDENTITY );
-
-			//render
-			instance.render( shader );
-			this._rendercalls += 1;
-			return;
-		}
-
-		//Regular rendering (multipass)
-		for(var iLight = 0; iLight < num_lights; iLight++)
-		{
-			var light = lights[iLight];
-
-			var query = new LS.ShaderQuery( shader_name );
-
-			var light_query = light.getQuery( instance, render_settings );
-
-			if(iLight === 0)
-				query.setMacro("FIRST_PASS");
-			if(iLight === (num_lights-1))
-				query.setMacro("LAST_PASS");
-
-			query.add( scene._query );
-			query.add( instance_final_query ); //contains node, material and instance macros
-			query.add( light_query );
-
-			if(render_settings.clipping_plane && !(instance.flags & RI_IGNORE_CLIPPING_PLANE) )
-				query.setMacro("USE_CLIPPING_PLANE");
-
-			if( material.onModifyQuery )
-				material.onModifyQuery( query );
-
-			var shader = LS.ShadersManager.resolve( query );
-
-			//fill shader data
-			var light_uniforms = light.getUniforms( instance, render_settings );
-
-			//secondary pass flags to make it additive
-			if(iLight > 0)
-			{
-				gl.enable(gl.BLEND);
-				gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
-				if(render_settings.depth_test)
-				{
-					gl.depthFunc( gl.LEQUAL );
-					//gl.depthMask(true);
-					if( node.flags.depth_test )
-						gl.enable( gl.DEPTH_TEST );
-					else
-						gl.disable( gl.DEPTH_TEST );
-				}
-			}
-			//set depth func
-			if(material.depth_func)
-				gl.depthFunc( gl[material.depth_func] );
-
-			//assign uniforms
-			shader.uniformsArray( [sampler_uniforms, scene._uniforms, camera._uniforms, instance_final_uniforms, light_uniforms] );
-
-			//render the instance
-			instance.render( shader );
-			this._rendercalls += 1;
-
-			//avoid multipass in simple shaders
-			if(shader.global && !shader.global.multipass)
-				break; 
-		}
-	},
-
-	/**
-	* Renders this RenderInstance into the shadowmap
-	*
-	* @method renderShadowPassInstance
-	* @param {RenderInstance} instance
-	* @param {RenderSettings} render_settings
-	*/
-	renderShadowPassInstance: function(instance, render_settings)
-	{
-		var scene = this._current_scene;
-		var camera = this._current_camera;
-		var node = instance.node;
-		var material = instance.material;
-
-		//compute matrices
-		var model = instance.matrix;
-		mat4.multiply(this._mvp_matrix, this._viewprojection_matrix, model );
-
-		//node matrix info
-		var instance_final_query = instance._final_query;
-		var instance_final_uniforms = instance._final_uniforms;
-		var instance_final_samplers = instance._final_samplers;
-
-		//maybe this two should be somewhere else
-		instance_final_uniforms.u_model = model; 
-		instance_final_uniforms.u_normal_model = instance.normal_matrix; 
-
-		//update matrices (because they depend on the camera) 
-		instance_final_uniforms.u_mvp = this._mvp_matrix;
-
-		//FLAGS
-		this.enableInstanceFlags( instance, render_settings );
-
-		var query = new ShaderQuery("depth");
-		query.add( scene._query );
-		query.add( instance_final_query );
-
-		//if(this._current_target && this._current_target.texture_type === gl.TEXTURE_CUBE_MAP)
-		//	query.setMacro("USE_LINEAR_SHADOWMAP");
-
-		//not fully supported yet
-		if(material.alpha_test_shadows == true )
-		{
-			query.setMacro("USE_ALPHA_TEST","0.5");
-			var color = material.getTexture("color");
-			if(color)
-			{
-				var color_uvs = material.textures["color_uvs"] || Material.DEFAULT_UVS["color"] || "0";
-				query.setMacro("USE_COLOR_TEXTURE","uvs_" + color_uvs);
-				color.bind(0);
-			}
-
-			var opacity = material.getTexture("opacity");
-			if(opacity)	{
-				var opacity_uvs = material.textures["opacity_uvs"] || Material.DEFAULT_UVS["opacity"] || "0";
-				query.setMacro("USE_OPACITY_TEXTURE","uvs_" + opacity_uvs);
-				opacity.bind(1);
-			}
-			//shader.uniforms({ texture: 0, opacity_texture: 1 });
-		}
-
-		var shader = ShadersManager.resolve( query );
-
-		var samplers = {};
-		samplers.merge( scene._samplers );
-		samplers.merge( instance_final_samplers );
-		var sampler_uniforms = this.bindSamplers( samplers, shader );
-		/*
-		var slot = 1;
-		for(var i in samplers)
-			if(shader.samplers[i]) //only enable a texture if the shader uses it
-				sampler_uniforms[ i ] = samplers[i].bind( slot++ );
-		*/
-
-		shader.uniformsArray([ sampler_uniforms, scene._uniforms, camera._uniforms, instance._final_uniforms ]);
-
-		instance.render(shader);
-		this._rendercalls += 1;
-	},
-
-	/**
-	* Render instance into the picking buffer
-	*
-	* @method renderPickingInstance
-	* @param {RenderInstance} instance
-	* @param {RenderSettings} render_settings
-	*/
-	renderPickingPassInstance: function( instance, render_settings )
-	{
-		var scene = this._current_scene;
-		var camera = this._current_camera;
-		var node = instance.node;
-		var model = instance.matrix;
-		mat4.multiply(this._mvp_matrix, this._viewprojection_matrix, model );
-		var pick_color = LS.Picking.getNextPickingColor( node );
-		/*
-		this._picking_next_color_id += 10;
-		var pick_color = new Uint32Array(1); //store four bytes number
-		pick_color[0] = this._picking_next_color_id; //with the picking color for this object
-		var byte_pick_color = new Uint8Array( pick_color.buffer ); //read is as bytes
-		//byte_pick_color[3] = 255; //Set the alpha to 1
-		this._picking_nodes[this._picking_next_color_id] = node;
-		*/
-
-		var query = new LS.ShaderQuery("flat");
-		query.add( scene._query );
-		query.add( instance._final_query );
-
-		var shader = ShadersManager.resolve( query );
-		shader.uniforms(scene._uniforms);
-		shader.uniforms(camera._uniforms);
-		shader.uniforms(instance.uniforms);
-		shader.uniforms({u_model: model, u_mvp: this._mvp_matrix, u_material_color: pick_color });
-
-		instance.render(shader);
-	},
-
-	bindSamplers: function( samplers, shader )
-	{
-		var sampler_uniforms = {};
-		var slot = 0;
-		for(var i in samplers)
-		{
-			var sampler = samplers[i];
-			if(!sampler) //weird case
-			{
-				throw("Samplers should always be valid values"); //assert
-			}
-
-			//if(shader && !shader[i]) continue; ¿?
-
-			//REFACTOR THIS
-			var tex = null;
-			if(sampler.constructor === String || sampler.constructor === GL.Texture) //old way
-			{
-				tex = sampler;
-				sampler = null;
-			}
-			else if(sampler.texture)
-				tex = sampler.texture;
-			else
-				continue;
-
-			if(tex.constructor === String)
-				tex = LS.ResourcesManager.textures[ tex ];
-			if(!tex)
-			{
-				tex = this._missing_texture;
-				//continue;
-			}
-
-			//bind
-			sampler_uniforms[ i ] = tex.bind( slot++ );
-
-			//texture properties
-			if(sampler)
-			{
-				if(sampler.minFilter)
-					gl.texParameteri(tex.texture_type, gl.TEXTURE_MIN_FILTER, sampler.minFilter);
-				if(sampler.magFilter)
-					gl.texParameteri(tex.texture_type, gl.TEXTURE_MAG_FILTER, sampler.magFilter);
-				if(sampler.wrap)
-				{
-					gl.texParameteri(tex.texture_type, gl.TEXTURE_WRAP_S, sampler.wrap);
-					gl.texParameteri(tex.texture_type, gl.TEXTURE_WRAP_T, sampler.wrap);
-				}
-			}
-		}
-
-		return sampler_uniforms;
-	},
-
-	/**
-	* Update the scene shader query according to the render pass
-	* Do not reuse the query, they change between rendering passes (shadows, reflections, etc)
-	*
-	* @method fillSceneShaderQuery
-	* @param {SceneTree} scene
-	* @param {RenderSettings} render_settings
-	*/
-	fillSceneShaderQuery: function( scene, render_settings )
-	{
-		var query = new ShaderQuery();
-
-		if( this._current_camera.type == Camera.ORTHOGRAPHIC )
-			query.setMacro("USE_ORTHOGRAPHIC_CAMERA");
-
-		//camera info
-		if( this._current_pass.id == COLOR_PASS )
-		{
-			if(render_settings.linear_pipeline)
-				query.setMacro("USE_LINEAR_PIPELINE");
-
-			if(render_settings.brightness_factor && render_settings.brightness_factor != 1)
-				query.setMacro("USE_BRIGHTNESS_FACTOR");
-
-			if(render_settings.colorclip_factor)
-				query.setMacro("USE_COLORCLIP_FACTOR");
-		}
-
-		if(this._current_renderframe && this._current_renderframe.use_extra_texture && gl.extensions["WEBGL_draw_buffers"])
-			query.setMacro("USE_DRAW_BUFFERS");
-
-		LEvent.trigger( scene, "fillSceneQuery", query );
-
-		scene._query = query;
-	},
-
-	//Called at the beginning of renderInstances (once per renderFrame)
-	//DO NOT CACHE, parameters can change between render passes
-	fillSceneShaderUniforms: function( scene, render_settings )
-	{
-		//global uniforms
-		var uniforms = {
-			u_point_size: this.default_point_size,
-			u_time: scene._time || getTime() * 0.001,
-			u_brightness_factor: render_settings.brightness_factor != null ? render_settings.brightness_factor : 1,
-			u_colorclip_factor: render_settings.colorclip_factor != null ? render_settings.colorclip_factor : 0,
-			u_ambient_light: scene.info.ambient_color,
-			u_background_color: scene.info.background_color.subarray(0,3),
-			u_viewport: gl.viewport_data
-		};
-
-		if(render_settings.clipping_plane)
-			uniforms.u_clipping_plane = render_settings.clipping_plane;
-
-		if( this._current_pass.id == COLOR_PASS && render_settings.linear_pipeline )
-			uniforms.u_gamma = 2.2;
-
-		scene._uniforms = uniforms;
-		scene._samplers = {};
-
-		for(var i in scene.info.textures)
-		{
-			var texture = LS.getTexture( scene.info.textures[i] );
-			if(!texture)
-				continue;
-			if(i != "environment" && i != "irradiance") continue; //TO DO: improve this, I dont want all textures to be binded 
-			var type = (texture.texture_type == gl.TEXTURE_2D ? "_texture" : "_cubemap");
-			if(texture.texture_type == gl.TEXTURE_2D)
-			{
-				texture.bind(0);
-				texture.setParameter( gl.TEXTURE_MIN_FILTER, gl.LINEAR ); //avoid artifact
-			}
-			scene._samplers[i + type] = texture;
-			scene._query.macros[ "USE_" + (i + type).toUpperCase() ] = "uvs_polar_reflected";
-		}
-
-		LEvent.trigger( scene, "fillSceneUniforms", scene._uniforms );
-	},	
-
-	/**
-	* Switch flags according to the RenderInstance flags
-	*
-	* @method enableInstanceFlags
-	* @param {RenderInstance} instance
-	* @param {RenderSettings} render_settings
-	*/
-	enableInstanceFlags: function(instance, render_settings)
-	{
-		var flags = instance.flags;
-
-		//backface culling
-		if( flags & RI_CULL_FACE )
-			gl.enable( gl.CULL_FACE );
-		else
-			gl.disable( gl.CULL_FACE );
-
-		//  depth
-		if(render_settings.depth_test)
-		{
-			gl.depthFunc( gl.LEQUAL );
-			if( flags & RI_DEPTH_TEST )
-				gl.enable( gl.DEPTH_TEST );
-			else
-				gl.disable( gl.DEPTH_TEST );
-
-			if(flags & RI_DEPTH_WRITE)
-				gl.depthMask(true);
-			else
-				gl.depthMask(false);
-		}
-
-		//when to reverse the normals?
-		var order = gl.CCW;
-		if(flags & RI_CW)
-			order = gl.CW;
-		if(render_settings.reverse_backfacing)
-			order = order == gl.CW ? gl.CCW : gl.CW;
-		gl.frontFace(order);
-	},
-
-
-	/**
-	* Collects and process the rendering instances, cameras and lights that are visible
-	* Its a prepass shared among all rendering passes
-	* Warning: rendering order is computed here, so it is shared among all the cameras (TO DO, move somewhere else)
-	*
-	* @method processVisibleData
-	* @param {SceneTree} scene
-	* @param {RenderSettings} render_settings
-	* @param {Array} cameras in case you dont want to use the scene cameras
-	*/
-	processVisibleData: function( scene, render_settings, cameras )
-	{
-		//options = options || {};
-		//options.scene = scene;
-
-		//update info about scene (collecting it all or reusing the one collected in the frame before)
-		if( this._frame % this._collect_frequency == 0)
-			scene.collectData();
-		else
-			scene.updateCollectedData();
-		LEvent.trigger( scene, "afterCollectData", scene );
-
-		cameras = cameras || scene._cameras;
-
-		//prepare cameras
-		for(var i = 0, l = cameras.length; i < l; ++i)
-		{
-			var camera = cameras[i];
-			camera._rendering_index = i;
-		}
-
-
-		//meh!
-		if(!this._main_camera)
-		{
-			if( cameras.length )
-				this._main_camera = cameras[0];
-			else
-				this._main_camera = new LS.Camera(); // ??
-		}
-
-		var opaque_instances = [];
-		var blend_instances = [];
-		var materials = {}; //I dont want repeated materials here
-
-		var instances = scene._instances;
-		var camera = this._main_camera; // || scene.getCamera();
-		var camera_eye = camera.getEye();
-
-		//process render instances (add stuff if needed)
-		for(var i = 0, l = instances.length; i < l; ++i)
-		{
-			var instance = instances[i];
-			if(!instance)
-				continue;
-			var node_flags = instance.node.flags;
-
-			if(!instance.mesh)
-			{
-				console.warn("RenderInstance must have mesh");
-				continue;
-			}
-
-			//materials
-			if(!instance.material)
-				instance.material = this.default_material;
-			materials[ instance.material.uid ] = instance.material;
-
-			//add extra info
-			instance._dist = vec3.dist( instance.center, camera_eye );
-
-			//change conditionaly
-			if(render_settings.force_wireframe && instance.primitive != gl.LINES ) 
-			{
-				instance.primitive = gl.LINES;
-				if(instance.mesh)
-				{
-					if(!instance.mesh.indexBuffers["wireframe"])
-						instance.mesh.computeWireframe();
-					instance.index_buffer = instance.mesh.indexBuffers["wireframe"];
-				}
-			}
-
-			//and finally, the alpha thing to determine if it is visible or not
-			if(instance.flags & RI_BLEND)
-				blend_instances.push(instance);
-			else
-				opaque_instances.push(instance);
-
-			//node & mesh constant information
-			var query = instance.query;
-			if(instance.flags & RI_ALPHA_TEST || instance.material.alpha_test)
-				query.macros.USE_ALPHA_TEST = "0.5";
-			else if(query.macros["USE_ALPHA_TEST"])
-				delete query.macros["USE_ALPHA_TEST"];
-
-			var buffers = instance.vertex_buffers;
-			if(!("normals" in buffers))
-				query.macros.NO_NORMALS = "";
-			if(!("coords" in buffers))
-				query.macros.NO_COORDS = "";
-			if(("coords1" in buffers))
-				query.macros.USE_COORDS1_STREAM = "";
-			if(("colors" in buffers))
-				query.macros.USE_COLOR_STREAM = "";
-			if(("tangents" in buffers))
-				query.macros.USE_TANGENT_STREAM = "";
-
-			instance._camera_visibility = 0|0;
-		}
-
-		//Sorting: (defining rendering order based on RIs priority and distance to camera)
-		if(render_settings.sort_instances_by_distance) //sort RIs in Z for alpha sorting
-		{
-			opaque_instances.sort(this._sort_near_to_far_func);
-			blend_instances.sort(this._sort_far_to_near_func);
-		}
-
-		if(render_settings.sort_instances_by_priority) //sort by priority (we do this before merging because otherwise the distance sorting gest messed up
-		{
-			opaque_instances.sort(this._sort_by_priority_and_near_to_far_func);
-			blend_instances.sort(this._sort_by_priority_and_far_to_near_func);
-		}
-
-		var all_instances = opaque_instances.concat(blend_instances); //merge
-
-		//update materials info only if they are in use
-		if(render_settings.update_materials)
-			this._prepareMaterials( materials, scene );
-
-		//pack all macros, uniforms, and samplers relative to this instance in single containers
-		for(var i = 0, l = instances.length; i < l; ++i)
-		{
-			var instance = instances[i];
-			var node = instance.node;
-			var material = instance.material;
-
-			var query = instance._final_query;
-			query.clear();
-			query.add( node._query );
-			query.add( material._query );
-			query.add( instance.query );
-
-			var uniforms = instance._final_uniforms;
-			wipeObject( uniforms );
-			uniforms.merge( node._uniforms );
-			uniforms.merge( material._uniforms );
-			uniforms.merge( instance.uniforms );
-
-			var samplers = instance._final_samplers;
-			wipeObject(samplers);
-			//samplers.merge( node._samplers );
-			samplers.merge( material._samplers );
-			samplers.merge( instance.samplers );			
-		}
-
-
-		var lights = scene._lights;
-
-		this._blend_instances = blend_instances;
-		this._opaque_instances = opaque_instances;
-		this._visible_instances = all_instances; //sorted version
-		this._visible_lights = scene._lights;
-		this._visible_cameras = cameras; 
-		this._visible_materials = materials;
-
-		//prepare lights (collect data and generate shadowmaps)
-		for(var i = 0, l = lights.length; i < l; ++i)
-			lights[i].prepare( render_settings );
-	},
-
-	//outside of processVisibleData to allow optimizations in processVisibleData
-	_prepareMaterials: function( materials, scene )
-	{
-		for(var i in materials)
-		{
-			var material = materials[i];
-			material.prepareMaterial( scene );
-		}
-	},
-
-	_sort_far_to_near_func: function(a,b) { return b._dist - a._dist; },
-	_sort_near_to_far_func: function(a,b) { return a._dist - b._dist; },
-	_sort_by_priority_func: function(a,b) { return b.priority - a.priority; },
-	_sort_by_priority_and_near_to_far_func: function(a,b) { var r = b.priority - a.priority; return r ? r : (a._dist - b._dist) },
-	_sort_by_priority_and_far_to_near_func: function(a,b) { var r = b.priority - a.priority; return r ? r : (b._dist - a._dist) },
-
-	/**
-	* Renders a frame into a texture (could be a cubemap, in which case does the six passes)
-	*
-	* @method renderInstancesToRT
-	* @param {Camera} cam
-	* @param {Texture} texture
-	* @param {RenderSettings} render_settings
-	*/
-	renderInstancesToRT: function(cam, texture, render_settings)
-	{
-		render_settings = render_settings || this.default_render_settings;
-		this._current_target = texture;
-		var scene = LS.Renderer._current_scene;
-
-		if(texture.texture_type == gl.TEXTURE_2D)
-		{
-			this.enableCamera(cam, render_settings);
-			texture.drawTo( inner_draw_2d );
-		}
-		else if( texture.texture_type == gl.TEXTURE_CUBE_MAP)
-			this.renderToCubemap( cam.getEye(), texture.width, texture, render_settings, cam.near, cam.far );
-		this._current_target = null;
-
-		function inner_draw_2d()
-		{
-			gl.clearColor(scene.info.background_color[0], scene.info.background_color[1], scene.info.background_color[2], scene.info.background_color[3] );
-			if(render_settings.ignore_clear != true)
-				gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-			//render scene
-			LS.Renderer.renderInstances( render_settings );
-		}
-	},
-
-	/**
-	* Renders the current scene to a cubemap centered in the given position
-	*
-	* @method renderToCubemap
-	* @param {vec3} position center of the camera where to render the cubemap
-	* @param {number} size texture size
-	* @param {Texture} texture to reuse the same texture
-	* @param {RenderSettings} render_settings
-	* @param {number} near
-	* @param {number} far
-	* @return {Texture} the resulting texture
-	*/
-	renderToCubemap: function(position, size, texture, render_settings, near, far)
-	{
-		size = size || 256;
-		near = near || 1;
-		far = far || 1000;
-
-		var eye = position;
-		if( !texture || texture.constructor != GL.Texture)
-			texture = null;
-
-		var scene = this._current_scene;
-
-		texture = texture || new GL.Texture(size,size,{texture_type: gl.TEXTURE_CUBE_MAP, minFilter: gl.NEAREST});
-		this._current_target = texture;
-		texture.drawTo( function(texture, side) {
-
-			var info = LS.Camera.cubemap_camera_parameters[side];
-			if(texture._is_shadowmap || !scene.info )
-				gl.clearColor(0,0,0,0);
-			else
-				gl.clearColor( scene.info.background_color[0], scene.info.background_color[1], scene.info.background_color[2], scene.info.background_color[3] );
-
-			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-			var cubemap_cam = new LS.Camera({ eye: eye, center: [ eye[0] + info.dir[0], eye[1] + info.dir[1], eye[2] + info.dir[2]], up: info.up, fov: 90, aspect: 1.0, near: near, far: far });
-
-			LS.Renderer.enableCamera( cubemap_cam, render_settings, true );
-			LS.Renderer.renderInstances( render_settings );
-		});
-
-		this._current_target = null;
-		return texture;
-	},
-
-	/**
-	* Renders the material preview to an image (or to the screen)
-	*
-	* @method renderMaterialPreview
-	* @param {Material} material
-	* @param {number} size image size
-	* @param {Object} options could be environment_texture, to_viewport
-	* @return {Image} the preview image (in canvas format) or null if it was rendered to the viewport
-	*/
-	renderMaterialPreview: function( material, size, options )
-	{
-		options = options || {};
-
-		var scene = this._material_scene;
-		if(!scene)
-		{
-			scene = this._material_scene = new LS.SceneTree();
-			if(options.background_color)
-				scene.info.background_color.set(options.background_color);
-			else
-				scene.info.background_color.set([0.0,0.0,0.0,0]);
-			if(options.environment_texture)
-				scene.info.textures.environment = options.environment_texture;
-			var node = new LS.SceneNode( "sphere" );
-			var compo = new LS.Components.GeometricPrimitive( { size: 40, subdivisions: 50, geometry: LS.Components.GeometricPrimitive.SPHERE } );
-			node.addComponent( compo );
-			scene.root.addChild( node );
-		}
-
-		var node = scene.getNode( "sphere");
-		if(!node)
-		{
-			console.error("Node not found in Material Preview Scene");
-			return null;
-		}
-
-		if(options.rotate)
-			node.transform.rotateY( options.rotate );
-		node.material = material;
-
-		if(options.to_viewport)
-		{
-			LS.Renderer.renderFrame( scene.root.camera, { skip_viewport: true, render_helpers: false, update_materials: true }, scene );
-			return;
-		}
-
-		var tex = this._material_preview_texture || new GL.Texture(size,size);
-		if(!this._material_preview_texture)
-			this._material_preview_texture = tex;
-
-		tex.drawTo( function()
-		{
-			//it already clears everything
-			//just render
-			LS.Renderer.renderFrame( scene.root.camera, { skip_viewport: true, render_helpers: false }, scene );
-		});
-
-		var canvas = tex.toCanvas(null, true);
-		//document.body.appendChild( canvas ); //debug
-		return canvas;
-	},
-
-	/**
-	* Returns the last camera that falls into a given screen position
-	*
-	* @method getCameraAtPosition
-	* @param {number} x
-	* @param {number} y
-	* @param {SceneTree} scene if not specified last rendered scene will be used
-	* @return {Camera} the camera
-	*/
-	getCameraAtPosition: function(x,y, cameras)
-	{
-		cameras = cameras || this._visible_cameras;
-		if(!cameras || !cameras.length)
-			return null;
-
-		for(var i = cameras.length - 1; i >= 0; --i)
-		{
-			var camera = cameras[i];
-			if(!camera.enabled || camera.render_to_texture)
-				continue;
-
-			if( camera.isPointInCamera(x,y) )
-				return camera;
-		}
-		return null;
-	},
-
-	/**
-	* Sets the render pass to use, this allow to change between "color","shadow","picking",etc
-	*
-	* @method setRenderPass
-	* @param {String} name name of the render pass as in render_passes
-	*/
-	setRenderPass: function( name )
-	{
-		this._current_pass = this.render_passes[ name ] || this.render_passes[ "color" ];
-	},
-
-	/**
-	* Register a render pass to be used during the rendering
-	*
-	* @method registerRenderPass
-	* @param {String} name name of the render pass as in render_passes
-	* @param {Object} info render pass info, { render_instance: Function( instance, render_settings ) }
-	*/
-	registerRenderPass: function( name, info )
-	{
-		info.name = name;
-		this.render_passes[ name ] = info;
-		if(!this._current_pass)
-			this._current_pass = info;
-	}
-};
-
-//Add to global Scope
-LS.Renderer = Renderer;
-
-//
-/**
-* Picking is used to detect which element is below one pixel (used the GPU) or using raycast
-*
-* @class Picking
-* @namespace LS
-* @constructor
-*/
-var Picking = {
-
-	/**
-	* Renders the pixel and retrieves the color to detect which object it was, slow but accurate
-	* @method getNodeAtCanvasPosition
-	* @param {number} x in canvas coordinates
-	* @param {number} y in canvas coordinates
-	* @param {Camera} camera default is all cameras
-	* @param {number} layers default is 0xFFFF which is all
-	* @param {SceneTree} scene default is GlobalScene
-	*/
-	getNodeAtCanvasPosition: function( x, y, camera, layers, scene )
-	{
-		var instance = this.getInstanceAtCanvasPosition( x, y, camera, layers, scene );
-		if(!instance)
-			return null;
-
-		if(instance.constructor == LS.SceneNode)
-			return instance;
-
-		if(instance._root && instance._root.constructor == LS.SceneNode)
-			return instance._root;
-
-		if(instance.node)
-			return instance.node;
-
-		return null;
-	},
-
-	/**
-	* Returns the instance under a screen position
-	* @method getInstanceAtCanvasPosition
-	* @param {number} x in canvas coordinates
-	* @param {number} y in canvas coordinates
-	* @param {Camera} camera
-	* @param {number} layers default is 0xFFFF which is all
-	* @param {SceneTree} scene
-	* @return {Object} the info supplied by the picker (usually a SceneNode)
-	*/
-	getInstanceAtCanvasPosition: function( x, y, camera, layers, scene )
-	{
-		scene = scene || LS.GlobalScene;
-
-		if(!camera)
-			camera = LS.Renderer.getCameraAtPosition( x, y, scene._cameras );
-
-		if(!camera)
-			return null;
-
-		this._picking_nodes = {};
-
-		//render all Render Instances
-		this.renderPickingBuffer( scene, camera, x,y, layers );
-
-		this._picking_color[3] = 0; //remove alpha, because alpha is always 255
-		var id = new Uint32Array(this._picking_color.buffer)[0]; //get only element
-
-		var instance_info = this._picking_nodes[id];
-		this._picking_nodes = {};
-		return instance_info;
-	},	
-
-	/**
-	* Cast a ray that traverses the scene checking for collisions with RenderInstances
-	* Similar to Physics.raycast but using only the bounding boxes of the visible meshes
-	* @method raycast
-	* @param {vec3} origin in world space
-	* @param {vec3} direction in world space
-	* @param {Object} options ( max_distance: maxium ray distance, layers, scene, max_distance, first_collision : returns the first collision (which could be not the closest one) )
-	* @return {Array} array containing all the RenderInstances that collided with the ray in the form [SceneNode, RenderInstance, collision point, distance]
-	*/
-	raycast: function( origin, direction, options )
-	{
-		options = options || {};
-		var layers = options.layers;
-		if(layers === undefined)
-			layers = 0xFFFF;
-		var max_distance = options.max_distance || Number.MAX_VALUE;
-		var scene = options.scene || LS.GlobalScene;
-		var triangle_collision = options.triangle_collision;
-		var first_collision = options.first_collision;
-
-		var instances = scene._instances;
-		if(!instances || !instances.length)
-			return null;
-
-		var collisions = [];
-
-		var local_start = vec3.create();
-		var local_direction = vec3.create();
-
-		var compute_normal = !!options.normal;
-
-		//for every instance
-		for(var i = 0; i < instances.length; ++i)
-		{
-			var instance = instances[i];
-
-			if(!(instance.flags & RI_RAYCAST_ENABLED) || (layers & instance.layers) === 0 )
-				continue;
-
-			if(instance.flags & RI_BLEND)
-				continue; //avoid semitransparent
-
-			//test against AABB
-			var collision_point = vec3.create();
-			if( !geo.testRayBBox( origin, direction, instance.aabb, null, collision_point, max_distance ) )
-				continue;
-
-			var model = instance.matrix;
-
-			//ray to local
-			var inv = mat4.invert( mat4.create(), model );
-			mat4.multiplyVec3( local_start, inv, origin );
-			mat4.rotateVec3( local_direction, inv, direction );
-
-			//test against OOBB (a little bit more expensive)
-			if( !geo.testRayBBox(local_start, local_direction, instance.oobb, null, collision_point, max_distance) )
-				continue;
-
-			//test against mesh
-			var collision_mesh = instance.collision_mesh;
-			var collision_normal = null;
-			
-			if(triangle_collision)
-				collision_mesh = instance.lod_mesh || instance.mesh;
-
-			if( collision_mesh )
-			{
-				var mesh = collision_mesh;
-				var octree = mesh.octree;
-				if(!octree)
-					octree = mesh.octree = new GL.Octree( mesh );
-				var hit = octree.testRay( local_start, local_direction, 0.0, max_distance );
-				if(!hit)
-					continue;
-				mat4.multiplyVec3( collision_point, model, hit.pos );
-				if(compute_normal)
-					collision_normal = mat4.rotateVec3( vec3.create(), model, hit.normal );
-			}
-			else
-				vec3.transformMat4(collision_point, collision_point, model);
-
-			var distance = vec3.distance( origin, collision_point );
-			if(distance < max_distance)
-				collisions.push( new LS.Collision( instance.node, instance, collision_point, distance, collision_normal ) );
-
-			if(first_collision)
-				return collisions;
-		}
-
-		collisions.sort( LS.Collision.isCloser );
-		return collisions;
-	},
-
-	/**
-	* Returns a color you should use to paint this node during picking rendering
-	* you tell what info you want to retrieve associated with this object if it is clicked
-	* @method getNextPickingColor
-	* @param {*} info
-	* @return {vec3} array containing all the RenderInstances that collided with the ray
-	*/
-	getNextPickingColor: function( info )
-	{
-		this._picking_next_color_id += 10;
-		var pick_color = new Uint32Array(1); //store four bytes number
-		pick_color[0] = this._picking_next_color_id; //with the picking color for this object
-		var byte_pick_color = new Uint8Array( pick_color.buffer ); //read is as bytes
-		//byte_pick_color[3] = 255; //Set the alpha to 1
-
-		this._picking_nodes[ this._picking_next_color_id ] = info;
-		return vec4.fromValues( byte_pick_color[0] / 255, byte_pick_color[1] / 255, byte_pick_color[2] / 255, 1 );
-	},
-
-	//picking
-	_pickingMap: null,
-	_picking_color: new Uint8Array(4),
-	_picking_depth: 0,
-	_picking_next_color_id: 0,
-	_picking_nodes: {},
-	_picking_render_settings: new RenderSettings(),
-
-	renderPickingBuffer: function( scene, camera, x, y, layers )
-	{
-		var that = this;
-		if(layers === undefined)
-			layers = 0xFFFF;
-
-		if(this._pickingMap == null || this._pickingMap.width != gl.canvas.width || this._pickingMap.height != gl.canvas.height )
-		{
-			this._pickingMap = new GL.Texture( gl.canvas.width, gl.canvas.height, { format: gl.RGBA, filter: gl.NEAREST });
-			//LS.ResourcesManager.textures[":picking"] = this._pickingMap; //debug the texture
-		}
-
-		//y = gl.canvas.height - y; //reverse Y
-		var small_area = true;
-		this._picking_next_color_id = 0;
-
-		LS.Renderer._current_target = this._pickingMap;
-		var picking_render_settings = this._picking_render_settings;
-
-		this._pickingMap.drawTo(function() {
-			//var viewport = camera.getLocalViewport();
-			//camera._real_aspect = viewport[2] / viewport[3];
-			//gl.viewport( viewport[0], viewport[1], viewport[2], viewport[3] );
-
-			LS.Renderer.enableCamera( camera, that._picking_render_settings );
-
-			if(small_area)
-			{
-				gl.scissor(x-1,y-1,2,2);
-				gl.enable(gl.SCISSOR_TEST);
-			}
-
-			gl.clearColor(0,0,0,0);
-			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-			//gl.viewport(x-20,y-20,40,40);
-			LS.Renderer.setRenderPass("picking");
-			picking_render_settings.layers = layers;
-
-			//check instances colliding with cursor using a ray against AABBs
-			//TODO
-
-			LS.Renderer.renderInstances( picking_render_settings )//, cursor_instances );
-			//gl.scissor(0,0,gl.canvas.width,gl.canvas.height);
-
-			LEvent.trigger( scene, "renderPicking", [x,y] );
-			LEvent.trigger( LS.Renderer, "renderPicking", [x,y] );
-
-			LS.Renderer.setRenderPass("color");
-
-			gl.readPixels(x,y,1,1,gl.RGBA,gl.UNSIGNED_BYTE, that._picking_color );
-
-			if(small_area)
-				gl.disable(gl.SCISSOR_TEST);
-
-		});
-
-		LS.Renderer._current_target = null;
-
-		//if(!this._picking_color) this._picking_color = new Uint8Array(4); //debug
-		//trace(" END Rendering: ", this._picking_color );
-		return this._picking_color;
-	}
-};
-
-LS.Picking = Picking;
-/* This is in charge of basic physics actions like ray tracing against the colliders */
-
-/**
-* Contains information about the collision of a ray and the scene
-* - position: vec3
-* - node: SceneNode
-* - instance: could be a RenderInstance or a PhysicsInstance
-* - distance: number
-* @class Collision
-* @namespace LS
-* @constructor
-* @param {SceneNode} node
-* @param {PhysicsInstance|RenderInstance} instance
-* @param {vec3} position collision position
-* @param {number} distance
-*/
-function Collision( node, instance, position, distance, normal )
-{
-	this.position = vec3.create();
-	if(position)
-		this.position.set(position);
-	this.node = node || null; //the node belonging to this colliding object
-	this.instance = instance || null; //could be a RenderInstance or a PhysicsInstance
-	this.distance = distance || 0; //distance from the ray start
-	this.normal = normal;
-}
-
-Collision.isCloser = function(a,b) { return a.distance - b.distance; }
-
-LS.Collision = Collision;
-
-
-
-
-
-/**
-* PhysicsInstance contains info of a colliding object. Used to test collisions with the scene
-*
-* @class PhysicsInstance
-* @namespace LS
-* @constructor
-*/
-function PhysicsInstance(node, component)
-{
-	this.uid = LS.generateUId("PHSX"); //unique identifier for this RI
-	this.layers = 3|0;
-
-	this.type = PhysicsInstance.BOX; //SPHERE, MESH
-	this.mesh = null; 
-
-	//where does it come from
-	this.node = node;
-	this.component = component;
-
-	//transformation
-	this.matrix = mat4.create();
-	this.center = vec3.create(); //in world space
-
-	//for visibility computation
-	this.oobb = BBox.create(); //local object oriented bounding box
-	this.aabb = BBox.create(); //world axis aligned bounding box
-}
-
-PhysicsInstance.BOX = 1;
-PhysicsInstance.SPHERE = 2;
-PhysicsInstance.PLANE = 3;
-PhysicsInstance.CAPSULE = 4;
-PhysicsInstance.MESH = 5;
-PhysicsInstance.FUNCTION = 6; //used to test against a internal function
-
-/**
-* Computes the instance bounding box in world space from the one in local space
-*
-* @method updateAABB
-*/
-PhysicsInstance.prototype.updateAABB = function()
-{
-	BBox.transformMat4( this.aabb, this.oobb, this.matrix );
-}
-
-PhysicsInstance.prototype.setMesh = function(mesh)
-{
-	this.mesh = mesh;
-	this.type = PhysicsInstance.MESH;	
-	BBox.setCenterHalfsize( this.oobb, BBox.getCenter( mesh.bounding ), BBox.getHalfsize( mesh.bounding ) );
-}
-
-LS.PhysicsInstance = PhysicsInstance;
-
-
-
-/**
-* Physics is in charge of all physics testing methods
-*
-* @class Physics
-* @namespace LS
-* @constructor
-*/
-var Physics = {
-
-	/**
-	* Cast a ray that traverses the scene checking for collisions with Colliders
-	* @method raycast
-	* @param {vec3} origin in world space
-	* @param {vec3} direction in world space
-	* @param {Object} options ( max_dist maxium distance, layers which layers to check, scene, first_collision )
-	* @return {Array} Array of Collision objects containing all the nodes that collided with the ray or null in the form [SceneNode, Collider, collision point, distance]
-	*/
-	raycast: function( origin, direction, options )
-	{
-		options = options || {};
-		var layers = options.layers;
-		if(layers === undefined)
-			layers = 0xFFFF;
-		var max_distance = options.max_distance || Number.MAX_VALUE;
-		var scene = options.scene || LS.GlobalScene;
-		var first_collision = options.first_collision;
-
-		var colliders = options.colliders || scene._colliders;
-		var collisions = [];
-
-		var compute_normal = !!options.normal;
-
-		if(!colliders)
-			return null;
-
-		var local_start = vec3.create();
-		var local_direction = vec3.create();
-
-		//for every instance
-		for(var i = 0; i < colliders.length; ++i)
-		{
-			var instance = colliders[i];
-
-			if( (layers & instance.layers) === 0 )
-				continue;
-
-			//test against AABB
-			var collision_point = vec3.create();
-			var collision_normal = null;
-			if( !geo.testRayBBox(origin, direction, instance.aabb, null, collision_point, max_distance) )
-				continue;
-
-			var model = instance.matrix;
-
-			//spheres are tested in world space, is cheaper (if no non-uniform scales...)
-			if( instance.type == PhysicsInstance.SPHERE )
-			{
-				if(!geo.testRaySphere( origin, direction, instance.center, instance.oobb[3], collision_point, max_distance))
-					continue;
-				if(compute_normal)
-					collision_normal = vec3.sub( vec3.create(), collision_point, instance.center );
-			}
-			else //the rest test first with the local BBox
-			{
-				//ray to local instance coordinates
-				var inv = mat4.invert( mat4.create(), model );
-				mat4.multiplyVec3( local_start, inv, origin);
-				mat4.rotateVec3( local_direction, inv, direction);
-
-				//test against OOBB (a little bit more expensive)
-				if( !geo.testRayBBox( local_start, local_direction, instance.oobb, null, collision_point, max_distance) )
-					continue;
-
-				//if mesh use Octree
-				if( instance.type == PhysicsInstance.MESH )
-				{
-					var octree = instance.mesh.octree;
-					if(!octree)
-						octree = instance.mesh.octree = new GL.Octree( instance.mesh );
-					var hit = octree.testRay( local_start, local_direction, 0.0, max_distance );
-					if(!hit)
-						continue;
-
-					mat4.multiplyVec3( collision_point, model, hit.pos );
-					if(compute_normal)
-						collision_normal = mat4.rotateVec3( vec3.create(), model, hit.normal );
-				}
-				else //if just a BBox collision
-				{
-					vec3.transformMat4( collision_point, collision_point, model );
-				}
-			}
-
-			var distance = vec3.distance( origin, collision_point );
-			collisions.push( new LS.Collision( instance.node, instance, collision_point, distance, collision_normal ));
-
-			if(first_collision)
-				return collisions;
-		}
-
-		//sort collisions by distance
-		collisions.sort( Collision.isCloser );
-		return collisions;
-	},
-
-	/**
-	* Test if a sphere collides with any of the colliders in the scene
-	* @method testSphere
-	* @param {vec3} origin in world space
-	* @param {radius} radius
-	* @param {Object} options layers, colliders, scene
-	* @return {PhysicsInstance} the first PhysicsObject that collided with, otherwise null
-	*/
-	testSphere: function( origin, radius, options )
-	{
-		options = options || {};
-		var layers = options.layers;
-		if(layers === undefined)
-			layers = 0xFFFF;
-		var scene = options.scene || LS.GlobalScene;
-
-		var colliders = options.colliders || scene._colliders;
-		var collisions = [];
-
-		var local_start = vec3.create();
-
-		if(!colliders)
-			return null;
-
-		//for every instance
-		for(var i = 0; i < colliders.length; ++i)
-		{
-			var instance = colliders[i];
-
-			if( (layers & instance.layers) === 0 )
-				continue;
-
-			//test against AABB
-			if( !geo.testSphereBBox( origin, radius, instance.aabb ) )
-				continue;
-
-			var model = instance.matrix;
-
-			//ray to local
-			var inv = mat4.invert( mat4.create(), model );
-			mat4.multiplyVec3( local_start, inv, origin);
-
-			//test in world space, is cheaper
-			if( instance.type == LS.PhysicsInstance.SPHERE)
-			{
-				if( vec3.distance( origin, local_start ) > (radius + BBox.getRadius(instance.oobb)) )
-					continue;
-			}
-			else //the rest test first with the local BBox
-			{
-				//test against OOBB (a little bit more expensive)
-				if( !geo.testSphereBBox( local_start, radius, instance.oobb) )
-					continue;
-
-				if( instance.type == LS.PhysicsInstance.MESH )
-				{
-					var octree = instance.mesh.octree;
-					if(!octree)
-						octree = instance.mesh.octree = new GL.Octree( instance.mesh );
-					if( !octree.testSphere( local_start, radius ) )
-						continue;
-				}
-			}
-
-			return instance;
-		}
-
-		return null;
-	},
-
-	testCollision: function( A, B )
-	{
-		//test AABBs
-		if( !geo.testBBoxBBox( A.aabb, B.aabb ) )
-			return false;
-
-		return true; //TODO
-
-		//conver A to B local Space
-
-		//test box box
-
-		//test box sphere
-
-		//test box mesh
-
-		//test sphere box
-
-		//test sphere sphere
-
-		//mesh mesh not supported
-
-		return true;
-	},
-
-	testAllCollisions: function( on_collision, layers, scene )
-	{
-		if(layers === undefined)
-			layers = 0xFFFF;
-		scene = scene || LS.GlobalScene;
-
-		var colliders = scene._colliders;
-		var l = colliders.length;
-
-		var collisions = false;
-
-		for(var i = 0; i < l; ++i)
-		{
-			var instance_A = colliders[i];
-
-			if( (layers & instance_A.layers) === 0 )
-				continue;
-
-			for(var j = i+1; j < l; ++j)
-			{
-				var instance_B = colliders[j];
-
-				if( (layers & instance_B.layers) === 0 )
-					continue;
-
-				if( this.testCollision( instance_A, instance_B ) )
-				{
-					if(on_collision)
-						on_collision( instance_A, instance_B );
-					collisions = true;
-				}
-			}
-		}
-
-		return collisions;
-	}
-}
-
-
-LS.Physics = Physics;
 /**
 * Formats is the class where all the info about what is every format, how to parse it, etc, is located
 *
@@ -27751,8 +27923,8 @@ var parserBVH = {
 };
 
 LS.Formats.registerParser( parserBVH );
-//collada.js 
-//This worker should offload the main thread from parsing big text files (DAE)
+// collada.js by Javi Agenjo (2015)
+// https://github.com/jagenjo/collada.js
 
 (function(global){
 
@@ -27876,6 +28048,16 @@ global.Collada = {
 		if(pos != -1)
 			filename = filename.substr(pos+1);
 		return filename;
+	},
+
+	last_name: 0,
+
+	generateName: function(v)
+	{
+		v = v || "name_";
+		var name = v + this.last_name;
+		this.last_name++;
+		return name;
 	},
 
 	parse: function(data, options, filename)
@@ -28162,6 +28344,8 @@ global.Collada = {
 		if( node_name)
 			node.name = node_name;
 		this._nodes_by_id[ node.id ] = node;
+		if( node_id )
+			this._nodes_by_id[ node_id ] = node;
 		if( node_sid )
 			this._nodes_by_id[ node_sid ] = node;
 
@@ -28188,15 +28372,24 @@ global.Collada = {
 		return node;
 	},
 
-	readNodeInfo: function(xmlnode, scene, level, flip)
+	readNodeInfo: function( xmlnode, scene, level, flip )
 	{
 		var node_id = this.safeString( xmlnode.getAttribute("id") );
 		var node_sid = this.safeString( xmlnode.getAttribute("sid") );
 
 		if(!node_id && !node_sid)
+		{
+			console.warn("Collada: node without id, creating a random one");
+			node_id = this.generateName("node_");
 			return null;
+		}
 
 		var node = this._nodes_by_id[ node_id || node_sid ];
+		if(!node)
+		{
+			console.warn("Collada: Node not found by id: " + (node_id || node_sid));
+			return null;
+		}
 
 		//node elements
 		for( var i = 0; i < xmlnode.childNodes.length; i++ )
@@ -29336,7 +29529,8 @@ global.Collada = {
 	readAnimations: function(root, scene)
 	{
 		var xmlanimations = root.querySelector("library_animations");
-		if(!xmlanimations) return null;
+		if(!xmlanimations)
+			return null;
 
 		var xmlanimation_childs = xmlanimations.childNodes;
 
@@ -29358,19 +29552,19 @@ global.Collada = {
 			if(!anim_id) //nested animation (DAE 1.5)
 			{
 				var xmlanimation2_childs = xmlanimation.querySelectorAll("animation");
-				for(var j = 0; j < xmlanimation2_childs.length; ++j)
+				if(xmlanimation2_childs.length)
 				{
-					var xmlanimation2 = xmlanimation2_childs.item(j);
-					var anim = this.readAnimationTrack( xmlanimation2 );
-					tracks.push( anim );
+					for(var j = 0; j < xmlanimation2_childs.length; ++j)
+					{
+						var xmlanimation2 = xmlanimation2_childs.item(j);
+						this.readAnimation( xmlanimation2, tracks );
+					}
 				}
+				else //source tracks?
+					this.readAnimation( xmlanimation, tracks );
 			}
 			else //no nested (DAE 1.4)
-			{
-				var anim = this.readAnimationTrack( xmlanimation );
-				if(anim)
-					tracks.push( anim );
-			}
+				this.readAnimation( xmlanimation, tracks );
 		}
 
 		if(!tracks.length) 
@@ -29380,7 +29574,7 @@ global.Collada = {
 		var max_time = 0;
 		for(var i = 0; i < tracks.length; ++i)
 			if( max_time < tracks[i].duration )
-				max_time = anim.duration;
+				max_time = tracks[i].duration;
 
 		default_take.name = "default";
 		default_take.duration = max_time;
@@ -29388,16 +29582,35 @@ global.Collada = {
 		return animations;
 	},
 
-	readAnimationTrack: function( xmlanimation )
+	//animation xml
+	readAnimation: function( xmlanimation, result )
 	{
 		if(xmlanimation.localName != "animation")
 			return null;
 
+		//this could be missing when there are lots of anims packed in one <animation>
 		var anim_id = xmlanimation.getAttribute("id");
 
 		//channels are like animated properties
-		var xmlchannel = xmlanimation.querySelector("channel");
-		if(!xmlchannel) 
+		var xmlchannel_list = xmlanimation.querySelectorAll("channel");
+		if(!xmlchannel_list.length)
+			return null;
+
+		var tracks = result || [];
+
+		for(var i = 0; i < xmlchannel_list.length; ++i)
+		{
+			var anim = this.readChannel( xmlchannel_list.item(i), xmlanimation );
+			if(anim)
+				tracks.push( anim );
+		}
+
+		return tracks;
+	},
+
+	readChannel: function( xmlchannel, xmlanimation )
+	{
+		if(xmlchannel.localName != "channel" || xmlanimation.localName != "animation")
 			return null;
 
 		var source = xmlchannel.getAttribute("source");
@@ -29413,8 +29626,8 @@ global.Collada = {
 		}
 
 		var inputs = {};
-		var sources = {};
 		var params = {};
+		var sources = {};
 		var xmlinputs = xmlsampler.querySelectorAll("input");
 
 		var time_data = null;
@@ -29456,12 +29669,17 @@ global.Collada = {
 			var param_name = xmlparam.getAttribute("name");
 			if(param_name == "TIME")
 				time_data = data_array;
-			params[ semantic == "OUTPUT" ? semantic : param_name ] = type;
+			if(semantic == "OUTPUT")
+				param_name = semantic;
+			if(param_name)
+				params[ param_name ] = type;
+			else
+				console.warn("Collada: <param> without name attribute in <animation>");
 		}
 
 		if(!time_data)
 		{
-			console.error("Error DAE: no TIME info found in animation: " + anim_id);
+			console.error("Error DAE: no TIME info found in <channel>: " + xmlchannel.getAttribute("source") );
 			return null;
 		}
 
@@ -29470,11 +29688,11 @@ global.Collada = {
 
 		var anim = {};
 		var nodename = path[0]; //safeString ?
-		var locator = nodename + "/" + path[1];
+		var node = this._nodes_by_id[ nodename ];
+		var locator = node.id + "/" + path[1];
 		//anim.nodename = this.safeString( path[0] ); //where it goes
 		anim.name = path[1];
 		anim.property = locator;
-		var node = this._nodes_by_id[ nodename ];
 		var type = "number";
 		var element_size = 1;
 		var param_type = params["OUTPUT"];
@@ -29534,6 +29752,7 @@ global.Collada = {
 		return null;
 	},
 
+	//reads controllers and stores them in 
 	readLibraryControllers: function( scene )
 	{
 		var xmllibrarycontrollers = this._xmlroot.querySelector("library_controllers");
@@ -29552,13 +29771,13 @@ global.Collada = {
 			if( this._controllers_found[ id ] )
 				continue;
 
-			//console.log("Controller missing!: " + id );
+			//read it (we wont use the returns, we will get it from this._controllers_found
 			this.readController( xmlcontroller, null, scene );
 		}
 	},
 
 	//used for skinning and morphing
-	readController: function(xmlcontroller, flip, scene)
+	readController: function( xmlcontroller, flip, scene )
 	{
 		if(!xmlcontroller.localName == "controller")
 		{
@@ -29567,6 +29786,9 @@ global.Collada = {
 		}
 
 		var id = xmlcontroller.getAttribute("id");
+		//use cached
+		if( this._controllers_found[ id ] )
+			return this._controllers_found[ id ];
 
 		var use_indices = false;
 		var mesh = null;
@@ -29578,8 +29800,8 @@ global.Collada = {
 		if(xmlmorph)
 			mesh = this.readMorphController( xmlmorph, flip, scene, mesh );
 
+		//cache and return
 		this._controllers_found[ id ] = mesh;
-
 		return mesh;
 	},
 
@@ -30425,6 +30647,8 @@ var parserDAE = {
 
 	processMaterial: function(material)
 	{
+		material.object_type = "StandardMaterial";
+
 		if(material.transparency)
 		{
 			material.opacity = 1.0 - parseFloat( material.transparency );

@@ -16,7 +16,7 @@ var AnimationModule = {
 		LEvent.bind( LS.GlobalScene, "afterRenderScene", this.renderView.bind(this));
 		LEvent.bind( LS.GlobalScene, "renderPicking", this.renderPicking.bind(this));
 
-		RenderModule.viewport3d.addModule( AnimationModule ); //capture update, render trajectories
+		RenderModule.canvas_manager.addModule( AnimationModule ); //capture update, render trajectories
 	},
 
 	createTimeline: function()

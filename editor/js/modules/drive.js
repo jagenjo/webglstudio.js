@@ -2164,6 +2164,8 @@ DriveModule._textResourceCallback = function( fullpath, restype, options ) {
 			lang = "javascript";
 		else if( extension == "glsl" )
 			lang = "glsl";
+		else if( extension == "html" )
+			lang = "html";
 
 		var title = LS.ResourcesManager.getFilename( fullpath );
 		CodingModule.editInstanceCode( resource, { title: title, lang: lang }, true );
@@ -2172,7 +2174,7 @@ DriveModule._textResourceCallback = function( fullpath, restype, options ) {
 		console.warn("No data found in resource");
 }
 
-DriveModule.registerAssignResourceCallback(["Resource","application/javascript","text/plain","text/csv","TEXT"], DriveModule._textResourceCallback );
+DriveModule.registerAssignResourceCallback(["Resource","application/javascript","text/plain","text/html","text/csv","TEXT"], DriveModule._textResourceCallback );
 DriveModule.registerAssignResourceCallback(["ShaderCode","Script"], DriveModule._textResourceCallback );
 
 LiteGUI.Inspector.prototype.addFolder = function( name,value, options )

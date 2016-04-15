@@ -1,4 +1,4 @@
-/* Mini graphics wrapper for some lightgl common actions
+/* Mini canvas wrapper for some lightgl common actions
 	- organizes different modules accesing the 3d context (input and rendering)
 	- some debug utilities
 	- super and subsampling
@@ -8,19 +8,19 @@
 		Shaders
 */
 
-function GraphicsViewport( container, options)
+function CanvasManager( container, options)
 {
 	this.modules = [];
 	this.keys = {};
 
-	this.init(container,options)
+	this.init( container, options )
 }
 
-GraphicsViewport.prototype.init = function( container, options)
+CanvasManager.prototype.init = function( options )
 {
 	options = options || {};
 
-	container = container || "body";
+	var container = options.container || "body";
 
 	if(container.constructor === String)
 	{
@@ -48,7 +48,7 @@ GraphicsViewport.prototype.init = function( container, options)
 	//create canvas and attach events
 	try
 	{
-		window.gl = GL.create({antialias: antialiasing, alpha:false, premultipliedAlpha: false, debug: true, preserveDrawingBuffer: allow_read});
+		window.gl = GL.create({ antialias: antialiasing, alpha:false, premultipliedAlpha: false, debug: true, preserveDrawingBuffer: allow_read });
 	}
 	catch (err)
 	{
@@ -86,8 +86,6 @@ GraphicsViewport.prototype.init = function( container, options)
 	//attach
 	container.appendChild( gl.canvas );
 
-	//enable Canvas2DtoWebGL
-
 	//window.addEventListener("resize", this.onCheckSize.bind(this), true ); //dont work :(
 	$(window).resize( this.onCheckSize.bind(this) );
 
@@ -97,13 +95,13 @@ GraphicsViewport.prototype.init = function( container, options)
 	gl.animate();
 };
 
-GraphicsViewport.prototype.onCheckSize = function()
+CanvasManager.prototype.onCheckSize = function()
 {
 	//console.log("resize!");
 	this.resize();
 }
 
-GraphicsViewport.prototype.resize = function(w,h)
+CanvasManager.prototype.resize = function(w,h)
 {
 	if(!this.gl || !this.gl.canvas)
 		return;
@@ -121,12 +119,12 @@ GraphicsViewport.prototype.resize = function(w,h)
 	this.gl.viewport(0,0,w,h);
 }
 
-GraphicsViewport.prototype.enable = function()
+CanvasManager.prototype.enable = function()
 {
 	window.gl = this.gl;
 }
 
-GraphicsViewport.prototype.addModule = function(module, index)
+CanvasManager.prototype.addModule = function(module, index)
 {
 	if(index === undefined)
 		this.modules.push(module);
@@ -134,7 +132,7 @@ GraphicsViewport.prototype.addModule = function(module, index)
 		this.modules.splice(index,0,module);
 },
 
-GraphicsViewport.prototype.removeModule = function(module)
+CanvasManager.prototype.removeModule = function(module)
 {
 	var pos = this.modules.indexOf(module);
 	if(pos != -1)
@@ -142,7 +140,7 @@ GraphicsViewport.prototype.removeModule = function(module)
 },
 
 //Be careful, events are processed from end to start, so lower order means later
-GraphicsViewport.prototype.setModuleOrder = function(module, order)
+CanvasManager.prototype.setModuleOrder = function(module, order)
 {
 	var pos = this.modules.indexOf(module);
 	if(pos == order) return;
@@ -157,7 +155,7 @@ GraphicsViewport.prototype.setModuleOrder = function(module, order)
 },
 
 
-GraphicsViewport.prototype.ondraw = function()
+CanvasManager.prototype.ondraw = function()
 {
 	for(var i = 0; i < this.modules.length; ++i)
 	{
@@ -167,7 +165,7 @@ GraphicsViewport.prototype.ondraw = function()
 	}
 },
 
-GraphicsViewport.prototype.onupdate = function(seconds)
+CanvasManager.prototype.onupdate = function(seconds)
 {
 	for(var i = 0; i < this.modules.length; ++i)
 	{
@@ -178,7 +176,7 @@ GraphicsViewport.prototype.onupdate = function(seconds)
 
 //input ******************
 
-GraphicsViewport.prototype.dispatchEvent = function(e)
+CanvasManager.prototype.dispatchEvent = function(e)
 {
 	var event_name = e.eventType;
 	//trace(event_name);

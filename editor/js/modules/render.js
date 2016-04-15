@@ -1,9 +1,10 @@
 /*  
 	This module is in charge or rendering the Scene.
-	The module initializes the GraphicsViewport that handles the Web3D canvas and the interaction.
+	The module initializes the CanvasManager that handles the Web3D canvas and the interaction.
 */
 
 var RenderModule = {
+
 	name: "Scene",
 	bigicon: "imgs/tabicon-scene.png",
 	enabled: true,
@@ -15,7 +16,7 @@ var RenderModule = {
 	shaders_url: "../litescene/data/shaders.xml",
 
 	render_settings: new LS.RenderSettings(),
-	cameras: [],
+	cameras: [], //viewports
 	selected_camera: null, //last viewport clicked by the mouse
 	under_camera: null, //camera below the mouse
 
@@ -26,30 +27,14 @@ var RenderModule = {
 
 	init: function()
 	{
-		/*
-		if(!gl)
-		{
-			LiteGUI.alert("WebGL support not found.<br/>Consider updating your browser or switching to Chrome or Firefox.");
-			return;
-		}
-		*/
-
-		//grab content
-		/*
-		var content = document.getElementById("visor");
-		if(!content)
-			throw("Visor area not found");
-		*/
-
 		//create 3D tab
 		this.tab = LiteGUI.main_tabs.addTab( this.name, {
 				id:"visortab", 
 				bigicon: this.bigicon,
 				size: "full",
-				//content: "<div id='visorarea'></div>",
 				module: EditorModule,
 				callback: function() {
-					if(!RenderModule.viewport3d)
+					if(!RenderModule.canvas_manager)
 						return;
 
 					RenderModule.render_settings.in_player = false;
@@ -57,7 +42,7 @@ var RenderModule = {
 
 					if(window.gl && window.gl.canvas)
 					{
-						RenderModule.viewport3d.resize(); //adapt to parent size
+						RenderModule.canvas_manager.resize(); //adapt to parent size
 						RenderModule.requestFrame();
 					}
 					EditorModule.refreshAttributes(); //why not? it was commented
@@ -77,17 +62,17 @@ var RenderModule = {
 		var visor_container = this.visor_container = document.getElementById("visor");
 		InterfaceModule.setVisorArea( visorarea );
 
-		//create 3D canvas and store inside the #visor
-		this.viewport3d = new GraphicsViewport( visor_container, {full: true, antialiasing:true} );
-		if(!this.viewport3d.gl)
+		//create canvas and store inside the #visor
+		this.canvas_manager = new CanvasManager( { container: visor_container, full: true, antialiasing: true} );
+		if(!this.canvas_manager.gl)
 		{
 			this.onWebGLNotEnabled();
 			return;
 		}
-		this.viewport3d.addModule(this); //capture render, update and mouse
+		this.canvas_manager.addModule(this); //capture render, update and mouse
 
 		//CANVAS
-		var canvas = this.viewport3d.canvas;
+		var canvas = this.canvas_manager.canvas;
 		this.shaders_url = CORE.config.shaders || this.shaders_url;
 		LS.ShadersManager.init( this.shaders_url ); //load shaders
 		LS.Renderer.init();
@@ -147,7 +132,7 @@ var RenderModule = {
 
 		this.registerCommands();
 
-		RenderModule.viewport3d.resize();
+		RenderModule.canvas_manager.resize();
 		this.temp_camera = new LS.Camera();
 	},
 
@@ -228,6 +213,26 @@ var RenderModule = {
 		this.requestFrame();
 	},
 
+	setViewportCamera: function( index, new_camera )
+	{
+		var old = this.cameras[ index ];
+		if(!old)
+		{
+			console.warn("Unknown camera index");
+			return;
+		}
+
+		this.cameras[ index ] = new_camera;
+		this.processEditorCamera( new_camera, index );
+		new_camera._viewport.set( old._viewport );
+
+		if( old && old._prev_viewport )
+		{
+			old._viewport.set( old._prev_viewport );
+			delete old._prev_viewport;
+		}
+	},
+
 	//it prepares a camera to be used in the editor
 	processEditorCamera: function( camera, index )
 	{
@@ -250,34 +255,14 @@ var RenderModule = {
 		camera._gizmos = [ new CameraGizmo( camera ) ];
 	},
 
-	setViewportCamera: function( index, new_camera )
-	{
-		var old = this.cameras[ index ];
-		if(!old)
-		{
-			console.warn("Unknown camera index");
-			return;
-		}
-
-		this.cameras[ index ] = new_camera;
-		this.processEditorCamera( new_camera, index );
-		new_camera._viewport.set( old._viewport );
-
-		if( old && old._prev_viewport )
-		{
-			old._viewport.set( old._prev_viewport );
-			delete old._prev_viewport;
-		}
-	},
-	
 	relaunch: function() { 
 		console.log("Relaunching...");
-		RenderModule.viewport3d.gl.relaunch(); 
+		RenderModule.canvas_manager.gl.relaunch(); 
 	},
 
 	appendViewportTo: function(parent)
 	{
-		var canvas = this.viewport3d.canvas;
+		var canvas = this.canvas_manager.canvas;
 		if(!canvas)
 			return;
 
@@ -285,17 +270,17 @@ var RenderModule = {
 			parent.appendChild(canvas);
 		else
 			document.getElementById("visor").appendChild(canvas);
-		RenderModule.viewport3d.resize();
+		RenderModule.canvas_manager.resize();
 		RenderModule.requestFrame();
 		return canvas;
 	},
 
 	getCanvas: function()
 	{
-		return this.viewport3d.canvas;
+		return this.canvas_manager.canvas;
 	},
 
-	//called by the GraphicsViewport on requestAnimationFrame
+	//called by the CanvasManager on requestAnimationFrame
 	render: function(force_render)
 	{
 		this.frame_updated = false;
@@ -350,8 +335,25 @@ var RenderModule = {
 		LEvent.trigger(this,"pre_scene_render");
 		gl.clear( gl.DEPTH_BUFFER_BIT ); //¿?
 		//render frame
-		LS.Renderer.render( LS.GlobalScene, render_settings, cameras );
+		if( this.special_pass ) 
+			this.renderSpecialPass( this.special_pass ); //used for debug mostly
+		else
+			LS.Renderer.render( LS.GlobalScene, render_settings, cameras );
 		LEvent.trigger(this,"post_scene_render");
+	},
+
+	//used for debug, allows to render shadows or picking buffers directly to screen
+	renderSpecialPass: function( pass )
+	{
+		if( pass == "picking" )
+		{
+			LS.Picking.renderPickingBuffer( LS.GlobalScene, this.cameras[0] );
+		}
+		else
+		{
+			LS.Renderer.setRenderPass( pass );
+			LS.Renderer.renderInstances( new LS.RenderSettings() );
+		}
 	},
 
 	//used to select viewport
@@ -384,14 +386,6 @@ var RenderModule = {
 		}
 		return null;
 	},
-
-	/*
-	//called by the GraphicsViewport
-	update: function(seconds) {
-		//Scene.update(seconds);
-		//this.updateCamera(seconds);
-	},
-	*/
 
 	setRenderMode: function(v)
 	{
@@ -437,49 +431,9 @@ var RenderModule = {
 		this.requestFrame();
 	},
 
-	assets_missing: [],
-	assetNotFound: function(url)
-	{
-		//console.error("Asset not found: " + url);
-		return;
-		/*
-		this.assets_missing.push(url);
-
-		var str = "";
-		for(var i in this.assets_missing)
-			str += "<p class='item'><strong>" + this.assets_missing[i] + "</strong></p>";
-
-		LiteGUI.showMessage("<p>Some assets were missing (not found on the server):</p>" + str + "<p>If they are local files, please drag them to the interface and try to load again.</p>",{width: 400, height: 200, title:"Warning", onClose:inner}); 
-
-		function inner()
-		{
-			RenderModule.assets_missing = [];
-		}
-		*/
-	},
-
 	requestFrame: function()
 	{
 		LS.GlobalScene.refresh();
-	},
-
-	loadScene: function(url)
-	{
-		var scene = LS.GlobalScene;
-		scene.clear();
-
-		if(url.substr(0,7) != "http://")
-			url = 'data/scenes/' + url;
-		scene.loadScene(url, inner_onload, inner_error );
-		
-		function inner_onload() {
-			RenderModule.restoreSceneCamera();
-		}
-
-		function inner_error(name)
-		{
-			LiteGUI.alert("File not found: " + name);
-		}
 	},
 
 	restoreSceneCamera: function()
@@ -545,7 +499,7 @@ var RenderModule = {
 	{
 		width = width || 256;
 		height = height || 256;
-		var v3d = RenderModule.viewport3d;
+		var v3d = RenderModule.canvas_manager;
 
 		if( v3d.canvas.width > width ) //render big and downscale
 		{
@@ -636,6 +590,8 @@ var RenderModule = {
 
 	testGridCollision: function(x,y)
 	{
+		if(x === undefined || y === undefined)
+			throw("testGridCollision: params missing");
 		var camera = ToolUtils.getCamera();
 		var ray = camera.getRayInPixel( x, y );
 		var position = vec3.create();

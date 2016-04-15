@@ -1664,7 +1664,7 @@ function dataURItoBlob( dataURI ) {
 						disabled = true;
 						element.classList.add("disabled");
 					}
-					if(value.submenu)
+					if(value.submenu || value.has_submenu)
 						element.classList.add("has_submenu");
 				}
 

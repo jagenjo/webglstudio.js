@@ -17,13 +17,13 @@ var LabModule = {
 	{
 		this.tab = LiteGUI.main_tabs.addTab( this.name , {id:"labtab", bigicon: this.bigicon, size: "full", callback: function(tab) {
 			LabModule.enabled = true;
-			RenderModule.viewport3d.addModule( LabModule );
+			RenderModule.canvas_manager.addModule( LabModule );
 			RenderModule.appendViewportTo( LabModule.tab.content );
 		},
 		callback_leave: function() {
 			LabModule.enabled = false;
 			RenderModule.appendViewportTo( null );
-			RenderModule.viewport3d.removeModule( LabModule );
+			RenderModule.canvas_manager.removeModule( LabModule );
 		}});
 
 		var content = document.getElementById("labtab");
@@ -48,13 +48,13 @@ var LabModule = {
 
 
 		//enable WebGL Canvas2D renderer
-		if( RenderModule.viewport3d.canvas )
+		if( RenderModule.canvas_manager.canvas )
 			this.prepareGL();
 	},
 
 	prepareGL: function()
 	{
-		enableWebGLCanvas( RenderModule.viewport3d.canvas );
+		enableWebGLCanvas( RenderModule.canvas_manager.canvas );
 
 		this.camera = new LS.Camera();
 		this.camera.lookAt([0,0,0],[0,0,-1],[0,1,0]);

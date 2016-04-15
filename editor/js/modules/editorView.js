@@ -37,14 +37,15 @@ var EditorView = {
 
 	init: function()
 	{
-		if(!gl) return;
+		if(!gl)
+			return;
 
 		//LEvent.jQuery = true;
 
 		//LEvent.bind(Scene, "afterRenderScene", function() { EditorModule.renderEditor(); });
 
 		this.createMeshes();
-		RenderModule.viewport3d.addModule(this);
+		RenderModule.canvas_manager.addModule(this);
 
 		LEvent.bind( LS.Renderer, "renderHelpers", this.renderView.bind(this));
 		LEvent.bind( LS.Renderer, "renderPicking", this.renderPicking.bind(this));
@@ -148,17 +149,34 @@ var EditorView = {
 
 	mousedown: function(e)
 	{
-		return this.sendToGizmos("mousedown",[e]);
+		var r = this.sendToGizmos("mousedown",[e]);
+
+		return r;
 	},
 
 	mousemove: function(e)
 	{
-		return this.sendToGizmos("mousemove",[e]);
+		var r = this.sendToGizmos("mousemove",[e]);
+
+		return r;
 	},
 
 	mouseup: function(e)
 	{
-		return this.sendToGizmos("mouseup",[e]);
+		var r = this.sendToGizmos("mouseup",[e]);
+		if(r)
+			return r;
+
+		if(e.button == 2 && e.click_time < 200)
+		{
+			var instance_info = LS.Picking.getInstanceAtCanvasPosition( e.canvasx, e.canvasy, ToolUtils.getCamera() );
+			var instance = instance_info;
+			if(instance_info && instance_info.instance)
+				instance = instance_info.instance;
+			this._canvas_event = e; //we store the event because we may need it
+			EditorModule.showContextualMenu( instance, e );
+			return true;
+		}
 	},
 
 	mousewheel: function(e)
@@ -205,8 +223,8 @@ var EditorView = {
 
 	renderEditor: function( camera )
 	{
-		var shader = RenderModule.viewport3d.flat_shader;
-		var viewport3d = RenderModule.viewport3d;
+		var shader = RenderModule.canvas_manager.flat_shader;
+		var canvas_manager = RenderModule.canvas_manager;
 		//gl.viewport( Renderer._full_viewport[0], Renderer._full_viewport[1], Renderer._full_viewport[2], Renderer._full_viewport[3] );
 
 		gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
@@ -538,8 +556,12 @@ var EditorView = {
 		LS.Draw.setCamera( camera );
 		LS.Draw.setPointSize( 20 );
 
-		var ray = camera.getRayInPixel( mouse_pos[0], mouse_pos[1] );
-		ray.end = vec3.add( vec3.create(), ray.start, vec3.scale(vec3.create(), ray.direction, 10000) );
+		var ray = null;
+		if(mouse_pos)
+		{
+			ray = camera.getRayInPixel( mouse_pos[0], mouse_pos[1] );
+			ray.end = vec3.add( vec3.create(), ray.start, vec3.scale(vec3.create(), ray.direction, 10000) );
+		}
 
 		//Node components
 		for(var i = 0, l = LS.GlobalScene._nodes.length; i < l; ++i)
@@ -596,7 +618,7 @@ var EditorView = {
 			gl.viewport(0 + i * 256, 10, 10 + 256, 10 + 256);
 			//gl.viewport(0,0,gl.canvas.width,gl.canvas.height);
 			tex.toViewport();
-			//Shaders.get("screen").uniforms({color: [1,1,1,1]}).draw(RenderModule.viewport3d.screen_plane);
+			//Shaders.get("screen").uniforms({color: [1,1,1,1]}).draw(RenderModule.canvas_manager.screen_plane);
 		}
 		gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 	},

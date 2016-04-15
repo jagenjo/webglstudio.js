@@ -4,6 +4,7 @@ function CameraGizmo( camera )
 	this.name = "camera gizmo";
 	this.selected_axis = null;
 	this.texture_selected_axis = null;
+
 	this.gizmo_size = 1;
 
 	//where is located the gizmo
@@ -18,7 +19,9 @@ function CameraGizmo( camera )
 	this.render_camera = new LS.Camera({near: 0.1, far: 100, frustum_size:2} );
 
 	this.updateTexture();
-	this.updateMesh();
+
+	if(!CameraGizmo.mesh)
+		CameraGizmo.mesh = this.createMesh();
 }
 
 CameraGizmo.axis = [{name:"+X",v:[1,0,0],up:[0,1,0]},
@@ -32,9 +35,6 @@ CameraGizmo.prototype.render = function()
 {
 	if(RenderModule.render_settings.ingame)
 		return;
-
-	if(this.mesh && this.mesh.gizmo_size != this.gizmo_size)
-		this.updateMesh();
 
 	LS.Draw.push();
 	gl.disable( gl.DEPTH_TEST );
@@ -65,8 +65,13 @@ CameraGizmo.prototype.render = function()
 	LS.Draw.setColor([1,1,1]);
 	if(this.texture)
 		this.texture.bind(0);
-	if(this.mesh)
-		LS.Draw.renderMesh( this.mesh, gl.TRIANGLES, LS.Draw.shader_texture );
+	if(CameraGizmo.mesh)
+	{
+		LS.Draw.push();
+		LS.Draw.scale( this.gizmo_size );
+		LS.Draw.renderMesh( CameraGizmo.mesh, gl.TRIANGLES, LS.Draw.shader_texture );
+		LS.Draw.pop();
+	}
 	LS.Draw.popCamera();
 
 	LS.Draw.pop();
@@ -130,42 +135,16 @@ CameraGizmo.prototype.mousedown = function(e)
 
 	if(e.button == 2)
 	{
-		var options = ["Camera Info","Perspective","Orthographic",null,"Editor Cam"];
-
-		var scene_cameras = LS.GlobalScene._cameras;
-		for(var i = 0; i < scene_cameras.length; i++)
-		{
-			var scene_camera = scene_cameras[i];
-			options.push( { title: "Cam " + scene_camera._root.name, camera: scene_camera } );
-		}
-
-
-		var menu = new LiteGUI.ContextualMenu( options, { event: e, title: "Cameras", callback: (function(v) { 
-			var camera = this.camera;
-			switch( v )
-			{
-				case "Camera Info": EditorModule.inspect( camera ); break;
-				case "Perspective": camera.type = LS.Camera.PERSPECTIVE; break;
-				case "Orthographic": camera.type = LS.Camera.ORTHOGRAPHIC; break;
-				case "Editor Cam": 
-					var cam = new LS.Camera();
-					cam._viewport.set( this.camera._viewport );
-					RenderModule.setViewportCamera( this.camera._editor.index, cam );
-					this.camera = cam;
-					break;
-				default:
-					RenderModule.setViewportCamera( this.camera._editor.index, v.camera );
-					this.camera = v.camera;
-					break;
-			}
-			LS.GlobalScene.refresh();
-		}).bind(this) });
 		return true;
 	}
 }
 
 CameraGizmo.prototype.mousemove = function(e)
 {
+	this._mouse_is_over = this.insideGizmoArea(e);
+	if(!this._mouse_is_over)
+		return;
+
 	var selected = this.checkSide(e);
 	if(selected)
 	{
@@ -196,25 +175,39 @@ CameraGizmo.prototype.mousemove = function(e)
 
 CameraGizmo.prototype.mouseup = function(e)
 {
+	if(!this.insideGizmoArea(e))
+		return;
+
 	this.orbiting = false;
 	e.preventDefault();
 	e.stopPropagation();
 
-	if(e.click_time > 300 || e.button != 0)
+	if(e.click_time > 300)
 		return true;
 
-	var selected = this.checkSide(e);
-	if(selected)
+	if(e.button == 2)
 	{
-		var camera = this.camera;
-
-		var center = camera.getCenter();
-		var dist = vec3.sub( vec3.create(), camera.getEye(), center );
-		var delta = vec3.scale( vec3.create(), selected.v, vec3.length( dist ) );
-		camera.eye = vec3.add( delta, center, delta );
-		camera.up = selected.up;
-		LS.GlobalScene.refresh();
+		EditorModule.showCameraContextualMenu(this.camera, e);
 	}
+
+	if(e.button == 0)
+	{
+		var selected = this.checkSide(e);
+		if(selected)
+		{
+			var camera = this.camera;
+
+			var center = camera.getCenter();
+			var dist = vec3.sub( vec3.create(), camera.getEye(), center );
+			var delta = vec3.scale( vec3.create(), selected.v, vec3.length( dist ) );
+			camera.eye = vec3.add( delta, center, delta );
+			camera.up = selected.up;
+			LS.GlobalScene.refresh();
+		}
+	}
+
+	e.preventDefault();
+	e.stopPropagation();
 
 	return true;
 }
@@ -268,9 +261,9 @@ CameraGizmo.prototype.updateTexture = function()
 		this.texture.uploadImage( this.canvas );
 }
 
-CameraGizmo.prototype.updateMesh = function()
+CameraGizmo.prototype.createMesh = function()
 {
-	var size = this.gizmo_size;
+	var size = 1;
 	sizex = size*0.5;
 	sizey = size*0.5;
 	sizez = size*0.5;
@@ -293,9 +286,7 @@ CameraGizmo.prototype.updateMesh = function()
 	addCoords( uv_size, uv_size );
 
 	var mesh = GL.Mesh.load({ vertices: vertices, coords: coords });
-	this.mesh = mesh;
-	mesh.gizmo_size = size;
-
+	
 	function addCoords(startx, starty, reverse)
 	{
 		var y = starty;
@@ -307,5 +298,7 @@ CameraGizmo.prototype.updateMesh = function()
 		}
 		coords.push([startx,y],[startx+uv_size,y2],[startx+uv_size,y],[startx,y],[startx,y2],[startx+uv_size,y2]);
 	}
+
+	return mesh;
 }
 

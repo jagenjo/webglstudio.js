@@ -22,7 +22,7 @@ var EditorModule = {
 
 	init: function()
 	{
-		RenderModule.viewport3d.addModule(this);
+		RenderModule.canvas_manager.addModule(this);
 
 		if(!gl) 
 			return;
@@ -905,21 +905,20 @@ var EditorModule = {
 		EditorModule.getAddRootNode().addChild(node);
 		UndoModule.saveNodeCreatedUndo( node );
 		SelectionModule.setSelection(node);
+		return node;
 	},
 
 	createNodeWithMesh: function(mesh_name, options)
 	{
-		LS.ResourcesManager.load(mesh_name, options, on_load);
+		var node = new LS.SceneNode( LS.GlobalScene.generateUniqueNodeName("mesh") );
+		node.material = new LS.StandardMaterial();
+		node.setMesh(mesh_name);
+		EditorModule.getAddRootNode().addChild(node);
+		UndoModule.saveNodeCreatedUndo(node);
+		SelectionModule.setSelection(node);
 
-		function on_load(mesh)
-		{
-			var node = new LS.SceneNode( LS.GlobalScene.generateUniqueNodeName("mesh") );
-			node.setMesh(mesh_name);
-			node.material = new LS.StandardMaterial();
-			EditorModule.getAddRootNode().addChild(node);
-			UndoModule.saveNodeCreatedUndo(node);
-			SelectionModule.setSelection(node);
-		}
+		LS.ResourcesManager.load( mesh_name, options );
+		return node;
 	},
 
 	createCameraNode: function()
@@ -932,6 +931,7 @@ var EditorModule = {
 		EditorModule.getAddRootNode().addChild(node);
 		UndoModule.saveNodeCreatedUndo(node);
 		SelectionModule.setSelection(node);
+		return node;
 	},
 
 	createLightNode: function()
@@ -941,6 +941,7 @@ var EditorModule = {
 		EditorModule.getAddRootNode().addChild(node);
 		UndoModule.saveNodeCreatedUndo(node);
 		SelectionModule.setSelection(node);
+		return node;
 	},
 
 	createPrimitive: function(info, name)
@@ -950,6 +951,7 @@ var EditorModule = {
 		EditorModule.getAddRootNode().addChild(node);
 		UndoModule.saveNodeCreatedUndo(node);
 		SelectionModule.setSelection(node);
+		return node;
 	},
 
 	createTemplate: function(name, array)
@@ -966,6 +968,7 @@ var EditorModule = {
 		EditorModule.getAddRootNode().addChild(node);
 		UndoModule.saveNodeCreatedUndo(node);
 		SelectionModule.setSelection(node);
+		return node;
 	},
 
 	addMaterialToNode: function()
@@ -1020,30 +1023,82 @@ var EditorModule = {
 		}
 	},
 
-	//generic
+	//generic (called by selectTool on right click on canvas)
 	showContextualMenu: function( instance, event )
 	{
-		if(!instance)
-			return;
+		var options = [
+			{ title: "View", has_submenu: true },
+			{ title: "Create", has_submenu: true }
+		];
 
-		var actions = null;
-		if( instance.getActions )
-			actions = instance.getActions();
-		else if( instance.constructor.getActions )
-			actions = instance.constructor.getActions();
+		var instance_classname = null;
 
-		if(!actions)
-			return;
+		if(instance)
+		{
+			
+			if( instance.constructor === LS.SceneNode )
+			{
+				options.push({ title: "Node", has_submenu: true});
+			}
+			else if( instance.constructor.is_component )
+			{
+				instance_classname = LS.getObjectClassName(instance);
+				options.push({ title: instance_classname, has_submenu: true });
+			}
+			else
+			{
+				var actions = null;
+				if( instance.getActions )
+					actions = instance.getActions();
+				else if( instance.constructor.getActions )
+					actions = instance.constructor.getActions();
 
-		var menu = new LiteGUI.ContextualMenu( actions, { ignore_item_callbacks: true, event: event, title: LS.getObjectClassName( instance ) , callback: function( action ) {
-			if( instance.doAction )
-				instance.doAction( action );
-			else if( instance.constructor.doAction )
-				instance.constructor.doAction( action );
+				if(actions)
+				{
+					options.push(null);
+					for(var i in actions)
+						options.push( actions[i] );
+				}
+			}
+		}
+
+		var menu = new LiteGUI.ContextualMenu( options, { ignore_item_callbacks: true, event: event, title: "Canvas" , callback: function( action, o, e ) {
+			if(action.title == "View")
+			{
+				var camera = RenderModule.getCameraUnderMouse(e);
+				EditorModule.showViewContextualMenu( camera, e, menu );
+				return true;
+			}
+
+			if(action.title == "Node")
+			{
+				EditorModule.showNodeContextualMenu( instance, e, menu );
+				return true;
+			}
+
+			if(action.title == "Create")
+			{
+				EditorModule.showCreateContextualMenu( instance, e, menu );
+				return true;
+			}
+
+			if(action.title && action.title == instance_classname)
+			{
+				EditorModule.showComponentContextualMenu( instance, e, menu );
+				return true;
+			}
+
+			if(instance)
+			{
+				if( instance.doAction )
+					instance.doAction( action );
+				else if( instance.constructor.doAction )
+					instance.constructor.doAction( action );
+			}
 		}});
 	},
 
-	showNodeContextualMenu: function( node, event )
+	showNodeContextualMenu: function( node, event, prev_menu )
 	{
 		if(!node || node.constructor !== LS.SceneNode || !node.getActions)
 			return;
@@ -1052,12 +1107,12 @@ var EditorModule = {
 		if(!actions)
 			return;
 
-		var menu = new LiteGUI.ContextualMenu( actions, { ignore_item_callbacks: true, event: event, title:"Node", callback: function(action) {
+		var menu = new LiteGUI.ContextualMenu( actions, { ignore_item_callbacks: true, event: event, title:"Node", parentMenu: prev_menu, callback: function(action) {
 			node.doAction( action );
 		}});
 	},
 
-	showComponentContextualMenu: function( component, event )
+	showComponentContextualMenu: function( component, event, prev_menu )
 	{
 		if( !component || !component.constructor.is_component )
 			return;
@@ -1066,8 +1121,87 @@ var EditorModule = {
 		if(!actions)
 			return;
 
-		var menu = new LiteGUI.ContextualMenu( actions, { ignore_item_callbacks: true, event: event, title: LS.getObjectClassName( component ), callback: function(action, options, event) {
+		var menu = new LiteGUI.ContextualMenu( actions, { ignore_item_callbacks: true, event: event, parentMenu: prev_menu, title: LS.getObjectClassName( component ), callback: function(action, options, event) {
 			LS.Component.doAction( component, action );
+		}});
+	},
+
+	showViewContextualMenu: function( camera, e, prev_menu )
+	{
+		if(!camera)
+			return;
+
+		var options = [
+			"Camera Info",
+			"Render Settings",
+			null,
+			"Perspective",
+			"Orthographic",
+			null,
+			{ title: "Select Camera", has_submenu: true, callback: inner_cameras }
+		];
+
+		var menu = new LiteGUI.ContextualMenu( options, { event: e, title: "View", parentMenu: prev_menu, callback: function(v) { 
+
+			switch( v )
+			{
+				case "Camera Info": EditorModule.inspect( camera ); break;
+				case "Render Settings": EditorModule.showRenderSettingsDialog( RenderModule.render_settings ); break;
+				case "Perspective": camera.type = LS.Camera.PERSPECTIVE; break;
+				case "Orthographic": camera.type = LS.Camera.ORTHOGRAPHIC; break;
+				default:
+					break;
+			}
+			LS.GlobalScene.refresh();
+		}});
+
+		function inner_cameras( v,o,e ) 
+		{
+			var options = ["Editor"];
+			var scene_cameras = LS.GlobalScene._cameras;
+			for(var i = 0; i < scene_cameras.length; i++)
+			{
+				var scene_camera = scene_cameras[i];
+				options.push( { title: "Cam " + scene_camera._root.name, camera: scene_camera } );
+			}
+
+			var submenu = new LiteGUI.ContextualMenu( options, { event: e, title: "Cameras", parentMenu: menu, callback: function(v) {
+				if(v == "Editor")
+				{
+					var cam = new LS.Camera();
+					cam._viewport.set( camera._viewport );
+					RenderModule.setViewportCamera( camera._editor.index, cam );
+				}
+				else
+				{
+					RenderModule.setViewportCamera( camera._editor.index, v.camera );
+				}
+				LS.GlobalScene.refresh();
+			}});
+		}
+	},
+
+	showCreateContextualMenu: function( instance, e, prev_menu )
+	{
+		var options = ["SceneNode","Light","Camera"];
+
+		var canvas_event = EditorView._canvas_event || e;
+		GL.augmentEvent(canvas_event); //adds canvasx and canvasy
+		var position = RenderModule.testGridCollision( canvas_event.canvasx, canvas_event.canvasy );
+
+		var menu = new LiteGUI.ContextualMenu( options, { event: e, title: "Create", parentMenu: prev_menu, callback: function(v) { 
+			var node = null;
+			if(v == "SceneNode")
+				node = EditorModule.createNullNode();
+			else if(v == "Light")
+				node = EditorModule.createLightNode();
+			if(v == "Camera")
+				node = EditorModule.createCameraNode();
+
+			if(node && position)
+				node.transform.position = position;
+
+			LS.GlobalScene.refresh();
 		}});
 	},
 

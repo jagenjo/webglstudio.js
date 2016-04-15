@@ -37,6 +37,18 @@ var SceneStorageModule = {
 		//LiteGUI.mainmenu.separator();
 
 		this.retrieveLocalScenes();
+
+		//If you launch with a loading url
+		/* UNSAFE
+		if( LiteGUI.getUrlVar("session") )
+			SceneStorageModule.loadLocalScene( LiteGUI.getUrlVar("session"));
+		else if( LiteGUI.getUrlVar("server") )
+			Scene.loadScene( ResourcesManager.path + "/scenes/" + LiteGUI.getUrlVar("server") );
+		else if( LiteGUI.getUrlVar("scene") )
+			Scene.loadScene( LiteGUI.getUrlVar("scene") );
+		else if(window.SceneStorageModule && 0)
+			SceneStorageModule.loadLocalScene("test");
+		*/
 	},
 
 	onNewScene: function()

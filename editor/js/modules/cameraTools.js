@@ -40,7 +40,7 @@ var cameraTool = {
 
 	onRegister: function()
 	{
-		RenderModule.viewport3d.addModule(this);
+		RenderModule.canvas_manager.addModule(this);
 	},
 
 	keydown: function(e) {

@@ -2766,10 +2766,15 @@ var ResourcesManager = {
 	sendResourceRenamedEvent: function( old_name, new_name, resource )
 	{
 		var scene = LS.GlobalScene;
-		for(var i = 0; i < scene._nodes.length; i++)
+		var nodes = scene._nodes.concat();
+		for(var i = 0; i < nodes.length; i++)
 		{
 			//nodes
-			var node = scene._nodes[i];
+			var node = nodes[i];
+
+			//prefabs
+			if( node.prefab && node.prefab === old_name )
+				node.prefab = new_name; //does this launch a reload prefab? dont know
 
 			//components
 			for(var j = 0; j < node._components.length; j++)
@@ -2778,11 +2783,16 @@ var ResourcesManager = {
 				if(component.onResourceRenamed)
 					component.onResourceRenamed( old_name, new_name, resource )
 			}
-	
+
 			//materials
-			var material = node.getMaterial();
-			if(material && material.onResourceRenamed)
-				material.onResourceRenamed(old_name, new_name, resource)
+			if( node.material && node.material == old_name )
+				node.material = new_name;
+			else
+			{
+				var material = node.getMaterial();
+				if( material && material.onResourceRenamed )
+					material.onResourceRenamed(old_name, new_name, resource)
+			}
 		}
 	},
 
@@ -7395,7 +7405,6 @@ SurfaceMaterial.prototype.getResources = function (res)
 
 LS.registerMaterialClass( SurfaceMaterial );
 LS.SurfaceMaterial = SurfaceMaterial;
-/*
 
 /**
 * ShaderMaterial allows to use your own shader from scratch, but you loose some of the benefits of using the dynamic shader system of LS
@@ -13710,12 +13719,7 @@ var Renderer = {
 
 		//clear buffer
 		var info = scene.info;
-		if(info)
-		{
-			gl.clearColor( info.background_color[0],info.background_color[1],info.background_color[2], info.background_color[3] );
-		}
-		else
-			gl.clearColor(0,0,0,0);
+		gl.clearColor( camera.background_color[0], camera.background_color[1], camera.background_color[2], camera.background_color[3] );
 
 		if(render_settings.ignore_clear != true && (camera.clear_color || camera.clear_depth) )
 			gl.clear( ( camera.clear_color ? gl.COLOR_BUFFER_BIT : 0) | (camera.clear_depth ? gl.DEPTH_BUFFER_BIT : 0) );
@@ -14375,7 +14379,6 @@ var Renderer = {
 			u_brightness_factor: render_settings.brightness_factor != null ? render_settings.brightness_factor : 1,
 			u_colorclip_factor: render_settings.colorclip_factor != null ? render_settings.colorclip_factor : 0,
 			u_ambient_light: scene.info.ambient_color,
-			u_background_color: scene.info.background_color.subarray(0,3),
 			u_viewport: gl.viewport_data
 		};
 
@@ -14644,7 +14647,7 @@ var Renderer = {
 	* @param {Texture} texture
 	* @param {RenderSettings} render_settings
 	*/
-	renderInstancesToRT: function(cam, texture, render_settings)
+	renderInstancesToRT: function( cam, texture, render_settings )
 	{
 		render_settings = render_settings || this.default_render_settings;
 		this._current_target = texture;
@@ -14661,7 +14664,7 @@ var Renderer = {
 
 		function inner_draw_2d()
 		{
-			gl.clearColor(scene.info.background_color[0], scene.info.background_color[1], scene.info.background_color[2], scene.info.background_color[3] );
+			gl.clearColor(cam.background_color[0], cam.background_color[1], cam.background_color[2], cam.background_color[3] );
 			if(render_settings.ignore_clear != true)
 				gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 			//render scene
@@ -14681,7 +14684,7 @@ var Renderer = {
 	* @param {number} far
 	* @return {Texture} the resulting texture
 	*/
-	renderToCubemap: function(position, size, texture, render_settings, near, far)
+	renderToCubemap: function( position, size, texture, render_settings, near, far, background_color )
 	{
 		size = size || 256;
 		near = near || 1;
@@ -14698,10 +14701,10 @@ var Renderer = {
 		texture.drawTo( function(texture, side) {
 
 			var info = LS.Camera.cubemap_camera_parameters[side];
-			if(texture._is_shadowmap || !scene.info )
+			if(texture._is_shadowmap || !background_color )
 				gl.clearColor(0,0,0,0);
 			else
-				gl.clearColor( scene.info.background_color[0], scene.info.background_color[1], scene.info.background_color[2], scene.info.background_color[3] );
+				gl.clearColor( background_color[0], background_color[1], background_color[2], background_color[3] );
 
 			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 			var cubemap_cam = new LS.Camera({ eye: eye, center: [ eye[0] + info.dir[0], eye[1] + info.dir[1], eye[2] + info.dir[2]], up: info.up, fov: 90, aspect: 1.0, near: near, far: far });
@@ -14727,14 +14730,12 @@ var Renderer = {
 	{
 		options = options || {};
 
+		//create scene
 		var scene = this._material_scene;
 		if(!scene)
 		{
 			scene = this._material_scene = new LS.SceneTree();
-			if(options.background_color)
-				scene.info.background_color.set(options.background_color);
-			else
-				scene.info.background_color.set([0.0,0.0,0.0,0]);
+			scene.root.camera.background_color.set([0.0,0.0,0.0,0]);
 			if(options.environment_texture)
 				scene.info.textures.environment = options.environment_texture;
 			var node = new LS.SceneNode( "sphere" );
@@ -14742,6 +14743,9 @@ var Renderer = {
 			node.addComponent( compo );
 			scene.root.addChild( node );
 		}
+
+		if(options.background_color)
+			scene.root.camera.background_color.set(options.background_color);
 
 		var node = scene.getNode( "sphere");
 		if(!node)
@@ -14752,6 +14756,7 @@ var Renderer = {
 
 		if(options.rotate)
 			node.transform.rotateY( options.rotate );
+
 		node.material = material;
 
 		if(options.to_viewport)
@@ -14772,7 +14777,6 @@ var Renderer = {
 		});
 
 		var canvas = tex.toCanvas(null, true);
-		//document.body.appendChild( canvas ); //debug
 		return canvas;
 	},
 
@@ -16793,6 +16797,8 @@ function Camera(o)
 	this._viewport = new Float32Array([0,0,1,1]);
 	this._viewport_in_pixels = vec4.create(); //viewport in screen coordinates
 
+	this._background_color = vec4.fromValues(0,0,0,1);
+
 	this._view_matrix = mat4.create();
 	this._projection_matrix = mat4.create();
 	this._viewprojection_matrix = mat4.create();
@@ -16824,7 +16830,8 @@ function Camera(o)
 		u_camera_eye: this._global_eye,
 		u_camera_front: this._global_front,
 		u_camera_planes: vec2.fromValues( this.near, this.far ),
-		u_camera_perspective: vec3.create()
+		u_camera_perspective: vec3.create(),
+		u_background_color: this._background_color
 	};
 
 	this.updateMatrices();
@@ -17088,6 +17095,19 @@ Object.defineProperty( Camera.prototype, "viewport_size", {
 	},
 	set: function(v) {
 		this._viewport.set(v,2);
+	},
+	enumerable: true
+});
+
+/**
+* @property background_color {vec4}
+*/
+Object.defineProperty( Camera.prototype, "background_color", {
+	get: function() {
+		return this._background_color;
+	},
+	set: function(v) {
+		this._background_color.set(v);
 	},
 	enumerable: true
 });
@@ -17780,6 +17800,8 @@ Camera.prototype.configure = function(o)
 	if(o.frustum_size !== undefined) this._frustum_size = o.frustum_size;
 	if(o.viewport !== undefined) this._viewport.set( o.viewport );
 
+	if(o.background_color !== undefined) this._background_color.set( o.background_color );
+
 	if(o.render_to_texture !== undefined) this.render_to_texture = o.render_to_texture;
 	if(o.texture_name !== undefined) this.texture_name = o.texture_name;
 	if(o.texture_size && o.texture_size.length == 2) this.texture_size.set(o.texture_size);
@@ -17803,6 +17825,7 @@ Camera.prototype.serialize = function()
 		far: this._far,
 		fov: this._fov,
 		aspect: this._aspect,
+		background_color: vec4.toArray(this._background_color),
 		frustum_size: this._frustum_size,
 		viewport: toArray( this._viewport ),
 		render_to_texture: this.render_to_texture,
@@ -17981,7 +18004,7 @@ Camera.prototype.fillCameraShaderUniforms = function( scene )
 	return uniforms;
 },
 
-LS.registerComponent(Camera);
+LS.registerComponent( Camera );
 LS.Camera = Camera;
 /**
 * This component allow to create basic FX
@@ -22860,7 +22883,6 @@ LS.registerComponent(GeometricPrimitive);
 function GlobalInfo(o)
 {
 	this.createProperty( "ambient_color", GlobalInfo.DEFAULT_AMBIENT_COLOR, "color" );
-	this.createProperty( "background_color", GlobalInfo.DEFAULT_BACKGROUND_COLOR, "color" );
 
 	this._render_settings = new LS.RenderSettings();
 
@@ -22899,7 +22921,6 @@ Object.defineProperty( GlobalInfo.prototype, 'render_settings', {
 });
 
 GlobalInfo.icon = "mini-icon-bg.png";
-GlobalInfo.DEFAULT_BACKGROUND_COLOR = new Float32Array([0,0,0,1]);
 GlobalInfo.DEFAULT_AMBIENT_COLOR = vec3.fromValues(0.2, 0.2, 0.2);
 
 GlobalInfo.prototype.onAddedToScene = function(scene)
@@ -22926,7 +22947,6 @@ GlobalInfo.prototype.getProperties = function()
 {
 	return {
 		"ambient_color":"color",
-		"background_color":"color",
 		"textures/environment": "texture",
 		"textures/irradiance": "texture",
 		"render_settings":"RenderSettings"
@@ -25144,6 +25164,7 @@ LS.registerComponent( LineCloud );
 
 function PlayAnimation(o)
 {
+	this.enabled = true;
 	this.animation = "";
 	this.take = "default";
 	this.root_node = "@";
@@ -25218,6 +25239,9 @@ PlayAnimation.prototype.getAnimation = function()
 
 PlayAnimation.prototype.onUpdate = function(e, dt)
 {
+	if(!this.enabled)
+		return;
+
 	var animation = this.getAnimation();
 	if(!animation) 
 		return;
@@ -25348,7 +25372,7 @@ PlayAnimation.prototype.onResourceRenamed = function (old_name, new_name, resour
 		this.animation = new_name;
 }
 
-LS.registerComponent(PlayAnimation);
+LS.registerComponent( PlayAnimation );
 /**
 * Realtime Reflective surface
 * @class RealtimeReflector
@@ -27923,8 +27947,8 @@ var parserBVH = {
 };
 
 LS.Formats.registerParser( parserBVH );
-// collada.js by Javi Agenjo (2015)
-// https://github.com/jagenjo/collada.js
+//collada.js 
+//This worker should offload the main thread from parsing big text files (DAE)
 
 (function(global){
 
@@ -28561,7 +28585,7 @@ global.Collada = {
 		return null;
 	},
 
-	readMaterial: function(url)
+		readMaterial: function(url)
 	{
 		var xmlmaterial = this.querySelectorAndId( this._xmlroot, "library_materials material", url );
 		if(!xmlmaterial)
@@ -28582,7 +28606,32 @@ global.Collada = {
 		if(!xmltechnique) 
 			return null;
 
+		//get newparams and convert to js object
+		var xmlnewparams = xmleffects.querySelectorAll("newparam");
+		var newparams = {}
+		for (var i = 0; i < xmlnewparams.length; i++) {
+
+			var init_from = xmlnewparams[i].querySelector("init_from");
+			var parent;
+			if (init_from)
+				parent = init_from.innerHTML;
+			else {
+				var source = xmlnewparams[i].querySelector("source");
+				parent = source.innerHTML;
+			}
+
+			newparams[xmlnewparams[i].getAttribute("sid")] = {
+				parent: parent
+			};
+		}
+
+
+
 		var material = {};
+
+		//read the images here because we need to access them to assign texture names
+		var images = this.readImages(this._xmlroot);
+
 
 		var xmlphong = xmltechnique.querySelector("phong");
 		if(!xmlphong) 
@@ -28630,6 +28679,17 @@ global.Collada = {
 				if(!map_id)
 					continue;
 
+				// if map_id is not a filename, lets go and look for it.
+				if (map_id.indexOf('.') === -1){
+					//check effect parents
+					map_id = this.getParentParam(newparams, map_id);
+
+					if (images[map_id])
+						map_id = images[map_id].path;
+				}
+
+				//now get the texture filename from images
+
 				var map_info = { map_id: map_id };
 				var uvs = xmlparam_value.getAttribute("texcoord");
 				map_info.uvs = uvs;
@@ -28639,6 +28699,16 @@ global.Collada = {
 
 		material.object_type = "Material";
 		return material;
+	},
+
+	getParentParam: function(newparams, param) {
+		if (!newparams[param])
+			return param;
+
+		if (newparams[param].parent)
+			return this.getParentParam(newparams, newparams[param].parent)
+		else
+			return param;
 	},
 
 	readLight: function(node, url)
@@ -30447,19 +30517,11 @@ var parserDAE = {
 		}
 		scene.meshes = renamed_meshes;
 
-		//rename morph targets names
 		for(var i in scene.meshes)
 		{
 			var mesh = scene.meshes[i];
-			if(mesh.morph_targets)
-				for(var j = 0; j < mesh.morph_targets.length; ++j)
-				{
-					var morph = mesh.morph_targets[j];
-					if(morph.mesh && renamed[ morph.mesh ])
-						morph.mesh = renamed[ morph.mesh ];
-				}
+			this.processMesh( mesh, renamed );
 		}
-
 
 		//change local collada ids to valid uids 
 		replace_uids( scene.root );
@@ -30472,7 +30534,6 @@ var parserDAE = {
 				node.uid = "@" + basename + "::" + node.id;
 				renamed[ node.id ] = node.uid;
 			}
-
 			
 			if(node.type)
 			{
@@ -30518,6 +30579,32 @@ var parserDAE = {
 		}
 
 		return scene;
+	},
+
+	processMesh: function( mesh, renamed )
+	{
+		//check that UVS have 2 components (MAX export 3 components for UVs)
+		if(mesh.coords && mesh.coords.length == mesh.vertices.length)
+		{
+			var num_vertices = mesh.vertices.length / 3;
+			var old_coords = mesh.coords;
+			var new_coords = new Float32Array( num_vertices * 2 );
+			for(var i = 0; i < num_vertices; ++i )
+			{
+				new_coords[i*2] = old_coords[i*3];
+				new_coords[i*2+1] = old_coords[i*3+1];
+			}
+			mesh.coords = new_coords;
+		}
+
+		//rename morph targets names
+		if(mesh.morph_targets)
+			for(var j = 0; j < mesh.morph_targets.length; ++j)
+			{
+				var morph = mesh.morph_targets[j];
+				if(morph.mesh && renamed[ morph.mesh ])
+					morph.mesh = renamed[ morph.mesh ];
+			}
 	},
 
 	//depending on the 3D software used, animation tracks could be tricky to handle
@@ -33661,8 +33748,13 @@ SceneNode.prototype.configure = function(info)
 			this._is_bone = true;
 	}
 
-	//TO DO: Change this to more generic stuff
-	//some helpers (mostly for when loading from js object that come from importers
+	//some helpers (mostly for when loading from js object that come from importers or code)
+	if(info.camera)
+		this._root.addComponent( new LS.Camera( info.camera ) );
+
+	if(info.light)
+		this._root.addComponent( new LS.Light( info.light ) );
+
 	if(info.mesh)
 	{
 		var mesh_id = info.mesh;
@@ -33677,7 +33769,7 @@ SceneNode.prototype.configure = function(info)
 			if(info.morph_targets !== undefined)
 				mesh_render_config.morph_targets = info.morph_targets;
 
-			var compo = new LS.Components.MeshRenderer(mesh_render_config);
+			var compo = new LS.Components.MeshRenderer( mesh_render_config );
 
 			//parsed meshes have info about primitive
 			if( mesh.primitive === "line_strip" )
@@ -33696,7 +33788,7 @@ SceneNode.prototype.configure = function(info)
 				this.addComponent( compo );
 			}
 
-			//morph
+			//morph targets
 			if( mesh && mesh.morph_targets )
 			{
 				var compo = new LS.Components.MorphDeformer( { morph_targets: mesh.morph_targets } );
@@ -33722,7 +33814,7 @@ SceneNode.prototype.configure = function(info)
 	{
 		var mat_class = info.material.material_class;
 		if(!mat_class) 
-			mat_class = "Material";
+			mat_class = "StandardMaterial";
 		this.material = typeof(info.material) == "string" ? info.material : new LS.MaterialClasses[mat_class](info.material);
 	}
 

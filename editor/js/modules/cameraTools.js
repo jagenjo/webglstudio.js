@@ -12,6 +12,7 @@ var cameraTool = {
 
 	wsad_controls: false,
 	last_camera: null,
+	fps_speed: 100, //units per second
 
 	settings: {
 		rotate_speed: 0.2,
@@ -99,11 +100,19 @@ var cameraTool = {
 		if(e.wheel)
 		{
 			var amount = this.getWheelDelta(e);
-			this.changeCameraDistance( amount, ToolUtils.getCamera(e) );
+			if(e.dragging)
+			{
+				this.fps_speed /= amount;
+			}
+			else
+			{
+				this.changeCameraDistance( amount, ToolUtils.getCamera(e) );
+			}
 		}
 	},
 
 	//different browsers and OSs behave different	
+	//returns number around 1 (0.9 if scroll down, 1.1 if scroll up)
 	getWheelDelta: function(e)
 	{
 		/*
@@ -121,7 +130,7 @@ var cameraTool = {
 
 	update: function(dt)
 	{
-		var speed = 100;
+		var speed = this.fps_speed;
 		if(gl.keys['SHIFT'])
 			speed *= 10;
 

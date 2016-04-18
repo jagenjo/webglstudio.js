@@ -351,6 +351,21 @@ var DriveModule = {
 
 	},
 
+	showRenameResourceDialog: function( resource )
+	{
+		var fullpath = resource.fullpath || resource.filename;
+		var folder = LS.RM.getFolder( fullpath );
+		var filename = LS.RM.getFilename( fullpath );
+
+		LiteGUI.prompt("Choose new filename", function (v){
+			if(!v)
+				return;
+			var new_filename = LS.RM.cleanFullpath( folder + "/" + v );
+			DriveModule.renameResource( fullpath, new_filename, resource );
+			DriveModule.refreshContent();			
+		}, { title: "Rename resource", value: filename, width: 400 });
+	},
+
 	showCloneResourceDialog: function( resource )
 	{
 		LiteGUI.prompt("Choose filename", function (v){
@@ -361,7 +376,7 @@ var DriveModule = {
 			DriveModule.cloneResource( resource, new_filename, function(){
 				DriveModule.refreshContent();			
 			});
-		}, { value: LS.RM.getFilename( resource.fullpath || resource.filename ), width: 400 });
+		}, { title: "Clone resource", value: LS.RM.getFilename( resource.fullpath || resource.filename ), width: 400 });
 	},
 
 	showResourceInfoInDialog: function( resource )
@@ -437,8 +452,10 @@ var DriveModule = {
 			filename = server_resource.filename;
 
 		inspector.addString("Filename", filename, { callback: function(v) { 
-			//rename
-			DriveModule.renameResource( resource.filename, v, resource );
+			var fullpath = resource.fullpath || resource.filename;
+			var folder = LS.RM.getFolder( fullpath );
+			var new_fullpath = LS.RM.cleanFullpath( folder + "/" + v );
+			DriveModule.renameResource( fullpath, new_fullpath, resource );
 			DriveModule.refreshContent();
 		}});
 		inspector.addFolder("Folder", resource.folder || "", { disabled: true, callback: function(v) {
@@ -690,19 +707,23 @@ var DriveModule = {
 		return dialog;
 	},
 
+	//using fullpaths
 	renameResource: function( old_name, new_name, resource )
 	{
-		//HARDCODED WITH LFS
+		if(!old_name || !new_name || old_name.constructor !== String || new_name.constructor !== String )
+			throw("DriveModule.renameResource wrong parameters");
+
+		if( LS.RM.getFolder( old_name ) && !LS.RM.getFolder( new_name ) )
+			throw("DriveModule.renameResource new_name must have a folder");
+
+		//File is stored in the server (HARDCODED WITH LFS)
 		if(resource && (resource.in_server || resource.remotepath) )
 		{
 			//rename in server
 			console.log("Renaming server file");
 			console.log(resource);	
 			old_name = resource.fullpath;
-			if(resource.in_server)
-				new_name = LFS.getFullpath( resource.unit, resource.folder, new_name );
-			else
-				new_name = LS.RM.cleanFullpath( LS.RM.getFolder( resource.fullpath ) + "/" + new_name );
+			new_name = LS.RM.cleanFullpath( new_name );
 			this.serverMoveFile( old_name, new_name, function(){
 				DriveModule.refreshContent();
 			});
@@ -712,8 +733,6 @@ var DriveModule = {
 		if(!res)
 			return;
 		LS.ResourcesManager.renameResource( old_name, new_name ); //rename and inform
-		//res.filename = new_name;
-		//LS.ResourcesManager.registerResource(new_name, res);
 	},
 
 	cloneResource: function( resource, cloned_name, callback )
@@ -2017,8 +2036,7 @@ DriveModule.onInsertMaterial = function(fullpath, restype, options )
 {
 	var node = LS.GlobalScene.selected_node;
 
-	//class not supported?
-	if(!LS.MaterialClasses[restype])
+	if(restype != "Material") // if(!LS.MaterialClasses[ restype ]) //class not supported?
 		return false;
 
 	if( options.event )

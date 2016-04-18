@@ -40,10 +40,6 @@ var EditorView = {
 		if(!gl)
 			return;
 
-		//LEvent.jQuery = true;
-
-		//LEvent.bind(Scene, "afterRenderScene", function() { EditorModule.renderEditor(); });
-
 		this.createMeshes();
 		RenderModule.canvas_manager.addModule(this);
 
@@ -225,7 +221,6 @@ var EditorView = {
 	{
 		var shader = RenderModule.canvas_manager.flat_shader;
 		var canvas_manager = RenderModule.canvas_manager;
-		//gl.viewport( Renderer._full_viewport[0], Renderer._full_viewport[1], Renderer._full_viewport[2], Renderer._full_viewport[3] );
 
 		gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
 		gl.enable( gl.DEPTH_TEST );
@@ -233,11 +228,6 @@ var EditorView = {
 		gl.disable( gl.CULL_FACE );
 		gl.depthFunc( gl.LEQUAL );
 		//gl.depthMask( false );
-
-		//var camera = RenderModule.camera;
-		//Draw.setCamera(camera); //should be already set
-		//Draw.setCameraPosition(camera.getEye());
-		//Draw.setViewProjectionMatrix(Renderer._view_matrix, Renderer._projection_matrix, Renderer._viewprojection_matrix);
 
 		if( EditorView.settings.render_grid && this.settings.grid_alpha > 0 )
 			this.renderGrid();

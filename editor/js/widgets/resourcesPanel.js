@@ -379,7 +379,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 	}
 	else //if no preview we generate it
 	{
-		if(resource.in_server)
+		if(resource.in_server || resource.remotepath)
 			preview = DriveModule.getServerPreviewURL( resource );
 		else 
 		{
@@ -473,7 +473,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 ResourcesPanelWidget.prototype.showItemContextualMenu = function( item, event )
 {
 	var that = this;
-	var actions = ["Insert","Load","Clone","Move","Properties",null,"Delete"];
+	var actions = ["Insert","Load","Rename","Clone","Move","Properties",null,"Delete"];
 
 	var menu = new LiteGUI.ContextualMenu( actions, { ignore_item_callbacks: true, event: event, title: "Resource", callback: function(action, options, event) {
 		var fullpath = item.dataset["fullpath"] || item.dataset["filename"];
@@ -487,6 +487,10 @@ ResourcesPanelWidget.prototype.showItemContextualMenu = function( item, event )
 		else if(action == "Load")
 		{
 			LS.ResourcesManager.load( fullpath );
+		}
+		else if(action == "Rename")
+		{
+			DriveModule.showRenameResourceDialog( item.resource );
 		}
 		else if(action == "Clone")
 		{
@@ -565,14 +569,22 @@ ResourcesPanelWidget.prototype.showFolderContextualMenu = function(e)
 
 	function inner_create_material( material_classname, options, event )
 	{
-		var material_class = LS.MaterialClasses[ material_classname ];
-		if(!material_class)
-			return;
-		var material = new material_class();
-		material.filename = "unnammed_material.json";
-		LS.RM.registerResource( material.filename, material );
-		LS.RM.resourceModified( material );
-		that.refreshContent();
+		LiteGUI.prompt("Choose material name", function(v){
+			var material_class = LS.MaterialClasses[ material_classname ];
+			if(!material_class)
+				return;
+			var material = new material_class();
+			var fullpath = LS.RM.cleanFullpath( that.current_folder + "/" + v );
+			material.fullpath = fullpath;
+			material.filename = v;
+			LS.RM.registerResource( fullpath, material );
+			LS.RM.resourceModified( material );
+			if( LS.RM.getFolder( material.fullpath ) )
+				DriveModule.saveResource( material, function(){
+					that.refreshContent();
+				});
+			that.refreshContent();
+		}, { value: "unnammed_material.json" });
 	}
 }
 

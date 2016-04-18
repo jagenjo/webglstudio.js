@@ -194,7 +194,7 @@
 				#endif
 
 				//REFLECTION (ENVIRONMENT)
-				LIGHT.Reflection = u_background_color;
+				LIGHT.Reflection = u_background_color.xyz;
 				float reflection_gloss = 0.0; //expressed in mipmap offset
 
 				#ifdef LAST_PASS
@@ -384,7 +384,7 @@
 					return textureCube(environment_cubemap, dir, 0.0).xyz;
 				#endif //environment
 
-				return u_background_color;
+				return u_background_color.xyz;
 			}
 		]]>
 	</snippet>
@@ -749,7 +749,7 @@
 			//globals
 			uniform vec4 u_clipping_plane;
 			uniform float u_time;
-			uniform vec3 u_background_color;
+			uniform vec4 u_background_color;
 			#pragma hook : uniforms_globals
 
 			//camera
@@ -960,7 +960,7 @@
 			uniform mat3 u_texture_matrix;
 
 			uniform vec3 u_ambient_light;
-			uniform vec3 u_background_color;
+			uniform vec4 u_background_color;
 			#ifdef USE_ENVIRONMENT_TEXTURE
 				uniform sampler2D environment_texture;
 			#endif			
@@ -1248,7 +1248,7 @@
 			uniform mat3 u_texture_matrix;
 
 			uniform vec3 u_ambient_light;
-			uniform vec3 u_background_color;
+			uniform vec4 u_background_color;
 			uniform vec3 u_light_position;
 			uniform vec3 u_light_front;
 			uniform vec3 u_light_color;
@@ -1726,7 +1726,7 @@
 			#endif
 
 			uniform vec3 u_ambient_light;
-			uniform vec3 u_background_color;
+			uniform vec4 u_background_color;
 
 			uniform vec4 u_material_color;
 			uniform vec3 u_ambient_color;

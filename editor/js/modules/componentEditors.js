@@ -10,7 +10,7 @@ LS.Components.GlobalInfo["@inspector"] = function( component, inspector )
 	if(!scene)
 		return;
 
-	inspector.addColor("Background", component.background_color, { pretitle: AnimationModule.getKeyframeCode( component, "background_color"), callback: function(color) { vec3.copy(component.background_color,color); } });
+	//inspector.addColor("Background", component.background_color, { pretitle: AnimationModule.getKeyframeCode( component, "background_color"), callback: function(color) { vec3.copy(component.background_color,color); } });
 	inspector.addColor("Ambient light", component.ambient_color, { pretitle: AnimationModule.getKeyframeCode( component, "ambient_color"), callback: function(color) { vec3.copy(component.ambient_color,color); } });
 	inspector.addSeparator();
 
@@ -130,6 +130,12 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 		camera._viewport.subarray(2,4).set(v);
 	}});
 
+	inspector.addColor("Background Color", camera.background_color , { pretitle: AnimationModule.getKeyframeCode( camera, "background_color" ), callback: function (v) { 
+		camera.background_color = v; 
+		if(RenderModule.cameras)
+			for(var i in RenderModule.cameras)
+				RenderModule.cameras[i].background_color = v;
+	}});
 	inspector.widgets_per_row = 2;
 	inspector.addCheckbox("clear color", camera.clear_color , { callback: function (v) { camera.clear_color = v; } });
 	inspector.addCheckbox("clear depth", camera.clear_depth , { callback: function (v) { camera.clear_depth = v; } });

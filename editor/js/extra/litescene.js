@@ -17361,7 +17361,7 @@ Camera.prototype.getEye = function( out )
 {
 	out = out || vec3.create();
 	out.set( this._eye );
-	if(this._root && this._root.transform)
+	if( this._root && this._root.transform )
 	{
 		return this._root.transform.getGlobalPosition( out );
 		//return mat4.multiplyVec3(eye, this._root.transform.getGlobalMatrixRef(), eye );
@@ -17380,7 +17380,7 @@ Camera.prototype.getCenter = function( out )
 {
 	out = out || vec3.create();
 
-	if(this._root && this._root.transform)
+	if( this._root && this._root.transform )
 	{
 		out[0] = out[1] = 0; out[2] = -1;
 		return mat4.multiplyVec3(out, this._root.transform.getGlobalMatrixRef(), out );
@@ -17533,18 +17533,23 @@ Camera.prototype.move = function(v)
 * @param {vec3} axis
 * @param {boolean} in_local_space allows to specify if the axis is in local space or global space
 */
-Camera.prototype.rotate = function(angle_in_deg, axis, in_local_space)
-{
-	if(in_local_space)
-		this.getLocalVector(axis, axis);
+Camera.prototype.rotate = (function() { 
+	var tmp_quat = quat.create();
+	var tmp_vec3 = vec3.create();
+	
+	return function(angle_in_deg, axis, in_local_space)
+	{
+		if(in_local_space)
+			this.getLocalVector(axis, axis);
 
-	var R = quat.setAxisAngle( quat.create(), axis, angle_in_deg * 0.0174532925 );
-	var front = vec3.subtract( vec3.create(), this._center, this._eye );
+		var R = quat.setAxisAngle( tmp_quat, axis, angle_in_deg * 0.0174532925 );
+		var front = vec3.subtract( tmp_vec3, this._center, this._eye );
 
-	vec3.transformQuat(front, front, R );
-	vec3.add(this._center, this._eye, front);
-	this._must_update_view_matrix = true;
-}
+		vec3.transformQuat( front, front, R );
+		vec3.add(this._center, this._eye, front);
+		this._must_update_view_matrix = true;
+	};
+})();
 
 /**
 * Rotates the camera eye around a center
@@ -17553,15 +17558,20 @@ Camera.prototype.rotate = function(angle_in_deg, axis, in_local_space)
 * @param {vec3} axis
 * @param {vec3} center optional
 */
-Camera.prototype.orbit = function(angle_in_deg, axis, center)
-{
-	center = center || this._center;
-	var R = quat.setAxisAngle( quat.create(), axis, angle_in_deg * 0.0174532925 );
-	var front = vec3.subtract( vec3.create(), this._eye, center );
-	vec3.transformQuat(front, front, R );
-	vec3.add(this._eye, center, front);
-	this._must_update_view_matrix = true;
-}
+Camera.prototype.orbit = (function() { 
+	var tmp_quat = quat.create();
+	var tmp_vec3 = vec3.create();
+
+	return function( angle_in_deg, axis, center )
+	{
+		center = center || this._center;
+		var R = quat.setAxisAngle( tmp_quat, axis, angle_in_deg * 0.0174532925 );
+		var front = vec3.subtract( tmp_vec3, this._eye, center );
+		vec3.transformQuat( front, front, R );
+		vec3.add( this._eye, center, front );
+		this._must_update_view_matrix = true;
+	};
+})();
 
 //this is too similar to setDistanceToCenter, must be removed
 Camera.prototype.orbitDistanceFactor = function(f, center)
@@ -22264,8 +22274,12 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 	if(!this._root || !this.enabled) 
 		return;
 	
-	var cam = this._root.camera;
-	if(!cam) return;
+	var node = this._root;
+	var cam = node.camera;
+	if(!cam)
+		return;
+
+	var is_global_camera = !node.transform;
 
 	if(!mouse_event)
 		mouse_event = e;
@@ -22275,7 +22289,7 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 		var wheel = mouse_event.wheel > 0 ? 1 : -1;
 		cam.orbitDistanceFactor(1 + wheel * -0.05 * this.wheel_speed, this.orbit_center);
 		cam.updateMatrices();
-		this._root.scene.refresh();
+		node.scene.refresh();
 		return;
 	}
 
@@ -22294,72 +22308,112 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 
 	var changed = false;
 
-	if( this._root.transform )
+	if(this.mode == CameraController.FIRSTPERSON)
 	{
-		//TODO
-	}
-	else 
-	{
-		if(this.mode == CameraController.FIRSTPERSON)
+		cam.rotate(-mouse_event.deltax * this.rot_speed,[0,1,0]);
+		cam.updateMatrices();
+		var right = cam.getLocalVector([1,0,0]);
+
+		if(is_global_camera)
 		{
-			cam.rotate(-mouse_event.deltax * this.rot_speed,[0,1,0]);
-			cam.updateMatrices();
-			var right = cam.getLocalVector([1,0,0]);
 			cam.rotate(-mouse_event.deltay * this.rot_speed,right);
 			cam.updateMatrices();
-			changed = true;
 		}
-		else if(this.mode == CameraController.ORBIT)
+		else
 		{
-			if(this.allow_panning && (mouse_event.ctrlKey || mouse_event.button == 1)) //pan
+			node.transform.rotate(-mouse_event.deltay * this.rot_speed,right);
+			cam.updateMatrices();
+		}
+
+		changed = true;
+	}
+	else if(this.mode == CameraController.ORBIT)
+	{
+		if(this.allow_panning && (mouse_event.ctrlKey || mouse_event.button == 1)) //pan
+		{
+			var collision = vec3.create();
+			var center = vec3.create();
+			var delta = vec3.create();
+
+			cam.getCenter( center );
+			this.testPerpendicularPlane( mouse_event.canvasx, gl.canvas.height - mouse_event.canvasy, center, collision );
+			vec3.sub( delta, this._collision, collision );
+
+			if(is_global_camera)
 			{
-				var collision = vec3.create();
-				this.testPerpendicularPlane( mouse_event.canvasx, gl.canvas.height - mouse_event.canvasy, cam.getCenter(), collision );
-				var delta = vec3.sub( vec3.create(), this._collision, collision);
 				cam.move( delta );
-				//vec3.copy(  this._collision, collision );
 				cam.updateMatrices();
-				changed = true;
-			}
-			else //regular orbit
-			{
-				var yaw = mouse_event.deltax * this.rot_speed;
-				var pitch = -mouse_event.deltay * this.rot_speed;
-
-				if( Math.abs(yaw) > 0.0001 )
-				{
-					cam.orbit( -yaw, [0,1,0], this.orbit_center );
-					cam.updateMatrices();
-					changed = true;
-				}
-
-				var right = cam.getRight();
-				var front = cam.getFront();
-				var up = cam.getUp();
-				var problem_angle = vec3.dot( up, front );
-				if( !(problem_angle > 0.99 && pitch > 0 || problem_angle < -0.99 && pitch < 0)) //avoid strange behaviours
-				{
-					cam.orbit( -pitch, right, this.orbit_center );
-					changed = true;
-				}
-			}
-		}
-		else if(this.mode == CameraController.PLANE)
-		{
-			if(this._button == 2)
-			{
-				cam.orbit( -mouse_event.deltax * this.rot_speed, [0,1,0], cam.target );
-				changed = true;
 			}
 			else
 			{
-				var collision = vec3.create();
-				this.testOriginPlane( mouse_event.canvasx, gl.canvas.height - mouse_event.canvasy, collision );
-				var delta = vec3.sub( vec3.create(), this._collision, collision );
-				cam.move( delta );
+				node.transform.move( delta );
 				cam.updateMatrices();
+			}
+
+			changed = true;
+		}
+		else //regular orbit
+		{
+			var yaw = mouse_event.deltax * this.rot_speed;
+			var pitch = -mouse_event.deltay * this.rot_speed;
+
+			if( Math.abs(yaw) > 0.0001 )
+			{
+				if(is_global_camera)
+				{
+					cam.orbit( -yaw, [0,1,0], this.orbit_center );
+					cam.updateMatrices();
+				}
+				else
+				{
+					node.transform.orbit( -yaw, [0,1,0], this.orbit_center );
+					cam.updateMatrices();
+				}
 				changed = true;
 			}
+
+			var right = cam.getRight();
+			var front = cam.getFront();
+			var up = cam.getUp();
+			var problem_angle = vec3.dot( up, front );
+			if( !(problem_angle > 0.99 && pitch > 0 || problem_angle < -0.99 && pitch < 0)) //avoid strange behaviours
+			{
+				if(is_global_camera)
+				{
+					cam.orbit( -pitch, right, this.orbit_center );
+				}
+				else
+				{
+					node.transform.orbit( -pitch, right, this.orbit_center );
+				}
+				changed = true;
+			}
+		}
+	}
+	else if(this.mode == CameraController.PLANE)
+	{
+		if(this._button == 2)
+		{
+			var center = vec3.create();
+			cam.getCenter( center );
+			if(is_global_camera)
+				cam.orbit( -mouse_event.deltax * this.rot_speed, [0,1,0], center );
+			else
+				node.transform.orbit( -mouse_event.deltax * this.rot_speed, [0,1,0], center );
+			changed = true;
+		}
+		else
+		{
+			var collision = vec3.create();
+			var delta = vec3.create();
+			this.testOriginPlane( mouse_event.canvasx, gl.canvas.height - mouse_event.canvasy, collision );
+			vec3.sub( delta, this._collision, collision );
+			if(is_global_camera)
+				cam.move( delta );
+			else
+				node.transform.move( delta );
+			cam.updateMatrices();
+			changed = true;
 		}
 	}
 
@@ -28546,7 +28600,9 @@ global.Collada = {
 	},
 
 	light_translate_table: {
-		point: "omni"		
+		point: "omni",
+		directional: "directional",
+		spot: "spot"		
 	},
 
 	camera_translate_table: {
@@ -28585,7 +28641,7 @@ global.Collada = {
 		return null;
 	},
 
-		readMaterial: function(url)
+	readMaterial: function(url)
 	{
 		var xmlmaterial = this.querySelectorAndId( this._xmlroot, "library_materials material", url );
 		if(!xmlmaterial)
@@ -28752,11 +28808,19 @@ global.Collada = {
 			switch( xml.localName )
 			{
 				case "point": 
+					light.type = this.light_translate_table[ xml.localName ]; 
+					parse_params(light, xml);
+					break;
+				case "directional":
+					light.type = this.light_translate_table[ xml.localName ]; 
+					parse_params(light, xml);
+					break;
 				case "spot": 
 					light.type = this.light_translate_table[ xml.localName ]; 
 					parse_params(light, xml);
 					break;
-				case "intensity": light.intensity = this.readContentAsFloats( xml )[0]; 
+				case "intensity": 
+					light.intensity = this.readContentAsFloats( xml )[0]; 
 					break;
 			}
 		}
@@ -28771,7 +28835,8 @@ global.Collada = {
 
 				switch( child.localName )
 				{
-					case "color": light.color = Collada.readContentAsFloats( child ); break;
+					case "color": 
+						light.color = Collada.readContentAsFloats( child ); break;
 					case "falloff_angle": 
 						light.angle_end = Collada.readContentAsFloats( child )[0]; 
 						light.angle = light.angle_end - 10; 
@@ -28780,16 +28845,24 @@ global.Collada = {
 			}
 		}
 
-		/*
+		
 		if(node.model)
 		{
-			var M = mat4.create();
-			var R = mat4.rotate(M,M, Math.PI * 0.5, [1,0,0]);
-			//mat4.multiply( node.model, node.model, R );
+			//light position is final column of model
+			light.position = [node.model[12],node.model[13],node.model[14]];
+			//light forward vector is reverse of third column of model
+			var forward = [ - node.model[8], - node.model[9], - node.model[10]];
+			//so light target is position + forward
+			light.target = [light.position[0] + forward[0],
+							light.position[1] + forward[1],
+							light.position[2] + forward[2] ];
 		}
-		*/
-		light.position = [0,0,0];
-		light.target = [0,-1,0];
+		else {
+			console.warn( "Could not read light position for light: " + node.name + ". Setting defaults.");
+			light.position = [0,0,0];
+			light.target = [0,-1,0];
+		}
+		
 
 		node.light = light;
 	},
@@ -28825,8 +28898,18 @@ global.Collada = {
 					continue;
 				var translated = Collada.camera_translate_table[ child.localName ] || child.localName;
 				camera[ translated ] = parseFloat( child.textContent );
+				
 			}
 		}
+
+		//parse to convert yfov to standard (x) fov
+		if ( camera.yfov && !camera.fov ) {
+			if ( camera.aspect ) {
+				camera.fov = camera.yfov * camera.aspect;
+			}
+			else
+				console.warn("Could not convert camera yfov to xfov because aspect ratio not set")
+		} 
 
 		node.camera = camera;
 	},
@@ -33750,10 +33833,10 @@ SceneNode.prototype.configure = function(info)
 
 	//some helpers (mostly for when loading from js object that come from importers or code)
 	if(info.camera)
-		this._root.addComponent( new LS.Camera( info.camera ) );
+		this.addComponent( new LS.Camera( info.camera ) );
 
 	if(info.light)
-		this._root.addComponent( new LS.Light( info.light ) );
+		this.addComponent( new LS.Light( info.light ) );
 
 	if(info.mesh)
 	{

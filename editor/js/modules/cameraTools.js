@@ -294,6 +294,9 @@ var cameraTool = {
 
 	orbitCamera: function( yaw, pitch, camera )
 	{
+		if(yaw == 0 && pitch == 0)
+			return;
+
 		camera = camera || ToolUtils.getCamera();
 
 		var front = camera.getFront();
@@ -305,15 +308,18 @@ var cameraTool = {
 		var right = camera.getLocalVector( LS.RIGHT );
 		var dist = vec3.sub( vec3.create(), this.smooth_camera && camera._editor ? camera._editor.destination_eye : eye, center );
 
+		//yaw
 		vec3.rotateY( dist, dist, yaw );
 		var R = quat.create();
 
-		if( !(problem_angle > 0.99 && pitch > 0 || problem_angle < -0.99 && pitch < 0)) //avoid strange behaviours
+		//pitch
+		//avoid problem when rotating till front and up are aligned
+		if( !(problem_angle > 0.99 && pitch > 0 || problem_angle < -0.99 && pitch < 0)) 
 			quat.setAxisAngle( R, right, pitch );
-
 		vec3.transformQuat( dist, dist, R );
 
-		var new_eye = vec3.add( camera._editor ? camera._editor.destination_eye : camera.getEye(), dist, center );
+		//orbitin must only change the eye of the camera
+		var new_eye = vec3.add( camera._editor ? camera._editor.destination_eye : eye, dist, center );
 
 		if(!this.smooth_camera)
 		{

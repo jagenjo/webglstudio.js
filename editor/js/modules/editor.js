@@ -923,14 +923,21 @@ var EditorModule = {
 
 	createCameraNode: function()
 	{
+		var current_camera = RenderModule.getActiveCamera();
+
 		var node = new LS.SceneNode( LS.GlobalScene.generateUniqueNodeName("camera") );
-		node.addComponent( new LS.Camera( LS.GlobalScene.current_camera ) );
-		node.transform.lookAt( LS.GlobalScene.current_camera.eye, LS.GlobalScene.current_camera.center, LS.GlobalScene.current_camera.up );
-		node.eye = vec3.create();
-		node.center = vec3.fromValues(0,0,-1);
-		EditorModule.getAddRootNode().addChild(node);
-		UndoModule.saveNodeCreatedUndo(node);
-		SelectionModule.setSelection(node);
+		var camera = new LS.Camera( current_camera );
+		node.addComponent( camera );
+		node.transform.lookAt( current_camera.getEye(), current_camera.getCenter(), current_camera.up );
+
+		camera._eye.set(LS.ZERO);
+		camera._center.set(LS.FRONT);
+
+		camera.focalLength = current_camera.focalLength;
+
+		EditorModule.getAddRootNode().addChild( node );
+		UndoModule.saveNodeCreatedUndo( node );
+		SelectionModule.setSelection( node );
 		return node;
 	},
 
@@ -1024,7 +1031,7 @@ var EditorModule = {
 	},
 
 	//generic (called by selectTool on right click on canvas)
-	showContextualMenu: function( instance, event )
+	showCanvasContextualMenu: function( instance, event )
 	{
 		var options = [
 			{ title: "View", has_submenu: true },
@@ -1035,7 +1042,7 @@ var EditorModule = {
 
 		if(instance)
 		{
-			
+			options.push(null);
 			if( instance.constructor === LS.SceneNode )
 			{
 				options.push({ title: "Node", has_submenu: true});
@@ -1088,6 +1095,46 @@ var EditorModule = {
 				return true;
 			}
 
+			if(instance)
+			{
+				if( instance.doAction )
+					instance.doAction( action );
+				else if( instance.constructor.doAction )
+					instance.constructor.doAction( action );
+			}
+		}});
+	},
+
+	//for any instance (node, component, etc)
+	showInstanceContextualMenu: function( instance, event )
+	{
+		if(!instance)
+			return;
+
+		var title = null;
+		var options = [];
+
+		if( instance.constructor === LS.SceneNode )
+			return this.showNodeContextualMenu( instance, event );
+		else if( instance.constructor.is_component )
+			return this.showComponentContextualMenu( instance, e, menu );
+		else
+		{
+			var actions = null;
+			if( instance.getActions )
+				actions = instance.getActions();
+			else if( instance.constructor.getActions )
+				actions = instance.constructor.getActions();
+
+			if(actions)
+			{
+				options.push(null);
+				for(var i in actions)
+					options.push( actions[i] );
+			}
+		}
+
+		var menu = new LiteGUI.ContextualMenu( options, { title: title, ignore_item_callbacks: true, event: event, callback: function( action, o, e ) {
 			if(instance)
 			{
 				if( instance.doAction )

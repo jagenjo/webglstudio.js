@@ -4398,7 +4398,9 @@ var Draw = {
 	*/
 	renderPoints: function(points, colors, shader)
 	{
-		if(!points || !points.length) return;
+		if(!points || !points.length)
+			return;
+
 		var vertices = null;
 
 		if(points.constructor == Float32Array)
@@ -4684,8 +4686,11 @@ var Draw = {
 		return this.renderSolidCube(size,size,size);
 	},
 
-	renderPlane: function(position, size, texture, shader)
+	renderPlane: function( position, size, texture, shader)
 	{
+		if(!position || !size)
+			throw("LS.Draw.renderPlane param missing");
+
 		this.push();
 		this.translate(position);
 		this.scale( size[0], size[1], 1 );
@@ -4795,7 +4800,7 @@ var Draw = {
 	* @params {number} segments
 	* @params {boolean} in_z aligned with z axis
 	*/
-	renderCylinder: function(radius, height, segments, in_z)
+	renderCylinder: function( radius, height, segments, in_z )
 	{
 		var mesh = this.createCylinderMesh(radius, height, segments, in_z, true);
 		return this.renderMesh( mesh, gl.TRIANGLE_STRIP, undefined, undefined, 0, this._global_mesh_last_size );
@@ -4809,8 +4814,10 @@ var Draw = {
 	* @params {number} size [optional=10]
 	* @params {boolean} fixed_size [optional=false] (camera distance do not affect size)
 	*/
-	renderImage: function(position, image, size, fixed_size )
+	renderImage: function( position, image, size, fixed_size )
 	{
+		if(!position || !image)
+			throw("LS.Draw.renderImage param missing");
 		size = size || 10;
 		var texture = null;
 
@@ -4876,7 +4883,11 @@ var Draw = {
 	*/
 	renderMesh: function( mesh, primitive, shader, indices, range_start, range_length )
 	{
-		if(!this.ready) throw ("Draw.js not initialized, call Draw.init()");
+		if(!this.ready)
+			throw ("Draw.js not initialized, call Draw.init()");
+		if(!mesh)
+			throw ("LS.Draw.renderMesh mesh cannot be null");
+
 		if(!shader)
 		{
 			if(mesh === this._global_mesh && this._global_mesh_ignore_colors )
@@ -7553,7 +7564,7 @@ ShaderMaterial.prototype.processShaderCode = function()
 	}
 }
 
-ShaderMaterial.prototype.renderInstance = function( instance, lights, scene, render_settings )
+ShaderMaterial.prototype.renderInstance = function( instance, render_settings, lights )
 {
 	if(!this.shader)
 		return false;
@@ -7570,6 +7581,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, lights, scene, ren
 
 	var renderer = LS.Renderer;
 	var camera = LS.Renderer._current_camera;
+	var scene = LS.Renderer._current_scene;
 
 	//compute matrices
 	var model = instance.matrix;
@@ -7626,7 +7638,10 @@ ShaderMaterial.prototype.renderInstance = function( instance, lights, scene, ren
 	return true;
 }
 
-
+ShaderMaterial.prototype.renderShadowInstance = function( instance, render_settings )
+{
+	return this.renderInstance( instance, render_settings );
+}
 
 /**
 * Collects all the resources needed by this material (textures)
@@ -9388,7 +9403,7 @@ Animation.Take = Take;
 
 /**
 * Represents one track with data over time about one property
-* Data could be stored in two forms, or an array containing arrays of [time,data] or in a single typed array, depends on the attribute typed_mode
+* Data could be stored in two forms, or an array containing arrays of [time,data] (unpacked data) or in a single typed array (packed data), depends on the attribute typed_mode
 *
 * @class Animation.Track
 * @namespace LS
@@ -9765,41 +9780,93 @@ Track.prototype.unpackData = function()
 	this.packed_data = false;
 }
 
-/* not tested
-Track.prototype.findSampleIndex = function(time)
+//Dichotimic search
+//returns nearest index of keyframe with time equal or less to specified time
+Track.prototype.findTimeIndex = function(time)
 {
 	var data = this.data;
-	var offset = this.value_size + 1;
-	var l = data.length;
-	var n = l / offset;
-	var imin = 0;
-	var imax = n;
-	var imid = 0;
 
-	//dichotimic search
-	// continue searching while [imin,imax] is not empty
+	if(this.packed_data)
+	{
+		var offset = this.value_size + 1; //data size plus timestamp
+		var l = data.length;
+		var n = l / offset; //num samples
+		var imin = 0;
+		var imid = 0;
+		var imax = n;
+
+		if(n == 0)
+			return -1;
+		if(n == 1)
+			return 0;
+
+		//time out of duration
+		if( data[ (imax - 1) * offset ] < time )
+			return (imax - 1);
+
+		//dichotimic search
+		// continue searching while [imin,imax] are continuous
+		while (imax >= imin)
+		{
+			// calculate the midpoint for roughly equal partition
+			imid = ((imax + imin)*0.5)|0;
+			var t = data[ imid * offset ]; //get time
+			if( t == time )
+				return imid; 
+			//when there are no more elements to search
+			if( imin == (imax - 1) )
+				return imin;
+			// determine which subarray to search
+			if (t < time)
+				// change min index to search upper subarray
+				imin = imid;
+			else         
+				// change max index to search lower subarray
+				imax = imid;
+		}
+		return imid;
+	}
+
+	//unpacked data
+	var n = data.length; //num samples
+	var imin = 0;
+	var imid = 0;
+	var imax = n;
+
+	if(n == 0)
+		return -1;
+	if(n == 1)
+		return 0;
+
+	//time out of duration
+	if( data[ (imax - 1) ][0] < time )
+		return (imax - 1);
+
 	while (imax >= imin)
 	{
 		// calculate the midpoint for roughly equal partition
-		imid = (((imax - imin)*0.5)|0) + imin;
-		var v = data[ imid * offset ];
-		if( v == time )
-			return imid * offset; 
-			// determine which subarray to search
-		else if (v < key)
+		imid = ((imax + imin)*0.5)|0;
+		var t = data[ imid ][0]; //get time
+		if( t == time )
+			return imid; 
+		//when there are no more elements to search
+		if( imin == (imax - 1) )
+			return imin;
+		// determine which subarray to search
+		if (t < time)
 			// change min index to search upper subarray
-			imin = imid + 1;
+			imin = imid;
 		else         
 			// change max index to search lower subarray
-			imax = imid - 1;
+			imax = imid;
 	}
 
-	return imid * offset;
+	return imid;
 }
-*/
 
-//TODO: IMPROVE WITH DICOTOMIC SEARCH
-//Returns the index of the last sample with a time less or equal to time
+
+/*
+//Brute force search
 Track.prototype.findTimeIndex = function( time )
 {
 	if(!this.data || this.data.length == 0)
@@ -9849,6 +9916,7 @@ Track.prototype.findTimeIndex = function( time )
 		return -1;
 	return last;
 }
+*/
 
 //Warning: if no result is provided the same result is reused between samples.
 Track.prototype.getSample = function( time, interpolate, result )
@@ -13499,7 +13567,7 @@ var PICKING_PASS = 3;
 var Renderer = {
 
 	default_render_settings: new LS.RenderSettings(), //overwritten by the global info or the editor one
-	default_material: new StandardMaterial(), //used for objects without material
+	default_material: new LS.StandardMaterial(), //used for objects without material
 
 	render_passes: {}, //used to specify the render function for every kind of render pass (color, shadow, picking, etc)
 	renderPassFunction: null, //function to call when rendering instances
@@ -13989,33 +14057,45 @@ var Renderer = {
 	//this function is in charge of rendering the regular color pass (used also for reflections)
 	renderColorPassInstance: function( instance, render_settings )
 	{
-
 		var near_lights = this.getNearLights( instance, this._near_lights );
 
 		//render instance
 		var renderered = false;
 		if( instance.material && instance.material.renderInstance )
-			renderered = instance.material.renderInstance( instance, near_lights, this._current_scene, render_settings );
+			renderered = instance.material.renderInstance( instance, render_settings, near_lights );
 
 		//render using default system (slower but it works)
 		if(!renderered)
-			this.renderColorMultiPassLightingInstance( instance, near_lights, this._current_scene, render_settings );
+			this.renderStandardColorMultiPassLightingInstance( instance, render_settings, near_lights );
 	},
+
+	renderShadowPassInstance: function( instance, render_settings )
+	{
+		//render instance
+		var renderered = false;
+		if( instance.material && instance.material.renderShadowInstance )
+			renderered = instance.material.renderShadowInstance( instance, render_settings );
+
+		//render using default system (slower but it works)
+		if(!renderered)
+			this.renderStandardShadowPassInstance( instance, render_settings);
+	},
+
 
 	/**
 	* Renders the RenderInstance taking into account all the lights that affect it and doing a render for every light
 	*
 	* @method renderColorMultiPassLightingInstance
 	* @param {RenderInstance} instance
-	* @param {Array} lights array containing al the lights affecting this RI
-	* @param {SceneTree} scene
 	* @param {RenderSettings} render_settings
+	* @param {Array} lights array containing al the lights affecting this RI
 	*/
-	renderColorMultiPassLightingInstance: function( instance, lights, scene, render_settings )
+	renderStandardColorMultiPassLightingInstance: function( instance, render_settings, lights )
 	{
 		var camera = this._current_camera;
 		var node = instance.node;
 		var material = instance.material;
+		var scene = this._current_scene;
 
 		//compute matrices
 		var model = instance.matrix;
@@ -14167,12 +14247,13 @@ var Renderer = {
 	* @param {RenderInstance} instance
 	* @param {RenderSettings} render_settings
 	*/
-	renderShadowPassInstance: function(instance, render_settings)
+	renderStandardShadowPassInstance: function( instance, render_settings )
 	{
 		var scene = this._current_scene;
 		var camera = this._current_camera;
 		var node = instance.node;
 		var material = instance.material;
+		var scene = this._current_scene;
 
 		//compute matrices
 		var model = instance.matrix;
@@ -14837,6 +14918,476 @@ var Renderer = {
 //Add to global Scope
 LS.Renderer = Renderer;
 
+// Used to render debug information like skeletons, a grid, etc
+// I moved it from WebGLStudio to LS so it could help when working with scenes coded without the editor
+
+function DebugRender()
+{
+	this.debug_points = []; //used for debugging, allows to draw points easily
+
+	//current frame data to render (we store it so we can render with less drawcalls)
+	this._points = []; //linear array with x,y,z, x,y,z, ...
+	this._points_color = [];
+	this._points_nodepth = []; //linear array with x,y,z, x,y,z, ...
+	this._points_color_nodepth = [];
+	this._lines = []; //vec3,vec3 array
+	this._lines_color = []; //
+	this._names = []; //array of [vec3, string]
+
+	this.grid_texture_url = "imgs/grid.png";
+
+	this.camera2D = new LS.Camera({eye:[0,0,0],center:[0,0,-1]});
+	this.createMeshes();
+
+	this.colors = {
+		selected: vec4.fromValues(1,1,1,1),
+		node: vec4.fromValues(1,0.5,0,1),
+		bone: vec4.fromValues(1,0,0.5,1)
+	}
+
+	this.settings = {
+		render_grid: true,
+		grid_scale: 1.0,
+		grid_alpha: 0.5,
+		grid_plane: "xz",
+		render_names: false,
+		render_skeletons: true,
+		render_tree: false,
+		render_components: true,
+		render_null_nodes: true,
+		render_axis: false,
+		render_colliders: true,
+		render_paths: true,
+		render_origin: true,
+		render_colliders_aabb: false
+	};
+}
+
+DebugRender.prototype.enable = function( scene )
+{
+	LEvent.bind( scene, "afterRenderInstances", this.onRender, this );
+}
+
+DebugRender.prototype.disable = function( scene )
+{
+	LEvent.unbind( scene, "afterRenderInstances", this.onRender, this );
+}
+
+DebugRender.prototype.onRender = function( e, render_settings )
+{
+	this.render( LS.Renderer._current_camera );
+}
+
+//we pass a callback to check if something is selected
+DebugRender.prototype.render = function( camera, is_selected_callback )
+{
+	var settings = this.settings;
+
+	gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+	gl.enable( gl.DEPTH_TEST );
+	gl.disable(gl.BLEND);
+	gl.disable( gl.CULL_FACE );
+	gl.depthFunc( gl.LEQUAL );
+	//gl.depthMask( false );
+
+	if( settings.render_grid && settings.grid_alpha > 0 )
+		this.renderGrid();
+
+	if(settings.render_origin)
+	{
+		LS.Draw.setColor([0.2,0.2,0.2,1.0]);
+		LS.Draw.push();
+		LS.Draw.scale(0.01,0.01,0.01);
+		LS.Draw.renderText("Origin");
+		LS.Draw.pop();
+	}
+
+	if(settings.render_components)
+	{
+		//Node components
+		for(var i = 0, l = LS.GlobalScene._nodes.length; i < l; ++i)
+		{
+			var node = LS.GlobalScene._nodes[i];
+			var is_node_selected = node._is_selected;
+			if(node.renderEditor)
+				node.renderEditor( is_node_selected );
+			for(var j = 0, l2 = node._components.length; j < l2; ++j)
+			{
+				var component = node._components[j];
+				var is_component_selected = false;
+				if(is_selected_callback)
+					is_component_selected = is_selected_callback( component );
+				if(component.renderEditor)
+					component.renderEditor( is_node_selected, is_component_selected );
+			}
+		}
+	}
+
+	//render local things		
+	var zero = vec3.create();
+	for(var i = 0, l = LS.GlobalScene._nodes.length; i < l; ++i)
+	{
+		var node = LS.GlobalScene._nodes[i];
+		if(!node.transform) 
+			continue;
+
+		var global = node.transform.getGlobalMatrixRef();
+		var pos = mat4.multiplyVec3( vec3.create(), global, zero ); //create a new one to store them
+
+		if( settings.render_null_nodes )
+		{
+			if( node._is_selected )
+				this.renderPoint( pos, true, this.colors.selected );
+			else if( node._is_bone )
+				this.renderPoint( pos, true, this.colors.bone );
+			else
+				this.renderPoint( pos, false, this.colors.node );
+		}
+
+		if(settings.render_names)
+			this.renderText(pos, node.name, node._is_selected ? [0.94, 0.8, 0.4,1] : [0.8,0.8,0.8,0.9] );
+
+		if (node._parentNode && node._parentNode.transform && (settings.render_tree || (settings.render_skeletons && node._is_bone && node._parentNode._is_bone)) )
+		{
+			this.renderLine( pos , node._parentNode.transform.getGlobalPosition(), this.colors.bone );
+			//this.renderPoint( pos, true, this.colors.bone );
+		}
+
+		if(settings.render_axis)
+		{
+			LS.Draw.push();
+			LS.Draw.multMatrix(global);
+			LS.Draw.setColor([1,1,1,1]);
+			LS.Draw.renderMesh( this.axis_mesh, gl.LINES );
+			LS.Draw.pop();
+		}
+	}
+
+	if(settings.render_colliders)
+		this.renderColliders();
+	if(settings.render_paths)
+		this.renderPaths();
+
+	//Render primitives (points, lines, text) ***********************
+
+	if(this._points.length)
+	{
+		LS.Draw.setPointSize(4);
+		LS.Draw.setColor([1,1,1,1]);
+		LS.Draw.renderPoints( this._points, this._points_color );
+		this._points.length = 0;
+		this._points_color.length = 0;
+	}
+
+	if(this._points_nodepth.length)
+	{
+		LS.Draw.setPointSize(4);
+		LS.Draw.setColor([1,1,1,1]);
+		gl.disable( gl.DEPTH_TEST );
+		LS.Draw.renderPoints( this._points_nodepth, this._points_color_nodepth );
+		gl.enable( gl.DEPTH_TEST );
+		this._points_nodepth.length = 0;
+		this._points_color_nodepth.length = 0;
+	}
+
+	if(this._lines.length)
+	{
+		gl.disable( gl.DEPTH_TEST );
+		LS.Draw.setColor([1,1,1,1]);
+		LS.Draw.renderLines( this._lines, this._lines_color );
+		gl.enable( gl.DEPTH_TEST );
+		this._lines.length = 0;
+		this._lines_color.length = 0;
+	}
+
+	if(this.debug_points.length)
+	{
+		LS.Draw.setPointSize(5);
+		LS.Draw.setColor([1,0,1,1]);
+		LS.Draw.renderPoints( this.debug_points );
+	}
+
+	if(settings.render_names)
+	{
+		gl.disable( gl.DEPTH_TEST );
+		var camera2D = this.camera2D;
+		var viewport = gl.getViewport();
+		camera2D.setOrthographic(0,viewport[2], 0,viewport[3], -1,1);
+		camera2D.updateMatrices();
+		gl.start2D();
+		//gl.disable( gl.BLEND );
+		gl.font = "14px Arial";
+		var black_color = vec4.fromValues(0,0,0,0.5);
+
+		for(var i = 0; i < this._names.length; ++i)
+		{
+			var pos2D = camera.project( this._names[i][1] );
+			if(pos2D[2] < 0)
+				continue;
+			pos2D[2] = 0;
+
+			var text_size = gl.measureText( this._names[i][0] );
+			gl.fillColor = black_color;
+			gl.fillRect( Math.floor(pos2D[0] + 10), viewport[3] - (Math.floor(pos2D[1] + 8)), text_size.width, text_size.height );
+			gl.fillColor = this._names[i][2];
+			gl.fillText( this._names[i][0], Math.floor(pos2D[0] + 10), viewport[3] - (Math.floor(pos2D[1] - 4) ) );
+		}
+		gl.finish2D();
+		this._names.length = 0;
+	}
+
+	//DEBUG
+	if(settings.render_axis) //render axis for all nodes
+	{
+		LS.Draw.push();
+		var Q = selected_node.transform.getGlobalRotation();
+		var R = mat4.fromQuat( mat4.create(), Q );
+		LS.Draw.setMatrix( R );
+		LS.Draw.setColor([1,1,1,1]);
+		LS.Draw.scale(10,10,10);
+		LS.Draw.renderMesh( this.axis_mesh, gl.LINES );
+		LS.Draw.pop();
+	}
+
+	gl.depthFunc( gl.LESS );
+}
+
+//this primitives are rendered after all the components editors are rendered
+DebugRender.prototype.renderPoint = function( p, ignore_depth, c )
+{
+	c = c || [1,1,1,1];
+	if(ignore_depth)
+	{
+		this._points_nodepth.push( p[0], p[1], p[2] );
+		this._points_color_nodepth.push( c[0], c[1], c[2], c[3] );
+	}
+	else
+	{
+		this._points.push( p[0], p[1], p[2] );
+		this._points_color.push( c[0], c[1], c[2], c[3] );
+	}
+}
+
+DebugRender.prototype.renderLine = function( start, end, color )
+{
+	color = color || [1,1,1,1];
+	this._lines.push( start, end );
+	this._lines_color.push( color, color );
+}
+
+DebugRender.prototype.renderText = function( position, text, color )
+{
+	color = color || [1,1,1,1];
+	this._names.push([text,position, color]);
+}
+
+DebugRender.prototype.renderGrid = function()
+{
+	var settings = this.settings;
+
+	//textured grid
+	if(!this.grid_shader)
+	{
+		//this.grid_shader = LS.Draw.createSurfaceShader("float PI2 = 6.283185307179586; return vec4( vec3( max(0.0, cos(pos.x * PI2 * 0.1) - 0.95) * 10.0 + max(0.0, cos(pos.z * PI2 * 0.1) - 0.95) * 10.0 ),1.0);");
+		this.grid_shader = LS.Draw.createSurfaceShader("vec2 f = vec2(1.0/64.0,-1.0/64.0); float brightness = texture2D(u_texture, pos.xz + f).x * 0.6 + texture2D(u_texture, pos.xz * 0.1 + f ).x * 0.3 + texture2D(u_texture, pos.xz * 0.01 + f ).x * 0.2; brightness /= max(1.0,0.001 * length(u_camera_position.xz - pos.xz));return u_color * vec4(vec3(1.0),brightness);");
+		this.grid_shader_xy = LS.Draw.createSurfaceShader("vec2 f = vec2(1.0/64.0,-1.0/64.0); float brightness = texture2D(u_texture, pos.xy + f).x * 0.6 + texture2D(u_texture, pos.xy * 0.1 + f ).x * 0.3 + texture2D(u_texture, pos.xy * 0.01 + f ).x * 0.2; brightness /= max(1.0,0.001 * length(u_camera_position.xy - pos.xy));return u_color * vec4(vec3(1.0),brightness);");
+		this.grid_shader_yz = LS.Draw.createSurfaceShader("vec2 f = vec2(1.0/64.0,-1.0/64.0); float brightness = texture2D(u_texture, pos.yz + f).x * 0.6 + texture2D(u_texture, pos.yz * 0.1 + f ).x * 0.3 + texture2D(u_texture, pos.yz * 0.01 + f ).x * 0.2; brightness /= max(1.0,0.001 * length(u_camera_position.yz - pos.yz));return u_color * vec4(vec3(1.0),brightness);");
+		this.grid_shader.uniforms({u_texture:0});
+
+		if( this.grid_img && this.grid_img.loaded )
+			this.grid_texture = GL.Texture.fromImage( this.grid_img, {format: gl.RGB, wrap: gl.REPEAT, anisotropic: 4, minFilter: gl.LINEAR_MIPMAP_LINEAR } );
+		else
+			this.grid_texture = GL.Texture.fromURL( this.grid_texture_url, {format: gl.RGB, wrap: gl.REPEAT, anisotropic: 4, minFilter: gl.LINEAR_MIPMAP_LINEAR } );
+	}
+
+	LS.Draw.push();
+
+	if(settings.grid_plane == "xy")
+		LS.Draw.rotate(90,1,0,0);
+	else if(settings.grid_plane == "yz")
+		LS.Draw.rotate(90,0,0,1);
+
+
+	if(!this.grid_texture || this.grid_texture.ready === false)
+	{
+		var grid_scale = 1;			
+		var grid_alpha = 1;
+		//lines grid
+		LS.Draw.setColor([0.2,0.2,0.2, grid_alpha * 0.75]);
+		LS.Draw.scale( grid_scale , grid_scale , grid_scale );
+		LS.Draw.renderMesh( this.grid_mesh, gl.LINES );
+		LS.Draw.scale(10,10,10);
+		LS.Draw.renderMesh( this.grid_mesh, gl.LINES );
+	}
+	else
+	{
+		//texture grid
+		gl.enable(gl.BLEND);
+		this.grid_texture.bind(0);
+		gl.depthMask( false );
+		LS.Draw.setColor([1,1,1, this.settings.grid_alpha ]);
+		LS.Draw.translate( LS.Draw.camera_position[0], 0, LS.Draw.camera_position[2] ); //follow camera
+		LS.Draw.scale( 10000, 10000, 10000 );
+		LS.Draw.renderMesh( this.plane_mesh, gl.TRIANGLES, settings.grid_plane == "xy" ? this.grid_shader_xy : this.grid_shader );
+		gl.depthMask( true );
+	}
+
+	LS.Draw.pop();
+}
+
+DebugRender.prototype.renderColliders = function()
+{
+	var scene = LS.GlobalScene;
+	if(!scene._colliders)
+		return;
+
+	LS.Draw.setColor([0.33,0.71,0.71,0.5]);
+
+	for(var i = 0; i < scene._colliders.length; ++i)
+	{
+		var instance = scene._colliders[i];
+		var oobb = instance.oobb;
+
+		if(this.settings.render_colliders_aabb) //render AABB
+		{
+			var aabb = instance.aabb;
+			LS.Draw.push();
+			var center = BBox.getCenter(aabb);
+			var halfsize = BBox.getHalfsize(aabb);
+			LS.Draw.translate(center);
+			//LS.Draw.setColor([0.33,0.71,0.71,0.5]);
+			LS.Draw.renderWireBox(halfsize[0]*2,halfsize[1]*2,halfsize[2]*2);
+			LS.Draw.pop();
+		}
+
+		LS.Draw.push();
+		LS.Draw.multMatrix( instance.matrix );
+		var halfsize = BBox.getHalfsize(oobb);
+
+		if(instance.type == LS.PhysicsInstance.BOX)
+		{
+			LS.Draw.translate( BBox.getCenter(oobb) );
+			LS.Draw.renderWireBox( halfsize[0]*2, halfsize[1]*2, halfsize[2]*2 );
+		}
+		else if(instance.type == LS.PhysicsInstance.SPHERE)
+		{
+			//Draw.scale(,halfsize[0],halfsize[0]);
+			LS.Draw.translate( BBox.getCenter(oobb) );
+			LS.Draw.renderWireSphere( halfsize[0], 20 );
+		}
+		else if(instance.type == LS.PhysicsInstance.MESH)
+		{
+			var mesh = instance.mesh;
+			if(mesh)
+			{
+				if(!mesh.indexBuffers["wireframe"])
+					mesh.computeWireframe();
+				LS.Draw.renderMesh(mesh, gl.LINES, null, "wireframe" );
+			}
+		}
+
+		LS.Draw.pop();
+	}
+}
+
+DebugRender.prototype.renderPaths = function()
+{
+	var scene = LS.GlobalScene;
+	if(!scene._paths)
+		return;
+
+	LS.Draw.setColor([0.7,0.6,0.3,0.5]);
+
+	for(var i = 0; i < scene._paths.length; ++i)
+	{
+		var path = scene._paths[i];
+		var points = path.samplePoints(0);
+		LS.Draw.renderLines( points, null, true );
+	}
+}
+
+DebugRender.prototype.createMeshes = function()
+{
+	//plane
+	this.plane_mesh = GL.Mesh.plane({xz:true});
+
+	//grid
+	var dist = 10;
+	var num = 10;
+	var vertices = [];
+	for(var i = -num; i <= num; i++)
+	{
+		vertices.push([i*dist,0,dist*num]);
+		vertices.push([i*dist,0,-dist*num]);
+		vertices.push([dist*num,0,i*dist]);
+		vertices.push([-dist*num,0,i*dist]);
+	}
+	this.grid_mesh = GL.Mesh.load({vertices:vertices});
+
+	//box
+	vertices = new Float32Array([-1,1,1 , -1,1,-1, 1,1,-1, 1,1,1, -1,-1,1, -1,-1,-1, 1,-1,-1, 1,-1,1]);
+	var triangles = new Uint16Array([0,1, 0,4, 0,3, 1,2, 1,5, 2,3, 2,6, 3,7, 4,5, 4,7, 6,7, 5,6 ]);
+	this.box_mesh = GL.Mesh.load({vertices: vertices, lines:triangles });
+
+	//circle
+	this.circle_mesh = GL.Mesh.circle({size:1,slices:50});
+	this.circle_empty_mesh = GL.Mesh.circle({size:1,slices:50,empty:1});
+	this.sphere_mesh = GL.Mesh.icosahedron({size:1, subdivisions: 3});
+
+	//dummy
+	vertices = [];
+	vertices.push([-dist*0.5,0,0],[+dist*0.5,0,0]);
+	vertices.push([0,-dist*0.5,0],[0,+dist*0.5,0]);
+	vertices.push([0,0,-dist*0.5],[0,0,+dist*0.5]);
+	this.dummy_mesh = GL.Mesh.load({vertices:vertices});
+
+	//box
+	vertices = [];
+	vertices.push([-1.0,1.0,1.0],[1.0,1.0,1.0],[-1.0,1.0,-1.0], [1.0,1.0,-1.0],[-1.0,-1.0,1.0], [1.0,-1.0,1.0],[-1.0,-1.0,-1.0], [1.0,-1.0,-1.0]);
+	vertices.push([1.0,-1.0,1.0],[1.0,1.0,1.0],[1.0,-1.0,-1.0],[1.0,1.0,-1.0],[-1.0,-1.0,1.0],[-1.0,1.0,1.0],[-1.0,-1.0,-1.0],[-1.0,1.0,-1.0]);
+	vertices.push([1.0,1.0,1.0],[1.0,1.0,-1.0],[1.0,-1.0,1.0],[1.0,-1.0,-1.0],[-1.0,1.0,1.0],[-1.0,1.0,-1.0],[-1.0,-1.0,1.0],[-1.0,-1.0,-1.0]);
+	this.cube_mesh = GL.Mesh.load({vertices:vertices});
+
+	for(var i = 1; i >= 0.0; i -= 0.02)
+	{
+		var f = ( 1 - 0.001/(i) )*2-1;
+		vertices.push([-1.0,1.0,f],[1.0,1.0,f],[-1.0,-1.0,f], [1.0,-1.0,f]);
+		vertices.push([1.0,-1.0,f],[1.0,1.0,f],[-1.0,-1.0,f],[-1.0,1.0,f]);
+	}
+
+	this.frustum_mesh = GL.Mesh.load({vertices:vertices});
+
+	//cylinder
+	this.cylinder_mesh = GL.Mesh.cylinder({radius:10,height:2});
+
+	//axis
+	vertices = [];
+	var colors = [];
+	dist = 2;
+	vertices.push([0,0,0],[+dist*0.5,0,0]);
+	colors.push([1,0,0,1],[1,0,0,1]);
+	vertices.push([0,0,0],[0,+dist*0.5,0]);
+	colors.push([0,1,0,1],[0,1,0,1]);
+	vertices.push([0,0,0],[0,0,+dist*0.5]);
+	colors.push([0,0,1,1],[0,0,1,1]);
+	this.axis_mesh = GL.Mesh.load({vertices:vertices, colors: colors});
+
+	//top
+	vertices = [];
+	vertices.push([0,0,0],[0,+dist*0.5,0]);
+	vertices.push([0,+dist*0.5,0],[0.1*dist,+dist*0.4,0]);
+	vertices.push([0,+dist*0.5,0],[-0.1*dist,+dist*0.4,0]);
+	this.top_line_mesh = GL.Mesh.load({vertices:vertices});
+
+	//front
+	vertices = [];
+	vertices.push([0,0,0],[0,0,+dist*0.5]);
+	vertices.push([0,0,+dist*0.5],[0,0.1*dist,+dist*0.4]);
+	vertices.push([0,0,+dist*0.5],[0,-0.1*dist,+dist*0.4]);
+	this.front_line_mesh = GL.Mesh.load({vertices:vertices});
+}
+
+LS.DebugRender = DebugRender;
 //
 /**
 * Picking is used to detect which element is below one pixel (used the GPU) or using raycast
@@ -16420,6 +16971,33 @@ Transform.interpolate = function(a,b,factor, result)
 }
 
 /**
+* Orbits around its parent node
+* @method orbit
+* @param {number} angle_in_deg
+* @param {vec3} axis
+* @param {vec3} center optional
+*/
+Transform.prototype.orbit = (function() { 
+	var tmp_quat = quat.create();
+	var tmp_vec3 = vec3.create();
+
+	return function( angle_in_deg, axis, center )
+	{
+		center = center || this._center;
+		var R = quat.setAxisAngle( tmp_quat, axis, angle_in_deg * 0.0174532925 );
+		tmp_vec3.set( this._position );
+		if(center)
+			vec3.sub(tmp_vec3, tmp_vec3, center );
+		vec3.transformQuat( tmp_vec3, tmp_vec3, R );
+		if(center)
+			vec3.add(tmp_vec3, tmp_vec3, center );
+		this._position.set( tmp_vec3 );
+		this._must_update_matrix = true;
+	};
+})();
+
+
+/**
 * Orients the transform to look from one position to another
 * @method lookAt
 * @param {vec3} position
@@ -16436,38 +17014,39 @@ Transform.prototype.lookAt = (function() {
 	var temp_target = vec3.create();
 	var temp_up = vec3.create();
 	
-	return function(pos, target, up, in_world)
+	return function( pos, target, up, in_world )
 	{
+		up = up || LS.TOP;
 
-	//convert to local space
-	if(in_world && this._parent)
-	{
-		this._parent.getGlobalMatrix( GM );
-		var inv = mat4.invert(GM,GM);
-		mat4.multiplyVec3(temp_pos, inv, pos);
-		mat4.multiplyVec3(temp_target, inv, target);
-		mat4.rotateVec3(temp_up, inv, up );
-	}
-	else
-	{
-		temp_pos.set( pos );
-		temp_target.set( target );
-		temp_up.set( up );
-	}
+		//convert to local space
+		if(in_world && this._parent)
+		{
+			this._parent.getGlobalMatrix( GM );
+			var inv = mat4.invert(GM,GM);
+			mat4.multiplyVec3(temp_pos, inv, pos);
+			mat4.multiplyVec3(temp_target, inv, target);
+			mat4.rotateVec3(temp_up, inv, up );
+		}
+		else
+		{
+			temp_pos.set( pos );
+			temp_target.set( target );
+			temp_up.set( up );
+		}
 
-	mat4.lookAt(temp, temp_pos, temp_target, temp_up);
-	//mat4.invert(temp, temp);
+		mat4.lookAt(temp, temp_pos, temp_target, temp_up);
+		//mat4.invert(temp, temp);
 
-	quat.fromMat4( this._rotation, temp );
-	this._position.set( temp_pos );	
-	this._must_update_matrix = true;
+		quat.fromMat4( this._rotation, temp );
+		this._position.set( temp_pos );	
+		this._must_update_matrix = true;
 
-	/*
-	mat4.lookAt(temp, pos, target, up);
-	mat4.invert(temp, temp);
-	this.fromMatrix(temp);
-	this.updateGlobalMatrix();
-	*/
+		/*
+		mat4.lookAt(temp, pos, target, up);
+		mat4.invert(temp, temp);
+		this.fromMatrix(temp);
+		this.updateGlobalMatrix();
+		*/
 	}
 })();
 
@@ -16532,7 +17111,8 @@ Transform.prototype.transformPoint = function(vec, dest) {
 */
 Transform.prototype.transformPointGlobal = function(vec, dest) {
 	dest = dest || vec3.create();
-	if(this._must_update_matrix) this.updateMatrix();
+	if(this._must_update_matrix)
+		this.updateMatrix();
 	return mat4.multiplyVec3( dest, this.getGlobalMatrixRef(), vec );
 }
 
@@ -16552,13 +17132,16 @@ Transform.prototype.localToGlobal = Transform.prototype.transformPointGlobal;
 * @param {vec3} point
 * @param {vec3} destination (optional)
 */
-Transform.prototype.globalToLocal = function(vec, dest) {
-	dest = dest || vec3.create();
-	if(this._must_update_matrix) this.updateMatrix();
-	var inv = mat4.invert( mat4.create(), this.getGlobalMatrixRef() );
-	return mat4.multiplyVec3( dest, inv, vec );
-}
-
+Transform.prototype.globalToLocal = (function(){ 
+	var inv = mat4.create();
+	return function(vec, dest) {
+		dest = dest || vec3.create();
+		if(this._must_update_matrix)
+			this.updateMatrix();
+		mat4.invert( inv, this.getGlobalMatrixRef() );
+		return mat4.multiplyVec3( dest, inv, vec );
+	};
+})();
 
 /**
 * Applies the transformation to a vector (rotate but not translate)
@@ -16956,6 +17539,27 @@ Object.defineProperty( Camera.prototype, "center", {
 });
 
 /**
+* The distance between the center and the eye point
+* @property focalLength {Number}
+* @default (depends)
+*/
+Object.defineProperty( Camera.prototype, "focalLength", {
+	get: function() {
+		return vec3.distance( this._eye, this._center );
+	},
+	set: function(v) {
+		var tmp = vec3.create();
+		vec3.sub( tmp, this._center, this._eye );
+		vec3.normalize( tmp, tmp );
+		vec3.scaleAndAdd( tmp, this._eye, tmp, v );
+		this._center.set( tmp );
+		this._must_update_view_matrix = true;
+	},
+	enumerable: true
+});
+
+
+/**
 * The up vector of the camera (in local space, node space)
 * @property up {vec3}
 * @default [0,1,0]
@@ -17167,7 +17771,8 @@ Camera.prototype.onCollectCameras = function(e, cameras)
 }
 
 /**
-* 
+* Positions the camera at eye, pointing at center, and facing up as vertical.
+* If the camera is a node camera, then the node transform is modified (plus the center to match the focalLength)
 * @method lookAt
 * @param {vec3} eye
 * @param {vec3} center
@@ -17175,9 +17780,17 @@ Camera.prototype.onCollectCameras = function(e, cameras)
 */
 Camera.prototype.lookAt = function(eye,center,up)
 {
-	vec3.copy(this._eye, eye);
-	vec3.copy(this._center, center);
-	vec3.copy(this._up,up);
+	if( this._root && this._root.transform )
+	{
+		this._root.transform.lookAt(eye,center,up);
+		this.focalLength = vec3.distance( eye, center );
+	}
+	else
+	{
+		vec3.copy(this._eye, eye);
+		vec3.copy(this._center, center);
+		vec3.copy(this._up,up);
+	}
 	this._must_update_view_matrix = true;
 }
 
@@ -17316,43 +17929,47 @@ Camera.prototype.updateVectors = function(model)
 * transform a local coordinate to global coordinates
 * @method getLocalPoint
 * @param {vec3} v vector
-* @param {vec3} dest
+* @param {vec3} dest where to store the output, if not provided a vec3 is created
 * @return {vec3} v in global coordinates
 */
-Camera.prototype.getLocalPoint = function(v, dest)
+Camera.prototype.getLocalPoint = function( v, dest )
 {
 	dest = dest || vec3.create();
+
+	if( this._root && this._root.transform )
+		return mat4.multiplyVec3( dest, this._root.transform.getGlobalMatrixRef(), v );
+
 	if(this._must_update_view_matrix)
 		this.updateMatrices();
-	var temp = this._model_matrix; //mat4.create();
-	//mat4.invert( temp, this._view_matrix );
-	if(this._root && this._root.transform)
-		mat4.multiply( temp, temp, this._root.transform.getGlobalMatrixRef() );
-	return mat4.multiplyVec3(dest, temp, v );
+
+	return mat4.multiplyVec3( dest, this._model_matrix, v );
 }
 
 /**
 * rotate a local coordinate to global coordinates (skipping translation)
 * @method getLocalVector
 * @param {vec3} v vector
-* @param {vec3} dest
+* @param {vec3} dest where to store the output, if not provided a vec3 is created
 * @return {vec3} v in global coordinates
 */
 
 Camera.prototype.getLocalVector = function(v, dest)
 {
 	dest = dest || vec3.create();
+
+	if( this._root && this._root.transform )
+		return mat4.rotateVec3( dest, this._root.transform.getGlobalMatrixRef(), v );
+
 	if(this._must_update_view_matrix)
 		this.updateMatrices();
-	var temp = this._model_matrix; //mat4.create();
-	//mat4.invert( temp, this._view_matrix );
-	if(this._root && this._root.transform)
-		mat4.multiply(temp, temp, this._root.transform.getGlobalMatrixRef() );
-	return mat4.rotateVec3(dest, temp, v );
+
+	return mat4.rotateVec3( dest, this._model_matrix, v );
 }
 
 /**
-* returns the eye (position of the camera) in global coordinates
+* Returns the eye (position of the camera) in global coordinates
+* Takes into account if it is a camera attached to a node
+* The result of this function wont match the _eye property if the camera is a node camera
 * @method getEye
 * @param {vec3} out output vector [optional]
 * @return {vec3} position in global coordinates
@@ -17362,10 +17979,7 @@ Camera.prototype.getEye = function( out )
 	out = out || vec3.create();
 	out.set( this._eye );
 	if( this._root && this._root.transform )
-	{
 		return this._root.transform.getGlobalPosition( out );
-		//return mat4.multiplyVec3(eye, this._root.transform.getGlobalMatrixRef(), eye );
-	}
 	return out;
 }
 
@@ -17381,11 +17995,7 @@ Camera.prototype.getCenter = function( out )
 	out = out || vec3.create();
 
 	if( this._root && this._root.transform )
-	{
-		out[0] = out[1] = 0; out[2] = -1;
-		return mat4.multiplyVec3(out, this._root.transform.getGlobalMatrixRef(), out );
-	}
-
+		return mat4.multiplyVec3( out, this._root.transform.getGlobalMatrixRef(), this._center );
 	out.set( this._center );
 	return out;
 }
@@ -19166,6 +19776,7 @@ Light.prototype.generateShadowmap = function (render_settings)
 	}
 
 	LS.Renderer.setRenderPass("shadow");
+	LS.Renderer._current_light = this;
 
 	//render the scene inside the texture
 	if(this.type == Light.OMNI) //render to cubemap
@@ -19197,6 +19808,7 @@ Light.prototype.generateShadowmap = function (render_settings)
 	}
 
 	LS.Renderer.setRenderPass("color");
+	LS.Renderer._current_light = null;
 }
 
 /**
@@ -22208,7 +22820,6 @@ function CameraController(o)
 	this.smooth = false;
 	this.allow_panning = true;
 	this.mode = CameraController.ORBIT;
-	this.orbit_center = null;
 
 	this._moving = vec3.fromValues(0,0,0);
 	this._collision = vec3.create();
@@ -22287,7 +22898,7 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 	if(mouse_event.eventType == "mousewheel")
 	{
 		var wheel = mouse_event.wheel > 0 ? 1 : -1;
-		cam.orbitDistanceFactor(1 + wheel * -0.05 * this.wheel_speed, this.orbit_center);
+		cam.orbitDistanceFactor(1 + wheel * -0.05 * this.wheel_speed );
 		cam.updateMatrices();
 		node.scene.refresh();
 		return;
@@ -22346,7 +22957,7 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 			}
 			else
 			{
-				node.transform.move( delta );
+				node.transform.translate( delta );
 				cam.updateMatrices();
 			}
 
@@ -22361,12 +22972,14 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 			{
 				if(is_global_camera)
 				{
-					cam.orbit( -yaw, [0,1,0], this.orbit_center );
+					cam.orbit( -yaw, [0,1,0] );
 					cam.updateMatrices();
 				}
 				else
 				{
-					node.transform.orbit( -yaw, [0,1,0], this.orbit_center );
+					var eye = cam.getEye();
+					node.transform.globalToLocal( eye, eye );
+					node.transform.orbit( -yaw, [0,1,0], eye );
 					cam.updateMatrices();
 				}
 				changed = true;
@@ -22384,7 +22997,9 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 				}
 				else
 				{
-					node.transform.orbit( -pitch, right, this.orbit_center );
+					var eye = cam.getEye();
+					node.transform.globalToLocal( eye, eye );
+					node.transform.orbit( -pitch, right, eye );
 				}
 				changed = true;
 			}
@@ -22411,7 +23026,7 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 			if(is_global_camera)
 				cam.move( delta );
 			else
-				node.transform.move( delta );
+				node.transform.translate( delta );
 			cam.updateMatrices();
 			changed = true;
 		}
@@ -26315,6 +26930,22 @@ ScriptFromFile.updateComponents = function( script, skip_events )
 	}
 }
 
+//used in editor
+ScriptFromFile.prototype.getComponentTitle = function()
+{
+	if(!this._script.code)
+		return;
+
+	var line = this._script.code.substr(0,32);
+	if(line.indexOf("//@") != 0)
+		return null;
+	var last = line.indexOf("\n");
+	if(last == -1)
+		last = undefined;
+	return line.substr(3,last - 3);
+}
+
+
 LS.extendClass( ScriptFromFile, Script );
 
 LS.registerComponent( ScriptFromFile );
@@ -28001,8 +28632,9 @@ var parserBVH = {
 };
 
 LS.Formats.registerParser( parserBVH );
-//collada.js 
-//This worker should offload the main thread from parsing big text files (DAE)
+// Collada.js  https://github.com/jagenjo/collada.js
+// Javi Agenjo 2015 
+// Specification from https://www.khronos.org/collada/wiki
 
 (function(global){
 
@@ -28450,19 +29082,34 @@ global.Collada = {
 		return node;
 	},
 
-	readNodeInfo: function( xmlnode, scene, level, flip )
+	readNodeInfo: function( xmlnode, scene, level, flip, parent )
 	{
 		var node_id = this.safeString( xmlnode.getAttribute("id") );
 		var node_sid = this.safeString( xmlnode.getAttribute("sid") );
 
+		/*
 		if(!node_id && !node_sid)
 		{
 			console.warn("Collada: node without id, creating a random one");
 			node_id = this.generateName("node_");
 			return null;
 		}
+		*/
 
-		var node = this._nodes_by_id[ node_id || node_sid ];
+		var node;
+		if(!node_id && !node_sid) {
+			//if there is no id, then either all of this node's properties 
+			//should be assigned directly to its parent node, or the node doesn't
+			//have a parent node, in which case its a light or something. 
+			//So we get the parent by its id, and if there is no parent, we return null
+			if (parent)
+				node = this._nodes_by_id[ parent.id || parent.sid ];
+			else 
+				return null;
+		} 
+		else
+			node = this._nodes_by_id[ node_id || node_sid ];
+
 		if(!node)
 		{
 			console.warn("Collada: Node not found by id: " + (node_id || node_sid));
@@ -28479,7 +29126,8 @@ global.Collada = {
 			//children
 			if(xmlchild.localName == "node")
 			{
-				this.readNodeInfo( xmlchild, scene, level+1, flip );
+				//pass parent node in case child node is a 'dead' node (has no id or sid)
+				this.readNodeInfo( xmlchild, scene, level+1, flip, xmlnode );
 				continue;
 			}
 
@@ -28517,6 +29165,7 @@ global.Collada = {
 						//matname = matname.replace(/ /g,"_"); //names cannot have spaces
 						if(!scene.materials[ matname ])
 						{
+
 							var material = this.readMaterial(matname);
 							if(material)
 							{
@@ -28546,12 +29195,50 @@ global.Collada = {
 
 				if(xmlcontroller)
 				{
+
 					var mesh_data = this.readController( xmlcontroller, flip, scene );
 
 					//binded materials
-					var xmlbindmaterial = xmlchild.querySelector("bind_material");
-					if(xmlbindmaterial)
-						node.materials = this.readBindMaterials( xmlbindmaterial );
+					var xmlbind_material = xmlchild.querySelector("bind_material");
+					if(xmlbind_material){
+						//removed readBindMaterials up here for consistency
+						var xmltechniques = xmlbind_material.querySelectorAll("technique_common");
+						for(var iTec = 0; iTec < xmltechniques.length; iTec++)
+						{
+							var xmltechnique = xmltechniques.item(iTec);
+							var xmlinstance_materials = xmltechnique.querySelectorAll("instance_material");
+							for(var iMat = 0; iMat < xmlinstance_materials.length; iMat++)
+							{
+								var xmlinstance_material = xmlinstance_materials.item(iMat);
+								if(!xmlinstance_material)
+								{
+									console.warn("instance_material for controller not found: " + xmlinstance_material);
+									continue;
+								}
+								var matname = xmlinstance_material.getAttribute("target").toString().substr(1);
+								if(!scene.materials[ matname ])
+								{
+
+									var material = this.readMaterial(matname);
+									if(material)
+									{
+										material.id = matname; 
+										scene.materials[ material.id ] = material;
+									}
+								}
+								if(iMat == 0)
+									node.material = matname;
+								else
+								{
+									if(!node.materials)
+										node.materials = [];
+									node.materials.push(matname);
+								}
+
+							}
+						}
+
+					}
 
 					if(mesh_data)
 					{
@@ -28600,6 +29287,7 @@ global.Collada = {
 	},
 
 	light_translate_table: {
+
 		point: "omni",
 		directional: "directional",
 		spot: "spot"		
@@ -28644,6 +29332,7 @@ global.Collada = {
 	readMaterial: function(url)
 	{
 		var xmlmaterial = this.querySelectorAndId( this._xmlroot, "library_materials material", url );
+
 		if(!xmlmaterial)
 			return null;
 
@@ -28655,6 +29344,7 @@ global.Collada = {
 
 		//get effect
 		var xmleffects = this.querySelectorAndId( this._xmlroot, "library_effects effect", effect_url );
+
 		if(!xmleffects) return null;
 
 		//get common
@@ -28692,6 +29382,8 @@ global.Collada = {
 		var xmlphong = xmltechnique.querySelector("phong");
 		if(!xmlphong) 
 			xmlphong = xmltechnique.querySelector("blinn");
+		if(!xmlphong) 
+			xmlphong = xmltechnique.querySelector("lambert");
 		if(!xmlphong) 
 			return null;
 
@@ -28819,6 +29511,7 @@ global.Collada = {
 					light.type = this.light_translate_table[ xml.localName ]; 
 					parse_params(light, xml);
 					break;
+				
 				case "intensity": 
 					light.intensity = this.readContentAsFloats( xml )[0]; 
 					break;
@@ -29272,6 +29965,12 @@ global.Collada = {
 			var xmlps = xml_shape_root.querySelectorAll("p");
 			var num_data_vertex = buffers.length; //one value per input buffer
 
+			//compute data to read per vertex
+			var num_values_per_vertex = 1;
+			var buffers_length = buffers.length;
+			for(var b = 0; b < buffers_length; ++b)
+				num_values_per_vertex = Math.max( num_values_per_vertex, buffers[b][4] + 1);
+
 			//for every polygon (could be one with all the indices, could be several, depends on the program)
 			for(var i = 0; i < xmlps.length; i++)
 			{
@@ -29290,12 +29989,7 @@ global.Collada = {
 				//if(use_indices && last_index >= 256*256)
 				//	break;
 
-				var num_values_per_vertex = 1;
-				for(var b in buffers)
-					num_values_per_vertex = Math.max( num_values_per_vertex, buffers[b][4] + 1);
-
 				//for every pack of indices in the polygon (vertex, normal, uv, ... )
-				var current_data_pos = 0;
 				for(var k = 0, l = data.length; k < l; k += num_values_per_vertex)
 				{
 					var vertex_id = data.slice(k,k+num_values_per_vertex).join(" "); //generate unique id
@@ -29306,30 +30000,26 @@ global.Collada = {
 					else
 					{
 						//for every data buffer associated to this vertex
-						for(var j = 0; j < buffers.length; ++j)
+						for(var j = 0; j < buffers_length; ++j)
 						{
 							var buffer = buffers[j];
 							var array = buffer[1]; //array where we accumulate the final data as we extract if from sources
 							var source = buffer[3]; //where to read the data from
 							
 							//compute the index inside the data source array
-							//var index = parseInt(data[k + j]);
 							var index = parseInt( data[ k + buffer[4] ] );
-							//current_data_pos += buffer[4];
 
 							//remember this index in case we need to remap
 							if(j == 0)
 								vertex_remap[ array.length / buffer[2] ] = index; //not sure if buffer[2], it should be number of floats per vertex (usually 3)
-								//vertex_remap[ array.length / num_data_vertex ] = index;
 
 							//compute the position inside the source buffer where the final data is located
 							index *= buffer[2]; //this works in most DAEs (not all)
-							//index = index * buffer[2] + buffer[4]; //stride(2) offset(4)
-							//index += buffer[4]; //stride(2) offset(4)
+
 							//extract every value of this element and store it in its final array (every x,y,z, etc)
 							for(var x = 0; x < buffer[2]; ++x)
 							{
-								if(source[index+x] === undefined) throw("UNDEFINED!"); //DEBUG
+								//if(source[index+x] === undefined) throw("UNDEFINED!"); //DEBUG
 								array.push( source[index+x] );
 							}
 						}
@@ -29399,7 +30089,10 @@ global.Collada = {
 		var xmlp = xml_shape_root.querySelector("p");
 		var data = this.readContentAsUInt32( xmlp );
 
-		var num_data_vertex = buffers.length;
+		var num_values_per_vertex = 1;
+		var buffers_length = buffers.length;
+		for(var b = 0; b < buffers_length; ++b)
+			num_values_per_vertex = Math.max( num_values_per_vertex, buffers[b][4] + 1);
 
 		var pos = 0;
 		for(var i = 0, l = vcount.length; i < l; ++i)
@@ -29411,26 +30104,35 @@ global.Collada = {
 			var prev_index = -1;
 
 			//iterate vertices of this polygon
-			for(var k = 0; k < num_vertices; ++k )
+			for(var k = 0; k < num_vertices; ++k)
 			{
-				var vertex_id = data.subarray(pos,pos + num_data_vertex).join(" ");
+				var vertex_id = data.slice( pos, pos + num_values_per_vertex).join(" "); //generate unique id
 
 				prev_index = current_index;
 				if(facemap.hasOwnProperty(vertex_id)) //add to arrays, keep the index
 					current_index = facemap[vertex_id];
 				else
 				{
-					for(var j = 0; j < buffers.length; ++j)
+					for(var j = 0; j < buffers_length; ++j)
 					{
 						var buffer = buffers[j];
-						var index = parseInt( data[pos + j] ); //p
 						var array = buffer[1]; //array with all the data
 						var source = buffer[3]; //where to read the data from
+
+						var index = parseInt( data[ pos + buffer[4] ] );
+
 						if(j == 0)
-							vertex_remap[ array.length / num_data_vertex ] = index;
-						index *= buffer[2]; //stride
+							vertex_remap[ array.length / buffer[2] ] = index; //not sure if buffer[2], it should be number of floats per vertex (usually 3)
+
+						//compute the position inside the source buffer where the final data is located
+						index *= buffer[2]; //this works in most DAEs (not all)
+
+						//extract every value of this element and store it in its final array (every x,y,z, etc)
 						for(var x = 0; x < buffer[2]; ++x)
+						{
+							//if(source[index+x] === undefined) throw("UNDEFINED!"); //DEBUG
 							array.push( source[index+x] );
+						}
 					}
 					
 					current_index = last_index;
@@ -29451,9 +30153,8 @@ global.Collada = {
 				}
 
 				indicesArray.push( current_index );
-				pos += num_data_vertex;
+				pos += num_values_per_vertex;
 			}//per vertex
-
 		}//per polygon
 
 		var mesh = {
@@ -29939,6 +30640,7 @@ global.Collada = {
 		}
 
 		var id = xmlcontroller.getAttribute("id");
+
 		//use cached
 		if( this._controllers_found[ id ] )
 			return this._controllers_found[ id ];
@@ -29946,8 +30648,9 @@ global.Collada = {
 		var use_indices = false;
 		var mesh = null;
 		var xmlskin = xmlcontroller.querySelector("skin");
-		if(xmlskin)
+		if(xmlskin) {
 			mesh = this.readSkinController( xmlskin, flip, scene);
+		}
 
 		var xmlmorph = xmlcontroller.querySelector("morph");
 		if(xmlmorph)
@@ -29955,6 +30658,7 @@ global.Collada = {
 
 		//cache and return
 		this._controllers_found[ id ] = mesh;
+
 		return mesh;
 	},
 
@@ -29963,6 +30667,8 @@ global.Collada = {
 	{
 		//base geometry
 		var id_geometry = xmlskin.getAttribute("source");
+
+
 		var mesh = this.readGeometry( id_geometry, flip, scene );
 		if(!mesh)
 			return null;
@@ -30029,6 +30735,7 @@ global.Collada = {
 		var xmlvertexweights = xmlskin.querySelector("vertex_weights");
 		if(xmlvertexweights)
 		{
+
 			//here we see the order 
 			var weights_indexed_array = null;
 			var xmlinputs = xmlvertexweights.querySelectorAll("input");
@@ -30167,7 +30874,7 @@ global.Collada = {
 			mesh.bones = joints;
 			mesh.bind_matrix = bind_matrix;
 
-			delete mesh["_remap"];
+			//delete mesh["_remap"];
 		}
 
 		return mesh;
@@ -31707,6 +32414,12 @@ function SceneTree()
 	this._nodes_by_uid = {};
 	this._nodes_by_uid[ this._root.uid ] = this._root;
 
+	//used to stored info when collecting from nodes
+	this._instances = [];
+	this._lights = [];
+	this._cameras = [];
+	this._colliders = [];
+
 	this.external_scripts = []; //external scripts that must be loaded before initializing the scene (mostly libraries used by this scene)
 	this.global_scripts = []; //scripts that are located in the resources folder and must be loaded before launching the app
 	this.preloaded_resources = {}; //resources that must be loaded, appart from the ones in the components
@@ -31789,7 +32502,6 @@ SceneTree.prototype.init = function()
 	this.info = new LS.Components.GlobalInfo();
 	this._root.addComponent( this.info );
 	this._root.addComponent( new LS.Camera() );
-	this.current_camera = this._root.camera;
 	this._root.addComponent( new LS.Light({ position: vec3.fromValues(100,100,100), target: vec3.fromValues(0,0,0) }) );
 
 	this._frame = 0;
@@ -32220,9 +32932,37 @@ SceneTree.prototype.getCamera = function()
 	return this._cameras[0];
 }
 
+/**
+* Returns an array with all the cameras enabled in the scene
+*
+* @method getActiveCameras
+* @param {boolean} force [optional] if you want to collect the cameras again, otherwise it returns the last ones collected
+* @return {Array} cameras
+*/
+SceneTree.prototype.getActiveCameras = function( force )
+{
+	if(force)
+		LEvent.trigger(this, "collectCameras", this._cameras );
+	return this._cameras;
+}
+
 SceneTree.prototype.getLight = function()
 {
 	return this._root.light;
+}
+
+/**
+* Returns an array with all the lights enabled in the scene
+*
+* @method getActiveLights
+* @param {boolean} force [optional] if you want to collect the lights again, otherwise it returns the last ones collected
+* @return {Array} lights
+*/
+SceneTree.prototype.getActiveLights = function( force )
+{
+	if(force)
+		LEvent.trigger(this, "collectLights", this._lights );
+	return this._lights;
 }
 
 SceneTree.prototype.onNodeAdded = function(e,node)
@@ -32705,10 +33445,15 @@ SceneTree.prototype.collectData = function()
 {
 	//var nodes = scene.nodes;
 	var nodes = this.getNodes();
-	var instances = [];
-	var lights = [];
-	var cameras = [];
-	var colliders = [];
+
+	var instances = this._instances;
+	var lights = this._lights;
+	var cameras = this._cameras;
+	var colliders = this._colliders;
+	instances.length = 0;
+	lights.length = 0;
+	cameras.length = 0;
+	colliders.length = 0;
 
 	//collect render instances, lights and cameras
 	for(var i = 0, l = nodes.length; i < l; ++i)
@@ -32747,7 +33492,7 @@ SceneTree.prototype.collectData = function()
 		LEvent.trigger(node,"collectLights", lights );
 		LEvent.trigger(node,"collectCameras", cameras );
 
-		instances = instances.concat( node._instances );
+		instances.push.apply(instances, node._instances); //push inside
 	}
 
 	//we also collect from the scene itself just in case (TODO: REMOVE THIS)
@@ -32779,11 +33524,6 @@ SceneTree.prototype.collectData = function()
 		var collider = colliders[i];
 		collider.updateAABB();
 	}
-
-	this._instances = instances;
-	this._lights = lights;
-	this._cameras = cameras;
-	this._colliders = colliders;
 
 	//remember when was last time I collected to avoid repeating it
 	this._last_collect_frame = this._frame;
@@ -32916,7 +33656,7 @@ SceneTree.prototype.refresh = function()
 }
 
 /**
-* returns current scene time (remember that scene time remains freezed if the scene is not running
+* returns current scene time (remember that scene time remains freezed if the scene is not running)
 *
 * @method getTime
 * @return {Number} scene time in seconds
@@ -33057,7 +33797,7 @@ function SceneNode( name )
 	if(name && name.constructor !== String)
 	{
 		name = null;
-		console.warn("SceneNode cosntructor first parameter must be a String with the name");
+		console.warn("SceneNode constructor first parameter must be a String with the name");
 	}
 
 	//Generic
@@ -33895,10 +34635,14 @@ SceneNode.prototype.configure = function(info)
 	//first the no components
 	if(info.material)
 	{
-		var mat_class = info.material.material_class;
-		if(!mat_class) 
-			mat_class = "StandardMaterial";
-		this.material = typeof(info.material) == "string" ? info.material : new LS.MaterialClasses[mat_class](info.material);
+		var mat_classname = info.material.material_class;
+		if(!mat_classname) 
+			mat_classname = "StandardMaterial";
+		var constructor = LS.MaterialClasses[mat_classname];
+		if(constructor)
+			this.material = typeof(info.material) == "string" ? info.material : new constructor( info.material );
+		else
+			console.warn("Material not found: " + mat_classname );
 	}
 
 	if(info.flags) //merge

@@ -300,9 +300,10 @@ var cameraTool = {
 		var up = camera.getUp();
 		var problem_angle = vec3.dot( front, up );
 
+		var eye = camera.getEye();
 		var center = camera.getCenter();
-		var right = camera.getLocalVector([1,0,0]);
-		var dist = vec3.sub( vec3.create(), this.smooth_camera && camera._editor ? camera._editor.destination_eye : camera.getEye(), center );
+		var right = camera.getLocalVector( LS.RIGHT );
+		var dist = vec3.sub( vec3.create(), this.smooth_camera && camera._editor ? camera._editor.destination_eye : eye, center );
 
 		vec3.rotateY( dist, dist, yaw );
 		var R = quat.create();
@@ -312,10 +313,17 @@ var cameraTool = {
 
 		vec3.transformQuat( dist, dist, R );
 
-		var new_eye = vec3.add( camera._editor ? camera._editor.destination_eye : camera._eye, dist, center );
+		var new_eye = vec3.add( camera._editor ? camera._editor.destination_eye : camera.getEye(), dist, center );
 
 		if(!this.smooth_camera)
-			camera.eye = new_eye;
+		{
+			if(camera._root && camera._root.transform)
+			{
+				camera._root.transform.lookAt( new_eye, center, LS.TOP );
+			}
+			else
+				camera.eye = new_eye;
+		}
 	},
 
 	moveCamera: function(delta, in_local_space, camera )
@@ -345,16 +353,32 @@ var cameraTool = {
 
 		if(!this.smooth_camera)
 		{
-			camera.eye = new_eye;
-			camera.center = new_center;
+			if(camera._root && camera._root.transform)
+			{
+				camera._root.transform.lookAt( new_eye, new_center, LS.TOP );
+			}
+			else
+			{
+				camera.eye = new_eye;
+				camera.center = new_center;
+			}
 		}
 	},
 
 	rotateCamera: function(yaw, pitch, camera)
 	{
 		camera = camera || ToolUtils.getCamera();
-		camera.rotate( -yaw, [0,1,0] );
-		camera.rotate( pitch, [1,0,0], true );
+
+		if(camera._root && camera._root.transform)
+		{
+			camera._root.transform.rotate( -yaw, LS.TOP );
+			camera._root.transform.rotate( pitch, LS.RIGHT, true );
+		}
+		else
+		{
+			camera.rotate( -yaw, LS.TOP );
+			camera.rotate( pitch, LS.RIGHT, true );
+		}
 
 		if(camera._editor)
 		{
@@ -367,21 +391,30 @@ var cameraTool = {
 	{
 		camera = camera || ToolUtils.getCamera();
 
+		var eye = camera.getEye();
 		var center = camera.getCenter();
-		var dist = vec3.sub( vec3.create(), camera.getEye(), center );
+		var dist = vec3.sub( vec3.create(), eye, center );
 		vec3.scale( dist, dist, dt );
 
 		if(camera.type == LS.Camera.ORTHOGRAPHIC)
 			camera.frustum_size = vec3.length(dist);
 
-		var new_eye = camera._eye;
+		var new_eye = vec3.create();
 
 		if(camera._editor)
 			new_eye = camera._editor.destination_eye;
 		vec3.add( new_eye, dist, center );
 
 		if(!this.smooth_camera)
-			camera.eye = new_eye;
+		{
+			if(camera._root && camera._root.transform)
+			{
+				camera._root.transform.lookAt( new_eye, center, LS.TOP );
+				camera.focalLength = vec3.distance( new_eye, center );
+			}
+			else
+				camera.eye = new_eye;
+		}
 
 		LS.GlobalScene.refresh();
 	},
@@ -417,7 +450,16 @@ var cameraTool = {
 		var camera = this.last_camera || ToolUtils.getCamera();
 
 		if(!this.smooth_camera || !camera._editor)
-			camera.center = point;
+		{
+			if(camera._root && camera._root.transform)
+			{
+				var eye = camera.getEye();
+				camera._root.transform.lookAt( eye, point, LS.TOP );
+				camera.focalLength = vec3.distance( eye, point );
+			}
+			else
+				camera.center = point;
+		}
 		else
 			camera._editor.destination_center.set( point );
 

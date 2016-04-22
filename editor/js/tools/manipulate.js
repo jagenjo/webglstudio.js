@@ -58,17 +58,17 @@ var manipulateTool = {
 		LS.Draw.scale(5,5,5);
 		LS.Draw.setColor( color );
 		LS.Draw.setAlpha(0.5);
-		LS.Draw.renderMesh( EditorView.circle_mesh, gl.TRIANGLES );
+		LS.Draw.renderMesh( EditorView.debug_render.circle_mesh, gl.TRIANGLES );
 
 		//rotate line
 		LS.Draw.scale(circle_size / 5.0, circle_size / 5.0, circle_size / 5.0);
 		LS.Draw.setAlpha( this.state == "rotate" ? 0.6 : 0.3 );
-		LS.Draw.renderMesh( EditorView.circle_empty_mesh, gl.LINE_LOOP );
+		LS.Draw.renderMesh( EditorView.debug_render.circle_empty_mesh, gl.LINE_LOOP );
 
 		//move circle
 		LS.Draw.scale(0.95,0.95,0.95);
 		LS.Draw.setAlpha( this.state == "move" ? 0.4 : 0.2 );
-		LS.Draw.renderMesh( EditorView.circle_mesh, gl.TRIANGLES );
+		LS.Draw.renderMesh( EditorView.debug_render.circle_mesh, gl.TRIANGLES );
 		LS.Draw.pop();
 
 		gl.enable(gl.DEPTH_TEST);

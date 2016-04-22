@@ -374,6 +374,11 @@ var RenderModule = {
 		this.under_camera = camera;
 	},
 
+	getActiveCamera: function()
+	{
+		return this.under_camera;
+	},
+
 	getCameraUnderMouse: function(e)
 	{
 		var cameras = this.cameras;

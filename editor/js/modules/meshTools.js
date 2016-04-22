@@ -89,16 +89,49 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 	var mesh = this;
 
 	widgets.addTitle("Vertex Buffers");
+	widgets.widgets_per_row = 2;
 	for(var i in mesh.vertexBuffers)
 	{
 		var buffer = mesh.vertexBuffers[i];
-		widgets.addInfo(i, (buffer.data.length / buffer.spacing) );
+		widgets.addInfo(i, (buffer.data.length / buffer.spacing), { width: "calc( 100% - 30px )" } );
+
+		var disabled = false;
+		if(i == "vertices" || i == "normals" || i == "coords")
+			disabled = true;
+		widgets.addButton(null,"<img src='imgs/mini-icon-trash.png'/>", { width: 30, stream: i, disabled: disabled, callback: function(){
+			delete mesh.vertexBuffers[ (this.options.stream) ];
+			widgets.refresh();
+		}});
 	}
+	widgets.widgets_per_row = 1;
+
 	widgets.addTitle("Indices Buffers");
+	widgets.widgets_per_row = 2;
 	for(var i in mesh.indexBuffers)
 	{
 		var buffer = mesh.indexBuffers[i];
-		widgets.addInfo(i, buffer.data.length );
+		widgets.addInfo(i, buffer.data.length, { width: "calc( 100% - 30px )" } );
+		widgets.addButton(null,"<img src='imgs/mini-icon-trash.png'/>", { width: 30, stream: i, disabled: disabled, callback: function(){
+			delete mesh.indexBuffers[ (this.options.stream) ];
+			widgets.refresh();
+		}});
+	}
+	widgets.widgets_per_row = 1;
+
+	if(mesh.bounding)
+	{
+		widgets.addTitle("Bounding");
+		widgets.addVector3("Center", BBox.getCenter( mesh.bounding ), { disabled: true } );
+		widgets.addVector3("Halfsize", BBox.getHalfsize( mesh.bounding ), { disabled: true } );
+	}
+
+	if(mesh.info && mesh.info.groups)
+	{
+		widgets.addTitle("Groups");
+		for(var i = 0; i < mesh.info.groups.length; i++)
+		{
+			widgets.addInfo(i, mesh.info.groups[i].name );
+		}
 	}
 
 	widgets.addTitle("Actions");

@@ -21,34 +21,9 @@ var selectTool = {
 	mousedown: function(e) {
 		this.click_pos = [e.canvasx,e.canvasy];
 		this._got_mousedown = true;
-
-		/* if done here then we cannot use the right mouse for camera panning
-		if(e.button == 2)
-		{
-			var instance_info = LS.Picking.getInstanceAtCanvasPosition( e.canvasx, e.canvasy, ToolUtils.getCamera() );
-			if(instance_info)
-			{
-				EditorModule.showContextualNodeMenu( instance_info.constructor === LS.SceneNode ? instance_info : instance_info.instance, e );
-				e.preventDefault();
-				e.stopPropagation();
-				return true;
-			}
-		}
-		*/
 	},
 
 	mousemove: function(e) {
-
-		/*		
-		//test raycast
-		var camera = ToolUtils.getCamera();
-		var ray = camera.getRayInPixel( e.mousex, gl.canvas.height - e.mousey );
-		ray.end = vec3.add( vec3.create(), ray.start, vec3.scale(vec3.create(), ray.direction, 10000) );
-		var collisions = Physics.raycast( LS.GlobalScene, ray.start, ray.end);
-
-		if(collisions.length)
-			EditorView.debug_points.push( collisions[0][1] );
-		*/
 	},
 
 	mouseup: function(e) {

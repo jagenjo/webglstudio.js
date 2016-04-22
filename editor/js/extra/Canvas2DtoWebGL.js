@@ -846,6 +846,11 @@ function enableWebGLCanvas( canvas, options )
 
 	ctx.fillText = ctx.strokeText = function(text,startx,starty)
 	{
+		if(text === null || text === undefined)
+			return;
+		if(text.constructor !== String)
+			text = String(text);
+
 		var atlas = this.createFontAtlas( this._font_family, this._font_mode );
 		var info = atlas.info;
 

@@ -101,8 +101,12 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 	inspector.addNumber("Near", camera.near, { pretitle: AnimationModule.getKeyframeCode( camera, "near" ), callback: function (value) { camera.near = value; }});
 	inspector.addNumber("Far", camera.far, { pretitle: AnimationModule.getKeyframeCode( camera, "far" ), callback: function (value) { camera.far = value; }});
 	inspector.widgets_per_row = 1;
-	inspector.addNumber("Frustum size", camera.frustum_size, {  pretitle: AnimationModule.getKeyframeCode( camera, "frustum_size" ), callback: function (value) { camera.frustum_size = value; }});
+	inspector.addNumber("Frustum size", camera.frustum_size, {  pretitle: AnimationModule.getKeyframeCode( camera, "frustum_size" ),  name_width: 100, callback: function (value) { camera.frustum_size = value; }});
 	//inspector.addNumber("Far", camera.far, { callback: function (value) { camera.far = value; }});
+
+	inspector.addNumber("focalLength", camera.focalLength, { min: 0.0001, pretitle: AnimationModule.getKeyframeCode( camera, "focalLength" ),  name_width: 100, callback: function(v) { 
+		camera.focalLength = v;
+	}});
 
 	var is_node_camera = (node && !node._is_root);
 
@@ -123,10 +127,10 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 	inspector.addButton("","Copy from current",{disabled: is_node_camera, callback: inner_copy_from_current});
 
 	inspector.addTitle("Viewport");
-	inspector.addVector2("Offset", camera._viewport.subarray(0,2), { pretitle: AnimationModule.getKeyframeCode( camera, "viewport_offset" ), min:0, max:1, step: 0.001, callback: function(v) { 
+	inspector.addVector2("Offset", camera._viewport.subarray(0,2), { pretitle: AnimationModule.getKeyframeCode( camera, "viewport_offset" ),  name_width: 100,min:0, max:1, step: 0.001, callback: function(v) { 
 		camera._viewport.subarray(0,2).set(v);
 	}});
-	inspector.addVector2("Size", camera._viewport.subarray(2,4), { pretitle: AnimationModule.getKeyframeCode( camera, "viewport_size" ), min:0, max:1, step: 0.001, callback: function(v) { 
+	inspector.addVector2("Size", camera._viewport.subarray(2,4), { pretitle: AnimationModule.getKeyframeCode( camera, "viewport_size" ), name_width: 100, min:0, max:1, step: 0.001, callback: function(v) { 
 		camera._viewport.subarray(2,4).set(v);
 	}});
 
@@ -203,11 +207,11 @@ LS.Components.Light["@inspector"] = function(light, inspector)
 	{
 		inspector.addSeparator();
 
-		inspector.addVector3("Position", light.position, { pretitle: AnimationModule.getKeyframeCode( light, "position"), disabled: !is_root_camera, callback: function(v) { 
+		inspector.addVector3("Position", light.position, { pretitle: AnimationModule.getKeyframeCode( light, "position"), name_width: 100,  disabled: !is_root_camera, callback: function(v) { 
 			light.position = v; 
 		}});
 
-		inspector.addVector3("Target", light.target, { pretitle: AnimationModule.getKeyframeCode( light, "target"), disabled: !is_root_camera, callback: function(v) { 
+		inspector.addVector3("Target", light.target, { pretitle: AnimationModule.getKeyframeCode( light, "target"), name_width: 100, disabled: !is_root_camera, callback: function(v) { 
 			light.target = v; 
 		}});
 	}

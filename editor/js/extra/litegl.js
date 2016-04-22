@@ -5127,13 +5127,29 @@ Texture.prototype.toCanvas = function( canvas, flip_y, max_size )
 * @method toBlob
 * @return {Blob} the blob containing the data
 */
-Texture.prototype.toBlob = function(flip_y)
+Texture.prototype.toBlob = function(flip_y, type)
 {
 	//dump to canvas
 	var canvas = this.toCanvas(null,flip_y);
-	if(!canvas.toBlob)
-		throw "toBlob not supported on Canvas element";
-	return canvas.toBlob();
+	if(canvas.toBlob)
+	{
+		var blob = canvas.toBlob(null,type);
+		if(blob)
+			return blob;
+	}
+
+	//use the slow method
+	var data = this.toDataURL( type );
+	var index = data.indexOf(",");
+	var base64_data = data.substr(index+1);
+	var binStr = atob( base64_data );
+	var len = binStr.length,
+	arr = new Uint8Array(len);
+	for (var i=0; i<len; ++i ) {
+		arr[i] = binStr.charCodeAt(i);
+	}
+	var blob = new Blob( [arr], {type: type || 'image/png'} );
+	return blob;
 }
 
 /**
@@ -5150,7 +5166,7 @@ Texture.prototype.toBase64 = function( flip_y )
 	//Read pixels form WebGL
 	var buffer = this.getPixels();
 
-	//dump to canvas
+	//dump to canvas so we can encode it
 	var canvas = createCanvas(w,h);
 	var ctx = canvas.getContext("2d");
 	var pixels = ctx.getImageData(0,0,w,h);

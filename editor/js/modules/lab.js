@@ -129,12 +129,18 @@ var LabModule = {
 		ctx.font = "80px Arial";
 		ctx.fillText( this.mode, 0, -40 );
 
+		var total = 0;
+
 		if(this.mode == "textures")
-			this.renderTextures();
+			total = this.renderTextures();
 		else if (this.mode == "meshes")
-			this.renderMeshes();
+			total = this.renderMeshes();
 		else if (this.mode == "materials")
-			this.renderMaterials();
+			total = this.renderMaterials();
+
+		ctx.fillStyle = "#333";
+		ctx.font = "40px Arial";
+		ctx.fillText( total + " items", 400, -40 );
 
 		gl.restore();
 		gl.finish2D(); //WebGLtoCanvas2D
@@ -155,40 +161,51 @@ var LabModule = {
 
 		this.items.length = 0;
 
+		var num = 0;
 		for(var i in LS.RM.textures)
 		{
 			var item = LS.RM.textures[i];
+			num++;
 			var tex = item;
 			var w = size * tex.width / tex.height;
 			var h = size;
 
-			if(tex.texture_type == gl.TEXTURE_2D)
-			{
-				//LS.Draw.renderPlane([posx + size*0.6, posy + size*0.6, 0], [size*0.5,-size*0.5], tex );
-				gl.drawImage(tex, posx, posy, w, h );
-			}
-			else
-			{
-				this._cubemap_shader.uniforms({u_rotation: getTime() * 0.001 });
-				LS.Draw.renderPlane([ gl._matrix[6] + (posx + w*0.5) * gl._matrix[0], gl._matrix[7] + (posy + h*0.5) * gl._matrix[4], 0], [ w*0.5 * gl._matrix[0], -h*0.5 * gl._matrix[4] ], tex, this._cubemap_shader );
-			}
+			var startx = posx;
+			var starty = posy;
+			var sizex = w;
+			var sizey = h;
 
-			var filename = LS.RM.getFilename(i).substr(0,24);
-			var text = filename;
-			gl.globalAlpha = (this.selected_item && this.selected_item.item == item) ? 1 : 0.5;
-			gl.strokeRect( posx, posy, w, h );
-			gl.globalAlpha = 1;
-			gl.fillText(text,posx + 5,posy + 15);
-			this.items.push({id:i,type:"Texture",item: tex, x:posx,y:posy,w:w,h:h});
+			if(startx <= gl.canvas.width && starty <= gl.canvas.height && 
+				startx + sizex > 0 && starty + sizey > 0 )
+			{
+				if(tex.texture_type == gl.TEXTURE_2D)
+				{
+					//LS.Draw.renderPlane([posx + size*0.6, posy + size*0.6, 0], [size*0.5,-size*0.5], tex );
+					gl.drawImage(tex, posx, posy, w, h );
+				}
+				else
+				{
+					this._cubemap_shader.uniforms({u_rotation: getTime() * 0.001 });
+					LS.Draw.renderPlane([ gl._matrix[6] + (posx + w*0.5) * gl._matrix[0], gl._matrix[7] + (posy + h*0.5) * gl._matrix[4], 0], [ w*0.5 * gl._matrix[0], -h*0.5 * gl._matrix[4] ], tex, this._cubemap_shader );
+				}
+
+				var filename = LS.RM.getFilename(i).substr(0,24);
+				var text = filename;
+				gl.globalAlpha = (this.selected_item && this.selected_item.item == item) ? 1 : 0.5;
+				gl.strokeRect( posx, posy, w, h );
+				gl.globalAlpha = 1;
+				gl.fillText(text,posx + 5,posy + 15);
+				this.items.push({id:i,type:"Texture",item: tex, x:posx,y:posy,w:w,h:h});
+			}
 
 			posx += w + margin;
-
 			if(posx > gl.canvas.width - size + margin)
 			{
 				posx = 0;
 				posy += h + margin;
 			}
 		}
+		return num;
 	},
 
 	renderMeshes: function()
@@ -216,9 +233,11 @@ var LabModule = {
 
 		this.items.length = 0;
 
+		var num = 0;
 		for(var i in LS.RM.meshes)
 		{
 			var item = LS.RM.meshes[i];
+			num++;
 			var mesh = item;
 			var w = size;
 			var h = size;
@@ -228,7 +247,7 @@ var LabModule = {
 			var sizex = w * gl._matrix[0];
 			var sizey = h * gl._matrix[4];
 
-			if(startx <= gl.canvas.width && starty <= gl.canvas.height || 
+			if(startx <= gl.canvas.width && starty <= gl.canvas.height && 
 				startx + sizex > 0 && starty + sizey > 0 )
 			{
 				//move camera to bounding area
@@ -283,6 +302,7 @@ var LabModule = {
 				posy += h + margin;
 			}
 		}
+		return num;
 	},
 
 	renderMaterials: function()
@@ -301,10 +321,11 @@ var LabModule = {
 		var old_viewport = gl.getViewport();
 
 		this.items.length = 0;
-
+		var num = 0;
 		for(var i in LS.RM.materials)
 		{
 			var item = LS.RM.materials[i];
+			num++;
 			var material = item;
 			var w = size;
 			var h = size;
@@ -314,7 +335,7 @@ var LabModule = {
 			var sizex = w * gl._matrix[0];
 			var sizey = h * gl._matrix[4];
 
-			if(startx <= gl.canvas.width && starty <= gl.canvas.height || 
+			if(startx <= gl.canvas.width && starty <= gl.canvas.height && 
 				startx + sizex > 0 && starty + sizey > 0 )
 			{
 				gl.viewport( startx, starty, sizex, sizey );
@@ -344,6 +365,7 @@ var LabModule = {
 				posy += h + margin;
 			}
 		}
+		return num;
 	},
 
 	mousedown: function(e)

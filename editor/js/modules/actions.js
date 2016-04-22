@@ -206,8 +206,16 @@ LS.Components.Transform.prototype.getEditorActions = function( actions )
 */
 
 LS.Components.Light.actions["select_target"] = { title: "Select Target", callback: function() { SelectionModule.setSelection({ instance: this, info: "target" }); }};
-
 LS.Components.Camera.actions["select_center"] = { title: "Select Center", callback: function() { SelectionModule.setSelection({ instance: this, info: "center"}); }};
+LS.Components.Camera.actions["setview"] = { title: "Set to view", callback: function() { 
+	var active = RenderModule.getActiveCamera();
+	var index = 0;
+	if( active._editor )
+		index = active._editor.index;
+	RenderModule.setViewportCamera( index, this );
+	LS.GlobalScene.refresh();
+}};
+
 LS.Components.Camera.actions["preview"] = { title: "Preview", callback: function() { 
 		if(RenderModule.preview_camera != this)
 			RenderModule.preview_camera = this;

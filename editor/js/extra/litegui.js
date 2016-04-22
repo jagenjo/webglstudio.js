@@ -3953,8 +3953,16 @@ function dataURItoBlob( dataURI ) {
 	/***** DRAGGER **********/
 	function Dragger(value, options)
 	{
-		this.value = value || 0;
+		if(value === null || value === undefined)
+			value = 0;
+		else if(value.constructor === String)
+			value = parseFloat(value);
+		else if(value.constructor !== Number)
+			value = 0;
+
+		this.value = value;
 		var that = this;
+		var precision = options.precision != undefined ? options.precision : 3; //num decimals
 
 		this.options = options = options || {};
 		var element = document.createElement("div");
@@ -3971,7 +3979,7 @@ function dataURItoBlob( dataURI ) {
 
 		var input = document.createElement("input");
 		input.className = "text number " + (dragger_class ? dragger_class : "");
-		input.value = value + (options.units ? options.units : "");
+		input.value = value.toFixed( precision ) + (options.units ? options.units : "");
 		input.tabIndex = options.tab_index;
 		this.input = input;
 		element.input = input;
@@ -4062,10 +4070,8 @@ function dataURItoBlob( dataURI ) {
 			if(options.min != null && value < options.min)
 				value = options.min;
 
-			if(options.precision)
-				input.value = value.toFixed(options.precision);
-			else
-				input.value = ((value * 1000)<<0) / 1000; //remove ugly decimals
+			input.value = value.toFixed( precision );
+			//input.value = ((value * 1000)<<0) / 1000; //remove ugly decimals
 			if(options.units)
 				input.value += options.units;
 			LiteGUI.trigger(input,"change");
@@ -7884,8 +7890,12 @@ Inspector.prototype.addButton = function(name, value, options)
 	var c = "";
 	if(name === null)
 		c = "single";
+
+	var attrs = "";
+	if(options.disabled)
+		attrs = "disabled='disabled'";
 	
-	var element = this.createWidget(name,"<button class='"+c+"' tabIndex='"+ this.tab_index + "'>"+value+"</button>", options);
+	var element = this.createWidget(name,"<button class='"+c+"' tabIndex='"+ this.tab_index + "' "+attrs+">"+value+"</button>", options);
 	this.tab_index++;
 	var button = element.querySelector("button");
 	button.addEventListener("click", function(event) {

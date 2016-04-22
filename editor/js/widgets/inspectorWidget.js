@@ -33,7 +33,7 @@ InspectorWidget.prototype.init = function()
 	this.header.addEventListener("contextmenu", (function(e) { 
 		if(e.button != 2) //right button
 			return false;
-		EditorModule.showContextualMenu( that.instance , e );
+		EditorModule.showInstanceContextualMenu( that.instance , e );
 		e.preventDefault(); 
 		return false;
 	}).bind(this));
@@ -651,7 +651,15 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 	var node = component._root;
 
 	var component_class = component.constructor;
+
+	//Get Component Name for titlebar
 	var name = LS.getObjectClassName(component);
+	if( component.getComponentTitle )
+	{
+		var compo_name = component.getComponentTitle();
+		if(compo_name)
+			name = compo_name + " <span style='opacity: 0.5'>[" + name + "]</span>";
+	}
 
 	//Create the title of the component
 	if(!LiteGUI.missing_icons)

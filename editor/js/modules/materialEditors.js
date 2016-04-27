@@ -505,6 +505,9 @@ function GenericMaterialEditor( material, inspector )
 
 	inspector.addTitle("Shader");
 
+
+
+	/* allows to edit the shader directly in the material properties
 	if( material._view_shader_code )
 	{
 		var coding_container = inspector.addContainer( null,null, { height: 300} );
@@ -518,11 +521,17 @@ function GenericMaterialEditor( material, inspector )
 			CodingModule.editInstanceCode( material, { id: material.uid, title: "Shader", lang:"glsl", help: material.constructor.coding_help } );
 		}});
 	}
+
 	inspector.addButton("", !material._view_shader_code ? "Edit Shader" : "Hide Shader", { callback: function() { 
 		material._view_shader_code = !material._view_shader_code;
 		inspector.refresh();
 		//CodingModule.openTab();
 		//CodingModule.editInstanceCode( material, { id: material.uid, title: "Shader", lang:"glsl", help: material.constructor.coding_help } );
+	}});
+	*/
+
+	inspector.addButton("", "Edit Shader", { callback: function() { 
+		CodingModule.editInstanceCode( material, { id: material.uid, title: "Shader", lang:"glsl", help: material.constructor.coding_help }, true );
 	}});
 
 	inspector.addTitle("Flags");
@@ -598,6 +607,17 @@ LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector 
 			material.processShaderCode();
 		else if( v == LiteGUI.htmlEncode( LiteGUI.special_codes.open_folder ) )
 		{
+			if(!material.shader)
+			{
+				DriveModule.showSelectFolderFilenameDialog("myshader.glsl", function(folder,filename,fullpath){
+					var shader_code = new LS.ShaderCode();
+					shader_code.code = LS.ShaderCode.examples.fullshader;
+					LS.RM.registerResource( fullpath, shader_code );
+					material.shader = fullpath;
+					CodingModule.editInstanceCode( shader_code, null, true );
+				},{ extension:"glsl", allow_no_folder: true } );
+			}
+
 			var shader_code = LS.RM.resources[ material.shader ];
 			if(shader_code)
 				CodingModule.editInstanceCode( shader_code, null, true );

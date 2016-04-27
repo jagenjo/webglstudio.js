@@ -1155,8 +1155,8 @@ var LS = {
 	//TODO: merge this with the locator stuff
 	getObjectProperties: function( object )
 	{
-		if(object.getProperties)
-			return object.getProperties();
+		if(object.getPropertiesInfo)
+			return object.getPropertiesInfo();
 		var class_object = object.constructor;
 		if(class_object.properties)
 			return class_object.properties;
@@ -1184,23 +1184,23 @@ var LS = {
 			else if ( isFunction(v) )//&& Object.getOwnPropertyDescriptor(object, i) && Object.getOwnPropertyDescriptor(object, i).get )
 				continue; //o[i] = v;
 			else if (  v.constructor === Boolean )
-				o[i] = "boolean";
+				o[i] = LS.TYPES.BOOLEAN;
 			else if (  v.constructor === Number )
-				o[i] = "number";
+				o[i] = LS.TYPES.NUMBER;
 			else if ( v.constructor === String )
-				o[i] = "string";
+				o[i] = LS.TYPES.STRING;
 			else if ( v.buffer && v.buffer.constructor === ArrayBuffer ) //typed array
 			{
 				if(v.length == 2)
-					o[i] = "vec2";
+					o[i] = LS.TYPES.VEC2;
 				else if(v.length == 3)
-					o[i] = "vec3";
+					o[i] = LS.TYPES.VEC3;
 				else if(v.length == 4)
-					o[i] = "vec4";
+					o[i] = LS.TYPES.VEC4;
 				else if(v.length == 9)
-					o[i] = "mat3";
+					o[i] = LS.TYPES.MAT3;
 				else if(v.length == 16)
-					o[i] = "mat4";
+					o[i] = LS.TYPES.MAT4;
 				else
 					o[i] = 0;
 			}
@@ -1350,6 +1350,20 @@ var LS = {
 		if(data.constructor === ArrayBuffer)
 			data = new Uint8Array(data);
 		return String.fromCharCode.apply(null,data);
+	},
+
+	stringToValue: function( v )
+	{
+		var value = v;
+		try
+		{
+			value = JSON.parse(v);
+		}
+		catch (err)
+		{
+			console.error( "Not a valid value: " + v );
+		}
+		return value;
 	}
 }
 
@@ -2200,13 +2214,21 @@ var ResourcesManager = {
 	*
 	* @method getResource
 	* @param {String} url where the resource is located (if its a relative url it depends on the path attribute)
+	* @param {Function} constructor [optional] allows to specify the class expected for this resource, if the resource doesnt match, it returns null
+	* @return {*} the resource
 	*/
-	getResource: function( url )
+	getResource: function( url, constructor )
 	{
 		if(!url)
 			return null;
 		url = this.cleanFullpath( url );
-		return this.resources[ url ];
+		if(!constructor)
+			return this.resources[ url ];
+		
+		var res = this.resources[ url ];
+		if(res && res.constructor === constructor )
+			return res;
+		return null;
 	},
 
 	/**
@@ -3034,6 +3056,12 @@ LS.ResourcesManager.processImageNonNative = function( filename, data, options ) 
 	var cloned_data = new Uint8Array(data).buffer;
 	var texture_data = LS.Formats.parse( filename, cloned_data, options );
 
+	if(!texture_data)
+	{
+		console.error("Cannot parse image format");
+		return null;
+	}
+
 	if(texture_data.constructor == GL.Texture)
 	{
 		var texture = texture_data;
@@ -3075,7 +3103,7 @@ LS.ResourcesManager.processTexture = function(filename, img, options)
 
 		//from TGAs...
 		if(img.pixels) //not a real image, just an object with width,height and a buffer with all the pixels
-			texture = GL.Texture.fromMemory(img.width, img.height, img.pixels, { format: (img.bpp == 24 ? gl.RGB : gl.RGBA), no_flip: img.flipY, wrapS: gl.REPEAT, wrapT: gl.REPEAT, magFilter: default_mag_filter, minFilter: default_min_filter });
+			texture = GL.Texture.fromMemory(img.width, img.height, img.pixels, { format: (img.bpp == 24 ? gl.RGB : gl.RGBA), no_flip: img.flipY, wrapS: default_wrap, wrapT: default_wrap, magFilter: default_mag_filter, minFilter: default_min_filter });
 		else //default format is RGBA (because particles have alpha)
 			texture = GL.Texture.fromImage(img, { format: gl.RGBA,  wrapS: default_wrap, wrapT: default_wrap, magFilter: default_mag_filter, minFilter: default_min_filter });
 		if(!texture)
@@ -5704,10 +5732,10 @@ Material.prototype.loadAndSetTexture = function(channel, texture_or_filename, op
 
 /**
 * gets all the properties and its types
-* @method getProperties
+* @method getPropertiesInfo
 * @return {Object} object with name:type
 */
-Material.prototype.getProperties = function()
+Material.prototype.getPropertiesInfo = function()
 {
 	var o = {
 		color:"vec3",
@@ -6522,13 +6550,13 @@ StandardMaterial.prototype.setProperty = function(name, value)
 
 /**
 * gets all the properties and its types
-* @method getProperties
+* @method getPropertiesInfo
 * @return {Object} object with name:type
 */
-StandardMaterial.prototype.getProperties = function()
+StandardMaterial.prototype.getPropertiesInfo = function()
 {
 	//get from the regular material
-	var o = Material.prototype.getProperties.call(this);
+	var o = Material.prototype.getPropertiesInfo.call(this);
 
 	//add some more
 	o.merge({
@@ -6815,17 +6843,17 @@ CustomMaterial.prototype.onResourceRenamed = function (old_name, new_name, resou
 
 /**
 * gets all the properties and its types
-* @method getProperties
+* @method getPropertiesInfo
 * @return {Object} object with name:type
 */
-CustomMaterial.prototype.getProperties = function()
+CustomMaterial.prototype.getPropertiesInfo = function()
 {
 	var o = {
-		color:"vec3",
-		opacity:"number",
-		shader_name: "string",
-		blend_mode: "number",
-		code: "string"
+		color: LS.TYPES.VEC3,
+		opacity: LS.TYPES.NUMBER,
+		shader_name: LS.TYPES.STRING,
+		blend_mode: LS.TYPES.NUMBER,
+		code: LS.TYPES.STRING
 	};
 
 	//from this material
@@ -7191,17 +7219,17 @@ SurfaceMaterial.prototype.configure = function(o) {
 
 /**
 * gets all the properties and its types
-* @method getProperties
+* @method getPropertiesInfo
 * @return {Object} object with name:type
 */
-SurfaceMaterial.prototype.getProperties = function()
+SurfaceMaterial.prototype.getPropertiesInfo = function()
 {
 	var o = {
-		color:"vec3",
-		opacity:"number",
-		shader_name: "string",
-		blend_mode: "number",
-		code: "string"
+		color: LS.TYPES.VEC3,
+		opacity: LS.TYPES.NUMBER,
+		shader_name: LS.TYPES.STRING,
+		blend_mode: LS.TYPES.NUMBER,
+		code: LS.TYPES.STRING
 	};
 
 	//from this material
@@ -7532,35 +7560,49 @@ ShaderMaterial.prototype.processShaderCode = function()
 	if(!shader_code || shader_code.constructor !== LS.ShaderCode )
 		return false;
 
+	var old_properties = this._properties_by_name;
+	this._properties = [];
+	this._properties_by_name = {};
+
 	//apply init 
 	if( shader_code._init_function )
 	{
-		var old_properties = this._properties_by_name;
-		this._properties = [];
-		this._properties_by_name = {};
 		shader_code._init_function.call( this );
-		for(var i = 0; i < this._properties.length; ++i)
+	}
+
+	for(var i in shader_code._global_uniforms)
+	{
+		var global = shader_code._global_uniforms[i];
+		this.createUniform( global.name, global.uniform, global.type, global.value, global.options );
+	}
+
+	//restore old values
+	this.assignOldProperties( old_properties );
+}
+
+ShaderMaterial.prototype.assignOldProperties = function( old_properties )
+{
+	for(var i = 0; i < this._properties.length; ++i)
+	{
+		var new_prop = this._properties[i];
+
+		if(!old_properties[ new_prop.name ])
+			continue;
+		var old = old_properties[ new_prop.name ];
+		if(old.value === undefined)
+			continue;
+
+		//this is to keep current values when coding the shader from the editor
+		if( new_prop.value && new_prop.value.set ) //special case for typed arrays avoiding generating GC
 		{
-			var new_prop = this._properties[i];
-
-			if(!old_properties[ new_prop.name ])
-				continue;
-			var old = old_properties[ new_prop.name ];
-			if(old.value === undefined)
-				continue;
-
-			//this is to keep current values when coding the shader from the editor
-			if( new_prop.value && new_prop.value.set ) //special case for typed arrays avoiding generating GC
-			{
-				//this is to be careful when an array changes sizes
-				if( old.value && old.value.length && new_prop.value.length && old.value.length <= new_prop.value.length)
-					new_prop.value.set( old.value );
-				else
-					new_prop.value = old.value;
-			}
+			//this is to be careful when an array changes sizes
+			if( old.value && old.value.length && new_prop.value.length && old.value.length <= new_prop.value.length)
+				new_prop.value.set( old.value );
 			else
 				new_prop.value = old.value;
 		}
+		else
+			new_prop.value = old.value;
 	}
 }
 
@@ -7692,18 +7734,22 @@ function ComponentContainer()
 * @param {Object} info object containing all the info from a previous serialization
 */
 
-ComponentContainer.prototype.configureComponents = function(info)
+ComponentContainer.prototype.configureComponents = function( info )
 {
 	if(info.components)
 		for(var i = 0, l = info.components.length; i < l; ++i)
 		{
 			var comp_info = info.components[i];
 			var comp_class = comp_info[0];
-			if(comp_class == "Transform" && i == 0) //special case: this is the only component that comes by default
+
+			//special case: this is the only component that comes by default
+			if(comp_class == "Transform" && i == 0) 
 			{
 				this.transform.configure(comp_info[1]);
 				continue;
 			}
+
+			//search for the class
 			var classObject = LS.Components[comp_class];
 			if(!classObject){
 				console.error("Unknown component found: " + comp_class);
@@ -7712,8 +7758,19 @@ ComponentContainer.prototype.configureComponents = function(info)
 				this._missing_components.push( comp_info );
 				continue;
 			}
-			var comp = new LS.Components[comp_class]( comp_info[1] );
+
+			//create component
+			var comp = new classObject(); //comp_info[1]
+
+			//attach to node
 			this.addComponent(comp);
+
+			//what about configure the comp after adding it? 
+			comp.configure( comp_info[1] );
+
+			//ensure the component uid is stored, some components may forgot about it
+			if( comp_info[1].uid && comp_info[1].uid !== comp.uid )
+				comp.uid = comp_info[1].uid;
 		}
 }
 
@@ -10822,7 +10879,9 @@ function ShaderCode( code )
 	this._code = null;
 
 	this._init_function = null;
+	this._global_uniforms = {};
 	this._code_parts = {};
+	this._subfiles = {};
 	this._compiled_shaders = {};
 
 	if(code)
@@ -10847,21 +10906,42 @@ Object.defineProperty( ShaderCode.prototype, "code", {
 ShaderCode.prototype.processCode = function()
 {
 	var code = this._code;
+	this._global_uniforms = {};
 	this._code_parts = {};
 	this._compiled_shaders = {};
 	this._init_function = null;
 
 	var subfiles = GL.processFileAtlas( this._code );
+	this._subfiles = subfiles;
+
+	var num_subfiles = 0;
+
 	for(var i in subfiles)
 	{
-		var subfiles_name = i;
-		var subfiles_data = subfiles[i];
+		var subfile_name = i;
+		var subfile_data = subfiles[i];
+		num_subfiles++;
 
-		if(!subfiles_name) //empty subfiles, is javascript code to initialize
+		if(!subfile_name) //empty subfiles, is javascript code to initialize
 			continue;
 
-		var name = LS.ResourcesManager.removeExtension(i);
-		var extension = LS.ResourcesManager.getExtension(i);
+		if(subfile_name == "uniforms")
+		{
+			var lines = subfile_data.split("/n");
+			for(var j = 0; j < lines.length; ++j)
+			{
+				var line = lines[j].trim();
+				var words = line.split(" ");
+				var value = words[3];
+				if( value !== undefined )
+					value = LS.stringToValue(value);
+				this._global_uniforms[ words[0] ] = { name: words[0], uniform: words[1], type: words[2], value: value, options: words[4] };
+			}
+			continue;
+		}
+
+		var name = LS.ResourcesManager.removeExtension( subfile_name );
+		var extension = LS.ResourcesManager.getExtension( subfile_name );
 		var code_part = this._code_parts[name];
 		if(!code_part)
 			code_part = this._code_parts[name] = {};
@@ -10873,9 +10953,7 @@ ShaderCode.prototype.processCode = function()
 		}
 
 		//parse data (extract pragmas and stuff)
-		var blocks = LS.ShaderCode.parseGLSLCode( subfiles_data );
-
-		code_part[ extension ] = { code: subfiles_data, blocks: blocks };
+		code_part[ extension ] = LS.ShaderCode.parseGLSLCode( subfile_data );
 	}
 
 	//compile the shader before using it to ensure there is no errors
@@ -10883,21 +10961,27 @@ ShaderCode.prototype.processCode = function()
 
 	//process init code
 	var init_code = subfiles[""]; //the empty block is the init block
-	if(init_code)
+	if(init_code && num_subfiles > 1)
 	{
-		if(LS.catch_exceptions)
+		//clean code
+		init_code = LS.ShaderCode.removeComments(init_code);
+
+		if(init_code) //still some code? (we test it because if there is a single line of code the behaviour changes)
 		{
-			try
+			if(LS.catch_exceptions)
 			{
+				try
+				{
+					this._init_function = new Function( init_code );
+				}
+				catch (err)
+				{
+					LS.dispatchCodeError( err, LScript.computeLineFromError(err), this );
+				}
+			}
+			else
 				this._init_function = new Function( init_code );
-			}
-			catch (err)
-			{
-				LS.dispatchCodeError( err, LScript.computeLineFromError(err), this );
-			}
 		}
-		else
-			this._init_function = new Function( init_code );
 	}
 
 	//to alert all the materials out there using this shader that they must update themselves.
@@ -10940,24 +11024,182 @@ ShaderCode.prototype.getShader = function( render_mode, flags )
 	if(!code.vs || !code.fs)
 		return null;
 
+	var vs_code = this.getCodeFromSubfile( code.vs );
+	var fs_code = this.getCodeFromSubfile( code.fs );
+
+	if(!vs_code || !fs_code) //code includes something missing
+		return null;
+
 	//compile the shader and return it
 	if(!LS.catch_exceptions)
-		shader = new GL.Shader( code.vs.code, code.fs.code );
-
-	try
+		shader = new GL.Shader( vs_code, fs_code );
+	else
 	{
-		shader = new GL.Shader( code.vs.code, code.fs.code );
-	}
-	catch(err)
-	{
-		console.error(err);
-		LS.dispatchCodeError(err);
-		return;
+		try
+		{
+			shader = new GL.Shader( vs_code, fs_code );
+		}
+		catch(err)
+		{
+			LS.ShadersManager.dumpShaderError( this.filename, err, vs_code, fs_code );
+			LS.dispatchCodeError(err);
+			return;
+		}
 	}
 
 	this._compiled_shaders[ render_mode ] = shader;
 	return shader;
 }
+
+ShaderCode.prototype.getCodeFromSubfile = function( subfile )
+{
+	if( !subfile.is_dynamic )
+		return subfile.code;
+
+	var code = "";
+	var blocks = subfile.blocks;
+
+	for(var i = 0; i < blocks.length; ++i)
+	{
+		var block = blocks[i];
+		if( block.type == 1 ) //regular code
+		{
+			code += block.code;
+			continue;
+		}
+
+		//pragma
+		if(block.include)
+		{
+			var filename = block.include;
+			var ext = LS.ResourcesManager.getExtension( filename );
+			if(ext)
+			{
+				var extra_shadercode = LS.ResourcesManager.getResource( filename, LS.ShaderCode );
+				if(!extra_shadercode)
+				{
+					LS.ResourcesManager.load( filename ); //force load
+					return null;
+				}
+				if(!block.include_subfile)
+					code += extra_shadercode.code;
+				else
+				{
+					var extra = extra_shadercode._subfiles[ block.include_subfile ];
+					if(extra === undefined)
+						return null;
+					code += extra;
+				}
+			}
+			else
+			{
+				var snippet_code = LS.ShadersManager.getSnippet( filename );
+				if( !snippet_code )
+					return null; //snippet not found
+				code += snippet_code.code;
+			}
+		}
+	}
+
+	return code;
+}
+
+//given a code with some pragmas, it separates them
+ShaderCode.parseGLSLCode = function( code )
+{
+	//remove comments
+	code = code.replace(/(\/\*([\s\S]*?)\*\/)|(\/\/(.*)$)/gm, '');
+
+	var blocks = [];
+	var current_block = [];
+	var pragmas = {};
+	var uniforms = {};
+	var includes = {};
+	var is_dynamic = false; //means this shader has no variations using pragmas or macros
+
+	var lines = code.split("\n");
+
+	/* REMOVED: fors could have problems
+	//clean (this helps in case a line contains two instructions, like "uniform float a; uniform float b;"
+	var clean_lines = [];
+	for(var i = 0; i < lines.length; i++)
+	{
+		var line = lines[i].trim();
+		if(!line)
+			continue;
+		var pos = line.lastIndexOf(";");
+		if(pos == -1 || pos == lines.length - 1)
+			clean_lines.push(line);
+		else
+		{
+			var sublines = line.split(";");
+			for(var j = 0; j < sublines.length; ++j)
+			{
+				if(sublines[j])
+					clean_lines.push( sublines[j] + ";" );
+			}
+		}
+	}
+	lines = clean_lines;
+	*/
+
+	//parse
+	for(var i = 0; i < lines.length; i++)
+	{
+		var line = lines[i].trim();
+		if(!line.length)
+			continue;//empty line
+
+		if(line[0] != "#")
+		{
+			var words = line.split(" ");
+			if( words[0] == "uniform" ) //store which uniforms we found in the code (not used)
+			{
+				var uniform_name = words[2].split(";");
+				uniforms[ words[2] ] = words[1];
+			}
+			current_block.push(line);
+			continue;
+		}
+
+		var t = line.split(" ");
+		if(t[0] == "#pragma")
+		{
+			is_dynamic = true;
+			pragmas[ t[2] ] = true;
+			var action = t[1];
+			blocks.push( { type: 1, code: current_block.join("\n") } ); //merge lines and add as block
+			current_block.length = 0;
+			var pragma_info = { type: 2, line: line, action: action, param: t[2] };
+			if( action == "include" && t[2] )
+			{
+				var include = t[2].substr(1, t[2].length - 2); //safer than JSON.parse
+				var fullname = include.split(":");
+				var filename = fullname[0];
+				var subfile = fullname[1];
+				pragma_info.include = filename;
+				pragma_info.include_subfile = subfile;
+				includes[ pragma_info.include ] = true;
+			}
+			blocks.push( pragma_info ); //add pragma block
+		}
+		else
+			current_block.push( line ); //add line to current block lines
+	}
+
+	if(current_block.length)
+		blocks.push( { type: 1, code: current_block.join("\n") } ); //merge lines and add as block
+
+	return {
+		is_dynamic: is_dynamic,
+		code: code,
+		blocks: blocks,
+		pragmas: pragmas,
+		uniforms: uniforms,
+		includes: {}
+	};
+}
+
 
 //searches for materials using this ShaderCode and forces them to be updated (update the properties)
 ShaderCode.prototype.applyToMaterials = function( scene )
@@ -10985,52 +11227,15 @@ ShaderCode.prototype.applyToMaterials = function( scene )
 	}
 }
 
-//given a code with some pragmas, it separates them
-ShaderCode.parseGLSLCode = function( code )
+ShaderCode.removeComments = function( code )
 {
-	//remove comments
-	code = code.replace(/(\/\*([\s\S]*?)\*\/)|(\/\/(.*)$)/gm, '');
-
-	var blocks = [];
-	var current_block = [];
-	var pragmas = {};
-	var is_dynamic = false; //means this shader has no variations using pragmas or macros
-
-	var lines = code.split("\n");
-	for(var i = 0; i < lines.length; i++)
-	{
-		var line = lines[i].trim();
-		if(!line.length)
-			continue;//empty line
-		if(line[0] != "#")
-		{
-			current_block.push(line);
-			continue;
-		}
-
-		var t = line.split(" ");
-		if(t[0] == "#pragma")
-		{
-			is_dynamic = true;
-			pragmas[ t[2] ] = true;
-			blocks.push( { type: 1, code: current_block.join("\n") } );
-			current_block.length = 0;
-			blocks.push( { type: 2, line: line, action: t[1], param: t[2] });
-		}
-		else
-			current_block.push( line ); //regular line
-	}
-
-	return {
-		is_dynamic: is_dynamic,
-		code: code,
-		blocks: blocks,
-		pragmas: pragmas
-	};
+	// /^\s*[\r\n]/gm
+	return code.replace(/(\/\*([\s\S]*?)\*\/)|(\/\/(.*)$)/gm, '');
 }
 
 //Example code for a shader
-ShaderCode.example = "\n\
+ShaderCode.examples = {};
+ShaderCode.examples.fullshader = "\n\
 \n\
 \\default.vs\n\
 \n\
@@ -11101,7 +11306,9 @@ if(typeof(LiteGraph) != "undefined")
 	global.LGraphScene = function()
 	{
 		this.addOutput("Time","number");
+		this._scene = null;
 	}
+
 
 	LGraphScene.title = "Scene";
 	LGraphScene.desc = "Scene";
@@ -11120,6 +11327,48 @@ if(typeof(LiteGraph) != "undefined")
 		}
 
 		return result;
+	}
+
+	LGraphScene.prototype.onAdded = function( graph )
+	{
+		this.bindEvents( this.graph.getScene() );
+	}
+
+	LGraphScene.prototype.onRemoved = function()
+	{
+		this.bindEvents( null );
+	}
+
+	LGraphScene.prototype.onConnectionsChange = function()
+	{
+		this.bindEvents( this.graph.getScene() );
+	}
+
+	//bind events attached to this component
+	LGraphScene.prototype.bindEvents = function( scene )
+	{
+		if(this._scene)
+			LEvent.unbindAll( this._scene, this );
+
+		this._scene = scene;
+		if( !this._scene )
+			return;
+		
+		//iterate outputs
+		if(this.outputs && this.outputs.length)
+			for(var i = 0; i < this.outputs.length; ++i )
+			{
+				var output = this.outputs[i];
+				if( output.type !== LiteGraph.EVENT )
+					continue;
+				var event_name = output.name.substr(3);
+				LEvent.bind( this._scene, event_name, this.onEvent, this );
+			}
+	}
+
+	LGraphScene.prototype.onEvent = function( event_name, params )
+	{
+		this.trigger( "on_" + event_name, params );
 	}
 
 	LGraphScene.prototype.onExecute = function()
@@ -11141,7 +11390,7 @@ if(typeof(LiteGraph) != "undefined")
 		for(var i = 0; i < this.outputs.length; ++i)
 		{
 			var output = this.outputs[i];
-			if(!output.links || !output.links.length)
+			if(!output.links || !output.links.length || output.type == LiteGraph.EVENT )
 				continue;
 			var result = null;
 			switch( output.name )
@@ -11158,7 +11407,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphScene.prototype.onGetOutputs = function()
 	{
-		var r = [["Elapsed","number"],["Frame","number"]];
+		var r = [["Elapsed","number"],["Frame","number"],["on_start",LiteGraph.EVENT],["on_finish",LiteGraph.EVENT]];
 		return LGraphScene.getComponents( this.graph.getScene().root, r);
 	}
 
@@ -11171,16 +11420,24 @@ if(typeof(LiteGraph) != "undefined")
 		this.properties = {node_id:""};
 		this.size = [100,20];
 
-		this._node = null;
-
 		this.addInput("node_id", "string", { locked: true });
 
-		if(LGraphSceneNode._current_node_id)
-			this.properties.node_id = LGraphSceneNode._current_node_id;
+		this._node = null;
 	}
 
 	LGraphSceneNode.title = "SceneNode";
 	LGraphSceneNode.desc = "Node on the scene";
+
+	LGraphSceneNode.prototype.onRemoved = function()
+	{
+		if(this._node)
+			this.bindNodeEvents(null);
+	}
+
+	LGraphSceneNode.prototype.onConnectionsChange = function()
+	{
+		this.bindNodeEvents( this._component );
+	}
 
 	LGraphSceneNode.prototype.getNode = function()
 	{
@@ -11192,25 +11449,31 @@ if(typeof(LiteGraph) != "undefined")
 		if(node_id)
 			this.properties.node_id = node_id;
 
-		var scene = this.graph.getScene();
-		var node = null;
-
 		//then check properties
 		if(	!node_id && this.properties.node_id )
 			node_id = this.properties.node_id;
 
+		//get node from scene
+		var scene = this.graph.getScene();
+		if(!scene)
+			return;
+
+		var node = null;
 		if(node_id)
 			node = scene.getNode( node_id );
 
-		//otherwise use the graph node
-		if(!node)
-			node = this.graph._scenenode;
+		//hook events
+		if(this._node != node)
+			this.bindNodeEvents(node);
+
 		return node;
 	}
 
 	LGraphSceneNode.prototype.onExecute = function()
 	{
 		var node = this.getNode();
+		if(!node)
+			return;
 
 		//read inputs
 		if(this.inputs) //there must be inputs always but just in case
@@ -11218,6 +11481,8 @@ if(typeof(LiteGraph) != "undefined")
 			for(var i = 1; i < this.inputs.length; ++i)
 			{
 				var input = this.inputs[i];
+				if( input.type === LiteGraph.ACTION )
+					continue;
 				var v = this.getInputData(i);
 				if(v === undefined)
 					continue;
@@ -11238,7 +11503,7 @@ if(typeof(LiteGraph) != "undefined")
 		for(var i = 0; i < this.outputs.length; ++i)
 		{
 			var output = this.outputs[i];
-			if(!output.links || !output.links.length)
+			if(!output.links || !output.links.length || output.type == LiteGraph.EVENT )
 				continue;
 			switch( output.name )
 			{
@@ -11247,6 +11512,7 @@ if(typeof(LiteGraph) != "undefined")
 				case "Mesh": this.setOutputData(i, node.getMesh()); break;
 				case "Visible": this.setOutputData(i, node.flags.visible ); break;
 				default:
+					//this must be refactored
 					var compo = node.getComponentByUId( output.name );
 					if(!compo)
 					{
@@ -11299,53 +11565,287 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphSceneNode.prototype.onPropertyChanged = function(name,value)
 	{
 		if(name == "node_id")
-		{
-			var scene = this.graph.getScene();
-			this._node = scene.getNode( name );
-		}
+			this.getNode(); //updates this._node and binds events
+	}
+
+	//bind events attached to this component
+	LGraphSceneNode.prototype.bindNodeEvents = function( node )
+	{
+		if(this._node)
+			LEvent.unbindAll( this._node, this );
+
+		this._node = node;
+		if( !this._node )
+			return;
+		
+		//iterate outputs
+		if(this.outputs && this.outputs.length)
+			for(var i = 0; i < this.outputs.length; ++i )
+			{
+				var output = this.outputs[i];
+				if( output.type !== LiteGraph.EVENT )
+					continue;
+				var event_name = output.name.substr(3);
+				LEvent.bind( this._node, event_name, this.onNodeEvent, this );
+			}
+	}
+
+	LGraphSceneNode.prototype.onNodeEvent = function( e, params )
+	{
+		//trigger event
+		this.trigger( "on_" + e, params );
 	}
 
 	LGraphSceneNode.prototype.onGetInputs = function()
 	{
 		var result = [["Visible","boolean"],["Material","Material"]];
 		return this.getComponents(result);
-		//return [["Transform","Transform"],["Material","Material"],["Mesh","Mesh"],["Enabled","boolean"]];
 	}
 
 	LGraphSceneNode.prototype.onGetOutputs = function()
 	{
-		var result = [["Visible","boolean"],["Material","Material"],["onClicked",LiteGraph.EVENT]];
+		var result = [["Visible","boolean"],["Material","Material"],["on_clicked",LiteGraph.EVENT]];
 		return this.getComponents(result);
-		//return [["Transform","Transform"],["Material","Material"],["Mesh","Mesh"],["Enabled","boolean"]];
 	}
-
-	/*
-	LGraphSceneNode.prototype.onGetOutputs = function()
-	{
-		var node = this.getNode();
-		var r = [];
-		for(var i = 0; i < node._components.length; ++i)
-		{
-			var comp = node._components[i];
-			var classname = getObjectClassName(comp);
-			var vars = getObjectAttributes(comp);
-			r.push([classname,vars]);
-		}
-		return r;
-		*/
-
-		/*
-		var r = [["Transform","Transform"],["Material","Material"],["Mesh","Mesh"],["Enabled","boolean"]];
-		if(node.light)
-			r.push(["Light","Light"]);
-		if(node.camera)
-			r.push(["Camera","Camera"]);
-		return r;
-	}
-	*/
 
 	LiteGraph.registerNodeType("scene/node", LGraphSceneNode );
 
+	//********************************************************
+
+	global.LGraphComponent = function()
+	{
+		this.properties = {
+			node_id: "",
+			component_id: ""
+		};
+
+		//this.addInput("Component", undefined, { locked: true });
+
+		this._component = null;
+	}
+
+	LGraphComponent.title = "Component";
+	LGraphComponent.desc = "A component from a node";
+
+	LGraphComponent.prototype.onRemoved = function()
+	{
+		this.bindComponentEvents(null); //remove binding		
+	}
+
+	LGraphComponent.prototype.onConnectionsChange = function( side )
+	{
+		this.bindComponentEvents( this._component );
+	}
+
+	LGraphComponent.prototype.onInit = function()
+	{
+		var compo = this.getComponent();
+		if(!compo)
+			return;
+		this.processOutputs( compo );
+	}
+
+	LGraphComponent.prototype.processOutputs = function( compo )
+	{
+		if(!this.outputs || !this.outputs.length  )
+			return;
+
+		//write outputs
+		for(var i = 0; i < this.outputs.length; i++)
+		{
+			var output = this.outputs[i];
+			if( !output.links || !output.links.length || output.type == LiteGraph.EVENT )
+				continue;
+
+			if(output.name == "Component")
+				this.setOutputData(i, compo );
+			else
+				this.setOutputData(i, compo[ output.name ] );
+		}
+	}
+
+
+	LGraphComponent.prototype.onExecute = function()
+	{
+		var compo = this.getComponent();
+		if(!compo)
+			return;
+
+		//read inputs (skip 1, is the component)
+		if(this.inputs)
+		for(var i = 0; i < this.inputs.length; i++)
+		{
+			var input = this.inputs[i];
+			if( input.type === LiteGraph.ACTION )
+				continue;
+			var v = this.getInputData(i);
+			if(v === undefined)
+				continue;
+			LS.setObjectProperty( compo, input.name, v );
+		}
+
+		//write outputs (done in a function so it can be reused by other methods)
+		this.processOutputs( compo );
+	}
+
+	LGraphComponent.updateOutputData = function( slot )
+	{
+		if(!this.outputs || slot >= this.outputs.length  )
+			return;
+
+		var output = this.outputs[i];
+		if( !output.links || !output.links.length || output.type == LiteGraph.EVENT )
+			return;
+
+		var compo = this.getComponent();
+		if(!compo)
+			return;
+
+		if(output.name == "Component")
+			this.setOutputData( slot, compo );
+		else
+			this.setOutputData( slot, compo[ output.name ] );
+	}
+
+	LGraphComponent.prototype.onDrawBackground = function()
+	{
+		var compo = this.getComponent();
+		if(compo)
+			this.title = LS.getClassName( compo.constructor );
+	}
+
+	LGraphComponent.prototype.getComponent = function()
+	{
+		var v = this.getInputData(0);
+		if(v)
+			return v;
+
+		var scene = this.graph._scene;
+		if(!scene) 
+			return null;
+
+		var node_id = this.properties.node_id;
+		if(!node_id)
+			return;
+
+		//find node
+		var node = scene.getNode( node_id );
+		if(!node)
+			return null;
+
+		//find compo
+		var compo_id = this.properties.component_id;
+		var compo = null;
+		if(compo_id.charAt(0) == "@")
+			compo = node.getComponentByUId( compo_id );
+		else if( LS.Components[ compo_id ] )
+			compo = node.getComponent( LS.Components[ compo_id ] );
+		else
+			return null;
+
+		if(compo && !compo.constructor.is_component)
+			return null;
+
+		if(this._component != compo)
+			this.bindComponentEvents( compo );
+
+		this._component = compo;
+		return compo;
+	}
+
+	//bind events attached to this component
+	LGraphComponent.prototype.bindComponentEvents = function( component )
+	{
+		if(this._component)
+			LEvent.unbindAll( this._component, this );
+
+		this._component = component;
+		if( !this._component )
+			return;
+		
+		//iterate outputs
+		if(this.outputs && this.outputs.length)
+			for(var i = 0; i < this.outputs.length; ++i )
+			{
+				var output = this.outputs[i];
+				if( output.type !== LiteGraph.EVENT )
+					continue;
+				var event_name = output.name.substr(3);
+				LEvent.bind( this._component, event_name, this.onComponentEvent, this );
+			}
+	}
+
+	LGraphComponent.prototype.onComponentEvent = function ( e, params )
+	{
+		this.trigger( "on_" + e, params );
+	}
+
+	LGraphComponent.prototype.getComponentProperties = function( get_inputs, result )
+	{
+		var compo = this.getComponent();
+		if(!compo)
+			return null;
+
+		var attrs = null;
+		if(compo.getPropertiesInfo)
+			attrs = compo.getPropertiesInfo( get_inputs );
+		else
+			attrs = LS.getObjectProperties( compo );
+
+		result = result || [];
+		for(var i in attrs)
+			result.push( [i, attrs[i]] );
+		return result;
+	}
+
+	LGraphComponent.prototype.onAction = function( action_name, params ) { 
+		if(!action_name)
+			return;
+		var compo = this.getComponent();
+		if(!compo)
+			return;
+		if(compo[action_name])
+			compo[action_name]( ); //params will be mostly MouseEvent, so for now I wont pass it
+	}
+
+	LGraphComponent.prototype.onGetInputs = function()
+	{ 
+		var inputs = [];
+
+		this.getComponentProperties("input", inputs);
+
+		var compo = this.getComponent();
+		if(compo && compo.getEventActions)
+		{
+			var actions = compo.getEventActions();
+			if(actions)
+				for(var i in actions)
+					inputs.push( [i, LiteGraph.ACTION ] );
+		}
+
+		return inputs;
+	}
+
+	LGraphComponent.prototype.onGetOutputs = function()
+	{ 
+		var outputs = [];
+		outputs.push( ["Component", "Component" ], null ); //compo + separator
+
+		this.getComponentProperties( "output", outputs);
+
+		var compo = this.getComponent();
+		if(compo && compo.getEvents)
+		{
+			var events = compo.getEvents();
+			if(events)
+				for(var i in events)
+					outputs.push( ["on_" + i, LiteGraph.EVENT ] );
+		}
+		return outputs;
+	}
+
+	LiteGraph.registerNodeType("scene/component", LGraphComponent );
+	
 	//********************************************************
 
 	/* LGraphNode representing an object in the Scene */
@@ -11551,8 +12051,9 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphMaterial.prototype.onGetInputs = function()
 	{
 		var mat = this.getMaterial();
-		if(!mat) return;
-		var o = mat.getProperties();
+		if(!mat)
+			return;
+		var o = mat.getPropertiesInfo();
 		var results = [["Material","Material"]];
 		for(var i in o)
 			results.push([i,o[i]]);
@@ -11569,8 +12070,9 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphMaterial.prototype.onGetOutputs = function()
 	{
 		var mat = this.getMaterial();
-		if(!mat) return;
-		var o = mat.getProperties();
+		if(!mat)
+			return;
+		var o = mat.getPropertiesInfo();
 		var results = [["Material","Material"]];
 		for(var i in o)
 			results.push([i,o[i]]);
@@ -11587,125 +12089,8 @@ if(typeof(LiteGraph) != "undefined")
 	LiteGraph.registerNodeType("scene/material", LGraphMaterial );
 	global.LGraphMaterial = LGraphMaterial;
 
-	//********************************************************
-
-	global.LGraphComponent = function()
-	{
-		this.properties = {
-			node: "",
-			component: ""
-		};
-
-		this.addInput("Component", undefined, { locked: true });
-
-		this._component = null;
-	}
-
-	LGraphComponent.title = "Component";
-	LGraphComponent.desc = "A component from a node";
-
-	LGraphComponent.prototype.onConnectInput = function( slot, type )
-	{
-		if (slot == 0 && !LS.Components[type])
-			return false;
-	}
-
-	LGraphComponent.prototype.onExecute = function()
-	{
-		var compo = this.getComponent();
-		if(!compo)
-			return;
-
-		//read inputs (skip 1, is the component)
-		for(var i = 1; i < this.inputs.length; i++)
-		{
-			var input = this.inputs[i];
-			var v = this.getInputData(i);
-			if(v === undefined)
-				continue;
-			LS.setObjectProperty( compo, input.name, v );
-		}
-
-		//write outputs
-		for(var i in this.outputs)
-		{
-			var output = this.outputs[i];
-			if(!output.links || !output.links.length)
-				continue;
-
-			//could be better...
-			this.setOutputData(i, compo[ output.name ] );
-		}
-	}
-
-	LGraphComponent.prototype.onDrawBackground = function()
-	{
-		var compo = this.getComponent();
-		if(compo)
-			this.title = LS.getClassName( compo.constructor );
-	}
-
-	LGraphComponent.prototype.getComponent = function()
-	{
-		var v = this.getInputData(0);
-		if(v)
-			return v;
-
-		var scene = this.graph._scene;
-		if(!scene) 
-			return null;
-
-		var node_id = this.properties.node;
-		if(!node_id)
-			return;
-
-		//find node
-		var node = scene.getNode( node_id );
-		if(!node)
-			return null;
-
-		//find compo
-		var compo_id = this.properties.component;
-		var compo = null;
-		if(compo_id.charAt(0) == "@")
-			compo = node.getComponentByUId( compo_id );
-		else if( LS.Components[ compo_id ] )
-			compo = node.getComponent( LS.Components[ compo_id ] );
-		else
-			return null;
-
-		if(compo && !compo.constructor.is_component)
-			return null;
-
-		this._component = compo;
-		return compo;
-	}
-
-	LGraphComponent.prototype.getComponentProperties = function( v )
-	{
-		var compo = this.getComponent();
-		if(!compo)
-			return null;
-
-		var attrs = null;
-		if(compo.getProperties)
-			attrs = compo.getProperties( v );
-		else
-			attrs = LS.getObjectProperties( compo );
-
-		var result = [];
-		for(var i in attrs)
-			result.push( [i, attrs[i]] );
-		return result;
-	}
-
-	LGraphComponent.prototype.onGetInputs = function() { return this.getComponentProperties("input"); }
-	LGraphComponent.prototype.onGetOutputs = function() { return this.getComponentProperties("output"); }
-
-	LiteGraph.registerNodeType("scene/component", LGraphComponent );
-
 	//************************************************************
-
+	/*
 	global.LGraphLight = function()
 	{
 		this.properties = {mat_name:""};
@@ -11786,6 +12171,7 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LiteGraph.registerNodeType("scene/light", LGraphLight );
+	*/
 
 	//************************************
 
@@ -11828,13 +12214,18 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphLocatorProperty.title = "Property";
 	LGraphLocatorProperty.desc = "A property of a node or component of the scene specified by its locator string";
 
-	LGraphLocatorProperty.prototype.onExecute = function()
+	LGraphLocatorProperty.prototype.getLocatorInfo = function()
 	{
 		var locator = this.properties.locator;
 		if(!this.properties.locator)
 			return;
+		var scene = this.graph.scene || LS.GlobalScene;
+		return this._locator_info = scene.getPropertyInfo( locator );
+	}
 
-		var info = this._locator_info = LS.GlobalScene.getPropertyInfo( locator );
+	LGraphLocatorProperty.prototype.onExecute = function()
+	{
+		var info = this.getLocatorInfo();
 
 		if(info && info.target)
 		{
@@ -11847,6 +12238,32 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LiteGraph.registerNodeType("scene/property", LGraphLocatorProperty );
+
+	//***********************************
+
+	//*
+	global.LGraphToggleValue = function()
+	{
+		this.addInput("target","Component");
+		this.addInput("toggle",LiteGraph.ACTION);
+		this.properties = {property_name:""};
+	}
+
+	LGraphToggleValue.title = "Toggle";
+	LGraphToggleValue.desc = "Toggle a property value";
+
+	LGraphToggleValue.prototype.onAction = function( action_name, params ) { 
+
+		var target = this.getInputData(0,true);
+		if(!target)
+			return;
+		var prop_name = this.properties.property_name;
+		if( target[ prop_name ] !== undefined )
+			target[ prop_name ] = !target[ prop_name ];
+	}
+
+	LiteGraph.registerNodeType("scene/toggle", LGraphToggleValue );
+	//*/
 
 	//************************************
 
@@ -14026,6 +14443,8 @@ var Renderer = {
 	{
 		result = result || [];
 
+		result.length = 0; //clear old lights
+
 		//it uses the lights gathered by prepareVisibleData
 		var lights = this._visible_lights;
 		if(!lights || !lights.length)
@@ -14690,8 +15109,6 @@ var Renderer = {
 		}
 
 		//store all the info
-		var lights = scene._lights;
-
 		this._blend_instances = blend_instances;
 		this._opaque_instances = opaque_instances;
 		this._visible_instances = all_instances; //sorted version
@@ -14700,8 +15117,8 @@ var Renderer = {
 		this._visible_materials = materials;
 
 		//prepare lights (collect data and generate shadowmaps)
-		for(var i = 0, l = lights.length; i < l; ++i)
-			lights[i].prepare( render_settings );
+		for(var i = 0, l = this._visible_lights.length; i < l; ++i)
+			this._visible_lights[i].prepare( render_settings );
 	},
 
 	//outside of processVisibleData to allow optimizations in processVisibleData
@@ -16239,7 +16656,7 @@ Object.defineProperty( Transform.prototype, 'mustUpdate', {
 	enumerable: false
 });
 
-Transform.prototype.getProperties = function(v)
+Transform.prototype.getPropertiesInfo = function(v)
 {
 	if(v == "output")
 	{
@@ -18481,7 +18898,7 @@ Camera.prototype.configure = function(o)
 	if(o.texture_high !== undefined) this.texture_high = o.texture_high;
 	if(o.texture_clone !== undefined) this.texture_clone = o.texture_clone;
 
-	this.updateMatrices();
+	this.updateMatrices( true );
 }
 
 Camera.prototype.serialize = function()
@@ -21322,7 +21739,7 @@ MorphDeformer.prototype.setProperty = function(name, value)
 }
 
 
-MorphDeformer.prototype.getProperties = function()
+MorphDeformer.prototype.getPropertiesInfo = function()
 {
 	var properties = {
 		enabled: "boolean"
@@ -22120,7 +22537,7 @@ CustomData.prototype.getProperty = function( name )
 	return null;
 }
 
-CustomData.prototype.getProperties = function()
+CustomData.prototype.getPropertiesInfo = function()
 {
 	return this.properties;
 }
@@ -23665,7 +24082,7 @@ GlobalInfo.prototype.getResources = function(res)
 	return res;
 }
 
-GlobalInfo.prototype.getProperties = function()
+GlobalInfo.prototype.getPropertiesInfo = function()
 {
 	return {
 		"ambient_color":"color",
@@ -23759,16 +24176,15 @@ function GraphComponent(o)
 		return console.error("Cannot use GraphComponent if LiteGraph is not installed");
 
 	this._graph = new LGraph();
-	this._graph._scene = Scene;
-	this._graph.getScene = function() { return this._scene; }
+	this._graph.getScene = function() { return this._scene || LS.GlobalScene; } //this OR is ugly
 
 	if(o)
 		this.configure(o);
 	else //default
 	{
-		var graphnode = LiteGraph.createNode("scene/node");
-		//graphnode.properties.node_id = ¿? not added yet
-		this._graph.add(graphnode);
+		var graphnode = this._default_node = LiteGraph.createNode("scene/node");
+		this._graph.add( graphnode );
+		//graphnode.properties.node_id = //cannot be set yet, not attached to node
 	}
 	
 	LEvent.bind(this,"trigger", this.trigger, this );	
@@ -23789,14 +24205,22 @@ GraphComponent.prototype.configure = function(o)
 	this.enabled = !!o.enabled;
 	if(o.graph_data)
 	{
-		try
+		if(LS.catch_exceptions)
+		{
+			try
+			{
+				var obj = JSON.parse(o.graph_data);
+				this._graph.configure( obj );
+			}
+			catch (err)
+			{
+				console.error("Error configuring Graph data: " + err);
+			}
+		}
+		else
 		{
 			var obj = JSON.parse(o.graph_data);
 			this._graph.configure( obj );
-		}
-		catch (err)
-		{
-			console.error("Error configuring Graph data: " + err);
 		}
 	}
 
@@ -23820,6 +24244,8 @@ GraphComponent.prototype.serialize = function()
 GraphComponent.prototype.onAddedToNode = function(node)
 {
 	this._graph._scenenode = node;
+	if( this._default_node )
+		this._default_node.properties.node_id = node.uid;
 	//catch the global rendering
 	//LEvent.bind( LS.GlobalScene, "beforeRenderMainPass", this.onBeforeRender, this );
 }
@@ -23832,27 +24258,34 @@ GraphComponent.prototype.onRemovedFromNode = function(node)
 
 GraphComponent.prototype.onAddedToScene = function( scene )
 {
-	LEvent.bind( scene ,"start", this.onEvent, this );
-	LEvent.bind( scene , "beforeRenderMainPass", this.onEvent, this );
-	LEvent.bind( scene ,"update", this.onEvent, this );
+	this._graph._scene = scene;
+	LEvent.bind( scene , "init", this.onSceneEvent, this );
+	LEvent.bind( scene , "start", this.onSceneEvent, this );
+	LEvent.bind( scene , "beforeRenderMainPass", this.onSceneEvent, this );
+	LEvent.bind( scene , "update", this.onSceneEvent, this );
 }
 
 GraphComponent.prototype.onRemovedFromScene = function( scene )
 {
-	LEvent.unbind( scene,"start", this.onEvent, this );
-	LEvent.unbind( scene,"beforeRenderMainPass", this.onEvent, this );
-	LEvent.unbind( scene,"update", this.onEvent, this );
+	this._graph._scene = null;
+	LEvent.unbind( scene, "init", this.onSceneEvent, this );
+	LEvent.unbind( scene, "start", this.onSceneEvent, this );
+	LEvent.unbind( scene, "beforeRenderMainPass", this.onSceneEvent, this );
+	LEvent.unbind( scene, "update", this.onSceneEvent, this );
 }
 
-GraphComponent.prototype.onResourceRenamed = function(old_name, new_name, res)
+GraphComponent.prototype.onResourceRenamed = function( old_name, new_name, resource )
 {
-	this._graph.sendEventToAllNodes("onResourceRenamed",[old_name, new_name, res]);
+	this._graph.sendEventToAllNodes("onResourceRenamed",[old_name, new_name, resource]);
 }
 
-GraphComponent.prototype.onEvent = function(event_type, event_data)
+GraphComponent.prototype.onSceneEvent = function( event_type, event_data )
 {
 	if(event_type == "beforeRenderMainPass")
 		event_type = "render";
+
+	if(event_type == "init")
+		this._graph.sendEventToAllNodes("onInit");
 
 	if(this.on_event == event_type)
 		this.runGraph();
@@ -23938,10 +24371,9 @@ function FXGraphComponent(o)
 
 
 	if(typeof(LGraphTexture) == "undefined")
-		return console.error("Cannot use GraphComponent if LiteGraph is not installed");
+		return console.error("Cannot use FXGraphComponent if LiteGraph is not installed");
 
 	this._graph = new LGraph();
-	this._graph._scene = Scene;
 	this._graph.getScene = function() { return this._scene; }
 
 	if(o)
@@ -24145,12 +24577,14 @@ FXGraphComponent.prototype.onRemovedFromNode = function(node)
 
 FXGraphComponent.prototype.onAddedToScene = function( scene )
 {
+	this._graph._scene = scene;
 	LEvent.bind( scene, "enableFrameBuffer", this.onBeforeRender, this );
 	LEvent.bind( scene, "showFrameBuffer", this.onAfterRender, this );
 }
 
 FXGraphComponent.prototype.onRemovedFromScene = function( scene )
 {
+	this._graph._scene = null;
 	LEvent.unbind( scene, "enableFrameBuffer", this.onBeforeRender, this );
 	LEvent.unbind( scene, "showFrameBuffer", this.onAfterRender, this );
 
@@ -25918,6 +26352,9 @@ PlayAnimation.prototype.configure = function(o)
 {
 	if(o.play) //LEGACY
 		delete o.play;
+
+	if(o.enabled)
+		this.enabled = true;
 	if(o.range) 
 		this.range = o.range.concat();
 	if(o.mode !== undefined) 
@@ -25964,15 +26401,15 @@ PlayAnimation.prototype.onUpdate = function(e, dt)
 	if(!this.enabled)
 		return;
 
-	var animation = this.getAnimation();
-	if(!animation) 
-		return;
-
 	if(!this.playing)
 		return;
 
 	if( this.mode != PlayAnimation.PAUSED )
 		this.current_time += dt * this.playback_speed;
+
+	var animation = this.getAnimation();
+	if(!animation) 
+		return;
 
 	var take = animation.takes[ this.take ];
 	if(!take) 
@@ -25997,6 +26434,8 @@ PlayAnimation.prototype.onUpdate = function(e, dt)
 		{
 			case PlayAnimation.ONCE: 
 					time = end_time; 
+					//time = start_time; //reset after
+					LEvent.trigger( this, "end_animation" );
 					this.playing = false;
 				break;
 			case PlayAnimation.LOOP: time = ((this.current_time - start_time) % duration) + start_time; break;
@@ -26014,18 +26453,9 @@ PlayAnimation.prototype.onUpdate = function(e, dt)
 	else if(time < start_time)
 		time = start_time;
 
-	var root_node = null;
-	if(this.root_node && this._root.scene)
-	{
-		if(this.root_node == "@")
-			root_node = this._root;
-		else
-			root_node = this._root.scene.getNode( this.root_node );
-	}
+	this.applyAnimation( time, this._last_time );
 
-	take.applyTracks( time, this._last_time, undefined, root_node );
 	this._last_time = time; //TODO, add support for pingpong events in tracks
-
 	//take.actionPerSample( this.current_time, this._processSample.bind( this ), { disabled_tracks: this.disabled_tracks } );
 
 	var scene = this._root.scene;
@@ -26037,20 +26467,63 @@ PlayAnimation.prototype.onUpdate = function(e, dt)
 PlayAnimation.prototype.play = function()
 {
 	this.playing = true;
+
+	this.current_time = 0;
+	if(this.range)
+		this.current_time = this.range[0];
+	this._last_time = this.current_time;
+	LEvent.trigger( this, "start_animation" );
+
+	//this.applyAnimation( this.current_time );
+}
+
+PlayAnimation.prototype.pause = function()
+{
+	this.playing = false;
 }
 
 PlayAnimation.prototype.stop = function()
 {
 	this.playing = false;
+
+	this.current_time = 0;
+	if(this.range)
+		this.current_time = this.range[0];
+	this._last_time = this.current_time;
+	//this.applyAnimation( this.current_time );
 }
 
 PlayAnimation.prototype.playRange = function( start, end )
 {
 	this.playing = true;
 	this.current_time = start;
+	this._last_time = this.current_time;
 	this.range = [ start, end ];
 }
 
+PlayAnimation.prototype.applyAnimation = function( time, last_time )
+{
+	if( last_time === undefined )
+		last_time = time;
+
+	var animation = this.getAnimation();
+	if(!animation) 
+		return;
+
+	var take = animation.takes[ this.take ];
+	if(!take) 
+		return;
+
+	var root_node = null;
+	if(this.root_node && this._root.scene)
+	{
+		if(this.root_node == "@")
+			root_node = this._root;
+		else
+			root_node = this._root.scene.getNode( this.root_node );
+	}
+	take.applyTracks( time, last_time, undefined, root_node );
+}
 
 PlayAnimation.prototype._processSample = function(nodename, property, value, options)
 {
@@ -26093,6 +26566,19 @@ PlayAnimation.prototype.onResourceRenamed = function (old_name, new_name, resour
 	if(this.animation == old_name)
 		this.animation = new_name;
 }
+
+//returns which events can trigger this component
+PlayAnimation.prototype.getEvents = function()
+{
+	return { "start_animation": "event", "end_animation": "event" };
+}
+
+//returns which actions can be triggered in this component
+PlayAnimation.prototype.getEventActions = function()
+{
+	return { "play": "function","pause": "function","stop": "function" };
+}
+
 
 LS.registerComponent( PlayAnimation );
 /**
@@ -26521,7 +27007,7 @@ Script.prototype.setProperty = function(name, value)
 }
 
 
-Script.prototype.getProperties = function()
+Script.prototype.getPropertiesInfo = function()
 {
 	var ctx = this.getContext();
 
@@ -28313,7 +28799,7 @@ LS.Formats = {
 //native formats do not need parser
 LS.Formats.addSupportedFormat( "png,jpg,jpeg,webp,bmp,gif", { "native": true, dataType: "arraybuffer", resource: "Texture", "resourceClass": GL.Texture, has_preview: true, type: "image" } );
 LS.Formats.addSupportedFormat( "wbin", { dataType: "arraybuffer" } );
-LS.Formats.addSupportedFormat( "json,js,txt,csv", { dataType: "text" } );
+LS.Formats.addSupportedFormat( "json,js,txt,html,css,csv", { dataType: "text" } );
 LS.Formats.addSupportedFormat( "glsl", { dataType: "text", resource: "ShaderCode", "resourceClass": LS.ShaderCode  } );
 WBin.classes = LS.Classes; //WBin need to know which classes are accesible to be instantiated right from the WBin data info, in case the class is not a global class
 
@@ -33446,6 +33932,14 @@ SceneTree.prototype.start = function()
 	this._state = LS.RUNNING;
 	this._start_time = getTime() * 0.001;
 	/**
+	 * Fired when the nodes need to be initialized
+	 *
+	 * @event init
+	 * @param {LS.SceneTree} scene
+	 */
+	LEvent.trigger(this,"init",this);
+	this.triggerInNodes("init");
+	/**
 	 * Fired when the scene is starting to play
 	 *
 	 * @event start
@@ -33503,6 +33997,7 @@ SceneTree.prototype.collectData = function()
 	var lights = this._lights;
 	var cameras = this._cameras;
 	var colliders = this._colliders;
+
 	instances.length = 0;
 	lights.length = 0;
 	cameras.length = 0;
@@ -33529,7 +34024,7 @@ SceneTree.prototype.collectData = function()
 			LEvent.trigger( node, "computingShaderQuery", node_query );
 
 			var node_uniforms = {};
-			LEvent.trigger(node, "computingShaderUniforms", node_uniforms );
+			LEvent.trigger( node, "computingShaderUniforms", node_uniforms );
 
 		//store info
 		node._query = node_query;

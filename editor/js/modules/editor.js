@@ -514,12 +514,23 @@ var EditorModule = {
 
 	showNodeInfo: function( node )
 	{
-		var dialog = new LiteGUI.Dialog("node_info",{ title:"Node Info", width: 400, draggable: true, closable: true });
+		var dialog = new LiteGUI.Dialog("node_info",{ title:"Node Info", width: 500, draggable: true, closable: true });
 		
 		var widgets = new LiteGUI.Inspector();
 		widgets.addString("Name", node.name, function(v){ node.name = v; });
 		widgets.addString("UID", node.uid, function(v){ node.uid = v; });
 		widgets.addCheckbox("Visible", node.visible, function(v){ node.flags.visible = v; });
+
+		var events = {};
+		if(node.__levents)
+			for(var i in node.__levents)
+				events[ i ] = node.__levents[i];
+		widgets.addCombo("Binded Events",null,{ values: events, callback: function(v){
+			console.log(v);
+		}});
+
+		widgets.addSeparator();
+
 		widgets.addButtons(null,["Show JSON","Close"], function(v){
 			if(v == "Show JSON")
 				EditorModule.checkJSON( node );
@@ -583,7 +594,7 @@ var EditorModule = {
 
 	showComponentInfo: function( component )
 	{
-		var dialog = new LiteGUI.Dialog("component_info",{ title:"Component Info", width: 400, draggable: true, closable: true });
+		var dialog = new LiteGUI.Dialog("component_info",{ title:"Component Info", width: 500, draggable: true, closable: true });
 		
 		var widgets = new LiteGUI.Inspector();
 		widgets.addString("Class", LS.getObjectClassName(component), { disabled: true } );
@@ -606,6 +617,14 @@ var EditorModule = {
 
 		if( component.onComponentInfo )
 			component.onComponentInfo( widgets );
+
+		var events = {};
+		if(component.__levents)
+			for(var i in component.__levents)
+				events[ i ] = component.__levents[i];
+		widgets.addCombo("Binded Events",null,{ values: events, callback: function(v){
+			console.log(v);
+		}});
 
 		widgets.addSeparator();
 
@@ -896,6 +915,17 @@ var EditorModule = {
 		var r = node.setPropertyValue( tokens[1], value );
 		EditorModule.refreshAttributes();
 		RenderModule.requestFrame();
+	},
+
+	createGraph: function()
+	{
+		var compo = new LS.Components.GraphComponent();
+		var node = SelectionModule.getSelectedNode() || LS.GlobalScene.root;
+		UndoModule.saveNodeChangeUndo( node );
+		node.addComponent(compo);
+		EditorModule.refreshAttributes();
+		RenderModule.requestFrame();
+		GraphModule.editInstanceGraph( compo,null,true );
 	},
 
 	createNullNode: function()
@@ -1230,7 +1260,7 @@ var EditorModule = {
 
 	showCreateContextualMenu: function( instance, e, prev_menu )
 	{
-		var options = ["SceneNode","Light","Camera"];
+		var options = ["SceneNode","Light","Camera","Graph"];
 
 		var canvas_event = EditorView._canvas_event || e;
 		GL.augmentEvent(canvas_event); //adds canvasx and canvasy
@@ -1244,6 +1274,8 @@ var EditorModule = {
 				node = EditorModule.createLightNode();
 			if(v == "Camera")
 				node = EditorModule.createCameraNode();
+			if(v == "Graph")
+				node = EditorModule.createGraph();
 
 			if(node && position)
 				node.transform.position = position;

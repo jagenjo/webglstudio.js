@@ -843,7 +843,7 @@ var DriveModule = {
 		}});
 
 		widgets.addButton(null,"Continue",function(){
-			if(!folder || !filename)
+			if( (!folder && !options.allow_no_folder) || !filename)
 				return;
 
 			dialog.close();
@@ -854,8 +854,10 @@ var DriveModule = {
 				if(ext != options.extension)
 					filename += options.extension;
 			}
+
+			var fullpath = LS.RM.cleanFullpath( folder + "/" + filename );
 			if(on_complete)
-				on_complete( folder, filename );
+				on_complete( folder, filename, fullpath );
 		});
 
 		dialog.add(widgets);
@@ -2180,10 +2182,10 @@ DriveModule._textResourceCallback = function( fullpath, restype, options ) {
 		var lang = "text";
 		if( extension == "json" || extension == "js")
 			lang = "javascript";
-		else if( extension == "glsl" )
-			lang = "glsl";
-		else if( extension == "html" )
-			lang = "html";
+		if( extension == "html")
+			lang = "xml";
+		else if(extension)
+			lang = extension;
 
 		var title = LS.ResourcesManager.getFilename( fullpath );
 		CodingModule.editInstanceCode( resource, { title: title, lang: lang }, true );
@@ -2192,7 +2194,7 @@ DriveModule._textResourceCallback = function( fullpath, restype, options ) {
 		console.warn("No data found in resource");
 }
 
-DriveModule.registerAssignResourceCallback(["Resource","application/javascript","text/plain","text/html","text/csv","TEXT"], DriveModule._textResourceCallback );
+DriveModule.registerAssignResourceCallback(["Data","Resource","application/javascript","text/plain","text/html","text/css","text/csv","TEXT"], DriveModule._textResourceCallback );
 DriveModule.registerAssignResourceCallback(["ShaderCode","Script"], DriveModule._textResourceCallback );
 
 LiteGUI.Inspector.prototype.addFolder = function( name,value, options )

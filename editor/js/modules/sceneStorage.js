@@ -663,7 +663,6 @@ var SceneStorageModule = {
 		{
 			LS.GlobalScene.loadResources();
 			LS.GlobalScene.name = name;
-			RenderModule.restoreSceneCamera();
 		}
 	},
 
@@ -689,7 +688,6 @@ var SceneStorageModule = {
 		LS.GlobalScene.clear();
 		LS.GlobalScene.configure(data);
 		LS.GlobalScene.loadResources();
-		RenderModule.restoreSceneCamera();
 	},
 
 	deleteServerScene: function(filename)

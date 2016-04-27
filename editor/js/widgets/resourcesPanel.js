@@ -670,7 +670,7 @@ ResourcesPanelWidget.prototype.applyFilters = function( items )
 		if( this.filter_by_name && filename )
 		{
 			filename = filename.toLowerCase();
-			if( this.filter_by_name && filename.indexOf( this.filter_by_name ) != -1 )
+			if( this.filter_by_name && filename.indexOf( this.filter_by_name ) == -1 )
 				must_be_filtered = true;
 		}
 
@@ -793,7 +793,7 @@ ResourcesPanelWidget.prototype.onShowCreateShaderDialog = function( options )
 		shader_code.filename = filename;
 		if(folder && folder != "")
 			shader_code.fullpath = folder + "/" + filename;
-		shader_code.code = options.content || LS.ShaderCode.example;
+		shader_code.code = options.content || LS.ShaderCode.examples.fullshader;
 
 		//upload to server? depends if it is local or not
 		LS.ResourcesManager.registerResource( shader_code.fullpath || shader_code.filename, shader_code );

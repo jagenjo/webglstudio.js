@@ -8,6 +8,8 @@ GraphWidget.litegraph_path = "../../litegraph/";
 GraphWidget.litegraph_css_url = "css/litegraph.css";
 GraphWidget.litegraph_background = "imgs/litegraph_grid.png";
 
+LGraphCanvas.link_type_colors["Component"] = "#D99";
+
 GraphWidget.widget_name = "Graph";
 CORE.registerWidget( GraphWidget );
 
@@ -43,6 +45,8 @@ GraphWidget.prototype.init = function()
 	this.graphcanvas.onConnectionChange = function() { setTimeout( function(){LS.GlobalScene.refresh();},100); }
 	this.graphcanvas.onMouseDown = function(){ LiteGUI.focus_widget = this; }
 	this.graphcanvas.onKeyDown = function(e){ return this.processKey(e); }
+//	this.graphcanvas.onMenuNodeInputs = this.onMenuNodeInputs.bind(this);
+	this.graphcanvas.onMenuNodeOutputs = this.onMenuNodeOutputs.bind(this);
 	this.graphcanvas.getExtraMenuOptions = this.onGetExtraMenuOptions.bind(this);
 
 	this.root.addEventListener("DOMNodeInsertedIntoDocument", function(){ 
@@ -178,8 +182,8 @@ GraphWidget.prototype.onDropItem = function( e )
 	else if(item_type == "Component")
 	{
 		var graphnode = LiteGraph.createNode( item_class == "Transform" ? "scene/transform" : "scene/component");
-		graphnode.properties.node = item_node_uid;
-		graphnode.properties.component = item_uid;
+		graphnode.properties.node_id = item_node_uid;
+		graphnode.properties.component_id = item_uid;
 		graphnode.pos[0] = e.canvasX;
 		graphnode.pos[1] = e.canvasY;
 		this.graph.add( graphnode );
@@ -245,6 +249,40 @@ GraphWidget.prototype.onComponentRemoved = function( component )
 {
 	//TODO
 }
+
+/*
+GraphWidget.prototype.onMenuNodeInputs = function( options )
+{
+	options = options || [];
+	options.push(null);
+	options.push({content:"New action", callback: function( node ){
+		LiteGUI.prompt("Enter action name", function(v){
+			if(!v)
+				return;
+			node.addInput( v, LiteGraph.ACTION );
+		});
+	}});
+
+	return options;
+}
+*/
+
+GraphWidget.prototype.onMenuNodeOutputs = function( options )
+{
+	options = options || [];
+	options.push(null);
+	options.push({content:"New event", callback: function( node ){
+		LiteGUI.prompt("Enter event name", function(v){
+			if(!v)
+				return;
+			node.addOutput( "on_" + v, LiteGraph.EVENT );
+		});
+	}});
+
+	return options;
+}
+
+
 
 GraphWidget.prototype.onNewGraph = function()
 {
@@ -384,6 +422,7 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 
 	inspector.addSection("Node");
 	inspector.addString("Title", graphnode.title, { disabled: graphnode.ignore_rename, callback: function(v) { graphnode.title = v; }});
+	inspector.addCombo("Mode", graphnode.mode, { values: { "Always": LiteGraph.ALWAYS,"On Trigger": LiteGraph.ON_TRIGGER,"Never": LiteGraph.NEVER }, callback: function(v) { graphnode.mode = v; }});
 	inspector.addSeparator();
 
 	var widgets_info = graphnode.constructor.widgets_info || graphnode.widgets_info;
@@ -428,6 +467,25 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 		inspector.addInfo(null, graphnode.help);
 
 	inspector.addSeparator();
+
+	if( graphnode.constructor == LGraphComponent || graphnode.constructor == LGraphSceneNode )
+	{
+		inspector.addButton(null, "Inspect node", function(){
+			var node = null;
+			if( graphnode.constructor == LGraphComponent )
+			{
+				var component = graphnode.getComponent();
+				if(component)
+					node = component._root;
+			}
+			else if( graphnode.constructor == LGraphSceneNode )
+					node = component.getNode();
+
+			if(node)
+				EditorModule.inspect( node );
+		});
+	}
+
 
 	inspector.addButtons(null, ["Collapse","Remove"], { callback: function(v) { 
 		if(v == "Collapse")

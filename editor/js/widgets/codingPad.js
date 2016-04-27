@@ -863,6 +863,10 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 		that.changeFontSize(+1);
 	}});
 
+	this.lang_widget = top_widgets.addCombo("Highlight","javascript",{ width: 200, values: {"javascript":"javascript", "GLSL":"x-shader/x-fragment", "HTML":"XML","text":"text"}, callback: function(v) { 
+		that.editor.setOption( "mode", v );
+	}});
+
 	var coding_workarea_root = coding_area;
 
 	var coding_workarea = this.workarea = new LiteGUI.Area("coding-workarea");
@@ -962,8 +966,11 @@ CodingPadWidget.codemirror_scripts = ["js/extra/codemirror/codemirror.js",
 								"js/extra/codemirror/search/matchesonscrollbar.js",
 								"js/extra/codemirror/search/match-highlighter.js",
 								"js/extra/codemirror/search/jump-to-line.js",
-								"js/extra/codemirror/clike.js",
-								"js/extra/codemirror/javascript.js"];
+								"js/extra/codemirror/javascript.js",
+								"js/extra/codemirror/clike.js", //for glsl
+								"js/extra/codemirror/xml.js", //for html
+								"js/extra/codemirror/css.js"
+								];
 CodingPadWidget.codemirror_css = ["js/extra/codemirror/codemirror.css",
 							"js/extra/codemirror/blackboard.css",
 							"js/extra/codemirror/search/matchesonscrollbar.css",

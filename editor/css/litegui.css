@@ -335,7 +335,7 @@
 }
 
 .inspector .wcontent .inputcombo {
-	border-bottom: 1px solid #888; 
+	border-bottom: 1px solid #666; 
 	border-top: 1px solid #111; 
 	/*
     background: -webkit-linear-gradient(#4B4947, #32302D) repeat scroll 0 0 transparent;
@@ -346,7 +346,7 @@
 }
 
 .inspector .wcontent .inputcombo select {
-	background: #333;
+	background: #262626;
 }
 
 

@@ -441,19 +441,6 @@ var RenderModule = {
 		LS.GlobalScene.refresh();
 	},
 
-	restoreSceneCamera: function()
-	{
-		if( LS.GlobalScene.extra.cam_orbit) 
-			RenderModule.cam_orbit = Scene.extra.cam_orbit;
-		else 
-			RenderModule.cam_orbit = [0,15,200];
-
-		if( LS.GlobalScene.extra.focus_point) 
-			cameraTool.focus_point = Scene.extra.focus_point;
-		else 
-			cameraTool.focus_point = [0,0,0];
-	},
-
 	setAutoSelect: function(v)
 	{
 		cameraTool.auto_select = v;

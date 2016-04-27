@@ -30,6 +30,9 @@ var LiteGraph = {
 	node_images_path: "",
 
 	//enums
+	INPUT: 1, 
+	OUTPUT: 2, 
+
 	EVENT: -1, //for outputs
 	ACTION: -1, //for inputs
 
@@ -680,7 +683,7 @@ LGraph.prototype.add = function(node, skip_compute_order)
 	*/
 
 	if(node.onAdded)
-		node.onAdded();
+		node.onAdded( this );
 
 	if(this.config.align_to_grid)
 		node.alignToGrid();
@@ -1228,6 +1231,7 @@ LGraph.prototype.onNodeTrace = function(node, msg, color)
 		+ onDropItem : DOM item dropped over the node
 		+ onDropFile : file dropped over the node
 		+ onConnectInput : if returns false the incoming connection will be canceled
+		+ onConnectionsChange : a connection changed (new one or removed)
 */
 
 /**
@@ -1296,7 +1300,11 @@ LGraphNode.prototype.configure = function(info)
 		{
 			//i dont want to clone properties, I want to reuse the old container
 			for(var k in info.properties)
+			{
 				this.properties[k] = info.properties[k];
+				if(this.onPropertyChanged)
+					this.onPropertyChanged(k,info.properties[k]);
+			}
 			continue;
 		}
 
@@ -1312,6 +1320,9 @@ LGraphNode.prototype.configure = function(info)
 		else //value
 			this[j] = info[j];
 	}
+
+	if(this.onConnectionsChange)
+		this.onConnectionsChange();
 
 	//FOR LEGACY, PLEASE REMOVE ON NEXT VERSION
 	for(var i in this.inputs)
@@ -1448,13 +1459,30 @@ LGraphNode.prototype.setOutputData = function(slot,data)
 * @param {number} slot
 * @return {*} data or if it is not connected returns undefined
 */
-LGraphNode.prototype.getInputData = function(slot)
+LGraphNode.prototype.getInputData = function( slot, force_update )
 {
 	if(!this.inputs) 
 		return; //undefined;
-	if(slot < this.inputs.length && this.inputs[slot].link != null)
-		return this.graph.links[ this.inputs[slot].link ].data;
-	return; //undefined;
+
+	if(slot >= this.inputs.length || this.inputs[slot].link == null)
+		return;
+
+	var link_id = this.inputs[slot].link;
+	var link = this.graph.links[ link_id ];
+
+	if(!force_update)
+		return link.data;
+
+	var node = this.graph.getNodeById( link.origin_id );
+	if(!node)
+		return link.data;
+
+	if(node.updateOutputData)
+		node.updateOutputData( link.origin_slot );
+	else if(node.onExecute)
+		node.onExecute();
+
+	return link.data;
 }
 
 /**
@@ -1535,20 +1563,12 @@ LGraphNode.prototype.getOutputNodes = function(slot)
 	return null;
 }
 
-LGraphNode.prototype.triggerOutput = function(slot,param)
-{
-	var nodes = this.getOutputNodes(slot);
-	if(!nodes)
-		return;
-
-	for(var i = 0; i < nodes.length; ++i)
-	{
-		var n = nodes[i];
-		if(n && n.onTrigger)
-			n.onTrigger(param);
-	}
-}
-
+/**
+* Triggers an event in this node, this will launch any event related output connected to it
+* @method trigger
+* @param {String} event name
+* @param {*} parameters
+*/
 LGraphNode.prototype.trigger = function(action, param)
 {
 	if( !this.outputs || !this.outputs.length )
@@ -1561,25 +1581,26 @@ LGraphNode.prototype.trigger = function(action, param)
 			continue;
 
 		var links = output.links;
-		for(var k = 0; k < links.length; ++k)
-		{
-			var link_info = this.graph.links[ links[k] ];
-			if(!link_info)
-				continue;
-			var node = this.graph.getNodeById( link_info.target_id );
-			if(!node)
-				continue;
-
-			var target_connection = node.inputs[ link_info.target_slot ];
-
-			if(node.onAction)
-				node.onAction( target_connection.name, param );
-			else if(node.mode === LiteGraph.ON_TRIGGER)
+		if(links)
+			for(var k = 0; k < links.length; ++k)
 			{
-				if(node.onExecute)
-					node.onExecute(param);
+				var link_info = this.graph.links[ links[k] ];
+				if(!link_info)
+					continue;
+				var node = this.graph.getNodeById( link_info.target_id );
+				if(!node)
+					continue;
+
+				var target_connection = node.inputs[ link_info.target_slot ];
+
+				if(node.onAction)
+					node.onAction( target_connection.name, param );
+				else if(node.mode === LiteGraph.ON_TRIGGER)
+				{
+					if(node.onExecute)
+						node.onExecute(param);
+				}
 			}
-		}
 	}
 }
 
@@ -1979,6 +2000,11 @@ LGraphNode.prototype.connect = function( slot, node, target_slot )
 		output.links.push( link.id );
 		//connect in input
 		node.inputs[target_slot].link = link.id;
+
+		if(this.onConnectionsChange)
+			this.onConnectionsChange( LiteGraph.OUTPUT, slot );
+		if(node.onConnectionsChange)
+			node.onConnectionsChange( LiteGraph.OUTPUT, target_slot );
 	}
 
 	this.setDirtyCanvas(false,true);
@@ -2090,6 +2116,7 @@ LGraphNode.prototype.disconnectInput = function(slot)
 	var input = this.inputs[slot];
 	if(!input)
 		return false;
+
 	var link_id = this.inputs[slot].link;
 	this.inputs[slot].link = null;
 
@@ -2116,6 +2143,11 @@ LGraphNode.prototype.disconnectInput = function(slot)
 				break;
 			}
 		}
+
+		if(this.onConnectionsChange)
+			this.onConnectionsChange( LiteGraph.OUTPUT );
+		if(node.onConnectionsChange)
+			node.onConnectionsChange( LiteGraph.INPUT);
 	}
 
 	this.setDirtyCanvas(false,true);
@@ -2199,6 +2231,7 @@ LGraphNode.prototype.loadImage = function(url)
 }
 
 //safe LGraphNode action execution (not sure if safe)
+/*
 LGraphNode.prototype.executeAction = function(action)
 {
 	if(action == "") return false;
@@ -2234,6 +2267,7 @@ LGraphNode.prototype.executeAction = function(action)
 
 	return true;
 }
+*/
 
 /* Allows to get onMouseMove and onMouseUp events even if the mouse is out of focus */
 LGraphNode.prototype.captureInput = function(v)
@@ -2329,7 +2363,7 @@ function LGraphCanvas( canvas, graph, options )
 	this.autoresize = options.autoresize;
 }
 
-LGraphCanvas.link_type_colors = {'number':"#AAC",'node':"#DCA"};
+LGraphCanvas.link_type_colors = {"-1":"#CCC",'number':"#AAC","node":"#DCA"};
 
 
 /**
@@ -4235,7 +4269,8 @@ LGraphCanvas.prototype.drawConnections = function(ctx)
 					continue;
 				var link_id = input.link;
 				var link = this.graph.links[ link_id ];
-				if(!link) continue;
+				if(!link)
+					continue;
 
 				var start_node = this.graph.getNodeById( link.origin_id );
 				if(start_node == null) continue;
@@ -4247,7 +4282,7 @@ LGraphCanvas.prototype.drawConnections = function(ctx)
 				else
 					start_node_slotpos = start_node.getConnectionPos(false, start_node_slot);
 
-				var color = LGraphCanvas.link_type_colors[node.inputs[i].type];
+				var color = LGraphCanvas.link_type_colors[ node.inputs[i].type ];
 				if(color == null)
 					color = LGraphCanvas.link_colors[node.id % LGraphCanvas.link_colors.length];
 				this.renderLink(ctx, start_node_slotpos, node.getConnectionPos(true,i), color );
@@ -4498,16 +4533,19 @@ LGraphCanvas.onMenuNodeEdit = function()
 
 }
 
-LGraphCanvas.onMenuNodeInputs = function(node, e, prev_menu)
+LGraphCanvas.showMenuNodeInputs = function(node, e, prev_menu)
 {
-	if(!node) return;
+	if(!node)
+		return;
+
+	var that = this;
 
 	var options = node.optional_inputs;
 	if(node.onGetInputs)
 		options = node.onGetInputs();
+
+	var entries = [];
 	if(options)
-	{
-		var entries = [];
 		for (var i in options)
 		{
 			var entry = options[i];
@@ -4516,31 +4554,52 @@ LGraphCanvas.onMenuNodeInputs = function(node, e, prev_menu)
 				label = entry[2].label;
 			entries.push({content: label, value: entry});
 		}
-		var menu = LiteGraph.createContextualMenu(entries, {event: e, callback: inner_clicked, from: prev_menu});
-	}
 
-	function inner_clicked(v)
+	if(this.onMenuNodeInputs)
+		entries = this.onMenuNodeInputs( entries );
+
+	if(!entries.length)
+		return;
+
+	var menu = LiteGraph.createContextualMenu(entries, {event: e, callback: inner_clicked, from: prev_menu});
+
+	function inner_clicked(v, e, prev)
 	{
-		if(!node) return;
-		node.addInput(v.value[0],v.value[1], v.value[2]);
+		if(!node)
+			return;
+
+		if(v.callback)
+			v.callback.call(that, node, v, e, prev);
+
+		if(v.value)
+			node.addInput(v.value[0],v.value[1], v.value[2]);
 	}
 
 	return false;
 }
 
-LGraphCanvas.onMenuNodeOutputs = function(node, e, prev_menu)
+LGraphCanvas.showMenuNodeOutputs = function(node, e, prev_menu)
 {
-	if(!node) return;
+	if(!node)
+		return;
+
+	var that = this;
 
 	var options = node.optional_outputs;
 	if(node.onGetOutputs)
 		options = node.onGetOutputs();
+
+	var entries = [];
 	if(options)
-	{
-		var entries = [];
 		for (var i in options)
 		{
 			var entry = options[i];
+			if(!entry) //separator?
+			{
+				entries.push(null);
+				continue;
+			}
+
 			if(node.findOutputSlot(entry[0]) != -1)
 				continue; //skip the ones already on
 			var label = entry[0];
@@ -4548,18 +4607,29 @@ LGraphCanvas.onMenuNodeOutputs = function(node, e, prev_menu)
 				label = entry[2].label;
 			entries.push({content: label, value: entry});
 		}
-		if(entries.length)
-			var menu = LiteGraph.createContextualMenu(entries, {event: e, callback: inner_clicked, from: prev_menu});
-	}
 
-	function inner_clicked(v)
+	if(this.onMenuNodeOutputs)
+		entries = this.onMenuNodeOutputs( entries );
+
+	if(!entries.length)
+		return;
+
+	var menu = LiteGraph.createContextualMenu(entries, {event: e, callback: inner_clicked, from: prev_menu});
+
+	function inner_clicked( v, e, prev )
 	{
 		if(!node)
 			return;
 
+		if(v.callback)
+			v.callback.call(that, node, v, e, prev);
+
+		if(!v.value)
+			return;
+
 		var value = v.value[1];
 
-		if(value && (value.constructor === Object || value.constructor === Array)) //submenu
+		if(value && (value.constructor === Object || value.constructor === Array)) //submenu why?
 		{
 			var entries = [];
 			for(var i in value)
@@ -4704,8 +4774,8 @@ LGraphCanvas.prototype.getNodeMenuOptions = function(node)
 		options = node.getMenuOptions(this);
 	else
 		options = [
-			{content:"Inputs", is_menu: true, disabled:true, callback: LGraphCanvas.onMenuNodeInputs },
-			{content:"Outputs", is_menu: true, disabled:true, callback: LGraphCanvas.onMenuNodeOutputs },
+			{content:"Inputs", is_menu: true, disabled:true, callback: LGraphCanvas.showMenuNodeInputs },
+			{content:"Outputs", is_menu: true, disabled:true, callback: LGraphCanvas.showMenuNodeOutputs },
 			null,
 			{content:"Mode", is_menu: true, callback: LGraphCanvas.onMenuNodeMode },
 			{content:"Collapse", callback: LGraphCanvas.onMenuNodeCollapse },
@@ -4792,7 +4862,7 @@ LGraphCanvas.prototype.processContextualMenu = function(node, event)
 		}
 
 		if(v.callback)
-			return v.callback(node, e, menu, that, event );
+			return v.callback.call(that, node, e, menu, that, event );
 	}
 }
 

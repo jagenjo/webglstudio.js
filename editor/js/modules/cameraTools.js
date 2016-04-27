@@ -45,6 +45,15 @@ var cameraTool = {
 	},
 
 	keydown: function(e) {
+		if(gl.mouse.right_button)
+		{
+			if(e.ctrlKey)
+			{
+				e.preventDefault();
+				e.stopPropagation();
+				return true;
+			}
+		}
 	},
 
 	mousedown: function(e) {
@@ -133,6 +142,8 @@ var cameraTool = {
 		var speed = this.fps_speed;
 		if(gl.keys['SHIFT'])
 			speed *= 10;
+		if(gl.keys['CONTROL'])
+			speed *= 0.1;
 
 		var update_frame = false;
 
@@ -200,7 +211,6 @@ var cameraTool = {
 		//console.log(gl.mouse_buttons);
 		var camera = this.last_camera || ToolUtils.getCamera(e);
 
-
 		var controls = null;
 		if (e.isButtonPressed(GL.LEFT_MOUSE_BUTTON))
 			controls = this.controls[ "LEFT_MOUSE" ];
@@ -243,38 +253,6 @@ var cameraTool = {
 				cameraTool.rotateCamera( e.deltax * this.settings.rotate_speed, e.deltay * -this.settings.rotate_speed, camera );
 				break;
 		}
-
-
-		/*
-		if(e.isButtonPressed(GL.LEFT_MOUSE_BUTTON) && e.isButtonPressed(GL.RIGHT_MOUSE_BUTTON))  //left and right
-		{
-			cameraTool.moveCamera([0,0,e.deltay],true, camera);
-		}
-		else if(e.isButtonPressed(GL.MIDDLE_MOUSE_BUTTON)) //wheel mouse
-		{
-			if(e.altKey || e.metaKey) //orbit
-			{
-				this.orbit(e, camera);
-			}
-			else //panning
-			{
-				LiteGUI.setCursor("move");
-				this.panning(e, camera);
-			}
-		}
-		else 
-		{
-			if(e.isButtonPressed(GL.RIGHT_MOUSE_BUTTON))
-				cameraTool.rotateCamera( e.deltax * this.settings.rotate_speed, e.deltay * -this.settings.rotate_speed, camera );
-			else if(e.isButtonPressed(GL.LEFT_MOUSE_BUTTON))
-			{
-				if(e.metaKey)
-					this.panning(e, camera);
-				else
-					this.orbit(e, camera);
-			}
-		}
-		*/
 	},
 	
 	orbit: function( e, camera )
@@ -424,33 +402,6 @@ var cameraTool = {
 
 		LS.GlobalScene.refresh();
 	},
-
-	/*
-	setFocusPointOnNode: function(node, center_in_mesh) {
-		if(!node) return;
-
-		var center = vec3.create();
-
-		if(node.transform)
-		{
-			var mesh = node.getMesh();
-			if(!mesh)
-				center = node.transform.getGlobalPosition();
-			else
-			{
-				if(center_in_mesh)
-				{
-					var mesh = node.getMesh();
-					var bounding = mesh.bounding;
-					center.set( BBox.getCenter(mesh.bounding) );
-					center = node.transform.transformPointGlobal(center, center);
-				}
-			}
-		}
-
-		this.setFocusPoint(center);
-	},
-	*/
 
 	setFocusPoint: function( point, distance ) {
 		var camera = this.last_camera || ToolUtils.getCamera();

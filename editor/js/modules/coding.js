@@ -205,9 +205,25 @@ CORE.registerModule( CodingModule );
 
 /* editors **************************************/
 
+LS.Components.Script.prototype.getExtraTitleCode = LS.Components.ScriptFromFile.prototype.getExtraTitleCode = function()
+{
+	return "<span class='icon script-context-icon'><img src='" + EditorModule.icons_path + LS.Script.icon + "'/></span>";
+}
+
 LS.Components.Script["@inspector"] = function(component, attributes)
 {
+	var context_locator = component.getLocator() + "/context";
 	var context = component.getContext();
+
+	var icon = this.current_section.querySelector(".script-context-icon");
+	icon.addEventListener("dragstart", function(event) { 
+		event.dataTransfer.setData("uid", context_locator );
+		event.dataTransfer.setData("locator", context_locator );
+		event.dataTransfer.setData("type", "object");
+		event.dataTransfer.setData("node_uid", component.root.uid);
+		if(component.setDragData)
+			component.setDragData(event);
+	});
 
 	attributes.widgets_per_row = 2;
 	attributes.addString("Name", component.name, { pretitle: AnimationModule.getKeyframeCode( component, "context"), callback: function(v) { 
@@ -274,15 +290,6 @@ LS.Components.Script.prototype.onComponentInfo = function( widgets )
 	var component = this;
 
 	var locator_widget = widgets.addString("Context Locator", this.getLocator() + "/context", { disabled: true } );
-	/*
-	locator_widget.style.cursor = "pointer";
-	locator_widget.setAttribute("draggable","true");
-	locator_widget.addEventListener("dragstart", function(event) { 
-		event.dataTransfer.setData("locator", component.getContext().getLocator() );
-		event.dataTransfer.setData("type", "property");
-		event.dataTransfer.setData("node_uid", component.root.uid);
-	});
-	*/
 
 	var values = [""];
 	var context = this.getContext();

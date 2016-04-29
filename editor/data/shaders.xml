@@ -845,7 +845,7 @@
 			uniform float u_point_size;
 
 			#if defined(USE_SHADOW_MAP) || defined(USE_LIGHT_TEXTURE)
-				uniform mat4 u_lightMatrix;
+				uniform mat4 u_light_matrix;
 				varying vec4 v_light_coord;
 			#endif		
 			
@@ -918,7 +918,7 @@
 				v_normal = (u_normal_model * vec4(normal,1.0)).xyz;
 
 				#if defined(USE_SHADOW_MAP) || defined(USE_LIGHT_TEXTURE)
-					v_light_coord = (u_lightMatrix) * vertex4;
+					v_light_coord = u_light_matrix * vec4(v_pos,1.0);
 				#endif				
 
 				//gl_PointSize = (u_point_size / length(u_camera_eye - v_pos)) * u_camera_perspective.y; 
@@ -1131,7 +1131,7 @@
 			uniform float u_point_size;
 
 			#if defined(USE_SHADOW_MAP) || defined(USE_LIGHT_TEXTURE)
-				uniform mat4 u_lightMatrix;
+				uniform mat4 u_light_matrix;
 				varying vec4 v_light_coord;
 			#endif		
 			
@@ -1204,7 +1204,7 @@
 				v_normal = (u_normal_model * vec4(normal,1.0)).xyz;
 
 				#if defined(USE_SHADOW_MAP) || defined(USE_LIGHT_TEXTURE)
-					v_light_coord = (u_lightMatrix) * vertex4;
+					v_light_coord = u_light_matrix * vec4(v_pos, 1.0);
 				#endif				
 
 				//gl_PointSize = (u_point_size / length(u_camera_eye - v_pos)) * u_camera_perspective.y; 
@@ -1408,7 +1408,7 @@
 	<shader id="global" tags="instance" multipass="true" imports="true">
 		<macros>
 			NO_NORMALS, NO_COORDS, USE_COORDS1_STREAM, USE_COLOR_STREAM, USE_TANGENT_STREAM,
-			USE_ALPHA_TEST, USE_POINTS,USE_CLIPPING_PLANE,USE_BRIGHTNESS_FACTOR,USE_COLORCLIP_FACTOR,USE_TEXTURE_MATRIX,
+			USE_ALPHA_TEST, USE_POINTS,USE_CLIPPING_PLANE,USE_TEXTURE_MATRIX,
 			USE_COLOR_TEXTURE, USE_COLOR_CUBEMAP, USE_OPACITY_TEXTURE, USE_SPECULAR_TEXTURE, USE_AMBIENT_TEXTURE, USE_EXTRA_TEXTURE,
 			USE_EMISSIVE_TEXTURE, USE_EMISSIVE_MATERIAL, USE_SHADOW_MAP, USE_SHADOW_DEPTH_TEXTURE, USE_SHADOW_CUBEMAP, SHADOWMAP_OFFSET,
 			USE_VELVET, USE_VELVET_ALPHA, USE_DETAIL_TEXTURE, USE_NORMAL_TEXTURE,
@@ -1485,7 +1485,7 @@
 			#import "computePointSize"
 
 			#if defined(USE_SHADOW_MAP) || defined(USE_LIGHT_TEXTURE)
-				uniform mat4 u_lightMatrix;
+				uniform mat4 u_light_matrix;
 				varying vec4 v_light_coord;
 			#endif
 
@@ -1555,10 +1555,6 @@
 					USE_VERTEX_SHADER_CODE
 				#endif
 
-				#if defined(USE_SHADOW_MAP) || defined(USE_LIGHT_TEXTURE)
-					v_light_coord = (u_lightMatrix) * vertex4;
-				#endif
-
 				#ifdef USE_DISPLACEMENT_TEXTURE
 					vec2 uvs_0 = v_uvs;
 					vec2 uvs_1 = uvs_0;
@@ -1579,6 +1575,10 @@
 				gl_Position = u_viewprojection * vec4(v_pos,1.0);
 				//gl_Position.xy = (v_uvs * 2.0 - 1.0) * gl_Position.w ; // lightmapping
 				v_screenpos = gl_Position;
+
+				#if defined(USE_SHADOW_MAP) || defined(USE_LIGHT_TEXTURE)
+					v_light_coord = u_light_matrix * vec4(v_pos,1.0);
+				#endif
 
 				//normal
 				v_normal = (u_normal_model * vec4(normal,0.0)).xyz;
@@ -1715,14 +1715,6 @@
 
 			#ifdef USE_LIGHT_OFFSET
 				uniform float u_light_offset;
-			#endif
-
-			#ifdef USE_BRIGHTNESS_FACTOR
-				uniform float u_brightness_factor;
-			#endif
-
-			#ifdef USE_COLORCLIP_FACTOR
-				uniform float u_colorclip_factor;
 			#endif
 
 			uniform vec3 u_ambient_light;
@@ -1998,21 +1990,6 @@
 
 				#ifdef USE_FOG
 					final_color = computeFog( final_color, cam_dist, v_local_pos.y );
-				#endif
-
-
-				#ifdef USE_BRIGHTNESS_FACTOR
-					final_color *= u_brightness_factor;
-				#endif
-				#ifdef USE_COLORCLIP_FACTOR
-					final_color -= vec3(u_colorclip_factor);
-					/*
-					temp = length(final_color);
-					if( temp < u_colorclip_factor * 0.75)
-						final_color = vec3(0.0);
-					else if( temp < u_colorclip_factor)
-						final_color *= clamp((temp - u_colorclip_factor * 0.75) / (u_colorclip_factor * 0.25),0.0,1.0);
-					*/
 				#endif
 
 				//generate lighting
@@ -2297,10 +2274,6 @@
 
 				//apply light
 				final_color *= v_light;
-
-				#ifdef USE_BRIGHTNESS_FACTOR
-					final_color *= u_brightness_factor;
-				#endif
 
 				gl_FragColor = vec4(final_color, alpha); //regular color
 			}

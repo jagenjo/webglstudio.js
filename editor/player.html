@@ -26,6 +26,7 @@
 
 	//LiteSCENE CODE *************************
 	var player = new LS.Player( {
+		alpha: false, //enables to have alpha in the canvas to blend with background
 		redraw: true, //force to redraw
 		resources: "fileserver/files/",
 		autoresize: true, //resize the 3D window if the browser window is resized
@@ -34,7 +35,8 @@
 	});
 
 	//allow to use Canvas2D call in the WebGLCanvas (this is not mandatory, just useful)
-	enableWebGLCanvas( gl.canvas );
+	if( window.enableWebGLCanvas )
+		enableWebGLCanvas( gl.canvas );
 
 	if( LS.queryString["debug"] )
 		player.enableDebug();

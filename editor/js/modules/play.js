@@ -6,10 +6,14 @@ var PlayModule = {
 
 	settings_panel: [{name:"play", title:"Play", icon:null }],
 
-	restore_state: true,
-	render_border: true,
 	max_delta_time: 1/15,
 	inplayer: false,
+
+	preferences: { //persistent settings
+		tint_interface_when_playing: true,
+		render_play_border: true,
+		restore_state_after_play: true
+	},
 
 	init: function()
 	{
@@ -108,7 +112,7 @@ var PlayModule = {
 			this.changeState("stop");
 
 			//restore old scene
-			if(this.restore_state)
+			if(this.preferences.restore_state_after_play)
 			{
 				var scene = LS.GlobalScene;
 				LEvent.trigger(scene,"beforeReload");
@@ -181,6 +185,8 @@ var PlayModule = {
 		{
 			this.state = "play";
 			console.log("%c + START ", 'background: #222; color: #AFA; font-size: 1.4em');
+			if(this.preferences.tint_interface_when_playing)
+				LiteGUI.root.classList.add("playing");
 			LEvent.bind( scene,"finish", this.onSceneStop );
 			scene.start();
 			EditorModule.render_debug_info = false;
@@ -191,6 +197,7 @@ var PlayModule = {
 		{
 			this.state = "stop";
 			console.log("%c + FINISH ", 'background: #222; color: #AAF; font-size: 1.4em');
+			LiteGUI.root.classList.remove("playing");
 			scene.finish();
 			LS.Tween.reset();
 			EditorModule.render_debug_info = true;
@@ -223,7 +230,7 @@ var PlayModule = {
 
 	render: function()
 	{
-		if(!RenderModule.frame_updated || this.inplayer || LS.GlobalScene._state == LS.STOPPED || !this.render_border)
+		if(!RenderModule.frame_updated || this.inplayer || LS.GlobalScene._state == LS.STOPPED || !this.preferences.render_play_border)
 			return;
 
 		//render inplayer border
@@ -250,12 +257,16 @@ var PlayModule = {
  		if(name != "play")
 			return;
 
-		widgets.addCheckbox("Reset scene after play",PlayModule.restore_state, { callback: function(value) { 
-			PlayModule.restore_state = value;
+		widgets.addCheckbox("Reset scene after play",PlayModule.preferences.restore_state_after_play, { callback: function(value) { 
+			PlayModule.preferences.restore_state_after_play = value;
 		}});
 
-		widgets.addCheckbox("Show Play window border",PlayModule.render_border, { callback: function(value) { 
-			PlayModule.render_border = value;
+		widgets.addCheckbox("Show Play window border",PlayModule.preferences.render_play_border, { callback: function(value) { 
+			PlayModule.preferences.render_play_border = value;
+		}});
+
+		widgets.addCheckbox("Tint Interface while playing",PlayModule.preferences.tint_interface_when_playing, { callback: function(value) { 
+			PlayModule.preferences.tint_interface_when_playing = value;
 		}});
 
 	}

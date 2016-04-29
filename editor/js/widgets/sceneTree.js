@@ -390,7 +390,7 @@ SceneTreeWidget.prototype.addNode = function( node, parent_id )
 			precontent: "<span class='nodecontrols'><span class='togglevisible "+(node.flags.visible ? "on":"")+"'></span></span>",
 			allow_rename: (parent_id != null),
 			onDragData: function(){ 
-				return { uid: node._uid, "class": "SceneNode", type: "SceneNode", node_name: node._name, node_id: node._uid };
+				return { uid: node._uid, "class": "SceneNode", type: "SceneNode", locator: node._uid, node_name: node._name, node_id: node._uid };
 			}
 		}, parent_id, undefined, {selected: is_selected} );
 	var that = this;

@@ -160,6 +160,7 @@ Timeline.prototype.animationModified = function()
 	this.current_animation._modified = true;
 	LS.ResourcesManager.resourceModified( this.current_animation );
 	LS.GlobalScene.refresh();
+	this.redrawCanvas();
 }
 
 Timeline.prototype.onLoadAnimation = function()
@@ -534,7 +535,7 @@ Timeline.prototype.redrawCanvas = function()
 
 				var posx = this.canvasTimeToX( keyframe[0] );
 
-				if(1) //diamonds
+				if( track.type != "events" ) //diamonds
 				{
 					if( (posx + 5) < margin)
 						continue;
@@ -563,7 +564,7 @@ Timeline.prototype.redrawCanvas = function()
 						w -= margin - posx;
 						posx = margin;
 					}
-					ctx.fillRect( posx, y + 2, w - 1, line_height - 4);
+					ctx.fillRect( posx - 4, y + 2, w - 1, line_height - 4);
 				}
 			}
 
@@ -876,6 +877,20 @@ Timeline.prototype.onMouse = function(e)
 
 		if(item)
 		{
+			var now = getTime();
+			if( this._last_click_time && ( now - this._last_click_time ) < 200 ) //dbl click
+			{
+				var time = this.session.current_time;
+				var track = this.current_take.tracks[ item.track ];
+				if(item.type == "keyframe" && track && track.type == "events")
+					this.showAddEventKeyframeDialog( track, time, track.getKeyframe( item.keyframe ) );
+				if(item.type == "track" && track)
+					this.showTrackOptionsDialog( track );
+				//this.showPropertyInfo( this.current_take.tracks[ item.track ] );
+			}
+			this._last_click_time = now;
+
+
 			if(item.draggable)
 				this._item_dragged = item;
 			else
@@ -1862,11 +1877,11 @@ Timeline.prototype.showAddEventKeyframeDialog = function( track, time, keyframe 
 	var that = this;
 	var dialog = new LiteGUI.Dialog("event keyframe",{ title:"EventKeyframe", width: 300, draggable: true, closable: true });
 
-	var func_name = keyframe ? keyframe[1][0] : "";
+	var event_name = keyframe ? keyframe[1][0] : "";
 	var param = keyframe ? keyframe[1][1] : "";
 
 	var widgets = new LiteGUI.Inspector();
-	var func_widget = widgets.addString("Function", func_name, function(v) { func_name = v; } );
+	var event_widget = widgets.addString("Event", event_name, function(v) { event_name = v; } );
 	widgets.addString("Param", param, function(v) { param = v; } );
 
 	var info = track.getPropertyInfo();
@@ -1881,16 +1896,16 @@ Timeline.prototype.showAddEventKeyframeDialog = function( track, time, keyframe 
 			values.push(i);
 		}
 		widgets.addCombo("Functions", "", { values: values, callback: function(v){ 
-			func_widget.setValue(v);
-			func_name = v;
+			event_widget.setValue(v);
+			event_name = v;
 		}});
 	}
 	widgets.addButtons(null,[ keyframe ? "Update" : "Insert","Cancel"], function(v){
 		if(v == "Insert")
-			track.addKeyframe( time, [func_name, param] );
+			track.addKeyframe( time, [event_name, param] );
 		else if(v == "Update")
 		{
-			keyframe[1][0] = func_name;
+			keyframe[1][0] = event_name;
 			keyframe[1][1] = param;
 		}
 		that.redrawCanvas();
@@ -2000,16 +2015,21 @@ Timeline.prototype.onItemDrop = function(e)
 		if(!info)
 			return;
 
-		if(info && info.type == "component" )
+		var name = info.name;
+		if(!name && info.node)
+			name = info.node.name;
+
+		if( info.type == "component" || info.type == "node" || info.type == "object" )
 		{
-			this.createTrack({ name: info.name, locator: locator, type: "events" });
+			this.createTrack({ name: name, locator: locator, type: "events" });
 		}
 		else
 		{
 			var type = info.type;
 			if(type == "object")
 				type = "events";
-			this.createTrack({ name: info.name, locator: locator, type: type });
+			this.createTrack({ name: name, locator: locator, type: type });
 		}
+		this.animationModified();
 	}
 }

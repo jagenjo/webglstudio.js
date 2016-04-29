@@ -395,6 +395,10 @@ textarea.code {
 }
 
 /* inspector */
+.inspector .icon img {
+	margin-top: 2px;
+}
+
 .inspector_widget .header {
 	width: 100%;
 	overflow: hidden;
@@ -563,4 +567,49 @@ textarea.code {
     padding: 2px;
 	margin: 2px;
     color: #C0D1EA;
+}
+
+.script-context-icon {
+	width: 1em;
+	display: inline-block;
+	height: 1em;
+	background-color: black;
+	opacity: 0.5;
+}
+
+
+/*  PLAYING */
+.playing #worktabs {
+	background-color: #101010;
+}
+
+.playing .litepanel, .playing .litedialog {
+	background: #111;
+}
+
+.playing .inspector {
+	color: #545454;
+}
+
+.playing .inspector .wtitle, .playing .inspector .wsectiontitle
+{
+	color: #545454;
+	background-color: #252525;
+}
+
+.playing .inspector .wsectioncontent  {
+	 background-color: #111;
+}
+
+.playing .inspector .separator  {
+	 border-top-color: #151515;
+	 border-bottom-color: #151515;
+}
+
+.playing .keyframe_icon, .playing .inspector button, .playing .inspector .inputfield, .playing .inspector .color {
+	opacity: 0.5;
+}
+
+.playing .inspector:not(.one_line) .widget.even {
+    background-color: transparent;
 }

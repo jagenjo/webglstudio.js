@@ -132,8 +132,10 @@
 
 .inspector .icon {
 	margin-right: 4px;
+	/*
 	margin-top: 2px;
 	margin-bottom: -2px;
+	*/
 }
 
 .inspector .wcontent .icon {

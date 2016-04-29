@@ -669,6 +669,10 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 		icon_url = component.constructor.icon;
 
 	var icon_code = "<span class='icon' style='width: 20px' draggable='true'><img src='"+ EditorModule.icons_path + icon_url+"'/></span>";
+	var extra_code = "";
+	if( component.getExtraTitleCode ) //used for script mostly
+		extra_code = component.getExtraTitleCode();
+
 	var enabler = component.enabled !== undefined ? AnimationModule.getKeyframeCode(component,"enabled") + "<span class='enabler'></span>" : "";
 	var is_selected = SelectionModule.isSelected( component );
 	var options = {};
@@ -687,7 +691,7 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 	options.collapsed = component._collapsed;
 
 	//create component section in inspector
-	var section = inspector.addSection( icon_code + enabler + title + buttons, options );
+	var section = inspector.addSection( icon_code + extra_code + enabler + title + buttons, options );
 
 	var icon = section.querySelector(".icon");
 	icon.addEventListener("dragstart", function(event) { 

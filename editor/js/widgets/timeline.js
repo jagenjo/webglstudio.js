@@ -1350,8 +1350,21 @@ Timeline.prototype.addUndoTrackRemoved = function( track )
 	});
 }
 
-Timeline.prototype.onInsertKeyframeButton = function( button, relative )
+Timeline.prototype.onInsertKeyframeButton = function( element, relative )
 {
+	//show dialog to select keyframe options (by uid or nodename)
+	//TODO
+
+	var locator = element.dataset["propertyuid"];
+	var name = element.dataset["propertyname"];
+	this.processInsertLocator( locator, { add_keyframe: true, name: name, relative: relative } );
+}
+
+
+Timeline.prototype.processInsertLocator = function( locator, options )
+{
+	options = options || {};
+
 	var take = this.current_take;
 	if(!take)
 	{
@@ -1359,19 +1372,17 @@ Timeline.prototype.onInsertKeyframeButton = function( button, relative )
 		return;
 	}
 
-	//show dialog to select keyframe options (by uid or nodename)
-	//TODO
-
-	var locator = button.dataset["propertyuid"];
-	var original_locator = locator;
-	var name = button.dataset["propertyname"];
-
 	var info = LS.GlobalScene.getPropertyInfo( locator );
 	if(info === null)
 		return console.warn("Property info not found: " + locator );
 
+	var original_locator = locator;
+	var name = options.name || info.name;
+	if(!name && info.node)
+		name = info.node.name;
+
 	//convert absolute to relative locator
-	if( relative )
+	if( options.relative )
 	{
 		var t = locator.split("/");
 		if(info.node && info.node.uid == t[0])
@@ -1415,20 +1426,27 @@ Timeline.prototype.onInsertKeyframeButton = function( button, relative )
 
 		if(!track)
 		{
-			track = take.createTrack( { name: name, property: locator, type: info.type, value_size: size, interpolation: interpolation, duration: this.session.end_time, data: [] } );
+			var type = info.type;
+			if(type == "object" || type == LS.TYPES.SCENENODE || type == LS.TYPES.COMPONENT )
+				type = "events";
+
+			track = take.createTrack( { name: name, property: locator, type: type, value_size: size, interpolation: interpolation, duration: this.session.end_time, data: [] } );
 			track._original_locator = original_locator;
 			track_created = true;
 		}
 	}
 
-	//undo
-	if(track_created)
-		this.addUndoTrackCreated( track );
-	else
-		this.addUndoTrackEdited( track );
+	if(options.add_keyframe)
+	{
+		//undo
+		if(track_created)
+			this.addUndoTrackCreated( track );
+		else
+			this.addUndoTrackEdited( track );
 
-	console.log("Keyframe added");
-	track.addKeyframe( time , value );
+		console.log("Keyframe added");
+		track.addKeyframe( time , value );
+	}
 
 	this.redrawCanvas();
 	RenderModule.requestFrame();
@@ -2011,6 +2029,8 @@ Timeline.prototype.onItemDrop = function(e)
 
 	if( locator )
 	{
+		this.processInsertLocator( locator );
+		/*
 		var info = LS.GlobalScene.getPropertyInfo( locator );
 		if(!info)
 			return;
@@ -2030,6 +2050,8 @@ Timeline.prototype.onItemDrop = function(e)
 				type = "events";
 			this.createTrack({ name: name, locator: locator, type: type });
 		}
+
 		this.animationModified();
+		*/
 	}
 }

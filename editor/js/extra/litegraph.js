@@ -37,7 +37,7 @@ var LiteGraph = {
 	ACTION: -1, //for inputs
 
 	ALWAYS: 0,
-	ON_TRIGGER: 1,
+	ON_EVENT: 1,
 	NEVER: 2,
 
 	proxy: null, //used to redirect calls
@@ -1564,12 +1564,12 @@ LGraphNode.prototype.getOutputNodes = function(slot)
 }
 
 /**
-* Triggers an event in this node, this will launch any event related output connected to it
+* Triggers an event in this node, this will trigger any output with the same name
 * @method trigger
-* @param {String} event name
-* @param {*} parameters
+* @param {String} event name ( "on_play", ... )
+* @param {*} param
 */
-LGraphNode.prototype.trigger = function(action, param)
+LGraphNode.prototype.trigger = function( action, param )
 {
 	if( !this.outputs || !this.outputs.length )
 		return;
@@ -4657,7 +4657,7 @@ LGraphCanvas.onMenuNodePin = function(node)
 
 LGraphCanvas.onMenuNodeMode = function(node, e, prev_menu)
 {
-	LiteGraph.createContextualMenu(["Always","On Trigger","Never"], {event: e, callback: inner_clicked, from: prev_menu});
+	LiteGraph.createContextualMenu(["Always","On Event","Never"], {event: e, callback: inner_clicked, from: prev_menu});
 
 	function inner_clicked(v)
 	{
@@ -4665,7 +4665,7 @@ LGraphCanvas.onMenuNodeMode = function(node, e, prev_menu)
 			return;
 		switch(v)
 		{
-			case "Trigger": node.mode = LiteGraph.ON_TRIGGER; break;
+			case "On Event": node.mode = LiteGraph.ON_EVENT; break;
 			case "Never": node.mode = LiteGraph.NEVER; break;
 			case "Always": 
 			default:
@@ -5567,6 +5567,7 @@ LiteGraph.registerNodeType("basic/watch", Watch);
 //Show value inside the debug console
 function Console()
 {
+	this.mode = LiteGraph.ON_EVENT;
 	this.size = [60,20];
 	this.properties = { msg: "" };
 	this.addInput("log", LiteGraph.EVENT);
@@ -5579,11 +5580,11 @@ Console.desc = "Show value inside the console";
 Console.prototype.onAction = function(action, param)
 {
 	if(action == "log")
-		console.log( this.properties.msg );
+		console.log( param );
 	else if(action == "warn")
-		console.warn( this.properties.msg );
+		console.warn( param );
 	else if(action == "error")
-		console.error( this.properties.msg );
+		console.error( param );
 }
 
 Console.prototype.onExecute = function()

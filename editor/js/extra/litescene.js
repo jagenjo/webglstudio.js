@@ -722,7 +722,7 @@ typed_arrays.forEach( function(v) { v.prototype.toJSON = function(){ return Arra
 * LS is the global scope for the global functions and containers of LiteScene
 *
 * @class  LS
-* @namespace  LS
+* @module LS
 */
 
 var LS = {
@@ -1569,7 +1569,12 @@ LS.TYPES = {
 	VEC3 : "vec3",
 	VEC4 : "vec3",
 	COLOR : "color",
-	TEXTURE : "texture"
+	RESOURCE: "resource",
+	TEXTURE : "texture",
+	MESH: "mesh",
+	SCENENODE: "node",
+	SCENENODE_ID: "node_id",
+	COMPONENT: "component"
 };
 
 var Network = {
@@ -4215,9 +4220,9 @@ var Draw = {
 	/**
 	* A helper to create shaders when you only want to specify some basic shading
 	* @method createSurfaceShader
-	* @params {string} surface_function GLSL code like: "vec4 surface_function( vec3 pos, vec3 normal, vec2 coord ) { return vec4(1.0); } ";
-	* @params {object} macros [optional] object containing the macros and value
-	* @params {object} uniforms [optional] object with name and type
+	* @param {string} surface_function GLSL code like: "vec4 surface_function( vec3 pos, vec3 normal, vec2 coord ) { return vec4(1.0); } ";
+	* @param {object} macros [optional] object containing the macros and value
+	* @param {object} uniforms [optional] object with name and type
 	* @return {GL.Shader} the resulting shader
 	*/
 	createSurfaceShader: function( surface_function, uniforms, macros )
@@ -4293,7 +4298,7 @@ var Draw = {
 	/**
 	* Sets the color used to paint primitives
 	* @method setColor
-	* @params {vec3|vec4} color
+	* @param {vec3|vec4} color
 	*/
 	setColor: function(color)
 	{
@@ -4304,7 +4309,7 @@ var Draw = {
 	/**
 	* Sets the alpha used to paint primitives
 	* @method setAlpha
-	* @params {number} alpha
+	* @param {number} alpha
 	*/
 	setAlpha: function(alpha)
 	{
@@ -4314,7 +4319,7 @@ var Draw = {
 	/**
 	* Sets the point size
 	* @method setPointSize
-	* @params {number} v
+	* @param {number} v
 	*/
 	setPointSize: function(v)
 	{
@@ -4324,7 +4329,7 @@ var Draw = {
 	/**
 	* Sets the camera to use during the rendering, this is already done by LS.Renderer
 	* @method setCamera
-	* @params {LS.Camera} camera
+	* @param {LS.Camera} camera
 	*/
 	setCamera: function( camera )
 	{
@@ -4339,7 +4344,7 @@ var Draw = {
 	/**
 	* Specifies the camera position (used to compute point size)
 	* @method setCameraPosition
-	* @params {vec3} center
+	* @param {vec3} center
 	*/
 	setCameraPosition: function(center)
 	{
@@ -4361,9 +4366,9 @@ var Draw = {
 	/**
 	* Specifies the camera view and projection matrices
 	* @method setViewProjectionMatrix
-	* @params {mat4} view
-	* @params {mat4} projection
-	* @params {mat4} vp viewprojection matrix [optional]
+	* @param {mat4} view
+	* @param {mat4} projection
+	* @param {mat4} vp viewprojection matrix [optional]
 	*/
 	setViewProjectionMatrix: function(view, projection, vp)
 	{
@@ -4378,7 +4383,7 @@ var Draw = {
 	/**
 	* Specifies the transformation matrix to apply to the mesh
 	* @method setMatrix
-	* @params {mat4} matrix
+	* @param {mat4} matrix
 	*/
 	setMatrix: function(matrix)
 	{
@@ -4388,7 +4393,7 @@ var Draw = {
 	/**
 	* Multiplies the current matrix by a given one
 	* @method multMatrix
-	* @params {mat4} matrix
+	* @param {mat4} matrix
 	*/
 	multMatrix: function(matrix)
 	{
@@ -4398,9 +4403,9 @@ var Draw = {
 	/**
 	* Render lines given a set of points
 	* @method renderLines
-	* @params {Float32Array|Array} points
-	* @params {Float32Array|Array} colors [optional]
-	* @params {bool} strip [optional] if the lines are a line strip (one consecutive line)
+	* @param {Float32Array|Array} points
+	* @param {Float32Array|Array} colors [optional]
+	* @param {bool} strip [optional] if the lines are a line strip (one consecutive line)
 	*/
 	renderLines: function(lines, colors, strip)
 	{
@@ -4420,9 +4425,9 @@ var Draw = {
 	/**
 	* Render points given a set of positions (and colors)
 	* @method renderPoints
-	* @params {Float32Array|Array} points
-	* @params {Float32Array|Array} colors [optional]
-	* @params {GL.Shader} shader [optional]
+	* @param {Float32Array|Array} points
+	* @param {Float32Array|Array} colors [optional]
+	* @param {GL.Shader} shader [optional]
 	*/
 	renderPoints: function(points, colors, shader)
 	{
@@ -4456,9 +4461,9 @@ var Draw = {
 	/**
 	* Render round points given a set of positions (and colors)
 	* @method renderRoundPoints
-	* @params {Float32Array|Array} points
-	* @params {Float32Array|Array} colors [optional]
-	* @params {GL.Shader} shader [optional]
+	* @param {Float32Array|Array} points
+	* @param {Float32Array|Array} colors [optional]
+	* @param {GL.Shader} shader [optional]
 	*/
 	renderRoundPoints: function(points, colors, shader)
 	{
@@ -4486,11 +4491,11 @@ var Draw = {
 	/**
 	* Render points with color, size, and texture binded in 0
 	* @method renderPointsWithSize
-	* @params {Float32Array|Array} points
-	* @params {Float32Array|Array} colors [optional]
-	* @params {Float32Array|Array} sizes [optional]
-	* @params {GL.Texture} texture [optional]
-	* @params {GL.Shader} shader [optional]
+	* @param {Float32Array|Array} points
+	* @param {Float32Array|Array} colors [optional]
+	* @param {Float32Array|Array} sizes [optional]
+	* @param {GL.Texture} texture [optional]
+	* @param {GL.Shader} shader [optional]
 	*/
 	renderPointsWithSize: function(points, colors, sizes, texture, shader)
 	{
@@ -4534,9 +4539,9 @@ var Draw = {
 	/**
 	* Render points with color, size, and texture binded in 0
 	* @method renderRectangle
-	* @params {number} width
-	* @params {number} height
-	* @params {boolean} in_z [optional] if the plane is aligned with the z plane
+	* @param {number} width
+	* @param {number} height
+	* @param {boolean} in_z [optional] if the plane is aligned with the z plane
 	*/
 	renderRectangle: function(width, height, in_z)
 	{
@@ -4581,10 +4586,10 @@ var Draw = {
 	/**
 	* Renders a circle 
 	* @method renderCircle
-	* @params {number} radius
-	* @params {number} segments
-	* @params {boolean} in_z [optional] if the circle is aligned with the z plane
-	* @params {boolean} filled [optional] renders the interior
+	* @param {number} radius
+	* @param {number} segments
+	* @param {boolean} in_z [optional] if the circle is aligned with the z plane
+	* @param {boolean} filled [optional] renders the interior
 	*/
 	renderCircle: function(radius, segments, in_z, filled)
 	{
@@ -4595,9 +4600,9 @@ var Draw = {
 	/**
 	* Render a filled circle
 	* @method renderSolidCircle
-	* @params {number} radius
-	* @params {number} segments
-	* @params {boolean} in_z [optional] if the circle is aligned with the z plane
+	* @param {number} radius
+	* @param {number} segments
+	* @param {boolean} in_z [optional] if the circle is aligned with the z plane
 	*/
 	renderSolidCircle: function(radius, segments, in_z)
 	{
@@ -4641,8 +4646,8 @@ var Draw = {
 	/**
 	* Renders three circles to form a simple spherical shape
 	* @method renderWireSphere
-	* @params {number} radius
-	* @params {number} segments
+	* @param {number} radius
+	* @param {number} segments
 	*/
 	renderWireSphere: function(radius, segments)
 	{
@@ -4668,9 +4673,9 @@ var Draw = {
 	/**
 	* Renders a wire box (box made of lines, not filled)
 	* @method renderWireBox
-	* @params {number} sizex
-	* @params {number} sizey
-	* @params {number} sizez
+	* @param {number} sizex
+	* @param {number} sizey
+	* @param {number} sizez
 	*/
 	renderWireBox: function(sizex,sizey,sizez)
 	{
@@ -4694,9 +4699,9 @@ var Draw = {
 	/**
 	* Renders a solid box 
 	* @method renderSolidBox
-	* @params {number} sizex
-	* @params {number} sizey
-	* @params {number} sizez
+	* @param {number} sizex
+	* @param {number} sizey
+	* @param {number} sizez
 	*/
 	renderSolidBox: function(sizex,sizey,sizez)
 	{
@@ -4786,10 +4791,10 @@ var Draw = {
 	/**
 	* Renders a cone 
 	* @method renderCone
-	* @params {number} radius
-	* @params {number} height
-	* @params {number} segments
-	* @params {boolean} in_z aligned with z axis
+	* @param {number} radius
+	* @param {number} height
+	* @param {number} segments
+	* @param {boolean} in_z aligned with z axis
 	*/
 	renderCone: function(radius, height, segments, in_z)
 	{
@@ -4823,10 +4828,10 @@ var Draw = {
 	/**
 	* Renders a cylinder
 	* @method renderCylinder
-	* @params {number} radius
-	* @params {number} height
-	* @params {number} segments
-	* @params {boolean} in_z aligned with z axis
+	* @param {number} radius
+	* @param {number} height
+	* @param {number} segments
+	* @param {boolean} in_z aligned with z axis
 	*/
 	renderCylinder: function( radius, height, segments, in_z )
 	{
@@ -4837,10 +4842,10 @@ var Draw = {
 	/**
 	* Renders an image
 	* @method renderImage
-	* @params {vec3} position
-	* @params {Image|Texture|String} image from an URL, or a texture
-	* @params {number} size [optional=10]
-	* @params {boolean} fixed_size [optional=false] (camera distance do not affect size)
+	* @param {vec3} position
+	* @param {Image|Texture|String} image from an URL, or a texture
+	* @param {number} size [optional=10]
+	* @param {boolean} fixed_size [optional=false] (camera distance do not affect size)
 	*/
 	renderImage: function( position, image, size, fixed_size )
 	{
@@ -4903,11 +4908,11 @@ var Draw = {
 	/**
 	* Renders a given mesh applyting the stack transformations
 	* @method renderMesh
-	* @params {GL.Mesh} mesh
-	* @params {enum} primitive [optional=gl.TRIANGLES] GL.TRIANGLES, gl.LINES, gl.POINTS, ...
-	* @params {string} indices [optional="triangles"] the name of the buffer in the mesh with the indices
-	* @params {number} range_start [optional] in case of rendering a range, the start primitive
-	* @params {number} range_length [optional] in case of rendering a range, the number of primitives
+	* @param {GL.Mesh} mesh
+	* @param {enum} primitive [optional=gl.TRIANGLES] GL.TRIANGLES, gl.LINES, gl.POINTS, ...
+	* @param {string} indices [optional="triangles"] the name of the buffer in the mesh with the indices
+	* @param {number} range_start [optional] in case of rendering a range, the start primitive
+	* @param {number} range_length [optional] in case of rendering a range, the number of primitives
 	*/
 	renderMesh: function( mesh, primitive, shader, indices, range_start, range_length )
 	{
@@ -4961,7 +4966,7 @@ var Draw = {
 	/**
 	* Renders a text in the current matrix position
 	* @method renderText
-	* @params {string} text
+	* @param {string} text
 	*/
 	renderText: function( text )
 	{
@@ -6116,7 +6121,7 @@ Material.prototype.prepareMaterial = function( scene )
 	if(!this._uniforms)
 	{
 		this._uniforms = {};
-		this._samplers = {};
+		this._samplers = [];
 	}
 	this.fillShaderQuery( scene ); //update shader macros on this material
 	this.fillUniforms( scene ); //update uniforms
@@ -6409,10 +6414,17 @@ StandardMaterial.prototype.fillUniforms = function( scene, options )
 		if(!texture)  //loading or non-existant
 			sampler = { texture: ":missing" };
 
-		samplers[ last_texture_slot ] = sampler;
+		var slot = last_texture_slot;
+		if( i == "environment" )
+			slot = LS.Renderer.ENVIRONMENT_TEXTURE_SLOT;
+		else if( i == "irradiance" )
+			slot = LS.Renderer.IRRADIANCE_TEXTURE_SLOT;
+		else
+			last_texture_slot++;
+
+		samplers[ slot ] = sampler;
 		var uniform_name = i + ( (!texture || texture.texture_type == gl.TEXTURE_2D) ? "_texture" : "_cubemap");
-		uniforms[ uniform_name ] = last_texture_slot;
-		last_texture_slot++;
+		uniforms[ uniform_name ] = slot;
 	}
 
 	//add extra uniforms
@@ -7566,17 +7578,17 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, l
 	if(instance.flags & RI_IGNORE_VIEWPROJECTION)
 		renderer._mvp_matrix.set( model );
 	else
-		mat4.multiply(renderer._mvp_matrix, renderer._viewprojection_matrix, model );
+		mat4.multiply( renderer._mvp_matrix, renderer._viewprojection_matrix, model );
 
 	//node matrix info
 	var instance_final_query = instance._final_query;
-	var instance_final_uniforms = instance._final_uniforms;
 	var instance_final_samplers = instance._final_samplers;
+	var render_uniforms = LS.Renderer._render_uniforms;
 
 	//maybe this two should be somewhere else
-	instance_final_uniforms.u_model = model; 
-	instance_final_uniforms.u_normal_model = instance.normal_matrix; 
-	instance_final_uniforms.u_mvp = renderer._mvp_matrix;
+	render_uniforms.u_model = model; 
+	render_uniforms.u_normal_model = instance.normal_matrix; 
+	render_uniforms.u_mvp = renderer._mvp_matrix;
 
 	//global stuff
 	renderer.enableInstanceFlags( instance, render_settings );
@@ -7599,15 +7611,18 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, l
 		if(p.is_texture)
 		{
 			if(p.value)
-				samplers.push(p.value);
+			{
+				this._uniforms[ p.uniform ] = samplers.length;
+				samplers.push( p.value );
+			}
 		}
 		else
 			this._uniforms[ p.uniform ] = p.value;
 	}
 
 	//assign
-	LS.Renderer.bindSamplers( samplers, shader );
-	shader.uniformsArray( [ scene._uniforms, camera._uniforms, this._uniforms, instance_final_uniforms ] );
+	LS.Renderer.bindSamplers( samplers );
+	shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, this._uniforms, instance._uniforms ] );
 
 	//render
 	instance.render( shader );
@@ -7639,6 +7654,35 @@ ShaderMaterial.prototype.getResources = function ( res )
 			res[ p.value ] = GL.Texture;
 	}
 	return res;
+}
+
+ShaderMaterial.prototype.getPropertyInfoFromPath = function( path )
+{
+	if( path.length < 1)
+		return;
+
+	var info = Material.prototype.getPropertyInfoFromPath.call(this,path);
+	if(info)
+		return info;
+
+	var varname = path[0];
+
+	for(var i = 0, l = this.properties.length; i < l; ++i )
+	{
+		var prop = this.properties[i];
+		if(prop.name != varname)
+			continue;
+
+		return {
+			node: this._root,
+			target: this,
+			name: prop.name,
+			value: prop.value,
+			type: prop.type
+		};
+	}
+
+	return;
 }
 
 
@@ -7847,7 +7891,7 @@ ComponentContainer.prototype.removeAllComponents = function()
 /**
 * Returns if the class has an instance of this component
 * @method hasComponent
-* @param {bool}
+* @param {bool} true if it has a component of this class
 */
 ComponentContainer.prototype.hasComponent = function(component_class) //class, not string with the name of the class
 {
@@ -8112,8 +8156,8 @@ CompositePattern.prototype.addChild = function(node, index, options)
 *
 * @method removeChild
 * @param {Node} node this child to remove
-* @param1 {*} param1 data passed to onChildRemoved
-* @param2 {*} param2 data passed to onChildRemoved as second parameter
+* @param {*} param1 data passed to onChildRemoved
+* @param {*} param2 data passed to onChildRemoved as second parameter
 * @return {Boolean} returns true if it was found and removed
 */
 CompositePattern.prototype.removeChild = function(node, param1, param2)
@@ -9055,7 +9099,13 @@ Animation.prototype.optimizeTracks = function()
 
 LS.Classes["Animation"] = LS.Animation = Animation;
 
-/** Represents a set of animations **/
+/**  
+* Represents a set of animations
+*
+* @class Take
+* @namespace LS.Animation
+* @constructor
+*/
 function Take(o)
 {
 	this.name = null;
@@ -13955,6 +14005,7 @@ var Renderer = {
 	_visible_lights: null,
 	_visible_instances: null,
 	_near_lights: [],
+	_active_samples: [],
 
 	//stats
 	_rendercalls: 0, //calls to instance.render
@@ -14005,6 +14056,7 @@ var Renderer = {
 		this.IRRADIANCE_TEXTURE_SLOT = max_texture_units - 4;
 		this.LIGHTPROJECTOR_TEXTURE_SLOT = max_texture_units - 5;
 		this.LIGHTEXTRA_TEXTURE_SLOT = max_texture_units - 6;
+		this._active_samples.length = max_texture_units;
 	},
 
 	reset: function()
@@ -14530,7 +14582,7 @@ var Renderer = {
 		var num_lights = lights.length;
 
 		//no lights rendering (flat light)
-		var ignore_lights = node.flags.ignore_lights || (instance.flags & RI_IGNORE_LIGHTS) || render_settings.lights_disabled;
+		var ignore_lights = node.flags.ignore_lights || !!(instance.flags & RI_IGNORE_LIGHTS) || render_settings.lights_disabled;
 		if(!num_lights || ignore_lights)
 		{
 			var query = new LS.ShaderQuery( shader_name, { FIRST_PASS:"", LAST_PASS:"", USE_AMBIENT_ONLY:"" });
@@ -14741,6 +14793,18 @@ var Renderer = {
 		return result;
 	},
 
+	//to be sure we dont have anything binded
+	clearSamplers: function()
+	{
+		for(var i = 0; i < this._max_texture_units; ++i)
+		{
+			gl.activeTexture(gl.TEXTURE0 + i);
+			gl.bindTexture( gl.TEXTURE_2D, null );
+			gl.bindTexture( gl.TEXTURE_CUBE_MAP, null );
+			this._active_samples[i] = null;
+		}
+	},
+
 	bindSamplers: function( samplers )
 	{
 		if(!samplers)
@@ -14769,7 +14833,11 @@ var Renderer = {
 			if(!tex)
 				tex = this._missing_texture;
 
+			if(tex._locked) //locked textures are usually the render target where we are rendering right now, so we cannot read and write at the same texture
+				continue;
+
 			tex.bind( i );
+			this._active_samples[i] = tex;
 
 			//texture properties
 			if(sampler)
@@ -14812,6 +14880,7 @@ var Renderer = {
 		if(this._current_renderframe && this._current_renderframe.use_extra_texture && gl.extensions["WEBGL_draw_buffers"])
 			query.setMacro("USE_DRAW_BUFFERS");
 
+		//so components can add stuff (like Fog, etc)
 		LEvent.trigger( scene, "fillSceneQuery", query );
 
 		scene._query = query;
@@ -14836,16 +14905,22 @@ var Renderer = {
 			uniforms.u_gamma = 2.2;
 
 		scene._uniforms = uniforms;
-		scene._samplers = [];
+		scene._samplers = scene._samplers || [];
+		scene._samplers.length = 0;
 
-		/*
 		for(var i in scene.info.textures)
 		{
 			var texture = LS.getTexture( scene.info.textures[i] );
 			if(!texture)
 				continue;
-			if(i != "environment" && i != "irradiance")
-				continue; //TO DO: improve this, I dont want all textures to be binded 
+
+			var slot = 0;
+			if( i == "environment" )
+				slot = LS.Renderer.ENVIRONMENT_TEXTURE_SLOT;
+			else if( i == "irradiance" )
+				slot = LS.Renderer.IRRADIANCE_TEXTURE_SLOT;
+			else
+				continue; 
 
 			var type = (texture.texture_type == gl.TEXTURE_2D ? "_texture" : "_cubemap");
 			if(texture.texture_type == gl.TEXTURE_2D)
@@ -14853,10 +14928,10 @@ var Renderer = {
 				texture.bind(0);
 				texture.setParameter( gl.TEXTURE_MIN_FILTER, gl.LINEAR ); //avoid artifact
 			}
-			scene._samplers[i + type] = texture;
+			scene._samplers[ slot ] = texture;
+			scene._uniforms[ i + type ] = slot;
 			scene._query.macros[ "USE_" + (i + type).toUpperCase() ] = "uvs_polar_reflected";
 		}
-		*/
 
 		LEvent.trigger( scene, "fillSceneUniforms", scene._uniforms );
 	},	
@@ -26534,8 +26609,6 @@ function RealtimeReflector(o)
 {
 	this.enabled = true;
 	this.texture_size = 512;
-	this.brightness_factor = 1.0;
-	this.colorclip_factor = 0.0;
 	this.clip_offset = 0.5; //to avoid ugly edges near clipping plane
 	this.texture_name = "";
 	this.use_cubemap = false;
@@ -26598,12 +26671,23 @@ RealtimeReflector.prototype.onRenderReflection = function( e, render_settings )
 		this._root.flags.seen_by_reflections = false;
 
 	//add flags
-	render_settings.brightness_factor = this.brightness_factor;
-	render_settings.colorclip_factor = this.colorclip_factor;
 	var old_layers = render_settings.layers;
 	render_settings.layers = this.layers;
 
 	var cameras = LS.Renderer._visible_cameras;
+
+	//to be sure we are not using this texture during the rendering to avoid
+	//rendering to and reading of same texture
+	/*
+	var mat = this._root.getMaterial();
+	if(mat)
+		mat.setTexture( Material.ENVIRONMENT_TEXTURE, null );
+	mat.fillUniforms( LS.Renderer._current_scene ); //otherwise the samplers wont be updated
+	//gl.activeTexture(gl.TEXTURE0 + LS.Renderer.ENVIRONMENT_TEXTURE_SLOT);
+	//gl.bindTexture( gl.TEXTURE_2D, null );
+	//gl.bindTexture( gl.TEXTURE_CUBE_MAP, null );
+	*/
+	LS.Renderer.clearSamplers();
 
 	for(var i = 0; i < cameras.length; i++)
 	{
@@ -26630,6 +26714,8 @@ RealtimeReflector.prototype.onRenderReflection = function( e, render_settings )
 			texture.has_mipmaps = this.generate_mipmaps;
 			this._textures[ camera.uid ] = texture;
 		}
+
+		texture._locked = true; //avoid binding this texture during rendering
 
 		//compute planes
 		var plane_center = this._root.transform.getGlobalPosition();
@@ -26694,6 +26780,8 @@ RealtimeReflector.prototype.onRenderReflection = function( e, render_settings )
 			texture.unbind();
 		}
 
+		texture._locked = false;
+
 		if(this.texture_name)
 			LS.ResourcesManager.registerResource( this.texture_name, texture );
 		LS.ResourcesManager.registerResource( ":reflection_" + camera.uid, texture );
@@ -26707,6 +26795,15 @@ RealtimeReflector.prototype.onRenderReflection = function( e, render_settings )
 	render_settings.layers = old_layers;
 	delete render_settings.brightness_factor;
 	delete render_settings.colorclip_factor;
+
+	/*
+	if(mat)
+	{
+		var sampler = mat.setTexture( Material.ENVIRONMENT_TEXTURE, ":reflection_" + camera.uid );
+		sampler.uvs = Material.COORDS_FLIPPED_SCREEN;
+		mat.fillUniforms( LS.Renderer._current_scene ); //otherwise the samplers wont be updated
+	}
+	*/
 
 	//make it visible again
 	this._root.flags.visible = visible;
@@ -35636,7 +35733,7 @@ LS.Player = Player;
 /**
 * Samples a curve and returns the resulting value 
 *
-* @class LS
+* @namespace LS
 * @method getCurveValueAt
 * @param {Array} values 
 * @param {number} minx min x value
@@ -35672,6 +35769,7 @@ LS.getCurveValueAt = function(values,minx,maxx,defaulty, x)
 /**
 * Resamples a full curve in values (useful to upload to GPU array)
 *
+* @namespace LS
 * @method resampleCurve
 * @param {Array} values 
 * @param {number} minx min x value

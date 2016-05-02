@@ -642,7 +642,7 @@ LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector 
 		for(var i in material._properties )
 		{
 			var p = material._properties[i];
-			inspector.add( p.type, p.label || p.name, p.value, { pretitle: AnimationModule.getKeyframeCode( material, p.name ), title: p.name, step: p.step, property: p, callback: inner_on_property_change });
+			inspector.add( p.widget || p.type, p.label || p.name, p.value, { pretitle: AnimationModule.getKeyframeCode( material, p.name ), title: p.name, step: p.step, property: p, callback: inner_on_property_change });
 		}
 	}
 

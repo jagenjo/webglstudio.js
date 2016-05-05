@@ -341,7 +341,7 @@ CodingTabsWidget.prototype.onPlusTab = function(tab_id, e)
 		else if(value == "Data File")
 			that.onNewDataFile();
 		else if(value == "Shader")
-			that.onNewShader();
+			that.onNewShaderFile();
 	}
 }
 
@@ -382,10 +382,10 @@ CodingTabsWidget.prototype.onNewDataFile = function()
 
 CodingTabsWidget.prototype.onNewShaderFile = function()
 {
-	var resource = new LS.Resource();
-	resource.filename = "unnamed_shader.sh";
-	resource.register();
-	this.editInstanceCode( resource, { id: resource.filename, title: resource.filename, lang: "glsl" });
+	var shader_code = new LS.ShaderCode();
+	shader_code.filename = "unnamed_shader.glsl";
+	shader_code.register();
+	this.editInstanceCode( shader_code, { id: shader_code.filename, title: shader_code.filename, lang: "glsl" });
 }
 
 //search for all the components that have a getCode function and inserts them

@@ -1508,7 +1508,7 @@ var DriveModule = {
 			}
 
 			var list_widget = widgets.addList(null,missing_list,{height:200});
-			var rows = list_widget.querySelector(".save-item");
+			var rows = list_widget.querySelectorAll(".save-item");
 			if(rows && rows.length)
 				LiteGUI.bind( rows, "click", function(e){
 					console.log(this.dataset["path"]);

@@ -590,7 +590,7 @@ LS.MaterialClasses.CustomMaterial["@inspector"] = GenericMaterialEditor;
 LS.MaterialClasses.SurfaceMaterial["@inspector"] = GenericMaterialEditor;
 
 
-LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector )
+LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector, is_fx )
 {
 	inspector.addTitle("Properties");
 
@@ -635,8 +635,11 @@ LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector 
 		inspector.addInfo(null,"Shader not loaded");
 	else
 	{
-		inspector.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
-		inspector.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { material.opacity = value; }});
+		if(!is_fx)
+		{
+			inspector.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
+			inspector.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { material.opacity = value; }});
+		}
 		inspector.addColor("Color", material.color, { pretitle: AnimationModule.getKeyframeCode( material, "color" ), callback: function(color) { vec3.copy(material.color,color); } });
 
 		for(var i in material._properties )

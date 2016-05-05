@@ -777,12 +777,19 @@ ResourcesPanelWidget.prototype.onShowCreateShaderDialog = function( options )
 	options = options || {};
 	var filename = options.filename || "shader.glsl";
 	var folder = options.folder || this.current_folder;
+	var type = "color";
 
 	var dialog = new LiteGUI.Dialog( null, { title: "New Shader", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
 	var inspector = new LiteGUI.Inspector();
 
 	inspector.addString("Filename",filename, function(v){ filename = v; });
 	inspector.addString("Folder",folder, function(v){ folder = v; });
+
+	var types = [];
+	for(var i in LS.ShaderCode.examples)
+		types.push(i);
+
+	inspector.addCombo("Shader Type", type, { values: types, callback: function(v){ type = v; }});
 	inspector.addButton(null,"Create", inner);
 
 	function inner()
@@ -793,7 +800,7 @@ ResourcesPanelWidget.prototype.onShowCreateShaderDialog = function( options )
 		shader_code.filename = filename;
 		if(folder && folder != "")
 			shader_code.fullpath = folder + "/" + filename;
-		shader_code.code = options.content || LS.ShaderCode.examples.fullshader;
+		shader_code.code = options.content || LS.ShaderCode.examples[type];
 
 		//upload to server? depends if it is local or not
 		LS.ResourcesManager.registerResource( shader_code.fullpath || shader_code.filename, shader_code );

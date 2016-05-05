@@ -225,19 +225,11 @@ LS.Components.Script["@inspector"] = function(component, attributes)
 			component.setDragData(event);
 	});
 
-	attributes.widgets_per_row = 2;
-	attributes.addString("Name", component.name, { pretitle: AnimationModule.getKeyframeCode( component, "context"), callback: function(v) { 
-		component.name = v;
-		LEvent.trigger( LS.Components.Script, "renamed", component );
-		//CodingModule.onScriptRenamed( component );
-	}});
-
 	attributes.addButton(null,"Edit Code", { callback: function() {
 		CodingModule.openTab();
 		var path = component.uid;
 		CodingModule.editInstanceCode(component, { id: component.uid, title: component._root.id, lang: "javascript", path: path, help: LS.Components.Script.coding_help } );
 	}});
-	attributes.widgets_per_row = 1;
 
 	if(context)
 		this.showObjectFields(context, attributes);

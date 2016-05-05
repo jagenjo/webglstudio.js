@@ -321,12 +321,8 @@ LS.Components.CameraFX["@inspector"] = function( camerafx, inspector)
 		return;
 	var node = camerafx._root;
 
-	inspector.widgets_per_row = 2;
-	inspector.addCheckbox("Viewport Size", camerafx.use_viewport_size, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_viewport_size" ), callback: function(v) { camerafx.use_viewport_size = v; } });
-	inspector.addCheckbox("High Precission", camerafx.use_high_precision, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_high_precision" ), callback: function(v) { camerafx.use_high_precision = v; } });
+	inspector.addRenderFrameContext("Frame Settings", camerafx.frame, { pretitle: AnimationModule.getKeyframeCode( camerafx, "frame" ), callback: function(v) {} });
 	inspector.addCheckbox("Antialiasing", camerafx.use_antialiasing, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_antialiasing" ), callback: function(v) { camerafx.use_antialiasing = v; } });
-	inspector.widgets_per_row = 1;
-
 	inspector.addString("Camera UID", camerafx.camera_uid, { pretitle: AnimationModule.getKeyframeCode( camerafx, "camera_uid" ), callback: function(v) { camerafx.camera_uid = v; } });
 
 	EditorModule.showFXInfo( camerafx, inspector );
@@ -340,10 +336,31 @@ LS.Components.GlobalFX["@inspector"] = function( component, inspector)
 	var node = component._root;
 
 	inspector.widgets_per_row = 2;
-	inspector.addCheckbox("Viewport Size", component.use_viewport_size, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( component, "use_viewport_size" ), callback: function(v) { component.use_viewport_size = v; } });
-	inspector.addCheckbox("High Precission", component.use_high_precision, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( component, "use_high_precision" ), callback: function(v) { component.use_high_precision = v; } });
+	inspector.addRenderFrameContext("Frame Settings", component.frame, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( component, "frame" ), callback: function(v) {} });
 	inspector.addCheckbox("Antialiasing", component.use_antialiasing, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( component, "use_antialiasing" ), callback: function(v) { component.use_antialiasing = v; } });
 	inspector.widgets_per_row = 1;
+
+	inspector.addMaterial("Shader Material", component.shader_material, { pretitle: AnimationModule.getKeyframeCode( component, "shader_material" ), callback: function(v) { component.shader_material = v; }});
+
+	if( component.shader_material )
+	{
+		var mat = LS.RM.getResource( component.shader_material );
+		if(!mat)
+			LS.RM.load( component.shader_material, function(){ inspector.refresh(); });
+		else
+			LS.MaterialClasses.ShaderMaterial["@inspector"]( mat, inspector, true );
+	}
+	/*
+	inspector.widgets_per_row = 2;
+	inspector.addButton( null, "Edit", { width: "20%", callback: function(v) { 
+		var mat = LS.RM.getResource( component.shader_material );
+		if(!mat)
+			LS.RM.load( component.shader_material );
+		else
+			EditorModule.inspect( mat );
+	}});
+	inspector.widgets_per_row = 1;
+	*/
 
 	EditorModule.showFXInfo( component, inspector );
 }

@@ -659,6 +659,22 @@ var EditorModule = {
 		dialog.show();
 	},
 
+	showRenderFrameContextDialog: function( render_context )
+	{
+		var dialog = new LiteGUI.Dialog(null,{ title:"Render Context", width: 400, draggable: true, closable: true });
+		
+		var inspector = new LiteGUI.Inspector(null,{name_width:"50%"});
+		inspector.showObjectFields( render_context );
+
+		inspector.onchange = function(){
+			LS.GlobalScene.refresh();
+		}
+
+		dialog.add( inspector );
+		dialog.adjustSize();
+		dialog.show();
+	},
+
 	onDropOnNode: function( node, event )
 	{
 		if(!node)
@@ -2224,12 +2240,28 @@ LiteGUI.Inspector.widget_constructors["layers"] = "addLayers";
 
 LiteGUI.Inspector.prototype.addRenderSettings = function(name, value, options)
 {
-	var widget = this.addButton(name,"Edit", function(){
-		EditorModule.showRenderSettingsDialog(value);
-	});
-	return widget;
+	options = options || {};
+
+	options.callback = function(){
+		EditorModule.showRenderSettingsDialog( value );
+	};
+
+	return this.addButton(name,"Edit", options );
 }
 LiteGUI.Inspector.widget_constructors["RenderSettings"] = "addRenderSettings";
+
+
+LiteGUI.Inspector.prototype.addRenderFrameContext = function( name, value, options )
+{
+	options = options || {};
+
+	options.callback = function(){
+		EditorModule.showRenderFrameContextDialog(value);
+	};
+
+	return this.addButton(name,"Edit", options );
+}
+LiteGUI.Inspector.widget_constructors["RenderFrameContext"] = "addRenderFrameContext";
 
 //to select a node, value must be a valid node identifier (not the node itself)
 LiteGUI.Inspector.prototype.addComponent = function( name, value, options)

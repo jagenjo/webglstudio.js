@@ -26,8 +26,11 @@ GL.MIDDLE_MOUSE_BUTTON = 2;
 GL.last_context_id = 0;
 
 
-//Define WEBGL ENUMS as statics
-//sometimes I need some gl enums before having the gl context, solution: define them globally because the specs says they are constant:
+//Define WEBGL ENUMS as statics (more to come in WebGL 2)
+//sometimes we need some gl enums before having the gl context, solution: define them globally because the specs says they are constant)
+
+GL.TEXTURE_2D = 3553;
+GL.TEXTURE_CUBE_MAP = 34067;
 
 GL.BYTE = 5120;
 GL.UNSIGNED_BYTE = 5121;
@@ -36,6 +39,26 @@ GL.UNSIGNED_SHORT = 5123;
 GL.INT = 5124;
 GL.UNSIGNED_INT = 5125;
 GL.FLOAT = 5126;
+GL.HALF_FLOAT_OES = 36193;
+GL.DEPTH_COMPONENT16 = 33189;
+
+GL.ALPHA = 6406;
+GL.RGB = 6407;
+GL.RGBA = 6408;
+GL.LUMINANCE = 6409;
+GL.LUMINANCE_ALPHA = 6410;
+GL.DEPTH_COMPONENT = 6402;
+
+GL.NEAREST = 9728;
+GL.LINEAR = 9729;
+GL.NEAREST_MIPMAP_NEAREST = 9984;
+GL.LINEAR_MIPMAP_NEAREST = 9985;
+GL.NEAREST_MIPMAP_LINEAR = 9986;
+GL.LINEAR_MIPMAP_LINEAR = 9987;
+
+GL.REPEAT = 10497;
+GL.CLAMP_TO_EDGE = 33071;
+GL.MIRRORED_REPEAT = 33648;
 
 GL.ZERO = 0;
 GL.ONE = 1;
@@ -56,6 +79,7 @@ GL.ONE_MINUS_CONSTANT_ALPHA = 32772;
 GL.temp_vec3 = vec3.create();
 GL.temp2_vec3 = vec3.create();
 GL.temp_vec4 = vec4.create();
+GL.temp_quat = quat.create();
 GL.temp_mat4 = mat4.create();
 
 
@@ -3824,13 +3848,13 @@ global.Texture = GL.Texture = function Texture(width, height, options, gl) {
 	//set settings
 	this.width = width;
 	this.height = height;
-	this.format = options.format || gl.RGBA; //(if gl.DEPTH_COMPONENT remember format: gl.UNSIGNED_SHORT)
-	this.type = options.type || gl.UNSIGNED_BYTE; //gl.UNSIGNED_SHORT, gl.FLOAT or gl.HALF_FLOAT_OES (or gl.HIGH_PRECISION_FORMAT which could be half or float)
 	this.texture_type = options.texture_type || gl.TEXTURE_2D; //or gl.TEXTURE_CUBE_MAP
-	this.magFilter = options.magFilter || options.filter || gl.LINEAR;
-	this.minFilter = options.minFilter || options.filter || gl.LINEAR;
-	this.wrapS = options.wrap || options.wrapS || gl.CLAMP_TO_EDGE;
-	this.wrapT = options.wrap || options.wrapT || gl.CLAMP_TO_EDGE;
+	this.format = options.format || Texture.DEFAULT_FORMAT; //gl.RGBA (if gl.DEPTH_COMPONENT remember format: gl.UNSIGNED_SHORT)
+	this.type = options.type || Texture.DEFAULT_TYPE; //gl.UNSIGNED_BYTE, gl.UNSIGNED_SHORT, gl.FLOAT or gl.HALF_FLOAT_OES (or gl.HIGH_PRECISION_FORMAT which could be half or float)
+	this.magFilter = options.magFilter || options.filter || Texture.DEFAULT_MAG_FILTER;
+	this.minFilter = options.minFilter || options.filter || Texture.DEFAULT_MIN_FILTER;
+	this.wrapS = options.wrap || options.wrapS || Texture.DEFAULT_WRAP_S; 
+	this.wrapT = options.wrap || options.wrapT || Texture.DEFAULT_WRAP_T;
 
 	//precompute the max amount of texture units
 	if(!Texture.MAX_TEXTURE_IMAGE_UNITS)
@@ -3900,6 +3924,13 @@ global.Texture = GL.Texture = function Texture(width, height, options, gl) {
 		gl.activeTexture(gl.TEXTURE0);
 	}
 }
+
+Texture.DEFAULT_TYPE = GL.UNSIGNED_BYTE;
+Texture.DEFAULT_FORMAT = GL.RGBA;
+Texture.DEFAULT_MAG_FILTER = GL.LINEAR;
+Texture.DEFAULT_MIN_FILTER = GL.LINEAR;
+Texture.DEFAULT_WRAP_S = GL.CLAMP_TO_EDGE;
+Texture.DEFAULT_WRAP_T = GL.CLAMP_TO_EDGE;
 
 //used for render to FBOs
 Texture.framebuffer = null;
@@ -5220,12 +5251,64 @@ Texture.prototype.generateMetadata = function()
 
 Texture.compareFormats = function(a,b)
 {
-	if(!a || !b) return false;
-	if(a == b) return true;
-	if(a.width != b.width || a.height != b.height || a.type != b.type || a.texture_type != b.texture_type) 
+	if(!a || !b) 
+		return false;
+	if(a == b) 
+		return true;
+
+	if( a.width != b.width || 
+		a.height != b.height || 
+		a.type != b.type || //gl.UNSIGNED_BYTE
+		a.format != b.format || //gl.RGB
+		a.texture_type != b.texture_type) //gl.TEXTURE_2D
 		return false;
 	return true;
 }
+
+/**
+* blends texture A and B and stores the result in OUT
+* @method blend
+* @param {Texture} a
+* @param {Texture} b
+* @param {Texture} out [optional]
+* @return {Object}
+*/
+Texture.blend = function( a, b, factor, out )
+{
+	if(!a || !b) 
+		return false;
+	if(a == b) 
+	{
+		if(out)
+			a.copyTo(out);
+		else
+			a.toViewport();
+		return true;
+	}
+
+	gl.disable( gl.BLEND );
+	gl.disable( gl.DEPTH_TEST );
+	gl.disable( gl.CULL_FACE );
+
+	var shader = GL.Shader.getBlendShader();
+	var mesh = GL.Mesh.getScreenQuad();
+	b.bind(1);
+	shader.uniforms({u_texture: 0, u_texture2: 1, u_factor: factor});
+
+	if(out)
+	{
+		out.drawTo( function(){
+			a.bind(0);
+			shader.draw( mesh, gl.TRIANGLES );
+		});
+		return true;
+	}
+
+	a.bind(0);
+	shader.draw( mesh, gl.TRIANGLES );
+	return true;
+}
+
 
 /**
 * returns a white texture of 1x1 pixel 
@@ -5258,6 +5341,55 @@ Texture.getBlackTexture = function()
 	return gl.textures[":black"] = new GL.Texture(1,1,{ pixel_data: color });
 }
 
+
+/* Texture pool */
+Texture.getTemporary = function( width, height, options )
+{
+	if(!Texture.temporary_pool)
+		Texture.temporary_pool = [];
+
+	var pool = Texture.temporary_pool;
+	var result = null;
+
+	var texture_type = GL.TEXTURE_2D;
+	var type = Texture.DEFAULT_TYPE;
+	var format = Texture.DEFAULT_FORMAT;
+
+	if(options)
+	{
+		if(options.texture_type)
+			texture_type = options.texture_type;
+		if(options.type)
+			type = options.type;
+		if(options.format)
+			format = options.format;
+	}
+
+	for(var i = 0; i < pool.length; ++i)
+	{
+		var tex = pool[i];
+
+		if( tex.width != width || 
+			tex.height != height ||
+			tex.type != type ||
+			tex.texture_type != texture_type ||
+			tex.format != format )
+			continue;
+		pool.splice(i,1); //remove from the pool
+		return tex;
+	}
+
+	//not found, create it
+	var tex = new GL.Texture( width, height, { type: type, texture_type: texture_type, format: format });
+	return tex;
+}
+
+Texture.releaseTemporary = function( tex )
+{
+	if(!Texture.temporary_pool)
+		Texture.temporary_pool = [];
+	Texture.temporary_pool.push( tex );
+}
 /** 
 * FBO for FrameBufferObjects, FBOs are used to store the render inside one or several textures 
 * Supports multibuffer and depthbuffer texture, useful for deferred rendering
@@ -6099,6 +6231,17 @@ Shader.SCREEN_COLORED_FRAGMENT_SHADER = "\n\
 			}\n\
 			";
 
+Shader.BLEND_FRAGMENT_SHADER = "\n\
+			precision highp float;\n\
+			uniform sampler2D u_texture;\n\
+			uniform sampler2D u_texture2;\n\
+			uniform float u_factor;\n\
+			varying vec2 v_coord;\n\
+			void main() {\n\
+				gl_FragColor = mix( texture2D(u_texture, v_coord), texture2D(u_texture2, v_coord), u_factor);\n\
+			}\n\
+			";
+
 Shader.SCREEN_FLAT_FRAGMENT_SHADER = "\n\
 			precision highp float;\n\
 			uniform vec4 u_color;\n\
@@ -6274,6 +6417,20 @@ Shader.getPartialQuadShader = function(gl)
 	if(shader)
 		return shader;
 	return gl.shaders[":quad2"] = new GL.Shader( Shader.QUAD_VERTEX_SHADER, Shader.QUAD2_FRAGMENT_SHADER );
+}
+
+/**
+* Returns a shader that blends two textures
+* shader must have: u_factor, u_texture, u_texture2
+* @method Shader.getBlendShader
+*/
+Shader.getBlendShader = function(gl)
+{
+	gl = gl || global.gl;
+	var shader = gl.shaders[":blend"];
+	if(shader)
+		return shader;
+	return gl.shaders[":blend"] = new GL.Shader( Shader.SCREEN_VERTEX_SHADER, Shader.BLEND_FRAGMENT_SHADER );
 }
 
 /**
@@ -7335,7 +7492,7 @@ var LEvent = global.LEvent = GL.LEvent = {
 	* @param {Object} instance where the events are binded
 	* @param {Object} target_instance [Optional] target_instance of the events to remove
 	**/
-	unbindAll: function( instance, target_instance )
+	unbindAll: function( instance, target_instance, callback )
 	{
 		if(!instance) 
 			throw("cannot unbind events in null");
@@ -7357,13 +7514,11 @@ var LEvent = global.LEvent = GL.LEvent = {
 			var array = events[i];
 			for(var j = array.length - 1; j >= 0; --j) //iterate backwards to avoid problems after removing
 			{
-				if( array[j][1] != target_instance ) 
+				if( array[j][1] != target_instance || (callback && callback !== array[j][0]) ) 
 					continue;
+
 				array.splice(j,1);//remove
 			}
-
-			//if(array.length == 0) //add two passes to avoid read and delete
-			//	delete events[i];
 		}
 	},
 

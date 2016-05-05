@@ -171,6 +171,12 @@ InspectorWidget.prototype.inspect = function( object, skip_history )
 
 	this.instance = object;
 
+	var that = this;
+
+	this.inspector.on_refresh = function(){
+		that.inspect( object, true );
+	};
+
 	if( !object )
 		this.clear();
 	else if(object.constructor == String || object.constructor == Number || object.constructor == Boolean ) //basic types?
@@ -206,6 +212,7 @@ InspectorWidget.prototype.clear = function()
 {
 	this.inspector.clear();
 	this.inspector.instance = null;
+	this.inspector.on_refresh = null;
 }
 
 InspectorWidget.prototype.update = function( object )

@@ -8971,7 +8971,7 @@ if(typeof(LiteGraph) != "undefined")
 	function LGraphTextureToViewport()
 	{
 		this.addInput("Texture","Texture");
-		this.properties = { additive: false, antialiasing: false, disable_alpha: false, gamma: 1.0 };
+		this.properties = { additive: false, antialiasing: false, filter: true, disable_alpha: false, gamma: 1.0 };
 		this.size[0] = 130;
 	}
 
@@ -9000,6 +9000,7 @@ if(typeof(LiteGraph) != "undefined")
 		if( this.isInputConnected(1) )
 			gamma = this.getInputData(1);
 
+		tex.setParameter( gl.TEXTURE_MAG_FILTER, this.properties.filter ? gl.LINEAR : gl.NEAREST );
 
 		if(this.properties.antialiasing)
 		{

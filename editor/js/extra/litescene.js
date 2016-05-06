@@ -8610,7 +8610,7 @@ Component.prototype.createProperty = function( name, value, type, setter, getter
 	}
 
 	//basic type
-	if( (value.constructor === Number || value.constructor === String || value.constructor === Boolean) && !setter && !getter )
+	if(  (value === null || value === undefined || value.constructor === Number || value.constructor === String || value.constructor === Boolean) && !setter && !getter )
 	{
 		this[ name ] = value;
 		return;
@@ -8619,7 +8619,7 @@ Component.prototype.createProperty = function( name, value, type, setter, getter
 	var private_name = "_" + name;
 
 	//vector type has special type with setters and getters to avoid overwritting
-	if(value.constructor === Float32Array)
+	if(value && value.constructor === Float32Array)
 	{
 		value = new Float32Array( value ); //clone
 		this[ private_name ] = value; //this could be removed...
@@ -13877,26 +13877,48 @@ function RenderFrameContext( o )
 {
 	this.width = 0; //0 means the same size as the viewport, negative numbers mean reducing the texture in half N times
 	this.height = 0; //0 means the same size as the viewport
+	this.precision = RenderFrameContext.DEFAULT_PRECISION;
 	this.filter_texture = true; //magFilter
-	this.use_high_precision = false;
 	this.use_depth_texture = true;
-	this.use_extra_texture = false;
+	this.num_extra_textures = 0; //number of extra textures in case we want to render to several buffers
+
+	this.adjust_aspect = false;
+
+	this._color_texture = null;
+	this._depth_texture = null;
+	this._textures = []; //all color textures
 
 	if(o)
 		this.configure(o);
 }
 
+RenderFrameContext.DEFAULT_PRECISION = 0; //selected by the renderer
+RenderFrameContext.LOW_PRECISION = 1; //byte
+RenderFrameContext.MEDIUM_PRECISION = 2; //half_float or float
+RenderFrameContext.HIGH_PRECISION = 3; //float
+
+RenderFrameContext.DEFAULT_PRECISION_WEBGL_TYPE = GL.UNSIGNED_BYTE;
+
 RenderFrameContext["@width"] = { type: "number", step: 1, precision: 0 };
 RenderFrameContext["@height"] = { type: "number", step: 1, precision: 0 };
+RenderFrameContext["@precision"] = { widget: "combo", values: { 
+	"default": RenderFrameContext.DEFAULT_PRECISION, 
+	"low": RenderFrameContext.LOW_PRECISION,
+	"medium": RenderFrameContext.MEDIUM_PRECISION,
+	"high": RenderFrameContext.HIGH_PRECISION
+	}
+};
+RenderFrameContext["@num_extra_textures"] = { type: "number", step: 1, min: 0, max: 4, precision: 0 };
 
 RenderFrameContext.prototype.configure = function(o)
 {
-	this.width = o.width;
-	this.height = o.height;
-	this.filter_texture = o.filter_texture;
-	this.use_high_precision = o.use_high_precision;
-	this.use_depth_texture = o.use_depth_texture;
-	this.use_extra_texture = o.use_extra_texture;
+	this.width = o.width || 0;
+	this.height = o.height || 0;
+	this.precision = o.precision || 0;
+	this.filter_texture = !!o.filter_texture;
+	this.adjust_aspect = !!o.adjust_aspect;
+	this.use_depth_texture = !!o.use_depth_texture;
+	this.num_extra_textures = o.num_extra_textures || 0;
 }
 
 RenderFrameContext.prototype.serialize = function()
@@ -13905,9 +13927,10 @@ RenderFrameContext.prototype.serialize = function()
 		width: this.width,
 		height:  this.height,
 		filter_texture: this.filter_texture,
-		use_high_precision:  this.use_high_precision,
+		precision:  this.precision,
+		adjust_aspect: this.adjust_aspect,
 		use_depth_texture:  this.use_depth_texture,
-		use_extra_texture:  this.use_extra_texture
+		num_extra_textures:  this.num_extra_textures
 	};
 }
 
@@ -13926,41 +13949,66 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 		height = viewport_height >> Math.abs( this.height ); //subsampling
 
 	var format = gl.RGBA;
-	var type = this.use_high_precision ? gl.HIGH_PRECISION_FORMAT : gl.UNSIGNED_BYTE;
+	var filter = this.filter_texture ? gl.LINEAR : gl.NEAREST ;
+	var type = 0;
+	switch( this.precision )
+	{
+		case RenderFrameContext.LOW_PRECISION:
+			type = gl.UNSIGNED_BYTE; break;
+		case RenderFrameContext.MEDIUM_PRECISION:
+			type = gl.HIGH_PRECISION_FORMAT; break; //gl.HIGH_PRECISION_FORMAT is HALF_FLOAT_OES, if not supported then is FLOAT, otherwise is UNSIGNED_BYTE
+		case RenderFrameContext.HIGH_PRECISION:
+			type = gl.FLOAT; break;
+		case RenderFrameContext.DEFAULT_PRECISION:
+		default:
+			type = RenderFrameContext.DEFAULT_PRECISION_WEBGL_TYPE; break;
+	}
+
+	var textures = this._textures;
 
 	//for the color: check that the texture size matches
-	if(!this.color_texture || this.color_texture.width != width || this.color_texture.height != height || this.color_texture.type != type)
-		this.color_texture = new GL.Texture( width, height, { filter: gl.LINEAR, format: format, type: type });
-	this.color_texture.setParameter( gl.TEXTURE_MAG_FILTER, this.filter_texture ? gl.LINEAR : gl.NEAREST );
+	if(!this._color_texture || this._color_texture.width != width || this._color_texture.height != height || this._color_texture.type != type)
+		this._color_texture = new GL.Texture( width, height, { minFilter: gl.LINEAR, magFilter: filter, format: format, type: type });
+	else
+		this._color_texture.setParameter( gl.TEXTURE_MAG_FILTER, filter );
+
+	textures[0] = this._color_texture;
 
 	//extra color texture (multibuffer rendering)
-	if( this.use_extra_texture && (!this.extra_texture || this.extra_texture.width != width || this.extra_texture.height != height || this.extra_texture.type != type) )
-		this.extra_texture = new GL.Texture( width, height, { filter: gl.LINEAR, format: format, type: type });
-	else if( !this.use_extra_texture )
-		this.extra_texture = null;
-	if(this.extra_texture)
-		this.extra_texture.setParameter( gl.TEXTURE_MAG_FILTER, this.filter_texture ? gl.LINEAR : gl.NEAREST );
+	var total_extra = Math.min( this.num_extra_textures, 4 );
+	for(var i = 0; i < total_extra; ++i) //MAX is 4
+	{
+		var extra_texture = textures[1 + i];
+		if( (!extra_texture || extra_texture.width != width || extra_texture.height != height || extra_texture.type != type) )
+			extra_texture = new GL.Texture( width, height, { minFilter: gl.LINEAR, magFilter: filter, format: format, type: type });
+		else
+			extra_texture.setParameter( gl.TEXTURE_MAG_FILTER, filter );
+		textures[1 + i] = extra_texture;
+	}
 
 	//for the depth
-	if( this.use_depth_texture && (!this.depth_texture || this.depth_texture.width != width || this.depth_texture.height != height) && gl.extensions["WEBGL_depth_texture"] )
-		this.depth_texture = new GL.Texture( width, height, { filter: gl.NEAREST, format: gl.DEPTH_COMPONENT, type: gl.UNSIGNED_INT });
+	if( this.use_depth_texture && (!this._depth_texture || this._depth_texture.width != width || this._depth_texture.height != height) && gl.extensions["WEBGL_depth_texture"] )
+		this._depth_texture = new GL.Texture( width, height, { filter: gl.NEAREST, format: gl.DEPTH_COMPONENT, type: gl.UNSIGNED_INT });
 	else if( !this.use_depth_texture )
-		this.depth_texture = null;
+		this._depth_texture = null;
 
 	//we will store some extra info in the depth texture for the near and far plane distances
-	if(this.depth_texture)
-		this.depth_texture.near_far_planes = vec2.create();
+	if(this._depth_texture && !this._depth_texture.near_far_planes)
+		this._depth_texture.near_far_planes = vec2.create();
 
 	//create FBO
 	if( !this._fbo )
 		this._fbo = new GL.FBO();
 
+	//cut extra
+	textures.length = 1 + total_extra;
+
 	//assign textures
-	this._fbo.setTextures( [this.color_texture], this.depth_texture, true );
+	this._fbo.setTextures( textures, this._depth_texture, true );
 }
 
 //Called before rendering the scene
-RenderFrameContext.prototype.enable = function( render_settings, viewport, adjust_aspect )
+RenderFrameContext.prototype.enable = function( render_settings, viewport )
 {
 	var camera = LS.Renderer._current_camera;
 	viewport = viewport || gl.viewport_data;
@@ -13969,13 +14017,13 @@ RenderFrameContext.prototype.enable = function( render_settings, viewport, adjus
 	this.prepare( viewport[2], viewport[3] );
 
 	//enable FBO
-	this.enableFBO( adjust_aspect );
+	this.enableFBO();
 
 	//set depth info inside the texture
-	if(this.depth_texture && camera)
+	if(this._depth_texture && camera)
 	{
-		this.depth_texture.near_far_planes[0] = camera.near;
-		this.depth_texture.near_far_planes[1] = camera.far;
+		this._depth_texture.near_far_planes[0] = camera.near;
+		this._depth_texture.near_far_planes[1] = camera.far;
 	}
 }
 
@@ -13984,8 +14032,18 @@ RenderFrameContext.prototype.disable = function()
 	this.disableFBO();
 }
 
+RenderFrameContext.prototype.getColorTexture = function(num)
+{
+	return this._textures[ num || 0 ];
+}
+
+RenderFrameContext.prototype.getDepthTexture = function()
+{
+	return this._depth_texture;
+}
+
 //helper in case you want have a Color and Depth texture
-RenderFrameContext.prototype.enableFBO = function( adjust_aspect )
+RenderFrameContext.prototype.enableFBO = function()
 {
 	if(!this._fbo)
 		throw("No FBO created in RenderFrameContext");
@@ -13994,8 +14052,8 @@ RenderFrameContext.prototype.enableFBO = function( adjust_aspect )
 
 	LS.Renderer._full_viewport.set( gl.viewport_data );
 	this._old_aspect = LS.Renderer.global_aspect;
-	if(adjust_aspect)
-		LS.Renderer.global_aspect = (gl.canvas.width / gl.canvas.height) / (this.color_texture.width / this.color_texture.height);
+	if(this.adjust_aspect)
+		LS.Renderer.global_aspect = (gl.canvas.width / gl.canvas.height) / (this._color_texture.width / this._color_texture.height);
 }
 
 RenderFrameContext.prototype.disableFBO = function()
@@ -14008,7 +14066,7 @@ RenderFrameContext.prototype.disableFBO = function()
 //Render the context of the fbo to the viewport (allows to apply FXAA)
 RenderFrameContext.prototype.show = function( use_antialiasing )
 {
-	var texture = this.color_texture;
+	var texture = this._color_texture;
 	if(!use_antialiasing)
 	{
 		texture.toViewport();
@@ -19398,9 +19456,9 @@ CameraFX.prototype.showFBO = function()
 		var material = LS.ResourcesManager.getResource( this.shader_material );
 		var rendered = false;
 		if(material && material.constructor === LS.ShaderMaterial )
-			rendered = material.applyToTexture( this.frame.color_texture );
+			rendered = material.applyToTexture( this.frame._color_texture );
 		if(!rendered)
-			this.frame.color_texture.toViewport(); //fallback in case the shader is missing
+			this.frame._color_texture.toViewport(); //fallback in case the shader is missing
 		return;
 	}
 
@@ -19417,8 +19475,8 @@ CameraFX.prototype.showFBO = function()
 
 CameraFX.prototype.applyFX = function()
 {
-	var color_texture = this.frame.color_texture;
-	var depth_texture = this.frame.depth_texture;
+	var color_texture = this.frame._color_texture;
+	var depth_texture = this.frame._depth_texture;
 
 	this.fx.apply_fxaa = this.use_antialiasing;
 	this.fx.filter = this.frame.filter_texture;
@@ -19544,9 +19602,9 @@ GlobalFX.prototype.showFBO = function()
 		var material = LS.ResourcesManager.getResource( this.shader_material );
 		var rendered = false;
 		if(material && material.constructor === LS.ShaderMaterial )
-			rendered = material.applyToTexture( this.frame.color_texture );
+			rendered = material.applyToTexture( this.frame._color_texture );
 		if(!rendered)
-			this.frame.color_texture.toViewport(); //fallback in case the shader is missing
+			this.frame._color_texture.toViewport(); //fallback in case the shader is missing
 		return;
 	}
 
@@ -19562,8 +19620,8 @@ GlobalFX.prototype.showFBO = function()
 
 GlobalFX.prototype.applyFX = function()
 {
-	var color_texture = this.frame.color_texture;
-	var depth_texture = this.frame.depth_texture;
+	var color_texture = this.frame._color_texture;
+	var depth_texture = this.frame._depth_texture;
 
 	this.fx.apply_fxaa = this.use_antialiasing;
 	this.fx.filter = this.frame.filter_texture;
@@ -24751,10 +24809,13 @@ FXGraphComponent.prototype.showFBO = function()
 
 	this.frame.disable();
 
-	LS.ResourcesManager.textures[":color_" + this.uid] = this.frame.color_texture;
-	LS.ResourcesManager.textures[":depth_" + this.uid] = this.frame.depth_texture;
-	if(this.frame.extra_texture)
-		LS.ResourcesManager.textures[":extra_" + this.uid] = this.frame.extra_texture;
+	LS.ResourcesManager.textures[":color_" + this.uid] = this.frame._color_texture;
+	LS.ResourcesManager.textures[":depth_" + this.uid] = this.frame._depth_texture;
+	if(this.frame.num_extra_textures)
+	{
+		for(var i = 0; i < this.frame.num_extra_textures; ++i)
+			LS.ResourcesManager.textures[":extra"+ i +"_" + this.uid] = this.frame._textures[i+1];
+	}
 
 	if(this.use_node_camera && this._viewport)
 	{
@@ -24777,7 +24838,7 @@ FXGraphComponent.prototype.applyGraph = function()
 		this._graph_frame_node = this._graph.findNodesByTitle("Rendered Frame")[0];
 	this._graph_frame_node._color_texture = ":color_" + this.uid;
 	this._graph_frame_node._depth_texture = ":depth_" + this.uid;
-	this._graph_frame_node._extra_texture = ":extra_" + this.uid;
+	this._graph_frame_node._extra_texture = ":extra0_" + this.uid;
 	this._graph_frame_node._camera = this._last_camera;
 
 	if(this._graph_viewport_node) //force antialiasing
@@ -26888,11 +26949,13 @@ Script.prototype.configure = function(o)
 		this.enabled = o.enabled;
 	if(o.code !== undefined)
 		this.code = o.code;
-	if(o.properties)
-		 this.setContextProperties( o.properties );
 
 	if(this._root && this._root.scene)
 		this.processCode();
+
+	//do this before processing the code if you want the script to overwrite the vars
+	if(o.properties)
+		 this.setContextProperties( o.properties );
 }
 
 Script.prototype.serialize = function()
@@ -27163,7 +27226,7 @@ Script.prototype.onScriptEvent = function(event_type, params)
 	var event_info = LS.Script.API_events_to_function[ event_type ];
 	if(!event_info)
 		return; //????
-	this._script.callMethod( event_info.name, params );
+	return this._script.callMethod( event_info.name, params );
 }
 
 Script.prototype.onAddedToNode = function( node )

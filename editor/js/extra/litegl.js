@@ -5467,7 +5467,12 @@ FBO.prototype.setTextures = function( color_textures, depth_texture, skip_disabl
 	if( this.color_textures )
 		previously_attached = this.color_textures.length;
 
-	this.color_textures = color_textures || [];
+	//copy textures in place
+	this.color_textures.length = color_textures ? color_textures.length : 0;
+	if(color_textures)
+		for(var i = 0; i < color_textures.length; ++i)
+			this.color_textures[i] = color_textures[i];
+
 	this.depth_texture = depth_texture;
 
 	//compute the W and H (and check they have the same size)

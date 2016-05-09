@@ -1522,7 +1522,7 @@ var DriveModule = {
 			widgets.addFolder("Folder", files_folder, { name_width: 60, callback: function(v){
 				files_folder = v;
 			}});
-			widgets.addButton(null,"Save them", inner_save_individually );
+			widgets.addButton(null,"Save them individually", inner_save_individually );
 			widgets.widgets_per_row = 1;
 
 			widgets.addTitle("Save all inside a Pack");
@@ -1603,8 +1603,18 @@ var DriveModule = {
 			if( fullpath.toLowerCase().indexOf(".wbin") == -1 )
 				fullpath += ".wbin";
 
-			//create pack
-			var pack = LS.Pack.createPack( pack_filename, missing, null, true );
+			var pack = LS.RM.getResource( fullpath, LS.Pack );
+			if(pack)
+			{
+				//append to existing pack
+				pack.addResources( missing );
+			}
+			else
+			{
+				//create pack
+				pack = LS.Pack.createPack( pack_filename, missing, null, true );
+			}
+
 			if(pack)
 			{
 				pack.fullpath = fullpath;

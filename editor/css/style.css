@@ -79,6 +79,9 @@ body.player #work-area, body.player #main-area  {
 	color: white;
 }
 
+.scene-tree .litetree .ltreeitem.selected {
+	background-color: rgba(71,49,27,0.5) !important;
+}
 
 .scene-tree .litetree .ltreeitem.selected .node-name {
     -moz-transition: background-color 0.1s ease 0s, color 0.1s ease 0s;

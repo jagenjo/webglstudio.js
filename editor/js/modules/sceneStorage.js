@@ -137,6 +137,13 @@ var SceneStorageModule = {
 			if(button == "Delete")
 			{
 				LiteGUI.confirm("Do you want to delete the file?", function() {
+
+					//remove also the Pack
+					var folder = LS.RM.getFolder(selected);
+					var basename = LS.RM.getBasename(selected);
+					var pack_fullpath = LS.RM.cleanFullpath( folder + "/" + basename + ".PACK.wbin" );
+					DriveModule.serverDeleteFile( pack_fullpath );
+
 					DriveModule.serverDeleteFile( selected, function(v) { 
 						LiteGUI.alert(v?"File deleted":"Error deleting file");
 						if(v)

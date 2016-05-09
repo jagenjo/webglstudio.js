@@ -284,8 +284,26 @@ InspectorWidget.prototype.showComponentsInterface = function( object, inspector 
 			var name = comp_info[0];
 			var title = "<span class='title'>"+name+"</span>";
 			var buttons = " <span class='buttons'><img class='options_section' src='imgs/mini-cog.png'></span>";
-			var section = inspector.addSection( title );
+			var section = inspector.addSection( title + buttons );
 			section.classList.add("error");
+			inspector.addStringButton( "Component class", name, { comp_info: comp_info, button:"Set", callback_button: function(v){
+				//check if exists
+				var old_class = this.options.comp_info[0];
+				var proposed_class = LS.Components[ v ];
+				if(!proposed_class)
+					return;
+				var info = object.serialize();
+				for(var i in info.components)
+				{
+					var compo_info = info.components[i];
+					if(compo_info[0] == old_class)
+						compo_info[0] = v;
+				}
+				//now force the node to be reloaded
+				object.removeAllComponents();
+				object.configure( info );
+				inspector.refresh();
+			}});
 		}
 	}
 }

@@ -329,7 +329,7 @@ LS.Components.CameraFX["@inspector"] = function( camerafx, inspector)
 }
 
 
-LS.Components.GlobalFX["@inspector"] = function( component, inspector)
+LS.Components.FrameFX["@inspector"] = function( component, inspector)
 {
 	if(!component)
 		return;

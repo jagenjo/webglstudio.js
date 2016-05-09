@@ -2072,7 +2072,7 @@ var ResourcesManager = {
 	},
 
 	/**
-	* Cleans resource name (removing double slashes)
+	* Cleans resource name (removing double slashes to avoid problems)
 	*
 	* @method cleanFullpath
 	* @param {String} fullpath
@@ -2082,6 +2082,9 @@ var ResourcesManager = {
 	{
 		if(!fullpath)
 			return "";
+
+		if( fullpath.indexOf("//") == -1 )
+			return fullpath;
 
 		//clean up the filename (to avoid problems with //)
 		if(fullpath.indexOf("://") == -1)
@@ -5574,7 +5577,7 @@ Material.prototype.fillUniforms = function( scene, options )
 
 	uniforms.u_material_color = this._color;
 	uniforms.u_ambient_color = scene.info ? scene.info.ambient_color : this._diffuse;
-	uniforms.u_diffuse_color = this._diffuse;
+	//uniforms.u_diffuse_color = this._diffuse;
 	uniforms.u_texture_matrix = this.uvs_matrix;
 
 	uniforms.u_specular = vec2.create([1,50]);
@@ -7621,7 +7624,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, l
 
 	//assign
 	LS.Renderer.bindSamplers(  this._samplers );
-	shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, this._uniforms, instance._uniforms ] );
+	shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, this._uniforms, instance.uniforms ] );
 
 	//render
 	instance.render( shader );
@@ -7632,19 +7635,23 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, l
 
 ShaderMaterial.prototype.fillUniforms = function()
 {
+
 	//gather uniforms & samplers
 	var samplers = this._samplers;
 	samplers.length = 0;
+
+	this._uniforms.u_material_color = this._color;
+
 	for(var i = 0; i < this._properties.length; ++i)
 	{
 		var p = this._properties[i];
 		if(p.is_texture)
 		{
+			this._uniforms[ p.uniform ] = samplers.length;
 			if(p.value)
-			{
-				this._uniforms[ p.uniform ] = samplers.length;
 				samplers.push( p.value );
-			}
+			else
+				samplers.push( " " ); //force missing texture
 		}
 		else
 			this._uniforms[ p.uniform ] = p.value;
@@ -10667,8 +10674,8 @@ LS.registerResourceClass( Prefab );
 function Pack(o)
 {
 	this.resource_names = []; 
-	this._data = {}; //here we store the original chunks from the WBin
-	this._resources_data = {};
+	this._data = {}; //the original chunks from the WBin, including the @JSON and @resource_names
+	this._resources_data = {}; //every resource in arraybuffer format
 	if(o)
 		this.configure(o);
 }
@@ -10678,7 +10685,7 @@ Pack.version = "0.2"; //used to know where the file comes from
 /**
 * configure the pack from an unpacked WBin
 * @method configure
-* @param {*} data
+* @param {Object} data an unpacked WBIN (object with every chunk)
 **/
 Pack.prototype.configure = function( data )
 {
@@ -10779,6 +10786,7 @@ Pack.prototype.setResources = function( resource_names, mark_them )
 	this._modified = true;
 }
 
+//adds to every resource in this pack info about where it came from (the pack)
 Pack.prototype.setResourcesLink = function( value )
 {
 	for(var i = 0; i < this.resource_names.length; ++i)
@@ -10794,8 +10802,13 @@ Pack.prototype.setResourcesLink = function( value )
 	}
 }
 
+//adds a new resource (or array of resources) to this pack
 Pack.prototype.addResources = function( resource_names, mark_them )
 {
+	if(!resource_names)
+		return;
+	if(resource_names.constructor !== Array)
+		resource_names = [ resource_names ];
 	this.setResources( this.resource_names.concat( resource_names ), mark_them );
 }
 
@@ -10988,7 +11001,7 @@ ShaderCode.prototype.processCode = function()
 					value = LS.stringToValue(value);
 				var options = null;
 				var options_index = line.indexOf("{");
-				if(options_index)
+				if(options_index != -1)
 					options = LS.stringToValue(line.substr(options_index));
 				this._global_uniforms[ words[0] ] = { name: words[0], uniform: words[1], type: words[2], value: value, options: options };
 			}
@@ -11092,24 +11105,31 @@ ShaderCode.prototype.getShader = function( render_mode, flags )
 		return null;
 
 	//compile the shader and return it
+	var shader = this.compileShader( vs_code, fs_code );
+	if(!shader)
+		return null;
+
+	this._compiled_shaders[ render_mode ] = shader;
+	return shader;
+}
+
+ShaderCode.prototype.compileShader = function( vs_code, fs_code)
+{
 	if(!LS.catch_exceptions)
-		shader = new GL.Shader( vs_code, fs_code );
+		return new GL.Shader( vs_code, fs_code );
 	else
 	{
 		try
 		{
-			shader = new GL.Shader( vs_code, fs_code );
+			return new GL.Shader( vs_code, fs_code );
 		}
 		catch(err)
 		{
 			LS.ShadersManager.dumpShaderError( this.filename, err, vs_code, fs_code );
 			LS.dispatchCodeError(err);
-			return;
 		}
 	}
-
-	this._compiled_shaders[ render_mode ] = shader;
-	return shader;
+	return null;
 }
 
 ShaderCode.prototype.getCodeFromSubfile = function( subfile )
@@ -13879,8 +13899,9 @@ function RenderFrameContext( o )
 	this.height = 0; //0 means the same size as the viewport
 	this.precision = RenderFrameContext.DEFAULT_PRECISION;
 	this.filter_texture = true; //magFilter
-	this.use_depth_texture = true;
+	this.use_depth_texture = false;
 	this.num_extra_textures = 0; //number of extra textures in case we want to render to several buffers
+	this.name = null; //if a name is provided all the textures will be stored
 
 	this.adjust_aspect = false;
 
@@ -13919,6 +13940,7 @@ RenderFrameContext.prototype.configure = function(o)
 	this.adjust_aspect = !!o.adjust_aspect;
 	this.use_depth_texture = !!o.use_depth_texture;
 	this.num_extra_textures = o.num_extra_textures || 0;
+	this.name = o.name;
 }
 
 RenderFrameContext.prototype.serialize = function()
@@ -13930,23 +13952,24 @@ RenderFrameContext.prototype.serialize = function()
 		precision:  this.precision,
 		adjust_aspect: this.adjust_aspect,
 		use_depth_texture:  this.use_depth_texture,
-		num_extra_textures:  this.num_extra_textures
+		num_extra_textures:  this.num_extra_textures,
+		name: this.name
 	};
 }
 
 RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height )
 {
 	//compute the right size for the textures
-	var width = this.width;
-	var height = this.height;
-	if(width == 0)
-		width = viewport_width;
-	else if(width < 0)
-		width = viewport_width >> Math.abs( this.width ); //subsampling
-	if(height == 0)
-		height = viewport_height;
-	else if(height < 0)
-		height = viewport_height >> Math.abs( this.height ); //subsampling
+	var final_width = this.width;
+	var final_height = this.height;
+	if(final_width == 0)
+		final_width = viewport_width;
+	else if(final_width < 0)
+		final_width = viewport_width >> Math.abs( this.width ); //subsampling
+	if(final_height == 0)
+		final_height = viewport_height;
+	else if(final_height < 0)
+		final_height = viewport_height >> Math.abs( this.height ); //subsampling
 
 	var format = gl.RGBA;
 	var filter = this.filter_texture ? gl.LINEAR : gl.NEAREST ;
@@ -13967,10 +13990,12 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 	var textures = this._textures;
 
 	//for the color: check that the texture size matches
-	if(!this._color_texture || this._color_texture.width != width || this._color_texture.height != height || this._color_texture.type != type)
-		this._color_texture = new GL.Texture( width, height, { minFilter: gl.LINEAR, magFilter: filter, format: format, type: type });
+	if(!this._color_texture || this._color_texture.width != final_width || this._color_texture.height != final_height || this._color_texture.type != type)
+		this._color_texture = new GL.Texture( final_width, final_height, { minFilter: gl.LINEAR, magFilter: filter, format: format, type: type });
 	else
 		this._color_texture.setParameter( gl.TEXTURE_MAG_FILTER, filter );
+	if(this.name)
+		LS.ResourcesManager.resources[ this.name ] = LS.ResourcesManager.textures[ this.name ] = this._color_texture;
 
 	textures[0] = this._color_texture;
 
@@ -13979,22 +14004,30 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 	for(var i = 0; i < total_extra; ++i) //MAX is 4
 	{
 		var extra_texture = textures[1 + i];
-		if( (!extra_texture || extra_texture.width != width || extra_texture.height != height || extra_texture.type != type) )
-			extra_texture = new GL.Texture( width, height, { minFilter: gl.LINEAR, magFilter: filter, format: format, type: type });
+		if( (!extra_texture || extra_texture.width != final_width || extra_texture.height != final_height || extra_texture.type != type) )
+			extra_texture = new GL.Texture( final_width, final_height, { minFilter: gl.LINEAR, magFilter: filter, format: format, type: type });
 		else
 			extra_texture.setParameter( gl.TEXTURE_MAG_FILTER, filter );
 		textures[1 + i] = extra_texture;
+		if(this.name)
+			LS.ResourcesManager.resources[ this.name + (1+i) ] = LS.ResourcesManager.textures[ this.name + (1+i) ] = extra_texture;
 	}
 
 	//for the depth
-	if( this.use_depth_texture && (!this._depth_texture || this._depth_texture.width != width || this._depth_texture.height != height) && gl.extensions["WEBGL_depth_texture"] )
-		this._depth_texture = new GL.Texture( width, height, { filter: gl.NEAREST, format: gl.DEPTH_COMPONENT, type: gl.UNSIGNED_INT });
+	if( this.use_depth_texture && (!this._depth_texture || this._depth_texture.width != final_width || this._depth_texture.height != final_height) && gl.extensions["WEBGL_depth_texture"] )
+		this._depth_texture = new GL.Texture( final_width, final_height, { filter: gl.NEAREST, format: gl.DEPTH_COMPONENT, type: gl.UNSIGNED_INT });
 	else if( !this.use_depth_texture )
 		this._depth_texture = null;
 
 	//we will store some extra info in the depth texture for the near and far plane distances
-	if(this._depth_texture && !this._depth_texture.near_far_planes)
-		this._depth_texture.near_far_planes = vec2.create();
+	if(this._depth_texture)
+	{
+		if(this.name)
+			LS.ResourcesManager.resources[ this.name + "_depth" ] = LS.ResourcesManager.textures[ this.name + "_depth" ] = this._depth_texture;
+
+		if(!this._depth_texture.near_far_planes)
+			this._depth_texture.near_far_planes = vec2.create();
+	}
 
 	//create FBO
 	if( !this._fbo )
@@ -14677,16 +14710,14 @@ var Renderer = {
 	//this function is in charge of rendering the regular color pass (used also for reflections)
 	renderColorPassInstance: function( instance, render_settings )
 	{
-		var near_lights = this.getNearLights( instance, this._near_lights );
-
 		//render instance
 		var renderered = false;
 		if( instance.material && instance.material.renderInstance )
-			renderered = instance.material.renderInstance( instance, render_settings, near_lights );
+			renderered = instance.material.renderInstance( instance, render_settings );
 
 		//render using default system (slower but it works)
 		if(!renderered)
-			this.renderStandardColorMultiPassLightingInstance( instance, render_settings, near_lights );
+			this.renderStandardColorMultiPassLightingInstance( instance, render_settings );
 	},
 
 	//this function is in charge of rendering an instance in the shadowmap
@@ -14712,7 +14743,7 @@ var Renderer = {
 	* @param {RenderSettings} render_settings
 	* @param {Array} lights array containing al the lights affecting this RI
 	*/
-	renderStandardColorMultiPassLightingInstance: function( instance, render_settings, lights )
+	renderStandardColorMultiPassLightingInstance: function( instance, render_settings )
 	{
 		var camera = this._current_camera;
 		var node = instance.node;
@@ -14720,6 +14751,7 @@ var Renderer = {
 		var scene = this._current_scene;
 		var renderer_uniforms = this._render_uniforms;
 		var instance_final_query = instance._final_query;
+		var lights = this.getNearLights( instance, this._near_lights );
 
 		//compute matrices
 		var model = instance.matrix;
@@ -15015,7 +15047,7 @@ var Renderer = {
 				tex = this._missing_texture;
 
 			if(tex._locked) //locked textures are usually the render target where we are rendering right now, so we cannot read and write at the same texture
-				continue;
+				tex = this._missing_texture;
 
 			tex.bind( i );
 			this._active_samples[i] = tex;
@@ -15325,6 +15357,7 @@ var Renderer = {
 		render_settings = render_settings || this.default_render_settings;
 		this._current_target = texture;
 		var scene = LS.Renderer._current_scene;
+		texture._locked = true;
 
 		if(texture.texture_type == gl.TEXTURE_2D)
 		{
@@ -15334,6 +15367,7 @@ var Renderer = {
 		else if( texture.texture_type == gl.TEXTURE_CUBE_MAP)
 			this.renderToCubemap( cam.getEye(), texture.width, texture, render_settings, cam.near, cam.far );
 		this._current_target = null;
+		texture._locked = false;
 
 		function inner_draw_2d()
 		{
@@ -19486,10 +19520,10 @@ CameraFX.prototype.applyFX = function()
 LS.registerComponent( CameraFX );
 /**
 * This component allow to create basic FX applied to the whole scene
-* @class GlobalFX
+* @class FrameFX
 * @param {Object} o object with the serialized info
 */
-function GlobalFX(o)
+function FrameFX(o)
 {
 	this.enabled = true;
 
@@ -19502,9 +19536,9 @@ function GlobalFX(o)
 		this.configure(o);
 }
 
-GlobalFX.icon = "mini-icon-fx.png";
+FrameFX.icon = "mini-icon-fx.png";
 
-GlobalFX.prototype.configure = function(o)
+FrameFX.prototype.configure = function(o)
 {
 	this.enabled = !!o.enabled;
 	this.use_viewport_size = !!o.use_viewport_size;
@@ -19516,7 +19550,7 @@ GlobalFX.prototype.configure = function(o)
 		this.frame.configure( o.frame );
 }
 
-GlobalFX.prototype.serialize = function()
+FrameFX.prototype.serialize = function()
 {
 	return { 
 		enabled: this.enabled,
@@ -19528,61 +19562,61 @@ GlobalFX.prototype.serialize = function()
 	};
 }
 
-GlobalFX.prototype.getResources = function(res)
+FrameFX.prototype.getResources = function(res)
 {
 	//TODO
 	return res;
 }
 
-GlobalFX.prototype.addFX = function( name )
+FrameFX.prototype.addFX = function( name )
 {
 	this.fx.addFX(name);
 }
 
-GlobalFX.prototype.getFX = function(index)
+FrameFX.prototype.getFX = function(index)
 {
 	return this.fx.getFX( index );
 }
 
-GlobalFX.prototype.moveFX = function( fx, offset )
+FrameFX.prototype.moveFX = function( fx, offset )
 {
 	return this.fx.moveFX(fx,offset);
 }
 
-GlobalFX.prototype.removeFX = function( fx )
+FrameFX.prototype.removeFX = function( fx )
 {
 	return this.fx.removeFX( fx );
 }
 
-GlobalFX.prototype.onAddedToScene = function( scene )
+FrameFX.prototype.onAddedToScene = function( scene )
 {
 	LEvent.bind( scene, "enableFrameContext", this.onBeforeRender, this );
 	LEvent.bind( scene, "showFrameContext", this.onAfterRender, this );
 }
 
-GlobalFX.prototype.onRemovedFromScene = function( scene )
+FrameFX.prototype.onRemovedFromScene = function( scene )
 {
 	LEvent.unbind( scene, "enableFrameContext", this.onBeforeRender, this );
 	LEvent.unbind( scene, "showFrameContext", this.onAfterRender, this );
 }
 
 //hook the RFC
-GlobalFX.prototype.onBeforeRender = function(e, render_settings)
+FrameFX.prototype.onBeforeRender = function(e, render_settings)
 {
 	if(!this.enabled)
 		return;
 
-	this.enableGlobalFBO( render_settings );
+	this.enableFrameFBO( render_settings );
 }
 
-GlobalFX.prototype.onAfterRender = function( e, render_settings )
+FrameFX.prototype.onAfterRender = function( e, render_settings )
 {
 	if(!this.enabled)
 		return;
 	this.showFBO();
 }
 
-GlobalFX.prototype.enableGlobalFBO = function( render_settings )
+FrameFX.prototype.enableFrameFBO = function( render_settings )
 {
 	if(!this.enabled)
 		return;
@@ -19590,7 +19624,7 @@ GlobalFX.prototype.enableGlobalFBO = function( render_settings )
 	this.frame.enable( render_settings );
 }
 
-GlobalFX.prototype.showFBO = function()
+FrameFX.prototype.showFBO = function()
 {
 	if(!this.enabled)
 		return;
@@ -19618,7 +19652,7 @@ GlobalFX.prototype.showFBO = function()
 		this.applyFX();
 }
 
-GlobalFX.prototype.applyFX = function()
+FrameFX.prototype.applyFX = function()
 {
 	var color_texture = this.frame._color_texture;
 	var depth_texture = this.frame._depth_texture;
@@ -19628,7 +19662,7 @@ GlobalFX.prototype.applyFX = function()
 	this.fx.applyFX( color_texture, null, { depth_texture: depth_texture } );
 }
 
-LS.registerComponent( GlobalFX );
+LS.registerComponent( FrameFX );
 //***** LIGHT ***************************
 
 /**
@@ -22299,6 +22333,7 @@ function Skybox(o)
 	this.enabled = true;
 	this.texture = null;
 	this.intensity = 1;
+	this.material = null;
 	this.use_environment = true;
 	if(o)
 		this.configure(o);
@@ -22307,6 +22342,7 @@ function Skybox(o)
 Skybox.icon = "mini-icon-dome.png";
 
 //vars
+Skybox["@material"] = { widget: "resource" };
 Skybox["@texture"] = { widget: "texture" };
 
 Skybox.prototype.onAddedToNode = function(node)
@@ -22323,6 +22359,8 @@ Skybox.prototype.getResources = function(res)
 {
 	if(typeof(this.texture) == "string")
 		res[this.texture] = GL.Texture;
+	if(typeof(this.material) == "string")
+		res[this.material] = LS.Material;
 	return res;
 }
 
@@ -22379,9 +22417,19 @@ Skybox.prototype.onCollectInstances = function(e, instances)
 		};
 	}
 
-	var mat = this._material;
+	var mat = null;
+	if(this.material)
+	{
+		mat = LS.ResourcesManager.getResource( this.material );
+	}
+
 	if(!mat)
-		mat = this._material = new LS.Material({use_scene_ambient:false});
+	{
+		mat = this._material;
+		if(!mat)
+			mat = this._material = new LS.Material({use_scene_ambient:false});
+	}
+
 
 	vec3.copy( mat.color, [ this.intensity, this.intensity, this.intensity ] );
 	var sampler = mat.setTexture( LS.Material.COLOR, texture );
@@ -24445,6 +24493,8 @@ GraphComponent.prototype.onSceneEvent = function( event_type, event_data )
 
 	if(event_type == "init")
 		this._graph.sendEventToAllNodes("onInit");
+	if(event_type == "start")
+		this._graph.sendEventToAllNodes("onStart");
 
 	if(this.on_event == event_type)
 		this.runGraph();
@@ -26941,6 +26991,24 @@ Object.defineProperty( Script.prototype, "context", {
 	enumerable: false //if it was enumerable it would be serialized
 });
 
+Object.defineProperty( Script.prototype, "name", {
+	set: function(v){ 
+		console.error("Script: name cannot be assigned");
+	},
+	get: function() { 
+		if(!this._script.code)
+			return;
+		var line = this._script.code.substr(0,32);
+		if(line.indexOf("//@") != 0)
+			return null;
+		var last = line.indexOf("\n");
+		if(last == -1)
+			last = undefined;
+		return line.substr(3,last - 3);
+	},
+	enumerable: false //if it was enumerable it would be serialized
+});
+
 Script.prototype.configure = function(o)
 {
 	if(o.uid)
@@ -27282,15 +27350,7 @@ Script.prototype.onRemovedFromScene = function(scene)
 //used in editor
 Script.prototype.getComponentTitle = function()
 {
-	if(!this._script.code)
-		return;
-	var line = this._script.code.substr(0,32);
-	if(line.indexOf("//@") != 0)
-		return null;
-	var last = line.indexOf("\n");
-	if(last == -1)
-		last = undefined;
-	return line.substr(3,last - 3);
+	return this.name;
 }
 
 

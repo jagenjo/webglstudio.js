@@ -210,7 +210,7 @@ var EditorView = {
 		if(mouse_pos)
 		{
 			ray = camera.getRayInPixel( mouse_pos[0], mouse_pos[1] );
-			ray.end = vec3.add( vec3.create(), ray.start, vec3.scale(vec3.create(), ray.direction, 10000 ) );
+			ray.end = vec3.add( vec3.create(), ray.origin, vec3.scale(vec3.create(), ray.direction, 10000 ) );
 		}
 
 		//Node components

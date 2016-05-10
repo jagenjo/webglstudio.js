@@ -16,7 +16,7 @@ var AddPointsTool = {
 	last_point: null,	
 	last_normal: vec3.fromValues(0,1,0),	
 	click_pos: vec2.create(),
-	raycast_options: { normal: true },
+	raycast_options: { normal: true, triangle_collision: true },
 
 	onEnable: function()
 	{
@@ -220,7 +220,7 @@ var AddPointsTool = {
 
 		if(this.mode == "colliders")
 		{
-			var collisions = LS.Physics.raycast( ray.start, ray.direction, this.raycast_options ); 
+			var collisions = LS.Physics.raycast( ray.origin, ray.direction, this.raycast_options ); 
 			this.last_collisions = collisions;
 			if(collisions.length)
 			{
@@ -235,7 +235,7 @@ var AddPointsTool = {
 		
 		if(this.mode == "render_instances")
 		{
-			var collisions = LS.Picking.raycast( ray.start, ray.direction, this.raycast_options ); 
+			var collisions = LS.Picking.raycastRenderInstances( ray.origin, ray.direction, this.raycast_options ); 
 			this.last_collisions = collisions;
 			if(collisions.length)
 			{
@@ -278,7 +278,7 @@ var AddPointsTool = {
 		this.last_normal.set( plane_normal );
 
 		var result = vec3.create();
-		if( geo.testRayPlane( ray.start, ray.direction, plane_center, plane_normal, result ) )
+		if( geo.testRayPlane( ray.origin, ray.direction, plane_center, plane_normal, result ) )
 			return result;
 		return null;
 	},

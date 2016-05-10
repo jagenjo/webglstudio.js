@@ -324,6 +324,8 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 
 	if(resource.category)
 		element.dataset["category"] = resource.category;
+	else
+		element.dataset["category"] = type;
 
 	element.className = "resource file-item resource-" + type;
 	if(resource.id)

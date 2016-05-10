@@ -145,6 +145,7 @@ var TestCollisionsTool = {
 
 	points: null,
 	click_pos: vec2.create(),
+	use_render_instances: false,
 
 	onEnable: function()
 	{
@@ -169,8 +170,12 @@ var TestCollisionsTool = {
 		{
 			var camera = ToolUtils.getCamera();
 			var ray = camera.getRayInPixel( e.canvasx, e.canvasy );
-			//ray.end = vec3.add( vec3.create(), ray.start, vec3.scale(vec3.create(), ray.direction, 10000) );
-			var collisions = LS.Physics.raycast( ray.start, ray.direction ); //max_dist, layers, scene
+			//ray.end = vec3.add( vec3.create(), ray.origin, vec3.scale(vec3.create(), ray.direction, 10000) );
+			var collisions = null;
+			if(this.use_render_instances)
+				collisions = LS.Physics.raycastRenderInstances( ray.origin, ray.direction );
+			else
+				collisions = LS.Physics.raycast( ray.origin, ray.direction ); 
 
 			if(collisions.length)
 			{

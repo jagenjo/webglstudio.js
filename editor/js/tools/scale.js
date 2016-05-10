@@ -142,23 +142,23 @@ var scaleNodeTool = {
 		{
 			var ray = camera.getRayInPixel( e.mousex, gl.canvas.height - e.mousey );
 			var result = vec3.create();
-			ray.end = vec3.add( vec3.create(), ray.start, vec3.scale(vec3.create(), ray.direction, 10000 ) );
+			ray.end = vec3.add( vec3.create(), ray.origin, vec3.scale(vec3.create(), ray.direction, 10000 ) );
 
 			var radius = scaleNodeTool._radius;
 
 			var result = vec3.create();
 
-			if ( geo.testRaySphere( ray.start, ray.direction, scaleNodeTool._center, radius*1.1, result ) ) 
+			if ( geo.testRaySphere( ray.origin, ray.direction, scaleNodeTool._center, radius*1.1, result ) ) 
 			{
 				vec3.copy( scaleNodeTool._closest, result );
 
-				if ( geo.testRaySphere( ray.start, ray.direction, scaleNodeTool._center, radius*0.5, result ) ) 
+				if ( geo.testRaySphere( ray.origin, ray.direction, scaleNodeTool._center, radius*0.5, result ) ) 
 					scaleNodeTool._on_top_of = "center";
-				else if ( geo.testRaySphere( ray.start, ray.direction, scaleNodeTool._x_axis_end, scaleNodeTool._radius * 0.1, result ) ) 
+				else if ( geo.testRaySphere( ray.origin, ray.direction, scaleNodeTool._x_axis_end, scaleNodeTool._radius * 0.1, result ) ) 
 					scaleNodeTool._on_top_of = "x";
-				else if ( geo.testRaySphere( ray.start, ray.direction, scaleNodeTool._y_axis_end, scaleNodeTool._radius * 0.1, result ) ) 
+				else if ( geo.testRaySphere( ray.origin, ray.direction, scaleNodeTool._y_axis_end, scaleNodeTool._radius * 0.1, result ) ) 
 					scaleNodeTool._on_top_of = "y";
-				else if ( geo.testRaySphere( ray.start, ray.direction, scaleNodeTool._z_axis_end, scaleNodeTool._radius * 0.1, result ) ) 
+				else if ( geo.testRaySphere( ray.origin, ray.direction, scaleNodeTool._z_axis_end, scaleNodeTool._radius * 0.1, result ) ) 
 					scaleNodeTool._on_top_of = "z";
 				else
 					scaleNodeTool._on_top_of = null;

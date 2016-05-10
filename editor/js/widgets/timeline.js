@@ -1131,7 +1131,7 @@ Timeline.prototype.onMouseWheel = function(e)
 Timeline.prototype.showOptionsContextMenu = function( e )
 {
 	var that = this;
-	var options = ["New Animation","Load Animation","Scene Animation",null];
+	var options = ["New Animation","Load Animation","Scene Animation",null,"Baking Tools"];
 	var animation_options = {title:"Animation Options",disabled:!this.current_take};
 	options.push(animation_options);
 
@@ -1142,6 +1142,8 @@ Timeline.prototype.showOptionsContextMenu = function( e )
 			that.onLoadAnimation();
 		else if(v == "Scene Animation")
 			that.onSceneAnimation();
+		else if(v == "Baking Tools")
+			that.onShowBakingDialog();
 		else if(v == animation_options)
 			that.onShowAnimationOptionsDialog();
 	}});
@@ -1448,8 +1450,12 @@ Timeline.prototype.processInsertLocator = function( locator, options )
 		track.addKeyframe( time , value );
 	}
 
-	this.redrawCanvas();
-	RenderModule.requestFrame();
+
+	if(!options.ignore_redraw)
+	{
+		this.redrawCanvas();
+		RenderModule.requestFrame();
+	}
 }
 
 Timeline.prototype.insertKeyframe = function( track, only_different, time )
@@ -1663,7 +1669,7 @@ Timeline.prototype.onShowAnimationOptionsDialog = function()
 
 	//actions
 	widgets.widgets_per_row = 2;
-	var values = ["Use names as ids","Optimize Tracks","Match Translation","Only Rotations"];
+	var values = ["Pack all tracks","Unpack all tracks","Use names as ids","Optimize Tracks","Match Translation","Only Rotations"];
 	var action = values[0];
 	widgets.addCombo("Actions", action,{ values: values, width: "80%", callback: function(v){
 		action = v;	
@@ -1674,6 +1680,10 @@ Timeline.prototype.onShowAnimationOptionsDialog = function()
 
 		if(action == "Use names as ids")
 			total = that.current_take.convertIDstoNames(true);
+		else if(action == "Pack all tracks")
+			total = that.current_take.setTracksPacking(true);
+		else if(action == "Unpack all tracks")
+			total = that.current_take.setTracksPacking(false);
 		else if(action == "Optimize Tracks")
 			total = that.current_take.optimizeTracks();
 		else if(action == "Match Translation")
@@ -1710,6 +1720,70 @@ Timeline.prototype.onShowAnimationOptionsDialog = function()
 
 	dialog.add( widgets );
 	dialog.adjustSize(4);
+	dialog.show( null, this.root );
+}
+
+Timeline.prototype.onShowBakingDialog = function()
+{
+	var dialog = new LiteGUI.Dialog("baking_tools",{ title:"Baking Tools", width: 400, draggable: true, closable: true });
+	var that = this;
+
+	var node = SelectionModule.getSelectedNode();
+
+	var node_uid = node ? node.uid : "";
+
+	var options = {
+		create_new_tracks: true,
+		only_selected: false,
+		relative: true,
+		only_changed: false,
+		add_keyframe: true, //adds the keyframe
+		ignore_redraw: true //avoids redrawing after every keyframe insert
+	};
+
+	var widgets = new LiteGUI.Inspector({ name_width: 180 });
+
+	widgets.addNode("Node Root", node_uid, { callback: function(v){
+		node_uid = v;
+	}});
+
+	widgets.addCheckbox("Only selected nodes", options.only_selected, { callback: function(v){
+		options.only_selected = v;
+	}});
+
+	widgets.addCheckbox("Use relative locators", options.relative, { callback: function(v){
+		options.relative = v;
+	}});
+
+	widgets.addButton(null,"Bake Current Pose", function(){
+		var nodes = null;
+		if(options.only_selected)
+		{
+			nodes = SelectionModule.getSelectedNodes();
+		}
+		else
+		{
+			if(!node_uid)
+				return LiteGUI.alert("No Node selected");
+			var node = LS.GlobalScene.getNode( node_uid );
+			if(!node)
+				return LiteGUI.alert("No Node selected");
+			nodes = node.getDescendants();
+		}
+
+		if(!nodes || !nodes.length)
+			return LiteGUI.alert("No Nodes found");
+
+		that.bakeCurrentPose( nodes, options );
+	});
+
+	widgets.addSeparator();
+	widgets.addButton(null,"Close", function(){
+		dialog.close();	
+	});
+
+	dialog.add( widgets );
+	dialog.adjustSize(0);
 	dialog.show( null, this.root );
 }
 
@@ -1846,6 +1920,14 @@ Timeline.prototype.showTrackOptionsDialog = function( track )
 		});
 		widgets.addString("Name", track.name, function(v){ 
 			track.name = v; that.redrawCanvas();
+			that.animationModified();
+		});
+
+		widgets.addCheckbox("Packed Data", track.packed_data, function(v){ 
+			if(v)
+				track.packData();
+			else
+				track.unpackData();
 			that.animationModified();
 		});
 
@@ -1992,6 +2074,18 @@ Timeline.prototype.onReload = function()
 
 	if(this.current_animation.name == LS.Animation.DEFAULT_SCENE_NAME )
 		this.setAnimation( LS.GlobalScene.animation );
+}
+
+Timeline.prototype.bakeCurrentPose = function( nodes, options )
+{
+	for(var i = 0; i < nodes.length; ++i)
+	{
+		var node = nodes[i];
+		var locator = node.transform.getLocator() + "/data";
+		this.processInsertLocator( locator, options );
+	}
+	LS.GlobalScene.refresh();
+	this.redrawCanvas();
 }
 
 

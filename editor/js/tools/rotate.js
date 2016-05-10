@@ -188,7 +188,7 @@ var rotateNodeTool = {
 
 			if(this._on_top_of == "center")
 			{
-				if(!geo.testRaySphere( ray.start, ray.direction, this._center, this._radius*1.1, result ))
+				if(!geo.testRaySphere( ray.origin, ray.direction, this._center, this._radius*1.1, result ))
 					return true;
 
 				quat.copy(Q, ToolUtils.computeRotationBetweenPoints(center, this._closest, result) );
@@ -199,27 +199,27 @@ var rotateNodeTool = {
 			else if( this._on_top_of == "x" )
 			{
 				//compute angle between closest_ring and current point
-				geo.testRayPlane( ray.start, ray.direction, this._center, xaxis, result );
+				geo.testRayPlane( ray.origin, ray.direction, this._center, xaxis, result );
 				quat.copy(Q, ToolUtils.computeRotationBetweenPoints( center, this._closest_ring, result, xaxis, true, scalar) );
 				vec3.copy(this._closest_ring,result);
 			}
 			else if( this._on_top_of == "y" )
 			{
 				//compute angle between closest_ring and current point
-				geo.testRayPlane( ray.start, ray.direction, this._center, yaxis, result );
+				geo.testRayPlane( ray.origin, ray.direction, this._center, yaxis, result );
 				quat.copy(Q, ToolUtils.computeRotationBetweenPoints( center, this._closest_ring, result, yaxis, true, scalar) );
 				vec3.copy(this._closest_ring,result);
 			}
 			else if( this._on_top_of == "z" )
 			{
 				//compute angle between closest_ring and current point
-				geo.testRayPlane( ray.start, ray.direction, this._center, zaxis, result );
+				geo.testRayPlane( ray.origin, ray.direction, this._center, zaxis, result );
 				quat.copy(Q, ToolUtils.computeRotationBetweenPoints( center, this._closest_ring, result, zaxis, true, scalar) );
 				vec3.copy(this._closest_ring,result);
 			}
 			else if( this._on_top_of == "f" )
 			{
-				geo.testRayPlane( ray.start, ray.direction, center, ToolUtils.camera_front, result );
+				geo.testRayPlane( ray.origin, ray.direction, center, ToolUtils.camera_front, result );
 				//closest should be projected to the plane
 				var point = geo.projectPointOnPlane(this._closest, center, ToolUtils.camera_front );
 				quat.copy( Q, ToolUtils.computeRotationBetweenPoints( center, point, result ) );
@@ -242,10 +242,10 @@ var rotateNodeTool = {
 		}
 		else //mouse moving without clicking: test collision
 		{
-			if ( geo.testRaySphere( ray.start, ray.direction, this._center, this._radius*1.2, result ) ) 
+			if ( geo.testRaySphere( ray.origin, ray.direction, this._center, this._radius*1.2, result ) ) 
 			{
 				vec3.copy( this._closest, result );
-				if ( geo.testRaySphere( ray.start, ray.direction, this._center, this._radius*1.1, result ) ) 
+				if ( geo.testRaySphere( ray.origin, ray.direction, this._center, this._radius*1.1, result ) ) 
 				{
 					vec3.copy( this._closest, result );
 					if( ToolUtils.testCircle(ray, this._x_axis_normal, this._center, this._radius, result) )

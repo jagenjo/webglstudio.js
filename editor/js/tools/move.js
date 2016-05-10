@@ -171,7 +171,7 @@ var moveTool = {
 		mat4.multiplyVec3( center,gizmo_model,center );
 
 		var ray = camera.getRayInPixel( e.mousex, gl.canvas.height - e.mousey );
-		ray.end = vec3.add( vec3.create(), ray.start, vec3.scale(vec3.create(), ray.direction, 10000) );
+		ray.end = vec3.add( vec3.create(), ray.origin, vec3.scale(vec3.create(), ray.direction, 10000) );
 		moveTool._last_ray = ray;
 
 		if (e.dragging && e.which == GL.LEFT_MOUSE_BUTTON) {
@@ -207,7 +207,7 @@ var moveTool = {
 				else
 					axis = moveTool._x_axis_end;
 			
-				geo.closestPointBetweenLines( ray.start, ray.end, moveTool._center, axis, null, closest );
+				geo.closestPointBetweenLines( ray.origin, ray.end, moveTool._center, axis, null, closest );
 				//trace( vec3.toArray(moveTool._closest));
 				//trace( vec3.toArray(closest));
 				vec3.subtract(delta, closest, moveTool._closest);
@@ -237,25 +237,25 @@ var moveTool = {
 			vec3.copy( moveTool._debug_pos, result );
 			var radius = vec3.dist( moveTool._center, moveTool._x_axis_end);
 
-			if ( geo.testRaySphere( ray.start, ray.direction, moveTool._center, radius*1.1, result ) ) 
+			if ( geo.testRaySphere( ray.origin, ray.direction, moveTool._center, radius*1.1, result ) ) 
 			{
 				vec3.copy( moveTool._closest, result );
-				if ( geo.testRaySphere( ray.start, ray.direction, moveTool._center, radius*0.25, result ) ) 
+				if ( geo.testRaySphere( ray.origin, ray.direction, moveTool._center, radius*0.25, result ) ) 
 					moveTool._on_top_of = "center";
-				else if( geo.testRayCylinder( ray.start, ray.direction, moveTool._center, moveTool._x_axis_end, radius*0.1, result ) )
+				else if( geo.testRayCylinder( ray.origin, ray.direction, moveTool._center, moveTool._x_axis_end, radius*0.1, result ) )
 				{
-					geo.closestPointBetweenLines( ray.start, ray.end, moveTool._center, moveTool._x_axis_end, null, moveTool._closest );
+					geo.closestPointBetweenLines( ray.origin, ray.end, moveTool._center, moveTool._x_axis_end, null, moveTool._closest );
 					//vec3.set(moveTool._closest, moveTool._debug_pos );
 					moveTool._on_top_of = "x";
 				}
-				else if( geo.testRayCylinder( ray.start, ray.direction, moveTool._center, moveTool._y_axis_end, radius*0.1, result ) )
+				else if( geo.testRayCylinder( ray.origin, ray.direction, moveTool._center, moveTool._y_axis_end, radius*0.1, result ) )
 				{
-					geo.closestPointBetweenLines( ray.start, ray.end, moveTool._center, moveTool._y_axis_end, null, moveTool._closest );
+					geo.closestPointBetweenLines( ray.origin, ray.end, moveTool._center, moveTool._y_axis_end, null, moveTool._closest );
 					moveTool._on_top_of = "y";
 				}
-				else if( geo.testRayCylinder( ray.start, ray.direction, moveTool._center, moveTool._z_axis_end, radius*0.1, result ) )
+				else if( geo.testRayCylinder( ray.origin, ray.direction, moveTool._center, moveTool._z_axis_end, radius*0.1, result ) )
 				{
-					geo.closestPointBetweenLines( ray.start, ray.end, moveTool._center, moveTool._z_axis_end, null, moveTool._closest );
+					geo.closestPointBetweenLines( ray.origin, ray.end, moveTool._center, moveTool._z_axis_end, null, moveTool._closest );
 					moveTool._on_top_of = "z";
 				}
 				else

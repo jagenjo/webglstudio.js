@@ -653,14 +653,6 @@ LS.Components.ParticleEmissor["@inspector"] = function(component, inspector)
 
 /** extras ****/
 
-LS.Components.PlayAnimation.onShowProperties = function(component, inspector)
-{
-	inspector.addButton("","Edit Animation", { callback: function() { 
-		var anim = component.getAnimation();
-		AnimationModule.showTimeline( anim );
-	}});
-}
-
 
 LS.Components.CameraController.onShowProperties = function(component, inspector)
 {

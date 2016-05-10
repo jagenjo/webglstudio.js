@@ -101,7 +101,7 @@ CameraGizmo.prototype.checkSide = function(e)
 	//var ray = {start:[0,0,-10],direction:[0,0,1]};
 	var result = vec3.create();
 		
-	if( geo.testRaySphere(ray.start, ray.direction, vec3.create([0,0,0]), this.gizmo_size * 0.6, result) )
+	if( geo.testRaySphere(ray.origin, ray.direction, vec3.create([0,0,0]), this.gizmo_size * 0.6, result) )
 	{
 		vec3.normalize(result,result);
 		var max_dot = -1;

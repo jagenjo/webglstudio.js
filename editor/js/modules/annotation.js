@@ -185,9 +185,9 @@ var AnnotationTool = {
 
 		var model = node.transform.getGlobalMatrix();
 		var inv = mat4.invert( mat4.create(), model );
-		mat4.multiplyVec3(ray.start, inv, ray.start );
+		mat4.multiplyVec3( ray.origin, inv, ray.origin );
 		mat4.rotateVec3(ray.direction, inv, ray.direction );
-		var hit = mesh.octree.testRay( ray.start, ray.direction, 0.0, 10000 );
+		var hit = mesh.octree.testRay( ray.origin, ray.direction, 0.0, 10000 );
 		if(hit) mat4.multiplyVec3( hit.pos, model, hit.pos); //to world coords
 		return hit.pos;
 	},
@@ -279,7 +279,7 @@ var AnnotationTool = {
 			var model = node.transform.getGlobalMatrix();
 
 			var result = vec3.create();
-			if( geo.testRayPlane(ray.start, ray.direction, this.start_position, front, result ) )
+			if( geo.testRayPlane(ray.origin, ray.direction, this.start_position, front, result ) )
 			{
 				vec3.copy( this.end_position, result );
 			}

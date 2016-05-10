@@ -9141,6 +9141,18 @@ Animation.prototype.convertIDstoNames = function( use_basename, root )
 	return num;
 }
 
+Animation.prototype.setTracksPacking = function(v)
+{
+	var num = 0;
+	for(var i in this.takes)
+	{
+		var take = this.takes[i];
+		num += take.setTracksPacking(v);
+	}
+	return num;
+}
+
+
 Animation.prototype.optimizeTracks = function()
 {
 	var num = 0;
@@ -9338,6 +9350,23 @@ Take.prototype.convertIDstoNames = function( use_basename, root )
 	{
 		var track = this.tracks[j];
 		num += track.convertIDtoName( use_basename, root )
+	}
+	return num;
+}
+
+Take.prototype.setTracksPacking = function(v)
+{
+	var num = 0;
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+		if( track.packed_data == v)
+			continue;
+		if(v)
+			track.packData();
+		else
+			track.unpackData();
+		num += 1;
 	}
 	return num;
 }
@@ -10080,16 +10109,16 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 		switch(this.type)
 		{
 			case "quat": 
-				quat.lerp( result, a[1], b[1], t );
+				quat.slerp( result, a[1], b[1], t );
 				quat.normalize( result, result );
 				break;
 			case "trans10": 
-				for(var i = 0; i < this.value_size; i++)
+				for(var i = 0; i < 10; i++) //this.value_size should be 10
 					result[i] = a[1][i] * t + b[1][i] * (1-t);
 				var rotA = a[1].subarray(3,7);
-				var rotB = a[1].subarray(3,7);
+				var rotB = b[1].subarray(3,7);
 				var rotR = result.subarray(3,7);
-				quat.lerp( rotR, rotA, rotB, t );
+				quat.slerp( rotR, rotB, rotA, t );
 				quat.normalize( rotR, rotR );
 				break;
 			default:
@@ -10184,16 +10213,16 @@ Track.prototype.getSamplePacked = function( time, interpolate, result )
 		switch(this.type)
 		{
 			case "quat": 
-				quat.lerp( result, b.subarray(1,5), a.subarray(1,5), t );
+				quat.slerp( result, b.subarray(1,5), a.subarray(1,5), t );
 				quat.normalize( result, result );
 				break;
 			case "trans10": 
-				for(var i = 0; i < this.value_size; i++)
+				for(var i = 0; i < 10; i++) //this.value_size should be 10
 					result[i] = a[1+i] * t + b[1+i] * (1-t);
 				var rotA = a.subarray(4,8);
 				var rotB = b.subarray(4,8);
 				var rotR = result.subarray(3,7);
-				quat.lerp( rotR, rotB, rotA, t );
+				quat.slerp( rotR, rotB, rotA, t );
 				quat.normalize( rotR, rotR );
 				break;
 			default:
@@ -14471,7 +14500,8 @@ var Renderer = {
 		this._current_camera = camera;
 
 		//prepare camera
-		camera.fillCameraShaderUniforms( scene );
+		camera.fillShaderQuery();
+		camera.fillShaderUniforms();
 
 		//Draw allows to render debug info easily
 		Draw.reset(); //clear 
@@ -14800,6 +14830,7 @@ var Renderer = {
 		{
 			var query = new LS.ShaderQuery( shader_name, { FIRST_PASS:"", LAST_PASS:"", USE_AMBIENT_ONLY:"" });
 			query.add( scene._query );
+			query.add( camera._query );
 			query.add( instance_final_query ); //contains node, material and instance macros
 
 			if( ignore_lights )
@@ -15078,10 +15109,7 @@ var Renderer = {
 	*/
 	fillSceneShaderQuery: function( scene, render_settings )
 	{
-		var query = new ShaderQuery();
-
-		if( this._current_camera.type == Camera.ORTHOGRAPHIC )
-			query.setMacro("USE_ORTHOGRAPHIC_CAMERA");
+		var query = new LS.ShaderQuery();
 
 		//camera info
 		if( this._current_pass.id == COLOR_PASS )
@@ -16087,99 +16115,6 @@ var Picking = {
 	},	
 
 	/**
-	* Cast a ray that traverses the scene checking for collisions with RenderInstances
-	* Similar to Physics.raycast but using only the bounding boxes of the visible meshes
-	* @method raycast
-	* @param {vec3} origin in world space
-	* @param {vec3} direction in world space
-	* @param {Object} options ( max_distance: maxium ray distance, layers, scene, max_distance, first_collision : returns the first collision (which could be not the closest one) )
-	* @return {Array} array containing all the RenderInstances that collided with the ray in the form [SceneNode, RenderInstance, collision point, distance]
-	*/
-	raycast: function( origin, direction, options )
-	{
-		options = options || {};
-		var layers = options.layers;
-		if(layers === undefined)
-			layers = 0xFFFF;
-		var max_distance = options.max_distance || Number.MAX_VALUE;
-		var scene = options.scene || LS.GlobalScene;
-		var triangle_collision = options.triangle_collision;
-		var first_collision = options.first_collision;
-
-		var instances = scene._instances;
-		if(!instances || !instances.length)
-			return null;
-
-		var collisions = [];
-
-		var local_start = vec3.create();
-		var local_direction = vec3.create();
-
-		var compute_normal = !!options.normal;
-
-		//for every instance
-		for(var i = 0; i < instances.length; ++i)
-		{
-			var instance = instances[i];
-
-			if(!(instance.flags & RI_RAYCAST_ENABLED) || (layers & instance.layers) === 0 )
-				continue;
-
-			if(instance.flags & RI_BLEND)
-				continue; //avoid semitransparent
-
-			//test against AABB
-			var collision_point = vec3.create();
-			if( !geo.testRayBBox( origin, direction, instance.aabb, null, collision_point, max_distance ) )
-				continue;
-
-			var model = instance.matrix;
-
-			//ray to local
-			var inv = mat4.invert( mat4.create(), model );
-			mat4.multiplyVec3( local_start, inv, origin );
-			mat4.rotateVec3( local_direction, inv, direction );
-
-			//test against OOBB (a little bit more expensive)
-			if( !geo.testRayBBox(local_start, local_direction, instance.oobb, null, collision_point, max_distance) )
-				continue;
-
-			//test against mesh
-			var collision_mesh = instance.collision_mesh;
-			var collision_normal = null;
-			
-			if(triangle_collision)
-				collision_mesh = instance.lod_mesh || instance.mesh;
-
-			if( collision_mesh )
-			{
-				var mesh = collision_mesh;
-				var octree = mesh.octree;
-				if(!octree)
-					octree = mesh.octree = new GL.Octree( mesh );
-				var hit = octree.testRay( local_start, local_direction, 0.0, max_distance );
-				if(!hit)
-					continue;
-				mat4.multiplyVec3( collision_point, model, hit.pos );
-				if(compute_normal)
-					collision_normal = mat4.rotateVec3( vec3.create(), model, hit.normal );
-			}
-			else
-				vec3.transformMat4(collision_point, collision_point, model);
-
-			var distance = vec3.distance( origin, collision_point );
-			if(distance < max_distance)
-				collisions.push( new LS.Collision( instance.node, instance, collision_point, distance, collision_normal ) );
-
-			if(first_collision)
-				return collisions;
-		}
-
-		collisions.sort( LS.Collision.isCloser );
-		return collisions;
-	},
-
-	/**
 	* Returns a color you should use to paint this node during picking rendering
 	* you tell what info you want to retrieve associated with this object if it is clicked
 	* @method getNextPickingColor
@@ -16321,7 +16256,7 @@ LS.Collision = Collision;
 * @namespace LS
 * @constructor
 */
-function PhysicsInstance(node, component)
+function PhysicsInstance( node, component )
 {
 	this.uid = LS.generateUId("PHSX"); //unique identifier for this RI
 	this.layers = 3|0;
@@ -16372,6 +16307,7 @@ LS.PhysicsInstance = PhysicsInstance;
 
 /**
 * Physics is in charge of all physics testing methods
+* Right now is mostly used for testing collisions with rays agains the colliders in the scene
 *
 * @class Physics
 * @namespace LS
@@ -16409,7 +16345,7 @@ var Physics = {
 		if(!colliders)
 			return null;
 
-		var local_start = vec3.create();
+		var local_origin = vec3.create();
 		var local_direction = vec3.create();
 
 		//for every instance
@@ -16440,11 +16376,11 @@ var Physics = {
 			{
 				//ray to local instance coordinates
 				var inv = mat4.invert( mat4.create(), model );
-				mat4.multiplyVec3( local_start, inv, origin);
+				mat4.multiplyVec3( local_origin, inv, origin);
 				mat4.rotateVec3( local_direction, inv, direction);
 
 				//test against OOBB (a little bit more expensive)
-				if( !geo.testRayBBox( local_start, local_direction, instance.oobb, null, collision_point, max_distance) )
+				if( !geo.testRayBBox( local_origin, local_direction, instance.oobb, null, collision_point, max_distance) )
 					continue;
 
 				//if mesh use Octree
@@ -16453,7 +16389,7 @@ var Physics = {
 					var octree = instance.mesh.octree;
 					if(!octree)
 						octree = instance.mesh.octree = new GL.Octree( instance.mesh );
-					var hit = octree.testRay( local_start, local_direction, 0.0, max_distance );
+					var hit = octree.testRay( local_origin, local_direction, 0.0, max_distance );
 					if(!hit)
 						continue;
 
@@ -16498,7 +16434,7 @@ var Physics = {
 		var colliders = options.colliders || scene._colliders;
 		var collisions = [];
 
-		var local_start = vec3.create();
+		var local_origin = vec3.create();
 
 		if(!colliders)
 			return null;
@@ -16519,18 +16455,18 @@ var Physics = {
 
 			//ray to local
 			var inv = mat4.invert( mat4.create(), model );
-			mat4.multiplyVec3( local_start, inv, origin);
+			mat4.multiplyVec3( local_origin, inv, origin);
 
 			//test in world space, is cheaper
 			if( instance.type == LS.PhysicsInstance.SPHERE)
 			{
-				if( vec3.distance( origin, local_start ) > (radius + BBox.getRadius(instance.oobb)) )
+				if( vec3.distance( origin, local_origin ) > (radius + BBox.getRadius(instance.oobb)) )
 					continue;
 			}
 			else //the rest test first with the local BBox
 			{
 				//test against OOBB (a little bit more expensive)
-				if( !geo.testSphereBBox( local_start, radius, instance.oobb) )
+				if( !geo.testSphereBBox( local_origin, radius, instance.oobb) )
 					continue;
 
 				if( instance.type == LS.PhysicsInstance.MESH )
@@ -16538,7 +16474,7 @@ var Physics = {
 					var octree = instance.mesh.octree;
 					if(!octree)
 						octree = instance.mesh.octree = new GL.Octree( instance.mesh );
-					if( !octree.testSphere( local_start, radius ) )
+					if( !octree.testSphere( local_origin, radius ) )
 						continue;
 				}
 			}
@@ -16609,6 +16545,103 @@ var Physics = {
 			}
 		}
 
+		return collisions;
+	},
+
+	/**
+	* Cast a ray that traverses the scene checking for collisions with RenderInstances instead of colliders
+	* Similar to Physics.raycast but using the RenderInstances (if options.triangle_collision it builds Octrees for the RIs whose OOBB collides with the ray)
+	* @method raycastRenderInstances
+	* @param {vec3} origin in world space
+	* @param {vec3} direction in world space
+	* @param {Object} options ( triangle_collision: true if you want to test against triangles, max_distance: maxium ray distance, layers, scene, max_distance, first_collision : returns the first collision (which could be not the closest one) )
+	* @return {Array} array containing all the RenderInstances that collided with the ray in the form [SceneNode, RenderInstance, collision point, distance]
+	*/
+	raycastRenderInstances: function( origin, direction, options )
+	{
+		options = options || {};
+		var layers = options.layers;
+		if(layers === undefined)
+			layers = 0xFFFF;
+		var max_distance = options.max_distance || Number.MAX_VALUE;
+		var scene = options.scene || LS.GlobalScene;
+
+		var triangle_collision = !!options.triangle_collision;
+		var first_collision = !!options.first_collision;
+		var compute_normal = !!options.normal;
+		var ignore_transparent = !!options.ignore_transparent;
+
+		var instances = scene._instances;
+		if(!instances || !instances.length)
+			return null;
+
+		var collisions = [];
+
+		var local_origin = vec3.create();
+		var local_direction = vec3.create();
+
+
+		//for every instance
+		for(var i = 0, l = instances.length; i < l; ++i)
+		{
+			var instance = instances[i];
+
+			if(!(instance.flags & RI_RAYCAST_ENABLED) || (layers & instance.layers) === 0 )
+				continue;
+
+			if(instance.flags & RI_BLEND && ignore_transparent)
+				continue; //avoid semitransparent
+
+			//test against AABB
+			var collision_point = vec3.create();
+			if( !geo.testRayBBox( origin, direction, instance.aabb, null, collision_point, max_distance ) )
+				continue;
+
+			var model = instance.matrix;
+
+			//ray to local
+			var inv = mat4.invert( mat4.create(), model );
+			mat4.multiplyVec3( local_origin, inv, origin );
+			mat4.rotateVec3( local_direction, inv, direction );
+
+			//test against OOBB (a little bit more expensive)
+			if( !geo.testRayBBox( local_origin, local_direction, instance.oobb, null, collision_point, max_distance) )
+				continue;
+
+			//check which mesh to use
+			var collision_mesh = instance.collision_mesh;
+			var collision_normal = null;
+			
+			if(triangle_collision)
+				collision_mesh = instance.lod_mesh || instance.mesh;
+
+			//test against mesh
+			if( collision_mesh )
+			{
+				var mesh = collision_mesh;
+				var octree = mesh.octree;
+				if(!octree)
+					octree = mesh.octree = new GL.Octree( mesh );
+				var hit = octree.testRay( local_origin, local_direction, 0.0, max_distance );
+				if(!hit)
+					continue;
+				mat4.multiplyVec3( collision_point, model, hit.pos );
+				if(compute_normal)
+					collision_normal = mat4.rotateVec3( vec3.create(), model, hit.normal );
+			}
+			else
+				vec3.transformMat4(collision_point, collision_point, model);
+
+			//compute distance
+			var distance = vec3.distance( origin, collision_point );
+			if(distance < max_distance)
+				collisions.push( new LS.Collision( instance.node, instance, collision_point, distance, collision_normal ) );
+
+			if(first_collision)
+				return collisions;
+		}
+
+		collisions.sort( LS.Collision.isCloser );
 		return collisions;
 	}
 }
@@ -19068,7 +19101,7 @@ Camera.prototype.getRayInPixel = function(x,y, viewport, skip_local_viewport )
 
 	var dir = vec3.subtract( pos, pos, eye );
 	vec3.normalize(dir, dir);
-	return { start: eye, direction: dir };
+	return { origin: eye, direction: dir };
 }
 
 /**
@@ -19295,12 +19328,22 @@ Camera.prototype.endFBO = function()
 	}
 }
 
-Camera.prototype.fillCameraShaderUniforms = function( scene )
+Camera.prototype.fillShaderQuery = function()
+{
+	var query = new LS.ShaderQuery();
+
+	if( this.type == Camera.ORTHOGRAPHIC )
+		query.setMacro("USE_ORTHOGRAPHIC_CAMERA");
+
+	this._query = query;
+}
+
+Camera.prototype.fillShaderUniforms = function()
 {
 	var uniforms = this._uniforms;
 	uniforms.u_camera_planes[0] = this.near;
 	uniforms.u_camera_planes[1] = this.far;
-	if(this.type == Camera.PERSPECTIVE)
+	if(this.type == LS.Camera.PERSPECTIVE)
 		uniforms.u_camera_perspective.set( [this.fov * DEG2RAD, 512 / Math.tan( this.fov * DEG2RAD ) ] );
 	else
 		uniforms.u_camera_perspective.set( [ this._frustum_size, 512 / this._frustum_size ] );
@@ -20531,6 +20574,7 @@ LS.Light = Light;
 * @param {Object} object to configure from
 */
 
+/* DISABLED
 function LightFX(o)
 {
 	this.enabled = true;
@@ -20604,7 +20648,7 @@ LightFX.prototype.getVolumetricRenderInstance = function()
 	//material
 	var mat = this._volumetric_material;
 	if(!mat)
-		mat = this._volumetric_material = new Material({shader_name:"volumetric_light", blending: Material.ADDITIVE_BLENDING });
+		mat = this._volumetric_material = new LS.Material({shader_name:"volumetric_light", blending: Material.ADDITIVE_BLENDING });
 	vec3.copy( mat.color, light.color );
 	mat.opacity = this.volume_visibility;
 	RI.material = mat;
@@ -20693,7 +20737,7 @@ LightFX.onGlarePreRender = function( render_settings )
 	var coll = 0;
 	
 	if(this.test_visibility)
-		coll = LS.Picking.raycast( center, dir, { max_distance: dist } );
+		coll = LS.Physics.raycast( center, dir, { max_distance: dist } );
 
 	if(coll.length)
 	{
@@ -20721,6 +20765,8 @@ LightFX.prototype.onResourceRenamed = function (old_name, new_name, resource)
 	if(this.glare_texture == old_name)
 		this.glare_texture = new_name;
 }
+
+*/
 
 //LS.registerComponent(LightFX);
 
@@ -23720,7 +23766,7 @@ CameraController.prototype.testOriginPlane = function(x,y, result)
 	var result = result || vec3.create();
 
 	//test against plane at 0,0,0
-	if( geo.testRayPlane( ray.start, ray.direction, [0,0,0], [0,1,0], result ) )
+	if( geo.testRayPlane( ray.origin, ray.direction, [0,0,0], [0,1,0], result ) )
 		return true;
 	return false;
 }
@@ -23735,7 +23781,7 @@ CameraController.prototype.testPerpendicularPlane = function(x,y, center, result
 	var result = result || vec3.create();
 
 	//test against plane
-	if( geo.testRayPlane( ray.start, ray.direction, center, front, result ) )
+	if( geo.testRayPlane( ray.origin, ray.direction, center, front, result ) )
 		return true;
 	return false;
 }
@@ -24981,7 +25027,7 @@ Knob.prototype.onMouse = function(e, mouse_event)
 		if(!ray)
 			return;
 
-		this._dragging = geo.testRayBBox( ray.start, ray.direction, instance.aabb);
+		this._dragging = geo.testRayBBox( ray.origin, ray.direction, instance.aabb);
 	}
 	else if( e == "mouseup")
 	{
@@ -26409,7 +26455,7 @@ PlayAnimation.PAUSED = 4;
 
 PlayAnimation.MODES = {"loop":PlayAnimation.LOOP, "pingpong":PlayAnimation.PINGPONG, "once":PlayAnimation.ONCE, "paused":PlayAnimation.PAUSED };
 
-PlayAnimation["@animation"] = { widget: "resource" };
+PlayAnimation["@animation"] = { widget: "animation" };
 PlayAnimation["@root_node"] = { type: "node" };
 PlayAnimation["@mode"] = { type:"enum", values: PlayAnimation.MODES };
 
@@ -28642,6 +28688,8 @@ function InteractiveController(o)
 	this.mode = InteractiveController.PICKING;
 	this.layers = 3;
 
+	this._last_collision = null;
+
 	if(o)
 		this.configure(o);
 }
@@ -28651,6 +28699,7 @@ InteractiveController.icon = "mini-icon-cursor.png";
 InteractiveController.PICKING = 1;
 InteractiveController.BOUNDING = 2;
 InteractiveController.COLLIDERS = 3;
+InteractiveController.RENDER_INSTANCES = 4;
 
 InteractiveController["@mode"] = { type: "enum", values: { "Picking": InteractiveController.PICKING, "Bounding": InteractiveController.BOUNDING, "Colliders": InteractiveController.COLLIDERS }};
 InteractiveController["@layers"] = { type: "layers" };
@@ -28674,28 +28723,35 @@ InteractiveController.prototype.getNodeUnderMouse = function( e )
 	if(this.mode == InteractiveController.PICKING)
 		return LS.Picking.getNodeAtCanvasPosition( e.canvasx, e.canvasy, null, layers );
 
+	var camera = LS.Renderer.getCameraAtPosition( e.canvasx, e.canvasy );
+	if(!camera)
+		return null;
+	var ray = camera.getRayInPixel( e.canvasx, e.canvasy );
+
 	if(this.mode == InteractiveController.BOUNDING)
 	{
-		var camera = LS.Renderer.getCameraAtPosition(e.canvasx, e.canvasy);
-		if(!camera)
-			return null;
-
-		var ray = camera.getRayInPixel( e.canvasx, e.canvasy );
-		var collisions = LS.Picking.raycast( ray.start, ray.direction, { layers: layers } );
+		var collisions = LS.Physics.raycastRenderInstances( ray.origin, ray.direction, { layers: layers } );
 		if(!collisions || !collisions.length)
 			return null;
+		this._last_collision = collisions[0];
+		return collisions[0].node;
+	}
+
+	if(this.mode == InteractiveController.RENDER_INSTANCES)
+	{
+		var collisions = LS.Physics.raycastRenderInstances( ray.origin, ray.direction, { layers: layers, triangle_collision: true } );
+		if(!collisions || !collisions.length)
+			return null;
+		this._last_collision = collisions[0];
 		return collisions[0].node;
 	}
 
 	if(this.mode == InteractiveController.COLLIDERS)
 	{
-		var camera = LS.Renderer.getCameraAtPosition(e.canvasx, e.canvasy);
-		if(!camera)
-			return null;
-		var ray = camera.getRayInPixel( e.canvasx, e.canvasy );
-		var collisions = LS.Physics.raycast( ray.start, ray.direction, { layers: layers } );
+		var collisions = LS.Physics.raycast( ray.origin, ray.direction, { layers: layers } );
 		if(!collisions || !collisions.length)
 			return null;
+		this._last_collision = collisions[0];
 		return collisions[0].node;
 	}
 
@@ -34428,11 +34484,13 @@ SceneTree.prototype.findNodeComponents = function( type )
 * returns a pack containing all the scene and resources, used to save a scene to harddrive
 *
 * @method toPack
-* @param {String} fullpath a fiven fullpath name
+* @param {String} fullpath a given fullpath name, it will be assigned to the scene with the appropiate extension
 * @return {LS.Pack} the pack
 */
 SceneTree.prototype.toPack = function( fullpath )
 {
+	fullpath = fullpath || "unnamed_scene";
+
 	//change name to valid name
 	var basename = LS.RM.removeExtension( fullpath, true );
 	var final_fullpath = basename + ".SCENE.wbin";

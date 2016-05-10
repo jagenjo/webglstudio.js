@@ -490,11 +490,11 @@ var ToolUtils = {
 		result = result || vec3.create();
 
 		var ray = camera.getRayInPixel( x, gl.canvas.height - y );
-		//ray.end = vec3.add( vec3.create(), ray.start, vec3.scale(vec3.create(), ray.direction, 10000) );
+		//ray.end = vec3.add( vec3.create(), ray.origin, vec3.scale(vec3.create(), ray.direction, 10000) );
 
 		//test against plane
 		var front = camera.getFront( this.camera_front );
-		if( geo.testRayPlane( ray.start, ray.direction, center, front, result ) )
+		if( geo.testRayPlane( ray.origin, ray.direction, center, front, result ) )
 			return true;
 		return false;
 	},
@@ -545,7 +545,7 @@ var ToolUtils = {
 		{
 			tolerance = tolerance || 0.1;
 			//test with the plane containing the circle
-			if( geo.testRayPlane( ray.start, ray.direction, center, axis, result ) )
+			if( geo.testRayPlane( ray.origin, ray.direction, center, axis, result ) )
 			{
 				var dist = vec3.dist( result, center );
 				var diff = vec3.subtract( temp, result, center );

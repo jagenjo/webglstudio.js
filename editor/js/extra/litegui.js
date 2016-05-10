@@ -6007,6 +6007,13 @@ jQuery.fn.wclick = function(callback) {
 
 function Inspector( id, options )
 {
+	//allows to pass only options instead of id
+	if(id && id.constructor === Object && !options)
+	{
+		options = id;
+		id = null;
+	}
+
 	options = options || {};
 	this.root = document.createElement("DIV");
 	this.root.className = "inspector " + ( options.full ? "full" : "");

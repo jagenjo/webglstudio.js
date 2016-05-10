@@ -587,7 +587,7 @@ var RenderModule = {
 		var camera = ToolUtils.getCamera();
 		var ray = camera.getRayInPixel( x, y );
 		var position = vec3.create();
-		if( geo.testRayPlane( ray.start, ray.direction, vec3.create(), vec3.fromValues(0,1,0), position ) )
+		if( geo.testRayPlane( ray.origin, ray.direction, vec3.create(), vec3.fromValues(0,1,0), position ) )
 			return position;
 		return null;
 	},

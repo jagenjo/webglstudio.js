@@ -1892,130 +1892,140 @@ LiteGUI.Inspector.prototype.addNodeComponent = function(name, value, options)
 }
 LiteGUI.Inspector.widget_constructors["node_component"] = "addNodeComponent";
 
-//to select a resource
-LiteGUI.Inspector.prototype.addResource = function( name, value, options )
+//To select any kind of resource
+function addGenericResource ( name, value, options, resource_classname )
 {
 	options = options || {};
 	value = value || "";
 	var that = this;
+
+	if(value.constructor !== String)
+		value = "@Object";
+
 	this.values[name] = value;
-	
+
 	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
 	var input = element.querySelector(".wcontent input");
 
 	input.addEventListener( "change", function(e) { 
-		if(e.target.value)
-			LS.ResourcesManager.load( e.target.value );
-		LiteGUI.Inspector.onWidgetChange.call( that, element, name, e.target.value, options);
-	});
-	
-	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
-		EditorModule.showSelectResource( { type: options.category, on_complete: inner_onselect, allow_multiple: options.allow_multiple } );
-		if(options.callback_button)
-			options.callback_button.call(element, $(element).find(".wcontent input").val() );
-	});
-
-	function inner_onselect(filename)
-	{
-		input.value = filename;
-		LiteGUI.trigger( input, "change" );
-	}
-
-	//element.setAttribute("draggable","true");
-	element.addEventListener("dragover",function(e){ 
-		var path = e.dataTransfer.getData("res-fullpath");
-		var type = e.dataTransfer.getData( "res-type" );
-		if(path) // && (type == "Texture" || type == "Image") )
-			e.preventDefault();
-	},true);
-	element.addEventListener("drop", function(e){
-		var path = e.dataTransfer.getData("res-fullpath");
-		input.value = path;
-		LiteGUI.trigger( input, "change" );
-
-		e.preventDefault();
-		e.stopPropagation();
-		return false;
-	}, true);
-
-	this.tab_index += 1;
-	this.append(element, options);
-	return element;
-}
-LiteGUI.Inspector.widget_constructors["resource"] = "addResource";
-
-//to select a texture
-LiteGUI.Inspector.prototype.addTexture = function(name, value, options)
-{
-	options = options || {};
-	value = value || "";
-	var that = this;
-	this.values[name] = value;
-
-	var tex_name = value;
-	if(value && value.texture)
-		tex_name = value.texture;
-
-	if(value && value.constructor === GL.Texture)
-		tex_name = "@Texture";
-	
-	var element = this.createWidget( name, "<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+tex_name+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options );
-	var input = element.querySelector(".wcontent input");
-
-	input.addEventListener("change", function(e) { 
 		var v = e.target.value;
 		if(v && v[0] != ":" && !options.skip_load)
 			LS.ResourcesManager.load(v);
 		LiteGUI.Inspector.onWidgetChange.call(that,element,name,v, options);
 	});
 	
-	element.querySelector(".wcontent button").addEventListener("click", function(e) { 
-		EditorModule.showSelectResource( { type:"Texture", on_complete: inner_onselect, skip_load: true } );
+	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
+		var o = { type: resource_classname, on_complete: inner_onselect };
+		if(options.skip_load)
+			o.skip_load = true;
+		else
+			o.on_load = inner_onload;
+		EditorModule.showSelectResource( o );
+
 		if(options.callback_button)
-			options.callback_button.call(element, input.value );
+			options.callback_button.call( element, input.value);
 	});
 
-	function inner_onselect( filename )
+	function inner_onselect(filename)
 	{
-		input.value = filename;
+		value = input.value = filename;
 		LiteGUI.trigger( input, "change" );
-		//$(element).find("input").val(filename).change();
+	}
+
+	function inner_onload( filename ) //shouldnt this be moved to the "change" event?
+	{
+		if(options.callback_load)
+			options.callback_load.call( element, filename );
 	}
 
 	//element.setAttribute("draggable","true");
 	element.addEventListener("dragover",function(e){ 
 		var path = e.dataTransfer.getData( "res-fullpath" );
 		var type = e.dataTransfer.getData( "res-type" );
-		if(path)// && (type == "Texture" || type == "Image") )
+		if(path) // && (type == "Texture" || type == "Image") )
 			e.preventDefault();
 	},true);
-
 	element.addEventListener("drop", function(e){
 		var path = e.dataTransfer.getData("res-fullpath");
 		if(path)
 		{
-			input.value = path;
+			value = input.value = path;
 			LiteGUI.trigger( input, "change" );
 			e.stopPropagation();
 		}
-		else if (e.dataTransfer.files.length)//(e.dataTransfer.getData("text/uri-list"))
+		else if (e.dataTransfer.files.length)
 		{
 			ImporterModule.importFile( e.dataTransfer.files[0], function(fullpath){
-				input.value = fullpath;
+				value = input.value = fullpath;
 				LiteGUI.trigger( input, "change" );
 			});
 			e.stopPropagation();
 		}
-
 		e.preventDefault();
 		return false;
 	}, true);
+
+	element.getValue = function() { return value; }
 
 	this.tab_index += 1;
 	this.append(element, options);
 	return element;
 }
+
+//to select a resource
+LiteGUI.Inspector.prototype.addResource = function( name, value, options )
+{
+	return addGenericResource.call(this, name, value, options );
+}
+
+LiteGUI.Inspector.widget_constructors["resource"] = "addResource";
+
+//to select a texture
+LiteGUI.Inspector.prototype.addTexture = function( name, value, options )
+{
+	return addGenericResource.call(this, name, value, options, "Texture" );
+}
 LiteGUI.Inspector.widget_constructors["texture"] = "addTexture";
+
+//to select a cubemap (texture)
+LiteGUI.Inspector.prototype.addCubemap = LiteGUI.Inspector.prototype.addTexture;
+LiteGUI.Inspector.widget_constructors["cubemap"] = "addCubemap";
+
+LiteGUI.Inspector.prototype.addMesh = function(name,value, options)
+{
+	return addGenericResource.call(this, name, value, options, "Mesh" );
+}
+
+LiteGUI.Inspector.widget_constructors["mesh"] = "addMesh";
+
+//to select a material
+LiteGUI.Inspector.prototype.addMaterial = function( name,value, options)
+{
+	return addGenericResource.call(this, name, value, options, "Material" );
+}
+LiteGUI.Inspector.widget_constructors["material"] = "addMaterial";
+
+//to select a material
+LiteGUI.Inspector.prototype.addAnimation = function( name,value, options)
+{
+	options = options || {};
+	options.width = "85%";
+
+	this.widgets_per_row += 1;
+	var r = addGenericResource.call(this, name, value, options, "Animation" );
+	this.addButton(null,"Edit",{ width:"15%", callback: function(){
+		var path = r.getValue();
+		var anim = LS.RM.getResource( path, LS.Animation );
+		if(anim)
+			AnimationModule.showTimeline( anim );
+		else
+			LS.RM.load( path, null, function(v){ AnimationModule.showTimeline( v ); });
+	}});
+	this.widgets_per_row -= 1;
+	return r;
+}
+LiteGUI.Inspector.widget_constructors["animation"] = "addAnimation";
+
 
 //to select texture and sampling options
 LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
@@ -2086,135 +2096,6 @@ LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
 }
 LiteGUI.Inspector.widget_constructors["sampler"] = "addTextureSampler";
 
-
-//to select a cubemap (texture)
-LiteGUI.Inspector.prototype.addCubemap = LiteGUI.Inspector.prototype.addTexture;
-LiteGUI.Inspector.widget_constructors["cubemap"] = "addCubemap";
-
-//to select a mesh
-LiteGUI.Inspector.prototype.addMesh = function(name,value, options)
-{
-	options = options || {};
-	value = value || "";
-	var that = this;
-	this.values[name] = value;
-	
-	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
-	var input = element.querySelector(".wcontent input");
-
-	input.addEventListener( "change", function(e) { 
-		var v = e.target.value;
-		if(v && v[0] != ":" && !options.skip_load)
-			LS.ResourcesManager.load(v);
-		LiteGUI.Inspector.onWidgetChange.call(that,element,name,v, options);
-	});
-	
-	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
-		var o = { type:"Mesh", on_complete: inner_onselect };
-		if(options.skip_load)
-			o.skip_load = true;
-		else
-			o.on_load = inner_onload;
-		EditorModule.showSelectResource( o );
-
-		if(options.callback_button)
-			options.callback_button.call( element, input.value);
-	});
-
-	function inner_onselect(filename)
-	{
-		input.value = filename;
-		LiteGUI.trigger( input, "change" );
-	}
-
-	function inner_onload( filename ) //shouldnt this be moved to the "change" event?
-	{
-		if(options.callback_load)
-			options.callback_load.call( element, filename );
-	}
-
-	//element.setAttribute("draggable","true");
-	element.addEventListener("dragover",function(e){ 
-		var path = e.dataTransfer.getData("res-fullpath");
-		var type = e.dataTransfer.getData( "res-type" );
-		if(path) // && (type == "Texture" || type == "Image") )
-			e.preventDefault();
-	},true);
-	element.addEventListener("drop", function(e){
-		var path = e.dataTransfer.getData("res-fullpath");
-		if(path)
-		{
-			input.value = path;
-			LiteGUI.trigger( input, "change" );
-			e.stopPropagation();
-		}
-		e.preventDefault();
-		return false;
-	}, true);
-
-	this.tab_index += 1;
-	this.append(element, options);
-	return element;
-}
-LiteGUI.Inspector.widget_constructors["mesh"] = "addMesh";
-
-//to select a material
-LiteGUI.Inspector.prototype.addMaterial = function(name,value, options)
-{
-	options = options || {};
-	value = value || "";
-	var that = this;
-	this.values[name] = value;
-	
-	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
-	var input = element.querySelector(".wcontent input");
-
-	input.addEventListener( "change", inner_onchange );
-	
-	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
-		EditorModule.showSelectResource({ type: "Material", on_complete: inner_onselect, skip_load: true });
-		if(options.callback_button)
-			options.callback_button.call( element, input.value );
-	});
-
-	function inner_onchange(e)
-	{
-		var v = this.value;
-		if(v && v[0] != ":" && !options.skip_load)
-			LS.ResourcesManager.load( v );
-		LiteGUI.Inspector.onWidgetChange.call(that,element,name, v , options);
-	}
-
-	function inner_onselect(filename)
-	{
-		input.value = filename;
-		LiteGUI.trigger( input, "change" );
-	}
-
-	//element.setAttribute("draggable","true");
-	element.addEventListener("dragover",function(e){ 
-		var path = e.dataTransfer.getData("res-fullpath");
-		var type = e.dataTransfer.getData( "res-type" );
-		if(path) // && (type == "Texture" || type == "Image") )
-			e.preventDefault();
-	},true);
-	element.addEventListener("drop", function(e){
-		var path = e.dataTransfer.getData("res-fullpath");
-		if(path)
-		{
-			input.value = path;
-			LiteGUI.trigger( input, "change" );
-			e.stopPropagation();
-		}
-		e.preventDefault();
-		return false;
-	}, true);
-
-	this.tab_index += 1;
-	this.append(element, options);
-	return element;
-}
-LiteGUI.Inspector.widget_constructors["material"] = "addMaterial";
 LiteGUI.Inspector.widget_constructors["position"] = "addVector3";
 
 LiteGUI.Inspector.prototype.addLayers = function(name, value, options)

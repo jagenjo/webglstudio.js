@@ -1966,7 +1966,8 @@ DriveModule.registerAssignResourceCallback( "Mesh", function( fullpath, restype,
 	var action = options.mesh_action || "replace";
 
 	var node = null;
-	if( action == "replace" && options.node )
+
+	if( action == "replace" && options.node && 0) //DISABLED
 	{
 		node = options.node;
 		var component = node.getComponent( LS.Components.MeshRenderer );
@@ -1982,7 +1983,7 @@ DriveModule.registerAssignResourceCallback( "Mesh", function( fullpath, restype,
 	else
 	{
 		if( action == "replace") //to prioritize
-			action = "plane";
+			action = "scene";
 
 		//create new node
 		node = LS.newMeshNode( LS.GlobalScene.generateUniqueNodeName(), fullpath );
@@ -1995,6 +1996,16 @@ DriveModule.registerAssignResourceCallback( "Mesh", function( fullpath, restype,
 			var position =  null;
 			if( action == "plane")
 				position = RenderModule.testGridCollision( options.event.canvasx, options.event.canvasy );
+			else if( action == "scene")
+			{
+				var camera = ToolUtils.getCamera();
+				var ray = camera.getRayInPixel( options.event.canvasx, options.event.canvasy );
+				var collisions = LS.Physics.raycastRenderInstances( ray.origin, ray.direction, { triangle_collision: true } );
+				if(collisions && collisions.length)
+					position = collisions[0].position;
+				else //grid plane
+					position = RenderModule.testGridCollision( options.event.canvasx, options.event.canvasy );
+			}
 			if(position)
 				node.transform.position = position;
 		}

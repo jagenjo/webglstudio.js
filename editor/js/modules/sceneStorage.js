@@ -81,15 +81,20 @@ var SceneStorageModule = {
 		if(dialog)
 			return;
 
-		dialog = new LiteGUI.Dialog("dialog_load_scene", {title:"Load Scene", close: true, minimize: true, width: 520, height: 300, scroll: false, draggable: true});
+		dialog = new LiteGUI.Dialog("dialog_load_scene", {title:"Load Scene", close: true, minimize: true, width: 520, height: 290, scroll: false, draggable: true});
 		dialog.show('fade');
 
 		var split = new LiteGUI.Split("load_scene_split",[50,50]);
 		dialog.add( split );
 
+		var right_pane_style = split.getSection(1).style;
+		right_pane_style.backgroundColor = "black";
+		right_pane_style.paddingLeft = "2px";
+		right_pane_style.paddingTop = "2px";
+
 		var widgets = new LiteGUI.Inspector();
 		var scenes = ["Loading..."];
-		var list = widgets.addList(null,scenes, { height: 230, callback: inner_selected});
+		var list = widgets.addList(null,scenes, { height: 220, callback: inner_selected});
 		widgets.addButtons(null,["Load","Delete"], { className:"big", callback: inner_button });
 
 		split.getSection(0).add( widgets );

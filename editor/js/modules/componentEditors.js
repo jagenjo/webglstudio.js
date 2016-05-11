@@ -148,14 +148,7 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 	inspector.addTitle("Render to Texture");
 	inspector.addCheckbox("Enable", camera.render_to_texture , { callback: function (v) { camera.render_to_texture = v; inspector.refresh(); } });
 	if(camera.render_to_texture)
-	{
-		inspector.addString("Name", camera.texture_name, { callback: function (v) { camera.texture_name = v; } });
-		inspector.addVector2("Size", camera.texture_size, { callback: function(v) { camera.texture_size.set(v); }});
-		inspector.widgets_per_row = 2;
-		inspector.addCheckbox("High precission", camera.texture_high, { callback: function(v) { camera.texture_high = v; }});
-		inspector.addCheckbox("Clone texture", camera.texture_clone, { callback: function(v) { camera.texture_clone = v; }});
-		inspector.widgets_per_row = 1;
-	}
+		inspector.addRenderFrameContext("Frame", camera._frame );
 
 	function inner_copy_from_current() {
 

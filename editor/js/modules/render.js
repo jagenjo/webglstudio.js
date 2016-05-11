@@ -314,7 +314,7 @@ var RenderModule = {
 			{
 				var cam = scene_cams[i];
 				if(cam.isRenderedToTexture())
-					cameras.unshift(cam);
+					cameras.unshift(cam); //add this camera to the list of cameras we are going to use to render
 			}
 
 			if(this.preview_camera)

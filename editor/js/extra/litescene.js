@@ -3951,12 +3951,12 @@ ShaderQuery.prototype.add = function( query )
 
 ShaderQuery.prototype.setMacro = function( name, value )
 {
-	this.macros[name] = name || "";
+	this.macros[name] = value || "";
 }
 
 ShaderQuery.prototype.resolve = function()
 {
-	return LS.ShadersManager.query(this);
+	return LS.ShadersManager.resolve(this);
 }
 
 //ShaderQuery.prototype.addHook = function
@@ -13934,6 +13934,7 @@ function RenderFrameContext( o )
 
 	this.adjust_aspect = false;
 
+	this._fbo = null;
 	this._color_texture = null;
 	this._depth_texture = null;
 	this._textures = []; //all color textures
@@ -13959,6 +13960,23 @@ RenderFrameContext["@precision"] = { widget: "combo", values: {
 	}
 };
 RenderFrameContext["@num_extra_textures"] = { type: "number", step: 1, min: 0, max: 4, precision: 0 };
+RenderFrameContext["@name"] = { type: "string" };
+
+RenderFrameContext.prototype.clear = function()
+{
+	if(this.name)
+	{
+		for(var i = 0; i < this._textures.length; ++i)
+			delete LS.ResourcesManager.textures[ this.name + (i > 1 ? i : "") ];
+		if(this._depth_texture)
+			delete LS.ResourcesManager.textures[ this.name + "_depth"];
+	}
+
+	this._fbo = null;
+	this._textures = [];
+	this._color_texture = null;
+	this._depth_textures = null;
+}
 
 RenderFrameContext.prototype.configure = function(o)
 {
@@ -14038,8 +14056,6 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 		else
 			extra_texture.setParameter( gl.TEXTURE_MAG_FILTER, filter );
 		textures[1 + i] = extra_texture;
-		if(this.name)
-			LS.ResourcesManager.resources[ this.name + (1+i) ] = LS.ResourcesManager.textures[ this.name + (1+i) ] = extra_texture;
 	}
 
 	//for the depth
@@ -14051,9 +14067,6 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 	//we will store some extra info in the depth texture for the near and far plane distances
 	if(this._depth_texture)
 	{
-		if(this.name)
-			LS.ResourcesManager.resources[ this.name + "_depth" ] = LS.ResourcesManager.textures[ this.name + "_depth" ] = this._depth_texture;
-
 		if(!this._depth_texture.near_far_planes)
 			this._depth_texture.near_far_planes = vec2.create();
 	}
@@ -14065,8 +14078,8 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 	//cut extra
 	textures.length = 1 + total_extra;
 
-	//assign textures
-	this._fbo.setTextures( textures, this._depth_texture, true );
+	//assign textures (this will enable the FBO but it will restore the old one after finishing)
+	this._fbo.setTextures( textures, this._depth_texture );
 }
 
 //Called before rendering the scene
@@ -14110,7 +14123,12 @@ RenderFrameContext.prototype.enableFBO = function()
 	if(!this._fbo)
 		throw("No FBO created in RenderFrameContext");
 
-	this._fbo.bind(); //changes viewport to full FBO size (saves old)
+	this._fbo.bind( true ); //changes viewport to full FBO size (saves old)
+
+	for(var i = 0; i < this._textures.length; ++i)
+		this._textures[i]._locked = true;
+	if(this._depth_texture)
+		this._depth_texture._locked = true;
 
 	LS.Renderer._full_viewport.set( gl.viewport_data );
 	this._old_aspect = LS.Renderer.global_aspect;
@@ -14123,6 +14141,18 @@ RenderFrameContext.prototype.disableFBO = function()
 	this._fbo.unbind(); //restores viewport to old saved one
 	LS.Renderer._full_viewport.set( this._fbo._old_viewport );
 	LS.Renderer.global_aspect = this._old_aspect;
+
+	for(var i = 0; i < this._textures.length; ++i)
+		this._textures[i]._locked = false;
+	if(this._depth_texture)
+		this._depth_texture._locked = false;
+	if(this.name)
+	{
+		for(var i = 0; i < this._textures.length; ++i)
+			LS.ResourcesManager.textures[ this.name + (i > 0 ? i : "") ] = this._textures[i];
+		if(this._depth_texture)
+			LS.ResourcesManager.textures[ this.name + "_depth"] = this._depth_texture;
+	}
 }
 
 //Render the context of the fbo to the viewport (allows to apply FXAA)
@@ -14401,6 +14431,7 @@ var Renderer = {
 	* @method renderFrame
 	* @param {Camera} camera 
 	* @param {Object} render_settings
+	* @param {SceneTree} scene [optional] this can be passed when we are rendering a different scene from LS.GlobalScene (used in renderMaterialPreview)
 	*/
 	renderFrame: function ( camera, render_settings, scene )
 	{
@@ -14485,7 +14516,7 @@ var Renderer = {
 			}
 		}
 
-		//compute matrices
+		//compute matrices (just in case, dont need to)
 		camera.updateMatrices();
 
 		//store matrices locally
@@ -14498,10 +14529,6 @@ var Renderer = {
 
 		//set as the current camera
 		this._current_camera = camera;
-
-		//prepare camera
-		camera.fillShaderQuery();
-		camera.fillShaderUniforms();
 
 		//Draw allows to render debug info easily
 		Draw.reset(); //clear 
@@ -15248,6 +15275,7 @@ var Renderer = {
 		{
 			var camera = cameras[i];
 			camera._rendering_index = i;
+			camera.prepare();
 		}
 
 		//meh!
@@ -16671,6 +16699,7 @@ function Transform( o )
 	this._global_matrix = mat4.create();
 
 	this._must_update_matrix = false; //matrix must be redone?
+	this._last_change = 0;
 
 	/* deprecated
 	if(Object.observe)
@@ -17103,6 +17132,7 @@ Transform.prototype.updateMatrix = function()
 	mat4.fromRotationTranslation( this._local_matrix , this._rotation, this._position );
 	mat4.scale(this._local_matrix, this._local_matrix, this._scaling);
 	this._must_update_matrix = false;
+	this._last_change += 1;
 }
 Transform.prototype.updateLocalMatrix = Transform.prototype.updateMatrix;
 
@@ -18045,6 +18075,7 @@ function Camera(o)
 	this._projection_matrix = mat4.create();
 	this._viewprojection_matrix = mat4.create();
 	this._model_matrix = mat4.create(); //inverse of viewmatrix (used for local vectors)
+	this._previous_viewprojection_matrix = mat4.create(); //viewmatrix from previous frame
 
 	//this._previous_viewprojection_matrix = mat4.create(); //used for motion blur
 
@@ -18054,12 +18085,8 @@ function Camera(o)
 
 	this._rendering_index = -1; //tells the number of this camera in the rendering process
 
-	//render to texture
-	this.render_to_texture = false;
-	this.texture_name = ""; //name
-	this.texture_size = vec2.fromValues(0,0); //0 means same as screen
-	this.texture_high = false;
-	this.texture_clone = false; //this registers a clone of the texture used for rendering, to avoid rendering and reading of the same texture, but doubles the memory
+	//used for render to texture
+	this._frame = null;
 
 	if(o) 
 		this.configure(o);
@@ -18072,7 +18099,8 @@ function Camera(o)
 		u_camera_front: this._global_front,
 		u_camera_planes: vec2.fromValues( this.near, this.far ),
 		u_camera_perspective: vec3.create(),
-		u_background_color: this._background_color
+		u_background_color: this._background_color,
+		u_previous_viewprojection: this._previous_viewprojection_matrix
 	};
 
 	this.updateMatrices();
@@ -18090,7 +18118,6 @@ Camera.ORTHO2D = 3; //orthographic with manually defined left,right,top,bottom
 Camera["@type"] = { type: "enum", values: { "perspective": Camera.PERSPECTIVE, "orthographic": Camera.ORTHOGRAPHIC, "ortho2D": Camera.ORTHO2D } };
 Camera["@eye"] = { type: "vec3", widget: "position" };
 Camera["@center"] = { type: "vec3", widget: "position" };
-Camera["@texture_name"] = { type: "texture" };
 Camera["@layers"] = { type: "layers" };
 
 // used when rendering a cubemap to set the camera view direction (crossx and crossy are for when generating a CROSS cubemap image)
@@ -18135,14 +18162,6 @@ Camera.prototype.getResources = function (res)
 	return res;
 }
 
-
-/*
-Camera.prototype.onCameraEnabled = function(e,options)
-{
-	if(this.flip_x)
-		options.reverse_backfacing = !options.reverse_backfacing;
-}
-*/
 
 /**
 * Camera type, could be Camera.PERSPECTIVE or Camera.ORTHOGRAPHIC
@@ -18388,6 +18407,22 @@ Object.defineProperty( Camera.prototype, "background_color", {
 	enumerable: true
 });
 
+Object.defineProperty( Camera.prototype, "render_to_texture", {
+	get: function() {
+		return !!this._frame;
+	},
+	set: function(v) {
+		if(!v)
+		{
+			this._frame = null;
+			return;
+		}
+		if(!this._frame)
+			this._frame = new LS.RenderFrameContext();
+	},
+	enumerable: true
+});
+
 Camera.prototype.onAddedToNode = function(node)
 {
 	if(!node.camera)
@@ -18409,18 +18444,20 @@ Camera.prototype.onRemovedFromScene = function(scene)
 {
 	LEvent.unbind( scene, "collectCameras", this.onCollectCameras, this );
 
-	if(this._texture) //free memory
-	{
-		this._texture = null;
-		this._fbo = null;
-		this._renderbuffer = null;
+	if(this._frame) //free memory
+		this._frame.clear();
 
+	if( this._binded_render_frame )
+	{
+		LEvent.unbind(this, "enableFrameContext", this.enableRenderFrameContext, this );
+		LEvent.unbind(this, "showFrameContext", this.disableRenderFrameContext, this );
+		this._binded_render_frame = false;
 	}
 }
 
 Camera.prototype.isRenderedToTexture = function()
 {
-	return this.enabled && this.render_to_texture && this.texture_name;
+	return this.enabled && this.render_to_texture;
 }
 
 Camera.prototype.onCollectCameras = function(e, cameras)
@@ -18435,19 +18472,20 @@ Camera.prototype.onCollectCameras = function(e, cameras)
 
 	//in case we need to render to a texture this camera
 	//not very fond of this part, but its more optimal
-	if(this.render_to_texture && this.texture_name)
+	if(this._frame)
 	{
 		if(!this._binded_render_frame)
 		{
-			LEvent.bind(this, "beforeRenderFrame", this.startFBO, this );
-			LEvent.bind(this, "afterRenderFrame", this.endFBO, this );
+			LEvent.bind(this, "enableFrameContext", this.enableRenderFrameContext, this );
+			LEvent.bind(this, "showFrameContext", this.disableRenderFrameContext, this );
 			this._binded_render_frame = true;
 		}
 	}
 	else if( this._binded_render_frame )
 	{
-		LEvent.unbind(this, "beforeRenderFrame", this.startFBO, this );
-		LEvent.unbind(this, "afterRenderFrame", this.endFBO, this );
+		LEvent.unbind(this, "enableFrameContext", this.enableRenderFrameContext, this );
+		LEvent.unbind(this, "showFrameContext", this.disableRenderFrameContext, this );
+		this._binded_render_frame = false;
 	}
 }
 
@@ -18481,6 +18519,9 @@ Camera.prototype.lookAt = function(eye,center,up)
 */
 Camera.prototype.updateMatrices = function( force )
 {
+	//if is a camera in a node we cannot assure the node hasnt change its transform (TODO feature)
+	this._must_update_view_matrix = this._must_update_view_matrix || (this._root && !this._root._is_root);
+
 	//nothing to update?
 	if(!this._must_update_projection_matrix && !this._must_update_view_matrix && !force)
 		return;
@@ -18496,7 +18537,7 @@ Camera.prototype.updateMatrices = function( force )
 			mat4.perspective(this._projection_matrix, this._fov * DEG2RAD, this._final_aspect, this._near, this._far);
 	}
 
-	//update view
+	//update view (if is a camera in a node we cannot assure it hasnt change its transform)
 	if( this._must_update_view_matrix || force )
 	{
 		if(this._root && this._root._is_root) //in root node
@@ -19144,10 +19185,7 @@ Camera.prototype.configure = function(o)
 	if(o.background_color !== undefined) this._background_color.set( o.background_color );
 
 	if(o.render_to_texture !== undefined) this.render_to_texture = o.render_to_texture;
-	if(o.texture_name !== undefined) this.texture_name = o.texture_name;
-	if(o.texture_size && o.texture_size.length == 2) this.texture_size.set(o.texture_size);
-	if(o.texture_high !== undefined) this.texture_high = o.texture_high;
-	if(o.texture_clone !== undefined) this.texture_clone = o.texture_clone;
+	if(o.frame && this._frame) this._frame.configure( o.frame );
 
 	this.updateMatrices( true );
 }
@@ -19170,10 +19208,7 @@ Camera.prototype.serialize = function()
 		frustum_size: this._frustum_size,
 		viewport: toArray( this._viewport ),
 		render_to_texture: this.render_to_texture,
-		texture_name: this.texture_name,
-		texture_size:  toArray( this.texture_size ),
-		texture_high: this.texture_high,
-		texture_clone: this.texture_clone
+		frame: this._frame ? this._frame.serialize() : null
 	};
 
 	//clone
@@ -19245,87 +19280,28 @@ Camera.prototype.applyTransformMatrix = function( matrix, center, element )
 //Rendering stuff ******************************************
 
 //used when rendering to a texture
-Camera.prototype.startFBO = function()
+Camera.prototype.enableRenderFrameContext = function()
 {
-	if(!this.render_to_texture || !this.texture_name)
+	if(!this._frame)
 		return;
-
-	var width = this.texture_size[0] || gl.canvas.width;
-	var height = this.texture_size[1] || gl.canvas.height;
-	var use_high_precision = this.texture_high;
-
-	//Create texture
-	var type = use_high_precision ? gl.HIGH_PRECISION_FORMAT : gl.UNSIGNED_BYTE;
-	if(!this._texture || this._texture.width != width || this._texture.height != height || this._texture.type != type)
-	{
-		var isPOT = (isPowerOfTwo(width) && isPowerOfTwo(height));
-		this._texture = new GL.Texture( width, height, { format: gl.RGB, wrap: isPOT ? gl.REPEAT : gl.CLAMP_TO_EDGE, filter: isPOT ? gl.LINEAR : gl.NEAREST, type: type });
-	}
-	var texture = this._texture;
-
-	//save old
-	this._old_fbo = gl.getParameter( gl.FRAMEBUFFER_BINDING );
-	if(!this._old_viewport)
-		this._old_viewport = vec4.create();
-	this._old_viewport.set( gl.viewport_data );
-
-	//Setup FBO
-	this._fbo = this._fbo || gl.createFramebuffer();
-	gl.bindFramebuffer( gl.FRAMEBUFFER, this._fbo );
-
-	gl.viewport(0, 0, width, height );
-	LS.Renderer._full_viewport.set( [0,0,width,height] );
-	LS.Renderer.global_aspect = (gl.canvas.width / gl.canvas.height) / (texture.width / texture.height); //sure?
-
-	//depth renderbuffer
-	var renderbuffer = this._renderbuffer = this._renderbuffer || gl.createRenderbuffer();
-	if(renderbuffer.width != width || renderbuffer.height != height)
-	{
-		renderbuffer.width = width;
-		renderbuffer.height = height;
-	}
-	gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffer );
-	gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);
-
-	gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture.handler, 0);
-	gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, renderbuffer );
+	this._frame.enable();
 }
 
-Camera.prototype.endFBO = function()
+Camera.prototype.disableRenderFrameContext = function()
 {
-	if(!this.render_to_texture || !this.texture_name)
+	if(!this._frame)
 		return;
+	this._frame.disable();
+}
 
-	//restore
-	gl.bindFramebuffer(gl.FRAMEBUFFER, this._old_fbo);
-	LS.Renderer.global_aspect = 1.0;
-	this._old_fbo = null;
+Camera.prototype.prepare = function()
+{
+	this.updateMatrices(); 
 
-	//generate mipmaps
-	if ( gl.NEAREST_MIPMAP_NEAREST <= this._texture.minFilter && this._texture.minFilter <= gl.LINEAR_MIPMAP_LINEAR )
-	{
-		this._texture.bind(0);
-		gl.generateMipmap( this._texture.texture_type );
-	}
+	this._previous_viewprojection_matrix.set( this._viewprojection_matrix );
 
-	var v = this._old_viewport;
-	gl.viewport( v[0], v[1], v[2], v[3] );
-	LS.Renderer._full_viewport.set( v );
-
-	//save texture
-	if(this.texture_name)
-	{
-		var texture = this._texture;
-		//cloning the texture allows to use the same texture in the scene (but uses more memory)
-		if(this.texture_clone)
-		{
-			if(!this._texture_clone || this._texture_clone.width != texture.width || this._texture_clone.height != texture.height || this._texture_clone.type != texture.type)
-				this._texture_clone = new GL.Texture( texture.width, texture.height, { format: gl.RGB, filter: gl.LINEAR, type: texture.type });
-			texture.copyTo( this._texture_clone );
-			texture = this._texture_clone;
-		}
-		LS.ResourcesManager.registerResource( this.texture_name, texture );
-	}
+	this.fillShaderQuery();
+	this.fillShaderUniforms();
 }
 
 Camera.prototype.fillShaderQuery = function()
@@ -19344,7 +19320,7 @@ Camera.prototype.fillShaderUniforms = function()
 	uniforms.u_camera_planes[0] = this.near;
 	uniforms.u_camera_planes[1] = this.far;
 	if(this.type == LS.Camera.PERSPECTIVE)
-		uniforms.u_camera_perspective.set( [this.fov * DEG2RAD, 512 / Math.tan( this.fov * DEG2RAD ) ] );
+		uniforms.u_camera_perspective.set( [ this.fov * DEG2RAD, 512 / Math.tan( this.fov * DEG2RAD ) ] );
 	else
 		uniforms.u_camera_perspective.set( [ this._frustum_size, 512 / this._frustum_size ] );
 	uniforms.u_camera_perspective[2] = this._projection_matrix[5]; //[1][1]

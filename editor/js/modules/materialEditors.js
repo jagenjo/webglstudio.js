@@ -67,6 +67,17 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 		return;
 	}
 
+	//mark material as changed
+	$(section).bind("wchange", function() { 
+		if(!material)
+			return;
+		var fullpath = material.fullpath || material.filename;
+		if(!fullpath)
+			return;
+		LS.ResourcesManager.resourceModified( material );				
+	});
+
+
 	//there is a material
 	var mat_type = LS.getObjectClassName( material );
 

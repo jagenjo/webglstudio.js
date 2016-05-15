@@ -74,13 +74,16 @@ var DriveModule = {
 				DriveModule.fetchPreview(url);
 		});
 
-		LEvent.bind( LS.ResourcesManager, "resource_not_found", function(e, url) {
+		function error_loading(e, url) {
 			var msg = document.getElementById( "res-msg-" + url.hashCode() );
 			if(!msg)
 				return;
 			msg.content.style.backgroundColor = "rgba(200,100,100,0.5)";
 			msg.kill(1000);
-		});
+		}
+
+		LEvent.bind( LS.ResourcesManager, "resource_not_found", error_loading );
+		LEvent.bind( LS.ResourcesManager, "resource_problem_loading", error_loading );
 
 		//this uses the texture thumbnails as a low resolution version while loading the high res
 		LEvent.bind( LS.ResourcesManager, "load_resource_preview", function(e, url) {
@@ -273,6 +276,9 @@ var DriveModule = {
 
 	getFilename: function(fullpath)
 	{
+		if(!fullpath)
+			return null;
+
 		var pos = fullpath.indexOf("?");
 		if(pos != -1)
 			fullpath = fullpath.substr(0,pos); //remove params

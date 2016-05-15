@@ -4682,7 +4682,10 @@ LGraphCanvas.showMenuNodeOutputs = function(node, e, prev_menu)
 			var label = entry[0];
 			if(entry[2] && entry[2].label)
 				label = entry[2].label;
-			entries.push({content: label, value: entry});
+			var data = {content: label, value: entry};
+			if(entry[1] == LiteGraph.EVENT)
+				data.className = "event";
+			entries.push(data);
 		}
 
 	if(this.onMenuNodeOutputs)
@@ -5210,7 +5213,7 @@ LiteGraph.createContextualMenu = function(values,options, ref_window)
 
 		if(item == null)
 		{
-			element.className = "graphmenu-entry separator";
+			element.className += " separator";
 			root.appendChild(element);
 			continue;
 		}
@@ -5220,6 +5223,9 @@ LiteGraph.createContextualMenu = function(values,options, ref_window)
 
 		if(item.disabled)
 			element.className += " disabled";
+
+		if(item.className)
+			element.className += " " + item.className;
 
 		element.style.cursor = "pointer";
 		element.dataset["value"] = typeof(item) == "string" ? item : item.value;
@@ -10950,39 +10956,58 @@ MIDIEvent.prototype.getPitch = function()
 	return Math.pow(2, (this.data[1] - 69) / 12 ) * 440;
 }
 
+MIDIEvent.computePitch = function( note )
+{
+	return Math.pow(2, (note - 69) / 12 ) * 440;
+}
+
+
 //not tested, there is a formula missing here
 MIDIEvent.prototype.getPitchBend = function()
 {
-	return this.data[1] + (this.data[2] << 7);
+	return this.data[1] + (this.data[2] << 7) - 8192;
+}
+
+MIDIEvent.computePitchBend = function(v1,v2)
+{
+	return v1 + (v2 << 7) - 8192;
 }
 
 MIDIEvent.prototype.setCommandFromString = function( str )
 {
+	this.cmd = MIDIEvent.computeCommandFromString(str);
+}
+
+MIDIEvent.computeCommandFromString = function( str )
+{
 	if(!str)
-		return;
+		return 0;
+
+	if(str && str.constructor === Number)
+		return str;
 
 	str = str.toUpperCase();
 	switch( str )
 	{
 		case "NOTE ON":
-		case "NOTEON": this.cmd = MIDIEvent.NOTEON; break;
+		case "NOTEON": return MIDIEvent.NOTEON; break;
 		case "NOTE OFF":
-		case "NOTEOFF": this.cmd = MIDIEvent.NOTEON; break;
+		case "NOTEOFF": return MIDIEvent.NOTEON; break;
 		case "KEY PRESSURE": 
-		case "KEYPRESSURE": this.cmd = MIDIEvent.KEYPRESSURE; break;
+		case "KEYPRESSURE": return MIDIEvent.KEYPRESSURE; break;
 		case "CONTROLLER CHANGE": 
 		case "CONTROLLERCHANGE": 
-		case "CC": this.cmd = MIDIEvent.CONTROLLERCHANGE; break;
+		case "CC": return MIDIEvent.CONTROLLERCHANGE; break;
 		case "PROGRAM CHANGE":
 		case "PROGRAMCHANGE":
-		case "PC": this.cmd = MIDIEvent.PROGRAMCHANGE; break;
+		case "PC": return MIDIEvent.PROGRAMCHANGE; break;
 		case "CHANNEL PRESSURE":
-		case "CHANNELPRESSURE": this.cmd = MIDIEvent.CHANNELPRESSURE; break;
+		case "CHANNELPRESSURE": return MIDIEvent.CHANNELPRESSURE; break;
 		case "PITCH BEND":
-		case "PITCHBEND": this.cmd = MIDIEvent.PITCHBEND; break;
+		case "PITCHBEND": return MIDIEvent.PITCHBEND; break;
 		case "TIME TICK":
-		case "TIMETICK": this.cmd = MIDIEvent.TIMETICK; break;
-		default: Number(str); break; //asume its a hex code
+		case "TIMETICK": return MIDIEvent.TIMETICK; break;
+		default: return Number(str); //asume its a hex code
 	}
 }
 
@@ -11121,6 +11146,8 @@ MIDIInterface.prototype.openInputPort = function( port, callback)
 		var midi_event = new MIDIEvent(a.data);
 		if(callback)
 			callback(a.data, midi_event );
+		if(MIDIInterface.on_message)
+			MIDIInterface.on_message( a.data, midi_event );
 	}
 	console.log("port open: ", input_port);
 	return true;
@@ -11174,7 +11201,6 @@ LGMIDIIn.prototype.onStart = function()
 LGMIDIIn.prototype.onMIDIEvent = function( data, midi_event )
 {
 	this._last_midi_event = midi_event;
-	this._current_midi_event = midi_event;
 
 	this.trigger( "on_midi", midi_event );
 	if(midi_event.cmd == MIDIEvent.NOTEON)
@@ -11200,38 +11226,24 @@ LGMIDIIn.prototype.onExecute = function()
 			var v = null;
 			switch (output.name)
 			{
-				case "out": v = this._current_midi_event; break;
-				case "data1": 
-				case "note": v = last ? last.data[1] : -1; break;
-				case "data2": v = last ? last.data[2] : -1; break;
-				case "gate": v = !!this._current_midi_event; break;
-				case "pitch": v = last && last.cmd == MIDIEvent.NOTEON ? last.getPitch() : -1; break;
-				case "velocity": v = last ? last.velocity : -1; break;
-				case "pitchbend": v = last && last.cmd == MIDIEvent.PITCHBEND ? last.data[1] / 127 : -1; break;
-				case "on_midi": ; break;
+				case "last_midi": v = last; break;
+				default:
+					continue;
 			}
 			this.setOutputData( i, v );
 		}
 	}
-
-	this._current_midi_event = null;
 }
 
 LGMIDIIn.prototype.onGetOutputs = function() {
 	return [
+		["last_midi","midi"],
 		["on_midi",LiteGraph.EVENT],
 		["on_noteon",LiteGraph.EVENT],
 		["on_noteoff",LiteGraph.EVENT],
 		["on_cc",LiteGraph.EVENT],
 		["on_pc",LiteGraph.EVENT],
-		["on_pitchbend",LiteGraph.EVENT],
-		["note","number"],
-		["pitch","number"],
-		["velocity","number"],
-		["pitchbend","number"],
-		["gate","boolean"],
-		["data1","number"],
-		["data2","number"]
+		["on_pitchbend",LiteGraph.EVENT]
 	];
 }
 
@@ -11354,7 +11366,7 @@ LGMIDIFilter.prototype.onAction = function(event, midi_event )
 LiteGraph.registerNodeType("midi/filter", LGMIDIFilter);
 
 
-function LGMIDIEventCreate()
+function LGMIDIEvent()
 {
 	this.properties = {
 		channel: 0,
@@ -11368,10 +11380,10 @@ function LGMIDIEventCreate()
 	this.addOutput( "on_midi", LiteGraph.EVENT );
 }
 
-LGMIDIEventCreate.title = "MIDIEvent";
-LGMIDIEventCreate.desc = "Create a MIDI Event";
+LGMIDIEvent.title = "MIDIEvent";
+LGMIDIEvent.desc = "Create a MIDI Event";
 
-LGMIDIEventCreate.prototype.onAction = function( event, midi_event )
+LGMIDIEvent.prototype.onAction = function( event, midi_event )
 {
 	if(event == "assign")
 	{
@@ -11382,16 +11394,71 @@ LGMIDIEventCreate.prototype.onAction = function( event, midi_event )
 		return;
 	}
 
+	//send
 	var midi_event = new MIDIEvent();
 	midi_event.channel = this.properties.channel;
-	midi_event.setCommandFromString( this.properties.cmd );
+	if(this.properties.cmd && this.properties.cmd.constructor === String)
+		midi_event.setCommandFromString( this.properties.cmd );
+	else
+		midi_event.cmd = this.properties.cmd;
 	midi_event.data[0] = midi_event.cmd | midi_event.channel;
 	midi_event.data[1] = Number(this.properties.value1);
 	midi_event.data[2] = Number(this.properties.value2);
 	this.trigger("on_midi",midi_event);
 }
 
-LiteGraph.registerNodeType("midi/create", LGMIDIEventCreate);
+LGMIDIEvent.prototype.onExecute = function()
+{
+	var props = this.properties;
+
+	if(this.outputs)
+	{
+		for(var i = 0; i < this.outputs.length; ++i)
+		{
+			var output = this.outputs[i];
+			var v = null;
+			switch (output.name)
+			{
+				case "midi": 
+					v = new MIDIEvent(); 
+					v.setup([ props.cmd, props.value1, props.value2 ]);
+					v.channel = props.channel;
+					break;
+				case "command": v = props.cmd; break;
+				case "note": v = (props.cmd == MIDIEvent.NOTEON || props.cmd == MIDIEvent.NOTEOFF) ? props.value1 : NULL; break;
+				case "velocity": v = props.cmd == MIDIEvent.NOTEON ? props.value2 : NULL; break;
+				case "pitch": v = props.cmd == MIDIEvent.NOTEON ? MIDIEvent.computePitch( props.value1 ) : null; break;
+				case "pitchbend": v = props.cmd == MIDIEvent.PITCHBEND ? MIDIEvent.computePitchBend( props.value1, props.value2 ) : null; break;
+				default:
+					continue;
+			}
+			if(v !== null)
+				this.setOutputData( i, v );
+		}
+	}
+}
+
+LGMIDIEvent.prototype.onPropertyChanged = function(name,value)
+{
+	if(name == "cmd")
+		this.properties.cmd = MIDIEvent.computeCommandFromString( value );
+}
+
+
+LGMIDIEvent.prototype.onGetOutputs = function() {
+	return [
+		["midi","midi"],
+		["on_midi",LiteGraph.EVENT],
+		["command","number"],
+		["note","number"],
+		["velocity","number"],
+		["pitch","number"],
+		["pitchbend","number"]
+	];
+}
+
+
+LiteGraph.registerNodeType("midi/event", LGMIDIEvent);
 
 
 

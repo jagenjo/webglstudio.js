@@ -425,14 +425,6 @@ var SceneStorageModule = {
 		}
 	},
 
-	showDownloadSceneDialog: function()
-	{
-		var data = JSON.stringify( LS.GlobalScene.serialize() );
-		var dataType = "string";
-		var filename = "scene.json";
-		LiteGUI.downloadFile( filename, data );
-	},
-
 	showCreateSceneDialog: function()
 	{
 		var dialog = new LiteGUI.Dialog("dialog_create_scene", {title:"New Scene", close: true, minimize: true, width: 200, scroll: false, draggable: true});
@@ -513,6 +505,46 @@ var SceneStorageModule = {
 		SceneStorageModule.saveLocalScene("_test", {}, LS.GlobalScene, SceneStorageModule.takeScreenshot(256,256) );
 		var name = SceneStorageModule.localscene_prefix + "_test";
 		window.open("player.html?session=" + name,'_blank');
+	},
+
+	showDownloadSceneDialog: function()
+	{
+		var scene = LS.GlobalScene;
+
+		if(LS.RM.isLoading())
+		{
+			LiteGUI.alert("Cannot publish while loading assets.");
+			return;
+		}
+
+		var dialog = new LiteGUI.Dialog("dialog_download_scene", {title:"Download Scene", close: true, minimize: true, width: 400, scroll: false, draggable: true});
+
+		var filename = LS.RM.getBasename( scene.extra.publish_name || scene.extra.filename || "scene" );
+		var folder = scene.extra.folder;
+		var include_resources = false;
+
+		var widgets = new LiteGUI.Inspector(null,{name_width:120});
+
+		widgets.addButton("Scene JSON", "Download", function(v){
+			dialog.close();
+			var fullpath = LS.RM.cleanFullpath( folder + "/" + filename + ".json" );
+			var scene = LS.GlobalScene.serialize();
+			LiteGUI.downloadFile( LS.RM.getFilename(fullpath), JSON.stringify( scene ) );
+		});
+
+		widgets.addCheckbox("Include all resources", include_resources, { callback: function(v){ include_resources = v; }});
+
+		widgets.addButton("PACK in WBIN", "Download", function(v){
+			dialog.close();
+			var fullpath = LS.RM.cleanFullpath( folder + "/" + filename );
+			LS.GlobalScene.extra.publish_name = fullpath;
+			var pack = LS.GlobalScene.toPack( fullpath, include_resources );
+			LiteGUI.downloadFile( LS.RM.getFilename(pack.fullpath), pack.bindata );
+		});
+
+		dialog.add(widgets);
+		dialog.show();
+		dialog.adjustSize(10);
 	},
 
 	showPublishDialog: function()

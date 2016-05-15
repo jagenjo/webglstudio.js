@@ -298,11 +298,13 @@ CodingTabsWidget.prototype.onPlusTab = function(tab_id, e)
 		{ title: "Create", submenu: 
 			{ callback: inner_create,
 			options: [
-				{ title: "Script", submenu:[
-					"In File",
-					"In Node",
-					"In Root"],
-					callback: inner_create
+				{ title: "Script", submenu: { 
+					callback: inner_create,
+					options: [
+						"In File",
+						"In Node",
+						"In Root"]
+					},
 				},
 				"Data File",
 				"Shader"

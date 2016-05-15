@@ -271,7 +271,7 @@ GraphWidget.prototype.onMenuNodeOutputs = function( options )
 {
 	options = options || [];
 	options.push(null);
-	options.push({content:"New event", callback: function( node ){
+	options.push({content:"New event", className: "event", callback: function( node ){
 		LiteGUI.prompt("Enter event name", function(v){
 			if(!v)
 				return;

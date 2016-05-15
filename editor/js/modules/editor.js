@@ -1961,6 +1961,12 @@ function addGenericResource ( name, value, options, resource_classname )
 			});
 			e.stopPropagation();
 		}
+		else if (e.dataTransfer.getData("text/uri-list") )
+		{
+			value = input.value = e.dataTransfer.getData("text/uri-list");
+			LiteGUI.trigger( input, "change" );
+			e.stopPropagation();
+		}
 		e.preventDefault();
 		return false;
 	}, true);
@@ -2079,6 +2085,21 @@ LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
 			LiteGUI.trigger( input, "change" );
 			e.stopPropagation();
 		}
+		else if (e.dataTransfer.files.length)
+		{
+			ImporterModule.importFile( e.dataTransfer.files[0], function(fullpath){
+				value = input.value = fullpath;
+				LiteGUI.trigger( input, "change" );
+			});
+			e.stopPropagation();
+		}
+		else if (e.dataTransfer.getData("text/uri-list") )
+		{
+			input.value = e.dataTransfer.getData("text/uri-list");
+			LiteGUI.trigger( input, "change" );
+			e.stopPropagation();
+		}
+
 		e.preventDefault();
 		return false;
 	}, true);

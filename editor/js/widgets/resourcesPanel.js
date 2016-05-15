@@ -340,7 +340,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 
 	var filename = DriveModule.getFilename( resource.filename );
 	if(!filename) 
-		filename = resource.fullpath;
+		filename = resource.fullpath || "";
 
 	element.title = type + ": " + resource.filename;
 	if(filename)

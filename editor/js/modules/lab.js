@@ -13,6 +13,12 @@ var LabModule = {
 
 	_last_mouseup: 0,
 
+	settings: {
+		render_frame: false,
+		render_filename: false,
+		render_alpha: true
+	},
+
 	init: function()
 	{
 		this.tab = LiteGUI.main_tabs.addTab( this.name , {id:"labtab", bigicon: this.bigicon, size: "full", callback: function(tab) {
@@ -183,7 +189,12 @@ var LabModule = {
 				if(tex.texture_type == gl.TEXTURE_2D)
 				{
 					//LS.Draw.renderPlane([posx + size*0.6, posy + size*0.6, 0], [size*0.5,-size*0.5], tex );
+					if(!this.settings.render_alpha)
+						gl.disable( gl.BLEND );
+					else
+						gl.enable( gl.BLEND );
 					gl.drawImage(tex, posx, posy, w, h );
+					gl.enable( gl.BLEND );
 				}
 				else
 				{
@@ -193,10 +204,14 @@ var LabModule = {
 
 				var filename = LS.RM.getFilename(i).substr(0,24);
 				var text = filename;
-				gl.globalAlpha = (this.selected_item && this.selected_item.item == item) ? 1 : 0.5;
-				gl.strokeRect( posx, posy, w, h );
-				gl.globalAlpha = 1;
-				gl.fillText(text,posx + 5,posy + 15);
+				if(this.settings.render_frame)
+				{
+					gl.globalAlpha = (this.selected_item && this.selected_item.item == item) ? 1 : 0.5;
+					gl.strokeRect( posx, posy, w, h );
+					gl.globalAlpha = 1;
+				}
+				if(this.settings.render_filename)
+					gl.fillText(text,posx + 5,posy + 15);
 				this.items.push({id:i,type:"Texture",item: tex, x:posx,y:posy,w:w,h:h});
 			}
 

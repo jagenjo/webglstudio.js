@@ -22501,10 +22501,14 @@ Skybox.prototype.onCollectInstances = function(e, instances)
 		this._render_instance = RI = new LS.RenderInstance(this._root, this);
 		RI.priority = 100;
 
+		//to position the skybox on top of the camera
 		RI.onPreRender = function(render_settings) { 
-			var cam_pos = LS.Renderer._current_camera.getEye();
+			var camera = LS.Renderer._current_camera;
+			var cam_pos = camera.getEye();
 			mat4.identity(this.matrix);
 			mat4.setTranslation( this.matrix, cam_pos );
+			var size = (camera.near + camera.far) * 0.5;
+			//mat4.scale( this.matrix, this.matrix, [ size, size, size ]);
 			if(this.node.transform)
 			{
 				var R = this.node.transform.getGlobalRotationMatrix();

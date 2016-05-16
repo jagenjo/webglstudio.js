@@ -92,7 +92,7 @@ var rotateNodeTool = {
 			LS.Draw.setColor([0,0,0,0.2]);
 			LS.Draw.push();
 			LS.Draw.scale(radius * 0.99);
-			LS.Draw.renderMesh( EditorView.sphere_mesh, gl.TRIANGLES );
+			LS.Draw.renderMesh( EditorView.debug_render.sphere_mesh, gl.TRIANGLES );
 			LS.Draw.pop();
 
 			//*

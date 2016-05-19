@@ -64,18 +64,9 @@
 	<snippet id="computeLight">
 		<![CDATA[
 		//***** compute Light
-			vec3 computeLight(in SurfaceOutput o, in Input IN)
+			vec3 computeLight(in SurfaceOutput o, in Input IN, in FinalLight LIGHT)
 			{
 				vec3 N = o.Normal; //use the final normal (should be the same as IN.worldNormal)
-
-				FinalLight LIGHT;
-				LIGHT.Color = u_light_color;
-				LIGHT.Ambient = vec3(0.0);
-				LIGHT.Diffuse = 1.0;
-				LIGHT.Specular = 0.0;
-				LIGHT.Reflection = vec3(0.0);
-				LIGHT.Attenuation = 0.0;
-				LIGHT.Shadow = 1.0;
 
 				//lighting calculation
 				#if defined(USE_SHADOW_MAP) && !defined(USE_AMBIENT_ONLY)
@@ -125,22 +116,6 @@
 				#endif
 				float EdotN = dot(E,N); //clamp(dot(E,N),0.0,1.0);
 				LIGHT.Specular = o.Specular * pow( clamp(dot(R,-L),0.001,1.0), o.Gloss );
-
-				//ambient light and emissive
-				LIGHT.Ambient = vec3(0.0);
-				#ifdef FIRST_PASS
-					LIGHT.Ambient = u_ambient_light;
-					#ifdef USE_IRRADIANCE_CUBEMAP
-						LIGHT.Ambient *= textureCube( irradiance_cubemap, N).xyz;
-					#else
-					/*
-						#ifdef USE_IRRADIANCE_TEXTURE
-							LIGHT.Ambient *= texture2D(irradiance_texture, uvs_polar_reflected ).xyz;
-						#endif
-					*/
-					#endif
-					LIGHT.Ambient += o.Emission;
-				#endif
 
 				LIGHT.Attenuation = 1.0;
 				#ifdef USE_LINEAR_ATTENUATION
@@ -249,7 +224,14 @@
 				#endif
 
 				//FINAL LIGHT FORMULA ************************* 
-				vec3 final_color = o.Albedo * (LIGHT.Ambient * o.Ambient + LIGHT.Color * LIGHT.Diffuse * LIGHT.Attenuation * LIGHT.Shadow);
+
+				vec3 total_light = LIGHT.Ambient * o.Ambient + LIGHT.Color * LIGHT.Diffuse * LIGHT.Attenuation * LIGHT.Shadow;
+
+				vec3 final_color = o.Albedo * total_light;
+
+				#ifdef FIRST_PASS
+					final_color += o.Emission;
+				#endif
 
 				#ifndef USE_SPECULAR_ONTOP
 					final_color	+= o.Albedo * (LIGHT.Color * LIGHT.Specular * LIGHT.Attenuation * LIGHT.Shadow);
@@ -257,8 +239,8 @@
 
 				//apply reflection
 				#ifdef LAST_PASS
-				if(o.Reflectivity > 0.0)
-					final_color = mix( final_color, LIGHT.Reflection, max(0.0,o.Reflectivity) );
+					if(o.Reflectivity > 0.0)
+						final_color = mix( final_color, LIGHT.Reflection, max(0.0,o.Reflectivity) );
 				#endif
 
 				#ifdef USE_SPECULAR_ONTOP
@@ -1393,11 +1375,20 @@
 						discard;
 				#endif
 
+				FinalLight LIGHT;
+				LIGHT.Color = u_light_color;
+				LIGHT.Ambient = vec3(0.0);
+				LIGHT.Diffuse = 1.0;
+				LIGHT.Specular = 0.0;
+				LIGHT.Reflection = vec3(0.0);
+				LIGHT.Attenuation = 0.0;
+				LIGHT.Shadow = 1.0;
+
 				//generate lighting
 				#ifndef USE_DRAW_BUFFERS
-					gl_FragColor = vec4( computeLight(o,IN), o.Alpha );
+					gl_FragColor = vec4( computeLight(o,IN,LIGHT), o.Alpha );
 				#else
-					gl_FragData[0] = vec4( computeLight(o,IN), o.Alpha );
+					gl_FragData[0] = vec4( computeLight(o,IN,LIGHT), o.Alpha);
 					gl_FragData[1] = o.Extra;
 				#endif
 			}
@@ -1802,8 +1793,21 @@
 					if( dot(v_pos, u_clipping_plane.xyz) < u_clipping_plane.w)
 						discard;
 				#endif
+
+				FinalLight LIGHT;
+				LIGHT.Color = u_light_color;
+				LIGHT.Ambient = vec3(0.0);
+				LIGHT.Diffuse = 1.0;
+				LIGHT.Specular = 0.0;
+				LIGHT.Reflection = vec3(0.0);
+				LIGHT.Attenuation = 0.0;
+				LIGHT.Shadow = 1.0;
 				
-				o.Ambient = vec3(1.0);
+				#ifdef FIRST_PASS
+					LIGHT.Ambient = u_ambient_light;
+					o.Ambient = u_ambient_color;
+				#endif
+
 				o.Extra = vec4(0.0);
 
 				// Surface color **************************
@@ -1964,6 +1968,14 @@
 				//Surface properties
 				o.Albedo = color;
 
+				#ifdef FIRST_PASS
+					#ifdef USE_AMBIENT_TEXTURE
+						LIGHT.Ambient = texture2D( ambient_texture, USE_AMBIENT_TEXTURE ).xyz;
+					#elif defined( USE_IRRADIANCE_CUBEMAP )
+						LIGHT.Ambient *= textureCube( irradiance_cubemap, N).xyz;
+					#endif
+				#endif
+
 				IN.vertex = v_local_pos;
 				IN.normal = v_local_normal;
 				IN.color = vec4(1.0);
@@ -1985,7 +1997,7 @@
 				#endif
 
 				//Compute light equation **********************************************************
-				vec3 final_color = computeLight(o,IN);
+				vec3 final_color = computeLight(o,IN, LIGHT);
 				//*********************************************************************************
 
 				#ifdef USE_FOG

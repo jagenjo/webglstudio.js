@@ -36,8 +36,8 @@ var ToolsModule = {
 		}
 
 		//initGUI
-		//place to put all the icons of the tools
-		RenderModule.canvas_manager.addModule(this);
+		//place to put all the icons of the tools (really? just use the events system)
+		RenderModule.canvas_manager.addWidget(this);
 		this.createToolbar();
 	},
 
@@ -84,11 +84,11 @@ var ToolsModule = {
 			if(this.current_tool.module) 
 			{
 				if(!this.current_tool.keep_module)
-					RenderModule.canvas_manager.removeModule(this.current_tool.module);
+					RenderModule.canvas_manager.removeWidget(this.current_tool.module);
 				this.current_tool.module.enabled = false;
 			}
 			else if(!this.current_tool.keep_module)
-				RenderModule.canvas_manager.removeModule(this.current_tool);
+				RenderModule.canvas_manager.removeWidget(this.current_tool);
 			this.current_tool.enabled = false;
 			if (this.current_tool.onDisable)
 				this.current_tool.onDisable();
@@ -109,10 +109,10 @@ var ToolsModule = {
 
 		if(tool.module)
 		{ 
-			RenderModule.canvas_manager.addModule(tool.module);
+			RenderModule.canvas_manager.addWidget(tool.module);
 			tool.module.enabled = true;
 		}
-		else RenderModule.canvas_manager.addModule(tool);
+		else RenderModule.canvas_manager.addWidget(tool);
 		this.current_tool.enabled = true;
 
 		if (this.current_tool.onEnable)

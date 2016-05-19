@@ -32,7 +32,7 @@ var EditorView = {
 			return;
 
 		this.debug_render = new LS.DebugRender(); //in charge of rendering debug info in the scene
-		RenderModule.canvas_manager.addModule(this);
+		RenderModule.canvas_manager.addWidget(this);
 
 		LEvent.bind( LS.Renderer, "renderHelpers", this.renderView.bind(this));
 		LEvent.bind( LS.Renderer, "renderPicking", this.renderPicking.bind(this));

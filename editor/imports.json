@@ -8,6 +8,8 @@
 		"js/modules/sceneStorage.js",
 		"js/modules/selection.js",
 		"js/modules/tools.js",
+		"js/utils/canvasManager.js",
+		"js/utils/canvasElement.js",
 		"js/tools/move.js",
 		"js/tools/rotate.js",
 		"js/tools/scale.js",
@@ -53,7 +55,6 @@
 		"js/modules/animation.js",
 		"js/modules/undo.js",
 		"js/modules/actors.js",
-		"js/modules/annotation.js",
-		"js/utils/canvasManager.js"
+		"js/modules/annotation.js"
 	]
 }

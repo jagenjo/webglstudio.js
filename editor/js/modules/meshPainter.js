@@ -339,12 +339,12 @@ var MeshPainter = {
 		//compute ray
 		var model = node.transform.getGlobalMatrix();
 		var inv = mat4.invert( mat4.create(), model );
-		mat4.multiplyVec3(ray.start, inv, ray.start );
+		mat4.multiplyVec3(ray.origin, inv, ray.origin );
 		mat4.rotateVec3(ray.direction, inv, ray.direction );
 		vec3.normalize(ray.direction, ray.direction);
 
 		//test hit
-		var hit = this.collision_mesh.octree.testRay( ray.start, ray.direction, 0.0, 10000 );
+		var hit = this.collision_mesh.octree.testRay( ray.origin, ray.direction, 0.0, 10000 );
 		if(hit)
 		{
 			mat4.multiplyVec3(hit.pos, model, hit.pos);

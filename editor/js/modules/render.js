@@ -69,7 +69,7 @@ var RenderModule = {
 			this.onWebGLNotEnabled();
 			return;
 		}
-		this.canvas_manager.addModule(this); //capture render, update and mouse
+		this.canvas_manager.addWidget(this); //capture render, update and mouse
 
 		//CANVAS
 		var canvas = this.canvas_manager.canvas;
@@ -315,16 +315,6 @@ var RenderModule = {
 				var cam = scene_cams[i];
 				if(cam.isRenderedToTexture())
 					cameras.unshift(cam); //add this camera to the list of cameras we are going to use to render
-			}
-
-			if(this.preview_camera)
-			{
-				this.temp_camera.configure( this.preview_camera.serialize() );
-				this.temp_camera.setViewportInPixels( gl.canvas.width - 220, 10, 200,200 );
-				this.temp_camera.render_to_texture = false;
-				this.temp_camera.eye = this.preview_camera.getEye();
-				this.temp_camera.center = this.preview_camera.getCenter();
-				cameras.push( this.temp_camera );
 			}
 			render_settings.main_camera = this.selected_camera;
 		}

@@ -14,7 +14,7 @@ var selectTool = {
 
 	onRegister: function()
 	{
-		//RenderModule.canvas_manager.addModule(this);
+		//RenderModule.canvas_manager.addWidget(this);
 		ToolsModule.addBackgroundTool(this);
 	},
 

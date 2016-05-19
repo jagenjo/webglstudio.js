@@ -22,7 +22,7 @@ var EditorModule = {
 
 	init: function()
 	{
-		RenderModule.canvas_manager.addModule(this);
+		RenderModule.canvas_manager.addWidget(this);
 
 		if(!gl) 
 			return;
@@ -1076,7 +1076,7 @@ var EditorModule = {
 		}
 	},
 
-	//generic (called by selectTool on right click on canvas)
+	//generic (called from EditorView.mouseup on right click on canvas, which is called from CanvasManager)
 	showCanvasContextualMenu: function( instance, event )
 	{
 		var options = [

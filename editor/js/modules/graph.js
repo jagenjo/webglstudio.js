@@ -23,7 +23,7 @@ var GraphModule = {
 			//GraphModule.graphcanvas.pause_rendering = true;
 		}});
 
-		RenderModule.canvas_manager.addModule( this );
+		RenderModule.canvas_manager.addWidget( this );
 
 		LiteGraph.node_images_path = this.litegraph_path + "/nodes_data/";
 

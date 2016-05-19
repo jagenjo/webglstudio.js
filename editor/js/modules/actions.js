@@ -217,10 +217,7 @@ LS.Components.Camera.actions["setview"] = { title: "Set to view", callback: func
 }};
 
 LS.Components.Camera.actions["preview"] = { title: "Preview", callback: function() { 
-		if(RenderModule.preview_camera != this)
-			RenderModule.preview_camera = this;
-		else
-			RenderModule.preview_camera = null;
+		cameraTool.addCameraPreviewWidget( this );
 		LS.GlobalScene.refresh();
 	}
 };

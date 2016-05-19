@@ -6389,7 +6389,7 @@ StandardMaterial.prototype.fillUniforms = function( scene, options )
 	uniforms.u_material_color = this._color;
 
 	//uniforms.u_ambient_color = node.flags.ignore_lights ? [1,1,1] : [scene.ambient_color[0] * this.ambient[0], scene.ambient_color[1] * this.ambient[1], scene.ambient_color[2] * this.ambient[2]];
-	if(this.use_scene_ambient && scene.info)
+	if(this.use_scene_ambient && scene.info && !this.textures["ambient"])
 		uniforms.u_ambient_color = vec3.fromValues(scene.info.ambient_color[0] * this.ambient[0], scene.info.ambient_color[1] * this.ambient[1], scene.info.ambient_color[2] * this.ambient[2]);
 	else
 		uniforms.u_ambient_color = this.ambient;
@@ -14465,17 +14465,8 @@ var Renderer = {
 		//compute the rendering order
 		this.sortRenderInstances( camera, render_settings );
 
-		//scissors test for the gl.clear, otherwise the clear affects the full viewport
-		gl.scissor( gl.viewport_data[0], gl.viewport_data[1], gl.viewport_data[2], gl.viewport_data[3] );
-		gl.enable(gl.SCISSOR_TEST);
-
-		//clear buffer 
-		var info = scene.info;
-		gl.clearColor( camera.background_color[0], camera.background_color[1], camera.background_color[2], camera.background_color[3] );
-		if(render_settings.ignore_clear != true && (camera.clear_color || camera.clear_depth) )
-			gl.clear( ( camera.clear_color ? gl.COLOR_BUFFER_BIT : 0) | (camera.clear_depth ? gl.DEPTH_BUFFER_BIT : 0) );
-
-		gl.disable(gl.SCISSOR_TEST);
+		//clear buffer
+		this.clearBuffer( camera, render_settings );
 
 		//send before events
 		LEvent.trigger(scene, "beforeRenderScene", camera );
@@ -14555,6 +14546,23 @@ var Renderer = {
 
 		LEvent.trigger( camera, "afterEnabled", render_settings );
 		LEvent.trigger( scene, "afterCameraEnabled", camera ); //used to change stuff according to the current camera (reflection textures)
+	},
+
+	//clear color using camerae info
+	clearBuffer: function( camera, render_settings )
+	{
+		if( render_settings.ignore_clear || (!camera.clear_color && !camera.clear_depth) )
+			return;
+
+		//scissors test for the gl.clear, otherwise the clear affects the full viewport
+		gl.scissor( gl.viewport_data[0], gl.viewport_data[1], gl.viewport_data[2], gl.viewport_data[3] );
+		gl.enable(gl.SCISSOR_TEST);
+
+		//clear buffer 
+		gl.clearColor( camera.background_color[0], camera.background_color[1], camera.background_color[2], camera.background_color[3] );
+		gl.clear( ( camera.clear_color ? gl.COLOR_BUFFER_BIT : 0) | (camera.clear_depth ? gl.DEPTH_BUFFER_BIT : 0) );
+
+		gl.disable(gl.SCISSOR_TEST);
 	},
 
 	sortRenderInstances: function( camera, render_settings )
@@ -15354,7 +15362,7 @@ var Renderer = {
 				}
 			}
 
-			//and finally, the alpha thing to determine if it is visible or not
+			//check if it has alpha, and put in right container
 			if(instance.flags & RI_BLEND)
 				blend_instances.push(instance);
 			else
@@ -15452,9 +15460,12 @@ var Renderer = {
 
 		function inner_draw_2d()
 		{
+			LS.Renderer.clearBuffer( cam, render_settings );
+			/*
 			gl.clearColor(cam.background_color[0], cam.background_color[1], cam.background_color[2], cam.background_color[3] );
 			if(render_settings.ignore_clear != true)
 				gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+			*/
 			//render scene
 			LS.Renderer.renderInstances( render_settings );
 		}
@@ -15493,7 +15504,6 @@ var Renderer = {
 				gl.clearColor(0,0,0,0);
 			else
 				gl.clearColor( background_color[0], background_color[1], background_color[2], background_color[3] );
-
 			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 			var cubemap_cam = new LS.Camera({ eye: eye, center: [ eye[0] + info.dir[0], eye[1] + info.dir[1], eye[2] + info.dir[2]], up: info.up, fov: 90, aspect: 1.0, near: near, far: far });
 
@@ -20854,7 +20864,7 @@ function MeshRenderer(o)
 
 	this.material = null;
 
-	this._is_static_ready = false; //used in static meshes
+	this._must_update_static = true; //used in static meshes
 	this._transform_version = -1;
 
 	if(o)
@@ -21027,7 +21037,7 @@ MeshRenderer.prototype.onCollectInstances = function(e, instances)
 	var transform = this._root.transform;
 
 	//optimize
-	if( is_static && this._is_static_ready && (!transform || (transform && this._transform_version == transform._version)) )
+	if( is_static && LS.allow_static && !this._must_update_static && (!transform || (transform && this._transform_version == transform._version)) )
 		return instances.push( RI );
 
 	//matrix: do not need to update, already done
@@ -21089,7 +21099,7 @@ MeshRenderer.prototype.onCollectInstances = function(e, instances)
 	//mark it as ready once no more changes should be applied
 	if( is_static && LS.allow_static && !this.isLoading() )
 	{
-		this._is_static_ready = true;
+		this._must_update_static = false;
 		this._transform_version = transform ? transform._version : 0;
 	}
 
@@ -34599,6 +34609,14 @@ SceneTree.prototype.toPack = function( fullpath, force_all_resources )
 
 	return pack;
 },
+
+SceneTree.prototype.updateStaticObjects = function()
+{
+	var old = LS.allow_static;
+	LS.allow_static = false;
+	this.collectData();
+	LS.allow_static = old;
+}
 
 LS.SceneTree = SceneTree;
 LS.Classes.SceneTree = SceneTree;

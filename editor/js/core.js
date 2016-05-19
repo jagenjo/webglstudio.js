@@ -85,7 +85,7 @@ var CORE = {
 			var line = box.parentNode;
 			line.classList.add("error");
 			box.classList.add("error");
-			console.error("Error loading import: " + line.querySelector(".name").innerHTML );
+			console.error("Error loading import: " + line.querySelector(".name").textContent );
 		}
 
 		function onReady()

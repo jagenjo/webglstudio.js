@@ -22,7 +22,7 @@ var CubemapGenerator = {
 			return;
 		}
 
-		//RenderModule.canvas_manager.addModule( CubemapGenerator );
+		//RenderModule.canvas_manager.addWidget( CubemapGenerator );
 
 		var dialog = new LiteGUI.Dialog( "dialog_cubemap", { title:"Cubemap generator", parent:"#visor", close: true, minimize: true, width: 300, min_height: 160, scroll: false, draggable: true});
 		dialog.show('fade');
@@ -30,7 +30,7 @@ var CubemapGenerator = {
 		dialog.on_close = function(){ 
 
 			CubemapGenerator.dialog = null;
-			//RenderModule.canvas_manager.removeModule( CubemapGenerator );
+			//RenderModule.canvas_manager.removeWidget( CubemapGenerator );
 		}
 		this.dialog = dialog;
 

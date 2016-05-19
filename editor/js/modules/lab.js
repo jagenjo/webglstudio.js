@@ -23,13 +23,13 @@ var LabModule = {
 	{
 		this.tab = LiteGUI.main_tabs.addTab( this.name , {id:"labtab", bigicon: this.bigicon, size: "full", callback: function(tab) {
 			LabModule.enabled = true;
-			RenderModule.canvas_manager.addModule( LabModule );
+			RenderModule.canvas_manager.addWidget( LabModule );
 			RenderModule.appendViewportTo( LabModule.tab.content );
 		},
 		callback_leave: function() {
 			LabModule.enabled = false;
 			RenderModule.appendViewportTo( null );
-			RenderModule.canvas_manager.removeModule( LabModule );
+			RenderModule.canvas_manager.removeWidget( LabModule );
 		}});
 
 		var content = document.getElementById("labtab");

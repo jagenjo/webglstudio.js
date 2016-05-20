@@ -1384,6 +1384,10 @@
 				LIGHT.Attenuation = 0.0;
 				LIGHT.Shadow = 1.0;
 
+				#ifdef FIRST_PASS
+					LIGHT.Ambient = u_ambient_light;
+				#endif
+
 				//generate lighting
 				#ifndef USE_DRAW_BUFFERS
 					gl_FragColor = vec4( computeLight(o,IN,LIGHT), o.Alpha );

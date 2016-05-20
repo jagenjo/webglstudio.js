@@ -1,21 +1,25 @@
+// Javi Agenjo  (@tamat) May 2016
 var LightmapTools = {
 
 	init: function()
 	{
-		LiteGUI.menubar.add("Actions/Lightmap Tools", { callback: function() { 
-			LightmapTools.showToolsDialog();
-		}});
-
 		this.render_settings = new LS.RenderSettings();
 		this.render_settings.render_gui = false;
 		this.render_settings.render_helpers = false;
 		this.render_settings.render_fx = false;
-
 		this._generating = false;
+
+		if(typeof(LiteGUI) != "undefined")
+			LiteGUI.menubar.add("Actions/Lightmap Tools", { callback: function() { 
+				LightmapTools.showToolsDialog();
+			}});
 	},
 
 	showToolsDialog: function()
 	{
+		if(typeof(LiteGUI) == "undefined")
+			throw("LiteGUI not installed");
+
 		if(!gl.extensions["OES_texture_float"])
 			LiteGUI.alert("Cannot generate lightmaps, your GPU does not support FLOAT textures");
 
@@ -45,6 +49,7 @@ var LightmapTools = {
 			multiplier: 1,
 			random_orientation: false,
 			high: false,
+			use_secondary_uvs: true,
 			fill_color: [0,0,0,1],
 			layers: 0xFF
 		};
@@ -124,6 +129,7 @@ var LightmapTools = {
 			widgets.addString("Lightmap name",options.name, function(v){ options.name = v; });
 			widgets.addCombo("Lightmap size",options.size, { values: tex_sizes, callback: function(v){ options.size = v; }});
 			widgets.addCheckbox("High precision", options.high, { callback: function(v){ options.high = v; }});
+			widgets.addCheckbox("Use secondary uv set", options.use_secondary_uvs, { callback: function(v){ options.use_secondary_uvs = v; }});
 			widgets.addNumber("Padding",options.padding, { precision: 0, step: 1, callback: function(v){ options.padding = v; }});
 			if(material)
 				widgets.addCombo("Apply to channel", options.channel, { values: material_channels, callback: function(v){ options.channel = v; }});
@@ -148,14 +154,14 @@ var LightmapTools = {
 			widgets.addButton(null,"Generate Lightmap", function(){
 				var node = LS.GlobalScene.getNode(node_id);
 				options.node = node;
-				dialog_progress = LiteGUI.alert("Generating Lightmap, this could take some time...<br/><span class='progress'>0% Estimating time...</span>");
+				dialog_progress = LiteGUI.alert("<p>Generating Lightmap, this could take some time...</p><p class='progress'>0% Estimating time...</p>",{width:400,height:200,noclose:true});
 				setTimeout( inner_start_async, 100); //wait to show modal
 			});
 
 			widgets.addSeparator();
 
 			widgets.addButton(null,"Regenerate ALL", function(){
-				dialog_progress = LiteGUI.alert("Generating ALL Lightmaps, this could take some time...<br/><span class='progress'>0% Estimating time...</span>");
+				dialog_progress = LiteGUI.alert("<p>Generating ALL Lightmaps, this could take some time...</p><p class='steps'></p><p class='progress'>0% Estimating time...</p>",{width:400,height:200,noclose:true});
 				setTimeout( inner_start_all_async, 100 ); //wait to show modal
 			});
 
@@ -177,6 +183,8 @@ var LightmapTools = {
 		{
 			var nodes = LightmapTools.getAllNodesWithLightmap();
 			var node_info = null;
+			var total_lightmaps = nodes.length;
+			var lightmaps_completed = 0;
 			step();
 
 			function step( lightmap )
@@ -195,6 +203,9 @@ var LightmapTools = {
 					return;
 				}
 
+				lightmaps_completed++;
+				if(dialog_progress)
+					dialog_progress.root.querySelector(".steps").innerHTML = "Generating lightmap " + lightmaps_completed + "/" + total_lightmaps;
 				node_info = nodes.pop();
 				options.node = node_info.node;
 				options.name = node_info.name;
@@ -240,12 +251,18 @@ var LightmapTools = {
 		}
 
 		var node = options.node;
-		this._generating = true;
 
 		//get mesh
 		var RI = node._instances[0];
 		if(!RI)
-			throw("No RenderInstance in node");
+		{
+			if(on_complete)
+				on_complete(null);
+			console.error("No RenderInstance in node");
+			return;
+		}
+
+		this._generating = true;
 		var mesh = RI.mesh;
 		var uniforms = RI.uniforms;
 
@@ -278,7 +295,7 @@ var LightmapTools = {
 			world_normal_texture = new GL.Texture( size, size, { format: gl.RGBA, type: gl.FLOAT, filter: gl.NEAREST });
 			view_texture = new GL.Texture( total_view_size, total_view_size, { format: gl.RGB, filter: gl.NEAREST, type: data_type });
 			average_row_texture = new GL.Texture( views_per_row, total_view_size, { format: gl.RGBA, filter: gl.NEAREST, type: data_type });
-			average_texture = new GL.Texture( views_per_row, views_per_row, { format: gl.RGBA, filter: gl.NEAREST, type: gl.UNSIGNED_BYTE });
+			average_texture = new GL.Texture( views_per_row, views_per_row, { format: gl.RGBA, filter: gl.NEAREST, type: gl.UNSIGNED_BYTE }); //use float to store luminance too
 		}
 
 		LS.RM.registerResource( ":worldpos", world_position_texture );
@@ -297,8 +314,22 @@ var LightmapTools = {
 		gl.clearColor(0,0,0,0);
 		gl.clear( gl.COLOR_BUFFER_BIT );
 
+		var old_uv = null;
+		if(mesh.vertexBuffers["coords1"] && options.use_secondary_uvs)//has secondary uv set
+		{
+			old_uv = mesh.vertexBuffers["coords"]; //save set0
+			mesh.vertexBuffers["coords"] = mesh.vertexBuffers["coords1"]; //replace 
+			mesh.vertexBuffers["coords"].attribute = "a_coord"; //change attribute
+		}
+
 		world_shader.uniforms({ u_model: RI.matrix, u_normal_model: RI.normal_matrix });
 		world_shader.draw( mesh, gl.TRIANGLES );
+
+		if(old_uv)
+		{
+			mesh.vertexBuffers["coords"] = old_uv; //restore set0
+			mesh.vertexBuffers["coords1"].attribute = "a_coord1"; //restore attribute
+		}
 
 		fbo.unbind();
 
@@ -393,7 +424,7 @@ var LightmapTools = {
 			var pixels_rendered = session_data.start_y * session_data.size + session_data.start_x;
 			var estimated_remaining_iterations = (total_pixels - pixels_rendered) / min_pixels_per_iteration;
 			var estimated_time = average_iteration_time * (estimated_remaining_iterations) * 0.001;
-			console.log( "Iteration: ", iterations, "Time:", iteration_time );
+			console.log( "Iteration: ", iterations, "Time:", iteration_time, "Views:", session_data.num_views_rendered );
 			iterations++;
 
 			//last iteration
@@ -407,7 +438,7 @@ var LightmapTools = {
 			if(on_progress)
 				on_progress( session_data.views_per_row * session_data.views_per_row * iterations, session_data.size * session_data.size, estimated_time );
 
-			setTimeout( inner, 500 );
+			setTimeout( inner, 100 );
 		}
 	},
 
@@ -430,7 +461,7 @@ var LightmapTools = {
 			LS.RM.registerResource( options.name || ":lightmap", session_data.lightmap );
 		}
 		else
-			session_data.lightmap.uploadData( session_data.lightmap_pixels );
+			session_data.lightmap.uploadData( session_data.lightmap_pixels ); //reuse old
 
 		if(options.blend)
 		{
@@ -476,6 +507,9 @@ var LightmapTools = {
 		var views_per_row = session_data.views_per_row;
 		var num_views_rendered = 0;
 
+		var start_x = session_data.start_x;
+		var start_y = session_data.start_y;
+
 		var fbo = this._fbo;
 		fbo.bind();
 
@@ -484,8 +518,6 @@ var LightmapTools = {
 		gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
 		average_pixel_info.fill(-1);
 
-		var start_x = session_data.start_x;
-		var start_y = session_data.start_y;
 
 		//for every pixel in the lightmap
 		for(var y = start_y; y < size; ++y)
@@ -543,13 +575,16 @@ var LightmapTools = {
 					pixel_x = 0;
 					pixel_y += 1;
 				}
-				if( pixel_y  >= views_per_row ) //the view texture is full, process it
+				if( pixel_y >= views_per_row ) //the view texture is full, process it
 				{
 					//pixel_x = 0; pixel_y = 0;
 					session_data.start_x = x+1;
 					session_data.start_y = y;
 					session_data.num_views_rendered = num_views_rendered;
 					fbo.unbind();
+
+					if(x == size - 1 && y == size - 1)
+						return true;
 					return false;
 				}
 			}
@@ -794,5 +829,6 @@ var LightmapTools = {
 		"
 };
 
-
-CORE.registerModule( LightmapTools );
+//so we can use LightmapTools out of WebGLStudio
+if(typeof(CORE) != "undefined") 
+	CORE.registerModule( LightmapTools );

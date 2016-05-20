@@ -477,7 +477,7 @@ var RenderModule = {
 	},
 
 	//returns string or blob
-	takeScreenshot: function( width, height, get_blob )
+	takeScreenshot: function( width, height, on_complete )
 	{
 		width = width || 256;
 		height = height || 256;
@@ -497,10 +497,13 @@ var RenderModule = {
 				ctx.translate( 0, ((scale * v3d.canvas.height) - height) * -0.5 );
 			ctx.scale( scale, scale );
 			ctx.drawImage( v3d.canvas, 0, 0 );
-			if(get_blob)
-				data = canvas.toBlob();
-			else
-				data = canvas.toDataURL("image/png");
+			if(on_complete)
+			{
+				canvas.toBlob( on_complete, "image/png");
+				RenderModule.render(true); //force render a frame to clean 
+				return null;
+			}
+			data = canvas.toDataURL("image/png");
 		}
 		else //render to specific size
 		{
@@ -510,10 +513,15 @@ var RenderModule = {
 			this.render(true);
 			var data = null;
 			
-			if(get_blob)
-				data = v3d.canvas.toBlob();
-			else
-				data = v3d.canvas.toDataURL("image/png");
+			if(on_complete)
+			{
+				v3d.canvas.toBlob( on_complete, "image/png");
+				v3d.resize(old[0],old[1]);
+				RenderModule.render(true); //force render a frame to clean 
+				return null;
+			}
+
+			data = v3d.canvas.toDataURL("image/png");
 			v3d.resize(old[0],old[1]);
 			this.render(true); //force render a frame to clean 
 		}

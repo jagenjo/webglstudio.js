@@ -201,16 +201,7 @@ var GenericTools = {
 
 		inspector.addTitle("Results");
 		inspector.addButton(null,"Capture", function(){
-				var img_blob = RenderModule.takeScreenshot( width_widget.getValue(), height_widget.getValue(), true );
-				var url = URL.createObjectURL( img_blob );
-
-				var img = new Image();
-				img.setAttribute("download","screen.png");
-				img.src = url;
-				info_widget.setValue("<a href='"+url+"' download='screenshot.png'>Download File</a>");
-				//img.width = "100%";
-				captureArea.innerHTML = ""
-				captureArea.appendChild( img );
+			RenderModule.takeScreenshot( width_widget.getValue(), height_widget.getValue(), inner_screenshot );
 		});
 		var info_widget = inspector.addInfo(null,"Click capture");
 
@@ -221,6 +212,19 @@ var GenericTools = {
 		captureArea.style.overflow = "auto";
 
 		dialog.show();
+
+		function inner_screenshot( img_blob )
+		{
+			var url = URL.createObjectURL( img_blob );
+
+			var img = new Image();
+			img.setAttribute("download","screen.png");
+			img.src = url;
+			info_widget.setValue("<a href='"+url+"' download='screenshot.png'>Download File</a>");
+			//img.width = "100%";
+			captureArea.innerHTML = ""
+			captureArea.appendChild( img );
+		}
 	}
 };
 

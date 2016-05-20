@@ -551,8 +551,13 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 
 			inspector.widgets_per_row = 1;
 
-			if(node.flags && node.flags.visible != null)
+			if(node !== LS.GlobalScene.root)
+			{
+				inspector.widgets_per_row = 2;
 				inspector.addCheckbox("visible", node.visible, { pretitle: AnimationModule.getKeyframeCode( node, "visible"), callback: function(v) { node.visible = v; } });
+				inspector.addCheckbox("is_static", node.is_static, { pretitle: AnimationModule.getKeyframeCode( node, "is_static"), callback: function(v) { node.is_static = v; } });
+				inspector.widgets_per_row = 1;
+			}
 
 			//Special node editors ****************************************
 			//like Materials mostly

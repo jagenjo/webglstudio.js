@@ -338,19 +338,26 @@ var CubemapGenerator = {
 		var ctx = canvas.getContext("2d");
 
 		var cams = LS.Camera.cubemap_camera_parameters;
+
 		var render_settings = RenderModule.render_settings;
 		render_settings.skip_viewport = true; //avoids overwriting the viewport and aspect
+		var bg_color = LS.GlobalScene.root.camera ? LS.GlobalScene.root.camera.background_color : [0,0,0,1];
 
 		gl.viewport( 0, 0, size, size );
 
 		for(var i = 0; i < 6; ++i)
 		{
 			//gl.clearColor( Math.abs(cams[i].dir[0]), Math.abs(cams[i].dir[1]), Math.abs(cams[i].dir[2]), 1.0);
+			gl.clearColor( bg_color[0], bg_color[1], bg_color[2], bg_color[3]);
 			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 			var face = cams[i];
 			var cam_info = { eye: position, center: [ position[0] + face.dir[0], position[1] + face.dir[1], position[2] + face.dir[2]], up: face.up, fov: 90, aspect: 1.0, near: 0.01, far: 1000 };
 			var camera = new LS.Camera( cam_info );
-			LS.Renderer.renderFrame( camera, render_settings );
+			//LS.Renderer.renderFrame( camera, render_settings );
+
+			LS.Renderer.enableCamera( camera, render_settings, true );
+			LS.Renderer.renderInstances( render_settings );
+
 			var frame = gl.snapshot( 0, 0, size, size, true );
 			//ctx.drawImage( frame, 0, gl.canvas.height - resolution, resolution, resolution, 0,resolution*i, resolution, resolution );
 

@@ -1410,11 +1410,16 @@ LGraphNode.prototype.clone = function()
 
 	//remove links
 	if(data.inputs)
-		for(var i in data.inputs)
+		for(var i = 0; i < data.inputs.length; ++i)
 			data.inputs[i].link = null;
+
 	if(data.outputs)
-		for(var i in data.outputs)
-			data.outputs[i].links.length = 0;
+		for(var i = 0; i < data.outputs.length; ++i)
+		{
+			if(data.outputs[i].links)
+				data.outputs[i].links.length = 0;
+		}
+
 	delete data["id"];
 	//remove links
 	node.configure(data);
@@ -1582,7 +1587,7 @@ LGraphNode.prototype.getOutputNodes = function(slot)
 /**
 * Triggers an event in this node, this will trigger any output with the same name
 * @method trigger
-* @param {String} event name ( "on_play", ... )
+* @param {String} event name ( "on_play", ... ) if action is equivalent to false then the event is send to all
 * @param {*} param
 */
 LGraphNode.prototype.trigger = function( action, param )
@@ -1596,33 +1601,36 @@ LGraphNode.prototype.trigger = function( action, param )
 	for(var i = 0; i < this.outputs.length; ++i)
 	{
 		var output = this.outputs[i];
-		if(output.type !== LiteGraph.EVENT || output.name != action)
+		if(output.type !== LiteGraph.EVENT || (action && output.name != action) )
 			continue;
 
 		var links = output.links;
-		if(links)
-			for(var k = 0; k < links.length; ++k)
+		if(!links || !links.length)
+			continue;
+
+		//for every link attached here
+		for(var k = 0; k < links.length; ++k)
+		{
+			var link_info = this.graph.links[ links[k] ];
+			if(!link_info) //not connected
+				continue;
+			var node = this.graph.getNodeById( link_info.target_id );
+			if(!node) //node not found?
+				continue;
+
+			//used to mark events in graph
+			link_info._last_time = LiteGraph.getTime();
+
+			var target_connection = node.inputs[ link_info.target_slot ];
+
+			if(node.onAction)
+				node.onAction( target_connection.name, param );
+			else if(node.mode === LiteGraph.ON_TRIGGER)
 			{
-				var link_info = this.graph.links[ links[k] ];
-				if(!link_info)
-					continue;
-				var node = this.graph.getNodeById( link_info.target_id );
-				if(!node)
-					continue;
-
-				//used to mark events in graph
-				link_info._last_time = LiteGraph.getTime();
-
-				var target_connection = node.inputs[ link_info.target_slot ];
-
-				if(node.onAction)
-					node.onAction( target_connection.name, param );
-				else if(node.mode === LiteGraph.ON_TRIGGER)
-				{
-					if(node.onExecute)
-						node.onExecute(param);
-				}
+				if(node.onExecute)
+					node.onExecute(param);
 			}
+		}
 	}
 }
 
@@ -5773,6 +5781,57 @@ Console.prototype.onGetInputs = function()
 }
 
 LiteGraph.registerNodeType("basic/console", Console );
+
+
+})();
+//event related nodes
+(function(){
+
+//Show value inside the debug console
+function DelayEvent()
+{
+	this.size = [60,20];
+	this.addProperty( "time", 1000 );
+	this.addInput("event", LiteGraph.ACTION);
+	this.addOutput("on_time", LiteGraph.EVENT);
+
+	this._pending = [];
+}
+
+DelayEvent.title = "Delay";
+DelayEvent.desc = "Delays one event";
+
+DelayEvent.prototype.onAction = function(action, param)
+{
+	this._pending.push([ this.properties.time, param ]);
+}
+
+DelayEvent.prototype.onExecute = function()
+{
+	var dt = this.graph.elapsed_time * 1000; //in ms
+
+	for(var i = 0; i < this._pending.length; ++i)
+	{
+		var action = this._pending[i];
+		action[0] -= dt;
+		if( action[0] > 0 )
+			continue;
+		
+		//remove
+		this._pending.splice(i,1); 
+		--i;
+
+		//trigger
+		this.trigger(null, action[1]);
+	}
+}
+
+DelayEvent.prototype.onGetInputs = function()
+{
+	return [["event",LiteGraph.ACTION]];
+}
+
+LiteGraph.registerNodeType("events/delay", DelayEvent );
 
 
 })();

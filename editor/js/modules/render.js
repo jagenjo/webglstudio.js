@@ -281,7 +281,7 @@ var RenderModule = {
 	},
 
 	//called by the CanvasManager on requestAnimationFrame
-	render: function(force_render)
+	render: function(context, force_render)
 	{
 		this.frame_updated = false;
 

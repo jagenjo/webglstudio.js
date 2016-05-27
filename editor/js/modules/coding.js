@@ -90,34 +90,8 @@ var CodingModule = //do not change
 	{
 		if(!instance)
 			return;
-		options = options || {};
-
-		//is resource?
-		var filename = instance.fullpath || instance.filename;
-
-		if(!options.id && filename)
-			options.id = filename;
-
-		//compute lang
-		if(!options.lang)
-		{
-			var lang = null;
-			if(filename)
-			{
-				var ext = LS.RM.getExtension( filename );
-				if( ext == "glsl" )
-					lang = "glsl";
-				else if( ext == "js" )
-					lang = "javascript";
-			}
-			else
-				lang = "";
-			options.lang = lang;
-		}
-
 		if(open_tab)
 			this.openTab();
-
 		this.coding_tabs_widget.editInstanceCode( instance, options );
 	},
 
@@ -149,6 +123,53 @@ var CodingModule = //do not change
 		{
 			LiteGUI.alert("TO DO");
 		}
+	},
+
+	extractOptionsFromInstance: function( instance, options )
+	{
+		options = options || {};
+
+		//compute id
+		var fullpath = instance.fullpath || instance.filename; //for resources
+		var uid = instance.uid || instance.name; //for components
+		var id = options.id || fullpath || uid;
+		options.id = id;
+
+		if(fullpath)
+			fullpath = LS.RM.cleanFullpath(fullpath);
+
+		//compute title
+		var title = options.title;
+		if(!title)
+		{
+			if(fullpath) //resources
+				title = LS.RM.getFilename( fullpath );
+			if(instance.getComponentTitle) //scripts
+				title = instance.getComponentTitle();
+		}
+		options.title = title || "Script";
+
+		//compute lang
+		var lang = options.lang;
+		if( !lang )
+		{
+			if( instance.constructor.is_material || instance.constructor == LS.ShaderCode ) 
+				lang = "glsl";
+			if( fullpath )
+			{
+				var ext = LS.RM.getExtension(fullpath);
+				if( ext == "js" )
+					lang = "javascript";
+				else
+					lang = ext;
+			}
+		}
+		options.lang = lang || "javascript";
+
+		//compute setters and getters
+
+
+		return options;
 	},
 
 	/*
@@ -256,18 +277,14 @@ LS.Components.ScriptFromFile["@inspector"] = function(component, attributes)
 					filename = filename + ".js";
 				component.filename = filename;
 				LS.RM.registerResource(filename,res);
-				CodingModule.editInstanceCode( res, { id: res.filename, title: filename, lang: "javascript", help: LS.Components.Script.coding_help,
-					setCode: function(c) { res.setData(c); } //to force reload
-				});
+				CodingModule.editInstanceCode( res );
 			});
 			return;
 		}
 
 		CodingModule.openTab();
 		var res = LS.ResourcesManager.load( component.filename, null, function(res){
-			CodingModule.editInstanceCode( res, { id: component.filename, title: component.filename, lang: "javascript", path: path, help: LS.Components.Script.coding_help,
-				setCode: function(c) { component.setCode(c); }	//to force reload
-			});
+			CodingModule.editInstanceCode( res );
 		});
 	}});
 	attributes.widgets_per_row = 1;

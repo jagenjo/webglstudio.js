@@ -364,6 +364,8 @@ var LightmapTools = {
 		};
 		this._session = session_data;
 
+		this.fillErrorMatrix( options, session_data );
+
 		session_data.average_row_fbo = new GL.FBO([session_data.average_row_texture]);
 		session_data.average_fbo = new GL.FBO([session_data.average_texture]);
 
@@ -602,15 +604,17 @@ var LightmapTools = {
 		if(session_data.num_views_rendered == 0)
 			return; //there is nothing rendered inside
 
+		var mesh = GL.Mesh.getScreenQuad();
+
 		//take the view_texture and compute the average of every row of every view
 		var fbo = session_data.average_row_fbo;
 
-		var mesh = GL.Mesh.getScreenQuad();
-		var average_shader = session_data.average_shader;
-		if(!average_shader)
-			average_shader = session_data.average_shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, this._average_shader_fs, { ITERATIONS: session_data.view_size });
+		if(!session_data.average_shader_error)
+			session_data.average_shader_error = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, this._average_shader_fs, { ITERATIONS: session_data.view_size, NUM_VIEWS: session_data.views_per_row, USE_ERROR_FACTOR:"" });
+		if(!session_data.average_shader)
+			session_data.average_shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, this._average_shader_fs, { ITERATIONS: session_data.view_size, NUM_VIEWS: session_data.views_per_row });
 
-		var total = (session_data.total_view_size);
+		var total = session_data.total_view_size;
 
 		gl.disable( gl.BLEND );
 		gl.disable( gl.DEPTH_TEST );
@@ -618,9 +622,10 @@ var LightmapTools = {
 		//horizontal average
 		fbo.bind();
 
-		average_shader.uniforms({u_offset:[1/total,0],u_texture: 0,u_multiplier: multiplier});
 		session_data.view_texture.bind(0);
-		average_shader.draw( mesh, gl.TRIANGLES );
+		session_data.error_texture.bind(1);
+		session_data.average_shader_error.uniforms({u_offset:[1/total,0],u_texture: 0,u_error_texture: 1,u_multiplier: multiplier});
+		session_data.average_shader_error.draw( mesh, gl.TRIANGLES );
 
 		fbo.unbind();
 
@@ -628,9 +633,9 @@ var LightmapTools = {
 		var fbo = session_data.average_fbo;
 		fbo.bind();
 
-		average_shader.uniforms({u_offset:[0,1/total],u_multiplier: 1});
+		session_data.average_shader.uniforms({u_offset:[0,1/total],u_multiplier: 1,u_texture: 0});
 		session_data.average_row_texture.bind(0);
-		average_shader.draw( mesh, gl.TRIANGLES );
+		session_data.average_shader.draw( mesh, gl.TRIANGLES );
 
 		fbo.unbind();
 
@@ -662,6 +667,7 @@ var LightmapTools = {
 			}
 	},
 
+	//padding is solved in CPU but could be done in GPU
 	applyPadding: function( session_data, padding )
 	{
 		padding = padding || 1;
@@ -728,6 +734,94 @@ var LightmapTools = {
 				lightmap_pixels[ pos + 2 ] = B;
 				lightmap_pixels[ pos + 3 ] = A;
 			}
+	},
+
+	fillErrorMatrix: function( options, session_data )
+	{
+		options = options || {};
+		var fov = options.fov || 90;
+		var size = options.size || 64;
+
+		if(session_data.error_texture && session_data.error_texture.width == size && session_data.error_texture.fov == fov)
+			return;
+
+		var halfsize = size * 0.5;
+		var fov_rad = fov * DEG2RAD;
+		var D = Math.tan( fov_rad * 0.5 );
+		var offset = 1/halfsize;
+
+		var error_matrix = new Float32Array( size * size );
+
+		var V = vec3.fromValues(0,0,1);
+		var AX = vec3.create();
+		var AY = vec3.create();
+		AX.set(V);
+		AY.set(V);
+		var N = vec3.create();
+		var min_v = 1000;
+		var max_v = -1;
+
+		for(var y = 0; y < size; ++y)
+		{
+			V[1] = D * offset * (y - halfsize);
+			for(var x = 0; x < size; ++x)
+			{
+				V[0] = D * offset * (x - halfsize);
+
+				var v_dist = vec3.length(V);
+
+				AX.set(V);
+				AX[0] += offset;
+				var ax_dist = vec3.length(AX);
+
+				vec3.normalize(N,V);
+				vec3.normalize(AX,AX);
+				var alpha_x = vec3.dot(N,AX);
+				var angle_x = Math.acos( alpha_x );
+
+				AY.set(V);
+				AY[1] += offset;
+				var ay_dist = vec3.length(AY);
+
+				vec3.normalize(AY,AY);
+				var alpha_y = vec3.dot(N,AY);
+				var angle_y = Math.acos( alpha_y );
+
+				var r = angle_x * angle_y;
+				error_matrix[ y * size + x ] = r;
+
+				if(r < min_v)
+					min_v = r;
+				if(r > max_v)
+					max_v = r;
+			}
+		}
+
+		var range = max_v - min_v;
+		var shift = 1.0 - max_v;
+
+		var pixels = new Uint8Array( size * size * 4 );
+		for(var y = 0; y < size; ++y)
+		{
+			for(var x = 0; x < size; ++x)
+			{
+				var index = y * size * 3 + x * 3;
+				var v = error_matrix[ y * size + x ];
+				var c = ((v - min_v) / range) * 255; //normalized
+				//var c = (v + shift) * 255; //true value
+				pixels[ index ] = c;
+				pixels[ index + 1] = c;
+				pixels[ index + 2] = c;
+			}
+		}
+
+		var error_texture = session_data.error_texture;
+		if(!error_texture || error_texture.width != size)
+			error_texture = session_data.error_texture = GL.Texture.fromMemory( size, size, pixels, { format: gl.RGB, wrap: gl.REPEAT, filter: gl.LINEAR });
+		else
+			error_texture.uploadData( pixels );
+		error_texture.fov = fov;
+		LS.RM.registerResource( ":error_texture", error_texture );
 	},
 
 	getAllNodesWithLightmap: function( channel )
@@ -806,23 +900,28 @@ var LightmapTools = {
 		uniform vec2 u_offset;\n\
 		uniform float u_multiplier;\n\
 		uniform sampler2D u_texture;\n\
+		#ifdef USE_ERROR_FACTOR\n\
+			uniform sampler2D u_error_texture;\n\
+		#endif\n\
 		void main() {\n\
 			int HALF_IT = ITERATIONS / 2;\n\
-			float itereations = float(ITERATIONS);\n\
+			float iterations = float(ITERATIONS);\n\
+			float num_views = float(NUM_VIEWS);\n\
 			vec3 color = vec3(0.0);\n\
 			vec3 pixel_color = vec3(0.0);\n\
 			for(int i = 0; i < ITERATIONS; ++i)\n\
 			{\n\
-				#ifdef USE_DIST_FACTOR\n\
-					float factor = u_multiplier * (1.0 - abs(-float(i) / float(HALF_IT) + 1.0));\n\
+				vec2 uv = v_coord + u_offset * float(i - HALF_IT);\n\
+				#ifdef USE_ERROR_FACTOR\n\
+					float factor = u_multiplier * texture2D( u_error_texture, uv * num_views ).x;\n\
 				#else\n\
 					float factor = u_multiplier;\n\
 				#endif\n\
-				pixel_color = texture2D( u_texture, v_coord + u_offset * float(i - HALF_IT) ).xyz * factor;\n\
+				pixel_color = texture2D( u_texture, uv ).xyz * factor;\n\
 				/*pixel_color *= pixel_color;*/\n\
 				color += pixel_color;\n\
 			}\n\
-			color /= float(ITERATIONS);\n\
+			color /= iterations;\n\
 			/*color = sqrt(color);*/\n\
 			gl_FragColor = vec4(color,1.0);\n\
 		}\n\

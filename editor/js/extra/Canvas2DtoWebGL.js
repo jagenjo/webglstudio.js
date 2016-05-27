@@ -951,22 +951,39 @@ function enableWebGLCanvas( canvas, options )
 		return { width: text.length * spacing, height: point_size };
 	}
 
-	ctx.createFontAtlas = function(fontname, fontmode, force)
+	ctx.createFontAtlas = function( fontname, fontmode, force )
 	{
 		fontname = fontname || "monospace";
 		fontmode = fontmode || "normal";
 
-		var imageSmoothingEnabled = this.imageSmoothingEnabled;
+		var now = getTime();
 
-		var texture = textures[":font_" + fontname + ":" + fontmode];
+		var imageSmoothingEnabled = this.imageSmoothingEnabled;
+		var useInternationalFont = enableWebGLCanvas.useInternationalFont;
+
+		var canvas_size = 512;
+
+		if( useInternationalFont )
+			canvas_size *= 2;
+
+		var texture_name = ":font_" + fontname + ":" + fontmode + ":" + canvas_size;
+
+		var texture = textures[texture_name];
 		if(texture && !force)
 			return texture;
 
-		var canvas = createCanvas(512,512);
-		//document.body.appendChild(canvas);
-		var font_size = (canvas.width * 0.09)|0;
-		var char_size = (canvas.width * 0.1)|0;
+		var max_ascii_code = 100;
+		var font_size = (canvas_size * 0.09)|0;
+		var char_size = (canvas_size * 0.1)|0;
 
+		if( useInternationalFont )
+		{
+			max_ascii_code = 440;	
+			char_size *= 0.5;
+			font_size *= 0.5;
+		}
+
+		var canvas = createCanvas(canvas_size,canvas_size);//document.body.appendChild(canvas);
 		var ctx = canvas.getContext("2d");
 		ctx.fillStyle = "white";
 		ctx.imageSmoothingEnabled = this.imageSmoothingEnabled;
@@ -986,39 +1003,57 @@ function enableWebGLCanvas( canvas, options )
 
 		//compute individual char width
 		var kernings = info.kernings = {};
-		for(var i = 0; i < 100; i++)
+		for(var i = 0; i < max_ascii_code; i++)
 		{
 			var character = String.fromCharCode(i+33);
 			var char_width = ctx.measureText(character).width;
-			kernings[character] = { "width": char_width, "nwidth": char_width / font_size };
+			var char_info = { width: char_width, nwidth: char_width / font_size };
+			kernings[character] = char_info;
 		}
 
-		for(var i = 0; i < 100; i++)//valid characters from 33 to 133
+		for(var i = 0; i < max_ascii_code; ++i)//valid characters from 33 to 133
 		{
 			var character = String.fromCharCode(i+33);
-			info[i+33] = [character, (x + char_size*0.5)/canvas.width, (y + char_size*0.5) / canvas.height];
-			ctx.fillText(character,Math.floor(x+char_size*xoffset),Math.floor(y+char_size+yoffset),char_size);
-			x += char_size;
-			if((x + char_size) > canvas.width)
+			var kerning = kernings[ character ];
+			if( kerning && kerning.width )
 			{
-				x = 0;
-				y += char_size;
+				info[i+33] = [character, (x + char_size*0.5)/canvas.width, (y + char_size*0.5) / canvas.height];
+				ctx.save();
+				ctx.beginPath();
+				ctx.rect( Math.floor(x),Math.floor(y), char_size, char_size );
+				ctx.clip();
+				ctx.fillText(character,Math.floor(x+char_size*xoffset),Math.floor(y+char_size+yoffset),char_size);
+				ctx.restore();
+				x += char_size; //cannot pack chars closer because rendering points, no quads
+				if((x + char_size) > canvas.width)
+				{
+					x = 0;
+					y += char_size;
+				}
 			}
 
-			//compute kernings
-			var char_width = kernings[character].width;
-			for(var j = 0; j < 100; j++)
+			//compute kernings of this char with the rest of chars
+			var char_width = kerning.width;
+			for(var j = 0; j < max_ascii_code; ++j)
 			{
 				var other = String.fromCharCode(j+33);
 				var other_width = kernings[other].width;
+				if(!other_width)
+					continue;
 				var total_width = ctx.measureText(character + other).width;
-				kernings[character][other] = (total_width * 1.45 - char_width - other_width) / font_size;
+				kerning[other] = (total_width * 1.45 - char_width - other_width) / font_size;
 			}
+
+			if( y + char_size > canvas.height )
+				break; //too many characters
 		}
 
-		texture = GL.Texture.fromImage(canvas, {magFilter: imageSmoothingEnabled ? gl.LINEAR : gl.NEAREST, minFilter: imageSmoothingEnabled ? gl.LINEAR_MIPMAP_LINEAR : gl.NEAREST, premultiply_alpha: false} );
+		//console.log("Font Atlas Generated:", ((getTime() - now)*0.001).toFixed(2),"s");
+
+		texture = GL.Texture.fromImage( canvas, {magFilter: imageSmoothingEnabled ? gl.LINEAR : gl.NEAREST, minFilter: imageSmoothingEnabled ? gl.LINEAR_MIPMAP_LINEAR : gl.NEAREST, premultiply_alpha: false} );
 		texture.info = info; //font generation info
-		return textures[":font_" + fontname + ":" + fontmode] = texture;
+
+		return textures[texture_name] = texture;
 	}
 
 	//NOT TESTED
@@ -1144,3 +1179,5 @@ function enableWebGLCanvas( canvas, options )
 
 	return ctx;
 };
+
+enableWebGLCanvas.useInternationalFont = true; //render as much characters as possible in the texture atlas

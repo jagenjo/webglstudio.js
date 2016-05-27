@@ -339,6 +339,7 @@ LS.Light.prototype.renderEditor = function(node_selected, component_selected )
 	if(EditorView.settings.render_icons)
 	{
 		gl.enable(gl.BLEND);
+		LS.Draw.setColor(this.enabled ? [1,1,1] :[0.2,0.2,0.2]);
 		LS.Draw.renderImage(pos, EditorModule.icons_path + "gizmo-light.png", LS.Light.gizmo_size, true);
 		gl.disable(gl.BLEND);
 		if(component_selected && this.type != LS.Light.OMNI)
@@ -348,6 +349,7 @@ LS.Light.prototype.renderEditor = function(node_selected, component_selected )
 			LS.Draw.renderPoints( target ) ;
 			gl.enable(gl.DEPTH_TEST);
 		}
+		LS.Draw.setColor( [1,1,1] );
 	}
 
 	if(!node_selected || !this.enabled) 

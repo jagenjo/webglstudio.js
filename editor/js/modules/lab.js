@@ -178,10 +178,17 @@ var LabModule = {
 			var w = size * tex.width / tex.height;
 			var h = size;
 
+			var startx = gl._matrix[6] + (posx) * gl._matrix[0];
+			var starty = gl.canvas.height - gl._matrix[7] + (-posy - h) * gl._matrix[4];
+			var sizex = w * gl._matrix[0];
+			var sizey = h * gl._matrix[4];
+
+			/*
 			var startx = posx;
 			var starty = posy;
 			var sizex = w;
 			var sizey = h;
+			*/
 
 			if(startx <= gl.canvas.width && starty <= gl.canvas.height && 
 				startx + sizex > 0 && starty + sizey > 0 )

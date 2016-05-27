@@ -458,7 +458,8 @@ CodingPadWidget.prototype.processCodeInScripts = function()
 	if(!instance._modified)
 	{
 		//if it is a global script, we need to reload them
-		if( LS.GlobalScene.global_scripts.indexOf( instance.fullpath || instance.filename ) != -1 )
+		var fullpath = LS.RM.cleanFullpath( instance.fullpath || instance.filename );
+		if( LS.GlobalScene.global_scripts.indexOf( fullpath ) != -1 )
 		{
 			LS.GlobalScene.loadScripts(null,function(){
 				LS.GlobalScene.checkComponentsCodeModification();

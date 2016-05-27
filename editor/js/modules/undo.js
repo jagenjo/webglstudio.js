@@ -10,7 +10,7 @@ var UndoModule = {
 	{
 		var mainmenu = LiteGUI.menubar;
 
-		mainmenu.add("Edit/Undo", { callback: function() { LiteGUI.doUndo(); }});
+		mainmenu.add("Edit/Undo", { callback: function() { UndoModule.doUndo(); }});
 		mainmenu.add("Window/Undo history", { callback: function() { UndoModule.showUndoHistoryDialog(); }});
 
 		LiteGUI.bind( this, "undo", function() {

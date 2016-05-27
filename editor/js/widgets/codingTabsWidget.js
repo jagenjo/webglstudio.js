@@ -61,7 +61,6 @@ CodingTabsWidget.prototype.unbindEvents = function()
 CodingTabsWidget.prototype.editInstanceCode = function( instance, options )
 {
 	options = options || {};
-	var lang = options.lang || "javascript";
 
 	//used when a tab is closed
 	if(!instance)
@@ -73,12 +72,14 @@ CodingTabsWidget.prototype.editInstanceCode = function( instance, options )
 
 	var current_code_info = this.current_code_info;
 
+	//extract info from instance
+	options = CodingModule.extractOptionsFromInstance( instance, options );
+	var id = options.id;
+
 	//check if we are editing the current one
 	if(current_code_info)
 	{
-		if(options.id && current_code_info.id == options.id)
-			return;
-		if(!options.id && current_code_info.instance == instance)
+		if( current_code_info.id == id || current_code_info.instance == instance )
 			return;
 	}
 
@@ -90,10 +91,6 @@ CodingTabsWidget.prototype.editInstanceCode = function( instance, options )
 		//store in current_tab
 	}
 
-	//compute id
-	var id = options.id || instance.uid || instance.id;
-	var title = options.title || instance.name || id;
-
 	//check if the tab already exists
 	var tab = this.tabs.getTab( id );
 	if(tab)
@@ -103,7 +100,7 @@ CodingTabsWidget.prototype.editInstanceCode = function( instance, options )
 	else //doesnt exist? then create a tab for this code
 	{
 		var num = this.tabs.getNumOfTabs();
-		tab = this.tabs.addTab( id, { title: title, selected: true, closable: true, size: "full", callback: onTabClicked, onclose: onTabClosed, skip_callbacks: true, index: num - 1});
+		tab = this.tabs.addTab( id, { title: options.title, selected: true, closable: true, size: "full", callback: onTabClicked, onclose: onTabClosed, skip_callbacks: true, index: num - 1});
 		tab.code_info = { id: id, instance: instance, options: options };
 		tab.pad = this.createCodingPad( tab.content );
 		tab.pad.editInstanceCode( instance, options ); 

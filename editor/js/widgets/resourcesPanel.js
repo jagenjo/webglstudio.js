@@ -459,6 +459,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 		if(resource.fullpath)
 			ev.dataTransfer.setData("res-fullpath", resource.fullpath );
 		ev.dataTransfer.setData("res-type", type);
+		ev.dataTransfer.setData("type", "resource");
 	});
 
 	element.addEventListener("contextmenu", function(e) { 

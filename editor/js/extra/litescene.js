@@ -967,7 +967,7 @@ var LS = {
 	* @method cloneObject
 	* @param {Object} object the object to clone
 	* @param {Object} target=null optional, the destination object
-	* @return {Object} returns the cloned object
+	* @return {Object} returns the cloned object (target if it is specified)
 	*/
 	cloneObject: function( object, target, recursive, only_existing )
 	{
@@ -975,12 +975,31 @@ var LS = {
 			return undefined;
 		if(object === null)
 			return null;
+
+		//base type
 		switch( object.constructor )
 		{
 			case String:
 			case Number:
 			case Boolean:
 				return object;
+		}
+
+		//typed array
+		if( object.constructor.BYTES_PER_ELEMENT )
+		{
+			if(!target)
+				return new object.constructor( object );
+			if(target.set)
+				target.set(object);
+			else if(target.construtor === Array)
+			{
+				for(var i = 0; i < object.length; ++i)
+					target[i] = object[i];
+			}
+			else
+				throw("cloneObject: target has no set method");
+			return target;
 		}
 
 		var o = target;
@@ -1382,17 +1401,6 @@ Object.defineProperty( LS, "catch_exceptions", {
 //Add some classes
 LS.Classes.WBin = LS.WBin = WBin;
 
-//helpful consts
-LS.ZERO = vec3.create();
-LS.ONE = vec3.fromValues(1,1,1);
-LS.TOP = vec3.fromValues(0,1,0);
-LS.BOTTOM = vec3.fromValues(0,-1,0);
-LS.RIGHT = vec3.fromValues(1,0,0);
-LS.LEFT = vec3.fromValues(-1,0,0);
-LS.FRONT = vec3.fromValues(0,0,-1);
-LS.BACK = vec3.fromValues(0,0,1);
-LS.IDENTITY = mat4.create();
-
 /**
 * LSQ allows to set or get values easily from the global scene, using short strings as identifiers
 *
@@ -1561,6 +1569,17 @@ LS.BlendFunctions[ Blend.CUSTOM ] =	[GL.SRC_ALPHA, GL.ONE_MINUS_SRC_ALPHA];
 LS.STOPPED = 0;
 LS.RUNNING = 1;
 LS.PAUSED = 2;
+
+//helpful consts
+LS.ZEROS = vec3.create();
+LS.ONES = vec3.fromValues(1,1,1);
+LS.TOP = vec3.fromValues(0,1,0);
+LS.BOTTOM = vec3.fromValues(0,-1,0);
+LS.RIGHT = vec3.fromValues(1,0,0);
+LS.LEFT = vec3.fromValues(-1,0,0);
+LS.FRONT = vec3.fromValues(0,0,-1);
+LS.BACK = vec3.fromValues(0,0,1);
+LS.IDENTITY = mat4.create();
 
 //types
 LS.TYPES = {
@@ -8844,7 +8863,7 @@ LS.Component = Component;
 
 /**
 * This class contains all the info about a resource and it works as a template for any resource class
-* Keep in mind that there are many resource classes like Meshes or Textures that dont inherit from this class.
+* Keep in mind that there are many resource classes like Meshes or Textures that DONT INHERIT FROM THIS CLASS.
 * This class is used mainly to generic file resources like text files (scripts, csvs, etc)
 *
 * @class Resource
@@ -9005,6 +9024,17 @@ Resource.prototype.getCategory = function()
 	if(ext == "js")
 		return "Script";
 	return "Data";
+}
+
+Resource.prototype.assignToNode = function(node)
+{
+	if(!node || this.getCategory() != "Script")
+		return false;
+
+	var filename = this.fullpath || this.filename;
+	var script_component = new LS.Components.ScriptFromFile({ filename: filename });
+	node.addComponent( script_component );
+	return true;
 }
 
 Resource.hasPreview = false; //should this resource use a preview image?
@@ -13256,6 +13286,7 @@ TextureFX.prototype.getTexture = function( name )
 
 LS.TextureFX = TextureFX;
 LS.Tween = {
+	MAX_EASINGS: 256, //to avoid problems
 
 	EASE_IN_QUAD: 1,
 	EASE_OUT_QUAD: 2,
@@ -13323,7 +13354,24 @@ LS.Tween = {
 		else if(target && target.length !== undefined)
 			size = target.length;
 
-		var data = { object: object, property: property, origin: origin, target: target, current: 0, time: time, easing: easing_function, on_complete: on_complete, on_progress: on_progress, size: size };
+		var type = null;
+		var type_info = object.constructor["@" + property];
+		if( type_info )
+			type = type_info.type;
+
+		var data = { 
+			object: object, 
+			property: property, 
+			origin: origin, 
+			target: target, 
+			current: 0, 
+			time: time, 
+			easing: easing_function, 
+			on_complete: on_complete, 
+			on_progress: on_progress, 
+			size: size, 
+			type: type
+		};
 
 		for(var i = 0; i < this.current_easings.length; ++i)
 		{
@@ -13332,6 +13380,12 @@ LS.Tween = {
 				this.current_easings[i] = data; //replace old easing
 				break;
 			}
+		}
+
+		if(this.current_easings.length >= this.MAX_EASINGS)
+		{
+			var easing = this.current_easings.shift();
+			//TODO: this could be improved applyting the target value right now
 		}
 
 		this.current_easings.push( data );
@@ -13363,6 +13417,11 @@ LS.Tween = {
 				this.current_easings[i] = data; //replace old easing
 				break;
 			}
+		}
+
+		if(this.current_easings.length >= this.MAX_EASINGS)
+		{
+			this.current_easings.shift();
 		}
 
 		this.current_easings.push( data );
@@ -13402,8 +13461,15 @@ LS.Tween = {
 				else
 				{
 					var property = item.object[ item.property ];
-					for(var j = 0; j < item.size; ++j)
-						property[j] = item.target[j] * f + item.origin[j] * ( 1.0 - f );
+
+					if(item.type && item.type == "quat")
+						quat.slerp( property, item.origin, item.target, f );
+					else
+					{
+						//regular linear interpolation
+						for(var j = 0; j < item.size; ++j)
+							property[j] = item.target[j] * f + item.origin[j] * ( 1.0 - f );
+					}
 				}
 				if(item.object.mustUpdate !== undefined)
 					item.object.mustUpdate = true;
@@ -15845,7 +15911,8 @@ DebugRender.prototype.render = function( camera, is_selected_callback )
 		LS.Draw.renderPoints( this.debug_points );
 	}
 
-	if(settings.render_names)
+	//this require Canvas2DtoWebGL library
+	if(settings.render_names && gl.start2D)
 	{
 		gl.disable( gl.DEPTH_TEST );
 		var camera2D = this.camera2D;
@@ -17069,9 +17136,9 @@ Transform.prototype.serialize = function()
 */
 Transform.prototype.identity = function()
 {
-	vec3.copy(this._position, [0,0,0]);
-	quat.copy(this._rotation, [0,0,0,1]);
-	vec3.copy(this._scaling, [1,1,1]);
+	vec3.copy(this._position, LS.ZEROS );
+	quat.identity( this._rotation );
+	vec3.copy(this._scaling, LS.ONES );
 	mat4.identity(this._local_matrix);
 	mat4.identity(this._global_matrix);
 	this._version += 1;
@@ -17079,6 +17146,40 @@ Transform.prototype.identity = function()
 }
 
 Transform.prototype.reset = Transform.prototype.identity;
+
+/**
+* Sets the rotation to identity
+* @method resetRotation
+*/
+Transform.prototype.resetRotation = function()
+{
+	quat.identity( this._rotation );
+	this._version += 1;
+	this._must_update_matrix = true;
+}
+
+/**
+* Sets the position to 0,0,0
+* @method resetPosition
+*/
+Transform.prototype.resetPosition = function()
+{
+	vec3.copy( this._position, LS.ZEROS );
+	this._version += 1;
+	this._must_update_matrix = true;
+}
+
+/**
+* Sets the scale to 1,1,1
+* @method resetScale
+*/
+Transform.prototype.resetScale = function()
+{
+	vec3.copy( this._scaling, LS.ONES );
+	this._version += 1;
+	this._must_update_matrix = true;
+}
+
 
 /**
 * Returns a copy of the local position
@@ -17420,7 +17521,7 @@ Transform.prototype.fromMatrix = (function() {
 		//pos
 		var M = temp_mat4;
 		M.set(m);
-		mat4.multiplyVec3( this._position, M, LS.ZERO );
+		mat4.multiplyVec3( this._position, M, LS.ZEROS );
 
 		//compute scale
 		this._scaling[0] = vec3.length( mat4.rotateVec3( temp_vec3, M, LS.RIGHT) );
@@ -17469,7 +17570,7 @@ Transform.fromMatrix4ToTransformData = (function() {
 		//pos
 		var M = temp_mat4;
 		M.set(m);
-		mat4.multiplyVec3( position, M, LS.ZERO );
+		mat4.multiplyVec3( position, M, LS.ZEROS );
 
 		//extract scaling by 
 		scaling[0] = vec3.length( mat4.rotateVec3( temp_vec3, M, LS.RIGHT) );
@@ -18502,6 +18603,20 @@ Object.defineProperty( Camera.prototype, "render_to_texture", {
 	},
 	enumerable: true
 });
+
+/**
+* @property mustUpdate {Boolean}
+*/
+Object.defineProperty( Camera.prototype, "mustUpdate", {
+	get: function() {
+		return this._must_update_projection_matrix || this._must_update_view_matrix;
+	},
+	set: function(v) {
+		this._must_update_projection_matrix = this._must_update_view_matrix = v;
+	},
+	enumerable: true
+});
+
 
 Camera.prototype.onAddedToNode = function(node)
 {
@@ -23364,7 +23479,7 @@ AnnotationComponent.prototype.serialize = function()
 		start_position: this.start_position
 	};
 	
-	for(var i in this.notes)
+	for(var i = 0; i < this.notes.length; ++i)
 	{
 		var note = this.notes[i];
 		for(var j in note)
@@ -23377,13 +23492,14 @@ AnnotationComponent.prototype.serialize = function()
 	return o;
 }
 
-AnnotationComponent.prototype.onAddedToNode = function(node)
+AnnotationComponent.prototype.onAddedToScene = function(node)
 {
-	LEvent.bind(node,"mousedown",this.onMouse.bind(this),this);
+	LEvent.bind( scene,"mousedown",this.onMouse.bind(this),this);
 }
 
-AnnotationComponent.prototype.onRemovedFromNode = function(node)
+AnnotationComponent.prototype.onRemovedFromScene = function(node)
 {
+	LEvent.bind( scene,"mousedown",this.onMouse.bind(this),this);
 }
 
 AnnotationComponent.prototype.onMouse = function(type, e)
@@ -23399,7 +23515,7 @@ AnnotationComponent.prototype.onMouse = function(type, e)
 			AnnotationComponent.onShowMainAnnotation(this._root);
 		}
 
-		for(var i in this.notes)
+		for(var i = 0; i < this.notes.length; ++i)
 		{
 			var note = this.notes[i];
 			dist = vec2.dist( note._end_screen, [e.mousex, gl.canvas.height - e.mousey] );
@@ -23465,7 +23581,7 @@ AnnotationComponent.prototype.renderEditor = function( selected )
 	var model = this._root.transform.getGlobalMatrix();
 
 	//notes
-	for(var i in this.notes)
+	for(var i = 0; i < this.notes.length; ++i)
 	{
 		var note = this.notes[i];
 		var start = mat4.multiplyVec3( vec3.create(), model, note.start );
@@ -23532,7 +23648,7 @@ AnnotationComponent.prototype.renderEditor = function( selected )
 	//texts
 	gl.disable( gl.CULL_FACE );
 	LS.Draw.setColor( LS.Components.AnnotationComponent.editor_color );
-	for(var i in this.notes)
+	for(var i = 0; i < this.notes.length; ++i)
 	{
 		var note = this.notes[i];
 		LS.Draw.push();
@@ -27088,6 +27204,10 @@ Script.defineAPIFunction( "onRenderGUI", Script.BIND_TO_SCENE, "renderGUI" );
 Script.defineAPIFunction( "onRenderHelpers", Script.BIND_TO_SCENE, "renderHelpers" );
 Script.defineAPIFunction( "onEnableFrameContext", Script.BIND_TO_SCENE, "enableFrameContext" );
 Script.defineAPIFunction( "onShowFrameContext", Script.BIND_TO_SCENE, "showFrameContext" );
+Script.defineAPIFunction( "onMouseDown", Script.BIND_TO_SCENE, "mousedown" );
+Script.defineAPIFunction( "onMouseMove", Script.BIND_TO_SCENE, "mousemove" );
+Script.defineAPIFunction( "onMouseUp", Script.BIND_TO_SCENE, "mouseup" );
+Script.defineAPIFunction( "onKeyDown", Script.BIND_TO_SCENE, "keydown" );
 Script.defineAPIFunction( "onDestroy", Script.BIND_TO_NODE, "destroy" );
 
 Script.coding_help = "\n\
@@ -27484,7 +27604,7 @@ Script.prototype.onRemovedFromScene = function(scene)
 //used in editor
 Script.prototype.getComponentTitle = function()
 {
-	return this.name;
+	return this.name; //name is a getter that reads the name from the code comment
 }
 
 
@@ -27575,6 +27695,8 @@ ScriptFromFile.coding_help = Script.coding_help;
 
 Object.defineProperty( ScriptFromFile.prototype, "filename", {
 	set: function(v){ 
+		if(v) //to avoid double slashes
+			v = LS.ResourcesManager.cleanFullpath( v );
 		this._filename = v;
 		this.processCode();
 	},
@@ -27592,6 +27714,24 @@ Object.defineProperty( ScriptFromFile.prototype, "context", {
 		if(this._script)
 				return this._script._context;
 		return null;
+	},
+	enumerable: false //if it was enumerable it would be serialized
+});
+
+Object.defineProperty( ScriptFromFile.prototype, "name", {
+	set: function(v){ 
+		console.error("Script: name cannot be assigned");
+	},
+	get: function() { 
+		if(!this._script.code)
+			return;
+		var line = this._script.code.substr(0,32);
+		if(line.indexOf("//@") != 0)
+			return null;
+		var last = line.indexOf("\n");
+		if(last == -1)
+			last = undefined;
+		return line.substr(3,last - 3);
 	},
 	enumerable: false //if it was enumerable it would be serialized
 });
@@ -27655,7 +27795,7 @@ ScriptFromFile.prototype.processCode = function( skip_events )
 		this._stored_properties = null;
 
 		//try to catch up with all the events missed while loading the script
-		if( !this._script._context._initialized )
+		if( this._script._context && !this._script._context._initialized )
 		{
 			if( this._root && this._script._context.onAddedToNode )
 			{

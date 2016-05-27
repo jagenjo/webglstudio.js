@@ -682,6 +682,7 @@ var EditorModule = {
 
 		var item_uid = event.dataTransfer.getData("uid");
 		var item_type = event.dataTransfer.getData("type");
+
 		var item = null;
 		if(item_type == "SceneNode")
 			item = LSQ.get( item_uid );
@@ -732,6 +733,12 @@ var EditorModule = {
 			}
 		}
 
+		if (item_type == "resource")
+		{
+			var filename = event.dataTransfer.getData("res-fullpath");
+			this.onDropResourceOnNode( filename, node, event );
+		}
+
 		if(event.dataTransfer.files && event.dataTransfer.files.length)
 		{
 			ImporterModule.onItemDrop( event, { node: node });
@@ -739,6 +746,25 @@ var EditorModule = {
 
 		RenderModule.requestFrame();
 		EditorModule.refreshAttributes();
+	},
+
+	onDropResourceOnNode: function( resource_filename, node, event )
+	{
+		var resource = LS.ResourcesManager.getResource( resource_filename );
+		if(!resource)
+			LS.ResourcesManager.load( resource_filename, inner );			
+		else
+			inner( resource );
+
+		function inner( resource )
+		{
+			if(!resource || !resource.assignToNode)
+				return;
+
+			resource.assignToNode( node );
+			RenderModule.requestFrame();
+			EditorModule.refreshAttributes();
+		}
 	},
 
 	//Resets all, it should leave the app state as if a reload was done
@@ -914,6 +940,12 @@ var EditorModule = {
 		return LS.GlobalScene.root; //Scene.selected_node
 	},
 
+	updateCreatedNodePosition: function( node )
+	{
+		var current_camera = RenderModule.getActiveCamera();
+		node.transform.position = current_camera.getCenter();
+	},
+
 	setPropertyValueToSelectedNode: function(cmd, tokens)
 	{
 		var node = SelectionModule.getSelectedNode();
@@ -948,7 +980,8 @@ var EditorModule = {
 	{
 		var node = new LS.SceneNode( LS.GlobalScene.generateUniqueNodeName("node") );
 		node.material = null;
-		EditorModule.getAddRootNode().addChild(node);
+		EditorModule.getAddRootNode().addChild( node );
+		EditorModule.updateCreatedNodePosition( node );
 		UndoModule.saveNodeCreatedUndo( node );
 		SelectionModule.setSelection(node);
 		return node;
@@ -959,7 +992,8 @@ var EditorModule = {
 		var node = new LS.SceneNode( LS.GlobalScene.generateUniqueNodeName("mesh") );
 		node.material = new LS.StandardMaterial();
 		node.setMesh(mesh_name);
-		EditorModule.getAddRootNode().addChild(node);
+		EditorModule.getAddRootNode().addChild( node );
+		EditorModule.updateCreatedNodePosition( node );
 		UndoModule.saveNodeCreatedUndo(node);
 		SelectionModule.setSelection(node);
 
@@ -976,12 +1010,13 @@ var EditorModule = {
 		node.addComponent( camera );
 		node.transform.lookAt( current_camera.getEye(), current_camera.getCenter(), current_camera.up );
 
-		camera._eye.set(LS.ZERO);
+		camera._eye.set(LS.ZEROS);
 		camera._center.set(LS.FRONT);
 
 		camera.focalLength = current_camera.focalLength;
 
 		EditorModule.getAddRootNode().addChild( node );
+		EditorModule.updateCreatedNodePosition( node );
 		UndoModule.saveNodeCreatedUndo( node );
 		SelectionModule.setSelection( node );
 		return node;
@@ -992,6 +1027,7 @@ var EditorModule = {
 		var node = new LS.SceneNode( LS.GlobalScene.generateUniqueNodeName("light") );
 		node.addComponent( new LS.Light() );
 		EditorModule.getAddRootNode().addChild(node);
+		EditorModule.updateCreatedNodePosition( node );
 		UndoModule.saveNodeCreatedUndo(node);
 		SelectionModule.setSelection(node);
 		return node;
@@ -1002,6 +1038,7 @@ var EditorModule = {
 		var node = new LS.SceneNode( LS.GlobalScene.generateUniqueNodeName(name || "primitive") );
 		node.addComponent( new LS.Components.GeometricPrimitive( info ) );
 		EditorModule.getAddRootNode().addChild(node);
+		EditorModule.updateCreatedNodePosition( node );
 		UndoModule.saveNodeCreatedUndo(node);
 		SelectionModule.setSelection(node);
 		return node;
@@ -1019,6 +1056,7 @@ var EditorModule = {
 			node.addComponent( component );
 		}
 		EditorModule.getAddRootNode().addChild(node);
+		EditorModule.updateCreatedNodePosition( node );
 		UndoModule.saveNodeCreatedUndo(node);
 		SelectionModule.setSelection(node);
 		return node;

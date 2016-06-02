@@ -43,7 +43,7 @@ CodingTabsWidget.prototype.bindEvents = function()
 	*/
 	LEvent.bind( LS.GlobalScene, "nodeRemoved", this.onNodeRemoved, this );
 	LEvent.bind( LS.GlobalScene, "nodeComponentRemoved", this.onComponentRemoved, this );
-	LEvent.bind( LS.Components.Script, "renamed", this.onScriptRenamed, this );
+	//LEvent.bind( LS.Components.Script, "renamed", this.onScriptRenamed, this );
 	LEvent.bind( CodingTabsWidget, "code_changed", this.onCodeChanged, this);
 
 	LEvent.bind( LS.Components.Script, "code_error", this.onScriptError, this );
@@ -55,6 +55,21 @@ CodingTabsWidget.prototype.unbindEvents = function()
 	LEvent.unbindAll( LS.GlobalScene, this );
 	LEvent.unbindAll( LS.Components.Script, this );
 	LEvent.unbindAll( LS, this );
+}
+
+CodingTabsWidget.prototype.findTab = function( id )
+{
+	for(var i in this.tabs.tabs )
+	{
+		var tab = this.tabs.tabs[i];
+		var pad = tab.pad;
+		if(!pad) //plus tab
+			continue;
+		var info = pad.getCurrentCodeInfo();
+		if(info.id == id)
+			return tab;
+	}
+	return null;
 }
 
 //switch coding tab
@@ -92,15 +107,16 @@ CodingTabsWidget.prototype.editInstanceCode = function( instance, options )
 	}
 
 	//check if the tab already exists
-	var tab = this.tabs.getTab( id );
+	var tab = this.findTab( id );
 	if(tab)
 	{
-		this.tabs.selectTab( id ); //this calls onTabClicked
+		//this.tabs.selectTab( id ); //this calls onTabClicked
+		tab.click();
 	}
 	else //doesnt exist? then create a tab for this code
 	{
 		var num = this.tabs.getNumOfTabs();
-		tab = this.tabs.addTab( id, { title: options.title, selected: true, closable: true, size: "full", callback: onTabClicked, onclose: onTabClosed, skip_callbacks: true, index: num - 1});
+		tab = this.tabs.addTab( id, { title: options.title, selected: true, closable: true, size: "full", callback: onTabClicked, callback_leave: onLeaveTab, onclose: onTabClosed, skip_callbacks: true, index: num - 1});
 		tab.code_info = { id: id, instance: instance, options: options };
 		tab.pad = this.createCodingPad( tab.content );
 		tab.pad.editInstanceCode( instance, options ); 
@@ -111,7 +127,18 @@ CodingTabsWidget.prototype.editInstanceCode = function( instance, options )
 
 	function onTabClicked()
 	{
-		that.editInstanceCode( instance, options ); 
+		tab.pad.refresh();
+		if(tab.pad._last_state)
+		{
+			tab.pad.setState( tab.pad._last_state );
+			tab.pad._last_state = null;
+		}
+	}
+
+	function onLeaveTab()
+	{
+		//save scroll
+		tab.pad._last_state = tab.pad.getState(true);
 	}
 
 	function onTabClosed(tab)
@@ -119,6 +146,8 @@ CodingTabsWidget.prototype.editInstanceCode = function( instance, options )
 		if( tab.selected )
 			that.editInstanceCode( null );
 	}
+
+	return tab;
 }
 
 CodingTabsWidget.prototype.closeInstanceTab = function( instance, options )
@@ -146,9 +175,12 @@ CodingTabsWidget.prototype.closeInstanceTab = function( instance, options )
 	return true;
 }
 
-CodingTabsWidget.prototype.getCurrentCodeInfo = function()
+CodingTabsWidget.prototype.refresh = function()
 {
-	return this.current_code_info;
+	var tab = this.tabs.getCurrentTab();
+	if(!tab.pad)
+		return;
+	tab.pad.refresh();
 }
 
 /*
@@ -207,20 +239,15 @@ CodingTabsWidget.prototype.onNodeRemoved = function(evt, node)
 	}
 }
 
-CodingTabsWidget.prototype.onScriptRenamed = function( e, instance )
+CodingTabsWidget.prototype.renameTab = function( id, name )
 {
-	if(!instance)
-		return;
-
-	var id = instance.uid;
-	if(!id)
-		return;
-	var tab = this.tabs.getTab( id );
+	var tab = this.findTab( id );
 	if(!tab)
 		return;
+
 	var title = tab.tab.querySelector(".tabtitle");
-	if(title && instance.name)
-		title.innerHTML = instance.name;
+	if(title && name)
+		title.innerHTML = name;
 }
 
 CodingTabsWidget.prototype.onContentModified = function( e, instance )
@@ -254,7 +281,6 @@ CodingTabsWidget.prototype.onContentStored = function( e, instance )
 	if(div)
 		div.style.backgroundColor = null;	
 }
-
 
 CodingTabsWidget.prototype.onCodeChanged = function( e, instance )
 {
@@ -388,7 +414,7 @@ CodingTabsWidget.prototype.onNewShaderFile = function()
 }
 
 //search for all the components that have a getCode function and inserts them
-CodingTabsWidget.prototype.onOpenAllScripts =function()
+CodingTabsWidget.prototype.onOpenAllScripts = function()
 {
 	var nodes = LS.GlobalScene.getNodes();
 	for(var i in nodes)
@@ -400,13 +426,25 @@ CodingTabsWidget.prototype.onOpenAllScripts =function()
 			var component = comps[j];
 			if(!component.getCode)
 				continue;
-			if(this.tabs.getTab( component.uid ))
+
+			var instance = component;
+			var uid = component.uid;
+
+			if(component.filename)
+				uid = component.filename;
+
+			if(this.findTab( uid ))
 				continue;
 
-			var code = component.getCode();
-			this.editInstanceCode( component, { id: component.uid, title: node.id, lang: "javascript", path: component.uid, help: LS.Components.Script.coding_help });
+			if( component.getCodeResource )
+				instance = component.getCodeResource();
+
+			this.editInstanceCode( instance );
 		}
 	}
+
+	//add global scripts here?
+	//TODO
 }
 
 CodingTabsWidget.prototype.onScriptError = function(e, instance_err)
@@ -475,8 +513,53 @@ CodingTabsWidget.prototype.createCodingPad = function( container )
 	LiteGUI.bind( pad, "modified", function(e){ that.onContentModified(e, pad.getCurrentCodeInstance() ); });
 	LiteGUI.bind( pad, "stored", function(e){ that.onContentStored(e, pad.getCurrentCodeInstance() ); });
 	LiteGUI.bind( pad, "compiled", function(e){ that.onContentStored(e, pad.getCurrentCodeInstance() ); });
+	LiteGUI.bind( pad, "renamed", function(e){ 
+		var info = pad.getCurrentCodeInfo();
+		if(info.id)
+			that.renameTab(info.id,e.detail);
+	});
 
 	return pad;
 }
 
+CodingTabsWidget.prototype.getState = function()
+{
+	var state = [];
 
+	//for every tab open...
+	for(var i in this.tabs.tabs)
+	{
+		var tab = this.tabs.tabs[i];
+		var pad = tab.pad;
+		if(!pad)
+			continue;
+		var info = pad.current_code_info;
+		if(!info)
+			continue;
+		state.push( { options: info.options } );
+	}
+
+	return state;
+}
+
+CodingTabsWidget.prototype.setState = function(o)
+{
+	if(!o)
+		return;
+
+	var that = this;
+	
+	for(var i in o)
+	{
+		var info = o[i];
+		if(!info.options)
+			continue;
+		var options = info.options;
+		CodingModule.findInstance( options, inner );
+	}
+
+	function inner( instance, options )
+	{
+		that.editInstanceCode( instance, options );
+	}
+}

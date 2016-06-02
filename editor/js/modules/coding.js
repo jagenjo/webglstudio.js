@@ -16,15 +16,10 @@ var CodingModule = //do not change
 			bigicon: this.bigicon,
 			size: "full", 
 			callback: function(tab) {
-
-				/*
-				if(CodingModule.editor)
-					CodingModule.editor.refresh();
-				*/
 				if(!CodingModule.external_window)
 					CodingModule.show3DWindow( CodingModule.default_sceneview );
-
 				InterfaceModule.setSidePanelVisibility(false);
+				CodingModule.coding_tabs_widget.refresh();
 			},
 			callback_canopen: function(){
 				//avoid opening the tab if it is in another window
@@ -100,6 +95,7 @@ var CodingModule = //do not change
 		return this.coding_tabs_widget.closeInstanceTab( instance, options );
 	},
 
+	//
 	onNewScript: function( node, type )
 	{
 		type = type || "Script";
@@ -125,6 +121,7 @@ var CodingModule = //do not change
 		}
 	},
 
+	//used to extract editor options of a given instance
 	extractOptionsFromInstance: function( instance, options )
 	{
 		options = options || {};
@@ -166,37 +163,81 @@ var CodingModule = //do not change
 		}
 		options.lang = lang || "javascript";
 
-		//compute setters and getters
-
+		//compute type
+		if(instance.constructor.is_resource)
+			options.type = LS.TYPES.RESOURCE;
+		else if(instance.constructor.is_component)
+			options.type = LS.TYPES.COMPONENT;
+		else if(instance.constructor.is_material)
+			options.type = LS.TYPES.MATERIAL;
 
 		return options;
 	},
 
-	/*
-	detachWindow: function()
+	//finds instance from options using id and type
+	findInstance: function( options, callback )
 	{
-		var that = this;
-		var main_window = window;
-
-		if(!this.external_window)
+		var id = options.id;
+		if(!id)
 		{
-			this.show3DWindow(false);
-			this.external_window = LiteGUI.main_tabs.detachTab( this.name, null, function(){
-				that.external_window = null;
+			console.warn("findInstance options without id");
+			return null;
+		}
+
+		//get instance from options
+		if(options.type == LS.TYPES.RESOURCE)
+		{
+			if(LS.RM.resources[ id ])
+				return LS.RM.resources[ id ];
+			LS.RM.load( id, null, function(res){
+				if(callback)
+					callback( res, options );
 			});
+			return null;
+		}
+		else if(options.type == LS.TYPES.COMPONENT)
+		{
+			var comp = LS.GlobalScene.findComponentByUId( id );
+			if(callback)
+				callback( comp, options );
+			return comp;
 		}
 		else
-		{
-			this.external_window.close();
-		}
+			console.warn("Cannot find code instance: ",id );
+		return null;
 	},
 
-	createCodingWindow: function()
+	showCodingHelp: function( options )
 	{
-		var extra_window = LiteGUI.newWindow("Code",800,600);
-		this.windows.push( extra_window );
+		var help = options.help;
+		if(!help)
+		{
+			if(options.type === LS.TYPES.COMPONENT)
+				help = LS.Script.coding_help;
+			else if(options.type === LS.TYPES.RESOURCE)
+			{
+				if(options.lang == "glsl")
+					help = LS.SurfaceMaterial.coding_help;
+				else
+					help = LS.Script.coding_help;
+			}
+			else
+				return;
+		}
+
+		var help_options = {
+			content: "<pre style='padding:10px; height: 200px; overflow: auto'>" + help + "</pre>",
+			title: "Help",
+			draggable: true,
+			closable: true,
+			width: 400,
+			height: 260
+		};
+
+		var dialog = new LiteGUI.Dialog("info_message",help_options);
+		dialog.addButton("Close",{ close: true });
+		dialog.show();
 	},
-	*/
 
 	//shows the side 3d window
 	show3DWindow: function(v)
@@ -218,8 +259,19 @@ var CodingModule = //do not change
 	{
 		if(this.external_window)
 			this.external_window.close();
-	}
+	},
 
+	//get the current state
+	getState: function()
+	{
+		return this.coding_tabs_widget.getState();
+	},
+
+	//get the current state
+	setState: function(o)
+	{
+		return this.coding_tabs_widget.setState(o);
+	}
 };
 
 CORE.registerModule( CodingModule );
@@ -249,7 +301,7 @@ LS.Components.Script["@inspector"] = function(component, attributes)
 	attributes.addButton(null,"Edit Code", { callback: function() {
 		CodingModule.openTab();
 		var path = component.uid;
-		CodingModule.editInstanceCode(component, { id: component.uid, title: component._root.id, lang: "javascript", path: path, help: LS.Components.Script.coding_help } );
+		CodingModule.editInstanceCode( component );
 	}});
 
 	if(context)

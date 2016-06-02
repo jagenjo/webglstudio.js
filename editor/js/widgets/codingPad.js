@@ -81,9 +81,6 @@ CodingPadWidget.prototype.unbindEvents = function()
 //where instance is the recipient of the code
 CodingPadWidget.prototype.editInstanceCode = function( instance, options )
 {
-	options = options || {};
-	var lang = options.lang || "javascript";
-
 	//used when a tab is closed
 	if(!instance)
 	{
@@ -92,6 +89,9 @@ CodingPadWidget.prototype.editInstanceCode = function( instance, options )
 		return;
 	}
 
+	if(!options && instance )
+		options = CodingModule.extractOptionsFromInstance( instance );
+	
 	var current_code_info = this.current_code_info;
 
 	//check if we are editing the current one
@@ -102,6 +102,9 @@ CodingPadWidget.prototype.editInstanceCode = function( instance, options )
 		if(!options.id && current_code_info.instance == instance)
 			return;
 	}
+
+	var lang = options.lang || "javascript";
+	this.setLang( lang );
 
 	//adapt interface
 	this.compile_button.style.display = (lang != "javascript") ? "none" : null;
@@ -117,14 +120,6 @@ CodingPadWidget.prototype.editInstanceCode = function( instance, options )
 
 	this.file_name_widget.setValue( filename );
 
-	if(lang == "javascript")
-		this.editor.setOption( "mode", "javascript" );
-	else if(lang == "glsl")
-		this.editor.setOption( "mode", "x-shader/x-fragment" );
-	else if(lang)
-		this.editor.setOption( "mode", lang );
-	else 
-		this.editor.setOption( "mode", null );
 
 	//changing from one tab to another? save state of old tab
 	if( current_code_info )
@@ -135,6 +130,31 @@ CodingPadWidget.prototype.editInstanceCode = function( instance, options )
 	}
 
 	this.replaceInstanceCode( instance, options );
+
+	//trigger
+	LiteGUI.trigger( this, "renamed", options.title );
+}
+
+CodingPadWidget.prototype.setLang = function( lang )
+{
+	this.lang_widget.setValue(lang);
+	if(this.current_code_info)
+		this.current_code_info.lang = lang;
+
+	if(lang && lang.constructor === String)
+		lang = lang.toLowerCase();
+
+	if(lang == "javascript")
+		this.editor.setOption( "mode", "javascript" );
+	else if(lang == "glsl")
+		this.editor.setOption( "mode", "x-shader/x-fragment" );
+	else if(lang == "html")
+		this.editor.setOption( "mode", "xml" );
+	else if(lang)
+		this.editor.setOption( "mode", lang );
+	else 
+		this.editor.setOption( "mode", null );
+
 }
 
 CodingPadWidget.prototype.replaceInstanceCode = function( instance, options )
@@ -497,11 +517,53 @@ CodingPadWidget.prototype.markLine = function(num)
 	}
 }
 
+CodingPadWidget.prototype.getState = function(skip_content)
+{
+	var r = {};
+	if( this.editor.somethingSelected() )
+	{
+		var selections = this.editor.listSelections();
+		r.selection = selections[0];
+	}
+	r.scroll_info = this.editor.getScrollInfo();
+	r.cursor = this.editor.getCursor();
+	if(!skip_content)
+	{
+		var info = this.getCurrentCodeInfo();
+		if(info)
+			r.options = info.options;
+	}
+	return r;
+}
+
+CodingPadWidget.prototype.setState = function(state)
+{
+	if(state.options)
+	{
+		var instance = CodingModule.findInstance( state.options );
+		this.editInstanceCode( instance, state.options );
+	}
+
+	if(state.scroll_info)
+	{
+		//var scroller = this.editor.getScrollerElement();
+		//scroller.scroll_info = state.scrollTop;
+		//this.editor.scrollIntoView( state.scroll_info )
+		this.editor.scrollTo( state.scroll_info.left, state.scroll_info.top );
+	}
+	if(state.cursor)
+		this.editor.setCursor( state.cursor );
+	if(state.selection)
+		this.editor.setSelection( state.selection.anchor, state.selection.head );
+	this.editor.refresh();
+}
+
+
 //save the state 
 CodingPadWidget.prototype.onBeforeReload = function(e)
 {
-	//console.log("before reload");
-	this._saved_state = this.current_code_info;
+	//console.log("before reload: ", this.current_code_info.id );
+	this._saved_state = this.getState();
 }
 
 //Check for changes in the code instances after the scene is reload
@@ -513,12 +575,10 @@ CodingPadWidget.prototype.onReload = function(e)
 
 	var state = this._saved_state;
 
+	//console.log("after reload: ", state.id );
+
 	//refresh instance after reloading the scene 
-	var old_instance = null;
-	if( state.getInstance )
-		old_instance = state.getInstance();
-	else
-		old_instance = state.instance; //Warning: this instasnce could be dead (out of the tree and replaced by a new one with the same properties)
+	var old_instance = CodingModule.findInstance(state.options);
 
 	//if the instance was a resources do not need to be reloaded (they are not reloaded)
 	if(old_instance && old_instance.constructor.is_resource)
@@ -526,7 +586,7 @@ CodingPadWidget.prototype.onReload = function(e)
 
 	//check if the instance must be replaced using the ID
 	var found_instance = null;
-	var id = state.id;
+	var id = state.options.id;
 	if(id)
 	{
 		if( id.substr(0,6) == "@COMP-" ) //is Script component
@@ -552,6 +612,16 @@ CodingPadWidget.prototype.onReload = function(e)
 		this.replaceInstanceCode( found_instance, state.options );
 	else
 		console.warn("CodingPad: cannot find instance by uid: " + id );
+
+	//restore state
+	state.options = null;
+	this.setState( state );
+}
+
+CodingPadWidget.prototype.refresh = function()
+{
+	console.log("refreshing"); 
+	this.editor.refresh();
 }
 
 CodingPadWidget.prototype.onNodeRemoved = function(evt, node)
@@ -621,23 +691,9 @@ CodingPadWidget.prototype.onPreparePlay = function()
 CodingPadWidget.prototype.onShowHelp = function()
 {
 	var info = this.getCurrentCodeInfo();
-	if(!info || !info.options || !info.options.help)
+	if(!info || !info.options)
 		return;
-
-	var help = info.options.help;
-
-	var options = {
-		content: "<pre style='padding:10px; height: 200px; overflow: auto'>" + help + "</pre>",
-		title: "Help",
-		draggable: true,
-		closable: true,
-		width: 400,
-		height: 260
-	};
-
-	var dialog = new LiteGUI.Dialog("info_message",options);
-	dialog.addButton("Close",{ close: true });
-	dialog.show();
+	CodingModule.showCodingHelp( info.options );
 }
 
 CodingPadWidget.prototype.onScriptError = function( e, instance_err )
@@ -712,12 +768,12 @@ CodingPadWidget.prototype.onOpenCode = function()
 	
 	var widgets = new LiteGUI.Inspector(null, { name_width: 100 });
 
-	widgets.addStringButton("New script","unnamed.js", { button:"GO",callback_button: function(v){
+	widgets.addStringButton("New script","unnamed.js", { button:"GO", button_width: "100px", callback_button: function(v){
 		var filename = v;
 		if(!filename)
 			return;
 		var resource = that.createFile(filename);
-		that.editInstanceCode( resource, { id: resource.filename, title: resource.filename } );
+		that.editInstanceCode( resource );
 		dialog.close();
 	}});
 
@@ -729,7 +785,15 @@ CodingPadWidget.prototype.onOpenCode = function()
 	//scripts in the scene
 	var script_components = LS.GlobalScene.findNodeComponents( LS.Components.Script );
 	for(var i in script_components)
-		codes.push({ name: script_components[i].name, component: script_components[i] });
+	{
+		var compo = script_components[i];
+		var name = null;
+		if( compo.getComponentTitle )
+			name = compo.getComponentTitle();
+		if(!name)
+			name = compo._root.name;
+		codes.push({ name: name, component: compo });
+	}
 
 	//global scripts
 	for(var i in LS.GlobalScene.global_scripts)
@@ -748,7 +812,7 @@ CodingPadWidget.prototype.onOpenCode = function()
 			var fullpath = resource.fullpath || resource.filename;
 			if( !codes_url[fullpath] )
 			{
-				codes.push({ name: i, resource: resource });
+				codes.push({ name: fullpath, resource: resource });
 				codes_url[fullpath] = true;
 			}
 		}
@@ -761,7 +825,7 @@ CodingPadWidget.prototype.onOpenCode = function()
 			LS.RM.load( fullpath, function(resource){
 				dialog.close();
 				if(resource && resource.constructor === LS.Resource)
-					that.editInstanceCode( resource, { id: resource.filename, title: resource.filename } );
+					that.editInstanceCode( resource );
 			});
 		}
 	});
@@ -777,18 +841,18 @@ CodingPadWidget.prototype.onOpenCode = function()
 			{
 				var component = selected.component;
 				var node = component._root;
-				that.editInstanceCode( component, { id: component.uid, title: node.id, lang: "javascript", path: component.uid, help: LS.Components.Script.coding_help });
+				that.editInstanceCode( component );
 			}
 			else if( selected.resource )
 			{
 				var resource = selected.resource;
-				that.editInstanceCode( resource, { id: selected.name, title: LS.RM.getFilename(selected.name) });
+				that.editInstanceCode( resource );
 			}
 			else if( selected.fullpath )
 			{
 				LS.RM.load( selected.fullpath, function(resource){
 					if(resource && resource.constructor === LS.Resource)
-						that.editInstanceCode( resource, { id: resource.filename, title: resource.filename } );
+						that.editInstanceCode( resource );
 				});
 			}
 		}
@@ -864,8 +928,8 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 		that.changeFontSize(+1);
 	}});
 
-	this.lang_widget = top_widgets.addCombo("Highlight","javascript",{ width: 200, values: {"javascript":"javascript", "GLSL":"x-shader/x-fragment", "HTML":"XML","text":"text"}, callback: function(v) { 
-		that.editor.setOption( "mode", v );
+	this.lang_widget = top_widgets.addCombo("Highlight", "javascript",{ width: 200, values: ["javascript","GLSL","HTML","text"], callback: function(v) { 
+		that.setLang( v );
 	}});
 
 	var coding_workarea_root = coding_area;

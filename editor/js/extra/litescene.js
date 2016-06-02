@@ -55,7 +55,7 @@ WBin.LUMPHEADER_SIZE = 4+4+2+WBin.LUMPNAME_SIZE; //32 bytes: 4 start, 4 length, 
 
 WBin.CODES = {
 	"ArrayBuffer":"AB", "Int8Array":"I1", "Uint8Array":"i1", "Int16Array":"I2", "Uint16Array":"i2", "Int32Array":"I4", "Uint32Array":"i4",
-	"Float32Array":"F4", "Float64Array": "F8", "Object":"OB","String":"ST","WString":"WS","Number":"NU", "null":"00"
+	"Float32Array":"F4", "Float64Array": "F8", "Object":"OB","WideObject":"WO","String":"ST","WideString":"WS","Number":"NU", "null":"00"
 };
 
 WBin.REVERSE_CODES = {};
@@ -155,9 +155,13 @@ WBin.create = function( origin, origin_class_name )
 
 		var data_length = 0;
 
-		//convert all to typed arrays
-		if(typeof(data) == "string")
-			data = WBin.stringToUint8Array(data);
+		//convert any string related data to typed arrays
+		if( data && data.constructor == String )
+		{
+			data = WBin.stringToTypedArray( data );
+			if(data.constructor === Uint16Array) //careful when wide characters found (international characters)
+				code = (code == "OB") ? "WO" : "WS";
+		}
 
 		//typed array
 		if(data.buffer && data.buffer.constructor == ArrayBuffer)
@@ -271,14 +275,16 @@ WBin.load = function( data_array, skip_classname )
 		switch(data_class_name)
 		{
 			case "null": break;
-			case "String": lump_final = WBin.Uint8ArrayToString( lump_data ); break;
+			case "WideString": 
+			case "String": lump_final = WBin.TypedArrayToString( lump_data ); break;
 			case "Number": 
 					if(header.version < 0.3) //LEGACY: remove
-						lump_final = parseFloat( WBin.Uint8ArrayToString( lump_data ) );
+						lump_final = parseFloat( WBin.TypedArrayToString( lump_data ) );
 					else
 						lump_final = (new Float64Array( lump_data.buffer ))[0];
 					break;
-			case "Object": lump_final = JSON.parse( WBin.Uint8ArrayToString( lump_data ) ); break;
+			case "WideObject": 
+			case "Object": lump_final = JSON.parse( WBin.TypedArrayToString( lump_data ) ); break;
 			case "ArrayBuffer": lump_final = new Uint8Array(lump_data).buffer; break; //clone
 			default:
 				lump_data = new Uint8Array(lump_data); //clone to avoid problems with bytes alignment
@@ -332,7 +338,7 @@ WBin.getHeaderInfo = function(data_array)
 	var version = WBin.readFloat32( data_array, 4);
 	var flags = new Uint8Array( data_array.subarray(8,10) );
 	var numlumps = WBin.readUint16(data_array, 10);
-	var classname = WBin.Uint8ArrayToString( data_array.subarray(12,12 + WBin.CLASSNAME_SIZE) );
+	var classname = WBin.TypedArrayToString( data_array.subarray(12,12 + WBin.CLASSNAME_SIZE) );
 
 	var lumps = [];
 	for(var i = 0; i < numlumps; ++i)
@@ -342,8 +348,8 @@ WBin.getHeaderInfo = function(data_array)
 		var lump = {};
 		lump.start = WBin.readUint32(lumpheader,0);
 		lump.size  = WBin.readUint32(lumpheader,4);
-		lump.code  = WBin.Uint8ArrayToString(lumpheader.subarray(8,10));
-		lump.name  = WBin.Uint8ArrayToString(lumpheader.subarray(10));
+		lump.code  = WBin.TypedArrayToString(lumpheader.subarray(8,10));
+		lump.name  = WBin.TypedArrayToString(lumpheader.subarray(10));
 		lumps.push(lump);
 	}
 
@@ -387,7 +393,7 @@ WBin.stringToUint8Array = function(str, fixed_length)
 	return r;
 }
 
-WBin.Uint8ArrayToString = function(typed_array, same_size)
+WBin.TypedArrayToString = function(typed_array, same_size)
 {
 	var r = "";
 	for(var i = 0; i < typed_array.length; i++)
@@ -396,6 +402,32 @@ WBin.Uint8ArrayToString = function(typed_array, same_size)
 		else
 			r += String.fromCharCode( typed_array[i] );
 	//return String.fromCharCode.apply(null,typed_array)
+	return r;
+}
+
+WBin.stringToTypedArray = function(str, fixed_length)
+{
+	var r = new Uint8Array( fixed_length ? fixed_length : str.length);
+	var warning = false;
+	for(var i = 0; i < str.length; i++)
+	{
+		var c = str.charCodeAt(i);
+		if(c > 255)
+			warning = true;
+		r[i] = c;
+	}
+
+	if(!warning)
+		return r;
+
+	//convert to 16bits per character
+	var r = new Uint16Array( fixed_length ? fixed_length : str.length);
+	for(var i = 0; i < str.length; i++)
+	{
+		var c = str.charCodeAt(i);
+		r[i] = c;
+	}
+
 	return r;
 }
 
@@ -1312,6 +1344,17 @@ var LS = {
 		gui.style.position = "absolute";
 		gui.style.top = "0";
 		gui.style.left = "0";
+
+		//normalize
+		gui.style.color = "#999";
+		gui.style.font = "20px Arial";
+
+		//make it fullsize
+		gui.style.width = "100%";
+		gui.style.height = "100%";
+		gui.style.overflow = "hidden";
+		gui.style.pointerEvents = "none";
+
 		gl.canvas.parentNode.appendChild( gui );
 		
 		LS._gui_element = gui;
@@ -1319,11 +1362,57 @@ var LS = {
 	},
 
 	/**
-	* Returns an script context using the script name (not the node name), usefull to pass data between scripts.
+	* Creates a HTMLElement of the tag_type and adds it to the DOM on top of the canvas
 	*
-	* @method getScript
-	* @param {String} name the name of the script according to the Script component.
-	* @return {Object} the context of the script.
+	* @method createElementGUI
+	* @param {String} tag_type the tag type "div"
+	* @param {String} anchor "top-left", "top-right", "bottom-left", "bottom-right"
+	* @return {HTMLElement} 
+	*/
+	createElementGUI: function( tag_type, anchor )
+	{
+		tag_type = tag_type || "div";
+		anchor = anchor || "top-left";
+
+		var element = document.createElement("div");
+		element.style.position = "absolute";
+		element.style.pointerEvents = "auto";
+
+		switch(anchor)
+		{
+			case "bottom":
+			case "bottom-left":
+				element.style.bottom = "0";
+				element.style.left = "0";
+				break;
+			case "bottom-right":
+				element.style.bottom = "0";
+				element.style.right = "0";
+				break;
+			case "right":
+			case "top-right":
+				element.style.top = "0";
+				element.style.right = "0";
+				break;
+			default:
+				console.warn("invalid GUI anchor position: ",anchor);
+			case "left":
+			case "top":
+			case "top-left":
+				element.style.top = "0";
+				element.style.left = "0";
+				break;
+		}
+
+		var gui_root = this.getGUIElement();
+		gui_root.appendChild( element );
+		return element;
+	},
+
+	/**
+	* Removes all the GUI elements from the DOM
+	*
+	* @method removeGUIElement
 	*/
 	removeGUIElement: function()
 	{
@@ -1593,9 +1682,11 @@ LS.TYPES = {
 	RESOURCE: "resource",
 	TEXTURE : "texture",
 	MESH: "mesh",
+	SCENE: "scene",
 	SCENENODE: "node",
 	SCENENODE_ID: "node_id",
-	COMPONENT: "component"
+	COMPONENT: "component",
+	MATERIAL: "material"
 };
 
 var Network = {
@@ -3823,7 +3914,8 @@ var ShadersManager = {
 		attribute vec3 a_vertex;\n\
 		attribute vec3 a_normal;\n\
 		attribute vec2 a_coord;\n\
-		uniform mat4 u_mvp;\n\
+		uniform mat4 u_model;\n\
+		uniform mat4 u_viewprojection;\n\
 	",
 	common_fscode: "\n\
 		precision mediump float;\n\
@@ -3841,7 +3933,8 @@ var ShadersManager = {
 		//flat
 		this.registerGlobalShader(this.common_vscode + '\
 			void main() {\
-				gl_Position = u_mvp * vec4(a_vertex,1.0);\
+				mat4 mvp = u_viewprojection * u_model;\
+				gl_Position = mvp * vec4(a_vertex,1.0);\
 			}\
 			', this.common_fscode + '\
 			uniform vec4 u_material_color;\
@@ -3855,7 +3948,8 @@ var ShadersManager = {
 			varying vec2 v_uvs;\
 			void main() {\n\
 				v_uvs = a_coord;\n\
-				gl_Position = u_mvp * vec4(a_vertex,1.0);\
+				mat4 mvp = u_viewprojection * u_model;\
+				gl_Position = mvp * vec4(a_vertex,1.0);\
 			}\
 			', this.common_fscode + '\
 			uniform vec4 u_material_color;\
@@ -7623,9 +7717,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, l
 	//compute matrices
 	var model = instance.matrix;
 	if(instance.flags & RI_IGNORE_VIEWPROJECTION)
-		renderer._mvp_matrix.set( model );
-	else
-		mat4.multiply( renderer._mvp_matrix, renderer._viewprojection_matrix, model );
+		renderer._viewprojection_matrix.set( model ); //warning?
 
 	//node matrix info
 	var instance_final_query = instance._final_query;
@@ -7635,7 +7727,6 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, l
 	//maybe this two should be somewhere else
 	render_uniforms.u_model = model; 
 	render_uniforms.u_normal_model = instance.normal_matrix; 
-	render_uniforms.u_mvp = renderer._mvp_matrix;
 
 	//global stuff
 	renderer.enableInstanceFlags( instance, render_settings );
@@ -11450,7 +11541,6 @@ uniform mat4 u_model;\n\
 uniform mat4 u_normal_model;\n\
 uniform mat4 u_view;\n\
 uniform mat4 u_viewprojection;\n\
-uniform mat4 u_mvp;\n\
 \n\
 //globals\n\
 uniform float u_time;\n\
@@ -13720,6 +13810,9 @@ function RenderInstance( node, component )
 	this.uniforms = {};
 	this.samplers = [];
 
+	//TO DO: instancing
+	//this.uniforms_instancing = {};
+
 	this._camera_visibility = 0; //tells in which camera was visible this instance during the last rendering
 	this._is_visible = false; //used during the rendering
 
@@ -13982,6 +14075,40 @@ RenderInstance.prototype.render = function(shader)
 	  this.primitive, this.range[0], this.range[1] );
 }
 
+/*
+RenderInstance.prototype.renderInstancing = function( shader )
+{
+	var instances_info = this.instances_info;
+
+	var matrices = new Float32Array( instances_info.length * 16 );
+	for(var j = 0; j < instances_info.length; ++j)
+	{
+		var matrix = instances_info[j].matrix;
+		matrices.set( matrix, j*16 );
+	}
+
+	gl.bindBuffer(gl.ARRAY_BUFFER, matricesBuffer );
+	gl.bufferData(gl.ARRAY_BUFFER, matrices, gl.STREAM_DRAW);
+
+	// Bind the instance matrices data (mat4 behaves as 4 attributes)
+	for(var k = 0; k < 4; ++k)
+	{
+		gl.enableVertexAttribArray( location+k );
+		gl.vertexAttribPointer( location+k, 4, gl.FLOAT , false, 16*4, k*4*4 );
+		ext.vertexAttribDivisorANGLE( location+k, 1 ); // This makes it instanced!
+	}
+
+	//gl.drawElements( gl.TRIANGLES, length, indexBuffer.buffer.gl_type, 0 ); //gl.UNSIGNED_SHORT
+	ext.drawElementsInstancedANGLE( gl.TRIANGLES, length, indexBuffer.buffer.gl_type, 0, batch.length );
+	GFX.stats.calls += 1;
+	for(var k = 0; k < 4; ++k)
+	{
+		ext.vertexAttribDivisorANGLE( location+k, 0 );
+		gl.disableVertexAttribArray( location+k );
+	}
+}
+*/
+
 RenderInstance.prototype.overlapsSphere = function(center, radius)
 {
 	//we dont know if the bbox of the instance is valid
@@ -14012,6 +14139,7 @@ RenderInstance.prototype.setCollisionMesh = function(mesh)
 	this.collision_mesh = mesh;
 }
 */
+
 
 LS.RenderInstance = RenderInstance;
 /*	
@@ -14337,7 +14465,7 @@ var Renderer = {
 	_projection_matrix: mat4.create(),
 	_viewprojection_matrix: mat4.create(),
 	_2Dviewprojection_matrix: mat4.create(),
-	_mvp_matrix: mat4.create(),
+
 	_temp_matrix: mat4.create(),
 	_identity_matrix: mat4.create(),
 	_render_uniforms: {},
@@ -14930,14 +15058,9 @@ var Renderer = {
 
 		//compute matrices
 		var model = instance.matrix;
-		if(instance.flags & RI_IGNORE_VIEWPROJECTION)
-			this._mvp_matrix.set( model );
-		else
-			mat4.multiply(this._mvp_matrix, this._viewprojection_matrix, model );
 
 		renderer_uniforms.u_model = model; 
 		renderer_uniforms.u_normal_model = instance.normal_matrix; 
-		renderer_uniforms.u_mvp = this._mvp_matrix;
 
 		//FLAGS: enable GL flags like cull_face, CCW, etc
 		this.enableInstanceFlags(instance, render_settings);
@@ -15079,10 +15202,9 @@ var Renderer = {
 
 		//compute matrices
 		var model = instance.matrix;
-		mat4.multiply(this._mvp_matrix, this._viewprojection_matrix, model );
+
 		renderer_uniforms.u_model = model; 
 		renderer_uniforms.u_normal_model = instance.normal_matrix; 
-		renderer_uniforms.u_mvp = this._mvp_matrix;
 
 		var instance_final_query = instance._final_query;
 
@@ -15144,10 +15266,8 @@ var Renderer = {
 		var model = instance.matrix;
 		var renderer_uniforms = this._render_uniforms;
 
-		mat4.multiply(this._mvp_matrix, this._viewprojection_matrix, model );
 		renderer_uniforms.u_model = model; 
 		renderer_uniforms.u_normal_model = instance.normal_matrix; 
-		renderer_uniforms.u_mvp = this._mvp_matrix;
 
 		var pick_color = LS.Picking.getNextPickingColor( node );
 
@@ -27852,6 +27972,12 @@ ScriptFromFile.prototype.getResources = function(res)
 		return;
 	ctx.getResources( res );
 }
+
+ScriptFromFile.prototype.getCodeResource = function()
+{
+	return LS.ResourcesManager.getResource( this.filename );
+}
+
 
 ScriptFromFile.prototype.getCode = function()
 {

@@ -22,7 +22,7 @@ InspectorWidget.prototype.init = function()
 	this.root = LiteGUI.createElement( "div", null, null, { width:"100%", height:"100%" });
 	this.root.className = "inspector_widget";
 
-	this.header = LiteGUI.createElement( "div", ".header", "<button class='prev icon' title='Previous'>&#10096;</button><span class='title'></span><button class='refresh icon' title='Refresh'>&#8635;</button><button class='lock icon' title='Lock'>&#128274;</button><button class='next icon' title='Next'>&#10097;</button>", { height: "26px" });
+	this.header = LiteGUI.createElement( "div", ".header", "<button class='litebutton prev icon' title='Previous'>&#10096;</button><span class='title'></span><button class='litebutton refresh icon' title='Refresh'>&#8635;</button><button class='litebutton lock icon' title='Lock'>&#128274;</button><button class='litebutton next icon' title='Next'>&#10097;</button>", { height: "26px" });
 	this.root.appendChild( this.header );
 	this.title = this.header.querySelector(".title");
 	this.header.querySelector(".prev").addEventListener("click", this.onPrevious.bind(this) );

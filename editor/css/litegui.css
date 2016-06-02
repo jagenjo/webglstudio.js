@@ -1401,7 +1401,7 @@ a:hover {
 }
 
 
-button {
+button.litebutton {
     background: -webkit-linear-gradient(#32302D, #4B4947) repeat scroll 0 0 transparent;
     background: -moz-linear-gradient(#32302D, #4B4947) repeat scroll 0 0 transparent;
     background: linear-gradient(#32302D, #4B4947) repeat scroll 0 0 transparent;
@@ -1416,23 +1416,23 @@ button {
     vertical-align: top;	
 }
 
-button:hover:not(:disabled) {
+button.litebutton:hover:not(:disabled) {
     background: #aab !important;
 }
 
-button:active:not(:disabled) {
+button.litebutton:active:not(:disabled) {
     background: #fff !important;
 }
 
-button:disabled {
+button.litebutton:disabled {
 	opacity: 0.5;
 }
 
-.litedialog .content button {
+.litedialog .content button.litebutton {
     vertical-align: initial;
 }
 
-.litedialog button.mini-button {
+.litedialog button.litebutton.mini-button {
 	margin: 2px 2px 0 0;
 	line-height: 0;
 	padding: 0;
@@ -1442,7 +1442,7 @@ button:disabled {
 	border: 1px solid #222;
 }
 
-button.close-button {
+button.litebutton.close-button {
 	background-size: 100% auto;
 }
 

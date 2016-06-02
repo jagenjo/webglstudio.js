@@ -659,7 +659,6 @@
 			uniform mat4 u_normal_model;
 			uniform mat4 u_view;
 			uniform mat4 u_viewprojection;
-			uniform mat4 u_mvp;
 
 			#pragma hook : uniforms_matrices
 
@@ -809,7 +808,6 @@
 			uniform mat4 u_normal_model;
 			uniform mat4 u_view;
 			uniform mat4 u_viewprojection;
-			uniform mat4 u_mvp;
 
 			varying vec3 v_pos;
 			varying vec3 v_local_pos;
@@ -1095,7 +1093,6 @@
 			uniform mat4 u_normal_model;
 			uniform mat4 u_view;
 			uniform mat4 u_viewprojection;
-			uniform mat4 u_mvp;
 
 			varying vec3 v_pos;
 			varying vec3 v_local_pos;
@@ -1454,7 +1451,6 @@
 				uniform float u_displacementmap_factor;
 			#endif
 
-			uniform mat4 u_mvp;
 			uniform mat4 u_view;
 			uniform mat4 u_viewprojection;
 			uniform mat4 u_model;
@@ -2054,7 +2050,6 @@
 
 			uniform vec4 u_viewport;
 
-			uniform mat4 u_mvp;
 			uniform mat4 u_model;
 			uniform mat4 u_view;
 			uniform mat4 u_viewprojection;
@@ -2313,7 +2308,6 @@
 				#endif
 			#endif
 
-			uniform mat4 u_mvp;
 			uniform mat4 u_model;
 			uniform mat4 u_view;
 			uniform mat4 u_viewprojection;
@@ -2476,12 +2470,14 @@
 			precision highp float;
 
 			attribute vec3 a_vertex;
-			uniform mat4 u_mvp;
+			uniform mat4 u_model;
+			uniform mat4 u_viewprojection;
 
 			varying vec4 pos;
 			void main()
 			{
-				gl_Position = pos = u_mvp * vec4(a_vertex,1.0);
+				mat4 mvp = u_viewprojection * u_model;
+				gl_Position = pos = mvp * vec4(a_vertex,1.0);
 			}
 		]]>
 		</code>
@@ -2667,16 +2663,17 @@
 
 			attribute vec3 a_vertex;
 			attribute vec3 a_normal;
-			uniform mat4 u_mvp;
 
 			uniform mat4 u_model;
+			uniform mat4 u_viewprojection;
 			uniform mat4 u_normal_model;
 			varying vec3 v_pos;
 			varying vec3 v_normal;
 			
 			void main() {
 				v_pos = (u_model * vec4(a_vertex,1.0)).xyz;
-				gl_Position = u_mvp * vec4(a_vertex,1.0);
+				mat4 mvp = u_viewprojection * u_model;
+				gl_Position = mvp * vec4(a_vertex,1.0);
 
 				v_normal = (u_normal_model * vec4(a_normal,1.0)).xyz;
 			}
@@ -2721,7 +2718,9 @@
 			attribute vec3 a_vertex;
 			attribute vec3 a_normal;
 			attribute vec2 a_coord;
-			uniform mat4 u_mvp;
+
+			uniform mat4 u_model;
+			uniform mat4 u_viewprojection;
 
 			varying vec2 v_uvs;
 			varying vec3 v_normal;
@@ -2730,8 +2729,8 @@
 			void main() {
 				v_uvs = a_coord;
 				v_normal = (u_normal_model * vec4(a_normal,1.0)).xyz;
-
-				gl_Position = u_mvp * vec4(a_vertex,1.0);
+				mat4 mvp = u_viewprojection * u_model;
+				gl_Position = mvp * vec4(a_vertex,1.0);
 			}
 		]]>
 		</code>
@@ -2759,7 +2758,9 @@
 			attribute vec3 a_vertex;
 			attribute vec3 a_normal;
 			attribute vec2 a_coord;
-			uniform mat4 u_mvp;
+
+			uniform mat4 u_model;
+			uniform mat4 u_viewprojection;
 
 			uniform mat4 u_model;
 			uniform mat4 u_normal_model;
@@ -2769,7 +2770,8 @@
 			
 			void main() {
 				v_pos = (u_model * vec4(a_vertex,1.0)).xyz;
-				gl_Position = u_mvp * vec4(a_vertex,1.0);
+				mat4 mvp = u_viewprojection * u_model;
+				gl_Position = mvp * vec4(a_vertex,1.0);
 				v_coord = a_coord;
 				v_normal = (u_normal_model * vec4(a_normal,1.0)).xyz;
 			}
@@ -2818,7 +2820,8 @@
 			attribute vec3 a_vertex;
 			attribute vec2 a_coord;
 			uniform mat4 u_model;
-			uniform mat4 u_mvp;
+			uniform mat4 u_viewprojection;
+
 			uniform vec3 u_camera_eye;
 			uniform vec3 u_camera_perspective;
 			uniform vec4 u_viewport;
@@ -2861,9 +2864,10 @@
 					applySkinning(vertex4, normal);
 				#endif
 
-				gl_Position = u_mvp * vertex4;
 				vec3 v_pos = (u_model * vertex4).xyz;
 
+				mat4 mvp = u_viewprojection * u_model;
+				gl_Position = mvp * vertex4;
 				gl_PointSize = computePointSize( u_point_size, gl_Position.w );
 			}
 		]]>
@@ -2888,9 +2892,9 @@
 			attribute vec3 a_vertex;
 			attribute vec3 a_normal;
 			attribute vec2 a_coord;
-			uniform mat4 u_mvp;
 
 			uniform mat4 u_model;
+			uniform mat4 u_viewprojection;
 			uniform mat4 u_normal_model;
 			varying vec3 v_pos;
 			varying vec3 v_normal;
@@ -2898,10 +2902,12 @@
 			
 			void main()
 			{
+				mat4 mvp = u_viewprojection * u_model;
+
 				v_pos = (u_model * vec4(a_vertex,1.0)).xyz;
 				v_normal = (u_normal_model * vec4(a_normal,1.0)).xyz;
 				v_uvs = a_coord;
-				gl_Position = u_mvp * vec4(a_vertex,1.0);
+				gl_Position = mvp * vec4(a_vertex,1.0);
 			}
 		]]>
 		</code>

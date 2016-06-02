@@ -263,6 +263,8 @@ var LiteGUI = {
 		var left = event.pageX;
 		var top = event.pageY;
 		var rect = element.getClientRects()[0];
+		if(!rect)
+			return false;
 		if(top > rect.top && top < (rect.top + rect.height) &&
 			left > rect.left && left < (rect.left + rect.width) )
 			return true;
@@ -3748,6 +3750,13 @@ function dataURItoBlob( dataURI ) {
 		if(options.callback_canopen && options.callback_canopen() == false)
 			return;
 
+		//launch leaving current tab event
+		if( that.current_tab && 
+			that.current_tab[0] != tab_id && 
+			that.current_tab[2] && 
+			that.current_tab[2].callback_leave)
+				that.current_tab[2].callback_leave( that.current_tab[0], that.current_tab[1], that.current_tab[2] );
+
 		var tab_id = this.dataset["id"];
 		var tab_content = null;
 
@@ -3770,13 +3779,6 @@ function dataURItoBlob( dataURI ) {
 
 		$(that.list).find("li.wtab").removeClass("selected");
 		this.classList.add("selected");
-
-		//launch leaving current tab event
-		if( that.current_tab && 
-			that.current_tab[0] != tab_id && 
-			that.current_tab[2] && 
-			that.current_tab[2].callback_leave)
-				that.current_tab[2].callback_leave( that.current_tab[0], that.current_tab[1], that.current_tab[2] );
 
 		//change tab
 		that.previous_tab = that.current_tab;
@@ -3802,7 +3804,7 @@ function dataURItoBlob( dataURI ) {
 		if(!id)
 			return;
 
-		if(typeof(id) != "string")
+		if( id.constructor != String )
 			id = id.id; //in case id is the object referencing the tab
 
 		var tabs = this.list.querySelectorAll("li.wtab");
@@ -5347,16 +5349,16 @@ function dataURItoBlob( dataURI ) {
 		{
 			code += "<div class='panel-header'>"+options.title+"</div><div class='buttons'>";
 			if(options.minimize){
-				code += "<button class='mini-button minimize-button'>-</button>";
-				code += "<button class='mini-button maximize-button' style='display:none'></button>";
+				code += "<button class='litebutton mini-button minimize-button'>-</button>";
+				code += "<button class='litebutton mini-button maximize-button' style='display:none'></button>";
 			}
 			if(options.hide)
-				code += "<button class='mini-button hide-button'></button>";
+				code += "<button class='litebutton mini-button hide-button'></button>";
 			if(options.detachable)
-				code += "<button class='mini-button detach-button'></button>";
+				code += "<button class='litebutton mini-button detach-button'></button>";
 			
 			if(options.close || options.closable)
-				code += "<button class='mini-button close-button'>"+ LiteGUI.special_codes.close +"</button>";
+				code += "<button class='litebutton mini-button close-button'>"+ LiteGUI.special_codes.close +"</button>";
 			code += "</div>";
 		}
 
@@ -5613,10 +5615,11 @@ function dataURItoBlob( dataURI ) {
 
 		var that = this;
 		var button = document.createElement("button");
+		button.className = "litebutton";
 
 		button.innerHTML = name;
 		if(options.className)
-			button.className = options.className;
+			button.className += " " + options.className;
 
 		this.root.querySelector(".panel-footer").appendChild( button );
 
@@ -7902,7 +7905,7 @@ Inspector.prototype.addButton = function(name, value, options)
 	if(options.disabled)
 		attrs = "disabled='disabled'";
 	
-	var element = this.createWidget(name,"<button class='"+c+"' tabIndex='"+ this.tab_index + "' "+attrs+">"+value+"</button>", options);
+	var element = this.createWidget(name,"<button class='litebutton "+c+"' tabIndex='"+ this.tab_index + "' "+attrs+">"+value+"</button>", options);
 	this.tab_index++;
 	var button = element.querySelector("button");
 	button.addEventListener("click", function(event) {
@@ -7942,7 +7945,7 @@ Inspector.prototype.addButtons = function(name, value, options)
 	{
 		for(var i in value)
 		{
-			code += "<button tabIndex='"+this.tab_index+"' style='"+style+"'>"+value[i]+"</button>";
+			code += "<button class='litebutton' tabIndex='"+this.tab_index+"' style='"+style+"'>"+value[i]+"</button>";
 			this.tab_index++;
 		}
 	}
@@ -8111,7 +8114,7 @@ Inspector.prototype.addFile = function(name, value, options)
 	var that = this;
 	this.values[name] = value;
 	
-	var element = this.createWidget(name,"<span class='inputfield full whidden' style='width: calc(100% - 26px)'><span class='filename'>"+value+"</span></span><button style='width:20px; margin-left: 2px;'>...</button><input type='file' size='100' class='file' value='"+value+"'/>", options);
+	var element = this.createWidget(name,"<span class='inputfield full whidden' style='width: calc(100% - 26px)'><span class='filename'>"+value+"</span></span><button class='litebutton' style='width:20px; margin-left: 2px;'>...</button><input type='file' size='100' class='file' value='"+value+"'/>", options);
 	var content = element.querySelector(".wcontent");
 	content.style.position = "relative";
 	var input = element.querySelector(".wcontent input");

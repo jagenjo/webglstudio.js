@@ -29,7 +29,7 @@ var PlayModule = {
 		var container = document.createElement("div");
 		container.id = "play-tools";
 		container.className = "big-buttons";
-		container.innerHTML = "<button id='play-button'>Play</button><button id='pause-button' disabled>Pause</button><button id='stopkeep-button' disabled>Keep</button><button id='launch-button'>Launch</button>";
+		container.innerHTML = "<button class='litebutton' id='play-button'>Play</button><button class='litebutton' id='pause-button' disabled>Pause</button><button class='litebutton' id='stopkeep-button' disabled>Keep</button><button class='litebutton' id='launch-button'>Launch</button>";
 		this.play_button = container.querySelector("#play-button");
 		this.pause_button = container.querySelector("#pause-button");
 		this.stopkeep_button = container.querySelector("#stopkeep-button");
@@ -63,18 +63,13 @@ var PlayModule = {
 		}});
 
 		//overwrite method to add the module to the right place
+		LS._getGUIElement = LS.getGUIElement;
 		LS.getGUIElement = function()
 		{
-			if( LS._gui_element )
-				return LS._gui_element;
-
-			var gui = document.createElement("div");
-			gui.className = "litescene-gui";
-			gui.style.position = "absolute";
-			gui.style.top = "0";
-			gui.style.left = "0";
+			var gui = LS._getGUIElement();
+			if( gui )
+				return gui;
 			PlayModule.tab.content.appendChild( gui );
-			LS._gui_element = gui;
 			return gui;
 		},
 

@@ -178,7 +178,7 @@ CodingTabsWidget.prototype.closeInstanceTab = function( instance, options )
 CodingTabsWidget.prototype.refresh = function()
 {
 	var tab = this.tabs.getCurrentTab();
-	if(!tab.pad)
+	if(!tab || !tab.pad)
 		return;
 	tab.pad.refresh();
 }

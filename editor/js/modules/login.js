@@ -77,7 +77,7 @@ var LoginModule = {
 
 	showGuestAlert: function()
 	{
-		var dialog = LiteGUI.alert("<p>You are connected as <span style='color:white'>GUEST</span> user. Guest users cannot save their work so if you want to save your creations or your resources consider going to <button>Create Account</button> (its free).</p>", {title:"We have a problem"});
+		var dialog = LiteGUI.alert("<p>You are connected as <span style='color:white'>GUEST</span> user. Guest users cannot save their work so if you want to save your creations or your resources consider going to <button class='litebutton'>Create Account</button> (its free).</p>", {title:"We have a problem"});
 		dialog.content.querySelector("button").addEventListener("click", function(e){
 			dialog.close();
 			LoginModule.logout( function(){ 
@@ -91,14 +91,14 @@ var LoginModule = {
 	{
 		if (this.user)
 		{
-			this.loginarea.innerHTML = "logged as <a href='#'>"+this.user.username+"</a> <button class='btn'>Logout</button>";
+			this.loginarea.innerHTML = "logged as <a href='#'>"+this.user.username+"</a> <button class='litebutton btn'>Logout</button>";
 			this.loginarea.querySelector("button").addEventListener( "click", function() {
 				LoginModule.showLogoutDialog();
 			});
 		}
 		else
 		{
-			this.loginarea.innerHTML = "not logged in <button class='btn'>Login</button>";
+			this.loginarea.innerHTML = "not logged in <button class='litebutton btn'>Login</button>";
 			this.loginarea.querySelector("button").addEventListener("click", function() {
 				LoginModule.showLoginDialog();
 			});

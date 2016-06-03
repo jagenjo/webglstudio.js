@@ -196,6 +196,7 @@ var SceneStorageModule = {
 				msg.kill();
 			scene.extra.folder = LS.ResourcesManager.getFolder( fullpath );
 			scene.extra.fullpath = fullpath;
+			EditorModule.inspect(scene);
 			if(on_complete)
 				on_complete();
 		}
@@ -212,7 +213,7 @@ var SceneStorageModule = {
 
 	showLoadFromURLDialog: function()
 	{
-		LiteGUI.prompt("Which URL? (Only load scenes from trusted sources", function(v){
+		LiteGUI.prompt("Which URL? (Only load scenes from trusted sources)", function(v){
 			if(!v)
 				return;
 			LS.Renderer.reset();
@@ -220,7 +221,7 @@ var SceneStorageModule = {
 			LS.GlobalScene.load( v, function(scene, url) {
 				//loaded...
 			});
-		});
+		},{width:300});
 	},
 
 	showSaveSceneInServerDialog: function()
@@ -246,7 +247,7 @@ var SceneStorageModule = {
 			return;
 		}
 
-		var dialog = new LiteGUI.Dialog("dialog_save_scene", {title:"Save Scene", close: true, minimize: true, width: 600, height: 300, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog("dialog_save_scene", {title:"Save Scene", close: true, minimize: true, width: 520, height: 300, scroll: false, draggable: true});
 		dialog.show('fade');
 
 		var split = new LiteGUI.Split("save_scene_split",[50,50]);
@@ -271,8 +272,13 @@ var SceneStorageModule = {
 
 		//preview
 		var img = new Image();
-		img.src = RenderModule.takeScreenshot( DriveModule.texture_thumbnail_size, DriveModule.texture_thumbnail_size);
+		img.src = RenderModule.takeScreenshot( DriveModule.preview_size, DriveModule.preview_size );
+		img.width = DriveModule.preview_size;
 		split.getSection(1).add( img );
+		var right_pane_style = split.getSection(1).style;
+		right_pane_style.backgroundColor = "black";
+		right_pane_style.paddingLeft = "2px";
+		right_pane_style.paddingTop = "2px";
 
 		//load tree
 		DriveModule.getServerFoldersTree(inner_tree);

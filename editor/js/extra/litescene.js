@@ -2195,7 +2195,11 @@ var ResourcesManager = {
 			return "";
 
 		if( fullpath.indexOf("//") == -1 )
+		{
+			if(fullpath.charCodeAt(0) == 47) // the '/' char
+				return fullpath.substr(1);
 			return fullpath;
+		}
 
 		//clean up the filename (to avoid problems with //)
 		if(fullpath.indexOf("://") == -1)
@@ -6663,7 +6667,7 @@ StandardMaterial.prototype.getPropertiesInfo = function()
 	return o;
 }
 
-SurfaceMaterial.prototype.getPropertyInfoFromPath = function( path )
+StandardMaterial.prototype.getPropertyInfoFromPath = function( path )
 {
 	if( path.length < 1)
 		return;
@@ -6855,8 +6859,9 @@ CustomMaterial.prototype.fillShaderQuery = function(scene)
 
 CustomMaterial.prototype.fillUniforms = function( scene, options )
 {
-	var samplers = {};
+	var samplers = [];
 
+	var last_texture_slot = 0;
 	for(var i = 0, l = this.properties.length; i < l; ++i )
 	{
 		var prop = this.properties[i];
@@ -6869,7 +6874,10 @@ CustomMaterial.prototype.fillUniforms = function( scene, options )
 			var texture = LS.getTexture( tex_name );
 			if(!texture)
 				texture = ":missing";
-			samplers[ prop.name ] = texture;
+			
+			samplers[ last_texture_slot ] = texture;
+			this._uniforms[ prop.name ] = last_texture_slot;
+			last_texture_slot++;
 		}
 		else
 			this._uniforms[ prop.name ] = prop.value;
@@ -6877,6 +6885,7 @@ CustomMaterial.prototype.fillUniforms = function( scene, options )
 
 	this._uniforms.u_material_color = this._color;
 
+	/*
 	if(this.textures["environment"])
 	{
 		var sampler = this.textures["environment"];
@@ -6884,6 +6893,7 @@ CustomMaterial.prototype.fillUniforms = function( scene, options )
 		if(texture)
 			samplers[ "environment" + (texture.texture_type == gl.TEXTURE_2D ? "_texture" : "_cubemap") ] = sampler;
 	}
+	*/
 
 	this._samplers = samplers;
 }
@@ -7553,6 +7563,8 @@ Object.defineProperty( ShaderMaterial.prototype, "shader", {
 		return this._shader;
 	},
 	set: function(v) {
+		if(v)
+			v = LS.ResourcesManager.cleanFullpath(v);
 		if(this._shader == v)
 			return;
 		this._shader = v;
@@ -8066,6 +8078,8 @@ ComponentContainer.prototype.removeComponent = function(component)
 	var pos = this._components.indexOf(component);
 	if(pos != -1)
 		this._components.splice(pos,1);
+	else
+		console.warn("removeComponent: Component not found in node");
 }
 
 /**
@@ -26868,20 +26882,24 @@ PlayAnimation.prototype.onUpdate = function(e, dt)
 		switch( this.mode )
 		{
 			case PlayAnimation.ONCE: 
-					time = end_time; 
-					//time = start_time; //reset after
-					LEvent.trigger( this, "end_animation" );
-					this.playing = false;
+				time = end_time; 
+				//time = start_time; //reset after
+				LEvent.trigger( this, "end_animation" );
+				this.playing = false;
 				break;
-			case PlayAnimation.LOOP: time = ((this.current_time - start_time) % duration) + start_time; break;
 			case PlayAnimation.PINGPONG:
-					if( ((time / duration)|0) % 2 == 0 ) //TEST THIS
-						time = this.current_time % duration; 
-					else
-						time = duration - (this.current_time % duration);
-					break;
+				if( ((time / duration)|0) % 2 == 0 ) //TEST THIS
+					time = this.current_time % duration; 
+				else
+					time = duration - (this.current_time % duration);
+				break;
+			case PlayAnimation.PINGPONG:
+				time = end_time; 
+				break;
+			case PlayAnimation.LOOP: 
 			default: 
-					time = end_time; 
+				time = ((this.current_time - start_time) % duration) + start_time;
+				LEvent.trigger( this, "animation_loop" );
 				break;
 		}
 	}
@@ -31808,7 +31826,7 @@ global.Collada = {
 				return null;
 			}
 
-			for(var i in joints_source)
+			for(var i = 0; i < joints_source.length; ++i)
 			{
 				//get the inverse of the bind pose
 				var inv_mat = inv_bind_source.subarray(i*16,i*16+16);

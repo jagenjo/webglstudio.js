@@ -634,7 +634,7 @@ var LiteGUI = {
 	createButton: function( id_class, content, callback, style )
 	{
 		var elem = document.createElement("button");
-		elem.className = "litegui button";
+		elem.className = "litegui litebutton button";
 		if(id_class)
 		{
 			var t = id_class.split(" ");
@@ -778,7 +778,7 @@ var LiteGUI = {
 		if (typeof(content) == "string")
 			content = "<p>" + content + "</p>";
 
-		content +="<button data-value='yes' style='width:45%; margin-left: 10px'>Yes</button><button data-value='no' style='width:45%'>No</button>";
+		content +="<button class='litebutton' data-value='yes' style='width:45%; margin-left: 10px'>Yes</button><button class='litebutton' data-value='no' style='width:45%'>No</button>";
 		options.noclose = true;
 
 		var dialog = this.showMessage(content,options);
@@ -820,7 +820,7 @@ var LiteGUI = {
 		if (options.textarea)
 			textinput = "<textarea class='textfield' style='width:95%'>"+value+"</textarea>";
 
-		content +="<p>"+textinput+"</p><button data-value='accept' style='width:45%; margin-left: 10px; margin-bottom: 10px'>Accept</button><button data-value='cancel' style='width:45%'>Cancel</button>";
+		content +="<p>"+textinput+"</p><button class='litebutton' data-value='accept' style='width:45%; margin-left: 10px; margin-bottom: 10px'>Accept</button><button class='litebutton' data-value='cancel' style='width:45%'>Cancel</button>";
 		options.noclose = true;
 		var dialog = this.showMessage( content, options );
 
@@ -1531,6 +1531,7 @@ function dataURItoBlob( dataURI ) {
 
 		this.root = element;
 		var button = document.createElement("button");
+		button.className = "litebutton";
 		this.content = button;
 		element.appendChild(button);
 

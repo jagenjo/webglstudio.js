@@ -421,3 +421,63 @@ LiteGUI.Inspector.prototype.addCode = function( name, value, options )
 }
 
 LiteGUI.Inspector.widget_constructors["code"] = "addCode";
+
+
+LS.Components.Script.actions["convert_to_script"] = { 
+	title: "Convert to ScriptFromFile", 
+	callback: function() { 
+		if(!this._root)
+		{
+			console.warn("Script is not attached to a node?");
+			return;
+		}
+
+		var node = this._root;
+		var info = this.serialize();
+		var code = this.getCode();
+		delete info.code;
+		var compo = this;
+
+		LiteGUI.prompt("Choose a filename for the source file", function(v){
+
+			var resource = new LS.Resource();
+			resource.setData( code );
+			LS.RM.registerResource( v, resource );
+			info.filename = resource.filename;
+
+			var index = node.getIndexOfComponent(compo);
+			node.removeComponent(compo);
+
+			var script = new LS.Components.ScriptFromFile();
+			node.addComponent(script, index);
+			script.configure(info);
+			EditorModule.refreshAttributes();
+
+			console.log("Script converted to ScriptFromFile");
+		},{ value:"unnamed_code.js" });
+	}
+};
+
+LS.Components.ScriptFromFile.actions = {}; //do not share with script
+LS.Components.ScriptFromFile.actions["convert_to_script"] = { 
+	title: "Convert to Script", 
+	callback: function() { 
+		if(!this._root)
+		{
+			console.warn("Script is not attached to a node?");
+			return;
+		}
+
+		var node = this._root;
+		var info = this.serialize();
+		delete info.filename;
+		info.code = this.getCode();
+		var script = new LS.Components.Script();
+		var index = node.getIndexOfComponent(this);
+		node.removeComponent(this);
+		node.addComponent(script, index);
+		script.configure(info);
+		EditorModule.refreshAttributes();
+		console.log("ScriptFromFile converted to Script");
+	}
+};

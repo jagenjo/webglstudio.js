@@ -309,6 +309,22 @@ var DriveModule = {
 		return null;
 	},
 
+	getResourceCategory: function( resource )
+	{
+		if(resource.category)
+			return resource.category;
+		if(resource.getCategory)
+			return resource.getCategory();
+		if(resource.constructor.is_material)
+			return "Material";
+		var type = resource.object_type || resource.category || LS.getObjectClassName( resource );
+		if(type == "Object") //in server_side resources that dont have category
+			type = LS.Formats.guessType( resource.fullpath || resource.filename );
+		if(!type)
+			type = "unknown";
+		return type;
+	},
+
 	/*
 	filterResources: function(type)
 	{
@@ -1801,11 +1817,7 @@ var DriveModule = {
 			resource = LS.ResourcesManager.resources[ fullpath ];
 
 		//guess category
-		var category = resource.category;
-		if(!category && resource.getCategory)
-			category = resource.getCategory();
-		else
-			category = resource.object_type || LS.getObjectClassName(resource);
+		var category = this.getResourceCategory(resource);
 
 		//in case we update info of a file we dont have in memory
 		if( resource.in_server && !LS.ResourcesManager.resources[ fullpath ] )
@@ -2218,7 +2230,7 @@ DriveModule._textResourceCallback = function( fullpath, restype, options ) {
 		CodingModule.editInstanceCode( resource, { title: title, lang: lang }, true );
 	}
 	else
-		console.warn("No data found in resource");
+		LiteGUI.alert("No data found in resource");
 }
 
 DriveModule.registerAssignResourceCallback(["Data","Resource","application/javascript","text/plain","text/html","text/css","text/csv","TEXT"], DriveModule._textResourceCallback );

@@ -91,7 +91,7 @@
 	padding-left: 10px;
 }
 
-.graphdialog input {
+.graphdialog input, .graphdialog select {
 	margin-top: 3px;
 	min-width: 60px;
 	min-height: 1.5em;
@@ -105,3 +105,4 @@
 	margin-top: 3px;
 	vertical-align: top;
 }
+

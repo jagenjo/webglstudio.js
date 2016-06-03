@@ -4742,7 +4742,10 @@ LGraphCanvas.onShowMenuNodeProperties = function(node,e, prev_menu)
 
 	var entries = [];
 		for (var i in node.properties)
-			entries.push({content: "<span class='property_name'>" + i + "</span>" + "<span class='property_value'>" + (node.properties[i] || " ") + "</span>", value: i});
+		{
+			var value = node.properties[i] !== undefined ? node.properties[i] : " ";
+			entries.push({content: "<span class='property_name'>" + i + "</span>" + "<span class='property_value'>" + value + "</span>", value: i});
+		}
 	if(!entries.length)
 		return;
 
@@ -4766,18 +4769,57 @@ LGraphCanvas.prototype.showEditPropertyValue = function( node, property, options
 	options = options || {};
 	var that = this;
 
+	var type = "string";
+	
+	if(node.properties[ property ] !== null)
+		type = typeof(node.properties[ property ]);
+
+	var info = null;
+	if(node.getPropertyInfo)
+		info = node.getPropertyInfo(property);
+	if(info.type)
+		type = info.type;
+
+	var input_html = "";
+	
+	if(type == "string" || type == "number")
+		input_html = "<input autofocus type='text' class='value'/>";
+	else if(type == "enum" && info.values)
+	{
+		input_html = "<select autofocus type='text' class='value'>";
+		for(var i in info.values)
+		{
+			var v = info.values.constructor === Array ? info.values[i] : i;
+			input_html += "<option value='"+v+"' "+(v == node.properties[property] ? "selected" : "")+">"+info.values[i]+"</option>";
+		}
+		input_html += "</select>";
+	}
+
+
 	var dialog = document.createElement("div");
 	dialog.className = "graphdialog";
-	dialog.innerHTML = "<span class='name'>" + property + "</span><input autofocus type='text' class='value'/><button>OK</button>";
-	var input = dialog.querySelector("input");
-	input.value = node.properties[ property ] || "";
-	input.addEventListener("keydown", function(e){
-		if(e.keyCode != 13)
-			return;
-		inner();
-		e.preventDefault();
-		e.stopPropagation();
-	});
+	dialog.innerHTML = "<span class='name'>" + property + "</span>"+input_html+"<button>OK</button>";
+
+	if(type == "enum" && info.values)
+	{
+		var input = dialog.querySelector("select");
+		input.addEventListener("change", function(e){
+			var index = e.target.value;
+			setValue( e.options[e.selectedIndex].value );
+		});
+	}
+	else
+	{
+		var input = dialog.querySelector("input");
+		input.value = node.properties[ property ] !== undefined ? node.properties[ property ] : "";
+		input.addEventListener("keydown", function(e){
+			if(e.keyCode != 13)
+				return;
+			inner();
+			e.preventDefault();
+			e.stopPropagation();
+		});
+	}
 
 	var rect = this.canvas.getClientRects()[0];
 	var offsetx = -20;
@@ -4807,7 +4849,11 @@ LGraphCanvas.prototype.showEditPropertyValue = function( node, property, options
 
 	function inner()
 	{
-		var value = input.value;
+		setValue( input.value );
+	}
+
+	function setValue(value)
+	{
 		if(typeof( node.properties[ property ] ) == "number")
 			node.properties[ property ] = Number(value);
 		else
@@ -11241,6 +11287,15 @@ function LGMIDIIn()
 	this.properties = {port: 0};
 	this._last_midi_event = null;
 	this._current_midi_event = null;
+
+	var that = this;
+	new MIDIInterface( function( midi ){
+		//open
+		that._midi = midi;
+		if(that._waiting)
+			that.onStart();
+		that._waiting = false;
+	});
 }
 
 LGMIDIIn.MIDIInterface = MIDIInterface;
@@ -11248,13 +11303,29 @@ LGMIDIIn.MIDIInterface = MIDIInterface;
 LGMIDIIn.title = "MIDI Input";
 LGMIDIIn.desc = "Reads MIDI from a input port";
 
+LGMIDIIn.prototype.getPropertyInfo = function(name)
+{
+	if(!this._midi)
+		return;
+
+	if(name == "port")
+	{
+		var values = {};
+		for (var i = 0; i < this._midi.input_ports.size; ++i)
+		{
+			var input = this._midi.input_ports.get(i);
+			values[i] = i + ".- " + input.name + " version:" + input.version;
+		}
+		return { type: "enum", values: values };
+	}
+}
+
 LGMIDIIn.prototype.onStart = function()
 {
-	var that = this;
-	this._midi = new MIDIInterface( function( midi ){
-		//open
-		midi.openInputPort( that.properties.port, that.onMIDIEvent.bind(that) );
-	});
+	if(this._midi)
+		this._midi.openInputPort( this.properties.port, this.onMIDIEvent.bind(this) );
+	else
+		this._waiting = true;
 }
 
 LGMIDIIn.prototype.onMIDIEvent = function( data, midi_event )
@@ -11313,6 +11384,11 @@ function LGMIDIOut()
 {
 	this.addInput( "send", LiteGraph.EVENT );
 	this.properties = {port: 0};
+
+	var that = this;
+	new MIDIInterface( function( midi ){
+		that._midi = midi;
+	});
 }
 
 LGMIDIOut.MIDIInterface = MIDIInterface;
@@ -11320,13 +11396,23 @@ LGMIDIOut.MIDIInterface = MIDIInterface;
 LGMIDIOut.title = "MIDI Output";
 LGMIDIOut.desc = "Sends MIDI to output channel";
 
-LGMIDIOut.prototype.onStart = function()
+LGMIDIOut.prototype.getPropertyInfo = function(name)
 {
-	var that = this;
-	this._midi = new MIDIInterface( function( midi ){
-		//ready
-	});
+	if(!this._midi)
+		return;
+
+	if(name == "port")
+	{
+		var values = {};
+		for (var i = 0; i < this._midi.output_ports.size; ++i)
+		{
+			var output = this._midi.output_ports.get(i);
+			values[i] = i + ".- " + output.name + " version:" + output.version;
+		}
+		return { type: "enum", values: values };
+	}
 }
+
 
 LGMIDIOut.prototype.onAction = function(event, midi_event )
 {

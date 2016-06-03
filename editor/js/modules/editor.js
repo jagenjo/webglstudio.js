@@ -30,10 +30,6 @@ var EditorModule = {
 		this.createMenuEntries();
 
 		var scene = LS.GlobalScene;
-	
-		//LEvent.bind( scene, "selected_node_changed", function(e,node) { 
-		//	EditorModule.inspect( scene.selected_node );
-		//});
 
 		LEvent.bind( scene, "scene_loaded", function(e) { 
 			EditorModule.inspect( scene.root );
@@ -1937,6 +1933,8 @@ function addGenericResource ( name, value, options, resource_classname )
 	value = value || "";
 	var that = this;
 
+	resource_classname = resource_classname || options.resource_classname;
+
 	if(value.constructor !== String)
 		value = "@Object";
 
@@ -2154,7 +2152,6 @@ LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
 	return element;
 }
 LiteGUI.Inspector.widget_constructors["sampler"] = "addTextureSampler";
-
 LiteGUI.Inspector.widget_constructors["position"] = "addVector3";
 
 LiteGUI.Inspector.prototype.addLayers = function(name, value, options)
@@ -2248,6 +2245,70 @@ LiteGUI.Inspector.prototype.addComponent = function( name, value, options)
 }
 LiteGUI.Inspector.widget_constructors["component"] = "addComponent";
 
+//NOT TESTED
+LiteGUI.Inspector.prototype.addShader = function( name, value, options )
+{
+	options = options || {};
+	var inspector = this;
+
+	options.width = "80%";
+	options.resource_classname = "ShaderCode";
+
+	inspector.widgets_per_row += 1;
+
+	var widget = inspector.addResource( name, value, options );
+
+	inspector.addButtons( null, [LiteGUI.special_codes.refresh, LiteGUI.special_codes.open_folder], { skip_wchange: true, width: "20%", callback: inner } );
+
+	inspector.widgets_per_row -= 1;
+
+	function inner(v)
+	{
+		if( v == LiteGUI.htmlEncode( LiteGUI.special_codes.refresh ) )
+		{
+			if(options.callback_refresh)
+				options.callback_refresh.call( widget );//material.processShaderCode();
+		}
+		else if( v == LiteGUI.htmlEncode( LiteGUI.special_codes.open_folder ) )
+		{
+			//no shader, ask to create it
+			if(!value)
+			{
+				inner_create_shader();
+				return;
+			}
+
+			//edit shader
+			var shader_code = LS.RM.resources[ value ];
+			if(shader_code)
+				CodingModule.editInstanceCode( shader_code, null, true );
+			else
+				LiteGUI.confirm("ShaderCode not found, do you want to create it?", function(v){
+					if(v)
+						inner_create_shader();
+				});
+		}
+
+		function inner_create_shader()
+		{
+			DriveModule.showSelectFolderFilenameDialog("my_shader.glsl", function(folder,filename,fullpath){
+				var shader_code = new LS.ShaderCode();
+				shader_code.code = LS.ShaderCode.examples.color;
+				LS.RM.registerResource( fullpath, shader_code );
+				if(options.callback_open)
+					options.callback_open.call( widget, fullpath );
+				if(options.callback)
+					options.callback.call(widget, fullpath);
+				CodingModule.editInstanceCode( shader_code, null, true );
+			},{ extension:"glsl", allow_no_folder: true } );
+		}
+
+		inspector.refresh();
+	}
+
+	return widget;
+}
+LiteGUI.Inspector.widget_constructors["shader"] = "addShader";
 
 
 

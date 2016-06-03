@@ -605,6 +605,16 @@ LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector,
 {
 	inspector.addTitle("Properties");
 
+	inspector.addShader("shader", material.shader, { pretitle: AnimationModule.getKeyframeCode( material, "shader" ), 
+		callback: function(v) { 
+			material.shader = v; 
+			inspector.refresh();
+		}, callback_refresh: function(){
+			material.processShaderCode();
+		}
+	});
+
+	/*
 	inspector.widgets_per_row = 2;
 
 	inspector.addResource("Shader", material.shader, { pretitle: AnimationModule.getKeyframeCode( material, "shader" ), width: "80%", callback: function(v) { 
@@ -620,9 +630,9 @@ LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector,
 		{
 			if(!material.shader)
 			{
-				DriveModule.showSelectFolderFilenameDialog("myshader.glsl", function(folder,filename,fullpath){
+				DriveModule.showSelectFolderFilenameDialog("my_shader.glsl", function(folder,filename,fullpath){
 					var shader_code = new LS.ShaderCode();
-					shader_code.code = LS.ShaderCode.examples.fullshader;
+					shader_code.code = LS.ShaderCode.examples.color;
 					LS.RM.registerResource( fullpath, shader_code );
 					material.shader = fullpath;
 					CodingModule.editInstanceCode( shader_code, null, true );
@@ -635,8 +645,9 @@ LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector,
 		}
 		inspector.refresh();
 	}});
-
 	inspector.widgets_per_row = 1;
+	*/
+
 	inspector.addSeparator();
 
 	if( !material._shader )

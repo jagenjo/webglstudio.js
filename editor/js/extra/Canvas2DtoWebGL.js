@@ -963,14 +963,20 @@ function enableWebGLCanvas( canvas, options )
 
 		var canvas_size = 1024;
 
-		var texture_name = ":font_" + fontname + ":" + fontmode + ":" + canvas_size;
+		var texture_name = ":font_" + fontname + ":" + fontmode + ":" + useInternationalFont;
 
 		var texture = textures[texture_name];
 		if(texture && !force)
 			return texture;
 
-		var max_ascii_code = 400;
-		var chars_per_row = 20;
+		var max_ascii_code = 200;
+		var chars_per_row = 10;
+
+		if(useInternationalFont) //more characters
+		{
+			max_ascii_code = 400;
+			chars_per_row = 20;
+		}
 
 		var char_size = (canvas_size / chars_per_row)|0;
 		var font_size = (char_size * 0.95)|0;
@@ -1180,4 +1186,4 @@ function enableWebGLCanvas( canvas, options )
 	return ctx;
 };
 
-enableWebGLCanvas.useInternationalFont = true; //render as much characters as possible in the texture atlas
+enableWebGLCanvas.useInternationalFont = false; //render as much characters as possible in the texture atlas

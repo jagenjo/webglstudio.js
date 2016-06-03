@@ -283,6 +283,12 @@ var RenderModule = {
 	//called by the CanvasManager on requestAnimationFrame
 	render: function(context, force_render)
 	{
+		if(context === true) //allows to pass the second parameter as first
+		{
+			context = gl;
+			force_render = true;
+		}
+
 		this.frame_updated = false;
 
 		if(!force_render)
@@ -487,6 +493,7 @@ var RenderModule = {
 		{
 			this.render(true); //change render_settings?
 			var canvas = createCanvas( width, height );
+			//document.body.appendChild(canvas);
 			var ctx = canvas.getContext("2d");
 			var scalew = width / v3d.canvas.width;
 			var scaleh = height / v3d.canvas.height;

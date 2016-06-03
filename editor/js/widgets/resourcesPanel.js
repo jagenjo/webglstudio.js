@@ -315,17 +315,16 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 	element.dataset["filename"] = resource.filename;
 	if(resource.fullpath)
 		element.dataset["fullpath"] = resource.fullpath;
+
+	var category = DriveModule.getResourceCategory( resource );
+
 	var type = resource.object_type || resource.category || LS.getObjectClassName( resource );
 	if(type == "Object") //in server_side resources that dont have category
 		type = LS.Formats.guessType( resource.fullpath || resource.filename );
 	if(!type)
 		type = "unknown";
 	element.dataset["restype"] = type;
-
-	if(resource.category)
-		element.dataset["category"] = resource.category;
-	else
-		element.dataset["category"] = type;
+	element.dataset["category"] = category;
 
 	element.className = "resource file-item resource-" + type;
 	if(resource.id)
@@ -577,7 +576,8 @@ ResourcesPanelWidget.prototype.showFolderContextualMenu = function(e)
 			if(!material_class)
 				return;
 			var material = new material_class();
-			var fullpath = LS.RM.cleanFullpath( that.current_folder + "/" + v );
+			var folder = that.current_folder || "";
+			var fullpath = LS.RM.cleanFullpath( folder + "/" + v );
 			material.fullpath = fullpath;
 			material.filename = v;
 			LS.RM.registerResource( fullpath, material );

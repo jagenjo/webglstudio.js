@@ -12,7 +12,8 @@ CodingTabsWidget.prototype.init = function()
 	//tabs for every file
 	var tabs = this.tabs = new LiteGUI.Tabs( null, { height: "100%" });
 	this.root.add( tabs );
-	this.plus_tab = tabs.addTab( "plus_tab", { title: "+", tab_width: 20, button: true, callback: this.onPlusTab.bind(this), skip_callbacks: true });
+	//this.plus_tab = tabs.addTab( "plus_tab", { title: "+", tab_width: 20, button: true, callback: this.onPlusTab.bind(this), skip_callbacks: true });
+	tabs.addPlusTab( this.onPlusTab.bind(this) );
 	//tabs.root.style.marginTop = "4px";
 	tabs.root.style.backgroundColor = "#111";
 	//tabs.addTab("+", { });
@@ -43,6 +44,9 @@ CodingTabsWidget.prototype.bindEvents = function()
 	*/
 	LEvent.bind( LS.GlobalScene, "nodeRemoved", this.onNodeRemoved, this );
 	LEvent.bind( LS.GlobalScene, "nodeComponentRemoved", this.onComponentRemoved, this );
+
+	LEvent.bind( LS.GlobalScene, "load", this.onSceneChange, this );
+
 	//LEvent.bind( LS.Components.Script, "renamed", this.onScriptRenamed, this );
 	LEvent.bind( CodingTabsWidget, "code_changed", this.onCodeChanged, this);
 
@@ -300,6 +304,12 @@ CodingTabsWidget.prototype.onCodeChanged = function( e, instance )
 		//todo
 	}
 }
+
+CodingTabsWidget.prototype.onSceneChange = function( e )
+{
+	this.tabs.removeAllTabs(true);
+}
+
 
 CodingTabsWidget.prototype.onComponentRemoved = function(evt, compo )
 {

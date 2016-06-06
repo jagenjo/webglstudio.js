@@ -334,6 +334,20 @@ var SceneStorageModule = {
 		}
 	},
 
+	//tries to save the scene without asking anything, unless is the first time, then shows the dialog to choose everything
+	fastSaveScene: function()
+	{
+		var scene = LS.GlobalScene;
+
+		if(!scene.extra || !scene.extra.folder)
+		{
+			this.showSaveSceneInServerDialog();
+			return;
+		}
+
+		this.saveSceneInServer();
+	},
+
 	showLoadLocalSceneDialog: function()
 	{
 		var dialog = new LiteGUI.Dialog("dialog_load_scene", {title:"Load Scene", close: true, minimize: true, width: 520, height: 300, scroll: false, draggable: true});
@@ -575,6 +589,7 @@ var SceneStorageModule = {
 		var filename = LS.RM.getBasename( scene.extra.publish_name || scene.extra.filename );
 		var folder = scene.extra.folder;
 		var as_pack = false;
+		var all_assets = false;
 
 		var widgets = new LiteGUI.Inspector(null,{name_width:120});
 
@@ -586,9 +601,15 @@ var SceneStorageModule = {
 			folder = v;
 		}});
 
+		widgets.widgets_per_row = 2;
 		widgets.addCheckbox("Publish as PACK", as_pack, function(v){
 			as_pack = v;
 		});
+
+		widgets.addCheckbox("Include all assets", all_assets, function(v){
+			all_assets = v;
+		});
+		widgets.widgets_per_row = 1;
 
 		widgets.addButton(null,"Publish", { className:"big", callback: inner_publish });
 		widgets.addButton(null,"Download PACK", { callback: inner_download });
@@ -597,14 +618,14 @@ var SceneStorageModule = {
 			dialog.close();
 			RenderModule.requestFrame();
 			var fullpath = LS.RM.cleanFullpath( folder + "/" + filename );
-			SceneStorageModule.publishScene( fullpath, as_pack );
+			SceneStorageModule.publishScene( fullpath, as_pack, all_assets );
 		}
 
 		function inner_download(){
 			dialog.close();
 			var fullpath = LS.RM.cleanFullpath( folder + "/" + filename );
 			LS.GlobalScene.extra.publish_name = fullpath;
-			var pack = LS.GlobalScene.toPack( fullpath );
+			var pack = LS.GlobalScene.toPack( fullpath, all_assets );
 			LiteGUI.downloadFile( LS.RM.getFilename(pack.fullpath), pack.bindata );
 		}
 
@@ -613,13 +634,13 @@ var SceneStorageModule = {
 		dialog.adjustSize(10);
 	},
 
-	publishScene: function( fullpath, as_pack )
+	publishScene: function( fullpath, as_pack, include_all )
 	{
 		if(!as_pack)
 			return window.open("player.html?url=" + LS.RM.path + LS.GlobalScene.extra.fullpath,'_blank');
 		
 		LS.GlobalScene.extra.publish_name = fullpath;
-		var pack = LS.GlobalScene.toPack( fullpath );
+		var pack = LS.GlobalScene.toPack( fullpath, include_all );
 
 		//save
 		DriveModule.saveResource( pack, function(v){

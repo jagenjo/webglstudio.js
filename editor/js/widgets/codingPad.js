@@ -430,7 +430,7 @@ CodingPadWidget.prototype.saveInstance = function()
 		that.processCodeInScripts();
 		that.editor.focus();
 		that.showInFooter("saved");
-		LiteGUI.trigger( this, "stored" );
+		LiteGUI.trigger( that, "stored" );
 	}
 }
 
@@ -928,7 +928,7 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 		that.changeFontSize(+1);
 	}});
 
-	this.lang_widget = top_widgets.addCombo("Highlight", "javascript",{ width: 200, values: ["javascript","GLSL","HTML","text"], callback: function(v) { 
+	this.lang_widget = top_widgets.addCombo("Highlight", "javascript",{ width: 200, values: ["javascript","glsl","html","text"], callback: function(v) { 
 		that.setLang( v );
 	}});
 

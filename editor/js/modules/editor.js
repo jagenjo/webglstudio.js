@@ -1707,12 +1707,20 @@ var EditorModule = {
 	onKeyDown: function(e)
 	{
 		var keycode = e.keyCode;
-		//console.log(keycode);
+		console.log(keycode);
 		switch( keycode )
 		{
 			case 32:
 				if(e.ctrlKey)
 					ConsoleModule.toggle();
+				break;
+			case 83: //S
+				if(e.ctrlKey)
+				{
+					SceneStorageModule.fastSaveScene();
+					e.preventDefault();
+					e.stopPropagation();
+				}
 				break;
 			case 70: //F
 				if(e.shiftKey)

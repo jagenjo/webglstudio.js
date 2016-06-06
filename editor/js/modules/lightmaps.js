@@ -556,9 +556,9 @@ var LightmapTools = {
 				{
 					//store the background color in this pixel
 					var pos = (size - y - 1) * size * 4 + x * 4; //flip Y
-					lightmap_pixels[ pos ] = bg_R;
-					lightmap_pixels[ pos + 1 ] = bg_G;
-					lightmap_pixels[ pos + 2 ] = bg_B;
+					lightmap_pixels[ pos ] = Math.min(255.0, bg_R * options.multiplier);
+					lightmap_pixels[ pos + 1 ] = Math.min(255.0, bg_G * options.multiplier);
+					lightmap_pixels[ pos + 2 ] = Math.min(255.0, bg_B * options.multiplier);
 					lightmap_pixels[ pos + 3 ] = 255;
 					continue; 
 				}
@@ -633,7 +633,7 @@ var LightmapTools = {
 		var fbo = session_data.average_fbo;
 		fbo.bind();
 
-		session_data.average_shader.uniforms({u_offset:[0,1/total],u_multiplier: 1,u_texture: 0});
+		session_data.average_shader.uniforms({u_offset:[0,1/total],u_multiplier: 1/session_data.error_texture.total_energy,u_texture: 0});
 		session_data.average_row_texture.bind(0);
 		session_data.average_shader.draw( mesh, gl.TRIANGLES );
 
@@ -799,6 +799,7 @@ var LightmapTools = {
 
 		var range = max_v - min_v;
 		var shift = 1.0 - max_v;
+		var total_energy = 0;
 
 		var pixels = new Uint8Array( size * size * 4 );
 		for(var y = 0; y < size; ++y)
@@ -807,7 +808,9 @@ var LightmapTools = {
 			{
 				var index = y * size * 3 + x * 3;
 				var v = error_matrix[ y * size + x ];
-				var c = ((v - min_v) / range) * 255; //normalized
+				var c = ((v - min_v) / range); //normalized
+				total_energy += c;
+				c *= 255;
 				//var c = (v + shift) * 255; //true value
 				pixels[ index ] = c;
 				pixels[ index + 1] = c;
@@ -815,12 +818,15 @@ var LightmapTools = {
 			}
 		}
 
+		total_energy /= size * size;
+
 		var error_texture = session_data.error_texture;
 		if(!error_texture || error_texture.width != size)
 			error_texture = session_data.error_texture = GL.Texture.fromMemory( size, size, pixels, { format: gl.RGB, wrap: gl.REPEAT, filter: gl.LINEAR });
 		else
 			error_texture.uploadData( pixels );
 		error_texture.fov = fov;
+		error_texture.total_energy = total_energy;
 		LS.RM.registerResource( ":error_texture", error_texture );
 	},
 

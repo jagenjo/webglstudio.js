@@ -768,6 +768,10 @@ var LS = {
 	Classes: {}, //maps classes name like "Prefab" or "Animation" to its namespace "LS.Prefab". Used in Formats and ResourceManager when reading classnames from JSONs or WBin.
 	ResourceClasses: {}, //classes that can contain a resource of the system
 
+	//for HTML GUI
+	_gui_element: null,
+	_gui_style: null,
+
 	/**
 	* Generates a UUID based in the user-agent, time, random and sequencial number. Used for Nodes and Components.
 	* @method generateUId
@@ -1336,8 +1340,8 @@ var LS = {
 	*/
 	getGUIElement: function()
 	{
-		if( LS._gui_element )
-			return LS._gui_element;
+		if( this._gui_element )
+			return this._gui_element;
 
 		var gui = document.createElement("div");
 		gui.className = "litescene-gui";
@@ -1355,9 +1359,17 @@ var LS = {
 		gui.style.overflow = "hidden";
 		gui.style.pointerEvents = "none";
 
+		if(!this._gui_style)
+		{
+			var style = this._gui_style = document.createElement("style");
+			style.appendChild(document.createTextNode(""));
+			document.head.appendChild(style);
+			style.sheet.insertRule(".litescene-gui button, .litescene-gui input { pointer-events: auto; }");
+		}
+
 		gl.canvas.parentNode.appendChild( gui );
 		
-		LS._gui_element = gui;
+		this._gui_element = gui;
 		return gui;
 	},
 
@@ -1372,11 +1384,23 @@ var LS = {
 	createElementGUI: function( tag_type, anchor )
 	{
 		tag_type = tag_type || "div";
-		anchor = anchor || "top-left";
 
 		var element = document.createElement("div");
-		element.style.position = "absolute";
 		element.style.pointerEvents = "auto";
+		return this.attachToGUI( element, anchor );
+	},
+
+	attachToGUI: function( element, anchor )
+	{
+		if(!element)
+		{
+			console.error("attachToGUI: element cannot be null");
+			return;
+		}
+
+		element.style.position = "absolute";
+
+		anchor = anchor || "top-left";
 
 		switch(anchor)
 		{
@@ -1389,10 +1413,20 @@ var LS = {
 				element.style.bottom = "0";
 				element.style.right = "0";
 				break;
+			case "bottom-middle":
+				element.style.bottom = "0";
+				element.style.width = "50%";
+				element.style.margin = "0 auto";
+				break;
 			case "right":
 			case "top-right":
 				element.style.top = "0";
 				element.style.right = "0";
+				break;
+			case "top-middle":
+				element.style.top = "0";
+				element.style.width = "50%";
+				element.style.margin = "0 auto";
 				break;
 			default:
 				console.warn("invalid GUI anchor position: ",anchor);
@@ -1416,12 +1450,18 @@ var LS = {
 	*/
 	removeGUIElement: function()
 	{
-		if( !LS._gui_element )
+		if( !this._gui_element )
 			return;
 
-		if(LS._gui_element.parentNode)
-			LS._gui_element.parentNode.removeChild( LS._gui_element );
-		LS._gui_element = null;
+		if(this._gui_element.parentNode)
+			this._gui_element.parentNode.removeChild( this._gui_element );
+		this._gui_element = null;
+
+		if(this._gui_style)
+		{
+			this._gui_style.parentNode.removeChild( this._gui_style );
+			this._gui_style = null;		
+		}
 		return;
 	},
 
@@ -9011,7 +9051,7 @@ Object.defineProperty( Resource.prototype, "uid", {
 });
 
 /**
-* Returns an object with a representation of the resource internal data
+* Static method: Returns an object with a representation of the resource internal data
 * The order to obtain that object is:
 * 0. checks if getDataToStore function in resource
 * 1. test for _original_file (File or Blob)
@@ -9115,6 +9155,10 @@ Resource.prototype.getDataToStore = function()
 	return data;
 }
 
+/** Clone the resource
+* @method clone
+* @return {LS.Resource} the clone of the resource
+*/
 Resource.prototype.clone = function()
 {
 	var r = new LS.Resource();
@@ -9140,6 +9184,30 @@ Resource.prototype.assignToNode = function(node)
 	var script_component = new LS.Components.ScriptFromFile({ filename: filename });
 	node.addComponent( script_component );
 	return true;
+}
+
+/** Parses the resource data as subfiles (subfiles are fragments of the code identified by a slash followed by name string)
+* @method getAsSubfiles
+* @return {Object} the object that contains every subfile
+*/
+Resource.prototype.getAsSubfiles = function()
+{
+	if(!this._data)
+		return null;
+	return GL.processFileAtlas( this._data );
+}
+
+/** Parses the resource as HTML code and returns a HTMLElement containing the html code
+* @method getAsHTML
+* @return {HTMLElement} the root HTMLElement that contains the code
+*/
+Resource.prototype.getAsHTML = function()
+{
+	if(!this._data)
+		return null;
+	var container = document.createElement("div");
+	container.innerHTML = this._data;
+	return container;
 }
 
 Resource.hasPreview = false; //should this resource use a preview image?
@@ -17767,7 +17835,7 @@ Transform.prototype.setRotation = function(q_angle,axis)
 	if(axis)
 		quat.setAxisAngle( this._rotation, axis, q_angle );
 	else
-		quat.copy(this._rotation, q);
+		quat.copy(this._rotation, q_angle );
 	this._must_update_matrix = true;
 	this._on_change();
 }
@@ -23975,7 +24043,7 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 	}
 
 	//regular mouse dragging
-	if(!mouse_event.dragging)
+	if( mouse_event.eventType != "mousemove" || !mouse_event.dragging )
 		return;
 
 	var changed = false;

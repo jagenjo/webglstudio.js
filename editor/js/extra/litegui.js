@@ -1727,7 +1727,7 @@ function dataURItoBlob( dataURI ) {
 				}
 			}
 		
-			if(close_parent)
+			if(close_parent && !that.lock)
 				that.close();
 		}
 
@@ -3841,7 +3841,7 @@ function dataURItoBlob( dataURI ) {
 		delete this.tabs[id];
 	}
 
-	Tabs.prototype.removeAllTabs = function()
+	Tabs.prototype.removeAllTabs = function( keep_plus )
 	{
 		var tabs = [];
 		for(var i in this.tabs)
@@ -3850,12 +3850,15 @@ function dataURItoBlob( dataURI ) {
 		for(var i in tabs)
 		{
 			var tab = tabs[i];
+			if(tab == this.plus_tab && keep_plus)
+				continue;
+
 			tab.tab.parentNode.removeChild( tab.tab );
 			tab.content.parentNode.removeChild( tab.content );
 			delete this.tabs[ tab.id ];
 		}
 
-		this.tabs = {};
+		//this.tabs = {};
 	}
 
 	Tabs.prototype.clear = function()
@@ -7552,7 +7555,7 @@ Inspector.prototype.addCombo = function(name, value, options)
 		var item_title = values.constructor === Array ? item_value : i;
 		if(item_value && item_value.title)
 			item_title = item_value.title;
-		code += "<option value='"+item_index+"' "+( item_value == value ? " selected":"")+">" + item_title + "</option>";
+		code += "<option value='"+item_index+"' "+( item_value == value ? " selected":"")+" data-index='"+item_index+"'>" + item_title + "</option>";
 		index++;
 	}
 	code += "</select>";

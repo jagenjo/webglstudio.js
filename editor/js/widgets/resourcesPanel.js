@@ -523,74 +523,6 @@ ResourcesPanelWidget.prototype.showItemContextualMenu = function( item, event )
 	}});
 }
 
-ResourcesPanelWidget.prototype.showFolderContextualMenu = function(e)
-{
-	var that = this;
-
-	//create available options
-	var materials_classes = [];
-	for(var i in LS.MaterialClasses)
-		materials_classes.push( i );
-
-	var create_available_options = [
-		"Script",
-		"Text",
-		"Shader",
-		"Pack",
-		{
-			title: "Material",
-			submenu: { 
-				options: materials_classes,
-				callback: inner_create_material
-			}
-		}
-	];
-
-	var options = [
-		{ title: "Create", submenu: {
-				options: create_available_options,
-				callback: inner_create
-			}
-		},
-		{ title: "Refresh", function(){ that.refreshContent(); } }
-	];
-
-	var menu = new LiteGUI.ContextualMenu( options, { event: e, title: "Folder" });
-	
-	function inner_create( action, options, event )
-	{
-		if(action == "Script")
-			that.onShowCreateFileDialog({filename: "script.js", folder: that.current_folder });
-		else if(action == "Text")
-			that.onShowCreateFileDialog({filename: "text.txt", folder: that.current_folder });
-		else if(action == "Pack")
-			PackTools.showCreatePackDialog({folder: that.current_folder});
-		else if(action == "Shader")
-			that.onShowCreateShaderDialog({filename: "shader.glsl", folder: that.current_folder });
-	}
-
-	function inner_create_material( material_classname, options, event )
-	{
-		LiteGUI.prompt("Choose material name", function(v){
-			var material_class = LS.MaterialClasses[ material_classname ];
-			if(!material_class)
-				return;
-			var material = new material_class();
-			var folder = that.current_folder || "";
-			var fullpath = LS.RM.cleanFullpath( folder + "/" + v );
-			material.fullpath = fullpath;
-			material.filename = v;
-			LS.RM.registerResource( fullpath, material );
-			LS.RM.resourceModified( material );
-			if( LS.RM.getFolder( material.fullpath ) )
-				DriveModule.saveResource( material, function(){
-					that.refreshContent();
-				});
-			that.refreshContent();
-		}, { value: "unnammed_material.json" });
-	}
-}
-
 ResourcesPanelWidget.prototype.onTreeUpdated = function()
 {
 	this.tree_widget.updateTree( DriveModule.tree );
@@ -730,98 +662,19 @@ ResourcesPanelWidget.prototype.onTreeUpdate = function(e)
 	this.refreshContent();
 }
 
-ResourcesPanelWidget.prototype.onShowCreateFileDialog = function( options )
+ResourcesPanelWidget.prototype.showFolderContextualMenu = function(e)
 {
 	var that = this;
-	options = options || {};
-	var filename = options.filename || "unnamed.txt";
-	var folder = options.folder || this.current_folder;
 
-	var dialog = new LiteGUI.Dialog( null, { title: "New File", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
-	var inspector = new LiteGUI.Inspector();
+	var options = [ "Create", "Refresh" ];
 
-	inspector.addString("Filename",filename, function(v){ filename = v; });
-	inspector.addString("Folder",folder, function(v){ folder = v; });
-	inspector.addButton(null,"Create", inner);
-
-	function inner()
-	{
-		folder = folder || "";
-		//create dummy file
-		var resource = new LS.Resource();
-		resource.filename = filename;
-		if(folder && folder != "")
-			resource.fullpath = folder + "/" + filename;
-		resource.data = options.content || "";
-
-		//upload to server? depends if it is local or not
-		resource.register();
-		if(resource.fullpath)
-		{
-			DriveModule.saveResource( resource, function(v){
-				that.refreshContent();
-			}, { skip_alerts: true });
-		}
-
-		//refresh
-		//close
-		dialog.close();
-	}
-
-	dialog.add( inspector );
-	dialog.show( null, this._root );
-	dialog.adjustSize();
-	return dialog;
-}
-
-ResourcesPanelWidget.prototype.onShowCreateShaderDialog = function( options )
-{
-	var that = this;
-	options = options || {};
-	var filename = options.filename || "shader.glsl";
-	var folder = options.folder || this.current_folder;
-	var type = "color";
-
-	var dialog = new LiteGUI.Dialog( null, { title: "New Shader", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
-	var inspector = new LiteGUI.Inspector();
-
-	inspector.addString("Filename",filename, function(v){ filename = v; });
-	inspector.addString("Folder",folder, function(v){ folder = v; });
-
-	var types = [];
-	for(var i in LS.ShaderCode.examples)
-		types.push(i);
-
-	inspector.addCombo("Shader Type", type, { values: types, callback: function(v){ type = v; }});
-	inspector.addButton(null,"Create", inner);
-
-	function inner()
-	{
-		folder = folder || "";
-		//create dummy file
-		var shader_code = new LS.ShaderCode();
-		shader_code.filename = filename;
-		if(folder && folder != "")
-			shader_code.fullpath = folder + "/" + filename;
-		shader_code.code = options.content || LS.ShaderCode.examples[type];
-
-		//upload to server? depends if it is local or not
-		LS.ResourcesManager.registerResource( shader_code.fullpath || shader_code.filename, shader_code );
-		if(shader_code.fullpath)
-		{
-			DriveModule.saveResource( shader_code, function(v){
-				that.refreshContent();
-			}, { skip_alerts: true });
-		}
-
-		//refresh
-		//close
-		dialog.close();
-	}
-
-	dialog.add( inspector );
-	dialog.show( null, this._root );
-	dialog.adjustSize();
-	return dialog;
+	var menu = new LiteGUI.ContextualMenu( options, { event: e, title: "Folder", callback: function(v, info, ev){
+		if(v == "Create")
+			DriveModule.onShowCreateNewFileMenu( that.current_folder, ev, menu, function(){
+				that.refreshContent(); 
+			});
+		else if(v == "Refresh")
+			that.refreshContent(); 
+	}});
 }
 

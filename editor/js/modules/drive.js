@@ -1970,7 +1970,180 @@ var DriveModule = {
 		else
 			bytes += " <span class='bytes'>bytes</span>";
 		return bytes;
+	},
+
+	onShowCreateNewFileMenu: function( folder, e, prev_menu, on_complete )
+	{
+		var that = this;
+
+		var options = [
+			"Script",
+			"Text",
+			"Shader",
+			"Pack",
+			"Material"
+		];
+
+		var menu = new LiteGUI.ContextualMenu( options, { event: e, title: "Create", callback: inner, parentMenu: prev_menu });
+		
+		function inner( action, options, event )
+		{
+			if(action == "Script")
+				that.onShowCreateFileDialog({filename: "script.js", folder: folder });
+			else if(action == "Text")
+				that.onShowCreateFileDialog({filename: "text.txt", folder: folder});
+			else if(action == "Pack")
+				PackTools.showCreatePackDialog({folder: folder });
+			else if(action == "Shader")
+				that.onShowCreateShaderDialog({filename: "shader.glsl", folder: folder });
+			else if(action == "Material")
+				that.onShowCreateMaterialDialog({filename: "material.json", folder: folder });
+		}
+	},
+
+	onShowCreateMaterialDialog: function( options )
+	{
+		var that = this;
+		options = options || {};
+		var filename = options.filename || "unnamed_material.json";
+		var folder = options.folder || this.current_folder;
+		var material_classname = "StandardMaterial";
+
+		var dialog = new LiteGUI.Dialog( null, { title: "New Material", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
+		var inspector = new LiteGUI.Inspector();
+
+		inspector.addString("Filename",filename, function(v){ filename = v; });
+		inspector.addFolder("Folder",folder, function(v){ folder = v; });
+
+		var materials_classes = [];
+		for(var i in LS.MaterialClasses)
+			materials_classes.push( i );
+		inspector.addCombo("Material Class", material_classname, { values: materials_classes, callback: function(v){ material_classname = v; }});
+		inspector.addButton(null,"Create", inner);
+
+		function inner()
+		{
+			var material_class = LS.MaterialClasses[ material_classname ];
+			if(!material_class)
+				return;
+			var material = new material_class();
+			folder = folder || "";
+			var fullpath = LS.RM.cleanFullpath( folder + "/" + filename );
+			material.fullpath = fullpath;
+			material.filename = filename;
+			LS.RM.registerResource( fullpath, material );
+			LS.RM.resourceModified( material );
+			if( LS.RM.getFolder( material.fullpath ) )
+			{
+				DriveModule.saveResource( material, function(){
+					that.refreshContent();
+				}, { skip_alerts: true });
+			}
+			that.refreshContent();
+			dialog.close();
+		}
+
+		dialog.add( inspector );
+		dialog.show( null, this._root );
+		dialog.adjustSize();
+		return dialog;
+	},
+
+	onShowCreateFileDialog: function( options )
+	{
+		var that = this;
+		options = options || {};
+		var filename = options.filename || "unnamed.txt";
+		var folder = options.folder || this.current_folder;
+
+		var dialog = new LiteGUI.Dialog( null, { title: "New File", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
+		var inspector = new LiteGUI.Inspector();
+
+		inspector.addString("Filename",filename, function(v){ filename = v; });
+		inspector.addFolder("Folder",folder, function(v){ folder = v; });
+		inspector.addButton(null,"Create", inner);
+
+		function inner()
+		{
+			folder = folder || "";
+			//create dummy file
+			var resource = new LS.Resource();
+			resource.filename = filename;
+			if(folder && folder != "")
+				resource.fullpath = folder + "/" + filename;
+			resource.data = options.content || "";
+
+			//upload to server? depends if it is local or not
+			resource.register();
+			if(resource.fullpath)
+			{
+				DriveModule.saveResource( resource, function(v){
+					that.refreshContent();
+				}, { skip_alerts: true });
+			}
+
+			//refresh
+			//close
+			dialog.close();
+		}
+
+		dialog.add( inspector );
+		dialog.show( null, this._root );
+		dialog.adjustSize();
+		return dialog;
+	},
+
+	onShowCreateShaderDialog: function( options )
+	{
+		var that = this;
+		options = options || {};
+		var filename = options.filename || "shader.glsl";
+		var folder = options.folder || this.current_folder;
+		var type = "color";
+
+		var dialog = new LiteGUI.Dialog( null, { title: "New Shader", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
+		var inspector = new LiteGUI.Inspector();
+
+		inspector.addString("Filename",filename, function(v){ filename = v; });
+		inspector.addFolder("Folder",folder, function(v){ folder = v; });
+
+		var types = [];
+		for(var i in LS.ShaderCode.examples)
+			types.push(i);
+
+		inspector.addCombo("Shader Type", type, { values: types, callback: function(v){ type = v; }});
+		inspector.addButton(null,"Create", inner);
+
+		function inner()
+		{
+			folder = folder || "";
+			//create dummy file
+			var shader_code = new LS.ShaderCode();
+			shader_code.filename = filename;
+			if(folder && folder != "")
+				shader_code.fullpath = folder + "/" + filename;
+			shader_code.code = options.content || LS.ShaderCode.examples[type];
+
+			//upload to server? depends if it is local or not
+			LS.ResourcesManager.registerResource( shader_code.fullpath || shader_code.filename, shader_code );
+			if(shader_code.fullpath)
+			{
+				DriveModule.saveResource( shader_code, function(v){
+					that.refreshContent();
+				}, { skip_alerts: true });
+			}
+
+			//refresh
+			//close
+			dialog.close();
+		}
+
+		dialog.add( inspector );
+		dialog.show( null, this._root );
+		dialog.adjustSize();
+		return dialog;
 	}
+
 };
 
 CORE.registerModule( DriveModule );
@@ -2156,6 +2329,8 @@ DriveModule.registerAssignResourceCallback("Pack", function( fullpath, restype, 
 			return;
 
 		LiteGUI.confirm("Do you want to load the scene inside the PACK? Current scene will be lost", function(v) {
+			if(!v)
+				return;
 			var json_data = pack._data["scene.json"];
 			var data = JSON.parse(json_data);
 			LS.GlobalScene.clear();
@@ -2216,19 +2391,7 @@ DriveModule._textResourceCallback = function( fullpath, restype, options ) {
 		data = resource._data;
 
 	if( (data !== undefined && data !== null) && data.constructor === String )
-	{
-		var extension = LS.RM.getExtension( fullpath );
-		var lang = "text";
-		if( extension == "json" || extension == "js")
-			lang = "javascript";
-		if( extension == "html")
-			lang = "xml";
-		else if(extension)
-			lang = extension;
-
-		var title = LS.ResourcesManager.getFilename( fullpath );
-		CodingModule.editInstanceCode( resource, { title: title, lang: lang }, true );
-	}
+		CodingModule.editInstanceCode( resource, null, true );
 	else
 		LiteGUI.alert("No data found in resource");
 }
@@ -2238,7 +2401,7 @@ DriveModule.registerAssignResourceCallback(["ShaderCode","Script"], DriveModule.
 
 LiteGUI.Inspector.prototype.addFolder = function( name,value, options )
 {
-	options = options || {};
+	options = this.processOptions(options);
 
 	var old_callback_button = options.callback_button;
 	options.callback_button = function(){

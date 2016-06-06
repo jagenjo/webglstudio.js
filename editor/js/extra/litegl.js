@@ -6981,7 +6981,7 @@ GL.create = function(options) {
 	//translates touch events in mouseevents
 	function ontouch(e)
 	{
-		var touches = event.changedTouches,
+		var touches = e.changedTouches,
 			first = touches[0],
 			type = "";
 
@@ -6992,7 +6992,7 @@ GL.create = function(options) {
 		if(touches > 1)
 			return;
 
-		 switch(event.type)
+		 switch(e.type)
 		{
 			case "touchstart": type = "mousedown"; break;
 			case "touchmove":  type = "mousemove"; break;        
@@ -7006,7 +7006,7 @@ GL.create = function(options) {
 								  first.clientX, first.clientY, false,
 								  false, false, false, 0/*left*/, null);
 		first.target.dispatchEvent(simulatedEvent);
-		event.preventDefault();
+		e.preventDefault();
 	}
 
 	function ongesture(e)

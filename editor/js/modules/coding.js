@@ -157,6 +157,8 @@ var CodingModule = //do not change
 				var ext = LS.RM.getExtension(fullpath);
 				if( ext == "js" )
 					lang = "javascript";
+				else if( ext == "txt" )
+					lang = "text";
 				else
 					lang = ext;
 			}

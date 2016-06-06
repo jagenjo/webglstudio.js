@@ -34474,6 +34474,11 @@ SceneTree.prototype.getResources = function( resources, as_array, skip_in_pack )
 		for(var i in this.preloaded_resources)
 			resources[ i ] = true;
 
+	//global scripts
+	for(var i = 0; i < this.global_scripts.length; ++i)
+		if( this.global_scripts[i] )
+			resources[ this.global_scripts[i] ] = true;
+
 	//resources from nodes
 	for(var i = 0; i < this._nodes.length; ++i)
 		this._nodes[i].getResources( resources );

@@ -345,6 +345,14 @@ var SceneStorageModule = {
 			return;
 		}
 
+		var scene_name = scene.extra.filename;
+		var scene_folder = scene.extra.folder;
+		var pos = scene_name.indexOf(".");
+		if(pos != -1) //strip extensions
+			scene_name = scene_name.substr(0, pos);
+		scene.filename = scene_name + ".scene.json";
+		scene.fullpath = scene_folder + "/" + scene.filename;
+
 		this.saveSceneInServer();
 	},
 

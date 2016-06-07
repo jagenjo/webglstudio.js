@@ -14574,6 +14574,10 @@ var Renderer = {
 		LS.Draw.init();
 		LS.Draw.onRequestFrame = function() { LS.GlobalScene.refresh(); }
 
+		//enable webglCanvas lib so it is easy to render in 2D
+		if(global.enableWebGLCanvas && !gl.canvas.canvas2DtoWebGL_enabled)
+			global.enableWebGLCanvas( gl.canvas );
+
 		//there are different render passes, they have different render functions
 		this.registerRenderPass( "color", { id: COLOR_PASS, render_instance: this.renderColorPassInstance } );
 		this.registerRenderPass( "shadow", { id: SHADOW_PASS, render_instance: this.renderShadowPassInstance } );
@@ -36363,10 +36367,10 @@ Player.prototype.renderLoadingBar = function()
 	if(!this.loading)
 		return;
 
-	if(!window.enableWebGLCanvas)
+	if(!global.enableWebGLCanvas)
 		return;
 
-	if( gl.canvas.canvas2DtoWebGL_enabled )
+	if(!gl.canvas.canvas2DtoWebGL_enabled)
 		enableWebGLCanvas( gl.canvas );
 
 	gl.start2D();

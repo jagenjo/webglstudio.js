@@ -6956,12 +6956,13 @@ GL.create = function(options) {
 		{ 
 			e.eventType = "mousewheel";
 			if(e.type == "wheel")
-				e.wheel = -e.deltaY;
+				e.wheel = -e.deltaY; //in firefox deltaY is 1 while in Chrome is 120
 			else
 				e.wheel = (e.wheelDeltaY != null ? e.wheelDeltaY : e.detail * -60);
 
 			//from stack overflow
-			e.delta = e.wheelDelta ? e.wheelDelta/40 : e.deltaY ? -e.deltaY/3 : 0;
+			//firefox doesnt have wheelDelta
+			e.delta = e.wheelDelta !== undefined ? (e.wheelDelta/40) : (e.deltaY ? -e.deltaY/3 : 0);
 			//console.log(e.delta);
 			if(gl.onmousewheel)
 				gl.onmousewheel(e);
@@ -7394,8 +7395,10 @@ GL.augmentEvent = function(e, root_element)
 	root_element = root_element || e.target || gl.canvas;
 	b = root_element.getBoundingClientRect();
 		
-	e.mousex = e.pageX - b.left;
-	e.mousey = e.pageY - b.top;
+	//e.mousex = e.pageX - b.left;
+	//e.mousey = e.pageY - b.top;
+	e.mousex = e.clientX - b.left;
+	e.mousey = e.clientY - b.top;
 	e.canvasx = e.mousex;
 	e.canvasy = b.height - e.mousey;
 	e.deltax = 0;

@@ -124,17 +124,7 @@ var cameraTool = {
 	//returns number around 1 (0.9 if scroll down, 1.1 if scroll up)
 	getWheelDelta: function(e)
 	{
-		/*
-		var amount = e.wheel;
-		if(amount == 120 || amount == -120)
-			amount = 1 + this.settings.mouse_wheel_factor * (amount > 0 ? 1 : -1);
-		else
-			amount = 1.0 + amount * this.settings.mouse_wheel_factor;	
-		return amount;
-		*/
-		var delta = e.wheel !== undefined ? (e.wheel / 100) : e.delta;
-
-		return (1 + delta * this.settings.mouse_wheel_factor);
+		return (1 + e.delta * this.settings.mouse_wheel_factor);
 	},
 
 	update: function(dt)

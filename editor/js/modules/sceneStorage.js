@@ -819,13 +819,13 @@ var SceneStorageModule = {
 		localStorage.setItem(SceneStorageModule.localscene_prefix + "list", local_scenes);
 	},
 
-	saveSceneInServer: function(on_complete, on_error)
+	saveSceneInServer: function(on_complete, on_error, skip_alerts)
 	{
 		DriveModule.checkResourcesSaved( true, inner_save );
 
 		function inner_save(){
 			//grab the scene info here 
-			DriveModule.saveResource( LS.GlobalScene, inner_complete );
+			DriveModule.saveResource( LS.GlobalScene, inner_complete, {skip_alerts: true} );
 		}
 
 		function inner_complete(v,err)

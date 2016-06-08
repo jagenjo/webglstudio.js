@@ -1707,7 +1707,7 @@ var EditorModule = {
 	onKeyDown: function(e)
 	{
 		var keycode = e.keyCode;
-		console.log(keycode);
+		//console.log(keycode);
 		switch( keycode )
 		{
 			case 32:
@@ -2132,7 +2132,7 @@ LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
 		else if (e.dataTransfer.files.length)
 		{
 			ImporterModule.importFile( e.dataTransfer.files[0], function(fullpath){
-				value = input.value = fullpath;
+				input.value = fullpath;
 				LiteGUI.trigger( input, "change" );
 			});
 			e.stopPropagation();

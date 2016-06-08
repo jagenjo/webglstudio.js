@@ -1989,7 +1989,7 @@ var DriveModule = {
 		function inner( action, options, event )
 		{
 			if(action == "Script")
-				that.onShowCreateFileDialog({filename: "script.js", folder: folder });
+				that.onShowCreateScriptDialog({filename: "script.js", folder: folder });
 			else if(action == "Text")
 				that.onShowCreateFileDialog({filename: "text.txt", folder: folder});
 			else if(action == "Pack")
@@ -2073,6 +2073,59 @@ var DriveModule = {
 				resource.fullpath = folder + "/" + filename;
 			resource.data = options.content || "";
 
+			//upload to server? depends if it is local or not
+			resource.register();
+			if(resource.fullpath)
+			{
+				DriveModule.saveResource( resource, function(v){
+					that.refreshContent();
+				}, { skip_alerts: true });
+			}
+
+			//refresh
+			//close
+			dialog.close();
+		}
+
+		dialog.add( inspector );
+		dialog.show( null, this._root );
+		dialog.adjustSize();
+		return dialog;
+	},
+
+	onShowCreateScriptDialog: function( options )
+	{
+		var that = this;
+		options = options || {};
+		var filename = options.filename || "unnamed_script.js";
+		var folder = options.folder || this.current_folder;
+		var template = options.template || "component";
+
+		var dialog = new LiteGUI.Dialog( null, { title: "New Script", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
+		var inspector = new LiteGUI.Inspector();
+
+		inspector.addString("Filename",filename, function(v){ filename = v; });
+		inspector.addFolder("Folder",folder, function(v){ folder = v; });
+
+		var templates = ["empty"];
+		for(var i in LS.Script.templates)
+			templates.push(i);
+
+		inspector.addCombo("Template",template, { values: templates, callback: function(v){ template = v; }});
+		inspector.addButton(null,"Create", inner);
+
+		function inner()
+		{
+			folder = folder || "";
+			//create dummy file
+			var resource = new LS.Resource();
+			resource.filename = filename;
+			if(folder && folder != "")
+				resource.fullpath = folder + "/" + filename;
+
+			var code = LS.Script.templates[template] || "";
+			resource.setData( code );
+			
 			//upload to server? depends if it is local or not
 			resource.register();
 			if(resource.fullpath)

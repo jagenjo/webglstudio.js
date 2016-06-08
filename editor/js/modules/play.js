@@ -183,6 +183,7 @@ var PlayModule = {
 			if(this.preferences.tint_interface_when_playing)
 				LiteGUI.root.classList.add("playing");
 			LEvent.bind( scene,"finish", this.onSceneStop );
+			LS.Input.reset(); //this force some events to be sent
 			scene.start();
 			EditorModule.render_debug_info = false;
 			EditorModule.refreshAttributes();
@@ -213,8 +214,7 @@ var PlayModule = {
 		if(!this.inplayer)
 			return;
 
-		LEvent.trigger( LS.GlobalScene, e.eventType, e );
-		//LS.GlobalScene.triggerInNodes(e.eventType, e);
+		LEvent.trigger( LS.GlobalScene, e.eventType || e.type, e );
 
 		//block propagation (mousemove should be propagated so when dragging panels works)
 		if(e.type != "mousemove")
@@ -242,8 +242,9 @@ var PlayModule = {
 			dt = PlayModule.max_delta_time;
 		if( this.state == 'play' )
 		{
-			LS.GlobalScene.update(dt);
 			LS.Tween.update(dt);
+			LS.Input.update(dt);
+			LS.GlobalScene.update(dt);
 		}
 	},
 

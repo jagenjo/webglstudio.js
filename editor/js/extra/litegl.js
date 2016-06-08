@@ -21,8 +21,8 @@ GL.blockable_keys = {"Up":true,"Down":true,"Left":true,"Right":true};
 
 //some consts
 GL.LEFT_MOUSE_BUTTON = 1;
-GL.RIGHT_MOUSE_BUTTON = 3;
 GL.MIDDLE_MOUSE_BUTTON = 2;
+GL.RIGHT_MOUSE_BUTTON = 3;
 GL.last_context_id = 0;
 
 
@@ -6741,7 +6741,6 @@ GL.create = function(options) {
 		throw("glMatrix not found, LiteGL requires glMatrix to be included");
 
 	var last_click_time = 0;
-	gl.mouse_buttons = 0;
 
 	//some global containers, use them to reuse assets
 	gl.shaders = {};
@@ -6846,13 +6845,17 @@ GL.create = function(options) {
 	}
 
 	var mouse = gl.mouse = {
+		buttons: 0, //this should always be up-to-date with mouse state
 		left_button: false,
 		middle_button: false,
 		right_button: false,
-		x:0,
+		position: new Float32Array(2),
+		x:0, //in canvas coordinates
 		y:0,
 		deltax: 0,
 		deltay: 0,
+		clientx:0, //in client coordinates
+		clienty:0,
 		isInsideRect: function(x,y,w,h, flip_y )
 		{
 			var mouse_y = this.y;
@@ -6862,6 +6865,10 @@ GL.create = function(options) {
 				mouse_y > y && mouse_y < y + h)
 				return true;
 			return false;
+		},
+		isButtonPressed: function(num)
+		{
+			return this.buttons & (1<<GL.RIGHT_MOUSE_BUTTON);
 		}
 	};
 
@@ -6897,26 +6904,25 @@ GL.create = function(options) {
 	}
 
 	function onmouse(e) {
-		var old_mouse_mask = gl.mouse_buttons;
+		var old_mouse_mask = gl.mouse.buttons;
 		GL.augmentEvent(e, canvas);
 		e.eventType = e.eventType || e.type; //type cannot be overwritten, so I make a clone to allow me to overwrite
 		var now = getTime();
 
 		//gl.mouse info
 		mouse.dragging = e.dragging;
+		mouse.position[0] = e.canvasx;
+		mouse.position[1] = e.canvasy;
 		mouse.x = e.canvasx;
 		mouse.y = e.canvasy;
-		mouse.left_button = gl.mouse_buttons & (1<<GL.LEFT_MOUSE_BUTTON);
-		mouse.right_button = gl.mouse_buttons & (1<<GL.RIGHT_MOUSE_BUTTON);
-		//console.log(e.eventType, e.mousex, e.mousey, e.deltax, e.deltay );
+		mouse.clientx = e.mousex;
+		mouse.clienty = e.mousey;
+		mouse.left_button = mouse.buttons & (1<<GL.LEFT_MOUSE_BUTTON);
+		mouse.middle_button = mouse.buttons & (1<<GL.MIDDLE_MOUSE_BUTTON);
+		mouse.right_button = mouse.buttons & (1<<GL.RIGHT_MOUSE_BUTTON);
 
 		if(e.eventType == "mousedown")
 		{
-			if(e.leftButton)
-				mouse.left_button = true;
-			if(e.rightButton)
-				mouse.right_button = true;
-
 			if(old_mouse_mask == 0) //no mouse button was pressed till now
 			{
 				canvas.removeEventListener("mousemove", onmouse);
@@ -6938,7 +6944,7 @@ GL.create = function(options) {
 		} 
 		else if(e.eventType == "mouseup")
 		{
-			if(gl.mouse_buttons == 0) //no more buttons pressed
+			if(gl.mouse.buttons == 0) //no more buttons pressed
 			{
 				canvas.addEventListener("mousemove", onmouse);
 				var doc = canvas.ownerDocument;
@@ -7086,6 +7092,7 @@ GL.create = function(options) {
 
 	//gamepads
 	gl.gamepads = null;
+	/*
 	function onButton(e, pressed)
 	{
 		console.log(e);
@@ -7097,13 +7104,13 @@ GL.create = function(options) {
 			gl.onbutton(e);
 		LEvent.trigger(gl, pressed ? "buttondown" : "buttonup", e );
 	}
-	
 	function onGamepad(e)
 	{
 		console.log(e);
 		if(gl.ongamepad) 
 			gl.ongamepad(e);
 	}
+	*/
 
 	/**
 	* Tells the system to capture gamepad events on the canvas. 
@@ -7115,76 +7122,133 @@ GL.create = function(options) {
 		if(!getGamepads) return;
 		this.gamepads = getGamepads.call(navigator);
 
-		//only in firefox
+		//only in firefox, so I cannot rely on this
+		/*
 		window.addEventListener("gamepadButtonDown", function(e) { onButton(e, true); }, false);
 		window.addEventListener("MozGamepadButtonDown", function(e) { onButton(e, true); }, false);
 		window.addEventListener("WebkitGamepadButtonDown", function(e) { onButton(e, true); }, false);
 		window.addEventListener("gamepadButtonUp", function(e) { onButton(e, false); }, false);
 		window.addEventListener("MozGamepadButtonUp", function(e) { onButton(e, false); }, false);
 		window.addEventListener("WebkitGamepadButtonUp", function(e) { onButton(e, false); }, false);
-
 		window.addEventListener("gamepadconnected", onGamepad, false);
 		window.addEventListener("gamepaddisconnected", onGamepad, false);
+		*/
+
 	}
 
 	/**
 	* returns the detected gamepads on the system
 	* @method getGamepads
+	* @param {bool} skip_mapping if set to true it returns the basic gamepad, otherwise it returns a class with mapping info to XBOX controller
 	*/
-	gl.getGamepads = function()
+	gl.getGamepads = function(skip_mapping)
 	{
 		//gamepads
 		var getGamepads = navigator.getGamepads || navigator.webkitGetGamepads || navigator.mozGetGamepads; 
-		if(!getGamepads) return;
+		if(!getGamepads)
+			return;
 		var gamepads = getGamepads.call(navigator);
-		var gamepad = null;
+		if(!this.gamepads)
+			this.gamepads = [];
 		for(var i = 0; i < 4; i++)
-			if (gamepads[i])
-			{
-				gamepad = gamepads[i];
-				if(this.gamepads) //launch connected gamepads: NOT TESTED
-				{
-					if(!this.gamepads[i] && gamepads[i] && this.ongamepadconnected)
-						this.ongamepadconnected(gamepad);
-					else if(this.gamepads[i] && !gamepads[i] && this.ongamepaddisconnected)
-						this.ongamepaddisconnected(this.gamepads[i]);
-				}
-				//xbox controller mapping
-				var xbox = { axes:[], buttons:{}, hat: ""};
-				xbox.axes["lx"] = gamepad.axes[0];
-				xbox.axes["ly"] = gamepad.axes[1];
-				xbox.axes["rx"] = gamepad.axes[2];
-				xbox.axes["ry"] = gamepad.axes[3];
-				xbox.axes["triggers"] = gamepad.axes[4];
+		{
+			var gamepad = gamepads[i]; //current state
 
-				for(var i = 0; i < gamepad.buttons.length; i++)
+			if(gamepad && !skip_mapping)
+				addGamepadXBOXmapping(gamepad);
+
+			var old_gamepad = this.gamepads[i]; //old state
+
+			//launch connected gamepads events
+			if(!old_gamepad && gamepad)
+			{
+				var event = new CustomEvent("gamepadconnected");
+				event.eventType = event.type;
+				event.gamepad = gamepad;;
+				if(this.ongamepadconnected)
+					this.ongamepadconnected(event);
+				LEvent.trigger(gl,"gamepadconnected",event);
+			}
+			else if(old_gamepad && !gamepad)
+			{
+				var event = new CustomEvent("gamepaddisconnected");
+				event.eventType = event.type;
+				event.gamepad = old_gamepad;
+				if(this.ongamepaddisconnected)
+					this.ongamepaddisconnected(event);
+				LEvent.trigger(gl,"gamepaddisconnected",event);
+			}
+
+			//seek buttons changes to trigger events
+			if(gamepad)
+			{
+				for(var j = 0; j < gamepad.buttons.length; ++j)
 				{
-					switch(i) //I use a switch to ensure that a player with another gamepad could play
+					var button = gamepad.buttons[j];
+					if( button.pressed && (!old_gamepad || !old_gamepad.buttons[j].pressed))
 					{
-						case 0: xbox.buttons["a"] = gamepad.buttons[i].pressed; break;
-						case 1: xbox.buttons["b"] = gamepad.buttons[i].pressed; break;
-						case 2: xbox.buttons["x"] = gamepad.buttons[i].pressed; break;
-						case 3: xbox.buttons["y"] = gamepad.buttons[i].pressed; break;
-						case 4: xbox.buttons["lb"] = gamepad.buttons[i].pressed; break;
-						case 5: xbox.buttons["rb"] = gamepad.buttons[i].pressed; break;
-						case 6: xbox.buttons["lt"] = gamepad.buttons[i].pressed; break;
-						case 7: xbox.buttons["rt"] = gamepad.buttons[i].pressed; break;
-						case 8: xbox.buttons["back"] = gamepad.buttons[i].pressed; break;
-						case 9: xbox.buttons["start"] = gamepad.buttons[i].pressed; break;
-						case 10: xbox.buttons["ls"] = gamepad.buttons[i].pressed; break;
-						case 11: xbox.buttons["rs"] = gamepad.buttons[i].pressed; break;
-						case 12: if( gamepad.buttons[i].pressed) xbox.hat += "up"; break;
-						case 13: if( gamepad.buttons[i].pressed) xbox.hat += "down"; break;
-						case 14: if( gamepad.buttons[i].pressed) xbox.hat += "left"; break;
-						case 15: if( gamepad.buttons[i].pressed) xbox.hat += "right"; break;
-						case 16: xbox.buttons["home"] = gamepad.buttons[i].pressed; break;
-						default:
+						var event = new CustomEvent("gamepadButtonDown");
+						event.eventType = event.type;
+						event.button = button;
+						event.which = j;
+						event.gamepad = gamepad;
+						if(gl.onbuttondown)
+							gl.onbuttondown(event);
+						LEvent.trigger(gl,"buttondown",event);
+					}
+					else if( !button.pressed && (old_gamepad && old_gamepad.buttons[j].pressed))
+					{
+						var event = new CustomEvent("gamepadButtonUp");
+						event.eventType = event.type;
+						event.button = button;
+						event.which = j;
+						event.gamepad = gamepad;
+						if(gl.onbuttondown)
+							gl.onbuttondown(event);
+						LEvent.trigger(gl,"buttonup",event);
 					}
 				}
-				gamepad.xbox = xbox;
 			}
+		}
 		this.gamepads = gamepads;
 		return gamepads;
+	}
+
+	function addGamepadXBOXmapping(gamepad)
+	{
+		//xbox controller mapping
+		var xbox = { axes:[], buttons:{}, hat: ""};
+		xbox.axes["lx"] = gamepad.axes[0];
+		xbox.axes["ly"] = gamepad.axes[1];
+		xbox.axes["rx"] = gamepad.axes[2];
+		xbox.axes["ry"] = gamepad.axes[3];
+		xbox.axes["triggers"] = gamepad.axes[4];
+
+		for(var i = 0; i < gamepad.buttons.length; i++)
+		{
+			switch(i) //I use a switch to ensure that a player with another gamepad could play
+			{
+				case 0: xbox.buttons["a"] = gamepad.buttons[i].pressed; break;
+				case 1: xbox.buttons["b"] = gamepad.buttons[i].pressed; break;
+				case 2: xbox.buttons["x"] = gamepad.buttons[i].pressed; break;
+				case 3: xbox.buttons["y"] = gamepad.buttons[i].pressed; break;
+				case 4: xbox.buttons["lb"] = gamepad.buttons[i].pressed; break;
+				case 5: xbox.buttons["rb"] = gamepad.buttons[i].pressed; break;
+				case 6: xbox.buttons["lt"] = gamepad.buttons[i].pressed; break;
+				case 7: xbox.buttons["rt"] = gamepad.buttons[i].pressed; break;
+				case 8: xbox.buttons["back"] = gamepad.buttons[i].pressed; break;
+				case 9: xbox.buttons["start"] = gamepad.buttons[i].pressed; break;
+				case 10: xbox.buttons["ls"] = gamepad.buttons[i].pressed; break;
+				case 11: xbox.buttons["rs"] = gamepad.buttons[i].pressed; break;
+				case 12: if( gamepad.buttons[i].pressed) xbox.hat += "up"; break;
+				case 13: if( gamepad.buttons[i].pressed) xbox.hat += "down"; break;
+				case 14: if( gamepad.buttons[i].pressed) xbox.hat += "left"; break;
+				case 15: if( gamepad.buttons[i].pressed) xbox.hat += "right"; break;
+				case 16: xbox.buttons["home"] = gamepad.buttons[i].pressed; break;
+				default:
+			}
+		}
+		gamepad.xbox = xbox;
 	}
 
 	/**
@@ -7386,6 +7450,7 @@ GL.mapKeyCode = function(code)
 GL.dragging = false;
 GL.last_pos = [0,0];
 
+//adds extra info to the MouseEvent (coordinates in canvas axis, deltas and button state)
 GL.augmentEvent = function(e, root_element)
 {
 	var offset_left = 0;
@@ -7395,8 +7460,6 @@ GL.augmentEvent = function(e, root_element)
 	root_element = root_element || e.target || gl.canvas;
 	b = root_element.getBoundingClientRect();
 		
-	//e.mousex = e.pageX - b.left;
-	//e.mousey = e.pageY - b.top;
 	e.mousex = e.clientX - b.left;
 	e.mousey = e.clientY - b.top;
 	e.canvasx = e.mousex;
@@ -7404,20 +7467,18 @@ GL.augmentEvent = function(e, root_element)
 	e.deltax = 0;
 	e.deltay = 0;
 	
-	//console.log("WHICH: ",e.which," BUTTON: ",e.button, e.type);
 	if(e.type == "mousedown")
 	{
 		this.dragging = true;
-		gl.mouse_buttons |= (1 << e.which); //enable
+		gl.mouse.buttons |= (1 << e.which); //enable
 	}
 	else if (e.type == "mousemove")
 	{
 	}
 	else if (e.type == "mouseup")
 	{
-		gl.mouse_buttons = gl.mouse_buttons & ~(1 << e.which);
-		//console.log("BUT:", e.button, "MASK:", gl.mouse_buttons);
-		if(gl.mouse_buttons == 0)
+		gl.mouse.buttons = gl.mouse.buttons & ~(1 << e.which);
+		if(gl.mouse.buttons == 0)
 			this.dragging = false;
 	}
 
@@ -7426,11 +7487,12 @@ GL.augmentEvent = function(e, root_element)
 	this.last_pos[0] = e.mousex;
 	this.last_pos[1] = e.mousey;
 
+	//insert info in event
 	e.dragging = this.dragging;
-	e.buttons_mask = gl.mouse_buttons;			
-
-	e.leftButton = gl.mouse_buttons & (1<<GL.LEFT_MOUSE_BUTTON);
-	e.rightButton = gl.mouse_buttons & (1<<GL.RIGHT_MOUSE_BUTTON);
+	e.buttons_mask = gl.mouse.buttons;
+	e.leftButton = gl.mouse.buttons & (1<<GL.LEFT_MOUSE_BUTTON);
+	e.middleButton = gl.mouse.buttons & (1<<GL.MIDDLE_MOUSE_BUTTON);
+	e.rightButton = gl.mouse.buttons & (1<<GL.RIGHT_MOUSE_BUTTON);
 	e.isButtonPressed = function(num) { return this.buttons_mask & (1<<num); }
 }
 

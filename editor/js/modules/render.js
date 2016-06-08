@@ -76,6 +76,7 @@ var RenderModule = {
 		this.shaders_url = CORE.config.shaders || this.shaders_url;
 		LS.ShadersManager.init( this.shaders_url ); //load shaders
 		LS.Renderer.init();
+		LS.Input.init();
 		LS.catch_errors = false; //helps coding
 
 		this.render_settings.render_all_cameras = false;
@@ -301,6 +302,7 @@ var RenderModule = {
 		}
 
 		this.frame_updated = true;
+		this.canvas_manager.frame_rendered = true;
 
 		var global_render_settings = this.render_settings;
 		var scene_render_settings = LS.GlobalScene.info ? LS.GlobalScene.info.render_settings : global_render_settings;

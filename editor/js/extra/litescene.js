@@ -767,6 +767,7 @@ var LS = {
 
 	Classes: {}, //maps classes name like "Prefab" or "Animation" to its namespace "LS.Prefab". Used in Formats and ResourceManager when reading classnames from JSONs or WBin.
 	ResourceClasses: {}, //classes that can contain a resource of the system
+	Globals: {}, //global scope to share info among scripts
 
 	//for HTML GUI
 	_gui_element: null,
@@ -2017,6 +2018,172 @@ var Network = {
 };
 
 LS.Network = Network;
+
+/**
+* Input is a static class used to read the input state (keyboard, mouse, gamepad, etc)
+*
+* @class Input
+* @namespace LS
+* @constructor
+*/
+var Input = {
+	mapping: {
+
+		//xbox
+		A_BUTTON: 0,
+		B_BUTTON: 1,
+		X_BUTTON: 2,
+		Y_BUTTON: 3,
+		LB_BUTTON: 4,
+		RB_BUTTON: 5,
+		BACK_BUTTON: 6,
+		START_BUTTON: 7,
+		LS_BUTTON: 8,
+		RS_BUTTON: 9,
+
+		LX: 0,
+		LY: 1,
+		RX: 2,
+		RY: 3,
+		TRIGGERS: 4,
+		LEFT_TRIGGER: 4,
+		RIGHT_TRIGGER: 5,
+
+		//generic
+		JUMP:0,
+		FIRE:1,
+
+		//mouse
+		LEFT:0,
+		MIDDLE:1,
+		RIGHT:2
+	},
+
+	Keyboard: [],
+	Mouse: {},
+	Gamepads: [],
+
+	init: function()
+	{
+		this.Keyboard = gl.keys;
+		this.Mouse = gl.mouse;
+		this.Gamepads = gl.getGamepads();
+	},
+
+	reset: function()
+	{
+		this.Gamepads = gl.gamepads = []; //force reset so they send new events 
+	},
+
+	update: function()
+	{
+		//capture gamepads snapshot
+		this.Gamepads = gl.getGamepads();
+	},
+
+	/**
+	* returns if the mouse is inside the rect defined by x,y, width,height
+	*
+	* @method isMouseInRect
+	* @param {Number} x x coordinate of the mouse in canvas coordinates 
+	* @param {Number} y y coordinate of the mouse in canvas coordinates (0 is bottom)
+	* @param {Number} width rectangle width in pixels
+	* @param {Number} height rectangle height in pixels
+	* @param {boolean} flip [optional] if you want to flip the y coordinate
+	* @return {boolean}
+	*/
+	isMouseInRect: function(x,y,width,height, flip_y)
+	{
+		return this.Mouse.isInsideRect(x,y,width,height,flip_y);
+	},
+
+	/**
+	* Returns a gamepad snapshot if it is connected
+	*
+	* @method getGamepad
+	* @param {Number} index the index of the gamepad
+	* @return {Object} gamepad snapshot with all the info
+	*/
+	getGamepad: function(index)
+	{
+		index = index || 0;
+		return this.Gamepads[index];
+	},
+
+	/**
+	* Returns a gamepad snapshot if it is connected
+	*
+	* @method getGamepadAxis
+	* @param {Number} index the index of the gamepad
+	* @param {String} name the name of the axis (also you could specify the number)
+	* @param {boolean} raw [optional] if you want the data unfiltered
+	* @return {Number} axis value from -1 to 1
+	*/
+	getGamepadAxis: function(index, name, raw)
+	{
+		var gamepad = this.Gamepads[index];
+		if(!gamepad)
+			return 0;
+
+		var num = 0;
+		if(name && name.constructor === String)
+			num = this.mapping[name];
+		else
+			num = name;
+		if(num === undefined)
+			return 0;
+		var v = gamepad.axes[num];
+		if(!raw && v > -0.1 && v < 0.1 ) //filter
+			return 0;
+		return v;
+	},
+
+	/**
+	* Returns if the given button of the specified gamepad is pressed
+	*
+	* @method isGamepadButtonPressed
+	* @param {Number} index the index of the gamepad
+	* @param {String} name the name of the button "A","B","X","Y","LB","RB","BACK","START","LS","RS" (also you could specify the number)
+	* @return {Boolean} if the button is pressed
+	*/
+	isGamepadButtonPressed: function(input, name)
+	{
+		var gamepad = this.Gamepads[input];
+		if(!gamepad)
+			return null;
+
+		var num = 0;
+		if(name && name.constructor === String)
+			num = this.mapping[name];
+		else
+			num = name;
+		if(num === undefined)
+			return 0;
+		var button = gamepad.buttons[num];
+		return button && button.pressed;
+	},
+
+	/**
+	* Returns if the given mouse button is pressed
+	*
+	* @method isMouseButtonPressed
+	* @param {String} name the name of the button  "LEFT","MIDDLE,"RIGHT" (also you could specify the number)
+	* @return {Boolean} if the button is pressed
+	*/
+	isMouseButtonPressed: function(name)
+	{
+		var num = 0;
+		if(name && name.constructor === String)
+			num = this.mapping[name];
+		else
+			num = name;
+		if(num === undefined)
+			return false;
+		return (this.Mouse.buttons & (1<<num)) !== 0;
+	}
+};
+
+LS.Input = Input;
 /**
 * Static class that contains all the resources loaded, parsed and ready to use.
 * It also contains the parsers and methods in charge of processing them
@@ -12274,7 +12441,7 @@ if(typeof(LiteGraph) != "undefined")
 				case "Scale": transform.setScale(v); break;
 				case "Matrix": transform.fromMatrix(v); break;
 				case "Translate": transform.translate(v); break;
-				case "Translate Local": transform.translateLocal(v); break;
+				case "Translate Global": transform.translateGlobal(v); break;
 				case "RotateY": transform.rotateY(v); break;
 			}
 		}
@@ -17862,7 +18029,7 @@ Transform.prototype.setScale = function(x,y,z)
 }
 
 /**
-* translates object in local coordinates (adds to the position)
+* translates object in local coordinates (using the rotation and the scale)
 * @method translate
 * @param {number} x 
 * @param {number} y
@@ -17871,27 +18038,26 @@ Transform.prototype.setScale = function(x,y,z)
 Transform.prototype.translate = function(x,y,z)
 {
 	if(arguments.length == 3)
-		vec3.add( this._position, this._position, [x,y,z] );
+		vec3.add( this._position, this._position, this.transformVector([x,y,z]) );
 	else
-		vec3.add( this._position, this._position, x );
+		vec3.add( this._position, this._position, this.transformVector(x) );
 	this._must_update_matrix = true;
 	this._on_change();
 }
 
 /**
-* NOT TESTED
-* translates object in object coordinates (using the rotation and the scale)
-* @method translateLocal
+* translates object in local coordinates (adds to the position)
+* @method translateGlobal
 * @param {number} x 
 * @param {number} y
 * @param {number} z 
 */
-Transform.prototype.translateLocal = function(x,y,z)
+Transform.prototype.translateGlobal = function(x,y,z)
 {
 	if(arguments.length == 3)
-		vec3.add( this._position, this._position, this.transformVector([x,y,z]) );
+		vec3.add( this._position, this._position, [x,y,z] );
 	else
-		vec3.add( this._position, this._position, this.transformVector(x) );
+		vec3.add( this._position, this._position, x );
 	this._must_update_matrix = true;
 	this._on_change();
 }
@@ -18903,6 +19069,7 @@ Camera.prototype.lookAt = function(eye,center,up)
 	if( this._root && this._root.transform )
 	{
 		this._root.transform.lookAt(eye,center,up);
+		this._eye.set(LS.ZEROS);
 		this.focalLength = vec3.distance( eye, center );
 	}
 	else
@@ -24054,9 +24221,9 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 
 	if(this.mode == CameraController.FIRSTPERSON)
 	{
-		cam.rotate(-mouse_event.deltax * this.rot_speed,[0,1,0]);
+		cam.rotate(-mouse_event.deltax * this.rot_speed,LS.TOP);
 		cam.updateMatrices();
-		var right = cam.getLocalVector([1,0,0]);
+		var right = cam.getLocalVector(LS.RIGHT);
 
 		if(is_global_camera)
 		{
@@ -24090,7 +24257,7 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 			}
 			else
 			{
-				node.transform.translate( delta );
+				node.transform.translateGlobal( delta );
 				cam.updateMatrices();
 			}
 
@@ -24145,9 +24312,9 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 			var center = vec3.create();
 			cam.getCenter( center );
 			if(is_global_camera)
-				cam.orbit( -mouse_event.deltax * this.rot_speed, [0,1,0], center );
+				cam.orbit( -mouse_event.deltax * this.rot_speed, LS.TOP, center );
 			else
-				node.transform.orbit( -mouse_event.deltax * this.rot_speed, [0,1,0], center );
+				node.transform.orbit( -mouse_event.deltax * this.rot_speed, LS.TOP, center );
 			changed = true;
 		}
 		else
@@ -24159,7 +24326,7 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 			if(is_global_camera)
 				cam.move( delta );
 			else
-				node.transform.translate( delta );
+				node.transform.translateGlobal( delta );
 			cam.updateMatrices();
 			changed = true;
 		}
@@ -24176,7 +24343,7 @@ CameraController.prototype.testOriginPlane = function(x,y, result)
 	var result = result || vec3.create();
 
 	//test against plane at 0,0,0
-	if( geo.testRayPlane( ray.origin, ray.direction, [0,0,0], [0,1,0], result ) )
+	if( geo.testRayPlane( ray.origin, ray.direction, LS.ZEROS, LS.TOP, result ) )
 		return true;
 	return false;
 }
@@ -27352,7 +27519,7 @@ LS.registerComponent( RealtimeReflector );
 function Script(o)
 {
 	this.enabled = true;
-	this.code = "this.onUpdate = function(dt)\n{\n\t//node.scene.refresh();\n}";
+	this.code = this.constructor.templates["component"];
 
 	this._script = new LScript();
 
@@ -27379,6 +27546,9 @@ Script.block_execution = false; //avoid executing code
 Script.catch_important_exceptions = true; //catch exception during parsing, otherwise configuration could fail
 
 Script.icon = "mini-icon-script.png";
+Script.templates = {
+	"component":"//@unnamed\n//defined: component, node, scene, globals\nthis.onStart = function()\n{\n}\n\nthis.onUpdate = function(dt)\n{\n\t//node.scene.refresh();\n}"
+};
 
 Script["@code"] = {type:'script'};
 
@@ -27401,11 +27571,14 @@ Script.defineAPIFunction = function( func_name, target, event, info ) {
 	Script.API_events_to_function[ event ] = data;
 }
 
+//init
 Script.defineAPIFunction( "onStart", Script.BIND_TO_SCENE, "start" );
 Script.defineAPIFunction( "onFinish", Script.BIND_TO_SCENE, "finish" );
 Script.defineAPIFunction( "onPrefabReady", Script.BIND_TO_NODE, "prefabReady" );
+//behaviour
 Script.defineAPIFunction( "onUpdate", Script.BIND_TO_SCENE, "update" );
 Script.defineAPIFunction( "onClicked", Script.BIND_TO_NODE, "clicked" );
+//rendering
 Script.defineAPIFunction( "onSceneRender", Script.BIND_TO_SCENE, "beforeRender" );
 Script.defineAPIFunction( "onCollectRenderInstances", Script.BIND_TO_NODE, "collectRenderInstances" );
 Script.defineAPIFunction( "onRender", Script.BIND_TO_NODE, "beforeRenderInstances" );
@@ -27414,11 +27587,20 @@ Script.defineAPIFunction( "onRenderGUI", Script.BIND_TO_SCENE, "renderGUI" );
 Script.defineAPIFunction( "onRenderHelpers", Script.BIND_TO_SCENE, "renderHelpers" );
 Script.defineAPIFunction( "onEnableFrameContext", Script.BIND_TO_SCENE, "enableFrameContext" );
 Script.defineAPIFunction( "onShowFrameContext", Script.BIND_TO_SCENE, "showFrameContext" );
+//input
 Script.defineAPIFunction( "onMouseDown", Script.BIND_TO_SCENE, "mousedown" );
 Script.defineAPIFunction( "onMouseMove", Script.BIND_TO_SCENE, "mousemove" );
 Script.defineAPIFunction( "onMouseUp", Script.BIND_TO_SCENE, "mouseup" );
+Script.defineAPIFunction( "onMouseWheel", Script.BIND_TO_SCENE, "mousewheel" );
 Script.defineAPIFunction( "onKeyDown", Script.BIND_TO_SCENE, "keydown" );
+Script.defineAPIFunction( "onKeyUp", Script.BIND_TO_SCENE, "keyup" );
+Script.defineAPIFunction( "onGamepadConnected", Script.BIND_TO_SCENE, "gamepadconnected" );
+Script.defineAPIFunction( "onGamepadDisconnected", Script.BIND_TO_SCENE, "gamepaddisconnected" );
+Script.defineAPIFunction( "onButtonDown", Script.BIND_TO_SCENE, "buttondown" );
+Script.defineAPIFunction( "onButtonUp", Script.BIND_TO_SCENE, "buttonup" );
+//dtor
 Script.defineAPIFunction( "onDestroy", Script.BIND_TO_NODE, "destroy" );
+
 
 Script.coding_help = "\n\
 For a complete guide check: <a href='https://github.com/jagenjo/litescene.js/blob/master/guides/scripting.md' target='blank'>Scripting Guide</a>\n\
@@ -27536,7 +27718,7 @@ Script.prototype.processCode = function( skip_events )
 		var old = this._stored_properties || this.getContextProperties();
 
 		//compiles and executes the context
-		var ret = this._script.compile({component:this, node: this._root, scene: this._root.scene });
+		var ret = this._script.compile({component:this, node: this._root, scene: this._root.scene, globals: LS.Globals });
 		if(!skip_events)
 			this.hookEvents();
 
@@ -27778,6 +27960,10 @@ Script.prototype.onAddedToScene = function( scene )
 	if( this._name && !LS.Script.active_scripts[ this._name ] )
 		LS.Script.active_scripts[ this._name ] = this;
 
+	//avoid to parse it again
+	if(this._script && this._script._context && this._script._context._initialized )
+		return;
+
 	if( !this.constructor.catch_important_exceptions )
 	{
 		this.processCode();
@@ -27948,6 +28134,10 @@ Object.defineProperty( ScriptFromFile.prototype, "name", {
 
 ScriptFromFile.prototype.onAddedToScene = function( scene )
 {
+	//avoid to parse it again
+	if(this._script && this._script._context && this._script._context._initialized )
+		return;
+
 	if( !this.constructor.catch_important_exceptions )
 	{
 		this.processCode();
@@ -27998,7 +28188,7 @@ ScriptFromFile.prototype.processCode = function( skip_events )
 
 		//compiles and executes the context
 		var old = this._stored_properties || this.getContextProperties();
-		var ret = this._script.compile({component:this, node: this._root, scene: this._root.scene });
+		var ret = this._script.compile({component:this, node: this._root, scene: this._root.scene, globals: LS.Globals });
 		if(!skip_events)
 			this.hookEvents();
 		this.setContextProperties( old );
@@ -36185,16 +36375,29 @@ function Player(options)
 	//bind all the events 
 	this.gl.ondraw = LS.Player.prototype._ondraw.bind(this);
 	this.gl.onupdate = LS.Player.prototype._onupdate.bind(this);
-	this.gl.onmousedown = LS.Player.prototype._onmouse.bind(this);
-	this.gl.onmousemove = LS.Player.prototype._onmouse.bind(this);
-	this.gl.onmouseup = LS.Player.prototype._onmouse.bind(this);
-	this.gl.onmousewheel = LS.Player.prototype._onmouse.bind(this);
-	this.gl.onkeydown = LS.Player.prototype._onkey.bind(this);
-	this.gl.onkeyup = LS.Player.prototype._onkey.bind(this);
+
+	var mouse_event_callback = LS.Player.prototype._onmouse.bind(this);
+	this.gl.onmousedown = mouse_event_callback;
+	this.gl.onmousemove = mouse_event_callback;
+	this.gl.onmouseup = mouse_event_callback;
+	this.gl.onmousewheel = mouse_event_callback;
+
+	var key_event_callback = LS.Player.prototype._onkey.bind(this);
+	this.gl.onkeydown = key_event_callback;
+	this.gl.onkeyup = key_event_callback;
+
+	var gamepad_event_callback = LS.Player.prototype._ongamepad.bind(this);
+	this.gl.ongamepadconnected = gamepad_event_callback;
+	this.gl.ongamepaddisconnected = gamepad_event_callback;
+	this.gl.ongamepadButtonDown = gamepad_event_callback;
+	this.gl.ongamepadButtonUp = gamepad_event_callback;
 
 	//capture input
 	gl.captureMouse(true);
 	gl.captureKeys(true);
+	gl.captureGamepad(true);
+
+	LS.Input.init();
 
 	//launch render loop
 	gl.animate();
@@ -36282,9 +36485,12 @@ Player.prototype.pause = function()
 
 Player.prototype.play = function()
 {
+	if(this.state == "playing")
+		return;
 	if(this.debug)
 		console.log("Start");
 	this.state = "playing";
+	LS.Input.reset(); //this force some events to be sent
 	this.scene.start();
 }
 
@@ -36322,6 +36528,7 @@ Player.prototype._onupdate = function(dt)
 		return;
 
 	LS.Tween.update(dt);
+	LS.Input.update(dt);
 
 	if(this.onPreUpdate)
 		this.onPreUpdate(dt);
@@ -36340,7 +36547,7 @@ Player.prototype._onmouse = function(e)
 	if(this.state != "playing")
 		return;
 
-	LEvent.trigger( this.scene, e.eventType, e );
+	LEvent.trigger( this.scene, e.eventType || e.type, e );
 
 	//hardcoded event handlers in the player
 	if(this.onMouse)
@@ -36356,10 +36563,27 @@ Player.prototype._onkey = function(e)
 	if(this.onKey)
 	{
 		var r = this.onKey(e);
-		if(r) return;
+		if(r)
+			return;
 	}
 
-	LEvent.trigger( this.scene, e.eventType, e );
+	LEvent.trigger( this.scene, e.eventType || e.type, e );
+}
+
+Player.prototype._ongamepad = function(e)
+{
+	if(this.state != "playing")
+		return;
+
+	//hardcoded event handlers in the player
+	if(this.onGamepad)
+	{
+		var r = this.onGamepad(e);
+		if(r)
+			return;
+	}
+
+	LEvent.trigger( this.scene, e.eventType || e.type, e );
 }
 
 Player.prototype.renderLoadingBar = function()

@@ -80,8 +80,9 @@ CanvasManager.prototype.init = function( options )
 
 	gl.captureMouse(true);
 	gl.captureKeys();
+	gl.captureGamepads();
 
-	gl.onmousedown = gl.onmousemove = gl.onmouseup = gl.onkeydown = gl.onkeyup = gl.onmousewheel = this.dispatchEvent.bind(this);
+	gl.onmousedown = gl.onmousemove = gl.onmouseup = gl.onkeydown = gl.onkeyup = gl.onmousewheel = gl.ongamepadconnected = gl.ongamepaddisconnected = gl.ongamepadButtonDown = gl.ongamepadButtonDown = this.dispatchEvent.bind(this);
 
 	gl.viewport(0,0,gl.canvas.width, gl.canvas.height);
 	gl.enable( gl.CULL_FACE );
@@ -162,14 +163,22 @@ CanvasManager.prototype.setWidgetOrder = function(widget, order)
 
 CanvasManager.prototype.ondraw = function()
 {
+	this.frame_rendered = false;
+	var force_frame = this.must_update;
+
 	for(var i = 0; i < this.widgets.length; ++i)
 	{
 		if(this.widgets[i].render)
-			if(this.widgets[i].render(gl) == true)
+			if(this.widgets[i].render(gl, force_frame) == true)
 				break;
 	}
 
-	//assign
+	this.must_update = false;
+
+	if(!this.frame_rendered)
+		return;
+
+	//render 2D tree
 	gl.start2D();
 	CanvasElement.reset( gl.viewport_data );
 	this.root.render( gl );
@@ -187,8 +196,6 @@ CanvasManager.prototype.onupdate = function(seconds)
 	this.root.update( seconds );
 }
 
-//input ******************
-
 CanvasManager.prototype.dispatchEvent = function(e)
 {
 	var event_name = e.eventType;
@@ -201,20 +208,12 @@ CanvasManager.prototype.dispatchEvent = function(e)
 			elem.blur();
 	}
 
-	/*
-	if(event_name == "keydown")
-	{
-		if(	LiteGUI.focus_widget )
-			LiteGUI.focus_widget.dispatchEvent( e );
-		if(e.defaultPrevented)
-			return;
-	}
-	*/
-
-
 	//start width widgets
 	if( this.root.processEvent(e) === true )
+	{
+		this.refresh();
 		return;
+	}
 
 	//back to front
 	for(var i = this.widgets.length-1;i >= 0; i--)
@@ -228,4 +227,12 @@ CanvasManager.prototype.dispatchEvent = function(e)
 				break;
 	}
 }
+
+
+
+CanvasManager.prototype.refresh = function()
+{
+	this.must_update = true;
+}
+
 

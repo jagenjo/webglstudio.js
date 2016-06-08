@@ -124,7 +124,7 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 		}});
 	}
 
-	inspector.addButton("","Copy from current",{disabled: is_node_camera, callback: inner_copy_from_current});
+	inspector.addButton("","Copy from current",{callback: inner_copy_from_current});
 
 	inspector.addTitle("Viewport");
 	inspector.addVector2("Offset", camera._viewport.subarray(0,2), { pretitle: AnimationModule.getKeyframeCode( camera, "viewport_offset" ),  name_width: 100,min:0, max:1, step: 0.001, callback: function(v) { 
@@ -155,20 +155,21 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 		//Editor camera is not inside a node, but this camera could be, so be careful
 		if(camera._root && camera._root._is_root)
 		{
-			camera.eye = RenderModule.camera.eye;
-			camera.center = RenderModule.camera.center;
-			camera.up = RenderModule.camera.up;
+			camera.lookAt( RenderModule.camera.eye, RenderModule.camera.center, RenderModule.camera.up );
 			//camera.configure( RenderModule.camera.serialize() );
 		}
 		else
 		{
+			camera.lookAt( RenderModule.camera.eye, RenderModule.camera.center, RenderModule.camera.up );
 			//if it is inside the node, then change node position
+			/*
 			var data = RenderModule.camera.serialize();
 			data.eye = [0,0,0];
 			data.center = [0,0,-1];
 			data.up = [0,1,0];
 			camera.configure( data );
 			camera._root.transform.lookAt( RenderModule.camera.getEye(), RenderModule.camera.getCenter(), RenderModule.camera.getUp(), true );
+			*/
 		}
 
 		inspector.refresh();

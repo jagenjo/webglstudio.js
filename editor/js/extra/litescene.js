@@ -36367,7 +36367,7 @@ function Player(options)
 
 	//this will repaint every frame and send events when the mouse clicks objects
 	this.force_redraw = options.redraw || false;
-	this.state = "playing";
+	this.state = LS.Player.STOPPED;
 
 	if( this.gl.ondraw )
 		throw("There is already a litegl attached to this context");
@@ -36395,13 +36395,17 @@ function Player(options)
 	//capture input
 	gl.captureMouse(true);
 	gl.captureKeys(true);
-	gl.captureGamepad(true);
+	gl.captureGamepads(true);
 
 	LS.Input.init();
 
 	//launch render loop
 	gl.animate();
 }
+
+Player.STOPPED = 0;
+Player.PLAYING = 1;
+Player.PAUSED = 2;
 
 /**
 * Loads an scene and triggers start
@@ -36447,7 +36451,7 @@ Player.prototype.setScene = function( scene_info, on_complete )
 {
 	var that = this;
 	var scene = this.scene;
-	if(typeof(scene_info) == "string")
+	if(scene_info && scene_info.constructor === String )
 		scene_info = JSON.parse(scene_info);
 
 	var scripts = LS.SceneTree.getScriptsList( scene_info );
@@ -36480,29 +36484,29 @@ Player.prototype.setScene = function( scene_info, on_complete )
 
 Player.prototype.pause = function()
 {
-	this.state = "paused";
+	this.state = LS.Player.PAUSED;
 }
 
 Player.prototype.play = function()
 {
-	if(this.state == "playing")
+	if(this.state == LS.Player.PLAYING)
 		return;
 	if(this.debug)
 		console.log("Start");
-	this.state = "playing";
+	this.state = LS.Player.PLAYING;
 	LS.Input.reset(); //this force some events to be sent
 	this.scene.start();
 }
 
 Player.prototype.stop = function()
 {
-	this.state = "stopped";
+	this.state = LS.Player.STOPPED;
 	this.scene.finish();
 }
 
 Player.prototype._ondraw = function()
 {
-	if(this.state != "playing")
+	if(this.state != LS.Player.PLAYING)
 		return;
 
 	if(this.onPreDraw)
@@ -36524,7 +36528,7 @@ Player.prototype._ondraw = function()
 
 Player.prototype._onupdate = function(dt)
 {
-	if(this.state != "playing")
+	if(this.state != LS.Player.PLAYING)
 		return;
 
 	LS.Tween.update(dt);
@@ -36544,7 +36548,7 @@ Player.prototype._onupdate = function(dt)
 Player.prototype._onmouse = function(e)
 {
 	//console.log(e);
-	if(this.state != "playing")
+	if(this.state != LS.Player.PLAYING)
 		return;
 
 	LEvent.trigger( this.scene, e.eventType || e.type, e );
@@ -36556,7 +36560,7 @@ Player.prototype._onmouse = function(e)
 
 Player.prototype._onkey = function(e)
 {
-	if(this.state != "playing")
+	if(this.state != LS.Player.PLAYING)
 		return;
 
 	//hardcoded event handlers in the player
@@ -36572,7 +36576,7 @@ Player.prototype._onkey = function(e)
 
 Player.prototype._ongamepad = function(e)
 {
-	if(this.state != "playing")
+	if(this.state != LS.Player.PLAYING)
 		return;
 
 	//hardcoded event handlers in the player

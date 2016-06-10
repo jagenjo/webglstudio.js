@@ -535,7 +535,19 @@ var ToolUtils = {
 	//useful generic methods
 	saveNodeTransformUndo: function(node)
 	{
+		if(!node || node.constructor !== LS.SceneNode)
+		{
+			console.error("saveNodeTransformUndo node must be SceneNode");
+			return;
+		}
+
 		UndoModule.saveNodeTransformUndo(node);
+	},
+
+	saveSelectionTransformUndo: function()
+	{
+		//UndoModule.saveNodeTransformUndo(node);
+		UndoModule.saveNodesTransformUndo( SelectionModule.getSelectedNodes() );
 	},
 
 	//test if a ray collides circle

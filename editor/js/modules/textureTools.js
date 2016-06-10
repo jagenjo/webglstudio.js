@@ -173,6 +173,12 @@ GL.Texture.prototype.inspect = function( widgets, skip_default_widgets )
 	widgets.addButton(null, "Fill", function(){
 		RenderModule.requestFrame();
 	});
+	widgets.addButton(null, "Make Power of Two", function(){
+		var info = texture.getProperties();
+		var pot_texture = new GL.Texture( GL.Texture.nextPOT( info.width ), GL.Texture.nextPOT( info.height ), info );
+		texture.copyTo( pot_texture );
+		LS.RM.registerResource( texture.filename, pot_texture );
+	});
 
 	if(!skip_default_widgets)
 		DriveModule.addResourceInspectorFields( this, widgets );

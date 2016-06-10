@@ -120,8 +120,9 @@ var moveTool = {
 		}
 		else
 		{
-			if(node && node.transform)
-				ToolUtils.saveNodeTransformUndo(node);
+			//if(node && node.transform)
+			//	ToolUtils.saveNodeTransformUndo(node);
+			ToolUtils.saveSelectionTransformUndo();
 		}
 
 		//get collision point with perpendicular plane

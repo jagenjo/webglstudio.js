@@ -240,7 +240,7 @@ SceneTreeWidget.prototype.onKeyDown = function( e )
 {
 	if(e.keyCode == 8 || e.keyCode == 46)
 	{
-		EditorModule.removeSelectedNode(); 
+		EditorModule.removeSelectedNodes(); 
 		return false;
 	}
 }

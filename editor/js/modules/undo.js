@@ -198,17 +198,39 @@ var UndoModule = {
 
 	saveNodeTransformUndo: function( node )
 	{
-		if(!node || !node.transform)
+		this.saveNodesTransformUndo([node]);
+	},
+
+	//for several nodes
+	saveNodesTransformUndo: function( nodes )
+	{
+		if(!nodes || !nodes.length)
+			return;
+
+		var nodes_data = [];
+		for(var i in nodes)
+		{
+			var node = nodes[i];
+			if(!node.transform)
+				continue;
+			nodes_data.push({ uid: nodes[i].uid, transform: node.transform.serialize() });
+		}
+
+		if(!nodes_data.length)
 			return;
 
 		this.addUndoStep({
-			title: "Node transform: " + node.name,
-			data: { node: node.uid, transform: node.transform.serialize() },
+			title: "Nodes transform",
+			data: { nodes: nodes_data },
 			callback: function(d) {
-				var node = LS.GlobalScene.getNode(d.node);
-				if(!node || !node.transform)
-					return;
-				node.transform.configure( d.transform );
+				for(var i = 0; i < d.nodes.length; ++i)
+				{
+					var data = d.nodes[i];
+					var node = LS.GlobalScene.getNode(data.uid);
+					if(!node || !node.transform)
+						continue;
+					node.transform.configure( data.transform );
+				}
 				EditorModule.refreshAttributes();
 				RenderModule.requestFrame();
 			}

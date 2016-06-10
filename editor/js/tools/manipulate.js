@@ -125,8 +125,8 @@ var manipulateTool = {
 			{
 				if(node._is_bone && node.parentNode && node.parentNode._is_bone && !e.ctrlKey)
 					ToolUtils.saveNodeTransformUndo(node.parentNode);
-				else if(node.transform)
-					ToolUtils.saveNodeTransformUndo(node);
+				else 
+					ToolUtils.saveSelectionTransformUndo();
 			}
 		}
 

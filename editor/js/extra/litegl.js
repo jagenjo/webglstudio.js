@@ -5406,6 +5406,12 @@ Texture.releaseTemporary = function( tex )
 		Texture.temporary_pool = [];
 	Texture.temporary_pool.push( tex );
 }
+
+//returns the next power of two bigger than size
+Texture.nextPOT = function( size )
+{
+	return Math.pow( 2, Math.ceil( Math.log(size) / Math.log(2) ) );
+}
 /** 
 * FBO for FrameBufferObjects, FBOs are used to store the render inside one or several textures 
 * Supports multibuffer and depthbuffer texture, useful for deferred rendering

@@ -875,6 +875,44 @@ var LS = {
 	},
 
 	/**
+	* Replaces all components of one class in the scene with components of another class
+	*
+	* @method replaceComponentClass
+	* @param {SceneTree} scene where to apply the replace
+	* @param {String} old_class_name name of the class to be replaced
+	* @param {String} new_class_name name of the class that will be used instead
+	*/
+	replaceComponentClass: function( scene, old_class_name, new_class_name )
+	{
+		var proposed_class = LS.Components[ new_class_name ];
+		if(!proposed_class)
+			return false;
+
+		for(var i = 0; i < LS.GlobalScene._nodes.length; ++i)
+		{
+			var node = LS.GlobalScene._nodes[i];
+
+			if(!node.hasComponent( old_class_name, true ))
+				continue;
+
+			//this is a slow way but we dont care, this is used very rarely
+			var info = node.serialize();
+			info = { components: info.components }; //just want the components
+			for(var j = 0; j < info.components.length; ++j)
+			{
+				var compo_info = info.components[j];
+				if(compo_info[0] == old_class_name)
+					compo_info[0] = new_class_name;
+			}
+			//now force the node to be reloaded
+			node.removeAllComponents();
+			node.configure( info );
+		}
+
+		return true;
+	},
+
+	/**
 	* Register a resource class so we know which classes could be use as resources
 	*
 	* @method registerResourceClass
@@ -8135,7 +8173,7 @@ ComponentContainer.prototype.configureComponents = function( info )
 			var comp_class = comp_info[0];
 
 			//special case: this is the only component that comes by default
-			if(comp_class == "Transform" && i == 0) 
+			if(comp_class == "Transform" && i == 0 && this.transform) 
 			{
 				this.transform.configure(comp_info[1]);
 				continue;
@@ -8303,28 +8341,39 @@ ComponentContainer.prototype.removeAllComponents = function()
 
 
 /**
-* Returns if the class has an instance of this component
+* Returns if the container has a component of this class
 * @method hasComponent
-* @param {bool} true if it has a component of this class
+* @param {String|Class} component_class the component to search for, could be a string or the class itself
+* @param {Boolean} search_missing [optional] true if you want to search in the missing components too
 */
-ComponentContainer.prototype.hasComponent = function(component_class) //class, not string with the name of the class
+ComponentContainer.prototype.hasComponent = function( component_class, search_missing )
 {
-	if(!this._components)
+	if(!this._components && !this._missing_components)
 		return false;
 
-	//string
-	if( component_class.constructor === String)
+	//search in missing components
+	if(search_missing && this._missing_components && this._missing_components.length)
 	{
-		for(var i = 0, l = this._components.length; i < l; ++i)
-			if( this._components[i].constructor.name == component_class )
-			return true;
-		return false;
+		if(component_class.constructor !== String) //weird case
+			component_class = LS.getClassName( component_class );
+		for(var i = 0, l = this._missing_components.length; i < l; ++i)
+			if( this._missing_components[i][0] == component_class )
+				return true;
 	}
 
-	//class
+	//string
+	if( component_class.constructor === String )
+	{
+		component_class = LS.Components[ component_class ];
+		if(!component_class)
+			return false;
+	}
+
+	//search in components
 	for(var i = 0, l = this._components.length; i < l; ++i)
 		if( this._components[i].constructor === component_class )
-		return true;
+			return true;
+	
 	return false;
 }
 
@@ -8340,6 +8389,7 @@ ComponentContainer.prototype.getComponent = function( component_class, index )
 	if(!this._components || !component_class)
 		return null;
 
+	//convert string to class
 	if( component_class.constructor === String )
 	{
 		component_class = LS.Components[ component_class ];
@@ -8347,6 +8397,7 @@ ComponentContainer.prototype.getComponent = function( component_class, index )
 			return;
 	}
 
+	//search components
 	for(var i = 0, l = this._components.length; i < l; ++i)
 	{
 		if( this._components[i].constructor === component_class )
@@ -8359,6 +8410,7 @@ ComponentContainer.prototype.getComponent = function( component_class, index )
 			return this._components[i];
 		}
 	}
+
 	return null;
 }
 
@@ -8468,6 +8520,10 @@ function CompositePattern()
 
 CompositePattern.prototype.compositeCtor = function()
 {
+	//this method is not called by SceneNode 
+	this._parentNode = null;
+	this._children = null;
+	this._in_tree = null;
 }
 
 /* use .scene instead
@@ -14824,7 +14880,7 @@ var Renderer = {
 		LEvent.trigger(scene, "beforeRender", render_settings );
 		scene.triggerInNodes("beforeRender", render_settings );
 
-		//get render instances, cameras, lights, materials and all rendering info ready: computeVisibility
+		//get render instances, cameras, lights, materials and all rendering info ready (computeVisibility)
 		this.processVisibleData( scene, render_settings, cameras );
 
 		//Define the main camera, the camera that should be the most important (used for LOD info, or shadowmaps)
@@ -24660,7 +24716,7 @@ LS.registerComponent(FogFX);
 
 function FollowNode(o)
 {
-	this.node_name = "";
+	this.node_uid = "";
 	this.fixed_y = false;
 	this.follow_camera = false;
 	if(o)
@@ -24669,36 +24725,45 @@ function FollowNode(o)
 
 FollowNode.icon = "mini-icon-follow.png";
 
-FollowNode.prototype.onAddedToNode = function(node)
+FollowNode.prototype.onAddedToScene = function(scene)
 {
-	LEvent.bind(node,"computeVisibility", this.updatePosition, this);
+	LEvent.bind( scene,"beforeRender", this.updatePosition, this);
 }
 
-FollowNode.prototype.onRemovedFromNode = function(node)
+FollowNode.prototype.onRemovedFromScene = function(scene)
 {
-	LEvent.unbind(node,"computeVisibility", this.updatePosition, this);
+	LEvent.unbind(scene,"beforeRender", this.updatePosition, this);
 }
 
 FollowNode.prototype.updatePosition = function(e,info)
 {
-	if(!this._root) return;
+	if(!this._root)
+		return;
 
 	var pos = null;
 	var scene = this._root.scene;
-	var camera = scene.getCamera(); //main camera
 
-	if(this.follow_camera)
-		pos =  camera.getEye();
+	if( this.follow_camera )
+	{
+		var camera = LS.Renderer._main_camera; //main camera
+		if(!camera)
+			return;
+		pos = camera.getEye();
+	}
 	else
 	{
-		var target_node = scene.getNode( this.node_name );
-		if(!target_node) return;
-		pos = target_node.transform.getPosition();
+		var target_node = scene.getNode( this.node_uid );
+		if(!target_node || !target_node.transform)
+			return;
+		pos = target_node.transform.getGlobalPosition();
 	}
 
 	if(this.fixed_y)
 		pos[1] = this._root.transform._position[1];
-	this._root.transform.setPosition( pos );
+	if(!this._root.transform)
+		return;
+
+	this._root.transform.position = pos;
 }
 
 LS.registerComponent( FollowNode );
@@ -35213,22 +35278,26 @@ function SceneNode( name )
 		console.warn("SceneNode constructor first parameter must be a String with the name");
 	}
 
-	//Generic
+	//Generic identifying info
 	this._name = name || ("node_" + (Math.random() * 10000).toFixed(0)); //generate random number
 	this._uid = LS.generateUId("NODE-");
 	this._classList = {}; //to store classes
 	this.layers = 3|0; //32 bits for layers (force to int)
 	this.node_type = null; //used to store a string defining the node info
 
-	this._components = []; //used for logic actions
-	this._missing_components = null;
-
+	//more generic info
 	this._prefab = null;
+	this._material = null;
+
+	//from Componentcontainer
+	this._components = []; //used for logic actions
+	this._missing_components = null; //used to store state of component that couldnt be created
+
+	//from CompositePattern
 	this._parentNode = null;
 	this._children = null;
+	this._in_tree = null;
 
-	this._material = null;
-	this.node_type = null;
 
 	//flags
 	this.flags = {
@@ -35500,8 +35569,8 @@ SceneNode.prototype.destroy = function()
 	if(this.children)
 		while(this.children.length)
 			this.children[0].destroy();
-	if(this._parent)
-		this._parent.removeChild( this );
+	if(this._parentNode)
+		this._parentNode.removeChild( this );
 }
 
 SceneNode.prototype.getLocator = function()

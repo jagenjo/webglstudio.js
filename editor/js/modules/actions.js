@@ -55,6 +55,14 @@ LS.SceneNode.actions["select_children"] = {
 	}
 };
 
+LS.SceneNode.actions["clone"] = { 
+	title:"Clone",
+	callback: function(){
+		EditorModule.cloneNode( this );
+	}
+};
+
+
 LS.SceneNode.actions["create_prefab"] = { 
 	title:"Create Prefab",
 	callback: function(){

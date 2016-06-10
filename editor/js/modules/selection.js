@@ -349,7 +349,17 @@ var SelectionModule = {
 		return this.selection.node;
 	},
 
+	//return all the nodes selected
 	getSelectedNodes: function()
+	{
+		var nodes = [];
+		for(var i = 0; i < this.selection_array.length; ++i)
+			if( this.selection_array[i].node )
+				nodes.push( this.selection_array[i].node );
+		return nodes;
+	},
+
+	getSelectedNodesInfo: function()
 	{
 		return this.selection_array;
 	},
@@ -428,6 +438,7 @@ var SelectionModule = {
 				created_uids.push( result[i].uid );
 			//DELETE NODES
 			UndoModule.addUndoStep({ 
+				title: "Cloned " + (created_uids.length > 1 ? "nodes" : "node"),
 				data: { uids: created_uids, old_selection: old_selection },
 				callback: function(d) {
 					for(var i in d.uids)
@@ -445,45 +456,74 @@ var SelectionModule = {
 		return result;
 	},
 
-	removeSelectedInstance: function()
+	removeSelectedInstances: function()
 	{
 		if(!this.selection_array || this.selection_array.length == 0)
 			return;
 
-		for(var i = 0; i < this.selection_array.length; i++)
+		var data_removed = [];
+		var selection_array = this.selection_array.concat(); //clone because it will be modifyed when removing objects
+
+		for(var i = 0; i < selection_array.length; i++)
 		{
-			var selection = this.selection_array[i];
+			var selection = selection_array[i];
 
 			var node = selection.node;
-			var parent = node ? node.parentNode : null;
-
+			if(!node.parentNode)
+				continue;
+	
+			//remove node
 			if( selection.instance.constructor === LS.SceneNode && !selection.instance._is_root )
 			{
-				//DELETE NODE
-				UndoModule.addUndoStep({ 
-					data: { node: node, parent: parent, index: parent.childNodes.indexOf(node) },
-					callback: function(d) {
-						d.parent.addChild( d.node, d.index );
-						SelectionModule.setSelection(d.node);
-					}
-				});
-
-				parent.removeChild(node);
-			}
+				data_removed.push( { parent_uid: node.parentNode.uid, index: node.parentNode.childNodes.indexOf( node ), node_data: node.serialize() } );
+				node.parentNode.removeChild(node);
+			} //removed component
 			else if( selection.instance._root && selection.instance._root.constructor === LS.SceneNode )
 			{
-				//DELETE COMPONENT
-				UndoModule.addUndoStep({ 
-					data: { comp: selection.instance, node: node },
-					callback: function(d) {
-						d.node.addComponent( d.comp );
-						SelectionModule.setSelection(d.node);
-					}
-				});
-
+				data_removed.push( { node_uid: node.uid, comp_class: LS.getObjectClassName( selection.instance ), comp: selection.instance.serialize() } );
 				node.removeComponent( selection.instance );
 			}
 		}
+
+		if(!data_removed.length)
+			return;
+
+		//Create UNDO STEP 
+		UndoModule.addUndoStep({ 
+			title: "Nodes or Components deleted",
+			data: { data: data_removed },
+			callback: function(d) {
+				var nodes = [];
+				for(var i = 0; i < d.data.length; ++i)
+				{
+					var data = d.data[i];
+					if(data.comp)
+					{
+						var node = LS.GlobalScene.getNode( data.node_uid );
+						if(!node)
+							continue;
+						nodes.push(node);
+						var comp_class = LS.Components[ data.comp_class ];
+						if(comp_class)
+						{
+							var new_comp = new comp_class( d.comp );
+							node.addComponent( new_comp );
+						}
+					}
+					else
+					{
+						var parent = LS.GlobalScene.getNode( data.parent_uid );
+						if(!parent)
+							continue;
+						var new_node = new LS.SceneNode();
+						new_node.configure( data.node_data );
+						parent.addChild( new_node, data.index );
+						nodes.push(new_node);
+					}
+				}
+				SelectionModule.setSelection(nodes);
+			}
+		});
 
 		EditorModule.inspect();
 		SelectionModule.setSelection(null);

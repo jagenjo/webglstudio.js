@@ -127,7 +127,7 @@ var EditorModule = {
 		mainmenu.add("Edit/Copy Node", { callback: function() { EditorModule.copyNodeToClipboard( SelectionModule.getSelectedNode() ); }});
 		mainmenu.add("Edit/Paste Node", { callback: function() { EditorModule.pasteNodeFromClipboard(); }});
 		mainmenu.add("Edit/Clone Node", { callback: function() { EditorModule.cloneNode( SelectionModule.getSelectedNode() ); }});
-		mainmenu.add("Edit/Delete Node", { callback: function() { EditorModule.removeSelectedNode(); }});
+		mainmenu.add("Edit/Delete Node", { callback: function() { EditorModule.removeSelectedNodes(); }});
 		mainmenu.add("Edit/Focus on node", { callback: function() { cameraTool.setFocusPointOnNode( SelectionModule.getSelectedNode(), true ); }});
 		mainmenu.add("Edit/Paste component", { callback: function() { EditorModule.pasteComponentInNode( SelectionModule.getSelectedNode() ); }});
 
@@ -920,9 +920,9 @@ var EditorModule = {
 	},
 
 	//interaction
-	removeSelectedNode: function()
+	removeSelectedNodes: function()
 	{
-		SelectionModule.removeSelectedInstance();
+		SelectionModule.removeSelectedInstances();
 	},
 
 	pasteComponent: function(node)
@@ -1747,7 +1747,7 @@ var EditorModule = {
 			case 46: //delete key only works if the tab is enabled 
 				e.preventDefault();
 				e.stopPropagation();
-				EditorModule.removeSelectedNode(); 
+				EditorModule.removeSelectedNodes(); 
 				return false;
 				break;
 			case 116: //F5

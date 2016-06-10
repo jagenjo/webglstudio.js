@@ -1758,9 +1758,7 @@ Timeline.prototype.onShowBakingDialog = function()
 	widgets.addButton(null,"Bake Current Pose", function(){
 		var nodes = null;
 		if(options.only_selected)
-		{
 			nodes = SelectionModule.getSelectedNodes();
-		}
 		else
 		{
 			if(!node_uid)

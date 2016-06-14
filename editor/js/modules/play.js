@@ -49,6 +49,10 @@ var PlayModule = {
 			RenderModule.render_settings.in_player = true;
 			PlayModule.inplayer = true;
 
+			//move GUI here
+			if( LS.GUI._root )
+				PlayModule.tab.content.appendChild( LS.GUI._root );
+
 			//RenderModule.canvas_manager.addWidget(PlayModule); //capture render, update and mouse.
 
 			//canvas.width = canvas.width - 20;
@@ -60,13 +64,15 @@ var PlayModule = {
 			//RenderModule.canvas_manager.removeWidget(PlayModule); //remove capture render, update and mouse
 			PlayModule.inplayer = false;
 			RenderModule.appendViewportTo(null);
+			if( LS.GUI._root )
+				RenderModule.visor_container.appendChild( LS.GUI._root );
 		}});
 
 		//overwrite method to add the module to the right place
-		LS._getGUIElement = LS.getGUIElement;
-		LS.getGUIElement = function()
+		var GUIgetRoot = LS.GUI.getRoot.bind(LS.GUI);
+		LS.GUI.getRoot = function()
 		{
-			var gui = LS._getGUIElement();
+			var gui = GUIgetRoot();
 			if( gui )
 				return gui;
 			PlayModule.tab.content.appendChild( gui );
@@ -184,6 +190,7 @@ var PlayModule = {
 				LiteGUI.root.classList.add("playing");
 			LEvent.bind( scene,"finish", this.onSceneStop );
 			LS.Input.reset(); //this force some events to be sent
+			LS.GUI.reset();
 			scene.start();
 			EditorModule.render_debug_info = false;
 			EditorModule.refreshAttributes();
@@ -199,7 +206,7 @@ var PlayModule = {
 			EditorModule.render_debug_info = true;
 			RenderModule.requestFrame();
 			LEvent.unbind( scene,"finish", this.onSceneStop );
-			LS.removeGUIElement();
+			LS.GUI.reset();
 		}
 	},
 

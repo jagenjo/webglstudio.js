@@ -1372,139 +1372,6 @@ var LS = {
 	},
 
 	/**
-	* Returns the DOM element responsible for the GUI of the app. This is helpful because this GUI will be automatically remove if the app finishes.
-	*
-	* @method getGUIElement
-	* @return {HTMLElement} 
-	*/
-	getGUIElement: function()
-	{
-		if( this._gui_element )
-			return this._gui_element;
-
-		var gui = document.createElement("div");
-		gui.className = "litescene-gui";
-		gui.style.position = "absolute";
-		gui.style.top = "0";
-		gui.style.left = "0";
-
-		//normalize
-		gui.style.color = "#999";
-		gui.style.font = "20px Arial";
-
-		//make it fullsize
-		gui.style.width = "100%";
-		gui.style.height = "100%";
-		gui.style.overflow = "hidden";
-		gui.style.pointerEvents = "none";
-
-		if(!this._gui_style)
-		{
-			var style = this._gui_style = document.createElement("style");
-			style.appendChild(document.createTextNode(""));
-			document.head.appendChild(style);
-			style.sheet.insertRule(".litescene-gui button, .litescene-gui input { pointer-events: auto; }",0);
-		}
-
-		gl.canvas.parentNode.appendChild( gui );
-		
-		this._gui_element = gui;
-		return gui;
-	},
-
-	/**
-	* Creates a HTMLElement of the tag_type and adds it to the DOM on top of the canvas
-	*
-	* @method createElementGUI
-	* @param {String} tag_type the tag type "div"
-	* @param {String} anchor "top-left", "top-right", "bottom-left", "bottom-right"
-	* @return {HTMLElement} 
-	*/
-	createElementGUI: function( tag_type, anchor )
-	{
-		tag_type = tag_type || "div";
-
-		var element = document.createElement(tag_type);
-		element.style.pointerEvents = "auto";
-		return this.attachToGUI( element, anchor );
-	},
-
-	attachToGUI: function( element, anchor )
-	{
-		if(!element)
-		{
-			console.error("attachToGUI: element cannot be null");
-			return;
-		}
-
-		element.style.position = "absolute";
-
-		anchor = anchor || "top-left";
-
-		switch(anchor)
-		{
-			case "bottom":
-			case "bottom-left":
-				element.style.bottom = "0";
-				element.style.left = "0";
-				break;
-			case "bottom-right":
-				element.style.bottom = "0";
-				element.style.right = "0";
-				break;
-			case "bottom-middle":
-				element.style.bottom = "0";
-				element.style.width = "50%";
-				element.style.margin = "0 auto";
-				break;
-			case "right":
-			case "top-right":
-				element.style.top = "0";
-				element.style.right = "0";
-				break;
-			case "top-middle":
-				element.style.top = "0";
-				element.style.width = "50%";
-				element.style.margin = "0 auto";
-				break;
-			default:
-				console.warn("invalid GUI anchor position: ",anchor);
-			case "left":
-			case "top":
-			case "top-left":
-				element.style.top = "0";
-				element.style.left = "0";
-				break;
-		}
-
-		var gui_root = this.getGUIElement();
-		gui_root.appendChild( element );
-		return element;
-	},
-
-	/**
-	* Removes all the GUI elements from the DOM
-	*
-	* @method removeGUIElement
-	*/
-	removeGUIElement: function()
-	{
-		if( !this._gui_element )
-			return;
-
-		if(this._gui_element.parentNode)
-			this._gui_element.parentNode.removeChild( this._gui_element );
-		this._gui_element = null;
-
-		if(this._gui_style)
-		{
-			this._gui_style.parentNode.removeChild( this._gui_style );
-			this._gui_style = null;		
-		}
-		return;
-	},
-
-	/**
 	* Returns an script context using the script name (not the node name), usefull to pass data between scripts.
 	*
 	* @method getScript
@@ -2222,6 +2089,176 @@ var Input = {
 };
 
 LS.Input = Input;
+
+/**
+* GUI is a static class used to attach HTML elements on top of the 3D Canvas in a safe way
+*
+* @class GUI
+* @namespace LS
+* @constructor
+*/
+var GUI = {
+
+	_root: null, //root DOM element containing the GUI
+
+	/**
+	* Returns the DOM element responsible for the GUI of the app. This is helpful because this GUI will be automatically removed if the app finishes.
+	*
+	* @method getRoot
+	* @return {HTMLElement} 
+	*/
+	getRoot: function()
+	{
+		if( this._root )
+		{
+			if(!this._root.parentNode && gl.canvas.parentNode)
+				gl.canvas.parentNode.appendChild( gui );
+			return this._root;
+		}
+
+		if(LS.GlobalScene._state != LS.RUNNING)
+			console.warn("GUI element created before the scene is playing. Only create the GUI elements from onStart or after, otherwise the GUI elements will be lost.");
+
+		var gui = document.createElement("div");
+		gui.className = "litescene-gui";
+		gui.style.position = "absolute";
+		gui.style.top = "0";
+		gui.style.left = "0";
+
+		//normalize
+		gui.style.color = "#999";
+		gui.style.font = "20px Arial";
+
+		//make it fullsize
+		gui.style.width = "100%";
+		gui.style.height = "100%";
+		gui.style.overflow = "hidden";
+		gui.style.pointerEvents = "none";
+
+		if(!this._style)
+		{
+			var style = this._style = document.createElement("style");
+			style.appendChild(document.createTextNode(""));
+			document.head.appendChild(style);
+			style.sheet.insertRule(".litescene-gui button, .litescene-gui input { pointer-events: auto; }",0);
+		}
+
+		//append on top of the canvas
+		gl.canvas.parentNode.appendChild( gui );
+		
+		this._root = gui;
+		return gui;
+	},
+
+	/**
+	* Creates a HTMLElement of the tag_type and adds it to the DOM on top of the canvas
+	*
+	* @method createElementGUI
+	* @param {String} tag_type the tag type "div"
+	* @param {String} anchor "top-left", "top-right", "bottom-left", "bottom-right"
+	* @return {HTMLElement} 
+	*/
+	createElement: function( tag_type, anchor )
+	{
+		tag_type = tag_type || "div";
+
+		var element = document.createElement(tag_type);
+		element.style.pointerEvents = "auto";
+		return this.attach( element, anchor );
+	},
+
+	attach: function( element, anchor )
+	{
+		if(!element)
+		{
+			console.error("attachToGUI: element cannot be null");
+			return;
+		}
+
+		element.style.position = "absolute";
+
+		anchor = anchor || "top-left";
+
+		switch(anchor)
+		{
+			case "bottom":
+			case "bottom-left":
+				element.style.bottom = "0";
+				element.style.left = "0";
+				break;
+			case "bottom-right":
+				element.style.bottom = "0";
+				element.style.right = "0";
+				break;
+			case "bottom-middle":
+				element.style.bottom = "0";
+				element.style.width = "50%";
+				element.style.margin = "0 auto";
+				break;
+			case "right":
+			case "top-right":
+				element.style.top = "0";
+				element.style.right = "0";
+				break;
+			case "top-middle":
+				element.style.top = "0";
+				element.style.width = "50%";
+				element.style.margin = "0 auto";
+				break;
+			default:
+				console.warn("invalid GUI anchor position: ",anchor);
+			case "left":
+			case "top":
+			case "top-left":
+				element.style.top = "0";
+				element.style.left = "0";
+				break;
+		}
+
+		var gui_root = this.getRoot();
+		gui_root.appendChild( element );
+		return element;
+	},
+
+	/**
+	* Removes all the GUI elements from the DOM
+	*
+	* @method resetGUI
+	*/
+	reset: function()
+	{
+		if( !this._root )
+			return;
+
+		if(this._root.parentNode)
+			this._root.parentNode.removeChild( this._root );
+		this._root = null;
+
+		if(this._style)
+		{
+			this._style.parentNode.removeChild( this._style );
+			this._style = null;		
+		}
+		return;
+	},
+
+	show: function()
+	{
+		if(!this._root)
+			return;
+		this._root.style.display = "";
+
+	},
+
+	hide: function()
+	{
+		if(!this._root)
+			return;
+		this._root.style.display = "none";
+	}
+};
+
+LS.GUI = GUI;
 /**
 * Static class that contains all the resources loaded, parsed and ready to use.
 * It also contains the parsers and methods in charge of processing them
@@ -36659,6 +36696,7 @@ Player.prototype.play = function()
 		console.log("Start");
 	this.state = LS.Player.PLAYING;
 	LS.Input.reset(); //this force some events to be sent
+	LS.GUI.reset(); //clear GUI
 	this.scene.start();
 }
 
@@ -36666,6 +36704,7 @@ Player.prototype.stop = function()
 {
 	this.state = LS.Player.STOPPED;
 	this.scene.finish();
+	LS.GUI.reset(); //clear GUI
 }
 
 Player.prototype._ondraw = function()

@@ -462,7 +462,7 @@
 				#ifdef USE_SKINNING_TEXTURE
 					uniform sampler2D u_bones;
 				#else
-					uniform vec4 u_bones[ MAX_BONES * 3];
+					uniform vec4 u_bones[ MAX_BONES * 3 ];
 				#endif
 				attribute vec4 a_weights;
 				attribute vec4 a_bone_indices;

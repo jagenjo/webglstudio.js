@@ -874,7 +874,7 @@ var DriveModule = {
 			{
 				var ext = LS.RM.getExtension( filename );
 				if(ext != options.extension)
-					filename += options.extension;
+					filename += "." + options.extension;
 			}
 
 			var fullpath = LS.RM.cleanFullpath( folder + "/" + filename );

@@ -407,9 +407,10 @@ CodingPadWidget.prototype.saveInstance = function()
 					//set name
 					instance.filename = filename;
 					instance.fullpath = folder + "/" + filename;
+					var ext = LS.RM.getExtension(filename) || "js";
 					//save resource
 					DriveModule.saveResource( instance, inner_after_save, { skip_alerts: true });
-				}, { extension: "js", text: "This file is not stored in the server, choose a folder and a filename"});
+				}, { extension: ext, text: "This file is not stored in the server, choose a folder and a filename"});
 			return;
 		}
 

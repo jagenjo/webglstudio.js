@@ -110,6 +110,7 @@ InspectorWidget.prototype.onItemDrop = function(e)
 	var uid = e.dataTransfer.getData("uid");
 	var class_type = e.dataTransfer.getData("class");
 	var res_fullpath = e.dataTransfer.getData("res-fullpath");
+	var res_type = e.dataTransfer.getData("res-type");
 
 	var instance = null;
 	var that = this;
@@ -117,10 +118,28 @@ InspectorWidget.prototype.onItemDrop = function(e)
 	if(res_fullpath)
 	{
 		instance = LS.ResourcesManager.resources[ res_fullpath ];
-		if(!instance)
+
+		if(this.instance && this.instance.constructor === LS.SceneNode)
 		{
-			LS.ResourcesManager.load( res_fullpath, function(res){ that.inspect( res ); });
-			return;
+			var compo = null;
+			var ext = LS.RM.getExtension( res_fullpath );
+
+			switch( res_type )
+			{
+				case "Script": compo = new LS.Components.ScriptFromFile({ filename: res_fullpath }); break;
+				case "Mesh": compo = new LS.Components.MeshRenderer({ mesh: res_fullpath }); break;
+				case "Prefab": this.instance.prefab = res_fullpath; this.inspector.refresh(); break;
+			}
+
+			if(compo)
+			{
+				this.instance.addComponent(compo);
+				if(instance)
+					LS.ResourcesManager.load( res_fullpath );
+				this.inspector.refresh();
+				return;
+			}
+
 		}
 		//if(instance && instance.constructor.is_material )
 		//	class_type = "Material";
@@ -148,6 +167,7 @@ InspectorWidget.prototype.onItemDrop = function(e)
 	if(!instance)
 		return;
 	this.inspect( instance );
+
 }
 
 InspectorWidget.prototype.setTitle = function( v )

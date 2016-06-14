@@ -15,7 +15,7 @@ var LabModule = {
 
 	settings: {
 		render_frame: false,
-		render_filename: false,
+		render_filename: true,
 		render_alpha: true
 	},
 

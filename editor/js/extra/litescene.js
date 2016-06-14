@@ -1403,7 +1403,7 @@ var LS = {
 			var style = this._gui_style = document.createElement("style");
 			style.appendChild(document.createTextNode(""));
 			document.head.appendChild(style);
-			style.sheet.insertRule(".litescene-gui button, .litescene-gui input { pointer-events: auto; }");
+			style.sheet.insertRule(".litescene-gui button, .litescene-gui input { pointer-events: auto; }",0);
 		}
 
 		gl.canvas.parentNode.appendChild( gui );
@@ -1424,7 +1424,7 @@ var LS = {
 	{
 		tag_type = tag_type || "div";
 
-		var element = document.createElement("div");
+		var element = document.createElement(tag_type);
 		element.style.pointerEvents = "auto";
 		return this.attachToGUI( element, anchor );
 	},
@@ -3633,6 +3633,7 @@ var ShadersManager = {
 	default_xml_url: "data/shaders.xml",
 
 	snippets: {},//to save source snippets
+	blocks: {},//to save shader block
 	compiled_programs: {}, //shaders already compiled and ready to use
 	compiled_shaders: {}, //every vertex and fragment shader compiled
 
@@ -4157,6 +4158,18 @@ var ShadersManager = {
 		return this.snippets[ id ];
 	},
 
+	registerBlock: function(id, block)
+	{
+		if( this.blocks[id] )
+			console.warn("There is already a ShaderBlock with that name, replacing it: ", id);
+		this.blocks[id] = block;
+	},
+
+	getBlock: function(id, block)
+	{
+		return this.blocks[id];
+	},
+
 	//this is global code for default shaders
 	common_vscode: "\n\
 		precision mediump float;\n\
@@ -4342,22 +4355,31 @@ LS.ShaderQuery = ShaderQuery;
 
 
 //work in progress
-//shaders should 
 
-function ShaderPart()
+function ShaderBlock( name )
 {
-	this.uid = 0// generate uid?
+	this.id = -1;
+	this.name = name;
 
-	this.imports = null; //snippets to import
-
-	this.vertex_uniforms = null; //string like  uniform float u_data@;
-	this.vertex_code = null; //string
-
-	this.fragment_uniforms = null; //string like  uniform float u_data@;
-	this.fragment_code = null; //string
+	this.code = {};
 }
 
-LS.ShaderPart = ShaderPart;
+ShaderBlock.prototype.addCode = function( enabled, vs_code, fs_code )
+{
+	var code = {
+		vs_code: vs_code,
+		fs_code: fs_code
+	};
+
+	if(enabled)
+		this.code.enabled = code;
+	else
+		this.code.disabled = code;
+}
+
+
+
+LS.ShaderBlock = ShaderBlock;
 //this module is in charge of rendering basic objects like lines, points, and primitives
 //it works over litegl (no need of scene)
 //carefull, it is very slow
@@ -11692,7 +11714,7 @@ ShaderCode.parseGLSLCode = function( code )
 
 	var lines = code.split("\n");
 
-	/* REMOVED: fors could have problems
+	/* 
 	//clean (this helps in case a line contains two instructions, like "uniform float a; uniform float b;"
 	var clean_lines = [];
 	for(var i = 0; i < lines.length; i++)
@@ -11738,14 +11760,17 @@ ShaderCode.parseGLSLCode = function( code )
 		var t = line.split(" ");
 		if(t[0] == "#pragma")
 		{
+			//merge lines and add previous block
+			blocks.push( { type: 1, code: current_block.join("\n") } ); 
+
 			is_dynamic = true;
 			pragmas[ t[2] ] = true;
 			var action = t[1];
-			blocks.push( { type: 1, code: current_block.join("\n") } ); //merge lines and add as block
 			current_block.length = 0;
 			var pragma_info = { type: 2, line: line, action: action, param: t[2] };
 			if( action == "include" && t[2] )
 			{
+				//resolve include
 				var include = t[2].substr(1, t[2].length - 2); //safer than JSON.parse
 				var fullname = include.split(":");
 				var filename = fullname[0];
@@ -11754,6 +11779,7 @@ ShaderCode.parseGLSLCode = function( code )
 				pragma_info.include_subfile = subfile;
 				includes[ pragma_info.include ] = true;
 			}
+
 			blocks.push( pragma_info ); //add pragma block
 		}
 		else
@@ -22645,20 +22671,18 @@ function SkinDeformer(o)
 	this._mesh = null;
 
 	//check how many floats can we put in a uniform
-	if(!SkinDeformer.num_supported_uniforms)
+	if(!SkinDeformer._initialized)
 	{
 		SkinDeformer.num_supported_uniforms = gl.getParameter( gl.MAX_VERTEX_UNIFORM_VECTORS );
 		SkinDeformer.num_supported_textures = gl.getParameter( gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS );
 		//check if GPU skinning is supported
 		if( SkinDeformer.num_supported_uniforms < SkinDeformer.MAX_BONES*3 && SkinDeformer.num_supported_textures == 0)
 			SkinDeformer.gpu_skinning_supported = false;
+		SkinDeformer._initialized = true;
 	}
 
 	if(o)
 		this.configure(o);
-
-	if(!MeshRenderer._identity) //used to avoir garbage
-		MeshRenderer._identity = mat4.create();
 }
 
 SkinDeformer.icon = "mini-icon-stickman.png";
@@ -22814,11 +22838,12 @@ SkinDeformer.prototype.applySkinning = function(RI)
 			var texture = this._bones_texture;
 			if(!texture)
 			{
-				texture = this._bones_texture = new GL.Texture( 1, bones.length * 3, { format: gl.RGBA, type: gl.FLOAT, filter: gl.NEAREST} ); //3 rows of 4 values per matrix
+				texture = this._bones_texture = new GL.Texture( 1, SkinDeformer.MAX_BONES * 3, { format: gl.RGBA, type: gl.FLOAT, filter: gl.NEAREST} ); //3 rows of 4 values per matrix
 				texture._data = new Float32Array( texture.width * texture.height * 4 );
 			}
 
 			texture._data.set( u_bones );
+
 			texture.uploadData( texture._data, { no_flip: true } );
 			LS.RM.textures[":bones_" + this.uid ] = texture; //debug
 			RI.uniforms["u_bones"] = LS.Renderer.BONES_TEXTURE_SLOT;
@@ -23001,6 +23026,69 @@ SkinDeformer.prototype.getBones = function()
 
 LS.registerComponent( SkinDeformer );
 LS.SkinDeformer = SkinDeformer;
+
+SkinDeformer.skinning_shader_code = "\n\
+	//Skinning ******************* \n\
+	#ifndef MAX_BONES\n\
+		#define MAX_BONES 64\n\
+	#endif\n\
+	#ifdef USE_SKINNING_TEXTURE\n\
+		uniform sampler2D u_bones;\n\
+	#else\n\
+		uniform vec4 u_bones[ MAX_BONES * 3];\n\
+	#endif\n\
+	attribute vec4 a_weights;\n\
+	attribute vec4 a_bone_indices;\n\
+	\n\
+	void getMat(int id, inout mat4 m) {\n\
+	\n\
+		#ifdef USE_SKINNING_TEXTURE\n\
+			m[0] = texture2D( u_bones, vec2( 0.0, (float(id*3)+0.5) / (64.0*3.0) ) ); \n\
+			m[1] = texture2D( u_bones, vec2( 0.0, (float(id*3+1)+0.5) / (64.0*3.0) ) );\n\
+			m[2] = texture2D( u_bones, vec2( 0.0, (float(id*3+2)+0.5) / (64.0*3.0) ) );\n\
+		#else\n\
+			m[0] = u_bones[ id * 3];\n\
+			m[1] = u_bones[ id * 3 + 1];\n\
+			m[2] = u_bones[ id * 3 + 2];\n\
+		#endif\n\
+	}\n\
+	\n\
+	mat3 mat3_emu(mat4 m4) {\n\
+	  return mat3(\n\
+		  m4[0][0], m4[0][1], m4[0][2],\n\
+		  m4[1][0], m4[1][1], m4[1][2],\n\
+		  m4[2][0], m4[2][1], m4[2][2]);\n\
+	}\n\
+	\n\
+	void applySkinning(inout vec4 position, inout vec3 normal)\n\
+	{\n\
+		//toji version seems faster\n\
+		mat4 bone_matrix = mat4(0.0,0.0,0.0,0.0, 0.0,0.0,0.0,0.0, 0.0,0.0,0.0,0.0, 0.0,0.0,0.0,1.0);\n\
+		\n\
+		getMat( int(a_bone_indices.x), bone_matrix );\n\
+		mat4 result = a_weights.x * bone_matrix;\n\
+		getMat( int(a_bone_indices.y), bone_matrix);\n\
+		result = result + a_weights.y * bone_matrix;\n\
+		getMat( int(a_bone_indices.z), bone_matrix);\n\
+		result = result + a_weights.z * bone_matrix;\n\
+		getMat( int(a_bone_indices.w), bone_matrix);\n\
+		result = result + a_weights.w * bone_matrix;\n\
+		\n\
+		position.xyz = (position * result).xyz;\n\
+		normal = normal * mat3_emu(result);\n\
+	}\n\
+";
+
+// ShaderBlocks
+var skinning_block = new LS.ShaderBlock("skinning");
+skinning_block.addCode( true, SkinDeformer.skinning_shader_code );
+skinning_block.addCode( false, "\nvoid applySkinning( inout vec4 position, inout vec3 normal) {};\n" );
+
+
+var skinning_texture_block = new LS.ShaderBlock("skinning_texture");
+skinning_texture_block.addCode( true, SkinDeformer.skinning_shader_code );
+skinning_texture_block.addCode( false, "\nvoid applySkinning( inout vec4 position, inout vec3 normal) {};\n" );
+
 
 function Skybox(o)
 {
@@ -35473,9 +35561,16 @@ Object.defineProperty( SceneNode.prototype, 'prefab', {
 	set: function(name)
 	{
 		this._prefab = name;
+		if(!this._prefab)
+			return;
 		var prefab = LS.RM.getResource(name);
+		var that = this;
 		if(prefab)
 			this.reloadFromPrefab();
+		else 
+			LS.ResourcesManager.load( name, function(){
+				that.reloadFromPrefab();
+			});
 	},
 	get: function(){
 		return this._prefab;
@@ -36885,4 +36980,4 @@ LS.newCameraNode = function(id)
 global.LS = LS;
 
 //*******************************/
-})( typeof(window) != "undefined" ? window : self ); //add support to nodejs 
+})( typeof(window) != "undefined" ? window : self ); //TODO: add support for commonjs

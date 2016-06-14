@@ -2,7 +2,14 @@
 (function(){
 
 //Cannon.js physics in LiteScene
-LS.Network.requestScript("http://schteppe.github.io/cannon.js/build/cannon.js");
+LS.Network.requestScript("http://schteppe.github.io/cannon.js/build/cannon.js", function(){
+	fixCANNON(); //could be useful to change things in cannon
+});
+
+//used to rotate planes because in cannon they are vertical
+var rotQuat = quat.create();
+quat.setAxisAngle(rotQuat,[1,0,0],-Math.PI/2);
+
 
 function PhysicsEngine(o)
 {
@@ -119,7 +126,7 @@ PhysicsRigidBody.prototype.onRemovedFromScene = function(scene)
 PhysicsRigidBody.prototype.getWorld = function()
 {
 	var compo = LS.GlobalScene.root.getComponent( LS.Components.PhysicsEngine );
-	if(!compo || !compo._world)
+	if(!compo || !compo._world || !compo._is_running)
 		return null;
 	return compo._world;
 }
@@ -184,7 +191,17 @@ PhysicsRigidBody.prototype.onPhysicsUpdate = function(e, world)
 		return;
 	}
 
-	//extract state
+	if(!this._attached)
+	{
+		world.add( this._body );
+		this._attached = true;
+		return;
+	}
+
+	//set state
+	this._body.linearDamping = this.linear_damping;
+
+	//extract transform
 	transform._position.set([ this._body.position.x, this._body.position.y, this._body.position.z ]);
 	transform._rotation.set([ this._body.quaternion.x, this._body.quaternion.y, this._body.quaternion.z, this._body.quaternion.w ]);
 	transform._must_update_matrix  = true;
@@ -196,7 +213,7 @@ LS.registerComponent( PhysicsRigidBody );
 
 function PhysicsCollider( o )
 {
-	this._enabled = true;
+	this.enabled = true;
 
 	this.size = 10;
 	this.shape = "plane"; //infinite plane
@@ -206,21 +223,10 @@ function PhysicsCollider( o )
 
 	//check to attach
 	var world = this.getWorld();
-	if(!world || !world._is_running)
+	if(!world)
 		return;
 	this.onPhysicsReady(null,world);
 }
-
-Object.defineProperty( PhysicsCollider.prototype, "enabled", {
-	set: function(v){
-		if(this._enabled == v)
-			return;
-		this._enabled = v;
-		this.updateAttachment();
-	},
-	get: function() { return this._enabled; },
-	enumerable: true
-});
 
 PhysicsCollider["@shape"] = { widget: "combo", values: ["plane","sphere","box"] };
 
@@ -229,16 +235,17 @@ PhysicsCollider.prototype.getWorld = PhysicsRigidBody.prototype.getWorld;
 PhysicsCollider.prototype.onAddedToScene = function(scene)
 {
 	LEvent.bind( scene, "physics_ready", this.onPhysicsReady, this );
+	LEvent.bind( scene, "physics_updated", this.onPhysicsUpdate, this );
 }
 
 PhysicsCollider.prototype.onRemovedFromScene = function(scene)
 {
-	LEvent.unbind( scene, "physics_ready", this.onPhysicsReady, this );
+	LEvent.unbindAll( scene, this );
 }
 
 PhysicsCollider.prototype.onPhysicsReady = function( e, world )
 {
-	if(!this._enabled)
+	if(!this.enabled)
 		return;
 
 	var node = this._root;
@@ -247,10 +254,9 @@ PhysicsCollider.prototype.onPhysicsReady = function( e, world )
 
 	//shape
 	var shape = null;
-	var rotate90 = false;
 	switch(this.shape)
 	{
-		case "plane": shape = new CANNON.Plane(); rotate90 = true; break;
+		case "plane": shape = new CANNON.Plane(); this._rotate90 = true; break;
 		case "box": shape = new CANNON.Box(new CANNON.Vec3(this.size*0.5,this.size*0.5,this.size*0.5)); break;
 		default:
 		case "sphere": shape = new CANNON.Sphere(this.size); break;
@@ -264,31 +270,20 @@ PhysicsCollider.prototype.onPhysicsReady = function( e, world )
 	//transform
 	var pos = node.transform.getGlobalPosition();
 	var rotation = node.transform.getGlobalRotation();
+	if(this._rotate90)
+		quat.multiply(rotation,rotation,rotQuat);
 	body.position.set( pos[0],pos[1],pos[2] );
-	if(rotate90) //planes in CANNON are vertical, not horizontal
-	{
-		var R = quat.create();
-		quat.setAxisAngle(R,[1,0,0],-Math.PI/2);
-		quat.multiply(rotation,rotation,R);
-	}
 	body.quaternion.set( rotation[0], rotation[1], rotation[2], rotation[3] );
 
 	//attach
-	if(this.enabled)
-	{
-		world.add( body );
-		this._attached = true;
-	}
+	world.add( body );
+	this._attached = true;
 }
 
-PhysicsCollider.prototype.updateAttachment = function()
+PhysicsCollider.prototype.onPhysicsUpdate = function(e,world)
 {
-	var world = this.getWorld();
-	if( !world || !world._is_running )
-		return;
-
 	//enabled false
-	if(!this._enabled)
+	if(!this.enabled)
 	{
 		if(this._attached)
 		{
@@ -298,19 +293,38 @@ PhysicsCollider.prototype.updateAttachment = function()
 		return;
 	}
 
-	//enabled true
-	if(this._attached)
-		return;
+	//enabled 
 
 	if(!this._body)
-		this.onPhysicsReady( null, world );
-	else
 	{
-		world.add( this._body );
-		this._attached = true;
+		this.onPhysicsReady( null, world );
+		return;
+	}
+
+	if(this._attached)
+	{
+		var node = this._root;
+		var body = this._body;
+		var pos = node.transform.getGlobalPosition();
+		var rotation = node.transform.getGlobalRotation();
+		body.position.set( pos[0],pos[1],pos[2] );
+		if(this._rotate90)
+			quat.multiply(rotation,rotation,rotQuat);
+		body.quaternion.set( rotation[0], rotation[1], rotation[2], rotation[3] );
+		return;
 	}
 }
 
 LS.registerComponent( PhysicsCollider );
+
+
+
+fixCANNON();
+
+//CANNON changes
+function fixCANNON()
+{
+	//...
+}
 
 })();

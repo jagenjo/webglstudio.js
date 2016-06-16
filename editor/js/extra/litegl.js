@@ -76,6 +76,9 @@ GL.ONE_MINUS_CONSTANT_COLOR = 32770;
 GL.CONSTANT_ALPHA = 32771;
 GL.ONE_MINUS_CONSTANT_ALPHA = 32772;
 
+GL.VERTEX_SHADER = 35633;
+GL.FRAGMENT_SHADER = 35632;
+
 GL.temp_vec3 = vec3.create();
 GL.temp2_vec3 = vec3.create();
 GL.temp_vec4 = vec4.create();

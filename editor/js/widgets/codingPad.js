@@ -402,12 +402,12 @@ CodingPadWidget.prototype.saveInstance = function()
 		//does it have a fullpath?
 		if(!instance.fullpath)
 		{
+			var ext = LS.RM.getExtension(instance.filename) || "js";
 			//ask the user to give it a name
 			DriveModule.showSelectFolderFilenameDialog( instance.filename, function(folder,filename){
 					//set name
 					instance.filename = filename;
 					instance.fullpath = folder + "/" + filename;
-					var ext = LS.RM.getExtension(filename) || "js";
 					//save resource
 					DriveModule.saveResource( instance, inner_after_save, { skip_alerts: true });
 				}, { extension: ext, text: "This file is not stored in the server, choose a folder and a filename"});

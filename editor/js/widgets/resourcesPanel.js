@@ -619,7 +619,10 @@ ResourcesPanelWidget.prototype.applyFilters = function( items )
 		}
 
 		//apply filter
-		item.style.display = must_be_filtered ? "none" : "";
+		if(must_be_filtered)
+			item.classList.add("filtered");
+		else
+			item.classList.remove("filtered");
 	}
 }
 

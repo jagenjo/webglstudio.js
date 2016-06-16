@@ -47,6 +47,7 @@ function SceneTreeWidget( id )
 	this.tree.root.addEventListener("item_add_to_selection", onItemAddToSelection.bind(this) );
 	this.tree.root.addEventListener("item_moved", onItemMoved.bind(this) );
 	this.tree.root.addEventListener("item_renamed", onItemRenamed.bind(this) ); //renamed from the list
+	this.tree.root.addEventListener("item_collapse_change", onItemCollapseChange.bind(this) ); //renamed from the list
 
 	this.tree.root.addEventListener("mousedown", function(){
 		LiteGUI.focus_widget = that;
@@ -177,13 +178,30 @@ function SceneTreeWidget( id )
 			return;
 
 		var item_data = e.detail;
-		var item = data.item;
+		var item = item_data.item;
 
 		var node = that._scene.getNode( data.old_name );
 		if(!node) 
 			return;
 		node.setName( data.new_name );
 		item.parentNode.data.node_name = data.new_name;
+	}
+
+	function onItemCollapseChange(e)
+	{
+		if(this._ignore_events)
+			return;
+
+		var item_data = e.detail;
+		var item = item_data.item;
+
+		var node = that._scene.getNode( item.data.uid );
+		if(!node) 
+			return;
+
+		if(!node._editor)
+			node._editor = {};
+		node._editor.collapsed = (item_data.data == "closed");
 	}
 
 	this.tree.onDropItem = function( e, item_data )
@@ -301,9 +319,7 @@ SceneTreeWidget.prototype.bindEvents = function( scene )
 
 	function update_root_uid()
 	{
-		var root = that.tree.getNodeByIndex(0);
-		if(root)
-			root.data.uid = that._scene.root.uid;
+		that.updateRootUID( scene );
 	}
 
 	//Triggered when the user selects a node in the scene
@@ -337,9 +353,10 @@ SceneTreeWidget.prototype.bindEvents = function( scene )
 		this.tree.updateItem( unique_id, { id: unique_id, uid: node.uid, node_name: node._name, content: node.name });
 	},this);
 	LEvent.bind( scene, "node_uid_changed", function(e,node) {
-		var old_uid = that.getIdString( LS.SceneNode._last_uid_changed );
-		var new_uid = that.getIdString( node.uid );
-		this.tree.updateItem( old_uid, { id: new_uid, uid: node.uid, node_name: node._name, content: node.name });
+		//var old_uid = that.getIdString( LS.SceneNode._last_uid_changed );
+		//var new_uid = that.getIdString( node.uid );
+		//this.tree.updateItem( old_uid, { id: new_uid, uid: node.uid, node_name: node._name, content: node.name });
+		that.changeNodeUID( LS.SceneNode._last_uid_changed, node.uid );
 	},this);
 }
 
@@ -381,6 +398,7 @@ SceneTreeWidget.prototype.addNode = function( node, parent_id )
 		parent_id = this.getIdString( node._parentNode.uid );
 
 	var is_selected = SelectionModule.isSelected(node);
+	var is_collapsed = node && node._editor ? node._editor.collapsed : false;
 
 	var element = this.tree.insertItem({
 			id: node_unique_id,
@@ -392,7 +410,7 @@ SceneTreeWidget.prototype.addNode = function( node, parent_id )
 			onDragData: function(){ 
 				return { uid: node._uid, "class": "SceneNode", type: "SceneNode", locator: node._uid, node_name: node._name, node_id: node._uid };
 			}
-		}, parent_id, undefined, {selected: is_selected} );
+		}, parent_id, undefined, {selected: is_selected, collapsed: is_collapsed} );
 	var that = this;
 
 	if( node.insidePrefab() )
@@ -443,3 +461,81 @@ SceneTreeWidget.prototype.refresh = function()
 		this.addNode( nodes[i] );
 }
 
+SceneTreeWidget.prototype.serialize = function()
+{
+	var r = { 
+		selected: null,
+		collapsed: {}
+	};
+
+	var nodes = LS.GlobalScene._nodes;
+
+	for(var i = 0; i < nodes.length; ++i)
+	{
+		var node = nodes[i];
+		var element = this.tree.root.querySelector(".ltreeitem-" + this.getIdString( node.uid ));
+		if(!element)
+			continue;
+		var listbox = element.querySelector(".listbox");
+		if(!listbox)
+			continue;
+		if(listbox.classList.contains("listclosed"))
+			r.collapsed[ node.uid ] = true;
+	}
+	return r;
+}
+
+SceneTreeWidget.prototype.configure = function(o)
+{
+	var nodes = LS.GlobalScene._nodes;
+	for(var i = 0; i < nodes.length; ++i)
+	{
+		var node = nodes[i];
+		var element = this.tree.root.querySelector(".ltreeitem-" + this.getIdString( node.uid ));
+		if(!element)
+			continue;
+		var listbox = element.querySelector(".listbox");
+		if(!listbox)
+			continue;
+		if(!o.collapsed[ node.uid ])
+			continue;
+		listbox.collapse();
+	}
+}
+
+SceneTreeWidget.prototype.changeNodeUID = function( old_uid, new_uid )
+{
+	var safe_old_id = this.getIdString( old_uid );
+	var safe_new_id = this.getIdString( new_uid );
+
+	var element = this.tree.root.querySelector(".ltreeitem-" + safe_old_id );
+	if(!element)
+	{
+		console.warn("scene tree node not found");
+		return;
+	}
+
+	if(element.dataset["item_id"] == safe_new_id)
+		return;
+
+	//tell all the child nodes the id of the parent has changed
+	this.tree.updateItemId( safe_old_id, safe_new_id );
+
+	element.classList.remove("ltreeitem-" + safe_old_id );
+	element.classList.add("ltreeitem-" + safe_new_id );
+	element.dataset["item_id"] = safe_new_id;
+	element.data.uid = new_uid; //this one is the one used for selections
+}
+
+SceneTreeWidget.prototype.updateRootUID = function( scene )
+{
+	scene = scene || LS.GlobalScene;
+	var root_uid = scene.root.uid;
+	var new_id = this.getIdString( root_uid );
+	var element = this.tree.root.querySelector(".root_item");
+	if(!element)
+		return;
+	var old_id = element.data.uid;
+
+	this.changeNodeUID( old_id, root_uid );
+}

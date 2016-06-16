@@ -45,10 +45,15 @@ var ImporterModule  = {
 			//more than one file
 			if(files.length > 1)
 			{
-				//show dialog?
+
+				//sort resources so iamges goes first?
+				var files = ImporterModule.sortFilesByPriority( files );
+
+				//TODO: show special dialog?
 				for(var i=0; i < files.length; i++)
 				{
 					this.loadFileToMemory( files[i], function(file,options){
+						var filename = file.name.toLowerCase();
 						NotifyModule.show("FILE: " + file.name, { id: "res-msg-" + file.name.hashCode(), closable: true, time: 3000, left: 60, top: 30, parent: "#visor" } );
 						ImporterModule.processResource( file.name, file, that.getImporterOptions( file.name ) );
 					},options);
@@ -155,6 +160,30 @@ var ImporterModule  = {
 		for(var i in this.preferences)
 			import_options[i] = this.preferences[i];
 		return import_options;
+	},
+
+	sortFilesByPriority: function( files )
+	{
+		var result = [];
+		Array.prototype.push.apply(result,files); //convert to regular array
+		result = result.sort( function(a,b) { 
+			if(is_image(a))
+				return a;
+			if(is_image(b))
+				return b;
+			return a;
+		});
+
+		function is_image( file )
+		{
+			var ext = LS.RM.getExtension(file.name);
+			var format = LS.Formats.supported[ext];
+			if(!format || format.type != "image")
+				return false;
+			return true;
+		}
+
+		return result;
 	},
 
 	//show the dialog to perform actions to the imported file
@@ -413,6 +442,8 @@ var ImporterModule  = {
 			return console.error("File data missing, use FileReader");
 
 		var filename = options.filename || file.name;
+		filename = filename.toLowerCase(); //force lower case in filenames to avoid case sensitive issues
+
 		var resource = LS.ResourcesManager.processResource( filename, file.data, options, inner );
 
 		return null;

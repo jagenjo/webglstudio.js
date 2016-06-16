@@ -504,11 +504,18 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 
 			if(node.prefab)
 			{
-				inspector.addStringButton("prefab", node.prefab, { name_width: 80, callback: function(v){
+				inspector.widgets_per_row = 2;
+				inspector.addStringButton("prefab", node.prefab, { width: -30, name_width: 80, callback: function(v){
 					node.prefab = v;
 					inspector.refresh();
 				},callback_button: function(v,evt) {
+					EditorModule.showSelectResource( { type:"Prefab", on_complete: function(v){
+						node.prefab = v;
+						inspector.refresh();
+					}});
+				}});
 
+				inspector.addButton( null, LiteGUI.special_codes.navicon, { height: "1em", width: 30, callback: function(v,evt){
 					var menu = new LiteGUI.ContextualMenu( ["Choose Prefab","Unlink prefab","Reload from Prefab","Update to Prefab"], { event: evt, callback: function(action) {
 						if(action == "Choose Prefab")
 						{
@@ -519,8 +526,13 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 						}
 						if(action == "Unlink prefab")
 						{
+							//add prefab to resources otherwise all the info will be lost
+							var prefab = LS.RM.resources[ node.prefab ];
+							if( prefab && prefab.containsResources() )
+								node.scene.preloaded_resources[ node.prefab ] = true;
 							node.prefab = null;
 							inspector.refresh();
+							InterfaceModule.scene_tree.refresh();
 						}
 						if(action == "Reload from Prefab")
 						{
@@ -535,6 +547,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 						}
 					}});
 				}});
+				inspector.widgets_per_row = 1;
 			}
 			else if(node.insidePrefab())
 			{
@@ -722,9 +735,11 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 
 	//show the component collapsed and remember it
 	options.callback = function(v){
-		component._collapsed = !v;
+		if(!component._editor)
+			component._editor = {};
+		component._editor.collapsed = !v;
 	}
-	options.collapsed = component._collapsed;
+	options.collapsed = component._editor ? component._editor.collapsed : false;
 
 	//create component section in inspector
 	var section = inspector.addSection( icon_code + extra_code + enabler + title + buttons, options );

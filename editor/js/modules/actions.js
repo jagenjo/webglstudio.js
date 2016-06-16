@@ -70,6 +70,18 @@ LS.SceneNode.actions["create_prefab"] = {
 	}
 };
 
+LS.SceneNode.actions["use_prefab"] = { 
+	title:"Assign Prefab",
+	callback: function(){
+		var node = this;
+		EditorModule.showSelectResource( { type:"Prefab", on_complete: function(v){
+			node.prefab = v;
+			inspector.refresh();
+		}});
+	}
+};
+
+
 LS.SceneNode.actions["inspect_in_dialog"] = { 
 	title:"Inspect in dialog",
 	callback: function(){

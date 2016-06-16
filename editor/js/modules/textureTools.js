@@ -175,7 +175,13 @@ GL.Texture.prototype.inspect = function( widgets, skip_default_widgets )
 	});
 	widgets.addButton(null, "Make Power of Two", function(){
 		var info = texture.getProperties();
-		var pot_texture = new GL.Texture( GL.Texture.nextPOT( info.width ), GL.Texture.nextPOT( info.height ), info );
+		info.wrap = GL.REPEAT;
+		info.minFilter = GL.LINEAR_MIPMAP_LINEAR;
+		var w = GL.Texture.nextPOT( info.width );
+		var h = GL.Texture.nextPOT( info.height );
+		if(w == texture.width && h == texture.height)
+			return;
+		var pot_texture = new GL.Texture( w, h, info );
 		texture.copyTo( pot_texture );
 		LS.RM.registerResource( texture.filename, pot_texture );
 	});

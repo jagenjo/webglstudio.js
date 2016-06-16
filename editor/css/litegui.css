@@ -1690,6 +1690,11 @@ li.ltreeitem .ltreeitemtitle .postcontent {
 	margin-left: 4px;
 }
 
+
+li.ltreeitem.hidden, li.ltreeitem.filtered {
+	display: none;
+}
+
 .listbox {
 	font-size: 1em;
 	width: 0.9em;
@@ -1819,6 +1824,10 @@ ul.file-list li.file-item {
 	text-align: center;
 	border-radius: 2px;
 	position: relative;
+}
+
+ul.file-list li.file-item.filtered {
+	display: none;
 }
 
 ul.file-list li.file-item .title {

@@ -913,6 +913,11 @@ var LiteGUI = {
 		element.focus();
 	},
 
+	blur: function( element )
+	{
+		element.blur();
+	},
+
 	/**
 	* Makes one element draggable
 	* @method draggable
@@ -1027,6 +1032,7 @@ var LiteGUI = {
 		close: "&#10005;",
 		navicon: "&#9776;",
 		refresh: "&#8634;",
+		gear: "&#9881;",
 		open_folder: "&#128194;"
 	},
 	
@@ -1856,6 +1862,16 @@ function dataURItoBlob( dataURI ) {
 				this.classList.add("empty");
 			else
 				this.classList.remove("empty");
+		}
+
+		element.expand = function()
+		{
+			this.setValue(true);
+		}
+
+		element.collapse = function()
+		{
+			this.setValue(false);
 		}
 
 		element.setValue = function(v)
@@ -4225,7 +4241,7 @@ function dataURItoBlob( dataURI ) {
 
 		//update parent collapse button
 		if(parent_id)
-			this._updateListBox( this._findElement(parent_id) );
+			this._updateListBox( this._findElement(parent_id) ); //no options here, this is the parent
 
 
 		return element;
@@ -4268,6 +4284,10 @@ function dataURItoBlob( dataURI ) {
 		else
 			this._insertInside( element, parent_element_index, element_index );
 
+		//compute visibility according to parents
+		if( parent && !this._isNodeChildrenVisible( parent_id ) )
+			element.classList.add("hidden");
+
 		//children
 		if(data.children)
 		{
@@ -4278,7 +4298,7 @@ function dataURItoBlob( dataURI ) {
 		}
 
 		//update collapse button
-		this._updateListBox( element );
+		this._updateListBox( element, options );
 
 		if(options && options.selected)
 			this.markAsSelected( element, true );
@@ -4287,7 +4307,7 @@ function dataURItoBlob( dataURI ) {
 	}
 
 	//element to add, position of the parent node, position inside children, the depth level
-	Tree.prototype._insertInside = function(element, parent_index, offset_index, level )
+	Tree.prototype._insertInside = function( element, parent_index, offset_index, level )
 	{
 		var parent = this.root.childNodes[ parent_index ];
 		if(!parent)
@@ -4328,8 +4348,28 @@ function dataURItoBlob( dataURI ) {
 		this.root.appendChild( element );
 	}
 
+
+	Tree.prototype._isNodeChildrenVisible = function( id )
+	{
+		var node = this.getItem( id );
+		if(!node)
+			return false;
+		if( node.classList.contains("hidden") )
+			return false;
+
+		//check listbox
+		var listbox = node.querySelector(".listbox");
+		if(!listbox)
+			return true;
+		if(listbox.getValue() == "closed")
+			return false;
+		return true;
+	}
+
 	Tree.prototype._findElement = function( id )
 	{
+		if( !id || id.constructor !== String)
+			throw("findElement param must be string with item id");
 		for(var i = 0; i < this.root.childNodes.length; ++i)
 		{
 			var childNode = this.root.childNodes[i];
@@ -4463,7 +4503,7 @@ function dataURItoBlob( dataURI ) {
 			for(var i in data.dataset)
 				root.dataset[i] = data.dataset[i];
 
-		root.appendChild(title_element);
+		root.appendChild( title_element );
 		root.title_element = title_element;
 
 		if(data.visible === false)
@@ -4717,7 +4757,7 @@ function dataURItoBlob( dataURI ) {
 			if(!name || str.indexOf( name.toLowerCase() ) != -1)
 			{
 				if( childNode.data && childNode.data.visible !== false )
-					childNode.style.display = "";
+					childNode.classList.remove("filtered");
 				var indent = childNode.querySelector(".indentblock");
 				if(indent)
 				{
@@ -4729,7 +4769,7 @@ function dataURItoBlob( dataURI ) {
 			}
 			else
 			{
-				childNode.style.display = "none";
+				childNode.classList.add("filtered");
 			}
 		}
 
@@ -4809,7 +4849,7 @@ function dataURItoBlob( dataURI ) {
 		if(!item.listbox)
 			return;
 
-		listbox.setValue(true);
+		listbox.setValue(true); //this propagates changes
 	}
 
 	/**
@@ -4826,7 +4866,7 @@ function dataURItoBlob( dataURI ) {
 		if(!item.listbox)
 			return;
 
-		listbox.setValue(false);
+		listbox.setValue(false);  //this propagates changes
 	}
 
 
@@ -5015,13 +5055,18 @@ function dataURItoBlob( dataURI ) {
 	Tree.prototype.moveItem = function(id, parent_id )
 	{
 		if(id === parent_id)
-			return;
+			return false;
 
 		var node = this.getItem( id );
 		var parent = this.getItem( parent_id );
 		var parent_index = this._findElementIndex( parent );
 		var parent_level = parseInt( parent.dataset["level"] );
 		var old_parent = this.getParent( node );
+		if(!old_parent)
+		{
+			console.error("node parent not found by id, maybe id has changed");
+			return false;
+		}
 		var old_parent_level = parseInt( old_parent.dataset["level"] );
 		var level_offset = parent_level - old_parent_level;
 
@@ -5029,7 +5074,7 @@ function dataURItoBlob( dataURI ) {
 			return false;
 
 		if(parent == old_parent)
-			return;
+			return false;
 
 		//replace parent info
 		node.parent_id = parent_id;
@@ -5124,7 +5169,7 @@ function dataURItoBlob( dataURI ) {
 
 		node.data = data;
 		if(data.id)
-			node.id = data.id;
+			node.id = data.id; //this updateItemId ?
 		if(data.content)
 		{
 			//node.title_element.innerHTML = "<span class='precontent'></span><span class='incontent'>" +  + "</span><span class='postcontent'></span>";
@@ -5134,6 +5179,31 @@ function dataURItoBlob( dataURI ) {
 
 		return true;
 	}
+
+	/**
+	* update a given item id and the link with its children
+	* @method updateItemId
+	* @param {string} old_id
+	* @param {string} new_id
+	*/
+	Tree.prototype.updateItemId = function(old_id, new_id)
+	{
+		var node = this.getItem(old_id);
+		if(!node)
+			return false;
+
+		var children = this.getChildren( old_id, true );
+		node.id = new_id;
+
+		for(var i = 0; i < children.length; ++i)
+		{
+			var child = children[i];
+			child.parent_id = new_id;
+		}
+
+		return true;
+	}
+
 
 	/**
 	* clears all the items
@@ -5218,7 +5288,7 @@ function dataURItoBlob( dataURI ) {
 	}
 
 	//updates the widget to collapse
-	Tree.prototype._updateListBox = function( node )
+	Tree.prototype._updateListBox = function( node, options )
 	{
 		if(!node)
 			return;
@@ -5228,12 +5298,18 @@ function dataURItoBlob( dataURI ) {
 		if(!node.listbox)
 		{
 			var pre = node.title_element.querySelector(".collapsebox");
-			var box = LiteGUI.createLitebox(true, function(e) { that.onClickBox(e, node); });
+			var box = LiteGUI.createLitebox(true, function(e) { 
+				that.onClickBox(e, node);
+				LiteGUI.trigger( that.root, "item_collapse_change", { item: node, data: box.getValue() } );
+			});
 			box.stopPropagation = true;
 			box.setEmpty(true);
 			pre.appendChild(box);
 			node.listbox = box;
 		}
+
+		if(options && options.collapsed)
+			node.listbox.collapse();
 
 		var child_elements = this.getChildren( node.dataset["item_id"] );
 		if(!child_elements)
@@ -5248,11 +5324,24 @@ function dataURItoBlob( dataURI ) {
 	Tree.prototype.onClickBox = function(e, node)
 	{
 		var children = this.getChildren( node );
-		var status = node.listbox.getValue();
 
-		if(children)
-			for(var i = 0; i < children.length; ++i)
-				children[i].style.display = status == "open" ? null : "none";
+		if(!children)
+			return;
+
+		//update children visibility
+		for(var i = 0; i < children.length; ++i)
+		{
+			var child = children[i];
+			
+			var child_parent = this.getParent( child );
+			var visible = true;
+			if( child_parent )
+				visible = this._isNodeChildrenVisible(child_parent);
+			if(visible)
+				child.classList.remove("hidden");
+			else
+				child.classList.add("hidden");
+		}
 	}
 
 	LiteGUI.Tree = Tree;
@@ -6229,6 +6318,8 @@ Inspector.prototype.inspectInstance = function( instance, properties, properties
 			if(classObject["@" + i]) //guess from class object info
 			{
 				var shared_options = classObject["@" + i];
+				if( shared_options && shared_options.widget === null)
+					continue; //skip
 				properties_info[i] = inner_clone( shared_options );
 			}
 			else if(instance["@" + i]) //guess from instance info
@@ -6409,10 +6500,10 @@ Inspector.prototype.createWidget = function(name, content, options)
 
 	var width = options.width || this.widgets_width;
 	if(width)
-	{
-		element.style.width = width.constructor === String ? width : width + "px";
-		element.style.minWidth = element.style.width;
-	}
+		element.style.width = LiteGUI.sizeToCSS(width);
+	var height = options.height || this.height;
+	if(height)
+		element.style.height = LiteGUI.sizeToCSS(height);
 
 	//store widgets 
 	this.widgets.push( element );
@@ -6501,6 +6592,7 @@ Inspector.onWidgetChange = function( element, name, value, options, expand_value
 
 //must be lowercase
 Inspector.widget_constructors = {
+	"null": 'addNull', //use for special cases
 	title: 'addTitle',
 	info: 'addInfo',
 	number: 'addNumber',
@@ -6618,6 +6710,13 @@ Inspector.prototype.addSeparator = function()
 	return element;
 }
 
+//used when you want to skip the widget of an object
+Inspector.prototype.addNull = function(name,value, options)
+{
+	return null;
+}
+
+
 /**
 * Widget to edit strings
 * @method addString
@@ -6703,7 +6802,7 @@ Inspector.prototype.addStringButton = function( name, value, options)
 	var that = this;
 	this.values[name] = value;
 	
-	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
+	var element = this.createWidget( name, "<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
 	var input = element.querySelector(".wcontent input");
 	input.addEventListener("change", function(e) { 
 		var r = Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
@@ -7901,15 +8000,17 @@ Inspector.prototype.addButton = function(name, value, options)
 	value = options.button_text || value || "";
 	var that = this;
 
-	var c = "";
+	var button_classname = "";
 	if(name === null)
-		c = "single";
+		button_classname = "single";
+	if(options.micro)
+		button_classname += " micro";
 
 	var attrs = "";
 	if(options.disabled)
 		attrs = "disabled='disabled'";
 	
-	var element = this.createWidget(name,"<button class='litebutton "+c+"' tabIndex='"+ this.tab_index + "' "+attrs+">"+value+"</button>", options);
+	var element = this.createWidget(name,"<button class='litebutton "+button_classname+"' tabIndex='"+ this.tab_index + "' "+attrs+">"+value+"</button>", options);
 	this.tab_index++;
 	var button = element.querySelector("button");
 	button.addEventListener("click", function(event) {

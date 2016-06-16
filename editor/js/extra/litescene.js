@@ -2153,7 +2153,7 @@ var GUI = {
 	/**
 	* Creates a HTMLElement of the tag_type and adds it to the DOM on top of the canvas
 	*
-	* @method createElementGUI
+	* @method createElement
 	* @param {String} tag_type the tag type "div"
 	* @param {String} anchor "top-left", "top-right", "bottom-left", "bottom-right"
 	* @return {HTMLElement} 
@@ -2167,6 +2167,13 @@ var GUI = {
 		return this.attach( element, anchor );
 	},
 
+	/**
+	* attach HTMLElement to GUI Root in the anchor position specified
+	*
+	* @method attach
+	* @param {HTMLElement} element
+	* @param {String} anchor "top-left", "top-right", "bottom-left", "bottom-right"
+	*/
 	attach: function( element, anchor )
 	{
 		if(!element)
@@ -2221,9 +2228,21 @@ var GUI = {
 	},
 
 	/**
+	* Removes an element from the GUI (same as  element.parentNode.removeChild( element ); )
+	*
+	* @method detach
+	* @param {HTMLElement} element HTML element to detach from the GUI
+	*/
+	detach: function( element )
+	{
+		if(element && element.parentNode )
+			element.parentNode.removeChild( element );
+	},
+
+	/**
 	* Removes all the GUI elements from the DOM
 	*
-	* @method resetGUI
+	* @method reset
 	*/
 	reset: function()
 	{
@@ -2242,6 +2261,11 @@ var GUI = {
 		return;
 	},
 
+	/**
+	* shows the GUI 
+	*
+	* @method show
+	*/
 	show: function()
 	{
 		if(!this._root)
@@ -2250,11 +2274,35 @@ var GUI = {
 
 	},
 
+	/**
+	* hides the GUI (but it is still existing) 
+	*
+	* @method hide
+	*/
 	hide: function()
 	{
 		if(!this._root)
 			return;
 		this._root.style.display = "none";
+	},
+
+	/**
+	* Loads resource containing the HTML code for the GUI and attachs it inside a div to the hud
+	*
+	* @method load
+	* @param {String} url the url of the resource containing all the HTML code
+	* @param {Function} on_complete callback that will be called once the HTML has been loaded and attached to the doom, it receives the HTMLElement containing all the HTML
+	*/
+	load: function( url, on_complete )
+	{
+		LS.ResourcesManagear.load( url, function(res){
+			var gui_root = LS.GUI.getRoot();
+			var html = res.getAsHTML();
+			html.style.pointerEvents = "none";
+			gui_root.appendChild( html );
+			if(on_complete)
+				on_complete( html, res );
+		});
 	}
 };
 
@@ -3670,7 +3718,7 @@ var ShadersManager = {
 	default_xml_url: "data/shaders.xml",
 
 	snippets: {},//to save source snippets
-	blocks: {},//to save shader block
+	shader_blocks: {},//to save shader block
 	compiled_programs: {}, //shaders already compiled and ready to use
 	compiled_shaders: {}, //every vertex and fragment shader compiled
 
@@ -3680,6 +3728,8 @@ var ShadersManager = {
 	default_shader: null, //a default shader to rely when a shader is not found
 	dump_compile_errors: true, //dump errors in console
 	on_compile_error: null, //callback 
+
+	num_shaderblocks: 0, //used to know the index
 
 	/**
 	* Initializes the shader manager
@@ -3696,6 +3746,8 @@ var ShadersManager = {
 		this.compiled_programs = {};
 		this.compiled_shaders = {};
 		this.global_shaders = {};
+
+		//this.shader_blocks = {};//do not initialize, or we will loose all
 
 		//base intro code for shaders
 		this.global_extra_code = String.fromCharCode(10) + "#define WEBGL" + String.fromCharCode(10);
@@ -4195,16 +4247,25 @@ var ShadersManager = {
 		return this.snippets[ id ];
 	},
 
-	registerBlock: function(id, block)
+	registerShaderBlock: function(id, shader_block)
 	{
-		if( this.blocks[id] )
+		var block_id = -1;
+
+		if( this.shader_blocks[id] )
+		{
 			console.warn("There is already a ShaderBlock with that name, replacing it: ", id);
-		this.blocks[id] = block;
+			block_id = this.shader_blocks[id].flag_id;
+		}
+		else
+			block_id = this.num_shaderblocks++;
+		shader_block.flag_id = block_id;
+		shader_block.flag_mask = 1<<block_id;
+		this.shader_blocks[id] = shader_block;
 	},
 
-	getBlock: function(id, block)
+	getShaderBlock: function(id, shader_block)
 	{
-		return this.blocks[id];
+		return this.shader_blocks[id];
 	},
 
 	//this is global code for default shaders
@@ -4395,25 +4456,32 @@ LS.ShaderQuery = ShaderQuery;
 
 function ShaderBlock( name )
 {
-	this.id = -1;
+	this.flag_id = -1;
+	this.flag_mask = 0;
+	if(!name)
+		throw("ShaderBlock must have a name");
 	this.name = name;
-
-	this.code = {};
+	this.code_map = new Map();
 }
 
-ShaderBlock.prototype.addCode = function( enabled, vs_code, fs_code )
+ShaderBlock.prototype.addCode = function( shader_type, enabled_code, disabled_code )
 {
-	var code = {
-		vs_code: vs_code,
-		fs_code: fs_code
-	};
-
-	if(enabled)
-		this.code.enabled = code;
-	else
-		this.code.disabled = code;
+	this.code_map.set( shader_type, { enabled: enabled_code || "", disabled: disabled_code || ""} );
 }
 
+ShaderBlock.prototype.getCode = function( shader_type, block_flags )
+{
+	block_flags = block_flags || 0;
+	var code = this.code_map.get( shader_type );
+	if(!code)
+		return null;
+	return (block_flags | this.flag_mask) ? code.enabled : code.disabled;
+}
+
+ShaderBlock.prototype.register = function()
+{
+	LS.ShadersManager.registerShaderBlock(this.name, this);
+}
 
 
 LS.ShaderBlock = ShaderBlock;
@@ -8016,13 +8084,16 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, l
 	if(!this.shader)
 		return false;
 
+	//compute flags
+	var block_flags = instance.computeShaderBlockFlags();
+
 	//get shader code
 	var shader_code = LS.ResourcesManager.getResource( this.shader );
 	if(!shader_code || shader_code.constructor !== LS.ShaderCode )
 		return false;
 
 	//extract shader compiled
-	var shader = shader_code.getShader();
+	var shader = shader_code.getShader( null, block_flags );
 	if(!shader)
 		return false;
 
@@ -8225,19 +8296,22 @@ function ComponentContainer()
 
 ComponentContainer.prototype.configureComponents = function( info )
 {
-	if(info.components)
-		for(var i = 0, l = info.components.length; i < l; ++i)
+	if(!info.components)
+		return;
+
+	for(var i = 0, l = info.components.length; i < l; ++i)
+	{
+		var comp_info = info.components[i];
+		var comp_class = comp_info[0];
+		var comp = null;
+
+		//special case: this is the only component that comes by default
+		if(comp_class == "Transform" && i == 0 && this.transform) 
 		{
-			var comp_info = info.components[i];
-			var comp_class = comp_info[0];
-
-			//special case: this is the only component that comes by default
-			if(comp_class == "Transform" && i == 0 && this.transform) 
-			{
-				this.transform.configure(comp_info[1]);
-				continue;
-			}
-
+			comp = this.transform;
+		}
+		else
+		{
 			//search for the class
 			var classObject = LS.Components[comp_class];
 			if(!classObject){
@@ -8247,20 +8321,23 @@ ComponentContainer.prototype.configureComponents = function( info )
 				this._missing_components.push( comp_info );
 				continue;
 			}
-
 			//create component
-			var comp = new classObject(); //comp_info[1]
-
+			comp = new classObject(); //comp_info[1]
 			//attach to node
 			this.addComponent(comp);
-
-			//what about configure the comp after adding it? 
-			comp.configure( comp_info[1] );
-
-			//ensure the component uid is stored, some components may forgot about it
-			if( comp_info[1].uid && comp_info[1].uid !== comp.uid )
-				comp.uid = comp_info[1].uid;
 		}
+
+		//what about configure the comp after adding it? 
+		comp.configure( comp_info[1] );
+
+		//editor stuff
+		if( comp_info[1].editor )
+			comp._editor = comp_info[1].editor;
+
+		//ensure the component uid is stored, some components may forgot about it
+		if( comp_info[1].uid && comp_info[1].uid !== comp.uid )
+			comp.uid = comp_info[1].uid;
+	}
 }
 
 /**
@@ -8269,7 +8346,7 @@ ComponentContainer.prototype.configureComponents = function( info )
 * @param {Object} o container where the components will be stored
 */
 
-ComponentContainer.prototype.serializeComponents = function(o)
+ComponentContainer.prototype.serializeComponents = function( o )
 {
 	if(!this._components)
 		return;
@@ -8281,6 +8358,9 @@ ComponentContainer.prototype.serializeComponents = function(o)
 		if( !comp.serialize )
 			continue;
 		var obj = comp.serialize();
+
+		if(comp._editor)
+			obj.editor = comp._editor;
 
 		//enforce uid storage
 		if(comp.hasOwnProperty("uid") && !obj.uid)
@@ -8772,17 +8852,20 @@ CompositePattern.prototype.serializeChildren = function()
 */
 CompositePattern.prototype.configureChildren = function(o)
 {
-	if(!o.children) return;
+	if(!o.children)
+		return;
 
-	for(var i in o.children)
+	for(var i = 0; i < o.children.length; ++i)
 	{
 		var c = o.children[i];
 
 		//create instance
 		var node = new this.constructor(c.id); //id is hardcoded...
-		//this is important because otherwise the event fired by addChild wont have uid info which is crucial in some cases
+		//we do this before because otherwise the event fired by addChild wont have all the info which is crucial in some cases in the editor
 		if(c.uid) 
 			node.uid = c.uid;
+		if(c.editor) 
+			node._editor = c.editor;
 		//add before configure, so every child has a scene tree
 		this.addChild(node);
 		//we configure afterwards otherwise children wouldnt have a scene tree to bind anything
@@ -11146,6 +11229,11 @@ Prefab.packResources = function( resource_names_list, base_data )
 	return WBin.create( to_binary, "Prefab" );
 }
 
+Prefab.prototype.containsResources = function()
+{
+	return this.resource_names.length > 0;
+}
+
 Prefab.prototype.updateFromNode = function( node, clear_uids )
 {
 	var data = node.serialize(true);
@@ -11492,9 +11580,20 @@ function ShaderCode( code )
 	this._subfiles = {};
 	this._compiled_shaders = {};
 
+	this._shaderblock_flags_num = 0;
+	this._shaderblock_flags = {};
+
 	if(code)
 		this.code = code;
 }
+
+//block types
+ShaderCode.CODE = 1;
+ShaderCode.PRAGMA = 2;
+
+//pargma types
+ShaderCode.INCLUDE = 1;
+ShaderCode.SHADERBLOCK = 2;
 
 Object.defineProperty( ShaderCode.prototype, "code", {
 	enumerable: true,
@@ -11518,6 +11617,8 @@ ShaderCode.prototype.processCode = function()
 	this._code_parts = {};
 	this._compiled_shaders = {};
 	this._init_function = null;
+	this._shaderblock_flags_num = 0;
+	this._shaderblock_flags = {};
 
 	var subfiles = GL.processFileAtlas( this._code );
 	this._subfiles = subfiles;
@@ -11568,7 +11669,7 @@ ShaderCode.prototype.processCode = function()
 			if(!code_part)
 				code_part = this._code_parts[name] = {};
 			//parse data (extract pragmas and stuff)
-			code_part[ extension ] = LS.ShaderCode.parseGLSLCode( subfile_data );
+			code_part[ extension ] = this.parseGLSLCode( subfile_data );
 		}
 	}
 
@@ -11622,15 +11723,19 @@ ShaderCode.prototype.getDataToStore = function()
 }
 
 //compile the shader, cache and return
-ShaderCode.prototype.getShader = function( render_mode, flags )
+ShaderCode.prototype.getShader = function( render_mode, block_flags )
 {
 	render_mode = render_mode || "default";
-	flags = flags || 0;
+	block_flags = block_flags || 0;
 
-	//search for a compiled version of the shader
-	var shader = this._compiled_shaders[ render_mode ];
-	if(shader)
-		return shader;
+	//search for a compiled version of the shader (by render_mode and block_flags)
+	var shaders_map = this._compiled_shaders[ render_mode ];
+	if(shaders_map)
+	{
+		var shader = shaders_map.get( block_flags );
+		if(shader)
+			return shader;
+	}
 
 	//search for the code
 	var code = this._code_parts[ render_mode ];
@@ -11644,12 +11749,12 @@ ShaderCode.prototype.getShader = function( render_mode, flags )
 	else if( !code.vs )
 		return null;
 	else
-		vs_code = this.getCodeFromSubfile( code.vs );
+		vs_code = this.getCodeFromSubfile( code.vs, GL.VERTEX_SHADER, block_flags );
 
 	//fragment shader code
 	if( !code.fs )
 		return;
-	var fs_code = this.getCodeFromSubfile( code.fs );
+	var fs_code = this.getCodeFromSubfile( code.fs, GL.FRAGMENT_SHADER, block_flags );
 
 	//no code or code includes something missing
 	if(!vs_code || !fs_code) 
@@ -11660,11 +11765,15 @@ ShaderCode.prototype.getShader = function( render_mode, flags )
 	if(!shader)
 		return null;
 
-	this._compiled_shaders[ render_mode ] = shader;
+	//cache as render_mode,flags
+	if( !this._compiled_shaders[ render_mode ] )
+		this._compiled_shaders[ render_mode ] = new Map();
+	this._compiled_shaders[ render_mode ].set( block_flags, shader );
+
 	return shader;
 }
 
-ShaderCode.prototype.compileShader = function( vs_code, fs_code)
+ShaderCode.prototype.compileShader = function( vs_code, fs_code )
 {
 	if(!LS.catch_exceptions)
 		return new GL.Shader( vs_code, fs_code );
@@ -11683,7 +11792,8 @@ ShaderCode.prototype.compileShader = function( vs_code, fs_code)
 	return null;
 }
 
-ShaderCode.prototype.getCodeFromSubfile = function( subfile )
+//this function resolves all pragmas (includes, shaderblocks, etc) and returns the final code
+ShaderCode.prototype.getCodeFromSubfile = function( subfile, shader_type, block_flags )
 {
 	if( !subfile.is_dynamic )
 		return subfile.code;
@@ -11694,14 +11804,14 @@ ShaderCode.prototype.getCodeFromSubfile = function( subfile )
 	for(var i = 0; i < blocks.length; ++i)
 	{
 		var block = blocks[i];
-		if( block.type == 1 ) //regular code
+		if( block.type === ShaderCode.CODE ) //regular code
 		{
 			code += block.code;
 			continue;
 		}
 
-		//pragma
-		if(block.include)
+		//pragmas
+		if(block.include) //bring code from other files
 		{
 			var filename = block.include;
 			var ext = LS.ResourcesManager.getExtension( filename );
@@ -11731,13 +11841,25 @@ ShaderCode.prototype.getCodeFromSubfile = function( subfile )
 				code += "\n" + snippet_code.code + "\n";
 			}
 		}
+		else if( block.shader_block ) //injects code from ShaderCodes taking into account certain rules
+		{
+			var shader_block = LS.ShadersManager.getShaderBlock( block.shader_block );
+			if(!shader_block)
+			{
+				console.error("Shader uses unknown ShaderBLock: ", block.shader_block);
+				return null;
+			}
+
+			var block_code = shader_block.getCode( shader_type, block_flags );
+			code += "\n" + block_code + "\n";
+		}
 	}
 
 	return code;
 }
 
 //given a code with some pragmas, it separates them
-ShaderCode.parseGLSLCode = function( code )
+ShaderCode.prototype.parseGLSLCode = function( code )
 {
 	//remove comments
 	code = code.replace(/(\/\*([\s\S]*?)\*\/)|(\/\/(.*)$)/gm, '');
@@ -11747,6 +11869,7 @@ ShaderCode.parseGLSLCode = function( code )
 	var pragmas = {};
 	var uniforms = {};
 	var includes = {};
+	var shader_blocks = {};
 	var is_dynamic = false; //means this shader has no variations using pragmas or macros
 
 	var lines = code.split("\n");
@@ -11798,15 +11921,22 @@ ShaderCode.parseGLSLCode = function( code )
 		if(t[0] == "#pragma")
 		{
 			//merge lines and add previous block
-			blocks.push( { type: 1, code: current_block.join("\n") } ); 
+			blocks.push( { type: ShaderCode.CODE, code: current_block.join("\n") } ); 
 
 			is_dynamic = true;
 			pragmas[ t[2] ] = true;
 			var action = t[1];
 			current_block.length = 0;
-			var pragma_info = { type: 2, line: line, action: action, param: t[2] };
-			if( action == "include" && t[2] )
+			var pragma_info = { type: ShaderCode.PRAGMA, line: line, action: action, param: t[2] };
+			if( action == "include")
 			{
+				if(!t[2])
+				{
+					console.error("shader include without path");
+					continue;
+				}
+
+				pragma_info.action_type = ShaderCode.INCLUDE;
 				//resolve include
 				var include = t[2].substr(1, t[2].length - 2); //safer than JSON.parse
 				var fullname = include.split(":");
@@ -11816,6 +11946,21 @@ ShaderCode.parseGLSLCode = function( code )
 				pragma_info.include_subfile = subfile;
 				includes[ pragma_info.include ] = true;
 			}
+			else if( action == "shaderblock" )
+			{
+				if(!t[2])
+				{
+					console.error("#pragma shaderblock without name");
+					continue;
+				}
+				pragma_info.action_type = ShaderCode.SHADERBLOCK;
+				var shader_block_name = t[2].substr(1, t[2].length - 2); //safer than JSON.parse
+				pragma_info.shader_block = shader_block_name;
+				shader_blocks[ pragma_info.shader_block ] = true;
+				pragma_info.shader_block_flag = this._shaderblock_flags_num;
+				this._shaderblock_flags[ shader_block_name ] = pragma_info.shader_block_flag;
+				this._shaderblock_flags_num += 1;
+			}
 
 			blocks.push( pragma_info ); //add pragma block
 		}
@@ -11824,7 +11969,7 @@ ShaderCode.parseGLSLCode = function( code )
 	}
 
 	if(current_block.length)
-		blocks.push( { type: 1, code: current_block.join("\n") } ); //merge lines and add as block
+		blocks.push( { type: ShaderCode.CODE, code: current_block.join("\n") } ); //merge lines and add as block
 
 	return {
 		is_dynamic: is_dynamic,
@@ -11832,7 +11977,8 @@ ShaderCode.parseGLSLCode = function( code )
 		blocks: blocks,
 		pragmas: pragmas,
 		uniforms: uniforms,
-		includes: {}
+		includes: includes,
+		shader_blocks: shader_blocks
 	};
 }
 
@@ -14171,12 +14317,13 @@ function RenderInstance( node, component )
 
 	//info about the material
 	this.material = null;
-	//this.materials = null; //for multimaterial rendering, LONG FUTURE...
 
 	//for extra data for the shader
 	this.query = new LS.ShaderQuery();
 	this.uniforms = {};
 	this.samplers = [];
+	this.shader_blocks = [];
+	//this.deformers = []; //TODO
 
 	//TO DO: instancing
 	//this.uniforms_instancing = {};
@@ -14441,6 +14588,17 @@ RenderInstance.prototype.render = function(shader)
 	shader.drawBuffers( this.vertex_buffers,
 	  this.index_buffer,
 	  this.primitive, this.range[0], this.range[1] );
+}
+
+RenderInstance.prototype.computeShaderBlockFlags = function()
+{
+	var r = 0;
+	for(var i = 0; i < this.shader_blocks.length; ++i)
+	{
+		var block = this.shader_blocks[i].block;
+		r |= block.flag_mask;
+	}
+	return r;
 }
 
 /*
@@ -16685,6 +16843,23 @@ DebugRender.prototype.createMeshes = function()
 }
 
 LS.DebugRender = DebugRender;
+
+//WORK IN PROGRESS
+
+//Is the class in charge of applying deformations to meshes (skinning and morph targets)
+function Deformer()
+{
+	this.shader_block = null;
+	this.macros = {}
+	this.uniforms = {}
+}
+
+Deformer.prototype.applyByCPU = function( vertex_data, normals_data )
+{
+	//overwrite
+}
+
+LS.Deformer = Deformer;
 //
 /**
 * Picking is used to detect which element is below one pixel (used the GPU) or using raycast
@@ -21495,12 +21670,17 @@ function MeshRenderer(o)
 	this._must_update_static = true; //used in static meshes
 	this._transform_version = -1;
 
+	//used to render with several materials
+	this.use_submaterials = false;
+	this.submaterials = [];
+
 	if(o)
 		this.configure(o);
 
+	this._RI = new LS.RenderInstance( null, this );
+
 	if(!MeshRenderer._identity) //used to avoir garbage
 		MeshRenderer._identity = mat4.create();
-
 }
 
 Object.defineProperty( MeshRenderer.prototype, 'primitive', {
@@ -21534,11 +21714,15 @@ MeshRenderer["@submesh_id"] = { type:"enum", values: function() {
 	return t;
 }};
 
+MeshRenderer["@use_submaterials"] = { type: LS.TYPES.BOOLEAN, widget: null }; //avoid widget
+MeshRenderer["@submaterials"] = { widget: null }; //avoid 
+
 //we bind to onAddedToNode because the event is triggered per node so we know which RIs belong to which node
 MeshRenderer.prototype.onAddedToNode = function(node)
 {
 	if(!node.meshrenderer)
 		node.meshrenderer = this;
+	this._RI.node = node;
 	LEvent.bind(node, "collectRenderInstances", this.onCollectInstances, this);
 }
 
@@ -21564,6 +21748,9 @@ MeshRenderer.prototype.configure = function(o)
 	this.primitive = o.primitive; //gl.TRIANGLES
 	this.two_sided = !!o.two_sided;
 	this.material = o.material;
+	this.use_submaterials = !!o.use_submaterials;
+	if(o.submaterials)
+		this.submaterials = o.submaterials;
 	if(o.point_size !== undefined) //legacy
 		this.point_size = o.point_size;
 	this.textured_points = !!o.textured_points;
@@ -21593,6 +21780,9 @@ MeshRenderer.prototype.serialize = function()
 		o.submesh_id = this.submesh_id;
 	if(this.two_sided)
 		o.two_sided = this.two_sided;
+	if(this.use_submaterials)
+		o.use_submaterials = this.use_submaterials;
+	o.submaterials = this.submaterials;
 	o.point_size = this.point_size;
 	o.textured_points = this.textured_points;
 	o.material = this.material;
@@ -21628,6 +21818,15 @@ MeshRenderer.prototype.getResources = function(res)
 		res[this.mesh] = GL.Mesh;
 	if(typeof(this.lod_mesh) == "string")
 		res[this.lod_mesh] = GL.Mesh;
+	if(typeof(this.material) == "string")
+		res[this.material] = LS.Material;
+
+	if(this.use_submaterials)
+	{
+		for(var i  = 0; i < this.submaterials.length; ++i)
+			if(this.submaterials[i])
+				res[this.submaterials[i]] = LS.Material;
+	}
 	return res;
 }
 
@@ -21657,16 +21856,21 @@ MeshRenderer.prototype.onCollectInstances = function(e, instances)
 	if(!this._root)
 		return;
 
-	var RI = this._RI;
-	if(!RI)
-		this._RI = RI = new LS.RenderInstance( this._root, this );
+	if(this.use_submaterials)
+	{
+		this.onCollectInstancesSubmaterials(instances);
+		return;
+	}
 
+	var RI = this._RI;
 	var is_static = this._root.flags && this._root.flags.is_static;
 	var transform = this._root.transform;
 
 	//optimize
 	if( is_static && LS.allow_static && !this._must_update_static && (!transform || (transform && this._transform_version == transform._version)) )
 		return instances.push( RI );
+
+
 
 	//matrix: do not need to update, already done
 	RI.setMatrix( this._root.transform._global_matrix );
@@ -21700,7 +21904,6 @@ MeshRenderer.prototype.onCollectInstances = function(e, instances)
 	else
 		RI.setRange(0,-1);
 
-
 	//used for raycasting
 	if(this.lod_mesh)
 	{
@@ -21724,6 +21927,8 @@ MeshRenderer.prototype.onCollectInstances = function(e, instances)
 	if(!this.textured_points && RI.query.macros["USE_TEXTURED_POINTS"])
 		delete RI.query.macros["USE_TEXTURED_POINTS"];
 
+
+
 	//mark it as ready once no more changes should be applied
 	if( is_static && LS.allow_static && !this.isLoading() )
 	{
@@ -21732,6 +21937,61 @@ MeshRenderer.prototype.onCollectInstances = function(e, instances)
 	}
 
 	instances.push( RI );
+}
+
+MeshRenderer.prototype.onCollectInstancesSubmaterials = function(instances)
+{
+	if(!this._RIs)
+		this._RIs = [];
+
+	var mesh = this.getMesh();
+	if(!mesh)
+		return;
+
+	var groups = mesh.info.groups;
+	if(!groups)
+		return;
+
+	var global = this._root.transform._global_matrix;
+	var center = vec3.create();
+	mat4.multiplyVec3( center, global, LS.ZEROS );
+	var first_RI = null;
+
+	for(var i = 0; i < this.submaterials.length; ++i)
+	{
+		var submaterial_name = this.submaterials[i];
+		if(!submaterial_name)
+			continue;
+		var group = groups[i];
+		if(!group)
+			continue;
+		var material = LS.ResourcesManager.getResource( submaterial_name );
+		if(!material)
+			continue;
+
+		var RI = this._RIs[i];
+		if(!RI)
+			RI = this._RIs[i] = new LS.RenderInstance(this._root,this);
+
+		if(!first_RI)
+			RI.setMatrix( this._root.transform._global_matrix );
+		else
+			RI.setMatrix( first_RI.matrix, first_RI.normal_matrix );
+		RI.center.set(center);
+
+		//flags
+		RI.flags = RI_DEFAULT_FLAGS | RI_RAYCAST_ENABLED;
+		RI.applyNodeFlags();
+		if(this.two_sided)
+			RI.flags &= ~RI_CULL_FACE;
+		RI.setMaterial( material );
+		RI.setMesh( mesh, this.primitive );
+		RI.setRange( group.start, group.length );
+		instances.push(RI);
+
+		if(!first_RI)
+			first_RI = RI;
+	}
 }
 
 //test if any of the assets is being loaded
@@ -22720,6 +22980,8 @@ function SkinDeformer(o)
 
 	if(o)
 		this.configure(o);
+
+	//this._deformer = new LS.Deformer();
 }
 
 SkinDeformer.icon = "mini-icon-stickman.png";
@@ -22727,6 +22989,7 @@ SkinDeformer.icon = "mini-icon-stickman.png";
 SkinDeformer.MAX_BONES = 64;
 SkinDeformer.gpu_skinning_supported = true;
 SkinDeformer.icon = "mini-icon-stickman.png";
+SkinDeformer.apply_to_normals_by_software = false;
 
 SkinDeformer["@skeleton_root_node"] = { type: "node" };
 
@@ -22818,6 +23081,7 @@ SkinDeformer.prototype.onCollectInstances = function( e, render_instances )
 	if(!render_instances.length)
 		return;
 
+	//take last one (although maybe using this._root.instances ...)
 	var last_RI = render_instances[ render_instances.length - 1];
 	
 	if(!this.enabled)
@@ -22841,7 +23105,8 @@ SkinDeformer.prototype.applySkinning = function(RI)
 	if(!mesh.getBuffer("vertices") || !mesh.getBuffer("bone_indices"))
 		return;
 
-	else if( SkinDeformer.gpu_skinning_supported && !this.cpu_skinning ) 
+	
+	if( SkinDeformer.gpu_skinning_supported && !this.cpu_skinning ) 
 	{
 		//add skinning
 		RI.query.macros["USE_SKINNING"] = "";
@@ -22869,6 +23134,8 @@ SkinDeformer.prototype.applySkinning = function(RI)
 			if(bones.length > SkinDeformer.MAX_BONES)
 				RI.query.macros["MAX_BONES"] = bones.length.toString();
 			RI.samplers[ LS.Renderer.BONES_TEXTURE_SLOT ] = null;
+
+			RI.shader_blocks[0] = { block: LS.SkinDeformer.skinning_block, uniforms: { u_bones: u_bones } };
 		}
 		else if( SkinDeformer.num_supported_textures > 0 ) //upload the bones as a float texture (slower)
 		{
@@ -23013,8 +23280,7 @@ SkinDeformer.prototype.applySoftwareSkinning = function(ref_mesh, skin_mesh)
 		}
 		
 		//we could also multiply the normal but this is already superslow...
-		/*
-		if(0)
+		if(SkinDeformer.apply_to_normals_by_software)
 		{
 			//apply weights
 			v[0] = v[1] = v[2] = 0.0; //reset
@@ -23027,7 +23293,6 @@ SkinDeformer.prototype.applySoftwareSkinning = function(ref_mesh, skin_mesh)
 					vec3.scaleAndAdd( v, v, temp, w[j] );
 				}
 		}
-		*/
 
 		//if(factor != 1) vec3.lerp( v, ov, v, factor);
 	}
@@ -23064,7 +23329,7 @@ SkinDeformer.prototype.getBones = function()
 LS.registerComponent( SkinDeformer );
 LS.SkinDeformer = SkinDeformer;
 
-SkinDeformer.skinning_shader_code = "\n\
+SkinDeformer.skinning_enabled_shader_code = "\n\
 	//Skinning ******************* \n\
 	#ifndef MAX_BONES\n\
 		#define MAX_BONES 64\n\
@@ -23116,16 +23381,18 @@ SkinDeformer.skinning_shader_code = "\n\
 	}\n\
 ";
 
-// ShaderBlocks
-var skinning_block = new LS.ShaderBlock("skinning");
-skinning_block.addCode( true, SkinDeformer.skinning_shader_code );
-skinning_block.addCode( false, "\nvoid applySkinning( inout vec4 position, inout vec3 normal) {};\n" );
+SkinDeformer.skinning_disabled_shader_code = "\nvoid applySkinning( inout vec4 position, inout vec3 normal) {}\n";
 
+// ShaderBlocks used to inject to shader in runtime
+var skinning_block = new LS.ShaderBlock("skinning");
+skinning_block.addCode( GL.VERTEX_SHADER, SkinDeformer.skinning_enabled_shader_code, SkinDeformer.skinning_disabled_shader_code );
+skinning_block.register();
+SkinDeformer.skinning_block = skinning_block;
 
 var skinning_texture_block = new LS.ShaderBlock("skinning_texture");
-skinning_texture_block.addCode( true, SkinDeformer.skinning_shader_code );
-skinning_texture_block.addCode( false, "\nvoid applySkinning( inout vec4 position, inout vec3 normal) {};\n" );
-
+skinning_texture_block.addCode( GL.VERTEX_SHADER, "\n#define USE_SKINNING_TEXTURE\n" + SkinDeformer.skinning_enabled_shader_code, SkinDeformer.skinning_disabled_shader_code );
+skinning_texture_block.register();
+SkinDeformer.skinning_texture_block = skinning_texture_block;
 
 function Skybox(o)
 {
@@ -33225,6 +33492,7 @@ var parserOBJ = {
 		var y   = 0.0;
 		var z   = 0.0;
 		var tokens = null;
+		var mtllib = null;
 
 		var hasPos = false;
 		var hasTex = false;
@@ -33450,6 +33718,9 @@ var parserOBJ = {
 					*/
 				}
 			}
+			else if (tokens[0] == "mtllib") {
+				mtllib = tokens[1];
+			}
 			else if (tokens[0] == "usemtl") {
 				if(group)
 					group.material = tokens[1];
@@ -33507,10 +33778,14 @@ var parserOBJ = {
 			mesh.triangles = new (support_uint && max_index > 256*256 ? Uint32Array : Uint16Array)(indicesArray);
 
 		//extra info
-		mesh.bounding = GL.Mesh.computeBounding(mesh.vertices);
+		mesh.bounding = GL.Mesh.computeBounding( mesh.vertices );
 		var info = {};
 		if(groups.length > 1)
+		{
 			info.groups = groups;
+			//compute bounding of groups? //TODO
+		}
+
 		mesh.info = info;
 		if( mesh.bounding.radius == 0 || isNaN(mesh.bounding.radius))
 			console.log("no radius found in mesh");
@@ -33543,12 +33818,14 @@ var parserMTL = {
 		for (var lineIndex = 0;  lineIndex < length; ++lineIndex)
 		{
 			var line = lines[lineIndex].replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //trim
+			line = line.trim();
 
 			if (line[0] == "#" || line == "")
 				continue;
 
 			var tokens = line.split(" ");
 			var c = tokens[0];
+
 			switch(c)
 			{
 				case "newmtl":
@@ -33564,8 +33841,14 @@ var parserMTL = {
 				case "Ks":
 					current_material.specular_factor = parseFloat(tokens[1]); //readVector3(tokens);
 					break;
+				case "Ke":
+					current_material.emissive = readVector3(tokens); //readVector3(tokens);
+					break;
 				case "Ns": //glossiness
 					current_material.specular_gloss = parseFloat(tokens[1]);
+					break;
+				case "Tr": //reflection coefficient
+					current_material.reflection = parseFloat( tokens[1] );
 					break;
 				case "map_Kd":
 					current_material.textures["color"] = this.clearPath( tokens[1] );
@@ -33576,12 +33859,23 @@ var parserMTL = {
 				case "map_Ks":
 					current_material.textures["specular"] = this.clearPath( tokens[1] );
 					break;
+				case "bump":
+				case "map_bump":
+					current_material.textures["bump"] = this.clearPath( tokens[1] );
+					break;
 				case "d": //disolve is like transparency
+					current_material.opacity = parseFloat( tokens[1] );
+					break;
+				case "Tr": //reflection coefficient
 					current_material.opacity = parseFloat( tokens[1] );
 					break;
 				//Not supported stuff
 				case "illum": //illumination model (raytrace related)
+				case "Tf": //reflection by components
 				case "Ni": //refraction coefficient
+					break;
+				default:
+					console.log("Unknown MTL info: ", c);
 					break;
 			}
 		}
@@ -33609,7 +33903,7 @@ var parserMTL = {
 		var filename = LS.RM.getFilename(path);
 		if( LS.RM.resources_renamed_recently[filename] )
 			filename = LS.RM.resources_renamed_recently[filename];
-		return filename;
+		return filename.toLowerCase();
 	}
 };
 
@@ -33758,8 +34052,7 @@ var parserTGA = {
 };
 
 LS.Formats.registerParser( parserTGA );
-//3dcgart format (probably three.js)
-//Array.prototype.flatten1=function(){return this.reduce(function(a,b){return a.concat(b)},[])};
+//3dcgart format
 
 var parserCGArtMesh = { 
 	extension: 'cgart',
@@ -33931,8 +34224,6 @@ var parserCGArtMesh = {
 };
 
 LS.Formats.registerParser( parserCGArtMesh );
-
-
 
 
 //GR2
@@ -34149,7 +34440,7 @@ SceneTree.prototype.configure = function(scene_info)
 		this.extra = scene_info.extra;
 
 	if(scene_info.root)
-		this.root.configure( scene_info.root );
+		this._root.configure( scene_info.root );
 
 	//LEGACY
 	if(scene_info.nodes)
@@ -34217,6 +34508,9 @@ SceneTree.prototype.configure = function(scene_info)
 	if(scene_info.components)
 		this.configureComponents( scene_info );
 
+	if(scene_info.editor)
+		this._editor = scene_info.editor;
+
 	//if(scene_info.animations)
 	//	this._root.animations = scene_info.animations;
 
@@ -34261,6 +34555,9 @@ SceneTree.prototype.serialize = function()
 	o.global_scripts = this.global_scripts.concat();
 	o.external_scripts = this.external_scripts.concat();
 	o.preloaded_resources = LS.cloneObject( this.preloaded_resources );
+
+	if( this._editor )
+		o.editor = this._editor;
 
 	this.serializeComponents( o );
 
@@ -36259,6 +36556,10 @@ SceneNode.prototype.configure = function(info)
 	if(info.extra)
 		this.extra = info.extra;
 
+	if(info.editor)
+		this._editor = info.editor;
+
+
 	if(info.comments)
 		this.comments = info.comments;
 
@@ -36366,6 +36667,9 @@ SceneNode.prototype.serialize = function( ignore_prefab )
 
 	if(this._children && (!this.prefab || ignore_prefab) )
 		o.children = this.serializeChildren();
+
+	if(this._editor)
+		o.editor = this._editor;
 
 	//save components
 	this.serializeComponents(o);

@@ -260,6 +260,59 @@ LS.Components.Light["@inspector"] = function(light, inspector)
 }
 
 
+LS.Components.MeshRenderer.onShowProperties = function( component, inspector )
+{
+	var mesh = component.getMesh();
+
+	inspector.addCheckbox("use submaterials", component.use_submaterials, function(v){
+		component.use_submaterials = v;
+		inspector.refresh();
+	});
+
+	if(!component.use_submaterials)
+		return;
+
+	inspector.addTitle("Submaterials");
+
+	inspector.addNumber("num_submaterials", component.submaterials.length, { precision: 0, min: 0, step: 1, max: 32, callback: function(v) {
+		var mesh = component.getMesh();
+		component.submaterials.length = Number(v);
+		for(var i = 0; i < component.submaterials.length; ++i)
+		{
+			var submaterial = null;
+			if(mesh && mesh.info && mesh.info.groups)
+				submaterial = mesh.info.groups[i] ? mesh.info.groups[i].material : "";
+			component.submaterials[i] = submaterial;
+		}
+		inspector.refresh();
+	}});
+
+	if(component.submaterials.length)
+		for(var i = 0; i < component.submaterials.length; ++i)
+		{
+			var title = i;
+			if(mesh && mesh.info && mesh.info.groups)
+				title = i + ": " + mesh.info.groups[i].name;
+			inspector.addStringButton( title, component.submaterials[i] || "", { index: i, callback: function() {
+			
+			}, callback_button: function(v){
+				//component.submaterials[ this.options.index ] = null;
+				//inspector.refresh();
+			}});
+		}
+
+	inspector.addButton(null,"Add submaterial", { callback: function() { 
+		var submaterial = null;
+		var i = component.submaterials.length;
+		if(mesh && mesh.info && mesh.info.groups)
+			submaterial = mesh.info.groups[i] ? mesh.info.groups[i].material : "";
+		component.submaterials.push(submaterial);
+		inspector.refresh();
+	}});
+}
+
+
+
 LS.Components.CustomData["@inspector"] = function( component, inspector )
 {
 	//show properties

@@ -545,6 +545,9 @@ CodingPadWidget.prototype.setState = function(state)
 		this.editInstanceCode( instance, state.options );
 	}
 
+	if(state.cursor)
+		this.editor.setCursor( state.cursor );
+
 	if(state.scroll_info)
 	{
 		//var scroller = this.editor.getScrollerElement();
@@ -552,8 +555,6 @@ CodingPadWidget.prototype.setState = function(state)
 		//this.editor.scrollIntoView( state.scroll_info )
 		this.editor.scrollTo( state.scroll_info.left, state.scroll_info.top );
 	}
-	if(state.cursor)
-		this.editor.setCursor( state.cursor );
 	if(state.selection)
 		this.editor.setSelection( state.selection.anchor, state.selection.head );
 	this.editor.refresh();

@@ -3455,6 +3455,7 @@ function dataURItoBlob( dataURI ) {
 		this.tabs_root = list;
 
 		this.tabs = {};
+		this.tabs_by_index = [];
 		this.selected = null;
 
 		this.onchange = options.callback;
@@ -3515,7 +3516,7 @@ function dataURItoBlob( dataURI ) {
 	}
 
 	/**
-	* Returns a tab 
+	* Returns a tab given its id
 	* @method getTab
 	* @param {String} id tab id
 	* @return {Object} the tab in the form of an object with {id,tab,content}
@@ -3523,6 +3524,17 @@ function dataURItoBlob( dataURI ) {
 	Tabs.prototype.getTab = function(id)
 	{
 		return this.tabs[id];
+	}
+
+	/**
+	* Returns a tab given its index in the tabs list
+	* @method getTabByIndex
+	* @param {Number} index
+	* @return {Object} the tab in the form of an object with {id,tab,content}
+	*/
+	Tabs.prototype.getTabByIndex = function(index)
+	{
+		return this.tabs_by_index[index];
 	}
 
 	/**
@@ -3724,6 +3736,8 @@ function dataURItoBlob( dataURI ) {
 			tab_info.onclose = options.onclose;
 		this.tabs[ id ] = tab_info;
 
+		this.recomputeTabsByIndex();
+
 		//context
 		element.addEventListener("contextmenu", (function(e) { 
 			if(e.button != 2) //right button
@@ -3843,6 +3857,24 @@ function dataURItoBlob( dataURI ) {
 		tab.content.style.display = v ? "none" : null;
 	}
 
+	Tabs.prototype.recomputeTabsByIndex = function()
+	{
+		this.tabs_by_index = [];
+
+		for(var i in this.tabs)
+		{
+			var tab = this.tabs[i];
+
+			//compute index
+			var index = 0;
+			var child = tab.tab;
+			while( (child = child.previousSibling) != null ) 
+				index++;
+
+			this.tabs_by_index[index] = tab;
+		}
+	}
+
 	Tabs.prototype.removeTab = function(id)
 	{
 		var tab = this.tabs[id];
@@ -3855,6 +3887,8 @@ function dataURItoBlob( dataURI ) {
 		tab.tab.parentNode.removeChild( tab.tab );
 		tab.content.parentNode.removeChild( tab.content );
 		delete this.tabs[id];
+
+		this.recomputeTabsByIndex();
 	}
 
 	Tabs.prototype.removeAllTabs = function( keep_plus )
@@ -3874,7 +3908,7 @@ function dataURItoBlob( dataURI ) {
 			delete this.tabs[ tab.id ];
 		}
 
-		//this.tabs = {};
+		this.recomputeTabsByIndex();
 	}
 
 	Tabs.prototype.clear = function()
@@ -3960,6 +3994,7 @@ function dataURItoBlob( dataURI ) {
 		tab_window.document.body.appendChild(newtabs.root);
 		that.transferTab(id, newtabs);
 		newtabs.tabs[id].tab.classList.add("selected");
+		this.recomputeTabsByIndex();
 
 		if(on_complete)
 			on_complete();

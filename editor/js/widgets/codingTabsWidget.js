@@ -76,6 +76,14 @@ CodingTabsWidget.prototype.findTab = function( id )
 	return null;
 }
 
+CodingTabsWidget.prototype.getTabPadByIndex = function( index )
+{
+	var tab = this.tabs.getTabByIndex( index );
+	if(!tab || !tab.pad )
+		return null;
+	return tab.pad;
+}
+
 //switch coding tab
 CodingTabsWidget.prototype.editInstanceCode = function( instance, options )
 {
@@ -382,6 +390,11 @@ CodingTabsWidget.prototype.onPlusTab = function(tab_id, e)
 
 CodingTabsWidget.prototype.onNewTab = function()
 {
+	return this.createTab();
+}
+
+CodingTabsWidget.prototype.createTab = function()
+{
 	var num = this.tabs.getNumOfTabs();
 	var tab = this.tabs.addTab( null, { title: "Code", selected: true, closable: true, size: "full", skip_callbacks: true, index: num - 1});
 	tab.pad = this.createCodingPad( tab.content );
@@ -543,10 +556,7 @@ CodingTabsWidget.prototype.getState = function()
 		var pad = tab.pad;
 		if(!pad)
 			continue;
-		var info = pad.current_code_info;
-		if(!info)
-			continue;
-		state.push( { options: info.options } );
+		state.push( pad.getState() );
 	}
 
 	return state;
@@ -559,17 +569,17 @@ CodingTabsWidget.prototype.setState = function(o)
 
 	var that = this;
 	
-	for(var i in o)
+	for(var i = 0; i < o.length; ++i)
 	{
 		var info = o[i];
-		if(!info.options)
-			continue;
-		var options = info.options;
-		CodingModule.findInstance( options, inner );
+		var pad = this.getTabPadByIndex(i);
+		if(!pad)
+			pad = this.createTab();
+		CodingModule.findInstance( info.options, inner.bind({pad: pad, info: info}) );
 	}
 
-	function inner( instance, options )
+	function inner( instance )
 	{
-		that.editInstanceCode( instance, options );
+		this.pad.setState( this.info );
 	}
 }

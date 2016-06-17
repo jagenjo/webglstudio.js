@@ -357,7 +357,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 	
 
 	//REFACTOR THIS FOR GOD SAKE!!!!!!!!!!!!!!!!!!!!!!!
-	var preview = resource.preview_url;
+	var preview = resource._preview_url;
 	var res_name = resource.fullpath || resource.filename;
 	
 	if(preview)

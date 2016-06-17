@@ -40,6 +40,7 @@ InspectorWidget.prototype.init = function()
 
 	//create inspector
 	this.inspector = new LiteGUI.Inspector( null,{ height: -26, name_width: "40%" });
+	this.inspector.inspector_widget = this; //double link
 	this.inspector.onchange = function()
 	{
 		RenderModule.requestFrame();
@@ -635,6 +636,35 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 InspectorWidget.prototype.inspectMaterial = function(material)
 {
 	this.inspector.clear();
+
+	var icon = "";
+	if( LS.Material.icon)
+		icon = "<span class='icon' style='width: 20px'><img src='" + EditorModule.icons_path + LS.Material.icon + "' class='icon'/></span>";
+
+	var title = "Material";
+	var buttons = "<span class='buttons'><img class='options_section' src='imgs/mini-cog.png'></span>";
+	var section = inspector.addSection(icon + " " + title + buttons );
+
+	section.querySelector(".wsectiontitle").addEventListener("contextmenu", (function(e) { 
+		if(e.button != 2) //right button
+			return false;
+		//inner_showActions(e);
+		e.preventDefault(); 
+		return false;
+	}).bind(this));
+
+	//inspector.current_section.querySelector('.options_section').addEventListener("click", inner_showActions );
+
+	//mark material as changed
+	$(section).bind("wchange", function() { 
+		if(!material)
+			return;
+		var fullpath = material.fullpath || material.filename;
+		if(!fullpath)
+			return;
+		LS.ResourcesManager.resourceModified( material );				
+	});
+
 	EditorModule.showMaterialProperties( material, this.inspector );
 }
 

@@ -256,6 +256,9 @@ EditorModule.showMaterialProperties = function( material, inspector, node, force
 
 	if(can_be_locked)
 		inspector.addButtons(null,["Save changes","Lock"],function(v){
+
+			LS.ResourcesManager.resourceModified( material );				
+
 			if(v == "Save changes")
 				DriveModule.saveResource( material );
 			else if(v == "Lock")

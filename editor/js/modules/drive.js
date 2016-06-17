@@ -438,7 +438,7 @@ var DriveModule = {
 		if(!resource)
 			return;
 
-		var preview_url = resource.preview_url || LFS.getPreviewPath( fullpath );
+		var preview_url = resource._preview_url || LFS.getPreviewPath( fullpath );
 		var category = resource.category || resource.object_type;
 		if(resource.getCategory)
 			category = resource.getCategory();
@@ -562,7 +562,15 @@ var DriveModule = {
 			else if(data.constructor == ArrayBuffer)
 				bytes = data.byteLength;
 
+			inspector.widgets_per_row = 2;
 			inspector.addInfo("Bytes", DriveModule.beautifySize( bytes ) );
+			if( resource.serialize )
+				inspector.addButton(null, "Check JSON" , function(){
+					EditorModule.checkJSON( resource.serialize() );
+				});
+			else
+				inspector.addButton(null, "" , function(){});
+			inspector.widgets_per_row = 1;
 		}
 
 		var fullpath = resource.constructor === String ? resource : resource.fullpath || resource.filename;
@@ -583,11 +591,11 @@ var DriveModule = {
 				var preview_image = inspector.root.querySelector(".preview_image");
 				if(preview_image)
 					preview_image.src = url;
-				resource.preview_url = url;
+				resource._preview_url = url;
 				//upload it in case is a server side file
 				DriveModule.onUpdatePreview(resource, function() {
 					console.log("updated!");
-					//preview.src = resource.preview_url;
+					//preview.src = resource._preview_url;
 				});
 			}
 			else if(v == "Update metadata")
@@ -1166,7 +1174,7 @@ var DriveModule = {
 					var img = DriveModule.resources_panel.selected_item.querySelector("img");
 					if(img)
 					{
-						resource.preview_url = preview;
+						resource._preview_url = preview;
 						img.src = preview;
 					}
 				}
@@ -1202,8 +1210,8 @@ var DriveModule = {
 		if( resource.updatePreview )
 		{
 			resource.updatePreview( this.preview_size );
-			if( resource.preview_url )
-				return resource.preview_url;
+			if( resource._preview_url )
+				return resource._preview_url;
 		}
 
 		if( resource.toCanvas ) //careful, big textures stall the app for few seconds
@@ -1212,8 +1220,8 @@ var DriveModule = {
 			var canvas = resource.toCanvas(null,true,256); 
 			if(canvas)
 			{
-				resource.preview_url = canvas.toDataURL( this.preview_format );
-				return resource.preview_url;
+				resource._preview_url = canvas.toDataURL( this.preview_format );
+				return resource._preview_url;
 			}
 		}
 
@@ -1335,11 +1343,11 @@ var DriveModule = {
 	//trys to fetch one preview
 	getServerPreviewURL: function( resource )
 	{
-		if(resource.preview_url)
-			return resource.preview_url;
+		if(resource._preview_url)
+			return resource._preview_url;
 
-		resource.preview_url = LFS.getPreviewPath( resource.fullpath );
-		return resource.preview_url;
+		resource._preview_url = LFS.getPreviewPath( resource.fullpath );
+		return resource._preview_url;
 	},
 
 	//called when the resource should be saved (after modifications)
@@ -1678,7 +1686,7 @@ var DriveModule = {
 			resource.metadata = JSON.parse( resource.metadata );
 		else
 			resource.metadata = {};
-		resource.preview_url = DriveModule.server_url + "resources/_pics/_" + resource.id + ".png";
+		resource._preview_url = DriveModule.server_url + "resources/_pics/_" + resource.id + ".png";
 
 		this.server_resources[ resource.fullpath ] = resource;
 		if( LS.ResourcesManager.resources[ resource.fullpath ] )
@@ -1881,8 +1889,8 @@ var DriveModule = {
 		//generate preview
 		if(resource.constructor.hasPreview !== false)
 		{
-			if( resource.preview_url && resource.preview_url.substr(0,11) == "data:image/" )
-				extra_info.preview = resource.preview_url;
+			if( resource._preview_url && resource._preview_url.substr(0,11) == "data:image/" )
+				extra_info.preview = resource._preview_url;
 			else
 				extra_info.preview = this.generatePreview( resource.fullpath );
 		}

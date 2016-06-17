@@ -214,8 +214,14 @@ var EditorModule = {
 	inspect: function( objects, inspector )
 	{
 		if(inspector)
-			console.warn("deprecated: inspector cannot be passed");
-		return this.inspector.inspect( objects );
+		{
+			if(inspector.constructor === InspectorWidget)
+				return inspector.inspect( objects );
+			if(inspector.inspector_widget)
+				return inspector.inspector_widget.inspect( objects );
+		}
+		else
+			return this.inspector.inspect( objects );
 	},
 
 	inspectObjects: function( objects, inspector )
@@ -1214,6 +1220,9 @@ var EditorModule = {
 			}
 		}
 
+		if(!options.length)
+			return;
+
 		var menu = new LiteGUI.ContextualMenu( options, { title: title, ignore_item_callbacks: true, event: event, callback: function( action, o, e ) {
 			if(instance)
 			{
@@ -2051,7 +2060,20 @@ LiteGUI.Inspector.widget_constructors["mesh"] = "addMesh";
 //to select a material
 LiteGUI.Inspector.prototype.addMaterial = function( name,value, options)
 {
-	return addGenericResource.call(this, name, value, options, "Material" );
+	options = options || {};
+	options.width = "85%";
+
+	this.widgets_per_row += 1;
+	var r = addGenericResource.call(this, name, value, options, "Material" );
+	this.addButton(null,"Edit",{ width:"15%", callback: function(){
+		var path = r.getValue();
+		var material = LS.RM.getResource( path );
+		if(!material || !material.constructor.is_material)
+			return;
+		EditorModule.inspect( material, this.inspector );
+	}});
+	this.widgets_per_row -= 1;
+	return r;
 }
 LiteGUI.Inspector.widget_constructors["material"] = "addMaterial";
 

@@ -62,6 +62,19 @@ LS.SceneNode.actions["clone"] = {
 	}
 };
 
+LS.SceneNode.actions["move_before"] = { 
+	title:"Move before sibling",
+	callback: function(){
+		this.moveBefore();
+	}
+};
+
+LS.SceneNode.actions["move_after"] = { 
+	title:"Move after sibling",
+	callback: function(){
+		this.moveAfter();
+	}
+};
 
 LS.SceneNode.actions["create_prefab"] = { 
 	title:"Create Prefab",
@@ -205,6 +218,13 @@ LS.Component.actions["reset"] = {
 	title:"Reset",
 	callback: function(){
 		EditorModule.resetNodeComponent(this);
+	}
+};
+
+LS.Component.actions["share"] = { 
+	title:"Share",
+	callback: function(){
+		EditorModule.shareNodeComponent(this);
 	}
 };
 

@@ -2362,6 +2362,29 @@ DriveModule.registerAssignResourceCallback( "SceneNode", function( fullpath, res
 	}
 });
 
+DriveModule.registerAssignResourceCallback("component", function( fullpath, restype, options ) {
+	DriveModule.loadResource( fullpath, function(resource){
+		if(!resource)
+			return;
+
+		var comp_data = resource.data;
+		if(comp_data.constructor === String)
+			comp_data = JSON.parse( comp_data );
+		var class_name = comp_data.object_type;
+		if(!class_name || !LS.Components[ class_name ] )
+			LiteGUI.alert("Unknown object class type: " + class_name );
+		else
+		{
+			var compo = new LS.Components[ class_name ]();
+			compo.configure( comp_data );
+			var node = SelectionModule.getSelectedNode() || LS.GlobalScene.root;
+			node.addComponent( compo );
+			EditorModule.refreshAttributes();
+			RenderModule.requestFrame();
+		}
+	});
+});
+
 DriveModule.registerAssignResourceCallback( "SceneTree", function( fullpath, restype, options ) {
 
 	LiteGUI.confirm("Are you sure? you will loose the current scene", function(v) {

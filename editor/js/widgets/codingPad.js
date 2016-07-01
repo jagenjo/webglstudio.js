@@ -1,4 +1,5 @@
 EVAL = function(code) { return new Function(code); } //done to have line number, do not move
+//EVAL = function(code) { return eval("(function(){/n"+code+"/n})"); } //done to have line number, do not move
 
 function CodingPadWidget()
 {
@@ -64,7 +65,7 @@ CodingPadWidget.prototype.bindEvents = function()
 	LEvent.bind( CodingPadWidget, "code_changed", this.onCodeChanged, this);
 
 	LEvent.bind( LS.Components.Script, "code_error", this.onScriptError, this );
-	LEvent.bind( LS, "exception", this.onGlobalError, this );
+	LEvent.bind( LS, "exception", this.onGlobalError, this ); //from LS.safeCall
 	LEvent.bind( LS, "code_error", this.onCodeError, this );
 }
 
@@ -289,14 +290,22 @@ CodingPadWidget.prototype.setCodeFromInfo = function( info, text_content )
 }
 
 
-CodingPadWidget.prototype.showInFooter = function(msg, time) {
+CodingPadWidget.prototype.showInFooter = function(msg, time, options) {
+	options = options || {};
 	var footer = this.workarea.query(".code-footer");
 	footer.innerHTML = msg;
+
+	if(options.error)
+		footer.classList.add("error");
+	else
+		footer.classList.remove("error");
+
 	if(time)
 	{
 		setTimeout( function(){ 
 			if( footer.innerHTML == msg )
 				footer.innerHTML = "";
+			footer.classList.remove("error");
 		}, time );
 	}
 }
@@ -384,6 +393,26 @@ CodingPadWidget.prototype.evalueCode = function()
 	this.assignCurrentCode(); //this will trigger the error handling during execution
 }
 
+CodingPadWidget.prototype.markError = function( line, message )
+{
+	if(!line)
+	{
+		this.markLine();
+		return;
+	}
+
+	this.markLine( line );
+	this.showInFooter( message, 0, { error: true } );
+	this.scrollTo( line );
+}
+
+CodingPadWidget.prototype.scrollTo = function(line)
+{
+	var t = this.editor.charCoords({line: line, ch: 0}, "local").top; 
+    var middleHeight = this.editor.getScrollerElement().offsetHeight / 2; 
+    this.editor.scrollTo(null, t - middleHeight - 5); 
+}
+
 //When the user does Control + S
 CodingPadWidget.prototype.saveInstance = function()
 {
@@ -420,8 +449,10 @@ CodingPadWidget.prototype.saveInstance = function()
 	}
 	else
 	{
+		//save scene
+		SceneStorageModule.fastSaveScene();
 		//it is not a resource, then just assign it and nothing else
-		this.showInFooter("stored");
+		this.showInFooter("scene saved");
 		LiteGUI.trigger( this, "stored" );
 	}
 
@@ -559,7 +590,6 @@ CodingPadWidget.prototype.setState = function(state)
 		this.editor.setSelection( state.selection.anchor, state.selection.head );
 	this.editor.refresh();
 }
-
 
 //save the state 
 CodingPadWidget.prototype.onBeforeReload = function(e)
@@ -700,14 +730,8 @@ CodingPadWidget.prototype.onShowHelp = function()
 
 CodingPadWidget.prototype.onScriptError = function( e, instance_err )
 {
-	var info = this.getCurrentCodeInfo();
-	if(!info || info.instance != instance_err[0])
-		return;
-	this.showError(instance_err[1]);
-}
+	//console.log("pad code error:",error_info);
 
-CodingPadWidget.prototype.onCodeError = function( e, error_info )
-{
 	/*
 	var info = this.getCurrentCodeInfo();
 	if(!info || info.instance != instance_err[0])
@@ -716,9 +740,15 @@ CodingPadWidget.prototype.onCodeError = function( e, error_info )
 	*/
 }
 
+CodingPadWidget.prototype.onCodeError = function( e, error_info )
+{
+	//console.log("pad code error:",error_info);
+}
+
+//throw from exceptions from LS.safeCall
 CodingPadWidget.prototype.onGlobalError = function(e, err)
 {
-	console.error("Global error");
+	console.error("pad global error",err);
 	console.trace();
 	console.error(err);
 	var stack = err.stack.split("\n");

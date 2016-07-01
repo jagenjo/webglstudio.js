@@ -49,6 +49,12 @@ var selectTool = {
 			if(!instance_info)
 				return false;
 
+			var r = false;
+			if( instance_info.callback )
+				r = instance_info.callback( instance_info, e );
+			if(r)
+				return false;
+
 			if(e.shiftKey)
 			{
 				if( SelectionModule.isSelected( instance_info ) )

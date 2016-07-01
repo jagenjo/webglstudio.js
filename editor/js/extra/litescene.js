@@ -167,7 +167,7 @@ WBin.create = function( origin, origin_class_name )
 		if(data.buffer && data.buffer.constructor == ArrayBuffer)
 		{
 			//clone the data, to avoid problems with shared arrays
-			data = new Uint8Array( new Uint8Array( data.buffer, data.buffer.byteOffset, data.buffer.byteLength ) ); 
+			data = new Uint8Array( new Uint8Array( data.buffer, data.byteOffset, data.byteLength ) ); 
 			data_length = data.byteLength;
 		}
 		else if(data.constructor == ArrayBuffer) //plain buffer
@@ -276,7 +276,8 @@ WBin.load = function( data_array, skip_classname )
 		{
 			case "null": break;
 			case "WideString": 
-			case "String": lump_final = WBin.TypedArrayToString( lump_data ); break;
+							lump_data = new Uint16Array( (new Uint8Array( lump_data )).buffer ); //no break
+			case "String":	lump_final = WBin.TypedArrayToString( lump_data ); break;
 			case "Number": 
 					if(header.version < 0.3) //LEGACY: remove
 						lump_final = parseFloat( WBin.TypedArrayToString( lump_data ) );
@@ -284,7 +285,8 @@ WBin.load = function( data_array, skip_classname )
 						lump_final = (new Float64Array( lump_data.buffer ))[0];
 					break;
 			case "WideObject": 
-			case "Object": lump_final = JSON.parse( WBin.TypedArrayToString( lump_data ) ); break;
+							lump_data = new Uint16Array( (new Uint8Array( lump_data )).buffer ); //no break
+			case "Object":	lump_final = JSON.parse( WBin.TypedArrayToString( lump_data ) ); break;
 			case "ArrayBuffer": lump_final = new Uint8Array(lump_data).buffer; break; //clone
 			default:
 				lump_data = new Uint8Array(lump_data); //clone to avoid problems with bytes alignment
@@ -511,7 +513,10 @@ function LScript()
 	this.extra_methods = null; //add object with methods here to attach methods
 }
 
+
 LScript.onerror = null; //global used to catch errors in scripts
+
+LScript.eval = function(argv_names,code) { return eval("(function("+argv_names+"){\n"+code+"\n})"); }; //not used
 
 LScript.catch_exceptions = false;
 LScript.show_errors_in_console = true;
@@ -543,37 +548,51 @@ LScript.prototype.compile = function( arg_vars, save_context_vars )
 	this._last_executed_code = code;
 
 	var old_context = this._context;
-	
-	try
+
+	if(!LScript.catch_exceptions)
 	{
-		this._class = new Function(argv_names, code);
+		this._class = new Function(argv_names, code);//<-- PARSING POINT HERE ***************************************
 		var context_function = LScript.applyToConstructor( this._class, argv_values, this.extra_methods ); //bind globals and methods to context
 		this._context = new context_function(); //<-- EXECUTION POINT HERE ***************************************
 	}
-	catch (err)
+	else
 	{
-		this._class = null;
-		this._context = null;
-		if(LScript.show_errors_in_console)
+		try
 		{
-			var error_line = LScript.computeLineFromError(err);
-			console.error("Error in script\n" + err);
-			if( console.groupCollapsed )
-			{
-				console.groupCollapsed("Error line: " + error_line + " Watch code");
-				LScript.showCodeInConsole( this._last_executed_code, error_line );
-				console.groupEnd();
-			}
-			else
-				console.error("Error line: " + error_line);
+			//LScript.eval(argv_names,code);
+			this._class = new Function(argv_names, code);
+			var context_function = LScript.applyToConstructor( this._class, argv_values, this.extra_methods ); //bind globals and methods to context
+			this._context = new context_function(); //<-- EXECUTION POINT HERE ***************************************
 		}
-		if(this.onerror)
-			this.onerror(err, this._last_executed_code);
-		if(LScript.onerror)
-			LScript.onerror(err, this._last_executed_code, this);
-		return false;
-	}
+		catch (err)
+		{
+			if(!this._class)
+			{
+				console.error("Parsing error in script\n" + err);
+			}
 
+			this._class = null;
+			this._context = null;
+			if(LScript.show_errors_in_console)
+			{
+				var error_line = LScript.computeLineFromError(err);
+				console.error("Error in script\n" + err);
+				if( console.groupCollapsed )
+				{
+					console.groupCollapsed("Error line: " + error_line + " Watch code");
+					LScript.showCodeInConsole( this._last_executed_code, error_line );
+					console.groupEnd();
+				}
+				else
+					console.error("Error line: " + error_line);
+			}
+			if(this.onerror)
+				this.onerror(err, this._last_executed_code);
+			if(LScript.onerror)
+				LScript.onerror(err, this._last_executed_code, this);
+			return false;
+		}
+	}
 
 	if(save_context_vars && old_context)
 	{
@@ -624,7 +643,7 @@ LScript.prototype.callMethod = function(name, argv, expand_parameters)
 		else
 			console.error("Error line: " + error_line);
 		if(this.onerror)
-			this.onerror(err);
+			this.onerror({ error: err, msg: err.toString(), line: error_line, lscript: this, code: this._last_executed_code});
 		//throw new Error( err.stack ); //TEST THIS
 	}
 }
@@ -1685,7 +1704,7 @@ var Network = {
         xhr.onload = function(load)
 		{
 			var response = this.response;
-			if(this.status != 200)
+			if(this.status && this.status != 200) //status 0 is when working with local files
 			{
 				var err = "Error " + this.status;
 				if(request.error)
@@ -2295,14 +2314,45 @@ var GUI = {
 	*/
 	load: function( url, on_complete )
 	{
-		LS.ResourcesManagear.load( url, function(res){
+		LS.ResourcesManager.load( url, function(res){
 			var gui_root = LS.GUI.getRoot();
 			var html = res.getAsHTML();
 			html.style.pointerEvents = "none";
+			html.style.width = "100%";
+			html.style.height = "100%";
 			gui_root.appendChild( html );
+
+			LS.GUI.replaceHTMLSources( gui_root );
+
 			if(on_complete)
 				on_complete( html, res );
 		});
+	},
+
+	//WIP: allows to use resources 
+	replaceHTMLSources: function(root)
+	{
+		//fetch all the tags with a src attribute
+		var elements = root.querySelectorAll("*[src]");
+		for(var i = 0; i < elements.length; ++i)
+		{
+			var element = elements[i];
+			var src = element.getAttribute("src");
+
+			//check if the src contains a @
+			if(!src || src[0] != "@" )
+				continue;
+
+			src = src.substr(1);
+			//replace that with a local URL to that resource in case is loaded
+			var resource = LS.ResourcesManager.getResource( src );
+			if( resource && resource._local_url )
+				src = resource._local_url;
+			else
+				src = LS.ResourcesManager.getFullURL( src );
+			element.setAttribute("src", src );
+		}
+
 	}
 };
 
@@ -2335,6 +2385,7 @@ var ResourcesManager = {
 	ignore_cache: false, //change to true to ignore server cache
 	free_data: false, //free all data once it has been uploaded to the VRAM
 	keep_files: false, //keep the original files inside the resource (used mostly in the editor)
+	keep_urls: false, //keep the local URLs of loaded files
 	allow_base_files: false, //allow to load files that are not in a subfolder
 
 	//some containers
@@ -3386,7 +3437,7 @@ LS.ResourcesManager.registerResourcePreProcessor("json", function(filename, data
 	if( data.constructor === String )
 		data = JSON.parse( data );
 
-	if( data.object_type )
+	if( data.object_type && !data.is_data )
 	{
 		var ctor = LS.Classes[ data.object_type ] || window[ data.object_type ];
 		if(ctor)
@@ -3508,7 +3559,12 @@ LS.ResourcesManager.processImage = function( filename, data, options, callback )
 			if(LS.ResourcesManager.keep_files)
 				texture._original_data = data;
 		}
-		URL.revokeObjectURL(objectURL); //free memory
+
+		if( !LS.ResourcesManager.keep_urls )
+			URL.revokeObjectURL( objectURL ); //free memory
+		else
+			texture._local_url = objectURL; //used in strange situations
+
 		if(callback)
 			callback(filename,texture,options);
 	}
@@ -8884,21 +8940,44 @@ CompositePattern.prototype.getParent = function()
 	return this._parentNode;
 }
 
+/**
+* returns a list with all direct children (if you want below that use getDescendants)
+* @method getChildren
+* @param {Array} Original array containing the children
+**/
 CompositePattern.prototype.getChildren = function()
 {
 	return this._children || [];
 }
 
+/**
+* returns the index of a child in the children array
+* @method getChildIndex
+* @param {SceneNode} child the child to search for
+* @return {number} the index of this child in the array, if it is not inside returns -1
+**/
 CompositePattern.prototype.getChildIndex = function( child )
 {
 	return this._children ? this._children.indexOf( child ) : -1;
 }
 
+/**
+* Returns the child in the index position
+* @method getChildByIndex
+* @param {number} index the index in the array 
+* @return {SceneNode} the child in that position
+**/
 CompositePattern.prototype.getChildByIndex = function( index )
 {
 	return this._children && this._children.length > index ? this._children[ index ] : null;
 }
 
+/**
+* Returns the child that matches that name
+* @method getChildByName
+* @param {String} name
+* @return {SceneNode} the child with that name otherwise returns null;
+**/
 CompositePattern.prototype.getChildByName = function( name )
 {
 	if(!this._children)
@@ -8907,8 +8986,15 @@ CompositePattern.prototype.getChildByName = function( name )
 	for(var i = 0; i < this._children.length; ++i)
 		if(this._children[i].name == name )
 			return this._children[i];
+
+	return null;
 }
 
+/**
+* Returns the path name of the node (a path name is a concatenation of the name of the nodes an its ancestors: "root|parent|child"
+* @method getPathName
+* @return {String} the pathname
+**/
 CompositePattern.prototype.getPathName = function()
 {
 	if(!this._in_tree)
@@ -8918,23 +9004,16 @@ CompositePattern.prototype.getPathName = function()
 		return "";
 
 	var path = this.name;
-	var parent = this.parentNode;
+	var parent = this._parentNode;
 	while(parent)
 	{
 		if(parent === this._in_tree.root )
 			return path;
 		path = parent.name + "|" + path;
-		parent = parent.parentNode;
+		parent = parent._parentNode;
 	}
 	return null;
 }
-
-/*
-CompositePattern.prototype.childNodes = function()
-{
-	return this._children || [];
-}
-*/
 
 //DOM style
 Object.defineProperty( CompositePattern.prototype, "childNodes", {
@@ -8982,6 +9061,79 @@ CompositePattern.prototype.getDescendants = function()
 		r = r.concat( this._children[i].getDescendants() );
 	return r;
 }
+
+/**
+* Swaps the index in the children array so it is before 
+* @method moveBefore
+* @param {SceneNode} sibling [optional] allows to put before given node, otherwise it will be moved one position before of current position
+* @return {number} new index
+**/
+CompositePattern.prototype.moveBefore = function( sibling )
+{
+	if(!this._parentNode || (sibling && this._parentNode !== sibling._parentNode) )
+		return -1;
+
+	var parent_children = this._parentNode._children;
+	var index = parent_children.indexOf( this );
+	if(index == -1)
+		throw("moveBefore node not found in parent, this is impossible");
+
+	var new_index = index - 1;
+	if(sibling)
+	{
+		new_index = parent_children.indexOf( sibling );
+		if(new_index == -1)
+			return -1;
+		new_index = new_index - 1; //before
+	}
+
+	if(index == new_index || new_index < 0)
+		return new_index; //nothing to do
+
+	parent_children.splice( index, 1 ); //remove
+	if(new_index > index) //sibling is after
+		new_index -= 1;
+	parent_children.splice( new_index, 0, this); //insert
+	LEvent.trigger(this._in_tree,"node_rearranged", this );
+	return new_index;
+}
+
+/**
+* Swaps the index in the children array so it is before 
+* @method moveAfter
+* @param {SceneNode} sibling [optional] allows to put after given node, otherwise it will be moved one position after current position
+* @return {number} new index
+**/
+CompositePattern.prototype.moveAfter = function( sibling )
+{
+	if(!this._parentNode || (sibling && this._parentNode !== sibling._parentNode) )
+		return -1;
+
+	var parent_children = this._parentNode._children;
+	var index = parent_children.indexOf( this );
+	if(index == -1)
+		throw("moveBefore node not found in parent, this is impossible");
+
+	var new_index = index + 1;
+	if(sibling)
+	{
+		new_index = parent_children.indexOf( sibling );
+		if(new_index == -1)
+			return -1;
+		new_index = new_index + 1; //before
+	}
+
+	if( index == new_index || new_index >= parent_children.length )
+		return new_index; //nothing to do
+
+	parent_children.splice( index, 1 ); //remove
+	if(new_index > index) //sibling is after
+		new_index -= 1;
+	parent_children.splice( new_index, 0, this); //insert
+	LEvent.trigger(this._in_tree,"node_rearranged", this );
+	return new_index;
+}
+
 
 //search for a node using a string that could be a name, a fullname or a uid
 CompositePattern.prototype.findNode = function( name_or_uid )
@@ -9220,20 +9372,28 @@ Component.prototype.createProperty = function( name, value, type, setter, getter
 //not finished
 Component.prototype.createAction = function( name, callback, options )
 {
-	this[name] = callback;
-	this.constructor["@" + name ] = options || { button_text:"trigger", type:"button", callback: callback };
+	var safe_name = name.replace(/ /gi,"_"); //replace spaces
+	this[ safe_name ] = callback;
+	this.constructor["@" + safe_name ] = options || { type: "function", button_text: name, widget:"button", callback: callback };
 }
 
 
 /**
 * Returns the locator string of this component
 * @method getLocator
+* @param {string} property_name [optional] you can pass the name of a property in this component
 * @return {String} the locator string of this component
 **/
-Component.prototype.getLocator = function()
+Component.prototype.getLocator = function( property_name )
 {
 	if(!this._root)
 		return "";
+	if(property_name)
+	{
+		if(this[ property_name ] === undefined )
+			console.warn("No property found in this component with that name:",property_name);
+		return this._root.uid + "/" + this.uid + "/" + property_name;
+	}
 	return this._root.uid + "/" + this.uid;
 }
 
@@ -9606,6 +9766,7 @@ function Animation(o)
 }
 
 Animation.DEFAULT_SCENE_NAME = "@scene";
+Animation.DEFAULT_DURATION = 10;
 
 Animation.prototype.createTake = function( name, duration )
 {
@@ -9626,6 +9787,15 @@ Animation.prototype.getTake = function( name )
 {
 	return this.takes[ name ];
 }
+
+Animation.prototype.getNumTakes = function()
+{
+	var num = 0;
+	for(var i in this.takes)
+		num++;
+	return num;
+}
+
 
 Animation.prototype.addTrackToTake = function(takename, track)
 {
@@ -9779,7 +9949,7 @@ function Take(o)
 {
 	this.name = null;
 	this.tracks = [];
-	this.duration = 10;
+	this.duration = LS.Animation.DEFAULT_DURATION;
 	
 	if(o)
 		this.configure(o);
@@ -9853,15 +10023,22 @@ Take.prototype.applyTracks = function( current_time, last_time, ignore_interpola
 			if(!info)
 				return;
 
-			//events
-			if(info.target) //components
-				LEvent.trigger( info.target, keyframe[1], keyframe[1][1] );
-			else if(info.node) //nodes
-				LEvent.trigger( info.node, keyframe[1][0], keyframe[1][1] );
+			var value = keyframe[1];
 
-			//functions
-			//if(info.node && info.target && info.target[ keyframe[1][0] ] )
-			//	info.target[ keyframe[1][0] ].call( info.target, keyframe[1][1] );
+			if(value[2] == 1) //on function call events the thirth value [2] is 1
+			{
+				//functions
+				if(info.node && info.target && info.target[ value[0] ] )
+					info.target[ value[0] ].call( info.target, value[1] );
+			}
+			else
+			{
+				//events
+				if(info.target) //components
+					LEvent.trigger( info.target, keyframe[1], keyframe[1][1] );
+				else if(info.node) //nodes
+					LEvent.trigger( info.node, keyframe[1][0], keyframe[1][1] );
+			}
 		}
 		else //regular tracks
 		{
@@ -13402,6 +13579,7 @@ TextureFX.available_fx = {
 		uniforms: {
 			difraction: { name: "u_difraction", type: "float", value: 1 }
 		},
+		next_pass: true,
 		code: "color.x = texture2D(u_texture, uv - to_center * 0.001 * u_difraction@ ).x;" + 
 			"color.z = texture2D(u_texture, uv + to_center * 0.001 * u_difraction@ ).z;"
 	},
@@ -13441,7 +13619,6 @@ TextureFX.available_fx = {
 			warp_texture: { name: "u_warp_texture", type: "sampler2D", widget: "Texture", value: "" }
 		},
 		uv_code:"uv = uv + u_warp_amp@ * (texture2D( u_warp_texture@, uv ).xy - vec2(0.5));"
-		//uv_code:"uv = uv + u_warp_amp@ * (vec2(0.5) + 0.5 * vec2( sin(uv.x * u_warp_freq@) * sin(uv.y * u_warp_freq@)));"
 	},
 	"LUT": {
 		name: "LUT",
@@ -13451,7 +13628,6 @@ TextureFX.available_fx = {
 			lut_texture: { name: "u_lut_texture", type: "sampler2D", filter: "nearest", wrap: "clamp", widget: "Texture", value: "" }
 		},
 		code:"color.xyz = mix(color.xyz, LUT( color.xyz, u_lut_texture@ ), u_lut_intensity@);"
-		//uv_code:"uv = uv + u_warp_amp@ * (vec2(0.5) + 0.5 * vec2( sin(uv.x * u_warp_freq@) * sin(uv.y * u_warp_freq@)));"
 	},
 	"pixelate": {
 		name: "Pixelate",
@@ -13473,6 +13649,7 @@ TextureFX.available_fx = {
 		uniforms: {
 			"Edges factor": { name: "u_edges_factor", type: "float", value: 1 }
 		},
+		next_pass: true,
 		code:"vec4 color@ = texture2D(u_texture, uv );\n\
 				vec4 color_up@ = texture2D(u_texture, uv + vec2(0., u_iviewport.y));\n\
 				vec4 color_right@ = texture2D(u_texture, uv + vec2(u_iviewport.x,0.));\n\
@@ -13940,6 +14117,19 @@ LS.Tween = {
 		if(object[property] === undefined)
 			throw("property not found in object, must be initialized to a value");
 
+		//cancel previous in case we already have one for this property
+		if(this.current_easings.length)
+		{
+			for(var i = 0; i < this.current_easings.length; ++i)
+			{
+				var easing = this.current_easings[i];
+				if( easing.object !== object || easing.property != property )
+					continue;
+				this.current_easings.splice(i,1); //remove old one
+				break;		
+			}
+		}
+
 		easing_function = easing_function || this.EASE_IN_OUT_QUAD;
 
 		//clone to avoid problems
@@ -14202,6 +14392,8 @@ function RenderSettings( o )
 	this.render_gui = true; //render gui
 	this.render_helpers = true; //render helpers (for the editor)
 
+	this.layers = 0xFF; //this is masked with the camera layers when rendering
+
 	this.sort_instances_by_distance = true; //sort render instances by distance 
 	this.sort_instances_by_priority = true; //sort render instances by priority
 	this.z_pass = false; //enable when the shaders are too complex (normalmaps, etc) to reduce work of the GPU (still some features missing)
@@ -14224,6 +14416,7 @@ function RenderSettings( o )
 RenderSettings.default_shadowmap_resolution = 1024;
 
 RenderSettings["@default_shadowmap_resolution"] = { widget: "combo", values: [0,256,512,1024,2048,4096] };
+RenderSettings["@layers"] = { type: "layers" };
 
 RenderSettings.prototype.serialize = function()
 {
@@ -14235,6 +14428,10 @@ RenderSettings.prototype.configure = function(o)
 	if(o)
 		for(var i in o)
 			this[i] = o[i];
+
+	//legacy
+	if(this.layers === null)
+		this.layers = 0xFF;
 }
 
 RenderSettings.prototype.toJSON = RenderSettings.prototype.serialize;
@@ -14996,6 +15193,8 @@ var Renderer = {
 	_identity_matrix: mat4.create(),
 	_render_uniforms: {},
 
+	_reflection_probes: [],
+
 	//fixed texture slots for global textures
 	SHADOWMAP_TEXTURE_SLOT: 6,
 	ENVIRONMENT_TEXTURE_SLOT: 5,
@@ -15398,9 +15597,7 @@ var Renderer = {
 		var camera_index_flag = camera._rendering_index != -1 ? (1<<(camera._rendering_index)) : 0;
 		var apply_frustum_culling = render_settings.frustum_culling;
 		var frustum_planes = camera.updateFrustumPlanes();
-		var layers_filter = camera.layers;
-		if( render_settings.layers !== undefined )
-			layers_filter = render_settings.layers;
+		var layers_filter = camera.layers & render_settings.layers;
 
 		LEvent.trigger( scene, "beforeRenderInstances", render_settings );
 		scene.triggerInNodes( "beforeRenderInstances", render_settings );
@@ -16229,6 +16426,10 @@ var Renderer = {
 			texture = null;
 
 		var scene = this._current_scene;
+		var camera = this._cubemap_camera;
+		if(!camera)
+			camera = this._cubemap_camera = new LS.Camera();
+		camera.configure({ fov: 90, aspect: 1.0, near: near, far: far });
 
 		texture = texture || new GL.Texture(size,size,{texture_type: gl.TEXTURE_CUBE_MAP, minFilter: gl.NEAREST});
 		this._current_target = texture;
@@ -16240,9 +16441,8 @@ var Renderer = {
 			else
 				gl.clearColor( background_color[0], background_color[1], background_color[2], background_color[3] );
 			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-			var cubemap_cam = new LS.Camera({ eye: eye, center: [ eye[0] + info.dir[0], eye[1] + info.dir[1], eye[2] + info.dir[2]], up: info.up, fov: 90, aspect: 1.0, near: near, far: far });
-
-			LS.Renderer.enableCamera( cubemap_cam, render_settings, true );
+			camera.configure({ eye: eye, center: [ eye[0] + info.dir[0], eye[1] + info.dir[1], eye[2] + info.dir[2]], up: info.up });
+			LS.Renderer.enableCamera( camera, render_settings, true );
 			LS.Renderer.renderInstances( render_settings );
 		});
 
@@ -20204,9 +20404,9 @@ function CameraFX( o )
 {
 	this.enabled = true;
 
-	this.use_antialiasing = false;
 	this.fx = new LS.TextureFX( o ? o.fx : null );
 	this.frame = new LS.RenderFrameContext();
+	this.use_antialiasing = false;
 
 	this.shader_material = null;
 
@@ -20273,14 +20473,14 @@ CameraFX.prototype.removeFX = function( fx )
 
 CameraFX.prototype.onAddedToScene = function( scene )
 {
-	LEvent.bind( scene, "enableFrameBuffer", this.onBeforeRender, this );
-	LEvent.bind( scene, "showFrameBuffer", this.onAfterRender, this );
+	LEvent.bind( scene, "enableFrameContext", this.onBeforeRender, this );
+	LEvent.bind( scene, "showFrameContext", this.onAfterRender, this );
 }
 
 CameraFX.prototype.onRemovedFromScene = function( scene )
 {
-	LEvent.unbind( scene, "enableFrameBuffer", this.onBeforeRender, this );
-	LEvent.unbind( scene, "showFrameBuffer", this.onAfterRender, this );
+	LEvent.unbind( scene, "enableFrameContext", this.onBeforeRender, this );
+	LEvent.unbind( scene, "showFrameContext", this.onAfterRender, this );
 
 	if( this._binded_camera )
 	{
@@ -20326,8 +20526,8 @@ CameraFX.prototype.onBeforeRender = function(e, render_settings)
 	{
 		if(this._binded_camera)
 			LEvent.unbindAll( this._binded_camera, this );
-		LEvent.bind( camera, "enableFrameBuffer", this.enableCameraFBO, this );
-		LEvent.bind( camera, "showFrameBuffer", this.showCameraFBO, this );
+		LEvent.bind( camera, "enableFrameContext", this.enableCameraFBO, this );
+		LEvent.bind( camera, "showFrameContext", this.showCameraFBO, this );
 	}
 	this._binded_camera = camera;
 }
@@ -22987,6 +23187,7 @@ function SkinDeformer(o)
 SkinDeformer.icon = "mini-icon-stickman.png";
 
 SkinDeformer.MAX_BONES = 64;
+SkinDeformer.MAX_TEXTURE_BONES = 128; //do not change this, hardcoded in the shader
 SkinDeformer.gpu_skinning_supported = true;
 SkinDeformer.icon = "mini-icon-stickman.png";
 SkinDeformer.apply_to_normals_by_software = false;
@@ -23142,7 +23343,7 @@ SkinDeformer.prototype.applySkinning = function(RI)
 			var texture = this._bones_texture;
 			if(!texture)
 			{
-				texture = this._bones_texture = new GL.Texture( 1, SkinDeformer.MAX_BONES * 3, { format: gl.RGBA, type: gl.FLOAT, filter: gl.NEAREST} ); //3 rows of 4 values per matrix
+				texture = this._bones_texture = new GL.Texture( 1, SkinDeformer.MAX_TEXTURE_BONES * 3, { format: gl.RGBA, type: gl.FLOAT, filter: gl.NEAREST} ); //3 rows of 4 values per matrix
 				texture._data = new Float32Array( texture.width * texture.height * 4 );
 			}
 
@@ -23345,9 +23546,10 @@ SkinDeformer.skinning_enabled_shader_code = "\n\
 	void getMat(int id, inout mat4 m) {\n\
 	\n\
 		#ifdef USE_SKINNING_TEXTURE\n\
-			m[0] = texture2D( u_bones, vec2( 0.0, (float(id*3)+0.5) / (64.0*3.0) ) ); \n\
-			m[1] = texture2D( u_bones, vec2( 0.0, (float(id*3+1)+0.5) / (64.0*3.0) ) );\n\
-			m[2] = texture2D( u_bones, vec2( 0.0, (float(id*3+2)+0.5) / (64.0*3.0) ) );\n\
+			float i_max_texture_bones_offset = 1.0 / (128.0 * 3.0);\n\
+			m[0] = texture2D( u_bones, vec2( 0.0, (float(id*3)+0.5) * i_max_texture_bones_offset ) ); \n\
+			m[1] = texture2D( u_bones, vec2( 0.0, (float(id*3+1)+0.5) * i_max_texture_bones_offset ) );\n\
+			m[2] = texture2D( u_bones, vec2( 0.0, (float(id*3+2)+0.5) * i_max_texture_bones_offset ) );\n\
 		#else\n\
 			m[0] = u_bones[ id * 3];\n\
 			m[1] = u_bones[ id * 3 + 1];\n\
@@ -28286,11 +28488,12 @@ Script.prototype.getPropertyInfoFromPath = function( path )
 
 	var value = context[ varname ];
 	var extra_info = context[ "@" + varname ];
+	if(!extra_info)
+		extra_info = context.constructor[ "@" + varname ];
 
 	var type = "";
 	if(extra_info)
 		type = extra_info.type;
-
 
 	if(!type && value !== null && value !== undefined)
 	{
@@ -28302,7 +28505,12 @@ Script.prototype.getPropertyInfoFromPath = function( path )
 			type = "vec" + value.length;
 		else if(value.constructor === Number)
 			type = "number";
+		else if(value.constructor === Function)
+			type = "function";
 	}
+
+	if(type == "function")
+		value = varname; //just to avoid doing assignments of functions
 
 	return {
 		node: this._root,
@@ -28329,6 +28537,10 @@ Script.prototype.setPropertyValueFromPath = function( path, value, offset )
 		return;
 
 	if( context[ varname ] === undefined )
+		return;
+
+	//cannot assign functions this way
+	if( context[ varname ] && context[ varname ].constructor == Function )
 		return;
 
 	if(context[ varname ] && context[ varname ].set)
@@ -28486,15 +28698,20 @@ Script.prototype.onRemovedFromProject = function( project )
 */
 //*******************************
 
-Script.prototype.onError = function(err)
+Script.prototype.onError = function(e)
 {
 	var scene = this._root.scene;
 	if(!scene)
 		return;
 
-	LEvent.trigger( this, "code_error",err);
-	LEvent.trigger( scene, "code_error",[this,err]);
-	LEvent.trigger( Script, "code_error",[this,err]);
+	e.script = this;
+	e.node = this._root;
+
+	LEvent.trigger( this, "code_error",e);
+	LEvent.trigger( scene, "code_error",e);
+	LEvent.trigger( LS, "code_error",e);
+
+	//conditional this?
 	console.log("app finishing due to error in script");
 	scene.finish();
 }
@@ -34282,10 +34499,12 @@ function SceneTree()
 	this.global_scripts = []; //scripts that are located in the resources folder and must be loaded before launching the app
 	this.preloaded_resources = {}; //resources that must be loaded, appart from the ones in the components
 
+	//track with global animations of the scene
+	this.animation = null;
+
 	//FEATURES NOT YET FULLY IMPLEMENTED
 	this._paths = []; //FUTURE FEATURE: to store splines I think
 	this._local_resources = {}; //used to store resources that go with the scene
-	this.animation = null;
 
 	this.layer_names = ["main","secondary"];
 
@@ -34896,9 +35115,39 @@ SceneTree.prototype.onNodeRemoved = function(e,node)
 	return true;
 }
 
-
-SceneTree.prototype.getNodes = function()
+/**
+* all nodes are stored in an array, this function recomputes the array so they are in the right order in case one has changed order
+*
+* @method recomputeNodesArray
+*/
+SceneTree.prototype.recomputeNodesArray = function()
 {
+	var nodes = this._nodes;
+	var pos = 0;
+	inner( this._root );
+
+	function inner(node)
+	{
+		nodes[pos] = node;
+		pos+=1;
+		if(!node._children || !node._children.length)
+			return;
+		for(var i = 0; i < node._children.length; ++i)
+			inner( node._children[i] );
+	}
+}
+
+/**
+* Returns the array containing all the nodes in the scene
+*
+* @method getNodes
+* @param {bool} recompute [optional] in case you want to rearrange the nodes
+* @return {Array} array containing every SceneNode in the scene
+*/
+SceneTree.prototype.getNodes = function( recompute )
+{
+	if(recompute)
+		this.recomputeNodesArray();
 	return this._nodes;
 }
 
@@ -35667,12 +35916,29 @@ SceneTree.prototype.toPack = function( fullpath, force_all_resources )
 	return pack;
 },
 
+//WIP: this is in case we have static nodes in the scene
 SceneTree.prototype.updateStaticObjects = function()
 {
 	var old = LS.allow_static;
 	LS.allow_static = false;
 	this.collectData();
 	LS.allow_static = old;
+}
+
+/**
+* Creates and returns an scene animation track
+*
+* @method createAnimation
+* @return {LS.Animation} the animation track
+*/
+SceneTree.prototype.createAnimation = function()
+{
+	if(this.animation)
+		return this.animation;
+	this.animation = new LS.Animation();
+	this.animation.name = LS.Animation.DEFAULT_SCENE_NAME;
+	this.animation.createTake( "default", LS.Animation.DEFAULT_DURATION );
+	return this.animation;
 }
 
 LS.SceneTree = SceneTree;
@@ -35989,6 +36255,10 @@ Object.defineProperty( SceneNode.prototype, 'className', {
 	enumerable: true
 });
 
+/**
+* Destroys this node
+* @method destroy
+**/
 SceneNode.prototype.destroy = function()
 {
 	LEvent.trigger( this, "destroy" );
@@ -36000,9 +36270,17 @@ SceneNode.prototype.destroy = function()
 		this._parentNode.removeChild( this );
 }
 
-SceneNode.prototype.getLocator = function()
+/**
+* Returns the locator string of this node
+* @method getLocator
+* @param {string} property_name [optional] you can pass the name of a property in this node to get the locator of that one
+* @return {String} the locator string of this node
+**/
+SceneNode.prototype.getLocator = function( property_name )
 {
-	return this.uid;
+	if(!property_name)
+		return this.uid;
+	return this.uid + "/" + property_name;
 }
 
 SceneNode.prototype.getPropertyInfo = function( locator )
@@ -36818,7 +37096,13 @@ function Player(options)
 	this.scene = LS.GlobalScene;
 	this.autoplay = options.autoplay !== undefined ? options.autoplay : true;
 
-	LS.catch_exceptions = true;
+	if(options.debug)
+	{
+		this.debug = true;
+		this.enableDebug();
+	}
+	else
+		LS.catch_exceptions = true;
 
 	if(options.resources)
 		LS.ResourcesManager.setPath( options.resources );
@@ -36916,7 +37200,7 @@ Player.PAUSED = 2;
 * @param {String} url url to the JSON file containing all the scene info
 * @param {Function} on_complete callback trigged when the scene and the resources are loaded
 */
-Player.prototype.loadScene = function(url, on_complete)
+Player.prototype.loadScene = function(url, on_complete, on_progress)
 {
 	var that = this;
 	var scene = this.scene;
@@ -36927,8 +37211,8 @@ Player.prototype.loadScene = function(url, on_complete)
 		//start playing once loaded the json
 		if(that.autoplay)
 			that.play();
-		console.log("Scene playing");
-		that.loading_bar = -1;
+		//console.log("Scene playing");
+		that.loading = null;
 		if(on_complete)
 			on_complete();
 	}
@@ -36941,6 +37225,8 @@ Player.prototype.loadScene = function(url, on_complete)
 		if(e.total) //sometimes we dont have the total so we dont know the amount
 			partial_load = e.loaded / e.total;
 		that.loading.scene_bar = partial_load;
+		if(on_progress)
+			on_progress(partial_load);
 	}
 }
 

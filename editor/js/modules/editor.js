@@ -853,6 +853,23 @@ var EditorModule = {
 		RenderModule.requestFrame();
 	},
 
+	shareNodeComponent: function( component )
+	{
+		DriveModule.showSelectFolderFilenameDialog( "component.COMP.json", function( folder, filename, fullpath ){
+			var data = component.serialize();
+			data.object_type = LS.getObjectClassName( component );
+			data.is_data = true;
+			delete data.uid;
+			var res = new LS.Resource();
+			res.category = LS.TYPES.COMPONENT;
+			res.setData( JSON.stringify( data ) );
+			res.filename = filename;
+			res.fullpath = fullpath;
+			LS.RM.registerResource( fullpath, res );
+			DriveModule.saveResource( res );
+		}, { extension: "json", allow_no_folder: true } );
+	},
+
 	deleteNodeComponent: function(component) {
 		var node = component._root;
 		if(!node)
@@ -2087,10 +2104,19 @@ LiteGUI.Inspector.prototype.addAnimation = function( name,value, options)
 	var r = addGenericResource.call(this, name, value, options, "Animation" );
 	this.addButton(null,"Edit",{ width:"15%", callback: function(){
 		var path = r.getValue();
-		var anim = LS.RM.getResource( path, LS.Animation );
+		var anim = null;
+		if(!path)
+		{
+			path = "@scene";
+			if(!LS.GlobalScene.animation)
+				LS.GlobalScene.createAnimation();
+			anim = LS.GlobalScene.animation;
+		}
+		else
+			anim = LS.RM.getResource( path, LS.Animation );
 		if(anim)
 			AnimationModule.showTimeline( anim );
-		else
+		else if(path != "@scene")
 			LS.RM.load( path, null, function(v){ AnimationModule.showTimeline( v ); });
 	}});
 	this.widgets_per_row -= 1;

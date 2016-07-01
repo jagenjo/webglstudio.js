@@ -53,6 +53,8 @@ var CodingModule = //do not change
 		coding_area.getSection(1).add( coding_tabs_widget );
 		//coding_tabs_widget.onNewTab();
 
+		LEvent.bind( LS, "code_error", this.onCodeError, this );
+
 		LS.catch_exceptions = true;
 	},
 
@@ -124,6 +126,12 @@ var CodingModule = //do not change
 	//used to extract editor options of a given instance
 	extractOptionsFromInstance: function( instance, options )
 	{
+		if(!instance)
+		{
+			console.error("instance cannot be null");
+			return;
+		}
+
 		options = options || {};
 
 		//compute id
@@ -239,6 +247,17 @@ var CodingModule = //do not change
 		var dialog = new LiteGUI.Dialog("info_message",help_options);
 		dialog.addButton("Close",{ close: true });
 		dialog.show();
+	},
+
+	onCodeError: function( e,err )
+	{
+		//if it is an script of ours, open in code editor
+		var tab = this.coding_tabs_widget.editInstanceCode( err.script );
+		if(!tab || !tab.pad)
+			return;
+
+		this.openTab();
+		tab.pad.markError( err.line, err.msg );
 	},
 
 	//shows the side 3d window

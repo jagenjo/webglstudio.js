@@ -190,16 +190,18 @@ var AnimationModule = {
 		if( !EditorView.render_helpers || !this.render_helpers || RenderModule.render_settings.in_player || !RenderModule.frame_updated )
 			return;
 
-		this.renderTrajectories(camera);
+		if(this.timeline.show_paths)
+			this.renderTrajectories(camera);
 	},
 
 	renderPicking: function(e, mouse_pos)
 	{
 		//cannot pick what is hidden
-		if(!EditorView.render_helpers)
+		if(!EditorView.render_helpers || !this._trajectories.length )
 			return;
 
 		var temp = vec3.create();
+		var callback = this.onTrajectoryKeyframeClicked.bind(this);
 
 		for(var i = 0; i < this._trajectories.length; ++i)
 		{
@@ -217,7 +219,7 @@ var AnimationModule = {
 				var pos = points[j];
 				if( parent_matrix )
 					pos = vec3.transformMat4( vec3.create(), pos, parent_matrix );
-				EditorView.addPickingPoint( pos, 10, { pos: pos, value: points[j], type: "keyframe", traj:i, instance: this, track: traj.index, num: j } );
+				EditorView.addPickingPoint( pos, 10, { pos: pos, value: points[j], type: "keyframe", traj:i, instance: this, take: this.timeline.current_take, track: traj.index, num: j, callback: callback } );
 			}
 		}
 	},
@@ -284,6 +286,7 @@ var AnimationModule = {
 			}
 
 			LS.Draw.setColor( colors ? white : colorA );
+			LS.Draw.setPointSize( 4 );
 			LS.Draw.renderPoints( points, colors );
 			this._trajectories.push( { index: i, points: points, track: track } );
 
@@ -332,6 +335,11 @@ var AnimationModule = {
 			if( parent_node )
 				LS.Draw.pop();
 		}
+	},
+
+	onTrajectoryKeyframeClicked: function(info, e)
+	{
+		this.timeline.selectKeyframe( info.track, info.num );
 	},
 
 	getTransformMatrix: function( element, mat, selection )

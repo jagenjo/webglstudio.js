@@ -617,3 +617,9 @@ textarea.code {
 .playing .inspector:not(.one_line) .widget.even {
     background-color: transparent;
 }
+
+
+.code-footer.error {
+	background-color: #621111 !important;
+    color: #FAA;
+}

@@ -195,10 +195,16 @@ var RenderModule = {
 			this.cameras.push( this.camera );
 		}
 
+		var bg_color = null;
+		if(LS.GlobalScene.root && LS.GlobalScene.root.camera)
+			bg_color = LS.GlobalScene.root.camera.background_color;
+
 		//add to the cameras useful editor info
 		for(var i = 0; i < this.cameras.length; i++)
 		{
 			var camera = this.cameras[i];
+			if(bg_color)
+				camera.background_color.set( bg_color );
 			//copy from first camera
 			if(old_cameras && old_cameras.length)
 			{
@@ -206,6 +212,7 @@ var RenderModule = {
 				camera._center.set( old_cameras[0]._center );
 				camera._up.set( old_cameras[0]._up );
 			}
+			camera.updateMatrices(true);
 			this.processEditorCamera( camera, i );
 		}
 

@@ -12,11 +12,11 @@ var TextureTools = {
 			this.dialog.close();
 
 		var dialog = new LiteGUI.Dialog("dialog_texture_tools", {title:"Texture Tools", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
-		dialog.show('fade');
+		dialog.show();
 		dialog.setPosition(100,100);
 		this.dialog = dialog;
 
-		var widgets = new LiteGUI.Inspector("texture_tools",{ name_width: "50%" });
+		var widgets = new LiteGUI.Inspector( { name_width: "50%" } );
 		widgets.onchange = function()
 		{
 			RenderModule.requestFrame();
@@ -72,10 +72,10 @@ var TextureTools = {
 			filename = texture.fullpath || texture.filename;
 
 		var dialog = new LiteGUI.Dialog("dialog_texture_apply_shader", {title:"Apply Shader", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
-		dialog.show('fade');
+		dialog.show();
 		dialog.setPosition(100,100);
 
-		var widgets = new LiteGUI.Inspector("apply_shader_tools",{ name_width: "50%" });
+		var widgets = new LiteGUI.Inspector( { name_width: "50%" } );
 		dialog.add( widgets );
 
 		widgets.addTexture("Texture", filename, { callback: function(v){
@@ -149,6 +149,58 @@ var TextureTools = {
 			return;
 		var file = texture.toBlob();
 		LiteGUI.downloadFile("export.png", file );
+	},
+
+	showResizeDialog: function( texture, on_complete )
+	{
+		var dialog = new LiteGUI.Dialog("dialog_texture_resize", {title:"Resize Texture", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
+		dialog.show();
+		dialog.setPosition(100,100);
+
+		var widgets = new LiteGUI.Inspector( { name_width: "50%" } );
+		dialog.add( widgets );
+
+		widgets.widgets_per_row = 2;
+		var width = texture.width;
+		var height = texture.height;
+
+		var width_widget = widgets.addNumber("Width", texture.width, { width: "75%", callback: function(v){
+			width = v;
+		}});
+		widgets.addButton(null, "Nearest POT", { width: "25%", callback: function(){
+			width = GL.Texture.nextPOT( width_widget.getValue() );
+			width_widget.setValue( width );
+		}});
+
+		var height_widget = widgets.addNumber("Height", texture.height, { width: "75%", callback: function(v){
+			height = v;
+		}});
+		widgets.addButton(null, "Nearest POT", { width: "25%", callback: function(){
+			height = GL.Texture.nextPOT( height_widget.getValue() );
+			height_widget.setValue( height );
+		}});
+
+		widgets.widgets_per_row = 1;
+
+		widgets.addButton(null,"Resize", inner_apply );
+
+		dialog.show();
+		dialog.adjustSize();		
+
+		function inner_apply()
+		{
+			var info = texture.getProperties();
+			info.wrap = GL.REPEAT;
+			info.minFilter = GL.LINEAR_MIPMAP_LINEAR;
+			if(width == texture.width && height == texture.height)
+				return;
+			var resized_texture = new GL.Texture( width, height, info );
+			texture.copyTo( resized_texture );
+			LS.RM.registerResource( texture.filename, resized_texture );
+
+			if(on_complete)
+				on_complete(resized_texture);
+		}
 	}
 };
 
@@ -173,17 +225,8 @@ GL.Texture.prototype.inspect = function( widgets, skip_default_widgets )
 	widgets.addButton(null, "Fill", function(){
 		RenderModule.requestFrame();
 	});
-	widgets.addButton(null, "Make Power of Two", function(){
-		var info = texture.getProperties();
-		info.wrap = GL.REPEAT;
-		info.minFilter = GL.LINEAR_MIPMAP_LINEAR;
-		var w = GL.Texture.nextPOT( info.width );
-		var h = GL.Texture.nextPOT( info.height );
-		if(w == texture.width && h == texture.height)
-			return;
-		var pot_texture = new GL.Texture( w, h, info );
-		texture.copyTo( pot_texture );
-		LS.RM.registerResource( texture.filename, pot_texture );
+	widgets.addButton(null, "Resize", function(){
+		TextureTools.showResizeDialog( texture );
 	});
 
 	if(!skip_default_widgets)

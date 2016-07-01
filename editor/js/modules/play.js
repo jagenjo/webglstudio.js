@@ -50,8 +50,8 @@ var PlayModule = {
 			PlayModule.inplayer = true;
 
 			//move GUI here
-			if( LS.GUI._root )
-				PlayModule.tab.content.appendChild( LS.GUI._root );
+			//if( LS.GUI._root )
+			//	PlayModule.tab.content.appendChild( LS.GUI._root );
 
 			//RenderModule.canvas_manager.addWidget(PlayModule); //capture render, update and mouse.
 
@@ -64,8 +64,8 @@ var PlayModule = {
 			//RenderModule.canvas_manager.removeWidget(PlayModule); //remove capture render, update and mouse
 			PlayModule.inplayer = false;
 			RenderModule.appendViewportTo(null);
-			if( LS.GUI._root )
-				RenderModule.visor_container.appendChild( LS.GUI._root );
+			//if( LS.GUI._root )
+			//	RenderModule.visor_container.appendChild( LS.GUI._root );
 		}});
 
 		//overwrite method to add the module to the right place
@@ -73,9 +73,8 @@ var PlayModule = {
 		LS.GUI.getRoot = function()
 		{
 			var gui = GUIgetRoot();
-			if( gui )
-				return gui;
-			PlayModule.tab.content.appendChild( gui );
+			if( gui.parentNode != PlayModule.tab.content)
+				PlayModule.tab.content.appendChild( gui );
 			return gui;
 		},
 

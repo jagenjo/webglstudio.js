@@ -48,17 +48,16 @@ CodingTabsWidget.prototype.bindEvents = function()
 	LEvent.bind( LS.GlobalScene, "load", this.onSceneChange, this );
 
 	//LEvent.bind( LS.Components.Script, "renamed", this.onScriptRenamed, this );
-	LEvent.bind( CodingTabsWidget, "code_changed", this.onCodeChanged, this);
-
-	LEvent.bind( LS.Components.Script, "code_error", this.onScriptError, this );
+	//LEvent.bind( CodingTabsWidget, "code_changed", this.onCodeChanged, this);
+	//LEvent.bind( LS.Components.Script, "code_error", this.onScriptError, this );
 	//LEvent.bind( LS, "code_error", this.onGlobalError, this );
 }
 
 CodingTabsWidget.prototype.unbindEvents = function()
 {
 	LEvent.unbindAll( LS.GlobalScene, this );
-	LEvent.unbindAll( LS.Components.Script, this );
-	LEvent.unbindAll( LS, this );
+	//LEvent.unbindAll( LS.Components.Script, this );
+	//LEvent.unbindAll( LS, this );
 }
 
 CodingTabsWidget.prototype.findTab = function( id )
@@ -84,39 +83,21 @@ CodingTabsWidget.prototype.getTabPadByIndex = function( index )
 	return tab.pad;
 }
 
-//switch coding tab
+CodingTabsWidget.prototype.getTabByInstance = function( instance )
+{
+	var options = CodingModule.extractOptionsFromInstance( instance );
+	var id = options.id;
+	return this.findTab( id );
+}
+
+//switch coding tab, returns the tab
 CodingTabsWidget.prototype.editInstanceCode = function( instance, options )
 {
 	options = options || {};
 
-	//used when a tab is closed
-	if(!instance)
-	{
-		this.current_code_info = null;
-		//close the current one?
-		return;
-	}
-
-	var current_code_info = this.current_code_info;
-
 	//extract info from instance
 	options = CodingModule.extractOptionsFromInstance( instance, options );
 	var id = options.id;
-
-	//check if we are editing the current one
-	if(current_code_info)
-	{
-		if( current_code_info.id == id || current_code_info.instance == instance )
-			return;
-	}
-
-	//changing from one tab to another? save state of old tab
-	if( current_code_info )
-	{
-		this.assignCurrentCode(true); //save the current state of the codemirror inside the instance (otherwise changes would be lost)
-		//get cursor pos (line and char)
-		//store in current_tab
-	}
 
 	//check if the tab already exists
 	var tab = this.findTab( id );
@@ -156,7 +137,10 @@ CodingTabsWidget.prototype.editInstanceCode = function( instance, options )
 	function onTabClosed(tab)
 	{
 		if( tab.selected )
-			that.editInstanceCode( null );
+		{
+			//select next TAB
+			//TODO
+		}
 	}
 
 	return tab;
@@ -176,14 +160,6 @@ CodingTabsWidget.prototype.closeInstanceTab = function( instance, options )
 
 	var info = tab.code_info;
 	this.tabs.removeTab( id );
-
-	//open next tab or clear the codemirror editor content
-	if(this.current_code_info == info )
-	{
-		this.current_code_info = null;
-		this.editor.setValue("");
-	}
-
 	return true;
 }
 
@@ -294,24 +270,6 @@ CodingTabsWidget.prototype.onContentStored = function( e, instance )
 		div.style.backgroundColor = null;	
 }
 
-CodingTabsWidget.prototype.onCodeChanged = function( e, instance )
-{
-	//check to see if we have that instance
-	if(!instance)
-		return;
-	var id = instance.uid;
-	if(!id)
-		return;
-	var tab = this.tabs.getTab( id );
-	if(!tab)
-		return;
-	var current = this.current_code_info;
-
-	if(current.instance == instance)
-	{
-		//todo
-	}
-}
 
 CodingTabsWidget.prototype.onSceneChange = function( e )
 {
@@ -470,6 +428,7 @@ CodingTabsWidget.prototype.onOpenAllScripts = function()
 	//TODO
 }
 
+/*
 CodingTabsWidget.prototype.onScriptError = function(e, instance_err)
 {
 	//check if it is open in any tab
@@ -485,10 +444,11 @@ CodingTabsWidget.prototype.onScriptError = function(e, instance_err)
 		}
 	}
 }
+*/
 
+/*
 CodingTabsWidget.prototype.onGlobalError = function(e, err)
 {
-	/*
 	console.error("Global error");
 	console.trace();
 	console.error(err);
@@ -496,9 +456,9 @@ CodingTabsWidget.prototype.onGlobalError = function(e, err)
 	if(stack[1].indexOf("<anonymous>") == -1)
 		return;
 	this.showError(err);
-	*/
 	//could be a error triggered by an async callback
 }
+*/
 
 CodingTabsWidget.prototype.detachWindow = function()
 {

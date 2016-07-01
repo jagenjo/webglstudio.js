@@ -83,6 +83,7 @@ GL.temp_vec3 = vec3.create();
 GL.temp2_vec3 = vec3.create();
 GL.temp_vec4 = vec4.create();
 GL.temp_quat = quat.create();
+GL.temp_mat3 = mat3.create();
 GL.temp_mat4 = mat4.create();
 
 
@@ -3830,7 +3831,7 @@ Mesh.icosahedron = function( options, gl ) {
 * @constructor
 */
 
-global.Texture = GL.Texture = function Texture(width, height, options, gl) {
+global.Texture = GL.Texture = function Texture( width, height, options, gl ) {
 	options = options || {};
 
 	//used to avoid problems with resources moving between different webgl context
@@ -3858,6 +3859,7 @@ global.Texture = GL.Texture = function Texture(width, height, options, gl) {
 	this.minFilter = options.minFilter || options.filter || Texture.DEFAULT_MIN_FILTER;
 	this.wrapS = options.wrap || options.wrapS || Texture.DEFAULT_WRAP_S; 
 	this.wrapT = options.wrap || options.wrapT || Texture.DEFAULT_WRAP_T;
+	this.data = null; //where the data came from
 
 	//precompute the max amount of texture units
 	if(!Texture.MAX_TEXTURE_IMAGE_UNITS)
@@ -3900,7 +3902,10 @@ global.Texture = GL.Texture = function Texture(width, height, options, gl) {
 
 		var pixel_data = options.pixel_data;
 		if(pixel_data && !pixel_data.buffer)
+		{
 			pixel_data = new (this.type == gl.FLOAT ? Float32Array : Uint8Array)( pixel_data );
+			this.data = pixel_data;
+		}
 
 		//gl.TEXTURE_1D is not supported by WebGL...
 		if(this.texture_type == gl.TEXTURE_2D)
@@ -3916,12 +3921,12 @@ global.Texture = GL.Texture = function Texture(width, height, options, gl) {
 		}
 		else if(this.texture_type == gl.TEXTURE_CUBE_MAP)
 		{
-			gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
-			gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_Y, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
-			gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_Z, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
-			gl.texImage2D(gl.TEXTURE_CUBE_MAP_NEGATIVE_X, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
-			gl.texImage2D(gl.TEXTURE_CUBE_MAP_NEGATIVE_Y, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
-			gl.texImage2D(gl.TEXTURE_CUBE_MAP_NEGATIVE_Z, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+			gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_X, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+			gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_Y, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+			gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_Z, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+			gl.texImage2D( gl.TEXTURE_CUBE_MAP_NEGATIVE_X, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+			gl.texImage2D( gl.TEXTURE_CUBE_MAP_NEGATIVE_Y, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+			gl.texImage2D( gl.TEXTURE_CUBE_MAP_NEGATIVE_Z, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
 		}
 		gl.bindTexture(this.texture_type, null); //disable
 		gl.activeTexture(gl.TEXTURE0);
@@ -3989,11 +3994,16 @@ Texture.isDepthSupported = function()
 * @param {number} unit texture unit
 * @return {number} returns the texture unit
 */
-Texture.prototype.bind = function(unit) {
-	if(unit == undefined) unit = 0;
+Texture.prototype.bind = function( unit ) {
+	if(unit == undefined)
+		unit = 0;
 	var gl = this.gl;
+
+	//TODO: if the texture is not uploaded, must be upload now
+
+	//bind
 	gl.activeTexture(gl.TEXTURE0 + unit);
-	gl.bindTexture(this.texture_type, this.handler);
+	gl.bindTexture( this.texture_type, this.handler );
 	return unit;
 }
 
@@ -4065,6 +4075,7 @@ Texture.prototype.uploadImage = function(image, options)
 		gl.texImage2D(gl.TEXTURE_2D, 0, this.format, this.format, this.type, image);
 		this.width = image.videoWidth || image.width;
 		this.height = image.videoHeight || image.height;
+		this.data = image;
 	} catch (e) {
 		if (location.protocol == 'file:') {
 			throw 'image not loaded for security reasons (serve this page over "http://" instead)';
@@ -4094,6 +4105,8 @@ Texture.prototype.uploadData = function(data, options )
 	Texture.setUploadOptions(options, gl);
 
 	gl.texImage2D(this.texture_type, 0, this.format, this.width, this.height, 0, this.format, this.type, data);
+	this.data = data; //should I clone it?
+
 	if (this.minFilter && this.minFilter != gl.NEAREST && this.minFilter != gl.LINEAR) {
 		gl.generateMipmap(texture.texture_type);
 		this.has_mipmaps = true;
@@ -4102,6 +4115,8 @@ Texture.prototype.uploadData = function(data, options )
 }
 
 //When creating cubemaps this is helpful
+
+/*THIS WORKS old
 Texture.cubemap_camera_parameters = [
 	{ type:"posX", dir: vec3.fromValues(-1,0,0), 	up: vec3.fromValues(0,1,0),	right: vec3.fromValues(0,0,-1) },
 	{ type:"negX", dir: vec3.fromValues(1,0,0),		up: vec3.fromValues(0,1,0),	right: vec3.fromValues(0,0,1) },
@@ -4110,17 +4125,17 @@ Texture.cubemap_camera_parameters = [
 	{ type:"posZ", dir: vec3.fromValues(0,0,-1), 	up: vec3.fromValues(0,1,0),	right: vec3.fromValues(1,0,0) },
 	{ type:"negZ", dir: vec3.fromValues(0,0,1),		up: vec3.fromValues(0,1,0),	right: vec3.fromValues(-1,0,0) }
 ];
-
-/* OLD VERSION, DOESNT MAKE SENSE
-Texture.cubemap_camera_parameters = [
-	{ type:"posX", dir: vec3.fromValues(1,0,0), 	up: vec3.fromValues(0,-1,0),	right: vec3.fromValues(0,0,-1) }, //positive X
-	{ type:"negX", dir: vec3.fromValues(-1,0,0),	up: vec3.fromValues(0,-1,0),	right: vec3.fromValues(0,0,1) }, //negative X
-	{ type:"posY", dir: vec3.fromValues(0,1,0), 	up: vec3.fromValues(0,0,1),		right: vec3.fromValues(1,0,0) }, //positive Y
-	{ type:"negY", dir: vec3.fromValues(0,-1,0),	up: vec3.fromValues(0,0,-1),	right: vec3.fromValues(-1,0,0) }, //negative Y
-	{ type:"posZ", dir: vec3.fromValues(0,0,1), 	up: vec3.fromValues(0,-1,0),	right: vec3.fromValues(1,0,0) }, //positive Z
-	{ type:"negZ", dir: vec3.fromValues(0,0,-1),	up: vec3.fromValues(0,-1,0),	right: vec3.fromValues(-1,0,0) } //negative Z
-];
 */
+
+//THIS works
+Texture.cubemap_camera_parameters = [
+	{ type:"posX", dir: vec3.fromValues(1,0,0), 	up: vec3.fromValues(0,1,0),	right: vec3.fromValues(0,0,-1) },
+	{ type:"negX", dir: vec3.fromValues(-1,0,0),	up: vec3.fromValues(0,1,0),	right: vec3.fromValues(0,0,1) },
+	{ type:"posY", dir: vec3.fromValues(0,1,0), 	up: vec3.fromValues(0,0,-1), right: vec3.fromValues(1,0,0) },
+	{ type:"negY", dir: vec3.fromValues(0,-1,0),	up: vec3.fromValues(0,0,1),	right: vec3.fromValues(1,0,0) },
+	{ type:"posZ", dir: vec3.fromValues(0,0,1), 	up: vec3.fromValues(0,1,0),	right: vec3.fromValues(1,0,0) },
+	{ type:"negZ", dir: vec3.fromValues(0,0,-1),	up: vec3.fromValues(0,1,0),	right: vec3.fromValues(-1,0,0) }
+];
 
 
 
@@ -4259,6 +4274,7 @@ Texture.prototype.drawTo = function(callback, params)
 		}
 	}
 
+	this.data = null;
 
 	gl._current_texture_drawto = null;
 	gl._current_fbo_color = null;
@@ -4373,6 +4389,11 @@ Texture.drawTo = function( color_textures, callback, depth_texture )
 
 	callback();
 
+	//clear data
+	if(color_textures.length)
+		for(var i = 0; i < color_textures.length; ++i)
+			color_textures[i].data = null;
+
 	gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
 	gl.viewport(v[0], v[1], v[2], v[3]);
@@ -4403,6 +4424,9 @@ Texture.drawToColorAndDepth = function( color_texture, depth_texture, callback )
 	gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT,  gl.TEXTURE_2D, depth_texture.handler, 0);
 
 	callback();
+
+	color_texture.data = null;
+	depth_texture.data = null;
 
 	gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
@@ -4450,14 +4474,16 @@ Texture.prototype.copyTo = function( target_texture, shader, uniforms ) {
 	else if(this.texture_type == gl.TEXTURE_CUBE_MAP)
 	{
 		shader.uniforms({u_texture: 0});
-		var rot_matrix = mat3.create();
+		var rot_matrix = GL.temp_mat3;
 		for(var i = 0; i < 6; i++)
 		{
 			gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, target_texture.handler, 0);
 			var face_info = GL.Texture.cubemap_camera_parameters[ i ];
+			mat3.identity( rot_matrix );
 			rot_matrix.set( face_info.right, 0 );
 			rot_matrix.set( face_info.up, 3 );
 			rot_matrix.set( face_info.dir, 6 );
+			//mat3.invert(rot_matrix,rot_matrix);
 			this.toViewport( shader,{ u_rotation: rot_matrix });
 		}
 	}
@@ -4473,6 +4499,7 @@ Texture.prototype.copyTo = function( target_texture, shader, uniforms ) {
 		target_texture.has_mipmaps = true;
 	}
 
+	target_texture.data = null;
 	gl.bindTexture(target_texture.texture_type, null); //disable
 	return this;
 }
@@ -4613,14 +4640,16 @@ Texture.prototype.applyBlur = function( offsetx, offsety, intensity, temp_textur
 		if(!output_texture)
 			output_texture = new GL.Texture( this.width, this.height, this.getProperties() );
 
-		var rot_matrix = mat3.create();
+		var rot_matrix = GL.temp_mat3;
 		for(var i = 0; i < 6; ++i)
 		{
 			gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, output_texture.handler, 0);
 			var face_info = GL.Texture.cubemap_camera_parameters[ i ];
+			mat3.identity(rot_matrix);
 			rot_matrix.set( face_info.right, 0 );
 			rot_matrix.set( face_info.up, 3 );
 			rot_matrix.set( face_info.dir, 6 );
+			//mat3.invert(rot_matrix,rot_matrix);
 			shader._setUniform( "u_rotation", rot_matrix );
 			gl.drawArrays( gl.TRIANGLES, 0, 6 );
 		}
@@ -4632,6 +4661,8 @@ Texture.prototype.applyBlur = function( offsetx, offsety, intensity, temp_textur
 	//restore previous state
 	gl.setViewport(viewport); //restore viewport
 	gl.bindFramebuffer( gl.FRAMEBUFFER, current_fbo ); //restore fbo
+
+	output_texture.data = null;
 
 	//generate mipmaps when needed
 	if (output_texture.minFilter && output_texture.minFilter != gl.NEAREST && output_texture.minFilter != gl.LINEAR) {
@@ -4657,16 +4688,19 @@ Texture.fromURL = function(url, options, on_complete, gl) {
 	gl = gl || global.gl;
 
 	options = options || {};
+	options = Object.create(options); //creates a new options using the old one as prototype
+
 	var texture = options.texture || new GL.Texture(1, 1, options, gl);
 
 	if(url.length < 64)
 		texture.url = url;
 	texture.bind();
-	Texture.setUploadOptions(options);
 	var default_color = options.temp_color || Texture.loading_color;
+	//Texture.setUploadOptions(options);
+	gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
 	var temp_color = options.type == gl.FLOAT ? new Float32Array(default_color) : new Uint8Array(default_color);
-	gl.texImage2D(gl.TEXTURE_2D, 0, texture.format, texture.width, texture.height, 0, texture.format, texture.type, temp_color );
-	gl.bindTexture(texture.texture_type, null); //disable
+	gl.texImage2D( gl.TEXTURE_2D, 0, texture.format, texture.width, texture.height, 0, texture.format, texture.type, temp_color );
+	gl.bindTexture( texture.texture_type, null ); //disable
 	texture.ready = false;
 
 	if( url.toLowerCase().indexOf(".dds") != -1)
@@ -4715,7 +4749,6 @@ Texture.fromImage = function(image, options) {
 	options = options || {};
 
 	var texture = options.texture || new GL.Texture(image.width, image.height, options);
-
 	texture.uploadImage( image, options );
 
 	texture.bind();
@@ -4724,14 +4757,13 @@ Texture.fromImage = function(image, options) {
 	gl.texParameteri(texture.texture_type, gl.TEXTURE_WRAP_S, texture.wrapS );
 	gl.texParameteri(texture.texture_type, gl.TEXTURE_WRAP_T, texture.wrapT );
 
-
 	if (GL.isPowerOfTwo(texture.width) && GL.isPowerOfTwo(texture.height) && options.minFilter && options.minFilter != gl.NEAREST && options.minFilter != gl.LINEAR) {
 		texture.bind();
 		gl.generateMipmap(texture.texture_type);
 		texture.has_mipmaps = true;
 	}
 	gl.bindTexture(texture.texture_type, null); //disable
-
+	texture.data = image;
 	if(options.keep_image)
 		texture.img = image;
 	return texture;
@@ -4754,6 +4786,7 @@ Texture.fromVideo = function(video, options) {
 		texture.bind();
 		gl.generateMipmap(texture.texture_type);
 		texture.has_mipmaps = true;
+		texture.data = video;
 	}
 	gl.bindTexture(texture.texture_type, null); //disable
 	return texture;
@@ -4801,6 +4834,7 @@ Texture.fromMemory = function(width, height, pixels, options) //format in option
 
 	try {
 		gl.texImage2D(gl.TEXTURE_2D, 0, texture.format, width, height, 0, texture.format, texture.type, pixels);
+		texture.data = pixels;
 	} catch (e) {
 		if (location.protocol == 'file:') {
 		  throw 'image not loaded for security reasons (serve this page over "http://" instead)';
@@ -4898,6 +4932,7 @@ Texture.cubemapFromImages = function(images, options) {
 
 		for(var i = 0; i < 6; i++)
 			gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X+i, 0, texture.format, texture.format, texture.type, images[i]);
+		texture.data = images;
 	} catch (e) {
 		if (location.protocol == 'file:') {
 		  throw 'image not loaded for security reasons (serve this page over "http://" instead)';
@@ -5014,6 +5049,7 @@ Texture.cubemapFromURL = function(url, options, on_complete) {
 	options = options || {};
 	options.texture_type = gl.TEXTURE_CUBE_MAP;
 	var texture = options.texture || new GL.Texture(1, 1, options);
+	options = Object.create(options); //creates a new options using the old one as prototype
 
 	texture.bind();
 	Texture.setUploadOptions(options);
@@ -5111,6 +5147,7 @@ Texture.prototype.toCanvas = function( canvas, flip_y, max_size )
 	var w = Math.min( this.width, max_size );
 	var h = Math.min( this.height, max_size );
 
+	//cross
 	if(this.texture_type == gl.TEXTURE_CUBE_MAP)
 	{
 		w = w * 4;
@@ -5965,8 +6002,14 @@ Shader.prototype.uniforms = function(uniforms) {
 	gl._current_shader = this;
 
 	for (var name in uniforms)
-		this.setUniform( name, uniforms[name] );
+	{
+		var info = this.uniformInfo[ name ];
+		if (!info)
+			continue;
+		this._setUniform( name, uniforms[name] );
+		//this.setUniform( name, uniforms[name] );
 		//this._assing_uniform(uniforms, name, gl );
+	}
 
 	return this;
 }//uniforms
@@ -6005,10 +6048,7 @@ Shader.prototype.setUniform = function(name, value)
 	if(info.loc === null)
 		return;
 
-	//if(info.loc.constructor !== Function)
-	//	return;
-
-	if(value == null) 
+	if(value == null) //strict?
 		return;
 
 	if(value.constructor === Array)
@@ -6512,14 +6552,13 @@ Shader.getCubemapCopyShader = function(gl)
 			uniform mat3 u_rotation;\n\
 			void main() {\n\
 				vec2 uv = vec2( v_coord.x, 1.0 - v_coord.y );\n\
-				vec3 dir = vec3( uv - vec2(0.5), -0.5 );\n\
+				vec3 dir = vec3( uv - vec2(0.5), 0.5 );\n\
 				dir = u_rotation * dir;\n\
 			   gl_FragColor = textureCube( u_texture, dir );\n\
 			}\n\
 			");
 	return gl.shaders[":copy_cubemap"] = shader;
 }
-
 
 Shader.getCubemapBlurShader = function(gl)
 {
@@ -6549,7 +6588,7 @@ Shader.getCubemapBlurShader = function(gl)
 					for( int y = -2; y <= 2; y++ )\n\
 					{\n\
 						dir.xy = uv + vec2( u_offset.x * float(x), u_offset.y * float(y)) * 0.5;\n\
-						dir.z = -0.5;\n\
+						dir.z = 0.5;\n\
 						dir = u_rotation * dir;\n\
 						color = textureCube( u_texture, dir );\n\
 						color.xyz = color.xyz * color.xyz;/*linearize*/\n\

@@ -6534,11 +6534,17 @@ Inspector.prototype.createWidget = function(name, content, options)
 		element.className += " even";
 
 	var width = options.width || this.widgets_width;
-	if(width)
-		element.style.width = LiteGUI.sizeToCSS(width);
+	if( width )
+	{
+		element.style.width = LiteGUI.sizeToCSS( width );
+		element.style.minWidth = "auto";
+	}
 	var height = options.height || this.height;
-	if(height)
-		element.style.height = LiteGUI.sizeToCSS(height);
+	if( height )
+	{
+		element.style.height = LiteGUI.sizeToCSS( height );
+		element.style.minHeight = "auto";
+	}
 
 	//store widgets 
 	this.widgets.push( element );
@@ -7668,7 +7674,6 @@ Inspector.prototype.addCombo = function(name, value, options)
 	var that = this;
 	this.values[name] = value;
 	
-	var code = "<select tabIndex='"+this.tab_index+"' "+(options.disabled?"disabled":"")+" class='"+(options.disabled?"disabled":"")+"'>";
 	this.tab_index++;
 
 	var element = this.createWidget(name,"<span class='inputfield full inputcombo "+(options.disabled?"disabled":"")+"'></span>", options);
@@ -7678,6 +7683,7 @@ Inspector.prototype.addCombo = function(name, value, options)
 	if(values.constructor === Function)
 		values = options.values();
 
+	/*
 	if(!values)
 		values = [];
 
@@ -7692,9 +7698,11 @@ Inspector.prototype.addCombo = function(name, value, options)
 		code += "<option value='"+item_index+"' "+( item_value == value ? " selected":"")+" data-index='"+item_index+"'>" + item_title + "</option>";
 		index++;
 	}
-	code += "</select>";
+	*/
 
+	var code = "<select tabIndex='"+this.tab_index+"' "+(options.disabled?"disabled":"")+" class='"+(options.disabled?"disabled":"")+"'></select>";
 	element.querySelector("span.inputcombo").innerHTML = code;
+	setValues(values);
 
 	var select = element.querySelector(".wcontent select");
 	select.addEventListener("change", function(e) { 
@@ -7742,6 +7750,28 @@ Inspector.prototype.addCombo = function(name, value, options)
 			}
 		}
 	};
+
+	function setValues(v){
+		if(!v)
+			v = [];
+		values = v;
+
+		var code = "";
+		var index = 0;
+		for(var i in values)
+		{
+			var item_value = values[i];
+			var item_index = values.constructor === Array ? index : i;
+			var item_title = values.constructor === Array ? item_value : i;
+			if(item_value && item_value.title)
+				item_title = item_value.title;
+			code += "<option value='"+item_index+"' "+( item_value == value ? " selected":"")+" data-index='"+item_index+"'>" + item_title + "</option>";
+			index++;
+		}
+		element.querySelector("select").innerHTML = code;
+	}
+
+	element.setOptionValues = setValues;
 
 	this.append(element,options);
 	this.processElement(element, options);

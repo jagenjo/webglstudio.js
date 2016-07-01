@@ -337,6 +337,11 @@ SceneTreeWidget.prototype.bindEvents = function( scene )
 		this.tree.removeItemFromSelection(node ? that.getIdString( node.uid ) : null);
 	},this);
 
+	//Triggered when the user deselects another node in the scene (multi-selection)
+	LEvent.bind( scene, "node_rearranged", function(e,node) { 
+		this.refresh();
+	},this);
+
 	//Triggered when ??
 	LEvent.bind( scene, "nodeChangeParent", function(e,parent,node) { 
 		/* NODE?! no two parameters supported
@@ -405,7 +410,7 @@ SceneTreeWidget.prototype.addNode = function( node, parent_id )
 			uid: node.uid,
 			node_name: node._name,
 			content: node.name,
-			precontent: "<span class='nodecontrols'><span class='togglevisible "+(node.flags.visible ? "on":"")+"'></span></span>",
+			precontent: "<span class='nodecontrols'><span title='visible' class='togglevisible "+(node.flags.visible ? "on":"")+"'></span></span>",
 			allow_rename: (parent_id != null),
 			onDragData: function(){ 
 				return { uid: node._uid, "class": "SceneNode", type: "SceneNode", locator: node._uid, node_name: node._name, node_id: node._uid };
@@ -455,7 +460,7 @@ SceneTreeWidget.prototype.refresh = function()
 		return;
 
 	this.clear();
-	var nodes = this._scene.getNodes();
+	var nodes = this._scene.getNodes(true);
 	//skip root node
 	for(var i = 1; i < nodes.length; ++i)
 		this.addNode( nodes[i] );

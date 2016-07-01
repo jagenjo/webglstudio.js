@@ -163,6 +163,7 @@ var SceneStorageModule = {
 	//loads scene from server (it has warning, and progress)
 	loadScene: function( fullpath, on_complete, skip_warning )
 	{
+		var that = this;
 		var msg_id = "res-msg-" + fullpath.hashCode(); //used for notification
 		var msg = null;
 		var real_path = fullpath;
@@ -196,7 +197,7 @@ var SceneStorageModule = {
 				msg.kill();
 			scene.extra.folder = LS.ResourcesManager.getFolder( fullpath );
 			scene.extra.fullpath = fullpath;
-			EditorModule.inspect(scene);
+			that.onSceneReady( scene );
 			if(on_complete)
 				on_complete();
 		}
@@ -209,6 +210,19 @@ var SceneStorageModule = {
 			if(msg)
 				msg.setProgress( partial_load );
 		}
+	},
+
+	onSceneReady: function( scene )
+	{
+		scene = scene || LS.GlobalScene;
+
+		if(scene.extra.editor && scene.extra.editor.selected_node)
+		{
+			var node = LS.GlobalScene.getNode( scene.extra.editor.selected_node );
+			EditorModule.inspect(node);
+		}
+		else
+			EditorModule.inspect(scene);
 	},
 
 	showLoadFromURLDialog: function()
@@ -767,6 +781,7 @@ var SceneStorageModule = {
 		LS.GlobalScene.clear();
 		LS.GlobalScene.configure(data);
 		LS.GlobalScene.loadResources();
+		this.onSceneReady();
 	},
 
 	deleteServerScene: function(filename)

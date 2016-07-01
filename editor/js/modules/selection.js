@@ -82,6 +82,10 @@ var SelectionModule = {
 			}
 		}
 
+		if(!LS.GlobalScene.extra.editor)
+			LS.GlobalScene.extra.editor = {};
+		LS.GlobalScene.extra.editor.selected_node = scene.selected_node ? scene.selected_node.uid : null;
+
 		return true;
 	},
 
@@ -469,7 +473,7 @@ var SelectionModule = {
 			var selection = selection_array[i];
 
 			var node = selection.node;
-			if(!node.parentNode)
+			if(!node || !node.parentNode)
 				continue;
 	
 			//remove node

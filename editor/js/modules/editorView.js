@@ -24,7 +24,7 @@ var EditorView = {
 	render_debug_info: true,
 	render_gizmos: true,
 	render_helpers: true, //icons, grid, cones, etc
-	render_graph: false,
+	render_overgraph: false,
 
 	init: function()
 	{

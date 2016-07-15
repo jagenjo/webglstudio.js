@@ -84,11 +84,12 @@ var showGraphButton = {
 	enabled: false,
 	callback: function()
 	{
-		EditorView.render_graph = !EditorView.render_graph;
+		EditorView.render_overgraph = !EditorView.render_overgraph;
 	}
 };
 
 ToolsModule.registerButton( showGraphButton );
+
 
 var helpersEnabledButton = {
 	name: "helpers",

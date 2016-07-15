@@ -1438,6 +1438,46 @@ var LS = {
 			console.error( "Not a valid value: " + v );
 		}
 		return value;
+	},
+
+	isValueOfType: function( value, type )
+	{
+		if(value === null || value === undefined)
+		{
+			switch (type)
+			{
+				case "float": 
+				case "sampler2D": 
+				case "samplerCube":
+				case LS.TYPES.NUMBER: 
+				case LS.TYPES.VEC2: 
+				case LS.TYPES.VEC3:
+				case LS.TYPES.VEC4:
+				case LS.TYPES.COLOR:
+				case LS.TYPES.COLOR4:
+				case "mat3": 
+				case "mat4":
+					return false;
+			}
+			return true;
+		}
+
+		switch (type)
+		{
+			//used to validate shaders
+			case "float": 
+			case "sampler2D": 
+			case "samplerCube":
+			case LS.TYPES.NUMBER: return isNumber(value);
+			case LS.TYPES.VEC2: return value.length === 2;
+			case LS.TYPES.VEC3: return value.length === 3;
+			case LS.TYPES.VEC4: return value.length === 4;
+			case LS.TYPES.COLOR: return value.length === 3;
+			case LS.TYPES.COLOR4: return value.length === 4;
+			case "mat3": return value.length === 9;
+			case "mat4": return value.length === 16;
+		}
+		return true;
 	}
 }
 
@@ -1644,6 +1684,7 @@ LS.TYPES = {
 	VEC3 : "vec3",
 	VEC4 : "vec3",
 	COLOR : "color",
+	COLOR4 : "color4",
 	RESOURCE: "resource",
 	TEXTURE : "texture",
 	MESH: "mesh",
@@ -2317,6 +2358,11 @@ var GUI = {
 		LS.ResourcesManager.load( url, function(res){
 			var gui_root = LS.GUI.getRoot();
 			var html = res.getAsHTML();
+			if(!html)
+			{
+				console.error("html resource is not a string");
+				return;
+			}
 			html.style.pointerEvents = "none";
 			html.style.width = "100%";
 			html.style.height = "100%";
@@ -2752,6 +2798,56 @@ var ResourcesManager = {
 		if(resource.constructor.resource_type)
 			return resource.constructor.resource_type;
 		return LS.getObjectClassName( resource );
+	},
+
+	/**
+	* Returns an object containig all the resources and its data (used to export resources)
+	*
+	* @method getResourcesData
+	* @param {Array} resource_names an array containing the resources names
+	* @param {bool} allow_files [optional] used to allow to retrieve the data in File or Blob, otherwise only String and ArrayBuffer is supported
+	* @return {Object} object with name:data
+	*/
+	getResourcesData: function( resource_names, allow_files )
+	{
+		var result = {};
+
+		for(var i = 0; i < resource_names.length; ++i)
+		{
+			var res_name = resource_names[i];
+			var resource = LS.ResourcesManager.resources[ res_name ];
+			if(!resource)
+				continue;
+
+			var data = null;
+			if(resource._original_data) //must be string or bytes
+				data = resource._original_data;
+			else
+			{
+				var data_info = LS.Resource.getDataToStore( resource );
+				data = data_info.data;
+			}
+
+			if(!data)
+			{
+				console.warn("Wrong data in resource");
+				continue;
+			}
+
+			if(data.constructor === Blob || data.constructor === File)
+			{
+				if( !allow_files && (!data.data || data.data.constructor !== ArrayBuffer) )
+				{
+					console.warn("Not support to store File or Blob, please, use ArrayBuffer");
+					continue;
+				}
+				data = data.data; //because files have an arraybuffer with the data if it was read
+			}
+
+			result[ res_name ] = data;
+		}
+
+		return result;
 	},
 
 	/**
@@ -3464,6 +3560,30 @@ LS.ResourcesManager.registerResourcePreProcessor("json", function(filename, data
 	}
 	return resource;
 });
+
+//global formats: take a file and extract info
+LS.ResourcesManager.registerResourcePreProcessor("zip", function( filename, data, options ) {
+	
+	if(!global.JSZip)
+		throw("JSZip not found. To use ZIPs you must have the JSZip.js library installed.");
+
+	var zip = new JSZip();
+	zip.loadAsync( data ).then(function(zip){
+		zip.forEach(function (relativePath, file){
+			var ext = LS.ResourcesManager.getExtension( relativePath );
+			var format = LS.Formats.supported[ ext ];
+			file.async( format && format.dataType == "text" ? "string" : "arraybuffer").then( function(filedata){
+				if( relativePath == "scene.json" )
+					LS.GlobalScene.configure( JSON.parse( filedata ) );
+				else
+					LS.ResourcesManager.processResource( relativePath, filedata );
+			});
+		});
+	});
+
+	return true;
+
+},"binary");
 
 //For resources without file extension (JSONs and WBINs)
 LS.ResourcesManager.processDataResource = function( url, data, options, callback )
@@ -8102,6 +8222,8 @@ ShaderMaterial.prototype.processShaderCode = function()
 	for(var i in shader_code._global_uniforms)
 	{
 		var global = shader_code._global_uniforms[i];
+		if( global.disabled ) //in case this var is not found in the shader
+			continue;
 		this.createUniform( global.name, global.uniform, global.type, global.value, global.options );
 	}
 
@@ -8111,6 +8233,12 @@ ShaderMaterial.prototype.processShaderCode = function()
 
 ShaderMaterial.prototype.assignOldProperties = function( old_properties )
 {
+	//get shader code
+	var shader = null;
+	var shader_code = this.getShaderCode();
+	if( shader_code )
+		shader = shader_code.getShader();
+
 	for(var i = 0; i < this._properties.length; ++i)
 	{
 		var new_prop = this._properties[i];
@@ -8120,6 +8248,23 @@ ShaderMaterial.prototype.assignOldProperties = function( old_properties )
 		var old = old_properties[ new_prop.name ];
 		if(old.value === undefined)
 			continue;
+
+
+		//validate
+		if( shader )
+		{
+			var uniform_info = shader.uniformInfo[ new_prop.uniform ];
+			if(!uniform_info)
+				continue;
+			if(new_prop.value !== undefined)
+			{
+				if( !GL.Shader.validateValue( new_prop.value, uniform_info ) )
+				{
+					new_prop.value = undefined;
+					continue;
+				}
+			}
+		}
 
 		//this is to keep current values when coding the shader from the editor
 		if( new_prop.value && new_prop.value.set ) //special case for typed arrays avoiding generating GC
@@ -8202,7 +8347,6 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, l
 
 ShaderMaterial.prototype.fillUniforms = function()
 {
-
 	//gather uniforms & samplers
 	var samplers = this._samplers;
 	samplers.length = 0;
@@ -8212,6 +8356,7 @@ ShaderMaterial.prototype.fillUniforms = function()
 	for(var i = 0; i < this._properties.length; ++i)
 	{
 		var p = this._properties[i];
+
 		if(p.is_texture)
 		{
 			this._uniforms[ p.uniform ] = samplers.length;
@@ -8280,6 +8425,15 @@ ShaderMaterial.prototype.getPropertyInfoFromPath = function( path )
 	return;
 }
 
+//get shader code
+ShaderMaterial.prototype.getShaderCode = function()
+{
+	var shader_code = LS.ResourcesManager.getResource( this.shader );
+	if(!shader_code || shader_code.constructor !== LS.ShaderCode )
+		return null;
+	return shader_code;
+}
+
 /**
 * Takes an input texture and applies the ShaderMaterial, the result is shown on the viewport or stored in the output_texture
 * @method applyToTexture
@@ -8292,8 +8446,8 @@ ShaderMaterial.prototype.applyToTexture = function( input_texture, output_textur
 		return false;
 
 	//get shader code
-	var shader_code = LS.ResourcesManager.getResource( this.shader );
-	if(!shader_code || shader_code.constructor !== LS.ShaderCode )
+	var shader_code = this.getShaderCode();
+	if(!shader_code)
 		return false;
 
 	//extract shader compiled
@@ -9728,8 +9882,9 @@ Resource.prototype.getAsSubfiles = function()
 */
 Resource.prototype.getAsHTML = function()
 {
-	if(!this._data)
+	if(!this._data || this._data.constructor !== String)
 		return null;
+
 	var container = document.createElement("div");
 	container.innerHTML = this._data;
 	return container;
@@ -11825,14 +11980,17 @@ ShaderCode.prototype.processCode = function()
 			{
 				var line = lines[j].trim();
 				var words = line.split(" ");
+				var varname = words[0];
+				var uniform_name = words[1];
+				var property_type = words[2];
 				var value = words[3];
 				if( value !== undefined )
 					value = LS.stringToValue(value);
 				var options = null;
 				var options_index = line.indexOf("{");
 				if(options_index != -1)
-					options = LS.stringToValue(line.substr(options_index));
-				this._global_uniforms[ words[0] ] = { name: words[0], uniform: words[1], type: words[2], value: value, options: options };
+					options = LS.stringToValue( line.substr(options_index) );
+				this._global_uniforms[ varname ] = { name: varname, uniform: uniform_name, type: property_type, value: value, options: options };
 			}
 			continue;
 		}
@@ -11851,7 +12009,7 @@ ShaderCode.prototype.processCode = function()
 	}
 
 	//compile the shader before using it to ensure there is no errors
-	this.getShader();
+	var shader = this.getShader();
 
 	//process init code
 	if(init_code)
@@ -11876,6 +12034,10 @@ ShaderCode.prototype.processCode = function()
 				this._init_function = new Function( init_code );
 		}
 	}
+
+	//check that all uniforms are correct
+	this.validatePublicUniforms( shader );
+
 
 	//to alert all the materials out there using this shader that they must update themselves.
 	LEvent.trigger( LS.ShaderCode, "modified", this );
@@ -11967,6 +12129,20 @@ ShaderCode.prototype.compileShader = function( vs_code, fs_code )
 		}
 	}
 	return null;
+}
+
+ShaderCode.prototype.validatePublicUniforms = function( shader )
+{
+	for( var i in this._global_uniforms )
+	{
+		var property_info = this._global_uniforms[i];
+		var uniform_info = shader.uniformInfo[ property_info.uniform ];
+		if(!uniform_info)
+		{
+			info.disabled = true;
+			continue;
+		}
+	}
 }
 
 //this function resolves all pragmas (includes, shaderblocks, etc) and returns the final code
@@ -15205,7 +15381,7 @@ var Renderer = {
 	//used in special cases
 	BONES_TEXTURE_SLOT: 3,
 	MORPHS_TEXTURE_SLOT: 2,
-
+	MORPHS_TEXTURE2_SLOT: 1,
 
 	//called from...
 	init: function()
@@ -15239,6 +15415,7 @@ var Renderer = {
 
 		this.BONES_TEXTURE_SLOT = max_texture_units - 7;
 		this.MORPHS_TEXTURE_SLOT = max_texture_units - 8;
+		this.MORPHS_TEXTURE2_SLOT = max_texture_units - 9;
 
 		this._active_samples.length = max_texture_units;
 	},
@@ -15807,7 +15984,8 @@ var Renderer = {
 		this.mergeSamplers([ scene._samplers, material._samplers, instance.samplers ], samplers);
 
 		//enable samplers and store where [TODO: maybe they are not used..., improve here]
-		this.bindSamplers( samplers );
+		if(samplers.length)
+			this.bindSamplers( samplers );
 
 		//find shader name
 		var shader_name = render_settings.default_shader_id;
@@ -15877,7 +16055,8 @@ var Renderer = {
 			var shader = LS.ShadersManager.resolve( query );
 
 			//light textures like shadowmap or projective texture
-			this.bindSamplers( light._samplers );
+			if(light._samplers.length)
+				this.bindSamplers( light._samplers );
 
 			//secondary pass flags to make it additive
 			if(iLight > 0)
@@ -22721,8 +22900,8 @@ MorphDeformer.prototype.onCollectInstances = function( e, render_instances )
 
 	if( this._valid_morphs.length <= 4 ) //use GPU
 		this.applyMorphTargetsByGPU( morph_RI, this._valid_morphs );
-//	else if( this._morph_texture_supported )
-//		this.applyMorphUsingTextures( morph_RI, this._valid_morphs );
+	else if( this._morph_texture_supported ) //use GPU with textures
+		this.applyMorphUsingTextures( morph_RI, this._valid_morphs );
 	else
 		this.applyMorphBySoftware( morph_RI, this._valid_morphs );
 }
@@ -22762,8 +22941,8 @@ MorphDeformer.prototype.applyMorphTargetsByGPU = function( RI, valid_morphs )
 	var morphs_buffers = {};
 	var morphs_weights = [];
 
-	//collect
-	for(var i = 0; i < valid_morphs.length; ++i)
+	//collect (max 4 if using streams)
+	for(var i = 0; i < valid_morphs.length && i < 4; ++i)
 	{
 		var morph = valid_morphs[i];
 		var morph_mesh = morph.mesh;
@@ -22796,18 +22975,42 @@ MorphDeformer.prototype.applyMorphTargetsByGPU = function( RI, valid_morphs )
 
 	RI.query.macros["USE_MORPHING_STREAMS"] = "";
 
-	var weights = new Float32Array( 4 );
+	if(RI.query.macros["USE_MORPHING_TEXTURE"] !== undefined)
+	{
+		delete RI.query.macros["USE_MORPHING_TEXTURE"];
+		delete RI.uniforms["u_morph_vertices_texture"];
+		delete RI.uniforms["u_morph_normals_texture"];
+		RI.samplers[ LS.Renderer.MORPHS_TEXTURE_SLOT ] = null;
+		RI.samplers[ LS.Renderer.MORPHS_TEXTURE2_SLOT ] = null;
+	}
+
+	var weights = this._stream_weights;
+	if(!weights)
+		weights = this._stream_weights = new Float32Array( 4 );
+	else
+		weights.fill(0); //fill first because morphs_weights could have zero length
 	weights.set( morphs_weights );
 	RI.uniforms["u_morph_weights"] = weights;
 }
 
 MorphDeformer.prototype.disableMorphingGPU = function( RI )
 {
-	if( RI.query && ( RI.query.macros["USE_MORPHING_STREAMS"] !== undefined || RI.query.macros["USE_MORPHING_TEXTURE"] !== undefined) )
+	if( !RI || !RI.query )
+		return;
+	
+	if ( RI.query.macros["USE_MORPHING_STREAMS"] !== undefined )
 	{
 		delete RI.query.macros["USE_MORPHING_STREAMS"];
-		delete RI.query.macros["USE_MORPHING_TEXTURE"];
 		delete RI.uniforms["u_morph_weights"];
+	}
+
+	if( RI.query.macros["USE_MORPHING_TEXTURE"] !== undefined )
+	{
+		delete RI.query.macros["USE_MORPHING_TEXTURE"];
+		RI.samplers[ LS.Renderer.MORPHS_TEXTURE_SLOT ] = null;
+		RI.samplers[ LS.Renderer.MORPHS_TEXTURE2_SLOT ] = null;
+		delete RI.uniforms["u_morph_vertices_texture"];
+		delete RI.uniforms["u_morph_normals_texture"];
 	}
 }
 
@@ -22911,7 +23114,7 @@ MorphDeformer.prototype.applyMorphUsingTextures = function( RI, valid_morphs )
 {
 	var base_mesh = RI.mesh;
 	var base_vertices_buffer = base_mesh.vertexBuffers["vertices"];
-	var base_normals_buffer = base_mesh.vertexBuffers["vertices"];
+	var base_normals_buffer = base_mesh.vertexBuffers["normals"];
 
 	//create textures for the base mesh
 	if(!base_vertices_buffer._texture)
@@ -22919,18 +23122,27 @@ MorphDeformer.prototype.applyMorphUsingTextures = function( RI, valid_morphs )
 	if(!base_normals_buffer._texture)
 		base_normals_buffer._texture = this.createGeometryTexture( base_normals_buffer );
 
+	//LS.RM.textures[":debug_base_vertex"] = base_vertices_buffer._texture;
+	//LS.RM.textures[":debug_base_normal"] = base_normals_buffer._texture;
+
+
 	var morphs_textures = [];
 
-	//create the texture container
+	//create the texture container where all will be merged
 	if(!this._morphtarget_vertices_texture || this._morphtarget_vertices_texture.height != base_vertices_buffer._texture.height )
 	{
 		this._morphtarget_vertices_texture = new GL.Texture( base_vertices_buffer._texture.width, base_vertices_buffer._texture.height, { format: gl.RGB, type: gl.FLOAT, filter: gl.NEAREST, wrap: gl.CLAMP_TO_EDGE, no_flip: true });
-		this._texture_size = vec4.fromValues( this._morphtarget_vertices_texture.width, this._morphtarget_vertices_texture.height, 
-			1 / this._morphtarget_vertices_texture.width, 1 / this._morphtarget_vertices_texture.height );
-	}
-	if(!this._morphtarget_normals_texture)
 		this._morphtarget_normals_texture = new GL.Texture( base_normals_buffer._texture.width, base_normals_buffer._texture.height, { format: gl.RGB, type: gl.FLOAT, filter: gl.NEAREST, wrap: gl.CLAMP_TO_EDGE, no_flip: true });
 
+		//used in the shader
+		this._texture_size = vec4.fromValues( this._morphtarget_vertices_texture.width, this._morphtarget_vertices_texture.height, 
+			1 / this._morphtarget_vertices_texture.width, 1 / this._morphtarget_vertices_texture.height );
+
+		//LS.RM.textures[":debug_morph_vertex"] = this._morphtarget_vertices_texture;
+		//LS.RM.textures[":debug_morph_normal"] = this._morphtarget_normals_texture;
+	}
+
+	//prepare morph targets
 	for(var i = 0; i < valid_morphs.length; ++i)
 	{
 		var morph = valid_morphs[i];
@@ -22950,6 +23162,9 @@ MorphDeformer.prototype.applyMorphUsingTextures = function( RI, valid_morphs )
 		if(!normals_buffer._texture)
 			normals_buffer._texture = this.createGeometryTexture( normals_buffer );
 
+		//LS.RM.textures[":debug_morph_vertex_" + i] = vertices_buffer._texture;
+		//LS.RM.textures[":debug_morph_normal_" + i] = normals_buffer._texture;
+
 		morphs_textures.push( { weight: morph.weight, vertices: vertices_buffer._texture, normals: normals_buffer._texture } );
 	}
 
@@ -22958,6 +23173,7 @@ MorphDeformer.prototype.applyMorphUsingTextures = function( RI, valid_morphs )
 	var shader = this.getMorphTextureShader();
 	shader.uniforms({ u_base_texture: 0, u_morph_texture: 1 });
 
+	gl.disable( gl.DEPTH_TEST );
 	gl.enable( gl.BLEND );
 	gl.blendFunc( gl.ONE, gl.ONE );
 
@@ -22965,9 +23181,12 @@ MorphDeformer.prototype.applyMorphUsingTextures = function( RI, valid_morphs )
 	var quad_mesh = GL.Mesh.getScreenQuad();
 
 	this._morphtarget_vertices_texture.drawTo( function(){
+		gl.clearColor( 0,0,0,0 );
+		gl.clear( gl.COLOR_BUFFER_BIT );
 		for(var i = 0; i < morphs_textures.length; ++i )
 		{
-			morphs_textures[i].vertices.bind(1);
+			var stream_texture = morphs_textures[i].vertices;
+			stream_texture.bind(1);
 			shader.uniforms({ u_weight: morphs_textures[i].weight });
 			shader.draw( quad_mesh, gl.TRIANGLES );
 		}
@@ -22976,14 +23195,16 @@ MorphDeformer.prototype.applyMorphUsingTextures = function( RI, valid_morphs )
 	base_normals_buffer._texture.bind(0);
 
 	this._morphtarget_normals_texture.drawTo( function(){
+		gl.clearColor( 0,0,0,0 );
+		gl.clear( gl.COLOR_BUFFER_BIT );
 		for(var i = 0; i < morphs_textures.length; ++i )
 		{
-			morphs_textures[i].normals.bind(1);
+			var stream_texture = morphs_textures[i].normals;
+			stream_texture.bind(1);
 			shader.uniforms({ u_weight: morphs_textures[i].weight });
 			shader.draw( quad_mesh, gl.TRIANGLES );
 		}
 	});
-
 
 	gl.disable( gl.BLEND );
 
@@ -22999,14 +23220,19 @@ MorphDeformer.prototype.applyMorphUsingTextures = function( RI, valid_morphs )
 	}
 
 	//modify the RI to have the displacement texture
-	RI.samplers["u_morph_vertexs_texture"] = this._morphtarget_vertices_texture;
-	RI.samplers["u_morph_normals_texture"] = this._morphtarget_normals_texture;
+	RI.uniforms["u_morph_vertices_texture"] = LS.Renderer.MORPHS_TEXTURE_SLOT;
+	RI.samplers[ LS.Renderer.MORPHS_TEXTURE_SLOT ] = this._morphtarget_vertices_texture;
+
+	RI.uniforms["u_morph_normals_texture"] = LS.Renderer.MORPHS_TEXTURE2_SLOT;
+	RI.samplers[ LS.Renderer.MORPHS_TEXTURE2_SLOT ] = this._morphtarget_normals_texture;
+
 	RI.uniforms["u_morph_texture_size"] = this._texture_size;
 
-	//add the ids
+	//add the ids (the texture with 0,1,2, 3,4,5, ...)
 	RI.vertex_buffers["a_morphing_ids"] = this._ids_buffer;
 
 	//enable the algorithm
+	delete RI.query.macros["USE_MORPHING_STREAMS"];
 	RI.query.macros["USE_MORPHING_TEXTURE"] = "";
 }
 
@@ -23018,7 +23244,8 @@ MorphDeformer._blend_shader_fragment_code = "\n\
 	uniform float u_weight;\n\
 	varying vec2 v_coord;\n\
 	void main() {\n\
-		gl_FragColor = u_weight * (texture2D(u_morph_texture, v_coord) - texture2D(u_base_texture, v_coord));\n\
+		gl_FragColor = u_weight * ( texture2D(u_morph_texture, v_coord) - texture2D(u_base_texture, v_coord) );\n\
+		gl_FragColor.w = 1.0;\n\
 	}\n\
 ";
 
@@ -23031,21 +23258,22 @@ MorphDeformer.prototype.getMorphTextureShader  = function()
 
 MorphDeformer.prototype.createGeometryTexture = function( data_buffer )
 {
-	var data = data_buffer.data;
-	var buffer = data.buffer;
+	var stream_data = data_buffer.data;
+	var buffer = stream_data.buffer;
 
-	var size = buffer.byteLength;
 	var max_texture_size = gl.getParameter( gl.MAX_TEXTURE_SIZE );
 
-	var width = max_texture_size;
-	var height = Math.round( size / width );
+	var num_floats = stream_data.length; 
+	var num_vertex = num_floats / 3;
+	var width = Math.min( max_texture_size, num_vertex );
+	var height = Math.ceil( num_vertex / width );
+
+	var buffer_padded = new Float32Array( width * height * 3 );
+	buffer_padded.set( stream_data );
 	
-	var texture = new GL.Texture( width, height, { format: gl.RGB, type: gl.FLOAT, filter: gl.NEAREST, wrap: gl.CLAMP_TO_EDGE, pixel_data: buffer, no_flip: true });
+	var texture = new GL.Texture( width, height, { format: gl.RGB, type: gl.FLOAT, filter: gl.NEAREST, wrap: gl.CLAMP_TO_EDGE, pixel_data: buffer_padded, no_flip: true });
 	return texture;
 }
-
-
-
 
 MorphDeformer.prototype.setMorphMesh = function(index, value)
 {
@@ -30289,6 +30517,7 @@ LS.Formats.addSupportedFormat( "png,jpg,jpeg,webp,bmp,gif", { "native": true, da
 LS.Formats.addSupportedFormat( "wbin", { dataType: "arraybuffer" } );
 LS.Formats.addSupportedFormat( "json,js,txt,html,css,csv", { dataType: "text" } );
 LS.Formats.addSupportedFormat( "glsl", { dataType: "text", resource: "ShaderCode", "resourceClass": LS.ShaderCode  } );
+LS.Formats.addSupportedFormat( "zip", { dataType: "arraybuffer" } );
 WBin.classes = LS.Classes; //WBin need to know which classes are accesible to be instantiated right from the WBin data info, in case the class is not a global class
 
 /*
@@ -35914,7 +36143,7 @@ SceneTree.prototype.toPack = function( fullpath, force_all_resources )
 	pack.category = "SceneTree";
 
 	return pack;
-},
+}
 
 //WIP: this is in case we have static nodes in the scene
 SceneTree.prototype.updateStaticObjects = function()

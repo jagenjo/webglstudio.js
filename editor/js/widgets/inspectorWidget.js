@@ -563,7 +563,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 
 			inspector.widgets_per_row = 2;
 
-			inspector.addLayers("layers", node.layers, { pretitle: AnimationModule.getKeyframeCode( node, "layers"), callback: function(v) {
+			inspector.addLayers("layers", node.layers, { name_width: 80, pretitle: AnimationModule.getKeyframeCode( node, "layers"), callback: function(v) {
 				node.layers = v;
 				RenderModule.requestFrame();
 			}});
@@ -574,8 +574,8 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 			if(node !== LS.GlobalScene.root)
 			{
 				inspector.widgets_per_row = 2;
-				inspector.addCheckbox("visible", node.visible, { pretitle: AnimationModule.getKeyframeCode( node, "visible"), callback: function(v) { node.visible = v; } });
-				inspector.addCheckbox("is_static", node.is_static, { pretitle: AnimationModule.getKeyframeCode( node, "is_static"), callback: function(v) { node.is_static = v; } });
+				inspector.addCheckbox("visible", node.visible, { name_width: 80, pretitle: AnimationModule.getKeyframeCode( node, "visible"), callback: function(v) { node.visible = v; } });
+				inspector.addCheckbox("is_static", node.is_static, { name_width: 80, pretitle: AnimationModule.getKeyframeCode( node, "is_static"), callback: function(v) { node.is_static = v; } });
 				inspector.widgets_per_row = 1;
 			}
 

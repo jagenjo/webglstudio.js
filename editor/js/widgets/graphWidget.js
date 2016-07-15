@@ -27,6 +27,7 @@ GraphWidget.prototype.init = function()
 	top_widgets.addButton(null,"New", { callback: this.onNewGraph.bind(this), width: 50 });
 	top_widgets.addButton(null,"Open", this.onOpenGraph.bind(this) );
 	top_widgets.addButton(null,"Run Step", this.onStepGraph.bind(this) );
+	top_widgets.addButton(null,"Overgraph", this.onSelectOvergraph.bind(this) );
 	this.root.appendChild( top_widgets.root );
 
 	//create area
@@ -73,6 +74,11 @@ GraphWidget.createDialog = function( parent )
 		graph_widget.unbindEvents();		
 	}
 	return dialog;
+}
+
+GraphWidget.prototype.onResize = function()
+{
+	this.resizeCanvas();
 }
 
 GraphWidget.prototype.destroy = function()
@@ -369,6 +375,11 @@ GraphWidget.prototype.onStepGraph = function()
 	this.graphcanvas.setDirty(true,true);
 
 	LS.GlobalScene.refresh();
+}
+
+GraphWidget.prototype.onSelectOvergraph = function()
+{
+	GraphModule.current_overgraph = this.graph;
 }
 
 GraphWidget.prototype.onGetExtraMenuOptions = function(options)

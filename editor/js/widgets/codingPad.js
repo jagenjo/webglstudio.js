@@ -928,10 +928,10 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 		that.onOpenCode();
 	}});
 
-	this.file_name_widget = top_widgets.addString(null,"",{ disabled: true });
+	this.file_name_widget = top_widgets.addString(null,"",{ width: 100, disabled: true });
 
 	//check for parsing errors
-	this.compile_button = top_widgets.addButton(null,"Compile",{ callback: function(v) { 
+	this.compile_button = top_widgets.addButton(null,"Compile",{ width: 80, callback: function(v) { 
 		that.evalueCode();
 		LS.GlobalScene.refresh();
 	}});
@@ -960,7 +960,7 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 		that.changeFontSize(+1);
 	}});
 
-	this.lang_widget = top_widgets.addCombo("Highlight", "javascript",{ width: 200, values: ["javascript","glsl","html","text"], callback: function(v) { 
+	this.lang_widget = top_widgets.addCombo("Highlight", "javascript",{ width: 170, values: ["javascript","glsl","html","text"], callback: function(v) { 
 		that.setLang( v );
 	}});
 
@@ -1011,6 +1011,30 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 	//LiteGUI.createDropArea( wrapper, this.onItemDrop.bind(this) );
 }
 
+CodingPadWidget.prototype.addMasterButtons = function()
+{
+	var inspector = this.top_widgets;
+
+	inspector.addButton(null,"3D", { width: 50, callback: function(){
+		CodingModule.show3DWindow(); //toggle
+	}});
+
+	inspector.addButton(null,"Side", { width: 80, callback: function(){
+		CodingModule.showSidePanel();
+	}});
+}
+
+CodingPadWidget.prototype.onResize = function()
+{
+	for(var i in this.tabs.tabs)
+	{
+		var tab = this.tabs.tabs[i];
+		var widget = tab.widget;
+		if(!widget || !widget.onResize )
+			continue;
+		widget.onResize();
+	}
+}
 
 function getCompletions( token, context ) {
   var found = [], start = token.string;

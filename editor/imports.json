@@ -51,6 +51,7 @@
 		"js/modules/meshPainter.js",
 		"js/modules/meshTools.js",
 		"js/modules/textureTools.js",
+		"js/modules/export.js",
 		"js/modules/lightmaps.js",
 		"js/modules/animation.js",
 		"js/modules/undo.js",

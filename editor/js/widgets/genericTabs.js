@@ -113,6 +113,18 @@ GenericTabsWidget.prototype.openInstanceTab = function( instance )
 	return false;
 }
 
+GenericTabsWidget.prototype.onResize = function()
+{
+	for(var i in this.tabs.tabs)
+	{
+		var tab = this.tabs.tabs[i];
+		var widget = tab.widget;
+		if(!widget || !widget.onResize )
+			continue;
+		widget.onResize();
+	}
+}
+
 GenericTabsWidget.prototype.addWidgetTab = function( widget_class, options )
 {
 	options = options || {};
@@ -164,6 +176,8 @@ GenericTabsWidget.prototype.addWidgetTab = function( widget_class, options )
 
 	if(this.onWidgetCreated)
 		this.onWidgetCreated( widget );
+
+	LiteGUI.trigger( this, "tab_created", tab );
 
 	return tab;
 }

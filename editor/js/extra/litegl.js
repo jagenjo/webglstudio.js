@@ -42,12 +42,27 @@ GL.FLOAT = 5126;
 GL.HALF_FLOAT_OES = 36193;
 GL.DEPTH_COMPONENT16 = 33189;
 
+GL.FLOAT_VEC2 = 35664;
+GL.FLOAT_VEC3 = 35665;
+GL.FLOAT_VEC4 = 35666;
+GL.INT_VEC2 = 35667;
+GL.INT_VEC3 = 35668;
+GL.INT_VEC4 = 35669;
+GL.BOOL = 35670;
+GL.BOOL_VEC2 = 35671;
+GL.BOOL_VEC3 = 35672;
+GL.BOOL_VEC4 = 35673;
+GL.FLOAT_MAT2 = 35674;
+GL.FLOAT_MAT3 = 35675;
+GL.FLOAT_MAT4 = 35676;
+
+GL.DEPTH_COMPONENT = 6402;
 GL.ALPHA = 6406;
 GL.RGB = 6407;
 GL.RGBA = 6408;
 GL.LUMINANCE = 6409;
 GL.LUMINANCE_ALPHA = 6410;
-GL.DEPTH_COMPONENT = 6402;
+
 
 GL.NEAREST = 9728;
 GL.LINEAR = 9729;
@@ -1720,7 +1735,7 @@ GL.Indexer.prototype = {
 * @param {number} spacing number of numbers per component (3 per vertex, 2 per uvs...), default 3
 * @param {enum} stream_type default gl.STATIC_DRAW (other: gl.DYNAMIC_DRAW, gl.STREAM_DRAW 
 */
-global.Buffer = GL.Buffer = function Buffer( target, data, spacing, stream_type, gl ) {
+GL.Buffer = function Buffer( target, data, spacing, stream_type, gl ) {
 	if(GL.debug)
 		console.log("GL.Buffer created");
 
@@ -4085,6 +4100,9 @@ Texture.prototype.uploadImage = function(image, options)
 		}
 	}
 
+	//TODO: add expand transparent pixels option
+
+	//generate mipmaps
 	if (this.minFilter && this.minFilter != gl.NEAREST && this.minFilter != gl.LINEAR) {
 		gl.generateMipmap(this.texture_type);
 		this.has_mipmaps = true;
@@ -6249,6 +6267,38 @@ Shader.dumpErrorToConsole = function(err, vscode, fscode)
 	console.groupCollapsed("Shader code");
 	console.log( lines.join("\n") );
 	console.groupEnd();
+}
+
+//helps to check if a variable value is valid to an specific uniform in a shader
+Shader.validateValue = function( value, uniform_info )
+{
+	if(value === null || value === undefined)
+		return false;
+
+	switch (uniform_info.type)
+	{
+		//used to validate shaders
+		case GL.INT: 
+		case GL.FLOAT: 
+		case GL.SAMPLER_2D: 
+		case GL.SAMPLER_CUBE: 
+			return isNumber(value);
+		case GL.INT_VEC2: 
+		case GL.FLOAT_VEC2:
+			return value.length === 2;
+		case GL.INT_VEC3: 
+		case GL.FLOAT_VEC3:
+			return value.length === 3;
+		case GL.INT_VEC4: 
+		case GL.FLOAT_VEC4:
+		case GL.FLOAT_MAT2:
+			 return value.length === 4;
+		case GL.FLOAT_MAT3:
+			 return value.length === 8;
+		case GL.FLOAT_MAT4:
+			 return value.length === 16;
+	}
+	return true;
 }
 
 //**************** SHADERS ***********************************

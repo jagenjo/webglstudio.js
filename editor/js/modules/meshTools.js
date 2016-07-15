@@ -4,9 +4,6 @@ var MeshTools = {
 		LiteGUI.menubar.add("Actions/Mesh Tools", { callback: function() { 
 			MeshTools.showToolsDialog();
 		}});
-		LiteGUI.menubar.add("Actions/Export to OBJ", { callback: function() { 
-			MeshTools.exportToOBJ();
-		}});
 	},
 
 	showToolsDialog: function( mesh_name )
@@ -65,22 +62,6 @@ var MeshTools = {
 
 		dialog.add( widgets );
 		dialog.adjustSize();		
-	},
-
-	exportToOBJ: function()
-	{
-		var meshes = [];
-		for(var i = 0; i < LS.Renderer._visible_instances.length; i++)
-		{
-			var ri = LS.Renderer._visible_instances[i];
-			meshes.push( { mesh: ri.mesh, vertices_matrix: ri.matrix, normals_matrix: ri.normal_matrix } );
-		}
-		if(!meshes.length)
-			return;
-		var final_mesh = GL.Mesh.mergeMeshes( meshes );
-		LS.RM.registerResource( "export.obj", final_mesh );
-		var data = final_mesh.encode("obj");
-		LiteGUI.downloadFile("export.OBJ", data );
 	}
 };
 

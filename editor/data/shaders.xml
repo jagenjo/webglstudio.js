@@ -563,15 +563,13 @@
 
 				uniform sampler2D u_morph_vertices_texture;
 				uniform sampler2D u_morph_normals_texture;
-				uniform vec4 u_morphing_texture_size;
+				uniform vec4 u_morph_texture_size;
 
 				void applyMorphing( inout vec4 position, inout vec3 normal )
 				{
 					vec2 coord;
-					float inv_width = u_morphing_texture_size.z;
-					float inv_height = u_morphing_texture_size.w;
-					coord.x = mod( a_morphing_ids, u_morphing_texture_size.x ) * inv_width;
-					coord.y = floor( a_morphing_ids / u_morphing_texture_size.x ) * inv_height;
+					coord.x = ( mod( a_morphing_ids, u_morph_texture_size.x ) + 0.5 ) / u_morph_texture_size.x;
+					coord.y = 1.0 - ( floor( a_morphing_ids / u_morph_texture_size.x ) + 0.5 ) / u_morph_texture_size.y;
 					position.xyz += texture2D( u_morph_vertices_texture, coord ).xyz;
 					normal.xyz += texture2D( u_morph_normals_texture, coord ).xyz;
 				}

@@ -3,8 +3,10 @@ var CodingModule = //do not change
 	name: "Code",
 	bigicon: "imgs/tabicon-code.png",
 
-	default_sceneview: true,
-	sceneview_visible: true, //side panel
+	show_sceneview: true, //3d view
+	show_panel: false, //side panel
+
+	is_sceneview_visible: true, 
 
 	APIs: {}, //here you can register function calls of the API
 	windows: [], //external windows
@@ -16,9 +18,8 @@ var CodingModule = //do not change
 			bigicon: this.bigicon,
 			size: "full", 
 			callback: function(tab) {
-				if(!CodingModule.external_window)
-					CodingModule.show3DWindow( CodingModule.default_sceneview );
-				InterfaceModule.setSidePanelVisibility(false);
+				CodingModule.show3DWindow( CodingModule.show_sceneview );
+				CodingModule.showSidePanel( CodingModule.show_panel );
 				CodingModule.coding_tabs_widget.refresh();
 			},
 			callback_canopen: function(){
@@ -50,6 +51,7 @@ var CodingModule = //do not change
 		this.coding_3D_area = coding_area.getSection(0).content;
 
 		var coding_tabs_widget = this.coding_tabs_widget = new CodingTabsWidget();
+		coding_tabs_widget.is_master_editor = true;
 		coding_area.getSection(1).add( coding_tabs_widget );
 		//coding_tabs_widget.onNewTab();
 
@@ -263,7 +265,11 @@ var CodingModule = //do not change
 	//shows the side 3d window
 	show3DWindow: function(v)
 	{
-		this.sceneview_visible = v;
+		if(v === undefined)
+			v = !this.is_sceneview_visible;
+		this.is_sceneview_visible = v;
+		this.show_sceneview = v;
+
 		if(v)
 		{
 			RenderModule.appendViewportTo( this.coding_area.sections[0].content );
@@ -274,6 +280,13 @@ var CodingModule = //do not change
 			RenderModule.appendViewportTo(null);
 			this.coding_area.hideSection(0);
 		}
+	},
+
+	showSidePanel: function(v)
+	{
+		InterfaceModule.setSidePanelVisibility(v);
+		this.show_panel = InterfaceModule.side_panel_visibility;
+
 	},
 
 	onUnload: function()

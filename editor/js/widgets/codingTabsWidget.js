@@ -1,6 +1,7 @@
 function CodingTabsWidget()
 {
 	this.root = null;
+	this.is_master_editor = false; //used in the CodingModule
 	this.init();
 }
 
@@ -170,47 +171,6 @@ CodingTabsWidget.prototype.refresh = function()
 		return;
 	tab.pad.refresh();
 }
-
-/*
-//save the state 
-CodingTabsWidget.prototype.onBeforeReload = function(e)
-{
-	var state = { tabs: [] };
-
-	//for every tab open
-	for(var i in this.tabs.tabs)
-	{
-		var tab = this.tabs.tabs[i];
-		if(!tab.id)
-			continue;
-		//get the uid of the component and the cursor info
-		var info = tab.code_info;
-		state.tabs.push( info );
-	}
-	this._saved_state = state;
-}
-
-	//reload all the codes open
-CodingTabsWidget.prototype.onReload = function(e)
-{
-	if(!this._saved_state)
-		return;
-
-	var state = this._saved_state;
-	this.tabs.removeAllTabs();
-
-	for(var i in state.tabs)
-	{
-		var tab = state.tabs[i];
-		if(!tab || !tab.id)
-			continue;
-		var instance = LS.GlobalScene.findComponentByUId( tab.id );
-		this.editInstanceCode( instance, tab.options );
-	}
-
-	this._saved_state = null;
-}
-*/
 
 CodingTabsWidget.prototype.onNodeRemoved = function(evt, node)
 {
@@ -501,6 +461,9 @@ CodingTabsWidget.prototype.createCodingPad = function( container )
 		if(info.id)
 			that.renameTab(info.id,e.detail);
 	});
+
+	if(	this.is_master_editor )
+		pad.addMasterButtons();
 
 	return pad;
 }

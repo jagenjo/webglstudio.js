@@ -2809,6 +2809,8 @@ LGraphCanvas.prototype.setDirty = function(fgcanvas,bgcanvas)
 */
 LGraphCanvas.prototype.getCanvasWindow = function()
 {
+	if(!this.canvas)
+		return window;
 	var doc = this.canvas.ownerDocument;
 	return doc.defaultView || doc.parentWindow;
 }
@@ -3666,6 +3668,9 @@ LGraphCanvas.prototype.computeVisibleNodes = function()
 
 LGraphCanvas.prototype.draw = function(force_canvas, force_bgcanvas)
 {
+	if(!this.canvas)
+		return;
+
 	//fps counting
 	var now = LiteGraph.getTime();
 	this.render_time = (now - this.last_draw_time)*0.001;

@@ -4,6 +4,10 @@ var GraphModule = {
 	_force_render: false,
 
 	current_graph_info: null,
+	current_overgraph: null,
+
+	is_sceneview_visible: true,
+	show_panel: true,
 
 	litegraph_path: "../../litegraph/",
 	litegraph_css_url: "css/litegraph.css",
@@ -14,48 +18,91 @@ var GraphModule = {
 		this.tab = LiteGUI.main_tabs.addTab( this.name, {id:"graphtab", bigicon: this.bigicon, size: "full",  module: GraphModule, callback: function(tab) {
 			GraphModule.openTab();
 			InterfaceModule.setSidePanelVisibility(true);
+			GraphModule.show3DWindow( GraphModule.is_sceneview_visible );
 			GraphModule._force_render = true;
+			GraphModule.tabs_widget.onResize();
 			//GraphModule.graphcanvas.pause_rendering = false;
 		},
 		callback_leave: function(tab) {
 			//not visible
 			GraphModule._force_render = false;
+			RenderModule.appendViewportTo(null);
 			//GraphModule.graphcanvas.pause_rendering = true;
 		}});
 
+		//Used to render the over graph
 		RenderModule.canvas_manager.addWidget( this );
 
+		//setup LiteGraph
 		LiteGraph.node_images_path = this.litegraph_path + "/nodes_data/";
-
-		this.root = LiteGUI.main_tabs.root.querySelector("#graphtab");
-
-		this.buildGUI();
 		LiteGUI.requireCSS([ this.litegraph_css_url ]);
 
-		//events that affect graphs
-		/*
-		LEvent.bind( LS.GlobalScene, "update", function(e,dt) { GraphModule.onUpdate(dt); });
-		LEvent.bind( LS.GlobalScene, "clear", this.onClear.bind(this) );
-		LEvent.bind( LS.GlobalScene, "beforeReload", this.onBeforeReload.bind(this) );
-		LEvent.bind( LS.GlobalScene, "reload", this.onReload.bind() );
-		LEvent.bind( LS.GlobalScene, "nodeRemoved", this.onNodeRemoved.bind(this) );
-		LEvent.bind( LS.GlobalScene, "nodeComponentRemoved", this.onComponentRemoved.bind(this) );
-		*/
+		this.createInterface();
 	},
 
-	buildGUI: function()
+	createInterface: function()
 	{
+		this.root = LiteGUI.main_tabs.root.querySelector("#graphtab");
+
+		var graph_area = this.graph_area = new LiteGUI.Area(null,{width: "100%"});
+		this.root.appendChild( graph_area.root );
+		graph_area.split("vertical",[null,"50%"],true);
+		this.graph_3D_area = graph_area.getSection(0).content;
+
 		this.tabs_widget = new GenericTabsWidget();
-		this.root.appendChild( this.tabs_widget.root );
+		graph_area.getSection(1).add( this.tabs_widget );
+		//this.root.appendChild( this.tabs_widget.root );
 		this.tabs_widget.supported_widgets = [ GraphWidget ];
+
+		LiteGUI.bind( this.tabs_widget, "tab_created", function(e){
+			var tab = e.detail;
+			var widget = tab.widget;
+			var inspector = widget.top_widgets;
+			
+			inspector.addButton(null,"3D", { width: 50, callback: function(){
+				GraphModule.show3DWindow(); //toggle
+			}});
+
+			inspector.addButton(null,"Side", { width: 80, callback: function(){
+				GraphModule.showSidePanel();
+			}});
+
+		});
+
 		this.tabs_widget.addWidgetTab( GraphWidget );
 	},
 
 	openTab: function()
 	{
 		LiteGUI.main_tabs.selectTab("Graph");
-		//var rect = this.canvas.parentNode.getClientRects()[0];
-		//this.graphcanvas.resize( rect.width, rect.height - 20 );
+	},
+
+	//shows the side 3d window
+	show3DWindow: function(v)
+	{
+		if(v === undefined)
+			v = !this.is_sceneview_visible;
+		this.is_sceneview_visible = v;
+		this.show_sceneview = v;
+
+		if(v)
+		{
+			RenderModule.appendViewportTo( this.graph_area.sections[0].content );
+			this.graph_area.showSection(0);
+		}
+		else
+		{
+			RenderModule.appendViewportTo(null);
+			this.graph_area.hideSection(0);
+		}
+		this.tabs_widget.onResize();
+	},
+
+	showSidePanel: function(v)
+	{
+		InterfaceModule.setSidePanelVisibility(v);
+		this.show_panel = InterfaceModule.side_panel_visibility;
+		this.tabs_widget.onResize();
 	},
 
 	//switch coding tab
@@ -89,6 +136,24 @@ var GraphModule = {
 		node.addComponent( component );
 		this.editInstanceGraph( component, { id: component.uid, title: node.id } );
 		this.openTab();
+	},
+
+	render: function()
+	{
+		return;
+
+		if( !EditorView.render_overgraph || !this.current_overgraph || RenderModule.render_settings.in_player || !RenderModule.frame_updated )
+			return;
+
+		if(!this.graph_canvas)
+		{
+			this.graph_canvas = new LGraphCanvas();
+			this.graph_canvas.pause_rendering = true;
+			this.graph_canvas.setCanvas( gl.canvas );
+		}
+
+		this.graph_canvas.setGraph( this.current_overgraph );
+		this.graph_canvas.draw();
 	}
 };
 

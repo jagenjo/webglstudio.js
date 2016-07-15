@@ -58,7 +58,7 @@ LS.SceneNode.actions["select_children"] = {
 LS.SceneNode.actions["clone"] = { 
 	title:"Clone",
 	callback: function(){
-		EditorModule.cloneNode( this );
+		EditorModule.cloneNode( this, true ); //true = use_same_parent
 	}
 };
 

@@ -23,7 +23,6 @@ var SceneStorageModule = {
 		menubar.add("Project/Download", { callback: this.showDownloadSceneDialog.bind(this) });
 		menubar.add("Project/Test", { callback: this.testScene.bind(this) });
 		menubar.add("Project/Publish", { callback: this.showPublishDialog.bind(this) });
-		menubar.add("Project/Export", { callback: this.onExport.bind(this) });
 
 		menubar.separator("Project");
 		menubar.add("Project/Reset All", { callback: EditorModule.showResetDialog.bind(EditorModule) });
@@ -672,11 +671,6 @@ var SceneStorageModule = {
 			//open in popup
 			window.open("player.html?url=" + LS.RM.path + pack.fullpath,'_blank');
 		});
-	},
-
-	onExport: function(e)
-	{
-		LiteGUI.alert("Feature not finished");
 	},
 
 	retrieveLocalScenes: function()

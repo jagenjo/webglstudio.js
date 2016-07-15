@@ -269,6 +269,11 @@ Timeline.prototype.setAnimation = function( animation, take_name )
 	this.redrawCanvas();
 }
 
+Timeline.prototype.onResize = function()
+{
+	this.resize();
+}
+
 Timeline.prototype.resize = function( skip_redraw )
 {
 	//console.log("timeline resize");

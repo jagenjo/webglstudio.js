@@ -2215,7 +2215,7 @@ var GUI = {
 	*
 	* @method createElement
 	* @param {String} tag_type the tag type "div"
-	* @param {String} anchor "top-left", "top-right", "bottom-left", "bottom-right"
+	* @param {String} anchor "top-left", "top-right", "bottom-left", "bottom-right" or "none"
 	* @return {HTMLElement} 
 	*/
 	createElement: function( tag_type, anchor )
@@ -2232,7 +2232,7 @@ var GUI = {
 	*
 	* @method attach
 	* @param {HTMLElement} element
-	* @param {String} anchor "top-left", "top-right", "bottom-left", "bottom-right"
+	* @param {String} anchor "top-left", "top-right", "bottom-left", "bottom-right" or "none"
 	*/
 	attach: function( element, anchor )
 	{
@@ -2244,7 +2244,7 @@ var GUI = {
 
 		element.style.position = "absolute";
 
-		anchor = anchor || "top-left";
+		anchor = anchor || "none"; //"top-left";
 
 		switch(anchor)
 		{
@@ -2272,14 +2272,15 @@ var GUI = {
 				element.style.width = "50%";
 				element.style.margin = "0 auto";
 				break;
-			default:
-				console.warn("invalid GUI anchor position: ",anchor);
 			case "left":
 			case "top":
 			case "top-left":
 				element.style.top = "0";
 				element.style.left = "0";
 				break;
+			case "none": break;
+			default:
+				console.warn("invalid GUI anchor position: ",anchor);
 		}
 
 		var gui_root = this.getRoot();

@@ -302,24 +302,28 @@ global.extendClass = GL.extendClass = function extendClass( target, origin ) {
 	}
 
 	if(origin.prototype) //copy prototype properties
-		for(var i in origin.prototype) //only enumerables
+	{
+		var prop_names = Object.getOwnPropertyNames( origin.prototype );
+		for(var i = 0; i < prop_names.length; ++i) //only enumerables
 		{
-			if(!origin.prototype.hasOwnProperty(i)) 
-				continue;
+			var name = prop_names[i];
+			//if(!origin.prototype.hasOwnProperty(name)) 
+			//	continue;
 
-			if(target.prototype.hasOwnProperty(i)) //avoid overwritting existing ones
+			if(target.prototype.hasOwnProperty(name)) //avoid overwritting existing ones
 				continue;
 
 			//copy getters 
-			if(origin.prototype.__lookupGetter__(i))
-				target.prototype.__defineGetter__(i, origin.prototype.__lookupGetter__(i));
+			if(origin.prototype.__lookupGetter__(name))
+				target.prototype.__defineGetter__(name, origin.prototype.__lookupGetter__(name));
 			else 
-				target.prototype[i] = origin.prototype[i];
+				target.prototype[name] = origin.prototype[name];
 
 			//and setters
-			if(origin.prototype.__lookupSetter__(i))
-				target.prototype.__defineSetter__(i, origin.prototype.__lookupSetter__(i));
+			if(origin.prototype.__lookupSetter__(name))
+				target.prototype.__defineSetter__(name, origin.prototype.__lookupSetter__(name));
 		}
+	}
 
 	if(!target.hasOwnProperty("superclass")) 
 		Object.defineProperty(target, "superclass", {

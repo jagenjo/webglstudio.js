@@ -18,6 +18,15 @@ Any creation done in WebGLStudio could be easily shared online with a link or em
 
 Creations could be packed in one single file so it is easy to store and share.
 
+## But what can I do with it? ##
+
+You can import assets from different sources (3D Meshes, textures, sounds, animations) and arrange them in a 3D Space.
+Then you can edit their visual appearence, add behaviours through scripting in javascript or using the graph system, use HTML to create the interface, and when your scene is ready you can share it using one link.
+
+## What if I'm an advanced user? ##
+
+WebGLStudio allows to code your own shaders from the editor, create your own postprocessing effects, even redo the render pipeline.
+
 ## Who has developed WebGLStudio? ##
 
 It has been developed by Javi Agenjo at the Interactive Technologies Group (GTI) at University Pompeu Fabra (Barcelona),
@@ -27,7 +36,7 @@ thanks to funding from the European Union and local institutions.
 
 Not yet, but I'm working on that.
 
-## Which Licensing does it use ? ## 
+## Which Licensing does it use? ##
 
 It uses the MIT license, which means that you can use this software for whatever you want as long as you keep the same licensing.
 

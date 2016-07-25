@@ -23,6 +23,10 @@ Creations could be packed in one single file so it is easy to store and share.
 You can import assets from different sources (3D Meshes, textures, sounds, animations) and arrange them in a 3D Space.
 Then you can edit their visual appearence, add behaviours through scripting in javascript or using the graph system, use HTML to create the interface, and when your scene is ready you can share it using one link.
 
+## Can I create 3D models? ##
+
+No, WebGLStudio is not a 3D Modeling software, for that purpose I recomend to use Blender or check online tools like Clara.io
+
 ## What if I'm an advanced user? ##
 
 WebGLStudio allows to code your own shaders from the editor, create your own postprocessing effects, even redo the render pipeline.

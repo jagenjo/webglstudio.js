@@ -8,7 +8,7 @@ WebGLStudio.js is an open source full 3D graphics suite inside the browser. You 
 
 Some of the important features:
 
- * Full 3D graphics engine (LiteScene.js) that support multiple lights, shadowmaps, realtime reflections, custom materials, postFX, animation.
+ * Full 3D graphics engine ([LiteScene.js](https://github.com/jagenjo/litescene.js)) that support multiple lights, shadowmaps, realtime reflections, custom materials, postFX, skinning, animation and many more.
  * System based in components so very easy to extend (controlling the rendering pipeline or hooking for interaction events).
  * Easy to use WYSIWYG editor, with all the features in one place (coding, graph compositing, timeline).
  * Graph editor to create interesting behaviours or post-production effects.

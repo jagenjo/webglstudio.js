@@ -753,29 +753,26 @@ var SceneStorageModule = {
 		}
 	},
 
-	setSceneFromJSON: function( data )
+	setSceneFromJSON: function( data, on_complete, on_error )
 	{
-		if(!data)
-			return;
+		var that = this;
 
 		if(data.constructor === String)
-		{
-			try
-			{
-				data = JSON.parse( data );
-			}
-			catch (err)
-			{
-				console.log("Error: " + err );
-				return;
-			}
-		}
+			data = JSON.parse(data);
 
-		LS.Renderer.reset();
-		LS.GlobalScene.clear();
-		LS.GlobalScene.configure(data);
-		LS.GlobalScene.loadResources();
-		this.onSceneReady();
+		LS.GlobalScene.setFromJSON( data, inner, on_error );
+
+		function inner()
+		{
+			LS.Renderer.reset();
+			LS.GlobalScene.clear();
+			//LS.GlobalScene.configure(data); //configure twice?
+			LS.GlobalScene.loadResources();
+			that.onSceneReady();
+
+			if(on_complete)
+				on_complete();
+		}
 	},
 
 	deleteServerScene: function(filename)

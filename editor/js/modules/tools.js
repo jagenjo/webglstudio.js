@@ -124,12 +124,15 @@ var ToolsModule = {
 
 	showToolProperties: function( tool_name )
 	{
-		var tool = this.tools[tool_name];
+		var tool = this.tools[ tool_name ];
 		if(!tool)
 			return;
 
+		this.enableTool( tool_name );
+
 		if(!tool.inspect)
 			return;
+
 		EditorModule.inspect( tool );
 	},
 

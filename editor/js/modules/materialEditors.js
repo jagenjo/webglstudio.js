@@ -164,7 +164,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 				material = material.data;
 			else if( LS.MaterialClasses[ material.object_type ] )
 			{
-				material = new window[ material.object_type ]();
+				material = new LS.MaterialClasses[ material.object_type ]();
 				delete data["object_type"];
 				material.configure(data);
 				material.loadTextures();

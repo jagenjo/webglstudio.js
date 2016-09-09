@@ -253,7 +253,10 @@ GraphWidget.prototype.onNodeRemoved = function( node )
 
 GraphWidget.prototype.onComponentRemoved = function( component )
 {
-	//TODO
+	//check if this component is the one being edited
+	if( !this.current_graph_info || this.current_graph_info.id != component.uid )
+		return;
+
 }
 
 /*
@@ -313,6 +316,7 @@ GraphWidget.prototype.onNewGraph = function()
 		var component = new LS.Components[graph_type]();
 		var root = node || LS.GlobalScene.root;
 		root.addComponent( component );
+		UndoModule.saveComponentCreatedUndo( component );
 		EditorModule.refreshAttributes();
 		that.editInstanceGraph( component, { id: component.uid, title: root.name } );
 		dialog.close();
@@ -461,16 +465,21 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 		}
 		else if(value !== null && value !== undefined) //can we guess it from the current value?
 		{
-			if(typeof(value) == "boolean")
+			inspector.addDefault( i, graphnode.properties[i], { step: 0.01, field_name: i, callback: inner_assign } );
+			/*
+			if( value.constructor === Boolean )
 				inspector.addCheckbox(i, value, { field_name: i, callback: inner_assign });
-			else if(typeof(value) == "string")
+			else if( value.constructor === String )
 				inspector.addString(i, value, { field_name: i, callback: inner_assign });
-			else if(typeof(value) == "number")
+			else if( value.constructor === Number )
 				inspector.addNumber(i, value, { step: 0.01, field_name: i, callback: inner_assign });
+			else if( value.length == 4)
+				inspector.addVector4(i, value, { step: 0.01, field_name: i, callback: inner_assign });
 			else if( value.length == 3)
 				inspector.addVector3(i, value, { step: 0.01, field_name: i, callback: inner_assign });
 			else if( value.length == 2)
 				inspector.addVector2(i, value, { step: 0.01, field_name: i, callback: inner_assign });
+			*/
 		}
 	}
 
@@ -511,6 +520,14 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 		LS.setObjectProperty( graphnode.properties, this.options.field_name, v );
 		if( graphnode.onPropertyChanged )
 			graphnode.onPropertyChanged( this.options.field_name, v );
+
+		//special case
+		if( this.options.field_name == "widget" )
+		{
+			inspector.refresh();
+			console.log("refreshing");
+		}
+
 	}
 });
 

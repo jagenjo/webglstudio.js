@@ -78,6 +78,10 @@ var LiteGraph = {
 		this.registered_node_types[ type ] = base_class;
 		if(base_class.constructor.name)
 			this.Nodes[ base_class.constructor.name ] = base_class;
+
+		//warnings
+		if(base_class.prototype.onPropertyChange)
+			console.warn("LiteGraph node class " + type + " has onPropertyChange method, it must be called onPropertyChanged with d at the end");
 	},
 
 	/**
@@ -1225,7 +1229,7 @@ LGraph.prototype.onNodeTrace = function(node, msg, color)
 		+ onMouseEnter
 		+ onMouseLeave
 		+ onExecute: execute the node
-		+ onPropertyChange: when a property is changed in the panel (return true to skip default behaviour)
+		+ onPropertyChanged: when a property is changed in the panel (return true to skip default behaviour)
 		+ onGetInputs: returns an array of possible inputs
 		+ onGetOutputs: returns an array of possible outputs
 		+ onDblClick
@@ -7157,6 +7161,57 @@ MathScale.prototype.onExecute = function()
 LiteGraph.registerNodeType("math/scale", MathScale );
 
 
+//Math clamp
+function MathAverageFilter()
+{
+	this.addInput("in","number");
+	this.addOutput("out","number");
+	this.size = [60,20];
+	this.addProperty( "samples", 10 );
+	this._values = new Float32Array(10);
+	this._current = 0;
+}
+
+MathAverageFilter.title = "Average";
+MathAverageFilter.desc = "Average Filter";
+
+MathAverageFilter.prototype.onExecute = function()
+{
+	var v = this.getInputData(0);
+	if(v == null)
+		v = 0;
+
+	var num_samples = this._values.length;
+
+	this._values[ this._current % num_samples ] = v;
+	this._current += 1;
+	if(this._current > num_samples)
+		this._current = 0;
+
+	var avr = 0;
+	for(var i = 0; i < num_samples; ++i)
+		avr += this._values[i];
+
+	this.setOutputData( 0, avr / num_samples );
+}
+
+MathAverageFilter.prototype.onPropertyChanged = function( name, value )
+{
+	if(value < 1)
+		value = 1;
+	this.properties.samples = Math.round(value);
+	var old = this._values;
+
+	this._values = new Float32Array( this.properties.samples );
+	if(old.length <= this._values.length )
+		this._values.set(old);
+	else
+		this._values.set( old.subarray( 0, this._values.length ) );
+}
+
+LiteGraph.registerNodeType("math/average", MathAverageFilter );
+
+
 //Math operation
 function MathOperation()
 {
@@ -7342,6 +7397,9 @@ MathAccumulate.desc = "Increments a value every time";
 
 MathAccumulate.prototype.onExecute = function()
 {
+	if(this.properties.value === null)
+		this.properties.value = 0;
+
 	var inc = this.getInputData(0);
 	if(inc !== null)
 		this.properties.value += inc;
@@ -7370,6 +7428,8 @@ MathTrigonometry.filter = "shader";
 MathTrigonometry.prototype.onExecute = function()
 {
 	var v = this.getInputData(0);
+	if(v == null)
+		v = 0;
 	var amplitude = this.properties["amplitude"];
 	var slot = this.findInputSlot("amplitude");
 	if(slot != -1)
@@ -7633,12 +7693,35 @@ LiteGraph.registerNodeType("math3d/xyzw-to-vec4", Math3DXYZWToVec4 );
 if(window.glMatrix) 
 {
 
+	function Math3DQuaternion()
+	{
+		this.addOutput("quat","quat");
+		this.properties = { x:0, y:0, z:0, w: 1 };
+		this._value = quat.create();
+	}
+
+	Math3DQuaternion.title = "Quaternion";
+	Math3DQuaternion.desc = "quaternion";
+
+	Math3DQuaternion.prototype.onExecute = function()
+	{
+		this._value[0] = this.properties.x;
+		this._value[1] = this.properties.y;
+		this._value[2] = this.properties.z;
+		this._value[3] = this.properties.w;
+		this.setOutputData( 0, this._value );
+	}
+
+	LiteGraph.registerNodeType("math3d/quaternion", Math3DQuaternion );
+
 
 	function Math3DRotation()
 	{
 		this.addInputs([["degrees","number"],["axis","vec3"]]);
 		this.addOutput("quat","quat");
 		this.properties = { angle:90.0, axis: vec3.fromValues(0,1,0) };
+
+		this._value = quat.create();
 	}
 
 	Math3DRotation.title = "Rotation";
@@ -7651,7 +7734,7 @@ if(window.glMatrix)
 		var axis = this.getInputData(1);
 		if(axis == null) axis = this.properties.axis;
 
-		var R = quat.setAxisAngle(quat.create(), axis, angle * 0.0174532925 );
+		var R = quat.setAxisAngle( this._value, axis, angle * 0.0174532925 );
 		this.setOutputData( 0, R );
 	}
 
@@ -7689,6 +7772,8 @@ if(window.glMatrix)
 	{
 		this.addInputs( [["A","quat"],["B","quat"]] );
 		this.addOutput( "A*B","quat" );
+
+		this._value = quat.create();
 	}
 
 	Math3DMultQuat.title = "Mult. Quat";
@@ -7701,11 +7786,42 @@ if(window.glMatrix)
 		var B = this.getInputData(1);
 		if(B == null) return;
 
-		var R = quat.multiply(quat.create(), A,B);
+		var R = quat.multiply( this._value, A, B );
 		this.setOutputData( 0, R );
 	}
 
 	LiteGraph.registerNodeType("math3d/mult-quat", Math3DMultQuat );
+
+
+	function Math3DQuatSlerp()
+	{
+		this.addInputs( [["A","quat"],["B","quat"],["factor","number"]] );
+		this.addOutput( "slerp","quat" );
+		this.addProperty( "factor", 0.5 );
+
+		this._value = quat.create();
+	}
+
+	Math3DQuatSlerp.title = "Quat Slerp";
+	Math3DQuatSlerp.desc = "quaternion spherical interpolation";
+
+	Math3DQuatSlerp.prototype.onExecute = function()
+	{
+		var A = this.getInputData(0);
+		if(A == null)
+			return;
+		var B = this.getInputData(1);
+		if(B == null)
+			return;
+		var factor = this.properties.factor;
+		if( this.getInputData(2) != null )
+			factor = this.getInputData(2);
+
+		var R = quat.slerp( this._value, A, B, factor );
+		this.setOutputData( 0, R );
+	}
+
+	LiteGraph.registerNodeType("math3d/quat-slerp", Math3DQuatSlerp );
 
 } //glMatrix
 

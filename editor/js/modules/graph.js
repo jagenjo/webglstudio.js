@@ -42,12 +42,18 @@ var GraphModule = {
 
 	createInterface: function()
 	{
+		var that = this;
+
 		this.root = LiteGUI.main_tabs.root.querySelector("#graphtab");
 
 		var graph_area = this.graph_area = new LiteGUI.Area(null,{width: "100%"});
 		this.root.appendChild( graph_area.root );
 		graph_area.split("vertical",[null,"50%"],true);
 		this.graph_3D_area = graph_area.getSection(0).content;
+
+		LiteGUI.bind( graph_area, "split_moved", function(e){
+			that.tabs_widget.onResize();
+		});
 
 		this.tabs_widget = new GenericTabsWidget();
 		graph_area.getSection(1).add( this.tabs_widget );
@@ -134,6 +140,7 @@ var GraphModule = {
 			node = LS.GlobalScene.root;
 		var component = new LS.Components.GraphComponent();
 		node.addComponent( component );
+		UndoModule.saveComponentCreatedUndo( component );
 		this.editInstanceGraph( component, { id: component.uid, title: node.id } );
 		this.openTab();
 	},
@@ -190,7 +197,7 @@ GraphModule.showGraphComponent = function(component, inspector)
 			inspector.add(type, n.properties.name, n.properties.value, { pretitle: AnimationModule.getKeyframeCode( component, n.properties.name ), min: n.properties.min, max: n.properties.max, step:0.01, node:n, callback: function(v) {
 				var graph_node = this.options.node;
 				graph_node.properties.value = v;
-				if(component.on_event == "render")
+				if(component.on_event == "render" || component.on_event == "update")
 					component._graph.runStep(1);
 				LS.GlobalScene.refresh();
 			}});

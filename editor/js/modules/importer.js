@@ -334,12 +334,12 @@ var ImporterModule  = {
 				else if(info.resource == "Texture" )
 				{
 					inspector.addTitle("Texture");
+					inspector.addCombo("Action", ImporterModule.preferences.texture_action, { values: {"Replace in material":"replace","Insert as Plane":"plane","Insert as Sprite":"sprite"}, callback: function(v) { 
+						ImporterModule.preferences.texture_action = v;
+					}});
+
 					if(drop_node)
 					{
-						inspector.addCombo("Action", ImporterModule.preferences.texture_action, { values: {"Replace in material":"replace","Insert as Sprite":"sprite"}, callback: function(v) { 
-							ImporterModule.preferences.texture_action = v;
-						}});
-
 						//inspector.addCheckbox("Add to node material", insert_into, { callback: function(v) { insert_into = v; }});
 						if(material)
 						{

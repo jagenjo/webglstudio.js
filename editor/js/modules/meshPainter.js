@@ -86,6 +86,25 @@ var MeshPainter = {
 			RenderModule.requestFrame();
 		}
 
+		dialog.add( widgets );
+
+		this.inspect( widgets, dialog, on_refresh );
+
+
+		function on_refresh()
+		{
+			widgets.addSeparator();
+			widgets.addButton("", "Close" , { callback: function (value) { 
+				dialog.close(); 
+			}});
+			dialog.adjustSize();	
+		}
+	},
+
+	inspect: function( widgets, dialog, on_refresh )
+	{
+		widgets = widgets || InterfaceModule.inspector_widget.inspector;
+
 		inner_update();
 
 		function inner_update()
@@ -106,6 +125,10 @@ var MeshPainter = {
 			}});
 
 			if(!MeshPainter.painted_node)
+				return;
+
+			/*
+			if(!MeshPainter.painted_node)
 			{
 				widgets.addButton("", "Close" , { callback: function (value) { 
 					dialog.close(); 
@@ -114,6 +137,7 @@ var MeshPainter = {
 				dialog.adjustSize();
 				return;
 			}
+			*/
 
 			var node = MeshPainter.painted_node;
 			var material = node.getMaterial();
@@ -121,9 +145,9 @@ var MeshPainter = {
 			//create material
 			if(!material)
 			{
-				var selected_material_class = LS.Material;
+				var selected_material_class = LS.MaterialClasses["StandardMaterial"];
 				widgets.addInfo(null,"Material not found in object");
-				widgets.addCombo("MaterialClasses", LS.MaterialClasses["StandardMaterial"], { values: LS.MaterialClasses, callback: function(material_class) { 
+				widgets.addCombo("MaterialClasses", selected_material_class, { values: LS.MaterialClasses, callback: function(material_class) { 
 					selected_material_class = material_class;
 				}});
 
@@ -132,7 +156,6 @@ var MeshPainter = {
 					node.material = mat;
 					inner_update();
 				});
-				dialog.adjustSize(10);
 				return;
 			}
 
@@ -175,11 +198,6 @@ var MeshPainter = {
 					MeshPainter.createTexture( node, MeshPainter.settings.channel );
 					inner_update();
 				}});
-				widgets.addSeparator();
-				widgets.addButton("", "Close" , { callback: function (value) { 
-					dialog.close(); 
-				}});
-				dialog.adjustSize();	
 				return;
 			}
 			else
@@ -229,19 +247,10 @@ var MeshPainter = {
 				//vec3.copy( MeshPainter.brushcolor, [0.5,0.5,1.0] ); 
 			}});
 
-			widgets.addSeparator();
-			widgets.addButton("", "Close" , { callback: function (value) { 
-				dialog.close(); 
-			}});
-			dialog.adjustSize();	
+			if(on_refresh)
+				on_refresh();
 
 		}//inner update
-
-
-		dialog.add( widgets );
-		dialog.adjustSize();		
-
-		//widgets.addString("Name", last_file ? last_file.name : "");
 	},
 
 	cloneTextureInChannel: function()
@@ -296,8 +305,10 @@ var MeshPainter = {
 		EditorModule.refreshAttributes();
 	},
 
-	createTexture: function(node, channel, name)
+	createTexture: function( node, channel, name )
 	{
+		channel = channel || "color";
+
 		var tex_size = this.settings.tex_size || 512;
 		this.current_texture = new GL.Texture(tex_size,tex_size, { format: gl.RGB, magFilter: gl.LINEAR, minFilter: gl.LINEAR_MIPMAP_LINEAR });
 		var tex_name = name || "texture_" + (Math.random() * 1000).toFixed();
@@ -308,16 +319,16 @@ var MeshPainter = {
 		gl.texParameteri(this.current_texture.texture_type, gl.TEXTURE_MIN_FILTER, gl.LINEAR );
 		this.current_texture.unbind();
 
-		LS.ResourcesManager.registerResource(tex_name, this.current_texture);
+		LS.ResourcesManager.registerResource( tex_name, this.current_texture);
 
 		var mat = node.getMaterial();
 		if(!mat)
 		{
-			mat = new Material();
+			mat = new LS.Material();
 			node.material = mat;
 		}
 
-		mat.setTexture(channel, tex_name);
+		mat.setTexture( channel, tex_name);
 		var bg_color = this.settings.bg_color || [1,1,1];
 		this.current_texture.drawTo( function() {
 			gl.clearColor(bg_color[0],bg_color[1],bg_color[2],1);
@@ -579,7 +590,8 @@ var meshPainterTool = {
 
 	onClick: function()
 	{
-		MeshPainter.showPaintingDialog();
+		//MeshPainter.showPaintingDialog();
+		MeshPainter.inspect();
 	},
 
 	render: function()
@@ -725,6 +737,11 @@ var meshPainterTool = {
 
 		RenderModule.requestFrame();
 	},
+	
+	inspect: function( widgets, dialog )
+	{
+		return MeshPainter.inspect( widgets, dialog );
+	}
 };
 
 ToolsModule.registerTool( meshPainterTool );

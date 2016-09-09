@@ -235,7 +235,7 @@ var AddPointsTool = {
 		
 		if(this.mode == "render_instances")
 		{
-			var collisions = LS.Picking.raycastRenderInstances( ray.origin, ray.direction, this.raycast_options ); 
+			var collisions = LS.Physics.raycastRenderInstances( ray.origin, ray.direction, this.raycast_options ); 
 			this.last_collisions = collisions;
 			if(collisions.length)
 			{

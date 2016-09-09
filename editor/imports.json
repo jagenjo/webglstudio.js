@@ -17,6 +17,7 @@
 		"js/tools/manipulate.js",
 		"js/tools/parenting.js",
 		"js/tools/addPoints.js",
+		"js/tools/testCollisions.js",
 		"js/tools/generic.js",
 		"js/widgets/sceneTree.js",
 		"js/widgets/timeline.js",

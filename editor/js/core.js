@@ -1,3 +1,4 @@
+/* The Core is in charge of launching the app, loading any external JS file and register modules, it also handles user preferences */
 var CORE = {
 
 	config: null, //internal configuration

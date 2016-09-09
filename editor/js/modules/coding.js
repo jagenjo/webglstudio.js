@@ -317,7 +317,7 @@ LS.Components.Script.prototype.getExtraTitleCode = LS.Components.ScriptFromFile.
 	return "<span class='icon script-context-icon'><img src='" + EditorModule.icons_path + LS.Script.icon + "'/></span>";
 }
 
-LS.Components.Script["@inspector"] = function(component, attributes)
+LS.Components.Script["@inspector"] = function( component, inspector )
 {
 	var context_locator = component.getLocator() + "/context";
 	var context = component.getContext();
@@ -328,28 +328,33 @@ LS.Components.Script["@inspector"] = function(component, attributes)
 		event.dataTransfer.setData("locator", context_locator );
 		event.dataTransfer.setData("type", "object");
 		event.dataTransfer.setData("node_uid", component.root.uid);
-		if(component.setDragData)
-			component.setDragData(event);
+		if( component.setDragData )
+			component.setDragData( event );
 	});
 
-	attributes.addButton(null,"Edit Code", { callback: function() {
+	inspector.addButton(null,"Edit Code", { callback: function() {
 		CodingModule.openTab();
 		var path = component.uid;
 		CodingModule.editInstanceCode( component );
 	}});
 
 	if(context)
-		this.showObjectFields(context, attributes);
+	{
+		if(context.onInspector)
+			context.onInspector( inspector );
+		else
+			this.showObjectFields( context, inspector );
+	}
 }
 
-LS.Components.ScriptFromFile["@inspector"] = function(component, attributes)
+LS.Components.ScriptFromFile["@inspector"] = function( component, inspector )
 {
-	attributes.widgets_per_row = 2;
-	attributes.addResource( "Filename", component.filename, { category: "Script", callback: function(v) { 
+	inspector.widgets_per_row = 2;
+	inspector.addResource( "Filename", component.filename, { category: "Script", callback: function(v) { 
 		component.filename = v;
 	}});
 
-	attributes.addButton(null,"Edit Code", { callback: function() {
+	inspector.addButton(null,"Edit Code", { callback: function() {
 		var path = component.uid;
 		if(!component.filename)
 		{
@@ -373,11 +378,16 @@ LS.Components.ScriptFromFile["@inspector"] = function(component, attributes)
 			CodingModule.editInstanceCode( res );
 		});
 	}});
-	attributes.widgets_per_row = 1;
+	inspector.widgets_per_row = 1;
 
 	var context = component.getContext();
 	if(context)
-		this.showObjectFields(context, attributes);
+	{
+		if(context.onInspector)
+			context.onInspector( inspector );
+		else
+			this.showObjectFields(context, inspector );
+	}
 }
 
 LS.Components.Script.prototype.onComponentInfo = function( widgets )

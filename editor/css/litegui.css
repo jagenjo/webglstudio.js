@@ -543,8 +543,11 @@
 .inspector input.color {
 	text-align: center;
 	margin-top: 1px;
-	border: 0 !important;
+	/* border: 0 !important; */
 	border-radius: 2px !important;
+	border-bottom: 1px solid #666;
+    border-top: 1px solid #111;
+
 	width: -moz-calc(100% - 40px);
 	width: -webkit-calc(100% - 40px);
 	width: calc(100% - 40px);

@@ -6636,6 +6636,7 @@ Inspector.widget_constructors = {
 	"null": 'addNull', //use for special cases
 	title: 'addTitle',
 	info: 'addInfo',
+	"default": 'addDefault', //it guesses
 	number: 'addNumber',
 	slider: 'addSlider',
 	string: 'addString',
@@ -6754,6 +6755,27 @@ Inspector.prototype.addSeparator = function()
 //used when you want to skip the widget of an object
 Inspector.prototype.addNull = function(name,value, options)
 {
+	return null;
+}
+
+//used when you dont know which widget to use
+Inspector.prototype.addDefault = function( name, value, options)
+{
+	if(value === null || value === undefined) //can we guess it from the current value?
+		return null;
+
+	if( value.constructor === Boolean )
+		return this.addCheckbox( name, value, options );
+	else if( value.constructor === String )
+		return this.addString( name, value, options );
+	else if( value.constructor === Number )
+		return this.addNumber( name, value, options );
+	else if( value.length == 4)
+		return this.addVector4( name, value, options );
+	else if( value.length == 3)
+		return this.addVector3( name, value, options );
+	else if( value.length == 2)
+		return this.addVector2( name, value, options );
 	return null;
 }
 
@@ -8199,7 +8221,7 @@ Inspector.prototype.addIcon = function(name, value, options)
 	return element;
 }
 
-Inspector.prototype.addColor = function(name,value,options)
+Inspector.prototype.addColor = function( name, value, options )
 {
 	options = this.processOptions(options);
 
@@ -8216,7 +8238,7 @@ Inspector.prototype.addColor = function(name,value,options)
 	this.append(element,options); //add now or jscolor dont work
 
 	//create jsColor 
-	var input_element = $(element).find("input.color")[0];
+	var input_element = element.querySelector("input.color");
 	var myColor = new jscolor.color(input_element);
 	myColor.pickerFaceColor = "#333";
 	myColor.pickerBorderColor = "black";
@@ -8226,7 +8248,7 @@ Inspector.prototype.addColor = function(name,value,options)
 	if(options.disabled) 
 		myColor.pickerOnfocus = false; //this doesnt work
 
-	if(typeof(value) != "string" && value.length && value.length > 2)
+	if( value.constructor !== String && value.length && value.length > 2)
 	{
 		var intensity = 1.0;
 		myColor.fromRGB(value[0]*intensity,value[1]*intensity,value[2]*intensity);
@@ -8257,10 +8279,10 @@ Inspector.prototype.addColor = function(name,value,options)
 	options.dragger_class = "nano";
 
 	var dragger = new LiteGUI.Dragger(1, options);
-	$(element).find('.wcontent').append(dragger.root);
-	$(dragger.input).change(function()
+	element.querySelector('.wcontent').appendChild(dragger.root);
+	dragger.input.addEventListener("change", function(e)
 	{
-		var v = parseFloat($(this).val());
+		var v = parseFloat( this.value );
 		myColor.rgb_intensity = v;
 		if (myColor.onImmediateChange)
 			myColor.onImmediateChange();

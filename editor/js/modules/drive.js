@@ -46,7 +46,7 @@ var DriveModule = {
 		var that = this;
 
 		//prepare tree
-		this.tree.children.unshift({ id:"Memory", skipdrag:true, className:"memory", children:[], callback: DriveModule.onShowMemoryResources.bind(DriveModule) });
+		this.tree.children.unshift({ id:"Memory", skipdrag:true, className:"memory", children:[], callback: DriveModule.showMemoryResources.bind(DriveModule) });
 
 
 		// Events related to resources being loaded **********************************
@@ -415,7 +415,7 @@ var DriveModule = {
 		return dialog;
 	},
 
-	onShowMemoryResources: function( node )
+	showMemoryResources: function( node )
 	{
 		while ((node = node.parentElement) && !node.classList.contains("resources-panel"));
 
@@ -1980,7 +1980,7 @@ var DriveModule = {
 		return bytes;
 	},
 
-	onShowCreateNewFileMenu: function( folder, e, prev_menu, on_complete )
+	showCreateNewFileMenu: function( folder, e, prev_menu, on_complete )
 	{
 		var that = this;
 
@@ -1997,19 +1997,19 @@ var DriveModule = {
 		function inner( action, options, event )
 		{
 			if(action == "Script")
-				that.onShowCreateScriptDialog({filename: "script.js", folder: folder });
+				that.showCreateScriptDialog({filename: "script.js", folder: folder });
 			else if(action == "Text")
-				that.onShowCreateFileDialog({filename: "text.txt", folder: folder});
+				that.showCreateFileDialog({filename: "text.txt", folder: folder});
 			else if(action == "Pack")
 				PackTools.showCreatePackDialog({folder: folder });
 			else if(action == "Shader")
-				that.onShowCreateShaderDialog({filename: "shader.glsl", folder: folder });
+				that.showCreateShaderDialog({filename: "shader.glsl", folder: folder });
 			else if(action == "Material")
-				that.onShowCreateMaterialDialog({filename: "material.json", folder: folder });
+				that.showCreateMaterialDialog({filename: "material.json", folder: folder });
 		}
 	},
 
-	onShowCreateMaterialDialog: function( options )
+	showCreateMaterialDialog: function( options )
 	{
 		var that = this;
 		options = options || {};
@@ -2057,7 +2057,7 @@ var DriveModule = {
 		return dialog;
 	},
 
-	onShowCreateFileDialog: function( options )
+	showCreateFileDialog: function( options )
 	{
 		var that = this;
 		options = options || {};
@@ -2101,7 +2101,7 @@ var DriveModule = {
 		return dialog;
 	},
 
-	onShowCreateScriptDialog: function( options )
+	showCreateScriptDialog: function( options )
 	{
 		var that = this;
 		options = options || {};
@@ -2154,7 +2154,7 @@ var DriveModule = {
 		return dialog;
 	},
 
-	onShowCreateShaderDialog: function( options )
+	showCreateShaderDialog: function( options )
 	{
 		var that = this;
 		options = options || {};
@@ -2193,6 +2193,9 @@ var DriveModule = {
 					that.refreshContent();
 				}, { skip_alerts: true });
 			}
+
+			if(options.on_complete)
+				options.on_complete(shader_code, filename, folder, shader_code.fullpath);
 
 			//refresh
 			//close
@@ -2280,6 +2283,8 @@ DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], 
 	
 	DriveModule.loadResource( fullpath );
 
+	var component = null;
+
 	if( action == "replace" || action == "material" )
 	{
 		var channel = options.channel || LS.Material.COLOR_TEXTURE;
@@ -2294,13 +2299,35 @@ DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], 
 			material.setTexture( channel , fullpath );
 		}
 	}
-	else if(action == "sprite")
+	else if(action == "plane")
 	{
 		node = new LS.SceneNode();
-		var component = new LS.Components.Sprite();
+		component = new LS.Components.GeometricPrimitive({geometry: LS.Components.GeometricPrimitive.PLANE});
 		node.addComponent( component );
 		component.texture = fullpath;
 		EditorModule.getAddRootNode().addChild( node );
+
+		if(!node.material)
+			node.material = new LS.StandardMaterial();
+		node.material.setTexture( "color" , fullpath );
+	}
+	else if(action == "sprite")
+	{
+		node = new LS.SceneNode();
+		node.name = LS.ResourcesManager.getBasename( fullpath );
+		component = new LS.Components.Sprite();
+		node.addComponent( component );
+		component.texture = fullpath;
+		var texture = LS.ResourcesManager.getTexture( fullpath );
+		if(texture)
+			component.size = [texture.width, texture.height];
+		EditorModule.getAddRootNode().addChild( node );
+	}
+
+	if(component)
+	{
+		UndoModule.saveComponentCreatedUndo( component );
+		SelectionModule.setSelection( component );
 	}
 
 	EditorModule.inspect( node );

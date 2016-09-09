@@ -1536,6 +1536,18 @@ mat4.scaleAndAdd = function(out, mat, mat2, v)
 	return out;
 }
 
+quat.fromAxisAngle = function(axis, rad)
+{
+	var out = quat.create();
+    rad = rad * 0.5;
+    var s = Math.sin(rad);
+    out[0] = s * axis[0];
+    out[1] = s * axis[1];
+    out[2] = s * axis[2];
+    out[3] = Math.cos(rad);
+    return out;
+}
+
 /*
 quat.toEuler = function(out, quat) {
 	var q = quat;
@@ -9082,6 +9094,7 @@ Octree.prototype.computeAABB = function(vertices)
 	return {min: min, max: max, size: vec3.sub( vec3.create(), max, min) };
 }
 
+//remove empty nodes
 Octree.prototype.trim = function(node)
 {
 	node = node || this.root;
@@ -9191,6 +9204,7 @@ Octree.testRayInNode = function( node, origin, direction )
 			test = Octree.hitTestTriangle( origin, direction, face.subarray(0,3) , face.subarray(3,6), face.subarray(6,9) );
 			if (test==null)
 				continue;
+			test.face = face;
 			if(prev_test)
 				prev_test.mergeWith( test );
 			else
@@ -9473,6 +9487,7 @@ global.HitTest = GL.HitTest = function HitTest(t, hit, normal) {
   this.t = arguments.length ? t : Number.MAX_VALUE;
   this.hit = hit;
   this.normal = normal;
+  this.face = null;
 }
 
 // ### .mergeWith(other)
@@ -9484,6 +9499,7 @@ HitTest.prototype = {
       this.t = other.t;
       this.hit = other.hit;
       this.normal = other.normal;
+	  this.face = other.face;
     }
   }
 };

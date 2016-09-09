@@ -22,6 +22,7 @@ var EditorModule = {
 
 	init: function()
 	{
+		//console.log("EditorModule init");
 		RenderModule.canvas_manager.addWidget(this);
 
 		if(!gl) 
@@ -36,7 +37,8 @@ var EditorModule = {
 		});
 
 		LEvent.bind( scene, "node_clicked", function(e, node) { 
-			EditorModule.inspect( node );
+			if( !window.PlayModule || !PlayModule.inplayer )
+				EditorModule.inspect( node );
 		});
 		
 

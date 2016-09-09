@@ -420,7 +420,7 @@ function addGenericResource ( name, value, options, resource_classname )
 
 	this.values[name] = value;
 
-	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
+	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || LiteGUI.special_codes.open_folder )+"</button>", options);
 	var input = element.querySelector(".wcontent input");
 
 	input.addEventListener( "change", function(e) { 
@@ -760,7 +760,7 @@ LiteGUI.Inspector.prototype.addShader = function( name, value, options )
 
 	var widget = inspector.addResource( name, value, options );
 
-	inspector.addButtons( null, [LiteGUI.special_codes.refresh, LiteGUI.special_codes.open_folder], { skip_wchange: true, width: "20%", callback: inner } );
+	inspector.addButtons( null, [LiteGUI.special_codes.refresh, "{}"], { skip_wchange: true, width: "20%", callback: inner } );
 
 	inspector.widgets_per_row -= 1;
 
@@ -771,7 +771,7 @@ LiteGUI.Inspector.prototype.addShader = function( name, value, options )
 			if(options.callback_refresh)
 				options.callback_refresh.call( widget );//material.processShaderCode();
 		}
-		else if( v == LiteGUI.htmlEncode( LiteGUI.special_codes.open_folder ) )
+		else if( v == "{}" )
 		{
 			//no shader, ask to create it
 			if(!value)
@@ -793,6 +793,15 @@ LiteGUI.Inspector.prototype.addShader = function( name, value, options )
 
 		function inner_create_shader()
 		{
+			DriveModule.showCreateShaderDialog({ filename: "my_shader.glsl", on_complete: function(shader_code, filename, folder, fullpath ){
+				if(options.callback_open)
+					options.callback_open.call( widget, fullpath || filename );
+				if(options.callback)
+					options.callback.call( widget, fullpath || filename );
+				CodingModule.editInstanceCode( shader_code, null, true );
+			}});
+
+			/*
 			DriveModule.showSelectFolderFilenameDialog("my_shader.glsl", function(folder,filename,fullpath){
 				var shader_code = new LS.ShaderCode();
 				shader_code.code = LS.ShaderCode.examples.color;
@@ -803,6 +812,7 @@ LiteGUI.Inspector.prototype.addShader = function( name, value, options )
 					options.callback.call(widget, fullpath);
 				CodingModule.editInstanceCode( shader_code, null, true );
 			},{ extension:"glsl", allow_no_folder: true } );
+			*/
 		}
 
 		inspector.refresh();

@@ -1,7 +1,7 @@
 EVAL = function(code) { return new Function(code); } //done to have line number, do not move
 //EVAL = function(code) { return eval("(function(){/n"+code+"/n})"); } //done to have line number, do not move
 
-function CodingPadWidget()
+function CodingPadWidget( options )
 {
 	this.root = null;
 	this.autocompile = false; //assign code to component on every keystroke
@@ -16,8 +16,10 @@ CodingPadWidget.widget_name = "Coding";
 
 CORE.registerWidget( CodingPadWidget );
 
-CodingPadWidget.prototype.init = function()
+CodingPadWidget.prototype.init = function( options )
 {
+	options = options || {};
+
 	//create area
 	this.root = LiteGUI.createElement("div",null,null,{ width:"100%", height:"100%" });
 	
@@ -793,21 +795,22 @@ CodingPadWidget.prototype.createFile = function(filename)
 	return resource;
 }
 
-CodingPadWidget.prototype.onOpenCode = function()
+CodingPadWidget.prototype.onOpenCode = function( skip_create )
 {
 	var that = this;
 	var dialog = new LiteGUI.Dialog(null,{ title:"Select Code", width: 400, draggable: true, closable: true });
 	
 	var widgets = new LiteGUI.Inspector(null, { name_width: 100 });
 
-	widgets.addStringButton("New script","unnamed.js", { button:"GO", button_width: "100px", callback_button: function(v){
-		var filename = v;
-		if(!filename)
-			return;
-		var resource = that.createFile(filename);
-		that.editInstanceCode( resource );
-		dialog.close();
-	}});
+	if(!skip_create)
+		widgets.addStringButton("New script","unnamed.js", { button:"GO", button_width: "100px", callback_button: function(v){
+			var filename = v;
+			if(!filename)
+				return;
+			var resource = that.createFile(filename);
+			that.editInstanceCode( resource );
+			dialog.close();
+		}});
 
 	var selected = null;
 
@@ -1024,6 +1027,7 @@ CodingPadWidget.prototype.addMasterButtons = function()
 	}});
 }
 
+/*
 CodingPadWidget.prototype.onResize = function()
 {
 	for(var i in this.tabs.tabs)
@@ -1035,6 +1039,7 @@ CodingPadWidget.prototype.onResize = function()
 		widget.onResize();
 	}
 }
+*/
 
 function getCompletions( token, context ) {
   var found = [], start = token.string;

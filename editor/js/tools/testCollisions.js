@@ -7,6 +7,7 @@ var TestCollisionsTool = {
 	color: vec4.fromValues(1,0,1,1),
 	mode: "colliders",
 	use_mesh: false,
+	all_collision: false,
 	show_triangle: false,
 
 	valid_modes: ["colliders","render_instances"],
@@ -35,6 +36,10 @@ var TestCollisionsTool = {
 
 		inspector.addCheckbox("Use mesh", this.use_mesh, { callback: function(v){
 			TestCollisionsTool.use_mesh = v;
+		}});
+
+		inspector.addCheckbox("All collisions", this.all_collision, { callback: function(v){
+			TestCollisionsTool.all_collision = v;
 		}});
 
 		inspector.addCheckbox("Show triangle", this.show_triangle, { callback: function(v){
@@ -66,7 +71,7 @@ var TestCollisionsTool = {
 			//ray.end = vec3.add( vec3.create(), ray.origin, vec3.scale(vec3.create(), ray.direction, 10000) );
 			var collisions = null;
 			if(this.mode == "render_instances" )
-				collisions = LS.Physics.raycastRenderInstances( ray.origin, ray.direction, { triangle_collision: this.use_mesh } );
+				collisions = LS.Physics.raycastRenderInstances( ray.origin, ray.direction, { triangle_collision: this.use_mesh, first_collision: !this.all_collision } );
 			else
 				collisions = LS.Physics.raycast( ray.origin, ray.direction ); 
 
@@ -74,7 +79,12 @@ var TestCollisionsTool = {
 			{
 				if(!this.points)
 					this.points = [];
-				this.points.push( collisions[0].position );
+				for(var i = 0; i < collisions.length; ++i)
+				{
+					this.points.push( collisions[i].position );
+					if(!this.all_collision)
+						break;
+				}
 				this.last_collision = collisions[0];
 			}
 			LS.GlobalScene.refresh();

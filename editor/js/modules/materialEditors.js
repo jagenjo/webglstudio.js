@@ -101,7 +101,9 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 	if(material.remotepath)
 		inspector.addButton("Reference","Save to Server",{ callback: function(){
 			var material = node.getMaterial();
-			DriveModule.saveResource(material);
+			DriveModule.saveResource( material, function(){
+				DriveModule.onUpdatePreview(material);
+			});
 		}});	
 
 	if(!node._show_mat)
@@ -133,9 +135,9 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 	{
 		var actions = ["Paste"];
 		if(material)
-			actions.push("Copy","Paste","Delete","Share","Instance","Info");
+			actions.push("Copy","Paste","Delete","Share","Instance","Show JSON");
 
-		var menu = new LiteGUI.ContextualMenu( actions, {component: material, title: mat_type || "Material", event: e, callback: inner_menu_select });
+		var menu = new LiteGUI.ContextMenu( actions, {component: material, title: mat_type || "Material", event: e, callback: inner_menu_select });
 		e.preventDefault();
 		e.stopPropagation();
 		return true;
@@ -215,7 +217,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 			EditorModule.cloneNodeMaterial( node );
 			inspector.refresh();
 		}
-		else if( v == "Info" )
+		else if( v == "Show JSON" )
 		{
 			var material = node.getMaterial();
 			if(material)
@@ -318,19 +320,22 @@ LS.Material["@inspector"] = function( material, inspector )
 	inspector.addColor("Color", material.color, { pretitle: AnimationModule.getKeyframeCode( material, "color" ), callback: function(color) { material.color.set(color); } });
 	inspector.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { 
 		material.opacity = value; 
+		/*
 		if(material.opacity < 1 && material.blend_mode == LS.Blend.NORMAL)
 			material.blend_mode = LS.Blend.ALPHA;
 		if(material.opacity >= 1 && material.blend_mode == LS.Blend.ALPHA)
 			material.blend_mode = LS.Blend.NORMAL;
+		*/
 	}});
 
 
+	/*
 	inspector.widgets_per_row = 2;
 	inspector.addCombo("Blend mode", material.blend_mode, {  pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
 	inspector.addCheckbox("Alpha Test", material.alpha_test, { pretitle: AnimationModule.getKeyframeCode( material, "alpha_test" ), callback: function (value) { material.alpha_test = value; } });
 	inspector.widgets_per_row = 1;
-
 	//inspector.addCheckbox("two-sided", node.flags.two_sided, { callback: function(v) { node.flags.two_sided = v; } });
+	*/
 
 	var texture_channels = material.getTextureChannels();
 
@@ -392,7 +397,10 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 	}});
 	inspector.widgets_per_row = 2;
 	inspector.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
-	inspector.addCheckbox("Alpha Test", material.alpha_test, { pretitle: AnimationModule.getKeyframeCode( material, "alpha_test" ), callback: function (value) { material.alpha_test = value; } });
+
+	inspector.addButton(null, "Edit Flags", { callback: function () { LS.Material.showFlagsEditor( material ); } });
+
+	//inspector.addCheckbox("Alpha Test", material.alpha_test, { pretitle: AnimationModule.getKeyframeCode( material, "alpha_test" ), callback: function (value) { material.alpha_test = value; } });
 	inspector.widgets_per_row = 1;
 
 	//inspector.addCheckbox("two-sided", node.flags.two_sided, { callback: function(v) { node.flags.two_sided = v; } });
@@ -492,13 +500,33 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 	//inspector.addButtons(null,["Make Global","Copy","Paste"],{});
 }
 
+
+LS.Material.showFlagsEditor = function( material )
+{
+	var dialog = new LiteGUI.Dialog( { title:"Standard Material Flags", close: true, minimize: true, width: 260, scroll: false, draggable: true});
+	var inspector = new LiteGUI.Inspector();
+	for( var i in material.flags )
+		inspector.addCheckbox( i, material.flags[i], { name: i, name_width: 150, callback: inner } );
+
+	dialog.add( inspector );
+
+	dialog.show();
+
+	function inner(v)
+	{
+		material.flags[ this.options.name ] = v;
+		LS.GlobalScene.requestFrame();
+	}
+}
+
+
 //EditorModule.registerMaterialEditor("Material", EditorModule.showGlobalMaterialInfo );
 
-//Used in SurfaceMaterial and CustomMaterial
+//Used in SurfaceMaterial 
 function GenericMaterialEditor( material, inspector )
 {
 	inspector.addTitle("Properties");
-	inspector.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
+	//inspector.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
 	inspector.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { material.opacity = value; }});
 	inspector.addColor("Color", material.color, { pretitle: AnimationModule.getKeyframeCode( material, "color" ), callback: function(color) { vec3.copy(material.color,color); } });
 
@@ -600,9 +628,7 @@ function GenericMaterialEditor( material, inspector )
 
 }
 
-LS.MaterialClasses.CustomMaterial["@inspector"] = GenericMaterialEditor;
 LS.MaterialClasses.SurfaceMaterial["@inspector"] = GenericMaterialEditor;
-
 
 LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector, is_fx )
 {
@@ -617,40 +643,6 @@ LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector,
 		}
 	});
 
-	/*
-	inspector.widgets_per_row = 2;
-
-	inspector.addResource("Shader", material.shader, { pretitle: AnimationModule.getKeyframeCode( material, "shader" ), width: "80%", callback: function(v) { 
-		material.shader = v; 
-		//material.processShaderCode();
-		inspector.refresh();
-	}});
-
-	inspector.addButtons( null, [LiteGUI.special_codes.refresh, LiteGUI.special_codes.open_folder], { skip_wchange: true, width: "20%", callback: function(v){
-		if( v == LiteGUI.htmlEncode( LiteGUI.special_codes.refresh ) )
-			material.processShaderCode();
-		else if( v == LiteGUI.htmlEncode( LiteGUI.special_codes.open_folder ) )
-		{
-			if(!material.shader)
-			{
-				DriveModule.showSelectFolderFilenameDialog("my_shader.glsl", function(folder,filename,fullpath){
-					var shader_code = new LS.ShaderCode();
-					shader_code.code = LS.ShaderCode.examples.color;
-					LS.RM.registerResource( fullpath, shader_code );
-					material.shader = fullpath;
-					CodingModule.editInstanceCode( shader_code, null, true );
-				},{ extension:"glsl", allow_no_folder: true } );
-			}
-
-			var shader_code = LS.RM.resources[ material.shader ];
-			if(shader_code)
-				CodingModule.editInstanceCode( shader_code, null, true );
-		}
-		inspector.refresh();
-	}});
-	inspector.widgets_per_row = 1;
-	*/
-
 	inspector.addSeparator();
 
 	if( !material._shader )
@@ -662,7 +654,7 @@ LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector,
 	{
 		if(!is_fx)
 		{
-			inspector.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
+			//inspector.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
 			inspector.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { material.opacity = value; }});
 		}
 		inspector.addColor("Color", material.color, { pretitle: AnimationModule.getKeyframeCode( material, "color" ), callback: function(color) { vec3.copy(material.color,color); } });
@@ -670,7 +662,10 @@ LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector,
 		for(var i in material._properties )
 		{
 			var p = material._properties[i];
-			inspector.add( p.widget || p.type, p.label || p.name, p.value, { pretitle: AnimationModule.getKeyframeCode( material, p.name ), title: p.name, step: p.step, property: p, callback: inner_on_property_change });
+			var widget_type = p.widget || p.type;
+			if(widget_type == "Sampler2D")
+				widget_type = "sampler";
+			inspector.add( widget_type, p.label || p.name, p.value, { pretitle: AnimationModule.getKeyframeCode( material, p.name ), title: p.name, step: p.step, property: p, callback: inner_on_property_change });
 		}
 	}
 
@@ -678,8 +673,8 @@ LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector,
 	{
 		var p = this.options.property;
 		p.value = v;
-		if(p.type == "texture" || p.type == "cubemap")
-			material.textures[p.name] = p.value;
+		if(p.type == "texture" || p.type == "cubemap" || p.type == "sampler")
+			material.textures[ p.name ] = p.value;
 	}
 }
 
@@ -716,7 +711,8 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 	}
 
 	widgets.addTexture("Texture", sampler.texture || "", { callback: function(v) {
-		sampler["texture"] = v;
+		sampler.texture = v;
+		//sampler._must_update = true;
 		if(options.callback)
 			options.callback( sampler );
 		LS.GlobalScene.refresh();
@@ -725,22 +721,30 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 	widgets.addSeparator();
 
 	widgets.addCombo("UVs", sampler["uvs"] || LS.Material.DEFAULT_UVS[ channel ], { values: LS.Material.TEXTURE_COORDINATES, callback: function(v) {
-		sampler["uvs"] = v;
+		sampler.uvs = v;
 		LS.GlobalScene.refresh();
 	}});
 
 	widgets.addCombo("Wrap", sampler["wrap"] || gl.REPEAT, { values: {"default":0, "CLAMP_TO_EDGE": gl.CLAMP_TO_EDGE, "REPEAT": gl.REPEAT, "MIRRORED_REPEAT": gl.MIRRORED_REPEAT }, callback: function(v) {
-		sampler["wrap"] = v;
+		sampler.wrap = v;
+		//sampler._must_update = true;
 		LS.GlobalScene.refresh();
 	}});
 
 	widgets.addCombo("Min filter", sampler["minFilter"] || gl.LINEAR_MIPMAP_LINEAR, { values: {"default":0, "NEAREST":gl.NEAREST, "LINEAR": gl.LINEAR, "NEAREST_MIPMAP_NEAREST": gl.NEAREST_MIPMAP_NEAREST, "NEAREST_MIPMAP_LINEAR": gl.NEAREST_MIPMAP_LINEAR, "LINEAR_MIPMAP_NEAREST": gl.LINEAR_MIPMAP_NEAREST , "LINEAR_MIPMAP_LINEAR": gl.LINEAR_MIPMAP_LINEAR }, callback: function(v) {
-		sampler["minFilter"] = v;
+		sampler.minFilter = v;
+		//sampler._must_update = true;
 		LS.GlobalScene.refresh();
 	}});
 
 	widgets.addCombo("Mag filter", sampler["magFilter"] || gl.LINEAR, { values: {"default":0, "NEAREST":gl.NEAREST, "LINEAR": gl.LINEAR}, callback: function(v) {
-		sampler["magFilter"] = v;
+		sampler.magFilter = v;
+		//sampler._must_update = true;
+		LS.GlobalScene.refresh();
+	}});
+
+	widgets.addCombo("Missing", sampler["missing"] || "black", { values: ["black","grey","white"], callback: function(v) {
+		sampler.missing = v;
 		LS.GlobalScene.refresh();
 	}});
 

@@ -75,22 +75,6 @@ var guiEnabledButton = {
 
 ToolsModule.registerButton( guiEnabledButton );
 
-
-var showGraphButton = {
-	name: "graph",
-	description: "Overlap Graph",
-	section: "visibility",
-	icon: "imgs/mini-icon-graph.png",
-	enabled: false,
-	callback: function()
-	{
-		EditorView.render_overgraph = !EditorView.render_overgraph;
-	}
-};
-
-ToolsModule.registerButton( showGraphButton );
-
-
 var helpersEnabledButton = {
 	name: "helpers",
 	description: "Show helpers in editor",

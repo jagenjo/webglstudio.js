@@ -370,6 +370,10 @@
 	padding-left: 5px;
 }
 
+.inspector .wcontent input.fixed_size {
+	font-family: 'monospace','courier new';
+}
+
 .inspector .wcontent input.number {
 	border-radius: 3px 0 0 3px;
 	text-align: center;
@@ -1528,6 +1532,10 @@ button.litebutton.close-button {
 	opacity: 0.5;
 }
 
+.litetabs .wtab.autoswitch * {
+	pointer-events: none;
+}
+
 .litetabs li.wtab.selected {
 	color: #EEE !important;
 	background-color: #777;
@@ -1966,7 +1974,45 @@ textarea.textfield {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}/********************/
+}
+
+table.litetable  {
+	width: 100%;
+	height: 100%;
+	display: block;
+}
+
+table.litetable tr {
+	display: block;
+	width: 100%;
+}
+
+table.litetable th, table.litetable td {
+	display: inline-block;
+	border-right: 1px solid rgba(0,0,0,0.2);
+}
+
+
+table.litetable  th {
+	color: #6c7ba7;
+	background: #272a30;
+	font-weight: bold;
+	/*
+    background: -webkit-linear-gradient(#4B4947,#32302D) repeat scroll 0 0 transparent;
+    background: -moz-linear-gradient(#4B4947,#32302D) repeat scroll 0 0 transparent;
+    background: linear-gradient(#4B4947,#32302D) repeat scroll 0 0 transparent;
+	*/
+}
+
+table.litetable  td {
+	padding: 2px 4px;
+}
+
+table.litetable  tr:nth-child(even)
+{
+	background: rgba(0,0,0,0.1);
+}
+/********************/
 .ui-slider {
     position: relative;
     text-align: left;

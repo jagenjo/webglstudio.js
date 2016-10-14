@@ -187,7 +187,7 @@ CameraGizmo.prototype.mouseup = function(e)
 
 	if(e.button == 2)
 	{
-		EditorModule.showViewContextualMenu(this.camera, e);
+		EditorModule.showViewContextMenu(this.camera, e);
 	}
 
 	if(e.button == 0)

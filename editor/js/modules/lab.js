@@ -369,6 +369,7 @@ var LabModule = {
 
 				gl.setViewport( old_viewport );
 
+				gl.disable( gl.DEPTH_TEST );
 				gl.enable( gl.BLEND );
 				gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
 

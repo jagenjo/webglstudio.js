@@ -1,4 +1,4 @@
-function InspectorWidget()
+function InspectorWidget( options )
 {
 	this.instance = null;
 	this.editor = null;
@@ -6,7 +6,7 @@ function InspectorWidget()
 	this.prev_history = [];
 	this.next_history = [];
 
-	this.init();
+	this.init( options );
 }
 
 InspectorWidget.MAX_HISTORY = 10;
@@ -14,13 +14,17 @@ InspectorWidget.MAX_HISTORY = 10;
 InspectorWidget.widget_name = "Inspector";
 CORE.registerWidget( InspectorWidget );
 
-InspectorWidget.prototype.init = function()
+InspectorWidget.prototype.init = function( options )
 {
+	options = options || {};
 	var that = this;
-	
+
 	//create area
 	this.root = LiteGUI.createElement( "div", null, null, { width:"100%", height:"100%" });
 	this.root.className = "inspector_widget";
+
+	if(options.id)
+		this.root.id = options.id;
 
 	this.header = LiteGUI.createElement( "div", ".header", "<button class='litebutton prev icon' title='Previous'>&#10096;</button><span class='title'></span><button class='litebutton refresh icon' title='Refresh'>&#8635;</button><button class='litebutton lock icon' title='Lock'>&#128274;</button><button class='litebutton next icon' title='Next'>&#10097;</button>", { height: "26px" });
 	this.root.appendChild( this.header );
@@ -33,7 +37,7 @@ InspectorWidget.prototype.init = function()
 	this.header.addEventListener("contextmenu", (function(e) { 
 		if(e.button != 2) //right button
 			return false;
-		EditorModule.showInstanceContextualMenu( that.instance , e );
+		EditorModule.showInstanceContextMenu( that.instance , e );
 		e.preventDefault(); 
 		return false;
 	}).bind(this));
@@ -517,7 +521,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 				}});
 
 				inspector.addButton( null, LiteGUI.special_codes.navicon, { height: "1em", width: 30, callback: function(v,evt){
-					var menu = new LiteGUI.ContextualMenu( ["Choose Prefab","Unlink prefab","Reload from Prefab","Update to Prefab"], { event: evt, callback: function(action) {
+					var menu = new LiteGUI.ContextMenu( ["Choose Prefab","Unlink prefab","Reload from Prefab","Update to Prefab"], { event: evt, callback: function(action) {
 						if(action == "Choose Prefab")
 						{
 							EditorModule.showSelectResource( { type:"Prefab", on_complete: function(v){
@@ -575,7 +579,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 			{
 				inspector.widgets_per_row = 2;
 				inspector.addCheckbox("visible", node.visible, { name_width: 80, pretitle: AnimationModule.getKeyframeCode( node, "visible"), callback: function(v) { node.visible = v; } });
-				inspector.addCheckbox("is_static", node.is_static, { name_width: 80, pretitle: AnimationModule.getKeyframeCode( node, "is_static"), callback: function(v) { node.is_static = v; } });
+				inspector.addCheckbox("is_static", node.is_static, { name_width: 80, callback: function(v) { node.is_static = v; } });
 				inspector.widgets_per_row = 1;
 			}
 
@@ -610,7 +614,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 		inspector.addButtons(null,["Add Script","Add Graph"], { callback: function(v,evt) { 
 			if(v == "Add Script")
 			{
-				var menu = new LiteGUI.ContextualMenu( ["Inner Script","Script From File","Global Script"], { event: evt, callback: function(action) {
+				var menu = new LiteGUI.ContextMenu( ["Inner Script","Script From File","Global Script"], { event: evt, callback: function(action) {
 					if(action == "Inner Script")
 						CodingModule.onNewScript( node );
 					else if(action == "Script From File")
@@ -747,7 +751,7 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 	if(component.constructor.icon && !LiteGUI.missing_icons[ component.constructor.icon ] )	
 		icon_url = component.constructor.icon;
 
-	var icon_code = "<span class='icon' style='width: 20px' draggable='true'><img src='"+ EditorModule.icons_path + icon_url+"'/></span>";
+	var icon_code = "<span class='icon' style='width: 20px' draggable='true'><img title='Drag icon to transfer' src='"+ EditorModule.icons_path + icon_url+"'/></span>";
 	var extra_code = "";
 	if( component.getExtraTitleCode ) //used for script mostly
 		extra_code = component.getExtraTitleCode();
@@ -836,13 +840,13 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 	else
 		this.showObjectFields( component, inspector );
 
-	//in case the options button is pressed or the right button, show contextual menu
+	//in case the options button is pressed or the right button, show context menu
 	section.querySelector('.options_section').addEventListener("click", inner_showActions );
 
 	function inner_showActions( e ) { 
 		//console.log("Show options");
 		window.SELECTED = component; //useful trick
-		EditorModule.showComponentContextualMenu( component, e );
+		EditorModule.showComponentContextMenu( component, e );
 		e.preventDefault();
 		e.stopPropagation();
 	}		
@@ -857,7 +861,7 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 		drag_counter++;
 		if( event.dataTransfer.types.indexOf("type") != -1 && drag_counter == 1 )
 		{
-			this.style.opacity = "0.5";
+			this.style.opacity = "0.8";
 		}
 		e.preventDefault();
 	},true);

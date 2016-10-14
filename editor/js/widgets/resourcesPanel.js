@@ -1,5 +1,5 @@
 //Represents the tree view of the Scene Tree, and controls basic events like dragging or double clicking
-function ResourcesPanelWidget( id, options )
+function ResourcesPanelWidget( options )
 {
 	options = options || {};
 
@@ -18,8 +18,8 @@ function ResourcesPanelWidget( id, options )
 	this.root.panel = this; //link
 	this.root.style.width = "100%";
 	this.root.style.height = "100%";
-	if(id)
-		this.root.id = id;
+	if(options.id)
+		this.root.id = options.id;
 
 	this.area = new LiteGUI.Area(null);
 	this.area.split("horizontal",[320,null],{draggable: true});
@@ -32,7 +32,7 @@ function ResourcesPanelWidget( id, options )
 
 	//files
 	var files_section = this.area.getSection(1);
-	this.area.root.addEventListener("contextmenu", (function(e) { this.showFolderContextualMenu(e); e.preventDefault(); }).bind(that) );
+	this.area.root.addEventListener("contextmenu", (function(e) { this.showFolderContextMenu(e); e.preventDefault(); }).bind(that) );
 
 	var browser_root = new LiteGUI.Area(null,{ full: true });
 	files_section.add( browser_root );
@@ -162,7 +162,7 @@ ResourcesPanelWidget.prototype.createTreeWidget = function()
 		if(!fullpath)
 			return;
 
-		var menu = new LiteGUI.ContextualMenu(["Create Folder","Delete Folder","Rename"], { event: e, callback: function(v) {
+		var menu = new LiteGUI.ContextMenu(["Create Folder","Delete Folder","Rename"], { event: e, callback: function(v) {
 			if(v == "Create Folder")
 				DriveModule.onCreateFolderInServer( fullpath, function(){ that.refreshTree(); });
 			else if(v == "Delete Folder")
@@ -380,8 +380,10 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 	}
 	else //if no preview we generate it
 	{
-		if(resource.in_server || resource.remotepath)
+		if((resource.in_server || resource.remotepath) )
+		{
 			preview = DriveModule.getServerPreviewURL( resource );
+		}
 		else 
 		{
 			if( DriveModule.generated_previews[ res_name ] )
@@ -464,7 +466,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 	element.addEventListener("contextmenu", function(e) { 
 		if(e.button != 2) //right button
 			return false;
-		that.showItemContextualMenu(this,e);
+		that.showItemContextMenu(this,e);
 		e.stopImmediatePropagation();
 		e.stopPropagation();
 		e.preventDefault(); 
@@ -472,12 +474,12 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 	});
 }
 
-ResourcesPanelWidget.prototype.showItemContextualMenu = function( item, event )
+ResourcesPanelWidget.prototype.showItemContextMenu = function( item, event )
 {
 	var that = this;
 	var actions = ["Insert","Load","Rename","Clone","Move","Properties",null,"Delete"];
 
-	var menu = new LiteGUI.ContextualMenu( actions, { ignore_item_callbacks: true, event: event, title: "Resource", callback: function(action, options, event) {
+	var menu = new LiteGUI.ContextMenu( actions, { ignore_item_callbacks: true, event: event, title: "Resource", callback: function(action, options, event) {
 		var fullpath = item.dataset["fullpath"] || item.dataset["filename"];
 		if(!fullpath)
 			return;
@@ -580,8 +582,8 @@ ResourcesPanelWidget.prototype.clear = function()
 	this.tree.clear(true);
 }
 
-ResourcesPanelWidget.prototype.showContextualMenu = function(e){
-	var menu = new LiteGUI.ContextualMenu( ["Refresh"], { event: event, callback: function(value) {
+ResourcesPanelWidget.prototype.showContextMenu = function(e){
+	var menu = new LiteGUI.ContextMenu( ["Refresh"], { event: event, callback: function(value) {
 		if(value == "Refresh")
 			this.refresh();
 	}});
@@ -665,19 +667,23 @@ ResourcesPanelWidget.prototype.onTreeUpdate = function(e)
 	this.refreshContent();
 }
 
-ResourcesPanelWidget.prototype.showFolderContextualMenu = function(e)
+ResourcesPanelWidget.prototype.showFolderContextMenu = function(e)
 {
 	var that = this;
 
-	var options = [ "Create", "Refresh" ];
+	var options = [ "Create", "Import", "Refresh" ];
 
-	var menu = new LiteGUI.ContextualMenu( options, { event: e, title: "Folder", callback: function(v, info, ev){
+	var menu = new LiteGUI.ContextMenu( options, { event: e, title: "Folder", callback: function(v, info, ev){
 		if(v == "Create")
-			DriveModule.onShowCreateNewFileMenu( that.current_folder, ev, menu, function(){
-				that.refreshContent(); 
-			});
+			DriveModule.showCreateNewFileMenu( that.current_folder, ev, menu, inner_refresh);
+		else if(v == "Import")
+			ImporterModule.showImportResourceDialog(null,{ folder: that.current_folder }, inner_refresh);
 		else if(v == "Refresh")
 			that.refreshContent(); 
 	}});
+
+	function inner_refresh(){
+		that.refreshContent(); 
+	}
 }
 

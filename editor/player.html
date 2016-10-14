@@ -45,7 +45,8 @@
 		player.setScene( JSON.parse( localStorage.getItem( LS.queryString["session"] ) ) );
 	else if( LS.queryString["url"] && LS.queryString["url"].indexOf("://") == -1 ) //for safety measures
 		player.loadScene( LS.queryString["url"] ); //the url must be something like: fileserver/files/guest/projects/Lee_FX.json
-
+	else
+		player.loadConfig("config.json");
 
 </script>
 

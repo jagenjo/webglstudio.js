@@ -98,6 +98,7 @@ var ToolsModule = {
 		for(var i = 0; i < enabled.length; i++)
 			enabled[i].classList.remove("enabled");
 
+		var old_tool = this.current_tool;
 		this.current_tool = null;
 		var tool = this.tools[name];
 		if(!tool)
@@ -117,6 +118,9 @@ var ToolsModule = {
 
 		if (this.current_tool.onEnable)
 			this.current_tool.onEnable();
+
+		if(old_tool && old_tool.inspect && InterfaceModule.inspector_widget.instance == old_tool)
+			EditorModule.inspect( SelectionModule.getSelectedNode() );
 
 		LiteGUI.trigger( this, "tool_enabled", this.current_tool );
 		LS.GlobalScene.refresh();

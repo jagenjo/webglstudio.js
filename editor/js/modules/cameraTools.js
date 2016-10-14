@@ -485,7 +485,7 @@ CameraPreviewWidget.prototype.onEvent = function(e)
 
 	if(e.type == "mousedown" && e.rightButton && this.isEventInside(e))
 	{
-		EditorModule.showComponentContextualMenu( this.camera, e );
+		EditorModule.showComponentContextMenu( this.camera, e );
 		return true;
 	}
 	if(e.type == "mouseup" && e.button == 2 && this.isEventInside(e))

@@ -1,4 +1,4 @@
-function GenericTabsWidget( id, options )
+function GenericTabsWidget( options )
 {
 	this.root = null;
 	this.supported_widgets = null;
@@ -14,6 +14,9 @@ GenericTabsWidget.prototype.init = function( options )
 
 	//create area
 	this.root = LiteGUI.createElement("div",null,null,{ width:"100%", height:"100%" });
+
+	if(options.id)
+		this.root.id = options.id;
 	
 	//tabs for every file
 	var tabs = this.tabs = new LiteGUI.Tabs( null, { height: "100%" });
@@ -33,6 +36,10 @@ GenericTabsWidget.createDialog = function( parent )
 	dialog.on_close = function()
 	{
 		tabs_widget.unbindEvents();		
+	}
+	dialog.on_resize = function()
+	{
+		tabs_widget.onResize();
 	}
 	dialog.show();
 	return dialog;
@@ -91,7 +98,7 @@ GenericTabsWidget.prototype.onPlusTab = function( tab_id, e )
 		return;
 	}
 
-	var menu = new LiteGUI.ContextualMenu( widgets, { event: e, callback: function(value, options) {
+	var menu = new LiteGUI.ContextMenu( widgets, { event: e, callback: function(value, options) {
 		that.addWidgetTab( value["class"] );
 	}});
 }
@@ -178,6 +185,9 @@ GenericTabsWidget.prototype.addWidgetTab = function( widget_class, options )
 		this.onWidgetCreated( widget );
 
 	LiteGUI.trigger( this, "tab_created", tab );
+
+	if(widget.onResize)
+		widget.onResize();
 
 	return tab;
 }

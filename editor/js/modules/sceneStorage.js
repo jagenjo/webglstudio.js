@@ -18,6 +18,7 @@ var SceneStorageModule = {
 		menubar.add("Project/Load/From Server", { callback: this.showLoadSceneFromServerDialog.bind(this) });
 		menubar.add("Project/Load/Local", { callback: this.showLoadLocalSceneDialog.bind(this) });
 		menubar.add("Project/Load/From URL", { callback: this.showLoadFromURLDialog.bind(this) });
+		menubar.add("Project/Load/From autobackup", { callback: this.recoverBackup.bind(this) });
 		menubar.add("Project/Save/In Server", { callback: this.showSaveSceneInServerDialog.bind(this) });
 		menubar.add("Project/Save/Local", { callback: this.showSaveSceneInLocalDialog.bind(this) });
 		menubar.add("Project/Download", { callback: this.showDownloadSceneDialog.bind(this) });
@@ -180,6 +181,8 @@ var SceneStorageModule = {
 
 		function inner_load()
 		{
+			SceneStorageModule.saveBackup();
+
 			//clear
 			LS.Renderer.reset();
 			LS.GlobalScene.clear();
@@ -397,7 +400,7 @@ var SceneStorageModule = {
 			$(split.sections[1]).empty();
 			if(!selected) return;
 
-			var preview = localStorage.getItem(SceneStorageModule.localscene_prefix + "preview_" + value.name);
+			var preview = localStorage.getItem( SceneStorageModule.localscene_prefix + "preview_" + value.name );
 			if(!preview) return;
 			var img = new Image();
 			img.src = preview;
@@ -881,6 +884,37 @@ var SceneStorageModule = {
 		return canvas.toDataURL("image/png");
 	},
 
+	onUnload: function()
+	{
+		this.saveBackup();
+	},
+
+	saveBackup: function()
+	{
+		//move previous one slot further (one extra backup)
+		var data = localStorage.getItem( "_webglstudio_recovery");
+		if(data)
+			localStorage.setItem( "_webglstudio_recovery1", data );
+
+		//store current
+		try
+		{
+			data = JSON.stringify( LS.GlobalScene.serialize() );
+		}
+		catch (err)
+		{
+			return;
+		}
+		localStorage.setItem( "_webglstudio_recovery", data );
+	},
+
+	recoverBackup: function()
+	{
+		var data = localStorage.getItem( "_webglstudio_recovery" );
+		if(!data)
+			return LiteGUI.alert("No recovery data found");
+		this.setSceneFromJSON( JSON.parse( data ) );
+	}
 };
 
 CORE.registerModule( SceneStorageModule );

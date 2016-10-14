@@ -204,7 +204,7 @@ PhysicsRigidBody.prototype.onPhysicsUpdate = function(e, world)
 	//extract transform
 	transform._position.set([ this._body.position.x, this._body.position.y, this._body.position.z ]);
 	transform._rotation.set([ this._body.quaternion.x, this._body.quaternion.y, this._body.quaternion.z, this._body.quaternion.w ]);
-	transform._must_update_matrix  = true;
+	transform._must_update = true;
 }
 
 LS.registerComponent( PhysicsRigidBody );

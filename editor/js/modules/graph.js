@@ -16,7 +16,7 @@ var GraphModule = {
 	init: function()
 	{
 		this.tab = LiteGUI.main_tabs.addTab( this.name, {id:"graphtab", bigicon: this.bigicon, size: "full",  module: GraphModule, callback: function(tab) {
-			GraphModule.openTab();
+			//GraphModule.openTab();
 			InterfaceModule.setSidePanelVisibility(true);
 			GraphModule.show3DWindow( GraphModule.is_sceneview_visible );
 			GraphModule._force_render = true;

@@ -1,4 +1,3 @@
-//connects DriveModule with LiteFileSystem
 //work in progress, not finished yet
 //http://www.html5rocks.com/es/tutorials/file/filesystem/
 
@@ -305,11 +304,11 @@ var LocalFilesBridge = {
 		
 	},
 
-	onContextualMenu: function( fullpath, event )
+	onContextMenu: function( fullpath, event )
 	{
 		var options = ["Create Folder","Delete Folder","Rename"];
 
-		var menu = new LiteGUI.ContextualMenu( options , { event: event, callback: function(v) {
+		var menu = new LiteGUI.ContextMenu( options , { event: event, callback: function(v) {
 			if(v == "Create Folder")
 				DriveModule.onCreateFolderInServer( fullpath );
 			else if(v == "Delete Folder")

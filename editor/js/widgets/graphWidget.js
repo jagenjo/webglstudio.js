@@ -1,7 +1,7 @@
-function GraphWidget()
+function GraphWidget( options )
 {
 	this.root = null;
-	this.init();
+	this.init( options );
 }
 
 GraphWidget.litegraph_path = "../../litegraph/";
@@ -13,14 +13,19 @@ LGraphCanvas.link_type_colors["Component"] = "#D99";
 GraphWidget.widget_name = "Graph";
 CORE.registerWidget( GraphWidget );
 
-GraphWidget.prototype.init = function()
+GraphWidget.prototype.init = function( options )
 {
+	options = options || {};
+
 	var that = this;
 
 	this.inspector = null;
 
 	//create area
 	this.root = LiteGUI.createElement("div",null,null,{ width:"100%", height:"100%" });
+
+	if(options.id)
+		this.root.id = options.id;
 
 	//top bar
 	var top_widgets = this.top_widgets = new LiteGUI.Inspector( null, { one_line: true });
@@ -183,7 +188,7 @@ GraphWidget.prototype.onDropItem = function( e )
 		graphnode.pos[1] = e.canvasY;
 		this.graph.add( graphnode );
 		graphnode.onExecute();
-		return;
+		return true;
 	}
 	else if(item_type == "Component")
 	{
@@ -194,6 +199,7 @@ GraphWidget.prototype.onDropItem = function( e )
 		graphnode.pos[1] = e.canvasY;
 		this.graph.add( graphnode );
 		graphnode.onExecute();
+		return true;
 	}
 	else if(item_type == "property")
 	{
@@ -203,6 +209,7 @@ GraphWidget.prototype.onDropItem = function( e )
 		graphnode.pos[1] = e.canvasY;
 		this.graph.add( graphnode );
 		graphnode.onExecute();
+		return true;
 	}
 
 	return false;

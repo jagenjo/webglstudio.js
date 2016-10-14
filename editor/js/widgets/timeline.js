@@ -1,4 +1,4 @@
-function Timeline()
+function Timeline( options )
 {
 	this.root = null;
 
@@ -22,7 +22,7 @@ function Timeline()
 	LEvent.bind( LS.GlobalScene, "change", this.onReload, this );
 	//LEvent.bind( LS.GlobalScene, "reload", this.onReload, this );
 
-	this.createInterface();
+	this.createInterface( options );
 	LiteGUI.createDropArea( this.canvas, this.onItemDrop.bind(this) );
 	//this.onNewAnimation();
 }
@@ -53,12 +53,17 @@ Timeline.prototype.destroy = function()
 
 Timeline.DEFAULT_DURATION = 20; //in seconds
 
-Timeline.prototype.createInterface = function()
+Timeline.prototype.createInterface = function( options )
 {
+	options = options || {};
+
 	var that = this;
 
 	this.root = document.createElement("div");
 	this.root.className = "timeline";
+
+	if(options.id)
+		this.root.id = options.id;
 
 	//add tool bar
 	var widgets = this.top_widgets = new LiteGUI.Inspector( null, { height: 30, widgets_width: 140, name_width: 60, one_line: true } );
@@ -217,7 +222,7 @@ Timeline.prototype.setAnimation = function( animation, take_name )
 	if(this.current_animation == animation && this.current_take_name == take_name )
 		return;
 
-	if(!animation || !animation.getNumTakes() || !animation.takes[take_name] )
+	if(!animation)
 	{
 		this.current_animation = null;
 		this.current_take = null;
@@ -230,6 +235,9 @@ Timeline.prototype.setAnimation = function( animation, take_name )
 		this.redrawCanvas();
 		return;
 	}
+
+	if( !animation.getNumTakes() || !animation.takes[take_name] )
+		animation.createTake( take_name, LS.Animation.DEFAULT_DURATION );
 
 	this.session = {
 		start_time: -0.2, //time at left side of window (use a negative number to leave some margin)
@@ -1195,7 +1203,7 @@ Timeline.prototype.showOptionsContextMenu = function( e )
 	var animation_options = {title:"Animation Options",disabled:!this.current_take};
 	options.push(animation_options);
 
-	var menu = new LiteGUI.ContextualMenu( options, { event: e, callback: function(v) {
+	var menu = new LiteGUI.ContextMenu( options, { event: e, callback: function(v) {
 		if(v == "New Animation")
 			that.showNewAnimationDialog();
 		else if(v == "Load Animation")
@@ -1250,7 +1258,7 @@ Timeline.prototype.onContextMenu = function( e )
 		values.push( { title:"Delete Track", callback: inner_delete } );
 	}
 
-	var menu = new LiteGUI.ContextualMenu( values, { event: e, callback: function(value) {
+	var menu = new LiteGUI.ContextMenu( values, { event: e, callback: function(value) {
 		that.redrawCanvas();
 	}});
 

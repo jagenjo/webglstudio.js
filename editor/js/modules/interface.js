@@ -48,7 +48,7 @@ var InterfaceModule = {
 
 	createTabs: function()
 	{
-		var main_tabs = new LiteGUI.Tabs("worktabs", { width: "full", mode: "vertical" });
+		var main_tabs = new LiteGUI.Tabs("worktabs", { width: "full", mode: "vertical", autoswitch: true });
 		this.mainarea.getSection(0).add( main_tabs );
 		//document.getElementById("leftwork").appendChild( main_tabs.root );
 		LiteGUI.main_tabs = main_tabs;
@@ -129,7 +129,7 @@ var InterfaceModule = {
 		LiteGUI.sidepanel.add( sidepanelarea );
 
 		//create scene tree
-		this.scene_tree = new SceneTreeWidget("sidepanel-inspector");
+		this.scene_tree = new SceneTreeWidget({ id: "sidepanel-inspector" });
 		tabs_widget.getTab("Scene Tree").add( this.scene_tree );
 
 		//create inspector
@@ -585,6 +585,7 @@ LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
 	
 	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+tex_name+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
 	var input = element.querySelector(".wcontent input");
+	input.value = (value && value.texture) ? value.texture : "";
 	element.options = options;
 
 	var callback = options.callback;
@@ -645,6 +646,8 @@ LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
 	function inner_onselect( sampler )
 	{
 		input.value = sampler ? sampler.texture : "";
+		if(sampler)
+			sampler._must_update = true;
 		LiteGUI.trigger( input, "change" );
 		//$(element).find("input").val(filename).change();
 	}
@@ -654,6 +657,7 @@ LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
 	return element;
 }
 LiteGUI.Inspector.widget_constructors["sampler"] = "addTextureSampler";
+
 LiteGUI.Inspector.widget_constructors["position"] = "addVector3";
 
 LiteGUI.Inspector.prototype.addLayers = function(name, value, options)
@@ -747,7 +751,6 @@ LiteGUI.Inspector.prototype.addComponent = function( name, value, options)
 }
 LiteGUI.Inspector.widget_constructors["component"] = "addComponent";
 
-//NOT TESTED
 LiteGUI.Inspector.prototype.addShader = function( name, value, options )
 {
 	options = options || {};
@@ -821,3 +824,43 @@ LiteGUI.Inspector.prototype.addShader = function( name, value, options )
 	return widget;
 }
 LiteGUI.Inspector.widget_constructors["shader"] = "addShader";
+
+//overwrite color widget to add the color picker
+LiteGUI.Inspector.prototype.addColorOld = LiteGUI.Inspector.prototype.addColor;
+LiteGUI.Inspector.prototype.addColor = function( name, value, options )
+{
+	options = options || {};
+	var inspector = this;
+
+	options.width = "90%";
+
+	inspector.widgets_per_row += 1;
+
+	var widget = inspector.addColorOld( name, value, options );
+	var color_picker_icon = colorPickerTool.icon;
+
+	inspector.addButton( null, "<img src="+color_picker_icon+">", { skip_wchange: true, width: "10%", callback: inner } );
+
+	inspector.widgets_per_row -= 1;
+
+	function inner(v)
+	{
+		console.log("picker");
+		colorPickerTool.oneClick( inner_color );
+	}
+
+	function inner_color(color)
+	{
+		if(!color)
+			return;
+		console.log(color);
+		widget.setValue(color);
+		RenderModule.requestFrame();
+		//if(options.callback)
+		//	options.callback( color );
+	}
+
+	return widget;
+}
+LiteGUI.Inspector.widget_constructors["color"] = "addColor";
+

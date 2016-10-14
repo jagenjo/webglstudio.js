@@ -303,7 +303,7 @@ var LiteGUI = {
 		} catch (err) {
 			if(input)
 				document.body.removeChild( input );
-			console.log('Oops, unable to copy using the true clipboard');
+			console.warn('Oops, unable to copy using the true clipboard');
 		}
 
 		//old system
@@ -924,7 +924,7 @@ var LiteGUI = {
 	* @param {HTMLEntity} container the element that will be dragged
 	* @param {HTMLEntity} dragger the area to start the dragging
 	**/
-	draggable: function(container, dragger)
+	draggable: function( container, dragger, on_start, on_finish, on_is_draggable )
 	{
 		dragger = dragger || container;
 		dragger.addEventListener("mousedown", inner_mouse);
@@ -951,10 +951,19 @@ var LiteGUI = {
 					y = rect ? rect.top : 0;
 				}
 
+				if(on_is_draggable && on_is_draggable(container,e) == false )
+				{
+					e.stopPropagation();
+					e.preventDefault();
+					return false;
+				}
+
 				prev_x = e.clientX;
 				prev_y = e.clientY;
 				document.addEventListener("mousemove",inner_mouse);
 				document.addEventListener("mouseup",inner_mouse);
+				if(on_start)
+					on_start( container, e );
 				e.stopPropagation();
 				e.preventDefault();
 				return false;
@@ -964,6 +973,9 @@ var LiteGUI = {
 			{
 				document.removeEventListener("mousemove",inner_mouse);
 				document.removeEventListener("mouseup",inner_mouse);
+
+				if( on_finish )
+					on_finish( container, e );
 				return;
 			}
 
@@ -1589,18 +1601,18 @@ function dataURItoBlob( dataURI ) {
 
 
 	/**
-	* ContextualMenu 
+	* ContextMenu 
 	*
-	* @class ContextualMenu
+	* @class ContextMenu 
 	* @constructor
 	* @param {Array} values (allows object { title: "Nice text", callback: function ... })
 	* @param {Object} options [optional] Some options:\
 	* - title: title to show on top of the menu
 	* - callback: function to call when an option is clicked, it receives the item information
 	* - ignore_item_callbacks: ignores the callback inside the item, it just calls the options.callback 
-	* - event: you can pass a MouseEvent, this way the ContextualMenu appears in that position
+	* - event: you can pass a MouseEvent, this way the ContextMenu appears in that position
 	*/
-	function ContextualMenu( values, options )
+	function ContextMenu( values, options )
 	{
 		options = options || {};
 		this.options = options;
@@ -1615,13 +1627,13 @@ function dataURItoBlob( dataURI ) {
 		}
 
 		var root = document.createElement("div");
-		root.className = "litecontextualmenu litemenubar-panel";
+		root.className = "litecontextmenu litemenubar-panel";
 		root.style.minWidth = 100;
 		root.style.minHeight = 100;
 		root.style.pointerEvents = "none";
 		setTimeout( function() { root.style.pointerEvents = "auto"; },100); //delay so the mouse up event is not caugh by this element
 
-		//this prevents the default contextual browser menu to open in case this menu was created when pressing right button 
+		//this prevents the default context browser menu to open in case this menu was created when pressing right button 
 		root.addEventListener("mouseup", function(e){ 
 			e.preventDefault(); return true; 
 		}, true);
@@ -1721,8 +1733,8 @@ function dataURItoBlob( dataURI ) {
 				if(value.submenu)
 				{
 					if(!value.submenu.options)
-						throw("ContextualMenu submenu needs options");
-					var submenu = new LiteGUI.ContextualMenu( value.submenu.options, {
+						throw("ContextMenu submenu needs options");
+					var submenu = new LiteGUI.ContextMenu( value.submenu.options, {
 						callback: value.submenu.callback,
 						event: e,
 						parentMenu: that,
@@ -1766,18 +1778,20 @@ function dataURItoBlob( dataURI ) {
 			if(options.parentMenu)
 				left = $(options.parentMenu.root).position().left + $(options.parentMenu.root).width();
 
-			var rect = document.body.getClientRects()[0];
-			if(left > (rect.width - $(root).width() - 10))
-				left = (rect.width - $(root).width() - 10);
-			if(top > (rect.height - $(root).height() - 10))
-				top = (rect.height - $(root).height() - 10);
+			var body_rect = LiteGUI.getRect( document.body );
+			var root_rect = LiteGUI.getRect( root );
+
+			if(left > (body_rect.width - root_rect.width - 10))
+				left = (body_rect.width - root_rect.width - 10);
+			if(top > (body_rect.height - root_rect.height - 10))
+				top = (body_rect.height - root_rect.height - 10);
 		}
 
 		root.style.left = left + "px";
 		root.style.top = top  + "px";
 	}
 
-	ContextualMenu.prototype.close = function(e)
+	ContextMenu.prototype.close = function(e)
 	{
 		if(this.root.parentNode)
 			this.root.parentNode.removeChild( this.root );
@@ -1792,7 +1806,8 @@ function dataURItoBlob( dataURI ) {
 		}
 	}
 
-	LiteGUI.ContextualMenu = ContextualMenu;
+	LiteGUI.ContextMenu = ContextMenu;
+	LiteGUI.ContextualMenu = ContextMenu; //LEGACY: REMOVE
 
 
 	//the tiny box to expand the children of a node
@@ -2400,14 +2415,24 @@ function dataURItoBlob( dataURI ) {
 	*
 	* @class Area
 	* @constructor
+	* @param {String} id
+	* @param {Object} options
 	*/
-	function Area(id, options)
+	function Area( id, options )
 	{
+		if(!options && id && id.constructor !== String)
+		{
+			options = id;
+			id = null;
+		}
+
 		options = options || {};
 		/* the root element containing all sections */
 		var root = document.createElement("div");
 		root.className = "litearea";
 		if(id)
+			root.id = id;
+		if(options.id)
 			root.id = id;
 		if(options.className)
 			root.className +=  " " + options.className;
@@ -2712,7 +2737,7 @@ function dataURItoBlob( dataURI ) {
 			last_pos[1] = e.pageY;
 			e.stopPropagation();
 			e.preventDefault();
-			if(that.options.inmediateResize)
+			if(that.options.immediateResize || that.options.inmediateResize) //inmediate is for legacy...
 				that.onResize();
 		}
 
@@ -3387,7 +3412,11 @@ function dataURItoBlob( dataURI ) {
 
 	/**
 	* Widget that contains several tabs and their content
-	*
+	* Options:
+	* - mode: "vertical","horizontal"
+	* - size
+	* - width,height
+	* - autoswitch: allow autoswitch (switch when mouse over)
 	* @class Tabs
 	* @constructor
 	*/
@@ -3585,7 +3614,18 @@ function dataURItoBlob( dataURI ) {
 	* Create a new tab, where id is a unique identifier
 	* @method addTab
 	* @param {String} id could be null then a random id is generated
-	* @param {Object} options { title: tab text, callback: called when selected, callback_leave: callback when leaving, content: HTML content, closable: if it can be closed (callback is onclose), tab_width: size of the tab, tab_className: classes for the tab element, id: content id, size: full means all, mode: "vertical" or "horizontal", button: if it is a button tab, not a selectable tab}
+	* @param {Object} options { 
+	*	title: tab text, 
+	*	callback: called when selected, 
+	*	callback_leave: callback when leaving, 
+	*	content: HTML content, closable: if it can be closed (callback is onclose), 
+	*	tab_width: size of the tab,
+	*	tab_className: classes for the tab element,
+	*	id: content id,
+	*	size: full means all,
+	*	mode: "vertical" or "horizontal",
+	*	button: if it is a button tab, not a selectable tab
+	*	}
 	* @param {bool} skip_event prevent dispatching events
 	* @return {Object} an object containing { id, tab, content }
 	*/
@@ -3622,7 +3662,7 @@ function dataURItoBlob( dataURI ) {
 				e.stopPropagation();
 			},true);
 		}
-		//WARNING: do not modify element.innerHTML or event will be lost
+		//WARNING: do not modify element.innerHTML or events will be lost
 
 		if( options.index !== undefined )
 		{
@@ -3642,6 +3682,30 @@ function dataURItoBlob( dataURI ) {
 			element.style.width = options.tab_width.constructor === Number ? ( options.tab_width.toFixed(0) + "px" ) : options.tab_width;
 			element.style.minWidth = "0";
 		}
+
+		if(this.options.autoswitch)
+		{
+			element.classList.add("autoswitch");
+			element.addEventListener("dragenter",function(e){
+				//console.log("Enter",this.dataset["id"]);
+				if(that._timeout_mouseover)
+					clearTimeout(that._timeout_mouseover);
+				that._timeout_mouseover = setTimeout((function(){
+					LiteGUI.trigger(this,"click");
+					that._timeout_mouseover = null;
+				}).bind(this),1500);
+			});
+			
+			element.addEventListener("dragleave",function(e){
+				//console.log("Leave",this.dataset["id"]);
+				if(that._timeout_mouseover)
+				{
+					clearTimeout(that._timeout_mouseover);
+					that._timeout_mouseover = null;
+				}
+			});
+		}
+
 
 		//the content of the tab
 		var content = document.createElement("div");
@@ -3738,7 +3802,7 @@ function dataURItoBlob( dataURI ) {
 
 		this.recomputeTabsByIndex();
 
-		//context
+		//context menu
 		element.addEventListener("contextmenu", (function(e) { 
 			if(e.button != 2) //right button
 				return false;
@@ -4775,6 +4839,12 @@ function dataURItoBlob( dataURI ) {
 		return root;
 	}
 
+
+	/**
+	* remove from the tree the items that do not have a name that matches the string
+	* @method filterByName
+	* @param {string} name
+	*/
 	Tree.prototype.filterByName = function(name)
 	{
 		for(var i = 0; i < this.root.childNodes.length; ++i)
@@ -4807,31 +4877,47 @@ function dataURItoBlob( dataURI ) {
 				childNode.classList.add("filtered");
 			}
 		}
+	}	
 
-		/*
-		var all = this.root.querySelectorAll(".ltreeitemtitle .incontent");
-		for(var i = 0; i < all.length; i++)
+	/**
+	* remove from the tree the items that do not have a name that matches the string
+	* @method filterByName
+	* @param {string} name
+	*/
+	Tree.prototype.filterByRule = function( callback_to_filter, param )
+	{
+		if(!callback_to_filter)
+			throw("filterByRule requires a callback");
+		for(var i = 0; i < this.root.childNodes.length; ++i)
 		{
-			var element = all[i];
-			if(!element)
+			var childNode = this.root.childNodes[i]; //ltreeitem
+			if( !childNode.classList || !childNode.classList.contains("ltreeitem") )
 				continue;
 
-			var str = element.innerHTML;
-			var parent = element.parentNode;
+			var content = childNode.querySelector(".incontent");
+			if(!content)
+				continue;
 
-			if(!name || str.indexOf(name) != -1)
+			if( callback_to_filter( childNode.data, content, param ) )
 			{
-				parent.style.display = "";
-				parent.parentNode.style.paddingLeft = (parseInt(parent.parentNode.dataset["level"]) * Tree.INDENT) + "px";
+				if( childNode.data && childNode.data.visible !== false )
+					childNode.classList.remove("filtered");
+				var indent = childNode.querySelector(".indentblock");
+				if(indent)
+				{
+					if(name)
+						indent.style.paddingLeft = 0;
+					else
+						indent.style.paddingLeft = paddingLeft = ( (parseInt(childNode.dataset["level"]) + this.indent_offset) * LiteGUI.Tree.INDENT) + "px";
+				}
 			}
 			else
 			{
-				parent.style.display = "none";
-				parent.parentNode.style.paddingLeft = 0;
+				childNode.classList.add("filtered");
 			}
 		}
-		*/
 	}	
+
 
 	/**
 	* get the item with that id, returns the HTML element
@@ -5387,7 +5473,6 @@ function dataURItoBlob( dataURI ) {
 	/****************** PANEL **************/
 	function Panel(id, options)
 	{
-		options = options || {};
 		this._ctor(id,options);
 	}
 
@@ -5395,6 +5480,14 @@ function dataURItoBlob( dataURI ) {
 
 	Panel.prototype._ctor = function(id, options)
 	{
+		if(!options && id && id.constructor !== String)
+		{
+			options = id;
+			id = null;
+		}
+
+		options = options || {};
+
 		this.content = options.content || "";
 
 		var root = this.root = document.createElement("div");
@@ -5447,16 +5540,22 @@ function dataURItoBlob( dataURI ) {
 	Dialog.MINIMIZED_WIDTH = 200;
 	Dialog.title_height = "20px";
 
-	Dialog.getDialog = function(id)
+	Dialog.getDialog = function( id )
 	{
-		var element = document.getElementById(id);		
+		var element = document.getElementById( id );		
 		if(!element)
 			return null;
 		return element.dialog;
 	}
 
-	Dialog.prototype._ctor = function(id, options)
+	Dialog.prototype._ctor = function( id, options )
 	{
+		if(!options && id && id.constructor !== String)
+		{
+			options = id;
+			id = null;
+		}
+
 		var that = this;
 		this.width = options.width;
 		this.height = options.height;
@@ -5538,6 +5637,18 @@ function dataURItoBlob( dataURI ) {
 		//size, draggable, resizable, etc
 		this.enableProperties(options);
 
+		this.root.addEventListener("DOMNodeInsertedIntoDocument", function(){ 
+			if( that.on_attached_to_DOM )
+				that.on_attached_to_DOM();
+			if( that.on_resize )
+				that.on_resize();
+		});
+		this.root.addEventListener("DOMNodeRemovedFromDocument", function(){ 
+			if( that.on_detached_from_DOM )
+				that.on_detached_from_DOM();
+		});
+
+
 		//attach
 		if(options.attach || options.parent)
 		{
@@ -5549,6 +5660,9 @@ function dataURItoBlob( dataURI ) {
 			parent.appendChild( this.root );
 			this.center();
 		}
+
+		//if(options.position) //not docked
+		//	this.setPosition( options.position[0], options.position[1] );
 	}
 
 	/**
@@ -5564,6 +5678,7 @@ function dataURItoBlob( dataURI ) {
 	Dialog.prototype.enableProperties = function(options)
 	{
 		options = options || {};
+		var that = this;
 
 		var panel = this.root;
 		panel.style.position = "absolute";
@@ -5595,7 +5710,11 @@ function dataURItoBlob( dataURI ) {
 		if(options.draggable)
 		{
 			this.draggable = true;
-			LiteGUI.draggable( panel, panel.querySelector(".panel-header") );
+			LiteGUI.draggable( panel, panel.querySelector(".panel-header"), function(){
+				that.bringToFront();
+			},null, function(){
+				return !that.minimized;
+			});
 		}
 
 		if(options.resizable)
@@ -5639,19 +5758,25 @@ function dataURItoBlob( dataURI ) {
 			}
 			else if(e.type == "mousemove")
 			{
-				var w = $(root).width();
+				var rect = LiteGUI.getRect( root );
+				var w = rect.width; //$(root).width();
 				var neww = w - (mouse[0] - e.pageX);
 	
-				var h = $(root).height();
+				var h = rect.height; //$(root).height();
 				var newh = h - (mouse[1] - e.pageY);
 
 				if(is_corner)
-					$(root).width(neww + "px");
-				$(root).height(newh + "px");
+					root.style.width = neww + "px";
+					//$(root).width(neww + "px");
+				root.style.height = newh + "px";
+				//$(root).height(newh + "px");
 
 				mouse[0] = e.pageX;
 				mouse[1] = e.pageY;
 				that.content.style.height = "calc( 100% - 24px )";
+
+				if(that.on_resize && (w != neww || h != newh) )
+					that.on_resize(e,neww,newh);
 			}
 			else if(e.type == "mouseup")
 			{
@@ -5665,7 +5790,7 @@ function dataURItoBlob( dataURI ) {
 		}
 	}
 
-	Dialog.prototype.dockTo = function(parent, dock_type)
+	Dialog.prototype.dockTo = function( parent, dock_type )
 	{
 		if(!parent) return;
 		var panel = this.root;
@@ -5875,8 +6000,8 @@ function dataURItoBlob( dataURI ) {
 	Dialog.prototype.bringToFront = function()
 	{
 		var parent = this.root.parentNode;
-		parent.detach(this.root);
-		parent.attach(this.root);
+		parent.removeChild(this.root);
+		parent.appendChild(this.root);
 	}
 
 	/**
@@ -5932,6 +6057,8 @@ function dataURItoBlob( dataURI ) {
 
 	Dialog.prototype.setPosition = function(x,y)
 	{
+		if(!this.root.parentNode)
+			console.warn("LiteGUI.Dialog: Cannot set position of dialog if it is not in the DOM");
 		this.root.position = "absolute";
 		this.root.style.left = x + "px";
 		this.root.style.top = y + "px";
@@ -6092,6 +6219,223 @@ function dataURItoBlob( dataURI ) {
 	}
 
 	LiteGUI.Dialog = Dialog;
+})();
+//enclose in a scope
+(function(){
+
+
+function Table( options )
+{
+	options = options || {};
+
+	this.root = document.createElement("table");
+	this.root.classList.add("litetable");
+
+	this.columns = [];
+	this.column_fields = [];
+	this.rows = [];
+	this.data = [];
+
+	this._must_update_header = true;
+
+	if(options.colums)
+		this.setColumns(options.colums);
+
+	if(options.scrollable)
+		this.root.style.overflow = "auto";
+
+	if(options.height)
+		this.root.style.height = LiteGUI.sizeToCSS( options.height );
+
+	if(options.columns)
+		this.setColumns( options.columns );
+
+	if(options.rows)
+		this.setRows( options.data );
+}
+
+Table.prototype.setRows = function( data, reuse )
+{
+	this.data = data;
+	this.updateContent( reuse );
+}
+
+Table.prototype.addRow = function( row, skip_add )
+{
+	var tr = document.createElement("tr");
+
+	//create cells
+	for(var j = 0; j < this.column_fields.length; ++j)
+	{
+		var td = document.createElement("td");
+
+		var value = null;
+
+		if(row.constructor === Array )
+			value = row[ j ];
+		else //object
+			value = row[ this.column_fields[j] ];
+		if(value === undefined)
+			value = "";
+
+		td.innerHTML = value;
+
+		var column = this.columns[j];
+		if(column === undefined)
+			break;
+
+		if(column.className)
+			td.className = column.className;
+		if(column.width)
+			td.style.width = column.width;
+		tr.appendChild( td );
+	}
+
+	this.root.appendChild( tr );
+	this.rows.push( tr );
+	if(!skip_add)
+		this.data.push( row );
+
+	return tr;
+}
+
+Table.prototype.updateRow = function( index, row )
+{
+	this.data[ index ] = row;
+
+	var tr = this.rows[index];
+	if(!tr)
+		return;
+
+	var cells = tr.querySelectorAll("td");
+	for(var j = 0; j < cells.length; ++j)
+	{
+		var column = this.columns[j];
+
+		var value = null;
+
+		if(row.constructor === Array )
+			value = row[ j ];
+		else
+			value = row[ column.field ];
+
+		if(value === undefined)
+			value = "";
+
+		cells[j].innerHTML = value;
+	}
+	return tr;
+}
+
+Table.prototype.updateCell = function( row, cell, data )
+{
+	var tr = this.rows[ row ];
+	if(!tr)
+		return;
+	var cell = tr.childNodes[cell];
+	if(!cell)
+		return;
+	cell.innerHTML = data;
+	return cell;
+}
+
+
+Table.prototype.setColumns = function( columns )
+{
+	this.columns.length = 0;
+	this.column_fields.length = 0;
+
+	var avg_width = ((Math.floor(100 / columns.length)).toFixed(1)) + "%";
+
+	var rest = [];
+
+	for(var i = 0; i < columns.length; ++i)
+	{
+		var c = columns[i];
+
+		if( c === null || c === undefined )
+			continue;
+
+		//allow to pass just strings or numbers instead of objects
+		if( c.constructor === String || c.constructor === Number )
+			c = { name: String(c) };
+
+		var column = {
+			name: c.name || "",
+			width: LiteGUI.sizeToCSS(c.width || avg_width),
+			field: (c.field || c.name || "").toLowerCase(),
+			className: c.className
+		};
+
+		//last
+		if(i == columns.length - 1)
+			column.width = " calc( 100% - ( " + rest.join(" + ") + " ) )";
+		else
+			rest.push( column.width );
+
+		this.columns.push( column );
+		this.column_fields.push( column.field );
+	}
+
+	this._must_update_header = true;
+	this.updateContent();
+}
+
+Table.prototype.updateContent = function( reuse )
+{
+	this.root.innerHTML = "";
+
+	//update header
+	if(this._must_update_header)
+	{
+		this.header = document.createElement("tr");
+		for(var i = 0; i < this.columns.length; ++i)
+		{
+			var column = this.columns[i];
+			var th = document.createElement("th");
+			th.innerHTML = column.name;
+			if(column.width)
+				th.style.width = column.width;
+			column.th = th;
+			this.header.appendChild( th );
+		}
+		this._must_update_header = false;
+	}
+	this.root.appendChild( this.header );
+
+	if(!this.data)
+		return;
+
+	if(this.data.length != this.rows.length)
+		reuse = false;
+
+	if(reuse)
+	{
+		for(var i = 0; i < this.rows.length; ++i)
+		{
+			var data_row = this.data[i];
+			var tr = this.updateRow( i, data_row );
+			this.root.appendChild( tr );
+		}
+	}
+	else
+	{
+		this.rows.length = 0;
+
+		//create rows
+		for(var i = 0; i < this.data.length; ++i)
+		{
+			var row = this.data[i];
+			this.addRow( row, true );
+		}
+	}
+}
+
+
+
+LiteGUI.Table = Table;
+
+
 })();
 /* Attributes editor panel 
 	Dependencies: 
@@ -6300,6 +6644,19 @@ Inspector.prototype.setup = function(info)
 		var w = info[i];
 		var widget = this.add( w.type, w.name, w.value, w.options );
 	}
+}
+
+/**  Returns the widget given the name
+*
+* @method getWidget
+* @param {String} name the name of the widget supplied when creating it or the number of the widget
+* @return {Object} widget object
+*/
+Inspector.prototype.getWidget = function( name )
+{
+	if( name !== null && name.constructor === Number )
+		return this.widgets[ name ];
+	return this.widgets_by_name[ name ];
 }
 
 /**  Given an instance it shows all the attributes
@@ -6827,7 +7184,7 @@ Inspector.prototype.addString = function(name,value, options)
 
 	this.tab_index += 1;
 
-	element.setValue = function(v,skip_event) { 
+	element.setValue = function(v, skip_event) { 
 		if(v === undefined )
 			return;
 		if(v === input.value)
@@ -6883,7 +7240,7 @@ Inspector.prototype.addStringButton = function( name, value, options)
 	this.append(element,options);
 	element.wchange = function(callback) { $(this).wchange(callback); }
 	element.wclick = function(callback) { $(this).wclick(callback); }
-	element.setValue = function(v,skip_event) { 
+	element.setValue = function(v, skip_event) { 
 		input.value = v;
 		if(!skip_event)
 			LiteGUI.trigger(input, "change" );
@@ -6927,7 +7284,7 @@ Inspector.prototype.addTextarea = function(name,value, options)
 	if(options.height)
 		textarea.style.height = LiteGUI.sizeToCSS( options.height );
 	this.append(element,options);
-	element.setValue = function(v,skip_event) { 
+	element.setValue = function(v, skip_event) { 
 		if(v === undefined)
 			return;
 		if(v == textarea.value)
@@ -7005,12 +7362,12 @@ Inspector.prototype.addNumber = function(name, value, options)
 		if(that.onchange) that.onchange(name,e.target.value,element);
 	});
 
-	element.setValue = function(v,skip_event) { 
+	element.setValue = function( v, skip_event) { 
 		if(v === undefined)
 			return;
 		v = parseFloat(v);
 		if(options.precision)
-			v = v.toFixed( options.precision );
+			v = v.toFixed( options.step && options.step < options.precision ? options.step : options.precision );
 		v += (options.units || "");
 		if(input.value == v)
 			return;
@@ -7109,7 +7466,7 @@ Inspector.prototype.addVector2 = function(name,value, options)
 
 	this.append(element,options);
 
-	element.setValue = function(v,skip_event) { 
+	element.setValue = function( v, skip_event) { 
 		if(!v)
 			return;
 		if(dragger1.getValue() != v[0])
@@ -7211,7 +7568,7 @@ Inspector.prototype.addVector3 = function(name,value, options)
 
 	this.append(element,options);
 
-	element.setValue = function(v,skip_event) { 
+	element.setValue = function( v, skip_event ) { 
 		if(!v)
 			return;
 		dragger1.setValue(v[0],true);
@@ -7304,7 +7661,7 @@ Inspector.prototype.addVector4 = function(name,value, options)
 
 	this.append(element,options);
 
-	element.setValue = function(v,skip_event) { 
+	element.setValue = function( v, skip_event ) { 
 		if(!v)
 			return;
 		for(var i = 0; i < draggers.length; i++)
@@ -7767,9 +8124,11 @@ Inspector.prototype.addCombo = function(name, value, options)
 				continue;
 			if( parseFloat(item.dataset["index"]) == index )
 			{
+				item.setAttribute("selected", true);
 				select.selectedIndex = index;
-				return;
 			}
+			else
+				item.removeAttribute("selected");
 		}
 	};
 
@@ -8239,7 +8598,47 @@ Inspector.prototype.addColor = function( name, value, options )
 
 	//create jsColor 
 	var input_element = element.querySelector("input.color");
-	var myColor = new jscolor.color(input_element);
+	var myColor = null;
+
+	//SHOWS CONTEXTUAL MENU
+	//block focusing
+	/*
+    input_element.addEventListener("contextmenu", function(e) { 
+		if(e.button != 2) //right button
+			return false;
+		//create the context menu
+		var contextmenu = new LiteGUI.ContextMenu( ["Copy in HEX","Copy in RGBA"], { event: e, callback: inner_action });
+		e.preventDefault(); 
+		e.stopPropagation();
+
+		input_element.addEventListener("focus", block_focus , true);
+		setTimeout(function(){ input_element.removeEventListener("focus", block_focus , true);},1000);
+
+		return false;
+    },true);	
+
+	function block_focus(e)
+	{
+		e.stopPropagation();
+		e.stopImmediatePropagation();
+		e.preventDefault();
+		return false;
+	}
+
+	function inner_action(v)
+	{
+		if(v == "Copy in HEX")
+		{
+			LiteGUI.toClipboard( "in HEX");
+		}
+		else
+		{
+			LiteGUI.toClipboard( "in RGB");
+		}
+	}
+	*/
+
+	myColor = new jscolor.color(input_element);
 	myColor.pickerFaceColor = "#333";
 	myColor.pickerBorderColor = "black";
 	myColor.pickerInsetColor = "#222";
@@ -8401,7 +8800,7 @@ Inspector.prototype.addDataTree = function(name, value, options)
 
 	inner_recursive(node,value);
 
-	function inner_recursive(root_node, value)
+	function inner_recursive( root_node, value)
 	{
 		for(var i in value)
 		{

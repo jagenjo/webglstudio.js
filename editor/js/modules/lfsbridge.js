@@ -346,11 +346,11 @@ var LFSBridge = {
 		container.appendChild( LiteGUI.createElement("h3",null,"Information") );
 	},
 
-	onContextualMenu: function( fullpath, event )
+	onContextMenu: function( fullpath, event )
 	{
 		var options = ["Create Folder","Delete Folder","Rename"];
 
-		var menu = new LiteGUI.ContextualMenu( options , { event: event, callback: function(v) {
+		var menu = new LiteGUI.ContextMenu( options , { event: event, callback: function(v) {
 			if(v == "Create Folder")
 				DriveModule.onCreateFolderInServer( fullpath );
 			else if(v == "Delete Folder")
@@ -467,6 +467,8 @@ var LFSBridge = {
 		if(res_fullpath && res_fullpath.split("/").length > 1)
 		{
 			var res_info = LFS.parsePath(res_fullpath);
+			if(!res_info)
+				res_info = { filename: LS.RM.getFilename( res_fullpath ) };
 			var folder_info = LFS.parsePath(folder_fullpath, true);
 			var target_fullpath = folder_info.unit + "/" + folder_info.folder + "/" + res_info.filename;
 

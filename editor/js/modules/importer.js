@@ -370,6 +370,9 @@ var ImporterModule  = {
 			if(button == imp_and_insert)
 				insert_into = true;
 
+			if(!file)
+				return LiteGUI.alert("No file imported");
+
 			filename = inspector.getValue("Filename");
 			filename = filename.replace(/ /g,"_"); //no spaces in names			
 
@@ -390,6 +393,16 @@ var ImporterModule  = {
 
 			if(resource.filename)
 				filename = resource.filename;
+
+			if(folder)
+				inner_saveToFolder( resource, folder );
+			else
+			{
+				if(on_complete)
+					on_complete();
+			}
+
+			//we do this afterwards because saving it could change the name
 			if(insert_into)
 			{
 				options.mesh_action = ImporterModule.preferences.mesh_action;
@@ -397,23 +410,6 @@ var ImporterModule  = {
 				DriveModule.onInsertResourceInScene( resource, options );
 			}
 
-			if(1)
-			{
-				if(folder)
-					inner_saveToFolder( resource, folder );
-				else
-				{
-					if(on_complete)
-						on_complete();
-				}
-				/*
-				else
-					DriveModule.showSelectFolderDialog(function(folder){
-						if(folder)
-							inner_saveToFolder(resource, folder);
-					});
-				*/
-			}
 			dialog.close();
 		}
 
@@ -427,7 +423,7 @@ var ImporterModule  = {
 			LS.ResourcesManager.renameResource( resource.filename, fullpath );
 			resource.fullpath = fullpath;
 
-			DriveModule.saveResource( resource, on_complete );
+			DriveModule.saveResource( resource, on_complete, { skip_alerts: true } );
 		}
 	},
 

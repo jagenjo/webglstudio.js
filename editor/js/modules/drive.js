@@ -594,7 +594,7 @@ var DriveModule = {
 				resource._preview_url = url;
 				//upload it in case is a server side file
 				DriveModule.onUpdatePreview(resource, function() {
-					console.log("updated!");
+					console.log("preview updated!");
 					//preview.src = resource._preview_url;
 				});
 			}
@@ -832,8 +832,11 @@ var DriveModule = {
 
 			dialog.addButton("Select", { className: "big", callback: function ()
 			{
+				var path = null;
+				if(selected)
+					path = LS.ResourcesManager.cleanFullpath( selected.fullpath ); //remove extra trails
 				if(callback)
-					callback( selected ? selected.fullpath : null );
+					callback( path );
 				dialog.close();
 			}});
 
@@ -1168,6 +1171,7 @@ var DriveModule = {
 			if(status)
 			{
 				LiteGUI.alert("Preview updated");
+				resource._ignore_preview_cache = true;
 				//force reload the thumbnail without cache
 				if(DriveModule.resources_panel.selected_item)
 				{
@@ -1341,8 +1345,19 @@ var DriveModule = {
 	},
 
 	//trys to fetch one preview
+	//resource could be a server resource or a local resource
 	getServerPreviewURL: function( resource )
 	{
+		var memory_resource = LS.RM.resources[ resource.fullpath ];
+
+		//clear old preview
+		if( memory_resource && memory_resource._ignore_preview_cache )
+		{
+			resource._preview_url = LFS.getPreviewPath( resource.fullpath, true );
+			resource._ignore_preview_cache = false;
+			return resource._preview_url;
+		}
+
 		if(resource._preview_url)
 			return resource._preview_url;
 
@@ -1352,7 +1367,7 @@ var DriveModule = {
 
 	//called when the resource should be saved (after modifications)
 	//no path is passed because all the info must be inside (including fullpath)
-	saveResource: function(resource, on_complete, options)
+	saveResource: function( resource, on_complete, options )
 	{
 		options = options || {};
 		if(!resource)
@@ -1376,13 +1391,22 @@ var DriveModule = {
 		var dialog = LiteGUI.alert("<p>Uploading file... <span class='upload_progress'></span></p>");
 		var upload_progress = dialog.root.querySelector(".upload_progress");
 		this.serverUploadResource( resource, resource.fullpath,
-			function(v, msg) { 
+			function(v, msg) {  //after resource saved
 				if(v)
 					LS.ResourcesManager.resourceSaved( resource );
 				LiteGUI.remove( upload_progress ); 
 				dialog.close();
 				if(!options.skip_alerts)
 					LiteGUI.alert( v ? "Resource saved" : "Problem saving the resource: " + msg);
+
+				//upload new preview
+				/*
+				if( DriveModule.getResourceCategory( resource ) == "Material" )
+					DriveModule.onUpdatePreview(resource, function() {
+						console.log("preview updated!");
+						//preview.src = resource._preview_url;
+					});
+				*/
 
 				if(on_complete)
 					on_complete( resource );
@@ -1992,7 +2016,7 @@ var DriveModule = {
 			"Material"
 		];
 
-		var menu = new LiteGUI.ContextualMenu( options, { event: e, title: "Create", callback: inner, parentMenu: prev_menu });
+		var menu = new LiteGUI.ContextMenu( options, { event: e, title: "Create", callback: inner, parentMenu: prev_menu });
 		
 		function inner( action, options, event )
 		{
@@ -2334,11 +2358,11 @@ DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], 
 });
 
 //Materials
-DriveModule.onInsertMaterial = function(fullpath, restype, options ) 
+DriveModule.onInsertMaterial = function( fullpath, restype, options ) 
 {
 	var node = LS.GlobalScene.selected_node;
 
-	if(restype != "Material") // if(!LS.MaterialClasses[ restype ]) //class not supported?
+	if(restype != "Material" && !LS.MaterialClasses[restype]) // if(!LS.MaterialClasses[ restype ]) //class not supported?
 		return false;
 
 	if( options.event )
@@ -2522,7 +2546,8 @@ LiteGUI.Inspector.prototype.addFolder = function( name,value, options )
 		}, null, w.getValue() );
 	}
 
-	w = this.addStringButton( name, value, options )
+	w = this.addStringButton( name, value, options );
+	w.querySelector('input').classList.add("fixed_size");
 
 	return w;
 }

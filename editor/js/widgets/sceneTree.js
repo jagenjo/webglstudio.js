@@ -1,17 +1,23 @@
 //Represents the tree view of the Scene Tree, and controls basic events like dragging or double clicking
-function SceneTreeWidget( id )
+function SceneTreeWidget( options )
 {
+	options = options || {};
+
+	if(options.constructor === String )
+		console.warn( "SceneTreeWidget parameter must be object" );
+
 	var that = this;
 
 	var scene = LS.GlobalScene;
 
 	this.root = document.createElement("div");
 	this.root.className = "scene-tree";
-	if(id)
-		this.root.id = id;
+	if(options.id)
+		this.root.id = options.id;
 
-	this.search = new LiteGUI.SearchBox("", { placeholder: "search...", callback: function(v){
-		that.tree.filterByName( v );
+	this.search = new LiteGUI.SearchBox("", { placeholder: "search...", callback: function(str){
+		str = str.trim().toLowerCase();
+		that.tree.filterByRule( that.testFilteringRule, str );
 	}});
 
 	this.root.appendChild( this.search.root );
@@ -22,7 +28,7 @@ function SceneTreeWidget( id )
 	this.content = this.tree;
 	this.root.appendChild( this.tree.root );
 	this.tree.onContextMenu = function(e){
-		that.showContextualMenu(e);
+		that.showContextMenu(e);
 	}
 
 	var tree = this.tree;
@@ -63,7 +69,7 @@ function SceneTreeWidget( id )
 		if(!node)
 			return;
 
-		EditorModule.showNodeContextualMenu(node, e);
+		EditorModule.showNodeContextMenu(node, e);
 		e.preventDefault();
 		return false;
 	}
@@ -157,7 +163,7 @@ function SceneTreeWidget( id )
 		this._ignore_events = false;
 
 		/*
-		var parent_node = parent_item.data.id != "scene-root-node" ? Scene.getNode(parent_item.data.node_id) : null;
+		var parent_node = parent_item.data.id != "scene-root-node" ? Scene.getNode(parent_item.data.node_uid) : null;
 		if(node && parent_node)
 		{
 			parent_node.addChild(node, true);
@@ -384,9 +390,9 @@ SceneTreeWidget.prototype.clear = function()
 	*/
 }
 
-SceneTreeWidget.prototype.showContextualMenu = function(e){
+SceneTreeWidget.prototype.showContextMenu = function(e){
 	var that = this;
-	var menu = new LiteGUI.ContextualMenu( ["Refresh","Scene"], { event: event, callback: function(value) {
+	var menu = new LiteGUI.ContextMenu( ["Refresh","Scene"], { event: event, callback: function(value) {
 		if(value == "Refresh")
 			that.refresh();
 		else if(value == "Scene")
@@ -413,7 +419,7 @@ SceneTreeWidget.prototype.addNode = function( node, parent_id )
 			precontent: "<span class='nodecontrols'><span title='visible' class='togglevisible "+(node.flags.visible ? "on":"")+"'></span></span>",
 			allow_rename: (parent_id != null),
 			onDragData: function(){ 
-				return { uid: node._uid, "class": "SceneNode", type: "SceneNode", locator: node._uid, node_name: node._name, node_id: node._uid };
+				return { uid: node._uid, "class": "SceneNode", type: "SceneNode", locator: node._uid, node_name: node._name, node_uid: node._uid };
 			}
 		}, parent_id, undefined, {selected: is_selected, collapsed: is_collapsed} );
 	var that = this;
@@ -543,4 +549,30 @@ SceneTreeWidget.prototype.updateRootUID = function( scene )
 	var old_id = element.data.uid;
 
 	this.changeNodeUID( old_id, root_uid );
+}
+
+SceneTreeWidget.prototype.testFilteringRule = function( item, content, str )
+{
+	var node = LS.GlobalScene.getNode( item.uid );
+	if(!node)
+		return;
+
+	if(str.length == 0)
+		return true;
+
+	if(str[0] == ".")
+	{
+		var compo_str = str.substr(1);
+		for(var i = 0; i < node._components.length; ++i)
+		{
+			var compo = node._components[i];
+			var compo_class = LS.getObjectClassName( compo ).toLowerCase();
+			if( compo_class.indexOf( compo_str ) != -1 )
+				return true;
+		}
+	}
+	else if( node.name.toLowerCase().indexOf( str ) != -1 )
+		return true;
+
+	return false;
 }

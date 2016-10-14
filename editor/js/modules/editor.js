@@ -19,6 +19,7 @@ var EditorModule = {
 	},
 
 	commands: {},
+	canvas_widgets: {},
 
 	init: function()
 	{
@@ -113,6 +114,11 @@ var EditorModule = {
 		this.commands["frame"] = function() {
 			EditorModule.focusCameraInAll();
 		};
+	},
+
+	registerCanvasWidget: function( widget_class )
+	{
+		this.canvas_widgets[ LS.getClassName( widget_class	) ] = widget_class;
 	},
 
 	createMenuEntries: function()
@@ -1142,11 +1148,12 @@ var EditorModule = {
 	},
 
 	//generic (called from EditorView.mouseup on right click on canvas, which is called from CanvasManager)
-	showCanvasContextualMenu: function( instance, event )
+	showCanvasContextMenu: function( instance, event )
 	{
 		var options = [
 			{ title: "View", has_submenu: true },
-			{ title: "Create", has_submenu: true }
+			{ title: "Create", has_submenu: true },
+			{ title: "Widgets", has_submenu: true }
 		];
 
 		var instance_classname = null;
@@ -1180,29 +1187,35 @@ var EditorModule = {
 			}
 		}
 
-		var menu = new LiteGUI.ContextualMenu( options, { ignore_item_callbacks: true, event: event, title: "Canvas" , callback: function( action, o, e ) {
+		var menu = new LiteGUI.ContextMenu( options, { ignore_item_callbacks: true, event: event, title: "Canvas" , callback: function( action, o, e ) {
 			if(action.title == "View")
 			{
 				var camera = RenderModule.getCameraUnderMouse(e);
-				EditorModule.showViewContextualMenu( camera, e, menu );
+				EditorModule.showViewContextMenu( camera, e, menu );
 				return true;
 			}
 
 			if(action.title == "Node")
 			{
-				EditorModule.showNodeContextualMenu( instance, e, menu );
+				EditorModule.showNodeContextMenu( instance, e, menu );
 				return true;
 			}
 
 			if(action.title == "Create")
 			{
-				EditorModule.showCreateContextualMenu( instance, e, menu );
+				EditorModule.showCreateContextMenu( instance, e, menu );
+				return true;
+			}
+
+			if(action.title == "Widgets")
+			{
+				EditorModule.showCanvasWidgetsContextMenu( instance, e, menu );
 				return true;
 			}
 
 			if(action.title && action.title == instance_classname)
 			{
-				EditorModule.showComponentContextualMenu( instance, e, menu );
+				EditorModule.showComponentContextMenu( instance, e, menu );
 				return true;
 			}
 
@@ -1217,7 +1230,7 @@ var EditorModule = {
 	},
 
 	//for any instance (node, component, etc)
-	showInstanceContextualMenu: function( instance, event )
+	showInstanceContextMenu: function( instance, event )
 	{
 		if(!instance)
 			return;
@@ -1226,9 +1239,9 @@ var EditorModule = {
 		var options = [];
 
 		if( instance.constructor === LS.SceneNode )
-			return this.showNodeContextualMenu( instance, event );
+			return this.showNodeContextMenu( instance, event );
 		else if( instance.constructor.is_component )
-			return this.showComponentContextualMenu( instance, e, menu );
+			return this.showComponentContextMenu( instance, e, menu );
 		else
 		{
 			var actions = null;
@@ -1248,7 +1261,7 @@ var EditorModule = {
 		if(!options.length)
 			return;
 
-		var menu = new LiteGUI.ContextualMenu( options, { title: title, ignore_item_callbacks: true, event: event, callback: function( action, o, e ) {
+		var menu = new LiteGUI.ContextMenu( options, { title: title, ignore_item_callbacks: true, event: event, callback: function( action, o, e ) {
 			if(instance)
 			{
 				if( instance.doAction )
@@ -1259,7 +1272,7 @@ var EditorModule = {
 		}});
 	},
 
-	showNodeContextualMenu: function( node, event, prev_menu )
+	showNodeContextMenu: function( node, event, prev_menu )
 	{
 		if(!node || node.constructor !== LS.SceneNode || !node.getActions)
 			return;
@@ -1268,12 +1281,12 @@ var EditorModule = {
 		if(!actions)
 			return;
 
-		var menu = new LiteGUI.ContextualMenu( actions, { ignore_item_callbacks: true, event: event, title:"Node", parentMenu: prev_menu, callback: function(action) {
+		var menu = new LiteGUI.ContextMenu( actions, { ignore_item_callbacks: true, event: event, title:"Node", parentMenu: prev_menu, callback: function(action) {
 			node.doAction( action );
 		}});
 	},
 
-	showComponentContextualMenu: function( component, event, prev_menu )
+	showComponentContextMenu: function( component, event, prev_menu )
 	{
 		if( !component || !component.constructor.is_component )
 			return;
@@ -1282,12 +1295,12 @@ var EditorModule = {
 		if(!actions)
 			return;
 
-		var menu = new LiteGUI.ContextualMenu( actions, { ignore_item_callbacks: true, event: event, parentMenu: prev_menu, title: LS.getObjectClassName( component ), callback: function(action, options, event) {
+		var menu = new LiteGUI.ContextMenu( actions, { ignore_item_callbacks: true, event: event, parentMenu: prev_menu, title: LS.getObjectClassName( component ), callback: function(action, options, event) {
 			LS.Component.doAction( component, action );
 		}});
 	},
 
-	showViewContextualMenu: function( camera, e, prev_menu )
+	showViewContextMenu: function( camera, e, prev_menu )
 	{
 		if(!camera)
 			return;
@@ -1302,7 +1315,7 @@ var EditorModule = {
 			{ title: "Select Camera", has_submenu: true, callback: inner_cameras }
 		];
 
-		var menu = new LiteGUI.ContextualMenu( options, { event: e, title: "View", parentMenu: prev_menu, callback: function(v) { 
+		var menu = new LiteGUI.ContextMenu( options, { event: e, title: "View", parentMenu: prev_menu, callback: function(v) { 
 
 			switch( v )
 			{
@@ -1326,7 +1339,7 @@ var EditorModule = {
 				options.push( { title: "Cam " + scene_camera._root.name, camera: scene_camera } );
 			}
 
-			var submenu = new LiteGUI.ContextualMenu( options, { event: e, title: "Cameras", parentMenu: menu, callback: function(v) {
+			var submenu = new LiteGUI.ContextMenu( options, { event: e, title: "Cameras", parentMenu: menu, callback: function(v) {
 				if(v == "Editor")
 				{
 					var cam = new LS.Camera();
@@ -1342,7 +1355,7 @@ var EditorModule = {
 		}
 	},
 
-	showCreateContextualMenu: function( instance, e, prev_menu )
+	showCreateContextMenu: function( instance, e, prev_menu )
 	{
 		var options = ["SceneNode","Light","Camera","Graph"];
 
@@ -1350,7 +1363,7 @@ var EditorModule = {
 		GL.augmentEvent(canvas_event); //adds canvasx and canvasy
 		var position = RenderModule.testGridCollision( canvas_event.canvasx, canvas_event.canvasy );
 
-		var menu = new LiteGUI.ContextualMenu( options, { event: e, title: "Create", parentMenu: prev_menu, callback: function(v) { 
+		var menu = new LiteGUI.ContextMenu( options, { event: e, title: "Create", parentMenu: prev_menu, callback: function(v) { 
 			var node = null;
 			if(v == "SceneNode")
 				node = EditorModule.createNullNode();
@@ -1364,6 +1377,30 @@ var EditorModule = {
 			if(node && position)
 				node.transform.position = position;
 
+			LS.GlobalScene.refresh();
+		}});
+	},
+
+	showCanvasWidgetsContextMenu: function( v, e, prev_menu )
+	{
+		var that = this;
+		var options = [];
+
+		for(var i in this.canvas_widgets)
+		{
+			var w = this.canvas_widgets[i];
+			options.push(i);
+		}
+
+		if(!options.length)
+			return;
+
+		var menu = new LiteGUI.ContextMenu( options, { event: e, title: "Canvas Widgets", parentMenu: prev_menu, callback: function(v) { 
+			var widget_class = that.canvas_widgets[v];
+			if(!widget_class)
+				return;
+			var widget = new widget_class();
+			RenderModule.canvas_manager.root.addChild( widget );
 			LS.GlobalScene.refresh();
 		}});
 	},

@@ -118,7 +118,7 @@ var AnnotationModule = {
 
 		//var section = attributes.addSection("Light <span class='buttons'><button class='options_this'>Options</button></span>");
 		$(attributes.current_section).find('.options_section').click(function(e) { 
-			var menu = new LiteGUI.ContextualMenu(["Copy","Paste","Reset","Delete"], {component: comp, event: e, callback: EditorModule._onComponentOptionsSelect });
+			var menu = new LiteGUI.ContextMenu(["Copy","Paste","Reset","Delete"], {component: comp, event: e, callback: EditorModule._onComponentOptionsSelect });
 		});
 		$(attributes.current_section).bind("wchange", function() { UndoModule.saveComponentChangeUndo(comp); });
 

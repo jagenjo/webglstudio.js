@@ -148,7 +148,10 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 	inspector.addTitle("Render to Texture");
 	inspector.addCheckbox("Enable", camera.render_to_texture , { callback: function (v) { camera.render_to_texture = v; inspector.refresh(); } });
 	if(camera.render_to_texture)
+	{
 		inspector.addRenderFrameContext("Frame", camera._frame );
+		inspector.addCheckbox("Show on Viewport", camera.show_frame , { callback: function (v) { camera.show_frame = v; } });
+	}
 
 	function inner_copy_from_current() {
 
@@ -414,7 +417,26 @@ LS.Components.FrameFX["@inspector"] = function( component, inspector)
 
 EditorModule.showFXInfo = function( component, inspector )
 {
-	inspector.addTitle("Active FX");
+	var title = inspector.addTitle("Active FX");
+	title.addEventListener("contextmenu", function(e) { 
+        if(e.button != 2) //right button
+            return false;
+		//create the context menu
+		var contextmenu = new LiteGUI.ContextMenu( ["Copy","Paste"], { title: "FX List", event: e, callback: function(v){
+			if(v == "Copy")
+				LiteGUI.toClipboard( JSON.stringify( component.fx.serialize() ) );
+			else //Paste
+			{
+				var data = LiteGUI.getClipboard();
+				if(data)
+					component.fx.configure( data );
+				inspector.refresh();
+			}
+			LS.GlobalScene.refresh();
+		}});
+        e.preventDefault(); 
+        return false;
+    });
 
 	var enabled_fx = component.fx.fx;
 
@@ -433,6 +455,7 @@ EditorModule.showFXInfo = function( component, inspector )
 				var uniform = fx_info.uniforms[j];
 				if(uniform.type == "float")
 					inspector.addNumber( j, fx[j] !== undefined ? fx[j] : uniform.value, {
+						pretitle: AnimationModule.getKeyframeCode( component, "fx/"+i+"/"+j ),
 						min: uniform.min,
 						max: uniform.max,
 						step: uniform.step,
@@ -444,6 +467,7 @@ EditorModule.showFXInfo = function( component, inspector )
 					});
 				else if(uniform.type == "color3")
 					inspector.addColor( j, fx[j] !== undefined ? fx[j] : uniform.value, {
+						pretitle: AnimationModule.getKeyframeCode( component, "fx/"+i+"/"+j ),
 						fx_name: j,
 						fx: fx,
 						callback: function(v){
@@ -452,6 +476,7 @@ EditorModule.showFXInfo = function( component, inspector )
 					});
 				else if(uniform.type == "sampler2D")
 					inspector.addTexture( j, fx[j] !== undefined ? fx[j] : uniform.value, {
+						pretitle: AnimationModule.getKeyframeCode( component, "fx/"+i+"/"+j ),
 						fx_name: j,
 						fx: fx,
 						callback: function(v){
@@ -717,4 +742,15 @@ LS.Components.ThreeJS.onShowProperties = function( component, inspector )
 		inspector.addTitle("Variables");
 		inspector.showObjectFields( context );
 	}
+}
+
+LS.Components.SpriteAtlas["@inspector"] = function( component, inspector )
+{
+	inspector.addTexture("texture", component.texture, { callback: function(v){
+		component.texture = v;		
+	}});
+
+	inspector.addButton("Areas","Edit Areas", function() {
+		TextureAreasWidget.createDialog( LiteGUI.root, component );
+	});
 }

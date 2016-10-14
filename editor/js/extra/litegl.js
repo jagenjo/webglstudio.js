@@ -94,6 +94,22 @@ GL.ONE_MINUS_CONSTANT_ALPHA = 32772;
 GL.VERTEX_SHADER = 35633;
 GL.FRAGMENT_SHADER = 35632;
 
+GL.CW = 2304;
+GL.CCW = 2305;
+
+GL.FRONT = 1028;
+GL.BACK = 1029;
+GL.FRONT_AND_BACK = 1032;
+
+GL.NEVER = 512;
+GL.LESS = 513;
+GL.EQUAL = 514;
+GL.LEQUAL = 515;
+GL.GREATER = 516;
+GL.NOTEQUAL = 517;
+GL.GEQUAL = 518;
+GL.ALWAYS = 519;
+
 GL.temp_vec3 = vec3.create();
 GL.temp2_vec3 = vec3.create();
 GL.temp_vec4 = vec4.create();
@@ -4496,7 +4512,7 @@ Texture.prototype.copyTo = function( target_texture, shader, uniforms ) {
 	//reuse fbo
 	var fbo = gl.__copy_fbo;
 	if(!fbo)
-		fbo = gl.__copy_fbo || gl.createFramebuffer();
+		fbo = gl.__copy_fbo = gl.createFramebuffer();
 	gl.bindFramebuffer( gl.FRAMEBUFFER, fbo );
 
 	gl.viewport(0,0,target_texture.width, target_texture.height);
@@ -4639,7 +4655,7 @@ Texture.prototype.applyBlur = function( offsetx, offsety, intensity, temp_textur
 	//reuse fbo
 	var fbo = gl.__copy_fbo;
 	if(!fbo)
-		fbo = gl.__copy_fbo || gl.createFramebuffer();
+		fbo = gl.__copy_fbo = gl.createFramebuffer();
 	gl.bindFramebuffer( gl.FRAMEBUFFER, fbo );
 	gl.viewport(0,0, this.width, this.height);
 
@@ -5134,7 +5150,7 @@ Texture.prototype.getPixels = function( type, force_rgba, cubemap_face )
 	//reuse fbo
 	var fbo = gl.__copy_fbo;
 	if(!fbo)
-		fbo = gl.__copy_fbo || gl.createFramebuffer();
+		fbo = gl.__copy_fbo = gl.createFramebuffer();
 	gl.bindFramebuffer( gl.FRAMEBUFFER, fbo );
 
 	var buffer = null;
@@ -5405,9 +5421,9 @@ Texture.blend = function( a, b, factor, out )
 * @method Texture.getWhiteTexture
 * @return {Texture} the white texture
 */
-Texture.getWhiteTexture = function()
+Texture.getWhiteTexture = function( gl )
 {
-	var gl = this.gl;
+	gl = gl || global.gl;
 	var tex = gl.textures[":white"];
 	if(tex)
 		return tex;
@@ -5421,9 +5437,9 @@ Texture.getWhiteTexture = function()
 * @method Texture.getBlackTexture
 * @return {Texture} the black texture
 */
-Texture.getBlackTexture = function()
+Texture.getBlackTexture = function( gl )
 {
-	var gl = this.gl;
+	gl = gl || global.gl;
 	var tex = gl.textures[":black"];
 	if(tex)
 		return tex;
@@ -5493,19 +5509,27 @@ Texture.nextPOT = function( size )
 * @class FBO
 * @param {Array} color_textures an array containing the color textures, if not supplied a render buffer will be used
 * @param {GL.Texture} depth_texture the depth texture, if not supplied a render buffer will be used
+* @param {Bool} stencil create a stencil buffer?
 * @constructor
 */
-function FBO( textures, depth_texture, gl )
+function FBO( textures, depth_texture, stencil, gl )
 {
 	gl = gl || global.gl;
 	this.gl = gl;
 	this._context_id = gl.context_id; 
+
+	if(textures && textures.constructor !== Array)
+		throw("FBO textures must be an Array");
 
 	this.handler = null;
 	this.width = -1;
 	this.height = -1;
 	this.color_textures = [];
 	this.depth_texture = null;
+	this.stencil = !!stencil;
+
+	this._stencil_enabled = false;
+	this._num_binded_textures = 0;
 
 	//assign textures
 	if((textures && textures.length) || depth_texture)
@@ -5523,14 +5547,16 @@ GL.FBO = FBO;
 * @method setTextures
 * @param {Array} color_textures an array containing the color textures, if not supplied a render buffer will be used
 * @param {GL.Texture} depth_texture the depth texture, if not supplied a render buffer will be used
+* @param {Boolean} skip_disable it doenst try to go back to the previous FBO enabled in case there was one
 */
 FBO.prototype.setTextures = function( color_textures, depth_texture, skip_disable )
 {
 	if( depth_texture && (depth_texture.format !== gl.DEPTH_COMPONENT || depth_texture.type != gl.UNSIGNED_INT ) )
 		throw("FBO Depth texture must be of format: gl.DEPTH_COMPONENT and type: gl.UNSIGNED_INT");
+
 	//test if is already binded
 	var same = this.depth_texture == depth_texture;
-	if( same && color_textures)
+	if( same && color_textures )
 	{
 		if( color_textures.length == this.color_textures.length )
 		{
@@ -5544,11 +5570,31 @@ FBO.prototype.setTextures = function( color_textures, depth_texture, skip_disabl
 		else
 			same = false;
 	}
+
+	if(this._stencil_enabled !== this.stencil)
+		same = false;
 		
 	if(same)
 		return;
 
+	//copy textures in place
+	this.color_textures.length = color_textures ? color_textures.length : 0;
+	if(color_textures)
+		for(var i = 0; i < color_textures.length; ++i)
+			this.color_textures[i] = color_textures[i];
+	this.depth_texture = depth_texture;
 
+	//update GPU FBO
+	this.update( skip_disable );
+}
+
+/**
+* Updates the FBO with the new set of textures and buffers
+* @method update
+* @param {Boolean} skip_disable it doenst try to go back to the previous FBO enabled in case there was one
+*/
+FBO.prototype.update = function( skip_disable )
+{
 	//save state to restore afterwards
 	this._old_fbo = gl.getParameter( gl.FRAMEBUFFER_BINDING );
 
@@ -5559,20 +5605,11 @@ FBO.prototype.setTextures = function( color_textures, depth_texture, skip_disabl
 		h = -1,
 		type = null;
 
-	var previously_attached = 0;
-	if( this.color_textures )
-		previously_attached = this.color_textures.length;
-
-	//copy textures in place
-	this.color_textures.length = color_textures ? color_textures.length : 0;
-	if(color_textures)
-		for(var i = 0; i < color_textures.length; ++i)
-			this.color_textures[i] = color_textures[i];
-
-	this.depth_texture = depth_texture;
+	var color_textures = this.color_textures;
+	var depth_texture = this.depth_texture;
 
 	//compute the W and H (and check they have the same size)
-	if(color_textures)
+	if(color_textures && color_textures.length)
 		for(var i = 0; i < color_textures.length; i++)
 		{
 			var t = color_textures[i];
@@ -5610,6 +5647,7 @@ FBO.prototype.setTextures = function( color_textures, depth_texture, skip_disabl
 	if(!ext && color_textures && color_textures.length > 1)
 		throw("Rendering to several textures not supported by your browser");
 
+	//bind a buffer for the depth
 	if( depth_texture )
 	{
 		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depth_texture.handler, 0);
@@ -5619,11 +5657,12 @@ FBO.prototype.setTextures = function( color_textures, depth_texture, skip_disabl
 		var renderbuffer = this._renderbuffer = this._renderbuffer || gl.createRenderbuffer();
 		renderbuffer.width = w;
 		renderbuffer.height = h;
-		gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffer );
-		gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h);
+		gl.bindRenderbuffer( gl.RENDERBUFFER, renderbuffer );
+		gl.renderbufferStorage( gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h );
 		gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, renderbuffer );
 	}
 
+	//bind buffers for the colors
 	if(color_textures)
 	{
 		this.order = []; //draw_buffers request the use of an array with the order of the attachments
@@ -5634,10 +5673,6 @@ FBO.prototype.setTextures = function( color_textures, depth_texture, skip_disabl
 			gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, t.handler, 0);
 			this.order.push( gl.COLOR_ATTACHMENT0 + i );
 		}
-
-		//detach old ones (only is reusing a FBO with a different set of textures)
-		for(var i = color_textures.length; i < previously_attached; ++i)
-			gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, null, 0);
 	}
 	else //create renderbuffer to store color
 	{
@@ -5648,6 +5683,24 @@ FBO.prototype.setTextures = function( color_textures, depth_texture, skip_disabl
 		gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA4, w, h);
 		gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, renderbuffer );
 	}
+
+	//detach old ones (only if is reusing a FBO with a different set of textures)
+	var num = color_textures ? color_textures.length : 0;
+	for(var i = num; i < this._num_binded_textures; ++i)
+		gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, null, 0);
+	this._num_binded_textures = num;
+
+	//add an stencil buffer (if this doesnt work remember there is also the DEPTH_STENCIL options...)
+	if(this.stencil)
+	{
+		var stencil_buffer = this._stencil_buffer = this._stencil_buffer || gl.createRenderbuffer();
+		gl.bindRenderbuffer( gl.RENDERBUFFER, stencil_buffer );
+		gl.renderbufferStorage( gl.RENDERBUFFER, gl.STENCIL_INDEX8, w, h);
+		gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.STENCIL_ATTACHMENT, gl.RENDERBUFFER, stencil_buffer );
+		this._stencil_enabled = true;
+	}
+	else
+		this._stencil_enabled = false;
 
 	//when using more than one texture you need to use the multidraw extension
 	if(color_textures && color_textures.length > 1)

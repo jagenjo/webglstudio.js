@@ -70,7 +70,7 @@ var AnimationModule = {
 
 		function inner_rightclick(e)
 		{
-			var menu = new LiteGUI.ContextualMenu( ["Add UID track","Add name track","Show Info","Copy Query","Copy Unique Query"], { event: e, title:"Keyframe", callback: function(value) {
+			var menu = new LiteGUI.ContextMenu( ["Add UID track","Add name track","Show Info","Copy Query","Copy Unique Query"], { event: e, title:"Keyframe", callback: function(value) {
 				if(value == "Add UID track")
 					AnimationModule.insertKeyframe(e.target);
 				else if(value == "Add name track")

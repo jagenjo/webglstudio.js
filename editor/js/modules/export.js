@@ -1,5 +1,15 @@
 var ExportModule = {
 
+	player_files: [
+		"player.html",
+		"js/extra/gl-matrix-min.js",
+		"js/extra/litegl.js",
+		"js/extra/litegraph.js",
+		"js/extra/Canvas2DtoWebGL.js",
+		"js/extra/litescene.js",
+		"data/shaders.xml"
+	],
+
 	init: function()
 	{
 		LiteGUI.menubar.add("Project/Export/to OBJ", { callback: function() { 
@@ -8,6 +18,10 @@ var ExportModule = {
 
 		LiteGUI.menubar.add("Project/Export/to ZIP", { callback: function() { 
 			ExportModule.exportToZIP();
+		}});
+
+		LiteGUI.menubar.add("Project/Export/to ZIP (include Player)", { callback: function() { 
+			ExportModule.exportToZIP(true);
 		}});
 
 		LiteGUI.requireScript("js/extra/jszip.min.js");
@@ -29,7 +43,7 @@ var ExportModule = {
 		LiteGUI.downloadFile("export.OBJ", data );
 	},
 
-	exportToZIP: function()
+	exportToZIP: function( include_player )
 	{
 		if(!window.JSZip)
 		{
@@ -59,10 +73,47 @@ var ExportModule = {
 
 		var filename = "scene.zip";
 
-		//create ZIP file
-		zip.generateAsync({type:"blob"}).then(function(content) {
-			LiteGUI.downloadFile( filename, content );
-		});
+		if( include_player )
+			this.loadPlayerFiles( zip, inner_ready );
+		else
+			inner_ready();
+
+		function inner_ready()
+		{
+			//create ZIP file
+			zip.generateAsync({type:"blob"}).then(function(content) {
+				LiteGUI.downloadFile( filename, content );
+			});
+		}
+	},
+
+	loadPlayerFiles: function( zip, on_complete )
+	{
+		//it could be nice to add a dialog to config the player options here
+		var player_options = { 
+			resources: "./",
+			scene_url: "scene.json"
+		};
+		zip.file( "config.json", JSON.stringify( player_options ) );
+
+		var files = this.player_files.concat();
+		var filename = files.pop();
+		LS.Network.requestFile( filename, inner );
+
+		function inner( file )
+		{
+			//change player to index
+			if(filename == "player.html")
+				filename = "index.html";
+			//add to zip
+			zip.file( filename, file );
+
+			if(!files.length)
+				on_complete();
+			//seek another file
+			filename = files.pop();
+			LS.Network.requestFile( filename, inner );
+		}
 	}
 }
 

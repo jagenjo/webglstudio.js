@@ -615,7 +615,12 @@ var meshPainterTool = {
 			var shader_brush = this._shader_brush;
 			if(!shader_brush)
 				shader_brush = this._shader_brush = new GL.Shader( MeshPainter._brush_vertex_shader, MeshPainter._brush_pixel_shader); 
-			var model = MeshPainter.getPaintedNode().transform.getGlobalMatrix();
+
+			var painted_node = MeshPainter.getPaintedNode();
+			if(!painted_node || !painted_node.transform)
+				return;
+
+			var model = painted_node.transform.getGlobalMatrix();
 
 			gl.enable( gl.BLEND );
 			gl.depthFunc( gl.LEQUAL );

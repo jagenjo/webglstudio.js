@@ -24,7 +24,6 @@ var EditorView = {
 	render_debug_info: true,
 	render_gizmos: true,
 	render_helpers: true, //icons, grid, cones, etc
-	render_overgraph: false,
 
 	init: function()
 	{
@@ -159,7 +158,7 @@ var EditorView = {
 			if(instance_info && instance_info.instance)
 				instance = instance_info.instance;
 			this._canvas_event = e; //we store the event because we may need it
-			EditorModule.showCanvasContextualMenu( instance, e );
+			EditorModule.showCanvasContextMenu( instance, e );
 			return true;
 		}
 	},

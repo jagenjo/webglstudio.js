@@ -353,7 +353,7 @@ var LiteFileServer = {
 		};
 	},
 
-	getPreviewPath: function( fullpath )
+	getPreviewPath: function( fullpath, ignore_cache )
 	{
 		if(!fullpath)
 			return "";
@@ -370,6 +370,8 @@ var LiteFileServer = {
 			server = "";
 		var path = server + this.files_path + "/" + info.unit + "/" + folder + "/" + this.preview_prefix + info.filename + this.preview_sufix;
 		path = this.clearPath( path );
+		if(ignore_cache)
+			path += "?nocache=" + getTime() + Math.floor(Math.random() * 1000);
 		return path;
 	},
 

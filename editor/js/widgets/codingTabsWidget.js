@@ -1,14 +1,19 @@
-function CodingTabsWidget()
+function CodingTabsWidget( options )
 {
 	this.root = null;
 	this.is_master_editor = false; //used in the CodingModule
-	this.init();
+	this.init( options );
 }
 
-CodingTabsWidget.prototype.init = function()
+CodingTabsWidget.prototype.init = function( options )
 {
+	options = options || {};
+
 	//create area
 	this.root = LiteGUI.createElement("div",null,null,{ width:"100%", height:"100%" });
+
+	if(options.id)
+		this.root.id = options.id;
 	
 	//tabs for every file
 	var tabs = this.tabs = new LiteGUI.Tabs( null, { height: "100%" });
@@ -96,8 +101,14 @@ CodingTabsWidget.prototype.editInstanceCode = function( instance, options )
 {
 	options = options || {};
 
+	if(!instance)
+		return;
+
 	//extract info from instance
 	options = CodingModule.extractOptionsFromInstance( instance, options );
+	if(!options)
+		return;
+
 	var id = options.id;
 
 	//check if the tab already exists
@@ -274,7 +285,7 @@ CodingTabsWidget.prototype.onPlusTab = function(tab_id, e)
 
 	var scripts = LS.GlobalScene.findNodeComponents( LS.Components.Script );
 
-	var menu = new LiteGUI.ContextualMenu( options, { event: e, callback: function(value, options) {
+	var menu = new LiteGUI.ContextMenu( options, { event: e, callback: function(value, options) {
 		if(value == "Empty Tab")
 		{
 			that.onNewTab();
@@ -286,7 +297,7 @@ CodingTabsWidget.prototype.onPlusTab = function(tab_id, e)
 		else if(value == "Open")
 		{
 			var pad = that.onNewTab();
-			pad.onOpenCode();
+			pad.onOpenCode( true );
 		}
 	}});
 
@@ -348,10 +359,20 @@ CodingTabsWidget.prototype.onNewDataFile = function()
 
 CodingTabsWidget.prototype.onNewShaderFile = function()
 {
+	var that = this;
+	DriveModule.showCreateShaderDialog({filename: "shader.glsl", folder: "", on_complete: inner });
+
+	function inner( shader_code, filename, folder, fullpath)
+	{
+		that.editInstanceCode( shader_code, { id: shader_code.filename, title: shader_code.filename, lang: "glsl" });
+	}
+
+	/*
 	var shader_code = new LS.ShaderCode();
 	shader_code.filename = "unnamed_shader.glsl";
 	shader_code.register();
 	this.editInstanceCode( shader_code, { id: shader_code.filename, title: shader_code.filename, lang: "glsl" });
+	*/
 }
 
 //search for all the components that have a getCode function and inserts them

@@ -254,6 +254,9 @@ var CodingModule = //do not change
 	onCodeError: function( e,err )
 	{
 		//if it is an script of ours, open in code editor
+		if(!err.script)
+			return;
+
 		var tab = this.coding_tabs_widget.editInstanceCode( err.script );
 		if(!tab || !tab.pad)
 			return;

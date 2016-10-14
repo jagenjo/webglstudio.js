@@ -1,13 +1,18 @@
-function GraphTabsWidget()
+function GraphTabsWidget( options )
 {
 	this.root = null;
-	this.init();
+	this.init( options );
 }
 
-GraphTabsWidget.prototype.init = function()
+GraphTabsWidget.prototype.init = function( options )
 {
+	options = options || {};
+
 	//create area
 	this.root = LiteGUI.createElement("div",null,null,{ width:"100%", height:"100%" });
+
+	if( options.id )
+		this.root.id = options.id;
 	
 	//tabs for every file
 	var tabs = this.tabs = new LiteGUI.Tabs( null, { height: "100%" });
@@ -257,7 +262,7 @@ GraphTabsWidget.prototype.onPlusTab = function(tab_id, e)
 	if( scripts.length )
 		options.push("Open");
 
-	var menu = new LiteGUI.ContextualMenu( options, { event: e, callback: function(value, options) {
+	var menu = new LiteGUI.ContextMenu( options, { event: e, callback: function(value, options) {
 		if(value == "Create in Root")
 			that.onNewScript( LS.GlobalScene.root );
 		else if(value == "Create in Node")
@@ -272,7 +277,7 @@ GraphTabsWidget.prototype.onPlusTab = function(tab_id, e)
 			for(var i in scripts)
 				script_names.push({ title: scripts[i].name, component: scripts[i] });
 
-			var submenu = new LiteGUI.ContextualMenu( script_names, { event: options.event, callback: function(value) {
+			var submenu = new LiteGUI.ContextMenu( script_names, { event: options.event, callback: function(value) {
 				var component = value.component;
 				var node = component._root;
 				that.editInstanceCode( component, { id: component.uid, title: node.id, lang: "javascript", path: component.uid, help: LS.Components.Script.coding_help });

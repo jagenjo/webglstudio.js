@@ -11,6 +11,7 @@
 		"js/utils/canvasManager.js",
 		"js/utils/canvasElement.js",
 		"js/utils/canvasWidgets.js",
+		"js/tools/camera.js",
 		"js/tools/move.js",
 		"js/tools/rotate.js",
 		"js/tools/scale.js",

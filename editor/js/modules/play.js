@@ -145,16 +145,26 @@ var PlayModule = {
 
 	launch: function()
 	{
+		var that = this;
 		DriveModule.checkResourcesSaved( true, inner_ready );
 
 		function inner_ready()
 		{
-			//open window
-			var demo_window = window.open("player.html", "", "width=800, height=600");
-			demo_window.onload = launch;
-
 			//pass current scene
 			var scene_info = LS.GlobalScene.serialize();
+
+			//open window
+			var demo_window = that.demo_window;
+
+			if(!demo_window)
+			{
+				demo_window = window.open("player.html", "", "width=800, height=600")
+				demo_window.onload = launch;
+				demo_window.onclose = function(){ that.demo_window = null; }
+				that.demo_window = demo_window;
+			}
+			else
+				launch();
 
 			//play
 			function launch()

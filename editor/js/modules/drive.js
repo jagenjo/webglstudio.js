@@ -24,6 +24,7 @@ var DriveModule = {
 
 	categories_by_type: { "image/jpeg":"Texture", "image/jpg":"Texture", "image/webp": "Texture", "image/png": "Texture" },
 	categories_by_extension: { "obj": "Mesh", "txt": "Text", "dds":"Texture" },
+	ignore_thumbnail_for_extension: ["js","txt","html","css","csv","wav","mp3"],
 
 	root: null,
 
@@ -630,6 +631,9 @@ var DriveModule = {
 			if (v == "Save")
 			{
 				//var res = LS.ResourcesManager.resources[resource.fullpath];
+				if( resource.from_pack || resource.from_prefab )
+					return LiteGUI.alert("Resource belongs to Pack or Prefab, save that one instead: " + resource.from_pack ? resource.from_pack : resource.from_prefab );
+
 				if(!resource.fullpath)
 					return LiteGUI.alert("Resource must have a folder assigned");
 				DriveModule.saveResource( resource );
@@ -1361,6 +1365,16 @@ var DriveModule = {
 		if(resource._preview_url)
 			return resource._preview_url;
 
+		var ext = LS.RM.getExtension( resource.fullpath );
+		if( this.ignore_thumbnail_for_extension.indexOf( ext ) != -1 )
+			return null;
+		if(ext == "json")
+		{
+			var subext = LS.RM.getExtension( LS.RM.getBasename( resource.fullpath ) );
+			if(subext == "COMP")
+				return null;
+		}
+
 		resource._preview_url = LFS.getPreviewPath( resource.fullpath );
 		return resource._preview_url;
 	},
@@ -2029,19 +2043,31 @@ var DriveModule = {
 			else if(action == "Shader")
 				that.showCreateShaderDialog({filename: "shader.glsl", folder: folder });
 			else if(action == "Material")
-				that.showCreateMaterialDialog({filename: "material.json", folder: folder });
+				that.showResourceMaterialDialog({filename: "material.json", folder: folder });
 		}
 	},
 
-	showCreateMaterialDialog: function( options )
+	showResourceMaterialDialog: function( options )
 	{
 		var that = this;
 		options = options || {};
 		var filename = options.filename || "unnamed_material.json";
 		var folder = options.folder || this.current_folder;
 		var material_classname = "StandardMaterial";
+		var material = null;
+		var button_text = options.button || (options.material ? "Save" : "Create");
 
-		var dialog = new LiteGUI.Dialog( null, { title: "New Material", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
+		if(options.material)
+		{
+			material = options.material;
+			material_classname = LS.getObjectClassName( options.material );
+			if(material.fullpath)
+			{
+				filename = LS.RM.getFilename( material.fullpath );
+				folder = LS.RM.getFolder( material.fullpath );
+			}
+		}
+		var dialog = new LiteGUI.Dialog( null, { title: options.material ? "Material" : "New Material", fullcontent: true, closable: true, draggable: true, resizable: true, width: 400, height: 300 });
 		var inspector = new LiteGUI.Inspector();
 
 		inspector.addString("Filename",filename, function(v){ filename = v; });
@@ -2050,27 +2076,42 @@ var DriveModule = {
 		var materials_classes = [];
 		for(var i in LS.MaterialClasses)
 			materials_classes.push( i );
-		inspector.addCombo("Material Class", material_classname, { values: materials_classes, callback: function(v){ material_classname = v; }});
-		inspector.addButton(null,"Create", inner);
+		inspector.addCombo("Material Class", material_classname, { disabled: !!options.material, values: materials_classes, callback: function(v){ material_classname = v; }});
+		inspector.addButton(null, button_text , inner);
 
 		function inner()
 		{
-			var material_class = LS.MaterialClasses[ material_classname ];
-			if(!material_class)
+			if(!filename)
 				return;
-			var material = new material_class();
 			folder = folder || "";
+
+			var material = options.material;
+
+			if(!material)
+			{
+				var material_class = LS.MaterialClasses[ material_classname ];
+				if(!material_class)
+					return;
+				material = new material_class();
+			}
+
 			var fullpath = LS.RM.cleanFullpath( folder + "/" + filename );
-			material.fullpath = fullpath;
 			material.filename = filename;
+			material.fullpath = LS.RM.cleanFullpath( folder + "/" + filename );
+
 			LS.RM.registerResource( fullpath, material );
 			LS.RM.resourceModified( material );
 			if( LS.RM.getFolder( material.fullpath ) )
 			{
 				DriveModule.saveResource( material, function(){
 					that.refreshContent();
+					if(options.callback)
+						options.callback(material);
 				}, { skip_alerts: true });
 			}
+			else
+				if(options.callback)
+					options.callback( material );
 			that.refreshContent();
 			dialog.close();
 		}

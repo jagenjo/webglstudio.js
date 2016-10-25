@@ -192,11 +192,11 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 		else if( v == "Share" )
 		{
 			var resource = node.material;
+			var material = node.getMaterial();
 
 			//clone the material
 			if( typeof(resource) == "string" )
 			{
-				var material = node.getMaterial();
 				resource = material.clone();
 				delete resource.filename;
 				delete resource.fullpath;
@@ -207,10 +207,10 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 
 			resource.updatePreview( DriveModule.preview_size || 256 );
 
-			EditorModule.showCreateResource( resource, function(name, res){
-				node.material = name;			
+			DriveModule.showResourceMaterialDialog( { material: material, callback: function( material ){
+				node.material = material.fullpath || material.filename;
 				inspector.refresh();
-			});
+			}});
 		}
 		else if( v == "Clone" || v == "Instance" )
 		{

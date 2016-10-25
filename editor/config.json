@@ -1,5 +1,5 @@
 {
-	"version":"0.5",
+	"version":"0.6",
 	"server":"fileserver/src/",
 	"resources":"fileserver/files/",
 	"proxy":"@/proxy.php?url=",

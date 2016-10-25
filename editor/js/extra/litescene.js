@@ -2680,6 +2680,7 @@ var ResourcesManager = {
 	* @method loadResources
 	* @param {Object} resources contains all the resources, associated with its type
 	* @param {Object}[options={}] options to apply to the loaded resources
+	* @return {number} the actual amount of resources being loaded (this differs fromt he resources passed because some could be already in memory)
 	*/
 	loadResources: function(res, options )
 	{
@@ -2695,6 +2696,9 @@ var ResourcesManager = {
 
 		this._total_resources_to_load = this.num_resources_being_loaded;
 		LEvent.trigger( this, "start_loading_resources", this._total_resources_to_load );
+		if(!this._total_resources_to_load) //all resources were already in memory
+			LEvent.trigger( this, "end_loading_resources" );
+		return this._total_resources_to_load;
 	},	
 
 	/**
@@ -3076,7 +3080,7 @@ var ResourcesManager = {
 		var resource = null;
 		var extension = this.getExtension( url );
 
-		//ugly but I dont see a work around to create this
+		//callback to embede a parameter, ugly but I dont see a work around to create this
 		var process_final = function( url, resource, options ){
 			if(!resource)
 			{
@@ -3106,7 +3110,7 @@ var ResourcesManager = {
 
 		//special preprocessor
 		var preprocessor_callback = this.resource_pre_callbacks[ extension.toLowerCase() ];
-		if(preprocessor_callback)
+		if( preprocessor_callback )
 		{
 			//this callback should return the resource or true if it is processing it
 			var resource = preprocessor_callback( url, data, options, process_final );
@@ -3126,10 +3130,10 @@ var ResourcesManager = {
 			switch( format_info.type )
 			{
 				case "scene":
-					resource = LS.ResourcesManager.processASCIIScene( url, data, options, process_final );
+					resource = LS.ResourcesManager.processTextScene( url, data, options, process_final );
 					break;
 				case "mesh":
-					resource = LS.ResourcesManager.processASCIIMesh( url, data, options, process_final );
+					resource = LS.ResourcesManager.processTextMesh( url, data, options, process_final );
 					break;
 				case "texture":
 				case "image":
@@ -3475,6 +3479,7 @@ var ResourcesManager = {
 	* @method onceLoaded
 	* @param {String} fullpath of the resource you want to get the notification once is loaded
 	* @param {Function} callback the function to call, it will be called as callback( fullpath, resource )
+	* @return (number) index of the position in the array, use this index to cancel the event 
 	*/
 	onceLoaded: function( fullpath, callback )
 	{
@@ -3486,10 +3491,26 @@ var ResourcesManager = {
 		}
 
 		//avoid repeating
-		for(var i in array)
-			if( array[i] == callback )
-				return;
+		if( array.indexOf( callback ) != -1 )
+			return;
+
 		array.push( callback );
+		return array.length - 1;
+	},
+
+	/**
+	* Cancels the binding of a onceLoaded
+	*
+	* @method cancelOnceLoaded
+	* @param {String} fullpath fullpath of the resource you want to cancel the binding
+	* @param {number} index the index of the callback to cancel (as it was returned by onceLoaded)
+	*/
+	cancelOnceLoaded: function( fullpath, index )
+	{
+		var array = this.resource_once_callbacks[ fullpath ];
+		if(!array)
+			return;
+		array[ index ] = null;
 	},
 
 	//*************************************
@@ -3502,18 +3523,22 @@ var ResourcesManager = {
 
 		if(res)
 		{
-			for(var i in LS.ResourcesManager.resources_being_loaded[url])
-			{
-				if( LS.ResourcesManager.resources_being_loaded[url][i].callback != null )
-					LS.ResourcesManager.resources_being_loaded[url][i].callback( res, url );
-			}
+			//trigger all associated load callbacks
+			var callbacks_array = LS.ResourcesManager.resources_being_loaded[url];
+			if(callbacks_array)
+				for(var i = 0; i < callbacks_array.length; ++i )
+				{
+					if( callbacks_array[i].callback != null )
+						callbacks_array[i].callback( res, url );
+				}
 
 			//triggers 'once' callbacks
-			if(LS.ResourcesManager.resource_once_callbacks[ url ])
+			var callbacks_array = LS.ResourcesManager.resource_once_callbacks[url];
+			if(callbacks_array)
 			{
-				var v = LS.ResourcesManager.resource_once_callbacks[url];
-				for(var i in v)
-					v[i](url, res);
+				for(var i = 0; i < callbacks_array.length; ++i)
+					if(callbacks_array[i]) //could be null if it has been canceled
+						callbacks_array[i](url, res);
 				delete LS.ResourcesManager.resource_once_callbacks[url];
 			}
 		}
@@ -3808,8 +3833,8 @@ LS.ResourcesManager.processTexture = function(filename, img, options)
 	return texture;
 }
 
-//Transform ascii mesh data in a regular GL.Mesh
-LS.ResourcesManager.processASCIIMesh = function(filename, data, options) {
+//Transform text mesh data in a regular GL.Mesh
+LS.ResourcesManager.processTextMesh = function( filename, data, options ) {
 
 	var mesh_data = LS.Formats.parse( filename, data, options );
 
@@ -3824,7 +3849,7 @@ LS.ResourcesManager.processASCIIMesh = function(filename, data, options) {
 }
 
 //Transform scene data in a SceneNode
-LS.ResourcesManager.processASCIIScene = function( filename, data, options ) {
+LS.ResourcesManager.processTextScene = function( filename, data, options ) {
 	//options = options || {};
 
 	var scene_data = LS.Formats.parse( filename, data, options );
@@ -3864,13 +3889,6 @@ LS.ResourcesManager.processASCIIScene = function( filename, data, options ) {
 	return node;
 }
 
-//LS.ResourcesManager.registerResourcePreProcessor("jpg,jpeg,png,webp,gif", LS.ResourcesManager.processImage, "binary","Texture");
-//LS.ResourcesManager.registerResourcePreProcessor("dds,tga", LS.ResourcesManager.processImageNonNative );
-//LS.ResourcesManager.registerResourcePreProcessor("obj,ase", LS.ResourcesManager.processASCIIMesh, "text","Mesh");
-//LS.ResourcesManager.registerResourcePreProcessor("stl", LS.ResourcesManager.processASCIIMesh, "binary","Mesh");
-//LS.ResourcesManager.registerResourcePreProcessor("dae", LS.ResourcesManager.processASCIIScene, "text", "SceneTree");
-
-
 // Post processors **********************************************************************************
 // Take a resource already processed and does some final actions (like validate, register or compute metadata)
 
@@ -3897,12 +3915,12 @@ LS.ResourcesManager.registerResourcePostProcessor("Mesh", function(filename, mes
 });
 
 LS.ResourcesManager.registerResourcePostProcessor("Texture", function( filename, texture ) {
-	//store
+	//store in appropiate container
 	LS.ResourcesManager.textures[filename] = texture;
 });
 
 LS.ResourcesManager.registerResourcePostProcessor("Material", function( filename, material ) {
-	//store
+	//store in appropiate containers
 	LS.ResourcesManager.materials[filename] = material;
 	LS.ResourcesManager.materials_by_uid[ material.uid ] = material;
 	if(material.prepare)
@@ -3915,12 +3933,12 @@ LS.ResourcesManager.registerResourcePostProcessor("Pack", function( filename, pa
 });
 
 LS.ResourcesManager.registerResourcePostProcessor("Prefab", function( filename, prefab ) {
-	//apply to nodes in the scene
+	//apply to nodes in the scene that use this prefab
 	prefab.applyToNodes();
 });
 
 LS.ResourcesManager.registerResourcePostProcessor("ShaderCode", function( filename, shader_code ) {
-	//apply to materials
+	//apply to materials that are using this ShaderCode
 	shader_code.applyToMaterials();
 });
 
@@ -6193,7 +6211,7 @@ function Material( o )
 	this._queue = LS.RenderQueue.DEFAULT;
 
 	//render state: which flags should be used (in StandardMaterial this is overwritten due to the multipass lighting)
-	//TODO: render states should be moved to render passes defined by the shadercode in the future to allow multipasses like outline render
+	//TODO: render states should be moved to render passes defined by the shadercode in the future to allow multipasses like cellshading outline render
 	this._render_state = new LS.RenderState();
 	this._light_mode = LS.Material.NO_LIGHTS;
 
@@ -6937,7 +6955,7 @@ function StandardMaterial(o)
 	this.blend_mode = LS.Blend.NORMAL;
 
 	this.createProperty("ambient", new Float32Array([1.0,1.0,1.0]), "color" );
-	this.createProperty("emissive", new Float32Array(3), "color" );
+	this.createProperty("emissive", new Float32Array([0,0,0,0]), "color" );
 	//this.emissive = new Float32Array([0.0,0.0,0.0]);
 	this.backlight_factor = 0;
 
@@ -6998,6 +7016,12 @@ Object.defineProperty( StandardMaterial.prototype, 'detail_scale', {
 	enumerable: true
 });
 
+Object.defineProperty( StandardMaterial.prototype, 'emissive_extra', {
+	get: function() { return this._emissive[3]; },
+	set: function(v) { this._emissive[3] = v; },
+	enumerable: true
+});
+
 Object.defineProperty( StandardMaterial.prototype, 'extra_factor', {
 	get: function() { return this._extra_data[3]; },
 	set: function(v) { this._extra_data[3] = v; },
@@ -7012,7 +7036,10 @@ Object.defineProperty( StandardMaterial.prototype, 'extra_color', {
 
 Object.defineProperty( StandardMaterial.prototype, 'specular_factor', {
 	get: function() { return this._specular_data[0]; },
-	set: function(v) { this._specular_data[0] = v; },
+	set: function(v) { 
+		if( v != null && v.constructor === Number)
+			this._specular_data[0] = v;
+	},
 	enumerable: true
 });
 
@@ -7202,7 +7229,7 @@ StandardMaterial.prototype.fillUniforms = function( scene, options )
 	else
 		uniforms.u_ambient_color = this.ambient;
 
-	uniforms.u_emissive_color = this.emissive || vec3.create();
+	uniforms.u_emissive_color = this.emissive || vec4.create();
 	uniforms.u_specular = this._specular_data;
 	uniforms.u_reflection_info = [ (this.reflection_additive ? -this.reflection_factor : this.reflection_factor), this.reflection_fresnel ];
 	uniforms.u_backlight_factor = this.backlight_factor;
@@ -7288,6 +7315,7 @@ StandardMaterial.prototype.setProperty = function(name, value)
 		case "displacementmap_factor":
 		case "extra_factor":
 		case "detail_factor":
+		case "emissive_extra":
 		//strings
 		case "shader_name":
 		//bools
@@ -7349,6 +7377,7 @@ StandardMaterial.prototype.getPropertiesInfo = function()
 
 		normalmap_factor: LS.TYPES.NUMBER,
 		displacementmap_factor: LS.TYPES.NUMBER,
+		emissive_extra: LS.TYPES.NUMBER,
 		extra_factor: LS.TYPES.NUMBER,
 		extra_surface_shader_code: LS.TYPES.STRING,
 
@@ -7389,6 +7418,7 @@ StandardMaterial.prototype.getPropertyInfoFromPath = function( path )
 		case "velvet_exp":
 		case "normalmap_factor":
 		case "displacementmap_factor":
+		case "emissive_extra":
 		case "extra_factor":
 		case "detail_factor":
 			type = LS.TYPES.NUMBER; break;
@@ -9781,9 +9811,14 @@ Animation.DEFAULT_DURATION = 10;
 
 Animation.prototype.createTake = function( name, duration )
 {
+	if(!name)
+		throw("Animation Take name missing");
+
 	var take = new Animation.Take();
 	take.name = name;
-	take.duration = duration || 0;
+	take.duration = duration;
+	if(duration === undefined)
+		take.duration = Animation.DEFAULT_DURATION;
 	this.addTake( take );
 	return take;
 }
@@ -9797,6 +9832,26 @@ Animation.prototype.addTake = function(take)
 Animation.prototype.getTake = function( name )
 {
 	return this.takes[ name ];
+}
+
+Animation.prototype.renameTake = function( old_name, new_name )
+{
+	var take = this.takes[ old_name ];
+	if(!take)
+		return;
+	delete this.takes[ old_name ];
+	take.name = new_name;
+	this.takes[ new_name ] = take;
+	LEvent.trigger( this, "take_renamed", [old_name, new_name] );
+}
+
+Animation.prototype.removeTake = function( name )
+{
+	var take = this.takes[ name ];
+	if(!take)
+		return;
+	delete this.takes[ name ];
+	LEvent.trigger( this, "take_removed", name );
 }
 
 Animation.prototype.getNumTakes = function()
@@ -14578,6 +14633,71 @@ LS.Tween = {
 	}
 };
 
+//WORK IN PROGRESS
+
+/** SpatialContainer
+* This class allows to store data spatially so it can be retrieved by proximity or by camera frustum view.
+* It can store objects associated with a bounding box.
+* It is used by the renderer to store all the RenderInstances, Lights and Colliders
+* IT IS A WORK IN PROGRESS SO FOR NOW IT DO NOT STORES THE INFO SPATIALLY, IT JUST EXPOSES AN INTERFACE
+* @class SpatialContainer
+*/
+
+function SpatialContainer()
+{
+	this.size = 100000;
+	this.root = [];
+	this.objecs_cell_by_id = new WeakMap();
+}
+
+//adds a new object to the container
+SpatialContainer.prototype.add = function( object, bounding )
+{
+	this.root.push( object );
+	this.objecs_cell_by_id.set( object, this.root ); //in which container is
+	return object.uid;
+}
+
+SpatialContainer.prototype.updateBounding = function( object, new_bounding )
+{
+	//...
+}
+
+
+//adds a new object to the container
+SpatialContainer.prototype.remove = function( object, bounding )
+{
+	var cell = 	this.objecs_cell_by_id.get( object );
+	if(!cell)
+		return;
+	var index = cell.indexOf( object );
+	if(index !== -1)
+		this.root.splice( index, 1 );
+	this.objecs_cell_by_id.delete( object );
+}
+
+//retrieves a list of objects overlaping this area
+SpatialContainer.prototype.retrieve = function( bounding )
+{
+	//TODO: search cells that lay inside the bounding
+	return this.root;
+}
+
+//retrieves a list of objects overlaping this area
+SpatialContainer.prototype.retrieveFromCamera = function( camera )
+{
+	//TODO: search cells that lay inside the frustum
+	return this.root;
+}
+
+
+SpatialContainer.prototype.clear = function()
+{
+	this.root.length = 0;
+	this.objecs_cell_by_id = new WeakMap();
+}
+
+LS.SpatialContainer = SpatialContainer;
 /** RenderSettings contains how the scene should be renderer 
 * There could be different renderSettings for different scene quality.
 * @class RenderSettings
@@ -14871,6 +14991,7 @@ RenderState.prototype.configure = function(o)
 LS.RenderState = RenderState;
 /**
 * RenderInstance contains info of one object to be rendered on the scene.
+* It shouldnt contain ids to resources (strings), instead if must contain the direct reference (to mesh, material)
 *
 * @class RenderInstance
 * @namespace LS
@@ -14879,9 +15000,8 @@ LS.RenderState = RenderState;
 
 function RenderInstance( node, component )
 {
-	this._key = ""; //not used yet
 	this.uid = LS.generateUId("RINS"); //unique identifier for this RI
-	this.layers = 3;
+	this.layers = 3; //in layer 1 and 2 by default
 	this.index = -1; //used to know the rendering order
 
 	//info about the mesh
@@ -14914,8 +15034,8 @@ function RenderInstance( node, component )
 	this.aabb = BBox.create(); //axis aligned bounding box
 
 	//info about the material
-	this.material = null;
-	this.use_bounding = true;
+	this.material = null; //the material, cannot be a string
+	this.use_bounding = true; //in case it has vertex shader deformers the bounding box is not usable
 
 	//for extra data for the shader
 	this.query = new LS.ShaderQuery();
@@ -14933,15 +15053,6 @@ function RenderInstance( node, component )
 	this._dist = 0; //computed during rendering, tells the distance to the current camera
 	this._final_query = new LS.ShaderQuery();
 }
-
-/*
-//not used
-RenderInstance.prototype.generateKey = function(step, options)
-{
-	this._key = step + "|" + this.node.uid + "|" + this.material.uid + "|";
-	return this._key;
-}
-*/
 
 //set the material and apply material flags to render instance
 RenderInstance.prototype.setMatrix = function(matrix, normal_matrix)
@@ -16922,6 +17033,12 @@ var Renderer = {
 	{
 		options = options || {};
 
+		if(!material)
+		{
+			console.error("No material provided to renderMaterialPreview");
+			return;
+		}
+
 		//create scene
 		var scene = this._material_scene;
 		if(!scene)
@@ -16953,7 +17070,15 @@ var Renderer = {
 		if(options.rotate)
 			node.transform.rotateY( options.rotate );
 
-		node.material = material;
+		var new_material = null;
+		if( material.constructor === String )
+			new_material = material;
+		else
+		{
+			new_material = new material.constructor();
+			new_material.configure( material.serialize() );
+		}
+		node.material = new_material;
 
 		if(options.to_viewport)
 		{
@@ -17718,12 +17843,14 @@ var Picking = {
 		var instances = null;
 		if(1) //not tested yet
 		{
-			instances = [];
 			var ray = camera.getRayInPixel( mouse_pos[0], mouse_pos[1] );
 			var instances_collisions = LS.Physics.raycastRenderInstances( ray.origin, ray.direction );
-			instances.length = instances_collisions.length;
-			for(var i = 0; i < instances_collisions.length; ++i)
-				instances[i] = instances_collisions[i].instance;
+			if( instances_collisions )
+			{
+				instances = Array( instances_collisions.length );
+				for(var i = 0; i < instances_collisions.length; ++i)
+					instances[i] = instances_collisions[i].instance;
+			}
 			//console.log("Instances ray collided:", instances_collisions.length);
 		}
 
@@ -19608,18 +19735,20 @@ function Camera(o)
 	this._type = Camera.PERSPECTIVE;
 
 	//contain the eye, center, up if local space
-	this._eye = vec3.fromValues(0,100, 100); //TODO: change to position
-	this._center = vec3.fromValues(0,0,0);	//TODO: change to target
-	this._up = vec3.fromValues(0,1,0);
+	this._eye = vec3.clone( Camera.DEFAULT_EYE ); //TODO: change to position
+	this._center = vec3.clone( Camera.DEFAULT_CENTER );	//TODO: change to target
+	this._up = vec3.clone( Camera.DEFAULT_UP );
 
 	//in global coordinates
-	this._global_eye = vec3.fromValues(0,100,100);
-	this._global_center = vec3.fromValues(0,0,0);
-	this._global_up = vec3.fromValues(0,1,0);
-	this._global_front = vec3.fromValues(0,0,-1);
+	this._global_eye = vec3.clone(this._eye);
+	this._global_center = vec3.clone(this._center);
+	this._global_up = vec3.clone(this._up);
+	this._global_front = vec3.create();
+	vec3.sub( this._global_front, this._global_center, this._global_eye );
+	vec3.normalize( this._global_front, this._global_front );
 
 	//clipping planes
-	this._near = 1;
+	this._near = 0.1;
 	this._far = 1000;
 
 	//orthographics planes (near and far took from ._near and ._far)
@@ -19680,6 +19809,10 @@ Camera.icon = "mini-icon-camera.png";
 Camera.PERSPECTIVE = 1;
 Camera.ORTHOGRAPHIC = 2; //orthographic adapted to aspect ratio of viewport
 Camera.ORTHO2D = 3; //orthographic with manually defined left,right,top,bottom
+
+Camera.DEFAULT_EYE = [0,0,0];
+Camera.DEFAULT_CENTER = [0,0,-100];
+Camera.DEFAULT_UP = [0,1,0];
 
 Camera["@type"] = { type: "enum", values: { "perspective": Camera.PERSPECTIVE, "orthographic": Camera.ORTHOGRAPHIC, "ortho2D": Camera.ORTHO2D } };
 Camera["@eye"] = { type: "vec3", widget: "position" };
@@ -19783,6 +19916,7 @@ Object.defineProperty( Camera.prototype, "center", {
 
 /**
 * The distance between the center and the eye point
+* When focalLength is modified it will change the center so it matches the distance.
 * @property focalLength {Number}
 * @default (depends)
 */
@@ -20077,13 +20211,14 @@ Camera.prototype.onCollectCameras = function(e, cameras)
 * @param {vec3} center
 * @param {vec3} up
 */
-Camera.prototype.lookAt = function(eye,center,up)
+Camera.prototype.lookAt = function( eye, center, up )
 {
 	if( this._root && this._root.transform )
 	{
 		this._root.transform.lookAt(eye,center,up);
 		this._eye.set(LS.ZEROS);
-		this.focalLength = vec3.distance( eye, center );
+		this._up.set([0,1,0]);
+		this.focalLength = vec3.distance( eye, center ); //changes the center
 	}
 	else
 	{
@@ -20091,6 +20226,20 @@ Camera.prototype.lookAt = function(eye,center,up)
 		vec3.copy(this._center, center);
 		vec3.copy(this._up,up);
 	}
+	this._must_update_view_matrix = true;
+}
+
+/**
+* resets eye, center and up, so they are in [0,0,0],[0,0,-focalDist] and [0,1,0]
+* @method resetVectors
+* @param {number} focalDist [optional] it not set it will be 1
+*/
+Camera.prototype.resetVectors = function(focalDist)
+{
+	focalDist = focalDist || 1;
+	this._eye.set([0,0,0]);
+	this._center.set([0,0,-focalDist]);
+	this._up.set([0,1,0]);
 	this._must_update_view_matrix = true;
 }
 
@@ -22532,27 +22681,28 @@ LightFX.prototype.onResourceRenamed = function (old_name, new_name, resource)
 */
 function MeshRenderer(o)
 {
-	this.enabled = true;
+	this._enabled = true;
 
 	/**
 	* The name of the mesh to render
 	* @property mesh {string}
 	* @default null;
 	*/
-	this.mesh = null;
+	this._mesh = null;
 	/**
 	* The name of the mesh to render in case the mesh is far away, this mesh is also used for collision testing if using raycast to RenderInstances
 	* @property lod_mesh {string}
 	* @default null;
 	*/
-	this.lod_mesh = null;
+	this._lod_mesh = null;
 	/**
 	* The id of the submesh group to render, if the id is -1 then all the mesh is rendered.
 	* @property submesh_id {number}
 	* @default -1;
 	*/
-	this.submesh_id = -1;
-	this.material = null;
+	this._submesh_id = -1;
+
+	this._material = null;
 	/**
 	* The GL primitive to use when rendering this mesh (gl.POINTS, gl.TRIANGLES, etc), -1 is default, it also supports the option 10 which means Wireframe
 	* @property primitive {number}
@@ -22573,8 +22723,6 @@ function MeshRenderer(o)
 	*/
 	this.textured_points = false;
 
-	this.material = null;
-
 	this._must_update_static = true; //used in static meshes
 	this._transform_version = -1;
 
@@ -22586,10 +22734,19 @@ function MeshRenderer(o)
 		this.configure(o);
 
 	this._RI = new LS.RenderInstance( null, this );
-
-	if(!MeshRenderer._identity) //used to avoir garbage
-		MeshRenderer._identity = mat4.create();
+	//this._RIs = [];
+	this._is_attached = false;
 }
+
+Object.defineProperty( MeshRenderer.prototype, 'enabled', {
+	get: function() { return this._enabled; },
+	set: function(v) { 
+		v = !!v;
+		this._enabled = v;
+		this.checkRenderInstances();
+	},
+	enumerable: true
+});
 
 Object.defineProperty( MeshRenderer.prototype, 'primitive', {
 	get: function() { return this._primitive; },
@@ -22598,6 +22755,34 @@ Object.defineProperty( MeshRenderer.prototype, 'primitive', {
 		if( v < -1 || v > 10 )
 			return;
 		this._primitive = v;
+		this.updateRIs();
+	},
+	enumerable: true
+});
+
+Object.defineProperty( MeshRenderer.prototype, 'material', {
+	get: function() { return this._material; },
+	set: function(v) { 
+		this._material = v;
+		this.updateRIs();
+	},
+	enumerable: true
+});
+
+Object.defineProperty( MeshRenderer.prototype, 'mesh', {
+	get: function() { return this._mesh; },
+	set: function(v) { 
+		this._mesh = v;
+		this.updateRIs();
+	},
+	enumerable: true
+});
+
+Object.defineProperty( MeshRenderer.prototype, 'lod_mesh', {
+	get: function() { return this._lod_mesh; },
+	set: function(v) { 
+		this._lod_mesh = v;
+		this.updateRIs();
 	},
 	enumerable: true
 });
@@ -22626,20 +22811,29 @@ MeshRenderer["@use_submaterials"] = { type: LS.TYPES.BOOLEAN, widget: null }; //
 MeshRenderer["@submaterials"] = { widget: null }; //avoid 
 
 //we bind to onAddedToNode because the event is triggered per node so we know which RIs belong to which node
-MeshRenderer.prototype.onAddedToNode = function(node)
+MeshRenderer.prototype.onAddedToScene = function( scene )
 {
-	if(!node.meshrenderer)
-		node.meshrenderer = this;
-	this._RI.node = node;
-	LEvent.bind(node, "collectRenderInstances", this.onCollectInstances, this);
+	this.checkRenderInstances();
 }
 
-MeshRenderer.prototype.onRemovedFromNode = function(node)
+MeshRenderer.prototype.onRemovedFromScene = function( scene )
 {
-	if(node.meshrenderer)
-		delete node["meshrenderer"];
-	LEvent.unbind(node, "collectRenderInstances", this.onCollectInstances, this);
+	this.checkRenderInstances();
 }
+
+MeshRenderer.prototype.onAddedToNode = function( node )
+{
+	LEvent.bind( node, "materialChanged", this.updateRIs, this );
+	LEvent.bind( node, "collectRenderInstances", this.onCollectInstances, this );
+	this._RI.node = node;
+}
+
+MeshRenderer.prototype.onRemovedFromNode = function( node )
+{
+	LEvent.unbind( node, "materialChanged", this.updateRIs, this );
+	LEvent.unbind( node, "collectRenderInstances", this.onCollectInstances, this );
+}
+
 
 /**
 * Configure from a serialized object
@@ -22747,11 +22941,121 @@ MeshRenderer.prototype.onResourceRenamed = function (old_name, new_name, resourc
 				this.morph_targets[i].mesh = new_name;
 }
 
+MeshRenderer.prototype.checkRenderInstances = function()
+{
+	return;
+
+	var should_be_attached = this._enabled && this._root.scene;
+
+	if( should_be_attached && !this._is_attached )
+	{
+		this._root.scene.attachSceneElement( this._RI );
+		this._is_attached = true;
+	}
+	else if( !should_be_attached && this._is_attached )
+	{
+		this._root.scene.detachSceneElement( this._RI );
+		this._is_attached = false;
+	}
+}
+
+//called everytime something affecting this RIs configuration changes
+MeshRenderer.prototype.updateRIs = function()
+{
+	return;
+
+	var node = this._root;
+	if(!node)
+		return;
+
+	var RI = this._RI;
+	var is_static = this._root.flags && this._root.flags.is_static;
+	var transform = this._root.transform;
+
+	//optimize: TODO
+	//if( is_static && LS.allow_static && !this._must_update_static && (!transform || (transform && this._transform_version == transform._version)) )
+	//	return instances.push( RI );
+
+	//matrix: do not need to update, already done
+	RI.setMatrix( this._root.transform._global_matrix );
+	//this._root.transform.getGlobalMatrix( RI.matrix );
+	mat4.multiplyVec3( RI.center, RI.matrix, LS.ZEROS );
+
+	//material (after flags because it modifies the flags)
+	var material = null;
+	if(this.material)
+		material = LS.ResourcesManager.getResource( this.material );
+	else
+		material = this._root.getMaterial();
+	RI.setMaterial( material );
+
+	//buffers from mesh and bounding
+	var mesh = LS.ResourcesManager.getMesh( this._mesh );
+	if( mesh )
+	{
+		RI.setMesh( mesh, this.primitive );
+		if(this._submesh_id != -1 && this._submesh_id != null && mesh.info && mesh.info.groups)
+		{
+			var group = mesh.info.groups[this._submesh_id];
+			if(group)
+				RI.setRange( group.start, group.length );
+		}
+		else
+			RI.setRange(0,-1);
+	}
+	else
+	{
+		RI.setMesh( null );
+		RI.setRange(0,-1);
+		if(this._once_binding_index != null)
+			this._once_binding_index = LS.ResourcesManager.onceLoaded( this._mesh, this.updateRIs.bind(this ) );
+	}
+
+	//used for raycasting
+	if(this.lod_mesh)
+	{
+		if( this.lod_mesh.constructor === String )
+			RI.collision_mesh = LS.ResourcesManager.resources[ this.lod_mesh ];
+		else
+			RI.collision_mesh = this.lod_mesh;
+		RI.setLODMesh( RI.collision_mesh );
+	}
+	else
+		RI.collision_mesh = mesh;
+
+	if(this.primitive == gl.POINTS)
+	{
+		RI.uniforms.u_point_size = this.point_size;
+		RI.query.macros["USE_POINTS"] = "";
+		if(this.textured_points)
+			RI.query.macros["USE_TEXTURED_POINTS"] = "";
+	}
+	
+	if(!this.textured_points && RI.query.macros["USE_TEXTURED_POINTS"])
+		delete RI.query.macros["USE_TEXTURED_POINTS"];
+
+
+
+	//mark it as ready once no more changes should be applied
+	if( is_static && LS.allow_static && !this.isLoading() )
+	{
+		this._must_update_static = false;
+		this._transform_version = transform ? transform._version : 0;
+	}
+}
+
+//*
 //MeshRenderer.prototype.getRenderInstance = function(options)
 MeshRenderer.prototype.onCollectInstances = function(e, instances)
 {
-	if(!this.enabled)
+	if(!this._enabled)
 		return;
+
+	if(this.use_submaterials)
+	{
+		this.onCollectInstancesSubmaterials(instances);
+		return;
+	}
 
 	var mesh = this.getAnyMesh();
 	if(!mesh)
@@ -22761,26 +23065,19 @@ MeshRenderer.prototype.onCollectInstances = function(e, instances)
 	if(!this._root)
 		return;
 
-	if(this.use_submaterials)
-	{
-		this.onCollectInstancesSubmaterials(instances);
-		return;
-	}
-
 	var RI = this._RI;
 	var is_static = this._root.flags && this._root.flags.is_static;
 	var transform = this._root.transform;
 
 	//optimize
-	if( is_static && LS.allow_static && !this._must_update_static && (!transform || (transform && this._transform_version == transform._version)) )
-		return instances.push( RI );
-
+	//if( is_static && LS.allow_static && !this._must_update_static && (!transform || (transform && this._transform_version == transform._version)) )
+	//	return instances.push( RI );
 
 
 	//matrix: do not need to update, already done
 	RI.setMatrix( this._root.transform._global_matrix );
 	//this._root.transform.getGlobalMatrix(RI.matrix);
-	mat4.multiplyVec3( RI.center, RI.matrix, vec3.create() );
+	mat4.multiplyVec3( RI.center, RI.matrix, LS.ZEROS );
 
 	//material (after flags because it modifies the flags)
 	var material = null;
@@ -22887,6 +23184,7 @@ MeshRenderer.prototype.onCollectInstancesSubmaterials = function(instances)
 			first_RI = RI;
 	}
 }
+//*/
 
 //test if any of the assets is being loaded
 MeshRenderer.prototype.isLoading = function()
@@ -28551,8 +28849,8 @@ PlayAnimation.prototype.configure = function(o)
 	if(o.play) //LEGACY
 		delete o.play;
 
-	if(o.enabled)
-		this.enabled = true;
+	if(o.enabled !== undefined)
+		this.enabled = !!o.enabled;
 	if(o.range) 
 		this.range = o.range.concat();
 	if(o.mode !== undefined) 
@@ -30283,137 +30581,6 @@ Cloner.prototype.onUpdateInstances = function(e, dt)
 
 
 LS.registerComponent(Cloner);
-/**
-* Spherize deforms a mesh, it is an example of a deformer, a component that modifies the meshes of one node
-* @class Spherize
-* @constructor
-* @param {String} object to configure from
-*/
-
-function Spherize(o)
-{
-	this.enabled = true;
-	this._num_id = LS._last_uid++;
-	this.radius = 10;
-	this.center = vec3.create();
-	this.factor = 0.5;
-
-	this._uniforms_code = Spherize._uniforms_code.replaceAll({"@": this._num_id});
-	this._code = Spherize._code.replaceAll({"@": this._num_id});
-	
-	if(o)
-		this.configure(o);
-}
-
-Spherize["@factor"] = { type: "number", step: 0.001 };
-Spherize["@center"] = { type: "position", step: 0.001 };
-
-Spherize.icon = "mini-icon-circle.png";
-
-Spherize.prototype.onAddedToNode = function( node )
-{
-	LEvent.bind( node, "computingShaderQuery", this.onShaderQuery, this);
-	LEvent.bind( node, "computingShaderUniforms", this.onUniforms, this);
-}
-
-
-Spherize.prototype.onRemovedFromNode = function(node)
-{
-	LEvent.unbindAll(node,this);
-}
-
-Spherize._uniforms_code = "uniform vec3 u_spherize_center@; uniform float u_spherize_radius@; uniform float u_spherize_factor@;";
-Spherize._code = "\
-	vec3 off@ = vertex4.xyz - u_spherize_center@;\
-    float dist@ = length(off@);\
-	vec3 vn@ = off@ / dist@;\
-	float factor@ = max(0.0, u_spherize_factor@ / dist@ );\
-	vertex4.xyz = mix(vertex4.xyz, vn@ * u_spherize_radius@, factor@);\
-	v_normal = (mix(v_normal, vn@, clamp(0.0,1.0,factor@)));\
-";
-
-Spherize.prototype.onShaderQuery = function(e, query)
-{
-	if(!this.enabled)
-		return;
-
-	if(query.macros.USE_VERTEX_SHADER_UNIFORMS)
-		query.macros.USE_VERTEX_SHADER_UNIFORMS += this._uniforms_code;
-	else
-		query.macros.USE_VERTEX_SHADER_UNIFORMS = this._uniforms_code;
-
-	if(query.macros.USE_VERTEX_SHADER_CODE)
-		query.macros.USE_VERTEX_SHADER_CODE += this._code;
-	else
-		query.macros.USE_VERTEX_SHADER_CODE = this._code;
-}
-
-Spherize.prototype.onUniforms = function(e, uniforms)
-{
-	if(!this.enabled)
-		return;
-
-	uniforms["u_spherize_center" + this._num_id ] = this.center;
-	uniforms["u_spherize_radius" + this._num_id ] = this.radius;
-	uniforms["u_spherize_factor" + this._num_id ] = this.factor;
-}
-
-Spherize.prototype.renderEditor = function(node_selected, component_selected)
-{
-	if(!this.enabled)
-		return;
-
-	//if node is selected, render frustrum
-	if (node_selected && this.enabled)
-	{
-		Draw.setPointSize(6);
-		Draw.setColor([0.33,0.874,0.56, component_selected ? 0.8 : 0.5 ]);
-		var pos = vec3.clone(this.center);
-		if(this._root && this._root.transform)
-			vec3.transformMat4( pos, pos, this._root.transform._global_matrix );
-		Draw.renderRoundPoints( pos );
-	}
-}
-
-//Mostly used for gizmos
-Spherize.prototype.getTransformMatrix = function( element )
-{
-	if( !this._root || !this._root.transform )
-		return null; //use the node transform
-
-	var p = null;
-	if (element == "center")
-		p = this.center;
-	else
-		return false;
-
-	var T = mat4.clone( this._root.transform._global_matrix );
-	mat4.translate( T, T, p );
-	return T;
-}
-
-Spherize.prototype.renderPicking = function(ray)
-{
-	var pos = vec3.clone(this.center);
-	if(this._root && this._root.transform)
-		vec3.transformMat4( pos, pos, this._root.transform._global_matrix );
-	EditorView.addPickingPoint( pos, 4, { instance: this, info: "center" } );
-}
-
-Spherize.prototype.applyTransformMatrix = function( matrix, center, element )
-{
-	if( !this._root || !this._root.transform )
-		return false; //ignore transform
-
-	if (element != "center")
-		return false;
-
-	var p = this.center;
-	mat4.multiplyVec3( p, matrix, p );
-	return true;
-}
-
-LS.registerComponent( Spherize );
 //WORK IN PROGRESS: NOT FINISHED
 
 /**
@@ -31141,6 +31308,8 @@ InteractiveController.prototype._onMouse = function(type, e)
 			LEvent.trigger( this._clicked_node, "clicked", this._clicked_node ); //event in node clicked
 			LEvent.trigger( this._root, "node_clicked", this._clicked_node ); //event in this node
 			LEvent.trigger( this._root.scene, "node_clicked", this._clicked_node ); //event in scene
+			if(this.onNodeClicked) //extra method, if you inject a new method in this component
+				this.onNodeClicked( this._clicked_node );
 		}
 	}
 
@@ -31196,12 +31365,6 @@ LS.Formats = {
 				console.warn("There is already another parser associated to this extension: " + extension);
 			this.supported[ extension ] = info;
 		}
-	},
-
-	//register a parser in case the system needs to parse a file
-	registerParser: function( parser )
-	{
-		this.addSupportedFormat( parser.extension, parser );
 	},
 
 	/**
@@ -31565,7 +31728,7 @@ var parserASE = {
 	}
 };
 
-LS.Formats.registerParser( parserASE );
+LS.Formats.addSupportedFormat( "ase", parserASE );
 
 //***** BVH Parser *****************
 var parserBVH = {
@@ -31720,7 +31883,7 @@ var parserBVH = {
 	}
 };
 
-LS.Formats.registerParser( parserBVH );
+LS.Formats.addSupportedFormat( "bvh", parserBVH );
 // Collada.js  https://github.com/jagenjo/collada.js
 // Javi Agenjo 2015 
 // Specification from https://www.khronos.org/collada/wiki
@@ -34646,6 +34809,10 @@ var parserDAE = {
 				material.opacity = material.transparency; //why? dont know but works
 		}
 
+		//collada supports materials with colors as specular_factor but StandardMaterial only support one value
+		if(material.specular_factor && material.specular_factor.length)
+			material.specular_factor = material.specular_factor[0];
+
 		if(material.textures)
 		{
 			for(var i in material.textures)
@@ -34664,7 +34831,7 @@ var parserDAE = {
 	}
 };
 
-LS.Formats.registerParser( parserDAE );
+LS.Formats.addSupportedFormat( "dae", parserDAE );
 
 var parserDDS = { 
 	extension: "dds",
@@ -34691,7 +34858,7 @@ var parserDDS = {
 	}
 };
 
-LS.Formats.registerParser( parserDDS );
+LS.Formats.addSupportedFormat( "dds", parserDDS );
 //legacy format
 var parserJSMesh = { 
 	extension: 'jsmesh',
@@ -34727,7 +34894,7 @@ var parserJSMesh = {
 	}
 };
 
-LS.Formats.registerParser(parserJSMesh);
+LS.Formats.addSupportedFormat( "jsmesh", parserJSMesh );
 
 //***** OBJ parser adapted from SpiderGL implementation *****************
 var parserOBJ = {
@@ -35070,9 +35237,7 @@ var parserOBJ = {
 	}
 };
 
-LS.Formats.registerParser( parserOBJ );
-
-
+LS.Formats.addSupportedFormat( "obj", parserOBJ );
 
 
 //***** MTL parser *****************
@@ -35184,7 +35349,7 @@ var parserMTL = {
 	}
 };
 
-LS.Formats.registerParser( parserMTL );
+LS.Formats.addSupportedFormat( "mtl", parserMTL );
 //***** STL Parser *****************
 //based on https://github.com/tonylukasavage/jsstl
 var parserSTL = {
@@ -35271,7 +35436,7 @@ var parserSTL = {
 	}
 };
 
-LS.Formats.registerParser( parserSTL );
+LS.Formats.addSupportedFormat( "stl", parserSTL );
 
 var parserTGA = { 
 	extension: 'tga',
@@ -35328,7 +35493,7 @@ var parserTGA = {
 	}
 };
 
-LS.Formats.registerParser( parserTGA );
+LS.Formats.addSupportedFormat( "tga", parserTGA );
 //3dcgart format
 
 var parserCGArtMesh = { 
@@ -35500,7 +35665,7 @@ var parserCGArtMesh = {
 	}
 };
 
-LS.Formats.registerParser( parserCGArtMesh );
+LS.Formats.addSupportedFormat( "cgart", parserCGArtMesh );
 
 
 //GR2
@@ -35527,7 +35692,7 @@ var parserGR2 = {
 	}
 };
 
-LS.Formats.registerParser( parserGR2 );
+LS.Formats.addSupportedFormat( "gr2", parserGR2 );
 
 
 
@@ -35556,6 +35721,9 @@ function SceneTree()
 	this._lights = [];
 	this._cameras = [];
 	this._colliders = [];
+
+	//work in progress, not finished yet. This will contain all the objects
+	this._spatial_container = new LS.SpatialContainer();
 
 	this.external_scripts = []; //external scripts that must be loaded before initializing the scene (mostly libraries used by this scene)
 	this.global_scripts = []; //scripts that are located in the resources folder and must be loaded before launching the app
@@ -35608,8 +35776,18 @@ Object.defineProperty( SceneTree.prototype, "globalTime", {
 	}
 });
 
+Object.defineProperty( SceneTree.prototype, "frame", {
+	enumerable: true,
+	get: function() {
+		return this._frame;
+	},
+	set: function(v) {
+		throw("Cannot set frame directly");
+	}
+});
+
 //Some useful events
-SceneTree.supported_events = ["start","update","finish","clear","beforeReload","change","afterRender","configure","nodeAdded","nodeChangeParent","nodeComponentRemoved","reload","renderPicking","scene_loaded","serialize"];
+SceneTree.supported_events = ["start","update","finish","clear","beforeReload","change","afterRender","configured","nodeAdded","nodeChangeParent","nodeComponentRemoved","reload","renderPicking","scene_loaded","serialized"];
 
 //methods
 
@@ -35637,10 +35815,13 @@ SceneTree.prototype.init = function()
 	this._nodes_by_uid = {};
 	this._nodes_by_uid[ this._root.uid ] = this._root;
 
+	//WIP
+	this._spatial_container.clear();
+
 	//default components
 	this.info = new LS.Components.GlobalInfo();
 	this._root.addComponent( this.info );
-	this._root.addComponent( new LS.Camera() );
+	this._root.addComponent( new LS.Camera({ eye:[0,100,100], center:[0,0,0]} ) );
 	this._root.addComponent( new LS.Light({ position: vec3.fromValues(100,100,100), target: vec3.fromValues(0,0,0) }) );
 
 	this._frame = 0;
@@ -35693,17 +35874,17 @@ SceneTree.prototype.clear = function()
 /**
 * Configure the Scene using an object (the object can be obtained from the function serialize)
 * Inserts the nodes, configure them, and change the parameters
-* Destroys previously existing info
+* ATTENTION: Destroys all previously existing info
 *
 * @method configure
 * @param {Object} scene_info the object containing all the info about the nodes and config of the scene
 */
-SceneTree.prototype.configure = function(scene_info)
+SceneTree.prototype.configure = function( scene_info )
 {
 	if(!scene_info || scene_info.constructor === String)
 		throw("SceneTree configure requires object");
 
-	this._root.removeAllComponents(); //remove light and camera
+	this._root.removeAllComponents(); //remove light, camera, skybox
 
 	//this._components = [];
 	//this.camera = this.light = null; //legacy
@@ -35721,19 +35902,17 @@ SceneTree.prototype.configure = function(scene_info)
 	if(scene_info.extra)
 		this.extra = scene_info.extra;
 
+	//this clears all the nodes
 	if(scene_info.root)
+	{
+		this._spatial_container.clear(); // is this necessary?
 		this._root.configure( scene_info.root );
+	}
 
+	/*
 	//LEGACY
 	if(scene_info.nodes)
 		this.root.configure( { children: scene_info.nodes } );
-
-	//parse materials
-	/*
-	if(scene_info.materials)
-		for(var i in scene_info.materials)
-			this.materials[ i ] = new Material( scene_info.materials[i] );
-	*/
 
 	//LEGACY
 	if(scene_info.components)
@@ -35764,12 +35943,6 @@ SceneTree.prototype.configure = function(scene_info)
 			this._root.light = null;
 		}
 	}
-
-	//TODO
-	/*
-	if( scene_info.local_resources )
-	{
-	}
 	*/
 
 	if( scene_info.global_scripts )
@@ -35793,15 +35966,12 @@ SceneTree.prototype.configure = function(scene_info)
 	if(scene_info.editor)
 		this._editor = scene_info.editor;
 
-	//if(scene_info.animations)
-	//	this._root.animations = scene_info.animations;
-
 	/**
 	 * Fired after the scene has been configured
 	 * @event configure
 	 * @param {Object} scene_info contains all the info to do the configuration
 	 */
-	LEvent.trigger(this,"configure",scene_info);
+	LEvent.trigger(this,"configured",scene_info);
 	LEvent.trigger(this,"change");
 }
 
@@ -35843,25 +36013,12 @@ SceneTree.prototype.serialize = function()
 
 	this.serializeComponents( o );
 
-	//add shared materials
-	/*
-	if(this.materials)
-	{
-		o.materials = {};
-		for(var i in this.materials)
-			o.materials[ i ] = this.materials[i].serialize();
-	}
-	*/
-
-	//serialize scene components
-	//this.serializeComponents(o);
-
 	/**
 	 * Fired after the scene has been serialized to an object
 	 * @event serialize
 	 * @param {Object} object to store the persistent info
 	 */
-	LEvent.trigger(this,"serialize",o);
+	LEvent.trigger(this,"serialized",o);
 
 	return o;
 }
@@ -36331,6 +36488,18 @@ SceneTree.prototype.recomputeNodesArray = function()
 	}
 }
 
+//WIP
+SceneTree.prototype.attachSceneElement = function( element )
+{
+	this._spatial_container.add( element );
+}
+
+SceneTree.prototype.detachSceneElement = function( element )
+{
+	this._spatial_container.remove( element );
+}
+
+
 /**
 * Returns the array containing all the nodes in the scene
 *
@@ -36790,24 +36959,14 @@ SceneTree.prototype.collectData = function()
 	{
 		var node = nodes[i];
 
-		if(node.flags.visible == false) //skip invisibles
+		//skip stuff inside invisible nodes
+		if(node.flags.visible == false) 
 			continue;
 
-		//compute global matrix
+		//compute global matrix: shouldnt it be already computed?
 		if(node.transform)
 			node.transform.updateGlobalMatrix();
 
-		//special node deformers (done here because they are shared for every node)
-			//this should be moved to Renderer but not a clean way to do it
-			var node_query = new ShaderQuery();
-			LEvent.trigger( node, "computingShaderQuery", node_query );
-
-			var node_uniforms = {};
-			LEvent.trigger( node, "computingShaderUniforms", node_uniforms );
-
-		//store info
-		node._query = node_query;
-		//node._uniforms = node_uniforms; //???
 		if(!node._instances)
 			node._instances = [];
 		else
@@ -37308,15 +37467,20 @@ Object.defineProperty( SceneNode.prototype, 'is_static', {
 Object.defineProperty( SceneNode.prototype, 'material', {
 	set: function(v)
 	{
+		if( this._material == v )
+			return;
+
 		this._material = v;
-		if(!v)
-			return;
-		if(v.constructor === String)
-			return;
-		if(v._root && v._root != this) //has root and its not me
-			console.warn( "Cannot assign a material of one SceneNode to another, you must clone it or register it" )
-		else
-			v._root = this; //link
+		if(v)
+		{
+			if(v.constructor === String)
+				return;
+			if(v._root && v._root != this) //has root and its not me
+				console.warn( "Cannot assign a material of one SceneNode to another, you must clone it or register it" )
+			else
+				v._root = this; //link
+		}
+		LEvent.trigger( this, "materialChanged" );
 	},
 	get: function(){
 		return this._material;
@@ -38365,6 +38529,9 @@ Player.prototype.configure = function( options )
 			LS.ResourcesManager.registerFileSystem( i, options.filesystems[i] );
 	}
 
+	if(options.allow_base_files)
+		LS.ResourcesManager.allow_base_files = options.allow_base_files;
+
 	if(options.autoresize && !this._resize_callback)
 	{
 		this._resize_callback = (function(){
@@ -38463,6 +38630,12 @@ Player.prototype.loadScene = function(url, on_complete, on_progress)
 Player.prototype.setScene = function( scene_info, on_complete )
 {
 	var that = this;
+
+	//reset old scene
+	if(this.state == LS.Player.PLAYING)
+		this.stop();
+	LS.GlobalScene.clear();
+
 	var scene = this.scene;
 	if(scene_info && scene_info.constructor === String )
 		scene_info = JSON.parse(scene_info);

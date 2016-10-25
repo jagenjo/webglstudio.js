@@ -150,7 +150,6 @@ var LiteGUI = {
 					writable: false,
 					value: dummy
 				});
-
 				element.__events.addEventListener( event, callback );
 			}
 		}
@@ -184,11 +183,14 @@ var LiteGUI = {
 	/**
 	* Remove from the interface, it is is an HTML element it is removed from its parent, if it is a widget the same.
 	* @method remove
-	* @param {Object} litegui_element it also supports HTMLentity or selector string
+	* @param {Object} litegui_element it also supports HTMLentity, selector string or Array of elements
 	*/
 	remove: function( element )
 	{
-		if(element && element.constructor === String) //selector
+		if(!element)
+			return;
+
+		if( element.constructor === String) //selector
 		{
 			var elements = document.querySelectorAll( element );
 			for(var i = 0; i < elements.length; ++i)
@@ -197,6 +199,11 @@ var LiteGUI = {
 				if(element && element.parentNode)
 					element.parentNode.removeChild(element);
 			}
+		}
+		if( element.constructor === Array || element.constructor === NodeList ) 
+		{
+			for(var i = 0; i < element.length; ++i)
+				LiteGUI.remove( element[i] );
 		}
 		else if( element.root && element.root.parentNode ) //ltiegui widget
 			element.root.parentNode.removeChild( element.root );
@@ -280,14 +287,16 @@ var LiteGUI = {
 	* Copy a string to the clipboard (it needs to be invoqued from a click event)
 	* @method toClipboard
 	* @param {String} data
+	* @param {Boolean} force_local force to store the data in the browser clipboard (this one can be read back)
 	**/
-	toClipboard: function( object )
+	toClipboard: function( object, force_local )
 	{
 		if(object && object.constructor !== String )
 			object = JSON.stringify( object );
 
 		var input = null;
 		var in_clipboard = false;
+		if( !force_local )
 		try
 		{
 			var copySupported = document.queryCommandSupported('copy');
@@ -312,10 +321,10 @@ var LiteGUI = {
 
 	/**
 	* Reads from the secondary clipboard (only can read if the data was stored using the toClipboard)
-	* @method getClipboard
+	* @method getLocalClipboard
 	* @return {String} clipboard
 	**/
-	getClipboard: function()
+	getLocalClipboard: function()
 	{
 		var data = localStorage.getItem("litegui_clipboard");
 		if(!data) 
@@ -4132,6 +4141,8 @@ function dataURItoBlob( dataURI ) {
 		element.dragger = dragger;
 
 		dragger.addEventListener("mousedown",inner_down);
+		input.addEventListener("wheel",inner_wheel,false);
+		input.addEventListener("mousewheel",inner_wheel,false);
 
 		function inner_down(e)
 		{
@@ -4164,6 +4175,17 @@ function dataURItoBlob( dataURI ) {
 			e.preventDefault();
 			return false;
 		};
+
+		function inner_wheel(e)
+		{
+			//console.log("wheel!");
+			if(document.activeElement !== this)
+				return;
+			var delta = e.wheelDelta !== undefined ? e.wheelDelta : (e.deltaY ? -e.deltaY/3 : 0);
+			inner_inc( delta > 0 ? 1 : -1, e );
+			e.stopPropagation();
+			e.preventDefault();
+		}
 
 		function inner_up(e)
 		{
@@ -6873,6 +6895,7 @@ Inspector.assignValue = function(value)
 * @param {object} options some generic options that any widget could have:
 * - width: the width of the widget (if omited it will use the Inspector widgets_width, otherwise 100%
 * - name_width: the width of the name part of the widget, if not specified it will use Inspector name_width, otherwise css default
+* - content_width: the width of the widget content area
 * - pre_title: string to append to the left side of the name, this is helpful if you want to add icons with behaviour when clicked
 * - title: string to replace the name, sometimes you want to supply a different name than the one you want to show (this is helpful to retrieve values from an inspector)
 */
@@ -6919,12 +6942,15 @@ Inspector.prototype.createWidget = function(name, content, options)
 	var contentwidth = "";
 	if( (name !== undefined && name !== null) && (this.name_width || options.name_width) && !this.one_line)
 	{
-		var w = options.name_width || this.name_width;
-		if(w !== undefined && w.constructor === Number)
-			w = w.toFixed() + "px";
+		var w = LiteGUI.sizeToCSS( options.name_width || this.name_width );
 		namewidth = "style='width: calc(" + w + " - 0px); width: -webkit-calc(" + w + " - 0px); width: -moz-calc(" + w + " - 0px); '"; //hack 
 		contentwidth = "style='width: calc( 100% - " + w + "); width: -webkit-calc(100% - " + w + "); width: -moz-calc( 100% - " + w + "); '";
 	}
+
+	if(options.name_width)
+		namewidth = "style='width: "+ LiteGUI.sizeToCSS(options.name_width)+" '";
+	if(options.content_width)
+		contentwidth = "style='width: "+ LiteGUI.sizeToCSS(options.content_width)+" '";
 
 	var code = "";
 	var pretitle = "";
@@ -7332,7 +7358,10 @@ Inspector.prototype.addNumber = function(name, value, options)
 	options.full = true;
 	this.tab_index++;
 
-	var dragger = new LiteGUI.Dragger(value, options);
+	
+	var dragger = null;
+	
+	dragger = new LiteGUI.Dragger(value, options);
 	dragger.root.style.width = "calc( 100% - 1px )";
 	element.querySelector(".wcontent").appendChild( dragger.root );
 	dragger.root.addEventListener("start_dragging", inner_before_change.bind(options) );
@@ -8013,7 +8042,7 @@ Inspector.prototype.addCheckbox = function(name, value, options)
 * @param {Object} optional object with extra flags to insert
 * @return {HTMLElement} the widget in the form of the DOM element that contains it
 **/
-Inspector.prototype.addFlags = function(flags, force_flags)
+Inspector.prototype.addFlags = function(flags, force_flags, options)
 {
 	var f = {};
 	for(var i in flags)
@@ -8025,12 +8054,17 @@ Inspector.prototype.addFlags = function(flags, force_flags)
 
 	for(var i in f)
 	{
-		this.addCheckbox(i, f[i], { callback: (function(j) {
-			return function(v) { 
-				flags[j] = v;
-			}
-		})(i)
-		});
+		var flag_options = {};
+		for(var j in options)
+			flag_options[j] = options[j];
+
+		flag_options.callback = (function(j) {
+				return function(v) { 
+					flags[j] = v;
+				}
+			})(i);
+
+		this.addCheckbox(i, f[i], flag_options );
 	}
 }
 
@@ -8090,9 +8124,10 @@ Inspector.prototype.addCombo = function(name, value, options)
 		Inspector.onWidgetChange.call(that,element,name,value, options);
 	});
 
-	element.setValue = function(v,skip_event) { 
+	element.setValue = function(v, skip_event) { 
 		if(v === undefined)
 			return;
+		value = v;
 		var select = element.querySelector("select");
 		var items = select.querySelectorAll("option");
 		var index =  -1;
@@ -8132,11 +8167,12 @@ Inspector.prototype.addCombo = function(name, value, options)
 		}
 	};
 
-	function setValues(v){
+	function setValues(v, selected){
 		if(!v)
 			v = [];
 		values = v;
-
+		if(selected)
+			value = selected;
 		var code = "";
 		var index = 0;
 		for(var i in values)
@@ -8259,6 +8295,7 @@ Inspector.prototype.addTags = function(name, value, options)
 * @param {Object} options, here is a list for this widget (check createWidget for a list of generic options):
 * - multiselection: allow multiple selection
 * - callback: function to call once an items is clicked
+* - selected: the item selected
 * @return {HTMLElement} the widget in the form of the DOM element that contains it
 **/
 Inspector.prototype.addList = function(name, values, options)
@@ -8372,7 +8409,7 @@ Inspector.prototype.addList = function(name, values, options)
 		}
 	}
 
-	element.updateItems(values);
+	element.updateItems( values, options.selected );
 	this.append(element,options);
 
 	element.getSelected = function()
@@ -9253,7 +9290,7 @@ Inspector.prototype.updateWidgets = function()
 	{
 		var widget = this.widgets[i];
 		if(widget.on_update)
-			widget.on_update();
+			widget.on_update( widget );
 	}
 }
 

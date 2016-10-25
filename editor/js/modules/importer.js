@@ -299,7 +299,7 @@ var ImporterModule  = {
 				inner_setFile( file = v ? v.file : null );
 				inspector.refresh();
 			});
-			inspector.addStringButton("Import from URL", url, { callback_button: function(v){
+			inspector.addString("Import from URL", url, { callback: function(v){
 				url = v;
 				inner_setFile( v );
 				inspector.refresh();

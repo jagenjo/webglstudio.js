@@ -797,7 +797,7 @@ var EditorModule = {
 	},
 
 	pasteNodeFromClipboard: function( parent ) {
-		var data = LiteGUI.getClipboard();
+		var data = LiteGUI.getLocalClipboard();
 		if( !data )
 			return;
 		if(data._object_type != "SceneNode")
@@ -826,7 +826,7 @@ var EditorModule = {
 
 	pasteComponentFromClipboard: function(component) {
 		UndoModule.saveComponentChangeUndo(component);
-		var data = LiteGUI.getClipboard();
+		var data = LiteGUI.getLocalClipboard();
 		if( !data )
 			return;
 		data.uid = null; //remove UID
@@ -839,7 +839,7 @@ var EditorModule = {
 	pasteComponentInNode: function(node)
 	{
 		UndoModule.saveNodeChangeUndo(node);
-		var data = LiteGUI.getClipboard();
+		var data = LiteGUI.getLocalClipboard();
 		if(!data || !data._object_type)
 			return;
 		data.uid = null; //remove UID
@@ -1009,11 +1009,12 @@ var EditorModule = {
 		GraphModule.editInstanceGraph( compo,null,true );
 	},
 
-	createNullNode: function()
+	createNullNode: function( parent )
 	{
 		var node = new LS.SceneNode( LS.GlobalScene.generateUniqueNodeName("node") );
 		node.material = null;
-		EditorModule.getAddRootNode().addChild( node );
+		parent = parent || EditorModule.getAddRootNode();
+		parent.addChild( node );
 		EditorModule.updateCreatedNodePosition( node );
 		UndoModule.saveNodeCreatedUndo( node );
 		SelectionModule.setSelection(node);
@@ -1040,16 +1041,12 @@ var EditorModule = {
 
 		var node = new LS.SceneNode( LS.GlobalScene.generateUniqueNodeName("camera") );
 		var camera = new LS.Camera( current_camera );
+		camera.resetVectors();
 		node.addComponent( camera );
-		node.transform.lookAt( current_camera.getEye(), current_camera.getCenter(), current_camera.up );
-
-		camera._eye.set(LS.ZEROS);
-		camera._center.set(LS.FRONT);
-
-		camera.focalLength = current_camera.focalLength;
+		camera.lookAt( current_camera.getEye(), current_camera.getCenter(), current_camera.up );
 
 		EditorModule.getAddRootNode().addChild( node );
-		EditorModule.updateCreatedNodePosition( node );
+		//EditorModule.updateCreatedNodePosition( node );
 		UndoModule.saveNodeCreatedUndo( node );
 		SelectionModule.setSelection( node );
 		return node;
@@ -1120,11 +1117,14 @@ var EditorModule = {
 		RenderModule.requestFrame();
 	},
 
-	showCreateResource: function(resource, on_complete, extension )
+	//maybe move this somewhere else
+	showCreateResource: function(resource, on_complete, extension, options )
 	{
+		options = options || {};
+
 		extension = extension || "json";
 
-		LiteGUI.prompt("Resource name", inner);
+		LiteGUI.prompt( options.title || "Resource name", inner, { value: options.value } );
 
 		function inner(name)
 		{
@@ -1504,6 +1504,14 @@ var EditorModule = {
 			}
 			list_widget.updateItems(compos);
 		}});
+
+		compos.sort(function compare(a,b) {
+		  if (a.name < b.name)
+			return -1;
+		  if (a.name > b.name)
+			return 1;
+		  return 0;
+		});
 
 		list_widget = widgets.addList(null, compos, { height: 240, callback: inner_selected });
 		widgets.widgets_per_row = 1;

@@ -320,6 +320,13 @@ LS.SceneNode.prototype.renderEditor = function( node_selected )
 		LS.Draw.pop();
 	}
 
+	if(node_selected)
+	{
+		var center = this.transform.getGlobalPosition();
+		LS.Draw.setColor([0.5,0.8,0.3,0.25]);
+		LS.Draw.renderLines([center,[center[0],0,center[2]]]);
+	}
+
 	gl.disable(gl.BLEND);
 }
 

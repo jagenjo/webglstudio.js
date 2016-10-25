@@ -24,18 +24,16 @@ var moveTool = {
 
 		ToolUtils.prepareDrawing();
 		
-
 		var gizmo_model = ToolUtils.getSelectionMatrix();
 		if(!gizmo_model)
 			return;
 
 		var center = vec3.create();
-		mat4.multiplyVec3(center,gizmo_model,center);
+		mat4.multiplyVec3( center, gizmo_model, center );
 
-		var f = ToolUtils.computeDistanceFactor(center, camera);
-		vec3.copy(moveTool._center, center);
+		var f = ToolUtils.computeDistanceFactor( center, camera );
 
-		var scale = f *0.15;
+		var scale = f * 0.15;
 
 		var colorx = moveTool._on_top_of == "x" ? [1,1,1,1] : [1,0,0,1];
 		var colory = moveTool._on_top_of == "y" ? [1,1,1,1] : [0,1,0,1];
@@ -47,6 +45,9 @@ var moveTool = {
 			vec3.add(colorz, colorz,[1,1,1]);
 		}
 
+		var x_axis_end = vec3.create();
+		var y_axis_end = vec3.create();
+		var z_axis_end = vec3.create();
 
 		gl.disable(gl.DEPTH_TEST);
 		LS.Draw.setColor([1,1,1]);
@@ -54,9 +55,17 @@ var moveTool = {
 		LS.Draw.push();
 			LS.Draw.setMatrix(gizmo_model);
 
-			mat4.multiplyVec3(moveTool._x_axis_end, gizmo_model, [scale,0,0] );
-			mat4.multiplyVec3(moveTool._y_axis_end, gizmo_model, [0,scale,0] );
-			mat4.multiplyVec3(moveTool._z_axis_end, gizmo_model, [0,0,scale] );
+			mat4.multiplyVec3( x_axis_end, gizmo_model, [scale,0,0] );
+			mat4.multiplyVec3( y_axis_end, gizmo_model, [0,scale,0] );
+			mat4.multiplyVec3( z_axis_end, gizmo_model, [0,0,scale] );
+
+			if( !this._freeze_axis )
+			{
+				this._center.set( center);
+				this._x_axis_end.set( x_axis_end );
+				this._y_axis_end.set( y_axis_end );
+				this._z_axis_end.set( z_axis_end );
+			}
 
 			LS.Draw.renderLines( [[0,0,0],[scale,0,0],[0,0,0],[0,scale,0],[0,0,0],[0,0,scale]],
 				[colorx,colorx,colory,colory,colorz,colorz]);
@@ -99,6 +108,8 @@ var moveTool = {
 
 		if(e.which != GL.LEFT_MOUSE_BUTTON) 
 			return;
+
+		this._freeze_axis = true;
 
 		var selection = SelectionModule.getSelection();
 		if(!selection)
@@ -147,6 +158,7 @@ var moveTool = {
 		if(e.which != GL.LEFT_MOUSE_BUTTON) 
 			return;
 
+		this._freeze_axis = false;
 		EditorModule.refreshAttributes();
 	},
 

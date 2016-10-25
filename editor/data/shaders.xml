@@ -1711,7 +1711,7 @@
 
 			uniform vec4 u_material_color;
 			uniform vec3 u_ambient_color;
-			uniform vec3 u_emissive_color;
+			uniform vec4 u_emissive_color;
 
 			uniform vec3 u_light_position;
 			uniform vec3 u_light_front;
@@ -1951,12 +1951,6 @@
 						color = color * (1.0 - velvet_factor) + u_velvet_info.xyz * velvet_factor;
 				#endif
 
-				//Emissive *********
-				o.Emission = u_emissive_color;
-				#ifdef USE_EMISSIVE_TEXTURE
-					o.Emission *= texture2D( emissive_texture, USE_EMISSIVE_TEXTURE ).xyz;
-				#endif
-
 				//Reflection ***************
 				o.Reflectivity = abs( u_reflection_info.x ) * pow( 1.0 - clamp(0.0, EdotN, 1.0), u_reflection_info.y );
 				#ifdef USE_REFLECTIVITY_TEXTURE
@@ -1973,6 +1967,13 @@
 						LIGHT.Ambient *= textureCube( irradiance_cubemap, N).xyz;
 					#endif
 				#endif
+
+				//Emissive *********
+				o.Emission = u_emissive_color.xyz;
+				#ifdef USE_EMISSIVE_TEXTURE
+					o.Emission *= texture2D( emissive_texture, USE_EMISSIVE_TEXTURE ).xyz;
+				#endif
+				o.Emission = mix( o.Emission, o.Emission * o.Albedo, u_emissive_color.a ); //to allow to control if emission is affected by albedo
 
 				IN.vertex = v_local_pos;
 				IN.normal = v_local_normal;
@@ -2044,7 +2045,7 @@
 
 			uniform vec2 u_specular;
 			uniform vec3 u_ambient_color;
-			uniform vec3 u_emissive_color;
+			uniform vec4 u_emissive_color;
 
 			uniform vec4 u_viewport;
 
@@ -2159,7 +2160,7 @@
 					light += u_light_color * att * spec_factor;
 				#endif
 
-				light += u_emissive_color;
+				light += u_emissive_color.xyz;
 
 				float velvet_factor = 0.0;
 				#ifdef USE_VELVET

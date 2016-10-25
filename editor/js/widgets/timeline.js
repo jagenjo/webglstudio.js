@@ -86,9 +86,10 @@ Timeline.prototype.createInterface = function( options )
 	*/
 	var that = this;
 	this.animation_widget = widgets.addString(null, "", { disabled: true } );
-	this.take_widget = widgets.addCombo("Take", "", { values:{}, width: 220, callback: function(v){
+	this.take_widget = widgets.addCombo("Take", "", { values:{}, name_width: 50, content_width: 150, width: 200, callback: function(v){
 		that.setAnimation( that.current_animation, v );
 	}});
+	widgets.addButton(null, LiteGUI.special_codes.navicon, { width: 30, callback: function(v,e){ that.showTakeOptionsDialog(e); } });
 	this.duration_widget = widgets.addNumber("Duration", 0, { units:"s", precision:2, min:0, callback: function(v){ that.setDuration(v); } } );
 	this.current_time_widget = widgets.addNumber("Current", this.session ? this.session.current_time : 0, { units:"s", precision:2, min: 0, callback: function(v){ that.setCurrentTime(v); } } );
 	//widgets.addCheckbox("Preview", this.preview, { callback: function(v){ that.preview = v; } } );
@@ -259,7 +260,7 @@ Timeline.prototype.setAnimation = function( animation, take_name )
 	var takes = [];
 	for(var i in this.current_animation.takes)
 		takes.push(i);
-	this.take_widget.setOptionValues( takes );
+	this.take_widget.setOptionValues( takes, take_name );
 	this.duration_widget.setValue( this.current_take.duration );
 
 	//to ensure data gets saved again
@@ -1217,6 +1218,106 @@ Timeline.prototype.showOptionsContextMenu = function( e )
 	}});
 }
 
+Timeline.prototype.showTakeOptionsDialog = function( e )
+{
+	var that = this;
+
+	var dialog = new LiteGUI.Dialog({ title:"Take Options", closable: true, width: 300, draggable: true } );
+	var widgets = new LiteGUI.Inspector();
+	widgets.on_refresh = inner_refresh;
+	dialog.add( widgets );
+
+	var selected_take_name = "default";
+	var new_take_name = "new_take";
+
+	inner_refresh();
+	dialog.show();
+
+	function inner_refresh()
+	{
+		var selected_take = that.current_animation.takes[ selected_take_name ];
+		var duration = selected_take ? selected_take.duration : 0;
+		var tracks = selected_take ? selected_take.tracks.length : 0;
+
+		widgets.clear();
+		widgets.addTitle("Takes");
+		var takes = [];
+		for( var i in that.current_animation.takes )
+			takes.push( i );
+		widgets.addList( null, takes, { height: 140, selected: selected_take_name, callback: function(v){
+			selected_take_name = v;
+			widgets.refresh();
+		}});
+		widgets.addButtons( null, ["Copy","Paste","Delete"], function(v){
+			if(v == "Copy")
+			{
+				var data = selected_take.serialize();
+				data._object_class = "LS.Animation.Take";
+				if( selected_take )
+					LiteGUI.toClipboard( data, true );
+			}
+			if(v == "Paste")
+			{
+				var data = LiteGUI.getLocalClipboard();
+				if(!data || data._object_class !== "LS.Animation.Take")
+					return;
+				var take = new LS.Animation.Take();
+				take.configure( data );
+				if( that.current_animation.takes[ take.name ] )
+					take.name = take.name + ((Math.random() * 100)|0);
+				selected_take_name = take.name;
+				that.addUndoAnimationEdited( that.current_animation );
+				that.current_animation.addTake( take );
+				that.setAnimation( that.current_animation, selected_take_name );
+				that.animationModified();
+				widgets.refresh();
+			}
+			if(v == "Delete")
+			{
+				if( that.current_animation.getNumTakes() <= 1 )
+					return;
+				that.addUndoAnimationEdited( that.current_animation );
+				that.current_animation.removeTake( selected_take_name );
+				selected_take_name = Object.keys( that.current_animation.takes )[0];
+				that.animationModified();
+				that.setAnimation( that.current_animation, selected_take_name );
+				widgets.refresh();
+			}
+		});
+		widgets.addTitle("Selected Take");
+		widgets.addStringButton("Name",selected_take_name,{ callback_button: function(v){
+			that.addUndoAnimationEdited( that.current_animation );
+			that.current_animation.renameTake( selected_take_name, v );
+			selected_take_name = v;
+			that.animationModified();
+			that.setAnimation( that.current_animation, selected_take_name );
+			widgets.refresh();
+		}});
+
+		widgets.widgets_per_row = 2;
+		widgets.addString("Duration", duration + "s");
+		widgets.addString("Tracks", tracks|0 );
+		widgets.widgets_per_row = 1;
+
+		widgets.addTitle("Create New take");
+		widgets.addString("Name",new_take_name,{ callback: function(v){
+			new_take_name = v;
+		}});
+		widgets.addButton( null, "Create Take", inner_new_take);
+
+		dialog.adjustSize(10);
+	}
+
+	function inner_new_take()
+	{
+		that.addUndoAnimationEdited( that.current_animation );
+		that.current_animation.createTake( new_take_name );
+		selected_take_name = new_take_name;
+		widgets.refresh();
+	}
+}
+
+
 
 Timeline.prototype.onContextMenu = function( e )
 {
@@ -1320,6 +1421,27 @@ Timeline.prototype.onContextMenu = function( e )
 		that.showAddEventKeyframeDialog(track, time, track.getKeyframe( item.keyframe ) );
 	}
 	
+}
+
+Timeline.prototype.addUndoAnimationEdited = function( animation )
+{
+	if(!animation)
+		return;
+
+	var that = this;
+
+	UndoModule.addUndoStep({ 
+		title: "Animation modified: " + animation.name,
+		data: { animation_name: animation.name, data: animation.serialize() },
+		callback: function(d) {
+			var anim = d.animation_name == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation_name ];
+			if(!anim)
+				return;
+			anim.configure( d.data );
+			that.animationModified();
+			that.redrawCanvas();
+		}
+	});
 }
 
 Timeline.prototype.addUndoTakeEdited = function( info )

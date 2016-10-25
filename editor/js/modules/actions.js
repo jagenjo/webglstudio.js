@@ -76,6 +76,13 @@ LS.SceneNode.actions["move_after"] = {
 	}
 };
 
+LS.SceneNode.actions["create_child_node"] = { 
+	title:"Create Child Node",
+	callback: function(){
+		EditorModule.createNullNode( this );
+	}
+};
+
 LS.SceneNode.actions["create_prefab"] = { 
 	title:"Create Prefab",
 	callback: function(){

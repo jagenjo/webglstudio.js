@@ -158,40 +158,40 @@ var RenderModule = {
 		//create new ones
 		if(mode == 2)
 		{
-			this.camera = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0,0,0.5,1]});
-			this.camera2 = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0.5,0,0.5,1]});
+			this.camera = new LS.Camera({eye:[50,100,100], center: LS.ZEROS, near:0.1,far:10000, viewport:[0,0,0.5,1]});
+			this.camera2 = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0.5,0,0.5,1]});
 			this.cameras.push( this.camera, this.camera2 );
 		}
 		else if(mode == 3)
 		{
-			this.camera = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0,0,1,0.5]});
-			this.camera2 = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0,0.5,1,0.5]});
+			this.camera = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0,0,1,0.5]});
+			this.camera2 = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0,0.5,1,0.5]});
 			this.cameras.push( this.camera, this.camera2 );
 		}
 		else if(mode == 4)
 		{
-			this.camera = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0,0,0.5,0.5]});
-			this.camera2 = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0,0.5,0.5,0.5]});
-			this.camera3 = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0.5,0,0.5,1]});
+			this.camera = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0,0,0.5,0.5]});
+			this.camera2 = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0,0.5,0.5,0.5]});
+			this.camera3 = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0.5,0,0.5,1]});
 			this.cameras.push( this.camera, this.camera2, this.camera3 );
 		}
 		else if(mode == 5)
 		{
-			this.camera = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0,0,0.5,0.5]});
-			this.camera2 = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0.5,0,0.5,0.5]});
-			this.camera3 = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0,0.5,0.5,0.5]});
-			this.camera4 = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0.5,0.5,0.5,0.5]});
+			this.camera = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0,0,0.5,0.5]});
+			this.camera2 = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0.5,0,0.5,0.5]});
+			this.camera3 = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0,0.5,0.5,0.5]});
+			this.camera4 = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0.5,0.5,0.5,0.5]});
 			this.cameras.push( this.camera, this.camera2, this.camera3 , this.camera4 );
 		}
 		else if(mode == 16) //benchmark
 		{
 			for(var i = 0; i < 4; i++)
 				for(var j = 0; j < 4; j++)
-					this.cameras.push( this.camera = new LS.Camera({eye:[50 * Math.random(),100,100 * Math.random()],near:0.1,far:10000, viewport:[0.25*i,0.25*j,0.25,0.25]}) );
+					this.cameras.push( this.camera = new LS.Camera({eye:[50 * Math.random(),100,100 * Math.random()],center: LS.ZEROS, near:0.1,far:10000, viewport:[0.25*i,0.25*j,0.25,0.25]}) );
 		}
 		else //1
 		{
-			this.camera = new LS.Camera({eye:[50,100,100],near:0.1,far:10000, viewport:[0,0,1,1]});
+			this.camera = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0,0,1,1]});
 			this.cameras.push( this.camera );
 		}
 

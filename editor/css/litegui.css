@@ -49,6 +49,7 @@
 
 	vertical-align: top;
 	min-height: 1.2em;
+	/*user-select: none;*/
 }
 
 .inspector:not(.one_line) .widget.even {

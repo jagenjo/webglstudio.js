@@ -5663,7 +5663,7 @@ FBO.prototype.update = function( skip_disable )
 	}
 
 	//bind buffers for the colors
-	if(color_textures)
+	if(color_textures && color_textures.length)
 	{
 		this.order = []; //draw_buffers request the use of an array with the order of the attachments
 		for(var i = 0; i < color_textures.length; i++)

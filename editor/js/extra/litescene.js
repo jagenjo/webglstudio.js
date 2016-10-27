@@ -5313,7 +5313,7 @@ var Draw = {
 	},
 
 	/**
-	* Render points with color, size, and texture binded in 0
+	* Render a wireframe rectangle of width x height 
 	* @method renderRectangle
 	* @param {number} width
 	* @param {number} height
@@ -5485,16 +5485,34 @@ var Draw = {
 		return this.renderMesh( mesh, gl.TRIANGLES, undefined, undefined, 0, this._global_mesh_last_size );
 	},
 
+	/**
+	* Renders a wire cube of size size
+	* @method renderWireCube
+	* @param {number} size
+	*/
 	renderWireCube: function(size)
 	{
 		return this.renderWireBox(size,size,size);
 	},
 
+	/**
+	* Renders a solid cube of size size
+	* @method renderSolidCube
+	* @param {number} size
+	*/
 	renderSolidCube: function(size)
 	{
 		return this.renderSolidCube(size,size,size);
 	},
 
+	/**
+	* Renders a solid plane (could be textured or even with an specific shader)
+	* @method renderPlane
+	* @param {vec3} position
+	* @param {vec2} size
+	* @param {GL.Texture} texture
+	* @param {GL.Shader} shader
+	*/
 	renderPlane: function( position, size, texture, shader)
 	{
 		if(!position || !size)
@@ -5534,6 +5552,12 @@ var Draw = {
 		return GL.Mesh.load({vertices: vertices});
 	},
 
+	/**
+	* Renders a grid of lines
+	* @method renderGrid
+	* @param {number} dist distance between lines
+	* @param {number} num number of lines
+	*/
 	renderGrid: function(dist,num)
 	{
 		var mesh = this.createGridMesh(dist,num);

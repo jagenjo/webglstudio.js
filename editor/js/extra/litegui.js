@@ -1823,6 +1823,7 @@ function dataURItoBlob( dataURI ) {
 	function Checkbox( value, on_change)
 	{
 		var that = this;
+		this.value = value;
 
 		var root = this.root = document.createElement("span");
 		root.className = "litecheckbox inputfield";
@@ -1842,6 +1843,9 @@ function dataURItoBlob( dataURI ) {
 
 		this.setValue = function(v)
 		{
+			if(this.value === v)
+				return;
+
 			if( this.root.dataset["value"] == v.toString())
 				return;
 
@@ -1856,14 +1860,17 @@ function dataURItoBlob( dataURI ) {
 				this.element.classList.remove("on");
 				this.element.classList.add("off");
 			}
+			var old_value = this.value;
+			this.value = v;
 
 			if(on_change)
-				on_change( v );
+				on_change( v, old_value );
 		}
 
 		this.getValue = function()
 		{
-			return this.root.dataset["value"] == "true";
+			return this.value;
+			//return this.root.dataset["value"] == "true";
 		}
 	}	
 
@@ -6608,7 +6615,10 @@ Inspector.prototype.append = function( widget, options )
 	if(options.replace)
 		options.replace.parentNode.replaceChild( widget, options.replace );
 	else
+	{
+		widget.section = this.current_section;
 		root.appendChild( widget );
+	}
 }
 
 Inspector.prototype.pushContainer = function( container )
@@ -6992,6 +7002,18 @@ Inspector.prototype.createWidget = function(name, content, options)
 //calls callback, triggers wchange, calls onchange in Inspector
 Inspector.onWidgetChange = function( element, name, value, options, expand_value, event )
 {
+	var section = element.section; //this.current_section
+
+	if(!options.skip_wchange)
+	{
+		if(section)
+			LiteGUI.trigger( section, "wbeforechange", value );
+		//$(this.current_section).trigger("wbeforechange",value); //used for undo //TODO: use LiteGUI.trigger
+		LiteGUI.trigger( element, "wbeforechange", value );
+		//$(element).trigger("wbeforechange",value); //TODO: REPLACE by LiteGUI.trigger
+	}
+
+	//assign and launch callbacks
 	this.values[ name ] = value;
 	var r = undefined;
 	if(options.callback)
@@ -7004,11 +7026,13 @@ Inspector.onWidgetChange = function( element, name, value, options, expand_value
 
 	if(!options.skip_wchange)
 	{
-		//LiteGUI.trigger( this.current_section, "wchange", value );
-		$(this.current_section).trigger("wchange",value); //used for undo //TODO: use LiteGUI.trigger
-		//LiteGUI.trigger( element, "wchange", value );
-		$(element).trigger("wchange",value); //TODO: REPLACE by LiteGUI.trigger
+		if(section)
+			LiteGUI.trigger( section, "wchange", value );
+		//$(this.current_section).trigger("wchange",value); //used for undo //TODO: use LiteGUI.trigger
+		LiteGUI.trigger( element, "wchange", value );
+		//$(element).trigger("wchange",value); //TODO: REPLACE by LiteGUI.trigger
 	}
+
 	if(this.onchange) 
 		this.onchange(name, value, element);
 	return r;
@@ -7377,7 +7401,10 @@ Inspector.prototype.addNumber = function(name, value, options)
 
 	var input = element.querySelector("input");
 	
-	$(input).change( function(e) { 
+	input.addEventListener("change", function(e) { 
+
+		LiteGUI.trigger( element, "wbeforechange", e.target.value );
+
 		that.values[name] = e.target.value;
 		//Inspector.onWidgetChange.call(that,this,name,ret, options);
 
@@ -7387,8 +7414,9 @@ Inspector.prototype.addNumber = function(name, value, options)
 			if( typeof(ret) == "number")
 				this.value = ret;
 		}
-		$(element).trigger("wchange",e.target.value);
-		if(that.onchange) that.onchange(name,e.target.value,element);
+		LiteGUI.trigger( element, "wchange", e.target.value );
+		if(that.onchange)
+			that.onchange(name,e.target.value,element);
 	});
 
 	element.setValue = function( v, skip_event) { 
@@ -7469,11 +7497,14 @@ Inspector.prototype.addVector2 = function(name,value, options)
 
 	//jQUERY for ALL INPUTS
 	$(element).find("input").change( function(e) { 
+
 		//gather all three parameters
 		var r = [];
 		var elems = $(element).find("input");
 		for(var i = 0; i < elems.length; i++)
 			r.push( parseFloat( elems[i].value ) );
+
+		LiteGUI.trigger( element, "wbeforechange", [r] );
 
 		that.values[name] = r;
 
@@ -7489,8 +7520,9 @@ Inspector.prototype.addVector2 = function(name,value, options)
 			}
 		}
 
-		$(element).trigger("wchange",[r]);
-		if(that.onchange) that.onchange(name,r,element);
+		LiteGUI.trigger( element, "wchange", [r] );
+		if(that.onchange)
+			that.onchange(name,r,element);
 	});
 
 	this.append(element,options);
@@ -7577,6 +7609,8 @@ Inspector.prototype.addVector3 = function(name,value, options)
 		for(var i = 0; i < elems.length; i++)
 			r.push( parseFloat( elems[i].value ) );
 
+		LiteGUI.trigger( element, "wbeforechange", [r] );
+
 		that.values[name] = r;
 
 		if(options.callback)
@@ -7591,8 +7625,9 @@ Inspector.prototype.addVector3 = function(name,value, options)
 			}
 		}
 
-		$(element).trigger("wchange",[r]);
-		if(that.onchange) that.onchange(name,r,element);
+		LiteGUI.trigger( element, "wchange",[r]);
+		if(that.onchange)
+			that.onchange(name,r,element);
 	});
 
 	this.append(element,options);
@@ -7670,6 +7705,8 @@ Inspector.prototype.addVector4 = function(name,value, options)
 		for(var i = 0; i < elems.length; i++)
 			r.push( parseFloat( elems[i].value ) );
 
+		LiteGUI.trigger( element, "wbeforechange", [r] );
+
 		that.values[name] = r;
 
 		if(options.callback)
@@ -7683,7 +7720,7 @@ Inspector.prototype.addVector4 = function(name,value, options)
 			}
 		}
 
-		$(element).trigger("wchange",[r]);
+		LiteGUI.trigger( element, "wchange",[r]);
 		if(that.onchange)
 			that.onchange(name,r,element);
 	});
@@ -7791,6 +7828,9 @@ Inspector.prototype.addPad = function(name,value, options)
 			y = y * (maxy - miny) + minx;
 
 			var r = [x,y];
+
+			LiteGUI.trigger( element, "wbeforechange", [r] );
+
 			element.setValue(r);
 
 			if(options.callback)
@@ -7802,7 +7842,8 @@ Inspector.prototype.addPad = function(name,value, options)
 						element.setValue( new_val );
 				}
 			}
-			$(element).trigger("wchange",[r]);
+			
+			LiteGUI.trigger( element, "wchange",[r]);
 			if(that.onchange)
 				that.onchange(name,r,element);
 		}
@@ -7950,7 +7991,7 @@ Inspector.prototype.addSlider = function(name, value, options)
 		var v = parseFloat( this.value );
 		value = v;
 		slider.setValue( v );
-		Inspector.onWidgetChange.call(that,element,name,v, options);
+		Inspector.onWidgetChange.call( that,element,name,v, options );
 	});
 
 	//Slider change -> update Text
@@ -8121,7 +8162,7 @@ Inspector.prototype.addCombo = function(name, value, options)
 	select.addEventListener("change", function(e) { 
 		var index = e.target.value;
 		var value = values[index];
-		Inspector.onWidgetChange.call(that,element,name,value, options);
+		Inspector.onWidgetChange.call( that,element,name,value, options );
 	});
 
 	element.setValue = function(v, skip_event) { 
@@ -8209,7 +8250,8 @@ Inspector.prototype.addComboButtons = function(name, value, options)
 			code += "<button class='wcombobutton "+(value == options.values[i] ? "selected":"")+"' data-name='options.values[i]'>" + options.values[i] + "</button>";
 
 	var element = this.createWidget(name,code, options);
-	$(element).find(".wcontent button").click( function(e) { 
+	var buttons = element.querySelectorAll( ".wcontent button" );
+	LiteGUI.bind( buttons, "click", function(e) { 
 
 		var buttonname = e.target.innerHTML;
 		that.values[name] = buttonname;
@@ -8257,6 +8299,8 @@ Inspector.prototype.addTags = function(name, value, options)
 		if( element.tags[tagname] )
 			return; //repeated tags no
 
+		LiteGUI.trigger( element, "wbeforechange", element.tags);
+
 		element.tags[tagname] = true;
 
 		var tag = document.createElement("div");
@@ -8277,9 +8321,10 @@ Inspector.prototype.addTags = function(name, value, options)
 		that.values[name] = element.tags;
 		if(options.callback)
 			options.callback.call( element, element.tags ); 
-		$(element).trigger("wchange",element.tags);
-		$(element).trigger("wadded",tagname);
-		if(that.onchange) that.onchange(name, element.tags, element);
+		LiteGUI.trigger( element, "wchange", element.tags);
+		LiteGUI.trigger( element, "wadded", tagname);
+		if(that.onchange)
+			that.onchange(name, element.tags, element);
 	}
 
 	this.append(element,options);
@@ -8362,6 +8407,9 @@ Inspector.prototype.addList = function(name, values, options)
 		item_selected = item_selected || options.selected;
 		var code = "";
 		values = new_values;
+		var ul = this.querySelector("ul");
+		ul.innerHTML = "";
+
 		if(values)
 			for(var i in values)
 			{
@@ -8370,6 +8418,8 @@ Inspector.prototype.addList = function(name, values, options)
 				if(!item_name)
 					item_name = i;
 				var item_title = item_name.constructor === String ? item_name : i;
+				var item_style = null;
+				item_name = item_name.replace(/<(?:.|\n)*?>/gm, ''); //remove html tags that could break the html
 
 				var icon = "";
 				if( value === null || value === undefined )
@@ -8383,6 +8433,7 @@ Inspector.prototype.addList = function(name, values, options)
 				else if( value )
 				{
 					item_title = value.content || value.name || i;
+					item_style = value.style;
 					if(value.icon)
 						icon = "<img src='"+value.icon+"' class='icon' />";
 				}
@@ -8390,11 +8441,21 @@ Inspector.prototype.addList = function(name, values, options)
 				var selected = false;
 				if( (typeof(values[i]) == "object" && values[i].selected) || (item_selected == values[i]) )
 					selected = true;
-				code += "<li class='item-" + i + " " + (selected ? "selected":"") + "' data-name='" + item_name + "' data-pos='"+i+"'>" + icon + item_title + "</li>";
+				var li_element = document.createElement("li");
+				li_element.classList.add( 'item-' + i );
+				if( selected )
+					li_element.classList.add( 'selected' );
+				li_element.dataset["name"] = item_name;
+				li_element.dataset["pos"] = i;
+				if(item_style)
+					li_element.setAttribute("style", item_style );
+				li_element.innerHTML = icon + item_title;
+				//code += "<li class='item-" + i + " " + (selected ? "selected":"") + "' data-name='" + item_name + "' data-pos='"+i+"' "+item_style+">" + icon + item_title + "</li>";
+				ul.appendChild( li_element );
+				li_element.addEventListener( "click", inner_item_click );
 			}
 
-		var ul = this.querySelector("ul");
-		ul.innerHTML = code;
+		//ul.innerHTML = code;
 		LiteGUI.bind( ul.querySelectorAll("li"), "click", inner_item_click );
 		//$(this).find(".wcontent li").click( inner_item_click );
 	}
@@ -8702,11 +8763,12 @@ Inspector.prototype.addColor = function( name, value, options )
 	{
 		var v = [ myColor.rgb[0] * myColor.rgb_intensity, myColor.rgb[1] * myColor.rgb_intensity, myColor.rgb[2] * myColor.rgb_intensity ];
 		//Inspector.onWidgetChange.call(that,element,name,v, options);
-
+		var event_data = [v.concat(), myColor.toString()];
+		LiteGUI.trigger( element, "wbeforechange", event_data );
 		that.values[name] = v;
 		if(options.callback)
 			options.callback.call( element, v.concat(), "#" + myColor.toString(), myColor );
-		$(element).trigger("wchange",[v.concat(), myColor.toString()]);
+		LiteGUI.trigger( element, "wchange", event_data );
 		if(that.onchange) that.onchange(name, v.concat(), element);
 	}
 
@@ -8782,9 +8844,10 @@ Inspector.prototype.addLine = function(name, value, options)
 	$(element).find("span.line-editor").append(line_editor);
 
 	$(line_editor).change( function(e) { 
+		LiteGUI.trigger(element, "wbeforechange",[e.target.value]);
 		if(options.callback)
 			options.callback.call( element,e.target.value );
-		$(element).trigger("wchange",[e.target.value]);
+		LiteGUI.trigger(element, "wchange",[e.target.value]);
 		Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
 	});
 

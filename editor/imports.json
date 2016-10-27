@@ -1,4 +1,5 @@
 {
+	"version": 0.6,
 	"imports":[
 		"js/modules/interface.js",
 		"js/modules/render.js",

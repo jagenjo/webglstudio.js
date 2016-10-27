@@ -61,7 +61,7 @@ var moveTool = {
 
 			if( !this._freeze_axis )
 			{
-				this._center.set( center);
+				this._center.set( center );
 				this._x_axis_end.set( x_axis_end );
 				this._y_axis_end.set( y_axis_end );
 				this._z_axis_end.set( z_axis_end );
@@ -95,6 +95,24 @@ var moveTool = {
 				LS.Draw.scale(2,2,2);
 			LS.Draw.renderCone(5*scale*0.005,15*scale*0.005,8);
 			LS.Draw.pop();
+
+			//plane gizmos
+			gl.disable( gl.CULL_FACE );
+			gl.enable( gl.BLEND );
+			LS.Draw.setColor( moveTool._on_top_of == "xy" ? [1,1,1,0.5] : [0,0,1,0.25]);
+			LS.Draw.renderPlane([scale * 0.15,scale * 0.15,0],[scale*0.14,scale*0.14]);
+			LS.Draw.push();
+			LS.Draw.rotate(90,1,0,0);
+			LS.Draw.setColor( moveTool._on_top_of == "xz" ? [1,1,1,0.5] : [0,1,0,0.25]);
+			LS.Draw.renderPlane([scale * 0.15,scale * 0.15,0],[scale*0.14,scale*0.14]);
+			LS.Draw.pop();
+			LS.Draw.push();
+			LS.Draw.rotate(-90,0,1,0);
+			LS.Draw.setColor( moveTool._on_top_of == "yz" ? [1,1,1,0.5] : [1,0,0,0.25]);
+			LS.Draw.renderPlane([scale * 0.15,scale * 0.15,0],[scale*0.14,scale*0.14]);
+			LS.Draw.pop();
+			gl.enable( gl.CULL_FACE );
+			gl.disable( gl.BLEND );
 
 		LS.Draw.pop();
 
@@ -131,9 +149,15 @@ var moveTool = {
 		}
 		else
 		{
-			//if(node && node.transform)
-			//	ToolUtils.saveNodeTransformUndo(node);
-			ToolUtils.saveSelectionTransformUndo();
+			if( moveTool._on_top_of ) //action is going to be performed so we save undo...
+			{
+				var selection_info = SelectionModule.getSelection();
+				//root component transforms do not affect Transform so we save the compo state
+				if( selection_info && selection_info.node && selection_info.node === LS.GlobalScene.root )
+					UndoModule.saveComponentChangeUndo( selection_info.instance );
+				else //save transform
+					ToolUtils.saveSelectionTransformUndo();
+			}
 		}
 
 		//get collision point with perpendicular plane
@@ -212,25 +236,41 @@ var moveTool = {
 			{
 				var closest = vec3.create();
 				var axis = null;
+				var is_plane = false;
 				
 				if(moveTool._on_top_of == "y")
 					axis = moveTool._y_axis_end;
 				else if(moveTool._on_top_of == "z")
 					axis = moveTool._z_axis_end;
-				else
+				else if(moveTool._on_top_of == "x")
 					axis = moveTool._x_axis_end;
+				else if(moveTool._on_top_of == "xz")
+				{
+					is_plane = true;
+					axis = moveTool._y_axis_end;
+				}
+				else if(moveTool._on_top_of == "yz")
+				{
+					is_plane = true;
+					axis = moveTool._x_axis_end;
+				}
+				else if(moveTool._on_top_of == "xy")
+				{
+					is_plane = true;
+					axis = moveTool._z_axis_end;
+				}
 			
-				geo.closestPointBetweenLines( ray.origin, ray.end, moveTool._center, axis, null, closest );
-				//trace( vec3.toArray(moveTool._closest));
-				//trace( vec3.toArray(closest));
-				vec3.subtract(delta, closest, moveTool._closest);
-				vec3.copy( moveTool._closest, closest );
-				/*
-				if(use_world)
-					node.transform.translate(delta[0],delta[1],delta[2]);
+				if( is_plane )
+				{
+					var axis = vec3.subtract( vec3.create(), axis, moveTool._center );
+					vec3.normalize( axis, axis );
+					geo.testRayPlane( ray.origin, ray.end, moveTool._center, axis, closest );
+				}
 				else
-					node.transform.translateLocal(delta[0],delta[1],delta[2]);
-				*/
+					geo.closestPointBetweenLines( ray.origin, ray.end, moveTool._center, axis, null, closest );
+
+				vec3.subtract( delta, closest, moveTool._closest);
+				vec3.copy( moveTool._closest, closest );
 			}
 
 			if(delta[0] == 0 && delta[1] == 0 && delta[2] == 0)
@@ -253,26 +293,63 @@ var moveTool = {
 			if ( geo.testRaySphere( ray.origin, ray.direction, moveTool._center, radius*1.1, result ) ) 
 			{
 				vec3.copy( moveTool._closest, result );
-				if ( geo.testRaySphere( ray.origin, ray.direction, moveTool._center, radius*0.25, result ) ) 
+				if ( geo.testRaySphere( ray.origin, ray.direction, moveTool._center, radius*0.05, result ) ) 
 					moveTool._on_top_of = "center";
-				else if( geo.testRayCylinder( ray.origin, ray.direction, moveTool._center, moveTool._x_axis_end, radius*0.1, result ) )
-				{
-					geo.closestPointBetweenLines( ray.origin, ray.end, moveTool._center, moveTool._x_axis_end, null, moveTool._closest );
-					//vec3.set(moveTool._closest, moveTool._debug_pos );
-					moveTool._on_top_of = "x";
-				}
-				else if( geo.testRayCylinder( ray.origin, ray.direction, moveTool._center, moveTool._y_axis_end, radius*0.1, result ) )
-				{
-					geo.closestPointBetweenLines( ray.origin, ray.end, moveTool._center, moveTool._y_axis_end, null, moveTool._closest );
-					moveTool._on_top_of = "y";
-				}
-				else if( geo.testRayCylinder( ray.origin, ray.direction, moveTool._center, moveTool._z_axis_end, radius*0.1, result ) )
-				{
-					geo.closestPointBetweenLines( ray.origin, ray.end, moveTool._center, moveTool._z_axis_end, null, moveTool._closest );
-					moveTool._on_top_of = "z";
-				}
 				else
-					moveTool._on_top_of = null;
+				{
+					var close_to_x = geo.testRayCylinder( ray.origin, ray.direction, moveTool._center, moveTool._x_axis_end, radius*0.2, result );
+					var close_to_y = geo.testRayCylinder( ray.origin, ray.direction, moveTool._center, moveTool._y_axis_end, radius*0.2, result );
+					var close_to_z = geo.testRayCylinder( ray.origin, ray.direction, moveTool._center, moveTool._z_axis_end, radius*0.2, result );
+					var axis_end = null;
+
+					if(close_to_x)
+					{
+						if(close_to_y)
+						{
+							moveTool._on_top_of = "xy";
+							axis_end = moveTool._z_axis_end;
+						}
+						else if(close_to_z)
+						{
+							moveTool._on_top_of = "xz";
+							axis_end = moveTool._y_axis_end;
+						}
+						else
+						{
+							geo.closestPointBetweenLines( ray.origin, ray.end, moveTool._center, moveTool._x_axis_end, null, moveTool._closest );
+							moveTool._on_top_of = "x";
+						}
+					}
+					else if( close_to_y )
+					{
+						if( close_to_z )
+						{
+							axis_end = moveTool._x_axis_end;
+							moveTool._on_top_of = "yz";
+						}
+						else
+						{
+							geo.closestPointBetweenLines( ray.origin, ray.end, moveTool._center, moveTool._y_axis_end, null, moveTool._closest );
+							moveTool._on_top_of = "y";
+						}
+					
+					}
+					else if( close_to_z )
+					{
+						geo.closestPointBetweenLines( ray.origin, ray.end, moveTool._center, moveTool._z_axis_end, null, moveTool._closest );
+						moveTool._on_top_of = "z";
+					}
+					else
+						moveTool._on_top_of = null;
+
+					if(axis_end)
+					{
+						var axis = vec3.create();
+						vec3.subtract( axis, axis_end, moveTool._center );
+						vec3.normalize( axis, axis );
+						geo.testRayPlane( ray.origin, ray.end, moveTool._center, axis, moveTool._closest );
+					}
+				}
 			}
 			else
 				moveTool._on_top_of = null;

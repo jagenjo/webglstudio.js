@@ -660,7 +660,7 @@ InspectorWidget.prototype.inspectMaterial = function(material)
 	//inspector.current_section.querySelector('.options_section').addEventListener("click", inner_showActions );
 
 	//mark material as changed
-	$(section).bind("wchange", function() { 
+	LiteGUI.bind( section, "wchange", function() { 
 		if(!material)
 			return;
 		var fullpath = material.fullpath || material.filename;
@@ -816,9 +816,10 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 	if(component.enabled !== undefined)
 	{
 		enabler = section.querySelector('.enabler');
-		var checkbox = new LiteGUI.Checkbox( component.enabled, function(v){ 
+		var checkbox = new LiteGUI.Checkbox( component.enabled, function(v,old){ 
+			LiteGUI.trigger( section, "wbeforechange", v );
 			component.enabled = v; 
-			$(section).trigger("wchange");
+			LiteGUI.trigger( section, "wchange", old );
 			RenderModule.requestFrame();
 		});
 		checkbox.root.title ="Enable / Disable";
@@ -826,7 +827,7 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 	}
 
 	//save UNDO when something changes TODO remove this 
-	$(section).bind("wchange", function() { 
+	LiteGUI.bind( section, "wbeforechange", function(e) { 
 		UndoModule.saveComponentChangeUndo( component );
 	});
 

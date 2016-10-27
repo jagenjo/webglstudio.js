@@ -18,7 +18,8 @@ var EditorView = {
 		render_aabb: false,
 		render_tree: false,
 		render_skeletons: true,
-		render_names: false
+		render_names: false,
+		render_height: true
 	},
 
 	render_debug_info: true,
@@ -320,8 +321,9 @@ LS.SceneNode.prototype.renderEditor = function( node_selected )
 		LS.Draw.pop();
 	}
 
-	if(node_selected)
+	if(node_selected && EditorView.settings.render_height)
 	{
+		//ground line
 		var center = this.transform.getGlobalPosition();
 		LS.Draw.setColor([0.5,0.8,0.3,0.25]);
 		LS.Draw.renderLines([center,[center[0],0,center[2]]]);
@@ -479,6 +481,15 @@ LS.Light.prototype.renderEditor = function(node_selected, component_selected )
 		gl.disable( gl.BLEND );
 	}
 
+	if(!this._root.transform && EditorView.settings.render_height)
+	{
+		//ground line
+		gl.enable(gl.BLEND);
+		LS.Draw.setColor([0.5,0.8,0.3,0.25]);
+		LS.Draw.renderLines([pos,[pos[0],0,pos[2]]]);
+		gl.disable(gl.BLEND);
+	}
+
 	gl.depthMask( true );
 }
 
@@ -547,7 +558,7 @@ LS.Camera.prototype.renderEditor = function( node_selected, component_selected )
 		gl.enable(gl.BLEND);
 		LS.Draw.renderImage( pos, EditorModule.icons_path + "gizmo-camera.png",50, true);
 		gl.disable(gl.BLEND);
-		if(component_selected)
+		if(component_selected && !this._root.transform ) //only render in root cameras
 		{
 			LS.Draw.setPointSize( 10 );
 			gl.disable(gl.DEPTH_TEST);
@@ -621,6 +632,15 @@ LS.Camera.prototype.renderEditor = function( node_selected, component_selected )
 
 		LS.Draw.pop();
 
+		gl.disable(gl.BLEND);
+	}
+
+	if( node_selected && !this._root.transform && EditorView.settings.render_height)
+	{
+		//ground line
+		gl.enable(gl.BLEND);
+		LS.Draw.setColor([0.5,0.8,0.3,0.25]);
+		LS.Draw.renderLines([pos,[pos[0],0,pos[2]]]);
 		gl.disable(gl.BLEND);
 	}
 

@@ -813,6 +813,12 @@ Timeline.prototype.setCurrentTime = function( time, skip_redraw )
 	}
 }
 
+Timeline.prototype.applyPreview = function()
+{
+	if(this.current_take && this.preview )
+		this.current_take.applyTracks( this.session.current_time, this.session.last_time );
+}
+
 Timeline.prototype.applyTracks = function( force )
 {
 	if(!this.current_take)
@@ -951,8 +957,13 @@ Timeline.prototype.onMouse = function(e)
 			{
 				var time = this.session.current_time;
 				var track = this.current_take.tracks[ item.track ];
-				if(item.type == "keyframe" && track && track.type == "events")
-					this.showAddEventKeyframeDialog( track, time, track.getKeyframe( item.keyframe ) );
+				if( item.type == "keyframe" && track )
+				{	
+					if( track.type == "events")
+						this.showAddEventKeyframeDialog( track, time, track.getKeyframe( item.keyframe ) );
+					else
+						this.showEditKeyframeDialog( track, time, track.getKeyframe( item.keyframe ) );
+				}
 				if(item.type == "track" && track)
 					this.showTrackOptionsDialog( track );
 				//this.showPropertyInfo( this.current_take.tracks[ item.track ] );
@@ -1433,11 +1444,20 @@ Timeline.prototype.addUndoAnimationEdited = function( animation )
 	UndoModule.addUndoStep({ 
 		title: "Animation modified: " + animation.name,
 		data: { animation_name: animation.name, data: animation.serialize() },
-		callback: function(d) {
+		callback_undo: function(d) {
 			var anim = d.animation_name == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation_name ];
 			if(!anim)
 				return;
+			d.new_data = anim.serialize();
 			anim.configure( d.data );
+			that.animationModified();
+			that.redrawCanvas();
+		},
+		callback_redo: function(d) {
+			var anim = d.animation_name == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation_name ];
+			if(!anim)
+				return;
+			anim.configure( d.new_data );
 			that.animationModified();
 			that.redrawCanvas();
 		}
@@ -1454,17 +1474,30 @@ Timeline.prototype.addUndoTakeEdited = function( info )
 	UndoModule.addUndoStep({ 
 		title: "Take edited ",
 		data: { animation: that.current_animation.name, take: info.name, data: info },
-		callback: function(d) {
+		callback_undo: function(d) {
 			var anim = d.animation == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation ];
 			if(!anim)
 				return;
 			var take = anim.getTake(d.take);
 			if(!take)
 				return;
+			d.new_data = take.serialize();
 			take.configure( d.data );
 			that.animationModified();
 			that.redrawCanvas();
+		},
+		callback_redo: function(d) {
+			var anim = d.animation == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation ];
+			if(!anim)
+				return;
+			var take = anim.getTake(d.take);
+			if(!take)
+				return;
+			take.configure( d.new_data );
+			that.animationModified();
+			that.redrawCanvas();
 		}
+
 	});
 }
 
@@ -1478,7 +1511,7 @@ Timeline.prototype.addUndoTrackCreated = function( track )
 	UndoModule.addUndoStep({ 
 		title: "Track created: " + track.name,
 		data: { animation: that.current_animation.name, take: that.current_take.name, index: that.current_take.tracks.indexOf( track ) },
-		callback: function(d) {
+		callback_undo: function(d) {
 			var anim = d.animation == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation ];
 			if(!anim)
 				return;
@@ -1486,8 +1519,21 @@ Timeline.prototype.addUndoTrackCreated = function( track )
 			if(!take)
 				return;
 			var track = take.tracks[ d.index ];
-			if(track)
-				take.removeTrack( track );
+			if(!track)
+				return;
+			d.track = track;
+			take.removeTrack( track );
+			that.animationModified();
+			that.redrawCanvas();
+		},
+		callback_redo: function(d) {
+			var anim = d.animation == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation ];
+			if(!anim)
+				return;
+			var take = anim.getTake(d.take);
+			if(!take)
+				return;
+			take.tracks.splice( d.index,0, d.track );
 			that.animationModified();
 			that.redrawCanvas();
 		}
@@ -1504,7 +1550,7 @@ Timeline.prototype.addUndoTrackEdited = function( track )
 	UndoModule.addUndoStep({ 
 		title: "Track edited: " + track.name,
 		data: { animation: that.current_animation.name, take: that.current_take.name, track: track.serialize(), index: that.current_take.tracks.indexOf( track ) },
-		callback: function(d) {
+		callback_undo: function(d) {
 			var anim = d.animation == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation ];
 			if(!anim)
 				return;
@@ -1512,8 +1558,24 @@ Timeline.prototype.addUndoTrackEdited = function( track )
 			if(!take)
 				return;
 			var track = take.tracks[ d.index ];
-			if(track)
-				track.configure( d.track );
+			if(!track)
+				return;
+			d.old_data = track.serialize();
+			track.configure( d.track );
+			that.animationModified();
+			that.redrawCanvas();
+		},
+		callback_redo: function(d) {
+			var anim = d.animation == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation ];
+			if(!anim)
+				return;
+			var take = anim.getTake(d.take);
+			if(!take)
+				return;
+			var track = take.tracks[ d.index ];
+			if(!track)
+				return;
+			track.configure( d.old_data );
 			that.animationModified();
 			that.redrawCanvas();
 		}
@@ -1527,7 +1589,7 @@ Timeline.prototype.addUndoTrackRemoved = function( track )
 	UndoModule.addUndoStep({ 
 		title: "Track removed: " + track.name,
 		data: { animation: that.current_animation.name, take: that.current_take.name, track: track.serialize(), index: that.current_take.tracks.indexOf( track ) },
-		callback: function(d) {
+		callback_undo: function(d) {
 			var anim = d.animation == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation ];
 			if(!anim)
 				return;
@@ -1535,7 +1597,19 @@ Timeline.prototype.addUndoTrackRemoved = function( track )
 			if(!take)
 				return;
 			var track = new LS.Animation.Track( d.track );
+			d.new_track = track;
 			take.tracks.splice( d.index,0, track );
+			that.animationModified();
+			that.redrawCanvas();
+		},
+		callback_redo: function(d) {
+			var anim = d.animation == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation ];
+			if(!anim)
+				return;
+			var take = anim.getTake(d.take);
+			if(!take)
+				return;
+			take.removeTrack( d.new_track );
 			that.animationModified();
 			that.redrawCanvas();
 		}
@@ -2194,7 +2268,7 @@ Timeline.prototype.showAddEventKeyframeDialog = function( track, time, keyframe 
 		return;
 
 	var that = this;
-	var dialog = new LiteGUI.Dialog("event keyframe",{ title:"Event/Call Keyframe", width: 300, draggable: true, closable: true });
+	var dialog = new LiteGUI.Dialog({ title:"Event/Call Keyframe", width: 300, draggable: true, closable: true });
 
 	var event_name = keyframe ? keyframe[1][0] : "";
 	var param = keyframe ? keyframe[1][1] : "";
@@ -2245,6 +2319,44 @@ Timeline.prototype.showAddEventKeyframeDialog = function( track, time, keyframe 
 	dialog.adjustSize();
 	dialog.show( null, this.root );
 }
+
+Timeline.prototype.showEditKeyframeDialog = function( track, time, keyframe )
+{
+	if(!track)
+		return;
+
+	var that = this;
+	var dialog = new LiteGUI.Dialog({ title:"Edit Keyframe", width: 300, draggable: true, closable: true });
+
+	var type = track.type;
+	var value = keyframe[1]; //keyframe comes unpacked always
+
+	var info = track.getPropertyInfo();
+	if(info && info.type)
+		type = info.type;
+
+	var preview = true;
+
+
+	var widgets = new LiteGUI.Inspector();
+	widgets.addString("Type", type, { disabled: true } );
+	widgets.addString("Time", keyframe[0].toFixed(3), { disabled: true } );
+	widgets.add( type, "Value", value, { callback: function(v){
+		that.addUndoTrackEdited( track );
+		for(var i = 0; i < track.value_size; ++i)
+			keyframe[1][i] = v[i];
+		if(preview)
+			that.applyPreview();
+		that.redrawCanvas();
+		that.animationModified();
+	}});
+	widgets.addCheckbox("Preview", preview, function(v) { preview = v; } );
+
+	dialog.add( widgets );
+	dialog.adjustSize();
+	dialog.show( null, this.root );
+}
+
 
 Timeline.prototype.toggleRecording = function(v)
 {

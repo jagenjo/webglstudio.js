@@ -6,29 +6,34 @@ if(typeof(GL) == "undefined")
 
 function enableWebGLCanvas( canvas, options )
 {
+	var gl;
 	options = options || {};
 
+	// Detect if canvas is WebGL enabled and get context if possible
 	if(!canvas.is_webgl)
 	{
-		var gl = canvas.getContext("webgl");
-		if(!gl)
-			throw("This canvas cannot be used as WebGL, maybe WebGL is not supported or this canvas has already a 2D context associated");
 		options.canvas = canvas;
-		GL.create( options );
+		options.alpha = true;
+		try {
+			gl = GL.create(options);
+		} catch(e) {
+			console.log("This canvas cannot be used as WebGL, maybe WebGL is not supported or this canvas has already a 2D context associated");
+			gl = canvas.getContext("2d", options);
+			return gl;
+       	}
 	}
+	else
+		gl = canvas.gl;
+
+
+	// Return if canvas is already canvas2DtoWebGL enabled
+	if(canvas.canvas2DtoWebGL_enabled)
+		return gl;
 
 	//settings
 	var curveSubdivisions = 50;
 	var max_points = 10000; //max amount of vertex allowed to have in a single primitive
 	var max_characters = 1000; //max amount of characters allowed to have in a single fillText
-
-
-	//get the context	
-	var gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
-	if(!gl)
-		throw("enableWebGLCanvas: cannot obtain webgl context from canvas");
-	if(canvas.canvas2DtoWebGL_enabled)
-		return gl;
 
 	//flag it for future uses
 	canvas.canvas2DtoWebGL_enabled = true;
@@ -367,7 +372,7 @@ function enableWebGLCanvas( canvas, options )
 			var ay, by, cy;
 			var tSquared, tCubed;
 
-			/* c·lculo de los coeficientes polinomiales */
+			/* c√°lculo de los coeficientes polinomiales */
 			cx = 3.0 * (cp[1][0] - cp[0][0]);
 			bx = 3.0 * (cp[2][0] - cp[1][0]) - cx;
 			ax = cp[3][0] - cp[0][0] - cx - bx;

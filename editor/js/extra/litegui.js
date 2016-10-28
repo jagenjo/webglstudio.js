@@ -1048,6 +1048,11 @@ var LiteGUI = {
 		return o;
 	},
 
+	safeName: function( str )
+	{
+		return String(str).replace(/[\s\.]/g, '');
+	},
+
 	//those useful HTML unicode codes that I never remeber but I always need
 	special_codes: {
 		close: "&#10005;",
@@ -8419,7 +8424,8 @@ Inspector.prototype.addList = function(name, values, options)
 					item_name = i;
 				var item_title = item_name.constructor === String ? item_name : i;
 				var item_style = null;
-				item_name = item_name.replace(/<(?:.|\n)*?>/gm, ''); //remove html tags that could break the html
+				if(item_name && item_name.constructor === String)
+					item_name = item_name.replace(/<(?:.|\n)*?>/gm, ''); //remove html tags that could break the html
 
 				var icon = "";
 				if( value === null || value === undefined )
@@ -8442,7 +8448,7 @@ Inspector.prototype.addList = function(name, values, options)
 				if( (typeof(values[i]) == "object" && values[i].selected) || (item_selected == values[i]) )
 					selected = true;
 				var li_element = document.createElement("li");
-				li_element.classList.add( 'item-' + i );
+				li_element.classList.add( 'item-' + LiteGUI.safeName(i) );
 				if( selected )
 					li_element.classList.add( 'selected' );
 				li_element.dataset["name"] = item_name;

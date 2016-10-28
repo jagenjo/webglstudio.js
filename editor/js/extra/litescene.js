@@ -7120,20 +7120,22 @@ StandardMaterial.prototype.prepare = function( scene )
 {
 	var flags = this.flags;
 
-	//set flags in render state
-	this.render_state.cull_face = !flags.two_sided;
-	this.render_state.front_face = flags.flip_normals ? GL.CW : GL.CCW;
-	this.render_state.depth_test = flags.depth_test;
-	this.render_state.depth_write = flags.depth_write;
+	var render_state = this._render_state;
 
-	this.render_state.blend = this.blend_mode != LS.Blend.NORMAL;
+	//set flags in render state
+	render_state.cull_face = !flags.two_sided;
+	render_state.front_face = flags.flip_normals ? GL.CW : GL.CCW;
+	render_state.depth_test = flags.depth_test;
+	render_state.depth_mask = flags.depth_write;
+
+	render_state.blend = this.blend_mode != LS.Blend.NORMAL;
 	if( this.blend_mode != LS.Blend.NORMAL )
 	{
 		var func = LS.BlendFunctions[ this.blend_mode ];
 		if(func)
 		{
-			this.render_state.blendFunc0 = func[0];
-			this.render_state.blendFunc1 = func[1];
+			render_state.blendFunc0 = func[0];
+			render_state.blendFunc1 = func[1];
 		}
 	}
 
@@ -12357,6 +12359,11 @@ ShaderCode.examples.fx = "\n\
 
 ShaderCode.examples.color = "\n\
 \n\
+\\js\n\
+//define exported uniforms from the shader (name, uniform, widget)\n\
+this.createUniform(\"Number\",\"u_number\",\"number\");\n\
+this.createSampler(\"Texture\",\"u_texture\");\n\
+\n\
 \\default.vs\n\
 \n\
 precision mediump float;\n\
@@ -12407,6 +12414,9 @@ uniform vec4 u_clipping_plane;\n\
 uniform float u_time;\n\
 uniform vec3 u_background_color;\n\
 uniform vec3 u_ambient_light;\n\
+\n\
+uniform float u_number;\n\
+uniform sampler2D u_texture;\n\
 \n\
 //material\n\
 uniform vec4 u_material_color; //color and alpha\n\
@@ -21590,8 +21600,9 @@ function Light(o)
 	}
 }
 
-Light["@projective_texture"] = { type:"Texture" };
-Light["@extra_texture"] = { type:"Texture" };
+Light["@projective_texture"] = { type: LS.TYPES.TEXTURE };
+Light["@extra_texture"] = { type: LS.TYPES.TEXTURE };
+Light["@color"] = { type: LS.TYPES.COLOR };
 
 Object.defineProperty( Light.prototype, 'position', {
 	get: function() { return this._position; },
@@ -28103,11 +28114,12 @@ ParticleEmissor.prototype.onCollectInstances = function(e, instances, options)
 		this._material = new LS.StandardMaterial({ shader_name:"lowglobal" });
 
 	this._material.opacity = this.opacity - 0.01; //try to keep it under 1
-	this._material.setTexture(Material.COLOR, this.texture);
+	this._material.setTexture( "color", this.texture );
 	this._material.blend_mode = this.additive_blending ? Blend.ADD : Blend.ALPHA;
 	this._material.soft_particles = this.soft_particles;
 	this._material.constant_diffuse = true;
 	this._material.uvs_matrix[0] = this._material.uvs_matrix[4] = 1 / this.texture_grid_size;
+	this._material.flags.depth_write = false;
 
 	if(!this._mesh)
 		return null;

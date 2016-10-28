@@ -297,9 +297,9 @@ var moveTool = {
 					moveTool._on_top_of = "center";
 				else
 				{
-					var close_to_x = geo.testRayCylinder( ray.origin, ray.direction, moveTool._center, moveTool._x_axis_end, radius*0.2, result );
-					var close_to_y = geo.testRayCylinder( ray.origin, ray.direction, moveTool._center, moveTool._y_axis_end, radius*0.2, result );
-					var close_to_z = geo.testRayCylinder( ray.origin, ray.direction, moveTool._center, moveTool._z_axis_end, radius*0.2, result );
+					var close_to_x = geo.testRayCylinder( ray.origin, ray.direction, moveTool._center, moveTool._x_axis_end, radius*0.25, result );
+					var close_to_y = geo.testRayCylinder( ray.origin, ray.direction, moveTool._center, moveTool._y_axis_end, radius*0.25, result );
+					var close_to_z = geo.testRayCylinder( ray.origin, ray.direction, moveTool._center, moveTool._z_axis_end, radius*0.25, result );
 					var axis_end = null;
 
 					if(close_to_x)

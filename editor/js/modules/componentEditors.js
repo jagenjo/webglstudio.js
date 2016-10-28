@@ -698,11 +698,6 @@ LS.Components.ParticleEmissor["@inspector"] = function(component, inspector)
 	//inspector.addCheckbox("Soft particles", component.soft_particles, {callback: function (value) { component.soft_particles = value; }});
 	inspector.widgets_per_row = 1;
 
-	inspector.addButton("","Change flags", { callback: function() { 
-		component._root.flags.depth_write = false;
-		//component._root.flags.ignore_lights = true;
-	}});
-
 	inspector.addTitle("Physics");
 	inspector.addVector3("Gravity",component.physics_gravity, {step:0.1, callback: function (value) { vec3.copy(component.physics_gravity, value); }});
 	inspector.addNumber("Rotation",component.particle_rotation, {step:0.1, callback: function (value) { component.particle_rotation = value; }});

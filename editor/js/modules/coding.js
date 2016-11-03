@@ -225,13 +225,20 @@ var CodingModule = //do not change
 		if(!help)
 		{
 			if(options.type === LS.TYPES.COMPONENT)
-				help = LS.Script.coding_help;
+			{
+				window.open( "https://github.com/jagenjo/litescene.js/blob/master/guides/scripting.md"	);
+			}
 			else if(options.type === LS.TYPES.RESOURCE)
 			{
 				if(options.lang == "glsl")
-					help = LS.SurfaceMaterial.coding_help;
+				{
+					if(LS.ShaderCode.help_url)
+						window.open( LS.ShaderCode.help_url	);
+					return;
+					//help = LS.SurfaceMaterial.coding_help;
+				}
 				else
-					help = LS.Script.coding_help;
+					window.open( "https://github.com/jagenjo/litescene.js/blob/master/guides/scripting.md"	);
 			}
 			else
 				return;

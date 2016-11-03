@@ -185,6 +185,13 @@ LS.Component.doAction = function( component, name_action )
 }
 
 
+LS.Component.actions["enable"] = { 
+	title:"Enable/Disable",
+	callback: function(){
+		this.enabled = !this.enabled;
+	}
+};
+
 
 LS.Component.actions["info"] = { 
 	title:"Show Information",

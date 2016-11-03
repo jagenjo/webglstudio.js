@@ -43,7 +43,7 @@ function ResourcesPanelWidget( options )
 	top_inspector.root.style.marginTop = "4px";
 
 	//filter by name
-	top_inspector.addString("Filter","",{ callback: function(v) { 
+	top_inspector.addString("Filter","",{ name_width: 40, content_width: 120, width: 160, callback: function(v) { 
 		that.filterByName(v);
 	}});
 
@@ -52,15 +52,15 @@ function ResourcesPanelWidget( options )
 	for(var i in LS.ResourceClasses)
 		valid_categories.push( LS.ResourceClasses[i] );
 	//should be a combo but chrome keeps crashing when I use a combo, so it will be a string
-	this.filter_by_category_widget = top_inspector.addString("Category","",{ width: 200, values: valid_categories, callback: function(v) { 
+	this.filter_by_category_widget = top_inspector.addString("Category","",{ name_width: 60, content_width: 140, width: 200, values: valid_categories, callback: function(v) { 
 		that.filterByCategory( v, true );
 	}});
 
 	if(!options.skip_actions)
 	{
 		top_inspector.addSeparator();
-		top_inspector.addButton(null,"New", function(){ DriveModule.showNewResourceDialog(); });
-		top_inspector.addButton(null,"Insert in scene", function(){ DriveModule.onInsertResourceInScene( that.selected_item ); });
+		top_inspector.addButton(null,"New", { width: 50, function(v,e){ DriveModule.showCreateNewFileMenu( that.current_folder, e ); }});
+		//top_inspector.addButton(null,"Insert in scene", function(){ DriveModule.onInsertResourceInScene( that.selected_item ); });
 		top_inspector.addButton(null,"Import File", function(){ 
 			ImporterModule.showImportResourceDialog(null,{ folder: that.current_folder }, function(){ that.refreshContent(); });
 		});

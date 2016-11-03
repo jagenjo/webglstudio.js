@@ -821,8 +821,9 @@ var LS = {
 		return v.match(exp);
 	},
 
-	valid_property_types: ["String","Number","Boolean","color","vec2","vec3","vec4","quat","mat3","mat4","Resource","Animation","Texture","Prefab","Mesh","ShaderCode"],
-
+	valid_property_types: ["String","Number","Boolean","color","vec2","vec3","vec4","quat","mat3","mat4","Resource","Animation","Texture","Prefab","Mesh","ShaderCode","node","component"],
+	
+	//used when creating a property to a component, to see if the type is valid
 	validatePropertyType: function(v)
 	{
 		if(	this.valid_property_types.indexOf(v) == -1 )
@@ -2911,7 +2912,7 @@ var ResourcesManager = {
 			return;
 		}
 
-
+		//if the file has been modified we cannot keep using the original data
 		delete resource._original_data;
 		delete resource._original_file;
 
@@ -2919,7 +2920,8 @@ var ResourcesManager = {
 			resource._modified = true;
 
 		LEvent.trigger(this, "resource_modified", resource );
-		
+
+		//TODO: from_prefab and from_pack should be the sabe property
 		if(resource.from_pack)
 		{
 			if (resource.from_pack.constructor === String)
@@ -2929,6 +2931,16 @@ var ResourcesManager = {
 					this.resourceModified(pack);
 			}
 		}
+		if(resource.from_prefab)
+		{
+			if (resource.from_prefab.constructor === String)
+			{
+				var prefab = LS.ResourcesManager.getResource( resource.from_prefab );
+				if(prefab)
+					this.resourceModified(prefab);
+			}
+		}
+
 
 	},
 
@@ -5856,7 +5868,10 @@ var Draw = {
 			}
 		}
 
-		this.font_atlas = GL.Texture.fromImage(canvas, {magFilter: gl.NEAREST, minFilter: gl.LINEAR} );
+		this.font_atlas = GL.Texture.fromImage(canvas, {magFilter: gl.LINEAR, minFilter: gl.LINEAR} );
+		gl.colorMask(false,false,false,true);
+		this.font_atlas.fill([1,1,1,0]);
+		gl.colorMask(true,true,true,true);
 		this.font_atlas.atlas = atlas;
 	},
 
@@ -6229,7 +6244,6 @@ function Material( o )
 
 	//materials have at least a basic color property and opacity
 	this._color = new Float32Array([1.0,1.0,1.0,1.0]);
-	this.createProperty( "diffuse", new Float32Array([1.0,1.0,1.0]), "color" );
 
 	//render queue: which order should this be rendered
 	this._queue = LS.RenderQueue.DEFAULT;
@@ -6389,7 +6403,7 @@ Material.prototype.fillUniforms = function( scene, options )
 	var samplers = [];
 
 	uniforms.u_material_color = this._color;
-	uniforms.u_ambient_color = scene.info ? scene.info.ambient_color : this._diffuse;
+	uniforms.u_ambient_color = scene.info ? scene.info.ambient_color : LS.ONES;
 	uniforms.u_texture_matrix = this.uvs_matrix;
 
 	uniforms.u_specular = vec2.create([1,50]);
@@ -6896,7 +6910,7 @@ Material.processShaderCode = function(code)
 }
 
 /**
-* Creates a new property in this material class, but helps with some special cases
+* Creates a new property in this material class. Helps with some special cases
 * like when we have a Float32Array property and we dont want it to be replaced by another array, but setted
 * @method createProperty
 * @param {String} name the property name as it should be accessed ( p.e.  "color" -> material.color )
@@ -6918,6 +6932,9 @@ Material.prototype.createProperty = function( name, value, type, options )
 		LS.cloneObject( options, this.constructor[ "@" + name ] );
 	}
 
+	if(value == null)
+		return;
+
 	//basic type
 	if(value.constructor === Number || value.constructor === String || value.constructor === Boolean)
 	{
@@ -6925,8 +6942,8 @@ Material.prototype.createProperty = function( name, value, type, options )
 		return;
 	}
 
-	//vector type
-	if(value.constructor === Float32Array)
+	//for vector type
+	if(value.constructor === Float32Array )
 	{
 		var private_name = "_" + name;
 		value = new Float32Array( value ); //clone
@@ -6935,7 +6952,8 @@ Material.prototype.createProperty = function( name, value, type, options )
 		Object.defineProperty( this, name, {
 			get: function() { return value; },
 			set: function(v) { value.set( v ); },
-			enumerable: true
+			enumerable: true,
+			configurable: true
 		});
 	}
 }
@@ -6947,6 +6965,9 @@ Material.prototype.prepare = function( scene )
 		this._uniforms = {};
 		this._samplers = [];
 	}
+
+	if(this.onPrepare)
+		this.onPrepare(scene);
 
 	this.fillShaderQuery( scene ); //update shader macros on this material
 	this.fillUniforms( scene ); //update uniforms
@@ -6978,8 +6999,9 @@ function StandardMaterial(o)
 
 	this.blend_mode = LS.Blend.NORMAL;
 
-	this.createProperty("ambient", new Float32Array([1.0,1.0,1.0]), "color" );
-	this.createProperty("emissive", new Float32Array([0,0,0,0]), "color" );
+	this.createProperty( "diffuse", new Float32Array([1.0,1.0,1.0]), "color" );
+	this.createProperty( "ambient", new Float32Array([1.0,1.0,1.0]), "color" );
+	this.createProperty( "emissive", new Float32Array([0,0,0,0]), "color" );
 	//this.emissive = new Float32Array([0.0,0.0,0.0]);
 	this.backlight_factor = 0;
 
@@ -7958,10 +7980,22 @@ Object.defineProperty( ShaderMaterial.prototype, "properties", {
 		this._properties = v;
 		this._properties_by_name = {};
 		for(var i in this._properties)
-			this._properties_by_name[ this._properties[i].name ] = this._properties[i];
+		{
+			var p = this._properties[i];
+			this._properties_by_name[ p.name ] = p;
+		}
 	}
 });
 
+/**
+* Makes one shader variable (uniform) public so it can be assigned from the engine (or edited from the editor)
+* @method createUniform
+* @param {String} name the property name as it should be shown
+* @param {String} uniform the uniform name in the shader
+* @param {String} type the var type in case we want to edit it (use LS.TYPES)
+* @param {*} value
+* @param {Object} options an object containing all the possible options (used mostly for widgets)
+*/
 ShaderMaterial.prototype.createUniform = function( name, uniform, type, value, options )
 {
 	if(!name || !uniform)
@@ -7997,6 +8031,13 @@ ShaderMaterial.prototype.createUniform = function( name, uniform, type, value, o
 	this._properties_by_name[ name ] = prop;
 }
 
+/**
+* Similar to createUniform but for textures, it helps specifying sampler options
+* @method createSampler
+* @param {String} name the property name as it should be shown
+* @param {String} uniform the uniform name in the shader
+* @param {Object} options an object containing all the possible options (used mostly for widgets)
+*/
 ShaderMaterial.prototype.createSampler = function( name, uniform, sampler_options  )
 {
 	if(!name || !uniform)
@@ -8031,6 +8072,87 @@ ShaderMaterial.prototype.createSampler = function( name, uniform, sampler_option
 	this._samplers.push( prop.value );
 }
 
+/**
+* Creates a property for this material, this property wont be passed to the shader but can be used from source code.
+* You must used this function if you want the data to be stored when serializing or changing the ShaderCode
+* @method createProperty
+* @param {String} name the property name as it should be shown
+* @param {*} value the default value
+* @param {String} type the data type (use LS.TYPES)
+* @param {Object} options an object containing all the possible options (used mostly for widgets)
+*/
+ShaderMaterial.prototype.createProperty = function( name, value, type, options )
+{
+	var prop = this._properties_by_name[ name ];
+	if(prop && prop.type == type) //already exist with the same type
+		return;
+
+	prop = { name: name, type: type, internal: true, value: value };
+	if(options)
+		for(var i in options)
+			prop[i] = options[i];
+
+	this._properties.push( prop );
+	this._properties_by_name[ name ] = prop;
+
+	Object.defineProperty( this, name, {
+		get: function() { 
+			var prop = this._properties_by_name[ name ]; //fetch it because could have been overwritten
+			if(prop)
+				return prop.value;
+		},
+		set: function(v) { 
+			var prop = this._properties_by_name[ name ]; //fetch it because could have been overwritten
+			if(!prop)
+				return;
+			if(prop.value && prop.value.set) //for typed arrays
+				prop.value.set( v );
+			else
+				prop.value = v;
+		},
+		enumerable: false, //must not be serialized
+		configurable: true //allows to overwrite this property
+	});
+}
+
+//called when preparing materials before rendering the scene
+ShaderMaterial.prototype.prepare = function( scene )
+{
+	this.fillUniforms();
+
+	if( this.onPrepare )
+		this.onPrepare( scene );
+}
+
+//called when filling uniforms from prepare
+ShaderMaterial.prototype.fillUniforms = function()
+{
+	//gather uniforms & samplers
+	var samplers = this._samplers;
+	samplers.length = 0;
+
+	this._uniforms.u_material_color = this._color;
+
+	for(var i = 0; i < this._properties.length; ++i)
+	{
+		var p = this._properties[i];
+		if(p.internal) //internal is a property that is not for the shader (is for internal computations)
+			continue;
+
+		if(p.is_texture)
+		{
+			this._uniforms[ p.uniform ] = samplers.length;
+			if(p.value)
+				samplers.push( p.value );
+			else
+				samplers.push( " " ); //force missing texture
+		}
+		else
+			this._uniforms[ p.uniform ] = p.value;
+	}
+}
+
+//assigns a value to a property
 ShaderMaterial.prototype.setProperty = function(name, value)
 {
 	//redirect to base material
@@ -8055,17 +8177,18 @@ ShaderMaterial.prototype.setProperty = function(name, value)
 	}
 	else if( this._properties_by_name[ name ] )
 	{
-		var p = this._properties_by_name[ name ];
-		if( !p.value || !p.value.length)
-			p.value = value;
+		var prop = this._properties_by_name[ name ];
+		if( !prop.value || !prop.value.length)
+			prop.value = value;
 		else
-			p.value.set( value );
+			prop.value.set( value );
 	}
 	else
 		return false;
 	return true;
 }
 
+//check the ShaderCode associated and applies it to this material (keeping the state of the properties)
 ShaderMaterial.prototype.processShaderCode = function()
 {
 	if(!this._shader)
@@ -8131,6 +8254,7 @@ ShaderMaterial.prototype.processShaderCode = function()
 	this._shader_version = shader_code._version;
 }
 
+//used after changing the code of the ShaderCode and wanting to reload the material keeping the old properties
 ShaderMaterial.prototype.assignOldProperties = function( old_properties )
 {
 	//get shader code
@@ -8151,7 +8275,7 @@ ShaderMaterial.prototype.assignOldProperties = function( old_properties )
 
 
 		//validate
-		if( shader )
+		if( !old.internal && shader )
 		{
 			var uniform_info = shader.uniformInfo[ new_prop.uniform ];
 			if(!uniform_info)
@@ -8180,6 +8304,7 @@ ShaderMaterial.prototype.assignOldProperties = function( old_properties )
 	}
 }
 
+//called from LS.Renderer when rendering an instance
 ShaderMaterial.prototype.renderInstance = function( instance, render_settings, lights )
 {
 	if(!this.shader)
@@ -8225,10 +8350,8 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, l
 	//global stuff
 	this.render_state.enable();
 
-	this.fillUniforms();
-
-	if(this.prepare_render)
-		this.prepare_render( instance );
+	if(this.onRenderInstance)
+		this.onRenderInstance( instance );
 
 	//assign
 	LS.Renderer.bindSamplers(  this._samplers );
@@ -8239,31 +8362,6 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, l
 	renderer._rendercalls += 1;
 
 	return true;
-}
-
-ShaderMaterial.prototype.fillUniforms = function()
-{
-	//gather uniforms & samplers
-	var samplers = this._samplers;
-	samplers.length = 0;
-
-	this._uniforms.u_material_color = this._color;
-
-	for(var i = 0; i < this._properties.length; ++i)
-	{
-		var p = this._properties[i];
-
-		if(p.is_texture)
-		{
-			this._uniforms[ p.uniform ] = samplers.length;
-			if(p.value)
-				samplers.push( p.value );
-			else
-				samplers.push( " " ); //force missing texture
-		}
-		else
-			this._uniforms[ p.uniform ] = p.value;
-	}
 }
 
 ShaderMaterial.prototype.renderShadowInstance = function( instance, render_settings )
@@ -8533,12 +8631,23 @@ ComponentContainer.prototype.addComponent = function( component, index )
 	//link component with container
 	component._root = this;
 
+	//must have uid
+	if( !component.uid )
+		component.uid = LS.generateUId("COMP-");
+
 	//not very clean, ComponetContainer shouldnt know about LS.SceneNode, but this is more simple
-	if(this.constructor == LS.SceneNode && component.onAddedToNode)
+	if( component.onAddedToNode)
 		component.onAddedToNode(this);
 
-	if( (this._in_tree || this.constructor == LS.SceneTree) && component.onAddedToScene)
-		component.onAddedToScene( this.constructor == LS.SceneTree ? this : this._in_tree );
+	if( this._in_tree )
+	{
+		if( component.uid )
+			this._in_tree._components_by_uid[ component.uid ] = component;
+		else
+			console.warn("component without uid?", component);
+		if(	component.onAddedToScene )
+			component.onAddedToScene( this.constructor == LS.SceneTree ? this : this._in_tree );
+	}
 
 	//link node with component
 	if(!this._components) 
@@ -8551,8 +8660,7 @@ ComponentContainer.prototype.addComponent = function( component, index )
 	else
 		this._components.push( component );
 
-	if( !component.uid )
-		component.uid = LS.generateUId("COMP-");
+	LEvent.trigger( this, "componentAdded", component );
 
 	return component;
 }
@@ -8571,11 +8679,15 @@ ComponentContainer.prototype.removeComponent = function(component)
 	component._root = null;
 
 	//not very clean, ComponetContainer shouldnt know about LS.SceneNode, but this is more simple
-	if(this.constructor == LS.SceneNode && component.onRemovedFromNode)
+	if( component.onRemovedFromNode )
 		component.onRemovedFromNode(this);
 
-	if((this._in_tree || this.constructor == LS.SceneTree) && component.onRemovedFromScene)
-		component.onRemovedFromScene( this.constructor == LS.SceneTree ? this : this._in_tree );
+	if( this._in_tree )
+	{
+		delete this._in_tree._components_by_uid[ component.uid ];
+		if(component.onRemovedFromScene)
+			component.onRemovedFromScene( this._in_tree );
+	}
 
 	//remove all events
 	LEvent.unbindAll(this,component);
@@ -8586,6 +8698,8 @@ ComponentContainer.prototype.removeComponent = function(component)
 		this._components.splice(pos,1);
 	else
 		console.warn("removeComponent: Component not found in node");
+
+	LEvent.trigger( this, "componentRemoved", component );
 }
 
 /**
@@ -10545,41 +10659,46 @@ Track.prototype.clear = function()
 	this.packed_data = false;
 }
 
-
 //used to change every track so instead of using UIDs for properties it uses node names
 //this is used when you want to apply the same animation to different nodes in the scene
-Track.prototype.convertIDtoName = function( use_basename, root )
+Track.prototype.getIDasName = function( use_basename, root )
 {
 	if( !this._property_path || !this._property_path.length )
-		return false;
+		return null;
 
 	if(this._property_path[0][0] !== LS._uid_prefix)
-		return false; //is already using names
+		return null; //is already using names
 
 	var node = LSQ.get( this._property_path[0], root );
 	if(!node)
 	{
-		console.warn("convertIDtoName: node not found in LS.GlobalScene: " + this._property_path[0] );
+		console.warn("getIDasName: node not found in LS.GlobalScene: " + this._property_path[0] );
 		return false;
 	}
 
 	if(!node.name)
 	{
-		console.warn("convertIDtoName: node without name?");
+		console.warn("getIDasName: node without name?");
 		return false;
 	}
 
+	var result = this._property_path.concat();
 	if(use_basename)
-	{
-		this._property_path[0] = node.name;
-		this._property = this._property_path.join("/");
-	}
+		result[0] = node.name;
 	else
-	{
-		this._property_path[0] = node.fullname;
-		this._property = this._property_path.join("/");
-	}
+		result[0] = node.fullname;
+	return result.join("/");
+}
 
+//used to change every track so instead of using UIDs for properties it uses node names
+//this is used when you want to apply the same animation to different nodes in the scene
+Track.prototype.convertIDtoName = function( use_basename, root )
+{
+	var name = this.getIDasName( use_basename, root );
+	if(!name)
+		return false;
+	this._property = name;
+	this._property_path = this._property.split("/");
 	return true;
 }
 
@@ -11829,6 +11948,12 @@ Pack.prototype.flagResources = function()
 	}
 }
 
+Pack.prototype.getDataToStore = function()
+{
+	return LS.Pack.packResources( this.resource_names, { "@version": LS.Pack.version } );
+}
+
+
 LS.Pack = Pack;
 LS.registerResourceClass( Pack );
 
@@ -11861,6 +11986,8 @@ function ShaderCode( code )
 	if(code)
 		this.code = code;
 }
+
+ShaderCode.help_url = "https://github.com/jagenjo/litescene.js/blob/master/guides/shaders.md";
 
 //block types
 ShaderCode.CODE = 1;
@@ -13796,6 +13923,15 @@ TextureFX.available_fx = {
 		},
 		uv_code:"float r2 = u_aspect * u_aspect * (uv.x-0.5) * (uv.x-0.5) + (uv.y-0.5) * (uv.y-0.5); float distort@ = 1. + r2 * (u_lens_k@ + u_lens_kcube@ * sqrt(r2)); uv = vec2( u_lens_scale@ * distort@ * (uv.x-0.5) + 0.5, u_lens_scale@  * distort@ * (uv.y-0.5) + 0.5 );"
 	},
+	"image": {
+		name: "Image",
+		uniforms: {
+			image_texture: { name: "u_image_texture", type: "sampler2D", widget: "Texture", value: "" },
+			image_alpha: { name: "u_image_alpha", type: "float", value: 1, step: 0.001 },
+			image_scale: { name: "u_image_scale", type: "vec2", value: [1,1], step: 0.001 }
+		},
+		code:"vec4 image@ = texture2D( u_image_texture@, (uv - vec2(0.5)) * u_image_scale@ + vec2(0.5)); color.xyz = mix(color.xyz, image@.xyz, image@.a * u_image_alpha@ );"
+	},
 	"warp": {
 		name: "Warp",
 		uniforms: {
@@ -14184,8 +14320,16 @@ TextureFX.prototype.applyFX = function( input_texture, output_texture, options )
 							gl.texParameteri( tex.texture_type, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
 							gl.texParameteri( tex.texture_type, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE );
 						}
-						texture_slot++;
 					}
+					else
+					{
+						//bind something to avoid problems
+						tex = LS.Renderer._missing_texture;
+						if(tex)
+							tex.bind( texture_slot );
+					}
+
+					texture_slot++;
 				}
 				else
 					uniforms[ varname ] = fx[j] !== undefined ? fx[j] : uniform.value;
@@ -15948,7 +16092,6 @@ var Renderer = {
 
 		//Event: beforeRender used in actions that could affect which info is collected for the rendering
 		LEvent.trigger( scene, "beforeRender", render_settings );
-		//scene.triggerInNodes( "beforeRender", render_settings ); //TODO: remove
 
 		//get render instances, cameras, lights, materials and all rendering info ready (computeVisibility)
 		this.processVisibleData( scene, render_settings, cameras );
@@ -15963,19 +16106,15 @@ var Renderer = {
 
 		//Event: renderShadowmaps helps to generate shadowMaps that need some camera info (which could be not accessible during processVisibleData)
 		LEvent.trigger(scene, "renderShadows", render_settings );
-		//scene.triggerInNodes("renderShadows", render_settings ); //TODO: remove
 
 		//Event: afterVisibility allows to cull objects according to the main camera
 		LEvent.trigger(scene, "afterVisibility", render_settings );
-		//scene.triggerInNodes("afterVisibility", render_settings ); //TODO: remove	
 
 		//Event: renderReflections in case some realtime reflections are needed, this is the moment to render them inside textures
 		LEvent.trigger(scene, "renderReflections", render_settings );
-		//scene.triggerInNodes("renderReflections", render_settings ); //TODO: remove
 
 		//Event: beforeRenderMainPass in case a last step is missing
 		LEvent.trigger(scene, "beforeRenderMainPass", render_settings );
-		//scene.triggerInNodes("beforeRenderMainPass", render_settings ); //TODO: remove
 
 		//allows to overwrite renderer
 		if(this.custom_renderer && this.custom_renderer.render && render_settings.custom_renderer )
@@ -16007,7 +16146,6 @@ var Renderer = {
 
 		//Event: afterRender to give closure to some actions
 		LEvent.trigger(scene, "afterRender", render_settings );
-		//scene.triggerInNodes("afterRender", render_settings ); //TODO: remove
 	},
 
 	/**
@@ -16065,16 +16203,14 @@ var Renderer = {
 
 		//send before events
 		LEvent.trigger(scene, "beforeRenderScene", camera );
-		//scene.triggerInNodes("beforeRenderScene", camera ); //TODO remove
 		LEvent.trigger(this, "beforeRenderScene", camera );
 
 		//here we render all the instances
 		this.renderInstances(render_settings);
 
 		//send after events
-		LEvent.trigger(scene, "afterRenderScene", camera );
-		//scene.triggerInNodes("afterRenderScene", camera ); //TODO remove
-		LEvent.trigger(this, "afterRenderScene", camera );
+		LEvent.trigger( scene, "afterRenderScene", camera );
+		LEvent.trigger( this, "afterRenderScene", camera );
 
 		//render helpers (guizmos)
 		if(render_settings.render_helpers)
@@ -16673,10 +16809,12 @@ var Renderer = {
 			}
 			else if(sampler.texture)
 				tex = sampler.texture;
-			else
-				continue; //dont know what this var type is?
+			else //dont know what this var type is?
+			{
+				//continue; //if we continue the sampler slot will remain empty which could lead to problems
+			}
 
-			if(tex.constructor === String)
+			if(tex && tex.constructor === String)
 				tex = LS.ResourcesManager.textures[ tex ];
 			if(!tex)
 			{
@@ -18701,6 +18839,7 @@ Transform.prototype.resetRotation = function()
 	quat.identity( this._rotation );
 	this._version += 1;
 	this._must_update = true;
+	this._on_change();
 }
 
 /**
@@ -18712,6 +18851,7 @@ Transform.prototype.resetPosition = function()
 	vec3.copy( this._position, LS.ZEROS );
 	this._version += 1;
 	this._must_update = true;
+	this._on_change(true);
 }
 
 /**
@@ -18723,6 +18863,7 @@ Transform.prototype.resetScale = function()
 	vec3.copy( this._scaling, LS.ONES );
 	this._version += 1;
 	this._must_update = true;
+	this._on_change(true);
 }
 
 
@@ -19165,7 +19306,7 @@ Transform.prototype.setPosition = function(x,y,z)
 	else
 		vec3.copy(this._position, x);
 	this._must_update = true;
-	this._on_change();
+	this._on_change(true);
 }
 
 /**
@@ -19180,7 +19321,7 @@ Transform.prototype.setRotation = function(q_angle,axis)
 	else
 		quat.copy(this._rotation, q_angle );
 	this._must_update = true;
-	this._on_change();
+	this._on_change(true);
 }
 
 /**
@@ -19197,7 +19338,7 @@ Transform.prototype.setScale = function(x,y,z)
 	else
 		vec3.set(this._scaling, x,x,x);
 	this._must_update = true;
-	this._on_change();
+	this._on_change(true);
 }
 
 /**
@@ -19214,7 +19355,7 @@ Transform.prototype.translate = function(x,y,z)
 	else
 		vec3.add( this._position, this._position, this.transformVector(x) );
 	this._must_update = true;
-	this._on_change();
+	this._on_change(true);
 }
 
 /**
@@ -19231,7 +19372,7 @@ Transform.prototype.translateGlobal = function(x,y,z)
 	else
 		vec3.add( this._position, this._position, x );
 	this._must_update = true;
-	this._on_change();
+	this._on_change(true);
 }
 
 /**
@@ -19249,7 +19390,7 @@ Transform.prototype.rotate = (function(){
 		quat.setAxisAngle( temp, axis, angle_in_deg * 0.0174532925 );
 		quat.multiply( this._rotation, this._rotation, temp );
 		this._must_update = true;
-		this._on_change();
+		this._on_change(true);
 	}
 })();
 
@@ -19262,7 +19403,7 @@ Transform.prototype.rotateX = function(angle_in_deg)
 {
 	quat.rotateX( this._rotation, this._rotation, angle_in_deg * 0.0174532925 );
 	this._must_update = true;
-	this._on_change();
+	this._on_change(true);
 }
 
 /**
@@ -19286,7 +19427,7 @@ Transform.prototype.rotateZ = function(angle_in_deg)
 {
 	quat.rotateZ( this._rotation, this._rotation, angle_in_deg * 0.0174532925 );
 	this._must_update = true;
-	this._on_change();
+	this._on_change(true);
 }
 
 
@@ -19301,7 +19442,7 @@ Transform.prototype.rotateGlobal = function(angle_in_deg, axis)
 	var R = quat.setAxisAngle(quat.create(), axis, angle_in_deg * 0.0174532925);
 	quat.multiply(this._rotation, R, this._rotation);
 	this._must_update = true;
-	this._on_change();
+	this._on_change(true);
 }
 
 /**
@@ -19313,7 +19454,7 @@ Transform.prototype.rotateQuat = function(quaternion)
 {
 	quat.multiply(this._rotation, this._rotation, quaternion);
 	this._must_update = true;
-	this._on_change();
+	this._on_change(true);
 }
 
 /**
@@ -19325,7 +19466,7 @@ Transform.prototype.rotateQuatGlobal = function(quaternion)
 {
 	quat.multiply(this._rotation, quaternion, this._rotation);
 	this._must_update = true;
-	this._on_change();
+	this._on_change(true);
 }
 
 /**
@@ -19342,7 +19483,7 @@ Transform.prototype.scale = function(x,y,z)
 	else
 		vec3.multiply(this._scaling, this._scaling,x);
 	this._must_update = true;
-	this._on_change();
+	this._on_change(true);
 }
 
 /**
@@ -19448,6 +19589,11 @@ Transform.prototype._on_change = function(only_events)
 {
 	if(!only_events)
 		this._must_update = true;
+	/**
+	 * Fired when the node has changed its transform
+	 *
+	 * @event changed
+	 */
 	LEvent.trigger(this, "changed", this);
 	if(this._root)
 		LEvent.trigger(this._root, "transformChanged", this);
@@ -19680,7 +19826,7 @@ Transform.prototype.applyLocalTransformMatrix = function( M )
 	quat.multiply( this._rotation, q, this._rotation );
 
 	this._must_update = true; //matrix must be redone?
-	return;
+	this._on_change();
 }
 
 
@@ -20175,12 +20321,14 @@ Camera.prototype.onAddedToNode = function(node)
 {
 	if(!node.camera)
 		node.camera = this;
+	LEvent.bind( node, "transformChanged", this.onNodeMoved, this );
 }
 
 Camera.prototype.onRemovedFromNode = function(node)
 {
 	if(node.camera == this)
 		delete node.camera;
+	LEvent.unbind( node, "transformChanged", this.onNodeMoved, this );
 }
 
 Camera.prototype.onAddedToScene = function(scene)
@@ -20201,6 +20349,11 @@ Camera.prototype.onRemovedFromScene = function(scene)
 		LEvent.unbind(this, "showFrameContext", this.disableRenderFrameContext, this );
 		this._binded_render_frame = false;
 	}
+}
+
+Camera.prototype.onNodeMoved = function()
+{
+	this._must_update_view_matrix = true;
 }
 
 Camera.prototype.isRenderedToTexture = function()
@@ -20382,12 +20535,13 @@ Camera.prototype.getProjectionMatrix = function(m)
 * returns the view projection matrix
 * @method getViewProjectionMatrix
 * @param {mat4} m optional output container
+* @param {boolean} force optional force to update
 * @return {mat4} matrix
 */
-Camera.prototype.getViewProjectionMatrix = function(m)
+Camera.prototype.getViewProjectionMatrix = function(m, force)
 {
 	m = m || mat4.create();
-	if(this._must_update_view_matrix || this._must_update_projection_matrix)
+	if(this._must_update_view_matrix || this._must_update_projection_matrix || force )
 		this.updateMatrices();
 	return mat4.copy( m, this._viewprojection_matrix );
 }
@@ -26339,31 +26493,33 @@ Target["@up"] = { type: 'enum', values: { "-Z": Target.NEGZ,"+Z": Target.POSZ, "
 
 Target.prototype.onAddedToScene = function( scene )
 {
-	LEvent.bind( scene, "beforeRenderInstances", this.updateOrientation, this);
+	LEvent.bind( scene, "beforeRender", this.onBeforeRender, this);
+	//beforeRenderInstances because in case we want to face the camera we need it to be per camera, no per scene
+	LEvent.bind( scene, "beforeRenderInstances", this.onBeforeRender, this);
 }
 
 Target.prototype.onRemovedFromScene = function( scene )
 {
-	LEvent.unbind( scene, "beforeRenderInstances", this.updateOrientation, this);
+	LEvent.unbind( scene, "beforeRender", this.onBeforeRender, this);
+	LEvent.unbind( scene, "beforeRenderInstances", this.onBeforeRender, this);
 }
 
-
-Target.prototype.updateOrientation = function(e)
+Target.prototype.onBeforeRender = function(e)
 {
 	if(!this.enabled)
 		return;
 
+	if( (this.face_camera && e == "beforeRenderInstances") || (!this.face_camera && e == "beforeRender") )
+		this.updateOrientation();
+}
+
+Target.prototype.updateOrientation = function()
+{
 	if(!this._root || !this._root.transform ) 
 		return;
 	var scene = this._root.scene;
 
 	var transform = this._root.transform;
-
-	/*
-	var dir = vec3.subtract( info.camera.getEye(), this._root.transform.getPosition(), vec3.create() );
-	quat.lookAt( this._root.transform._rotation, dir, [0,1,0] );
-	this._root.transform._must_update = true;
-	*/
 
 	var eye = null;
 	var target_position = null;
@@ -26417,6 +26573,8 @@ Target.prototype.updateOrientation = function(e)
 		case Target.NEGZ:
 		default:
 	}
+
+	transform._on_change();
 }
 
 LS.registerComponent( Target );
@@ -27555,6 +27713,7 @@ function ParticleEmissor(o)
 	this.follow_emitter = false;
 	this.sort_in_z = true; //slower
 	this.stop_update = false; //do not move particles
+	this.ignore_lights = false; 
 
 	if(o)
 		this.configure(o);
@@ -27829,10 +27988,13 @@ ParticleEmissor.prototype.onUpdate = function(e, dt, do_not_updatemesh )
 
 	//compute mesh
 	if(!this.align_always && !do_not_updatemesh)
+	{
 		this.updateMesh( LS.Renderer._current_camera );
+		this._root.scene.requestFrame();
+	}
 
 	//send change
-	LEvent.trigger( this._root.scene , "change");
+	LEvent.trigger( this._root.scene , "change"); //??
 }
 
 ParticleEmissor.prototype.createMesh = function ()
@@ -28120,6 +28282,7 @@ ParticleEmissor.prototype.onCollectInstances = function(e, instances, options)
 	this._material.constant_diffuse = true;
 	this._material.uvs_matrix[0] = this._material.uvs_matrix[4] = 1 / this.texture_grid_size;
 	this._material.flags.depth_write = false;
+	this._material.flags.ignore_lights = this.ignore_lights;
 
 	if(!this._mesh)
 		return null;
@@ -35751,6 +35914,7 @@ function SceneTree()
 	this._nodes_by_name = {"root":this._root};
 	this._nodes_by_uid = {};
 	this._nodes_by_uid[ this._root.uid ] = this._root;
+	this._components_by_uid = {};
 
 	//used to stored info when collecting from nodes
 	this._instances = [];
@@ -35780,7 +35944,7 @@ function SceneTree()
 	this.init();
 }
 
-LS.extendClass( SceneTree, ComponentContainer ); //scene could also have components
+//LS.extendClass( SceneTree, ComponentContainer ); //scene could also have components
 
 Object.defineProperty( SceneTree.prototype, "root", {
 	enumerable: true,
@@ -35850,6 +36014,7 @@ SceneTree.prototype.init = function()
 	this._nodes_by_name = { "root": this._root };
 	this._nodes_by_uid = {};
 	this._nodes_by_uid[ this._root.uid ] = this._root;
+	this._components_by_uid = {};
 
 	//WIP
 	this._spatial_container.clear();
@@ -35996,8 +36161,8 @@ SceneTree.prototype.configure = function( scene_info )
 	if(scene_info.animation)
 		this.animation = new LS.Animation( scene_info.animation );
 
-	if(scene_info.components)
-		this.configureComponents( scene_info );
+	//if(scene_info.components)
+	//	this.configureComponents( scene_info );
 
 	if(scene_info.editor)
 		this._editor = scene_info.editor;
@@ -36047,7 +36212,7 @@ SceneTree.prototype.serialize = function()
 	if( this._editor )
 		o.editor = this._editor;
 
-	this.serializeComponents( o );
+	//this.serializeComponents( o );
 
 	/**
 	 * Fired after the scene has been serialized to an object
@@ -36464,8 +36629,13 @@ SceneTree.prototype.onNodeAdded = function(e,node)
 	//store nodes linearly
 	this._nodes.push(node);
 
-	//LEvent.trigger(node,"onAddedToScene", this);
 	node.processActionInComponents("onAddedToScene",this); //send to components
+	for(var i = 0; i < node._components.length; ++i)
+		if(node._components[i].uid)
+			this._components_by_uid[ node._components[i].uid ] = node._components[i];
+		else
+			console.warn("component without uid?", node._components[i].uid );
+
 	/**
 	 * Fired when a new node is added to this scene
 	 *
@@ -36490,6 +36660,8 @@ SceneTree.prototype.onNodeRemoved = function(e,node)
 
 	//node.processActionInComponents("onRemovedFromNode",node);
 	node.processActionInComponents("onRemovedFromScene",this); //send to components
+	for(var i = 0; i < node._components.length; ++i)
+		delete this._components_by_uid[ node._components[i].uid ];
 
 	/**
 	 * Fired after a node has been removed
@@ -37371,6 +37543,10 @@ function SceneNode( name )
 	};
 
 	this.init(false,true);
+
+	/** Fired here (from Transform) when the node transform changes
+	 * @event transformChanged
+	 */
 }
 
 SceneNode.prototype.init = function( keep_components, keep_info )

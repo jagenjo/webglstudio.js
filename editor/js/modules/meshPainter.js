@@ -75,12 +75,12 @@ var MeshPainter = {
 		if(this.dialog)
 			this.dialog.close();
 
-		var dialog = new LiteGUI.Dialog("dialog_mesh_painter", {title:"Mesh Painter", parent:"#visor", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog( { title:"Mesh Painter", parent:"#visor", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
 		dialog.show('fade');
 		dialog.setPosition(100,100);
 		this.dialog = dialog;
 
-		var widgets = new LiteGUI.Inspector("painting_widgets",{ name_width: "50%" });
+		var widgets = new LiteGUI.Inspector( { name_width: "50%" });
 		widgets.onchange = function()
 		{
 			RenderModule.requestFrame();
@@ -228,10 +228,12 @@ var MeshPainter = {
 				MeshPainter.brush.size = v;
 			}});
 			//widgets.addNumber("Spread", MeshPainter.brush.spread, { min:0.1, step: 0.1, callback: function(v) { MeshPainter.brush.spread = v; }});
+			widgets.widgets_per_row = 2;
+			var widget_color = widgets.addColor("Color", MeshPainter.brush.color, { callback: function (value) { vec3.copy( MeshPainter.brush.color, value ); }});
 			widgets.addSlider("Alpha", MeshPainter.brush.alpha, { min:0.01, max: 1, callback: function(v) { 
 				MeshPainter.brush.alpha = v;
 			}});
-			var widget_color = widgets.addColor("Color", MeshPainter.brush.color, { callback: function (value) { vec3.copy( MeshPainter.brush.color, value ); }});
+			widgets.widgets_per_row = 1;
 			widgets.addCheckbox("Blending", MeshPainter.brush.blending, { callback: function(v) { MeshPainter.brush.blending = v; }});
 
 			widgets.widgets_per_row = 4;
@@ -246,6 +248,19 @@ var MeshPainter = {
 				widget_color.setValue( [0.5,0.5,1.0] );
 				//vec3.copy( MeshPainter.brushcolor, [0.5,0.5,1.0] ); 
 			}});
+
+			widgets.addTitle("Actions");
+			widgets.widgets_per_row = 2;
+			var fill_color = [0,0,0];
+			widgets.addColor("Fill Color",fill_color, { callback: function(v){ fill_color = v; }});
+			widgets.addButton(null,"Fill", { callback: function(v){ 
+				if(!MeshPainter.current_texture)
+					return;
+				MeshPainter.current_texture.fill(fill_color);
+				LS.GlobalScene.requestFrame();
+			}});
+			widgets.widgets_per_row = 1;
+
 
 			if(on_refresh)
 				on_refresh();

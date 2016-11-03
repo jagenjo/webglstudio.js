@@ -707,7 +707,7 @@ LiteGUI.Inspector.prototype.addRenderFrameContext = function( name, value, optio
 LiteGUI.Inspector.widget_constructors["RenderFrameContext"] = "addRenderFrameContext";
 
 //to select a node, value must be a valid node identifier (not the node itself)
-LiteGUI.Inspector.prototype.addComponent = function( name, value, options)
+LiteGUI.Inspector.prototype.addComponent = function( name, value, options )
 {
 	options = options || {};
 	value = value || "";
@@ -720,33 +720,52 @@ LiteGUI.Inspector.prototype.addComponent = function( name, value, options)
 	input.addEventListener("change", function(e) { 
 		LiteGUI.Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
 	});
+
+	var old_callback = options.callback;
+	options.callback = inner_onselect;
 	
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
-		EditorModule.showSelectComponent( value, options.filter, options.callback );
+		EditorModule.showSelectComponent( value, options.filter, options.callback, element );
 		if(options.callback_button)
-			options.callback_button.call(element, $(element).find(".wcontent input").val() );
+			options.callback_button.call(element, input.value );
 	});
 
 	element.addEventListener("drop", function(e){
 		e.preventDefault();
 		e.stopPropagation();
-		var node_id = e.dataTransfer.getData("uid");
-		input.value = node_id;
+		var component_id = e.dataTransfer.getData("uid");
+		input.value = component_id;
 		LiteGUI.trigger( input, "change" );
 		return false;
 	}, true);
 
 
 	//after selecting a node
-	function inner_onselect( node )
+	function inner_onselect( component, event )
 	{
-		input.value = node ? node._name : "";
-		LiteGUI.trigger( input, "change" );
+		var component_uid = null;
+		if(component && component.constructor !== String)
+			component_uid = component.uid;
+		else
+			component_uid = component;
+
+		if(value == component_uid)
+			return;
+		
+		value = component_uid || "";
+		if(input.value != value)
+			input.value = value;
+		
+		if(event && event.type !== "change") //to avoid triggering the change event infinitly
+			LiteGUI.trigger( input, "change" );
+
+		if(old_callback)
+			old_callback.call( element, value );
 	}
 
 	this.tab_index += 1;
 	this.append(element);
-	LiteGUI.focus( input );
+	//LiteGUI.focus( input );
 	return element;
 }
 LiteGUI.Inspector.widget_constructors["component"] = "addComponent";
@@ -832,14 +851,17 @@ LiteGUI.Inspector.prototype.addColor = function( name, value, options )
 	options = options || {};
 	var inspector = this;
 
-	options.width = "90%";
+	var total_width = 100 / this.widgets_per_row;
+	var w = (total_width * 0.9);
+
+	options.width = w + "%";
 
 	inspector.widgets_per_row += 1;
 
 	var widget = inspector.addColorOld( name, value, options );
 	var color_picker_icon = colorPickerTool.icon;
 
-	inspector.addButton( null, "<img src="+color_picker_icon+">", { skip_wchange: true, width: "10%", callback: inner } );
+	inspector.addButton( null, "<img src="+color_picker_icon+">", { skip_wchange: true, width: (total_width - w) + "%", callback: inner } );
 
 	inspector.widgets_per_row -= 1;
 

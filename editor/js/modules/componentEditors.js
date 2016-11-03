@@ -483,6 +483,18 @@ EditorModule.showFXInfo = function( component, inspector )
 							this.options.fx[ this.options.fx_name ] = v;
 						}				
 					});
+				else //for vec2, vec3, vec4
+					inspector.add( uniform.type, j, fx[j] !== undefined ? fx[j] : uniform.value, {
+						pretitle: AnimationModule.getKeyframeCode( component, "fx/"+i+"/"+j ),
+						fx_name: j,
+						fx: fx,
+						callback: function(v){
+							if( this.options.fx[ this.options.fx_name ] && this.options.fx[ this.options.fx_name ].set )
+								this.options.fx[ this.options.fx_name ].set( v );
+							else
+								this.options.fx[ this.options.fx_name ] = v;
+						}				
+					});
 			}
 	}
 
@@ -498,7 +510,7 @@ EditorModule.showFXInfo = function( component, inspector )
 		if(dialog)
 			dialog.clear();
 		else
-			dialog = new LiteGUI.Dialog("dialog_show_fx", { title:"FX Settings", close: true, width: 360, height: 270, scroll: false, draggable: true});
+			dialog = new LiteGUI.Dialog("dialog_show_fx", { title:"FX Settings", close: true, width: 360, height: 370, scroll: false, draggable: true});
 
 		dialog.show();
 
@@ -513,8 +525,9 @@ EditorModule.showFXInfo = function( component, inspector )
 		var available_fx = [];
 		for(var i in fx)
 			available_fx.push(i);
+		available_fx = available_fx.sort();		
 		var selected_available_fx = "";
-		var available_list = widgets_left.addList( null, available_fx, { height: 140, callback: function(v) {
+		var available_list = widgets_left.addList( null, available_fx, { height: 240, callback: function(v) {
 			selected_available_fx = v;
 		}});
 		widgets_left.addButton(null,"Add FX", { callback: function(){
@@ -526,7 +539,7 @@ EditorModule.showFXInfo = function( component, inspector )
 
 		var widgets_right = new LiteGUI.Inspector("camera_fx_enabled",{});
 		widgets_right.addTitle("Current FX");
-		var enabled_list = widgets_right.addList(null, enabled_fx, { selected: selected_enabled_fx, height: 140, callback: function(v) {
+		var enabled_list = widgets_right.addList(null, enabled_fx, { selected: selected_enabled_fx, height: 240, callback: function(v) {
 			selected_enabled_fx = v;
 		}});
 		split.getSection(1).add(widgets_right);
@@ -681,7 +694,7 @@ LS.Components.ParticleEmissor["@inspector"] = function(component, inspector)
 	inspector.addColor("End Color", component.particle_end_color, { callback: function(color) { component.particle_end_color = color; } });
 	inspector.addSlider("Opacity",component.opacity, {step:0.001,min:0,max:1, callback: function (value) { component.opacity = value; }});
 	inspector.addLine("Opacity Curve",component.particle_opacity_curve, {defaulty:0, width: 120, callback: function (value) { component.particle_opacity_curve = value; }});
-	inspector.addNumber("Grid Texture",component.texture_grid_size, {step:1,min:1,max:5, callback: function (value) { component.texture_grid_size = value; }});
+	inspector.addNumber("Grid Texture",component.texture_grid_size, {step:1,min:1,max:5,precision:0, callback: function (value) { component.texture_grid_size = value; }});
 	inspector.addTexture("Texture", component.texture, { callback: function(filename) { 
 		component.texture = filename;
 		if(filename)
@@ -714,6 +727,7 @@ LS.Components.ParticleEmissor["@inspector"] = function(component, inspector)
 	inspector.addCheckbox("Follow emitter", component.follow_emitter, {callback: function (value) { component.follow_emitter = value; }});
 	inspector.addCheckbox("Sort in Z", component.sort_in_z, {callback: function (value) { component.sort_in_z = value; }});
 	inspector.addCheckbox("Stop", component.stop_update, {callback: function (value) { component.stop_update = value; }});
+	inspector.addCheckbox("Ignore Lights", component.ignore_lights, {callback: function (value) { component.ignore_lights = value; }});
 
 	inspector.widgets_per_row = 1;
 }

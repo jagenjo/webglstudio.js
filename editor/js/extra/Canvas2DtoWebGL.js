@@ -135,6 +135,28 @@ function enableWebGLCanvas( canvas, options )
 			}\n\
 		", extra_macros );
 
+	var	gradient_primitive_shader = new GL.Shader(vertex_shader,"\n\
+			precision highp float;\n\
+			varying float v_visible;\n\
+			uniform vec4 u_color;\n\
+			uniform sampler2D u_texture;\n\
+			uniform vec4 u_gradient;\n\
+			uniform vec2 u_viewport;\n\
+			uniform mat3 u_itransform;\n\
+			void main() {\n\
+				vec2 pos = (u_itransform * vec3( gl_FragCoord.s, u_viewport.y - gl_FragCoord.t,1.0)).xy;\n\
+				//vec2 pos = vec2( gl_FragCoord.s, u_viewport.y - gl_FragCoord.t);\n\
+				vec2 AP = pos - u_gradient.xy;\n\
+				vec2 AB = u_gradient.zw - u_gradient.xy;\n\
+				float dotAPAB = dot(AP,AB);\n\
+				float dotABAB = dot(AB,AB);\n\
+				float x = dotAPAB / dotABAB;\n\
+				vec2 uv = vec2( x, 0.0 );\n\
+				gl_FragColor = u_color * texture2D( u_texture, uv );\n\
+			}\n\
+		", extra_macros );
+
+
 	//some people may reuse it
 	ctx.WebGLCanvas.vertex_shader = vertex_shader;
 
@@ -305,6 +327,111 @@ function enableWebGLCanvas( canvas, options )
 		return getTexture( img );
 	}
 
+	//to craete gradients
+	function WebGLCanvasGradient(x,y,x2,y2)
+	{
+		this.id = (ctx._last_gradient_id++) % ctx._max_gradients;
+		this.points = new Float32Array([x,y,x2,y2]);
+		this.stops = [];
+		this._must_update = true;
+	}
+
+	//to avoid creating textures all the time
+	ctx._last_gradient_id = 0;
+	ctx._max_gradients = 16;
+	ctx._gradients_pool = [];
+
+	WebGLCanvasGradient.prototype.addColorStop = function( pos, color )
+	{
+		var final_color = hexColorToRGBA( color );
+		var v = new Uint8Array(4);
+		v[0] = Math.clamp( final_color[0], 0,1 ) * 255;
+		v[1] = Math.clamp( final_color[1], 0,1 ) * 255;
+		v[2] = Math.clamp( final_color[2], 0,1 ) * 255;
+		v[3] = Math.clamp( final_color[3], 0,1 ) * 255;
+		this.stops.push( [ pos, v ]);
+		this.stops.sort( function(a,b) {return (a[0] > b[0]) ? 1 : ((b[0] > a[0]) ? -1 : 0);} );
+		this._must_update = true;
+	}
+
+	WebGLCanvasGradient.prototype.toTexture = function()
+	{
+		//create a texture from the pool
+		if(!this._texture)
+		{
+			if(this.id != -1)
+				this._texture = ctx._gradients_pool[ this.id ];
+			if(!this._texture)
+			{
+				this._texture = new GL.Texture( 128,1, { format: gl.RGBA, magFilter: gl.LINEAR, wrap: gl.CLAMP_TO_EDGE, minFilter: gl.NEAREST });
+				if(this.id != -1)
+					ctx._gradients_pool[ this.id ] = this._texture;
+			}
+		}
+		if(!this._must_update)
+			return this._texture;
+		this._must_update = false;
+		if(this.stops.length < 1)
+			return this._texture; //no stops
+		if(this.stops.length < 2)
+		{
+			this._texture.fill( this.stops[0][1] );
+			return this._texture; //one color
+		}
+
+		//fill buffer
+		var index = 0;
+		var current = this.stops[index];
+		var next = this.stops[index+1];
+
+		var buffer = new Uint8Array(128*4);
+		for(var i = 0; i < 128; i+=1)
+		{
+			var color = buffer.subarray( i*4, i*4+4 );
+			var t = i/128;
+			if( current[0] > t )
+			{
+				if(index == 0)
+					color.set( current[1] );
+				else
+				{
+					index+=1;						
+					current = this.stops[index];
+					next = this.stops[index+1];
+					if(!next)
+						break;
+					i-=1;
+				}
+			}
+			else if( current[0] <= t && t < next[0] )
+			{
+				var f = (t - current[0]) / (next[0] - current[0]);
+				vec4.lerp( color, current[1], next[1], f );
+			}
+			else if( next[0] <= t )
+			{
+				index+=1;						
+				current = this.stops[index];
+				next = this.stops[index+1];
+				if(!next)
+					break;
+				i-=1;
+			}
+		}
+		//fill the remaining
+		if(i<128)
+			for(var j = i; j < 128; j+=1)
+				buffer.set( current[1], j*4 );
+		this._texture.uploadData( buffer );
+		return this._texture;
+	}
+
+	ctx.createLinearGradient = function( x,y, x2, y2 )
+	{
+		return new WebGLCanvasGradient(x,y,x2,y2);
+	}
+
+
 	//Primitives
 
 	ctx.beginPath = function()
@@ -448,10 +575,22 @@ function enableWebGLCanvas( canvas, options )
 		uniforms.u_color = this._fillcolor;
 		uniforms.u_transform = this._matrix;
 
-		//pattern
-		if( this.fillStyle.constructor == GL.Texture )
+		var fill_style = this._fillStyle;
+
+		if( fill_style.constructor === WebGLCanvasGradient ) //gradient
 		{
-			var tex = this.fillStyle;
+			var grad = fill_style;
+			var tex = grad.toTexture();
+			uniforms.u_color = [1,1,1, this.globalAlpha]; 
+			uniforms.u_gradient = grad.points; 
+			uniforms.u_texture = 0;
+			uniforms.u_itransform = mat3.invert( tmp_mat3, this._matrix );
+			tex.bind(0);
+			shader = gradient_primitive_shader;
+		}
+		else if( fill_style.constructor === GL.Texture ) //pattern
+		{
+			var tex = fill_style;
 			uniforms.u_color = [1,1,1, this.globalAlpha]; 
 			uniforms.u_texture = 0;
 			tmp_vec4.set([0,0,1/tex.width, 1/tex.height]);
@@ -683,8 +822,8 @@ function enableWebGLCanvas( canvas, options )
 	{
 		global_index = 0;
 
-		//fill using a texture
-		if( this.fillStyle.constructor == GL.Texture )
+		//fill using a gradient or pattern
+		if( this._fillStyle.constructor == GL.Texture || this._fillStyle.constructor === WebGLCanvasGradient )
 		{
 			this.beginPath();
 			this.rect(x,y,w,h);
@@ -857,7 +996,7 @@ function enableWebGLCanvas( canvas, options )
 		if(text.constructor !== String)
 			text = String(text);
 
-		var atlas = this.createFontAtlas( this._font_family, this._font_mode );
+		var atlas = createFontAtlas.call( this, this._font_family, this._font_mode );
 		var info = atlas.info;
 
 		var points = point_text_vertices;
@@ -950,14 +1089,14 @@ function enableWebGLCanvas( canvas, options )
 
 	ctx.measureText = function(text)
 	{
-		var atlas = this.createFontAtlas( this._font_family, this._font_mode );
+		var atlas = createFontAtlas.call( this, this._font_family, this._font_mode );
 		var info = atlas.info;
 		var point_size = this._font_size * 1.1;
 		var spacing = point_size * atlas.info.spacing / atlas.info.char_size - 1 ;
 		return { width: text.length * spacing, height: point_size };
 	}
 
-	ctx.createFontAtlas = function( fontname, fontmode, force )
+	function createFontAtlas( fontname, fontmode, force )
 	{
 		fontname = fontname || "monospace";
 		fontmode = fontmode || "normal";
@@ -1085,6 +1224,8 @@ function enableWebGLCanvas( canvas, options )
 	Object.defineProperty(gl, "fillStyle", {
 		get: function() { return this._fillStyle; },
 		set: function(v) { 
+			if(!v)
+				return;
 			this._fillStyle = v;
 			hexColorToRGBA( v, this._fillcolor, this._globalAlpha ); 
 		}
@@ -1093,6 +1234,8 @@ function enableWebGLCanvas( canvas, options )
 	Object.defineProperty(gl, "strokeStyle", {
 		get: function() { return this._strokeStyle; },
 		set: function(v) { 
+			if(!v)
+				return;
 			this._strokeStyle = v; 
 			hexColorToRGBA( v, this._strokecolor, this._globalAlpha );
 		}
@@ -1102,6 +1245,8 @@ function enableWebGLCanvas( canvas, options )
 	Object.defineProperty(gl, "fillColor", {
 		get: function() { return this._fillcolor; },
 		set: function(v) { 
+			if(!v)
+				return;
 			this._fillcolor.set(v);
 		}
 	});
@@ -1109,6 +1254,8 @@ function enableWebGLCanvas( canvas, options )
 	Object.defineProperty(gl, "strokeColor", {
 		get: function() { return this._strokecolor; },
 		set: function(v) { 
+			if(!v)
+				return;
 			this._strokecolor.set(v);
 		}
 	});
@@ -1116,6 +1263,8 @@ function enableWebGLCanvas( canvas, options )
 	Object.defineProperty(gl, "shadowColor", {
 		get: function() { return this._shadowcolor; },
 		set: function(v) { 
+			if(!v)
+				return;
 			hexColorToRGBA( v, this._shadowcolor, this._globalAlpha );
 		}
 	});

@@ -745,13 +745,6 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 	}
 
 	//Create the title of the component
-	if(!LiteGUI.missing_icons)
-		LiteGUI.missing_icons = {};
-	var icon_url = "mini-icon-question.png";
-	if(component.constructor.icon && !LiteGUI.missing_icons[ component.constructor.icon ] )	
-		icon_url = component.constructor.icon;
-
-	var icon_code = "<span class='icon' style='width: 20px' draggable='true'><img title='Drag icon to transfer' src='"+ EditorModule.icons_path + icon_url+"'/></span>";
 	var extra_code = "";
 	if( component.getExtraTitleCode ) //used for script mostly
 		extra_code = component.getExtraTitleCode();
@@ -776,32 +769,11 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 	options.collapsed = component._editor ? component._editor.collapsed : false;
 
 	//create component section in inspector
-	var section = inspector.addSection( icon_code + extra_code + enabler + title + buttons, options );
+	var section = inspector.addSection( extra_code + enabler + title + buttons, options );
 
-	var icon = section.querySelector(".icon");
-	icon.addEventListener("dragstart", function(event) { 
-		event.dataTransfer.setData("uid", component.uid);
-		event.dataTransfer.setData("locator", component.getLocator() );
-		event.dataTransfer.setData("type", "Component");
-		event.dataTransfer.setData("node_uid", component.root.uid);
-		event.dataTransfer.setData("class", LS.getObjectClassName(component));
-		if(component.setDragData)
-			component.setDragData(event);
-	});
-
-	icon.addEventListener("click", function(e){
-		SelectionModule.setSelection( component );
-		e.stopPropagation();
-		e.stopImmediatePropagation();
-	});
-
-
-	var icon_img = section.querySelector(".icon img");
-	if(icon_img)
-		icon_img.onerror = function() { 
-			LiteGUI.missing_icons[ component.constructor.icon ] = true;
-			this.src = "imgs/mini-icon-question.png";
-		}
+	var icon = EditorModule.getComponentIconHTML( component );
+	if(section.sectiontitle)
+		section.sectiontitle.insertBefore( icon, section.sectiontitle.firstChild );
 
 	//right click in title launches the context menu
 	section.querySelector(".wsectiontitle").addEventListener("contextmenu", (function(e) { 

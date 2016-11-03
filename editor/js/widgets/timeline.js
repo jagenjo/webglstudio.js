@@ -7,7 +7,7 @@ function Timeline( options )
 		row_height: 20
 	};
 
-	this.mode = "keyframes";
+	this.mode = "keyframes"; //values, clips...
 	this.preview = true;
 	this.paths_widget = false;
 	this.autoresize = true;
@@ -392,6 +392,9 @@ Timeline.prototype.redrawCanvas = function()
 	var timeline_height = this.canvas_info.timeline_height;
 	var margin = this.session.left_margin;
 
+	ctx.fillStyle = "#111";
+	ctx.fillRect( margin,0, canvas.width, timeline_height );
+
 	if(data.seconds_to_pixels > 100 )
 	{
 		ctx.strokeStyle = "#AAA";
@@ -768,14 +771,19 @@ Timeline.prototype.setCurrentTime = function( time, skip_redraw )
 	if(time < 0)
 		time = 0;
 
-	//time = Math.round(time * 30) / 30;
+	//time = Math.round(time * this.framerate ) / this.framerate;
 	time = Math.clamp( time, 0, duration );
 
 	if(time == this.session.current_time)
 		return;
 
+	//console.log( time );
+	var t = this.session.current_time;
+
 	this.session.current_time = time;
-	this.current_time_widget.setValue( time );
+	this.current_time_widget.setValue( time, true );
+
+	//console.log( t, this.session.current_time );
 
 	//auto scroll when the cursor exits
 	if( this._timeline_data && time > this._timeline_data.end_time ) 
@@ -874,7 +882,6 @@ Timeline.prototype.update = function( dt )
 	if(!this.current_take || (!this.recording && !this.playing) )
 		return;
 
-
 	if(this.recording)
 	{
 		//update coundown in screen
@@ -910,6 +917,7 @@ Timeline.prototype.update = function( dt )
 			time = time - this.current_take.duration;
 		this.setCurrentTime( time );
 	}
+
 }
 
 Timeline.prototype.canvasTimeToX = function( time )
@@ -1350,6 +1358,7 @@ Timeline.prototype.onContextMenu = function( e )
 	var values = [];
 
 	values.push( { title: "Add New Track", callback: this.showNewTrack.bind(this) } );
+	values.push( { title: "Assign Node Names", callback: this.assignNodeNames.bind(this) } );
 	values.push( null );
 
 	if(item.type == "keyframe" && track.type == "events")
@@ -1673,7 +1682,7 @@ Timeline.prototype.processInsertLocator = function( locator, options )
 	}
 
 	//quantize time
-	var time = Math.round( this.session.current_time * 30) / 30;
+	var time = Math.round( this.session.current_time * this.framerate ) / this.framerate;
 
 	var size = 0;
 	var value = info.value;
@@ -2116,6 +2125,26 @@ Timeline.prototype.showNewAnimationDialog = function()
 	dialog.add( widgets );
 	dialog.adjustSize();
 	dialog.show( null, this.root );
+}
+
+Timeline.prototype.assignNodeNames = function()
+{
+	if(!this.current_take)
+		return;
+
+	var take = this.current_take;
+	for(var i = 0; i < take.tracks.length; ++i)
+	{
+		var track = take.tracks[i];
+		var info = track.getPropertyInfo();
+		if(!info)
+			continue;
+		var node = info.node;
+		if(!node)
+			continue;
+		track.name = track.getIDasName() || track.property;
+	}
+	this.redrawCanvas();
 }
 
 Timeline.prototype.showNewTrack = function()

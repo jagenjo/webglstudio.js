@@ -1161,16 +1161,16 @@ var EditorModule = {
 		if(instance)
 		{
 			options.push(null);
-			if( instance.constructor === LS.SceneNode )
+			if( instance.constructor === LS.SceneNode ) //for nodes
 			{
 				options.push({ title: "Node", has_submenu: true});
 			}
-			else if( instance.constructor.is_component )
+			else if( instance.constructor.is_component ) //for components
 			{
 				instance_classname = LS.getObjectClassName(instance);
 				options.push({ title: instance_classname, has_submenu: true });
 			}
-			else
+			else //for anything else?
 			{
 				var actions = null;
 				if( instance.getActions )
@@ -1187,7 +1187,7 @@ var EditorModule = {
 			}
 		}
 
-		var menu = new LiteGUI.ContextMenu( options, { ignore_item_callbacks: true, event: event, title: "Canvas" , callback: function( action, o, e ) {
+		var menu = new LiteGUI.ContextMenu( options, { ignore_item_callbacks: true, event: event, title: "Canvas", autoopen: false, callback: function( action, o, e ) {
 			if(action.title == "View")
 			{
 				var camera = RenderModule.getCameraUnderMouse(e);
@@ -1278,12 +1278,34 @@ var EditorModule = {
 			return;
 
 		var actions = node.getActions();
-		if(!actions)
-			return;
+		var actions_array = [];
+		if(actions)
+			for(var i in actions)
+				actions_array.push( actions[i] );
 
-		var menu = new LiteGUI.ContextMenu( actions, { ignore_item_callbacks: true, event: event, title:"Node", parentMenu: prev_menu, callback: function(action) {
-			node.doAction( action );
+		if(node._components && node._components.length)
+			actions_array.unshift( { title: "Components", has_submenu: true, show_components: true }, null );
+
+		var menu = new LiteGUI.ContextMenu( actions_array, { ignore_item_callbacks: true, event: event, title:"Node", parentMenu: prev_menu, callback: function( action, options, evt ) {
+			if(action.show_components)
+				inner_list_components( evt );
+			else
+				node.doAction( action );
 		}});
+
+		function inner_list_components( evt )
+		{
+			var components = [];
+			for(var i = 0; i < node._components.length; ++i)
+			{
+				var compo = node._components[i];
+				components.push( { title: LS.getObjectClassName( compo ), component: compo, has_submenu: true, index: i } );
+			}
+
+			var compomenu = new LiteGUI.ContextMenu( components, { event: evt, title:"Node", parentMenu: menu, callback: function( v, options, evt ) {
+				EditorModule.showComponentContextMenu( v.component, evt, compomenu );
+			}});
+		}
 	},
 
 	showComponentContextMenu: function( component, event, prev_menu )
@@ -1295,9 +1317,18 @@ var EditorModule = {
 		if(!actions)
 			return;
 
+		var title = LS.getObjectClassName( component );
+
 		var menu = new LiteGUI.ContextMenu( actions, { ignore_item_callbacks: true, event: event, parentMenu: prev_menu, title: LS.getObjectClassName( component ), callback: function(action, options, event) {
 			LS.Component.doAction( component, action );
+			LS.GlobalScene.requestFrame();
+			EditorModule.refreshAttributes();
 		}});
+
+		//make the title draggable
+		var title = menu.root.querySelector(".litemenu-title");
+		var icon = EditorModule.getComponentIconHTML( component );
+		title.insertBefore( icon, title.firstChild );
 	},
 
 	showViewContextMenu: function( camera, e, prev_menu )
@@ -1481,7 +1512,7 @@ var EditorModule = {
 			return;
 		}
 
-		var dialog = new LiteGUI.Dialog("dialog_components", {title:"Components", close: true, minimize: true, width: 300, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog("dialog_components", {title:"Components", close: true, minimize: true, width: 400, scroll: false, draggable: true});
 		dialog.show('fade');
 
 		var selected_component = null;
@@ -1513,7 +1544,11 @@ var EditorModule = {
 		  return 0;
 		});
 
-		list_widget = widgets.addList(null, compos, { height: 240, callback: inner_selected });
+		list_widget = widgets.addList(null, compos, { height: 340, callback: inner_selected, callback_dblclick: function(v){
+			selected_component = v;
+			inner_add();
+		}});
+
 		widgets.widgets_per_row = 1;
 
 		var icons = list_widget.querySelectorAll(".icon");
@@ -1521,7 +1556,17 @@ var EditorModule = {
 			icons[i].onerror = function() { this.src = "imgs/mini-icon-question.png"; }
 
 
-		widgets.addButton(null,"Add", { className:"big", callback: function() { 
+		widgets.addButton(null,"Add", { className:"big", callback: inner_add });
+
+		dialog.add( widgets );
+		dialog.center();
+
+		function inner_selected(value)
+		{
+			selected_component = value;
+		}
+
+		function inner_add() { 
 			if(!root_instance|| !selected_component)
 			{
 				dialog.close();
@@ -1542,13 +1587,6 @@ var EditorModule = {
 				on_complete( compo );
 			//EditorModule.inspect( root_instance, compo );
 			RenderModule.requestFrame();
-		}});
-
-		dialog.content.appendChild(widgets.root);
-
-		function inner_selected(value)
-		{
-			selected_component = value;
 		}
 	},
 
@@ -1628,7 +1666,7 @@ var EditorModule = {
 	},
 
 	//shows a dialog to select an existing component
-	showSelectComponent: function( selected_component, filter_type, on_complete )
+	showSelectComponent: function( selected_component, filter_type, on_complete, widget )
 	{
 		var dialog = new LiteGUI.Dialog("dialog_component", {title:"Select Component", close: true, minimize: true, width: 400, height: 610, scroll: false, draggable: true});
 		dialog.show('fade');
@@ -1674,7 +1712,7 @@ var EditorModule = {
 			}
 			dialog.close();
 			if(on_complete)
-				on_complete( selected_component );
+				on_complete.call( widget || this, selected_component );
 			RenderModule.requestFrame();
 		}});
 		area.getSection(1).add( widgets_right );
@@ -1705,6 +1743,42 @@ var EditorModule = {
 		{
 			selected_component = value.component;
 		}
+	},
+
+	getComponentIconHTML: function( component )
+	{
+		if(!LiteGUI.missing_icons)
+			LiteGUI.missing_icons = {};
+		var icon_url = "mini-icon-question.png";
+		if(component.constructor.icon && !LiteGUI.missing_icons[ component.constructor.icon ] )	
+			icon_url = component.constructor.icon;
+
+		var icon = document.createElement("span");
+		icon.className = "icon";
+		icon.style.width = "20px";
+		icon.setAttribute("draggable",true);
+		icon.innerHTML = "<img title='Drag icon to transfer' src='"+ EditorModule.icons_path + icon_url+"'/>";
+		icon.addEventListener("dragstart", function(event) { 
+			event.dataTransfer.setData("uid", component.uid);
+			event.dataTransfer.setData("locator", component.getLocator() );
+			event.dataTransfer.setData("type", "Component");
+			event.dataTransfer.setData("node_uid", component.root.uid);
+			event.dataTransfer.setData("class", LS.getObjectClassName(component));
+			if(component.setDragData)
+				component.setDragData(event);
+		});
+		icon.addEventListener("click", function(e){
+			SelectionModule.setSelection( component );
+			e.stopPropagation();
+			e.stopImmediatePropagation();
+		});
+		var icon_img = icon.querySelector(".icon img");
+		if(icon_img)
+			icon_img.onerror = function() { 
+				LiteGUI.missing_icons[ component.constructor.icon ] = true;
+				this.src = "imgs/mini-icon-question.png";
+			}
+		return icon;
 	},
 
 	centerCameraInSelection: function()
@@ -1810,6 +1884,7 @@ var EditorModule = {
 			case 80: //P
 				if(e.ctrlKey)
 					PlayModule.onPlay();
+				//else
 				e.preventDefault();
 				e.stopPropagation();
 				return false;

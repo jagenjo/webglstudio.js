@@ -672,6 +672,10 @@ LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector,
 	function inner_on_property_change(v)
 	{
 		var p = this.options.property;
+		if(!p)
+			return;
+		if(v && (p.type == LS.TYPES.NODE || p.type == LS.TYPES.COMPONENT) && v.constructor !== String)
+			v = v.uid;
 		p.value = v;
 		if(p.type == "texture" || p.type == "cubemap" || p.type == "sampler")
 			material.textures[ p.name ] = p.value;

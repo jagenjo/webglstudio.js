@@ -692,6 +692,7 @@ var DriveModule = {
 		return blob;
 	},
 
+	/*
 	showNewResourceDialog: function()
 	{
 		var dialog = new LiteGUI.Dialog( null, { title:"New Resource", fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, width: 300, height: 300, scroll: true });
@@ -740,6 +741,7 @@ var DriveModule = {
 		dialog.show();
 		return dialog;
 	},
+	*/
 
 	//using fullpaths
 	renameResource: function( old_name, new_name, resource )

@@ -160,7 +160,9 @@ var PlayModule = {
 			{
 				demo_window = window.open("player.html", "", "width=800, height=600")
 				demo_window.onload = launch;
-				demo_window.onclose = function(){ that.demo_window = null; }
+				demo_window.onbeforeunload  = function(){ 
+					that.demo_window = null;
+				}
 				that.demo_window = demo_window;
 			}
 			else

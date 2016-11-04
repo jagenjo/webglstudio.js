@@ -2778,7 +2778,7 @@ var ResourcesManager = {
 				case 'https':
 					var full_url = url;
 					var extension = this.getExtension( url ).toLowerCase();
-					if(this.proxy && this.skip_proxy_extensions.indexOf( extension ) == -1 ) //proxy external files
+					if(this.proxy && this.skip_proxy_extensions.indexOf( extension ) == -1 && (!options || (options && !options.ignore_proxy)) ) //proxy external files
 						return this.proxy + url; //this.proxy + url.substr(pos+3); //"://"
 					return full_url;
 					break;
@@ -25803,7 +25803,7 @@ Object.defineProperty( SceneInclude.prototype, "frame_fx", {
 });
 
 
-SceneInclude["@scene_path"] = { type: LS.TYPES.SCENE, widget: "string" };
+SceneInclude["@scene_path"] = { type: LS.TYPES.SCENE, widget: "resource" };
 
 SceneInclude.icon = "mini-icon-teapot.png";
 
@@ -25890,7 +25890,7 @@ SceneInclude.prototype.onEvent = function(e,p)
 
 SceneInclude.prototype.reloadScene = function()
 {
-	this._scene.load( this._scene_path, inner );
+	this._scene.loadFromResources( this._scene_path, inner );
 
 	function inner()
 	{
@@ -36561,6 +36561,25 @@ SceneTree.prototype.load = function( url, on_complete, on_error, on_progress, on
 			on_error(url);
 	}
 }
+
+
+/**
+* Loads a scene from a relative url pointing to a JSON description (or WBIN,ZIP)
+* It uses the resources folder as the root folder (in comparison with the regular load function)
+*
+* @method loadFromResources
+* @param {String} url where the JSON object containing the scene is stored
+* @param {Function}[on_complete=null] the callback to call when the loading is complete
+* @param {Function}[on_error=null] the callback to call if there is a  loading error
+* @param {Function}[on_progress=null] it is called while loading the scene info (not the associated resources)
+* @param {Function}[on_resources_loaded=null] it is called when all the resources had been loaded
+*/
+SceneTree.prototype.loadFromResources = function( url, on_complete, on_error, on_progress, on_resources_loaded )
+{
+	url = LS.ResourcesManager.getFullURL( url );
+	this.load( url, on_complete, on_error, on_progress, on_resources_loaded );
+}
+
 
 //returns a list of all the scripts that must be loaded, in order and with the full path
 SceneTree.getScriptsList = function( root, allow_local )

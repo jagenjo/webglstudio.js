@@ -64,7 +64,7 @@
 	<snippet id="computeLight">
 		<![CDATA[
 		//***** compute Light
-			vec3 computeLight(in SurfaceOutput o, in Input IN, in FinalLight LIGHT)
+			vec3 computeLight( in SurfaceOutput o, in Input IN, inout FinalLight LIGHT )
 			{
 				vec3 N = o.Normal; //use the final normal (should be the same as IN.worldNormal)
 
@@ -1996,7 +1996,12 @@
 				#endif
 
 				//Compute light equation **********************************************************
-				vec3 final_color = computeLight(o,IN, LIGHT);
+				vec3 final_color = computeLight( o, IN, LIGHT );
+
+				#ifdef USE_SPECULAR_ON_ALPHA
+					alpha += LIGHT.Specular;
+				#endif
+
 				//*********************************************************************************
 
 				#ifdef USE_FOG

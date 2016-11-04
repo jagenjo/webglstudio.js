@@ -110,6 +110,10 @@ GL.NOTEQUAL = 517;
 GL.GEQUAL = 518;
 GL.ALWAYS = 519;
 
+GL.STREAM_DRAW = 35040;
+GL.STATIC_DRAW = 35044;
+GL.DYNAMIC_DRAW = 35048;
+
 GL.temp_vec3 = vec3.create();
 GL.temp2_vec3 = vec3.create();
 GL.temp_vec4 = vec4.create();
@@ -1850,7 +1854,7 @@ GL.Buffer.prototype.forEach = function(callback)
 
 /**
 * Applies a mat4 transform to every triplets in the buffer (assuming they are points)
-* No upload is performed (to ensure efficiency in case there are several operations performed
+* No upload is performed (to ensure efficiency in case there are several operations performed)
 * @method applyTransform
 * @param {mat4} mat
 */
@@ -1859,8 +1863,8 @@ GL.Buffer.prototype.applyTransform = function(mat)
 	var d = this.data;
 	for (var i = 0, s = this.spacing, l = d.length; i < l; i += s)
 	{
-		var s = d.subarray(i,i+s);
-		vec3.transformMat4(s,s,mat);
+		var v = d.subarray(i,i+s);
+		vec3.transformMat4(v,v,mat);
 	}
 	return this; //to concatenate
 }

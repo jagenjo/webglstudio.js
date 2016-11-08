@@ -477,6 +477,20 @@ LiteGUI.Inspector.prototype.addCode = function( name, value, options )
 LiteGUI.Inspector.widget_constructors["code"] = "addCode";
 
 
+LS.Components.Script.actions["breakpoint_on_call"] = { 
+	title: "Breakpoint on call", 
+	callback: function() { 
+		if(!this._root)
+		{
+			console.warn("Script is not attached to a node?");
+			return;
+		}
+		this._breakpoint_on_call = true;
+	}
+};
+
+
+
 LS.Components.Script.actions["convert_to_script"] = { 
 	title: "Convert to ScriptFromFile", 
 	callback: function() { 
@@ -535,3 +549,5 @@ LS.Components.ScriptFromFile.actions["convert_to_script"] = {
 		console.log("ScriptFromFile converted to Script");
 	}
 };
+
+LS.Components.ScriptFromFile.actions["breakpoint_on_call"] = LS.Components.Script.actions["breakpoint_on_call"];

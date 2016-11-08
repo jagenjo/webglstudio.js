@@ -1813,7 +1813,7 @@ GL.Indexer.prototype = {
 * A data buffer to be stored in the GPU
 * @class Buffer
 * @constructor
-* @param {String} target gl.ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER
+* @param {Number} target gl.ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER
 * @param {ArrayBufferView} data the data in typed-array format
 * @param {number} spacing number of numbers per component (3 per vertex, 2 per uvs...), default 3
 * @param {enum} stream_type default gl.STATIC_DRAW (other: gl.DYNAMIC_DRAW, gl.STREAM_DRAW 

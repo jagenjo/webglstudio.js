@@ -181,7 +181,9 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 
 LS.Components.Light["@inspector"] = function(light, inspector)
 {
-	if(!light) return;
+	if(!light)
+		return;
+
 	var node = light._root;
 
 	var light_types = ["Omni","Spot","Directional"];
@@ -314,16 +316,22 @@ LS.Components.MeshRenderer.onShowProperties = function( component, inspector )
 	}});
 }
 
-
-
-LS.Components.CustomData["@inspector"] = function( component, inspector )
+EditorModule.onShowComponentCustomProperties = function( component, inspector, ignore_edit, replacement_component, extra_name )
 {
+	//special case: for SceneInclude custom data shown from internal component
+	replacement_component = replacement_component || component;
+	extra_name = extra_name || "";
+
 	//show properties
-	for(var i = 0; i < component.properties.length; i++)
-	{
-		var p = component.properties[i];
-		inspector.add( p.type, p.label || p.name, p.value, { pretitle: AnimationModule.getKeyframeCode( component, p.name ), title: p.name, step: p.step, property: p, callback: inner_on_property_value_change });
-	}
+	if(component.properties)
+		for(var i = 0; i < component.properties.length; i++)
+		{
+			var p = component.properties[i];
+			inspector.add( p.type, p.label || p.name, p.value, { pretitle: AnimationModule.getKeyframeCode( replacement_component, extra_name + p.name ), title: p.name, step: p.step, property: p, callback: inner_on_property_value_change });
+		}
+
+	if(ignore_edit)
+		return;
 
 	var valid_properties = ["number","vec2","vec3","vec4","color","texture","cubemap","node","string","sampler"];
 
@@ -343,7 +351,10 @@ LS.Components.CustomData["@inspector"] = function( component, inspector )
 		}
 		else
 		{
-			component.addProperty( p );
+			if(component.addProperty)
+				component.addProperty( p );
+			else
+				console.error("Component doesnt have createProperty");
 		}
 
 		inspector.refresh();
@@ -360,10 +371,15 @@ LS.Components.CustomData["@inspector"] = function( component, inspector )
 	{
 		var p = this.options.property;
 		p.value = v;
-		component.updateProperty( p );
+		if(component.updateProperty)
+			component.updateProperty( p );
 		LS.GlobalScene.refresh();
 	}
 }
+
+
+LS.Components.CustomData["@inspector"] = EditorModule.onShowComponentCustomProperties;
+
 
 LS.Components.CameraFX["@inspector"] = function( camerafx, inspector)
 {
@@ -443,7 +459,7 @@ EditorModule.showFXInfo = function( component, inspector )
 	for(var i = 0; i < enabled_fx.length; i++)
 	{
 		var fx = enabled_fx[i];
-		var fx_info = LS.TextureFX.available_fx[ fx.name ];
+		var fx_info = LS.FXStack.available_fx[ fx.name ];
 		if(!fx_info)
 		{
 			console.warn("Unknown FX: " + fx.name);
@@ -521,7 +537,7 @@ EditorModule.showFXInfo = function( component, inspector )
 		var widgets_left = new LiteGUI.Inspector("camera_fx_list",{});
 		widgets_left.addTitle("Available FX");
 		split.getSection(0).add( widgets_left );
-		var fx = LS.TextureFX.available_fx;
+		var fx = LS.FXStack.available_fx;
 		var available_fx = [];
 		for(var i in fx)
 			available_fx.push(i);
@@ -762,4 +778,27 @@ LS.Components.SpriteAtlas["@inspector"] = function( component, inspector )
 	inspector.addButton("Areas","Edit Areas", function() {
 		TextureAreasWidget.createDialog( LiteGUI.root, component );
 	});
+}
+
+
+LS.Components.SceneInclude["@inspector"] = function( component, inspector )
+{
+	inspector.addResource("scene_path", component.scene_path || "", { pretitle: AnimationModule.getKeyframeCode( component, "scene_path" ), callback: function(v) { component.scene_path = v; } });
+
+	inspector.widgets_per_row = 2;
+	inspector.addCheckbox("include_instances", component.include_instances, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( component, "include_instances" ), callback: function(v) { component.include_instances = v; } });
+	inspector.addCheckbox("include_cameras", component.include_cameras, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( component, "include_cameras" ), callback: function(v) { component.include_cameras = v; } });
+	inspector.widgets_per_row = 1;
+	inspector.addCheckbox("include_lights", component.include_lights, { width: "50%", name_width: "70%", pretitle: AnimationModule.getKeyframeCode( component, "include_lights" ), callback: function(v) { component.include_lights = v; } });
+	inspector.widgets_per_row = 2;
+	inspector.addCheckbox("send_events", component.send_events, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( component, "send_events" ), callback: function(v) { component.send_events = v; } });
+	inspector.addCheckbox("frame_fx", component.frame_fx, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( component, "frame_fx" ), callback: function(v) { component.frame_fx = v; } });
+	inspector.widgets_per_row = 1;
+
+	//add to inspector the vars
+	if(!component._scene.root.custom)
+		return;
+
+	inspector.addTitle("Custom Data");
+	EditorModule.onShowComponentCustomProperties( component._scene.root.custom, inspector, true, component, "custom/" ); 
 }

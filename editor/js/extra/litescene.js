@@ -1625,6 +1625,14 @@ var LSQ = {
 		return t.join("/");
 	},
 
+	/**
+	* Assigns a value using the getLocatorInfo object instead of searching it again
+	* This is faster but if the locator points to a different object it wont work.
+	*
+	* @method setFromInfo
+	* @param {Object} info information of a location (obtain using scene.getLocatorInfo
+	* @param {*} value to assign
+	*/
 	setFromInfo: function( info, value )
 	{
 		if(!info || !info.target)
@@ -13485,7 +13493,7 @@ if(typeof(LiteGraph) != "undefined")
 		var locator = this.properties.locator;
 		if(!this.properties.locator)
 			return;
-		var scene = this.graph.scene || LS.GlobalScene;
+		var scene = this.graph._scene || LS.GlobalScene;
 		return this._locator_info = scene.getPropertyInfo( locator );
 	}
 
@@ -13823,24 +13831,27 @@ Path.prototype.configure = function(o)
 
 
 LS.Path = Path;
-/** TextureFX
+/** FXStack
 * Helps apply a stack of FXs to a texture with as fewer render calls as possible with low memory footprint
 * Used by CameraFX and FrameFX but also available for any other use
 * You can add new FX to the FX pool if you want.
-* @class TextureFX
+* @class FXStack
 */
-function TextureFX( o )
+function FXStack( o )
 {
 	this.apply_fxaa = false;
 	this.filter = true;
 	this.fx = [];
 
 	this._uniforms = { u_aspect: 1, u_viewport: vec2.create(), u_iviewport: vec2.create(), u_texture: 0, u_depth_texture: 1, u_random: vec2.create() };
+
+	this._passes = []; //WIP
+
 	if(o)
 		this.configure(o);
 }
 
-TextureFX.available_fx = {
+FXStack.available_fx = {
 	"brightness_contrast": {
 		name: "Brightness & Contrast",
 		uniforms: {
@@ -14043,14 +14054,14 @@ TextureFX.available_fx = {
 			uniforms: {
 				"blur_intensity": { name: "u_blur_intensity", type: "float", value: 0.1, step: 0.01 }
 			},
-			local_callback: TextureFX.applyBlur
+			local_callback: FXStack.applyBlur
 		}
 	}
 	*/
 };
 
 //functions that could be used
-TextureFX.available_functions = {
+FXStack.available_functions = {
 	pattern: "float pattern(float angle, float size) {\n\
 				float s = sin(angle * 3.1415), c = cos(angle * 3.1415);\n\
 				vec2 tex = v_coord * u_viewport.xy;\n\
@@ -14165,14 +14176,14 @@ TextureFX.available_functions = {
 * @method configure
 * @param {Object} o object with the configuration info from a previous serialization
 */
-TextureFX.prototype.configure = function(o)
+FXStack.prototype.configure = function(o)
 {
 	this.apply_fxaa = !!o.apply_fxaa;
 	if(o.fx)
 		this.fx = o.fx.concat();
 }
 
-TextureFX.prototype.serialize = TextureFX.prototype.toJSON = function()
+FXStack.prototype.serialize = FXStack.prototype.toJSON = function()
 {
 	return { 
 		apply_fxaa: this.apply_fxaa,
@@ -14180,13 +14191,13 @@ TextureFX.prototype.serialize = TextureFX.prototype.toJSON = function()
 	};
 }
 
-TextureFX.prototype.getResources = function(res)
+FXStack.prototype.getResources = function(res)
 {
 	var fxs = this.fx;
 	for(var i = 0; i < fxs.length; i++)
 	{
 		var fx = fxs[i];
-		var fx_info = TextureFX.available_fx[ fx.name ];
+		var fx_info = FXStack.available_fx[ fx.name ];
 		if(!fx_info)
 			continue;
 		if(!fx_info.uniforms)
@@ -14202,26 +14213,26 @@ TextureFX.prototype.getResources = function(res)
 }
 
 //attach a new FX to the FX Stack
-TextureFX.prototype.addFX = function( name )
+FXStack.prototype.addFX = function( name )
 {
 	if(!name)
 		return;
-	if( !TextureFX.available_fx[ name ] )
+	if( !FXStack.available_fx[ name ] )
 	{
-		console.warn( "TextureFX not found: " + name );
+		console.warn( "FXStack not found: " + name );
 		return;
 	}
 	this.fx.push({ name: name });
 }
 
 //returns the Nth FX in the FX Stack
-TextureFX.prototype.getFX = function(index)
+FXStack.prototype.getFX = function(index)
 {
 	return this.fx[ index ];
 }
 
 //rearranges an FX
-TextureFX.prototype.moveFX = function( fx, offset )
+FXStack.prototype.moveFX = function( fx, offset )
 {
 	offset = offset || -1;
 
@@ -14240,7 +14251,7 @@ TextureFX.prototype.moveFX = function( fx, offset )
 }
 
 //removes an FX from the FX stack
-TextureFX.prototype.removeFX = function( fx )
+FXStack.prototype.removeFX = function( fx )
 {
 	for(var i = 0; i < this.fx.length; i++)
 	{
@@ -14253,7 +14264,7 @@ TextureFX.prototype.removeFX = function( fx )
 }
 
 //executes the FX stack in the input texture and outputs the result in the output texture (or the screen)
-TextureFX.prototype.applyFX = function( input_texture, output_texture, options )
+FXStack.prototype.applyFX = function( input_texture, output_texture, options )
 {
 	var color_texture = input_texture;
 	var depth_texture = options.depth_texture;
@@ -14292,7 +14303,7 @@ TextureFX.prototype.applyFX = function( input_texture, output_texture, options )
 	{
 		var fx = fxs[i];
 		fx_id = i;
-		var fx_info = TextureFX.available_fx[ fx.name ];
+		var fx_info = FXStack.available_fx[ fx.name ];
 		if(!fx_info)
 			continue;
 		if(update_shader)
@@ -14355,10 +14366,10 @@ TextureFX.prototype.applyFX = function( input_texture, output_texture, options )
 		var functions_code = "";
 		for(var i in included_functions)
 		{
-			var func = TextureFX.available_functions[ i ];
+			var func = FXStack.available_functions[ i ];
 			if(!func)
 			{
-				console.error("TextureFX: Function not found: " + i);
+				console.error("FXStack: Function not found: " + i);
 				continue;
 			}
 			functions_code += func + "\n";
@@ -14443,12 +14454,12 @@ TextureFX.prototype.applyFX = function( input_texture, output_texture, options )
 	}
 }
 
-TextureFX.prototype.getTexture = function( name )
+FXStack.prototype.getTexture = function( name )
 {
 	return LS.ResourcesManager.getTexture( name );
 }
 
-TextureFX.prototype.getPropertyInfoFromPath = function( path )
+FXStack.prototype.getPropertyInfoFromPath = function( path )
 {
 	if(path.length < 2)
 		return null;
@@ -14460,7 +14471,7 @@ TextureFX.prototype.getPropertyInfoFromPath = function( path )
 		return null;
 	var fx = this.fx[ fx_num ];
 
-	var fx_info = TextureFX.available_fx[ fx.name ];
+	var fx_info = FXStack.available_fx[ fx.name ];
 	if(!fx_info)
 		return null;
 
@@ -14487,7 +14498,7 @@ TextureFX.prototype.getPropertyInfoFromPath = function( path )
 	};
 }
 
-TextureFX.prototype.setPropertyValueFromPath = function( path, value, offset )
+FXStack.prototype.setPropertyValueFromPath = function( path, value, offset )
 {
 	offset = offset || 0;
 
@@ -14510,24 +14521,26 @@ TextureFX.prototype.setPropertyValueFromPath = function( path, value, offset )
 		fx[ varname ] = value;
 }
 
-TextureFX.registerFX = function( name, fx_info )
+FXStack.registerFX = function( name, fx_info )
 {
 	if( !fx_info.name )
 		fx_info.name = name;
 	if( fx_info.code === undefined )
-		throw("TextureFX must have a code");
+		throw("FXStack must have a code");
 	if( fx_info.uniforms && fx_info.code && fx_info.code.indexOf("@") )
-		console.warn("TextureFX using uniforms must use the character '@' at the end of every use to avoid collisions with other variables with the same name.");
+		console.warn("FXStack using uniforms must use the character '@' at the end of every use to avoid collisions with other variables with the same name.");
 
-	TextureFX.available_fx[ name ] = fx_info;
+	FXStack.available_fx[ name ] = fx_info;
 }
 
-TextureFX.registerFunction = function( name, code )
+//for common functions shared among different FXs...
+FXStack.registerFunction = function( name, code )
 {
-	TextureFX.available_functions[name] = code;
+	FXStack.available_functions[name] = code;
 }
 
-LS.TextureFX = TextureFX;
+LS.FXStack = FXStack;
+LS.TextureFX = FXStack; //LEGACY
 LS.Tween = {
 	MAX_EASINGS: 256, //to avoid problems
 
@@ -15544,6 +15557,7 @@ function RenderFrameContext( o )
 	this.height = 0; //0 means the same size as the viewport
 	this.precision = RenderFrameContext.DEFAULT_PRECISION;
 	this.filter_texture = true; //magFilter
+	this.format = GL.RGBA;
 	this.use_depth_texture = false;
 	this.num_extra_textures = 0; //number of extra textures in case we want to render to several buffers
 	this.name = null; //if a name is provided all the textures will be stored
@@ -15579,6 +15593,13 @@ RenderFrameContext["@precision"] = { widget: "combo", values: {
 	"high": RenderFrameContext.HIGH_PRECISION
 	}
 };
+
+RenderFrameContext["@format"] = { widget: "combo", values: { 
+	"RGB": GL.RGB,
+	"RGBA": GL.RGBA
+	}
+};
+
 RenderFrameContext["@num_extra_textures"] = { type: "number", step: 1, min: 0, max: 4, precision: 0 };
 RenderFrameContext["@name"] = { type: "string" };
 
@@ -15602,6 +15623,7 @@ RenderFrameContext.prototype.configure = function(o)
 {
 	this.width = o.width || 0;
 	this.height = o.height || 0;
+	this.format = o.format || GL.RGBA;
 	this.precision = o.precision || 0;
 	this.filter_texture = !!o.filter_texture;
 	this.adjust_aspect = !!o.adjust_aspect;
@@ -15618,6 +15640,7 @@ RenderFrameContext.prototype.serialize = function()
 		height:  this.height,
 		filter_texture: this.filter_texture,
 		precision:  this.precision,
+		format: this.format,
 		adjust_aspect: this.adjust_aspect,
 		use_depth_texture:  this.use_depth_texture,
 		num_extra_textures:  this.num_extra_textures,
@@ -15640,7 +15663,7 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 	else if(final_height < 0)
 		final_height = viewport_height >> Math.abs( this.height ); //subsampling
 
-	var format = gl.RGBA;
+	var format = this.format;
 	var filter = this.filter_texture ? gl.LINEAR : gl.NEAREST ;
 	var type = 0;
 
@@ -15660,7 +15683,9 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 	var textures = this._textures;
 
 	//for the color: check that the texture size matches
-	if(!this._color_texture || this._color_texture.width != final_width || this._color_texture.height != final_height || this._color_texture.type != type)
+	if( !this._color_texture || 
+		this._color_texture.width != final_width || this._color_texture.height != final_height || 
+		this._color_texture.type != type || this._color_texture.format != format )
 		this._color_texture = new GL.Texture( final_width, final_height, { minFilter: gl.LINEAR, magFilter: filter, format: format, type: type });
 	else
 		this._color_texture.setParameter( gl.TEXTURE_MAG_FILTER, filter );
@@ -15671,7 +15696,7 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 	for(var i = 0; i < total_extra; ++i) //MAX is 4
 	{
 		var extra_texture = textures[1 + i];
-		if( (!extra_texture || extra_texture.width != final_width || extra_texture.height != final_height || extra_texture.type != type) )
+		if( (!extra_texture || extra_texture.width != final_width || extra_texture.height != final_height || extra_texture.type != type || extra_texture.format != format) )
 			extra_texture = new GL.Texture( final_width, final_height, { minFilter: gl.LINEAR, magFilter: filter, format: format, type: type });
 		else
 			extra_texture.setParameter( gl.TEXTURE_MAG_FILTER, filter );
@@ -17493,7 +17518,7 @@ DebugRender.prototype.render = function( camera, is_selected_callback, scene )
 		if(node._is_root) 
 			continue;
 
-		var global = node.transform.getGlobalMatrixRef();
+		var global = node.transform ? node.transform.getGlobalMatrixRef() : mat4.create();
 		var pos = mat4.multiplyVec3( vec3.create(), global, zero ); //create a new one to store them
 
 		if( settings.render_null_nodes )
@@ -21278,7 +21303,7 @@ function CameraFX( o )
 {
 	this.enabled = true;
 
-	this.fx = new LS.TextureFX( o ? o.fx : null );
+	this.fx = new LS.FXStack( o ? o.fx : null );
 	this.frame = new LS.RenderFrameContext();
 	this.frame.use_depth_texture = true;
 	this.use_antialiasing = false;
@@ -21484,7 +21509,7 @@ function FrameFX(o)
 {
 	this.enabled = true;
 
-	this.fx = new LS.TextureFX( o ? o.fx : null );
+	this.fx = new LS.FXStack( o ? o.fx : null );
 	this.frame = new LS.RenderFrameContext();
 	this.frame.use_depth_texture = true;
 	this.use_antialiasing = false;
@@ -24948,7 +24973,7 @@ Object.defineProperty( Skybox.prototype, "intensity", {
 	set: function(v){
 		this._intensity = v;
 		if(this._material)
-			this._material.color.set([v,v,v]);
+			this._material.color.set([v,v,v,1]);
 	},
 	get: function()
 	{
@@ -25041,8 +25066,7 @@ Skybox.prototype.onCollectInstances = function(e, instances)
 					depth_test: false 
 					},
 				use_scene_ambient:false,
-				queue: LS.RenderQueue.BACKGROUND,
-				color: [ this.intensity, this.intensity, this.intensity ]
+				color: [ this.intensity, this.intensity, this.intensity, 1 ]
 			});
 		var sampler = mat.setTexture( LS.Material.COLOR, texture_name );
 
@@ -25321,54 +25345,86 @@ LS.registerComponent( Collider );
 
 function CustomData(o)
 {
-	this.properties = [];
+	this._properties = [];
+	this._properties_by_name = {};
 
 	if(o)
 		this.configure(o);
 }
 
+Object.defineProperty( CustomData.prototype, "properties", {
+	set: function(v){
+		if(!v || v.constructor !== Array)
+			return;
+		this._properties.length = v.length;
+		this._properties_by_name = {};
+		for(var i = 0; i < v.length; ++i)
+		{
+			var p = v[i];
+			this._properties[i] = p;
+			this._properties_by_name[ p.name ] = p;
+		}
+	},
+	get: function()
+	{
+		return this._properties;
+	},
+	enumerable: true
+});
 
 CustomData.icon = "mini-icon-bg.png";
+
+CustomData.prototype.onAddedToNode = function(node)
+{
+	if(!node.custom)
+		node.custom = this;
+}
+
+CustomData.prototype.onRemovedFromNode = function(node)
+{
+	if(node.custom == this)
+		delete node.custom;
+}
 
 CustomData.prototype.getResources = function(res)
 {
 	return res;
 }
 
-CustomData.prototype.addProperties = function( property )
+CustomData.prototype.addProperty = function( property )
 {
-	this.properties.push( property );
+	this._properties.push( property );
+	if( this._properties_by_name[ property.name ] )
+		console.warn("CustomData: there is a property with the same name");
+	this._properties_by_name[ property.name ] = property;
 }
 
 CustomData.prototype.getProperty = function( name )
 {
-	for(var i = 0; i < this.properties.length; i++)
-		if(this.properties[i].name == name)
-			return this.properties[i];
-	return null;
+	return this._properties_by_name[ name ];
 }
 
 CustomData.prototype.getPropertiesInfo = function()
 {
-	return this.properties;
+	return this._properties;
 }
 
-CustomData.prototype.updateProperty = function( p )
+CustomData.prototype.updateProperty = function( property )
 {
-	//TODO
+	this._properties_by_name[ property.name ] = property;
 }
 
 //used for animation tracks
 CustomData.prototype.getPropertyInfoFromPath = function( path )
 {
 	var varname = path[0];
-	var property = this.getProperty( varname );
+	var property = this._properties_by_name[ varname ];
 	if(!property)
 		return null;
 	return {
 		node: this._root,
-		target: this,
-		name: varname,
+		target: property, //no this
+		name: "value",
 		value: property.value,
 		type: property.type
 	};
@@ -25379,7 +25435,7 @@ CustomData.prototype.setPropertyValueFromPath = function( path, value, offset )
 	offset = offset || 0;
 
 	var varname = path[offset];
-	var property = this.getProperty( varname );
+	var property = this._properties_by_name[ varname ];
 	if(!property)
 		return;
 
@@ -25771,9 +25827,14 @@ function SceneInclude( o )
 	this.send_events = true;
 
 	this._scene_path = null;
+	this._scene_is_ready = false;
 
 	this._scene = new LS.SceneTree();
 	this._scene.root.removeAllComponents();
+	LEvent.bind( this._scene, "requestFrame", function(){ 
+		if(this._root.scene)
+			this._root.scene.requestFrame();
+	}, this );
 
 	if(o)
 		this.configure(o);
@@ -25808,13 +25869,15 @@ SceneInclude["@scene_path"] = { type: LS.TYPES.SCENE, widget: "resource" };
 SceneInclude.icon = "mini-icon-teapot.png";
 
 //which events from the scene should be propagated to the included scene...
-SceneInclude.propagable_events = ["start","update","finish"];
+SceneInclude.propagable_events = ["finish","beforeRenderMainPass","beforeRenderInstances","afterRenderInstances"];
 SceneInclude.fx_propagable_events = ["enableFrameContext","showFrameContext"];
 
 SceneInclude.prototype.onAddedToScene = function(scene)
 {
 	//bind events
 	LEvent.bind( scene, "collectData", this.onCollectData, this );
+	LEvent.bind( scene, "start", this.onStart, this );
+	LEvent.bind( scene, "update", this.onUpdate, this );
 
 	for(var i in SceneInclude.propagable_events)
 		LEvent.bind( scene, SceneInclude.propagable_events[i], this.onEvent, this );
@@ -25828,11 +25891,28 @@ SceneInclude.prototype.onAddedToScene = function(scene)
 SceneInclude.prototype.onRemovedFromScene = function(scene)
 {
 	LEvent.unbind( scene, "collectData", this.onCollectData, this );
+	LEvent.unbind( scene, "start", this.onStart, this );
+	LEvent.unbind( scene, "update", this.onUpdate, this );
 
+	//unbind all
 	var events = SceneInclude.propagable_events.concat( SceneInclude.fx_propagable_events );
 	for(var i in events)
 		LEvent.unbind( scene, events[i], this.onEvent, this );
 }
+
+//we need special functions for this events because they need function calls, not events
+SceneInclude.prototype.onStart = function()
+{
+	if(	this._scene_is_ready )
+		this._scene.start();
+}
+
+SceneInclude.prototype.onUpdate = function()
+{
+	if(this.send_events)
+		this._scene.update();
+}
+
 
 SceneInclude.prototype.updateBindings = function()
 {
@@ -25840,6 +25920,7 @@ SceneInclude.prototype.updateBindings = function()
 	if(!scene)
 		return;
 
+	//update frameFX bindings
 	if(this._frame_fx && !this._frame_fx_binded)
 	{
 		for(var i in SceneInclude.fx_propagable_events)
@@ -25890,12 +25971,52 @@ SceneInclude.prototype.onEvent = function(e,p)
 
 SceneInclude.prototype.reloadScene = function()
 {
-	this._scene.loadFromResources( this._scene_path, inner );
+	this._scene_is_ready = false;
+	this._scene.loadFromResources( this._scene_path, inner.bind(this) );
 
 	function inner()
 	{
 		console.log("SceneInclude: scene loaded");
+		this._scene_is_ready = true;
+		if(this._root.scene._state == LS.RUNNING )
+			this._scene.start();
 	}
+}
+
+SceneInclude.prototype.getPropertyInfoFromPath = function( path )
+{
+	if( !path.length || path[0] != "custom" )
+		return null;
+
+	var custom = this._scene.root.custom;
+	if(!custom)
+		return null;
+
+	var varname = path[1];
+	var property = custom._properties_by_name[ varname ];
+	if(!property)
+		return null;
+
+	return {
+		node: this._root,
+		target: property,
+		name: "value",
+		value: property.value,
+		type: property.type
+	};
+}
+
+SceneInclude.prototype.setPropertyValueFromPath = function( path, value, offset )
+{
+	offset = offset || 0;
+
+	if( !path.length || path[offset] != "custom" )
+		return null;
+
+	var custom = this._scene.root.custom;
+	if(!custom)
+		return null;
+	custom.setPropertyValueFromPath( path, value, offset + 1 );
 }
 
 LS.registerComponent( SceneInclude );
@@ -27377,6 +27498,7 @@ function FXGraphComponent(o)
 
 		this._graph_viewport_node = LiteGraph.createNode("texture/toviewport","Viewport");
 		this._graph_viewport_node.pos[0] = 500;
+		this._graph_viewport_node.properties.disable_alpha = true;
 		this._graph.add( this._graph_viewport_node );
 
 		this._graph_frame_node.connect(0, this._graph_viewport_node );
@@ -29698,6 +29820,7 @@ function Script(o)
 	this._script.onerror = this.onError.bind(this);
 	this._script.exported_functions = [];
 	this._last_error = null;
+	this._breakpoint_on_call = false;
 
 	if(o)
 		this.configure(o);
@@ -30131,6 +30254,11 @@ Script.prototype.onScriptEvent = function(event_type, params)
 	var event_info = LS.Script.API_events_to_function[ event_type ];
 	if(!event_info)
 		return; //????
+	if(this._breakpoint_on_call)
+	{
+		this._breakpoint_on_call = false;
+		{{debugger}} //stops the execution if the console is open
+	}
 	return this._script.callMethod( event_info.name, params );
 }
 
@@ -30493,10 +30621,11 @@ ScriptFromFile.prototype.setCode = function( code, skip_events )
 
 ScriptFromFile.updateComponents = function( script, skip_events )
 {
-	if(!script)
+	if( !script || !script._root )
 		return;
+
 	var filename = script.filename;
-	var scene = this._root.scene || LS.GlobalScene;
+	var scene = script._root.scene || LS.GlobalScene;
 	var components = scene.findNodeComponents( LS.ScriptFromFile );
 	for(var i = 0; i < components.length; ++i)
 	{
@@ -37519,6 +37648,7 @@ SceneTree.prototype.generateUniqueNodeName = function(prefix)
 SceneTree.prototype.requestFrame = function()
 {
 	this._must_redraw = true;
+	LEvent.trigger( this, "requestFrame" );
 }
 
 SceneTree.prototype.refresh = SceneTree.prototype.requestFrame; //DEPRECATED
@@ -38543,6 +38673,8 @@ SceneNode.prototype.configure = function(info)
 		this.addMeshComponents( info.mesh, info );
 
 	//transform in matrix format could come from importers so we leave it
+	if((info.position || info.model || info.transform) && !this.transform)
+		this.addComponent( new LS.Transform() );
 	if(info.position) 
 		this.transform.position = info.position;
 	if(info.model) 
@@ -39020,7 +39152,7 @@ Player.prototype.loadScene = function(url, on_complete, on_progress)
 * @param {Object} scene
 * @param {Function} on_complete callback trigged when the scene and the resources are loaded
 */
-Player.prototype.setScene = function( scene_info, on_complete )
+Player.prototype.setScene = function( scene_info, on_complete, on_before_play )
 {
 	var that = this;
 	var scene = this.scene;
@@ -39059,12 +39191,14 @@ Player.prototype.setScene = function( scene_info, on_complete )
 
 	function inner_all_loaded()
 	{
+		if( on_before_play )
+			on_before_play( scene );
 		if(that.autoplay)
 			that.play();
 		scene._must_redraw = true;
 		console.log("Scene playing");
 		if(on_complete)
-			on_complete();
+			on_complete( scene );
 	}
 }
 

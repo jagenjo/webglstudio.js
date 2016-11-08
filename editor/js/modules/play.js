@@ -171,8 +171,18 @@ var PlayModule = {
 			//play
 			function launch()
 			{
-				demo_window.player.setScene( scene_info );
+				demo_window.player.setScene( scene_info, inner_launched, inner_before_play );
 			};
+
+			function inner_before_play( scene )
+			{
+				console.log("scene ready to be played in window");
+			}
+
+			function inner_launched( scene )
+			{
+				console.log("scene launched in window");
+			}
 		}
 	},
 

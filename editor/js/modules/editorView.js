@@ -310,7 +310,7 @@ LS.SceneNode.prototype.renderEditor = function( node_selected )
 			}
 		}
 	}
-	else //no render instances? then render some axis
+	else if(0)//no render instances? then render some axis
 	{
 		LS.Draw.push();
 		var global_matrix = this.transform.getGlobalMatrix();

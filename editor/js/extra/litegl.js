@@ -4626,8 +4626,9 @@ Texture.prototype.toViewport = function(shader, uniforms)
 * Fills the texture with a constant color (uses gl.clear)
 * @method fill
 * @param {vec4} color rgba
+* @param {boolean} skip_mipmaps if true the mipmaps wont be updated
 */
-Texture.prototype.fill = function(color)
+Texture.prototype.fill = function(color, skip_mipmaps )
 {
 	var old_color = gl.getParameter( gl.COLOR_CLEAR_VALUE );
 	gl.clearColor( color[0], color[1], color[2], color[3] );
@@ -4635,6 +4636,12 @@ Texture.prototype.fill = function(color)
 		gl.clear( gl.COLOR_BUFFER_BIT );	
 	});
 	gl.clearColor( old_color[0], old_color[1], old_color[2], old_color[3] );
+
+	if (!skip_mipmaps && this.minFilter && this.minFilter != gl.NEAREST && this.minFilter != gl.LINEAR ) {
+		this.bind();
+		gl.generateMipmap( this.texture_type );
+		this.has_mipmaps = true;
+	}
 }
 
 /**

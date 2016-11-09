@@ -89,6 +89,7 @@ CodingPadWidget.prototype.editInstanceCode = function( instance, options )
 	{
 		this.current_code_info = null;
 		this.editor.setValue("");
+		this.editor.clearHistory();
 		return;
 	}
 
@@ -179,6 +180,7 @@ CodingPadWidget.prototype.replaceInstanceCode = function( instance, options )
 	if(this.editor)
 	{
 		this.editor.setValue( text_content );
+		this.editor.clearHistory();
 		this.editor.refresh();
 		if(this.current_code_info && this.current_code_info.pos)
 			this.editor.setCursor( this.current_code_info.pos );
@@ -842,7 +844,7 @@ CodingPadWidget.prototype.onOpenCode = function( skip_create )
 	for(var i in LS.ResourcesManager.resources)
 	{
 		var resource = LS.ResourcesManager.resources[i];
-		if( resource && resource.constructor === LS.Resource && resource.data && resource.data.constructor === String )
+		if( resource && resource.hasEditableText && resource.hasEditableText() )
 		{
 			var fullpath = resource.fullpath || resource.filename;
 			if( !codes_url[fullpath] )
@@ -859,7 +861,7 @@ CodingPadWidget.prototype.onOpenCode = function( skip_create )
 				return;
 			LS.RM.load( fullpath, function(resource){
 				dialog.close();
-				if(resource && resource.constructor === LS.Resource)
+				if(resource)
 					that.editInstanceCode( resource );
 			});
 		}

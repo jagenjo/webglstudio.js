@@ -17,6 +17,8 @@ Some of the important features:
 
 For more information visit http://webglstudio.org
 
+![Interface](press/images/interface.jpg "Interface")
+
 Installing
 ----------
 

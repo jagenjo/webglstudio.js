@@ -385,7 +385,7 @@ InspectorWidget.prototype.inspectScene = function( scene )
 		inspector.addTitle("Global Scripts");
 		for(var i in scene.global_scripts)
 		{			
-			inspector.addResource(null, scene.global_scripts[i], { index: i, callback: function(v){
+			inspector.addScript(null, scene.global_scripts[i], { index: i, callback: function(v){
 					if(!v)
 					{
 						scene.global_scripts.splice(this.options.index,1);

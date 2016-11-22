@@ -6,6 +6,44 @@
 	]]>		
 	</snippet>
 
+	<snippet id="input">
+		<![CDATA[
+			//used to store topology input information
+			struct Input {
+				vec4 color;
+				vec3 vertex;
+				vec3 normal;
+				vec2 uv;
+				vec2 uv1;
+
+				vec3 camPos;
+				vec3 viewDir;
+				vec3 worldPos;
+				vec3 worldNormal;
+				vec4 screenPos;
+			};
+
+			Input getInput()
+			{
+				Input IN;
+				IN.color = vec4(1.0);
+				IN.vertex = v_pos;
+				IN.normal = v_normal;
+				IN.uv = v_uvs;
+				IN.uv1 = IN.uv;
+
+				IN.camPos = u_camera_eye;
+				IN.viewDir = normalize(u_camera_eye - v_pos);
+				IN.worldPos = v_pos;
+				IN.worldNormal = normalize(v_normal);
+				//IN.screenPos = vec4( (v_screenpos.xy / v_screenpos.w) * 0.5 + vec2(0.5), v_screenpos.zw );  //sometimes we need also z and w, thats why we pass all
+				IN.screenPos = vec4( (gl_FragCoord.xy / gl_FragCoord.w) * 0.5 + vec2(0.5), gl_FragCoord.zw );  //sometimes we need also z and w, thats why we pass all
+				return IN;
+			}
+		]]>
+	</snippet>
+
+
 	<snippet id="structs">
 		<![CDATA[
 			//used to store topology input information
@@ -26,7 +64,7 @@
 			//used to store surface shading properties
 			struct SurfaceOutput {
 				vec3 Albedo;
-				vec3 Normal;
+				vec3 Normal; //separated in case there is a normal map
 				vec3 Emission;
 				vec3 Ambient;
 				float Specular;
@@ -35,17 +73,6 @@
 				float Reflectivity;
 				vec4 Extra; //for special purposes
 			};
-
-			/*
-			struct Light {
-				vec3 position;
-				vec3 color;
-				vec2 attenuation; //start,end
-				vec3 front;
-				vec4 angle; //cone start,end,phi,theta
-				vec3 shadowmap_info; //bias, size, alpha
-			}
-			*/
 
 			//used to store light contribution
 			struct FinalLight {
@@ -254,7 +281,7 @@
 
 	<snippet id="spotFalloff">
 		<![CDATA[
-			float spotFalloff(vec3 spotDir,  vec3 lightDir, float angle_phi, float angle_theta)
+			float spotFalloff(vec3 spotDir, vec3 lightDir, float angle_phi, float angle_theta)
 			{
 				float sqlen = dot(lightDir,lightDir);
 				float atten = 1.0;

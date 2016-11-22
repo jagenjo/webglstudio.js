@@ -94,9 +94,6 @@ GL.ONE_MINUS_CONSTANT_ALPHA = 32772;
 GL.VERTEX_SHADER = 35633;
 GL.FRAGMENT_SHADER = 35632;
 
-GL.CW = 2304;
-GL.CCW = 2305;
-
 GL.FRONT = 1028;
 GL.BACK = 1029;
 GL.FRONT_AND_BACK = 1032;
@@ -113,6 +110,13 @@ GL.ALWAYS = 519;
 GL.STREAM_DRAW = 35040;
 GL.STATIC_DRAW = 35044;
 GL.DYNAMIC_DRAW = 35048;
+
+GL.CW = 2304;
+GL.CCW = 2305;
+
+GL.CULL_FACE = 2884;
+GL.DEPTH_TEST = 2929;
+GL.BLEND = 3042;
 
 GL.temp_vec3 = vec3.create();
 GL.temp2_vec3 = vec3.create();
@@ -2561,7 +2565,7 @@ Mesh.prototype.computeWireframe = function() {
 
 
 /**
-* Multiplies every normal vy -1 and uploads it
+* Multiplies every normal by -1 and uploads it
 * @method flipNormals
 * @param {enum} stream_type default gl.STATIC_DRAW (other: gl.DYNAMIC_DRAW, gl.STREAM_DRAW)
 */
@@ -2576,8 +2580,8 @@ Mesh.prototype.flipNormals = function( stream_type  ) {
 	normals_buffer.upload( stream_type );
 
 	//reverse indices too
-	if(this.indexBuffers["triangles"])
-		this.computeIndices();
+	if( !this.indexBuffers["triangles"] )
+		this.computeIndices(); //create indices
 
 	var triangles_buffer = this.indexBuffers["triangles"];
 	var data = triangles_buffer.data;
@@ -2689,6 +2693,67 @@ Mesh.prototype.computeIndices = function() {
 	this.createIndexBuffer( "triangles", indices );
 }
 
+/**
+* Breaks the indices
+* @method explodeIndices
+*/
+Mesh.prototype.explodeIndices = function( buffer_name ) {
+
+	buffer_name = buffer_name || "triangles";
+
+	var indices_buffer = this.getIndexBuffer( buffer_name );
+	if(!indices_buffer)
+		return;
+
+	var indices = indices_buffer.data;
+
+	//cluster by distance
+	var new_vertices = new Float32Array(indices.length * 3);
+	var new_normals = null;
+	var new_coords = null;
+
+	var old_vertices_buffer = this.vertexBuffers["vertices"];
+	var old_vertices = old_vertices_buffer.data;
+
+	var old_normals_buffer = this.vertexBuffers["normals"];
+	var old_normals = null;
+	if(old_normals_buffer)
+	{
+		old_normals = old_normals_buffer.data;
+		new_normals = new Float32Array(indices.length * 3);
+	}
+
+	var old_coords_buffer = this.vertexBuffers["coords"];
+	var old_coords = null;
+	if( old_coords_buffer )
+	{
+		old_coords = old_coords_buffer.data;
+		new_coords = new Float32Array(indices.length * 2);
+	}
+
+	for(var i = 0, l = indices.length; i < l; ++i)
+	{
+		var index = indices[i];
+		new_vertices.set( old_vertices.subarray( index*3, index*3 + 3 ), i*3 );
+		if(old_normals)
+			new_normals.set( old_normals.subarray( index*3, index*3 + 3 ), i*3 );
+		if(old_coords)
+			new_coords.set( old_coords.subarray( index*2, index*2 + 2 ), i*2 );
+	}
+
+	//erase all
+	this.vertexBuffers = {}; 
+
+	//new buffers
+	this.createVertexBuffer( 'vertices', GL.Mesh.common_buffers["vertices"].attribute, 3, new_vertices );	
+	if(new_normals)
+		this.createVertexBuffer( 'normals', GL.Mesh.common_buffers["normals"].attribute, 3, new_normals );	
+	if(new_coords)
+		this.createVertexBuffer( 'coords', GL.Mesh.common_buffers["coords"].attribute, 2, new_coords );	
+
+	delete this.indexBuffers[ buffer_name ];
+}
+
 
 
 /**
@@ -2700,7 +2765,7 @@ Mesh.prototype.computeNormals = function( stream_type  ) {
 	var vertices = this.vertexBuffers["vertices"].data;
 	var num_vertices = vertices.length / 3;
 
-	//create because it is faster than filling it with zeros (till the .fill method is introduced)
+	//create because it is faster than filling it with zeros
 	var normals = new Float32Array( vertices.length );
 
 	var triangles = null;
@@ -2777,7 +2842,7 @@ Mesh.prototype.computeNormals = function( stream_type  ) {
 * Creates a new stream with the tangents
 * @method computeTangents
 */
-Mesh.prototype.computeTangents = function() {
+Mesh.prototype.computeTangents = function( ) {
 	var vertices = this.vertexBuffers["vertices"].data;
 	var normals = this.vertexBuffers["normals"].data;
 	var uvs = this.vertexBuffers["coords"].data;
@@ -2860,6 +2925,116 @@ Mesh.prototype.computeTangents = function() {
 
 	this.createVertexBuffer('tangents', Mesh.common_buffers["tangents"].attribute, 4, tangents );
 }
+
+/**
+* Creates texture coordinates using a triplanar aproximation
+* @method computeTextureCoordinates
+*/
+Mesh.prototype.computeTextureCoordinates = function( stream_type )
+{
+	var vertices_buffer = this.vertexBuffers["vertices"];
+	if(!vertices_buffer)
+		return;
+
+	this.explodeIndices( "triangles" );
+
+	var vertices = vertices_buffer.data;
+	var num_vertices = vertices.length / 3;
+
+	var uvs_buffer = this.vertexBuffers["coords"];
+	var uvs = uvs_buffer ? uvs_buffer.data : new Float32Array( num_vertices * 2 );
+
+	var triangles_buffer = this.indexBuffers["triangles"];
+	var triangles = null;
+	if( triangles_buffer )
+		triangles = triangles_buffer.data;
+
+	var plane_normal = vec3.create();
+	var side1 = vec3.create();
+	var side2 = vec3.create();
+
+	var bbox = this.getBoundingBox();
+	var bboxcenter = BBox.getCenter( bbox );
+	var bboxhs = vec3.create();
+	bboxhs.set( BBox.getHalfsize( bbox ) ); //careful, this is a reference
+	vec3.scale( bboxhs, bboxhs, 2 );
+
+	var num = triangles ? triangles.length : vertices.length/3;
+
+	for (var a = 0; a < num; a+=3)
+	{
+		if(triangles)
+		{
+			var i1 = triangles[a];
+			var i2 = triangles[a+1];
+			var i3 = triangles[a+2];
+
+			var v1 = vertices.subarray(i1*3,i1*3+3);
+			var v2 = vertices.subarray(i2*3,i2*3+3);
+			var v3 = vertices.subarray(i3*3,i3*3+3);
+
+			var uv1 = uvs.subarray(i1*2,i1*2+2);
+			var uv2 = uvs.subarray(i2*2,i2*2+2);
+			var uv3 = uvs.subarray(i3*2,i3*2+2);
+		}
+		else
+		{
+			var v1 = vertices.subarray((a)*3,(a)*3+3);
+			var v2 = vertices.subarray((a+1)*3,(a+1)*3+3);
+			var v3 = vertices.subarray((a+2)*3,(a+2)*3+3);
+
+			var uv1 = uvs.subarray((a)*2,(a)*2+2);
+			var uv2 = uvs.subarray((a+1)*2,(a+1)*2+2);
+			var uv3 = uvs.subarray((a+2)*2,(a+2)*2+2);
+		}
+
+		vec3.sub(side1, v1, v2 );
+		vec3.sub(side2, v1, v3 );
+		vec3.cross( plane_normal, side1, side2 );
+		//vec3.normalize( plane_normal, plane_normal ); //not necessary
+
+		plane_normal[0] = Math.abs( plane_normal[0] );
+		plane_normal[1] = Math.abs( plane_normal[1] );
+		plane_normal[2] = Math.abs( plane_normal[2] );
+
+		if( plane_normal[0] > plane_normal[1] && plane_normal[0] > plane_normal[2])
+		{
+			//X
+			uv1[0] = (v1[2] - bboxcenter[2]) / bboxhs[2];
+			uv1[1] = (v1[1] - bboxcenter[1]) / bboxhs[1];
+			uv2[0] = (v2[2] - bboxcenter[2]) / bboxhs[2];
+			uv2[1] = (v2[1] - bboxcenter[1]) / bboxhs[1];
+			uv3[0] = (v3[2] - bboxcenter[2]) / bboxhs[2];
+			uv3[1] = (v3[1] - bboxcenter[1]) / bboxhs[1];
+		}
+		else if ( plane_normal[1] > plane_normal[2])
+		{
+			//Y
+			uv1[0] = (v1[0] - bboxcenter[0]) / bboxhs[0];
+			uv1[1] = (v1[2] - bboxcenter[2]) / bboxhs[2];
+			uv2[0] = (v2[0] - bboxcenter[0]) / bboxhs[0];
+			uv2[1] = (v2[2] - bboxcenter[2]) / bboxhs[2];
+			uv3[0] = (v3[0] - bboxcenter[0]) / bboxhs[0];
+			uv3[1] = (v3[2] - bboxcenter[2]) / bboxhs[2];
+		}
+		else
+		{
+			//Z
+			uv1[0] = (v1[0] - bboxcenter[0]) / bboxhs[0];
+			uv1[1] = (v1[1] - bboxcenter[1]) / bboxhs[1];
+			uv2[0] = (v2[0] - bboxcenter[0]) / bboxhs[0];
+			uv2[1] = (v2[1] - bboxcenter[1]) / bboxhs[1];
+			uv3[0] = (v3[0] - bboxcenter[0]) / bboxhs[0];
+			uv3[1] = (v3[1] - bboxcenter[1]) / bboxhs[1];
+		}
+	}
+
+	if(uvs_buffer)
+		uvs_buffer.upload( stream_type );
+	else
+		this.createVertexBuffer('coords', Mesh.common_buffers["coords"].attribute, 2, uvs );
+}
+
 
 /**
 * Computes bounding information
@@ -3306,6 +3481,26 @@ Mesh.getScreenQuad = function(gl)
 	return gl.meshes[":screen_quad"] = mesh;
 }
 
+function linearizeArray( array, typed_array_class )
+{
+	if(array.constructor === typed_array_class)
+		return array;
+	if(array.constructor !== Array)
+	{
+		typed_array_class = typed_array_class || Float32Array;
+		return new typed_array_class(array);
+	}
+
+	typed_array_class = typed_array_class || Float32Array;
+	var components = array[0].length;
+	var size = array.length * components;
+	var buffer = new typed_array_class(size);
+
+	for (var i=0; i < array.length;++i)
+		for(var j=0; j < components; ++j)
+			buffer[i*components + j] = array[i][j];
+	return buffer;
+}
 
 /**
 * @class Mesh
@@ -4069,6 +4264,13 @@ Texture.prototype.getProperties = function()
 	};
 }
 
+
+Texture.prototype.hasSameSize = function(t)
+{
+	if(!t)
+		return false;
+	return t.width == this.width && t.height == this.height;
+}
 //textures cannot be stored in JSON
 Texture.prototype.toJSON = function()
 {
@@ -5560,6 +5762,7 @@ Texture.nextPOT = function( size )
 {
 	return Math.pow( 2, Math.ceil( Math.log(size) / Math.log(2) ) );
 }
+
 /** 
 * FBO for FrameBufferObjects, FBOs are used to store the render inside one or several textures 
 * Supports multibuffer and depthbuffer texture, useful for deferred rendering
@@ -5890,6 +6093,23 @@ Shader.compileSource = function( type, source, gl, shader )
 		throw (type == gl.VERTEX_SHADER ? "Vertex" : "Fragment") + ' shader compile error: ' + gl.getShaderInfoLog(shader);
 	}
 	return shader;
+}
+
+Shader.parseError = function( error_str, vs_code, fs_code )
+{
+	if(!error_str)
+		return null;
+
+	var t = error_str.split(" ");
+	var nums = t[5].split(":");
+
+	return {
+		type: t[0],
+		line_number: parseInt( nums[1] ),
+		line_pos: parseInt( nums[0] ),
+		line_code: ( t[0] == "Fragment" ? fs_code : vs_code ).split("\n")[ parseInt( nums[1] ) ],
+		err: error_str
+	};
 }
 
 /**
@@ -7730,8 +7950,16 @@ GL.augmentEvent = function(e, root_element)
 			this.dragging = false;
 	}
 
-	e.deltax = e.mousex - this.last_pos[0];
-	e.deltay = e.mousey - this.last_pos[1];
+	if(e.movementX !== undefined) //pointer lock
+	{
+		e.deltax = e.movementX;
+		e.deltay = e.movementY;
+	}
+	else
+	{
+		e.deltax = e.mousex - this.last_pos[0];
+		e.deltay = e.mousey - this.last_pos[1];
+	}
 	this.last_pos[0] = e.mousex;
 	this.last_pos[1] = e.mousey;
 

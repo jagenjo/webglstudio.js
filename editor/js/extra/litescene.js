@@ -1440,6 +1440,18 @@ var LS = {
 		return String.fromCharCode.apply(null,data);
 	},
 
+	/**
+	* clears the global scene and the resources manager
+	*
+	* @method reset
+	*/
+	reset: function()
+	{
+		LS.GlobalScene.clear();
+		LS.ResourcesManager.reset();
+		LEvent.trigger( LS, "reset" );
+	},
+
 	stringToValue: function( v )
 	{
 		var value = v;
@@ -2531,6 +2543,8 @@ var ResourcesManager = {
 		this.resources = {};
 		this.meshes = {};
 		this.textures = {};
+		this.materials = {};
+		this.materials_by_uid = {};
 	},
 
 	/**
@@ -3268,7 +3282,7 @@ var ResourcesManager = {
 		//clean up the filename (to avoid problems with //)
 		filename = this.cleanFullpath( filename );
 
-		if(this.resources[ filename ] == resource)
+		if( this.resources[ filename ] === resource )
 			return; //already registered
 
 		if(resource.is_preview && this.resources[ filename ] )
@@ -4735,29 +4749,39 @@ LS.ShaderQuery = ShaderQuery;
 function ShaderBlock( name )
 {
 	this.dependency_blocks = [];
-
 	this.flag_id = -1;
 	this.flag_mask = 0;
 	if(!name)
 		throw("ShaderBlock must have a name");
+	if(name.indexOf(" ") != -1)
+		throw("ShaderBlock name cannot have spaces: " + name);
 	this.name = name;
 	this.code_map = new Map();
 }
 
 ShaderBlock.prototype.addCode = function( shader_type, enabled_code, disabled_code )
 {
-	this.checkDependencies( enabled_code );
-	this.checkDependencies( disabled_code );
-	this.code_map.set( shader_type, { enabled: enabled_code || "", disabled: disabled_code || ""} );
+	enabled_code  = enabled_code || "";
+	disabled_code  = disabled_code || "";
+
+	//this.checkDependencies( enabled_code );
+	//this.checkDependencies( disabled_code );
+
+	var info = { 
+		enabled: new LS.GLSLCode( enabled_code ),
+		disabled: new LS.GLSLCode( disabled_code )
+	};
+	this.code_map.set( shader_type, info );
 }
 
-ShaderBlock.prototype.getCode = function( shader_type, block_flags )
+ShaderBlock.prototype.getFinalCode = function( shader_type, block_flags )
 {
 	block_flags = block_flags || 0;
 	var code = this.code_map.get( shader_type );
 	if(!code)
 		return null;
-	return (block_flags & this.flag_mask) ? code.enabled : code.disabled;
+	var glslcode = (block_flags & this.flag_mask) ? code.enabled : code.disabled;
+	return glslcode.getFinalCode( shader_type, block_flags );
 }
 
 ShaderBlock.prototype.register = function()
@@ -4773,6 +4797,251 @@ ShaderBlock.prototype.checkDependencies = function( code )
 
 LS.ShaderBlock = ShaderBlock;
 
+
+
+/**
+* Used for parsing GLSL code and precompute info (mostly preprocessor macros)
+* @class GLSLCode
+* @constructor
+* @param {String} code
+*/
+function GLSLCode( code )
+{
+	this.code = code;
+
+	this.blocks = [];
+	this.pragmas = {};
+	this.uniforms = {};
+	this.includes = {};
+	this.snippets = {};
+	this.shader_blocks = {};
+	this.is_dynamic = false; //means this shader has no variations using pragmas or macros
+	if(code)
+		this.parse();
+}
+
+LS.GLSLCode = GLSLCode;
+
+//block types
+GLSLCode.CODE = 1;
+GLSLCode.PRAGMA = 2;
+
+//pargma types
+GLSLCode.INCLUDE = 1;
+GLSLCode.SHADERBLOCK = 2;
+GLSLCode.SNIPPET = 3;
+
+//given a code with some pragmas, it separates them
+GLSLCode.prototype.parse = function()
+{
+	//remove comments
+	var code = this.code.replace(/(\/\*([\s\S]*?)\*\/)|(\/\/(.*)$)/gm, '');
+
+	this.blocks = [];
+	this.pragmas = {};
+	this.uniforms = {};
+	this.includes = {};
+	this.snippets = {};
+	this.shader_blocks = {};
+	this.is_dynamic = false; //means this shader has no variations using pragmas or macros
+
+	var current_block = [];
+	var lines = code.split("\n");
+
+	//parse
+	for(var i = 0; i < lines.length; i++)
+	{
+		var line = lines[i].trim();
+		if(!line.length)
+			continue;//empty line
+
+		if(line[0] != "#")
+		{
+			var words = line.split(" ");
+			if( words[0] == "uniform" ) //store which uniforms we found in the code (not used)
+			{
+				var uniform_name = words[2].split(";");
+				this.uniforms[ uniform_name[0] ] = words[1];
+			}
+			current_block.push(line);
+			continue;
+		}
+
+		var t = line.split(" ");
+		if(t[0] == "#pragma")
+		{
+			//merge lines and add previous block
+			var current_block_code = current_block.join("\n");
+			if(current_block_code.trim()) //in case is empty this code block
+				this.blocks.push( { type: GLSLCode.CODE, code: current_block_code } ); 
+
+			this.is_dynamic = true;
+			this.pragmas[ t[2] ] = true;
+			var action = t[1];
+			current_block.length = 0;
+			var pragma_info = { type: GLSLCode.PRAGMA, line: line, action: action, param: t[2] };
+			if( action == "include")
+			{
+				if(!t[2])
+				{
+					console.error("shader include without path");
+					continue;
+				}
+
+				pragma_info.action_type = GLSLCode.INCLUDE;
+				//resolve include
+				var include = t[2].substr(1, t[2].length - 2); //safer than JSON.parse
+				var fullname = include.split(":");
+				var filename = fullname[0];
+				var subfile = fullname[1];
+				pragma_info.include = filename;
+				pragma_info.include_subfile = subfile;
+				this.includes[ pragma_info.include ] = true;
+			}
+			else if( action == "shaderblock" )
+			{
+				if(!t[2])
+				{
+					console.error("#pragma shaderblock without name");
+					continue;
+				}
+				pragma_info.action_type = GLSLCode.SHADERBLOCK;
+				var shader_block_name = t[2].substr(1, t[2].length - 2); //safer than JSON.parse
+				pragma_info.shader_block = shader_block_name;
+				this.shader_blocks[ pragma_info.shader_block ] = true;
+			}
+			else if( action == "snippet" )
+			{
+				if(!t[2])
+				{
+					console.error("#pragma snippet without name");
+					continue;
+				}
+				pragma_info.action_type = GLSLCode.SNIPPET;
+				var snippet_name = t[2].substr(1, t[2].length - 2); //safer than JSON.parse
+				pragma_info.snippet = snippet_name;
+				this.snippets[ snippet_name ] = true;
+			}
+
+			this.blocks.push( pragma_info ); //add pragma block
+		}
+		else
+			current_block.push( line ); //add line to current block lines
+	}
+
+	if(current_block.length)
+	{
+		var current_block_code = current_block.join("\n");
+		if(current_block_code.trim()) //in case is empty this code block
+			this.blocks.push( { type: GLSLCode.CODE, code: current_block_code } ); //merge lines and add as block
+	}
+
+	//done
+	return true;
+}
+
+GLSLCode.prototype.getFinalCode = function( shader_type, block_flags )
+{
+	if( !this.is_dynamic )
+		return this.code;
+
+	var code = "";
+	var blocks = this.blocks;
+
+	for(var i = 0; i < blocks.length; ++i)
+	{
+		var block = blocks[i];
+		if( block.type === GLSLCode.CODE ) //regular code
+		{
+			code += block.code;
+			continue;
+		}
+
+		//pragmas
+		if(block.include) //bring code from other files
+		{
+			var filename = block.include;
+			var ext = LS.ResourcesManager.getExtension( filename );
+			if(ext)
+			{
+				var extra_shadercode = LS.ResourcesManager.getResource( filename, LS.ShaderCode );
+				if(!extra_shadercode)
+				{
+					LS.ResourcesManager.load( filename ); //force load
+					return null;
+				}
+				if(!block.include_subfile)
+					code += "\n" + extra_shadercode._subfiles[""] + "\n";
+				else
+				{
+					var extra = extra_shadercode._subfiles[ block.include_subfile ];
+					if(extra === undefined)
+						return null;
+					code += "\n" + extra + "\n";
+				}
+			}
+			else
+			{
+				var snippet_code = LS.ShadersManager.getSnippet( filename );
+				if( !snippet_code )
+					return null; //snippet not found
+				code += "\n" + snippet_code.code + "\n";
+			}
+		}
+		else if( block.shader_block ) //injects code from ShaderCodes taking into account certain rules
+		{
+			var shader_block = LS.ShadersManager.getShaderBlock( block.shader_block );
+			if(!shader_block)
+			{
+				console.error("ShaderCode uses unknown ShaderBlock: ", block.shader_block);
+				return null;
+			}
+
+			var block_code = shader_block.getFinalCode( shader_type, block_flags );
+			if( block_code )
+				code += "\n#define BLOCK_"+ ( shader_block.name.toUpperCase() ) +"\n" + block_code + "\n";
+		}
+		else if( block.snippet ) //injects code from snippets
+		{
+			var snippet = LS.ShadersManager.getSnippet( block.snippet );
+			if(!snippet)
+			{
+				console.error("ShaderCode uses unknown Snippet: ", block.snippet);
+				return null;
+			}
+
+			code += "\n" + snippet.code + "\n";
+		}
+	}
+
+	return code;
+}
+
+//not used
+GLSLCode.breakLines = function(lines)
+{
+	//clean (this helps in case a line contains two instructions, like "uniform float a; uniform float b;"
+	var clean_lines = [];
+	for(var i = 0; i < lines.length; i++)
+	{
+		var line = lines[i].trim();
+		if(!line)
+			continue;
+		var pos = line.lastIndexOf(";");
+		if(pos == -1 || pos == lines.length - 1)
+			clean_lines.push(line);
+		else
+		{
+			var sublines = line.split(";");
+			for(var j = 0; j < sublines.length; ++j)
+			{
+				if(sublines[j])
+					clean_lines.push( sublines[j] + ";" );
+			}
+		}
+	}
+	return clean_lines;
+}
 
 
 
@@ -4918,24 +5187,63 @@ function Material( o )
 	this.uid = LS.generateUId("MAT-");
 	this._must_update = true;
 
-	//materials have at least a basic color property and opacity
+	/**
+	* materials have at least a basic color property and opacity
+	* @property color
+	* @type {[[r,g,b]]}
+	* @default [1,1,1]
+	*/
 	this._color = new Float32Array([1.0,1.0,1.0,1.0]);
 
-	//render queue: which order should this be rendered
+	/**
+	* render queue: which order should this be rendered
+	* @property queue
+	* @type {Number}
+	* @default LS.RenderQueue.DEFAULT
+	*/
 	this._queue = LS.RenderQueue.DEFAULT;
 
-	//render state: which flags should be used (in StandardMaterial this is overwritten due to the multipass lighting)
-	//TODO: render states should be moved to render passes defined by the shadercode in the future to allow multipasses like cellshading outline render
+	/**
+	* render state: which flags should be used (in StandardMaterial this is overwritten due to the multipass lighting)
+	* TODO: render states should be moved to render passes defined by the shadercode in the future to allow multipasses like cellshading outline render
+	* @property render_state
+	* @type {LS.RenderState}
+	*/
 	this._render_state = new LS.RenderState();
+
+
 	this._light_mode = LS.Material.NO_LIGHTS;
 
-	//textures
+	/**
+	* matrix used to define texture tiling in the shader (passed as u_texture_matrix)
+	* @property uvs_matrix
+	* @type {mat3}
+	* @default [1,0,0, 0,1,0, 0,0,1]
+	*/
 	this.uvs_matrix = new Float32Array([1,0,0, 0,1,0, 0,0,1]);
+
+	/**
+	* texture channels
+	* contains info about the samplers for every texture channel
+	* @property textures
+	* @type {Object}
+	*/
 	this.textures = {};
 
-	//shaders query
+	/**
+	* used internally by LS.StandardMaterial
+	* This will be gone in the future in order to use the new ShaderMaterial rendering system
+	* @property query
+	* @type {LS.ShaderQuery}
+	*/
 	this._query = new LS.ShaderQuery();
 
+	/**
+	* flags to control cast_shadows, receive_shadows or ignore_frustum
+	* @property flags
+	* @type {Object}
+	* @default { cast_shadows: true, receive_shadows: true, ignore_frutum: false }
+	*/
 	this.flags = {
 		cast_shadows: true,
 		receive_shadows: true,
@@ -4950,6 +5258,12 @@ function Material( o )
 		enumerable: true
 	});
 
+	/**
+	* The alpha component to control opacity
+	* @property opacity
+	* @type {Number}
+	* @default 1
+	*/
 	Object.defineProperty( this, 'opacity', {
 		get: function() { return this._color[3]; },
 		set: function(v) { this._color[3] = v; },
@@ -6272,9 +6586,11 @@ SurfaceMaterial.prototype.computeCode = function()
 			case 'vec3': code += "vec3 "; break;
 			case 'color4':
 			case 'vec4': code += "vec4 "; break;
+			case 'sampler':
 			case 'texture': code += "sampler2D "; break;
 			case 'cubemap': code += "samplerCube "; break;
-			default: continue;
+			default: 
+				continue;
 		}
 		code += prop.name + ";";
 		uniforms_code += code;
@@ -6342,6 +6658,8 @@ SurfaceMaterial.prototype.fillUniforms = function( scene, options )
 		var prop = this.properties[i];
 		if(prop.type == "texture" || prop.type == "cubemap" || prop.type == "sampler")
 		{
+			var texture = prop.value;
+			/*
 			if(!prop.value)
 				texture = ":black";
 			else
@@ -6351,6 +6669,7 @@ SurfaceMaterial.prototype.fillUniforms = function( scene, options )
 				if(!texture)
 					texture = ":missing";
 			}
+			*/
 			samplers[ last_texture_slot ] = texture;
 			this._uniforms[ prop.name ] = last_texture_slot;
 			last_texture_slot++;
@@ -6981,14 +7300,10 @@ ShaderMaterial.prototype.assignOldProperties = function( old_properties )
 }
 
 //called from LS.Renderer when rendering an instance
-ShaderMaterial.prototype.renderInstance = function( instance, render_settings, lights )
+ShaderMaterial.prototype.renderInstance = function( instance, render_settings )
 {
 	if(!this.shader)
 		return false;
-
-	var lights = null;
-	if(this._light_mode !== Material.NO_LIGHTS)
-		lights = LS.Renderer.getNearLights( instance );
 
 	//get shader code
 	var shader_code = LS.ResourcesManager.getResource( this.shader );
@@ -6998,14 +7313,6 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, l
 	//this is in case the shader has been modified in the editor...
 	if( shader_code._version !== this._shader_version )
 		this.processShaderCode();
-
-	//compute flags
-	var block_flags = instance.computeShaderBlockFlags();
-
-	//extract shader compiled
-	var shader = shader_code.getShader( null, block_flags );
-	if(!shader)
-		return false;
 
 	var renderer = LS.Renderer;
 	var camera = LS.Renderer._current_camera;
@@ -7023,19 +7330,73 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, l
 	render_uniforms.u_model = model; 
 	render_uniforms.u_normal_model = instance.normal_matrix; 
 
+	//compute flags
+	var block_flags = instance.computeShaderBlockFlags();
+
 	//global stuff
 	this.render_state.enable();
+	LS.Renderer.bindSamplers(  this._samplers );
 
 	if(this.onRenderInstance)
 		this.onRenderInstance( instance );
 
-	//assign
-	LS.Renderer.bindSamplers(  this._samplers );
-	shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, this._uniforms, instance.uniforms ] );
+	//add flags related to lights
+	var lights = null;
+	if(this._light_mode !== Material.NO_LIGHTS)
+		lights = LS.Renderer.getNearLights( instance );
 
-	//render
-	instance.render( shader );
-	renderer._rendercalls += 1;
+	if(!lights)
+	{
+		//extract shader compiled
+		var shader = shader_code.getShader( null, block_flags );
+		if(!shader)
+			return false;
+
+		//assign
+		shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, light ? light._uniforms : null, this._uniforms, instance.uniforms ] );
+
+		//render
+		instance.render( shader );
+		renderer._rendercalls += 1;
+	
+		return true;
+	}
+
+	var prev_shader = null;
+	for(var i = 0; i < lights.length; ++i)
+	{
+		var light = lights[i];
+		block_flags = light.applyShaderBlockFlags( block_flags );
+
+		//extract shader compiled
+		var shader = shader_code.getShader( null, block_flags );
+		if(!shader)
+			continue;
+
+		//assign
+		if(prev_shader != shader)
+			shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, light._uniforms, this._uniforms, instance.uniforms ] );
+		else
+			shader.uniforms( light._uniforms );
+		prev_shader = shader;
+
+		if(i == 1)
+		{
+			gl.depthMask( false );
+			gl.depthFunc( gl.EQUAL );
+			gl.enable( gl.BLEND );
+			gl.blendFunc( gl.SRC_ALPHA, gl.ONE );
+		}
+
+		//render
+		instance.render( shader );
+		renderer._rendercalls += 1;
+	}
+
+	//optimize this
+	gl.disable( gl.BLEND );
+	gl.depthMask( true );
+	gl.depthFunc( gl.LESS );
 
 	return true;
 }
@@ -10681,6 +11042,7 @@ ShaderCode.PRAGMA = 2;
 //pargma types
 ShaderCode.INCLUDE = 1;
 ShaderCode.SHADERBLOCK = 2;
+ShaderCode.SNIPPET = 3;
 
 Object.defineProperty( ShaderCode.prototype, "code", {
 	enumerable: true,
@@ -10706,6 +11068,7 @@ ShaderCode.prototype.processCode = function()
 	this._functions = {};
 	this._shaderblock_flags_num = 0;
 	this._shaderblock_flags = {};
+	this._has_error = false;
 
 	var subfiles = GL.processFileAtlas( this._code );
 	this._subfiles = subfiles;
@@ -10728,6 +11091,7 @@ ShaderCode.prototype.processCode = function()
 			continue;
 		}
 
+		//used to declare uniforms without using javascript
 		if(subfile_name == "uniforms")
 		{
 			var lines = subfile_data.split("/n");
@@ -10760,10 +11124,10 @@ ShaderCode.prototype.processCode = function()
 				code_part = this._code_parts[name] = {};
 
 			//parse data (extract pragmas and stuff)
-			var code_info = ShaderCode.parseGLSLCode( subfile_data );
-			for(var j in code_info)
+			var glslcode = new GLSLCode( subfile_data );
+			for(var j in glslcode.blocks)
 			{
-				var pragma_info = code_info[j];
+				var pragma_info = glslcode.blocks[j];
 				if(!pragma_info || pragma_info.type != ShaderCode.PRAGMA)
 					continue;
 				//assign a flag position in case this block is enabled
@@ -10772,7 +11136,7 @@ ShaderCode.prototype.processCode = function()
 				this._shaderblock_flags_num += 1;
 			}
 
-			code_part[ extension ] = code_info;
+			code_part[ extension ] = glslcode;
 		}
 	}
 
@@ -10835,6 +11199,9 @@ ShaderCode.prototype.getDataToStore = function()
 //compile the shader, cache and return
 ShaderCode.prototype.getShader = function( render_mode, block_flags )
 {
+	if( this._has_error )
+		return null;
+
 	render_mode = render_mode || "default";
 	block_flags = block_flags || 0;
 
@@ -10859,16 +11226,19 @@ ShaderCode.prototype.getShader = function( render_mode, block_flags )
 	else if( !code.vs )
 		return null;
 	else
-		vs_code = this.getCodeFromSubfile( code.vs, GL.VERTEX_SHADER, block_flags );
+		vs_code = code.vs.getFinalCode( GL.VERTEX_SHADER, block_flags );
 
 	//fragment shader code
 	if( !code.fs )
 		return;
-	var fs_code = this.getCodeFromSubfile( code.fs, GL.FRAGMENT_SHADER, block_flags );
+	var fs_code = code.fs.getFinalCode( GL.FRAGMENT_SHADER, block_flags );
 
 	//no code or code includes something missing
 	if(!vs_code || !fs_code) 
+	{
+		this._has_error = true;
 		return null;
+	}
 
 	//compile the shader and return it
 	var shader = this.compileShader( vs_code, fs_code );
@@ -10885,6 +11255,9 @@ ShaderCode.prototype.getShader = function( render_mode, block_flags )
 
 ShaderCode.prototype.compileShader = function( vs_code, fs_code )
 {
+	if( this._has_error )
+		return null;
+
 	if(!LS.catch_exceptions)
 		return new GL.Shader( vs_code, fs_code );
 	else
@@ -10895,8 +11268,20 @@ ShaderCode.prototype.compileShader = function( vs_code, fs_code )
 		}
 		catch(err)
 		{
+			this._has_error = true;
 			LS.ShadersManager.dumpShaderError( this.filename, err, vs_code, fs_code );
-			LS.dispatchCodeError(err);
+			var error_info = GL.Shader.parseError( err, vs_code, fs_code );
+			var line = error_info.line_number;
+			var lines = this._code.split("\n");
+			var code_line = -1;
+			if(error_info.line_code)
+			{
+				var error_line_code = error_info.line_code.trim();
+				for(var i = 0; i < lines.length; ++i)
+					lines[i] = lines[i].trim();
+				code_line = lines.indexOf( error_line_code ); //bug: what if this line is twice in the code?...
+			}
+			LS.dispatchCodeError( err, code_line, this, "shader" );
 		}
 	}
 	return null;
@@ -10919,195 +11304,6 @@ ShaderCode.prototype.validatePublicUniforms = function( shader )
 	}
 }
 
-//this function resolves all pragmas (includes, shaderblocks, etc) and returns the final code
-ShaderCode.prototype.getCodeFromSubfile = function( subfile, shader_type, block_flags )
-{
-	if( !subfile.is_dynamic )
-		return subfile.code;
-
-	var code = "";
-	var blocks = subfile.blocks;
-
-	for(var i = 0; i < blocks.length; ++i)
-	{
-		var block = blocks[i];
-		if( block.type === ShaderCode.CODE ) //regular code
-		{
-			code += block.code;
-			continue;
-		}
-
-		//pragmas
-		if(block.include) //bring code from other files
-		{
-			var filename = block.include;
-			var ext = LS.ResourcesManager.getExtension( filename );
-			if(ext)
-			{
-				var extra_shadercode = LS.ResourcesManager.getResource( filename, LS.ShaderCode );
-				if(!extra_shadercode)
-				{
-					LS.ResourcesManager.load( filename ); //force load
-					return null;
-				}
-				if(!block.include_subfile)
-					code += "\n" + extra_shadercode._subfiles[""] + "\n";
-				else
-				{
-					var extra = extra_shadercode._subfiles[ block.include_subfile ];
-					if(extra === undefined)
-						return null;
-					code += "\n" + extra + "\n";
-				}
-			}
-			else
-			{
-				var snippet_code = LS.ShadersManager.getSnippet( filename );
-				if( !snippet_code )
-					return null; //snippet not found
-				code += "\n" + snippet_code.code + "\n";
-			}
-		}
-		else if( block.shader_block ) //injects code from ShaderCodes taking into account certain rules
-		{
-			var shader_block = LS.ShadersManager.getShaderBlock( block.shader_block );
-			if(!shader_block)
-			{
-				console.error("ShaderCode uses unknown ShaderBlock: ", block.shader_block);
-				return null;
-			}
-
-			var block_code = shader_block.getCode( shader_type, block_flags );
-			code += "\n" + block_code + "\n";
-		}
-	}
-
-	return code;
-}
-
-//given a code with some pragmas, it separates them
-ShaderCode.parseGLSLCode = function( code )
-{
-	//remove comments
-	code = code.replace(/(\/\*([\s\S]*?)\*\/)|(\/\/(.*)$)/gm, '');
-
-	var blocks = [];
-	var current_block = [];
-	var pragmas = {};
-	var uniforms = {};
-	var includes = {};
-	var shader_blocks = {};
-	var is_dynamic = false; //means this shader has no variations using pragmas or macros
-
-	var lines = code.split("\n");
-
-	/* 
-	//clean (this helps in case a line contains two instructions, like "uniform float a; uniform float b;"
-	var clean_lines = [];
-	for(var i = 0; i < lines.length; i++)
-	{
-		var line = lines[i].trim();
-		if(!line)
-			continue;
-		var pos = line.lastIndexOf(";");
-		if(pos == -1 || pos == lines.length - 1)
-			clean_lines.push(line);
-		else
-		{
-			var sublines = line.split(";");
-			for(var j = 0; j < sublines.length; ++j)
-			{
-				if(sublines[j])
-					clean_lines.push( sublines[j] + ";" );
-			}
-		}
-	}
-	lines = clean_lines;
-	*/
-
-	//parse
-	for(var i = 0; i < lines.length; i++)
-	{
-		var line = lines[i].trim();
-		if(!line.length)
-			continue;//empty line
-
-		if(line[0] != "#")
-		{
-			var words = line.split(" ");
-			if( words[0] == "uniform" ) //store which uniforms we found in the code (not used)
-			{
-				var uniform_name = words[2].split(";");
-				uniforms[ uniform_name[0] ] = words[1];
-			}
-			current_block.push(line);
-			continue;
-		}
-
-		var t = line.split(" ");
-		if(t[0] == "#pragma")
-		{
-			//merge lines and add previous block
-			blocks.push( { type: ShaderCode.CODE, code: current_block.join("\n") } ); 
-
-			is_dynamic = true;
-			pragmas[ t[2] ] = true;
-			var action = t[1];
-			current_block.length = 0;
-			var pragma_info = { type: ShaderCode.PRAGMA, line: line, action: action, param: t[2] };
-			if( action == "include")
-			{
-				if(!t[2])
-				{
-					console.error("shader include without path");
-					continue;
-				}
-
-				pragma_info.action_type = ShaderCode.INCLUDE;
-				//resolve include
-				var include = t[2].substr(1, t[2].length - 2); //safer than JSON.parse
-				var fullname = include.split(":");
-				var filename = fullname[0];
-				var subfile = fullname[1];
-				pragma_info.include = filename;
-				pragma_info.include_subfile = subfile;
-				includes[ pragma_info.include ] = true;
-			}
-			else if( action == "shaderblock" )
-			{
-				if(!t[2])
-				{
-					console.error("#pragma shaderblock without name");
-					continue;
-				}
-				pragma_info.action_type = ShaderCode.SHADERBLOCK;
-				var shader_block_name = t[2].substr(1, t[2].length - 2); //safer than JSON.parse
-				pragma_info.shader_block = shader_block_name;
-				shader_blocks[ pragma_info.shader_block ] = true;
-				//pragma_info.shader_block_flag = this._shaderblock_flags_num;
-				//this._shaderblock_flags[ shader_block_name ] = pragma_info.shader_block_flag;
-				//this._shaderblock_flags_num += 1;
-			}
-
-			blocks.push( pragma_info ); //add pragma block
-		}
-		else
-			current_block.push( line ); //add line to current block lines
-	}
-
-	if(current_block.length)
-		blocks.push( { type: ShaderCode.CODE, code: current_block.join("\n") } ); //merge lines and add as block
-
-	return {
-		is_dynamic: is_dynamic,
-		code: code,
-		blocks: blocks,
-		pragmas: pragmas,
-		uniforms: uniforms,
-		includes: includes,
-		shader_blocks: shader_blocks
-	};
-}
 
 //makes this resource available 
 ShaderCode.prototype.register = function()
@@ -11156,7 +11352,7 @@ LS.registerResourceClass( ShaderCode );
 
 // now some shadercode examples that could be helpful
 
-//Example code for a shader
+//Example code for a shader (used in editor) **************************************************
 ShaderCode.examples = {};
 
 ShaderCode.examples.fx = "\n\
@@ -11225,6 +11421,7 @@ varying vec3 v_pos;\n\
 varying vec3 v_normal;\n\
 varying vec2 v_uvs;\n\
 //globals\n\
+uniform vec3 u_camera_eye;\n\
 uniform vec4 u_clipping_plane;\n\
 uniform float u_time;\n\
 uniform vec3 u_background_color;\n\
@@ -12533,9 +12730,10 @@ FXStack.available_fx = {
 		functions: ["HSV"],
 		uniforms: {
 			hue: { name: "u_hue", type: "float", value: 0, step: 0.01 },
-			saturation: { name: "u_saturation", type: "float", value: 0, step: 0.01 }
+			saturation: { name: "u_saturation", type: "float", value: 1, step: 0.01 },
+			brightness: { name: "u_brightness", type: "float", value: 0, step: 0.01 }
 		},
-		code:"color.xyz = rgb2hsv(color.xyz); color.x += u_hue@; color.y *= u_saturation@; color.xyz = hsv2rgb(color.xyz);"
+		code:"color.xyz = rgb2hsv(color.xyz); color.xz += vec2(u_hue@,u_brightness@); color.y *= u_saturation@; color.xyz = hsv2rgb(color.xyz);"
 	},
 	"invert": {
 		name: "Invert color",
@@ -12569,7 +12767,7 @@ FXStack.available_fx = {
 		uniforms: {
 			fog_color: { name: "u_fog_color", type: "color3", value: [0.1,0.1,0.1] },
 			fog_start: { name: "u_fog_start", type: "float", value: 10 },
-			fog_density: { name: "u_fog_density", type: "float", precision: 0.00001, value: 0.001, step: 0.00001 },
+			fog_density: { name: "u_fog_density", type: "float", precision: 0.00001, value: 0.001, step: 0.00001 }
 		},
 		code:"float z_n@ = 2.0 * texture2D( u_depth_texture, v_coord).x - 1.0;" +
 			"float cam_dist@ = 2.0 * u_depth_range.x * u_depth_range.y / (u_depth_range.y + u_depth_range.x - z_n@ * (u_depth_range.y - u_depth_range.x));" +
@@ -13669,7 +13867,7 @@ RenderSettings.prototype.toJSON = RenderSettings.prototype.serialize;
 
 LS.RenderSettings = RenderSettings;
 /**
-* RenderState sets how a RenderInstance should be rendered by the GPU
+* RenderState sets the flags for the GPU associated with a rendering action (blending, masking, depth test, etc)
 * It is stored in the material (although defined usually from ShaderCode) so the material can use it.
 *
 * @class RenderState
@@ -13677,27 +13875,149 @@ LS.RenderSettings = RenderSettings;
 * @constructor
 */
 
+/* gpu flags
+
+0: front_face: GL.CCW
+1: cull_face: 1
+2: cull_face_mode: GL.BACK
+
+//depth buffer
+4: depth_test: 1
+5: depth_mask: 1 //write in depth buffer
+6: depth_func: GL.LESS
+7: depth_range0: 0
+8: depth_range1: 1
+
+//blend function
+9: blend: 0;
+10: blendFunc0: GL.SRC_ALPHA
+11: blendFunc1: GL.ONE_MINUS_SRC_ALPHA
+
+//color mask
+12:	colorMask0: 1
+13:	colorMask1: 1
+14:	colorMask2: 1
+15:	colorMask3: 1
+
+//stencil buffer
+16: stencil_test: 0
+17:	stencil_func: 1
+18:	stencil_ref: 1
+19:	stencil_mask: 0xFF
+
+*/
+
 function RenderState( o )
 {
+	this._data = new Uint32Array(20);
 	this.init();
 
 	if(o)
 		this.configure(o);
 }
 
+Object.defineProperty( RenderState.prototype, "front_face", {
+	set: function(v) { this._data[0] = v; },
+	get: function() { return this._data[0];	},
+	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "cull_face", {
+	set: function(v) { this._data[1] = v ? 1 : 0; },
+	get: function() { return this._data[1] !== 0;	},
+	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "cull_face_mode", {
+	set: function(v) { this._data[2] = v; },
+	get: function() { return this._data[2];	},
+	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "depth_test", {
+	set: function(v) { this._data[4] = v ? 1 : 0; },
+	get: function() { return this._data[4] !== 0;	},
+	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "depth_mask", {
+	set: function(v) { this._data[5] = v ? 1 : 0; },
+	get: function() { return this._data[5] !== 0;	},
+	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "depth_func", {
+	set: function(v) { this._data[6] = v; },
+	get: function() { return this._data[6];	},
+	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "depth_range", {
+	set: function(v) { 
+		if(!v || v.length != 2)
+			return;
+		this._data[7] = v[0];
+		this._data[8] = v[1];
+	},
+	get: function() { return this._data.subarray(7,9);	},
+	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "blend", {
+	set: function(v) { this._data[9] = v ? 1 : 0; },
+	get: function() { return this._data[9] !== 0;	},
+	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "blendFunc0", {
+	set: function(v) { this._data[10] = v; },
+	get: function() { return this._data[10];	},
+	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "blendFunc1", {
+	set: function(v) { this._data[11] = v; },
+	get: function() { return this._data[11];	},
+	enumerable: true
+});
+
 Object.defineProperty( RenderState.prototype, "blendFunc", {
 	set: function(v)
 	{
 		if(!v || v.length != 2)
 			return;
-		this.blendFunc0 = v[0];
-		this.blendFunc1 = v[1];
+		this._data[10] = v[0];
+		this._data[11] = v[1];
 	},
 	get: function()
 	{
-		return [this.blendFunc0,this.blendFunc1];
+		return this._data.subarray(10,12);
 	},
 	enumerable: false
+});
+
+Object.defineProperty( RenderState.prototype, "colorMask0", {
+	set: function(v) { this._data[12] = v ? 1 : 0; },
+	get: function() { return this._data[12] !== 0;	},
+	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "colorMask1", {
+	set: function(v) { this._data[13] = v ? 1 : 0; },
+	get: function() { return this._data[13] !== 0;	},
+	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "colorMask2", {
+	set: function(v) { this._data[14] = v ? 1 : 0; },
+	get: function() { return this._data[14] !== 0;	},
+	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "colorMask3", {
+	set: function(v) { this._data[15] = v ? 1 : 0; },
+	get: function() { return this._data[15] !== 0;	},
+	enumerable: true
 });
 
 Object.defineProperty( RenderState.prototype, "colorMask", {
@@ -13705,16 +14025,40 @@ Object.defineProperty( RenderState.prototype, "colorMask", {
 	{
 		if(!v || v.length != 4)
 			return;
-		this.colorMask0 = v[0];
-		this.colorMask1 = v[1];
-		this.colorMask2 = v[2];
-		this.colorMask3 = v[3];
+		this._data[12] = v[0];
+		this._data[13] = v[1];
+		this._data[14] = v[2];
+		this._data[15] = v[3];
 	},
 	get: function()
 	{
-		return [this.blendFunc0,this.blendFunc1];
+		return this._data.subarray(12,16);
 	},
 	enumerable: false
+});
+
+Object.defineProperty( RenderState.prototype, "stencil_test", {
+	set: function(v) { this._data[16] = v ? 1 : 0; },
+	get: function() { return this._data[16] !== 0;	},
+	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "stencil_func", {
+	set: function(v) { this._data[17] = v; },
+	get: function() { return this._data[17]; },
+	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "stencil_ref", {
+	set: function(v) { this._data[18] = v; },
+	get: function() { return this._data[18]; },
+	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "stencil_mask", {
+	set: function(v) { this._data[19] = v; },
+	get: function() { return this._data[19]; },
+	enumerable: true
 });
 
 RenderState.default_state = {
@@ -13884,8 +14228,53 @@ RenderState.prototype.configure = function(o)
 	LS.cloneObject(o,this);
 }
 
+RenderState.prototype.copyFrom = function( rs )
+{
+	this._data.set( rs._data );
+}
+
 
 LS.RenderState = RenderState;
+//WIP: this is the lowest GPU rendering object, which encapsulates all about a render call
+//by encapsulating every render action into an object we can have materials that produce several render passes in different moments
+//of the rendering process
+function RenderCall()
+{
+	this.shader = null;
+	this.uniforms_containers = [];
+	this.vertex_buffers = null;
+	this.index_buffer = null;
+	this.offset_start = -1;
+	this.offset_range = -1;
+	this.primitive = -1;
+
+	this.renderState = null;
+}
+
+RenderCall.prototype.draw = function()
+{
+	this.renderState.enable();
+
+	this.shader.uniforms( this.uniforms).drawBuffers( this.vertex_buffers,
+	  this.index_buffer,
+	  this.primitive, this.offset_start, this.offset_range );
+}
+
+//Pool
+RenderCall.pool = [];
+
+RenderCall.get = function()
+{
+	if( RenderCall.pool.length > 0 )
+		return RenderCall.pool.pop();
+	return new RenderCall();
+}
+
+RenderCall.prototype.release = function()
+{
+	RenderCall.pool.push(this);
+}
+
 /**
 * RenderInstance contains info of one object to be rendered on the scene.
 * It shouldnt contain ids to resources (strings), instead if must contain the direct reference (to mesh, material)
@@ -13920,6 +14309,7 @@ function RenderInstance( node, component )
 	this.node = node;
 	this.component = component;
 	this.priority = 10; //only used if the RenderQueue is in PRIORITY MODE, instances are rendered from higher to lower priority
+	this.sort_mode = RenderInstance.NO_SORT;
 
 	//transformation
 	this.matrix = mat4.create();
@@ -13950,6 +14340,10 @@ function RenderInstance( node, component )
 	this._dist = 0; //computed during rendering, tells the distance to the current camera
 	this._final_query = new LS.ShaderQuery();
 }
+
+RenderInstance.NO_SORT = 0;
+RenderInstance.SORT_NEAR_FIRST = 1;
+RenderInstance.SORT_FAR_FIRST = 2;
 
 //set the material and apply material flags to render instance
 RenderInstance.prototype.setMatrix = function(matrix, normal_matrix)
@@ -14720,10 +15114,12 @@ var Renderer = {
 		this._black_texture = new GL.Texture(1,1, { pixel_data: [0,0,0,255] });
 		this._gray_texture = new GL.Texture(1,1, { pixel_data: [128,128,128,255] });
 		this._white_texture = new GL.Texture(1,1, { pixel_data: [255,255,255,255] });
+		this._normal_texture = new GL.Texture(1,1, { pixel_data: [128,128,255,255] });
 		this._missing_texture = this._gray_texture;
 		LS.ResourcesManager.textures[":black"] = this._black_texture;
 		LS.ResourcesManager.textures[":gray"] = this._gray_texture;
 		LS.ResourcesManager.textures[":white"] = this._white_texture;
+		LS.ResourcesManager.textures[":flatnormal"] = this._normal_texture;
 
 		//draw helps rendering debug stuff
 		LS.Draw.init();
@@ -15556,6 +15952,7 @@ var Renderer = {
 						case "black": tex = this._black_texture; break;
 						case "white": tex = this._white_texture; break;
 						case "gray": tex = this._gray_texture; break;
+						case "normal": tex = this._normal_texture; break;
 						default: tex = this._missing_texture;
 					}
 				}
@@ -21710,7 +22107,6 @@ LS.registerComponent( FrameFX );
 * @constructor
 * @param {Object} object to configure from
 */
-
 function Light(o)
 {
 	/**
@@ -21780,7 +22176,7 @@ function Light(o)
 	this.att_start = 0;
 	this.att_end = 1000;
 	this.offset = 0;
-	this.spot_cone = true;
+	this._spot_cone = true;
 
 	this.projective_texture = null;
 
@@ -21813,7 +22209,7 @@ function Light(o)
 	this.cast_shadows = false;
 	this.shadow_bias = 0.05;
 	this.shadowmap_resolution = 0; //use automatic shadowmap size
-	this.type = Light.OMNI;
+	this._type = Light.OMNI;
 	this.frustum_size = 50; //ortho
 
 	this.extra_light_shader_code = null;
@@ -21828,6 +22224,7 @@ function Light(o)
 	this._query = new LS.ShaderQuery();
 	this._samplers = [];
 	this._uniforms = {
+		u_light_info: vec4.fromValues( this._type, 0, 0, 0 ), //light type, spot cone, ...
 		u_light_front: this._front,
 		u_light_angle: vec4.fromValues( this.angle * DEG2RAD, this.angle_end * DEG2RAD, Math.cos( this.angle * DEG2RAD * 0.5 ), Math.cos( this.angle_end * DEG2RAD * 0.5 ) ),
 		u_light_position: this._position,
@@ -21851,6 +22248,15 @@ Light["@projective_texture"] = { type: LS.TYPES.TEXTURE };
 Light["@extra_texture"] = { type: LS.TYPES.TEXTURE };
 Light["@color"] = { type: LS.TYPES.COLOR };
 
+Object.defineProperty( Light.prototype, 'type', {
+	get: function() { return this._type; },
+	set: function(v) { 
+		this._uniforms.u_light_info[0] = v;
+		this._type = v;
+	},
+	enumerable: true
+});
+
 Object.defineProperty( Light.prototype, 'position', {
 	get: function() { return this._position; },
 	set: function(v) { this._position.set(v); },
@@ -21872,6 +22278,15 @@ Object.defineProperty( Light.prototype, 'up', {
 Object.defineProperty( Light.prototype, 'color', {
 	get: function() { return this._color; },
 	set: function(v) { this._color.set(v); },
+	enumerable: true
+});
+
+Object.defineProperty( Light.prototype, 'spot_cone', {
+	get: function() { return this._spot_cone; },
+	set: function(v) { 
+		this._uniforms.u_light_info[1] = v;
+		this._spot_cone = v;
+	},
 	enumerable: true
 });
 
@@ -21977,8 +22392,8 @@ Light.prototype.updateLightCamera = function()
 		this._light_camera = new LS.Components.Camera();
 
 	var camera = this._light_camera;
-	camera.eye = this.getPosition(Light._temp_position);
-	camera.center = this.getTarget(Light._temp_target);
+	camera.eye = this.getPosition( Light._temp_position );
+	camera.center = this.getTarget( Light._temp_target );
 
 	var up = this.getUp(Light._temp_up);
 	var front = this.getFront(Light._temp_front);
@@ -22200,7 +22615,7 @@ Light.prototype.prepare = function( render_settings )
 	else //omni
 		query.macros.USE_OMNI_LIGHT = "";
 
-	if(this.spot_cone)
+	if(this._spot_cone)
 		query.macros.USE_SPOT_CONE = "";
 	if(this.linear_attenuation)
 		query.macros.USE_LINEAR_ATTENUATION = "";
@@ -22574,82 +22989,126 @@ Light.prototype.applyTransformMatrix = function( matrix, center, property_name )
 	return true;
 }
 
+Light.prototype.applyShaderBlockFlags = function( flags )
+{
+	if(this.enabled)
+		flags |= Light.shader_block.flag_mask;
+	return flags;
+}
+
 LS.registerComponent(Light);
 LS.Light = Light;
 
-//Light ShaderBlocks
-/*
-	Light Equation (Point, Spot, Directional)
-	Light Modifiers (Cookies, Cell shading)
-	Light Attenuation (Linear, Exponential)
-	Light Shadowing (Hard, Soft)
-*/
+LS.ShadersManager.registerSnippet("surface","\n\
+	//used to store surface shading properties\n\
+	struct SurfaceOutput {\n\
+		vec3 Albedo;\n\
+		vec3 Normal; //separated in case there is a normal map\n\
+		vec3 Emission;\n\
+		vec3 Ambient;\n\
+		float Specular;\n\
+		float Gloss;\n\
+		float Alpha;\n\
+		float Reflectivity;\n\
+		vec4 Extra; //for special purposes\n\
+	};\n\
+	\n\
+	SurfaceOutput getSurfaceOutput()\n\
+	{\n\
+		SurfaceOutput o;\n\
+		o.Albedo = u_material_color.xyz;\n\
+		o.Alpha = u_material_color.a;\n\
+		o.Normal = normalize( v_normal );\n\
+		o.Specular = 0.5;\n\
+		o.Gloss = 10.0;\n\
+		return o;\n\
+	}\n\
+");
 
-Light._enabled_shaderblock = "\n\
+LS.ShadersManager.registerSnippet("light_structs","\n\
+	#ifndef SB_LIGHT_STRUCTS\n\
+	#define SB_LIGHT_STRUCTS\n\
+	uniform lowp vec4 u_light_info;\n\
 	uniform vec3 u_light_position;\n\
 	uniform vec4 u_light_params; //type, \n\
 	uniform vec3 u_light_front;\n\
 	uniform vec3 u_light_color;\n\
 	uniform vec4 u_light_angle; //cone start,end,phi,theta \n\
 	uniform vec2 u_light_att; //start,end \n\
+	//used to store light contribution\n\
+	struct FinalLight {\n\
+		vec3 Color;\n\
+		vec3 Ambient;\n\
+		float Diffuse; //NdotL\n\
+		float Specular; //RdotL\n\
+		vec3 Emission;\n\
+		vec3 Reflection;\n\
+		float Attenuation;\n\
+		float Shadow; //1.0 means fully lit\n\
+	};\n\
 	\n\
-	vec3 computeLight(in SurfaceOutput o, in Input IN, in FinalLight LIGHT)\n\
+	FinalLight getLight()\n\
+	{\n\
+		FinalLight LIGHT;\n\
+		LIGHT.Color = u_light_color;\n\
+		LIGHT.Ambient = vec3(0.0);\n\
+		LIGHT.Diffuse = 1.0;\n\
+		LIGHT.Specular = 0.0;\n\
+		LIGHT.Reflection = vec3(0.0);\n\
+		LIGHT.Attenuation = 0.0;\n\
+		LIGHT.Shadow = 1.0;\n\
+		return LIGHT;\n\
+	}\n\
+	#endif\n\
+");
+
+
+//Light ShaderBlocks
+/*
+	Light Modifiers (Cookies)
+	Light Attenuation (Linear, Exponential)
+	Light Shadowing (Hard, Soft)
+*/
+
+Light._enabled_shaderblock_code = "\n\
+	#pragma snippet \"input\"\n\
+	#pragma snippet \"surface\"\n\
+	#pragma snippet \"light_structs\"\n\
+	#pragma snippet \"spotFalloff\"\n\
+	#pragma shaderblock \"shadowmapping\"\n\
+	\n\
+	vec3 computeLight(in SurfaceOutput o, in Input IN, inout FinalLight LIGHT)\n\
 	{\n\
 		vec3 N = o.Normal; //use the final normal (should be the same as IN.worldNormal)\n\
 		vec3 E = (u_camera_eye - v_pos);\n\
 		float cam_dist = length(E);\n\
-		\n\
-		#ifdef USE_ORTHOGRAPHIC_CAMERA\n\
-			E = mix( E / cam_dist, -u_camera_front, 0.9999); //HACK, if I use u_camera_front directly it crashes\n\
-		#else\n\
-			E /= cam_dist;\n\
-		#endif\n\
+		E /= cam_dist;\n\
 		\n\
 		vec3 L = (u_light_position - v_pos);\n\
 		float light_distance = length(L);\n\
 		L /= light_distance;\n\
 		\n\
-		#ifdef USE_DIRECTIONAL_LIGHT\n\
+		if( u_light_info.x == 3.0 )\n\
 			L = -u_light_front;\n\
-		#endif\n\
 		\n\
 		vec3 R = reflect(E,N);\n\
 		\n\
 		float NdotL = 1.0;\n\
-		#ifdef USE_DIFFUSE_LIGHT\n\
-			NdotL = dot(N,L);\n\
-		#endif\n\
+		NdotL = dot(N,L);\n\
 		float EdotN = dot(E,N); //clamp(dot(E,N),0.0,1.0);\n\
 		LIGHT.Specular = o.Specular * pow( clamp(dot(R,-L),0.001,1.0), o.Gloss );\n\
 		\n\
 		LIGHT.Attenuation = 1.0;\n\
-		#ifdef USE_LINEAR_ATTENUATION\n\
-			LIGHT.Attenuation = 100.0 / light_distance;\n\
-		#endif\n\
 		\n\
-		#ifdef USE_RANGE_ATTENUATION\n\
-			#ifndef USE_DIRECTIONAL_LIGHT\n\
-				if(light_distance >= u_light_att.y)\n\
-					LIGHT.Attenuation = 0.0;\n\
-				else if(light_distance >= u_light_att.x)\n\
-					LIGHT.Attenuation *= 1.0 - (light_distance - u_light_att.x) / (u_light_att.y - u_light_att.x);\n\
-			#endif\n\
-		#endif\n\
-		\n\
-		#ifdef USE_SPOT_LIGHT\n\
-			#ifdef USE_SPOT_CONE\n\
-				LIGHT.Attenuation *= spotFalloff( u_light_front, normalize( u_light_position - v_pos ), u_light_angle.z, u_light_angle.w );\n\
-			#endif\n\
-		#endif\n\
+		if( u_light_info.x == 2.0 && u_light_info.y == 1.0 )\n\
+			LIGHT.Attenuation *= spotFalloff( u_light_front, normalize( u_light_position - v_pos ), u_light_angle.z, u_light_angle.w );\n\
 		\n\
 		NdotL = max( 0.0, NdotL );\n\
 		LIGHT.Diffuse = abs(NdotL);\n\
 		\n\
-		#ifdef USE_IGNORE_LIGHTS\n\
-			LIGHT.Color = vec3(1.0);\n\
-			LIGHT.Ambient = vec3(0.0);\n\
-			LIGHT.Diffuse = 1.0;\n\
-			LIGHT.Specular = 0.0;\n\
+		\n\
+		#ifdef LIGHT_FUNC\n\
+			LIGHT_FUNC(LIGHT);\n\
 		#endif\n\
 		//FINAL LIGHT FORMULA ************************* \n\
 		\n\
@@ -22657,32 +23116,156 @@ Light._enabled_shaderblock = "\n\
 		\n\
 		vec3 final_color = o.Albedo * total_light;\n\
 		\n\
-		#ifdef FIRST_PASS\n\
-			final_color += o.Emission;\n\
-		#endif\n\
-		\n\
-		#ifndef USE_SPECULAR_ONTOP\n\
-			final_color	+= o.Albedo * (LIGHT.Color * LIGHT.Specular * LIGHT.Attenuation * LIGHT.Shadow);\n\
-		#endif\n\
+		final_color	+= o.Albedo * (LIGHT.Color * LIGHT.Specular * LIGHT.Attenuation * LIGHT.Shadow);\n\
 		\n\
 		return max( final_color, vec3(0.0) );\n\
 	}\n\
 ";
 
-Light._disabled_shaderblock = "\n\
+/*
+//attenuation
+	#ifdef USE_LINEAR_ATTENUATION\n\
+		LIGHT.Attenuation = 100.0 / light_distance;\n\
+	#endif\n\
+	\n\
+	#ifdef USE_RANGE_ATTENUATION\n\
+		#ifndef USE_DIRECTIONAL_LIGHT\n\
+			if(light_distance >= u_light_att.y)\n\
+				LIGHT.Attenuation = 0.0;\n\
+			else if(light_distance >= u_light_att.x)\n\
+				LIGHT.Attenuation *= 1.0 - (light_distance - u_light_att.x) / (u_light_att.y - u_light_att.x);\n\
+		#endif\n\
+	#endif\n\
+
+//no lights
+	#ifdef USE_IGNORE_LIGHTS\n\
+		LIGHT.Color = vec3(1.0);\n\
+		LIGHT.Ambient = vec3(0.0);\n\
+		LIGHT.Diffuse = 1.0;\n\
+		LIGHT.Specular = 0.0;\n\
+	#endif\n\
+
+//first pass
+	#ifdef FIRST_PASS\n\
+		final_color += o.Emission;\n\
+	#endif\n\
+
+*/
+
+Light._disabled_shaderblock_code = "\n\
+	#pragma snippet \"input\"\n\
+	#pragma snippet \"surface\"\n\
+	#pragma snippet \"light_structs\"\n\
 	vec3 computeLight(in SurfaceOutput o, in Input IN, in FinalLight LIGHT)\n\
 	{\n\
-		return vec3(1.0);\n\
+		return vec3(o.Albedo);\n\
 	}\n\
 ";
 
-
 var light_block = new LS.ShaderBlock("light");
-light_block.addCode( GL.VERTEX_SHADER, Light._enabled_shaderblock, Light._disabled_shaderblock );
+light_block.addCode( GL.FRAGMENT_SHADER, Light._enabled_shaderblock_code, Light._disabled_shaderblock_code );
 light_block.register();
 Light.shader_block = light_block;
 
+/*
+Light._nolight_shaderblock_code = "\n\
+	#pragma snippet \"input\"\n\
+	#pragma snippet \"surface\"\n\
+	#pragma snippet \"light_structs\"\n\
+	vec3 computeLight(in SurfaceOutput o, in Input IN, in FinalLight LIGHT)\n\
+	{\n\
+		return vec3(0.0);\n\
+	}\n\
+";
 
+var nolight_block = new LS.ShaderBlock("nolight");
+nolight_block.addCode( GL.FRAGMENT_SHADER, Light._nolight_shaderblock_code, Light._disabled_shaderblock_code );
+nolight_block.register();
+Light.nolight_shader_block = nolight_block;
+*/
+
+Light._shadowmap_cubemap_code = "\n\
+	#define SHADOWMAP_ACTIVE\n\
+	uniform samplerCube shadowmap;\n\
+	uniform vec4 u_shadow_params; // (1.0/(texture_size), bias, near, far)\n\
+	\n\
+	float VectorToDepthValue(vec3 Vec)\n\
+	{\n\
+		vec3 AbsVec = abs(Vec);\n\
+		float LocalZcomp = max(AbsVec.x, max(AbsVec.y, AbsVec.z));\n\
+		float n = u_shadow_params.z;\n\
+		float f = u_shadow_params.w;\n\
+		float NormZComp = (f+n) / (f-n) - (2.0*f*n)/(f-n)/LocalZcomp;\n\
+		return (NormZComp + 1.0) * 0.5;\n\
+	}\n\
+	\n\
+	float UnpackDepth32(vec4 depth)\n\
+	{\n\
+		const vec4 bitShifts = vec4( 1.0/(256.0*256.0*256.0), 1.0/(256.0*256.0), 1.0/256.0, 1);\n\
+		return dot(depth.xyzw , bitShifts);\n\
+	}\n\
+	\n\
+	float testShadow( vec3 offset )\n\
+	{\n\
+		float shadow = 0.0;\n\
+		float depth = 0.0;\n\
+		float bias = u_shadow_params.y;\n\
+		\n\
+		vec3 l_vector = (v_pos - u_light_position);\n\
+		float dist = length(l_vector);\n\
+		float pixel_z = VectorToDepthValue( l_vector );\n\
+		if(pixel_z >= 0.998) return 0.0; //fixes a little bit the far edge bug\n\
+		vec4 depth_color = textureCube( shadowmap, l_vector + offset * dist );\n\
+		float ShadowVec = UnpackDepth32( depth_color );\n\
+		if ( ShadowVec > pixel_z - bias )\n\
+			return 0.0; //no shadow\n\
+		return 1.0; //full shadow\n\
+	}\n\
+";
+
+Light._shadowmap_flat_enabled_code = "\n\
+	#ifndef SHADOWMAP_ACTIVE\n\
+		#define SHADOWMAP_ACTIVE\n\
+	#endif\n\
+	uniform sampler2D shadowmap;\n\
+	uniform vec4 u_shadow_params; // (1.0/(texture_size), bias, near, far)\n\
+	\n\
+	float UnpackDepth32(vec4 depth)\n\
+	{\n\
+		#ifdef USE_SHADOW_DEPTH_TEXTURE\n\
+			return depth.x;\n\
+		#else\n\
+			const vec4 bitShifts = vec4( 1.0/(256.0*256.0*256.0), 1.0/(256.0*256.0), 1.0/256.0, 1);\n\
+			return dot(depth.xyzw , bitShifts);\n\
+		#endif\n\
+	}\n\
+	\n\
+	float testShadow(vec3 offset)\n\
+	{\n\
+		float shadow = 0.0;\n\
+		float depth = 0.0;\n\
+		float bias = u_shadow_params.y;\n\
+		\n\
+		vec2 sample = (v_light_coord.xy / v_light_coord.w) * vec2(0.5) + vec2(0.5) + offset.xy;\n\
+		//is inside light frustum\n\
+		if (clamp(sample, 0.0, 1.0) == sample) { \n\
+			float sampleDepth = UnpackDepth32( texture2D(shadowmap, sample) );\n\
+			depth = (sampleDepth == 1.0) ? 1.0e9 : sampleDepth; //on empty data send it to far away\n\
+		}\n\
+		else \n\
+			return 0.0; //outside of shadowmap, no shadow\n\
+		\n\
+		if (depth > 0.0) {\n\
+			shadow = ((v_light_coord.z - bias) / v_light_coord.w * 0.5 + 0.5) > depth ? 1.0 : 0.0;\n\
+		}\n\
+		return shadow;\n\
+	}\n\
+";
+
+var shadowmapping_block = new LS.ShaderBlock("testShadow");
+shadowmapping_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_flat_enabled_code, "" );
+shadowmapping_block.register();
+Light.shadowmapping_shader_block = shadowmapping_block;
 //TODO
 
 /**
@@ -25929,7 +26512,7 @@ SceneInclude.prototype.updateBindings = function()
 //collect data
 SceneInclude.prototype.onCollectData = function()
 {
-	if(!this.enabled || !this._scene_path)
+	if(!this.enabled || !this._scene_path || !this._scene_is_ready)
 		return;
 
 	var scene = this._root.scene;
@@ -25956,6 +26539,17 @@ SceneInclude.prototype.onEvent = function(e,p)
 		return;
 
 	LEvent.trigger( this._scene, e, p );
+}
+
+SceneInclude.prototype.load = function()
+{
+	this.reloadScene();
+}
+
+SceneInclude.prototype.unload = function()
+{
+	this._scene_is_ready = false;
+	this._scene.clear();
 }
 
 
@@ -26007,6 +26601,18 @@ SceneInclude.prototype.setPropertyValueFromPath = function( path, value, offset 
 	if(!custom)
 		return null;
 	custom.setPropertyValueFromPath( path, value, offset + 1 );
+}
+
+//returns which events can trigger this component
+SceneInclude.prototype.getEvents = function()
+{
+	return { "loaded": "event", "unloaded": "event" };
+}
+
+//returns which actions can be triggered in this component
+SceneInclude.prototype.getEventActions = function()
+{
+	return { "load": "function", "unload": "function" };
 }
 
 LS.registerComponent( SceneInclude );
@@ -26111,14 +26717,14 @@ AnnotationComponent.prototype.serialize = function()
 	return o;
 }
 
-AnnotationComponent.prototype.onAddedToScene = function(node)
+AnnotationComponent.prototype.onAddedToScene = function(scene)
 {
-	LEvent.bind( scene,"mousedown",this.onMouse.bind(this),this);
+	LEvent.bind( scene,"mousedown",this.onMouse,this);
 }
 
-AnnotationComponent.prototype.onRemovedFromScene = function(node)
+AnnotationComponent.prototype.onRemovedFromScene = function(scene)
 {
-	LEvent.bind( scene,"mousedown",this.onMouse.bind(this),this);
+	LEvent.bind( scene,"mousedown",this.onMouse,this);
 }
 
 AnnotationComponent.prototype.onMouse = function(type, e)
@@ -36538,7 +37144,7 @@ SceneTree.prototype.setFromJSON = function( data, on_complete, on_error, on_prog
 
 	//check JSON for special scripts
 	if ( scripts.length )
-		this.loadScripts( scripts, function(){ inner_success(response); }, on_error );
+		this.loadScripts( scripts, function(){ inner_success( data ); }, on_error );
 	else
 		inner_success( data );
 
@@ -37840,12 +38446,11 @@ function SceneNode( name )
 	this._children = null;
 	this._in_tree = null;
 
-
 	//flags
 	this.flags = {
 		visible: true,
 		is_static: false,
-		selectable: true,
+		selectable: true
 	};
 
 	this.init(false,true);

@@ -24,8 +24,6 @@ var MeshTools = {
 
 		inner_update();
 
-
-
 		function inner_update()
 		{
 			var mesh = null;
@@ -41,6 +39,17 @@ var MeshTools = {
 				mesh_name = res.filename;
 				inner_update();
 			}});
+
+			widgets.addButton(null,"From selected node", function(){
+				var node = SelectionModule.getSelectedNode();
+				if(!node)
+					return;
+				var compo = node.getComponent( LS.Components.MeshRenderer );
+				if(!compo)
+					return;
+				mesh_name = compo.mesh;
+				inner_update();
+			});
 
 			if(mesh)
 			{
@@ -187,6 +196,7 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 			disabled = true;
 		widgets.addButton(null,"<img src='imgs/mini-icon-trash.png'/>", { width: 30, stream: i, disabled: disabled, callback: function(){
 			delete mesh.vertexBuffers[ (this.options.stream) ];
+			LS.RM.resourceModified(mesh);
 			widgets.refresh();
 		}});
 	}
@@ -198,11 +208,14 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 	{
 		var buffer = mesh.indexBuffers[i];
 		widgets.addInfo(i, buffer.data.length, { width: "calc( 100% - 30px )" } );
-		widgets.addButton(null,"<img src='imgs/mini-icon-trash.png'/>", { width: 30, stream: i, disabled: disabled, callback: function(){
-			delete mesh.indexBuffers[ (this.options.stream) ];
+		widgets.addButton(null,"<img src='imgs/mini-icon-trash.png'/>", { width: 30, stream: i, callback: function(){
+			//delete mesh.indexBuffers[ (this.options.stream) ];
+			mesh.explodeIndices( this.options.stream );
+			LS.RM.resourceModified( mesh );
 			widgets.refresh();
 		}});
 	}
+
 	widgets.widgets_per_row = 1;
 
 	if(mesh.bounding)
@@ -222,6 +235,12 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 	}
 
 	widgets.addTitle("Actions");
+	widgets.addButton(null, "Center Vertices", function(){
+		MeshTools.centerMeshVertices( mesh );
+		LS.RM.resourceModified(mesh);
+		RenderModule.requestFrame();
+	} );
+
 	widgets.addButton(null, "Smooth Normals", function(){
 		mesh.computeNormals();
 		LS.RM.resourceModified(mesh);
@@ -232,8 +251,8 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		LS.RM.resourceModified(mesh);
 		RenderModule.requestFrame();
 	} );
-	widgets.addButton(null, "Center Vertices", function(){
-		MeshTools.centerMeshVertices( mesh );
+	widgets.addButton(null, "Generate Coords", function(){
+		mesh.computeTextureCoordinates();
 		LS.RM.resourceModified(mesh);
 		RenderModule.requestFrame();
 	} );

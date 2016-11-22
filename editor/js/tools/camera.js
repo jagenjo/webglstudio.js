@@ -70,11 +70,15 @@ var cameraTool = {
 		if(e.which == GL.RIGHT_MOUSE_BUTTON)
 		{
 			e.cancelBubble = true;
+			if( gl.canvas.requestPointerLock )
+				gl.canvas.requestPointerLock();
 		}
-
 	},
 
 	mouseup: function(e) {
+		if( document.exitPointerLock )
+			document.exitPointerLock();
+
 		if(this.in_use)
 		{
 			this.in_use = false;

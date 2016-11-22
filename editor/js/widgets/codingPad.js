@@ -68,7 +68,7 @@ CodingPadWidget.prototype.bindEvents = function()
 
 	LEvent.bind( LS.Components.Script, "code_error", this.onScriptError, this );
 	LEvent.bind( LS, "exception", this.onGlobalError, this ); //from LS.safeCall
-	LEvent.bind( LS, "code_error", this.onCodeError, this );
+	LEvent.bind( LS, "code_error", this.onCodeError, this );//this triggers when shader error
 }
 
 CodingPadWidget.prototype.unbindEvents = function()
@@ -747,6 +747,11 @@ CodingPadWidget.prototype.onScriptError = function( e, instance_err )
 CodingPadWidget.prototype.onCodeError = function( e, error_info )
 {
 	//console.log("pad code error:",error_info);
+	var info = this.getCurrentCodeInfo();
+	if(error_info.resource != info.instance)
+		return;
+	if(error_info.line >= 0)
+		this.markLine(error_info.line);
 }
 
 //throw from exceptions from LS.safeCall

@@ -38,6 +38,9 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 	inspector.addMaterial("Ref", mat_ref, { name_width: 100, callback: function(v) {
 		node.material = v;
 		inspector.refresh();
+	}, callback_edit: function(){
+		node._show_mat = true;
+		inspector.refresh();
 	}});
 
 	if(!node.material)
@@ -747,7 +750,7 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 		LS.GlobalScene.refresh();
 	}});
 
-	widgets.addCombo("Missing", sampler["missing"] || "black", { values: ["black","grey","white"], callback: function(v) {
+	widgets.addCombo("Missing", sampler["missing"] || "black", { values: ["black","grey","white","normal"], callback: function(v) {
 		sampler.missing = v;
 		LS.GlobalScene.refresh();
 	}});

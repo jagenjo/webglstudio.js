@@ -529,6 +529,9 @@ LiteGUI.Inspector.prototype.addMaterial = function( name,value, options)
 	this.widgets_per_row += 1;
 	var r = addGenericResource.call(this, name, value, options, "Material" );
 	this.addButton(null,"Edit",{ width:"15%", callback: function(){
+		if(options.callback_edit)
+			if( options.callback_edit.call( this ) )
+				return;
 		var path = r.getValue();
 		var material = LS.RM.getResource( path );
 		if(!material || !material.constructor.is_material)
@@ -539,6 +542,33 @@ LiteGUI.Inspector.prototype.addMaterial = function( name,value, options)
 	return r;
 }
 LiteGUI.Inspector.widget_constructors["material"] = "addMaterial";
+
+
+//to select a script
+LiteGUI.Inspector.prototype.addScript = function( name,value, options)
+{
+	options = options || {};
+	options.width = "85%";
+
+	this.widgets_per_row += 1;
+	var r = addGenericResource.call(this, name, value, options, "Script" );
+	this.addButton(null,"Edit",{ width:"15%", callback: function(){
+		if(options.callback_edit)
+			if( options.callback_edit.call( this ) )
+				return;
+		var path = r.getValue();
+		var script = LS.RM.getResource( path );
+		if(!script)
+			return;
+		//open script
+		CodingModule.editInstanceCode( script, null, true );
+	}});
+	this.widgets_per_row -= 1;
+	return r;
+}
+LiteGUI.Inspector.widget_constructors["script"] = "addScript";
+
+
 
 //to select a material
 LiteGUI.Inspector.prototype.addAnimation = function( name,value, options)

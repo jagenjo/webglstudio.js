@@ -101,7 +101,12 @@ var LiteGraph = global.LiteGraph = {
 	{
 		LGraphNode.prototype[name] = func;
 		for(var i in this.registered_node_types)
-			this.registered_node_types[i].prototype[name] = func;
+		{
+			var type = this.registered_node_types[i];
+			if(type.prototype[name])
+				type.prototype["_" + name] = type.prototype[name]; //keep old in case of replacing
+			type.prototype[name] = func;
+		}
 	},
 
 	/**
@@ -1415,8 +1420,8 @@ LGraphNode.prototype.configure = function(info)
 		}
 	}
 
-	if( this.onConfigured )
-		this.onConfigured( info );
+	if( this.onConfigure )
+		this.onConfigure( info );
 }
 
 /**
@@ -9155,6 +9160,12 @@ if(typeof(LiteGraph) != "undefined")
 		if(temp_tex)
 			temp_tex.toCanvas(tex_canvas);
 		return tex_canvas;
+	}
+
+	LGraphTexture.prototype.getResources = function(res)
+	{
+		res[ this.properties.name ] = GL.Texture;
+		return res;
 	}
 
 	LGraphTexture.prototype.onGetInputs = function()

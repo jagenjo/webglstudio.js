@@ -548,11 +548,11 @@ LiteGUI.Inspector.widget_constructors["material"] = "addMaterial";
 LiteGUI.Inspector.prototype.addScript = function( name,value, options)
 {
 	options = options || {};
-	options.width = "85%";
+	options.width = "90%";
 
 	this.widgets_per_row += 1;
 	var r = addGenericResource.call(this, name, value, options, "Script" );
-	this.addButton(null,"Edit",{ width:"15%", callback: function(){
+	this.addButton(null,"{}",{ width:"10%", callback: function(){
 		if(options.callback_edit)
 			if( options.callback_edit.call( this ) )
 				return;
@@ -732,7 +732,7 @@ LiteGUI.Inspector.prototype.addRenderFrameContext = function( name, value, optio
 		EditorModule.showRenderFrameContextDialog(value);
 	};
 
-	return this.addButton(name,"Edit", options );
+	return this.addButton(name,"Edit Settings", options );
 }
 LiteGUI.Inspector.widget_constructors["RenderFrameContext"] = "addRenderFrameContext";
 

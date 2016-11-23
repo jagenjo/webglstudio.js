@@ -3,5 +3,6 @@
 	"server":"fileserver/src/",
 	"resources":"fileserver/files/",
 	"proxy":"@/proxy.php?url=",
-	"shaders":"data/shaders.xml"
+	"shaders":"data/shaders.xml",
+	"nocache": true
 }

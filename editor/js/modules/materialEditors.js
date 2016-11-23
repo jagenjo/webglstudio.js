@@ -526,11 +526,13 @@ LS.Material.showFlagsEditor = function( material )
 //EditorModule.registerMaterialEditor("Material", EditorModule.showGlobalMaterialInfo );
 
 //Used in SurfaceMaterial 
-function GenericMaterialEditor( material, inspector )
+LS.MaterialClasses.SurfaceMaterial["@inspector"] = function( material, inspector )
 {
 	inspector.addTitle("Properties");
-	//inspector.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
+	inspector.widgets_per_row = 2;
 	inspector.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { material.opacity = value; }});
+	inspector.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
+	inspector.widgets_per_row = 1;
 	inspector.addColor("Color", material.color, { pretitle: AnimationModule.getKeyframeCode( material, "color" ), callback: function(color) { vec3.copy(material.color,color); } });
 
 	for(var i in material.properties)
@@ -630,8 +632,6 @@ function GenericMaterialEditor( material, inspector )
 	}
 
 }
-
-LS.MaterialClasses.SurfaceMaterial["@inspector"] = GenericMaterialEditor;
 
 LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector, is_fx )
 {

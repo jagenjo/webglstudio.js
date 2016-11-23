@@ -581,6 +581,137 @@ EditorModule.showFXInfo = function( component, inspector )
 	}
 }
 
+LS.FXStack.prototype.inspect = function( inspector, component )
+{
+	var title = inspector.addTitle("Active FX");
+	var enabled_fx = this.fx;
+	var that = this;
+
+	for(var i = 0; i < enabled_fx.length; i++)
+	{
+		var fx = enabled_fx[i];
+		var fx_info = LS.FXStack.available_fx[ fx.name ];
+		if(!fx_info)
+		{
+			console.warn("Unknown FX: " + fx.name);
+			continue;
+		}
+		if(fx_info.uniforms)
+			for(var j in fx_info.uniforms)
+			{
+				var uniform = fx_info.uniforms[j];
+				if(uniform.type == "float")
+					inspector.addNumber( j, fx[j] !== undefined ? fx[j] : uniform.value, {
+						pretitle: component ? AnimationModule.getKeyframeCode( component, "fx/"+i+"/"+j ) : "",
+						min: uniform.min,
+						max: uniform.max,
+						step: uniform.step,
+						fx_name: j,
+						fx: fx,
+						callback: function(v){
+							this.options.fx[ this.options.fx_name ] = v;
+						}				
+					});
+				else if(uniform.type == "color3")
+					inspector.addColor( j, fx[j] !== undefined ? fx[j] : uniform.value, {
+						pretitle: component ? AnimationModule.getKeyframeCode( component, "fx/"+i+"/"+j ) : "",
+						fx_name: j,
+						fx: fx,
+						callback: function(v){
+							this.options.fx[ this.options.fx_name ] = v;
+						}				
+					});
+				else if(uniform.type == "sampler2D")
+					inspector.addTexture( j, fx[j] !== undefined ? fx[j] : uniform.value, {
+						pretitle: component ? AnimationModule.getKeyframeCode( component, "fx/"+i+"/"+j ) : "",
+						fx_name: j,
+						fx: fx,
+						callback: function(v){
+							this.options.fx[ this.options.fx_name ] = v;
+						}				
+					});
+				else //for vec2, vec3, vec4
+					inspector.add( uniform.type, j, fx[j] !== undefined ? fx[j] : uniform.value, {
+						pretitle: component ? AnimationModule.getKeyframeCode( component, "fx/"+i+"/"+j ) : "",
+						fx_name: j,
+						fx: fx,
+						callback: function(v){
+							if( this.options.fx[ this.options.fx_name ] && this.options.fx[ this.options.fx_name ].set )
+								this.options.fx[ this.options.fx_name ].set( v );
+							else
+								this.options.fx[ this.options.fx_name ] = v;
+						}				
+					});
+			}
+	}
+
+	inspector.addButton(null,"Edit FX", { callback: inner });
+	//inspector.addButton(null,"Remove FX", {});
+
+	var selected_enabled_fx = "";
+
+	//show camera fx dialog
+	function inner()
+	{
+		var dialog = LiteGUI.Dialog.getDialog("dialog_show_fx");
+		if(dialog)
+			dialog.clear();
+		else
+			dialog = new LiteGUI.Dialog("dialog_show_fx", { title:"FX Settings", close: true, width: 360, height: 370, scroll: false, draggable: true});
+
+		dialog.show();
+
+		var split = new LiteGUI.Split("load_scene_split",[50,50]);
+		dialog.add(split);
+
+		//left side
+		var widgets_left = new LiteGUI.Inspector("camera_fx_list",{});
+		widgets_left.addTitle("Available FX");
+		split.getSection(0).add( widgets_left );
+		var fx = LS.FXStack.available_fx;
+		var available_fx = [];
+		for(var i in fx)
+			available_fx.push(i);
+		available_fx = available_fx.sort();		
+		var selected_available_fx = "";
+		var available_list = widgets_left.addList( null, available_fx, { height: 240, callback: function(v) {
+			selected_available_fx = v;
+		}});
+		widgets_left.addButton(null,"Add FX", { callback: function(){
+			that.addFX( selected_available_fx );
+			inspector.refresh();
+			LS.GlobalScene.refresh();
+			inner();
+		}});
+
+		var widgets_right = new LiteGUI.Inspector("camera_fx_enabled",{});
+		widgets_right.addTitle("Current FX");
+		var enabled_list = widgets_right.addList(null, enabled_fx, { selected: selected_enabled_fx, height: 240, callback: function(v) {
+			selected_enabled_fx = v;
+		}});
+		split.getSection(1).add(widgets_right);
+		widgets_right.addButtons(null,["Up","Down","Delete"], { callback: function(v){
+			if(v == "Delete")
+			{
+				that.removeFX( selected_enabled_fx );
+			}
+			else if(v == "Up")
+			{
+				that.moveFX( selected_enabled_fx );
+			}
+			else if(v == "Down")
+			{
+				that.moveFX( selected_enabled_fx, 1 );
+			}
+			inspector.refresh();
+			LS.GlobalScene.refresh();
+			inner();
+		}});
+
+		dialog.adjustSize();
+	}
+}
+
 LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 {
 	if( component.morph_targets.length )

@@ -17,7 +17,7 @@ var CORE = {
 
 		//Load config file
 		LiteGUI.request({
-			url:"config.json",
+			url:"config.json?nocache=" + getTime(),
 			dataType:"json",
 			success: this.configLoaded.bind(this)
 		});
@@ -39,9 +39,13 @@ var CORE = {
 			return;
 		}
 
+		var nocache = "";
+		if(config.nocache)
+			nocache = "?=" + getTime();
+
 		//Load modules list from modules.json
 		LiteGUI.request({
-			url: config.imports || "imports.json",
+			url: config.imports || "imports.json" + nocache,
 			dataType:"json",
 			success: this.loadImports.bind(this)
 		});
@@ -69,6 +73,15 @@ var CORE = {
 			CORE.log( "<span id='msg-import-"+ (num++) + "' class='tinybox'></span> <span class='name'>" + import_name + "</span>" );
 		}
 
+		//forces to redownload files
+		if(this.config.nocache)
+		{
+			var nocache = "nocache=" + String(getTime());
+			for(var i in imports_list)
+				imports_list[i] = imports_list[i] + (imports_list[i].indexOf("?") == -1 ? "?" : "") + nocache;
+		}
+
+		//require all import scripts
 		LiteGUI.requireScript( imports_list, onReady, onError, onProgress );
 
 		//one module loaded

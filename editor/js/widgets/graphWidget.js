@@ -490,6 +490,9 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 		}
 	}
 
+	if(graphnode._inspect)
+		graphnode._inspect( inspector );
+
 	if(graphnode.help)
 		inspector.addInfo(null, graphnode.help);
 
@@ -512,7 +515,6 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 				EditorModule.inspect( node );
 		});
 	}
-
 
 	inspector.addButtons(null, ["Collapse","Remove"], { callback: function(v) { 
 		if(v == "Collapse")

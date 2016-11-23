@@ -732,7 +732,7 @@ LiteGUI.Inspector.prototype.addRenderFrameContext = function( name, value, optio
 		EditorModule.showRenderFrameContextDialog(value);
 	};
 
-	return this.addButton(name,"Edit Settings", options );
+	return this.addButton(name,"Edit", options ); //the button could be small
 }
 LiteGUI.Inspector.widget_constructors["RenderFrameContext"] = "addRenderFrameContext";
 

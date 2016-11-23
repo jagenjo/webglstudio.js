@@ -391,7 +391,8 @@ LS.Components.CameraFX["@inspector"] = function( camerafx, inspector)
 	inspector.addCheckbox("Antialiasing", camerafx.use_antialiasing, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( camerafx, "use_antialiasing" ), callback: function(v) { camerafx.use_antialiasing = v; } });
 	inspector.addString("Camera UID", camerafx.camera_uid, { pretitle: AnimationModule.getKeyframeCode( camerafx, "camera_uid" ), callback: function(v) { camerafx.camera_uid = v; } });
 
-	EditorModule.showFXInfo( camerafx, inspector );
+	//EditorModule.showFXInfo( camerafx, inspector );
+	camerafx.fx.inspect( inspector, camerafx );
 }
 
 
@@ -428,9 +429,11 @@ LS.Components.FrameFX["@inspector"] = function( component, inspector)
 	inspector.widgets_per_row = 1;
 	*/
 
-	EditorModule.showFXInfo( component, inspector );
+	//EditorModule.showFXInfo( component, inspector );
+	component.fx.inspect( inspector, component );
 }
 
+/*
 EditorModule.showFXInfo = function( component, inspector )
 {
 	var title = inspector.addTitle("Active FX");
@@ -453,6 +456,7 @@ EditorModule.showFXInfo = function( component, inspector )
         e.preventDefault(); 
         return false;
     });
+
 
 	var enabled_fx = component.fx.fx;
 
@@ -580,12 +584,34 @@ EditorModule.showFXInfo = function( component, inspector )
 		dialog.adjustSize();
 	}
 }
+*/
 
 LS.FXStack.prototype.inspect = function( inspector, component )
 {
-	var title = inspector.addTitle("Active FX");
-	var enabled_fx = this.fx;
 	var that = this;
+
+	var title = inspector.addTitle("Active FX");
+	title.addEventListener("contextmenu", function(e) { 
+        if(e.button != 2) //right button
+            return false;
+		//create the context menu
+		var contextmenu = new LiteGUI.ContextMenu( ["Copy","Paste"], { title: "FX List", event: e, callback: function(v){
+			if(v == "Copy")
+				LiteGUI.toClipboard( JSON.stringify( that.serialize() ) );
+			else //Paste
+			{
+				var data = LiteGUI.getClipboard();
+				if(data)
+					that.configure( data );
+				inspector.refresh();
+			}
+			LS.GlobalScene.refresh();
+		}});
+        e.preventDefault(); 
+        return false;
+    });
+
+	var enabled_fx = this.fx;
 
 	for(var i = 0; i < enabled_fx.length; i++)
 	{

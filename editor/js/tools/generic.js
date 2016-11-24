@@ -119,6 +119,43 @@ var centerInObjectButton = {
 ToolsModule.registerButton(centerInObjectButton);
 
 
+var showStencilButton = {
+	name: "show_stencil",
+	description: "Show stencil buffer",
+	section: "view-modes",
+	icon: "imgs/mini-icon-mask.png",
+	enabled: false,
+	callback: function()
+	{
+		RenderModule.show_stencil_mask = RenderModule.show_stencil_mask != -1 ? -1 : 128;
+	},
+
+	inspect: function( inspector )
+	{
+		inspector.addNumber("Stencil Mask Value", RenderModule.show_stencil_mask, { min: 0, max: 256, step: 1, precision:0, callback: function(v){
+			RenderModule.show_stencil_mask = v;
+		}});
+	}
+};
+
+ToolsModule.registerButton(showStencilButton);
+
+var showDepthButton = {
+	name: "show_depth",
+	description: "Show Depth Buffer",
+	section: "view-modes",
+	icon: "imgs/mini-icon-depth.png",
+	enabled: false,
+	callback: function()
+	{
+		RenderModule.show_depth_buffer = !RenderModule.show_depth_buffer;
+	}
+};
+
+ToolsModule.registerButton(showDepthButton);
+
+
+
 
 
 

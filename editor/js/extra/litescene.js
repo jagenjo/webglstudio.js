@@ -15806,8 +15806,8 @@ var Renderer = {
 		//restore state
 		this.resetGLState( render_settings );
 
-		LEvent.trigger( scene, "afterRenderInstances", render_settings);
-		//scene.triggerInNodes("afterRenderInstances", render_settings);
+		LEvent.trigger( scene, "afterRenderInstances", render_settings );
+		LEvent.trigger( this, "afterRenderInstances", render_settings );
 
 		//and finally again
 		this.resetGLState( render_settings );

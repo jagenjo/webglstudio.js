@@ -140,6 +140,14 @@ var ToolsModule = {
 		EditorModule.inspect( tool );
 	},
 
+	showButtonProperties: function( button_name )
+	{
+		var button = this.buttons[ button_name ];
+		if(!button || !button.inspect)
+			return;
+		EditorModule.inspect( button );
+	},
+
 	//every frame
 	render: function()
 	{
@@ -242,7 +250,7 @@ var ToolsModule = {
 	{
 		var root = document.getElementById("canvas-tools");
 
-		var element = this.createButton(tool, root );
+		var element = this.createButton( tool, root );
 		element.className += " tool-" + tool.name + " " + (tool.enabled ? "enabled":"");
 
 		if(!tool.className)
@@ -300,9 +308,17 @@ var ToolsModule = {
 			e.preventDefault();
 			return false;
 		}
+
+		element.addEventListener("contextmenu", function(e) { 
+			if(e.button != 2) //right button
+				return false;
+			e.preventDefault(); 
+			ToolsModule.showButtonProperties( this.data );
+			return false;
+		});
 	},
 
-	createButton: function(button, root)
+	createButton: function( button, root )
 	{
 		var element = document.createElement("div");
 		element.className = "tool-button";

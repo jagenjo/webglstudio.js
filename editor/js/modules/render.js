@@ -24,6 +24,7 @@ var RenderModule = {
 
 	preview_camera: null,
 	temp_camera: null, //used to clone preview camera
+	show_stencil_mask: -1,
 
 	init: function()
 	{
@@ -137,6 +138,8 @@ var RenderModule = {
 
 		RenderModule.canvas_manager.resize();
 		this.temp_camera = new LS.Camera();
+
+		LEvent.bind( LS.Renderer, "afterRenderInstances", this.onAfterRenderInstances, this);
 	},
 
 	setViewportLayout: function(mode)
@@ -347,6 +350,44 @@ var RenderModule = {
 		else
 			LS.Renderer.render( LS.GlobalScene, render_settings, cameras );
 		LEvent.trigger(this,"post_scene_render");
+	},
+
+	onAfterRenderInstances: function()
+	{
+		if(this.show_stencil_mask > -1)
+		{
+			gl.disable( gl.DEPTH_TEST );
+			LS.Renderer._black_texture.toViewport();
+			gl.enable( gl.STENCIL_TEST );
+			gl.stencilFunc( GL.EQUAL, this.show_stencil_mask, 0xFF );
+			LS.Renderer._white_texture.toViewport();
+			gl.disable( gl.STENCIL_TEST );
+		}
+		else if(this.show_depth_buffer ) //superhack
+		{
+			if(!this._depth_shader)
+				this._depth_shader = new GL.Shader( this._depth_vertex_shader_code, this._depth_fragment_shader_code );
+			var mesh = GL.Mesh.getScreenQuad();
+
+			var camera = LS.Renderer._current_camera;
+			var N = camera.near;
+			var F = camera.far;
+			gl.enable( gl.DEPTH_TEST );
+			gl.depthMask( false );
+			gl.depthFunc( gl.LESS );
+			gl.disable( gl.CULL_FACE );
+			gl.disable( gl.BLEND );
+			var slices = 128;
+			for(var i = 0; i <= slices; ++i)
+			{
+				var linear_f = i/slices;
+				//linear_f = (2.0 * N) / (F + N - D * (F - N));
+				var depth = Math.pow(linear_f,0.01);
+				this._depth_shader.uniforms({u_color: linear_f, u_depth: depth}).draw(mesh);
+			}
+			gl.depthMask( true );
+			gl.depthFunc( gl.LESS );
+		}
 	},
 
 	//used for debug, allows to render shadows or picking buffers directly to screen
@@ -619,6 +660,26 @@ var RenderModule = {
 };
 
 CORE.registerModule( RenderModule );
+
+
+RenderModule._depth_vertex_shader_code = "\n\
+	precision highp float;\n\
+	attribute vec3 a_vertex;\n\
+	attribute vec2 a_coord;\n\
+	uniform float u_depth;\n\
+	void main() { \n\
+		gl_Position = vec4(a_coord * 2.0 - 1.0, u_depth, 1.0);\n\
+	}\n\
+";
+
+RenderModule._depth_fragment_shader_code = "\n\
+	precision highp float;\n\
+	uniform float u_color;\n\
+	void main() {\n\
+		gl_FragColor = vec4(u_color);\n\
+}";
+
+
 
 
 

@@ -52,7 +52,7 @@ CanvasManager.prototype.init = function( options )
 	//create canvas and attach events
 	try
 	{
-		window.gl = GL.create({ antialias: antialiasing, alpha:false, premultipliedAlpha: false, debug: true, preserveDrawingBuffer: allow_read });
+		window.gl = GL.create({ antialias: antialiasing, alpha:false, stencil: true, premultipliedAlpha: false, debug: true, preserveDrawingBuffer: allow_read });
 	}
 	catch (err)
 	{

@@ -7303,12 +7303,12 @@ ShaderMaterial.prototype.assignOldProperties = function( old_properties )
 ShaderMaterial.prototype.renderInstance = function( instance, render_settings )
 {
 	if(!this.shader)
-		return false;
+		return true; //skip rendering
 
 	//get shader code
 	var shader_code = LS.ResourcesManager.getResource( this.shader );
 	if(!shader_code || shader_code.constructor !== LS.ShaderCode )
-		return false;
+		return true; //skip rendering
 
 	//this is in case the shader has been modified in the editor...
 	if( shader_code._version !== this._shader_version )
@@ -7350,7 +7350,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings )
 		//extract shader compiled
 		var shader = shader_code.getShader( null, block_flags );
 		if(!shader)
-			return false;
+			return true;
 
 		//assign
 		shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, light ? light._uniforms : null, this._uniforms, instance.uniforms ] );
@@ -13976,15 +13976,19 @@ LS.RenderSettings = RenderSettings;
 
 //stencil buffer
 16: stencil_test: 0
-17:	stencil_func: 1
-18:	stencil_ref: 1
-19:	stencil_mask: 0xFF
+17:	stencil_mask: 0xFF,
+18:	stencil_func_func: GL.ALWAYS,
+19:	stencil_func_ref: 0,
+20:	stencil_func_mask: 0xFF,
+21:	stencil_op_sfail: GL.KEEP,
+22:	stencil_op_dpfail: GL.KEEP,
+23:	stencil_op_dppass: GL.KEEP
 
 */
 
 function RenderState( o )
 {
-	this._data = new Uint32Array(20);
+	this._data = new Uint32Array(24);
 	this.init();
 
 	if(o)
@@ -14112,28 +14116,87 @@ Object.defineProperty( RenderState.prototype, "colorMask", {
 	enumerable: false
 });
 
+/*
+16: stencil_test: 0
+17:	stencil_mask: 0xFF,
+18:	stencil_func_func: GL.ALWAYS,
+19:	stencil_func_ref: 0,
+20:	stencil_func_mask: 0xFF,
+21:	stencil_op_sfail: GL.KEEP,
+22:	stencil_op_dpfail: GL.KEEP,
+23:	stencil_op_dppass: GL.KEEP
+*/
+
 Object.defineProperty( RenderState.prototype, "stencil_test", {
 	set: function(v) { this._data[16] = v ? 1 : 0; },
 	get: function() { return this._data[16] !== 0;	},
 	enumerable: true
 });
 
-Object.defineProperty( RenderState.prototype, "stencil_func", {
+Object.defineProperty( RenderState.prototype, "stencil_mask", {
 	set: function(v) { this._data[17] = v; },
 	get: function() { return this._data[17]; },
 	enumerable: true
 });
 
-Object.defineProperty( RenderState.prototype, "stencil_ref", {
-	set: function(v) { this._data[18] = v; },
-	get: function() { return this._data[18]; },
+Object.defineProperty( RenderState.prototype, "stencil_func", {
+	set: function(v) {
+		if(!v || v.length != 3)
+			return;
+		this._data[18] = v[0];
+		this._data[19] = v[1];
+		this._data[20] = v[2];
+	},
+	get: function() { return this._data.subarray(18,21); },
 	enumerable: true
 });
 
-Object.defineProperty( RenderState.prototype, "stencil_mask", {
+Object.defineProperty( RenderState.prototype, "stencil_func_func", {
+	set: function(v) { this._data[18] = v; },
+	get: function() { return this._data[18]; },
+	enumerable: false
+});
+
+Object.defineProperty( RenderState.prototype, "stencil_func_ref", {
 	set: function(v) { this._data[19] = v; },
 	get: function() { return this._data[19]; },
+	enumerable: false
+});
+
+Object.defineProperty( RenderState.prototype, "stencil_func_mask", {
+	set: function(v) { this._data[20] = v; },
+	get: function() { return this._data[20]; },
+	enumerable: false
+});
+
+Object.defineProperty( RenderState.prototype, "stencil_op", {
+	set: function(v) {
+		if(!v || v.length != 3)
+			return;
+		this._data[21] = v[0];
+		this._data[22] = v[1];
+		this._data[23] = v[2];
+	},
+	get: function() { return this._data.subarray(21,24); },
 	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "stencil_op_sfail", {
+	set: function(v) { this._data[21] = v; },
+	get: function() { return this._data[21]; },
+	enumerable: false
+});
+
+Object.defineProperty( RenderState.prototype, "stencil_op_dpfail", {
+	set: function(v) { this._data[22] = v; },
+	get: function() { return this._data[22]; },
+	enumerable: false
+});
+
+Object.defineProperty( RenderState.prototype, "stencil_op_dppass", {
+	set: function(v) { this._data[23] = v; },
+	get: function() { return this._data[23]; },
+	enumerable: false
 });
 
 RenderState.default_state = {
@@ -14148,7 +14211,15 @@ RenderState.default_state = {
 	colorMask0: true,
 	colorMask1: true,
 	colorMask2: true,
-	colorMask3: true
+	colorMask3: true,
+	stencil_test: false,
+	stencil_mask: 0xFF,
+	stencil_func_func: GL.ALWAYS,
+	stencil_func_ref: 0,
+	stencil_func_mask: 0xFF,
+	stencil_op_sfail: GL.KEEP,
+	stencil_op_dpfail: GL.KEEP,
+	stencil_op_dppass: GL.KEEP
 };
 
 RenderState.last_state = null;
@@ -14180,9 +14251,13 @@ RenderState.prototype.init = function()
 
 	//stencil buffer
 	this.stencil_test = false;
-	this.stencil_func = 1;
-	this.stencil_ref = 1;
 	this.stencil_mask = 0xFF;
+	this.stencil_func_func = GL.ALWAYS;
+	this.stencil_func_ref = 0;
+	this.stencil_func_mask = 0xFF;
+	this.stencil_op_sfail = GL.KEEP;
+	this.stencil_op_dpfail = GL.KEEP;
+	this.stencil_op_dppass = GL.KEEP;
 }
 
 //helper, allows to set the blend mode from a string
@@ -14234,7 +14309,15 @@ RenderState.enable = function( state, prev )
 		gl.colorMask( state.colorMask0, state.colorMask1, state.colorMask2, state.colorMask3 );
 
 		//stencil
-		//TODO
+		if(state.stencil_test)
+		{
+			gl.enable( gl.STENCIL_TEST );
+			gl.stencilFunc( state.stencil_func_func, state.stencil_func_ref, state.stencil_func_mask );
+			gl.stencilOp( state.stencil_op_sfail, state.stencil_op_dpfail, state.stencil_op_dppass );
+			gl.stencilMask( state.stencil_mask );
+		}
+		else
+			gl.disable( gl.STENCIL_TEST );
 
 		this.last_state = state;
 		return;
@@ -14280,7 +14363,22 @@ RenderState.enable = function( state, prev )
 		gl.colorMask( state.colorMask0, state.colorMask1, state.colorMask2, state.colorMask3 );
 
 	//stencil
-	//TODO
+	if(prev.stencil_test != state.stencil_test )
+	{
+		if(state.stencil_test)
+			gl.enable( gl.STENCIL_TEST);
+		else
+			gl.disable( gl.STENCIL_TEST );
+	}
+
+	if( state.stencil_func_func !== prev.stencil_func_func || state.stencil_func_ref !== prev.stencil_func_ref || state.stencil_func_mask !== prev.stencil_func_mask )
+		gl.stencilFunc( state.stencil_func_func, state.stencil_func_ref, state.stencil_func_mask );
+
+	if(state.stencil_op_sfail !== prev.stencil_op_sfail || state.stencil_op_dpfail !== stencil_op_dpfail || state.stencil_op_dppass !== stencil_op_dppass )
+		gl.stencilOp( state.stencil_op_sfail, state.stencil_op_dpfail, state.stencil_op_dppass );
+
+	if(state.stencil_mask !== prev.stencil_mask)
+		gl.stencilMask( prev.stencil_mask );
 
 	//save state
 	this.last_state = state;
@@ -14722,6 +14820,7 @@ function RenderFrameContext( o )
 	this.filter_texture = true; //magFilter
 	this.format = GL.RGBA;
 	this.use_depth_texture = false;
+	this.use_stencil_buffer = false;
 	this.num_extra_textures = 0; //number of extra textures in case we want to render to several buffers
 	this.name = null; //if a name is provided all the textures will be stored
 
@@ -14791,6 +14890,7 @@ RenderFrameContext.prototype.configure = function(o)
 	this.filter_texture = !!o.filter_texture;
 	this.adjust_aspect = !!o.adjust_aspect;
 	this.use_depth_texture = !!o.use_depth_texture;
+	this.use_stencil_buffer = !!o.use_stencil_buffer;
 	this.num_extra_textures = o.num_extra_textures || 0;
 	this.name = o.name;
 	this.clone_after_unbind = !!o.clone_after_unbind;
@@ -14806,6 +14906,7 @@ RenderFrameContext.prototype.serialize = function()
 		format: this.format,
 		adjust_aspect: this.adjust_aspect,
 		use_depth_texture:  this.use_depth_texture,
+		use_stencil_buffer: this.use_stencil_buffer,
 		num_extra_textures:  this.num_extra_textures,
 		clone_after_unbind: this.clone_after_unbind,
 		name: this.name
@@ -14867,8 +14968,19 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 	}
 
 	//for the depth
-	if( this.use_depth_texture && (!this._depth_texture || this._depth_texture.width != final_width || this._depth_texture.height != final_height) && gl.extensions["WEBGL_depth_texture"] )
-		this._depth_texture = new GL.Texture( final_width, final_height, { filter: gl.NEAREST, format: gl.DEPTH_COMPONENT, type: gl.UNSIGNED_INT });
+	var depth_format = gl.DEPTH_COMPONENT;
+	var depth_type = gl.UNSIGNED_INT;
+
+	if(this.use_stencil_buffer && gl.extensions.WEBGL_depth_texture)
+	{
+		depth_format = gl.DEPTH_STENCIL;
+		depth_type = gl.extensions.WEBGL_depth_texture.UNSIGNED_INT_24_8_WEBGL;
+	}
+
+	if( this.use_depth_texture && 
+		(!this._depth_texture || this._depth_texture.width != final_width || this._depth_texture.height != final_height || this._depth_texture.format != depth_format || this._depth_texture.type != depth_type ) && 
+		gl.extensions["WEBGL_depth_texture"] )
+		this._depth_texture = new GL.Texture( final_width, final_height, { filter: gl.NEAREST, format: depth_format, type: depth_type });
 	else if( !this.use_depth_texture )
 		this._depth_texture = null;
 
@@ -14887,6 +14999,7 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 	textures.length = 1 + total_extra;
 
 	//assign textures (this will enable the FBO but it will restore the old one after finishing)
+	this._fbo.stencil = this.use_stencil_buffer;
 	this._fbo.setTextures( textures, this._depth_texture );
 }
 
@@ -15500,11 +15613,22 @@ var Renderer = {
 		gl.scissor( gl.viewport_data[0], gl.viewport_data[1], gl.viewport_data[2], gl.viewport_data[3] );
 		gl.enable(gl.SCISSOR_TEST);
 
-		//clear buffer 
+		//clear color buffer 
+		gl.colorMask( true, true, true, true );
 		gl.clearColor( camera.background_color[0], camera.background_color[1], camera.background_color[2], camera.background_color[3] );
-		gl.clear( ( camera.clear_color ? gl.COLOR_BUFFER_BIT : 0) | (camera.clear_depth ? gl.DEPTH_BUFFER_BIT : 0) );
 
-		gl.disable(gl.SCISSOR_TEST);
+		//clear depth buffer
+		gl.depthMask( true );
+
+		//to clear the stencil
+		gl.enable( gl.STENCIL_TEST );
+		gl.clearStencil( 0x0 );
+
+		//do the clearing
+		gl.clear( ( camera.clear_color ? gl.COLOR_BUFFER_BIT : 0) | (camera.clear_depth ? gl.DEPTH_BUFFER_BIT : 0) | gl.STENCIL_BUFFER_BIT );
+
+		gl.disable( gl.SCISSOR_TEST );
+		gl.disable( gl.STENCIL_TEST );
 	},
 
 	sortRenderQueues: function( camera, render_settings )
@@ -15544,12 +15668,21 @@ var Renderer = {
 		//LS.RenderState.reset(); 
 
 		gl.enable( gl.CULL_FACE );
+		gl.frontFace(gl.CCW);
+
+		gl.colorMask(true,true,true,true);
+
 		gl.enable( gl.DEPTH_TEST );
-		gl.disable( gl.BLEND );
 		gl.depthFunc( gl.LESS );
 		gl.depthMask(true);
-		gl.frontFace(gl.CCW);
+
+		gl.disable( gl.BLEND );
 		gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
+
+		gl.disable( gl.STENCIL_TEST );
+		gl.stencilMask( 0xFF );
+		gl.stencilOp( gl.KEEP, gl.KEEP, gl.KEEP );
+		gl.stencilFunc( gl.ALWAYS, 1, 0xFF );
 	},
 
 	/**
@@ -15665,6 +15798,8 @@ var Renderer = {
 					instance.onPostRender( render_settings );
 			}
 		}
+
+		this.resetGLState( render_settings );
 
 		LEvent.trigger( scene, "renderScreenSpace", render_settings);
 

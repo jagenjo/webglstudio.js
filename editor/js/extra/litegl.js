@@ -29,6 +29,10 @@ GL.last_context_id = 0;
 //Define WEBGL ENUMS as statics (more to come in WebGL 2)
 //sometimes we need some gl enums before having the gl context, solution: define them globally because the specs says they are constant)
 
+GL.COLOR_BUFFER_BIT = 16384;
+GL.DEPTH_BUFFER_BIT = 256;
+GL.STENCIL_BUFFER_BIT = 1024;
+
 GL.TEXTURE_2D = 3553;
 GL.TEXTURE_CUBE_MAP = 34067;
 
@@ -62,7 +66,8 @@ GL.RGB = 6407;
 GL.RGBA = 6408;
 GL.LUMINANCE = 6409;
 GL.LUMINANCE_ALPHA = 6410;
-
+GL.DEPTH_STENCIL = 34041;
+GL.UNSIGNED_INT_24_8_WEBGL = 34042;
 
 GL.NEAREST = 9728;
 GL.LINEAR = 9729;
@@ -106,6 +111,14 @@ GL.GREATER = 516;
 GL.NOTEQUAL = 517;
 GL.GEQUAL = 518;
 GL.ALWAYS = 519;
+
+GL.KEEP = 7680;
+GL.REPLACE = 7681;
+GL.INCR = 7682;
+GL.DECR = 7683;
+GL.INCR_WRAP = 34055;
+GL.DECR_WRAP = 34056;
+GL.INVERT = 5386;
 
 GL.STREAM_DRAW = 35040;
 GL.STATIC_DRAW = 35044;
@@ -4146,7 +4159,7 @@ global.Texture = GL.Texture = function Texture( width, height, options, gl ) {
 	this.width = width;
 	this.height = height;
 	this.texture_type = options.texture_type || gl.TEXTURE_2D; //or gl.TEXTURE_CUBE_MAP
-	this.format = options.format || Texture.DEFAULT_FORMAT; //gl.RGBA (if gl.DEPTH_COMPONENT remember format: gl.UNSIGNED_SHORT)
+	this.format = options.format || Texture.DEFAULT_FORMAT; //gl.RGBA (if gl.DEPTH_COMPONENT remember type: gl.UNSIGNED_SHORT)
 	this.type = options.type || Texture.DEFAULT_TYPE; //gl.UNSIGNED_BYTE, gl.UNSIGNED_SHORT, gl.FLOAT or gl.HALF_FLOAT_OES (or gl.HIGH_PRECISION_FORMAT which could be half or float)
 	this.magFilter = options.magFilter || options.filter || Texture.DEFAULT_MAG_FILTER;
 	this.minFilter = options.minFilter || options.filter || Texture.DEFAULT_MIN_FILTER;
@@ -5812,7 +5825,9 @@ GL.FBO = FBO;
 */
 FBO.prototype.setTextures = function( color_textures, depth_texture, skip_disable )
 {
-	if( depth_texture && (depth_texture.format !== gl.DEPTH_COMPONENT || depth_texture.type != gl.UNSIGNED_INT ) )
+	if( depth_texture && 
+		( (depth_texture.format !== gl.DEPTH_COMPONENT && depth_texture.format !== gl.DEPTH_STENCIL) || 
+		( depth_texture.type != gl.UNSIGNED_INT && depth_texture.type != GL.UNSIGNED_INT_24_8_WEBGL ) ) )
 		throw("FBO Depth texture must be of format: gl.DEPTH_COMPONENT and type: gl.UNSIGNED_INT");
 
 	//test if is already binded
@@ -5908,10 +5923,19 @@ FBO.prototype.update = function( skip_disable )
 	if(!ext && color_textures && color_textures.length > 1)
 		throw("Rendering to several textures not supported by your browser");
 
+	gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null );
+	gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, null );
+
 	//bind a buffer for the depth
 	if( depth_texture )
 	{
-		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depth_texture.handler, 0);
+		if(this.stencil && depth_texture.format !== gl.DEPTH_STENCIL )
+			console.warn("Stencil cannot be enabled if there is a depth texture with a DEPTH_STENCIL format");
+
+		if( depth_texture.format == gl.DEPTH_STENCIL )
+			gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.TEXTURE_2D, depth_texture.handler, 0);
+		else
+			gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depth_texture.handler, 0);
 	}
 	else //create a renderbuffer to store depth
 	{
@@ -5919,8 +5943,16 @@ FBO.prototype.update = function( skip_disable )
 		renderbuffer.width = w;
 		renderbuffer.height = h;
 		gl.bindRenderbuffer( gl.RENDERBUFFER, renderbuffer );
-		gl.renderbufferStorage( gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h );
-		gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, renderbuffer );
+		if(this.stencil)
+		{
+			gl.renderbufferStorage( gl.RENDERBUFFER, gl.DEPTH_STENCIL, w, h );
+			gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, renderbuffer );
+		}
+		else
+		{
+			gl.renderbufferStorage( gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h );
+			gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, renderbuffer );
+		}
 	}
 
 	//bind buffers for the colors
@@ -5931,7 +5963,7 @@ FBO.prototype.update = function( skip_disable )
 		{
 			var t = color_textures[i];
 
-			gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, t.handler, 0);
+			gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, t.handler, 0 );
 			this.order.push( gl.COLOR_ATTACHMENT0 + i );
 		}
 	}
@@ -5940,8 +5972,8 @@ FBO.prototype.update = function( skip_disable )
 		var renderbuffer = this._renderbuffer = this._renderbuffer || gl.createRenderbuffer();
 		renderbuffer.width = w;
 		renderbuffer.height = h;
-		gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffer );
-		gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA4, w, h);
+		gl.bindRenderbuffer( gl.RENDERBUFFER, renderbuffer );
+		gl.renderbufferStorage( gl.RENDERBUFFER, gl.RGBA4, w, h );
 		gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, renderbuffer );
 	}
 
@@ -5951,17 +5983,25 @@ FBO.prototype.update = function( skip_disable )
 		gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, null, 0);
 	this._num_binded_textures = num;
 
-	//add an stencil buffer (if this doesnt work remember there is also the DEPTH_STENCIL options...)
-	if(this.stencil)
+	this._stencil_enabled = this.stencil;
+
+	/* does not work, must be used with the depth_stencil
+	if(this.stencil && !depth_texture)
 	{
 		var stencil_buffer = this._stencil_buffer = this._stencil_buffer || gl.createRenderbuffer();
+		stencil_buffer.width = w;
+		stencil_buffer.height = h;
 		gl.bindRenderbuffer( gl.RENDERBUFFER, stencil_buffer );
 		gl.renderbufferStorage( gl.RENDERBUFFER, gl.STENCIL_INDEX8, w, h);
 		gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.STENCIL_ATTACHMENT, gl.RENDERBUFFER, stencil_buffer );
 		this._stencil_enabled = true;
 	}
 	else
+	{
+		this._stencil_buffer = null;
 		this._stencil_enabled = false;
+	}
+	*/
 
 	//when using more than one texture you need to use the multidraw extension
 	if(color_textures && color_textures.length > 1)
@@ -7149,12 +7189,15 @@ GL.create = function(options) {
 
 	if(options.webgl2)
 	{
-		try { gl = canvas.getContext('webgl2', options); } catch (e) {}
-		try { gl = gl || canvas.getContext('experimental-webgl2', options); } catch (e) {}
+		try { gl = canvas.getContext('webgl2', options); gl.webgl_version = 2; } catch (e) {}
+		try { gl = gl || canvas.getContext('experimental-webgl2', options); gl.webgl_version = 2; } catch (e) {}
 	}
 	try { gl = gl || canvas.getContext('webgl', options); } catch (e) {}
 	try { gl = gl || canvas.getContext('experimental-webgl', options); } catch (e) {}
 	if (!gl) { throw 'WebGL not supported'; }
+
+	if(gl.webgl_version === undefined)
+		gl.webgl_version = 1;
 
 	global.gl = gl;
 	canvas.is_webgl = true;

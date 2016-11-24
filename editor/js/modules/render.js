@@ -62,6 +62,8 @@ var RenderModule = {
 		var visor_container = this.visor_container = document.getElementById("visor");
 		InterfaceModule.setVisorArea( visorarea );
 
+		//The WebGLContext is created from CanvasManager !!!!!!!
+
 		//create canvas and store inside the #visor
 		this.canvas_manager = new CanvasManager( { container: visor_container, full: true, antialiasing: true} );
 		if(!this.canvas_manager.gl)

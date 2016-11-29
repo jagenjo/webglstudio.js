@@ -14,6 +14,7 @@ function enableWebGLCanvas( canvas, options )
 	{
 		options.canvas = canvas;
 		options.alpha = true;
+		options.stencil = true;
 		try {
 			gl = GL.create(options);
 		} catch(e) {
@@ -57,6 +58,8 @@ function enableWebGLCanvas( canvas, options )
 	var quad_mesh = GL.Mesh.getScreenQuad();
 	var is_rect = false;
 	var extra_projection = mat4.create();
+	var stencil_enabled = false;
+	var anisotropic = options.anisotropic !== undefined ? options.anisotropic : 2;
 
 	var uniforms = {
 		u_texture: 0
@@ -202,6 +205,14 @@ function enableWebGLCanvas( canvas, options )
 		else
 			mat3.identity( this._matrix );
 		global_angle = Math.atan2( this._matrix[3], this._matrix[4] ); //use up vector
+		if(	stencil_enabled )
+		{
+			gl.enable( gl.STENCIL_TEST );
+			gl.clearStencil( 0x0 );
+			gl.clear( gl.STENCIL_BUFFER_BIT );
+			gl.disable( gl.STENCIL_TEST );
+			stencil_enabled = false;
+		}
 	}
 
 	ctx.transform = function(a,b,c,d,e,f) {
@@ -262,14 +273,14 @@ function enableWebGLCanvas( canvas, options )
 				tex = img.gl[ gl.context_id ];
 				if(tex)
 					return tex;
-				return img.gl[ gl.context_id ] = GL.Texture.fromImage(img, { magFilter: gl.LINEAR, minFilter: gl.LINEAR_MIPMAP_LINEAR, wrap: wrap, ignore_pot:true, premultipliedAlpha: true } );
+				return img.gl[ gl.context_id ] = GL.Texture.fromImage(img, { magFilter: gl.LINEAR, minFilter: gl.LINEAR_MIPMAP_LINEAR, wrap: wrap, ignore_pot:true, premultipliedAlpha: true, anisotropic: anisotropic } );
 			}
 			else //probably a canvas
 			{
 				tex = img.gl[ gl.context_id ];
 				if(tex)
 					return tex;
-				return img.gl[ gl.context_id ] = GL.Texture.fromImage(img, { minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+				return img.gl[ gl.context_id ] = GL.Texture.fromImage(img, { minFilter: gl.LINEAR, magFilter: gl.LINEAR, anisotropic: anisotropic });
 			}
 		}
 
@@ -853,6 +864,24 @@ function enableWebGLCanvas( canvas, options )
 		var v = gl.viewport_data;
 		gl.scissor(v[0],v[1],v[2],v[3]);
 	}
+	
+	ctx.clip = function()
+	{
+		gl.colorMask(false, false, false, false);
+		gl.depthMask(false);
+		
+		//fill stencil buffer
+		gl.enable( gl.STENCIL_TEST );
+		gl.stencilFunc( gl.ALWAYS, 1, 0xFF );
+		gl.stencilOp( gl.KEEP, gl.KEEP, gl.REPLACE ); //TODO using INCR we could allow 8 stencils 
+		
+		this.fill();
+
+		stencil_enabled = true;		
+		gl.colorMask(true, true, true, true);
+		gl.depthMask(true);
+		gl.stencilFunc( gl.EQUAL, 1, 0xFF );
+	}
 
 	//control funcs: used to set flags at the beginning and the end of the render
 	ctx.start2D = function()
@@ -865,6 +894,7 @@ function enableWebGLCanvas( canvas, options )
 		viewport[1] = gl.viewport_data[3];
 		gl.disable( gl.CULL_FACE );
 		gl.disable( gl.DEPTH_TEST );
+		gl.disable( gl.STENCIL_TEST );
 		gl.enable( gl.BLEND );
 		gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
 		gl.lineWidth = 1;
@@ -877,6 +907,7 @@ function enableWebGLCanvas( canvas, options )
 		global_index = 0;
 		gl.lineWidth = 1;
 		window.gl = prev_gl;
+		gl.disable( gl.STENCIL_TEST );
 	}
 
 	//extra
@@ -1333,7 +1364,7 @@ function enableWebGLCanvas( canvas, options )
 
 
 	//empty functions: this is used to create null functions in those Canvas2D funcs not implemented here
-	var names = ["clip","arcTo","isPointInPath","createImageData"]; //all functions have been implemented
+	var names = ["arcTo","isPointInPath","createImageData"]; //all functions have been implemented
 	var null_func = function() {};
 	for(var i in names)
 		ctx[ names[i] ] = null_func;

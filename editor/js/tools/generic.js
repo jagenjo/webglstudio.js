@@ -3,6 +3,20 @@
 
 //******* BUTTONS ******************************
 
+var centerInObjectButton = {
+	name: "center-in-object",
+	description: "Center in selected object",
+	section: "node-actions",
+	icon: "imgs/mini-icon-center.png",
+	callback: function()
+	{
+		EditorModule.centerCameraInSelection();
+		return false;
+	}
+};
+
+ToolsModule.registerButton(centerInObjectButton);
+
 var worldSpaceButton = {
 	name: "world-space",
 	description: "Change to world space mode",
@@ -93,7 +107,7 @@ var autorenderEnabledButton = {
 	name: "autorender",
 	description: "Force to render all frames",
 	section: "visibility",
-	icon: "imgs/mini-icon-rotator.png",
+	icon: "imgs/mini-icon-film.png",
 	enabled: false,
 	callback: function()
 	{
@@ -102,21 +116,6 @@ var autorenderEnabledButton = {
 };
 
 ToolsModule.registerButton( autorenderEnabledButton );
-
-
-var centerInObjectButton = {
-	name: "center-in-object",
-	description: "Center in selected object",
-	section: "node-actions",
-	icon: "imgs/mini-icon-center.png",
-	callback: function()
-	{
-		EditorModule.centerCameraInSelection();
-		return false;
-	}
-};
-
-ToolsModule.registerButton(centerInObjectButton);
 
 
 var showStencilButton = {

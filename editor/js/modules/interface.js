@@ -736,6 +736,18 @@ LiteGUI.Inspector.prototype.addRenderFrameContext = function( name, value, optio
 }
 LiteGUI.Inspector.widget_constructors["RenderFrameContext"] = "addRenderFrameContext";
 
+LiteGUI.Inspector.prototype.addRenderState = function( name, value, options )
+{
+	options = options || {};
+
+	options.callback = function(){
+		EditorModule.showRenderStateDialog(value);
+	};
+
+	return this.addButton(name,"Edit", options ); //the button could be small
+}
+LiteGUI.Inspector.widget_constructors["RenderState"] = "addRenderState";
+
 //to select a node, value must be a valid node identifier (not the node itself)
 LiteGUI.Inspector.prototype.addComponent = function( name, value, options )
 {

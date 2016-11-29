@@ -380,6 +380,7 @@ LS.Material["@inspector"] = function( material, inspector )
 
 LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspector )
 {
+	/*
 	inspector.addCombo("Shader", material.shader_name || "default", { values: LS.MaterialClasses.StandardMaterial.available_shaders, callback: function(v) { 
 		if(!material)
 			return;
@@ -389,8 +390,10 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 		else
 			material.shader_name = null;
 	}});
+	*/
 
 	inspector.addTitle("Properties");
+	inspector.widgets_per_row = 2;
 	inspector.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { 
 		material.opacity = value; 
 		if(material.opacity < 1 && material.blend_mode == LS.Blend.NORMAL)
@@ -398,10 +401,10 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 		if(material.opacity >= 1 && material.blend_mode == LS.Blend.ALPHA)
 			material.blend_mode = LS.Blend.NORMAL;
 	}});
-	inspector.widgets_per_row = 2;
 	inspector.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});
 
 	inspector.addButton(null, "Edit Flags", { callback: function () { LS.Material.showFlagsEditor( material ); } });
+	inspector.addRenderState("Render State", material.render_state, {} );
 
 	//inspector.addCheckbox("Alpha Test", material.alpha_test, { pretitle: AnimationModule.getKeyframeCode( material, "alpha_test" ), callback: function (value) { material.alpha_test = value; } });
 	inspector.widgets_per_row = 1;
@@ -550,9 +553,7 @@ LS.MaterialClasses.SurfaceMaterial["@inspector"] = function( material, inspector
 			EditorModule.showEditPropertiesDialog( material.properties, ["number","vec2","vec3","vec4","color","texture","cubemap","sampler"], inner_on_editproperties );
 	}});
 
-	inspector.addTitle("Shader");
-
-
+	inspector.addTitle("Shader & Flags");
 
 	/* allows to edit the shader directly in the material properties
 	if( material._view_shader_code )
@@ -577,12 +578,11 @@ LS.MaterialClasses.SurfaceMaterial["@inspector"] = function( material, inspector
 	}});
 	*/
 
-	inspector.addButton("", "Edit Shader", { callback: function() { 
+	inspector.addButton("Shader", "Edit Shader", { callback: function() { 
 		CodingModule.editInstanceCode( material, { id: material.uid, title: "Shader", lang:"glsl", help: material.constructor.coding_help }, true );
 	}});
 
-	inspector.addTitle("Flags");
-	//inspector.addCheckbox("Reflective", false );
+	inspector.addRenderState("Render State", material.render_state, {} );
 
 	inspector.addSeparator();
 

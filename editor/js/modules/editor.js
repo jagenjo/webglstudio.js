@@ -668,7 +668,7 @@ var EditorModule = {
 		dialog.show();
 	},
 
-	showRenderFrameContextDialog: function( render_context )
+	showRenderFrameContextDialog: function( render_context, callback )
 	{
 		var dialog = new LiteGUI.Dialog(null,{ title:"Render Context", width: 400, draggable: true, closable: true });
 		
@@ -676,6 +676,26 @@ var EditorModule = {
 		inspector.showObjectFields( render_context );
 
 		inspector.onchange = function(){
+			if(callback)
+				callback( render_state );
+			LS.GlobalScene.refresh();
+		}
+
+		dialog.add( inspector );
+		dialog.adjustSize();
+		dialog.show();
+	},
+
+	showRenderStateDialog: function( render_state, callback )
+	{
+		var dialog = new LiteGUI.Dialog(null,{ title:"Render State", width: 400, draggable: true, closable: true });
+		
+		var inspector = new LiteGUI.Inspector(null,{name_width:"50%"});
+		inspector.showObjectFields( render_state );
+
+		inspector.onchange = function(){
+			if(callback)
+				callback( render_state );
 			LS.GlobalScene.refresh();
 		}
 

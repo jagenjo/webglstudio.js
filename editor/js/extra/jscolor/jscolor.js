@@ -554,8 +554,9 @@ var jscolor = {
 
 
 		function removePicker() {
+			var doc = jscolor.picker.owner.valueElement.ownerDocument;
 			delete jscolor.picker.owner;
-			document.getElementsByTagName('body')[0].removeChild(jscolor.picker.boxB);
+			doc.getElementsByTagName('body')[0].removeChild(jscolor.picker.boxB);
 		}
 
 
@@ -731,7 +732,9 @@ var jscolor = {
 			redrawSld();
 
 			jscolor.picker.owner = THIS;
-			document.getElementsByTagName('body')[0].appendChild(p.boxB);
+
+			var doc = jscolor.picker.owner.valueElement.ownerDocument;
+			doc.getElementsByTagName('body')[0].appendChild(p.boxB);
 		}
 
 

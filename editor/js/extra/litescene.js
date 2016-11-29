@@ -1146,7 +1146,7 @@ var LS = {
 			{
 				if(v.constructor !== Object && !target && !v.toJSON )
 				{
-					console.warn("Cannot clone system classes");
+					console.warn("Cannot clone internal classes:", LS.getObjectClassName( v )," When serializing an object I found a var with a class that doesnt support serialization. If this var shouldnt be serialized start the name with underscore.'");
 					continue;
 				}
 
@@ -1156,7 +1156,7 @@ var LS = {
 					o[i] = LS.cloneObject( v, null, true );
 				else {
 					if(v.constructor !== Object && LS.Classes[ LS.getObjectClassName(v) ])
-						console.warn("Cannot clone internal classes: " + LS.getObjectClassName(v) );
+						console.warn("Cannot clone internal classes:", LS.getObjectClassName(v)," When serializing an object I found a var with a class that doesnt support serialization. If this var shouldnt be serialized start the name with underscore.'" );
 
 					if(LS.catch_exceptions)
 					{
@@ -6340,6 +6340,8 @@ StandardMaterial.prototype.setProperty = function(name, value)
 	//regular
 	switch(name)
 	{
+		//objects
+		case "render_state":
 		//numbers
 		case "specular_factor":
 		case "specular_gloss":
@@ -7032,13 +7034,16 @@ ShaderMaterial.prototype.createUniform = function( name, uniform, type, value, o
 * @param {String} name the property name as it should be shown
 * @param {String} uniform the uniform name in the shader
 * @param {Object} options an object containing all the possible options (used mostly for widgets)
+* @param {String} value default value (texture name)
 */
-ShaderMaterial.prototype.createSampler = function( name, uniform, sampler_options  )
+ShaderMaterial.prototype.createSampler = function( name, uniform, sampler_options, value  )
 {
 	if(!name || !uniform)
 		throw("parameter missing in createSampler");
 
-	var sampler = {};
+	var sampler = {
+		texture: value
+	};
 
 	var prop = { name: name, uniform: uniform, value: sampler, type: "sampler", is_texture: 1, sampler_slot: -1 };
 
@@ -7300,7 +7305,7 @@ ShaderMaterial.prototype.assignOldProperties = function( old_properties )
 }
 
 //called from LS.Renderer when rendering an instance
-ShaderMaterial.prototype.renderInstance = function( instance, render_settings )
+ShaderMaterial.prototype.renderInstance = function( instance, render_settings, pass )
 {
 	if(!this.shader)
 		return true; //skip rendering
@@ -7348,9 +7353,9 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings )
 	if(!lights)
 	{
 		//extract shader compiled
-		var shader = shader_code.getShader( null, block_flags );
+		var shader = shader_code.getShader( pass.name, block_flags );
 		if(!shader)
-			return true;
+			return false;
 
 		//assign
 		shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, light ? light._uniforms : null, this._uniforms, instance.uniforms ] );
@@ -7401,9 +7406,9 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings )
 	return true;
 }
 
-ShaderMaterial.prototype.renderShadowInstance = function( instance, render_settings )
+ShaderMaterial.prototype.renderShadowInstance = function( instance, render_settings, pass )
 {
-	return this.renderInstance( instance, render_settings );
+	return this.renderInstance( instance, render_settings, pass );
 }
 
 /**
@@ -11115,6 +11120,8 @@ ShaderCode.prototype.processCode = function()
 		}
 
 		var name = LS.ResourcesManager.removeExtension( subfile_name );
+		if(name == "default")
+			name = "color"; //LEGACY fix
 		var extension = LS.ResourcesManager.getExtension( subfile_name );
 
 		if(extension == "vs" || extension == "fs")
@@ -11202,7 +11209,7 @@ ShaderCode.prototype.getShader = function( render_mode, block_flags )
 	if( this._has_error )
 		return null;
 
-	render_mode = render_mode || "default";
+	render_mode = render_mode || "color";
 	block_flags = block_flags || 0;
 
 	//search for a compiled version of the shader (by render_mode and block_flags)
@@ -11375,7 +11382,7 @@ ShaderCode.examples.color = "\n\
 this.createUniform(\"Number\",\"u_number\",\"number\");\n\
 this.createSampler(\"Texture\",\"u_texture\");\n\
 \n\
-\\default.vs\n\
+\\color.vs\n\
 \n\
 precision mediump float;\n\
 attribute vec3 a_vertex;\n\
@@ -11413,7 +11420,7 @@ void main() {\n\
 	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
 }\n\
 \n\
-\\default.fs\n\
+\\color.fs\n\
 \n\
 precision mediump float;\n\
 //varyings\n\
@@ -14001,6 +14008,8 @@ Object.defineProperty( RenderState.prototype, "front_face", {
 	enumerable: true
 });
 
+RenderState["@front_face"] = { widget: "combo", values: { CW: GL.CW, CCW: GL.CCW } };
+
 Object.defineProperty( RenderState.prototype, "cull_face", {
 	set: function(v) { this._data[1] = v ? 1 : 0; },
 	get: function() { return this._data[1] !== 0;	},
@@ -14012,6 +14021,8 @@ Object.defineProperty( RenderState.prototype, "cull_face_mode", {
 	get: function() { return this._data[2];	},
 	enumerable: true
 });
+
+RenderState["@cull_face_mode"] = { widget: "combo", values: { FRONT: GL.FRONT, BACK: GL.BACK, FRONT_AND_BACK: GL.FRONT_AND_BACK } };
 
 Object.defineProperty( RenderState.prototype, "depth_test", {
 	set: function(v) { this._data[4] = v ? 1 : 0; },
@@ -14030,6 +14041,8 @@ Object.defineProperty( RenderState.prototype, "depth_func", {
 	get: function() { return this._data[6];	},
 	enumerable: true
 });
+
+RenderState["@depth_func"] = { widget: "combo", values: { LESS: GL.LESS, LEQUAL: GL.LEQUAL, EQUAL: GL.EQUAL, NOTEQUAL: GL.NOTEQUAL, GREATER: GL.GREATER, GEQUAL: GL.GEQUAL, ALWAYS: GL.ALWAYS, NEVER: GL.NEVER } };
 
 Object.defineProperty( RenderState.prototype, "depth_range", {
 	set: function(v) { 
@@ -14054,11 +14067,15 @@ Object.defineProperty( RenderState.prototype, "blendFunc0", {
 	enumerable: true
 });
 
+RenderState["@blendFunc0"] = { widget: "combo", values: { ZERO: GL.ZERO, ONE: GL.ONE, SRC_COLOR: GL.SRC_COLOR, ONE_MINUS_SRC_COLOR: GL.ONE_MINUS_SRC_COLOR, DST_COLOR: GL.DST_COLOR, ONE_MINUS_DST_COLOR: GL.ONE_MINUS_DST_COLOR, SRC_ALPHA: GL.SRC_ALPHA, ONE_MINUS_SRC_ALPHA: GL.ONE_MINUS_SRC_ALPHA, DST_ALPHA: GL.DST_ALPHA, ONE_MINUS_DST_ALPHA: GL.ONE_MINUS_DST_ALPHA, CONSTANT_COLOR: GL.CONSTANT_COLOR, ONE_MINUS_CONSTANT_COLOR: GL.ONE_MINUS_CONSTANT_COLOR, CONSTANT_ALPHA: GL.CONSTANT_ALPHA, ONE_MINUS_CONSTANT_ALPHA: GL.ONE_MINUS_CONSTANT_ALPHA, SRC_ALPHA_SATURATE: GL.SRC_ALPHA_SATURATE } };
+
 Object.defineProperty( RenderState.prototype, "blendFunc1", {
 	set: function(v) { this._data[11] = v; },
 	get: function() { return this._data[11];	},
 	enumerable: true
 });
+
+RenderState["@blendFunc1"] = { widget: "combo", values: { ZERO: GL.ZERO, ONE: GL.ONE, SRC_COLOR: GL.SRC_COLOR, ONE_MINUS_SRC_COLOR: GL.ONE_MINUS_SRC_COLOR, DST_COLOR: GL.DST_COLOR, ONE_MINUS_DST_COLOR: GL.ONE_MINUS_DST_COLOR, SRC_ALPHA: GL.SRC_ALPHA, ONE_MINUS_SRC_ALPHA: GL.ONE_MINUS_SRC_ALPHA, DST_ALPHA: GL.DST_ALPHA, ONE_MINUS_DST_ALPHA: GL.ONE_MINUS_DST_ALPHA, CONSTANT_COLOR: GL.CONSTANT_COLOR, ONE_MINUS_CONSTANT_COLOR: GL.ONE_MINUS_CONSTANT_COLOR, CONSTANT_ALPHA: GL.CONSTANT_ALPHA, ONE_MINUS_CONSTANT_ALPHA: GL.ONE_MINUS_CONSTANT_ALPHA, SRC_ALPHA_SATURATE: GL.SRC_ALPHA_SATURATE } };
 
 Object.defineProperty( RenderState.prototype, "blendFunc", {
 	set: function(v)
@@ -14139,6 +14156,8 @@ Object.defineProperty( RenderState.prototype, "stencil_mask", {
 	enumerable: true
 });
 
+RenderState["@stencil_mask"] = { widget: "number", min: 0, max: 256, step: 1, precision: 0 };
+
 Object.defineProperty( RenderState.prototype, "stencil_func", {
 	set: function(v) {
 		if(!v || v.length != 3)
@@ -14148,26 +14167,32 @@ Object.defineProperty( RenderState.prototype, "stencil_func", {
 		this._data[20] = v[2];
 	},
 	get: function() { return this._data.subarray(18,21); },
-	enumerable: true
+	enumerable: false
 });
 
 Object.defineProperty( RenderState.prototype, "stencil_func_func", {
 	set: function(v) { this._data[18] = v; },
 	get: function() { return this._data[18]; },
-	enumerable: false
+	enumerable: true
 });
+
+RenderState["@stencil_func_func"] = { widget: "combo", values: { LESS: GL.LESS, LEQUAL: GL.LEQUAL, EQUAL: GL.EQUAL, NOTEQUAL: GL.NOTEQUAL, GREATER: GL.GREATER, GEQUAL: GL.GEQUAL, ALWAYS: GL.ALWAYS, NEVER: GL.NEVER } };
 
 Object.defineProperty( RenderState.prototype, "stencil_func_ref", {
 	set: function(v) { this._data[19] = v; },
 	get: function() { return this._data[19]; },
-	enumerable: false
+	enumerable: true
 });
+
+RenderState["@stencil_func_ref"] = { widget: "number", min: 0, max: 256, step: 1, precision: 0 };
 
 Object.defineProperty( RenderState.prototype, "stencil_func_mask", {
 	set: function(v) { this._data[20] = v; },
 	get: function() { return this._data[20]; },
-	enumerable: false
+	enumerable: true
 });
+
+RenderState["@stencil_func_mask"] = { widget: "number", min: 0, max: 256, step: 1, precision: 0 };
 
 Object.defineProperty( RenderState.prototype, "stencil_op", {
 	set: function(v) {
@@ -14178,26 +14203,32 @@ Object.defineProperty( RenderState.prototype, "stencil_op", {
 		this._data[23] = v[2];
 	},
 	get: function() { return this._data.subarray(21,24); },
-	enumerable: true
+	enumerable: false
 });
 
 Object.defineProperty( RenderState.prototype, "stencil_op_sfail", {
 	set: function(v) { this._data[21] = v; },
 	get: function() { return this._data[21]; },
-	enumerable: false
+	enumerable: true
 });
+
+RenderState["@stencil_op_sfail"] = { widget: "combo", values: { KEEP: GL.KEEP, ZERO: GL.ZERO, REPLACE: GL.REPLACE, INCR: GL.INCR, INCR_WRAP: GL.INCR_WRAP, DECR: GL.DECR_WRAP, INVERT: GL.INVERT } };
 
 Object.defineProperty( RenderState.prototype, "stencil_op_dpfail", {
 	set: function(v) { this._data[22] = v; },
 	get: function() { return this._data[22]; },
-	enumerable: false
+	enumerable: true
 });
+
+RenderState["@stencil_op_dpfail"] = { widget: "combo", values: { KEEP: GL.KEEP, ZERO: GL.ZERO, REPLACE: GL.REPLACE, INCR: GL.INCR, INCR_WRAP: GL.INCR_WRAP, DECR: GL.DECR_WRAP, INVERT: GL.INVERT } };
 
 Object.defineProperty( RenderState.prototype, "stencil_op_dppass", {
 	set: function(v) { this._data[23] = v; },
 	get: function() { return this._data[23]; },
-	enumerable: false
+	enumerable: true
 });
+
+RenderState["@stencil_op_dppass"] = { widget: "combo", values: { KEEP: GL.KEEP, ZERO: GL.ZERO, REPLACE: GL.REPLACE, INCR: GL.INCR, INCR_WRAP: GL.INCR_WRAP, DECR: GL.DECR_WRAP, INVERT: GL.INVERT } };
 
 RenderState.default_state = {
 	front_face: GL.CCW,
@@ -14831,6 +14862,9 @@ function RenderFrameContext( o )
 	this._color_texture = null;
 	this._depth_texture = null;
 	this._textures = []; //all color textures
+	this._cloned_textures = null;
+
+	this._version = 1;
 
 	if(o)
 		this.configure(o);
@@ -15001,6 +15035,7 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 	//assign textures (this will enable the FBO but it will restore the old one after finishing)
 	this._fbo.stencil = this.use_stencil_buffer;
 	this._fbo.setTextures( textures, this._depth_texture );
+	this._version += 1;
 }
 
 /**
@@ -15016,8 +15051,15 @@ RenderFrameContext.prototype.enable = function( render_settings, viewport )
 	//create FBO and textures (pass width and height of current viewport)
 	this.prepare( viewport[2], viewport[3] );
 
+	if(!this._fbo)
+		throw("No FBO created in RenderFrameContext");
+
 	//enable FBO
-	this.enableFBO();
+	RenderFrameContext.enableFBO( this._fbo, this.adjust_aspect );
+
+	if(LS.RenderFrameContext.current)
+		RenderFrameContext.stack.push( LS.RenderFrameContext.current );
+	LS.RenderFrameContext.current = this;
 
 	//set depth info inside the texture
 	if(this._depth_texture && camera)
@@ -15027,6 +15069,47 @@ RenderFrameContext.prototype.enable = function( render_settings, viewport )
 	}
 }
 
+//we cannot read and write in the same buffer, so we need to clone the textures
+RenderFrameContext.prototype.cloneBuffers = function()
+{
+	//we do not call this._fbo.unbind because it will set the previous FBO
+	gl.bindFramebuffer( gl.FRAMEBUFFER, null );
+
+	///for color
+	if( this._textures.length )
+	{
+		if(!this._cloned_textures)
+			this._cloned_textures = [];
+		var textures = this._textures;
+		this._cloned_textures.length = textures.length;
+		for(var i = 0; i < textures.length; ++i)
+		{
+			var texture = textures[i];
+			var cloned_texture = this._cloned_textures[i];
+			if( !cloned_texture || cloned_texture.hasSameSize( texture[i] ) || !cloned_texture.hasSameProperties( texture ) )
+				cloned_texture = this._cloned_textures[i] = new GL.Texture( texture.width, texture.height, texture.getProperties() );
+
+			texture.copyTo( cloned_texture );
+			if(i == 0)
+				LS.ResourcesManager.textures[":color_buffer" ] = cloned_texture;
+		}
+	}
+
+	//for depth
+	if( this._depth_texture )
+	{
+		var depth = this._depth_texture;
+		if(!this._cloned_depth_texture || this._cloned_depth_texture.width != depth.width || this._cloned_depth_texture.height != depth.height || !this._cloned_depth_texture.hasSameProperties( depth ) )
+			this._cloned_depth_texture = new GL.Texture( depth.width, depth.height, depth.getProperties() );
+
+		depth.copyTo( this._cloned_depth_texture );
+		LS.ResourcesManager.textures[":depth_buffer" ] = this._cloned_depth_texture;
+	}
+
+	//rebind FBO
+	gl.bindFramebuffer( gl.FRAMEBUFFER, this._fbo.handler );
+}
+
 /**
 * Called to stop rendering to this context
 *
@@ -15034,7 +15117,48 @@ RenderFrameContext.prototype.enable = function( render_settings, viewport )
 */
 RenderFrameContext.prototype.disable = function()
 {
-	this.disableFBO();
+	//sets some global parameters for aspect and current RFC
+	RenderFrameContext.disableFBO( this._fbo );
+
+	//if we need to store the textures in the ResourcesManager
+	if(this.name)
+	{
+		var textures = this._textures;
+		for(var i = 0; i < textures.length; ++i)
+		{
+			var name = this.name + (i > 0 ? i : "");
+			textures[i].filename = name;
+
+			//only clone main color if requested
+			if( this.clone_after_unbind && i === 0 )
+			{
+				if( !this._cloned_texture || 
+					this._cloned_texture.width !== textures[i].width || 
+					this._cloned_texture.height !== textures[i].height ||
+					this._cloned_texture.type !== textures[i].type )
+					this._cloned_texture = textures[i].clone();
+				else
+					textures[i].copyTo( this._cloned_texture );
+
+				LS.ResourcesManager.textures[ name ] = this._cloned_texture;
+			}
+			else
+				LS.ResourcesManager.textures[ name ] = textures[i];
+		}
+
+		if(this._depth_texture)
+		{
+			var name = this.name + "_depth";
+			this._depth_texture.filename = name;
+			LS.ResourcesManager.textures[ name ] = this._depth_texture;
+			//LS.ResourcesManager.textures[ ":depth" ] = this._depth_texture;
+		}
+	}
+
+	if( RenderFrameContext.stack.length )
+		LS.RenderFrameContext.current = RenderFrameContext.stack.pop();
+	else
+		LS.RenderFrameContext.current = null;
 }
 
 /**
@@ -15060,75 +15184,29 @@ RenderFrameContext.prototype.getDepthTexture = function()
 	return this._depth_texture || null;
 }
 
-//helper in case you want have a Color and Depth texture
-RenderFrameContext.prototype.enableFBO = function()
+//enables the FBO and sets every texture with a flag so it cannot be used during the rendering process
+RenderFrameContext.enableFBO = function( fbo, adjust_aspect )
 {
-	if(!this._fbo)
-		throw("No FBO created in RenderFrameContext");
-
-	this._fbo.bind( true ); //changes viewport to full FBO size (saves old)
-
-	for(var i = 0; i < this._textures.length; ++i)
-		this._textures[i]._in_current_fbo = true;
-	if(this._depth_texture) //in some cases you can read from the same buffer that is binded (if no writing is enabled)
-		this._depth_texture._in_current_fbo = true;
+	fbo.bind( true ); //changes viewport to full FBO size (saves old)
 
 	LS.Renderer._full_viewport.set( gl.viewport_data );
-	this._old_aspect = LS.Renderer.global_aspect;
-	if(this.adjust_aspect)
-		LS.Renderer.global_aspect = (gl.canvas.width / gl.canvas.height) / (this._color_texture.width / this._color_texture.height);
-	if(LS.RenderFrameContext.current)
-		RenderFrameContext.stack.push( LS.RenderFrameContext.current );
-	LS.RenderFrameContext.current = this;
-}
-
-RenderFrameContext.prototype.disableFBO = function()
-{
-	this._fbo.unbind(); //restores viewport to old saved one
-	LS.Renderer._full_viewport.set( this._fbo._old_viewport );
-	LS.Renderer.global_aspect = this._old_aspect;
-
-	for(var i = 0; i < this._textures.length; ++i)
-		this._textures[i]._in_current_fbo = false;
-	if(this._depth_texture)
-		this._depth_texture._in_current_fbo = false;
-
-	if(this.name)
+	if( adjust_aspect )
 	{
-		for(var i = 0; i < this._textures.length; ++i)
-		{
-			var name = this.name + (i > 0 ? i : "");
-			this._textures[i].filename = name;
-
-			if(this.clone_after_unbind && i === 0)
-			{
-				if( !this._cloned_texture || 
-					this._cloned_texture.width !== this._textures[i].width || 
-					this._cloned_texture.height !== this._textures[i].height ||
-					this._cloned_texture.type !== this._textures[i].type )
-					this._cloned_texture = this._textures[i].clone();
-				else
-					this._textures[i].copyTo( this._cloned_texture );
-
-				LS.ResourcesManager.textures[ name ] = this._cloned_texture;
-			}
-			else
-				LS.ResourcesManager.textures[ name ] = this._textures[i];
-		}
-		if(this._depth_texture)
-		{
-			var name = this.name + "_depth";
-			this._depth_texture.filename = name;
-			LS.ResourcesManager.textures[ name ] = this._depth_texture;
-			//LS.ResourcesManager.textures[ ":depth" ] = this._depth_texture;
-		}
+		fbo._old_aspect = LS.Renderer.global_aspect;
+		LS.Renderer.global_aspect = (gl.canvas.width / gl.canvas.height) / (fbo.color_textures[0].width / fbo.color_textures[0].height);
 	}
-
-	if( RenderFrameContext.stack.length )
-		LS.RenderFrameContext.current = RenderFrameContext.stack.pop();
 	else
-		LS.RenderFrameContext.current = null;
+		delete fbo._old_aspect;
 }
+
+RenderFrameContext.disableFBO = function( fbo )
+{
+	fbo.unbind(); //restores viewport to old saved one
+	LS.Renderer._full_viewport.set( fbo._old_viewport );
+	if( fbo._old_aspect )
+		LS.Renderer.global_aspect = fbo._old_aspect;
+}
+
 
 /**
 * Render the context of the context to the viewport (allows to apply FXAA)
@@ -15200,7 +15278,8 @@ RenderQueue.DEFAULT = 0;
 RenderQueue.BACKGROUND = 5;
 RenderQueue.GEOMETRY = 10;
 RenderQueue.TRANSPARENT = 15;
-RenderQueue.OVERLAY = 20;
+RenderQueue.READBACK_COLOR = 20;
+RenderQueue.OVERLAY = 25;
 
 RenderQueue.NO_SORT = 0;
 RenderQueue.SORT_NEAR_TO_FAR = 1;
@@ -15343,7 +15422,17 @@ var Renderer = {
 		this.createRenderQueue( LS.RenderQueue.BACKGROUND, LS.RenderQueue.NO_SORT );
 		this.createRenderQueue( LS.RenderQueue.GEOMETRY, LS.RenderQueue.SORT_NEAR_TO_FAR );
 		this.createRenderQueue( LS.RenderQueue.TRANSPARENT, LS.RenderQueue.SORT_FAR_TO_NEAR );
+
+		//very special queue that must change the renderframecontext before start rendering anything
+		this.createRenderQueue( LS.RenderQueue.READBACK_COLOR, LS.RenderQueue.SORT_FAR_TO_NEAR, {
+			onStart: function( render_settings, pass ){
+				if( LS.RenderFrameContext.current && pass.name === "color" )
+					LS.RenderFrameContext.current.cloneBuffers();
+			}
+		});
+
 		this.createRenderQueue( LS.RenderQueue.OVERLAY, LS.RenderQueue.NO_SORT );
+
 	},
 
 	reset: function()
@@ -15775,9 +15864,15 @@ var Renderer = {
 		for(var j = 0; j < this._queues.length; ++j)
 		{
 			var queue = this._queues[j];
-			if(!queue)
+			if(!queue || !queue.instances.length) //empty
 				continue;
-			var render_instances = this._queues[j].instances;
+
+			//used to change RenderFrameContext stuff (cloning textures for refraction, etc)
+			if(queue.onStart)
+				if( queue.onStart( render_settings, pass ) === false )
+					continue;
+
+			var render_instances = queue.instances;
 
 			//for each render instance
 			for(var i = 0, l = render_instances.length; i < l; ++i)
@@ -15791,12 +15886,15 @@ var Renderer = {
 				this._rendered_instances += 1;
 
 				//choose the appropiate render pass
-				render_instance_func.call( this, instance, render_settings ); //by default calls renderColorInstance but it could call renderShadowPassInstance
+				render_instance_func.call( this, instance, render_settings, pass ); //by default calls renderColorInstance but it could call renderShadowPassInstance
 
 				//some instances do a post render action
 				if(instance.onPostRender)
 					instance.onPostRender( render_settings );
 			}
+
+			if(queue.onFinish)
+				queue.onFinish( render_settings, pass );
 		}
 
 		this.resetGLState( render_settings );
@@ -15859,29 +15957,29 @@ var Renderer = {
 	},
 
 	//this function is in charge of rendering the regular color pass (used also for reflections)
-	renderColorPassInstance: function( instance, render_settings )
+	renderColorPassInstance: function( instance, render_settings, pass )
 	{
 		//render instance
 		var renderered = false;
 		if( instance.material && instance.material.renderInstance )
-			renderered = instance.material.renderInstance( instance, render_settings );
+			renderered = instance.material.renderInstance( instance, render_settings, pass );
 
 		//render using default system (slower but it works)
 		if(!renderered)
-			this.renderStandardColorMultiPassLightingInstance( instance, render_settings );
+			this.renderStandardColorMultiPassLightingInstance( instance, render_settings, pass );
 	},
 
 	//this function is in charge of rendering an instance in the shadowmap
-	renderShadowPassInstance: function( instance, render_settings )
+	renderShadowPassInstance: function( instance, render_settings, pass )
 	{
 		//render instance
 		var renderered = false;
 		if( instance.material && instance.material.renderShadowInstance )
-			renderered = instance.material.renderShadowInstance( instance, render_settings );
+			renderered = instance.material.renderShadowInstance( instance, render_settings, pass );
 
 		//render using default system (slower but it works)
 		if(!renderered)
-			this.renderStandardShadowPassInstance( instance, render_settings);
+			this.renderStandardShadowPassInstance( instance, render_settings, pass);
 	},
 
 
@@ -16669,9 +16767,11 @@ var Renderer = {
 	*
 	* @method addRenderQueue
 	* @param {RenderQueue} name name of the render pass as in render_passes
+	* @param {Number} sorting which algorithm use to sort ( LS.RenderQueue.NO_SORT, LS.RenderQueue.SORT_NEAR_TO_FAR, LS.RenderQueue.SORT_FAR_TO_NEAR )
+	* @param {Object} options extra stuff to add to the queue ( like callbacks onStart, onFinish )
 	* @return {Number} index of the render queue
 	*/
-	createRenderQueue: function( index, sorting )
+	createRenderQueue: function( index, sorting, options )
 	{
 		if(index === undefined)
 			throw("RenderQueue must have index");
@@ -16679,6 +16779,10 @@ var Renderer = {
 		if( this._queues[ index ] )
 			console.warn("There is already a RenderQueue in slot ",index );
 		this._queues[ index ] = queue;
+
+		if(options)
+			for(var i in options)
+				queue[i] = options[i];
 	}
 };
 
@@ -36246,6 +36350,14 @@ var parserOBJ = {
 		var groups_by_name = {};
 		var materials_found = {};
 
+		var V_CODE = 1;
+		var VT_CODE = 2;
+		var VN_CODE = 3;
+		var F_CODE = 4;
+		var G_CODE = 5;
+		var O_CODE = 6;
+		var codes = { v: V_CODE, vt: VT_CODE, vn: VN_CODE, f: F_CODE, g: G_CODE, o: O_CODE };
+
 		var lines = text.split("\n");
 		var length = lines.length;
 		for (var lineIndex = 0;  lineIndex < length; ++lineIndex) {
@@ -36257,31 +36369,51 @@ var parserOBJ = {
 				continue;
 
 			tokens = line.split(" ");
+			var code = codes[ tokens[0] ];
 
-			if(parsingFaces && tokens[0] == "v") //another mesh?
+			if(parsingFaces && code == V_CODE) //another mesh?
 			{
 				indices_offset = index;
 				parsingFaces = false;
 				//trace("multiple meshes: " + indices_offset);
 			}
 
-			if (tokens[0] == "v") {
+			//read and parse numbers
+			if( code <= VN_CODE ) //v,vt,vn
+			{
+				x = parseFloat(tokens[1]);
+				y = parseFloat(tokens[2]);
+				if( code != VT_CODE )
+				{
+					if(tokens[3] == '\\') //super weird case, OBJ allows to break lines with slashes...
+					{
+						//HACK! only works if the var is the thirth position...
+						++lineIndex;
+						line = lines[lineIndex].replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //better than trim
+						z = parseFloat(line);
+					}
+					else
+						z = parseFloat(tokens[3]);
+				}
+			}
+
+			if (code == V_CODE) {
 				if(flip_axis) //maya and max notation style
-					positions.push(-1*parseFloat(tokens[1]),parseFloat(tokens[3]),parseFloat(tokens[2]));
+					positions.push(-1*x,z,y);
 				else
-					positions.push(parseFloat(tokens[1]),parseFloat(tokens[2]),parseFloat(tokens[3]));
+					positions.push(x,y,z);
 			}
-			else if (tokens[0] == "vt") {
-				texcoords.push(parseFloat(tokens[1]),parseFloat(tokens[2]));
+			else if (code == VT_CODE) {
+				texcoords.push(x,y);
 			}
-			else if (tokens[0] == "vn") {
+			else if (code == VN_CODE) {
 
 				if(flip_normals)  //maya and max notation style
-					normals.push(-parseFloat(tokens[2]),-parseFloat(tokens[3]),parseFloat(tokens[1]));
+					normals.push(-y,-z,x);
 				else
-					normals.push(parseFloat(tokens[1]),parseFloat(tokens[2]),parseFloat(tokens[3]));
+					normals.push(x,y,z);
 			}
-			else if (tokens[0] == "f") {
+			else if (code == F_CODE) {
 				parsingFaces = true;
 
 				if (tokens.length < 4)
@@ -36411,7 +36543,7 @@ var parserOBJ = {
 					}
 				}
 			}
-			else if (tokens[0] == "g" || tokens[0] == "o")
+			else if ( code == G_CODE || code == O_CODE)
 			{
 				negative_offset = positions.length / 3 - 1;
 

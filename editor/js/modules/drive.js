@@ -1571,6 +1571,11 @@ var DriveModule = {
 			{
 				var res_name = missing[i];
 				var resource = LS.RM.resources[ res_name ];
+				if(!resource)
+				{
+					console.warn("checkResourcesSaved: resource not found:", res_name );
+					continue;
+				}
 				var str = DriveModule.beautifyPath( res_name, { "class":"ellipsis", style:"max-width: 80%;"} );
 				if( resource._modified && resource.remotepath )
 					str += "<button class='save-item' data-path='"+res_name+"' style='float:right; width: 60px; margin-top: 3px;'>Save</button>";

@@ -2112,13 +2112,16 @@ function dataURItoBlob( dataURI ) {
 			that.setValue( range * norm + min );
 		}
 
+		var doc_binded = null;
+
 		canvas.addEventListener("mousedown", function(e) {
 			var mouseX, mouseY;
 			if(e.offsetX) { mouseX = e.offsetX; mouseY = e.offsetY; }
 			else if(e.layerX) { mouseX = e.layerX; mouseY = e.layerY; }	
 			setFromX(mouseX);
-			document.addEventListener("mousemove", onMouseMove );
-			document.addEventListener("mouseup", onMouseUp );
+			doc_binded = canvas.ownerDocument;
+			doc_binded.addEventListener("mousemove", onMouseMove );
+			doc_binded.addEventListener("mouseup", onMouseUp );
     	});
 
 		function onMouseMove(e)
@@ -2133,8 +2136,10 @@ function dataURItoBlob( dataURI ) {
 
 		function onMouseUp(e)
 		{
-			document.removeEventListener("mousemove", onMouseMove );
-			document.removeEventListener("mouseup", onMouseUp );
+			var doc = doc_binded || document;
+			doc_binded = null;
+			doc.removeEventListener("mousemove", onMouseMove );
+			doc.removeEventListener("mouseup", onMouseUp );
 			e.preventDefault();
 			return false;
 		}
@@ -4177,15 +4182,19 @@ function dataURItoBlob( dataURI ) {
 		input.addEventListener("wheel",inner_wheel,false);
 		input.addEventListener("mousewheel",inner_wheel,false);
 
+		var doc_binded = null;
+
 		function inner_down(e)
 		{
-			document.removeEventListener("mousemove", inner_move);
-			document.removeEventListener("mouseup", inner_up);
+			doc_binded = input.ownerDocument;
+
+			doc_binded.removeEventListener("mousemove", inner_move);
+			doc_binded.removeEventListener("mouseup", inner_up);
 
 			if(!options.disabled)
 			{
-				document.addEventListener("mousemove", inner_move);
-				document.addEventListener("mouseup", inner_up);
+				doc_binded.addEventListener("mousemove", inner_move);
+				doc_binded.addEventListener("mouseup", inner_up);
 
 				dragger.data = [e.screenX, e.screenY];
 
@@ -4223,8 +4232,10 @@ function dataURItoBlob( dataURI ) {
 		function inner_up(e)
 		{
 			LiteGUI.trigger(element, "stop_dragging");
-			document.removeEventListener("mousemove", inner_move);
-			document.removeEventListener("mouseup", inner_up);
+			var doc = doc_binded || document;
+			doc_binded = null;
+			doc.removeEventListener("mousemove", inner_move);
+			doc.removeEventListener("mouseup", inner_up);
 			LiteGUI.trigger(dragger,"blur");
 			e.stopPropagation();
 			e.preventDefault();
@@ -8186,11 +8197,15 @@ Inspector.prototype.addCombo = function(name, value, options)
 	var code = "<select tabIndex='"+this.tab_index+"' "+(options.disabled?"disabled":"")+" class='"+(options.disabled?"disabled":"")+"'></select>";
 	element.querySelector("span.inputcombo").innerHTML = code;
 	setValues(values);
+	
+	var stop_event = false; //used internally
 
 	var select = element.querySelector(".wcontent select");
 	select.addEventListener("change", function(e) { 
 		var index = e.target.value;
 		var value = values[index];
+		if(stop_event)
+			return;
 		Inspector.onWidgetChange.call( that,element,name,value, options );
 	});
 
@@ -8221,6 +8236,8 @@ Inspector.prototype.addCombo = function(name, value, options)
 
 		if(index == -1)
 			return;
+			
+		stop_event = skip_event;
 
 		for(var i in items)
 		{
@@ -8235,6 +8252,8 @@ Inspector.prototype.addCombo = function(name, value, options)
 			else
 				item.removeAttribute("selected");
 		}
+		
+		stop_event = false;
 	};
 
 	function setValues(v, selected){
@@ -8736,99 +8755,111 @@ Inspector.prototype.addColor = function( name, value, options )
 	var input_element = element.querySelector("input.color");
 	var myColor = null;
 
-	//SHOWS CONTEXTUAL MENU
-	//block focusing
-	/*
-    input_element.addEventListener("contextmenu", function(e) { 
-		if(e.button != 2) //right button
+	if( window.jscolor )
+	{
+
+		//SHOWS CONTEXTUAL MENU
+		//block focusing
+		/*
+		input_element.addEventListener("contextmenu", function(e) { 
+			if(e.button != 2) //right button
+				return false;
+			//create the context menu
+			var contextmenu = new LiteGUI.ContextMenu( ["Copy in HEX","Copy in RGBA"], { event: e, callback: inner_action });
+			e.preventDefault(); 
+			e.stopPropagation();
+
+			input_element.addEventListener("focus", block_focus , true);
+			setTimeout(function(){ input_element.removeEventListener("focus", block_focus , true);},1000);
+
 			return false;
-		//create the context menu
-		var contextmenu = new LiteGUI.ContextMenu( ["Copy in HEX","Copy in RGBA"], { event: e, callback: inner_action });
-		e.preventDefault(); 
-		e.stopPropagation();
+		},true);	
 
-		input_element.addEventListener("focus", block_focus , true);
-		setTimeout(function(){ input_element.removeEventListener("focus", block_focus , true);},1000);
-
-		return false;
-    },true);	
-
-	function block_focus(e)
-	{
-		e.stopPropagation();
-		e.stopImmediatePropagation();
-		e.preventDefault();
-		return false;
-	}
-
-	function inner_action(v)
-	{
-		if(v == "Copy in HEX")
+		function block_focus(e)
 		{
-			LiteGUI.toClipboard( "in HEX");
+			e.stopPropagation();
+			e.stopImmediatePropagation();
+			e.preventDefault();
+			return false;
 		}
-		else
+
+		function inner_action(v)
 		{
-			LiteGUI.toClipboard( "in RGB");
+			if(v == "Copy in HEX")
+			{
+				LiteGUI.toClipboard( "in HEX");
+			}
+			else
+			{
+				LiteGUI.toClipboard( "in RGB");
+			}
 		}
+		*/
+
+		myColor = new jscolor.color(input_element);
+		myColor.pickerFaceColor = "#333";
+		myColor.pickerBorderColor = "black";
+		myColor.pickerInsetColor = "#222";
+		myColor.rgb_intensity = 1.0;
+
+		if(options.disabled) 
+			myColor.pickerOnfocus = false; //this doesnt work
+
+		if( value.constructor !== String && value.length && value.length > 2)
+		{
+			var intensity = 1.0;
+			myColor.fromRGB(value[0]*intensity,value[1]*intensity,value[2]*intensity);
+			myColor.rgb_intensity = intensity;
+		}
+
+		//update values in rgb format
+		input_element.addEventListener("change", function(e) { 
+			var rgbelement = element.querySelector(".rgb-color");
+			if(rgbelement)
+				rgbelement.innerHTML = LiteGUI.Inspector.parseColor(myColor.rgb);
+		});
+
+		myColor.onImmediateChange = function() 
+		{
+			var v = [ myColor.rgb[0] * myColor.rgb_intensity, myColor.rgb[1] * myColor.rgb_intensity, myColor.rgb[2] * myColor.rgb_intensity ];
+			//Inspector.onWidgetChange.call(that,element,name,v, options);
+			var event_data = [v.concat(), myColor.toString()];
+			LiteGUI.trigger( element, "wbeforechange", event_data );
+			that.values[name] = v;
+			if(options.callback)
+				options.callback.call( element, v.concat(), "#" + myColor.toString(), myColor );
+			LiteGUI.trigger( element, "wchange", event_data );
+			if(that.onchange) that.onchange(name, v.concat(), element);
+		}
+
+		//alpha dragger
+		options.step = options.step || 0.01;
+		options.dragger_class = "nano";
+
+		var dragger = new LiteGUI.Dragger(1, options);
+		element.querySelector('.wcontent').appendChild(dragger.root);
+		dragger.input.addEventListener("change", function(e)
+		{
+			var v = parseFloat( this.value );
+			myColor.rgb_intensity = v;
+			if (myColor.onImmediateChange)
+				myColor.onImmediateChange();
+		});
+
+		element.setValue = function(value,skip_event) { 
+			myColor.fromRGB(value[0],value[1],value[2]);
+			if(!skip_event)
+				LiteGUI.trigger( dragger.input, "change" ); 
+		};
 	}
-	*/
-
-	myColor = new jscolor.color(input_element);
-	myColor.pickerFaceColor = "#333";
-	myColor.pickerBorderColor = "black";
-	myColor.pickerInsetColor = "#222";
-	myColor.rgb_intensity = 1.0;
-
-	if(options.disabled) 
-		myColor.pickerOnfocus = false; //this doesnt work
-
-	if( value.constructor !== String && value.length && value.length > 2)
+	else
 	{
-		var intensity = 1.0;
-		myColor.fromRGB(value[0]*intensity,value[1]*intensity,value[2]*intensity);
-		myColor.rgb_intensity = intensity;
+		input_element.addEventListener("change", function(e) { 
+			var rgbelement = element.querySelector(".rgb-color");
+			if(rgbelement)
+				rgbelement.innerHTML = LiteGUI.Inspector.parseColor(myColor.rgb);
+		});
 	}
-
-	//update values in rgb format
-	input_element.addEventListener("change", function(e) { 
-		var rgbelement = element.querySelector(".rgb-color");
-		if(rgbelement)
-			rgbelement.innerHTML = LiteGUI.Inspector.parseColor(myColor.rgb);
-	});
-
-	myColor.onImmediateChange = function() 
-	{
-		var v = [ myColor.rgb[0] * myColor.rgb_intensity, myColor.rgb[1] * myColor.rgb_intensity, myColor.rgb[2] * myColor.rgb_intensity ];
-		//Inspector.onWidgetChange.call(that,element,name,v, options);
-		var event_data = [v.concat(), myColor.toString()];
-		LiteGUI.trigger( element, "wbeforechange", event_data );
-		that.values[name] = v;
-		if(options.callback)
-			options.callback.call( element, v.concat(), "#" + myColor.toString(), myColor );
-		LiteGUI.trigger( element, "wchange", event_data );
-		if(that.onchange) that.onchange(name, v.concat(), element);
-	}
-
-	//alpha dragger
-	options.step = options.step || 0.01;
-	options.dragger_class = "nano";
-
-	var dragger = new LiteGUI.Dragger(1, options);
-	element.querySelector('.wcontent').appendChild(dragger.root);
-	dragger.input.addEventListener("change", function(e)
-	{
-		var v = parseFloat( this.value );
-		myColor.rgb_intensity = v;
-		if (myColor.onImmediateChange)
-			myColor.onImmediateChange();
-	});
-
-	element.setValue = function(value,skip_event) { 
-		myColor.fromRGB(value[0],value[1],value[2]);
-		if(!skip_event)
-			LiteGUI.trigger( dragger.input, "change" ); 
-	};
 
 	this.processElement(element, options);
 	return element;

@@ -433,29 +433,34 @@ WBin.stringToTypedArray = function(str, fixed_length)
 	return r;
 }
 
-//I could use DataView but I prefeer my own version
-WBin.readUint16 = function(buffer, pos)
+WBin.readUint16 = function( buffer, pos )
 {
+	var dv = new DataView( buffer.buffer, buffer.byteOffset );
+	return dv.getUint16( pos, true );
+	/* this may be slow but helps removing Endian problems
 	var f = new Uint16Array(1);
 	var view = new Uint8Array(f.buffer);
 	view.set( buffer.subarray(pos,pos+2) );
 	return f[0];
+	*/
 }
 
 WBin.readUint32 = function(buffer, pos)
 {
+	var dv = new DataView( buffer.buffer, buffer.byteOffset);
+	return dv.getUint32( pos, true );
+	/*
 	var f = new Uint32Array(1);
 	var view = new Uint8Array(f.buffer);
 	view.set( buffer.subarray(pos,pos+4) );
 	return f[0];
+	*/
 }
 
 WBin.readFloat32 = function(buffer, pos)
 {
-	var f = new Float32Array(1);
-	var view = new Uint8Array(f.buffer);
-	view.set( buffer.subarray(pos,pos+4) );
-	return f[0];
+	var dv = new DataView( buffer.buffer, buffer.byteOffset );
+	return dv.getFloat32( pos, true );
 }
 
 /* CANNOT BE DONE, XMLHTTPREQUEST DO NOT ALLOW TO READ PROGRESSIVE BINARY DATA (yet)
@@ -3681,7 +3686,7 @@ LS.ResourcesManager.registerResourcePreProcessor("json", function(filename, data
 LS.ResourcesManager.registerResourcePreProcessor("zip", function( filename, data, options ) {
 	
 	if(!global.JSZip)
-		throw("JSZip not found. To use ZIPs you must have the JSZip.js library installed.");
+		throw("JSZip not found. To use ZIPs you must have the JSZip.js library included in the website.");
 
 	var zip = new JSZip();
 	zip.loadAsync( data ).then(function(zip){
@@ -6998,17 +7003,35 @@ ShaderMaterial.prototype.createUniform = function( name, uniform, type, value, o
 	if(!name || !uniform)
 		throw("parameter missing in createUniform");
 
+	//
 	type = type || "Number";
-	value = value || 0;
-
 	if( type.constructor !== String )
 		throw("type must be string");
 
+	//cast to typed-array
+	value = value || 0;
 	if(value && value.length)
 		value = new Float32Array( value );//cast them always
+	else
+	{
+		//create a value, otherwise is null
+		switch (type)
+		{
+			case "vec2": value = vec2.create(); break;
+			case "color":
+			case "vec3": value = vec3.create(); break;
+			case "color4":
+			case "vec4": value = vec4.create(); break;
+			case "mat3": value = mat3.create(); break;
+			case "mat4": value = mat4.create(); break;
+			default:
+		}
+	}
 
+	//define info
 	var prop = { name: name, uniform: uniform, value: value, type: type, is_texture: 0 };
 
+	//mark as texture (because this need to go to the textures container so they are binded)
 	if(type.toLowerCase() == "texture" || type == "sampler2D" || type == "samplerCube" || type == "sampler")
 		prop.is_texture = (type == "samplerCube") ? 2 : 1;
 
@@ -9257,12 +9280,17 @@ Take.prototype.createTrack = function( data )
 * @param {number} current_time the time of the anim to sample
 * @param {number} last_time this is used for events, we need to know where you were before
 * @param {boolean} ignore_interpolation in case you want to sample the nearest one
-* @param {SceneNode} root [Optional] if you want to limit the locator to search inside a node
+* @param {SceneNode} weight [Optional] allows to blend animations with current value (default is 1)
+* @param {Number} root [Optional] if you want to limit the locator to search inside a node
 * @return {Component} the target where the action was performed
 */
-Take.prototype.applyTracks = function( current_time, last_time, ignore_interpolation, root_node, scene )
+Take.prototype.applyTracks = function( current_time, last_time, ignore_interpolation, root_node, scene, weight )
 {
 	scene = scene || LS.GlobalScene;
+	if(weight === 0)
+		return;
+
+	weight = weight || 1;
 
 	for(var i = 0; i < this.tracks.length; ++i)
 	{
@@ -9303,6 +9331,14 @@ Take.prototype.applyTracks = function( current_time, last_time, ignore_interpola
 		{
 			//read from the animation track the value
 			var sample = track.getSample( current_time, !ignore_interpolation );
+
+			//to blend between animations...
+			if(weight !== 1)
+			{
+				var current_value = scene.getPropertyValueFromPath( track._property_path, sample, root_node, 0 );
+				sample = LS.Animation.interpolateLinear( sample, current_value, weight, null, track.type, track.value_size, track );
+			}
+
 			//apply the value to the property specified by the locator
 			if( sample !== undefined ) 
 				track._target = scene.setPropertyValueFromPath( track._property_path, sample, root_node, 0 );
@@ -10132,6 +10168,7 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 
 	if(this.interpolation === LS.LINEAR)
 	{
+		/*
 		if(this.value_size === 0 && LS.Interpolators[ this.type ] )
 		{
 			var func = LS.Interpolators[ this.type ];
@@ -10139,9 +10176,14 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 			this._last_value = r;
 			return r;
 		}
+		*/
 
 		if(this.value_size == 1)
 			return a[1] * t + b[1] * (1-t);
+
+		return LS.Animation.interpolateLinear( a[1], b[1], t, null, this.type, this.value_size, this );
+
+		/*
 
 		result = result || this._result;
 
@@ -10169,6 +10211,7 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 		}
 
 		return result;
+		*/
 	}
 	else if(this.interpolation === LS.BEZIER)
 	{
@@ -10195,14 +10238,20 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 			result = this._result = new Float32Array( this.value_size );
 
 		result = result || this._result;
-		result = Animation.EvaluateHermiteSplineVector(a[1],b[1], pre_a[1], post_b[1], 1 - t, result );
+		result = Animation.EvaluateHermiteSplineVector( a[1], b[1], pre_a[1], post_b[1], 1 - t, result );
 
 		if(this.type == "quat")
-			quat.normalize(result, result);
+		{
+			quat.slerp( result, a[1], b[1], t ); //force quats without bezier interpolation
+			quat.normalize( result, result );
+		}
 		else if(this.type == "trans10")
 		{
-			var rot = result.subarray(3,7);
-			quat.normalize(rot, rot);
+			var rotR = result.subarray(3,7);
+			var rotA = a_value.subarray(3,7);
+			var rotB = b_value.subarray(3,7);
+			quat.slerp( rotR, rotB, rotA, t );
+			quat.normalize( rotR, rotR );
 		}
 
 		return result;
@@ -10237,6 +10286,14 @@ Track.prototype.getSamplePacked = function( time, interpolate, result )
 
 	if(this.interpolation === LS.LINEAR)
 	{
+		if(this.value_size == 1) //simple case
+			return a[1] * t + b[1] * (1-t);
+
+		var a_data = a.subarray(1, this.value_size+1 );
+		var b_data = b.subarray(1, this.value_size+1 );
+		return LS.Animation.interpolateLinear( a_data, b_data, t, null, this.type, this.value_size, this );
+
+		/*
 		if(this.value_size == 1)
 			return a[1] * t + b[1] * (1-t);
 		else if( LS.Interpolators[ this.type ] )
@@ -10273,6 +10330,7 @@ Track.prototype.getSamplePacked = function( time, interpolate, result )
 		}
 
 		return result;
+		*/
 	}
 	else if(this.interpolation === LS.BEZIER)
 	{
@@ -10292,14 +10350,23 @@ Track.prototype.getSamplePacked = function( time, interpolate, result )
 			result = this._result = new Float32Array( this.value_size );
 
 		result = result || this._result;
-		result = Animation.EvaluateHermiteSplineVector( a.subarray(1,offset), b.subarray(1,offset), pre_a.subarray(1,offset), post_b.subarray(1,offset), 1 - t, result );
+		var a_value = a.subarray(1,offset);
+		var b_value = b.subarray(1,offset);
+
+		result = Animation.EvaluateHermiteSplineVector( a_value, b_value, pre_a.subarray(1,offset), post_b.subarray(1,offset), 1 - t, result );
 
 		if(this.type == "quat")
+		{
+			quat.slerp( result, a_value, b_value, t );
 			quat.normalize(result, result);
+		}
 		else if(this.type == "trans10")
 		{
-			var rot = result.subarray(3,7);
-			quat.normalize(rot, rot);
+			var rotR = result.subarray(3,7);
+			var rotA = a_value.subarray(3,7);
+			var rotB = b_value.subarray(3,7);
+			quat.slerp( rotR, rotB, rotA, t );
+			quat.normalize( rotR, rotR );
 		}
 
 		return result;
@@ -10307,7 +10374,6 @@ Track.prototype.getSamplePacked = function( time, interpolate, result )
 
 	return null;
 }
-
 
 Track.prototype.getPropertyInfo = function( scene )
 {
@@ -10338,23 +10404,45 @@ Track.prototype.getSampledData = function( start_time, end_time, num_samples )
 
 Animation.Track = Track;
 
-/*
-vec3f EvaluateHermiteSpline(const vec3f& p0, const vec3f& p1, const vec3f& t0, const vec3f& t1, float s)
+Animation.interpolateLinear = function( a, b, t, result, type, value_size, track )
 {
-	float s2 = s * s;
-	float s3 = s2 * s;
-	float h1 =  2*s3 - 3*s2 + 1;          // calculate basis function 1
-	float h2 = -2*s3 + 3*s2;              // calculate basis function 2
-	float h3 =   s3 - 2*s2 + s;         // calculate basis function 3
-	float h4 =   s3 -  s2;              // calculate basis function 4
-	vec3f p = h1*p0+                    // multiply and sum all funtions
-						 h2*p1 +                    // together to build the interpolated
-						 h3*t0 +                    // point along the curve.
-						 h4*t1;
-	return p;
-}
-*/
+	if(value_size == 1)
+		return a * t + b * (1-t);
 
+	if( LS.Interpolators[ type ] )
+	{
+		var func = LS.Interpolators[ type ];
+		var r = func( a, b, t, track._last_v );
+		track._last_v = r;
+		return r;
+	}
+
+	result = result || track._result;
+
+	if(!result || result.length != value_size)
+		result = track._result = new Float32Array( value_size );
+
+	switch( type )
+	{
+		case "quat": 
+			quat.slerp( result, b, a, t );
+			quat.normalize( result, result );
+			break;
+		case "trans10": 
+			for(var i = 0; i < 10; i++) //this.value_size should be 10
+				result[i] = a[i] * t + b[i] * (1-t);
+			var rotA = a.subarray(3,7);
+			var rotB = b.subarray(3,7);
+			var rotR = result.subarray(3,7);
+			quat.slerp( rotR, rotB, rotA, t );
+			quat.normalize( rotR, rotR );
+			break;
+		default:
+			for(var i = 0; i < this.value_size; i++)
+				result[i] = a[i] * t + b[i] * (1-t);
+	}
+	return result;
+}
 
 Animation.EvaluateHermiteSpline = function( p0, p1, pre_p0, post_p1, s )
 {
@@ -10392,10 +10480,9 @@ Animation.EvaluateHermiteSplineVector = function( p0, p1, pre_p0, post_p1, s, re
 	return result;
 }
 
-
 LS.registerResourceClass( Animation );
 
-
+//extra interpolators ***********************************
 LS.Interpolators = {};
 
 LS.Interpolators["texture"] = function( a, b, t, last )
@@ -11950,12 +12037,59 @@ if(typeof(LiteGraph) != "undefined")
 		if(!compo)
 			return;
 		if(compo[action_name])
-			compo[action_name]( ); //params will be mostly MouseEvent, so for now I wont pass it
+			compo[action_name](); //params will be mostly MouseEvent, so for now I wont pass it
+	}
+
+	//used by the LGraphSetValue node
+	LGraphComponent.prototype.onSetValue = function( property_name, value ) { 
+		var compo = this.getComponent();
+		if(!compo)
+			return;
+
+		var current = compo[ property_name ];
+		var final_value;
+
+		if( current == null)
+		{
+			if(value && value.constructor === String)
+				final_value = value;
+		}
+		else
+		{
+			switch( current.constructor )
+			{
+				case Number: final_value = Number( value ); break;
+				case Boolean: final_value = (value == "true" || value == "1"); break;
+				case String: final_value = String( value ); break;
+				case Array:
+				case Float32Array: 
+					if( value != null )
+					{
+						if( value.constructor === String )
+							final_value = JSON.parse("["+value+"]");
+						else if( value.constructor === Number )
+							final_value = [value];
+						else
+							final_value = value;
+					}
+					else
+						final_value = value;
+					break;
+			}
+		}
+
+		if(final_value === undefined)
+			return;
+
+		if(compo.setPropertyValue)
+			compo.setPropertyValue( property_name, final_value );
+		else
+			compo[ property_name ] = final_value;
 	}
 
 	LGraphComponent.prototype.onGetInputs = function()
 	{ 
-		var inputs = [];
+		var inputs = [["Node",0],null];
 
 		this.getComponentProperties("input", inputs);
 
@@ -12487,6 +12621,52 @@ if(typeof(LiteGraph) != "undefined")
 
 	LiteGraph.registerNodeType("scene/frame", LGraphFrame );
 };
+if(typeof(LiteGraph) != "undefined")
+{
+	//special kind of node
+	function LGraphSetValue()
+	{
+		this.properties = { property_name: "", value: "", type: "String" };
+		this.addInput("on_set", LiteGraph.ACTION );
+		this.addOutput("on", LiteGraph.EVENT ); //to chain
+		this.addOutput("node", 0 );
+		this.mode = LiteGraph.ON_TRIGGER;
+	}
+
+	LGraphSetValue.prototype.onAction = function( action_name, params ) { 
+		//is on_set
+
+		if(!this.properties.property_name)
+			return;
+
+		//get the connected node
+		var nodes = this.getOutputNodes(1);
+		if(!nodes)
+			return;
+
+		//check for a setValue method
+		for(var i = 0; i < nodes.length; ++i)
+		{
+			var node = nodes[i];
+			//call it
+			if(node.onSetValue)
+				node.onSetValue( this.properties.property_name, this.properties.value );
+		}
+
+		this.trigger("on");
+	}
+
+	LGraphSetValue.title = "SetValue";
+	LGraphSetValue.desc = "sets a value to a node";
+
+	LiteGraph.registerNodeType("logic/setValue", LGraphSetValue );
+
+
+}
+
+
+
+
 // Texture Blur *****************************************
 function LGraphFXStack()
 {
@@ -15594,10 +15774,10 @@ var Renderer = {
 		//get all the data
 		if(scene) //in case we use another scene
 			this.processVisibleData(scene, render_settings);
-		scene = scene || this._current_scene;
+		this._current_scene = scene = scene || this._current_scene; //ugly, I know
 
 		//set as active camera and set viewport
-		this.enableCamera( camera, render_settings, render_settings.skip_viewport ); 
+		this.enableCamera( camera, render_settings, render_settings.skip_viewport, scene ); 
 
 		//compute the rendering order
 		this.sortRenderQueues( camera, render_settings );
@@ -15637,9 +15817,9 @@ var Renderer = {
 	* @param {Camera} camera
 	* @param {RenderSettings} render_settings
 	*/
-	enableCamera: function(camera, render_settings, skip_viewport)
+	enableCamera: function(camera, render_settings, skip_viewport, scene )
 	{
-		var scene = this._current_scene;
+		scene = scene || this._current_scene || LS.GlobalScene;
 
 		LEvent.trigger( camera, "beforeEnabled", render_settings );
 		LEvent.trigger( scene, "beforeCameraEnabled", camera );
@@ -19276,7 +19456,7 @@ LS.Physics = Physics;
 function Transform( o )
 {
 	//packed data (helpful for animation stuff)
-	this._data = new Float32Array( 3 + 4 + 3 ); //pos, rot, scale
+	this._data = new Float32Array( 3 + 4 + 3 ); //pos, rot, scale, also known as trans10
 
 	this._position = this._data.subarray(0,3);
 
@@ -19325,7 +19505,9 @@ Transform.FRONT = vec3.fromValues(0,0,-1);
 
 Transform["@position"] = { type: "position"};
 Transform["@rotation"] = { type: "quat"};
+Transform["@data"] = { type: "trans10" };
 
+//what is this used for??
 Transform.properties = {
 	position:"vec3",
 	scaling:"vec3",
@@ -22526,6 +22708,10 @@ function Light(o)
 	this._type = Light.OMNI;
 	this.frustum_size = 50; //ortho
 
+	//used to force the computation of the light matrix for the shader (otherwise only if projective texture or shadows are enabled)
+	this.force_light_matrix = false; 
+	this._light_matrix = mat4.create();
+
 	this.extra_light_shader_code = null;
 	this.extra_texture = null;
 
@@ -22534,22 +22720,25 @@ function Light(o)
 	this._right = vec3.clone( Light.RIGHT_VECTOR );
 	this._top = vec3.clone( Light.UP_VECTOR );
 
-	//for caching purposes
+	//for StandardMaterial
 	this._query = new LS.ShaderQuery();
 	this._samplers = [];
+
+	//light uniforms
 	this._uniforms = {
-		u_light_info: vec4.fromValues( this._type, 0, 0, 0 ), //light type, spot cone, ...
+		u_light_info: vec4.fromValues( this._type, 0, 0, 0 ), //light type, spot cone, etc
 		u_light_front: this._front,
 		u_light_angle: vec4.fromValues( this.angle * DEG2RAD, this.angle_end * DEG2RAD, Math.cos( this.angle * DEG2RAD * 0.5 ), Math.cos( this.angle_end * DEG2RAD * 0.5 ) ),
 		u_light_position: this._position,
 		u_light_color: vec3.create(),
 		u_light_att: this._attenuation_info,
 		u_light_offset: this.offset,
+		u_light_matrix: this._light_matrix,
 		u_shadow_params: vec4.fromValues( 1, this.shadow_bias, 1, 100 ),
 		shadowmap: LS.Renderer.SHADOWMAP_TEXTURE_SLOT,
-		u_light_matrix: this._light_matrix
 	};
 
+	//configure
 	if(o) 
 	{
 		this.configure(o);
@@ -22709,12 +22898,11 @@ Light.prototype.updateLightCamera = function()
 	camera.eye = this.getPosition( Light._temp_position );
 	camera.center = this.getTarget( Light._temp_target );
 
-	var up = this.getUp(Light._temp_up);
-	var front = this.getFront(Light._temp_front);
+	var up = this.getUp( Light._temp_up );
+	var front = this.getFront( Light._temp_front );
 	if( Math.abs( vec3.dot(front,up) ) > 0.999 ) 
 		vec3.set(up,0,0,1);
 	camera.up = up;
-
 	camera.type = this.type == Light.DIRECTIONAL ? LS.Components.Camera.ORTHOGRAPHIC : LS.Components.Camera.PERSPECTIVE;
 
 	var closest_far = this.computeShadowmapFar();
@@ -22725,7 +22913,8 @@ Light.prototype.updateLightCamera = function()
 	camera.fov = (this.angle_end || 45); //fov is in degrees
 
 	camera.updateMatrices();
-	this._light_matrix = camera._viewprojection_matrix;
+
+	this._light_matrix.set( camera._viewprojection_matrix );
 
 	/* ALIGN TEXEL OF SHADOWMAP IN DIRECTIONAL
 	if(this.type == Light.DIRECTIONAL && this.cast_shadows && this.enabled)
@@ -22910,7 +23099,7 @@ Light.prototype.prepare = function( render_settings )
 	query.clear(); //delete all properties (I dont like to generate garbage)
 
 	//projective texture needs the light matrix to compute projection
-	if(this.projective_texture || this.cast_shadows)
+	if(this.projective_texture || this.cast_shadows || this.force_light_matrix)
 		this.updateLightCamera();
 
 	if( (!render_settings.shadows_enabled || !this.cast_shadows) && this._shadowmap)
@@ -23305,8 +23494,20 @@ Light.prototype.applyTransformMatrix = function( matrix, center, property_name )
 
 Light.prototype.applyShaderBlockFlags = function( flags )
 {
-	if(this.enabled)
-		flags |= Light.shader_block.flag_mask;
+	if(!this.enabled)
+		return flags;
+
+	flags |= Light.shader_block.flag_mask;
+
+	if(this.cast_shadows)
+	{
+		if(this.type == Light.OMNI)
+		{
+			//flags |= Light.shadowmapping_cube_shader_block.flag_mask;
+		}
+		else
+			flags |= Light.shadowmapping_2d_shader_block.flag_mask;
+	}
 	return flags;
 }
 
@@ -23344,11 +23545,11 @@ LS.ShadersManager.registerSnippet("light_structs","\n\
 	#define SB_LIGHT_STRUCTS\n\
 	uniform lowp vec4 u_light_info;\n\
 	uniform vec3 u_light_position;\n\
-	uniform vec4 u_light_params; //type, \n\
 	uniform vec3 u_light_front;\n\
 	uniform vec3 u_light_color;\n\
 	uniform vec4 u_light_angle; //cone start,end,phi,theta \n\
 	uniform vec2 u_light_att; //start,end \n\
+	uniform mat4 u_light_matrix; //to light space\n\
 	//used to store light contribution\n\
 	struct FinalLight {\n\
 		vec3 Color;\n\
@@ -23384,12 +23585,16 @@ LS.ShadersManager.registerSnippet("light_structs","\n\
 	Light Shadowing (Hard, Soft)
 */
 
-Light._enabled_shaderblock_code = "\n\
+Light._enabled_vs_shaderblock_code = "\n\
+	#pragma shaderblock \"testShadow\"\n\
+";
+
+Light._enabled_fs_shaderblock_code = "\n\
 	#pragma snippet \"input\"\n\
 	#pragma snippet \"surface\"\n\
 	#pragma snippet \"light_structs\"\n\
 	#pragma snippet \"spotFalloff\"\n\
-	#pragma shaderblock \"shadowmapping\"\n\
+	#pragma shaderblock \"testShadow\"\n\
 	\n\
 	vec3 computeLight(in SurfaceOutput o, in Input IN, inout FinalLight LIGHT)\n\
 	{\n\
@@ -23420,6 +23625,10 @@ Light._enabled_shaderblock_code = "\n\
 		NdotL = max( 0.0, NdotL );\n\
 		LIGHT.Diffuse = abs(NdotL);\n\
 		\n\
+		LIGHT.Shadow = 1.0;\n\
+		#ifdef TESTSHADOW\n\
+			LIGHT.Shadow = testShadow();\n\
+		#endif\n\
 		\n\
 		#ifdef LIGHT_FUNC\n\
 			LIGHT_FUNC(LIGHT);\n\
@@ -23477,7 +23686,8 @@ Light._disabled_shaderblock_code = "\n\
 ";
 
 var light_block = new LS.ShaderBlock("light");
-light_block.addCode( GL.FRAGMENT_SHADER, Light._enabled_shaderblock_code, Light._disabled_shaderblock_code );
+light_block.addCode( GL.VERTEX_SHADER, Light._enabled_vs_shaderblock_code, null );
+light_block.addCode( GL.FRAGMENT_SHADER, Light._enabled_fs_shaderblock_code, Light._disabled_shaderblock_code );
 light_block.register();
 Light.shader_block = light_block;
 
@@ -23537,11 +23747,16 @@ Light._shadowmap_cubemap_code = "\n\
 	}\n\
 ";
 
-Light._shadowmap_flat_enabled_code = "\n\
-	#ifndef SHADOWMAP_ACTIVE\n\
-		#define SHADOWMAP_ACTIVE\n\
+Light._shadowmap_vertex_enabled_code ="\n\
+	varying vec4 v_light_coord;\n\
+";
+
+Light._shadowmap_2d_enabled_code = "\n\
+	#ifndef TESTSHADOW\n\
+		#define TESTSHADOW\n\
 	#endif\n\
 	uniform sampler2D shadowmap;\n\
+	varying vec4 v_light_coord;\n\
 	uniform vec4 u_shadow_params; // (1.0/(texture_size), bias, near, far)\n\
 	\n\
 	float UnpackDepth32(vec4 depth)\n\
@@ -23554,8 +23769,9 @@ Light._shadowmap_flat_enabled_code = "\n\
 		#endif\n\
 	}\n\
 	\n\
-	float testShadow(vec3 offset)\n\
+	float testShadow()\n\
 	{\n\
+		vec3 offset;\n\
 		float shadow = 0.0;\n\
 		float depth = 0.0;\n\
 		float bias = u_shadow_params.y;\n\
@@ -23577,9 +23793,12 @@ Light._shadowmap_flat_enabled_code = "\n\
 ";
 
 var shadowmapping_block = new LS.ShaderBlock("testShadow");
-shadowmapping_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_flat_enabled_code, "" );
+shadowmapping_block.addCode( GL.VERTEX_SHADER, Light._shadowmap_vertex_enabled_code, "" );
+shadowmapping_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_2d_enabled_code, "" );
 shadowmapping_block.register();
-Light.shadowmapping_shader_block = shadowmapping_block;
+Light.shadowmapping_2d_shader_block = shadowmapping_block;
+
+
 //TODO
 
 /**
@@ -30203,15 +30422,24 @@ LS.registerComponent( LineCloud );
 function PlayAnimation(o)
 {
 	this.enabled = true;
-	this.animation = "";
-	this.take = "default";
+	this._animation = "";
+	this._take = "default";
 	this.root_node = "@";
 	this.playback_speed = 1.0;
 	this.mode = PlayAnimation.LOOP;
 	this.playing = true;
 	this.current_time = 0;
-	this._last_time = 0;
+	this.blend_time = 0;
 	this.range = null;
+
+	this._last_time = 0;
+
+	this._use_blend_animation = false;
+	this._blend_animation = null;
+	this._blend_take = null;
+	this._blend_current_time = 0;
+	this._blend_remaining_time = 0;
+	this._blend_updated_frame = -1; //used to avoid reseting time when animation and track are changed continuously
 
 	this.disabled_tracks = {};
 
@@ -30229,6 +30457,61 @@ PlayAnimation.MODES = {"loop":PlayAnimation.LOOP, "pingpong":PlayAnimation.PINGP
 PlayAnimation["@animation"] = { widget: "animation" };
 PlayAnimation["@root_node"] = { type: "node" };
 PlayAnimation["@mode"] = { type:"enum", values: PlayAnimation.MODES };
+PlayAnimation["@current_time"] = { type: LS.TYPES.NUMBER, min: 0, units:"s" };
+PlayAnimation["@blend_time"] = { type: LS.TYPES.NUMBER, min: 0, units:"s" };
+
+Object.defineProperty( PlayAnimation.prototype, "animation", {
+	set: function(v){
+		if(v == this._animation)
+			return;
+		this._blend_animation = this._animation;
+		this._animation = v;
+		if(this.blend_time)
+		{
+			if(!this._root || !this._root.scene)
+				return;
+
+			this._use_blend_animation = true;
+			if( this._root.scene.frame != this._blend_updated_frame )
+			{
+				this._blend_current_time = this.current_time;
+				this._blend_remaining_time = this.blend_time;
+				this._blend_updated_frame = this._root.scene.frame;
+			}
+		}
+	},
+	get: function()
+	{
+		return this._animation;
+	},
+	enumerable: true
+});
+
+Object.defineProperty( PlayAnimation.prototype, "take", {
+	set: function(v){
+		if(v == this._take)
+			return;
+		this._blend_take = this._take;
+		this._take = v;
+		if(this.blend_time)
+		{
+			if(!this._root || !this._root.scene)
+				return;
+			this._use_blend_animation = true;
+			if( this._root.scene.frame != this._blend_updated_frame )
+			{
+				this._blend_current_time = this.current_time;
+				this._blend_remaining_time = this.blend_time;
+				this._blend_updated_frame = this._root.scene.frame;
+			}
+		}
+	},
+	get: function()
+	{
+		return this._take;
+	},
+	enumerable: true
+});
 
 PlayAnimation.prototype.configure = function(o)
 {
@@ -30242,15 +30525,17 @@ PlayAnimation.prototype.configure = function(o)
 	if(o.mode !== undefined) 
 		this.mode = o.mode;
 	if(o.animation)
-		this.animation = o.animation;
+		this._animation = o.animation;
 	if(o.take)
-		this.take = o.take;
+		this._take = o.take;
 	if(o.playback_speed != null)
 		this.playback_speed = parseFloat( o.playback_speed );
 	if(o.root_node !== undefined)
 		this.root_node = o.root_node;
 	if(o.playing !== undefined)
 		this.playing = o.playing;
+	if(o.blend_time !== undefined)
+		this.blend_time = o.blend_time;
 }
 
 
@@ -30268,11 +30553,13 @@ PlayAnimation.prototype.onRemovedFromScene = function(scene)
 }
 
 
-PlayAnimation.prototype.getAnimation = function()
+PlayAnimation.prototype.getAnimation = function( name )
 {
-	if(!this.animation || this.animation[0] == "@") 
+	name = name === undefined ? this.animation : name;
+
+	if(!name || name[0] == "@") 
 		return this._root.scene.animation;
-	var anim = LS.ResourcesManager.getResource( this.animation );
+	var anim = LS.ResourcesManager.getResource( name );
 	if( anim && anim.constructor === LS.Animation )
 		return anim;
 	return null;
@@ -30289,6 +30576,14 @@ PlayAnimation.prototype.onUpdate = function(e, dt)
 	if( this.mode != PlayAnimation.PAUSED )
 		this.current_time += dt * this.playback_speed;
 
+	this.onUpdateAnimation( dt );
+
+	if( this._use_blend_animation )
+		this.onUpdateBlendAnimation( dt );
+}
+
+PlayAnimation.prototype.onUpdateAnimation = function(dt)
+{
 	var animation = this.getAnimation();
 	if(!animation) 
 		return;
@@ -30339,7 +30634,7 @@ PlayAnimation.prototype.onUpdate = function(e, dt)
 	else if(time < start_time)
 		time = start_time;
 
-	this.applyAnimation( time, this._last_time );
+	this.applyAnimation( take, time, this._last_time );
 
 	this._last_time = time; //TODO, add support for pingpong events in tracks
 	//take.actionPerSample( this.current_time, this._processSample.bind( this ), { disabled_tracks: this.disabled_tracks } );
@@ -30349,6 +30644,67 @@ PlayAnimation.prototype.onUpdate = function(e, dt)
 		scene.requestFrame();
 }
 
+PlayAnimation.prototype.onUpdateBlendAnimation = function( dt )
+{
+	var animation = this.getAnimation( this._blend_animation || this._animation || "" );
+	if(!animation) 
+		return;
+
+	var take = animation.takes[ this._blend_take || this._take || "default" ];
+	if(!take) 
+		return;
+
+	this._blend_current_time += dt;
+	this._blend_remaining_time -= dt;
+
+	if( this._blend_remaining_time <= 0 )
+		this._use_blend_animation = false; //next frame it will stop
+
+	var time = this._blend_current_time * this.playback_speed;
+
+	var start_time = 0;
+	var duration = take.duration;
+	var end_time = duration;
+
+	if(this.range)
+	{
+		start_time = this.range[0];
+		end_time = this.range[1];
+		duration = end_time - start_time;
+	}
+
+	if(time > end_time)
+	{
+		switch( this.mode )
+		{
+			case PlayAnimation.ONCE: 
+				time = end_time; 
+				this._use_blend_animation = false;
+				break;
+			case PlayAnimation.PINGPONG:
+				if( ((time / duration)|0) % 2 == 0 ) //TEST THIS
+					time = this._blend_current_time % duration; 
+				else
+					time = duration - (this._blend_current_time % duration);
+				break;
+			case PlayAnimation.PINGPONG:
+				time = end_time; 
+				break;
+			case PlayAnimation.LOOP: 
+			default: 
+				time = ((this._blend_current_time - start_time) % duration) + start_time;
+				break;
+		}
+	}
+	else if(time < start_time)
+		time = start_time;
+
+	this.applyAnimation( take, time, null, this._blend_remaining_time / this.blend_time );
+
+	var scene = this._root.scene;
+	if(scene)
+		scene.requestFrame();
+}
 
 PlayAnimation.prototype.play = function()
 {
@@ -30360,7 +30716,7 @@ PlayAnimation.prototype.play = function()
 	this._last_time = this.current_time;
 	LEvent.trigger( this, "start_animation" );
 
-	//this.applyAnimation( this.current_time );
+	//this.applyAnimation( take, this.current_time );
 }
 
 PlayAnimation.prototype.pause = function()
@@ -30376,7 +30732,7 @@ PlayAnimation.prototype.stop = function()
 	if(this.range)
 		this.current_time = this.range[0];
 	this._last_time = this.current_time;
-	//this.applyAnimation( this.current_time );
+	//this.applyAnimation( take, this.current_time );
 }
 
 PlayAnimation.prototype.playRange = function( start, end )
@@ -30387,18 +30743,10 @@ PlayAnimation.prototype.playRange = function( start, end )
 	this.range = [ start, end ];
 }
 
-PlayAnimation.prototype.applyAnimation = function( time, last_time )
+PlayAnimation.prototype.applyAnimation = function( take, time, last_time, weight )
 {
 	if( last_time === undefined )
 		last_time = time;
-
-	var animation = this.getAnimation();
-	if(!animation) 
-		return;
-
-	var take = animation.takes[ this.take ];
-	if(!take) 
-		return;
 
 	var root_node = null;
 	if(this.root_node && this._root.scene)
@@ -30408,7 +30756,7 @@ PlayAnimation.prototype.applyAnimation = function( time, last_time )
 		else
 			root_node = this._root.scene.getNode( this.root_node );
 	}
-	take.applyTracks( time, last_time, undefined, root_node, this._root.scene );
+	take.applyTracks( time, last_time, undefined, root_node, this._root.scene, weight );
 }
 
 PlayAnimation.prototype._processSample = function(nodename, property, value, options)
@@ -38146,6 +38494,48 @@ SceneTree.prototype.getPropertyInfoFromPath = function( path )
 }
 
 
+/**
+* Assigns a value to the property of a component in a node based on the locator of that property
+* Locators are in the form of "{NODE_UID}/{COMPONENT_UID}/{property_name}"
+*
+* @method getPropertyValue
+* @param {String} locator locator of the property
+* @param {*} value the value to assign
+* @param {SceneNode} root [Optional] if you want to limit the locator to search inside a node
+* @return {Component} the target where the action was performed
+*/
+SceneTree.prototype.getPropertyValue = function( locator, root_node )
+{
+	var path = property_uid.split("/");
+
+	if(path[0].substr(0,5) == "@MAT-")
+	{
+		var material = LS.RM.materials_by_uid[ path[0] ];
+		if(!material)
+			return null;
+		return material.getPropertyValueFromPath( path.slice(1) );
+	}
+
+	var node = this.getNode( path[0] );
+	if(!node)
+		return null;
+	return node.getPropertyValueFromPath( path.slice(1) );
+}
+
+SceneTree.prototype.getPropertyValueFromPath = function( path )
+{
+	if(path[0].substr(0,5) == "@MAT-")
+	{
+		var material = LS.RM.materials_by_uid[ path[0] ];
+		if(!material)
+			return null;
+		return material.getPropertyValueFromPath( path.slice(1) );
+	}
+	var node = this.getNode( path[0] );
+	if(!node)
+		return null;
+	return node.getPropertyValueFromPath( path.slice(1) );
+}
 
 /**
 * Assigns a value to the property of a component in a node based on the locator of that property
@@ -39242,6 +39632,108 @@ SceneNode.prototype.getPropertyInfoFromPath = function( path )
 		value: value,
 		type: type
 	};
+}
+
+SceneNode.prototype.getPropertyValue = function( locator )
+{
+	var path = locator.split("/");
+	return this.getPropertyValueFromPath(path);
+}
+
+SceneNode.prototype.getPropertyValueFromPath = function( path )
+{
+	var target = this;
+	var varname = path[0];
+
+	if(path.length == 0)
+		return null
+    else if(path.length == 1) //compo or //var
+	{
+		if(path[0][0] == "@")
+			return this.getComponentByUId( path[0] );
+		else if (path[0] == "material")
+			return this.getMaterial();
+		var target = this.getComponent( path[0] );
+		if(target)
+			return target;
+
+		switch(path[0])
+		{
+			case "matrix":
+			case "x":
+			case "y": 
+			case "z": 
+			case "position":
+			case "rotX":
+			case "rotY":
+			case "rotZ":
+				target = this.transform;
+				varname = path[0];
+				break;
+			default: 
+				target = this;
+				varname = path[0];
+			break;
+		}
+	}
+    else if(path.length > 1) //compo/var
+	{
+		if(path[0][0] == "@")
+		{
+			varname = path[1];
+			target = this.getComponentByUId( path[0] );
+		}
+		else if (path[0] == "material")
+		{
+			target = this.getMaterial();
+			varname = path[1];
+		}
+		else if (path[0] == "flags")
+		{
+			target = this.flags;
+			varname = path[1];
+		}
+		else
+		{
+			target = this.getComponent( path[0] );
+			varname = path[1];
+		}
+
+		if(!target)
+			return null;
+	}
+	else //¿?
+	{
+	}
+
+	var v = undefined;
+
+	if( target.getPropertyValueFromPath && target != this )
+	{
+		var r = target.getPropertyValueFromPath( path.slice(1) );
+		if(r)
+			return r;
+	}
+
+	//to know the value of a property of the given target
+	if( target.getPropertyValue )
+		v = target.getPropertyValue( varname );
+
+	//special case when the component doesnt specify any locator info but the property referenced does
+	//used in TextureFX
+	if (v === undefined && path.length > 2 && target[ varname ] && target[ varname ].getPropertyValueFromPath )
+	{
+		var r = target[ varname ].getPropertyValueFromPath( path.slice(2) );
+		if(r)
+		{
+			r.node = this;
+			return r;
+		}
+	}
+
+	if(v === undefined && target[ varname ] === undefined )
+		return null;
+	return v !== undefined ? v : target[ varname ];
 }
 
 SceneNode.prototype.setPropertyValue = function( locator, value )

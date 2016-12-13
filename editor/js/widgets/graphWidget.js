@@ -32,7 +32,7 @@ GraphWidget.prototype.init = function( options )
 	top_widgets.addButton(null,"New", { callback: this.onNewGraph.bind(this), width: 50 });
 	top_widgets.addButton(null,"Open", this.onOpenGraph.bind(this) );
 	top_widgets.addButton(null,"Run Step", this.onStepGraph.bind(this) );
-	top_widgets.addButton(null,"Overgraph", this.onSelectOvergraph.bind(this) );
+	/* top_widgets.addButton(null,"Overgraph", this.onSelectOvergraph.bind(this) ); */
 	this.root.appendChild( top_widgets.root );
 
 	//create area
@@ -445,6 +445,7 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 	inspector.addSection("Node");
 	inspector.addString("Title", graphnode.title, { disabled: graphnode.ignore_rename, callback: function(v) { graphnode.title = v; }});
 	inspector.addCombo("Mode", graphnode.mode, { values: { "Always": LiteGraph.ALWAYS,"On Trigger": LiteGraph.ON_TRIGGER,"Never": LiteGraph.NEVER }, callback: function(v) { graphnode.mode = v; }});
+	inspector.addString("ID", String(graphnode.id) );
 	inspector.addSeparator();
 
 	var widgets_info = graphnode.constructor.widgets_info || graphnode.widgets_info;
@@ -494,25 +495,26 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 		graphnode._inspect( inspector );
 
 	if(graphnode.help)
-		inspector.addInfo(null, graphnode.help);
+		inspector.addInfo( null, graphnode.help );
 
 	inspector.addSeparator();
 
-	if( graphnode.constructor == LGraphComponent || graphnode.constructor == LGraphSceneNode )
+	if( graphnode.constructor == LGraphSceneNode )
 	{
 		inspector.addButton(null, "Inspect node", function(){
-			var node = null;
-			if( graphnode.constructor == LGraphComponent )
-			{
-				var component = graphnode.getComponent();
-				if(component)
-					node = component._root;
-			}
-			else if( graphnode.constructor == LGraphSceneNode )
-					node = component.getNode();
-
+			var node = graphnode.getNode();
 			if(node)
 				EditorModule.inspect( node );
+		});
+	}
+
+	if( graphnode.constructor == LGraphComponent )
+	{
+		inspector.addButton(null, "Inspect Component", function(){
+			var compo = graphnode.getComponent();
+			if(!compo)
+				return;
+			EditorModule.inspect( compo );
 		});
 	}
 

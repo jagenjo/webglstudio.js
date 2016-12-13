@@ -87,6 +87,10 @@ LS.Components.Transform["@inspector"] = function(transform, inspector)
 	}});
 }
 
+LS.Transform.prototype.getExtraTitleCode = function()
+{
+	return AnimationModule.getKeyframeCode( this, "data" );
+}
 
 LS.Components.Camera["@inspector"] = function(camera, inspector)
 {

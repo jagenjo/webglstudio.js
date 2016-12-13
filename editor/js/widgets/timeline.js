@@ -221,7 +221,16 @@ Timeline.prototype.setAnimation = function( animation, take_name )
 	take_name = take_name || "default";
 
 	if(this.current_animation == animation && this.current_take_name == take_name )
+	{
+		if(animation)
+		{
+			var takes = [];
+			for(var i in animation.takes)
+				takes.push(i);
+			this.take_widget.setOptionValues( takes, take_name );
+		}
 		return;
+	}
 
 	if(!animation)
 	{
@@ -264,7 +273,7 @@ Timeline.prototype.setAnimation = function( animation, take_name )
 	this.duration_widget.setValue( this.current_take.duration );
 
 	//to ensure data gets saved again
-	LS.ResourcesManager.resourceModified( animation );
+	//LS.ResourcesManager.resourceModified( animation ); //disabled or just by watching an animation I need to send it again
 
 	//unpack all
 	if(0)
@@ -1241,19 +1250,31 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 {
 	var that = this;
 
-	var dialog = new LiteGUI.Dialog({ title:"Take Options", closable: true, width: 300, draggable: true } );
-	var widgets = new LiteGUI.Inspector();
-	widgets.on_refresh = inner_refresh;
-	dialog.add( widgets );
+	var dialog = new LiteGUI.Dialog({ title:"Take Options", closable: true, width: 600, draggable: true } );
+
+	var area = new LiteGUI.Area();
+	area.split("horizontal",["50%",null]);
+	dialog.add( area );
+
+	var widgets1 = new LiteGUI.Inspector();
+	widgets1.on_refresh = inner_refresh_left;
+	area.getSection(0).add( widgets1 );
+
+	var widgets2 = new LiteGUI.Inspector();
+	widgets2.on_refresh = inner_refresh_right;
+	area.getSection(1).add( widgets2 );
 
 	var selected_take_name = "default";
 	var new_take_name = "new_take";
 
-	inner_refresh();
+	inner_refresh_left();
+	inner_refresh_right();
 	dialog.show();
 
-	function inner_refresh()
+	function inner_refresh_left()
 	{
+		var widgets = widgets1;
+
 		var selected_take = that.current_animation.takes[ selected_take_name ];
 		var duration = selected_take ? selected_take.duration : 0;
 		var tracks = selected_take ? selected_take.tracks.length : 0;
@@ -1265,7 +1286,8 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 			takes.push( i );
 		widgets.addList( null, takes, { height: 140, selected: selected_take_name, callback: function(v){
 			selected_take_name = v;
-			widgets.refresh();
+			widgets1.refresh();
+			widgets2.refresh();
 		}});
 		widgets.addButtons( null, ["Copy","Paste","Delete"], function(v){
 			if(v == "Copy")
@@ -1289,7 +1311,8 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 				that.current_animation.addTake( take );
 				that.setAnimation( that.current_animation, selected_take_name );
 				that.animationModified();
-				widgets.refresh();
+				widgets1.refresh();
+				widgets2.refresh();
 			}
 			if(v == "Delete")
 			{
@@ -1300,23 +1323,10 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 				selected_take_name = Object.keys( that.current_animation.takes )[0];
 				that.animationModified();
 				that.setAnimation( that.current_animation, selected_take_name );
-				widgets.refresh();
+				widgets1.refresh();
+				widgets2.refresh();
 			}
 		});
-		widgets.addTitle("Selected Take");
-		widgets.addStringButton("Name",selected_take_name,{ callback_button: function(v){
-			that.addUndoAnimationEdited( that.current_animation );
-			that.current_animation.renameTake( selected_take_name, v );
-			selected_take_name = v;
-			that.animationModified();
-			that.setAnimation( that.current_animation, selected_take_name );
-			widgets.refresh();
-		}});
-
-		widgets.widgets_per_row = 2;
-		widgets.addString("Duration", duration + "s");
-		widgets.addString("Tracks", tracks|0 );
-		widgets.widgets_per_row = 1;
 
 		widgets.addTitle("Create New take");
 		widgets.addString("Name",new_take_name,{ callback: function(v){
@@ -1327,11 +1337,88 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 		dialog.adjustSize(10);
 	}
 
+	function inner_refresh_right()
+	{
+		var widgets = widgets2;
+
+		var selected_take = that.current_animation.takes[ selected_take_name ];
+		var duration = selected_take ? selected_take.duration : 0;
+		var tracks = selected_take ? selected_take.tracks.length : 0;
+
+		widgets.clear();
+
+		widgets.addTitle("Animation");
+		widgets.addString("Name",  that.current_animation.fullpath || that.current_animation.filename );
+
+		widgets.addTitle("Selected Take");
+		widgets.addStringButton("Name",selected_take_name,{ button: "&#9998;", callback_button: function(v){
+			that.addUndoAnimationEdited( that.current_animation );
+			that.current_animation.renameTake( selected_take_name, v );
+			selected_take_name = v;
+			that.animationModified();
+			that.setAnimation( that.current_animation, selected_take_name );
+			widgets1.refresh();
+			widgets2.refresh();
+		}});
+
+		widgets.widgets_per_row = 2;
+		widgets.addString("Duration", duration + "s");
+		widgets.addString("Num. Tracks", tracks|0 );
+		widgets.widgets_per_row = 1;
+
+		//actions
+		widgets.addTitle("Actions on Take");
+
+		widgets.widgets_per_row = 2;
+		var values = [];
+		//"Pack all tracks","Unpack all tracks","Use names as ids","Optimize Tracks","Match Translation","Only Rotations"
+
+		for(var i in Timeline.actions.take)
+			values.push(i);
+
+		var action = values[0];
+		widgets.addCombo("Actions", action,{ values: values, width: "80%", callback: function(v){
+			action = v;	
+		}});
+
+		widgets.addButton(null,"Go",{ width: "20%", callback: function(){
+			var total = 0;
+
+			var action_callback = Timeline.actions.take[ action ];
+			if(!action_callback)
+				return;
+
+			total = action_callback( that.current_animation, that.current_take );
+			LiteGUI.alert("Tracks modified: " + total);
+			if(total)
+				LS.ResourcesManager.resourceModified( that.current_animation );
+		}});
+		widgets.widgets_per_row = 1;
+
+		//interpolation
+		widgets.widgets_per_row = 2;
+		var interpolation = Timeline.interpolation_values["linear"];
+		widgets.addCombo("Set Interpolation to all tracks", interpolation, { values: Timeline.interpolation_values, width: "80%", callback: function(v){
+			interpolation = v;	
+		}});
+
+		widgets.addButton(null,"Go",{ width: "20%", callback: function(){
+			var total = that.current_take.setInterpolationToAllTracks( interpolation );
+			LiteGUI.alert("Tracks modified: " + total);
+			if(total)
+				LS.ResourcesManager.resourceModified( that.current_animation );
+		}});
+		widgets.widgets_per_row = 1;
+
+		dialog.adjustSize(10);
+	}
+
 	function inner_new_take()
 	{
 		that.addUndoAnimationEdited( that.current_animation );
 		that.current_animation.createTake( new_take_name );
 		selected_take_name = new_take_name;
+		that.setAnimation( that.current_animation, selected_take_name );
 		widgets.refresh();
 	}
 }
@@ -1352,6 +1439,7 @@ Timeline.prototype.onContextMenu = function( e )
 	var track = null;
 	if(item && item.track !== undefined )
 		track = this.current_take.tracks[ item.track ];
+	var selection = this.session ? this.session.selection : null;
 
 	var time = this.session.current_time; //this.canvasXToTime( e.mousex );
 
@@ -1371,6 +1459,9 @@ Timeline.prototype.onContextMenu = function( e )
 			values.push( { title: "Add Event", callback: inner_add_event_keyframe } );
 		else
 			values.push( { title: "Add Keyframe", callback: inner_add_keyframe } );
+		if( selection && selection.type == "keyframe")
+			values.push( { title: "Copy Keyframe", callback: inner_copy_keyframe } );
+		values.push( { title: "Paste Keyframe", callback: inner_paste_keyframe } );
 		values.push( { title: "Edit Track", callback: inner_edit } );
 		values.push( { title: track.enabled ? "Disable" : "Enable", callback: inner_toggle } );
 		values.push( null );
@@ -1423,6 +1514,46 @@ Timeline.prototype.onContextMenu = function( e )
 	function inner_edit()
 	{
 		that.showTrackOptionsDialog( track );
+	}
+
+	function inner_copy_keyframe()
+	{
+		if(!track || !that.session.selection || that.session.selection.type != "keyframe" )
+			return;
+		
+		var keyframe_data = track.getKeyframe( that.session.selection.keyframe );
+		if(!keyframe_data)
+			return;
+
+		//console.log(keyframe_data);
+		var keyframe = {
+			type: "keyframe",
+			time: keyframe_data[0],
+			data: keyframe_data[1],
+			value_type: LS.getObjectClassName( keyframe_data[1] )
+		};
+
+		LiteGUI.toClipboard( JSON.stringify( keyframe ) );
+	}
+
+	function inner_paste_keyframe()
+	{
+		if(!track)
+			return;
+
+		var data = LiteGUI.getLocalClipboard();
+		if(!data)
+			return;
+		that.addUndoTrackEdited( track );
+
+		var keyframe = data;
+		if( keyframe.type !== "keyframe" )
+			return console.error( "local clipboard does not contain a keyframe:", keyframe.type );
+		var value = new window[ keyframe.value_type ]( keyframe.data ); //cast
+		track.addKeyframe( time, value );
+		that.animationModified();
+		that._must_redraw = true;
+		RenderModule.requestFrame();
 	}
 
 	function inner_add_keyframe()
@@ -1918,12 +2049,13 @@ Timeline.prototype.getMouseItem = function( e )
 	//	over = true;
 
 	this._must_redraw = true;
+	var animation_filename = this.current_animation.fullpath || this.current_animation.filename;
 
 	if(e.type == "mousedown" )
 	{
 		if(over)
 		{
-			this.session.selection = { type: "keyframe", track: track_index, keyframe: index };
+			this.session.selection = { type: "keyframe", animation: animation_filename , track: track_index, keyframe: index };
 			this.setCurrentTime( keyframe[0] );
 		}
 		else
@@ -1931,9 +2063,9 @@ Timeline.prototype.getMouseItem = function( e )
 	}
 
 	if(over)
-		return { type: "keyframe", track: track_index, keyframe: index, cursor: "crosshair", draggable: true };
+		return { type: "keyframe", animation: animation_filename, track: track_index, keyframe: index, cursor: "crosshair", draggable: true };
 	else
-		return { type: "background", track: track_index, draggable: true, cursor: null };
+		return { type: "background", animation: animation_filename, track: track_index, draggable: true, cursor: null };
 
 	return null;
 }
@@ -1948,7 +2080,8 @@ Timeline.prototype.selectKeyframe = function( track_index, keyframe_index )
 {
 	if(!this.session)
 		return;
-	this.session.selection = { type: "keyframe", track: track_index, keyframe: keyframe_index };
+	var animation_filename = this.current_animation.fullpath || this.current_animation.filename;
+	this.session.selection = { type: "keyframe", animation: animation_filename, track: track_index, keyframe: keyframe_index };
 	this.redrawCanvas();
 }
 
@@ -1974,7 +2107,12 @@ Timeline.prototype.onShowAnimationOptionsDialog = function()
 
 	//actions
 	widgets.widgets_per_row = 2;
-	var values = ["Pack all tracks","Unpack all tracks","Use names as ids","Optimize Tracks","Match Translation","Only Rotations"];
+	var values = [];
+	//"Pack all tracks","Unpack all tracks","Use names as ids","Optimize Tracks","Match Translation","Only Rotations"
+
+	for(var i in Timeline.actions.take)
+		values.push(i);
+
 	var action = values[0];
 	widgets.addCombo("Actions", action,{ values: values, width: "80%", callback: function(v){
 		action = v;	
@@ -1983,19 +2121,11 @@ Timeline.prototype.onShowAnimationOptionsDialog = function()
 	widgets.addButton(null,"Go",{ width: "20%", callback: function(){
 		var total = 0;
 
-		if(action == "Use names as ids")
-			total = that.current_take.convertIDstoNames(true);
-		else if(action == "Pack all tracks")
-			total = that.current_take.setTracksPacking(true);
-		else if(action == "Unpack all tracks")
-			total = that.current_take.setTracksPacking(false);
-		else if(action == "Optimize Tracks")
-			total = that.current_take.optimizeTracks();
-		else if(action == "Match Translation")
-			total = that.current_take.matchTranslation();
-		else if(action == "Only Rotations")
-			total = that.current_take.onlyRotations();
+		var action_callback = Timeline.actions.take[ action ];
+		if(!action_callback)
+			return;
 
+		total = action_callback( that.current_animation, that.current_take );
 		LiteGUI.alert("Tracks modified: " + total);
 		if(total)
 			LS.ResourcesManager.resourceModified( that.current_animation );
@@ -2370,15 +2500,18 @@ Timeline.prototype.showEditKeyframeDialog = function( track, time, keyframe )
 	var widgets = new LiteGUI.Inspector();
 	widgets.addString("Type", type, { disabled: true } );
 	widgets.addString("Time", keyframe[0].toFixed(3), { disabled: true } );
-	widgets.add( type, "Value", value, { callback: function(v){
-		that.addUndoTrackEdited( track );
-		for(var i = 0; i < track.value_size; ++i)
-			keyframe[1][i] = v[i];
-		if(preview)
-			that.applyPreview();
-		that.redrawCanvas();
-		that.animationModified();
-	}});
+	if( LiteGUI.Inspector.widget_constructors[ type ] )
+		widgets.add( type, "Value", value, { callback: function(v){
+			that.addUndoTrackEdited( track );
+			for(var i = 0; i < track.value_size; ++i)
+				keyframe[1][i] = v[i];
+			if(preview)
+				that.applyPreview();
+			that.redrawCanvas();
+			that.animationModified();
+		}});
+	else
+		widgets.addInfo( "Value", String( value ) );
 	widgets.addCheckbox("Preview", preview, function(v) { preview = v; } );
 
 	dialog.add( widgets );
@@ -2516,4 +2649,41 @@ Timeline.prototype.onItemDrop = function(e)
 		this.animationModified();
 		*/
 	}
+}
+
+//used for special actions
+Timeline.actions = {
+	animation: {},
+	take:{},
+	track: {}
+};
+
+Timeline.actions.take["Use names as ids"] = function( animation, take )
+{
+	return take.convertIDstoNames(true);
+}
+
+Timeline.actions.take["Pack all tracks"] = function( animation, take )
+{
+	return take.setTracksPacking(true);
+}
+
+Timeline.actions.take["Unpack all tracks"] = function( animation, take )
+{
+	return take.setTracksPacking(false);
+}
+
+Timeline.actions.take["Optimize Tracks"] = function( animation, take )
+{
+	return take.optimizeTracks();
+}
+
+Timeline.actions.take["Match Translation"] = function( animation, take )
+{
+	return take.matchTranslation();
+}
+
+Timeline.actions.take["Only Rotations"] = function( animation, take )
+{
+	return take.onlyRotations();
 }

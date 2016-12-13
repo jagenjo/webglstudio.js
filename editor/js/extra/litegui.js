@@ -7406,9 +7406,6 @@ Inspector.prototype.addNumber = function(name, value, options)
 {
 	options = this.processOptions(options);
 
-	if(!options.step)
-		options.step = 0.1;
-
 	value = value || 0;
 	var that = this;
 	this.values[name] = value;
@@ -7420,8 +7417,10 @@ Inspector.prototype.addNumber = function(name, value, options)
 	options.tab_index = this.tab_index;
 	//options.dragger_class = "full";
 	options.full = true;
-	this.tab_index++;
+	options.precision = options.precision !== undefined ? options.precision : 2;
+	options.step = options.step === undefined ? (options.precision == 0 ? 1 : 0.1) : options.step;
 
+	this.tab_index++;
 	
 	var dragger = null;
 	
@@ -7464,7 +7463,7 @@ Inspector.prototype.addNumber = function(name, value, options)
 			return;
 		v = parseFloat(v);
 		if(options.precision)
-			v = v.toFixed( options.step && options.step < options.precision ? options.step : options.precision );
+			v = v.toFixed( options.precision );
 		v += (options.units || "");
 		if(input.value == v)
 			return;

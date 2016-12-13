@@ -640,7 +640,9 @@ var DriveModule = {
 				return;
 			}
 
-			LiteGUI.confirm("Are you sure?", function() {
+			LiteGUI.confirm("Are you sure?", function(v2) {
+				if(!v2)
+					return;
 
 				if (v == "Delete")
 				{
@@ -2487,6 +2489,9 @@ DriveModule.registerAssignResourceCallback("component", function( fullpath, rest
 DriveModule.registerAssignResourceCallback( "SceneTree", function( fullpath, restype, options ) {
 
 	LiteGUI.confirm("Are you sure? you will loose the current scene", function(v) {
+		if(!v)
+			return;
+
 		LS.GlobalScene.clear();
 
 		var res = LS.RM.resources[ fullpath ];

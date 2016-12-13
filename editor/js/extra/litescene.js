@@ -10438,7 +10438,7 @@ Animation.interpolateLinear = function( a, b, t, result, type, value_size, track
 			quat.normalize( rotR, rotR );
 			break;
 		default:
-			for(var i = 0; i < this.value_size; i++)
+			for(var i = 0; i < value_size; i++)
 				result[i] = a[i] * t + b[i] * (1-t);
 	}
 	return result;

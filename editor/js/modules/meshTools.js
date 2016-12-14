@@ -91,29 +91,51 @@ var MeshTools = {
 		//create an array of size num_triangles
 		var distances = new Array( num_triangles ); //[index, distance]
 
-		var axis = 0;
-		var sign = +1;
-		switch( sort_mode )
+		if( sort_mode == "inside_to_outside" || sort_mode == "outside_to_inside" ) //distance to center
 		{
-			case "+X": axis = 0; break;
-			case "+Y": axis = 1; break;
-			case "+Z": axis = 2; break;
-			case "-X": axis = 0; sign = -1; break;
-			case "-Y": axis = 1; sign = -1; break;
-			case "-Z": axis = 2; sign = -1; break;
+			var center = vec3.create();
+			var temp = vec3.create();
+			var sign = sort_mode == "outside_to_inside" ? -1 : 1;
+			//for every triangle
+			for(var i = 0; i < num_triangles; ++i)
+			{
+				var ind = data.subarray( i*3, i*3 + 3 );
+				var A = vertex_data.subarray( ind[0] * 3, ind[0] * 3 + 3 );
+				var B = vertex_data.subarray( ind[1] * 3, ind[1] * 3 + 3 );
+				var C = vertex_data.subarray( ind[2] * 3, ind[2] * 3 + 3 );
+				temp.set( A );
+				vec3.add( temp, temp, B );
+				vec3.add( temp, temp, C );
+				vec3.scale( temp, temp, 1/3 );
+				distances[i] = [i, sign * vec3.distance(center, temp), ind[0],ind[1],ind[2]  ];
+			}
 		}
-
-		//for every triangle
-		for(var i = 0; i < num_triangles; ++i)
+		else //axis
 		{
-			var ind = data.subarray( i*3, i*3 + 3 );
-			//compute the biggest value in an axis
-			var A = vertex_data.subarray( ind[0] * 3, ind[0] * 3 + 3 );
-			var B = vertex_data.subarray( ind[1] * 3, ind[1] * 3 + 3 );
-			var C = vertex_data.subarray( ind[2] * 3, ind[2] * 3 + 3 );
-			//distances[i] = [i, (A[axis] + B[axis] + C[axis]) * sign, ind[0],ind[1],ind[2]  ];
-			//distances[i] = [i, Math.max(Math.max(A[axis],B[axis]), C[axis]) * sign, ind[0],ind[1],ind[2]  ];
-			distances[i] = [i, Math.min(Math.min( A[axis], B[axis]), C[axis]) * sign, ind[0],ind[1],ind[2]  ];
+			var axis = 0;
+			var sign = +1;
+			switch( sort_mode )
+			{
+				case "+X": axis = 0; break;
+				case "+Y": axis = 1; break;
+				case "+Z": axis = 2; break;
+				case "-X": axis = 0; sign = -1; break;
+				case "-Y": axis = 1; sign = -1; break;
+				case "-Z": axis = 2; sign = -1; break;
+			}
+
+			//for every triangle
+			for(var i = 0; i < num_triangles; ++i)
+			{
+				var ind = data.subarray( i*3, i*3 + 3 );
+				//compute the biggest value in an axis
+				var A = vertex_data.subarray( ind[0] * 3, ind[0] * 3 + 3 );
+				var B = vertex_data.subarray( ind[1] * 3, ind[1] * 3 + 3 );
+				var C = vertex_data.subarray( ind[2] * 3, ind[2] * 3 + 3 );
+				//distances[i] = [i, (A[axis] + B[axis] + C[axis]) * sign, ind[0],ind[1],ind[2]  ];
+				//distances[i] = [i, Math.max(Math.max(A[axis],B[axis]), C[axis]) * sign, ind[0],ind[1],ind[2]  ];
+				distances[i] = [i, Math.min(Math.min( A[axis], B[axis]), C[axis]) * sign, ind[0],ind[1],ind[2]  ];
+			}
 		}
 
 		//sort by this array
@@ -259,7 +281,7 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 	
 	widgets.widgets_per_row = 2;
 	var sort_mode = "+X";
-	widgets.addCombo("Sort triangles", sort_mode, { values:["+X","-X","+Y","-Y","+Z","-Z"], callback: function(v){
+	widgets.addCombo("Sort triangles", sort_mode, { values:["+X","-X","+Y","-Y","+Z","-Z","inside_to_outside","outside_to_inside"], callback: function(v){
 		sort_mode = v;
 	}});
 	widgets.addButton(null, "Sort", function(){

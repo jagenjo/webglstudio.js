@@ -39471,12 +39471,24 @@ SceneNode.prototype.getLocator = function( property_name )
 	return this.uid + "/" + property_name;
 }
 
+/**
+* Returns and object with info about a property given a locator
+* @method getPropertyInfo
+* @param {string} locator
+* @return {Object} object with { node, target, name, value and type }
+**/
 SceneNode.prototype.getPropertyInfo = function( locator )
 {
 	var path = locator.split("/");
 	return this.getPropertyInfoFromPath(path);
 }
 
+/**
+* Returns and object with info about a property given a locator in path format
+* @method getPropertyInfoFromPath
+* @param {Array} path a locator in path format (split by /)
+* @return {Object} object with { node, target, name, value and type }
+**/
 SceneNode.prototype.getPropertyInfoFromPath = function( path )
 {
 	var target = this;
@@ -39634,12 +39646,24 @@ SceneNode.prototype.getPropertyInfoFromPath = function( path )
 	};
 }
 
+/**
+* Returns the value of a property given a locator in string format
+* @method getPropertyValue
+* @param {String} locaator
+* @return {*} the value of that property
+**/
 SceneNode.prototype.getPropertyValue = function( locator )
 {
 	var path = locator.split("/");
 	return this.getPropertyValueFromPath(path);
 }
 
+/**
+* Returns the value of a property given a locator in path format
+* @method getPropertyValueFromPath
+* @param {Array} locator in path format (array)
+* @return {*} the value of that property
+**/
 SceneNode.prototype.getPropertyValueFromPath = function( path )
 {
 	var target = this;
@@ -39736,13 +39760,25 @@ SceneNode.prototype.getPropertyValueFromPath = function( path )
 	return v !== undefined ? v : target[ varname ];
 }
 
+/**
+* assigns a value to a property given the locator for that property
+* @method setPropertyValue
+* @param {String} locator
+* @param {*} value
+**/
 SceneNode.prototype.setPropertyValue = function( locator, value )
 {
 	var path = locator.split("/");
 	return this.setPropertyValueFromPath(path, value, 0);
 }
 
-//given a locator in path mode (array) and a value, it searches for the corresponding value and applies it
+/**
+* given a locator in path mode (array) and a value, it searches for the corresponding value and applies it
+* @method setPropertyValueFromPath
+* @param {Array} path
+* @param {*} value
+* @param {Number} [optional] offset used to skip the firsst positions in the array
+**/
 SceneNode.prototype.setPropertyValueFromPath = function( path, value, offset )
 {
 	offset = offset || 0;
@@ -39827,6 +39863,13 @@ SceneNode.prototype.setPropertyValueFromPath = function( path, value, offset )
 	return target;
 }
 
+/**
+* Returns all the resources used by this node and its components (you can include the resources from the children too)
+* @method getResources
+* @param {Object} res object where to store the resources used (in "res_name":LS.TYPE format)
+* @param {Boolean} include_children if you want to add also the resources used by the children nodes
+* @return {Object} the same object passed is returned 
+**/
 SceneNode.prototype.getResources = function( res, include_children )
 {
 	//resources in components
@@ -39888,25 +39931,17 @@ SceneNode.prototype.getCamera = function() {
 	return this.camera;
 }
 
-SceneNode.prototype.getLODMesh = function() {
-	var mesh = this.lod_mesh;
-	if(!mesh && this.meshrenderer)
-		mesh = this.meshrenderer.lod_mesh;
-	if(!mesh) return null;
-	if(mesh.constructor === String)
-		return ResourcesManager.meshes[mesh];
-	return mesh;
-}
-
+/**
+* Simple way to assign a mesh to a node, it created a MeshRenderer component or reuses and existing one and assigns the mesh
+* @method setMesh
+* @param {string} mesh_name the name of the mesh (path to the file)
+* @param {Number} submesh_id if you want to assign a submesh
+**/
 SceneNode.prototype.setMesh = function(mesh_name, submesh_id)
 {
-	if(this.meshrenderer)
-	{
-		if(typeof(mesh_name) == "string")
-			this.meshrenderer.configure({ mesh: mesh_name, submesh_id: submesh_id });
-		else
-			this.meshrenderer.mesh = mesh_name;
-	}
+	var component = this.getComponent( LS.Components.MeshRenderer );
+	if(component)
+		component.configure({ mesh: mesh_name, submesh_id: submesh_id });
 	else
 		this.addComponent( new LS.MeshRenderer({ mesh: mesh_name, submesh_id: submesh_id }) );
 }
@@ -39963,8 +39998,11 @@ SceneNode.prototype.getMaterial = function()
 	return this.material;
 }
 
-//Apply prefab info (skipping the root components) to node
-//It is called from prefab.applyToNodes when a prefab is loaded in memory
+/**
+* Apply prefab info (skipping the root components) to node, so all children will be removed and components lost and overwritten
+* It is called from prefab.applyToNodes when a prefab is loaded in memory
+* @method reloadFromPrefab
+**/
 SceneNode.prototype.reloadFromPrefab = function()
 {
 	if(!this.prefab)
@@ -40004,6 +40042,12 @@ SceneNode.prototype.setLayer = function(num, value)
 		this.layers |= f;
 }
 
+/**
+* checks if this node is in the given layer
+* @method isInLayer
+* @param {number} num layer number
+* @return {boolean} true if belongs to this layer
+*/
 SceneNode.prototype.isInLayer = function(num)
 {
 	return (this.layers & (1<<num)) !== 0;

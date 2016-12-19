@@ -1391,7 +1391,7 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 			total = action_callback( that.current_animation, that.current_take );
 			LiteGUI.alert("Tracks modified: " + total);
 			if(total)
-				LS.ResourcesManager.resourceModified( that.current_animation );
+				that.animationModified();
 		}});
 		widgets.widgets_per_row = 1;
 
@@ -1406,8 +1406,22 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 			var total = that.current_take.setInterpolationToAllTracks( interpolation );
 			LiteGUI.alert("Tracks modified: " + total);
 			if(total)
-				LS.ResourcesManager.resourceModified( that.current_animation );
+				that.animationModified();
 		}});
+		widgets.widgets_per_row = 1;
+
+		widgets.addTitle("Trim the tracks");
+		widgets.widgets_per_row = 3;
+		var from_widget = widgets.addNumber("from", 0, { name_width: 40 } );
+		var to_widget = widgets.addNumber("to", duration, { name_width: 40 } );
+		widgets.addButton(null,"TRIM", function(){
+			var from_t = from_widget.getValue();
+			var to_t = to_widget.getValue();
+			var total = that.current_take.trimTracks( from_t, to_t );
+			if(total)
+				that.animationModified();
+			that.redrawCanvas();
+		});
 		widgets.widgets_per_row = 1;
 
 		dialog.adjustSize(10);

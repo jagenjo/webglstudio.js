@@ -22980,7 +22980,7 @@ function Light(o)
 		u_light_offset: this.offset,
 		u_light_matrix: this._light_matrix,
 		u_shadow_params: vec4.fromValues( 1, this.shadow_bias, 1, 100 ),
-		shadowmap: LS.Renderer.SHADOWMAP_TEXTURE_SLOT,
+		shadowmap: LS.Renderer.SHADOWMAP_TEXTURE_SLOT
 	};
 
 	//configure

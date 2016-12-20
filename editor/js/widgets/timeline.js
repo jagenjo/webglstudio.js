@@ -2701,3 +2701,8 @@ Timeline.actions.take["Only Rotations"] = function( animation, take )
 {
 	return take.onlyRotations();
 }
+
+Timeline.actions.take["Remove scaling"] = function( animation, take )
+{
+	return take.removeScaling();
+}

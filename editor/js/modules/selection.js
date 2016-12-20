@@ -423,10 +423,16 @@ var SelectionModule = {
 
 				UndoModule.addUndoStep({ 
 					data: { compo_uid: new_component._uid },
-					callback: function(d) {
+					callback_undo: function(d) {
 						var compo = scene.root.getComponentByUid( d.compo_uid );
-						if(compo)
-							scene.root.removeComponent(compo);
+						if(!compo)
+							return;
+						d.old_compo = compo;
+						scene.root.removeComponent(compo);
+					},
+					callback_redo: function(d) {
+						var compo = d.old_compo;
+						scene.root.addComponent(compo);
 					}
 				});
 
@@ -444,15 +450,30 @@ var SelectionModule = {
 			UndoModule.addUndoStep({ 
 				title: "Cloned " + (created_uids.length > 1 ? "nodes" : "node"),
 				data: { uids: created_uids, old_selection: old_selection },
-				callback: function(d) {
+				callback_undo: function(d) {
+					d.removed = [];
 					for(var i in d.uids)
 					{
 						var uid = d.uids[i];
 						var node = LS.GlobalScene.getNodeByUId(uid);
 						if(node)
+						{
+							d.removed.push([ node.parentNode.uid, node ]);
 							node.destroy();
+						}
 					}
 					SelectionModule.setSelectionFromUIds( d.old_selection );
+				},
+				callback_redo: function(d)
+				{
+					for(var i in d.removed)
+					{
+						var n = d.removed[i];
+						var node = LS.GlobalScene.getNode(n[0]);
+						if(node)
+							node.addChild( n[1] );
+					}
+					d.removed = null;
 				}
 			});
 		}

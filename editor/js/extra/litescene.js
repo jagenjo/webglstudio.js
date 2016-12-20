@@ -4765,7 +4765,7 @@ function ShaderBlock( name )
 	this.code_map = new Map();
 }
 
-ShaderBlock.prototype.addCode = function( shader_type, enabled_code, disabled_code )
+ShaderBlock.prototype.addCode = function( shader_type, enabled_code, disabled_code, macros )
 {
 	enabled_code  = enabled_code || "";
 	disabled_code  = disabled_code || "";
@@ -4775,7 +4775,8 @@ ShaderBlock.prototype.addCode = function( shader_type, enabled_code, disabled_co
 
 	var info = { 
 		enabled: new LS.GLSLCode( enabled_code ),
-		disabled: new LS.GLSLCode( disabled_code )
+		disabled: new LS.GLSLCode( disabled_code ),
+		macros: macros
 	};
 	this.code_map.set( shader_type, info );
 }
@@ -4787,7 +4788,16 @@ ShaderBlock.prototype.getFinalCode = function( shader_type, block_flags )
 	if(!code)
 		return null;
 	var glslcode = (block_flags & this.flag_mask) ? code.enabled : code.disabled;
-	return glslcode.getFinalCode( shader_type, block_flags );
+	var finalcode = glslcode.getFinalCode( shader_type, block_flags );
+
+	if( code.macros )
+	{
+		var macros_code = "";
+		for(var i in code.macros)
+			macros_code += "#define " + i + code.macros[i] + "\n";
+		finalcode = macros + finalcode;
+	}
+	return finalcode;
 }
 
 ShaderBlock.prototype.register = function()
@@ -4820,7 +4830,7 @@ function GLSLCode( code )
 	this.uniforms = {};
 	this.includes = {};
 	this.snippets = {};
-	this.shader_blocks = {};
+	this.shader_blocks = {}; //warning: this not always contain which shaderblocks are in use, because they could be dynamic using pragma define
 	this.is_dynamic = false; //means this shader has no variations using pragmas or macros
 	if(code)
 		this.parse();
@@ -4904,6 +4914,17 @@ GLSLCode.prototype.parse = function()
 				pragma_info.include_subfile = subfile;
 				this.includes[ pragma_info.include ] = true;
 			}
+			else if( action == "define" )
+			{
+				var param1 = t[2];
+				var param2 = t[3];
+				if(!param1 || !param2)
+				{
+					console.error("#pragma define missing parameters");
+					continue;
+				}
+				pragma_info.define = [ param1, param2.substr(1, param2.length - 2) ];
+			}
 			else if( action == "shaderblock" )
 			{
 				if(!t[2])
@@ -4912,9 +4933,22 @@ GLSLCode.prototype.parse = function()
 					continue;
 				}
 				pragma_info.action_type = GLSLCode.SHADERBLOCK;
-				var shader_block_name = t[2].substr(1, t[2].length - 2); //safer than JSON.parse
-				pragma_info.shader_block = shader_block_name;
-				this.shader_blocks[ pragma_info.shader_block ] = true;
+
+				var param = t[2];
+				if(param[0] == '"') //one means "shaderblock_name", two means shaderblock_var
+				{
+					pragma_info.shader_block = [1, param.substr(1, param.length - 2)]; //safer than JSON.parse
+					this.shader_blocks[ pragma_info.shader_block[1] ] = true;
+				}
+				else
+				{
+					pragma_info.shader_block = [2, param];
+					if(t[3]) //thirth parameter for default
+					{
+						pragma_info.shader_block.push( t[3].substr(1, t[3].length - 2) );
+						this.shader_blocks[ pragma_info.shader_block[2] ] = true;
+					}
+				}
 			}
 			else if( action == "snippet" )
 			{
@@ -4946,12 +4980,13 @@ GLSLCode.prototype.parse = function()
 	return true;
 }
 
-GLSLCode.prototype.getFinalCode = function( shader_type, block_flags )
+GLSLCode.prototype.getFinalCode = function( shader_type, block_flags, context )
 {
 	if( !this.is_dynamic )
 		return this.code;
 
 	var code = "";
+	context = context || {};
 	var blocks = this.blocks;
 
 	for(var i = 0; i < blocks.length; ++i)
@@ -4994,16 +5029,33 @@ GLSLCode.prototype.getFinalCode = function( shader_type, block_flags )
 				code += "\n" + snippet_code.code + "\n";
 			}
 		}
+		else if( block.define ) //defines a context variable
+		{
+			context[ block.define[0] ] = block.define[1];
+		}
 		else if( block.shader_block ) //injects code from ShaderCodes taking into account certain rules
 		{
-			var shader_block = LS.ShadersManager.getShaderBlock( block.shader_block );
+			var shader_block_name = block.shader_block[1];
+			if( block.shader_block[0] == 2 )
+			{
+				//dynamic shaderblock name
+				if( context[ shader_block_name ] )
+					shader_block_name = context[ shader_block_name ];
+				else
+				{
+					console.error("ShaderBlock: no context var found: " + shader_block_name );
+					return null;
+				}
+			}
+			
+			var shader_block = LS.ShadersManager.getShaderBlock( shader_block_name );
 			if(!shader_block)
 			{
 				console.error("ShaderCode uses unknown ShaderBlock: ", block.shader_block);
 				return null;
 			}
 
-			var block_code = shader_block.getFinalCode( shader_type, block_flags );
+			var block_code = shader_block.getFinalCode( shader_type, block_flags, context );
 			if( block_code )
 				code += "\n#define BLOCK_"+ ( shader_block.name.toUpperCase() ) +"\n" + block_code + "\n";
 		}
@@ -7396,7 +7448,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	for(var i = 0; i < lights.length; ++i)
 	{
 		var light = lights[i];
-		block_flags = light.applyShaderBlockFlags( block_flags, pass );
+		block_flags = light.applyShaderBlockFlags( block_flags, pass, render_settings );
 
 		//extract shader compiled
 		var shader = shader_code.getShader( null, block_flags );
@@ -9511,36 +9563,8 @@ Take.prototype.optimizeTracks = function()
 	for(var i = 0; i < this.tracks.length; ++i)
 	{
 		var track = this.tracks[i];
-		if( track.value_size != 16 )
-			continue;
-
-		//convert locator
-		var path = track.property.split("/");
-		if( path[ path.length - 1 ] != "matrix")
-			continue;
-		path[ path.length - 1 ] = "Transform/data";
-		track.property = path.join("/");
-		track.type = "trans10";
-		track.value_size = 10;
-
-		//convert samples
-		if(!track.packed_data)
-		{
-			console.warn("convertMatricesToData only works with packed data");
-			continue;
-		}
-
-		var data = track.data;
-		var num_samples = data.length / 17;
-		for(var k = 0; k < num_samples; ++k)
-		{
-			var sample = data.subarray(k*17+1,(k*17)+17);
-			var new_data = LS.Transform.fromMatrix4ToTransformData( sample, temp );
-			data[k*11] = data[k*17]; //timestamp
-			data.set(temp,k*11+1); //overwrite inplace (because the output is less big that the input)
-		}
-		track.data = new Float32Array( data.subarray(0,num_samples*11) );
-		num += 1;
+		if( track.convertToTrans10() )
+			num += 1;
 	}
 	return num;
 }
@@ -9612,17 +9636,14 @@ Take.prototype.onlyRotations = function()
 		else if (last_path == "data")
 			path[ path.length - 1 ] = "rotation";
 
+		//convert samples
+		if(!track.packed_data)
+			track.packData();
+
 		track.property = path.join("/");
 		var old_type = track.type;
 		track.type = "quat";
 		track.value_size = 4;
-
-		//convert samples
-		if(!track.packed_data)
-		{
-			console.warn("convertMatricesToData only works with packed data");
-			continue;
-		}
 
 		var data = track.data;
 		var num_samples = data.length / (old_size+1);
@@ -9648,6 +9669,45 @@ Take.prototype.onlyRotations = function()
 		}
 		
 		track.data = new Float32Array( data.subarray(0,num_samples*5) );
+		num += 1;
+	}
+	return num;
+}
+
+/**
+* removes scaling in transform tracks
+* @method removeScaling
+*/
+Take.prototype.removeScaling = function()
+{
+	var num = 0;
+
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+		var modified = false;
+
+		if(track.type == "matrix")
+		{
+			track.convertToTrans10();
+			modified = true;
+		}
+
+		if( track.type != "trans10" )
+		{
+			if(modified)
+				num += 1;
+			continue;
+		}
+
+		var num_keyframes = track.getNumberOfKeyframes();
+
+		for( var j = 0; j < num_keyframes; ++j )
+		{
+			var k = track.getKeyframe(j);
+			k[1][7] = k[1][8] = k[1][9] = 1; //set scale equal to 1
+		}
+
 		num += 1;
 	}
 	return num;
@@ -10556,6 +10616,38 @@ Track.prototype.trim = function( start, end )
 	return 0;
 }
 
+Track.prototype.convertToTrans10 = function()
+{
+	if( this.value_size != 16 )
+		return false;
+
+	//convert samples
+	if(!this.packed_data)
+		this.packData();
+
+	//convert locator
+	var path = this.property.split("/");
+	if( path[ path.length - 1 ] != "matrix")
+		return false;
+
+	path[ path.length - 1 ] = "Transform/data";
+	this.property = path.join("/");
+	this.type = "trans10";
+	this.value_size = 10;
+
+	var data = this.data;
+	var num_samples = data.length / 17;
+	for(var k = 0; k < num_samples; ++k)
+	{
+		var sample = data.subarray(k*17+1,(k*17)+17);
+		var new_data = LS.Transform.fromMatrix4ToTransformData( sample, temp );
+		data[k*11] = data[k*17]; //timestamp
+		data.set(temp,k*11+1); //overwrite inplace (because the output is less big that the input)
+	}
+	this.data = new Float32Array( data.subarray(0,num_samples*11) );
+
+	return true;
+}
 
 Animation.Track = Track;
 
@@ -12779,7 +12871,7 @@ if(typeof(LiteGraph) != "undefined")
 if(typeof(LiteGraph) != "undefined")
 {
 	//special kind of node
-	function LGraphSetValue()
+	global.LGraphSetValue = function LGraphSetValue()
 	{
 		this.properties = { property_name: "", value: "", type: "String" };
 		this.addInput("on_set", LiteGraph.ACTION );
@@ -12815,8 +12907,6 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphSetValue.desc = "sets a value to a node";
 
 	LiteGraph.registerNodeType("logic/setValue", LGraphSetValue );
-
-
 }
 
 
@@ -23647,26 +23737,29 @@ Light.prototype.applyTransformMatrix = function( matrix, center, property_name )
 	return true;
 }
 
-Light.prototype.applyShaderBlockFlags = function( flags, pass )
+Light.prototype.applyShaderBlockFlags = function( flags, pass, render_settings )
 {
 	if(!this.enabled)
 		return flags;
 
 	flags |= Light.shader_block.flag_mask;
 
-	if(this.cast_shadows)
+	if( this.cast_shadows && render_settings.shadows_enabled )
 	{
 		if(this.type == Light.OMNI)
 		{
 			//flags |= Light.shadowmapping_cube_shader_block.flag_mask;
 		}
 		else
+		{
+			//take into account if using depth texture or color texture
 			flags |= Light.shadowmapping_2d_shader_block.flag_mask;
+		}
 	}
 	return flags;
 }
 
-LS.registerComponent(Light);
+LS.registerComponent( Light );
 LS.Light = Light;
 
 LS.ShadersManager.registerSnippet("surface","\n\
@@ -23960,6 +24053,11 @@ shadowmapping_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_2d_enabled_cod
 shadowmapping_block.register();
 Light.shadowmapping_2d_shader_block = shadowmapping_block;
 
+var shadowmapping_color_block = new LS.ShaderBlock("testShadowColor");
+shadowmapping_color_block.addCode( GL.VERTEX_SHADER, Light._shadowmap_vertex_enabled_code, Light._shadowmap_vertex_disabled_code );
+shadowmapping_color_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_2d_enabled_code, "", { USE_COLOR_DEPTH_TEXTURE: "" } );
+shadowmapping_color_block.register();
+Light.shadowmapping_2d_color_shader_block = shadowmapping_color_block;
 
 //TODO
 

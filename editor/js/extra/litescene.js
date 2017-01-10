@@ -38365,7 +38365,7 @@ SceneTree.prototype.load = function( url, on_complete, on_error, on_progress, on
 
 	function inner_error(e)
 	{
-		var err_code = e.target.status;
+		var err_code = (e && e.target) ? e.target.status : 0;
 		console.warn("Error loading scene: " + url + " -> " + err_code);
 		if(on_error)
 			on_error(url, err_code, e);

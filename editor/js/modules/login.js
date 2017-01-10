@@ -1,6 +1,6 @@
 var LoginModule = { 
 	name: "login",
-	server_url: "",
+
 	server_ready: false,
 	session: null,
 
@@ -16,11 +16,14 @@ var LoginModule = {
 		loginarea.style.position = "absolute";
 		loginarea.style.top = 0;
 		loginarea.style.right = 0;
-		this.server_path = CORE.config.server;
+
 		this.loginarea = loginarea;
 		document.querySelector("#mainmenubar").appendChild( loginarea );
 
-		LFS.setup( this.server_path, function(v){
+		if(!CORE.server_url)
+			console.warn("No server url found in LoginModule");
+
+		LFS.setup( CORE.server_url, function(v){
 			if(!v)
 			{
 				LiteGUI.alert("Cannot connect with server");

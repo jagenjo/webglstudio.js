@@ -281,8 +281,17 @@ var LiteFileServer = {
 		return xhr;
 	},
 
-	clearPath: function(path)
+	cleanPath: function(path)
 	{
+		var protocol = "";
+		var protocol_index = path.indexOf("://");
+		if( protocol_index != -1 )
+		{
+			protocol = path.substr(0, protocol_index + 3 );
+			path = path.substr( protocol_index + 3 );
+		}
+
+
 		var t = path.split("/");
 		t = t.filter( function(v) { return !!v;} );
 
@@ -296,12 +305,12 @@ var LiteFileServer = {
 				result.push( t[i] );
 		}
 
-		return t.join("/");
+		return protocol + t.join("/");
 	},
 
 	getFullpath: function(unit,folder,filename)
 	{
-		return this.clearPath(unit + "/" + folder + "/" + filename);
+		return this.cleanPath(unit + "/" + folder + "/" + filename);
 	},
 
 	validateFilename: function( filename )
@@ -325,7 +334,7 @@ var LiteFileServer = {
 		if(!rg.test(fullpath))
 			return null; //invalid name
 
-		fullpath = this.clearPath(fullpath); //remove slashes
+		fullpath = this.cleanPath(fullpath); //remove slashes
 
 		//remove url stuff
 		var pos = fullpath.indexOf("?");
@@ -339,8 +348,8 @@ var LiteFileServer = {
 		var unit = t.shift();
 		var filename = "";
 		if(!is_folder)
-			filename = this.clearPath( t.pop() );
-		var folder = this.clearPath( t.join("/") );
+			filename = this.cleanPath( t.pop() );
+		var folder = this.cleanPath( t.join("/") );
 		if(folder == "/")
 			folder = "";
 
@@ -369,7 +378,7 @@ var LiteFileServer = {
 		if(!this.server_path || this.server_path == "./" || this.server_path == "/")
 			server = "";
 		var path = server + this.files_path + "/" + info.unit + "/" + folder + "/" + this.preview_prefix + info.filename + this.preview_sufix;
-		path = this.clearPath( path );
+		path = this.cleanPath( path );
 		if(ignore_cache)
 			path += "?nocache=" + getTime() + Math.floor(Math.random() * 1000);
 		return path;

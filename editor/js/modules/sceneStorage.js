@@ -190,7 +190,7 @@ var SceneStorageModule = {
 			//the SceneTree.load function bypasses the LS.RM (uses relative urls), something that is a problem when loading an scene stored in the Drive
 			//SceneStorage also includes the url
 			msg = NotifyModule.show("FILE: " + fullpath, { id: msg_id, closable: true, time: 0, left: 60, top: 30, parent: "#visor" } );
-			LS.GlobalScene.load( real_path, inner_complete, null, inner_progress ); 
+			LS.GlobalScene.load( real_path, inner_complete, inner_error, inner_progress ); 
 		};
 
 		function inner_complete( scene, url )
@@ -211,6 +211,13 @@ var SceneStorageModule = {
 				partial_load = e.loaded / e.total;
 			if(msg)
 				msg.setProgress( partial_load );
+		}
+
+		function inner_error(url, err)
+		{
+			if(msg)
+				msg.kill();
+			LiteGUI.alert("Error loading scene file: " + err );
 		}
 	},
 
@@ -661,7 +668,10 @@ var SceneStorageModule = {
 	publishScene: function( fullpath, as_pack, include_all )
 	{
 		if(!as_pack)
-			return window.open("player.html?url=" + LS.RM.path + LS.GlobalScene.extra.fullpath,'_blank');
+		{
+			var scene_url = encodeURIComponent(LS.RM.path + LS.GlobalScene.extra.fullpath);
+			return window.open("player.html?url=" + scene_url,'_blank');
+		}
 		
 		LS.GlobalScene.extra.publish_name = fullpath;
 		var pack = LS.GlobalScene.toPack( fullpath, include_all );

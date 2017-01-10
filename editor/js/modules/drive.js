@@ -6,7 +6,7 @@ var DriveModule = {
 	name: "Drive",
 	bigicon: "imgs/tabicon-drive.png",
 
-	server_url: "",
+	server_files_path: "",
 
 	registered_drive_bridges: {},
 
@@ -17,6 +17,7 @@ var DriveModule = {
 
 	server_resources: {}, //indexed by filename (includes all resources on the server) 
 	server_resources_by_id: {}, //indexed by id in DB
+	proxy: null,
 
 	preview_format: "image/jpg",
 	preview_size: 256,
@@ -33,15 +34,30 @@ var DriveModule = {
 	settings_panel: [ {name:"drive", title:"Drive", icon:null } ],
 
 	preferences: {
-		show_leaving_warning: true
+		show_leaving_warning: true,
+		fileserver_url: null, //default,
+		fileserver_files_url: null,
+		proxy: null
 	},
 
 	init: function()
 	{
-		this.server_url = CORE.config.server;
+		CORE.server_url = CORE.config.server;
+		this.server_files_path = CORE.config.resources;
+		this.proxy = CORE.config.proxy;
 
-		if(CORE.config.proxy)
-			LS.ResourcesManager.setProxy( CORE.config.proxy );
+		if( this.preferences.fileserver_url )
+			CORE.server_url = this.preferences.fileserver_url;
+		if( this.preferences.fileserver_files_url )
+			this.server_files_path = this.preferences.fileserver_files_url;
+		if( this.preferences.proxy )
+			this.proxy = this.preferences.proxy;
+
+		//assign
+		LS.ResourcesManager.setPath( this.server_files_path );
+
+		if(this.proxy)
+			LS.ResourcesManager.setProxy( this.proxy );
 
 		LS.ResourcesManager.keep_files = true;
 		var that = this;
@@ -1727,13 +1743,13 @@ var DriveModule = {
 		
 		resource.id = parseInt(resource.id);
 		resource.fullpath = resource.folder + "/" + resource.filename;
-		resource.url = DriveModule.server_url + "resources/" + resource.fullpath;
+		resource.url = CORE.server_url + "resources/" + resource.fullpath;
 		resource.object_type = resource.category;
 		if(resource.metadata)
 			resource.metadata = JSON.parse( resource.metadata );
 		else
 			resource.metadata = {};
-		resource._preview_url = DriveModule.server_url + "resources/_pics/_" + resource.id + ".png";
+		resource._preview_url = CORE.server_url + "resources/_pics/_" + resource.id + ".png";
 
 		this.server_resources[ resource.fullpath ] = resource;
 		if( LS.ResourcesManager.resources[ resource.fullpath ] )
@@ -1784,7 +1800,57 @@ var DriveModule = {
 	{
 		if(name != "drive")
 			return;
-		widgets.addFlags( this.preferences );
+
+		var that = this;
+
+		widgets.addTitle("Files server configuration");
+		widgets.addInfo(null,"You must restart WebGLStudio to changes take effect");
+
+		widgets.addString("Drive Service URL", this.preferences.fileserver_url, function(v){ 
+			v = LFS.cleanPath(v) + "/";
+			that.preferences.fileserver_url = v;
+			if(!v)
+				v = CORE.config.server;
+			CORE.server_url = v;
+		});
+
+		widgets.addString("Drive Files URL", this.preferences.fileserver_files_url, function(v){ 
+			v = LFS.cleanPath(v) + "/";
+			that.preferences.fileserver_files_url = v;
+			if(!v)
+				v = CORE.config.resources;
+			DriveModule.server_files_url = v;
+			LS.ResourcesManager.setPath( this.server_files_path );
+		});
+
+		widgets.addString("Proxy URL", this.preferences.proxy, function(v){ 
+			that.preferences.proxy = v;
+			LS.ResourcesManager.setProxy( v || CORE.config.proxy );
+		});
+
+		var fetch_widget = widgets.addStringButton("Fetch from server", "", { button_width: "25%", button:"Fetch", callback_button: function(){ 
+			var new_server_url = fetch_widget.getValue();
+
+			if(!new_server_url)
+				return;
+
+			LiteGUI.requestJSON( new_server_url + "/config.json", function(config){
+				if(!config)
+					return LiteGUI.alert("Cannot retrieve config.json file from server");
+				that.preferences.fileserver_url = LFS.cleanPath( new_server_url + "/" + config.server ) + "/";
+				that.preferences.fileserver_files_url = LFS.cleanPath( new_server_url + "/" + config.resources ) + "/";
+				LiteGUI.alert("Config found. You must restart to apply new server config.");
+			});
+		}});
+
+		widgets.addButton(null, "Use default server", { callback: function(){ 
+			that.preferences.fileserver_url = "";
+			that.preferences.fileserver_files_url = "";
+			LiteGUI.alert("You must restart to apply new server config.");
+		}});
+
+		widgets.addSeparator();
+		widgets.addCheckbox( "Show leaving warning", this.preferences.show_leaving_warning, function(v){ that.preferences.show_leaving_warning = v; } );
 	},
 
 	onUnload: function()

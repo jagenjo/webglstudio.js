@@ -194,6 +194,14 @@ function enableWebGLCanvas( canvas, options )
 		mat3.scale( this._matrix, this._matrix, tmp_vec2 );
 	}
 
+	//own method to reset internal stuff
+	ctx.resetTransform = function()
+	{
+		//reset transform
+		gl._stack.length = 0;
+		gl.setTransform(1,0,0, 0,1,0, 0,0,1);
+	}
+
 	ctx.save = function() {
 		if(this._stack.length < 32)
 			this._stack.push( mat3.clone( this._matrix ) );

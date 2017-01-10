@@ -4,6 +4,8 @@ var CORE = {
 	config: null, //internal configuration
 	user_preferences: {}, //stuff that the user can change and wants to keep
 
+	server_url: null, //server to connect for login and files
+
 	Modules: [], //registered modules
 	Widgets: [], //valid tab widgets (used by GenericTabsWidget)
 	Scenes: [], //current scenes
@@ -126,9 +128,6 @@ var CORE = {
 		//some modules may need to be unloaded
 		window.onbeforeunload = CORE.onBeforeUnload.bind(this);
 
-		//config folders
-		LS.ResourcesManager.setPath( CORE.config.resources );
-
 		this.addScene( LS.GlobalScene );
 		this.selectScene( LS.GlobalScene );
 
@@ -234,7 +233,7 @@ var CORE = {
 		localStorage.removeItem("wgl_user_preferences" );
 	},
 
-	loadUserPreferences: function()
+	getUserPreferences: function()
 	{
 		var preferences = null;
 
@@ -249,10 +248,17 @@ var CORE = {
 			}
 			catch (err)
 			{
+				console.error("Error in user preferences");
 			}
 		}
 		//removing preferences could mean that the preferences will be lost
 		//localStorage.removeItem("wgl_user_preferences" );
+		return preferences;
+	},
+
+	loadUserPreferences: function()
+	{
+		var preferences = this.getUserPreferences();
 		if(!preferences)
 			return;
 

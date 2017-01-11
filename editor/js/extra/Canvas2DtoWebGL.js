@@ -199,7 +199,8 @@ function enableWebGLCanvas( canvas, options )
 	{
 		//reset transform
 		gl._stack.length = 0;
-		gl.setTransform(1,0,0, 0,1,0, 0,0,1);
+		this._matrix.set([1,0,0, 0,1,0, 0,0,1]);
+		global_angle = 0;
 	}
 
 	ctx.save = function() {

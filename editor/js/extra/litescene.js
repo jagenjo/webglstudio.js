@@ -5940,11 +5940,11 @@ Material.prototype.updatePreview = function(size, options)
 		options.environment = LS.GlobalScene.info.textures.environment;
 
 	size = size || 256;
-	var preview = LS.Renderer.renderMaterialPreview( this, size, options );
+	var preview = LS.Renderer.renderMaterialPreview( this, size, options, this._preview );
 	if(!preview)
 		return;
 
-	this.preview = preview;
+	this._preview = preview;
 	if(preview.toDataURL)
 		this._preview_url = preview.toDataURL("image/png");
 }
@@ -17155,9 +17155,10 @@ var Renderer = {
 	* @param {Material} material
 	* @param {number} size image size
 	* @param {Object} options could be environment_texture, to_viewport
+	* @param {HTMLCanvas} canvas [optional] the output canvas where to store the preview
 	* @return {Image} the preview image (in canvas format) or null if it was rendered to the viewport
 	*/
-	renderMaterialPreview: function( material, size, options )
+	renderMaterialPreview: function( material, size, options, canvas )
 	{
 		options = options || {};
 
@@ -17225,7 +17226,7 @@ var Renderer = {
 			LS.Renderer.renderFrame( scene.root.camera, render_settings, scene );
 		});
 
-		var canvas = tex.toCanvas(null, true);
+		var canvas = tex.toCanvas( canvas, true );
 		return canvas;
 	},
 

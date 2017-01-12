@@ -750,7 +750,7 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 		for(var i = 0; i < component.morph_targets.length; i++)
 		{
 			var morph = component.morph_targets[i];
-			inspector.addMesh("", morph.mesh, { pretitle: AnimationModule.getKeyframeCode( component, "morphs/"+i+"/mesh" ), name_width: 20, width: "60%", morph_index: i, callback: function(v) { 
+			inspector.addMesh("", morph.mesh, { pretitle: AnimationModule.getKeyframeCode( component, "morphs/"+i+"/mesh" ), name_width: 20, align: "right", width: "60%", morph_index: i, callback: function(v) { 
 				component.setMorphMesh( this.options.morph_index, v );
 				LS.GlobalScene.refresh();
 			}});

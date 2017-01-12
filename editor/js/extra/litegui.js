@@ -7271,6 +7271,9 @@ Inspector.prototype.addString = function(name,value, options)
 	var element = this.createWidget(name,"<span class='inputfield full "+(options.disabled?"disabled":"")+"'><input type='"+inputtype+"' tabIndex='"+this.tab_index+"' "+focus+" class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span>", options);
 	var input = element.querySelector(".wcontent input");
 
+	if(options.align == "right")
+		input.style.direction = "rtl";
+
 	input.addEventListener( options.immediate ? "keyup" : "change", function(e) { 
 		var r = Inspector.onWidgetChange.call(that, element, name, e.target.value, options);
 		if(r !== undefined)

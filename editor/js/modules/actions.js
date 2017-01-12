@@ -287,6 +287,7 @@ LS.Components.Camera.actions["edit_layers"] = { title: "Edit Layers", callback: 
 
 
 LS.Components.SkinDeformer.actions["convert_bones"] = { title: "Convert Bones to Relative", callback: function() { this.convertBonesToRelative(); }};
+LS.Components.MorphDeformer.actions["optimize_moprhtargets"] = { title: "Optimize Morph Targets", callback: function() { this.optimizeMorphTargets(); }};
 
 
 

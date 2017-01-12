@@ -1757,6 +1757,8 @@ var Network = {
 
 	default_dataType: "arraybuffer",
 
+	withCredentials: false, //for CORS urls: not sure which one is the best for every case so I leave it configurable
+
 	/**
 	* A front-end for XMLHttpRequest so it is simpler and more cross-platform
 	*
@@ -1795,7 +1797,7 @@ var Network = {
 		//regular case, use AJAX call
         var xhr = new XMLHttpRequest();
         xhr.open(request.data ? 'POST' : 'GET', request.url, true);
-		xhr.withCredentials = false; //if true doesnt work
+		xhr.withCredentials = this.withCredentials; //if true doesnt work
         if(dataType)
             xhr.responseType = dataType;
         if (request.mimeType)
@@ -25914,6 +25916,26 @@ MorphDeformer.prototype.getPropertiesInfo = function()
 	}
 
 	return properties;
+}
+
+MorphDeformer.prototype.optimizeMorphTargets = function()
+{
+	for(var i = 0; i < this.morph_targets.length; ++i)
+	{
+		var morph = this.morph_targets[i];
+		var mesh = LS.ResourcesManager.meshes[ morph.mesh ];
+		if(!mesh)
+			continue;
+		
+		//remove data not used 
+		mesh.removeVertexBuffer("coords", true);
+		mesh.removeIndexBuffer("triangles", true);
+		mesh.removeIndexBuffer("wireframe", true);
+
+		LS.ResourcesManager.resourceModified( mesh );
+	}
+
+	console.log("Morph targets optimized");
 }
 
 

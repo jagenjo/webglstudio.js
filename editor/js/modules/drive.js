@@ -662,8 +662,9 @@ var DriveModule = {
 
 				if (v == "Delete")
 				{
-					LS.RM.unregisterResource( resource.fullpath );
-					DriveModule.serverDeleteFile(resource.fullpath, function(v) { 
+					var fullpath = resource.fullpath || resource.filename;
+					LS.RM.unregisterResource( fullpath );
+					DriveModule.serverDeleteFile( fullpath, function(v) { 
 						if(v)
 							DriveModule.refreshContent();
 					});

@@ -2040,6 +2040,17 @@ GL.Buffer.prototype.clone = function(share)
 }
 
 /**
+* Deletes the content from the GPU and destroys the handler
+* @method delete
+*/
+GL.Buffer.prototype.delete = function()
+{
+	var gl = this.gl;
+	gl.deleteBuffer( this.buffer );
+	this.buffer = null;
+}
+
+/**
 * Base class for meshes, it wraps several buffers and some global info like the bounding box
 * @class Mesh
 * @param {Object} vertexBuffers object with all the vertex streams
@@ -2256,10 +2267,14 @@ Mesh.prototype.createVertexBuffer = function(name, attribute, buffer_spacing, bu
 * Removes a vertex buffer from the mesh
 * @method removeVertexBuffer
 * @param {String} name "vertices","normals"...
+* @param {Boolean} free if you want to remove the data from the GPU
 */
-Mesh.prototype.removeVertexBuffer = function(name) {
+Mesh.prototype.removeVertexBuffer = function(name, free) {
 	var buffer = this.vertexBuffers[name];
-	if(!buffer) return;
+	if(!buffer)
+		return;
+	if(free)
+		buffer.delete();
 	delete this.vertexBuffers[name];
 }
 
@@ -2326,6 +2341,22 @@ Mesh.prototype.getIndexBuffer = function(name)
 }
 
 /**
+* Removes an index buffer from the mesh
+* @method removeIndexBuffer
+* @param {String} name "vertices","normals"...
+* @param {Boolean} free if you want to remove the data from the GPU
+*/
+Mesh.prototype.removeIndexBuffer = function(name, free) {
+	var buffer = this.indexBuffers[name];
+	if(!buffer)
+		return;
+	if(free)
+		buffer.delete();
+	delete this.indexBuffers[name];
+}
+
+
+/**
 * Uploads data inside buffers to VRAM.
 * @method upload
 * @param {number} buffer_type gl.STATIC_DRAW, gl.DYNAMIC_DRAW, gl.STREAM_DRAW
@@ -2353,16 +2384,16 @@ Mesh.prototype.deleteBuffers = function()
 	for(var i in this.vertexBuffers)
 	{
 		var buffer = this.vertexBuffers[i];
-		this.gl.deleteBuffer( buffer.buffer );
+		buffer.delete();
 	}
 	this.vertexBuffers = {};
 
 	for(var i in this.indexBuffers)
 	{
 		var buffer = this.indexBuffers[i];
-		this.gl.deleteBuffer( buffer.buffer );
+		buffer.delete();
 	}
-	this.indexBuffers[i] = {};
+	this.indexBuffers = {};
 }
 
 Mesh.prototype.delete = Mesh.prototype.deleteBuffers;

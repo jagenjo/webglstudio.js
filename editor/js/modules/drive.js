@@ -1419,6 +1419,17 @@ var DriveModule = {
 			resource.fullpath = resource.filename;
 		}
 
+		var container_fullpath = resource.from_pack && resource.from_prefab;
+		if(container_fullpath)
+		{
+			resource = LS.RM.getResource( container_fullpath );
+			if(!resource)
+			{
+				console.error("resource in a pack that is not in memory?!");
+				return;
+			}
+		}
+
 		//used to change between upload or update (incase the file exist)
 		//var func_name = resource._server_info ? "serverUpdateResource" : "serverUploadResource";
 
@@ -2589,7 +2600,8 @@ DriveModule.registerAssignResourceCallback("Pack", function( fullpath, restype, 
 			var json_data = pack._data["scene.json"];
 			var data = JSON.parse(json_data);
 			LS.GlobalScene.clear();
-			LS.GlobalScene.configure(data);
+			//LS.GlobalScene.configure(data); //this wont load the global scripts
+			LS.GlobalScene.setFromJSON(data);
 		});
 	});
 });

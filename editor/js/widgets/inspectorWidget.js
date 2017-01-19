@@ -418,9 +418,12 @@ InspectorWidget.prototype.inspectScene = function( scene )
 					{
 						var scene_data = LS.GlobalScene.serialize();
 						LS.GlobalScene.clear();
-						LS.GlobalScene.configure(scene_data);
+						//LS.GlobalScene.configure(scene_data); //doesnt load scripts
+						LS.GlobalScene.setFromJSON( scene_data );
 					}
-				}, LiteGUI.alert );
+				}, function(err, url){
+					 LiteGUI.alert("Error loading scripts, not found: " + url );
+				});
 			});
 
 		/*

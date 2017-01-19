@@ -423,6 +423,9 @@ function addGenericResource ( name, value, options, resource_classname )
 	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || LiteGUI.special_codes.open_folder )+"</button>", options);
 	var input = element.querySelector(".wcontent input");
 
+	if( options.align && options.align == "right" )
+		input.style.direction = "rtl";
+
 	input.addEventListener( "change", function(e) { 
 		var v = e.target.value;
 		if(v && v[0] != ":" && !options.skip_load)

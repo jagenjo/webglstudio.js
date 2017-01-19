@@ -46,7 +46,7 @@ var ImporterModule  = {
 			if(files.length > 1)
 			{
 
-				//sort resources so iamges goes first?
+				//sort resources so images goes first?
 				var files = ImporterModule.sortFilesByPriority( files );
 
 				//TODO: show special dialog?
@@ -55,8 +55,14 @@ var ImporterModule  = {
 					this.loadFileToMemory( files[i], function(file,options){
 						var filename = file.name.toLowerCase();
 						NotifyModule.show("FILE: " + file.name, { id: "res-msg-" + file.name.hashCode(), closable: true, time: 3000, left: 60, top: 30, parent: "#visor" } );
-						ImporterModule.processResource( file.name, file, that.getImporterOptions( file.name ) );
+						ImporterModule.processResource( file.name, file, that.getImporterOptions( file.name ), function(filename, resource){
+							//meshes must be inserted
+							if(resource.constructor === GL.Mesh)
+								ImporterModule.insertMeshInScene( resource );
+						});
 					},options);
+
+
 				}
 				return;
 			}
@@ -527,8 +533,37 @@ var ImporterModule  = {
 			if(on_complete)
 				on_complete( filename, resource, options );
 		}
-	}
+	},
 
+	insertMeshInScene: function(mesh)
+	{
+		var node = new LS.SceneNode();
+		node.name = mesh.filename || "Mesh";
+		if( mesh.info && mesh.info.groups || mesh.info.groups.length )
+		{
+			for(var i in mesh.info.groups)
+			{
+				var group = mesh.info.groups[i];
+
+				if(group.material)
+				{
+					var meshrenderer = new LS.Components.MeshRenderer();
+					meshrenderer.mesh = mesh.fullpath || mesh.filename;
+					meshrenderer.submesh_id = i;
+					meshrenderer.material = group.material;
+					node.addComponent( meshrenderer );
+				}
+			}
+		}
+		else
+		{
+			var meshrenderer = new LS.Components.MeshRenderer();
+			meshrenderer.mesh = mesh.fullpath || mesh.filename;
+			node.addComponent( meshrenderer );
+		}
+
+		LS.GlobalScene.root.addChild( node );
+	}
 };
 
 CORE.registerModule( ImporterModule );

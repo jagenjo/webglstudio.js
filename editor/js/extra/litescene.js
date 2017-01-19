@@ -1957,6 +1957,8 @@ var Network = {
 			script.type = 'text/javascript';
 			script.src = url[i];
 			script.async = false;
+			//if( script.src.substr(0,5) == "blob:") //local scripts could contain utf-8
+				script.charset = "UTF-8";
 			script.onload = function(e) { 
 				total--;
 				if(total)
@@ -15272,6 +15274,25 @@ RenderInstance.prototype.render = function(shader)
 	{
 		this.mesh.createVertexBuffer("coords1",2, vertex_buffers["coords"].data );
 		this.vertex_buffers["coords1"] = this.mesh.vertexBuffers["coords1"];
+	}
+
+	//in case no secondary coords found but they are required
+	if(shader.attributes["a_extra"] && !this.vertex_buffers["extra"])
+	{
+		this.mesh.createVertexBuffer("a_extra", 1 );
+		this.vertex_buffers["extra"] = this.mesh.vertexBuffers["extra"];
+	}
+
+	if(shader.attributes["a_extra2"] && !this.vertex_buffers["extra2"])
+	{
+		this.mesh.createVertexBuffer("a_extra2", 2 );
+		this.vertex_buffers["extra2"] = this.mesh.vertexBuffers["extra2"];
+	}
+
+	if(shader.attributes["a_extra3"] && !this.vertex_buffers["extra3"])
+	{
+		this.mesh.createVertexBuffer("a_extra3", 3 );
+		this.vertex_buffers["extra3"] = this.mesh.vertexBuffers["extra3"];
 	}
 
 	shader.drawBuffers( this.vertex_buffers,
@@ -33908,6 +33929,7 @@ var parserBVH = {
 		var frame_time = -1;
 		var duration = -1;
 		var current_frame = 0;
+		var timestamps = [];
 
 		var translator = {
 			"Xposition":"x","Yposition":"y","Zposition":"z","Xrotation":"xrotation","Yrotation":"yrotation","Zrotation":"zrotation"
@@ -33926,7 +33948,7 @@ var parserBVH = {
 			if(line == "")
 				continue;
 
-			var tokens = line.split(" ");
+			var tokens = line.split(/[\s]+/); //splits by spaces and tabs
 			var cmd = tokens[0];
 
 			if(!mode)
@@ -33943,7 +33965,7 @@ var parserBVH = {
 				switch(cmd)
 				{
 					case "ROOT":
-						root = node = { name: tokens[1] };
+						root = node = { name: tokens[1], node_type: "JOINT" };
 						break;
 					case "JOINT":
 						parent = node;
@@ -33954,7 +33976,14 @@ var parserBVH = {
 						parent.children.push(node);
 						break;
 					case "End":
-						ignore = true;
+						//ignore = true;
+						parent = node;
+						stack.push(parent);
+						node = { name: parent.name + "_end", node_type: "JOINT" };
+						if(!parent.children)
+							parent.children = [];
+						parent.children.push(node);
+
 						break;
 					case "{":
 						break;
@@ -33972,10 +34001,18 @@ var parserBVH = {
 					case "CHANNELS":
 						for(var j = 2; j < tokens.length; ++j)
 						{
-							var property = tokens[j];
+							var property = tokens[j].toLowerCase();
 							if(translator[property])
 								property = translator[property];
-							channels.push( { name: tokens[j], property: node.name + "/" + property, type: "number", value_size: 1, data: [], packed_data: true } );
+							//channels.push( { name: tokens[j], property: node.name + "/" + property, type: "number", value_size: 1, data: [], packed_data: true } );
+							var channel_data = { node: node, property: property, data: [] };
+							channels.push( channel_data );
+							if(!node._channels)
+								node._channels = {};
+							if(!node._channels_order)
+								node._channels_order = [];
+							node._channels[ property ] = channel_data;
+							node._channels_order.push( property );
 						}
 						break;
 					case "OFFSET":
@@ -34002,10 +34039,12 @@ var parserBVH = {
 			else if(mode == MODE_MOTION_DATA)
 			{
 				var current_time = current_frame * frame_time;
+				timestamps.push( current_time );
 				for(var j = 0; j < channels.length; ++j)
 				{
 					var channel = channels[j];
-					channel.data.push( current_time, parseFloat( tokens[j] ) );
+					//channel.data.push( current_time, parseFloat( tokens[j] ) );
+					channel.data.push( parseFloat( tokens[j] ) );
 				}
 
 				++current_frame;
@@ -34018,20 +34057,100 @@ var parserBVH = {
 			return r.map(parseFloat);
 		}
 
-		var tracks = channels;
+		//process data
+		var tracks = [];
+		this.processMotion( root, tracks, timestamps );
+
+		var scene = { root: root, object_type: "SceneNode", resources: {} };
+
 		for(var i = 0; i < tracks.length; ++i)
 		{
 			var track = tracks[i];
 			track.duration = duration;
 		}
-		var animation = { name: "#animation", object_type: "Animation", takes: { "default": { name: "default", tracks: tracks } } };
+		var animation = { name: "#animation", object_type: "Animation", takes: { "default": { name: "default", duration: duration, tracks: tracks } } };
 		root.animations = animation.name;
-		var resources = {};
-		resources[ animation["name"] ] = animation;
-		var scene = { root: root, object_type: "SceneNode", resources: resources };
+		scene.resources[ animation["name"] ] = animation;
 
 		console.log(scene);
 		return scene;
+	},
+
+	processMotion: function( node, tracks, timestamps )
+	{
+		var channels = node._channels;
+		if(channels)
+		{
+			var track_position = null;
+			var track_rotation = null;
+
+			var XAXIS = vec3.fromValues(1,0,0);
+			var YAXIS = vec3.fromValues(0,1,0);
+			var ZAXIS = vec3.fromValues(0,0,1);
+
+			if(channels.xposition || channels.yposition || channels.zposition )
+				track_position = { name: node.name + "/Transform/position", property: node.name + "/Transform/position", type: "vec3", value_size: 3, data: [], packed_data: true };
+			if(channels.xrotation || channels.yrotation || channels.zrotation )
+				track_rotation = { name: node.name + "/Transform/rotation", property: node.name + "/Transform/rotation", type: "quat", value_size: 4, data: [], packed_data: true };
+
+
+			for(var j = 0; j < timestamps.length; ++j)
+			{
+				var time = timestamps[j];
+				var pos = vec3.create();
+				var R = quat.create();
+				var ROT = quat.create();
+
+				for(var i = 0; i < node._channels_order.length; ++i)
+				{
+					var property = node._channels_order[i];
+
+					switch( property )
+					{
+						case "xposition":
+							pos[0] = channels.xposition.data[j] + node.transform.position[0];
+							break;
+						case "yposition":
+							pos[1] = channels.yposition.data[j] + node.transform.position[1];
+							break;
+						case "zposition":
+							pos[2] = channels.zposition.data[j] + node.transform.position[2];
+							break;
+						case "xrotation":
+							quat.setAxisAngle( ROT, XAXIS, channels.xrotation.data[j] * DEG2RAD );
+							//quat.mul( R, ROT, R );
+							quat.mul( R, R, ROT );
+							break;
+						case "yrotation":
+							quat.setAxisAngle( ROT, YAXIS, channels.yrotation.data[j] * DEG2RAD );
+							//quat.mul( R, ROT, R );
+							quat.mul( R, R, ROT );
+							break;
+						case "zrotation":
+							quat.setAxisAngle( ROT, ZAXIS, channels.zrotation.data[j] * DEG2RAD );
+							//quat.mul( R, ROT, R );
+							quat.mul( R, R, ROT );
+							break;
+					};
+				} //per channel
+
+				if(track_position)
+					track_position.data.push( time, pos[0], pos[1], pos[2] );
+				if(track_rotation)
+					track_rotation.data.push( time, R[0], R[1], R[2], R[3] );
+			}//per timestamp
+
+			if(track_position)
+				tracks.push( track_position );
+			if(track_rotation)
+				tracks.push( track_rotation );
+		} //if channels
+
+		if(node.children)
+		{
+			for(var i = 0; i < node.children.length; ++i)
+				this.processMotion( node.children[i], tracks, timestamps );
+		}
 	}
 };
 
@@ -37474,12 +37593,15 @@ var parserMTL = {
 					break;
 				case "map_Kd":
 					current_material.textures["color"] = this.clearPath( tokens[1] );
+					current_material.color = [1,1,1];
 					break;
 				case "map_Ka":
 					current_material.textures["ambient"] = this.clearPath( tokens[1] );
+					current_material.ambient = [1,1,1];
 					break;
 				case "map_Ks":
 					current_material.textures["specular"] = this.clearPath( tokens[1] );
+					current_material.specular_factor = 1;
 					break;
 				case "bump":
 				case "map_bump":
@@ -37505,6 +37627,10 @@ var parserMTL = {
 		for(var i in materials)
 		{
 			var material_info = materials[i];
+
+			//hack, ambient must be 1,1,1
+			material_info.ambient = [1,1,1];
+
 			var material = new LS.StandardMaterial(material_info);
 			LS.RM.registerResource( material_info.filename, material );
 		}
@@ -38431,8 +38557,16 @@ SceneTree.getScriptsList = function( root, allow_local )
 			var script_url = LS.ResourcesManager.getFullURL( script_fullpath );
 
 			var res = LS.ResourcesManager.getResource( script_fullpath );
-			if(res && allow_local)
-				script_url = LS.ResourcesManager.cleanFullpath( script_fullpath );
+			if(res)
+			{
+				/*
+				if( res.from_prefab )
+					script_url = LS.ResourcesManager.cleanFullpath( "@" + script_fullpath );
+				else 
+				*/
+					if( allow_local )
+					script_url = LS.ResourcesManager.cleanFullpath( script_fullpath );
+			}
 
 			scripts.push( script_url );
 		}
@@ -38442,7 +38576,7 @@ SceneTree.getScriptsList = function( root, allow_local )
 
 SceneTree.prototype.loadScripts = function( scripts, on_complete, on_error )
 {
-	scripts = scripts || LS.SceneTree.getScriptsList( this );
+	scripts = scripts || LS.SceneTree.getScriptsList( this, true );
 
 	if(!scripts.length)
 	{
@@ -38471,7 +38605,7 @@ SceneTree.prototype.loadScripts = function( scripts, on_complete, on_error )
 			continue;
 		}
 
-		var blob = new Blob([res.data]);
+		var blob = new Blob([res.data],{encoding:"UTF-8", type: 'text/plain;charset=UTF-8'});
 		var objectURL = URL.createObjectURL( blob );
 		final_scripts.push( objectURL );
 		revokable.push( objectURL );
@@ -40230,6 +40364,8 @@ SceneNode.prototype.setPropertyValueFromPath = function( path, value, offset )
 		switch ( path[offset] )
 		{
 			case "matrix": target = this.transform; break;
+			case "position":
+			case "rotation":
 			case "x":
 			case "y":
 			case "z":

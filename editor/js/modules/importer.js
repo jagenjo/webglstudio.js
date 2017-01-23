@@ -9,7 +9,7 @@ var ImporterModule  = {
 	
 	//this are saved between sessions
 	preferences: {
-		optimize_data: true,
+		optimize_data: false,
 		mesh_action: "origin",
 		texture_action: "replace",
 		use_names_to_reference: true
@@ -323,6 +323,8 @@ var ImporterModule  = {
 				inspector.addInfo("Bytes", DriveModule.beautifySize( file.size ) );
 				inspector.addInfo("Type", file.type );
 
+				inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { import_options.optimize_data = v; }});
+
 				var info = LS.Formats.getFileFormatInfo( file.name );
 				if(!info)
 				{
@@ -334,7 +336,6 @@ var ImporterModule  = {
 					inspector.addCombo("Action", ImporterModule.preferences.mesh_action, { values: {"Insert in Origin":"origin","Insert in intersection":"plane","Replace Mesh":"replace"}, callback: function(v) { 
 						ImporterModule.preferences.mesh_action = v;
 					}});
-					inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { import_options.optimize_data = v; }});
 					//inspector.addCheckbox("Insert into scene", insert_into, { callback: function(v) { insert_into = v; }});
 				}
 				else if(info.resource == "Texture" )

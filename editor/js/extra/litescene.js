@@ -10654,6 +10654,7 @@ Track.prototype.convertToTrans10 = function()
 	this.property = path.join("/");
 	this.type = "trans10";
 	this.value_size = 10;
+	var temp = new Float32Array(10);
 
 	var data = this.data;
 	var num_samples = data.length / 17;
@@ -37760,7 +37761,10 @@ var parserTGA = {
 		var TGAcompare = data.subarray(0,12);
 		for(var i = 0; i < TGAcompare.length; i++)
 			if(TGAheader[i] != TGAcompare[i])
+			{
+				console.error("TGA header is not valid");
 				return null; //not a TGA
+			}
 
 		var header = data.subarray(12,18);
 

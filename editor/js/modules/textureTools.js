@@ -211,6 +211,7 @@ GL.Texture.prototype.inspect = function( widgets, skip_default_widgets )
 	var texture_types = { 3553: "gl.TEXTURE_2D", 34067: "gl.TEXTURE_CUBE_MAP" };
 	var types = { 5121: "gl.UNSIGNED_BYTE", 36193: "gl.HALF_FLOAT_OES", 5126: "gl.FLOAT" };
 
+	widgets.addString("Filename", texture.filename || "" );
 	widgets.addString("Width", texture.width );
 	widgets.addString("Height", texture.height );
 	widgets.addString("Format", formats[ texture.format ] || "unknown" );

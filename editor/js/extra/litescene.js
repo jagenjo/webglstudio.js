@@ -30854,10 +30854,26 @@ LS.registerComponent( LineCloud );
 function PlayAnimation(o)
 {
 	this.enabled = true;
+
 	this._animation = "";
 	this._take = "default";
+
+	/**
+	* the root node locator where to apply the animation, is none is specified it is applied using the scene root node
+	* if a "@" is set, then only to this node and its children
+	* @property root_node {String}
+	*/
 	this.root_node = "@";
 	this.playback_speed = 1.0;
+
+	/**
+	* how to play the animation, options are:
+    *   PlayAnimation.LOOP
+	*	PlayAnimation.PINGPONG
+	*	PlayAnimation.ONCE
+	*	PlayAnimation.PAUSED
+	* @property mode {Number}
+	*/
 	this.mode = PlayAnimation.LOOP;
 	this.playing = true;
 	this.current_time = 0;
@@ -30892,6 +30908,10 @@ PlayAnimation["@mode"] = { type:"enum", values: PlayAnimation.MODES };
 PlayAnimation["@current_time"] = { type: LS.TYPES.NUMBER, min: 0, units:"s" };
 PlayAnimation["@blend_time"] = { type: LS.TYPES.NUMBER, min: 0, units:"s" };
 
+/**
+* the name of the LS.Animation resource where the takes and tracks are stored
+* @property animation {String}
+*/
 Object.defineProperty( PlayAnimation.prototype, "animation", {
 	set: function(v){
 		if(v == this._animation)
@@ -30919,6 +30939,11 @@ Object.defineProperty( PlayAnimation.prototype, "animation", {
 	enumerable: true
 });
 
+/**
+* the name of the LS.Animation.Take to play from the LS.Animation
+* A take representes a set of tracks
+* @property take {String}
+*/
 Object.defineProperty( PlayAnimation.prototype, "take", {
 	set: function(v){
 		if(v == this._take)
@@ -30982,19 +31007,6 @@ PlayAnimation.prototype.onAddedToScene = function(scene)
 PlayAnimation.prototype.onRemovedFromScene = function(scene)
 {
 	LEvent.unbind( scene, "update", this.onUpdate, this);
-}
-
-
-PlayAnimation.prototype.getAnimation = function( name )
-{
-	name = name === undefined ? this.animation : name;
-
-	if(!name || name[0] == "@") 
-		return this._root.scene.animation;
-	var anim = LS.ResourcesManager.getResource( name );
-	if( anim && anim.constructor === LS.Animation )
-		return anim;
-	return null;
 }
 
 PlayAnimation.prototype.onUpdate = function(e, dt)
@@ -31138,6 +31150,60 @@ PlayAnimation.prototype.onUpdateBlendAnimation = function( dt )
 		scene.requestFrame();
 }
 
+/**
+* returns the current animation or an animation with a given name
+* @method getAnimation
+* @param {String} name [optional] the name of the animation, if omited then uses the animation set in the component
+* @return {LS.Animation} the animation container
+*/
+PlayAnimation.prototype.getAnimation = function( name )
+{
+	name = name === undefined ? this.animation : name;
+
+	if(!name || name[0] == "@") 
+		return this._root.scene.animation;
+	var anim = LS.ResourcesManager.getResource( name );
+	if( anim && anim.constructor === LS.Animation )
+		return anim;
+	return null;
+}
+
+/**
+* returns the current animation or an animation with a given name
+* @method getTake
+* @param {String} take_name [optional] if not specified then it uses the current take
+* @return {Number} the duration of the take, or -1 if the take was not found or the animation is not loaded
+*/
+PlayAnimation.prototype.getTake = function( take_name )
+{
+	var animation = this.getAnimation();
+	if(!animation) 
+		return null;
+	take_name = take_name || this.take;
+	var take = animation.takes[ take_name ];
+	if(take) 
+		return take;
+	return null;
+}
+
+/**
+* Gets the duration of the current take in the current animation
+* @method getDuration
+* @return {Number} the duration of the take, or -1 if the take was not found or the animation is not loaded
+*/
+PlayAnimation.prototype.getDuration = function()
+{
+	var take = this.getTake();
+	if(take) 
+		return take.duration;
+	return -1;
+}
+
+/**
+* Resets the time to zero and starts playing the current take of the animation
+* It also triggers a "start_animation" event
+* @method play
+*/
 PlayAnimation.prototype.play = function()
 {
 	this.playing = true;
@@ -31151,11 +31217,19 @@ PlayAnimation.prototype.play = function()
 	//this.applyAnimation( take, this.current_time );
 }
 
+/**
+* Pauses the animation
+* @method pause
+*/
 PlayAnimation.prototype.pause = function()
 {
 	this.playing = false;
 }
 
+/**
+* Stops the animation and sets the time to zero
+* @method pause
+*/
 PlayAnimation.prototype.stop = function()
 {
 	this.playing = false;
@@ -31167,6 +31241,12 @@ PlayAnimation.prototype.stop = function()
 	//this.applyAnimation( take, this.current_time );
 }
 
+/**
+* Starts playing the animation but only using a range of it
+* @method playRange
+* @param {Number} start start time
+* @param {Number} end end time
+*/
 PlayAnimation.prototype.playRange = function( start, end )
 {
 	this.playing = true;
@@ -31175,6 +31255,14 @@ PlayAnimation.prototype.playRange = function( start, end )
 	this.range = [ start, end ];
 }
 
+/**
+* applys the animation to the scene nodes
+* @method applyAnimation
+* @param {String} take the name of the take
+* @param {Number} time the time where to sample the tracks
+* @param {Number} last_time [optional] the last time that was applied, (used to trigger events)
+* @param {Number} weight [optional] the weight of this animation (used for blending animation), if ommited 1 is used
+*/
 PlayAnimation.prototype.applyAnimation = function( take, time, last_time, weight )
 {
 	if( last_time === undefined )

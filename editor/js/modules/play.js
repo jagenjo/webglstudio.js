@@ -110,6 +110,7 @@ var PlayModule = {
 
 			this.play_button.innerHTML = this.icons.stop;
 			this.pause_button.removeAttribute('disabled');
+			this.pause_button.classList.remove("enabled");
 			this.stopkeep_button.removeAttribute('disabled');
 			this.changeState("play");
 		}
@@ -117,6 +118,7 @@ var PlayModule = {
 		{
 			this.play_button.innerHTML = this.icons.play;
 			this.pause_button.setAttribute('disabled','disabled');
+			this.pause_button.classList.remove("enabled");
 			this.stopkeep_button.setAttribute('disabled','disabled');
 			this.changeState("stop");
 
@@ -142,6 +144,7 @@ var PlayModule = {
 
 	onPause: function() {
 		this.state = this.state == 'pause' ? 'play' : 'pause';
+		LEvent.trigger( LS.GlobalScene, this.state == "pause" ? "pause" : "unpause" );
 		if( this.state == 'pause' )
 			this.pause_button.classList.add("enabled");
 		else
@@ -154,6 +157,7 @@ var PlayModule = {
 		this.changeState("stop");
 		this.play_button.innerHTML = "Play";
 		this.pause_button.setAttribute('disabled','disabled');
+		this.pause_button.classList.remove("enabled");
 	},
 
 	launch: function()

@@ -208,6 +208,9 @@ var AnimationModule = {
 			var traj = this._trajectories[i];
 
 			var info = LS.GlobalScene.getPropertyInfoFromPath( traj.track._property_path );
+			if(!info)
+				continue;
+
 			var parent_matrix = null;
 			if( info.node && info.node.parentNode && info.node.parentNode.transform )
 				parent_matrix = info.node.parentNode.transform.getGlobalMatrixRef();

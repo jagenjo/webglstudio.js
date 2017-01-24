@@ -12353,8 +12353,8 @@ LGAudio.getAudioContext = function()
 	}
 
 	//in case it crashes
-	if(this._audio_context.state == "suspended")
-		this._audio_context.resume();
+	//if(this._audio_context.state == "suspended")
+	//	this._audio_context.resume();
 	return this._audio_context;
 }
 
@@ -12598,6 +12598,18 @@ LGAudioSource.prototype.onStop = function()
 	this.stopAllSounds();
 }
 
+LGAudioSource.prototype.onPause = function()
+{
+	this.pauseAllSounds();
+}
+
+LGAudioSource.prototype.onUnpause = function()
+{
+	this.unpauseAllSounds();
+	//this.onStart();
+}
+
+
 LGAudioSource.prototype.onRemoved = function()
 {
 	this.stopAllSounds();
@@ -12614,6 +12626,16 @@ LGAudioSource.prototype.stopAllSounds = function()
 		//this._audionodes[i].disconnect( this.audionode );
 	}
 	this._audionodes.length = 0;
+}
+
+LGAudioSource.prototype.pauseAllSounds = function()
+{
+	LGAudio.getAudioContext().suspend();
+}
+
+LGAudioSource.prototype.unpauseAllSounds = function()
+{
+	LGAudio.getAudioContext().resume();
 }
 
 LGAudioSource.prototype.onExecute = function()

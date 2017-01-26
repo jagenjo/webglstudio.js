@@ -1718,8 +1718,10 @@ LS.BlendFunctions[ Blend.CUSTOM ] =	[GL.SRC_ALPHA, GL.ONE_MINUS_SRC_ALPHA];
 
 //used to know the state of the application
 LS.STOPPED = 0;
-LS.RUNNING = 1;
+LS.PLAYING = 1; 
 LS.PAUSED = 2;
+
+LS.RUNNING = 1; //LEGACY
 
 //helpful consts
 LS.ZEROS = vec3.create();
@@ -2253,7 +2255,7 @@ var GUI = {
 			return this._root;
 		}
 
-		if(LS.GlobalScene._state != LS.RUNNING)
+		if(LS.GlobalScene._state != LS.PLAYING)
 			console.warn("GUI element created before the scene is playing. Only create the GUI elements from onStart or after, otherwise the GUI elements will be lost.");
 
 		var gui = document.createElement("div");
@@ -6769,7 +6771,10 @@ SurfaceMaterial.prototype.fillUniforms = function( scene, options )
 SurfaceMaterial.prototype.configure = function(o) { 
 	if(o.flags !== undefined && o.flags.constructor === Number)
 		delete o["flags"]; //LEGACY
-	LS.cloneObject( o, this );
+	Material.prototype.configure.call( this, o ); //it will call setProperty
+	//LS.cloneObject( o, this );
+	if(o.properties)
+		this.properties = LS.cloneObject( o.properties );
 	this.computeCode();
 }
 
@@ -6869,7 +6874,11 @@ SurfaceMaterial.prototype.setProperty = function(name, value)
 		return true;
 	}
 
-	return false;
+	if( this[name] !== undefined)
+		this[name] = value;
+	else
+		return false;
+	return true;
 }
 
 /*
@@ -7478,6 +7487,9 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 		//light texture like shadowmap and cookie
 		LS.Renderer.bindSamplers( light._samplers );
 
+		light._uniforms.u_light_info[2] = i;
+		light._uniforms.u_light_info[3] = lights.length;
+
 		//assign
 		if(prev_shader != shader)
 			shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, light._uniforms, this._uniforms, instance.uniforms ] );
@@ -7487,7 +7499,6 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 
 		if(i == 1)
 		{
-			shader.uniforms({ u_ambient_light: LS.ZEROS});
 			gl.depthMask( false );
 			gl.depthFunc( gl.EQUAL );
 			gl.enable( gl.BLEND );
@@ -23939,6 +23950,34 @@ LS.ShadersManager.registerSnippet("light_structs","\n\
 	uniform vec4 u_light_angle; //cone start,end,phi,theta \n\
 	uniform vec2 u_light_att; //start,end \n\
 	uniform mat4 u_light_matrix; //to light space\n\
+	uniform vec3 u_ambient_light;\n\
+	struct Light {\n\
+		lowp vec4 Info; //type of light (3: DIRECTIONAL), falloff type, pass index, num passes \n\
+		vec3 Color;\n\
+		vec3 Ambient;\n\
+		vec3 Position;\n\
+		vec3 Front;\n\
+		vec4 ConeInfo; //for spotlights\n\
+		vec2 Attenuation; //start and end\n\
+		mat4 Matrix; //converts to light space\n\
+	};\n\
+	//Returns the info about the light\n\
+	Light getLight()\n\
+	{\n\
+		Light LIGHT;\n\
+		LIGHT.Info = u_light_info;\n\
+		LIGHT.Color = u_light_color;\n\
+		if(u_light_info.z == 0.0)\n\
+			LIGHT.Ambient = u_ambient_light;\n\
+		else\n\
+			LIGHT.Ambient = vec3(0.0);\n\
+		LIGHT.Position = u_light_position;\n\
+		LIGHT.Front = u_light_front;\n\
+		LIGHT.ConeInfo = u_light_angle; //for spotlights\n\
+		LIGHT.Attenuation = u_light_att; //start and end\n\
+		LIGHT.Matrix = u_light_matrix; //converts to light space\n\
+		return LIGHT;\n\
+	}\n\
 	//used to store light contribution\n\
 	struct FinalLight {\n\
 		vec3 Color;\n\
@@ -23950,19 +23989,6 @@ LS.ShadersManager.registerSnippet("light_structs","\n\
 		float Attenuation;\n\
 		float Shadow; //1.0 means fully lit\n\
 	};\n\
-	\n\
-	FinalLight getLight()\n\
-	{\n\
-		FinalLight LIGHT;\n\
-		LIGHT.Color = u_light_color;\n\
-		LIGHT.Ambient = vec3(0.0);\n\
-		LIGHT.Diffuse = 1.0;\n\
-		LIGHT.Specular = 0.0;\n\
-		LIGHT.Reflection = vec3(0.0);\n\
-		LIGHT.Attenuation = 0.0;\n\
-		LIGHT.Shadow = 1.0;\n\
-		return LIGHT;\n\
-	}\n\
 	#endif\n\
 ");
 
@@ -23985,39 +24011,49 @@ Light._enabled_fs_shaderblock_code = "\n\
 	#pragma snippet \"spotFalloff\"\n\
 	#pragma shaderblock SHADOWBLOCK \"testShadow\"\n\
 	\n\
-	vec3 computeLight(in SurfaceOutput o, in Input IN, inout FinalLight LIGHT)\n\
+	vec3 applyLight(in SurfaceOutput o, in FinalLight LIGHT)\n\
 	{\n\
+		vec3 total_light = LIGHT.Ambient * o.Ambient + LIGHT.Color * LIGHT.Diffuse * LIGHT.Attenuation * LIGHT.Shadow;\n\
+		vec3 final_color = o.Albedo * total_light;\n\
+		final_color	+= o.Albedo * (LIGHT.Color * LIGHT.Specular * LIGHT.Attenuation * LIGHT.Shadow);\n\
+		return max( final_color, vec3(0.0) );\n\
+	}\n\
+	\n\
+	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT, out FinalLight FINALLIGHT)\n\
+	{\n\
+		FINALLIGHT.Color = LIGHT.Color;\n\
+		FINALLIGHT.Ambient = LIGHT.Ambient;\n\
 		vec3 N = o.Normal; //use the final normal (should be the same as IN.worldNormal)\n\
 		vec3 E = (u_camera_eye - v_pos);\n\
 		float cam_dist = length(E);\n\
 		E /= cam_dist;\n\
 		\n\
-		vec3 L = (u_light_position - v_pos);\n\
+		vec3 L = (LIGHT.Position - v_pos);\n\
 		float light_distance = length(L);\n\
 		L /= light_distance;\n\
 		\n\
-		if( u_light_info.x == 3.0 )\n\
-			L = -u_light_front;\n\
+		if( LIGHT.Info.x == 3.0 )\n\
+			L = -LIGHT.Front;\n\
 		\n\
 		vec3 R = reflect(E,N);\n\
 		\n\
 		float NdotL = 1.0;\n\
 		NdotL = dot(N,L);\n\
 		float EdotN = dot(E,N); //clamp(dot(E,N),0.0,1.0);\n\
-		LIGHT.Specular = o.Specular * pow( clamp(dot(R,-L),0.001,1.0), o.Gloss );\n\
+		FINALLIGHT.Specular = o.Specular * pow( clamp(dot(R,-L),0.001,1.0), o.Gloss );\n\
 		\n\
-		LIGHT.Attenuation = 1.0;\n\
+		FINALLIGHT.Attenuation = 1.0;\n\
 		\n\
-		if( u_light_info.x == 2.0 && u_light_info.y == 1.0 )\n\
-			LIGHT.Attenuation *= spotFalloff( u_light_front, normalize( u_light_position - v_pos ), u_light_angle.z, u_light_angle.w );\n\
+		if( LIGHT.Info.x == 2.0 && LIGHT.Info.y == 1.0 )\n\
+			FINALLIGHT.Attenuation *= spotFalloff( LIGHT.Front, normalize( LIGHT.Position - v_pos ), LIGHT.ConeInfo.z, LIGHT.ConeInfo.w );\n\
 		\n\
 		NdotL = max( 0.0, NdotL );\n\
-		LIGHT.Diffuse = abs(NdotL);\n\
+		FINALLIGHT.Diffuse = abs(NdotL);\n\
 		\n\
-		LIGHT.Shadow = 1.0;\n\
+		FINALLIGHT.Shadow = 1.0;\n\
 		#ifdef TESTSHADOW\n\
 			#ifndef IGNORE_SHADOWS\n\
-				LIGHT.Shadow = testShadow();\n\
+				FINALLIGHT.Shadow = testShadow();\n\
 			#endif\n\
 		#endif\n\
 		\n\
@@ -24025,15 +24061,15 @@ Light._enabled_fs_shaderblock_code = "\n\
 			LIGHT_FUNC(LIGHT);\n\
 		#endif\n\
 		//FINAL LIGHT FORMULA ************************* \n\
-		\n\
-		vec3 total_light = LIGHT.Ambient * o.Ambient + LIGHT.Color * LIGHT.Diffuse * LIGHT.Attenuation * LIGHT.Shadow;\n\
-		\n\
-		vec3 final_color = o.Albedo * total_light;\n\
-		\n\
-		final_color	+= o.Albedo * (LIGHT.Color * LIGHT.Specular * LIGHT.Attenuation * LIGHT.Shadow);\n\
-		\n\
-		return max( final_color, vec3(0.0) );\n\
+		return applyLight(o,FINALLIGHT);\n\
 	}\n\
+	\n\
+	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT)\n\
+	{\n\
+		FinalLight FINALLIGHT;\n\
+		return computeLight(o,IN,LIGHT,FINALLIGHT);\n\
+	}\n\
+	\n\
 ";
 
 /*
@@ -24070,9 +24106,18 @@ Light._disabled_shaderblock_code = "\n\
 	#pragma snippet \"input\"\n\
 	#pragma snippet \"surface\"\n\
 	#pragma snippet \"light_structs\"\n\
-	vec3 computeLight(in SurfaceOutput o, in Input IN, in FinalLight LIGHT)\n\
+	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT, inout FinalLight FINALLIGHT)\n\
 	{\n\
-		return vec3(o.Albedo);\n\
+		FINALLIGHT.Diffuse = 0.0;\n\
+		FINALLIGHT.Specular = 0.0;\n\
+		FINALLIGHT.Attenuation = 0.0;\n\
+		FINALLIGHT.Shadow = 0.0;\n\
+		return o.Albedo * LIGHT.Ambient;\n\
+	}\n\
+	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT)\n\
+	{\n\
+		FinalLight FINALLIGHT;\n\
+		return computeLight(o,IN,LIGHT,FINALLIGHT);\n\
 	}\n\
 ";
 
@@ -24142,7 +24187,7 @@ Light._shadowmap_cubemap_code = "\n\
 Light._shadowmap_vertex_enabled_code ="\n\
 	#pragma snippet \"light_structs\"\n\
 	varying vec4 v_light_coord;\n\
-	void applyLight(vec3 pos) { v_light_coord = u_light_matrix * vec4(pos,1.0); }\n\
+	void applyLight( vec3 pos ) { v_light_coord = u_light_matrix * vec4(pos,1.0); }\n\
 ";
 
 Light._shadowmap_vertex_disabled_code ="\n\
@@ -27532,7 +27577,7 @@ SceneInclude.prototype.reloadScene = function()
 	{
 		console.log("SceneInclude: scene loaded");
 		this._scene_is_ready = true;
-		if(this._root.scene._state == LS.RUNNING )
+		if(this._root.scene._state == LS.PLAYING )
 			this._scene.start();
 	}
 }
@@ -31818,7 +31863,7 @@ Script.prototype.processCode = function( skip_events )
 			if( this._script._context.onBind )
 				this._script._context.onBind( this._root.scene );
 
-			if( this._root.scene._state === LS.RUNNING && this._script._context.start )
+			if( this._root.scene._state === LS.PLAYING && this._script._context.start )
 				this._script._context.start();
 		}
 
@@ -32340,7 +32385,7 @@ ScriptFromFile.prototype.processCode = function( skip_events )
 			if( this._script._context.onBind )
 				this._script._context.onBind( this._root.scene );
 
-			if( this._root.scene._state === LS.RUNNING && this._script._context.start )
+			if( this._root.scene._state === LS.PLAYING && this._script._context.start )
 				this._script._context.start();
 		}
 
@@ -38179,6 +38224,16 @@ Object.defineProperty( SceneTree.prototype, "time", {
 	}
 });
 
+Object.defineProperty( SceneTree.prototype, "state", {
+	enumerable: true,
+	get: function() {
+		return this._state;
+	},
+	set: function(v) {
+		throw("Cannot set state directly, use start, finish, pause, unpause");
+	}
+});
+
 Object.defineProperty( SceneTree.prototype, "globalTime", {
 	enumerable: true,
 	get: function() {
@@ -39369,10 +39424,10 @@ SceneTree.prototype.removePreloadResource = function( fullpath )
 */
 SceneTree.prototype.start = function()
 {
-	if(this._state == LS.RUNNING)
+	if(this._state == LS.PLAYING)
 		return;
 
-	this._state = LS.RUNNING;
+	this._state = LS.PLAYING;
 	this._start_time = getTime() * 0.001;
 	/**
 	 * Fired when the nodes need to be initialized
@@ -39391,6 +39446,51 @@ SceneTree.prototype.start = function()
 	LEvent.trigger(this,"start",this);
 	this.triggerInNodes("start");
 }
+
+/**
+* pauses the scene (triggers an "pause" event)
+*
+* @method pause
+*/
+SceneTree.prototype.pause = function()
+{
+	if( this._state != LS.PLAYING )
+		return;
+
+	this._state = LS.PAUSED;
+	/**
+	 * Fired when the scene pauses (mostly in the editor)
+	 *
+	 * @event pause
+	 * @param {LS.SceneTree} scene
+	 */
+	LEvent.trigger(this,"pause",this);
+	this.triggerInNodes("pause");
+	this.purgeResidualEvents();
+}
+
+/**
+* unpauses the scene (triggers an "unpause" event)
+*
+* @method unpause
+*/
+SceneTree.prototype.unpause = function()
+{
+	if(this._state != LS.PAUSED)
+		return;
+
+	this._state = LS.PLAYING;
+	/**
+	 * Fired when the scene unpauses (mostly in the editor)
+	 *
+	 * @event unpause
+	 * @param {LS.SceneTree} scene
+	 */
+	LEvent.trigger(this,"unpause",this);
+	this.triggerInNodes("unpause");
+	this.purgeResidualEvents();
+}
+
 
 /**
 * stop the scene (triggers an "finish" event)
@@ -39641,7 +39741,7 @@ SceneTree.prototype.requestFrame = function()
 SceneTree.prototype.refresh = SceneTree.prototype.requestFrame; //DEPRECATED
 
 /**
-* returns current scene time (remember that scene time remains freezed if the scene is not running)
+* returns current scene time (remember that scene time remains freezed if the scene is not playing)
 *
 * @method getTime
 * @return {Number} scene time in seconds
@@ -40567,13 +40667,20 @@ SceneNode.prototype.getTransform = function() {
 
 //Helpers
 
-SceneNode.prototype.getMesh = function() {
+SceneNode.prototype.getMesh = function( use_lod_mesh ) {
 	var mesh = this.mesh;
-	if(!mesh && this.meshrenderer)
-		mesh = this.meshrenderer.mesh;
-	if(!mesh) return null;
+	var mesh_renderer = this.getComponent( LS.Components.MeshRenderer );
+	if(!mesh && mesh_renderer)
+	{
+		if(use_lod_mesh)
+			mesh = mesh_renderer.lod_mesh;
+		if(!mesh)
+			mesh = mesh_renderer.mesh;
+	}
+	if(!mesh)
+		return null;
 	if(mesh.constructor === String)
-		return ResourcesManager.meshes[mesh];
+		return LS.ResourcesManager.meshes[mesh];
 	return mesh;
 }
 

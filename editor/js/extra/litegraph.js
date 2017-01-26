@@ -9216,17 +9216,19 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphTexturePreview.title = "Preview";
 	LGraphTexturePreview.desc = "Show a texture in the graph canvas";
+	LGraphTexturePreview.allow_preview = false;
 
 	LGraphTexturePreview.prototype.onDrawBackground = function(ctx)
 	{
 		if(this.flags.collapsed)
 			return;
 
-		if(!ctx.webgl)
+		if(!ctx.webgl && !LGraphTexturePreview.allow_preview)
 			return; //not working well
 
 		var tex = this.getInputData(0);
-		if(!tex) return;
+		if(!tex)
+			return;
 
 		var tex_canvas = null;
 		

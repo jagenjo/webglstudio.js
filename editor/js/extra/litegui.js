@@ -8936,8 +8936,26 @@ Inspector.prototype.addFile = function(name, value, options)
 		if( options.generate_url )
 			url = URL.createObjectURL( e.target.files[0] );
 		var data = { url: url, filename: e.target.value, file: e.target.files[0], files: e.target.files };
-		filename_element.innerHTML = e.target.files[0].name;
-		Inspector.onWidgetChange.call(that, element, name, data, options);
+
+		if(options.read_file)
+		{
+			 var reader = new FileReader();
+			 reader.onload = function(e2){
+				data.data = e2.target.result;
+				Inspector.onWidgetChange.call( that, element, name, data, options );
+			 }
+			 if( options.read_file == "binary" )
+				 reader.readAsArrayBuffer();
+			 else if( options.read_file == "data_url" )
+				 reader.readAsDataURL();
+			 else
+				 reader.readAsText();
+		}
+		else
+		{
+			filename_element.innerHTML = e.target.files[0].name;
+			Inspector.onWidgetChange.call( that, element, name, data, options );
+		}
 	});
 
 	this.append(element,options);

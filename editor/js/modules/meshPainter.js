@@ -53,7 +53,7 @@ var MeshPainter = {
 		this.painted_node = node;
 		if(!node) return;
 
-		this.collision_mesh = node.getLODMesh() || node.getMesh();
+		this.collision_mesh = node.getMesh( true );
 		this.painted_mesh = node.getMesh();
 
 		if(!this.collision_mesh)
@@ -305,6 +305,10 @@ var MeshPainter = {
 		var mat = node.getMaterial();
 		if(!mat) 
 			return;
+
+		var sampler = mat.getTextureSampler( channel );
+		if(sampler)
+			sampler.minFilter = GL.LINEAR;
 
 		this.current_texture = mat.getTexture( channel );
 		if(!this.current_texture)

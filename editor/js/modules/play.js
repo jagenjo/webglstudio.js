@@ -143,8 +143,14 @@ var PlayModule = {
 	},
 
 	onPause: function() {
-		this.state = this.state == 'pause' ? 'play' : 'pause';
-		LEvent.trigger( LS.GlobalScene, this.state == "pause" ? "pause" : "unpause" );
+		if( this.state == "play" )
+			this.changeState("pause");
+		else if( this.state == "pause" )
+			this.changeState("unpause");
+		else
+			return;
+
+		//LEvent.trigger( LS.GlobalScene, this.state == "pause" ? "pause" : "unpause" );
 		if( this.state == 'pause' )
 			this.pause_button.classList.add("enabled");
 		else
@@ -235,6 +241,18 @@ var PlayModule = {
 			EditorModule.render_debug_info = false;
 			EditorModule.refreshAttributes();
 			RenderModule.requestFrame();
+		}
+		else if(state == "pause")
+		{
+			this.state = "pause";
+			console.log("%c + PAUSE", 'background: #222; color: #AFA; font-size: 1.4em');
+			scene.pause();
+		}
+		else if(state == "unpause")
+		{
+			this.state = "play";
+			console.log("%c + UNPAUSE", 'background: #222; color: #AFA; font-size: 1.4em');
+			scene.unpause();
 		}
 		else if(state == "stop")
 		{

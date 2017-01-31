@@ -8945,11 +8945,11 @@ Inspector.prototype.addFile = function(name, value, options)
 				Inspector.onWidgetChange.call( that, element, name, data, options );
 			 }
 			 if( options.read_file == "binary" )
-				 reader.readAsArrayBuffer();
+				 reader.readAsArrayBuffer( data.file );
 			 else if( options.read_file == "data_url" )
-				 reader.readAsDataURL();
+				 reader.readAsDataURL( data.file );
 			 else
-				 reader.readAsText();
+				 reader.readAsText( data.file );
 		}
 		else
 		{

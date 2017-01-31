@@ -14967,14 +14967,17 @@ RenderState.enable = function( state, prev )
 			gl.disable( gl.STENCIL_TEST );
 	}
 
-	if( state.stencil_func_func !== prev.stencil_func_func || state.stencil_func_ref !== prev.stencil_func_ref || state.stencil_func_mask !== prev.stencil_func_mask )
-		gl.stencilFunc( state.stencil_func_func, state.stencil_func_ref, state.stencil_func_mask );
+	if(state.stencil_test)
+	{
+		if( state.stencil_func_func !== prev.stencil_func_func || state.stencil_func_ref !== prev.stencil_func_ref || state.stencil_func_mask !== prev.stencil_func_mask )
+			gl.stencilFunc( state.stencil_func_func, state.stencil_func_ref, state.stencil_func_mask );
 
-	if(state.stencil_op_sfail !== prev.stencil_op_sfail || state.stencil_op_dpfail !== stencil_op_dpfail || state.stencil_op_dppass !== stencil_op_dppass )
-		gl.stencilOp( state.stencil_op_sfail, state.stencil_op_dpfail, state.stencil_op_dppass );
+		if(state.stencil_op_sfail !== prev.stencil_op_sfail || state.stencil_op_dpfail !== stencil_op_dpfail || state.stencil_op_dppass !== stencil_op_dppass )
+			gl.stencilOp( state.stencil_op_sfail, state.stencil_op_dpfail, state.stencil_op_dppass );
 
-	if(state.stencil_mask !== prev.stencil_mask)
-		gl.stencilMask( prev.stencil_mask );
+		if(state.stencil_mask !== prev.stencil_mask)
+			gl.stencilMask( prev.stencil_mask );
+	}
 
 	//save state
 	this.last_state = state;

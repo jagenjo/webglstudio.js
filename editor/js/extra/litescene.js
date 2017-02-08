@@ -27570,10 +27570,10 @@ SceneInclude.prototype.onStart = function()
 		this._scene.start();
 }
 
-SceneInclude.prototype.onUpdate = function()
+SceneInclude.prototype.onUpdate = function(e, dt)
 {
 	if(this.send_events)
-		this._scene.update();
+		this._scene.update(dt);
 }
 
 

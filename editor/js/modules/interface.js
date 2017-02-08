@@ -407,6 +407,7 @@ LiteGUI.Inspector.prototype.addNodeComponent = function(name, value, options)
 LiteGUI.Inspector.widget_constructors["node_component"] = "addNodeComponent";
 
 //To select any kind of resource
+//used by addResource, addMaterial, etc
 function addGenericResource ( name, value, options, resource_classname )
 {
 	options = options || {};

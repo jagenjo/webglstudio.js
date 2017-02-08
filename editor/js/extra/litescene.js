@@ -871,7 +871,9 @@ var LS = {
 			//Helper: checks for errors
 			if( !!component.prototype.onAddedToNode != !!component.prototype.onRemovedFromNode ||
 				!!component.prototype.onAddedToScene != !!component.prototype.onRemovedFromScene )
-				console.warn("%c Component could have a bug, check events: " + name , "font-size: 2em");
+				console.warn("%c Component "+name+" could have a bug, check events: " + name , "font-size: 2em");
+			if( component.prototype.getResources && !component.prototype.onResourceRenamed )
+				console.warn("%c Component "+name+" could have a bug, it uses resources but doesnt implement onResourceRenamed, this could lead to problems when resources are renamed.", "font-size: 1.2em");
 
 			//add stuff to the class
 			if(!component.actions)
@@ -7029,6 +7031,8 @@ function ShaderMaterial( o )
 	this._properties = [];
 	this._properties_by_name = {};
 
+	this._passes = {};
+
 	if(o) 
 		this.configure(o);
 }
@@ -7215,6 +7219,15 @@ ShaderMaterial.prototype.createProperty = function( name, value, type, options )
 	});
 }
 
+ShaderMaterial.prototype.addPass = function( name, vertex_shader, fragment_shader, macros )
+{
+	this._passes[ name ] = {
+		vertex: vertex_shader,
+		fragment: fragment_shader,
+		macros: macros
+	};
+}
+
 //called when preparing materials before rendering the scene
 ShaderMaterial.prototype.prepare = function( scene )
 {
@@ -7295,6 +7308,7 @@ ShaderMaterial.prototype.processShaderCode = function()
 	{
 		this._properties.length = 0;
 		this._properties_by_name = {};
+		this._passes = {};
 		this._samplers.length = 0;
 		return false;
 	}
@@ -7307,6 +7321,7 @@ ShaderMaterial.prototype.processShaderCode = function()
 	var old_properties = this._properties_by_name;
 	this._properties.length = 0;
 	this._properties_by_name = {};
+	this._passes = {};
 	this._samplers.length = 0;
 
 	//reset material properties
@@ -13751,6 +13766,27 @@ FXStack.prototype.getResources = function(res)
 	return res;
 }
 
+FXStack.prototype.onResourceRenamed = function(old_name, new_name, resource)
+{
+	var fxs = this.fx;
+	for(var i = 0; i < fxs.length; i++)
+	{
+		var fx = fxs[i];
+		var fx_info = FXStack.available_fx[ fx.name ];
+		if(!fx_info)
+			continue;
+		if(!fx_info.uniforms)
+			continue;
+		for(var j in fx_info.uniforms)
+		{
+			var uniform = fx_info.uniforms[j];
+			if(uniform.type == "sampler2D" && fx[j] == old_name )
+				fx[j] = new_name;
+		}
+	}
+}
+
+
 //attach a new FX to the FX Stack
 FXStack.prototype.addFX = function( name )
 {
@@ -16607,7 +16643,7 @@ var Renderer = {
 				material.onModifyQuery( query );
 
 			//resolve the shader
-			var shader = ShadersManager.resolve( query );
+			var shader = LS.ShadersManager.resolve( query );
 
 			//assign uniforms
 			shader.uniformsArray( [ scene._uniforms, camera._uniforms, material._uniforms, renderer_uniforms, instance.uniforms ] );
@@ -21385,12 +21421,13 @@ Texture.cubemap_camera_parameters = [
 ];
 */
 
-
+/*
 Camera.prototype.getResources = function (res)
 {
 	//nothing to do, cameras dont use assets, althoug they could generate them
 	return res;
 }
+*/
 
 
 /**
@@ -22671,10 +22708,22 @@ CameraFX.prototype.serialize = function()
 	};
 }
 
-CameraFX.prototype.getResources = function(res)
+CameraFX.prototype.getResources = function( res )
 {
-	return this.fx.getResources(res);
+	this.fx.getResources(res);
+	if(this.shader_material)
+		res[ this.shader_material ] = true;
+	return res;
 }
+
+CameraFX.prototype.onResourceRenamed = function( old_name, new_name, resource )
+{
+	if( this.shader_material == old_name )
+		this.shader_material = new_name;
+	else
+		this.fx.onResourceRenamed( old_name, new_name, resource );
+}
+
 
 CameraFX.prototype.addFX = function( name )
 {
@@ -22872,9 +22921,20 @@ FrameFX.prototype.serialize = function()
 	};
 }
 
-FrameFX.prototype.getResources = function(res)
+FrameFX.prototype.getResources = function( res )
 {
-	return this.fx.getResources(res);
+	this.fx.getResources(res);
+	if(this.shader_material)
+		res[ this.shader_material ] = true;
+	return res;
+}
+
+FrameFX.prototype.onResourceRenamed = function( old_name, new_name, resource )
+{
+	if( this.shader_material == old_name )
+		this.shader_material = new_name;
+	else
+		this.fx.onResourceRenamed( old_name, new_name, resource );
 }
 
 FrameFX.prototype.addFX = function( name )
@@ -27203,6 +27263,12 @@ Sprite.prototype.getResources = function( res )
 	return res;
 }
 
+Sprite.prototype.onResourceRenamed = function( old_name, new_name, resource )
+{
+	if( this.texture == old_name )
+		this.texture = new_name;
+}
+
 LS.registerComponent( Sprite );
 function SpriteAtlas( o )
 {
@@ -27397,6 +27463,12 @@ SpriteAtlas.prototype.getResources = function( res )
 	if(typeof(this.texture) == "string")
 		res[this.texture] = GL.Texture;
 	return res;
+}
+
+SpriteAtlas.prototype.onResourceRenamed = function( old_name, new_name, resource )
+{
+	if( this.texture == old_name )
+		this.texture = new_name;
 }
 
 LS.registerComponent( SpriteAtlas );
@@ -31728,26 +31800,7 @@ Script.defineAPIFunction( "onButtonUp", Script.BIND_TO_SCENE, "buttonup" );
 Script.defineAPIFunction( "onDestroy", Script.BIND_TO_NODE, "destroy" );
 
 
-Script.coding_help = "\n\
-For a complete guide check: <a href='https://github.com/jagenjo/litescene.js/blob/master/guides/scripting.md' target='blank'>Scripting Guide</a>\n\
-Global vars:\n\
- + node : represent the node where this component is attached.\n\
- + component : represent the component.\n\
- + this : represents the script context\n\
-\n\
-Some of the common API functions:\n\
- + onStart: when the Scene starts\n\
- + onUpdate: when updating\n\
- + onClicked : if this node is clicked (requires InteractiveController in root)\n\
- + onRender : before rendering the node\n\
- + onRenderGUI : to render something in the GUI using canvas2D\n\
- + onCollectRenderInstances: when collecting instances\n\
- + onAfterRender : after rendering the node\n\
- + onPrefabReady: when the prefab has been loaded\n\
- + onFinish : when the scene finished (mostly used for editor stuff)\n\
-\n\
-Remember, all basic vars attached to this will be exported as global.\n\
-";
+Script.coding_help = "For a complete guide check: <a href='https://github.com/jagenjo/litescene.js/blob/master/guides/scripting.md' target='blank'>Scripting Guide</a>";
 
 Script.active_scripts = {};
 
@@ -32229,6 +32282,13 @@ Script.prototype.getResources = function(res)
 		ctx.onGetResources( res );
 }
 
+Script.prototype.onResourceRenamed = function( old_name, new_name, resource )
+{
+	var ctx = this.getContext();
+	if(ctx && ctx.onResourceRenamed )
+		ctx.onResourceRenamed( old_name, new_name, resource );
+}
+
 LS.registerComponent( Script );
 LS.Script = Script;
 
@@ -32436,6 +32496,12 @@ ScriptFromFile.prototype.getResources = function(res)
 	ctx.getResources( res );
 }
 
+ScriptFromFile.prototype.onResourceRenamed = function (old_name, new_name, resource)
+{
+	if(this.filename == old_name)
+		this.filename = new_name;
+}
+
 ScriptFromFile.prototype.getCodeResource = function()
 {
 	return LS.ResourcesManager.getResource( this.filename );
@@ -32461,17 +32527,16 @@ ScriptFromFile.prototype.setCode = function( code, skip_events )
 
 ScriptFromFile.updateComponents = function( script, skip_events )
 {
-	if( !script || !script._root )
+	if( !script )
 		return;
 
-	var filename = script.filename;
-	var scene = script._root.scene || LS.GlobalScene;
+	var fullpath = script.fullpath || script.filename;
+	var scene = LS.GlobalScene;
 	var components = scene.findNodeComponents( LS.ScriptFromFile );
 	for(var i = 0; i < components.length; ++i)
 	{
 		var compo = components[i];
-		var filename = script.fullpath || script.filename;
-		if( compo.filename == filename )
+		if( compo.filename == fullpath )
 			compo.processCode(skip_events);
 	}
 }
@@ -32741,6 +32806,15 @@ Cloner.prototype.getResources = function(res)
 	if(typeof(this.lod_mesh) == "string")
 		res[this.lod_mesh] = Mesh;
 	return res;
+}
+
+Cloner.prototype.onResourceRenamed = function( old_name, new_name, resource )
+{
+	if( this.mesh == old_name )
+		this.mesh = new_name;
+
+	if( this.lod_mesh == old_name )
+		this.lod_mesh = new_name;
 }
 
 Cloner.generateTransformKey = function(count, hsize, offset)

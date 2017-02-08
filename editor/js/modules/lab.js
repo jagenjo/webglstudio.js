@@ -52,6 +52,9 @@ var LabModule = {
 			LabModule.mode = "materials";
 		});
 
+		mode_tabs.addTab("Shaders",function(){
+			LabModule.mode = "shaders";
+		});
 
 		//enable WebGL Canvas2D renderer
 		if( RenderModule.canvas_manager.canvas )

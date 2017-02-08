@@ -2255,7 +2255,7 @@ var DriveModule = {
 		return dialog;
 	},
 
-	showCreateScriptDialog: function( options )
+	showCreateScriptDialog: function( options, on_complete )
 	{
 		var that = this;
 		options = options || {};
@@ -2278,6 +2278,13 @@ var DriveModule = {
 
 		function inner()
 		{
+			if(!filename)
+				return;
+
+			var extension = LS.RM.getExtension(filename);
+			if(extension != "js")
+				filename += ".js";
+
 			folder = folder || "";
 			//create dummy file
 			var resource = new LS.Resource();
@@ -2296,6 +2303,9 @@ var DriveModule = {
 					that.refreshContent();
 				}, { skip_alerts: true });
 			}
+
+			if(on_complete)
+				on_complete( resource );
 
 			//refresh
 			//close

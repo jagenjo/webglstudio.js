@@ -360,14 +360,15 @@ LS.Components.Script["@inspector"] = function( component, inspector )
 LS.Components.ScriptFromFile["@inspector"] = function( component, inspector )
 {
 	inspector.widgets_per_row = 2;
-	inspector.addResource( "Filename", component.filename, { category: "Script", callback: function(v) { 
+	inspector.addResource( "Filename", component.filename, { width: "75%", category: "Script", align:"right", callback: function(v) { 
 		component.filename = v;
 	}});
 
-	inspector.addButton(null,"Edit Code", { callback: function() {
+	inspector.addButton(null,"Edit Code", { width: "25%", callback: function() {
 		var path = component.uid;
 		if(!component.filename)
 		{
+			/*
 			LiteGUI.prompt("Choose a filename", function(filename){
 				if(!filename)
 					return;
@@ -379,6 +380,15 @@ LS.Components.ScriptFromFile["@inspector"] = function( component, inspector )
 				component.filename = filename;
 				LS.RM.registerResource(filename,res);
 				CodingModule.editInstanceCode( res );
+			});
+			*/
+			DriveModule.showCreateScriptDialog({filename: "script.js"}, function(resource){
+				if(!resource)
+					return;
+				CodingModule.openTab();
+				var fullpath = resource.fullpath || resource.filename;
+				component.filename = fullpath;
+				CodingModule.editInstanceCode( resource );
 			});
 			return;
 		}

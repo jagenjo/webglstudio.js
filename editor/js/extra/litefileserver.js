@@ -524,6 +524,32 @@ Session.prototype.createUnit = function(unit_name, size, on_complete)
 	});
 }
 
+Session.prototype.joinUnit = function( token, on_complete )
+{
+	var that = this;
+	return this.request( this.server_url,{action: "files/joinUnit", invite_token: token }, function(resp){
+		if(resp.unit)
+		{
+			Session.processUnit(resp.unit);
+			that.units[ resp.unit.name ] = resp.unit;
+		}
+		if(on_complete)
+			on_complete(resp.unit, resp);
+	});
+}
+
+Session.prototype.leaveUnit = function( unit_name, on_complete )
+{
+	var that = this;
+	return this.request( this.server_url,{action: "files/leaveUnit", unit_name: unit_name }, function(resp){
+		if(resp.status == 1)
+			delete that.units[ unit_name ];
+		if(on_complete)
+			on_complete( resp.status == 1, resp);
+	});
+}
+
+
 Session.prototype.deleteUnit = function(unit_name, on_complete)
 {
 	var that = this;
@@ -693,6 +719,21 @@ Session.prototype.createFolder = function( fullpath, on_complete, on_error )
 	});
 }
 
+Session.prototype.downloadFolder = function( fullpath, on_complete, on_error )
+{
+	return this.request( this.server_url,{action: "files/downloadFolder", fullpath: fullpath }, function(resp){
+
+		if(resp.status != 1)
+		{
+			if(on_error)
+				on_error(resp.msg);
+			return;
+		}
+
+		if(on_complete)
+			on_complete(resp.status == 1, resp );
+	});
+}
 
 Session.prototype.deleteFolder = function( fullpath, on_complete, on_error )
 {

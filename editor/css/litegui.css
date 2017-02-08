@@ -113,8 +113,20 @@
 	float: right;
 }
 
+.inspector .wsectiontitle {
+	position: relative;
+	/*border-top: 1px solid #777;*/
+	margin-top: 4px;
+	box-shadow: 0 -1px 1px rgba(0,0,0,0.5);
+	overflow: hidden;
+	/*max-height: 1.5em;*/
+	white-space: nowrap;
+}
+
 .inspector .wsectiontitle .buttons {
-	float: right;
+    position: absolute;
+	top: 4px;
+    right: 4px;
 }
 
 .inspector .wsectiontitle button {
@@ -125,6 +137,11 @@
 	box-shadow: 0 0 0;
 	padding: 0 1px 0 1px;
 	margin-left: 2px;
+}
+
+.inspector .wsectioncontent button {
+	white-space: nowrap;
+	overflow: hidden;
 }
 
 .inspector .wcontent button.single {
@@ -159,13 +176,6 @@
 .inspector .wsection.collapsed {
 	margin-bottom: 0;
 	padding-bottom: 0;
-}
-
-.inspector .wsectiontitle {
-	position: relative;
-	/*border-top: 1px solid #777;*/
-	margin-top: 4px;
-	box-shadow: 0 -1px 1px rgba(0,0,0,0.5);
 }
 
 .inspector .wsection.collapsed .wsectiontitle {

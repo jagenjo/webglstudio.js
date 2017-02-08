@@ -438,11 +438,19 @@ CodingPadWidget.prototype.saveInstance = function()
 			var ext = LS.RM.getExtension(instance.filename) || "js";
 			//ask the user to give it a name
 			DriveModule.showSelectFolderFilenameDialog( instance.filename, function(folder,filename){
+
+					var old_name = instance.filename;
+
 					//set name
 					instance.filename = filename;
-					instance.fullpath = folder + "/" + filename;
+					instance.fullpath = LS.RM.cleanPath( folder + "/" + filename );
+
+					if( old_name != instance.fullpath )
+						LS.RM.renameResource( old_name, instance.fullpath );
+
 					//save resource
 					DriveModule.saveResource( instance, inner_after_save, { skip_alerts: true });
+
 				}, { extension: ext, text: "This file is not stored in the server, choose a folder and a filename"});
 			return;
 		}

@@ -191,22 +191,31 @@
 	border-left: 6px solid transparent;
 	border-right: 6px solid transparent;
 	border-bottom: 6px solid transparent;
-	/*
-	width: 10px;
-	height: 10px;
-	margin: 2px;
-	background-color: #333;
-	*/
 }
 
-.inspector .wsection.collapsed .switch-section-button {
-
+.inspector .collapsed .switch-section-button {
 	margin: 2px 0 0 2px;
 	border-left: 6px solid #333;
 	border-bottom: 6px solid transparent;
 	border-top: 6px solid transparent;
 	border-right: 6px solid transparent;
 }
+
+
+.inspector .wgroupheader:not(.collapsed) .switch-section-button {
+	border-top: 6px solid #777 ;
+	border-left: 6px solid transparent ;
+	border-right: 6px solid transparent ;
+	border-bottom: 6px solid transparent ;
+}
+
+.inspector .wgroupheader.collapsed .switch-section-button {
+	border-left: 6px solid #777;
+	border-bottom: 6px solid transparent;
+	border-top: 6px solid transparent;
+	border-right: 6px solid transparent;
+}
+
 
 .inspector .wsection.notitle {
 	margin: 0;
@@ -246,7 +255,6 @@
 	left: 0;
 	width: 8px;
 	height: 8px;
-	border: 1px solid #999;
 	text-align: center;
 	margin: 2px;
 	margin-right: 4px;

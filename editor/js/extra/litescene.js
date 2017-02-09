@@ -1346,7 +1346,7 @@ var LS = {
 	},
 
 	//TODO: merge this with the locator stuff
-	setObjectProperty: function(obj, name, value)
+	setObjectProperty: function( obj, name, value )
 	{
 		if(obj.setProperty)
 			return obj.setProperty(name, value);
@@ -1354,30 +1354,6 @@ var LS = {
 		if(obj.onPropertyChanged)
 			obj.onPropertyChanged( name, value );
 	},
-
-	//solution from http://stackoverflow.com/questions/979975/how-to-get-the-value-from-the-url-parameter
-	queryString: function () {
-	  // This function is anonymous, is executed immediately and 
-	  // the return value is assigned to QueryString!
-	  var query_string = {};
-	  var query = window.location.search.substring(1);
-	  var vars = query.split("&");
-	  for (var i=0;i<vars.length;i++) {
-		var pair = vars[i].split("=");
-			// If first entry with this name
-		if (typeof query_string[pair[0]] === "undefined") {
-		  query_string[pair[0]] = decodeURIComponent(pair[1]);
-			// If second entry with this name
-		} else if (typeof query_string[pair[0]] === "string") {
-		  var arr = [ query_string[pair[0]],decodeURIComponent(pair[1]) ];
-		  query_string[pair[0]] = arr;
-			// If third or later entry with this name
-		} else {
-		  query_string[pair[0]].push(decodeURIComponent(pair[1]));
-		}
-	  } 
-		return query_string;
-	}(),
 
 	/**
 	* Contains all the registered material classes
@@ -1511,7 +1487,31 @@ var LS = {
 			case "mat4": return value.length === 16;
 		}
 		return true;
-	}
+	},
+
+	//solution from http://stackoverflow.com/questions/979975/how-to-get-the-value-from-the-url-parameter
+	queryString: function () {
+	  // This function is anonymous, is executed immediately and 
+	  // the return value is assigned to QueryString!
+	  var query_string = {};
+	  var query = window.location.search.substring(1);
+	  var vars = query.split("&");
+	  for (var i=0;i<vars.length;i++) {
+		var pair = vars[i].split("=");
+			// If first entry with this name
+		if (typeof query_string[pair[0]] === "undefined") {
+		  query_string[pair[0]] = decodeURIComponent(pair[1]);
+			// If second entry with this name
+		} else if (typeof query_string[pair[0]] === "string") {
+		  var arr = [ query_string[pair[0]],decodeURIComponent(pair[1]) ];
+		  query_string[pair[0]] = arr;
+			// If third or later entry with this name
+		} else {
+		  query_string[pair[0]].push(decodeURIComponent(pair[1]));
+		}
+	  } 
+		return query_string;
+	}()
 }
 
 //ensures no exception is catched by the system (useful for developers)
@@ -25673,6 +25673,11 @@ MorphDeformer.prototype.applyMorphTargetsByGPU = function( RI, valid_morphs )
 	var weights = this._stream_weights;
 	if(!weights)
 		weights = this._stream_weights = new Float32Array( 4 );
+	else if( !weights.fill ) //is an Array?
+	{
+		for(var i = 0; i < weights.length; ++i)
+			weights[i] = 0;
+	}
 	else
 		weights.fill(0); //fill first because morphs_weights could have zero length
 	weights.set( morphs_weights );

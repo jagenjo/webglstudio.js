@@ -781,6 +781,7 @@ LS.Components.SceneInclude["@inspector"] = function( component, inspector )
 {
 	inspector.addResource("scene_path", component.scene_path || "", { pretitle: AnimationModule.getKeyframeCode( component, "scene_path" ), callback: function(v) { component.scene_path = v; } });
 
+	var group = inspector.beginGroup("Settings",{ collapsed: true });
 	inspector.widgets_per_row = 2;
 	inspector.addCheckbox("include_instances", component.include_instances, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( component, "include_instances" ), callback: function(v) { component.include_instances = v; } });
 	inspector.addCheckbox("include_cameras", component.include_cameras, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( component, "include_cameras" ), callback: function(v) { component.include_cameras = v; } });
@@ -790,6 +791,10 @@ LS.Components.SceneInclude["@inspector"] = function( component, inspector )
 	inspector.addCheckbox("send_events", component.send_events, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( component, "send_events" ), callback: function(v) { component.send_events = v; } });
 	inspector.addCheckbox("frame_fx", component.frame_fx, { name_width: "70%", pretitle: AnimationModule.getKeyframeCode( component, "frame_fx" ), callback: function(v) { component.frame_fx = v; } });
 	inspector.widgets_per_row = 1;
+	inspector.endGroup();
+
+	if(!component.scene_path)
+		return;
 
 	//add to inspector the vars
 	if(!component._scene.root.custom)
@@ -801,6 +806,6 @@ LS.Components.SceneInclude["@inspector"] = function( component, inspector )
 		return;
 	}
 
-	inspector.addTitle("Custom Data");
+	inspector.addTitle("Scene Custom Data");
 	EditorModule.onShowComponentCustomProperties( component._scene.root.custom, inspector, true, component, "custom/" ); 
 }

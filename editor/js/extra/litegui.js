@@ -9329,7 +9329,7 @@ Inspector.prototype.beginGroup = function( name, options )
 	var element = document.createElement("DIV");
 	element.className = "wgroup";
 	name = name || "";
-	element.innerHTML = "<div class='wgroupheader "+ (options.title ? "wtitle" : "") +"'><span class='wgrouptoggle'>-</span>"+name+"</div>";
+	element.innerHTML = "<div class='wgroupheader "+ (options.title ? "wtitle" : "") +"'><span class='switch-section-button'></span>"+name+"</div>";
 	element.group = true;
 
 	var content = document.createElement("DIV");
@@ -9339,11 +9339,18 @@ Inspector.prototype.beginGroup = function( name, options )
 	element.appendChild( content );
 
 	var collapsed = options.collapsed || false;
-	element.querySelector(".wgroupheader").addEventListener("click", function() { 
+	var header = element.querySelector(".wgroupheader");
+	if(collapsed)
+		header.classList.add("collapsed");
+	header.addEventListener("click", function() { 
 		var style = element.querySelector(".wgroupcontent").style;
 		style.display = style.display === "none" ? "" : "none";
 		collapsed = !collapsed;
-		element.querySelector(".wgrouptoggle").innerHTML = (collapsed ? "+" : "-");
+		if(collapsed)
+			header.classList.add("collapsed");
+		else
+			header.classList.remove("collapsed");
+		//element.querySelector(".switch-section-button").innerHTML = (collapsed ? "+" : "-");
 	});
 
 	this.append( element, options );
@@ -9353,8 +9360,11 @@ Inspector.prototype.beginGroup = function( name, options )
 
 Inspector.prototype.endGroup = function()
 {
-	while( this._current_container && !this._current_container.classList.contains("wgroupcontent") )
+	do
+	{
 		this.popContainer();
+	}
+	while( this._current_container && !this._current_container.classList.contains("wgroupcontent") )
 }
 
 /**

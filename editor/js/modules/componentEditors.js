@@ -331,19 +331,16 @@ EditorModule.onShowComponentCustomProperties = function( component, inspector, i
 		for(var i = 0; i < component.properties.length; i++)
 		{
 			var p = component.properties[i];
-			inspector.add( p.type, p.label || p.name, p.value, { pretitle: AnimationModule.getKeyframeCode( replacement_component, extra_name + p.name ), title: p.name, step: p.step, property: p, callback: inner_on_property_value_change });
+			inspector.add( p.type, p.label || p.name, p.value, { pretitle: AnimationModule.getKeyframeCode( replacement_component, extra_name + p.name ), title: p.name, values: p.values, step: p.step, property: p, callback: inner_on_property_value_change });
 		}
 
 	if(ignore_edit)
 		return;
 
-	var valid_properties = ["number","vec2","vec3","vec4","color","texture","cubemap","node","string","sampler"];
+	var valid_properties = ["number","vec2","vec3","vec4","color","enum","texture","cubemap","node","string","sampler"];
 
-	inspector.addButtons(null,["Add Property","Edit"], { callback: function(v) { 
-		if(v == "Add Property")
-			EditorModule.showAddPropertyDialog( inner_on_newproperty, valid_properties );
-		else 
-			EditorModule.showEditPropertiesDialog( component.properties, valid_properties, inner_on_editproperties );
+	inspector.addButton(null,"Edit Properties", { callback: function() { 
+		EditorModule.showEditPropertiesDialog( component.properties, valid_properties, inner_on_editproperties );
 	}});
 
 	function inner_on_newproperty( p )
@@ -382,7 +379,10 @@ EditorModule.onShowComponentCustomProperties = function( component, inspector, i
 }
 
 
-LS.Components.CustomData["@inspector"] = EditorModule.onShowComponentCustomProperties;
+LS.Components.CustomData["@inspector"] = function( component, inspector )
+{
+	return EditorModule.onShowComponentCustomProperties( component, inspector );
+}
 
 
 LS.Components.CameraFX["@inspector"] = function( camerafx, inspector)
@@ -793,7 +793,13 @@ LS.Components.SceneInclude["@inspector"] = function( component, inspector )
 
 	//add to inspector the vars
 	if(!component._scene.root.custom)
+	{
+		inspector.addSeparator();
+		inspector.addButton("No customdata found","Refresh", function(){
+			inspector.refresh();
+		});
 		return;
+	}
 
 	inspector.addTitle("Custom Data");
 	EditorModule.onShowComponentCustomProperties( component._scene.root.custom, inspector, true, component, "custom/" ); 

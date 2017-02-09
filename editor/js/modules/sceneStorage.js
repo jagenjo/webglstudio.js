@@ -231,7 +231,10 @@ var SceneStorageModule = {
 			EditorModule.inspect(node);
 		}
 		else
-			EditorModule.inspect(scene);
+		{
+			//EditorModule.inspect(scene);
+			EditorModule.inspect(scene.root);
+		}
 	},
 
 	showLoadFromURLDialog: function()
@@ -773,12 +776,13 @@ var SceneStorageModule = {
 		if(data.constructor === String)
 			data = JSON.parse(data);
 
+		LS.Renderer.reset();
+		LS.GlobalScene.clear();
+
 		LS.GlobalScene.setFromJSON( data, inner, on_error );
 
 		function inner()
 		{
-			LS.Renderer.reset();
-			LS.GlobalScene.clear();
 			//LS.GlobalScene.configure(data); //configure twice?
 			LS.GlobalScene.loadResources();
 			that.onSceneReady();

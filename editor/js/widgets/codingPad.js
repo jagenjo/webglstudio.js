@@ -427,6 +427,16 @@ CodingPadWidget.prototype.saveInstance = function()
 
 	var instance = info.instance;
 
+	if( instance && instance.constructor.is_resource )
+	{
+		var protocol = LS.RM.getProtocol( instance.filename );
+		if(protocol)
+		{
+			LiteGUI.alert("This file is an external file (has http in the name) and cannot be saved.");		
+			return;
+		}
+	}
+
 	this.assignCurrentCode(true); //true? not sure
 
 	//is a resource? 

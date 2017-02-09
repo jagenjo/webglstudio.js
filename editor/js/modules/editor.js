@@ -318,15 +318,13 @@ var EditorModule = {
 		w.document.close();
 	},
 
-	showAddPropertyDialog: function(callback, valid_fields )
+	showAddPropertyDialog: function( callback, valid_fields )
 	{
 		valid_fields = valid_fields || ["string","number","vec2","vec3","vec4","color","texture","node"];
 
 		var uid = Math.random().toString();
 		var id = "dialog_inspector_properties";
 		var dialog = document.getElementById( "dialog_inspector_" + uid );
-
-		var height = ($("#visor").height() * 0.8)|0;
 
 		var dialog = new LiteGUI.Dialog(id, {title: "Properties", parent:"#visor", close: true, minimize: true, width: 300, height: 200, scroll: true, resizable:true, draggable: true});
 		dialog.show('fade');
@@ -384,7 +382,8 @@ var EditorModule = {
 			}
 
 			inspector.addButton(null,"Create",{ callback: function() {
-				if(callback) callback(property);
+				if(callback)
+					callback(property);
 				dialog.close();
 			}});
 		}
@@ -393,6 +392,200 @@ var EditorModule = {
 		dialog.adjustSize();
 	},
 
+	showEditPropertiesDialog: function( properties, valid_fields, callback )
+	{
+		valid_fields = valid_fields || ["string","number","vec2","vec3","vec4","color","texture","enum"];
+		var selected = null;
+		var properties_by_name = {};
+
+		var dialog = new LiteGUI.Dialog( { title: "Edit Properties", parent:"#visor", close: true, minimize: true, width: 600, height: 300, resizable:true, draggable: true } );
+		dialog.show();
+
+		//list
+		var area = new LiteGUI.Area();
+		area.split( "horizontal",["50%",null]);
+		dialog.add( area );
+
+		//properties inspector
+		var inspector_left = new LiteGUI.Inspector();
+		area.getSection(0).add( inspector_left );
+
+		inspector_left.addTitle("Current properties");
+		var list_widget = inspector_left.addList(null,properties,{height:230, callback: function(v){
+			selected = v.name;					
+			inner_update_properties();
+		}});
+		inspector_left.addButton(null,["Create property"],{ callback: function(v){
+			if(v == "Create property")
+			{
+				LiteGUI.prompt("Name of property",function(v){
+					if(!v)
+						return;
+					//check if there is a property with the same name
+					if( properties_by_name[v] )
+						return LiteGUI.alert("There is another var with the same name.");
+					//check valid name
+					if(!EditorModule.isValidVarName(v))
+						return LiteGUI.alert("Not a valid name for a var.");
+					//add
+					var prop = { name: v, type: "number", value: 0, step: 0.1 };
+					properties.push( prop );
+					list_widget.setValue( properties );
+					selected = prop.name;
+					inner_update_properties();
+					EditorModule.refreshAttributes();
+				});			
+			}
+		}});
+
+
+		//properties inspector
+		var inspector = new LiteGUI.Inspector();
+		area.getSection(1).add( inspector );
+
+		var value_widget = null;
+		inner_update_properties();
+
+		function inner_update_properties()
+		{
+			//update list
+			properties_by_name = {};
+			for(var i in properties)
+			{
+				if(!selected)
+					selected = properties[i].name;
+				properties_by_name[ properties[i].name ] = properties[i];
+			}
+
+			inspector.clear();
+
+			var property = properties_by_name[ selected ];
+			if(!property)
+				return;	
+
+			inspector.addString("Name", property.name, { callback: function(v) { 
+				if(!v)
+					return;
+				if( properties_by_name[v] )
+					return LiteGUI.alert("There is another var with the same name.");
+				//check valid name
+				if(!EditorModule.isValidVarName(v))
+					return LiteGUI.alert("Not a valid name for a var.");
+				property.name = v;
+				selected = v;
+				list_widget.setValue( properties );
+				inner_update_properties();
+				EditorModule.refreshAttributes();
+			}});
+
+
+			inspector.addString("Label", property.label || "", { callback: function(v) { 
+				property.label = v;
+			}});
+
+			inspector.addCombo("Type", property.type, { values: valid_fields, callback: function(v) {
+				var change = false;
+				if(v != property.value)
+				{
+					property.type = v;
+					change = true;
+				}
+
+				inner_value_widget( property, change );
+				inner_update_properties();
+				EditorModule.refreshAttributes();
+			}});
+
+
+			//value_widget = inspector.addNumber("Value", property.value, { step: property.step, callback: function(v){ property.value = v; }});
+			inner_value_widget(property);
+
+			if( property.type == "number" )
+				inspector.addNumber("Step", property.step, { callback: function(v){ property.step = v; }});
+
+			/*
+			inspector.addButton(null,"Delete",{ callback: function() {
+				for(var i = 0; i < properties.length; ++i)
+				{
+					if( properties[i] != property )
+						continue;
+					properties.splice(i,1);
+					break;
+				}
+				EditorModule.refreshAttributes();
+				selected = null;
+				list_widget.setValue( properties );
+				inner_update_properties();
+			}});
+			*/
+			inspector.addButton(null,"Close",{ callback: function() {
+				if(callback)
+					callback(properties);
+				dialog.close();
+			}});
+		}
+
+		function inner_value_widget(property, change)
+		{
+			var type = property.type;
+
+			if(type == "number")
+			{
+				if(change) property.value = 0.0;
+				inspector.addNumber("Value", property.value, { step: property.step, callback: function(v){ property.value = v; }});
+			}
+			else if(type == "vec2")
+			{
+				if(change) property.value = vec2.fromValues(0,0);
+				inspector.addVector2("Value", property.value, { step: property.step, callback: function(v){ property.value[0] = v[0]; property.value[1] = v[1]; }});
+			}
+			else if(type == "vec3")
+			{
+				if(change) property.value = vec3.fromValues(0,0,0);
+				inspector.addVector3("Value", property.value, { step: property.step, callback: function(v){ property.value[0] = v[0]; property.value[1] = v[1]; property.value[2] = v[2]; }});
+			}
+			else if(type == "color")
+			{
+				if(change) property.value = vec3.fromValues(0,0,0);
+				inspector.addColor("Value", property.value, { callback: function(v){ property.value[0] = v[0]; property.value[1] = v[1]; property.value[2] = v[2]; }});
+			}
+			else if(type == "enum")
+			{
+				if(change)
+				{
+					property.value = "";
+					property.values = [];
+				}
+				inspector.addString("Options", property.values, { callback: function(v){ 
+					if(!v)
+						return;
+					var values = v.split(",");
+					property.values = values;
+					inner_update_properties();
+				}});
+				inspector.addCombo("Value", property.value, { values: property.values, callback: function(v){ property.value = v; }});
+			}
+			else
+			{
+				if(change) property.value = "";
+				value_widget = inspector.add(property.type, "Value", property.value, { callback: function(v){ property.value = v; }});
+			}
+		}
+	},
+
+	isValidVarName: function() {
+		var validName = /^[$A-Z_][0-9A-Z_$]*$/i;
+		var reserved_array = ["instanceof","typeof","break","do","new","var","case","else","return","void","catch","finally","continue","for","switch","while","this","with","debugger","function","throw","default","if","try","delete","in"];
+		var reserved = {}
+		for(var i in reserved_array)
+			reserved[ reserved_array[i] ] = true;
+		return function(s) {
+		// Ensure a valid name and not reserved.
+			return validName.test(s) && !reserved[s];
+		};
+	}(),
+
+	/*
 	showEditPropertiesDialog: function( properties, valid_fields, callback )
 	{
 		valid_fields = valid_fields || ["string","number","vec2","vec3","vec4","color","texture"];
@@ -512,6 +705,7 @@ var EditorModule = {
 		dialog.content.appendChild(inspector.root);
 		dialog.adjustSize();
 	},
+	*/
 
 	showResetDialog: function()
 	{

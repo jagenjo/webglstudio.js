@@ -2694,6 +2694,25 @@ var ResourcesManager = {
 	},
 
 	/**
+	* Returns the url protocol (http, https) or empty string if no protocol was found
+	*
+	* @method getProtocol
+	* @param {String} url
+	* @return {String} protocol
+	*/
+	getProtocol: function( url )
+	{
+		if(!url)
+			return "";
+
+		var pos = url.substr(0,10).indexOf(":");
+		var protocol = "";
+		if(pos != -1)
+			protocol = url.substr(0,pos);
+		return protocol;
+	},
+
+	/**
 	* Cleans resource name (removing double slashes to avoid problems) 
 	* It is slow, so use it only in changes, not in getters
 	*
@@ -38580,13 +38599,14 @@ SceneTree.prototype.serialize = function()
 *
 * @method setFromJSON
 * @param {String} data JSON object containing the scene
-* @param {Function}[on_complete=null] the callback to call when the loading is complete
+* @param {Function}[on_complete=null] the callback to call when the scene is ready
 * @param {Function}[on_error=null] the callback to call if there is a  loading error
 * @param {Function}[on_progress=null] it is called while loading the scene info (not the associated resources)
 * @param {Function}[on_resources_loaded=null] it is called when all the resources had been loaded
+* @param {Function}[on_scripts_loaded=null] the callback to call when the loading is complete but before assigning the scene
 */
 
-SceneTree.prototype.setFromJSON = function( data, on_complete, on_error, on_progress, on_resources_loaded )
+SceneTree.prototype.setFromJSON = function( data, on_complete, on_error, on_progress, on_resources_loaded, on_scripts_loaded )
 {
 	if(!data)
 		return;
@@ -38617,8 +38637,8 @@ SceneTree.prototype.setFromJSON = function( data, on_complete, on_error, on_prog
 
 	function inner_success( response )
 	{
-		if(on_complete)
-			on_complete(that);
+		if(on_scripts_loaded)
+			on_scripts_loaded(that,response);
 
 		that.init();
 		that.configure(response);
@@ -38631,6 +38651,9 @@ SceneTree.prototype.setFromJSON = function( data, on_complete, on_error, on_prog
 
 		if(!LS.ResourcesManager.isLoading())
 			inner_all_loaded();
+
+		if(on_complete)
+			on_complete(that);
 	}
 
 	function inner_all_loaded()
@@ -41567,7 +41590,7 @@ Player.prototype._ondraw = function()
 	if(this.loading && this.loading.visible )
 	{
 		this.renderLoadingBar( this.loading );
-
+		LEvent.trigger( this.scene, "render_loading" );
 		if(this.onDrawLoading)
 			this.onDrawLoading();
 	}

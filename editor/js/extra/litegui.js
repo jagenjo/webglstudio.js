@@ -7272,7 +7272,10 @@ Inspector.prototype.addString = function(name,value, options)
 	var input = element.querySelector(".wcontent input");
 
 	if(options.align == "right")
+	{
 		input.style.direction = "rtl";
+		//input.style.textAlign = "right";
+	}
 
 	input.addEventListener( options.immediate ? "keyup" : "change", function(e) { 
 		var r = Inspector.onWidgetChange.call(that, element, name, e.target.value, options);

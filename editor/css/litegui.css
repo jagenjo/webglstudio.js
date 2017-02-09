@@ -371,6 +371,10 @@
 	background-color: transparent;
 }
 
+.inspector .wcontent input:focus, .inspector .wcontent textarea:focus  {
+	direction: ltr !important;
+}
+
 .inspector .wcontent input.text {
 	width: -moz-calc(100% - 8px);
 	width: -webkit-calc(100% - 8px);

@@ -1,10 +1,24 @@
 //This module is in charge of creating the application interface (menus, sidepanels, tabs, statusbar, etc)
+
+
 var InterfaceModule = {
 	name: "interface",
 
 	preferences: { 
 		show_low_panel: true,
 		side_panel_width: 300
+	},
+
+	resource_icons: {
+		"Texture": "imgs/mini-icon-texture.png",
+		"Sampler": "imgs/mini-icon-texture.png",
+		"Mesh": "imgs/mini-icon-meshres.png",
+		"Node": "imgs/mini-icon-node.png",
+		"node": "imgs/mini-icon-node.png",
+		"Component": "imgs/mini-icon-component.png",
+		"component": "imgs/mini-icon-component.png",
+		"Material": "imgs/mini-icon-materialres.png",
+		"material": "imgs/mini-icon-materialres.png"
 	},
 
 	init: function()
@@ -313,6 +327,11 @@ LiteGUI.Inspector.prototype.addNode = function( name, value, options )
 	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+node_name+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
 	var input = element.querySelector(".wcontent input");
 
+	input.style.background = "transparent url('" + InterfaceModule.resource_icons.node +"') no-repeat left 4px center";
+	input.style.paddingLeft = "1.7em";
+	input.setAttribute("placeHolder","Node");
+
+
 	input.addEventListener("change", function(e) { 
 		if(options.use_node)
 			value = LS.GlobalScene.getNode( e.target.value );
@@ -422,10 +441,17 @@ function addGenericResource ( name, value, options, resource_classname )
 	this.values[name] = value;
 
 	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || LiteGUI.special_codes.open_folder )+"</button>", options);
+
+	//INPUT
 	var input = element.querySelector(".wcontent input");
 
 	if( options.align && options.align == "right" )
 		input.style.direction = "rtl";
+
+	if( options.placeHolder )
+		input.setAttribute( "placeHolder", options.placeHolder );
+	else if(resource_classname)
+		input.setAttribute( "placeHolder", resource_classname );
 
 	input.addEventListener( "change", function(e) { 
 		var v = e.target.value;
@@ -433,7 +459,27 @@ function addGenericResource ( name, value, options, resource_classname )
 			LS.ResourcesManager.load(v);
 		LiteGUI.Inspector.onWidgetChange.call(that,element,name,v, options);
 	});
+
+	//INPUT ICON
+	element.setIcon = function(img)
+	{
+		if(!img)
+		{
+			input.style.background = "";
+			input.style.paddingLeft = "";
+		}
+		else
+		{
+			input.style.background = "transparent url('"+img+"') no-repeat left 4px center";
+			input.style.paddingLeft = "1.7em";
+		}
+	}
+	if(options.icon)
+		element.setIcon( options.icon );
+	else if ( InterfaceModule.resource_icons[ resource_classname ] )
+		element.setIcon( InterfaceModule.resource_icons[ resource_classname ] );
 	
+	//BUTTON
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
 		var o = { type: resource_classname, on_complete: inner_onselect };
 		if(options.skip_load)
@@ -622,6 +668,10 @@ LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
 	input.value = (value && value.texture) ? value.texture : "";
 	element.options = options;
 
+	input.style.background = "transparent url('" + InterfaceModule.resource_icons.Texture +"') no-repeat left 4px center";
+	input.style.paddingLeft = "1.7em";
+	input.setAttribute("placeHolder","Texture");
+
 	var callback = options.callback;
 
 	options.callback = function(v)
@@ -769,6 +819,10 @@ LiteGUI.Inspector.prototype.addComponent = function( name, value, options )
 
 	var old_callback = options.callback;
 	options.callback = inner_onselect;
+
+	input.style.background = "transparent url('" + InterfaceModule.resource_icons.component +"') no-repeat left 4px center";
+	input.style.paddingLeft = "1.7em";
+	input.setAttribute("placeHolder","Node");
 	
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
 		EditorModule.showSelectComponent( value, options.filter, options.callback, element );

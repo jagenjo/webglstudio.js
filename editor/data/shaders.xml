@@ -1989,9 +1989,10 @@
 
 				#ifdef FIRST_PASS
 					#ifdef USE_AMBIENT_TEXTURE
-						LIGHT.Ambient = texture2D( ambient_texture, USE_AMBIENT_TEXTURE ).xyz;
-					#elif defined( USE_IRRADIANCE_CUBEMAP )
-						LIGHT.Ambient *= textureCube( irradiance_cubemap, N).xyz;
+						LIGHT.Ambient *= texture2D( ambient_texture, USE_AMBIENT_TEXTURE ).xyz;
+					#endif
+					#ifdef USE_IRRADIANCE_CUBEMAP
+						LIGHT.Ambient *= textureCube( irradiance_cubemap, N ).xyz;
 					#endif
 				#endif
 

@@ -619,15 +619,15 @@ LS.Components.SkinDeformer.onShowProperties = LS.Components.SkinnedMeshRenderer.
 
 EditorModule.showBonesDialog = function( mesh )
 {
-	if(!mesh && !mesh.bones)
+	if(!mesh || !mesh.bones)
 	{
 		LiteGUI.alert("This mesh doesn't have bones");
 		return;
 	}
 
-	var dialog = new LiteGUI.Dialog("dialog_show_bones", {title:"Bones in Mesh", close: true, width: 360, height: 270, scroll: false, draggable: true});
+	var dialog = new LiteGUI.Dialog("dialog_show_bones", {title:"Bones in Mesh", close: true, width: 360, height: 270, resizable: true, scroll: false, draggable: true});
 
-	var widgets = new LiteGUI.Inspector("bones_widgets",{ });
+	var widgets = new LiteGUI.Inspector("bones_widgets",{ height: "100%", noscroll: true });
 	dialog.add( widgets );
 	dialog.show('fade');
 	widgets.on_refresh = inner_refresh;
@@ -642,7 +642,7 @@ EditorModule.showBonesDialog = function( mesh )
 		var bone_names = [];
 		for(var i in mesh.bones)
 			bone_names.push( mesh.bones[i][0] );
-		var list = widgets.addList(null, bone_names, { height: 140, callback: function(v) {
+		var list = widgets.addList(null, bone_names, { height: "calc( 100% - 60px)", callback: function(v) {
 			selected = v;
 		}});
 
@@ -657,12 +657,15 @@ EditorModule.showBonesDialog = function( mesh )
 			SelectionModule.setSelection( node );
 		});
 
-		widgets.addButton("Action","Convert UIDs to Names", function(){
-			mesh.convertBonesToNames();
+		widgets.addButtons(null,["Convert Names to UIDs","Convert UIDs to Names"], function(v){
+			if(v == "Convert UIDs to Names")
+				mesh.convertBoneNames();
+			else
+				mesh.convertBoneNames(null,true);
 			widgets.refresh();
 		});
 
-		dialog.adjustSize(10);
+		//dialog.adjustSize(10);
 	}
 
 	return dialog;
@@ -779,7 +782,13 @@ LS.Components.SpriteAtlas["@inspector"] = function( component, inspector )
 
 LS.Components.SceneInclude["@inspector"] = function( component, inspector )
 {
-	inspector.addResource("scene_path", component.scene_path || "", { pretitle: AnimationModule.getKeyframeCode( component, "scene_path" ), callback: function(v) { component.scene_path = v; } });
+	inspector.widgets_per_row = 2;
+	inspector.addResource("scene_path", component.scene_path || "", { width: "75%", pretitle: AnimationModule.getKeyframeCode( component, "scene_path" ), callback: function(v) { component.scene_path = v; } });
+	inspector.addButton(null,"Open", { width: "25%", callback: function() { 
+		if(component.scene_path && component._scene)
+			CORE.selectScene( component._scene, true );
+	}});
+	inspector.widgets_per_row = 1;
 
 	var group = inspector.beginGroup("Settings",{ collapsed: true });
 	inspector.widgets_per_row = 2;

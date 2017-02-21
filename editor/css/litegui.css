@@ -326,6 +326,18 @@
 	border-radius: 3px;	
 }
 
+.inspector input::placeholder { 
+    color: #687177;
+}
+
+.inspector input::-webkit-input-placeholder { 
+    color: #687177;
+}
+
+.inspector input::-moz-input-placeholder { 
+    color: #687177;
+}
+
 .inspector .inputfield.disabled {
 	background-color: #333;
 }

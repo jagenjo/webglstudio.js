@@ -5145,10 +5145,19 @@ GLSLCode.breakLines = function(lines)
 
 //when working with animations sometimes you want the bones to be referenced by node name and no node uid, because otherwise you cannot reuse
 //the same animation with different characters in the same scene.
-GL.Mesh.prototype.convertBonesToNames = function( root_node )
+GL.Mesh.prototype.convertBoneNames = function( root_node, use_uids )
 {
 	if(!this.bones || !this.bones.length)
 		return 0;
+
+	root_node = root_node || LS.GlobalScene;
+	if( root_node.constructor == LS.SceneTree )
+		root_node = root_node.root;
+	if(!root_node.findNode)
+	{
+		console.error("convertBoneNames first parameter must be node or scene");
+		return 0;
+	}
 
 	var modified = false;
 
@@ -5157,17 +5166,33 @@ GL.Mesh.prototype.convertBonesToNames = function( root_node )
 	{
 		var bone = this.bones[i];
 		var bone_name = bone[0];
-		if( bone_name[0] != LS._uid_prefix)
-			continue; //already using a name, not a uid
-		var node = root_node ? root_node.findNode( bone_name ) : LS.GlobalScene.getNode( bone_name );
-		if(!node)
-		{
-			console.warn("Bone node not found: " + bone_name );
-			continue;
-		}
 
-		bone[0] = node.name;
-		modified = true;
+		if( !use_uids )
+		{
+			if( bone_name[0] != LS._uid_prefix)
+				continue; //already using a name, not a uid
+			var node = root_node.findNode( bone_name );
+			if(!node)
+			{
+				console.warn("Bone node not found: " + bone_name );
+				continue;
+			}
+			bone[0] = node.name;
+			modified = true;
+		}
+		else
+		{
+			if( bone_name[0] == LS._uid_prefix)
+				continue; //already using a uid
+			var node = root_node.findNode( bone_name );
+			if(!node)
+			{
+				console.warn("Bone node not found: " + bone_name );
+				continue;
+			}
+			bone[0] = node.uid;
+			modified = true;
+		}
 	}
 
 	//flag it
@@ -6358,10 +6383,10 @@ StandardMaterial.prototype.fillUniforms = function( scene, options )
 	uniforms.u_material_color = this._color;
 
 	//uniforms.u_ambient_color = node.flags.ignore_lights ? [1,1,1] : [scene.ambient_color[0] * this.ambient[0], scene.ambient_color[1] * this.ambient[1], scene.ambient_color[2] * this.ambient[2]];
-	if(this.use_scene_ambient && scene.info && !this.textures["ambient"])
-		uniforms.u_ambient_color = vec3.fromValues(scene.info.ambient_color[0] * this.ambient[0], scene.info.ambient_color[1] * this.ambient[1], scene.info.ambient_color[2] * this.ambient[2]);
-	else
-		uniforms.u_ambient_color = this.ambient;
+	//if(this.use_scene_ambient && scene.info && !this.textures["ambient"])
+	//	uniforms.u_ambient_color = vec3.fromValues(scene.info.ambient_color[0] * this.ambient[0], scene.info.ambient_color[1] * this.ambient[1], scene.info.ambient_color[2] * this.ambient[2]);
+	//else
+	uniforms.u_ambient_color = this.ambient;
 
 	uniforms.u_emissive_color = this.emissive || vec4.create();
 	uniforms.u_specular = this._specular_data;
@@ -7487,7 +7512,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	if( pass.id == COLOR_PASS && this._light_mode !== Material.NO_LIGHTS )
 		lights = LS.Renderer.getNearLights( instance );
 
-	if(!lights)
+	if( !lights || lights.length == 0 )
 	{
 		//extract shader compiled
 		var shader = shader_code.getShader( pass.name, block_flags );
@@ -15151,6 +15176,9 @@ function RenderInstance( node, component )
 	this.uniforms = {};
 	this.samplers = [];
 	this.shader_blocks = [];
+
+	this.picking_node = null; //for picking
+
 	//this.deformers = []; //TODO
 
 	//TO DO: instancing
@@ -15970,6 +15998,9 @@ var Renderer = {
 
 	_reflection_probes: [],
 
+	//safety
+	_is_rendering_frame: false,
+
 	//fixed texture slots for global textures
 	SHADOWMAP_TEXTURE_SLOT: 6,
 	ENVIRONMENT_TEXTURE_SLOT: 5,
@@ -16047,6 +16078,13 @@ var Renderer = {
 	{
 	},
 
+
+	//used to clear the state
+	resetState: function()
+	{
+		this._is_rendering_frame = false;
+	},
+
 	//used to store which is the current full viewport available (could be different from the canvas in case is a FBO or the camera has a partial viewport)
 	setFullViewport: function(x,y,w,h)
 	{
@@ -16070,8 +16108,17 @@ var Renderer = {
 	*/
 	render: function( scene, render_settings, cameras )
 	{
-		if(!LS.ShadersManager.ready)
+		if( !LS.ShadersManager.ready )
 			return; //not ready
+
+		if( this._is_rendering_frame )
+		{
+			console.error("Last frame didn't finish and a new one was issued. Remember that you cannot call LS.Renderer.render from an event dispatched during the render, this would cause a recursive loop. Call LS.Renderer.reset() to clear from an error.");
+			//this._is_rendering_frame = false; //for safety, we setting to false 
+			return;
+		}
+
+		this._is_rendering_frame = true;
 
 		render_settings = render_settings || this.default_render_settings;
 		this._current_render_settings = render_settings;
@@ -16161,6 +16208,7 @@ var Renderer = {
 
 		//Event: afterRender to give closure to some actions
 		LEvent.trigger(scene, "afterRender", render_settings );
+		this._is_rendering_frame = false;
 	},
 
 	/**
@@ -16789,7 +16837,7 @@ var Renderer = {
 		renderer_uniforms.u_model = model; 
 		renderer_uniforms.u_normal_model = instance.normal_matrix; 
 
-		var pick_color = LS.Picking.getNextPickingColor( node );
+		var pick_color = LS.Picking.getNextPickingColor( instance.picking_node || node );
 
 		var query = new LS.ShaderQuery("flat");
 		query.add( scene._query );
@@ -24018,6 +24066,8 @@ LS.ShadersManager.registerSnippet("surface","\n\
 		o.Specular = 0.5;\n\
 		o.Gloss = 10.0;\n\
 		o.Ambient = vec3(1.0);\n\
+		o.Emission = vec3(0.0);\n\
+		o.Reflectivity = 0.0;\n\
 		return o;\n\
 	}\n\
 ");
@@ -24297,7 +24347,7 @@ Light._shadowmap_2d_enabled_code = "\n\
 	\n\
 	float testShadow()\n\
 	{\n\
-		vec3 offset;\n\
+		vec3 offset = vec3(0.0);\n\
 		float shadow = 0.0;\n\
 		float depth = 0.0;\n\
 		float bias = u_shadow_params.y;\n\
@@ -24715,7 +24765,8 @@ MeshRenderer.prototype.configure = function(o)
 		this.enabled = o.enabled;
 	this.mesh = o.mesh;
 	this.lod_mesh = o.lod_mesh;
-	this.submesh_id = o.submesh_id;
+	if(o.submesh_id !== undefined)
+		this.submesh_id = o.submesh_id;
 	this.primitive = o.primitive; //gl.TRIANGLES
 	this.material = o.material;
 	this.use_submaterials = !!o.use_submaterials;
@@ -24724,8 +24775,8 @@ MeshRenderer.prototype.configure = function(o)
 	if(o.point_size !== undefined) //legacy
 		this.point_size = o.point_size;
 	this.textured_points = !!o.textured_points;
-	if(o.material)
-		this.material = typeof(o.material) == "string" ? o.material : new LS.Material(o.material);
+	if(o.material && o.material.constructor === String)
+		this.material = o.material;
 }
 
 /**
@@ -24741,19 +24792,21 @@ MeshRenderer.prototype.serialize = function()
 		lod_mesh: this.lod_mesh
 	};
 
-	if(this.material)
-		o.material = typeof(this.material) == "string" ? this.material : this.material.serialize();
+	if(this.material && this.material.constructor === String )
+		o.material = this.material;
 
 	if(this.primitive != -1)
 		o.primitive = this.primitive;
-	if(this.submesh_id)
+	if(this.submesh_id != -1)
 		o.submesh_id = this.submesh_id;
-	if(this.use_submaterials)
-		o.use_submaterials = this.use_submaterials;
-	o.submaterials = this.submaterials;
 	o.point_size = this.point_size;
 	o.textured_points = this.textured_points;
 	o.material = this.material;
+
+	if(this.use_submaterials)
+		o.use_submaterials = this.use_submaterials;
+	o.submaterials = this.submaterials;
+
 	return o;
 }
 
@@ -26174,10 +26227,10 @@ MorphDeformer.morphing_texture_block = morphing_texture_block;
 * @class SkinDeformer
 * @constructor
 */
-function SkinDeformer(o)
+function SkinDeformer( o )
 {
 	this.enabled = true;
-	this.search_bones_in_parent = false;
+	this.search_bones_in_parent = true;
 	this.skeleton_root_node = null;
 	this.cpu_skinning = false;
 	this.ignore_transform = true;
@@ -26210,7 +26263,7 @@ SkinDeformer.gpu_skinning_supported = true;
 SkinDeformer.icon = "mini-icon-stickman.png";
 SkinDeformer.apply_to_normals_by_software = false;
 
-SkinDeformer["@skeleton_root_node"] = { type: "node" };
+SkinDeformer["@skeleton_root_node"] = { type: LS.TYPES.SCENENODE };
 
 SkinDeformer.prototype.onAddedToNode = function(node)
 {
@@ -32771,13 +32824,14 @@ function Cloner(o)
 {
 	this.enabled = true;
 
+	this.mode = Cloner.GRID_MODE;
+
 	this.createProperty( "count", vec3.fromValues(10,1,1) );
 	this.createProperty( "size", vec3.fromValues(100,100,100) );
 
 	this.mesh = null;
 	this.lod_mesh = null;
 	this.material = null;
-	this.mode = Cloner.GRID_MODE;
 
 	if(o)
 		this.configure(o);
@@ -32789,13 +32843,14 @@ function Cloner(o)
 Cloner.GRID_MODE = 1;
 Cloner.RADIAL_MODE = 2;
 Cloner.MESH_MODE = 3;
+Cloner.CHILDREN_MODE = 4;
 
 Cloner.icon = "mini-icon-cloner.png";
 
 //vars
 Cloner["@mesh"] = { type: "mesh" };
 Cloner["@lod_mesh"] = { type: "mesh" };
-Cloner["@mode"] = { type:"enum", values: { "Grid": Cloner.GRID_MODE, "Radial": Cloner.RADIAL_MODE, "Mesh": Cloner.MESH_MODE } };
+Cloner["@mode"] = { type:"enum", values: { "Grid": Cloner.GRID_MODE, "Radial": Cloner.RADIAL_MODE, /* "Mesh": Cloner.MESH_MODE ,*/ "Children": Cloner.CHILDREN_MODE } };
 Cloner["@count"] = { type:"vec3", min:1, step:1 };
 
 Cloner.prototype.onAddedToScene = function(scene)
@@ -32912,7 +32967,11 @@ Cloner.prototype.updateRenderInstancesArray = function()
 	{
 		total = 0; //TODO
 	}
-
+	else if(this.mode === Cloner.CHILDREN_MODE)
+	{
+		if(this._root && this._root._children)
+			total = this._root._children.length;
+	}
 
 	if(!total) 
 	{
@@ -32977,6 +33036,7 @@ Cloner.prototype.onUpdateInstances = function(e, dt)
 			mat4.translate( RI.matrix, global, tmp );
 			mat4.multiplyVec3( RI.center, RI.matrix, zero );
 			++i;
+			RI.picking_node = null;
 		}
 	}
 	else if(this.mode == Cloner.RADIAL_MODE)
@@ -32996,6 +33056,26 @@ Cloner.prototype.onUpdateInstances = function(e, dt)
 			mat4.translate( RI.matrix, RI.matrix, tmp );
 			mat4.rotateY( RI.matrix,RI.matrix, offset * i );
 			mat4.multiplyVec3( RI.center, RI.matrix, zero );
+			RI.picking_node = null;
+		}
+	}
+	else if(this.mode == Cloner.CHILDREN_MODE)
+	{
+		if(!this._root || !this._root._children)
+			return;
+
+		for(var i = 0, l = RIs.length; i < l; ++i)
+		{
+			var RI = RIs[i];
+			if(!RI)
+				return;
+			var childnode = this._root._children[i];
+			if(!childnode)
+				continue;
+			if( childnode.transform )
+				childnode.transform.getGlobalMatrix( global );
+			RI.setMatrix( global );
+			RI.picking_node = childnode;
 		}
 	}
 }
@@ -37078,10 +37158,6 @@ var parserDAE = {
 		if( scene.metadata && scene.metadata.up_axis == "Z_UP" )
 			scene.root.model = mat4.rotateX( mat4.create(), mat4.create(), -90 * 0.0174532925 );
 
-		//skip renaming ids (this is done to ensure no collision with names coming from other files)
-		if(options.skip_renaming)
-			return scene;
-
 		//rename meshes, nodes, etc
 		var renamed = {};
 		var basename = clean_filename.substr(0, clean_filename.indexOf("."));
@@ -37104,17 +37180,18 @@ var parserDAE = {
 		}
 
 		//change local collada ids to valid uids 
-		replace_uids( scene.root );
+		inner_replace_names( scene.root );
 
-		function replace_uids( node )
+		function inner_replace_names( node )
 		{
 			//change uid
-			if(node.id)
+			if(node.id && !options.skip_renaming )
 			{
 				node.uid = "@" + basename + "::" + node.id;
 				renamed[ node.id ] = node.uid;
 			}
 			
+			//in case the node has some kind of type
 			if(node.type)
 			{
 				node.node_type = node.type;
@@ -37133,7 +37210,7 @@ var parserDAE = {
 
 			if(node.children)
 				for(var i in node.children)
-					replace_uids( node.children[i] );
+					inner_replace_names( node.children[i] );
 		}
 
 		//replace skinning joint ids
@@ -37214,6 +37291,7 @@ var parserDAE = {
 
 				if( !renamed[nodename] )
 					continue;
+
 				nodename = renamed[ nodename ];
 				track.property = nodename + extra;
 			}
@@ -37298,7 +37376,6 @@ var parserDAE = {
 						continue;
 					take.tracks.splice(pos,1);
 				}
-
 			}
 
 		}//takes
@@ -41215,14 +41292,17 @@ SceneNode.prototype._onChildRemoved = function( node, recompute_transform, remov
 	if(this.transform)
 	{
 		//unlink transform
-		if(recompute_transform)
+		if(node.transform)
 		{
-			var m = node.transform.getGlobalMatrix();
-			node.transform._parent = null;
-			node.transform.fromMatrix(m);
+			if(recompute_transform)
+			{
+				var m = node.transform.getGlobalMatrix();
+				node.transform._parent = null;
+				node.transform.fromMatrix(m);
+			}
+			else
+				node.transform._parent = null;
 		}
-		else
-			node.transform._parent = null;
 	}
 
 	if( remove_components )

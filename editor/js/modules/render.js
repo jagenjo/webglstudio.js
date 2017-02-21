@@ -344,11 +344,15 @@ var RenderModule = {
 
 		LEvent.trigger(this,"pre_scene_render");
 		gl.clear( gl.DEPTH_BUFFER_BIT ); //¿?
+
 		//render frame
 		if( this.special_pass ) 
 			this.renderSpecialPass( this.special_pass ); //used for debug mostly
 		else
+		{
+			LS.Renderer.resetState(); //in case some error stopped the rendering inm the previous frame
 			LS.Renderer.render( LS.GlobalScene, render_settings, cameras );
+		}
 		LEvent.trigger(this,"post_scene_render");
 	},
 

@@ -303,14 +303,18 @@ var CORE = {
 		this.Scenes.push( scene );
 	},
 
-	selectScene: function( scene )
+	selectScene: function( scene, save_current )
 	{
 		if(scene.constructor !== LS.SceneTree)
 			throw("Not an scene");
 
+		if(save_current)
+			this.Scenes.push( scene );
+
 		var old_scene = LS.GlobalScene;
 		LEvent.trigger( this, "global_scene_selected", scene );
 		LS.GlobalScene = scene;
+		CORE.inspect( scene.root );
 	},
 
 	registerWidget: function( widget )

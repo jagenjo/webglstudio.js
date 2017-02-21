@@ -870,6 +870,16 @@ var LiteGUI = {
 		return dialog;
 	},
 
+	downloadURL: function( url, filename )
+	{
+		var link = document.createElement('a');
+		link.href = url;
+		link.download = filename;
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+	},
+
 	downloadFile: function( filename, data, dataType )
 	{
 		if(!data)
@@ -6515,29 +6525,6 @@ LiteGUI.Table = Table;
 
 
 })();
-/* Attributes editor panel 
-	Dependencies: 
-		- jQuery
-		- jscolor.js
-*/
-
-/* LiteWiget options:
-	+ name_width: the width of the widget name area
-
-*/
-
-//TODO: remove jQuery
-if(this.jQuery)
-{
-	jQuery.fn.wchange = function(callback) {
-		$(this[0]).on("wchange",callback);
-	};
-
-	jQuery.fn.wclick = function(callback) {
-		$(this[0]).on("wclick",callback);
-	};
-}
-
 /**
 * Inspector allows to create a list of widgets easily, it also provides methods to create the widgets automatically.<br/>
 * Every widget is created calling the function add followed by the widget name, p.e. addSlider or addVector3 or addNumber.<br/>
@@ -6558,6 +6545,10 @@ if(this.jQuery)
 	one_line: widgets are place one next to the other horizontaly <br/>
 	onchange: callback to call when something changes <br/>
    } <br/>
+
+	Dependencies: 
+		- jscolor.js
+
 * @constructor
 */
 
@@ -6604,6 +6595,9 @@ function Inspector( id, options )
 		this.name_width = options.name_width;
 	if(options.widgets_width)
 		this.widgets_width = options.widgets_width;
+
+	if(options.noscroll)
+		this.root.style.overflow = "hidden";
 
 	if(options.onchange)
 		this.onchange = options.onchange;
@@ -7271,6 +7265,9 @@ Inspector.prototype.addString = function(name,value, options)
 	var element = this.createWidget(name,"<span class='inputfield full "+(options.disabled?"disabled":"")+"'><input type='"+inputtype+"' tabIndex='"+this.tab_index+"' "+focus+" class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span>", options);
 	var input = element.querySelector(".wcontent input");
 
+	if(options.placeHolder)
+		input.setAttribute("placeHolder",options.placeHolder);
+
 	if(options.align == "right")
 	{
 		input.style.direction = "rtl";
@@ -7294,6 +7291,22 @@ Inspector.prototype.addString = function(name,value, options)
 		});
 
 	this.tab_index += 1;
+
+	element.setIcon = function(img)
+	{
+		if(!img)
+		{
+			input.style.background = "";
+			input.style.paddingLeft = "";
+		}
+		else
+		{
+			input.style.background = "transparent url('"+img+"') no-repeat left 4px center";
+			input.style.paddingLeft = "1.7em";
+		}
+	}
+	if(options.icon)
+		element.setIcon( options.icon );
 
 	element.setValue = function(v, skip_event) { 
 		if(v === undefined )
@@ -7340,6 +7353,22 @@ Inspector.prototype.addStringButton = function( name, value, options)
 		if(r !== undefined)
 			this.value = r;
 	});
+
+	element.setIcon = function(img)
+	{
+		if(!img)
+		{
+			input.style.background = "";
+			input.style.paddingLeft = "";
+		}
+		else
+		{
+			input.style.background = "transparent url('"+img+"') no-repeat left 4px center";
+			input.style.paddingLeft = "1.7em";
+		}
+	}
+	if(options.icon)
+		element.setIcon( options.icon );
 
 	var button = element.querySelector(".wcontent button");
 	button.addEventListener("click", function(e) { 
@@ -8432,14 +8461,22 @@ Inspector.prototype.addList = function(name, values, options)
 
 	var that = this;
 	
-	var height = "";
+	var list_height = "";
 	if(options.height)
-		height = "style='height: "+options.height+"px; overflow: auto;'";
+		list_height = "style='height: 100%; overflow: auto;'";
+		//height = "style='height: "+options.height+"px; overflow: auto;'";
 
-	var code = "<ul class='lite-list' "+height+" tabIndex='"+this.tab_index+"'><ul>";
+	var code = "<ul class='lite-list' "+list_height+" tabIndex='"+this.tab_index+"'><ul>";
 	this.tab_index++;
 
-	var element = this.createWidget(name,"<span class='inputfield full "+(options.disabled?"disabled":"")+"'>"+code+"</span>", options);
+	var element = this.createWidget(name,"<span class='inputfield full "+(options.disabled?"disabled":"")+"' style='height: 100%;'>"+code+"</span>", options);
+
+	var infocontent = element.querySelector(".info_content");
+	infocontent.style.height = "100%";
+
+	var inputfield = element.querySelector(".inputfield");
+	inputfield.style.height = "100%";
+	inputfield.style.paddingBottom = "0.2em";
 
 	var ul_elements = element.querySelectorAll("ul");
 	for(var i = 0; i < ul_elements.length; ++i)
@@ -8550,6 +8587,7 @@ Inspector.prototype.addList = function(name, values, options)
 					li_element.classList.add( 'selected' );
 				li_element.dataset["name"] = item_name;
 				li_element.dataset["pos"] = i;
+				li_element.value = values[i];
 				if(item_style)
 					li_element.setAttribute("style", item_style );
 				li_element.innerHTML = icon + item_title;
@@ -8634,6 +8672,19 @@ Inspector.prototype.addList = function(name, values, options)
 		if(v === undefined)
 			return;
 		this.updateItems(v);
+	}
+
+	element.filter = function(callback)
+	{
+		var items = this.querySelectorAll("ul li");
+		for(var i = 0; i < items.length; ++i)
+		{
+			var item = items[i];
+			if( !callback( item.value, item ) )
+				item.style.display = "none";
+			else
+				item.style.display = "";
+		}
 	}
 
 	if(options.height) 
@@ -9351,6 +9402,7 @@ Inspector.prototype.beginGroup = function( name, options )
 		else
 			header.classList.remove("collapsed");
 		//element.querySelector(".switch-section-button").innerHTML = (collapsed ? "+" : "-");
+		e.preventDefault();
 	});
 
 	this.append( element, options );

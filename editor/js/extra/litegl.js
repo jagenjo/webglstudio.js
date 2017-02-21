@@ -1432,6 +1432,16 @@ vec3.polarToCartesian = function(out, v)
 	return out;
 }
 
+vec3.reflect = function(out, v, n)
+{
+	var x = v[0]; var y = v[1]; var z = v[2];
+	vec3.scale( out, n, -2 * vec3.dot(v,n) );
+	out[0] += x;
+	out[1] += y;
+	out[2] += z;
+	return out;
+}
+
 /* VEC4 */
 vec4.random = function(vec)
 {

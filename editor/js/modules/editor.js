@@ -1833,7 +1833,7 @@ var EditorModule = {
 	//shows a dialog to select a node
 	showSelectNode: function(on_complete)
 	{
-		var dialog = new LiteGUI.Dialog("dialog_nodes", {title:"Scene nodes", close: true, minimize: true, width: 300, height: 310, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog("dialog_nodes", {title:"Scene nodes", close: true, minimize: true, width: 300, height: 410, resizable: true, scroll: false, draggable: true});
 		dialog.show( null, this.root );
 
 		/*
@@ -1842,6 +1842,7 @@ var EditorModule = {
 		*/
 
 		var scene = LS.GlobalScene;
+		var list = null;
 
 		//*
 		var selected_value = null;
@@ -1852,10 +1853,21 @@ var EditorModule = {
 			nodes.push( { name: node._name, node: node } );
 		}
 
-		var widgets = new LiteGUI.Inspector();
-		widgets.addList(null, nodes, { height: 140, callback: inner_selected });
+		var widgets = new LiteGUI.Inspector({height: "100%", noscroll: true });
+		widgets.addString(null,"",{
+			callback: function(v){
+				list.filter( function(item, element) { 
+					if(!v)
+						return true;
+					return element.innerHTML.toLowerCase().indexOf( v.toLowerCase() ) != -1;
+				});
+			},
+			placeHolder: "search by name..."
+		});
+
+		list = widgets.addList(null, nodes, { height: "calc(100% - 40px)", callback: inner_selected });
 		widgets.widgets_per_row = 1;
-		widgets.addButton(null,"Select", { className:"big", callback: function() { 
+		widgets.addButton(null,"Select", { callback: function() { 
 			if(!selected_value)
 			{
 				dialog.close();
@@ -1869,7 +1881,7 @@ var EditorModule = {
 		}});
 
 		dialog.add( widgets );
-		dialog.adjustSize();
+		//dialog.adjustSize();
 
 		function inner_selected(value)
 		{

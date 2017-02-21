@@ -552,6 +552,14 @@ var DriveModule = {
 			inspector.addButton(null,"Open in Inspector", function(){
 				EditorModule.inspect( local_resource );
 			});
+		else
+		{
+			inspector.addButton(null,"Load / Open in Inspector", function(){
+				LS.RM.load( resource.remotepath || resource.fullpath, function(res){
+					EditorModule.inspect( res );
+				});
+			});
+		}
 
 		this.addResourceInspectorFields( resource, inspector );
 
@@ -672,13 +680,21 @@ var DriveModule = {
 			});
 		}});
 		
-		if(local_resource)
-			inspector.addButton(null,"Download", {callback: function(v){
+		var widget = inspector.addButton(null,"Download", {callback: function(){
+			if(local_resource)
+			{
 				var file = DriveModule.getResourceAsBlob( resource );
 				if(!file)
 					return;
 				LiteGUI.downloadFile(file.filename, file);
-			}});
+			}
+			else
+			{
+				LiteGUI.downloadURL( LS.RM.getFullURL( resource.fullpath ), resource.filename );
+			}
+		}});
+		widget.querySelector("button").setAttribute("download", resource.filename );
+
 	},
 
 	getResourceAsBlob: function( resource )
@@ -2689,6 +2705,8 @@ LiteGUI.Inspector.prototype.addFolder = function( name,value, options )
 			w.setValue( v );	
 		}, null, w.getValue() );
 	}
+
+	options.icon = "imgs/mini-icon-folder.png";
 
 	w = this.addStringButton( name, value, options );
 	w.querySelector('input').classList.add("fixed_size");

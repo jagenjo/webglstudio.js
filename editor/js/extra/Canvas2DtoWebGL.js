@@ -1166,7 +1166,8 @@ function enableWebGLCanvas( canvas, options )
 		var char_size = (canvas_size / chars_per_row)|0;
 		var font_size = (char_size * 0.95)|0;
 
-		var canvas = createCanvas(canvas_size,canvas_size);//document.body.appendChild(canvas);
+		var canvas = createCanvas(canvas_size,canvas_size);
+		//document.body.appendChild(canvas); //debug
 		var ctx = canvas.getContext("2d");
 		ctx.fillStyle = "white";
 		ctx.imageSmoothingEnabled = this.imageSmoothingEnabled;
@@ -1183,6 +1184,8 @@ function enableWebGLCanvas( canvas, options )
 			spacing: char_size * 0.6, //in pixels
 			space: (ctx.measureText(" ").width / font_size)
 		};
+		
+		yoffset += enableWebGLCanvas.fontOffsetY * char_size;
 
 		//compute individual char width (WARNING: measureText is very slow)
 		var kernings = info.kernings = {};
@@ -1193,6 +1196,8 @@ function enableWebGLCanvas( canvas, options )
 			var char_info = { width: char_width, nwidth: char_width / font_size };
 			kernings[character] = char_info;
 		}
+		
+		var clip = true; //clip every character: debug
 
 		//paint characters in atlas
 		for(var i = 33; i < max_ascii_code; ++i)//valid characters from 33 to max_ascii_code
@@ -1202,12 +1207,17 @@ function enableWebGLCanvas( canvas, options )
 			if( kerning && kerning.width ) //has some visual info
 			{
 				info[i] = [character, (x + char_size*0.5)/canvas.width, (y + char_size*0.5) / canvas.height];
-				ctx.save();
-				ctx.beginPath();
-				ctx.rect( Math.floor(x)+0.5,Math.floor(y)+0.5, char_size-2, char_size-2 );
-				ctx.clip();
-				ctx.fillText(character,Math.floor(x+char_size*xoffset),Math.floor(y+char_size+yoffset),char_size);
-				ctx.restore();
+				if(clip)
+				{
+					ctx.save();
+					ctx.beginPath();
+					ctx.rect( Math.floor(x)+0.5,Math.floor(y)+0.5, char_size-2, char_size-2 );
+					ctx.clip();
+					ctx.fillText(character,Math.floor(x+char_size*xoffset),Math.floor(y+char_size+yoffset),char_size);
+					ctx.restore();
+				}
+				else
+					ctx.fillText(character,Math.floor(x+char_size*xoffset),Math.floor(y+char_size+yoffset),char_size);
 				x += char_size; //cannot pack chars closer because rendering points, no quads
 				if((x + char_size) > canvas.width)
 				{
@@ -1382,3 +1392,4 @@ function enableWebGLCanvas( canvas, options )
 };
 
 enableWebGLCanvas.useInternationalFont = false; //render as much characters as possible in the texture atlas
+enableWebGLCanvas.fontOffsetY = 0; //hack, some fonts need extra offsets, dont know why

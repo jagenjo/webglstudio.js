@@ -20,6 +20,44 @@ var ImporterModule  = {
 		if(window.gl && window.gl.canvas )
 			LiteGUI.createDropArea( gl.canvas, ImporterModule.onItemDrop.bind(this) );
 		LiteGUI.menubar.add("Actions/Import File", { callback: function() { ImporterModule.showImportResourceDialog(); }});
+
+		window.addEventListener("paste", this.onPaste.bind(this) );
+	},
+
+	onPaste: function(e)
+	{
+		console.log("pasted items:",e.clipboardData.items.length,"files:",e.clipboardData.files.length, "types:", e.clipboardData.types.length);
+		var items = (e.clipboardData || e.originalEvent.clipboardData).items;
+		var item0 = items.length ? items[0] : null;
+		if( item0 && item0.kind == "file" )
+		{
+			this.onLoadPastedItem( item0 );
+			return false; // Prevent the default handler from running.
+		}
+	},
+
+	onLoadPastedItem: function(item)
+	{
+		var file = item.getAsFile();
+		if(!file)
+			return;
+		if(!file.name)
+		{
+			if(item.type == "image/png")
+				file.name = "clipboard.png";
+			else if(item.type == "image/jpeg")
+				file.name = "clipboard.jpg";
+			else
+				file.name = "unknown.bin";
+			LiteGUI.prompt("Enter a filename", function(v){
+				if(!v)
+					return;
+				file.name = v;
+				ImporterModule.loadFileToMemory( file, ImporterModule.showImportResourceDialog.bind( ImporterModule ) );
+			}, { value: file.name });
+		}
+		else
+			ImporterModule.loadFileToMemory( file, ImporterModule.showImportResourceDialog.bind( ImporterModule ) );
 	},
 
 	// Launched when something is drag&drop inside the canvas (could be files, links, or elements of the interface) 
@@ -359,7 +397,7 @@ var ImporterModule  = {
 					}
 					inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { import_options.optimize_data = v; }});
 				}
-				else if(info.resource == "SceneTree" )
+				else if(info.resource == "SceneTree" || info.resource == "SceneNode")
 				{
 					inspector.addTitle("Scene");
 					inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { import_options.optimize_data = v; }});
@@ -506,8 +544,9 @@ var ImporterModule  = {
 						}
 					}
 
-					if( options.use_names_to_reference)
+					if( options.use_names_to_reference )
 					{
+						console.log("Converting uids to names in animations and bones");
 						//rename bone references
 						for(var i in resources)
 						{
@@ -515,7 +554,7 @@ var ImporterModule  = {
 							if(res && res.constructor === GL.Mesh && res.bones)
 							{
 								var mesh = res;
-								mesh.convertBonesToNames( resource );
+								mesh.convertBoneNames( resource, false );
 							}
 						}
 

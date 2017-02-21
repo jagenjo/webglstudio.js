@@ -257,7 +257,7 @@ SceneTreeWidget.prototype.onGlobalSceneSelected = function(e, scene)
 
 	console.log("updating tree after global scene change");
 	this.bindEvents( scene );
-	//this.refresh();
+	this.refresh();
 }
 
 SceneTreeWidget.prototype.onKeyDown = function( e )

@@ -39,6 +39,11 @@ var UndoModule = {
 				e.preventDefault();
 			}
 		});
+
+		LiteGUI.bind( CORE, "user_action", function(e){
+			var action_info = e.detail;
+			UndoModule.onUserAction(action_info[0],action_info[1],action_info[2]);
+		});
 	},
 
 	onShowSettingsPanel: function(name,widgets)
@@ -151,6 +156,28 @@ var UndoModule = {
 			list_widget.setValue( list );
 			if(list.length)
 				list_widget.selectIndex(  UndoModule.history.length - 1 );
+		}
+	},
+
+	onUserAction: function( action, data, data2 )
+	{
+		switch( action )
+		{
+			case "scene_modified": this.saveSceneUndo(); break;
+			case "node_created": this.saveNodeCreatedUndo( data ); break;
+			case "node_deleted": this.saveNodeDeletedUndo( data ); break;
+			case "node_changed": this.saveNodeChangeUndo( data ); break;
+			case "node_renamed": this.saveNodeRenamedUndo( data, data2 ); break;
+			case "node_transform": this.saveNodeTransformUndo( data ); break;
+			case "nodes_transform": this.saveNodesTransformUndo( data ); break;
+			case "node_parenting": this.saveNodeParentingUndo( data ); break;
+			case "component_created": this.saveComponentCreatedUndo( data ); break;
+			case "component_changed": this.saveComponentChangeUndo( data ); break;
+			case "component_deleted": this.saveComponentDeletedUndo( data ); break;
+			case "node_material_changed": this.saveNodeMaterialChangeUndo( data ); break;
+			case "material_changed": this.saveMaterialChangeUndo( data ); break;
+			default: 
+				console.warn("Unknown undo action");
 		}
 	},
 

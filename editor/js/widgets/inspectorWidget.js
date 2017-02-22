@@ -502,7 +502,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 				var old_name = node.name;
 				if( !node.setName(v) )
 					return node._name;
-				UndoModule.saveNodeRenamedUndo( node, old_name );
+				CORE.userAction( "node_renamed", node, old_name );
 			}});
 
 			var uid_widget = inspector.addString("UId", node.uid, { name_width: 40, disabled: true });
@@ -803,7 +803,7 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 
 	//save UNDO when something changes TODO remove this 
 	LiteGUI.bind( section, "wbeforechange", function(e) { 
-		UndoModule.saveComponentChangeUndo( component );
+		CORE.userAction("component_changed", component );
 	});
 
 	//it has special editor

@@ -564,13 +564,15 @@ var ToolUtils = {
 			return;
 		}
 
-		UndoModule.saveNodeTransformUndo(node);
+		CORE.userAction("node_transform",node);
+		//UndoModule.saveNodeTransformUndo(node);
 	},
 
 	saveSelectionTransformUndo: function()
 	{
+		CORE.userAction("nodes_transform", SelectionModule.getSelectedNodes() );
 		//UndoModule.saveNodeTransformUndo(node);
-		UndoModule.saveNodesTransformUndo( SelectionModule.getSelectedNodes() );
+		//UndoModule.saveNodesTransformUndo( SelectionModule.getSelectedNodes() );
 	},
 
 	//test if a ray collides circle

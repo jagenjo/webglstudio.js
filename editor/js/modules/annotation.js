@@ -120,7 +120,9 @@ var AnnotationModule = {
 		$(attributes.current_section).find('.options_section').click(function(e) { 
 			var menu = new LiteGUI.ContextMenu(["Copy","Paste","Reset","Delete"], {component: comp, event: e, callback: EditorModule._onComponentOptionsSelect });
 		});
-		$(attributes.current_section).bind("wchange", function() { UndoModule.saveComponentChangeUndo(comp); });
+		$(attributes.current_section).bind("wchange", function() { 
+			CORE.userAction( "component_changed", comp );
+		});
 
 		attributes.addTextarea("Node notes", comp.text, { callback: function(v) { comp.text = v; } });
 		attributes.addTitle("Point annotations");

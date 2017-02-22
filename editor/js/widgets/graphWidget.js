@@ -323,7 +323,7 @@ GraphWidget.prototype.onNewGraph = function()
 		var component = new LS.Components[graph_type]();
 		var root = node || LS.GlobalScene.root;
 		root.addComponent( component );
-		UndoModule.saveComponentCreatedUndo( component );
+		CORE.userAction("component_created", component );
 		EditorModule.refreshAttributes();
 		that.editInstanceGraph( component, { id: component.uid, title: root.name } );
 		dialog.close();

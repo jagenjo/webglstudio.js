@@ -1030,7 +1030,7 @@ var EditorModule = {
 	},
 
 	copyComponentToClipboard: function(component) {
-		UndoModule.saveComponentChangeUndo(component);
+		CORE.userAction( "component_changed", component );
 		var data = component.serialize();
 		data._object_type = LS.getObjectClassName(component);
 		data.uid = null; //remove UID
@@ -1038,7 +1038,7 @@ var EditorModule = {
 	},
 
 	pasteComponentFromClipboard: function(component) {
-		UndoModule.saveComponentChangeUndo(component);
+		CORE.userAction( "component_changed", component );
 		var data = LiteGUI.getLocalClipboard();
 		if( !data )
 			return;
@@ -1051,7 +1051,7 @@ var EditorModule = {
 
 	pasteComponentInNode: function(node)
 	{
-		UndoModule.saveNodeChangeUndo(node);
+		CORE.userAction("node_changed", node);
 		var data = LiteGUI.getLocalClipboard();
 		if(!data || !data._object_type)
 			return;
@@ -1064,7 +1064,7 @@ var EditorModule = {
 	},	
 
 	resetNodeComponent: function(component) {
-		UndoModule.saveComponentChangeUndo(component);
+		CORE.userAction( "component_changed", component );
 		if(component.reset)
 			component.reset();
 		else
@@ -1095,8 +1095,7 @@ var EditorModule = {
 		var node = component._root;
 		if(!node)
 			return;
-		UndoModule.saveComponentDeletedUndo( component );
-
+		CORE.userAction("component_deleted", component );
 		LEvent.trigger( LS.GlobalScene, "nodeComponentRemoved", component );
 		node.removeComponent( component ); 
 		EditorModule.inspect( node );
@@ -1106,7 +1105,7 @@ var EditorModule = {
 	deleteNode: function(node) {
 		if( !node || !node.parentNode )
 			return;
-		UndoModule.saveNodeDeletedUndo( node );
+		CORE.userAction( "node_deleted", node );
 		node.parentNode.removeChild( node ); 
 		EditorModule.inspect();
 		RenderModule.requestFrame(); 
@@ -1153,7 +1152,7 @@ var EditorModule = {
 		parent.addChild( new_node, index );
 
 		if(!skip_undo)
-			UndoModule.saveNodeCreatedUndo( new_node );
+			CORE.userAction( "node_created", new_node );
 
 		return new_node;
 	},
@@ -1166,7 +1165,7 @@ var EditorModule = {
 		delete material["fullpath"]; //no name
 		node.material = material;
 		if(!skip_undo)
-			UndoModule.saveNodeCreatedUndo( node );
+			CORE.userAction( "node_created", node );
 	},
 
 	//interaction
@@ -1197,7 +1196,7 @@ var EditorModule = {
 		var node = SelectionModule.getSelectedNode();
 		if(!node)
 			return;
-		UndoModule.saveNodeChangeUndo( node );
+		CORE.userAction("node_changed", node);
 		var value = tokens[2];
 		if( !isNaN(value) )
 			value = parseFloat(value);
@@ -1215,7 +1214,7 @@ var EditorModule = {
 	{
 		var compo = new LS.Components.GraphComponent();
 		var node = SelectionModule.getSelectedNode() || LS.GlobalScene.root;
-		UndoModule.saveNodeChangeUndo( node );
+		CORE.userAction("node_changed", node);
 		node.addComponent(compo);
 		EditorModule.refreshAttributes();
 		RenderModule.requestFrame();
@@ -1229,7 +1228,7 @@ var EditorModule = {
 		parent = parent || EditorModule.getAddRootNode();
 		parent.addChild( node );
 		EditorModule.updateCreatedNodePosition( node );
-		UndoModule.saveNodeCreatedUndo( node );
+		CORE.userAction( "node_created", node );
 		SelectionModule.setSelection(node);
 		return node;
 	},
@@ -1241,7 +1240,7 @@ var EditorModule = {
 		node.setMesh(mesh_name);
 		EditorModule.getAddRootNode().addChild( node );
 		EditorModule.updateCreatedNodePosition( node );
-		UndoModule.saveNodeCreatedUndo(node);
+		CORE.userAction( "node_created", node );
 		SelectionModule.setSelection(node);
 
 		LS.ResourcesManager.load( mesh_name, options );
@@ -1260,7 +1259,7 @@ var EditorModule = {
 
 		EditorModule.getAddRootNode().addChild( node );
 		//EditorModule.updateCreatedNodePosition( node );
-		UndoModule.saveNodeCreatedUndo( node );
+		CORE.userAction( "node_created", node );
 		SelectionModule.setSelection( node );
 		return node;
 	},
@@ -1271,7 +1270,7 @@ var EditorModule = {
 		node.addComponent( new LS.Light() );
 		EditorModule.getAddRootNode().addChild(node);
 		EditorModule.updateCreatedNodePosition( node );
-		UndoModule.saveNodeCreatedUndo(node);
+		CORE.userAction( "node_created", node );
 		SelectionModule.setSelection(node);
 		return node;
 	},
@@ -1282,7 +1281,7 @@ var EditorModule = {
 		node.addComponent( new LS.Components.GeometricPrimitive( info ) );
 		EditorModule.getAddRootNode().addChild(node);
 		EditorModule.updateCreatedNodePosition( node );
-		UndoModule.saveNodeCreatedUndo(node);
+		CORE.userAction( "node_created", node );
 		SelectionModule.setSelection(node);
 		return node;
 	},
@@ -1300,7 +1299,7 @@ var EditorModule = {
 		}
 		EditorModule.getAddRootNode().addChild(node);
 		EditorModule.updateCreatedNodePosition( node );
-		UndoModule.saveNodeCreatedUndo(node);
+		CORE.userAction( "node_created", node );
 		SelectionModule.setSelection(node);
 		return node;
 	},
@@ -1793,7 +1792,7 @@ var EditorModule = {
 
 			var compo = new selected_component.ctor;
 			root_instance.addComponent( compo );
-			UndoModule.saveComponentCreatedUndo( compo );			
+			CORE.userAction("component_created", compo );
 
 			dialog.close();
 			if(on_complete)

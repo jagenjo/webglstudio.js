@@ -2506,7 +2506,7 @@ DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], 
 
 	if(component)
 	{
-		UndoModule.saveComponentCreatedUndo( component );
+		CORE.userAction("component_created", component );
 		SelectionModule.setSelection( component );
 	}
 
@@ -2547,7 +2547,7 @@ DriveModule.registerAssignResourceCallback( "SceneNode", function( fullpath, res
 	var res = LS.RM.resources[ fullpath ];
 	if(res && res.constructor === LS.SceneNode )
 	{
-		UndoModule.saveNodeCreatedUndo( res );
+		CORE.userAction( "node_created", res );
 		//apply position?
 		root.addChild( res );
 	}
@@ -2556,7 +2556,7 @@ DriveModule.registerAssignResourceCallback( "SceneNode", function( fullpath, res
 		LS.RM.load( fullpath, function(res,fullpath){
 			if(res && res.constructor === LS.SceneNode )
 			{
-				UndoModule.saveNodeCreatedUndo( res );
+				CORE.userAction( "node_created", res );
 				root.addChild( res );
 			}
 		});

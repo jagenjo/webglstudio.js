@@ -96,7 +96,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 	$(inspector.current_section).bind("wchange", function() { 
 		if(material.remotepath)
 			LS.RM.resourceModified( material );
-		UndoModule.saveMaterialChangeUndo( material );
+		CORE.userAction( "material_changed", material );
 	});
 
 	inspector.addInfo("Class", mat_type );
@@ -177,7 +177,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 			else
 				return;
 
-			UndoModule.saveNodeMaterialChangeUndo( node );			
+			CORE.userAction("node_material_changed", node );
 			node.material = material;
 			inspector.refresh();
 			LS.GlobalScene.refresh();
@@ -187,7 +187,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 			var material = node.getMaterial();
 			if(!material) return;
 
-			UndoModule.saveNodeMaterialChangeUndo( node );			
+			CORE.userAction("node_material_changed", node );
 			node.material = null; 
 			inspector.refresh();
 			LS.GlobalScene.refresh();
@@ -420,7 +420,7 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 	inspector.addSlider("Spec. gloss", material.specular_gloss, { pretitle: AnimationModule.getKeyframeCode( material, "specular_gloss" ), min:1,max:20, callback: function (value) { material.specular_gloss = value; } });
 
 	inspector.widgets_per_row = 2;
-	inspector.addCheckbox("Spec. ontop", material.specular_ontop, { pretitle: AnimationModule.getKeyframeCode( material, "specular_ontop" ), callback: function (value) { material.specular_ontop = value; }});
+	inspector.addCheckbox("Spec. on top", material.specular_on_top, { pretitle: AnimationModule.getKeyframeCode( material, "specular_on_top" ), callback: function (value) { material.specular_on_top = value; }});
 	inspector.addCheckbox("Spec. alpha", material.specular_on_alpha, { pretitle: AnimationModule.getKeyframeCode( material, "specular_on_alpha" ), callback: function (value) { material.specular_on_alpha = value; }});
 	inspector.widgets_per_row = 1;
 	inspector.addSlider("Reflection", material.reflection_factor, { pretitle: AnimationModule.getKeyframeCode( material, "reflection_factor" ), callback: function (value) { material.reflection_factor = value; } });

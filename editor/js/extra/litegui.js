@@ -510,7 +510,7 @@ var LiteGUI = {
 	/**
 	* Request script and inserts it in the DOM
 	* @method requireScript
-	* @param {String} url
+	* @param {String|Array} url the url of the script or an array containing several urls
 	* @param {Function} on_complete
 	* @param {Function} on_error
 	* @param {Function} on_progress (if several files are required, on_progress is called after every file is added to the DOM)
@@ -9393,7 +9393,7 @@ Inspector.prototype.beginGroup = function( name, options )
 	var header = element.querySelector(".wgroupheader");
 	if(collapsed)
 		header.classList.add("collapsed");
-	header.addEventListener("click", function() { 
+	header.addEventListener("click", function(e) { 
 		var style = element.querySelector(".wgroupcontent").style;
 		style.display = style.display === "none" ? "" : "none";
 		collapsed = !collapsed;

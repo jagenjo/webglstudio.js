@@ -294,6 +294,12 @@ var CORE = {
 		return preferences;
 	},
 
+	//used for UNDO and COLLABORATE
+	userAction: function( action, param1, param2 )
+	{
+		LiteGUI.trigger( this, "user_action", [action, param1, param2] );
+	},
+
 	//Scenes ****************************************
 	addScene: function( scene )
 	{

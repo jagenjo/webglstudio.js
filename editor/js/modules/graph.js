@@ -140,7 +140,7 @@ var GraphModule = {
 			node = LS.GlobalScene.root;
 		var component = new LS.Components.GraphComponent();
 		node.addComponent( component );
-		UndoModule.saveComponentCreatedUndo( component );
+		CORE.userAction("component_created", component );
 		this.editInstanceGraph( component, { id: component.uid, title: node.id } );
 		this.openTab();
 	},

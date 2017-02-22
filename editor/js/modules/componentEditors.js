@@ -45,7 +45,7 @@ LS.Components.Transform["@inspector"] = function(transform, inspector)
 			if(r.length == 3)
 				transform.setPosition(r[0],r[1],r[2]);
 		},callback_before: function() {
-			UndoModule.saveComponentChangeUndo(transform);
+			CORE.userAction("component_changed", transform );
 		},callback_update: function() {
 			return transform._position;
 		},
@@ -63,7 +63,7 @@ LS.Components.Transform["@inspector"] = function(transform, inspector)
 			var euler = [r[1],r[2],r[0]];
 			transform.setRotationFromEuler(euler);
 		}, callback_before: function() {
-			UndoModule.saveComponentChangeUndo(transform);
+			CORE.userAction("component_changed", transform );
 	}});
 
 	var scale_widget = inspector.addVector3("Scale", transform._scaling, {
@@ -73,7 +73,7 @@ LS.Components.Transform["@inspector"] = function(transform, inspector)
 			transform.setScale(v[0],v[1],v[2]);
 		},
 		callback_before: function() {
-			UndoModule.saveComponentChangeUndo(transform);
+			CORE.userAction("component_changed", transform );
 	}});
 
 	inspector.addNumber("Uniform Scale", transform._scaling[0].toFixed(3), {
@@ -83,7 +83,7 @@ LS.Components.Transform["@inspector"] = function(transform, inspector)
 			scale_widget.setValue([v,v,v]);
 			//transform.setScale(v,v,v);
 		}, callback_before: function() {
-			UndoModule.saveComponentChangeUndo(transform);
+			CORE.userAction("component_changed", transform );
 	}});
 }
 

@@ -617,7 +617,7 @@ LScript.prototype.hasMethod = function(name)
 }
 
 //argv must be an array with parameters, unless skip_expand is true
-LScript.prototype.callMethod = function(name, argv, expand_parameters)
+LScript.prototype.callMethod = function( name, argv, expand_parameters )
 {
 	if(!this._context || !this._context[name]) 
 		return;
@@ -648,7 +648,7 @@ LScript.prototype.callMethod = function(name, argv, expand_parameters)
 		else
 			console.error("Error line: " + error_line);
 		if(this.onerror)
-			this.onerror({ error: err, msg: err.toString(), line: error_line, lscript: this, code: this._last_executed_code});
+			this.onerror({ error: err, msg: err.toString(), line: error_line, lscript: this, code: this._last_executed_code, method_name: name });
 		//throw new Error( err.stack ); //TEST THIS
 	}
 }
@@ -6117,7 +6117,8 @@ function StandardMaterial(o)
 	this.backlight_factor = 0;
 
 	this._specular_data = vec2.fromValues( 0.1, 10.0 );
-	this.specular_ontop = false;
+	this.specular_on_top = false;
+	this.specular_on_alpha = false;
 	this.reflection_factor = 0.0;
 	this.reflection_fresnel = 1.0;
 	this.reflection_additive = false;
@@ -6342,7 +6343,7 @@ StandardMaterial.prototype.fillShaderQuery = function( scene )
 	if(this.emissive_material) //dont know whats this
 		query.macros.USE_EMISSIVE_MATERIAL = "";
 	
-	if(this.specular_ontop)
+	if(this.specular_on_top)
 		query.macros.USE_SPECULAR_ONTOP = "";
 	if(this.specular_on_alpha)
 		query.macros.USE_SPECULAR_ON_ALPHA = "";
@@ -6480,7 +6481,8 @@ StandardMaterial.prototype.setProperty = function(name, value)
 		//strings
 		case "shader_name":
 		//bools
-		case "specular_ontop":
+		case "specular_on_top":
+		case "specular_on_alpha":
 		case "normalmap_tangent":
 		case "reflection_specular":
 		case "use_scene_ambient":
@@ -6549,7 +6551,7 @@ StandardMaterial.prototype.getPropertiesInfo = function()
 		detail_factor: LS.TYPES.NUMBER,
 		detail_scale: LS.TYPES.VEC2,
 
-		specular_ontop: LS.TYPES.BOOLEAN,
+		specular_on_top: LS.TYPES.BOOLEAN,
 		normalmap_tangent: LS.TYPES.BOOLEAN,
 		reflection_specular: LS.TYPES.BOOLEAN,
 		use_scene_ambient: LS.TYPES.BOOLEAN,
@@ -6592,7 +6594,8 @@ StandardMaterial.prototype.getPropertyInfoFromPath = function( path )
 			type = LS.TYPES.VEC3; break;
 		case "detail_scale":
 			type = LS.TYPES.VEC2; break;
-		case "specular_ontop":
+		case "specular_on_top":
+		case "specular_on_alpha":
 		case "normalmap_tangent":
 		case "reflection_specular":
 		case "use_scene_ambient":
@@ -31793,6 +31796,7 @@ function Script(o)
 {
 	this.enabled = true;
 	this.code = this.constructor.templates["component"];
+	this._blocked_functions = new Set(); //used to block functions that has errors
 
 	this._script = new LScript();
 
@@ -31953,6 +31957,7 @@ Script.prototype.getCode = function()
 Script.prototype.setCode = function( code, skip_events )
 {
 	this.code = code;
+	this._blocked_functions.clear();
 	this.processCode( skip_events );
 }
 
@@ -31963,6 +31968,7 @@ Script.prototype.setCode = function( code, skip_events )
 */
 Script.prototype.processCode = function( skip_events )
 {
+	this._blocked_functions.clear();
 	this._script.code = this.code;
 	if(!this._root || LS.Script.block_execution )
 		return true;
@@ -32221,6 +32227,7 @@ Script.prototype.onScriptEvent = function(event_type, params)
 {
 	if(!this.enabled)
 		return;
+
 	var event_info = LS.Script.API_events_to_function[ event_type ];
 	if(!event_info)
 		return; //????
@@ -32229,7 +32236,12 @@ Script.prototype.onScriptEvent = function(event_type, params)
 		this._breakpoint_on_call = false;
 		{{debugger}} //stops the execution if the console is open
 	}
-	return this._script.callMethod( event_info.name, params );
+
+	if( this._blocked_functions.has( event_info.name ) ) //prevent calling code with errors
+		return;
+
+	var r = this._script.callMethod( event_info.name, params );
+	return r;
 }
 
 Script.prototype.onAddedToNode = function( node )
@@ -32336,6 +32348,7 @@ Script.prototype.onError = function(e)
 
 	e.script = this;
 	e.node = this._root;
+	this._blocked_functions.add( e.method_name );
 
 	LEvent.trigger( this, "code_error",e);
 	LEvent.trigger( scene, "code_error",e);
@@ -32377,6 +32390,7 @@ function ScriptFromFile(o)
 	this._filename = "";
 
 	this._script = new LScript();
+	this._blocked_functions = new Set(); //used to block functions that has errors
 
 	this._script.extra_methods = {
 		getComponent: (function() { return this; }).bind(this),

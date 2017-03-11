@@ -398,6 +398,30 @@ textarea.code {
 	background-color: #222;
 }
 
+#maincanvas {
+	height: calc( 100% - 20px );
+	width: 100%;
+}
+
+#statusbar {
+	background-color: #0a0a0a;
+	height: 20px;
+	width: 100%;
+	overflow: hidden;
+	border: 1px solid black;
+}
+
+#statusbar .msg {
+	padding-left: 2em;
+	color: #AAA;
+    margin-top: 2px;
+    display: inline-block;
+}
+
+#statusbar .msg.error {
+	color: #e43838;
+}
+
 /* inspector */
 .inspector .icon img {
 	margin-top: 2px;

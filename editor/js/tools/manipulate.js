@@ -149,6 +149,12 @@ var manipulateTool = {
 		if(this.state_action)
 			EditorModule.refreshAttributes();
 
+		var selection_info = SelectionModule.getSelection();
+		if( selection_info && selection_info.node && selection_info.node === LS.GlobalScene.root )
+			CORE.afterUserAction("component_changed", selection_info.instance );
+		else
+			ToolUtils.afterSelectionTransform();
+
 		this.state_action = false;
 	},
 

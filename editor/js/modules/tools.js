@@ -575,6 +575,11 @@ var ToolUtils = {
 		//UndoModule.saveNodesTransformUndo( SelectionModule.getSelectedNodes() );
 	},
 
+	afterSelectionTransform: function()
+	{
+		CORE.afterUserAction("nodes_transform", SelectionModule.getSelectedNodes() );
+	},
+
 	//test if a ray collides circle
 	testCircle: (function(){ 
 		var temp = vec3.create();

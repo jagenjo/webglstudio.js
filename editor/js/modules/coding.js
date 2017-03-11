@@ -30,7 +30,9 @@ var CodingModule = //do not change
 			callback_leave: function() {
 				RenderModule.appendViewportTo(null);
 				//CodingModule.assignCurrentCode();
-		}});
+			},
+			module: this //used to catch keyboard events
+		});
 
 		this.root = LiteGUI.main_tabs.getTab(this.name).content;
 
@@ -48,8 +50,21 @@ var CodingModule = //do not change
 		var coding_area = this.coding_area = new LiteGUI.Area("codearea",{height: "100%"});
 		this.root.appendChild( coding_area.root );
 		coding_area.split("horizontal",[null,"50%"],true);
-		this.coding_3D_area = coding_area.getSection(0).content;
 
+		var left_area = coding_area.getSection(0);
+		left_area.split("vertical",[null,"25%"],true);
+
+		this.coding_3D_area = left_area.getSection(0).content;
+		this.console_area = left_area.getSection(1).content;
+
+		//CONSOLE
+		this.console_widget = new ConsoleWidget();
+		this.console_area.appendChild( this.console_widget.root );
+
+		//console._log = console.log;
+		//console.log = this.onConsoleLog.bind(this);
+
+		//CODING
 		var coding_tabs_widget = this.coding_tabs_widget = new CodingTabsWidget();
 		coding_tabs_widget.is_master_editor = true;
 		coding_area.getSection(1).add( coding_tabs_widget );
@@ -270,6 +285,8 @@ var CodingModule = //do not change
 
 		this.openTab();
 		tab.pad.markError( err.line, err.msg );
+
+		InterfaceModule.setStatusBar("Error in code: " + err.msg, "error" );
 	},
 
 	//shows the side 3d window
@@ -299,6 +316,18 @@ var CodingModule = //do not change
 
 	},
 
+	onKeyDown: function(e)
+	{
+		//this key event must be redirected when the 3D area is selected
+		if( this._block_event )
+			return;
+		this._block_event = true;
+		var coding = this.coding_tabs_widget.root.querySelector(".CodeMirror");
+		if(coding)
+			coding.dispatchEvent( new e.constructor( e.type, e ) );
+		this._block_event = false;
+	},
+
 	onUnload: function()
 	{
 		if(this.external_window)
@@ -315,6 +344,25 @@ var CodingModule = //do not change
 	setState: function(o)
 	{
 		return this.coding_tabs_widget.setState(o);
+	},
+
+	onConsoleLog: function(a,b)
+	{
+		console._log.apply( console, arguments );
+
+		var elem = document.createElement("div");
+		elem.className = "msg";
+		a = String(a);
+		if( a.indexOf("%c") != -1)
+		{
+			a = a.split("%c").join("");
+			elem.setAttribute("style",b);
+		}
+		elem.innerText = a;
+		this.console_container.appendChild( elem );
+		this.console_container.scrollTop = 1000000;
+		if( this.console_container.childNodes.length > 500 )
+			this.console_container.removeChild( this.console_container.childNodes[0] );
 	}
 };
 

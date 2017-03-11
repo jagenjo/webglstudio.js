@@ -21,6 +21,7 @@ var MeshTools = {
 		{
 			RenderModule.requestFrame();
 		}
+		widgets.on_refresh = inner_update;
 
 		inner_update();
 
@@ -65,12 +66,12 @@ var MeshTools = {
 			widgets.addButton("", "Close" , { callback: function (value) { 
 				dialog.close(); 
 			}});
-			dialog.adjustSize();
+			dialog.adjustSize(10);
 
 		}//inner update
 
 		dialog.add( widgets );
-		dialog.adjustSize();		
+		dialog.adjustSize(10);		
 	},
 
 	sortMeshTriangles: function( mesh, sort_mode )
@@ -208,15 +209,21 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 
 	widgets.addTitle("Vertex Buffers");
 	widgets.widgets_per_row = 2;
+	var num_vertices = -1;
+	var vertices_buffer = mesh.vertexBuffers["vertices"];
+	if(vertices_buffer)
+		num_vertices = vertices_buffer.data.length / 3;
 	for(var i in mesh.vertexBuffers)
 	{
 		var buffer = mesh.vertexBuffers[i];
-		widgets.addInfo(i, (buffer.data.length / buffer.spacing), { width: "calc( 100% - 30px )" } );
+		var info = widgets.addInfo(i, (buffer.data.length / buffer.spacing), { width: "calc( 100% - 30px )" } );
+		if( num_vertices != -1 && (buffer.data.length / buffer.spacing) != num_vertices )
+			info.style.backgroundColor = "#6b2d2d";
 
 		var disabled = false;
-		if(i == "vertices" || i == "normals" || i == "coords")
+		if(i == "vertices" || i == "normals" ) //|| i == "coords")
 			disabled = true;
-		widgets.addButton(null,"<img src='imgs/mini-icon-trash.png'/>", { width: 30, stream: i, disabled: disabled, callback: function(){
+		var button = widgets.addButton(null,"<img src='imgs/mini-icon-trash.png'/>", { width: 30, stream: i, disabled: disabled, callback: function(){
 			delete mesh.vertexBuffers[ (this.options.stream) ];
 			LS.RM.resourceModified(mesh);
 			widgets.refresh();
@@ -249,34 +256,43 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 
 	if(mesh.info && mesh.info.groups)
 	{
-		widgets.addTitle("Groups");
+		var group = widgets.beginGroup("Groups",{ collapsed: true, height: 150, scrollable: true });
 		for(var i = 0; i < mesh.info.groups.length; i++)
 		{
-			widgets.addInfo(i, mesh.info.groups[i].name );
+			var str = mesh.info.groups[i].name;
+			if(mesh.info.groups[i].material)
+				str += "<span class='mat' style='color:white;'>"+mesh.info.groups[i].material+"<span>";
+			var w = widgets.addInfo(i, str, { name_width: 50 } );
 		}
+		widgets.endGroup();
 	}
 
 	widgets.addTitle("Actions");
+
 	widgets.addButton(null, "Center Vertices", function(){
 		MeshTools.centerMeshVertices( mesh );
 		LS.RM.resourceModified(mesh);
 		RenderModule.requestFrame();
+		widgets.refresh();
 	} );
 
-	widgets.addButton(null, "Smooth Normals", function(){
+	widgets.addButton(null, "Generate Normals", function(){
 		mesh.computeNormals();
 		LS.RM.resourceModified(mesh);
 		RenderModule.requestFrame();
+		widgets.refresh();
 	} );
 	widgets.addButton(null, "Flip Normals", function(){
 		mesh.flipNormals();
 		LS.RM.resourceModified(mesh);
 		RenderModule.requestFrame();
+		widgets.refresh();
 	} );
 	widgets.addButton(null, "Generate Coords", function(){
 		mesh.computeTextureCoordinates();
 		LS.RM.resourceModified(mesh);
 		RenderModule.requestFrame();
+		widgets.refresh();
 	} );
 	
 	widgets.widgets_per_row = 2;
@@ -288,6 +304,7 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		MeshTools.sortMeshTriangles( mesh,sort_mode );
 		LS.RM.resourceModified(mesh);
 		RenderModule.requestFrame();
+		widgets.refresh();
 	});
 
 	var rotation_axis = "+X";
@@ -298,6 +315,7 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		MeshTools.rotateMeshVertices( mesh, rotation_axis );
 		LS.RM.resourceModified( mesh );
 		RenderModule.requestFrame();
+		widgets.refresh();
 	});
 
 	widgets.widgets_per_row = 1;

@@ -34,6 +34,7 @@
 		"js/widgets/textureAreasWidget.js",
 		"js/widgets/genericTabs.js",
 		"js/widgets/collaborateWidget.js",
+		"js/widgets/consoleWidget.js",
 		"js/modules/intro.js",
 		"js/modules/cameraTools.js",
 		"js/modules/notify.js",

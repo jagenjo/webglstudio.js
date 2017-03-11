@@ -80,7 +80,7 @@ var InterfaceModule = {
 		this.mainarea.getSection(0).add( visorarea );
 
 		visorarea.split("vertical",[null,200], true);
-		visorarea.getSection(0).content.innerHTML = "<div id='visor'></div>";
+		visorarea.getSection(0).content.innerHTML = "<div id='visor'><div id='maincanvas'></div><div id='statusbar'><span class='msg'></div></div></div>";
 		visorarea.getSection(1).content.innerHTML = "";
 
 		LiteGUI.bind( visorarea, "split_moved", function(e){
@@ -164,6 +164,16 @@ var InterfaceModule = {
 		//default
 		tabs_widget.selectTab("Inspector");
 		this.splitSidePanel();
+	},
+
+	setStatusBar: function(text, classname)
+	{
+		text = text || "";
+		var msg = document.querySelector("#statusbar .msg");
+		if(!msg)
+			return;
+		msg.innerHTML = text;
+		msg.className = "msg " + classname;
 	},
 
 	splitSidePanel: function()

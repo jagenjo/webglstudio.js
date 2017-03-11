@@ -174,6 +174,7 @@ var UndoModule = {
 			case "component_created": this.saveComponentCreatedUndo( data ); break;
 			case "component_changed": this.saveComponentChangeUndo( data ); break;
 			case "component_deleted": this.saveComponentDeletedUndo( data ); break;
+			case "node_material_assigned": this.saveNodeMaterialChangeUndo( data ); break;
 			case "node_material_changed": this.saveNodeMaterialChangeUndo( data ); break;
 			case "material_changed": this.saveMaterialChangeUndo( data ); break;
 			default: 

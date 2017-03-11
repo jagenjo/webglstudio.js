@@ -524,7 +524,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 				}});
 
 				inspector.addButton( null, LiteGUI.special_codes.navicon, { height: "1em", width: 30, callback: function(v,evt){
-					var menu = new LiteGUI.ContextMenu( ["Choose Prefab","Unlink prefab","Reload from Prefab","Update to Prefab"], { event: evt, callback: function(action) {
+					var menu = new LiteGUI.ContextMenu( ["Choose Prefab","Unlink prefab","Reload from Prefab","Update to Prefab"], { title:"Prefab Menu", event: evt, callback: function(action) {
 						if(action == "Choose Prefab")
 						{
 							EditorModule.showSelectResource( { type:"Prefab", on_complete: function(v){
@@ -537,7 +537,13 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 							//add prefab to resources otherwise all the info will be lost
 							var prefab = LS.RM.resources[ node.prefab ];
 							if( prefab && prefab.containsResources() )
-								node.scene.preloaded_resources[ node.prefab ] = true;
+							{
+								var prefab_fullpath = node.prefab;
+								LiteGUI.confirm("Add prefab to the preload resources of the scene?", function(v){
+									if(v)
+										node.scene.preloaded_resources[ prefab_fullpath ] = true;
+								});
+							}
 							node.prefab = null;
 							inspector.refresh();
 							InterfaceModule.scene_tree.refresh();
@@ -804,6 +810,10 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 	//save UNDO when something changes TODO remove this 
 	LiteGUI.bind( section, "wbeforechange", function(e) { 
 		CORE.userAction("component_changed", component );
+	});
+
+	LiteGUI.bind( section, "wchange", function(e) { 
+		CORE.afterUserAction("component_changed", component );
 	});
 
 	//it has special editor

@@ -55,18 +55,19 @@ var RenderModule = {
 		//create split
 		var visorarea = this.visorarea = new LiteGUI.Area("visorarea",{ height: "100%", autoresize: true, inmediateResize: true});
 		visorarea.split("vertical",[null,260], true);
-		visorarea.getSection(0).content.innerHTML = "<div id='visor'></div>";
+		visorarea.getSection(0).content.innerHTML = "<div id='visor'><div id='maincanvas'></div><div id='statusbar'><span class='msg'></div></div></div>";
 		this.tab.add( visorarea );
 
 		if( !InterfaceModule.preferences.show_low_panel )
 			visorarea.hideSection(1); //DEFAULT SHOW TIMELINE ***********************************
 		var visor_container = this.visor_container = document.getElementById("visor");
+		var canvas_container = this.canvas_container = document.getElementById("maincanvas");
 		InterfaceModule.setVisorArea( visorarea );
 
 		//The WebGLContext is created from CanvasManager !!!!!!!
 
 		//create canvas and store inside the #visor
-		this.canvas_manager = new CanvasManager( { container: visor_container, full: true, antialiasing: true} );
+		this.canvas_manager = new CanvasManager( { container: canvas_container, full: true, antialiasing: true} );
 		if(!this.canvas_manager.gl)
 		{
 			this.onWebGLNotEnabled();
@@ -282,7 +283,7 @@ var RenderModule = {
 		if(parent)
 			parent.appendChild(canvas);
 		else
-			document.getElementById("visor").appendChild(canvas);
+			document.getElementById("maincanvas").appendChild(canvas);
 		RenderModule.canvas_manager.resize();
 		RenderModule.requestFrame();
 		return canvas;
@@ -593,7 +594,7 @@ var RenderModule = {
 
 	goFullscreen: function()
 	{
-		var fullscreen_root = document.getElementById("visor");
+		var fullscreen_root = document.getElementById("maincanvas");
 		//gl.fullscreen();
 
 		if(fullscreen_root.requestFullScreen)
@@ -658,8 +659,8 @@ var RenderModule = {
 		var dialog = LiteGUI.alert("WebGL is disabled in your browser.<br/> You must use a recent browser like Chrome or Firefox updated to the last version in order to use this tool.");
 		dialog.setSize(400,200);
 
-		this.visor_container.innerHTML = "WEBGL is disabled</br><a href='http://superuser.com/questions/836832/how-can-i-enable-webgl-in-my-browser'>Do you need help?</a>";
-		this.visor_container.setAttribute("style","font-size: 4em; padding: 50px; color: #444; text-align: center; width: 100%;");
+		this.canvas_container.innerHTML = "WEBGL is disabled</br><a href='http://superuser.com/questions/836832/how-can-i-enable-webgl-in-my-browser'>Do you need help?</a>";
+		this.canvas_container.setAttribute("style","font-size: 4em; padding: 50px; color: #444; text-align: center; width: 100%;");
 	}
 };
 

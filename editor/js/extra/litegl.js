@@ -440,20 +440,22 @@ global.HttpRequest = GL.request = function HttpRequest(url,params, callback, err
 }
 
 //cheap simple promises
-if( !XMLHttpRequest.prototype.hasOwnProperty("done") )
-	Object.defineProperty( XMLHttpRequest.prototype, "done", { enumerable: false, value: function(callback)
-	{
-	  LEvent.bind(this,"done", function(e,err) { callback(err); } );
-	  return this;
-	}});
+if( global.XMLHttpRequest )
+{
+	if( !XMLHttpRequest.prototype.hasOwnProperty("done") )
+		Object.defineProperty( XMLHttpRequest.prototype, "done", { enumerable: false, value: function(callback)
+		{
+		  LEvent.bind(this,"done", function(e,err) { callback(err); } );
+		  return this;
+		}});
 
-if( !XMLHttpRequest.prototype.hasOwnProperty("fail") )
-	Object.defineProperty( XMLHttpRequest.prototype, "fail", { enumerable: false, value: function(callback)
-	{
-	  LEvent.bind(this,"fail", function(e,err) { callback(err); } );
-	  return this;
-	}});
-
+	if( !XMLHttpRequest.prototype.hasOwnProperty("fail") )
+		Object.defineProperty( XMLHttpRequest.prototype, "fail", { enumerable: false, value: function(callback)
+		{
+		  LEvent.bind(this,"fail", function(e,err) { callback(err); } );
+		  return this;
+		}});
+}
 
 global.getFileExtension = function getFileExtension(url)
 {
@@ -2909,7 +2911,8 @@ Mesh.prototype.computeNormals = function( stream_type  ) {
 * Creates a new stream with the tangents
 * @method computeTangents
 */
-Mesh.prototype.computeTangents = function( ) {
+Mesh.prototype.computeTangents = function()
+{
 	var vertices = this.vertexBuffers["vertices"].data;
 	var normals = this.vertexBuffers["normals"].data;
 	var uvs = this.vertexBuffers["coords"].data;
@@ -3009,7 +3012,7 @@ Mesh.prototype.computeTextureCoordinates = function( stream_type )
 	var num_vertices = vertices.length / 3;
 
 	var uvs_buffer = this.vertexBuffers["coords"];
-	var uvs = uvs_buffer ? uvs_buffer.data : new Float32Array( num_vertices * 2 );
+	var uvs = new Float32Array( num_vertices * 2 );
 
 	var triangles_buffer = this.indexBuffers["triangles"];
 	var triangles = null;
@@ -3097,7 +3100,10 @@ Mesh.prototype.computeTextureCoordinates = function( stream_type )
 	}
 
 	if(uvs_buffer)
+	{
+		uvs_buffer.data = uvs;
 		uvs_buffer.upload( stream_type );
+	}
 	else
 		this.createVertexBuffer('coords', Mesh.common_buffers["coords"].attribute, 2, uvs );
 }
@@ -3168,7 +3174,8 @@ Mesh.prototype.getBoundingBox = function()
 */
 Mesh.prototype.updateBounding = function() {
 	var vertices = this.vertexBuffers["vertices"].data;
-	if(!vertices) return;
+	if(!vertices)
+		return;
 	this.bounding = GL.Mesh.computeBounding(vertices, this.bounding);
 }
 
@@ -3210,7 +3217,22 @@ Mesh.prototype.configure = function( o, options )
 
 	for(var j in o)
 	{
-		if(!o[j]) continue;
+		if(!o[j])
+			continue;
+
+		if(j == "vertexBuffers")
+		{
+			for(i in o[j])
+				v[i] = o[j][i];
+			continue;
+		}
+		
+		if(j == "indexBuffers")
+		{
+			for(i in o[j])
+				i[i] = o[j][i];
+			continue;
+		}
 
 		if(j == "indices" || j == "lines" ||  j == "wireframe" || j == "triangles")
 			i[j] = o[j];
@@ -3224,6 +3246,9 @@ Mesh.prototype.configure = function( o, options )
 
 	for(var i in options)
 		this[i] = options[i];		
+
+	if(!this.bounding)
+		this.updateBounding();
 }
 
 /**
@@ -3316,6 +3341,8 @@ Mesh.load = function( buffers, options, output_mesh, gl ) {
 * Returns a mesh with all the meshes merged (you can apply transforms individually to every buffer)
 * @method Mesh.mergeMeshes
 * @param {Array} meshes array containing object like { mesh:, matrix:, texture_matrix: }
+* @param {Object} options { only_data: to get the mesh data without uploading it }
+* @return {GL.Mesh|Object} the mesh in GL.Mesh format or Object format (if options.only_data is true)
 */
 Mesh.mergeMeshes = function( meshes, options )
 {
@@ -3459,7 +3486,7 @@ Mesh.mergeMeshes = function( meshes, options )
 	var extra = { info: { groups: groups } };
 
 	//return
-	if( typeof(gl) != "undefined" )
+	if( typeof(gl) != "undefined" || options.only_data )
 		return new GL.Mesh( vertex_buffers,index_buffers, extra );
 	return { vertexBuffers: vertex_buffers, indexBuffers: index_buffers, info: { groups: groups } };
 }
@@ -6406,8 +6433,12 @@ Shader.prototype.extractShaderInfo = function()
 		var data = gl.getActiveAttrib( this.program, i);
 		if(!data) break;
 		var func = Shader.getUniformFunc(data);
-		//this.uniformInfo[ data.name ] = { type: data.gl.getUniformLocation(this.program, data.name) };
-		this.uniformInfo[ data.name ] = { type: data.type, func: func, size: data.size, loc: null }; //gl.getAttribLocation( this.program, data.name )
+		this.uniformInfo[ data.name ] = { 
+			type: data.type,
+			func: func,
+			size: data.size,
+			loc: null 
+		}; //gl.getAttribLocation( this.program, data.name )
 		this.attributes[ data.name ] = gl.getAttribLocation(this.program, data.name );	
 	}
 }
@@ -6606,54 +6637,84 @@ Shader.prototype.uniformsArray = function(array) {
 * @param {string} name
 * @param {*} value
 */
-Shader.prototype.setUniform = function(name, value)
-{
-	if(	this.gl._current_shader != this )
-		this.bind();
+Shader.prototype.setUniform = (function(){
+	var temps = [];
+	for(var i = 2; i <= 16; ++i)
+		temps[i] = new Float32Array(i);
 
-	var info = this.uniformInfo[name];
-	if (!info)
-		return;
+	return (function(name, value)
+	{
+		if(	this.gl._current_shader != this )
+			this.bind();
 
-	if(info.loc === null)
-		return;
+		var info = this.uniformInfo[name];
+		if (!info)
+			return;
 
-	if(value == null) //strict?
-		return;
+		if(info.loc === null)
+			return;
 
-	if(value.constructor === Array)
-		value = new Float32Array( value );  //garbage generated...
+		if(value == null) //strict?
+			return;
 
-	if(info.is_matrix)
-		info.func.call( this.gl, info.loc, false, value );
-	else
-		info.func.call( this.gl, info.loc, value );
-}
+		if(value.constructor === Array)
+		{
+			var v = temps[ value.length ]; //reuse same container
+			if(v)
+			{
+				v.set(value);
+				value = v;
+			}
+			else
+				value = new Float32Array( value );  //garbage generated...
+		}
+
+		if(info.is_matrix)
+			info.func.call( this.gl, info.loc, false, value );
+		else
+			info.func.call( this.gl, info.loc, value );
+	});
+})();
 
 //skips enabling shader
-Shader.prototype._setUniform = function(name, value)
-{
-	var info = this.uniformInfo[ name ];
-	if (!info)
-		return;
+Shader.prototype._setUniform = (function(){
+	var temps = [];
+	for(var i = 2; i <= 16; ++i)
+		temps[i] = new Float32Array(i);
 
-	if(info.loc === null)
-		return;
+	return (function(name, value)
+	{
+		var info = this.uniformInfo[ name ];
+		if (!info)
+			return;
 
-	//if(info.loc.constructor !== Function)
-	//	return;
+		if(info.loc === null)
+			return;
 
-	if(value == null) 
-		return;
+		//if(info.loc.constructor !== Function)
+		//	return;
 
-	if(value.constructor === Array)
-		value = new Float32Array( value );  //garbage generated...
+		if(value == null) 
+			return;
 
-	if(info.is_matrix)
-		info.func.call( this.gl, info.loc, false, value );
-	else
-		info.func.call( this.gl, info.loc, value );
-}
+		if(value.constructor === Array)
+		{
+			var v = temps[ value.length ]; //reuse same container
+			if(v)
+			{
+				v.set(value);
+				value = v;
+			}
+			else
+				value = new Float32Array( value );  //garbage generated...
+		}
+
+		if(info.is_matrix)
+			info.func.call( this.gl, info.loc, false, value );
+		else
+			info.func.call( this.gl, info.loc, value );
+	});
+})();
 
 /**
 * Renders a mesh using this shader, remember to use the function uniforms before to enable the shader
@@ -8246,6 +8307,8 @@ var LEvent = global.LEvent = GL.LEvent = {
 			events[event_type].push([callback,target_instance]);
 		else
 			events[event_type] = [[callback,target_instance]];
+		if( instance.onLEventBinded )
+			instance.onLEventBinded( event_type, callback, target_instance );
 	},
 
 	/**
@@ -8284,6 +8347,9 @@ var LEvent = global.LEvent = GL.LEvent = {
 
 		if (events[event_type].length == 0)
 			delete events[event_type];
+
+		if( instance.onLEventUnbinded )
+			instance.onLEventUnbinded( event_type, callback, target_instance );
 	},
 
 	/**
@@ -8300,6 +8366,9 @@ var LEvent = global.LEvent = GL.LEvent = {
 		var events = instance.__levents;
 		if(!events)
 			return;
+
+		if( instance.onLEventUnbindAll )
+			instance.onLEventUnbindAll( target_instance, callback );
 
 		if(!target_instance) //remove all
 		{
@@ -8328,7 +8397,7 @@ var LEvent = global.LEvent = GL.LEvent = {
 	* @param {Object} instance where the events are binded
 	* @param {String} event name of the event you want to remove all binds
 	**/
-	unbindAllEvent: function( instance, event )
+	unbindAllEvent: function( instance, event_type )
 	{
 		if(!instance) 
 			throw("cannot unbind events in null");
@@ -8336,7 +8405,9 @@ var LEvent = global.LEvent = GL.LEvent = {
 		var events = instance.__levents;
 		if(!events)
 			return;
-		delete events[ event ];
+		delete events[ event_type ];
+		if( instance.onLEventUnbindAll )
+			instance.onLEventUnbindAll( event_type, target_instance, callback );
 		return;
 	},
 
@@ -8479,68 +8550,34 @@ var LEvent = global.LEvent = GL.LEvent = {
 
 	extendObject: function( object )
 	{
-		object.on = function( event_type, callback, instance ){
-			if(!callback) 
-				throw("cannot bind to null callback");
-			var events = this.__levents;
-			if(!this)
-			{
-				Object.defineProperty( this, "__levents", {value: {}, enumerable: false });
-				events = this.__levents;
-			}
-
-			if( events.hasOwnProperty( event_type ) )
-				events[event_type].push([callback,instance]);
-			else
-				events[event_type] = [[callback,instance]];
+		object.bind = function( event_type, callback, instance ){
+			return LEvent.bind( this, event_type, callback, instance );
 		};
 
 		object.trigger = function( event_type, params ){
-			var events = this.__levents;
-			if( !events || !events.hasOwnProperty(event_type) )
-				return true;
-
-			var inst = events[event_type];
-			for(var i = 0, l = inst.length; i < l; ++i)
-			{
-				var v = inst[i];
-				if( v && v[0].call(v[1], event_type, params) == false)// || event.stop)
-					return false; //stopPropagation
-			}
-			return true;
+			return LEvent.trigger( this, event_type, params );
 		};
 
 		object.unbind = function( event_type, callback, target_instance )
 		{
-			if(!callback) 
-				throw("cannot unbind from null callback");
-			var events = this.__levents;
-			if(!events)
-				return;
+			return LEvent.unbind( this, event_type, callback, instance );
+		};
 
-			if(!events.hasOwnProperty( event_type ))
-				return;
-
-			for(var i = 0, l = events[event_type].length; i < l; ++i)
-			{
-				var v = events[event_type][i];
-				if(v[0] === callback && v[1] === target_instance)
-				{
-					events[event_type].splice( i, 1 );
-					break;
-				}
-			}
-
-			if (events[event_type].length == 0)
-				delete events[event_type];
-		}
+		object.unbindAll = function( target_instance, callback )
+		{
+			return LEvent.unbindAll( this, target_instance, callback );
+		};
 	},
 
+	/**
+	* Adds the methods to bind, trigger and unbind to this class prototype
+	* @method LEvent.extendClass
+	* @param {Object} constructor
+	**/
 	extendClass: function( constructor )
 	{
 		this.extendObject( constructor.prototype );
 	}
-
 };
 /* geometric utilities */
 global.CLIP_INSIDE = GL.CLIP_INSIDE = 0;

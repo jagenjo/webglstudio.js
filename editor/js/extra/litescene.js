@@ -617,7 +617,7 @@ LScript.prototype.hasMethod = function(name)
 }
 
 //argv must be an array with parameters, unless skip_expand is true
-LScript.prototype.callMethod = function( name, argv, expand_parameters )
+LScript.prototype.callMethod = function( name, argv, expand_parameters, parent_object )
 {
 	if(!this._context || !this._context[name]) 
 		return;
@@ -638,7 +638,10 @@ LScript.prototype.callMethod = function( name, argv, expand_parameters )
 	catch(err)
 	{
 		var error_line = LScript.computeLineFromError(err);
-		console.error("Error in function\n" + err);
+		var parent_info = ""; 
+		if (parent_object && parent_object.toInfoString )
+			parent_info = " from " + parent_object.toInfoString();
+		console.error("Error from function " + name + parent_info + ": ", err.toString());
 		if( console.groupCollapsed )
 		{
 			console.groupCollapsed("Error line: " + error_line + " Watch code");
@@ -5490,7 +5493,7 @@ Material.prototype.fillShaderQuery = function(scene)
 		var sampler = this.getTextureSampler(i);
 		if(!sampler)
 			continue;
-		var uvs = sampler.uvs || Material.DEFAULT_UVS[i] || "0";
+		var uvs = sampler.uvs || Material.DEFAULT_UVS[i] || "transformed";
 
 		var texture = Material.getTextureFromSampler( sampler );
 		if(!texture) //loading or non-existant
@@ -6391,7 +6394,7 @@ StandardMaterial.prototype.fillUniforms = function( scene, options )
 
 	uniforms.u_emissive_color = this.emissive || vec4.create();
 	uniforms.u_specular = this._specular_data;
-	uniforms.u_reflection_info = [ (this.reflection_additive ? -this.reflection_factor : this.reflection_factor), this.reflection_fresnel ];
+	uniforms.u_reflection_info = vec2.fromValues( (this.reflection_additive ? -this.reflection_factor : this.reflection_factor), this.reflection_fresnel );
 	uniforms.u_backlight_factor = this.backlight_factor;
 	uniforms.u_normalmap_factor = this.normalmap_factor;
 	uniforms.u_displacementmap_factor = this.displacementmap_factor;
@@ -10508,7 +10511,6 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 		if(this.value_size === 1)
 			return Animation.EvaluateHermiteSpline(a[1],b[1],pre_a[1],post_b[1], 1 - t );
 
-
 		result = result || this._result;
 
 		//multiple data
@@ -10526,8 +10528,8 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 		else if(this.type == "trans10")
 		{
 			var rotR = result.subarray(3,7);
-			var rotA = a_value.subarray(3,7);
-			var rotB = b_value.subarray(3,7);
+			var rotA = a[1].subarray(3,7);
+			var rotB = b[1].subarray(3,7);
 			quat.slerp( rotR, rotB, rotA, t );
 			quat.normalize( rotR, rotR );
 		}
@@ -15359,8 +15361,8 @@ RenderInstance.prototype.render = function(shader)
 	//in case no coords found but they are required
 	if(shader.attributes["a_coord"] && !this.vertex_buffers["coords"])
 	{
-		this.mesh.computeTextureCoordinates();		
-		this.vertex_buffers["coords"] = this.mesh.vertexBuffers["coords"];
+		//this.mesh.computeTextureCoordinates();		
+		//this.vertex_buffers["coords"] = this.mesh.vertexBuffers["coords"];
 	}
 
 	//in case no tangents found but they are required
@@ -18591,7 +18593,7 @@ var Draw = {
 		return this.renderCircle(radius, segments, in_z, true);
 	},
 
-	createSphereMesh: function(radius, segments, use_global )
+	createWireSphereMesh: function(radius, segments, use_global )
 	{
 		var axis = [0,1,0];
 		segments = segments || 100;
@@ -18633,9 +18635,26 @@ var Draw = {
 	*/
 	renderWireSphere: function(radius, segments)
 	{
-		var mesh = this.createSphereMesh( radius, segments, true );
+		var mesh = this.createWireSphereMesh( radius, segments, true );
 		return this.renderMesh( mesh, gl.LINES, undefined, undefined, 0, this._global_mesh_last_size );
 	},
+
+	/**
+	* Renders an sphere
+	* @method renderSolidSphere
+	* @param {number} radius
+	*/
+	renderSolidSphere: function(radius)
+	{
+		var mesh = this._sphere_mesh;
+		if(!this._sphere_mesh)
+			mesh = this._sphere_mesh = GL.Mesh.sphere({ size: 1 });
+		this.push();
+		this.scale( radius,radius,radius );
+		this.renderMesh( mesh, gl.TRIANGLES );
+		this.pop();
+	},
+
 
 	createWireBoxMesh: function( sizex, sizey, sizez, use_global )
 	{
@@ -22086,7 +22105,9 @@ Camera.prototype.getLocalVector = function(v, dest)
 Camera.prototype.getEye = function( out )
 {
 	out = out || vec3.create();
-	out.set( this._eye );
+	out[0] = this._eye[0];
+	out[1] = this._eye[1];
+	out[2] = this._eye[2];
 	if( this._root && this._root.transform )
 		return this._root.transform.getGlobalPosition( out );
 	return out;
@@ -22105,7 +22126,9 @@ Camera.prototype.getCenter = function( out )
 
 	if( this._root && this._root.transform )
 		return mat4.multiplyVec3( out, this._root.transform.getGlobalMatrixRef(), this._center );
-	out.set( this._center );
+	out[0] = this._center[0];
+	out[1] = this._center[1];
+	out[2] = this._center[2];
 	return out;
 }
 
@@ -22138,7 +22161,9 @@ Camera.prototype.getFront = function( out )
 Camera.prototype.getUp = function( out )
 {
 	out = out || vec3.create();
-	out.set( this._up );
+	out[0] = this._up[0];
+	out[1] = this._up[1];
+	out[2] = this._up[2];
 
 	if(this._root && this._root.transform)
 	{
@@ -23777,7 +23802,7 @@ Light.prototype.prepare = function( render_settings )
 	if(use_shadows)
 	{
 		var closest_far = this.computeShadowmapFar();
-		uniforms.u_shadow_params = [ 1.0 / this._shadowmap.width, this.shadow_bias, this.near, closest_far ];
+		uniforms.u_shadow_params.set([ 1.0 / this._shadowmap.width, this.shadow_bias, this.near, closest_far ]);
 		//uniforms.shadowmap = this._shadowmap.bind(10); //fixed slot
 		uniforms.shadowmap = LS.Renderer.SHADOWMAP_TEXTURE_SLOT;
 		uniforms.u_light_matrix = this._light_matrix;
@@ -24637,13 +24662,13 @@ function MeshRenderer(o)
 	* @property point_size {number}
 	* @default -1;
 	*/
-	this.point_size = 0.1;
+	this._point_size = 0.1;
 	/**
 	* When rendering points tells if you want to use for every point the texture coordinates of the vertex or the point texture coordinates
 	* @property textured_points {boolean}
 	* @default false;
 	*/
-	this.textured_points = false;
+	this._textured_points = false;
 
 	this._must_update_static = true; //used in static meshes
 	this._transform_version = -1;
@@ -24709,6 +24734,25 @@ Object.defineProperty( MeshRenderer.prototype, 'lod_mesh', {
 	enumerable: true
 });
 
+Object.defineProperty( MeshRenderer.prototype, 'submesh_id', {
+	get: function() { return this._submesh_id; },
+	set: function(v) { this._submesh_id = v; },
+	enumerable: true
+});
+
+Object.defineProperty( MeshRenderer.prototype, 'point_size', {
+	get: function() { return this._point_size; },
+	set: function(v) { this._point_size = v; },
+	enumerable: true
+});
+
+Object.defineProperty( MeshRenderer.prototype, 'textured_points', {
+	get: function() { return this._textured_points; },
+	set: function(v) { this._textured_points = v; },
+	enumerable: true
+});
+
+
 MeshRenderer.icon = "mini-icon-teapot.png";
 
 //vars
@@ -24764,6 +24808,8 @@ MeshRenderer.prototype.onRemovedFromNode = function( node )
 */
 MeshRenderer.prototype.configure = function(o)
 {
+	if(o.uid)
+		this.uid = o.uid;
 	if(o.enabled !== undefined)
 		this.enabled = o.enabled;
 	this.mesh = o.mesh;
@@ -24791,6 +24837,7 @@ MeshRenderer.prototype.serialize = function()
 {
 	var o = { 
 		enabled: this.enabled,
+		uid: this.uid,
 		mesh: this.mesh,
 		lod_mesh: this.lod_mesh
 	};
@@ -26389,6 +26436,11 @@ SkinDeformer.prototype.applySkinning = function(RI)
 		//retrieve all the bones
 		var bones = this.getBoneMatrices( mesh );
 		var bones_size = bones.length * 12;
+		if(!bones.length)
+		{
+			console.warn("SkinDeformer.prototype.applySkinning: Bones not found");
+			return;
+		}
 
 		var u_bones = this._u_bones;
 		if(!u_bones || u_bones.length != bones_size)
@@ -26672,6 +26724,145 @@ var skinning_texture_block = new LS.ShaderBlock("skinning_texture");
 skinning_texture_block.addCode( GL.VERTEX_SHADER, "\n#define USE_SKINNING_TEXTURE\n" + SkinDeformer.skinning_enabled_shader_code, SkinDeformer.skinning_disabled_shader_code );
 skinning_texture_block.register();
 SkinDeformer.skinning_texture_block = skinning_texture_block;
+//WORK IN PROGRESS
+
+
+/**
+* Renders one mesh, it allows to configure the rendering primitive, the submesh (range of mesh) and a level of detail mesh
+* @class SVGRenderer
+* @namespace LS.Components
+* @constructor
+* @param {String} object to configure from
+*/
+function SVGRenderer(o)
+{
+	this.enabled = true;
+	this.svg = null;
+
+	if(o)
+		this.configure(o);
+
+	this._RI = new LS.RenderInstance( null, this );
+
+	this._mesh = null;
+	this._svg_data = null;
+}
+
+SVGRenderer.icon = "mini-icon-teapot.png";
+
+//vars
+SVGRenderer["@svg"] = { type: "resource" };
+
+SVGRenderer.prototype.onAddedToScene = function( scene )
+{
+}
+
+SVGRenderer.prototype.onRemovedFromScene = function( scene )
+{
+}
+
+SVGRenderer.prototype.onAddedToNode = function( node )
+{
+	LEvent.bind( node, "collectRenderInstances", this.onCollectInstances, this );
+	this._RI.node = node;
+}
+
+SVGRenderer.prototype.onRemovedFromNode = function( node )
+{
+	LEvent.unbind( node, "collectRenderInstances", this.onCollectInstances, this );
+}
+
+SVGRenderer.prototype.getMesh = function()
+{
+	if(!this.svg)
+		return null;
+
+	var svg = LS.ResourcesManager.getResource( this.svg );
+	var mesh = null;
+
+	if(this._svg_data === svg )
+	{
+		mesh = this._mesh;
+	}
+
+	if(!mesh)
+		mesh = this._mesh = GL.Mesh.cube();
+	return mesh;
+}
+
+SVGRenderer.prototype.onCollectInstances = function(e, instances)
+{
+	if(!this._enabled)
+		return;
+
+	var mesh = this.getMesh();
+	if(!mesh)
+		return null;
+
+	var node = this._root;
+	if(!this._root)
+		return;
+
+	var RI = this._RI;
+	var is_static = this._root.flags && this._root.flags.is_static;
+	var transform = this._root.transform;
+
+	RI.setMatrix( this._root.transform._global_matrix );
+	mat4.multiplyVec3( RI.center, RI.matrix, LS.ZEROS );
+
+	//material (after flags because it modifies the flags)
+	var material = this._root.getMaterial();
+	RI.setMaterial( material );
+
+	//buffers from mesh and bounding
+	RI.setMesh( mesh, GL.TRIANGLES );
+	RI.setRange(0,-1);
+	RI.collision_mesh = mesh;
+	instances.push( RI );
+}
+
+/**
+* Configure from a serialized object
+* @method configure
+* @param {Object} object with the serialized info
+*/
+SVGRenderer.prototype.configure = function(o)
+{
+	if(o.enabled !== undefined)
+		this.enabled = o.enabled;
+	this.svg = o.svg;
+}
+
+/**
+* Serialize the object 
+* @method serialize
+* @return {Object} object with the serialized info
+*/
+SVGRenderer.prototype.serialize = function()
+{
+	var o = { 
+		enabled: this.enabled,
+		svg: this.svg
+	};
+	return o;
+}
+
+SVGRenderer.prototype.getResources = function(res)
+{
+	if(typeof(this.svg) == "string")
+		res[this.svg] = LS.Resource;
+	return res;
+}
+
+SVGRenderer.prototype.onResourceRenamed = function (old_name, new_name, resource)
+{
+	if(this.svg == old_name)
+		this.svg = new_name;
+}
+
+
+//LS.registerComponent( SVGRenderer );
+
 
 function Skybox(o)
 {
@@ -32240,7 +32431,7 @@ Script.prototype.onScriptEvent = function(event_type, params)
 	if( this._blocked_functions.has( event_info.name ) ) //prevent calling code with errors
 		return;
 
-	var r = this._script.callMethod( event_info.name, params );
+	var r = this._script.callMethod( event_info.name, params, undefined, this );
 	return r;
 }
 
@@ -32310,6 +32501,13 @@ Script.prototype.onRemovedFromScene = function(scene)
 Script.prototype.getComponentTitle = function()
 {
 	return this.name; //name is a getter that reads the name from the code comment
+}
+
+Script.prototype.toInfoString = function()
+{
+	if(!this._root)
+		return LS.getObjectClassName( this );
+	return LS.getObjectClassName( this ) + " in node " + this._root.name;
 }
 
 
@@ -35755,11 +35953,10 @@ global.Collada = {
 			//var vcount = null;
 			//var xmlvcount = xmlpolygons.querySelector("vcount");
 			//var vcount = this.readContentAsUInt32( xmlvcount );
-			var xmlpolylist = xmlmesh.querySelector("polylist");
-			if(xmlpolylist)
-				mesh = this.readPolylist( xmlpolylist, sources );
+			var xmlpolylist_array = xmlmesh.querySelectorAll("polylist");
+			if( xmlpolylist_array && xmlpolylist_array.length )
+				mesh = this.readPolylistArray( xmlpolylist_array, sources );
 		}
-
 
 		if(!mesh)
 		{
@@ -35950,7 +36147,28 @@ global.Collada = {
 		return mesh;
 	},
 
-	readPolylist: function( xml_shape_root, sources )
+	readPolylistArray: function( xml_polylist_array, sources )
+	{
+		var meshes = [];
+
+		for(var i = 0; i < xml_polylist_array.length; ++i)
+		{
+			var xml_polylist = xml_polylist_array[i];
+			var mesh = this.readPolylist( xml_polylist, sources );
+			if(mesh)
+				meshes.push( mesh );
+		}
+
+		//one or none
+		if( meshes.length < 2)
+			return meshes[0];
+
+		//merge meshes
+		var mesh = this.mergeMeshes( meshes );
+		return mesh;
+	},
+
+	readPolylist: function( xml_polylist, sources )
 	{
 		var use_indices = false;
 
@@ -35964,21 +36182,21 @@ global.Collada = {
 		var group_name = "";
 		var material_name = "";
 
-		material_name = xml_shape_root.getAttribute("material");
-		buffers = this.readShapeInputs( xml_shape_root, sources );
+		material_name = xml_polylist.getAttribute("material") || "";
+		buffers = this.readShapeInputs( xml_polylist, sources );
 
-		var xmlvcount = xml_shape_root.querySelector("vcount");
+		var xmlvcount = xml_polylist.querySelector("vcount");
 		var vcount = this.readContentAsUInt32( xmlvcount );
 
-		var xmlp = xml_shape_root.querySelector("p");
+		var xmlp = xml_polylist.querySelector("p");
 		var data = this.readContentAsUInt32( xmlp );
+		var pos = 0;
 
 		var num_values_per_vertex = 1;
 		var buffers_length = buffers.length;
 		for(var b = 0; b < buffers_length; ++b)
 			num_values_per_vertex = Math.max( num_values_per_vertex, buffers[b][4] + 1);
 
-		var pos = 0;
 		for(var i = 0, l = vcount.length; i < l; ++i)
 		{
 			var num_vertices = vcount[i];
@@ -36043,12 +36261,13 @@ global.Collada = {
 
 		var mesh = {
 			vertices: new Float32Array( buffers[0][1] ),
-			info: {},
+			info: {
+				material: material_name
+			},
 			_remap: new Uint32Array( vertex_remap )
 		};
 
 		this.transformMeshInfo( mesh, buffers, indicesArray );
-
 		return mesh;
 	},
 
@@ -36081,6 +36300,7 @@ global.Collada = {
 			"normal":"normals",
 			"texcoord":"coords"
 		};
+
 		for(var i = 1; i < buffers.length; ++i)
 		{
 			var name = buffers[i][0].toLowerCase();
@@ -36644,6 +36864,8 @@ global.Collada = {
 
 			var pos = 0;
 			var remap = mesh._remap;
+			if(!remap)
+				throw("no remap info found in mesh");
 			var max_bone = 0; //max bone affected
 
 			for(var i = 0, l = vcount.length; i < l; ++i)
@@ -36993,6 +37215,166 @@ global.Collada = {
 
 		}
 		return matrix;
+	},
+
+	mergeMeshes: function( meshes, options )
+	{
+		options = options || {};
+
+		var vertex_buffers = {};
+		var index_buffers = {};
+		var offsets = {}; //tells how many positions indices must be offseted
+		var vertex_offsets = [];
+		var current_vertex_offset = 0;
+		var groups = [];
+
+		var index_buffer_names = {
+			triangles: true,
+			wireframe: true
+		};
+
+		var remap = null;
+		var remap_offset = 0;
+
+		//vertex buffers
+		//compute size
+		for(var i = 0; i < meshes.length; ++i)
+		{
+			var mesh = meshes[i];
+			var offset = current_vertex_offset;
+			vertex_offsets.push( offset );
+			var length = mesh.vertices.length / 3;
+			current_vertex_offset += length;
+
+			for(var j in mesh)
+			{
+				var buffer = mesh[j];
+
+				if( j == "info" || j == "_remap" )
+					continue;
+
+				if( index_buffer_names[j] )
+				{
+					if(!index_buffers[j])
+						index_buffers[j] = buffer.length;
+					else
+						index_buffers[j] += buffer.length;
+				}
+				else
+				{
+					if(!vertex_buffers[j])
+						vertex_buffers[j] = buffer.length;
+					else
+						vertex_buffers[j] += buffer.length;
+				}
+			}
+
+			//groups
+			var group = {
+				name: "mesh_" + ( mesh.info.material || i ),
+				start: offset,
+				length: length,
+				material: ( mesh.info.material || "" )
+			};
+
+			groups.push( group );
+		}
+
+		//allocate
+		for(var j in vertex_buffers)
+		{
+			var datatype = options[j];
+			if(datatype === null)
+			{
+				delete vertex_buffers[j];
+				continue;
+			}
+
+			if(!datatype)
+				datatype = Float32Array;
+
+			vertex_buffers[j] = new datatype( vertex_buffers[j] );
+			offsets[j] = 0;
+		}
+
+		for(var j in index_buffers)
+		{
+			index_buffers[j] = new Uint32Array( index_buffers[j] );
+			offsets[j] = 0;
+		}
+
+		//store
+		for(var i = 0; i < meshes.length; ++i)
+		{
+			var mesh = meshes[i];
+			var offset = 0;
+
+			var buffer = mesh.vertices;
+			if(!buffer)
+				return console.error("mesh without vertices");
+			var length = buffer.length / 3;
+			
+			for(var j in mesh)
+			{
+				var buffer = mesh[j];
+				if( j == "info")
+					continue;
+
+				if(j == "_remap")
+				{
+					if(remap_offset)
+						apply_offset( buffer, 0, buffer.length, remap_offset );
+
+					if(!remap)
+					{
+						remap = new Uint32Array( buffer.length );
+						remap.set( buffer );
+					}
+					else
+					{
+						var new_remap = new Uint32Array( remap.length + buffer.length );
+						new_remap.set( remap );
+						new_remap.set( buffer, remap.length );
+						remap = new_remap;
+					}
+					remap_offset += length;
+				}
+
+				//INDEX BUFFER
+				if( index_buffer_names[j] )
+				{
+					index_buffers[j].set( buffer, offsets[j] );
+					apply_offset( index_buffers[j], offsets[j], buffer.length, vertex_offsets[i] );
+					offsets[j] += buffer.length;
+					continue;
+				}
+
+				//VERTEX BUFFER
+				if(!vertex_buffers[j])
+					continue;
+
+				vertex_buffers[j].set( buffer, offsets[j] );
+				offsets[j] += buffer.length;
+			}
+		}
+
+		function apply_offset( array, start, length, offset )
+		{
+			var l = start + length;
+			for(var i = start; i < l; ++i)
+				array[i] += offset;
+		}
+
+		var extra = { info: { groups: groups } };
+		var final_mesh = { info: { groups: groups } };
+		for(var i in vertex_buffers)
+			final_mesh[i] = vertex_buffers[i];
+		for(var i in index_buffers)
+			final_mesh[i] = index_buffers[i];
+
+		if( remap )
+			final_mesh._remap = remap;
+		return final_mesh;
 	}
 };
 
@@ -37260,16 +37642,24 @@ var parserDAE = {
 
 	processMesh: function( mesh, renamed )
 	{
-		//check that UVS have 2 components (MAX export 3 components for UVs)
-		if(mesh.coords && mesh.coords.length == mesh.vertices.length)
+		if(!mesh.vertices)
+			return; //mesh without vertices?!
+
+		var num_vertices = mesh.vertices.length / 3;
+		var num_coords = mesh.coords ? mesh.coords.length / 2 : 0;
+
+		if(num_coords && num_coords != num_vertices )
 		{
-			var num_vertices = mesh.vertices.length / 3;
 			var old_coords = mesh.coords;
 			var new_coords = new Float32Array( num_vertices * 2 );
-			for(var i = 0; i < num_vertices; ++i )
+
+			if(num_coords > num_vertices) //check that UVS have 2 components (MAX export 3 components for UVs)
 			{
-				new_coords[i*2] = old_coords[i*3];
-				new_coords[i*2+1] = old_coords[i*3+1];
+				for(var i = 0; i < num_vertices; ++i )
+				{
+					new_coords[i*2] = old_coords[i*3];
+					new_coords[i*2+1] = old_coords[i*3+1];
+				}
 			}
 			mesh.coords = new_coords;
 		}
@@ -37580,7 +37970,17 @@ var parserOBJ = {
 		var lines = text.split("\n");
 		var length = lines.length;
 		for (var lineIndex = 0;  lineIndex < length; ++lineIndex) {
-			line = lines[lineIndex].replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //better than trim
+
+			var line = lines[lineIndex];
+			line = line.replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //better than trim
+
+			if(line[ line.length - 1 ] == "\\") //breakline
+			{
+				lineIndex += 1;
+				var next_line = lines[lineIndex].replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //better than trim
+				line = (line.substr(0,line.length - 1) + next_line).replace(/[ \t]+/g, " ").replace(/\s\s*$/, "");
+			}
+			
 
 			if (line[0] == "#")
 				continue;
@@ -37602,18 +38002,7 @@ var parserOBJ = {
 			{
 				x = parseFloat(tokens[1]);
 				y = parseFloat(tokens[2]);
-				if( code != VT_CODE )
-				{
-					if(tokens[3] == '\\') //super weird case, OBJ allows to break lines with slashes...
-					{
-						//HACK! only works if the var is the thirth position...
-						++lineIndex;
-						line = lines[lineIndex].replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //better than trim
-						z = parseFloat(line);
-					}
-					else
-						z = parseFloat(tokens[3]);
-				}
+				z = parseFloat(tokens[3]);
 			}
 
 			if (code == V_CODE) {

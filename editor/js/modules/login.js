@@ -196,6 +196,8 @@ var LoginModule = {
 					{
 						create_info.setValue("Account created!");
 						LoginModule.login( username_widget.getValue(), password_widget.getValue() );
+						if( LoginModule.login_dialog )
+							LoginModule.login_dialog.close();
 					}
 					else if(resp)
 						create_info.setValue("Problem: " + resp.msg);

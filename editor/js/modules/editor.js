@@ -996,6 +996,7 @@ var EditorModule = {
 		LS.GlobalScene.clear();
 		LS.ResourcesManager.reset();
 		LEvent.trigger(this,"resetEditor");
+		InterfaceModule.setStatusBar();
 	},
 
 	copyNodeToClipboard: function( node )
@@ -1696,8 +1697,10 @@ var EditorModule = {
 			}
 
 			var material = new selected.ctor;
+
+			CORE.userAction( "node_material_assigned", node, material );
 			node.material = material;
-			//emit change event?
+			CORE.afterUserAction( "node_material_assigned", node, material );
 
 			dialog.close();
 			RenderModule.requestFrame();
@@ -2075,6 +2078,7 @@ var EditorModule = {
 		var current_tab = LiteGUI.main_tabs.current_tab[2];
 		if(!current_tab) 
 			return;
+
 		var module = current_tab.module;
 		if(module && module.onKeyDown)
 			return module.onKeyDown(e);

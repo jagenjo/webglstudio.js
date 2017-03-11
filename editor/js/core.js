@@ -9,6 +9,7 @@ var CORE = {
 	Modules: [], //registered modules
 	Widgets: [], //valid tab widgets (used by GenericTabsWidget)
 	Scenes: [], //current scenes
+	ProxyScene: {},
 
 	_modules_initialized: false,
 
@@ -16,13 +17,25 @@ var CORE = {
 	init: function( )
 	{
 		this.root = document.body;
-
+		
 		//Load config file
 		LiteGUI.request({
 			url:"config.json?nocache=" + getTime(),
 			dataType:"json",
 			success: this.configLoaded.bind(this)
 		});
+
+		/*
+		this.ProxyScene.onLEventBinded = function( event_type, callback, target_instance )
+		{
+		
+		}
+
+		this.ProxyScene.onLEventUnbinded = function( event_type, callback, target_instance )
+		{
+		
+		}
+		*/
 	},
 
 	configLoaded: function( config )
@@ -298,6 +311,11 @@ var CORE = {
 	userAction: function( action, param1, param2 )
 	{
 		LiteGUI.trigger( this, "user_action", [action, param1, param2] );
+	},
+
+	afterUserAction: function( action, param1, param2 )
+	{
+		LiteGUI.trigger( this, "after_user_action", [action, param1, param2] );
 	},
 
 	//Scenes ****************************************

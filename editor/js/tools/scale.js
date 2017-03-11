@@ -90,6 +90,13 @@ var scaleNodeTool = {
 	mouseup: function(e) {
 		if(!this.enabled)
 			return;
+
+		var selection_info = SelectionModule.getSelection();
+		if( selection_info && selection_info.node && selection_info.node === LS.GlobalScene.root )
+			CORE.afterUserAction("component_changed", selection_info.instance );
+		else //save transform
+			ToolUtils.afterSelectionTransform();
+
 		EditorModule.inspect( LS.GlobalScene.selected_node );
 	},
 

@@ -36,7 +36,11 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 	}
 
 	inspector.addMaterial("Ref", mat_ref, { name_width: 100, callback: function(v) {
+
+		CORE.userAction("node_material_assigned", node, v );
 		node.material = v;
+		CORE.afterUserAction("node_material_assigned", node, v );
+
 		inspector.refresh();
 	}, callback_edit: function(){
 		node._show_mat = true;
@@ -71,7 +75,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 	}
 
 	//mark material as changed
-	$(section).bind("wchange", function() { 
+	LiteGUI.bind( section, "wchange", function(e) { 
 		if(!material)
 			return;
 		var fullpath = material.fullpath || material.filename;
@@ -93,7 +97,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 		event.dataTransfer.setData("class", mat_type );
 	});
 
-	$(inspector.current_section).bind("wchange", function() { 
+	LiteGUI.bind( inspector.current_section, "wchange", function(e) { 
 		if(material.remotepath)
 			LS.RM.resourceModified( material );
 		CORE.userAction( "material_changed", material );
@@ -177,18 +181,20 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 			else
 				return;
 
-			CORE.userAction("node_material_changed", node );
+			CORE.userAction("node_material_assigned", node, material );
 			node.material = material;
+			CORE.afterUserAction("node_material_assigned", node, material  );
 			inspector.refresh();
 			LS.GlobalScene.refresh();
 		}
 		else if( v == "Delete" )
 		{
 			var material = node.getMaterial();
-			if(!material) return;
-
-			CORE.userAction("node_material_changed", node );
+			if(!material)
+				return;
+			CORE.userAction("node_material_assigned", node, null );
 			node.material = null; 
+			CORE.afterUserAction("node_material_assigned", node, null );
 			inspector.refresh();
 			LS.GlobalScene.refresh();
 		}
@@ -773,8 +779,18 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 
 		widgets.addTitle("UVs transformed");
 		var m = material.uvs_matrix;
-		widgets.addVector2("Tiling", [m[0],m[4]], { step:0.001, callback: function (value) { material.uvs_matrix[0] = value[0]; material.uvs_matrix[4] = value[1]; }});
-		widgets.addVector2("Offset", [m[6],m[7]], { step:0.001, callback: function (value) { material.uvs_matrix[6] = value[0]; material.uvs_matrix[7] = value[1]; }});
+		widgets.addVector2("Tiling", [m[0],m[4]], { step:0.001, callback: function (value) { 
+			material.uvs_matrix[0] = value[0]; material.uvs_matrix[4] = value[1];
+			var sampler = material.textures[ channel ];
+			if(sampler)
+				sampler.uvs = "transformed";
+		}});
+		widgets.addVector2("Offset", [m[6],m[7]], { step:0.001, callback: function (value) { 
+			material.uvs_matrix[6] = value[0]; material.uvs_matrix[7] = value[1];
+			var sampler = material.textures[ channel ];
+			if(sampler)
+				sampler.uvs = "transformed";
+		}});
 	}
 
 	dialog.addButton( "Clear", { className: "big", callback: function(v) { 

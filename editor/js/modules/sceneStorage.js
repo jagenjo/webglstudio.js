@@ -191,6 +191,7 @@ var SceneStorageModule = {
 			//SceneStorage also includes the url
 			msg = NotifyModule.show("FILE: " + fullpath, { id: msg_id, closable: true, time: 0, left: 60, top: 30, parent: "#visor" } );
 			LS.GlobalScene.load( real_path, inner_complete, inner_error, inner_progress ); 
+			InterfaceModule.setStatusBar("Loading scene...");
 		};
 
 		function inner_complete( scene, url )
@@ -200,6 +201,7 @@ var SceneStorageModule = {
 			scene.extra.folder = LS.ResourcesManager.getFolder( fullpath );
 			scene.extra.fullpath = fullpath;
 			that.onSceneReady( scene );
+			InterfaceModule.setStatusBar("Scene loaded");
 			if(on_complete)
 				on_complete();
 		}

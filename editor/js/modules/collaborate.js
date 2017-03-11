@@ -11,6 +11,8 @@ var CollaborateModule = {
 	default_port: 55000,
 	actions: {},
 
+	refresh_rate: 400, //ms
+
 	log_history: [],
 	max_history: 100,
 
@@ -23,12 +25,43 @@ var CollaborateModule = {
 	{
 		this.room_name = ((performance.now()*100000)|0).toString(36);
 		this.log("Not connected...");
+
+		LiteGUI.bind( CORE, "user_action", function(e){
+			CollaborateModule.onUserAction(e.detail);
+		});
+
+		LiteGUI.bind( CORE, "after_user_action", function(e){
+			CollaborateModule.onUserAction(e.detail);
+		});
 	},
 
 	renderView: function(e, camera)
 	{
-		if( !EditorView.render_helpers || RenderModule.render_settings.in_player || !RenderModule.frame_updated )
+		if( !this.connected || !EditorView.render_helpers || RenderModule.render_settings.in_player || !RenderModule.frame_updated )
 			return;
+
+		var ctx = gl;
+		ctx.start2D();
+		ctx.fillStyle = "red";
+
+		for(var i in this.server.clients)
+		{
+			var user = this.server.clients[i];
+			var info = user.info;
+			if(!info || user.id == this.server.user_id )
+				continue;
+
+			var pos = camera.project( info.camera.eye );
+			ctx.fillRect( pos[0], gl.viewport_data[3] - pos[1], 10,10 );
+
+			/*
+			LS.Draw.push();
+			LS.Draw.translate( info.camera.eye );
+			LS.Draw.renderSolidSphere(1);
+			LS.Draw.pop();
+			*/
+		}
+		ctx.finish2D();
 	},
 
 	request: function( action, user )
@@ -78,8 +111,14 @@ var CollaborateModule = {
 			case "set_scene":
 				this.log( { type: "scene", username: user.name, user_id: user.id, scene: packet.scene });
 				break;
+			case "user_info":
+				user.info = packet.info;
+				break;
+			case "user_action":
+				this.onRemoteUserAction( packet.info, user );
+				break;
 			default:
-				var callback = CollaborateWidget.actions[ packet.action ];
+				var callback = CollaborateModule.actions[ packet.action ];
 				if(callback)
 					callback( author_id, packet, this );
 				else
@@ -111,28 +150,14 @@ var CollaborateModule = {
 			that.log("Error connecting");
 		}
 
-		this.server.on_ready = function(id){
-			that.log("Connected!");
-			if(!that.username)
-				that.username = "user_" + id;
-			that.server_id = id;
-			that.connected = true;
-			that.server.clients[ that.server.user_id ].name = that.username;
-			that.onDataUpdated();
-			this.sendMessage( { action: "enter", username: that.username } );
-		}
+		this.server.on_room_info = this.onConnected.bind(this);
 
 		this.server.on_user_connected = function(id){
 			//that.onDataUpdated();
 			this.sendMessage( { action: "enter", username: that.username }, id );
 		};
 
-		this.server.on_user_disconnected = function(id){
-			var user = this.clients[ id ];
-			if(!user)
-				return;
-			that.log( { type: "disconnected", username: user.name } );
-		};
+		this.server.on_user_disconnected = this.onDisconnected.bind(this);
 
 		this.server.on_close = function(){
 			that.log("Disconnected");
@@ -148,10 +173,90 @@ var CollaborateModule = {
 		}
 	},
 
+	onConnected: function(info)
+	{
+		this.log("Connected!");
+		var id = this.server.user_id;
+		if(!this.username)
+			this.username = "user_" + id;
+		this.server_id = id;
+		this.connected = true;
+		this.server.clients[ this.server.user_id ].name = this.username;
+		this.onDataUpdated();
+		this.server.sendMessage( { action: "enter", username: this.username } );
+		var min_user = this.getMainUser();
+		if( min_user && min_user.id != this.server.user_id )
+		{
+			this.log("Requesting scene to " + min_user.id );
+			this.server.sendMessage( { action: "request_download", data: "scene", username: this.username }, min_user.id );
+		}
+		else
+			this.log("You are the first user in the room.");
+
+		LEvent.bind( LS.Renderer, "renderHelpers", this.renderView, this );
+		//LEvent.bind( LS.Renderer, "renderPicking", this.renderPicking, this );
+
+		if(this._timer)
+			clearInterval( this._timer );
+		this._timer = setInterval( this.onTick.bind(this), this.refresh_rate );
+	},
+
+	onDisconnected: function( id )
+	{
+		var user = this.server.clients[ id ];
+		if(!user)
+			return;
+		that.log( { type: "disconnected", username: user.name } );
+		LEvent.unbind( LS.Renderer, "renderHelpers", this.renderView, this );
+		//LEvent.unbind( LS.Renderer, "renderPicking", this.renderPicking, this );
+		clearInterval( this._timer );
+	},
+
+	onTick: function()
+	{
+		if(!this.connected || this.server.num_clients < 2)
+			return;
+
+		if(!this._user_info)
+			this._user_info = {
+			camera: {
+				eye: [0,0,0],
+				center: [0,0,0],
+				fov: 90,
+				type: 1
+			}
+		};
+
+		//lightweight version
+		var info = this._user_info;
+
+		var camera = RenderModule.getActiveCamera();
+		if(camera)
+		{
+			camera.getEye( info.camera.eye );
+			camera.getCenter( info.camera.center );
+			info.camera.fov = camera.fov;
+			info.camera.type = camera.type;
+		}
+
+		this.server.sendMessage( { action: "user_info", info: info } );
+		LS.GlobalScene.requestFrame();
+	},
+
 	sendSceneTo: function( user_id )
 	{
 		var scene_info = JSON.stringify( LS.GlobalScene.serialize() );
 		this.server.sendMessage( { action: "set_scene", scene: scene_info }, user_id );
+	},
+
+	requestScene: function()
+	{
+		var min_user = this.getMainUser();
+		if( min_user && min_user.id != this.server.user_id )
+		{
+			this.log("Requesting scene to " + min_user.id );
+			this.server.sendMessage( { action: "request_download", data: "scene", username: this.username }, min_user.id );
+		}
 	},
 
 	disconnect: function()
@@ -162,6 +267,21 @@ var CollaborateModule = {
 		this.connected = false;
 		this.server_id = null;
 		this.log("Disconnected");
+	},
+
+	getMainUser: function()
+	{
+		if(!this.connected)
+			return null;
+		var min = null;
+		for(var i in this.server.clients)
+		{
+			var user = this.server.clients[i];
+			var id = Number(user.id);
+			if( !min || (id < Number(min.id) && id != this.user.id) )
+				min = user;
+		}
+		return min;
 	},
 
 	getUsers: function()
@@ -213,6 +333,190 @@ var CollaborateModule = {
 	onDataUpdated: function( info )
 	{
 		LiteGUI.trigger( this, "data_updated", info );
+	},
+
+	onUserAction: function( action )
+	{
+		if(!this.connected)
+			return;
+
+		var action_info = {
+			type: action[0]
+		};
+
+		switch(action[0])
+		{
+			case "scene_modified": 
+				action_info.data = LS.GlobalScene.serialize();
+				break;
+			case "node_created":
+				action_info.data = action[1].serialize();
+				break;
+			case "node_deleted":
+				//TODO
+				break;
+			case "node_transform":
+				var node = action[1];
+				action_info.node_uid = node.uid;
+				action_info.data = typedArrayToArray( node.transform.data );
+				break;
+			case "nodes_transform":
+				action_info.data = [];
+				for(var i in action[1])
+				{
+					var node = action[1][i];
+					if(node.transform)
+						action_info.data.push([ node.uid, typedArrayToArray( node.transform.data ) ]);
+				}
+				break;
+			case "material_changed":
+				var material = action[1];
+				action_info.material_fullpath = material.fullpath;
+				action_info.material = material.serialize();
+				if( material._root )
+					action_info.node_uid = material._root.uid;
+				break;
+			case "node_material_assigned":
+				var node = action[1];
+				var material = action[2];
+				action_info.node_uid = node.uid;
+				action_info.material = (material && material.serialize) ? material.serialize() : material; //inline materials, strings or nulls
+				break;
+			case "component_created":
+			case "component_changed":
+				var component = action[1];
+				var node = component._root;
+				if(!node) //this happens when is something related to the root node ??
+					return;
+				action_info.node_uid = node.uid;
+				action_info.component = component.serialize();
+				action_info.component_index = node.getIndexOfComponent( component );
+				break;
+			case "component_deleted":
+				var component = action[1];
+				var node = component._root;
+				action_info.node_uid = node.uid;
+				action_info.component_uid = component.uid;
+				break;
+		}
+
+		if(!action_info)
+			return;
+		this.server.sendMessage( { action: "user_action", info: action_info } );
+	},
+	
+	onRemoteUserAction: function( action, user )
+	{
+		if(!this.connected)
+			return;
+
+		var log_action = true;
+		var log_param = "";
+
+		switch( action.type )
+		{
+			case "scene_modified": 
+				LS.GlobalScene.configure( action.data );
+				break;
+			case "node_created":
+				var node = new LS.SceneNode();
+				node.configure( action.data );
+				LS.GlobalScene.root.addChild( node );
+				break;
+			case "node_transform": 
+				var node = LS.GlobalScene.getNode( action.node_uid );
+				if(node && node.transform)
+					node.transform.data = action.data;
+				break;
+			case "nodes_transform": 
+				for(var i in action.data )
+				{
+					var node = LS.GlobalScene.getNode( action.data[i][0] );
+					if(node && node.transform)
+						node.transform.data = action.data[i][1];
+				}
+				break;
+			case "node_material_assigned":
+				var node = LS.GlobalScene.getNode( action.node_uid );
+				if(!node)
+					return;
+				var material = null;
+				if(action.material ) 
+				{
+					if( action.material.material_class ) //inline material
+					{
+						material = new LS.MaterialClasses[ action.material.material_class ];
+						material.configure( action.material );
+					}
+					else //resource material
+					{
+						LS.RM.load( action.material );
+						material = action.material;
+					}
+				}
+				node.material = material;
+				break;
+			case "material_changed":
+				var node = null;
+				if( action.node_uid )
+					node = LS.GlobalScene.getNode( action.node_uid );
+
+				if( node && node.material )
+				{
+					node.material.configure( action.material );
+					return;
+				}
+
+				LS.RM.load( action.material_fullpath, function(material){
+					if( material )
+						material.configure( action.material );
+				});
+				break;
+			case "component_created":
+				var node = LS.GlobalScene.getNode( action.node_uid );
+				if(!node)
+					return;
+				var component_info = action.component;
+				var component_ctor = LS.Components[ component_info.object_class ];
+				if(!component_ctor)
+					return;
+				var component = new component_ctor();
+				component.configure( component_info );
+				node.addComponent( component, action.component_index );
+				break;
+			case "component_changed":
+				var node = LS.GlobalScene.getNode( action.node_uid );
+				if(!node)
+					return;
+				var component_info = action.component;
+				var component = node.getComponentByUId( component_info.uid );
+				if(!component)
+					return;
+				component.configure( component_info );
+				log_param = " to component " + LS.getObjectClassname( component );
+				break;
+			case "component_deleted":
+				var node = LS.GlobalScene.getNode( action.node_uid );
+				if(!node)
+					return;
+				var component_info = action.component;
+				var component = node.getComponentByUId( component_info.uid );
+				if(!component)
+					return;
+				node.removeComponent( component );
+				log_param = " to component " + LS.getObjectClassname( component );
+				break;
+		}
+
+		if(log_action)
+		{
+			var event = { type: "user_action", user_id: user.id, username: user.name, content: action.type + log_param };
+			if( ! this._last_event || (this._last_event && JSON.stringify( this._last_event ) != JSON.stringify( event )) )
+				this.log( event );
+			this._last_event = event;
+		}
+
+		LS.GlobalScene.requestFrame();
 	}
 };
 

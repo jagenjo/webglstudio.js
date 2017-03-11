@@ -16,6 +16,7 @@ function CollaborateWidget( options )
 			.collaborate-panel .msg .link { color: #5AF; cursor: pointer; } \
 			.collaborate-panel .msg .danger { color: #d63422; } \
 			.collaborate-panel .msg .content { color: #DDD; } \
+			.collaborate-panel .msg .action { color: #999; } \
 			.collaborate-panel input { font-size: 20px; padding-left: 8px; } \
 			.collaborate-panel input::-webkit-input-placeholder { opacity: 0.3; }\
 		");
@@ -24,7 +25,10 @@ function CollaborateWidget( options )
 
 
 	if(!CollaborateModule.script_loaded)
+	{
+		CollaborateModule.script_loaded = true;
 		LiteGUI.requireScript("js/extra/sillyclient.js", this.init.bind(this) );
+	}
 	else
 		this.init();
 
@@ -136,9 +140,9 @@ CollaborateWidget.prototype.updateWidgets = function()
 
 	inspector.addButtons("Scene",["Download","Upload"], { callback: function(v){
 		if(v == "Download")
-			module.request( "download", that.user_selected );		
+			module.requestScene();
 		else if(v == "Upload")
-			module.request( "upload", that.user_selected );		
+			module.sendSceneTo();
 	}});
 
 	inspector.addCheckbox("Show Cameras", module.show_cameras, function(v){
@@ -202,6 +206,10 @@ CollaborateWidget.prototype.addLogMessage = function(msg)
 				LS.GlobalScene.setFromJSON( JSON.parse( msg.scene ) );
 				that.sendChat("scene loaded.");
 			}
+			break;
+		case "user_action":
+			elem.innerHTML = "<span class='username'>" + msg.username + "</span> action: <span class='content action'></span>";
+			elem.querySelector(".content").innerText = msg.content;
 			break;
 		default:
 			if(msg.content)

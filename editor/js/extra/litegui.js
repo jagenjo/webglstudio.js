@@ -90,13 +90,15 @@ var LiteGUI = {
 	* Triggers a simple event in an object (similar to jQuery.trigger)
 	* @method trigger
 	* @param {Object} element could be an HTMLEntity or a regular object
-	* @param {Object} element could be an HTMLEntity or a regular object
-	* @param {Object} element could be an HTMLEntity or a regular object
+	* @param {String} event_name the type of the event
+	* @param {*} params it will be stored in e.detail
+	* @param {*} origin it will be stored in e.srcElement
 	*/
-	trigger: function(element, event_name, params)
+	trigger: function(element, event_name, params, origin)
 	{
 		var evt = document.createEvent( 'CustomEvent' );
 		evt.initCustomEvent( event_name, true,true, params ); //canBubble, cancelable, detail
+		evt.srcElement = origin;
 		if( element.dispatchEvent )
 			element.dispatchEvent( evt );
 		else if( element.__events )
@@ -864,6 +866,8 @@ var LiteGUI = {
 				inner();
 				return false;
 			}		
+			if (keyCode == '29')
+				dialog.close();
 		};
 
 		input.focus();
@@ -2114,7 +2118,11 @@ function dataURItoBlob( dataURI ) {
 			{
 				this.value = value;
 				if(!skip_event)
+				{
 					LiteGUI.trigger(this.root, "change", value );
+					if(this.onChange)
+						this.onChange( value );
+				}
 			}
 		}
 
@@ -6196,8 +6204,13 @@ function dataURItoBlob( dataURI ) {
 			return;
 		}
 
+		var extra = 0;
+		var footer = this.root.querySelector(".panel-footer");
+		if(footer)
+			extra += footer.offsetHeight;
+
 		var width = this.content.offsetWidth;
-		var height = this.content.offsetHeight + 20 + margin;
+		var height = this.content.offsetHeight + 20 + margin + extra;
 
 		this.setSize( width, height );
 	}
@@ -7073,9 +7086,9 @@ Inspector.onWidgetChange = function( element, name, value, options, expand_value
 	if(!options.skip_wchange)
 	{
 		if(section)
-			LiteGUI.trigger( section, "wchange", value );
+			LiteGUI.trigger( section, "wchange", value, element );
 		//$(this.current_section).trigger("wchange",value); //used for undo //TODO: use LiteGUI.trigger
-		LiteGUI.trigger( element, "wchange", value );
+		LiteGUI.trigger( element, "wchange", value, element );
 		//$(element).trigger("wchange",value); //TODO: REPLACE by LiteGUI.trigger
 	}
 
@@ -8096,11 +8109,10 @@ Inspector.prototype.addSlider = function(name, value, options)
 	});
 
 	//Slider change -> update Text
-	slider.root.addEventListener("change", function(e) {
-		value = e.detail;
+	slider.onChange = function(value) {
 		text_input.value = value;
-		Inspector.onWidgetChange.call(that,element,name,value, options);
-	});
+		Inspector.onWidgetChange.call( that, element, name, value, options);
+	};
 
 	this.append(element,options);
 

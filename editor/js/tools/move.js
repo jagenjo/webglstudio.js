@@ -183,6 +183,12 @@ var moveTool = {
 			return;
 
 		this._freeze_axis = false;
+		var selection_info = SelectionModule.getSelection();
+		//root component transforms do not affect Transform so we save the compo state
+		if( selection_info && selection_info.node && selection_info.node === LS.GlobalScene.root )
+			CORE.afterUserAction("component_changed", selection_info.instance );
+		else 
+			ToolUtils.afterSelectionTransform();
 		EditorModule.refreshAttributes();
 	},
 

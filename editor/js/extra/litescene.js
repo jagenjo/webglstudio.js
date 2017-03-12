@@ -1809,6 +1809,8 @@ var Network = {
             xhr.responseType = dataType;
         if (request.mimeType)
             xhr.overrideMimeType( request.mimeType );
+		if(request.nocache)
+			xhr.setRequestHeader('Cache-Control', 'no-cache');
         xhr.onload = function(load)
 		{
 			var response = this.response;
@@ -3109,7 +3111,7 @@ var ResourcesManager = {
 		var settings = {
 			url: full_url,
 			success: function(response){
-				LS.ResourcesManager.processResource( url, response, options, ResourcesManager._resourceLoadedEnd, true );
+				LS.ResourcesManager.processResource( url, response, options, LS.ResourcesManager._resourceLoadedEnd, true );
 			},
 			error: function(err) { 	
 				LS.ResourcesManager._resourceLoadedError(url,err);
@@ -3124,6 +3126,9 @@ var ResourcesManager = {
 					LEvent.trigger( LS.ResourcesManager, "loading_resources_progress", 1.0 - (LS.ResourcesManager.num_resources_being_loaded - partial_load) / LS.ResourcesManager._total_resources_to_load );
 			}
 		};
+
+		//force no cache by request
+		settings.nocache = nocache || extension == "js";
 
 		//in case we need to force a response format 
 		var format_info = LS.Formats.supported[ extension ];
@@ -21373,7 +21378,7 @@ LS.Transform = Transform;
 // ******* CAMERA **************************
 
 /**
-* Camera that contains the info about a camera
+* Camera contains the info about a camera (matrices, near far planes, clear color, etc)
 * @class Camera
 * @namespace LS.Components
 * @constructor
@@ -23132,7 +23137,7 @@ LS.registerComponent( FrameFX );
 //***** LIGHT ***************************
 
 /**
-* Light that contains the info about the camera
+* Light contains all the info about the light (type: SPOT, OMNI, DIRECTIONAL, attenuations, shadows, etc)
 * @class Light
 * @constructor
 * @param {Object} object to configure from
@@ -27974,6 +27979,19 @@ SceneInclude.prototype.getEvents = function()
 SceneInclude.prototype.getEventActions = function()
 {
 	return { "load": "function", "unload": "function" };
+}
+
+SceneInclude.prototype.getResources = function(res)
+{
+	if(this._scene_path)
+		res[ this._scene_path ] = LS.SceneTree;
+	return res;
+}
+
+SceneInclude.prototype.onResourceRenamed = function( old_name, new_name, resource )
+{
+	if(old_name == this._scene_path)
+		this._scene_path = new_name;
 }
 
 LS.registerComponent( SceneInclude );
@@ -34094,6 +34112,9 @@ LS.Formats = {
 	{
 		options = options || {};
 		var info = this.getFileFormatInfo( filename );
+		if(!info) //unsupported extension
+			return null;
+
 		if(options.extension)
 			info.extension = options.extension; //force a format
 		else

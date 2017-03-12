@@ -560,7 +560,20 @@ var SceneStorageModule = {
 	{
 		SceneStorageModule.saveLocalScene("_test", {}, LS.GlobalScene, SceneStorageModule.takeScreenshot(256,256) );
 		var name = SceneStorageModule.localscene_prefix + "_test";
-		window.open("player.html?session=" + name,'_blank');
+		var fullurl = "player.html?session=" + name;
+		if(!this._test_window)
+			this._test_window = window.open(fullurl,'_blank');
+		else
+		{
+			this._test_window.location.replace(fullurl);
+			this._test_window.focus();
+		}
+		var that = this;
+		this._test_window.onclose = function()
+		{
+			if(that._test_window)
+				this._test_window = null;
+		}
 	},
 
 	showDownloadSceneDialog: function()

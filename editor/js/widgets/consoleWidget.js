@@ -53,6 +53,39 @@ function ConsoleWidget( options )
 		console_widget.clear();
 	}
 
+	ConsoleWidget.commands["log"] = function(a,console_widget)
+	{
+		if(!console._log)
+		{
+			var avoid_recursive = false;
+			console._log = console.log;
+			console.log = function(v,b)
+			{
+				if(avoid_recursive)
+					return;
+				avoid_recursive = true;
+				v = String(v);
+				if( b && v && v.indexOf("%c") != -1 )
+				{
+					v = v.split("%c").join("");
+					var elem = console_widget.log( v );
+					elem.setAttribute("style",b);
+				}
+				else
+					var elem = console_widget.log( v );
+				avoid_recursive = false;
+			}
+			console_widget.log("login console: on");
+		}
+		else
+		{
+			console.log = console._log;
+			delete console._log;
+			console_widget.log("login console: off");
+		}
+	}
+
+
 	if(!LS.Documentation)
 	{
 		LS.Documentation = { classes: {}, flat_classes: {} }; //placeholder

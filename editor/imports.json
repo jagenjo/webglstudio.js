@@ -67,6 +67,7 @@
 		"js/modules/animation.js",
 		"js/modules/undo.js",
 		"js/modules/actors.js",
-		"js/modules/annotation.js"
+		"js/modules/annotation.js",
+		"js/plugins/fbxconv.js"
 	]
 }

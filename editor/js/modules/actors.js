@@ -3,6 +3,7 @@ var ActorsModule = {
 	init: function()
 	{
 		LiteGUI.menubar.add("Node/Actor/Convert to Actor", this.convertNodeToActor.bind(this) );
+		LiteGUI.menubar.add("Actions/Selection/Set as Bones", this.setAsBones.bind(this) );
 	},
 
 	convertNodeToActor: function()
@@ -49,6 +50,16 @@ var ActorsModule = {
 		}
 
 		console.log("Converted");
+	},
+
+	setAsBones: function()
+	{
+		var selection = SelectionModule.getSelectedNodes();
+		for(var i = 0; i < selection.length; ++i)
+		{
+			var node = selection[i];
+			node._is_bone = true;
+		}
 	}
 }
 

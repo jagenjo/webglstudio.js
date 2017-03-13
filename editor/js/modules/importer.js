@@ -12,7 +12,8 @@ var ImporterModule  = {
 		optimize_data: false,
 		mesh_action: "origin",
 		texture_action: "replace",
-		use_names_to_reference: true
+		use_names_to_reference: true,
+		force_lowercase: false
 	},
 
 	init: function()
@@ -483,7 +484,9 @@ var ImporterModule  = {
 			return console.error("File data missing, use FileReader");
 
 		var filename = options.filename || file.name;
-		filename = filename.toLowerCase(); //force lower case in filenames to avoid case sensitive issues
+
+		if(this.force_lowercase)
+			filename = filename.toLowerCase(); //force lower case in filenames to avoid case sensitive issues
 
 		var resource = LS.ResourcesManager.processResource( filename, file.data, options, inner );
 

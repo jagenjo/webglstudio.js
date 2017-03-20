@@ -118,6 +118,7 @@ function ConsoleWidget( options )
 ConsoleWidget.lsroot_doc = "http://webglstudio.org/doc/litescene/classes/";
 ConsoleWidget.lsdoc_json = "http://webglstudio.org/doc/litescene/data.json";
 ConsoleWidget.commands = {};
+ConsoleWidget.special_objects = new Map();
 
 ConsoleWidget.widget_name = "Console";
 
@@ -229,10 +230,33 @@ ConsoleWidget.prototype.log = function( msg )
 
 ConsoleWidget.prototype.logObject = function( obj, cmd )
 {
+	var that = this;
 	var classname = LS.getObjectClassName( obj );
-	this.logClass( classname );
-	//if( obj.toString && obj.toString !== Object.prototype.toString ) //the default one just prints [object]
-	//this.log( obj.toString() );
+
+	if( classname !== "Object" )
+	{
+		this.logClass( classname );
+		return;
+	}
+
+	//regular object
+	var info = ConsoleWidget.special_objects.get( obj );
+	if(info)
+	{
+		//TODO
+		//return
+	}
+
+	var elem = this.log("Object [<a href='#' class='show methods'>methods</a>].");
+	if(elem)
+		elem.querySelector(".methods").addEventListener("click", inner_objectmethods );
+
+	function inner_objectmethods(e){
+		that.logClassMethods( classname, class_info );
+		e.preventDefault();
+		return true;
+	}
+
 }
 
 ConsoleWidget.prototype.logFunction = function( obj, cmd )
@@ -332,6 +356,52 @@ ConsoleWidget.prototype.logClassMethods = function( classname, class_info )
 				description = class_info.properties[ i ].description;
 			this.log({type: "method", name: i, class_ctor: ctor, classname: classname, classtype: type, description: description, func: ctor.prototype[i], params: params });
 		}
+	}
+}
+
+ConsoleWidget.prototype.logMethods = function( object )
+{
+	var that = this;
+
+	//methods
+	for(var i in object )
+	{
+		var value = object[i];
+		if( value === undefined || value === null )
+			continue;
+		var ctor = value.constructor;
+		var classname = LS.getClassName( ctor );
+
+		var elem = null;
+		var class_info = LS.Documentation ? LS.Documentation.flat_classes[ classname ] : null;
+		if( class_info ) //Using the info from the doxygen doc
+		{
+			var link = ConsoleWidget.lsroot_doc + "classes/" + class_info.namespace + "." + classname + ".html";
+			elem = this.log("<a href='"+link+"' target='_blank'>"+class_info.name+"</a> "+ class_info.description +" [<a href='#' data-classname='"+classname+"' class='methods'>methods</a>].");
+		}
+		else if( value.constructor === Function )
+		{
+			var func_code = value.toString();
+			var index = func_code.indexOf("(") + 1;
+			var index2 = func_code.indexOf(")");
+			var params = func_code.substr( index, index2 - index );
+			var description = "";
+			this.log({type: "method", name: i, params: params });
+			continue;
+		}
+		else
+			this.log({type: "method", name: i });
+	}
+
+	if(elem)
+		elem.querySelector(".methods").addEventListener("click",  inner_classmethods );
+
+	function inner_classmethods(e){
+		var classname = this.dataset["classname"];
+		var class_info = LS.Documentation ? LS.Documentation.flat_classes[ classname ] : null;
+		that.logClassMethods( classname, class_info );
+		e.preventDefault();
+		return true;
 	}
 }
 

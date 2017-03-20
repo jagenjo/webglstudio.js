@@ -2556,6 +2556,7 @@ var ResourcesManager = {
 
 	virtual_file_systems: {}, //protocols associated to urls  "VFS":"../"
 	skip_proxy_extensions: ["mp3","wav","ogg"], //this file formats should not be passed through the proxy
+	force_nocache_extensions: ["js","glsl","json"], //this file formats should be reloaded without using the cache
 
 	/**
 	* Returns a string to append to any url that should use the browser cache (when updating server info)
@@ -3097,7 +3098,8 @@ var ResourcesManager = {
 
 		if(!this.allow_base_files && url.indexOf("/") == -1)
 		{
-			console.warn("Cannot load resource, filename has no folder and LS.ResourcesManager.allow_base_files is set to false: ", url );
+			if(!this._parsing_local_file) //to avoid showing this warning when parsing scenes with local resources
+				console.warn("Cannot load resource, filename has no folder and LS.ResourcesManager.allow_base_files is set to false: ", url );
 			return; //this is not a valid file to load
 		}
 
@@ -3143,7 +3145,7 @@ var ResourcesManager = {
 		};
 
 		//force no cache by request
-		settings.nocache = nocache || extension == "js";
+		settings.nocache = nocache || this.force_nocache_extensions[ extension ];
 
 		//in case we need to force a response format 
 		var format_info = LS.Formats.supported[ extension ];
@@ -3177,6 +3179,11 @@ var ResourcesManager = {
 
 		var resource = null;
 		var extension = this.getExtension( url );
+		//get all the info about this file format
+		var format_info = null;
+		
+		if(extension)
+			format_info = LS.Formats.supported[ extension ];
 
 		//callback to embede a parameter, ugly but I dont see a work around to create this
 		var process_final = function( url, resource, options ){
@@ -3186,6 +3193,18 @@ var ResourcesManager = {
 				return;
 			}
 
+			//convert format
+			if( format_info && format_info.convert_to && extension != format_info.convert_to )
+			{
+				url += "." + format_info.convert_to;
+				resource.filename += "." + format_info.convert_to;
+				if( resource.fullpath )
+					resource.fullpath += "." + format_info.convert_to;
+				if(options.filename)
+					options.filename += "." + format_info.convert_to;
+			}
+
+			//apply last changes
 			LS.ResourcesManager.processFinalResource( url, resource, options, on_complete, was_loaded );
 
 			//Keep original file inside the resource in case we want to save it
@@ -3200,8 +3219,6 @@ var ResourcesManager = {
 		if(!extension)
 			return this.processDataResource( url, data, options, process_final );
 
-		//get all the info about this file format
-		var format_info = LS.Formats.supported[ extension ];
 
 		// PRE-PROCESSING Stage (transform raw data in a resource) 
 		// *******************************************************
@@ -3948,7 +3965,8 @@ LS.ResourcesManager.processTextMesh = function( filename, data, options ) {
 	return mesh;
 }
 
-//Transform scene data in a SceneNode
+//this is called when loading a scene from a format that is not the regular serialize of our engine (like from ASE, G3DJ, BVH,...)
+//converts scene data in a SceneNode
 LS.ResourcesManager.processScene = function( filename, data, options ) {
 	//options = options || {};
 
@@ -3959,6 +3977,8 @@ LS.ResourcesManager.processScene = function( filename, data, options ) {
 		console.error("Error parsing scene: " + filename);
 		return null;
 	}
+
+	LS.ResourcesManager._parsing_local_file = true;
 
 	//resources (meshes, textures...)
 	for(var i in scene_data.meshes)
@@ -3982,6 +4002,16 @@ LS.ResourcesManager.processScene = function( filename, data, options ) {
 
 	var node = new LS.SceneNode();
 	node.configure( scene_data.root );
+
+	//make it a pack or prefab
+	if(options && options.filename)
+	{
+		var ext = LS.RM.getExtension( options.filename );
+		if(ext != "json")
+			options.filename += ".json";
+	}
+
+	LS.ResourcesManager._parsing_local_file = false;
 
 	return node;
 }
@@ -5498,7 +5528,6 @@ Material.TEXTURE_COORDINATES = [ Material.COORDS_UV0, Material.COORDS_UV1, Mater
 Material.DEFAULT_UVS = { "normal":Material.COORDS_UV0, "displacement":Material.COORDS_UV0, "environment": Material.COORDS_POLAR_REFLECTED, "irradiance" : Material.COORDS_POLAR };
 
 Material.available_shaders = ["default","global","lowglobal","phong_texture","flat","normal","phong","flat_texture","cell_outline"];
-Material.texture_channels = []; //base material doesnt support any texture
 
 // RENDERING METHODS
 Material.prototype.fillShaderQuery = function(scene)
@@ -5786,8 +5815,7 @@ Material.prototype.getPropertyInfoFromPath = function( path )
 */
 Material.prototype.getTextureChannels = function()
 {
-	if(this.constructor.texture_channels)
-		return this.constructor.texture_channels;
+	//console.warn("this function should never be called, it should be overwritten");
 	return [];
 }
 
@@ -6239,7 +6267,6 @@ StandardMaterial.REFLECTIVITY_TEXTURE = "reflectivity";
 StandardMaterial.IRRADIANCE_TEXTURE = "irradiance";
 StandardMaterial.EXTRA_TEXTURE = "extra";
 
-StandardMaterial.texture_channels = [ Material.COLOR_TEXTURE, Material.OPACITY_TEXTURE, Material.AMBIENT_TEXTURE, Material.SPECULAR_TEXTURE, Material.EMISSIVE_TEXTURE, StandardMaterial.DETAIL_TEXTURE, StandardMaterial.NORMAL_TEXTURE, StandardMaterial.DISPLACEMENT_TEXTURE, StandardMaterial.BUMP_TEXTURE, StandardMaterial.REFLECTIVITY_TEXTURE, Material.ENVIRONMENT_TEXTURE, StandardMaterial.IRRADIANCE_TEXTURE, StandardMaterial.EXTRA_TEXTURE ];
 StandardMaterial.available_shaders = ["default","lowglobal","phong_texture","flat","normal","phong","flat_texture"];
 
 StandardMaterial.coding_help = "\
@@ -6468,6 +6495,11 @@ StandardMaterial.prototype.fillUniforms = function( scene, options )
 
 	this._uniforms = uniforms;
 	this._samplers = samplers;
+}
+
+StandardMaterial.prototype.getTextureChannels = function()
+{
+	return [ Material.COLOR_TEXTURE, Material.OPACITY_TEXTURE, Material.AMBIENT_TEXTURE, Material.SPECULAR_TEXTURE, Material.EMISSIVE_TEXTURE, StandardMaterial.DETAIL_TEXTURE, StandardMaterial.NORMAL_TEXTURE, StandardMaterial.DISPLACEMENT_TEXTURE, StandardMaterial.BUMP_TEXTURE, StandardMaterial.REFLECTIVITY_TEXTURE, Material.ENVIRONMENT_TEXTURE, StandardMaterial.IRRADIANCE_TEXTURE, StandardMaterial.EXTRA_TEXTURE ];
 }
 
 /**
@@ -7101,6 +7133,7 @@ function ShaderMaterial( o )
 	this._properties_by_name = {};
 
 	this._passes = {};
+	this._light_mode = 0;
 
 	if(o) 
 		this.configure(o);
@@ -7136,6 +7169,16 @@ Object.defineProperty( ShaderMaterial.prototype, "properties", {
 			var p = this._properties[i];
 			this._properties_by_name[ p.name ] = p;
 		}
+	}
+});
+
+Object.defineProperty( ShaderMaterial.prototype, "enableLights", {
+	enumerable: true,
+	get: function() {
+		return this._light_mode != 0;
+	},
+	set: function(v) {
+		this._light_mode = v ? 1 : 0;
 	}
 });
 
@@ -7605,6 +7648,20 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 ShaderMaterial.prototype.renderShadowInstance = function( instance, render_settings, pass )
 {
 	return this.renderInstance( instance, render_settings, pass );
+}
+
+ShaderMaterial.prototype.getTextureChannels = function()
+{
+	var channels = [];
+
+	for(var i in this._properties)
+	{
+		var p = this._properties[i];
+		if(p.is_texture)
+			channels.push( p.name );
+	}
+
+	return channels;
 }
 
 /**
@@ -15240,6 +15297,22 @@ RenderInstance.prototype.computeNormalMatrix = function()
 	var m = mat4.invert(this.normal_matrix, this.matrix);
 	if(m)
 		mat4.transpose(this.normal_matrix, m);
+}
+
+/**
+* applies a transformation to the current matrix
+*
+* @method applyTransform
+* @param {mat4} matrix
+* @param {mat4} normal_matrix [optional]
+*/
+RenderInstance.prototype.applyTransform = function( matrix, normal_matrix )
+{
+	mat4.mul( this.matrix, this.matrix, matrix );
+	if( normal_matrix )
+		mat4.mul( this.normal_matrix, this.normal_matrix, normal_matrix );
+	else
+		this.computeNormalMatrix();
 }
 
 //set the material and apply material flags to render instance
@@ -23288,9 +23361,9 @@ function Light(o)
 		u_light_color: vec3.create(),
 		u_light_att: this._attenuation_info,
 		u_light_offset: this.offset,
-		u_light_matrix: this._light_matrix,
-		u_shadow_params: vec4.fromValues( 1, this.shadow_bias, 1, 100 ),
-		shadowmap: LS.Renderer.SHADOWMAP_TEXTURE_SLOT
+		u_light_matrix: this._light_matrix
+//		u_shadow_params: vec4.fromValues( 1, this.shadow_bias, 1, 100 ),
+//		shadowmap: LS.Renderer.SHADOWMAP_TEXTURE_SLOT
 	};
 
 	//configure
@@ -23821,6 +23894,8 @@ Light.prototype.prepare = function( render_settings )
 	if(use_shadows)
 	{
 		var closest_far = this.computeShadowmapFar();
+		if(!uniforms.u_shadow_params)
+			uniforms.u_shadow_params = vec4.create();
 		uniforms.u_shadow_params.set([ 1.0 / this._shadowmap.width, this.shadow_bias, this.near, closest_far ]);
 		//uniforms.shadowmap = this._shadowmap.bind(10); //fixed slot
 		uniforms.shadowmap = LS.Renderer.SHADOWMAP_TEXTURE_SLOT;
@@ -27793,6 +27868,9 @@ function SceneInclude( o )
 		this.configure(o);
 }
 
+SceneInclude.max_recursive_level = 32;
+SceneInclude.recursive_level = 0;
+
 Object.defineProperty( SceneInclude.prototype, "scene_path", {
 	set: function(v){ 
 		if(this._scene_path == v)
@@ -27856,14 +27934,18 @@ SceneInclude.prototype.onRemovedFromScene = function(scene)
 //we need special functions for this events because they need function calls, not events
 SceneInclude.prototype.onStart = function()
 {
-	if(	this._scene_is_ready )
+	SceneInclude.recursive_level += 1;
+	if(	this._scene_is_ready && SceneInclude.recursive_level < SceneInclude.max_recursive_level )
 		this._scene.start();
+	SceneInclude.recursive_level -= 1;
 }
 
 SceneInclude.prototype.onUpdate = function(e, dt)
 {
-	if(this.send_events)
+	SceneInclude.recursive_level += 1;
+	if(this.send_events && SceneInclude.recursive_level < SceneInclude.max_recursive_level )
 		this._scene.update(dt);
+	SceneInclude.recursive_level -= 1;
 }
 
 
@@ -27898,18 +27980,41 @@ SceneInclude.prototype.onCollectData = function()
 	var scene = this._root.scene;
 	var inner_scene = this._scene;
 
-	inner_scene.collectData();
+	SceneInclude.recursive_level += 1;
+	if(SceneInclude.recursive_level < SceneInclude.max_recursive_level )
+		inner_scene.collectData();
+	SceneInclude.recursive_level -= 1;
+
+	var mat = null;
+	
+	if( this._root.transform )
+	{
+		mat = this._root.transform.getGlobalMatrix();
+	}
+	
 
 	//merge all the data
 	if( this.include_instances )
 	{
 		scene._instances.push.apply( scene._instances, inner_scene._instances);
 		scene._colliders.push.apply( scene._colliders, inner_scene._colliders);
+
+		if(mat)
+			for(var i = 0; i < inner_scene._instances.length; ++i)
+			{
+				var ri = inner_scene._instances[i];
+				ri.applyTransform( mat );	
+			}
 	}
 	if( this.include_lights )
+	{
+		//cannot apply transform here, we will be modifying the inner lights state
 		scene._lights.push.apply( scene._lights, inner_scene._lights);
+	}
 	if( this.include_cameras )
+	{
 		scene._cameras.push.apply( scene._cameras, inner_scene._cameras);
+	}
 }
 
 //propagate events
@@ -27918,7 +28023,10 @@ SceneInclude.prototype.onEvent = function(e,p)
 	if(!this.enabled || !this.send_events || !this._scene_path)
 		return;
 
-	LEvent.trigger( this._scene, e, p );
+	SceneInclude.recursive_level += 1;
+	if(SceneInclude.recursive_level < SceneInclude.max_recursive_level )
+		LEvent.trigger( this._scene, e, p );
+	SceneInclude.recursive_level -= 1;
 }
 
 SceneInclude.prototype.load = function()
@@ -27936,7 +28044,11 @@ SceneInclude.prototype.unload = function()
 SceneInclude.prototype.reloadScene = function()
 {
 	this._scene_is_ready = false;
-	this._scene.loadFromResources( this._scene_path, inner.bind(this) );
+
+	SceneInclude.recursive_level += 1;
+	if(SceneInclude.recursive_level < SceneInclude.max_recursive_level )
+		this._scene.loadFromResources( this._scene_path, inner.bind(this) );
+	SceneInclude.recursive_level -= 1;
 
 	function inner()
 	{
@@ -38555,494 +38667,6 @@ var parserTGA = {
 };
 
 LS.Formats.addSupportedFormat( "tga", parserTGA );
-//used because it is the only format that I have a command line converted from FBX
-//https://github.com/libgdx/fbx-conv
-
-var parserG3DJ = {
-	extension: "g3dj",
-	type: "scene",
-	resource: "SceneNode",
-	format: "text",
-	dataType:'text',
-
-	force_lowercase: false,
-
-	parse: function( data, options, filename )
-	{
-		if(!data)
-		{
-			console.error("G3DJ found empty string");
-			return null;
-		}
-
-		var clean_filename = LS.RM.getFilename( filename );
-
-		var scene_g3 = null;
-		if(typeof(data) == "object")
-			scene_g3 = data;
-		else if(typeof(data) == "string")
-		{
-			try
-			{
-				scene_g3 = JSON.parse(data);
-			}
-			catch (err)
-			{
-				console.error("G3DJ data is not a valid JSON",data);
-				return null;
-			}
-		}
-
-		this._last_mesh_id = 0;
-
-		console.log( scene_g3 ); 
-
-		var scene = {
-			object_type: "SceneNode",
-			root: {},
-			meshes: {},
-			renames: {},
-			materials: {}
-		};
-		scene.root.name = clean_filename;
-
-		//meshes
-		for(var i in scene_g3.meshes)
-		{
-			var mesh_info = scene_g3.meshes[i];
-			var mesh = this.processMesh( mesh_info, scene );
-			if(mesh)
-				scene.meshes[ mesh.name ] = mesh;
-		}
-
-		//materials
-		for(var i in scene_g3.materials)
-		{
-			var material_info = scene_g3.materials[i];
-			var material = this.processMaterial( material_info, scene );
-			if(material)
-				scene.materials[ material.name ] = material;
-		}
-
-
-		//nodes (at the end so all the renames have been made)
-		for(var i in scene_g3.nodes)
-			this.processNode( scene_g3.nodes[i], scene.root, scene );
-
-		console.log(scene);
-
-		return scene;
-	},
-
-	processMesh: function( mesh_info, scene )
-	{
-		var streams_info = [];
-
-		var stream_offset = 0;
-
-		var num_bones = 0;
-
-		for(var i in mesh_info.attributes)
-		{
-			switch( mesh_info.attributes[i] )
-			{
-				case "POSITION": 
-					streams_info.push( { name: "vertices", offset: stream_offset, size: 3 } ); 
-					stream_offset += 3;
-					break;
-				case "NORMAL":
-					streams_info.push( { name: "normals", offset: stream_offset, size: 3 } ); 
-					stream_offset += 3;
-					break;
-				case "TEXCOORD0":
-					streams_info.push( { name: "coords", offset: stream_offset, size: 2 } ); 
-					stream_offset += 2;
-					break;
-				case "TEXCOORD1":
-					streams_info.push( { name: "coords1", offset: stream_offset, size: 2 } ); 
-					stream_offset += 2;
-					break;
-				case "BLENDWEIGHT0":
-					streams_info.push( { bone: 0, offset: stream_offset, size: 2 } ); 
-					stream_offset += 2;
-					num_bones = 1;
-					break;
-				case "BLENDWEIGHT1":
-					streams_info.push( { bone: 1, offset: stream_offset, size: 2 } ); 
-					stream_offset += 2;
-					num_bones = 2;
-					break;
-				case "BLENDWEIGHT2":
-					streams_info.push( { bone: 2, offset: stream_offset, size: 2 } ); 
-					stream_offset += 2;
-					num_bones = 3;
-					break;
-				case "BLENDWEIGHT3":
-					streams_info.push( { bone: 3, offset: stream_offset, size: 2 } ); 
-					stream_offset += 2;
-					num_bones = 4;
-					break;
-				default:
-					console.warn("Unsupported stream:", mesh_info.attributes[i] );
-					stream_offset += 3; //assume 3
-					break;
-			}
-		}
-
-		var floats_per_vertex = stream_offset;
-		var vertex_data = new Float32Array( mesh_info.vertices );
-		var num_vertex = vertex_data.length / stream_offset;
-		if( (num_vertex|0) != num_vertex)
-		{
-			console.error("Cannot parse mesh, unknown stream types with unknown size.");
-			return null;
-		}
-
-		var mesh = {
-			object_type: "Mesh",
-			name: "MESH_" + (this._last_mesh_id++),
-			info: { groups: [] }
-		};
-
-
-		var bone_weights = null;
-		var bone_indices = null;
-		if(num_bones)
-		{
-			bone_weights = new Float32Array( num_vertex * 4 );
-			bone_indices = new Uint16Array( num_vertex * 4 );
-			mesh.weights = bone_weights;
-			mesh.bone_indices = bone_indices;
-		}
-
-		//read data streams
-		for(var i in streams_info)
-		{
-			var info = streams_info[i];
-			var data = null;
-			
-			//bone data
-			if(info.bone !== undefined)
-			{
-				var pos = 0;
-				var offset = floats_per_vertex;
-				for (var j = info.offset; j < vertex_data.length; j += offset )
-				{
-					bone_indices[ pos + info.bone ] = vertex_data[j];
-					bone_weights[ pos + info.bone ] = vertex_data[j+1];
-					pos += 4;
-				}
-			}
-			else //regular data (vertices, normals, coords)
-			{
-				data = new Float32Array( num_vertex * info.size );
-				mesh[ info.name ] = data;
-				var pos = 0;
-				var offset = floats_per_vertex;
-				for (var j = info.offset; j < vertex_data.length; j += offset )
-				{
-					data.set( vertex_data.subarray(j,j+info.size), pos );
-					pos += info.size;
-				}
-			}
-		}
-
-		var groups = mesh.info.groups;
-		var indices = [];
-		for(var i in mesh_info.parts )
-		{
-			var part = mesh_info.parts[i];
-			var start = indices.length;
-			indices = indices.concat( part.indices );
-			var group = {
-				name: part.id,
-				start: start,
-				length: part.indices.length,
-				type: part.type
-			};
-			scene.renames[ group.name ] = { mesh: mesh.name, group: groups.length };
-			groups.push( group );
-		}
-
-		mesh.triangles = new Uint32Array( indices );
-		return mesh;
-	},
-
-	processNode: function( node_info, root, scene )
-	{
-		var node = {};
-		node.name = node_info.id;
-
-		if(node_info.translation || node_info.rotation || node_info.scale )
-		{
-			node.transform = {};
-			if(node_info.translation)
-				node.transform.position = node_info.translation;
-			if(node_info.rotation)
-				node.transform.rotation = node_info.rotation;
-			if(node_info.scale)
-				node.transform.scale = node_info.scale;
-		}
-
-		if( !root.children )
-			root.children = [];
-		root.children.push( node );
-
-		if(node_info.parts)
-		{
-			node.meshes = [];
-			for(var i in node_info.parts)
-			{
-				var part = node_info.parts[i];
-				var mesh_info = scene.renames[ part.meshpartid ];
-				
-				if(mesh_info)
-				{
-					var mesh = scene.meshes[ mesh_info.mesh ];
-					if(mesh && part.bones)
-					{
-						var bone_indices = mesh.bone_indices;
-
-						if(!mesh.bones)
-						{
-							mesh.bones = [];
-							mesh._bones_map = {};
-						}
-
-						for(var j = 0; j < part.bones.length; ++j)
-						{
-							var bone = part.bones[j];
-							var index = mesh._bones_map[ bone.node ];
-							if( index === undefined )
-							{
-								var inv_bone = mat4.create();
-								mat4.fromRotationTranslation( inv_bone, bone.rotation, bone.translation );
-								mat4.scale( inv_bone, inv_bone, bone.scale);
-								mat4.invert( inv_bone, inv_bone );
-								index = mesh.bones.length;
-								mesh.bones.push([ bone.node, inv_bone ]);
-								mesh._bones_map[ bone.node ] = index;
-							}
-
-							//remap
-							var group = mesh.info.groups[ mesh_info.group ];
-							if( group && bone_indices && j != index )
-							{
-								var end = Math.min( bone_indices.length, (group.start + group.length) * 4 );
-								for(var k = group.start * 4; k < end; ++k)
-									if (bone_indices[k] == j)
-										bone_indices[k] = index;
-							}
-						}
-					}
-
-					node.meshes.push({
-						mesh: mesh_info.mesh,
-						submesh_id: mesh_info.group,
-						material: part.materialid
-					});
-				}
-				else
-					console.warn("missing mesh part", part.meshpartid );
-			}
-		
-		}
-
-		if(node_info.children)
-		{
-			for(var i in node_info.children)
-				this.processNode( node_info.children[i], node, scene );
-		}
-
-		return node;
-	},
-
-	/*
-	//depending on the 3D software used, animation tracks could be tricky to handle
-	processAnimation: function( animation, renamed )
-	{
-		for(var i in animation.takes)
-		{
-			var take = animation.takes[i];
-
-			//apply renaming
-			for(var j = 0; j < take.tracks.length; ++j)
-			{
-				var track = take.tracks[j];
-				var pos = track.property.indexOf("/");
-				if(!pos)
-					continue;
-				var nodename = track.property.substr(0,pos);
-				var extra = track.property.substr(pos);
-				if(extra == "/transform") //blender exports matrices as transform
-					extra = "/matrix";
-
-				if( !renamed[nodename] )
-					continue;
-
-				nodename = renamed[ nodename ];
-				track.property = nodename + extra;
-			}
-
-			//rotations could come in different ways, some of them are accumulative, which doesnt work in litescene, so we have to accumulate them previously
-			var rotated_nodes = {};
-			for(var j = 0; j < take.tracks.length; ++j)
-			{
-				var track = take.tracks[j];
-				track.packed_data = true; //hack: this is how it works my loader
-				if(track.name == "rotateX.ANGLE" || track.name == "rotateY.ANGLE" || track.name == "rotateZ.ANGLE")
-				{
-					var nodename = track.property.split("/")[0];
-					if(!rotated_nodes[nodename])
-						rotated_nodes[nodename] = { tracks: [] };
-					rotated_nodes[nodename].tracks.push( track );
-				}
-			}
-
-			for(var j in rotated_nodes)
-			{
-				var info = rotated_nodes[j];
-				var newtrack = { data: [], type: "quat", value_size: 4, property: j + "/Transform/rotation", name: "rotation" };
-				var times = [];
-
-				//collect timestamps
-				for(var k = 0; k < info.tracks.length; ++k)
-				{
-					var track = info.tracks[k];
-					var data = track.data;
-					for(var w = 0; w < data.length; w+=2)
-						times.push( data[w] );
-				}
-
-				//create list of timestamps and remove repeated ones
-				times.sort();
-				var last_time = -1;
-				var final_times = [];
-				for(var k = 0; k < times.length; ++k)
-				{
-					if(times[k] == last_time)
-						continue;
-					final_times.push( times[k] );
-					last_time = times[k];
-				}
-				times = final_times;
-
-				//create samples
-				newtrack.data.length = times.length;
-				for(var k = 0; k < newtrack.data.length; ++k)
-				{
-					var time = times[k];
-					var value = quat.create();
-					//create keyframe
-					newtrack.data[k] = [time, value];
-
-					for(var w = 0; w < info.tracks.length; ++w)
-					{
-						var track = info.tracks[w];
-						var sample = getTrackSample( track, time );
-						if(!sample) //nothing to do if no sample or 0
-							continue;
-						sample *= 0.0174532925; //degrees to radians
-						switch( track.name )
-						{
-							case "rotateX.ANGLE": quat.rotateX( value, value, -sample ); break;
-							case "rotateY.ANGLE": quat.rotateY( value, value, sample ); break;
-							case "rotateZ.ANGLE": quat.rotateZ( value, value, sample ); break;
-						}
-					}
-				}
-
-				//add track
-				take.tracks.push( newtrack );
-
-				//remove old rotation tracks
-				for(var w = 0; w < info.tracks.length; ++w)
-				{
-					var track = info.tracks[w];
-					var pos = take.tracks.indexOf( track );
-					if(pos == -1)
-						continue;
-					take.tracks.splice(pos,1);
-				}
-			}
-
-		}//takes
-
-		function getTrackSample( track, time )
-		{
-			var data = track.data;
-			var l = data.length;
-			for(var t = 0; t < l; t+=2)
-			{
-				if(data[t] == time)
-					return data[t+1];
-				if(data[t] > time)
-					return null;
-			}
-			return null;
-		}
-	},
-	*/
-
-	processMaterial: function( material )
-	{
-		material.name = material.id;
-		material.object_type = "StandardMaterial";
-
-		if(material.transparency)
-		{
-			material.opacity = 1.0 - parseFloat( material.transparency );
-			if(material.transparent)
-				material.opacity = material.transparency; //why? dont know but works
-		}
-
-		if(material.opacity !== undefined )
-			material.opacity = 1.0 - parseFloat( material.opacity );
-
-		//in LiteScene ambient must be 1,1,1
-		material.ambient = [1,1,1]; 
-
-		if(material.shininess)
-			material.specular_gloss = material.shininess;
-
-		//collada supports materials with colors as specular_factor but StandardMaterial only support one value
-		if(material.specular && material.specular.length)
-			material.specular = material.specular[0];
-
-		if(material.textures)
-		{
-			var textures = {};
-			for(var i in material.textures)
-			{
-				var tex_info = material.textures[i];
-				var coords = LS.Material.COORDS_UV0;
-				if( tex_info.uvs == "TEX1")
-					coords = LS.Material.COORDS_UV1;
-				var type = "color";
-				if( tex_info.type )
-					type = tex_info.type.toLowerCase();
-				if(type == "diffuse")
-					type = "color";
-				
-				tex_info = { 
-					texture: tex_info.filename,
-					uvs: coords
-				};
-
-				if( this.force_lowercase )
-					tex_info.texture = tex_info.texture.toLowerCase();
-
-				textures[ type ] = tex_info;
-			}
-			material.textures = textures;
-		}
-
-		return material;
-	}
-};
-
-LS.Formats.addSupportedFormat( "g3dj", parserG3DJ );
-
 //3dcgart format
 
 var parserCGArtMesh = { 
@@ -42636,7 +42260,7 @@ Player.prototype._onmouse = function(e)
 	if(this.state != LS.Player.PLAYING)
 		return;
 
-	LEvent.trigger( this.scene, e.eventType || e.type, e );
+	LEvent.trigger( this.scene, e.eventType || e.type, e, true );
 
 	//hardcoded event handlers in the player
 	if(this.onMouse)

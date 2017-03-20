@@ -961,13 +961,12 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 	//check for parsing errors
 	this.compile_button = top_widgets.addButton(null,"Compile",{ width: 80, callback: function(v) { 
 		that.evalueCode();
-		LS.GlobalScene.refresh();
 	}});
 	this.compile_button.title = "(Ctrl+Enter)";
 
 	this.save_button = top_widgets.addButton(null,"Save",{ callback: function(v) { 
 		that.saveInstance();
-		LS.GlobalScene.refresh();
+		LS.GlobalScene.requestFrame();
 	}});
 	this.save_button.title = "(Ctrl+S)";
 
@@ -1221,13 +1220,14 @@ CodingPadWidget.prepareCodeMirror = function()
 	CodeMirror.commands.save = function(cm) {
 		var pad = cm.coding_area;
 		pad.saveInstance();
-		LS.GlobalScene.refresh();
+		LS.GlobalScene.requestFrame();
 	}
 
 	CodeMirror.commands.compile = function(cm) {
 		var pad = cm.coding_area;
 		pad.evalueCode();
-		LS.GlobalScene.refresh();
+		LS.GlobalScene.requestFrame();
+		setTimeout( LS.GlobalScene.requestFrame.bind( LS.GlobalScene ), 100 );
 	}
 }
 

@@ -154,7 +154,7 @@ var ImporterModule  = {
 		return true;
 	},
 
-	//just guesses the type and loads it into memory
+	//just guesses the type and loads it into memory (reads the bytes, not processing) 
 	loadFileToMemory: function(file, callback, options)
 	{
 		if(!file)

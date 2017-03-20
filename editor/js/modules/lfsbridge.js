@@ -409,45 +409,59 @@ var LFSBridge = {
 		var files = event.dataTransfer.files;
 		if(files && files.length)
 		{
+			var remaining_imported = files.length;
+			var resources_imported = [];
+
 			for(var i=0; i < files.length; i++)
 			{
 				var file = files[i];
 
-				var path = folder_fullpath + "/" + file.name;
-				DriveModule.showStartUploadingFile( path );
-				that.processDroppedFile( file );
-				LFSBridge.uploadFile( path, file, function( path ){
-					//refresh
-					DriveModule.showEndUploadingFile( path );
-					DriveModule.refreshContent();
-				}, function( path, err){
-					DriveModule.showErrorUploadingFile( path, err );
-				}, function( path, progress){
-					DriveModule.showProgressUploadingFile( path, progress );
-				});
+				if( this.direct_upload )
+				{
+					var path = folder_fullpath + "/" + file.name;
+					DriveModule.showStartUploadingFile( path );
+					that.processDroppedFile( file );
+					LFSBridge.uploadFile( path, file, function( path ){
+						//refresh
+						DriveModule.showEndUploadingFile( path );
+						DriveModule.refreshContent();
+					}, function( path, err){
+						DriveModule.showErrorUploadingFile( path, err );
+					}, function( path, progress){
+						DriveModule.showProgressUploadingFile( path, progress );
+					});
+				}
+				else
+				{
+					ImporterModule.importFile( file, function(filename, res){
+						resources_imported.push( res );
+						remaining_imported--;
+						if(remaining_imported == 0)
+							that.convertAndUploadResourcesToFolder( resources_imported, folder_fullpath );
+					});
 
-				
-				/* why do we need to read it if we are just going to upload it to the server?
-				var reader = new FileReader();
-				reader.onload = (function(theFile) {
-					return function(e) {
-						var data =  e.currentTarget.result;
-						var path = folder_fullpath + "/" + theFile.name;
-						DriveModule.showStartUploadingFile( path );
-						that.processDroppedFile( theFile, data );
-						LFSBridge.uploadFile( path, data, function(){
-							//refresh
-							DriveModule.showEndUploadingFile( path );
-							DriveModule.refreshContent();
-						}, function( path, err){
-							DriveModule.showErrorUploadingFile( path, err );
-						}, function( path, progress){
-							DriveModule.showProgressUploadingFile( path, progress );
-						});
-					};
-				})(file);
-				reader.readAsArrayBuffer(file);
-				*/
+					/*
+					var reader = new FileReader();
+					reader.onload = (function(theFile) {
+						return function(e) {
+							var data =  e.currentTarget.result;
+							var path = folder_fullpath + "/" + theFile.name;
+							DriveModule.showStartUploadingFile( path );
+							that.processDroppedFile( theFile, data );
+							LFSBridge.uploadFile( path, data, function(){
+								//refresh
+								DriveModule.showEndUploadingFile( path );
+								DriveModule.refreshContent();
+							}, function( path, err){
+								DriveModule.showErrorUploadingFile( path, err );
+							}, function( path, progress){
+								DriveModule.showProgressUploadingFile( path, progress );
+							});
+						};
+					})(file);
+					reader.readAsArrayBuffer(file);
+					*/
+				}
 			}
 			return true;
 		}
@@ -513,6 +527,18 @@ var LFSBridge = {
 				});
 				return true;
 			}
+		}
+	},
+
+	convertAndUploadResourcesToFolder: function( resources, on_complete, on_progress )
+	{
+		var files = [];
+		for(var i in resources)
+		{
+			var resource = resources[i];
+			var file = DriveModule.getResourceAsBlob( resource );
+			//TODO
+			console.log(file);
 		}
 	}
 };

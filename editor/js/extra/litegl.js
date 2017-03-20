@@ -8493,8 +8493,9 @@ var LEvent = global.LEvent = GL.LEvent = {
 	* @param {Object} instance that triggers the event
 	* @param {String} event_name string defining the event name
 	* @param {*} parameters that will be received by the binded function
+	* @param {bool} reverse_order trigger in reverse order (binded last get called first)
 	**/
-	trigger: function( instance, event_type, params )
+	trigger: function( instance, event_type, params, reverse_order )
 	{
 		if(!instance) 
 			throw("cannot trigger event from null");
@@ -8506,11 +8507,23 @@ var LEvent = global.LEvent = GL.LEvent = {
 			return true;
 
 		var inst = events[event_type];
-		for(var i = 0, l = inst.length; i < l; ++i)
+		if( reverse_order )
 		{
-			var v = inst[i];
-			if( v && v[0].call(v[1], event_type, params) == false)// || event.stop)
-				return false; //stopPropagation
+			for(var i = inst.length - 1; i >= 0; --i)
+			{
+				var v = inst[i];
+				if( v && v[0].call(v[1], event_type, params) == false)// || event.stop)
+					return false; //stopPropagation
+			}
+		}
+		else
+		{
+			for(var i = 0, l = inst.length; i < l; ++i)
+			{
+				var v = inst[i];
+				if( v && v[0].call(v[1], event_type, params) == false)// || event.stop)
+					return false; //stopPropagation
+			}
 		}
 
 		return true;
@@ -8522,8 +8535,9 @@ var LEvent = global.LEvent = GL.LEvent = {
 	* @param {Array} array contains all instances to triggers the event
 	* @param {String} event_name string defining the event name
 	* @param {*} parameters that will be received by the binded function
+	* @param {bool} reverse_order trigger in reverse order (binded last get called first)
 	**/
-	triggerArray: function( instances, event_type, params )
+	triggerArray: function( instances, event_type, params, reverse_order )
 	{
 		for(var i = 0, l = instances.length; i < l; ++i)
 		{
@@ -8537,11 +8551,23 @@ var LEvent = global.LEvent = GL.LEvent = {
 			if( !events || !events.hasOwnProperty( event_type ) )
 				continue;
 
-			for(var j = 0, ll = events[event_type].length; j < ll; ++j)
+			if( reverse_order )
 			{
-				var v = events[event_type][j];
-				if( v[0].call(v[1], event_type, params) == false)// || event.stop)
-					break; //stopPropagation
+				for(var j = events[event_type].length - 1; j >= 0; --j)
+				{
+					var v = events[event_type][j];
+					if( v[0].call(v[1], event_type, params) == false)// || event.stop)
+						break; //stopPropagation
+				}
+			}
+			else
+			{
+				for(var j = 0, ll = events[event_type].length; j < ll; ++j)
+				{
+					var v = events[event_type][j];
+					if( v[0].call(v[1], event_type, params) == false)// || event.stop)
+						break; //stopPropagation
+				}
 			}
 		}
 

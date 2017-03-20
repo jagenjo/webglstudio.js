@@ -279,7 +279,16 @@ var PlayModule = {
 		if(!this.inplayer)
 			return;
 
-		LEvent.trigger( LS.GlobalScene, e.eventType || e.type, e );
+		switch(e.type)
+		{
+			case "mousedown":
+			case "mousemove":
+			case "mouseup":
+				LEvent.trigger( LS.GlobalScene, e.eventType || e.type, e, true );
+				break;
+			default:
+				LEvent.trigger( LS.GlobalScene, e.eventType || e.type, e, false );
+		}
 
 		//block propagation (mousemove should be propagated so when dragging panels works)
 		if(e.type != "mousemove")

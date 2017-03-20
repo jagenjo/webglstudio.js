@@ -2390,6 +2390,8 @@ var DriveModule = {
 
 };
 
+DriveModule.getResourceAsFile = DriveModule.getResourceAsBlob;
+
 CORE.registerModule( DriveModule );
 
 
@@ -2476,7 +2478,8 @@ DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], 
 			var channels = material.getTextureChannels();
 			if( channels.indexOf( channel ) == -1 )
 				channel = channels[0];
-			material.setTexture( channel , fullpath );
+			if(channel)
+				material.setTexture( channel , fullpath );
 		}
 	}
 	else if(action == "plane")

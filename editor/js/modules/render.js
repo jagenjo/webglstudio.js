@@ -266,6 +266,11 @@ var RenderModule = {
 		};
 
 		//add gizmos
+		this.addGizmos( camera );
+	},
+
+	addGizmos: function( camera )
+	{
 		camera._gizmos = [ new CameraGizmo( camera ) ];
 	},
 

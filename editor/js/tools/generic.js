@@ -153,6 +153,20 @@ var showDepthButton = {
 
 ToolsModule.registerButton(showDepthButton);
 
+var viewSceneCameraButton = {
+	name: "view_scene_camera",
+	description: "View from Scene Camera",
+	section: "view-modes",
+	icon: "imgs/mini-icon-camera.png",
+	enabled: false,
+	callback: function()
+	{
+		RenderModule.view_from_scene_camera = !RenderModule.view_from_scene_camera;
+	}
+};
+
+ToolsModule.registerButton( viewSceneCameraButton );
+
 
 
 

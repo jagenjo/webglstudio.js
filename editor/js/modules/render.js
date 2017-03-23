@@ -25,6 +25,7 @@ var RenderModule = {
 	preview_camera: null,
 	temp_camera: null, //used to clone preview camera
 	show_stencil_mask: -1,
+	view_from_scene_camera: false,
 
 	init: function()
 	{
@@ -331,7 +332,7 @@ var RenderModule = {
 
 		//check if render one single camera or multiple cameras
 		var cameras = null;
-		if(!global_render_settings.in_player)
+		if(!global_render_settings.in_player && !this.view_from_scene_camera )
 		{
 			cameras = this.cameras.concat(); //clone
 			//search for render to texture cameras, puts them at the beginning

@@ -47,6 +47,11 @@ var CodingModule = //do not change
 		LiteGUI.menubar.add("Window/Coding Panel", { callback: function(){ CodingTabsWidget.createDialog(); }});
 		LiteGUI.menubar.add("Actions/Catch Exceptions", { type: "checkbox", instance: LS, property: "catch_exceptions" });
 
+		LiteGUI.menubar.add("Help/Coding/LS/Guides", {  callback: function(){ window.open("https://github.com/jagenjo/litescene.js/tree/master/guides","_blank"); }});
+		LiteGUI.menubar.add("Help/Coding/LS/API", {  callback: function(){ window.open("http://webglstudio.org/doc/litescene/","_blank"); }});
+		LiteGUI.menubar.add("Help/Coding/LiteGL/Guides", {  callback: function(){ window.open("https://github.com/jagenjo/litegl.js/tree/master/guides","_blank"); }});
+		LiteGUI.menubar.add("Help/Coding/LiteGL/API", {  callback: function(){ window.open("http://webglstudio.org/doc/litegl/","_blank"); }});
+
 		var coding_area = this.coding_area = new LiteGUI.Area("codearea",{height: "100%"});
 		this.root.appendChild( coding_area.root );
 		coding_area.split("horizontal",[null,"50%"],true);

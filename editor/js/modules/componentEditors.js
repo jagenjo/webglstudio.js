@@ -818,3 +818,84 @@ LS.Components.SceneInclude["@inspector"] = function( component, inspector )
 	inspector.addTitle("Scene Custom Data");
 	EditorModule.onShowComponentCustomProperties( component._scene.root.custom, inspector, true, component, "custom/" ); 
 }
+
+LS.Components.Poser["@inspector"] = function( component, inspector)
+{
+	inspector.addButton(null,"Edit pose nodes", { callback: function(e){
+		LS.Components.Poser.showPoseNodesDialog( component, e );
+	}});
+
+	if( component.poses.length )
+	{
+		inspector.widgets_per_row = 3;
+		for(var i = 0; i < component.poses.length; i++)
+		{
+			var pose = component.poses[i];
+
+			inspector.addString("", pose.name, { name_width: 20, align: "right", width: "60%", pose_index: i, callback: function(v) { 
+				if(!v)
+					return;
+				var pose = component.poses[ this.options.pose_index ];
+				if(pose)
+					pose.name = String(v);
+				LS.GlobalScene.refresh();
+			}});
+
+			inspector.addNumber("", pose.weight, { pretitle: AnimationModule.getKeyframeCode( component, "pose/"+i+"/weight" ), name_width: 20, width: "25%", step: 0.01, pose_index: i, callback: function(v) { 
+				var pose = component.poses[ this.options.pose_index ];
+				if(pose)
+					pose.weight = v;
+				LS.GlobalScene.refresh();
+			}});
+
+			inspector.addButton(null, "<img src='imgs/mini-icon-trash.png'/>", { width: "15%", index: i, callback: function() { 
+				component.morph_targets.splice( this.options.index, 1);
+				inspector.refresh();
+				LS.GlobalScene.refresh();
+			}});
+		}
+		inspector.widgets_per_row = 1;
+	}
+
+	inspector.addButton(null,"Add Pose", { callback: function() { 
+		//component.poses.push({ mesh:"", weight: 0.0 });
+		inspector.refresh();
+	}});
+}
+
+LS.Components.Poser.showPoseNodesDialog = function( component, event )
+{
+	var dialog = new LiteGUI.Dialog({title:"Nodes in Pose", close: true, width: 360, height: 270, resizable: true, scroll: false, draggable: true});
+
+	var widgets = new LiteGUI.Inspector({ height: "100%", noscroll: true });
+	dialog.add( widgets );
+	dialog.show('fade');
+	widgets.on_refresh = inner_refresh;
+	widgets.refresh();
+
+	function inner_refresh()
+	{
+		widgets.clear();
+
+		//get the names
+		var selected = null;
+		var node_names = [];
+
+		var descendants = component._root.getDescendants();
+
+		for(var i in descendants)
+			node_names.push( descendants[i].name );
+
+		var list = widgets.addList(null, node_names, { height: "calc( 100% - 60px)", callback: function(v) {
+			selected = v;
+		}});
+
+		widgets.addButtons(null,["Add All"],{
+			callback: function(v){
+			
+			}
+		});
+	}
+
+	return dialog;
+}

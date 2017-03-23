@@ -1757,7 +1757,8 @@ LS.TYPES = {
 	SCENENODE: "node",
 	SCENENODE_ID: "node_id",
 	COMPONENT: "component",
-	MATERIAL: "material"
+	MATERIAL: "material",
+	ARRAY: "array"
 };
 
 var Network = {
@@ -6625,6 +6626,7 @@ StandardMaterial.prototype.getPropertyInfoFromPath = function( path )
 		return info;
 
 	var varname = path[0];
+	var type;
 
 	switch(varname)
 	{
@@ -7580,7 +7582,9 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	if( pass.id == COLOR_PASS && this._light_mode !== Material.NO_LIGHTS )
 		lights = LS.Renderer.getNearLights( instance );
 
-	if( !lights || lights.length == 0 )
+	var ignore_lights = render_settings.lights_disabled;
+
+	if( !lights || lights.length == 0 || ignore_lights )
 	{
 		//extract shader compiled
 		var shader = shader_code.getShader( pass.name, block_flags );
@@ -7592,6 +7596,9 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 
 		//assign
 		shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, light ? light._uniforms : null, this._uniforms, instance.uniforms ] );
+
+		if( ignore_lights )
+			shader.setUniform("u_ambient_light", LS.ONES );
 
 		//render
 		instance.render( shader );
@@ -16696,7 +16703,7 @@ var Renderer = {
 		{
 			var light = lights[j];
 			//same layer?
-			if( (light._root.layers & instance.layers) == 0 || (light._root.layers & this._current_camera.layers) == 0)
+			if( (light.layers & instance.layers) == 0 || (light.layers & this._current_camera.layers) == 0)
 				continue;
 			var light_intensity = light.computeLightIntensity();
 			//light intensity too low?
@@ -23262,6 +23269,15 @@ function Light(o)
 	this.enabled = true;
 
 	/**
+	* Layers mask, this layers define which objects are iluminated by this light
+	* @property layers
+	* @type {Number}
+	* @default true
+	*/
+	this.layers = 0xFF;
+
+
+	/**
 	* Near distance
 	* @property near
 	* @type {Number}
@@ -23340,7 +23356,6 @@ function Light(o)
 	this.force_light_matrix = false; 
 	this._light_matrix = mat4.create();
 
-	this.extra_light_shader_code = null;
 	this.extra_texture = null;
 
 	//vectors in world space
@@ -23361,6 +23376,7 @@ function Light(o)
 		u_light_color: vec3.create(),
 		u_light_att: this._attenuation_info,
 		u_light_offset: this.offset,
+		u_light_extra: vec4.create(),
 		u_light_matrix: this._light_matrix
 //		u_shadow_params: vec4.fromValues( 1, this.shadow_bias, 1, 100 ),
 //		shadowmap: LS.Renderer.SHADOWMAP_TEXTURE_SLOT
@@ -23400,6 +23416,14 @@ Object.defineProperty( Light.prototype, 'target', {
 	enumerable: true
 });
 
+Object.defineProperty( Light.prototype, 'extra', {
+	get: function() { return this._uniforms.u_light_extra; },
+	set: function(v) { 
+		if(v)
+			this._uniforms.u_light_extra.set(v);  },
+	enumerable: true
+});
+
 Object.defineProperty( Light.prototype, 'up', {
 	get: function() { return this._up; },
 	set: function(v) { this._up.set(v);  },
@@ -23435,49 +23459,6 @@ Light.DEFAULT_DIRECTIONAL_FRUSTUM_SIZE = 50;
 Light.shadowmap_depth_texture = true;
 Light.shadow_shaderblocks = [];
 Light.shadow_shaderblocks_by_name = [];
-
-
-Light.coding_help = "\
-LightInfo LIGHT -> light info before applying equation\n\
-Input IN -> info about the mesh\n\
-SurfaceOutput o -> info about the surface properties of this pixel\n\
-\n\
-struct LightInfo {\n\
-	vec3 Color;\n\
-	vec3 Ambient;\n\
-	float Diffuse; //NdotL\n\
-	float Specular; //RdotL\n\
-	vec3 Emission;\n\
-	vec3 Reflection;\n\
-	float Attenuation;\n\
-	float Shadow; //1.0 means fully lit\n\
-};\n\
-\n\
-struct Input {\n\
-	vec4 color;\n\
-	vec3 vertex;\n\
-	vec3 normal;\n\
-	vec2 uv;\n\
-	vec2 uv1;\n\
-	\n\
-	vec3 camPos;\n\
-	vec3 viewDir;\n\
-	vec3 worldPos;\n\
-	vec3 worldNormal;\n\
-	vec4 screenPos;\n\
-};\n\
-\n\
-struct SurfaceOutput {\n\
-	vec3 Albedo;\n\
-	vec3 Normal;\n\
-	vec3 Ambient;\n\
-	vec3 Emission;\n\
-	float Specular;\n\
-	float Gloss;\n\
-	float Alpha;\n\
-	float Reflectivity;\n\
-};\n\
-";
 
 Light.prototype.onAddedToNode = function(node)
 {
@@ -23704,16 +23685,12 @@ Light.prototype.onResourceRenamed = function (old_name, new_name, resource)
 //Layer stuff
 Light.prototype.checkLayersVisibility = function( layers )
 {
-	if(!this._root)
-		return false;
-	return (this._root.layers & layers) !== 0;
+	return (this.layers & layers) !== 0;
 }
 
 Light.prototype.isInLayer = function(num)
 {
-	if(!this._root)
-		return false;
-	return (this._root.layers & (1<<num)) !== 0;
+	return (this.layers & (1<<num)) !== 0;
 }
 
 /**
@@ -23803,21 +23780,6 @@ Light.prototype.prepare = function( render_settings )
 	this._attenuation_info[0] = this.att_start;
 	this._attenuation_info[1] = this.att_end;
 	uniforms.u_light_offset = this.offset;
-
-	//extra code
-	if(this.extra_light_shader_code)
-	{
-		var code = null;
-		if(this._last_extra_light_shader_code != this.extra_light_shader_code)
-		{
-			code = LS.Material.processShaderCode( this.extra_light_shader_code );
-			this._last_processed_extra_light_shader_code = code;
-		}
-		else
-			code = this._last_processed_extra_light_shader_code;
-	}
-	else
-		this._last_processed_extra_light_shader_code = null;
 
 	//generate shadowmaps
 	var must_update_shadowmap = render_settings.update_shadowmaps && render_settings.shadows_enabled && !render_settings.lights_disabled && !render_settings.low_quality;
@@ -23945,11 +23907,6 @@ Light.prototype.getQuery = function(instance, render_settings)
 	}
 	else
 		delete query.macros["USE_SHADOW_MAP"];
-
-	if(this._last_processed_extra_light_shader_code && (!this.extra_texture || LS.ResourcesManager.getTexture(this.extra_texture)) )
-		query.macros["USE_EXTRA_LIGHT_SHADER_CODE"] = this._last_processed_extra_light_shader_code;
-	else
-		delete query.macros["USE_EXTRA_LIGHT_SHADER_CODE"];
 
 	return query;
 }
@@ -24203,6 +24160,8 @@ LS.ShadersManager.registerSnippet("light_structs","\n\
 	uniform vec3 u_light_color;\n\
 	uniform vec4 u_light_angle; //cone start,end,phi,theta \n\
 	uniform vec2 u_light_att; //start,end \n\
+	uniform float u_light_offset; //ndotl offset\n\
+	uniform vec4 u_light_extra; //user data\n\
 	uniform mat4 u_light_matrix; //to light space\n\
 	uniform vec3 u_ambient_light;\n\
 	struct Light {\n\
@@ -24213,6 +24172,8 @@ LS.ShadersManager.registerSnippet("light_structs","\n\
 		vec3 Front;\n\
 		vec4 ConeInfo; //for spotlights\n\
 		vec2 Attenuation; //start and end\n\
+		float Offset; //phong_offset\n\
+		vec4 Extra; //users can use this\n\
 		mat4 Matrix; //converts to light space\n\
 	};\n\
 	//Returns the info about the light\n\
@@ -24229,6 +24190,8 @@ LS.ShadersManager.registerSnippet("light_structs","\n\
 		LIGHT.Front = u_light_front;\n\
 		LIGHT.ConeInfo = u_light_angle; //for spotlights\n\
 		LIGHT.Attenuation = u_light_att; //start and end\n\
+		LIGHT.Offset = u_light_offset;\n\
+		LIGHT.Extra = u_light_extra;\n\
 		LIGHT.Matrix = u_light_matrix; //converts to light space\n\
 		return LIGHT;\n\
 	}\n\
@@ -24301,7 +24264,7 @@ Light._enabled_fs_shaderblock_code = "\n\
 		if( LIGHT.Info.x == 2.0 && LIGHT.Info.y == 1.0 )\n\
 			FINALLIGHT.Attenuation *= spotFalloff( LIGHT.Front, normalize( LIGHT.Position - v_pos ), LIGHT.ConeInfo.z, LIGHT.ConeInfo.w );\n\
 		\n\
-		NdotL = max( 0.0, NdotL );\n\
+		NdotL = max( 0.0, NdotL + LIGHT.Offset );\n\
 		FINALLIGHT.Diffuse = abs(NdotL);\n\
 		\n\
 		FINALLIGHT.Shadow = 1.0;\n\
@@ -25136,6 +25099,7 @@ MeshRenderer.prototype.onCollectInstances = function(e, instances)
 	var RI = this._RI;
 	var is_static = this._root.flags && this._root.flags.is_static;
 	var transform = this._root.transform;
+	RI.layers = this._root.layers;
 
 	//optimize
 	//if( is_static && LS.allow_static && !this._must_update_static && (!transform || (transform && this._transform_version == transform._version)) )
@@ -29200,6 +29164,7 @@ GeometricPrimitive.prototype.onCollectInstances = function(e, instances)
 
 	if(this._root.transform)
 		this._root.transform.getGlobalMatrix( RI.matrix );
+	RI.layers = this._root.layers;
 	RI.setMatrix( RI.matrix ); //force normal
 	//mat4.multiplyVec3( RI.center, RI.matrix, vec3.create() );
 	mat4.getTranslation( RI.center, RI.matrix );
@@ -33629,7 +33594,6 @@ Poser.prototype.configure = function(o)
 {
 }
 
-
 Poser.icon = "mini-icon-clock.png";
 
 Poser.prototype.onAddedToScene = function( scene )
@@ -33637,7 +33601,7 @@ Poser.prototype.onAddedToScene = function( scene )
 	LEvent.bind(scene,"update",this.onUpdate, this);
 }
 
-Poser.prototype.onRemoveFromScene = function(scene)
+Poser.prototype.onRemovedFromScene = function(scene)
 {
 	LEvent.unbind(scene,"update",this.onUpdate, this);
 }
@@ -33702,7 +33666,7 @@ Poser.prototype.onResourceRenamed = function (old_name, new_name, resource)
 {
 }
 
-//LS.registerComponent( Poser );
+LS.registerComponent( Poser );
 /**
 * Spline allows to define splines in 3D
 * @class Spline

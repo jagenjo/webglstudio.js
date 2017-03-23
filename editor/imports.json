@@ -11,7 +11,7 @@
 		"js/modules/tools.js",
 		"js/widgets/canvas/canvasManager.js",
 		"js/widgets/canvas/canvasElement.js",
-		"js/widgets/canvas/canvasWidgets.js",
+		"js/widgets/canvas/texturePreview.js",
 		"js/tools/camera.js",
 		"js/tools/move.js",
 		"js/tools/rotate.js",

@@ -276,10 +276,10 @@ LS.Components.Camera.actions["preview"] = { title: "Preview", callback: function
 	}
 };
 
-LS.Components.Camera.actions["edit_layers"] = { title: "Edit Layers", callback: function() { 
-		var camera = this;
+LS.Components.Light.actions["edit_layers"] = LS.Components.Camera.actions["edit_layers"] = { title: "Edit Layers", callback: function() { 
+		var component = this;
 		EditorModule.showLayersEditor( this.layers, function(v){
-			camera.layers = v;
+			component.layers = v;
 			RenderModule.requestFrame();
 		});	
 	}

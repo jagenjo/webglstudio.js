@@ -49,34 +49,14 @@ var EditorView = {
 		//RenderModule.requestFrame();
 	},
 
-	//called from GraphicsViewport, used to render screen space gizmos
+	//called from CanvasManager, used to render screen space gizmos
 	render: function()
 	{
 		if(!this.mustRenderHelpers())
 			return;
-
-
-		//render viewports edge lines
-		var cameras = RenderModule.cameras;
-		var viewport = vec4.create();
-
-		//render lines
-		if(cameras.length > 1)
-		{
-			gl.start2D();
-			gl.globalAlpha = 0.5;
-			for(var i = 0; i < cameras.length; i++)
-			{
-				var camera = cameras[i];
-				camera.getLocalViewport( null, viewport );
-				gl.strokeColor = (camera == ToolsModule.selected_camera ? [1,1,1] : [0.5,0.5,0.5]);
-				gl.strokeRect( viewport[0],gl.canvas.height - viewport[3] - viewport[1],viewport[2],viewport[3] );
-			}
-			gl.finish2D();
-		}
-
-		//render gizmos
-		this.sendToGizmos("render");
+		
+		for(var i in RenderModule.viewports)
+			RenderModule.viewports[i].render();
 	},
 
 	//called from LS.Renderer after the event afterRenderScene is triggered
@@ -102,22 +82,22 @@ var EditorView = {
 
 	mustRenderHelpers: function()
 	{
-		if(this.render_helpers && !RenderModule.render_settings.in_player && RenderModule.frame_updated)
+		if(this.render_helpers && !RenderModule.render_settings.in_player && RenderModule.frame_updated && !RenderModule.view_from_scene_cameras)
 			return true;
 		return false;
 	},
 
-	sendToGizmos: function(name, params)
+	sendToLayoutGizmos: function(name, params)
 	{
-		for(var i = 0; i < RenderModule.cameras.length; i++)
+		for(var i = 0; i < RenderModule.viewports.length; i++)
 		{
-			var camera = RenderModule.cameras[i];
-			if(!camera._gizmos || !camera._gizmos.length )
+			var viewport = RenderModule.viewports[i];
+			if(!viewport.gizmos || !viewport.gizmos.length )
 				continue;
 
-			for(var j = 0; j < camera._gizmos.length; j++)
+			for(var j = 0; j < viewport.gizmos.length; j++)
 			{
-				var gizmo = camera._gizmos[j];
+				var gizmo = viewport.gizmos[j];
 				var r = null;
 				if(gizmo[name])
 					r = gizmo[name].apply(gizmo, params);
@@ -129,26 +109,28 @@ var EditorView = {
 
 	update: function(seconds)
 	{
-		this.sendToGizmos("update",[seconds]);
+		this.sendToLayoutGizmos("update",[seconds]);
 	},
 
 	mousedown: function(e)
 	{
-		var r = this.sendToGizmos("mousedown",[e]);
+		//check if the mouse is between layouts
+		//TODO
 
+		var r = this.sendToLayoutGizmos("mousedown",[e]);
 		return r;
 	},
 
 	mousemove: function(e)
 	{
-		var r = this.sendToGizmos("mousemove",[e]);
+		var r = this.sendToLayoutGizmos("mousemove",[e]);
 
 		return r;
 	},
 
 	mouseup: function(e)
 	{
-		var r = this.sendToGizmos("mouseup",[e]);
+		var r = this.sendToLayoutGizmos("mouseup",[e]);
 		if(r)
 			return r;
 
@@ -166,7 +148,7 @@ var EditorView = {
 
 	mousewheel: function(e)
 	{
-		return this.sendToGizmos("mousewheel",[e]);
+		return this.sendToLayoutGizmos("mousewheel",[e]);
 	},
 
 	renderEditor: function( camera )
@@ -202,7 +184,7 @@ var EditorView = {
 
 		gl.disable( gl.BLEND );
 
-		var camera = RenderModule.camera;
+		var camera = RenderModule.getActiveCamera();
 		LS.Draw.setCamera( camera );
 		LS.Draw.setPointSize( 20 );
 
@@ -508,6 +490,7 @@ LS.Light.prototype.renderPicking = function(ray)
 
 	var target = this.getTarget();
 	EditorView.addPickingPoint( target, 0, { instance: this, info: "target" } );
+
 	/*
 	var color = Renderer.getNextPickingColor( this._root, [this, "target"] );
 	EditorView._picking_points.push([target,color]);
@@ -531,6 +514,10 @@ LS.Camera.prototype.renderPicking = function(ray)
 		return; 
 
 	var center = this.getCenter();
+	EditorView.addPickingPoint( center, 0, { instance: this, info: "center" } );
+
+	//middle center
+	vec3.lerp( center, pos, center, 0.5 );
 	EditorView.addPickingPoint( center, 0, { instance: this, info: "center" } );
 
 	/*
@@ -562,7 +549,7 @@ LS.Camera.prototype.renderEditor = function( node_selected, component_selected )
 		{
 			LS.Draw.setPointSize( 10 );
 			gl.disable(gl.DEPTH_TEST);
-			LS.Draw.renderRoundPoints( target ) ;
+			LS.Draw.renderRoundPoints( [ target, vec3.lerp( vec3.create(), pos, target, 0.5 ) ] ) ;
 			gl.enable(gl.DEPTH_TEST);
 		}
 	}

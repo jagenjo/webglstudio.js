@@ -1403,8 +1403,8 @@ var EditorModule = {
 		var menu = new LiteGUI.ContextMenu( options, { ignore_item_callbacks: true, event: event, title: "Canvas", autoopen: false, callback: function( action, o, e ) {
 			if(action.title == "View")
 			{
-				var camera = RenderModule.getCameraUnderMouse(e);
-				EditorModule.showViewContextMenu( camera, e, menu );
+				var viewport = RenderModule.getViewportUnderMouse(e);
+				viewport.showContextMenu( e, menu );
 				return true;
 			}
 
@@ -1542,61 +1542,8 @@ var EditorModule = {
 		var title = menu.root.querySelector(".litemenu-title");
 		var icon = EditorModule.getComponentIconHTML( component );
 		title.insertBefore( icon, title.firstChild );
-	},
 
-	showViewContextMenu: function( camera, e, prev_menu )
-	{
-		if(!camera)
-			return;
-
-		var options = [
-			"Camera Info",
-			"Render Settings",
-			null,
-			"Perspective",
-			"Orthographic",
-			null,
-			{ title: "Select Camera", has_submenu: true, callback: inner_cameras }
-		];
-
-		var menu = new LiteGUI.ContextMenu( options, { event: e, title: "View", parentMenu: prev_menu, callback: function(v) { 
-
-			switch( v )
-			{
-				case "Camera Info": EditorModule.inspect( camera ); break;
-				case "Render Settings": EditorModule.showRenderSettingsDialog( RenderModule.render_settings ); break;
-				case "Perspective": camera.type = LS.Camera.PERSPECTIVE; break;
-				case "Orthographic": camera.type = LS.Camera.ORTHOGRAPHIC; break;
-				default:
-					break;
-			}
-			LS.GlobalScene.refresh();
-		}});
-
-		function inner_cameras( v,o,e ) 
-		{
-			var options = ["Editor"];
-			var scene_cameras = LS.GlobalScene._cameras;
-			for(var i = 0; i < scene_cameras.length; i++)
-			{
-				var scene_camera = scene_cameras[i];
-				options.push( { title: "Cam " + scene_camera._root.name, camera: scene_camera } );
-			}
-
-			var submenu = new LiteGUI.ContextMenu( options, { event: e, title: "Cameras", parentMenu: menu, callback: function(v) {
-				if(v == "Editor")
-				{
-					var cam = new LS.Camera();
-					cam._viewport.set( camera._viewport );
-					RenderModule.setViewportCamera( camera._editor.index, cam );
-				}
-				else
-				{
-					RenderModule.setViewportCamera( camera._editor.index, v.camera );
-				}
-				LS.GlobalScene.refresh();
-			}});
-		}
+		return menu;
 	},
 
 	showCreateContextMenu: function( instance, e, prev_menu )
@@ -1646,6 +1593,24 @@ var EditorModule = {
 			var widget = new widget_class();
 			RenderModule.canvas_manager.root.addChild( widget );
 			LS.GlobalScene.refresh();
+		}});
+	},
+
+	showSelectSceneCameraContextMenu: function( e, parent_menu, callback )
+	{
+		var that = this;
+
+		var options = [];
+		var scene_cameras = LS.GlobalScene.getAllCameras();
+		for(var i = 0; i < scene_cameras.length; i++)
+		{
+			var scene_camera = scene_cameras[i];
+			options.push( { title: "Cam " + scene_camera._root.name, camera: scene_camera } );
+		}
+
+		var submenu = new LiteGUI.ContextMenu( options, { event: e, title: "Cameras", parentMenu: parent_menu, callback: function(v) {
+			if(callback)
+				callback( v.camera )
 		}});
 	},
 

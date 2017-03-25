@@ -420,6 +420,8 @@ var LiteGUI = {
             xhr.responseType = dataType;
         if (request.mimeType)
             xhr.overrideMimeType( request.mimeType );
+		if( request.nocache )
+			xhr.setRequestHeader('Cache-Control', 'no-cache');
         xhr.onload = function(load)
 		{
 			var response = this.response;
@@ -517,7 +519,7 @@ var LiteGUI = {
 	* @param {Function} on_error
 	* @param {Function} on_progress (if several files are required, on_progress is called after every file is added to the DOM)
 	**/
-	requireScript: function(url, on_complete, on_error, on_progress )
+	requireScript: function(url, on_complete, on_error, on_progress, version )
 	{
 		if(!url)
 			throw("invalid URL");
@@ -534,7 +536,8 @@ var LiteGUI = {
 			var script = document.createElement('script');
 			script.num = i;
 			script.type = 'text/javascript';
-			script.src = url[i];
+			script.src = url[i] + ( version ? "?version=" + version : "" );
+			script.original_src = url[i];
 			script.async = false;
 			script.onload = function(e) { 
 				total--;
@@ -542,14 +545,14 @@ var LiteGUI = {
 				if(total)
 				{
 					if(on_progress)
-						on_progress(this.src, this.num);
+						on_progress(this.original_src, this.num);
 				}
 				else if(on_complete)
 					on_complete( loaded_scripts );
 			};
 			if(on_error)
 				script.onerror = function(err) { 
-					on_error(err, this.src, this.num );
+					on_error(err, this.original_src, this.num );
 				}
 			document.getElementsByTagName('head')[0].appendChild(script);
 		}
@@ -1702,52 +1705,100 @@ function dataURItoBlob( dataURI ) {
 		var num = 0;
 		for(var i in values)
 		{
-			var element = document.createElement("div");
-			element.className = "litemenu-entry submenu";
-
 			var name = values.constructor == Array ? values[i] : i;
 			var value = values[i];
-
-			var disabled = false;
-
-			if(value === null)
-			{
-				element.classList.add("separator");
-				//element.innerHTML = "<hr/>"
-				//continue;
-			}
-			else
-			{
-				element.innerHTML = value && value.title ? value.title : name;
-				element.value = value;
-
-				if(value)
-				{
-					if(value.disabled)
-					{
-						disabled = true;
-						element.classList.add("disabled");
-					}
-					if(value.submenu || value.has_submenu)
-						element.classList.add("has_submenu");
-				}
-
-				if(typeof(value) == "function")
-				{
-					element.dataset["value"] = name;
-					element.onclick_callback = value;
-				}
-				else
-					element.dataset["value"] = value;
-			}
-
-			root.appendChild(element);
-			if(!disabled)
-				element.addEventListener("click", inner_onclick);
-			if(options.autoopen)
-				element.addEventListener("mouseenter", inner_over);
+			this.addItem( name, value, options );
 			num++;
 		}
+
+		//close on leave
+		root.addEventListener("mouseleave", function(e) {
+			if(that.lock)
+				return;
+			that.close(e);
+		});
+
+		//insert before checking position
+		var root_document = document;
+		if(options.event)
+			root_document = options.event.target.ownerDocument; 
+
+		if(!root_document)
+			root_document = document;
+		root_document.body.appendChild(root);
+
+		//compute best position
+		var left = options.left || 0;
+		var top = options.top || 0;
+		if(options.event)
+		{
+			left = (options.event.pageX - 10);
+			top = (options.event.pageY - 10);
+			if(options.title)
+				top -= 20;
+
+			if(options.parentMenu)
+				left = $(options.parentMenu.root).position().left + $(options.parentMenu.root).width();
+
+			var body_rect = LiteGUI.getRect( document.body );
+			var root_rect = LiteGUI.getRect( root );
+
+			if(left > (body_rect.width - root_rect.width - 10))
+				left = (body_rect.width - root_rect.width - 10);
+			if(top > (body_rect.height - root_rect.height - 10))
+				top = (body_rect.height - root_rect.height - 10);
+		}
+
+		root.style.left = left + "px";
+		root.style.top = top  + "px";
+	}
+
+	ContextMenu.prototype.addItem = function( name, value, options )
+	{
+		var that = this;
+		options = options || {};
+
+		var element = document.createElement("div");
+		element.className = "litemenu-entry submenu";
+
+		var disabled = false;
+
+		if(value === null)
+		{
+			element.classList.add("separator");
+			//element.innerHTML = "<hr/>"
+			//continue;
+		}
+		else
+		{
+			element.innerHTML = value && value.title ? value.title : name;
+			element.value = value;
+
+			if(value)
+			{
+				if(value.disabled)
+				{
+					disabled = true;
+					element.classList.add("disabled");
+				}
+				if(value.submenu || value.has_submenu)
+					element.classList.add("has_submenu");
+			}
+
+			if(typeof(value) == "function")
+			{
+				element.dataset["value"] = name;
+				element.onclick_callback = value;
+			}
+			else
+				element.dataset["value"] = value;
+		}
+
+		this.root.appendChild(element);
+		if(!disabled)
+			element.addEventListener("click", inner_onclick);
+		if(options.autoopen)
+			element.addEventListener("mouseenter", inner_over);
 
 		function inner_over(e)
 		{
@@ -1802,46 +1853,7 @@ function dataURItoBlob( dataURI ) {
 				that.close();
 		}
 
-		//close on leave
-		root.addEventListener("mouseleave", function(e) {
-			if(that.lock)
-				return;
-			that.close(e);
-		});
-
-		//insert before checking position
-		var root_document = document;
-		if(options.event)
-			root_document = options.event.target.ownerDocument; 
-
-		if(!root_document)
-			root_document = document;
-		root_document.body.appendChild(root);
-
-		//compute best position
-		var left = options.left || 0;
-		var top = options.top || 0;
-		if(options.event)
-		{
-			left = (options.event.pageX - 10);
-			top = (options.event.pageY - 10);
-			if(options.title)
-				top -= 20;
-
-			if(options.parentMenu)
-				left = $(options.parentMenu.root).position().left + $(options.parentMenu.root).width();
-
-			var body_rect = LiteGUI.getRect( document.body );
-			var root_rect = LiteGUI.getRect( root );
-
-			if(left > (body_rect.width - root_rect.width - 10))
-				left = (body_rect.width - root_rect.width - 10);
-			if(top > (body_rect.height - root_rect.height - 10))
-				top = (body_rect.height - root_rect.height - 10);
-		}
-
-		root.style.left = left + "px";
-		root.style.top = top  + "px";
+		return element;
 	}
 
 	ContextMenu.prototype.close = function(e, ignore_parent_menu)

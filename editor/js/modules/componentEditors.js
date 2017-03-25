@@ -242,7 +242,7 @@ LS.Components.Light["@inspector"] = function(light, inspector)
 		inspector.addNumber("Near", light.near, { pretitle: AnimationModule.getKeyframeCode( light, "near"), callback: function (value) { light.near = value;}});
 		inspector.addNumber("Far", light.far, { pretitle: AnimationModule.getKeyframeCode( light, "far"), callback: function (value) { light.far = value; }});
 		inspector.widgets_per_row = 1;
-		inspector.addNumber("Shadow bias", light.shadow_bias, { pretitle: AnimationModule.getKeyframeCode( light, "shadow_bias"), step: 0.001, min:0, callback: function (value) { light.shadow_bias = value; }});
+		inspector.addNumber("Shadow bias", light.shadow_bias, { pretitle: AnimationModule.getKeyframeCode( light, "shadow_bias"), step: 0.001, precision: 3, min:0, callback: function (value) { light.shadow_bias = value; }});
 		inspector.addCombo("Shadowmap size", !light.shadowmap_resolution ? "Default" : light.shadowmap_resolution, { pretitle: AnimationModule.getKeyframeCode( light, "shadowmap_resolution"), values: ["Default",256,512,1024,2048,4096], callback: function(v) { 
 			if(v == "Default")
 				light.shadowmap_resolution = 0; 

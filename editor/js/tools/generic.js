@@ -159,9 +159,10 @@ var viewSceneCameraButton = {
 	section: "view-modes",
 	icon: "imgs/mini-icon-camera.png",
 	enabled: false,
-	callback: function()
+	callback: function(e)
 	{
-		RenderModule.view_from_scene_camera = !RenderModule.view_from_scene_camera;
+		//RenderModule.getActiveViewport().showSelectCameraContextMenu( e );
+		RenderModule.view_from_scene_cameras = !RenderModule.view_from_scene_cameras;
 	}
 };
 

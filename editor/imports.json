@@ -1,7 +1,8 @@
 {
-	"version": 0.6,
+	"version": 0.61,
 	"imports":[
 		"js/modules/interface.js",
+		"js/widgets/layoutViewport.js",
 		"js/modules/render.js",
 		"js/modules/editor.js",
 		"js/modules/actions.js",
@@ -12,6 +13,7 @@
 		"js/widgets/canvas/canvasManager.js",
 		"js/widgets/canvas/canvasElement.js",
 		"js/widgets/canvas/texturePreview.js",
+		"js/widgets/canvas/cameraPreview.js",
 		"js/tools/camera.js",
 		"js/tools/move.js",
 		"js/tools/rotate.js",

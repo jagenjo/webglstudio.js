@@ -39,6 +39,9 @@ var ToolsModule = {
 		//place to put all the icons of the tools (really? just use the events system)
 		RenderModule.canvas_manager.addWidget(this);
 		this.createToolbar();
+
+		//render tools guizmos
+		//LEvent.bind( LS.Renderer, "afterRenderScene", this.renderView.bind(this) ); //renderHelpers
 	},
 
 	registerTool: function(tool)
@@ -148,6 +151,7 @@ var ToolsModule = {
 		EditorModule.inspect( button );
 	},
 
+	//*
 	//every frame
 	render: function()
 	{
@@ -156,10 +160,12 @@ var ToolsModule = {
 
 		if(!this._active_camera)
 			return;
+
 		var camera = this._active_camera;
 		LS.Renderer.enableCamera( camera ); //sets viewport, update matrices and set Draw
 		this.renderView(null, camera);
 	},
+	//*/
 
 	renderView: function(e, camera)
 	{
@@ -200,8 +206,12 @@ var ToolsModule = {
 		if(!e.dragging)
 		{
 			//active camera is the camera which viewport is below the mouse
-			var camera = RenderModule.getCameraUnderMouse(e);
-			if(!camera || camera == this._active_camera)
+			var viewport = RenderModule.getViewportUnderMouse(e);
+			if(!viewport)
+				return;
+			var camera = viewport.camera;
+
+			if( this._active_camera == camera )
 				return;
 
 			this._active_camera = camera;
@@ -291,7 +301,7 @@ var ToolsModule = {
 			if(!button.callback)
 				return;
 
-			var ret = button.callback();
+			var ret = button.callback(e);
 			if( ret !== undefined )
 			{
 				if(ret)
@@ -373,7 +383,7 @@ var ToolUtils = {
 		var x = e.canvasx;
 		var y = e.canvasy;
 
-		var cameras = RenderModule.cameras;
+		var cameras = RenderModule.getLayoutCameras();
 		var camera = cameras[0];
 		for(var i = cameras.length-1; i >= 0; --i)
 		{

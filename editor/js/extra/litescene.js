@@ -22638,7 +22638,7 @@ Camera.prototype.getLocalViewport = function( viewport, result )
 * @param {number} y
 * @param {vec4} viewport viewport coordinates (if omited full viewport is used)
 * @param {boolean} skip_local_viewport ignore the local camera viewport configuration when computing the viewport
-* @return {Object} {start:vec3, dir:vec3}
+* @return {Object} {start:vec3, dir:vec3} or null is values are undefined or NaN
 */
 Camera.prototype.getRayInPixel = function(x,y, viewport, skip_local_viewport )
 {
@@ -22650,6 +22650,8 @@ Camera.prototype.getRayInPixel = function(x,y, viewport, skip_local_viewport )
 		this.updateMatrices();
 	var eye = this.getEye();
 	var pos = vec3.unproject(vec3.create(), [x,y,1], this._viewprojection_matrix, viewport );
+	if(!pos)
+		return null;
 
 	if(this.type == Camera.ORTHOGRAPHIC)
 		eye = vec3.unproject(eye, [x,y,0], this._viewprojection_matrix, viewport );
@@ -39564,6 +39566,25 @@ SceneTree.prototype.getActiveCameras = function( force )
 	if(force)
 		LEvent.trigger(this, "collectCameras", this._cameras );
 	return this._cameras;
+}
+
+/**
+* Returns an array with all the cameras in the scene (even if they are disabled)
+*
+* @method getAllCameras
+* @return {Array} cameras
+*/
+SceneTree.prototype.getAllCameras = function()
+{
+	var cameras = [];
+	for(var i = 0; i < this._nodes.length; ++i)
+	{
+		var node = this._nodes[i];
+		var node_cameras = node.getComponents( LS.Components.Camera );
+		if(node_cameras && node_cameras.length)
+			cameras = cameras.concat( node_cameras );
+	}
+	return cameras;
 }
 
 SceneTree.prototype.getLight = function()

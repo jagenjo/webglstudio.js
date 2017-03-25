@@ -166,6 +166,7 @@ CanvasManager.prototype.ondraw = function()
 	this.frame_rendered = false;
 	var force_frame = this.must_update;
 
+	//widgets are independent elemnts that require rendering (like EditorView)
 	for(var i = 0; i < this.widgets.length; ++i)
 	{
 		if(this.widgets[i].render)

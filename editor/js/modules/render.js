@@ -16,16 +16,17 @@ var RenderModule = {
 	shaders_url: "../litescene/data/shaders.xml",
 
 	render_settings: new LS.RenderSettings(),
-	cameras: [], //viewports
-	selected_camera: null, //last viewport clicked by the mouse
-	under_camera: null, //camera below the mouse
+	viewports: [], //viewports
+	cameras: [], //cameras
+	selected_viewport: null, //last viewport clicked by the mouse
+	active_viewport: null, //viewport below the mouse
 
 	commands:{},
 
 	preview_camera: null,
 	temp_camera: null, //used to clone preview camera
 	show_stencil_mask: -1,
-	view_from_scene_camera: false,
+	view_from_scene_cameras: false,
 
 	init: function()
 	{
@@ -132,6 +133,7 @@ var RenderModule = {
 		LiteGUI.menubar.add("View/Layout/Two Horitzontal", { callback: function(){ RenderModule.setViewportLayout(3); } });
 		LiteGUI.menubar.add("View/Layout/Three", { callback: function(){ RenderModule.setViewportLayout(4); } });
 		LiteGUI.menubar.add("View/Layout/Four", { callback: function(){ RenderModule.setViewportLayout(5); } });
+		LiteGUI.menubar.add("View/Layout/Four 2", { callback: function(){ RenderModule.setViewportLayout(6); } });
 
 		LiteGUI.menubar.separator("View");
 		//LiteGUI.menubar.add("Actions/System/Relaunch", { callback: RenderModule.relaunch });
@@ -146,8 +148,9 @@ var RenderModule = {
 
 	setViewportLayout: function(mode)
 	{
+		var old_viewports = this.viewports.concat();
+		/*
 		var old_cameras = this.cameras;
-
 		//in case we changed something in the cameras that we want to recover
 		for(var i in old_cameras)
 		{
@@ -158,121 +161,84 @@ var RenderModule = {
 				delete camera._prev_viewport;
 			}
 		}
+		*/
 
-		//clear cameras
-		this.cameras = [];
+		//clear viewports
+		this.viewports.length = 0;
+		this.cameras.length = 0;
+		this.viewports_mode = mode;
+		console.log( mode );
 
 		//create new ones
 		if(mode == 2)
 		{
-			this.camera = new LS.Camera({eye:[50,100,100], center: LS.ZEROS, near:0.1,far:10000, viewport:[0,0,0.5,1]});
-			this.camera2 = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0.5,0,0.5,1]});
-			this.cameras.push( this.camera, this.camera2 );
+			this.viewports.push( new LayoutViewport({ viewport: [0,0,0.5,1] }) );
+			this.viewports.push( new LayoutViewport({ viewport: [0.5,0,0.5,1] }) );
 		}
 		else if(mode == 3)
 		{
-			this.camera = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0,0,1,0.5]});
-			this.camera2 = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0,0.5,1,0.5]});
-			this.cameras.push( this.camera, this.camera2 );
+			this.viewports.push( new LayoutViewport({ viewport: [0,0.5,1,0.5] }) );
+			this.viewports.push( new LayoutViewport({ viewport: [0,0,1,0.5] }) );
 		}
 		else if(mode == 4)
 		{
-			this.camera = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0,0,0.5,0.5]});
-			this.camera2 = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0,0.5,0.5,0.5]});
-			this.camera3 = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0.5,0,0.5,1]});
-			this.cameras.push( this.camera, this.camera2, this.camera3 );
+			this.viewports.push( new LayoutViewport({ viewport: [0,0.5,0.5,0.5] }) );
+			this.viewports.push( new LayoutViewport({ viewport: [0,0,0.5,0.5] }) );
+			this.viewports.push( new LayoutViewport({ viewport: [0.5,0,0.5,1] }) );
 		}
 		else if(mode == 5)
 		{
-			this.camera = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0,0,0.5,0.5]});
-			this.camera2 = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0.5,0,0.5,0.5]});
-			this.camera3 = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0,0.5,0.5,0.5]});
-			this.camera4 = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0.5,0.5,0.5,0.5]});
-			this.cameras.push( this.camera, this.camera2, this.camera3 , this.camera4 );
+			this.viewports.push( new LayoutViewport({ viewport: [0,0.5,0.5,0.5] }) );
+			this.viewports.push( new LayoutViewport({ viewport: [0.5,0.5,0.5,0.5] }) );
+			this.viewports.push( new LayoutViewport({ viewport: [0,0,0.5,0.5] }) );
+			this.viewports.push( new LayoutViewport({ viewport: [0.5,0,0.5,0.5] }) );
 		}
-		else if(mode == 16) //benchmark
+		else if(mode == 6)
 		{
-			for(var i = 0; i < 4; i++)
-				for(var j = 0; j < 4; j++)
-					this.cameras.push( this.camera = new LS.Camera({eye:[50 * Math.random(),100,100 * Math.random()],center: LS.ZEROS, near:0.1,far:10000, viewport:[0.25*i,0.25*j,0.25,0.25]}) );
+			this.viewports.push( new LayoutViewport({ viewport: [0,0.25,0.25,0.75] }) );
+			this.viewports.push( new LayoutViewport({ viewport: [0.25,0.25,0.75,0.75] }) );
+			this.viewports.push( new LayoutViewport({ viewport: [0,0,0.25,0.25] }) );
+			this.viewports.push( new LayoutViewport({ viewport: [0.25,0,0.75,0.25] }) );
 		}
 		else //1
 		{
-			this.camera = new LS.Camera({eye:[50,100,100],center: LS.ZEROS, near:0.1,far:10000, viewport:[0,0,1,1]});
-			this.cameras.push( this.camera );
+			this.viewports.push( new LayoutViewport() );
 		}
 
 		var bg_color = null;
 		if(LS.GlobalScene.root && LS.GlobalScene.root.camera)
 			bg_color = LS.GlobalScene.root.camera.background_color;
 
-		//add to the cameras useful editor info
-		for(var i = 0; i < this.cameras.length; i++)
+		for(var i = 0; i < this.viewports.length; ++i )
 		{
-			var camera = this.cameras[i];
+			var viewport = this.viewports[i];
+			viewport.index = i;
+			if( old_viewports[i] )
+				viewport.copyFromLayout( old_viewports[i] );
+
+			var editor_camera = viewport.editor_camera;
 			if(bg_color)
-				camera.background_color.set( bg_color );
-			//copy from first camera
-			if(old_cameras && old_cameras.length)
-			{
-				camera._eye.set( old_cameras[0]._eye );
-				camera._center.set( old_cameras[0]._center );
-				camera._up.set( old_cameras[0]._up );
-			}
-			camera.updateMatrices(true);
-			this.processEditorCamera( camera, i );
+				editor_camera.background_color.set( bg_color );
+
+			this.cameras.push( viewport.camera );
 		}
 
-		this.selected_camera = this.cameras[0];
-
+		
+		this.camera = this.selected_camera = this.cameras[0];
 		this.requestFrame();
 	},
 
 	setViewportCamera: function( index, new_camera )
 	{
-		var old = this.cameras[ index ];
-		if(!old)
+		var viewport = this.viewport[ index ];
+		if(!viewport)
 		{
-			console.warn("Unknown camera index");
+			console.warn("Unknown viewport index");
 			return;
 		}
 
-		this.cameras[ index ] = new_camera;
-		this.processEditorCamera( new_camera, index );
-		new_camera._viewport.set( old._viewport );
-
-		if( old && old._prev_viewport )
-		{
-			old._viewport.set( old._prev_viewport );
-			delete old._prev_viewport;
-		}
-	},
-
-	//it prepares a camera to be used in the editor
-	processEditorCamera: function( camera, index )
-	{
-		if( camera._root ) //is a scene camera
-			camera._prev_viewport = new Float32Array( camera._viewport );
-		else //is an editor camera
-			camera.uid = LS.generateUId("CAM");
-
-		camera._editor = { 
-			index: index,
-			name: "perspective",
-			corner: "bottom-right",
-			destination_eye: vec3.clone( camera.eye ),
-			destination_center: vec3.clone( camera.center ),
-			render_settings: null,
-			flags: {},
-		};
-
-		//add gizmos
-		this.addGizmos( camera );
-	},
-
-	addGizmos: function( camera )
-	{
-		camera._gizmos = [ new CameraGizmo( camera ) ];
+		viewport.camera = new_camera;
+		viewport.camera._viewport.set( viewport._viewport );
 	},
 
 	relaunch: function() { 
@@ -332,9 +298,9 @@ var RenderModule = {
 
 		//check if render one single camera or multiple cameras
 		var cameras = null;
-		if(!global_render_settings.in_player && !this.view_from_scene_camera )
+		if(!global_render_settings.in_player && !this.view_from_scene_cameras )
 		{
-			cameras = this.cameras.concat(); //clone
+			cameras = this.getLayoutCameras(); //clone
 			//search for render to texture cameras, puts them at the beginning
 			var scene_cams = LS.GlobalScene._cameras;
 			for(var i in scene_cams)
@@ -344,6 +310,10 @@ var RenderModule = {
 					cameras.unshift(cam); //add this camera to the list of cameras we are going to use to render
 			}
 			render_settings.main_camera = this.selected_camera;
+		}
+		else
+		{
+			this.resetLayoutCameras();
 		}
 
 		//theoretically this is not necessary, but just in case
@@ -418,35 +388,68 @@ var RenderModule = {
 	//used to select viewport
 	mousedown: function(e)
 	{
-		var camera = this.getCameraUnderMouse(e);
-		if(!camera || camera == this.selected_camera )
+		var viewport = this.getViewportUnderMouse(e);
+		if(!viewport)
 			return;
-		this.selected_camera = camera;
+		this.selected_viewport = viewport;
 	},
 
-	//used to change the camera below the mouse
+	//used to change the viewport below the mouse
 	mousemove: function(e)
 	{
-		var camera = this.getCameraUnderMouse(e);
-		if(!camera || camera == this.under_camera )
+		var viewport = this.getViewportUnderMouse(e);
+		if(!viewport)
 			return;
-		this.under_camera = camera;
+		this.active_viewport = viewport;
+	},
+
+	getActiveViewport: function()
+	{
+		if(!this.active_viewport)
+			this.active_viewport = this.viewports[0];
+		return this.active_viewport;
 	},
 
 	getActiveCamera: function()
 	{
-		return this.under_camera;
+		if(!this.active_viewport)
+			this.active_viewport = this.viewports[0];
+		return this.active_viewport.camera;
 	},
 
-	getCameraUnderMouse: function(e)
+	getLayoutCameras: function()
 	{
-		var cameras = this.cameras;
-		var viewport = vec4.create();
-		for(var i = cameras.length-1; i >= 0; --i)
+		var r = [];
+		for(var i = 0; i < this.viewports.length; ++i)
 		{
-			var camera = cameras[i];
-			if( camera.isPointInCamera( e.canvasx, e.canvasy ) )
-				return camera;
+			var layout_viewport = this.viewports[i];
+			var camera = layout_viewport.camera;
+			camera.viewport = layout_viewport._viewport; //force set
+			r.push( camera );
+		}
+		return r;
+	},
+
+	resetLayoutCameras: function()
+	{
+		for(var i = 0; i < this.viewports.length; ++i)
+		{
+			var layout_viewport = this.viewports[i];
+			if( !layout_viewport.scene_camera )
+				continue;
+			layout_viewport.scene_camera._viewport.set( layout_viewport.scene_camera_original_viewport );
+		}
+	},
+
+	getViewportUnderMouse: function(e)
+	{
+		GL.augmentEvent( e, gl.canvas );
+		var viewports = this.viewports;
+		for(var i = viewports.length-1; i >= 0; --i)
+		{
+			var layout_viewport = viewports[i];
+			if( layout_viewport.isPointInViewport( e.canvasx, e.canvasy ) )
+				return layout_viewport;
 		}
 		return null;
 	},
@@ -516,14 +519,15 @@ var RenderModule = {
 			o.extra = {};
 
 		var viewport_layout = o.extra.viewport_layout = {
-			cameras: []	
+			mode: this.viewports_mode,
+			viewports: []	
 		};
 
 		//save cameras
-		for(var i in this.cameras)
+		for(var i in this.viewports )
 		{
-			var camera = this.cameras[i];
-			viewport_layout.cameras.push( camera.serialize() );
+			var viewport = this.viewports[i];
+			viewport_layout.viewports.push( viewport.serialize() );
 		}
 	},
 
@@ -534,13 +538,14 @@ var RenderModule = {
 
 		//Restore cameras
 		var viewport_layout = o.extra.viewport_layout;
-		if(viewport_layout.cameras)
+		if(viewport_layout.viewports)
 		{
-			RenderModule.setViewportLayout( viewport_layout.cameras.length );
-			for(var i in viewport_layout.cameras)
+			RenderModule.setViewportLayout( viewport_layout.mode );
+			for(var i = 0; i < viewport_layout.viewports.length; ++i )
 			{
-				var cam_info = viewport_layout.cameras[i];
-				RenderModule.cameras[i].configure(cam_info);
+				var viewport_info = viewport_layout.viewports[i];
+				if( RenderModule.viewports[i] )
+					RenderModule.viewports[i].configure( viewport_info );
 			}
 		}
 	},

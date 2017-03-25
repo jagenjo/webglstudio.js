@@ -62,6 +62,7 @@ var CORE = {
 		LiteGUI.request({
 			url: config.imports || "imports.json" + nocache,
 			dataType:"json",
+			nocache: true,
 			success: this.loadImports.bind(this)
 		});
 	},
@@ -97,7 +98,7 @@ var CORE = {
 		}
 
 		//require all import scripts
-		LiteGUI.requireScript( imports_list, onReady, onError, onProgress );
+		LiteGUI.requireScript( imports_list, onReady, onError, onProgress, this.config.imports.version );
 
 		//one module loaded
 		function onProgress( name, num )

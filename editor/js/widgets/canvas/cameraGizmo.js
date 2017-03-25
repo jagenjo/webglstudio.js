@@ -1,5 +1,5 @@
 //Camera Gizmo attached to a camera viewport
-function CameraGizmo( camera )
+function CameraGizmo( layout_viewport )
 {
 	this.name = "camera gizmo";
 	this.selected_axis = null;
@@ -8,10 +8,10 @@ function CameraGizmo( camera )
 	this.gizmo_size = 1;
 
 	//where is located the gizmo
+	this.layout_viewport = layout_viewport;
 	this.viewport = vec4.fromValues(0,0,80,80);
 	this.orbiting = false;
-
-	this.camera = camera;
+	
 	this.camera_viewport = vec4.create();
 	this.vp = mat4.create();
 
@@ -36,13 +36,17 @@ CameraGizmo.prototype.render = function()
 	if(RenderModule.render_settings.ingame)
 		return;
 
+
 	LS.Draw.push();
 	gl.disable( gl.DEPTH_TEST );
 	gl.enable( gl.BLEND );
 	gl.enable( gl.CULL_FACE );
 	gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
 
-	var camera = this.camera;
+	var camera = this.layout_viewport.camera;
+	if(!camera)
+		return;
+
 	var front = camera.getLocalVector( vec3.fromValues(0,0,3) );
 	var up = camera.getLocalVector( vec3.fromValues(0,1,0) );
 
@@ -167,7 +171,7 @@ CameraGizmo.prototype.mousemove = function(e)
 	if(e.dragging && this.orbiting)
 	{
 		//trace(e.deltaX);
-		cameraTool.onCameraDrag( e, this.camera );
+		cameraTool.onCameraDrag( e, this.layout_viewport.camera );
 		LS.GlobalScene.refresh();
 		return true;
 	}
@@ -187,7 +191,7 @@ CameraGizmo.prototype.mouseup = function(e)
 
 	if(e.button == 2)
 	{
-		EditorModule.showViewContextMenu(this.camera, e);
+		this.layout_viewport.showContextMenu( e );
 	}
 
 	if(e.button == 0)
@@ -195,8 +199,7 @@ CameraGizmo.prototype.mouseup = function(e)
 		var selected = this.checkSide(e);
 		if(selected)
 		{
-			var camera = this.camera;
-
+			var camera = this.layout_viewport.camera;
 			var center = camera.getCenter();
 			var dist = vec3.sub( vec3.create(), camera.getEye(), center );
 			var delta = vec3.scale( vec3.create(), selected.v, vec3.length( dist ) );

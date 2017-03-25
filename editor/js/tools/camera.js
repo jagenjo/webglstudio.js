@@ -316,9 +316,21 @@ var cameraTool = {
 		if(in_local_space)
 			delta = camera.getLocalVector(delta);
 
-		var new_eye = camera._eye;
-		var new_center = camera._center;
+		var new_eye;
+		var new_center;
 
+		if( camera._root )
+		{
+			new_eye = vec3.create();
+			new_center = vec3.create();
+		}
+		else
+		{
+			new_eye = camera._eye;
+			new_center = camera._center;
+		}
+
+		//TO FIX
 		if(camera._editor)
 		{
 			new_eye = camera._editor.destination_eye;
@@ -332,7 +344,7 @@ var cameraTool = {
 		{
 			if(camera._root && camera._root.transform)
 			{
-				camera._root.transform.lookAt( new_eye, new_center, LS.TOP );
+				camera._root.transform.lookAt( new_eye, new_center, LS.TOP, true );
 			}
 			else
 			{

@@ -579,6 +579,10 @@ LS.FXStack.prototype.inspect = function( inspector, component )
 
 LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 {
+	inspector.addCombo("mode",component.mode, { values: LS.Components.MorphDeformer["@mode"].values, callback: function (value) { 
+		component.mode = value; 
+	}});
+
 	if( component.morph_targets.length )
 	{
 		inspector.widgets_per_row = 3;

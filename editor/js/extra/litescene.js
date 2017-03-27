@@ -4844,12 +4844,12 @@ function ShaderBlock( name )
 		throw("ShaderBlock name cannot have spaces: " + name);
 	this.name = name;
 	this.code_map = new Map();
-	this.enabled_defines = null;
+	this.context_macros = null;
 }
 
-ShaderBlock.prototype.setEnabledDefines = function( defines )
+ShaderBlock.prototype.defineContextMacros = function( macros )
 {
-	this.enabled_defines = defines;
+	this.context_macros = macros;
 }
 
 //shader_type: vertex or fragment shader
@@ -4916,6 +4916,7 @@ function GLSLCode( code )
 	this.blocks = [];
 	this.pragmas = {};
 	this.uniforms = {};
+	this.attributes = {};
 	this.includes = {};
 	this.snippets = {};
 	this.shader_blocks = {}; //warning: this not always contain which shaderblocks are in use, because they could be dynamic using pragma define
@@ -4925,6 +4926,8 @@ function GLSLCode( code )
 }
 
 LS.GLSLCode = GLSLCode;
+
+GLSLCode.pragma_methods = {};
 
 //block types
 GLSLCode.CODE = 1;
@@ -4944,6 +4947,7 @@ GLSLCode.prototype.parse = function()
 	this.blocks = [];
 	this.pragmas = {};
 	this.uniforms = {};
+	this.streams = {};
 	this.includes = {};
 	this.snippets = {};
 	this.shader_blocks = {};
@@ -4962,10 +4966,15 @@ GLSLCode.prototype.parse = function()
 		if(line[0] != "#")
 		{
 			var words = line.split(" ");
-			if( words[0] == "uniform" ) //store which uniforms we found in the code (not used)
+			if( words[0] == "uniform" ) //store which uniforms we found in the code (not used yet)
 			{
 				var uniform_name = words[2].split(";");
 				this.uniforms[ uniform_name[0] ] = words[1];
+			}
+			else if( words[0] == "attribute" ) //store which streams we found in the code (not used yet)
+			{
+				var uniform_name = words[2].split(";");
+				this.attributes[ uniform_name[0] ] = words[1];
 			}
 			current_block.push(line);
 			continue;
@@ -4984,73 +4993,15 @@ GLSLCode.prototype.parse = function()
 			var action = t[1];
 			current_block.length = 0;
 			var pragma_info = { type: GLSLCode.PRAGMA, line: line, action: action, param: t[2] };
-			if( action == "include")
-			{
-				if(!t[2])
-				{
-					console.error("shader include without path");
-					continue;
-				}
 
-				pragma_info.action_type = GLSLCode.INCLUDE;
-				//resolve include
-				var include = t[2].substr(1, t[2].length - 2); //safer than JSON.parse
-				var fullname = include.split(":");
-				var filename = fullname[0];
-				var subfile = fullname[1];
-				pragma_info.include = filename;
-				pragma_info.include_subfile = subfile;
-				this.includes[ pragma_info.include ] = true;
-			}
-			else if( action == "define" )
+			var method = LS.GLSLCode.pragma_methods[ action ];
+			if( !method || !method.parse )
 			{
-				var param1 = t[2];
-				var param2 = t[3];
-				if(!param1 || !param2)
-				{
-					console.error("#pragma define missing parameters");
-					continue;
-				}
-				pragma_info.define = [ param1, param2.substr(1, param2.length - 2) ];
+				console.warn("#pragma action unknown: ", action );
+				continue;
 			}
-			else if( action == "shaderblock" )
-			{
-				if(!t[2])
-				{
-					console.error("#pragma shaderblock without name");
-					continue;
-				}
-				pragma_info.action_type = GLSLCode.SHADERBLOCK;
-
-				var param = t[2];
-				if(param[0] == '"') //one means "shaderblock_name", two means shaderblock_var
-				{
-					pragma_info.shader_block = [1, param.substr(1, param.length - 2)]; //safer than JSON.parse
-					this.shader_blocks[ pragma_info.shader_block[1] ] = true;
-				}
-				else
-				{
-					pragma_info.shader_block = [2, param];
-					if(t[3]) //thirth parameter for default
-					{
-						pragma_info.shader_block.push( t[3].substr(1, t[3].length - 2) );
-						this.shader_blocks[ pragma_info.shader_block[2] ] = true;
-					}
-				}
-			}
-			else if( action == "snippet" )
-			{
-				if(!t[2])
-				{
-					console.error("#pragma snippet without name");
-					continue;
-				}
-				pragma_info.action_type = GLSLCode.SNIPPET;
-				var snippet_name = t[2].substr(1, t[2].length - 2); //safer than JSON.parse
-				pragma_info.snippet = snippet_name;
-				this.snippets[ snippet_name ] = true;
-			}
-
+			if( method.parse.call( this, pragma_info, t ) === false )
+				continue;
 			this.blocks.push( pragma_info ); //add pragma block
 		}
 		else
@@ -5086,85 +5037,175 @@ GLSLCode.prototype.getFinalCode = function( shader_type, block_flags, context )
 			continue;
 		}
 
-		//pragmas
-		if(block.include) //bring code from other files
-		{
-			var filename = block.include;
-			var ext = LS.ResourcesManager.getExtension( filename );
-			if(ext)
-			{
-				var extra_shadercode = LS.ResourcesManager.getResource( filename, LS.ShaderCode );
-				if(!extra_shadercode)
-				{
-					LS.ResourcesManager.load( filename ); //force load
-					return null;
-				}
-				if(!block.include_subfile)
-					code += "\n" + extra_shadercode._subfiles[""] + "\n";
-				else
-				{
-					var extra = extra_shadercode._subfiles[ block.include_subfile ];
-					if(extra === undefined)
-						return null;
-					code += "\n" + extra + "\n";
-				}
-			}
-			else
-			{
-				var snippet_code = LS.ShadersManager.getSnippet( filename );
-				if( !snippet_code )
-					return null; //snippet not found
-				code += "\n" + snippet_code.code + "\n";
-			}
-		}
-		else if( block.define ) //defines a context variable
-		{
-			context[ block.define[0] ] = block.define[1];
-		}
-		else if( block.shader_block ) //injects code from ShaderCodes taking into account certain rules
-		{
-			var shader_block_name = block.shader_block[1];
-			if( block.shader_block[0] == 2 ) //is dynamic shaderblock name
-			{
-				//dynamic shaderblock name
-				if( context[ shader_block_name ] ) //search for the name in the context
-					shader_block_name = context[ shader_block_name ];
-				else 
-					shader_block_name = block.shader_block[2]; //if not found use the default
+		var pragma_method = GLSLCode.pragma_methods[ block.action ];
+		if(!pragma_method || !pragma_method.getCode )
+			continue;
 
-				if(!shader_block_name)
-				{
-					console.error("ShaderBlock: no context var found: " + shader_block_name );
-					return null;
-				}
-			}
-			
-			var shader_block = LS.ShadersManager.getShaderBlock( shader_block_name );
-			if(!shader_block)
-			{
-				console.error("ShaderCode uses unknown ShaderBlock: ", block.shader_block);
-				return null;
-			}
-
-			var block_code = shader_block.getFinalCode( shader_type, block_flags, context );
-			if( block_code )
-				code += "\n#define BLOCK_"+ ( shader_block.name.toUpperCase() ) +"\n" + block_code + "\n";
-		}
-		else if( block.snippet ) //injects code from snippets
-		{
-			var snippet = LS.ShadersManager.getSnippet( block.snippet );
-			if(!snippet)
-			{
-				console.error("ShaderCode uses unknown Snippet: ", block.snippet);
-				return null;
-			}
-
-			code += "\n" + snippet.code + "\n";
-		}
+		var r = pragma_method.getCode.call( this, shader_type, block, block_flags, context );
+		if( r )
+			code += r;
 	}
 
 	return code;
 }
+
+// PRAGMA METHODS ****************************
+
+GLSLCode.pragma_methods["include"] = {
+	parse: function( pragma_info, t )
+	{
+		if(!t[2])
+		{
+			console.error("shader include without path");
+			return false;
+		}
+
+		pragma_info.action_type = GLSLCode.INCLUDE;
+		//resolve include
+		var include = t[2].substr(1, t[2].length - 2); //safer than JSON.parse
+		var fullname = include.split(":");
+		var filename = fullname[0];
+		var subfile = fullname[1];
+		pragma_info.include = filename;
+		pragma_info.include_subfile = subfile;
+		this.includes[ pragma_info.include ] = true;
+	},
+	getCode: function( shader_type, block, block_flags, context )
+	{
+		var extra_code = "";
+
+		var filename = block.include;
+		var ext = LS.ResourcesManager.getExtension( filename );
+		if(ext)
+		{
+			var extra_shadercode = LS.ResourcesManager.getResource( filename, LS.ShaderCode );
+			if(!extra_shadercode)
+			{
+				LS.ResourcesManager.load( filename ); //force load
+				return null;
+			}
+			if(!block.include_subfile)
+				extra_code = "\n" + extra_shadercode._subfiles[""] + "\n";
+			else
+			{
+				var extra = extra_shadercode._subfiles[ block.include_subfile ];
+				if(extra === undefined)
+					return null;
+				extra_code = "\n" + extra + "\n";
+			}
+		}
+		else
+		{
+			var snippet_code = LS.ShadersManager.getSnippet( filename );
+			if( !snippet_code )
+				return null; //snippet not found
+			extra_code = "\n" + snippet_code.code + "\n";
+		}
+
+		return extra_code;
+	}
+};
+
+GLSLCode.pragma_methods["define"] = {
+	parse: function( pragma_info, t )
+	{
+		var param1 = t[2];
+		var param2 = t[3];
+		if(!param1 || !param2)
+		{
+			console.error("#pragma define missing parameters");
+			return false;
+		}
+		pragma_info.define = [ param1, param2.substr(1, param2.length - 2) ];
+	},
+	getCode: function( shader_type, block, block_flags, context )
+	{
+		context[ block.define[0] ] = block.define[1];
+	}
+}
+
+GLSLCode.pragma_methods["shaderblock"] = {
+	parse: function( pragma_info, t )
+	{
+		if(!t[2])
+		{
+			console.error("#pragma shaderblock without name");
+			return false;
+		}
+		pragma_info.action_type = GLSLCode.SHADERBLOCK;
+
+		var param = t[2];
+		if(param[0] == '"') //one means "shaderblock_name", two means shaderblock_var
+		{
+			pragma_info.shader_block = [1, param.substr(1, param.length - 2)]; //safer than JSON.parse
+			this.shader_blocks[ pragma_info.shader_block[1] ] = true;
+		}
+		else
+		{
+			pragma_info.shader_block = [2, param];
+			if(t[3]) //thirth parameter for default
+			{
+				pragma_info.shader_block.push( t[3].substr(1, t[3].length - 2) );
+				this.shader_blocks[ pragma_info.shader_block[2] ] = true;
+			}
+		}
+	},
+	getCode: function( shader_type, block, block_flags, context )
+	{
+		var shader_block_name = block.shader_block[1];
+		if( block.shader_block[0] == 2 ) //is dynamic shaderblock name
+		{
+			//dynamic shaderblock name
+			if( context[ shader_block_name ] ) //search for the name in the context
+				shader_block_name = context[ shader_block_name ];
+			else 
+				shader_block_name = block.shader_block[2]; //if not found use the default
+
+			if(!shader_block_name)
+			{
+				console.error("ShaderBlock: no context var found: " + shader_block_name );
+				return null;
+			}
+		}
+		
+		var shader_block = LS.ShadersManager.getShaderBlock( shader_block_name );
+		if(!shader_block)
+		{
+			console.error("ShaderCode uses unknown ShaderBlock: ", block.shader_block);
+			return null;
+		}
+
+		var block_code = shader_block.getFinalCode( shader_type, block_flags, context );
+		if( block_code )
+			return "\n#define BLOCK_"+ ( shader_block.name.toUpperCase() ) +"\n" + block_code + "\n";
+	}
+};
+
+GLSLCode.pragma_methods["snippet"] = { 
+	parse: function( pragma_info, t )
+	{
+		if(!t[2])
+		{
+			console.error("#pragma snippet without name");
+			return false;
+		}
+		pragma_info.action_type = GLSLCode.SNIPPET;
+		var snippet_name = t[2].substr(1, t[2].length - 2); //safer than JSON.parse
+		pragma_info.snippet = snippet_name;
+		this.snippets[ snippet_name ] = true;
+	},
+	getCode: function( shader_type, block, block_flags, context )
+	{
+		var snippet = LS.ShadersManager.getSnippet( block.snippet );
+		if(!snippet)
+		{
+			console.error("ShaderCode uses unknown Snippet: ", block.snippet);
+			return null;
+		}
+
+		return "\n" + snippet.code + "\n";
+	}
+};
 
 //not used
 GLSLCode.breakLines = function(lines)
@@ -11543,7 +11584,7 @@ function ShaderCode( code )
 	this._compiled_shaders = {};
 
 	this._shaderblock_flags_num = 0; //used to assign flags to dependencies
-	this._shaderblock_flags = {};
+	this._shaderblock_flags = {}; //used to store which shaderblock represent to every flag bit
 
 	this._version = 0;
 
@@ -11586,6 +11627,7 @@ ShaderCode.prototype.processCode = function()
 	this._functions = {};
 	this._shaderblock_flags_num = 0;
 	this._shaderblock_flags = {};
+	this._shaderblock_vars = null;
 	this._has_error = false;
 
 	var subfiles = GL.processFileAtlas( this._code );
@@ -11669,7 +11711,7 @@ ShaderCode.prototype.processCode = function()
 	if(init_code)
 	{
 		//clean code
-		init_code = LS.ShaderCode.removeComments(init_code);
+		init_code = LS.ShaderCode.removeComments( init_code );
 
 		if(init_code) //still some code? (we test it because if there is a single line of code the behaviour changes)
 		{
@@ -11749,10 +11791,11 @@ ShaderCode.prototype.getShader = function( render_mode, block_flags )
 		var shader_block = LS.ShadersManager.shader_blocks.get(i);
 		if(!shader_block)
 			continue; //???
-		if(!shader_block.enabled_defines)
-			continue;
-		for(var j in shader_block.enabled_defines)
-			context[ j ] = shader_block.enabled_defines[j];
+		if(shader_block.context_macros)
+		{
+			for(var j in shader_block.context_macros)
+				context[ j ] = shader_block.context_macros[j];
+		}
 	}
 
 	//vertex shader code
@@ -11761,13 +11804,14 @@ ShaderCode.prototype.getShader = function( render_mode, block_flags )
 		vs_code = GL.Shader.SCREEN_VERTEX_SHADER;
 	else if( !code.vs )
 		return null;
-	else
+	else //vs is a GLSLCode 
 		vs_code = code.vs.getFinalCode( GL.VERTEX_SHADER, block_flags, context );
 
 	//fragment shader code
 	if( !code.fs )
 		return;
 
+	//fs is a GLSLCode 
 	var fs_code = code.fs.getFinalCode( GL.FRAGMENT_SHADER, block_flags, context );
 
 	//no code or code includes something missing
@@ -15500,6 +15544,37 @@ RenderInstance.prototype.render = function(shader)
 	shader.drawBuffers( this.vertex_buffers,
 	  this.index_buffer,
 	  this.primitive, this.range[0], this.range[1] );
+}
+
+RenderInstance.prototype.addShaderBlock = function( block, uniforms )
+{
+	for(var i = 0; i < this.shader_blocks.length; ++i)
+	{
+		if(!this.shader_blocks[i])
+			continue;
+		if( this.shader_blocks[i].block == block )
+		{
+			if(uniforms !== undefined)
+				this.shader_blocks[i].uniforms = uniforms;
+			return i;
+		}
+	}
+	this.shader_blocks.push( { block: block, uniforms: uniforms } );
+	return this.shader_blocks.length - 1;
+}
+
+RenderInstance.prototype.removeShaderBlock = function( block )
+{
+	for(var i = 0; i < this.shader_blocks.length; ++i)
+	{
+		if(!this.shader_blocks[i])
+			continue;
+		if( this.shader_blocks[i].block !== block )
+			continue;
+
+		this.shader_blocks.splice(i,1);
+		break;
+	}
 }
 
 //checks the shader blocks attached to this instance and resolves the flags
@@ -25676,6 +25751,8 @@ LS.SkinnedMeshRenderer = SkinnedMeshRenderer;
 function MorphDeformer(o)
 {
 	this.enabled = true;
+	this.mode = MorphDeformer.AUTOMATIC;
+
 	this.morph_targets = [];
 
 	if(MorphDeformer.max_supported_vertex_attribs === undefined)
@@ -25687,8 +25764,14 @@ function MorphDeformer(o)
 		this.configure(o);
 }
 
+MorphDeformer.AUTOMATIC = 0;
+MorphDeformer.CPU = 1;
+MorphDeformer.STREAMS = 2;
+MorphDeformer.TEXTURES = 3;
+
 MorphDeformer.icon = "mini-icon-teapot.png";
 MorphDeformer.force_GPU  = true; //used to avoid to recompile the shader when all morphs are 0
+MorphDeformer["@mode"] = { type:"enum", values: {"automatic": MorphDeformer.AUTOMATIC, "CPU": MorphDeformer.CPU, "streams": MorphDeformer.STREAMS, "textures": MorphDeformer.TEXTURES }};
 
 MorphDeformer.prototype.onAddedToNode = function(node)
 {
@@ -25726,7 +25809,6 @@ MorphDeformer.prototype.onCollectInstances = function( e, render_instances )
 	if(!render_instances.length || MorphDeformer.max_supported_vertex_attribs < 16)
 		return;
 
-
 	var morph_RI = this.enabled ? render_instances[ render_instances.length - 1] : null;
 	
 	if( morph_RI != this._last_RI && this._last_RI )
@@ -25741,18 +25823,30 @@ MorphDeformer.prototype.onCollectInstances = function( e, render_instances )
 	//grab the RI created previously and modified
 	//this.applyMorphTargets( last_RI );
 
-	if( this._morph_texture_supported === undefined )
-		this._morph_texture_supported = (gl.extensions["OES_texture_float"] !== undefined && gl.getParameter( gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS ) > 1);
+	if(this.mode === MorphDeformer.AUTOMATIC )
+	{
+		if( this._morph_texture_supported === undefined )
+			this._morph_texture_supported = (gl.extensions["OES_texture_float"] !== undefined && gl.getParameter( gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS ) > 1);
 
-	if( this._valid_morphs.length == 0 && !MorphDeformer.force_GPU )
-		return;
+		if( this._valid_morphs.length == 0 && !MorphDeformer.force_GPU )
+			return;
 
-	if( this._valid_morphs.length <= 4 ) //use GPU
-		this.applyMorphTargetsByGPU( morph_RI, this._valid_morphs );
-	else if( this._morph_texture_supported ) //use GPU with textures
-		this.applyMorphUsingTextures( morph_RI, this._valid_morphs );
+		if( this._valid_morphs.length <= 4 ) //use GPU
+			this.applyMorphTargetsByGPU( morph_RI, this._valid_morphs );
+		else if( this._morph_texture_supported ) //use GPU with textures
+			this.applyMorphUsingTextures( morph_RI, this._valid_morphs );
+		else
+			this.applyMorphBySoftware( morph_RI, this._valid_morphs );
+	}
 	else
-		this.applyMorphBySoftware( morph_RI, this._valid_morphs );
+	{
+		switch( this.mode )
+		{
+			case MorphDeformer.STREAMS: this.applyMorphTargetsByGPU( morph_RI, this._valid_morphs ); break;
+			case MorphDeformer.TEXTURES: this.applyMorphUsingTextures( morph_RI, this._valid_morphs ); break;
+			default: this.applyMorphBySoftware( morph_RI, this._valid_morphs ); break;
+		}
+	}
 }
 
 //gather morph targets data
@@ -25846,7 +25940,10 @@ MorphDeformer.prototype.applyMorphTargetsByGPU = function( RI, valid_morphs )
 	weights.set( morphs_weights );
 	RI.uniforms["u_morph_weights"] = weights;
 
-	RI.shader_blocks[1] = { block: LS.MorphDeformer.morphing_block, uniforms: { u_morph_weights: weights } };
+	//SHADER BLOCK
+	RI.addShaderBlock( MorphDeformer.shader_block );
+	RI.addShaderBlock( LS.MorphDeformer.morphing_streams_block, { u_morph_weights: weights } );
+	RI.removeShaderBlock( LS.MorphDeformer.morphing_texture_block );
 }
 
 MorphDeformer.prototype.applyMorphUsingTextures = function( RI, valid_morphs )
@@ -25974,7 +26071,14 @@ MorphDeformer.prototype.applyMorphUsingTextures = function( RI, valid_morphs )
 	delete RI.query.macros["USE_MORPHING_STREAMS"];
 	RI.query.macros["USE_MORPHING_TEXTURE"] = "";
 
-	RI.shader_blocks[1] = { block: LS.MorphDeformer.morphing_texture_block, uniforms: { u_morph_vertices_texture: LS.Renderer.MORPHS_TEXTURE_SLOT, u_morph_normals_texture: LS.Renderer.MORPHS_TEXTURE2_SLOT, u_morph_texture_size: this._texture_size } };
+	//SHADER BLOCK
+	RI.addShaderBlock( MorphDeformer.shader_block );
+	RI.addShaderBlock( LS.MorphDeformer.morphing_texture_block, { 
+				u_morph_vertices_texture: LS.Renderer.MORPHS_TEXTURE_SLOT, 
+				u_morph_normals_texture: LS.Renderer.MORPHS_TEXTURE2_SLOT, 
+				u_morph_texture_size: this._texture_size 
+			});
+	RI.removeShaderBlock( LS.MorphDeformer.morphing_streams_block );
 }
 
 
@@ -25998,7 +26102,9 @@ MorphDeformer.prototype.disableMorphingGPU = function( RI )
 		delete RI.uniforms["u_morph_normals_texture"];
 	}
 
-	RI.shader_blocks[1] = null;
+	RI.removeShaderBlock( MorphDeformer.shader_block );
+	RI.removeShaderBlock( LS.MorphDeformer.morphing_streams_block );
+	RI.removeShaderBlock( LS.MorphDeformer.morphing_texture_block );
 }
 
 MorphDeformer.prototype.applyMorphBySoftware = function( RI, valid_morphs )
@@ -26259,72 +26365,89 @@ MorphDeformer.prototype.optimizeMorphTargets = function()
 LS.registerComponent( MorphDeformer );
 LS.MorphDeformer = MorphDeformer;
 
-
+//SHADER BLOCKS ******************************************
 
 MorphDeformer.morph_streams_enabled_shader_code = "\n\
 	\n\
-	#ifdef USE_MORPHING_TEXTURE\n\
-		attribute float a_morphing_ids;\n\
-		\n\
-		uniform sampler2D u_morph_vertices_texture;\n\
-		uniform sampler2D u_morph_normals_texture;\n\
-		uniform vec4 u_morph_texture_size;\n\
-	#else\n\
-		//max vertex attribs are 16 usually, so 10 are available after using 6 for V,N,UV,UV2,BW,BI\n\
-		attribute vec3 a_vertex_morph0;\n\
-		attribute vec3 a_normal_morph0;\n\
-		attribute vec3 a_vertex_morph1;\n\
-		attribute vec3 a_normal_morph1;\n\
-		attribute vec3 a_vertex_morph2;\n\
-		attribute vec3 a_normal_morph2;\n\
-		attribute vec3 a_vertex_morph3;\n\
-		attribute vec3 a_normal_morph3;\n\
-	#endif\n\
+	//max vertex attribs are 16 usually, so 10 are available after using 6 for V,N,UV,UV2,BW,BI\n\
+	attribute vec3 a_vertex_morph0;\n\
+	attribute vec3 a_normal_morph0;\n\
+	attribute vec3 a_vertex_morph1;\n\
+	attribute vec3 a_normal_morph1;\n\
+	attribute vec3 a_vertex_morph2;\n\
+	attribute vec3 a_normal_morph2;\n\
+	attribute vec3 a_vertex_morph3;\n\
+	attribute vec3 a_normal_morph3;\n\
 	\n\
 	uniform vec4 u_morph_weights;\n\
 	\n\
 	void applyMorphing( inout vec4 position, inout vec3 normal )\n\
 	{\n\
-		#ifdef USE_MORPHING_TEXTURE\n\
-			vec2 coord;\n\
-			coord.x = ( mod( a_morphing_ids, u_morph_texture_size.x ) + 0.5 ) / u_morph_texture_size.x;\n\
-			coord.y = 1.0 - ( floor( a_morphing_ids / u_morph_texture_size.x ) + 0.5 ) / u_morph_texture_size.y;\n\
-			position.xyz += texture2D( u_morph_vertices_texture, coord ).xyz;\n\
-			normal.xyz += texture2D( u_morph_normals_texture, coord ).xyz;\n\
-		#else\n\
-			vec3 original_vertex = position.xyz;\n\
-			vec3 original_normal = normal.xyz;\n\
-			\n\
-			if(u_morph_weights[0] != 0.0)\n\
-			{\n\
-				position.xyz += (a_vertex_morph0 - original_vertex) * u_morph_weights[0]; normal.xyz += (a_normal_morph0 - original_normal) * u_morph_weights[0];\n\
-			}\n\
-			if(u_morph_weights[1] != 0.0)\n\
-			{\n\
-				position.xyz += (a_vertex_morph1 - original_vertex) * u_morph_weights[1]; normal.xyz += (a_normal_morph1 - original_normal) * u_morph_weights[1];\n\
-			}\n\
-			if(u_morph_weights[2] != 0.0)\n\
-			{\n\
-				position.xyz += (a_vertex_morph2 - original_vertex) * u_morph_weights[2]; normal.xyz += (a_normal_morph2 - original_normal) * u_morph_weights[2];\n\
-			}\n\
-			if(u_morph_weights[3] != 0.0)\n\
-			{\n\
-				position.xyz += (a_vertex_morph3 - original_vertex) * u_morph_weights[3]; normal.xyz += (a_normal_morph3 - original_normal) * u_morph_weights[3];\n\
-			}\n\
-		#endif\n\
+		vec3 original_vertex = position.xyz;\n\
+		vec3 original_normal = normal.xyz;\n\
+		\n\
+		if(u_morph_weights[0] != 0.0)\n\
+		{\n\
+			position.xyz += (a_vertex_morph0 - original_vertex) * u_morph_weights[0]; normal.xyz += (a_normal_morph0 - original_normal) * u_morph_weights[0];\n\
+		}\n\
+		if(u_morph_weights[1] != 0.0)\n\
+		{\n\
+			position.xyz += (a_vertex_morph1 - original_vertex) * u_morph_weights[1]; normal.xyz += (a_normal_morph1 - original_normal) * u_morph_weights[1];\n\
+		}\n\
+		if(u_morph_weights[2] != 0.0)\n\
+		{\n\
+			position.xyz += (a_vertex_morph2 - original_vertex) * u_morph_weights[2]; normal.xyz += (a_normal_morph2 - original_normal) * u_morph_weights[2];\n\
+		}\n\
+		if(u_morph_weights[3] != 0.0)\n\
+		{\n\
+			position.xyz += (a_vertex_morph3 - original_vertex) * u_morph_weights[3]; normal.xyz += (a_normal_morph3 - original_normal) * u_morph_weights[3];\n\
+		}\n\
 	}\n\
 ";
 
-MorphDeformer.morph_streams_disabled_shader_code = "\nvoid applyMorphing( inout vec4 position, inout vec3 normal ) {}\n";
+MorphDeformer.morph_texture_enabled_shader_code = "\n\
+	\n\
+	attribute float a_morphing_ids;\n\
+	\n\
+	uniform sampler2D u_morph_vertices_texture;\n\
+	uniform sampler2D u_morph_normals_texture;\n\
+	uniform vec4 u_morph_texture_size;\n\
+	\n\
+	uniform vec4 u_morph_weights;\n\
+	\n\
+	void applyMorphing( inout vec4 position, inout vec3 normal )\n\
+	{\n\
+		vec2 coord;\n\
+		coord.x = ( mod( a_morphing_ids, u_morph_texture_size.x ) + 0.5 ) / u_morph_texture_size.x;\n\
+		coord.y = 1.0 - ( floor( a_morphing_ids / u_morph_texture_size.x ) + 0.5 ) / u_morph_texture_size.y;\n\
+		position.xyz += texture2D( u_morph_vertices_texture, coord ).xyz;\n\
+		normal.xyz += texture2D( u_morph_normals_texture, coord ).xyz;\n\
+	}\n\
+";
+
+MorphDeformer.morph_enabled_shader_code = "\n\
+	\n\
+	#pragma shaderblock morphing_mode\n\
+";
+
+
+MorphDeformer.morph_disabled_shader_code = "\nvoid applyMorphing( inout vec4 position, inout vec3 normal ) {}\n";
 
 // ShaderBlocks used to inject to shader in runtime
 var morphing_block = new LS.ShaderBlock("morphing");
-morphing_block.addCode( GL.VERTEX_SHADER, MorphDeformer.morph_streams_enabled_shader_code, MorphDeformer.morph_streams_disabled_shader_code );
+morphing_block.addCode( GL.VERTEX_SHADER, MorphDeformer.morph_enabled_shader_code, MorphDeformer.morph_disabled_shader_code );
 morphing_block.register();
-MorphDeformer.morphing_block = morphing_block;
+MorphDeformer.shader_block = morphing_block;
+
+var morphing_streams_block = new LS.ShaderBlock("morphing_streams");
+morphing_streams_block.defineContextMacros( { "morphing_mode": "morphing_streams"} );
+morphing_streams_block.addCode( GL.VERTEX_SHADER, MorphDeformer.morph_streams_enabled_shader_code, MorphDeformer.morph_disabled_shader_code );
+morphing_streams_block.register();
+MorphDeformer.morphing_streams_block = morphing_streams_block;
 
 var morphing_texture_block = new LS.ShaderBlock("morphing_texture");
-morphing_texture_block.addCode( GL.VERTEX_SHADER, "\n#define USE_MORPHING_TEXTURE\n" + MorphDeformer.morph_streams_enabled_shader_code, MorphDeformer.morph_streams_disabled_shader_code );
+morphing_texture_block.defineContextMacros( { "morphing_mode": "morphing_texture"} );
+morphing_texture_block.addCode( GL.VERTEX_SHADER, MorphDeformer.morph_texture_enabled_shader_code, MorphDeformer.morph_disabled_shader_code );
 morphing_texture_block.register();
 MorphDeformer.morphing_texture_block = morphing_texture_block;
 
@@ -26522,7 +26645,7 @@ SkinDeformer.prototype.applySkinning = function(RI)
 				RI.query.macros["MAX_BONES"] = bones.length.toString();
 			RI.samplers[ LS.Renderer.BONES_TEXTURE_SLOT ] = null;
 
-			RI.shader_blocks[0] = { block: LS.SkinDeformer.skinning_block, uniforms: { u_bones: u_bones } };
+			RI.addShaderBlock( LS.SkinDeformer.skinning_uniforms_block, { u_bones: u_bones } );
 		}
 		else if( SkinDeformer.num_supported_textures > 0 ) //upload the bones as a float texture (slower)
 		{
@@ -26541,9 +26664,13 @@ SkinDeformer.prototype.applySkinning = function(RI)
 			RI.uniforms["u_bones"] = LS.Renderer.BONES_TEXTURE_SLOT;
 			RI.query.macros["USE_SKINNING_TEXTURE"] = "";
 			RI.samplers[ LS.Renderer.BONES_TEXTURE_SLOT ] = texture; //{ texture: texture, magFilter: gl.NEAREST, minFilter: gl.NEAREST, wrap: gl.CLAMP_TO_EDGE };
+
+			RI.addShaderBlock( LS.SkinDeformer.skinning_texture_block, { u_bones: LS.Renderer.BONES_TEXTURE_SLOT } );
 		}
 		else
 			console.error("impossible to get here");
+
+		RI.addShaderBlock( LS.SkinDeformer.skinning_block );
 	}
 	else //cpu skinning (mega slow)
 	{
@@ -26600,7 +26727,9 @@ SkinDeformer.prototype.disableSkinning = function( RI )
 		delete RI.samplers["u_bones"];
 	}
 
-	RI.shader_blocks[0] = null;
+	RI.removeShaderBlock( LS.SkinDeformer.skinning_block );
+	RI.removeShaderBlock( LS.SkinDeformer.skinning_uniforms_block );
+	RI.removeShaderBlock( LS.SkinDeformer.skinning_texture_block );
 }
 
 SkinDeformer.prototype.getMesh = function()
@@ -26719,7 +26848,7 @@ SkinDeformer.prototype.getBones = function()
 LS.registerComponent( SkinDeformer );
 LS.SkinDeformer = SkinDeformer;
 
-SkinDeformer.skinning_enabled_shader_code = "\n\
+SkinDeformer.skinning_shader_code = "\n\
 	//Skinning ******************* \n\
 	#ifndef MAX_BONES\n\
 		#define MAX_BONES 64\n\
@@ -26772,6 +26901,7 @@ SkinDeformer.skinning_enabled_shader_code = "\n\
 	}\n\
 ";
 
+SkinDeformer.skinning_enabled_shader_code = "\n#pragma shaderblock skinning_mode\n";
 SkinDeformer.skinning_disabled_shader_code = "\nvoid applySkinning( inout vec4 position, inout vec3 normal) {}\n";
 
 // ShaderBlocks used to inject to shader in runtime
@@ -26780,8 +26910,15 @@ skinning_block.addCode( GL.VERTEX_SHADER, SkinDeformer.skinning_enabled_shader_c
 skinning_block.register();
 SkinDeformer.skinning_block = skinning_block;
 
+var skinning_uniforms_block = new LS.ShaderBlock("skinning_uniforms");
+skinning_uniforms_block.defineContextMacros( { "skinning_mode": "skinning_uniforms"} );
+skinning_uniforms_block.addCode( GL.VERTEX_SHADER, SkinDeformer.skinning_shader_code, SkinDeformer.skinning_disabled_shader_code );
+skinning_uniforms_block.register();
+SkinDeformer.skinning_uniforms_block = skinning_uniforms_block;
+
 var skinning_texture_block = new LS.ShaderBlock("skinning_texture");
-skinning_texture_block.addCode( GL.VERTEX_SHADER, "\n#define USE_SKINNING_TEXTURE\n" + SkinDeformer.skinning_enabled_shader_code, SkinDeformer.skinning_disabled_shader_code );
+skinning_texture_block.defineContextMacros( { "skinning_mode": "skinning_texture"} );
+skinning_texture_block.addCode( GL.VERTEX_SHADER, "\n#define USE_SKINNING_TEXTURE\n" + SkinDeformer.skinning_shader_code, SkinDeformer.skinning_disabled_shader_code );
 skinning_texture_block.register();
 SkinDeformer.skinning_texture_block = skinning_texture_block;
 //WORK IN PROGRESS

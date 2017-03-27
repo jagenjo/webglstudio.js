@@ -8,8 +8,8 @@ You need to have installed an HTTP Server (Apache) with PHP support and MySQL.
 
 ## Download
 You need to download two projects from github:
-- LiteFileServer.js [https://github.com/jagenjo/litefilesystem.js/archive/master.zip](ZIP)
-- WebGLstudio.js [https://github.com/jagenjo/webglstudio.js/archive/master.zip](ZIP)
+- LiteFileServer.js [ZIP](https://github.com/jagenjo/litefilesystem.js/archive/master.zip)
+- WebGLstudio.js [ZIP](https://github.com/jagenjo/webglstudio.js/archive/master.zip)
 
 ## Unpack
 
@@ -19,7 +19,7 @@ You need to download two projects from github:
 
 ## Install LiteFileServer
 
-To install litefileserver follow this guide: [https://github.com/jagenjo/litefilesystem.js/blob/master/INSTALL.md](Guide to install LiteFileSystem)
+To install litefileserver follow this guide: [Guide to install LiteFileSystem](https://github.com/jagenjo/litefilesystem.js/blob/master/INSTALL.md)
 
 Check that your installation works by entering to the fileserver/ folder from your browser.
 

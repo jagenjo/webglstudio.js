@@ -1,6 +1,7 @@
 # Install
 
 First remember that to use WebGLStudio you need to install it in server that has a http server installed to host websites.
+Also you will need to have shell access to that server to execute some scripts.
 
 ## Requirements
 
@@ -12,6 +13,7 @@ You need to download two projects from github:
 - WebGLstudio.js [ZIP](https://github.com/jagenjo/webglstudio.js/archive/master.zip)
 
 ## Unpack
+Upload the files to your server and unpack them following the next steps:
 
 - Unpack the webglstudio editor/ folder in a folder inside a public folder in your server.
 - Create a folder called fileserver/ inside that folder

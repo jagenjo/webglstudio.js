@@ -1806,6 +1806,8 @@ var Network = {
         var xhr = new XMLHttpRequest();
         xhr.open(request.data ? 'POST' : 'GET', request.url, true);
 		xhr.withCredentials = this.withCredentials; //if true doesnt work
+		if(request.withCredentials !== undefined)
+			xhr.withCredentials = request.withCredentials;
         if(dataType)
             xhr.responseType = dataType;
         if (request.mimeType)

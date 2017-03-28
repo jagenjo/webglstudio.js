@@ -20,7 +20,7 @@ var CORE = {
 		
 		//Load config file
 		LiteGUI.request({
-			url:"config.json?nocache=" + getTime(),
+			url:"config.json?nocache=" + performance.now(),
 			dataType:"json",
 			success: this.configLoaded.bind(this)
 		});
@@ -56,7 +56,7 @@ var CORE = {
 
 		var nocache = "";
 		if(config.nocache)
-			nocache = "?=" + getTime();
+			nocache = "?=" + performance.now();
 
 		//Load modules list from modules.json
 		LiteGUI.request({
@@ -92,7 +92,7 @@ var CORE = {
 		//forces to redownload files
 		if(this.config.nocache)
 		{
-			var nocache = "nocache=" + String(getTime());
+			var nocache = "nocache=" + String(performance.now());
 			for(var i in imports_list)
 				imports_list[i] = imports_list[i] + (imports_list[i].indexOf("?") == -1 ? "?" : "") + nocache;
 		}

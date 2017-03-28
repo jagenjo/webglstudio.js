@@ -15,7 +15,7 @@ var RenderModule = {
 	render_mode: "full",
 	shaders_url: "../litescene/data/shaders.xml",
 
-	render_settings: new LS.RenderSettings(),
+	render_settings: null,
 	viewports: [], //viewports
 	cameras: [], //cameras
 	selected_viewport: null, //last viewport clicked by the mouse
@@ -30,6 +30,8 @@ var RenderModule = {
 
 	init: function()
 	{
+		this.render_settings = new LS.RenderSettings();
+
 		//create 3D tab
 		this.tab = LiteGUI.main_tabs.addTab( this.name, {
 				id:"visortab", 

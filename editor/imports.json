@@ -1,6 +1,12 @@
 {
-	"version": 0.61,
+	"version": 0.62,
 	"imports":[
+		"js/extra/gl-matrix-min.js",
+		"js/extra/litegl.js",
+		"js/extra/litegraph.js",
+		"js/extra/litescene.js",
+		"js/extra/litefileserver.js",
+		"js/extra/Canvas2DtoWebGL.js",
 		"js/modules/interface.js",
 		"js/widgets/layoutViewport.js",
 		"js/modules/render.js",

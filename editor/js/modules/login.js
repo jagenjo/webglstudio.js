@@ -94,7 +94,12 @@ var LoginModule = {
 	{
 		if (this.user)
 		{
-			this.loginarea.innerHTML = "logged as <a href='#'>"+this.user.username+"</a> <button class='litebutton btn'>Logout</button>";
+			this.loginarea.innerHTML = "logged as <a href=''>"+this.user.username+"</a> <button class='litebutton btn'>Logout</button>";
+			this.loginarea.querySelector("a").addEventListener( "click", function(e){ 
+				LoginModule.showAccountDialog();
+				e.preventDefault();	
+				return true;
+			});
 			this.loginarea.querySelector("button").addEventListener( "click", function() {
 				LoginModule.showLogoutDialog();
 			});
@@ -223,7 +228,7 @@ var LoginModule = {
 					info_widget.setValue("A reset password has been send, check your email to get the reset code.");
 				});
 				info_widget.setValue("Sending request...");
-			}});
+		}}, window.location.href );
 			widgets.addSeparator();
 			widgets.addButton( null, "Back to login", function(){
 				inner_show_login();
@@ -242,9 +247,88 @@ var LoginModule = {
 	showLogoutDialog: function()
 	{
 		LiteGUI.confirm("Do you want to log out?", inner );
-		function inner()
+		function inner(v)
 		{
-			LoginModule.logout();
+			if(v)
+				LoginModule.logout();
+		}
+	},
+
+	showAccountDialog: function()
+	{
+		if(!this.session)
+			return;
+
+		var user = this.session.user;
+
+		var dialog = new LiteGUI.Dialog( {title: "Account", close: true, width: 400, scroll: false, draggable: true });
+		dialog.root.style.fontSize = "1.4em";
+		dialog.on_close = function()
+		{
+		}
+		dialog.show('fade');
+		var widgets = dialog.widgets = new LiteGUI.Inspector( { name_width: "40%" } );
+		dialog.add(widgets);
+
+		widgets.addString( "Username", user.username, { disabled: true} );
+		widgets.addString( "Email", user.email, { disabled: true} );
+		widgets.addButton( null, "Change Password", function(){
+			dialog.close();
+			LoginModule.showChangePasswordDialog();
+		
+		});
+		widgets.addSeparator();
+		widgets.addButton( null, "Close", function(){
+			dialog.close();		
+		});
+	},
+
+	showChangePasswordDialog: function() {
+		if(!this.session)
+			return;
+
+		var user = this.session.user;
+
+		var dialog = new LiteGUI.Dialog( {title: "Change Password", close: true, width: 400, scroll: false, draggable: true });
+		dialog.root.style.fontSize = "1.4em";
+		dialog.on_close = function()
+		{
+		}
+		dialog.show('fade');
+		var widgets = dialog.widgets = new LiteGUI.Inspector( { name_width: "40%" } );
+		dialog.add(widgets);
+
+		var current_pass = "";
+		var new_pass = "";
+
+		widgets.addString( "Current Password", "", { password: true, callback: function(v){
+			current_pass = v;
+		}});
+
+
+		widgets.addString( "New Password", "", { password: true, callback: function(v){
+			new_pass = v;
+		}});
+
+		var alert_dialog = null;
+
+		widgets.addSeparator();
+		widgets.addButton( null, "Change Password", function(){
+			if( !current_pass || !new_pass )
+				return;
+			dialog.close();
+			alert_dialog = LiteGUI.alert("Wait...");
+			LoginModule.session.setPassword( current_pass, new_pass, inner_complete	);
+		});
+		widgets.addButton( null, "Close", function(){
+			dialog.close();		
+		});
+
+		function inner_complete(v,r)
+		{
+			if(alert_dialog)
+				alert_dialog.close();
+			LiteGUI.alert( v ? "Password changed" : "Incorrect password" );
 		}
 	},
 

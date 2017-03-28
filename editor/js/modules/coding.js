@@ -614,3 +614,196 @@ LS.Components.ScriptFromFile.actions["convert_to_script"] = {
 };
 
 LS.Components.ScriptFromFile.actions["breakpoint_on_call"] = LS.Components.Script.actions["breakpoint_on_call"];
+
+//Example code for a shader (used in editor) **************************************************
+LS.ShaderCode.examples = {};
+
+LS.ShaderCode.examples.fx = "\n\
+\\fx.fs\n\
+	precision highp float;\n\
+	\n\
+	uniform float u_time;\n\
+	uniform vec4 u_viewport;\n\
+	uniform sampler2D u_texture;\n\
+	varying vec2 v_coord;\n\
+	void main() {\n\
+		gl_FragColor = texture2D( u_texture, v_coord );\n\
+	}\n\
+";
+
+LS.ShaderCode.examples.color = "\n\
+\n\
+\\js\n\
+//define exported uniforms from the shader (name, uniform, widget)\n\
+this.createUniform(\"Number\",\"u_number\",\"number\");\n\
+this.createSampler(\"Texture\",\"u_texture\");\n\
+\n\
+\\color.vs\n\
+\n\
+precision mediump float;\n\
+attribute vec3 a_vertex;\n\
+attribute vec3 a_normal;\n\
+attribute vec2 a_coord;\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+\n\
+//matrices\n\
+uniform mat4 u_model;\n\
+uniform mat4 u_normal_model;\n\
+uniform mat4 u_view;\n\
+uniform mat4 u_viewprojection;\n\
+\n\
+//globals\n\
+uniform float u_time;\n\
+uniform vec4 u_viewport;\n\
+uniform float u_point_size;\n\
+\n\
+//camera\n\
+uniform vec3 u_camera_eye;\n\
+void main() {\n\
+	\n\
+	vec4 vertex4 = vec4(a_vertex,1.0);\n\
+	v_normal = a_normal;\n\
+	v_uvs = a_coord;\n\
+	\n\
+	//vertex\n\
+	v_pos = (u_model * vertex4).xyz;\n\
+	//normal\n\
+	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
+}\n\
+\n\
+\\color.fs\n\
+\n\
+precision mediump float;\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+//globals\n\
+uniform vec3 u_camera_eye;\n\
+uniform vec4 u_clipping_plane;\n\
+uniform float u_time;\n\
+uniform vec3 u_background_color;\n\
+uniform vec3 u_ambient_light;\n\
+\n\
+uniform float u_number;\n\
+uniform sampler2D u_texture;\n\
+\n\
+//material\n\
+uniform vec4 u_material_color; //color and alpha\n\
+void main() {\n\
+	vec3 N = normalize( v_normal );\n\
+	vec3 L = vec3( 0.577, 0.577, 0.577 );\n\
+	vec4 color = u_material_color;\n\
+	color.xyz *= max(0.0, dot(N,L) );\n\
+	gl_FragColor = color;\n\
+}\n\
+\n\
+";
+
+LS.ShaderCode.examples.light_and_deformers = "\n\
+\n\
+\n\
+\\js\n\
+//define exported uniforms from the shader (name, uniform, widget)\n\
+this.createSampler(\"Texture\",\"u_texture\");\n\
+this.createSampler(\"Spec. Texture\",\"u_specular_texture\");\n\
+this.createSampler(\"Normal Texture\",\"u_normal_texture\");\n\
+this._light_mode = 1;\n\
+\n\
+\\color.vs\n\
+\n\
+precision mediump float;\n\
+attribute vec3 a_vertex;\n\
+attribute vec3 a_normal;\n\
+attribute vec2 a_coord;\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+\n\
+//matrices\n\
+uniform mat4 u_model;\n\
+uniform mat4 u_normal_model;\n\
+uniform mat4 u_view;\n\
+uniform mat4 u_viewprojection;\n\
+\n\
+//globals\n\
+uniform float u_time;\n\
+uniform vec4 u_viewport;\n\
+uniform float u_point_size;\n\
+\n\
+#pragma shaderblock \"light\"\n\
+#pragma shaderblock \"morphing\"\n\
+#pragma shaderblock \"skinning\"\n\
+\n\
+//camera\n\
+uniform vec3 u_camera_eye;\n\
+void main() {\n\
+	\n\
+	vec4 vertex4 = vec4(a_vertex,1.0);\n\
+	v_normal = a_normal;\n\
+	v_uvs = a_coord;\n\
+  \n\
+  //deforms\n\
+  applyMorphing( vertex4, v_normal );\n\
+  applySkinning( vertex4, v_normal );\n\
+	\n\
+	//vertex\n\
+	v_pos = (u_model * vertex4).xyz;\n\
+  \n\
+  applyLight(v_pos);\n\
+  \n\
+	//normal\n\
+	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
+}\n\
+\n\
+\\color.fs\n\
+\n\
+precision mediump float;\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+\n\
+//globals\n\
+uniform vec3 u_camera_eye;\n\
+uniform vec4 u_clipping_plane;\n\
+uniform float u_time;\n\
+uniform vec3 u_background_color;\n\
+uniform vec4 u_material_color;\n\
+\n\
+uniform sampler2D u_texture;\n\
+uniform sampler2D u_specular_texture;\n\
+uniform sampler2D u_normal_texture;\n\
+\n\
+#pragma shaderblock \"light\"\n\
+\n\
+#pragma snippet \"perturbNormal\"\n\
+\n\
+void main() {\n\
+  Input IN = getInput();\n\
+  SurfaceOutput o = getSurfaceOutput();\n\
+  vec4 surface_color = texture2D( u_texture, IN.uv ) * u_material_color;\n\
+  o.Albedo = surface_color.xyz;\n\
+  vec4 spec = texture2D( u_specular_texture, IN.uv );\n\
+	o.Specular = spec.x;  \n\
+	o.Gloss = spec.y * 10.0;  \n\
+	vec4 normal_pixel = texture2D( u_normal_texture, IN.uv );\n\
+  o.Normal = perturbNormal( IN.worldNormal, IN.worldPos, v_uvs, normal_pixel.xyz );\n\
+	  \n\
+  vec4 final_color = vec4(0.0);\n\
+  Light LIGHT = getLight();\n\
+  final_color.xyz = computeLight( o, IN, LIGHT );\n\
+  final_color.a = surface_color.a;\n\
+  \n\
+	gl_FragColor = final_color;\n\
+}\n\
+";

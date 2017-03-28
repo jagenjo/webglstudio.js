@@ -5176,8 +5176,13 @@ GLSLCode.pragma_methods["shaderblock"] = {
 		}
 
 		var block_code = shader_block.getFinalCode( shader_type, block_flags, context );
-		if( block_code )
-			return "\n#define BLOCK_"+ ( shader_block.name.toUpperCase() ) +"\n" + block_code + "\n";
+		if( !block_code )
+			return null;
+
+		//add the define BLOCK_name only if enabled
+		if( shader_block.flag_mask & block_flags )
+			return "\n#define BLOCK_" + ( shader_block.name.toUpperCase() ) +"\n" + block_code + "\n";
+		return block_code + "\n";
 	}
 };
 
@@ -12022,97 +12027,6 @@ ShaderCode.parseShaderLab = function( code )
 LS.ShaderCode = ShaderCode;
 LS.registerResourceClass( ShaderCode );
 
-// now some shadercode examples that could be helpful
-
-//Example code for a shader (used in editor) **************************************************
-ShaderCode.examples = {};
-
-ShaderCode.examples.fx = "\n\
-\\fx.fs\n\
-	precision highp float;\n\
-	\n\
-	uniform float u_time;\n\
-	uniform vec4 u_viewport;\n\
-	uniform sampler2D u_texture;\n\
-	varying vec2 v_coord;\n\
-	void main() {\n\
-		gl_FragColor = texture2D( u_texture, v_coord );\n\
-	}\n\
-";
-
-ShaderCode.examples.color = "\n\
-\n\
-\\js\n\
-//define exported uniforms from the shader (name, uniform, widget)\n\
-this.createUniform(\"Number\",\"u_number\",\"number\");\n\
-this.createSampler(\"Texture\",\"u_texture\");\n\
-\n\
-\\color.vs\n\
-\n\
-precision mediump float;\n\
-attribute vec3 a_vertex;\n\
-attribute vec3 a_normal;\n\
-attribute vec2 a_coord;\n\
-\n\
-//varyings\n\
-varying vec3 v_pos;\n\
-varying vec3 v_normal;\n\
-varying vec2 v_uvs;\n\
-\n\
-//matrices\n\
-uniform mat4 u_model;\n\
-uniform mat4 u_normal_model;\n\
-uniform mat4 u_view;\n\
-uniform mat4 u_viewprojection;\n\
-\n\
-//globals\n\
-uniform float u_time;\n\
-uniform vec4 u_viewport;\n\
-uniform float u_point_size;\n\
-\n\
-//camera\n\
-uniform vec3 u_camera_eye;\n\
-void main() {\n\
-	\n\
-	vec4 vertex4 = vec4(a_vertex,1.0);\n\
-	v_normal = a_normal;\n\
-	v_uvs = a_coord;\n\
-	\n\
-	//vertex\n\
-	v_pos = (u_model * vertex4).xyz;\n\
-	//normal\n\
-	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
-	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
-}\n\
-\n\
-\\color.fs\n\
-\n\
-precision mediump float;\n\
-//varyings\n\
-varying vec3 v_pos;\n\
-varying vec3 v_normal;\n\
-varying vec2 v_uvs;\n\
-//globals\n\
-uniform vec3 u_camera_eye;\n\
-uniform vec4 u_clipping_plane;\n\
-uniform float u_time;\n\
-uniform vec3 u_background_color;\n\
-uniform vec3 u_ambient_light;\n\
-\n\
-uniform float u_number;\n\
-uniform sampler2D u_texture;\n\
-\n\
-//material\n\
-uniform vec4 u_material_color; //color and alpha\n\
-void main() {\n\
-	vec3 N = normalize( v_normal );\n\
-	vec3 L = vec3( 0.577, 0.577, 0.577 );\n\
-	vec4 color = u_material_color;\n\
-	color.xyz *= max(0.0, dot(N,L) );\n\
-	gl_FragColor = color;\n\
-}\n\
-\n\
-";
 if(typeof(LiteGraph) != "undefined")
 {
 	/* Scene LNodes ***********************/
@@ -15307,6 +15221,8 @@ function RenderInstance( node, component )
 	this.query = new LS.ShaderQuery();
 	this.uniforms = {};
 	this.samplers = [];
+
+	this.shader_block_flags = 0;
 	this.shader_blocks = [];
 
 	this.picking_node = null; //for picking
@@ -15548,6 +15464,9 @@ RenderInstance.prototype.render = function(shader)
 
 RenderInstance.prototype.addShaderBlock = function( block, uniforms )
 {
+	if( block.flag_mask & this.shader_block_flags && uniforms === undefined )
+		return;
+
 	for(var i = 0; i < this.shader_blocks.length; ++i)
 	{
 		if(!this.shader_blocks[i])
@@ -15560,11 +15479,15 @@ RenderInstance.prototype.addShaderBlock = function( block, uniforms )
 		}
 	}
 	this.shader_blocks.push( { block: block, uniforms: uniforms } );
+	this.shader_block_flags |= block.flag_mask;
 	return this.shader_blocks.length - 1;
 }
 
 RenderInstance.prototype.removeShaderBlock = function( block )
 {
+	if( ! (block.flag_mask & this.shader_block_flags) )
+		return;
+
 	for(var i = 0; i < this.shader_blocks.length; ++i)
 	{
 		if(!this.shader_blocks[i])
@@ -15573,6 +15496,7 @@ RenderInstance.prototype.removeShaderBlock = function( block )
 			continue;
 
 		this.shader_blocks.splice(i,1);
+		this.shader_block_flags &= ~block.flag_mask;
 		break;
 	}
 }
@@ -15580,6 +15504,9 @@ RenderInstance.prototype.removeShaderBlock = function( block )
 //checks the shader blocks attached to this instance and resolves the flags
 RenderInstance.prototype.computeShaderBlockFlags = function()
 {
+	return this.shader_block_flags;
+
+	/*
 	var r = 0;
 	for(var i = 0; i < this.shader_blocks.length; ++i)
 	{
@@ -15590,6 +15517,7 @@ RenderInstance.prototype.computeShaderBlockFlags = function()
 		r |= block.flag_mask;
 	}
 	return r;
+	*/
 }
 
 /*
@@ -26901,7 +26829,7 @@ SkinDeformer.skinning_shader_code = "\n\
 	}\n\
 ";
 
-SkinDeformer.skinning_enabled_shader_code = "\n#pragma shaderblock skinning_mode\n";
+SkinDeformer.skinning_enabled_shader_code = "\n#pragma shaderblock skinning_mode\n#define USING_SKINNING\n";
 SkinDeformer.skinning_disabled_shader_code = "\nvoid applySkinning( inout vec4 position, inout vec3 normal) {}\n";
 
 // ShaderBlocks used to inject to shader in runtime
@@ -39422,6 +39350,17 @@ SceneTree.prototype.load = function( url, on_complete, on_error, on_progress, on
 		url += (url.indexOf("?") == -1 ? "?" : "&") + nocache;
 
 	var extension = LS.ResourcesManager.getExtension( url );
+
+	//very special case from the editor, trying to load from a URL that comes from a player.html
+	if(extension == "html" && LS.ResourcesManager.getFilename(url) == "player.html" )
+	{
+		var index = url.indexOf("url=");
+		var index2 = url.indexOf("&",index);
+		url = decodeURIComponent( url.substr(index + 4, index2 - index - 4) );
+		extension = LS.ResourcesManager.getExtension( url );
+		if(nocache)
+			url += (url.indexOf("?") == -1 ? "?" : "&") + nocache;
+	}
 
 	LS.Network.request({
 		url: url,

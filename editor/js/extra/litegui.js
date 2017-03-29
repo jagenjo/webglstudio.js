@@ -1164,6 +1164,21 @@ var LiteGUI = {
 	}
 };
 
+//low quality templating system
+Object.defineProperty( String.prototype, "template", {
+	value: function( data, eval_code )
+	{
+		var tpl = this;
+		var re = /{{([^}}]+)?}}/g, match;
+	    while(match = re.exec(tpl)) {
+			var str = eval_code ? (new Function("with(this) { try { return " + match[1] +"} catch(e) { return '';} }")).call(data) : data[match[1]];
+		    tpl = tpl.replace(match[0], str);
+	    }
+	    return tpl;		
+	},
+	enumerable: false
+});
+
 
 function purgeElement(d, skip) {
     var a = d.attributes, i, l, n;
@@ -1184,17 +1199,6 @@ function purgeElement(d, skip) {
             purgeElement(d.childNodes[i]);
         }
     }
-
-	/*
-	if(!skip)
-	{
-		for (i in d) {
-			if (typeof d[i] === 'function') {
-				d[i] = null;
-			}
-		}
-	}
-	*/
 }
 
 //useful functions

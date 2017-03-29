@@ -661,7 +661,7 @@ var SceneStorageModule = {
 		widgets.widgets_per_row = 1;
 
 		if(LS.GlobalScene.extra.fullpath)
-			widgets.addInfo("Link", "<a href='" + window.location.origin + window.location.pathname + LS.RM.getFullURL( LS.GlobalScene.extra.fullpath ) + "' target='_blank'>full link</a>");
+			widgets.addInfo("Links", "<a href='" + window.location.origin + window.location.pathname + LS.RM.getFullURL( LS.GlobalScene.extra.fullpath ) + "' target='_blank'>Scene data link</a>");
 
 		widgets.addButton(null,"Publish", { className:"big", callback: inner_publish });
 		widgets.addButton(null,"Download PACK", { callback: inner_download });

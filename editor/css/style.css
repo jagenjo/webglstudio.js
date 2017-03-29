@@ -28,6 +28,34 @@
 	background-color: #FF0000;
 }
 
+#loader-dialog {
+	width: 300px;
+	height: 200px;
+	position: absolute;
+	top: calc( 50% - 150px );
+	left: calc( 50% - 200px );
+	background-color: #111;
+	text-align: center;
+}
+
+#loader-dialog .title {
+	height: 100px;
+}
+
+#loader-dialog .loader {
+	height: 2px;
+	background-color: black;
+}
+
+#loader-dialog .log {
+	padding: 0.5em;
+	height: 96px;
+	overflow: auto;
+	opacity: 0.5;
+	border-top: 2px solid black;
+}
+
+
 /* menubar */
 #mainmenubar > ul {
 	padding-top: 4px;

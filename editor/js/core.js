@@ -70,6 +70,7 @@ var CORE = {
 	//Loads all the files ***********************
 	loadImports: function( imports_info )
 	{
+		var that = this;
 		if(!imports_info || !imports_info.imports)
 		{
 			LiteGUI.alert("imports.json not found");
@@ -78,6 +79,8 @@ var CORE = {
 
 		var imports_list = imports_info.imports;
 		this.config.imports = imports_info;
+
+		this.showLoadingPopup( imports_list );
 
 		//intro loading text
 		this.log("Loading imports...");
@@ -103,9 +106,7 @@ var CORE = {
 		//one module loaded
 		function onProgress( name, num )
 		{
-			var elem = document.querySelector( "#msg-import-" + num + ".tinybox" );
-			if(elem)
-				elem.classList.add("ok");
+			that.onImportLoaded( name, num );
 		}
 
 		//one module loaded
@@ -120,7 +121,8 @@ var CORE = {
 
 		function onReady()
 		{
-			CORE.launch();
+			that.log("Loading done",true);
+			setTimeout(function(){ CORE.launch(); },500 );
 		}
 	},
 
@@ -354,11 +356,50 @@ var CORE = {
 	},
 
 	//show in launching console ******************
-	log: function( msg )
+	log: function( msg, scroll )
 	{
 		var e = document.createElement("p");
 		e.innerHTML = msg;
 		e.className = "startup-console-msg";
-		this.root.appendChild(e);
+		var root = this.log_container || this.root;
+		root.appendChild(e);
+		if(scroll)
+			root.scrollTop = 100000;
+	},
+
+	showLoadingPopup: function( imports )
+	{
+		var num = 0;
+		for(var i in imports)
+			num++;
+		var element = document.createElement("div");
+		element.id = "loader-dialog";
+		element.innerHTML = "<div class='title'><img src='imgs/webglstudio-icon.png' /></div><div class='loader'></div><div class='log'></div>";
+		this.log_container = element.querySelector(".log");
+		this.root.appendChild(element);
+		element.info = {
+			title: element.querySelector(".title"),
+			loader: element.querySelector(".loader"),
+			current: 0,
+			total: num,
+			progress: 0
+		}
+		this.loader_dialog = element;
+	},
+
+	onImportLoaded: function( name, num )
+	{
+		var elem = document.querySelector( "#msg-import-" + num + ".tinybox" );
+		if(!elem)
+			return;
+		elem.classList.add("ok");
+		this.log_container.scrollTop += elem.offsetTop;
+		var info = this.loader_dialog.info;
+		info.current++;
+		info.progress = info.current / info.total;
+		var f = (info.progress * 100).toFixed(0);
+		var f2 = (info.progress * 100 + 5).toFixed(0);
+		info.loader.style.backgroundImage = "-webkit-linear-gradient( left, #AAA, cyan "+f+"%, black "+f2+"%)";
+		info.loader.style.backgroundImage = "-moz-linear-gradient( left, #AAA, cyan "+f+"%, black "+f2+"%)";
 	}
 }

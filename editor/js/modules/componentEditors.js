@@ -825,44 +825,57 @@ LS.Components.SceneInclude["@inspector"] = function( component, inspector )
 
 LS.Components.Poser["@inspector"] = function( component, inspector)
 {
-	inspector.addButton(null,"Edit pose nodes", { callback: function(e){
-		LS.Components.Poser.showPoseNodesDialog( component, e );
+	inspector.addInfo("Nodes posed", component.base_nodes.length );
+	inspector.addButtons(null,["Edit pose nodes","Set to Children"], { callback: function(v,e){
+		if(v == "Edit pose nodes")
+			LS.Components.Poser.showPoseNodesDialog( component, e );
+		else
+			component.setChildrenAsBaseNodes(true);
+		inspector.refresh();
 	}});
 
-	if( component.poses.length )
-	{
-		inspector.widgets_per_row = 3;
-		for(var i = 0; i < component.poses.length; i++)
+	var poses = [];
+	for(var i in component.poses)
+		poses.push(i);
+
+	if(!component._selected)
+		component._selected = poses[0];
+	
+	inspector.addCombo("Pose", component._selected ,{values: poses, callback: function(v){
+		component._selected = v;
+	}});
+
+	inspector.addButtons(null,["Apply","Overwrite","Delete"], function(v){
+		if(!component._selected)
+			return;
+		var pose_name = component._selected;
+		var pose = component.poses[ pose_name ];
+		if(!pose)
+			return;
+		if(v == "Apply")
+			component.applyPose( pose_name );
+		else if( v == "Overwrite")
+			component.updatePose( pose_name );
+		else if( v == "Delete" )
 		{
-			var pose = component.poses[i];
-
-			inspector.addString("", pose.name, { name_width: 20, align: "right", width: "60%", pose_index: i, callback: function(v) { 
-				if(!v)
-					return;
-				var pose = component.poses[ this.options.pose_index ];
-				if(pose)
-					pose.name = String(v);
-				LS.GlobalScene.refresh();
-			}});
-
-			inspector.addNumber("", pose.weight, { pretitle: AnimationModule.getKeyframeCode( component, "pose/"+i+"/weight" ), name_width: 20, width: "25%", step: 0.01, pose_index: i, callback: function(v) { 
-				var pose = component.poses[ this.options.pose_index ];
-				if(pose)
-					pose.weight = v;
-				LS.GlobalScene.refresh();
-			}});
-
-			inspector.addButton(null, "<img src='imgs/mini-icon-trash.png'/>", { width: "15%", index: i, callback: function() { 
-				component.morph_targets.splice( this.options.index, 1);
-				inspector.refresh();
-				LS.GlobalScene.refresh();
-			}});
+			component.removePose( pose_name );
+			component._selected = null;
 		}
-		inspector.widgets_per_row = 1;
-	}
+		inspector.refresh();
+		LS.GlobalScene.requestFrame();
+	});
 
-	inspector.addButton(null,"Add Pose", { callback: function() { 
-		//component.poses.push({ mesh:"", weight: 0.0 });
+	inspector.addSeparator();
+
+	var new_pose_name = "";
+
+	inspector.addStringButton( "New Pose", new_pose_name, { callback: function(v) { 
+		new_pose_name = v;
+	}, callback_button: function(){
+		if(!new_pose_name)
+			return;
+		component.addPose( new_pose_name );
+		component._selected = new_pose_name;
 		inspector.refresh();
 	}});
 }
@@ -894,10 +907,17 @@ LS.Components.Poser.showPoseNodesDialog = function( component, event )
 			selected = v;
 		}});
 
-		widgets.addButtons(null,["Add All"],{
+		widgets.addButtons(null,["Remove Selected"],{
 			callback: function(v){
-			
+				component.removeBaseNode( selected );
+				widgets.refresh();
 			}
+		});
+		widgets.addSeparator();
+		widgets.addButton(null, "Add current scene selected node", function(){
+			var node = SelectionModule.getSelectedNode();
+			component.addBaseNode( node );
+			widgets.refresh();
 		});
 	}
 

@@ -5,12 +5,6 @@
 
 (function(global){
 
-/**
-* The static module that contains all the features
-* @module GL
-* @namespace GL
-* @class GL
-*/
 var GL = global.GL = {};
 
 
@@ -517,6 +511,14 @@ global.processFileAtlas = GL.processFileAtlas = function(data, skip_trim)
 	return files;
 }
 
+global.typedArrayToArray = function(array)
+{
+	var r = [];
+	r.length = array.length;
+	for(var i = 0; i < array.length; i++)
+		r[i] = array[i];
+	return r;
+}
 
 global.hexColorToRGBA = (function() {
 	//to change the color: from http://www.w3schools.com/cssref/css_colorsfull.asp
@@ -7392,10 +7394,19 @@ Shader.getFlatShader = function(gl)
 }
 
 /**
+* The global scope that contains all the classes from LiteGL and also all the enums of WebGL so you dont need to create a context to use the values.
+* @class GL
+*/
+
+/**
 * creates a new WebGL context (it can create the canvas or use an existing one)
 * @method create
-* @param {Object} options supported are: width, height, canvas
-* @return {gl} gl context for webgl
+* @param {Object} options supported are: 
+* - width
+* - height
+* - canvas
+* - container (string or element)
+* @return {WebGLRenderingContext} webgl context with all the extra functions (check gl in the doc for more info)
 */
 GL.create = function(options) {
 	options = options || {};

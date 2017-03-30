@@ -1171,7 +1171,7 @@ Object.defineProperty( String.prototype, "template", {
 		var tpl = this;
 		var re = /{{([^}}]+)?}}/g, match;
 	    while(match = re.exec(tpl)) {
-			var str = eval_code ? (new Function("with(this) { try { return " + match[1] +"} catch(e) { return '';} }")).call(data) : data[match[1]];
+			var str = eval_code ? (new Function("with(this) { try { return " + match[1] +"} catch(e) { return 'error';} }")).call(data) : data[match[1]];
 		    tpl = tpl.replace(match[0], str);
 	    }
 	    return tpl;		

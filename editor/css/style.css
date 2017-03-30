@@ -52,7 +52,8 @@
 	height: 96px;
 	overflow: auto;
 	opacity: 0.5;
-	border-top: 2px solid black;
+	margin-top: 6px ;
+	background-color: black;
 }
 
 

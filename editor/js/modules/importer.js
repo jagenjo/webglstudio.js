@@ -162,9 +162,15 @@ var ImporterModule  = {
 
 		var reader = new FileReader();
 		reader.onload = function(e) {
+			file.data = e.target.result;
+			if(file.data == "" && file.size > 100000) //any number should work
+			{
+				LiteGUI.alert("File load error, it seems the file was too big to be loaded in memory by your browser.");
+				return;
+			}
+
 			try
 			{
-				file.data = e.target.result;
 				if(callback)
 					callback(file,options);
 			}
@@ -176,6 +182,10 @@ var ImporterModule  = {
 		reader.onerror = function(err)
 		{
 			console.error(err);
+		}
+		reader.onprogress = function(e)
+		{
+			console.log(e);
 		}
 
 		var extension = LS.ResourcesManager.getExtension( file.name ).toLowerCase();

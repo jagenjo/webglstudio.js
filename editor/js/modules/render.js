@@ -169,7 +169,6 @@ var RenderModule = {
 		this.viewports.length = 0;
 		this.cameras.length = 0;
 		this.viewports_mode = mode;
-		console.log( mode );
 
 		//create new ones
 		if(mode == 2)

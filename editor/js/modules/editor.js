@@ -158,6 +158,7 @@ var EditorModule = {
 			CodingModule.onNewScript(); 
 			EditorModule.refreshAttributes();
 		}});
+		mainmenu.add("Node/Create from JSON", { callback: function() { EditorModule.showCreateFromJSONDialog(); }} );
 		mainmenu.add("Node/Check JSON", { callback: function() { EditorModule.checkJSON( SelectionModule.getSelectedNode() ); }} );
 
 		//mainmenu.add("View/Default material properties", { callback: function() { EditorModule.inspectInDialog( LS.Renderer.default_material ); }});
@@ -1006,7 +1007,7 @@ var EditorModule = {
 
 		var data = node.serialize();
 		data.uid = null; //remove UID
-		data._object_type = LS.getObjectClassName(node);
+		data._object_class = LS.getObjectClassName(node);
 		LiteGUI.toClipboard( data );
 	},
 
@@ -1014,7 +1015,7 @@ var EditorModule = {
 		var data = LiteGUI.getLocalClipboard();
 		if( !data )
 			return;
-		if(data._object_type != "SceneNode")
+		if(data._object_class != "SceneNode")
 			return;
 
 		data.uid = null; //remove UID
@@ -1033,7 +1034,7 @@ var EditorModule = {
 	copyComponentToClipboard: function(component) {
 		CORE.userAction( "component_changed", component );
 		var data = component.serialize();
-		data._object_type = LS.getObjectClassName(component);
+		data._object_class = LS.getObjectClassName(component);
 		data.uid = null; //remove UID
 		LiteGUI.toClipboard( data );
 	},
@@ -1054,10 +1055,10 @@ var EditorModule = {
 	{
 		CORE.userAction("node_changed", node);
 		var data = LiteGUI.getLocalClipboard();
-		if(!data || !data._object_type)
+		if(!data || !data._object_class)
 			return;
 		data.uid = null; //remove UID
-		var component = new LS.Components[ data._object_type ]();
+		var component = new LS.Components[ data._object_class ]();
 		node.addComponent(component);
 		component.configure(data); 
 		EditorModule.inspect(node); //update interface
@@ -1079,7 +1080,7 @@ var EditorModule = {
 	{
 		DriveModule.showSelectFolderFilenameDialog( "component.COMP.json", function( folder, filename, fullpath ){
 			var data = component.serialize();
-			data.object_type = LS.getObjectClassName( component );
+			data.object_class = LS.getObjectClassName( component );
 			data.is_data = true;
 			delete data.uid;
 			var res = new LS.Resource();
@@ -1935,6 +1936,54 @@ var EditorModule = {
 		{
 			selected_component = value.component;
 		}
+	},
+
+	showCreateFromJSONDialog: function()
+	{
+		var dialog = new LiteGUI.Dialog( {title:"from JSON", close: true, minimize: true, width: 400, height: 620, scroll: false, draggable: true});
+		dialog.show('fade');
+
+		var widgets = new LiteGUI.Inspector();
+		dialog.add(widgets);
+
+		var json = null;
+
+		widgets.addInfo(null,"Paste a JSON code of a node here.");
+		widgets.addTextarea(null,"", { height: 500, callback: function(v){
+			try
+			{
+				json = JSON.parse(v);
+			}
+			catch (err)
+			{
+				LiteGUI.alert("There are errors in the JSON");
+			}
+		}});
+		widgets.addButton(null,"Create", function(v){
+			if(!json)
+				return;
+
+			var node = null;
+
+			if(json.components) //is node
+			{
+				node = new LS.SceneNode();
+				node.configure( json );
+				EditorModule.getAddRootNode().addChild( node );
+			}
+			else if(json.object_class && LS.Components[ json.object_class ] )//in component
+			{
+				node = SelectionModule.getSelectedNode();
+				var component = new LS.Components[ json.object_class ]();
+				component.configure( json );
+				node.addComponent(component);
+			}
+
+			LS.GlobalScene.requestFrame();
+			dialog.close();
+		});
+
+		dialog.adjustSize(10);
 	},
 
 	getComponentIconHTML: function( component )

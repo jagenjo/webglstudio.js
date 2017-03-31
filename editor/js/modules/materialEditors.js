@@ -157,7 +157,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 		{
 			if(typeof(material) == "object")
 			{
-				material.object_type = LS.getObjectClassName(material);
+				material.object_class = LS.getObjectClassName(material);
 				LiteGUI.toClipboard( material.serialize() );
 			}
 			else
@@ -171,10 +171,10 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 			var material = data;
 			if( material.type == "value" )
 				material = material.data;
-			else if( LS.MaterialClasses[ material.object_type ] )
+			else if( LS.MaterialClasses[ material.object_class ] )
 			{
-				material = new LS.MaterialClasses[ material.object_type ]();
-				delete data["object_type"];
+				material = new LS.MaterialClasses[ material.object_class ]();
+				delete data["object_class"];
 				material.configure(data);
 				material.loadTextures();
 			}
@@ -209,10 +209,10 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 				resource = material.clone();
 				delete resource.filename;
 				delete resource.fullpath;
-				resource.object_type = LS.getObjectClassName( resource );
+				resource.object_class = LS.getObjectClassName( resource );
 			}
 			else
-				resource.object_type = LS.getObjectClassName( node.material );
+				resource.object_class = LS.getObjectClassName( node.material );
 
 			resource.updatePreview( DriveModule.preview_size || 256 );
 

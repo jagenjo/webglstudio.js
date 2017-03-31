@@ -334,7 +334,7 @@ var DriveModule = {
 			return resource.getCategory();
 		if(resource.constructor.is_material)
 			return "Material";
-		var type = resource.object_type || resource.category || LS.getObjectClassName( resource );
+		var type = resource.object_class || resource.category || LS.getObjectClassName( resource );
 		if(type == "Object") //in server_side resources that dont have category
 			type = LS.Formats.guessType( resource.fullpath || resource.filename );
 		if(!type)
@@ -456,7 +456,7 @@ var DriveModule = {
 			return;
 
 		var preview_url = resource._preview_url || LFS.getPreviewPath( fullpath );
-		var category = resource.category || resource.object_type;
+		var category = resource.category || resource.object_class;
 		if(resource.getCategory)
 			category = resource.getCategory();
 
@@ -634,7 +634,7 @@ var DriveModule = {
 		}});
 
 		inspector.addButtons(null,["Load","Unload"], {callback: function(v){
-			var restype = resource.category || resource.object_type;
+			var restype = resource.category || resource.object_class;
 			if(v == "Load")
 				DriveModule.loadResource( resource.fullpath, null, true );
 			else
@@ -1774,7 +1774,7 @@ var DriveModule = {
 		resource.id = parseInt(resource.id);
 		resource.fullpath = resource.folder + "/" + resource.filename;
 		resource.url = CORE.server_url + "resources/" + resource.fullpath;
-		resource.object_type = resource.category;
+		resource.object_class = resource.category;
 		if(resource.metadata)
 			resource.metadata = JSON.parse( resource.metadata );
 		else
@@ -2580,7 +2580,7 @@ DriveModule.registerAssignResourceCallback("component", function( fullpath, rest
 		var comp_data = resource.data;
 		if(comp_data.constructor === String)
 			comp_data = JSON.parse( comp_data );
-		var class_name = comp_data.object_type;
+		var class_name = comp_data.object_class;
 		if(!class_name || !LS.Components[ class_name ] )
 			LiteGUI.alert("Unknown object class type: " + class_name );
 		else

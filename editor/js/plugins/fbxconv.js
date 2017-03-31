@@ -116,7 +116,7 @@ var parserG3DJ = {
 		console.log( scene_g3 ); 
 
 		var scene = {
-			object_type: "SceneNode",
+			object_class: "SceneNode",
 			root: {},
 			meshes: {},
 			renames: {},
@@ -217,7 +217,7 @@ var parserG3DJ = {
 		}
 
 		var mesh = {
-			object_type: "Mesh",
+			object_class: "Mesh",
 			name: "MESH_" + (this._last_mesh_id++),
 			info: { groups: [] }
 		};
@@ -378,7 +378,7 @@ var parserG3DJ = {
 	processMaterial: function( material )
 	{
 		material.name = material.id + ".json";
-		material.object_type = "StandardMaterial";
+		material.object_class = "StandardMaterial";
 
 		if(material.transparency)
 		{

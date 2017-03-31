@@ -886,6 +886,14 @@ var LS = {
 			LS.extendClass( component, LS.Component );
 			Component.addExtraMethods( component );
 
+			if( LS.debug )
+			{
+				var c = new component();
+				var r = c.serialize();
+				if(!r.object_class)
+					console.warn("%c Component "+name+" could have a bug, serialize() method has object_class missing.", "font-size: 1.2em");
+			}
+
 			//event
 			LEvent.trigger(LS, "component_registered", component ); 
 		}
@@ -2925,8 +2933,8 @@ var ResourcesManager = {
 	{
 		if(!resource)
 			return null;
-		if(resource.object_type)
-			return resource.object_type;
+		if(resource.object_class)
+			return resource.object_class;
 		if(resource.constructor.resource_type)
 			return resource.constructor.resource_type;
 		return LS.getObjectClassName( resource );
@@ -3218,7 +3226,7 @@ var ResourcesManager = {
 		//this.resources_being_loaded[url] = [];
 		this.resources_being_processed[url] = true;
 
-		//no extension, then or it is a JSON, or an object with object_type or a WBin
+		//no extension, then or it is a JSON, or an object with object_class or a WBin
 		if(!extension)
 			return this.processDataResource( url, data, options, process_final );
 
@@ -3370,9 +3378,9 @@ var ResourcesManager = {
 		//resource.fullpath = filename; //fullpath only if they are in the server
 
 		//Compute resource type
-		if(!resource.object_type)
-			resource.object_type = LS.getObjectClassName( resource );
-		var type = resource.object_type;
+		if(!resource.object_class)
+			resource.object_class = LS.getObjectClassName( resource );
+		var type = resource.object_class;
 		if(resource.constructor.resource_type)
 			type = resource.constructor.resource_type;
 
@@ -3722,11 +3730,23 @@ LS.ResourcesManager.registerResourcePreProcessor("wbin", function( filename, dat
 LS.ResourcesManager.registerResourcePreProcessor("json", function(filename, data, options) {
 	var resource = data;
 	if( data.constructor === String )
-		data = JSON.parse( data );
-
-	if( data.object_type && !data.is_data )
 	{
-		var ctor = LS.Classes[ data.object_type ] || window[ data.object_type ];
+		try
+		{
+			data = JSON.parse( data );
+		}
+		catch (err)
+		{
+			console.error("invalid JSON");
+			return null;
+		}
+	}
+
+	var class_name = data.object_class || data.object_type; //object_type for LEGACY
+
+	if( class_name && !data.is_data )
+	{
+		var ctor = LS.Classes[ class_name ] || window[ class_name ];
 		if(ctor)
 		{
 			if(ctor.prototype.configure)
@@ -3739,7 +3759,7 @@ LS.ResourcesManager.registerResourcePreProcessor("json", function(filename, data
 		}
 		else
 		{
-			console.error( "JSON object_type class not found: " + data.object_type );
+			console.error( "JSON object_class class not found: " + data.object_class );
 			return null;
 		}
 	}
@@ -3796,7 +3816,7 @@ LS.ResourcesManager.processDataResource = function( url, data, options, callback
 	}
 
 	//JS OBJECT?
-	var class_name = data.object_type;
+	var class_name = data.object_class;
 	if(class_name && LS.Classes[class_name] )
 	{
 		var ctor = LS.Classes[class_name];
@@ -4024,7 +4044,7 @@ LS.ResourcesManager.processScene = function( filename, data, options ) {
 
 LS.ResourcesManager.registerResourcePostProcessor("Mesh", function(filename, mesh ) {
 
-	mesh.object_type = "Mesh"; //useful
+	mesh.object_class = "Mesh"; //useful
 	if(mesh.metadata)
 	{
 		mesh.metadata = {};
@@ -5340,7 +5360,7 @@ GL.Mesh.prototype.toBinary = function()
 
 	//clean data
 	var o = {
-		object_type: "Mesh",
+		object_class: "Mesh",
 		info: this.info,
 		groups: this.groups
 	};
@@ -7936,7 +7956,13 @@ ComponentContainer.prototype.serializeComponents = function( o )
 		if(comp.hasOwnProperty("_uid") && !obj.uid)
 			obj.uid = comp.uid;
 
-		o.components.push([LS.getObjectClassName(comp), obj]);
+		var object_class = LS.getObjectClassName(comp);
+		if(LS.debug && object_class != obj.object_class )
+			console.warn("Component serialize without object_class:",object_class);
+		if(!obj.object_class)
+			obj.object_class = object_class; //enforce
+		
+		o.components.push([ object_class, obj ]);
 	}
 
 	if(this._missing_components && this._missing_components.length)
@@ -8818,6 +8844,8 @@ Component.prototype.serialize = function()
 	var o = LS.cloneObject(this);
 	if(this.uid) //special case, not enumerable
 		o.uid = this.uid;
+	if(!o.object_class)
+		o.object_class = LS.getObjectClassName( this );
 	return o;
 }
 
@@ -11168,7 +11196,7 @@ Prefab.createPrefab = function( filename, node_data, resource_names_list )
 	resource_names_list = resource_names_list || [];
 
 	//LS.clearUIds( node_data ); //remove uids of nodes and components
-	node_data.object_type = "SceneNode";
+	node_data.object_class = "SceneNode";
 
 	var prefab = new LS.Prefab();
 	var ext = LS.ResourcesManager.getExtension(filename);
@@ -15195,7 +15223,7 @@ function RenderInstance( node, component )
 	this.index_buffer = null;
 	this.wireframe_index_buffer = null;
 	this.range = new Int32Array([0,-1]); //start, offset
-	this.primitive = gl.TRIANGLES;
+	this.primitive = GL.TRIANGLES;
 
 	this.mesh = null; //shouldnt be used (buffers are added manually), but just in case
 	this.collision_mesh = null; //in case of raycast
@@ -20386,6 +20414,7 @@ Transform.prototype.configure = function(o)
 Transform.prototype.serialize = function()
 {
 	return {
+		object_class: "Transform",
 		uid: this.uid,
 		position: [ this._position[0],this._position[1],this._position[2] ],
 		rotation: [ this._rotation[0],this._rotation[1],this._rotation[2],this._rotation[3] ],
@@ -22715,6 +22744,7 @@ Camera.prototype.configure = function(o)
 Camera.prototype.serialize = function()
 {
 	var o = {
+		object_class: "Camera",
 		uid: this.uid,
 		layers: this.layers,
 		enabled: this.enabled,
@@ -22901,6 +22931,7 @@ CameraFX.prototype.configure = function(o)
 CameraFX.prototype.serialize = function()
 {
 	return { 
+		object_class: "CameraFX",
 		enabled: this.enabled,
 		use_antialiasing: this.use_antialiasing,
 		frame: this.frame.serialize(),
@@ -23112,6 +23143,7 @@ FrameFX.prototype.configure = function(o)
 FrameFX.prototype.serialize = function()
 {
 	return { 
+		object_class: "FrameFX",
 		enabled: this.enabled,
 		uid: this.uid,
 		frame: this.frame.serialize(),
@@ -24900,6 +24932,7 @@ MeshRenderer.prototype.configure = function(o)
 MeshRenderer.prototype.serialize = function()
 {
 	var o = { 
+		object_class: "MeshRenderer",
 		enabled: this.enabled,
 		uid: this.uid,
 		mesh: this.mesh,
@@ -25261,7 +25294,7 @@ function SkinnedMeshRenderer(o)
 	//this.factor = 1;
 
 	//check how many floats can we put in a uniform
-	if(!SkinnedMeshRenderer.num_supported_uniforms)
+	if(!SkinnedMeshRenderer.num_supported_uniforms && global.gl )
 	{
 		SkinnedMeshRenderer.num_supported_uniforms = gl.getParameter( gl.MAX_VERTEX_UNIFORM_VECTORS );
 		SkinnedMeshRenderer.num_supported_textures = gl.getParameter( gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS );
@@ -25354,6 +25387,7 @@ SkinnedMeshRenderer.prototype.configure = function(o)
 SkinnedMeshRenderer.prototype.serialize = function()
 {
 	var o = { 
+		object_class: "SkinnedMeshRenderer",
 		enabled: this.enabled,
 		apply_skinning: this.apply_skinning,
 		cpu_skinning: this.cpu_skinning,
@@ -25685,10 +25719,13 @@ function MorphDeformer(o)
 
 	this.morph_targets = [];
 
-	if(MorphDeformer.max_supported_vertex_attribs === undefined)
-		MorphDeformer.max_supported_vertex_attribs = gl.getParameter( gl.MAX_VERTEX_ATTRIBS );
-	if(MorphDeformer.max_supported_morph_targets === undefined)
-		MorphDeformer.max_supported_morph_targets = (gl.getParameter( gl.MAX_VERTEX_ATTRIBS ) - 6) / 2;
+	if(global.gl)
+	{
+		if(MorphDeformer.max_supported_vertex_attribs === undefined)
+			MorphDeformer.max_supported_vertex_attribs = gl.getParameter( gl.MAX_VERTEX_ATTRIBS );
+		if(MorphDeformer.max_supported_morph_targets === undefined)
+			MorphDeformer.max_supported_morph_targets = (gl.getParameter( gl.MAX_VERTEX_ATTRIBS ) - 6) / 2;
+	}
 
 	if(o)
 		this.configure(o);
@@ -26402,7 +26439,7 @@ function SkinDeformer( o )
 	//this._skinning_mode = 0;
 
 	//check how many floats can we put in a uniform
-	if(!SkinDeformer._initialized)
+	if(!SkinDeformer._initialized && global.gl )
 	{
 		SkinDeformer.num_supported_uniforms = gl.getParameter( gl.MAX_VERTEX_UNIFORM_VECTORS );
 		SkinDeformer.num_supported_textures = gl.getParameter( gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS );
@@ -27890,12 +27927,15 @@ function SceneInclude( o )
 	this._scene_path = null;
 	this._scene_is_ready = false;
 
-	this._scene = new LS.SceneTree();
-	this._scene.root.removeAllComponents();
-	LEvent.bind( this._scene, "requestFrame", function(){ 
-		if(this._root.scene)
-			this._root.scene.requestFrame();
-	}, this );
+	if( LS.SceneTree ) //this is because in some cases (debug mode) this component will be registered before the SceneTree exists
+	{
+		this._scene = new LS.SceneTree();
+		this._scene.root.removeAllComponents();
+		LEvent.bind( this._scene, "requestFrame", function(){ 
+			if(this._root.scene)
+				this._root.scene.requestFrame();
+		}, this );
+	}
 
 	if(o)
 		this.configure(o);
@@ -28237,6 +28277,7 @@ AnnotationComponent.prototype.getObjectCenter = function()
 AnnotationComponent.prototype.serialize = function()
 {
 	var o = {
+		object_class: "AnnotationComponent",
 		text: this.text,
 		notes: [],
 		start_position: this.start_position
@@ -29468,6 +29509,7 @@ GraphComponent.prototype.configure = function(o)
 GraphComponent.prototype.serialize = function()
 {
 	return { 
+		object_class: "GraphComponent",
 		uid: this.uid,
 		enabled: this.enabled, 
 		force_redraw: this.force_redraw , 
@@ -29653,7 +29695,7 @@ function FXGraphComponent(o)
 		this._graph_frame_node.connect(0, this._graph_viewport_node );
 	}
 
-	if(FXGraphComponent.high_precision_format == null)
+	if(FXGraphComponent.high_precision_format == null && global.gl)
 	{
 		if(gl.half_float_ext)
 			FXGraphComponent.high_precision_format = gl.HALF_FLOAT_OES;
@@ -29724,6 +29766,7 @@ FXGraphComponent.prototype.configure = function(o)
 FXGraphComponent.prototype.serialize = function()
 {
 	return {
+		object_class: "FXGraphComponent",
 		uid: this.uid,
 		enabled: this.enabled,
 		use_antialiasing: this.use_antialiasing,
@@ -30150,7 +30193,8 @@ function ParticleEmissor(o)
 	this._min_particle_size = 0.001;
 	this._last_id = 0;
 
-	this.createMesh();
+	if(global.gl)
+		this.createMesh();
 
 	
 	/* demo particles
@@ -30909,7 +30953,9 @@ function PointCloud(o)
 	}
 	*/
 
-	this.createMesh();
+	if(global.gl)
+		this.createMesh();
+
 }
 PointCloud.icon = "mini-icon-points.png";
 PointCloud["@texture"] = { widget: "texture" };
@@ -31165,6 +31211,8 @@ PointCloud.prototype.onCollectInstances = function(e, instances, options)
 PointCloud.prototype.serialize = function()
 {
 	var o = LS.cloneObject(this);
+	o.object_class = "PointCloud";
+
 	if(this.uid) //special case, not enumerable
 		o.uid = this.uid;
 	if(this.serialize_points)
@@ -31220,7 +31268,8 @@ function LineCloud(o)
 
 	this._last_id = 0;
 
-	this.createMesh();
+	if(global.gl)
+		this.createMesh();
 
 	/*
 	for(var i = 0; i < 2;i++)
@@ -32304,6 +32353,7 @@ Script.prototype.configure = function(o)
 Script.prototype.serialize = function()
 {
 	return {
+		object_class: "Script",
 		uid: this.uid,
 		enabled: this.enabled,
 		code: this.code,
@@ -32943,6 +32993,7 @@ ScriptFromFile.prototype.configure = function(o)
 ScriptFromFile.prototype.serialize = function()
 {
 	return {
+		object_class: "ScriptFromFile",
 		uid: this.uid,
 		enabled: this.enabled,
 		filename: this.filename,
@@ -33992,10 +34043,13 @@ function ThreeJS( o )
 
 	this._code = ThreeJS.default_code;
 
-	if( typeof(THREE) == "undefined")
-		this.loadLibrary( function() { this.setupContext(); } );
-	else
-		this.setupContext();
+	if(global.gl)
+	{
+		if( typeof(THREE) == "undefined")
+			this.loadLibrary( function() { this.setupContext(); } );
+		else
+			this.setupContext();
+	}
 
 	this._script = new LScript();
 	//maybe add function to retrieve texture
@@ -34342,4685 +34396,6 @@ InteractiveController.prototype._onMouse = function(type, e)
 LS.registerComponent( InteractiveController );
 
 /**
-* Formats is the class where all the info about what is every format, how to parse it, etc, is located
-*
-* @class LS.Formats
-* @param{String} id the id (otherwise a random one is computed)
-* @constructor
-*/
-LS.Formats = {
-
-	//all the supported file formats and their parsers
-	supported: {},
-
-	safe_parsing: false, //catch exceptions during parsing
-	merge_smoothgroups: false,
-
-	/**
-	* Tells the system info about this file format
-	* Info should contain fields like type:"image", resource: "Mesh|Texture", format: "text|binary", parse: function, native: true|false
-	* 
-	* @method addFormat
-	*/
-	addSupportedFormat: function( extensions, info )
-	{
-		if( extensions.constructor === String )
-			extensions = extensions.split(",");
-
-		for(var i = 0; i < extensions.length; ++i)
-		{
-			var extension = extensions[i].toLowerCase();
-			if( this.supported[ extension ] )
-				console.warn("There is already another parser associated to this extension: " + extension);
-			this.supported[ extension ] = info;
-		}
-	},
-
-	/**
-	* Parse some data and returns the resulting resource
-	* 
-	* @method parse
-	* @param {string} filename
-	* @param {*} data could be a string, binary, arraybuffer, xml...
-	* @param {Object} options how the file should be parsed
-	* @return {*} the final resource, could be a Texture, a Mesh, or an object
-	*/
-	parse: function( filename, data, options)
-	{
-		options = options || {};
-		var info = this.getFileFormatInfo( filename );
-		if(!info) //unsupported extension
-			return null;
-
-		if(options.extension)
-			info.extension = options.extension; //force a format
-		else
-			info.extension = LS.ResourcesManager.getExtension( filename );
-
-		var format = this.supported[ info.extension ];
-		if(!format || !format.parse)
-		{
-			console.error("Parser Error: No parser found for " + info.extension + " format");
-			return null;
-		}
-
-		var result = null;
-		if(!this.safe_parsing)
-			result = format.parse( data, options, filename );
-		else
-			try
-			{
-				result = format.parse( data, options, filename );
-			}
-			catch (err)
-			{
-				console.error("Error parsing content", err );
-				return null;
-			}
-		if(result)
-			result.name = filename;
-		return result;
-	},
-
-	//Returns info about a resource according to its filename
-	TEXT_FORMAT: "text",
-	JSON_FORMAT: "json",
-	XML_FORMAT: "xml",
-	BINARY_FORMAT: "binary",
-
-	MESH_DATA: "MESH",
-	IMAGE_DATA: "IMAGE",
-	NONATIVE_IMAGE_DATA: "NONATIVE_IMAGE",
-	SCENE_DATA: "SCENE",
-	GENERIC_DATA: "GENERIC",
-	
-	getFileFormatInfo: function( filename )
-	{
-		var extension = filename.substr( filename.lastIndexOf(".") + 1).toLowerCase();
-		return this.supported[ extension ];
-	},
-
-	guessType: function( filename )
-	{
-		if(!filename)
-			return null;
-
-		var ext = LS.RM.getExtension( filename ).toLowerCase();
-		var info = this.supported[ ext ];
-		if(!info)
-			return null;
-		return info.resource;
-	},
-
-	//Helpers ******************************
-
-	//gets raw image information {width,height,pixels:ArrayBuffer} and create a dataurl to use in images
-	convertToDataURL: function( img_data )
-	{
-		var canvas = document.createElement("canvas");
-		canvas.width = img_data.width;
-		canvas.height = img_data.height;
-		//document.body.appendChild(canvas);
-		var ctx = canvas.getContext("2d");
-		var pixelsData = ctx.createImageData(img_data.width, img_data.height);
-		var num_pixels = canvas.width * canvas.height;
-
-		//flip and copy the pixels
-		if(img_data.bytesPerPixel == 3)
-		{
-			for(var i = 0; i < canvas.width; ++i)
-				for(var j = 0; j < canvas.height; ++j)
-				{
-					var pos = j*canvas.width*4 + i*4;
-					var pos2 = (canvas.height - j - 1)*canvas.width*3 + i*3;
-					pixelsData.data[pos+2] = img_data.pixels[pos2];
-					pixelsData.data[pos+1] = img_data.pixels[pos2+1];
-					pixelsData.data[pos+0] = img_data.pixels[pos2+2];
-					pixelsData.data[pos+3] = 255;
-				}
-		}
-		else {
-			for(var i = 0; i < canvas.width; ++i)
-				for(var j = 0; j < canvas.height; ++j)
-				{
-					var pos = j*canvas.width*4 + i*4;
-					var pos2 = (canvas.height - j - 1)*canvas.width*4 + i*4;
-					pixelsData.data[pos+0] = img_data.pixels[pos2+2];
-					pixelsData.data[pos+1] = img_data.pixels[pos2+1];
-					pixelsData.data[pos+2] = img_data.pixels[pos2+0];
-					pixelsData.data[pos+3] = img_data.pixels[pos2+3];
-				}
-		}
-
-		ctx.putImageData(pixelsData,0,0);
-		img_data.dataurl = canvas.toDataURL("image/png");
-		return img_data.dataurl;
-	},
-
-	/* extract important Mesh info from vertices (center, radius, bouding box) */
-	computeMeshBounding: function(vertices)
-	{
-		//compute AABB and useful info
-		var min = [vertices[0],vertices[1],vertices[2]];
-		var max = [vertices[0],vertices[1],vertices[2]];
-		for(var i = 0; i < vertices.length; i += 3)
-		{
-			var v = [vertices[i],vertices[i+1],vertices[i+2]];
-			if (v[0] < min[0]) min[0] = v[0];
-			else if (v[0] > max[0]) max[0] = v[0];
-			if (v[1] < min[1]) min[1] = v[1];
-			else if (v[1] > max[1]) max[1] = v[1];
-			if (v[2] < min[2]) min[2] = v[2];
-			else if (v[2] > max[2]) max[2] = v[2];
-		}
-
-		var center = [(min[0] + max[0]) * 0.5,(min[1] + max[1]) * 0.5, (min[2] + max[2]) * 0.5];
-		var halfsize = [ min[0] - center[0], min[1] - center[1], min[2] - center[2]];
-		return BBox.setCenterHalfsize( BBox.create(), center, halfsize );
-	}
-};
-
-//native formats do not need parser
-LS.Formats.addSupportedFormat( "png,jpg,jpeg,webp,bmp,gif", { "native": true, dataType: "arraybuffer", resource: "Texture", "resourceClass": GL.Texture, has_preview: true, type: "image" } );
-LS.Formats.addSupportedFormat( "wbin", { dataType: "arraybuffer" } );
-LS.Formats.addSupportedFormat( "json,js,txt,html,css,csv", { dataType: "text" } );
-LS.Formats.addSupportedFormat( "glsl", { dataType: "text", resource: "ShaderCode", "resourceClass": LS.ShaderCode  } );
-LS.Formats.addSupportedFormat( "zip", { dataType: "arraybuffer" } );
-WBin.classes = LS.Classes; //WBin need to know which classes are accesible to be instantiated right from the WBin data info, in case the class is not a global class
-
-
-//parsers usually need this
-//takes an string an returns a Uint8Array typed array containing that string
-function stringToTypedArray(str, fixed_length)
-{
-	var r = new Uint8Array( fixed_length ? fixed_length : str.length);
-	for(var i = 0; i < str.length; i++)
-		r[i] = str.charCodeAt(i);
-	return r;
-}
-
-//takes a typed array with ASCII codes and returns the string
-function typedArrayToString(typed_array, same_size)
-{
-	var r = "";
-	for(var i = 0; i < typed_array.length; i++)
-		if (typed_array[i] == 0 && !same_size)
-			break;
-		else
-			r += String.fromCharCode( typed_array[i] );
-	return r;
-}
-//***** ASE Parser *****************
-var parserASE = {
-	extension: "ase",
-	type: "mesh",
-	resource: "Mesh",
-	format: 'text',
-	dataType:'text',
-	
-	parse: function( text, options, filename )
-	{
-		options = options || {};
-
-		//final arrays (packed, lineal [ax,ay,az, bx,by,bz ...])
-		var positionsArray = [ ];
-		var normalsArray   = [ ];
-		var indicesArray   = [ ];
-
-		var uvs_container = [ ];
-		var current_uvs = null;
-
-
-		//unique arrays (not packed, lineal)
-		var positions = [ ];
-		var normals   = [ ];
-		var indices = [ ];
-		var tvertlist = [ ];
-		var facemap   = { };
-		var index     = 0;
-
-		var line = null;
-		var f   = null;
-		var pos = 0;
-		var tex = 0;
-		var nor = 0;
-		var x   = 0.0;
-		var y   = 0.0;
-		var z   = 0.0;
-		var tokens = null;
-
-		var indices_offset = 0;
-		var mesh_index = 0;
-		var current_mat_id = -1;
-		var current_mesh_name = "";
-
-		//used for mesh groups (submeshes)
-		var group = null;
-		var groups = [];
-
-		var flip_axis = this.flipAxis;
-		if(options.flipAxis != null) flip_axis = options.flipAxis;
-		var flip_normals = (flip_axis || options.flipNormals);
-
-		var lines = text.split("\n");
-		for (var lineIndex = 0;  lineIndex < lines.length; ++lineIndex) {
-			line = lines[lineIndex].replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //trim
-			if(line[0] == " ")
-				line = line.substr(1,line.length);
-
-			if(line == "") continue;
-			tokens = line.split(" ");
-
-			if(tokens[0] == "*MESH")
-			{
-				mesh_index += 1;
-				positions = [];
-
-				if(mesh_index > 1)
-					break; //parse only the first mesh
-			}
-			else if (tokens[0] == "*NODE_NAME") {
-				current_mesh_name =  tokens[1].substr(1, tokens[1].length - 2);
-			}
-			else if(tokens[0] == "*MESH_VERTEX")
-			{
-				if(flip_axis) //maya and max notation style
-					positions.push( [-1*parseFloat(tokens[2]), parseFloat(tokens[4]), parseFloat(tokens[3])] );
-				else
-					positions.push( [parseFloat(tokens[2]), parseFloat(tokens[3]), parseFloat(tokens[4])] );
-			}
-			else if(tokens[0] == "*MESH_FACE")
-			{
-				//material info
-				var mat_id = parseInt( tokens[17] );
-				if(current_mat_id != mat_id)
-				{
-					current_mat_id = mat_id;
-					if(group != null)
-					{
-						group.length = positionsArray.length / 3 - group.start;
-						if(group.length > 0)
-							groups.push(group);
-					}
-
-					group = {
-						name: "mat_" + mat_id,
-						start: positionsArray.length / 3,
-						length: -1,
-						material: ""
-					};
-				}
-
-				//add vertices
-				var vertex = positions[ parseInt(tokens[3]) ];
-				positionsArray.push( vertex[0], vertex[1], vertex[2] );
-				vertex = positions[ parseInt(tokens[5]) ];
-				positionsArray.push( vertex[0], vertex[1], vertex[2] );
-				vertex = positions[ parseInt(tokens[7]) ];
-				positionsArray.push( vertex[0], vertex[1], vertex[2] );
-			}
-			else if(tokens[0] == "*MESH_TVERTLIST")
-			{
-				tvertlist = [];
-			}
-			else if(tokens[0] == "*MESH_TVERT")
-			{
-				tvertlist.push( [parseFloat(tokens[2]), parseFloat(tokens[3])] );
-			}
-			else if(tokens[0] == "*MESH_TFACELIST")
-			{
-				if( current_uvs && current_uvs.length )
-					uvs_container.push( current_uvs );
-				current_uvs = [];
-			}
-			else if(tokens[0] == "*MESH_TFACE")
-			{
-				var coord = tvertlist[ parseInt(tokens[2]) ];
-				current_uvs.push( coord[0], coord[1] );
-				coord = tvertlist[ parseInt(tokens[3]) ];
-				current_uvs.push( coord[0], coord[1] );
-				coord = tvertlist[ parseInt(tokens[4]) ];
-				current_uvs.push( coord[0], coord[1] );
-			}
-			else if(tokens[0] == "*MESH_MAPPINGCHANNEL")
-			{
-				if( current_uvs )
-					uvs_container.push( current_uvs );
-				current_uvs = [];
-			}
-			else if(tokens[0] == "*MESH_VERTEXNORMAL")
-			{
-				if(flip_normals)  //maya and max notation style
-					normalsArray.push(-1*parseFloat(tokens[2]),parseFloat(tokens[4]),parseFloat(tokens[3]));
-				else
-					normalsArray.push(parseFloat(tokens[2]),parseFloat(tokens[3]),parseFloat(tokens[4]));
-			}
-		}
-
-		if(current_uvs)
-			uvs_container.push( current_uvs );
-
-		var total_primitives = positionsArray.length / 3 - group.start;
-		if(group && total_primitives > 1)
-		{
-			group.length = total_primitives;
-			groups.push(group);
-		}
-
-		var mesh = { info: {} };
-
-		mesh.vertices = new Float32Array(positionsArray);
-		if (normalsArray.length > 0)
-			mesh.normals = new Float32Array(normalsArray);
-		for(var i = 0; i < uvs_container.length; ++i )
-		{
-			var channel = "";
-			if(i > 0)
-				channel = i+1;
-			mesh[ "coords" + channel ] = new Float32Array( uvs_container[i] );
-		}
-
-		//extra info
-		mesh.bounding = LS.Formats.computeMeshBounding( mesh.vertices );
-		if(groups.length > 1)
-			mesh.info.groups = groups;
-		return mesh;
-	}
-};
-
-LS.Formats.addSupportedFormat( "ase", parserASE );
-
-//***** BVH Parser *****************
-var parserBVH = {
-	extension: "bvh",
-	type: "scene",
-	resource: "SceneTree",
-	format: 'text',
-	dataType:'text',
-	
-	parse: function( text, options, filename )
-	{
-		var MODE_HIERARCHY = 1;
-		var MODE_MOTION = 2;
-		var MODE_MOTION_DATA = 3;
-
-		var mode = 0;
-		var root = null;
-		var parent = null;
-		var node = null;
-		var stack = [];
-		var inside_of = null;
-		var channels = [];
-
-		var num_frames = -1;
-		var frame_time = -1;
-		var duration = -1;
-		var current_frame = 0;
-		var timestamps = [];
-
-		var translator = {
-			"Xposition":"x","Yposition":"y","Zposition":"z","Xrotation":"xrotation","Yrotation":"yrotation","Zrotation":"zrotation"
-		};
-
-		var ignore = false;
-
-		var lines = text.split("\n");
-		var length = lines.length;
-		for (var lineIndex = 0;  lineIndex < length; ++lineIndex)
-		{
-			var line = lines[lineIndex].trim();
-
-			if (line[0] == "#")
-				continue;
-			if(line == "")
-				continue;
-
-			var tokens = line.split(/[\s]+/); //splits by spaces and tabs
-			var cmd = tokens[0];
-
-			if(!mode)
-			{
-				switch(cmd)
-				{
-					case "HIERARCHY":
-						mode = MODE_HIERARCHY;
-						break;
-				}
-			}
-			else if(mode == MODE_HIERARCHY)
-			{
-				switch(cmd)
-				{
-					case "ROOT":
-						root = node = { name: tokens[1], node_type: "JOINT" };
-						break;
-					case "JOINT":
-						parent = node;
-						stack.push(parent);
-						node = { name: tokens[1], node_type: "JOINT" };
-						if(!parent.children)
-							parent.children = [];
-						parent.children.push(node);
-						break;
-					case "End":
-						//ignore = true;
-						parent = node;
-						stack.push(parent);
-						node = { name: parent.name + "_end", node_type: "JOINT" };
-						if(!parent.children)
-							parent.children = [];
-						parent.children.push(node);
-
-						break;
-					case "{":
-						break;
-					case "}":
-						if(ignore)
-							ignore = false; //ignoreEND
-						else
-						{
-							node = stack.pop();
-							if(!node)
-								node = root;
-							inside_of = node;
-						}
-						break;
-					case "CHANNELS":
-						for(var j = 2; j < tokens.length; ++j)
-						{
-							var property = tokens[j].toLowerCase();
-							if(translator[property])
-								property = translator[property];
-							//channels.push( { name: tokens[j], property: node.name + "/" + property, type: "number", value_size: 1, data: [], packed_data: true } );
-							var channel_data = { node: node, property: property, data: [] };
-							channels.push( channel_data );
-							if(!node._channels)
-								node._channels = {};
-							if(!node._channels_order)
-								node._channels_order = [];
-							node._channels[ property ] = channel_data;
-							node._channels_order.push( property );
-						}
-						break;
-					case "OFFSET":
-						node.transform = { position: readFloats(tokens,1) };
-						break;
-					case "MOTION":
-						mode = MODE_MOTION;
-						break;
-				}
-			}//mode hierarchy
-			else if(mode == MODE_MOTION)
-			{
-				if(tokens[0] == "Frames:")
-					num_frames = parseInt( tokens[1] );
-				else if(tokens[0] == "Frame" && tokens[1] == "Time:")
-					frame_time = parseFloat( tokens[2] );
-
-				if(num_frames != -1 && frame_time != -1)
-				{
-					duration = num_frames * frame_time;
-					mode = MODE_MOTION_DATA;
-				}
-			}
-			else if(mode == MODE_MOTION_DATA)
-			{
-				var current_time = current_frame * frame_time;
-				timestamps.push( current_time );
-				for(var j = 0; j < channels.length; ++j)
-				{
-					var channel = channels[j];
-					//channel.data.push( current_time, parseFloat( tokens[j] ) );
-					channel.data.push( parseFloat( tokens[j] ) );
-				}
-
-				++current_frame;
-			}
-		}
-
-		function readFloats(tokens, offset)
-		{
-			var r = tokens.slice(offset || 0);
-			return r.map(parseFloat);
-		}
-
-		//process data
-		var tracks = [];
-		this.processMotion( root, tracks, timestamps );
-
-		var scene = { root: root, object_type: "SceneNode", resources: {} };
-
-		for(var i = 0; i < tracks.length; ++i)
-		{
-			var track = tracks[i];
-			track.duration = duration;
-		}
-		var animation = { name: "#animation", object_type: "Animation", takes: { "default": { name: "default", duration: duration, tracks: tracks } } };
-		root.animations = animation.name;
-		scene.resources[ animation["name"] ] = animation;
-
-		console.log(scene);
-		return scene;
-	},
-
-	processMotion: function( node, tracks, timestamps )
-	{
-		var channels = node._channels;
-		if(channels)
-		{
-			var track_position = null;
-			var track_rotation = null;
-
-			var XAXIS = vec3.fromValues(1,0,0);
-			var YAXIS = vec3.fromValues(0,1,0);
-			var ZAXIS = vec3.fromValues(0,0,1);
-
-			if(channels.xposition || channels.yposition || channels.zposition )
-				track_position = { name: node.name + "/Transform/position", property: node.name + "/Transform/position", type: "vec3", value_size: 3, data: [], packed_data: true };
-			if(channels.xrotation || channels.yrotation || channels.zrotation )
-				track_rotation = { name: node.name + "/Transform/rotation", property: node.name + "/Transform/rotation", type: "quat", value_size: 4, data: [], packed_data: true };
-
-
-			for(var j = 0; j < timestamps.length; ++j)
-			{
-				var time = timestamps[j];
-				var pos = vec3.create();
-				var R = quat.create();
-				var ROT = quat.create();
-
-				for(var i = 0; i < node._channels_order.length; ++i)
-				{
-					var property = node._channels_order[i];
-
-					switch( property )
-					{
-						case "xposition":
-							pos[0] = channels.xposition.data[j] + node.transform.position[0];
-							break;
-						case "yposition":
-							pos[1] = channels.yposition.data[j] + node.transform.position[1];
-							break;
-						case "zposition":
-							pos[2] = channels.zposition.data[j] + node.transform.position[2];
-							break;
-						case "xrotation":
-							quat.setAxisAngle( ROT, XAXIS, channels.xrotation.data[j] * DEG2RAD );
-							//quat.mul( R, ROT, R );
-							quat.mul( R, R, ROT );
-							break;
-						case "yrotation":
-							quat.setAxisAngle( ROT, YAXIS, channels.yrotation.data[j] * DEG2RAD );
-							//quat.mul( R, ROT, R );
-							quat.mul( R, R, ROT );
-							break;
-						case "zrotation":
-							quat.setAxisAngle( ROT, ZAXIS, channels.zrotation.data[j] * DEG2RAD );
-							//quat.mul( R, ROT, R );
-							quat.mul( R, R, ROT );
-							break;
-					};
-				} //per channel
-
-				if(track_position)
-					track_position.data.push( time, pos[0], pos[1], pos[2] );
-				if(track_rotation)
-					track_rotation.data.push( time, R[0], R[1], R[2], R[3] );
-			}//per timestamp
-
-			if(track_position)
-				tracks.push( track_position );
-			if(track_rotation)
-				tracks.push( track_rotation );
-		} //if channels
-
-		if(node.children)
-		{
-			for(var i = 0; i < node.children.length; ++i)
-				this.processMotion( node.children[i], tracks, timestamps );
-		}
-	}
-};
-
-LS.Formats.addSupportedFormat( "bvh", parserBVH );
-// Collada.js  https://github.com/jagenjo/collada.js
-// Javi Agenjo 2015 
-// Specification from https://www.khronos.org/collada/wiki
-
-(function(global){
-
-var isWorker = global.document === undefined;
-var DEG2RAD = Math.PI * 2 / 360;
-
-//global temporal variables
-var temp_mat4 = null;
-var temp_vec2 = null;
-var temp_vec3 = null;
-var temp_vec4 = null;
-var temp_quat = null;
-
-if( isWorker )
-{
-	global.console = {
-		log: function(msg) { 
-			var args = Array.prototype.slice.call(arguments, 0);
-			self.postMessage({action:"log", params: args});
-		},
-		warn: function(msg) { 
-			var args = Array.prototype.slice.call(arguments, 0);
-			self.postMessage({action:"warn", params: args});
-		},
-		error: function(msg) { 
-			var args = Array.prototype.slice.call(arguments, 0);
-			self.postMessage({action:"error", params: args});
-		}
-	};
-
-	global.alert = console.error;
-}
-
-//Collada parser
-global.Collada = {
-
-	libsPath: "./",
-	workerPath: "./",
-	no_flip: true,
-	use_transferables: true, //for workers
-	onerror: null,
-	verbose: false,
-	config: { forceParser:false },
-
-	init: function (config)
-	{
-		config = config || {}
-		for(var i in config)
-			this[i] = config[i];
-		this.config = config;
-
-		if( isWorker )
-		{
-			try
-			{
-				importScripts( this.libsPath + "gl-matrix-min.js", this.libsPath + "tinyxml.js" );
-			}
-			catch (err)
-			{
-				Collada.throwException( Collada.LIBMISSING_ERROR );
-			}
-		}
-
-		//init glMatrix
-		temp_mat4 = mat4.create();
-		temp_vec2 = vec3.create();
-		temp_vec3 = vec3.create();
-		temp_vec4 = vec3.create();
-		temp_quat = quat.create();
-
-		if( isWorker )
-			console.log("Collada worker ready");
-	},
-
-	load: function(url, callback)
-	{
-		request(url, function(data)
-		{
-			if(!data)
-				callback( null );
-			else
-				callback( Collada.parse( data ) );
-		});
-	},
-
-	_xmlroot: null,
-	_nodes_by_id: null,
-	_transferables: null,
-	_controllers_found: null,
-	_geometries_found: null,
-
-	safeString: function (str) { 
-		if(!str)
-			return "";
-
-		if(this.convertID)
-			return this.convertID(str);
-
-		return str.replace(/ /g,"_"); 
-	},
-
-	LIBMISSING_ERROR: "Libraries loading error, when using workers remember to pass the URL to the tinyxml.js in the options.libsPath",
-	NOXMLPARSER_ERROR: "TinyXML not found, when using workers remember to pass the URL to the tinyxml.js in the options.libsPath (Workers do not allow to access the native XML DOMParser)",
-	throwException: function(msg)
-	{
-		if(isWorker)
-			self.postMessage({action:"exception", msg: msg});
-		else
-			if(Collada.onerror)
-				Collada.onerror(msg);
-		throw(msg);
-	},
-
-	getFilename: function(filename)
-	{
-		var pos = filename.lastIndexOf("\\");
-		if(pos != -1)
-			filename = filename.substr(pos+1);
-		//strip unix slashes
-		pos = filename.lastIndexOf("/");
-		if(pos != -1)
-			filename = filename.substr(pos+1);
-		return filename;
-	},
-
-	last_name: 0,
-
-	generateName: function(v)
-	{
-		v = v || "name_";
-		var name = v + this.last_name;
-		this.last_name++;
-		return name;
-	},
-
-	parse: function(data, options, filename)
-	{
-		options = options || {};
-		filename = filename || "_dae_" + Date.now() + ".dae";
-
-		//console.log("Parsing collada");
-		var flip = false;
-
-		var xmlparser = null;
-		var root = null;
-		this._transferables = [];
-		
-		if(this.verbose)
-			console.log(" - XML parsing...");
-
-		if(global["DOMParser"] && !this.config.forceParser )
-		{
-			xmlparser = new DOMParser();
-			root = xmlparser.parseFromString(data,"text/xml");
-			if(this.verbose)
-				console.log(" - XML parsed");			
-		}
-		else //USING JS XML PARSER IMPLEMENTATION (much slower)
-		{
-			if(!global["DOMImplementation"] )
-				return Collada.throwException( Collada.NOXMLPARSER_ERROR );
-			//use tinyxmlparser
-			try
-			{
-				xmlparser = new DOMImplementation();
-			}
-			catch (err)
-			{
-				return Collada.throwException( Collada.NOXMLPARSER_ERROR );
-			}
-
-			root = xmlparser.loadXML(data);
-			if(this.verbose)
-				console.log(" - XML parsed");
-
-			//for every node...
-			var by_ids = root._nodes_by_id = {};
-			for(var i = 0, l = root.all.length; i < l; ++i)
-			{
-				var node = root.all[i];
-				by_ids[ node.id ] = node;
-				if(node.getAttribute("sid"))
-					by_ids[ node.getAttribute("sid") ] = node;
-			}
-
-			if(!this.extra_functions)
-			{
-				this.extra_functions = true;
-				//these methods are missing so here is a lousy implementation
-				DOMDocument.prototype.querySelector = DOMElement.prototype.querySelector = function(selector)
-				{
-					var tags = selector.split(" ");
-					var current_element = this;
-
-					while(tags.length)
-					{
-						var current = tags.shift();
-						var tokens = current.split("#");
-						var tagname = tokens[0];
-						var id = tokens[1];
-						var elements = tagname ? current_element.getElementsByTagName(tagname) : current_element.childNodes;
-						if(!id) //no id filter
-						{
-							if(tags.length == 0)
-								return elements.item(0);
-							current_element = elements.item(0);
-							continue;
-						}
-
-						//has id? check for all to see if one matches the id
-						for(var i = 0; i < elements.length; i++)
-							if( elements.item(i).getAttribute("id") == id)
-							{
-								if(tags.length == 0)
-									return elements.item(i);
-								current_element = elements.item(i);
-								break;
-							}
-					}
-					return null;
-				}
-
-				DOMDocument.prototype.querySelectorAll = DOMElement.prototype.querySelectorAll = function( selector )
-				{
-					var tags = selector.split(" ");
-					if(tags.length == 1)
-						return this.getElementsByTagName( selector );
-
-					var current_element = this;
-					var result = [];
-
-					inner(this, tags);
-
-					function inner(root, tags )
-					{
-						if(!tags)
-							return;
-
-						var current = tags.shift();
-						var elements = root.getElementsByTagName( current );
-						if(tags.length == 0)
-						{
-							for(var i = 0; i < elements.length; i++)
-								result.push( elements.item(i) );
-							return;
-						}
-
-						for(var i = 0; i < elements.length; i++)
-							inner( elements.item(i), tags.concat() );
-					}
-
-					var list = new DOMNodeList(this.documentElement);
-					list._nodes = result;
-					list.length = result.length;
-
-					return list;
-				}
-
-				Object.defineProperty( DOMElement.prototype, "textContent", { 
-					get: function() { 
-						var nodes = this.getChildNodes();
-						return nodes.item(0).toString(); 
-					},
-					set: function() {} 
-				});
-			}
-		}
-		this._xmlroot = root;
-		var xmlcollada = root.querySelector("COLLADA");
-		if(xmlcollada)
-		{
-			this._current_DAE_version = xmlcollada.getAttribute("version");
-			console.log("DAE Version:" + this._current_DAE_version);
-		}
-
-		//var xmlvisual_scene = root.querySelector("visual_scene");
-		var xmlvisual_scene = root.getElementsByTagName("visual_scene").item(0);
-		if(!xmlvisual_scene)
-			throw("visual_scene XML node not found in DAE");
-
-		//hack to avoid problems with bones with spaces in names
-		this._nodes_by_id = {}; //clear
-		this._controllers_found = {};//we need to check what controllers had been found, in case we miss one at the end
-		this._geometries_found = {};
-
-		//Create a scene tree
-		var scene = { 
-			object_type:"SceneTree", 
-			light: null,
-			materials: {},
-			meshes: {},
-			resources: {}, //used to store animation tracks
-			root:{ children:[] },
-			external_files: {} //store info about external files mentioned in this 
-		};
-
-		//scene metadata (like author, tool, up vector, dates, etc)
-		var xmlasset = root.getElementsByTagName("asset")[0];
-		if(xmlasset)
-			scene.metadata = this.readAsset( xmlasset );
-
-		//parse nodes tree to extract names and ierarchy only
-		var xmlnodes = xmlvisual_scene.childNodes;
-		for(var i = 0; i < xmlnodes.length; i++)
-		{
-			if(xmlnodes.item(i).localName != "node")
-				continue;
-
-			var node = this.readNodeTree( xmlnodes.item(i), scene, 0, flip );
-			if(node)
-				scene.root.children.push(node);
-		}
-
-		//parse nodes content (two steps so we have first all the scene tree info)
-		for(var i = 0; i < xmlnodes.length; i++)
-		{
-			if(xmlnodes.item(i).localName != "node")
-				continue;
-			this.readNodeInfo( xmlnodes.item(i), scene, 0, flip );
-		}
-
-		//read remaining controllers (in some cases some controllers are not linked from the nodes or the geometries)
-		this.readLibraryControllers( scene );
-
-		//read animations
-		var animations = this.readAnimations(root, scene);
-		if(animations)
-		{
-			var animations_name = "#animations_" + filename.substr(0,filename.indexOf("."));
-			scene.resources[ animations_name ] = animations;
-			scene.root.animations = animations_name;
-		}
-
-		//read external files (images)
-		scene.images = this.readImages(root);
-
-		//clear memory
-		this._nodes_by_id = {};
-		this._controllers_found = {};
-		this._geometries_found = {};
-		this._xmlroot = null;
-
-		//console.log(scene);
-		return scene;
-	},
-
-	/* Collect node ids, in case there is bones (with spaces in name) I need to know the nodenames in advance */
-	/*
-	readAllNodeNames: function(xmlnode)
-	{
-		var node_id = this.safeString( xmlnode.getAttribute("id") );
-		if(node_id)
-			this._nodes_by_id[node_id] = true; //node found
-		//nodes seem to have to possible ids, id and sid, I guess one is unique, the other user-defined
-		var node_sid = this.safeString( xmlnode.getAttribute("sid") );
-		if(node_sid)
-			this._nodes_by_id[node_sid] = true; //node found
-
-
-		for( var i = 0; i < xmlnode.childNodes.length; i++ )
-		{
-			var xmlchild = xmlnode.childNodes.item(i);
-
-			//children
-			if(xmlchild.localName != "node")
-				continue;
-			this.readAllNodeNames(xmlchild);
-		}
-	},
-		*/
-
-	readAsset: function( xmlasset )
-	{
-		var metadata = {};
-
-		for( var i = 0; i < xmlasset.childNodes.length; i++ )
-		{
-			var xmlchild = xmlasset.childNodes.item(i);
-			if(xmlchild.nodeType != 1 ) //not tag
-				continue;
-			switch( xmlchild.localName )
-			{
-				case "contributor": 
-					var tool = xmlchild.querySelector("authoring_tool");
-					if(tool)
-						metadata["authoring_tool"] = tool.textContext;
-					break;
-				case "unit": metadata["unit"] = xmlchild.getAttribute("name"); break;
-				default:
-					metadata[ xmlchild.localName ] = xmlchild.textContent; break;
-			}
-		}
-
-		return metadata;
-	},
-
-	readNodeTree: function(xmlnode, scene, level, flip)
-	{
-		var node_id = this.safeString( xmlnode.getAttribute("id") );
-		var node_sid = this.safeString( xmlnode.getAttribute("sid") );
-		var node_name = this.safeString( xmlnode.getAttribute("name") );
-
-		var unique_name = node_id || node_sid || node_name;
-
-		if(!unique_name)
-		{
-			console.warn("Collada: node without name or id, skipping it");
-			return null;
-		}
-
-		//here we create the node
-		var node = { 
-			name: node_name,
-			id: unique_name, 
-			children:[], 
-			_depth: level 
-		};
-
-		var node_type = xmlnode.getAttribute("type");
-		if(node_type)
-			node.type = node_type;
-
-		this._nodes_by_id[ unique_name ] = node;
-		if( node_id )
-			this._nodes_by_id[ node_id ] = node;
-		if( node_sid )
-			this._nodes_by_id[ node_sid ] = node;
-
-		//transform
-		node.model = this.readTransform(xmlnode, level, flip );
-
-		//node elements
-		for( var i = 0; i < xmlnode.childNodes.length; i++ )
-		{
-			var xmlchild = xmlnode.childNodes.item(i);
-			if(xmlchild.nodeType != 1 ) //not tag
-				continue;
-
-			//children
-			if(xmlchild.localName == "node")
-			{
-				var child_node = this.readNodeTree(xmlchild, scene, level+1, flip);
-				if(child_node)
-					node.children.push( child_node );
-				continue;
-			}
-		}
-
-		return node;
-	},
-
-	readNodeInfo: function( xmlnode, scene, level, flip, parent )
-	{
-		var node_id = this.safeString( xmlnode.getAttribute("id") );
-		var node_sid = this.safeString( xmlnode.getAttribute("sid") );
-		var node_name = this.safeString( xmlnode.getAttribute("name") );
-
-		var unique_name = node_id || node_sid || node_name;
-
-		/*
-		if(!node_id && !node_sid)
-		{
-			console.warn("Collada: node without id, creating a random one");
-			node_id = this.generateName("node_");
-			return null;
-		}
-		*/
-
-		var node;
-		if(!unique_name) {
-			//if there is no id, then either all of this node's properties 
-			//should be assigned directly to its parent node, or the node doesn't
-			//have a parent node, in which case its a light or something. 
-			//So we get the parent by its id, and if there is no parent, we return null
-			if (parent)
-				node = this._nodes_by_id[ parent.id || parent.sid || parent.name ];
-			else 
-			{
-				console.warn("Collada: node without name or id, skipping it");
-				return null;
-			}
-		} 
-		else
-			node = this._nodes_by_id[ unique_name ];
-
-		if(!node)
-		{
-			console.warn("Collada: Node not found by id: " + (node_id || node_sid));
-			return null;
-		}
-
-		//node elements
-		for( var i = 0; i < xmlnode.childNodes.length; i++ )
-		{
-			var xmlchild = xmlnode.childNodes.item(i);
-			if(xmlchild.nodeType != 1 ) //not tag
-				continue;
-
-			//children
-			if(xmlchild.localName == "node")
-			{
-				//pass parent node in case child node is a 'dead' node (has no id or sid)
-				this.readNodeInfo( xmlchild, scene, level+1, flip, xmlnode );
-				continue;
-			}
-
-			//geometry
-			if(xmlchild.localName == "instance_geometry")
-			{
-				var url = xmlchild.getAttribute("url");
-				var mesh_id = url.toString().substr(1);
-
-				if(!node.mesh)
-					node.mesh = mesh_id;
-				else
-				{
-					if(!node.meshes)
-						node.meshes = [node.mesh];
-					node.meshes.push( mesh_id );
-				}
-
-				if(!scene.meshes[ url ])
-				{
-					var mesh_data = this.readGeometry(url, flip);
-					if(mesh_data)
-					{
-						mesh_data.name = mesh_id;
-						scene.meshes[ mesh_id ] = mesh_data;
-					}
-				}
-
-				//binded material
-				var xmlmaterials = xmlchild.querySelectorAll("instance_material");
-				if(xmlmaterials)
-				{
-					for(var iMat = 0; iMat < xmlmaterials.length; ++iMat)
-					{
-						var xmlmaterial = xmlmaterials.item(iMat);
-						if(!xmlmaterial)
-						{
-							console.warn("instance_material not found: " + i);
-							continue;
-						}
-
-						var matname = xmlmaterial.getAttribute("target").toString().substr(1);
-						//matname = matname.replace(/ /g,"_"); //names cannot have spaces
-						if(!scene.materials[ matname ])
-						{
-
-							var material = this.readMaterial(matname);
-							if(material)
-							{
-								material.id = matname; 
-								scene.materials[ material.id ] = material;
-							}
-						}
-						if(iMat == 0)
-							node.material = matname;
-						else
-						{
-							if(!node.materials)
-								node.materials = [];
-							node.materials.push(matname);
-						}
-					}
-				}
-			}
-
-
-			//this node has a controller: skinning, morph targets or even multimaterial are controllers
-			//warning: I detected that some nodes could have a controller but they are not referenced here.  ??
-			if(xmlchild.localName == "instance_controller")
-			{
-				var url = xmlchild.getAttribute("url");
-				var xmlcontroller = this._xmlroot.querySelector("controller" + url);
-
-				if(xmlcontroller)
-				{
-
-					var mesh_data = this.readController( xmlcontroller, flip, scene );
-
-					//binded materials
-					var xmlbind_material = xmlchild.querySelector("bind_material");
-					if(xmlbind_material){
-						//removed readBindMaterials up here for consistency
-						var xmltechniques = xmlbind_material.querySelectorAll("technique_common");
-						for(var iTec = 0; iTec < xmltechniques.length; iTec++)
-						{
-							var xmltechnique = xmltechniques.item(iTec);
-							var xmlinstance_materials = xmltechnique.querySelectorAll("instance_material");
-							for(var iMat = 0; iMat < xmlinstance_materials.length; iMat++)
-							{
-								var xmlinstance_material = xmlinstance_materials.item(iMat);
-								if(!xmlinstance_material)
-								{
-									console.warn("instance_material for controller not found: " + xmlinstance_material);
-									continue;
-								}
-								var matname = xmlinstance_material.getAttribute("target").toString().substr(1);
-								if(!scene.materials[ matname ])
-								{
-
-									var material = this.readMaterial(matname);
-									if(material)
-									{
-										material.id = matname; 
-										scene.materials[ material.id ] = material;
-									}
-								}
-								if(iMat == 0)
-									node.material = matname;
-								else
-								{
-									if(!node.materials)
-										node.materials = [];
-									node.materials.push(matname);
-								}
-
-							}
-						}
-
-					}
-
-					if(mesh_data)
-					{
-						var mesh = mesh_data;
-						if( mesh_data.type == "morph" )
-						{
-							mesh = mesh_data.mesh;
-							node.morph_targets = mesh_data.morph_targets;
-						}
-
-						mesh.name = url.toString();
-						node.mesh = url.toString();
-						scene.meshes[ url ] = mesh;
-					}
-				}
-			}
-
-			//light
-			if(xmlchild.localName == "instance_light")
-			{
-				var url = xmlchild.getAttribute("url");
-				this.readLight(node, url);
-			}
-
-			//camera
-			if(xmlchild.localName == "instance_camera")
-			{
-				var url = xmlchild.getAttribute("url");
-				this.readCamera(node, url);
-			}
-
-			//other possible tags?
-		}
-	},
-
-	//if you want to rename some material names
-	material_translate_table: {
-		/*
-		transparency: "opacity",
-		reflectivity: "reflection_factor",
-		specular: "specular_factor",
-		shininess: "specular_gloss",
-		emission: "emissive",
-		diffuse: "color"
-		*/
-	},
-
-	light_translate_table: {
-
-		point: "omni",
-		directional: "directional",
-		spot: "spot"		
-	},
-
-	camera_translate_table: {
-		xfov: "fov",
-		aspect_ratio: "aspect",
-		znear: "near",
-		zfar: "far"
-	},
-
-	//used when id have spaces (regular selector do not support spaces)
-	querySelectorAndId: function(root, selector, id)
-	{
-		var nodes = root.querySelectorAll(selector);
-		for(var i = 0; i < nodes.length; i++)
-		{
-			var attr_id = nodes.item(i).getAttribute("id");
-			if( !attr_id ) 
-				continue;
-			attr_id = attr_id.toString();
-			if(attr_id == id )
-				return nodes.item(i);
-		}
-		return null;
-	},
-
-	//returns the first element that matches a tag name, if not tagname is specified then the first tag element
-	getFirstChildElement: function(root, localName)
-	{
-		var c = root.childNodes;
-		for(var i = 0; i < c.length; ++i)
-		{
-			var item = c.item(i);
-			if( (item.localName && !localName) || (localName && localName == item.localName) )
-				return item;
-		}
-		return null;
-	},
-
-	readMaterial: function(url)
-	{
-		var xmlmaterial = this.querySelectorAndId( this._xmlroot, "library_materials material", url );
-
-		if(!xmlmaterial)
-			return null;
-
-		//get effect name
-		var xmleffect = xmlmaterial.querySelector("instance_effect");
-		if(!xmleffect) return null;
-
-		var effect_url = xmleffect.getAttribute("url").substr(1);
-
-		//get effect
-		var xmleffects = this.querySelectorAndId( this._xmlroot, "library_effects effect", effect_url );
-
-		if(!xmleffects) return null;
-
-		//get common
-		var xmltechnique = xmleffects.querySelector("technique");
-		if(!xmltechnique) 
-			return null;
-
-		//get newparams and convert to js object
-		var xmlnewparams = xmleffects.querySelectorAll("newparam");
-		var newparams = {}
-		for (var i = 0; i < xmlnewparams.length; i++) {
-
-			var init_from = xmlnewparams[i].querySelector("init_from");
-			var parent;
-			if (init_from)
-				parent = init_from.innerHTML;
-			else {
-				var source = xmlnewparams[i].querySelector("source");
-				parent = source.innerHTML;
-			}
-
-			newparams[xmlnewparams[i].getAttribute("sid")] = {
-				parent: parent
-			};
-		}
-
-
-
-		var material = {};
-
-		//read the images here because we need to access them to assign texture names
-		var images = this.readImages(this._xmlroot);
-
-
-		var xmlphong = xmltechnique.querySelector("phong");
-		if(!xmlphong) 
-			xmlphong = xmltechnique.querySelector("blinn");
-		if(!xmlphong) 
-			xmlphong = xmltechnique.querySelector("lambert");
-		if(!xmlphong) 
-			return null;
-
-		//for every tag of properties
-		for(var i = 0; i < xmlphong.childNodes.length; ++i)
-		{
-			var xmlparam = xmlphong.childNodes.item(i);
-
-			if(!xmlparam.localName) //text tag
-				continue;
-
-			//translate name
-			var param_name = xmlparam.localName.toString();
-			if(this.material_translate_table[param_name])
-				param_name = this.material_translate_table[param_name];
-
-			//value
-			var xmlparam_value = this.getFirstChildElement( xmlparam );
-			if(!xmlparam_value)
-				continue;
-
-			if(xmlparam_value.localName.toString() == "color")
-			{
-				var value = this.readContentAsFloats( xmlparam_value );
-				if( xmlparam.getAttribute("opaque") == "RGB_ZERO")
-					material[ param_name ] = value.subarray(0,4);
-				else
-					material[ param_name ] = value.subarray(0,3);
-				continue;
-			}
-			else if(xmlparam_value.localName.toString() == "float")
-			{
-				material[ param_name ] = this.readContentAsFloats( xmlparam_value )[0];
-				continue;
-			}
-			else if(xmlparam_value.localName.toString() == "texture")
-			{
-				if(!material.textures)
-					material.textures = {};
-				var map_id = xmlparam_value.getAttribute("texture");
-				if(!map_id)
-					continue;
-
-				// if map_id is not a filename, lets go and look for it.
-				if (map_id.indexOf('.') === -1){
-					//check effect parents
-					map_id = this.getParentParam(newparams, map_id);
-
-					if (images[map_id])
-						map_id = images[map_id].path;
-				}
-
-				//now get the texture filename from images
-
-				var map_info = { map_id: map_id };
-				var uvs = xmlparam_value.getAttribute("texcoord");
-				map_info.uvs = uvs;
-				material.textures[ param_name ] = map_info;
-			}
-		}
-
-		material.object_type = "Material";
-		return material;
-	},
-
-	getParentParam: function(newparams, param) {
-		if (!newparams[param])
-			return param;
-
-		if (newparams[param].parent)
-			return this.getParentParam(newparams, newparams[param].parent)
-		else
-			return param;
-	},
-
-	readLight: function(node, url)
-	{
-		var light = {};
-
-		var xmlnode = null;
-		
-		if(url.length > 1) //weird cases with id == #
-			xmlnode = this._xmlroot.querySelector("library_lights " + url);
-		else
-		{
-			var xmlliblights = this._xmlroot.querySelector("library_lights");
-			xmlnode = this.getFirstChildElement( xmlliblights, "light" );
-		}
-
-		if(!xmlnode)
-			return null;
-
-		//pack
-		var children = [];
-		var xml = xmlnode.querySelector("technique_common");
-		if(xml)
-			for(var i = 0; i < xml.childNodes.length; i++ )
-				if( xml.childNodes.item(i).nodeType == 1 ) //tag
-					children.push( xml.childNodes.item(i) );
-
-		var xmls = xmlnode.querySelectorAll("technique");
-		for(var i = 0; i < xmls.length; i++)
-		{
-			var xml2 = xmls.item(i);
-			for(var j = 0; j < xml2.childNodes.length; j++ )
-				if( xml2.childNodes.item(j).nodeType == 1 ) //tag
-					children.push( xml2.childNodes.item(j) );
-		}
-
-		//get
-		for(var i = 0; i < children.length; i++)
-		{
-			var xml = children[i];
-			switch( xml.localName )
-			{
-				case "point": 
-					light.type = this.light_translate_table[ xml.localName ]; 
-					parse_params(light, xml);
-					break;
-				case "directional":
-					light.type = this.light_translate_table[ xml.localName ]; 
-					parse_params(light, xml);
-					break;
-				case "spot": 
-					light.type = this.light_translate_table[ xml.localName ]; 
-					parse_params(light, xml);
-					break;
-				
-				case "intensity": 
-					light.intensity = this.readContentAsFloats( xml )[0]; 
-					break;
-			}
-		}
-
-		function parse_params(light, xml)
-		{
-			for(var i = 0; i < xml.childNodes.length; i++)
-			{
-				var child = xml.childNodes.item(i);
-				if( !child || child.nodeType != 1 ) //tag
-					continue;
-
-				switch( child.localName )
-				{
-					case "color": 
-						light.color = Collada.readContentAsFloats( child ); break;
-					case "falloff_angle": 
-						light.angle_end = Collada.readContentAsFloats( child )[0]; 
-						light.angle = light.angle_end - 10; 
-					break;
-				}
-			}
-		}
-
-		
-		if(node.model)
-		{
-			//light position is final column of model
-			light.position = [node.model[12],node.model[13],node.model[14]];
-			//light forward vector is reverse of third column of model
-			var forward = [ - node.model[8], - node.model[9], - node.model[10]];
-			//so light target is position + forward
-			light.target = [light.position[0] + forward[0],
-							light.position[1] + forward[1],
-							light.position[2] + forward[2] ];
-		}
-		else {
-			console.warn( "Could not read light position for light: " + node.name + ". Setting defaults.");
-			light.position = [0,0,0];
-			light.target = [0,-1,0];
-		}
-		
-
-		node.light = light;
-	},
-
-	readCamera: function(node, url)
-	{
-		var camera = {};
-
-		var xmlnode = this._xmlroot.querySelector("library_cameras " + url);
-		if(!xmlnode) return null;
-
-		//pack
-		var children = [];
-		var xml = xmlnode.querySelector("technique_common");
-		if(xml) //grab all internal stuff
-			for(var i = 0; i < xml.childNodes.length; i++ )
-				if( xml.childNodes.item(i).nodeType == 1 ) //tag
-					children.push( xml.childNodes.item(i) );
-
-		//
-		for(var i = 0; i < children.length; i++)
-		{
-			var tag = children[i];
-			parse_params(camera, tag);
-		}
-
-		function parse_params(camera, xml)
-		{
-			for(var i = 0; i < xml.childNodes.length; i++)
-			{
-				var child = xml.childNodes.item(i);
-				if( !child || child.nodeType != 1 ) //tag
-					continue;
-				var translated = Collada.camera_translate_table[ child.localName ] || child.localName;
-				camera[ translated ] = parseFloat( child.textContent );
-				
-			}
-		}
-
-		//parse to convert yfov to standard (x) fov
-		if ( camera.yfov && !camera.fov ) {
-			if ( camera.aspect ) {
-				camera.fov = camera.yfov * camera.aspect;
-			}
-			else
-				console.warn("Could not convert camera yfov to xfov because aspect ratio not set")
-		} 
-
-		node.camera = camera;
-	},
-
-	readTransform: function(xmlnode, level, flip)
-	{
-		//identity
-		var matrix = mat4.create(); 
-		var temp = mat4.create(); 
-		var tmpq = quat.create();
-		
-		var flip_fix = false;
-
-		//search for the matrix
-		for(var i = 0; i < xmlnode.childNodes.length; i++)
-		{
-			var xml = xmlnode.childNodes.item(i);
-			if( !xml || xml.nodeType != 1 ) //tag
-				continue;
-
-			if(xml.localName == "matrix")
-			{
-				var matrix = this.readContentAsFloats(xml);
-				//console.log("Nodename: " + xmlnode.getAttribute("id"));
-				//console.log(matrix);
-				this.transformMatrix(matrix, level == 0);
-				//console.log(matrix);
-				return matrix;
-			}
-
-			if(xml.localName == "translate")
-			{
-				var values = this.readContentAsFloats(xml);
-				if(flip && level > 0)
-				{
-					var tmp = values[1];
-					values[1] = values[2];
-					values[2] = -tmp; //swap coords
-				}
-
-				mat4.translate( matrix, matrix, values );
-				continue;
-			}
-
-			//rotate
-			if(xml.localName == "rotate")
-			{
-				var values = this.readContentAsFloats(xml);
-				if(values.length == 4) //x,y,z, angle
-				{
-					var id = xml.getAttribute("sid");
-					if(id == "jointOrientX")
-					{
-						values[3] += 90;
-						flip_fix = true;
-					}
-					//rotateX & rotateY & rotateZ done below
-
-					if(flip)
-					{
-						var tmp = values[1];
-						values[1] = values[2];
-						values[2] = -tmp; //swap coords
-					}
-
-					if(values[3] != 0.0)
-					{
-						quat.setAxisAngle( tmpq, values.subarray(0,3), values[3] * DEG2RAD);
-						mat4.fromQuat( temp, tmpq );
-						mat4.multiply(matrix, matrix, temp);
-					}
-				}
-				continue;
-			}
-
-			//scale
-			if(xml.localName == "scale")
-			{
-				var values = this.readContentAsFloats(xml);
-				if(flip)
-				{
-					var tmp = values[1];
-					values[1] = values[2];
-					values[2] = -tmp; //swap coords
-				}
-				mat4.scale( matrix, matrix, values );
-			}
-		}
-
-		return matrix;
-	},
-
-	readTransform2: function(xmlnode, level, flip)
-	{
-		//identity
-		var matrix = mat4.create(); 
-		var rotation = quat.create();
-		var tmpmatrix = mat4.create();
-		var tmpq = quat.create();
-		var translate = vec3.create();
-		var scale = vec3.fromValues(1,1,1);
-		
-		var flip_fix = false;
-
-		//search for the matrix
-		for(var i = 0; i < xmlnode.childNodes.length; i++)
-		{
-			var xml = xmlnode.childNodes.item(i);
-
-			if(xml.localName == "matrix")
-			{
-				var matrix = this.readContentAsFloats(xml);
-				//console.log("Nodename: " + xmlnode.getAttribute("id"));
-				//console.log(matrix);
-				this.transformMatrix(matrix, level == 0);
-				//console.log(matrix);
-				return matrix;
-			}
-
-			if(xml.localName == "translate")
-			{
-				var values = this.readContentAsFloats(xml);
-				translate.set(values);
-				continue;
-			}
-
-			//rotate
-			if(xml.localName == "rotate")
-			{
-				var values = this.readContentAsFloats(xml);
-				if(values.length == 4) //x,y,z, angle
-				{
-					var id = xml.getAttribute("sid");
-					if(id == "jointOrientX")
-					{
-						values[3] += 90;
-						flip_fix = true;
-					}
-					//rotateX & rotateY & rotateZ done below
-
-					if(flip)
-					{
-						var tmp = values[1];
-						values[1] = values[2];
-						values[2] = -tmp; //swap coords
-					}
-
-					if(values[3] != 0.0)
-					{
-						quat.setAxisAngle( tmpq, values.subarray(0,3), values[3] * DEG2RAD);
-						quat.multiply(rotation,rotation,tmpq);
-					}
-				}
-				continue;
-			}
-
-			//scale
-			if(xml.localName == "scale")
-			{
-				var values = this.readContentAsFloats(xml);
-				if(flip)
-				{
-					var tmp = values[1];
-					values[1] = values[2];
-					values[2] = -tmp; //swap coords
-				}
-				scale.set(values);
-			}
-		}
-
-		if(flip && level > 0)
-		{
-			var tmp = translate[1];
-			translate[1] = translate[2];
-			translate[2] = -tmp; //swap coords
-		}
-		mat4.translate(matrix, matrix, translate);
-
-		mat4.fromQuat( tmpmatrix , rotation );
-		//mat4.rotateX(tmpmatrix, tmpmatrix, Math.PI * 0.5);
-		mat4.multiply( matrix, matrix, tmpmatrix );
-		mat4.scale( matrix, matrix, scale );
-
-
-		return matrix;
-	},
-
-	//for help read this: https://www.khronos.org/collada/wiki/Using_accessors
-	readGeometry: function(id, flip, scene)
-	{
-		//already read, could happend if several controllers point to the same mesh
-		if( this._geometries_found[ id ] !== undefined )
-			return this._geometries_found[ id ];
-
-		//var xmlgeometry = this._xmlroot.querySelector("geometry" + id);
-		var xmlgeometry = this._xmlroot.getElementById(id.substr(1));
-		if(!xmlgeometry) 
-		{
-			console.warn("readGeometry: geometry not found: " + id);
-			this._geometries_found[ id ] = null;
-			return null;
-		}
-
-		//if the geometry has morph targets then instead of storing it in a geometry, it is in a controller
-		if(xmlgeometry.localName == "controller") 
-		{
-			var geometry = this.readController( xmlgeometry, flip, scene );
-			this._geometries_found[ id ] = geometry;
-			return geometry;
-		}
-
-
-		if(xmlgeometry.localName != "geometry") 
-		{
-			console.warn("readGeometry: tag should be geometry, instead it was found: " + xmlgeometry.localName);
-			this._geometries_found[ id ] = null;
-			return null;
-		}
-
-		var xmlmesh = xmlgeometry.querySelector("mesh");
-		if(!xmlmesh)
-		{
-			console.warn("readGeometry: mesh not found in geometry: " + id);
-			this._geometries_found[ id ] = null;
-			return null;
-		}
-		
-		//get data sources
-		var sources = {};
-		var xmlsources = xmlmesh.querySelectorAll("source");
-		for(var i = 0; i < xmlsources.length; i++)
-		{
-			var xmlsource = xmlsources.item(i);
-			if(!xmlsource.querySelector) continue;
-			var float_array = xmlsource.querySelector("float_array");
-			if(!float_array)
-				continue;
-			var floats = this.readContentAsFloats( float_array );
-
-			var xmlaccessor = xmlsource.querySelector("accessor");
-			var stride = parseInt( xmlaccessor.getAttribute("stride") );
-
-			sources[ xmlsource.getAttribute("id") ] = {stride: stride, data: floats};
-		}
-
-		//get streams
-		var xmlvertices = xmlmesh.querySelector("vertices input");
-		var vertices_source = sources[ xmlvertices.getAttribute("source").substr(1) ];
-		sources[ xmlmesh.querySelector("vertices").getAttribute("id") ] = vertices_source;
-
-		var mesh = null;
-		var xmlpolygons = xmlmesh.querySelector("polygons");
-		if( xmlpolygons )
-			mesh = this.readTriangles( xmlpolygons, sources );
-
-		if(!mesh)
-		{
-			var xmltriangles = xmlmesh.querySelectorAll("triangles");
-			if(xmltriangles && xmltriangles.length)
-				mesh = this.readTriangles( xmltriangles, sources );
-		}
-
-		if(!mesh)
-		{
-			//polylist = true;
-			//var vcount = null;
-			//var xmlvcount = xmlpolygons.querySelector("vcount");
-			//var vcount = this.readContentAsUInt32( xmlvcount );
-			var xmlpolylist_array = xmlmesh.querySelectorAll("polylist");
-			if( xmlpolylist_array && xmlpolylist_array.length )
-				mesh = this.readPolylistArray( xmlpolylist_array, sources );
-		}
-
-		if(!mesh)
-		{
-			var xmllinestrip = xmlmesh.querySelector("linestrips");
-			if(xmllinestrip)
-				mesh = this.readLineStrip( sources, xmllinestrip );
-		}
-
-		if(!mesh)
-		{
-			console.log("no polygons or triangles in mesh: " + id);
-			this._geometries_found[ id ] = null;
-			return null;
-		}
-	
-		//swap coords (X,Y,Z) -> (X,Z,-Y)
-		if(flip && !this.no_flip)
-		{
-			var tmp = 0;
-			var array = mesh.vertices;
-			for(var i = 0, l = array.length; i < l; i += 3)
-			{
-				tmp = array[i+1]; 
-				array[i+1] = array[i+2];
-				array[i+2] = -tmp; 
-			}
-
-			array = mesh.normals;
-			for(var i = 0, l = array.length; i < l; i += 3)
-			{
-				tmp = array[i+1]; 
-				array[i+1] = array[i+2];
-				array[i+2] = -tmp; 
-			}
-		}
-
-		//transferables for worker
-		if(isWorker && this.use_transferables)
-		{
-			for(var i in mesh)
-			{
-				var data = mesh[i];
-				if(data && data.buffer && data.length > 100)
-				{
-					this._transferables.push(data.buffer);
-				}
-			}
-		}
-
-		//extra info
-		mesh.filename = id;
-		mesh.object_type = "Mesh";
-
-		this._geometries_found[ id ] = mesh;
-		return mesh;
-	},
-
-	readTriangles: function( xmltriangles, sources )
-	{
-		var use_indices = false;
-
-		var groups = [];
-		var buffers = [];
-		var last_index = 0;
-		var facemap = {};
-		var vertex_remap = []; //maps DAE vertex index to Mesh vertex index (because when meshes are triangulated indices are changed
-		var indicesArray = [];
-		var last_start = 0;
-		var group_name = "";
-		var material_name = "";
-
-		//for every triangles set (warning, some times they are repeated...)
-		for(var tris = 0; tris < xmltriangles.length; tris++)
-		{
-			var xml_shape_root = xmltriangles.item(tris);
-			var triangles = xml_shape_root.localName == "triangles";
-
-			material_name = xml_shape_root.getAttribute("material");
-
-			//for each buffer (input) build the structure info
-			if(tris == 0)
-				buffers = this.readShapeInputs( xml_shape_root, sources );
-
-			//assuming buffers are ordered by offset
-
-			//iterate data
-			var xmlps = xml_shape_root.querySelectorAll("p");
-			var num_data_vertex = buffers.length; //one value per input buffer
-
-			//compute data to read per vertex
-			var num_values_per_vertex = 1;
-			var buffers_length = buffers.length;
-			for(var b = 0; b < buffers_length; ++b)
-				num_values_per_vertex = Math.max( num_values_per_vertex, buffers[b][4] + 1);
-
-			//for every polygon (could be one with all the indices, could be several, depends on the program)
-			for(var i = 0; i < xmlps.length; i++)
-			{
-				var xmlp = xmlps.item(i);
-				if(!xmlp || !xmlp.textContent) 
-					break;
-
-				var data = xmlp.textContent.trim().split(" ");
-
-				//used for triangulate polys
-				var first_index = -1;
-				var current_index = -1;
-				var prev_index = -1;
-
-				//discomment to force 16bits indices
-				//if(use_indices && last_index >= 256*256)
-				//	break;
-
-				//for every pack of indices in the polygon (vertex, normal, uv, ... )
-				for(var k = 0, l = data.length; k < l; k += num_values_per_vertex)
-				{
-					var vertex_id = data.slice(k,k+num_values_per_vertex).join(" "); //generate unique id
-
-					prev_index = current_index;
-					if(facemap.hasOwnProperty(vertex_id)) //add to arrays, keep the index
-						current_index = facemap[vertex_id];
-					else
-					{
-						//for every data buffer associated to this vertex
-						for(var j = 0; j < buffers_length; ++j)
-						{
-							var buffer = buffers[j];
-							var array = buffer[1]; //array where we accumulate the final data as we extract if from sources
-							var source = buffer[3]; //where to read the data from
-							
-							//compute the index inside the data source array
-							var index = parseInt( data[ k + buffer[4] ] );
-
-							//remember this index in case we need to remap
-							if(j == 0)
-								vertex_remap[ array.length / buffer[2] ] = index; //not sure if buffer[2], it should be number of floats per vertex (usually 3)
-
-							//compute the position inside the source buffer where the final data is located
-							index *= buffer[2]; //this works in most DAEs (not all)
-
-							//extract every value of this element and store it in its final array (every x,y,z, etc)
-							for(var x = 0; x < buffer[2]; ++x)
-							{
-								//if(source[index+x] === undefined) throw("UNDEFINED!"); //DEBUG
-								array.push( source[index+x] );
-							}
-						}
-						
-						current_index = last_index;
-						last_index += 1;
-						facemap[vertex_id] = current_index;
-					}
-
-					if(!triangles) //the xml element is not triangles? then split polygons in triangles
-					{
-						if(k == 0)
-							first_index = current_index;
-						//if(k > 2 * num_data_vertex) //not sure if use this or the next line, the next one works in some DAEs but not sure if it works in all
-						if(k > 2) //triangulate polygons: ensure this works
-						{
-							indicesArray.push( first_index );
-							indicesArray.push( prev_index );
-						}
-					}
-
-					indicesArray.push( current_index );
-				}//per vertex
-			}//per polygon
-
-			var group = {
-				name: group_name || ("group" + tris),
-				start: last_start,
-				length: indicesArray.length - last_start,
-				material: material_name || ""
-			};
-			last_start = indicesArray.length;
-			groups.push( group );
-		}//per triangles group
-
-		var mesh = {
-			vertices: new Float32Array( buffers[0][1] ),
-			info: { groups: groups },
-			_remap: new Uint32Array(vertex_remap)
-		};
-
-		this.transformMeshInfo( mesh, buffers, indicesArray );
-
-		return mesh;
-	},
-
-	readPolylistArray: function( xml_polylist_array, sources )
-	{
-		var meshes = [];
-
-		for(var i = 0; i < xml_polylist_array.length; ++i)
-		{
-			var xml_polylist = xml_polylist_array[i];
-			var mesh = this.readPolylist( xml_polylist, sources );
-			if(mesh)
-				meshes.push( mesh );
-		}
-
-		//one or none
-		if( meshes.length < 2)
-			return meshes[0];
-
-		//merge meshes
-		var mesh = this.mergeMeshes( meshes );
-		return mesh;
-	},
-
-	readPolylist: function( xml_polylist, sources )
-	{
-		var use_indices = false;
-
-		var groups = [];
-		var buffers = [];
-		var last_index = 0;
-		var facemap = {};
-		var vertex_remap = [];
-		var indicesArray = [];
-		var last_start = 0;
-		var group_name = "";
-		var material_name = "";
-
-		material_name = xml_polylist.getAttribute("material") || "";
-		buffers = this.readShapeInputs( xml_polylist, sources );
-
-		var xmlvcount = xml_polylist.querySelector("vcount");
-		var vcount = this.readContentAsUInt32( xmlvcount );
-
-		var xmlp = xml_polylist.querySelector("p");
-		var data = this.readContentAsUInt32( xmlp );
-		var pos = 0;
-
-		var num_values_per_vertex = 1;
-		var buffers_length = buffers.length;
-		for(var b = 0; b < buffers_length; ++b)
-			num_values_per_vertex = Math.max( num_values_per_vertex, buffers[b][4] + 1);
-
-		for(var i = 0, l = vcount.length; i < l; ++i)
-		{
-			var num_vertices = vcount[i];
-
-			var first_index = -1;
-			var current_index = -1;
-			var prev_index = -1;
-
-			//iterate vertices of this polygon
-			for(var k = 0; k < num_vertices; ++k)
-			{
-				var vertex_id = data.slice( pos, pos + num_values_per_vertex).join(" "); //generate unique id
-
-				prev_index = current_index;
-				if(facemap.hasOwnProperty(vertex_id)) //add to arrays, keep the index
-					current_index = facemap[vertex_id];
-				else
-				{
-					for(var j = 0; j < buffers_length; ++j)
-					{
-						var buffer = buffers[j];
-						var array = buffer[1]; //array with all the data
-						var source = buffer[3]; //where to read the data from
-
-						var index = parseInt( data[ pos + buffer[4] ] );
-
-						if(j == 0)
-							vertex_remap[ array.length / buffer[2] ] = index; //not sure if buffer[2], it should be number of floats per vertex (usually 3)
-
-						//compute the position inside the source buffer where the final data is located
-						index *= buffer[2]; //this works in most DAEs (not all)
-
-						//extract every value of this element and store it in its final array (every x,y,z, etc)
-						for(var x = 0; x < buffer[2]; ++x)
-						{
-							//if(source[index+x] === undefined) throw("UNDEFINED!"); //DEBUG
-							array.push( source[index+x] );
-						}
-					}
-					
-					current_index = last_index;
-					last_index += 1;
-					facemap[vertex_id] = current_index;
-				}
-
-				if(num_vertices > 3) //split polygons then
-				{
-					if(k == 0)
-						first_index = current_index;
-					//if(k > 2 * num_data_vertex) //not sure if use this or the next line, the next one works in some DAEs but not sure if it works in all
-					if(k > 2) //triangulate polygons: tested, this works
-					{
-						indicesArray.push( first_index );
-						indicesArray.push( prev_index );
-					}
-				}
-
-				indicesArray.push( current_index );
-				pos += num_values_per_vertex;
-			}//per vertex
-		}//per polygon
-
-		var mesh = {
-			vertices: new Float32Array( buffers[0][1] ),
-			info: {
-				material: material_name
-			},
-			_remap: new Uint32Array( vertex_remap )
-		};
-
-		this.transformMeshInfo( mesh, buffers, indicesArray );
-		return mesh;
-	},
-
-	readShapeInputs: function(xml_shape_root, sources)
-	{
-		var buffers = [];
-
-		var xmlinputs = xml_shape_root.querySelectorAll("input");
-		for(var i = 0; i < xmlinputs.length; i++)
-		{
-			var xmlinput = xmlinputs.item(i);
-			if(!xmlinput.getAttribute) 
-				continue;
-			var semantic = xmlinput.getAttribute("semantic").toUpperCase();
-			var stream_source = sources[ xmlinput.getAttribute("source").substr(1) ];
-			var offset = parseInt( xmlinput.getAttribute("offset") );
-			var data_set = 0;
-			if(xmlinput.getAttribute("set"))
-				data_set = parseInt( xmlinput.getAttribute("set") );
-			buffers.push([semantic, [], stream_source.stride, stream_source.data, offset, data_set ]);
-		}
-
-		return buffers;
-	},
-
-	transformMeshInfo: function( mesh, buffers, indicesArray )
-	{
-		//rename buffers (DAE has other names)
-		var translator = {
-			"normal":"normals",
-			"texcoord":"coords"
-		};
-
-		for(var i = 1; i < buffers.length; ++i)
-		{
-			var name = buffers[i][0].toLowerCase();
-			var data = buffers[i][1];
-			if(!data.length)
-				continue;
-
-			if(translator[name])
-				name = translator[name];
-			if(mesh[name])
-				name = name + buffers[i][5];
-			mesh[ name ] = new Float32Array(data); //are they always float32? I think so
-		}
-		
-		if(indicesArray && indicesArray.length)
-		{
-			if(mesh.vertices.length > 256*256)
-				mesh.triangles = new Uint32Array(indicesArray);
-			else
-				mesh.triangles = new Uint16Array(indicesArray);
-		}
-
-		return mesh;
-	},
-
-	readLineStrip: function(sources, xmllinestrip)
-	{
-		var use_indices = false;
-
-		var buffers = [];
-		var last_index = 0;
-		var facemap = {};
-		var vertex_remap = [];
-		var indicesArray = [];
-		var last_start = 0;
-		var group_name = "";
-		var material_name = "";
-
-		var tris = 0; //used in case there are several strips
-
-		//for each buffer (input) build the structure info
-		var xmlinputs = xmllinestrip.querySelectorAll("input");
-		if(tris == 0) //first iteration, create buffers
-			for(var i = 0; i < xmlinputs.length; i++)
-			{
-				var xmlinput = xmlinputs.item(i);
-				if(!xmlinput.getAttribute) 
-					continue;
-				var semantic = xmlinput.getAttribute("semantic").toUpperCase();
-				var stream_source = sources[ xmlinput.getAttribute("source").substr(1) ];
-				var offset = parseInt( xmlinput.getAttribute("offset") );
-				var data_set = 0;
-				if(xmlinput.getAttribute("set"))
-					data_set = parseInt( xmlinput.getAttribute("set") );
-
-				buffers.push([semantic, [], stream_source.stride, stream_source.data, offset, data_set]);
-			}
-		//assuming buffers are ordered by offset
-
-		//iterate data
-		var xmlps = xmllinestrip.querySelectorAll("p");
-		var num_data_vertex = buffers.length; //one value per input buffer
-
-		//for every polygon (could be one with all the indices, could be several, depends on the program)
-		for(var i = 0; i < xmlps.length; i++)
-		{
-			var xmlp = xmlps.item(i);
-			if(!xmlp || !xmlp.textContent) 
-				break;
-
-			var data = xmlp.textContent.trim().split(" ");
-
-			//used for triangulate polys
-			var first_index = -1;
-			var current_index = -1;
-			var prev_index = -1;
-
-			//if(use_indices && last_index >= 256*256)
-			//	break;
-
-			//for every pack of indices in the polygon (vertex, normal, uv, ... )
-			for(var k = 0, l = data.length; k < l; k += num_data_vertex)
-			{
-				var vertex_id = data.slice(k,k+num_data_vertex).join(" "); //generate unique id
-
-				prev_index = current_index;
-				if(facemap.hasOwnProperty(vertex_id)) //add to arrays, keep the index
-					current_index = facemap[vertex_id];
-				else
-				{
-					for(var j = 0; j < buffers.length; ++j)
-					{
-						var buffer = buffers[j];
-						var index = parseInt(data[k + j]);
-						var array = buffer[1]; //array with all the data
-						var source = buffer[3]; //where to read the data from
-						if(j == 0)
-							vertex_remap[ array.length / num_data_vertex ] = index;
-						index *= buffer[2]; //stride
-						for(var x = 0; x < buffer[2]; ++x)
-							array.push( source[index+x] );
-					}
-					
-					current_index = last_index;
-					last_index += 1;
-					facemap[vertex_id] = current_index;
-				}
-
-				indicesArray.push( current_index );
-			}//per vertex
-		}//per polygon
-
-		var mesh = {
-			primitive: "line_strip",
-			vertices: new Float32Array( buffers[0][1] ),
-			info: {}
-		};
-
-		return this.transformMeshInfo( mesh, buffers, indicesArray );
-	},
-
-	//like querySelector but allows spaces in names because COLLADA allows space in names
-	findXMLNodeById: function(root, nodename, id)
-	{
-		//precomputed
-		if( this._xmlroot._nodes_by_id )
-		{
-			var n = this._xmlroot._nodes_by_id[ id ];
-			if( n && n.localName == nodename)
-				return n;
-		}
-		else //for the native parser
-		{
-			var n = this._xmlroot.getElementById( id );
-			if(n)
-				return n;
-		}
-
-		//recursive: slow
-		var childs = root.childNodes;
-		for(var i = 0; i < childs.length; ++i)
-		{
-			var xmlnode = childs.item(i);
-			if(xmlnode.nodeType != 1 ) //no tag
-				continue;
-			if(xmlnode.localName != nodename)
-				continue;
-			var node_id = xmlnode.getAttribute("id");
-			if(node_id == id)
-				return xmlnode;
-		}
-		return null;
-	},
-
-	readImages: function(root)
-	{
-		var xmlimages = root.querySelector("library_images");
-		if(!xmlimages)
-			return null;
-
-		var images = {};
-
-		var xmlimages_childs = xmlimages.childNodes;
-		for(var i = 0; i < xmlimages_childs.length; ++i)
-		{
-			var xmlimage = xmlimages_childs.item(i);
-			if(xmlimage.nodeType != 1 ) //no tag
-				continue;
-
-			var xmlinitfrom = xmlimage.querySelector("init_from");
-			if(!xmlinitfrom)
-				continue;
-			if(xmlinitfrom.textContent)
-			{
-				var filename = this.getFilename( xmlinitfrom.textContent );
-				var id = xmlimage.getAttribute("id");
-				images[id] = { filename: filename, map: id, name: xmlimage.getAttribute("name"), path: xmlinitfrom.textContent };
-			}
-		}
-
-		return images;
-	},
-
-	readAnimations: function(root, scene)
-	{
-		var xmlanimations = root.querySelector("library_animations");
-		if(!xmlanimations)
-			return null;
-
-		var xmlanimation_childs = xmlanimations.childNodes;
-
-		var animations = {
-			object_type: "Animation",
-			takes: {}
-		};
-
-		var default_take = { tracks: [] };
-		var tracks = default_take.tracks;
-
-		for(var i = 0; i < xmlanimation_childs.length; ++i)
-		{
-			var xmlanimation = xmlanimation_childs.item(i);
-			if(xmlanimation.nodeType != 1 || xmlanimation.localName != "animation") //no tag
-				continue;
-
-			var anim_id = xmlanimation.getAttribute("id");
-			if(!anim_id) //nested animation (DAE 1.5)
-			{
-				var xmlanimation2_childs = xmlanimation.querySelectorAll("animation");
-				if(xmlanimation2_childs.length)
-				{
-					for(var j = 0; j < xmlanimation2_childs.length; ++j)
-					{
-						var xmlanimation2 = xmlanimation2_childs.item(j);
-						this.readAnimation( xmlanimation2, tracks );
-					}
-				}
-				else //source tracks?
-					this.readAnimation( xmlanimation, tracks );
-			}
-			else //no nested (DAE 1.4)
-				this.readAnimation( xmlanimation, tracks );
-		}
-
-		if(!tracks.length) 
-			return null; //empty animation
-
-		//compute animation duration
-		var max_time = 0;
-		for(var i = 0; i < tracks.length; ++i)
-			if( max_time < tracks[i].duration )
-				max_time = tracks[i].duration;
-
-		default_take.name = "default";
-		default_take.duration = max_time;
-		animations.takes[ default_take.name ] = default_take;
-		return animations;
-	},
-
-	//animation xml
-	readAnimation: function( xmlanimation, result )
-	{
-		if(xmlanimation.localName != "animation")
-			return null;
-
-		//this could be missing when there are lots of anims packed in one <animation>
-		var anim_id = xmlanimation.getAttribute("id");
-
-		//channels are like animated properties
-		var xmlchannel_list = xmlanimation.querySelectorAll("channel");
-		if(!xmlchannel_list.length)
-			return null;
-
-		var tracks = result || [];
-
-		for(var i = 0; i < xmlchannel_list.length; ++i)
-		{
-			var anim = this.readChannel( xmlchannel_list.item(i), xmlanimation );
-			if(anim)
-				tracks.push( anim );
-		}
-
-		return tracks;
-	},
-
-	readChannel: function( xmlchannel, xmlanimation )
-	{
-		if(xmlchannel.localName != "channel" || xmlanimation.localName != "animation")
-			return null;
-
-		var source = xmlchannel.getAttribute("source");
-		var target = xmlchannel.getAttribute("target");
-
-		//sampler, is in charge of the interpolation
-		//var xmlsampler = xmlanimation.querySelector("sampler" + source);
-		var xmlsampler = this.findXMLNodeById( xmlanimation, "sampler", source.substr(1) );
-		if(!xmlsampler)
-		{
-			console.error("Error DAE: Sampler not found in " + source);
-			return null;
-		}
-
-		var inputs = {};
-		var params = {};
-		var sources = {};
-		var xmlinputs = xmlsampler.querySelectorAll("input");
-
-		var time_data = null;
-
-		//iterate inputs: collada separates the keyframe info in independent streams, like time, interpolation method, value )
-		for(var j = 0; j < xmlinputs.length; j++)
-		{
-			var xmlinput = xmlinputs.item(j);
-			var source_name =  xmlinput.getAttribute("source");
-
-			//there are three 
-			var semantic = xmlinput.getAttribute("semantic");
-
-			//Search for source
-			var xmlsource = this.findXMLNodeById( xmlanimation, "source", source_name.substr(1) );
-			if(!xmlsource)
-				continue;
-
-			var xmlparam = xmlsource.querySelector("param");
-			if(!xmlparam)
-				continue;
-
-			var type = xmlparam.getAttribute("type");
-			inputs[ semantic ] = { source: source_name, type: type };
-
-			var data_array = null;
-
-			if(type == "float" || type == "float4x4")
-			{
-				var xmlfloatarray = xmlsource.querySelector("float_array");
-				var floats = this.readContentAsFloats( xmlfloatarray );
-				sources[ source_name ] = floats;
-				data_array = floats;
-
-			}
-			else //only floats and matrices are supported in animation
-				continue;
-
-			var param_name = xmlparam.getAttribute("name");
-			if(param_name == "TIME")
-				time_data = data_array;
-			if(semantic == "OUTPUT")
-				param_name = semantic;
-			if(param_name)
-				params[ param_name ] = type;
-			else
-				console.warn("Collada: <param> without name attribute in <animation>");
-		}
-
-		if(!time_data)
-		{
-			console.error("Error DAE: no TIME info found in <channel>: " + xmlchannel.getAttribute("source") );
-			return null;
-		}
-
-		//construct animation
-		var path = target.split("/");
-
-		var anim = {};
-		var nodename = path[0]; //safeString ?
-		var node = this._nodes_by_id[ nodename ];
-		var locator = node.id + "/" + path[1];
-		//anim.nodename = this.safeString( path[0] ); //where it goes
-		anim.name = path[1];
-		anim.property = locator;
-		var type = "number";
-		var element_size = 1;
-		var param_type = params["OUTPUT"];
-		switch(param_type)
-		{
-			case "float": element_size = 1; break;
-			case "float3x3": element_size = 9; type = "mat3"; break;
-			case "float4x4": element_size = 16; type = "mat4"; break;
-			default: break;
-		}
-
-		anim.type = type;
-		anim.value_size = element_size;
-		anim.duration = time_data[ time_data.length - 1]; //last sample
-
-		var value_data = sources[ inputs["OUTPUT"].source ];
-		if(!value_data)
-			return null;
-
-		//Pack data ****************
-		var num_samples = time_data.length;
-		var sample_size = element_size + 1;
-		var anim_data = new Float32Array( num_samples * sample_size );
-		//for every sample
-		for(var j = 0; j < time_data.length; ++j)
-		{
-			anim_data[j * sample_size] = time_data[j]; //set time
-			var value = value_data.subarray( j * element_size, (j+1) * element_size );
-			if(param_type == "float4x4")
-			{
-				this.transformMatrix( value, node ? node._depth == 0 : 0 );
-				//mat4.transpose(value, value);
-			}
-			anim_data.set(value, j * sample_size + 1); //set data
-		}
-
-		if(isWorker && this.use_transferables)
-		{
-			var data = anim_data;
-			if(data && data.buffer && data.length > 100)
-				this._transferables.push(data.buffer);
-		}
-
-		anim.data = anim_data;
-		return anim;
-	},
-
-	findNode: function(root, id)
-	{
-		if(root.id == id) return root;
-		if(root.children)
-			for(var i in root.children)
-			{
-				var ret = this.findNode(root.children[i], id);
-				if(ret) return ret;
-			}
-		return null;
-	},
-
-	//reads controllers and stores them in 
-	readLibraryControllers: function( scene )
-	{
-		var xmllibrarycontrollers = this._xmlroot.querySelector("library_controllers");
-		if(!xmllibrarycontrollers)
-			return null;
-
-		var xmllibrarycontrollers_childs = xmllibrarycontrollers.childNodes;
-
-		for(var i = 0; i < xmllibrarycontrollers_childs.length; ++i)
-		{
-			var xmlcontroller = xmllibrarycontrollers_childs.item(i);
-			if(xmlcontroller.nodeType != 1 || xmlcontroller.localName != "controller") //no tag
-				continue;
-			var id = xmlcontroller.getAttribute("id");
-			//we have already processed this controller
-			if( this._controllers_found[ id ] )
-				continue;
-
-			//read it (we wont use the returns, we will get it from this._controllers_found
-			this.readController( xmlcontroller, null, scene );
-		}
-	},
-
-	//used for skinning and morphing
-	readController: function( xmlcontroller, flip, scene )
-	{
-		if(!xmlcontroller.localName == "controller")
-		{
-			console.warn("readController: not a controller: " + xmlcontroller.localName);
-			return null;
-		}
-
-		var id = xmlcontroller.getAttribute("id");
-
-		//use cached
-		if( this._controllers_found[ id ] )
-			return this._controllers_found[ id ];
-
-		var use_indices = false;
-		var mesh = null;
-		var xmlskin = xmlcontroller.querySelector("skin");
-		if(xmlskin) {
-			mesh = this.readSkinController( xmlskin, flip, scene);
-		}
-
-		var xmlmorph = xmlcontroller.querySelector("morph");
-		if(xmlmorph)
-			mesh = this.readMorphController( xmlmorph, flip, scene, mesh );
-
-		//cache and return
-		this._controllers_found[ id ] = mesh;
-
-		return mesh;
-	},
-
-	//read this to more info about DAE and skinning https://collada.org/mediawiki/index.php/Skinning
-	readSkinController: function( xmlskin, flip, scene )
-	{
-		//base geometry
-		var id_geometry = xmlskin.getAttribute("source");
-
-
-		var mesh = this.readGeometry( id_geometry, flip, scene );
-		if(!mesh)
-			return null;
-
-		var sources = this.readSources(xmlskin, flip);
-		if(!sources)
-			return null;
-
-		//matrix
-		var bind_matrix = null;
-		var xmlbindmatrix = xmlskin.querySelector("bind_shape_matrix");
-		if(xmlbindmatrix)
-		{
-			bind_matrix = this.readContentAsFloats( xmlbindmatrix );
-			this.transformMatrix(bind_matrix, true, true );			
-		}
-		else
-			bind_matrix = mat4.create(); //identity
-
-		//joints
-		var joints = [];
-		var xmljoints = xmlskin.querySelector("joints");
-		if(xmljoints)
-		{
-			var joints_source = null; //which bones
-			var inv_bind_source = null; //bind matrices
-			var xmlinputs = xmljoints.querySelectorAll("input");
-			for(var i = 0; i < xmlinputs.length; i++)
-			{
-				var xmlinput = xmlinputs[i];
-				var sem = xmlinput.getAttribute("semantic").toUpperCase();
-				var src = xmlinput.getAttribute("source");
-				var source = sources[ src.substr(1) ];
-				if(sem == "JOINT")
-					joints_source = source;
-				else if(sem == "INV_BIND_MATRIX")
-					inv_bind_source = source;
-			}
-
-			//save bone names and inv matrix
-			if(!inv_bind_source || !joints_source)
-			{
-				console.error("Error DAE: no joints or inv_bind sources found");
-				return null;
-			}
-
-			for(var i = 0; i < joints_source.length; ++i)
-			{
-				//get the inverse of the bind pose
-				var inv_mat = inv_bind_source.subarray(i*16,i*16+16);
-				var nodename = joints_source[i];
-				var node = this._nodes_by_id[ nodename ];
-				if(!node)
-				{
-					console.warn("Node " + nodename + " not found");
-					continue;
-				}
-				this.transformMatrix(inv_mat, node._depth == 0, true );
-				joints.push([ nodename, inv_mat ]);
-			}
-		}
-
-		//weights
-		var xmlvertexweights = xmlskin.querySelector("vertex_weights");
-		if(xmlvertexweights)
-		{
-
-			//here we see the order 
-			var weights_indexed_array = null;
-			var xmlinputs = xmlvertexweights.querySelectorAll("input");
-			for(var i = 0; i < xmlinputs.length; i++)
-			{
-				if( xmlinputs[i].getAttribute("semantic").toUpperCase() == "WEIGHT" )
-					weights_indexed_array = sources[ xmlinputs.item(i).getAttribute("source").substr(1) ];
-			}
-
-			if(!weights_indexed_array)
-				throw("no weights found");
-
-			var xmlvcount = xmlvertexweights.querySelector("vcount");
-			var vcount = this.readContentAsUInt32( xmlvcount );
-
-			var xmlv = xmlvertexweights.querySelector("v");
-			var v = this.readContentAsUInt32( xmlv );
-
-			var num_vertices = mesh.vertices.length / 3; //3 components per vertex
-			var weights_array = new Float32Array(4 * num_vertices); //4 bones per vertex
-			var bone_index_array = new Uint8Array(4 * num_vertices); //4 bones per vertex
-
-			var pos = 0;
-			var remap = mesh._remap;
-			if(!remap)
-				throw("no remap info found in mesh");
-			var max_bone = 0; //max bone affected
-
-			for(var i = 0, l = vcount.length; i < l; ++i)
-			{
-				var num_bones = vcount[i]; //num bones influencing this vertex
-
-				//find 4 with more influence
-				//var v_tuplets = v.subarray(offset, offset + num_bones*2);
-
-				var offset = pos;
-				var b = bone_index_array.subarray(i*4, i*4 + 4);
-				var w = weights_array.subarray(i*4, i*4 + 4);
-
-				var sum = 0;
-				for(var j = 0; j < num_bones && j < 4; ++j)
-				{
-					b[j] = v[offset + j*2];
-					if(b[j] > max_bone) max_bone = b[j];
-
-					w[j] = weights_indexed_array[ v[offset + j*2 + 1] ];
-					sum += w[j];
-				}
-
-				//normalize weights
-				if(num_bones > 4 && sum < 1.0)
-				{
-					var inv_sum = 1/sum;
-					for(var j = 0; j < 4; ++j)
-						w[j] *= inv_sum;
-				}
-
-				pos += num_bones * 2;
-			}
-
-
-			//remap: because vertices order is now changed after parsing the mesh
-			var final_weights = new Float32Array(4 * num_vertices); //4 bones per vertex
-			var final_bone_indices = new Uint8Array(4 * num_vertices); //4 bones per vertex
-			var used_joints = [];
-
-			//for every vertex in the mesh, process bone indices and weights
-			for(var i = 0; i < num_vertices; ++i)
-			{
-				var p = remap[ i ] * 4;
-				var w = weights_array.subarray(p,p+4);
-				var b = bone_index_array.subarray(p,p+4);
-
-				//sort by weight so relevant ones goes first
-				for(var k = 0; k < 3; ++k)
-				{
-					var max_pos = k;
-					var max_value = w[k];
-					for(var j = k+1; j < 4; ++j)
-					{
-						if(w[j] <= max_value)
-							continue;
-						max_pos = j;
-						max_value = w[j];
-					}
-					if(max_pos != k)
-					{
-						var tmp = w[k];
-						w[k] = w[max_pos];
-						w[max_pos] = tmp;
-						tmp = b[k];
-						b[k] = b[max_pos]; 
-						b[max_pos] = tmp;
-					}
-				}
-
-				//store
-				final_weights.set( w, i*4);
-				final_bone_indices.set( b, i*4);
-
-				//mark bones used
-				if(w[0]) used_joints[b[0]] = true;
-				if(w[1]) used_joints[b[1]] = true;
-				if(w[2]) used_joints[b[2]] = true;
-				if(w[3]) used_joints[b[3]] = true;
-			}
-
-			if(max_bone >= joints.length)
-				console.warn("Mesh uses higher bone index than bones found");
-
-			//trim unused bones (collada could give you 100 bones for an object that only uses a fraction of them)
-			if(1)
-			{
-				var new_bones = [];
-				var bones_translation = {};
-				for(var i = 0; i < used_joints.length; ++i)
-					if(used_joints[i])
-					{
-						bones_translation[i] = new_bones.length;
-						new_bones.push( joints[i] );
-					}
-
-				//in case there are less bones in use...
-				if(new_bones.length < joints.length)
-				{
-					//remap
-					for(var i = 0; i < final_bone_indices.length; i++)
-						final_bone_indices[i] = bones_translation[ final_bone_indices[i] ];
-					joints = new_bones;
-				}
-				//console.log("Bones: ", joints.length, " used:", num_used_joints );
-			}
-
-			//console.log("Bones: ", joints.length, "Max bone: ", max_bone);
-
-			mesh.weights = final_weights;
-			mesh.bone_indices = final_bone_indices;
-			mesh.bones = joints;
-			mesh.bind_matrix = bind_matrix;
-
-			//delete mesh["_remap"];
-		}
-
-		return mesh;
-	},
-
-	//NOT TESTED
-	readMorphController: function(xmlmorph, flip, scene, mesh)
-	{
-		var id_geometry = xmlmorph.getAttribute("source");
-		var base_mesh = this.readGeometry( id_geometry, flip, scene );
-		if(!base_mesh)
-			return null;
-
-		//read sources with blend shapes info (which ones, and the weight)
-		var sources = this.readSources(xmlmorph, flip);
-
-		var morphs = [];
-
-		//targets
-		var xmltargets = xmlmorph.querySelector("targets");
-		if(!xmltargets)
-			return null;
-
-		var xmlinputs = xmltargets.querySelectorAll("input");
-		var targets = null;
-		var weights = null;
-
-		for(var i = 0; i < xmlinputs.length; i++)
-		{
-			var xmlinput = xmlinputs.item(i);
-			var semantic = xmlinput.getAttribute("semantic").toUpperCase();
-			var data = sources[ xmlinput.getAttribute("source").substr(1) ];
-			if( semantic == "MORPH_TARGET" )
-				targets = data;
-			else if( semantic == "MORPH_WEIGHT" )
-				weights = data;
-		}
-
-		if(!targets || !weights)
-		{
-			console.warn("Morph controller without targets or weights. Skipping it.");
-			return null;
-		}
-
-		//get targets
-		for(var i in targets)
-		{
-			var id = "#" + targets[i];
-			var geometry = this.readGeometry( id, flip, scene );
-			scene.meshes[ id ] = geometry;
-			morphs.push( { mesh: id, weight: weights[i]} );
-		}
-
-		base_mesh.morph_targets = morphs;
-		return base_mesh;
-	},
-
-	readBindMaterials: function( xmlbind_material, mesh )
-	{
-		var materials = [];
-
-		var xmltechniques = xmlbind_material.querySelectorAll("technique_common");
-		for(var i = 0; i < xmltechniques.length; i++)
-		{
-			var xmltechnique = xmltechniques.item(i);
-			var xmlinstance_materials = xmltechnique.querySelectorAll("instance_material");
-			for(var j = 0; j < xmlinstance_materials.length; j++)
-			{
-				var xmlinstance_material = xmlinstance_materials.item(j);
-				if(xmlinstance_material)
-					materials.push( xmlinstance_material.getAttribute("symbol") );
-			}
-		}
-
-		return materials;
-	},
-
-	readSources: function(xmlnode, flip)
-	{
-		//for data sources
-		var sources = {};
-		var xmlsources = xmlnode.querySelectorAll("source");
-		for(var i = 0; i < xmlsources.length; i++)
-		{
-			var xmlsource = xmlsources.item(i);
-			if(!xmlsource.querySelector) //??
-				continue;
-
-			var float_array = xmlsource.querySelector("float_array");
-			if(float_array)
-			{
-				var floats = this.readContentAsFloats( xmlsource );
-				sources[ xmlsource.getAttribute("id") ] = floats;
-				continue;
-			}
-
-			var name_array = xmlsource.querySelector("Name_array");
-			if(name_array)
-			{
-				var names = this.readContentAsStringsArray( name_array );
-				if(!names)
-					continue;
-				sources[ xmlsource.getAttribute("id") ] = names;
-				continue;
-			}
-
-			var ref_array = xmlsource.querySelector("IDREF_array");
-			if(ref_array)
-			{
-				var names = this.readContentAsStringsArray( ref_array );
-				if(!names)
-					continue;
-				sources[ xmlsource.getAttribute("id") ] = names;
-				continue;
-			}
-		}
-
-		return sources;
-	},
-
-	readContentAsUInt32: function(xmlnode)
-	{
-		if(!xmlnode) return null;
-		var text = xmlnode.textContent;
-		text = text.replace(/\n/gi, " "); //remove line breaks
-		text = text.trim(); //remove empty spaces
-		if(text.length == 0) return null;
-		var numbers = text.split(" "); //create array
-		var floats = new Uint32Array( numbers.length );
-		for(var k = 0; k < numbers.length; k++)
-			floats[k] = parseInt( numbers[k] );
-		return floats;
-	},
-
-	readContentAsFloats: function(xmlnode)
-	{
-		if(!xmlnode) return null;
-		var text = xmlnode.textContent;
-		text = text.replace(/\n/gi, " "); //remove line breaks
-		text = text.replace(/\s\s+/gi, " ");
-		text = text.replace(/\t/gi, "");
-		text = text.trim(); //remove empty spaces
-		var numbers = text.split(" "); //create array
-		var count = xmlnode.getAttribute("count");
-		var length = count ? parseInt( count  ) : numbers.length;
-		var floats = new Float32Array( length );
-		for(var k = 0; k < numbers.length; k++)
-			floats[k] = parseFloat( numbers[k] );
-		return floats;
-	},
-	
-	readContentAsStringsArray: function(xmlnode)
-	{
-		if(!xmlnode) return null;
-		var text = xmlnode.textContent;
-		text = text.replace(/\n/gi, " "); //remove line breaks
-		text = text.replace(/\s\s/gi, " ");
-		text = text.trim(); //remove empty spaces
-		var words = text.split(" "); //create array
-		for(var k = 0; k < words.length; k++)
-			words[k] = words[k].trim();
-		if(xmlnode.getAttribute("count") && parseInt(xmlnode.getAttribute("count")) != words.length)
-		{
-			var merged_words = [];
-			var name = "";
-			for (var i in words)
-			{
-				if(!name)
-					name = words[i];
-				else
-					name += " " + words[i];
-				if(!this._nodes_by_id[ this.safeString(name) ])
-					continue;
-				merged_words.push( this.safeString(name) );
-				name = "";
-			}
-
-			var count = parseInt(xmlnode.getAttribute("count"));
-			if(merged_words.length == count)
-				return merged_words;
-
-			console.error("Error: bone names have spaces, avoid using spaces in names");
-			return null;
-		}
-		return words;
-	},
-
-	max3d_matrix_0: new Float32Array([0, -1, 0, 0, 0, 0, -1, 0, 1, 0, 0, -0, 0, 0, 0, 1]),
-	//max3d_matrix_other: new Float32Array([0, -1, 0, 0, 0, 0, -1, 0, 1, 0, 0, -0, 0, 0, 0, 1]),
-
-	transformMatrix: function(matrix, first_level, inverted)
-	{
-		mat4.transpose(matrix,matrix);
-
-		if(this.no_flip)
-			return matrix;
-
-		//WARNING: DO NOT CHANGE THIS FUNCTION, THE SKY WILL FALL
-		if(first_level){
-
-			//flip row two and tree
-			var temp = new Float32Array(matrix.subarray(4,8)); //swap rows
-			matrix.set( matrix.subarray(8,12), 4 );
-			matrix.set( temp, 8 );
-
-			//reverse Z
-			temp = matrix.subarray(8,12);
-			vec4.scale(temp,temp,-1);
-		}
-		else 
-		{
-			var M = mat4.create();
-			var m = matrix;
-
-			//if(inverted) mat4.invert(m,m);
-
-			/* non trasposed
-			M.set([m[0],m[8],-m[4]], 0);
-			M.set([m[2],m[10],-m[6]], 4);
-			M.set([-m[1],-m[9],m[5]], 8);
-			M.set([m[3],m[11],-m[7]], 12);
-			*/
-
-			M.set([m[0],m[2],-m[1]], 0);
-			M.set([m[8],m[10],-m[9]], 4);
-			M.set([-m[4],-m[6],m[5]], 8);
-			M.set([m[12],m[14],-m[13]], 12);
-
-			m.set(M);
-
-			//if(inverted) mat4.invert(m,m);
-
-		}
-		return matrix;
-	},
-
-	mergeMeshes: function( meshes, options )
-	{
-		options = options || {};
-
-		var vertex_buffers = {};
-		var index_buffers = {};
-		var offsets = {}; //tells how many positions indices must be offseted
-		var vertex_offsets = [];
-		var current_vertex_offset = 0;
-		var groups = [];
-
-		var index_buffer_names = {
-			triangles: true,
-			wireframe: true
-		};
-
-		var remap = null;
-		var remap_offset = 0;
-
-		//vertex buffers
-		//compute size
-		for(var i = 0; i < meshes.length; ++i)
-		{
-			var mesh = meshes[i];
-			var offset = current_vertex_offset;
-			vertex_offsets.push( offset );
-			var length = mesh.vertices.length / 3;
-			current_vertex_offset += length;
-
-			for(var j in mesh)
-			{
-				var buffer = mesh[j];
-
-				if( j == "info" || j == "_remap" )
-					continue;
-
-				if( index_buffer_names[j] )
-				{
-					if(!index_buffers[j])
-						index_buffers[j] = buffer.length;
-					else
-						index_buffers[j] += buffer.length;
-				}
-				else
-				{
-					if(!vertex_buffers[j])
-						vertex_buffers[j] = buffer.length;
-					else
-						vertex_buffers[j] += buffer.length;
-				}
-			}
-
-			//groups
-			var group = {
-				name: "mesh_" + ( mesh.info.material || i ),
-				start: offset,
-				length: length,
-				material: ( mesh.info.material || "" )
-			};
-
-			groups.push( group );
-		}
-
-		//allocate
-		for(var j in vertex_buffers)
-		{
-			var datatype = options[j];
-			if(datatype === null)
-			{
-				delete vertex_buffers[j];
-				continue;
-			}
-
-			if(!datatype)
-				datatype = Float32Array;
-
-			vertex_buffers[j] = new datatype( vertex_buffers[j] );
-			offsets[j] = 0;
-		}
-
-		for(var j in index_buffers)
-		{
-			index_buffers[j] = new Uint32Array( index_buffers[j] );
-			offsets[j] = 0;
-		}
-
-		//store
-		for(var i = 0; i < meshes.length; ++i)
-		{
-			var mesh = meshes[i];
-			var offset = 0;
-
-			var buffer = mesh.vertices;
-			if(!buffer)
-				return console.error("mesh without vertices");
-			var length = buffer.length / 3;
-			
-			for(var j in mesh)
-			{
-				var buffer = mesh[j];
-				if( j == "info")
-					continue;
-
-				if(j == "_remap")
-				{
-					if(remap_offset)
-						apply_offset( buffer, 0, buffer.length, remap_offset );
-
-					if(!remap)
-					{
-						remap = new Uint32Array( buffer.length );
-						remap.set( buffer );
-					}
-					else
-					{
-						var new_remap = new Uint32Array( remap.length + buffer.length );
-						new_remap.set( remap );
-						new_remap.set( buffer, remap.length );
-						remap = new_remap;
-					}
-					remap_offset += length;
-				}
-
-				//INDEX BUFFER
-				if( index_buffer_names[j] )
-				{
-					index_buffers[j].set( buffer, offsets[j] );
-					apply_offset( index_buffers[j], offsets[j], buffer.length, vertex_offsets[i] );
-					offsets[j] += buffer.length;
-					continue;
-				}
-
-				//VERTEX BUFFER
-				if(!vertex_buffers[j])
-					continue;
-
-				vertex_buffers[j].set( buffer, offsets[j] );
-				offsets[j] += buffer.length;
-			}
-		}
-
-		function apply_offset( array, start, length, offset )
-		{
-			var l = start + length;
-			for(var i = start; i < l; ++i)
-				array[i] += offset;
-		}
-
-		var extra = { info: { groups: groups } };
-		var final_mesh = { info: { groups: groups } };
-		for(var i in vertex_buffers)
-			final_mesh[i] = vertex_buffers[i];
-		for(var i in index_buffers)
-			final_mesh[i] = index_buffers[i];
-
-		if( remap )
-			final_mesh._remap = remap;
-		return final_mesh;
-	}
-};
-
-
-//add worker launcher
-if(!isWorker)
-{
-	Collada.launchWorker = function()
-	{
-		var worker = this.worker = new Worker( Collada.workerPath + "collada.js" );
-		worker.callback_ids = {};
-
-		worker.addEventListener('error', function(e){
-			if (Collada.onerror)
-				Collada.onerror(err);
-		});
-
-		//main thread receives a message from worker
-		worker.addEventListener('message', function(e) {
-			if(!e.data)
-				return;
-
-			var data = e.data;
-
-			switch(data.action)
-			{
-				case "log": console.log.apply( console, data.params ); break;
-				case "warn": console.warn.apply( console, data.params ); break;
-				case "exception": 
-					console.error.apply( console, data.params ); 
-					if(Collada.onerror)
-						Collada.onerror(data.msg);
-					break;
-				case "error": console.error.apply( console, data.params ); break;
-				case "result": 
-					var callback = this.callback_ids[ data.callback_id ];
-					if(!callback)
-						throw("callback not found");
-					callback( data.result );
-					break;
-				default:
-					console.warn("Unknown action:", data.action);
-					break;
-			}
-		});
-
-		this.callback_ids = {};
-		this.last_callback_id = 1;
-
-		this.toWorker("init", [this.config] );
-	}
-
-	Collada.toWorker = function( func_name, params, callback )
-	{
-		if(!this.worker)
-			this.launchWorker();
-
-		var id = this.last_callback_id++;
-		this.worker.callback_ids[ id ] = callback;
-		this.worker.postMessage({ func: func_name, params: params, callback_id: id });
-	}
-
-	Collada.loadInWorker = function( url, callback )
-	{
-		this.toWorker("loadInWorker", [url], callback );
-	}
-
-	Collada.parseInWorker = function( data, callback )
-	{
-		this.toWorker("parseInWorker", [data], callback );
-	}
-
-}
-else //in worker
-{
-	Collada.loadInWorker = function(callback, url) { 
-		Collada.load(url, callback);
-	}
-
-	Collada.parseInWorker = function(callback, data) { 
-		callback( Collada.parse(data) );
-	}
-}
-
-
-function request(url, callback)
-{
-	var req = new XMLHttpRequest();
-	req.onload = function() {
-		var response = this.response;
-		if(this.status != 200)
-			return;
-		if(callback)
-			callback(this.response);
-	};
-	if(url.indexOf("://") == -1)
-		url = Collada.dataPath + url;
-	req.open("get", url, true);
-	req.send();
-}
-
-//global event catcher
-if(isWorker)
-{
-	self.addEventListener('message', function(e) {
-
-		if(e.data.func == "init")
-			return Collada.init.apply( Collada, e.data.params );
-
-		var func_name = e.data.func;
-		var params = e.data.params;
-		var callback_id = e.data.callback_id;
-
-		//callback when the work is done
-		var callback = function(result){
-			self.postMessage({action:"result", callback_id: callback_id, result: result}, Collada._transferables );
-			Collada._transferables = null;
-		}
-
-		var func = Collada[func_name];
-
-		if( func === undefined)
-		{
-			console.error("function not found:", func_name);
-			callback(null);
-		}
-		else
-		{
-			try
-			{
-				func.apply( Collada, params ? [callback].concat(params) : [callback]);
-			}
-			catch (err)
-			{
-				console.error("Error inside worker function call to " + func_name + " :: " + err);
-				callback(null);
-			}
-		}
-
-	}, false);
-}
-
-})( typeof(window) != "undefined" ? window : self );
-
-var parserDAE = {
-	extension: "dae",
-	type: "scene",
-	resource: "SceneNode",
-	format: "text",
-	dataType:'text',
-
-	parse: function( data, options, filename )
-	{
-		if(!data || data.constructor !== String)
-		{
-			console.error("DAE parser requires string");
-			return null;
-		}
-
-		Collada.material_translate_table = {
-			reflectivity: "reflection_factor",
-			specular: "specular_factor",
-			shininess: "specular_gloss",
-			emission: "emissive",
-			diffuse: "color"
-		}; //this is done to match LS specification
-
-		var clean_filename = LS.RM.getFilename( filename );
-
-		//parser moved to Collada.js library
-		var scene = Collada.parse( data, options, clean_filename );
-		console.log( scene ); 
-
-		scene.root.name = clean_filename;
-
-		//apply 90 degrees rotation to match the Y UP AXIS of the system
-		if( scene.metadata && scene.metadata.up_axis == "Z_UP" )
-			scene.root.model = mat4.rotateX( mat4.create(), mat4.create(), -90 * 0.0174532925 );
-
-		//rename meshes, nodes, etc
-		var renamed = {};
-		var basename = clean_filename.substr(0, clean_filename.indexOf("."));
-
-		//rename meshes names
-		var renamed_meshes = {};
-		for(var i in scene.meshes)
-		{
-			var newmeshname = basename + "__" + i;
-			newmeshname = newmeshname.replace(/[^a-z0-9]/gi,"_"); //newmeshname.replace(/ /#/g,"_");
-			renamed[ i ] = newmeshname;
-			renamed_meshes[ newmeshname ] = scene.meshes[i];
-		}
-		scene.meshes = renamed_meshes;
-
-		for(var i in scene.meshes)
-		{
-			var mesh = scene.meshes[i];
-			this.processMesh( mesh, renamed );
-		}
-
-		//change local collada ids to valid uids 
-		inner_replace_names( scene.root );
-
-		function inner_replace_names( node )
-		{
-			//change uid
-			if(node.id && !options.skip_renaming )
-			{
-				node.uid = "@" + basename + "::" + node.id;
-				renamed[ node.id ] = node.uid;
-			}
-			
-			//in case the node has some kind of type
-			if(node.type)
-			{
-				node.node_type = node.type;
-				delete node.type; //to be sure it doesnt overlaps with some existing var
-			}
-
-			//change mesh names to engine friendly ids
-			if(node.meshes)
-			{
-				for(var i = 0; i < node.meshes.length; i++)
-					if(node.meshes[i] && renamed[ node.meshes[i] ])
-						node.meshes[i] = renamed[ node.meshes[i] ];
-			}
-			if(node.mesh && renamed[ node.mesh ])
-				node.mesh = renamed[ node.mesh ];
-
-			if(node.children)
-				for(var i in node.children)
-					inner_replace_names( node.children[i] );
-		}
-
-		//replace skinning joint ids
-		for(var i in scene.meshes)
-		{
-			var mesh = scene.meshes[i];
-			if(mesh.bones)
-			{
-				for(var j in mesh.bones)
-				{
-					var id = mesh.bones[j][0];
-					var uid = renamed[ id ];
-					if(uid)
-						mesh.bones[j][0] = uid;
-				}
-			}
-		}
-
-		//Materials need some renames
-		for(var i in scene.materials)
-			this.processMaterial( scene.materials[i] );
-
-		//check resources
-		for(var i in scene.resources)
-		{
-			var res = scene.resources[i];
-			if(res.object_type == "Animation")
-				this.processAnimation( res, renamed );
-		}
-
-		return scene;
-	},
-
-	processMesh: function( mesh, renamed )
-	{
-		if(!mesh.vertices)
-			return; //mesh without vertices?!
-
-		var num_vertices = mesh.vertices.length / 3;
-		var num_coords = mesh.coords ? mesh.coords.length / 2 : 0;
-
-		if(num_coords && num_coords != num_vertices )
-		{
-			var old_coords = mesh.coords;
-			var new_coords = new Float32Array( num_vertices * 2 );
-
-			if(num_coords > num_vertices) //check that UVS have 2 components (MAX export 3 components for UVs)
-			{
-				for(var i = 0; i < num_vertices; ++i )
-				{
-					new_coords[i*2] = old_coords[i*3];
-					new_coords[i*2+1] = old_coords[i*3+1];
-				}
-			}
-			mesh.coords = new_coords;
-		}
-
-		//rename morph targets names
-		if(mesh.morph_targets)
-			for(var j = 0; j < mesh.morph_targets.length; ++j)
-			{
-				var morph = mesh.morph_targets[j];
-				if(morph.mesh && renamed[ morph.mesh ])
-					morph.mesh = renamed[ morph.mesh ];
-			}
-	},
-
-	//depending on the 3D software used, animation tracks could be tricky to handle
-	processAnimation: function( animation, renamed )
-	{
-		for(var i in animation.takes)
-		{
-			var take = animation.takes[i];
-
-			//apply renaming
-			for(var j = 0; j < take.tracks.length; ++j)
-			{
-				var track = take.tracks[j];
-				var pos = track.property.indexOf("/");
-				if(!pos)
-					continue;
-				var nodename = track.property.substr(0,pos);
-				var extra = track.property.substr(pos);
-				if(extra == "/transform") //blender exports matrices as transform
-					extra = "/matrix";
-
-				if( !renamed[nodename] )
-					continue;
-
-				nodename = renamed[ nodename ];
-				track.property = nodename + extra;
-			}
-
-			//rotations could come in different ways, some of them are accumulative, which doesnt work in litescene, so we have to accumulate them previously
-			var rotated_nodes = {};
-			for(var j = 0; j < take.tracks.length; ++j)
-			{
-				var track = take.tracks[j];
-				track.packed_data = true; //hack: this is how it works my loader
-				if(track.name == "rotateX.ANGLE" || track.name == "rotateY.ANGLE" || track.name == "rotateZ.ANGLE")
-				{
-					var nodename = track.property.split("/")[0];
-					if(!rotated_nodes[nodename])
-						rotated_nodes[nodename] = { tracks: [] };
-					rotated_nodes[nodename].tracks.push( track );
-				}
-			}
-
-			for(var j in rotated_nodes)
-			{
-				var info = rotated_nodes[j];
-				var newtrack = { data: [], type: "quat", value_size: 4, property: j + "/Transform/rotation", name: "rotation" };
-				var times = [];
-
-				//collect timestamps
-				for(var k = 0; k < info.tracks.length; ++k)
-				{
-					var track = info.tracks[k];
-					var data = track.data;
-					for(var w = 0; w < data.length; w+=2)
-						times.push( data[w] );
-				}
-
-				//create list of timestamps and remove repeated ones
-				times.sort();
-				var last_time = -1;
-				var final_times = [];
-				for(var k = 0; k < times.length; ++k)
-				{
-					if(times[k] == last_time)
-						continue;
-					final_times.push( times[k] );
-					last_time = times[k];
-				}
-				times = final_times;
-
-				//create samples
-				newtrack.data.length = times.length;
-				for(var k = 0; k < newtrack.data.length; ++k)
-				{
-					var time = times[k];
-					var value = quat.create();
-					//create keyframe
-					newtrack.data[k] = [time, value];
-
-					for(var w = 0; w < info.tracks.length; ++w)
-					{
-						var track = info.tracks[w];
-						var sample = getTrackSample( track, time );
-						if(!sample) //nothing to do if no sample or 0
-							continue;
-						sample *= 0.0174532925; //degrees to radians
-						switch( track.name )
-						{
-							case "rotateX.ANGLE": quat.rotateX( value, value, -sample ); break;
-							case "rotateY.ANGLE": quat.rotateY( value, value, sample ); break;
-							case "rotateZ.ANGLE": quat.rotateZ( value, value, sample ); break;
-						}
-					}
-				}
-
-				//add track
-				take.tracks.push( newtrack );
-
-				//remove old rotation tracks
-				for(var w = 0; w < info.tracks.length; ++w)
-				{
-					var track = info.tracks[w];
-					var pos = take.tracks.indexOf( track );
-					if(pos == -1)
-						continue;
-					take.tracks.splice(pos,1);
-				}
-			}
-
-		}//takes
-
-		function getTrackSample( track, time )
-		{
-			var data = track.data;
-			var l = data.length;
-			for(var t = 0; t < l; t+=2)
-			{
-				if(data[t] == time)
-					return data[t+1];
-				if(data[t] > time)
-					return null;
-			}
-			return null;
-		}
-	},
-
-	processMaterial: function(material)
-	{
-		material.object_type = "StandardMaterial";
-
-		if(material.transparency)
-		{
-			material.opacity = 1.0 - parseFloat( material.transparency );
-			if(material.transparent)
-				material.opacity = material.transparency; //why? dont know but works
-		}
-
-		//collada supports materials with colors as specular_factor but StandardMaterial only support one value
-		if(material.specular_factor && material.specular_factor.length)
-			material.specular_factor = material.specular_factor[0];
-
-		if(material.textures)
-		{
-			for(var i in material.textures)
-			{
-				var tex_info = material.textures[i];
-				var coords = LS.Material.COORDS_UV0;
-				if( tex_info.uvs == "TEX1")
-					coords = LS.Material.COORDS_UV1;
-				tex_info = { 
-					texture: tex_info.map_id,
-					uvs: coords
-				};
-				material.textures[i] = tex_info;
-			}
-		}
-	}
-};
-
-LS.Formats.addSupportedFormat( "dae", parserDAE );
-
-var parserDDS = { 
-	extension: "dds",
-	type: "image",
-	dataType:"arraybuffer",
-	resource: "Texture",
-	format: "binary",
-
-	parse: function(data, options)
-	{
-		if(!data || data.constructor !== ArrayBuffer)
-			throw( "ParserDDS: data must be ArrayBuffer");
-		var ext = gl.getExtension("WEBKIT_WEBGL_compressed_texture_s3tc");
-		var texture = new GL.Texture(0,0, options);
-		if(!window.DDS)
-			throw("dds.js script must be included, not found");
-		DDS.loadDDSTextureFromMemoryEx(gl,ext, data, texture, true);
-		//console.log( DDS.getDDSTextureFromMemoryEx(data) );
-		//texture.texture_type = texture.handler.texture_type;
-		//texture.width = texture.handler.width;
-		//texture.height = texture.handler.height;
-		//texture.bind();
-		return texture;
-	}
-};
-
-LS.Formats.addSupportedFormat( "dds", parserDDS );
-//legacy format
-var parserJSMesh = { 
-	extension: 'jsmesh',
-	type: 'mesh',
-	format: 'text',
-	dataType:'string',
-
-	parse: function(data,options)
-	{
-		var mesh = null;
-
-		if(typeof(data) == "object")
-			mesh = data;
-		else if(typeof(data) == "string")
-			mesh = JSON.parse(data);
-
-		if(mesh.vertices.constructor == Array) //for deprecated formats
-		{
-			mesh.vertices = typeof( mesh.vertices[0] ) == "number" ? mesh.vertices : linearizeArray(mesh.vertices);
-			if(mesh.normals) mesh.normals = typeof( mesh.normals[0] ) == "number" ? mesh.normals : linearizeArray(mesh.normals);
-			if(mesh.coords) mesh.coords = typeof( mesh.coords[0] ) == "number" ? mesh.coords : linearizeArray(mesh.coords);
-			if(mesh.triangles) mesh.triangles = typeof( mesh.triangles[0] ) == "number" ? mesh.triangles : linearizeArray(mesh.triangles);
-
-			mesh.vertices = new Float32Array(mesh.vertices);
-			if(mesh.normals) mesh.normals = new Float32Array(mesh.normals);
-			if(mesh.coords) mesh.coords = new Float32Array(mesh.coords);
-			if(mesh.triangles) mesh.triangles = new Uint16Array(mesh.triangles);
-		}
-
-		if(!mesh.bounding)
-			mesh.bounding = LS.Formats.computeMeshBounding(mesh.vertices);
-		return mesh;
-	}
-};
-
-LS.Formats.addSupportedFormat( "jsmesh", parserJSMesh );
-
-//***** OBJ parser adapted from SpiderGL implementation *****************
-var parserOBJ = {
-	extension: 'obj',
-	type: 'mesh',
-	resource: 'Mesh',
-	format: 'text',
-	dataType:'text',
-
-	flipAxis: false,
-
-	parse: function(text, options)
-	{
-		options = options || {};
-
-		var support_uint = true;
-		var skip_indices = options.noindex ? options.noindex : false;
-		//skip_indices = true;
-
-		//final arrays (packed, lineal [ax,ay,az, bx,by,bz ...])
-		var positionsArray = [ ];
-		var texcoordsArray = [ ];
-		var normalsArray   = [ ];
-		var indicesArray   = [ ];
-
-		//unique arrays (not packed, lineal)
-		var positions = [ ];
-		var texcoords = [ ];
-		var normals   = [ ];
-		var facemap   = { };
-		var index     = 0;
-
-		var line = null;
-		var f   = null;
-		var pos = 0;
-		var tex = 0;
-		var nor = 0;
-		var x   = 0.0;
-		var y   = 0.0;
-		var z   = 0.0;
-		var tokens = null;
-		var mtllib = null;
-
-		var hasPos = false;
-		var hasTex = false;
-		var hasNor = false;
-
-		var parsingFaces = false;
-		var indices_offset = 0;
-		var negative_offset = -1; //used for weird objs with negative indices
-		var max_index = 0;
-
-		//trace("SKIP INDICES: " + skip_indices);
-		var flip_axis = (this.flipAxis || options.flipAxis);
-		var flip_normals = (flip_axis || options.flipNormals);
-
-		//used for mesh groups (submeshes)
-		var group = null;
-		var group_id = 0;
-		var groups = [];
-		var groups_by_name = {};
-		var materials_found = {};
-
-		var V_CODE = 1;
-		var VT_CODE = 2;
-		var VN_CODE = 3;
-		var F_CODE = 4;
-		var G_CODE = 5;
-		var O_CODE = 6;
-		var codes = { v: V_CODE, vt: VT_CODE, vn: VN_CODE, f: F_CODE, g: G_CODE, o: O_CODE };
-
-		var lines = text.split("\n");
-		var length = lines.length;
-		for (var lineIndex = 0;  lineIndex < length; ++lineIndex) {
-
-			var line = lines[lineIndex];
-			line = line.replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //better than trim
-
-			if(line[ line.length - 1 ] == "\\") //breakline
-			{
-				lineIndex += 1;
-				var next_line = lines[lineIndex].replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //better than trim
-				line = (line.substr(0,line.length - 1) + next_line).replace(/[ \t]+/g, " ").replace(/\s\s*$/, "");
-			}
-			
-
-			if (line[0] == "#")
-				continue;
-			if(line == "")
-				continue;
-
-			tokens = line.split(" ");
-			var code = codes[ tokens[0] ];
-
-			if(parsingFaces && code == V_CODE) //another mesh?
-			{
-				indices_offset = index;
-				parsingFaces = false;
-				//trace("multiple meshes: " + indices_offset);
-			}
-
-			//read and parse numbers
-			if( code <= VN_CODE ) //v,vt,vn
-			{
-				x = parseFloat(tokens[1]);
-				y = parseFloat(tokens[2]);
-				z = parseFloat(tokens[3]);
-			}
-
-			if (code == V_CODE) {
-				if(flip_axis) //maya and max notation style
-					positions.push(-1*x,z,y);
-				else
-					positions.push(x,y,z);
-			}
-			else if (code == VT_CODE) {
-				texcoords.push(x,y);
-			}
-			else if (code == VN_CODE) {
-
-				if(flip_normals)  //maya and max notation style
-					normals.push(-y,-z,x);
-				else
-					normals.push(x,y,z);
-			}
-			else if (code == F_CODE) {
-				parsingFaces = true;
-
-				if (tokens.length < 4)
-					continue; //faces with less that 3 vertices? nevermind
-
-				//for every corner of this polygon
-				var polygon_indices = [];
-				for (var i=1; i < tokens.length; ++i) 
-				{
-					var faceid = group_id + ":" + tokens[i];
-					if (  !(faceid in facemap) || skip_indices )
-					{
-						f = tokens[i].split("/");
-
-						if (f.length == 1) { //unpacked
-							pos = parseInt(f[0]) - 1;
-							tex = pos;
-							nor = pos;
-						}
-						else if (f.length == 2) { //no normals
-							pos = parseInt(f[0]) - 1;
-							tex = parseInt(f[1]) - 1;
-							nor = -1;
-						}
-						else if (f.length == 3) { //all three indexed
-							pos = parseInt(f[0]) - 1;
-							tex = parseInt(f[1]) - 1;
-							nor = parseInt(f[2]) - 1;
-						}
-						else {
-							console.log("Problem parsing: unknown number of values per face");
-							return false;
-						}
-
-						/*
-						//pos = Math.abs(pos); tex = Math.abs(tex); nor = Math.abs(nor);
-						if(pos < 0) pos = positions.length/3 + pos - negative_offset;
-						if(tex < 0) tex = texcoords.length/2 + tex - negative_offset;
-						if(nor < 0) nor = normals.length/3 + nor - negative_offset;
-						*/
-
-						if(i > 3 && skip_indices) //polys
-						{
-							//first
-							var pl = positionsArray.length;
-							positionsArray.push( positionsArray[pl - (i-3)*9], positionsArray[pl - (i-3)*9 + 1], positionsArray[pl - (i-3)*9 + 2]);
-							positionsArray.push( positionsArray[pl - 3], positionsArray[pl - 2], positionsArray[pl - 1]);
-							pl = texcoordsArray.length;
-							texcoordsArray.push( texcoordsArray[pl - (i-3)*6], texcoordsArray[pl - (i-3)*6 + 1]);
-							texcoordsArray.push( texcoordsArray[pl - 2], texcoordsArray[pl - 1]);
-							pl = normalsArray.length;
-							normalsArray.push( normalsArray[pl - (i-3)*9], normalsArray[pl - (i-3)*9 + 1], normalsArray[pl - (i-3)*9 + 2]);
-							normalsArray.push( normalsArray[pl - 3], normalsArray[pl - 2], normalsArray[pl - 1]);
-						}
-
-						x = 0.0;
-						y = 0.0;
-						z = 0.0;
-						if ((pos * 3 + 2) < positions.length)
-						{
-							hasPos = true;
-							if(pos < 0) //negative indices are relative to the end
-								pos = positions.length / 3 + pos + 1;
-							x = positions[pos*3+0];
-							y = positions[pos*3+1];
-							z = positions[pos*3+2];
-						}
-
-						positionsArray.push(x,y,z);
-						//positionsArray.push([x,y,z]);
-
-						x = 0.0;
-						y = 0.0;
-						if ((tex * 2 + 1) < texcoords.length)
-						{
-							hasTex = true;
-							if(tex < 0) //negative indices are relative to the end
-								tex = texcoords.length / 2 + tex + 1;
-							x = texcoords[tex*2+0];
-							y = texcoords[tex*2+1];
-						}
-						texcoordsArray.push(x,y);
-						//texcoordsArray.push([x,y]);
-
-						x = 0.0;
-						y = 0.0;
-						z = 1.0;
-						if(nor != -1)
-						{
-							if ((nor * 3 + 2) < normals.length)
-							{
-								hasNor = true;
-
-								if(nor < 0)
-									nor = normals.length / 3 + nor + 1;
-								x = normals[nor*3+0];
-								y = normals[nor*3+1];
-								z = normals[nor*3+2];
-							}
-							
-							normalsArray.push(x,y,z);
-							//normalsArray.push([x,y,z]);
-						}
-
-						//Save the string "10/10/10" and tells which index represents it in the arrays
-						if(!skip_indices)
-							facemap[ faceid ] = index++;
-					}//end of 'if this token is new (store and index for later reuse)'
-
-					//store key for this triplet
-					if(!skip_indices)
-					{
-						var final_index = facemap[ faceid ];
-						polygon_indices.push( final_index );
-						if(max_index < final_index)
-							max_index = final_index;
-					}
-				} //end of for every token on a 'f' line
-
-				//polygons (not just triangles)
-				if(!skip_indices)
-				{
-					for(var iP = 2; iP < polygon_indices.length; iP++)
-					{
-						indicesArray.push( polygon_indices[0], polygon_indices[iP-1], polygon_indices[iP] );
-						//indicesArray.push( [polygon_indices[0], polygon_indices[iP-1], polygon_indices[iP]] );
-					}
-				}
-			}
-			else if ( code == G_CODE || code == O_CODE)
-			{
-				negative_offset = positions.length / 3 - 1;
-
-				if(tokens.length > 1)
-				{
-					var group_pos = (indicesArray.length ? indicesArray.length : positionsArray.length / 3);
-					if(group != null)
-					{
-						group.length = group_pos - group.start;
-						if(group.length > 0) //there are triangles...
-						{
-							groups_by_name[ group_name ] = group;
-							groups.push(group);
-							group_id++;
-						}
-					}
-
-					var group_name = tokens[1];
-					if(groups_by_name[group_name])
-						group_name = group_name + "." + group_id;
-
-					group = {
-						name: group_name,
-						start: group_pos,
-						length: -1,
-						material: ""
-					};
-
-					/*
-					if(tokens[0] == "g")
-					{
-						group_vertex_start = positions.length / 3;
-						group_normal_start = normals.length / 3;
-						group_coord_start = texcoords.length / 2;
-					}
-					*/
-				}
-			}
-			else if (tokens[0] == "mtllib") {
-				mtllib = tokens[1];
-			}
-			else if (tokens[0] == "usemtl") {
-				if(group)
-					group.material = tokens[1];
-			}
-			else if ( tokens[0] == "s" ) { //tokens[0] == "o"
-				//ignore
-			}
-			else
-			{
-				console.warn("unknown code: " + line);
-			}
-		}
-
-		if(group && (indicesArray.length - group.start) > 1)
-		{
-			group.length = indicesArray.length - group.start;
-			groups.push(group);
-		}
-
-		//deindex streams
-		if((max_index > 256*256 || skip_indices ) && indicesArray.length > 0 && !support_uint )
-		{
-			console.log("Deindexing mesh...")
-			var finalVertices = new Float32Array(indicesArray.length * 3);
-			var finalNormals = normalsArray && normalsArray.length ? new Float32Array(indicesArray.length * 3) : null;
-			var finalTexCoords = texcoordsArray && texcoordsArray.length ? new Float32Array(indicesArray.length * 2) : null;
-			for(var i = 0; i < indicesArray.length; i += 1)
-			{
-				finalVertices.set( positionsArray.slice( indicesArray[i]*3,indicesArray[i]*3 + 3), i*3 );
-				if(finalNormals)
-					finalNormals.set( normalsArray.slice( indicesArray[i]*3,indicesArray[i]*3 + 3 ), i*3 );
-				if(finalTexCoords)
-					finalTexCoords.set( texcoordsArray.slice(indicesArray[i]*2,indicesArray[i]*2 + 2 ), i*2 );
-			}
-			positionsArray = finalVertices;
-			if(finalNormals)
-				normalsArray = finalNormals;
-			if(finalTexCoords)
-				texcoordsArray = finalTexCoords;
-			indicesArray = null;
-			max_index = 0;
-		}
-
-		//Create final mesh object
-		var mesh = {};
-
-		//create typed arrays
-		if (hasPos)
-			mesh.vertices = new Float32Array(positionsArray);
-		if (hasNor && normalsArray.length > 0)
-			mesh.normals = new Float32Array(normalsArray);
-		if (hasTex && texcoordsArray.length > 0)
-			mesh.coords = new Float32Array(texcoordsArray);
-		if (indicesArray && indicesArray.length > 0)
-			mesh.triangles = new (support_uint && max_index > 256*256 ? Uint32Array : Uint16Array)(indicesArray);
-
-		//extra info
-		mesh.bounding = GL.Mesh.computeBounding( mesh.vertices );
-		var info = {};
-		if(groups.length > 1)
-		{
-			info.groups = groups;
-			//compute bounding of groups? //TODO
-		}
-
-		mesh.info = info;
-		if( mesh.bounding.radius == 0 || isNaN(mesh.bounding.radius))
-			console.log("no radius found in mesh");
-		return mesh;
-	}
-};
-
-LS.Formats.addSupportedFormat( "obj", parserOBJ );
-
-
-//***** MTL parser *****************
-//info from: http://paulbourke.net/dataformats/mtl/
-var parserMTL = {
-	extension: 'mtl',
-	type: 'material',
-	resource: 'StandardMaterial',
-	format: 'text',
-	dataType:'text',
-
-	parse: function( text, options )
-	{
-		var lines = text.split("\n");
-		var length = lines.length;
-
-		var materials = {};
-		var current_material = null;
-
-		for (var lineIndex = 0;  lineIndex < length; ++lineIndex)
-		{
-			var line = lines[lineIndex].replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //trim
-			line = line.trim();
-
-			if (line[0] == "#" || line == "")
-				continue;
-
-			var tokens = line.split(" ");
-			var c = tokens[0];
-
-			switch(c)
-			{
-				case "newmtl":
-					current_material = { filename: tokens[1], textures: {} };
-					materials[ tokens[1] ] = current_material;
-					break;
-				case "Ka":
-					current_material.ambient = readVector3(tokens);
-					break;
-				case "Kd":
-					current_material.color = readVector3(tokens);
-					break;
-				case "Ks":
-					current_material.specular_factor = parseFloat(tokens[1]); //readVector3(tokens);
-					break;
-				case "Ke":
-					current_material.emissive = readVector3(tokens); //readVector3(tokens);
-					break;
-				case "Ns": //glossiness
-					current_material.specular_gloss = parseFloat(tokens[1]);
-					break;
-				case "Tr": //reflection coefficient
-					current_material.reflection = parseFloat( tokens[1] );
-					break;
-				case "map_Kd":
-					current_material.textures["color"] = this.clearPath( tokens[1] );
-					current_material.color = [1,1,1];
-					break;
-				case "map_Ka":
-					current_material.textures["ambient"] = this.clearPath( tokens[1] );
-					current_material.ambient = [1,1,1];
-					break;
-				case "map_Ks":
-					current_material.textures["specular"] = this.clearPath( tokens[1] );
-					current_material.specular_factor = 1;
-					break;
-				case "bump":
-				case "map_bump":
-					current_material.textures["bump"] = this.clearPath( tokens[1] );
-					break;
-				case "d": //disolve is like transparency
-					current_material.opacity = parseFloat( tokens[1] );
-					break;
-				case "Tr": //reflection coefficient
-					current_material.opacity = parseFloat( tokens[1] );
-					break;
-				//Not supported stuff
-				case "illum": //illumination model (raytrace related)
-				case "Tf": //reflection by components
-				case "Ni": //refraction coefficient
-					break;
-				default:
-					console.log("Unknown MTL info: ", c);
-					break;
-			}
-		}
-
-		for(var i in materials)
-		{
-			var material_info = materials[i];
-
-			//hack, ambient must be 1,1,1
-			material_info.ambient = [1,1,1];
-
-			var material = new LS.StandardMaterial(material_info);
-			LS.RM.registerResource( material_info.filename, material );
-		}
-
-		return null;
-
-		function readVector3(v)
-		{
-			return [ parseFloat(v[1]), parseFloat(v[2]), parseFloat(v[3]) ];
-		}
-	},
-
-	clearPath: function(path)
-	{
-		var pos = path.lastIndexOf("\\");
-		if(pos != -1)
-			path = path.substr(pos+1);
-		var filename = LS.RM.getFilename(path);
-		if( LS.RM.resources_renamed_recently[filename] )
-			filename = LS.RM.resources_renamed_recently[filename];
-		return filename.toLowerCase();
-	}
-};
-
-LS.Formats.addSupportedFormat( "mtl", parserMTL );
-//***** STL Parser *****************
-//based on https://github.com/tonylukasavage/jsstl
-var parserSTL = {
-	extension: 'stl',
-	type: 'mesh',
-	format: 'binary',
-	dataType:'arraybuffer',
-	
-	parse: function( data, options )
-	{
-		options = options || {};
-
-		var positionsArray = [];
-		var normalsArray = [];
-		var indicesArray = [];
-
-		var dv = new DataView(data, 80); // 80 == unused header
-		var isLittleEndian = true;
-		var triangles = dv.getUint32(0, isLittleEndian); 
-		// console.log('arraybuffer length:  ' + stl.byteLength);
-		console.log('number of triangles: ' + triangles);
-		var offset = 4;
-
-		var tempA = vec3.create();
-		var tempB = vec3.create();
-		var tempC = vec3.create();
-		var tempN = vec3.create();
-
-		for (var i = 0; i < triangles; i++) {
-			// Get the normal for this triangle
-			var nx = dv.getFloat32(offset, isLittleEndian);
-			var ny = dv.getFloat32(offset+4, isLittleEndian);
-			var nz = dv.getFloat32(offset+8, isLittleEndian);
-
-			offset += 12;
-			// Get all 3 vertices for this triangle
-			for (var j = 0; j < 3; j++) {
-				var x = dv.getFloat32(offset, isLittleEndian);
-				var y = dv.getFloat32(offset+4, isLittleEndian);
-				var z = dv.getFloat32(offset+8, isLittleEndian);
-				//positionsArray.push(x,y,z);
-				positionsArray.push(x,z,-y); //flipped
-				offset += 12
-			}
-			
-			if(nx == 0 && ny == 0 && nz == 0) //compute normal
-			{
-				var l = positionsArray.length;
-				tempA.set( positionsArray.slice(l-9,l-6) );
-				tempB.set( positionsArray.slice(l-6,l-3) );
-				tempC.set( positionsArray.slice(l-3,l) );
-				vec3.sub( tempB, tempB, tempA );
-				vec3.sub( tempC, tempC, tempA );
-				vec3.cross( tempN, tempC, tempB );
-				nx = tempN[0]; ny = tempN[1]; nz = tempN[2];
-			}
-
-			//normalsArray.push(nx,ny,nz,nx,ny,nz,nx,ny,nz);
-			normalsArray.push(nx,nz,-ny,nx,nz,-ny,nx,nz,-ny); //flipped
-
-			// there's also a Uint16 "attribute byte count" that we
-			// don't need, it should always be zero.
-			offset += 2;   
-			// Create a new face for from the vertices and the normal             
-			//indicesArray.push( i*3, i*3+1, i*3+2 );
-		}
-		// The binary STL I'm testing with seems to have all
-		// zeroes for the normals, unlike its ASCII counterpart.
-		// We can use three.js to compute the normals for us, though,
-		// once we've assembled our geometry. This is a relatively 
-		// expensive operation, but only needs to be done once.
-
-		var mesh = { info: {} };
-
-		mesh.vertices = new Float32Array(positionsArray);
-		if (normalsArray.length > 0)
-			mesh.normals = new Float32Array(normalsArray);
-		if (indicesArray && indicesArray.length > 0)
-			mesh.triangles = new Uint16Array(indicesArray);
-
-		//extra info
-		mesh.bounding = LS.Formats.computeMeshBounding( mesh.vertices );
-		return mesh;
-	}
-};
-
-LS.Formats.addSupportedFormat( "stl", parserSTL );
-
-var parserTGA = { 
-	extension: 'tga',
-	type: 'image',
-	dataType:"arraybuffer",
-	format: 'binary',
-
-	parse: function(data, options)
-	{
-		if(!data || data.constructor !== ArrayBuffer)
-			throw( "ParserTGA: data must be ArrayBuffer");
-
-		data = new Uint8Array(data);
-		var TGAheader = new Uint8Array( [0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0] );
-		var TGAcompare = data.subarray(0,12);
-		for(var i = 0; i < TGAcompare.length; i++)
-			if(TGAheader[i] != TGAcompare[i])
-			{
-				console.error("TGA header is not valid");
-				return null; //not a TGA
-			}
-
-		var header = data.subarray(12,18);
-
-		var img = {};
-		img.width = header[1] * 256 + header[0];
-		img.height = header[3] * 256 + header[2];
-		img.bpp = header[4];
-		img.bytesPerPixel = img.bpp / 8;
-		img.imageSize = img.width * img.height * img.bytesPerPixel;
-		img.pixels = data.subarray(18,18+img.imageSize);
-		img.pixels = new Uint8Array( img.pixels ); 	//clone
-
-		if(	(header[5] & (1<<4)) == 0) //hack, needs swap
-		{
-			//TGA comes in BGR format so we swap it, this is slooooow
-			for(var i = 0; i < img.imageSize; i+= img.bytesPerPixel)
-			{
-				var temp = img.pixels[i];
-				img.pixels[i] = img.pixels[i+2];
-				img.pixels[i+2] = temp;
-			}
-			header[5] |= 1<<4; //mark as swaped
-			img.format = img.bpp == 32 ? "RGBA" : "RGB";
-		}
-		else
-			img.format = img.bpp == 32 ? "RGBA" : "RGB";
-
-		//some extra bytes to avoid alignment problems
-		//img.pixels = new Uint8Array( img.imageSize + 14);
-		//img.pixels.set( data.subarray(18,18+img.imageSize), 0);
-
-		img.flipY = true;
-		//img.format = img.bpp == 32 ? "BGRA" : "BGR";
-		//trace("TGA info: " + img.width + "x" + img.height );
-		return img;
-	}
-};
-
-LS.Formats.addSupportedFormat( "tga", parserTGA );
-//3dcgart format
-
-var parserCGArtMesh = { 
-	extension: 'cgart',
-	type: 'mesh',
-	format: 'text',
-	dataType:'string',
-
-	parse: function(data,options)
-	{
-		var m = null;
-
-		if(typeof(data) == "object")
-			m = data;
-		else if(typeof(data) == "string")
-			m = JSON.parse(data);
-
-		m.faces = m.faces[0];
-		m.normals = m.normals[0];
-		m.vertices = m.vertices[0];
-		m.uvs = m.uvs[0][0];
-
-		var vertices = [];
-		var normals = [];
-		var uvs = [];
-
-		var group = null;
-		var groups = [];
-
-		var i = 0;
-		var current_mat_id = 0;
-		while( i < m.faces.length )
-		{
-			if(m.faces[i] == 43) //quad
-			{
-				//material info
-				var mat_id = m.faces[i+5];
-				if(current_mat_id < mat_id)
-				{
-					current_mat_id = mat_id;
-					if(group != null)
-					{
-						group.length = vertices.length / 3 - group.start;
-						if(group.length > 0)
-							groups.push(group);
-					}
-
-					group = {
-						name: "mat_" + mat_id,
-						start: vertices.length / 3,
-						length: -1,
-						material: ""
-					};
-				}
-
-				var v1 = m.faces[i+1];
-				var v2 = m.faces[i+2];
-				var v3 = m.faces[i+3];
-				var v4 = m.faces[i+4];
-				vertices.push( m.vertices[ v1*3 ], m.vertices[ v1*3+1 ], m.vertices[ v1*3+2 ]);
-				vertices.push( m.vertices[ v2*3 ], m.vertices[ v2*3+1 ], m.vertices[ v2*3+2 ]);
-				vertices.push( m.vertices[ v3*3 ], m.vertices[ v3*3+1 ], m.vertices[ v3*3+2 ]);
-				vertices.push( m.vertices[ v1*3 ], m.vertices[ v1*3+1 ], m.vertices[ v1*3+2 ]);
-				vertices.push( m.vertices[ v3*3 ], m.vertices[ v3*3+1 ], m.vertices[ v3*3+2 ]);
-				vertices.push( m.vertices[ v4*3 ], m.vertices[ v4*3+1 ], m.vertices[ v4*3+2 ]);
-
-				var v1 = m.faces[i+6];
-				var v2 = m.faces[i+7];
-				var v3 = m.faces[i+8];
-				var v4 = m.faces[i+9];
-				uvs.push( m.uvs[ v1*2 ], m.uvs[ v1*2+1 ]);
-				uvs.push( m.uvs[ v2*2 ], m.uvs[ v2*2+1 ]);
-				uvs.push( m.uvs[ v3*2 ], m.uvs[ v3*2+1 ]);
-				uvs.push( m.uvs[ v1*2 ], m.uvs[ v1*2+1 ]);
-				uvs.push( m.uvs[ v3*2 ], m.uvs[ v3*2+1 ]);
-				uvs.push( m.uvs[ v4*2 ], m.uvs[ v4*2+1 ]);
-
-				var v1 = m.faces[i+10];
-				var v2 = m.faces[i+11];
-				var v3 = m.faces[i+12];
-				var v4 = m.faces[i+13];
-				normals.push( m.normals[ v1*3 ], m.normals[ v1*3+1 ], m.normals[ v1*3+2 ]);
-				normals.push( m.normals[ v2*3 ], m.normals[ v2*3+1 ], m.normals[ v2*3+2 ]);
-				normals.push( m.normals[ v3*3 ], m.normals[ v3*3+1 ], m.normals[ v3*3+2 ]);
-				normals.push( m.normals[ v1*3 ], m.normals[ v1*3+1 ], m.normals[ v1*3+2 ]);
-				normals.push( m.normals[ v3*3 ], m.normals[ v3*3+1 ], m.normals[ v3*3+2 ]);
-				normals.push( m.normals[ v4*3 ], m.normals[ v4*3+1 ], m.normals[ v4*3+2 ]);
-
-				i+=14;
-			}
-			else if(m.faces[i] == 42) //triangle
-			{
-				//material info
-				var mat_id = m.faces[i+4];
-				if(current_mat_id < mat_id)
-				{
-					trace("New mat: " + mat_id );
-					current_mat_id = mat_id;
-					if(group != null)
-					{
-						group.length = vertices.length / 3 - group.start;
-						if(group.length > 0)
-							groups.push(group);
-					}
-
-					group = {
-						name: "mat_" + mat_id,
-						start: vertices.length / 3,
-						length: -1,
-						material: ""
-					};
-				}
-
-				var v1 = m.faces[i+1];
-				var v2 = m.faces[i+2];
-				var v3 = m.faces[i+3];
-				vertices.push( m.vertices[ v1*3 ], m.vertices[ v1*3+1 ], m.vertices[ v1*3+2 ]);
-				vertices.push( m.vertices[ v2*3 ], m.vertices[ v2*3+1 ], m.vertices[ v2*3+2 ]);
-				vertices.push( m.vertices[ v3*3 ], m.vertices[ v3*3+1 ], m.vertices[ v3*3+2 ]);
-
-				var v1 = m.faces[i+5];
-				var v2 = m.faces[i+6];
-				var v3 = m.faces[i+7];
-				uvs.push( m.uvs[ v1*2 ], m.uvs[ v1*2+1 ]);
-				uvs.push( m.uvs[ v2*2 ], m.uvs[ v2*2+1 ]);
-				uvs.push( m.uvs[ v3*2 ], m.uvs[ v3*2+1 ]);
-
-				var v1 = m.faces[i+8];
-				var v2 = m.faces[i+9];
-				var v3 = m.faces[i+10];
-				normals.push( m.normals[ v1*3 ], m.normals[ v1*3+1 ], m.normals[ v1*3+2 ]);
-				normals.push( m.normals[ v2*3 ], m.normals[ v2*3+1 ], m.normals[ v2*3+2 ]);
-				normals.push( m.normals[ v3*3 ], m.normals[ v3*3+1 ], m.normals[ v3*3+2 ]);
-
-				i += 11;
-			}
-			else 
-			{
-				trace("Warning: unsupported primitive type: " + m.faces[i]);
-				i += 1;
-			}
-		}
-
-		if(group && (vertices.length - group.start) > 1)
-		{
-			group.length = vertices.length - group.start;
-			groups.push(group);
-		}
-
-		var mesh = {};
-		mesh.vertices = new Float32Array( vertices );
-		if(normals.length > 0)
-			mesh.normals = new Float32Array( normals );
-		if(uvs.length > 0)
-			mesh.coords = new Float32Array( uvs );
-		//mesh.coords = new Float32Array( m.uvs );
-		//if(m.faces) mesh.triangles = new Uint16Array( m.faces );
-
-		//extra info
-		mesh.bounding = LS.Formats.computeMeshBounding(mesh.vertices);
-		mesh.info = {};
-		if(groups.length > 1)
-			mesh.info.groups = groups;
-
-		trace("Num vertex: " + vertices.length / 3);
-		trace(mesh.info.groups);
-
-		return mesh;
-	}
-};
-
-LS.Formats.addSupportedFormat( "cgart", parserCGArtMesh );
-
-
-//GR2
-var parserGR2 = { 
-	extension: 'gr2',
-	type: 'mesh',
-	format: 'text',
-	dataType:'string',
-
-	parse: function(data, options)
-	{
-		data = data.replace(/\'/g,'\"');
-		trace(data);
-		data = JSON.parse("["+data+"]");
-		window.foo = data;
-		data = data[0];
-		var mesh = {
-		  vertices: data[0][2][0],
-		  normals: data[0][2][1],
-		  triangles: data[0][3]
-		};
-		mesh.bounding = LS.Formats.computeMeshBounding(mesh.vertices);
-		return mesh;
-	}
-};
-
-LS.Formats.addSupportedFormat( "gr2", parserGR2 );
-
-
-
-/**
 * The SceneTree contains all the info about the Scene and nodes
 *
 * @class SceneTree
@@ -39228,7 +34603,7 @@ SceneTree.prototype.configure = function( scene_info )
 	if(scene_info.uid)
 		this.uid = scene_info.uid;
 
-	if(scene_info.object_type != "SceneTree")
+	if((scene_info.object_class || scene_info.object_type) != "SceneTree") //legacy
 		console.warn("Warning: object set to scene doesnt look like a propper one.", scene_info);
 
 	if(scene_info.local_repository)
@@ -39330,7 +34705,7 @@ SceneTree.prototype.serialize = function()
 	var o = {};
 
 	o.uid = this.uid;
-	o.object_type = LS.getObjectClassName(this);
+	o.object_class = LS.getObjectClassName(this);
 
 	//legacy
 	o.local_repository = this.local_repository;
@@ -41944,7 +37319,9 @@ SceneNode.prototype.addMeshComponents = function( mesh_id, extra_info )
 */
 SceneNode.prototype.serialize = function( ignore_prefab )
 {
-	var o = {};
+	var o = {
+		object_class: "SceneNode"
+	};
 
 	if(this._name) 
 		o.name = this._name;
@@ -42070,6 +37447,4685 @@ SceneNode.prototype.getBoundingBox = function( bbox, only_instances )
 
 LS.SceneNode = SceneNode;
 LS.Classes.SceneNode = SceneNode;
+
+/**
+* Formats is the class where all the info about what is every format, how to parse it, etc, is located
+*
+* @class LS.Formats
+* @param{String} id the id (otherwise a random one is computed)
+* @constructor
+*/
+LS.Formats = {
+
+	//all the supported file formats and their parsers
+	supported: {},
+
+	safe_parsing: false, //catch exceptions during parsing
+	merge_smoothgroups: false,
+
+	/**
+	* Tells the system info about this file format
+	* Info should contain fields like type:"image", resource: "Mesh|Texture", format: "text|binary", parse: function, native: true|false
+	* 
+	* @method addFormat
+	*/
+	addSupportedFormat: function( extensions, info )
+	{
+		if( extensions.constructor === String )
+			extensions = extensions.split(",");
+
+		for(var i = 0; i < extensions.length; ++i)
+		{
+			var extension = extensions[i].toLowerCase();
+			if( this.supported[ extension ] )
+				console.warn("There is already another parser associated to this extension: " + extension);
+			this.supported[ extension ] = info;
+		}
+	},
+
+	/**
+	* Parse some data and returns the resulting resource
+	* 
+	* @method parse
+	* @param {string} filename
+	* @param {*} data could be a string, binary, arraybuffer, xml...
+	* @param {Object} options how the file should be parsed
+	* @return {*} the final resource, could be a Texture, a Mesh, or an object
+	*/
+	parse: function( filename, data, options)
+	{
+		options = options || {};
+		var info = this.getFileFormatInfo( filename );
+		if(!info) //unsupported extension
+			return null;
+
+		if(options.extension)
+			info.extension = options.extension; //force a format
+		else
+			info.extension = LS.ResourcesManager.getExtension( filename );
+
+		var format = this.supported[ info.extension ];
+		if(!format || !format.parse)
+		{
+			console.error("Parser Error: No parser found for " + info.extension + " format");
+			return null;
+		}
+
+		var result = null;
+		if(!this.safe_parsing)
+			result = format.parse( data, options, filename );
+		else
+			try
+			{
+				result = format.parse( data, options, filename );
+			}
+			catch (err)
+			{
+				console.error("Error parsing content", err );
+				return null;
+			}
+		if(result)
+			result.name = filename;
+		return result;
+	},
+
+	//Returns info about a resource according to its filename
+	TEXT_FORMAT: "text",
+	JSON_FORMAT: "json",
+	XML_FORMAT: "xml",
+	BINARY_FORMAT: "binary",
+
+	MESH_DATA: "MESH",
+	IMAGE_DATA: "IMAGE",
+	NONATIVE_IMAGE_DATA: "NONATIVE_IMAGE",
+	SCENE_DATA: "SCENE",
+	GENERIC_DATA: "GENERIC",
+	
+	getFileFormatInfo: function( filename )
+	{
+		var extension = filename.substr( filename.lastIndexOf(".") + 1).toLowerCase();
+		return this.supported[ extension ];
+	},
+
+	guessType: function( filename )
+	{
+		if(!filename)
+			return null;
+
+		var ext = LS.RM.getExtension( filename ).toLowerCase();
+		var info = this.supported[ ext ];
+		if(!info)
+			return null;
+		return info.resource;
+	},
+
+	//Helpers ******************************
+
+	//gets raw image information {width,height,pixels:ArrayBuffer} and create a dataurl to use in images
+	convertToDataURL: function( img_data )
+	{
+		var canvas = document.createElement("canvas");
+		canvas.width = img_data.width;
+		canvas.height = img_data.height;
+		//document.body.appendChild(canvas);
+		var ctx = canvas.getContext("2d");
+		var pixelsData = ctx.createImageData(img_data.width, img_data.height);
+		var num_pixels = canvas.width * canvas.height;
+
+		//flip and copy the pixels
+		if(img_data.bytesPerPixel == 3)
+		{
+			for(var i = 0; i < canvas.width; ++i)
+				for(var j = 0; j < canvas.height; ++j)
+				{
+					var pos = j*canvas.width*4 + i*4;
+					var pos2 = (canvas.height - j - 1)*canvas.width*3 + i*3;
+					pixelsData.data[pos+2] = img_data.pixels[pos2];
+					pixelsData.data[pos+1] = img_data.pixels[pos2+1];
+					pixelsData.data[pos+0] = img_data.pixels[pos2+2];
+					pixelsData.data[pos+3] = 255;
+				}
+		}
+		else {
+			for(var i = 0; i < canvas.width; ++i)
+				for(var j = 0; j < canvas.height; ++j)
+				{
+					var pos = j*canvas.width*4 + i*4;
+					var pos2 = (canvas.height - j - 1)*canvas.width*4 + i*4;
+					pixelsData.data[pos+0] = img_data.pixels[pos2+2];
+					pixelsData.data[pos+1] = img_data.pixels[pos2+1];
+					pixelsData.data[pos+2] = img_data.pixels[pos2+0];
+					pixelsData.data[pos+3] = img_data.pixels[pos2+3];
+				}
+		}
+
+		ctx.putImageData(pixelsData,0,0);
+		img_data.dataurl = canvas.toDataURL("image/png");
+		return img_data.dataurl;
+	},
+
+	/* extract important Mesh info from vertices (center, radius, bouding box) */
+	computeMeshBounding: function(vertices)
+	{
+		//compute AABB and useful info
+		var min = [vertices[0],vertices[1],vertices[2]];
+		var max = [vertices[0],vertices[1],vertices[2]];
+		for(var i = 0; i < vertices.length; i += 3)
+		{
+			var v = [vertices[i],vertices[i+1],vertices[i+2]];
+			if (v[0] < min[0]) min[0] = v[0];
+			else if (v[0] > max[0]) max[0] = v[0];
+			if (v[1] < min[1]) min[1] = v[1];
+			else if (v[1] > max[1]) max[1] = v[1];
+			if (v[2] < min[2]) min[2] = v[2];
+			else if (v[2] > max[2]) max[2] = v[2];
+		}
+
+		var center = [(min[0] + max[0]) * 0.5,(min[1] + max[1]) * 0.5, (min[2] + max[2]) * 0.5];
+		var halfsize = [ min[0] - center[0], min[1] - center[1], min[2] - center[2]];
+		return BBox.setCenterHalfsize( BBox.create(), center, halfsize );
+	}
+};
+
+//native formats do not need parser
+LS.Formats.addSupportedFormat( "png,jpg,jpeg,webp,bmp,gif", { "native": true, dataType: "arraybuffer", resource: "Texture", "resourceClass": GL.Texture, has_preview: true, type: "image" } );
+LS.Formats.addSupportedFormat( "wbin", { dataType: "arraybuffer" } );
+LS.Formats.addSupportedFormat( "json,js,txt,html,css,csv", { dataType: "text" } );
+LS.Formats.addSupportedFormat( "glsl", { dataType: "text", resource: "ShaderCode", "resourceClass": LS.ShaderCode  } );
+LS.Formats.addSupportedFormat( "zip", { dataType: "arraybuffer" } );
+WBin.classes = LS.Classes; //WBin need to know which classes are accesible to be instantiated right from the WBin data info, in case the class is not a global class
+
+
+//parsers usually need this
+//takes an string an returns a Uint8Array typed array containing that string
+function stringToTypedArray(str, fixed_length)
+{
+	var r = new Uint8Array( fixed_length ? fixed_length : str.length);
+	for(var i = 0; i < str.length; i++)
+		r[i] = str.charCodeAt(i);
+	return r;
+}
+
+//takes a typed array with ASCII codes and returns the string
+function typedArrayToString(typed_array, same_size)
+{
+	var r = "";
+	for(var i = 0; i < typed_array.length; i++)
+		if (typed_array[i] == 0 && !same_size)
+			break;
+		else
+			r += String.fromCharCode( typed_array[i] );
+	return r;
+}
+//***** ASE Parser *****************
+var parserASE = {
+	extension: "ase",
+	type: "mesh",
+	resource: "Mesh",
+	format: 'text',
+	dataType:'text',
+	
+	parse: function( text, options, filename )
+	{
+		options = options || {};
+
+		//final arrays (packed, lineal [ax,ay,az, bx,by,bz ...])
+		var positionsArray = [ ];
+		var normalsArray   = [ ];
+		var indicesArray   = [ ];
+
+		var uvs_container = [ ];
+		var current_uvs = null;
+
+
+		//unique arrays (not packed, lineal)
+		var positions = [ ];
+		var normals   = [ ];
+		var indices = [ ];
+		var tvertlist = [ ];
+		var facemap   = { };
+		var index     = 0;
+
+		var line = null;
+		var f   = null;
+		var pos = 0;
+		var tex = 0;
+		var nor = 0;
+		var x   = 0.0;
+		var y   = 0.0;
+		var z   = 0.0;
+		var tokens = null;
+
+		var indices_offset = 0;
+		var mesh_index = 0;
+		var current_mat_id = -1;
+		var current_mesh_name = "";
+
+		//used for mesh groups (submeshes)
+		var group = null;
+		var groups = [];
+
+		var flip_axis = this.flipAxis;
+		if(options.flipAxis != null) flip_axis = options.flipAxis;
+		var flip_normals = (flip_axis || options.flipNormals);
+
+		var lines = text.split("\n");
+		for (var lineIndex = 0;  lineIndex < lines.length; ++lineIndex) {
+			line = lines[lineIndex].replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //trim
+			if(line[0] == " ")
+				line = line.substr(1,line.length);
+
+			if(line == "") continue;
+			tokens = line.split(" ");
+
+			if(tokens[0] == "*MESH")
+			{
+				mesh_index += 1;
+				positions = [];
+
+				if(mesh_index > 1)
+					break; //parse only the first mesh
+			}
+			else if (tokens[0] == "*NODE_NAME") {
+				current_mesh_name =  tokens[1].substr(1, tokens[1].length - 2);
+			}
+			else if(tokens[0] == "*MESH_VERTEX")
+			{
+				if(flip_axis) //maya and max notation style
+					positions.push( [-1*parseFloat(tokens[2]), parseFloat(tokens[4]), parseFloat(tokens[3])] );
+				else
+					positions.push( [parseFloat(tokens[2]), parseFloat(tokens[3]), parseFloat(tokens[4])] );
+			}
+			else if(tokens[0] == "*MESH_FACE")
+			{
+				//material info
+				var mat_id = parseInt( tokens[17] );
+				if(current_mat_id != mat_id)
+				{
+					current_mat_id = mat_id;
+					if(group != null)
+					{
+						group.length = positionsArray.length / 3 - group.start;
+						if(group.length > 0)
+							groups.push(group);
+					}
+
+					group = {
+						name: "mat_" + mat_id,
+						start: positionsArray.length / 3,
+						length: -1,
+						material: ""
+					};
+				}
+
+				//add vertices
+				var vertex = positions[ parseInt(tokens[3]) ];
+				positionsArray.push( vertex[0], vertex[1], vertex[2] );
+				vertex = positions[ parseInt(tokens[5]) ];
+				positionsArray.push( vertex[0], vertex[1], vertex[2] );
+				vertex = positions[ parseInt(tokens[7]) ];
+				positionsArray.push( vertex[0], vertex[1], vertex[2] );
+			}
+			else if(tokens[0] == "*MESH_TVERTLIST")
+			{
+				tvertlist = [];
+			}
+			else if(tokens[0] == "*MESH_TVERT")
+			{
+				tvertlist.push( [parseFloat(tokens[2]), parseFloat(tokens[3])] );
+			}
+			else if(tokens[0] == "*MESH_TFACELIST")
+			{
+				if( current_uvs && current_uvs.length )
+					uvs_container.push( current_uvs );
+				current_uvs = [];
+			}
+			else if(tokens[0] == "*MESH_TFACE")
+			{
+				var coord = tvertlist[ parseInt(tokens[2]) ];
+				current_uvs.push( coord[0], coord[1] );
+				coord = tvertlist[ parseInt(tokens[3]) ];
+				current_uvs.push( coord[0], coord[1] );
+				coord = tvertlist[ parseInt(tokens[4]) ];
+				current_uvs.push( coord[0], coord[1] );
+			}
+			else if(tokens[0] == "*MESH_MAPPINGCHANNEL")
+			{
+				if( current_uvs )
+					uvs_container.push( current_uvs );
+				current_uvs = [];
+			}
+			else if(tokens[0] == "*MESH_VERTEXNORMAL")
+			{
+				if(flip_normals)  //maya and max notation style
+					normalsArray.push(-1*parseFloat(tokens[2]),parseFloat(tokens[4]),parseFloat(tokens[3]));
+				else
+					normalsArray.push(parseFloat(tokens[2]),parseFloat(tokens[3]),parseFloat(tokens[4]));
+			}
+		}
+
+		if(current_uvs)
+			uvs_container.push( current_uvs );
+
+		var total_primitives = positionsArray.length / 3 - group.start;
+		if(group && total_primitives > 1)
+		{
+			group.length = total_primitives;
+			groups.push(group);
+		}
+
+		var mesh = { info: {} };
+
+		mesh.vertices = new Float32Array(positionsArray);
+		if (normalsArray.length > 0)
+			mesh.normals = new Float32Array(normalsArray);
+		for(var i = 0; i < uvs_container.length; ++i )
+		{
+			var channel = "";
+			if(i > 0)
+				channel = i+1;
+			mesh[ "coords" + channel ] = new Float32Array( uvs_container[i] );
+		}
+
+		//extra info
+		mesh.bounding = LS.Formats.computeMeshBounding( mesh.vertices );
+		if(groups.length > 1)
+			mesh.info.groups = groups;
+		return mesh;
+	}
+};
+
+LS.Formats.addSupportedFormat( "ase", parserASE );
+
+//***** BVH Parser *****************
+var parserBVH = {
+	extension: "bvh",
+	type: "scene",
+	resource: "SceneTree",
+	format: 'text',
+	dataType:'text',
+	
+	parse: function( text, options, filename )
+	{
+		var MODE_HIERARCHY = 1;
+		var MODE_MOTION = 2;
+		var MODE_MOTION_DATA = 3;
+
+		var mode = 0;
+		var root = null;
+		var parent = null;
+		var node = null;
+		var stack = [];
+		var inside_of = null;
+		var channels = [];
+
+		var num_frames = -1;
+		var frame_time = -1;
+		var duration = -1;
+		var current_frame = 0;
+		var timestamps = [];
+
+		var translator = {
+			"Xposition":"x","Yposition":"y","Zposition":"z","Xrotation":"xrotation","Yrotation":"yrotation","Zrotation":"zrotation"
+		};
+
+		var ignore = false;
+
+		var lines = text.split("\n");
+		var length = lines.length;
+		for (var lineIndex = 0;  lineIndex < length; ++lineIndex)
+		{
+			var line = lines[lineIndex].trim();
+
+			if (line[0] == "#")
+				continue;
+			if(line == "")
+				continue;
+
+			var tokens = line.split(/[\s]+/); //splits by spaces and tabs
+			var cmd = tokens[0];
+
+			if(!mode)
+			{
+				switch(cmd)
+				{
+					case "HIERARCHY":
+						mode = MODE_HIERARCHY;
+						break;
+				}
+			}
+			else if(mode == MODE_HIERARCHY)
+			{
+				switch(cmd)
+				{
+					case "ROOT":
+						root = node = { name: tokens[1], node_type: "JOINT" };
+						break;
+					case "JOINT":
+						parent = node;
+						stack.push(parent);
+						node = { name: tokens[1], node_type: "JOINT" };
+						if(!parent.children)
+							parent.children = [];
+						parent.children.push(node);
+						break;
+					case "End":
+						//ignore = true;
+						parent = node;
+						stack.push(parent);
+						node = { name: parent.name + "_end", node_type: "JOINT" };
+						if(!parent.children)
+							parent.children = [];
+						parent.children.push(node);
+
+						break;
+					case "{":
+						break;
+					case "}":
+						if(ignore)
+							ignore = false; //ignoreEND
+						else
+						{
+							node = stack.pop();
+							if(!node)
+								node = root;
+							inside_of = node;
+						}
+						break;
+					case "CHANNELS":
+						for(var j = 2; j < tokens.length; ++j)
+						{
+							var property = tokens[j].toLowerCase();
+							if(translator[property])
+								property = translator[property];
+							//channels.push( { name: tokens[j], property: node.name + "/" + property, type: "number", value_size: 1, data: [], packed_data: true } );
+							var channel_data = { node: node, property: property, data: [] };
+							channels.push( channel_data );
+							if(!node._channels)
+								node._channels = {};
+							if(!node._channels_order)
+								node._channels_order = [];
+							node._channels[ property ] = channel_data;
+							node._channels_order.push( property );
+						}
+						break;
+					case "OFFSET":
+						node.transform = { position: readFloats(tokens,1) };
+						break;
+					case "MOTION":
+						mode = MODE_MOTION;
+						break;
+				}
+			}//mode hierarchy
+			else if(mode == MODE_MOTION)
+			{
+				if(tokens[0] == "Frames:")
+					num_frames = parseInt( tokens[1] );
+				else if(tokens[0] == "Frame" && tokens[1] == "Time:")
+					frame_time = parseFloat( tokens[2] );
+
+				if(num_frames != -1 && frame_time != -1)
+				{
+					duration = num_frames * frame_time;
+					mode = MODE_MOTION_DATA;
+				}
+			}
+			else if(mode == MODE_MOTION_DATA)
+			{
+				var current_time = current_frame * frame_time;
+				timestamps.push( current_time );
+				for(var j = 0; j < channels.length; ++j)
+				{
+					var channel = channels[j];
+					//channel.data.push( current_time, parseFloat( tokens[j] ) );
+					channel.data.push( parseFloat( tokens[j] ) );
+				}
+
+				++current_frame;
+			}
+		}
+
+		function readFloats(tokens, offset)
+		{
+			var r = tokens.slice(offset || 0);
+			return r.map(parseFloat);
+		}
+
+		//process data
+		var tracks = [];
+		this.processMotion( root, tracks, timestamps );
+
+		var scene = { root: root, object_class: "SceneNode", resources: {} };
+
+		for(var i = 0; i < tracks.length; ++i)
+		{
+			var track = tracks[i];
+			track.duration = duration;
+		}
+		var animation = { name: "#animation", object_class: "Animation", takes: { "default": { name: "default", duration: duration, tracks: tracks } } };
+		root.animations = animation.name;
+		scene.resources[ animation["name"] ] = animation;
+
+		console.log(scene);
+		return scene;
+	},
+
+	processMotion: function( node, tracks, timestamps )
+	{
+		var channels = node._channels;
+		if(channels)
+		{
+			var track_position = null;
+			var track_rotation = null;
+
+			var XAXIS = vec3.fromValues(1,0,0);
+			var YAXIS = vec3.fromValues(0,1,0);
+			var ZAXIS = vec3.fromValues(0,0,1);
+
+			if(channels.xposition || channels.yposition || channels.zposition )
+				track_position = { name: node.name + "/Transform/position", property: node.name + "/Transform/position", type: "vec3", value_size: 3, data: [], packed_data: true };
+			if(channels.xrotation || channels.yrotation || channels.zrotation )
+				track_rotation = { name: node.name + "/Transform/rotation", property: node.name + "/Transform/rotation", type: "quat", value_size: 4, data: [], packed_data: true };
+
+
+			for(var j = 0; j < timestamps.length; ++j)
+			{
+				var time = timestamps[j];
+				var pos = vec3.create();
+				var R = quat.create();
+				var ROT = quat.create();
+
+				for(var i = 0; i < node._channels_order.length; ++i)
+				{
+					var property = node._channels_order[i];
+
+					switch( property )
+					{
+						case "xposition":
+							pos[0] = channels.xposition.data[j] + node.transform.position[0];
+							break;
+						case "yposition":
+							pos[1] = channels.yposition.data[j] + node.transform.position[1];
+							break;
+						case "zposition":
+							pos[2] = channels.zposition.data[j] + node.transform.position[2];
+							break;
+						case "xrotation":
+							quat.setAxisAngle( ROT, XAXIS, channels.xrotation.data[j] * DEG2RAD );
+							//quat.mul( R, ROT, R );
+							quat.mul( R, R, ROT );
+							break;
+						case "yrotation":
+							quat.setAxisAngle( ROT, YAXIS, channels.yrotation.data[j] * DEG2RAD );
+							//quat.mul( R, ROT, R );
+							quat.mul( R, R, ROT );
+							break;
+						case "zrotation":
+							quat.setAxisAngle( ROT, ZAXIS, channels.zrotation.data[j] * DEG2RAD );
+							//quat.mul( R, ROT, R );
+							quat.mul( R, R, ROT );
+							break;
+					};
+				} //per channel
+
+				if(track_position)
+					track_position.data.push( time, pos[0], pos[1], pos[2] );
+				if(track_rotation)
+					track_rotation.data.push( time, R[0], R[1], R[2], R[3] );
+			}//per timestamp
+
+			if(track_position)
+				tracks.push( track_position );
+			if(track_rotation)
+				tracks.push( track_rotation );
+		} //if channels
+
+		if(node.children)
+		{
+			for(var i = 0; i < node.children.length; ++i)
+				this.processMotion( node.children[i], tracks, timestamps );
+		}
+	}
+};
+
+LS.Formats.addSupportedFormat( "bvh", parserBVH );
+// Collada.js  https://github.com/jagenjo/collada.js
+// Javi Agenjo 2015 
+// Specification from https://www.khronos.org/collada/wiki
+
+(function(global){
+
+var isWorker = global.document === undefined;
+var DEG2RAD = Math.PI * 2 / 360;
+
+//global temporal variables
+var temp_mat4 = null;
+var temp_vec2 = null;
+var temp_vec3 = null;
+var temp_vec4 = null;
+var temp_quat = null;
+
+if( isWorker )
+{
+	global.console = {
+		log: function(msg) { 
+			var args = Array.prototype.slice.call(arguments, 0);
+			self.postMessage({action:"log", params: args});
+		},
+		warn: function(msg) { 
+			var args = Array.prototype.slice.call(arguments, 0);
+			self.postMessage({action:"warn", params: args});
+		},
+		error: function(msg) { 
+			var args = Array.prototype.slice.call(arguments, 0);
+			self.postMessage({action:"error", params: args});
+		}
+	};
+
+	global.alert = console.error;
+}
+
+//Collada parser
+global.Collada = {
+
+	libsPath: "./",
+	workerPath: "./",
+	no_flip: true,
+	use_transferables: true, //for workers
+	onerror: null,
+	verbose: false,
+	config: { forceParser:false },
+
+	init: function (config)
+	{
+		config = config || {}
+		for(var i in config)
+			this[i] = config[i];
+		this.config = config;
+
+		if( isWorker )
+		{
+			try
+			{
+				importScripts( this.libsPath + "gl-matrix-min.js", this.libsPath + "tinyxml.js" );
+			}
+			catch (err)
+			{
+				Collada.throwException( Collada.LIBMISSING_ERROR );
+			}
+		}
+
+		//init glMatrix
+		temp_mat4 = mat4.create();
+		temp_vec2 = vec3.create();
+		temp_vec3 = vec3.create();
+		temp_vec4 = vec3.create();
+		temp_quat = quat.create();
+
+		if( isWorker )
+			console.log("Collada worker ready");
+	},
+
+	load: function(url, callback)
+	{
+		request(url, function(data)
+		{
+			if(!data)
+				callback( null );
+			else
+				callback( Collada.parse( data ) );
+		});
+	},
+
+	_xmlroot: null,
+	_nodes_by_id: null,
+	_transferables: null,
+	_controllers_found: null,
+	_geometries_found: null,
+
+	safeString: function (str) { 
+		if(!str)
+			return "";
+
+		if(this.convertID)
+			return this.convertID(str);
+
+		return str.replace(/ /g,"_"); 
+	},
+
+	LIBMISSING_ERROR: "Libraries loading error, when using workers remember to pass the URL to the tinyxml.js in the options.libsPath",
+	NOXMLPARSER_ERROR: "TinyXML not found, when using workers remember to pass the URL to the tinyxml.js in the options.libsPath (Workers do not allow to access the native XML DOMParser)",
+	throwException: function(msg)
+	{
+		if(isWorker)
+			self.postMessage({action:"exception", msg: msg});
+		else
+			if(Collada.onerror)
+				Collada.onerror(msg);
+		throw(msg);
+	},
+
+	getFilename: function(filename)
+	{
+		var pos = filename.lastIndexOf("\\");
+		if(pos != -1)
+			filename = filename.substr(pos+1);
+		//strip unix slashes
+		pos = filename.lastIndexOf("/");
+		if(pos != -1)
+			filename = filename.substr(pos+1);
+		return filename;
+	},
+
+	last_name: 0,
+
+	generateName: function(v)
+	{
+		v = v || "name_";
+		var name = v + this.last_name;
+		this.last_name++;
+		return name;
+	},
+
+	parse: function(data, options, filename)
+	{
+		options = options || {};
+		filename = filename || "_dae_" + Date.now() + ".dae";
+
+		//console.log("Parsing collada");
+		var flip = false;
+
+		var xmlparser = null;
+		var root = null;
+		this._transferables = [];
+		
+		if(this.verbose)
+			console.log(" - XML parsing...");
+
+		if(global["DOMParser"] && !this.config.forceParser )
+		{
+			xmlparser = new DOMParser();
+			root = xmlparser.parseFromString(data,"text/xml");
+			if(this.verbose)
+				console.log(" - XML parsed");			
+		}
+		else //USING JS XML PARSER IMPLEMENTATION (much slower)
+		{
+			if(!global["DOMImplementation"] )
+				return Collada.throwException( Collada.NOXMLPARSER_ERROR );
+			//use tinyxmlparser
+			try
+			{
+				xmlparser = new DOMImplementation();
+			}
+			catch (err)
+			{
+				return Collada.throwException( Collada.NOXMLPARSER_ERROR );
+			}
+
+			root = xmlparser.loadXML(data);
+			if(this.verbose)
+				console.log(" - XML parsed");
+
+			//for every node...
+			var by_ids = root._nodes_by_id = {};
+			for(var i = 0, l = root.all.length; i < l; ++i)
+			{
+				var node = root.all[i];
+				by_ids[ node.id ] = node;
+				if(node.getAttribute("sid"))
+					by_ids[ node.getAttribute("sid") ] = node;
+			}
+
+			if(!this.extra_functions)
+			{
+				this.extra_functions = true;
+				//these methods are missing so here is a lousy implementation
+				DOMDocument.prototype.querySelector = DOMElement.prototype.querySelector = function(selector)
+				{
+					var tags = selector.split(" ");
+					var current_element = this;
+
+					while(tags.length)
+					{
+						var current = tags.shift();
+						var tokens = current.split("#");
+						var tagname = tokens[0];
+						var id = tokens[1];
+						var elements = tagname ? current_element.getElementsByTagName(tagname) : current_element.childNodes;
+						if(!id) //no id filter
+						{
+							if(tags.length == 0)
+								return elements.item(0);
+							current_element = elements.item(0);
+							continue;
+						}
+
+						//has id? check for all to see if one matches the id
+						for(var i = 0; i < elements.length; i++)
+							if( elements.item(i).getAttribute("id") == id)
+							{
+								if(tags.length == 0)
+									return elements.item(i);
+								current_element = elements.item(i);
+								break;
+							}
+					}
+					return null;
+				}
+
+				DOMDocument.prototype.querySelectorAll = DOMElement.prototype.querySelectorAll = function( selector )
+				{
+					var tags = selector.split(" ");
+					if(tags.length == 1)
+						return this.getElementsByTagName( selector );
+
+					var current_element = this;
+					var result = [];
+
+					inner(this, tags);
+
+					function inner(root, tags )
+					{
+						if(!tags)
+							return;
+
+						var current = tags.shift();
+						var elements = root.getElementsByTagName( current );
+						if(tags.length == 0)
+						{
+							for(var i = 0; i < elements.length; i++)
+								result.push( elements.item(i) );
+							return;
+						}
+
+						for(var i = 0; i < elements.length; i++)
+							inner( elements.item(i), tags.concat() );
+					}
+
+					var list = new DOMNodeList(this.documentElement);
+					list._nodes = result;
+					list.length = result.length;
+
+					return list;
+				}
+
+				Object.defineProperty( DOMElement.prototype, "textContent", { 
+					get: function() { 
+						var nodes = this.getChildNodes();
+						return nodes.item(0).toString(); 
+					},
+					set: function() {} 
+				});
+			}
+		}
+		this._xmlroot = root;
+		var xmlcollada = root.querySelector("COLLADA");
+		if(xmlcollada)
+		{
+			this._current_DAE_version = xmlcollada.getAttribute("version");
+			console.log("DAE Version:" + this._current_DAE_version);
+		}
+
+		//var xmlvisual_scene = root.querySelector("visual_scene");
+		var xmlvisual_scene = root.getElementsByTagName("visual_scene").item(0);
+		if(!xmlvisual_scene)
+			throw("visual_scene XML node not found in DAE");
+
+		//hack to avoid problems with bones with spaces in names
+		this._nodes_by_id = {}; //clear
+		this._controllers_found = {};//we need to check what controllers had been found, in case we miss one at the end
+		this._geometries_found = {};
+
+		//Create a scene tree
+		var scene = { 
+			object_class:"SceneTree", 
+			light: null,
+			materials: {},
+			meshes: {},
+			resources: {}, //used to store animation tracks
+			root:{ children:[] },
+			external_files: {} //store info about external files mentioned in this 
+		};
+
+		//scene metadata (like author, tool, up vector, dates, etc)
+		var xmlasset = root.getElementsByTagName("asset")[0];
+		if(xmlasset)
+			scene.metadata = this.readAsset( xmlasset );
+
+		//parse nodes tree to extract names and ierarchy only
+		var xmlnodes = xmlvisual_scene.childNodes;
+		for(var i = 0; i < xmlnodes.length; i++)
+		{
+			if(xmlnodes.item(i).localName != "node")
+				continue;
+
+			var node = this.readNodeTree( xmlnodes.item(i), scene, 0, flip );
+			if(node)
+				scene.root.children.push(node);
+		}
+
+		//parse nodes content (two steps so we have first all the scene tree info)
+		for(var i = 0; i < xmlnodes.length; i++)
+		{
+			if(xmlnodes.item(i).localName != "node")
+				continue;
+			this.readNodeInfo( xmlnodes.item(i), scene, 0, flip );
+		}
+
+		//read remaining controllers (in some cases some controllers are not linked from the nodes or the geometries)
+		this.readLibraryControllers( scene );
+
+		//read animations
+		var animations = this.readAnimations(root, scene);
+		if(animations)
+		{
+			var animations_name = "#animations_" + filename.substr(0,filename.indexOf("."));
+			scene.resources[ animations_name ] = animations;
+			scene.root.animations = animations_name;
+		}
+
+		//read external files (images)
+		scene.images = this.readImages(root);
+
+		//clear memory
+		this._nodes_by_id = {};
+		this._controllers_found = {};
+		this._geometries_found = {};
+		this._xmlroot = null;
+
+		//console.log(scene);
+		return scene;
+	},
+
+	/* Collect node ids, in case there is bones (with spaces in name) I need to know the nodenames in advance */
+	/*
+	readAllNodeNames: function(xmlnode)
+	{
+		var node_id = this.safeString( xmlnode.getAttribute("id") );
+		if(node_id)
+			this._nodes_by_id[node_id] = true; //node found
+		//nodes seem to have to possible ids, id and sid, I guess one is unique, the other user-defined
+		var node_sid = this.safeString( xmlnode.getAttribute("sid") );
+		if(node_sid)
+			this._nodes_by_id[node_sid] = true; //node found
+
+
+		for( var i = 0; i < xmlnode.childNodes.length; i++ )
+		{
+			var xmlchild = xmlnode.childNodes.item(i);
+
+			//children
+			if(xmlchild.localName != "node")
+				continue;
+			this.readAllNodeNames(xmlchild);
+		}
+	},
+		*/
+
+	readAsset: function( xmlasset )
+	{
+		var metadata = {};
+
+		for( var i = 0; i < xmlasset.childNodes.length; i++ )
+		{
+			var xmlchild = xmlasset.childNodes.item(i);
+			if(xmlchild.nodeType != 1 ) //not tag
+				continue;
+			switch( xmlchild.localName )
+			{
+				case "contributor": 
+					var tool = xmlchild.querySelector("authoring_tool");
+					if(tool)
+						metadata["authoring_tool"] = tool.textContext;
+					break;
+				case "unit": metadata["unit"] = xmlchild.getAttribute("name"); break;
+				default:
+					metadata[ xmlchild.localName ] = xmlchild.textContent; break;
+			}
+		}
+
+		return metadata;
+	},
+
+	readNodeTree: function(xmlnode, scene, level, flip)
+	{
+		var node_id = this.safeString( xmlnode.getAttribute("id") );
+		var node_sid = this.safeString( xmlnode.getAttribute("sid") );
+		var node_name = this.safeString( xmlnode.getAttribute("name") );
+
+		var unique_name = node_id || node_sid || node_name;
+
+		if(!unique_name)
+		{
+			console.warn("Collada: node without name or id, skipping it");
+			return null;
+		}
+
+		//here we create the node
+		var node = { 
+			name: node_name,
+			id: unique_name, 
+			children:[], 
+			_depth: level 
+		};
+
+		var node_type = xmlnode.getAttribute("type");
+		if(node_type)
+			node.type = node_type;
+
+		this._nodes_by_id[ unique_name ] = node;
+		if( node_id )
+			this._nodes_by_id[ node_id ] = node;
+		if( node_sid )
+			this._nodes_by_id[ node_sid ] = node;
+
+		//transform
+		node.model = this.readTransform(xmlnode, level, flip );
+
+		//node elements
+		for( var i = 0; i < xmlnode.childNodes.length; i++ )
+		{
+			var xmlchild = xmlnode.childNodes.item(i);
+			if(xmlchild.nodeType != 1 ) //not tag
+				continue;
+
+			//children
+			if(xmlchild.localName == "node")
+			{
+				var child_node = this.readNodeTree(xmlchild, scene, level+1, flip);
+				if(child_node)
+					node.children.push( child_node );
+				continue;
+			}
+		}
+
+		return node;
+	},
+
+	readNodeInfo: function( xmlnode, scene, level, flip, parent )
+	{
+		var node_id = this.safeString( xmlnode.getAttribute("id") );
+		var node_sid = this.safeString( xmlnode.getAttribute("sid") );
+		var node_name = this.safeString( xmlnode.getAttribute("name") );
+
+		var unique_name = node_id || node_sid || node_name;
+
+		/*
+		if(!node_id && !node_sid)
+		{
+			console.warn("Collada: node without id, creating a random one");
+			node_id = this.generateName("node_");
+			return null;
+		}
+		*/
+
+		var node;
+		if(!unique_name) {
+			//if there is no id, then either all of this node's properties 
+			//should be assigned directly to its parent node, or the node doesn't
+			//have a parent node, in which case its a light or something. 
+			//So we get the parent by its id, and if there is no parent, we return null
+			if (parent)
+				node = this._nodes_by_id[ parent.id || parent.sid || parent.name ];
+			else 
+			{
+				console.warn("Collada: node without name or id, skipping it");
+				return null;
+			}
+		} 
+		else
+			node = this._nodes_by_id[ unique_name ];
+
+		if(!node)
+		{
+			console.warn("Collada: Node not found by id: " + (node_id || node_sid));
+			return null;
+		}
+
+		//node elements
+		for( var i = 0; i < xmlnode.childNodes.length; i++ )
+		{
+			var xmlchild = xmlnode.childNodes.item(i);
+			if(xmlchild.nodeType != 1 ) //not tag
+				continue;
+
+			//children
+			if(xmlchild.localName == "node")
+			{
+				//pass parent node in case child node is a 'dead' node (has no id or sid)
+				this.readNodeInfo( xmlchild, scene, level+1, flip, xmlnode );
+				continue;
+			}
+
+			//geometry
+			if(xmlchild.localName == "instance_geometry")
+			{
+				var url = xmlchild.getAttribute("url");
+				var mesh_id = url.toString().substr(1);
+
+				if(!node.mesh)
+					node.mesh = mesh_id;
+				else
+				{
+					if(!node.meshes)
+						node.meshes = [node.mesh];
+					node.meshes.push( mesh_id );
+				}
+
+				if(!scene.meshes[ url ])
+				{
+					var mesh_data = this.readGeometry(url, flip);
+					if(mesh_data)
+					{
+						mesh_data.name = mesh_id;
+						scene.meshes[ mesh_id ] = mesh_data;
+					}
+				}
+
+				//binded material
+				var xmlmaterials = xmlchild.querySelectorAll("instance_material");
+				if(xmlmaterials)
+				{
+					for(var iMat = 0; iMat < xmlmaterials.length; ++iMat)
+					{
+						var xmlmaterial = xmlmaterials.item(iMat);
+						if(!xmlmaterial)
+						{
+							console.warn("instance_material not found: " + i);
+							continue;
+						}
+
+						var matname = xmlmaterial.getAttribute("target").toString().substr(1);
+						//matname = matname.replace(/ /g,"_"); //names cannot have spaces
+						if(!scene.materials[ matname ])
+						{
+
+							var material = this.readMaterial(matname);
+							if(material)
+							{
+								material.id = matname; 
+								scene.materials[ material.id ] = material;
+							}
+						}
+						if(iMat == 0)
+							node.material = matname;
+						else
+						{
+							if(!node.materials)
+								node.materials = [];
+							node.materials.push(matname);
+						}
+					}
+				}
+			}
+
+
+			//this node has a controller: skinning, morph targets or even multimaterial are controllers
+			//warning: I detected that some nodes could have a controller but they are not referenced here.  ??
+			if(xmlchild.localName == "instance_controller")
+			{
+				var url = xmlchild.getAttribute("url");
+				var xmlcontroller = this._xmlroot.querySelector("controller" + url);
+
+				if(xmlcontroller)
+				{
+
+					var mesh_data = this.readController( xmlcontroller, flip, scene );
+
+					//binded materials
+					var xmlbind_material = xmlchild.querySelector("bind_material");
+					if(xmlbind_material){
+						//removed readBindMaterials up here for consistency
+						var xmltechniques = xmlbind_material.querySelectorAll("technique_common");
+						for(var iTec = 0; iTec < xmltechniques.length; iTec++)
+						{
+							var xmltechnique = xmltechniques.item(iTec);
+							var xmlinstance_materials = xmltechnique.querySelectorAll("instance_material");
+							for(var iMat = 0; iMat < xmlinstance_materials.length; iMat++)
+							{
+								var xmlinstance_material = xmlinstance_materials.item(iMat);
+								if(!xmlinstance_material)
+								{
+									console.warn("instance_material for controller not found: " + xmlinstance_material);
+									continue;
+								}
+								var matname = xmlinstance_material.getAttribute("target").toString().substr(1);
+								if(!scene.materials[ matname ])
+								{
+
+									var material = this.readMaterial(matname);
+									if(material)
+									{
+										material.id = matname; 
+										scene.materials[ material.id ] = material;
+									}
+								}
+								if(iMat == 0)
+									node.material = matname;
+								else
+								{
+									if(!node.materials)
+										node.materials = [];
+									node.materials.push(matname);
+								}
+
+							}
+						}
+
+					}
+
+					if(mesh_data)
+					{
+						var mesh = mesh_data;
+						if( mesh_data.type == "morph" )
+						{
+							mesh = mesh_data.mesh;
+							node.morph_targets = mesh_data.morph_targets;
+						}
+
+						mesh.name = url.toString();
+						node.mesh = url.toString();
+						scene.meshes[ url ] = mesh;
+					}
+				}
+			}
+
+			//light
+			if(xmlchild.localName == "instance_light")
+			{
+				var url = xmlchild.getAttribute("url");
+				this.readLight(node, url);
+			}
+
+			//camera
+			if(xmlchild.localName == "instance_camera")
+			{
+				var url = xmlchild.getAttribute("url");
+				this.readCamera(node, url);
+			}
+
+			//other possible tags?
+		}
+	},
+
+	//if you want to rename some material names
+	material_translate_table: {
+		/*
+		transparency: "opacity",
+		reflectivity: "reflection_factor",
+		specular: "specular_factor",
+		shininess: "specular_gloss",
+		emission: "emissive",
+		diffuse: "color"
+		*/
+	},
+
+	light_translate_table: {
+
+		point: "omni",
+		directional: "directional",
+		spot: "spot"		
+	},
+
+	camera_translate_table: {
+		xfov: "fov",
+		aspect_ratio: "aspect",
+		znear: "near",
+		zfar: "far"
+	},
+
+	//used when id have spaces (regular selector do not support spaces)
+	querySelectorAndId: function(root, selector, id)
+	{
+		var nodes = root.querySelectorAll(selector);
+		for(var i = 0; i < nodes.length; i++)
+		{
+			var attr_id = nodes.item(i).getAttribute("id");
+			if( !attr_id ) 
+				continue;
+			attr_id = attr_id.toString();
+			if(attr_id == id )
+				return nodes.item(i);
+		}
+		return null;
+	},
+
+	//returns the first element that matches a tag name, if not tagname is specified then the first tag element
+	getFirstChildElement: function(root, localName)
+	{
+		var c = root.childNodes;
+		for(var i = 0; i < c.length; ++i)
+		{
+			var item = c.item(i);
+			if( (item.localName && !localName) || (localName && localName == item.localName) )
+				return item;
+		}
+		return null;
+	},
+
+	readMaterial: function(url)
+	{
+		var xmlmaterial = this.querySelectorAndId( this._xmlroot, "library_materials material", url );
+
+		if(!xmlmaterial)
+			return null;
+
+		//get effect name
+		var xmleffect = xmlmaterial.querySelector("instance_effect");
+		if(!xmleffect) return null;
+
+		var effect_url = xmleffect.getAttribute("url").substr(1);
+
+		//get effect
+		var xmleffects = this.querySelectorAndId( this._xmlroot, "library_effects effect", effect_url );
+
+		if(!xmleffects) return null;
+
+		//get common
+		var xmltechnique = xmleffects.querySelector("technique");
+		if(!xmltechnique) 
+			return null;
+
+		//get newparams and convert to js object
+		var xmlnewparams = xmleffects.querySelectorAll("newparam");
+		var newparams = {}
+		for (var i = 0; i < xmlnewparams.length; i++) {
+
+			var init_from = xmlnewparams[i].querySelector("init_from");
+			var parent;
+			if (init_from)
+				parent = init_from.innerHTML;
+			else {
+				var source = xmlnewparams[i].querySelector("source");
+				parent = source.innerHTML;
+			}
+
+			newparams[xmlnewparams[i].getAttribute("sid")] = {
+				parent: parent
+			};
+		}
+
+
+
+		var material = {};
+
+		//read the images here because we need to access them to assign texture names
+		var images = this.readImages(this._xmlroot);
+
+
+		var xmlphong = xmltechnique.querySelector("phong");
+		if(!xmlphong) 
+			xmlphong = xmltechnique.querySelector("blinn");
+		if(!xmlphong) 
+			xmlphong = xmltechnique.querySelector("lambert");
+		if(!xmlphong) 
+			return null;
+
+		//for every tag of properties
+		for(var i = 0; i < xmlphong.childNodes.length; ++i)
+		{
+			var xmlparam = xmlphong.childNodes.item(i);
+
+			if(!xmlparam.localName) //text tag
+				continue;
+
+			//translate name
+			var param_name = xmlparam.localName.toString();
+			if(this.material_translate_table[param_name])
+				param_name = this.material_translate_table[param_name];
+
+			//value
+			var xmlparam_value = this.getFirstChildElement( xmlparam );
+			if(!xmlparam_value)
+				continue;
+
+			if(xmlparam_value.localName.toString() == "color")
+			{
+				var value = this.readContentAsFloats( xmlparam_value );
+				if( xmlparam.getAttribute("opaque") == "RGB_ZERO")
+					material[ param_name ] = value.subarray(0,4);
+				else
+					material[ param_name ] = value.subarray(0,3);
+				continue;
+			}
+			else if(xmlparam_value.localName.toString() == "float")
+			{
+				material[ param_name ] = this.readContentAsFloats( xmlparam_value )[0];
+				continue;
+			}
+			else if(xmlparam_value.localName.toString() == "texture")
+			{
+				if(!material.textures)
+					material.textures = {};
+				var map_id = xmlparam_value.getAttribute("texture");
+				if(!map_id)
+					continue;
+
+				// if map_id is not a filename, lets go and look for it.
+				if (map_id.indexOf('.') === -1){
+					//check effect parents
+					map_id = this.getParentParam(newparams, map_id);
+
+					if (images[map_id])
+						map_id = images[map_id].path;
+				}
+
+				//now get the texture filename from images
+
+				var map_info = { map_id: map_id };
+				var uvs = xmlparam_value.getAttribute("texcoord");
+				map_info.uvs = uvs;
+				material.textures[ param_name ] = map_info;
+			}
+		}
+
+		material.object_class = "Material";
+		return material;
+	},
+
+	getParentParam: function(newparams, param) {
+		if (!newparams[param])
+			return param;
+
+		if (newparams[param].parent)
+			return this.getParentParam(newparams, newparams[param].parent)
+		else
+			return param;
+	},
+
+	readLight: function(node, url)
+	{
+		var light = {};
+
+		var xmlnode = null;
+		
+		if(url.length > 1) //weird cases with id == #
+			xmlnode = this._xmlroot.querySelector("library_lights " + url);
+		else
+		{
+			var xmlliblights = this._xmlroot.querySelector("library_lights");
+			xmlnode = this.getFirstChildElement( xmlliblights, "light" );
+		}
+
+		if(!xmlnode)
+			return null;
+
+		//pack
+		var children = [];
+		var xml = xmlnode.querySelector("technique_common");
+		if(xml)
+			for(var i = 0; i < xml.childNodes.length; i++ )
+				if( xml.childNodes.item(i).nodeType == 1 ) //tag
+					children.push( xml.childNodes.item(i) );
+
+		var xmls = xmlnode.querySelectorAll("technique");
+		for(var i = 0; i < xmls.length; i++)
+		{
+			var xml2 = xmls.item(i);
+			for(var j = 0; j < xml2.childNodes.length; j++ )
+				if( xml2.childNodes.item(j).nodeType == 1 ) //tag
+					children.push( xml2.childNodes.item(j) );
+		}
+
+		//get
+		for(var i = 0; i < children.length; i++)
+		{
+			var xml = children[i];
+			switch( xml.localName )
+			{
+				case "point": 
+					light.type = this.light_translate_table[ xml.localName ]; 
+					parse_params(light, xml);
+					break;
+				case "directional":
+					light.type = this.light_translate_table[ xml.localName ]; 
+					parse_params(light, xml);
+					break;
+				case "spot": 
+					light.type = this.light_translate_table[ xml.localName ]; 
+					parse_params(light, xml);
+					break;
+				
+				case "intensity": 
+					light.intensity = this.readContentAsFloats( xml )[0]; 
+					break;
+			}
+		}
+
+		function parse_params(light, xml)
+		{
+			for(var i = 0; i < xml.childNodes.length; i++)
+			{
+				var child = xml.childNodes.item(i);
+				if( !child || child.nodeType != 1 ) //tag
+					continue;
+
+				switch( child.localName )
+				{
+					case "color": 
+						light.color = Collada.readContentAsFloats( child ); break;
+					case "falloff_angle": 
+						light.angle_end = Collada.readContentAsFloats( child )[0]; 
+						light.angle = light.angle_end - 10; 
+					break;
+				}
+			}
+		}
+
+		
+		if(node.model)
+		{
+			//light position is final column of model
+			light.position = [node.model[12],node.model[13],node.model[14]];
+			//light forward vector is reverse of third column of model
+			var forward = [ - node.model[8], - node.model[9], - node.model[10]];
+			//so light target is position + forward
+			light.target = [light.position[0] + forward[0],
+							light.position[1] + forward[1],
+							light.position[2] + forward[2] ];
+		}
+		else {
+			console.warn( "Could not read light position for light: " + node.name + ". Setting defaults.");
+			light.position = [0,0,0];
+			light.target = [0,-1,0];
+		}
+		
+
+		node.light = light;
+	},
+
+	readCamera: function(node, url)
+	{
+		var camera = {};
+
+		var xmlnode = this._xmlroot.querySelector("library_cameras " + url);
+		if(!xmlnode) return null;
+
+		//pack
+		var children = [];
+		var xml = xmlnode.querySelector("technique_common");
+		if(xml) //grab all internal stuff
+			for(var i = 0; i < xml.childNodes.length; i++ )
+				if( xml.childNodes.item(i).nodeType == 1 ) //tag
+					children.push( xml.childNodes.item(i) );
+
+		//
+		for(var i = 0; i < children.length; i++)
+		{
+			var tag = children[i];
+			parse_params(camera, tag);
+		}
+
+		function parse_params(camera, xml)
+		{
+			for(var i = 0; i < xml.childNodes.length; i++)
+			{
+				var child = xml.childNodes.item(i);
+				if( !child || child.nodeType != 1 ) //tag
+					continue;
+				var translated = Collada.camera_translate_table[ child.localName ] || child.localName;
+				camera[ translated ] = parseFloat( child.textContent );
+				
+			}
+		}
+
+		//parse to convert yfov to standard (x) fov
+		if ( camera.yfov && !camera.fov ) {
+			if ( camera.aspect ) {
+				camera.fov = camera.yfov * camera.aspect;
+			}
+			else
+				console.warn("Could not convert camera yfov to xfov because aspect ratio not set")
+		} 
+
+		node.camera = camera;
+	},
+
+	readTransform: function(xmlnode, level, flip)
+	{
+		//identity
+		var matrix = mat4.create(); 
+		var temp = mat4.create(); 
+		var tmpq = quat.create();
+		
+		var flip_fix = false;
+
+		//search for the matrix
+		for(var i = 0; i < xmlnode.childNodes.length; i++)
+		{
+			var xml = xmlnode.childNodes.item(i);
+			if( !xml || xml.nodeType != 1 ) //tag
+				continue;
+
+			if(xml.localName == "matrix")
+			{
+				var matrix = this.readContentAsFloats(xml);
+				//console.log("Nodename: " + xmlnode.getAttribute("id"));
+				//console.log(matrix);
+				this.transformMatrix(matrix, level == 0);
+				//console.log(matrix);
+				return matrix;
+			}
+
+			if(xml.localName == "translate")
+			{
+				var values = this.readContentAsFloats(xml);
+				if(flip && level > 0)
+				{
+					var tmp = values[1];
+					values[1] = values[2];
+					values[2] = -tmp; //swap coords
+				}
+
+				mat4.translate( matrix, matrix, values );
+				continue;
+			}
+
+			//rotate
+			if(xml.localName == "rotate")
+			{
+				var values = this.readContentAsFloats(xml);
+				if(values.length == 4) //x,y,z, angle
+				{
+					var id = xml.getAttribute("sid");
+					if(id == "jointOrientX")
+					{
+						values[3] += 90;
+						flip_fix = true;
+					}
+					//rotateX & rotateY & rotateZ done below
+
+					if(flip)
+					{
+						var tmp = values[1];
+						values[1] = values[2];
+						values[2] = -tmp; //swap coords
+					}
+
+					if(values[3] != 0.0)
+					{
+						quat.setAxisAngle( tmpq, values.subarray(0,3), values[3] * DEG2RAD);
+						mat4.fromQuat( temp, tmpq );
+						mat4.multiply(matrix, matrix, temp);
+					}
+				}
+				continue;
+			}
+
+			//scale
+			if(xml.localName == "scale")
+			{
+				var values = this.readContentAsFloats(xml);
+				if(flip)
+				{
+					var tmp = values[1];
+					values[1] = values[2];
+					values[2] = -tmp; //swap coords
+				}
+				mat4.scale( matrix, matrix, values );
+			}
+		}
+
+		return matrix;
+	},
+
+	readTransform2: function(xmlnode, level, flip)
+	{
+		//identity
+		var matrix = mat4.create(); 
+		var rotation = quat.create();
+		var tmpmatrix = mat4.create();
+		var tmpq = quat.create();
+		var translate = vec3.create();
+		var scale = vec3.fromValues(1,1,1);
+		
+		var flip_fix = false;
+
+		//search for the matrix
+		for(var i = 0; i < xmlnode.childNodes.length; i++)
+		{
+			var xml = xmlnode.childNodes.item(i);
+
+			if(xml.localName == "matrix")
+			{
+				var matrix = this.readContentAsFloats(xml);
+				//console.log("Nodename: " + xmlnode.getAttribute("id"));
+				//console.log(matrix);
+				this.transformMatrix(matrix, level == 0);
+				//console.log(matrix);
+				return matrix;
+			}
+
+			if(xml.localName == "translate")
+			{
+				var values = this.readContentAsFloats(xml);
+				translate.set(values);
+				continue;
+			}
+
+			//rotate
+			if(xml.localName == "rotate")
+			{
+				var values = this.readContentAsFloats(xml);
+				if(values.length == 4) //x,y,z, angle
+				{
+					var id = xml.getAttribute("sid");
+					if(id == "jointOrientX")
+					{
+						values[3] += 90;
+						flip_fix = true;
+					}
+					//rotateX & rotateY & rotateZ done below
+
+					if(flip)
+					{
+						var tmp = values[1];
+						values[1] = values[2];
+						values[2] = -tmp; //swap coords
+					}
+
+					if(values[3] != 0.0)
+					{
+						quat.setAxisAngle( tmpq, values.subarray(0,3), values[3] * DEG2RAD);
+						quat.multiply(rotation,rotation,tmpq);
+					}
+				}
+				continue;
+			}
+
+			//scale
+			if(xml.localName == "scale")
+			{
+				var values = this.readContentAsFloats(xml);
+				if(flip)
+				{
+					var tmp = values[1];
+					values[1] = values[2];
+					values[2] = -tmp; //swap coords
+				}
+				scale.set(values);
+			}
+		}
+
+		if(flip && level > 0)
+		{
+			var tmp = translate[1];
+			translate[1] = translate[2];
+			translate[2] = -tmp; //swap coords
+		}
+		mat4.translate(matrix, matrix, translate);
+
+		mat4.fromQuat( tmpmatrix , rotation );
+		//mat4.rotateX(tmpmatrix, tmpmatrix, Math.PI * 0.5);
+		mat4.multiply( matrix, matrix, tmpmatrix );
+		mat4.scale( matrix, matrix, scale );
+
+
+		return matrix;
+	},
+
+	//for help read this: https://www.khronos.org/collada/wiki/Using_accessors
+	readGeometry: function(id, flip, scene)
+	{
+		//already read, could happend if several controllers point to the same mesh
+		if( this._geometries_found[ id ] !== undefined )
+			return this._geometries_found[ id ];
+
+		//var xmlgeometry = this._xmlroot.querySelector("geometry" + id);
+		var xmlgeometry = this._xmlroot.getElementById(id.substr(1));
+		if(!xmlgeometry) 
+		{
+			console.warn("readGeometry: geometry not found: " + id);
+			this._geometries_found[ id ] = null;
+			return null;
+		}
+
+		//if the geometry has morph targets then instead of storing it in a geometry, it is in a controller
+		if(xmlgeometry.localName == "controller") 
+		{
+			var geometry = this.readController( xmlgeometry, flip, scene );
+			this._geometries_found[ id ] = geometry;
+			return geometry;
+		}
+
+
+		if(xmlgeometry.localName != "geometry") 
+		{
+			console.warn("readGeometry: tag should be geometry, instead it was found: " + xmlgeometry.localName);
+			this._geometries_found[ id ] = null;
+			return null;
+		}
+
+		var xmlmesh = xmlgeometry.querySelector("mesh");
+		if(!xmlmesh)
+		{
+			console.warn("readGeometry: mesh not found in geometry: " + id);
+			this._geometries_found[ id ] = null;
+			return null;
+		}
+		
+		//get data sources
+		var sources = {};
+		var xmlsources = xmlmesh.querySelectorAll("source");
+		for(var i = 0; i < xmlsources.length; i++)
+		{
+			var xmlsource = xmlsources.item(i);
+			if(!xmlsource.querySelector) continue;
+			var float_array = xmlsource.querySelector("float_array");
+			if(!float_array)
+				continue;
+			var floats = this.readContentAsFloats( float_array );
+
+			var xmlaccessor = xmlsource.querySelector("accessor");
+			var stride = parseInt( xmlaccessor.getAttribute("stride") );
+
+			sources[ xmlsource.getAttribute("id") ] = {stride: stride, data: floats};
+		}
+
+		//get streams
+		var xmlvertices = xmlmesh.querySelector("vertices input");
+		var vertices_source = sources[ xmlvertices.getAttribute("source").substr(1) ];
+		sources[ xmlmesh.querySelector("vertices").getAttribute("id") ] = vertices_source;
+
+		var mesh = null;
+		var xmlpolygons = xmlmesh.querySelector("polygons");
+		if( xmlpolygons )
+			mesh = this.readTriangles( xmlpolygons, sources );
+
+		if(!mesh)
+		{
+			var xmltriangles = xmlmesh.querySelectorAll("triangles");
+			if(xmltriangles && xmltriangles.length)
+				mesh = this.readTriangles( xmltriangles, sources );
+		}
+
+		if(!mesh)
+		{
+			//polylist = true;
+			//var vcount = null;
+			//var xmlvcount = xmlpolygons.querySelector("vcount");
+			//var vcount = this.readContentAsUInt32( xmlvcount );
+			var xmlpolylist_array = xmlmesh.querySelectorAll("polylist");
+			if( xmlpolylist_array && xmlpolylist_array.length )
+				mesh = this.readPolylistArray( xmlpolylist_array, sources );
+		}
+
+		if(!mesh)
+		{
+			var xmllinestrip = xmlmesh.querySelector("linestrips");
+			if(xmllinestrip)
+				mesh = this.readLineStrip( sources, xmllinestrip );
+		}
+
+		if(!mesh)
+		{
+			console.log("no polygons or triangles in mesh: " + id);
+			this._geometries_found[ id ] = null;
+			return null;
+		}
+	
+		//swap coords (X,Y,Z) -> (X,Z,-Y)
+		if(flip && !this.no_flip)
+		{
+			var tmp = 0;
+			var array = mesh.vertices;
+			for(var i = 0, l = array.length; i < l; i += 3)
+			{
+				tmp = array[i+1]; 
+				array[i+1] = array[i+2];
+				array[i+2] = -tmp; 
+			}
+
+			array = mesh.normals;
+			for(var i = 0, l = array.length; i < l; i += 3)
+			{
+				tmp = array[i+1]; 
+				array[i+1] = array[i+2];
+				array[i+2] = -tmp; 
+			}
+		}
+
+		//transferables for worker
+		if(isWorker && this.use_transferables)
+		{
+			for(var i in mesh)
+			{
+				var data = mesh[i];
+				if(data && data.buffer && data.length > 100)
+				{
+					this._transferables.push(data.buffer);
+				}
+			}
+		}
+
+		//extra info
+		mesh.filename = id;
+		mesh.object_class = "Mesh";
+
+		this._geometries_found[ id ] = mesh;
+		return mesh;
+	},
+
+	readTriangles: function( xmltriangles, sources )
+	{
+		var use_indices = false;
+
+		var groups = [];
+		var buffers = [];
+		var last_index = 0;
+		var facemap = {};
+		var vertex_remap = []; //maps DAE vertex index to Mesh vertex index (because when meshes are triangulated indices are changed
+		var indicesArray = [];
+		var last_start = 0;
+		var group_name = "";
+		var material_name = "";
+
+		//for every triangles set (warning, some times they are repeated...)
+		for(var tris = 0; tris < xmltriangles.length; tris++)
+		{
+			var xml_shape_root = xmltriangles.item(tris);
+			var triangles = xml_shape_root.localName == "triangles";
+
+			material_name = xml_shape_root.getAttribute("material");
+
+			//for each buffer (input) build the structure info
+			if(tris == 0)
+				buffers = this.readShapeInputs( xml_shape_root, sources );
+
+			//assuming buffers are ordered by offset
+
+			//iterate data
+			var xmlps = xml_shape_root.querySelectorAll("p");
+			var num_data_vertex = buffers.length; //one value per input buffer
+
+			//compute data to read per vertex
+			var num_values_per_vertex = 1;
+			var buffers_length = buffers.length;
+			for(var b = 0; b < buffers_length; ++b)
+				num_values_per_vertex = Math.max( num_values_per_vertex, buffers[b][4] + 1);
+
+			//for every polygon (could be one with all the indices, could be several, depends on the program)
+			for(var i = 0; i < xmlps.length; i++)
+			{
+				var xmlp = xmlps.item(i);
+				if(!xmlp || !xmlp.textContent) 
+					break;
+
+				var data = xmlp.textContent.trim().split(" ");
+
+				//used for triangulate polys
+				var first_index = -1;
+				var current_index = -1;
+				var prev_index = -1;
+
+				//discomment to force 16bits indices
+				//if(use_indices && last_index >= 256*256)
+				//	break;
+
+				//for every pack of indices in the polygon (vertex, normal, uv, ... )
+				for(var k = 0, l = data.length; k < l; k += num_values_per_vertex)
+				{
+					var vertex_id = data.slice(k,k+num_values_per_vertex).join(" "); //generate unique id
+
+					prev_index = current_index;
+					if(facemap.hasOwnProperty(vertex_id)) //add to arrays, keep the index
+						current_index = facemap[vertex_id];
+					else
+					{
+						//for every data buffer associated to this vertex
+						for(var j = 0; j < buffers_length; ++j)
+						{
+							var buffer = buffers[j];
+							var array = buffer[1]; //array where we accumulate the final data as we extract if from sources
+							var source = buffer[3]; //where to read the data from
+							
+							//compute the index inside the data source array
+							var index = parseInt( data[ k + buffer[4] ] );
+
+							//remember this index in case we need to remap
+							if(j == 0)
+								vertex_remap[ array.length / buffer[2] ] = index; //not sure if buffer[2], it should be number of floats per vertex (usually 3)
+
+							//compute the position inside the source buffer where the final data is located
+							index *= buffer[2]; //this works in most DAEs (not all)
+
+							//extract every value of this element and store it in its final array (every x,y,z, etc)
+							for(var x = 0; x < buffer[2]; ++x)
+							{
+								//if(source[index+x] === undefined) throw("UNDEFINED!"); //DEBUG
+								array.push( source[index+x] );
+							}
+						}
+						
+						current_index = last_index;
+						last_index += 1;
+						facemap[vertex_id] = current_index;
+					}
+
+					if(!triangles) //the xml element is not triangles? then split polygons in triangles
+					{
+						if(k == 0)
+							first_index = current_index;
+						//if(k > 2 * num_data_vertex) //not sure if use this or the next line, the next one works in some DAEs but not sure if it works in all
+						if(k > 2) //triangulate polygons: ensure this works
+						{
+							indicesArray.push( first_index );
+							indicesArray.push( prev_index );
+						}
+					}
+
+					indicesArray.push( current_index );
+				}//per vertex
+			}//per polygon
+
+			var group = {
+				name: group_name || ("group" + tris),
+				start: last_start,
+				length: indicesArray.length - last_start,
+				material: material_name || ""
+			};
+			last_start = indicesArray.length;
+			groups.push( group );
+		}//per triangles group
+
+		var mesh = {
+			vertices: new Float32Array( buffers[0][1] ),
+			info: { groups: groups },
+			_remap: new Uint32Array(vertex_remap)
+		};
+
+		this.transformMeshInfo( mesh, buffers, indicesArray );
+
+		return mesh;
+	},
+
+	readPolylistArray: function( xml_polylist_array, sources )
+	{
+		var meshes = [];
+
+		for(var i = 0; i < xml_polylist_array.length; ++i)
+		{
+			var xml_polylist = xml_polylist_array[i];
+			var mesh = this.readPolylist( xml_polylist, sources );
+			if(mesh)
+				meshes.push( mesh );
+		}
+
+		//one or none
+		if( meshes.length < 2)
+			return meshes[0];
+
+		//merge meshes
+		var mesh = this.mergeMeshes( meshes );
+		return mesh;
+	},
+
+	readPolylist: function( xml_polylist, sources )
+	{
+		var use_indices = false;
+
+		var groups = [];
+		var buffers = [];
+		var last_index = 0;
+		var facemap = {};
+		var vertex_remap = [];
+		var indicesArray = [];
+		var last_start = 0;
+		var group_name = "";
+		var material_name = "";
+
+		material_name = xml_polylist.getAttribute("material") || "";
+		buffers = this.readShapeInputs( xml_polylist, sources );
+
+		var xmlvcount = xml_polylist.querySelector("vcount");
+		var vcount = this.readContentAsUInt32( xmlvcount );
+
+		var xmlp = xml_polylist.querySelector("p");
+		var data = this.readContentAsUInt32( xmlp );
+		var pos = 0;
+
+		var num_values_per_vertex = 1;
+		var buffers_length = buffers.length;
+		for(var b = 0; b < buffers_length; ++b)
+			num_values_per_vertex = Math.max( num_values_per_vertex, buffers[b][4] + 1);
+
+		for(var i = 0, l = vcount.length; i < l; ++i)
+		{
+			var num_vertices = vcount[i];
+
+			var first_index = -1;
+			var current_index = -1;
+			var prev_index = -1;
+
+			//iterate vertices of this polygon
+			for(var k = 0; k < num_vertices; ++k)
+			{
+				var vertex_id = data.slice( pos, pos + num_values_per_vertex).join(" "); //generate unique id
+
+				prev_index = current_index;
+				if(facemap.hasOwnProperty(vertex_id)) //add to arrays, keep the index
+					current_index = facemap[vertex_id];
+				else
+				{
+					for(var j = 0; j < buffers_length; ++j)
+					{
+						var buffer = buffers[j];
+						var array = buffer[1]; //array with all the data
+						var source = buffer[3]; //where to read the data from
+
+						var index = parseInt( data[ pos + buffer[4] ] );
+
+						if(j == 0)
+							vertex_remap[ array.length / buffer[2] ] = index; //not sure if buffer[2], it should be number of floats per vertex (usually 3)
+
+						//compute the position inside the source buffer where the final data is located
+						index *= buffer[2]; //this works in most DAEs (not all)
+
+						//extract every value of this element and store it in its final array (every x,y,z, etc)
+						for(var x = 0; x < buffer[2]; ++x)
+						{
+							//if(source[index+x] === undefined) throw("UNDEFINED!"); //DEBUG
+							array.push( source[index+x] );
+						}
+					}
+					
+					current_index = last_index;
+					last_index += 1;
+					facemap[vertex_id] = current_index;
+				}
+
+				if(num_vertices > 3) //split polygons then
+				{
+					if(k == 0)
+						first_index = current_index;
+					//if(k > 2 * num_data_vertex) //not sure if use this or the next line, the next one works in some DAEs but not sure if it works in all
+					if(k > 2) //triangulate polygons: tested, this works
+					{
+						indicesArray.push( first_index );
+						indicesArray.push( prev_index );
+					}
+				}
+
+				indicesArray.push( current_index );
+				pos += num_values_per_vertex;
+			}//per vertex
+		}//per polygon
+
+		var mesh = {
+			vertices: new Float32Array( buffers[0][1] ),
+			info: {
+				material: material_name
+			},
+			_remap: new Uint32Array( vertex_remap )
+		};
+
+		this.transformMeshInfo( mesh, buffers, indicesArray );
+		return mesh;
+	},
+
+	readShapeInputs: function(xml_shape_root, sources)
+	{
+		var buffers = [];
+
+		var xmlinputs = xml_shape_root.querySelectorAll("input");
+		for(var i = 0; i < xmlinputs.length; i++)
+		{
+			var xmlinput = xmlinputs.item(i);
+			if(!xmlinput.getAttribute) 
+				continue;
+			var semantic = xmlinput.getAttribute("semantic").toUpperCase();
+			var stream_source = sources[ xmlinput.getAttribute("source").substr(1) ];
+			var offset = parseInt( xmlinput.getAttribute("offset") );
+			var data_set = 0;
+			if(xmlinput.getAttribute("set"))
+				data_set = parseInt( xmlinput.getAttribute("set") );
+			buffers.push([semantic, [], stream_source.stride, stream_source.data, offset, data_set ]);
+		}
+
+		return buffers;
+	},
+
+	transformMeshInfo: function( mesh, buffers, indicesArray )
+	{
+		//rename buffers (DAE has other names)
+		var translator = {
+			"normal":"normals",
+			"texcoord":"coords"
+		};
+
+		for(var i = 1; i < buffers.length; ++i)
+		{
+			var name = buffers[i][0].toLowerCase();
+			var data = buffers[i][1];
+			if(!data.length)
+				continue;
+
+			if(translator[name])
+				name = translator[name];
+			if(mesh[name])
+				name = name + buffers[i][5];
+			mesh[ name ] = new Float32Array(data); //are they always float32? I think so
+		}
+		
+		if(indicesArray && indicesArray.length)
+		{
+			if(mesh.vertices.length > 256*256)
+				mesh.triangles = new Uint32Array(indicesArray);
+			else
+				mesh.triangles = new Uint16Array(indicesArray);
+		}
+
+		return mesh;
+	},
+
+	readLineStrip: function(sources, xmllinestrip)
+	{
+		var use_indices = false;
+
+		var buffers = [];
+		var last_index = 0;
+		var facemap = {};
+		var vertex_remap = [];
+		var indicesArray = [];
+		var last_start = 0;
+		var group_name = "";
+		var material_name = "";
+
+		var tris = 0; //used in case there are several strips
+
+		//for each buffer (input) build the structure info
+		var xmlinputs = xmllinestrip.querySelectorAll("input");
+		if(tris == 0) //first iteration, create buffers
+			for(var i = 0; i < xmlinputs.length; i++)
+			{
+				var xmlinput = xmlinputs.item(i);
+				if(!xmlinput.getAttribute) 
+					continue;
+				var semantic = xmlinput.getAttribute("semantic").toUpperCase();
+				var stream_source = sources[ xmlinput.getAttribute("source").substr(1) ];
+				var offset = parseInt( xmlinput.getAttribute("offset") );
+				var data_set = 0;
+				if(xmlinput.getAttribute("set"))
+					data_set = parseInt( xmlinput.getAttribute("set") );
+
+				buffers.push([semantic, [], stream_source.stride, stream_source.data, offset, data_set]);
+			}
+		//assuming buffers are ordered by offset
+
+		//iterate data
+		var xmlps = xmllinestrip.querySelectorAll("p");
+		var num_data_vertex = buffers.length; //one value per input buffer
+
+		//for every polygon (could be one with all the indices, could be several, depends on the program)
+		for(var i = 0; i < xmlps.length; i++)
+		{
+			var xmlp = xmlps.item(i);
+			if(!xmlp || !xmlp.textContent) 
+				break;
+
+			var data = xmlp.textContent.trim().split(" ");
+
+			//used for triangulate polys
+			var first_index = -1;
+			var current_index = -1;
+			var prev_index = -1;
+
+			//if(use_indices && last_index >= 256*256)
+			//	break;
+
+			//for every pack of indices in the polygon (vertex, normal, uv, ... )
+			for(var k = 0, l = data.length; k < l; k += num_data_vertex)
+			{
+				var vertex_id = data.slice(k,k+num_data_vertex).join(" "); //generate unique id
+
+				prev_index = current_index;
+				if(facemap.hasOwnProperty(vertex_id)) //add to arrays, keep the index
+					current_index = facemap[vertex_id];
+				else
+				{
+					for(var j = 0; j < buffers.length; ++j)
+					{
+						var buffer = buffers[j];
+						var index = parseInt(data[k + j]);
+						var array = buffer[1]; //array with all the data
+						var source = buffer[3]; //where to read the data from
+						if(j == 0)
+							vertex_remap[ array.length / num_data_vertex ] = index;
+						index *= buffer[2]; //stride
+						for(var x = 0; x < buffer[2]; ++x)
+							array.push( source[index+x] );
+					}
+					
+					current_index = last_index;
+					last_index += 1;
+					facemap[vertex_id] = current_index;
+				}
+
+				indicesArray.push( current_index );
+			}//per vertex
+		}//per polygon
+
+		var mesh = {
+			primitive: "line_strip",
+			vertices: new Float32Array( buffers[0][1] ),
+			info: {}
+		};
+
+		return this.transformMeshInfo( mesh, buffers, indicesArray );
+	},
+
+	//like querySelector but allows spaces in names because COLLADA allows space in names
+	findXMLNodeById: function(root, nodename, id)
+	{
+		//precomputed
+		if( this._xmlroot._nodes_by_id )
+		{
+			var n = this._xmlroot._nodes_by_id[ id ];
+			if( n && n.localName == nodename)
+				return n;
+		}
+		else //for the native parser
+		{
+			var n = this._xmlroot.getElementById( id );
+			if(n)
+				return n;
+		}
+
+		//recursive: slow
+		var childs = root.childNodes;
+		for(var i = 0; i < childs.length; ++i)
+		{
+			var xmlnode = childs.item(i);
+			if(xmlnode.nodeType != 1 ) //no tag
+				continue;
+			if(xmlnode.localName != nodename)
+				continue;
+			var node_id = xmlnode.getAttribute("id");
+			if(node_id == id)
+				return xmlnode;
+		}
+		return null;
+	},
+
+	readImages: function(root)
+	{
+		var xmlimages = root.querySelector("library_images");
+		if(!xmlimages)
+			return null;
+
+		var images = {};
+
+		var xmlimages_childs = xmlimages.childNodes;
+		for(var i = 0; i < xmlimages_childs.length; ++i)
+		{
+			var xmlimage = xmlimages_childs.item(i);
+			if(xmlimage.nodeType != 1 ) //no tag
+				continue;
+
+			var xmlinitfrom = xmlimage.querySelector("init_from");
+			if(!xmlinitfrom)
+				continue;
+			if(xmlinitfrom.textContent)
+			{
+				var filename = this.getFilename( xmlinitfrom.textContent );
+				var id = xmlimage.getAttribute("id");
+				images[id] = { filename: filename, map: id, name: xmlimage.getAttribute("name"), path: xmlinitfrom.textContent };
+			}
+		}
+
+		return images;
+	},
+
+	readAnimations: function(root, scene)
+	{
+		var xmlanimations = root.querySelector("library_animations");
+		if(!xmlanimations)
+			return null;
+
+		var xmlanimation_childs = xmlanimations.childNodes;
+
+		var animations = {
+			object_class: "Animation",
+			takes: {}
+		};
+
+		var default_take = { tracks: [] };
+		var tracks = default_take.tracks;
+
+		for(var i = 0; i < xmlanimation_childs.length; ++i)
+		{
+			var xmlanimation = xmlanimation_childs.item(i);
+			if(xmlanimation.nodeType != 1 || xmlanimation.localName != "animation") //no tag
+				continue;
+
+			var anim_id = xmlanimation.getAttribute("id");
+			if(!anim_id) //nested animation (DAE 1.5)
+			{
+				var xmlanimation2_childs = xmlanimation.querySelectorAll("animation");
+				if(xmlanimation2_childs.length)
+				{
+					for(var j = 0; j < xmlanimation2_childs.length; ++j)
+					{
+						var xmlanimation2 = xmlanimation2_childs.item(j);
+						this.readAnimation( xmlanimation2, tracks );
+					}
+				}
+				else //source tracks?
+					this.readAnimation( xmlanimation, tracks );
+			}
+			else //no nested (DAE 1.4)
+				this.readAnimation( xmlanimation, tracks );
+		}
+
+		if(!tracks.length) 
+			return null; //empty animation
+
+		//compute animation duration
+		var max_time = 0;
+		for(var i = 0; i < tracks.length; ++i)
+			if( max_time < tracks[i].duration )
+				max_time = tracks[i].duration;
+
+		default_take.name = "default";
+		default_take.duration = max_time;
+		animations.takes[ default_take.name ] = default_take;
+		return animations;
+	},
+
+	//animation xml
+	readAnimation: function( xmlanimation, result )
+	{
+		if(xmlanimation.localName != "animation")
+			return null;
+
+		//this could be missing when there are lots of anims packed in one <animation>
+		var anim_id = xmlanimation.getAttribute("id");
+
+		//channels are like animated properties
+		var xmlchannel_list = xmlanimation.querySelectorAll("channel");
+		if(!xmlchannel_list.length)
+			return null;
+
+		var tracks = result || [];
+
+		for(var i = 0; i < xmlchannel_list.length; ++i)
+		{
+			var anim = this.readChannel( xmlchannel_list.item(i), xmlanimation );
+			if(anim)
+				tracks.push( anim );
+		}
+
+		return tracks;
+	},
+
+	readChannel: function( xmlchannel, xmlanimation )
+	{
+		if(xmlchannel.localName != "channel" || xmlanimation.localName != "animation")
+			return null;
+
+		var source = xmlchannel.getAttribute("source");
+		var target = xmlchannel.getAttribute("target");
+
+		//sampler, is in charge of the interpolation
+		//var xmlsampler = xmlanimation.querySelector("sampler" + source);
+		var xmlsampler = this.findXMLNodeById( xmlanimation, "sampler", source.substr(1) );
+		if(!xmlsampler)
+		{
+			console.error("Error DAE: Sampler not found in " + source);
+			return null;
+		}
+
+		var inputs = {};
+		var params = {};
+		var sources = {};
+		var xmlinputs = xmlsampler.querySelectorAll("input");
+
+		var time_data = null;
+
+		//iterate inputs: collada separates the keyframe info in independent streams, like time, interpolation method, value )
+		for(var j = 0; j < xmlinputs.length; j++)
+		{
+			var xmlinput = xmlinputs.item(j);
+			var source_name =  xmlinput.getAttribute("source");
+
+			//there are three 
+			var semantic = xmlinput.getAttribute("semantic");
+
+			//Search for source
+			var xmlsource = this.findXMLNodeById( xmlanimation, "source", source_name.substr(1) );
+			if(!xmlsource)
+				continue;
+
+			var xmlparam = xmlsource.querySelector("param");
+			if(!xmlparam)
+				continue;
+
+			var type = xmlparam.getAttribute("type");
+			inputs[ semantic ] = { source: source_name, type: type };
+
+			var data_array = null;
+
+			if(type == "float" || type == "float4x4")
+			{
+				var xmlfloatarray = xmlsource.querySelector("float_array");
+				var floats = this.readContentAsFloats( xmlfloatarray );
+				sources[ source_name ] = floats;
+				data_array = floats;
+
+			}
+			else //only floats and matrices are supported in animation
+				continue;
+
+			var param_name = xmlparam.getAttribute("name");
+			if(param_name == "TIME")
+				time_data = data_array;
+			if(semantic == "OUTPUT")
+				param_name = semantic;
+			if(param_name)
+				params[ param_name ] = type;
+			else
+				console.warn("Collada: <param> without name attribute in <animation>");
+		}
+
+		if(!time_data)
+		{
+			console.error("Error DAE: no TIME info found in <channel>: " + xmlchannel.getAttribute("source") );
+			return null;
+		}
+
+		//construct animation
+		var path = target.split("/");
+
+		var anim = {};
+		var nodename = path[0]; //safeString ?
+		var node = this._nodes_by_id[ nodename ];
+		var locator = node.id + "/" + path[1];
+		//anim.nodename = this.safeString( path[0] ); //where it goes
+		anim.name = path[1];
+		anim.property = locator;
+		var type = "number";
+		var element_size = 1;
+		var param_type = params["OUTPUT"];
+		switch(param_type)
+		{
+			case "float": element_size = 1; break;
+			case "float3x3": element_size = 9; type = "mat3"; break;
+			case "float4x4": element_size = 16; type = "mat4"; break;
+			default: break;
+		}
+
+		anim.type = type;
+		anim.value_size = element_size;
+		anim.duration = time_data[ time_data.length - 1]; //last sample
+
+		var value_data = sources[ inputs["OUTPUT"].source ];
+		if(!value_data)
+			return null;
+
+		//Pack data ****************
+		var num_samples = time_data.length;
+		var sample_size = element_size + 1;
+		var anim_data = new Float32Array( num_samples * sample_size );
+		//for every sample
+		for(var j = 0; j < time_data.length; ++j)
+		{
+			anim_data[j * sample_size] = time_data[j]; //set time
+			var value = value_data.subarray( j * element_size, (j+1) * element_size );
+			if(param_type == "float4x4")
+			{
+				this.transformMatrix( value, node ? node._depth == 0 : 0 );
+				//mat4.transpose(value, value);
+			}
+			anim_data.set(value, j * sample_size + 1); //set data
+		}
+
+		if(isWorker && this.use_transferables)
+		{
+			var data = anim_data;
+			if(data && data.buffer && data.length > 100)
+				this._transferables.push(data.buffer);
+		}
+
+		anim.data = anim_data;
+		return anim;
+	},
+
+	findNode: function(root, id)
+	{
+		if(root.id == id) return root;
+		if(root.children)
+			for(var i in root.children)
+			{
+				var ret = this.findNode(root.children[i], id);
+				if(ret) return ret;
+			}
+		return null;
+	},
+
+	//reads controllers and stores them in 
+	readLibraryControllers: function( scene )
+	{
+		var xmllibrarycontrollers = this._xmlroot.querySelector("library_controllers");
+		if(!xmllibrarycontrollers)
+			return null;
+
+		var xmllibrarycontrollers_childs = xmllibrarycontrollers.childNodes;
+
+		for(var i = 0; i < xmllibrarycontrollers_childs.length; ++i)
+		{
+			var xmlcontroller = xmllibrarycontrollers_childs.item(i);
+			if(xmlcontroller.nodeType != 1 || xmlcontroller.localName != "controller") //no tag
+				continue;
+			var id = xmlcontroller.getAttribute("id");
+			//we have already processed this controller
+			if( this._controllers_found[ id ] )
+				continue;
+
+			//read it (we wont use the returns, we will get it from this._controllers_found
+			this.readController( xmlcontroller, null, scene );
+		}
+	},
+
+	//used for skinning and morphing
+	readController: function( xmlcontroller, flip, scene )
+	{
+		if(!xmlcontroller.localName == "controller")
+		{
+			console.warn("readController: not a controller: " + xmlcontroller.localName);
+			return null;
+		}
+
+		var id = xmlcontroller.getAttribute("id");
+
+		//use cached
+		if( this._controllers_found[ id ] )
+			return this._controllers_found[ id ];
+
+		var use_indices = false;
+		var mesh = null;
+		var xmlskin = xmlcontroller.querySelector("skin");
+		if(xmlskin) {
+			mesh = this.readSkinController( xmlskin, flip, scene);
+		}
+
+		var xmlmorph = xmlcontroller.querySelector("morph");
+		if(xmlmorph)
+			mesh = this.readMorphController( xmlmorph, flip, scene, mesh );
+
+		//cache and return
+		this._controllers_found[ id ] = mesh;
+
+		return mesh;
+	},
+
+	//read this to more info about DAE and skinning https://collada.org/mediawiki/index.php/Skinning
+	readSkinController: function( xmlskin, flip, scene )
+	{
+		//base geometry
+		var id_geometry = xmlskin.getAttribute("source");
+
+
+		var mesh = this.readGeometry( id_geometry, flip, scene );
+		if(!mesh)
+			return null;
+
+		var sources = this.readSources(xmlskin, flip);
+		if(!sources)
+			return null;
+
+		//matrix
+		var bind_matrix = null;
+		var xmlbindmatrix = xmlskin.querySelector("bind_shape_matrix");
+		if(xmlbindmatrix)
+		{
+			bind_matrix = this.readContentAsFloats( xmlbindmatrix );
+			this.transformMatrix(bind_matrix, true, true );			
+		}
+		else
+			bind_matrix = mat4.create(); //identity
+
+		//joints
+		var joints = [];
+		var xmljoints = xmlskin.querySelector("joints");
+		if(xmljoints)
+		{
+			var joints_source = null; //which bones
+			var inv_bind_source = null; //bind matrices
+			var xmlinputs = xmljoints.querySelectorAll("input");
+			for(var i = 0; i < xmlinputs.length; i++)
+			{
+				var xmlinput = xmlinputs[i];
+				var sem = xmlinput.getAttribute("semantic").toUpperCase();
+				var src = xmlinput.getAttribute("source");
+				var source = sources[ src.substr(1) ];
+				if(sem == "JOINT")
+					joints_source = source;
+				else if(sem == "INV_BIND_MATRIX")
+					inv_bind_source = source;
+			}
+
+			//save bone names and inv matrix
+			if(!inv_bind_source || !joints_source)
+			{
+				console.error("Error DAE: no joints or inv_bind sources found");
+				return null;
+			}
+
+			for(var i = 0; i < joints_source.length; ++i)
+			{
+				//get the inverse of the bind pose
+				var inv_mat = inv_bind_source.subarray(i*16,i*16+16);
+				var nodename = joints_source[i];
+				var node = this._nodes_by_id[ nodename ];
+				if(!node)
+				{
+					console.warn("Node " + nodename + " not found");
+					continue;
+				}
+				this.transformMatrix(inv_mat, node._depth == 0, true );
+				joints.push([ nodename, inv_mat ]);
+			}
+		}
+
+		//weights
+		var xmlvertexweights = xmlskin.querySelector("vertex_weights");
+		if(xmlvertexweights)
+		{
+
+			//here we see the order 
+			var weights_indexed_array = null;
+			var xmlinputs = xmlvertexweights.querySelectorAll("input");
+			for(var i = 0; i < xmlinputs.length; i++)
+			{
+				if( xmlinputs[i].getAttribute("semantic").toUpperCase() == "WEIGHT" )
+					weights_indexed_array = sources[ xmlinputs.item(i).getAttribute("source").substr(1) ];
+			}
+
+			if(!weights_indexed_array)
+				throw("no weights found");
+
+			var xmlvcount = xmlvertexweights.querySelector("vcount");
+			var vcount = this.readContentAsUInt32( xmlvcount );
+
+			var xmlv = xmlvertexweights.querySelector("v");
+			var v = this.readContentAsUInt32( xmlv );
+
+			var num_vertices = mesh.vertices.length / 3; //3 components per vertex
+			var weights_array = new Float32Array(4 * num_vertices); //4 bones per vertex
+			var bone_index_array = new Uint8Array(4 * num_vertices); //4 bones per vertex
+
+			var pos = 0;
+			var remap = mesh._remap;
+			if(!remap)
+				throw("no remap info found in mesh");
+			var max_bone = 0; //max bone affected
+
+			for(var i = 0, l = vcount.length; i < l; ++i)
+			{
+				var num_bones = vcount[i]; //num bones influencing this vertex
+
+				//find 4 with more influence
+				//var v_tuplets = v.subarray(offset, offset + num_bones*2);
+
+				var offset = pos;
+				var b = bone_index_array.subarray(i*4, i*4 + 4);
+				var w = weights_array.subarray(i*4, i*4 + 4);
+
+				var sum = 0;
+				for(var j = 0; j < num_bones && j < 4; ++j)
+				{
+					b[j] = v[offset + j*2];
+					if(b[j] > max_bone) max_bone = b[j];
+
+					w[j] = weights_indexed_array[ v[offset + j*2 + 1] ];
+					sum += w[j];
+				}
+
+				//normalize weights
+				if(num_bones > 4 && sum < 1.0)
+				{
+					var inv_sum = 1/sum;
+					for(var j = 0; j < 4; ++j)
+						w[j] *= inv_sum;
+				}
+
+				pos += num_bones * 2;
+			}
+
+
+			//remap: because vertices order is now changed after parsing the mesh
+			var final_weights = new Float32Array(4 * num_vertices); //4 bones per vertex
+			var final_bone_indices = new Uint8Array(4 * num_vertices); //4 bones per vertex
+			var used_joints = [];
+
+			//for every vertex in the mesh, process bone indices and weights
+			for(var i = 0; i < num_vertices; ++i)
+			{
+				var p = remap[ i ] * 4;
+				var w = weights_array.subarray(p,p+4);
+				var b = bone_index_array.subarray(p,p+4);
+
+				//sort by weight so relevant ones goes first
+				for(var k = 0; k < 3; ++k)
+				{
+					var max_pos = k;
+					var max_value = w[k];
+					for(var j = k+1; j < 4; ++j)
+					{
+						if(w[j] <= max_value)
+							continue;
+						max_pos = j;
+						max_value = w[j];
+					}
+					if(max_pos != k)
+					{
+						var tmp = w[k];
+						w[k] = w[max_pos];
+						w[max_pos] = tmp;
+						tmp = b[k];
+						b[k] = b[max_pos]; 
+						b[max_pos] = tmp;
+					}
+				}
+
+				//store
+				final_weights.set( w, i*4);
+				final_bone_indices.set( b, i*4);
+
+				//mark bones used
+				if(w[0]) used_joints[b[0]] = true;
+				if(w[1]) used_joints[b[1]] = true;
+				if(w[2]) used_joints[b[2]] = true;
+				if(w[3]) used_joints[b[3]] = true;
+			}
+
+			if(max_bone >= joints.length)
+				console.warn("Mesh uses higher bone index than bones found");
+
+			//trim unused bones (collada could give you 100 bones for an object that only uses a fraction of them)
+			if(1)
+			{
+				var new_bones = [];
+				var bones_translation = {};
+				for(var i = 0; i < used_joints.length; ++i)
+					if(used_joints[i])
+					{
+						bones_translation[i] = new_bones.length;
+						new_bones.push( joints[i] );
+					}
+
+				//in case there are less bones in use...
+				if(new_bones.length < joints.length)
+				{
+					//remap
+					for(var i = 0; i < final_bone_indices.length; i++)
+						final_bone_indices[i] = bones_translation[ final_bone_indices[i] ];
+					joints = new_bones;
+				}
+				//console.log("Bones: ", joints.length, " used:", num_used_joints );
+			}
+
+			//console.log("Bones: ", joints.length, "Max bone: ", max_bone);
+
+			mesh.weights = final_weights;
+			mesh.bone_indices = final_bone_indices;
+			mesh.bones = joints;
+			mesh.bind_matrix = bind_matrix;
+
+			//delete mesh["_remap"];
+		}
+
+		return mesh;
+	},
+
+	//NOT TESTED
+	readMorphController: function(xmlmorph, flip, scene, mesh)
+	{
+		var id_geometry = xmlmorph.getAttribute("source");
+		var base_mesh = this.readGeometry( id_geometry, flip, scene );
+		if(!base_mesh)
+			return null;
+
+		//read sources with blend shapes info (which ones, and the weight)
+		var sources = this.readSources(xmlmorph, flip);
+
+		var morphs = [];
+
+		//targets
+		var xmltargets = xmlmorph.querySelector("targets");
+		if(!xmltargets)
+			return null;
+
+		var xmlinputs = xmltargets.querySelectorAll("input");
+		var targets = null;
+		var weights = null;
+
+		for(var i = 0; i < xmlinputs.length; i++)
+		{
+			var xmlinput = xmlinputs.item(i);
+			var semantic = xmlinput.getAttribute("semantic").toUpperCase();
+			var data = sources[ xmlinput.getAttribute("source").substr(1) ];
+			if( semantic == "MORPH_TARGET" )
+				targets = data;
+			else if( semantic == "MORPH_WEIGHT" )
+				weights = data;
+		}
+
+		if(!targets || !weights)
+		{
+			console.warn("Morph controller without targets or weights. Skipping it.");
+			return null;
+		}
+
+		//get targets
+		for(var i in targets)
+		{
+			var id = "#" + targets[i];
+			var geometry = this.readGeometry( id, flip, scene );
+			scene.meshes[ id ] = geometry;
+			morphs.push( { mesh: id, weight: weights[i]} );
+		}
+
+		base_mesh.morph_targets = morphs;
+		return base_mesh;
+	},
+
+	readBindMaterials: function( xmlbind_material, mesh )
+	{
+		var materials = [];
+
+		var xmltechniques = xmlbind_material.querySelectorAll("technique_common");
+		for(var i = 0; i < xmltechniques.length; i++)
+		{
+			var xmltechnique = xmltechniques.item(i);
+			var xmlinstance_materials = xmltechnique.querySelectorAll("instance_material");
+			for(var j = 0; j < xmlinstance_materials.length; j++)
+			{
+				var xmlinstance_material = xmlinstance_materials.item(j);
+				if(xmlinstance_material)
+					materials.push( xmlinstance_material.getAttribute("symbol") );
+			}
+		}
+
+		return materials;
+	},
+
+	readSources: function(xmlnode, flip)
+	{
+		//for data sources
+		var sources = {};
+		var xmlsources = xmlnode.querySelectorAll("source");
+		for(var i = 0; i < xmlsources.length; i++)
+		{
+			var xmlsource = xmlsources.item(i);
+			if(!xmlsource.querySelector) //??
+				continue;
+
+			var float_array = xmlsource.querySelector("float_array");
+			if(float_array)
+			{
+				var floats = this.readContentAsFloats( xmlsource );
+				sources[ xmlsource.getAttribute("id") ] = floats;
+				continue;
+			}
+
+			var name_array = xmlsource.querySelector("Name_array");
+			if(name_array)
+			{
+				var names = this.readContentAsStringsArray( name_array );
+				if(!names)
+					continue;
+				sources[ xmlsource.getAttribute("id") ] = names;
+				continue;
+			}
+
+			var ref_array = xmlsource.querySelector("IDREF_array");
+			if(ref_array)
+			{
+				var names = this.readContentAsStringsArray( ref_array );
+				if(!names)
+					continue;
+				sources[ xmlsource.getAttribute("id") ] = names;
+				continue;
+			}
+		}
+
+		return sources;
+	},
+
+	readContentAsUInt32: function(xmlnode)
+	{
+		if(!xmlnode) return null;
+		var text = xmlnode.textContent;
+		text = text.replace(/\n/gi, " "); //remove line breaks
+		text = text.trim(); //remove empty spaces
+		if(text.length == 0) return null;
+		var numbers = text.split(" "); //create array
+		var floats = new Uint32Array( numbers.length );
+		for(var k = 0; k < numbers.length; k++)
+			floats[k] = parseInt( numbers[k] );
+		return floats;
+	},
+
+	readContentAsFloats: function(xmlnode)
+	{
+		if(!xmlnode) return null;
+		var text = xmlnode.textContent;
+		text = text.replace(/\n/gi, " "); //remove line breaks
+		text = text.replace(/\s\s+/gi, " ");
+		text = text.replace(/\t/gi, "");
+		text = text.trim(); //remove empty spaces
+		var numbers = text.split(" "); //create array
+		var count = xmlnode.getAttribute("count");
+		var length = count ? parseInt( count  ) : numbers.length;
+		var floats = new Float32Array( length );
+		for(var k = 0; k < numbers.length; k++)
+			floats[k] = parseFloat( numbers[k] );
+		return floats;
+	},
+	
+	readContentAsStringsArray: function(xmlnode)
+	{
+		if(!xmlnode) return null;
+		var text = xmlnode.textContent;
+		text = text.replace(/\n/gi, " "); //remove line breaks
+		text = text.replace(/\s\s/gi, " ");
+		text = text.trim(); //remove empty spaces
+		var words = text.split(" "); //create array
+		for(var k = 0; k < words.length; k++)
+			words[k] = words[k].trim();
+		if(xmlnode.getAttribute("count") && parseInt(xmlnode.getAttribute("count")) != words.length)
+		{
+			var merged_words = [];
+			var name = "";
+			for (var i in words)
+			{
+				if(!name)
+					name = words[i];
+				else
+					name += " " + words[i];
+				if(!this._nodes_by_id[ this.safeString(name) ])
+					continue;
+				merged_words.push( this.safeString(name) );
+				name = "";
+			}
+
+			var count = parseInt(xmlnode.getAttribute("count"));
+			if(merged_words.length == count)
+				return merged_words;
+
+			console.error("Error: bone names have spaces, avoid using spaces in names");
+			return null;
+		}
+		return words;
+	},
+
+	max3d_matrix_0: new Float32Array([0, -1, 0, 0, 0, 0, -1, 0, 1, 0, 0, -0, 0, 0, 0, 1]),
+	//max3d_matrix_other: new Float32Array([0, -1, 0, 0, 0, 0, -1, 0, 1, 0, 0, -0, 0, 0, 0, 1]),
+
+	transformMatrix: function(matrix, first_level, inverted)
+	{
+		mat4.transpose(matrix,matrix);
+
+		if(this.no_flip)
+			return matrix;
+
+		//WARNING: DO NOT CHANGE THIS FUNCTION, THE SKY WILL FALL
+		if(first_level){
+
+			//flip row two and tree
+			var temp = new Float32Array(matrix.subarray(4,8)); //swap rows
+			matrix.set( matrix.subarray(8,12), 4 );
+			matrix.set( temp, 8 );
+
+			//reverse Z
+			temp = matrix.subarray(8,12);
+			vec4.scale(temp,temp,-1);
+		}
+		else 
+		{
+			var M = mat4.create();
+			var m = matrix;
+
+			//if(inverted) mat4.invert(m,m);
+
+			/* non trasposed
+			M.set([m[0],m[8],-m[4]], 0);
+			M.set([m[2],m[10],-m[6]], 4);
+			M.set([-m[1],-m[9],m[5]], 8);
+			M.set([m[3],m[11],-m[7]], 12);
+			*/
+
+			M.set([m[0],m[2],-m[1]], 0);
+			M.set([m[8],m[10],-m[9]], 4);
+			M.set([-m[4],-m[6],m[5]], 8);
+			M.set([m[12],m[14],-m[13]], 12);
+
+			m.set(M);
+
+			//if(inverted) mat4.invert(m,m);
+
+		}
+		return matrix;
+	},
+
+	mergeMeshes: function( meshes, options )
+	{
+		options = options || {};
+
+		var vertex_buffers = {};
+		var index_buffers = {};
+		var offsets = {}; //tells how many positions indices must be offseted
+		var vertex_offsets = [];
+		var current_vertex_offset = 0;
+		var groups = [];
+
+		var index_buffer_names = {
+			triangles: true,
+			wireframe: true
+		};
+
+		var remap = null;
+		var remap_offset = 0;
+
+		//vertex buffers
+		//compute size
+		for(var i = 0; i < meshes.length; ++i)
+		{
+			var mesh = meshes[i];
+			var offset = current_vertex_offset;
+			vertex_offsets.push( offset );
+			var length = mesh.vertices.length / 3;
+			current_vertex_offset += length;
+
+			for(var j in mesh)
+			{
+				var buffer = mesh[j];
+
+				if( j == "info" || j == "_remap" )
+					continue;
+
+				if( index_buffer_names[j] )
+				{
+					if(!index_buffers[j])
+						index_buffers[j] = buffer.length;
+					else
+						index_buffers[j] += buffer.length;
+				}
+				else
+				{
+					if(!vertex_buffers[j])
+						vertex_buffers[j] = buffer.length;
+					else
+						vertex_buffers[j] += buffer.length;
+				}
+			}
+
+			//groups
+			var group = {
+				name: "mesh_" + ( mesh.info.material || i ),
+				start: offset,
+				length: length,
+				material: ( mesh.info.material || "" )
+			};
+
+			groups.push( group );
+		}
+
+		//allocate
+		for(var j in vertex_buffers)
+		{
+			var datatype = options[j];
+			if(datatype === null)
+			{
+				delete vertex_buffers[j];
+				continue;
+			}
+
+			if(!datatype)
+				datatype = Float32Array;
+
+			vertex_buffers[j] = new datatype( vertex_buffers[j] );
+			offsets[j] = 0;
+		}
+
+		for(var j in index_buffers)
+		{
+			index_buffers[j] = new Uint32Array( index_buffers[j] );
+			offsets[j] = 0;
+		}
+
+		//store
+		for(var i = 0; i < meshes.length; ++i)
+		{
+			var mesh = meshes[i];
+			var offset = 0;
+
+			var buffer = mesh.vertices;
+			if(!buffer)
+				return console.error("mesh without vertices");
+			var length = buffer.length / 3;
+			
+			for(var j in mesh)
+			{
+				var buffer = mesh[j];
+				if( j == "info")
+					continue;
+
+				if(j == "_remap")
+				{
+					if(remap_offset)
+						apply_offset( buffer, 0, buffer.length, remap_offset );
+
+					if(!remap)
+					{
+						remap = new Uint32Array( buffer.length );
+						remap.set( buffer );
+					}
+					else
+					{
+						var new_remap = new Uint32Array( remap.length + buffer.length );
+						new_remap.set( remap );
+						new_remap.set( buffer, remap.length );
+						remap = new_remap;
+					}
+					remap_offset += length;
+				}
+
+				//INDEX BUFFER
+				if( index_buffer_names[j] )
+				{
+					index_buffers[j].set( buffer, offsets[j] );
+					apply_offset( index_buffers[j], offsets[j], buffer.length, vertex_offsets[i] );
+					offsets[j] += buffer.length;
+					continue;
+				}
+
+				//VERTEX BUFFER
+				if(!vertex_buffers[j])
+					continue;
+
+				vertex_buffers[j].set( buffer, offsets[j] );
+				offsets[j] += buffer.length;
+			}
+		}
+
+		function apply_offset( array, start, length, offset )
+		{
+			var l = start + length;
+			for(var i = start; i < l; ++i)
+				array[i] += offset;
+		}
+
+		var extra = { info: { groups: groups } };
+		var final_mesh = { info: { groups: groups } };
+		for(var i in vertex_buffers)
+			final_mesh[i] = vertex_buffers[i];
+		for(var i in index_buffers)
+			final_mesh[i] = index_buffers[i];
+
+		if( remap )
+			final_mesh._remap = remap;
+		return final_mesh;
+	}
+};
+
+
+//add worker launcher
+if(!isWorker)
+{
+	Collada.launchWorker = function()
+	{
+		var worker = this.worker = new Worker( Collada.workerPath + "collada.js" );
+		worker.callback_ids = {};
+
+		worker.addEventListener('error', function(e){
+			if (Collada.onerror)
+				Collada.onerror(err);
+		});
+
+		//main thread receives a message from worker
+		worker.addEventListener('message', function(e) {
+			if(!e.data)
+				return;
+
+			var data = e.data;
+
+			switch(data.action)
+			{
+				case "log": console.log.apply( console, data.params ); break;
+				case "warn": console.warn.apply( console, data.params ); break;
+				case "exception": 
+					console.error.apply( console, data.params ); 
+					if(Collada.onerror)
+						Collada.onerror(data.msg);
+					break;
+				case "error": console.error.apply( console, data.params ); break;
+				case "result": 
+					var callback = this.callback_ids[ data.callback_id ];
+					if(!callback)
+						throw("callback not found");
+					callback( data.result );
+					break;
+				default:
+					console.warn("Unknown action:", data.action);
+					break;
+			}
+		});
+
+		this.callback_ids = {};
+		this.last_callback_id = 1;
+
+		this.toWorker("init", [this.config] );
+	}
+
+	Collada.toWorker = function( func_name, params, callback )
+	{
+		if(!this.worker)
+			this.launchWorker();
+
+		var id = this.last_callback_id++;
+		this.worker.callback_ids[ id ] = callback;
+		this.worker.postMessage({ func: func_name, params: params, callback_id: id });
+	}
+
+	Collada.loadInWorker = function( url, callback )
+	{
+		this.toWorker("loadInWorker", [url], callback );
+	}
+
+	Collada.parseInWorker = function( data, callback )
+	{
+		this.toWorker("parseInWorker", [data], callback );
+	}
+
+}
+else //in worker
+{
+	Collada.loadInWorker = function(callback, url) { 
+		Collada.load(url, callback);
+	}
+
+	Collada.parseInWorker = function(callback, data) { 
+		callback( Collada.parse(data) );
+	}
+}
+
+
+function request(url, callback)
+{
+	var req = new XMLHttpRequest();
+	req.onload = function() {
+		var response = this.response;
+		if(this.status != 200)
+			return;
+		if(callback)
+			callback(this.response);
+	};
+	if(url.indexOf("://") == -1)
+		url = Collada.dataPath + url;
+	req.open("get", url, true);
+	req.send();
+}
+
+//global event catcher
+if(isWorker)
+{
+	self.addEventListener('message', function(e) {
+
+		if(e.data.func == "init")
+			return Collada.init.apply( Collada, e.data.params );
+
+		var func_name = e.data.func;
+		var params = e.data.params;
+		var callback_id = e.data.callback_id;
+
+		//callback when the work is done
+		var callback = function(result){
+			self.postMessage({action:"result", callback_id: callback_id, result: result}, Collada._transferables );
+			Collada._transferables = null;
+		}
+
+		var func = Collada[func_name];
+
+		if( func === undefined)
+		{
+			console.error("function not found:", func_name);
+			callback(null);
+		}
+		else
+		{
+			try
+			{
+				func.apply( Collada, params ? [callback].concat(params) : [callback]);
+			}
+			catch (err)
+			{
+				console.error("Error inside worker function call to " + func_name + " :: " + err);
+				callback(null);
+			}
+		}
+
+	}, false);
+}
+
+})( typeof(window) != "undefined" ? window : self );
+
+var parserDAE = {
+	extension: "dae",
+	type: "scene",
+	resource: "SceneNode",
+	format: "text",
+	dataType:'text',
+
+	parse: function( data, options, filename )
+	{
+		if(!data || data.constructor !== String)
+		{
+			console.error("DAE parser requires string");
+			return null;
+		}
+
+		Collada.material_translate_table = {
+			reflectivity: "reflection_factor",
+			specular: "specular_factor",
+			shininess: "specular_gloss",
+			emission: "emissive",
+			diffuse: "color"
+		}; //this is done to match LS specification
+
+		var clean_filename = LS.RM.getFilename( filename );
+
+		//parser moved to Collada.js library
+		var scene = Collada.parse( data, options, clean_filename );
+		console.log( scene ); 
+
+		scene.root.name = clean_filename;
+
+		//apply 90 degrees rotation to match the Y UP AXIS of the system
+		if( scene.metadata && scene.metadata.up_axis == "Z_UP" )
+			scene.root.model = mat4.rotateX( mat4.create(), mat4.create(), -90 * 0.0174532925 );
+
+		//rename meshes, nodes, etc
+		var renamed = {};
+		var basename = clean_filename.substr(0, clean_filename.indexOf("."));
+
+		//rename meshes names
+		var renamed_meshes = {};
+		for(var i in scene.meshes)
+		{
+			var newmeshname = basename + "__" + i;
+			newmeshname = newmeshname.replace(/[^a-z0-9]/gi,"_"); //newmeshname.replace(/ /#/g,"_");
+			renamed[ i ] = newmeshname;
+			renamed_meshes[ newmeshname ] = scene.meshes[i];
+		}
+		scene.meshes = renamed_meshes;
+
+		for(var i in scene.meshes)
+		{
+			var mesh = scene.meshes[i];
+			this.processMesh( mesh, renamed );
+		}
+
+		//change local collada ids to valid uids 
+		inner_replace_names( scene.root );
+
+		function inner_replace_names( node )
+		{
+			//change uid
+			if(node.id && !options.skip_renaming )
+			{
+				node.uid = "@" + basename + "::" + node.id;
+				renamed[ node.id ] = node.uid;
+			}
+			
+			//in case the node has some kind of type
+			if(node.type)
+			{
+				node.node_type = node.type;
+				delete node.type; //to be sure it doesnt overlaps with some existing var
+			}
+
+			//change mesh names to engine friendly ids
+			if(node.meshes)
+			{
+				for(var i = 0; i < node.meshes.length; i++)
+					if(node.meshes[i] && renamed[ node.meshes[i] ])
+						node.meshes[i] = renamed[ node.meshes[i] ];
+			}
+			if(node.mesh && renamed[ node.mesh ])
+				node.mesh = renamed[ node.mesh ];
+
+			if(node.children)
+				for(var i in node.children)
+					inner_replace_names( node.children[i] );
+		}
+
+		//replace skinning joint ids
+		for(var i in scene.meshes)
+		{
+			var mesh = scene.meshes[i];
+			if(mesh.bones)
+			{
+				for(var j in mesh.bones)
+				{
+					var id = mesh.bones[j][0];
+					var uid = renamed[ id ];
+					if(uid)
+						mesh.bones[j][0] = uid;
+				}
+			}
+		}
+
+		//Materials need some renames
+		for(var i in scene.materials)
+			this.processMaterial( scene.materials[i] );
+
+		//check resources
+		for(var i in scene.resources)
+		{
+			var res = scene.resources[i];
+			if(res.object_class == "Animation")
+				this.processAnimation( res, renamed );
+		}
+
+		return scene;
+	},
+
+	processMesh: function( mesh, renamed )
+	{
+		if(!mesh.vertices)
+			return; //mesh without vertices?!
+
+		var num_vertices = mesh.vertices.length / 3;
+		var num_coords = mesh.coords ? mesh.coords.length / 2 : 0;
+
+		if(num_coords && num_coords != num_vertices )
+		{
+			var old_coords = mesh.coords;
+			var new_coords = new Float32Array( num_vertices * 2 );
+
+			if(num_coords > num_vertices) //check that UVS have 2 components (MAX export 3 components for UVs)
+			{
+				for(var i = 0; i < num_vertices; ++i )
+				{
+					new_coords[i*2] = old_coords[i*3];
+					new_coords[i*2+1] = old_coords[i*3+1];
+				}
+			}
+			mesh.coords = new_coords;
+		}
+
+		//rename morph targets names
+		if(mesh.morph_targets)
+			for(var j = 0; j < mesh.morph_targets.length; ++j)
+			{
+				var morph = mesh.morph_targets[j];
+				if(morph.mesh && renamed[ morph.mesh ])
+					morph.mesh = renamed[ morph.mesh ];
+			}
+	},
+
+	//depending on the 3D software used, animation tracks could be tricky to handle
+	processAnimation: function( animation, renamed )
+	{
+		for(var i in animation.takes)
+		{
+			var take = animation.takes[i];
+
+			//apply renaming
+			for(var j = 0; j < take.tracks.length; ++j)
+			{
+				var track = take.tracks[j];
+				var pos = track.property.indexOf("/");
+				if(!pos)
+					continue;
+				var nodename = track.property.substr(0,pos);
+				var extra = track.property.substr(pos);
+				if(extra == "/transform") //blender exports matrices as transform
+					extra = "/matrix";
+
+				if( !renamed[nodename] )
+					continue;
+
+				nodename = renamed[ nodename ];
+				track.property = nodename + extra;
+			}
+
+			//rotations could come in different ways, some of them are accumulative, which doesnt work in litescene, so we have to accumulate them previously
+			var rotated_nodes = {};
+			for(var j = 0; j < take.tracks.length; ++j)
+			{
+				var track = take.tracks[j];
+				track.packed_data = true; //hack: this is how it works my loader
+				if(track.name == "rotateX.ANGLE" || track.name == "rotateY.ANGLE" || track.name == "rotateZ.ANGLE")
+				{
+					var nodename = track.property.split("/")[0];
+					if(!rotated_nodes[nodename])
+						rotated_nodes[nodename] = { tracks: [] };
+					rotated_nodes[nodename].tracks.push( track );
+				}
+			}
+
+			for(var j in rotated_nodes)
+			{
+				var info = rotated_nodes[j];
+				var newtrack = { data: [], type: "quat", value_size: 4, property: j + "/Transform/rotation", name: "rotation" };
+				var times = [];
+
+				//collect timestamps
+				for(var k = 0; k < info.tracks.length; ++k)
+				{
+					var track = info.tracks[k];
+					var data = track.data;
+					for(var w = 0; w < data.length; w+=2)
+						times.push( data[w] );
+				}
+
+				//create list of timestamps and remove repeated ones
+				times.sort();
+				var last_time = -1;
+				var final_times = [];
+				for(var k = 0; k < times.length; ++k)
+				{
+					if(times[k] == last_time)
+						continue;
+					final_times.push( times[k] );
+					last_time = times[k];
+				}
+				times = final_times;
+
+				//create samples
+				newtrack.data.length = times.length;
+				for(var k = 0; k < newtrack.data.length; ++k)
+				{
+					var time = times[k];
+					var value = quat.create();
+					//create keyframe
+					newtrack.data[k] = [time, value];
+
+					for(var w = 0; w < info.tracks.length; ++w)
+					{
+						var track = info.tracks[w];
+						var sample = getTrackSample( track, time );
+						if(!sample) //nothing to do if no sample or 0
+							continue;
+						sample *= 0.0174532925; //degrees to radians
+						switch( track.name )
+						{
+							case "rotateX.ANGLE": quat.rotateX( value, value, -sample ); break;
+							case "rotateY.ANGLE": quat.rotateY( value, value, sample ); break;
+							case "rotateZ.ANGLE": quat.rotateZ( value, value, sample ); break;
+						}
+					}
+				}
+
+				//add track
+				take.tracks.push( newtrack );
+
+				//remove old rotation tracks
+				for(var w = 0; w < info.tracks.length; ++w)
+				{
+					var track = info.tracks[w];
+					var pos = take.tracks.indexOf( track );
+					if(pos == -1)
+						continue;
+					take.tracks.splice(pos,1);
+				}
+			}
+
+		}//takes
+
+		function getTrackSample( track, time )
+		{
+			var data = track.data;
+			var l = data.length;
+			for(var t = 0; t < l; t+=2)
+			{
+				if(data[t] == time)
+					return data[t+1];
+				if(data[t] > time)
+					return null;
+			}
+			return null;
+		}
+	},
+
+	processMaterial: function(material)
+	{
+		material.object_class = "StandardMaterial";
+
+		if(material.transparency)
+		{
+			material.opacity = 1.0 - parseFloat( material.transparency );
+			if(material.transparent)
+				material.opacity = material.transparency; //why? dont know but works
+		}
+
+		//collada supports materials with colors as specular_factor but StandardMaterial only support one value
+		if(material.specular_factor && material.specular_factor.length)
+			material.specular_factor = material.specular_factor[0];
+
+		if(material.textures)
+		{
+			for(var i in material.textures)
+			{
+				var tex_info = material.textures[i];
+				var coords = LS.Material.COORDS_UV0;
+				if( tex_info.uvs == "TEX1")
+					coords = LS.Material.COORDS_UV1;
+				tex_info = { 
+					texture: tex_info.map_id,
+					uvs: coords
+				};
+				material.textures[i] = tex_info;
+			}
+		}
+	}
+};
+
+LS.Formats.addSupportedFormat( "dae", parserDAE );
+
+var parserDDS = { 
+	extension: "dds",
+	type: "image",
+	dataType:"arraybuffer",
+	resource: "Texture",
+	format: "binary",
+
+	parse: function(data, options)
+	{
+		if(!data || data.constructor !== ArrayBuffer)
+			throw( "ParserDDS: data must be ArrayBuffer");
+		var ext = gl.getExtension("WEBKIT_WEBGL_compressed_texture_s3tc");
+		var texture = new GL.Texture(0,0, options);
+		if(!window.DDS)
+			throw("dds.js script must be included, not found");
+		DDS.loadDDSTextureFromMemoryEx(gl,ext, data, texture, true);
+		//console.log( DDS.getDDSTextureFromMemoryEx(data) );
+		//texture.texture_type = texture.handler.texture_type;
+		//texture.width = texture.handler.width;
+		//texture.height = texture.handler.height;
+		//texture.bind();
+		return texture;
+	}
+};
+
+LS.Formats.addSupportedFormat( "dds", parserDDS );
+//legacy format
+var parserJSMesh = { 
+	extension: 'jsmesh',
+	type: 'mesh',
+	format: 'text',
+	dataType:'string',
+
+	parse: function(data,options)
+	{
+		var mesh = null;
+
+		if(typeof(data) == "object")
+			mesh = data;
+		else if(typeof(data) == "string")
+			mesh = JSON.parse(data);
+
+		if(mesh.vertices.constructor == Array) //for deprecated formats
+		{
+			mesh.vertices = typeof( mesh.vertices[0] ) == "number" ? mesh.vertices : linearizeArray(mesh.vertices);
+			if(mesh.normals) mesh.normals = typeof( mesh.normals[0] ) == "number" ? mesh.normals : linearizeArray(mesh.normals);
+			if(mesh.coords) mesh.coords = typeof( mesh.coords[0] ) == "number" ? mesh.coords : linearizeArray(mesh.coords);
+			if(mesh.triangles) mesh.triangles = typeof( mesh.triangles[0] ) == "number" ? mesh.triangles : linearizeArray(mesh.triangles);
+
+			mesh.vertices = new Float32Array(mesh.vertices);
+			if(mesh.normals) mesh.normals = new Float32Array(mesh.normals);
+			if(mesh.coords) mesh.coords = new Float32Array(mesh.coords);
+			if(mesh.triangles) mesh.triangles = new Uint16Array(mesh.triangles);
+		}
+
+		if(!mesh.bounding)
+			mesh.bounding = LS.Formats.computeMeshBounding(mesh.vertices);
+		return mesh;
+	}
+};
+
+LS.Formats.addSupportedFormat( "jsmesh", parserJSMesh );
+
+//***** OBJ parser adapted from SpiderGL implementation *****************
+var parserOBJ = {
+	extension: 'obj',
+	type: 'mesh',
+	resource: 'Mesh',
+	format: 'text',
+	dataType:'text',
+
+	flipAxis: false,
+
+	parse: function(text, options)
+	{
+		options = options || {};
+
+		var support_uint = true;
+		var skip_indices = options.noindex ? options.noindex : false;
+		//skip_indices = true;
+
+		//final arrays (packed, lineal [ax,ay,az, bx,by,bz ...])
+		var positionsArray = [ ];
+		var texcoordsArray = [ ];
+		var normalsArray   = [ ];
+		var indicesArray   = [ ];
+
+		//unique arrays (not packed, lineal)
+		var positions = [ ];
+		var texcoords = [ ];
+		var normals   = [ ];
+		var facemap   = { };
+		var index     = 0;
+
+		var line = null;
+		var f   = null;
+		var pos = 0;
+		var tex = 0;
+		var nor = 0;
+		var x   = 0.0;
+		var y   = 0.0;
+		var z   = 0.0;
+		var tokens = null;
+		var mtllib = null;
+
+		var hasPos = false;
+		var hasTex = false;
+		var hasNor = false;
+
+		var parsingFaces = false;
+		var indices_offset = 0;
+		var negative_offset = -1; //used for weird objs with negative indices
+		var max_index = 0;
+
+		//trace("SKIP INDICES: " + skip_indices);
+		var flip_axis = (this.flipAxis || options.flipAxis);
+		var flip_normals = (flip_axis || options.flipNormals);
+
+		//used for mesh groups (submeshes)
+		var group = null;
+		var group_id = 0;
+		var groups = [];
+		var groups_by_name = {};
+		var materials_found = {};
+
+		var V_CODE = 1;
+		var VT_CODE = 2;
+		var VN_CODE = 3;
+		var F_CODE = 4;
+		var G_CODE = 5;
+		var O_CODE = 6;
+		var codes = { v: V_CODE, vt: VT_CODE, vn: VN_CODE, f: F_CODE, g: G_CODE, o: O_CODE };
+
+		var lines = text.split("\n");
+		var length = lines.length;
+		for (var lineIndex = 0;  lineIndex < length; ++lineIndex) {
+
+			var line = lines[lineIndex];
+			line = line.replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //better than trim
+
+			if(line[ line.length - 1 ] == "\\") //breakline
+			{
+				lineIndex += 1;
+				var next_line = lines[lineIndex].replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //better than trim
+				line = (line.substr(0,line.length - 1) + next_line).replace(/[ \t]+/g, " ").replace(/\s\s*$/, "");
+			}
+			
+
+			if (line[0] == "#")
+				continue;
+			if(line == "")
+				continue;
+
+			tokens = line.split(" ");
+			var code = codes[ tokens[0] ];
+
+			if(parsingFaces && code == V_CODE) //another mesh?
+			{
+				indices_offset = index;
+				parsingFaces = false;
+				//trace("multiple meshes: " + indices_offset);
+			}
+
+			//read and parse numbers
+			if( code <= VN_CODE ) //v,vt,vn
+			{
+				x = parseFloat(tokens[1]);
+				y = parseFloat(tokens[2]);
+				z = parseFloat(tokens[3]);
+			}
+
+			if (code == V_CODE) {
+				if(flip_axis) //maya and max notation style
+					positions.push(-1*x,z,y);
+				else
+					positions.push(x,y,z);
+			}
+			else if (code == VT_CODE) {
+				texcoords.push(x,y);
+			}
+			else if (code == VN_CODE) {
+
+				if(flip_normals)  //maya and max notation style
+					normals.push(-y,-z,x);
+				else
+					normals.push(x,y,z);
+			}
+			else if (code == F_CODE) {
+				parsingFaces = true;
+
+				if (tokens.length < 4)
+					continue; //faces with less that 3 vertices? nevermind
+
+				//for every corner of this polygon
+				var polygon_indices = [];
+				for (var i=1; i < tokens.length; ++i) 
+				{
+					var faceid = group_id + ":" + tokens[i];
+					if (  !(faceid in facemap) || skip_indices )
+					{
+						f = tokens[i].split("/");
+
+						if (f.length == 1) { //unpacked
+							pos = parseInt(f[0]) - 1;
+							tex = pos;
+							nor = pos;
+						}
+						else if (f.length == 2) { //no normals
+							pos = parseInt(f[0]) - 1;
+							tex = parseInt(f[1]) - 1;
+							nor = -1;
+						}
+						else if (f.length == 3) { //all three indexed
+							pos = parseInt(f[0]) - 1;
+							tex = parseInt(f[1]) - 1;
+							nor = parseInt(f[2]) - 1;
+						}
+						else {
+							console.log("Problem parsing: unknown number of values per face");
+							return false;
+						}
+
+						/*
+						//pos = Math.abs(pos); tex = Math.abs(tex); nor = Math.abs(nor);
+						if(pos < 0) pos = positions.length/3 + pos - negative_offset;
+						if(tex < 0) tex = texcoords.length/2 + tex - negative_offset;
+						if(nor < 0) nor = normals.length/3 + nor - negative_offset;
+						*/
+
+						if(i > 3 && skip_indices) //polys
+						{
+							//first
+							var pl = positionsArray.length;
+							positionsArray.push( positionsArray[pl - (i-3)*9], positionsArray[pl - (i-3)*9 + 1], positionsArray[pl - (i-3)*9 + 2]);
+							positionsArray.push( positionsArray[pl - 3], positionsArray[pl - 2], positionsArray[pl - 1]);
+							pl = texcoordsArray.length;
+							texcoordsArray.push( texcoordsArray[pl - (i-3)*6], texcoordsArray[pl - (i-3)*6 + 1]);
+							texcoordsArray.push( texcoordsArray[pl - 2], texcoordsArray[pl - 1]);
+							pl = normalsArray.length;
+							normalsArray.push( normalsArray[pl - (i-3)*9], normalsArray[pl - (i-3)*9 + 1], normalsArray[pl - (i-3)*9 + 2]);
+							normalsArray.push( normalsArray[pl - 3], normalsArray[pl - 2], normalsArray[pl - 1]);
+						}
+
+						x = 0.0;
+						y = 0.0;
+						z = 0.0;
+						if ((pos * 3 + 2) < positions.length)
+						{
+							hasPos = true;
+							if(pos < 0) //negative indices are relative to the end
+								pos = positions.length / 3 + pos + 1;
+							x = positions[pos*3+0];
+							y = positions[pos*3+1];
+							z = positions[pos*3+2];
+						}
+
+						positionsArray.push(x,y,z);
+						//positionsArray.push([x,y,z]);
+
+						x = 0.0;
+						y = 0.0;
+						if ((tex * 2 + 1) < texcoords.length)
+						{
+							hasTex = true;
+							if(tex < 0) //negative indices are relative to the end
+								tex = texcoords.length / 2 + tex + 1;
+							x = texcoords[tex*2+0];
+							y = texcoords[tex*2+1];
+						}
+						texcoordsArray.push(x,y);
+						//texcoordsArray.push([x,y]);
+
+						x = 0.0;
+						y = 0.0;
+						z = 1.0;
+						if(nor != -1)
+						{
+							if ((nor * 3 + 2) < normals.length)
+							{
+								hasNor = true;
+
+								if(nor < 0)
+									nor = normals.length / 3 + nor + 1;
+								x = normals[nor*3+0];
+								y = normals[nor*3+1];
+								z = normals[nor*3+2];
+							}
+							
+							normalsArray.push(x,y,z);
+							//normalsArray.push([x,y,z]);
+						}
+
+						//Save the string "10/10/10" and tells which index represents it in the arrays
+						if(!skip_indices)
+							facemap[ faceid ] = index++;
+					}//end of 'if this token is new (store and index for later reuse)'
+
+					//store key for this triplet
+					if(!skip_indices)
+					{
+						var final_index = facemap[ faceid ];
+						polygon_indices.push( final_index );
+						if(max_index < final_index)
+							max_index = final_index;
+					}
+				} //end of for every token on a 'f' line
+
+				//polygons (not just triangles)
+				if(!skip_indices)
+				{
+					for(var iP = 2; iP < polygon_indices.length; iP++)
+					{
+						indicesArray.push( polygon_indices[0], polygon_indices[iP-1], polygon_indices[iP] );
+						//indicesArray.push( [polygon_indices[0], polygon_indices[iP-1], polygon_indices[iP]] );
+					}
+				}
+			}
+			else if ( code == G_CODE || code == O_CODE)
+			{
+				negative_offset = positions.length / 3 - 1;
+
+				if(tokens.length > 1)
+				{
+					var group_pos = (indicesArray.length ? indicesArray.length : positionsArray.length / 3);
+					if(group != null)
+					{
+						group.length = group_pos - group.start;
+						if(group.length > 0) //there are triangles...
+						{
+							groups_by_name[ group_name ] = group;
+							groups.push(group);
+							group_id++;
+						}
+					}
+
+					var group_name = tokens[1];
+					if(groups_by_name[group_name])
+						group_name = group_name + "." + group_id;
+
+					group = {
+						name: group_name,
+						start: group_pos,
+						length: -1,
+						material: ""
+					};
+
+					/*
+					if(tokens[0] == "g")
+					{
+						group_vertex_start = positions.length / 3;
+						group_normal_start = normals.length / 3;
+						group_coord_start = texcoords.length / 2;
+					}
+					*/
+				}
+			}
+			else if (tokens[0] == "mtllib") {
+				mtllib = tokens[1];
+			}
+			else if (tokens[0] == "usemtl") {
+				if(group)
+					group.material = tokens[1];
+			}
+			else if ( tokens[0] == "s" ) { //tokens[0] == "o"
+				//ignore
+			}
+			else
+			{
+				console.warn("unknown code: " + line);
+			}
+		}
+
+		if(group && (indicesArray.length - group.start) > 1)
+		{
+			group.length = indicesArray.length - group.start;
+			groups.push(group);
+		}
+
+		//deindex streams
+		if((max_index > 256*256 || skip_indices ) && indicesArray.length > 0 && !support_uint )
+		{
+			console.log("Deindexing mesh...")
+			var finalVertices = new Float32Array(indicesArray.length * 3);
+			var finalNormals = normalsArray && normalsArray.length ? new Float32Array(indicesArray.length * 3) : null;
+			var finalTexCoords = texcoordsArray && texcoordsArray.length ? new Float32Array(indicesArray.length * 2) : null;
+			for(var i = 0; i < indicesArray.length; i += 1)
+			{
+				finalVertices.set( positionsArray.slice( indicesArray[i]*3,indicesArray[i]*3 + 3), i*3 );
+				if(finalNormals)
+					finalNormals.set( normalsArray.slice( indicesArray[i]*3,indicesArray[i]*3 + 3 ), i*3 );
+				if(finalTexCoords)
+					finalTexCoords.set( texcoordsArray.slice(indicesArray[i]*2,indicesArray[i]*2 + 2 ), i*2 );
+			}
+			positionsArray = finalVertices;
+			if(finalNormals)
+				normalsArray = finalNormals;
+			if(finalTexCoords)
+				texcoordsArray = finalTexCoords;
+			indicesArray = null;
+			max_index = 0;
+		}
+
+		//Create final mesh object
+		var mesh = {};
+
+		//create typed arrays
+		if (hasPos)
+			mesh.vertices = new Float32Array(positionsArray);
+		if (hasNor && normalsArray.length > 0)
+			mesh.normals = new Float32Array(normalsArray);
+		if (hasTex && texcoordsArray.length > 0)
+			mesh.coords = new Float32Array(texcoordsArray);
+		if (indicesArray && indicesArray.length > 0)
+			mesh.triangles = new (support_uint && max_index > 256*256 ? Uint32Array : Uint16Array)(indicesArray);
+
+		//extra info
+		mesh.bounding = GL.Mesh.computeBounding( mesh.vertices );
+		var info = {};
+		if(groups.length > 1)
+		{
+			info.groups = groups;
+			//compute bounding of groups? //TODO
+		}
+
+		mesh.info = info;
+		if( mesh.bounding.radius == 0 || isNaN(mesh.bounding.radius))
+			console.log("no radius found in mesh");
+		return mesh;
+	}
+};
+
+LS.Formats.addSupportedFormat( "obj", parserOBJ );
+
+
+//***** MTL parser *****************
+//info from: http://paulbourke.net/dataformats/mtl/
+var parserMTL = {
+	extension: 'mtl',
+	type: 'material',
+	resource: 'StandardMaterial',
+	format: 'text',
+	dataType:'text',
+
+	parse: function( text, options )
+	{
+		var lines = text.split("\n");
+		var length = lines.length;
+
+		var materials = {};
+		var current_material = null;
+
+		for (var lineIndex = 0;  lineIndex < length; ++lineIndex)
+		{
+			var line = lines[lineIndex].replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //trim
+			line = line.trim();
+
+			if (line[0] == "#" || line == "")
+				continue;
+
+			var tokens = line.split(" ");
+			var c = tokens[0];
+
+			switch(c)
+			{
+				case "newmtl":
+					current_material = { filename: tokens[1], textures: {} };
+					materials[ tokens[1] ] = current_material;
+					break;
+				case "Ka":
+					current_material.ambient = readVector3(tokens);
+					break;
+				case "Kd":
+					current_material.color = readVector3(tokens);
+					break;
+				case "Ks":
+					current_material.specular_factor = parseFloat(tokens[1]); //readVector3(tokens);
+					break;
+				case "Ke":
+					current_material.emissive = readVector3(tokens); //readVector3(tokens);
+					break;
+				case "Ns": //glossiness
+					current_material.specular_gloss = parseFloat(tokens[1]);
+					break;
+				case "Tr": //reflection coefficient
+					current_material.reflection = parseFloat( tokens[1] );
+					break;
+				case "map_Kd":
+					current_material.textures["color"] = this.clearPath( tokens[1] );
+					current_material.color = [1,1,1];
+					break;
+				case "map_Ka":
+					current_material.textures["ambient"] = this.clearPath( tokens[1] );
+					current_material.ambient = [1,1,1];
+					break;
+				case "map_Ks":
+					current_material.textures["specular"] = this.clearPath( tokens[1] );
+					current_material.specular_factor = 1;
+					break;
+				case "bump":
+				case "map_bump":
+					current_material.textures["bump"] = this.clearPath( tokens[1] );
+					break;
+				case "d": //disolve is like transparency
+					current_material.opacity = parseFloat( tokens[1] );
+					break;
+				case "Tr": //reflection coefficient
+					current_material.opacity = parseFloat( tokens[1] );
+					break;
+				//Not supported stuff
+				case "illum": //illumination model (raytrace related)
+				case "Tf": //reflection by components
+				case "Ni": //refraction coefficient
+					break;
+				default:
+					console.log("Unknown MTL info: ", c);
+					break;
+			}
+		}
+
+		for(var i in materials)
+		{
+			var material_info = materials[i];
+
+			//hack, ambient must be 1,1,1
+			material_info.ambient = [1,1,1];
+
+			var material = new LS.StandardMaterial(material_info);
+			LS.RM.registerResource( material_info.filename, material );
+		}
+
+		return null;
+
+		function readVector3(v)
+		{
+			return [ parseFloat(v[1]), parseFloat(v[2]), parseFloat(v[3]) ];
+		}
+	},
+
+	clearPath: function(path)
+	{
+		var pos = path.lastIndexOf("\\");
+		if(pos != -1)
+			path = path.substr(pos+1);
+		var filename = LS.RM.getFilename(path);
+		if( LS.RM.resources_renamed_recently[filename] )
+			filename = LS.RM.resources_renamed_recently[filename];
+		return filename.toLowerCase();
+	}
+};
+
+LS.Formats.addSupportedFormat( "mtl", parserMTL );
+//***** STL Parser *****************
+//based on https://github.com/tonylukasavage/jsstl
+var parserSTL = {
+	extension: 'stl',
+	type: 'mesh',
+	format: 'binary',
+	dataType:'arraybuffer',
+	
+	parse: function( data, options )
+	{
+		options = options || {};
+
+		var positionsArray = [];
+		var normalsArray = [];
+		var indicesArray = [];
+
+		var dv = new DataView(data, 80); // 80 == unused header
+		var isLittleEndian = true;
+		var triangles = dv.getUint32(0, isLittleEndian); 
+		// console.log('arraybuffer length:  ' + stl.byteLength);
+		console.log('number of triangles: ' + triangles);
+		var offset = 4;
+
+		var tempA = vec3.create();
+		var tempB = vec3.create();
+		var tempC = vec3.create();
+		var tempN = vec3.create();
+
+		for (var i = 0; i < triangles; i++) {
+			// Get the normal for this triangle
+			var nx = dv.getFloat32(offset, isLittleEndian);
+			var ny = dv.getFloat32(offset+4, isLittleEndian);
+			var nz = dv.getFloat32(offset+8, isLittleEndian);
+
+			offset += 12;
+			// Get all 3 vertices for this triangle
+			for (var j = 0; j < 3; j++) {
+				var x = dv.getFloat32(offset, isLittleEndian);
+				var y = dv.getFloat32(offset+4, isLittleEndian);
+				var z = dv.getFloat32(offset+8, isLittleEndian);
+				//positionsArray.push(x,y,z);
+				positionsArray.push(x,z,-y); //flipped
+				offset += 12
+			}
+			
+			if(nx == 0 && ny == 0 && nz == 0) //compute normal
+			{
+				var l = positionsArray.length;
+				tempA.set( positionsArray.slice(l-9,l-6) );
+				tempB.set( positionsArray.slice(l-6,l-3) );
+				tempC.set( positionsArray.slice(l-3,l) );
+				vec3.sub( tempB, tempB, tempA );
+				vec3.sub( tempC, tempC, tempA );
+				vec3.cross( tempN, tempC, tempB );
+				nx = tempN[0]; ny = tempN[1]; nz = tempN[2];
+			}
+
+			//normalsArray.push(nx,ny,nz,nx,ny,nz,nx,ny,nz);
+			normalsArray.push(nx,nz,-ny,nx,nz,-ny,nx,nz,-ny); //flipped
+
+			// there's also a Uint16 "attribute byte count" that we
+			// don't need, it should always be zero.
+			offset += 2;   
+			// Create a new face for from the vertices and the normal             
+			//indicesArray.push( i*3, i*3+1, i*3+2 );
+		}
+		// The binary STL I'm testing with seems to have all
+		// zeroes for the normals, unlike its ASCII counterpart.
+		// We can use three.js to compute the normals for us, though,
+		// once we've assembled our geometry. This is a relatively 
+		// expensive operation, but only needs to be done once.
+
+		var mesh = { info: {} };
+
+		mesh.vertices = new Float32Array(positionsArray);
+		if (normalsArray.length > 0)
+			mesh.normals = new Float32Array(normalsArray);
+		if (indicesArray && indicesArray.length > 0)
+			mesh.triangles = new Uint16Array(indicesArray);
+
+		//extra info
+		mesh.bounding = LS.Formats.computeMeshBounding( mesh.vertices );
+		return mesh;
+	}
+};
+
+LS.Formats.addSupportedFormat( "stl", parserSTL );
+
+var parserTGA = { 
+	extension: 'tga',
+	type: 'image',
+	dataType:"arraybuffer",
+	format: 'binary',
+
+	parse: function(data, options)
+	{
+		if(!data || data.constructor !== ArrayBuffer)
+			throw( "ParserTGA: data must be ArrayBuffer");
+
+		data = new Uint8Array(data);
+		var TGAheader = new Uint8Array( [0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0] );
+		var TGAcompare = data.subarray(0,12);
+		for(var i = 0; i < TGAcompare.length; i++)
+			if(TGAheader[i] != TGAcompare[i])
+			{
+				console.error("TGA header is not valid");
+				return null; //not a TGA
+			}
+
+		var header = data.subarray(12,18);
+
+		var img = {};
+		img.width = header[1] * 256 + header[0];
+		img.height = header[3] * 256 + header[2];
+		img.bpp = header[4];
+		img.bytesPerPixel = img.bpp / 8;
+		img.imageSize = img.width * img.height * img.bytesPerPixel;
+		img.pixels = data.subarray(18,18+img.imageSize);
+		img.pixels = new Uint8Array( img.pixels ); 	//clone
+
+		if(	(header[5] & (1<<4)) == 0) //hack, needs swap
+		{
+			//TGA comes in BGR format so we swap it, this is slooooow
+			for(var i = 0; i < img.imageSize; i+= img.bytesPerPixel)
+			{
+				var temp = img.pixels[i];
+				img.pixels[i] = img.pixels[i+2];
+				img.pixels[i+2] = temp;
+			}
+			header[5] |= 1<<4; //mark as swaped
+			img.format = img.bpp == 32 ? "RGBA" : "RGB";
+		}
+		else
+			img.format = img.bpp == 32 ? "RGBA" : "RGB";
+
+		//some extra bytes to avoid alignment problems
+		//img.pixels = new Uint8Array( img.imageSize + 14);
+		//img.pixels.set( data.subarray(18,18+img.imageSize), 0);
+
+		img.flipY = true;
+		//img.format = img.bpp == 32 ? "BGRA" : "BGR";
+		//trace("TGA info: " + img.width + "x" + img.height );
+		return img;
+	}
+};
+
+LS.Formats.addSupportedFormat( "tga", parserTGA );
+//3dcgart format
+
+var parserCGArtMesh = { 
+	extension: 'cgart',
+	type: 'mesh',
+	format: 'text',
+	dataType:'string',
+
+	parse: function(data,options)
+	{
+		var m = null;
+
+		if(typeof(data) == "object")
+			m = data;
+		else if(typeof(data) == "string")
+			m = JSON.parse(data);
+
+		m.faces = m.faces[0];
+		m.normals = m.normals[0];
+		m.vertices = m.vertices[0];
+		m.uvs = m.uvs[0][0];
+
+		var vertices = [];
+		var normals = [];
+		var uvs = [];
+
+		var group = null;
+		var groups = [];
+
+		var i = 0;
+		var current_mat_id = 0;
+		while( i < m.faces.length )
+		{
+			if(m.faces[i] == 43) //quad
+			{
+				//material info
+				var mat_id = m.faces[i+5];
+				if(current_mat_id < mat_id)
+				{
+					current_mat_id = mat_id;
+					if(group != null)
+					{
+						group.length = vertices.length / 3 - group.start;
+						if(group.length > 0)
+							groups.push(group);
+					}
+
+					group = {
+						name: "mat_" + mat_id,
+						start: vertices.length / 3,
+						length: -1,
+						material: ""
+					};
+				}
+
+				var v1 = m.faces[i+1];
+				var v2 = m.faces[i+2];
+				var v3 = m.faces[i+3];
+				var v4 = m.faces[i+4];
+				vertices.push( m.vertices[ v1*3 ], m.vertices[ v1*3+1 ], m.vertices[ v1*3+2 ]);
+				vertices.push( m.vertices[ v2*3 ], m.vertices[ v2*3+1 ], m.vertices[ v2*3+2 ]);
+				vertices.push( m.vertices[ v3*3 ], m.vertices[ v3*3+1 ], m.vertices[ v3*3+2 ]);
+				vertices.push( m.vertices[ v1*3 ], m.vertices[ v1*3+1 ], m.vertices[ v1*3+2 ]);
+				vertices.push( m.vertices[ v3*3 ], m.vertices[ v3*3+1 ], m.vertices[ v3*3+2 ]);
+				vertices.push( m.vertices[ v4*3 ], m.vertices[ v4*3+1 ], m.vertices[ v4*3+2 ]);
+
+				var v1 = m.faces[i+6];
+				var v2 = m.faces[i+7];
+				var v3 = m.faces[i+8];
+				var v4 = m.faces[i+9];
+				uvs.push( m.uvs[ v1*2 ], m.uvs[ v1*2+1 ]);
+				uvs.push( m.uvs[ v2*2 ], m.uvs[ v2*2+1 ]);
+				uvs.push( m.uvs[ v3*2 ], m.uvs[ v3*2+1 ]);
+				uvs.push( m.uvs[ v1*2 ], m.uvs[ v1*2+1 ]);
+				uvs.push( m.uvs[ v3*2 ], m.uvs[ v3*2+1 ]);
+				uvs.push( m.uvs[ v4*2 ], m.uvs[ v4*2+1 ]);
+
+				var v1 = m.faces[i+10];
+				var v2 = m.faces[i+11];
+				var v3 = m.faces[i+12];
+				var v4 = m.faces[i+13];
+				normals.push( m.normals[ v1*3 ], m.normals[ v1*3+1 ], m.normals[ v1*3+2 ]);
+				normals.push( m.normals[ v2*3 ], m.normals[ v2*3+1 ], m.normals[ v2*3+2 ]);
+				normals.push( m.normals[ v3*3 ], m.normals[ v3*3+1 ], m.normals[ v3*3+2 ]);
+				normals.push( m.normals[ v1*3 ], m.normals[ v1*3+1 ], m.normals[ v1*3+2 ]);
+				normals.push( m.normals[ v3*3 ], m.normals[ v3*3+1 ], m.normals[ v3*3+2 ]);
+				normals.push( m.normals[ v4*3 ], m.normals[ v4*3+1 ], m.normals[ v4*3+2 ]);
+
+				i+=14;
+			}
+			else if(m.faces[i] == 42) //triangle
+			{
+				//material info
+				var mat_id = m.faces[i+4];
+				if(current_mat_id < mat_id)
+				{
+					trace("New mat: " + mat_id );
+					current_mat_id = mat_id;
+					if(group != null)
+					{
+						group.length = vertices.length / 3 - group.start;
+						if(group.length > 0)
+							groups.push(group);
+					}
+
+					group = {
+						name: "mat_" + mat_id,
+						start: vertices.length / 3,
+						length: -1,
+						material: ""
+					};
+				}
+
+				var v1 = m.faces[i+1];
+				var v2 = m.faces[i+2];
+				var v3 = m.faces[i+3];
+				vertices.push( m.vertices[ v1*3 ], m.vertices[ v1*3+1 ], m.vertices[ v1*3+2 ]);
+				vertices.push( m.vertices[ v2*3 ], m.vertices[ v2*3+1 ], m.vertices[ v2*3+2 ]);
+				vertices.push( m.vertices[ v3*3 ], m.vertices[ v3*3+1 ], m.vertices[ v3*3+2 ]);
+
+				var v1 = m.faces[i+5];
+				var v2 = m.faces[i+6];
+				var v3 = m.faces[i+7];
+				uvs.push( m.uvs[ v1*2 ], m.uvs[ v1*2+1 ]);
+				uvs.push( m.uvs[ v2*2 ], m.uvs[ v2*2+1 ]);
+				uvs.push( m.uvs[ v3*2 ], m.uvs[ v3*2+1 ]);
+
+				var v1 = m.faces[i+8];
+				var v2 = m.faces[i+9];
+				var v3 = m.faces[i+10];
+				normals.push( m.normals[ v1*3 ], m.normals[ v1*3+1 ], m.normals[ v1*3+2 ]);
+				normals.push( m.normals[ v2*3 ], m.normals[ v2*3+1 ], m.normals[ v2*3+2 ]);
+				normals.push( m.normals[ v3*3 ], m.normals[ v3*3+1 ], m.normals[ v3*3+2 ]);
+
+				i += 11;
+			}
+			else 
+			{
+				trace("Warning: unsupported primitive type: " + m.faces[i]);
+				i += 1;
+			}
+		}
+
+		if(group && (vertices.length - group.start) > 1)
+		{
+			group.length = vertices.length - group.start;
+			groups.push(group);
+		}
+
+		var mesh = {};
+		mesh.vertices = new Float32Array( vertices );
+		if(normals.length > 0)
+			mesh.normals = new Float32Array( normals );
+		if(uvs.length > 0)
+			mesh.coords = new Float32Array( uvs );
+		//mesh.coords = new Float32Array( m.uvs );
+		//if(m.faces) mesh.triangles = new Uint16Array( m.faces );
+
+		//extra info
+		mesh.bounding = LS.Formats.computeMeshBounding(mesh.vertices);
+		mesh.info = {};
+		if(groups.length > 1)
+			mesh.info.groups = groups;
+
+		trace("Num vertex: " + vertices.length / 3);
+		trace(mesh.info.groups);
+
+		return mesh;
+	}
+};
+
+LS.Formats.addSupportedFormat( "cgart", parserCGArtMesh );
+
+
+//GR2
+var parserGR2 = { 
+	extension: 'gr2',
+	type: 'mesh',
+	format: 'text',
+	dataType:'string',
+
+	parse: function(data, options)
+	{
+		data = data.replace(/\'/g,'\"');
+		trace(data);
+		data = JSON.parse("["+data+"]");
+		window.foo = data;
+		data = data[0];
+		var mesh = {
+		  vertices: data[0][2][0],
+		  normals: data[0][2][1],
+		  triangles: data[0][3]
+		};
+		mesh.bounding = LS.Formats.computeMeshBounding(mesh.vertices);
+		return mesh;
+	}
+};
+
+LS.Formats.addSupportedFormat( "gr2", parserGR2 );
+
+
 
 /**
 * Player class allows to handle the app context easily without having to glue manually all events

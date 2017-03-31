@@ -318,7 +318,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 
 	var category = DriveModule.getResourceCategory( resource );
 
-	var type = resource.object_type || resource.category || LS.getObjectClassName( resource );
+	var type = resource.object_class || resource.category || LS.getObjectClassName( resource );
 	if(type == "Object") //in server_side resources that dont have category
 		type = LS.Formats.guessType( resource.fullpath || resource.filename );
 	if(!type)

@@ -174,6 +174,7 @@ var InterfaceModule = {
 			return;
 		msg.innerHTML = text;
 		msg.className = "msg " + classname;
+		return msg;
 	},
 
 	splitSidePanel: function()

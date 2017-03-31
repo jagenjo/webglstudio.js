@@ -291,7 +291,14 @@ var CodingModule = //do not change
 		this.openTab();
 		tab.pad.markError( err.line, err.msg );
 
-		InterfaceModule.setStatusBar("Error in code: " + err.msg, "error" );
+		var msg = String(err.msg || err.message || err.error);
+
+		var elem = InterfaceModule.setStatusBar("<span class='link'>Error in code: " + msg + "</span>", "error" );
+
+		if(err.script)
+			elem.querySelector(".link").addEventListener("click", function(e){
+				CodingModule.editInstanceCode(err.script,null,true);
+			});
 	},
 
 	//shows the side 3d window

@@ -252,7 +252,7 @@ CodingPadWidget.prototype.assignCurrentCode = function( skip_events )
 		LiteGUI.trigger( this, "stored" );
 
 	LEvent.trigger( instance, "code_changed", text_content );
-	if( instance.onCodeChange )
+	if( instance.onCodeChange && instance.code != text_content )
 		return instance.onCodeChange( text_content );
 	if(instance.fullpath || instance.filename)
 		LS.ResourcesManager.resourceModified( instance );
@@ -361,6 +361,8 @@ CodingPadWidget.prototype.evalueCode = function()
 	if(!info)
 		return;
 
+	CORE.log("Compiled code");
+
 	var lang = "javascript";
 	if(info.options && info.options.lang)
 		lang = info.options.lang;
@@ -389,6 +391,7 @@ CodingPadWidget.prototype.evalueCode = function()
 	catch (err)
 	{
 		//error parsing
+		LEvent.trigger( LS,"code_error",{ error: "Parse error: " + err.toString() } );
 		this.showError(err);
 		return;
 	}

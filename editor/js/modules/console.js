@@ -35,6 +35,13 @@ var ConsoleModule = {
 
 		var root = document.getElementById("visor");
 		root.appendChild( this.console );
+
+		CORE.log = this.log;
+	},
+
+	log: function( msg )
+	{
+		LEvent.trigger( LS, "log", msg );	
 	},
 
 	onKeyDown: function(e)

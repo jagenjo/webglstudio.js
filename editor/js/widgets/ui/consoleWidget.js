@@ -453,10 +453,35 @@ ConsoleWidget.prototype.onCommand = function(cmd)
 ConsoleWidget.prototype.bindEvents = function()
 {
 	this.log("Console enabled");
+	LEvent.bind( LS, "code_error", this.onError, this );
+	LEvent.bind( LS, "log", this.onLog, this );
 }
 
 ConsoleWidget.prototype.unbindEvents = function()
 {
+	LEvent.unbind( LS, "code_error", this.onError, this );
+	LEvent.unbind( LS, "log", this.onLog, this );
 }
+
+ConsoleWidget.prototype.onLog = function(e, msg)
+{
+	this.log(msg);
+}
+
+ConsoleWidget.prototype.onError = function(e, err)
+{
+	//console.log(err);
+	var error_message = err.error || err.message || "";
+	if(error_message)
+		error_message = String(error_message).split("\n").join("<br/>");
+
+	if( error_message )
+		this.log({ type: "error", content: error_message });
+	if(err.resource)
+		this.log({ type: "error", content: "Resource: " + ( err.resource.filename ) });
+	if(err.node)
+		this.log({ type: "error", content: "Script in Node: " + ( err.node.name ) });
+}
+
 
 CORE.registerWidget( ConsoleWidget );

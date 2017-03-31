@@ -898,10 +898,13 @@ LS.Components.Poser.showPoseNodesDialog = function( component, event )
 		var selected = null;
 		var node_names = [];
 
-		var descendants = component._root.getDescendants();
-
-		for(var i in descendants)
-			node_names.push( descendants[i].name );
+		var base_nodes = component.base_nodes;
+		for(var i in base_nodes)
+		{
+			var base_node = LS.GlobalScene.getNode( base_nodes[i].node_uid );
+			if( base_node )
+				node_names.push( base_node.name );
+		}
 
 		var list = widgets.addList(null, node_names, { height: "calc( 100% - 60px)", callback: function(v) {
 			selected = v;

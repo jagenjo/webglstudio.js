@@ -676,3 +676,7 @@ textarea.code {
 	background-color: #621111 !important;
     color: #FAA;
 }
+
+.link {
+	cursor: pointer;
+}

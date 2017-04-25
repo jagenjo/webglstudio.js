@@ -17,7 +17,7 @@ var MyPlugin = {
 
 	init: function()
 	{
-    //in case it needs to load other JS files
+		//in case it needs to load other JS files
 		LiteGUI.requireScript(["..."], inner );
 
 		function inner(v)
@@ -28,7 +28,7 @@ var MyPlugin = {
 
 	deinit: function()
 	{
-     //called when the plugin has been removed
+		//called when the plugin has been removed
 	}
 };
 ```

@@ -31,4 +31,7 @@ var MyPlugin = {
 		//called when the plugin has been removed
 	}
 };
+
+CORE.registerPlugin( MyPlugin );
+
 ```

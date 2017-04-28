@@ -78,11 +78,23 @@ CanvasManager.prototype.init = function( options )
 	gl.ondraw = this.ondraw.bind(this);
 	gl.onupdate = this.onupdate.bind(this);
 
-	gl.captureMouse(true);
+	gl.captureMouse(true,true);
 	gl.captureKeys();
 	gl.captureGamepads();
 
-	gl.onmousedown = gl.onmousemove = gl.onmouseup = gl.onkeydown = gl.onkeyup = gl.onmousewheel = gl.ongamepadconnected = gl.ongamepaddisconnected = gl.ongamepadButtonDown = gl.ongamepadButtonDown = this.dispatchEvent.bind(this);
+	//assign all event catchers
+	gl.onmousedown = 
+		gl.onmousemove = 
+		gl.onmouseup = 
+		gl.onkeydown = 
+		gl.onkeyup = 
+		gl.onmousewheel = 
+		gl.ongamepadconnected = 
+		gl.ongamepaddisconnected = 
+		gl.ongamepadButtonDown = 
+		gl.ongamepadButtonDown = 
+		gl.ontouch = 
+		gl.ongesture = this.dispatchEvent.bind(this);
 
 	gl.viewport(0,0,gl.canvas.width, gl.canvas.height);
 	gl.enable( gl.CULL_FACE );

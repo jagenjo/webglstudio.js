@@ -126,7 +126,7 @@ var LiteFileServer = {
 	},
 
 	//create a new account if it is enabled or if you are admin
-	createAccount: function( user, password, email, on_complete, on_error, admin_token )
+	createAccount: function( user, password, email, on_complete, on_error, admin_token, userdata )
 	{
 		//validate username
 		if( !user.match(/^[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)*$/) )
@@ -158,9 +158,19 @@ var LiteFileServer = {
 			return false;
 		}
 
-		var params = {action: "user/create", username: user, password: password, email: email };
+		var params = {
+			action: "user/create",
+			username: user,
+			password: password,
+			email: email
+		};
+
+		if( userdata )
+			params.userdata = userdata;
+
 		if(admin_token)
 			params.admin_token = admin_token;
+
 		return this.request( this.server_url, params, function(resp){
 			console.log(resp);
 			if(on_complete)
@@ -459,6 +469,31 @@ Session.prototype.setPassword = function( oldpass, newpass, on_complete )
 {
 	var params = { action: "user/setPassword", oldpass: oldpass, newpass: newpass };
 
+	return this.request( this.server_url, params, function(resp){
+		console.log(resp);
+		if(on_complete)
+			on_complete( resp.status == 1, resp );
+	});
+
+	return true;
+}
+
+Session.prototype.getUserData = function( on_complete )
+{
+	var params = { action: "user/getUserData" };
+
+	return this.request( this.server_url, params, function(resp){
+		console.log(resp);
+		if(on_complete)
+			on_complete( resp.userdata );
+	});
+
+	return true;
+}
+
+Session.prototype.setUserData = function( userdata, on_complete )
+{
+	var params = { action: "user/setUserData", userdata: userdata };
 	return this.request( this.server_url, params, function(resp){
 		console.log(resp);
 		if(on_complete)
@@ -812,23 +847,22 @@ Session.prototype.getFilesByPath = function( fullpath, on_complete, on_error )
 	});
 }
 
-Session.prototype.searchByCategory = function( category, on_complete )
+Session.prototype.searchByCategory = function( category, on_complete, on_error, on_progress  )
 {
 	return this.request( this.server_url,{ action: "files/searchFiles", category: category }, function(resp){
-
 		Session.processFileList(resp.data);
 		if(on_complete)
 			on_complete(resp.data);
-	});
+	}, on_error, on_progress );
 }
 
-Session.prototype.searchByFilename = function( filename, on_complete )
+Session.prototype.searchByFilename = function( filename, on_complete, on_error, on_progress )
 {
 	return this.request( this.server_url,{ action: "files/searchFiles", filename: filename }, function(resp){
 		Session.processFileList(resp.data);
 		if(on_complete)
 			on_complete(resp.data);
-	});
+	}, on_error, on_progress );
 }
 
 Session.prototype.getFileInfo = function( fullpath, on_complete )

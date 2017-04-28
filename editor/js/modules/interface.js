@@ -18,7 +18,8 @@ var InterfaceModule = {
 		"Component": "imgs/mini-icon-component.png",
 		"component": "imgs/mini-icon-component.png",
 		"Material": "imgs/mini-icon-materialres.png",
-		"material": "imgs/mini-icon-materialres.png"
+		"material": "imgs/mini-icon-materialres.png",
+		"Script": "imgs/mini-icon-js.png"
 	},
 
 	init: function()
@@ -556,9 +557,9 @@ function addGenericResource ( name, value, options, resource_classname )
 }
 
 //to select a resource
-LiteGUI.Inspector.prototype.addResource = function( name, value, options )
+LiteGUI.Inspector.prototype.addResource = function( name, value, options, resource_classname )
 {
-	return addGenericResource.call(this, name, value, options );
+	return addGenericResource.call(this, name, value, options, resource_classname );
 }
 
 LiteGUI.Inspector.widget_constructors["resource"] = "addResource";
@@ -606,7 +607,7 @@ LiteGUI.Inspector.widget_constructors["material"] = "addMaterial";
 
 
 //to select a script
-LiteGUI.Inspector.prototype.addScript = function( name,value, options)
+LiteGUI.Inspector.prototype.addScript = function( name, value, options )
 {
 	options = options || {};
 	options.width = "90%";
@@ -618,9 +619,23 @@ LiteGUI.Inspector.prototype.addScript = function( name,value, options)
 			if( options.callback_edit.call( this ) )
 				return;
 		var path = r.getValue();
+		if(path && path.indexOf(".js") == -1)
+			return;
+
 		var script = LS.RM.getResource( path );
 		if(!script)
+		{
+			DriveModule.showCreateScriptDialog({filename: "script.js"}, function(resource){
+				if(!resource)
+					return;
+				CodingModule.openTab();
+				var fullpath = resource.fullpath || resource.filename;
+				if(options.callback)
+					options.callback(fullpath);
+				CodingModule.editInstanceCode( resource );
+			});
 			return;
+		}
 		//open script
 		CodingModule.editInstanceCode( script, null, true );
 	}});

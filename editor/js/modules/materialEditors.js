@@ -674,7 +674,7 @@ LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector,
 			var widget_type = p.widget || p.type;
 			if(widget_type == "Sampler2D")
 				widget_type = "sampler";
-			inspector.add( widget_type, p.label || p.name, p.value, { pretitle: AnimationModule.getKeyframeCode( material, p.name ), title: p.name, step: p.step, precision: p.precision, property: p, callback: inner_on_property_change });
+			inspector.add( widget_type, p.label || p.name, p.value, { pretitle: AnimationModule.getKeyframeCode( material, p.name ), title: p.name, step: p.step, precision: p.precision, values: p.values, property: p, callback: inner_on_property_change });
 		}
 	}
 

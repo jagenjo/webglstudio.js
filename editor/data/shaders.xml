@@ -396,57 +396,72 @@
 
 	<snippet id="getFlatNormal">
 		<![CDATA[
-			#extension GL_OES_standard_derivatives : enable 
-			vec3 getFlatNormal(vec3 pos)
-			{
-				vec3 A = dFdx( pos );
-				vec3 B = dFdy( pos );
-				return normalize( cross(A,B) );
-			}
+			#ifdef STANDARD_DERIVATIVES
+				#extension GL_OES_standard_derivatives : enable 
+				vec3 getFlatNormal(vec3 pos)
+				{
+					vec3 A = dFdx( pos );
+					vec3 B = dFdy( pos );
+					return normalize( cross(A,B) );
+				}
+			#else
+				vec3 getFlatNormal(vec3 pos)
+				{
+					return vec3(0.0);
+				}
+			#endif
 		]]>
 	</snippet>
 
 	<snippet id="perturbNormal">
 		<![CDATA[
-			#extension GL_OES_standard_derivatives : enable 
+			#ifdef STANDARD_DERIVATIVES
+				#extension GL_OES_standard_derivatives : enable 
 
-			mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
-			{
-				// get edge vectors of the pixel triangle
-				vec3 dp1 = dFdx( p );
-				vec3 dp2 = dFdy( p );
-				vec2 duv1 = dFdx( uv );
-				vec2 duv2 = dFdy( uv );
+				mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
+				{
+					// get edge vectors of the pixel triangle
+					vec3 dp1 = dFdx( p );
+					vec3 dp2 = dFdy( p );
+					vec2 duv1 = dFdx( uv );
+					vec2 duv2 = dFdy( uv );
 
-				// solve the linear system
-				vec3 dp2perp = cross( dp2, N );
-				vec3 dp1perp = cross( N, dp1 );
-				vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
-				vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
-			 
-				// construct a scale-invariant frame 
-				float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
-				return mat3( T * invmax, B * invmax, N );
-			}
+					// solve the linear system
+					vec3 dp2perp = cross( dp2, N );
+					vec3 dp1perp = cross( N, dp1 );
+					vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+					vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+				 
+					// construct a scale-invariant frame 
+					float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
+					return mat3( T * invmax, B * invmax, N );
+				}
 
-			vec3 perturbNormal( vec3 N, vec3 V, vec2 texcoord, vec3 normal_pixel )
-			{
-				#ifdef USE_POINTS
+				vec3 perturbNormal( vec3 N, vec3 V, vec2 texcoord, vec3 normal_pixel )
+				{
+					#ifdef USE_POINTS
+						return N;
+					#endif
+
+					// assume N, the interpolated vertex normal and 
+					// V, the view vector (vertex to eye)
+					//vec3 normal_pixel = texture2D(normalmap, texcoord ).xyz;
+					normal_pixel = normal_pixel * 255./127. - 128./127.;
+					mat3 TBN = cotangent_frame(N, V, texcoord);
+					return normalize(TBN * normal_pixel);
+				}	
+			#else
+				vec3 perturbNormal( vec3 N, vec3 V, vec2 texcoord, vec3 normal_pixel )
+				{
 					return N;
-				#endif
-
-				// assume N, the interpolated vertex normal and 
-				// V, the view vector (vertex to eye)
-				//vec3 normal_pixel = texture2D(normalmap, texcoord ).xyz;
-				normal_pixel = normal_pixel * 255./127. - 128./127.;
-				mat3 TBN = cotangent_frame(N, V, texcoord);
-				return normalize(TBN * normal_pixel);
-			}	
+				}
+			#endif
 		]]>
 	</snippet>
 
 	<snippet id="bumpNormal">
 		<![CDATA[
+			#ifdef STANDARD_DERIVATIVES
 				#extension GL_OES_standard_derivatives : enable 
 
 				// Calculate the surface normal using screen-space partial derivatives of the height field
@@ -472,6 +487,12 @@
 					return normalize(normal + (r1 * (hdx - h) - r2 * (hdy - h)) / dot(dpdx, r1));
 					*/
 				}
+			#else
+				vec3 bumpNormal(vec3 position, vec3 normal, sampler2D texture, vec2 uvs, float factor)
+				{
+					return normal;
+				}
+			#endif
 		]]>
 	</snippet>
 

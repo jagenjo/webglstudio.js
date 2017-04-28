@@ -64,20 +64,18 @@ var PluginsModule  = {
 
 	loadPlugin: function( url, on_complete, on_error )
 	{
-		var last_module = null;
-		if(CORE.Modules.length)
-			last_module = CORE.Modules[ CORE.Modules.length - 1];
+		var last_plugin = CORE.last_plugin;
 
 		LiteGUI.requireScript( url, inner_loaded, on_error );
 
 		function inner_loaded()
 		{
-			var module = CORE.Modules[ CORE.Modules.length - 1 ];
-			if( last_module != module )
+			var plugin = CORE.last_plugin;
+			if( last_plugin != plugin )
 			{
 				//somethign loaded
-				console.log( "Plugin loaded: " + module.name );
-				PluginsModule.registerPlugin( module, url );
+				console.log( "Plugin loaded: " + plugin.name );
+				PluginsModule.registerPlugin( plugin, url );
 				if(on_complete)
 					on_complete(true);
 			}

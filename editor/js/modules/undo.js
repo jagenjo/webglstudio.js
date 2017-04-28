@@ -176,6 +176,7 @@ var UndoModule = {
 			case "component_deleted": this.saveComponentDeletedUndo( data ); break;
 			case "node_material_assigned": this.saveNodeMaterialChangeUndo( data ); break;
 			case "node_material_changed": this.saveNodeMaterialChangeUndo( data ); break;
+			case "selection_removed": this.saveSelectionRemovedUndo( data ); break;
 			case "material_changed": this.saveMaterialChangeUndo( data ); break;
 			default: 
 				console.warn("Unknown undo action");
@@ -554,6 +555,47 @@ var UndoModule = {
 			},
 			callback_redo: function(d) {
 				d.material.configure( JSON.parse(d.new_mat_data) );
+			}
+		});
+	},
+
+	saveSelectionRemovedUndo: function( data_removed )
+	{
+		this.addUndoStep({ 
+			title: "Nodes or Components deleted",
+			data: { data: data_removed },
+			callback_undo: function(d) {
+				var nodes = [];
+				for(var i = 0; i < d.data.length; ++i)
+				{
+					var data = d.data[i];
+					if(data.comp)
+					{
+						var node = LS.GlobalScene.getNode( data.node_uid );
+						if(!node)
+							continue;
+						nodes.push(node);
+						var comp_class = LS.Components[ data.comp_class ];
+						if(comp_class)
+						{
+							var new_comp = new comp_class( d.comp );
+							node.addComponent( new_comp );
+						}
+					}
+					else
+					{
+						var parent = LS.GlobalScene.getNode( data.parent_uid );
+						if(!parent)
+							continue;
+						var new_node = new LS.SceneNode();
+						new_node.configure( data.node_data );
+						parent.addChild( new_node, data.index );
+						nodes.push(new_node);
+					}
+				}
+				SelectionModule.setSelection(nodes);
+			},
+			callback_redo: function(){
 			}
 		});
 	}

@@ -215,6 +215,13 @@ var CORE = {
 		LiteGUI.trigger( CORE.root, "module_removed", module );
 	},
 
+	//similar to registerModule but adds some plugin specific features to help remove the plugin
+	registerPlugin: function( plugin )
+	{
+		this.last_plugin = plugin;
+		this.registerModule( plugin );
+	},
+
 	getModule: function( module_name )
 	{
 		for(var i = 0; i < this.Modules.length; ++i)

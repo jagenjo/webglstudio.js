@@ -43,6 +43,7 @@ var CubemapGenerator = {
 		var result = "cubemap";
 		var cubemap_modes = { "Cross Left": "CUBECROSSL", "Vertical": "CUBEVERT" };
 		var mode = "CUBECROSSL";
+		var layers = 0x3;
 
 		var url = "";
 		var original_file = null;
@@ -136,13 +137,17 @@ var CubemapGenerator = {
 				center = v;
 			}});
 
+			widgets.addLayers("Layers", layers , { callback: function(v) { 
+				layers = v;
+			}});
+
 			widgets.addCombo("Mode", mode , { values: cubemap_modes, callback: function(v) { 
 				mode = v;
 			}});
 
 			widgets.addButton("Preview", "Open Window", { callback: function(v) { 
 				var position = computePosition();
-				var image = CubemapGenerator.generateCubemapFromScene( position, { size: resolution, mode: mode } );
+				var image = CubemapGenerator.generateCubemapFromScene( position, { layers: layers, size: resolution, mode: mode } );
 				if(!image)
 					return;
 				var new_window = window.open("","Visualizer","width="+(image.width + 20)+", height="+(image.height));
@@ -165,7 +170,7 @@ var CubemapGenerator = {
 
 			widgets.addButton(null, "Create cubemap", { callback: function() {
 				var position = computePosition();
-				var image = CubemapGenerator.generateCubemapFromScene( position, { size: resolution, mode: mode } );
+				var image = CubemapGenerator.generateCubemapFromScene( position, { layers: layers, size: resolution, mode: mode } );
 				if(!image)
 					return;
 				/*
@@ -341,6 +346,7 @@ var CubemapGenerator = {
 
 		var render_settings = RenderModule.render_settings;
 		render_settings.skip_viewport = true; //avoids overwriting the viewport and aspect
+		render_settings.layers = options.layers !== undefined ? options.layers : 0xFF;
 		var bg_color = LS.GlobalScene.root.camera ? LS.GlobalScene.root.camera.background_color : [0,0,0,1];
 
 		gl.viewport( 0, 0, size, size );
@@ -351,7 +357,7 @@ var CubemapGenerator = {
 			gl.clearColor( bg_color[0], bg_color[1], bg_color[2], bg_color[3]);
 			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 			var face = cams[i];
-			var cam_info = { eye: position, center: [ position[0] + face.dir[0], position[1] + face.dir[1], position[2] + face.dir[2]], up: face.up, fov: 90, aspect: 1.0, near: 0.01, far: 1000 };
+			var cam_info = { layers: 0xFF, eye: position, center: [ position[0] + face.dir[0], position[1] + face.dir[1], position[2] + face.dir[2]], up: face.up, fov: 90, aspect: 1.0, near: 0.01, far: 1000 };
 			var camera = new LS.Camera( cam_info );
 			//LS.Renderer.renderFrame( camera, render_settings );
 

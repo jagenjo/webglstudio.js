@@ -444,7 +444,12 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 
 	inspector.addSection("Node");
 	inspector.addString("Title", graphnode.title, { disabled: graphnode.ignore_rename, callback: function(v) { graphnode.title = v; }});
-	inspector.addCombo("Mode", graphnode.mode, { values: { "Always": LiteGraph.ALWAYS,"On Trigger": LiteGraph.ON_TRIGGER,"Never": LiteGraph.NEVER }, callback: function(v) { graphnode.mode = v; }});
+	var modes = { "Always": LiteGraph.ALWAYS,"On Trigger": LiteGraph.ON_TRIGGER,"Never": LiteGraph.NEVER };
+	var reversed_modes = {};
+	for(var i in modes)
+		reversed_modes[ modes[i] ] = reversed_modes[i];
+
+	inspector.addCombo("Mode", reversed_modes[ graphnode.mode ], { values: modes, callback: function(v) { graphnode.mode = v; }});
 	inspector.addString("ID", String(graphnode.id) );
 	inspector.addSeparator();
 

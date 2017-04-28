@@ -456,7 +456,7 @@ CodingPadWidget.prototype.saveInstance = function()
 
 					//set name
 					instance.filename = filename;
-					instance.fullpath = LS.RM.cleanPath( folder + "/" + filename );
+					instance.fullpath = LS.RM.cleanFullpath( folder + "/" + filename );
 
 					if( old_name != instance.fullpath )
 						LS.RM.renameResource( old_name, instance.fullpath );
@@ -823,6 +823,23 @@ CodingPadWidget.prototype.createFile = function(filename)
 	return resource;
 }
 
+CodingPadWidget.prototype.onShowCodeMenu = function(event)
+{
+	var that = this;
+	var options = ["Open Code","Clone Code"];
+
+	var menu = new LiteGUI.ContextMenu( options, { event: event, callback: function( action, o, e ) {
+		if(action == "Open Code")
+		{
+			that.onOpenCode();					
+		}
+		else if( action == "Clone Code")
+		{
+		
+		}
+	}});
+}
+
 CodingPadWidget.prototype.onOpenCode = function( skip_create )
 {
 	var that = this;
@@ -955,8 +972,8 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 	//top bar
 	var top_widgets = this.top_widgets = new LiteGUI.Inspector( null, { one_line: true });
 
-	top_widgets.addButton(null, LiteGUI.special_codes.navicon,{ width: 30, callback: function(v) { 
-		that.onOpenCode();
+	top_widgets.addButton(null, LiteGUI.special_codes.navicon,{ width: 30, callback: function(v,e) { 
+		that.onShowCodeMenu(e);
 	}});
 
 	this.file_name_widget = top_widgets.addString(null,"",{ width: 100, disabled: true });

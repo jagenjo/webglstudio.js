@@ -100,7 +100,7 @@ var SceneStorageModule = {
 		split.getSection(0).add( widgets );
 
 		//load scenes
-		DriveModule.serverSearchFiles({ category: "SceneTree" }, inner_files );
+		DriveModule.serverSearchFiles({ category: "SceneTree" }, inner_files, inner_error );
 
 		function inner_files(items)
 		{
@@ -116,7 +116,12 @@ var SceneStorageModule = {
 			list.updateItems(r);
 		}
 
-		function inner_selected(item)
+		function inner_error(err)
+		{
+			list.updateItems(["Error loading"]);
+		}
+
+		function inner_selected( item )
 		{
 			selected = item.fullpath;
 			split.getSection(1).innerHTML = "";
@@ -125,17 +130,10 @@ var SceneStorageModule = {
 			split.getSection(1).add(img);
 		}
 
-		function inner_button(button)
+		function inner_button( button )
 		{
 			if(button == "Load")
 			{
-				/*
-				var url = LS.ResourcesManager.path + "/" + selected;
-				LS.GlobalScene.load( url, function(scene, url) {
-					scene.extra.folder = LS.ResourcesManager.getFolder( selected );
-					scene.extra.fullpath = selected;
-				});
-				*/
 				dialog.close();
 				SceneStorageModule.loadScene( selected );
 			}

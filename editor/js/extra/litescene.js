@@ -3757,7 +3757,7 @@ LS.ResourcesManager.registerResourcePreProcessor("json", function(filename, data
 		}
 		else
 		{
-			console.error( "JSON object_class class not found: " + data.object_class );
+			console.error( "JSON object_class class not found: " + class_name );
 			return null;
 		}
 	}
@@ -4143,6 +4143,8 @@ var ShadersManager = {
 
 		//base intro code for shaders
 		this.global_extra_code = String.fromCharCode(10) + "#define WEBGL" + String.fromCharCode(10);
+		if( gl.extensions.OES_standard_derivatives )
+			this.global_extra_code = "#define STANDARD_DERIVATIVES" + String.fromCharCode(10);
 
 		//compile some shaders
 		this.createDefaultShaders();
@@ -4889,6 +4891,8 @@ ShaderBlock.prototype.addCode = function( shader_type, enabled_code, disabled_co
 	this.code_map.set( shader_type, info );
 }
 
+//returns the full code of a shaderblock applying all includes, shaderblocks, etc
+//shadertype: GL.VERTEX_SHADER = 35633, GL.FRAGMENT_SHADER = 35632
 ShaderBlock.prototype.getFinalCode = function( shader_type, block_flags, context )
 {
 	block_flags = block_flags || 0;
@@ -4964,7 +4968,7 @@ GLSLCode.prototype.parse = function()
 	//remove comments
 	var code = this.code.replace(/(\/\*([\s\S]*?)\*\/)|(\/\/(.*)$)/gm, '');
 
-	this.blocks = [];
+	this.fragments = [];
 	this.pragmas = {};
 	this.uniforms = {};
 	this.streams = {};
@@ -4973,7 +4977,7 @@ GLSLCode.prototype.parse = function()
 	this.shader_blocks = {};
 	this.is_dynamic = false; //means this shader has no variations using pragmas or macros
 
-	var current_block = [];
+	var current_fragment = [];
 	var lines = code.split("\n");
 
 	//parse
@@ -4996,22 +5000,22 @@ GLSLCode.prototype.parse = function()
 				var uniform_name = words[2].split(";");
 				this.attributes[ uniform_name[0] ] = words[1];
 			}
-			current_block.push(line);
+			current_fragment.push(line);
 			continue;
 		}
 
 		var t = line.split(" ");
 		if(t[0] == "#pragma")
 		{
-			//merge lines and add previous block
-			var current_block_code = current_block.join("\n");
-			if(current_block_code.trim()) //in case is empty this code block
-				this.blocks.push( { type: GLSLCode.CODE, code: current_block_code } ); 
+			//merge lines and add previous fragment
+			var current_fragment_code = current_fragment.join("\n");
+			if(current_fragment_code.trim()) //in case is empty this code fragment
+				this.fragments.push( { type: GLSLCode.CODE, code: current_fragment_code } ); 
 
 			this.is_dynamic = true;
 			this.pragmas[ t[2] ] = true;
 			var action = t[1];
-			current_block.length = 0;
+			current_fragment.length = 0;
 			var pragma_info = { type: GLSLCode.PRAGMA, line: line, action: action, param: t[2] };
 
 			var method = LS.GLSLCode.pragma_methods[ action ];
@@ -5022,17 +5026,17 @@ GLSLCode.prototype.parse = function()
 			}
 			if( method.parse.call( this, pragma_info, t ) === false )
 				continue;
-			this.blocks.push( pragma_info ); //add pragma block
+			this.fragments.push( pragma_info ); //add pragma fragment
 		}
 		else
-			current_block.push( line ); //add line to current block lines
+			current_fragment.push( line ); //add line to current fragment lines
 	}
 
-	if(current_block.length)
+	if(current_fragment.length)
 	{
-		var current_block_code = current_block.join("\n");
-		if(current_block_code.trim()) //in case is empty this code block
-			this.blocks.push( { type: GLSLCode.CODE, code: current_block_code } ); //merge lines and add as block
+		var current_fragment_code = current_fragment.join("\n");
+		if(current_fragment_code.trim()) //in case is empty this code fragment
+			this.fragments.push( { type: GLSLCode.CODE, code: current_fragment_code } ); //merge lines and add as fragment
 	}
 
 	//done
@@ -5046,22 +5050,22 @@ GLSLCode.prototype.getFinalCode = function( shader_type, block_flags, context )
 
 	var code = "";
 	context = context || {};
-	var blocks = this.blocks;
+	var fragments = this.fragments;
 
-	for(var i = 0; i < blocks.length; ++i)
+	for(var i = 0; i < fragments.length; ++i)
 	{
-		var block = blocks[i];
-		if( block.type === GLSLCode.CODE ) //regular code
+		var fragment = fragments[i];
+		if( fragment.type === GLSLCode.CODE ) //regular code
 		{
-			code += block.code;
+			code += fragment.code;
 			continue;
 		}
 
-		var pragma_method = GLSLCode.pragma_methods[ block.action ];
+		var pragma_method = GLSLCode.pragma_methods[ fragment.action ];
 		if(!pragma_method || !pragma_method.getCode )
 			continue;
 
-		var r = pragma_method.getCode.call( this, shader_type, block, block_flags, context );
+		var r = pragma_method.getCode.call( this, shader_type, fragment, block_flags, context );
 		if( r )
 			code += r;
 	}
@@ -5090,11 +5094,11 @@ GLSLCode.pragma_methods["include"] = {
 		pragma_info.include_subfile = subfile;
 		this.includes[ pragma_info.include ] = true;
 	},
-	getCode: function( shader_type, block, block_flags, context )
+	getCode: function( shader_type, fragment, block_flags, context )
 	{
 		var extra_code = "";
 
-		var filename = block.include;
+		var filename = fragment.include;
 		var ext = LS.ResourcesManager.getExtension( filename );
 		if(ext)
 		{
@@ -5104,11 +5108,11 @@ GLSLCode.pragma_methods["include"] = {
 				LS.ResourcesManager.load( filename ); //force load
 				return null;
 			}
-			if(!block.include_subfile)
+			if(!fragment.include_subfile)
 				extra_code = "\n" + extra_shadercode._subfiles[""] + "\n";
 			else
 			{
-				var extra = extra_shadercode._subfiles[ block.include_subfile ];
+				var extra = extra_shadercode._subfiles[ fragment.include_subfile ];
 				if(extra === undefined)
 					return null;
 				extra_code = "\n" + extra + "\n";
@@ -5138,9 +5142,9 @@ GLSLCode.pragma_methods["define"] = {
 		}
 		pragma_info.define = [ param1, param2.substr(1, param2.length - 2) ];
 	},
-	getCode: function( shader_type, block, block_flags, context )
+	getCode: function( shader_type, fragment, block_flags, context )
 	{
-		context[ block.define[0] ] = block.define[1];
+		context[ fragment.define[0] ] = fragment.define[1];
 	}
 }
 
@@ -5170,16 +5174,16 @@ GLSLCode.pragma_methods["shaderblock"] = {
 			}
 		}
 	},
-	getCode: function( shader_type, block, block_flags, context )
+	getCode: function( shader_type, fragment, block_flags, context )
 	{
-		var shader_block_name = block.shader_block[1];
-		if( block.shader_block[0] == 2 ) //is dynamic shaderblock name
+		var shader_block_name = fragment.shader_block[1];
+		if( fragment.shader_block[0] == 2 ) //is dynamic shaderblock name
 		{
 			//dynamic shaderblock name
 			if( context[ shader_block_name ] ) //search for the name in the context
 				shader_block_name = context[ shader_block_name ];
 			else 
-				shader_block_name = block.shader_block[2]; //if not found use the default
+				shader_block_name = fragment.shader_block[2]; //if not found use the default
 
 			if(!shader_block_name)
 			{
@@ -5191,7 +5195,7 @@ GLSLCode.pragma_methods["shaderblock"] = {
 		var shader_block = LS.ShadersManager.getShaderBlock( shader_block_name );
 		if(!shader_block)
 		{
-			console.error("ShaderCode uses unknown ShaderBlock: ", block.shader_block);
+			console.error("ShaderCode uses unknown ShaderBlock: ", fragment.shader_block);
 			return null;
 		}
 
@@ -5219,12 +5223,12 @@ GLSLCode.pragma_methods["snippet"] = {
 		pragma_info.snippet = snippet_name;
 		this.snippets[ snippet_name ] = true;
 	},
-	getCode: function( shader_type, block, block_flags, context )
+	getCode: function( shader_type, fragment, block_flags, context )
 	{
-		var snippet = LS.ShadersManager.getSnippet( block.snippet );
+		var snippet = LS.ShadersManager.getSnippet( fragment.snippet );
 		if(!snippet)
 		{
-			console.error("ShaderCode uses unknown Snippet: ", block.snippet);
+			console.error("ShaderCode uses unknown Snippet: ", fragment.snippet);
 			return null;
 		}
 
@@ -5673,6 +5677,8 @@ Material.prototype.configure = function(o)
 {
 	for(var i in o)
 	{
+		if(typeof (o[i]) === "function")
+			continue;
 		if(!this.setProperty( i, o[i] ) && LS.debug)
 			console.warn("Material property not assigned: " + i );
 	}
@@ -5793,8 +5799,9 @@ Material.prototype.setProperty = function( name, value )
 			break;
 		//bools
 		//strings
-		//	this[name] = value; 
-		//	break;
+		case "uid":
+			this[name] = value; 
+			break;
 		//vectors
 		case "uvs_matrix":
 		case "color": 
@@ -5821,6 +5828,13 @@ Material.prototype.setProperty = function( name, value )
 		case "transparency": //special cases
 			this.opacity = 1 - value;
 			break;
+		case "render_state":
+			this._render_state.configure( value );
+			break;
+		//ignore
+		case "material_class":
+		case "object_type":
+			return true;
 		default:
 			return false;
 	}
@@ -6205,6 +6219,767 @@ Material.prototype.prepare = function( scene )
 //LS.registerMaterialClass( Material );
 LS.registerResourceClass( Material );
 LS.Material = Material;
+
+/**
+* ShaderMaterial allows to use your own shader from scratch, but you loose some of the benefits of using the dynamic shader system of LS
+* @namespace LS
+* @class ShaderMaterial
+* @constructor
+* @param {Object} object [optional] to configure from
+*/
+function ShaderMaterial( o )
+{
+	Material.call( this, null );
+
+	this._shader = null;
+	this._shader_version = -1;
+	this._shader_flags = 0; //?
+
+	this._uniforms = {};
+	this._samplers = [];
+	this._properties = [];
+	this._properties_by_name = {};
+
+	this._passes = {};
+	this._light_mode = 0;
+	this._primitive = -1;
+
+	if(o) 
+		this.configure(o);
+}
+
+Object.defineProperty( ShaderMaterial.prototype, "shader", {
+	enumerable: true,
+	get: function() {
+		return this._shader;
+	},
+	set: function(v) {
+		if(v)
+			v = LS.ResourcesManager.cleanFullpath(v);
+		if(this._shader == v)
+			return;
+		this._shader = v;
+		this.processShaderCode();
+	}
+});
+
+Object.defineProperty( ShaderMaterial.prototype, "properties", {
+	enumerable: true,
+	get: function() {
+		return this._properties;
+	},
+	set: function(v) {
+		if(!v)
+			return;
+		this._properties = v;
+		this._properties_by_name = {};
+		for(var i in this._properties)
+		{
+			var p = this._properties[i];
+			this._properties_by_name[ p.name ] = p;
+		}
+	}
+});
+
+Object.defineProperty( ShaderMaterial.prototype, "enableLights", {
+	enumerable: true,
+	get: function() {
+		return this._light_mode != 0;
+	},
+	set: function(v) {
+		this._light_mode = v ? 1 : 0;
+	}
+});
+
+ShaderMaterial.prototype.addPass = function( name, vertex_shader, fragment_shader, macros )
+{
+	this._passes[ name ] = {
+		vertex: vertex_shader,
+		fragment: fragment_shader,
+		macros: macros
+	};
+}
+
+//called when preparing materials before rendering the scene
+ShaderMaterial.prototype.prepare = function( scene )
+{
+	this.fillUniforms();
+
+	if( this.onPrepare )
+		this.onPrepare( scene );
+}
+
+//called when filling uniforms from prepare
+ShaderMaterial.prototype.fillUniforms = function()
+{
+	//gather uniforms & samplers
+	var samplers = this._samplers;
+	samplers.length = 0;
+
+	this._uniforms.u_material_color = this._color;
+
+	for(var i = 0; i < this._properties.length; ++i)
+	{
+		var p = this._properties[i];
+		if(p.internal) //internal is a property that is not for the shader (is for internal computations)
+			continue;
+
+		if(p.is_texture)
+		{
+			this._uniforms[ p.uniform ] = samplers.length;
+			if(p.value)
+				samplers.push( p.value );
+			else
+				samplers.push( " " ); //force missing texture
+		}
+		else
+			this._uniforms[ p.uniform ] = p.value;
+	}
+}
+
+//assigns a value to a property
+ShaderMaterial.prototype.setProperty = function(name, value)
+{
+	//redirect to base material
+	if( Material.prototype.setProperty.call(this,name,value) )
+		return true;
+
+	if(name == "shader")
+		this.shader = value;
+	else if(name == "properties")
+	{
+		this.properties.length = 0;
+		this._properties_by_name = {};
+		for(var i = 0; i < value.length; ++i)
+		{
+			var prop = value[i];
+			if(prop.is_texture && prop.value && prop.value.constructor === String)
+				prop.value = { texture: prop.value };
+			this.properties[i] = prop;
+			this._properties_by_name[ prop.name ] = prop;
+			this._samplers.push( prop.value );
+		}
+	}
+	else if( this._properties_by_name[ name ] )
+	{
+		var prop = this._properties_by_name[ name ];
+		if( !prop.value || !prop.value.length)
+			prop.value = value;
+		else
+			prop.value.set( value );
+	}
+	else
+		return false;
+	return true;
+}
+
+//check the ShaderCode associated and applies it to this material (keeping the state of the properties)
+ShaderMaterial.prototype.processShaderCode = function()
+{
+	if(!this._shader)
+	{
+		this._properties.length = 0;
+		this._properties_by_name = {};
+		this._passes = {};
+		this._samplers.length = 0;
+		return false;
+	}
+
+	//get shader code
+	var shader_code = LS.ResourcesManager.getResource( this.shader );
+	if(!shader_code || shader_code.constructor !== LS.ShaderCode )
+		return false;
+
+	var old_properties = this._properties_by_name;
+	this._properties.length = 0;
+	this._properties_by_name = {};
+	this._passes = {};
+	this._samplers.length = 0;
+	this._light_mode = 0;
+	this._primitive = -1;
+
+	//reset material properties
+	this._queue = LS.RenderQueue.GEOMETRY;
+	this.render_state.init();
+
+	//clear old functions
+	for(var i in this)
+	{
+		if(!this.hasOwnProperty(i))
+			continue;
+		if( this[i] && this[i].constructor === Function )
+			delete this[i];
+	}
+
+	//apply init 
+	if( shader_code._functions.init )
+	{
+		if(!LS.catch_exceptions)
+			shader_code._functions.init.call( this );
+		else
+		{
+			try
+			{
+				shader_code._functions.init.call( this );
+			}
+			catch (err)
+			{
+				LS.dispatchCodeError(err);
+			}
+		}
+	}
+
+	for(var i in shader_code._global_uniforms)
+	{
+		var global = shader_code._global_uniforms[i];
+		if( global.disabled ) //in case this var is not found in the shader
+			continue;
+		this.createUniform( global.name, global.uniform, global.type, global.value, global.options );
+	}
+
+	//restore old values
+	this.assignOldProperties( old_properties );
+
+	//set stuff
+	//TODO
+
+	this._shader_version = shader_code._version;
+}
+
+//used after changing the code of the ShaderCode and wanting to reload the material keeping the old properties
+ShaderMaterial.prototype.assignOldProperties = function( old_properties )
+{
+	//get shader code
+	var shader = null;
+	var shader_code = this.getShaderCode();
+	if( shader_code )
+		shader = shader_code.getShader();
+
+	for(var i = 0; i < this._properties.length; ++i)
+	{
+		var new_prop = this._properties[i];
+
+		if(!old_properties[ new_prop.name ])
+			continue;
+		var old = old_properties[ new_prop.name ];
+		if(old.value === undefined)
+			continue;
+
+
+		//validate
+		if( !old.internal && shader )
+		{
+			var uniform_info = shader.uniformInfo[ new_prop.uniform ];
+			if(!uniform_info)
+				continue;
+			if(new_prop.value !== undefined)
+			{
+				if( !GL.Shader.validateValue( new_prop.value, uniform_info ) )
+				{
+					new_prop.value = undefined;
+					continue;
+				}
+			}
+		}
+
+		//this is to keep current values when coding the shader from the editor
+		if( new_prop.value && new_prop.value.set ) //special case for typed arrays avoiding generating GC
+		{
+			//this is to be careful when an array changes sizes
+			if( old.value && old.value.length && new_prop.value.length && old.value.length <= new_prop.value.length)
+				new_prop.value.set( old.value );
+			else
+				new_prop.value = old.value;
+		}
+		else
+			new_prop.value = old.value;
+	}
+}
+
+ShaderMaterial.prototype.getShaderCode = function( instance, render_settings, pass )
+{
+	if(!this.shader)
+		return true; //skip rendering
+	return LS.ResourcesManager.getResource( this.shader );
+}
+
+//called from LS.Renderer when rendering an instance
+ShaderMaterial.prototype.renderInstance = function( instance, render_settings, pass )
+{
+	//get shader code
+	var shader_code = this.getShaderCode( instance, render_settings, pass );
+	if(!shader_code || shader_code.constructor !== LS.ShaderCode )
+		return true; //skip rendering
+
+	//this is in case the shader has been modified in the editor (reapplies the shadercode to the material)
+	if( shader_code._version !== this._shader_version && this.processShaderCode )
+		this.processShaderCode();
+
+	//some globals
+	var renderer = LS.Renderer;
+	var camera = LS.Renderer._current_camera;
+	var scene = LS.Renderer._current_scene;
+	var model = instance.matrix;
+
+	//node matrix info
+	var instance_final_query = instance._final_query;
+	var instance_final_samplers = instance._final_samplers;
+	var render_uniforms = LS.Renderer._render_uniforms;
+
+	//maybe this two should be somewhere else
+	render_uniforms.u_model = model; 
+	render_uniforms.u_normal_model = instance.normal_matrix; 
+
+	//compute flags
+	var block_flags = instance.computeShaderBlockFlags();
+
+	//global stuff
+	this.render_state.enable();
+	LS.Renderer.bindSamplers( this._samplers );
+
+	if(this.onRenderInstance)
+		this.onRenderInstance( instance );
+
+	//add flags related to lights
+	var lights = null;
+
+	if( pass.id == COLOR_PASS && this._light_mode !== Material.NO_LIGHTS )
+		lights = LS.Renderer.getNearLights( instance );
+
+	var ignore_lights = render_settings.lights_disabled;
+
+	if( !lights || lights.length == 0 || ignore_lights )
+	{
+		//extract shader compiled
+		var shader = shader_code.getShader( pass.name, block_flags );
+		if(!shader)
+		{
+			//var shader = shader_code.getShader( "surface", block_flags );
+			return false;
+		}
+
+		//assign
+		shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, light ? light._uniforms : null, this._uniforms, instance.uniforms ] );
+
+		if( ignore_lights )
+			shader.setUniform("u_ambient_light", LS.ONES );
+
+		//render
+		instance.render( shader, this._primitive != -1 ? this._primitive : undefined );
+		renderer._rendercalls += 1;
+	
+		return true;
+	}
+
+	var prev_shader = null;
+	for(var i = 0; i < lights.length; ++i)
+	{
+		var light = lights[i];
+		block_flags = light.applyShaderBlockFlags( block_flags, pass, render_settings );
+
+		//extract shader compiled
+		var shader = shader_code.getShader( null, block_flags );
+		if(!shader)
+			continue;
+
+		//light texture like shadowmap and cookie
+		LS.Renderer.bindSamplers( light._samplers );
+
+		//light parameters (like index of pass or num passes)
+		light._uniforms.u_light_info[2] = i;
+		light._uniforms.u_light_info[3] = lights.length;
+
+		//assign
+		if(prev_shader != shader)
+			shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, light._uniforms, this._uniforms, instance.uniforms ] );
+		else
+			shader.uniforms( light._uniforms );
+		prev_shader = shader;
+
+		if(i == 1)
+		{
+			gl.depthMask( false );
+			gl.depthFunc( gl.EQUAL );
+			gl.enable( gl.BLEND );
+			gl.blendFunc( gl.SRC_ALPHA, gl.ONE );
+		}
+
+		//render
+		instance.render( shader, this._primitive != -1 ? this._primitive : undefined );
+		renderer._rendercalls += 1;
+	}
+
+	//optimize this
+	gl.disable( gl.BLEND );
+	gl.depthMask( true );
+	gl.depthFunc( gl.LESS );
+
+	return true;
+}
+
+ShaderMaterial.prototype.renderShadowInstance = function( instance, render_settings, pass )
+{
+	return this.renderInstance( instance, render_settings, pass );
+}
+
+ShaderMaterial.prototype.renderPickingInstance = function( instance, render_settings, pass )
+{
+	//get shader code
+	var shader_code = this.getShaderCode( instance, render_settings, pass );
+	if(!shader_code || shader_code.constructor !== LS.ShaderCode )
+		return;
+
+	//some globals
+	var renderer = LS.Renderer;
+	var camera = LS.Renderer._current_camera;
+	var scene = LS.Renderer._current_scene;
+	var model = instance.matrix;
+	var node = instance.node;
+
+	//node matrix info
+	var instance_final_query = instance._final_query;
+	var instance_final_samplers = instance._final_samplers;
+	var render_uniforms = LS.Renderer._render_uniforms;
+
+	//maybe this two should be somewhere else
+	render_uniforms.u_model = model; 
+	render_uniforms.u_normal_model = instance.normal_matrix; 
+
+	//compute flags
+	var block_flags = instance.computeShaderBlockFlags();
+
+	//global stuff
+	this.render_state.enable();
+	LS.Renderer.bindSamplers( this._samplers );
+
+	//extract shader compiled
+	var shader = shader_code.getShader( pass.name, block_flags );
+	if(!shader)
+	{
+		shader_code = LS.ShaderMaterial.getDefaultPickingShaderCode();
+		shader = shader_code.getShader( pass.name, block_flags );
+		if(!shader)
+			return false; //??!
+	}
+
+	//assign uniforms
+	shader.uniformsArray( [ camera._uniforms, render_uniforms, this._uniforms, instance.uniforms ] );
+
+	//set color
+	var pick_color = LS.Picking.getNextPickingColor( instance.picking_node || node );
+	shader.setUniform("u_material_color", pick_color );
+
+	//render
+	instance.render( shader, this._primitive != -1 ? this._primitive : undefined );
+	renderer._rendercalls += 1;
+
+	//optimize this
+	gl.disable( gl.BLEND );
+	gl.depthMask( true );
+	gl.depthFunc( gl.LESS );
+
+	return true;
+}
+
+ShaderMaterial.prototype.getTextureChannels = function()
+{
+	var channels = [];
+
+	for(var i in this._properties)
+	{
+		var p = this._properties[i];
+		if(p.is_texture)
+			channels.push( p.name );
+	}
+
+	return channels;
+}
+
+/**
+* Collects all the resources needed by this material (textures)
+* @method getResources
+* @param {Object} resources object where all the resources are stored
+* @return {Texture}
+*/
+ShaderMaterial.prototype.getResources = function ( res )
+{
+	if(this.shader)
+		res[ this.shader ] = LS.ShaderCode;
+
+	for(var i in this._properties)
+	{
+		var p = this._properties[i];
+		if(p.value && p.is_texture)
+		{
+			if(!p.value)
+				continue;
+			var name = null;
+			if(p.value.texture)
+				name = 	p.value.texture;
+			else
+				name = res[ p.value ];
+			if(name && name.constructor === String)
+				res[name] = GL.Texture;
+		}
+	}
+	return res;
+}
+
+
+ShaderMaterial.prototype.getPropertyInfoFromPath = function( path )
+{
+	if( path.length < 1)
+		return;
+
+	var info = Material.prototype.getPropertyInfoFromPath.call(this,path);
+	if(info)
+		return info;
+
+	var varname = path[0];
+
+	for(var i = 0, l = this.properties.length; i < l; ++i )
+	{
+		var prop = this.properties[i];
+		if(prop.name != varname)
+			continue;
+
+		return {
+			node: this._root,
+			target: this,
+			name: prop.name,
+			value: prop.value,
+			type: prop.type
+		};
+	}
+
+	return;
+}
+
+//get shader code
+ShaderMaterial.prototype.getShaderCode = function()
+{
+	var shader_code = LS.ResourcesManager.getResource( this.shader );
+	if(!shader_code || shader_code.constructor !== LS.ShaderCode )
+		return null;
+
+	//this is in case the shader has been modified in the editor (reapplies the shadercode to the material)
+	if( shader_code._version !== this._shader_version && this.processShaderCode )
+	{
+		shader_code._version = this._shader_version;
+		this.processShaderCode();
+	}
+
+	return shader_code;
+}
+
+/**
+* Takes an input texture and applies the ShaderMaterial, the result is shown on the viewport or stored in the output_texture
+* The ShaderCode must contain a "fx" method.
+* Similar to the method BlitTexture in Unity
+* @method applyToTexture
+* @param {Texture} input_texture
+* @param {Texture} output_texture [optional] where to store the result, if omitted it will be shown in the viewport
+*/
+ShaderMaterial.prototype.applyToTexture = function( input_texture, output_texture )
+{
+	if( !this.shader || !input_texture )
+		return false;
+
+	//get shader code
+	var shader_code = this.getShaderCode();
+	if(!shader_code)
+		return false;
+
+	//extract shader compiled
+	var shader = shader_code.getShader("fx");
+	if(!shader)
+		return false;
+
+	//global vars
+	this.fillUniforms();
+	this._uniforms.u_time = LS.GlobalScene._time;
+	this._uniforms.u_viewport = gl.viewport_data;
+
+	//bind samplers
+	LS.Renderer.bindSamplers( this._samplers );
+
+	gl.disable( gl.DEPTH_TEST );
+	gl.disable( gl.CULL_FACE );
+
+	//render
+	if(!output_texture)
+		input_texture.toViewport( shader, this._uniforms );
+	else
+		output_texture.drawTo( function(){
+			input_texture.toViewport( shader, this._uniforms );
+		});
+}
+
+/**
+* Makes one shader variable (uniform) public so it can be assigned from the engine (or edited from the editor)
+* @method createUniform
+* @param {String} name the property name as it should be shown
+* @param {String} uniform the uniform name in the shader
+* @param {String} type the var type in case we want to edit it (use LS.TYPES)
+* @param {*} value
+* @param {Object} options an object containing all the possible options (used mostly for widgets)
+*/
+ShaderMaterial.prototype.createUniform = function( name, uniform, type, value, options )
+{
+	if(!name || !uniform)
+		throw("parameter missing in createUniform");
+
+	//
+	type = type || "Number";
+	if( type.constructor !== String )
+		throw("type must be string");
+
+	//cast to typed-array
+	value = value || 0;
+	if(value && value.length)
+		value = new Float32Array( value );//cast them always
+	else
+	{
+		//create a value, otherwise is null
+		switch (type)
+		{
+			case "vec2": value = vec2.create(); break;
+			case "color":
+			case "vec3": value = vec3.create(); break;
+			case "color4":
+			case "vec4": value = vec4.create(); break;
+			case "mat3": value = mat3.create(); break;
+			case "mat4": value = mat4.create(); break;
+			default:
+		}
+	}
+
+	//define info
+	var prop = { name: name, uniform: uniform, value: value, type: type, is_texture: 0 };
+
+	//mark as texture (because this need to go to the textures container so they are binded)
+	if(type.toLowerCase() == "texture" || type == "sampler2D" || type == "samplerCube" || type == "sampler")
+		prop.is_texture = (type == "samplerCube") ? 2 : 1;
+
+	if(prop.is_texture)
+	{
+		prop.sampler = {};
+		prop.type = "sampler";
+		prop.sampler_slot = this._samplers.length;
+		this._samplers.push( prop.sampler );
+	}
+
+	if(options)
+		for(var i in options)
+			prop[i] = options[i];
+
+	this._properties.push( prop );
+	this._properties_by_name[ name ] = prop;
+}
+
+/**
+* Similar to createUniform but for textures, it helps specifying sampler options
+* @method createSampler
+* @param {String} name the property name as it should be shown
+* @param {String} uniform the uniform name in the shader
+* @param {Object} options an object containing all the possible options (used mostly for widgets)
+* @param {String} value default value (texture name)
+*/
+ShaderMaterial.prototype.createSampler = function( name, uniform, sampler_options, value  )
+{
+	if(!name || !uniform)
+		throw("parameter missing in createSampler");
+
+	var sampler = {
+		texture: value
+	};
+
+	var prop = { name: name, uniform: uniform, value: sampler, type: "sampler", is_texture: 1, sampler_slot: -1 };
+
+	if(sampler_options)
+	{
+		if(sampler_options.filter)
+		{
+			sampler.magFilter = sampler_options.filter;
+			sampler.minFilter = sampler_options.filter;
+			delete sampler_options.filter;
+		}
+
+		if(sampler_options.wrap)
+		{
+			sampler.wrapS = sampler_options.wrap;
+			sampler.wrapT = sampler_options.wrap;
+			delete sampler_options.wrap;
+		}
+
+		for(var i in sampler_options)
+			sampler[i] = sampler_options[i];
+	}
+	prop.sampler_slot = this._samplers.length;
+	this._properties.push( prop );
+	this._properties_by_name[ name ] = prop;
+	this._samplers.push( prop.value );
+}
+
+/**
+* Creates a property for this material, this property wont be passed to the shader but can be used from source code.
+* You must used this function if you want the data to be stored when serializing or changing the ShaderCode
+* @method createProperty
+* @param {String} name the property name as it should be shown
+* @param {*} value the default value
+* @param {String} type the data type (use LS.TYPES)
+* @param {Object} options an object containing all the possible options (used mostly for widgets)
+*/
+ShaderMaterial.prototype.createProperty = function( name, value, type, options )
+{
+	var prop = this._properties_by_name[ name ];
+	if(prop && prop.type == type) //already exist with the same type
+		return;
+
+	prop = { name: name, type: type, internal: true, value: value };
+	if(options)
+		for(var i in options)
+			prop[i] = options[i];
+
+	this._properties.push( prop );
+	this._properties_by_name[ name ] = prop;
+
+	Object.defineProperty( this, name, {
+		get: function() { 
+			var prop = this._properties_by_name[ name ]; //fetch it because could have been overwritten
+			if(prop)
+				return prop.value;
+		},
+		set: function(v) { 
+			var prop = this._properties_by_name[ name ]; //fetch it because could have been overwritten
+			if(!prop)
+				return;
+			if(prop.value && prop.value.set) //for typed arrays
+				prop.value.set( v );
+			else
+				prop.value = v;
+		},
+		enumerable: false, //must not be serialized
+		configurable: true //allows to overwrite this property
+	});
+}
+
+ShaderMaterial.getDefaultPickingShaderCode = function()
+{
+	if( ShaderMaterial.default_picking_shader_code )
+		return ShaderMaterial.default_picking_shader_code;
+	var sc = new LS.ShaderCode();
+	sc.code = LS.ShaderCode.flat_code;
+	ShaderMaterial.default_picking_shader_code = sc;
+	return sc;
+}
+
+LS.registerMaterialClass( ShaderMaterial );
+LS.ShaderMaterial = ShaderMaterial;
+
+
+//Register ShaderBlocks
+//TODO?
 
 
 
@@ -6621,6 +7396,7 @@ StandardMaterial.prototype.setProperty = function(name, value)
 			break;
 		//vectors
 		case "ambient":	
+		case "diffuse": 
 		case "emissive": 
 		case "velvet":
 		case "detail_scale":
@@ -6745,6 +7521,7 @@ function SurfaceMaterial( o )
 	this.shader_name = "surface";
 
 	this.blend_mode = LS.Blend.NORMAL;
+	this._light_mode = 1;
 
 	this.flags = {
 		alpha_test: false,
@@ -6759,8 +7536,7 @@ function SurfaceMaterial( o )
 		ignore_frustum: false
 	};
 
-	this.vs_code = "";
-	this.code = "void surf(in Input IN, inout SurfaceOutput o) {\n\
+	this._code = "void surf(in Input IN, inout SurfaceOutput o) {\n\
 	o.Albedo = vec3(1.0) * IN.color.xyz;\n\
 	o.Normal = IN.worldNormal;\n\
 	o.Emission = vec3(0.0);\n\
@@ -6771,6 +7547,8 @@ function SurfaceMaterial( o )
 
 	this._uniforms = {};
 	this._samplers = [];
+
+	this._mustUpdate = false;
 
 	this.properties = []; //array of configurable properties
 	if(o) 
@@ -6783,40 +7561,27 @@ SurfaceMaterial.prototype.applyFlagsToRenderState = StandardMaterial.prototype.a
 SurfaceMaterial.prototype.prepare = StandardMaterial.prototype.prepare;
 
 SurfaceMaterial.icon = "mini-icon-material.png";
-SurfaceMaterial.coding_help = "\
-struct Input {\n\
-	vec4 color;\n\
-	vec3 vertex;\n\
-	vec3 normal;\n\
-	vec2 uv;\n\
-	vec2 uv1;\n\
-	\n\
-	vec3 camPos;\n\
-	vec3 viewDir;\n\
-	vec3 worldPos;\n\
-	vec3 worldNormal;\n\
-	vec4 screenPos;\n\
-};\n\
-\n\
-struct SurfaceOutput {\n\
-	vec3 Albedo;\n\
-	vec3 Normal;\n\
-	vec3 Emission;\n\
-	float Specular;\n\
-	float Gloss;\n\
-	float Alpha;\n\
-	float Reflectivity;\n\
-};\n\
-";
 
 SurfaceMaterial.prototype.onCodeChange = function()
 {
-	this.computeCode();
+	this._mustUpdate = true;
+	//this.computeCode();
 }
+
+Object.defineProperty( SurfaceMaterial.prototype, "code", {
+	enumerable: true,
+	get: function() {
+		return this._code;
+	},
+	set: function(v) {
+		this._code = String(v);
+		this._mustUpdate = true;
+	}
+});
 
 SurfaceMaterial.prototype.getCode = function()
 {
-	return this.code;
+	return this._code;
 }
 
 SurfaceMaterial.prototype.computeCode = function()
@@ -6840,60 +7605,33 @@ SurfaceMaterial.prototype.computeCode = function()
 			default: 
 				continue;
 		}
-		code += prop.name + ";";
+		code += prop.name + ";\n";
 		uniforms_code += code;
 	}
 
-	var lines = this.code.split("\n");
+	/*
+	var lines = this._code.split("\n");
 	for(var i = 0, l = lines.length; i < l; ++i )
 		lines[i] = lines[i].split("//")[0]; //remove comments
+	*/
 
-	this.surf_code = uniforms_code + lines.join("");
+	this.surf_code = uniforms_code + "\n" + this._code;
+	var code = LS.SurfaceMaterial.code_template;
+	var final_code = code.replace("{{FS_CODE}}", this.surf_code );
+	if(!this._shadercode)
+		this._shadercode = new LS.ShaderCode();
+	this._shadercode.code = final_code;
+	this._mustUpdate = false;
 }
 
-// RENDERING METHODS
-SurfaceMaterial.prototype.onModifyQuery = function( query )
+SurfaceMaterial.prototype.renderInstance = ShaderMaterial.prototype.renderInstance;
+
+SurfaceMaterial.prototype.getShaderCode = function( instance, render_settings, pass )
 {
-	if(this._ps_uniforms_code)
-	{
-		if(query.macros.USE_PIXEL_SHADER_UNIFORMS)
-			query.macros.USE_PIXEL_SHADER_UNIFORMS += this._ps_uniforms_code;
-		else
-			query.macros.USE_PIXEL_SHADER_UNIFORMS = this._ps_uniforms_code;
-	}
-
-	if(this._ps_functions_code)
-	{
-		if(query.macros.USE_PIXEL_SHADER_FUNCTIONS)
-			query.macros.USE_PIXEL_SHADER_FUNCTIONS += this._ps_functions_code;
-		else
-			query.macros.USE_PIXEL_SHADER_FUNCTIONS = this._ps_functions_code;
-	}
-
-	if(this._ps_code)
-	{
-		if(query.macros.USE_PIXEL_SHADER_CODE)
-			query.macros.USE_PIXEL_SHADER_CODE += this._ps_code;
-		else
-			query.macros.USE_PIXEL_SHADER_CODE = this._ps_code;	
-	}
-
-	query.macros.USE_SURFACE_SHADER = this.surf_code;
+	if(!this._shadercode || this._mustUpdate )
+		this.computeCode();
+	return this._shadercode;
 }
-
-SurfaceMaterial.prototype.fillShaderQuery = function(scene)
-{
-	var query = this._query;
-	query.clear();
-	if( this.textures["environment"] )
-	{
-		var sampler = this.textures["environment"];
-		var tex = LS.getTexture( sampler.texture );
-		if(tex)
-			query.macros[ "USE_ENVIRONMENT_" + (tex.type == gl.TEXTURE_2D ? "TEXTURE" : "CUBEMAP") ] = sampler.uvs;
-	}
-}
-
 
 SurfaceMaterial.prototype.fillUniforms = function( scene, options )
 {
@@ -6927,16 +7665,6 @@ SurfaceMaterial.prototype.fillUniforms = function( scene, options )
 	}
 
 	this._uniforms.u_material_color = this._color;
-
-	/*
-	if(this.textures["environment"])
-	{
-		var sampler = this.textures["environment"];
-		var texture = LS.getTexture( sampler.texture );
-		if(texture)
-			samplers[ "environment" + (texture.texture_type == gl.TEXTURE_2D ? "_texture" : "_cubemap") ] = sampler;
-	}
-	*/
 }
 
 SurfaceMaterial.prototype.configure = function(o) { 
@@ -7180,682 +7908,91 @@ SurfaceMaterial.prototype.getResources = function (res)
 LS.registerMaterialClass( SurfaceMaterial );
 LS.SurfaceMaterial = SurfaceMaterial;
 
-/**
-* ShaderMaterial allows to use your own shader from scratch, but you loose some of the benefits of using the dynamic shader system of LS
-* @namespace LS
-* @class ShaderMaterial
-* @constructor
-* @param {Object} object [optional] to configure from
-*/
-function ShaderMaterial( o )
-{
-	Material.call( this, null );
-
-	this._shader = null;
-	this._shader_version = -1;
-	this._shader_flags = 0; //?
-
-	this._uniforms = {};
-	this._samplers = [];
-	this._properties = [];
-	this._properties_by_name = {};
-
-	this._passes = {};
-	this._light_mode = 0;
-
-	if(o) 
-		this.configure(o);
-}
-
-Object.defineProperty( ShaderMaterial.prototype, "shader", {
-	enumerable: true,
-	get: function() {
-		return this._shader;
-	},
-	set: function(v) {
-		if(v)
-			v = LS.ResourcesManager.cleanFullpath(v);
-		if(this._shader == v)
-			return;
-		this._shader = v;
-		this.processShaderCode();
-	}
-});
-
-Object.defineProperty( ShaderMaterial.prototype, "properties", {
-	enumerable: true,
-	get: function() {
-		return this._properties;
-	},
-	set: function(v) {
-		if(!v)
-			return;
-		this._properties = v;
-		this._properties_by_name = {};
-		for(var i in this._properties)
-		{
-			var p = this._properties[i];
-			this._properties_by_name[ p.name ] = p;
-		}
-	}
-});
-
-Object.defineProperty( ShaderMaterial.prototype, "enableLights", {
-	enumerable: true,
-	get: function() {
-		return this._light_mode != 0;
-	},
-	set: function(v) {
-		this._light_mode = v ? 1 : 0;
-	}
-});
-
-/**
-* Makes one shader variable (uniform) public so it can be assigned from the engine (or edited from the editor)
-* @method createUniform
-* @param {String} name the property name as it should be shown
-* @param {String} uniform the uniform name in the shader
-* @param {String} type the var type in case we want to edit it (use LS.TYPES)
-* @param {*} value
-* @param {Object} options an object containing all the possible options (used mostly for widgets)
-*/
-ShaderMaterial.prototype.createUniform = function( name, uniform, type, value, options )
-{
-	if(!name || !uniform)
-		throw("parameter missing in createUniform");
-
-	//
-	type = type || "Number";
-	if( type.constructor !== String )
-		throw("type must be string");
-
-	//cast to typed-array
-	value = value || 0;
-	if(value && value.length)
-		value = new Float32Array( value );//cast them always
-	else
-	{
-		//create a value, otherwise is null
-		switch (type)
-		{
-			case "vec2": value = vec2.create(); break;
-			case "color":
-			case "vec3": value = vec3.create(); break;
-			case "color4":
-			case "vec4": value = vec4.create(); break;
-			case "mat3": value = mat3.create(); break;
-			case "mat4": value = mat4.create(); break;
-			default:
-		}
-	}
-
-	//define info
-	var prop = { name: name, uniform: uniform, value: value, type: type, is_texture: 0 };
-
-	//mark as texture (because this need to go to the textures container so they are binded)
-	if(type.toLowerCase() == "texture" || type == "sampler2D" || type == "samplerCube" || type == "sampler")
-		prop.is_texture = (type == "samplerCube") ? 2 : 1;
-
-	if(prop.is_texture)
-	{
-		prop.sampler = {};
-		prop.type = "sampler";
-		prop.sampler_slot = this._samplers.length;
-		this._samplers.push( prop.sampler );
-	}
-
-	if(options)
-		for(var i in options)
-			prop[i] = options[i];
-
-	this._properties.push( prop );
-	this._properties_by_name[ name ] = prop;
-}
-
-/**
-* Similar to createUniform but for textures, it helps specifying sampler options
-* @method createSampler
-* @param {String} name the property name as it should be shown
-* @param {String} uniform the uniform name in the shader
-* @param {Object} options an object containing all the possible options (used mostly for widgets)
-* @param {String} value default value (texture name)
-*/
-ShaderMaterial.prototype.createSampler = function( name, uniform, sampler_options, value  )
-{
-	if(!name || !uniform)
-		throw("parameter missing in createSampler");
-
-	var sampler = {
-		texture: value
-	};
-
-	var prop = { name: name, uniform: uniform, value: sampler, type: "sampler", is_texture: 1, sampler_slot: -1 };
-
-	if(sampler_options)
-	{
-		if(sampler_options.filter)
-		{
-			sampler.magFilter = sampler_options.filter;
-			sampler.minFilter = sampler_options.filter;
-			delete sampler_options.filter;
-		}
-
-		if(sampler_options.wrap)
-		{
-			sampler.wrapS = sampler_options.wrap;
-			sampler.wrapT = sampler_options.wrap;
-			delete sampler_options.wrap;
-		}
-
-		for(var i in sampler_options)
-			sampler[i] = sampler_options[i];
-	}
-	prop.sampler_slot = this._samplers.length;
-	this._properties.push( prop );
-	this._properties_by_name[ name ] = prop;
-	this._samplers.push( prop.value );
-}
-
-/**
-* Creates a property for this material, this property wont be passed to the shader but can be used from source code.
-* You must used this function if you want the data to be stored when serializing or changing the ShaderCode
-* @method createProperty
-* @param {String} name the property name as it should be shown
-* @param {*} value the default value
-* @param {String} type the data type (use LS.TYPES)
-* @param {Object} options an object containing all the possible options (used mostly for widgets)
-*/
-ShaderMaterial.prototype.createProperty = function( name, value, type, options )
-{
-	var prop = this._properties_by_name[ name ];
-	if(prop && prop.type == type) //already exist with the same type
-		return;
-
-	prop = { name: name, type: type, internal: true, value: value };
-	if(options)
-		for(var i in options)
-			prop[i] = options[i];
-
-	this._properties.push( prop );
-	this._properties_by_name[ name ] = prop;
-
-	Object.defineProperty( this, name, {
-		get: function() { 
-			var prop = this._properties_by_name[ name ]; //fetch it because could have been overwritten
-			if(prop)
-				return prop.value;
-		},
-		set: function(v) { 
-			var prop = this._properties_by_name[ name ]; //fetch it because could have been overwritten
-			if(!prop)
-				return;
-			if(prop.value && prop.value.set) //for typed arrays
-				prop.value.set( v );
-			else
-				prop.value = v;
-		},
-		enumerable: false, //must not be serialized
-		configurable: true //allows to overwrite this property
-	});
-}
-
-ShaderMaterial.prototype.addPass = function( name, vertex_shader, fragment_shader, macros )
-{
-	this._passes[ name ] = {
-		vertex: vertex_shader,
-		fragment: fragment_shader,
-		macros: macros
-	};
-}
-
-//called when preparing materials before rendering the scene
-ShaderMaterial.prototype.prepare = function( scene )
-{
-	this.fillUniforms();
-
-	if( this.onPrepare )
-		this.onPrepare( scene );
-}
-
-//called when filling uniforms from prepare
-ShaderMaterial.prototype.fillUniforms = function()
-{
-	//gather uniforms & samplers
-	var samplers = this._samplers;
-	samplers.length = 0;
-
-	this._uniforms.u_material_color = this._color;
-
-	for(var i = 0; i < this._properties.length; ++i)
-	{
-		var p = this._properties[i];
-		if(p.internal) //internal is a property that is not for the shader (is for internal computations)
-			continue;
-
-		if(p.is_texture)
-		{
-			this._uniforms[ p.uniform ] = samplers.length;
-			if(p.value)
-				samplers.push( p.value );
-			else
-				samplers.push( " " ); //force missing texture
-		}
-		else
-			this._uniforms[ p.uniform ] = p.value;
-	}
-}
-
-//assigns a value to a property
-ShaderMaterial.prototype.setProperty = function(name, value)
-{
-	//redirect to base material
-	if( Material.prototype.setProperty.call(this,name,value) )
-		return true;
-
-	if(name == "shader")
-		this.shader = value;
-	else if(name == "properties")
-	{
-		this.properties.length = 0;
-		this._properties_by_name = {};
-		for(var i = 0; i < value.length; ++i)
-		{
-			var prop = value[i];
-			if(prop.is_texture && prop.value && prop.value.constructor === String)
-				prop.value = { texture: prop.value };
-			this.properties[i] = prop;
-			this._properties_by_name[ prop.name ] = prop;
-			this._samplers.push( prop.value );
-		}
-	}
-	else if( this._properties_by_name[ name ] )
-	{
-		var prop = this._properties_by_name[ name ];
-		if( !prop.value || !prop.value.length)
-			prop.value = value;
-		else
-			prop.value.set( value );
-	}
-	else
-		return false;
-	return true;
-}
-
-//check the ShaderCode associated and applies it to this material (keeping the state of the properties)
-ShaderMaterial.prototype.processShaderCode = function()
-{
-	if(!this._shader)
-	{
-		this._properties.length = 0;
-		this._properties_by_name = {};
-		this._passes = {};
-		this._samplers.length = 0;
-		return false;
-	}
-
-	//get shader code
-	var shader_code = LS.ResourcesManager.getResource( this.shader );
-	if(!shader_code || shader_code.constructor !== LS.ShaderCode )
-		return false;
-
-	var old_properties = this._properties_by_name;
-	this._properties.length = 0;
-	this._properties_by_name = {};
-	this._passes = {};
-	this._samplers.length = 0;
-
-	//reset material properties
-	this._queue = LS.RenderQueue.GEOMETRY;
-	this.render_state.init();
-
-	//clear old functions
-	for(var i in this)
-	{
-		if(!this.hasOwnProperty(i))
-			continue;
-		if( this[i] && this[i].constructor === Function )
-			delete this[i];
-	}
-
-	//apply init 
-	if( shader_code._functions.init )
-	{
-		if(!LS.catch_exceptions)
-			shader_code._functions.init.call( this );
-		else
-		{
-			try
-			{
-				shader_code._functions.init.call( this );
-			}
-			catch (err)
-			{
-				LS.dispatchCodeError(err);
-			}
-		}
-	}
-
-	for(var i in shader_code._global_uniforms)
-	{
-		var global = shader_code._global_uniforms[i];
-		if( global.disabled ) //in case this var is not found in the shader
-			continue;
-		this.createUniform( global.name, global.uniform, global.type, global.value, global.options );
-	}
-
-	//restore old values
-	this.assignOldProperties( old_properties );
-
-	//set stuff
-	//TODO
-
-	this._shader_version = shader_code._version;
-}
-
-//used after changing the code of the ShaderCode and wanting to reload the material keeping the old properties
-ShaderMaterial.prototype.assignOldProperties = function( old_properties )
-{
-	//get shader code
-	var shader = null;
-	var shader_code = this.getShaderCode();
-	if( shader_code )
-		shader = shader_code.getShader();
-
-	for(var i = 0; i < this._properties.length; ++i)
-	{
-		var new_prop = this._properties[i];
-
-		if(!old_properties[ new_prop.name ])
-			continue;
-		var old = old_properties[ new_prop.name ];
-		if(old.value === undefined)
-			continue;
-
-
-		//validate
-		if( !old.internal && shader )
-		{
-			var uniform_info = shader.uniformInfo[ new_prop.uniform ];
-			if(!uniform_info)
-				continue;
-			if(new_prop.value !== undefined)
-			{
-				if( !GL.Shader.validateValue( new_prop.value, uniform_info ) )
-				{
-					new_prop.value = undefined;
-					continue;
-				}
-			}
-		}
-
-		//this is to keep current values when coding the shader from the editor
-		if( new_prop.value && new_prop.value.set ) //special case for typed arrays avoiding generating GC
-		{
-			//this is to be careful when an array changes sizes
-			if( old.value && old.value.length && new_prop.value.length && old.value.length <= new_prop.value.length)
-				new_prop.value.set( old.value );
-			else
-				new_prop.value = old.value;
-		}
-		else
-			new_prop.value = old.value;
-	}
-}
-
-//called from LS.Renderer when rendering an instance
-ShaderMaterial.prototype.renderInstance = function( instance, render_settings, pass )
-{
-	if(!this.shader)
-		return true; //skip rendering
-
-	//get shader code
-	var shader_code = LS.ResourcesManager.getResource( this.shader );
-	if(!shader_code || shader_code.constructor !== LS.ShaderCode )
-		return true; //skip rendering
-
-	//this is in case the shader has been modified in the editor...
-	if( shader_code._version !== this._shader_version )
-		this.processShaderCode();
-
-	//some globals
-	var renderer = LS.Renderer;
-	var camera = LS.Renderer._current_camera;
-	var scene = LS.Renderer._current_scene;
-	var model = instance.matrix;
-
-	//node matrix info
-	var instance_final_query = instance._final_query;
-	var instance_final_samplers = instance._final_samplers;
-	var render_uniforms = LS.Renderer._render_uniforms;
-
-	//maybe this two should be somewhere else
-	render_uniforms.u_model = model; 
-	render_uniforms.u_normal_model = instance.normal_matrix; 
-
-	//compute flags
-	var block_flags = instance.computeShaderBlockFlags();
-
-	//global stuff
-	this.render_state.enable();
-	LS.Renderer.bindSamplers( this._samplers );
-
-	if(this.onRenderInstance)
-		this.onRenderInstance( instance );
-
-	//add flags related to lights
-	var lights = null;
-
-	if( pass.id == COLOR_PASS && this._light_mode !== Material.NO_LIGHTS )
-		lights = LS.Renderer.getNearLights( instance );
-
-	var ignore_lights = render_settings.lights_disabled;
-
-	if( !lights || lights.length == 0 || ignore_lights )
-	{
-		//extract shader compiled
-		var shader = shader_code.getShader( pass.name, block_flags );
-		if(!shader)
-		{
-			//var shader = shader_code.getShader( "surface", block_flags );
-			return false;
-		}
-
-		//assign
-		shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, light ? light._uniforms : null, this._uniforms, instance.uniforms ] );
-
-		if( ignore_lights )
-			shader.setUniform("u_ambient_light", LS.ONES );
-
-		//render
-		instance.render( shader );
-		renderer._rendercalls += 1;
-	
-		return true;
-	}
-
-	var prev_shader = null;
-	for(var i = 0; i < lights.length; ++i)
-	{
-		var light = lights[i];
-		block_flags = light.applyShaderBlockFlags( block_flags, pass, render_settings );
-
-		//extract shader compiled
-		var shader = shader_code.getShader( null, block_flags );
-		if(!shader)
-			continue;
-
-		//light texture like shadowmap and cookie
-		LS.Renderer.bindSamplers( light._samplers );
-
-		light._uniforms.u_light_info[2] = i;
-		light._uniforms.u_light_info[3] = lights.length;
-
-		//assign
-		if(prev_shader != shader)
-			shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, light._uniforms, this._uniforms, instance.uniforms ] );
-		else
-			shader.uniforms( light._uniforms );
-		prev_shader = shader;
-
-		if(i == 1)
-		{
-			gl.depthMask( false );
-			gl.depthFunc( gl.EQUAL );
-			gl.enable( gl.BLEND );
-			gl.blendFunc( gl.SRC_ALPHA, gl.ONE );
-		}
-
-		//render
-		instance.render( shader );
-		renderer._rendercalls += 1;
-	}
-
-	//optimize this
-	gl.disable( gl.BLEND );
-	gl.depthMask( true );
-	gl.depthFunc( gl.LESS );
-
-	return true;
-}
-
-ShaderMaterial.prototype.renderShadowInstance = function( instance, render_settings, pass )
-{
-	return this.renderInstance( instance, render_settings, pass );
-}
-
-ShaderMaterial.prototype.getTextureChannels = function()
-{
-	var channels = [];
-
-	for(var i in this._properties)
-	{
-		var p = this._properties[i];
-		if(p.is_texture)
-			channels.push( p.name );
-	}
-
-	return channels;
-}
-
-/**
-* Collects all the resources needed by this material (textures)
-* @method getResources
-* @param {Object} resources object where all the resources are stored
-* @return {Texture}
-*/
-ShaderMaterial.prototype.getResources = function ( res )
-{
-	if(this.shader)
-		res[ this.shader ] = LS.ShaderCode;
-
-	for(var i in this._properties)
-	{
-		var p = this._properties[i];
-		if(p.value && p.is_texture)
-		{
-			if(!p.value)
-				continue;
-			var name = null;
-			if(p.value.texture)
-				name = 	p.value.texture;
-			else
-				name = res[ p.value ];
-			if(name && name.constructor === String)
-				res[name] = GL.Texture;
-		}
-	}
-	return res;
-}
-
-
-ShaderMaterial.prototype.getPropertyInfoFromPath = function( path )
-{
-	if( path.length < 1)
-		return;
-
-	var info = Material.prototype.getPropertyInfoFromPath.call(this,path);
-	if(info)
-		return info;
-
-	var varname = path[0];
-
-	for(var i = 0, l = this.properties.length; i < l; ++i )
-	{
-		var prop = this.properties[i];
-		if(prop.name != varname)
-			continue;
-
-		return {
-			node: this._root,
-			target: this,
-			name: prop.name,
-			value: prop.value,
-			type: prop.type
-		};
-	}
-
-	return;
-}
-
-//get shader code
-ShaderMaterial.prototype.getShaderCode = function()
-{
-	var shader_code = LS.ResourcesManager.getResource( this.shader );
-	if(!shader_code || shader_code.constructor !== LS.ShaderCode )
-		return null;
-	return shader_code;
-}
-
-/**
-* Takes an input texture and applies the ShaderMaterial, the result is shown on the viewport or stored in the output_texture
-* The ShaderCode must contain a "fx" method.
-* Similar to the method BlitTexture in Unity
-* @method applyToTexture
-* @param {Texture} input_texture
-* @param {Texture} output_texture [optional] where to store the result, if omitted it will be shown in the viewport
-*/
-ShaderMaterial.prototype.applyToTexture = function( input_texture, output_texture )
-{
-	if( !this.shader || !input_texture )
-		return false;
-
-	//get shader code
-	var shader_code = this.getShaderCode();
-	if(!shader_code)
-		return false;
-
-	//extract shader compiled
-	var shader = shader_code.getShader("fx");
-	if(!shader)
-		return false;
-
-	//global vars
-	this.fillUniforms();
-	this._uniforms.u_time = LS.GlobalScene._time;
-	this._uniforms.u_viewport = gl.viewport_data;
-
-	//bind samplers
-	LS.Renderer.bindSamplers( this._samplers );
-
-	gl.disable( gl.DEPTH_TEST );
-	gl.disable( gl.CULL_FACE );
-
-	//render
-	if(!output_texture)
-		input_texture.toViewport( shader, this._uniforms );
-	else
-		output_texture.drawTo( function(){
-			input_texture.toViewport( shader, this._uniforms );
-		});
-}
-
-
-LS.registerMaterialClass( ShaderMaterial );
-LS.ShaderMaterial = ShaderMaterial;
-
-
-//Register ShaderBlocks
-//TODO?
+SurfaceMaterial.code_template = "\n\
+\n\
+\n\
+\\color.vs\n\
+\n\
+precision mediump float;\n\
+attribute vec3 a_vertex;\n\
+attribute vec3 a_normal;\n\
+attribute vec2 a_coord;\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+\n\
+//matrices\n\
+uniform mat4 u_model;\n\
+uniform mat4 u_normal_model;\n\
+uniform mat4 u_view;\n\
+uniform mat4 u_viewprojection;\n\
+\n\
+//globals\n\
+uniform float u_time;\n\
+uniform vec4 u_viewport;\n\
+uniform float u_point_size;\n\
+\n\
+#pragma shaderblock \"light\"\n\
+#pragma shaderblock \"morphing\"\n\
+#pragma shaderblock \"skinning\"\n\
+\n\
+//camera\n\
+uniform vec3 u_camera_eye;\n\
+void main() {\n\
+	\n\
+	vec4 vertex4 = vec4(a_vertex,1.0);\n\
+	v_normal = a_normal;\n\
+	v_uvs = a_coord;\n\
+  \n\
+  //deforms\n\
+  applyMorphing( vertex4, v_normal );\n\
+  applySkinning( vertex4, v_normal );\n\
+	\n\
+	//vertex\n\
+	v_pos = (u_model * vertex4).xyz;\n\
+  \n\
+  applyLight(v_pos);\n\
+  \n\
+	//normal\n\
+	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
+}\n\
+\n\
+\\color.fs\n\
+\n\
+precision mediump float;\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+\n\
+//globals\n\
+uniform vec3 u_camera_eye;\n\
+uniform vec4 u_clipping_plane;\n\
+uniform float u_time;\n\
+uniform vec3 u_background_color;\n\
+uniform vec4 u_material_color;\n\
+\n\
+#pragma shaderblock \"light\"\n\
+\n\
+#pragma snippet \"perturbNormal\"\n\
+\n\
+{{FS_CODE}}\n\
+\n\
+void main() {\n\
+  Input IN = getInput();\n\
+  SurfaceOutput o = getSurfaceOutput();\n\
+  surf(IN,o);\n\
+  vec4 final_color = vec4(0.0);\n\
+  Light LIGHT = getLight();\n\
+  final_color.xyz = computeLight( o, IN, LIGHT );\n\
+  final_color.a = o.Alpha;\n\
+  gl_FragColor = final_color;\n\
+}\n\
+";
 /*
 	A component container is someone who could have components attached to it.
 	Mostly used for SceneNodes but it could be used for other classes (like SceneTree or Project).
@@ -11854,10 +11991,36 @@ ShaderCode.prototype.getShader = function( render_mode, block_flags )
 		return null;
 	}
 
+	//globals
+	if( gl.extensions.OES_standard_derivatives )
+		fs_code = "#define STANDARD_DERIVATIVES\n" + fs_code;
+
 	//compile the shader and return it
 	var shader = this.compileShader( vs_code, fs_code );
 	if(!shader)
 		return null;
+
+	//DEBUG
+	if(LS.debug)
+	{
+		var blocks = [];
+		for(var i = 0; i < LS.ShadersManager.num_shaderblocks; ++i)
+		{
+			if( !(block_flags & 1<<i) ) //is flag enabled
+				continue;
+			var shader_block = LS.ShadersManager.shader_blocks.get(i);
+			if(!shader_block)
+				continue; //???
+			blocks.push( shader_block );
+		}
+		shader._shadercode_info = {
+			vs: vs_code,
+			fs: fs_code,
+			context: context,
+			blocks: blocks,
+			flags: block_flags
+		}
+	}
 
 	//cache as render_mode,flags
 	if( !this._compiled_shaders[ render_mode ] )
@@ -12051,6 +12214,52 @@ ShaderCode.parseShaderLab = function( code )
 	return root;
 }
 
+ShaderCode.flat_code = "\\color.vs\n\
+	precision mediump float;\n\
+	attribute vec3 a_vertex;\n\
+	uniform mat4 u_model;\n\
+	uniform mat4 u_viewprojection;\n\
+	void main() {\n\
+		vec4 vertex4 = vec4(a_vertex,1.0);\n\
+		gl_Position = (u_viewprojection * u_model) * vertex4;\n\
+	}\n\
+\\color.fs\n\
+	precision mediump float;\n\
+	uniform vec4 u_material_color;\n\
+	void main() {\n\
+		gl_FragColor = u_material_color;\n\
+	}\n\
+\\picking.vs\n\
+	precision mediump float;\n\
+	attribute vec3 a_vertex;\n\
+	uniform mat4 u_model;\n\
+	uniform mat4 u_viewprojection;\n\
+	void main() {\n\
+		vec4 vertex4 = vec4(a_vertex,1.0);\n\
+		gl_Position = (u_viewprojection * u_model) * vertex4;\n\
+	}\n\
+\\picking.fs\n\
+	precision mediump float;\n\
+	uniform vec4 u_material_color;\n\
+	void main() {\n\
+		gl_FragColor = u_material_color;\n\
+	}\n\
+\\shadow.vs\n\
+	precision mediump float;\n\
+	attribute vec3 a_vertex;\n\
+	uniform mat4 u_model;\n\
+	uniform mat4 u_viewprojection;\n\
+	void main() {\n\
+		vec4 vertex4 = vec4(a_vertex,1.0);\n\
+		gl_Position = (u_viewprojection * u_model) * vertex4;\n\
+	}\n\
+\\shadow.fs\n\
+	precision mediump float;\n\
+	uniform vec4 u_material_color;\n\
+	void main() {\n\
+		gl_FragColor = u_material_color;\n\
+	}\n\
+";
 
 LS.ShaderCode = ShaderCode;
 LS.registerResourceClass( ShaderCode );
@@ -12263,6 +12472,7 @@ if(typeof(LiteGraph) != "undefined")
 				continue;
 			switch( output.name )
 			{
+				case "SceneNode": this.setOutputData( i, node ); break;
 				case "Material": this.setOutputData( i, node.getMaterial() ); break;
 				case "Transform": this.setOutputData( i, node.transform ); break;
 				case "Mesh": this.setOutputData(i, node.getMesh()); break;
@@ -12360,7 +12570,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphSceneNode.prototype.onGetOutputs = function()
 	{
-		var result = [["Visible","boolean"],["Material","Material"],["on_clicked",LiteGraph.EVENT]];
+		var result = [["SceneNode","SceneNode"],["Visible","boolean"],["Material","Material"],["on_clicked",LiteGraph.EVENT]];
 		return this.getComponents(result);
 	}
 
@@ -13001,6 +13211,59 @@ if(typeof(LiteGraph) != "undefined")
 
 	LiteGraph.registerNodeType("scene/global", LGraphGlobal );
 
+	global.LGraphSceneTime = function()
+	{
+		this.addOutput("Time","number");
+		this._scene = null;
+	}
+
+
+	LGraphSceneTime.title = "Time";
+	LGraphSceneTime.desc = "Time";
+
+	LGraphSceneTime.prototype.onExecute = function()
+	{
+		var scene = this.graph.getScene();
+		if(!scene)
+			return;
+
+		//read inputs
+		if(this.inputs)
+		for(var i = 0; i < this.inputs.length; ++i)
+		{
+			var input = this.inputs[i]; //??
+			var v = this.getInputData(i);
+			if(v === undefined)
+				continue;
+		}
+
+		//write outputs
+		if(this.outputs)
+		for(var i = 0; i < this.outputs.length; ++i)
+		{
+			var output = this.outputs[i];
+			if(!output.links || !output.links.length || output.type == LiteGraph.EVENT )
+				continue;
+			var result = null;
+			switch( output.name )
+			{
+				case "Time": result = scene.getTime(); break;
+				case "Elapsed": result = (scene._last_dt != null ? scene._last_dt : 0); break;
+				case "Frame": result = (scene._frame != null ? scene._frame : 0); break;
+				default:
+					continue;
+			}
+			this.setOutputData(i,result);
+		}
+	}
+
+	LGraphSceneTime.prototype.onGetOutputs = function()
+	{
+		return [["Elapsed","number"],["Time","number"]];
+	}
+
+	LiteGraph.registerNodeType("scene/time", LGraphSceneTime );
+
 	//************************************
 
 	global.LGraphLocatorProperty = function LGraphLocatorProperty()
@@ -13141,6 +13404,8 @@ if(typeof(LiteGraph) != "undefined")
 
 	LiteGraph.registerNodeType("scene/frame", LGraphFrame );
 };
+
+
 if(typeof(LiteGraph) != "undefined")
 {
 	//special kind of node
@@ -13260,6 +13525,7 @@ LGraphFXStack.prototype.onConfigure = function( o )
 }
 
 LiteGraph.registerNodeType("texture/fxstack", LGraphFXStack );
+
 function Path()
 {
 	this.points = [];
@@ -15436,7 +15702,7 @@ RenderInstance.prototype.update = function()
 * @method render
 * @param {Shader} shader
 */
-RenderInstance.prototype.render = function(shader)
+RenderInstance.prototype.render = function(shader, primitive)
 {
 	//in case no normals found but they are required
 	if(shader.attributes["a_normal"] && !this.vertex_buffers["normals"])
@@ -15487,7 +15753,8 @@ RenderInstance.prototype.render = function(shader)
 
 	shader.drawBuffers( this.vertex_buffers,
 	  this.index_buffer,
-	  this.primitive, this.range[0], this.range[1] );
+	  primitive !== undefined ? primitive : this.primitive,
+	  this.range[0], this.range[1] );
 }
 
 RenderInstance.prototype.addShaderBlock = function( block, uniforms )
@@ -16768,12 +17035,25 @@ var Renderer = {
 	{
 		//render instance
 		var renderered = false;
-		if( instance.material && instance.material.renderShadowInstance )
-			renderered = instance.material.renderShadowInstance( instance, render_settings, pass );
+		if( instance.material && instance.material.renderInstance )
+			renderered = instance.material.renderInstance( instance, render_settings, pass );
 
 		//render using default system (slower but it works)
 		if(!renderered)
 			this.renderStandardShadowPassInstance( instance, render_settings, pass);
+	},
+
+	//this function is in charge of rendering an instance in the shadowmap
+	renderPickingPassInstance: function( instance, render_settings, pass )
+	{
+		//render instance
+		var renderered = false;
+		if( instance.material && instance.material.renderPickingInstance )
+			renderered = instance.material.renderPickingInstance( instance, render_settings, pass );
+
+		//render using default system (slower but it works)
+		if(!renderered)
+			this.renderStandardPickingPassInstance( instance, render_settings, pass);
 	},
 
 
@@ -16960,7 +17240,7 @@ var Renderer = {
 	* @param {RenderInstance} instance
 	* @param {RenderSettings} render_settings
 	*/
-	renderPickingPassInstance: function( instance, render_settings )
+	renderStandardPickingPassInstance: function( instance, render_settings )
 	{
 		var scene = this._current_scene;
 		var camera = this._current_camera;
@@ -22488,6 +22768,29 @@ Camera.prototype.orbitDistanceFactor = function(f, center)
 }
 
 /**
+* Pans the camera (move acording to view)
+* @method panning
+* @param {number} x
+* @param {number} y
+*/
+Camera.prototype.panning = (function(x,y) { 
+	var tmp_top = vec3.create();
+	var tmp_right = vec3.create();
+	var tmp = vec3.create();
+
+	return function( x,y, factor )
+	{
+		factor = factor || 1;
+		this.getLocalVector( LS.TOP, tmp_top );
+		this.getLocalVector( LS.RIGHT, tmp_right );
+		vec3.scaleAndAdd( tmp, LS.ZEROS, tmp_top, y * factor );
+		vec3.scaleAndAdd( tmp, tmp, tmp_right, x * factor );
+		this.move( tmp );
+	};
+})();
+
+
+/**
 * changes the distance between eye and center ( it could move the center or the eye, depending on the parameters )
 * @method setDistanceToCenter
 * @param {number} new_distance
@@ -23426,6 +23729,9 @@ function Light(o)
 		if(o.shadowmap_resolution !== undefined)
 			this.shadowmap_resolution = parseInt(o.shadowmap_resolution); //LEGACY: REMOVE
 	}
+
+	if(global.gl && !gl.extensions.WEBGL_depth_texture)
+		Light.use_shadowmap_depth_texture = false;
 }
 
 Light["@projective_texture"] = { type: LS.TYPES.TEXTURE };
@@ -23493,7 +23799,7 @@ Light.DIRECTIONAL = 3;
 
 Light.DEFAULT_DIRECTIONAL_FRUSTUM_SIZE = 50;
 
-Light.shadowmap_depth_texture = true;
+Light.use_shadowmap_depth_texture = true;
 Light.shadow_shaderblocks = [];
 Light.shadow_shaderblocks_by_name = [];
 
@@ -24025,8 +24331,9 @@ Light.prototype.generateShadowmap = function (render_settings)
 	{
 		var type = gl.UNSIGNED_BYTE;
 		var format = gl.RGBA;
+
 		//not all webgl implementations support depth textures
-		if( LS.Light.shadowmap_depth_texture && gl.extensions.WEBGL_depth_texture && this.type != LS.Light.OMNI )
+		if( LS.Light.use_shadowmap_depth_texture && gl.extensions.WEBGL_depth_texture && this.type != LS.Light.OMNI )
 		{
 			format = gl.DEPTH_COMPONENT;
 			type = gl.UNSIGNED_INT;
@@ -24132,6 +24439,7 @@ Light.prototype.applyShaderBlockFlags = function( flags, pass, render_settings )
 
 	flags |= Light.shader_block.flag_mask;
 
+	//disabled now
 	if( this.cast_shadows && render_settings.shadows_enabled )
 	{
 		if(this.type == Light.OMNI)
@@ -24145,6 +24453,9 @@ Light.prototype.applyShaderBlockFlags = function( flags, pass, render_settings )
 			if(shadow_block)
 				flags |= shadow_block.flag_mask;
 		}
+
+		if(this._shadowmap && this._shadowmap.format == gl.RGBA )
+			flags |= LS.Light.shadowmapping_depth_in_color_block.flag_mask;
 	}
 	return flags;
 }
@@ -24158,6 +24469,8 @@ Light.registerShadowType = function( name, shaderblock )
 
 LS.registerComponent( Light );
 LS.Light = Light;
+
+// LIGHT GLSL STRUCTS AND FUNCTIONS *****************************************
 
 LS.ShadersManager.registerSnippet("surface","\n\
 	//used to store surface shading properties\n\
@@ -24265,7 +24578,9 @@ Light._enabled_fs_shaderblock_code = "\n\
 	#pragma snippet \"spotFalloff\"\n\
 	#pragma shaderblock SHADOWBLOCK \"testShadow\"\n\
 	\n\
-	vec3 applyLight(in SurfaceOutput o, in FinalLight LIGHT)\n\
+	//Light is separated in two functions, computeLight (how much light receives the object) and applyLight (compute resulting final color)\n\
+	// FINAL LIGHT EQUATION, takes all the info from FinalLight and computes the final color \n\
+	vec3 applyLight( in SurfaceOutput o, in FinalLight LIGHT )\n\
 	{\n\
 		vec3 total_light = LIGHT.Ambient * o.Ambient + LIGHT.Color * LIGHT.Diffuse * LIGHT.Attenuation * LIGHT.Shadow;\n\
 		vec3 final_color = o.Albedo * total_light;\n\
@@ -24273,10 +24588,14 @@ Light._enabled_fs_shaderblock_code = "\n\
 		return max( final_color, vec3(0.0) );\n\
 	}\n\
 	\n\
+	// HERE we fill FinalLight structure with all the info (colors,NdotL,diffuse,specular,etc) \n\
 	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT, out FinalLight FINALLIGHT)\n\
 	{\n\
+		// INIT\n\
 		FINALLIGHT.Color = LIGHT.Color;\n\
 		FINALLIGHT.Ambient = LIGHT.Ambient;\n\
+		\n\
+		// COMPUTE VECTORS\n\
 		vec3 N = o.Normal; //use the final normal (should be the same as IN.worldNormal)\n\
 		vec3 E = (u_camera_eye - v_pos);\n\
 		float cam_dist = length(E);\n\
@@ -24291,30 +24610,30 @@ Light._enabled_fs_shaderblock_code = "\n\
 		\n\
 		vec3 R = reflect(E,N);\n\
 		\n\
+		// PHONG FORMULA\n\
 		float NdotL = 1.0;\n\
 		NdotL = dot(N,L);\n\
 		float EdotN = dot(E,N); //clamp(dot(E,N),0.0,1.0);\n\
+		NdotL = max( 0.0, NdotL + LIGHT.Offset );\n\
+		FINALLIGHT.Diffuse = abs(NdotL);\n\
 		FINALLIGHT.Specular = o.Specular * pow( clamp(dot(R,-L),0.001,1.0), o.Gloss );\n\
 		\n\
+		// ATTENUATION\n\
 		FINALLIGHT.Attenuation = 1.0;\n\
 		\n\
 		if( LIGHT.Info.x == 2.0 && LIGHT.Info.y == 1.0 )\n\
 			FINALLIGHT.Attenuation *= spotFalloff( LIGHT.Front, normalize( LIGHT.Position - v_pos ), LIGHT.ConeInfo.z, LIGHT.ConeInfo.w );\n\
 		\n\
-		NdotL = max( 0.0, NdotL + LIGHT.Offset );\n\
-		FINALLIGHT.Diffuse = abs(NdotL);\n\
-		\n\
+		// SHADOWS\n\
 		FINALLIGHT.Shadow = 1.0;\n\
-		#ifdef TESTSHADOW\n\
-			#ifndef IGNORE_SHADOWS\n\
-				FINALLIGHT.Shadow = testShadow();\n\
-			#endif\n\
+		#ifdef BLOCK_TESTSHADOW\n\
+			FINALLIGHT.Shadow = testShadow();\n\
 		#endif\n\
 		\n\
-		#ifdef LIGHT_FUNC\n\
-			LIGHT_FUNC(LIGHT);\n\
+		// LIGHT MODIFIERS\n\
+		#ifdef LIGHT_MODIFIER\n\
 		#endif\n\
-		//FINAL LIGHT FORMULA ************************* \n\
+		// FINAL LIGHT FORMULA ************************* \n\
 		return applyLight(o,FINALLIGHT);\n\
 	}\n\
 	\n\
@@ -24353,7 +24672,6 @@ Light._enabled_fs_shaderblock_code = "\n\
 	#ifdef FIRST_PASS\n\
 		final_color += o.Emission;\n\
 	#endif\n\
-
 */
 
 Light._disabled_shaderblock_code = "\n\
@@ -24381,23 +24699,7 @@ light_block.addCode( GL.FRAGMENT_SHADER, Light._enabled_fs_shaderblock_code, Lig
 light_block.register();
 Light.shader_block = light_block;
 
-/*
-Light._nolight_shaderblock_code = "\n\
-	#pragma snippet \"input\"\n\
-	#pragma snippet \"surface\"\n\
-	#pragma snippet \"light_structs\"\n\
-	vec3 computeLight(in SurfaceOutput o, in Input IN, in FinalLight LIGHT)\n\
-	{\n\
-		return vec3(0.0);\n\
-	}\n\
-";
-
-var nolight_block = new LS.ShaderBlock("nolight");
-nolight_block.addCode( GL.FRAGMENT_SHADER, Light._nolight_shaderblock_code, Light._disabled_shaderblock_code );
-nolight_block.register();
-Light.nolight_shader_block = nolight_block;
-*/
-
+//OMNI LIGHT SHADOWMAP *****************************************
 Light._shadowmap_cubemap_code = "\n\
 	#define SHADOWMAP_ACTIVE\n\
 	uniform samplerCube shadowmap;\n\
@@ -24448,8 +24750,8 @@ Light._shadowmap_vertex_disabled_code ="\n\
 	void applyLight(vec3 pos) {}\n\
 ";
 
-
-Light._shadowmap_2d_enabled_code = "\n\
+// DIRECTIONAL AND SPOTLIGHT SHADOWMAP *****************************************
+Light._shadowmap_2d_enabled_fragment_code = "\n\
 	#ifndef TESTSHADOW\n\
 		#define TESTSHADOW\n\
 	#endif\n\
@@ -24457,9 +24759,9 @@ Light._shadowmap_2d_enabled_code = "\n\
 	varying vec4 v_light_coord;\n\
 	uniform vec4 u_shadow_params; // (1.0/(texture_size), bias, near, far)\n\
 	\n\
-	float UnpackDepth32(vec4 depth)\n\
+	float UnpackDepth(vec4 depth)\n\
 	{\n\
-		#ifdef USE_COLOR_DEPTH_TEXTURE\n\
+		#ifdef BLOCK_DEPTH_IN_COLOR\n\
 			const vec4 bitShifts = vec4( 1.0/(256.0*256.0*256.0), 1.0/(256.0*256.0), 1.0/256.0, 1);\n\
 			return dot(depth.xyzw , bitShifts);\n\
 		#else\n\
@@ -24478,7 +24780,7 @@ Light._shadowmap_2d_enabled_code = "\n\
 		//is inside light frustum\n\
 		if (clamp(sample, 0.0, 1.0) != sample) \n\
 			return 0.0; //outside of shadowmap, no shadow\n\
-		float sampleDepth = UnpackDepth32( texture2D(shadowmap, sample) );\n\
+		float sampleDepth = UnpackDepth( texture2D(shadowmap, sample) );\n\
 		depth = (sampleDepth == 1.0) ? 1.0e9 : sampleDepth; //on empty data send it to far away\n\
 		if (depth > 0.0) \n\
 			shadow = ((v_light_coord.z - bias) / v_light_coord.w * 0.5 + 0.5) > depth ? 0.0 : 1.0;\n\
@@ -24486,25 +24788,34 @@ Light._shadowmap_2d_enabled_code = "\n\
 	}\n\
 ";
 
+Light._shadowmap_2d_disabled_code = "\nfloat testShadow() { return 1.0; }\n";
+
+var shadowmapping_depth_in_color_block = new LS.ShaderBlock("depth_in_color");
+shadowmapping_depth_in_color_block.register();
+Light.shadowmapping_depth_in_color_block = shadowmapping_depth_in_color_block;
+
 var shadowmapping_block = new LS.ShaderBlock("testShadow");
-shadowmapping_block.addCode( GL.VERTEX_SHADER, Light._shadowmap_vertex_enabled_code, Light._shadowmap_vertex_disabled_code );
-shadowmapping_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_2d_enabled_code, "" );
+shadowmapping_block.addCode( GL.VERTEX_SHADER, Light._shadowmap_vertex_enabled_code, Light._shadowmap_vertex_disabled_code);
+shadowmapping_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_2d_enabled_fragment_code, Light._shadowmap_2d_disabled_code );
+//shadowmapping_block.defineContextMacros({"SHADOWBLOCK":"testShadow"});
 shadowmapping_block.register();
 Light.shadowmapping_2d_shader_block = shadowmapping_block;
 Light.registerShadowType( "hard", shadowmapping_block );
 
-var shadowmappingsoft_block = new LS.ShaderBlock("testShadowSoft");
-shadowmappingsoft_block.addCode( GL.VERTEX_SHADER, Light._shadowmap_vertex_enabled_code, Light._shadowmap_vertex_disabled_code );
-shadowmappingsoft_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_2d_enabled_code, "" );
-shadowmappingsoft_block.register();
-Light.shadowmappingsoft_2d_shader_block = shadowmappingsoft_block;
-Light.registerShadowType( "soft", shadowmappingsoft_block );
+var shadowmapping_2D_hard_shader_block = new LS.ShaderBlock("testShadow2D_hard");
+shadowmapping_2D_hard_shader_block.addCode( GL.VERTEX_SHADER, Light._shadowmap_vertex_enabled_code, Light._shadowmap_vertex_disabled_code );
+shadowmapping_2D_hard_shader_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_2d_enabled_code, "" );
+shadowmapping_2D_hard_shader_block.register();
+Light.shadowmapping_2D_hard_shader_block = shadowmapping_2D_hard_shader_block;
+//Light.registerShadowType( "hard", shadowmapping_hard_2d_shader_block );
 
-var shadowmapping_color_block = new LS.ShaderBlock("testShadowColor");
-shadowmapping_color_block.addCode( GL.VERTEX_SHADER, Light._shadowmap_vertex_enabled_code, Light._shadowmap_vertex_disabled_code );
-shadowmapping_color_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_2d_enabled_code, "", { USE_COLOR_DEPTH_TEXTURE: "" } );
-shadowmapping_color_block.register();
-Light.shadowmapping_2d_color_shader_block = shadowmapping_color_block;
+var shadowmapping_2D_soft_block = new LS.ShaderBlock("testShadow2D_soft");
+shadowmapping_2D_soft_block.addCode( GL.VERTEX_SHADER, Light._shadowmap_vertex_enabled_code, Light._shadowmap_vertex_disabled_code );
+shadowmapping_2D_soft_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_2d_enabled_code, "" );
+shadowmapping_2D_soft_block.register();
+Light.shadowmapping_2D_soft_block = shadowmapping_2D_soft_block;
+//Light.registerShadowType( "soft", shadowmappingsoft_block );
+
 
 //TODO
 
@@ -28572,6 +28883,9 @@ CameraController.prototype.onAddedToScene = function( scene )
 	LEvent.bind( scene, "mousedown",this.onMouse,this);
 	LEvent.bind( scene, "mousemove",this.onMouse,this);
 	LEvent.bind( scene, "mousewheel",this.onMouse,this);
+	LEvent.bind( scene, "touchstart",this.onTouch,this);
+	LEvent.bind( scene, "touchmove",this.onTouch,this);
+	LEvent.bind( scene, "touchend",this.onTouch,this);
 	LEvent.bind( scene, "keydown",this.onKey,this);
 	LEvent.bind( scene, "keyup",this.onKey,this);
 	LEvent.bind( scene, "update",this.onUpdate,this);
@@ -28766,6 +29080,66 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 
 	if(changed)
 		this._root.scene.requestFrame();
+}
+
+CameraController.prototype.onTouch = function( e, touch_event)
+{
+	if(!this._root || !this.enabled) 
+		return;
+	
+	var node = this._root;
+	var cam = node.camera;
+	if(!cam)
+		return;
+
+	var is_global_camera = node._is_root;
+
+	if(!touch_event)
+		touch_event = e;
+
+	//console.log( e );
+	//touch!
+	if( touch_event.type == "touchstart" )
+	{
+		if( touch_event.touches.length == 2)
+		{
+			var distx = touch_event.touches[0].clientX - touch_event.touches[1].clientX;
+			var disty = touch_event.touches[0].clientY - touch_event.touches[1].clientY;
+			this._touch_distance = Math.sqrt(distx*distx + disty*disty);
+			this._touch_center = [ (touch_event.touches[0].clientX + touch_event.touches[1].clientX) * 0.5,
+									(touch_event.touches[0].clientY + touch_event.touches[1].clientY) * 0.5 ];
+			touch_event.preventDefault();
+			return false; //block
+		}
+	}
+	if( touch_event.type == "touchmove" )
+	{
+		if(touch_event.touches.length == 2)
+		{
+			var distx = touch_event.touches[0].clientX - touch_event.touches[1].clientX;
+			var disty = touch_event.touches[0].clientY - touch_event.touches[1].clientY;
+			var distance = Math.sqrt(distx*distx + disty*disty);
+			if(distance < 0.1)
+				distance = 0.1;
+			var delta_dist = this._touch_distance / distance;
+			this._touch_distance = distance;
+			//console.log( delta_dist );
+			cam.orbitDistanceFactor( delta_dist );
+			cam.updateMatrices();
+
+			var delta_x = (touch_event.touches[0].clientX + touch_event.touches[1].clientX) * 0.5 - this._touch_center[0];
+			var delta_y = (touch_event.touches[0].clientY + touch_event.touches[1].clientY) * 0.5 - this._touch_center[1];
+			var panning_factor = cam.focalLength / gl.canvas.width;
+			cam.panning( -delta_x, delta_y, panning_factor );
+			this._touch_center[0] = (touch_event.touches[0].clientX + touch_event.touches[1].clientX) * 0.5;
+			this._touch_center[1] = (touch_event.touches[0].clientY + touch_event.touches[1].clientY) * 0.5;
+
+			cam.updateMatrices();
+			this._root.scene.requestFrame();
+			touch_event.preventDefault();
+			return false; //block
+		}
+	}
 }
 
 CameraController.prototype.testOriginPlane = function(x,y, result)
@@ -32211,7 +32585,7 @@ LS.registerComponent( RealtimeReflector );
 function Script(o)
 {
 	this.enabled = true;
-	this.code = this.constructor.templates["component"];
+	this.code = this.constructor.templates["script"];
 	this._blocked_functions = new Set(); //used to block functions that has errors
 
 	this._script = new LScript();
@@ -32241,7 +32615,7 @@ Script.catch_important_exceptions = true; //catch exception during parsing, othe
 
 Script.icon = "mini-icon-script.png";
 Script.templates = {
-	"component":"//@unnamed\n//defined: component, node, scene, globals\nthis.onStart = function()\n{\n}\n\nthis.onUpdate = function(dt)\n{\n\t//node.scene.refresh();\n}"
+	"script":"//@unnamed\n//defined: component, node, scene, globals\nthis.onStart = function()\n{\n}\n\nthis.onUpdate = function(dt)\n{\n\t//node.scene.refresh();\n}"
 };
 
 Script["@code"] = {type:'script'};
@@ -34439,6 +34813,8 @@ function SceneTree()
 	LEvent.bind( this, "treeItemAdded", this.onNodeAdded, this );
 	LEvent.bind( this, "treeItemRemoved", this.onNodeRemoved, this );
 
+	this._shaderblock_info = null;
+
 	this.init();
 }
 
@@ -35308,7 +35684,7 @@ SceneTree.prototype.getNode = function( name )
 {
 	if(name == "")
 		return this.root;
-	if(!name)
+	if(!name || name.constructor !== String)
 		return null;
 	if(name.charAt(0) == LS._uid_prefix)
 		return this._nodes_by_uid[ name ];
@@ -42018,6 +42394,9 @@ function Player(options)
 	this.gl.onkeydown = key_event_callback;
 	this.gl.onkeyup = key_event_callback;
 
+	var touch_event_callback = LS.Player.prototype._ontouch.bind(this);
+	this.gl.ontouch = touch_event_callback;
+
 	var gamepad_event_callback = LS.Player.prototype._ongamepad.bind(this);
 	this.gl.ongamepadconnected = gamepad_event_callback;
 	this.gl.ongamepaddisconnected = gamepad_event_callback;
@@ -42027,6 +42406,7 @@ function Player(options)
 	//capture input
 	gl.captureMouse(true);
 	gl.captureKeys(true);
+	gl.captureTouch(true);
 	gl.captureGamepads(true);
 
 	LS.Input.init();
@@ -42298,6 +42678,21 @@ Player.prototype._onmouse = function(e)
 	//hardcoded event handlers in the player
 	if(this.onMouse)
 		this.onMouse(e);
+}
+
+//input
+Player.prototype._ontouch = function(e)
+{
+	//console.log(e);
+	if(this.state != LS.Player.PLAYING)
+		return;
+
+	if( LEvent.trigger( this.scene, e.eventType || e.type, e, true ) === false )
+		return false;
+
+	//hardcoded event handlers in the player
+	if(this.onTouch)
+		this.onTouch(e);
 }
 
 Player.prototype._onkey = function(e)

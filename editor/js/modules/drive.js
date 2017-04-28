@@ -1923,7 +1923,7 @@ var DriveModule = {
 		});
 	},
 
-	serverSearchFiles: function(filter, on_complete)
+	serverSearchFiles: function( filter, on_complete, on_error )
 	{
 		var that = this;
 		if(!LoginModule.session)
@@ -1933,13 +1933,18 @@ var DriveModule = {
 			throw("filter must be object");
 
 		if(filter.category)
-			LoginModule.session.searchByCategory( filter.category, inner );
+			LoginModule.session.searchByCategory( filter.category, inner, inner_error );
 		else if(filter.filename)
-			LoginModule.session.searchByFilename( filter.filename, inner );
+			LoginModule.session.searchByFilename( filter.filename, inner, inner_error );
 
 		function inner( files ){
 			if(on_complete)
 				on_complete(files);
+		}
+
+		function inner_error( err ){
+			if(on_error)
+				on_error(err);
 		}
 	},
 

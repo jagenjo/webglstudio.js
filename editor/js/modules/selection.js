@@ -514,41 +514,7 @@ var SelectionModule = {
 			return;
 
 		//Create UNDO STEP 
-		UndoModule.addUndoStep({ 
-			title: "Nodes or Components deleted",
-			data: { data: data_removed },
-			callback: function(d) {
-				var nodes = [];
-				for(var i = 0; i < d.data.length; ++i)
-				{
-					var data = d.data[i];
-					if(data.comp)
-					{
-						var node = LS.GlobalScene.getNode( data.node_uid );
-						if(!node)
-							continue;
-						nodes.push(node);
-						var comp_class = LS.Components[ data.comp_class ];
-						if(comp_class)
-						{
-							var new_comp = new comp_class( d.comp );
-							node.addComponent( new_comp );
-						}
-					}
-					else
-					{
-						var parent = LS.GlobalScene.getNode( data.parent_uid );
-						if(!parent)
-							continue;
-						var new_node = new LS.SceneNode();
-						new_node.configure( data.node_data );
-						parent.addChild( new_node, data.index );
-						nodes.push(new_node);
-					}
-				}
-				SelectionModule.setSelection(nodes);
-			}
-		});
+		CORE.userAction("selection_removed", data_removed );
 
 		EditorModule.inspect();
 		SelectionModule.setSelection(null);

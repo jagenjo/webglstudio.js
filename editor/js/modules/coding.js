@@ -814,3 +814,13 @@ void main() {\n\
 	gl_FragColor = final_color;\n\
 }\n\
 ";
+
+LS.Script.templates.global = "//global scripts can have any kind of code.\n//They are used to define new classes (like materials and components) that are used in the scene.\n\n";
+LS.Script.templates.component = "//https://github.com/jagenjo/litescene.js/blob/master/guides/creating_new_components.md\n\
+//This is an example of a component code\n\
+function MyComponentClass(o) {\n  //define some properties\n	this.someprop = 1;\n  //if we have the state passed, then we restore the state\n  if(o)\n    this.configure(o);\n}\n\n\
+//bind events when the component belongs to the scene\nMyComponentClass.prototype.onAddedToScene = function(scene)\n{\n  LEvent.bind(scene, \"update\", this.onUpdate, this );\n}\n\n\
+//unbind events when the component no longer belongs to the scene\nMyComponentClass.prototype.onRemovedFromScene = function(scene)\n{\n	//bind events\n  LEvent.unbind(scene, \"update\", this.onUpdate, this );\n}\n\n\
+//example of one method called for ever update event\nMyComponentClass.prototype.onUpdate = function(e,dt)\n{\n  //do something\n  //...\n}\n\n\
+//you can also implement the methods serialize and configure\n\n\
+//register the class so it is a valid component for LS\n\nLS.registerComponent( MyComponentClass );\n";

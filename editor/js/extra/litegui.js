@@ -2657,7 +2657,7 @@ function dataURItoBlob( dataURI ) {
 			throw ("First parameter must be a string: 'vertical' or 'horizontal'");
 
 		if( !sizes )
-			throw ("sizes must be an array");
+			sizes = ["50%",null];
 
 		if( direction != "vertical" && direction != "horizontal" )
 			throw ("First parameter must be a string: 'vertical' or 'horizontal'");
@@ -7135,6 +7135,7 @@ Inspector.widget_constructors = {
 	vec4: 'addVector4',
 	vector4: 'addVector4',
 	"enum": 'addCombo',
+	dropdown: 'addCombo',
 	combo: 'addCombo',
 	button: 'addButton',
 	buttons: 'addButtons',
@@ -9356,6 +9357,7 @@ Inspector.prototype.addSection = function( name, options )
 			return;
 
 		that._current_container_stack = this._last_container_stack;
+		that._current_container = null;
 
 		var content = this.querySelector(".wsectioncontent");
 		if(!content)

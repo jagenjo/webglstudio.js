@@ -397,7 +397,7 @@ InspectorWidget.prototype.inspectScene = function( scene )
 			});
 		}
 
-		inspector.addResource(null, "", { callback: function(v){
+		inspector.addScript(null, "", { callback: function(v){
 				if(!v || v.indexOf(".js") == -1)
 					return;
 				//add script
@@ -408,8 +408,7 @@ InspectorWidget.prototype.inspectScene = function( scene )
 					inspector.refresh();
 				});
 				inspector.refresh();
-			}
-		});
+			}});
 
 		if(scene.global_scripts && scene.global_scripts.length)
 			inspector.addButton(null,"Reload scripts", function(){

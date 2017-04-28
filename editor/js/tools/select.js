@@ -43,8 +43,13 @@ var selectTool = {
 		var now = new Date().getTime();
 		var dist = Math.sqrt( (e.canvasx - this.click_pos[0])<<2 + (e.canvasy - this.click_pos[1])<<2 );
 
-		if (e.click_time < this.click_time && dist < this.click_dist) //fast click
+		//if it was a fast click and the mouse didnt move too much (dragging)
+		if (e.click_time < this.click_time && dist < this.click_dist)
 		{
+			//Test if click was in GUI
+			//TODO
+
+			//PICKING in the Scene (this is slow, it requires to render the scene again)
 			var instance_info = LS.Picking.getInstanceAtCanvasPosition( e.canvasx, e.canvasy, ToolUtils.getCamera(e) );
 			if(!instance_info)
 				return false;

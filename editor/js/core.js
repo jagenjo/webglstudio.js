@@ -12,6 +12,7 @@ var CORE = {
 	ProxyScene: {},
 
 	_modules_initialized: false,
+	send_log_to_console: false,
 
 	//called from index.html
 	init: function( )
@@ -131,6 +132,7 @@ var CORE = {
 	{
 		//remove loading info
 		LiteGUI.remove(".startup-console-msg");
+		this.send_log_to_console = true;
 
 		//launch LiteGUI
 		LiteGUI.init(); 
@@ -372,6 +374,8 @@ var CORE = {
 		root.appendChild(e);
 		if(scroll)
 			root.scrollTop = 100000;
+		if(this.send_log_to_console)
+			console.log(msg);
 	},
 
 	showLoadingPopup: function( imports )

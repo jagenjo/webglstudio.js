@@ -1435,18 +1435,18 @@ var DriveModule = {
 			resource.fullpath = resource.filename;
 		}
 
-		/*
 		var container_fullpath = resource.from_pack && resource.from_prefab;
 		if(container_fullpath)
 		{
+			CORE.log("Saving resource that belongs to a Pack or Prefab, so saving the Pack/Prefab: " + resource.fullpath );
 			resource = LS.RM.getResource( container_fullpath );
 			if(!resource)
 			{
-				console.error("resource in a pack that is not in memory?!");
+				LiteGUI.alert("Error saving: Saving a resource inside a pack, but the pack is not in memory");
 				return;
 			}
 		}
-		*/
+
 
 		//used to change between upload or update (incase the file exist)
 		//var func_name = resource._server_info ? "serverUpdateResource" : "serverUploadResource";

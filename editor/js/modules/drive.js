@@ -1435,7 +1435,7 @@ var DriveModule = {
 			resource.fullpath = resource.filename;
 		}
 
-		var container_fullpath = resource.from_pack && resource.from_prefab;
+		var container_fullpath = resource.from_pack || resource.from_prefab;
 		if(container_fullpath)
 		{
 			CORE.log("Saving resource that belongs to a Pack or Prefab, so saving the Pack/Prefab: " + resource.fullpath );

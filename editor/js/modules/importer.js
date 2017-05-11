@@ -20,7 +20,7 @@ var ImporterModule  = {
 	{
 		if(window.gl && window.gl.canvas )
 			LiteGUI.createDropArea( gl.canvas, ImporterModule.onItemDrop.bind(this) );
-		LiteGUI.menubar.add("Actions/Import File", { callback: function() { ImporterModule.showImportResourceDialog(); }});
+		LiteGUI.menubar.add("Actions/Import Files", { callback: function() { ImporterModule.showImportResourceDialog(); }});
 
 		window.addEventListener("paste", this.onPaste.bind(this) );
 	},
@@ -246,7 +246,7 @@ var ImporterModule  = {
 	{
 		options = options || {};
 
-		var dialog = new LiteGUI.Dialog("dialog_import_resource", {title: "Import File", close: true, minimize: true, width: 480, height: 340, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog("dialog_import_resource", {title: "Import File", close: true, minimize: true, width: 480, height: 360, scroll: false, draggable: true});
 		dialog.show();
 
 		var target = LS.Material.COLOR_TEXTURE;
@@ -269,17 +269,8 @@ var ImporterModule  = {
 		dialog.add( inspector );
 
 		//* no va...
-		var drop_area = dialog.content;
-		drop_area.addEventListener("dragenter", function (evt) {
-			evt.stopPropagation();
-			evt.preventDefault();
-			return true;
-		},false);
-
-		drop_area.addEventListener("drop", function(evt){
-			evt.preventDefault();
-			evt.stopPropagation();
-			evt.stopImmediatePropagation();
+		var drop_area = dialog.root;
+		LiteGUI.createDropArea( dialog.root, function(evt){
 			var files = evt.dataTransfer.files;
 			if(files && files.length)
 			{
@@ -287,8 +278,11 @@ var ImporterModule  = {
 				inspector.refresh();
 			}
 			return true;
-		}, false);
-		//*/
+		}, 
+		function(e){
+			//onenter
+
+		});
 
 		//file data and it has a URL associated (comes from dragging a link to this tab)
 		if(file && file.url)
@@ -365,6 +359,8 @@ var ImporterModule  = {
 				folder = v;
 			}});
 
+			inspector.addInfo("You can also drag files here directly");
+
 			if(file)
 			{
 				inspector.addTitle("File Information" );
@@ -382,7 +378,7 @@ var ImporterModule  = {
 				else if(info.resource == "Mesh" )
 				{
 					inspector.addTitle("Mesh");
-					inspector.addCombo("Action", ImporterModule.preferences.mesh_action, { values: {"Insert in Origin":"origin","Insert in intersection":"plane","Replace Mesh":"replace"}, callback: function(v) { 
+					inspector.addCombo("Action", ImporterModule.preferences.mesh_action, { values: {"Load in memory":"load","Insert in Origin":"origin","Insert in intersection":"plane","Replace Mesh":"replace"}, callback: function(v) { 
 						ImporterModule.preferences.mesh_action = v;
 					}});
 					//inspector.addCheckbox("Insert into scene", insert_into, { callback: function(v) { insert_into = v; }});
@@ -390,7 +386,7 @@ var ImporterModule  = {
 				else if(info.resource == "Texture" )
 				{
 					inspector.addTitle("Texture");
-					inspector.addCombo("Action", ImporterModule.preferences.texture_action, { values: {"Replace in material":"replace","Insert as Plane":"plane","Insert as Sprite":"sprite"}, callback: function(v) { 
+					inspector.addCombo("Action", ImporterModule.preferences.texture_action, { values: {"Load in memory":"load","Replace in material":"replace","Insert as Plane":"plane","Insert as Sprite":"sprite"}, callback: function(v) { 
 						ImporterModule.preferences.texture_action = v;
 					}});
 
@@ -507,80 +503,90 @@ var ImporterModule  = {
 			var extension = LS.RM.getExtension( filename );
 			var format = LS.Formats.supported[ extension ];
 
-			if(resource)
+			if(!resource)
 			{
-				console.log( "Imported resource: " + LS.getObjectClassName(resource) );
+				if(on_complete)
+					on_complete( filename, resource, options );
+				return;
+			}
+
+			console.log( "Imported resource: " + LS.getObjectClassName(resource) );
+			if(options.optimize_data)
+			{
+				if( resource.constructor == GL.Mesh && extension != "wbin" )
+				{
+					resource._original_data = resource.toBinary().buffer; //ArrayBuffer
+					filename = filename + ".wbin";
+					LS.ResourcesManager.renameResource( resource.filename, filename );
+				}
+				if( resource.constructor == GL.Texture && (!format || !format["native"]) )
+				{
+					resource._original_data = null;
+					var blob = resource.toBlob(true);
+					var reader = new FileReader();
+					reader.onload = function() {
+						resource._original_data = this.result;
+					};
+					reader.readAsArrayBuffer( blob );
+
+					filename = filename + ".png";
+					LS.ResourcesManager.renameResource( resource.filename, filename );
+				}
+			}
+			
+			if(!resource._original_file && !resource._original_data)
+				resource._original_file = file;
+
+			if(resource.constructor === GL.Texture )
+			{
+				//force generate thumbnail
+				resource.preview = DriveModule.generatePreview( resource.fullpath || resource.filename );
+			}
+
+
+			//scenes require to rename some stuff 
+			if(resource.constructor === LS.SceneTree || resource.constructor === LS.SceneNode )
+			{
+				//remove node root, dragging to canvas should add to scene.root
+				options.node = null;
+
+				var resources = resource.getResources({},true);
+
 				if(options.optimize_data)
 				{
-					if( resource.constructor == GL.Mesh && extension != "wbin" )
+					for(var i in resources)
 					{
-						resource._original_data = resource.toBinary().buffer; //ArrayBuffer
-						filename = filename + ".wbin";
-						LS.ResourcesManager.renameResource( resource.filename, filename );
-					}
-					if( resource.constructor == GL.Texture && (!format || !format["native"]) )
-					{
-						resource._original_data = null;
-						var blob = resource.toBlob(true);
-						var reader = new FileReader();
-						reader.onload = function() {
-							resource._original_data = this.result;
-						};
-						reader.readAsArrayBuffer( blob );
-
-						filename = filename + ".png";
-						LS.ResourcesManager.renameResource( resource.filename, filename );
+						var res = LS.ResourcesManager.getResource(i);
+						if(res && res.constructor === LS.Animation)
+						{
+							var anim = res;
+							anim.optimizeTracks();
+						}
 					}
 				}
-				
-				if(!resource._original_file && !resource._original_data)
-					resource._original_file = file;
 
-				//scenes require to rename some stuff 
-				if(resource.constructor === LS.SceneTree || resource.constructor === LS.SceneNode )
+				if( options.use_names_to_reference )
 				{
-					//remove node root, dragging to canvas should add to scene.root
-					options.node = null;
-
-					var resources = resource.getResources({},true);
-
-					if(options.optimize_data)
+					console.log("Converting uids to names in animations and bones");
+					//rename bone references
+					for(var i in resources)
 					{
-						for(var i in resources)
+						var res = LS.ResourcesManager.getResource(i);
+						if(res && res.constructor === GL.Mesh && res.bones)
 						{
-							var res = LS.ResourcesManager.getResource(i);
-							if(res && res.constructor === LS.Animation)
-							{
-								var anim = res;
-								anim.optimizeTracks();
-							}
+							var mesh = res;
+							mesh.convertBoneNames( resource, false );
 						}
 					}
 
-					if( options.use_names_to_reference )
+					//rename animation tracks
+					if(resource.animations)
 					{
-						console.log("Converting uids to names in animations and bones");
-						//rename bone references
-						for(var i in resources)
-						{
-							var res = LS.ResourcesManager.getResource(i);
-							if(res && res.constructor === GL.Mesh && res.bones)
-							{
-								var mesh = res;
-								mesh.convertBoneNames( resource, false );
-							}
-						}
-
-						//rename animation tracks
-						if(resource.animations)
-						{
-							var animation = LS.RM.getResource(resource.animations);
-							if(animation)
-								animation.convertIDstoNames( true, resource );
-						}
+						var animation = LS.RM.getResource(resource.animations);
+						if(animation)
+							animation.convertIDstoNames( true, resource );
 					}
 				}
-
 			}
 
 			if(on_complete)

@@ -1402,6 +1402,19 @@ a:hover {
 	border-right: 2px solid cyan;
 }
 
+.litemenu-title {
+	color: #DDE;
+	background-color: #111;	
+	margin: 0;
+	padding: 2px;
+	cursor: default;
+}
+
+.litemenu-entry:hover:not(.disabled):not(.separator) {
+	background-color: #555;
+	color: #EEE;
+}
+
 .litecontextmenu {
 	position: fixed;
 	top: 100px;
@@ -1427,27 +1440,6 @@ a:hover {
 .litecontextmenu .litemenu-entry.submenu {
 	background-color: #2E2E2E !important;
 }
-
-.litemenu-title {
-	color: #DDE;
-	background-color: #111;	
-	margin: 0;
-	padding: 2px;
-	cursor: default;
-}
-
-
-/*
-.litemenubar-panel .litemenu-entry.checked {
-	background-image: url();
-}
-*/
-
-.litemenu-entry:hover:not(.disabled):not(.separator) {
-	background-color: #555;
-	color: #EEE;
-}
-
 
 button.litebutton {
     background: -webkit-linear-gradient(#32302D, #4B4947) repeat scroll 0 0 transparent;

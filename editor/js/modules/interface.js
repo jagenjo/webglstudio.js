@@ -74,6 +74,7 @@ var InterfaceModule = {
 		return LiteGUI.main_tabs.selectTab(name);
 	},
 
+	/*
 	createLowerArea: function()
 	{
 		var visorarea = this.visorarea = new LiteGUI.Area("visorarea",{ autoresize: true, inmediateResize: true});
@@ -81,13 +82,17 @@ var InterfaceModule = {
 		this.mainarea.getSection(0).add( visorarea );
 
 		visorarea.split("vertical",[null,200], true);
-		visorarea.getSection(0).content.innerHTML = "<div id='visor'><div id='maincanvas'></div><div id='statusbar'><span class='msg'></div></div></div>";
+		visorarea.getSection(0).content.innerHTML = "<div id='visor'><div id='maincanvas'></div><div id='statusbar'><span class='status-msg'></div></div></div>";
 		visorarea.getSection(1).content.innerHTML = "";
+
+		//toggle statusbar console panel
+		visorarea.root.querySelector( "#statusbar" ).addEventListener("click", InterfaceModule.toggleStatusBar.bind( InterfaceModule ) );
 
 		LiteGUI.bind( visorarea, "split_moved", function(e){
 			InterfaceModule.lower_tabs_widget.onResize();
 		});
 	},
+	*/
 
 	createSidePanel: function()
 	{
@@ -170,12 +175,30 @@ var InterfaceModule = {
 	setStatusBar: function(text, classname)
 	{
 		text = text || "";
-		var msg = document.querySelector("#statusbar .msg");
+		var msg = document.querySelector("#statusbar .status-msg");
 		if(!msg)
 			return;
 		msg.innerHTML = text;
-		msg.className = "msg " + classname;
+		msg.className = "status-msg " + classname;
 		return msg;
+	},
+
+	toggleStatusBar: function()
+	{
+		console.log("toggle status bar");
+		var maincanvas = visorarea.root.querySelector("#maincanvas");
+		var status = visorarea.root.querySelector("#statusbar");
+
+		if( maincanvas.style.height != "50%" )
+		{
+			maincanvas.style.height = "50%";
+			status.style.height = "50%";
+		}
+		else
+		{
+			maincanvas.style.height = "";
+			status.style.height = "";
+		}
 	},
 
 	splitSidePanel: function()

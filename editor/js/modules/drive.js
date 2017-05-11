@@ -664,7 +664,7 @@ var DriveModule = {
 				return;
 			}
 
-			LiteGUI.confirm("Are you sure?", function(v2) {
+			LiteGUI.confirm("Are you sure? This file will be deleted from the server forever.", function(v2) {
 				if(!v2)
 					return;
 

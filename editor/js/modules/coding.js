@@ -815,6 +815,90 @@ void main() {\n\
 }\n\
 ";
 
+
+LS.ShaderCode.examples.skybox = "\n\
+\n\
+\\js\n\
+//define exported uniforms from the shader (name, uniform, widget)\n\
+this.createUniform(\"ground_color\",\"u_ground_color\",\"color\",[0.5,0.5,0.5]);\n\
+this.render_state.cull_face = false;\n\
+this.render_state.depth_test = false;\n\
+this.flags.ignore_lights = true;\n\
+this.flags.ignore_frustum = true;\n\
+\n\
+\\color.vs\n\
+\n\
+precision mediump float;\n\
+attribute vec3 a_vertex;\n\
+attribute vec3 a_normal;\n\
+attribute vec2 a_coord;\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+\n\
+//matrices\n\
+uniform mat4 u_model;\n\
+uniform mat4 u_normal_model;\n\
+uniform mat4 u_view;\n\
+uniform mat4 u_viewprojection;\n\
+\n\
+//globals\n\
+uniform float u_time;\n\
+uniform vec4 u_viewport;\n\
+uniform float u_point_size;\n\
+\n\
+//camera\n\
+uniform vec3 u_camera_eye;\n\
+void main() {\n\
+	\n\
+	vec4 vertex4 = vec4(a_vertex,1.0);\n\
+	v_normal = a_normal;\n\
+	v_uvs = a_coord;\n\
+	\n\
+	//vertex\n\
+	v_pos = (u_model * vertex4).xyz;\n\
+	//normal\n\
+	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
+}\n\
+\n\
+\\color.fs\n\
+\n\
+precision mediump float;\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+//globals\n\
+uniform vec3 u_camera_eye;\n\
+uniform vec4 u_clipping_plane;\n\
+uniform float u_time;\n\
+uniform vec3 u_background_color;\n\
+uniform vec3 u_ambient_light;\n\
+\n\
+//material\n\
+uniform vec4 u_material_color; //color and alpha\n\
+uniform vec3 u_ground_color; //color and alpha\n\
+\n\
+void main() {\n\
+	vec3 N = normalize( v_normal );\n\
+	vec4 color = u_material_color;\n\
+	vec3 fog_color = vec3(1.0);\n\
+	if(N.y < 0.0)\n\
+		color.xyz = u_ground_color * (1.0 - abs(N.y));\n\
+	else\n\
+		color.xyz = mix( color.xyz, fog_color, 1.0 - N.y );\n\
+	gl_FragColor = color;\n\
+}\n\
+\n\
+";
+
+
+
+
+
 LS.Script.templates.global = "//global scripts can have any kind of code.\n//They are used to define new classes (like materials and components) that are used in the scene.\n\n";
 LS.Script.templates.component = "//https://github.com/jagenjo/litescene.js/blob/master/guides/creating_new_components.md\n\
 //This is an example of a component code\n\

@@ -1770,6 +1770,7 @@ LS.TYPES = {
 var Network = {
 
 	default_dataType: "arraybuffer",
+	protocol: null,
 
 	withCredentials: false, //for CORS urls: not sure which one is the best for every case so I leave it configurable
 
@@ -1785,6 +1786,16 @@ var Network = {
 	{
 		if(typeof(request) === "string")
 			throw("LS.Network.request expects object, not string. Use LS.Network.requestText or LS.Network.requestJSON");
+
+		//change protocol when working over https
+		var url = request.url;
+		if( this.protocol === null )
+			this.protocol = LS.ResourcesManager.getProtocol( location.href );
+		var protocol = LS.ResourcesManager.getProtocol( url );
+		if( this.protocol == "https" && protocol && protocol != "https" )
+			url = "https" + url.substr( url.indexOf(":") );
+
+		//update dataType
 		var dataType = request.dataType || this.default_dataType;
 		if(dataType == "json") //parse it locally
 			dataType = "text";
@@ -1804,13 +1815,13 @@ var Network = {
 					request.success.call(this);
 			};
 			img.onerror = request.error;
-			img.src = request.url;
+			img.src = url;
 			return img;
 		}
 
 		//regular case, use AJAX call
         var xhr = new XMLHttpRequest();
-        xhr.open(request.data ? 'POST' : 'GET', request.url, true);
+        xhr.open(request.data ? 'POST' : 'GET', url, true);
 		xhr.withCredentials = this.withCredentials; //if true doesnt work
 		if(request.withCredentials !== undefined)
 			xhr.withCredentials = request.withCredentials;
@@ -1864,7 +1875,7 @@ var Network = {
 				try
 				{
 					if(request.success)
-						request.success.call(this, response, request.url);
+						request.success.call(this, response, request.url );
 					LEvent.trigger(xhr,"done",response);
 				}
 				catch (err)
@@ -1875,7 +1886,7 @@ var Network = {
 			else
 			{
 				if(request.success)
-					request.success.call(this, response, request.url);
+					request.success.call(this, response, request.url );
 				LEvent.trigger(xhr,"done",response);
 			}
 		};
@@ -6244,6 +6255,9 @@ function ShaderMaterial( o )
 	this._light_mode = 0;
 	this._primitive = -1;
 
+	this._version = -1;
+	this._shader_version = -1;
+
 	if(o) 
 		this.configure(o);
 }
@@ -6288,6 +6302,16 @@ Object.defineProperty( ShaderMaterial.prototype, "enableLights", {
 	},
 	set: function(v) {
 		this._light_mode = v ? 1 : 0;
+	}
+});
+
+Object.defineProperty( ShaderMaterial.prototype, "version", {
+	enumerable: false,
+	get: function() {
+		return this._version;
+	},
+	set: function(v) {
+		console.error("version cannot be set manually");
 	}
 });
 
@@ -6444,6 +6468,7 @@ ShaderMaterial.prototype.processShaderCode = function()
 	//TODO
 
 	this._shader_version = shader_code._version;
+	this._version++;
 }
 
 //used after changing the code of the ShaderCode and wanting to reload the material keeping the old properties
@@ -8429,15 +8454,21 @@ CompositePattern.prototype.getScene = function()
 
 CompositePattern.prototype.addChild = function(node, index, options)
 {
-	if(!node)
+	if( !node )
 		throw("cannot addChild of null");
+
+	if( node.constructor !== this.constructor )
+		throw("added child must be of the same type");
 
 	//be careful with weird recursions...
 	var aux = this;
 	while( aux._parentNode )
 	{
 		if(aux == node)
-			throw("addChild: Cannot insert a node as his own child");
+		{
+			console.error("addChild: Cannot insert a node as his own child");
+			return false;
+		}
 		aux = aux._parentNode;
 	}
 
@@ -9208,7 +9239,7 @@ Component.addExtraMethods = function( component )
 	});
 
 	Object.defineProperty( component.prototype, 'root', {
-		set: function( uid )
+		set: function(v)
 		{
 			throw("root cannot be set, call addComponent to the root");
 		},
@@ -9217,6 +9248,19 @@ Component.addExtraMethods = function( component )
 		},
 		enumerable: false //uid better not be enumerable (so it doesnt show in the editor)
 	});
+
+	//same as root...
+	Object.defineProperty( component.prototype, 'parentNode', {
+		set: function()
+		{
+			throw("parentNode cannot be set, call addComponent to the parentNode");
+		},
+		get: function(){
+			return this._root;
+		},
+		enumerable: false //uid better not be enumerable (so it doesnt show in the editor)
+	});
+
 };
 
 
@@ -11786,6 +11830,17 @@ Object.defineProperty( ShaderCode.prototype, "code", {
 	}
 });
 
+Object.defineProperty( ShaderCode.prototype, "version", {
+	enumerable: false,
+	get: function() {
+		return this._version;
+	},
+	set: function(v) {
+		console.error("version cannot be set manually");
+	}
+});
+
+
 //parse the code
 //store in a easy to use way
 ShaderCode.prototype.processCode = function()
@@ -13450,6 +13505,9 @@ if(typeof(LiteGraph) != "undefined")
 
 
 
+if(typeof(LiteGraph) != "undefined")
+{
+
 // Texture Blur *****************************************
 function LGraphFXStack()
 {
@@ -13525,6 +13583,10 @@ LGraphFXStack.prototype.onConfigure = function( o )
 }
 
 LiteGraph.registerNodeType("texture/fxstack", LGraphFXStack );
+
+
+
+}
 
 function Path()
 {
@@ -16903,6 +16965,9 @@ var Renderer = {
 				if( instance.onPreRender( render_settings ) === false)
 					continue;
 
+			if(!instance.material) //somethinig went wrong
+				continue;
+
 			if(instance.material.opacity <= 0) //TODO: remove this, do it somewhere else
 				continue;
 
@@ -17457,17 +17522,20 @@ var Renderer = {
 	* @param {RenderSettings} render_settings
 	* @param {Array} cameras in case you dont want to use the scene cameras
 	*/
-	processVisibleData: function( scene, render_settings, cameras )
+	processVisibleData: function( scene, render_settings, cameras, instances, skip_collect_data )
 	{
 		//options = options || {};
 		//options.scene = scene;
 
 		//update info about scene (collecting it all or reusing the one collected in the frame before)
-		if( this._frame % this._collect_frequency == 0)
-			scene.collectData();
-		else
-			scene.updateCollectedData();
-		LEvent.trigger( scene, "afterCollectData", scene );
+		if(!skip_collect_data)
+		{
+			if( this._frame % this._collect_frequency == 0)
+				scene.collectData();
+			else
+				scene.updateCollectedData();
+			LEvent.trigger( scene, "afterCollectData", scene );
+		}
 
 		cameras = cameras || scene._cameras;
 
@@ -17490,7 +17558,7 @@ var Renderer = {
 
 		var materials = {}; //I dont want repeated materials here
 
-		var instances = scene._instances;
+		instances = instances || scene._instances;
 		var camera = this._main_camera; // || scene.getCamera();
 		var camera_eye = camera.getEye();
 
@@ -17627,7 +17695,7 @@ var Renderer = {
 	* @param {Texture} texture
 	* @param {RenderSettings} render_settings
 	*/
-	renderInstancesToRT: function( cam, texture, render_settings )
+	renderInstancesToRT: function( cam, texture, render_settings, instances )
 	{
 		render_settings = render_settings || this.default_render_settings;
 		this._current_target = texture;
@@ -17653,7 +17721,7 @@ var Renderer = {
 				gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 			*/
 			//render scene
-			LS.Renderer.renderInstances( render_settings );
+			LS.Renderer.renderInstances( render_settings, instances );
 		}
 	},
 
@@ -17669,7 +17737,7 @@ var Renderer = {
 	* @param {number} far
 	* @return {Texture} the resulting texture
 	*/
-	renderToCubemap: function( position, size, texture, render_settings, near, far, background_color )
+	renderToCubemap: function( position, size, texture, render_settings, near, far, background_color, instances )
 	{
 		size = size || 256;
 		near = near || 1;
@@ -17697,7 +17765,7 @@ var Renderer = {
 			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 			camera.configure({ eye: eye, center: [ eye[0] + info.dir[0], eye[1] + info.dir[1], eye[2] + info.dir[2]], up: info.up });
 			LS.Renderer.enableCamera( camera, render_settings, true );
-			LS.Renderer.renderInstances( render_settings );
+			LS.Renderer.renderInstances( render_settings, instances );
 		});
 
 		this._current_target = null;
@@ -22123,6 +22191,25 @@ Object.defineProperty( Camera.prototype, "frustum_size", {
 });
 
 /**
+* The frustum size when working in pure ORTHOGRAPHIC 
+* @property orthographic {vec4} left,right,bottom,top (near and far are in the near,far properties)
+* @default 50
+*/
+
+Object.defineProperty( Camera.prototype, "orthographic", {
+	get: function() {
+		return this._ortho;
+	},
+	set: function(v) {
+		if(	!v || v.length < 4)
+			return;
+		this._ortho.set(v);
+		this._must_update_projection_matrix = true;
+	},
+	enumerable: true
+});
+
+/**
 * The viewport in normalized coordinates (left,bottom, width, height)
 * @property viewport {vec4}
 */
@@ -22190,6 +22277,50 @@ Object.defineProperty( Camera.prototype, "render_to_texture", {
 	},
 	enumerable: true
 });
+
+/**
+* @property frame {LS.RenderFrameContext} contains the RenderFrameContext where the scene was stored
+*/
+Object.defineProperty( Camera.prototype, "frame", {
+	get: function() {
+		throw("frame cannot be assigned manually, enable render_to_texture");
+	},
+	set: function(v) {
+		return this._frame;
+	},
+	enumerable: false
+});
+
+/**
+* @property frame_color_texture {GL.Texture} contains the color texture used by the RenderFrameContext
+*/
+Object.defineProperty( Camera.prototype, "frame_color_texture", {
+	get: function() {
+		throw("frame_color_texture cannot be assigned manually, enable render_to_texture");
+	},
+	set: function(v) {
+		if(!this._frame)
+			return null;
+		return this._frame.getColorTexture();
+	},
+	enumerable: false
+});
+
+/**
+* @property frame_depth_texture {GL.Texture} contains the depth texture used by the RenderFrameContext
+*/
+Object.defineProperty( Camera.prototype, "frame_depth_texture", {
+	get: function() {
+		throw("frame_depth_texture cannot be assigned manually, enable render_to_texture");
+	},
+	set: function(v) {
+		if(!this._frame)
+			return null;
+		return this._frame.getDepthTexture();
+	},
+	enumerable: false
+});
+
 
 /**
 * @property mustUpdate {Boolean}
@@ -22660,7 +22791,7 @@ Camera.prototype.setPerspective = function( fov, aspect, near, far )
 * @param {number} near
 * @param {number} far
 */
-Camera.prototype.setOrthographic = function( left,right, bottom,top, near, far )
+Camera.prototype.setOrthographic = function( left, right, bottom,top, near, far )
 {
 	this._near = near;
 	this._far = far;
@@ -23032,6 +23163,7 @@ Camera.prototype.configure = function(o)
 	if(o.final_aspect !== undefined) this._final_aspect = o.final_aspect;
 	if(o.frustum_size !== undefined) this._frustum_size = o.frustum_size;
 	if(o.viewport !== undefined) this._viewport.set( o.viewport );
+	if(o.orthographic !== undefined) this._ortho.set( o.orthographic );
 
 	if(o.background_color !== undefined) this._background_color.set( o.background_color );
 
@@ -23057,6 +23189,7 @@ Camera.prototype.serialize = function()
 		far: this._far,
 		fov: this._fov,
 		aspect: this._aspect,
+		orthographic: vec4.toArray(this._ortho),
 		background_color: vec4.toArray(this._background_color),
 		frustum_size: this._frustum_size,
 		viewport: toArray( this._viewport ),
@@ -27344,6 +27477,7 @@ function Skybox(o)
 	this.material = null;
 	this._intensity = 1;
 	this.use_environment = true;
+	this._bake_to_cubemap = false;
 	if(o)
 		this.configure(o);
 }
@@ -27364,6 +27498,17 @@ Skybox.prototype.onRemovedFromNode = function(node)
 	LEvent.unbind(node, "collectRenderInstances", this.onCollectInstances, this);
 }
 
+Skybox.prototype.onAddedToScene = function(scene)
+{
+	LEvent.bind(scene, "start", this.onStart, this);
+}
+
+Skybox.prototype.onRemovedFromScene = function(scene)
+{
+	LEvent.unbind(scene, "start", this.onStart, this);
+}
+
+
 Object.defineProperty( Skybox.prototype, "intensity", {
 	set: function(v){
 		this._intensity = v;
@@ -27376,6 +27521,20 @@ Object.defineProperty( Skybox.prototype, "intensity", {
 	},
 	enumerable: true
 });
+
+Object.defineProperty( Skybox.prototype, "bake_to_cubemap", {
+	set: function(v){
+		this._bake_to_cubemap = v;
+		if(v)
+			this.bakeToCubemap();
+	},
+	get: function()
+	{
+		return this._bake_to_cubemap;
+	},
+	enumerable: true
+});
+
 
 Skybox.prototype.getResources = function(res)
 {
@@ -27451,7 +27610,6 @@ Skybox.prototype.onCollectInstances = function(e, instances)
 		mat = this._material;
 		if(!mat)
 			mat = this._material = new LS.StandardMaterial({ 
-				queue: LS.RenderQueue.BACKGROUND, 
 				flags: { 
 					two_sided: true, 
 					cast_shadows: false, 
@@ -27476,11 +27634,73 @@ Skybox.prototype.onCollectInstances = function(e, instances)
 			sampler.uvs = "0";
 	}
 
+	//render first
+	if(mat)
+	{
+		mat.queue = LS.RenderQueue.BACKGROUND;
+		mat.render_state.cull_face = false;
+		mat.render_state.front_face = GL.CW;
+		mat.render_state.depth_test = false;
+		mat.flags.ignore_frustum = true;
+		mat.flags.ignore_lights = true;
+		mat.flags.cast_shadows = false;
+		mat.flags.receive_shadows = false;
+		mat.flags.flip_normals = true;
+		mat.flags.depth_test = false;
+		mat.use_scene_ambient = false;
+	}
+
 	RI.setMesh( mesh );
 	RI.setMaterial( mat );
-
 	instances.push(RI);
+
+	//if we have a material we can bake and it has changed...
+	if( this.material && mat && this._bake_to_cubemap && (this._prev_mat != mat || this._mat_version != mat.version ) )
+	{
+		this._prev_mat = mat;
+		this._mat_version = mat.version;
+		this.bakeToCubemap();
+	}
 }
+
+Skybox.prototype.onStart = function(e)
+{
+	if( this._bake_to_cubemap )
+		this.bakeToCubemap();
+}
+
+Skybox.prototype.bakeToCubemap = function( size, render_settings )
+{
+	var that = this;
+	size = size || 512;
+	render_settings = render_settings || new LS.RenderSettings();
+
+	if( !this.root || !this.root.scene )
+		return;
+
+	var scene = this.root.scene;
+
+	if( !this._render_instance || !this._render_instance.material ) //generate the skybox render instance
+	{
+		//wait till we have the material loaded
+		setTimeout( function(){ that.bakeToCubemap.bind( that ); },500 );
+		return;
+	}
+
+	//this will ensure the materials and instances are in the queues
+	var instances = [];
+	this.onCollectInstances(null, instances);
+	LS.Renderer.processVisibleData( scene, render_settings, null, instances, true );
+
+	render_settings.render_helpers = false;
+
+	this._baked_texture = LS.Renderer.renderToCubemap( vec3.create(), size, this._baked_texture, render_settings, 0.001, 100, vec4.create(), instances);
+	LS.ResourcesManager.registerResource( ":baked_skybox", this._baked_texture );
+	if( this.root.scene.info )
+		this.root.scene.info.textures[ "environment" ] = ":baked_skybox";
+}
+
+
 
 LS.registerComponent(Skybox);
 LS.Skybox = Skybox;

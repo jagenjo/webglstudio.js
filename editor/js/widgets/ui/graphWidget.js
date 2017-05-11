@@ -547,5 +547,35 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 	}
 });
 
+LiteGraph.LGraph.prototype.onGetNodeMenuOptions = function( options, node )
+{
+	//console.log( options );
 
+	//for preview textures *************************************
+
+	var preview_textures = [];
+	if(node.outputs)
+		for(var i = 0; i < node.outputs.length; ++i)
+		{
+			var info = node.getOutputInfo(i);
+			if(!info || !info._data || info._data.constructor !== GL.Texture )
+				continue;
+			preview_textures.push( { content: info.name, texture: info._data });
+		}
+
+	if (preview_textures.length)
+	{
+		options.push( { content: "Preview texture", is_menu: true, callback: inner_show_previews } );
+	}
+
+	function inner_show_previews( value, options, e, prev_menu, node )
+	{
+		var submenu = new LiteGraph.ContextMenu( preview_textures, { parentMenu: prev_menu, event: e, callback: inner_set_preview });
+	}
+
+	function inner_set_preview(v)
+	{
+		console.log("set preview",v);
+	}
+}
 

@@ -88,7 +88,6 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 	//there is a material
 	var mat_type = LS.getObjectClassName( material );
 
-
 	var icon = section.querySelector(".icon");
 	icon.addEventListener("dragstart", function(event) { 
 		event.dataTransfer.setData("uid", material.uid);

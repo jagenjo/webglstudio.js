@@ -290,6 +290,14 @@ LS.Components.SkinDeformer.actions["convert_bones"] = { title: "Convert Bones to
 LS.Components.MorphDeformer.actions["optimize_moprhtargets"] = { title: "Optimize Morph Targets", callback: function() { this.optimizeMorphTargets(); }};
 
 
+LS.Components.Skybox.actions["bake"] = { 
+	title:"Bake to Cubemap",
+	callback: function(){
+		this.bakeToCubemap( 512 );
+		RenderModule.requestFrame();
+	}
+};
+
 
 //*********** Material Actions *************************************
 /*

@@ -4,6 +4,18 @@
 //   LiteGraph CLASS                                     *******
 // *************************************************************
 
+/* FYI: links are stored in graph.links with this structure per object
+{ 
+	id: number
+	type: string,
+	origin_id: number, 
+	origin_slot: number, 
+	target_id: number, 
+	target_slot: number,
+	data: *
+};
+*/
+
 /**
 * The Global Scope. It contains all the registered node classes.
 *
@@ -65,9 +77,13 @@ var LiteGraph = global.LiteGraph = {
 			console.log("Node registered: " + type);
 
 		var categories = type.split("/");
+		var classname = base_class.constructor.name;
 
 		var pos = type.lastIndexOf("/");
 		base_class.category = type.substr(0,pos);
+
+		if(!base_class.title)
+			base_class.title = classname;
 		//info.name = name.substr(pos+1,name.length - pos);
 
 		//extend class
@@ -78,7 +94,7 @@ var LiteGraph = global.LiteGraph = {
 
 		this.registered_node_types[ type ] = base_class;
 		if(base_class.constructor.name)
-			this.Nodes[ base_class.constructor.name ] = base_class;
+			this.Nodes[ classname ] = base_class;
 
 		//warnings
 		if(base_class.prototype.onPropertyChange)
@@ -1413,7 +1429,13 @@ LGraphNode.prototype.configure = function(info)
 		if(typeof(link) != "object")
 			continue;
 		input.link = link[0];
-		this.graph.links[ link[0] ] = { id: link[0], origin_id: link[1], origin_slot: link[2], target_id: link[3], target_slot: link[4] };
+		this.graph.links[ link[0] ] = { 
+			id: link[0],
+			origin_id: link[1],
+			origin_slot: link[2],
+			target_id: link[3],
+			target_slot: link[4]
+		};
 	}
 	for(var i in this.outputs)
 	{
@@ -1440,6 +1462,12 @@ LGraphNode.prototype.configure = function(info)
 
 LGraphNode.prototype.serialize = function()
 {
+	//clear outputs last data (because data in connections is never serialized but stored inside the outputs info)
+	if(this.outputs)
+		for(var i = 0; i < this.outputs.length; i++)
+			delete this.outputs[i]._data;
+
+	//create serialization object
 	var o = {
 		id: this.id,
 		title: this.title,
@@ -1539,7 +1567,18 @@ LGraphNode.prototype.setOutputData = function(slot,data)
 	if(!this.outputs) 
 		return;
 
-	if(slot > -1 && slot < this.outputs.length && this.outputs[slot] && this.outputs[slot].links != null)
+	if(slot == -1 || slot >= this.outputs.length)
+		return;
+	
+	var output_info = this.outputs[slot];
+	if(!output_info)
+		return;
+
+	//store data in the output itself in case we want to debug
+	output_info._data = data;
+
+	//if there are connections, pass the data to the connections
+	if( this.outputs[slot].links )
 	{
 		for(var i = 0; i < this.outputs[slot].links.length; i++)
 		{
@@ -1632,12 +1671,29 @@ LGraphNode.prototype.getInputNode = function( slot )
 	return this.graph.getNodeById( link_info.origin_id );
 }
 
+/**
+* tells you the last output data that went in that slot
+* @method getOutputData
+* @param {number|String} slot
+* @return {Object}  object or null
+*/
+LGraphNode.prototype.getOutputData = function(slot)
+{
+	if(!this.outputs)
+		return null;
+	if(slot >= this.outputs.length)
+		return null;
+
+	var info = this.outputs[slot];
+	return info._data;
+}
+
 
 /**
 * tells you info about an output connection (which node, type, etc)
 * @method getOutputInfo
 * @param {number} slot
-* @return {Object}  object or null
+* @return {Object}  object or null { name: string, type: string, links: [ ids of links in number ] }
 */
 LGraphNode.prototype.getOutputInfo = function(slot)
 {
@@ -2148,10 +2204,11 @@ LGraphNode.prototype.connect = function( slot, target_node, target_slot )
 
 	var input = target_node.inputs[target_slot];
 
-	if( LiteGraph.isValidConnection( output.type, input.type) )
+	if( LiteGraph.isValidConnection( output.type, input.type ) )
 	{
 		var link_info = { 
-			id: this.graph.last_link_id++, 
+			id: this.graph.last_link_id++,
+			type: input.type,
 			origin_id: this.id, 
 			origin_slot: slot, 
 			target_id: target_node.id, 
@@ -2549,7 +2606,7 @@ global.LGraphCanvas = LiteGraph.LGraphCanvas = function LGraphCanvas( canvas, gr
 	this.render_curved_connections = true;
 	this.render_connection_arrows = true;
 
-	this.connections_width = 4;
+	this.connections_width = 3;
 
 	//link canvas and graph
 	if(graph)
@@ -2986,6 +3043,7 @@ LGraphCanvas.prototype.processMouseDown = function(e)
 	
 	var ref_window = this.getCanvasWindow();
 	var document = ref_window.document;
+	LGraphCanvas.active_canvas = this;
 
 	//move mouse move event to the window in case it drags outside of the canvas
 	this.canvas.removeEventListener("mousemove", this._mousemove_callback );
@@ -3167,6 +3225,7 @@ LGraphCanvas.prototype.processMouseMove = function(e)
 	if(!this.graph)
 		return;
 
+	LGraphCanvas.active_canvas = this;
 	this.adjustMouseEvent(e);
 	var mouse = [e.localX, e.localY];
 	var delta = [mouse[0] - this.last_mouse[0], mouse[1] - this.last_mouse[1]];
@@ -3314,6 +3373,7 @@ LGraphCanvas.prototype.processMouseUp = function(e)
 
 	var window = this.getCanvasWindow();
 	var document = window.document;
+	LGraphCanvas.active_canvas = this;
 
 	//restore the mousemove event back to the canvas
 	document.removeEventListener("mousemove", this._mousemove_callback, true );
@@ -3931,28 +3991,21 @@ LGraphCanvas.prototype.drawFrontCanvas = function()
 				default:
 					link_color = "#AFA";
 			}
-			this.renderLink(ctx, this.connecting_pos, [this.canvas_mouse[0],this.canvas_mouse[1]], link_color );
+			//the connection being dragged by the mouse
+			this.renderLink( ctx, this.connecting_pos, [this.canvas_mouse[0],this.canvas_mouse[1]], null, false, null, link_color );
 
 			ctx.beginPath();
-
-			if( this.connecting_output.type === LiteGraph.EVENT )
-				ctx.rect( (this.connecting_pos[0] - 6) + 0.5, (this.connecting_pos[1] - 5) + 0.5,14,10);
-			else
-				ctx.arc( this.connecting_pos[0], this.connecting_pos[1],4,0,Math.PI*2);
-
-			/*
-			if( this.connecting_output.round)
-				ctx.arc( this.connecting_pos[0], this.connecting_pos[1],4,0,Math.PI*2);
-			else
-				ctx.rect( this.connecting_pos[0], this.connecting_pos[1],12,6);
-			*/
+				if( this.connecting_output.type === LiteGraph.EVENT )
+					ctx.rect( (this.connecting_pos[0] - 6) + 0.5, (this.connecting_pos[1] - 5) + 0.5,14,10);
+				else
+					ctx.arc( this.connecting_pos[0], this.connecting_pos[1],4,0,Math.PI*2);
 			ctx.fill();
 
 			ctx.fillStyle = "#ffcc00";
 			if(this._highlight_input)
 			{
 				ctx.beginPath();
-				ctx.arc( this._highlight_input[0], this._highlight_input[1],6,0,Math.PI*2);
+					ctx.arc( this._highlight_input[0], this._highlight_input[1],6,0,Math.PI*2);
 				ctx.fill();
 			}
 		}
@@ -4496,22 +4549,21 @@ LGraphCanvas.prototype.drawConnections = function(ctx)
 				else
 					start_node_slotpos = start_node.getConnectionPos(false, start_node_slot);
 
-				var color = LGraphCanvas.link_type_colors[ node.inputs[i].type ] || this.default_link_color;
+				this.renderLink( ctx, start_node_slotpos, node.getConnectionPos(true,i), link );
 
-				this.renderLink(ctx, start_node_slotpos, node.getConnectionPos(true,i), color );
-
-				if(link && link._last_time && now - link._last_time < 1000 )
+				//event triggered rendered on top
+				if(link && link._last_time && (now - link._last_time) < 1000 )
 				{
 					var f = 2.0 - (now - link._last_time) * 0.002;
 					var color = "rgba(255,255,255, " + f.toFixed(2) + ")";
-					this.renderLink( ctx, start_node_slotpos, node.getConnectionPos(true,i) , color, true, f );
+					this.renderLink( ctx, start_node_slotpos, node.getConnectionPos(true,i), link, true, f, color );
 				}
 			}
 	}
 	ctx.globalAlpha = 1;
 }
 
-LGraphCanvas.prototype.renderLink = function(ctx,a,b,color, skip_border, flow )
+LGraphCanvas.prototype.renderLink = function( ctx, a, b, link, skip_border, flow, color )
 {
 	if(!this.highquality_render)
 	{
@@ -4527,6 +4579,13 @@ LGraphCanvas.prototype.renderLink = function(ctx,a,b,color, skip_border, flow )
 	if(this.render_connections_border && this.scale > 0.6)
 		ctx.lineWidth = this.connections_width + 4;
 
+	//choose color
+	if( !color && link )
+		color = LGraphCanvas.link_type_colors[ link.type ];
+	if(!color)
+		color = this.default_link_color;
+
+	//begin line shape
 	ctx.beginPath();
 	
 	if(this.render_curved_connections) //splines
@@ -4544,6 +4603,7 @@ LGraphCanvas.prototype.renderLink = function(ctx,a,b,color, skip_border, flow )
 		ctx.lineTo(b[0]-10,b[1]);
 	}
 
+	//rendering the outline of the connection can be a little bit slow
 	if(this.render_connections_border && this.scale > 0.6 && !skip_border)
 	{
 		ctx.strokeStyle = "rgba(0,0,0,0.5)";
@@ -4553,35 +4613,39 @@ LGraphCanvas.prototype.renderLink = function(ctx,a,b,color, skip_border, flow )
 	ctx.lineWidth = this.connections_width;
 	ctx.fillStyle = ctx.strokeStyle = color;
 	ctx.stroke();
+	//end line shape
 
-	//no symbols
-	if(!this.render_connection_arrows || this.scale < 0.6)
-		return;
-
-	//render arrow
-	if(this.render_connection_arrows && this.scale > 0.6)
+	//render arrow in the middle
+	if( this.render_connection_arrows && this.scale >= 0.6 )
 	{
-		var pos = this.computeConnectionPoint(a,b,0.5);
-		var pos2 = this.computeConnectionPoint(a,b,0.51);
+		//render arrow
+		if(this.render_connection_arrows && this.scale > 0.6)
+		{
+			//compute two points in the connection
+			var pos = this.computeConnectionPoint(a,b,0.5);
+			var pos2 = this.computeConnectionPoint(a,b,0.51);
 
-		//get two points in the bezier curve
-		var angle = 0;
-		if(this.render_curved_connections)
-			angle = -Math.atan2( pos2[0] - pos[0], pos2[1] - pos[1]);
-		else
-			angle = b[1] > a[1] ? 0 : Math.PI;
+			//compute the angle between them so the arrow points in the right direction
+			var angle = 0;
+			if(this.render_curved_connections)
+				angle = -Math.atan2( pos2[0] - pos[0], pos2[1] - pos[1]);
+			else
+				angle = b[1] > a[1] ? 0 : Math.PI;
 
-		ctx.save();
-		ctx.translate(pos[0],pos[1]);
-		ctx.rotate(angle);
-		ctx.beginPath();
-		ctx.moveTo(-5,-5);
-		ctx.lineTo(0,+5);
-		ctx.lineTo(+5,-5);
-		ctx.fill();
-		ctx.restore();
+			//render arrow
+			ctx.save();
+			ctx.translate(pos[0],pos[1]);
+			ctx.rotate(angle);
+			ctx.beginPath();
+			ctx.moveTo(-5,-5);
+			ctx.lineTo(0,+5);
+			ctx.lineTo(+5,-5);
+			ctx.fill();
+			ctx.restore();
+		}
 	}
 
+	//render flowing points
 	if(flow)
 	{
 		for(var i = 0; i < 5; ++i)
@@ -4722,19 +4786,20 @@ LGraphCanvas.prototype.touchHandler = function(event)
 
 /* CONTEXT MENU ********************/
 
-LGraphCanvas.onMenuAdd = function(node, e, prev_menu, canvas, first_event )
+LGraphCanvas.onMenuAdd = function( node, options, e, prev_menu )
 {
+	var canvas = LGraphCanvas.active_canvas;
 	var ref_window = canvas.getCanvasWindow();
 
 	var values = LiteGraph.getNodeTypesCategories();
-	var entries = {};
+	var entries = [];
 	for(var i in values)
 		if(values[i])
-			entries[ i ] = { value: values[i], content: values[i]  , is_menu: true };
+			entries.push({ value: values[i], content: values[i], has_submenu: true });
 
-	var menu = LiteGraph.createContextMenu(entries, {event: e, callback: inner_clicked, from: prev_menu}, ref_window);
+	var menu = new LiteGraph.ContextMenu( entries, { event: e, callback: inner_clicked, parentMenu: prev_menu }, ref_window);
 
-	function inner_clicked(v, e)
+	function inner_clicked( v, option, e )
 	{
 		var category = v.value;
 		var node_types = LiteGraph.getNodeTypesInCategory(category);
@@ -4742,16 +4807,17 @@ LGraphCanvas.onMenuAdd = function(node, e, prev_menu, canvas, first_event )
 		for(var i in node_types)
 			values.push( { content: node_types[i].title, value: node_types[i].type });
 
-		LiteGraph.createContextMenu(values, {event: e, callback: inner_create, from: menu}, ref_window);
+		new LiteGraph.ContextMenu( values, {event: e, callback: inner_create, parentMenu: menu }, ref_window);
 		return false;
 	}
 
-	function inner_create(v, e)
+	function inner_create( v, e )
 	{
+		var first_event = prev_menu.getFirstEvent();
 		var node = LiteGraph.createNode( v.value );
 		if(node)
 		{
-			node.pos = canvas.convertEventToCanvas(first_event);
+			node.pos = canvas.convertEventToCanvas( first_event );
 			canvas.graph.add( node );
 		}
 	}
@@ -4770,13 +4836,14 @@ LGraphCanvas.onMenuNodeEdit = function()
 
 }
 
-LGraphCanvas.showMenuNodeInputs = function(node, e, prev_menu)
+LGraphCanvas.showMenuNodeOptionalInputs = function( v, options, e, prev_menu, node )
 {
 	if(!node)
 		return;
 
 	var that = this;
-	var ref_window = this.getCanvasWindow();
+	var canvas = LGraphCanvas.active_canvas;
+	var ref_window = canvas.getCanvasWindow();
 
 	var options = node.optional_inputs;
 	if(node.onGetInputs)
@@ -4804,7 +4871,7 @@ LGraphCanvas.showMenuNodeInputs = function(node, e, prev_menu)
 	if(!entries.length)
 		return;
 
-	var menu = LiteGraph.createContextMenu(entries, {event: e, callback: inner_clicked, from: prev_menu}, ref_window);
+	var menu = new LiteGraph.ContextMenu(entries, { event: e, callback: inner_clicked, parentMenu: prev_menu, node: node }, ref_window);
 
 	function inner_clicked(v, e, prev)
 	{
@@ -4812,7 +4879,7 @@ LGraphCanvas.showMenuNodeInputs = function(node, e, prev_menu)
 			return;
 
 		if(v.callback)
-			v.callback.call(that, node, v, e, prev);
+			v.callback.call( that, node, v, e, prev );
 
 		if(v.value)
 			node.addInput(v.value[0],v.value[1], v.value[2]);
@@ -4821,13 +4888,14 @@ LGraphCanvas.showMenuNodeInputs = function(node, e, prev_menu)
 	return false;
 }
 
-LGraphCanvas.showMenuNodeOutputs = function(node, e, prev_menu)
+LGraphCanvas.showMenuNodeOptionalOutputs = function( v, options, e, prev_menu, node )
 {
 	if(!node)
 		return;
 
 	var that = this;
-	var ref_window = this.getCanvasWindow();
+	var canvas = LGraphCanvas.active_canvas;
+	var ref_window = canvas.getCanvasWindow();
 
 	var options = node.optional_outputs;
 	if(node.onGetOutputs)
@@ -4861,7 +4929,7 @@ LGraphCanvas.showMenuNodeOutputs = function(node, e, prev_menu)
 	if(!entries.length)
 		return;
 
-	var menu = LiteGraph.createContextMenu(entries, {event: e, callback: inner_clicked, from: prev_menu}, ref_window);
+	var menu = new LiteGraph.ContextMenu(entries, {event: e, callback: inner_clicked, parentMenu: prev_menu, node: node }, ref_window);
 
 	function inner_clicked( v, e, prev )
 	{
@@ -4869,7 +4937,7 @@ LGraphCanvas.showMenuNodeOutputs = function(node, e, prev_menu)
 			return;
 
 		if(v.callback)
-			v.callback.call(that, node, v, e, prev);
+			v.callback.call( that, node, v, e, prev );
 
 		if(!v.value)
 			return;
@@ -4880,24 +4948,25 @@ LGraphCanvas.showMenuNodeOutputs = function(node, e, prev_menu)
 		{
 			var entries = [];
 			for(var i in value)
-				entries.push({content: i, value: value[i]});
-			LiteGraph.createContextMenu(entries, {event: e, callback: inner_clicked, from: prev_menu});		
+				entries.push({ content: i, value: value[i]});
+			new LiteGraph.ContextMenu( entries, { event: e, callback: inner_clicked, parentMenu: prev_menu, node: node });
 			return false;
 		}
 		else
-			node.addOutput(v.value[0], v.value[1], v.value[2]);
+			node.addOutput( v.value[0], v.value[1], v.value[2]);
 	}
 
 	return false;
 }
 
-LGraphCanvas.onShowMenuNodeProperties = function(node,e, prev_menu)
+LGraphCanvas.onShowMenuNodeProperties = function( value, options, e, prev_menu, node )
 {
 	if(!node || !node.properties)
 		return;
 
 	var that = this;
-	var ref_window = this.getCanvasWindow();
+	var canvas = LGraphCanvas.active_canvas;
+	var ref_window = canvas.getCanvasWindow();
 
 	var entries = [];
 		for (var i in node.properties)
@@ -4910,13 +4979,14 @@ LGraphCanvas.onShowMenuNodeProperties = function(node,e, prev_menu)
 	if(!entries.length)
 		return;
 
-	var menu = LiteGraph.createContextMenu(entries, {event: e, callback: inner_clicked, from: prev_menu, allow_html: true },ref_window);
+	var menu = new LiteGraph.ContextMenu(entries, {event: e, callback: inner_clicked, parentMenu: prev_menu, allow_html: true, node: node },ref_window);
 
-	function inner_clicked( v, e, prev )
+	function inner_clicked( v, options, e, prev )
 	{
 		if(!node)
 			return;
-		that.showEditPropertyValue( node, v.value, { event: e });
+		var rect = this.getBoundingClientRect();
+		canvas.showEditPropertyValue( node, v.value, { position: [rect.left, rect.top] });
 	}
 
 	return false;
@@ -4929,7 +4999,7 @@ LGraphCanvas.decodeHTML = function( str )
 	return e.innerHTML;
 }
 
-LGraphCanvas.onShowTitleEditor = function( node, event )
+LGraphCanvas.onShowTitleEditor = function( value, options, e, menu, node )
 {
 	var input_html = "";
 
@@ -4949,7 +5019,10 @@ LGraphCanvas.onShowTitleEditor = function( node, event )
 		});
 	}
 
-	var rect = this.canvas.getClientRects()[0];
+	var graphcanvas = LGraphCanvas.active_canvas;
+	var canvas = graphcanvas.canvas;
+
+	var rect = canvas.getBoundingClientRect();
 	var offsetx = -20;
 	var offsety = -20;
 	if(rect)
@@ -4965,13 +5038,13 @@ LGraphCanvas.onShowTitleEditor = function( node, event )
 	}
 	else
 	{
-		dialog.style.left = (this.canvas.width * 0.5 + offsetx) + "px";
-		dialog.style.top = (this.canvas.height * 0.5 + offsety) + "px";
+		dialog.style.left = (canvas.width * 0.5 + offsetx) + "px";
+		dialog.style.top = (canvas.height * 0.5 + offsety) + "px";
 	}
 
 	var button = dialog.querySelector("button");
 	button.addEventListener("click", inner );
-	this.canvas.parentNode.appendChild( dialog );
+	canvas.parentNode.appendChild( dialog );
 
 	function inner()
 	{
@@ -5085,16 +5158,24 @@ LGraphCanvas.prototype.showEditPropertyValue = function( node, property, options
 		offsety -= rect.top;
 	}
 
-	if( options.event )
+	if( options.position )
 	{
-		dialog.style.left = (options.event.pageX + offsetx) + "px";
-		dialog.style.top = (options.event.pageY + offsety)+ "px";
-	}
-	else
+		offsetx += options.position[0];
+		offsety += options.position[1];
+	} 
+	else if( options.event )
 	{
-		dialog.style.left = (this.canvas.width * 0.5 + offsetx) + "px";
-		dialog.style.top = (this.canvas.height * 0.5 + offsety) + "px";
+		offsetx += options.event.pageX;
+		offsety += options.event.pageY;
 	}
+	else //centered
+	{
+		offsetx += this.canvas.width * 0.5;
+		offsety += this.canvas.height * 0.5;
+	}
+
+	dialog.style.left = offsetx + "px";
+	dialog.style.top = offsety + "px";
 
 	var button = dialog.querySelector("button");
 	button.addEventListener("click", inner );
@@ -5120,20 +5201,20 @@ LGraphCanvas.prototype.showEditPropertyValue = function( node, property, options
 	}
 }
 
-LGraphCanvas.onMenuNodeCollapse = function(node)
+LGraphCanvas.onMenuNodeCollapse = function( value, options, e, menu, node )
 {
 	node.flags.collapsed = !node.flags.collapsed;
 	node.setDirtyCanvas(true,true);
 }
 
-LGraphCanvas.onMenuNodePin = function(node)
+LGraphCanvas.onMenuNodePin = function( value, options, e, menu, node )
 {
 	node.pin();
 }
 
-LGraphCanvas.onMenuNodeMode = function(node, e, prev_menu)
+LGraphCanvas.onMenuNodeMode = function( value, options, e, menu, node )
 {
-	LiteGraph.createContextMenu(["Always","On Event","Never"], {event: e, callback: inner_clicked, from: prev_menu});
+	new LiteGraph.ContextMenu(["Always","On Event","Never"], {event: e, callback: inner_clicked, parentMenu: prev_menu, node: node });
 
 	function inner_clicked(v)
 	{
@@ -5152,8 +5233,11 @@ LGraphCanvas.onMenuNodeMode = function(node, e, prev_menu)
 	return false;
 }
 
-LGraphCanvas.onMenuNodeColors = function(node, e, prev_menu)
+LGraphCanvas.onMenuNodeColors = function( value, options, e, menu, node )
 {
+	if(!node)
+		throw("no node for color");
+
 	var values = [];
 	for(var i in LGraphCanvas.node_colors)
 	{
@@ -5161,12 +5245,14 @@ LGraphCanvas.onMenuNodeColors = function(node, e, prev_menu)
 		var value = {value:i, content:"<span style='display: block; color:"+color.color+"; background-color:"+color.bgcolor+"'>"+i+"</span>"};
 		values.push(value);
 	}
-	LiteGraph.createContextMenu(values, {event: e, callback: inner_clicked, from: prev_menu});
+	new LiteGraph.ContextMenu( values, { event: e, callback: inner_clicked, parentMenu: menu, node: node });
 
 	function inner_clicked(v)
 	{
-		if(!node) return;
-		var color = LGraphCanvas.node_colors[v.value];
+		if(!node)
+			return;
+
+		var color = LGraphCanvas.node_colors[ v.value ];
 		if(color)
 		{
 			node.color = color.color;
@@ -5178,13 +5264,17 @@ LGraphCanvas.onMenuNodeColors = function(node, e, prev_menu)
 	return false;
 }
 
-LGraphCanvas.onMenuNodeShapes = function(node,e)
+LGraphCanvas.onMenuNodeShapes = function( value, options, e, menu, node )
 {
-	LiteGraph.createContextMenu(["box","round"], {event: e, callback: inner_clicked});
+	if(!node)
+		throw("no node passed");
+
+	new LiteGraph.ContextMenu(["box","round"], { event: e, callback: inner_clicked, parentMenu: menu, node: node });
 
 	function inner_clicked(v)
 	{
-		if(!node) return;
+		if(!node)
+			return;
 		node.shape = v;
 		node.setDirtyCanvas(true);
 	}
@@ -5192,14 +5282,18 @@ LGraphCanvas.onMenuNodeShapes = function(node,e)
 	return false;
 }
 
-LGraphCanvas.onMenuNodeRemove = function(node)
+LGraphCanvas.onMenuNodeRemove = function( value, options, e, menu, node )
 {
-	if(node.removable == false) return;
+	if(!node)
+		throw("no node passed");
+
+	if(node.removable == false)
+		return;
 	node.graph.remove(node);
 	node.setDirtyCanvas(true,true);
 }
 
-LGraphCanvas.onMenuNodeClone = function(node)
+LGraphCanvas.onMenuNodeClone = function( value, options, e, menu, node )
 {
 	if(node.clonable == false) return;
 	var newnode = node.clone();
@@ -5224,7 +5318,7 @@ LGraphCanvas.prototype.getCanvasMenuOptions = function()
 	else
 	{
 		options = [
-			{content:"Add Node", is_menu: true, callback: LGraphCanvas.onMenuAdd }
+			{ content:"Add Node", has_submenu: true, callback: LGraphCanvas.onMenuAdd }
 			//{content:"Collapse All", callback: LGraphCanvas.onMenuCollapseAll }
 		];
 
@@ -5242,7 +5336,8 @@ LGraphCanvas.prototype.getCanvasMenuOptions = function()
 	return options;
 }
 
-LGraphCanvas.prototype.getNodeMenuOptions = function(node)
+//called by processContextMenu to extract the menu list
+LGraphCanvas.prototype.getNodeMenuOptions = function( node )
 {
 	var options = null;
 
@@ -5250,17 +5345,17 @@ LGraphCanvas.prototype.getNodeMenuOptions = function(node)
 		options = node.getMenuOptions(this);
 	else
 		options = [
-			{content:"Inputs", is_menu: true, disabled:true, callback: LGraphCanvas.showMenuNodeInputs },
-			{content:"Outputs", is_menu: true, disabled:true, callback: LGraphCanvas.showMenuNodeOutputs },
+			{content:"Inputs", has_submenu: true, disabled:true, callback: LGraphCanvas.showMenuNodeOptionalInputs },
+			{content:"Outputs", has_submenu: true, disabled:true, callback: LGraphCanvas.showMenuNodeOptionalOutputs },
 			null,
-			{content:"Properties", is_menu: true, callback: LGraphCanvas.onShowMenuNodeProperties },
+			{content:"Properties", has_submenu: true, callback: LGraphCanvas.onShowMenuNodeProperties },
 			null,
 			{content:"Title", callback: LGraphCanvas.onShowTitleEditor },
-			{content:"Mode", is_menu: true, callback: LGraphCanvas.onMenuNodeMode },
+			{content:"Mode", has_submenu: true, callback: LGraphCanvas.onMenuNodeMode },
 			{content:"Collapse", callback: LGraphCanvas.onMenuNodeCollapse },
 			{content:"Pin", callback: LGraphCanvas.onMenuNodePin },
-			{content:"Colors", is_menu: true, callback: LGraphCanvas.onMenuNodeColors },
-			{content:"Shapes", is_menu: true, callback: LGraphCanvas.onMenuNodeShapes },
+			{content:"Colors", has_submenu: true, callback: LGraphCanvas.onMenuNodeColors },
+			{content:"Shapes", has_submenu: true, callback: LGraphCanvas.onMenuNodeShapes },
 			null
 		];
 
@@ -5293,21 +5388,28 @@ LGraphCanvas.prototype.getNodeMenuOptions = function(node)
 			options[1].disabled = false;
 	}
 
+	if(node.graph && node.graph.onGetNodeMenuOptions )
+		node.graph.onGetNodeMenuOptions( options, node );
+
 	return options;
 }
 
-LGraphCanvas.prototype.processContextMenu = function(node, event)
+LGraphCanvas.prototype.processContextMenu = function( node, event )
 {
 	var that = this;
-	var win = this.getCanvasWindow();
+	var canvas = LGraphCanvas.active_canvas;
+	var ref_window = canvas.getCanvasWindow();
 
 	var menu_info = null;
-	var options = {event: event, callback: inner_option_clicked};
+	var options = { event: event, callback: inner_option_clicked, node: node };
 
 	//check if mouse is in input
 	var slot = null;
 	if(node)
+	{
 		slot = node.getSlotInPosition( event.canvasX, event.canvasY );
+		LGraphCanvas.active_node = node;
+	}
 
 	if(slot)
 	{
@@ -5319,14 +5421,13 @@ LGraphCanvas.prototype.processContextMenu = function(node, event)
 	else
 		menu_info = node ? this.getNodeMenuOptions(node) : this.getCanvasMenuOptions();
 
-
 	//show menu
 	if(!menu_info)
 		return;
 
-	var menu = LiteGraph.createContextMenu( menu_info, options, win);
+	var menu = new LiteGraph.ContextMenu( menu_info, options, ref_window );
 
-	function inner_option_clicked(v,e)
+	function inner_option_clicked( v, options, e )
 	{
 		if(!v)
 			return;
@@ -5340,8 +5441,8 @@ LGraphCanvas.prototype.processContextMenu = function(node, event)
 			return;
 		}
 
-		if(v.callback)
-			return v.callback.call(that, node, e, menu, that, event );
+		//if(v.callback)
+		//	return v.callback.call(that, node, options, e, menu, that, event );
 	}
 }
 
@@ -5481,197 +5582,332 @@ function num2hex(triplet) {
 
 LiteGraph.num2hex = num2hex;
 
-/* LiteGraph GUI elements *************************************/
+/* LiteGraph GUI elements used for canvas editing *************************************/
 
-LiteGraph.createContextMenu = function(values, options, ref_window)
+/**
+* ContextMenu from LiteGUI
+*
+* @class ContextMenu 
+* @constructor
+* @param {Array} values (allows object { title: "Nice text", callback: function ... })
+* @param {Object} options [optional] Some options:\
+* - title: title to show on top of the menu
+* - callback: function to call when an option is clicked, it receives the item information
+* - ignore_item_callbacks: ignores the callback inside the item, it just calls the options.callback 
+* - event: you can pass a MouseEvent, this way the ContextMenu appears in that position
+*/
+function ContextMenu( values, options )
 {
 	options = options || {};
 	this.options = options;
+	var that = this;
 
-	//allows to create graph canvas in separate window
-	ref_window = ref_window || window;
+	//to link a menu with its parent
+	if(options.parentMenu)
+	{
+		if( options.parentMenu.constructor !== this.constructor )
+		{
+			console.error("parentMenu must be of class ContextMenu, ignoring it");
+			options.parentMenu = null;
+		}
+		else
+		{
+			this.parentMenu = options.parentMenu;
+			this.parentMenu.lock = true;
+			this.parentMenu.current_submenu = this;
+		}
+	}
 
-    if (!options.from)
-        LiteGraph.closeAllContextMenus( ref_window );
-    else {
-        //closing submenus
-        var menus = document.querySelectorAll(".graphcontextmenu");
-        for (var key in menus) {
-            if (menus[key].previousSibling == options.from)
-                menus[key].closeMenu();
-        }
-    }
+	if(options.event && options.event.constructor !== MouseEvent && options.event.constructor !== CustomEvent)
+	{
+		console.error("Event passed to ContextMenu is not of type MouseEvent or CustomEvent. Ignoring it.");
+		options.event = null;
+	}
 
-	var root = ref_window.document.createElement("div");
-	root.className = "graphcontextmenu graphmenubar-panel";
+	var root = document.createElement("div");
+	root.className = "litegraph litecontextmenu litemenubar-panel";
+	root.style.minWidth = 100;
+	root.style.minHeight = 100;
+	root.style.pointerEvents = "none";
+	setTimeout( function() { root.style.pointerEvents = "auto"; },100); //delay so the mouse up event is not caugh by this element
+
+	//this prevents the default context browser menu to open in case this menu was created when pressing right button 
+	root.addEventListener("mouseup", function(e){ 
+		e.preventDefault(); return true; 
+	}, true);
+	root.addEventListener("contextmenu", function(e) { 
+		if(e.button != 2) //right button
+			return false;
+		e.preventDefault(); 
+		return false;
+	},true);
+
+	root.addEventListener("mousedown", function(e){ 
+		if(e.button == 2)
+		{
+			that.close();
+			e.preventDefault(); return true; 
+		}
+	}, true);
+
+
 	this.root = root;
-	var style = root.style;
-
-	style.minWidth = "100px";
-	style.minHeight = "20px";
-
-	style.position = "fixed";
-	style.top = "100px";
-	style.left = "100px";
-	style.color = "#AAF";
-	style.padding = "2px";
-	style.borderBottom = "2px solid #AAF";
-	style.backgroundColor = "#444";
-	style.zIndex = 10;
 
 	//title
 	if(options.title)
 	{
 		var element = document.createElement("div");
-		element.className = "graphcontextmenu-title";
+		element.className = "litemenu-title";
 		element.innerHTML = options.title;
 		root.appendChild(element);
 	}
 
-	//avoid a context menu in a context menu
-	root.addEventListener("contextmenu", function(e) { e.preventDefault(); return false; });
-
+	//entries
+	var num = 0;
 	for(var i in values)
 	{
-		var item = values[i];
-		var element = ref_window.document.createElement("div");
-		element.className = "graphmenu-entry";
-
-		if(item == null)
-		{
-			element.className += " separator";
-			root.appendChild(element);
-			continue;
-		}
-
-		if(item.is_menu)
-			element.className += " submenu";
-
-		if(item.disabled)
-			element.className += " disabled";
-
-		if(item.className)
-			element.className += " " + item.className;
-
-		element.style.cursor = "pointer";
-		element.dataset["value"] = typeof(item) == "string" ? item : item.value;
-		element.data = item;
-
-		var content = "";
-		if(typeof(item) == "string")
-			content = values.constructor == Array ? values[i] : i;
-		else
-			content = item.content ? item.content : i;
-		if(options.allow_html)
-			element.innerHTML = content;
-		else
-			element.innerText = content;
-
-		element.addEventListener("click", on_click );
-		root.appendChild(element);
+		var name = values.constructor == Array ? values[i] : i;
+		if( name != null && name.constructor !== String )
+			name = name.content === undefined ? String(name) : name.content;
+		var value = values[i];
+		this.addItem( name, value, options );
+		num++;
 	}
 
-	root.addEventListener("mouseover", function(e) {
-		this.mouse_inside = true;
-	});
-
-	root.addEventListener("mouseout", function(e) {
-		//console.log("OUT!");
-		//check if mouse leave a inner element
-		var aux = e.relatedTarget || e.toElement;
-		if(!aux) //happens sometimes 
+	//close on leave
+	root.addEventListener("mouseleave", function(e) {
+		if(that.lock)
 			return;
-		while(aux != this && aux != ref_window.document)
-			aux = aux.parentNode;
-
-		if(aux == this)
-			return;
-		this.mouse_inside = false;
-		if(!this.block_close)
-			this.closeMenu();
+		that.close(e);
 	});
 
 	//insert before checking position
-	ref_window.document.body.appendChild(root);
+	var root_document = document;
+	if(options.event)
+		root_document = options.event.target.ownerDocument; 
 
-	var root_rect = root.getClientRects()[0];
+	if(!root_document)
+		root_document = document;
+	root_document.body.appendChild(root);
 
-	//link menus
-	if(options.from)
-	{
-		options.from.block_close = true;
-	}
-
+	//compute best position
 	var left = options.left || 0;
 	var top = options.top || 0;
 	if(options.event)
 	{
 		left = (options.event.pageX - 10);
 		top = (options.event.pageY - 10);
-		if(options.left)
-			left = options.left;
+		if(options.title)
+			top -= 20;
 
-		var rect = ref_window.document.body.getClientRects()[0];
-
-		if(options.from)
+		if(options.parentMenu)
 		{
-			var parent_rect = options.from.getClientRects()[0];
-			left = parent_rect.left + parent_rect.width;
+			var rect = options.parentMenu.root.getBoundingClientRect();
+			left = rect.left + rect.width;
 		}
 
-		
-		if(left > (rect.width - root_rect.width - 10))
-			left = (rect.width - root_rect.width - 10);
-		if(top > (rect.height - root_rect.height - 10))
-			top = (rect.height - root_rect.height - 10);
+		var body_rect = document.body.getBoundingClientRect();
+		var root_rect = root.getBoundingClientRect();
+
+		if(left > (body_rect.width - root_rect.width - 10))
+			left = (body_rect.width - root_rect.width - 10);
+		if(top > (body_rect.height - root_rect.height - 10))
+			top = (body_rect.height - root_rect.height - 10);
 	}
 
 	root.style.left = left + "px";
 	root.style.top = top  + "px";
+}
 
-	function on_click(e) {
-		var value = this.dataset["value"];
-		var close = true;
-		if(options.callback)
+ContextMenu.prototype.addItem = function( name, value, options )
+{
+	var that = this;
+	options = options || {};
+
+	var element = document.createElement("div");
+	element.className = "litemenu-entry submenu";
+
+	var disabled = false;
+
+	if(value === null)
+	{
+		element.classList.add("separator");
+		//element.innerHTML = "<hr/>"
+		//continue;
+	}
+	else
+	{
+		element.innerHTML = value && value.title ? value.title : name;
+		element.value = value;
+
+		if(value)
 		{
-			var ret = options.callback.call(root, this.data, e );
-			if( ret !== undefined ) close = ret;
+			if(value.disabled)
+			{
+				disabled = true;
+				element.classList.add("disabled");
+			}
+			if(value.submenu || value.has_submenu)
+				element.classList.add("has_submenu");
 		}
 
-		if(close)
-			LiteGraph.closeAllContextMenus( ref_window );
-			//root.closeMenu();
+		if(typeof(value) == "function")
+		{
+			element.dataset["value"] = name;
+			element.onclick_callback = value;
+		}
+		else
+			element.dataset["value"] = value;
 	}
 
-	root.closeMenu = function()
-	{
-		if(options.from)
-		{
-			options.from.block_close = false;
-			if(!options.from.mouse_inside)
-				options.from.closeMenu();
-		}
-		if(this.parentNode)
-			ref_window.document.body.removeChild(this);
-	};
+	this.root.appendChild(element);
+	if(!disabled)
+		element.addEventListener("click", inner_onclick);
+	if(options.autoopen)
+		element.addEventListener("mouseenter", inner_over);
 
-	return root;
+	function inner_over(e)
+	{
+		var value = this.value;
+		if(!value || !value.has_submenu)
+			return;
+		inner_onclick.call(this,e);
+	}
+
+	//menu option clicked
+	function inner_onclick(e) {
+		var value = this.value;
+		var close_parent = true;
+
+		if(that.current_submenu)
+			that.current_submenu.close(e);
+
+		//global callback
+		if(options.callback) 
+		{
+			var r = options.callback.call( this, value, options, e, that, options.node );
+			if(r === true)
+				close_parent = false;
+		}
+
+		//special cases
+		if(value)
+		{
+			if (value.callback && !options.ignore_item_callbacks && value.disabled !== true )  //item callback
+			{
+				var r = value.callback.call( this, value, options, e, that, options.node );
+				if(r === true)
+					close_parent = false;
+			}
+			if(value.submenu)
+			{
+				if(!value.submenu.options)
+					throw("ContextMenu submenu needs options");
+				var submenu = new that.constructor( value.submenu.options, {
+					callback: value.submenu.callback,
+					event: e,
+					parentMenu: that,
+					ignore_item_callbacks: value.submenu.ignore_item_callbacks,
+					title: value.submenu.title,
+					autoopen: options.autoopen
+				});
+				close_parent = false;
+			}
+		}
+	
+		if(close_parent && !that.lock)
+			that.close();
+	}
+
+	return element;
 }
+
+ContextMenu.prototype.close = function(e, ignore_parent_menu)
+{
+	if(this.root.parentNode)
+		this.root.parentNode.removeChild( this.root );
+	if(this.parentMenu && !ignore_parent_menu)
+	{
+		this.parentMenu.lock = false;
+		this.parentMenu.current_submenu = null;
+		if( e === undefined )
+			this.parentMenu.close();
+		else if( e && !ContextMenu.isCursorOverElement( e, this.parentMenu.root) )
+		{
+			ContextMenu.trigger( this.parentMenu.root, "mouseleave", e );
+		}
+	}
+	if(this.current_submenu)
+		this.current_submenu.close(e, true);
+}
+
+//this code is used to trigger events easily (used in the context menu mouseleave
+ContextMenu.trigger = function(element, event_name, params, origin)
+{
+	var evt = document.createEvent( 'CustomEvent' );
+	evt.initCustomEvent( event_name, true,true, params ); //canBubble, cancelable, detail
+	evt.srcElement = origin;
+	if( element.dispatchEvent )
+		element.dispatchEvent( evt );
+	else if( element.__events )
+		element.__events.dispatchEvent( evt );
+	//else nothing seems binded here so nothing to do
+	return evt;
+}
+
+//returns the top most menu
+ContextMenu.prototype.getTopMenu = function()
+{
+	if( this.options.parentMenu )
+		return this.options.parentMenu.getTopMenu();
+	return this;
+}
+
+ContextMenu.prototype.getFirstEvent = function()
+{
+	if( this.options.parentMenu )
+		return this.options.parentMenu.getFirstEvent();
+	return this.options.event;
+}
+
+
+
+ContextMenu.isCursorOverElement = function( event, element )
+{
+	var left = event.pageX;
+	var top = event.pageY;
+	var rect = element.getBoundingClientRect();
+	if(!rect)
+		return false;
+	if(top > rect.top && top < (rect.top + rect.height) &&
+		left > rect.left && left < (rect.left + rect.width) )
+		return true;
+	return false;
+}
+
+
+
+LiteGraph.ContextMenu = ContextMenu;
 
 LiteGraph.closeAllContextMenus = function( ref_window )
 {
 	ref_window = ref_window || window;
 
-	var elements = ref_window.document.querySelectorAll(".graphcontextmenu");
-	if(!elements.length) return;
+	var elements = ref_window.document.querySelectorAll(".litecontextmenu");
+	if(!elements.length)
+		return;
 
 	var result = [];
 	for(var i = 0; i < elements.length; i++)
 		result.push(elements[i]);
 
 	for(var i in result)
-		if(result[i].parentNode)
+	{
+		if(result[i].close)
+			result[i].close();
+		else if(result[i].parentNode)
 			result[i].parentNode.removeChild( result[i] );
+	}
 }
 
 LiteGraph.extendClass = function ( target, origin )
@@ -11108,6 +11344,8 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 		this.properties = {name:""};
 		this.size = [LGraphTexture.image_preview_size, LGraphTexture.image_preview_size];
 	}
+
+	LGraphCubemap.title = "Cubemap";
 
 	LGraphCubemap.prototype.onDropFile = function(data, filename, file)
 	{

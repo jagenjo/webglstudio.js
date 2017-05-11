@@ -98,19 +98,29 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 		return;
 	var node = camera._root;
 
-	inspector.addCombo("Type", camera.type, { values: { "Orthographic" : LS.Camera.ORTHOGRAPHIC, "Perspective": LS.Camera.PERSPECTIVE }, pretitle: AnimationModule.getKeyframeCode( camera, "type"), callback: function (value) { camera.type = value; } });
+	inspector.addCombo("Type", camera.type, { values: { "Orthographic" : LS.Camera.ORTHOGRAPHIC, "Perspective": LS.Camera.PERSPECTIVE, "Ortho2D": LS.Camera.ORTHO2D }, pretitle: AnimationModule.getKeyframeCode( camera, "type"), callback: function (value) { 
+		camera.type = value;
+		inspector.refresh();
+	}});
 	inspector.widgets_per_row = 2;
-	inspector.addNumber("Fov", camera.fov, { pretitle: AnimationModule.getKeyframeCode( camera, "fov"), min: 2, max: 180, units:'º', callback: function (value) { camera.fov = value; }});
-	inspector.addNumber("Aspect", camera.aspect, { pretitle: AnimationModule.getKeyframeCode( camera, "aspect" ), min: 0.1, max: 10, step: 0.01, callback: function (value) { camera.aspect = value; }});
+	if(camera.type != LS.Camera.ORTHO2D)
+	{
+		inspector.addNumber("Fov", camera.fov, { pretitle: AnimationModule.getKeyframeCode( camera, "fov"), min: 2, max: 180, units:'º', callback: function (value) { camera.fov = value; }});
+		inspector.addNumber("Aspect", camera.aspect, { pretitle: AnimationModule.getKeyframeCode( camera, "aspect" ), min: 0.1, max: 10, step: 0.01, callback: function (value) { camera.aspect = value; }});
+	}
 	inspector.addNumber("Near", camera.near, { pretitle: AnimationModule.getKeyframeCode( camera, "near" ), callback: function (value) { camera.near = value; }});
 	inspector.addNumber("Far", camera.far, { pretitle: AnimationModule.getKeyframeCode( camera, "far" ), callback: function (value) { camera.far = value; }});
 	inspector.widgets_per_row = 1;
-	inspector.addNumber("Frustum size", camera.frustum_size, {  pretitle: AnimationModule.getKeyframeCode( camera, "frustum_size" ),  name_width: 100, callback: function (value) { camera.frustum_size = value; }});
-	//inspector.addNumber("Far", camera.far, { callback: function (value) { camera.far = value; }});
 
-	inspector.addNumber("focalLength", camera.focalLength, { min: 0.0001, pretitle: AnimationModule.getKeyframeCode( camera, "focalLength" ),  name_width: 100, callback: function(v) { 
-		camera.focalLength = v;
-	}});
+	if(camera.type == LS.Camera.ORTHO2D)
+		inspector.addVector4("Orthographic", camera.orthographic, {  pretitle: AnimationModule.getKeyframeCode( camera, "orthographic" ),  name_width: 100, callback: function (value) { camera.orthographic = value; }});
+	else
+	{
+		inspector.addNumber("Frustum size", camera.frustum_size, {  pretitle: AnimationModule.getKeyframeCode( camera, "frustum_size" ),  name_width: 100, callback: function (value) { camera.frustum_size = value; }});
+		inspector.addNumber("focalLength", camera.focalLength, { min: 0.0001, pretitle: AnimationModule.getKeyframeCode( camera, "focalLength" ),  name_width: 100, callback: function(v) { 
+			camera.focalLength = v;
+		}});
+	}
 
 	var is_node_camera = (node && !node._is_root);
 

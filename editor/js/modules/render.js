@@ -94,7 +94,7 @@ var RenderModule = {
 		//LiteGUI.bind( window, "resize", function() {  RenderModule.requestFrame(); }); //dont work
 		$(window).resize( function() {  RenderModule.requestFrame(); });
 
-		LiteGUI.bind( LiteGUI, "resized",function(){
+		LiteGUI.bind( LiteGUI, "resized", function(){
 			canvas.width = canvas.parentNode.offsetHeight;
 			canvas.height = canvas.parentNode.offsetWidth;
 			RenderModule.requestFrame();

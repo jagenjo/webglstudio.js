@@ -11027,7 +11027,7 @@ Track.prototype.getSamplePacked = function( time, interpolate, result )
 * the object contains a reference to the object, the property name, the type of the data
 * @method getPropertyInfo
 * @param {LS.SceneTree} scene [optional]
-* @return {Object} an object with the info { target, property, type, value }
+* @return {Object} an object with the info { target, name, type, value }
 */
 Track.prototype.getPropertyInfo = function( scene )
 {
@@ -37261,6 +37261,9 @@ SceneNode.prototype.getPropertyInfoFromPath = function( path )
 	}
 
 	var v = undefined;
+
+	if(!target) //unknown target
+		return null;
 
 	if( target.getPropertyInfoFromPath && target != this )
 	{

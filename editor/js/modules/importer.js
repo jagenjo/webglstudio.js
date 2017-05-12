@@ -539,8 +539,8 @@ var ImporterModule  = {
 
 			if(resource.constructor === GL.Texture )
 			{
-				//force generate thumbnail
-				resource.preview = DriveModule.generatePreview( resource.fullpath || resource.filename );
+				//force generate thumbnail on imported resources
+				resource._preview_url = DriveModule.generatePreview( resource.fullpath || resource.filename );
 			}
 
 

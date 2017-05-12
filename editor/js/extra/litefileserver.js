@@ -1082,7 +1082,7 @@ Session.prototype.uploadFile = function( fullpath, data, extra, on_complete, on_
 
 
 	//generate preview and request if they are images
-	if(LFS.generate_preview && LFS.previews == "local" && extensions.indexOf(ext) != -1 )
+	if(!params.preview && LFS.generate_preview && LFS.previews == "local" && extensions.indexOf(ext) != -1 )
 	{
 		LFS.generatePreview( data, function( prev_data ) {
 			params.preview = prev_data;

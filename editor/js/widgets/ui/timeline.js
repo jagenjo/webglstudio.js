@@ -1390,10 +1390,22 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 			if(!action_callback)
 				return;
 
-			total = action_callback( that.current_animation, that.current_take );
-			LiteGUI.alert("Tracks modified: " + total);
-			if(total)
-				that.animationModified();
+			total = action_callback( that.current_animation, that.current_take, inner_callback );
+			if(total != null)
+			{
+				LiteGUI.alert("Tracks modified: " + total);
+				if(total)
+					that.animationModified();
+			}
+
+			dialog.close();
+
+			function inner_callback(total)
+			{
+				LiteGUI.alert("Tracks modified: " + total);
+				if(total)
+					that.animationModified();
+			}
 		}});
 		widgets.widgets_per_row = 1;
 
@@ -1406,7 +1418,8 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 
 		widgets.addButton(null,"Go",{ width: "20%", callback: function(){
 			var total = that.current_take.setInterpolationToAllTracks( interpolation );
-			LiteGUI.alert("Tracks modified: " + total);
+			if(total != null)
+				LiteGUI.alert("Tracks modified: " + total);
 			if(total)
 				that.animationModified();
 		}});
@@ -2160,9 +2173,9 @@ Timeline.prototype.onShowAnimationOptionsDialog = function()
 			return;
 
 		total = action_callback( that.current_animation, that.current_take );
-		LiteGUI.alert("Tracks modified: " + total);
-		if(total)
-			LS.ResourcesManager.resourceModified( that.current_animation );
+		if(total != null)
+			LiteGUI.alert("Tracks modified: " + total);
+		LS.ResourcesManager.resourceModified( that.current_animation );
 	}});
 	widgets.widgets_per_row = 1;
 
@@ -2692,9 +2705,14 @@ Timeline.actions = {
 	track: {}
 };
 
-Timeline.actions.take["Use names as ids"] = function( animation, take )
+Timeline.actions.take["Use names as ids"] = function( animation, take, callback )
 {
-	return take.convertIDstoNames(true);
+	EditorModule.showSelectNode(function(node){
+		var v = take.convertIDstoNames(true, node);
+		if(callback)
+			callback(v);
+	},{ selected: LS.GlobalScene.root });
+	return null;
 }
 
 Timeline.actions.take["Pack all tracks"] = function( animation, take )

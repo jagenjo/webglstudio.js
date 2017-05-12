@@ -1799,7 +1799,7 @@ var EditorModule = {
 	},
 
 	//shows a dialog to select a node
-	showSelectNode: function(on_complete)
+	showSelectNode: function(on_complete, options)
 	{
 		var dialog = new LiteGUI.Dialog("dialog_nodes", {title:"Scene nodes", close: true, minimize: true, width: 300, height: 410, resizable: true, scroll: false, draggable: true});
 		dialog.show( null, this.root );
@@ -1813,11 +1813,14 @@ var EditorModule = {
 		var list = null;
 
 		//*
-		var selected_value = null;
+		var selected_value = options && options.selected ? options.selected : null;
+		var selected_index = -1;
 		var nodes = [];
 		for(var i = 0; i < scene._nodes.length; i++ )
 		{
 			var node = scene._nodes[i];
+			if( selected_value == node )
+				selected_index = i;
 			nodes.push( { name: node._name, node: node } );
 		}
 
@@ -1847,6 +1850,9 @@ var EditorModule = {
 				on_complete( selected_value.node );
 			RenderModule.requestFrame();
 		}});
+
+		if(selected_index != -1)
+			list.selectIndex( selected_index );
 
 		dialog.add( widgets );
 		//dialog.adjustSize();

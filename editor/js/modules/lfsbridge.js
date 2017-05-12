@@ -437,7 +437,12 @@ var LFSBridge = {
 						resources_imported.push( res );
 						remaining_imported--;
 						if(remaining_imported == 0)
-							that.convertAndUploadResourcesToFolder( resources_imported, folder_fullpath );
+						{
+							that.convertAndUploadResourcesToFolder( resources_imported, folder_fullpath, function(){
+								LiteGUI.alert("Resources uploaded");
+								DriveModule.refreshContent();								
+							});
+						}
 					});
 
 					/*
@@ -530,15 +535,30 @@ var LFSBridge = {
 		}
 	},
 
-	convertAndUploadResourcesToFolder: function( resources, on_complete, on_progress )
+	convertAndUploadResourcesToFolder: function( resources, folder, on_complete, on_progress )
 	{
 		var files = [];
-		for(var i in resources)
+		var total = resources.length;
+		if(total == 0)
+			on_complete();
+		inner();
+
+		function inner()
 		{
-			var resource = resources[i];
-			var file = DriveModule.getResourceAsBlob( resource );
-			//TODO
-			console.log(file);
+			if(resources.length == 0)
+			{
+				if(on_complete)
+					on_complete();
+				return;
+			}
+
+			var resource = resources.pop();
+			var newname = folder + "/" + resource.filename;
+			LS.RM.renameResource( resource.fullpath || resource.filename, newname );
+			//if the resource is processed then it already generates the preview
+			DriveModule.saveResource( resource, inner, { skip_alerts: true } );
+			if(on_progress)
+				on_progress( 1.0 - (resources.length/total) );
 		}
 	}
 };

@@ -1453,14 +1453,21 @@ var DriveModule = {
 		//var func_name = resource._server_info ? "serverUpdateResource" : "serverUploadResource";
 
 		//uploading dialog...
-		var dialog = LiteGUI.alert("<p>Uploading file... <span class='upload_progress'></span></p>");
-		var upload_progress = dialog.root.querySelector(".upload_progress");
+		var dialog = null;
+		var upload_progress = null;
+		if(!options.skip_alerts)
+		{
+			dialog = LiteGUI.alert("<p>Uploading file... <span class='upload_progress'></span></p>");
+			upload_progress = dialog.root.querySelector(".upload_progress");
+		}
+
 		this.serverUploadResource( resource, resource.fullpath,
 			function(v, msg) {  //after resource saved
 				if(v)
 					LS.ResourcesManager.resourceSaved( resource );
 				LiteGUI.remove( upload_progress ); 
-				dialog.close();
+				if(dialog)
+					dialog.close();
 				if(!options.skip_alerts)
 					LiteGUI.alert( v ? "Resource saved" : "Problem saving the resource: " + msg);
 
@@ -1477,6 +1484,8 @@ var DriveModule = {
 					on_complete( resource );
 			},
 			function (err, status) { 
+				if(!dialog)
+					return;
 				if(status == 413)
 					err = "File too big";
 				dialog.content.innerHTML = "Error Uploading: " + err; 
@@ -1484,7 +1493,8 @@ var DriveModule = {
 					on_complete(false, err);
 			},
 			function (progress) { 
-				upload_progress.innerHTML = ((progress*100)|0) + "%";
+				if(upload_progress)
+					upload_progress.innerHTML = ((progress*100)|0) + "%";
 			}
 		);
 	},

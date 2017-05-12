@@ -1,6 +1,6 @@
 /* Console module 
-
 	It shows the QuickBar when pressing Contrl + Space and allows to launch commands (not JS commands, but special editor commands)
+	It also allows to show messages in the console widget
 */
 
 var ConsoleModule = {
@@ -100,7 +100,6 @@ var ConsoleModule = {
 		else
 			this.show();
 	}
-
 };
 
 CORE.registerModule( ConsoleModule );

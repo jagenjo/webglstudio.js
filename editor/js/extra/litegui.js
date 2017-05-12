@@ -5748,6 +5748,8 @@ LiteGUI.LineEditor = LineEditor;
 			id = null;
 		}
 
+		options = options || {};
+
 		var that = this;
 		this.width = options.width;
 		this.height = options.height;

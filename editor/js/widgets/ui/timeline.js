@@ -1228,7 +1228,7 @@ Timeline.prototype.onMouseWheel = function(e)
 Timeline.prototype.showOptionsContextMenu = function( e )
 {
 	var that = this;
-	var options = ["New Animation","Load Animation","Scene Animation",null,"Baking Tools"];
+	var options = ["New Animation","Load Animation","Scene Animation",null,"Prettify Names","Baking Tools"];
 	var animation_options = {title:"Animation Options",disabled:!this.current_take};
 	options.push(animation_options);
 
@@ -1239,6 +1239,8 @@ Timeline.prototype.showOptionsContextMenu = function( e )
 			that.onLoadAnimation();
 		else if(v == "Scene Animation")
 			that.onSceneAnimation();
+		else if(v == "Prettify Names")
+			that.onPrettifyNames();
 		else if(v == "Baking Tools")
 			that.onShowBakingDialog();
 		else if(v == animation_options)
@@ -2099,6 +2101,24 @@ Timeline.prototype.selectKeyframe = function( track_index, keyframe_index )
 	this.redrawCanvas();
 }
 
+
+Timeline.prototype.onPrettifyNames = function()
+{
+	if(!this.current_take)
+		return;
+	var take = this.current_take;
+	for(var i = 0; i < take.tracks.length; ++i)
+	{
+		var track = take.tracks[i];
+		var info = track.getPropertyInfo();
+		if(!info || !info.node)
+			continue;
+		track.name = info.node.name;
+		if(info.target && info.target.constructor.is_component)
+			track.name += " " + LS.getObjectClassName( info.target );
+		track.name += "." + info.name;
+	}
+}
 
 Timeline.prototype.onShowAnimationOptionsDialog = function()
 {

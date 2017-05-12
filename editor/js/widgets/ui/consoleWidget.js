@@ -272,19 +272,19 @@ ConsoleWidget.prototype.logClass = function( classname, cmd )
 	var elem = null;
 	if( class_info ) //Using the info from the doxygen doc
 	{
-		var link = ConsoleWidget.lsroot_doc + "classes/" + class_info.namespace + "." + classname + ".html";
+		var link = ConsoleWidget.lsroot_doc + "" + class_info.namespace + "." + classname + ".html";
 		elem = this.log("<a href='"+link+"' target='_blank'>"+class_info.name+"</a> "+ class_info.description +" [<a href='#' class='methods'>methods</a>].");
 	}
 	else //guessing from the code
 	{
 		if( LS.Components[ classname ] )
 		{
-			var link = ConsoleWidget.lsroot_doc + "classes/LS.Components." + classname + ".html";
+			var link = ConsoleWidget.lsroot_doc + "LS.Components." + classname + ".html";
 			elem = this.log("<a href='"+link+"' target='_blank'>LS.Components."+classname+"</a> [<a href='#' class='methods'>methods</a>].");
 		}
 		else if( LS[ classname ] )
 		{
-			var link = ConsoleWidget.lsroot_doc + "classes/LS." + classname + ".html";
+			var link = ConsoleWidget.lsroot_doc + "LS." + classname + ".html";
 			elem = this.log("<a href='"+link+"' target='_blank'>LS."+classname+"</a>  [<a href='#' class='methods'>methods</a>].");
 		}
 		else
@@ -455,6 +455,7 @@ ConsoleWidget.prototype.bindEvents = function()
 	this.log("Console enabled");
 	LEvent.bind( LS, "code_error", this.onError, this );
 	LEvent.bind( LS, "log", this.onLog, this );
+	LEvent.bind( LS.RM, "resource_not_found", this.onResourceMissing, this );
 }
 
 ConsoleWidget.prototype.unbindEvents = function()
@@ -483,5 +484,9 @@ ConsoleWidget.prototype.onError = function(e, err)
 		this.log({ type: "error", content: "Script in Node: " + ( err.node.name ) });
 }
 
+ConsoleWidget.prototype.onResourceMissing = function(e, url)
+{
+	this.log({ type: "error", content: "Resource not found: " + url });
+}
 
 CORE.registerWidget( ConsoleWidget );

@@ -18,6 +18,7 @@ var SceneStorageModule = {
 		menubar.add("Project/Load/From Server", { callback: this.showLoadSceneFromServerDialog.bind(this) });
 		menubar.add("Project/Load/Local", { callback: this.showLoadLocalSceneDialog.bind(this) });
 		menubar.add("Project/Load/From URL", { callback: this.showLoadFromURLDialog.bind(this) });
+		menubar.add("Project/Load/From File", { callback: this.showLoadFromFileDialog.bind(this) });
 		menubar.add("Project/Load/From autobackup", { callback: this.recoverBackup.bind(this) });
 		menubar.add("Project/Save/In Server", { callback: this.showSaveSceneInServerDialog.bind(this) });
 		menubar.add("Project/Save/Local", { callback: this.showSaveSceneInLocalDialog.bind(this) });
@@ -248,6 +249,28 @@ var SceneStorageModule = {
 				//loaded...
 			});
 		},{width:300});
+	},
+
+	showLoadFromFileDialog: function()
+	{
+		var dialog = new LiteGUI.Dialog({title:"Load File", width: 200});
+		var inspector = new LiteGUI.Inspector();
+		var file = null;
+		inspector.addFile("Select File","",{ read_file: true, callback: function(v){
+			console.log(v);		
+			file = v;
+		}});
+		inspector.addButton(null,"Load File", function(){
+			if(!file || !file.data)
+				return;
+			LS.Renderer.reset();
+			LS.GlobalScene.clear();
+			LS.GlobalScene.setFromJSON( file.data );
+			dialog.close();
+		});
+		dialog.add( inspector );
+		dialog.adjustSize(2);
+		dialog.show();
 	},
 
 	showSaveSceneInServerDialog: function()

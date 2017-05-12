@@ -1010,6 +1010,7 @@ var DriveModule = {
 	{
 		if(force_reload)
 			LS.ResourcesManager.unregisterResource( fullpath );
+		delete LS.ResourcesManager.resources_not_found[ fullpath ]; //in case it was missing before
 		LS.ResourcesManager.load(fullpath, null, function(data) { 
 			if(on_complete)
 				on_complete(data);

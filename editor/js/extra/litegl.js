@@ -520,6 +520,13 @@ global.typedArrayToArray = function(array)
 	return r;
 }
 
+global.RGBToHex = function(r, g, b) { 
+	r = Math.min(255, r*255);
+	g = Math.min(255, g*255);
+	b = Math.min(255, b*255);
+	return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
 global.hexColorToRGBA = (function() {
 	//to change the color: from http://www.w3schools.com/cssref/css_colorsfull.asp
 	var string_colors = {
@@ -8219,6 +8226,19 @@ GL.create = function(options) {
 		gl._current_texture_drawto = null;
 		gl._current_fbo_color = null;
 		gl._current_fbo_depth = null;
+	}
+
+	gl.dump = function()
+	{
+		console.log("userAgent: ", navigator.userAgent );
+		console.log("Supported extensions:");
+		var extensions = gl.getSupportedExtensions();
+		console.log( extensions.join(",") );
+		var info = [ "VENDOR", "VERSION", "MAX_VERTEX_ATTRIBS", "MAX_VARYING_VECTORS", "MAX_VERTEX_UNIFORM_VECTORS", "MAX_VERTEX_TEXTURE_IMAGE_UNITS", "MAX_FRAGMENT_UNIFORM_VECTORS", "MAX_TEXTURE_SIZE", "MAX_TEXTURE_IMAGE_UNITS" ];
+		console.log("WebGL info:");
+		for(var i in info)
+			console.log(" * " + info[i] + ": " + gl.getParameter( gl[info[i]] ));
+		console.log("*************************************************")
 	}
 
 	//Reset state

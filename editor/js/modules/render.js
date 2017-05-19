@@ -393,6 +393,7 @@ var RenderModule = {
 		if(!viewport)
 			return;
 		this.selected_viewport = viewport;
+		return viewport.onMouseDown(e);
 	},
 
 	//used to change the viewport below the mouse
@@ -401,7 +402,10 @@ var RenderModule = {
 		var viewport = this.getViewportUnderMouse(e);
 		if(!viewport)
 			return;
+		if( this.active_viewport && viewport != this.active_viewport )
+			this.active_viewport.onMouseLeave(e);
 		this.active_viewport = viewport;
+		return viewport.onMouseMove(e);
 	},
 
 	getActiveViewport: function()

@@ -102,6 +102,7 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 		camera.type = value;
 		inspector.refresh();
 	}});
+
 	inspector.widgets_per_row = 2;
 	if(camera.type != LS.Camera.ORTHO2D)
 	{
@@ -123,6 +124,13 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 	}
 
 	var is_node_camera = (node && !node._is_root);
+
+	inspector.addSeparator();
+	inspector.addLayers("Layers", camera.layers, { pretitle: AnimationModule.getKeyframeCode( camera, "layers"), callback: function (value) { 
+		camera.layers = value;
+		inspector.refresh();
+	}});
+
 
 	if(!is_node_camera)
 	{

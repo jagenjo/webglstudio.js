@@ -164,7 +164,7 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 		}
 		else if( v == "Paste")
 		{
-			var data = LiteGUI.getClipboard();
+			var data = LiteGUI.getLocalClipboard();
 			if(!data ) return;
 
 			var material = data;
@@ -261,8 +261,13 @@ EditorModule.showMaterialProperties = function( material, inspector, node, force
 		background_container.classList.add("edited");
 	}
 
+	//show material editor
 	if(editor)
 		editor.call( EditorModule, material, inspector );
+	else
+	{
+		inspector.addInfo( LS.getObjectClassName(material) + "has no editor");
+	}
 
 	if(can_be_locked)
 		inspector.addButtons(null,["Save changes","Lock"],function(v){
@@ -385,18 +390,6 @@ LS.Material["@inspector"] = function( material, inspector )
 
 LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspector )
 {
-	/*
-	inspector.addCombo("Shader", material.shader_name || "default", { values: LS.MaterialClasses.StandardMaterial.available_shaders, callback: function(v) { 
-		if(!material)
-			return;
-
-		if(v != "default")
-			material.shader_name = v; 
-		else
-			material.shader_name = null;
-	}});
-	*/
-
 	inspector.addTitle("Properties");
 	inspector.widgets_per_row = 2;
 	inspector.addSlider("Opacity", material.opacity, { pretitle: AnimationModule.getKeyframeCode( material, "opacity" ), min: 0, max: 1, step:0.01, callback: function (value) { 
@@ -452,9 +445,11 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 	inspector.addSlider("Detail", material.detail_factor, { pretitle: AnimationModule.getKeyframeCode( material, "detail_factor" ), min:-2,max:2,step:0.01, callback: function (value) { material.detail_factor = value; }});
 	inspector.addVector2("Det. Tiling", material.detail_scale, { pretitle: AnimationModule.getKeyframeCode( material, "detail_scale" ), min:-40,max:40,step:0.1, callback: function (value) { material.detail_scale = value; }});
 
+	/*
 	inspector.addTitle("Extra");
 	inspector.addSlider("Extra factor", material.extra_factor, { pretitle: AnimationModule.getKeyframeCode( material, "extra_factor" ), callback: function (value) { material.extra_factor = value; }});
 	inspector.addColor("Extra color", material.extra_color, { pretitle: AnimationModule.getKeyframeCode( material, "extra_color" ), callback: function(color) { vec3.copy(material.extra_color,color); } });
+	*/
 
 	/*
 	inspector.addTitle("Shader");
@@ -473,7 +468,7 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 	}});
 	*/
 
-
+	/*
 	inspector.addTitle("Shader");
 	inspector.addButton(null, "Edit Shader", { callback: function() { 
 		CodingModule.openTab();
@@ -486,6 +481,7 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 			setCode: function(code){ material.extra_surface_shader_code = code; }
 		});
 	}});
+	*/
 
 	inspector.beginGroup("Textures",{title:true});
 
@@ -510,6 +506,8 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 	//inspector.addTitle("Actions");
 	//inspector.addButtons(null,["Make Global","Copy","Paste"],{});
 }
+
+LS.MaterialClasses.newStandardMaterial["@inspector"] = LS.MaterialClasses.StandardMaterial["@inspector"];
 
 
 LS.Material.showFlagsEditor = function( material )

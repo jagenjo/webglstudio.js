@@ -732,6 +732,12 @@ LiteGUI.Inspector.prototype.showObjectFields = function( object, inspector )
 }
 
 //add to the LiteGUI.Inspector
+
+LiteGUI.Inspector.prototype.showComponentTitle = function(component, inspector)
+{
+
+}
+
 LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 {
 	if(!component)

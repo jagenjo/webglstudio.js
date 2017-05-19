@@ -9,7 +9,7 @@ function CameraGizmo( layout_viewport )
 
 	//where is located the gizmo
 	this.layout_viewport = layout_viewport;
-	this.viewport = vec4.fromValues(0,0,80,80);
+	this.viewport = vec4.fromValues(0,40,80,80);
 	this.orbiting = false;
 	
 	this.camera_viewport = vec4.create();
@@ -59,8 +59,8 @@ CameraGizmo.prototype.render = function()
 	camera.getLocalViewport( null, this.camera_viewport );
 
 	this.viewport[0] =  this.camera_viewport[0] +  this.camera_viewport[2] - this.viewport[2];
-	this.viewport[1] =  this.camera_viewport[1] +  this.camera_viewport[3] - this.viewport[3];
-	gl.viewport( this.viewport[0], this.viewport[1], this.viewport[2], this.viewport[3] );
+	this.viewport[1] = this.camera_viewport[1] +  this.camera_viewport[3] - this.viewport[3];
+	gl.viewport( this.viewport[0], this.viewport[1] - 10, this.viewport[2], this.viewport[3] );
 
 	LS.Draw.pushCamera();
 	LS.Draw.setCamera( this.render_camera );

@@ -1,8 +1,14 @@
+/*
+	Every area of the viewport where we render the scene in the editor.
+	Helps to control the camera.
+*/
 function LayoutViewport( options )
 {
 	options = options || {};
 
+	//normalized: viewport origin 0,0 is in the lower-left corner
 	this._viewport = vec4.fromValues(0,0,1,1);
+	this._viewport_in_pixels = vec4.fromValues(0,0,100,100);
 
 	if( options.viewport )
 		this._viewport.set( options.viewport );
@@ -16,6 +22,7 @@ function LayoutViewport( options )
 		center: LS.ZEROS, 
 		near:0.1,
 		far:10000,
+		layers: 0xFF,
 		viewport: this._viewport
 	};
 
@@ -36,6 +43,8 @@ function LayoutViewport( options )
 	this.gizmos = [];
 	this.buttons = [];
 
+	this._over_corner = false;
+
 	//add gizmos
 	this.addGizmos();
 }
@@ -46,19 +55,23 @@ LayoutViewport.prototype.render = function()
 {
 	//called after rendering the scene
 	var camera = this.camera;
-	var viewport = camera.getLocalViewport( null, LayoutViewport.temp_vec4 );
+	var viewport = camera.getLocalViewport( null, this._viewport_in_pixels );
 
+	//render outline 
 	gl.start2D();
 	gl.strokeColor = this == RenderModule.active_viewport ? [0.75,0.75,0.75] : [0.5,0.5,0.5];
 	gl.strokeRect( viewport[0], gl.canvas.height - viewport[3] - viewport[1],viewport[2] - 2,viewport[3] - 2);
-	gl.globalAlpha = 0.5;
+
+	//render corner button
+	gl.globalAlpha = !this._over_corner ? 0.5 : 1.0;
 	gl.save();
 	gl.translate( viewport[0], gl.canvas.height - viewport[3] - viewport[1] );
-	gl.fillStyle = "black";
+	gl.strokeRect( viewport[2] - 121, 2, 120, 14 );
+	gl.fillStyle = this._over_corner ? "white" : "black";
 	gl.fillRect( viewport[2] - 121, 1, 120, 14 );
 	gl.font = "14px Arial";
-	gl.globalAlpha = 0.75;
-	gl.fillStyle = "white";
+	gl.globalAlpha = !this._over_corner ? 0.75 : 1.0;
+	gl.fillStyle = !this._over_corner ? "white" : "black";
 	gl.fillText( this.index + ": " + this.name, viewport[2] - 100, 13 );
 	gl.globalAlpha = 1;
 	gl.restore();
@@ -73,6 +86,15 @@ LayoutViewport.prototype.render = function()
 	}
 }
 
+Object.defineProperty( LayoutViewport.prototype, "width", {
+	set: function(v){
+		this._viewport[2] = v / gl.canvas.width;
+	},
+	get: function(){
+		return this._viewport_in_pixels[2];
+	}
+});
+
 LayoutViewport.prototype.update = function(dt)
 {
 	//render gizmos
@@ -84,9 +106,52 @@ LayoutViewport.prototype.update = function(dt)
 	}
 }
 
+LayoutViewport.prototype.onMouseDown = function(e)
+{
+	e.viewportx = e.canvasx - this._viewport_in_pixels[0];
+	e.viewporty = this._viewport_in_pixels[3] - (e.canvasy - this._viewport_in_pixels[1]);
+
+	if( this.isInsideRectangle( e.viewportx, e.viewporty, this.width - 100,0,100,20) )
+	{
+		this._over_corner = false; //to flash
+		console.log("show inspector for layout " + this.index);
+		EditorModule.inspect( this );
+		LS.GlobalScene.requestFrame();
+		return true;
+	}
+}
+
+LayoutViewport.prototype.onMouseMove = function(e)
+{
+	e.viewportx = e.canvasx - this._viewport_in_pixels[0];
+	e.viewporty = this._viewport_in_pixels[3] - (e.canvasy - this._viewport_in_pixels[1]);
+
+	var prev = this._over_corner;
+	var over = this.isInsideRectangle( e.viewportx, e.viewporty, this.width - 100,0,100,20);
+	gl.canvas.style.cursor = over ? "pointer" : "";
+
+	this._over_corner = over;
+
+	if(prev != over)
+		LS.GlobalScene.requestFrame();
+
+	if(over)
+		return true;
+}
+
+LayoutViewport.prototype.onMouseLeave = function(e)
+{
+	this._over_corner = false;
+}
+
 LayoutViewport.prototype.getCamera = function()
 {
 	return this.scene_camera || this.editor_camera;
+}
+
+LayoutViewport.prototype.isInsideRectangle = function( x, y, rect_x, rect_y, w, h )
+{
+	return (x > rect_x && x < (rect_x + w) && y > rect_y && y < (rect_y + h));
 }
 
 LayoutViewport.prototype.addGizmos = function()
@@ -266,4 +331,22 @@ LayoutViewport.prototype.showSelectCameraContextMenu = function( e, parent_menu 
 			that.setCamera( v.camera );
 		LS.GlobalScene.refresh();
 	}});
+}
+
+LayoutViewport.prototype.inspect = function( inspector )
+{
+	var that = this;
+	inspector.addTitle("Layout");
+	inspector.addString("Name", this.name, function(v){ that.name = v; });
+	inspector.addVector4( "viewport", this._viewport, {
+		precision: 2,
+		step: 0.01,
+		callback: function(v)
+		{
+			that._viewport.set(v);
+			LS.GlobalScene.requestFrame();
+		}
+	});
+
+	inspector.showComponent( this.camera );
 }

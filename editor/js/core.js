@@ -118,6 +118,7 @@ var CORE = {
 			line.classList.add("error");
 			box.classList.add("error");
 			console.error("Error loading import: " + line.querySelector(".name").textContent );
+			CORE.log("Error launching WebGLStudio, some files missing",true);
 		}
 
 		function onReady()

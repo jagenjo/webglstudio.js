@@ -4477,15 +4477,17 @@ Texture.setUploadOptions = function(options, gl)
 * @param {Image} img
 * @param {Object} options [optional] upload options (premultiply_alpha, no_flip)
 */
-Texture.prototype.uploadImage = function(image, options)
+Texture.prototype.uploadImage = function( image, options )
 {
 	this.bind();
 	var gl = this.gl;
+	if(!image)
+		throw("uploadImage parameter must be Image");
 
 	Texture.setUploadOptions(options, gl);
 
 	try {
-		gl.texImage2D(gl.TEXTURE_2D, 0, this.format, this.format, this.type, image);
+		gl.texImage2D( gl.TEXTURE_2D, 0, this.format, this.format, this.type, image );
 		this.width = image.videoWidth || image.width;
 		this.height = image.videoHeight || image.height;
 		this.data = image;
@@ -5142,7 +5144,7 @@ Texture.prototype.applyBlur = function( offsetx, offsety, intensity, temp_textur
 * @param {Function} on_complete
 * @return {Texture} the texture
 */
-Texture.fromURL = function(url, options, on_complete, gl) {
+Texture.fromURL = function( url, options, on_complete, gl ) {
 	gl = gl || global.gl;
 
 	options = options || {};
@@ -5161,7 +5163,22 @@ Texture.fromURL = function(url, options, on_complete, gl) {
 	gl.bindTexture( texture.texture_type, null ); //disable
 	texture.ready = false;
 
-	if( url.toLowerCase().indexOf(".dds") != -1)
+	var ext = null;
+	if( options.extension ) //to force format
+		ext = options.extension;
+
+	if(!ext && url.length < 512) //avoid base64 urls
+	{
+		var base = url;
+		var pos = url.indexOf("?");
+		if(pos != -1)
+			base = url.substr(0,pos);
+		pos = base.lastIndexOf(".");
+		if(pos != -1)
+			ext = base.substr(pos+1).toLowerCase();
+	}
+
+	if( ext == "dds")
 	{
 		var ext = gl.getExtension("WEBKIT_WEBGL_compressed_texture_s3tc") || gl.getExtension("WEBGL_compressed_texture_s3tc");
 		var new_texture = new GL.Texture(0,0, options, gl);
@@ -5173,7 +5190,20 @@ Texture.fromURL = function(url, options, on_complete, gl) {
 				on_complete(texture, url);
 		});
 	}
-	else
+	else if( ext == "tga" )
+	{
+		HttpRequest( url, null, function(data) {
+			var img_data = GL.Texture.parseTGA(data);
+			if(!img_data)
+				return;
+			options.texture = texture;
+			texture = GL.Texture.fromMemory( img_data.width, img_data.height, img_data.pixels, options );
+			delete texture["ready"]; //texture.ready = true;
+			if(on_complete)
+				on_complete( texture, url );
+		},null,{ binary: true });
+	}
+	else //png,jpg,webp,...
 	{
 		var image = new Image();
 		image.src = url;
@@ -5196,6 +5226,52 @@ Texture.fromURL = function(url, options, on_complete, gl) {
 	return texture;
 };
 
+Texture.parseTGA = function(data)
+{
+	if(!data || data.constructor !== ArrayBuffer)
+		throw( "TGA: data must be ArrayBuffer");
+	data = new Uint8Array(data);
+	var TGAheader = new Uint8Array( [0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0] );
+	var TGAcompare = data.subarray(0,12);
+	for(var i = 0; i < TGAcompare.length; i++)
+		if(TGAheader[i] != TGAcompare[i])
+		{
+			console.error("TGA header is not valid");
+			return null; //not a TGA
+		}
+
+	var header = data.subarray(12,18);
+	var img = {};
+	img.width = header[1] * 256 + header[0];
+	img.height = header[3] * 256 + header[2];
+	img.bpp = header[4];
+	img.bytesPerPixel = img.bpp / 8;
+	img.imageSize = img.width * img.height * img.bytesPerPixel;
+	img.pixels = data.subarray(18,18+img.imageSize);
+	img.pixels = new Uint8Array( img.pixels ); 	//clone
+	if(	(header[5] & (1<<4)) == 0) //hack, needs swap
+	{
+		//TGA comes in BGR format so we swap it, this is slooooow
+		for(var i = 0; i < img.imageSize; i+= img.bytesPerPixel)
+		{
+			var temp = img.pixels[i];
+			img.pixels[i] = img.pixels[i+2];
+			img.pixels[i+2] = temp;
+		}
+		header[5] |= 1<<4; //mark as swaped
+		img.format = img.bpp == 32 ? "RGBA" : "RGB";
+	}
+	else
+		img.format = img.bpp == 32 ? "RGBA" : "RGB";
+	//some extra bytes to avoid alignment problems
+	//img.pixels = new Uint8Array( img.imageSize + 14);
+	//img.pixels.set( data.subarray(18,18+img.imageSize), 0);
+	img.flipY = true;
+	//img.format = img.bpp == 32 ? "BGRA" : "BGR";
+	//trace("TGA info: " + img.width + "x" + img.height );
+	return img;
+}
+
 /**
 * Create a texture from an Image
 * @method Texture.fromImage
@@ -5203,10 +5279,10 @@ Texture.fromURL = function(url, options, on_complete, gl) {
 * @param {Object} options
 * @return {Texture} the texture
 */
-Texture.fromImage = function(image, options) {
+Texture.fromImage = function( image, options ) {
 	options = options || {};
 
-	var texture = options.texture || new GL.Texture(image.width, image.height, options);
+	var texture = options.texture || new GL.Texture( image.width, image.height, options);
 	texture.uploadImage( image, options );
 
 	texture.bind();
@@ -5251,7 +5327,7 @@ Texture.fromVideo = function(video, options) {
 
 	var texture = options.texture || new GL.Texture(video.videoWidth, video.videoHeight, options);
 	texture.bind();
-	texture.uploadImage(video, options);
+	texture.uploadImage( video, options );
 	if (options.minFilter && options.minFilter != gl.NEAREST && options.minFilter != gl.LINEAR) {
 		texture.bind();
 		gl.generateMipmap(texture.texture_type);
@@ -5294,7 +5370,7 @@ Texture.prototype.clone = function( options )
 * @param {Object} options
 * @return {Texture} the texture
 */
-Texture.fromMemory = function(width, height, pixels, options) //format in options as format
+Texture.fromMemory = function( width, height, pixels, options) //format in options as format
 {
 	options = options || {};
 
@@ -5303,7 +5379,9 @@ Texture.fromMemory = function(width, height, pixels, options) //format in option
 	texture.bind();
 
 	try {
-		gl.texImage2D(gl.TEXTURE_2D, 0, texture.format, width, height, 0, texture.format, texture.type, pixels);
+		gl.texImage2D( gl.TEXTURE_2D, 0, texture.format, width, height, 0, texture.format, texture.type, pixels );
+		texture.width = width;
+		texture.height = height;
 		texture.data = pixels;
 	} catch (e) {
 		if (location.protocol == 'file:') {

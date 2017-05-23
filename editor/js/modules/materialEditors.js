@@ -507,7 +507,8 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 	//inspector.addButtons(null,["Make Global","Copy","Paste"],{});
 }
 
-LS.MaterialClasses.newStandardMaterial["@inspector"] = LS.MaterialClasses.StandardMaterial["@inspector"];
+if(LS.MaterialClasses.newStandardMaterial)
+	LS.MaterialClasses.newStandardMaterial["@inspector"] = LS.MaterialClasses.StandardMaterial["@inspector"];
 
 
 LS.Material.showFlagsEditor = function( material )

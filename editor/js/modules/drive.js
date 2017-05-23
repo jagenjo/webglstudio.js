@@ -2054,13 +2054,19 @@ var DriveModule = {
 				extra_info.preview = this.generatePreview( resource.fullpath );
 		}
 
-		//check sizae
-		if(data.length > LFS.system_info.max_filesize)
+		//check size (the system allows to break files into parts)
+		var size = data.length;
+		if(size === undefined) //typed array?
+			size = data.byteLength;
+		/*
+		if( size > LFS.system_info.max_filesize )
 		{
+			console.error("File too big:",size,"max is",LFS.system_info.max_filesize);
 			if(on_error)
 				on_error("File too big");
 			return;
 		}
+		*/
 
 		LoginModule.session.uploadFile( fullpath, data, extra_info, 
 			function(v,resp){ //on_complete

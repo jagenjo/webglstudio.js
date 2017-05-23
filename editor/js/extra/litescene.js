@@ -6591,6 +6591,11 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	//global stuff
 	this.render_state.enable();
 	LS.Renderer.bindSamplers( this._samplers );
+	var global_flags = 0;
+	if( LS.Renderer._global_textures.environment )
+	{
+		global_flags |= LS.ShaderMaterial.reflection_block.flag_mask;
+	}
 
 	if(this.onRenderInstance)
 		this.onRenderInstance( instance );
@@ -6631,6 +6636,9 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	{
 		var light = lights[i];
 		block_flags = light.applyShaderBlockFlags( block_flags, pass, render_settings );
+
+		//global
+		block_flags |= global_flags;
 
 		//extract shader compiled
 		var shader = shader_code.getShader( null, block_flags );
@@ -7032,9 +7040,72 @@ ShaderMaterial.getDefaultPickingShaderCode = function()
 LS.registerMaterialClass( ShaderMaterial );
 LS.ShaderMaterial = ShaderMaterial;
 
-
 //Register ShaderBlocks
 //TODO?
+
+//ENVIRONMENT 
+var environment_code = "\n\
+	#ifdef ENVIRONMENT_TEXTURE\n\
+		uniform texture2D environment_texture;\n\
+	#endif\n\
+	#ifdef ENVIRONMENT_CUBEMAP\n\
+		uniform textureCube environment_texture;\n\
+	#endif\n\
+	vec2 polarToCartesian(in vec3 V)\n\
+	{\n\
+		return vec2( 0.5 - (atan(V.z, V.x) / -6.28318531), asin(V.y) / 1.57079633 * 0.5 + 0.5);\n\
+	}\n\
+	\n\
+	vec3 getEnvironmentColor( vec3 V, float area )\n\
+	{\n\
+		#ifdef ENVIRONMENT_TEXTURE\n\
+			vec2 uvs = polarToCartesian(V);\n\
+			return texture2D( environment_texture, uvs ).xyz;\n\
+		#endif\n\
+		#ifdef ENVIRONMENT_CUBEMAP\n\
+			return texture2D( environment_texture, V ).xyz;\n\
+		#endif\n\
+		return u_background_color.xyz;\n\
+	}\n\
+";
+var environment_disabled_code = "\n\
+	vec3 getEnvironmentColor( vec3 V, float area )\n\
+	{\n\
+		return u_background_color.xyz;\n\
+	}\n\
+";
+
+var environment_block = new LS.ShaderBlock("environment");
+environment_block.addCode( GL.FRAGMENT_SHADER, environment_code, environment_disabled_code );
+environment_block.register();
+
+
+var reflection_code = "\n\
+	#pragma shaderblock SHADOWBLOCK \"environment\"\n\
+	\n\
+	vec4 applyReflection( Input IN, SurfaceOutput o, vec4 final_color )\n\
+	{\n\
+		vec3 R = reflect( IN.viewDir, o.Normal );\n\
+		vec3 bg = vec3(0.0);\n\
+		if(u_light_info.x == (u_light_info.y - 1.0))\n\
+			bg = getEnvironmentColor( R, 0.0 );\n\
+		final_color.xyz = mix( final_color.xyz, bg, clamp( o.Reflectivity, 0.0, 1.0) );\n\
+		return final_color;\n\
+	}\n\
+";
+
+var reflection_disabled_code = "\n\
+	vec4 applyReflection( Input IN, SurfaceOutput o, vec4 final_color )\n\
+	{\n\
+		return final_color;\n\
+	}\n\
+";
+
+var reflection_block = new LS.ShaderBlock("applyReflection");
+ShaderMaterial.reflection_block = reflection_block;
+reflection_block.addCode( GL.FRAGMENT_SHADER, reflection_code, reflection_disabled_code );
+reflection_block.register();
+
 
 
 
@@ -7163,38 +7234,6 @@ StandardMaterial.BUMP_TEXTURE = "bump";
 StandardMaterial.REFLECTIVITY_TEXTURE = "reflectivity";
 StandardMaterial.IRRADIANCE_TEXTURE = "irradiance";
 StandardMaterial.EXTRA_TEXTURE = "extra";
-
-StandardMaterial.available_shaders = ["default","lowglobal","phong_texture","flat","normal","phong","flat_texture"];
-
-StandardMaterial.coding_help = "\
-Input IN -> info about the mesh\n\
-SurfaceOutput o -> info about the surface properties of this pixel\n\
-\n\
-struct Input {\n\
-	vec4 color;\n\
-	vec3 vertex;\n\
-	vec3 normal;\n\
-	vec2 uv;\n\
-	vec2 uv1;\n\
-	\n\
-	vec3 camPos;\n\
-	vec3 viewDir;\n\
-	vec3 worldPos;\n\
-	vec3 worldNormal;\n\
-	vec4 screenPos;\n\
-};\n\
-\n\
-struct SurfaceOutput {\n\
-	vec3 Albedo;\n\
-	vec3 Normal;\n\
-	vec3 Ambient;\n\
-	vec3 Emission;\n\
-	float Specular;\n\
-	float Gloss;\n\
-	float Alpha;\n\
-	float Reflectivity;\n\
-};\n\
-";
 
 StandardMaterial.prototype.prepare = function( scene )
 {
@@ -8207,7 +8246,10 @@ newStandardMaterial.FLAGS = {
 	ENVIRONTMENT_TEXTURE: 1<<10,
 	IRRADIANCE_TEXTURE: 1<<11,
 	NORMAL_TEXTURE: 1<<12,
-	ALPHA_TEST: 1<<16
+	ALPHA_TEST: 1<<16,
+	REFLECTION: 1<<17,
+	ENVIRONMENT_TEXTURE: 1<<18,
+	ENVIRONMENT_CUBEMAP: 1<<19
 };	
 
 newStandardMaterial.shader_codes = {};
@@ -8219,6 +8261,7 @@ newStandardMaterial.prototype.getShaderCode = function( instance, render_setting
 
 	//lets check which code flags are active according to the configuration of the shader
 	var code_flags = 0;
+	var scene = LS.Renderer._current_scene;
 
 	//TEXTURES
 	if( this.textures.normal )
@@ -8229,8 +8272,26 @@ newStandardMaterial.prototype.getShaderCode = function( instance, render_setting
 		code_flags |= FLAGS.OPACITY_TEXTURE;
 	if( this.textures.specular )
 		code_flags |= FLAGS.SPECULAR_TEXTURE;
-	if( this.textures.reflectivity )
-		code_flags |= FLAGS.REFLECTIVITY_TEXTURE;
+	if( this.reflectivity > 0 )
+	{
+		code_flags |= FLAGS.REFLECTION;
+		if( this.textures.reflectivity )
+			code_flags |= FLAGS.REFLECTIVITY_TEXTURE;
+
+		/*
+		if( scene.info && scene.info.textures.environment )
+		{
+			var environment_texture = LS.ResourcesManager.getTexture( scene.info.textures.environment );
+			if( environment_texture )
+			{
+				if( environment_texture.type === GL.TEXTURE_CUBE_MAP )
+					code_flags |= FLAGS.ENVIRONMENT_CUBEMAP;
+				else
+					code_flags |= FLAGS.ENVIRONMENT_TEXTURE;
+			}
+		}
+		*/
+	}
 	if( this.textures.emissive )
 		code_flags |= FLAGS.EMISSIVE_TEXTURE;
 	if( this.textures.ambient )
@@ -8502,7 +8563,7 @@ newStandardMaterial.prototype.getPropertyInfoFromPath = function( path )
 }
 
 LS.registerMaterialClass( newStandardMaterial );
-LS.newStandardMaterial = newStandardMaterial;
+//LS.newStandardMaterial = newStandardMaterial;
 
 newStandardMaterial.code_template = "\n\
 \n\
@@ -8593,8 +8654,8 @@ uniform sampler2D detail_texture;\n\
 uniform sampler2D normal_texture;\n\
 \n\
 \n\
-\n\
 #pragma shaderblock \"light\"\n\
+#pragma shaderblock \"applyReflection\"\n\
 \n\
 #pragma snippet \"perturbNormal\"\n\
 \n\
@@ -8613,6 +8674,7 @@ void surf(in Input IN, out SurfaceOutput o)\n\
 	\n\
 	{{FS_CODE}}\n\
 	\n\
+	o.Reflectivity *= max(0.0, pow( 1.0 - clamp(0.0, dot(IN.viewDir,o.Normal),1.0), u_reflection_info.y ));\n\
 }\n\
 \n\
 \n\
@@ -8624,6 +8686,7 @@ void main() {\n\
   Light LIGHT = getLight();\n\
   final_color.xyz = computeLight( o, IN, LIGHT );\n\
   final_color.a = o.Alpha;\n\
+  final_color = applyReflection( IN, o, final_color );\n\
   gl_FragColor = final_color;\n\
 }\n\
 ";
@@ -17095,6 +17158,7 @@ var Renderer = {
 	_current_camera: null,
 	_current_target: null, //texture where the image is being rendered
 	_current_pass: null,
+	_global_textures: {}, //used to speed up fetching global textures
 
 	_queues: [], //render queues in order
 
@@ -17399,7 +17463,7 @@ var Renderer = {
 		LEvent.trigger(this, "beforeRenderScene", camera );
 
 		//here we render all the instances
-		this.renderInstances(render_settings);
+		this.renderInstances( render_settings );
 
 		//send after events
 		LEvent.trigger( scene, "afterRenderScene", camera );
@@ -17593,7 +17657,7 @@ var Renderer = {
 
 		//compute global scene info
 		this.fillSceneShaderQuery( scene, render_settings );
-		this.fillSceneShaderUniforms( scene, render_settings );
+		this.fillSceneUniforms( scene, render_settings );
 
 		//reset state of everything!
 		this.resetGLState( render_settings );
@@ -18126,7 +18190,7 @@ var Renderer = {
 
 	//Called at the beginning of renderInstances (once per renderFrame)
 	//DO NOT CACHE, parameters can change between render passes
-	fillSceneShaderUniforms: function( scene, render_settings )
+	fillSceneUniforms: function( scene, render_settings )
 	{
 		//global uniforms
 		var uniforms = {
@@ -18146,6 +18210,10 @@ var Renderer = {
 		scene._samplers = scene._samplers || [];
 		scene._samplers.length = 0;
 
+		//clear globals
+		this._global_textures.environment = null;
+
+		//fetch globals
 		for(var i in scene.info.textures)
 		{
 			var texture = LS.getTexture( scene.info.textures[i] );
@@ -18169,6 +18237,9 @@ var Renderer = {
 			scene._samplers[ slot ] = texture;
 			scene._uniforms[ i + type ] = slot;
 			scene._query.macros[ "USE_" + (i + type).toUpperCase() ] = "uvs_polar_reflected";
+
+			if( i == "environment" )
+				this._global_textures.environment = texture;
 		}
 
 		LEvent.trigger( scene, "fillSceneUniforms", scene._uniforms );
@@ -43165,21 +43236,23 @@ var parserTGA = {
 		img.imageSize = img.width * img.height * img.bytesPerPixel;
 		img.pixels = data.subarray(18,18+img.imageSize);
 		img.pixels = new Uint8Array( img.pixels ); 	//clone
+		var pixels = img.pixels;
 
-		if(	(header[5] & (1<<4)) == 0) //hack, needs swap
+		//TGA comes in BGR format so we swap it, this is slooooow
+		for(var i = 0, l = img.imageSize, d = img.bytesPerPixel; i < l; i+= d )
 		{
-			//TGA comes in BGR format so we swap it, this is slooooow
-			for(var i = 0; i < img.imageSize; i+= img.bytesPerPixel)
-			{
-				var temp = img.pixels[i];
-				img.pixels[i] = img.pixels[i+2];
-				img.pixels[i+2] = temp;
-			}
-			header[5] |= 1<<4; //mark as swaped
-			img.format = img.bpp == 32 ? "RGBA" : "RGB";
+			var temp = pixels[i];
+			pixels[i] = pixels[i+2];
+			pixels[i+2] = temp;
 		}
-		else
-			img.format = img.bpp == 32 ? "RGBA" : "RGB";
+		img.format = img.bpp == 32 ? "RGBA" : "RGB";
+
+		//if(	(header[5] & (1<<4)) == 0) //hack, needs swap
+		//{
+			//header[5] |= 1<<5; //mark as Y swaped
+		//}
+		//else
+		//	img.format = img.bpp == 32 ? "RGBA" : "RGB";
 
 		//some extra bytes to avoid alignment problems
 		//img.pixels = new Uint8Array( img.imageSize + 14);

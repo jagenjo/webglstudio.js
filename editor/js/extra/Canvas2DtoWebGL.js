@@ -159,6 +159,26 @@ function enableWebGLCanvas( canvas, options )
 			}\n\
 		", extra_macros );
 
+	ctx.createImageShader = function(code)
+	{
+		return new GL.Shader( GL.Shader.QUAD_VERTEX_SHADER,"\n\
+			precision highp float;\n\
+			uniform sampler2D u_texture;\n\
+			uniform vec4 u_color;\n\
+			uniform vec4 u_texture_transform;\n\
+			uniform vec2 u_viewport;\n\
+			varying vec2 v_coord;\n\
+			void main() {\n\
+				vec2 uv = v_coord * u_texture_transform.zw + vec2(u_texture_transform.x,0.0);\n\
+				uv.y = uv.y - u_texture_transform.y + (1.0 - u_texture_transform.w);\n\
+				uv = clamp(uv,vec2(0.0),vec2(1.0));\n\
+				vec4 color = u_color * texture2D(u_texture, uv);\n\
+				"+code+";\n\
+				gl_FragColor = color;\n\
+			}\n\
+		", extra_macros );
+	}
+
 
 	//some people may reuse it
 	ctx.WebGLCanvas.vertex_shader = vertex_shader;

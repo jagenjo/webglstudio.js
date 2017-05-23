@@ -296,6 +296,7 @@ var LFSBridge = {
 		element.className = "unit-item";
 		element.dataset["unit"] = unit.name;
 		element.addEventListener("click", function(){ DriveModule.selectFolder( this.dataset["unit"]); });
+		/*
 		var button = LiteGUI.createButton( null, "Open In LFS", function(e){ 
 			var unit = this.parentNode.dataset["unit"];
 			//TODO: open LFS in this unit
@@ -304,6 +305,7 @@ var LFSBridge = {
 		});
 		button.style.float = "right";
 		element.appendChild( button.root );
+		*/
 		return element;
 	},
 

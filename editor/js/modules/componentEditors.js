@@ -162,9 +162,11 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 			for(var i in RenderModule.cameras)
 				RenderModule.cameras[i].background_color = v;
 	}});
-	inspector.widgets_per_row = 2;
-	inspector.addCheckbox("clear color", camera.clear_color , { callback: function (v) { camera.clear_color = v; } });
-	inspector.addCheckbox("clear depth", camera.clear_depth , { callback: function (v) { camera.clear_depth = v; } });
+
+	inspector.widgets_per_row = 3;
+	inspector.addCheckbox("clear color", camera.clear_color , { name_width: "65%", callback: function (v) { camera.clear_color = v; } });
+	inspector.addCheckbox("clear depth", camera.clear_depth , { name_width: "65%", callback: function (v) { camera.clear_depth = v; } });
+	inspector.addCheckbox("bg. alpha", camera.background_color[3] == 0 , { name_width: "65%", callback: function (v) { camera.background_color[3] = v ? 0 : 1; } });
 	inspector.widgets_per_row = 1;
 
 	inspector.addTitle("Render to Texture");

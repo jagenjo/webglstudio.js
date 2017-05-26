@@ -720,7 +720,7 @@ LiteGUI.Inspector.prototype.showObjectFields = function( object, inspector )
 
 	inspector.on_addProperty = inner;
 
-	inspector.inspectInstance( object, null,null, ["enabled"] );
+	inspector.inspectInstance( object, null,null, ["enabled","object_class"] );
 
 	inspector.on_addProperty = null;
 

@@ -2744,3 +2744,4 @@ Timeline.actions.take["Remove scaling"] = function( animation, take )
 {
 	return take.removeScaling();
 }
+

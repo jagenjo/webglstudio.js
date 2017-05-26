@@ -8563,7 +8563,7 @@ newStandardMaterial.prototype.getPropertyInfoFromPath = function( path )
 }
 
 LS.registerMaterialClass( newStandardMaterial );
-//LS.newStandardMaterial = newStandardMaterial;
+LS.newStandardMaterial = newStandardMaterial;
 
 newStandardMaterial.code_template = "\n\
 \n\
@@ -18417,6 +18417,8 @@ var Renderer = {
 			if( material.prepare )
 				material.prepare( scene );
 		}
+
+		LEvent.trigger( scene, "prepareMaterials" );
 	},
 
 	/**
@@ -32256,7 +32258,7 @@ PointCloud.icon = "mini-icon-points.png";
 PointCloud["@texture"] = { widget: "texture" };
 PointCloud["@color"] = { widget: "color" };
 PointCloud["@num_points"] = { widget: "info" };
-PointCloud["@size"] = { type: "number", step: 0.001 };
+PointCloud["@size"] = { type: "number", step: 0.001, precision: 3 };
 
 PointCloud.default_color = vec4.fromValues(1,1,1,1);
 
@@ -32352,15 +32354,16 @@ PointCloud.prototype.onResourceRenamed = function (old_name, new_name, resource)
 
 PointCloud.prototype.createMesh = function ()
 {
-	if( this._mesh_max_points == this.max_points)
+	var max_points = this.max_points|0;
+	if( this._mesh_max_points == max_points)
 		return;
 
-	this._vertices = new Float32Array(this.max_points * 3); 
-	this._colors = new Float32Array(this.max_points * 4);
-	this._extra2 = new Float32Array(this.max_points * 2); //size and texture frame
+	this._vertices = new Float32Array(max_points * 3); 
+	this._colors = new Float32Array(max_points * 4);
+	this._extra2 = new Float32Array(max_points * 2); //size and texture frame
 
 	var default_size = 1;
-	for(var i = 0; i < this.max_points; i++)
+	for(var i = 0; i < max_points; i++)
 	{
 		this._colors.set( PointCloud.default_color, i*4);
 		this._extra2[i*2] = default_size;
@@ -32372,12 +32375,13 @@ PointCloud.prototype.createMesh = function ()
 
 	this._mesh = new GL.Mesh();
 	this._mesh.addBuffers({ vertices:this._vertices, colors: this._colors, extra2: this._extra2 }, null, gl.STREAM_DRAW);
-	this._mesh_max_points = this.max_points;
+	this._mesh_max_points = max_points;
 }
 
 PointCloud.prototype.updateMesh = function ( camera )
 {
-	if( this._mesh_max_points != this.max_points) 
+	var max_points = this.max_points|0;
+	if( this._mesh_max_points != max_points) 
 		this.createMesh();
 
 	var points = this._points;
@@ -32446,7 +32450,7 @@ PointCloud.prototype.onCollectInstances = function(e, instances, options)
 
 	if(!this._material)
 	{
-		this._material = new LS.Material({ shader_name:"lowglobal" });
+		this._material = new LS.StandardMaterial({});
 		this._material.extra_macros = { 
 			USE_POINT_CLOUD: "", //for the stream with sizes
 			USE_TEXTURED_POINTS: "" //for texturing the points
@@ -33887,6 +33891,7 @@ Script.prototype.setPropertyValueFromPath = function( path, value, offset )
 		context[ varname ].set( value );
 	else
 		context[ varname ] = value;
+	return true;
 }
 
 /**

@@ -401,8 +401,8 @@ var SceneStorageModule = {
 			scene_name = scene_name.substr(0, pos);
 		scene.filename = scene_name + ".scene.json";
 		scene.fullpath = scene_folder + "/" + scene.filename;
-
 		this.saveSceneInServer();
+		InterfaceModule.setStatusBar("Scene saved");
 	},
 
 	showLoadLocalSceneDialog: function()

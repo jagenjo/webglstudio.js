@@ -175,11 +175,11 @@ var InterfaceModule = {
 	setStatusBar: function(text, classname)
 	{
 		text = text || "";
-		var msg = document.querySelector("#statusbar .status-msg");
+		var msg = document.querySelector("#statusbar .msg");
 		if(!msg)
 			return;
 		msg.innerHTML = text;
-		msg.className = "status-msg " + classname;
+		msg.className = "msg " + (classname || "");
 		return msg;
 	},
 

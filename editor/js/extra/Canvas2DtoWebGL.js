@@ -1271,7 +1271,7 @@ function enableWebGLCanvas( canvas, options )
 
 		//console.log("Font Atlas Generated:", ((getTime() - now)*0.001).toFixed(2),"s");
 
-		texture = GL.Texture.fromImage( canvas, {magFilter: imageSmoothingEnabled ? gl.LINEAR : gl.NEAREST, minFilter: imageSmoothingEnabled ? gl.LINEAR_MIPMAP_LINEAR : gl.NEAREST, premultiply_alpha: false} );
+		texture = GL.Texture.fromImage( canvas, {magFilter: imageSmoothingEnabled ? gl.LINEAR : gl.NEAREST, minFilter: imageSmoothingEnabled ? gl.LINEAR : gl.NEAREST, premultiply_alpha: false} );
 		texture.info = info; //font generation info
 
 		return textures[texture_name] = texture;

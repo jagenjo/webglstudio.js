@@ -1,5 +1,6 @@
 var ExportModule = {
 
+	//list of files to be included when exporting the player
 	player_files: [
 		"player.html",
 		"js/extra/gl-matrix-min.js",

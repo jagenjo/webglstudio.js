@@ -58,6 +58,8 @@ var InterfaceModule = {
 		this.createTabs();
 		this.createSidePanel();
 
+		LiteGUI.createDropArea( mainarea.root, this.onItemDrop.bind(this) );
+
 		//window.onbeforeunload = function() { return "You work will be lost."; };
 	},
 
@@ -231,6 +233,20 @@ var InterfaceModule = {
 			sidepanelarea.hide();
 
 			this.is_sidepanel_splitted = false;
+		}
+	},
+
+	//something dragged into the canvas
+	onItemDrop: function(e)
+	{
+		//reverse order
+		for(var i = CORE.Modules.length - 1; i >= 0; --i )
+		{
+			var module = CORE.Modules[i];
+			if(!module.onItemDrop)
+				continue;
+			if(module.onItemDrop(e))
+				return; //break
 		}
 	},
 

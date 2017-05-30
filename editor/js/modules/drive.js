@@ -471,7 +471,13 @@ var DriveModule = {
 		inspector.name_width = 100;
 
 		inspector.addTitle("Resource");
-		inspector.addString("Fullpath", resource.fullpath, {disabled:true} );
+		inspector.widgets_per_row = 2;
+		inspector.addString("Fullpath", resource.fullpath, {width: "calc( 100% - 60px )", disabled:true} );
+		inspector.addButton(null, "Open", { width: 60, callback: function(){
+			var folder = LS.RM.getFolder(resource.fullpath);
+			DriveModule.selectFolder(folder);
+		}});
+		inspector.widgets_per_row = 1;
 
 		if(preview_url)
 		{
@@ -2070,7 +2076,7 @@ var DriveModule = {
 
 		LoginModule.session.uploadFile( fullpath, data, extra_info, 
 			function(v,resp){ //on_complete
-				console.log("uploaded!");
+				console.log("uploaded: ", fullpath );
 				if(on_complete)
 					on_complete(v, fullpath, resp);
 			},

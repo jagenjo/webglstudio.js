@@ -3981,6 +3981,88 @@ Mesh.cylinder = function( options, gl ) {
 }
 
 /**
+* Returns a cone mesh 
+* @method Mesh.cone
+* @param {Object} options valid options: radius, height, subdivisions 
+*/
+Mesh.cone = function( options, gl ) {
+	options = options || {};
+	var radius = options.radius || options.size || 1;
+	var height = options.height || options.size || 2;
+	var subdivisions = options.subdivisions || 64;
+
+	var vertices = new Float32Array(subdivisions * 3 * 3 * 2);
+	var normals = new Float32Array(subdivisions * 3 * 3 * 2);
+	var coords = new Float32Array(subdivisions * 2 * 3 * 2);
+	//not indexed because caps have different normals and uvs so...
+
+	var delta = 2*Math.PI / subdivisions;
+	var normal = null;
+	var normal_y = radius / height;
+	var up = [0,1,0];
+
+	for(var i = 0; i < subdivisions; ++i)
+	{
+		var angle = i * delta;
+
+		normal = [ Math.sin(angle+delta*0.5), normal_y, Math.cos(angle+delta*0.5)];
+		vec3.normalize(normal,normal);
+		//normal = up;
+		vertices.set([ 0, height, 0] , i*6*3);
+		normals.set(normal, i*6*3 );
+		coords.set([i/subdivisions,1], i*6*2 );
+
+		normal = [ Math.sin(angle), normal_y, Math.cos(angle)];
+		vertices.set([ normal[0]*radius, 0, normal[2]*radius], i*6*3 + 3);
+		vec3.normalize(normal,normal);
+		normals.set(normal, i*6*3 + 3);
+		coords.set([i/subdivisions,0], i*6*2 + 2);
+
+		normal = [ Math.sin(angle+delta), normal_y, Math.cos(angle+delta)];
+		vertices.set([ normal[0]*radius, 0, normal[2]*radius], i*6*3 + 6);
+		vec3.normalize(normal,normal);
+		normals.set(normal, i*6*3 + 6);
+		coords.set([(i+1)/subdivisions,0], i*6*2 + 4);
+	}
+
+	var pos = 0;//i*3*3;
+	var pos_uv = 0;//i*3*2;
+
+	//cap
+	var bottom_center = vec3.fromValues(0,0,0);
+	var down = vec3.fromValues(0,-1,0);
+	for(var i = 0; i < subdivisions; ++i)
+	{
+		var angle = i * delta;
+
+		var uv = vec3.fromValues( Math.sin(angle), 0, Math.cos(angle) );
+		var uv2 = vec3.fromValues( Math.sin(angle+delta), 0, Math.cos(angle+delta) );
+
+		//bottom
+		vertices.set([ uv2[0]*radius, 0, uv2[2]*radius], pos + i*6*3 + 9);
+		normals.set(down, pos + i*6*3 + 9);
+		coords.set( [ uv2[0] * 0.5 + 0.5,uv2[2] * 0.5 + 0.5], pos_uv + i*6*2 + 6);
+
+		vertices.set([ uv[0]*radius, 0, uv[2]*radius], pos + i*6*3 + 12);
+		normals.set(down, pos + i*6*3 + 12 );
+		coords.set( [ uv[0] * 0.5 + 0.5,uv[2] * 0.5 + 0.5], pos_uv + i*6*2 + 8 );
+
+		vertices.set( bottom_center, pos + i*6*3 + 15 );
+		normals.set( down, pos + i*6*3 + 15);
+		coords.set( [0.5,0.5], pos_uv + i*6*2 + 10);
+	}
+
+	var buffers = {
+		vertices: vertices,
+		normals: normals,
+		coords: coords
+	}
+	options.bounding = BBox.fromCenterHalfsize( [0,height*0.5,0], [radius,height*0.5,radius] );
+
+	return Mesh.load( buffers, options, gl );
+}
+
+/**
 * Returns a sphere mesh 
 * @method Mesh.sphere
 * @param {Object} options valid options: radius, lat, long, subdivisions, hemi

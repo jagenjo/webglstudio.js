@@ -56,6 +56,10 @@ var fxEnabledButton = {
 	callback: function()
 	{
 		RenderModule.render_settings.render_fx = !RenderModule.render_settings.render_fx;
+		RenderModule.requestFrame();
+		setTimeout(function(){
+			RenderModule.requestFrame();
+		},10);
 	}
 };
 

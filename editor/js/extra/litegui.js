@@ -788,7 +788,7 @@ var LiteGUI = {
 	* @param {Function} callback
 	* @param {Object} options ( title, width, height, content, noclose )
 	**/
-	confirm: function(content, callback, options)
+	confirm: function( content, callback, options )
 	{
 		options = options || {};
 		options.className = "alert";
@@ -874,6 +874,45 @@ var LiteGUI = {
 		};
 
 		input.focus();
+		return dialog;
+	},
+
+	/**
+	* Shows a choice dialog with a message
+	* @method choice
+	* @param {String} content
+	* @param {Function} callback
+	* @param {Object} options ( title, width, height, content, noclose )
+	**/
+	choice: function( content, choices, callback, options )
+	{
+		options = options || {};
+		options.className = "alert";
+		options.title = options.title || "Select one option";
+		options.width = options.width || 280;
+		//options.height = 100;
+		if (typeof(content) == "string")
+			content = "<p>" + content + "</p>";
+
+		for(var i in choices)
+		{
+			content +="<button class='litebutton' data-value='"+i+"' style='width:45%; margin-left: 10px'>"+(choices[i].content || choices[i])+"</button>";
+		}
+		options.noclose = true;
+
+		var dialog = this.showMessage(content,options);
+		dialog.content.style.paddingBottom = "10px";
+		var buttons = dialog.content.querySelectorAll("button");
+		for(var i = 0; i < buttons.length; i++)
+			buttons[i].addEventListener("click", inner);
+
+		function inner(v) {
+			var v = choices[ this.dataset["value"] ];
+			dialog.close(); //close before callback
+			if(callback) 
+				callback(v);
+		}
+
 		return dialog;
 	},
 

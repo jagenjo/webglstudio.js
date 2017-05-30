@@ -23170,6 +23170,42 @@ Camera.prototype.lookAt = function( eye, center, up )
 }
 
 /**
+* Positions the camera using a matrix that contains the position an orientation (NOT FULLY TESTED)
+* If the camera is a node camera, then the node transform is modified (plus the center to match the focalLength)
+* @method lookAtFromMatrix
+* @param {mat4} matrix
+* @param {boolean} is_model if false the matrix is assumed to be a view matrix, otherwise a model (inverse of view)
+*/
+Camera.prototype.lookAtFromMatrix = function( matrix, is_model )
+{
+	if( this._root && this._root.transform )
+	{
+		if(!is_model) //convert view to model
+		{
+			var m = mat4.create();
+			matrix = mat4.invert(m, matrix);
+		}
+		this._root.transform.matrix = matrix;
+		this._eye.set(LS.ZEROS);
+		this._up.set([0,1,0]);
+		this._must_update_view_matrix = true;
+		this.focalLength = 1; //changes center
+	}
+	else
+	{
+		var inv = mat4.create();
+		mat4.invert( inv, matrix );
+		var view = is_model ? inv : matrix;
+		var model = is_model ? matrix : inv;
+
+		this._view_matrix.set( view );
+		vec3.transformMat4( this._eye, LS.ZEROS, model );
+		vec3.transformMat4( this._center, LS.FRONT, model );
+		mat4.rotateVec3( this._up, model, LS.TOP );
+	}
+}
+
+/**
 * resets eye, center and up, so they are in [0,0,0],[0,0,-focalDist] and [0,1,0]
 * @method resetVectors
 * @param {number} focalDist [optional] it not set it will be 1
@@ -30482,7 +30518,7 @@ Object.defineProperty( GeometricPrimitive.prototype, 'geometry', {
 	get: function() { return this._geometry; },
 	set: function(v) { 
 		v = (v === undefined || v === null ? -1 : v|0);
-		if(v < 0 || v > 7)
+		if(v < 0 || v > 8)
 			return;
 		this._geometry = v;
 	},
@@ -30496,10 +30532,12 @@ GeometricPrimitive.SPHERE = 4;
 GeometricPrimitive.CIRCLE = 5;
 GeometricPrimitive.HEMISPHERE = 6;
 GeometricPrimitive.ICOSAHEDRON = 7;
+GeometricPrimitive.CONE = 8;
+
 //Warning : if you add more primitives, be careful with the setter, it doesnt allow values bigger than 7
 
 GeometricPrimitive.icon = "mini-icon-cube.png";
-GeometricPrimitive["@geometry"] = { type:"enum", values: {"Cube":GeometricPrimitive.CUBE, "Plane": GeometricPrimitive.PLANE, "Cylinder":GeometricPrimitive.CYLINDER, "Sphere":GeometricPrimitive.SPHERE, "Icosahedron":GeometricPrimitive.ICOSAHEDRON, "Circle":GeometricPrimitive.CIRCLE, "Hemisphere":GeometricPrimitive.HEMISPHERE  }};
+GeometricPrimitive["@geometry"] = { type:"enum", values: {"Cube":GeometricPrimitive.CUBE, "Plane": GeometricPrimitive.PLANE, "Cylinder":GeometricPrimitive.CYLINDER, "Sphere":GeometricPrimitive.SPHERE, "Cone":GeometricPrimitive.CONE, "Icosahedron":GeometricPrimitive.ICOSAHEDRON, "Circle":GeometricPrimitive.CIRCLE, "Hemisphere":GeometricPrimitive.HEMISPHERE  }};
 GeometricPrimitive["@primitive"] = {widget:"enum", values: {"Default":-1, "Points": 0, "Lines":1, "Triangles":4, "Wireframe":10 }};
 GeometricPrimitive["@subdivisions"] = { type:"number", step:1, min:0 };
 GeometricPrimitive["@point_size"] = { type:"number", step:0.001 };
@@ -30543,6 +30581,9 @@ GeometricPrimitive.prototype.updateMesh = function()
 			break;
 		case GeometricPrimitive.ICOSAHEDRON:
 			this._mesh = GL.Mesh.icosahedron({size: this.size, subdivisions:subdivisions });
+			break;
+		case GeometricPrimitive.CONE:
+			this._mesh = GL.Mesh.cone({radius: this.size, height: this.size, subdivisions:subdivisions });
 			break;
 	}
 	this._key = key;
@@ -33595,6 +33636,8 @@ Script.defineAPIFunction( "onGamepadConnected", Script.BIND_TO_SCENE, "gamepadco
 Script.defineAPIFunction( "onGamepadDisconnected", Script.BIND_TO_SCENE, "gamepaddisconnected" );
 Script.defineAPIFunction( "onButtonDown", Script.BIND_TO_SCENE, "buttondown" );
 Script.defineAPIFunction( "onButtonUp", Script.BIND_TO_SCENE, "buttonup" );
+//global
+Script.defineAPIFunction( "onFileDrop", Script.BIND_TO_SCENE, "fileDrop" );
 //dtor
 Script.defineAPIFunction( "onDestroy", Script.BIND_TO_NODE, "destroy" );
 
@@ -43336,6 +43379,7 @@ function Player(options)
 	this.canvas = this.gl.canvas;
 	this.render_settings = new LS.RenderSettings(); //this will be replaced by the scene ones.
 	this.scene = LS.GlobalScene;
+	this._file_drop_enabled = false; //use enableFileDrop
 
 	LS.ShadersManager.init( options.shaders || "data/shaders.xml" );
 	if(!options.shaders)
@@ -43383,9 +43427,24 @@ function Player(options)
 
 	LS.Input.init();
 
+	if(options.enableFileDrop !== false)
+		this.setFileDrop(true);
+
 	//launch render loop
 	gl.animate();
 }
+
+Object.defineProperty( Player.prototype, "file_drop_enabled", {
+	set: function(v)
+	{
+		this.setFileDrop(v);
+	},
+	get: function()
+	{
+		return this._file_drop_enabled;
+	},
+	enumerable: true
+});
 
 Player.prototype.loadConfig = function( url, on_complete )
 {
@@ -43591,6 +43650,78 @@ Player.prototype.stop = function()
 	this.state = LS.Player.STOPPED;
 	this.scene.finish();
 	LS.GUI.reset(); //clear GUI
+}
+
+Player.prototype.setFileDrop = function(v)
+{
+	if(this._file_drop_enabled == v)
+		return;
+
+	var that = this;
+	var element = this.canvas;
+
+	if(!v)
+	{
+		element.removeEventListener("dragenter", this._onDrag );
+		return;
+	}
+
+	this._file_drop_enabled = v;
+	this._onDrag = onDrag.bind(this);
+	this._onDrop = onDrop.bind(this);
+	this._onDragStop = onDragStop.bind(this);
+
+	element.addEventListener("dragenter", this._onDrag );
+
+	function onDragStop(evt)
+	{
+		evt.stopPropagation();
+		evt.preventDefault();
+	}
+
+	function onDrag(evt)
+	{
+		element.addEventListener("dragexit", this._onDragStop );
+		element.addEventListener("dragover", this._onDragStop );
+		element.addEventListener("drop", this._onDrop );
+		evt.stopPropagation();
+		evt.preventDefault();
+		/*
+		if(evt.type == "dragenter" && callback_enter)
+			callback_enter(evt, this);
+		if(evt.type == "dragexit" && callback_exit)
+			callback_exit(evt, this);
+		*/
+	}
+
+	function onDrop(evt)
+	{
+		evt.stopPropagation();
+		evt.preventDefault();
+
+		element.removeEventListener("dragexit", this._onDragStop );
+		element.removeEventListener("dragover", this._onDragStop );
+		element.removeEventListener("drop", this._onDrop );
+
+		if( evt.dataTransfer.files.length )
+		{
+			for(var i = 0; i < evt.dataTransfer.files.length; ++i )
+			{
+				var file = evt.dataTransfer.files[i];
+				var r = this._onfiledrop(file,evt);
+				if(r === false)
+				{
+					evt.stopPropagation();
+					evt.stopImmediatePropagation();
+				}
+			}
+		}
+	}
+}
+
+Player.prototype._onfiledrop = function( file, evt )
+{
+	return LEvent.trigger( LS.GlobalScene, "fileDrop", { file: file, event: evt } );
 }
 
 Player.prototype._ondraw = function()

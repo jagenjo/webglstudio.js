@@ -297,6 +297,29 @@ var PlayModule = {
 		return true;
 	},
 
+	onItemDrop: function(e)
+	{
+		if(!this.inplayer)
+			return;
+
+		var r = false;
+		if( e.dataTransfer.files.length )
+		{
+			for(var i = 0; i < e.dataTransfer.files.length; ++i )
+			{
+				var file = e.dataTransfer.files[i];
+				var r = LEvent.trigger( LS.GlobalScene, "fileDrop", { file: file, event: e } );
+				if(r === false)
+				{
+					e.stopPropagation();
+					e.stopImmediatePropagation();
+					r = true;
+				}
+			}
+		}
+		return r;
+	},
+
 	render: function()
 	{
 		if(!RenderModule.frame_updated || this.inplayer || LS.GlobalScene._state == LS.STOPPED || !this.preferences.render_play_border)

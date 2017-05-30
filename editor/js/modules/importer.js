@@ -18,8 +18,8 @@ var ImporterModule  = {
 
 	init: function()
 	{
-		if(window.gl && window.gl.canvas )
-			LiteGUI.createDropArea( gl.canvas, ImporterModule.onItemDrop.bind(this) );
+		//if(window.gl && window.gl.canvas )
+		//	LiteGUI.createDropArea( gl.canvas, ImporterModule.onItemDrop.bind(this) );
 		LiteGUI.menubar.add("Actions/Import Files", { callback: function() { ImporterModule.showImportResourceDialog(); }});
 
 		window.addEventListener("paste", this.onPaste.bind(this) );
@@ -84,7 +84,6 @@ var ImporterModule  = {
 			//more than one file
 			if(files.length > 1)
 			{
-
 				//sort resources so images goes first?
 				var files = ImporterModule.sortFilesByPriority( files );
 
@@ -94,6 +93,7 @@ var ImporterModule  = {
 					this.loadFileToMemory( files[i], function(file,options){
 						var filename = file.name.toLowerCase();
 						NotifyModule.show("FILE: " + file.name, { id: "res-msg-" + file.name.hashCode(), closable: true, time: 3000, left: 60, top: 30, parent: "#visor" } );
+						CORE.log("File dropped: " + file.name);
 						ImporterModule.processResource( file.name, file, that.getImporterOptions( file.name ), function(filename, resource){
 							//meshes must be inserted
 							if(resource.constructor === GL.Mesh)
@@ -482,7 +482,7 @@ var ImporterModule  = {
 	// Called from showImportResourceDialog when a file is loaded in memory
 	// This function wraps the processResource from LS.ResourcesManager to add some extra behaviours
 	// Mostly conversions, optimizations, and so
-	processResource: function (name, file, options, on_complete)
+	processResource: function ( name, file, options, on_complete )
 	{ 
 		options = options || {};
 
@@ -490,15 +490,26 @@ var ImporterModule  = {
 			return console.error("File data missing, use FileReader");
 
 		var filename = options.filename || file.name;
-
 		if(this.force_lowercase)
 			filename = filename.toLowerCase(); //force lower case in filenames to avoid case sensitive issues
 
-		var resource = LS.ResourcesManager.processResource( filename, file.data, options, inner );
+		var resource;
+		var extension = LS.RM.getExtension( filename );
+		if(extension == "zip")
+		{
+			LiteGUI.choice("This is a ZIP file, do you want to unzip the content?",["yes, unzip","no, upload as zip"], function(v){
+				if(	v == "no, upload as zip" )
+					resource = LS.ResourcesManager.processResource( filename, file.data, options, inner );
+				else
+					ImporterModule.importZIP( file, inner );
+			},{ width: 400 });
+		}
+		else
+			resource = LS.ResourcesManager.processResource( filename, file.data, options, inner );
 
 		return null;
 
-		function inner(filename, resource)
+		function inner( filename, resource )
 		{
 			var extension = LS.RM.getExtension( filename );
 			var format = LS.Formats.supported[ extension ];
@@ -592,6 +603,50 @@ var ImporterModule  = {
 			if(on_complete)
 				on_complete( filename, resource, options );
 		}
+	},
+
+	importZIP: function( file, on_complete )
+	{
+		if(!window.JSZip)
+		{
+			LiteGUI.alert("JSZIP.js not found.");
+			return;
+		}
+
+		var reader = new FileReader();
+		reader.onload = function(e)
+		{
+			var zip = new JSZip();
+			console.log("unziping data...");
+			zip.loadAsync(e.target.result).then(function(zip) {
+				 // you now have every files contained in the loaded zip
+				zip.forEach(function (relativePath, file){
+					console.log("file in ZIP", relativePath );
+					if(file.dir)
+					{
+					}
+					else
+					{
+						var datatype = "arraybuffer";
+						var extension = LS.RM.getExtension( file.name );
+						var format_info = LS.Formats.supported[ extension ];
+						if( format_info && format_info.dataType == "text" )
+							datatype = "string";
+
+						file.async( datatype ).then( (function (content)
+						{
+							var blob = new Blob([content],{name: "foo", type:"application/octet-stream"});
+							blob.name = this.name;
+							console.log(blob);
+							console.log(content);
+							LS.ResourcesManager.processResource( blob.name, content, null, on_complete );
+						}).bind(file) );
+					}
+				});
+			});
+		}
+		console.log("reading zip data...");
+		reader.readAsArrayBuffer( file );
 	},
 
 	insertMeshInScene: function(mesh)

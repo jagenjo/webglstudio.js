@@ -430,6 +430,7 @@ textarea.code {
 #maincanvas {
 	height: calc( 100% - 20px );
 	width: 100%;
+	overflow: hidden;
 }
 
 #statusbar {
@@ -438,6 +439,15 @@ textarea.code {
 	width: 100%;
 	overflow: hidden;
 	border: 1px solid black;
+}
+
+#statusbar.expanded {
+	border-top: 1px solid white;
+}
+
+#statusbar:not(.expanded)
+{
+	cursor: pointer;
 }
 
 #statusbar .msg {

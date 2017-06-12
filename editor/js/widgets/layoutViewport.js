@@ -348,5 +348,25 @@ LayoutViewport.prototype.inspect = function( inspector )
 		}
 	});
 
+	var options = ["Editor"];
+	var selected = options[0];
+	var scene_cameras = LS.GlobalScene.getAllCameras();
+	for(var i = 0; i < scene_cameras.length; i++)
+	{
+		var scene_camera = scene_cameras[i];
+		var option = { title: "Cam " + scene_camera._root.name, camera: scene_camera };
+		options.push( option );
+		if(that.camera == scene_camera)
+			selected = option;
+	}
+	inspector.addCombo("Camera", selected, { values: options, callback: function(v){
+		if(v == "Editor")
+			that.setCamera( null );
+		else
+			that.setCamera( v.camera );
+
+		inspector.refresh();	
+	}});
+
 	inspector.showComponent( this.camera );
 }

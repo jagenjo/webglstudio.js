@@ -1562,7 +1562,7 @@ LGraphNode.prototype.getTitle = function()
 * @param {number} slot
 * @param {*} data
 */
-LGraphNode.prototype.setOutputData = function(slot,data)
+LGraphNode.prototype.setOutputData = function(slot, data)
 {
 	if(!this.outputs) 
 		return;
@@ -1674,7 +1674,7 @@ LGraphNode.prototype.getInputNode = function( slot )
 /**
 * tells you the last output data that went in that slot
 * @method getOutputData
-* @param {number|String} slot
+* @param {number} slot
 * @return {Object}  object or null
 */
 LGraphNode.prototype.getOutputData = function(slot)
@@ -2097,7 +2097,8 @@ LGraphNode.prototype.getSlotInPosition = function( x, y )
 */
 LGraphNode.prototype.findInputSlot = function(name)
 {
-	if(!this.inputs) return -1;
+	if(!this.inputs)
+		return -1;
 	for(var i = 0, l = this.inputs.length; i < l; ++i)
 		if(name == this.inputs[i].name)
 			return i;
@@ -4999,6 +5000,15 @@ LGraphCanvas.decodeHTML = function( str )
 	return e.innerHTML;
 }
 
+LGraphCanvas.onResizeNode = function( value, options, e, menu, node )
+{
+	if(!node)
+		return;
+	node.size = node.computeSize();
+	node.setDirtyCanvas(true,true);
+}
+
+
 LGraphCanvas.onShowTitleEditor = function( value, options, e, menu, node )
 {
 	var input_html = "";
@@ -5352,6 +5362,7 @@ LGraphCanvas.prototype.getNodeMenuOptions = function( node )
 			null,
 			{content:"Title", callback: LGraphCanvas.onShowTitleEditor },
 			{content:"Mode", has_submenu: true, callback: LGraphCanvas.onMenuNodeMode },
+			{content:"Resize", callback: LGraphCanvas.onResizeNode },
 			{content:"Collapse", callback: LGraphCanvas.onMenuNodeCollapse },
 			{content:"Pin", callback: LGraphCanvas.onMenuNodePin },
 			{content:"Colors", has_submenu: true, callback: LGraphCanvas.onMenuNodeColors },
@@ -9716,7 +9727,7 @@ if(typeof(LiteGraph) != "undefined")
 		this.addOutput("Texture","Texture");
 		this.properties = {code:"", width: 512, height: 512};
 
-		this.properties.code = "\nvoid main() {\n  vec2 uv = coord;\n  vec3 color = vec3(0.0);\n//your code here\n\ngl_FragColor = vec4(color, 1.0);\n}\n";
+		this.properties.code = "\nvoid main() {\n  vec2 uv = v_coord;\n  vec3 color = vec3(0.0);\n//your code here\n\ngl_FragColor = vec4(color, 1.0);\n}\n";
 	}
 
 	LGraphTextureShader.title = "Shader";
@@ -9726,65 +9737,133 @@ if(typeof(LiteGraph) != "undefined")
 		"precision": { widget:"combo", values: LGraphTexture.MODE_VALUES }
 	};
 
+	LGraphTextureShader.prototype.onPropertyChanged = function(name, value)
+	{
+		if(name != "code")
+			return;
+
+		var shader = this.getShader();
+		if(!shader)
+			return;
+
+		//update connections
+		var uniforms = shader.uniformInfo;
+
+		//remove deprecated slots
+		if(this.inputs)
+		{
+			var already = {};
+			for(var i = 0; i < this.inputs.length; ++i)
+			{
+				var info = this.getInputInfo(i);
+				if(!info)
+					continue;
+
+				if( uniforms[ info.name ] && !already[ info.name ] )
+				{
+					already[ info.name ] = true;
+					continue;
+				}
+				this.removeInput(i);
+				i--;
+			}
+		}
+
+		//update existing ones
+		for(var i in uniforms)
+		{
+			var info = shader.uniformInfo[i];
+			if(info.loc === null)
+				continue; //is an attribute, not a uniform
+			if(i == "time") //default one
+				continue;
+
+			var type = "number";
+			if( this._shader.samplers[i] )
+				type = "texture";
+			else
+			{
+				switch(info.size)
+				{
+					case 1: type = "number"; break;
+					case 2: type = "vec2"; break;
+					case 3: type = "vec3"; break;
+					case 4: type = "vec4"; break;
+					case 9: type = "mat3"; break;
+					case 16: type = "mat4"; break;
+					default: continue;
+				}
+			}
+
+			var slot = this.findInputSlot(i);
+			if(slot == -1)
+			{
+				this.addInput(i,type);
+				continue;
+			}
+
+			var input_info = this.getInputInfo(slot);
+			if(!input_info)
+				this.addInput(i,type);
+			else
+			{
+				if(input_info.type == type)
+					continue;
+				this.removeInput(slot,type);
+				this.addInput(i,type);
+			}
+		}
+	}
+
+	LGraphTextureShader.prototype.getShader = function()
+	{
+		//replug 
+		if(this._shader && this._shader_code == this.properties.code)
+			return this._shader;
+
+		this._shader_code = this.properties.code;
+		this._shader = new GL.Shader(Shader.SCREEN_VERTEX_SHADER, LGraphTextureShader.pixel_shader + this.properties.code );
+		if(!this._shader) {
+			this.boxcolor = "red";
+			return null;
+		}
+		else
+			this.boxcolor = "green";
+		return this._shader;
+	}
+
 	LGraphTextureShader.prototype.onExecute = function()
 	{
 		if(!this.isOutputConnected(0))
 			return; //saves work
 
-		//replug 
-		if(this._shader_code != this.properties.code)
-		{
-			this._shader_code = this.properties.code;
-			this._shader = new GL.Shader(Shader.SCREEN_VERTEX_SHADER, LGraphTextureShader.pixel_shader + this.properties.code );
-			if(!this._shader) {
-				this.boxcolor = "red";
-				return;
-			}
-			else
-				this.boxcolor = "green";
-			/*
-			var uniforms = this._shader.uniformLocations;
-			//disconnect inputs
-			if(this.inputs)
-				for(var i = 0; i < this.inputs.length; i++)
-				{
-					var slot = this.inputs[i];
-					if(slot.link != null)
-						this.disconnectInput(i);
-				}
+		var shader = this.getShader();
+		if(!shader)
+			return;
 
-			for(var i = 0; i < uniforms.length; i++)
+		var tex_slot = 0;
+
+		//set uniforms
+		for(var i = 0; i < this.inputs.length; ++i)
+		{
+			var info = this.getInputInfo(i);
+			var data = this.getInputData(i);
+			if(data == null)
+				continue;
+
+			if(data.constructor === GL.Texture)
 			{
-				var type = "number";
-				if( this._shader.isSampler[i] )
-					type = "texture";
-				else
-				{
-					var v = gl.getUniform(this._shader.program, i);
-					type = typeof(v);
-					if(type == "object" && v.length)
-					{
-						switch(v.length)
-						{
-							case 1: type = "number"; break;
-							case 2: type = "vec2"; break;
-							case 3: type = "vec3"; break;
-							case 4: type = "vec4"; break;
-							case 9: type = "mat3"; break;
-							case 16: type = "mat4"; break;
-							default: continue;
-						}
-					}
-				}
-				this.addInput(i,type);
+				data.bind(slot);
+				data = slot;
+				slot++;
 			}
-			*/
+			shader.setUniform( info.name, data );
 		}
 
+		//render to texture
 		if(!this._tex || this._tex.width != this.properties.width || this._tex.height != this.properties.height )
 			this._tex = new GL.Texture( this.properties.width, this.properties.height, { format: gl.RGBA, filter: gl.LINEAR });
 		var tex = this._tex;
-		var shader = this._shader;
 		var time = this.graph.getTime();
 		tex.drawTo(function()	{
 			shader.uniforms({texSize: [tex.width, tex.height], time: time}).draw( Mesh.getScreenQuad() );
@@ -12728,8 +12807,13 @@ LGAudio.onConnectionsChange = function( connection, slot, connected, link_info )
 //this function helps creating wrappers to existing classes
 LGAudio.createAudioNodeWrapper = function( class_object )
 {
+	var old_func = class_object.prototype.onPropertyChanged;
+
 	class_object.prototype.onPropertyChanged = function(name, value)
 	{
+		if(old_func)
+			old_func.call(this,name,value);
+
 		if(!this.audionode)
 			return;
 
@@ -12745,7 +12829,7 @@ LGAudio.createAudioNodeWrapper = function( class_object )
 	class_object.prototype.onConnectionsChange = LGAudio.onConnectionsChange;
 }
 
-
+//contains the samples decoded of the loaded audios in AudioBuffer format
 LGAudio.cached_audios = {};
 
 LGAudio.loadSound = function( url, on_complete, on_error )
@@ -12756,6 +12840,9 @@ LGAudio.loadSound = function( url, on_complete, on_error )
 			on_complete( LGAudio.cached_audios[ url ] );
 		return;
 	}
+
+	if( LGAudio.onProcessAudioURL )
+		url = LGAudio.onProcessAudioURL( url );
 
 	//load new sample
 	var request = new XMLHttpRequest();
@@ -12800,8 +12887,9 @@ function LGAudioSource()
 	};
 
 	this._loading_audio = false;
-	this._audio_buffer = null;
+	this._audiobuffer = null; //points to AudioBuffer with the audio samples decoded
 	this._audionodes = [];
+	this._last_sourcenode = null; //the last AudioBufferSourceNode (there could be more if there are several sounds playing)
 
 	this.addOutput( "out", "audio" );
 	this.addInput( "gain", "number" );
@@ -12809,7 +12897,7 @@ function LGAudioSource()
 	//init context
 	var context = LGAudio.getAudioContext();
 
-	//create gain node
+	//create gain node to control volume
 	this.audionode = context.createGain();
 	this.audionode.graphnode = this;
 	this.audionode.gain.value = this.properties.gain;
@@ -12819,6 +12907,7 @@ function LGAudioSource()
 		this.loadSound( this.properties.src );
 }
 
+LGAudioSource["@src"] = { widget: "resource" };
 LGAudioSource.supported_extensions = ["wav","ogg","mp3"];
 
 
@@ -12830,11 +12919,11 @@ LGAudioSource.prototype.onAdded = function(graph)
 
 LGAudioSource.prototype.onStart = function()
 {
-	if(!this._audio_buffer)
+	if(!this._audiobuffer)
 		return;
 
 	if(this.properties.autoplay)
-		this.playBuffer( this._audio_buffer );
+		this.playBuffer( this._audiobuffer );
 }
 
 LGAudioSource.prototype.onStop = function()
@@ -12884,30 +12973,40 @@ LGAudioSource.prototype.unpauseAllSounds = function()
 
 LGAudioSource.prototype.onExecute = function()
 {
-	if(!this.inputs)
-		return;
+	if(this.inputs)
+		for(var i = 0; i < this.inputs.length; ++i)
+		{
+			var input = this.inputs[i];
+			if(!input.link)
+				continue;
+			var v = this.getInputData(i);
+			if( v === undefined )
+				continue;
+			if( input.name == "gain" )
+				this.audionode.gain.value = v;
+			else if( input.name == "playbackRate" )
+			{
+				this.properties.playbackRate = v;
+				for(var j = 0; j < this._audionodes.length; ++j)
+					this._audionodes[j].playbackRate.value = v;
+			}
+		}
 
-	for(var i = 0; i < this.inputs.length; ++i)
-	{
-		var input = this.inputs[i];
-		if(!input.link)
-			continue;
-		var v = this.getInputData(i);
-		if( v === undefined )
-			continue;
-		if( input.name == "gain" )
-			this.audionode.gain.value = v;
-		else if( input.name == "playbackRate" )
-			this.properties.playbackRate = v;
-	}
+	if(this.outputs)
+		for(var i = 0; i < this.outputs.length; ++i)
+		{
+			var output = this.outputs[i];
+			if( output.name == "buffer" && this._audiobuffer )
+				this.setOutputData( i, this._audiobuffer );
+		}
 }
 
 LGAudioSource.prototype.onAction = function(event)
 {
-	if(this._audio_buffer)
+	if(this._audiobuffer)
 	{
 		if(event == "Play")
-			this.playBuffer(this._audio_buffer);
+			this.playBuffer(this._audiobuffer);
 		else if(event == "Stop")
 			this.stopAllSounds();
 	}
@@ -12919,6 +13018,11 @@ LGAudioSource.prototype.onPropertyChanged = function( name, value )
 		this.loadSound( value );
 	else if(name == "gain")
 		this.audionode.gain.value = value;
+	else if(name == "playbackRate")
+	{
+		for(var j = 0; j < this._audionodes.length; ++j)
+			this._audionodes[j].playbackRate.value = value;
+	}
 }
 
 LGAudioSource.prototype.playBuffer = function( buffer )
@@ -12928,6 +13032,7 @@ LGAudioSource.prototype.playBuffer = function( buffer )
 
 	//create a new audionode (this is mandatory, AudioAPI doesnt like to reuse old ones)
 	var audionode = context.createBufferSource(); //create a AudioBufferSourceNode
+	this._last_sourcenode = audionode;
 	audionode.graphnode = this;
 	audionode.buffer = buffer;
 	audionode.loop = this.properties.loop;
@@ -12961,7 +13066,7 @@ LGAudioSource.prototype.loadSound = function( url )
 		this._request = null;
 	}
 
-	this._audio_buffer = null;
+	this._audiobuffer = null; //points to the audiobuffer once the audio is loaded
 	this._loading_audio = false;
 
 	if(!url)
@@ -12975,7 +13080,7 @@ LGAudioSource.prototype.loadSound = function( url )
 	function inner( buffer )
 	{
 		this.boxcolor = LiteGraph.NODE_DEFAULT_BOXCOLOR;
-		that._audio_buffer = buffer;
+		that._audiobuffer = buffer;
 		that._loading_audio = false;
 		//if is playing, then play it
 		if(that.graph && that.graph.status === LGraph.STATUS_RUNNING)
@@ -12993,7 +13098,7 @@ LGAudioSource.prototype.onGetInputs = function()
 
 LGAudioSource.prototype.onGetOutputs = function()
 {
-	return [["ended",LiteGraph.EVENT]];
+	return [["buffer","audiobuffer"],["ended",LiteGraph.EVENT]];
 }
 
 LGAudioSource.prototype.onDropFile = function(file)
@@ -13034,7 +13139,7 @@ function LGAudioAnalyser()
 
 	this.addInput("in","audio");
 	this.addOutput("freqs","array");
-	//this.addOutput("time","freq");
+	this.addOutput("samples","array");
 
 	this._freq_bin = null;
 	this._time_bin = null;
@@ -13059,7 +13164,14 @@ LGAudioAnalyser.prototype.onExecute = function()
 
 	//send analyzer
 	if(this.isOutputConnected(1))
-		this.setOutputData(1,this.audionode);
+	{
+		//send Samples
+		var bufferLength = this.audionode.frequencyBinCount;
+		if( !this._time_bin || this._time_bin.length != bufferLength )
+			this._time_bin = new Uint8Array( bufferLength );
+		this.audionode.getByteTimeDomainData( this._time_bin );
+		this.setOutputData(1,this._time_bin);
+	}
 
 
 	//properties
@@ -13084,12 +13196,11 @@ LGAudioAnalyser.prototype.onGetInputs = function()
 	return [["minDecibels","number"],["maxDecibels","number"],["smoothingTimeConstant","number"]];
 }
 
-/*
 LGAudioAnalyser.prototype.onGetOutputs = function()
 {
-	return [["Analyzer","analyzer"]];
+	return [["freqs","array"],["samples","array"]];
 }
-*/
+
 
 LGAudioAnalyser.title = "Analyser";
 LGAudioAnalyser.desc = "Audio Analyser";
@@ -13317,6 +13428,15 @@ LGAudioMixer.prototype.getAudioNodeInInputSlot = function( slot )
 		return this.audionode2;
 }
 
+LGAudioMixer.prototype.onPropertyChanged = function( name, value )
+{
+	if( name == "gain1" ) 
+		this.audionode1.gain.value = value;
+	else if( name == "gain2" ) 
+		this.audionode2.gain.value = value;
+}
+
+
 LGAudioMixer.prototype.onExecute = function()
 {
 	if(!this.inputs || !this.inputs.length)
@@ -13421,6 +13541,73 @@ LGAudioBiquadFilter.desc = "Audio filter";
 LiteGraph.registerNodeType("audio/biquadfilter", LGAudioBiquadFilter);
 
 
+
+
+function LGAudioOscillatorNode()
+{
+	//default 
+	this.properties = {
+		frequency: 440,
+		detune: 0,
+		type: "sine"
+	};
+	this.addProperty("type","sine","enum",{values:["sine","square","sawtooth","triangle","custom"]});	
+
+	//create node
+	this.audionode = LGAudio.getAudioContext().createOscillator();
+
+	//slots
+	this.addOutput("out","audio");
+}
+
+LGAudioOscillatorNode.prototype.onStart = function()
+{
+	this.audionode.start();
+}
+
+LGAudioOscillatorNode.prototype.onStop = function()
+{
+	this.audionode.stop();
+}
+
+LGAudioOscillatorNode.prototype.onPause = function()
+{
+	this.onStop();
+}
+
+LGAudioOscillatorNode.prototype.onUnpause = function()
+{
+	this.onStart();
+}
+
+LGAudioOscillatorNode.prototype.onExecute = function()
+{
+	if(!this.inputs || !this.inputs.length)
+		return;
+
+	for(var i = 0; i < this.inputs.length; ++i)
+	{
+		var input = this.inputs[i];
+		if(!input.link)
+			continue;
+		var v = this.getInputData(i);
+		if(v !== undefined)
+			this.audionode[ input.name ].value = v;
+	}
+}
+
+LGAudioOscillatorNode.prototype.onGetInputs = function()
+{
+	return [["frequency","number"],["detune","number"],["type","string"]];
+}
+
+LGAudio.createAudioNodeWrapper( LGAudioOscillatorNode );
+
+LGAudioOscillatorNode.title = "Oscillator";
+LGAudioOscillatorNode.desc = "Oscillator";
+LiteGraph.registerNodeType("audio/oscillator", LGAudioOscillatorNode);
+
+
 //*****************************************************
 
 //EXTRA 
@@ -13433,7 +13620,7 @@ function LGAudioVisualization()
 		mark: -1
 	};
 
-	this.addInput("freqs","array");
+	this.addInput("data","array");
 	this.addInput("mark","number");
 	this.size = [300,200];
 	this._last_buffer = null;

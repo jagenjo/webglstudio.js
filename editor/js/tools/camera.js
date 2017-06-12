@@ -157,15 +157,14 @@ var cameraTool = {
 		else if( gl.keys["RIGHT"]  ) { this.moveCamera([speed*dt,0,0],true); update_frame = true; }
 
 		//apply camera smoothing
-		var cameras = RenderModule.cameras;
-		for(var i = 0, l = cameras.length; i < l; ++i)
+		var viewports = RenderModule.viewports;
+		for(var i = 0, l = viewports.length; i < l; ++i)
 		{
-			var camera = cameras[i];
+			var camera = viewports[i].camera;
 			if( !camera._editor )
 				continue;
 
-
-			if(this.smooth_camera)
+			if( this.smooth_camera )
 			{
 				var factor = Math.clamp( this.settings.smooth_camera_factor, 0.1, 1); //clamp otherwise bad things would happend
 				if(!camera._editor)
@@ -301,6 +300,17 @@ var cameraTool = {
 			else
 				camera.eye = new_eye;
 		}
+		else
+		{
+			if(	!camera._editor )
+				camera._editor = {
+					destination_eye: vec3.create(),
+					destination_center: vec3.create()
+				};
+
+			camera._editor.destination_eye.set( new_eye );
+			camera._editor.destination_center.set( center );
+		}
 	},
 
 	moveCamera: function(delta, in_local_space, camera )
@@ -351,6 +361,10 @@ var cameraTool = {
 				camera.eye = new_eye;
 				camera.center = new_center;
 			}
+		}
+		else
+		{
+		
 		}
 	},
 

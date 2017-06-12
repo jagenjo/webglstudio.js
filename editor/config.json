@@ -4,5 +4,6 @@
 	"resources":"fileserver/files/",
 	"proxy":"@/proxy.php?url=",
 	"shaders":"data/shaders.xml",
-	"nocache": false
+	"nocache": false,
+	"scene_url":"scene.json"
 }

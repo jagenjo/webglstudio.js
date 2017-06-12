@@ -20,7 +20,7 @@ var SceneStorageModule = {
 		menubar.add("Project/Load/From URL", { callback: this.showLoadFromURLDialog.bind(this) });
 		menubar.add("Project/Load/From File", { callback: this.showLoadFromFileDialog.bind(this) });
 		menubar.add("Project/Load/From autobackup", { callback: this.recoverBackup.bind(this) });
-		menubar.add("Project/Save/In Server", { callback: this.showSaveSceneInServerDialog.bind(this) });
+		menubar.add("Project/Save/In Server", { callback: this.showSaveSceneInServerDialog.bind(this,null) });
 		menubar.add("Project/Save/Local", { callback: this.showSaveSceneInLocalDialog.bind(this) });
 		menubar.add("Project/Download", { callback: this.showDownloadSceneDialog.bind(this) });
 		menubar.add("Project/Test", { callback: this.testScene.bind(this) });
@@ -273,7 +273,7 @@ var SceneStorageModule = {
 		dialog.show();
 	},
 
-	showSaveSceneInServerDialog: function()
+	showSaveSceneInServerDialog: function( on_complete )
 	{
 		var scene_name = "";
 		var scene_folder = "";
@@ -310,12 +310,13 @@ var SceneStorageModule = {
 			scene_name = scene_name.substr(0, pos);
 
 		var widgets = new LiteGUI.Inspector();
-		var string_widget = widgets.addString("Filename", scene_name , { callback: function(v) { 
+		var string_widget = widgets.addString("Filename", scene_name , { placeHolder: "choose a name", callback: function(v) { 
 			scene_name = v;
 		}});
 		var scenes = { id:"Server", children: [] };
-		var tree_widget = widgets.addTree("Scenes",scenes, { height: 200, callback: inner_selected});
-		widgets.addButton(null,"Save", { className:"big", callback: inner_button });
+		var tree_widget = widgets.addTree(null, scenes, { height: 210, callback: inner_selected});
+		var button = widgets.addButton(null,"Save", { className:"big", callback: inner_button });
+		button.style.marginTop = "4px";
 
 		split.getSection(0).add( widgets );
 
@@ -378,20 +379,20 @@ var SceneStorageModule = {
 				scene.extra.fullpath = scene.fullpath;
 			}
 
-			SceneStorageModule.saveSceneInServer();
+			SceneStorageModule.saveSceneInServer( on_complete );
 			dialog.close();
 		}
 	},
 
 	//tries to save the scene without asking anything, unless is the first time, then shows the dialog to choose everything
-	fastSaveScene: function()
+	fastSaveScene: function( on_complete )
 	{
 		var scene = LS.GlobalScene;
 
 		if(!scene.extra || !scene.extra.folder)
 		{
-			this.showSaveSceneInServerDialog();
-			return;
+			this.showSaveSceneInServerDialog( on_complete );
+			return false;
 		}
 
 		var scene_name = scene.extra.filename;
@@ -401,8 +402,9 @@ var SceneStorageModule = {
 			scene_name = scene_name.substr(0, pos);
 		scene.filename = scene_name + ".scene.json";
 		scene.fullpath = scene_folder + "/" + scene.filename;
-		this.saveSceneInServer();
+		this.saveSceneInServer( on_complete );
 		InterfaceModule.setStatusBar("Scene saved");
+		return true;
 	},
 
 	showLoadLocalSceneDialog: function()
@@ -752,7 +754,7 @@ var SceneStorageModule = {
 
 	resetLocalScenes: function()
 	{
-		var local_scenes = localStorage.removeItem(SceneStorageModule.localscene_prefix + "list");
+		var local_scenes = localStorage.removeItem( SceneStorageModule.localscene_prefix + "list");
 		this.local_scenes = {};
 	},
 

@@ -368,6 +368,11 @@ var ImporterModule  = {
 				inspector.addInfo("Bytes", DriveModule.beautifySize( file.size ) );
 				inspector.addInfo("Type", file.type );
 
+				var ext = LS.RM.getExtension( file.name );
+
+				if( ext === "zip" )
+					inspector.addInfo("ZIP FILE");
+
 				inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { import_options.optimize_data = v; }});
 
 				var info = LS.Formats.getFileFormatInfo( file.name );
@@ -637,8 +642,8 @@ var ImporterModule  = {
 						{
 							var blob = new Blob([content],{name: "foo", type:"application/octet-stream"});
 							blob.name = this.name;
-							console.log(blob);
-							console.log(content);
+							console.log( blob );
+							//console.log(content);
 							LS.ResourcesManager.processResource( blob.name, content, null, on_complete );
 						}).bind(file) );
 					}

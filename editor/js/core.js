@@ -243,6 +243,7 @@ var CORE = {
 
 	onBeforeUnload: function()
 	{
+		console.log("unloading");
 		var warning = false;
 		for(var i in this.Modules)
 			if (this.Modules[i].onUnload)

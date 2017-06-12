@@ -471,7 +471,7 @@ InspectorWidget.prototype.inspectScene = function( scene )
 
 InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 {
-	inspector = this.inspector;
+	var inspector = this.inspector;
 	inspector.instance = node;
 
 	if(!node)

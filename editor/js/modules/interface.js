@@ -188,6 +188,7 @@ var InterfaceModule = {
 	toggleStatusBar: function()
 	{
 		console.log("toggle status bar");
+		var visorarea = this.visorarea;
 		var maincanvas = visorarea.root.querySelector("#maincanvas");
 		var status = visorarea.root.querySelector("#statusbar");
 
@@ -195,11 +196,13 @@ var InterfaceModule = {
 		{
 			maincanvas.style.height = "50%";
 			status.style.height = "50%";
+			status.classList.add("expanded");
 		}
 		else
 		{
 			maincanvas.style.height = "";
 			status.style.height = "";
+			status.classList.remove("expanded");
 		}
 	},
 

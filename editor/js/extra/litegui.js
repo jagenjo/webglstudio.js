@@ -2646,6 +2646,9 @@ LiteGUI.LineEditor = LineEditor;
 			});
 	}
 
+	Area.VERTICAL = "vertical";
+	Area.HORIZONTAL = "horizontal";
+
 	Area.splitbar_size = 4;
 
 	/* get container of the section */
@@ -7588,7 +7591,8 @@ Inspector.prototype.addTextarea = function(name,value, options)
 		textarea.addEventListener( "keydown", options.callback_keydown );
 
 	if(options.height)
-		textarea.style.height = LiteGUI.sizeToCSS( options.height );
+		textarea.style.height = "calc( " + LiteGUI.sizeToCSS( options.height ) + " - 5px )";
+		//textarea.style.height = LiteGUI.sizeToCSS( options.height );
 	this.append(element,options);
 	element.setValue = function(v, skip_event) { 
 		if(v === undefined)

@@ -59,7 +59,9 @@ var RenderModule = {
 		//create split
 		var visorarea = this.visorarea = new LiteGUI.Area("visorarea",{ height: "100%", autoresize: true, inmediateResize: true});
 		visorarea.split("vertical",[null,260], true);
-		visorarea.getSection(0).content.innerHTML = "<div id='visor'><div id='maincanvas'></div><div id='statusbar'><span class='msg'></div></div></div>";
+		visorarea.getSection(0).content.innerHTML = "<div id='visor'><div id='maincanvas'></div><div id='statusbar'><span class='msg'></span></div></div>";
+		visorarea.root.querySelector( "#statusbar" ).addEventListener("click", InterfaceModule.toggleStatusBar.bind( InterfaceModule ) );
+
 		this.tab.add( visorarea );
 
 		if( !InterfaceModule.preferences.show_low_panel )
@@ -610,7 +612,7 @@ var RenderModule = {
 
 	goFullscreen: function()
 	{
-		var fullscreen_root = document.getElementById("maincanvas");
+		var fullscreen_root = document.getElementById("visor");
 		//gl.fullscreen();
 
 		if(fullscreen_root.requestFullScreen)

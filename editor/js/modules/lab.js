@@ -174,6 +174,12 @@ var LabModule = {
 		var num = 0;
 		for(var i in LS.RM.textures)
 		{
+			var filename = LS.RM.getFilename(i);
+
+			//is a thumbnail texture
+			if(filename.substr(0,4) == "_th_")
+				continue;
+
 			var item = LS.RM.textures[i];
 			if(!item) //just in case...
 				continue;
@@ -193,6 +199,9 @@ var LabModule = {
 			var sizex = w;
 			var sizey = h;
 			*/
+
+			var white = [1,1,1,1];
+			var black = [0,0,0,1];
 
 			if(startx <= gl.canvas.width && starty <= gl.canvas.height && 
 				startx + sizex > 0 && starty + sizey > 0 )
@@ -222,7 +231,12 @@ var LabModule = {
 					gl.globalAlpha = 1;
 				}
 				if(this.settings.render_filename)
+				{
+					gl.fillColor = black;
+					gl.fillText(text,posx + 6,posy + 16);
+					gl.fillColor = white;
 					gl.fillText(text,posx + 5,posy + 15);
+				}
 				this.items.push({id:i,type:"Texture",item: tex, x:posx,y:posy,w:w,h:h});
 			}
 

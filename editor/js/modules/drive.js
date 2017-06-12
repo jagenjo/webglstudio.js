@@ -149,6 +149,8 @@ var DriveModule = {
 		this.createPanel(); //creates tree too
 
 		LiteGUI.menubar.add("Window/Resources Panel", { callback: function(){ ResourcesPanelWidget.createDialog(); }});
+
+		this.retrieveNoCacheFiles();
 	},
 
 	createPanel: function()
@@ -1467,6 +1469,9 @@ var DriveModule = {
 			upload_progress = dialog.root.querySelector(".upload_progress");
 		}
 
+		//add to nocache
+		LS.RM.nocache_files[ resource.fullpath ] = new Date().getTime();
+
 		this.serverUploadResource( resource, resource.fullpath,
 			function(v, msg) {  //after resource saved
 				if(v)
@@ -1900,14 +1905,39 @@ var DriveModule = {
 		widgets.addCheckbox( "Show leaving warning", this.preferences.show_leaving_warning, function(v){ that.preferences.show_leaving_warning = v; } );
 	},
 
+	retrieveNoCacheFiles: function()
+	{
+		console.log("load");
+
+		//this helps avoiding cached version of files recently saved
+		var files = localStorage.getItem( "wgl_nocache_files" );
+		if( files && files != "undefined" ) //it happens...
+		{
+			files = JSON.parse(files);
+			var now = new Date().getTime();
+			if(files)
+				for(var i in files)
+				{
+					var diff = now - files[i];
+					if( diff < (24 * 60 * 60 * 1000) ) //one day of no cache
+						LS.ResourcesManager.nocache_files[i] = files[i];
+				}
+		}
+	},
+
+
 	onUnload: function()
 	{
-		if(!this.preferences.show_leaving_warning)
-			return;
+		//this helps avoiding cached version of files recently saved
+		if(LS.RM.nocache_files)
+			localStorage.setItem( "wgl_nocache_files", JSON.stringify( LS.RM.nocache_files ) );
 
-		var res = this.getResourcesNotSaved();
-		if(res && res.length)
-			return "There are Resources in memory that must be saved or they will be lost. Are you sure you want to exit?";
+		if(this.preferences.show_leaving_warning)
+		{
+			var res = this.getResourcesNotSaved();
+			if(res && res.length)
+				return "There are Resources in memory that must be saved or they will be lost. Are you sure you want to exit?";
+		}
 	},
 
 	//**** LFS SERVER CALLS **************

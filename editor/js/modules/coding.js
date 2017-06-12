@@ -513,7 +513,18 @@ LiteGUI.Inspector.prototype.addCode = function( name, value, options )
 	//getCode: function(){ return instance[name];},
 	//setCode: function(v){ instance[name] = v;}
 
-	if(!options.allow_inline)
+	//hardcoded
+	if(!options.instance)
+	{
+		if(!options.name_width)
+			options.name_width = "20%";
+		element = this.createWidget(name,"<textarea style='min-height: 100px;background-color: black; font-style: Courier; color: #eee;' tabIndex='"+ this.tab_index + "'>"+(value||"")+"</textarea>", options);
+		element.querySelector("textarea").addEventListener("change",function(e){
+			var value = this.value;
+			LiteGUI.Inspector.onWidgetChange.call( that, element, name, value, options );
+		});
+	}
+	else if(!options.allow_inline)
 	{
 		var text = "Edit Code";
 		element = this.createWidget(name,"<button class='single' tabIndex='"+ this.tab_index + "'>"+text+"</button>", options);
@@ -638,7 +649,129 @@ LS.ShaderCode.examples.fx = "\n\
 	}\n\
 ";
 
-LS.ShaderCode.examples.color = "\n\
+LS.ShaderCode.examples.flat = "\n\
+\n\
+\\js\n\
+\n\
+\\color.vs\n\
+\n\
+precision mediump float;\n\
+attribute vec3 a_vertex;\n\
+attribute vec3 a_normal;\n\
+attribute vec2 a_coord;\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+\n\
+//matrices\n\
+uniform mat4 u_model;\n\
+uniform mat4 u_normal_model;\n\
+uniform mat4 u_view;\n\
+uniform mat4 u_viewprojection;\n\
+\n\
+//globals\n\
+uniform float u_time;\n\
+uniform vec4 u_viewport;\n\
+uniform float u_point_size;\n\
+\n\
+//camera\n\
+uniform vec3 u_camera_eye;\n\
+void main() {\n\
+	\n\
+	vec4 vertex4 = vec4(a_vertex,1.0);\n\
+	v_normal = a_normal;\n\
+	v_uvs = a_coord;\n\
+	\n\
+	//vertex\n\
+	v_pos = (u_model * vertex4).xyz;\n\
+	//normal\n\
+	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
+}\n\
+\n\
+\\color.fs\n\
+\n\
+precision mediump float;\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+\n\
+//material\n\
+uniform vec4 u_material_color; //color and alpha\n\
+void main() {\n\
+	vec4 color = u_material_color;\n\
+	gl_FragColor = color;\n\
+}\n\
+\n\
+";
+
+LS.ShaderCode.examples.textured = "\n\
+\n\
+\\js\n\
+this.createSampler(\"Texture\",\"u_texture\");\n\
+\n\
+\\color.vs\n\
+\n\
+precision mediump float;\n\
+attribute vec3 a_vertex;\n\
+attribute vec3 a_normal;\n\
+attribute vec2 a_coord;\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+\n\
+//matrices\n\
+uniform mat4 u_model;\n\
+uniform mat4 u_normal_model;\n\
+uniform mat4 u_view;\n\
+uniform mat4 u_viewprojection;\n\
+\n\
+//globals\n\
+uniform float u_time;\n\
+uniform vec4 u_viewport;\n\
+uniform float u_point_size;\n\
+\n\
+//camera\n\
+uniform vec3 u_camera_eye;\n\
+void main() {\n\
+	\n\
+	vec4 vertex4 = vec4(a_vertex,1.0);\n\
+	v_normal = a_normal;\n\
+	v_uvs = a_coord;\n\
+	\n\
+	//vertex\n\
+	v_pos = (u_model * vertex4).xyz;\n\
+	//normal\n\
+	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
+}\n\
+\n\
+\\color.fs\n\
+\n\
+precision mediump float;\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+//globals\n\
+uniform sampler2D u_texture;\n\
+\n\
+//material\n\
+uniform vec4 u_material_color; //color and alpha\n\
+void main() {\n\
+	vec4 color = u_material_color * texture2D( u_texture, v_uvs );\n\
+	gl_FragColor = color;\n\
+}\n\
+\n\
+";
+
+
+LS.ShaderCode.examples.fake_light = "\n\
 \n\
 \\js\n\
 //define exported uniforms from the shader (name, uniform, widget)\n\

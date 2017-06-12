@@ -46,3 +46,15 @@ ul.file-list li.file-item span.progress {
 	background-color: #AEF;
 	display: block;
 }
+
+.resources-panel .unit {
+	font-size: 1.3em;
+	background-color: #1d1d1d;
+	color: #93b3bd !important;
+	border-top: 2px solid black;
+}
+
+.resources-panel .selected .unit {
+	background-color: #2d2d2d;
+}
+

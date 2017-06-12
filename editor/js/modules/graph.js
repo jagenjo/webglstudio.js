@@ -172,8 +172,10 @@ GraphModule.showGraphComponent = function(component, inspector)
 {
 	if(component.constructor == LS.Components.GraphComponent)
 	{
-		inspector.addCombo("on event", component.on_event, { values: LS.Components.GraphComponent["@on_event"].values , callback: function(v) { component.on_event = v; }});
-		inspector.addCheckbox("Force redraw", component.force_redraw, { callback: function(v) { component.force_redraw = v; }});
+		inspector.widgets_per_row = 2;
+		inspector.addCombo("on event", component.on_event, { name_width: 100, width:"70%", values: LS.Components.GraphComponent["@on_event"].values , callback: function(v) { component.on_event = v; }});
+		inspector.addCheckbox("redraw", component.force_redraw, { width:"30%", callback: function(v) { component.force_redraw = v; }});
+		inspector.widgets_per_row = 1;
 	}
 	else if(component.constructor == LS.Components.FXGraphComponent)
 	{

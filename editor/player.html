@@ -53,10 +53,10 @@
 	//allow to use Canvas2D call in the WebGLCanvas (this is not mandatory, just useful)
 	if( window.enableWebGLCanvas )
 		enableWebGLCanvas( gl.canvas );
-
 	if( LS.queryString["debug"] )
 		player.enableDebug();
 
+	//this code defines which scene to load, in case you are loading an specific scene replce it by player.loadScene( scene_url )
 	if( LS.queryString["session"] )
 		player.setScene( JSON.parse( localStorage.getItem( LS.queryString["session"] ) ) );
 	else if( allow_remote_scenes || (LS.queryString["url"] && LS.queryString["url"].indexOf("://") == -1) ) //for safety measures

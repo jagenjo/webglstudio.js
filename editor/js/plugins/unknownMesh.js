@@ -132,4 +132,4 @@ var UnknownMeshTool = {
 	}
 };
 
-CORE.registerModule( UnknownMeshTool );
+CORE.registerPlugin( UnknownMeshTool );

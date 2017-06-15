@@ -223,6 +223,7 @@ var CORE = {
 	{
 		this.last_plugin = plugin;
 		this.registerModule( plugin );
+		LiteGUI.trigger( CORE.root, "plugin_registered", plugin );
 	},
 
 	getModule: function( module_name )
@@ -294,9 +295,13 @@ var CORE = {
 			{
 				var module_preferences = preferences.modules[i];
 				var module = this.getModule(i);
-				if(!module || !module.preferences)
+				if(!module)
 					continue;
-				LS.cloneObject( module_preferences, module.preferences, true, true ); //clone recursive and only_existing
+				if( !module.preferences && !module.onPreferencesLoaded)
+					continue;
+				LS.cloneObject( module_preferences, module.preferences || {}, true, true ); //clone recursive and only_existing
+				if(module.onPreferencesLoaded)
+					module.onPreferencesLoaded( module.preferences );
 			}
 	},
 

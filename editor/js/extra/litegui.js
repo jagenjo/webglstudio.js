@@ -415,13 +415,14 @@ var LiteGUI = {
 
 		//regular case, use AJAX call
         var xhr = new XMLHttpRequest();
-        xhr.open(request.data ? 'POST' : 'GET', request.url, true);
+        xhr.open( request.data ? 'POST' : 'GET', request.url, true);
         if(dataType)
             xhr.responseType = dataType;
         if (request.mimeType)
             xhr.overrideMimeType( request.mimeType );
 		if( request.nocache )
 			xhr.setRequestHeader('Cache-Control', 'no-cache');
+
         xhr.onload = function(load)
 		{
 			var response = this.response;
@@ -470,7 +471,15 @@ var LiteGUI = {
 			if(request.error)
 				request.error(err);
 		}
-        xhr.send(request.data);
+
+		var data = new FormData();
+		if( request.data )
+		{
+			for(var i in request.data)
+				data.append(i,request.data[i]);
+		}
+
+        xhr.send( data );
 		return xhr;
 	},	
 
@@ -3592,6 +3601,14 @@ LiteGUI.LineEditor = LineEditor;
 	*/
 	function Tabs( id, options )
 	{
+		//allows to pass only options instead of id
+		if(id && id.constructor === Object && !options)
+		{
+			options = id;
+			id = null;
+			console.warn("Tabs legacy parameter, use options as first parameter instead of id.");
+		}
+
 		options = options || {};
 		this.options = options;
 
@@ -5788,6 +5805,7 @@ LiteGUI.LineEditor = LineEditor;
 		{
 			options = id;
 			id = null;
+			console.warn("Dialog legacy parameter, use options as first parameter instead of id.");
 		}
 
 		options = options || {};
@@ -6719,6 +6737,7 @@ function Inspector( id, options )
 	{
 		options = id;
 		id = null;
+		console.warn("Inspector legacy parameter, use options as first parameter instead of id.");
 	}
 
 	options = options || {};
@@ -8162,7 +8181,7 @@ Inspector.prototype.addPad = function(name,value, options)
 * - height: to specify a height
 * @return {HTMLElement} the widget in the form of the DOM element that contains it
 **/
-Inspector.prototype.addInfo = function(name,value, options)
+Inspector.prototype.addInfo = function( name, value, options)
 {
 	options = this.processOptions(options);
 
@@ -8193,13 +8212,23 @@ Inspector.prototype.addInfo = function(name,value, options)
 			info.innerHTML = v;
 	};
 
+	var content = element.querySelector("span.info_content");
+	if(!content)
+		content = element.querySelector(".winfo");
+
 	if(options.height)
 	{
-		var content = element.querySelector("span.info_content");
-		if(!content)
-			return;
 		content.style.height = LiteGUI.sizeToCSS(options.height);
 		content.style.overflow = "auto";
+	}
+
+	element.scrollToBottom = function(){
+		content.scrollTop = content.offsetTop;
+	}
+
+	element.add = function(e)
+	{
+		content.appendChild(e);
 	}
 
 	this.append(element,options);

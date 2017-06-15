@@ -2550,7 +2550,7 @@ var ResourcesManager = {
 
 	path: "", //url to retrieve resources relative to the index.html
 	proxy: "", //url to retrieve resources outside of this host
-	ignore_cache: false, //change to true to ignore server cache
+	ignore_cache: false, //change to true to ignore client cache
 	free_data: false, //free all data once it has been uploaded to the VRAM
 	keep_files: false, //keep the original files inside the resource (used mostly in the editor)
 	keep_urls: false, //keep the local URLs of loaded files
@@ -3140,11 +3140,6 @@ var ResourcesManager = {
 		if(format_info && format_info.has_preview && !options.is_preview )
 			LEvent.trigger( this, "load_resource_preview", url );
 
-		//avoid the cache (if you want)
-		var nocache = this.getNoCache();
-		if(nocache)
-			full_url += (full_url.indexOf("?") == -1 ? "?" : "&") + nocache;
-
 		//create the ajax request
 		var settings = {
 			url: full_url,
@@ -3166,8 +3161,7 @@ var ResourcesManager = {
 		};
 
 		//force no cache by request
-		settings.nocache = nocache || this.force_nocache_extensions[ extension ] || this.nocache_files[ url ];
-
+		settings.nocache = this.ignore_cache || this.force_nocache_extensions[ extension ] || this.nocache_files[ url ];
 
 		//in case we need to force a response format 
 		var format_info = LS.Formats.supported[ extension ];
@@ -36221,9 +36215,6 @@ SceneTree.prototype.load = function( url, on_complete, on_error, on_progress, on
 		return;
 
 	var that = this;
-	var nocache = LS.ResourcesManager.getNoCache(true);
-	if(nocache)
-		url += (url.indexOf("?") == -1 ? "?" : "&") + nocache;
 
 	var extension = LS.ResourcesManager.getExtension( url );
 
@@ -36238,8 +36229,10 @@ SceneTree.prototype.load = function( url, on_complete, on_error, on_progress, on
 			url += (url.indexOf("?") == -1 ? "?" : "&") + nocache;
 	}
 
+	//request scene file using our own library
 	LS.Network.request({
 		url: url,
+		nocache: true,
 		dataType: extension == "json" ? "json" : "binary",
 		success: extension == "json" ? inner_json_loaded : inner_pack_loaded,
 		progress: on_progress,

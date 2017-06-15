@@ -1,23 +1,31 @@
  /* This module allows to load external modules on the fly as plugins. */
 
-var PluginsModule  = {
+var PluginsModule = {
 	name: "plugins",
 
 	settings_panel: [ {name:"plugins", title:"Plugins", icon:null } ],
-	plugins: [],
+	plugins: [], //loaded plugins
 
 	preferences: {
-		plugins: []
+		plugins: [] //contains objects with info about the plugin
 	},
 
 	init: function()
 	{
+		LiteGUI.bind( CORE.root, "plugin_registered", this.onNewPlugin.bind(this) );
+
 		if(	this.preferences.plugins && this.preferences.plugins.length )
 		{
 			var plugins = this.preferences.plugins;
-			for(var i in plugins)
+			for(var i = 0; i < plugins.length; ++i)
 			{
-				this.loadPlugin( plugins[i] );
+				var info = plugins[i];
+				if(info.constructor === String) //legacy
+				{
+					info = { url: info };
+					plugins[i] = info;
+				}
+				this.loadPlugin( info.url );
 			}
 		}
 	},
@@ -90,13 +98,62 @@ var PluginsModule  = {
 		}
 	},
 
+	onNewPlugin: function( e )
+	{
+		//assign preferences
+		var plugin = e.detail;
+		for(var i in this.preferences.plugins)
+		{
+			var plugin_info = this.preferences.plugins[i];
+			if( plugin_info.url != plugin.url )
+				continue;
+			
+			if(plugin_info.preferences)
+				plugin.preferences = plugin_info.preferences;
+			break;
+		}
+	},
+
 	registerPlugin: function( plugin, url )
 	{
 		plugin.url = url;
-		this.plugins.push( plugin );
-		if( this.preferences.plugins.indexOf( url ) == -1 )
-			this.preferences.plugins.push( url );
+		this.plugins.push( plugin ); //register object
+
+		//store in preferences
+		var found = null;
+		for(var i in this.preferences.plugins)
+		{
+			var plugin_info = this.preferences.plugins[i];
+			if( plugin_info.url != url )
+				continue;
+			found = plugin_info;
+			break;
+		}
+
+		if( !found )
+			this.preferences.plugins.push( { name: plugin.name, url: url } );
+		else
+		{
+			if( found.preferences )
+				plugin.preferences = found.preferences;
+		}
 		return plugin;
+	},
+
+	onPreferencesLoaded: function()
+	{
+		//store preferences
+		for(var i in this.plugins)
+		{
+			var plugin = this.plugins[i];
+			for(var j in this.preferences.plugins)
+			{
+				var plugin_info = this.preferences.plugins[j];
+				if(plugin.url != plugin_info.url )
+					continue;
+				plugin_info.preferences = plugin.preferences;
+			}
+		}
 	},
 
 	removePlugin: function( name_or_plugin )

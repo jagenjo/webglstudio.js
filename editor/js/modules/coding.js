@@ -52,7 +52,7 @@ var CodingModule = //do not change
 		LiteGUI.menubar.add("Help/Coding/LiteGL/Guides", {  callback: function(){ window.open("https://github.com/jagenjo/litegl.js/tree/master/guides","_blank"); }});
 		LiteGUI.menubar.add("Help/Coding/LiteGL/API", {  callback: function(){ window.open("http://webglstudio.org/doc/litegl/","_blank"); }});
 
-		var coding_area = this.coding_area = new LiteGUI.Area("codearea",{height: "100%"});
+		var coding_area = this.coding_area = new LiteGUI.Area({ id: "codearea", height: "100%"});
 		this.root.appendChild( coding_area.root );
 		coding_area.split("horizontal",[null,"50%"],true);
 
@@ -1033,7 +1033,7 @@ void main() {\n\
 
 
 LS.Script.templates.global = "//global scripts can have any kind of code.\n//They are used to define new classes (like materials and components) that are used in the scene.\n\n";
-LS.Script.templates.component = "//https://github.com/jagenjo/litescene.js/blob/master/guides/creating_new_components.md\n\
+LS.Script.templates.component = "//https://github.com/jagenjo/litescene.js/blob/master/guides/programming_components.md\n\
 //This is an example of a component code\n\
 function MyComponentClass(o) {\n  //define some properties\n	this.someprop = 1;\n  //if we have the state passed, then we restore the state\n  if(o)\n    this.configure(o);\n}\n\n\
 //bind events when the component belongs to the scene\nMyComponentClass.prototype.onAddedToScene = function(scene)\n{\n  LEvent.bind(scene, \"update\", this.onUpdate, this );\n}\n\n\

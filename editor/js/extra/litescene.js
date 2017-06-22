@@ -1731,6 +1731,7 @@ LS.BlendFunctions[ Blend.CUSTOM ] =	[GL.SRC_ALPHA, GL.ONE_MINUS_SRC_ALPHA];
 LS.STOPPED = 0;
 LS.PLAYING = 1; 
 LS.PAUSED = 2;
+LS.LOADING = 3;
 
 LS.RUNNING = 1; //LEGACY
 
@@ -2298,7 +2299,7 @@ var GUI = {
 		}
 
 		if(LS.GlobalScene._state != LS.PLAYING)
-			console.warn("GUI element created before the scene is playing. Only create the GUI elements from onStart or after, otherwise the GUI elements will be lost.");
+			console.warn("GUI element created before the scene is playing will be deleted once the app starts. Only create the GUI elements from onStart or after, otherwise the GUI elements will be lost.");
 
 		var gui = document.createElement("div");
 		gui.className = "litescene-gui";
@@ -2556,6 +2557,8 @@ var ResourcesManager = {
 	keep_urls: false, //keep the local URLs of loaded files
 	allow_base_files: false, //allow to load files that are not in a subfolder
 
+	scene_external_repository: null, //this is used by some scenes to specify where are the resources located
+
 	//some containers
 	resources: {}, //filename associated to a resource (texture,meshes,audio,script...)
 	meshes: {}, //loadead meshes
@@ -2601,6 +2604,8 @@ var ResourcesManager = {
 		this.textures = {};
 		this.materials = {};
 		this.materials_by_uid = {};
+
+		this.scene_external_repository = null;
 	},
 
 	/**
@@ -2841,7 +2846,8 @@ var ResourcesManager = {
 	},
 
 	/**
-	* transform a url to a full url taking into account proxy, virtual file systems and local_repository
+	* transform a url to a full url taking into account proxy, virtual file systems and external_repository
+	* used only when requesting a resource to be loaded
 	*
 	* @method getFullURL
 	* @param {String} url
@@ -2859,12 +2865,17 @@ var ResourcesManager = {
 			protocol = url.substr(0,pos);
 
 		var resources_path = this.path;
+
+		//from scene.external_repository
+		if(this.scene_external_repository) 
+			resources_path = this.scene_external_repository;
+
 		if(options && options.force_local_url)
 			resources_path = ".";
 
 		//used special repository
-		if(options && options.local_repository)
-			resources_path = options.local_repository;
+		if(options && options.external_repository)
+			resources_path = options.external_repository;
 
 		if(protocol)
 		{
@@ -3006,7 +3017,7 @@ var ResourcesManager = {
 	* @method resourceModified
 	* @param {Object} resource
 	*/
-	resourceModified: function(resource)
+	resourceModified: function( resource )
 	{
 		if(!resource)
 			return;
@@ -3021,7 +3032,7 @@ var ResourcesManager = {
 		delete resource._original_data;
 		delete resource._original_file;
 
-		if(resource.remotepath)
+		if( resource.remotepath )
 			resource._modified = true;
 
 		LEvent.trigger(this, "resource_modified", resource );
@@ -3458,42 +3469,46 @@ var ResourcesManager = {
 	/**
 	* Changes the name of a resource and sends an event to all components to change it accordingly
 	* @method renameResource
-	* @param {String} old 
-	* @param {String} newname
+	* @param {String} old_name 
+	* @param {String} new_name
 	* @param {Boolean} [skip_event=false] ignore sending an event to all components to rename the resource
 	* @return {boolean} if the file was found
 	*/
-	renameResource: function(old, newname, skip_event)	
+	renameResource: function(old_name, new_name, skip_event)	
 	{
-		var res = this.resources[ old ];
+		var res = this.resources[ old_name ];
 		if(!res)
 			return false;
 
-		res.filename = newname;
+		res.filename = new_name;
 		if(res.fullpath)
-			res.fullpath = newname;
+			res.fullpath = new_name;
 
-		this.resources[newname] = res;
-		delete this.resources[ old ];
+		this.resources[new_name] = res;
+		delete this.resources[ old_name ];
 
 		if(!skip_event)
-			this.sendResourceRenamedEvent(old, newname, res);
+			LS.GlobalScene.sendResourceRenamedEvent( old_name, new_name, res );
 
 		//ugly: too hardcoded
-		if( this.meshes[old] ) {
-			delete this.meshes[ old ];
-			this.meshes[ newname ] = res;
+		if( this.meshes[old_name] ) {
+			delete this.meshes[ old_name ];
+			this.meshes[ new_name ] = res;
 		}
-		if( this.textures[old] ) {
-			delete this.textures[ old ];
-			this.textures[ newname ] = res;
+		if( this.textures[old_name] ) {
+			delete this.textures[ old_name ];
+			this.textures[ new_name ] = res;
 		}
-		if( this.materials[old] ) {
-			delete this.materials[ old ];
-			this.materials[ newname ] = res;
+		if( this.materials[old_name] ) {
+			delete this.materials[ old_name ];
+			this.materials[ new_name ] = res;
 		}
 
-		this.resources_renamed_recently[ old ] = newname;
+		//in case somebody needs to know where a resource has gone
+		this.resources_renamed_recently[ old_name ] = new_name;
+
+		if(!skip_event)
+			LEvent.trigger( LS.ResourcesManager, "resource_renamed", [ old_name, new_name, res ] );
 		return true;
 	},
 
@@ -3570,40 +3585,6 @@ var ResourcesManager = {
 		if(name_or_id[0] == "@")
 			return this.materials_by_uid[ name_or_id ];
 		return this.materials[ name_or_id ];
-	},
-
-	//tells to all the components, nodes, materials, etc, that one resource has changed its name so they can update
-	sendResourceRenamedEvent: function( old_name, new_name, resource )
-	{
-		var scene = LS.GlobalScene;
-		var nodes = scene._nodes.concat();
-		for(var i = 0; i < nodes.length; i++)
-		{
-			//nodes
-			var node = nodes[i];
-
-			//prefabs
-			if( node.prefab && node.prefab === old_name )
-				node.prefab = new_name; //does this launch a reload prefab? dont know
-
-			//components
-			for(var j = 0; j < node._components.length; j++)
-			{
-				var component = node._components[j];
-				if(component.onResourceRenamed)
-					component.onResourceRenamed( old_name, new_name, resource )
-			}
-
-			//materials
-			if( node.material && node.material == old_name )
-				node.material = new_name;
-			else
-			{
-				var material = node.getMaterial();
-				if( material && material.onResourceRenamed )
-					material.onResourceRenamed(old_name, new_name, resource)
-			}
-		}
 	},
 
 	/**
@@ -3789,10 +3770,12 @@ LS.ResourcesManager.registerResourcePreProcessor("zip", function( filename, data
 	var zip = new JSZip();
 	zip.loadAsync( data ).then(function(zip){
 		zip.forEach(function (relativePath, file){
+			if(file.dir)
+				return; //ignore folders
 			var ext = LS.ResourcesManager.getExtension( relativePath );
 			var format = LS.Formats.supported[ ext ];
 			file.async( format && format.dataType == "text" ? "string" : "arraybuffer").then( function(filedata){
-				if( relativePath == "scene.json" )
+				if( relativePath == "scene.json" && (!options || !options.to_memory) )
 					LS.GlobalScene.configure( JSON.parse( filedata ) );
 				else
 					LS.ResourcesManager.processResource( relativePath, filedata );
@@ -6103,18 +6086,23 @@ Material.prototype.getResources = function (res)
 * Event used to inform if one resource has changed its name
 * @method onResourceRenamed
 * @param {Object} resources object where all the resources are stored
-* @return {Texture}
+* @return {Boolean} true if something was modified
 */
 Material.prototype.onResourceRenamed = function (old_name, new_name, resource)
 {
+	var v = false;
 	for(var i in this.textures)
 	{
 		var sampler = this.textures[i];
 		if(!sampler)
 			continue;
 		if(sampler.texture == old_name)
+		{
 			sampler.texture = new_name;
+			v = true;
+		}
 	}
+	return v;
 }
 
 /**
@@ -6275,7 +6263,7 @@ function ShaderMaterial( o )
 {
 	Material.call( this, null );
 
-	this._shader = null;
+	this._shader = "";
 	this._shader_version = -1;
 	this._shader_flags = 0; //?
 
@@ -7021,6 +7009,39 @@ ShaderMaterial.prototype.createProperty = function( name, value, type, options )
 		enumerable: false, //must not be serialized
 		configurable: true //allows to overwrite this property
 	});
+}
+
+/**
+* Event used to inform if one resource has changed its name
+* @method onResourceRenamed
+* @param {Object} resources object where all the resources are stored
+* @return {Boolean} true if something was modified
+*/
+ShaderMaterial.prototype.onResourceRenamed = function (old_name, new_name, resource)
+{
+	var v = Material.prototype.onResourceRenamed.call(this, old_name, new_name, resource );
+	if( this.shader == old_name)
+	{
+		this.shader = new_name;
+		v = true;
+	}
+
+	//change texture also in shader values... (this should be automatic but it is not)
+	for(var i = 0; i < this._properties.length; ++i)
+	{
+		var p = this._properties[i];
+		if(p.internal) //internal is a property that is not for the shader (is for internal computations)
+			continue;
+
+		if( !p.is_texture || !p.value )
+			continue;
+		if( p.value.texture != old_name )
+			continue;
+		p.value.texture = new_name;
+		v = true;
+	}
+
+	return v;
 }
 
 ShaderMaterial.getDefaultPickingShaderCode = function()
@@ -14765,6 +14786,7 @@ FXStack.available_fx = {
 		}
 	}
 	*/
+	//median: https://github.com/patriciogonzalezvivo/flatLand/blob/master/bin/data/median.frag
 };
 
 //functions that could be used
@@ -30656,7 +30678,7 @@ function GlobalInfo(o)
 {
 	this.createProperty( "ambient_color", GlobalInfo.DEFAULT_AMBIENT_COLOR, "color" );
 
-	this._render_settings = new LS.RenderSettings();
+	//this._render_settings = new LS.RenderSettings();
 
 	this._textures = {};
 
@@ -30679,6 +30701,7 @@ Object.defineProperty( GlobalInfo.prototype, 'textures', {
 	enumerable: true
 });
 
+/*
 Object.defineProperty( GlobalInfo.prototype, 'render_settings', {
 	set: function( v )
 	{
@@ -30691,6 +30714,7 @@ Object.defineProperty( GlobalInfo.prototype, 'render_settings', {
 	},
 	enumerable: true
 });
+*/
 
 GlobalInfo.icon = "mini-icon-bg.png";
 GlobalInfo.DEFAULT_AMBIENT_COLOR = vec3.fromValues(0.2, 0.2, 0.2);
@@ -35795,6 +35819,11 @@ function SceneTree()
 	this._cameras = [];
 	this._colliders = [];
 
+	//MOST OF THE PARAMETERS ARE CREATED IN init() METHOD
+
+	//in case the resources base path are located somewhere else, if null the default is used
+	this.external_repository = null;
+
 	//work in progress, not finished yet. This will contain all the objects
 	this._spatial_container = new LS.SpatialContainer();
 
@@ -35887,7 +35916,8 @@ SceneTree.prototype.init = function()
 {
 	this.id = "";
 	//this.materials = {}; //shared materials cache: moved to LS.RM.resources
-	this.local_repository = null;
+	this.external_repository = null;
+
 	this.global_scripts = [];
 	this.external_scripts = [];
 	this.preloaded_resources = {};
@@ -35981,8 +36011,8 @@ SceneTree.prototype.configure = function( scene_info )
 	if((scene_info.object_class || scene_info.object_type) != "SceneTree") //legacy
 		console.warn("Warning: object set to scene doesnt look like a propper one.", scene_info);
 
-	if(scene_info.local_repository)
-		this.local_repository = scene_info.local_repository;
+	if(scene_info.external_repository)
+		this.external_repository = scene_info.external_repository;
 
 	//extra info that the user wanted to save (comments, etc)
 	if(scene_info.extra)
@@ -35994,42 +36024,6 @@ SceneTree.prototype.configure = function( scene_info )
 		this._spatial_container.clear(); // is this necessary?
 		this._root.configure( scene_info.root );
 	}
-
-	/*
-	//LEGACY
-	if(scene_info.nodes)
-		this.root.configure( { children: scene_info.nodes } );
-
-	//LEGACY
-	if(scene_info.components)
-		this._root.configureComponents(scene_info);
-
-	// LEGACY...
-	if(scene_info.camera)
-	{
-		if(this._root.camera)
-			this._root.camera.configure( scene_info.camera );
-		else
-			this._root.addComponent( new Camera( scene_info.camera ) );
-	}
-
-	if(scene_info.light)
-	{
-		if(this._root.light)
-			this._root.light.configure( scene_info.light );
-		else
-			this._root.addComponent( new Light(scene_info.light) );
-	}
-	else if(scene_info.hasOwnProperty("light")) //light is null
-	{
-		//skip default light
-		if(this._root.light)
-		{
-			this._root.removeComponent( this._root.light );
-			this._root.light = null;
-		}
-	}
-	*/
 
 	if( scene_info.global_scripts )
 		this.global_scripts = scene_info.global_scripts.concat();
@@ -36082,8 +36076,7 @@ SceneTree.prototype.serialize = function()
 	o.uid = this.uid;
 	o.object_class = LS.getObjectClassName(this);
 
-	//legacy
-	o.local_repository = this.local_repository;
+	o.external_repository = this.external_repository;
 
 	//o.nodes = [];
 	o.extra = this.extra || {};
@@ -36225,8 +36218,6 @@ SceneTree.prototype.load = function( url, on_complete, on_error, on_progress, on
 		var index2 = url.indexOf("&",index);
 		url = decodeURIComponent( url.substr(index + 4, index2 - index - 4) );
 		extension = LS.ResourcesManager.getExtension( url );
-		if(nocache)
-			url += (url.indexOf("?") == -1 ? "?" : "&") + nocache;
 	}
 
 	//request scene file using our own library
@@ -36951,8 +36942,11 @@ SceneTree.prototype.setPropertyValueFromPath = function( path, value, root_node,
 *
 * @method getResources
 * @param {Object} resources [optional] object with resources
+* @param {Boolean} as_array [optional] returns data in array format instead of object format
+* @param {Boolean} skip_in_pack [optional] skips resources that come from a pack
+* @param {Boolean} skip_local [optional] skips resources whose name starts with ":" (considered local resources)
 */
-SceneTree.prototype.getResources = function( resources, as_array, skip_in_pack )
+SceneTree.prototype.getResources = function( resources, as_array, skip_in_pack, skip_local )
 {
 	resources = resources || {};
 
@@ -36978,6 +36972,14 @@ SceneTree.prototype.getResources = function( resources, as_array, skip_in_pack )
 			if(!resource)
 				continue;
 			if(resource && (resource.from_prefab || resource.from_pack))
+				delete resources[i];
+		}
+
+	//remove the resources that are local (generated by the system)
+	if(skip_local)
+		for(var i in resources)
+		{
+			if(i[0] == ":")
 				delete resources[i];
 		}
 
@@ -37016,8 +37018,8 @@ SceneTree.prototype.loadResources = function( on_complete )
 
 	//used for scenes with special repository folders
 	var options = {};
-	if(this.local_repository)
-		options.local_repository = this.local_repository;
+	if( this.external_repository )
+		options.external_repository = this.external_repository;
 
 	//count resources
 	var num_resources = 0;
@@ -37490,9 +37492,10 @@ SceneTree.prototype.findNodeComponents = function( type )
 *
 * @method toPack
 * @param {String} fullpath a given fullpath name, it will be assigned to the scene with the appropiate extension
+* @param {Array} resources [optional] array with all the resources to add, if no array is given it will get the active resources in this scene
 * @return {LS.Pack} the pack
 */
-SceneTree.prototype.toPack = function( fullpath, force_all_resources )
+SceneTree.prototype.toPack = function( fullpath, resources )
 {
 	fullpath = fullpath || "unnamed_scene";
 
@@ -37504,7 +37507,8 @@ SceneTree.prototype.toPack = function( fullpath, force_all_resources )
 	var scene_json = JSON.stringify( this.serialize() );
 
 	//get all resources
-	var resources = this.getResources(null,true, !force_all_resources );
+	if(!resources)
+		resources = this.getResources( null, true, true, true );
 
 	//create pack
 	var pack = LS.Pack.createPack( LS.RM.getFilename( final_fullpath ), resources, { "scene.json": scene_json } );
@@ -37522,6 +37526,74 @@ SceneTree.prototype.updateStaticObjects = function()
 	this.collectData();
 	LS.allow_static = old;
 }
+
+//tells to all the components, nodes, materials, etc, that one resource has changed its name so they can update it inside
+SceneTree.prototype.sendResourceRenamedEvent = function( old_name, new_name, resource )
+{
+	//scene globals that use resources
+	for(var i = 0; i < this.external_scripts.length; i++)
+	{
+		if(this.external_scripts[i] == old_name)
+			this.external_scripts[i] = new_name;
+	}
+
+	for(var i = 0; i < this.global_scripts.length; i++)
+	{
+		if(this.global_scripts[i] == old_name)
+			this.global_scripts[i] = new_name;
+	}
+
+	for(var i in this.preloaded_resources)
+	{
+		if(i == old_name)
+		{
+			delete this.preloaded_resources[old_name];
+			this.preloaded_resources[ new_name ] = true;
+		}
+	}
+
+	//to nodes
+	var nodes = this._nodes.concat();
+
+	//for every node
+	for(var i = 0; i < nodes.length; i++)
+	{
+		//nodes
+		var node = nodes[i];
+
+		//prefabs
+		if( node.prefab && node.prefab === old_name )
+			node.prefab = new_name; //does this launch a reload prefab? dont know
+
+		//components
+		for(var j = 0; j < node._components.length; j++)
+		{
+			var component = node._components[j];
+			if(component.onResourceRenamed)
+				component.onResourceRenamed( old_name, new_name, resource )
+		}
+
+		//materials
+		if( node.material )
+		{
+			if( node.material == old_name )
+				node.material = new_name;
+			else
+			{
+				var material = node.getMaterial();
+				if( material && material.onResourceRenamed )
+				{
+					var modified = material.onResourceRenamed( old_name, new_name, resource );
+					if(modified) //we need this to remove material._original_data or anything that could interfiere
+						LS.RM.resourceModified( material );
+				}
+				else
+					console.warn("sendResourceRenamedEvent: Material not found or it didnt have a onResourceRenamed");
+			}
+		}
+	}
+}
+
 
 /**
 * Creates and returns an scene animation track
@@ -43011,6 +43083,7 @@ var parserOBJ = {
 			else
 			{
 				console.warn("unknown code: " + line);
+				break;
 			}
 		}
 
@@ -43067,6 +43140,12 @@ var parserOBJ = {
 		}
 
 		mesh.info = info;
+		if( !mesh.bounding )
+		{
+			console.log("empty mesh");
+			return null;
+		}
+
 		if( mesh.bounding.radius == 0 || isNaN(mesh.bounding.radius))
 			console.log("no radius found in mesh");
 		return mesh;

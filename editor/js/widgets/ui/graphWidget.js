@@ -36,7 +36,7 @@ GraphWidget.prototype.init = function( options )
 	this.root.appendChild( top_widgets.root );
 
 	//create area
-	var area = this.area = new LiteGUI.Area(null,{ className: "grapharea", height: -30});
+	var area = this.area = new LiteGUI.Area( { className: "grapharea", height: -30});
 	this.root.appendChild( area.root );
 
 	var canvas = this.canvas = createCanvas(100,100);
@@ -70,7 +70,7 @@ GraphWidget.prototype.init = function( options )
 
 GraphWidget.createDialog = function( parent )
 {
-	var dialog = new LiteGUI.Dialog( null, { title:"Graph", fullcontent: true, closable: true, detachable: true, draggable: true, minimize: true, resizable: true, parent: parent, width: 500, height: 500 });
+	var dialog = new LiteGUI.Dialog( { title:"Graph", fullcontent: true, closable: true, detachable: true, draggable: true, minimize: true, resizable: true, parent: parent, width: 500, height: 500 });
 	var graph_widget = new GraphWidget();
 	dialog.add( graph_widget );
 	dialog.graph_area = graph_widget;
@@ -303,7 +303,7 @@ GraphWidget.prototype.onMenuNodeOutputs = function( options )
 GraphWidget.prototype.onNewGraph = function()
 {
 	var that = this;
-	var dialog = new LiteGUI.Dialog(null,{ title:"New Graph", draggable: true, closable: true });
+	var dialog = new LiteGUI.Dialog( { title:"New Graph", draggable: true, closable: true });
 	
 	var graph_type = "GraphComponent";
 	var node = LS.GlobalScene.root;
@@ -333,7 +333,7 @@ GraphWidget.prototype.onNewGraph = function()
 GraphWidget.prototype.onOpenGraph = function()
 {
 	var that = this;
-	var dialog = new LiteGUI.Dialog(null,{ title:"Select Graph", draggable: true, closable: true });
+	var dialog = new LiteGUI.Dialog( { title:"Select Graph", draggable: true, closable: true });
 	
 	var widgets = new LiteGUI.Inspector();
 

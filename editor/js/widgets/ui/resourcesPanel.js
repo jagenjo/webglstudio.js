@@ -34,12 +34,12 @@ function ResourcesPanelWidget( options )
 	var files_section = this.area.getSection(1);
 	this.area.root.addEventListener("contextmenu", (function(e) { this.showFolderContextMenu(e); e.preventDefault(); }).bind(that) );
 
-	var browser_root = new LiteGUI.Area(null,{ full: true });
+	var browser_root = new LiteGUI.Area( { full: true });
 	files_section.add( browser_root );
 	browser_root.split("vertical",[30,null]);
 
 	//craete top bar
-	var top_inspector = new LiteGUI.Inspector(null,{ one_line: true });
+	var top_inspector = new LiteGUI.Inspector( { one_line: true } );
 	top_inspector.root.style.marginTop = "4px";
 
 	//filter by name
@@ -113,7 +113,7 @@ CORE.registerWidget( ResourcesPanelWidget );
 
 ResourcesPanelWidget.createDialog = function( parent )
 {
-	var dialog = new LiteGUI.Dialog( null, { title: ResourcesPanelWidget.widget_name, fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, parent: parent, width: 900, height: 500 });
+	var dialog = new LiteGUI.Dialog( { title: ResourcesPanelWidget.widget_name, fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, parent: parent, width: 900, height: 500 });
 	var widget = new ResourcesPanelWidget();
 	dialog.add( widget );
 	dialog.widget = widget;
@@ -145,7 +145,7 @@ ResourcesPanelWidget.prototype.update = function( callback )
 
 ResourcesPanelWidget.prototype.createTreeWidget = function()
 {
-	var tree_widget = new LiteGUI.Tree( null, this.getTreeData(), { allow_rename: true, indent_offset: -1 } );
+	var tree_widget = new LiteGUI.Tree( this.getTreeData(), { allow_rename: true, indent_offset: -1 } );
 	tree_widget.root.classList.add("resources-tree");
 	tree_widget.root.style.backgroundColor = "black";
 	tree_widget.root.style.padding = "5px";
@@ -444,6 +444,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 		LiteGUI.trigger( that, "item_selected", element );
 		LiteGUI.trigger( that, "resource_selected", path );
 		that.selected_item = element;
+		window.RESOURCE = LS.RM.getResource( path );
 	}
 
 	function item_dblclick(e)

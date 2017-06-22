@@ -1,3 +1,5 @@
+/* Experimental plugin that allows to parse FBXs files server side and send them back in JSON format */
+
 LS.fbxconv_folder = window.location.origin + window.location.pathname + "../serverapps/fbxconv/";
 LS.fbxconv_path = LS.fbxconv_folder + "/fbxconv.php";
 

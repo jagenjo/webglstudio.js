@@ -38,7 +38,7 @@ var InterfaceModule = {
 		var side_panel_width = this.preferences.side_panel_width || 300;
 
 		//create a main container and split it in two (workarea: leftwork, sidebar)
-		var mainarea = new LiteGUI.Area("mainarea",{content_id:"workarea", height: "calc(100% - 30px)", autoresize: true, inmediateResize: true, minSplitSize: 200 });
+		var mainarea = new LiteGUI.Area({ id: "mainarea", content_id:"workarea", height: "calc(100% - 30px)", autoresize: true, inmediateResize: true, minSplitSize: 200 });
 		mainarea.split("horizontal",[null, side_panel_width], true);
 		this.mainarea = mainarea;
 		//globalarea.getSection(1).add( mainarea );
@@ -65,7 +65,7 @@ var InterfaceModule = {
 
 	createTabs: function()
 	{
-		var main_tabs = new LiteGUI.Tabs("worktabs", { width: "full", mode: "vertical", autoswitch: true });
+		var main_tabs = new LiteGUI.Tabs( { id: "worktabs", width: "full", mode: "vertical", autoswitch: true });
 		this.mainarea.getSection(0).add( main_tabs );
 		//document.getElementById("leftwork").appendChild( main_tabs.root );
 		LiteGUI.main_tabs = main_tabs;
@@ -118,7 +118,7 @@ var InterfaceModule = {
 		docked.header.appendChild( split_button.root );
 
 		//tabs 
-		var tabs_widget = new LiteGUI.Tabs("paneltabs", { size: "full" });
+		var tabs_widget = new LiteGUI.Tabs( { id: "paneltabs", size: "full" });
 		tabs_widget.addTab("Scene Tree", {selected:true, id:"nodelist", size: "full", width: "100%"});
 		tabs_widget.addTab("Inspector", { size: "full" });
 		docked.add( tabs_widget );
@@ -144,7 +144,7 @@ var InterfaceModule = {
 		}});
 
 		//split in top-bottom for header and workarea
-		var sidepanelarea = new LiteGUI.Area("sidepanelarea",{ autoresize: true, inmediateResize: true });
+		var sidepanelarea = new LiteGUI.Area({ id: "sidepanelarea", autoresize: true, inmediateResize: true });
 		sidepanelarea.split("vertical",["30%",null], true);
 		sidepanelarea.hide();
 		LiteGUI.sidepanel.splitarea = sidepanelarea;
@@ -325,7 +325,7 @@ var InterfaceModule = {
 
 		/*
 		//add lower panel tabs
-		var lower_tabs_widget = new LiteGUI.Tabs("lowerpaneltabs", { size: "full" });
+		var lower_tabs_widget = new LiteGUI.Tabs( { id: "lowerpaneltabs", size: "full" });
 		this.visorarea.getSection(1).add( lower_tabs_widget );
 		this.lower_tabs_widget = lower_tabs_widget;
 		*/
@@ -1025,6 +1025,9 @@ LiteGUI.Inspector.prototype.addColor = function( name, value, options )
 	options.width = w + "%";
 
 	inspector.widgets_per_row += 1;
+
+	if(!options.name_width)
+		options.name_width = "40%";
 
 	var widget = inspector.addColorOld( name, value, options );
 	var color_picker_icon = colorPickerTool.icon;

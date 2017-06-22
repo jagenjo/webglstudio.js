@@ -737,7 +737,7 @@ var LiteGUI = {
 		options.title = options.title || "Attention";
 		options.content = content;
 		options.close = 'fade';
-		var dialog = new LiteGUI.Dialog(null,options);
+		var dialog = new LiteGUI.Dialog( options );
 		if(!options.noclose)
 			dialog.addButton("Close",{ close: true });
 		dialog.makeModal('fade');
@@ -761,7 +761,7 @@ var LiteGUI = {
 		options.content = content;
 		options.close = 'fade';
 
-		var dialog = new LiteGUI.Dialog("info_message",options);
+		var dialog = new LiteGUI.Dialog(options);
 		if(!options.noclose)
 			dialog.addButton("Close",{ close: true });
 		dialog.show();
@@ -1625,7 +1625,7 @@ function dataURItoBlob( dataURI ) {
 (function(){
 
 
-function Button(value,options)
+function Button( value, options )
 {
 	options = options || {};
 
@@ -1665,7 +1665,7 @@ LiteGUI.Button = Button;
 * @param {Object} options
 */
 
-function SearchBox(value, options)
+function SearchBox( value, options )
 {
 	options = options || {};
 	var element = document.createElement("div");
@@ -2592,25 +2592,25 @@ LiteGUI.LineEditor = LineEditor;
 	*
 	* @class Area
 	* @constructor
-	* @param {String} id
 	* @param {Object} options
 	*/
-	function Area( id, options )
+	function Area( options, legacy )
 	{
-		if(!options && id && id.constructor !== String)
+		//for legacy code
+		if( (options && options.constructor === String) || legacy )
 		{
-			options = id;
-			id = null;
+			var id = options;
+			options = legacy || {};
+			options.id = id;
+			console.warn("LiteGUI.Area legacy parameter, use options as first parameter instead of id.");
 		}
 
 		options = options || {};
 		/* the root element containing all sections */
 		var root = document.createElement("div");
 		root.className = "litearea";
-		if(id)
-			root.id = id;
 		if(options.id)
-			root.id = id;
+			root.id = options.id;
 		if(options.className)
 			root.className +=  " " + options.className;
 
@@ -2759,7 +2759,7 @@ LiteGUI.LineEditor = LineEditor;
 			throw "cannot split twice";
 
 		//create areas
-		var area1 = new LiteGUI.Area(null, { content_id: this.content.id });
+		var area1 = new LiteGUI.Area({ content_id: this.content.id });
 		area1.root.style.display = "inline-block";
 		var area2 = new LiteGUI.Area();
 		area2.root.style.display = "inline-block";
@@ -3599,14 +3599,14 @@ LiteGUI.LineEditor = LineEditor;
 	* @class Tabs
 	* @constructor
 	*/
-	function Tabs( id, options )
+	function Tabs( options, legacy )
 	{
-		//allows to pass only options instead of id
-		if(id && id.constructor === Object && !options)
+		if( legacy || (options && options.constructor === String) )
 		{
-			options = id;
-			id = null;
-			console.warn("Tabs legacy parameter, use options as first parameter instead of id.");
+			var id = options;
+			options = legacy || {};
+			options.id = id;
+			console.warn("LiteGUI.Dialog legacy parameter, use options as first parameter instead of id.");
 		}
 
 		options = options || {};
@@ -3615,8 +3615,8 @@ LiteGUI.LineEditor = LineEditor;
 		var mode = this.mode = options.mode || "horizontal";
 
 		var root = document.createElement("DIV");
-		if(id) 
-			root.id = id;
+		if(options.id) 
+			root.id = options.id;
 		root.data = this;
 		root.className = "litetabs " + mode;
 		this.root = root;
@@ -4458,12 +4458,23 @@ LiteGUI.LineEditor = LineEditor;
 */
 
 	/*********** LiteTree *****************************/
-	function Tree( id, data, options )
+	function Tree( data, options, legacy )
 	{
+		if(legacy || (data && data.constructor === String) )
+		{
+			var id = data;
+			data = options;
+			options = legacy || {};
+			options.id = id;
+			console.warn("LiteGUI.Tree legacy parameter, use data as first parameter instead of id.");
+		}
+
+		options = options || {};
+
 		var root = document.createElement("div");
 		this.root = root;
-		if(id)
-			root.id = id;
+		if(options.id)
+			root.id = options.id;
 
 		root.className = "litetree";
 		this.tree = data;
@@ -4497,6 +4508,8 @@ LiteGUI.LineEditor = LineEditor;
 
 
 		var root_item = this.createAndInsert(data, options, null);
+		if(!root_item)
+			throw("Error in LiteGUI.Tree, createAndInsert returned null");
 		root_item.className += " root_item";
 		//this.root.appendChild(root_item);
 		this.root_item = root_item;
@@ -5779,13 +5792,20 @@ LiteGUI.LineEditor = LineEditor;
 	* Dialog
 	*
 	* @class Dialog
-	* @param {string} id
 	* @param {Object} options useful options are { title, width, height, closable, on_close, scroll }
 	* @constructor
 	*/
-	function Dialog(id, options)
+	function Dialog( options, legacy )
 	{
-		this._ctor( id, options );
+		if( legacy || (options && options.constructor === String) )
+		{
+			var id = options;
+			options = legacy || {};
+			options.id = id;
+			console.warn("LiteGUI.Dialog legacy parameter, use options as first parameter instead of id.");
+		}
+
+		this._ctor( options );
 	}
 
 	Dialog.MINIMIZED_WIDTH = 200;
@@ -5799,15 +5819,8 @@ LiteGUI.LineEditor = LineEditor;
 		return element.dialog;
 	}
 
-	Dialog.prototype._ctor = function( id, options )
+	Dialog.prototype._ctor = function( options )
 	{
-		if(!options && id && id.constructor !== String)
-		{
-			options = id;
-			id = null;
-			console.warn("Dialog legacy parameter, use options as first parameter instead of id.");
-		}
-
 		options = options || {};
 
 		var that = this;
@@ -5818,8 +5831,8 @@ LiteGUI.LineEditor = LineEditor;
 		this.content = options.content || "";
 
 		var panel = document.createElement("div");
-		if(id)
-			panel.id = id;
+		if(options.id)
+			panel.id = options.id;
 
 		panel.className = "litedialog " + (options.className || "");
 		panel.data = this;
@@ -6712,7 +6725,6 @@ LiteGUI.Table = Table;
 * - options: Object containing all the values .<br/>
 *
 * @class Inspector
-* @param {string} id
 * @param {Object} options object with a set of options { <br/>
 	width: total width <br/>
 	height: total height <br/>
@@ -6730,14 +6742,15 @@ LiteGUI.Table = Table;
 * @constructor
 */
 
-function Inspector( id, options )
+function Inspector( options )
 {
-	//allows to pass only options instead of id
-	if(id && id.constructor === Object && !options)
+	//for legacy code
+	if(options && options.constructor === String)
 	{
-		options = id;
-		id = null;
-		console.warn("Inspector legacy parameter, use options as first parameter instead of id.");
+		var id = options;
+		options = arguments[1] || {};
+		options.id = id;
+		console.warn("LiteGUI.Inspector legacy parameter, use options as first parameter instead of id.");
 	}
 
 	options = options || {};
@@ -6749,8 +6762,8 @@ function Inspector( id, options )
 		this.root.className += " one_line";
 	}
 
-	if(id)
-		this.root.id = id;
+	if(options.id)
+		this.root.id = options.id;
 
 	this.sections = [];
 	this.values = {};
@@ -8781,7 +8794,6 @@ Inspector.prototype.addList = function(name, values, options)
 				if(item_style)
 					li_element.setAttribute("style", item_style );
 				li_element.innerHTML = icon + item_title;
-				//code += "<li class='item-" + i + " " + (selected ? "selected":"") + "' data-name='" + item_name + "' data-pos='"+i+"' "+item_style+">" + icon + item_title + "</li>";
 				ul.appendChild( li_element );
 				li_element.addEventListener( "click", inner_item_click );
 				if(options.callback_dblclick)
@@ -8790,7 +8802,6 @@ Inspector.prototype.addList = function(name, values, options)
 
 		//ul.innerHTML = code;
 		LiteGUI.bind( ul.querySelectorAll("li"), "click", inner_item_click );
-		//$(this).find(".wcontent li").click( inner_item_click );
 	}
 
 	element.removeItem = function(name)
@@ -8815,11 +8826,12 @@ Inspector.prototype.addList = function(name, values, options)
 		return r;
 	}
 
-	element.getIndex = function(num)
+	element.getByIndex = function(num)
 	{
 		var items = this.querySelectorAll("ul li");
 		return items[num];
 	}
+	element.getIndex = element.getByIndex; //legacy
 
 	element.selectIndex = function( num, add_to_selection )
 	{
@@ -8833,6 +8845,15 @@ Inspector.prototype.addList = function(name, values, options)
 				item.classList.remove("selected");
 		}
 		return items[num];
+	}
+
+	element.deselectIndex = function( num )
+	{
+		var items = this.querySelectorAll("ul li");
+		var item = items[num];
+		if(item)
+			item.classList.remove("selected");
+		return item;
 	}
 
 	element.scrollToIndex = function(num)
@@ -8864,16 +8885,42 @@ Inspector.prototype.addList = function(name, values, options)
 		this.updateItems(v);
 	}
 
+	element.getNumberOfItems = function()
+	{
+		var items = this.querySelectorAll("ul li");
+		return items.length;
+	}
+
 	element.filter = function(callback)
 	{
 		var items = this.querySelectorAll("ul li");
 		for(var i = 0; i < items.length; ++i)
 		{
 			var item = items[i];
-			if( !callback( item.value, item ) )
+			if(!callback)
+			{
+				item.style.display = "";
+				continue;
+			}
+
+			if( !callback( item.value, item, item.classList.contains("selected") ) )
 				item.style.display = "none";
 			else
 				item.style.display = "";
+		}
+	}
+
+	element.selectByFilter = function(callback)
+	{
+		var items = this.querySelectorAll("ul li");
+		for(var i = 0; i < items.length; ++i)
+		{
+			var item = items[i];
+			var r = callback( item.value, item, item.classList.contains("selected") );
+			if( r === true )
+				item.classList.add("selected");
+			else if( r === false )
+				item.classList.remove("selected");
 		}
 	}
 
@@ -9247,7 +9294,7 @@ Inspector.prototype.addTree = function(name, value, options)
 
 	var current = value;
 
-	var tree = element.tree = new LiteGUI.Tree(null,value, options.tree_options);
+	var tree = element.tree = new LiteGUI.Tree( value, options.tree_options );
 	tree.onItemSelected = function(node, data) {
 		if(options.callback)
 			options.callback.call( element, node, data);

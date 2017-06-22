@@ -633,7 +633,10 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 				}});
 			}
 			else if(v == "Add Graph")
+			{
 				GraphModule.onNewGraph( node );
+				inspector.refresh();
+			}
 			//inspector.refresh();
 		}});
 
@@ -655,7 +658,7 @@ InspectorWidget.prototype.inspectMaterial = function(material)
 
 	var title = "Material";
 	var buttons = "<span class='buttons'><img class='options_section' src='imgs/mini-cog.png'></span>";
-	var section = inspector.addSection(icon + " " + title + buttons );
+	var section = this.inspector.addSection(icon + " " + title + buttons );
 
 	section.querySelector(".wsectiontitle").addEventListener("contextmenu", (function(e) { 
 		if(e.button != 2) //right button

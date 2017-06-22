@@ -19,7 +19,7 @@ GenericTabsWidget.prototype.init = function( options )
 		this.root.id = options.id;
 	
 	//tabs for every file
-	var tabs = this.tabs = new LiteGUI.Tabs( null, { height: "100%" });
+	var tabs = this.tabs = new LiteGUI.Tabs( { height: "100%" });
 	tabs.addPlusTab( this.onPlusTab.bind(this) );
 	this.root.add( tabs );
 	/*tabs.root.style.marginTop = "4px";*/
@@ -30,7 +30,7 @@ GenericTabsWidget.prototype.init = function( options )
 
 GenericTabsWidget.createDialog = function( parent )
 {
-	var dialog = new LiteGUI.Dialog( null, { title:"Panel", fullcontent: true, closable: true, detachable: true, draggable: true, minimize: true, resizable: true, parent: parent, width: 800, height: 500 });
+	var dialog = new LiteGUI.Dialog( { title:"Panel", fullcontent: true, closable: true, detachable: true, draggable: true, minimize: true, resizable: true, parent: parent, width: 800, height: 500 });
 	var tabs_widget = new GenericTabsWidget();
 	dialog.add( tabs_widget );
 	dialog.on_close = function()

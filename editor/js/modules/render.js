@@ -57,7 +57,7 @@ var RenderModule = {
 		this.tab.content.style.overflow = "hidden";
 
 		//create split
-		var visorarea = this.visorarea = new LiteGUI.Area("visorarea",{ height: "100%", autoresize: true, inmediateResize: true});
+		var visorarea = this.visorarea = new LiteGUI.Area({ id: "visorarea", height: "100%", autoresize: true, inmediateResize: true});
 		visorarea.split("vertical",[null,260], true);
 		visorarea.getSection(0).content.innerHTML = "<div id='visor'><div id='maincanvas'></div><div id='statusbar'><span class='msg'></span></div></div>";
 		visorarea.root.querySelector( "#statusbar" ).addEventListener("click", InterfaceModule.toggleStatusBar.bind( InterfaceModule ) );

@@ -15,7 +15,7 @@ GraphTabsWidget.prototype.init = function( options )
 		this.root.id = options.id;
 	
 	//tabs for every file
-	var tabs = this.tabs = new LiteGUI.Tabs( null, { height: "100%" });
+	var tabs = this.tabs = new LiteGUI.Tabs( { height: "100%" });
 	this.root.add( tabs );
 	this.plus_tab = tabs.addTab( "plus_tab", { title: "+", tab_width: 20, button: true, callback: this.onPlusTab.bind(this), skip_callbacks: true });
 	tabs.root.style.marginTop = "4px";
@@ -26,7 +26,7 @@ GraphTabsWidget.prototype.init = function( options )
 
 GraphTabsWidget.createDialog = function( parent )
 {
-	var dialog = new LiteGUI.Dialog( null, { title:"Graph", fullcontent: true, closable: true, detachable: true, draggable: true, minimize: true, resizable: true, parent: parent, width: 500, height: 500 });
+	var dialog = new LiteGUI.Dialog( { title:"Graph", fullcontent: true, closable: true, detachable: true, draggable: true, minimize: true, resizable: true, parent: parent, width: 500, height: 500 });
 	var graph_widget = new GraphTabsWidget();
 	dialog.add( graph_widget );
 	dialog.graph_area = graph_widget;

@@ -29,7 +29,7 @@ LS.Components.GlobalInfo["@inspector"] = function( component, inspector )
 		}});
 	}
 
-	inspector.addButton( "Render Settings", "Edit", function(){ EditorModule.showRenderSettingsDialog( component.render_settings ); } );
+	//inspector.addButton( "Render Settings", "Edit", function(){ EditorModule.showRenderSettingsDialog( component.render_settings ); } );
 }
 
 // Some components need special inspectors

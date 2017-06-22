@@ -392,7 +392,7 @@ var DriveModule = {
 
 	},
 
-	showRenameResourceDialog: function( resource )
+	showRenameResourceDialog: function( resource, on_complete )
 	{
 		var fullpath = resource.fullpath || resource.filename;
 		var folder = LS.RM.getFolder( fullpath );
@@ -403,7 +403,9 @@ var DriveModule = {
 				return;
 			var new_filename = LS.RM.cleanFullpath( folder + "/" + v );
 			DriveModule.renameResource( fullpath, new_filename, resource );
-			DriveModule.refreshContent();			
+			DriveModule.refreshContent();		
+			if(on_complete)
+				on_complete(new_filename);
 		}, { title: "Rename resource", value: filename, width: 400 });
 	},
 

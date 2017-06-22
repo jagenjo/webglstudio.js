@@ -246,7 +246,7 @@ var ImporterModule  = {
 	{
 		options = options || {};
 
-		var dialog = new LiteGUI.Dialog("dialog_import_resource", {title: "Import File", close: true, minimize: true, width: 480, height: 360, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog({ id: "dialog_import_resource", title: "Import File", close: true, minimize: true, width: 480, height: 360, scroll: false, draggable: true});
 		dialog.show();
 
 		var target = LS.Material.COLOR_TEXTURE;
@@ -438,6 +438,7 @@ var ImporterModule  = {
 
 			import_options.filename = filename;
 			import_options.target = target; //if its texture
+			import_options.to_memory = !insert_into;
 			file.filename = filename;
 
 			ImporterModule.processResource( name, file, import_options, inner_processed );
@@ -447,6 +448,10 @@ var ImporterModule  = {
 		function inner_processed( filename, resource, options)
 		{
 			options = options || {};
+
+			var import_options = {};
+			for(var i in options)
+				import_options[i] = options[i];
 
 			if(resource.filename)
 				filename = resource.filename;
@@ -462,9 +467,9 @@ var ImporterModule  = {
 			//we do this afterwards because saving it could change the name
 			if(insert_into)
 			{
-				options.mesh_action = ImporterModule.preferences.mesh_action;
-				options.texture_action = ImporterModule.preferences.texture_action;
-				DriveModule.onInsertResourceInScene( resource, options );
+				import_options.mesh_action = ImporterModule.preferences.mesh_action;
+				import_options.texture_action = ImporterModule.preferences.texture_action;
+				DriveModule.onInsertResourceInScene( resource, import_options );
 			}
 
 			dialog.close();
@@ -502,11 +507,11 @@ var ImporterModule  = {
 		var extension = LS.RM.getExtension( filename );
 		if(extension == "zip")
 		{
-			LiteGUI.choice("This is a ZIP file, do you want to unzip the content?",["yes, unzip","no, upload as zip"], function(v){
-				if(	v == "no, upload as zip" )
-					resource = LS.ResourcesManager.processResource( filename, file.data, options, inner );
-				else
+			LiteGUI.choice("This is a ZIP file, do you want to unzip the content? (If the zip contains an scene, select no)",["yes, unzip","no, leave as zip"], function(v){
+				if( v == "yes, unzip" )
 					ImporterModule.importZIP( file, inner );
+				else
+					resource = LS.ResourcesManager.processResource( filename, file.data, options, inner );
 			},{ width: 400 });
 		}
 		else

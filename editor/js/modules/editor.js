@@ -275,7 +275,7 @@ var EditorModule = {
 
 		var height = ($("#visor").height() * 0.8)|0;
 
-		var dialog = new LiteGUI.Dialog(id, {title: title, close: true, minimize: true, width: 300, height: height, scroll: true, resizable:true, draggable: true});
+		var dialog = new LiteGUI.Dialog( { id: id, title: title, close: true, minimize: true, width: 300, height: height, scroll: true, resizable:true, draggable: true});
 		dialog.show('fade');
 		dialog.setPosition(50 + (Math.random() * 10)|0,50 + (Math.random() * 10)|0);
 		dialog.on_close = function()
@@ -327,7 +327,7 @@ var EditorModule = {
 		var id = "dialog_inspector_properties";
 		var dialog = document.getElementById( "dialog_inspector_" + uid );
 
-		var dialog = new LiteGUI.Dialog(id, {title: "Properties", parent:"#visor", close: true, minimize: true, width: 300, height: 200, scroll: true, resizable:true, draggable: true});
+		var dialog = new LiteGUI.Dialog( { id: id, title: "Properties", parent:"#visor", close: true, minimize: true, width: 300, height: 200, scroll: true, resizable:true, draggable: true});
 		dialog.show('fade');
 
 		var property = { name: "myVar", type: "number", value: 0, step: 0.1 };
@@ -718,7 +718,7 @@ var EditorModule = {
 
 	showNodeInfo: function( node )
 	{
-		var dialog = new LiteGUI.Dialog("node_info",{ title:"Node Info", width: 500, draggable: true, closable: true });
+		var dialog = new LiteGUI.Dialog({ id: "node_info", title:"Node Info", width: 500, draggable: true, closable: true });
 		
 		var widgets = new LiteGUI.Inspector();
 		widgets.addString("Name", node.name, function(v){ node.name = v; });
@@ -752,7 +752,7 @@ var EditorModule = {
 	{
 		var scene = LS.GlobalScene;
 
-		var dialog = new LiteGUI.Dialog("layers_editor",{ title:"Layers editor", width: 300, height: 500, draggable: true, closable: true });
+		var dialog = new LiteGUI.Dialog({ id: "layers_editor", title:"Layers editor", width: 300, height: 500, draggable: true, closable: true });
 		
 		var widgets = new LiteGUI.Inspector();
 
@@ -798,7 +798,7 @@ var EditorModule = {
 
 	showComponentInfo: function( component )
 	{
-		var dialog = new LiteGUI.Dialog("component_info",{ title:"Component Info", width: 500, draggable: true, closable: true });
+		var dialog = new LiteGUI.Dialog({ id: "component_info", title:"Component Info", width: 500, draggable: true, closable: true });
 		
 		var widgets = new LiteGUI.Inspector();
 		widgets.addString("Class", LS.getObjectClassName(component), { disabled: true } );
@@ -849,9 +849,9 @@ var EditorModule = {
 
 	showRenderSettingsDialog: function( render_settings )
 	{
-		var dialog = new LiteGUI.Dialog(null,{ title:"Render Settings", width: 400, draggable: true, closable: true });
+		var dialog = new LiteGUI.Dialog( { title:"Render Settings", width: 400, draggable: true, closable: true });
 		
-		var inspector = new LiteGUI.Inspector(null,{name_width:"50%"});
+		var inspector = new LiteGUI.Inspector( {name_width:"50%"});
 		inspector.showObjectFields( render_settings );
 
 		inspector.onchange = function(){
@@ -865,9 +865,9 @@ var EditorModule = {
 
 	showRenderFrameContextDialog: function( render_context, callback )
 	{
-		var dialog = new LiteGUI.Dialog(null,{ title:"Render Context", width: 400, draggable: true, closable: true });
+		var dialog = new LiteGUI.Dialog( { title:"Render Context", width: 400, draggable: true, closable: true });
 		
-		var inspector = new LiteGUI.Inspector(null,{name_width:"50%"});
+		var inspector = new LiteGUI.Inspector( {name_width:"50%"});
 		inspector.showObjectFields( render_context );
 
 		inspector.onchange = function(){
@@ -883,9 +883,9 @@ var EditorModule = {
 
 	showRenderStateDialog: function( render_state, callback )
 	{
-		var dialog = new LiteGUI.Dialog(null,{ title:"Render State", width: 400, draggable: true, closable: true });
+		var dialog = new LiteGUI.Dialog( { title:"Render State", width: 400, draggable: true, closable: true });
 		
-		var inspector = new LiteGUI.Inspector(null,{name_width:"50%"});
+		var inspector = new LiteGUI.Inspector( {name_width:"50%"});
 		inspector.showObjectFields( render_state );
 
 		inspector.onchange = function(){
@@ -1625,7 +1625,7 @@ var EditorModule = {
 			return;
 		}
 
-		var dialog = new LiteGUI.Dialog("dialog_maetrials", {title:"Materials", close: true, minimize: true, width: 300, height: 230, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog( { id: "dialog_materials", title:"Materials", close: true, minimize: true, width: 300, height: 230, scroll: false, draggable: true});
 		dialog.show('fade');
 
 		var selected = null;
@@ -1693,7 +1693,7 @@ var EditorModule = {
 			return;
 		}
 
-		var dialog = new LiteGUI.Dialog("dialog_components", {title:"Components", close: true, minimize: true, width: 400, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog( { id: "dialog_components", title:"Components", close: true, minimize: true, width: 400, scroll: false, draggable: true});
 		dialog.show('fade');
 
 		var selected_component = null;
@@ -1773,7 +1773,7 @@ var EditorModule = {
 
 	showSelectResource: function( options )
 	{
-		var dialog = new LiteGUI.Dialog("select-resource-dialog", {title: "Select resource", close: true, width: 800, height: 500, scroll: false, resizable: true, draggable: true});
+		var dialog = new LiteGUI.Dialog({ id: "select-resource-dialog", title: "Select resource", close: true, width: 800, height: 500, scroll: false, resizable: true, draggable: true});
 		var resources_widget = new ResourcesPanelWidget(null,{skip_actions:true});
 		if(options.type)
 			resources_widget.filterByCategory( options.type );
@@ -1801,7 +1801,7 @@ var EditorModule = {
 	//shows a dialog to select a node
 	showSelectNode: function(on_complete, options)
 	{
-		var dialog = new LiteGUI.Dialog("dialog_nodes", {title:"Scene nodes", close: true, minimize: true, width: 300, height: 410, resizable: true, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog( { id: "dialog_nodes", title:"Scene nodes", close: true, minimize: true, width: 300, height: 410, resizable: true, scroll: false, draggable: true});
 		dialog.show( null, this.root );
 
 		/*
@@ -1867,7 +1867,7 @@ var EditorModule = {
 	//shows a dialog to select an existing component
 	showSelectComponent: function( selected_component, filter_type, on_complete, widget )
 	{
-		var dialog = new LiteGUI.Dialog("dialog_component", {title:"Select Component", close: true, minimize: true, width: 400, height: 610, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog( { id: "dialog_component", title:"Select Component", close: true, minimize: true, width: 400, height: 610, scroll: false, draggable: true});
 		dialog.show('fade');
 
 		var area = new LiteGUI.Area();

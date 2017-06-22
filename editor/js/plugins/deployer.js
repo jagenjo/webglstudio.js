@@ -224,9 +224,14 @@ var DeployerTool = {
 
 		function check_status()
 		{
-			var url = LS.RM.getFolder( server_url ) + "/deploy_" + token + ".log";
-			LiteGUI.request({url: url, success: function(v){
-				var lines = v.split("\n");
+			LiteGUI.request({url: server_url, data:{ action:"report",token:"token"}, success: function(v){
+				if(v.status != 1)
+				{
+					console.error(v.msg);
+					return;
+				}
+
+				var lines = v.log.split("\n");
 				if(on_progress)
 				{
 					for(var i = log_lines.length; i < lines.length; ++i)

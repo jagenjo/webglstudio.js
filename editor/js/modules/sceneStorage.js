@@ -82,7 +82,7 @@ var SceneStorageModule = {
 		if(dialog)
 			return;
 
-		dialog = new LiteGUI.Dialog("dialog_load_scene", {title:"Load Scene", close: true, minimize: true, width: 520, height: 290, scroll: false, draggable: true});
+		dialog = new LiteGUI.Dialog( { id: "dialog_load_scene", title:"Load Scene", close: true, minimize: true, width: 520, height: 290, scroll: false, draggable: true});
 		dialog.show('fade');
 
 		var split = new LiteGUI.Split("load_scene_split",[50,50]);
@@ -253,7 +253,7 @@ var SceneStorageModule = {
 
 	showLoadFromFileDialog: function()
 	{
-		var dialog = new LiteGUI.Dialog({title:"Load File", width: 200});
+		var dialog = new LiteGUI.Dialog({ title:"Load File", width: 200 });
 		var inspector = new LiteGUI.Inspector();
 		var file = null;
 		inspector.addFile("Select File","",{ read_file: true, callback: function(v){
@@ -296,7 +296,7 @@ var SceneStorageModule = {
 			return;
 		}
 
-		var dialog = new LiteGUI.Dialog("dialog_save_scene", {title:"Save Scene", close: true, minimize: true, width: 520, height: 300, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog({ id: "dialog_save_scene", title:"Save Scene", close: true, minimize: true, width: 520, height: 300, scroll: false, draggable: true});
 		dialog.show('fade');
 
 		var split = new LiteGUI.Split("save_scene_split",[50,50]);
@@ -409,7 +409,7 @@ var SceneStorageModule = {
 
 	showLoadLocalSceneDialog: function()
 	{
-		var dialog = new LiteGUI.Dialog("dialog_load_scene", {title:"Load Scene", close: true, minimize: true, width: 520, height: 300, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog({ id: "dialog_load_scene", title:"Load Scene", close: true, minimize: true, width: 520, height: 300, scroll: false, draggable: true });
 		dialog.show('fade');
 
 		var split = new LiteGUI.Split("load_scene_split",[50,50]);
@@ -463,7 +463,7 @@ var SceneStorageModule = {
 
 	showSaveSceneInLocalDialog: function()
 	{
-		var dialog = new LiteGUI.Dialog("dialog_save_scene", {title:"Save Scene", close: true, minimize: true, width: 360, height: 400, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog({ id: "dialog_save_scene", title:"Save Scene", close: true, minimize: true, width: 360, height: 400, scroll: false, draggable: true});
 		dialog.show('fade');
 
 		var name = "";
@@ -506,7 +506,7 @@ var SceneStorageModule = {
 
 	showCreateSceneDialog: function()
 	{
-		var dialog = new LiteGUI.Dialog("dialog_create_scene", {title:"New Scene", close: true, minimize: true, width: 200, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog({ id: "dialog_create_scene", title:"New Scene", close: true, minimize: true, width: 200, scroll: false, draggable: true});
 
 		var widgets = new LiteGUI.Inspector();
 
@@ -539,7 +539,7 @@ var SceneStorageModule = {
 
 	showSelectSceneDialog: function()
 	{
-		var dialog = new LiteGUI.Dialog("dialog_select_scene", {title:"Select Scene", close: true, minimize: true, width: 200, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog({ id: "dialog_select_scene", title:"Select Scene", close: true, minimize: true, width: 200, scroll: false, draggable: true});
 
 		var widgets = new LiteGUI.Inspector();
 
@@ -609,13 +609,13 @@ var SceneStorageModule = {
 			return;
 		}
 
-		var dialog = new LiteGUI.Dialog("dialog_download_scene", {title:"Download Scene", close: true, minimize: true, width: 400, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog({ id: "dialog_download_scene", title:"Download Scene", close: true, minimize: true, width: 400, scroll: false, draggable: true});
 
 		var filename = LS.RM.getBasename( scene.extra.publish_name || scene.extra.filename || "scene" );
 		var folder = scene.extra.folder;
 		var include_resources = false;
 
-		var widgets = new LiteGUI.Inspector(null,{name_width:120});
+		var widgets = new LiteGUI.Inspector({name_width:120});
 
 		widgets.addButton("Scene JSON", "Download", function(v){
 			dialog.close();
@@ -630,7 +630,7 @@ var SceneStorageModule = {
 			dialog.close();
 			var fullpath = LS.RM.cleanFullpath( folder + "/" + filename );
 			LS.GlobalScene.extra.publish_name = fullpath;
-			var pack = LS.GlobalScene.toPack( fullpath, include_resources );
+			var pack = LS.GlobalScene.toPack( fullpath, include_resources ? null : [] );
 			LiteGUI.downloadFile( LS.RM.getFilename(pack.fullpath), pack.bindata );
 		});
 
@@ -656,7 +656,7 @@ var SceneStorageModule = {
 			return;
 		}
 
-		var dialog = new LiteGUI.Dialog("dialog_publish_scene", {title:"Publish Scene", close: true, minimize: true, width: 400, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog({ id: "dialog_publish_scene", title:"Publish Scene", close: true, minimize: true, width: 400, scroll: false, draggable: true});
 
 		var filename = LS.RM.getBasename( scene.extra.publish_name || scene.extra.filename );
 		var folder = scene.extra.folder;

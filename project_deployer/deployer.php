@@ -7,7 +7,7 @@
 	//CONFIGURE HERE *****************
 
 	$KEY = ""; //set validation key (used as pass to allow deploying to this folder) MUST BE SET TO SOMETHING
-	$BASE_DEPLOY_FOLDER = "deploy/"; //folder relative to this script where all deploys will be done
+	$BASE_DEPLOY_FOLDER = ""; //folder relative to this script where all deploys will be done
 	$IGNORE_EXTENSIONS = "php,asp,jsp,vbs,exe,cgi,py"; //file formats not allowed to be uploaded to the machine
 
 	//*************************************
@@ -77,6 +77,16 @@
 			$action = $_REQUEST["action"];
 			if($action == "test")
 				die('{"status":1,"msg":"ready"}');
+			else if($action == "report")
+			{
+				if( !isset($_REQUEST["token"]) )
+					die('{"status":-1,"msg":"params missing"}');
+				$token = $_REQUEST["token"];
+				if( !file_exists( "deploy_" . $token . ".log") )
+					die('{"status":-1,"msg":"deploy not found"}');
+				$content = addslashes( file_get_contents( "deploy_" . $token . ".log" ) );
+				die('{"status":1,"msg":"report","log":"'.$content.'"}');
+			}
 			else if($action == "end")
 			{
 				if( !isset($_REQUEST["token"]) )
@@ -121,9 +131,8 @@
 			fwrite( $temp, $data );
 			fclose( $temp );
 			if(!file_exists( $info_filename ))
-				die('{"status":-1,"msg":"error, no writing privileges in folder"}');
+				die('{"status":-1,"msg":"error, no writing privileges in destination folder"}');
 			$output = shell_exec('nohup php -q deployer.php '.$info_filename.' 2>&1 >> '.$log_file.' &');
-			//	die('{"status":-1,"msg":"error executing command"}');
 			die('{"status":1,"msg":"processing","token":"'.$token.'"}');
 		}
 		die('{"status":0,"msg":"nothing"}');

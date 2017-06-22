@@ -34,7 +34,7 @@ CORE.registerWidget( Timeline );
 
 Timeline.createDialog = function( parent )
 {
-	var dialog = new LiteGUI.Dialog( null, { title: Timeline.widget_name, fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, parent: parent, width: 900, height: 500 });
+	var dialog = new LiteGUI.Dialog( { title: Timeline.widget_name, fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, parent: parent, width: 900, height: 500 });
 	var widget = new Timeline();
 	dialog.add( widget );
 	dialog.widget = widget;
@@ -66,7 +66,7 @@ Timeline.prototype.createInterface = function( options )
 		this.root.id = options.id;
 
 	//add tool bar
-	var widgets = this.top_widgets = new LiteGUI.Inspector( null, { height: 30, widgets_width: 140, name_width: 60, one_line: true } );
+	var widgets = this.top_widgets = new LiteGUI.Inspector( { height: 30, widgets_width: 140, name_width: 60, one_line: true } );
 	this.root.appendChild( widgets.root );
 	this.root.style.backgroundColor = "#2a2a2a";
 	widgets.root.style.paddingTop = "4px";
@@ -119,7 +119,7 @@ Timeline.prototype.createInterface = function( options )
 	*/
 
 	//work area
-	var area = new LiteGUI.Area(null,{ height: "calc( 100% - 34px )", autoresize: true, inmediateResize: true });
+	var area = new LiteGUI.Area( { height: "calc( 100% - 34px )", autoresize: true, inmediateResize: true });
 	//area.split("horizontal",[200,null], true);
 	this.root.appendChild( area.root );
 
@@ -2146,7 +2146,7 @@ Timeline.prototype.onShowAnimationOptionsDialog = function()
 		return;
 	}
 
-	dialog = new LiteGUI.Dialog("animation_options",{ title:"Animation Options", width: 400, draggable: true, closable: true });
+	dialog = new LiteGUI.Dialog({ id: "animation_options", title:"Animation Options", width: 400, draggable: true, closable: true });
 	
 	var widgets = new LiteGUI.Inspector();
 	widgets.addString("Name", this.current_animation.filename, { disabled: true } );
@@ -2207,7 +2207,7 @@ Timeline.prototype.onShowAnimationOptionsDialog = function()
 
 Timeline.prototype.onShowBakingDialog = function()
 {
-	var dialog = new LiteGUI.Dialog("baking_tools",{ title:"Baking Tools", width: 400, draggable: true, closable: true });
+	var dialog = new LiteGUI.Dialog({ id: "baking_tools", title:"Baking Tools", width: 400, draggable: true, closable: true });
 	var that = this;
 
 	var node = SelectionModule.getSelectedNode();
@@ -2279,7 +2279,7 @@ Timeline.prototype.showNewAnimationDialog = function()
 		return;
 	}
 
-	dialog = new LiteGUI.Dialog("new_animation",{ title:"New Timeline", draggable: true, closable: true });
+	dialog = new LiteGUI.Dialog({ id: "new_animation", title:"New Timeline", draggable: true, closable: true });
 	
 	var widgets = new LiteGUI.Inspector();
 	widgets.addString("Name","test");
@@ -2327,7 +2327,7 @@ Timeline.prototype.assignNodeNames = function()
 Timeline.prototype.showNewTrack = function()
 {
 	var that = this;
-	var dialog = new LiteGUI.Dialog("new_animation_track",{ title:"New Track", width: 500, draggable: true, closable: true });
+	var dialog = new LiteGUI.Dialog({ id: "new_animation_track", title:"New Track", width: 500, draggable: true, closable: true });
 	
 	var locator = "";
 	var info = null;
@@ -2404,7 +2404,7 @@ Timeline.prototype.createTrack = function( options )
 Timeline.prototype.showTrackOptionsDialog = function( track )
 {
 	var that = this;
-	var dialog = new LiteGUI.Dialog("track options",{ title:"Track Options", width: 500, draggable: true, closable: true });
+	var dialog = new LiteGUI.Dialog( { id: "track options", title:"Track Options", width: 500, draggable: true, closable: true });
 	
 	var widgets = new LiteGUI.Inspector();
 	widgets.on_refresh = inner_refresh;

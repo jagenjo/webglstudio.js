@@ -15,10 +15,10 @@ var PackTools = {
 			return;
 		}
 
-		var dialog = new LiteGUI.Dialog("dialog_create_prefab", {title:"Create Prefab", close: true, width: 500, height: 270, scroll: false, draggable: true, resizable: true});
+		var dialog = new LiteGUI.Dialog({ id: "dialog_create_prefab", title:"Create Prefab", close: true, width: 500, height: 270, scroll: false, draggable: true, resizable: true});
 		dialog.show();
 
-		var widgets = new LiteGUI.Inspector("prefab_widgets",{ });
+		var widgets = new LiteGUI.Inspector({ });
 
 		var resources = node.getResources({}, true);
 		if(node.prefab)
@@ -160,13 +160,13 @@ var PackTools = {
 	{
 		options = options || {};
 
-		var dialog = new LiteGUI.Dialog("dialog_create_prefab", {title:"Create Pack", close: true, width: 360, height: 270, scroll: false, draggable: true, resizable: true});
+		var dialog = new LiteGUI.Dialog({ id:"dialog_create_prefab", title:"Create Pack", close: true, width: 360, height: 270, scroll: false, draggable: true, resizable: true});
 
 		var filename = options.filename || "unnamed_pack";
 		var folder = options.folder || "";
 		var resources = [];
 
-		var widgets = new LiteGUI.Inspector("prefab_widgets",{ });
+		var widgets = new LiteGUI.Inspector({});
 		widgets.on_refresh = inner_update;
 
 		function inner_update()
@@ -271,9 +271,9 @@ var PackTools = {
 			return;
 
 		var class_type = LS.getObjectClassName( pack );
-		var dialog = new LiteGUI.Dialog("dialog_show_pack", {title: class_type, close: true, width: 360, height: 270, scroll: false, draggable: true, resizable: true});
+		var dialog = new LiteGUI.Dialog({ id:"dialog_show_pack", title: class_type, close: true, width: 360, height: 270, scroll: false, draggable: true, resizable: true});
 
-		var widgets = new LiteGUI.Inspector( null, {} );
+		var widgets = new LiteGUI.Inspector();
 		widgets.on_refresh = inner_update;
 
 		function inner_update()
@@ -309,9 +309,12 @@ LS.Pack.prototype.inspect = LS.Prefab.prototype.inspect = function( widgets, ski
 	widgets.widgets_per_row = 2;
 	for(var i = 0; i < resource_names.length; ++i)
 	{
-		widgets.addButton(null,"o",{ width: 40, index: i, callback: function(){
+		widgets.addButton(null,LiteGUI.special_codes.open_folder,{ width: 40, index: i, callback: function(){
 			var name = resource_names[this.options.index];
-			window.RESOURCE = LS.RM.resources[name];
+			var res = LS.RM.resources[name];
+			window.RESOURCE = res;
+			console.log(res);
+			EditorModule.inspect( res );
 		}});
 		widgets.addStringButton(null, resource_names[i], { index: i, width: "calc(100% - 40px)", callback: function(v){
 				if(!v)

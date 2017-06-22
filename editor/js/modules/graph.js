@@ -46,7 +46,7 @@ var GraphModule = {
 
 		this.root = LiteGUI.main_tabs.root.querySelector("#graphtab");
 
-		var graph_area = this.graph_area = new LiteGUI.Area(null,{width: "100%"});
+		var graph_area = this.graph_area = new LiteGUI.Area({ width: "100%" });
 		this.root.appendChild( graph_area.root );
 		graph_area.split("vertical",[null,"50%"],true);
 		this.graph_3D_area = graph_area.getSection(0).content;
@@ -194,9 +194,9 @@ GraphModule.showGraphComponent = function(component, inspector)
 		for(var i = 0; i < nodes.length; ++i)
 		{
 			var n = nodes[i];
-			var type = n.properties.type;
+			var widget_type = n.properties.widget || n.properties.type;
 
-			inspector.add(type, n.properties.name, n.properties.value, { pretitle: AnimationModule.getKeyframeCode( component, n.properties.name ), min: n.properties.min, max: n.properties.max, step:0.01, node:n, callback: function(v) {
+			inspector.add( widget_type, n.properties.name, n.properties.value, { pretitle: AnimationModule.getKeyframeCode( component, n.properties.name ), min: n.properties.min, max: n.properties.max, step:0.01, node:n, callback: function(v) {
 				var graph_node = this.options.node;
 				graph_node.properties.value = v;
 				if(component.on_event == "render" || component.on_event == "update")

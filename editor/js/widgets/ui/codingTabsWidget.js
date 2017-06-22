@@ -16,7 +16,7 @@ CodingTabsWidget.prototype.init = function( options )
 		this.root.id = options.id;
 	
 	//tabs for every file
-	var tabs = this.tabs = new LiteGUI.Tabs( null, { height: "100%" });
+	var tabs = this.tabs = new LiteGUI.Tabs( { height: "100%" });
 	this.root.add( tabs );
 	//this.plus_tab = tabs.addTab( "plus_tab", { title: "+", tab_width: 20, button: true, callback: this.onPlusTab.bind(this), skip_callbacks: true });
 	tabs.addPlusTab( this.onPlusTab.bind(this) );
@@ -29,7 +29,7 @@ CodingTabsWidget.prototype.init = function( options )
 
 CodingTabsWidget.createDialog = function( parent )
 {
-	var dialog = new LiteGUI.Dialog( null, { title:"Coding", fullcontent: true, closable: true, detachable: true, draggable: true, minimize: true, resizable: true, parent: parent, width: 500, height: 500 });
+	var dialog = new LiteGUI.Dialog( { title:"Coding", fullcontent: true, closable: true, detachable: true, draggable: true, minimize: true, resizable: true, parent: parent, width: 500, height: 500 });
 	var coding_widget = new CodingTabsWidget();
 	window.CODING_DIALOG = dialog; //debug
 	dialog.add( coding_widget );
@@ -204,6 +204,10 @@ CodingTabsWidget.prototype.renameTab = function( id, name )
 	if(!tab)
 		return;
 
+	//change tab id
+	tab.id = name;
+
+	//change the tab text
 	var title = tab.tab.querySelector(".tabtitle");
 	if(title && name)
 		title.innerHTML = name;

@@ -64,6 +64,7 @@ CodingPadWidget.prototype.bindEvents = function()
 	LEvent.bind( LS.GlobalScene, "nodeRemoved", this.onNodeRemoved, this );
 	LEvent.bind( LS.GlobalScene, "nodeComponentRemoved", this.onComponentRemoved, this );
 	LEvent.bind( LS.Components.Script, "renamed", this.onScriptRenamed, this );
+	LEvent.bind( LS.ResourcesManager, "resource_renamed", this.onResourceRenamed, this );
 	LEvent.bind( CodingPadWidget, "code_changed", this.onCodeChanged, this);
 
 	LEvent.bind( LS.Components.Script, "code_error", this.onScriptError, this );
@@ -78,6 +79,7 @@ CodingPadWidget.prototype.unbindEvents = function()
 	this._binded = false;
 	LEvent.unbindAll( LS.GlobalScene, this );
 	LEvent.unbindAll( LS.Components.Script, this );
+	LEvent.unbindAll( LS.ResourcesManager, this );
 	LEvent.unbindAll( LS, this );
 }
 
@@ -701,6 +703,25 @@ CodingPadWidget.prototype.onScriptRenamed = function( e, instance )
 {
 	if(!instance)
 		return;
+	//nothing to do here, not owning the tab
+}
+
+//change in the title
+CodingPadWidget.prototype.onResourceRenamed = function( e, info )
+{
+	if(!this.current_code_info || !this.current_code_info.instance || !info )
+		return;
+
+	var resource = info[2];
+
+	if(!resource || resource != this.current_code_info.instance)
+		return;
+
+
+	var filename = resource.fullpath || resource.filename;
+	this.current_code_info.id = filename;
+	this.file_name_widget.setValue( filename );
+	LiteGUI.trigger( this, "renamed", filename );
 }
 
 
@@ -828,6 +849,12 @@ CodingPadWidget.prototype.onShowCodeMenu = function(event)
 	var that = this;
 	var options = ["Open Code","Clone Code"];
 
+	//if this resource comes from a file
+	if(this.current_code_info && this.current_code_info.instance && this.current_code_info.instance.filename )
+	{
+		options.push("Rename Script");
+	}
+
 	var menu = new LiteGUI.ContextMenu( options, { event: event, callback: function( action, o, e ) {
 		if(action == "Open Code")
 		{
@@ -837,6 +864,10 @@ CodingPadWidget.prototype.onShowCodeMenu = function(event)
 		{
 		
 		}
+		else if( action == "Rename Script")
+		{
+			DriveModule.showRenameResourceDialog( that.current_code_info.instance )
+		}
 	}});
 }
 
@@ -845,7 +876,7 @@ CodingPadWidget.prototype.onOpenCode = function( skip_create )
 	var that = this;
 	var dialog = new LiteGUI.Dialog(null,{ title:"Select Code", width: 400, draggable: true, closable: true });
 	
-	var widgets = new LiteGUI.Inspector(null, { name_width: 100 });
+	var widgets = new LiteGUI.Inspector( { name_width: 100 } );
 
 	if(!skip_create)
 		widgets.addStringButton("New script","unnamed.js", { button:"GO", button_width: "100px", callback_button: function(v){
@@ -966,11 +997,11 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 	}
 
 
-	var coding_area = this.coding_area = new LiteGUI.Area(null,{ className: "codearea", content_id:"", height: "100%"});
+	var coding_area = this.coding_area = new LiteGUI.Area( { className: "codearea", content_id:"", height: "100%" } );
 	container.appendChild( coding_area.root );
 
 	//top bar
-	var top_widgets = this.top_widgets = new LiteGUI.Inspector( null, { one_line: true });
+	var top_widgets = this.top_widgets = new LiteGUI.Inspector( { one_line: true } );
 
 	top_widgets.addButton(null, LiteGUI.special_codes.navicon,{ width: 30, callback: function(v,e) { 
 		that.onShowCodeMenu(e);
@@ -1013,7 +1044,7 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 
 	var coding_workarea_root = coding_area;
 
-	var coding_workarea = this.workarea = new LiteGUI.Area("coding-workarea");
+	var coding_workarea = this.workarea = new LiteGUI.Area({id:"coding-workarea"});
 	coding_workarea.add( top_widgets );
 	coding_workarea_root.add( coding_workarea );
 

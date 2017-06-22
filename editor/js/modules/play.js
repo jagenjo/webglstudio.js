@@ -183,6 +183,34 @@ var PlayModule = {
 			{
 				demo_window = window.open("player.html", "", "width=800, height=600")
 				demo_window.onload = launch;
+
+				var console = window.console;
+
+				//helps debugging
+				demo_window.console._log = demo_window.console.log;
+				demo_window.console.log = function(){
+					var args = Array.prototype.slice.call(arguments);
+					demo_window.console._log.apply( console, args );
+					args.unshift("WINDOW:");
+					console.log.apply( console, args );
+				}
+
+				demo_window.console._warn = demo_window.console.warn;
+				demo_window.console.warn = function(){
+					var args = Array.prototype.slice.call(arguments);
+					demo_window.console._warn.apply( console, args );
+					args.unshift("WINDOW:");
+					console.warn.apply(	console, args );
+				}
+
+				demo_window.console._error = demo_window.console.error;
+				demo_window.console.error = function(){
+					var args = Array.prototype.slice.call(arguments);
+					demo_window.console._error.apply( console, args );
+					args.unshift("WINDOW:");
+					console.error.apply( console, args );
+				}
+
 				demo_window.onbeforeunload  = function(){ 
 					that.demo_window = null;
 				}
@@ -201,12 +229,12 @@ var PlayModule = {
 
 			function inner_before_play( scene )
 			{
-				console.log("scene ready to be played in window");
+				//console.log("scene ready to be played in window");
 			}
 
 			function inner_launched( scene )
 			{
-				console.log("scene launched in window");
+				//console.log("scene launched in window");
 			}
 		}
 	},

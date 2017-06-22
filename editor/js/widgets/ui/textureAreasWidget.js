@@ -1,3 +1,4 @@
+//Work in progress: the idea was to help set areas inside a texture atlas
 function TextureAreasWidget( options )
 {
 	this.root = null;
@@ -8,7 +9,7 @@ TextureAreasWidget.widget_name = "Texture Areas";
 
 TextureAreasWidget.createDialog = function( parent, component )
 {
-	var dialog = new LiteGUI.Dialog( null, { title: TextureAreasWidget.widget_name, fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, parent: parent, width: 800, height: 500 });
+	var dialog = new LiteGUI.Dialog( { title: TextureAreasWidget.widget_name, fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, parent: parent, width: 800, height: 500 });
 	var widget = new TextureAreasWidget();
 	dialog.add( widget );
 	dialog.widget = widget;

@@ -24,7 +24,7 @@ function SceneTreeWidget( options )
 
 	var root_uid = scene.root.uid;
 
-	this.tree = new LiteGUI.Tree(null, { id: this.getIdString( root_uid ), uid: root_uid, content:"root", precontent: "<span class='nodecontrols'></span>" }, { allow_rename: false, allow_drag: true, allow_multiselection: true } );
+	this.tree = new LiteGUI.Tree( { id: this.getIdString( root_uid ), uid: root_uid, content:"root", precontent: "<span class='nodecontrols'></span>" }, { allow_rename: false, allow_drag: true, allow_multiselection: true } );
 	this.content = this.tree;
 	this.root.appendChild( this.tree.root );
 	this.tree.onContextMenu = function(e){

@@ -36,7 +36,7 @@ var LabModule = {
 		content.style.padding = "0px";
 		content.style.overflow = "hidden";
 
-		var mode_tabs = new LiteGUI.Tabs("labmodetabs", { callback: function(v) {   }});
+		var mode_tabs = new LiteGUI.Tabs({ id:"labmodetabs", callback: function(v) {   }});
 		this.tab.add( mode_tabs );
 		mode_tabs.root.style.marginTop = "4px";
 		mode_tabs.root.style.backgroundColor = "#111";

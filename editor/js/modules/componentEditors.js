@@ -106,7 +106,8 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 	inspector.widgets_per_row = 2;
 	if(camera.type != LS.Camera.ORTHO2D)
 	{
-		inspector.addNumber("Fov", camera.fov, { pretitle: AnimationModule.getKeyframeCode( camera, "fov"), min: 2, max: 180, units:'º', callback: function (value) { camera.fov = value; }});
+		if(camera.type == LS.Camera.PERSPECTIVE)
+			inspector.addNumber("Fov", camera.fov, { pretitle: AnimationModule.getKeyframeCode( camera, "fov"), min: 2, max: 180, units:'º', callback: function (value) { camera.fov = value; }});
 		inspector.addNumber("Aspect", camera.aspect, { pretitle: AnimationModule.getKeyframeCode( camera, "aspect" ), min: 0.1, max: 10, step: 0.01, callback: function (value) { camera.aspect = value; }});
 	}
 	inspector.addNumber("Near", camera.near, { pretitle: AnimationModule.getKeyframeCode( camera, "near" ), callback: function (value) { camera.near = value; }});
@@ -117,7 +118,8 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 		inspector.addVector4("Orthographic", camera.orthographic, {  pretitle: AnimationModule.getKeyframeCode( camera, "orthographic" ),  name_width: 100, callback: function (value) { camera.orthographic = value; }});
 	else
 	{
-		inspector.addNumber("Frustum size", camera.frustum_size, {  pretitle: AnimationModule.getKeyframeCode( camera, "frustum_size" ),  name_width: 100, callback: function (value) { camera.frustum_size = value; }});
+		if(camera.type == LS.Camera.ORTHOGRAPHIC)
+			inspector.addNumber("Frustum size", camera.frustum_size, {  pretitle: AnimationModule.getKeyframeCode( camera, "frustum_size" ),  name_width: 100, callback: function (value) { camera.frustum_size = value; }});
 		inspector.addNumber("focalLength", camera.focalLength, { min: 0.0001, pretitle: AnimationModule.getKeyframeCode( camera, "focalLength" ),  name_width: 100, callback: function(v) { 
 			camera.focalLength = v;
 		}});
@@ -291,6 +293,8 @@ LS.Components.Light["@inspector"] = function(light, inspector)
 
 LS.Components.MeshRenderer.onShowProperties = function( component, inspector )
 {
+	return; //work in progress
+
 	var mesh = component.getMesh();
 
 	inspector.addCheckbox("use submaterials", component.use_submaterials, function(v){
@@ -320,7 +324,7 @@ LS.Components.MeshRenderer.onShowProperties = function( component, inspector )
 		for(var i = 0; i < component.submaterials.length; ++i)
 		{
 			var title = i;
-			if(mesh && mesh.info && mesh.info.groups)
+			if(mesh && mesh.info && mesh.info.groups && mesh.info.groups[i])
 				title = i + ": " + mesh.info.groups[i].name;
 			inspector.addStringButton( title, component.submaterials[i] || "", { index: i, callback: function() {
 			

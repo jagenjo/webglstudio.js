@@ -2150,6 +2150,8 @@ var Input = {
 	Mouse: {},
 	Gamepads: [],
 
+	last_click: null,
+
 	init: function()
 	{
 		this.Keyboard = gl.keys;
@@ -2166,6 +2168,18 @@ var Input = {
 	{
 		//capture gamepads snapshot
 		this.Gamepads = gl.getGamepads();
+	},
+
+	onMouse: function(e)
+	{
+		this.Mouse.mousex = e.mousex;
+		this.Mouse.mousey = e.mousey;
+
+		//save it in case we need to know where was the last click
+		if(e.type == "mousedown")
+			this.last_click = e;
+		else if(e.type == "mouseup")
+			this.last_click = null;
 	},
 
 	/**
@@ -2282,6 +2296,8 @@ LS.Input = Input;
 var GUI = {
 
 	_root: null, //root DOM element containing the GUI
+	_allow_change_cursor: true,
+	_is_on_top_of_immediate_widget: false,
 
 	/**
 	* Returns the DOM element responsible for the GUI of the app. This is helpful because this GUI will be automatically removed if the app finishes.
@@ -2522,6 +2538,245 @@ var GUI = {
 			element.setAttribute("src", src );
 		}
 
+	},
+
+	//IMMEDIATE GUI STUFF
+
+	ResetImmediateGUI: function()
+	{
+		this._is_on_top_of_immediate_widget = false;
+		this.setCursor(null);
+		LS.GlobalScene.requestFrame(); //force redraws
+	},
+
+	Box: function( area, color )
+	{
+		if(!area)
+			throw("No area");
+		var ctx = gl;
+		ctx.fillStyle = color || "#333";
+		ctx.fillRect( area[0], area[1], area[2], area[3] );
+	},
+
+	Label: function( area, content )
+	{
+		if(!area)
+			throw("No area");
+		if(!content)
+			return;
+
+		var ctx = gl;
+
+		if(content.constructor === GL.Texture)
+		{
+			ctx.drawImage( content, area[0], area[1], area[2], area[3] );
+		}
+		else if(content.constructor === String)
+		{
+			ctx.fillStyle = "#FFF";
+			ctx.font = (area[3]*0.75).toFixed(0) + "px Arial";
+			ctx.textAlign = "left";
+			ctx.fillText( content, area[0] + area[3] * 0.2, area[1] + area[3] * 0.75 );
+		}
+	},
+
+	Button: function( area, content, content_over )
+	{
+		if(!area)
+			throw("No area");
+
+		var ctx = gl;
+		var is_over = (LS.Input.Mouse.mousex >= area[0] && LS.Input.Mouse.mousex < (area[0] + area[2]) && LS.Input.Mouse.mousey >= area[1] && LS.Input.Mouse.mousey < (area[1] + area[3]) );
+		if(is_over)
+		{
+			this._is_on_top_of_immediate_widget = true;
+			this.setCursor("pointer");
+		}
+		var mouse = LS.Input.last_click;
+		var clicked = false;
+		if( mouse )
+		{
+			clicked = (mouse.mousex >= area[0] && mouse.mousex < (area[0] + area[2]) && mouse.mousey >= area[1] && mouse.mousey < (area[1] + area[3]) );
+			if(clicked)
+				LS.Input.last_click = false; //consume event
+		}
+
+		if( !content || content.constructor === String )
+		{
+			ctx.fillStyle = clicked ? "#AAA" : (is_over ? "#555" : "#333");
+			ctx.fillRect( area[0], area[1], area[2], area[3] );
+		}
+
+		if(content)
+		{
+			if(content.constructor === GL.Texture)
+			{
+				var texture = content;
+				if( is_over && content_over && content_over.constructor === GL.Texture)
+					texture = content_over;
+				ctx.drawImage( texture, area[0], area[1], area[2], area[3] );
+			}
+			else if(content.constructor === String)
+			{
+				ctx.fillStyle = "#FFF";
+				ctx.font = (area[3]*0.75).toFixed(0) + "px Arial";
+				ctx.textAlign = "center";
+				ctx.fillText( content, area[0] + area[2] * 0.5, area[1] + area[3] * 0.75 );
+				ctx.textAlign = "left";
+			}
+		}
+
+		return clicked;
+	},
+
+	Toggle: function( area, value, content, content_off )
+	{
+		if(!area)
+			throw("No area");
+		value = !!value;
+
+		var ctx = gl;
+		var is_over = (LS.Input.Mouse.mousex >= area[0] && LS.Input.Mouse.mousex < (area[0] + area[2]) && LS.Input.Mouse.mousey >= area[1] && LS.Input.Mouse.mousey < (area[1] + area[3]) );
+		if(is_over)
+		{
+			this._is_on_top_of_immediate_widget = true;
+			this.setCursor("pointer");
+		}
+		var mouse = LS.Input.last_click;
+		var clicked = false;
+		if( mouse )
+		{
+			clicked = (mouse.mousex >= area[0] && mouse.mousex < (area[0] + area[2]) && mouse.mousey >= area[1] && mouse.mousey < (area[1] + area[3]) );
+			if(clicked)
+			{
+				LS.Input.last_click = false; //consume event
+			}
+		}
+
+		var margin = (area[3]*0.2)
+
+		if(content)
+		{
+			if(content.constructor === GL.Texture)
+			{
+				var texture = content;
+				if( !value && content_off && content_off.constructor === GL.Texture)
+					texture = content_off;
+				ctx.drawImage( texture, area[0], area[1], area[2], area[3] );
+			}
+			else if(content.constructor === String)
+			{
+				ctx.fillStyle = "#FFF";
+				ctx.font = (area[3]*0.75).toFixed(0) + "px Arial";
+				ctx.fillText( content, area[0] + margin, area[1] + area[3] * 0.75 );
+
+				var w = area[3] * 0.6;
+				ctx.fillStyle = "#333";
+				ctx.fillRect( area[0] + area[2] - margin*1.5 - w, area[1] + margin*0.5, w+margin, area[3] - margin );
+				ctx.fillStyle = value ? "#AAF" : "#000";
+				ctx.fillRect( area[0] + area[2] - margin - w, area[1] + margin, w, area[3] - margin*2 );
+			}
+		}
+
+		return clicked ? !value : value;
+	},
+
+	HorizontalSlider: function( area, value, left_value, right_value, show_value )
+	{
+		if(!area)
+			throw("No area");
+
+		var ctx = gl;
+		var is_over = (LS.Input.Mouse.mousex >= area[0] && LS.Input.Mouse.mousex < (area[0] + area[2]) && LS.Input.Mouse.mousey >= area[1] && LS.Input.Mouse.mousey < (area[1] + area[3]) );
+		if(is_over)
+		{
+			this._is_on_top_of_immediate_widget = true;
+			this.setCursor("pointer");
+		}
+		var mouse = LS.Input.last_click;
+		var clicked = false;
+		var range = right_value - left_value;
+		var norm_value = (value - left_value) / range;
+		if(norm_value < 0) norm_value = 0;
+		if(norm_value > 1) norm_value = 1;
+
+		var margin = (area[3]*0.2)
+
+		if( mouse )
+		{
+			clicked = (mouse.mousex >= area[0] && mouse.mousex < (area[0] + area[2]) && mouse.mousey >= area[1] && mouse.mousey < (area[1] + area[3]) );
+			if(clicked)
+			{
+				norm_value = (LS.Input.Mouse.mousex - (area[0] + margin)) / (area[2] - margin*2);
+				if(norm_value < 0) norm_value = 0;
+				if(norm_value > 1) norm_value = 1;
+				value = norm_value * range + left_value;
+			}
+		}
+
+		ctx.fillStyle = "#333";
+		ctx.fillRect( area[0], area[1], area[2], area[3] );
+		ctx.fillStyle = clicked ? "#AAF" : "#AAA";
+		ctx.fillRect( area[0] + margin, area[1] + margin, (area[2] - margin*2) * norm_value, area[3] - margin*2 );
+
+		if(show_value)
+		{
+			ctx.textAlign = "center";
+			ctx.fillStyle = "#FFF";
+			ctx.font = (area[3]*0.5).toFixed(0) + "px Arial";
+			ctx.fillText( value.toFixed(2), area[0] + area[2] * 0.5, area[1] + area[3] * 0.7 );
+		}
+
+		return value;
+	},
+
+	VerticalSlider: function( area, value, left_value, right_value )
+	{
+		if(!area)
+			throw("No area");
+
+		var ctx = gl;
+		var is_over = (LS.Input.Mouse.mousex >= area[0] && LS.Input.Mouse.mousex < (area[0] + area[2]) && LS.Input.Mouse.mousey >= area[1] && LS.Input.Mouse.mousey < (area[1] + area[3]) );
+		if(is_over)
+		{
+			this._is_on_top_of_immediate_widget = true;
+			this.setCursor("pointer");
+		}
+		var mouse = LS.Input.last_click;
+		var clicked = false;
+		var range = right_value - left_value;
+		var norm_value = (value - left_value) / range;
+		if(norm_value < 0) norm_value = 0;
+		if(norm_value > 1) norm_value = 1;
+
+		var margin = (area[2]*0.2)
+
+		if( mouse )
+		{
+			clicked = (mouse.mousex >= area[0] && mouse.mousex < (area[0] + area[2]) && mouse.mousey >= area[1] && mouse.mousey < (area[1] + area[3]) );
+			if(clicked)
+			{
+				norm_value = (LS.Input.Mouse.mousey - (area[1] + margin)) / (area[3] - margin*2);
+				if(norm_value < 0) norm_value = 0;
+				if(norm_value > 1) norm_value = 1;
+				norm_value = 1 - norm_value; //reverse slider
+				value = norm_value * range + left_value;
+			}
+		}
+
+		ctx.fillStyle = "#333";
+		ctx.fillRect( area[0], area[1], area[2], area[3] );
+		ctx.fillStyle = clicked ? "#AAF" : "#AAA";
+		ctx.fillRect( area[0] + margin, area[1] + area[3] - (area[3] - margin*2) * norm_value - margin, area[2] - margin*2, (area[3] - margin*2) * norm_value );
+
+		return value;
+	},
+
+	setCursor: function(type)
+	{
+		if(!this._allow_change_cursor)
+			return;
+		gl.canvas.style.cursor = type || "";
 	}
 };
 
@@ -3281,6 +3536,7 @@ var ResourcesManager = {
 				case "image":
 					resource = LS.ResourcesManager.processImage( url, data, options, process_final );
 					break;
+				case "data":
 				default:
 					if( format_info.parse )
 					{
@@ -13480,6 +13736,19 @@ if(typeof(LiteGraph) != "undefined")
 			this.title = LS.getClassName( compo.constructor );
 	}
 
+	LGraphComponent.prototype.onConnectionsChange = function( type, slot, created, link_info, slot_info )
+	{
+		if(type == LiteGraph.INPUT && slot_info && slot_info.name == "Component" )
+		{
+			var node = this.getInputNode(slot);
+			if(node && node.onExecute)
+			{
+				node.onExecute();
+				this.setDirtyCanvas(true,true);
+			}
+		}
+	}
+
 	LGraphComponent.prototype.getComponent = function()
 	{
 		var scene = this.graph._scene;
@@ -13488,7 +13757,19 @@ if(typeof(LiteGraph) != "undefined")
 
 		var node_id = this.properties.node_id;
 		if(!node_id)
-			return;
+		{
+			if( this.inputs && this.inputs.length )
+			{
+				var slot = this.findInputSlot("Component");
+				if(slot != -1)
+				{
+					var component = this.getInputData(slot);
+					return component ? component : null;
+				}
+			}
+
+			return null;
+		}
 
 		//find node
 		var node = scene.getNode( node_id );
@@ -13619,7 +13900,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphComponent.prototype.onGetInputs = function()
 	{ 
-		var inputs = [["Node",0],null];
+		var inputs = [["Node",0],["Component",0],null];
 
 		this.getComponentProperties("input", inputs);
 
@@ -17412,8 +17693,16 @@ var Renderer = {
 				LEvent.trigger( scene, "showFrameContext", render_settings );
 		}
 
-		if(render_settings.render_gui)
+		//renders GUI items using mostly the Canvas2DtoWebGL library
+		if(render_settings.render_gui && LEvent.hasBind( scene, "renderGUI") )
+		{
+			if(gl.start2D)
+				gl.start2D();
+			LS.GUI.ResetImmediateGUI(); //mostly to change the cursor
 			LEvent.trigger( scene, "renderGUI", render_settings );
+			if(gl.finish2D)
+				gl.finish2D();
+		}
 
 		this._frame_cpu_time = getTime() - start_time;
 
@@ -34191,6 +34480,17 @@ Script.prototype.onCodeChange = function(code)
 Script.prototype.getResources = function(res)
 {
 	var ctx = this.getContext();
+
+	for(var i in ctx)
+	{
+		var value = ctx[i];
+		var info = ctx.constructor[ "@" + i];
+		if( !value || !info )
+			continue;
+		if( info.type == LS.TYPES.RESOURCE || info.type == LS.TYPES.TEXTURE || info.type == LS.TYPES.MESH )
+			res[ value ] = true;
+	}
+
 	if(ctx && ctx.onGetResources )
 		ctx.onGetResources( res );
 }
@@ -43903,6 +44203,9 @@ Player.prototype._onupdate = function(dt)
 //input
 Player.prototype._onmouse = function(e)
 {
+	//send to the input system
+	LS.Input.onMouse(e);
+
 	//console.log(e);
 	if(this.state != LS.Player.PLAYING)
 		return;

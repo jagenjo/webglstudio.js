@@ -1201,6 +1201,11 @@ var DriveModule = {
 		}
 	},
 
+	onImportToFolder: function( fullpath, on_complete )
+	{
+
+	},
+
 	onUpdatePreview: function(resource, on_complete)
 	{
 		if(!resource || !resource.fullpath)

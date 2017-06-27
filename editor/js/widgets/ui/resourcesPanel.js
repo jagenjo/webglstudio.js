@@ -162,11 +162,13 @@ ResourcesPanelWidget.prototype.createTreeWidget = function()
 		if(!fullpath)
 			return;
 
-		var menu = new LiteGUI.ContextMenu(["Create Folder","Delete Folder","Rename"], { event: e, callback: function(v) {
+		var menu = new LiteGUI.ContextMenu(["Create Folder","Delete Folder","Rename","Import Project"], { event: e, callback: function(v) {
 			if(v == "Create Folder")
 				DriveModule.onCreateFolderInServer( fullpath, function(){ that.refreshTree(); });
 			else if(v == "Delete Folder")
 				DriveModule.onDeleteFolderInServer( fullpath, function(){ that.refreshTree(); });
+			else if(v == "Import Project")
+				DriveModule.onImportToFolder( fullpath, function(){ that.refreshTree(); });
 		}});
 		e.preventDefault();
 		return false;

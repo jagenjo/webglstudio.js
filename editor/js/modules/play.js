@@ -57,6 +57,7 @@ var PlayModule = {
 			var canvas = RenderModule.appendViewportTo( PlayModule.tab.content );
 			RenderModule.render_settings.in_player = true;
 			PlayModule.inplayer = true;
+			LS.GUI._allow_change_cursor = true;
 
 			//move GUI here
 			//if( LS.GUI._root )
@@ -72,6 +73,7 @@ var PlayModule = {
 			//RenderModule.render_settings.in_player = false;
 			//RenderModule.canvas_manager.removeWidget(PlayModule); //remove capture render, update and mouse
 			PlayModule.inplayer = false;
+			LS.GUI._allow_change_cursor = false;
 			RenderModule.appendViewportTo(null);
 			//if( LS.GUI._root )
 			//	RenderModule.visor_container.appendChild( LS.GUI._root );
@@ -312,6 +314,7 @@ var PlayModule = {
 			case "mousedown":
 			case "mousemove":
 			case "mouseup":
+				LS.Input.onMouse(e);
 				LEvent.trigger( LS.GlobalScene, e.eventType || e.type, e, true );
 				break;
 			default:

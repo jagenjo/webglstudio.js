@@ -1303,7 +1303,7 @@ LGraph.prototype.onNodeTrace = function(node, msg, color)
 		+ onDropItem : DOM item dropped over the node
 		+ onDropFile : file dropped over the node
 		+ onConnectInput : if returns false the incoming connection will be canceled
-		+ onConnectionsChange : a connection changed (new one or removed)
+		+ onConnectionsChange : a connection changed (new one or removed) (LiteGraph.INPUT or LiteGraph.OUTPUT, slot, true if connected, link_info, input_info )
 */
 
 /**
@@ -1402,7 +1402,7 @@ LGraphNode.prototype.configure = function(info)
 		{
 			var input = this.inputs[i];
 			var link_info = this.graph.links[ input.link ];
-			this.onConnectionsChange( LiteGraph.INPUT, i, true, link_info ); //link_info has been created now, so its updated
+			this.onConnectionsChange( LiteGraph.INPUT, i, true, link_info, input ); //link_info has been created now, so its updated
 		}
 
 		if(this.outputs)
@@ -1414,7 +1414,7 @@ LGraphNode.prototype.configure = function(info)
 			for(var j = 0; j < output.links.length; ++j)
 			{
 				var link_info = this.graph.links[ output.links[j] ];
-				this.onConnectionsChange( LiteGraph.OUTPUT, i, true, link_info ); //link_info has been created now, so its updated
+				this.onConnectionsChange( LiteGraph.OUTPUT, i, true, link_info, output ); //link_info has been created now, so its updated
 			}
 		}
 	}
@@ -1639,7 +1639,7 @@ LGraphNode.prototype.isInputConnected = function(slot)
 * tells you info about an input connection (which node, type, etc)
 * @method getInputInfo
 * @param {number} slot
-* @return {Object} object or null
+* @return {Object} object or null { link: id, name: string, type: string or 0 }
 */
 LGraphNode.prototype.getInputInfo = function(slot)
 {
@@ -2227,9 +2227,9 @@ LGraphNode.prototype.connect = function( slot, target_node, target_slot )
 		target_node.inputs[target_slot].link = link_info.id;
 
 		if(this.onConnectionsChange)
-			this.onConnectionsChange( LiteGraph.OUTPUT, slot, true, link_info ); //link_info has been created now, so its updated
+			this.onConnectionsChange( LiteGraph.OUTPUT, slot, true, link_info, output ); //link_info has been created now, so its updated
 		if(target_node.onConnectionsChange)
-			target_node.onConnectionsChange( LiteGraph.INPUT, target_slot, true, link_info );
+			target_node.onConnectionsChange( LiteGraph.INPUT, target_slot, true, link_info, input );
 	}
 
 	this.setDirtyCanvas(false,true);
@@ -2286,12 +2286,13 @@ LGraphNode.prototype.disconnectOutput = function( slot, target_node )
 			if( link_info.target_id == target_node.id )
 			{
 				output.links.splice(i,1); //remove here
-				target_node.inputs[ link_info.target_slot ].link = null; //remove there
+				var input = target_node.inputs[ link_info.target_slot ];
+				input.link = null; //remove there
 				delete this.graph.links[ link_id ]; //remove the link from the links pool
 				if(target_node.onConnectionsChange)
-					target_node.onConnectionsChange( LiteGraph.INPUT, link_info.target_slot, false, link_info ); //link_info hasnt been modified so its ok
+					target_node.onConnectionsChange( LiteGraph.INPUT, link_info.target_slot, false, link_info, input ); //link_info hasnt been modified so its ok
 				if(this.onConnectionsChange)
-					this.onConnectionsChange( LiteGraph.OUTPUT, slot, false, link_info );
+					this.onConnectionsChange( LiteGraph.OUTPUT, slot, false, link_info, output );
 				break;
 			}
 		}
@@ -2304,13 +2305,17 @@ LGraphNode.prototype.disconnectOutput = function( slot, target_node )
 			var link_info = this.graph.links[ link_id ];
 
 			var target_node = this.graph.getNodeById( link_info.target_id );
+			var input = null;
 			if(target_node)
-				target_node.inputs[ link_info.target_slot ].link = null; //remove other side link
+			{
+				input = target_node.inputs[ link_info.target_slot ];
+				input.link = null; //remove other side link
+			}
 			delete this.graph.links[ link_id ]; //remove the link from the links pool
 			if(target_node.onConnectionsChange)
-				target_node.onConnectionsChange( LiteGraph.INPUT, link_info.target_slot, false, link_info ); //link_info hasnt been modified so its ok
+				target_node.onConnectionsChange( LiteGraph.INPUT, link_info.target_slot, false, link_info, input ); //link_info hasnt been modified so its ok
 			if(this.onConnectionsChange)
-				this.onConnectionsChange( LiteGraph.OUTPUT, slot, false, link_info );
+				this.onConnectionsChange( LiteGraph.OUTPUT, slot, false, link_info, output );
 		}
 		output.links = null;
 	}
@@ -2379,9 +2384,9 @@ LGraphNode.prototype.disconnectInput = function( slot )
 		}
 
 		if( this.onConnectionsChange )
-			this.onConnectionsChange( LiteGraph.INPUT, slot, false, link_info );
+			this.onConnectionsChange( LiteGraph.INPUT, slot, false, link_info, input );
 		if( target_node.onConnectionsChange )
-			target_node.onConnectionsChange( LiteGraph.OUTPUT, i, false, link_info );
+			target_node.onConnectionsChange( LiteGraph.OUTPUT, i, false, link_info, output );
 	}
 
 	this.setDirtyCanvas(false,true);

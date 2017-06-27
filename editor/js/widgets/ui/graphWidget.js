@@ -28,7 +28,7 @@ GraphWidget.prototype.init = function( options )
 		this.root.id = options.id;
 
 	//top bar
-	var top_widgets = this.top_widgets = new LiteGUI.Inspector( null, { one_line: true });
+	var top_widgets = this.top_widgets = new LiteGUI.Inspector( { one_line: true });
 	top_widgets.addButton(null,"New", { callback: this.onNewGraph.bind(this), width: 50 });
 	top_widgets.addButton(null,"Open", this.onOpenGraph.bind(this) );
 	top_widgets.addButton(null,"Run Step", this.onStepGraph.bind(this) );

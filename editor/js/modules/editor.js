@@ -2024,6 +2024,7 @@ var EditorModule = {
 			icon_img.onerror = function() { 
 				LiteGUI.missing_icons[ component.constructor.icon ] = true;
 				this.src = "imgs/mini-icon-question.png";
+				this.onerror = null; //avoid requesting it ad infinitum when the connection is broken
 			}
 		return icon;
 	},

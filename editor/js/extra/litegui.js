@@ -6998,12 +6998,15 @@ Inspector.prototype.inspectInstance = function( instance, properties, properties
 					default:
 						if( v && v.length )
 						{
+							var is_number = v[0] != null && v[0].constructor === Number;
 							switch(v.length)
 							{
-								case 2: properties_info[i] = { type: "vec2", step: 0.1 }; break;
-								case 3: properties_info[i] = { type: "vec3", step: 0.1 }; break;
-								case 4: properties_info[i] = { type: "vec4", step: 0.1 }; break;
-								default: continue;
+								case 2: properties_info[i] = { type: is_number ? "vec2" : "Array", step: 0.1 }; break;
+								case 3: properties_info[i] = { type: is_number ? "vec3" : "Array", step: 0.1 }; break;
+								case 4: properties_info[i] = { type: is_number ? "vec4" : "Array", step: 0.1 }; break;
+								default: 
+									properties_info[i] = { type: "Array" }; break;
+									continue;
 							}
 						}
 				}

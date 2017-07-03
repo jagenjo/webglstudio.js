@@ -80,8 +80,8 @@ var PlayModule = {
 		}});
 
 		//overwrite method to add the module to the right place
-		var GUIgetRoot = LS.GUI.getRoot.bind(LS.GUI);
-		LS.GUI.getRoot = function()
+		var GUIgetRoot = LS.GUI.getHTMLRoot.bind(LS.GUI);
+		LS.GUI.getHTMLRoot = function()
 		{
 			var gui = GUIgetRoot();
 			if( gui.parentNode != PlayModule.tab.content)
@@ -317,6 +317,10 @@ var PlayModule = {
 				LS.Input.onMouse(e);
 				LEvent.trigger( LS.GlobalScene, e.eventType || e.type, e, true );
 				break;
+			case "keydown":
+			case "keyup":
+				LS.Input.onKey(e);
+				//no break to call the trigger
 			default:
 				LEvent.trigger( LS.GlobalScene, e.eventType || e.type, e, false );
 		}

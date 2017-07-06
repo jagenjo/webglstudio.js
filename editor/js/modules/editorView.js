@@ -195,10 +195,15 @@ var EditorView = {
 			ray.end = vec3.add( vec3.create(), ray.origin, vec3.scale(vec3.create(), ray.direction, 10000 ) );
 		}
 
-		//Node components
+		//Nodes
 		for(var i = 0, l = LS.GlobalScene._nodes.length; i < l; ++i)
 		{
 			var node = LS.GlobalScene._nodes[i];
+
+			if(!node.visible)
+				continue;
+
+			//nodes with special pickings?
 			if(node.renderPicking)
 				node.renderPicking(ray);
 

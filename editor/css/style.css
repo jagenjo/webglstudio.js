@@ -401,6 +401,11 @@ textarea.code {
 	background-color: #A33 !important;
 }
 
+.wsection.error .wsectioncontent {
+	background-color: #5f3939 !important;
+}
+
+
 .wsectiontitle .options_section {
 	opacity: 0.5;
 	width: 16px;

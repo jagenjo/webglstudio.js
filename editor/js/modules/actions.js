@@ -96,7 +96,7 @@ LS.SceneNode.actions["use_prefab"] = {
 		var node = this;
 		EditorModule.showSelectResource( { type:"Prefab", on_complete: function(v){
 			node.prefab = v;
-			inspector.refresh();
+			EditorModule.showNodeInfo(node);
 		}});
 	}
 };

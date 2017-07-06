@@ -127,7 +127,13 @@ var ImporterModule  = {
 			{
 				var res_info = LFS.parsePath(res_fullpath);
 				console.log( res_fullpath );
-				DriveModule.onInsertResourceInScene( { dataset: { restype: res_type, fullpath: res_fullpath } }, options );
+
+				var r;
+				if(options.node)
+					r = EditorModule.onDropResourceOnNode( res_fullpath, options.node, evt );
+
+				if(!r)
+					DriveModule.onInsertResourceInScene( { dataset: { restype: res_type, fullpath: res_fullpath } }, options );
 				return true;
 			}
 		}

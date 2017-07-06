@@ -183,7 +183,7 @@ var PlayModule = {
 
 			if(!demo_window)
 			{
-				demo_window = window.open("player.html", "", "width=800, height=600")
+				demo_window = window.open("player.html?preview", "", "width=800, height=600")
 				demo_window.onload = launch;
 
 				var console = window.console;
@@ -267,6 +267,7 @@ var PlayModule = {
 			LEvent.bind( scene,"finish", this.onSceneStop, this );
 			LS.Input.reset(); //this force some events to be sent
 			LS.GUI.reset();
+
 			scene.start();
 			EditorModule.render_debug_info = false;
 			EditorModule.refreshAttributes();
@@ -296,6 +297,23 @@ var PlayModule = {
 			LEvent.unbind( scene,"finish", this.onSceneStop, this );
 			LS.GUI.reset();
 		}
+	},
+
+	//ensures that if we are using an external file it has been loaded 
+	reloadScripts: function( callback )
+	{
+		var to_reload = [];
+		var res = LS.GlobalScene.getResources();
+		for(var i in res)
+		{
+			if(i.indexOf("://") == -1)
+				continue;
+			to_reload.push(i);
+			LS.ResourcesManager.unregisterResource( i );
+		}
+		
+		if(callback)
+			callback();
 	},
 
 	onSceneStop: function()

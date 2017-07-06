@@ -33,16 +33,11 @@ var EditorModule = {
 
 		var scene = LS.GlobalScene;
 
-		LEvent.bind( scene, "scene_loaded", function(e) { 
-			EditorModule.inspect( scene.root );
-		});
-
 		LEvent.bind( scene, "node_clicked", function(e, node) { 
 			if( !window.PlayModule || !PlayModule.inplayer )
 				EditorModule.inspect( node );
 		});
 		
-
 		SelectionModule.setSelection( scene.root );
 
 		document.addEventListener("keydown", this.globalKeyDown.bind(this), false );
@@ -972,6 +967,7 @@ var EditorModule = {
 		EditorModule.refreshAttributes();
 	},
 
+	//allows to drop script or materials in a node
 	onDropResourceOnNode: function( resource_filename, node, event )
 	{
 		var resource = LS.ResourcesManager.getResource( resource_filename );
@@ -980,6 +976,13 @@ var EditorModule = {
 		else
 			inner( resource );
 
+		event.stopPropagation();
+
+		//this is hardcoded, we need a system to know which file types are allowed to be drag on top of a node
+		var ext = LS.RM.getExtension( resource_filename );
+		if( ext == "js" || ext == "json") //script or material
+			return true;
+
 		function inner( resource )
 		{
 			if(!resource || !resource.assignToNode)
@@ -987,8 +990,10 @@ var EditorModule = {
 
 			resource.assignToNode( node );
 			RenderModule.requestFrame();
-			EditorModule.refreshAttributes();
+			EditorModule.inspectObject( node );
+			//EditorModule.refreshAttributes();
 		}
+
 	},
 
 	//Resets all, it should leave the app state as if a reload was done
@@ -2006,11 +2011,22 @@ var EditorModule = {
 		icon.setAttribute("draggable",true);
 		icon.innerHTML = "<img title='Drag icon to transfer' src='"+ EditorModule.icons_path + icon_url+"'/>";
 		icon.addEventListener("dragstart", function(event) { 
+			
 			event.dataTransfer.setData("uid", component.uid);
-			event.dataTransfer.setData("locator", component.getLocator() );
+			if(!component.root)
+				return false;
+
+			var classname = LS.getObjectClassName( component );
+			var locator;
+			if( event.shiftKey )
+				locator = component.getLocator();
+			else
+				locator = component.root.name + "/" + classname;
+
+			event.dataTransfer.setData("locator", locator );
 			event.dataTransfer.setData("type", "Component");
-			event.dataTransfer.setData("node_uid", component.root.uid);
-			event.dataTransfer.setData("class", LS.getObjectClassName(component));
+			event.dataTransfer.setData("node_uid", component.root.uid );
+			event.dataTransfer.setData("class", classname );
 			if(component.setDragData)
 				component.setDragData(event);
 		});
@@ -2040,9 +2056,6 @@ var EditorModule = {
 	focusCameraInBoundingBox: function( bbox )
 	{
 		var radius = BBox.getRadius( bbox );		
-		//if(radius == 0)
-		//	return;
-
 		var center = BBox.getCenter( bbox );
 		cameraTool.setFocusPoint( center, radius * 2 );
 		RenderModule.requestFrame();
@@ -2055,6 +2068,31 @@ var EditorModule = {
 			return;
 		var bbox = node.getBoundingBox();
 		this.focusCameraInBoundingBox( bbox );
+	},
+
+	//pass event
+	focusCameraInPixel: function(e)
+	{
+		var camera = ToolUtils.getCamera(e);
+		var ray = camera.getRayInPixel( e.canvasx, e.canvasy );
+
+		var instance_info = LS.Picking.getInstanceAtCanvasPosition( e.canvasx, e.canvasy, camera );
+		if(!instance_info || instance_info.constructor !== LS.SceneNode )
+			return false;
+
+		var node = instance_info;
+
+		var info = LS.Physics.raycastNode( ray.origin, ray.direction, node, { triangle_collision: true } );
+
+		//console.log(info);
+
+		if(!info || info.length == 0)
+			return;
+
+		var radius = vec3.distance( info[0].position, ray.origin );
+
+		cameraTool.setFocusPoint( info[0].position, radius );
+		RenderModule.requestFrame();
 	},
 
 	focusCameraInAll: function()

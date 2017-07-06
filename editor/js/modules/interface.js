@@ -445,6 +445,79 @@ LiteGUI.Inspector.prototype.addNode = function( name, value, options )
 }
 LiteGUI.Inspector.widget_constructors["node"] = "addNode";
 
+//to select a node, value must be a valid node identifier (not the node itself)
+LiteGUI.Inspector.prototype.addComponent = function( name, value, options )
+{
+	options = options || {};
+	value = value || "";
+	var that = this;
+	this.values[ name ] = value;
+	
+	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
+	var input = element.querySelector(".wcontent input");
+
+	input.addEventListener("change", function(e) { 
+		LiteGUI.Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
+	});
+
+	var old_callback = options.callback;
+	options.callback = inner_onselect;
+
+	input.style.background = "transparent url('" + InterfaceModule.resource_icons.component +"') no-repeat left 4px center";
+	input.style.paddingLeft = "1.7em";
+	input.setAttribute("placeHolder","Component");
+	
+	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
+		EditorModule.showSelectComponent( value, options.filter, options.callback, element );
+		if(options.callback_button)
+			options.callback_button.call(element, input.value );
+	});
+
+	element.addEventListener("drop", function(e){
+		e.preventDefault();
+		e.stopPropagation();
+		var locator = e.dataTransfer.getData("locator");
+		var comp = LSQ.get( locator );
+		if( comp && comp.constructor.is_component )
+		{
+			input.value = locator;
+			LiteGUI.trigger( input, "change" );
+		}
+		return false;
+	}, true);
+
+
+	//after selecting a node
+	function inner_onselect( component, event )
+	{
+		var component_uid = null;
+		if(component && component.constructor !== String)
+			component_uid = component.uid;
+		else
+			component_uid = component;
+
+		if(value == component_uid)
+			return;
+		
+		value = component_uid || "";
+		if(input.value != value)
+			input.value = value;
+		
+		if(event && event.type !== "change") //to avoid triggering the change event infinitly
+			LiteGUI.trigger( input, "change" );
+
+		if(old_callback)
+			old_callback.call( element, value );
+	}
+
+	this.tab_index += 1;
+	this.append(element);
+	//LiteGUI.focus( input );
+	return element;
+}
+LiteGUI.Inspector.widget_constructors["component"] = "addComponent";
+
+/*
 //to select a component from a node
 LiteGUI.Inspector.prototype.addNodeComponent = function(name, value, options)
 {
@@ -478,6 +551,7 @@ LiteGUI.Inspector.prototype.addNodeComponent = function(name, value, options)
 	return element;
 }
 LiteGUI.Inspector.widget_constructors["node_component"] = "addNodeComponent";
+*/
 
 //To select any kind of resource
 //used by addResource, addMaterial, etc
@@ -869,74 +943,6 @@ LiteGUI.Inspector.prototype.addRenderState = function( name, value, options )
 	return this.addButton(name,"Edit", options ); //the button could be small
 }
 LiteGUI.Inspector.widget_constructors["RenderState"] = "addRenderState";
-
-//to select a node, value must be a valid node identifier (not the node itself)
-LiteGUI.Inspector.prototype.addComponent = function( name, value, options )
-{
-	options = options || {};
-	value = value || "";
-	var that = this;
-	this.values[ name ] = value;
-	
-	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
-	var input = element.querySelector(".wcontent input");
-
-	input.addEventListener("change", function(e) { 
-		LiteGUI.Inspector.onWidgetChange.call(that,element,name,e.target.value, options);
-	});
-
-	var old_callback = options.callback;
-	options.callback = inner_onselect;
-
-	input.style.background = "transparent url('" + InterfaceModule.resource_icons.component +"') no-repeat left 4px center";
-	input.style.paddingLeft = "1.7em";
-	input.setAttribute("placeHolder","Node");
-	
-	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
-		EditorModule.showSelectComponent( value, options.filter, options.callback, element );
-		if(options.callback_button)
-			options.callback_button.call(element, input.value );
-	});
-
-	element.addEventListener("drop", function(e){
-		e.preventDefault();
-		e.stopPropagation();
-		var component_id = e.dataTransfer.getData("uid");
-		input.value = component_id;
-		LiteGUI.trigger( input, "change" );
-		return false;
-	}, true);
-
-
-	//after selecting a node
-	function inner_onselect( component, event )
-	{
-		var component_uid = null;
-		if(component && component.constructor !== String)
-			component_uid = component.uid;
-		else
-			component_uid = component;
-
-		if(value == component_uid)
-			return;
-		
-		value = component_uid || "";
-		if(input.value != value)
-			input.value = value;
-		
-		if(event && event.type !== "change") //to avoid triggering the change event infinitly
-			LiteGUI.trigger( input, "change" );
-
-		if(old_callback)
-			old_callback.call( element, value );
-	}
-
-	this.tab_index += 1;
-	this.append(element);
-	//LiteGUI.focus( input );
-	return element;
-}
-LiteGUI.Inspector.widget_constructors["component"] = "addComponent";
 
 LiteGUI.Inspector.prototype.addShader = function( name, value, options )
 {

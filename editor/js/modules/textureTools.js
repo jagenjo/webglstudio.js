@@ -11,7 +11,7 @@ var TextureTools = {
 		if(this.dialog)
 			this.dialog.close();
 
-		var dialog = new LiteGUI.Dialog("dialog_texture_tools", {title:"Texture Tools", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog( { title:"Texture Tools", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
 		dialog.show();
 		dialog.setPosition(100,100);
 		this.dialog = dialog;
@@ -71,7 +71,7 @@ var TextureTools = {
 		if(texture)
 			filename = texture.fullpath || texture.filename;
 
-		var dialog = new LiteGUI.Dialog("dialog_texture_apply_shader", {title:"Apply Shader", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog( { title:"Apply Shader", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
 		dialog.show();
 		dialog.setPosition(100,100);
 
@@ -153,7 +153,7 @@ var TextureTools = {
 
 	showResizeDialog: function( texture, on_complete )
 	{
-		var dialog = new LiteGUI.Dialog("dialog_texture_resize", {title:"Resize Texture", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog( { title:"Resize Texture", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
 		dialog.show();
 		dialog.setPosition(100,100);
 
@@ -201,7 +201,67 @@ var TextureTools = {
 			if(on_complete)
 				on_complete(resized_texture);
 		}
+	},
+
+	showBlurDialog: function( texture )
+	{
+		var dialog = new LiteGUI.Dialog( { title:"Blur Texture", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
+		dialog.show();
+		dialog.setPosition(100,100);
+
+		var widgets = new LiteGUI.Inspector( { name_width: "50%" } );
+		dialog.add( widgets );
+
+		var iterations = 1;
+		var size = 1;
+		var temp = null;
+
+		widgets.addNumber("Iterations", iterations, { min:1, step:1, precision:0, callback: function(v){
+			iterations = v;
+		}});
+
+		widgets.addSlider("Size", size, { min:0, max:2, callback: function(v){
+			size = v;
+		}});
+
+		widgets.addButton(null, "Apply Blur", { callback: function(){
+			for(var i = 0; i < iterations; ++i)
+				temp = texture.applyBlur(size,size,1,temp);
+			RenderModule.requestFrame();
+		}});
+
+		dialog.show();
+		dialog.adjustSize();		
+	},
+
+	showFillDialog: function( texture )
+	{
+		var dialog = new LiteGUI.Dialog( { title:"Fill Texture", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
+		dialog.show();
+		dialog.setPosition(100,100);
+
+		var widgets = new LiteGUI.Inspector( { name_width: "50%" } );
+		dialog.add( widgets );
+
+		var color = vec4.fromValues(1,1,1,1);
+
+		widgets.addColor("Color", color, { callback: function(v){
+			color.set( v );
+		}});
+
+		widgets.addSlider("Alpha", color[3], { min:0, max:1, callback: function(v){
+			color[3] = v;
+		}});
+
+		widgets.addButton(null, "Fill", { callback: function(){
+			texture.fill(color);
+			RenderModule.requestFrame();
+		}});
+
+		dialog.show();
+		dialog.adjustSize();		
 	}
+
 };
 
 GL.Texture.prototype.inspect = function( widgets, skip_default_widgets )
@@ -220,15 +280,23 @@ GL.Texture.prototype.inspect = function( widgets, skip_default_widgets )
 
 	widgets.addTitle("Actions");
 
+	widgets.widgets_per_row = 2;
+	
+	widgets.addButton(null, "Blur", function(){
+		TextureTools.showBlurDialog( texture );
+	});
+
 	widgets.addButton(null, "Apply shader", function(){
 		TextureTools.showApplyShaderDialog( texture );
 	});
 	widgets.addButton(null, "Fill", function(){
-		RenderModule.requestFrame();
+		TextureTools.showFillDialog( texture );
 	});
 	widgets.addButton(null, "Resize", function(){
 		TextureTools.showResizeDialog( texture );
 	});
+
+	widgets.widgets_per_row = 1;
 
 	if(!skip_default_widgets)
 		DriveModule.addResourceInspectorFields( this, widgets );

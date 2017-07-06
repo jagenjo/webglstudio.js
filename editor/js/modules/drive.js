@@ -2715,9 +2715,16 @@ DriveModule.registerAssignResourceCallback("Prefab", function( fullpath, restype
 	//prefab
 	DriveModule.loadResource( fullpath, function(resource) { 
 		//console.log(resource); //log
-		var node = resource.createObject();
+		var node = null;
+
+		if(resource.constructor === LS.Prefab)
+			node = resource.createObject();
+		else if(resource.constructor === LS.SceneNode )
+			node = resource.clone(); //weird situation here
+
 		if(!node)
 			return LiteGUI.alert("Error in Prefab, cannot be inserted");
+
 		LS.GlobalScene.root.addChild(node);
 		var resources = node.getResources({});
 		LS.ResourcesManager.loadResources( resources );

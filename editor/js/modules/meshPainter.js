@@ -11,12 +11,15 @@ var MeshPainter = {
 		channel: "color",
 		uvs: "0",
 		tex_size: 512,
-		bg_color: [0,0,0],
+		tex_format: "GL.RGB",
+		bg_color: vec4.fromValues(0,0,0,1),
 	},
 
 	brush: {
+		type: "brush",
 		color: vec3.fromValues(1,1,1),
 		alpha: 1,
+		opacity: 1,
 		size: 1,
 		channels: [1,1,1,1],
 		spread: 0,
@@ -40,12 +43,13 @@ var MeshPainter = {
 			u_brushpos2: vec3.create(),
 			u_brushsize: 1.0,
 			u_brushcolor: vec4.create(),
-			u_brushtexture: 0
+			u_brushtexture: 0,
+			u_erasing: 0
 		}
 
-			LEvent.bind( LS.GlobalScene, "clear", function(){
-				MeshPainter.setPaintedNode(null);
-			});
+		LEvent.bind( LS.GlobalScene, "clear", function(){
+			MeshPainter.setPaintedNode(null);
+		});
 	},
 
 	setPaintedNode: function(node)
@@ -174,7 +178,7 @@ var MeshPainter = {
 			if( channels.indexOf( MeshPainter.settings.channel ) == -1 )
 				MeshPainter.settings.channel = channels[0];
 
-			widgets.addInfo("Node name", MeshPainter.painted_node.id );
+			widgets.addString("Node name", MeshPainter.painted_node.name );
 
 			widgets.addTitle("Target");
 
@@ -192,8 +196,11 @@ var MeshPainter = {
 				var tex_name = "texture_" + (Math.random() * 1000).toFixed();
 				//widgets.addTitle("New texture");
 				widgets.addString("Texture name", tex_name, { callback: function (value) { tex_name = value }});
-				widgets.addCombo("Texture Size", MeshPainter.settings.tex_size, { values:[64,128,256,512,1024,2048,4096], callback: function (value) { MeshPainter.settings.tex_size = value }});
-				widgets.addColor("Bg Color", MeshPainter.settings.bg_color, { callback: function (value) { MeshPainter.settings.bg_color = value }});
+				widgets.widgets_per_row = 2;
+				widgets.addCombo("Size", MeshPainter.settings.tex_size, { values:[64,128,256,512,1024,2048,4096], callback: function (value) { MeshPainter.settings.tex_size = value }});
+				widgets.addCombo("Format", MeshPainter.settings.tex_format, { values:["GL.RGB","GL.RGBA"], callback: function (value) { MeshPainter.settings.tex_format = value }});
+				widgets.widgets_per_row = 1;
+				widgets.addColor("Bg Color", MeshPainter.settings.bg_color, { callback: function (value) { MeshPainter.settings.bg_color.set(value) }});
 				widgets.addButton("","Create texture" , { callback: function (value) { 
 					MeshPainter.createTexture( node, MeshPainter.settings.channel );
 					inner_update();
@@ -202,7 +209,14 @@ var MeshPainter = {
 			}
 			else
 			{
-				widgets.addInfo("Size", texture.width + "x" + texture.height );
+				var format_str = "?";
+				switch( texture.format )
+				{
+					case GL.RGBA: format_str = "GL.RGBA"; break;
+					case GL.RGB: format_str = "GL.RGB"; break;
+				}
+			
+				widgets.addInfo("Texture", "Size: " + texture.width + "x" + texture.height + " Format: " + format_str );
 				widgets.widgets_per_row = 2;
 				widgets.addButton(null,"Clone" , { callback: function (value) { 
 					MeshPainter.cloneTextureInChannel();
@@ -224,6 +238,9 @@ var MeshPainter = {
 
 			//Brush info
 			widgets.addTitle("Brush");
+			widgets.addCombo("Type", MeshPainter.brush.type, { values: ["brush","eraser","set_alpha"], callback: function(v) { 
+				MeshPainter.brush.type = v;
+			}});
 			widgets.addNumber("Size", MeshPainter.brush.size, { min:0.1, step: 0.1, callback: function(v) { 
 				MeshPainter.brush.size = v;
 			}});
@@ -234,6 +251,9 @@ var MeshPainter = {
 				MeshPainter.brush.alpha = v;
 			}});
 			widgets.widgets_per_row = 1;
+			widgets.addSlider("Opacity", MeshPainter.brush.opacity, { min:0.01, max: 1, callback: function(v) { 
+				MeshPainter.brush.opacity = v;
+			}});
 			widgets.addCheckbox("Blending", MeshPainter.brush.blending, { callback: function(v) { MeshPainter.brush.blending = v; }});
 
 			widgets.widgets_per_row = 4;
@@ -329,7 +349,9 @@ var MeshPainter = {
 		channel = channel || "color";
 
 		var tex_size = this.settings.tex_size || 512;
-		this.current_texture = new GL.Texture(tex_size,tex_size, { format: gl.RGB, magFilter: gl.LINEAR, minFilter: gl.LINEAR_MIPMAP_LINEAR });
+		var format = eval( this.settings.tex_format ) || GL.RGB;
+
+		this.current_texture = new GL.Texture(tex_size,tex_size, { format: format, magFilter: gl.LINEAR, minFilter: gl.LINEAR_MIPMAP_LINEAR });
 		var tex_name = name || "texture_" + (Math.random() * 1000).toFixed();
 		tex_name = tex_name + ".png"; //used for storing later
 		this.current_texture.filename = tex_name;
@@ -343,16 +365,13 @@ var MeshPainter = {
 		var mat = node.getMaterial();
 		if(!mat)
 		{
-			mat = new LS.Material();
+			mat = new LS.StandardMaterial();
 			node.material = mat;
 		}
 
 		mat.setTexture( channel, tex_name);
-		var bg_color = this.settings.bg_color || [1,1,1];
-		this.current_texture.drawTo( function() {
-			gl.clearColor(bg_color[0],bg_color[1],bg_color[2],1);
-			gl.clear( gl.COLOR_BUFFER_BIT );
-		});
+		var bg_color = this.settings.bg_color || [1,1,1,1];
+		this.current_texture.fill( bg_color, true );
 
 		RenderModule.requestFrame();
 		EditorModule.inspect( node );
@@ -388,13 +407,15 @@ var MeshPainter = {
 		return RenderModule.under_camera || RenderModule.camera;
 	},
 
-	addSprite3D: function(pos, normal, use_line)
+	addSprite3D: function( pos, normal, use_line )
 	{
 		var sprite = {
+			type: this.brush.type,
 			pos: pos,
 			normal: normal,
 			color: vec3.clone( this.brush.color ),
 			alpha: this.brush.alpha,
+			opacity: this.brush.opacity,
 			size: this.brush.size
 		};
 
@@ -428,6 +449,7 @@ var MeshPainter = {
 		else
 			gl.blendFuncSeparate( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.SRC_ALPHA, gl.DST_ALPHA );
 		gl.blendEquation( gl.FUNC_ADD, gl.MAX );
+		gl.blendColor( 0,0,0,0 );
 
 		gl.colorMask( MeshPainter.brush.channels[0], MeshPainter.brush.channels[1], MeshPainter.brush.channels[2], MeshPainter.brush.channels[3]);
 
@@ -448,8 +470,7 @@ var MeshPainter = {
 		var shader = null;
 		var model = this.getPaintedNode().transform.getGlobalMatrix();
 
-
-		for(var i in this.pending_sprites3D)
+		for(var i = 0; i < this.pending_sprites3D.length; ++i)
 		{
 			var sprite = this.pending_sprites3D[i];
 
@@ -459,7 +480,26 @@ var MeshPainter = {
 				uniforms.u_brushpos2.set( sprite.pos2 );
 			uniforms.u_brushsize = sprite.size;
 			uniforms.u_brushcolor.set( sprite.color );
-			uniforms.u_brushcolor[3] = sprite.alpha;
+
+			if( sprite.type == "eraser" )
+			{
+				gl.blendColor( 0,0,0,0 ); //desired alpha result
+				gl.blendFunc( GL.CONSTANT_COLOR, GL.ONE_MINUS_SRC_ALPHA );
+				gl.colorMask( false,false,false,true );
+				uniforms.u_brushcolor[3] = sprite.opacity; //how much to apply the effect
+			}
+			else if( sprite.type == "set_alpha" )
+			{
+				gl.blendColor( 0,0,0, sprite.alpha ); //desired alpha result
+				gl.blendFunc( GL.CONSTANT_COLOR, GL.ONE_MINUS_SRC_ALPHA );
+				gl.colorMask( false,false,false,true );
+				uniforms.u_brushcolor[3] = sprite.opacity; //how much to apply the effect
+			}
+			else //brush
+			{
+				uniforms.u_brushcolor[3] = sprite.opacity;
+				gl.colorMask( MeshPainter.brush.channels[0], MeshPainter.brush.channels[1], MeshPainter.brush.channels[2], MeshPainter.brush.channels[3]);
+			}
 
 			if(sprite.pos2)
 				shader = shader_line;
@@ -470,7 +510,7 @@ var MeshPainter = {
 			shader.draw( mesh );
 		}
 
-		this.pending_sprites3D = [];
+		this.pending_sprites3D.length = 0;
 
 		//restore state
 		gl.disable(gl.BLEND);
@@ -478,6 +518,7 @@ var MeshPainter = {
 		gl.blendFuncSeparate( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ZERO );
 		gl.blendEquation( gl.FUNC_ADD, gl.FUNC_ADD );
 		gl.colorMask(1,1,1,1);
+		gl.blendColor( 0,0,0,0 );
 	},
 };
 
@@ -760,6 +801,8 @@ var meshPainterTool = {
 			MeshPainter.brush.size *= 0.8;
 
 		RenderModule.requestFrame();
+		e.stopPropagation();
+		return true;
 	},
 	
 	inspect: function( widgets, dialog )

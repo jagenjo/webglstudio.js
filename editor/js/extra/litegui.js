@@ -3880,7 +3880,7 @@ LiteGUI.LineEditor = LineEditor;
 				that._timeout_mouseover = setTimeout((function(){
 					LiteGUI.trigger(this,"click");
 					that._timeout_mouseover = null;
-				}).bind(this),1500);
+				}).bind(this),500);
 			});
 			
 			element.addEventListener("dragleave",function(e){

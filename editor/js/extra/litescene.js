@@ -1686,6 +1686,11 @@ var LSQ = {
 		if( v === undefined && target[ varname ] === undefined )
 			return null;
 		return v !== undefined ? v : target[ varname ];
+	},
+
+	log: function()
+	{
+		console.log.call( console, arguments );
 	}
 };
 
@@ -2316,7 +2321,10 @@ var Input = {
 LS.Input = Input;
 
 /**
-* GUI is a static class used to attach HTML elements on top of the 3D Canvas in a safe way
+* GUI is a static class used to create two kinds of GUIs: HTML GUIs on top of the 3D Canvas (in a safe way) or Immediate GUI using a Canvas2D (fast gui)
+* For HTML GUIs check the getHTMLRoot function.
+* For Immediate GUIs check the Box,Button,Toggle,Textfield,HorizontalSlider,VerticalSlider and Toolbar.
+* To change colors of the immediate GUI check the LS.GUI.GUIStyle
 *
 * @class GUI
 * @namespace LS
@@ -2334,7 +2342,8 @@ var GUI = {
 		backgroundColor: "#333",
 		backgroundColorOver: "#AAA",
 		selected: "#AAF",
-		unselected: "#AAA"
+		unselected: "#AAA",
+		margin: 0.2
 	},
 
 	clicked_enter: false,
@@ -2504,9 +2513,9 @@ var GUI = {
 	/**
 	* shows the HTML GUI 
 	*
-	* @method show
+	* @method showHTML
 	*/
-	show: function()
+	showHTML: function()
 	{
 		if(!this._root)
 			return;
@@ -2517,9 +2526,9 @@ var GUI = {
 	/**
 	* hides the HTML GUI (but it is still existing) 
 	*
-	* @method hide
+	* @method hideHTML
 	*/
-	hide: function()
+	hideHTML: function()
 	{
 		if(!this._root)
 			return;
@@ -2529,11 +2538,11 @@ var GUI = {
 	/**
 	* Loads resource containing the HTML code for the GUI and attachs it inside a div to the hud
 	*
-	* @method load
+	* @method loadHTML
 	* @param {String} url the url of the resource containing all the HTML code
 	* @param {Function} on_complete callback that will be called once the HTML has been loaded and attached to the doom, it receives the HTMLElement containing all the HTML
 	*/
-	load: function( url, on_complete )
+	loadHTML: function( url, on_complete )
 	{
 		LS.ResourcesManager.load( url, function(res){
 			var gui_root = LS.GUI.getHTMLRoot();
@@ -2646,7 +2655,7 @@ var GUI = {
 	*
 	* @method Button
 	* @param {Array} area [x,y,width,height]
-	* @param {String|GL.Texture} content could be a string or a GL.Texture
+	* @param {String|GL.Texture} content could be a string or a GL.Texture (if null the button will be invisible)
 	* @param {String|GL.Texture} content_over same as before but in case the mouse is over
 	* @return {Boolean} true if the button was pressed 
 	*/
@@ -2671,29 +2680,29 @@ var GUI = {
 				LS.Input.current_click = false; //consume event
 		}
 
-		if( !content || content.constructor === String )
+		if(content == null) //allows to create invisible buttons
+			return clicked;
+
+		if( content.constructor === String )
 		{
 			ctx.fillStyle = clicked ? "#FFF" : (is_over ? this.GUIStyle.backgroundColorOver : this.GUIStyle.backgroundColor );
 			ctx.fillRect( area[0], area[1], area[2], area[3] );
 		}
 
-		if(content)
+		if(content.constructor === GL.Texture)
 		{
-			if(content.constructor === GL.Texture)
-			{
-				var texture = content;
-				if( is_over && content_over && content_over.constructor === GL.Texture)
-					texture = content_over;
-				ctx.drawImage( texture, area[0], area[1], area[2], area[3] );
-			}
-			else if(content.constructor === String)
-			{
-				ctx.fillStyle = this.GUIStyle.color;
-				ctx.font = (area[3]*0.75).toFixed(0) + "px " + this.GUIStyle.font;
-				ctx.textAlign = "center";
-				ctx.fillText( content, area[0] + area[2] * 0.5, area[1] + area[3] * 0.75 );
-				ctx.textAlign = "left";
-			}
+			var texture = content;
+			if( is_over && content_over && content_over.constructor === GL.Texture)
+				texture = content_over;
+			ctx.drawImage( texture, area[0], area[1], area[2], area[3] );
+		}
+		else if(content.constructor === String)
+		{
+			ctx.fillStyle = this.GUIStyle.color;
+			ctx.font = (area[3]*0.75).toFixed(0) + "px " + this.GUIStyle.font;
+			ctx.textAlign = "center";
+			ctx.fillText( content, area[0] + area[2] * 0.5, area[1] + area[3] * 0.75 );
+			ctx.textAlign = "left";
 		}
 
 		return clicked;
@@ -2847,13 +2856,13 @@ var GUI = {
 	* Renders a textfield widget and returns the current value
 	* Remember: you must pass as text the same text returned by this function in order to work propertly
 	*
-	* @method Toggle
+	* @method TextField
 	* @param {Array} area [x,y,width,height]
 	* @param {Boolean} value if the checkbox is on or off
 	* @param {Number} max_length to limit the text, otherwise leave blank
 	* @return {Boolean} the current state of the checkbox (will be different from value if it was pressed)
 	*/
-	TextField: function( area, text, max_length )
+	TextField: function( area, text, max_length, is_password )
 	{
 		if(!area)
 			throw("No area");
@@ -2885,6 +2894,7 @@ var GUI = {
 			is_selected = true;
 		}
 
+		this.clicked_enter = false;
 		if(is_selected)
 		{
 			var keys = LS.Input.keys_buffer;
@@ -2927,7 +2937,15 @@ var GUI = {
 		if( is_selected && (((getTime() * 0.002)|0) % 2) == 0 )
 			cursor = "|";
 
-		ctx.fillText( text + cursor, area[0] + margin*2, area[1] + area[3] * 0.75 );
+		var final_text = text;
+		if(is_password)
+		{
+			final_text = "";
+			for(var i = 0; i < text.length; ++i)
+				final_text += "*";
+		}
+
+		ctx.fillText( final_text + cursor, area[0] + margin*2, area[1] + area[3] * 0.75 );
 
 		return text;
 	},
@@ -2971,7 +2989,7 @@ var GUI = {
 		if(norm_value < 0) norm_value = 0;
 		if(norm_value > 1) norm_value = 1;
 
-		var margin = (area[3]*0.2);
+		var margin = (area[3]*this.GUIStyle.margin);
 
 		if( mouse )
 		{
@@ -3039,7 +3057,7 @@ var GUI = {
 		if(norm_value < 0) norm_value = 0;
 		if(norm_value > 1) norm_value = 1;
 
-		var margin = (area[2]*0.2)
+		var margin = (area[2]*this.GUIStyle.margin)
 
 		if( mouse )
 		{
@@ -3069,6 +3087,11 @@ var GUI = {
 		gl.canvas.style.cursor = type || "";
 	}
 };
+
+//LEGACY API
+GUI.show = GUI.showHTML;
+GUI.hide = GUI.hideHTML;
+GUI.load = GUI.loadHTML;
 
 GUI.getRoot = function()
 {
@@ -3215,7 +3238,7 @@ var ResourcesManager = {
 		var point = complex_extension ? fullpath.indexOf(".") : fullpath.lastIndexOf(".");
 		if(point == -1)
 			return "";
-		return fullpath.substr(point+1).toLowerCase();
+		return fullpath.substr(point+1).toLowerCase().trim();
 	},
 
 	/**
@@ -6723,6 +6746,15 @@ Material.prototype.getLocator = function()
 	return this.uid;
 }
 
+Material.prototype.assignToNode = function(node)
+{
+	if(!node)
+		return false;
+	var filename = this.fullpath || this.filename;
+	node.material = filename ? filename : this;
+	return true;
+}
+
 //this has been moved to ShaderCode?
 Material.processShaderCode = function(code)
 {
@@ -7142,7 +7174,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	if( pass.id == COLOR_PASS && this._light_mode !== Material.NO_LIGHTS )
 		lights = LS.Renderer.getNearLights( instance );
 
-	var ignore_lights = render_settings.lights_disabled;
+	var ignore_lights = render_settings.lights_disabled || this._light_mode === Material.NO_LIGHTS;
 
 	if( !lights || lights.length == 0 || ignore_lights )
 	{
@@ -9289,6 +9321,9 @@ ComponentContainer.prototype.configureComponents = function( info )
 	if(!info.components)
 		return;
 
+	var to_configure = [];
+
+	//attach first, configure later
 	for(var i = 0, l = info.components.length; i < l; ++i)
 	{
 		var comp_info = info.components[i];
@@ -9318,7 +9353,12 @@ ComponentContainer.prototype.configureComponents = function( info )
 		}
 
 		//what about configure the comp after adding it? 
-		comp.configure( comp_info[1] );
+		//comp.configure( comp_info[1] );
+		to_configure.push( comp, comp_info[1] );
+
+		//HACK very special case: due to requireScript
+		if( comp.constructor === LS.Components.ScriptFromFile )
+			comp._filename = comp_info[1].filename;
 
 		//editor stuff
 		if( comp_info[1].editor )
@@ -9327,6 +9367,13 @@ ComponentContainer.prototype.configureComponents = function( info )
 		//ensure the component uid is stored, some components may forgot about it
 		if( comp_info[1].uid && comp_info[1].uid !== comp.uid )
 			comp.uid = comp_info[1].uid;
+	}
+
+	//configure components now that all of them are created
+	//this is to avoid problems with components that check if the node has other components and if not they create it
+	for(var i = 0, l = to_configure.length; i < l; i+=2)
+	{
+		to_configure[i].configure( to_configure[i+1] );
 	}
 }
 
@@ -9404,6 +9451,16 @@ ComponentContainer.prototype.addComponent = function( component, index )
 	if(!component)
 		throw("addComponent cannot receive null");
 
+	//you may pass a component class instead of an instance
+	if(component.constructor === String)
+	{
+		component = LS.Components[ component ];
+		if(!component)
+			throw("component class not found: ", arguments[0] );
+	}
+	if(component.is_component)
+		component = new component();
+	
 	//link component with container
 	component._root = this;
 
@@ -9543,6 +9600,26 @@ ComponentContainer.prototype.getComponent = function( component_class, index )
 	//convert string to class
 	if( component_class.constructor === String )
 	{
+		//special case, locator by name (the locator starts with an underscore if it is meant to be a name)
+		if( component_class[0] == "_" ) 
+		{
+			component_class = component_class.substr(1); //remove underscore
+			for(var i = 0, l = this._components.length; i < l; ++i)
+			{
+				if( this._components[i].name == component_class )
+				{
+					if(index !== undefined && index > 0)
+					{
+						index--;
+						continue;
+					}
+					return this._components[i];
+				}
+			}
+			return false;
+		}
+
+		//otherwise the string represents the class name
 		component_class = LS.Components[ component_class ];
 		if(!component_class)
 			return;
@@ -9634,26 +9711,109 @@ ComponentContainer.prototype.setComponentIndex = function( component, index )
 
 
 /**
-* executes the method with a given name in all the components
-* @method processActionInComponents
-* @param {String} action_name the name of the function to execute in all components (in string format)
-* @param {Array} params array with every parameter that the function may need
+* Ensures this node has a component of the specified class, if not it creates one and attaches it
+* @method requireComponent
+* @param {Object|String} component_class the class to search a component from (could be the class or the name)
+* @param {Object} data [optional] the object to configure the component from
+* @return {Component} the component found or created
 */
-ComponentContainer.prototype.processActionInComponents = function(action_name,params)
+ComponentContainer.prototype.requireComponent = function( component_class, data )
 {
-	if(!this._components)
-		return;
-	for(var i = 0, l = this._components.length; i < l; ++i)
+	if(!component_class)
+		throw("no component class specified");
+
+	//convert string to class
+	if( component_class.constructor === String )
+	{
+		component_class = LS.Components[ component_class ];
+		if(!component_class)
+		{
+			console.error("component class not found:", arguments[0] );
+			return null;
+		}
+	}
+
+	//search component
+	var l = this._components.length;
+	for(var i = 0; i < l; ++i)
+	{
+		if( this._components[i].constructor === component_class )
+			return this._components[i];
+	}
+
+	var compo = new component_class();
+	this.addComponent(compo, l ); //insert before the latest scripts, to avoid situations where when partially parsed the components the component is attached but not parsed yet
+	if(data)
+		compo.configure(data);
+	return compo;
+}
+
+/**
+* Ensures this node has a ScriptFromFile component of the specified script url, if not it creates one and attaches it
+* @method requireScript
+* @param {String} url the url to the script
+* @return {Component} the ScriptFromFile component found or created
+*/
+ComponentContainer.prototype.requireScript = function( url )
+{
+	if(!url)
+		throw("no url specified");
+
+	var component_class = LS.Components.ScriptFromFile;
+	url = LS.ResourcesManager.cleanFullpath( url ); //remove double slashes or spaces
+
+	//search component
+	var l = this._components.length;
+	for(var i = 0; i < l; ++i)
 	{
 		var comp = this._components[i];
-		if( !comp[action_name] || comp[action_name].constructor !== Function )
-			continue;
-
-		if(!params || params.constructor !== Array)
-			comp[action_name].call(comp, params);
-		else
-			comp[action_name].apply(comp, params);
+		if( comp.constructor === component_class && comp._filename == url )
+			return comp;
 	}
+
+	var compo = new component_class();
+	compo.filename = url;
+	this.addComponent( compo, l );
+	return compo;
+}
+
+/**
+* executes the method with a given name in all the components
+* @method processActionInComponents
+* @param {String} method_name the name of the function to execute in all components (in string format)
+* @param {Array} params array with every parameter that the function may need
+*/
+ComponentContainer.prototype.processActionInComponents = function( method_name, params )
+{
+	if(this._components && this._components.length)
+	{
+		for(var i = 0, l = this._components.length; i < l; ++i)
+		{
+			var comp = this._components[i];
+			if( !comp[method_name] || comp[method_name].constructor !== Function )
+				continue;
+
+			if(!params || params.constructor !== Array)
+				comp[method_name].call(comp, params);
+			else
+				comp[method_name].apply(comp, params);
+		}
+	}
+}
+
+/**
+* executes the method with a given name in all the components and its children
+* @method broadcastMessage
+* @param {String} method_name the name of the function to execute in all components (in string format)
+* @param {Array} params array with every parameter that the function may need
+*/
+ComponentContainer.prototype.broadcastMessage = function( method_name, params )
+{
+	this.processActionInComponents( method_name, params );
+
+	if(this._children && this._children.length )
+		for(var i = 0, l = this._children.length; i < l; ++i)
+			this._children[i].broadcastMessage( method_name, params );
 }
 
 
@@ -10361,6 +10521,88 @@ Component.prototype.getLocator = function( property_name )
 	return this._root.uid + "/" + this.uid;
 }
 
+Component.prototype.getPropertyInfoFromPath = function( path )
+{
+	if( !path.length )
+		return null;
+
+	var v;
+	var varname = path[0];
+
+	//to know the value of a property of the given target
+	if( this.getPropertyValue )
+		v = this.getPropertyValue( varname );
+
+	//special case when the component doesnt specify any locator info but the property referenced does
+	//used in TextureFX
+	if (v === undefined && path.length > 1 && this[ varname ] && this[ varname ].getPropertyInfoFromPath )
+	{
+		var r = this[ varname ].getPropertyInfoFromPath( path.slice(1) );
+		if(r)
+		{
+			r.node = this.root;
+			return r;
+		}
+	}
+
+	if(v === undefined && this[ varname ] === undefined )
+		return null;
+
+	//if we dont have a value yet then take it directly from the object
+	var value = v !== undefined ? v : this[ varname ];
+
+	var extra_info = this.constructor[ "@" + varname ];
+	var type = "";
+	if(extra_info)
+		type = extra_info.type;
+	if(!type && value !== null && value !== undefined)
+	{
+		if(value.constructor === String)
+			type = "string";
+		else if(value.constructor === Boolean)
+			type = "boolean";
+		else if(value.length)
+			type = "vec" + value.length;
+		else if(value.constructor === Number)
+			type = "number";
+	}
+
+	return {
+		node: this.root,
+		target: this,
+		name: varname,
+		value: value,
+		type: type
+	};	
+}
+
+/**
+* calls a method in all components in this node and all the children nodes
+* @method broadcastMessage
+* @param {String} method_name 
+* @param {*} data
+**/
+Component.prototype.broadcastMessage = function( method_name, data )
+{
+	var node = this._root;
+	if(!node)
+		return;
+	node.broadcastMessage( method_name, data );
+}
+
+/**
+* returns the first component of type class_name of the SceneNode where this component belongs
+* @method getComponent
+* @param {String|Component} class_name the name of the class in string format or the component class itself
+* @return {*} Component or null
+**/
+Component.prototype.getComponent = function( class_name )
+{
+	if(!this._root)
+		return null;
+	return this._root.getComponent( class_name );
+}
+
 /**
 * Bind one object event to a method in this component
 * @method bind
@@ -10679,12 +10921,18 @@ Resource.prototype.getCategory = function()
 
 Resource.prototype.assignToNode = function(node)
 {
-	if(!node || this.getCategory() != "Script")
+	if(!node) 
 		return false;
 
 	var filename = this.fullpath || this.filename;
-	var script_component = new LS.Components.ScriptFromFile({ filename: filename });
-	node.addComponent( script_component );
+	var category = this.getCategory();
+
+	if( category == "Script" )
+	{
+		var script_component = new LS.Components.ScriptFromFile({ filename: filename });
+		node.addComponent( script_component );
+	}
+
 	return true;
 }
 
@@ -11301,6 +11549,7 @@ Take.prototype.onlyRotations = function()
 {
 	var num = 0;
 	var temp = new Float32Array(10);
+	var temp_quat = new Float32Array(4);
 	var final_quat = temp.subarray(3,7);
 
 	for(var i = 0; i < this.tracks.length; ++i)
@@ -11337,8 +11586,9 @@ Take.prototype.onlyRotations = function()
 			{
 				var sample = data.subarray(k*17+1,(k*17)+17);
 				var new_data = LS.Transform.fromMatrix4ToTransformData( sample, temp );
-				data[k*11] = data[k*17]; //timestamp
-				data.set( final_quat, k*5+1); //overwrite inplace (because the output is less big that the input)
+				temp_quat.set( temp.subarray(3,7) );
+				data[k*5] = data[k*17]; //timestamp
+				data.set( temp_quat, k*5+1); //overwrite inplace (because the output is less big that the input)
 			}
 		}
 		else if( old_type == "trans10" )
@@ -12360,7 +12610,7 @@ Track.prototype.convertToTrans10 = function()
 	for(var k = 0; k < num_samples; ++k)
 	{
 		var sample = data.subarray(k*17+1,(k*17)+17);
-		var new_data = LS.Transform.fromMatrix4ToTransformData( sample, temp );
+		LS.Transform.fromMatrix4ToTransformData( sample, temp );
 		data[k*11] = data[k*17]; //timestamp
 		data.set(temp,k*11+1); //overwrite inplace (because the output is less big that the input)
 	}
@@ -12509,6 +12759,8 @@ LS.Interpolators["texture"] = function( a, b, t, last )
 
 function Prefab(o)
 {
+	this.filename = null; //base file
+	this.fullpath = null; //full path 
 	this.resource_names = []; 
 	this.prefab_json = null;
 	this.prefab_data = null; //json object
@@ -12519,6 +12771,20 @@ function Prefab(o)
 }
 
 Prefab.version = "0.2"; //used to know where the file comes from 
+
+/**
+* assign the json object
+* @method setData
+* @param {object|SceneNode} data
+**/
+Prefab.prototype.setData = function(data)
+{
+	if( data && data.constructor === LS.SceneNode )
+		data = data.serialize();
+	data.object_class = "SceneNode";
+	this.prefab_data = data;
+	this.prefab_json = JSON.stringify( data );
+}
 
 /**
 * configure the prefab
@@ -12632,7 +12898,7 @@ Prefab.prototype.createObject = function()
 	}
 
 	var node = new LS.SceneNode();
-	node.configure(conf_data);
+	node.configure( conf_data );
 	LS.ResourcesManager.loadResources( node.getResources({},true) );
 
 	if(this.fullpath)
@@ -12660,19 +12926,17 @@ Prefab.createPrefab = function( filename, node_data, resource_names_list )
 	filename = filename.replace(/ /gi,"_");
 	resource_names_list = resource_names_list || [];
 
-	//LS.clearUIds( node_data ); //remove uids of nodes and components
-	node_data.object_class = "SceneNode";
-
 	var prefab = new LS.Prefab();
 	var ext = LS.ResourcesManager.getExtension(filename);
-	if(ext != "wbin")
+	if( ext != "wbin" )
 		filename += ".wbin";
 
 	//checkfilenames and rename them to short names
 	prefab.filename = filename;
 	prefab.resource_names = resource_names_list;
-	prefab.prefab_data = node_data;
-	prefab.prefab_json = JSON.stringify( prefab.prefab_data );
+
+	//assign data
+	prefab.setData( node_data );
 
 	//get all the resources and store them in a WBin
 	var bindata = LS.Prefab.packResources( resource_names_list, { "@json": prefab.prefab_json, "@version": Prefab.version } );
@@ -12728,7 +12992,7 @@ Prefab.packResources = function( resource_names_list, base_data )
 
 Prefab.prototype.containsResources = function()
 {
-	return this.resource_names.length > 0;
+	return this.resource_names && this.resource_names.length > 0 ? true : false;
 }
 
 Prefab.prototype.updateFromNode = function( node, clear_uids )
@@ -12789,6 +13053,13 @@ Prefab.prototype.applyToNodes = function( scene )
 Prefab.prototype.getDataToStore = function()
 {
 	this.prefab_json = JSON.stringify( this.prefab_data );
+	var filename = this.fullpath || this.filename;
+
+	//prefab in json format
+	if( !(this.resource_names && this.resource_names.length) && filename && LS.RM.getExtension(filename) == "json" )
+		return JSON.stringify( { object_class:"Prefab", "@json": this.prefab_json } );
+
+	//return the binary data of the wbin
 	return LS.Prefab.packResources( this.resource_names, { "@json": this.prefab_json, "@version": LS.Prefab.version } );
 }
 
@@ -13081,7 +13352,7 @@ function ShaderCode( code )
 	this._global_uniforms = {};
 	this._code_parts = {};
 	this._subfiles = {};
-	this._compiled_shaders = {};
+	this._compiled_shaders = {}; //all shaders compiled using this ShaderCode
 
 	this._shaderblock_flags_num = 0; //used to assign flags to dependencies
 	this._shaderblock_flags = {}; //used to store which shaderblock represent to every flag bit
@@ -17270,24 +17541,25 @@ function RenderFrameContext( o )
 {
 	this.width = 0; //0 means the same size as the viewport, negative numbers mean reducing the texture in half N times
 	this.height = 0; //0 means the same size as the viewport
-	this.precision = RenderFrameContext.DEFAULT_PRECISION;
-	this.filter_texture = true; //magFilter
-	this.format = GL.RGBA;
-	this.use_depth_texture = false;
-	this.use_stencil_buffer = false;
+	this.precision = RenderFrameContext.DEFAULT_PRECISION; //LOW_PRECISION uses a byte, MEDIUM uses a half_float, HIGH uses a float
+	this.filter_texture = true; //magFilter: in case the texture is shown, do you want to see it pixelated?
+	this.format = GL.RGBA; //how many color channels
+	this.use_depth_texture = false; //store the depth in a texture
+	this.use_stencil_buffer = false; //add an stencil buffer (cannot be read as a texture in webgl)
 	this.num_extra_textures = 0; //number of extra textures in case we want to render to several buffers
-	this.name = null; //if a name is provided all the textures will be stored
+	this.name = null; //if a name is provided all the textures will be stored in the LS.ResourcesManager
 
-	this.adjust_aspect = false;
-	this.clone_after_unbind = false; //used when the texture will be in the 3D scene
+	this.generate_mipmaps = false; //try to generate mipmaps if possible (only when the texture is power of two)
+	this.adjust_aspect = false; //when the size doesnt match the canvas size it could look distorted, settings this to true will fix the problem
+	this.clone_after_unbind = false; //clones the textures after unbinding it. Used when the texture will be in the 3D scene
 
 	this._fbo = null;
 	this._color_texture = null;
 	this._depth_texture = null;
-	this._textures = []; //all color textures
-	this._cloned_textures = null;
+	this._textures = []; //all color textures (the first will be _color_texture)
+	this._cloned_textures = null; //in case we set the clone_after_unbind to true
 
-	this._version = 1;
+	this._version = 1; //to detect changes
 
 	if(o)
 		this.configure(o);
@@ -17385,8 +17657,12 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 		final_height = viewport_height >> Math.abs( this.height ); //subsampling
 
 	var format = this.format;
-	var filter = this.filter_texture ? gl.LINEAR : gl.NEAREST ;
+	var magFilter = this.filter_texture ? gl.LINEAR : gl.NEAREST ;
 	var type = 0;
+
+	var minFilter = gl.LINEAR;
+	if(this.generate_mipmaps && GL.isPowerOfTwo(final_width) && GL.isPowerOfTwo(final_height) )
+		minFilter = gl.LINEAR_MIPMAP_LINEAR;
 
 	switch( this.precision )
 	{
@@ -17406,10 +17682,10 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 	//for the color: check that the texture size matches
 	if( !this._color_texture || 
 		this._color_texture.width != final_width || this._color_texture.height != final_height || 
-		this._color_texture.type != type || this._color_texture.format != format )
-		this._color_texture = new GL.Texture( final_width, final_height, { minFilter: gl.LINEAR, magFilter: filter, format: format, type: type });
+		this._color_texture.type != type || this._color_texture.format != format || this._color_texture.minFilter != minFilter )
+		this._color_texture = new GL.Texture( final_width, final_height, { minFilter: minFilter, magFilter: magFilter, format: format, type: type });
 	else
-		this._color_texture.setParameter( gl.TEXTURE_MAG_FILTER, filter );
+		this._color_texture.setParameter( gl.TEXTURE_MAG_FILTER, magFilter );
 	textures[0] = this._color_texture;
 
 	//extra color texture (multibuffer rendering)
@@ -17417,10 +17693,10 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 	for(var i = 0; i < total_extra; ++i) //MAX is 4
 	{
 		var extra_texture = textures[1 + i];
-		if( (!extra_texture || extra_texture.width != final_width || extra_texture.height != final_height || extra_texture.type != type || extra_texture.format != format) )
-			extra_texture = new GL.Texture( final_width, final_height, { minFilter: gl.LINEAR, magFilter: filter, format: format, type: type });
+		if( (!extra_texture || extra_texture.width != final_width || extra_texture.height != final_height || extra_texture.type != type || extra_texture.format != format || extra_texture.minFilter != minFilter) )
+			extra_texture = new GL.Texture( final_width, final_height, { minFilter: minFilter, magFilter: magFilter, format: format, type: type });
 		else
-			extra_texture.setParameter( gl.TEXTURE_MAG_FILTER, filter );
+			extra_texture.setParameter( gl.TEXTURE_MAG_FILTER, magFilter );
 		textures[1 + i] = extra_texture;
 	}
 
@@ -17917,7 +18193,6 @@ var Renderer = {
 		scene._frame += 1;
 		this._frame += 1;
 		scene._must_redraw = false;
-
 		var start_time = getTime();
 		this._rendercalls = 0;
 		this._rendered_instances = 0;
@@ -17933,8 +18208,8 @@ var Renderer = {
 		//force fullscreen viewport
 		if( !render_settings.keep_viewport )
 		{
-			gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
-			this.setFullViewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+			gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight );
+			this.setFullViewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight); //assign this as the full available viewport
 		}
 		else
 			this.setFullViewport( gl.viewport_data );
@@ -17992,6 +18267,8 @@ var Renderer = {
 		//renders GUI items using mostly the Canvas2DtoWebGL library
 		if(render_settings.render_gui && LEvent.hasBind( scene, "renderGUI") )
 		{
+			//assign full viewport?
+			gl.viewport( this._full_viewport[0], this._full_viewport[1], this._full_viewport[2], this._full_viewport[3] );
 			if(gl.start2D)
 				gl.start2D();
 			LS.GUI.ResetImmediateGUI(); //mostly to change the cursor
@@ -21674,7 +21951,7 @@ var Physics = {
 	* @method raycastRenderInstances
 	* @param {vec3} origin in world space
 	* @param {vec3} direction in world space
-	* @param {Object} options ( triangle_collision: true if you want to test against triangles, max_distance: maxium ray distance, layers, scene, max_distance, first_collision : returns the first collision (which could be not the closest one) )
+	* @param {Object} options { instances: array of instances, if not the scene will be used, triangle_collision: true if you want to test against triangles, max_distance: maxium ray distance, layers, scene, max_distance, first_collision : returns the first collision (which could be not the closest one) }
 	* @return {Array} array containing all the RenderInstances that collided with the ray in the form [SceneNode, RenderInstance, collision point, distance]
 	*/
 	raycastRenderInstances: function( origin, direction, options )
@@ -21691,7 +21968,7 @@ var Physics = {
 		var compute_normal = !!options.normal;
 		var ignore_transparent = !!options.ignore_transparent;
 
-		var instances = scene._instances;
+		var instances = options.instances || scene._instances;
 		if(!instances || !instances.length)
 			return null;
 
@@ -21699,7 +21976,6 @@ var Physics = {
 
 		var local_origin = vec3.create();
 		var local_direction = vec3.create();
-
 
 		//for every instance
 		for(var i = 0, l = instances.length; i < l; ++i)
@@ -21760,6 +22036,23 @@ var Physics = {
 
 		collisions.sort( LS.Collision.isCloser );
 		return collisions;
+	},
+
+	/**
+	* Cast a ray that traverses the scene checking for collisions with RenderInstances instead of colliders
+	* Similar to Physics.raycast but using the RenderInstances (if options.triangle_collision it builds Octrees for the RIs whose OOBB collides with the ray)
+	* @method raycastRenderInstances
+	* @param {vec3} origin in world space
+	* @param {vec3} direction in world space
+	* @param {LS.SceneNode} node 
+	* @param {Object} options ( triangle_collision: true if you want to test against triangles, max_distance: maxium ray distance, layers, scene, max_distance, first_collision : returns the first collision (which could be not the closest one) )
+	* @return {Array} array containing all the RenderInstances that collided with the ray in the form [SceneNode, RenderInstance, collision point, distance]
+	*/
+	raycastNode: function( origin, direction, node, options )
+	{
+		options = options || {};
+		options.instances = node._instances;
+		return this.raycastRenderInstances( origin, direction, options );
 	}
 }
 
@@ -22006,8 +22299,24 @@ Object.defineProperty( Transform.prototype, 'globalMatrix', {
 		return this._global_matrix;
 	},
 	set: function(v) { 
+		throw("globalMatrix cannot be set");
 	},
 	enumerable: true
+});
+
+/**
+* The local matrix transform relative to its parent in mat4 format
+* @property matrix {mat4}
+*/
+Object.defineProperty( Transform.prototype, 'forward', {
+	get: function() { 
+		this.updateGlobalMatrix();
+		return mat4.rotateVec3( vec3.create(), this._global_matrix, LS.FRONT );
+	},
+	set: function(v) { 
+		throw("forward cannot be set");
+	},
+	enumerable: false //dont worry, it uses its own serialize
 });
 
 /**
@@ -24474,9 +24783,9 @@ Camera.prototype.getLocalViewport = function( viewport, result )
 * @method getRayInPixel
 * @param {number} x
 * @param {number} y
-* @param {vec4} viewport viewport coordinates (if omited full viewport is used)
+* @param {vec4} viewport viewport coordinates (if omited full viewport is used using the camera viewport)
 * @param {boolean} skip_local_viewport ignore the local camera viewport configuration when computing the viewport
-* @return {Object} {start:vec3, dir:vec3} or null is values are undefined or NaN
+* @return {Object} {origin:vec3, direction:vec3} or null is values are undefined or NaN
 */
 Camera.prototype.getRayInPixel = function(x,y, viewport, skip_local_viewport )
 {
@@ -34193,9 +34502,11 @@ function Script(o)
 	this.enabled = true;
 	this.code = this.constructor.templates["script"];
 	this._blocked_functions = new Set(); //used to block functions that has errors
+	this._name = "";
 
 	this._script = new LScript();
 
+	//this are the methods that will be in the prototype of the script context by default
 	this._script.extra_methods = {
 		getComponent: (function() { return this; }).bind(this),
 		getLocator: function() { return this.getComponent().getLocator() + "/context"; },
@@ -34221,7 +34532,7 @@ Script.catch_important_exceptions = true; //catch exception during parsing, othe
 
 Script.icon = "mini-icon-script.png";
 Script.templates = {
-	"script":"//@unnamed\n//defined: component, node, scene, globals\nthis.onStart = function()\n{\n}\n\nthis.onUpdate = function(dt)\n{\n\t//node.scene.refresh();\n}"
+	"script":"//@unnamed\n//defined: component, node, scene, transform, globals\nthis.onStart = function()\n{\n}\n\nthis.onUpdate = function(dt)\n{\n\t//node.scene.refresh();\n}"
 };
 
 Script["@code"] = {type:'script'};
@@ -34298,18 +34609,10 @@ Object.defineProperty( Script.prototype, "context", {
 
 Object.defineProperty( Script.prototype, "name", {
 	set: function(v){ 
-		console.error("Script: name cannot be assigned");
+		console.error("Script: name cannot be assigned, add to the first line //@name");
 	},
 	get: function() { 
-		if(!this._script.code)
-			return;
-		var line = this._script.code.substr(0,32);
-		if(line.indexOf("//@") != 0)
-			return null;
-		var last = line.indexOf("\n");
-		if(last == -1)
-			last = undefined;
-		return line.substr(3,last - 3);
+		return this._name;
 	},
 	enumerable: false //if it was enumerable it would be serialized
 });
@@ -34370,6 +34673,21 @@ Script.prototype.processCode = function( skip_events )
 {
 	this._blocked_functions.clear();
 	this._script.code = this.code;
+
+	//extract name
+	this._name = "";
+	if(this.code)
+	{
+		var line = this.code.substr(0,128);
+		if(line.indexOf("//@") == 0)
+		{
+			var last = line.indexOf("\n");
+			if(last == -1)
+				last = undefined;
+			this._name = line.substr(3,last - 3).trim();
+		}
+	}
+
 	if(!this._root || LS.Script.block_execution )
 		return true;
 
@@ -34381,7 +34699,7 @@ Script.prototype.processCode = function( skip_events )
 	var old = this._stored_properties || this.getContextProperties();
 
 	//compiles and executes the context
-	var ret = this._script.compile({component:this, node: this._root, scene: this._root.scene, globals: LS.Globals });
+	var ret = this._script.compile({component:this, node: this._root, scene: this._root.scene, transform: this._root.transform, globals: LS.Globals });
 	if(!skip_events)
 		this.hookEvents();
 
@@ -34408,6 +34726,9 @@ Script.prototype.processCode = function( skip_events )
 
 		this._script._context._initialized = true; //avoid initializing it twice
 	}
+
+	if( this._name && this._root && this._root.scene )
+		LS.Script.active_scripts[ this._name ] = this;
 
 	return ret;
 }
@@ -34504,7 +34825,8 @@ Script.prototype.getPropertyInfoFromPath = function( path )
 			name:"context",
 			node: this._root,
 			target: context,
-			type: "object"
+			type: "object",
+			value: context
 		};
 
 	var varname = path[1];
@@ -34659,7 +34981,7 @@ Script.prototype.onRemovedFromNode = function( node )
 
 Script.prototype.onAddedToScene = function( scene )
 {
-	if( this._name && !LS.Script.active_scripts[ this._name ] )
+	if( this._name )
 		LS.Script.active_scripts[ this._name ] = this;
 
 	//avoid to parse it again
@@ -34692,7 +35014,7 @@ Script.prototype.onAddedToScene = function( scene )
 
 Script.prototype.onRemovedFromScene = function(scene)
 {
-	if( this._name && LS.Script.active_scripts[ this._name ] )
+	if( this._name && LS.Script.active_scripts[ this._name ] == this )
 		delete LS.Script.active_scripts[ this._name ];
 
 	//ensures no binded events
@@ -34807,6 +35129,7 @@ function ScriptFromFile(o)
 {
 	this.enabled = true;
 	this._filename = "";
+	this._name = "";
 
 	this._script = new LScript();
 	this._blocked_functions = new Set(); //used to block functions that has errors
@@ -34858,18 +35181,10 @@ Object.defineProperty( ScriptFromFile.prototype, "context", {
 
 Object.defineProperty( ScriptFromFile.prototype, "name", {
 	set: function(v){ 
-		console.error("Script: name cannot be assigned");
+		console.error("Script: name cannot be assigned, set the first line with //@name");
 	},
 	get: function() { 
-		if(!this._script.code)
-			return;
-		var line = this._script.code.substr(0,32);
-		if(line.indexOf("//@") != 0)
-			return null;
-		var last = line.indexOf("\n");
-		if(last == -1)
-			last = undefined;
-		return line.substr(3,last - 3);
+		return this._name;
 	},
 	enumerable: false //if it was enumerable it would be serialized
 });
@@ -34923,8 +35238,30 @@ ScriptFromFile.prototype.processCode = function( skip_events )
 	}
 
 	var code = script_resource.data;
-	if( code === undefined || this._script.code == code )
+	if( code === undefined)
+	{
+		this._name = "";
 		return;
+	}
+
+	if( this._script.code == code )
+		return;
+
+	// ****** CODE PROCESSED ***********************
+
+	//extract name
+	this._name = "";
+	if(code)
+	{
+		var line = code.substr(0,128);
+		if(line.indexOf("//@") == 0)
+		{
+			var last = line.indexOf("\n");
+			if(last == -1)
+				last = undefined;
+			this._name = line.substr(3,last - 3).trim();
+		}
+	}
 
 	if(!this._root || LS.Script.block_execution )
 		return true;
@@ -34964,6 +35301,9 @@ ScriptFromFile.prototype.processCode = function( skip_events )
 
 		this._script._context._initialized = true; //avoid initializing it twice
 	}
+
+	if( this._name && this._root && this._root.scene )
+		LS.Script.active_scripts[ this._name ] = this;
 
 	return ret;
 }
@@ -36798,7 +37138,7 @@ SceneTree.prototype.setFromJSON = function( data, on_complete, on_error, on_prog
 * @param {Function}[on_resources_loaded=null] it is called when all the resources had been loaded
 */
 
-SceneTree.prototype.load = function( url, on_complete, on_error, on_progress, on_resources_loaded )
+SceneTree.prototype.load = function( url, on_complete, on_error, on_progress, on_resources_loaded, on_loaded )
 {
 	if(!url)
 		return;
@@ -36864,11 +37204,15 @@ SceneTree.prototype.load = function( url, on_complete, on_error, on_progress, on
 
 	function inner_success( response )
 	{
-		if(on_complete)
-			on_complete(that, url);
+		if(on_loaded)
+			on_loaded(that, url);
 
 		that.init();
 		that.configure(response);
+
+		if(on_complete)
+			on_complete(that, url);
+
 		that.loadResources( inner_all_loaded );
 		/**
 		 * Fired when the scene has been loaded but before the resources
@@ -37398,7 +37742,10 @@ SceneTree.prototype.getPropertyInfo = function( property_uid )
 {
 	var path = property_uid.split("/");
 
-	if(path[0].substr(0,5) == "@MAT-")
+	var start = path[0].substr(0,5);
+
+	//for global materials
+	if( start == "@MAT-")
 	{
 		var material = LS.RM.materials_by_uid[ path[0] ];
 		if(!material)
@@ -37406,7 +37753,24 @@ SceneTree.prototype.getPropertyInfo = function( property_uid )
 		return material.getPropertyInfoFromPath( path.slice(1) );
 	}
 
+	//for components
+	if( start == "@COMP")
+	{
+		var comp = this.findComponentByUId( path[0] );
+		if(!comp)
+			return null;
+		if(path.length == 1)
+			return {
+				node: comp.root,
+				target: comp,
+				name: comp ? LS.getObjectClassName( comp ) : "",
+				type: "component",
+				value: comp
+			};
+		return comp.getPropertyInfoFromPath( path.slice(1) );
+	}
 
+	//for regular locators
 	var node = this.getNode( path[0] );
 	if(!node)
 		return null;
@@ -37534,13 +37898,15 @@ SceneTree.prototype.setPropertyValueFromPath = function( path, value, root_node,
 
 /**
 * Returns the resources used by the scene
-* includes the nodes, components and preloads
+* includes the nodes, components, preloads and global_scripts
+* doesn't include external_scripts
 *
 * @method getResources
 * @param {Object} resources [optional] object with resources
 * @param {Boolean} as_array [optional] returns data in array format instead of object format
 * @param {Boolean} skip_in_pack [optional] skips resources that come from a pack
 * @param {Boolean} skip_local [optional] skips resources whose name starts with ":" (considered local resources)
+* @return {Object|Array} the resources in object format (or if as_array is true, then an array)
 */
 SceneTree.prototype.getResources = function( resources, as_array, skip_in_pack, skip_local )
 {
@@ -38084,6 +38450,35 @@ SceneTree.prototype.findNodeComponents = function( type )
 }
 
 /**
+* Allows to instantiate a prefab from the fullpath of the resource
+*
+* @method instantiate
+* @param {String} prefab_url the filename to the resource containing the prefab
+* @param {vec3} position where to instantiate
+* @param {quat} rotation the orientation
+* @param {SceneNode} parent [optional] if no parent then scene.root will be used
+* @return {SceneNode} the resulting prefab node
+*/
+SceneTree.prototype.instantiate = function( prefab_url, position, rotation, parent )
+{
+	if(!prefab_url || prefab_url.constructor !== String)
+		throw("prefab must be the url to the prefab");
+
+	var node = new LS.SceneNode();
+	if(position && position.length === 3)
+		node.transform.position = position;
+	if(rotation && rotation.length === 4)
+		node.transform.rotation = rotation;
+
+	parent = parent || this.root;
+	parent.addChild( node );
+
+	node.prefab = prefab_url;
+
+	return node;
+}
+
+/**
 * returns a pack containing all the scene and resources, used to save a scene to harddrive
 *
 * @method toPack
@@ -38518,9 +38913,16 @@ Object.defineProperty( SceneNode.prototype, 'className', {
 /**
 * Destroys this node
 * @method destroy
+* @param {number} time [optional] time in seconds to wait till destroying the node
 **/
-SceneNode.prototype.destroy = function()
+SceneNode.prototype.destroy = function( time )
 {
+	if(time && time.constructor === Number && time > 0)
+	{
+		setTimeout( this.destroy.bind(this,0), time * 0.001 );
+		return;
+	}
+
 	LEvent.trigger( this, "destroy" );
 	this.removeAllComponents();
 	if(this.children)
@@ -38613,6 +39015,7 @@ SceneNode.prototype.getPropertyInfoFromPath = function( path )
 			};
 		}
 
+		//special cases for a node
 		switch(path[0])
 		{
 			case "matrix":
@@ -38662,63 +39065,14 @@ SceneNode.prototype.getPropertyInfoFromPath = function( path )
 	{
 	}
 
-	var v = undefined;
-
 	if(!target) //unknown target
 		return null;
 
-	if( target.getPropertyInfoFromPath && target != this )
-	{
-		var r = target.getPropertyInfoFromPath( path.slice(1) );
-		if(r)
-			return r;
-	}
+	//this was moved to Component.prototype.getPropertyInfoFromPath  (if any errors check cases)
+	if( target != this && target.getPropertyInfoFromPath ) //avoid weird recursion
+		return target.getPropertyInfoFromPath( path.slice(1) );
 
-	//to know the value of a property of the given target
-	if( target.getPropertyValue )
-		v = target.getPropertyValue( varname );
-
-	//special case when the component doesnt specify any locator info but the property referenced does
-	//used in TextureFX
-	if (v === undefined && path.length > 2 && target[ varname ] && target[ varname ].getPropertyInfoFromPath )
-	{
-		var r = target[ varname ].getPropertyInfoFromPath( path.slice(2) );
-		if(r)
-		{
-			r.node = this;
-			return r;
-		}
-	}
-
-	if(v === undefined && target[ varname ] === undefined )
-		return null;
-
-	//if we dont have a value yet then take it directly from the object
-	var value = v !== undefined ? v : target[ varname ];
-
-	var extra_info = target.constructor[ "@" + varname ];
-	var type = "";
-	if(extra_info)
-		type = extra_info.type;
-	if(!type && value !== null && value !== undefined)
-	{
-		if(value.constructor === String)
-			type = "string";
-		else if(value.constructor === Boolean)
-			type = "boolean";
-		else if(value.length)
-			type = "vec" + value.length;
-		else if(value.constructor === Number)
-			type = "number";
-	}
-
-	return {
-		node: this,
-		target: target,
-		name: varname,
-		value: value,
-		type: type
-	};
+	return null;
 }
 
 /**
@@ -39098,9 +39452,12 @@ SceneNode.prototype.reloadFromPrefab = function()
 
 	//apply info
 	this.removeAllChildren();
-	this.init( true, true );
+	this.init( true, true ); //keep components, keep_info
+	var prefab_data = prefab.prefab_data;
+	
 	//remove all but children info (prefabs overwrite only children info)
-	var prefab_data = { children: prefab.prefab_data.children };
+	prefab_data = { children: prefab.prefab_data.children };
+
 	//uid data is already removed from the prefab
 	this.configure( prefab_data );
 
@@ -39319,9 +39676,9 @@ SceneNode.prototype.configure = function(info)
 
 	//restore components
 	if(info.components)
-		this.configureComponents(info);
+		this.configureComponents( info );
 
-	if(info.prefab) 
+	if(info.prefab && !this._is_root)  //is_root because in some weird situations the prefab was set to the root node
 		this.prefab = info.prefab; //assign and calls this.reloadFromPrefab();
 	else //configure children if it is not a prefab
 		this.configureChildren(info);
@@ -39425,7 +39782,7 @@ SceneNode.prototype.serialize = function( ignore_prefab )
 		o.submesh_id = this.submesh_id;
 	if(this.material) 
 		o.material = typeof(this.material) == "string" ? this.material : this.material.serialize();
-	if(this.prefab && !ignore_prefab) 
+	if(this.prefab && !ignore_prefab && !this._is_root ) 
 		o.prefab = this.prefab;
 
 	if(this.flags) 

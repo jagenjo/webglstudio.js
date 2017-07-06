@@ -73,10 +73,12 @@ var PackTools = {
 		widgets.addCheckbox("Clear UIDs", clear_uids, { callback: function(v) { clear_uids = v; }});
 
 		var replace_with_prefab = true;
-		widgets.addCheckbox("Replace with Prefab", replace_with_prefab, { callback: function(v) { replace_with_prefab = v; }});
-
+		widgets.addCheckbox("Replace with Prefab", replace_with_prefab, { name_width: 120, callback: function(v) { replace_with_prefab = v; }});
 
 		widgets.widgets_per_row = 1;
+
+		if(node._components.length > 1)
+			widgets.addInfo("Warning","this node has several components attached to the root, they will be lost");
 
 		var folder = "";
 		widgets.addFolder("Save to",folder,{ callback: function(v){
@@ -87,17 +89,37 @@ var PackTools = {
 		widgets.addSeparator();
 		widgets.addButton(null,"Create Prefab", { callback: function() {
 			var filename_str = filename.getValue(); //change spaces by underscores
+
+			var transform_data = node.transform.serialize();
+			node.transform.reset();
+
 			var data = node.serialize();
+
 			if(clear_uids)
 				LS.clearUIds(data);
 
+			//prefab is stored inside a null node
+			data = { object_class:"SceneNode", children: [ data ] };
+
+			dialog.close();
+
 			var resources = list.getSelected();
 
-			if( LS.RM.getExtension( filename_str ) != "wbin" )
-				filename_str = filename_str + ".wbin";
-
-			var prefab = PackTools.createPrefab( filename_str, data, resources);
-			dialog.close();
+			var prefab = null;
+			if(resources.length == 0)
+			{
+				if( LS.RM.getExtension( filename_str ) != "json" )
+					filename_str = filename_str + ".PREFAB.json";
+				prefab = new LS.Prefab();
+				prefab.setData( data );
+				prefab.filename = filename_str;
+			}
+			else
+			{
+				if( LS.RM.getExtension( filename_str ) != "wbin" )
+					filename_str = filename_str + ".wbin";
+				prefab = PackTools.createPrefab( filename_str, data, resources );
+			}
 
 			NotifyModule.show("Prefab Created","good big");
 
@@ -111,9 +133,17 @@ var PackTools = {
 
 			if(replace_with_prefab)
 			{
+				node.removeAllComponents();
 				node.prefab = prefab.fullpath || prefab.filename;
 				node.reloadFromPrefab();
+				if(!node.transform)
+					node.addComponent( new LS.Transform() );
+				node.transform.configure( transform_data );
 				EditorModule.refreshAttributes();
+			}
+			else
+			{
+				node.transform.configure( transform_data );
 			}
 		}});
 
@@ -296,7 +326,7 @@ LS.Pack.prototype.inspect = LS.Prefab.prototype.inspect = function( widgets, ski
 	var pack = this;
 	var class_type = LS.getObjectClassName( pack );
 	var filename = pack.fullpath || pack.filename || "";
-	var resource_names = pack.resource_names;
+	var resource_names = pack.resource_names || [];
 
 	widgets.addString("Filename",filename, function(v){
 		//filename = v;

@@ -394,6 +394,9 @@ LS.Components.Script["@inspector"] = function( component, inspector )
 
 	var icon = this.current_section.querySelector(".script-context-icon");
 	icon.addEventListener("dragstart", function(event) { 
+		var context_locator = component.getLocator() + "/context";
+		if(!event.shiftKey)
+			context_locator = component.root.name + "/_" + component.name + "/context";
 		event.dataTransfer.setData("uid", context_locator );
 		event.dataTransfer.setData("locator", context_locator );
 		event.dataTransfer.setData("type", "object");
@@ -419,6 +422,22 @@ LS.Components.Script["@inspector"] = function( component, inspector )
 
 LS.Components.ScriptFromFile["@inspector"] = function( component, inspector )
 {
+	var context_locator = component.getLocator() + "/context";
+	var context = component.getContext();
+
+	var icon = this.current_section.querySelector(".script-context-icon");
+	icon.addEventListener("dragstart", function(event) { 
+		var context_locator = component.getLocator() + "/context";
+		if(!event.shiftKey)
+			context_locator = component.root.name + "/_" + component.name + "/context";
+		event.dataTransfer.setData("uid", context_locator );
+		event.dataTransfer.setData("locator", context_locator );
+		event.dataTransfer.setData("type", "object");
+		event.dataTransfer.setData("node_uid", component.root.uid);
+		if( component.setDragData )
+			component.setDragData( event );
+	});
+
 	inspector.widgets_per_row = 2;
 	inspector.addResource( "Filename", component.filename, { width: "75%", category: "Script", align:"right", callback: function(v) { 
 		component.filename = v;

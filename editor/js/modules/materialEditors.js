@@ -202,6 +202,10 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 			var resource = node.material;
 			var material = node.getMaterial();
 
+			//to avoid problems when getting a material out from a prefab
+			delete material.from_pack;
+			delete material.from_prefab;
+
 			//clone the material
 			if( typeof(resource) == "string" )
 			{

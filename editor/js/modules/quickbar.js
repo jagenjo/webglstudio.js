@@ -3,7 +3,7 @@
 	It also allows to show messages in the console widget
 */
 
-var ConsoleModule = {
+var QuickbarModule = {
 
 	commands: {},
 
@@ -30,7 +30,7 @@ var ConsoleModule = {
 		this.content = this.console.querySelector(".content");
 		this.input = this.console.querySelector("input");
 
-		this.input.onblur = function() { ConsoleModule.hide(); };
+		this.input.onblur = function() { QuickbarModule.hide(); };
 		this.input.addEventListener("keydown", this.onKeyDown.bind(this) );
 
 		var root = document.getElementById("visor");
@@ -102,4 +102,4 @@ var ConsoleModule = {
 	}
 };
 
-CORE.registerModule( ConsoleModule );
+CORE.registerModule( QuickbarModule );

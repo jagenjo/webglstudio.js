@@ -301,20 +301,28 @@ InspectorWidget.prototype.showComponentsInterface = function( object, inspector 
 		this.inspector.showComponent( component, inspector );
 	}
 
-	if(object._missing_components)
+	if( object._missing_components && object._missing_components.length )
 	{
-		for(var i in object._missing_components)
+		for(var i = 0; i < object._missing_components.length; ++i )
 		{
 			var comp_info = object._missing_components[i];
 			var name = comp_info[0];
-			var title = "<span class='title'>"+name+"</span>";
-			var buttons = " <span class='buttons'><img class='options_section' src='imgs/mini-cog.png'></span>";
+			var title = "<span class='title'>"+name+" <span style='color:#FAA'>(missing)</span></span>";
+			var buttons = " <span class='buttons'></span>";
 			var section = inspector.addSection( title + buttons );
 			section.classList.add("error");
-			inspector.addStringButton( "Component class", name, { comp_info: comp_info, button:"Set", callback_button: function(v){
+			inspector.widgets_per_row = 2;
+			inspector.addStringButton( "Component class", name, { name_width: 120, width: "90%", comp_info: comp_info, button_width: 80, button:"Convert", callback_button: function(v){
+				CORE.userAction( "node_changed", object );
 				LS.replaceComponentClass( LS.GlobalScene, this.options.comp_info[0], v );
 				inspector.refresh();
 			}});
+			inspector.addButton(null,"<img src='imgs/mini-icon-trash.png'/>",{ index: i, width: "10%", callback: function(){
+				CORE.userAction( "node_changed", object );
+				object._missing_components.splice( this.options.index, 1 );
+				inspector.refresh();
+			}});
+			inspector.widgets_per_row = 1;
 		}
 	}
 }
@@ -370,7 +378,7 @@ InspectorWidget.prototype.inspectScene = function( scene )
 				scene.external_scripts.push(v);
 				LS.GlobalScene.loadScripts( null, null, function(){
 					LiteGUI.alert("Error loading script");
-					scene.external_scripts.pop();
+					//scene.external_scripts.pop(); //why remove it? 
 					inspector.refresh();
 				});
 				inspector.refresh();
@@ -527,6 +535,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 						if(action == "Choose Prefab")
 						{
 							EditorModule.showSelectResource( { type:"Prefab", on_complete: function(v){
+								CORE.userAction("node_changed",node);
 								node.prefab = v;
 								inspector.refresh();
 							}});
@@ -534,6 +543,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 						if(action == "Unlink prefab")
 						{
 							//add prefab to resources otherwise all the info will be lost
+							CORE.userAction("node_changed",node);
 							var prefab = LS.RM.resources[ node.prefab ];
 							if( prefab && prefab.containsResources() )
 							{
@@ -549,6 +559,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 						}
 						if(action == "Reload from Prefab")
 						{
+							CORE.userAction("node_changed",node);
 							node.reloadFromPrefab();
 							inspector.refresh();
 						}

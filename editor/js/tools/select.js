@@ -11,6 +11,7 @@ var selectTool = {
 	click_time: 200, //ms
 	click_dist: 50, //in pixels (to avoid interpreting dragging as a fast click)
 	click_pos: [0,0],
+	last_click: 0,
 
 	onRegister: function()
 	{
@@ -21,6 +22,14 @@ var selectTool = {
 	mousedown: function(e) {
 		this.click_pos = [e.canvasx,e.canvasy];
 		this._got_mousedown = true;
+		var now = getTime();
+
+		if( now - this.last_click < this.click_time && e.button == 0 )
+		{
+			//EditorModule.focusCameraInSelection();
+			EditorModule.focusCameraInPixel( e );
+		}
+		this.last_click = now;
 	},
 
 	mousemove: function(e) {
@@ -40,7 +49,7 @@ var selectTool = {
 		if(e.button != 0)
 			return;
 
-		var now = new Date().getTime();
+		var now = getTime();
 		var dist = Math.sqrt( (e.canvasx - this.click_pos[0])<<2 + (e.canvasy - this.click_pos[1])<<2 );
 
 		//if it was a fast click and the mouse didnt move too much (dragging)

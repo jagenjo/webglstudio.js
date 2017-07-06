@@ -236,6 +236,8 @@ var SceneStorageModule = {
 			//EditorModule.inspect(scene);
 			EditorModule.inspect(scene.root);
 		}
+
+		LEvent.trigger( scene, "scene_loaded" );
 	},
 
 	showLoadFromURLDialog: function()

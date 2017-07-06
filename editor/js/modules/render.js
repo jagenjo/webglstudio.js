@@ -149,24 +149,12 @@ var RenderModule = {
 		this.temp_camera = new LS.Camera();
 
 		LEvent.bind( LS.Renderer, "afterRenderInstances", this.onAfterRenderInstances, this);
+		LEvent.bind( LS.GlobalScene, "scene_loaded", this.onSceneLoaded, this );
 	},
 
 	setViewportLayout: function(mode)
 	{
 		var old_viewports = this.viewports.concat();
-		/*
-		var old_cameras = this.cameras;
-		//in case we changed something in the cameras that we want to recover
-		for(var i in old_cameras)
-		{
-			var camera = old_cameras[i];
-			if(camera._prev_viewport)
-			{
-				camera._viewport.set( camera._prev_viewport );
-				delete camera._prev_viewport;
-			}
-		}
-		*/
 
 		//clear viewports
 		this.viewports.length = 0;
@@ -521,6 +509,7 @@ var RenderModule = {
 		cameraTool.mode = mode;
 	},
 
+	//called 
 	onSerialize: function(e, o)
 	{
 		if(!o.extra)
@@ -555,6 +544,21 @@ var RenderModule = {
 				if( RenderModule.viewports[i] )
 					RenderModule.viewports[i].configure( viewport_info );
 			}
+		}
+	},
+
+	onSceneLoaded: function(e)
+	{
+		var color = null;
+		if(LS.GlobalScene.root.camera)
+			color = LS.GlobalScene.root.camera.background_color;
+		else
+			color = [0,0,0,0];
+
+		for(var i in this.viewports )
+		{
+			var viewport = this.viewports[i];
+			viewport.camera.background_color.set( color );
 		}
 	},
 

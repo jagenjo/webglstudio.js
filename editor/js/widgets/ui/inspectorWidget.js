@@ -43,7 +43,7 @@ InspectorWidget.prototype.init = function( options )
 	}).bind(this));
 
 	//create inspector
-	this.inspector = new LiteGUI.Inspector( null,{ height: -26, name_width: "40%" });
+	this.inspector = new LiteGUI.Inspector( { height: -26, name_width: "40%" });
 	this.inspector.inspector_widget = this; //double link
 	this.inspector.onchange = function()
 	{
@@ -387,13 +387,14 @@ InspectorWidget.prototype.inspectScene = function( scene )
 		});
 		if(scene.external_scripts && scene.external_scripts.length)
 			inspector.addButton(null,"Reload scripts", function(){
-				LS.GlobalScene.loadScripts( null, null, LiteGUI.alert );
+				LS.GlobalScene.loadScripts( null, null, LiteGUI.alert, true );
 			});
 
 		inspector.addTitle("Global Scripts");
+		inspector.widgets_per_row = 2;
 		for(var i in scene.global_scripts)
-		{			
-			inspector.addScript(null, scene.global_scripts[i], { index: i, callback: function(v){
+		{	
+			inspector.addScript(null, scene.global_scripts[i], { width: "100% - 60px", index: i, callback: function(v){
 					if(!v)
 					{
 						scene.global_scripts.splice(this.options.index,1);
@@ -403,7 +404,12 @@ InspectorWidget.prototype.inspectScene = function( scene )
 					scene.global_scripts[this.options.index] = v;
 				}
 			});
+			inspector.addButton(null, "<img src='imgs/mini-icon-trash.png'/>", { width: 30, index: i, callback: function(){
+				scene.global_scripts.splice( this.options.index, 1 );
+				inspector.refresh();
+			}});
 		}
+		inspector.widgets_per_row = 1;
 
 		inspector.addScript(null, "", { callback: function(v){
 				if(!v || v.indexOf(".js") == -1)

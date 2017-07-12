@@ -69,7 +69,8 @@ var EditorModule = {
 			{
 				case "node": that.createNullNode(); break;
 				case "light": that.createLightNode(); break;
-				case "plane": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.PLANE, size: 10, xz: true, subdivisions: 2 },"plane"); break;
+				case "plane": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.PLANE, size: 10, subdivisions: 2 },"plane"); break;
+				case "quad": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.QUAD, size: 10, subdivisions: 2 },"quad"); break;
 				case "cube": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.CUBE, size: 10, subdivisions: 10 },"cube"); break;
 				case "sphere": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.SPHERE, size: 10, subdivisions: 32 },"sphere"); break;
 				default: break;
@@ -138,8 +139,8 @@ var EditorModule = {
 		mainmenu.add("Node/Create camera", { callback: function() { EditorModule.createCameraNode(); }});
 		mainmenu.add("Node/Create light", { callback: function() { EditorModule.createLightNode(); }} );
 		//mainmenu.separator("Node");
-		mainmenu.add("Node/Primitive/Plane", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.PLANE, size: 10, subdivisions: 10, align_z: true}); }});
-		mainmenu.add("Node/Primitive/Plane Y", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.PLANE, size: 10, subdivisions: 10, align_z: false}); }});
+		mainmenu.add("Node/Primitive/Plane", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.PLANE, size: 10, subdivisions: 10 }); }});
+		mainmenu.add("Node/Primitive/Quad", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.QUAD, size: 10, subdivisions: 10 }); }});
 		mainmenu.add("Node/Primitive/Cube", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.CUBE, size: 10, subdivisions: 10 }); }});
 		mainmenu.add("Node/Primitive/Sphere", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.SPHERE, size: 10, subdivisions: 32 }); }});
 		mainmenu.add("Node/Primitive/Hemisphere", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.HEMISPHERE, size: 10, subdivisions: 32 }); }});

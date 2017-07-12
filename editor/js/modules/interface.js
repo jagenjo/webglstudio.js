@@ -568,7 +568,7 @@ function addGenericResource ( name, value, options, resource_classname )
 
 	this.values[name] = value;
 
-	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || LiteGUI.special_codes.open_folder )+"</button>", options);
+	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button title='show folders' class='micro'>"+(options.button || LiteGUI.special_codes.open_folder )+"</button>", options);
 
 	//INPUT
 	var input = element.querySelector(".wcontent input");
@@ -726,11 +726,14 @@ LiteGUI.Inspector.widget_constructors["material"] = "addMaterial";
 LiteGUI.Inspector.prototype.addScript = function( name, value, options )
 {
 	options = options || {};
-	options.width = "90%";
+
+	if(!options.width)
+		options.width = "100% - 30px";
 
 	this.widgets_per_row += 1;
 	var r = addGenericResource.call(this, name, value, options, "Script" );
-	this.addButton(null,"{}",{ width:"10%", callback: function(){
+	this.addButton(null,"{}",{ width:"30px", callback: function(){
+
 		if(options.callback_edit)
 			if( options.callback_edit.call( this ) )
 				return;

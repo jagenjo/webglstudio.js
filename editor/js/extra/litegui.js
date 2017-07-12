@@ -7168,12 +7168,16 @@ Inspector.prototype.createWidget = function(name, content, options)
 	if( width )
 	{
 		element.style.width = LiteGUI.sizeToCSS( width );
+		if(!element.style.width)
+			element.style.width = "calc(" + LiteGUI.sizeToCSS( width ) + ")";
 		element.style.minWidth = "auto";
 	}
 	var height = options.height || this.height;
 	if( height )
 	{
 		element.style.height = LiteGUI.sizeToCSS( height );
+		if(!element.style.height)
+			element.style.height = "calc(" + LiteGUI.sizeToCSS( height ) + ")";
 		element.style.minHeight = "auto";
 	}
 
@@ -8949,8 +8953,10 @@ Inspector.prototype.addButton = function(name, value, options)
 	var attrs = "";
 	if(options.disabled)
 		attrs = "disabled='disabled'";
+
+	var title = options.title || "";
 	
-	var element = this.createWidget(name,"<button class='litebutton "+button_classname+"' tabIndex='"+ this.tab_index + "' "+attrs+">"+value+"</button>", options);
+	var element = this.createWidget(name,"<button title='"+title+"' class='litebutton "+button_classname+"' tabIndex='"+ this.tab_index + "' "+attrs+">"+value+"</button>", options);
 	this.tab_index++;
 	var button = element.querySelector("button");
 	button.addEventListener("click", function(event) {
@@ -9371,65 +9377,67 @@ Inspector.prototype.addArray = function( name, value, options )
 
 	options = this.processOptions(options);
 
-	var container = this.addContainer( name, options );
-	var widgets = [];
 	var type = options.data_type || "string";
-	container.value = value;
 	var max_items = options.max_items || 100;
+	var container = null;
 
 	//length widget
 	this.widgets_per_row = 3;
-	this.addInfo(name,null,{width: 100});
-	var length_widget = this.addString( "length", value.length || "0", function(v){ 
-		value.length = parseInt(v);
+	this.addInfo(name,null,{ name_width: "100%", width: "100% - 160px"});
+	var length_widget = this.addString( "length", value.length || "0", { width: 100, callback: function(v){ 
+		var v = parseInt(v);
+		if(value < 0)
+			value = 0;
+		value.length = v;
 		refresh.call( container );
-	});
+	}});
 
-	this.addButtons( null,["+","-"], function(v){
+	this.addButtons( null,["+","-"], { width: 60, callback: function(v){
 		if(v == "+")
 			value.length = value.length + 1;
 		else if(value.length > 0)
 			value.length = value.length - 1;
 		length_widget.setValue( value.length );
 		refresh.call( container );
-	});
+	}});
 
 	this.widgets_per_row = 1;
+	container = this.addContainer( name, options );
+	container.value = value;
 
 	refresh.call( container );
 
 	function refresh()
 	{
-		var value = this.value;
-		var old_size = widgets.length;
-		var new_size = value.length;
+		var container = this;
+		var value = container.value;
+		var size = Math.min( value.length, max_items );
 
-		//clear extra widgets
-		if(new_size < old_size)
-		{
-			for(var i = new_size; i < widgets.length; ++i)
-			{
-				if(	widgets[ i ] )
-					widgets[ i ].remove();
-			}
-			widgets.length = new_size;
-		}
+		that.widgets_per_row = 2;
+		container.innerHTML = "";
 
-		if(new_size > old_size)
+		for(var i = 0; i < size; ++i)
 		{
-			for(var i = old_size; i < new_size && i < max_items; ++i)
-			{
-				var v = null;
-				if (value[i] !== undefined)
-					v = value[i];
-				var item_options = { widget_parent: container, name_width: 30, callback: assign.bind({value: this.value, index: i}) };
-				if(options.data_options)
-					for(var j in options.data_options)
-						item_options[j] = options.data_options[j];
-				var w = that.add( type, i, v, item_options );
-				widgets.push( w );
-			}
+			var v = null;
+			if (value[i] !== undefined)
+				v = value[i];
+			var item_options = { widget_parent: container, name_width: 30, width: "100% - 40px", callback: assign.bind({value: this.value, index: i}) };
+			if(options.data_options)
+				for(var j in options.data_options)
+					item_options[j] = options.data_options[j];
+			var w = that.add( type, i, v, item_options );
+
+			that.addButton(null,"<img src='imgs/mini-icon-trash.png'/>", {  widget_parent: container, index: i,width: 30, callback: function(){
+				if( value && value.length > (this.options.index-1))
+				{
+					value.splice( this.options.index,1 );
+					length_widget.setValue( value.length, true );
+					refresh.call( container );
+				}
+
+			}});
 		}
+		that.widgets_per_row = 1;
 	}
 
 	function assign(v)
@@ -9443,7 +9451,7 @@ Inspector.prototype.addArray = function( name, value, options )
 	container.setValue = function(v)
 	{
 		this.value = v;
-		refresh.call(this);
+		refresh.call(container);
 	}
 
 	container.getValue = function()

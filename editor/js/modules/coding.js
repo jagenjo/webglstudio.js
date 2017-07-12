@@ -405,11 +405,16 @@ LS.Components.Script["@inspector"] = function( component, inspector )
 			component.setDragData( event );
 	});
 
-	inspector.addButton(null,"Edit Code", { callback: function() {
+	inspector.widgets_per_row = 2;
+	inspector.addButton(null,"Edit Code", { width: "100% - 30px", callback: function() {
 		CodingModule.openTab();
 		var path = component.uid;
 		CodingModule.editInstanceCode( component );
 	}});
+	inspector.addButton(null, "<img src='imgs/mini-icon-rotator.png'/>", { width: 30, callback: function() {
+		component.reload();
+	}});
+	inspector.widgets_per_row = 1;
 
 	if(context)
 	{
@@ -438,12 +443,12 @@ LS.Components.ScriptFromFile["@inspector"] = function( component, inspector )
 			component.setDragData( event );
 	});
 
-	inspector.widgets_per_row = 2;
-	inspector.addResource( "Filename", component.filename, { width: "75%", category: "Script", align:"right", callback: function(v) { 
+	inspector.widgets_per_row = 3;
+	inspector.addResource( "Filename", component.filename, { name_width: 70, width: "100% - 130px", category: "Script", align:"right", callback: function(v) { 
 		component.filename = v;
 	}});
 
-	inspector.addButton(null,"Edit Code", { width: "25%", callback: function() {
+	inspector.addButton(null,"Edit Code", { width: 100, callback: function() {
 		var path = component.uid;
 		if(!component.filename)
 		{
@@ -477,6 +482,11 @@ LS.Components.ScriptFromFile["@inspector"] = function( component, inspector )
 			CodingModule.editInstanceCode( res );
 		});
 	}});
+
+	inspector.addButton(null, "<img src='imgs/mini-icon-rotator.png'/>", { title: "reload", width: 30, callback: function() {
+		component.reload();
+	}});
+
 	inspector.widgets_per_row = 1;
 
 	var context = component.getContext();

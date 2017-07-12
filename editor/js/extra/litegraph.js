@@ -9521,12 +9521,19 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphTextureSave.prototype.onExecute = function()
 	{
 		var tex = this.getInputData(0);
-		if(!tex) return;
+		if(!tex)
+			return;
 
 		if(this.properties.name)
 		{
-			var container = LGraphTexture.getTexturesContainer();
-			container[ this.properties.name ] = tex;
+			//for cases where we want to perform something when storing it
+			if( LGraphTexture.storeTexture )
+				LGraphTexture.storeTexture( this.properties.name, tex );
+			else
+			{
+				var container = LGraphTexture.getTexturesContainer();
+				container[ this.properties.name ] = tex;
+			}
 		}
 
 		this.setOutputData(0, tex);

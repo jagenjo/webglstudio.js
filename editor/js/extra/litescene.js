@@ -772,8 +772,11 @@ global.LScript = LScript;
 
 //Global Scope
 //better array conversion to string for serializing
-var typed_arrays = [ Uint8Array, Int8Array, Uint16Array, Int16Array, Uint32Array, Int32Array, Float32Array, Float64Array ];
-typed_arrays.forEach( function(v) { v.prototype.toJSON = function(){ return Array.prototype.slice.call(this); } } );
+if( !Uint8Array.prototype.toJSON )
+{
+	var typed_arrays = [ Uint8Array, Int8Array, Uint16Array, Int16Array, Uint32Array, Int32Array, Float32Array, Float64Array ];
+	typed_arrays.forEach( function(v) { v.prototype.toJSON = function(){ return Array.prototype.slice.call(this); } } );
+}
 
 /**
 * LS is the global scope for the global functions and containers of LiteScene
@@ -2222,14 +2225,21 @@ var Input = {
 	* @param {boolean} flip [optional] if you want to flip the y coordinate
 	* @return {boolean}
 	*/
-	isMouseInRect: function(x,y,width,height, flip_y)
+	isMouseInRect: function( x, y, width, height, flip_y )
 	{
 		return this.Mouse.isInsideRect(x,y,width,height,flip_y);
 	},
 
-	isEventInRect: function(e,area)
+	isEventInRect: function( e, area, offset )
 	{
-		return (e.mousex >= area[0] && e.mousex < (area[0] + area[2]) && e.mousey >= area[1] && e.mousey < (area[1] + area[3]) );
+		var offsetx = 0;
+		var offsety = 0;
+		if(offset)
+		{
+			offsetx = offset[0];
+			offsety = offset[1];
+		}
+		return ( (e.mousex - offsetx) >= area[0] && (e.mousex - offsetx) < (area[0] + area[2]) && (e.mousey - offsety) >= area[1] && (e.mousey - offsety) < (area[1] + area[3]) );
 	},
 
 	/**
@@ -2346,7 +2356,9 @@ var GUI = {
 		margin: 0.2
 	},
 
-	clicked_enter: false,
+	_offset: [0,0],
+
+	pressed_enter: false,
 
 	/**
 	* Returns the DOM element responsible for the HTML GUI of the app. This is helpful because this GUI will be automatically removed if the app finishes.
@@ -2602,7 +2614,9 @@ var GUI = {
 		this._is_on_top_of_immediate_widget = false;
 		this.setCursor(null);
 		LS.GlobalScene.requestFrame(); //force redraws
-		this.clicked_enter = false;
+		this.pressed_enter = false;
+		this._offset[0] = 0;
+		this._offset[1] = 0;
 	},
 
 	/**
@@ -2618,7 +2632,7 @@ var GUI = {
 			throw("No area");
 		var ctx = gl;
 		ctx.fillStyle = color || "#333";
-		ctx.fillRect( area[0], area[1], area[2], area[3] );
+		ctx.fillRect( area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3] );
 	},
 
 	/**
@@ -2639,14 +2653,14 @@ var GUI = {
 
 		if(content.constructor === GL.Texture)
 		{
-			ctx.drawImage( content, area[0], area[1], area[2], area[3] );
+			ctx.drawImage( content, area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3] );
 		}
 		else if(content.constructor === String)
 		{
 			ctx.fillStyle = this.GUIStyle.color;
 			ctx.font = (area[3]*0.75).toFixed(0) + "px " + this.GUIStyle.font;
 			ctx.textAlign = "left";
-			ctx.fillText( content, area[0] + area[3] * 0.2, area[1] + area[3] * 0.75 );
+			ctx.fillText( content, area[0] + area[3] * 0.2 + this._offset[0], area[1] + area[3] * 0.75  + this._offset[1]);
 		}
 	},
 
@@ -2665,7 +2679,7 @@ var GUI = {
 			throw("No area");
 
 		var ctx = gl;
-		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area );
+		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
 		if(is_over)
 		{
 			this._is_on_top_of_immediate_widget = true;
@@ -2675,7 +2689,7 @@ var GUI = {
 		var clicked = false;
 		if( mouse )
 		{
-			clicked = LS.Input.isEventInRect( mouse, area );
+			clicked = LS.Input.isEventInRect( mouse, area, this._offset );
 			if(clicked)
 				LS.Input.current_click = false; //consume event
 		}
@@ -2686,7 +2700,7 @@ var GUI = {
 		if( content.constructor === String )
 		{
 			ctx.fillStyle = clicked ? "#FFF" : (is_over ? this.GUIStyle.backgroundColorOver : this.GUIStyle.backgroundColor );
-			ctx.fillRect( area[0], area[1], area[2], area[3] );
+			ctx.fillRect( area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3] );
 		}
 
 		if(content.constructor === GL.Texture)
@@ -2694,14 +2708,14 @@ var GUI = {
 			var texture = content;
 			if( is_over && content_over && content_over.constructor === GL.Texture)
 				texture = content_over;
-			ctx.drawImage( texture, area[0], area[1], area[2], area[3] );
+			ctx.drawImage( texture, area[0] + this._offset[0], area[1] + this._offset[0], area[2], area[3] );
 		}
 		else if(content.constructor === String)
 		{
 			ctx.fillStyle = this.GUIStyle.color;
 			ctx.font = (area[3]*0.75).toFixed(0) + "px " + this.GUIStyle.font;
 			ctx.textAlign = "center";
-			ctx.fillText( content, area[0] + area[2] * 0.5, area[1] + area[3] * 0.75 );
+			ctx.fillText( content, area[0] + area[2] * 0.5 + this._offset[0], area[1] + area[3] * 0.75 + this._offset[1]);
 			ctx.textAlign = "left";
 		}
 
@@ -2725,7 +2739,7 @@ var GUI = {
 			throw("No options");
 
 		var ctx = gl;
-		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area );
+		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
 		if(is_over)
 		{
 			this._is_on_top_of_immediate_widget = true;
@@ -2746,7 +2760,7 @@ var GUI = {
 
 			if( mouse )
 			{
-				clicked = LS.Input.isEventInRect( mouse, area );
+				clicked = LS.Input.isEventInRect( mouse, area, this._offset );
 				if(clicked)
 				{
 					selected = i;
@@ -2758,7 +2772,7 @@ var GUI = {
 			if( !content || content.constructor === String )
 			{
 				ctx.fillStyle = is_selected ? this.GUIStyle.backgroundColorOver : this.GUIStyle.backgroundColor;
-				ctx.fillRect( area[0], area[1], area[2], area[3] );
+				ctx.fillRect( area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3] );
 			}
 
 			if(content)
@@ -2768,7 +2782,7 @@ var GUI = {
 					var texture = content;
 					if(!is_selected)
 						ctx.globalAlpha = 0.5;
-					ctx.drawImage( texture, area[0], area[1], area[2], area[3] );
+					ctx.drawImage( texture, area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3] );
 					ctx.globalAlpha = 1;
 				}
 				else if(content.constructor === String)
@@ -2776,7 +2790,7 @@ var GUI = {
 					ctx.fillStyle = this.GUIStyle.color;
 					ctx.font = (area[3]*0.75).toFixed(0) + "px " + this.GUIStyle.font;
 					ctx.textAlign = "center";
-					ctx.fillText( content, area[0] + area[2] * 0.5, area[1] + area[3] * 0.75 );
+					ctx.fillText( content, area[0] + area[2] * 0.5 + this._offset[0], area[1] + area[3] * 0.75 + this._offset[1] );
 					ctx.textAlign = "left";
 				}
 			}
@@ -2806,7 +2820,7 @@ var GUI = {
 		value = !!value;
 
 		var ctx = gl;
-		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area );
+		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
 		if(is_over)
 		{
 			this._is_on_top_of_immediate_widget = true;
@@ -2816,7 +2830,7 @@ var GUI = {
 		var clicked = false;
 		if( mouse )
 		{
-			clicked = LS.Input.isEventInRect( mouse, area );
+			clicked = LS.Input.isEventInRect( mouse, area, this._offset );
 			if(clicked)
 			{
 				LS.Input.current_click = false; //consume event
@@ -2832,19 +2846,19 @@ var GUI = {
 				var texture = content;
 				if( !value && content_off && content_off.constructor === GL.Texture)
 					texture = content_off;
-				ctx.drawImage( texture, area[0], area[1], area[2], area[3] );
+				ctx.drawImage( texture, area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3] );
 			}
 			else if(content.constructor === String)
 			{
 				ctx.fillStyle = this.GUIStyle.color;
 				ctx.font = (area[3]*0.75).toFixed(0) + "px " + this.GUIStyle.font;
-				ctx.fillText( content, area[0] + margin, area[1] + area[3] * 0.75 );
+				ctx.fillText( content, area[0] + margin + this._offset[0], area[1] + area[3] * 0.75 + this._offset[1]);
 
 				var w = area[3] * 0.6;
 				ctx.fillStyle = this.GUIStyle.backgroundColor;
-				ctx.fillRect( area[0] + area[2] - margin*1.5 - w, area[1] + margin*0.5, w+margin, area[3] - margin );
+				ctx.fillRect( area[0] + area[2] - margin*1.5 - w + this._offset[0], area[1] + margin*0.5 + this._offset[1], w+margin, area[3] - margin );
 				ctx.fillStyle = value ? this.GUIStyle.selected : "#000";
-				ctx.fillRect( area[0] + area[2] - margin - w, area[1] + margin, w, area[3] - margin*2 );
+				ctx.fillRect( area[0] + area[2] - margin - w + this._offset[0], area[1] + margin + this._offset[1], w, area[3] - margin*2 );
 			}
 		}
 
@@ -2853,13 +2867,14 @@ var GUI = {
 
 
 	/**
-	* Renders a textfield widget and returns the current value
+	* Renders a textfield widget and returns the current text value
 	* Remember: you must pass as text the same text returned by this function in order to work propertly
 	*
 	* @method TextField
 	* @param {Array} area [x,y,width,height]
-	* @param {Boolean} value if the checkbox is on or off
+	* @param {String} text the text to show in the textfield
 	* @param {Number} max_length to limit the text, otherwise leave blank
+	* @param {Boolean} is_password set to true to show as password
 	* @return {Boolean} the current state of the checkbox (will be different from value if it was pressed)
 	*/
 	TextField: function( area, text, max_length, is_password )
@@ -2871,7 +2886,7 @@ var GUI = {
 		max_length = max_length || 1024;
 
 		var ctx = gl;
-		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area );
+		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
 		if(is_over)
 		{
 			this._is_on_top_of_immediate_widget = true;
@@ -2881,7 +2896,7 @@ var GUI = {
 		var clicked = false;
 		if( mouse )
 		{
-			clicked = LS.Input.isEventInRect( mouse, area );
+			clicked = LS.Input.isEventInRect( mouse, area, this._offset );
 			if(clicked)
 			{
 				LS.Input.current_click = null; //consume event
@@ -2889,12 +2904,12 @@ var GUI = {
 			}
 		}
 		var is_selected = false;
-		if( LS.Input.last_click && LS.Input.isEventInRect( LS.Input.last_click, area ) )
+		if( LS.Input.last_click && LS.Input.isEventInRect( LS.Input.last_click, area, this._offset ) )
 		{
 			is_selected = true;
 		}
 
-		this.clicked_enter = false;
+		this.pressed_enter = false;
 		if(is_selected)
 		{
 			var keys = LS.Input.keys_buffer;
@@ -2904,7 +2919,7 @@ var GUI = {
 				switch(key.keyCode)
 				{
 					case 8: text = text.substr(0, text.length - 1 ); break; //backspace
-					case 13: this.clicked_enter = true; break; //return
+					case 13: this.pressed_enter = true; break; //return
 					case 32: if(text.length < max_length) text += " "; break;
 					default:
 						if(text.length < max_length && key.key && key.key.length == 1) //length because control keys send a string like "Shift"
@@ -2925,9 +2940,9 @@ var GUI = {
 
 		//contour
 		ctx.fillStyle = this.GUIStyle.backgroundColor;
-		ctx.fillRect( area[0], area[1], area[2], area[3] );
+		ctx.fillRect( area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3] );
 		ctx.fillStyle = "#000";
-		ctx.fillRect( area[0] + line, area[1] + line, area[2] - line*2, area[3] - line*2 );
+		ctx.fillRect( area[0] + line + this._offset[0], area[1] + line + this._offset[1], area[2] - line*2, area[3] - line*2 );
 
 		ctx.fillStyle = this.GUIStyle.color;
 		ctx.font = (area[3]*0.75).toFixed(0) + "px " + this.GUIStyle.font;
@@ -2945,7 +2960,7 @@ var GUI = {
 				final_text += "*";
 		}
 
-		ctx.fillText( final_text + cursor, area[0] + margin*2, area[1] + area[3] * 0.75 );
+		ctx.fillText( final_text + cursor, area[0] + margin*2 + this._offset[0], area[1] + area[3] * 0.75 + this._offset[1] );
 
 		return text;
 	},
@@ -2976,7 +2991,7 @@ var GUI = {
 		right_value = Number(right_value);
 
 		var ctx = gl;
-		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area );
+		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
 		if(is_over)
 		{
 			this._is_on_top_of_immediate_widget = true;
@@ -2993,10 +3008,10 @@ var GUI = {
 
 		if( mouse )
 		{
-			clicked = LS.Input.isEventInRect( mouse, area );
+			clicked = LS.Input.isEventInRect( mouse, area, this._offset );
 			if(clicked)
 			{
-				norm_value = (LS.Input.Mouse.mousex - (area[0] + margin)) / (area[2] - margin*2);
+				norm_value = ( (LS.Input.Mouse.mousex - this._offset[0]) - (area[0] + margin)) / (area[2] - margin*2);
 				if(norm_value < 0) norm_value = 0;
 				if(norm_value > 1) norm_value = 1;
 				value = norm_value * range + left_value;
@@ -3004,16 +3019,16 @@ var GUI = {
 		}
 
 		ctx.fillStyle = this.GUIStyle.backgroundColor;
-		ctx.fillRect( area[0], area[1], area[2], area[3] );
+		ctx.fillRect( area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3] );
 		ctx.fillStyle = clicked ? this.GUIStyle.selected : this.GUIStyle.unselected;
-		ctx.fillRect( area[0] + margin, area[1] + margin, (area[2] - margin*2) * norm_value, area[3] - margin*2 );
+		ctx.fillRect( area[0] + margin + this._offset[0], area[1] + margin + this._offset[1], (area[2] - margin*2) * norm_value, area[3] - margin*2 );
 
 		if(show_value)
 		{
 			ctx.textAlign = "center";
 			ctx.fillStyle = this.GUIStyle.color;
 			ctx.font = (area[3]*0.5).toFixed(0) + "px " + this.GUIStyle.font;
-			ctx.fillText( value.toFixed(2), area[0] + area[2] * 0.5, area[1] + area[3] * 0.7 );
+			ctx.fillText( value.toFixed(2), area[0] + area[2] * 0.5 + this._offset[0], area[1] + area[3] * 0.7 + this._offset[1] );
 		}
 
 		return value;
@@ -3044,7 +3059,7 @@ var GUI = {
 		top_value = Number(top_value);
 
 		var ctx = gl;
-		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area );
+		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
 		if(is_over)
 		{
 			this._is_on_top_of_immediate_widget = true;
@@ -3061,10 +3076,10 @@ var GUI = {
 
 		if( mouse )
 		{
-			clicked = LS.Input.isEventInRect( mouse, area );
+			clicked = LS.Input.isEventInRect( mouse, area, this._offset );
 			if(clicked)
 			{
-				norm_value = (LS.Input.Mouse.mousey - (area[1] + margin)) / (area[3] - margin*2);
+				norm_value = ( (LS.Input.Mouse.mousey - this._offset[1]) - (area[1] + margin)) / (area[3] - margin*2);
 				if(norm_value < 0) norm_value = 0;
 				if(norm_value > 1) norm_value = 1;
 				norm_value = 1 - norm_value; //reverse slider
@@ -3073,9 +3088,9 @@ var GUI = {
 		}
 
 		ctx.fillStyle = this.GUIStyle.backgroundColor;
-		ctx.fillRect( area[0], area[1], area[2], area[3] );
+		ctx.fillRect( area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3] );
 		ctx.fillStyle = clicked ? this.GUIStyle.selected : this.GUIStyle.unselected;
-		ctx.fillRect( area[0] + margin, area[1] + area[3] - (area[3] - margin*2) * norm_value - margin, area[2] - margin*2, (area[3] - margin*2) * norm_value );
+		ctx.fillRect( area[0] + margin + this._offset[0], area[1] + area[3] - (area[3] - margin*2) * norm_value - margin + this._offset[1], area[2] - margin*2, (area[3] - margin*2) * norm_value );
 
 		return value;
 	},
@@ -3087,6 +3102,20 @@ var GUI = {
 		gl.canvas.style.cursor = type || "";
 	}
 };
+
+Object.defineProperty( GUI, "GUIOffset", {
+	set: function(v){
+		if(!v.length || v.length < 2)
+			return;
+		this._offset[0] = v[0];
+		this._offset[1] = v[1];
+	},
+	get: function()
+	{
+		return this._offset;
+	},
+	enumerable: true
+});
 
 //LEGACY API
 GUI.show = GUI.showHTML;
@@ -10439,6 +10468,10 @@ Component.prototype.clone = function()
 **/
 Component.prototype.createProperty = function( name, value, type, setter, getter )
 {
+	if(this[name] !== undefined)
+		return; //console.warn("createProperty: this component already has a property called " + name );
+
+	//if we have type info, stored in the constructor, useful for GUIs
 	if(type)
 	{
 		//control errors
@@ -10463,32 +10496,47 @@ Component.prototype.createProperty = function( name, value, type, setter, getter
 
 	var private_name = "_" + name;
 
-	//vector type has special type with setters and getters to avoid overwritting
+	if( Object.hasOwnProperty( this, private_name ) )
+		return;
+
+
+	var property_root = this; //with proto is problematic, because the getters cannot do this.set (this is the proto, not the component)
+
+	//vector type has special type with setters and getters to avoid replacing the container during assignations
 	if(value && value.constructor === Float32Array)
 	{
 		value = new Float32Array( value ); //clone
 		this[ private_name ] = value; //this could be removed...
 
 		//create setter
-		Object.defineProperty( this, name, {
+		Object.defineProperty( property_root, name, {
 			get: getter || function() { return value; },
 			set: setter || function(v) { value.set( v ); },
 			enumerable: true
+			//writable: false //cannot be set to true if setter/getter
 		});
 	}
-	else
+	else //this is for vars that has their own setter/getter
 	{
-		//define private
-		Object.defineProperty( this, private_name, { 
+		//define private (writable because it can be overwriten with different values)
+		Object.defineProperty( property_root, private_name, { 
 			value: value, 
-			enumerable: false
+			enumerable: false,
+			writable: true 
 		});
 
+		var that = this;
+
 		//define public
-		Object.defineProperty( this, name, {
-			get: getter || function() { return this[ private_name ]; },
-			set: setter || function(v) { this[ private_name ] = v; },
+		Object.defineProperty( property_root, name, {
+			get: getter || function() { 
+				return this[ private_name ];
+			},
+			set: setter || function(v) { 
+				this[ private_name ] = v;
+			},
 			enumerable: true
+			//writable: false //cannot be set to true if setter/getter
 		});
 	}
 }
@@ -17252,6 +17300,10 @@ RenderInstance.prototype.setMesh = function(mesh, primitive)
 		this.mesh = mesh;
 		this.vertex_buffers = {};
 	}
+
+	if(!this.mesh)
+		return;
+
 	//this.vertex_buffers = mesh.vertexBuffers;
 	for(var i in mesh.vertexBuffers)
 		this.vertex_buffers[i] = mesh.vertexBuffers[i];
@@ -19271,7 +19323,8 @@ var Renderer = {
 			var query = instance._final_query;
 			query.clear();
 			query.add( node._query );
-			query.add( material._query );
+			if(material)
+				query.add( material._query );
 			query.add( instance.query );
 		}
 
@@ -28540,6 +28593,7 @@ function SkinDeformer( o )
 	this.ignore_transform = true;
 
 	this._mesh = null;
+	this._last_bones = null;
 	//this._skinning_mode = 0;
 
 	//check how many floats can we put in a uniform
@@ -28684,6 +28738,32 @@ SkinDeformer.prototype.onCollectInstances = function( e, render_instances )
 	//grab the RI created previously and modified
 	this.applySkinning( last_RI );
 }
+
+/*
+SkinDeformer.prototype.setBonesToBindPose = function()
+{
+	//bone matrices
+	var bones = this._last_bones;
+	if( !bones || !this._mesh || !this._mesh.bones )
+		return;
+
+	var mesh = this._mesh;
+	var m = mat4.create();
+
+	for(var i = 0; i < mesh.bones.length; ++i)
+	{
+		var m = bones[i]; //mat4.create();
+		var joint = mesh.bones[i];
+		var bone_node = this.getBoneNode( joint[0] );
+		if(!bone_node)
+			continue;
+		mat4.invert( m, joint[1] ); //invert first
+		if(mesh.bind_matrix)
+			mat4.multiply( m, m, mesh.bind_matrix);
+		bone_node.transform.matrix = m;
+	}
+}
+*/
 
 //Applies skinning taking into account the options available (using uniforms, a texture or applying it by software)
 SkinDeformer.prototype.applySkinning = function(RI)
@@ -31427,16 +31507,55 @@ LS.registerComponent( FollowNode );
 function GeometricPrimitive( o )
 {
 	this.enabled = true;
-	this.size = 10;
-	this.subdivisions = 10;
-	this.point_size = 0.1;
+	this._size = 10;
+	this._subdivisions = 10;
 	this._geometry = GeometricPrimitive.CUBE;
-	this._primitive = -1;
-	this.align_z = false;
+	this._custom_mesh = null;
+	this._primitive = -1; //GL.POINTS, GL.LINES, GL.TRIANGLES, etc...
+	this._point_size = 0.1;
+
+	this._version = 1;
+	this._mesh_version = 0;
 
 	if(o)
 		this.configure(o);
 }
+
+Object.defineProperty( GeometricPrimitive.prototype, 'geometry', {
+	get: function() { return this._geometry; },
+	set: function(v) { 
+		if( this._geometry == v )
+			return;
+		v = (v === undefined || v === null ? -1 : v|0);
+		if( v < 0 || v > 100 )
+			return;
+		this._geometry = v;
+		this._version++;
+	},
+	enumerable: true
+});
+
+Object.defineProperty( GeometricPrimitive.prototype, 'size', {
+	get: function() { return this._size; },
+	set: function(v) { 
+		if( this._size == v )
+			return;
+		this._size = v;
+		this._version++;
+	},
+	enumerable: true
+});
+
+Object.defineProperty( GeometricPrimitive.prototype, 'subdivisions', {
+	get: function() { return this._subdivisions; },
+	set: function(v) { 
+		if( this._subdivisions == v )
+			return;
+		this._subdivisions = v;
+		this._version++;
+	},
+	enumerable: true
+});
 
 Object.defineProperty( GeometricPrimitive.prototype, 'primitive', {
 	get: function() { return this._primitive; },
@@ -31449,13 +31568,12 @@ Object.defineProperty( GeometricPrimitive.prototype, 'primitive', {
 	enumerable: true
 });
 
-Object.defineProperty( GeometricPrimitive.prototype, 'geometry', {
-	get: function() { return this._geometry; },
+Object.defineProperty( GeometricPrimitive.prototype, 'point_size', {
+	get: function() { return this._point_size; },
 	set: function(v) { 
-		v = (v === undefined || v === null ? -1 : v|0);
-		if(v < 0 || v > 8)
+		if( this._point_size == v )
 			return;
-		this._geometry = v;
+		this._point_size = v;
 	},
 	enumerable: true
 });
@@ -31468,13 +31586,15 @@ GeometricPrimitive.CIRCLE = 5;
 GeometricPrimitive.HEMISPHERE = 6;
 GeometricPrimitive.ICOSAHEDRON = 7;
 GeometricPrimitive.CONE = 8;
+GeometricPrimitive.QUAD = 9;
+GeometricPrimitive.CUSTOM = 100;
 
 //Warning : if you add more primitives, be careful with the setter, it doesnt allow values bigger than 7
 
 GeometricPrimitive.icon = "mini-icon-cube.png";
-GeometricPrimitive["@geometry"] = { type:"enum", values: {"Cube":GeometricPrimitive.CUBE, "Plane": GeometricPrimitive.PLANE, "Cylinder":GeometricPrimitive.CYLINDER, "Sphere":GeometricPrimitive.SPHERE, "Cone":GeometricPrimitive.CONE, "Icosahedron":GeometricPrimitive.ICOSAHEDRON, "Circle":GeometricPrimitive.CIRCLE, "Hemisphere":GeometricPrimitive.HEMISPHERE  }};
+GeometricPrimitive["@geometry"] = { type:"enum", values: {"Cube":GeometricPrimitive.CUBE, "Plane": GeometricPrimitive.PLANE, "Cylinder":GeometricPrimitive.CYLINDER, "Sphere":GeometricPrimitive.SPHERE, "Cone":GeometricPrimitive.CONE, "Icosahedron":GeometricPrimitive.ICOSAHEDRON, "Circle":GeometricPrimitive.CIRCLE, "Hemisphere":GeometricPrimitive.HEMISPHERE, "Quad": GeometricPrimitive.QUAD, "Custom": GeometricPrimitive.CUSTOM }};
 GeometricPrimitive["@primitive"] = {widget:"enum", values: {"Default":-1, "Points": 0, "Lines":1, "Triangles":4, "Wireframe":10 }};
-GeometricPrimitive["@subdivisions"] = { type:"number", step:1, min:0 };
+GeometricPrimitive["@subdivisions"] = { type:"number", step:1, min:1, precision: 0 };
 GeometricPrimitive["@point_size"] = { type:"number", step:0.001 };
 
 //we bind to onAddedToNode because the event is triggered per node so we know which RIs belong to which node
@@ -31488,31 +31608,56 @@ GeometricPrimitive.prototype.onRemovedFromNode = function( node )
 	LEvent.unbind( node, "collectRenderInstances", this.onCollectInstances, this);
 }
 
+GeometricPrimitive.prototype.serialize = function()
+{
+	var r = LS.Component.prototype.serialize.call(this);
+	if(this._geometry == GeometricPrimitive.CUSTOM && this._custom_mesh)
+		r.custom_mesh = this._custom_mesh.toJSON();
+
+	return r;
+}
+
+GeometricPrimitive.prototype.configure = function(o)
+{
+	LS.Component.prototype.configure.call(this,o);
+
+	//legacy
+	if(this._geometry == GeometricPrimitive.PLANE && o.align_z === false )
+		this._geometry = GeometricPrimitive.QUAD;
+
+	if(o.geometry == GeometricPrimitive.CUSTOM && o.custom_mesh)
+	{
+		if(!this._custom_mesh)
+			this._custom_mesh = new GL.Mesh();
+		this._custom_mesh.fromJSON( o.custom_mesh );
+	}
+
+	this._version++;
+}
+
 GeometricPrimitive.prototype.updateMesh = function()
 {
 	var subdivisions = Math.max(0,this.subdivisions|0);
 
-	var key = "" + this.geometry + "|" + this.size + "|" + subdivisions + "|" + this.align_z;
-
-	switch (this.geometry)
+	switch (this._geometry)
 	{
 		case GeometricPrimitive.CUBE: 
 			this._mesh = GL.Mesh.cube({size: this.size, normals:true,coords:true});
 			break;
 		case GeometricPrimitive.PLANE:
-			this._mesh = GL.Mesh.plane({size: this.size, detail: subdivisions, xz: this.align_z, normals:true,coords:true});
+			this._mesh = GL.Mesh.plane({size: this.size, xz: true, detail: subdivisions, normals:true,coords:true});
 			break;
 		case GeometricPrimitive.CYLINDER:
 			this._mesh = GL.Mesh.cylinder({size: this.size, subdivisions: subdivisions, normals:true,coords:true});
 			break;
 		case GeometricPrimitive.SPHERE:
-			this._mesh = GL.Mesh.sphere({size: this.size, "long":subdivisions, lat: subdivisions, normals:true,coords:true});
+			this._mesh = GL.Mesh.sphere({size: this.size, "long": subdivisions, lat: subdivisions, normals:true,coords:true});
 			break;
 		case GeometricPrimitive.CIRCLE:
-			this._mesh = GL.Mesh.circle({size: this.size, slices:subdivisions, xz: this.align_z, normals:true, coords:true});
+			this._mesh = GL.Mesh.circle({size: this.size, slices: subdivisions, normals:true, coords:true});
 			break;
 		case GeometricPrimitive.HEMISPHERE:
-			this._mesh = GL.Mesh.sphere({size: this.size, slices:subdivisions, xz: this.align_z, normals:true, coords:true, hemi: true});
+			this._mesh = GL.Mesh.sphere({size: this.size, "long": subdivisions, lat: subdivisions, normals:true, coords:true, hemi: true});
 			break;
 		case GeometricPrimitive.ICOSAHEDRON:
 			this._mesh = GL.Mesh.icosahedron({size: this.size, subdivisions:subdivisions });
@@ -31520,8 +31665,27 @@ GeometricPrimitive.prototype.updateMesh = function()
 		case GeometricPrimitive.CONE:
 			this._mesh = GL.Mesh.cone({radius: this.size, height: this.size, subdivisions:subdivisions });
 			break;
+		case GeometricPrimitive.QUAD:
+			this._mesh = GL.Mesh.plane({size: this.size, xz: false, detail: subdivisions, normals:true, coords:true });
+			break;
+		case GeometricPrimitive.CUSTOM:
+			this._mesh = this._custom_mesh;
+			break;
 	}
-	this._key = key;
+
+	this._mesh_version = this._version;
+}
+
+/**
+* Assigns a mesh as custom mesh and sets the geometry to CUSTOM
+* @method setCustomMesh
+* @param {GL.Mesh} mesh the mesh to use as custom mesh
+*/
+GeometricPrimitive.prototype.setCustomMesh = function( mesh )
+{
+	this._geometry = GeometricPrimitive.CUSTOM;
+	this._custom_mesh = mesh;
+	this._mesh = this._custom_mesh;
 }
 
 //GeometricPrimitive.prototype.getRenderInstance = function()
@@ -31530,32 +31694,33 @@ GeometricPrimitive.prototype.onCollectInstances = function(e, instances)
 	if(!this.enabled)
 		return;
 
-	//if(this.size == 0) return;
 	var mesh = null;
 	if(!this._root)
 		return;
-
-	var subdivisions = Math.max(0,this.subdivisions|0);
-	var key = "" + this.geometry + "|" + this.size + "|" + subdivisions + "|" + this.align_z;
-
-	if(!this._mesh || this._key != key)
-		this.updateMesh();
 
 	var RI = this._render_instance;
 	if(!RI)
 		this._render_instance = RI = new LS.RenderInstance(this._root, this);
 
+	if(!this._mesh || this._version != this._mesh_version )
+		this.updateMesh();
+
+	if(!this._mesh) //could happend if custom mesh is null
+		return;
+
 	if(this._root.transform)
 		this._root.transform.getGlobalMatrix( RI.matrix );
+
 	RI.layers = this._root.layers;
 	RI.setMatrix( RI.matrix ); //force normal
 	//mat4.multiplyVec3( RI.center, RI.matrix, vec3.create() );
 	mat4.getTranslation( RI.center, RI.matrix );
-	RI.setMesh( this._mesh, this.primitive );
+	RI.setMesh( this._mesh, this._primitive );
 	this._root.mesh = this._mesh;
 	
 	RI.setMaterial( this.material || this._root.getMaterial() );
 
+	//remove one day...
 	if(this.primitive == gl.POINTS)
 	{
 		RI.uniforms.u_point_size = this.point_size;
@@ -31708,6 +31873,7 @@ if(typeof(LGraphTexture) != "undefined")
 {
 	//link LGraph textures system with LiteScene
 	LGraphTexture.getTexturesContainer = function() { return LS.ResourcesManager.textures };
+	LGraphTexture.storeTexture = function(name, texture) { return LS.ResourcesManager.registerResource(name, texture); };
 	LGraphTexture.loadTexture = LS.ResourcesManager.load.bind( LS.ResourcesManager );
 }
 
@@ -34508,7 +34674,13 @@ function Script(o)
 
 	//this are the methods that will be in the prototype of the script context by default
 	this._script.extra_methods = {
-		getComponent: (function() { return this; }).bind(this),
+		getComponent: (function(type,index) { 
+			if(!arguments.length)
+				return this;
+			if(!this._root)
+				return null;
+			return this._root.getComponent(type,index)
+			}).bind(this),
 		getLocator: function() { return this.getComponent().getLocator() + "/context"; },
 		createProperty: LS.Component.prototype.createProperty,
 		createAction: LS.Component.prototype.createAction,
@@ -34665,6 +34837,15 @@ Script.prototype.setCode = function( code, skip_events )
 }
 
 /**
+* Force to reevaluate the code (only for special situations)
+* @method reload
+*/
+Script.prototype.reload = function()
+{
+	this.processCode();
+}
+
+/**
 * This is the method in charge of compiling the code and executing the constructor, which also creates the context.
 * It is called everytime the code is modified, that implies that the context is created when the component is configured.
 * @method processCode
@@ -34752,6 +34933,7 @@ Script.prototype.setContextProperties = function( properties )
 		return;
 	}
 
+	//to copy we use the clone in target method
 	LS.cloneObject( properties, ctx, false, true );
 }
 
@@ -35220,7 +35402,22 @@ ScriptFromFile.prototype.onAddedToScene = function( scene )
 	}
 }
 
-ScriptFromFile.prototype.processCode = function( skip_events )
+/**
+* Force to reevaluate the code (only for special situations like remove codes)
+* @method reload
+*/
+ScriptFromFile.prototype.reload = function()
+{
+	if(!this.filename)
+		return;
+	//remove old version
+	LS.ResourcesManager.unregisterResource( this.filename );
+	//load again
+	this.processCode();
+}
+
+
+ScriptFromFile.prototype.processCode = function( skip_events, on_complete )
 {
 	var that = this;
 	if(!this.filename)
@@ -35233,6 +35430,8 @@ ScriptFromFile.prototype.processCode = function( skip_events )
 			if( url != that.filename )
 				return;
 			that.processCode( skip_events );
+			if(on_complete)
+				on_complete(that);
 		});
 		return;
 	}
@@ -35304,6 +35503,9 @@ ScriptFromFile.prototype.processCode = function( skip_events )
 
 	if( this._name && this._root && this._root.scene )
 		LS.Script.active_scripts[ this._name ] = this;
+
+	if(on_complete)
+		on_complete(this);
 
 	return ret;
 }
@@ -37297,7 +37499,8 @@ SceneTree.getScriptsList = function( root, allow_local )
 	return scripts;
 }
 
-SceneTree.prototype.loadScripts = function( scripts, on_complete, on_error )
+//reloads external and global scripts taking into account if they come from wbins
+SceneTree.prototype.loadScripts = function( scripts, on_complete, on_error, force_reload )
 {
 	scripts = scripts || LS.SceneTree.getScriptsList( this, true );
 
@@ -37322,7 +37525,7 @@ SceneTree.prototype.loadScripts = function( scripts, on_complete, on_error )
 	{
 		var script_fullpath = scripts[i];
 		var res = LS.ResourcesManager.getResource( script_fullpath );
-		if(!res)
+		if(!res || force_reload)
 		{
 			final_scripts.push( script_fullpath );
 			continue;

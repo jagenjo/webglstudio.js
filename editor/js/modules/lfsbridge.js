@@ -503,7 +503,7 @@ var LFSBridge = {
 				if(v)
 				{
 					//tell everyone about a resource renaming
-					LS.ResourcesManager.sendResourceRenamedEvent( res_fullpath, target_fullpath, resource );
+					LS.GlobalScene.sendResourceRenamedEvent( res_fullpath, target_fullpath, resource );
 
 					//show the folder
 					//TODO: select in the tree the element
@@ -529,7 +529,8 @@ var LFSBridge = {
 						return;
 
 					console.log("renaming or moving resource...");
-					LS.ResourcesManager.sendResourceRenamedEvent( res_filename, resource.fullpath );
+					LS.ResourcesManager.unregisterResource( res_filename ); //remove old version
+					LS.GlobalScene.sendResourceRenamedEvent( res_filename, resource.fullpath );
 					LS.ResourcesManager.load( resource.fullpath );
 				});
 				return true;

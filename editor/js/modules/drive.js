@@ -503,6 +503,8 @@ var DriveModule = {
 		inspector.addString("Filename", filename, { callback: function(v) { 
 			var fullpath = resource.fullpath || resource.filename;
 			var folder = LS.RM.getFolder( fullpath );
+			if(folder.indexOf("://") != -1) //it was a URL, then no folder
+				folder = "";
 			var new_fullpath = LS.RM.cleanFullpath( folder + "/" + v );
 			DriveModule.renameResource( fullpath, new_fullpath, resource );
 			DriveModule.refreshContent();
@@ -794,8 +796,15 @@ var DriveModule = {
 		if(!old_name || !new_name || old_name.constructor !== String || new_name.constructor !== String )
 			throw("DriveModule.renameResource wrong parameters");
 
+		//making it local
 		if( LS.RM.getFolder( old_name ) && !LS.RM.getFolder( new_name ) )
-			throw("DriveModule.renameResource new_name must have a folder");
+		{
+			if(resource && resource.in_server)
+				throw("DriveModule.renameResource new_name must have a folder");
+
+			LS.ResourcesManager.renameResource( old_name, new_name ); //rename and inform
+			return;
+		}
 
 		//File is stored in the server (HARDCODED WITH LFS)
 		if(resource && (resource.in_server || resource.remotepath) )

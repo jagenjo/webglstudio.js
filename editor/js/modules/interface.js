@@ -139,9 +139,6 @@ var InterfaceModule = {
 				LiteGUI.setWindowSize(1000,600);
 		}});
 		*/
-		LiteGUI.menubar.add("About", { callback: function() { 
-			LiteGUI.showMessage("<p>WebGLStudio version "+CORE.config.version+"</p><p>Created by <a href='http://blog.tamats.com' target='_blank'>Javi Agenjo</a></p><p><a href='http://gti.upf.edu/' target='_blank'>GTI department</a> of <a href='http://www.upf.edu' target='_blank'>Universitat Pompeu Fabra</a></p><p><a href='#'>Github</a></a>", {title:"About info"});
-		}});
 
 		//split in top-bottom for header and workarea
 		var sidepanelarea = new LiteGUI.Area({ id: "sidepanelarea", autoresize: true, inmediateResize: true });

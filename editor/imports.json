@@ -47,8 +47,8 @@
 		"js/modules/cameraTools.js",
 		"js/modules/notify.js",
 		"js/modules/settings.js",
-		"js/modules/play.js",
 		"js/modules/drive.js",
+		"js/modules/play.js",
 		"js/modules/login.js",
 		"js/modules/componentEditors.js",
 		"js/modules/materialEditors.js",
@@ -76,6 +76,6 @@
 		"js/modules/undo.js",
 		"js/modules/actors.js",
 		"js/modules/annotation.js",
-		"js/plugins/fbxconv.js"
+		"js/modules/about.js"
 	]
 }

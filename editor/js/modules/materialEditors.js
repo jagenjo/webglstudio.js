@@ -705,7 +705,7 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 	var channel = options.channel || "color";
 	var material = options.material;
 
-	var dialog = new LiteGUI.Dialog("dialog_texture_sampler", {title:"Texture Sampler", close: true, minimize: true, width: 360, scroll: false, draggable: true});
+	var dialog = new LiteGUI.Dialog( { title:"Texture Sampler", close: true, minimize: true, width: 360, scroll: false, draggable: true });
 	dialog.show('fade');
 
 	var tex = "";
@@ -717,7 +717,7 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 			tex = "@Instance";
 	}
 
-	var widgets = new LiteGUI.Inspector( null, { name_width: "50%" });
+	var widgets = new LiteGUI.Inspector( { name_width: "50%" });
 	widgets.onchange = function()
 	{
 		if(options.callback)

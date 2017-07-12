@@ -426,7 +426,7 @@ var LocalFilesBridge = {
 				if(v)
 				{
 					//tell everyone about a resource renaming
-					LS.ResourcesManager.sendResourceRenamedEvent( res_fullpath, target_fullpath, resource );
+					LS.GlobalScene.sendResourceRenamedEvent( res_fullpath, target_fullpath, resource );
 
 					//show the folder
 					//TODO: select in the tree the element

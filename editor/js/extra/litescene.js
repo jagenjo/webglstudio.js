@@ -2159,6 +2159,7 @@ var Input = {
 	Gamepads: [],
 
 	//used for GUI elements
+	last_mouse: null,
 	last_click: null,
 	current_click: null,
 	current_key: null,
@@ -2185,8 +2186,11 @@ var Input = {
 		this.Gamepads = gl.getGamepads();
 	},
 
+	//called from LS.Player when onmouse
 	onMouse: function(e)
 	{
+		this.last_mouse = e;
+
 		this.Mouse.mousex = e.mousex;
 		this.Mouse.mousey = e.mousey;
 
@@ -2197,6 +2201,7 @@ var Input = {
 			this.current_click = null;
 	},
 
+	//called from LS.Player when onkey
 	onKey: function(e)
 	{
 		if(e.type == "keydown")
@@ -3094,6 +3099,47 @@ var GUI = {
 
 		return value;
 	},
+
+	//*
+	DragArea: function( area, value )
+	{
+		if(!area)
+			throw("No area");
+		if(!value)
+			throw("No value");
+
+		var ctx = gl;
+		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
+		if(is_over)
+		{
+			this._is_on_top_of_immediate_widget = true;
+			this.setCursor("pointer");
+		}
+		var mouse = LS.Input.current_click;
+		var clicked = false;
+		if( mouse )
+		{
+			clicked = LS.Input.isEventInRect( mouse, area, this._offset );
+			if(clicked)
+			{
+				LS.Input.current_click = null; //consume event
+				LS.Input.last_click = mouse;
+			}
+		}
+		var is_selected = false;
+		if( LS.Input.last_click && LS.Input.isEventInRect( LS.Input.last_click, area, this._offset ) )
+		{
+			is_selected = true;
+			if( LS.Input.Mouse.dragging )
+			{
+				value[0] += LS.Input.Mouse.deltax || 0;
+				value[1] += LS.Input.Mouse.deltay || 0;
+			}
+		}
+
+		return value;
+	},
+	//*/
 
 	setCursor: function(type)
 	{
@@ -7015,7 +7061,8 @@ ShaderMaterial.prototype.setProperty = function(name, value)
 				prop.value = { texture: prop.value };
 			this.properties[i] = prop;
 			this._properties_by_name[ prop.name ] = prop;
-			this._samplers.push( prop.value );
+			//if(prop.is_texture)
+			//	this._samplers.push( prop.value );
 		}
 	}
 	else if( this._properties_by_name[ name ] )
@@ -7550,11 +7597,26 @@ ShaderMaterial.prototype.createSampler = function( name, uniform, sampler_option
 	if(!name || !uniform)
 		throw("parameter missing in createSampler");
 
-	var sampler = {
-		texture: value
-	};
+	var type = "sampler";
+	if( sampler_options && sampler_options.type )
+		type = sampler_options.type;
 
-	var prop = { name: name, uniform: uniform, value: sampler, type: "sampler", is_texture: 1, sampler_slot: -1 };
+	var sampler = null;
+
+	//do not overwrite
+	if( this._properties_by_name[ name ] )
+	{
+		var current_prop = this._properties_by_name[ name ];
+		if( current_prop.type == type && current_prop.value )
+			sampler = current_prop.value;
+	}
+
+	if(!sampler)
+		sampler = {
+			texture: value
+		};
+
+	var prop = { name: name, uniform: uniform, value: sampler, type: type, is_texture: 1, sampler_slot: -1 };
 
 	if(sampler_options)
 	{

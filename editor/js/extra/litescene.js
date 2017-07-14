@@ -3817,7 +3817,7 @@ var ResourcesManager = {
 
 		//extract the filename extension
 		var extension = this.getExtension( url );
-		if(!extension) //unknown file type
+		if(!extension && !this.resources[url] ) //unknown file type and didnt came from a pack or prefab
 		{
 			console.warn("Cannot load a file without extension: " + url );
 			return false;

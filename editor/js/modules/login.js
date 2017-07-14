@@ -122,7 +122,7 @@ var LoginModule = {
 		else
 		{
 			var title = force_login ? null : "Login";
-			this.login_dialog = new LiteGUI.Dialog("dialog_login", {title:title, close: !force_login, width: 400, scroll: false, draggable: !force_login });
+			this.login_dialog = new LiteGUI.Dialog({ id: "dialog_login", title:title, close: !force_login, width: 400, scroll: false, draggable: !force_login });
 			this.login_dialog.root.style.fontSize = "1.4em";
 
 			this.login_dialog.on_close = function()
@@ -130,7 +130,7 @@ var LoginModule = {
 				LoginModule.login_dialog = null;
 			}
 			this.login_dialog.show('fade');
-			this.login_dialog.widgets = new LiteGUI.Inspector(null,{ name_width: "40%" });
+			this.login_dialog.widgets = new LiteGUI.Inspector({ name_width: "40%" });
 			if(force_login)
 				this.login_dialog.makeModal();
 		}

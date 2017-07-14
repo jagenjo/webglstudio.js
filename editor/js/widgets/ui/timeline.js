@@ -1448,7 +1448,7 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 		that.current_animation.createTake( new_take_name );
 		selected_take_name = new_take_name;
 		that.setAnimation( that.current_animation, selected_take_name );
-		widgets.refresh();
+		widgets1.refresh();
 	}
 }
 

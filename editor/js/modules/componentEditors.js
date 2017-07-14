@@ -148,7 +148,12 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 		}});
 	}
 
-	inspector.addButton("","Copy from current",{callback: inner_copy_from_current});
+	inspector.addButtons(null,["Copy from current","View from here"],{ callback: function(v){ 
+		if(v == "Copy from current")
+			inner_copy_from_current();
+		else
+			inner_view_from_here();
+	}});
 
 	inspector.addTitle("Viewport");
 	inspector.addVector2("Offset", camera._viewport.subarray(0,2), { pretitle: AnimationModule.getKeyframeCode( camera, "viewport_offset" ),  name_width: 100,min:0, max:1, step: 0.001, callback: function(v) { 
@@ -179,28 +184,15 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 		inspector.addCheckbox("Show on Viewport", camera.show_frame , { callback: function (v) { camera.show_frame = v; } });
 	}
 
-	function inner_copy_from_current() {
+	function inner_copy_from_current()
+	{
+		camera.lookAt( RenderModule.camera.eye, RenderModule.camera.center, RenderModule.camera.up );
+		inspector.refresh();
+	}
 
-		//Editor camera is not inside a node, but this camera could be, so be careful
-		if(camera._root && camera._root._is_root)
-		{
-			camera.lookAt( RenderModule.camera.eye, RenderModule.camera.center, RenderModule.camera.up );
-			//camera.configure( RenderModule.camera.serialize() );
-		}
-		else
-		{
-			camera.lookAt( RenderModule.camera.eye, RenderModule.camera.center, RenderModule.camera.up );
-			//if it is inside the node, then change node position
-			/*
-			var data = RenderModule.camera.serialize();
-			data.eye = [0,0,0];
-			data.center = [0,0,-1];
-			data.up = [0,1,0];
-			camera.configure( data );
-			camera._root.transform.lookAt( RenderModule.camera.getEye(), RenderModule.camera.getCenter(), RenderModule.camera.getUp(), true );
-			*/
-		}
-
+	function inner_view_from_here()
+	{
+		RenderModule.camera.lookAt( camera.eye, camera.center, camera.up );
 		inspector.refresh();
 	}
 }

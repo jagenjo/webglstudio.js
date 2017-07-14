@@ -2151,10 +2151,6 @@ var EditorModule = {
 		//console.log(keycode);
 		switch( keycode )
 		{
-			case 32:
-				if(e.ctrlKey)
-					ConsoleModule.toggle();
-				break;
 			case 83: //S
 				if(e.ctrlKey)
 				{
@@ -2246,6 +2242,8 @@ var EditorModule = {
 				return false;
 				break; 
 		}
+
+		CORE.callInModules("onCanvasKeyDown", e);
 	},
 
 	/***************/

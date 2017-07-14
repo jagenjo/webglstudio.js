@@ -58,25 +58,11 @@ var PlayModule = {
 			RenderModule.render_settings.in_player = true;
 			PlayModule.inplayer = true;
 			LS.GUI._allow_change_cursor = true;
-
-			//move GUI here
-			//if( LS.GUI._root )
-			//	PlayModule.tab.content.appendChild( LS.GUI._root );
-
-			//RenderModule.canvas_manager.addWidget(PlayModule); //capture render, update and mouse.
-
-			//canvas.width = canvas.width - 20;
-			//RenderModule.requestFrame();
-			//EditorModule.refreshAttributes();
 		},
 		callback_leave: function() {
-			//RenderModule.render_settings.in_player = false;
-			//RenderModule.canvas_manager.removeWidget(PlayModule); //remove capture render, update and mouse
 			PlayModule.inplayer = false;
 			LS.GUI._allow_change_cursor = false;
 			RenderModule.appendViewportTo(null);
-			//if( LS.GUI._root )
-			//	RenderModule.visor_container.appendChild( LS.GUI._root );
 		}});
 
 		//overwrite method to add the module to the right place
@@ -332,8 +318,8 @@ var PlayModule = {
 			case "mousedown":
 			case "mousemove":
 			case "mouseup":
-				LS.Input.onMouse(e);
-				LEvent.trigger( LS.GlobalScene, e.eventType || e.type, e, true );
+				if( !LS.Input.onMouse(e) ) //send event only if not blocked
+					LEvent.trigger( LS.GlobalScene, e.eventType || e.type, e, true );
 				break;
 			case "keydown":
 			case "keyup":

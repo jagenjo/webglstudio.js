@@ -4,6 +4,7 @@
 */
 
 var QuickbarModule = {
+	name: "quickbar",
 
 	commands: {},
 
@@ -17,24 +18,24 @@ var QuickbarModule = {
 	create: function()
 	{
 		LiteGUI.addCSS("\
-			#console { pointer-events: none; transition: all 0.4s; opacity: 0; color: white; position: absolute; bottom: 0; right: 0px; width: 100%; min-height: 100px; font-size: 1.4em; padding-right: 3px } \
-			#console.visible { opacity: 1; pointer-events: auto; }\
-			#console input {  border: 1px solid rgba(100,100,100,0.1); font-size: 2em; color: white; border: 0; background-color: rgba(0,0,0,0.5); border-radius: 4px; padding: 5px; margin: 20px; width: calc( 100% - 40px ); }\
-			#console input:focus { outline: 0; }\
+			#quickbar { pointer-events: none; transition: all 0.4s; opacity: 0; color: white; position: absolute; bottom: 0; right: 0px; width: 100%; min-height: 100px; font-size: 1.4em; padding-right: 3px } \
+			#quickbar.visible { opacity: 1; pointer-events: auto; }\
+			#quickbar input {  border: 1px solid rgba(100,100,100,0.1); font-size: 2em; color: white; border: 0; background-color: rgba(0,0,0,0.5); border-radius: 4px; padding: 5px; margin: 20px; width: calc( 100% - 40px ); }\
+			#quickbar input:focus { outline: 0; }\
 		");
 
-		this.console = document.createElement("div");
-		this.console.id = "console";
+		this.quickbar = document.createElement("div");
+		this.quickbar.id = "quickbar";
 
-		this.console.innerHTML = "<div class='content'></div><input type='text' />";
-		this.content = this.console.querySelector(".content");
-		this.input = this.console.querySelector("input");
+		this.quickbar.innerHTML = "<div class='content'></div><input type='text' />";
+		this.content = this.quickbar.querySelector(".content");
+		this.input = this.quickbar.querySelector("input");
 
 		this.input.onblur = function() { QuickbarModule.hide(); };
 		this.input.addEventListener("keydown", this.onKeyDown.bind(this) );
 
 		var root = document.getElementById("visor");
-		root.appendChild( this.console );
+		root.appendChild( this.quickbar );
 
 		CORE.log = this.log;
 	},
@@ -42,6 +43,12 @@ var QuickbarModule = {
 	log: function( msg )
 	{
 		LEvent.trigger( LS, "log", msg );	
+	},
+
+	onCanvasKeyDown: function(e)
+	{
+		if( e.keyCode == 32 && e.ctrlKey )
+			this.toggle();
 	},
 
 	onKeyDown: function(e)
@@ -80,7 +87,7 @@ var QuickbarModule = {
 
 	show: function()
 	{
-		this.console.classList.add("visible");
+		this.quickbar.classList.add("visible");
 		this.input.focus();
 		this.input.value = "";
 		this.is_visible = true;
@@ -88,7 +95,7 @@ var QuickbarModule = {
 
 	hide: function()
 	{
-		this.console.classList.remove("visible");
+		this.quickbar.classList.remove("visible");
 		this.input.blur();
 		this.is_visible = false;
 	},

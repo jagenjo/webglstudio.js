@@ -543,15 +543,46 @@ LiteGUI.Inspector.prototype.addCode = function( name, value, options )
 	//setCode: function(v){ instance[name] = v;}
 
 	//hardcoded
+
 	if(!options.instance)
 	{
 		if(!options.name_width)
 			options.name_width = "20%";
-		element = this.createWidget(name,"<textarea style='min-height: 100px;background-color: black; font-style: Courier; color: #eee;' tabIndex='"+ this.tab_index + "'>"+(value||"")+"</textarea>", options);
-		element.querySelector("textarea").addEventListener("change",function(e){
-			var value = this.value;
-			LiteGUI.Inspector.onWidgetChange.call( that, element, name, value, options );
-		});
+
+		if(typeof(CodeMirror) !== undefined)
+		{
+			element = this.createWidget(null,"<div class='wsectiontitle'>"+(name||"")+"</div><div class='code-container' style='min-height: 100px; width: 100%;'></div>", options);
+			element.editor = CodeMirror( element.querySelector(".code-container"), {
+				value: value,
+				mode:  options.code_lang || "javascript",
+				theme: "blackboard",
+				lineWrapping: true,
+				gutter: true,
+				tabSize: 2,
+				lineNumbers: true,
+				matchBrackets: true,
+				styleActiveLine: true,
+				extraKeys: {
+					},
+				onCursorActivity: function(e) { //key pressed
+					//that.editor.matchHighlight("CodeMirror-matchhighlight");
+				}
+			});
+			element.editor.getScrollerElement().style.minHeight = "100px";
+			element.editor.on("change",function(editor){
+				var value = editor.getValue();
+				LiteGUI.Inspector.onWidgetChange.call( that, element, name, value, options );
+			});
+		}
+		else
+		{
+			element = this.createWidget(name,"<textarea style='min-height: 100px;background-color: black; font-style: Courier; color: #eee;' tabIndex='"+ this.tab_index + "'>"+(value||"")+"</textarea>", options);
+			var textarea = element.querySelector("textarea");
+			textarea.addEventListener("change",function(e){
+				var value = this.value;
+				LiteGUI.Inspector.onWidgetChange.call( that, element, name, value, options );
+			});
+		}
 	}
 	else if(!options.allow_inline)
 	{
@@ -581,6 +612,11 @@ LiteGUI.Inspector.prototype.addCode = function( name, value, options )
 
 	this.tab_index += 1;
 	this.append( element );
+
+	//codemirror
+	if(element.editor)
+		element.editor.refresh();
+
 	return element;
 }
 

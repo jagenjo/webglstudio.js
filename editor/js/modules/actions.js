@@ -301,6 +301,24 @@ LS.Components.Skybox.actions["bake"] = {
 
 
 //*********** Material Actions *************************************
+
+
+LS.MaterialClasses.StandardMaterial.actions = {}
+
+LS.MaterialClasses.StandardMaterial.actions["to_newStandardMaterial"] = {
+	title:"Convert to newStandardMaterial",
+	callback: function( node )
+	{
+		var info = this.serialize();
+		info.object_class = "newStandardMaterial";
+		delete info.uid;
+		var new_material = new LS.MaterialClasses.newStandardMaterial();
+		new_material.configure( info );
+		node.material = new_material;
+	}
+}
+
+
 /*
 LS.Material.actions = {};
 

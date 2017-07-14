@@ -7073,7 +7073,8 @@ var temp_attribs_array_zero = new Uint8Array(16); //should be filled with zeros 
 
 Shader.prototype.drawBuffers = function(vertexBuffers, indexBuffer, mode, range_start, range_length)
 {
-	if(range_length == 0) return;
+	if(range_length == 0)
+		return;
 
 	var gl = this.gl;
 
@@ -7109,10 +7110,11 @@ Shader.prototype.drawBuffers = function(vertexBuffers, indexBuffer, mode, range_
 	if(range_start > 0) //render a polygon range
 		offset = range_start * ( (indexBuffer && indexBuffer.data) ? indexBuffer.data.constructor.BYTES_PER_ELEMENT : 1); //in bytes (Uint16 == 2 bytes)
 
-	if(range_length > 0)
-		length = range_length;
-	else if (indexBuffer)
+	if (indexBuffer)
 		length = indexBuffer.buffer.length - offset;
+
+	if(range_length > 0 && range_length < length) //to avoid problems
+		length = range_length;
 
 	// Force to disable buffers in this shader that are not in this mesh
 	for (var attribute in this.attributes)

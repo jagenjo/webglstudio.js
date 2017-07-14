@@ -56,6 +56,7 @@ var LiteGraph = global.LiteGraph = {
 
 	debug: false,
 	throw_errors: true,
+	allow_scripts: true,
 	registered_node_types: {}, //nodetypes by string
 	node_types_by_file_extension: {}, //used for droping files in the canvas
 	Nodes: {}, //node types by classname
@@ -6378,6 +6379,64 @@ Console.prototype.onGetInputs = function()
 }
 
 LiteGraph.registerNodeType("basic/console", Console );
+
+
+
+//Show value inside the debug console
+function NodeScript()
+{
+	this.size = [60,20];
+	this.addProperty( "onExecute", "" );
+	this.addInput("in", "");
+	this.addInput("in2", "");
+	this.addOutput("out", "");
+	this.addOutput("out2", "");
+
+	this._func = null;
+}
+
+NodeScript.title = "Script";
+NodeScript.desc = "executes a code";
+
+NodeScript.widgets_info = {
+	"onExecute": { type:"code" }
+};
+
+NodeScript.prototype.onPropertyChanged = function(name,value)
+{
+	if(name == "onExecute" && LiteGraph.allow_scripts )
+	{
+		this._func = null;
+		try
+		{
+			this._func = new Function( value );
+		}
+		catch (err)
+		{
+			console.error("Error parsing script");
+			console.error(err);
+		}
+	}
+}
+
+NodeScript.prototype.onExecute = function()
+{
+	if(!this._func)
+		return;
+
+	try
+	{
+		this._func.call(this);
+	}
+	catch (err)
+	{
+		console.error("Error in script");
+		console.error(err);
+	}
+}
+
+LiteGraph.registerNodeType("basic/script", NodeScript );
+
 
 
 })();

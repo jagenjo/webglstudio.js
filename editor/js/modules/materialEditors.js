@@ -141,7 +141,14 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 	{
 		var actions = ["Paste"];
 		if(material)
+		{
 			actions.push("Copy","Paste","Delete","Share","Instance","Show JSON");
+			if(material.constructor.actions)
+			{
+				for(var i in material.constructor.actions)
+					actions.push( i );
+			}
+		}
 
 		var menu = new LiteGUI.ContextMenu( actions, {component: material, title: mat_type || "Material", event: e, callback: inner_menu_select });
 		e.preventDefault();
@@ -152,6 +159,8 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 	function inner_menu_select(v)
 	{
 		var material = node.material;
+		var material_res = node.getMaterial();
+
 		if(v == "Copy")
 		{
 			if(typeof(material) == "object")
@@ -184,7 +193,6 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 			node.material = material;
 			CORE.afterUserAction("node_material_assigned", node, material  );
 			inspector.refresh();
-			LS.GlobalScene.refresh();
 		}
 		else if( v == "Delete" )
 		{
@@ -195,7 +203,6 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 			node.material = null; 
 			CORE.afterUserAction("node_material_assigned", node, null );
 			inspector.refresh();
-			LS.GlobalScene.refresh();
 		}
 		else if( v == "Share" )
 		{
@@ -236,8 +243,14 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 				EditorModule.checkJSON( material );
 			inspector.refresh();
 		}
+		else if( material_res && material_res.constructor.actions && material_res.constructor.actions[v] )
+		{
+			material_res.constructor.actions[v].callback.call( material_res, node );
+			inspector.refresh();
+		}
 		else
 			LiteGUI.alert("Unknown option");
+		LS.GlobalScene.refresh();
 	}
 }
 
@@ -428,9 +441,7 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 	inspector.addSlider("Reflection", material.reflection_factor, { pretitle: AnimationModule.getKeyframeCode( material, "reflection_factor" ), callback: function (value) { material.reflection_factor = value; } });
 	inspector.addSlider("Reflection exp.", material.reflection_fresnel, { pretitle: AnimationModule.getKeyframeCode( material, "reflection_fresnel" ), min:0, max:20, callback: function (value) { material.reflection_fresnel = value; }});
 	inspector.widgets_per_row = 2;
-	inspector.addCheckbox("Reflec. add", material.reflection_additive, { pretitle: AnimationModule.getKeyframeCode( material, "reflection_additive" ),callback: function (value) { material.reflection_additive = value; }});
 	inspector.addCheckbox("Reflec. specular", material.reflection_specular, { pretitle: AnimationModule.getKeyframeCode( material, "reflection_specular" ),callback: function (value) { material.reflection_specular = value; }});
-	inspector.widgets_per_row = 1;
 	inspector.addCheckbox("Reflec. gloss", material.reflection_gloss, { callback: function (value) { material.reflection_gloss = value; }});
 
 	inspector.widgets_per_row = 1;

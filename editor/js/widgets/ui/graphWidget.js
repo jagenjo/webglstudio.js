@@ -245,6 +245,8 @@ GraphWidget.prototype.onReload = function( e )
 	else
 		console.warn("GraphWidget: cannot find instance by uid " + id );
 	this._saved_state = null;
+
+	EditorModule.refreshAttributes(); //avoid inspecting old version
 }
 
 
@@ -443,14 +445,18 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 	var graphnode = this;
 
 	inspector.addSection("Node");
-	inspector.addString("Title", graphnode.title, { disabled: graphnode.ignore_rename, callback: function(v) { graphnode.title = v; }});
+
+	inspector.widgets_per_row = 2;
+	inspector.addString("Title", graphnode.title, { name_width: 100, disabled: graphnode.ignore_rename, callback: function(v) { graphnode.title = v; }});
+	inspector.addString("ID", String(graphnode.id), { name_width: 100 } );
+	inspector.widgets_per_row = 1;
+
 	var modes = { "Always": LiteGraph.ALWAYS,"On Trigger": LiteGraph.ON_TRIGGER,"Never": LiteGraph.NEVER };
 	var reversed_modes = {};
 	for(var i in modes)
 		reversed_modes[ modes[i] ] = reversed_modes[i];
 
-	inspector.addCombo("Mode", reversed_modes[ graphnode.mode ], { values: modes, callback: function(v) { graphnode.mode = v; }});
-	inspector.addString("ID", String(graphnode.id) );
+	inspector.addCombo("Mode", reversed_modes[ graphnode.mode ], { name_width: 100, values: modes, callback: function(v) { graphnode.mode = v; }});
 	inspector.addSeparator();
 
 	var widgets_info = graphnode.constructor.widgets_info || graphnode.widgets_info;

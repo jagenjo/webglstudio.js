@@ -234,6 +234,16 @@ var CORE = {
 		return null;
 	},
 
+	callInModules: function( func_name, params )
+	{
+		for(var i = 0; i < this.Modules.length; ++i)
+			if(this.Modules[i][ func_name ] )
+			{
+				if( this.Modules[i][ func_name ]( params ) === true )
+					return;
+			}
+	},
+
 	isModule: function( module )
 	{
 		var index = this.Modules.indexOf( module );
@@ -337,7 +347,7 @@ var CORE = {
 		LiteGUI.trigger( this, "after_user_action", [action, param1, param2] );
 	},
 
-	//Scenes ****************************************
+	//Scene switching WIP ****************************************
 	addScene: function( scene )
 	{
 		if( this.Scenes.indexOf( scene ) != -1 )

@@ -2199,6 +2199,9 @@ var Input = {
 			this.current_click = e;
 		else if(e.type == "mouseup")
 			this.current_click = null;
+
+		//we test if this event should be sent to the components or it was blocked by the GUI
+		return LS.GUI.testEventInBlockedArea(e);
 	},
 
 	//called from LS.Player when onkey
@@ -2362,6 +2365,11 @@ var GUI = {
 	},
 
 	_offset: [0,0],
+
+	_gui_areas: {
+		data: new Float32Array(1024),
+		offset: 0
+	},
 
 	pressed_enter: false,
 
@@ -2622,6 +2630,48 @@ var GUI = {
 		this.pressed_enter = false;
 		this._offset[0] = 0;
 		this._offset[1] = 0;
+		this._gui_areas.offset = 0;
+	},
+
+	//this is done so when clicking in the area where there is an immediate GUI widget the events are not send to the app
+	blockEventArea: function( area )
+	{
+		var data = this._gui_areas.data;
+		var offset = this._gui_areas.offset;
+
+		if(offset > data.length)
+			return; //too many guis?
+
+		data[ offset ] = area[0] + this._offset[0];
+		data[ offset + 1] = area[1] + this._offset[1];
+		data[ offset + 2] = area[2];
+		data[ offset + 3] = area[3];
+		this._gui_areas.offset += 4;
+
+		//double the size (weird situation)
+		if( this._gui_areas.offset >= data.length && data.length < 1024*24 )
+		{
+			this._gui_areas.data = new Float32Array( data.length * 2 );
+			this._gui_areas.data.set(data);
+		}
+	},
+
+	testEventInBlockedArea: function( e )
+	{
+		if(e.type != "mousedown")
+			return false;
+
+		var data = this._gui_areas.data;
+
+		for(var i = 0; i < this._gui_areas.offset; i+=4)
+		{
+			if( e.mousex >= data[i] && 
+				e.mousex < (data[i] + data[i+2]) &&
+				e.mousey >= data[i+1] && 
+				e.mousey < (data[i+1] + data[i+3]))
+				return true;
+		}
+		return false;
 	},
 
 	/**
@@ -2635,6 +2685,8 @@ var GUI = {
 	{
 		if(!area)
 			throw("No area");
+		this.blockEventArea( area );
+
 		var ctx = gl;
 		ctx.fillStyle = color || "#333";
 		ctx.fillRect( area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3] );
@@ -2682,6 +2734,7 @@ var GUI = {
 	{
 		if(!area)
 			throw("No area");
+		this.blockEventArea( area );
 
 		var ctx = gl;
 		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
@@ -2742,6 +2795,7 @@ var GUI = {
 			throw("No area");
 		if( !options || options.constructor !== Array )
 			throw("No options");
+		this.blockEventArea( area );
 
 		var ctx = gl;
 		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
@@ -2823,6 +2877,7 @@ var GUI = {
 		if(!area)
 			throw("No area");
 		value = !!value;
+		this.blockEventArea( area );
 
 		var ctx = gl;
 		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
@@ -2886,6 +2941,7 @@ var GUI = {
 	{
 		if(!area)
 			throw("No area");
+		this.blockEventArea( area );
 
 		text = text === undefined ? "" : String(text);
 		max_length = max_length || 1024;
@@ -2986,6 +3042,7 @@ var GUI = {
 	{
 		if(!area)
 			throw("No area");
+		this.blockEventArea( area );
 
 		if(left_value === undefined)
 			left_value = 0;
@@ -3054,6 +3111,7 @@ var GUI = {
 	{
 		if(!area)
 			throw("No area");
+		this.blockEventArea( area );
 
 		value = Number(value);
 		if(bottom_value === undefined)
@@ -3107,6 +3165,7 @@ var GUI = {
 			throw("No area");
 		if(!value)
 			throw("No value");
+		this.blockEventArea( area );
 
 		var ctx = gl;
 		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
@@ -5296,6 +5355,9 @@ var ShadersManager = {
 		}
 		else
 			block_id = this.num_shaderblocks++;
+		if(block_id >= 64)
+			console.warn("Too many shaderblocks registered, not enought bits in a 64bits variable");
+
 		shader_block.flag_id = block_id;
 		shader_block.flag_mask = 1<<block_id;
 		this.shader_blocks.set( block_id, shader_block );
@@ -5547,7 +5609,7 @@ ShaderBlock.prototype.getFinalCode = function( shader_type, block_flags, context
 		var macros_code = "";
 		for(var i in code.macros)
 			macros_code += "#define " + i + code.macros[i] + "\n";
-		finalcode = macros + finalcode;
+		finalcode = macros_code + finalcode;
 	}
 	return finalcode;
 }
@@ -7229,17 +7291,26 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	render_uniforms.u_model = model; 
 	render_uniforms.u_normal_model = instance.normal_matrix; 
 
-	//compute flags
+	//compute flags: checks the ShaderBlocks attached to this instance and resolves the flags
 	var block_flags = instance.computeShaderBlockFlags();
 
 	//global stuff
 	this.render_state.enable();
 	LS.Renderer.bindSamplers( this._samplers );
 	var global_flags = 0;
-	if( LS.Renderer._global_textures.environment )
+
+	if(1) //allow reflections
 	{
 		global_flags |= LS.ShaderMaterial.reflection_block.flag_mask;
+		if( LS.Renderer._global_textures.environment )
+		{
+			if( LS.Renderer._global_textures.environment.texture_type == GL.TEXTURE_2D )
+				global_flags |= environment_2d_block.flag_mask;
+			else
+				global_flags |= environment_cubemap_block.flag_mask;
+		}
 	}
+
 
 	if(this.onRenderInstance)
 		this.onRenderInstance( instance );
@@ -7738,10 +7809,10 @@ LS.ShaderMaterial = ShaderMaterial;
 //ENVIRONMENT 
 var environment_code = "\n\
 	#ifdef ENVIRONMENT_TEXTURE\n\
-		uniform texture2D environment_texture;\n\
+		uniform sampler2D environment_texture;\n\
 	#endif\n\
 	#ifdef ENVIRONMENT_CUBEMAP\n\
-		uniform textureCube environment_texture;\n\
+		uniform samplerCube environment_texture;\n\
 	#endif\n\
 	vec2 polarToCartesian(in vec3 V)\n\
 	{\n\
@@ -7755,7 +7826,7 @@ var environment_code = "\n\
 			return texture2D( environment_texture, uvs ).xyz;\n\
 		#endif\n\
 		#ifdef ENVIRONMENT_CUBEMAP\n\
-			return texture2D( environment_texture, V ).xyz;\n\
+			return textureCube( environment_texture, -V ).xyz;\n\
 		#endif\n\
 		return u_background_color.xyz;\n\
 	}\n\
@@ -7767,19 +7838,29 @@ var environment_disabled_code = "\n\
 	}\n\
 ";
 
+var environment_cubemap_block = new LS.ShaderBlock("environment_cubemap");
+environment_cubemap_block.addCode( GL.FRAGMENT_SHADER, environment_code, environment_disabled_code, { ENVIRONMENT_CUBEMAP: "" } );
+environment_cubemap_block.defineContextMacros({ENVIRONMENTBLOCK:"environment_cubemap"});
+environment_cubemap_block.register();
+
+var environment_2d_block = new LS.ShaderBlock("environment_2D");
+environment_2d_block.defineContextMacros({ENVIRONMENTBLOCK:"environment_2D"});
+environment_2d_block.addCode( GL.FRAGMENT_SHADER, environment_code, environment_disabled_code, { ENVIRONMENT_TEXTURE: "" } );
+environment_2d_block.register();
+
 var environment_block = new LS.ShaderBlock("environment");
 environment_block.addCode( GL.FRAGMENT_SHADER, environment_code, environment_disabled_code );
 environment_block.register();
 
 
 var reflection_code = "\n\
-	#pragma shaderblock SHADOWBLOCK \"environment\"\n\
+	#pragma shaderblock ENVIRONMENTBLOCK \"environment\"\n\
 	\n\
 	vec4 applyReflection( Input IN, SurfaceOutput o, vec4 final_color )\n\
 	{\n\
 		vec3 R = reflect( IN.viewDir, o.Normal );\n\
 		vec3 bg = vec3(0.0);\n\
-		if(u_light_info.x == (u_light_info.y - 1.0))\n\
+		if(u_light_info.z == (u_light_info.w - 1.0))\n\
 			bg = getEnvironmentColor( R, 0.0 );\n\
 		final_color.xyz = mix( final_color.xyz, bg, clamp( o.Reflectivity, 0.0, 1.0) );\n\
 		return final_color;\n\
@@ -8800,7 +8881,6 @@ function newStandardMaterial(o)
 
 	this.reflection_factor = 0.0;
 	this.reflection_fresnel = 1.0;
-	this.reflection_additive = false;
 	this.reflection_specular = false;
 
 	this.createProperty( "velvet", new Float32Array([0.5,0.5,0.5]), "color" );
@@ -8837,7 +8917,7 @@ function newStandardMaterial(o)
 		u_ambient_color: this._ambient,
 		u_emissive_color: this._emissive,
 		u_specular: this._specular_data,
-		u_reflection_info: vec2.create(),
+		u_reflection_info: vec2.create(), //factor and fresnel
 		u_velvet_info: vec4.create(),
 		u_normal_info: vec2.create(),
 		u_detail_info: this._detail,
@@ -8935,10 +9015,9 @@ newStandardMaterial.FLAGS = {
 	DETAIL_TEXTURE: 1<<7,
 	NORMAL_TEXTURE: 1<<8,
 	DISPLACEMENT_TEXTURE: 1<<9,
-	ENVIRONTMENT_TEXTURE: 1<<10,
-	IRRADIANCE_TEXTURE: 1<<11,
+
 	ALPHA_TEST: 1<<16,
-	REFLECTION: 1<<17,
+
 	ENVIRONMENT_TEXTURE: 1<<18,
 	ENVIRONMENT_CUBEMAP: 1<<19
 };	
@@ -8963,25 +9042,11 @@ newStandardMaterial.prototype.getShaderCode = function( instance, render_setting
 		code_flags |= FLAGS.OPACITY_TEXTURE;
 	if( this.textures.specular )
 		code_flags |= FLAGS.SPECULAR_TEXTURE;
-	if( this.reflectivity > 0 )
+	if( this.reflection_factor > 0 )
 	{
-		code_flags |= FLAGS.REFLECTION;
+		//code_flags |= FLAGS.REFLECTION;
 		if( this.textures.reflectivity )
 			code_flags |= FLAGS.REFLECTIVITY_TEXTURE;
-
-		/*
-		if( scene.info && scene.info.textures.environment )
-		{
-			var environment_texture = LS.ResourcesManager.getTexture( scene.info.textures.environment );
-			if( environment_texture )
-			{
-				if( environment_texture.type === GL.TEXTURE_CUBE_MAP )
-					code_flags |= FLAGS.ENVIRONMENT_CUBEMAP;
-				else
-					code_flags |= FLAGS.ENVIRONMENT_TEXTURE;
-			}
-		}
-		*/
 	}
 	if( this.textures.emissive )
 		code_flags |= FLAGS.EMISSIVE_TEXTURE;
@@ -9026,7 +9091,7 @@ newStandardMaterial.prototype.getShaderCode = function( instance, render_setting
 	o.Gloss *= spec_info.y;\n";
 	}
 	if( code_flags & FLAGS.REFLECTIVITY_TEXTURE )
-		fs_code += "	o.Reflectivity = texture2D( reflectivity_texture, IN.uv ).x;\n";
+		fs_code += "	o.Reflectivity *= texture2D( reflectivity_texture, IN.uv ).x;\n";
 	if( code_flags & FLAGS.EMISSIVE_TEXTURE )
 		fs_code += "	o.Emission *= texture2D( emissive_texture, IN.uv ).xyz;\n";
 	if( code_flags & FLAGS.AMBIENT_TEXTURE )
@@ -9050,12 +9115,13 @@ newStandardMaterial.prototype.fillUniforms = function( scene, options )
 {
 	var uniforms = this._uniforms;
 
-	uniforms.u_reflection_info[0] = this.reflection_additive ? -this.reflection_factor : this.reflection_factor;
+	uniforms.u_reflection_info[0] = this.reflection_factor;
 	uniforms.u_reflection_info[1] = this.reflection_fresnel;
 	uniforms.u_backlight_factor = this.backlight_factor;
 	uniforms.u_normal_info[0] = this.normalmap_factor;
 	uniforms.u_normal_info[1] = this.normalmap_tangent ? 1 : 0;
 	uniforms.u_displacementmap_factor = this.displacementmap_factor;
+	uniforms.u_velvet_info.set( this._velvet );
 	uniforms.u_velvet_info[3] = this.velvet_additive ? this.velvet_exp : -this.velvet_exp;
 
 	//iterate through textures in the material
@@ -9089,8 +9155,8 @@ newStandardMaterial.prototype.fillUniforms = function( scene, options )
 			last_texture_slot++;
 
 		samplers[ slot ] = sampler;
-		var uniform_name = i + ( (!texture || texture.texture_type == gl.TEXTURE_2D) ? "_texture" : "_cubemap");
-		uniforms[ uniform_name ] = slot;
+		//var uniform_name = i + ( (!texture || texture.texture_type == gl.TEXTURE_2D) ? "_texture" : "_cubemap");
+		uniforms[ i + "_texture" ] = slot;
 	}
 }
 
@@ -9323,7 +9389,7 @@ varying vec2 v_uvs;\n\
 //globals\n\
 uniform vec3 u_camera_eye;\n\
 uniform vec4 u_clipping_plane;\n\
-uniform vec3 u_background_color;\n\
+uniform vec4 u_background_color;\n\
 uniform vec4 u_material_color;\n\
 \n\
 uniform vec3 u_ambient_color;\n\
@@ -9359,12 +9425,16 @@ void surf(in Input IN, out SurfaceOutput o)\n\
 	o.Gloss = u_specular.y;\n\
 	o.Ambient = u_ambient_color;\n\
 	o.Emission = u_emissive_color.xyz;\n\
-	if(u_emissive_color.w > 0.0)\n\
-		o.Emission *= o.Albedo;\n\
 	o.Reflectivity = u_reflection_info.x;\n\
 	\n\
 	{{FS_CODE}}\n\
 	\n\
+	if(u_velvet_info.w > 0.0)\n\
+		o.Albedo += u_velvet_info.xyz * ( 1.0 - pow( max(0.0, dot( IN.viewDir, o.Normal )), u_velvet_info.w ));\n\
+	else if(u_velvet_info.w < 0.0)\n\
+		o.Albedo = mix( o.Albedo, u_velvet_info.xyz, 1.0 - pow( max(0.0, dot( IN.viewDir, o.Normal )), abs(u_velvet_info.w) ) );\n\
+	if(u_emissive_color.w > 0.0)\n\
+		o.Emission *= o.Albedo;\n\
 	o.Reflectivity *= max(0.0, pow( 1.0 - clamp(0.0, dot(IN.viewDir,o.Normal),1.0), u_reflection_info.y ));\n\
 }\n\
 \n\
@@ -17566,7 +17636,7 @@ RenderInstance.prototype.removeShaderBlock = function( block )
 	}
 }
 
-//checks the shader blocks attached to this instance and resolves the flags
+//checks the ShaderBlocks attached to this instance and resolves the flags
 RenderInstance.prototype.computeShaderBlockFlags = function()
 {
 	return this.shader_block_flags;
@@ -18667,6 +18737,9 @@ var Renderer = {
 
 		var render_instances = instances || this._visible_instances;
 
+		this.bindSamplers( scene._samplers );
+
+
 		//compute visibility pass
 		for(var i = 0, l = render_instances.length; i < l; ++i)
 		{
@@ -19228,7 +19301,8 @@ var Renderer = {
 				texture.setParameter( gl.TEXTURE_MIN_FILTER, gl.LINEAR ); //avoid artifact
 			}
 			scene._samplers[ slot ] = texture;
-			scene._uniforms[ i + type ] = slot;
+			scene._uniforms[ i + "_texture" ] = slot; 
+			scene._uniforms[ i + type ] = slot; //LEGACY
 			scene._query.macros[ "USE_" + (i + type).toUpperCase() ] = "uvs_polar_reflected";
 
 			if( i == "environment" )
@@ -25643,7 +25717,7 @@ function Light(o)
 
 	//light uniforms
 	this._uniforms = {
-		u_light_info: vec4.fromValues( this._type, 0, 0, 0 ), //light type, spot cone, etc
+		u_light_info: vec4.fromValues( this._type, 0, 0, 0 ), //light type, spot cone, index of pass, num passes
 		u_light_front: this._front,
 		u_light_angle: vec4.fromValues( this.angle * DEG2RAD, this.angle_end * DEG2RAD, Math.cos( this.angle * DEG2RAD * 0.5 ), Math.cos( this.angle_end * DEG2RAD * 0.5 ) ),
 		u_light_position: this._position,
@@ -26489,6 +26563,8 @@ Light._enabled_fs_shaderblock_code = "\n\
 	{\n\
 		vec3 total_light = LIGHT.Ambient * o.Ambient + LIGHT.Color * LIGHT.Diffuse * LIGHT.Attenuation * LIGHT.Shadow;\n\
 		vec3 final_color = o.Albedo * total_light;\n\
+		if(u_light_info.z == 0.0)\n\
+			final_color += o.Emission;\n\
 		final_color	+= o.Albedo * (LIGHT.Color * LIGHT.Specular * LIGHT.Attenuation * LIGHT.Shadow);\n\
 		return max( final_color, vec3(0.0) );\n\
 	}\n\
@@ -26589,7 +26665,10 @@ Light._disabled_shaderblock_code = "\n\
 		FINALLIGHT.Specular = 0.0;\n\
 		FINALLIGHT.Attenuation = 0.0;\n\
 		FINALLIGHT.Shadow = 0.0;\n\
-		return o.Albedo * LIGHT.Ambient;\n\
+		vec3 final_color = o.Albedo * LIGHT.Ambient;\n\
+		if(u_light_info.z == 0.0)\n\
+			final_color += o.Emission;\n\
+		return final_color;\n\
 	}\n\
 	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT)\n\
 	{\n\
@@ -30904,6 +30983,8 @@ function CameraController(o)
 
 	this._moving = vec3.fromValues(0,0,0);
 	this._collision = vec3.create();
+	this._dragging = false; //true if the mousedown was caught so the drag belongs to this component
+	this._button = null;
 
 	this.configure(o);
 }
@@ -30995,10 +31076,14 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 		else
 			this.testPerpendicularPlane( mouse_event.canvasx, gl.canvas.height - mouse_event.canvasy, cam.getCenter(), this._collision );
 		this._button = mouse_event.button;
+		this._dragging = true;
 	}
 
+	if(!mouse_event.dragging)
+		this._dragging = false;
+
 	//regular mouse dragging
-	if( mouse_event.eventType != "mousemove" || !mouse_event.dragging )
+	if( mouse_event.eventType != "mousemove" || !mouse_event.dragging || !this._dragging )
 		return;
 
 	var changed = false;
@@ -45121,8 +45206,9 @@ Player.prototype._onupdate = function(dt)
 //input
 Player.prototype._onmouse = function(e)
 {
-	//send to the input system
-	LS.Input.onMouse(e);
+	//send to the input system (if blocked ignore it)
+	if( LS.Input.onMouse(e) == true )
+		return;
 
 	//console.log(e);
 	if(this.state != LS.Player.PLAYING)

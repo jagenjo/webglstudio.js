@@ -1304,8 +1304,6 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 				that.current_animation.addTake( take );
 				that.setAnimation( that.current_animation, selected_take_name );
 				that.animationModified();
-				widgets1.refresh();
-				widgets2.refresh();
 			}
 			else if(v == "Copy")
 			{
@@ -1314,7 +1312,7 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 				if( selected_take )
 					LiteGUI.toClipboard( data, true );
 			}
-			if(v == "Paste")
+			else if(v == "Paste")
 			{
 				var data = LiteGUI.getLocalClipboard();
 				if(!data || data._object_class !== "LS.Animation.Take")
@@ -1328,10 +1326,8 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 				that.current_animation.addTake( take );
 				that.setAnimation( that.current_animation, selected_take_name );
 				that.animationModified();
-				widgets1.refresh();
-				widgets2.refresh();
 			}
-			if(v == "Delete")
+			else if(v == "Delete")
 			{
 				if( that.current_animation.getNumTakes() <= 1 )
 					return;
@@ -1340,9 +1336,10 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 				selected_take_name = Object.keys( that.current_animation.takes )[0];
 				that.animationModified();
 				that.setAnimation( that.current_animation, selected_take_name );
-				widgets1.refresh();
-				widgets2.refresh();
 			}
+			widgets1.refresh();
+			widgets2.refresh();
+			EditorModule.refreshAttributes();
 		});
 
 		widgets.addTitle("Create New take");

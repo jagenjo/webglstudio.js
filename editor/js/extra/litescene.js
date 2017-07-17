@@ -34225,6 +34225,16 @@ PlayAnimation["@root_node"] = { type: "node" };
 PlayAnimation["@mode"] = { type:"enum", values: PlayAnimation.MODES };
 PlayAnimation["@current_time"] = { type: LS.TYPES.NUMBER, min: 0, units:"s" };
 PlayAnimation["@blend_time"] = { type: LS.TYPES.NUMBER, min: 0, units:"s" };
+PlayAnimation["@take"] = { type: "enum", values: function(){
+	var anim = this.instance.getAnimation();
+	if(!anim)
+		return ["default"];
+	var takes = anim.takes;
+	var result = [];
+	for(var i in takes)
+		result.push(i);
+	return result;
+}};
 
 /**
 * the name of the LS.Animation resource where the takes and tracks are stored
@@ -37581,15 +37591,6 @@ SceneTree.prototype.load = function( url, on_complete, on_error, on_progress, on
 	var that = this;
 
 	var extension = LS.ResourcesManager.getExtension( url );
-
-	//very special case from the editor, trying to load from a URL that comes from a player.html
-	if(extension == "html" && LS.ResourcesManager.getFilename(url) == "player.html" )
-	{
-		var index = url.indexOf("url=");
-		var index2 = url.indexOf("&",index);
-		url = decodeURIComponent( url.substr(index + 4, index2 - index - 4) );
-		extension = LS.ResourcesManager.getExtension( url );
-	}
 
 	//request scene file using our own library
 	LS.Network.request({

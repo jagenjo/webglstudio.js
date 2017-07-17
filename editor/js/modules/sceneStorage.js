@@ -242,12 +242,25 @@ var SceneStorageModule = {
 
 	showLoadFromURLDialog: function()
 	{
-		LiteGUI.prompt("Which URL? (Only load scenes from trusted sources)", function(v){
-			if(!v)
+		LiteGUI.prompt("Which URL? (Only load scenes from trusted sources)", function(url){
+			if(!url)
 				return;
 			LS.Renderer.reset();
 			LS.GlobalScene.clear();
-			LS.GlobalScene.load( v, function(scene, url) {
+
+			//very special case from the editor, trying to load from a URL that comes from a player.html
+			var extension = LS.ResourcesManager.getExtension( url );
+			if(extension == "html" && LS.ResourcesManager.getFilename(url) == "player.html" )
+			{
+				var index = url.indexOf("url=");
+				var index2 = url.indexOf("&",index);
+				if(index2 == -1)
+					index2 = url.length;
+				url = decodeURIComponent( url.substr(index + 4, index2 - index - 4) );
+				extension = LS.ResourcesManager.getExtension( url );
+			}
+
+			LS.GlobalScene.load( url, function(scene, url) {
 				//loaded...
 			});
 		},{width:300});

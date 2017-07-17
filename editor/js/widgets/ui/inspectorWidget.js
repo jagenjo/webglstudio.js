@@ -427,16 +427,11 @@ InspectorWidget.prototype.inspectScene = function( scene )
 		if(scene.global_scripts && scene.global_scripts.length)
 			inspector.addButton(null,"Reload scripts", function(){
 				LS.GlobalScene.loadScripts( null, function(){
-					if(0) //refresh_scene
-					{
-						var scene_data = LS.GlobalScene.serialize();
-						LS.GlobalScene.clear();
-						//LS.GlobalScene.configure(scene_data); //doesnt load scripts
-						LS.GlobalScene.setFromJSON( scene_data );
-					}
+					NotifyModule.show("Scripts reloaded");
+					EditorModule.refreshAttributes();
 				}, function(err, url){
 					 LiteGUI.alert("Error loading scripts, not found: " + url );
-				});
+				},true);
 			});
 
 		/*

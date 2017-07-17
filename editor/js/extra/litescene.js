@@ -858,47 +858,74 @@ var LS = {
 	* Register a component (or several) so it is listed when searching for new components to attach
 	*
 	* @method registerComponent
-	* @param {ComponentClass} c component class to register
+	* @param {Component} component component class to register
+	* @param {String} old_classname [optional] the name of the component that this class replaces (in case you are renaming it)
 	*/
-	registerComponent: function( c ) { 
+	registerComponent: function( component, old_classname ) { 
+
 		//allows to register several at the same time
-		for(var i = 0; i < arguments.length; ++i)
+		var name = LS.getClassName( component );
+
+		if(old_classname && old_classname.constructor !== String)
+			throw("old_classname must be null or a String");
+
+		//save the previous class in case we are replacing it
+		var old_class = this.Components[ old_classname || name ];
+
+		//register
+		this.Components[ name ] = component; 
+		component.is_component = true;	
+		component.resource_type = "Component";
+
+		//Helper: checks for errors
+		if( !!component.prototype.onAddedToNode != !!component.prototype.onRemovedFromNode ||
+			!!component.prototype.onAddedToScene != !!component.prototype.onRemovedFromScene )
+			console.warn("%c Component "+name+" could have a bug, check events: " + name , "font-size: 2em");
+		if( component.prototype.getResources && !component.prototype.onResourceRenamed )
+			console.warn("%c Component "+name+" could have a bug, it uses resources but doesnt implement onResourceRenamed, this could lead to problems when resources are renamed.", "font-size: 1.2em");
+
+		//add stuff to the class
+		if(!component.actions)
+			component.actions = {};
+
+		//add default methods
+		LS.extendClass( component, LS.Component );
+		Component.addExtraMethods( component );
+
+		if( LS.debug )
 		{
-			var component = arguments[i];
-			var name = LS.getClassName( component );
-
-			//register
-			this.Components[ name ] = component; 
-			component.is_component = true;	
-			component.resource_type = "Component";
-
-			//Helper: checks for errors
-			if( !!component.prototype.onAddedToNode != !!component.prototype.onRemovedFromNode ||
-				!!component.prototype.onAddedToScene != !!component.prototype.onRemovedFromScene )
-				console.warn("%c Component "+name+" could have a bug, check events: " + name , "font-size: 2em");
-			if( component.prototype.getResources && !component.prototype.onResourceRenamed )
-				console.warn("%c Component "+name+" could have a bug, it uses resources but doesnt implement onResourceRenamed, this could lead to problems when resources are renamed.", "font-size: 1.2em");
-
-			//add stuff to the class
-			if(!component.actions)
-				component.actions = {};
-
-			//add default methods
-			LS.extendClass( component, LS.Component );
-			Component.addExtraMethods( component );
-
-			if( LS.debug )
-			{
-				var c = new component();
-				var r = c.serialize();
-				if(!r.object_class)
-					console.warn("%c Component "+name+" could have a bug, serialize() method has object_class missing.", "font-size: 1.2em");
-			}
-
-			//event
-			LEvent.trigger(LS, "component_registered", component ); 
+			var c = new component();
+			var r = c.serialize();
+			if(!r.object_class)
+				console.warn("%c Component "+name+" could have a bug, serialize() method has object_class missing.", "font-size: 1.2em");
 		}
+
+		//event
+		LEvent.trigger(LS, "component_registered", component ); 
+
+		if(LS.GlobalScene) //because main components are create before the global scene is created
+		{
+			this.replaceComponentClass( LS.GlobalScene, old_classname || name, name );
+			if( old_classname != name )
+				this.unregisterComponent( old_classname );
+		}
+
 	},
+
+	/**
+	* Unregisters a component from the system (although existing instances are kept in the scene)
+	*
+	* @method unregisterComponent
+	* @param {String} name the name of the component to unregister
+	*/
+	unregisterComponent: function( name ) { 
+		//not found
+		if(!this.Components[name])
+			return;
+		//delete from the list of component (existing components will still exists)
+		delete this.Components[name];
+	},
+
 
 	/**
 	* Tells you if one class is a registered component class
@@ -920,20 +947,66 @@ var LS = {
 	* @param {SceneTree} scene where to apply the replace
 	* @param {String} old_class_name name of the class to be replaced
 	* @param {String} new_class_name name of the class that will be used instead
+	* @return {Number} the number of components replaced
 	*/
 	replaceComponentClass: function( scene, old_class_name, new_class_name )
 	{
-		var proposed_class = LS.Components[ new_class_name ];
+		var proposed_class = new_class_name.constructor === String ? LS.Components[ new_class_name ] : new_class_name;
 		if(!proposed_class)
-			return false;
+			return 0;
+
+		//this may be a problem if the old class has ben unregistered...
+		var old_class = null;
+		
+		if(	old_class_name.constructor === String )
+		{
+			old_class = LS.Components[ old_class_name ];
+			old_class_name = LS.getClassName( old_class );
+		}
+
+		var num = 0;
 
 		for(var i = 0; i < scene._nodes.length; ++i)
 		{
 			var node = scene._nodes[i];
 
-			if(!node.hasComponent( old_class_name, true ))
-				continue;
+			//search in current components
+			for(var j = 0; j < node._components.length; ++j)
+			{
+				var comp = node._components[j];
+				//it it is the exact same class then skip it
+				if(comp.constructor === proposed_class)
+					continue;
+				var comp_name = LS.getObjectClassName( comp );
+				//if this component is neither the old comp nor the new one
+				if( comp_name != old_class_name && comp_name != new_class_name ) 
+					continue;
 
+				var info = comp.serialize();
+				node.removeComponent( comp );
+				var new_comp = new proposed_class();
+				node.addComponent( new_comp, j < node._components.length ? j : undefined );
+				new_comp.configure( info );
+				num++;
+			}
+
+			//search in missing components
+			if(node._missing_components)
+			for(var j = 0; j < node._missing_components.length; ++j)
+			{
+				var comp_info = node._missing_components[j];
+				if( comp_info[0] !== old_class_name )
+					continue;
+				node._missing_components.splice(j,1); //remove from the list
+				var new_comp = new proposed_class();
+				node.addComponent( new_comp, comp_info[2] < node._components.length ? comp_info[2] : undefined ); //add in the place where it should be
+				new_comp.configure( comp_info[1] );
+				j--; 
+				num++;
+			}
+			
+
+			/*
 			//this is a slow way but we dont care, this is used very rarely
 			var info = node.serialize();
 			info = { components: info.components }; //just want the components
@@ -946,9 +1019,10 @@ var LS = {
 			//now force the node to be reloaded
 			node.removeAllComponents();
 			node.configure( info );
+			*/
 		}
 
-		return true;
+		return num;
 	},
 
 	/**
@@ -9504,6 +9578,7 @@ ComponentContainer.prototype.configureComponents = function( info )
 				console.error("Unknown component found: " + comp_class);
 				if(!this._missing_components)
 					this._missing_components = [];
+				comp_info[2] = i; //store index
 				this._missing_components.push( comp_info );
 				continue;
 			}
@@ -9573,8 +9648,16 @@ ComponentContainer.prototype.serializeComponents = function( o )
 		o.components.push([ object_class, obj ]);
 	}
 
-	if(this._missing_components && this._missing_components.length)
-		o.components = o.components.concat( this._missing_components );
+	//missing components are stored in another container and should be mergen with the rest of the components
+	if( this._missing_components && this._missing_components.length )
+	{
+		//try to copy in place (not perfect but this shouldnt happend very often)
+		for(var i = 0; i < this._missing_components.length; ++i )
+		{
+			var comp_info = this._missing_components[i];
+			o.components.splice( comp_info[2] || 0, 0, comp_info );
+		}
+	}
 }
 
 /**
@@ -27445,7 +27528,10 @@ MeshRenderer.prototype.onCollectInstances = function(e, instances)
 
 
 	//matrix: do not need to update, already done
-	RI.setMatrix( this._root.transform._global_matrix );
+	if(this._root.transform)
+		RI.setMatrix( this._root.transform._global_matrix );
+	else
+		RI.setMatrix( LS.IDENTITY );
 	//this._root.transform.getGlobalMatrix(RI.matrix);
 	mat4.multiplyVec3( RI.center, RI.matrix, LS.ZEROS );
 

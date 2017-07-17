@@ -1291,8 +1291,23 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 			widgets1.refresh();
 			widgets2.refresh();
 		}});
-		widgets.addButtons( null, ["Copy","Paste","Delete"], function(v){
-			if(v == "Copy")
+		widgets.addButtons( null, ["Clone","Copy","Paste","Delete"], function(v){
+			if(v == "Clone")
+			{
+				var data = selected_take.serialize();
+				var take = new LS.Animation.Take();
+				take.configure( data );
+				if( that.current_animation.takes[ take.name ] )
+					take.name = take.name + ((Math.random() * 100)|0);
+				selected_take_name = take.name;
+				that.addUndoAnimationEdited( that.current_animation );
+				that.current_animation.addTake( take );
+				that.setAnimation( that.current_animation, selected_take_name );
+				that.animationModified();
+				widgets1.refresh();
+				widgets2.refresh();
+			}
+			else if(v == "Copy")
 			{
 				var data = selected_take.serialize();
 				data._object_class = "LS.Animation.Take";

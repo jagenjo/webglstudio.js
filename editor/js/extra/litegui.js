@@ -324,7 +324,16 @@ var LiteGUI = {
 		}
 
 		//old system
-		localStorage.setItem("litegui_clipboard", object );
+		try
+		{
+			this._safe_cliboard = null;
+			localStorage.setItem("litegui_clipboard", object );
+		}
+		catch (err)
+		{
+			this._safe_cliboard = object;
+			console.warn("cliboard quota excedeed");
+		}
 	},
 
 	/**
@@ -335,6 +344,8 @@ var LiteGUI = {
 	getLocalClipboard: function()
 	{
 		var data = localStorage.getItem("litegui_clipboard");
+		if(!data && this._safe_cliboard)
+			data = this._safe_cliboard;
 		if(!data) 
 			return null;
 		if(data[0] == "{")

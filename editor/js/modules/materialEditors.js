@@ -769,6 +769,12 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 		LS.GlobalScene.refresh();
 	}});
 
+	widgets.addCombo("Anisotropic", sampler["anisotropic"] || null, { values: {"default":null, "1":1, "2":2, "4":4,"8":8, "16":16 }, callback: function(v) {
+		sampler.anisotropic = v;
+		//sampler._must_update = true;
+		LS.GlobalScene.refresh();
+	}});
+
 	widgets.addCombo("Missing", sampler["missing"] || "black", { values: ["black","grey","white","normal"], callback: function(v) {
 		sampler.missing = v;
 		LS.GlobalScene.refresh();

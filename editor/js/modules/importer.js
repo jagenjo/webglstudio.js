@@ -269,7 +269,7 @@ var ImporterModule  = {
 		var drop_node = options.node;
 		var material = drop_node ? drop_node.getMaterial() : null;
 
-		var inspector = new LiteGUI.Inspector(null,{ name_width: "50%" });
+		var inspector = new LiteGUI.Inspector( { name_width: "50%" });
 		inspector.on_refresh = inner_refresh;
 		inspector.refresh();
 		dialog.add( inspector );

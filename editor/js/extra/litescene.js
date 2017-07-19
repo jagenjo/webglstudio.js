@@ -6658,6 +6658,7 @@ Material.prototype.setProperty = function( name, value )
 		case "flags":
 			for(var i in value)
 				this.flags[i] = value[i];
+			break;
 		case "transparency": //special cases
 			this.opacity = 1 - value;
 			break;
@@ -9155,9 +9156,11 @@ newStandardMaterial.prototype.getShaderCode = function( instance, render_setting
 	}
 
 	//flags
-	if(this.flags.alpha_test)
+	if( (this.flags.alpha_test && pass.id == COLOR_PASS) ||
+		(this.flags.alpha_test_shadows && pass.id == SHADOW_PASS) )
 		code_flags |= FLAGS.ALPHA_TEST;
 
+	//check if we already have this shader created
 	var shader_code = LS.newStandardMaterial.shader_codes[ code_flags ];
 
 	//reuse shader codes when possible
@@ -17587,6 +17590,7 @@ RenderInstance.prototype.fromNode = function(node)
 	else
 		this.setMatrix( LS.IDENTITY );
 	mat4.multiplyVec3( this.center, this.matrix, LS.ZEROS );
+	this.layers = node.layers;
 }
 
 //set the matrix 
@@ -19440,6 +19444,9 @@ var Renderer = {
 					gl.texParameteri(tex.texture_type, gl.TEXTURE_WRAP_S, sampler.wrap);
 					gl.texParameteri(tex.texture_type, gl.TEXTURE_WRAP_T, sampler.wrap);
 				}
+				if(sampler.anisotropic != null && gl.extensions.EXT_texture_filter_anisotropic )
+					gl.texParameteri(tex.texture_type, gl.extensions.EXT_texture_filter_anisotropic.TEXTURE_MAX_ANISOTROPY_EXT, sampler.anisotropic );
+
 				//sampler._must_update = false;
 			}
 		}
@@ -27588,10 +27595,8 @@ MeshRenderer.prototype.updateRIs = function()
 	//if( is_static && LS.allow_static && !this._must_update_static && (!transform || (transform && this._transform_version == transform._version)) )
 	//	return instances.push( RI );
 
-	//matrix: do not need to update, already done
-	RI.setMatrix( this._root.transform._global_matrix );
-	//this._root.transform.getGlobalMatrix( RI.matrix );
-	mat4.multiplyVec3( RI.center, RI.matrix, LS.ZEROS );
+	//assigns matrix, layers
+	RI.fromNode( this._root );
 
 	//material (after flags because it modifies the flags)
 	var material = null;
@@ -27688,14 +27693,8 @@ MeshRenderer.prototype.onCollectInstances = function(e, instances)
 	//if( is_static && LS.allow_static && !this._must_update_static && (!transform || (transform && this._transform_version == transform._version)) )
 	//	return instances.push( RI );
 
-
-	//matrix: do not need to update, already done
-	if(this._root.transform)
-		RI.setMatrix( this._root.transform._global_matrix );
-	else
-		RI.setMatrix( LS.IDENTITY );
-	//this._root.transform.getGlobalMatrix(RI.matrix);
-	mat4.multiplyVec3( RI.center, RI.matrix, LS.ZEROS );
+	//assigns matrix, layers
+	RI.fromNode( this._root );
 
 	//material (after flags because it modifies the flags)
 	var material = null;
@@ -32103,13 +32102,8 @@ GeometricPrimitive.prototype.onCollectInstances = function(e, instances)
 	if(!this._mesh) //could happend if custom mesh is null
 		return;
 
-	if(this._root.transform)
-		this._root.transform.getGlobalMatrix( RI.matrix );
-
-	RI.layers = this._root.layers;
-	RI.setMatrix( RI.matrix ); //force normal
-	//mat4.multiplyVec3( RI.center, RI.matrix, vec3.create() );
-	mat4.getTranslation( RI.center, RI.matrix );
+	//assigns matrix, layers
+	RI.fromNode( this._root );
 	RI.setMesh( this._mesh, this._primitive );
 	this._root.mesh = this._mesh;
 	
@@ -37230,11 +37224,9 @@ function Canvas3D(o)
 	this.mode = 1;
 	this.width = 512;
 	this.height = 512;
-	this.to_texture = null;
+	this.texture_name = ":canvas3D";
 	this.visible = true;
-	this.filter = true;
 	this.use_node_material = false;
-	this.no_light = true;
 	this.generate_mipmaps = false;
 
 	this._clear_buffer = true; //not public, just here in case somebody wants it
@@ -37244,6 +37236,8 @@ function Canvas3D(o)
 	this._standard_material = null;
 
 	this._mouse = vec3.create();
+
+	this._is_mouse_inside = false;
 
 	this._local_mouse = {
 		mousex: 0,
@@ -37268,8 +37262,17 @@ Canvas3D.MODE_IMMEDIATE = 3; //not supported yet
 Canvas3D["@mode"] = { type:"enum", values: { "Canvas2D":Canvas3D.MODE_CANVAS2D, "WebGL":Canvas3D.MODE_WEBGL } };
 Canvas3D["@width"] = { type:"number", step:1, precision:0 };
 Canvas3D["@height"] = { type:"number", step:1, precision:0 };
-Canvas3D["@to_texture"] = { type:"string" };
+Canvas3D["@texture_name"] = { type:"string" };
 
+Object.defineProperty( Canvas3D.prototype, "texture", {
+	set: function(){
+		throw("Canvas3D texture cannot be set manually");
+	},
+	get: function(){
+		return this._texture;
+	},
+	enumerable: false
+});
 
 Canvas3D.prototype.onAddedToScene = function(scene)
 {
@@ -37283,6 +37286,9 @@ Canvas3D.prototype.onRemovedFromScene = function(scene)
 
 Canvas3D.prototype.onAddedToNode = function( node )
 {
+	if(!this.texture_name)
+		this.texture_name = ":canvas3D";
+
 	LEvent.bind( node, "collectRenderInstances", this.onCollectInstances, this );
 }
 
@@ -37300,6 +37306,7 @@ Canvas3D.prototype.onRender = function()
 	var w = this.width|0;
 	var h = this.height|0;
 
+	//create resources
 	if( this.mode == Canvas3D.MODE_CANVAS2D )
 	{
 		if(!this._canvas)
@@ -37316,12 +37323,11 @@ Canvas3D.prototype.onRender = function()
 			this._texture = new GL.Texture(w,h,{ format: GL.RGBA, filter: GL.LINEAR, wrap: GL.CLAMP_TO_EDGE });
 	}
 
-
-	//project input
+	//project mouse into the canvas plane
 	if(this.visible)
 		this.projectMouse();
 
-
+	//render the canvas
 	if( this.mode == Canvas3D.MODE_CANVAS2D )
 	{
 		var ctx = this._canvas.getContext("2d");
@@ -37356,7 +37362,8 @@ Canvas3D.prototype.onRender = function()
 		return;
 	}
 
-	if(this.to_texture)
+	//process and share the texture
+	if(this._texture)
 	{
 		if(this.generate_mipmaps && isPowerOfTwo(w) && isPowerOfTwo(h) )
 		{
@@ -37365,8 +37372,7 @@ Canvas3D.prototype.onRender = function()
 		}
 		else
 			this._texture.setParameter( GL.TEXTURE_MIN_FILTER, GL.LINEAR );
-		this._texture.setParameter( GL.TEXTURE_MAG_FILTER, this.filter ? GL.LINEAR : GL.NEAREST );
-		LS.RM.registerResource( this.to_texture, this._texture );
+		LS.RM.registerResource( this.texture_name || ":canvas3D", this._texture );
 	}
 
 	//restore stuff
@@ -37381,6 +37387,37 @@ Canvas3D.prototype.onRender = function()
 		this._prev_click_mouse = null;
 	}
 }
+
+Canvas3D.prototype.onCollectInstances = function(e,instances)
+{
+	if(!this.enabled || !this.visible || !this._texture)
+		return;
+
+	if(!this._RI)
+		this._RI = new LS.RenderInstance();
+	var RI = this._RI;
+	var material = null;
+	if(this.use_node_material)
+		material = this._root.getMaterial();
+	if(!material)
+		material = this._standard_material;
+	if(!material)
+		material = this._standard_material = new LS.newStandardMaterial({ flags: { ignore_lights: true, cast_shadows: false }, blend_mode: LS.Blend.ALPHA });
+
+	material.setTexture("color", this.texture_name || ":canvas3D" );
+	var sampler = material.textures["color"];
+
+	RI.fromNode( this._root );
+	RI.setMaterial( material );
+
+	if(!this._mesh)
+		this._mesh = GL.Mesh.plane();
+	RI.setMesh(this._mesh);
+	instances.push(RI);
+
+	return instances;
+}
+
 
 Canvas3D.prototype.clear = function( redraw )
 {
@@ -37398,38 +37435,6 @@ Canvas3D.prototype.clear = function( redraw )
 		this.onRender();
 }
 
-Canvas3D.prototype.onCollectInstances = function(e,instances)
-{
-	if(!this.enabled || !this.visible || !this._texture)
-		return;
-
-	if(!this._RI)
-		this._RI = new LS.RenderInstance();
-	var RI = this._RI;
-	var material = null;
-	if(this.use_node_material)
-		material = this._root.getMaterial();
-	if(!material)
-		material = this._standard_material;
-	if(!material)
-		material = this._standard_material = new LS.newStandardMaterial({ blend_mode: LS.Blend.ALPHA });
-
-	material.setTexture("color", this._texture );
-	material.flags.ignore_lights = this.no_light;
-	var sampler = material.textures["color"];
-	sampler.magFilter = this.filter ? GL.LINEAR : GL.NEAREST;
-
-	RI.fromNode( this._root );
-	RI.setMaterial( material );
-
-	if(!this._mesh)
-		this._mesh = GL.Mesh.plane();
-	RI.setMesh(this._mesh);
-	instances.push(RI);
-
-	return instances;
-}
-
 Canvas3D.prototype.projectMouse = function()
 {
 	var camera = LS.Renderer._main_camera;
@@ -37441,15 +37446,25 @@ Canvas3D.prototype.projectMouse = function()
 	{
 		this._mouse[0] = LS.Input.Mouse.x;
 		this._mouse[1] = LS.Input.Mouse.y;
+		this._is_mouse_inside = true;
 		return;
 	}
+
+	this._is_mouse_inside = false;
 
 	var mousex = LS.Input.Mouse.x;
 	var mousey = LS.Input.Mouse.y;
 
 	var ray = camera.getRayInPixel( mousex, mousey );
+	var camera_front = camera.getFront();
 
-	var local_origin = this.root.transform.globalToLocal( ray.origin );
+	var temp = vec3.create();
+	var plane_normal = this.root.transform.globalVectorToLocal( LS.FRONT, temp );
+
+	if( vec3.dot( ray.direction, plane_normal ) > 0.0 )
+		return; //is behind
+
+	var local_origin = this.root.transform.globalToLocal( ray.origin, temp );
 	var local_direction = this.root.transform.globalVectorToLocal( ray.direction );
 
 	if( !geo.testRayPlane( local_origin, local_direction, LS.ZEROS, LS.FRONT, this._mouse ) )
@@ -37461,6 +37476,12 @@ Canvas3D.prototype.projectMouse = function()
 	this._mouse[0] = (this._mouse[0] + 0.5) * w;
 	this._mouse[1] = h - (this._mouse[1] + 0.5) * h;
 
+	//mark the mouse as inside
+	if( this._mouse[0] >= 0 && this._mouse[0] < w &&
+		this._mouse[1] >= 0 && this._mouse[1] < h )
+		this._is_mouse_inside = true;
+
+	//hacks to work with the LS.GUI...
 	this._local_mouse.mousex = this._mouse[0];
 	this._local_mouse.mousey = this._mouse[1];
 	this._prev_mouse = LS.Input.Mouse;
@@ -45449,31 +45470,7 @@ Player.prototype.configure = function( options, on_scene_loaded )
 	if(options.loadingbar)
 	{
 		if(!this.loading)
-		{
-			this.loading = {
-				visible: true,
-				scene_loaded: 0,
-				resources_loaded: 0
-			};
-			LEvent.bind( LS.ResourcesManager, "start_loading_resources", (function(e,v){ 
-				if(!this.loading)
-					return;
-				this.loading.resources_loaded = 0.0; 
-			}).bind(this) );
-			LEvent.bind( LS.ResourcesManager, "loading_resources_progress", (function(e,v){ 
-				if(!this.loading)
-					return;
-				if( this.loading.resources_loaded < v )
-					this.loading.resources_loaded = v;
-			}).bind(this) );
-			LEvent.bind( LS.ResourcesManager, "end_loading_resources", (function(e,v){ 
-				if(!this.loading)
-					return;
-				this._total_loading = undefined; 
-				this.loading.resources_loaded = 1; 
-				this.loading.visible = false;
-			}).bind(this) );
-		}
+			this.enableLoadingBar();
 	}
 	else if(options.loadingbar === false)
 		this.loading = null;	
@@ -45500,6 +45497,9 @@ Player.prototype.loadScene = function(url, on_complete, on_progress)
 {
 	var that = this;
 	var scene = this.scene;
+	if(this.loading)
+		this.loading.visible = true;
+
 	scene.load( url, null, null, inner_progress, inner_start );
 
 	function inner_start()
@@ -45508,14 +45508,15 @@ Player.prototype.loadScene = function(url, on_complete, on_progress)
 		if(that.autoplay)
 			that.play();
 		//console.log("Scene playing");
-		that.loading = null;
+		if(	that.loading )
+			that.loading.visible = false;
 		if(on_complete)
 			on_complete();
 	}
 
 	function inner_progress(e)
 	{
-		if(that.loading === undefined)
+		if(that.loading == null)
 			return;
 		var partial_load = 0;
 		if(e.total) //sometimes we dont have the total so we dont know the amount
@@ -45619,6 +45620,17 @@ Player.prototype.stop = function()
 }
 
 /**
+* Clears the current scene
+* @method clear
+*/
+Player.prototype.clear = function()
+{
+	LS.Input.reset(); //this force some events to be sent
+	LS.GUI.reset(); //clear GUI
+	this.scene.clear();
+}
+
+/**
 * Enable the functionality to catch files droped in the canvas so script can catch the "fileDrop" event (onFileDrop in the Script components).
 * @method setFileDrop
 * @param {boolean} v true if you want to allow file drop (true by default)
@@ -45688,6 +45700,33 @@ Player.prototype.setFileDrop = function(v)
 			}
 		}
 	}
+}
+
+Player.prototype.enableLoadingBar = function()
+{
+	this.loading = {
+		visible: true,
+		scene_loaded: 0,
+		resources_loaded: 0
+	};
+	LEvent.bind( LS.ResourcesManager, "start_loading_resources", (function(e,v){ 
+		if(!this.loading)
+			return;
+		this.loading.resources_loaded = 0.0; 
+	}).bind(this) );
+	LEvent.bind( LS.ResourcesManager, "loading_resources_progress", (function(e,v){ 
+		if(!this.loading)
+			return;
+		if( this.loading.resources_loaded < v )
+			this.loading.resources_loaded = v;
+	}).bind(this) );
+	LEvent.bind( LS.ResourcesManager, "end_loading_resources", (function(e,v){ 
+		if(!this.loading)
+			return;
+		this._total_loading = undefined; 
+		this.loading.resources_loaded = 1; 
+		this.loading.visible = false;
+	}).bind(this) );
 }
 
 Player.prototype._onfiledrop = function( file, evt )

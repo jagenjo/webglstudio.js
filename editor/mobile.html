@@ -1,0 +1,235 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+
+<title>WebGLStudio Mobile</title>
+	<style type='text/css'>
+		html, body {
+			width: 100%;
+			height: 100%;
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+
+		#scene_selector {
+			position: absolute;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			padding: 0.8em;
+			font: 2.5em Arial;
+			background-color: #EEE;
+			box-sizing: border-box;
+		}
+
+		#scene_selector h1 {
+			margin: 0;
+			font-size: 1.3em;
+		}
+
+		#scene_selector h1 img {
+			margin-right: 0.5em;
+			vertical-align:middle;
+		}
+
+		#scene_selector input, #scene_selector button {
+			font-size: 1.2em;
+			display: block;
+			margin: 0.2em;
+			padding: 0.5em;
+			width: calc( 100% - 1.4em );
+		}
+
+		#scene_selector button {
+			color: white;
+			cursor: pointer;
+			background-color: #4f8cca;
+			border: 0;
+		}
+
+		#scene_selector .info {
+			font-size: 1.4em;
+		}
+
+		#scene_selector .login, #scene_selector .logout {
+			display: none;
+		}
+
+		#scene_selector .scene {
+			display: inline-block;
+			width: 260px;
+			padding: 0.25em;
+			margin: 0.25em;
+			background-color: #AAB;
+			cursor: pointer;
+			overflow: hidden;
+		}
+
+		#scene_selector .scene:hover {
+			transform: scale(1.1);
+			transition: all 0.2s;
+		}
+
+		#scene_selector .scene img {
+			width: 256px;
+			height: 256px;
+		}
+
+	</style>
+
+</head>
+<body>
+
+<!-- core libraries -->
+<script type="text/javascript" src="js/extra/gl-matrix-min.js"></script>
+<script type="text/javascript" src="js/extra/litegl.js"></script>
+<script type="text/javascript" src="js/extra/litegraph.js"></script>
+<script type="text/javascript" src="js/extra/litescene.js"></script>
+<script type="text/javascript" src="js/extra/Canvas2DtoWebGL.js"></script>
+<script type="text/javascript" src="js/extra/litefileserver.js"></script>
+
+<script type="text/javascript">
+
+	//LiteSCENE CODE *************************
+	var player = new LS.Player( {
+		alpha: false, //enables to have alpha in the canvas to blend with background
+		stencil: true,
+		redraw: true, //force to redraw
+		resources: "fileserver/files/",
+		autoresize: true, //resize the 3D window if the browser window is resized
+		loadingbar: true, //shows loading bar progress
+		proxy: "@/proxy.php?url=" //allows to proxy request to avoid cross domain problems, in this case the @ means same domain, so it will be http://hostname/proxy
+	});
+
+	var allow_remote_scenes = false; //allow scenes with full urls? this could be not safe...
+
+	//allow to use Canvas2D call in the WebGLCanvas (this is not mandatory, just useful)
+	if( window.enableWebGLCanvas )
+		enableWebGLCanvas( gl.canvas );
+	if( LS.queryString["debug"] )
+		player.enableDebug();
+
+</script>
+
+<div id='scene_selector'>
+	<h1><img src='imgs/webglstudio-icon.png'/>WebGLStudio</h1>
+	<div class='scenes_list'></div>
+	<div class='login'><input class='username' placeHolder='username'/><input class='password' type='password' placeHolder='password'/><button onclick='login();'>Login</button></div>
+	<p class='info'></p>
+	<div class='logout'><button>Logout</button></div>
+</div>
+
+<script type="text/javascript">
+
+	var info = document.querySelector("#scene_selector .info");
+	var filespath = "";
+
+	//Load config file
+	LS.Network.request({
+		url:"config.json?nocache=" + performance.now(),
+		dataType:"json",
+		success: on_config
+	});
+
+	function on_config( config )
+	{
+		filespath = config.resources;
+
+		LFS.setup( config.server, function(v){
+			if(!v)
+			{
+				info.innerHTML = "Cannot connect with server";
+				return;
+			}
+
+			LFS.checkExistingSession(function(session){
+				if(session)
+					on_logged_in( session );
+				else
+				{
+					document.querySelector("#scene_selector .login").style.display = "block";
+				}
+			});
+
+		});		
+	}
+
+	function login()
+	{
+		var username = document.querySelector("#scene_selector .username").value;
+		var password = document.querySelector("#scene_selector .password").value;
+		info.innerHTML = "Login in...";
+		LFS.login( username, password, function(session,resp){
+			if(session && session.user)
+			{
+				info.innerHTML = "Logged in";
+				on_logged_in(session)
+			}
+			else
+				info.innerHTML = resp.msg;
+		});
+	}
+
+	function on_logged_in( session )
+	{
+		document.querySelector("#scene_selector .login").style.display = "none";
+		document.querySelector("#scene_selector .logout").style.display = "block";
+		info.innerHTML = "Getting list...";
+		session.searchByCategory( "SceneTree", on_scenes_list );
+	}
+
+	function on_scenes_list( list )
+	{
+		info.innerHTML = "";
+		var root = document.querySelector("#scene_selector .scenes_list");
+		root.innerHTML = "";
+		for(var i in list )
+		{
+			var scene = list[i];
+			var elem = document.createElement("div");
+			elem.className = "scene";
+			var name = LS.RM.getBasename( scene.filename );
+			elem.innerHTML = "<img src='"+LFS.getPreviewPath(scene.fullpath)+"'/><span>"+name+"</span>";
+			elem.dataset["url"] = scene.fullpath;
+			elem.dataset["name"] = name;
+			root.appendChild( elem );
+			elem.addEventListener("click", on_load_scene )
+		}
+	}
+
+	function on_load_scene(e)
+	{
+		var filename = this.dataset["url"];
+		document.querySelector("#scene_selector").style.display = "none";
+		location.hash = this.dataset["name"];
+		player.scene.clear();
+		player.scene.requestFrame();
+		player.loadScene( filespath + "/" + filename );
+	}
+
+	function logout()
+	{
+		info.innerHTML = "";
+		var root = document.querySelector("#scene_selector .scenes_list");
+		root.innerHTML = "";
+		document.querySelector("#scene_selector .login").style.display = "block";
+		document.querySelector("#scene_selector .logout").style.display = "none";
+	}
+
+	window.addEventListener("hashchange", function(e) {
+		if(!location.hash)
+		{
+			document.querySelector("#scene_selector").style.display = "block";
+			player.stop();
+			player.scene.clear();
+			player.scene.requestFrame();
+		}
+	})
+
+</script>
+
+</body>
+</html>

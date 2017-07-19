@@ -3783,8 +3783,8 @@ Mesh.plane = function(options, gl) {
 			  vertices.push((2 * s - 1) * width, 0, -(2 * t - 1) * height);
 		  else
 			  vertices.push((2 * s - 1) * width, (2 * t - 1) * height, 0);
-		  if (coords) coords.push(s, t);
-		  if (normals) normals.push(N[0],N[1],N[2]);
+		  coords.push(s, t);
+		  normals.push(N[0],N[1],N[2]);
 		  if (x < detailX && y < detailY) {
 			var i = x + y * (detailX + 1);
 			if(xz) //horizontal

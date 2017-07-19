@@ -2445,6 +2445,8 @@ var GUI = {
 		offset: 0
 	},
 
+	_ctx: null, //
+
 	pressed_enter: false,
 
 	/**
@@ -2705,6 +2707,7 @@ var GUI = {
 		this._offset[0] = 0;
 		this._offset[1] = 0;
 		this._gui_areas.offset = 0;
+		this._ctx = gl;
 	},
 
 	//this is done so when clicking in the area where there is an immediate GUI widget the events are not send to the app
@@ -2777,17 +2780,29 @@ var GUI = {
 	{
 		if(!area)
 			throw("No area");
-		if(!content)
+		if(content == null)
 			return;
 
-		var ctx = gl;
+		var ctx = this._ctx;
 
 		if(content.constructor === GL.Texture)
 		{
-			ctx.drawImage( content, area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3] );
+			if(ctx.constructor === CanvasRenderingContext2D) //canvas 2D cannot render images
+				content = content.data && (content.data.constructor === HTMLImageElement || content.data.constructor === Image) ? content.data : null;
+			if(content)
+				ctx.drawImage( content, area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3] );
 		}
-		else if(content.constructor === String)
+		else if(content.constructor === HTMLImageElement || content.constructor === Image)
 		{
+			if(ctx.constructor === CanvasRenderingContext2D)
+				ctx.drawImage( content, area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3] );
+		}
+		else 
+		{
+			if(content.constructor === Number)
+				content = content.toFixed(3);
+			else (content.constructor !== String)
+				content = String(content);
 			ctx.fillStyle = this.GUIStyle.color;
 			ctx.font = (area[3]*0.75).toFixed(0) + "px " + this.GUIStyle.font;
 			ctx.textAlign = "left";
@@ -2810,7 +2825,7 @@ var GUI = {
 			throw("No area");
 		this.blockEventArea( area );
 
-		var ctx = gl;
+		var ctx = this._ctx;
 		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
 		if(is_over)
 		{
@@ -2871,7 +2886,7 @@ var GUI = {
 			throw("No options");
 		this.blockEventArea( area );
 
-		var ctx = gl;
+		var ctx = this._ctx;
 		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
 		if(is_over)
 		{
@@ -2953,7 +2968,7 @@ var GUI = {
 		value = !!value;
 		this.blockEventArea( area );
 
-		var ctx = gl;
+		var ctx = this._ctx;
 		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
 		if(is_over)
 		{
@@ -3020,7 +3035,7 @@ var GUI = {
 		text = text === undefined ? "" : String(text);
 		max_length = max_length || 1024;
 
-		var ctx = gl;
+		var ctx = this._ctx;
 		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
 		if(is_over)
 		{
@@ -3126,7 +3141,7 @@ var GUI = {
 		left_value = Number(left_value);
 		right_value = Number(right_value);
 
-		var ctx = gl;
+		var ctx = this._ctx;
 		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
 		if(is_over)
 		{
@@ -3154,10 +3169,12 @@ var GUI = {
 			}
 		}
 
+		//bg
 		ctx.fillStyle = this.GUIStyle.backgroundColor;
 		ctx.fillRect( area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3] );
-		ctx.fillStyle = clicked ? this.GUIStyle.selected : this.GUIStyle.unselected;
-		ctx.fillRect( area[0] + margin + this._offset[0], area[1] + margin + this._offset[1], (area[2] - margin*2) * norm_value, area[3] - margin*2 );
+		//slider
+		ctx.fillStyle = is_over ? this.GUIStyle.selected : this.GUIStyle.unselected;
+		ctx.fillRect( area[0] + margin + this._offset[0], area[1] + margin + this._offset[1], Math.max(2, (area[2] - margin*2) * norm_value ), area[3] - margin*2 );
 
 		if(show_value)
 		{
@@ -3195,7 +3212,7 @@ var GUI = {
 		bottom_value = Number(bottom_value);
 		top_value = Number(top_value);
 
-		var ctx = gl;
+		var ctx = this._ctx;
 		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
 		if(is_over)
 		{
@@ -3223,11 +3240,14 @@ var GUI = {
 				value = norm_value * range + bottom_value;
 			}
 		}
-
+	
+		//bg
 		ctx.fillStyle = this.GUIStyle.backgroundColor;
 		ctx.fillRect( area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3] );
-		ctx.fillStyle = clicked ? this.GUIStyle.selected : this.GUIStyle.unselected;
-		ctx.fillRect( area[0] + margin + this._offset[0], area[1] + area[3] - (area[3] - margin*2) * norm_value - margin + this._offset[1], area[2] - margin*2, (area[3] - margin*2) * norm_value );
+		//slider
+		ctx.fillStyle = is_over ? this.GUIStyle.selected : this.GUIStyle.unselected;
+		var slider_height = Math.max(2, (area[3] - margin*2) * norm_value);
+		ctx.fillRect( area[0] + margin + this._offset[0], area[1] + area[3] - slider_height - margin + this._offset[1], area[2] - margin*2, slider_height );
 
 		return value;
 	},
@@ -3241,7 +3261,7 @@ var GUI = {
 			throw("No value");
 		this.blockEventArea( area );
 
-		var ctx = gl;
+		var ctx = this._ctx;
 		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
 		if(is_over)
 		{
@@ -7373,7 +7393,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	LS.Renderer.bindSamplers( this._samplers );
 	var global_flags = 0;
 
-	if(1) //allow reflections
+	if( pass.id == COLOR_PASS ) //allow reflections only in color pass
 	{
 		global_flags |= LS.ShaderMaterial.reflection_block.flag_mask;
 		if( LS.Renderer._global_textures.environment )
@@ -7385,17 +7405,17 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 		}
 	}
 
-
 	if(this.onRenderInstance)
 		this.onRenderInstance( instance );
 
 	//add flags related to lights
 	var lights = null;
 
-	if( pass.id == COLOR_PASS && this._light_mode !== Material.NO_LIGHTS )
-		lights = LS.Renderer.getNearLights( instance );
+	//ignore lights renders the object with illumination
+	var ignore_lights = pass.id != COLOR_PASS || render_settings.lights_disabled || this._light_mode === Material.NO_LIGHTS;
 
-	var ignore_lights = render_settings.lights_disabled || this._light_mode === Material.NO_LIGHTS;
+	if( !ignore_lights )
+		lights = LS.Renderer.getNearLights( instance );
 
 	if( !lights || lights.length == 0 || ignore_lights )
 	{
@@ -9108,26 +9128,32 @@ newStandardMaterial.prototype.getShaderCode = function( instance, render_setting
 	var scene = LS.Renderer._current_scene;
 
 	//TEXTURES
-	if( this.textures.normal )
-		code_flags |= FLAGS.NORMAL_TEXTURE;
 	if( this.textures.color )
 		code_flags |= FLAGS.COLOR_TEXTURE;
 	if( this.textures.opacity )
 		code_flags |= FLAGS.OPACITY_TEXTURE;
-	if( this.textures.specular )
-		code_flags |= FLAGS.SPECULAR_TEXTURE;
-	if( this.reflection_factor > 0 )
+
+	//color textures are not necessary 
+	if( pass.id == COLOR_PASS )
 	{
-		//code_flags |= FLAGS.REFLECTION;
-		if( this.textures.reflectivity )
-			code_flags |= FLAGS.REFLECTIVITY_TEXTURE;
+		if( this.textures.normal )
+			code_flags |= FLAGS.NORMAL_TEXTURE;
+		if( this.textures.specular )
+			code_flags |= FLAGS.SPECULAR_TEXTURE;
+		if( this.reflection_factor > 0 )
+		{
+			//code_flags |= FLAGS.REFLECTION;
+			if( this.textures.reflectivity )
+				code_flags |= FLAGS.REFLECTIVITY_TEXTURE;
+		}
+		if( this.textures.emissive )
+			code_flags |= FLAGS.EMISSIVE_TEXTURE;
+		if( this.textures.ambient )
+			code_flags |= FLAGS.AMBIENT_TEXTURE;
+		if( this.textures.detail )
+			code_flags |= FLAGS.DETAIL_TEXTURE;
 	}
-	if( this.textures.emissive )
-		code_flags |= FLAGS.EMISSIVE_TEXTURE;
-	if( this.textures.ambient )
-		code_flags |= FLAGS.AMBIENT_TEXTURE;
-	if( this.textures.detail )
-		code_flags |= FLAGS.DETAIL_TEXTURE;
+
 	//flags
 	if(this.flags.alpha_test)
 		code_flags |= FLAGS.ALPHA_TEST;
@@ -9179,7 +9205,7 @@ newStandardMaterial.prototype.getShaderCode = function( instance, render_setting
 
 	//compile shader and cache
 	shader_code = new LS.ShaderCode();
-	var code = newStandardMaterial.code_template.replace("{{FS_CODE}}",fs_code);
+	var code = newStandardMaterial.code_template.replace( /{{}}/gi, fs_code );
 	shader_code.code = code;
 	LS.newStandardMaterial.shader_codes[ code_flags ] = shader_code;
 	return shader_code;
@@ -9501,7 +9527,7 @@ void surf(in Input IN, out SurfaceOutput o)\n\
 	o.Emission = u_emissive_color.xyz;\n\
 	o.Reflectivity = u_reflection_info.x;\n\
 	\n\
-	{{FS_CODE}}\n\
+	{{}}\n\
 	\n\
 	if(u_velvet_info.w > 0.0)\n\
 		o.Albedo += u_velvet_info.xyz * ( 1.0 - pow( max(0.0, dot( IN.viewDir, o.Normal )), u_velvet_info.w ));\n\
@@ -9523,6 +9549,93 @@ void main() {\n\
   final_color.a = o.Alpha;\n\
   final_color = applyReflection( IN, o, final_color );\n\
   gl_FragColor = final_color;\n\
+}\n\
+\\shadow.vs\n\
+\n\
+precision mediump float;\n\
+attribute vec3 a_vertex;\n\
+attribute vec3 a_normal;\n\
+attribute vec2 a_coord;\n\
+#ifdef USE_COLORS\n\
+attribute vec4 a_color;\n\
+#endif\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+\n\
+//matrices\n\
+uniform mat4 u_model;\n\
+uniform mat4 u_normal_model;\n\
+uniform mat4 u_view;\n\
+uniform mat4 u_viewprojection;\n\
+\n\
+//globals\n\
+uniform float u_time;\n\
+uniform vec4 u_viewport;\n\
+uniform float u_point_size;\n\
+\n\
+#pragma shaderblock \"light\"\n\
+#pragma shaderblock \"morphing\"\n\
+#pragma shaderblock \"skinning\"\n\
+\n\
+//camera\n\
+uniform vec3 u_camera_eye;\n\
+void main() {\n\
+	\n\
+	vec4 vertex4 = vec4(a_vertex,1.0);\n\
+	v_normal = a_normal;\n\
+	v_uvs = a_coord;\n\
+  \n\
+  //deforms\n\
+  applyMorphing( vertex4, v_normal );\n\
+  applySkinning( vertex4, v_normal );\n\
+	\n\
+	//vertex\n\
+	v_pos = (u_model * vertex4).xyz;\n\
+  \n\
+  applyLight(v_pos);\n\
+  \n\
+	//normal\n\
+	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
+}\n\
+\\shadow.fs\n\
+\n\
+precision mediump float;\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+\n\
+//globals\n\
+uniform vec3 u_camera_eye;\n\
+uniform vec4 u_clipping_plane;\n\
+uniform vec4 u_material_color;\n\
+\n\
+uniform mat3 u_texture_matrix;\n\
+\n\
+uniform sampler2D color_texture;\n\
+uniform sampler2D opacity_texture;\n\
+\n\
+#pragma snippet \"input\"\n\
+#pragma snippet \"surface\"\n\
+\n\
+void surf(in Input IN, out SurfaceOutput o)\n\
+{\n\
+	o.Albedo = u_material_color.xyz;\n\
+	o.Alpha = u_material_color.a;\n\
+	\n\
+	{{}}\n\
+}\n\
+\n\
+void main() {\n\
+  Input IN = getInput();\n\
+  SurfaceOutput o = getSurfaceOutput();\n\
+  surf(IN,o);\n\
+  gl_FragColor = vec4(o.Albedo,o.Alpha);\n\
 }\n\
 ";
 /*
@@ -9628,7 +9741,7 @@ ComponentContainer.prototype.serializeComponents = function( o )
 	for(var i = 0, l = this._components.length; i < l; ++i)
 	{
 		var comp = this._components[i];
-		if( !comp.serialize )
+		if( !comp.serialize || comp.skip_serialize )
 			continue;
 		var obj = comp.serialize();
 
@@ -10026,21 +10139,29 @@ ComponentContainer.prototype.requireScript = function( url )
 * @method processActionInComponents
 * @param {String} method_name the name of the function to execute in all components (in string format)
 * @param {Array} params array with every parameter that the function may need
+* @param {Boolean} skip_scripts [optional] skip scripts
 */
-ComponentContainer.prototype.processActionInComponents = function( method_name, params )
+ComponentContainer.prototype.processActionInComponents = function( method_name, params, skip_scripts )
 {
 	if(this._components && this._components.length)
 	{
 		for(var i = 0, l = this._components.length; i < l; ++i)
 		{
 			var comp = this._components[i];
-			if( !comp[method_name] || comp[method_name].constructor !== Function )
+			if( comp[method_name] && comp[method_name].constructor === Function )
+			{
+				if(!params || params.constructor !== Array)
+					comp[method_name].call(comp, params);
+				else
+					comp[method_name].apply(comp, params);
+				continue;
+			}
+
+			if(skip_scripts)
 				continue;
 
-			if(!params || params.constructor !== Array)
-				comp[method_name].call(comp, params);
-			else
-				comp[method_name].apply(comp, params);
+			if(comp._script)
+				comp._script.callMethod( method_name, params, true );
 		}
 	}
 }
@@ -17456,7 +17577,19 @@ RenderInstance.NO_SORT = 0;
 RenderInstance.SORT_NEAR_FIRST = 1;
 RenderInstance.SORT_FAR_FIRST = 2;
 
-//set the material and apply material flags to render instance
+RenderInstance.prototype.fromNode = function(node)
+{
+	if(!node)
+		throw("no node");
+	this.node = node;
+	if(node.transform)
+		this.setMatrix( node.transform._global_matrix );
+	else
+		this.setMatrix( LS.IDENTITY );
+	mat4.multiplyVec3( this.center, this.matrix, LS.ZEROS );
+}
+
+//set the matrix 
 RenderInstance.prototype.setMatrix = function(matrix, normal_matrix)
 {
 	this.matrix.set( matrix );
@@ -18492,6 +18625,9 @@ var Renderer = {
 		cameras = cameras || this._visible_cameras;
 		this._visible_cameras = cameras; //the cameras being rendered
 		this._main_camera = cameras[0];
+
+		//Event: readyToRender when we have all the info to render
+		LEvent.trigger( scene, "readyToRender", render_settings );
 
 		//remove the lights that do not lay in front of any camera (this way we avoid creating shadowmaps)
 		//TODO
@@ -19556,6 +19692,8 @@ var Renderer = {
 		//prepare lights (collect data and generate shadowmaps)
 		for(var i = 0, l = this._visible_lights.length; i < l; ++i)
 			this._visible_lights[i].prepare( render_settings );
+
+		LEvent.trigger( scene, "afterCollectData", scene );
 	},
 
 	//outside of processVisibleData to allow optimizations in processVisibleData
@@ -22517,33 +22655,29 @@ Object.defineProperty( Transform.prototype, 'data', {
 	enumerable: false
 });
 
+//in degrees
 Object.defineProperty( Transform.prototype, 'xrotation', {
 	get: function() { return 0; },
 	set: function(v) { 
 		this.rotateX(v * DEG2RAD);
-		//this._rotation[0] = Math.sin(v * DEG2RAD * 0.5);
-		//quat.normalize(this._rotation,this._rotation);
-		//this._must_update = true; 
 	},
 	enumerable: false
 });
+
+//in degrees
 Object.defineProperty( Transform.prototype, 'yrotation', {
 	get: function() { return 0; },
 	set: function(v) { 
 		this.rotateY(v * DEG2RAD);
-		//this._rotation[1] = Math.sin(v * DEG2RAD * 0.5);
-		//quat.normalize(this._rotation,this._rotation);
-		//this._must_update = true; 
 	},
 	enumerable: false
 });
+
+//in degrees
 Object.defineProperty( Transform.prototype, 'zrotation', {
 	get: function() { return 0; },
 	set: function(v) { 
 		this.rotateZ(v * DEG2RAD);
-		//this._rotation[2] = Math.sin(v * DEG2RAD * 0.5);
-		//quat.normalize(this._rotation,this._rotation);
-		//this._must_update = true; 
 	},
 	enumerable: false
 });
@@ -23270,11 +23404,11 @@ Transform.prototype.rotate = (function(){
 /**
 * rotate object in local space in local X axis
 * @method rotateX
-* @param {number} angle_in_deg 
+* @param {number} angle_in_rad
 */
-Transform.prototype.rotateX = function(angle_in_deg)
+Transform.prototype.rotateX = function(angle_in_rad)
 {
-	quat.rotateX( this._rotation, this._rotation, angle_in_deg * 0.0174532925 );
+	quat.rotateX( this._rotation, this._rotation, angle_in_rad  );
 	this._must_update = true;
 	this._on_change(true);
 }
@@ -23282,11 +23416,11 @@ Transform.prototype.rotateX = function(angle_in_deg)
 /**
 * rotate object in local space in local Y axis
 * @method rotateY
-* @param {number} angle_in_deg 
+* @param {number} angle_in_rad 
 */
-Transform.prototype.rotateY = function(angle_in_deg)
+Transform.prototype.rotateY = function(angle_in_rad)
 {
-	quat.rotateY( this._rotation, this._rotation, angle_in_deg * 0.0174532925 );
+	quat.rotateY( this._rotation, this._rotation, angle_in_rad );
 	this._must_update = true;
 	this._on_change();
 }
@@ -23294,11 +23428,11 @@ Transform.prototype.rotateY = function(angle_in_deg)
 /**
 * rotate object in local space in local Z axis
 * @method rotateZ
-* @param {number} angle_in_deg 
+* @param {number} angle_in_rad 
 */
-Transform.prototype.rotateZ = function(angle_in_deg)
+Transform.prototype.rotateZ = function(angle_in_rad)
 {
-	quat.rotateZ( this._rotation, this._rotation, angle_in_deg * 0.0174532925 );
+	quat.rotateZ( this._rotation, this._rotation, angle_in_rad );
 	this._must_update = true;
 	this._on_change(true);
 }
@@ -25740,16 +25874,22 @@ function Light(o)
 
 	this.constant_diffuse = false;
 	this.use_specular = true;
-	this.linear_attenuation = false;
-	this.range_attenuation = true;
 	this.att_start = 0;
 	this.att_end = 1000;
+
+	/**
+	* type of attenuation: Light.NO_ATTENUATION, Light.LINEAR_ATTENUATION, Light.RANGE_ATTENUATION
+	* @property attenuation_type
+	* @type {Number}
+	* @default [1,1,1]
+	*/
+	this.attenuation_type = Light.RANGE_ATTENUATION; //0: none, 1:linear, 2:range, ...
 	this.offset = 0;
 	this._spot_cone = true;
 
 	this.projective_texture = null;
 
-	this._attenuation_info = new Float32Array([ this.att_start, this.att_end ]);
+	this._attenuation_info = new Float32Array([ this.att_start, this.att_end, this.attenuation_type, 0 ]); //start,end,type,extra
 
 	//use target (when attached to node)
 	this.use_target = false;
@@ -25757,7 +25897,7 @@ function Light(o)
 	/**
 	* The color of the light
 	* @property color
-	* @type {[[r,g,b]]}
+	* @type {vec3}
 	* @default [1,1,1]
 	*/
 	this._color = vec3.fromValues(1,1,1);
@@ -25825,9 +25965,20 @@ function Light(o)
 		Light.use_shadowmap_depth_texture = false;
 }
 
+Light.NO_ATTENUATION = 0;
+Light.LINEAR_ATTENUATION = 1;
+Light.RANGE_ATTENUATION = 2;
+
+Light.AttenuationTypes = {
+	"none": Light.NO_ATTENUATION,
+	"linear": Light.LINEAR_ATTENUATION,
+	"range": Light.RANGE_ATTENUATION
+};
+
 Light["@projective_texture"] = { type: LS.TYPES.TEXTURE };
 Light["@extra_texture"] = { type: LS.TYPES.TEXTURE };
 Light["@color"] = { type: LS.TYPES.COLOR };
+Light["@attenuation_type"] = { type: "enum", values: Light.AttenuationTypes };
 
 Object.defineProperty( Light.prototype, 'type', {
 	get: function() { return this._type; },
@@ -26168,9 +26319,9 @@ Light.prototype.prepare = function( render_settings )
 
 	if(this._spot_cone)
 		query.macros.USE_SPOT_CONE = "";
-	if(this.linear_attenuation)
+	if(this.attenuation_type == Light.LINEAR_ATTENUATION)
 		query.macros.USE_LINEAR_ATTENUATION = "";
-	if(this.range_attenuation)
+	if(this.attenuation_type == Light.RANGE_ATTENUATION)
 		query.macros.USE_RANGE_ATTENUATION = "";
 	if(this.offset > 0.001)
 		query.macros.USE_LIGHT_OFFSET = "";
@@ -26213,6 +26364,7 @@ Light.prototype.prepare = function( render_settings )
 	vec3.scale( uniforms.u_light_color, this.color, this.intensity );
 	this._attenuation_info[0] = this.att_start;
 	this._attenuation_info[1] = this.att_end;
+	this._attenuation_info[2] = this.attenuation_type;
 	uniforms.u_light_offset = this.offset;
 
 	//generate shadowmaps
@@ -26223,7 +26375,7 @@ Light.prototype.prepare = function( render_settings )
 		var cameras = LS.Renderer._visible_cameras;
 		var is_inside_one_camera = false;
 
-		if( !render_settings.update_all_shadowmaps && cameras && this.type == Light.OMNI && this.range_attenuation )
+		if( !render_settings.update_all_shadowmaps && cameras && this.type == Light.OMNI && this.attenuation_type > Light.LINEAL_ATTENUATION )
 		{
 			var closest_far = this.computeShadowmapFar();
 			for(var i = 0; i < cameras.length; i++)
@@ -26357,14 +26509,14 @@ Light.prototype.computeShadowmapFar = function()
 	if( this.type == Light.OMNI )
 	{
 		//Math.SQRT2 because in a 45º triangle the hypotenuse is sqrt(1+1) * side
-		if( this.range_attenuation && (this.att_end * Math.SQRT2) < closest_far)
+		if( this.attenuation_type == Light.RANGE_ATTENUATION  && (this.att_end * Math.SQRT2) < closest_far)
 			closest_far = this.att_end / Math.SQRT2;
 
 		//TODO, if no range_attenuation but linear_attenuation also check intensity to reduce the far
 	}
 	else 
 	{
-		if( this.range_attenuation && this.att_end < closest_far)
+		if( this.attenuation_type == Light.RANGE_ATTENUATION && this.att_end < closest_far)
 			closest_far = this.att_end;
 	}
 
@@ -26389,7 +26541,8 @@ Light.prototype.computeLightIntensity = function()
 */
 Light.prototype.computeLightRadius = function()
 {
-	if(!this.range_attenuation)
+	//linear attenuation has no ending so infinite
+	if(this.attenuation_type == Light.NO_ATTENUATION || this.attenuation_type == Light.LINEAR_ATTENUATION )
 		return -1;
 
 	if( this.type == Light.OMNI )
@@ -26530,6 +26683,10 @@ Light.prototype.applyShaderBlockFlags = function( flags, pass, render_settings )
 
 	flags |= Light.shader_block.flag_mask;
 
+	//attenuation
+	if(this.attenuation_type)
+		flags |= Light.attenuation_block.flag_mask;
+
 	//disabled now
 	if( this.cast_shadows && render_settings.shadows_enabled )
 	{
@@ -26571,7 +26728,7 @@ LS.ShadersManager.registerSnippet("light_structs","\n\
 	uniform vec3 u_light_front;\n\
 	uniform vec3 u_light_color;\n\
 	uniform vec4 u_light_angle; //cone start,end,phi,theta \n\
-	uniform vec2 u_light_att; //start,end \n\
+	uniform vec4 u_light_att; //start,end \n\
 	uniform float u_light_offset; //ndotl offset\n\
 	uniform vec4 u_light_extra; //user data\n\
 	uniform mat4 u_light_matrix; //to light space\n\
@@ -26583,10 +26740,11 @@ LS.ShadersManager.registerSnippet("light_structs","\n\
 		vec3 Position;\n\
 		vec3 Front;\n\
 		vec4 ConeInfo; //for spotlights\n\
-		vec2 Attenuation; //start and end\n\
+		vec4 Attenuation; //start,end,type,extra\n\
 		float Offset; //phong_offset\n\
 		vec4 Extra; //users can use this\n\
 		mat4 Matrix; //converts to light space\n\
+		float Distance;\n\
 	};\n\
 	//Returns the info about the light\n\
 	Light getLight()\n\
@@ -26603,6 +26761,7 @@ LS.ShadersManager.registerSnippet("light_structs","\n\
 		LIGHT.ConeInfo = u_light_angle; //for spotlights\n\
 		LIGHT.Attenuation = u_light_att; //start and end\n\
 		LIGHT.Offset = u_light_offset;\n\
+		LIGHT.Distance = length( u_light_position - v_pos );\n\
 		LIGHT.Extra = u_light_extra;\n\
 		LIGHT.Matrix = u_light_matrix; //converts to light space\n\
 		return LIGHT;\n\
@@ -26638,6 +26797,7 @@ Light._enabled_fs_shaderblock_code = "\n\
 	#pragma snippet \"surface\"\n\
 	#pragma snippet \"light_structs\"\n\
 	#pragma snippet \"spotFalloff\"\n\
+	#pragma shaderblock \"attenuation\"\n\
 	#pragma shaderblock SHADOWBLOCK \"testShadow\"\n\
 	\n\
 	//Light is separated in two functions, computeLight (how much light receives the object) and applyLight (compute resulting final color)\n\
@@ -26665,9 +26825,7 @@ Light._enabled_fs_shaderblock_code = "\n\
 		float cam_dist = length(E);\n\
 		E /= cam_dist;\n\
 		\n\
-		vec3 L = (LIGHT.Position - v_pos);\n\
-		float light_distance = length(L);\n\
-		L /= light_distance;\n\
+		vec3 L = (LIGHT.Position - v_pos) / LIGHT.Distance;\n\
 		\n\
 		if( LIGHT.Info.x == 3.0 )\n\
 			L = -LIGHT.Front;\n\
@@ -26685,6 +26843,9 @@ Light._enabled_fs_shaderblock_code = "\n\
 		// ATTENUATION\n\
 		FINALLIGHT.Attenuation = 1.0;\n\
 		\n\
+		#ifdef BLOCK_ATTENUATION\n\
+			FINALLIGHT.Attenuation = computeAttenuation( LIGHT );\n\
+		#endif\n\
 		if( LIGHT.Info.x == 2.0 && LIGHT.Info.y == 1.0 )\n\
 			FINALLIGHT.Attenuation *= spotFalloff( LIGHT.Front, normalize( LIGHT.Position - v_pos ), LIGHT.ConeInfo.z, LIGHT.ConeInfo.w );\n\
 		\n\
@@ -26708,35 +26869,6 @@ Light._enabled_fs_shaderblock_code = "\n\
 	}\n\
 	\n\
 ";
-
-/*
-//attenuation
-	#ifdef USE_LINEAR_ATTENUATION\n\
-		LIGHT.Attenuation = 100.0 / light_distance;\n\
-	#endif\n\
-	\n\
-	#ifdef USE_RANGE_ATTENUATION\n\
-		#ifndef USE_DIRECTIONAL_LIGHT\n\
-			if(light_distance >= u_light_att.y)\n\
-				LIGHT.Attenuation = 0.0;\n\
-			else if(light_distance >= u_light_att.x)\n\
-				LIGHT.Attenuation *= 1.0 - (light_distance - u_light_att.x) / (u_light_att.y - u_light_att.x);\n\
-		#endif\n\
-	#endif\n\
-
-//no lights
-	#ifdef USE_IGNORE_LIGHTS\n\
-		LIGHT.Color = vec3(1.0);\n\
-		LIGHT.Ambient = vec3(0.0);\n\
-		LIGHT.Diffuse = 1.0;\n\
-		LIGHT.Specular = 0.0;\n\
-	#endif\n\
-
-//first pass
-	#ifdef FIRST_PASS\n\
-		final_color += o.Emission;\n\
-	#endif\n\
-*/
 
 Light._disabled_shaderblock_code = "\n\
 	#pragma snippet \"input\"\n\
@@ -26765,6 +26897,36 @@ light_block.addCode( GL.VERTEX_SHADER, Light._vs_shaderblock_code, Light._vs_sha
 light_block.addCode( GL.FRAGMENT_SHADER, Light._enabled_fs_shaderblock_code, Light._disabled_shaderblock_code );
 light_block.register();
 Light.shader_block = light_block;
+
+// ATTENUATION
+Light._attenuation_enabled_fragment_code = "\n\
+	const float LINEAR_ATTENUATION = 1.0;\n\
+	const float RANGE_ATTENUATION = 2.0;\n\
+	float computeAttenuation( in Light LIGHT )\n\
+	{\n\
+		//no attenuation\n\
+		if(LIGHT.Attenuation.z == 0.0)\n\
+			return 1.0;\n\
+		//directional light\n\
+		if( LIGHT.Info.x == 3.0 )\n\
+			return 1.0;\n\
+		if( LIGHT.Attenuation.z == LINEAR_ATTENUATION )\n\
+			return 10.0 / LIGHT.Distance;\n\
+		if( LIGHT.Attenuation.z == RANGE_ATTENUATION )\n\
+		{\n\
+			if(LIGHT.Distance >= LIGHT.Attenuation.y)\n\
+				return 0.0;\n\
+			if(LIGHT.Distance >= LIGHT.Attenuation.x)\n\
+				return 1.0 - (LIGHT.Distance - LIGHT.Attenuation.x) / (LIGHT.Attenuation.y - LIGHT.Attenuation.x);\n\
+		}\n\
+		return 1.0;\n\
+	}\n\
+";
+Light._attenuation_disabled_fragment_code = "";
+
+var attenuation_block = Light.attenuation_block = new LS.ShaderBlock("attenuation");
+attenuation_block.addCode( GL.FRAGMENT_SHADER, Light._attenuation_enabled_fragment_code, Light._attenuation_disabled_fragment_code  );
+attenuation_block.register();
 
 //OMNI LIGHT SHADOWMAP *****************************************
 Light._shadowmap_cubemap_code = "\n\
@@ -27363,11 +27525,11 @@ MeshRenderer.prototype.getAnyMesh = function() {
 
 MeshRenderer.prototype.getResources = function(res)
 {
-	if(typeof(this.mesh) == "string")
-		res[this.mesh] = GL.Mesh;
-	if(typeof(this.lod_mesh) == "string")
+	if( this.mesh && this.mesh.constructor === String )
+		res[ this.mesh ] = GL.Mesh;
+	if( this.lod_mesh && this.lod_mesh.constructor === String )
 		res[this.lod_mesh] = GL.Mesh;
-	if(typeof(this.material) == "string")
+	if( this.material && this.material.constructor === String )
 		res[this.material] = LS.Material;
 
 	if(this.use_submaterials)
@@ -35717,7 +35879,7 @@ ScriptFromFile.prototype.processCode = function( skip_events, on_complete )
 
 	//compiles and executes the context
 	var old = this._stored_properties || this.getContextProperties();
-	var ret = this._script.compile({component:this, node: this._root, scene: this._root.scene, globals: LS.Globals });
+	var ret = this._script.compile({component:this, node: this._root, scene: this._root.scene, transform: this._root.transform, globals: LS.Globals });
 	if(!skip_events)
 		this.hookEvents();
 	this.setContextProperties( old );
@@ -37048,6 +37210,287 @@ ThreeJS.prototype.processCode = function( skip_events )
 
 LS.registerComponent( ThreeJS );
 
+
+/**
+* Allows to render 2d canvas primitives, but they are rendered into a plane that can be positioned in 3D space.
+* It also supports to store the texture so it can be used in another material.
+* 
+* The CANVAS2D mode renders busing a native Canvas2D, which has all the features but it could be slower because it has to upload the full canvas every frame.
+* The WEBGL mode renders the canvas using WebGL calls, it is faster but the quality is worse and some features are not available (but you can render other textures as images)
+* To fill the canvas you must have a Script in the same node, that contains a method called OnRenderCanvas
+* @class Canvas3D
+* @namespace LS.Components
+* @constructor
+* @param {String} object to configure from
+*/
+function Canvas3D(o)
+{
+	this.enabled = true;
+
+	this.mode = 1;
+	this.width = 512;
+	this.height = 512;
+	this.to_texture = null;
+	this.visible = true;
+	this.filter = true;
+	this.use_node_material = false;
+	this.no_light = true;
+	this.generate_mipmaps = false;
+
+	this._clear_buffer = true; //not public, just here in case somebody wants it
+	this._texture = null;
+	this._fbo = null;
+	this._RI = null;
+	this._standard_material = null;
+
+	this._mouse = vec3.create();
+
+	this._local_mouse = {
+		mousex: 0,
+		mousey: 0
+	};
+
+	this._local_mouse_click = {
+		mousex: 0,
+		mousey: 0
+	}
+
+	if(o)
+		this.configure(o);
+}
+
+Canvas3D.icon = "mini-icon-brush.png";
+
+Canvas3D.MODE_CANVAS2D = 1;
+Canvas3D.MODE_WEBGL = 2;
+Canvas3D.MODE_IMMEDIATE = 3; //not supported yet
+
+Canvas3D["@mode"] = { type:"enum", values: { "Canvas2D":Canvas3D.MODE_CANVAS2D, "WebGL":Canvas3D.MODE_WEBGL } };
+Canvas3D["@width"] = { type:"number", step:1, precision:0 };
+Canvas3D["@height"] = { type:"number", step:1, precision:0 };
+Canvas3D["@to_texture"] = { type:"string" };
+
+
+Canvas3D.prototype.onAddedToScene = function(scene)
+{
+	LEvent.bind(scene,"readyToRender",this.onRender,this);
+}
+
+Canvas3D.prototype.onRemovedFromScene = function(scene)
+{
+	LEvent.unbind(scene,"readyToRender",this.onRender,this);
+}
+
+Canvas3D.prototype.onAddedToNode = function( node )
+{
+	LEvent.bind( node, "collectRenderInstances", this.onCollectInstances, this );
+}
+
+Canvas3D.prototype.onRemovedFromNode = function( node )
+{
+	LEvent.unbind( node, "collectRenderInstances", this.onCollectInstances, this );
+}
+
+//called before rendering scene
+Canvas3D.prototype.onRender = function()
+{
+	if(!this.enabled)
+		return;
+
+	var w = this.width|0;
+	var h = this.height|0;
+
+	if( this.mode == Canvas3D.MODE_CANVAS2D )
+	{
+		if(!this._canvas)
+			this._canvas = document.createElement("canvas");
+		if(this._canvas.width != w)
+			this._canvas.width = w;
+		if(this._canvas.height != h)
+			this._canvas.height = h;
+	}
+
+	if(this.mode != Canvas3D.MODE_IMMEDIATE)
+	{
+		if(!this._texture || this._texture.width != w || this._texture.height != h)
+			this._texture = new GL.Texture(w,h,{ format: GL.RGBA, filter: GL.LINEAR, wrap: GL.CLAMP_TO_EDGE });
+	}
+
+
+	//project input
+	if(this.visible)
+		this.projectMouse();
+
+
+	if( this.mode == Canvas3D.MODE_CANVAS2D )
+	{
+		var ctx = this._canvas.getContext("2d");
+		if(this._clear_buffer)
+			ctx.clearRect(0,0,this._canvas.width,this._canvas.height); //clear
+		LS.GUI._ctx = ctx;
+		this._root.processActionInComponents("onRenderCanvas",[ctx,this._canvas,this._mouse,this]);
+		LS.GUI._ctx = gl;
+		this._texture.uploadImage( this._canvas );
+	}
+	else if ( this.mode == Canvas3D.MODE_WEBGL )
+	{
+		var ctx = gl;
+		if(!this._fbo)
+			this._fbo = new GL.FBO();
+		this._fbo.setTextures([this._texture]);
+		this._fbo.bind();
+		gl.start2D();
+		if(this._clear_buffer)
+		{
+			gl.clearColor(0,0,0,0);
+			gl.clear(GL.COLOR_BUFFER_BIT);
+		}
+		LS.GUI._ctx = gl;
+		this._root.processActionInComponents("onRenderCanvas",[ctx,this._texture,this._mouse,this]);
+		gl.finish2D();
+		this._fbo.unbind();
+	}
+	else //not implemented yet
+	{
+		//requires to support extra_projection in canvas2DtoWebGL which is not yet implemented
+		return;
+	}
+
+	if(this.to_texture)
+	{
+		if(this.generate_mipmaps && isPowerOfTwo(w) && isPowerOfTwo(h) )
+		{
+			this._texture.setParameter( GL.TEXTURE_MIN_FILTER, GL.LINEAR_MIPMAP_LINEAR );
+			gl.generateMipmap( gl.TEXTURE_2D );
+		}
+		else
+			this._texture.setParameter( GL.TEXTURE_MIN_FILTER, GL.LINEAR );
+		this._texture.setParameter( GL.TEXTURE_MAG_FILTER, this.filter ? GL.LINEAR : GL.NEAREST );
+		LS.RM.registerResource( this.to_texture, this._texture );
+	}
+
+	//restore stuff
+	if( this._prev_mouse )
+	{
+		 LS.Input.Mouse = this._prev_mouse;
+		 this._prev_mouse = null;
+	}
+	if( LS.Input.current_click && this._prev_click_mouse )
+	{
+		LS.Input.current_click = this._prev_click_mouse;
+		this._prev_click_mouse = null;
+	}
+}
+
+Canvas3D.prototype.clear = function( redraw )
+{
+	if( this.mode == Canvas3D.MODE_CANVAS2D )
+	{
+		var ctx = this._canvas.getContext("2d");
+		ctx.clearRect(0,0,this._canvas.width,this._canvas.height); //clear
+	}
+	else if( this.mode == Canvas3D.MODE_WEBGL )
+	{
+		if(this._texture)
+			this._texture.fill([0,0,0,0]);
+	}
+	if(redraw)
+		this.onRender();
+}
+
+Canvas3D.prototype.onCollectInstances = function(e,instances)
+{
+	if(!this.enabled || !this.visible || !this._texture)
+		return;
+
+	if(!this._RI)
+		this._RI = new LS.RenderInstance();
+	var RI = this._RI;
+	var material = null;
+	if(this.use_node_material)
+		material = this._root.getMaterial();
+	if(!material)
+		material = this._standard_material;
+	if(!material)
+		material = this._standard_material = new LS.newStandardMaterial({ blend_mode: LS.Blend.ALPHA });
+
+	material.setTexture("color", this._texture );
+	material.flags.ignore_lights = this.no_light;
+	var sampler = material.textures["color"];
+	sampler.magFilter = this.filter ? GL.LINEAR : GL.NEAREST;
+
+	RI.fromNode( this._root );
+	RI.setMaterial( material );
+
+	if(!this._mesh)
+		this._mesh = GL.Mesh.plane();
+	RI.setMesh(this._mesh);
+	instances.push(RI);
+
+	return instances;
+}
+
+Canvas3D.prototype.projectMouse = function()
+{
+	var camera = LS.Renderer._main_camera;
+	if(!camera)
+		return;
+
+	//Canvas Plane
+	if(!this.root.transform)
+	{
+		this._mouse[0] = LS.Input.Mouse.x;
+		this._mouse[1] = LS.Input.Mouse.y;
+		return;
+	}
+
+	var mousex = LS.Input.Mouse.x;
+	var mousey = LS.Input.Mouse.y;
+
+	var ray = camera.getRayInPixel( mousex, mousey );
+
+	var local_origin = this.root.transform.globalToLocal( ray.origin );
+	var local_direction = this.root.transform.globalVectorToLocal( ray.direction );
+
+	if( !geo.testRayPlane( local_origin, local_direction, LS.ZEROS, LS.FRONT, this._mouse ) )
+		return;
+
+	var w = this.width|0;
+	var h = this.height|0;
+
+	this._mouse[0] = (this._mouse[0] + 0.5) * w;
+	this._mouse[1] = h - (this._mouse[1] + 0.5) * h;
+
+	this._local_mouse.mousex = this._mouse[0];
+	this._local_mouse.mousey = this._mouse[1];
+	this._prev_mouse = LS.Input.Mouse;
+	LS.Input.Mouse = this._local_mouse;
+
+	if( LS.Input.current_click )
+	{
+		this._local_mouse_click.mousex = this._mouse[0];
+		this._local_mouse_click.mousey = this._mouse[1];
+		this._prev_click_mouse = LS.Input.current_click;
+		LS.Input.current_click = this._local_mouse_click;
+	}
+}
+
+/*
+Canvas3D.prototype.getResources = function(res)
+{
+	if( this.material && this.material.constructor === String )
+		res[this.material] = LS.Material;
+	return res;
+}
+
+Canvas3D.prototype.onResourceRenamed = function (old_name, new_name, resource)
+{
+	if(this.material == old_name)
+		this.material = new_name;
+}
+*/
+
+LS.registerComponent( Canvas3D );
 /**
 * Allows to easily test interaction between the user and the scene, attach the InteractiveController to the root and the mouse down,move and up events will
 * be processed using a raycast and trigger events.
@@ -37699,33 +38142,40 @@ SceneTree.prototype.loadFromResources = function( url, on_complete, on_error, on
 }
 
 
-//returns a list of all the scripts that must be loaded, in order and with the full path
-SceneTree.getScriptsList = function( root, allow_local )
+
+/**
+* Static method, returns a list of all the scripts that must be loaded, in order and with the full path
+*
+* @method SceneTree.getScriptsList
+* @param {SceneTree|Object} scene the object containing info about the scripts (could be a scene or a JSON object)
+* @param {Boolean} allow_local if we allow local resources
+* @param {Boolean} full_paths if true it will return the full path to every resource
+*/
+SceneTree.getScriptsList = function( scene, allow_local, full_paths )
 {
+	if(!scene)
+		throw("SceneTree.getScriptsList: scene cannot be null");
+
 	var scripts = [];
-	if ( root.external_scripts && root.external_scripts.length )
-		scripts = scripts.concat( root.external_scripts );
-	if ( root.global_scripts && root.global_scripts.length )
+	if ( scene.external_scripts && scene.external_scripts.length )
+		scripts = scripts.concat( scene.external_scripts );
+	if ( scene.global_scripts && scene.global_scripts.length )
 	{
-		for(var i in root.global_scripts)
+		for(var i in scene.global_scripts)
 		{
-			var script_fullpath = root.global_scripts[i];
-			if(!script_fullpath || LS.ResourcesManager.getExtension( script_fullpath ) != "js" )
+			var script_url = scene.global_scripts[i];
+			if(!script_url || LS.ResourcesManager.getExtension( script_url ) != "js" )
 				continue;
 
-			var script_url = LS.ResourcesManager.getFullURL( script_fullpath );
-
-			var res = LS.ResourcesManager.getResource( script_fullpath );
+			var res = LS.ResourcesManager.getResource( script_url );
 			if(res)
 			{
-				/*
-				if( res.from_prefab )
-					script_url = LS.ResourcesManager.cleanFullpath( "@" + script_fullpath );
-				else 
-				*/
-					if( allow_local )
-					script_url = LS.ResourcesManager.cleanFullpath( script_fullpath );
+				if( allow_local )
+					script_url = LS.ResourcesManager.cleanFullpath( script_url );
 			}
+
+			if(full_paths)
+				script_url = LS.ResourcesManager.getFullURL( script_url );
 
 			scripts.push( script_url );
 		}
@@ -37736,6 +38186,7 @@ SceneTree.getScriptsList = function( root, allow_local )
 //reloads external and global scripts taking into account if they come from wbins
 SceneTree.prototype.loadScripts = function( scripts, on_complete, on_error, force_reload )
 {
+	//get a list of scripts (they cannot be fullpaths)
 	scripts = scripts || LS.SceneTree.getScriptsList( this, true );
 
 	if(!scripts.length)
@@ -37757,11 +38208,11 @@ SceneTree.prototype.loadScripts = function( scripts, on_complete, on_error, forc
 
 	for(var i in scripts)
 	{
-		var script_fullpath = scripts[i];
-		var res = LS.ResourcesManager.getResource( script_fullpath );
+		var script_url = scripts[i];
+		var res = LS.ResourcesManager.getResource( script_url );
 		if(!res || force_reload)
 		{
-			final_scripts.push( script_fullpath );
+			final_scripts.push( LS.ResourcesManager.getFullURL( script_url ) );
 			continue;
 		}
 

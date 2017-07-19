@@ -75,6 +75,7 @@
 			};
 
 			//used to store light contribution
+			//CAREFUL: this one is different than 
 			struct FinalLight {
 				vec3 Color;
 				vec3 Ambient;
@@ -146,7 +147,7 @@
 
 				LIGHT.Attenuation = 1.0;
 				#ifdef USE_LINEAR_ATTENUATION
-					LIGHT.Attenuation = 100.0 / light_distance;
+					LIGHT.Attenuation = 10.0 / light_distance;
 				#endif
 
 				#ifdef USE_RANGE_ATTENUATION
@@ -1274,7 +1275,7 @@
 			uniform vec3 u_light_front;
 			uniform vec3 u_light_color;
 			uniform vec4 u_light_angle; //cone start,end,phi,theta
-			uniform vec2 u_light_att; //start,end
+			uniform vec4 u_light_att; //start,end
 
 			#ifdef USE_LIGHT_OFFSET
 				uniform float u_light_offset;
@@ -1761,7 +1762,7 @@
 			uniform vec3 u_light_front;
 			uniform vec3 u_light_color;
 			uniform vec4 u_light_angle; //start,end,phi,theta
-			uniform vec2 u_light_att; //start,end
+			uniform vec4 u_light_att; //start,end
 			#if defined(USE_SHADOW_MAP) || defined(USE_LIGHT_TEXTURE)
 				varying vec4 v_light_coord;
 			#endif
@@ -2115,7 +2116,7 @@
 			uniform vec3 u_light_front;
 			uniform vec3 u_light_color;
 			uniform vec4 u_light_angle; //start,end,phi,theta
-			uniform vec2 u_light_att; //start,end
+			uniform vec4 u_light_att; //start,end
 
 			varying vec2 v_uvs;
 			varying vec3 v_light;
@@ -2172,7 +2173,7 @@
 
 				float att = 1.0;
 				#ifdef USE_LINEAR_ATTENUATION
-					att = 100.0 / light_distance;
+					att = 10.0 / light_distance;
 				#endif
 
 				#ifdef USE_RANGE_ATTENUATION

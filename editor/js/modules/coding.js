@@ -923,9 +923,9 @@ LS.ShaderCode.examples.light_and_deformers = "\n\
 \n\
 \\js\n\
 //define exported uniforms from the shader (name, uniform, widget)\n\
-this.createSampler(\"Texture\",\"u_texture\");\n\
+this.createSampler(\"Texture\",\"u_texture\",{ missing:'white' });\n\
 this.createSampler(\"Spec. Texture\",\"u_specular_texture\");\n\
-this.createSampler(\"Normal Texture\",\"u_normal_texture\");\n\
+this.createSampler(\"Normal Texture\",\"u_normal_texture\",{ missing:'normal' });\n\
 this._light_mode = 1;\n\
 \n\
 \\color.vs\n\
@@ -990,7 +990,7 @@ varying vec2 v_uvs;\n\
 uniform vec3 u_camera_eye;\n\
 uniform vec4 u_clipping_plane;\n\
 uniform float u_time;\n\
-uniform vec3 u_background_color;\n\
+uniform vec4 u_background_color;\n\
 uniform vec4 u_material_color;\n\
 \n\
 uniform sampler2D u_texture;\n\

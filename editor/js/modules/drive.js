@@ -424,7 +424,7 @@ var DriveModule = {
 
 	showResourceInfoInDialog: function( resource )
 	{
-		var dialog = new LiteGUI.Dialog( null, { title:"Properties", fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, width: 400, height: 500, scroll: true });
+		var dialog = new LiteGUI.Dialog( { title:"Properties", fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, width: 400, height: 500, scroll: true });
 		var inspector = new LiteGUI.Inspector();
 		dialog.add( inspector );
 		this.showResourceInfo( resource, inspector );
@@ -742,7 +742,7 @@ var DriveModule = {
 	/*
 	showNewResourceDialog: function()
 	{
-		var dialog = new LiteGUI.Dialog( null, { title:"New Resource", fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, width: 300, height: 300, scroll: true });
+		var dialog = new LiteGUI.Dialog( { title:"New Resource", fullcontent: true, closable: true, draggable: true, detachable: true, minimize: true, resizable: true, width: 300, height: 300, scroll: true });
 		var inspector = new LiteGUI.Inspector();
 		dialog.add( inspector );
 
@@ -873,9 +873,9 @@ var DriveModule = {
 
 			var data = DriveModule.convertToTree( tree_data );
 
-			var dialog = new LiteGUI.Dialog("select-folder-dialog", {title:"Select folder", close: true, width: 360, height: 240, scroll: false, draggable: true});
+			var dialog = new LiteGUI.Dialog( { id: "select-folder-dialog", title:"Select folder", close: true, width: 360, height: 240, scroll: false, draggable: true});
 
-			var tree_widget = new LiteGUI.Tree("files-tree", data , {allow_rename:false, height: 200} );
+			var tree_widget = new LiteGUI.Tree( data , { id: "files-tree", allow_rename: false, height: 200} );
 
 			tree_widget.root.style.backgroundColor = "#111";
 			tree_widget.root.style.padding = "5px";
@@ -920,7 +920,7 @@ var DriveModule = {
 			filename = LS.RM.getFilename(fullpath);
 		}
 
-		var dialog = new LiteGUI.Dialog("select-folder-filename-dialog", {title:"Select folder and filename", close: true, width: 360, height: 240, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog( { id: "select-folder-filename-dialog", title:"Select folder and filename", close: true, width: 360, height: 240, scroll: false, draggable: true});
 		var widgets = new LiteGUI.Inspector();
 		if(options.text)
 			widgets.addInfo(null,options.text);
@@ -1630,7 +1630,7 @@ var DriveModule = {
 			pack_filename = LS.RM.getBasename( LS.GlobalScene.extra.filename ) + ".PACK";
 		var files_folder = pack_folder;
 
-		var dialog = new LiteGUI.Dialog(null,{ title:"Resources not saved", closable: true, draggable: true, width: 400 });
+		var dialog = new LiteGUI.Dialog( { title:"Resources not saved", closable: true, draggable: true, width: 400 });
 		var widgets = new LiteGUI.Inspector();
 		widgets.on_refresh = inner_refresh;
 		dialog.add( widgets );
@@ -2246,7 +2246,7 @@ var DriveModule = {
 				folder = LS.RM.getFolder( material.fullpath );
 			}
 		}
-		var dialog = new LiteGUI.Dialog( null, { title: options.material ? "Material" : "New Material", fullcontent: true, closable: true, draggable: true, resizable: true, width: 400, height: 300 });
+		var dialog = new LiteGUI.Dialog( { title: options.material ? "Material" : "New Material", fullcontent: true, closable: true, draggable: true, resizable: true, width: 400, height: 300 });
 		var inspector = new LiteGUI.Inspector();
 
 		inspector.addString("Filename",filename, function(v){ filename = v; });
@@ -2308,7 +2308,7 @@ var DriveModule = {
 		var filename = options.filename || "unnamed.txt";
 		var folder = options.folder || this.current_folder;
 
-		var dialog = new LiteGUI.Dialog( null, { title: "New File", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
+		var dialog = new LiteGUI.Dialog( { title: "New File", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
 		var inspector = new LiteGUI.Inspector();
 
 		inspector.addString("Filename",filename, function(v){ filename = v; });
@@ -2353,7 +2353,7 @@ var DriveModule = {
 		var folder = options.folder || this.current_folder;
 		var template = options.template || "component";
 
-		var dialog = new LiteGUI.Dialog( null, { title: "New Script", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
+		var dialog = new LiteGUI.Dialog( { title: "New Script", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
 		var inspector = new LiteGUI.Inspector();
 
 		inspector.addString("Filename",filename, function(v){ filename = v; });
@@ -2416,7 +2416,7 @@ var DriveModule = {
 		var folder = options.folder || this.current_folder;
 		var type = options.type || "light_and_deformers";
 
-		var dialog = new LiteGUI.Dialog( null, { title: "New Shader", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
+		var dialog = new LiteGUI.Dialog( { title: "New Shader", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
 		var inspector = new LiteGUI.Inspector();
 
 		inspector.addString("Filename",filename, function(v){ filename = v; });

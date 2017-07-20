@@ -10348,6 +10348,115 @@ if(typeof(LiteGraph) != "undefined")
 	LiteGraph.registerNodeType("texture/copy", LGraphTextureCopy );
 
 
+	// Texture Downsample *****************************************
+	function LGraphTextureDownsample()
+	{
+		this.addInput("Texture","Texture");
+		this.addOutput("","Texture");
+		this.properties = { iterations: 1, generate_mipmaps: false, precision: LGraphTexture.DEFAULT };
+	}
+
+	LGraphTextureDownsample.title = "Downsample";
+	LGraphTextureDownsample.desc = "Downsample Texture";
+	LGraphTextureDownsample.widgets_info = { 
+		iterations: { type:"number", step: 1, precision: 0, min: 1 },
+		precision: { widget:"combo", values: LGraphTexture.MODE_VALUES }
+	};
+
+	LGraphTextureDownsample.prototype.onExecute = function()
+	{
+		var tex = this.getInputData(0);
+		if(!tex && !this._temp_texture)
+			return;
+
+		if(!this.isOutputConnected(0))
+			return; //saves work
+
+		//we do not allow any texture different than texture 2D
+		if(!tex || tex.texture_type !== GL.TEXTURE_2D )
+			return;
+
+		var shader = LGraphTextureDownsample._shader;
+		if(!shader)
+			LGraphTextureDownsample._shader = shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphTextureDownsample.pixel_shader );
+
+		var width = tex.width|0;
+		var height = tex.height|0;
+		var type = tex.type;
+		if(this.properties.precision === LGraphTexture.LOW)
+			type = gl.UNSIGNED_BYTE;
+		else if(this.properties.precision === LGraphTexture.HIGH)
+			type = gl.HIGH_PRECISION_FORMAT;
+		var iterations = this.properties.iterations || 1;
+
+		var origin = tex;
+		var target = null;
+
+		var temp = [];
+		var options = {
+			type: type,
+			format: tex.format
+		};
+
+		var offset = vec2.create();
+		var uniforms = {
+			u_offset: offset
+		};
+
+		if( this._texture )
+			GL.Texture.releaseTemporary( this._texture );
+
+		for(var i = 0; i < iterations; ++i)
+		{
+			offset[0] = 1/width;
+			offset[1] = 1/height;
+			width = width>>1 || 0;
+			height = height>>1 || 0;
+			target = GL.Texture.getTemporary( width, height, options );
+			temp.push( target );
+			origin.setParameter( GL.TEXTURE_MAG_FILTER, GL.NEAREST );
+			origin.copyTo( target, shader, uniforms );
+			if(width == 1 && height == 1)
+				break; //nothing else to do
+			origin = target;
+		}
+
+		//keep the last texture used
+		this._texture = temp.pop();
+
+		//free the rest
+		for(var i = 0; i < temp.length; ++i)
+			GL.Texture.releaseTemporary( temp[i] );
+
+		if(this.properties.generate_mipmaps)
+		{
+			this._texture.bind(0);
+			gl.generateMipmap(this._texture.texture_type);
+			this._texture.unbind(0);
+		}
+
+		this.setOutputData(0,this._texture);
+	}
+
+	LGraphTextureDownsample.pixel_shader = "precision highp float;\n\
+			precision highp float;\n\
+			uniform sampler2D u_texture;\n\
+			uniform vec2 u_offset;\n\
+			varying vec2 v_coord;\n\
+			\n\
+			void main() {\n\
+				vec4 color = texture2D(u_texture, v_coord );\n\
+				color += texture2D(u_texture, v_coord + vec2( u_offset.x, 0.0 ) );\n\
+				color += texture2D(u_texture, v_coord + vec2( 0.0, u_offset.y ) );\n\
+				color += texture2D(u_texture, v_coord + vec2( u_offset.x, u_offset.y ) );\n\
+			   gl_FragColor = color * 0.25;\n\
+			}\n\
+			";
+
+	LiteGraph.registerNodeType("texture/downsample", LGraphTextureDownsample );
+
+
+
 	// Texture Copy *****************************************
 	function LGraphTextureAverage()
 	{
@@ -10370,7 +10479,7 @@ if(typeof(LiteGraph) != "undefined")
 
 		if(!LGraphTextureAverage._shader)
 		{
-			LGraphTextureAverage._shader = new GL.Shader(Shader.SCREEN_VERTEX_SHADER, LGraphTextureAverage.pixel_shader);
+			LGraphTextureAverage._shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphTextureAverage.pixel_shader);
 			var samples = new Float32Array(32);
 			for(var i = 0; i < 32; ++i)	
 				samples[i] = Math.random();

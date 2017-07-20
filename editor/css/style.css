@@ -695,3 +695,15 @@ textarea.code {
 .link {
 	cursor: pointer;
 }
+
+.prefab-child {
+	background-color: #403934 !important;
+}
+
+.prefab-child .wtitle, .prefab-child .wsectiontitle {
+	background-color: #61483f !important;
+}
+
+.prefab-child .wtitle, .prefab-child .wsectioncontent  {
+    background-color: #4c4037 !important;
+}

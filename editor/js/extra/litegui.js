@@ -6766,7 +6766,7 @@ function Inspector( options )
 
 	options = options || {};
 	this.root = document.createElement("DIV");
-	this.root.className = "inspector " + ( options.full ? "full" : "");
+	this.root.className = "inspector " + ( options.full ? "full" : "") + (options.className || "");
 	if(options.one_line)
 	{
 		this.one_line = true;
@@ -6808,6 +6808,8 @@ function Inspector( options )
 	if(options.parent)
 		this.appendTo(options.parent);
 
+	this.className = this.root.className;
+
 	this.widgets_per_row = options.widgets_per_row || 1;
 }
 
@@ -6830,6 +6832,8 @@ Inspector.prototype.clear = function()
 
 	while(this.root.hasChildNodes())
 		this.root.removeChild( this.root.lastChild );
+
+	this.root.className = this.className;
 
 	this.row_number = 0;
 	this.values = {};
@@ -7155,13 +7159,14 @@ Inspector.assignValue = function(value)
 * @param {string} name the string to show at the left side of the widget, if null this element wont be created and the value part will use the full width
 * @param {string} content the string with the html of the elements that conform the interactive part of the widget
 * @param {object} options some generic options that any widget could have:
+* - widget_name: the name used to store this widget in the widgets_by_name container, if omited the parameter name is used
 * - width: the width of the widget (if omited it will use the Inspector widgets_width, otherwise 100%
 * - name_width: the width of the name part of the widget, if not specified it will use Inspector name_width, otherwise css default
 * - content_width: the width of the widget content area
 * - pre_title: string to append to the left side of the name, this is helpful if you want to add icons with behaviour when clicked
 * - title: string to replace the name, sometimes you want to supply a different name than the one you want to show (this is helpful to retrieve values from an inspector)
 */
-Inspector.prototype.createWidget = function(name, content, options) 
+Inspector.prototype.createWidget = function( name, content, options ) 
 {
 	options = options || {};
 	content = (content === undefined || content === null) ? "" : content;
@@ -7194,8 +7199,8 @@ Inspector.prototype.createWidget = function(name, content, options)
 
 	//store widgets 
 	this.widgets.push( element );
-	if(name)
-		this.widgets_by_name[name] = element;
+	if(options.widget_name || name)
+		this.widgets_by_name[ options.widget_name || name ] = element;
 
 	if(this.widgets_per_row != 1)
 	{

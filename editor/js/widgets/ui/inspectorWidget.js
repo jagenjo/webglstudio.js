@@ -518,6 +518,8 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 
 			inspector.widgets_per_row = 1;
 
+			var inside_prefab = false;
+
 			if(node.prefab)
 			{
 				inspector.widgets_per_row = 2;
@@ -544,6 +546,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 						if(action == "Unlink prefab")
 						{
 							//add prefab to resources otherwise all the info will be lost
+							var prefab_fullpath = node.prefab;
 							CORE.userAction("node_changed",node);
 							var prefab = LS.RM.resources[ node.prefab ];
 							if( prefab && prefab.containsResources() )
@@ -576,7 +579,9 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 			}
 			else if(node.insidePrefab())
 			{
+				inside_prefab = true;
 				var prefab_node = node.insidePrefab();
+				inspector.root.classList.add("prefab-child");
 				inspector.widgets_per_row = 2;
 				inspector.addString("From Prefab", prefab_node.prefab, { name_width: 80, disabled: true, width: "75%" } );
 				inspector.addButton(null,"Go to Node", { width: "25%", callback: function(){
@@ -602,6 +607,9 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 				inspector.addCheckbox("is_static", node.is_static, { name_width: 80, callback: function(v) { node.is_static = v; } });
 				inspector.widgets_per_row = 1;
 			}
+
+			if(inside_prefab)
+				inspector.addInfo(null,"This node belongs to a prefab, any changes made won't be saved with the scene.");
 
 			//Special node editors ****************************************
 			//like Materials mostly

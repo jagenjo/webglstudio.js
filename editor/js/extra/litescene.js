@@ -2431,6 +2431,7 @@ var GUI = {
 	GUIStyle: {
 		font: "Arial",
 		color: "#FFF",
+		colorTextOver: "#FFF",
 		backgroundColor: "#333",
 		backgroundColorOver: "#AAA",
 		selected: "#AAF",
@@ -2859,7 +2860,7 @@ var GUI = {
 		}
 		else if(content.constructor === String)
 		{
-			ctx.fillStyle = this.GUIStyle.color;
+			ctx.fillStyle = is_over ? this.GUIStyle.colorTextOver : this.GUIStyle.color;
 			ctx.font = (area[3]*0.75).toFixed(0) + "px " + this.GUIStyle.font;
 			ctx.textAlign = "center";
 			ctx.fillText( content, area[0] + area[2] * 0.5 + this._offset[0], area[1] + area[3] * 0.75 + this._offset[1]);
@@ -19446,6 +19447,9 @@ var Renderer = {
 				}
 				if(sampler.anisotropic != null && gl.extensions.EXT_texture_filter_anisotropic )
 					gl.texParameteri(tex.texture_type, gl.extensions.EXT_texture_filter_anisotropic.TEXTURE_MAX_ANISOTROPY_EXT, sampler.anisotropic );
+
+				//sRGB textures must specified ON CREATION, so no
+				//if(sampler.anisotropic != null && gl.extensions.EXT_sRGB )
 
 				//sampler._must_update = false;
 			}
@@ -36226,7 +36230,7 @@ Cloner.icon = "mini-icon-cloner.png";
 Cloner["@mesh"] = { type: "mesh" };
 Cloner["@lod_mesh"] = { type: "mesh" };
 Cloner["@mode"] = { type:"enum", values: { "Grid": Cloner.GRID_MODE, "Radial": Cloner.RADIAL_MODE, /* "Mesh": Cloner.MESH_MODE ,*/ "Children": Cloner.CHILDREN_MODE } };
-Cloner["@count"] = { type:"vec3", min:1, step:1 };
+Cloner["@count"] = { type:"vec3", min:1, step:1, precision: 0 };
 
 Cloner.prototype.onAddedToScene = function(scene)
 {
@@ -36242,22 +36246,22 @@ Cloner.prototype.onRemovedFromScene = function(scene)
 }
 
 Cloner.prototype.getMesh = function() {
-	if(typeof(this.mesh) === "string")
-		return ResourcesManager.meshes[this.mesh];
+	if( this.mesh && this.mesh.constructor === String )
+		return ResourcesManager.meshes[ this.mesh ];
 	return this.mesh;
 }
 
 Cloner.prototype.getLODMesh = function() {
-	if(typeof(this.lod_mesh) === "string")
+	if( this.lod_mesh && this.lod_mesh.constructor === String )
 		return ResourcesManager.meshes[this.lod_mesh];
-	return this.low_mesh;
+	return this.lod_mesh;
 }
 
 Cloner.prototype.getResources = function(res)
 {
-	if(typeof(this.mesh) == "string")
+	if( this.mesh && this.mesh.constructor === String )
 		res[this.mesh] = Mesh;
-	if(typeof(this.lod_mesh) == "string")
+	if( this.lod_mesh && this.lod_mesh.constructor === String )
 		res[this.lod_mesh] = Mesh;
 	return res;
 }
@@ -36318,14 +36322,7 @@ Cloner.prototype.onCollectInstances = function(e, instances)
 		var RI = RIs[i];
 
 		RI.setMesh(mesh);
-		/*
-		if(this.lod_mesh)
-		{
-			var lod_mesh = this.getLODMesh();
-			if(lod_mesh)
-				RI.setLODMesh( lod_mesh );
-		}
-		*/
+		RI.layers = node.layers;
 		RI.setMaterial( material );
 		instances[ start_array_pos + i ] = RI;
 	}
@@ -36383,6 +36380,8 @@ Cloner.prototype.onUpdateInstances = function(e, dt)
 	var county = this._count[1]|0;
 	var countz = this._count[2]|0;
 
+	var node = this._root;
+
 	//Set position according to the cloner mode
 	if(this.mode == Cloner.GRID_MODE)
 	{
@@ -36409,6 +36408,7 @@ Cloner.prototype.onUpdateInstances = function(e, dt)
 			tmp[1] = y * offset[1] - hsize[1];
 			tmp[2] = z * offset[2] - hsize[2];
 			mat4.translate( RI.matrix, global, tmp );
+			RI.setMatrix( RI.matrix ); //force normal matrix generation
 			mat4.multiplyVec3( RI.center, RI.matrix, zero );
 			++i;
 			RI.picking_node = null;
@@ -36430,6 +36430,7 @@ Cloner.prototype.onUpdateInstances = function(e, dt)
 			RI.matrix.set( global );
 			mat4.translate( RI.matrix, RI.matrix, tmp );
 			mat4.rotateY( RI.matrix,RI.matrix, offset * i );
+			RI.setMatrix( RI.matrix ); //force normal matrix generation
 			mat4.multiplyVec3( RI.center, RI.matrix, zero );
 			RI.picking_node = null;
 		}
@@ -37226,6 +37227,7 @@ function Canvas3D(o)
 	this.height = 512;
 	this.texture_name = ":canvas3D";
 	this.visible = true;
+	this.input_active = true; //used for LS.GUI methods
 	this.use_node_material = false;
 	this.generate_mipmaps = false;
 
@@ -37454,27 +37456,39 @@ Canvas3D.prototype.projectMouse = function()
 
 	var mousex = LS.Input.Mouse.x;
 	var mousey = LS.Input.Mouse.y;
-
-	var ray = camera.getRayInPixel( mousex, mousey );
-	var camera_front = camera.getFront();
-
-	var temp = vec3.create();
-	var plane_normal = this.root.transform.globalVectorToLocal( LS.FRONT, temp );
-
-	if( vec3.dot( ray.direction, plane_normal ) > 0.0 )
-		return; //is behind
-
-	var local_origin = this.root.transform.globalToLocal( ray.origin, temp );
-	var local_direction = this.root.transform.globalVectorToLocal( ray.direction );
-
-	if( !geo.testRayPlane( local_origin, local_direction, LS.ZEROS, LS.FRONT, this._mouse ) )
-		return;
-
 	var w = this.width|0;
 	var h = this.height|0;
 
-	this._mouse[0] = (this._mouse[0] + 0.5) * w;
-	this._mouse[1] = h - (this._mouse[1] + 0.5) * h;
+	if( !this.input_active )
+	{
+		mousex = -1;
+		mousey = -1;
+		this._mouse[0] = mousex;
+		this._mouse[1] = mousey;
+	}
+	else
+	{
+		this._mouse[0] = -1;
+		this._mouse[1] = -1;
+
+		var ray = camera.getRayInPixel( mousex, mousey );
+		var camera_front = camera.getFront();
+
+		var temp = vec3.create();
+		var plane_normal = this.root.transform.globalVectorToLocal( LS.FRONT, temp );
+
+		if( vec3.dot( ray.direction, plane_normal ) < 0.0 )
+		{
+			var local_origin = this.root.transform.globalToLocal( ray.origin, temp );
+			var local_direction = this.root.transform.globalVectorToLocal( ray.direction );
+
+			if( geo.testRayPlane( local_origin, local_direction, LS.ZEROS, LS.FRONT, this._mouse ) )
+			{
+				this._mouse[0] = (this._mouse[0] + 0.5) * w;
+				this._mouse[1] = h - (this._mouse[1] + 0.5) * h;
+			}
+		}
+	}
 
 	//mark the mouse as inside
 	if( this._mouse[0] >= 0 && this._mouse[0] < w &&

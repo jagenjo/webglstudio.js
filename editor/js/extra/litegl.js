@@ -6168,13 +6168,18 @@ Texture.getBlackTexture = function( gl )
 }
 
 
-/* Texture pool */
-Texture.getTemporary = function( width, height, options )
+/**
+* returns a black texture of 1x1 pixel 
+* @method Texture.getBlackTexture
+* @return {Texture} the black texture
+*/
+Texture.getTemporary = function( width, height, options, gl )
 {
-	if(!Texture.temporary_pool)
-		Texture.temporary_pool = [];
+	gl = gl || global.gl;
 
-	var pool = Texture.temporary_pool;
+	if(!gl._texture_pool)
+		gl._texture_pool = new Map();
+
 	var result = null;
 
 	var texture_type = GL.TEXTURE_2D;
@@ -6191,30 +6196,41 @@ Texture.getTemporary = function( width, height, options )
 			format = options.format;
 	}
 
-	for(var i = 0; i < pool.length; ++i)
-	{
-		var tex = pool[i];
+	// 64bits key: 0x0000 type width height
+	var key = ((type&0xFFFF)<<32) + ((width&0xFFFF)<<16) + (height&0xFFFF);
 
-		if( tex.width != width || 
-			tex.height != height ||
-			tex.type != type ||
-			tex.texture_type != texture_type ||
-			tex.format != format )
-			continue;
-		pool.splice(i,1); //remove from the pool
-		return tex;
-	}
+	//iterate
+	var pool = gl._texture_pool.get(key);
+	if(pool)
+		for(var i = 0; i < pool.length; ++i)
+		{
+			var tex = pool[i];
+			if( tex.texture_type != texture_type ||	tex.format != format )
+				continue;
+			pool.splice(i,1); //remove from the pool
+			return tex;
+		}
 
 	//not found, create it
 	var tex = new GL.Texture( width, height, { type: type, texture_type: texture_type, format: format });
 	return tex;
 }
 
-Texture.releaseTemporary = function( tex )
+Texture.releaseTemporary = function( tex, gl )
 {
-	if(!Texture.temporary_pool)
-		Texture.temporary_pool = [];
-	Texture.temporary_pool.push( tex );
+	gl = gl || global.gl;
+	if(!gl._texture_pool)
+		gl._texture_pool = new Map();
+
+	// 64bits key: 0x0000 type width height
+	var key = ((tex.type&0xFFFF)<<32) + ((tex.width&0xFFFF)<<16) + (tex.height&0xFFFF);
+	var pool = gl._texture_pool.get(key);
+	if(!pool)
+	{
+		pool = [];
+		gl._texture_pool.set(key,pool);
+	}
+	pool.push( tex );
 }
 
 //returns the next power of two bigger than size

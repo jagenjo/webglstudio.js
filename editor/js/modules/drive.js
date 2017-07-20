@@ -2414,7 +2414,7 @@ var DriveModule = {
 		options = options || {};
 		var filename = options.filename || "shader.glsl";
 		var folder = options.folder || this.current_folder;
-		var type = "color";
+		var type = options.type || "light_and_deformers";
 
 		var dialog = new LiteGUI.Dialog( null, { title: "New Shader", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
 		var inspector = new LiteGUI.Inspector();

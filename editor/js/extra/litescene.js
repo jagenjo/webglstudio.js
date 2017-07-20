@@ -3884,10 +3884,11 @@ var ResourcesManager = {
 	*
 	* @method load
 	* @param {String} url where the resource is located (if its a relative url it depends on the path attribute)
-	* @param {Object}[options={}] options to apply to the loaded resource when processing it
+	* @param {Object}[options={}] options to apply to the loaded resource when processing it { force: to force a reload }
 	* @param {Function} [on_complete=null] callback when the resource is loaded and cached, params: callback( resource, url  ) //( url, resource, options )
+	* @param {Boolean} [force_load=false] if true it will load the resource, even if it already exists
 	*/
-	load: function( url, options, on_complete )
+	load: function( url, options, on_complete, force_load )
 	{
 		if(!url)
 			return console.error("LS.ResourcesManager.load requires url");
@@ -3901,7 +3902,7 @@ var ResourcesManager = {
 
 		//if we already have it, then nothing to do
 		var resource = this.resources[url];
-		if( resource != null && !resource.is_preview )
+		if( resource != null && !resource.is_preview && (!options || !options.force) && !force_load )
 		{
 			if(on_complete)
 				on_complete(resource,url);
@@ -4104,10 +4105,23 @@ var ResourcesManager = {
 		else //or just store the resource as a plain data buffer
 		{
 			var resource = null;
+			//has this resource an special class specified?
 			if(format_info && format_info.resourceClass)
 				resource = new format_info.resourceClass();
-			else
-				resource = new LS.Resource();
+			else //otherwise create a generic LS.Resource (they store data or scripts)
+			{
+				//if we already have a LS.Resource, reuse it (this is to avoid garbage and solve a problem with the editor
+				var old_res = this.resources[url];
+				if( old_res && old_res.constructor === LS.Resource )
+				{
+					resource = old_res;
+					delete resource._original_data;
+					delete resource._original_file;
+					resource._modified = false;
+				}
+				else
+					resource = new LS.Resource();
+			}
 
 			if(resource.setData)
 				resource.setData(data, true)
@@ -8502,7 +8516,7 @@ function SurfaceMaterial( o )
 	o.Emission = vec3(0.0);\n\
 	o.Specular = 1.0;\n\
 	o.Gloss = 40.0;\n\
-	o.Reflectivity = 0.0;\n\
+	o.Reflectivity = max(0.0, 0.5 - dot(IN.viewDir,o.Normal));\n\
 	o.Alpha = IN.color.a;\n}\n";
 
 	this._uniforms = {};
@@ -8576,8 +8590,7 @@ SurfaceMaterial.prototype.computeCode = function()
 	*/
 
 	this.surf_code = uniforms_code + "\n" + this._code;
-	var code = LS.SurfaceMaterial.code_template;
-	var final_code = code.replace("{{FS_CODE}}", this.surf_code );
+	var final_code = LS.SurfaceMaterial.code_template.replace( /{{}}/gi, this.surf_code );
 	if(!this._shadercode)
 		this._shadercode = new LS.ShaderCode();
 	this._shadercode.code = final_code;
@@ -8922,24 +8935,109 @@ varying vec2 v_uvs;\n\
 uniform vec3 u_camera_eye;\n\
 uniform vec4 u_clipping_plane;\n\
 uniform float u_time;\n\
-uniform vec3 u_background_color;\n\
+uniform vec4 u_background_color;\n\
 uniform vec4 u_material_color;\n\
 \n\
 #pragma shaderblock \"light\"\n\
+#pragma shaderblock \"applyReflection\"\n\
 \n\
 #pragma snippet \"perturbNormal\"\n\
 \n\
-{{FS_CODE}}\n\
+{{}}\n\
+\n\
+void main() {\n\
+	Input IN = getInput();\n\
+	SurfaceOutput o = getSurfaceOutput();\n\
+	surf(IN,o);\n\
+	vec4 final_color = vec4(0.0);\n\
+	Light LIGHT = getLight();\n\
+	final_color.xyz = computeLight( o, IN, LIGHT );\n\
+	final_color.a = o.Alpha;\n\
+	if( o.Reflectivity > 0.0 )\n\
+		final_color = applyReflection( IN, o, final_color );\n\
+	\n\
+	gl_FragColor = final_color;\n\
+}\n\
+\n\
+\\shadow.vs\n\
+\n\
+precision mediump float;\n\
+attribute vec3 a_vertex;\n\
+attribute vec3 a_normal;\n\
+attribute vec2 a_coord;\n\
+#ifdef USE_COLORS\n\
+attribute vec4 a_color;\n\
+#endif\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+\n\
+//matrices\n\
+uniform mat4 u_model;\n\
+uniform mat4 u_normal_model;\n\
+uniform mat4 u_view;\n\
+uniform mat4 u_viewprojection;\n\
+\n\
+//globals\n\
+uniform float u_time;\n\
+uniform vec4 u_viewport;\n\
+uniform float u_point_size;\n\
+\n\
+#pragma shaderblock \"light\"\n\
+#pragma shaderblock \"morphing\"\n\
+#pragma shaderblock \"skinning\"\n\
+\n\
+//camera\n\
+uniform vec3 u_camera_eye;\n\
+void main() {\n\
+	\n\
+	vec4 vertex4 = vec4(a_vertex,1.0);\n\
+	v_normal = a_normal;\n\
+	v_uvs = a_coord;\n\
+  \n\
+  //deforms\n\
+  applyMorphing( vertex4, v_normal );\n\
+  applySkinning( vertex4, v_normal );\n\
+	\n\
+	//vertex\n\
+	v_pos = (u_model * vertex4).xyz;\n\
+  \n\
+  applyLight(v_pos);\n\
+  \n\
+	//normal\n\
+	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
+}\n\
+\\shadow.fs\n\
+\n\
+precision mediump float;\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+\n\
+//globals\n\
+uniform vec3 u_camera_eye;\n\
+uniform vec4 u_clipping_plane;\n\
+uniform vec4 u_material_color;\n\
+\n\
+uniform mat3 u_texture_matrix;\n\
+\n\
+#pragma snippet \"input\"\n\
+#pragma snippet \"surface\"\n\
+#pragma snippet \"perturbNormal\"\n\
+#define SHADOWMAP\n\
+\n\
+{{}}\n\
 \n\
 void main() {\n\
   Input IN = getInput();\n\
   SurfaceOutput o = getSurfaceOutput();\n\
   surf(IN,o);\n\
-  vec4 final_color = vec4(0.0);\n\
-  Light LIGHT = getLight();\n\
-  final_color.xyz = computeLight( o, IN, LIGHT );\n\
-  final_color.a = o.Alpha;\n\
-  gl_FragColor = final_color;\n\
+  gl_FragColor = vec4(o.Albedo,o.Alpha);\n\
 }\n\
 ";
 //modes
@@ -32449,7 +32547,7 @@ GraphComponent.prototype.runGraph = function()
 	if(!this._root._in_tree || !this.enabled)
 		return;
 	if(this._graph)
-		this._graph.runStep(1);
+		this._graph.runStep( 1, LS.catch_exceptions );
 	if(this.force_redraw)
 		this._root.scene.requestFrame();
 }
@@ -32833,7 +32931,7 @@ FXGraphComponent.prototype.applyGraph = function()
 	}
 
 	//execute graph
-	this._graph.runStep(1);
+	this._graph.runStep(1, LS.catch_exceptions );
 }
 
 LS.registerComponent( FXGraphComponent );
@@ -35808,15 +35906,20 @@ ScriptFromFile.prototype.onAddedToScene = function( scene )
 /**
 * Force to reevaluate the code (only for special situations like remove codes)
 * @method reload
+* @param {Function} [on_complete=null] 
 */
-ScriptFromFile.prototype.reload = function()
+ScriptFromFile.prototype.reload = function( on_complete )
 {
 	if(!this.filename)
 		return;
-	//remove old version
-	LS.ResourcesManager.unregisterResource( this.filename );
-	//load again
-	this.processCode();
+	var that = this;
+	LS.ResourcesManager.load( this.filename, null, function( res, url ){
+		if( url != that.filename )
+			return;
+		that.processCode();
+		if(on_complete)
+			on_complete(that);
+	}, true);
 }
 
 

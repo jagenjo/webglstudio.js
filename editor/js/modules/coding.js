@@ -921,7 +921,6 @@ void main() {\n\
 
 LS.ShaderCode.examples.light_and_deformers = "\n\
 \n\
-\n\
 \\js\n\
 //define exported uniforms from the shader (name, uniform, widget)\n\
 this.createSampler(\"Texture\",\"u_texture\");\n\
@@ -999,25 +998,29 @@ uniform sampler2D u_specular_texture;\n\
 uniform sampler2D u_normal_texture;\n\
 \n\
 #pragma shaderblock \"light\"\n\
+#pragma shaderblock \"applyReflection\"\n\
 \n\
 #pragma snippet \"perturbNormal\"\n\
 \n\
 void main() {\n\
-  Input IN = getInput();\n\
-  SurfaceOutput o = getSurfaceOutput();\n\
-  vec4 surface_color = texture2D( u_texture, IN.uv ) * u_material_color;\n\
-  o.Albedo = surface_color.xyz;\n\
-  vec4 spec = texture2D( u_specular_texture, IN.uv );\n\
+	Input IN = getInput();\n\
+	SurfaceOutput o = getSurfaceOutput();\n\
+	vec4 surface_color = texture2D( u_texture, IN.uv ) * u_material_color;\n\
+	o.Albedo = surface_color.xyz;\n\
+	vec4 spec = texture2D( u_specular_texture, IN.uv );\n\
 	o.Specular = spec.x;  \n\
-	o.Gloss = spec.y * 10.0;  \n\
+	o.Gloss = spec.y * 10.0;\n\
+	o.Reflectivity = spec.x * 0.5;\n\
 	vec4 normal_pixel = texture2D( u_normal_texture, IN.uv );\n\
-  o.Normal = perturbNormal( IN.worldNormal, IN.worldPos, v_uvs, normal_pixel.xyz );\n\
+	o.Normal = perturbNormal( IN.worldNormal, IN.worldPos, v_uvs, normal_pixel.xyz );\n\
 	  \n\
-  vec4 final_color = vec4(0.0);\n\
-  Light LIGHT = getLight();\n\
-  final_color.xyz = computeLight( o, IN, LIGHT );\n\
-  final_color.a = surface_color.a;\n\
-  \n\
+	vec4 final_color = vec4(0.0);\n\
+	Light LIGHT = getLight();\n\
+	final_color.xyz = computeLight( o, IN, LIGHT );\n\
+	final_color.a = surface_color.a;\n\
+	if( o.Reflectivity > 0.0 )\n\
+		final_color = applyReflection( IN, o, final_color );\n\
+	\n\
 	gl_FragColor = final_color;\n\
 }\n\
 ";

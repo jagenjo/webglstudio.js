@@ -42,7 +42,7 @@ CodingPadWidget.prototype.init = function( options )
 
 CodingPadWidget.createDialog = function( parent )
 {
-	var dialog = new LiteGUI.Dialog( null, { title: CodingPadWidget.widget_name, fullcontent: true, closable: true, draggable: true, minimize: true, resizable: true, parent: parent, width: 500, height: 500 });
+	var dialog = new LiteGUI.Dialog( { title: CodingPadWidget.widget_name, fullcontent: true, closable: true, draggable: true, minimize: true, resizable: true, parent: parent, width: 500, height: 500 });
 	var coding_widget = new CodingPadWidget();
 	dialog.add( coding_widget );
 	dialog.coding_area = coding_widget;
@@ -432,6 +432,7 @@ CodingPadWidget.prototype.saveInstance = function()
 
 	var instance = info.instance;
 
+	//check for errors
 	if( instance && instance.constructor.is_resource )
 	{
 		var protocol = LS.RM.getProtocol( instance.filename );
@@ -439,6 +440,14 @@ CodingPadWidget.prototype.saveInstance = function()
 		{
 			LiteGUI.alert("This file is an external file (has http in the name) and cannot be saved.");		
 			return;
+		}
+
+		//HACK: weird bug...
+		var current_res = LS.RM.resources[ instance.fullpath || instance.filename ];
+		if(current_res && current_res != instance)
+		{
+			console.warn("Resource has been replaced by clone.");
+			LS.RM.resources[ instance.fullpath || instance.filename ] = instance;
 		}
 	}
 
@@ -874,7 +883,7 @@ CodingPadWidget.prototype.onShowCodeMenu = function(event)
 CodingPadWidget.prototype.onOpenCode = function( skip_create )
 {
 	var that = this;
-	var dialog = new LiteGUI.Dialog(null,{ title:"Select Code", width: 400, draggable: true, closable: true });
+	var dialog = new LiteGUI.Dialog( { title:"Select Code", width: 400, draggable: true, closable: true });
 	
 	var widgets = new LiteGUI.Inspector( { name_width: 100 } );
 

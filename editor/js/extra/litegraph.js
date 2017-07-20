@@ -464,7 +464,7 @@ LGraph.prototype.stop = function()
 * @param {number} num number of steps to run, default is 1
 */
 
-LGraph.prototype.runStep = function(num)
+LGraph.prototype.runStep = function( num, do_not_catch_errors )
 {
 	num = num || 1;
 
@@ -475,7 +475,7 @@ LGraph.prototype.runStep = function(num)
 	if(!nodes)
 		return;
 
-	try
+	if( do_not_catch_errors )
 	{
 		//iterations
 		for(var i = 0; i < num; i++)
@@ -494,16 +494,39 @@ LGraph.prototype.runStep = function(num)
 
 		if( this.onAfterExecute )
 			this.onAfterExecute();
-		this.errors_in_execution = false;
 	}
-	catch (err)
+	else
 	{
-		this.errors_in_execution = true;
-		if(LiteGraph.throw_errors)
-			throw err;
-		if(LiteGraph.debug)
-			console.log("Error during execution: " + err);
-		this.stop();
+		try
+		{
+			//iterations
+			for(var i = 0; i < num; i++)
+			{
+				for( var j = 0, l = nodes.length; j < l; ++j )
+				{
+					var node = nodes[j];
+					if( node.mode == LiteGraph.ALWAYS && node.onExecute )
+						node.onExecute();
+				}
+
+				this.fixedtime += this.fixedtime_lapse;
+				if( this.onExecuteStep )
+					this.onExecuteStep();
+			}
+
+			if( this.onAfterExecute )
+				this.onAfterExecute();
+			this.errors_in_execution = false;
+		}
+		catch (err)
+		{
+			this.errors_in_execution = true;
+			if(LiteGraph.throw_errors)
+				throw err;
+			if(LiteGraph.debug)
+				console.log("Error during execution: " + err);
+			this.stop();
+		}
 	}
 
 	var elapsed = LiteGraph.getTime() - start;

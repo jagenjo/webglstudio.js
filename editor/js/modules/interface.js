@@ -662,6 +662,11 @@ function addGenericResource ( name, value, options, resource_classname )
 		return false;
 	}, true);
 
+	element.setValue = function(v,skip_event) { 
+		input.value = value = v;
+		if(!skip_event)
+			LiteGUI.trigger(input, "change" );
+	}
 	element.getValue = function() { return value; }
 
 	this.tab_index += 1;
@@ -699,11 +704,12 @@ LiteGUI.Inspector.widget_constructors["mesh"] = "addMesh";
 LiteGUI.Inspector.prototype.addMaterial = function( name,value, options)
 {
 	options = options || {};
-	options.width = "85%";
+	options.width = "70%";
+	options.name_width = 40;
 
-	this.widgets_per_row += 1;
+	this.widgets_per_row += 2;
 	var r = addGenericResource.call(this, name, value, options, "Material" );
-	this.addButton(null,"Edit",{ width:"15%", callback: function(){
+	this.addButton(null,"Edit",{ width:"20%", callback: function(){
 		if(options.callback_edit)
 			if( options.callback_edit.call( this ) )
 				return;
@@ -713,7 +719,10 @@ LiteGUI.Inspector.prototype.addMaterial = function( name,value, options)
 			return;
 		EditorModule.inspect( material, this.inspector );
 	}});
-	this.widgets_per_row -= 1;
+	this.addButton(null,"<img src='imgs/mini-icon-trash.png'/>",{ width: "10%", callback: function(){
+		r.setValue("");
+	}});
+	this.widgets_per_row -= 2;
 	return r;
 }
 LiteGUI.Inspector.widget_constructors["material"] = "addMaterial";

@@ -4570,7 +4570,7 @@ Texture.use_renderbuffer_pool = true; //should improve performance
 */
 Texture.prototype.delete = function()
 {
-	gl.deleteBuffer( this.handler );
+	gl.deleteTexture( this.handler );
 	this.handler = null;
 }
 
@@ -6169,16 +6169,20 @@ Texture.getBlackTexture = function( gl )
 
 
 /**
-* returns a black texture of 1x1 pixel 
-* @method Texture.getBlackTexture
-* @return {Texture} the black texture
+* Returns a texture from the texture pool, if none matches the specifications it creates one
+* @method Texture.getTemporary
+* @param {Number} width the texture width
+* @param {Number} height the texture height
+* @param {Object} options to specifiy texture_type,type,format
+* @param {WebGLContext} gl [optional]
+* @return {Texture} the textures that matches this settings
 */
 Texture.getTemporary = function( width, height, options, gl )
 {
 	gl = gl || global.gl;
 
 	if(!gl._texture_pool)
-		gl._texture_pool = new Map();
+		gl._texture_pool = [];
 
 	var result = null;
 
@@ -6197,40 +6201,60 @@ Texture.getTemporary = function( width, height, options, gl )
 	}
 
 	// 64bits key: 0x0000 type width height
-	var key = ((type&0xFFFF)<<32) + ((width&0xFFFF)<<16) + (height&0xFFFF);
+	var key = (type&0xFFFF) + ((width&0xFFFF)<<16) + ((height&0xFFFF)<<32);
 
 	//iterate
-	var pool = gl._texture_pool.get(key);
-	if(pool)
-		for(var i = 0; i < pool.length; ++i)
-		{
-			var tex = pool[i];
-			if( tex.texture_type != texture_type ||	tex.format != format )
-				continue;
-			pool.splice(i,1); //remove from the pool
-			return tex;
-		}
+	var pool = gl._texture_pool;
+	for(var i = 0; i < pool.length; ++i)
+	{
+		var tex = pool[i];
+		if( tex._key != key || tex.texture_type != texture_type || tex.format != format )
+			continue;
+		pool.splice(i,1); //remove from the pool
+		tex._pool = 0;
+		return tex;
+	}
 
 	//not found, create it
 	var tex = new GL.Texture( width, height, { type: type, texture_type: texture_type, format: format });
+	tex._key = key;
+	tex._pool = 0;
 	return tex;
 }
+
+/**
+* Given a texture it adds it to the texture pool so it can be reused in the future
+* @method Texture.releaseTemporary
+* @param {GL.Texture} tex
+* @param {WebGLContext} gl [optional]
+*/
 
 Texture.releaseTemporary = function( tex, gl )
 {
 	gl = gl || global.gl;
-	if(!gl._texture_pool)
-		gl._texture_pool = new Map();
 
-	// 64bits key: 0x0000 type width height
-	var key = ((tex.type&0xFFFF)<<32) + ((tex.width&0xFFFF)<<16) + (tex.height&0xFFFF);
-	var pool = gl._texture_pool.get(key);
+	if(!gl._texture_pool)
+		gl._texture_pool = [];
+
+	//if pool is greater than zero means this texture is already inside
+	if( tex._pool > 0 )
+		console.warn("this texture is already in the textures pool");
+
+	var pool = gl._texture_pool;
 	if(!pool)
-	{
-		pool = [];
-		gl._texture_pool.set(key,pool);
-	}
+		pool = gl._texture_pool = [];
+	tex._pool = getTime();
 	pool.push( tex );
+
+	//do not store too much textures in the textures pool
+	if( pool.length > 15 )
+	{
+		pool.sort( function(a,b) { return b._pool - a._pool } ); //sort by time
+		//pool.sort( function(a,b) { return a._key - b._key } ); //sort by size
+		var tex = pool.pop(); //free the last one
+		tex._pool = 0;
+		tex.delete();
+	}
 }
 
 //returns the next power of two bigger than size
@@ -8521,6 +8545,7 @@ GL.create = function(options) {
 
 	gl.canvas.addEventListener("webglcontextlost", function(e) {
 		e.preventDefault();
+		gl.context_lost = true;
 		if(gl.onlosecontext)
 			gl.onlosecontext(e);
 	}, false);

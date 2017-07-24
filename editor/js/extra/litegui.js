@@ -7636,9 +7636,10 @@ Inspector.prototype.addTextarea = function(name,value, options)
 	var that = this;
 	this.values[name] = value;
 
-	var element = this.createWidget(name,"<span class='inputfield textarea "+(options.disabled?"disabled":"")+"'><textarea tabIndex='"+this.tab_index+"' "+(options.disabled?"disabled":"")+">"+value+"</textarea></span>", options);
+	var element = this.createWidget(name,"<span class='inputfield textarea "+(options.disabled?"disabled":"")+"'><textarea tabIndex='"+this.tab_index+"' "+(options.disabled?"disabled":"")+"></textarea></span>", options);
 	this.tab_index++;
 	var textarea = element.querySelector(".wcontent textarea");
+	textarea.value = value;
 	textarea.addEventListener( options.immediate ? "keyup" : "change", function(e) { 
 		Inspector.onWidgetChange.call(that,element,name,e.target.value, options, false, e);
 	});
@@ -7660,7 +7661,7 @@ Inspector.prototype.addTextarea = function(name,value, options)
 			LiteGUI.trigger( textarea,"change" );
 	};
 	element.getValue = function(v) { 
-		return value;
+		return textarea.value;
 	}
 	element.focus = function() { LiteGUI.focus(textarea); };
 	this.processElement(element, options);

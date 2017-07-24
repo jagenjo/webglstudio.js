@@ -243,6 +243,8 @@ var InterfaceModule = {
 		for(var i = CORE.Modules.length - 1; i >= 0; --i )
 		{
 			var module = CORE.Modules[i];
+			if(module == this) //avoid recursion!
+				continue;
 			if(!module.onItemDrop)
 				continue;
 			if(module.onItemDrop(e))

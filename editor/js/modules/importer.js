@@ -669,7 +669,7 @@ var ImporterModule  = {
 	{
 		var node = new LS.SceneNode();
 		node.name = mesh.filename || "Mesh";
-		if( mesh.info && mesh.info.groups || mesh.info.groups.length )
+		if( mesh.info && mesh.info.groups && mesh.info.groups.length )
 		{
 			for(var i in mesh.info.groups)
 			{

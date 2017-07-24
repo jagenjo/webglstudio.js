@@ -7654,10 +7654,15 @@ Inspector.prototype.addTextarea = function(name,value, options)
 			return;
 		if(v == textarea.value)
 			return;
+		value = v;
 		textarea.value = v;
 		if(!skip_event)
 			LiteGUI.trigger( textarea,"change" );
 	};
+	element.getValue = function(v) { 
+		return value;
+	}
+	element.focus = function() { LiteGUI.focus(textarea); };
 	this.processElement(element, options);
 	return element;
 }

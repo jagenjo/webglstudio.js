@@ -10155,7 +10155,7 @@ if(typeof(LiteGraph) != "undefined")
 			\n\
 			void main() {\n\
 				vec2 uv = v_coord;\n\
-				uv += texture2D(u_textureB, uv).rg * u_factor;\n\
+				uv += ( texture2D(u_textureB, uv).rg - vec2(0.5)) * u_factor;\n\
 				gl_FragColor = texture2D(u_texture, uv);\n\
 			}\n\
 			";

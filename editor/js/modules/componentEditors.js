@@ -40,6 +40,7 @@ LS.Components.Transform["@inspector"] = function(transform, inspector)
 	var node = transform._root;
 
 	inspector.addVector3("Position", transform._position, { 
+		name_width: 100,
 		pretitle: AnimationModule.getKeyframeCode( transform, "position"),
 		callback: function(r) { 
 			if(r.length == 3)
@@ -57,6 +58,7 @@ LS.Components.Transform["@inspector"] = function(transform, inspector)
 	var rot = [euler[2],euler[0],euler[1]];
 
 	inspector.addVector3("Rotation", rot, { 
+		name_width: 100,
 		pretitle: AnimationModule.getKeyframeCode( transform, "rotation"),
 		callback: function(r) {
 			vec3.scale(r,r, DEG2RAD );
@@ -67,6 +69,7 @@ LS.Components.Transform["@inspector"] = function(transform, inspector)
 	}});
 
 	var scale_widget = inspector.addVector3("Scale", transform._scaling, {
+		name_width: 100,
 		step: 0.01,
 		pretitle: AnimationModule.getKeyframeCode( transform, "scaling"),
 		callback: function(v) {
@@ -77,6 +80,7 @@ LS.Components.Transform["@inspector"] = function(transform, inspector)
 	}});
 
 	inspector.addNumber("Uniform Scale", transform._scaling[0].toFixed(3), {
+		name_width: 100,
 		step: 0.01,
 		pretitle: AnimationModule.getKeyframeCode( transform, "scaling"),
 		callback: function(v) {

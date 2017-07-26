@@ -707,7 +707,7 @@ LiteGUI.Inspector.prototype.addMaterial = function( name,value, options)
 {
 	options = options || {};
 	options.width = "70%";
-	options.name_width = 40;
+	options.name_width = 70;
 
 	this.widgets_per_row += 2;
 	var r = addGenericResource.call(this, name, value, options, "Material" );

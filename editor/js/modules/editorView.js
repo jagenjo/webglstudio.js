@@ -461,7 +461,7 @@ LS.Light.prototype.renderEditor = function(node_selected, component_selected )
 
 		LS.Draw.push();
 		LS.Draw.lookAt(pos,target,Math.abs(delta[1]) > 0.99 ? [1,0,0] : [0,1,0]); //work in light space, thats easier to draw
-		LS.Draw.renderRectangle( this.frustum_size*0.5, this.frustum_size*0.5);
+		LS.Draw.renderRectangle( this.frustum_size, this.frustum_size);
 		LS.Draw.renderLines([[0,0,0],[0,0,-this.att_end]]);
 		LS.Draw.pop();
 
@@ -591,11 +591,12 @@ LS.Camera.prototype.renderEditor = function( node_selected, component_selected )
 
 		if( this.type == LS.Camera.ORTHOGRAPHIC)
 		{
+			var size = this.frustum_size * 0.5;
 			LS.Draw.renderLines([[0,0,-near],[0,0,-focus_dist],
-				[-mid_frustum * aspect,mid_frustum,-near],[-mid_frustum * aspect,mid_frustum,-focus_dist],
-				[mid_frustum * aspect,mid_frustum,-near],[mid_frustum * aspect,mid_frustum,-focus_dist],
-				[-mid_frustum * aspect,-mid_frustum,-near],[-mid_frustum * aspect,-mid_frustum,-focus_dist],
-				[mid_frustum * aspect,-mid_frustum,-near],[mid_frustum * aspect,-mid_frustum,-focus_dist],
+				[-size * aspect,size,-near],[-size * aspect,size,-focus_dist],
+				[size * aspect,size,-near],[size * aspect,size,-focus_dist],
+				[-size * aspect,-size,-near],[-size * aspect,-size,-focus_dist],
+				[size * aspect,-size,-near],[size * aspect,-size,-focus_dist],
 			]);
 		}
 		else

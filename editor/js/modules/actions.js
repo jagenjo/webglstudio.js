@@ -155,7 +155,13 @@ LS.Component.getActions = function( component )
 	//specific actions of a component
 	if( component.constructor.actions )
 		for(var i in component.constructor.actions)
-			actions[i] = component.constructor.actions[i];
+		{
+			var action = component.constructor.actions[i];
+			//allows to skip to show actions in some special cases
+			if(action.callback_show && action.callback_show.call(component) == false )
+				continue;
+			actions[i] = action;
+		}
 
 	//actions specific of this component
 	if( component.getActions )
@@ -285,6 +291,25 @@ LS.Components.Light.actions["edit_layers"] = LS.Components.Camera.actions["edit_
 	}
 };
 
+LS.Components.Light.actions["to_node"] = { 
+	title: "Detach to SceneNode", 
+	callback_show: function()
+	{
+		return (this._root && this._root._is_root );
+	},
+	callback: function() { 
+		var node = new LS.SceneNode();
+		node.name = "light";
+		node.transform.lookAt( this.getPosition(), this.getTarget(), this.getUp() );
+		this._root.removeComponent( this );
+		CORE.userAction("component_deleted",this);
+		node.addComponent( this );
+		CORE.userAction("node_created",node);
+		LS.GlobalScene.root.addChild( node );
+		LS.GlobalScene.refresh();
+		EditorModule.refreshAttributes();
+	}
+};
 
 LS.Components.SkinDeformer.actions["convert_bones"] = { title: "Convert Bones to Relative", callback: function() { this.convertBonesToRelative(); }};
 //LS.Components.SkinDeformer.actions["set_to_bind_pose"] = { title: "Set bones to bind pose", callback: function() { this.setBonesToBindPose(); }};

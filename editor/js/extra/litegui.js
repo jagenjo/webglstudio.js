@@ -4164,9 +4164,10 @@ LiteGUI.LineEditor = LineEditor;
 			var tab = tabs[i];
 			if(tab == this.plus_tab && keep_plus)
 				continue;
-
-			tab.tab.parentNode.removeChild( tab.tab );
-			tab.content.parentNode.removeChild( tab.content );
+			if(tab.tab.parentNode)
+				tab.tab.parentNode.removeChild( tab.tab );
+			if(tab.content.parentNode)
+				tab.content.parentNode.removeChild( tab.content );
 			delete this.tabs[ tab.id ];
 		}
 

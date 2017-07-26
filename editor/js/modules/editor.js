@@ -1462,7 +1462,7 @@ var EditorModule = {
 			return this.showNodeContextMenu( instance, event );
 		else if( instance.constructor.is_component )
 			return this.showComponentContextMenu( instance, e, menu );
-		else
+		else //any instance
 		{
 			var actions = null;
 			if( instance.getActions )

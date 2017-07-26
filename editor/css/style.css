@@ -471,6 +471,16 @@ textarea.code {
 	margin-top: 2px;
 }
 
+.inspector .icon[draggable] {
+    cursor: grab;
+    cursor: -moz-grab;
+    cursor: -webkit-grab;
+}
+
+.inspector .switch-section-button {
+	cursor: pointer;
+}
+
 .inspector_widget .header {
 	width: 100%;
 	overflow: hidden;

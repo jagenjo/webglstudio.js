@@ -4292,11 +4292,14 @@ var ResourcesManager = {
 	* @param {Boolean} [skip_event=false] ignore sending an event to all components to rename the resource
 	* @return {boolean} if the file was found
 	*/
-	renameResource: function(old_name, new_name, skip_event)	
+	renameResource: function( old_name, new_name, skip_event )	
 	{
 		var res = this.resources[ old_name ];
 		if(!res)
 			return false;
+
+		if(this.resources[ new_name ])
+			console.warn("There is a resource already with this name, overwritting it: " + new_name );
 
 		res.filename = new_name;
 		if(res.fullpath)
@@ -11268,10 +11271,21 @@ Object.defineProperty( Resource.prototype, "data", {
 	enumerable: true
 });
 
-//makes this resource available 
+/** makes this resource available by registering in the resources manager
+* @method rename
+*/
 Resource.prototype.register = function()
 {
 	LS.ResourcesManager.registerResource( this.fullpath || this.filename, this );
+}
+
+/** Renames the resource and ensures the resources manager is updated accordingly
+* @method rename
+* @param {String} new_filename the new filename
+*/
+Resource.prototype.rename = function( new_filename )
+{
+	LS.ResourcesManager.renameResource( this.fullpath || this.filename, new_filename );
 }
 
 Object.defineProperty( Resource.prototype, "uid", { 
@@ -11396,6 +11410,9 @@ Resource.prototype.clone = function()
 	return r;
 }
 
+/** Returns a string representing to which category this resource belongs
+* @method getCategory
+*/
 Resource.prototype.getCategory = function()
 {
 	var filename = this.fullpath || this.filename;
@@ -11405,6 +11422,9 @@ Resource.prototype.getCategory = function()
 	return "Data";
 }
 
+/** When dropping this resource into a SceneNode
+* @method assignToNode
+*/
 Resource.prototype.assignToNode = function(node)
 {
 	if(!node) 
@@ -11422,7 +11442,7 @@ Resource.prototype.assignToNode = function(node)
 	return true;
 }
 
-/** Parses the resource data as subfiles (subfiles are fragments of the code identified by a slash followed by name string)
+/** Parses the resource data as subfiles (subfiles are fragments of the code identified by a slash followed by name string), used by ShaderCode
 * @method getAsSubfiles
 * @return {Object} the object that contains every subfile
 */
@@ -11447,6 +11467,9 @@ Resource.prototype.getAsHTML = function()
 	return container;
 }
 
+/** Used by the editor to know if it can be edited in the text editor
+* @method hasEditableText
+*/
 Resource.prototype.hasEditableText = function()
 {
 	return this._data && this._data.constructor === String;
@@ -16957,8 +16980,10 @@ function SpatialContainer()
 //adds a new object to the container
 SpatialContainer.prototype.add = function( object, bounding )
 {
-	this.root.push( object );
-	this.objecs_cell_by_id.set( object, this.root ); //in which container is
+	var cell = this.root;
+
+	cell.push( object );
+	this.objecs_cell_by_id.set( object, cell ); //in which container is
 	return object.uid;
 }
 
@@ -16976,7 +17001,7 @@ SpatialContainer.prototype.remove = function( object, bounding )
 		return;
 	var index = cell.indexOf( object );
 	if(index !== -1)
-		this.root.splice( index, 1 );
+		cell.splice( index, 1 );
 	this.objecs_cell_by_id.delete( object );
 }
 
@@ -17572,6 +17597,8 @@ LS.RenderState = RenderState;
 //WIP: this is the lowest GPU rendering object, which encapsulates all about a render call
 //by encapsulating every render action into an object we can have materials that produce several render passes in different moments
 //of the rendering process
+//the only problem is that uniform containrs could change between render calls which will lead to errors 
+
 function RenderCall()
 {
 	this.shader = null;
@@ -17589,7 +17616,7 @@ RenderCall.prototype.draw = function()
 {
 	this.renderState.enable();
 
-	this.shader.uniforms( this.uniforms).drawBuffers( this.vertex_buffers,
+	this.shader.uniforms( this.uniforms ).drawBuffers( this.vertex_buffers,
 	  this.index_buffer,
 	  this.primitive, this.offset_start, this.offset_range );
 }
@@ -23761,11 +23788,11 @@ Transform.prototype.transformPoint = function(vec, dest) {
 /**
 * convert from local coordinates to global coordinates
 * If no destination is specified a new vector is created
-* @method transformPointGlobal
+* @method localToGlobal
 * @param {vec3} point
 * @param {vec3} destination (optional)
 */
-Transform.prototype.transformPointGlobal = function(vec, dest) {
+Transform.prototype.localToGlobal = function(vec, dest) {
 	dest = dest || vec3.create();
 	if(this._must_update)
 		this.updateMatrix();
@@ -23773,17 +23800,15 @@ Transform.prototype.transformPointGlobal = function(vec, dest) {
 }
 
 /**
-* convert from local coordinates to global coordinates (it is the same as transformPointGlobal)
-* If no destination is specified a new vector is created
-* @method localToGlobal
+* same as localToGlobal
+* @method transformPointGlobal
 * @param {vec3} point
 * @param {vec3} destination (optional)
 */
-Transform.prototype.localToGlobal = Transform.prototype.transformPointGlobal;
+Transform.prototype.transformPointGlobal = Transform.prototype.localToGlobal;
 
 /**
 * convert from global coordinates to local coordinates
-* If no destination is specified a new vector is created
 * @method globalToLocal
 * @param {vec3} point
 * @param {vec3} destination (optional)
@@ -23801,27 +23826,25 @@ Transform.prototype.globalToLocal = (function(){
 
 /**
 * Applies the transformation to a vector (rotate but not translate)
-* If no destination is specified the transform is applied to vec
 * @method transformVector
 * @param {vec3} vector
 * @param {vec3} destination (optional)
 */
-Transform.prototype.transformVector = function(vec, dest) {
-	return vec3.transformQuat(dest || vec3.create(), vec, this._rotation );
+Transform.prototype.transformVector = function( vec, dest ) {
+	return vec3.transformQuat( dest || vec3.create(), vec, this._rotation );
 }
 
 /**
 * Applies the transformation to a vector (rotate but not translate)
-* If no destination is specified the transform is applied to vec
-* @method transformVectorGlobal
+* @method localVectorToGlobal
 * @param {vec3} vector
 * @param {vec3} destination (optional)
 */
-Transform.prototype.transformVectorGlobal = function(vec, dest) {
-	return vec3.transformQuat(dest || vec3.create(), vec, this.getGlobalRotation() );
+Transform.prototype.localVectorToGlobal = function(vec, dest) {
+	return vec3.transformQuat( dest || vec3.create(), vec, this.getGlobalRotation() );
 }
 
-Transform.prototype.localVectorToGlobal = Transform.prototype.transformVectorGlobal;
+Transform.prototype.transformVectorGlobal = Transform.prototype.localVectorToGlobal;
 
 Transform.prototype.globalVectorToLocal = function(vec, dest) {
 	var Q = this.getGlobalRotation();
@@ -26039,9 +26062,9 @@ function Light(o)
 	this.extra_texture = null;
 
 	//vectors in world space
-	this._front = vec3.clone( Light.FRONT_VECTOR );
-	this._right = vec3.clone( Light.RIGHT_VECTOR );
-	this._top = vec3.clone( Light.UP_VECTOR );
+	this._front = vec3.clone( LS.FRONT );
+	this._right = vec3.clone( LS.RIGHT );
+	this._top = vec3.clone( LS.TOP );
 
 	//for StandardMaterial
 	this._query = new LS.ShaderQuery();
@@ -26138,11 +26161,6 @@ Object.defineProperty( Light.prototype, 'spot_cone', {
 	},
 	enumerable: true
 });
-
-//do not change
-Light.FRONT_VECTOR = new Float32Array([0,0,-1]); //const
-Light.RIGHT_VECTOR = new Float32Array([1,0,0]); //const
-Light.UP_VECTOR = new Float32Array([0,1,0]); //const
 
 Light.OMNI = 1;
 Light.SPOT = 2;
@@ -26278,13 +26296,13 @@ Light.prototype.updateVectors = (function(){
 		mat4.getTranslation( this._position, mat);
 		//target
 		if (!this.use_target)
-			mat4.multiplyVec3( this._target, mat, Light.FRONT_VECTOR ); //right in front of the object
+			mat4.multiplyVec3( this._target, mat, LS.FRONT ); //right in front of the object
 		//up
-		mat4.multiplyVec3( this._up, mat, Light.UP_VECTOR ); //right in front of the object
+		mat4.multiplyVec3( this._up, mat, LS.TOP ); //right in front of the object
 
 		//vectors
-		mat4.rotateVec3( this._front, mat, Light.FRONT_VECTOR ); 
-		mat4.rotateVec3( this._right, mat, Light.RIGHT_VECTOR ); 
+		mat4.rotateVec3( this._front, mat, LS.FRONT ); 
+		mat4.rotateVec3( this._right, mat, LS.RIGHT ); 
 		vec3.copy( this._top, this.up ); 
 	}
 })();
@@ -26297,7 +26315,7 @@ Light.prototype.updateVectors = (function(){
 Light.prototype.getPosition = function( out )
 {
 	out = out || vec3.create();
-	//if(this._root && this._root.transform) return this._root.transform.transformPointGlobal(this.position, p || vec3.create() );
+	//if(this._root && this._root.transform) return this._root.transform.localToGlobal( this.position, p || vec3.create() );
 	if(this._root && this._root.transform) 
 		return this._root.transform.getGlobalPosition( out );
 	out.set( this._position );
@@ -26313,10 +26331,8 @@ Light.prototype.getPosition = function( out )
 Light.prototype.getTarget = function( out )
 {
 	out = out || vec3.create();
-	//if(this._root && this._root.transform && !this.use_target) 
-	//	return this._root.transform.transformPointGlobal(this.target, p || vec3.create() );
 	if(this._root && this._root.transform && !this.use_target) 
-		return this._root.transform.transformPointGlobal( Light.FRONT_VECTOR , out);
+		return this._root.transform.localToGlobal( LS.FRONT , out );
 	out.set( this._target );
 	return out;
 }
@@ -26332,7 +26348,7 @@ Light.prototype.getUp = function( out )
 	out = out || vec3.create();
 
 	if(this._root && this._root.transform) 
-		return this._root.transform.transformVector( Light.UP_VECTOR , out );
+		return this._root.transform.transformVector( LS.TOP , out );
 	out.set( this._up );
 	return out;
 }
@@ -26790,6 +26806,7 @@ Light.prototype.applyShaderBlockFlags = function( flags, pass, render_settings )
 	if(!this.enabled)
 		return flags;
 
+	//get the default light shader block
 	flags |= Light.shader_block.flag_mask;
 
 	//attenuation
@@ -26961,7 +26978,7 @@ Light._enabled_fs_shaderblock_code = "\n\
 		// SHADOWS\n\
 		FINALLIGHT.Shadow = 1.0;\n\
 		#ifdef BLOCK_TESTSHADOW\n\
-			FINALLIGHT.Shadow = testShadow();\n\
+			FINALLIGHT.Shadow = testShadow( LIGHT );\n\
 		#endif\n\
 		\n\
 		// LIGHT MODIFIERS\n\
@@ -27059,7 +27076,7 @@ Light._shadowmap_cubemap_code = "\n\
 		return dot(depth.xyzw , bitShifts);\n\
 	}\n\
 	\n\
-	float testShadow( vec3 offset )\n\
+	float testShadow( Light LIGHT, vec3 offset )\n\
 	{\n\
 		float shadow = 0.0;\n\
 		float depth = 0.0;\n\
@@ -27107,7 +27124,7 @@ Light._shadowmap_2d_enabled_fragment_code = "\n\
 		#endif\n\
 	}\n\
 	\n\
-	float testShadow()\n\
+	float testShadow( Light LIGHT )\n\
 	{\n\
 		vec3 offset = vec3(0.0);\n\
 		float shadow = 0.0;\n\
@@ -27117,7 +27134,7 @@ Light._shadowmap_2d_enabled_fragment_code = "\n\
 		vec2 sample = (v_light_coord.xy / v_light_coord.w) * vec2(0.5) + vec2(0.5) + offset.xy;\n\
 		//is inside light frustum\n\
 		if (clamp(sample, 0.0, 1.0) != sample) \n\
-			return 0.0; //outside of shadowmap, no shadow\n\
+			return LIGHT.Info.x == 3.0 ? 1.0 : 0.0; //outside of shadowmap, no shadow\n\
 		float sampleDepth = UnpackDepth( texture2D(shadowmap, sample) );\n\
 		depth = (sampleDepth == 1.0) ? 1.0e9 : sampleDepth; //on empty data send it to far away\n\
 		if (depth > 0.0) \n\
@@ -27126,7 +27143,7 @@ Light._shadowmap_2d_enabled_fragment_code = "\n\
 	}\n\
 ";
 
-Light._shadowmap_2d_disabled_code = "\nfloat testShadow() { return 1.0; }\n";
+Light._shadowmap_2d_disabled_code = "\nfloat testShadow( Light LIGHT ) { return 1.0; }\n";
 
 var shadowmapping_depth_in_color_block = new LS.ShaderBlock("depth_in_color");
 shadowmapping_depth_in_color_block.register();
@@ -31045,7 +31062,7 @@ AnnotationComponent.prototype.getObjectCenter = function()
 	var mesh = this._root.getMesh();
 	if(mesh && mesh.bounding )
 		vec3.copy( center, BBox.getCenter(mesh.bounding) );
-	var pos = this._root.transform.transformPointGlobal(center, vec3.create());
+	var pos = this._root.transform.localToGlobal( center );
 	return pos;
 }
 
@@ -35054,8 +35071,8 @@ RealtimeReflector.prototype.onRenderReflection = function( e, render_settings )
 			var mesh = this._root.getMesh();
 			if(mesh)
 			{
-				plane_center = this._root.transform.transformPointGlobal( BBox.getCenter( mesh.bounding ) );
-				plane_normal = this._root.transform.transformVectorGlobal( [0,1,0] );
+				plane_center = this._root.transform.globalToLocal( BBox.getCenter( mesh.bounding ) );
+				plane_normal = this._root.transform.globalVectorToLocal( LS.UP );
 			}
 		}
 
@@ -37335,6 +37352,7 @@ function Canvas3D(o)
 	this.generate_mipmaps = false;
 
 	this._clear_buffer = true; //not public, just here in case somebody wants it
+	this._skip_backside = true;
 	this._texture = null;
 	this._fbo = null;
 	this._RI = null;
@@ -37578,9 +37596,9 @@ Canvas3D.prototype.projectMouse = function()
 		var camera_front = camera.getFront();
 
 		var temp = vec3.create();
-		var plane_normal = this.root.transform.globalVectorToLocal( LS.FRONT, temp );
+		var plane_normal = this.root.transform.localVectorToGlobal( LS.FRONT, temp );
 
-		if( vec3.dot( ray.direction, plane_normal ) < 0.0 )
+		if( !this._skip_backside || vec3.dot( ray.direction, plane_normal ) > 0.0 )
 		{
 			var local_origin = this.root.transform.globalToLocal( ray.origin, temp );
 			var local_direction = this.root.transform.globalVectorToLocal( ray.direction );
@@ -44767,6 +44785,296 @@ var parserOBJ = {
 	flipAxis: false,
 
 	parse: function(text, options)
+	{
+		options = options || {};
+		var support_uint = true;
+
+		//unindexed containers
+		var vertices = [];
+		var normals = [];
+		var uvs = [];
+
+		//final containers
+		var vertices_buffer_data = [];
+		var normals_buffer_data = [];
+		var uvs_buffer_data = [];
+
+		//groups
+		var group_id = 0;
+		var groups = [];
+		var groups_by_name = {};
+		var current_group_materials = {};
+		var last_group_name = null;
+		var materials_found = {};
+		var mtllib = null;
+		var group = {
+			name:"",
+			material:"",
+			start:-1,
+			length: -1,
+			indices: []
+		};
+
+		var indices_map = new Map();
+		var next_index = 0;
+
+		var V_CODE = 1;
+		var VT_CODE = 2;
+		var VN_CODE = 3;
+		var F_CODE = 4;
+		var G_CODE = 5;
+		var O_CODE = 6;
+		var USEMTL_CODE = 7;
+		var MTLLIB_CODE = 8;
+		var codes = { v: V_CODE, vt: VT_CODE, vn: VN_CODE, f: F_CODE, g: G_CODE, o: O_CODE, usemtl: USEMTL_CODE, mtllib: MTLLIB_CODE };
+
+		var x,y,z;
+
+		var lines = text.split("\n");
+		var length = lines.length;
+		for (var lineIndex = 0;  lineIndex < length; ++lineIndex) {
+
+			var line = lines[lineIndex];
+			line = line.replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //better than trim
+
+			if(line[ line.length - 1 ] == "\\") //breakline support
+			{
+				lineIndex += 1;
+				var next_line = lines[lineIndex].replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //better than trim
+				line = (line.substr(0,line.length - 1) + next_line).replace(/[ \t]+/g, " ").replace(/\s\s*$/, "");
+			}
+			
+			if (line[0] == "#")
+				continue;
+			if(line == "")
+				continue;
+
+			var tokens = line.split(" ");
+			var code = codes[ tokens[0] ];
+
+			if( code <= VN_CODE ) //v,vt,vn
+			{
+				x = parseFloat(tokens[1]);
+				y = parseFloat(tokens[2]);
+				if( code != VT_CODE ) //not always present
+					z = parseFloat(tokens[3]); 
+			}
+			
+			switch(code)
+			{
+				case V_CODE: vertices.push(x,y,z);	break;
+				case VT_CODE: uvs.push(x,y);	break;
+				case VN_CODE: normals.push(x,y,z);	break;
+				case F_CODE: 
+					if (tokens.length < 4)
+						continue; //faces with less that 3 vertices? nevermind
+					//get the triangle indices
+					var polygon_indices = [];
+					for(var i = 1; i < tokens.length; ++i)
+						polygon_indices.push( getIndex( tokens[i] ) );
+					group.indices.push( polygon_indices[0], polygon_indices[1], polygon_indices[2] );
+					//polygons are break intro triangles
+					for(var i = 2; i < polygon_indices.length-1; ++i)
+						group.indices.push( polygon_indices[0], polygon_indices[i], polygon_indices[i+1] );
+					break;
+				case G_CODE:  
+				case O_CODE:  //whats the difference?
+					var name = tokens[1];
+					last_group_name = name;
+					if(!group.name)
+						group.name = name;
+					else
+					{
+						current_group_materials = {};
+						group = createGroup( name );
+					}
+					break;
+				case USEMTL_CODE: 
+					changeMaterial( tokens[1] );
+					break;
+				case MTLLIB_CODE:
+					mtllib = tokens[1];
+					break;
+				default:
+			}
+		}
+
+		//store last group
+		if(!group.name)
+			group.name = "group";
+		groups_by_name[ group.name ] = group;
+		groups.push(group);
+
+		//generate indices
+		var indices = [];
+		var group_index = 0;
+		for(var i = 0; i < groups.length; ++i)
+		{
+			var group = groups[i];
+			group.start = group_index;
+			group.length = group.indices.length;
+			indices = indices.concat( group.indices );
+			//TODO: compute bounding of group here
+			delete group.indices; //do not store indices in JSON format!
+			group_index += group.length;
+		}
+
+		//finish mesh
+		var mesh = {};
+
+		if(!vertices.length)
+		{
+			console.error("mesh without vertices");
+			return null;
+		}
+
+		//create typed arrays
+		mesh.vertices = new Float32Array( vertices_buffer_data );
+		if ( normals_buffer_data.length )
+			mesh.normals = new Float32Array( normals_buffer_data );
+		if ( uvs_buffer_data.length )
+			mesh.coords = new Float32Array( uvs_buffer_data );
+		if ( indices && indices.length > 0 )
+			mesh.triangles = new ( support_uint && group_index > 256*256 ? Uint32Array : Uint16Array )(indices);
+
+		//extra info
+		mesh.bounding = GL.Mesh.computeBounding( mesh.vertices );
+		var info = {};
+		if(groups.length > 1)
+		{
+			info.groups = groups;
+			//compute bounding of groups? //TODO
+		}
+
+		mesh.info = info;
+		if( !mesh.bounding )
+		{
+			console.log("empty mesh");
+			return null;
+		}
+
+		if( mesh.bounding.radius == 0 || isNaN(mesh.bounding.radius))
+			console.log("no radius found in mesh");
+		console.log(mesh);
+		return mesh;
+
+		//this function helps reuse triplets that have been created before
+		function getIndex( str )
+		{
+			var pos,tex,nor,f;
+			var has_negative = false;
+
+			//cannot use negative indices as keys, convert them to positive
+			if(str.indexOf("-") == -1)
+			{
+				var index = indices_map.get(str);
+				if(index !== undefined)
+					return index;
+			}
+			else
+				has_negative = true;
+
+			if(!f) //maybe it was parsed before
+				f = str.split("/");
+
+			if (f.length == 1) { //unpacked
+				pos = parseInt(f[0]);
+				tex = pos;
+				nor = pos;
+			}
+			else if (f.length == 2) { //no normals
+				pos = parseInt(f[0]);
+				tex = parseInt(f[1]);
+				nor = pos;
+			}
+			else if (f.length == 3) { //all three indexed
+				pos = parseInt(f[0]);
+				tex = parseInt(f[1]);
+				nor = parseInt(f[2]);
+			}
+			else {
+				console.log("Problem parsing: unknown number of values per face");
+				return -1;
+			}
+
+			//negative indices are relative to the end
+			if(pos < 0) 
+				pos = vertices.length / 3 + pos + 1;
+			if(nor < 0)
+				nor = normals.length / 2 + nor + 1;
+			if(tex < 0)
+				tex = uvs.length / 2 + tex + 1;
+
+			//try again to see if we already have this
+			if(has_negative)
+			{
+				str = pos + "/" + tex + "/" + nor;
+				var index = indices_map.get(str);
+				if(index !== undefined)
+					return index;
+			}
+
+			//fill buffers
+			pos -= 1; tex -= 1; nor -= 1; //indices in obj start in 1, buffers in 0
+			vertices_buffer_data.push( vertices[pos*3+0], vertices[pos*3+1], vertices[pos*3+2] );
+			if(uvs.length)
+				uvs_buffer_data.push( uvs[tex*2+0], uvs[tex*2+1] );
+			if(normals.length)
+				normals_buffer_data.push( normals[nor*3+0], normals[nor*3+1], normals[nor*3+2] );
+
+			//store index
+			var index = next_index;
+			indices_map.set( str, index );
+			++next_index;
+			return index;
+		}
+
+		function createGroup( name )
+		{
+			addGroup( group );
+			return {
+				name: name || "",
+				material: "",
+				start: -1,
+				length: -1,
+				indices: []
+			};
+		}
+
+		function changeMaterial( material_name )
+		{
+			if( !group.material )
+			{
+				group.material = material_name;
+				current_group_materials[ material_name ] = group;
+				return group;
+			}
+
+			var g = current_group_materials[ material_name ];
+			if(!g)
+			{
+				g = createGroup( last_group_name + "_" + material_name );
+				g.material = material_name;
+				current_group_materials[ material_name ] = g;
+			}
+			group = g;
+			return g;
+		}
+
+		function addGroup( group )
+		{
+			if(!group.indices.length)
+				return;
+			if(!group.name)
+				group.name = group.material || "group_" + groups.length;
+			if( groups_by_name[ group.name ] )
+				return;
+			groups_by_name[ group.name ] = group;
+			groups.push(group);
+		}
+	},
+
+	parse2: function(text, options)
 	{
 		options = options || {};
 

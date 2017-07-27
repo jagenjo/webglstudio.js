@@ -707,6 +707,11 @@ var DriveModule = {
 		}});
 		widget.querySelector("button").setAttribute("download", resource.filename );
 
+		if(resource.optimize)
+			inspector.addButton(null,"Optimize", {callback: function(){
+				resource.optimize();
+				DriveModule.refreshContent();
+			}});
 	},
 
 	getResourceAsBlob: function( resource )
@@ -1461,7 +1466,7 @@ var DriveModule = {
 		}
 
 		var container_fullpath = resource.from_pack || resource.from_prefab;
-		if(container_fullpath)
+		if(container_fullpath && container_fullpath.constructor == String)
 		{
 			CORE.log("Saving resource that belongs to a Pack or Prefab, so saving the Pack/Prefab: " + resource.fullpath );
 			resource = LS.RM.getResource( container_fullpath );

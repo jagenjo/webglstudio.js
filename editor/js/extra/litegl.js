@@ -5980,16 +5980,17 @@ Texture.prototype.toCanvas = function( canvas, flip_y, max_size )
 	return canvas;
 }
 
+
 /**
-* returns a Blob containing all the data from the texture
-* @method toBlob
-* @return {Blob} the blob containing the data
+* returns the texture file in binary format 
+* @method toBinary
+* @return {ArrayBuffer} the arraybuffer of the file containing the image
 */
-Texture.prototype.toBlob = function(flip_y, type)
+Texture.binary_extension = "png";
+Texture.prototype.toBinary = function(flip_y, type)
 {
 	//dump to canvas
 	var canvas = this.toCanvas(null,flip_y);
-
 	//use the slow method (because its sync)
 	var data = canvas.toDataURL( type );
 	var index = data.indexOf(",");
@@ -6000,6 +6001,17 @@ Texture.prototype.toBlob = function(flip_y, type)
 	for (var i=0; i<len; ++i ) {
 		arr[i] = binStr.charCodeAt(i);
 	}
+	return arr;
+}
+
+/**
+* returns a Blob containing all the data from the texture
+* @method toBlob
+* @return {Blob} the blob containing the data
+*/
+Texture.prototype.toBlob = function(flip_y, type)
+{
+	var arr = this.toBinary( flip_y );
 	var blob = new Blob( [arr], {type: type || 'image/png'} );
 	return blob;
 }

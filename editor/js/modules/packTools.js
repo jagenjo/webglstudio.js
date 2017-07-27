@@ -42,7 +42,7 @@ var PackTools = {
 		for(var i in resources)
 			res_names.push(i);
 
-		var old_name = node.name;
+		var old_name = LS.RM.getBasename( node.name ); //remove extension in name
 		if(node.prefab)
 			old_name = LS.ResourcesManager.getBasename(node.prefab);
 		var filename = widgets.addString("Filename", old_name );
@@ -77,8 +77,8 @@ var PackTools = {
 
 		widgets.widgets_per_row = 1;
 
-		if(node._components.length > 1)
-			widgets.addInfo("Warning","this node has several components attached to the root, they will be lost");
+		//if(node._components.length > 1)
+		//	widgets.addInfo("Warning","this node has several components attached to the root, they will be lost");
 
 		var folder = "";
 		widgets.addFolder("Save to",folder,{ callback: function(v){
@@ -91,9 +91,8 @@ var PackTools = {
 			var filename_str = filename.getValue(); //change spaces by underscores
 
 			var transform_data = node.transform.serialize();
-			node.transform.reset();
-
 			var data = node.serialize();
+			node.transform.reset();
 
 			if(clear_uids)
 				LS.clearUIds(data);
@@ -106,7 +105,7 @@ var PackTools = {
 			var resources = list.getSelected();
 
 			var prefab = null;
-			if(resources.length == 0)
+			if(resources.length == 0) //if no resources the prefab could be a json
 			{
 				if( LS.RM.getExtension( filename_str ) != "json" )
 					filename_str = filename_str + ".PREFAB.json";
@@ -114,7 +113,7 @@ var PackTools = {
 				prefab.setData( data );
 				prefab.filename = filename_str;
 			}
-			else
+			else //otherwise it must be a wbin
 			{
 				if( LS.RM.getExtension( filename_str ) != "wbin" )
 					filename_str = filename_str + ".wbin";

@@ -9,11 +9,11 @@ var ImporterModule  = {
 	
 	//this are saved between sessions
 	preferences: {
-		optimize_data: false,
+		optimize_data: true,
 		mesh_action: "origin",
 		texture_action: "replace",
 		use_names_to_reference: true,
-		force_lowercase: false
+		force_lowercase: true
 	},
 
 	init: function()
@@ -73,46 +73,17 @@ var ImporterModule  = {
 		var node = null;
 		if(evt.canvasx !== undefined ) //canvas drop
 			node = RenderModule.getNodeAtCanvasPosition( evt.canvasx, evt.canvasy );
-	
-		options.node = node;
+			options.node = node;
 		options.event = evt;
 
 		//files
-		var files = evt.dataTransfer.files;
+		//var files = evt.dataTransfer.files;
+		var files = this.getFilesFromEvent( evt, options );
+		//console.log("Files found: ", files.length, "Items:",  evt.dataTransfer.items.length, " Files:",  evt.dataTransfer.files.length );
 		if(files && files.length)
-		{
-			//more than one file
-			if(files.length > 1)
-			{
-				//sort resources so images goes first?
-				var files = ImporterModule.sortFilesByPriority( files );
+			this.processFileList( files, options );
 
-				//TODO: show special dialog?
-				for(var i=0; i < files.length; i++)
-				{
-					this.loadFileToMemory( files[i], function(file,options){
-						var filename = file.name.toLowerCase();
-						NotifyModule.show("FILE: " + file.name, { id: "res-msg-" + file.name.hashCode(), closable: true, time: 3000, left: 60, top: 30, parent: "#visor" } );
-						CORE.log("File dropped: " + file.name);
-						ImporterModule.processResource( file.name, file, that.getImporterOptions( file.name ), function(filename, resource){
-							//meshes must be inserted
-							if(resource.constructor === GL.Mesh)
-								ImporterModule.insertMeshInScene( resource );
-						});
-					},options);
-
-
-				}
-				return;
-			}
-
-			//one single file
-			var file = files[0];
-			this.loadFileToMemory( file, this.showImportResourceDialog.bind(this), options );
-			return true;
-		}
-
-		//drag something on the canvas
+		//drag something else on the canvas
 		//check if they are resources from other folder
 		if( evt.dataTransfer.getData("res-fullpath") )
 		{
@@ -160,6 +131,88 @@ var ImporterModule  = {
 		return true;
 	},
 
+	getFilesFromEvent: function( e, options )
+	{
+		var files = [];
+		var that = this;
+
+		//first the files
+		for(var i=0; i < e.dataTransfer.files.length; i++)
+		{
+			var file = e.dataTransfer.files[i];
+			if(!file.size)
+				continue; //folders are files with 0 size
+			files.push( file );
+		}
+
+		//then the items (they may be folders)
+		for(var i=0; i < e.dataTransfer.items.length; i++)
+		{
+			var item = e.dataTransfer.items[i];
+			var func = item.webkitGetAsEntry || item.mozGetAsEntry || item.getAsEntry; //experimental
+			if(!func)
+				break;
+			var entry = func.call( item );
+			if(!entry || !entry.isDirectory)
+				continue; //not a folder
+			traverseFileTree(entry);
+		}
+
+		function traverseFileTree( item, path ) {
+			path = path || "";
+			if (item.isFile) {
+				// Get file
+				item.file(function(file) {
+					//files.push( file );
+					that.processFileList([file],options,true);
+				});
+			} else if (item.isDirectory) {
+				// Get folder contents
+				var dirReader = item.createReader();
+				dirReader.readEntries(function(entries) {
+					for (var i=0; i<entries.length; i++) {
+						traverseFileTree(entries[i], path + item.name + "/");
+					}
+				});
+			}
+		}
+
+		return files;
+	},
+
+	processFileList: function(files, options, skip_dialog )
+	{
+		options = options || {};
+		var that = this;
+
+		if(files.length > 1)
+		{
+			//sort resources so images goes first?
+			var files = ImporterModule.sortFilesByPriority( files );
+
+			//TODO: show special dialog?
+			for(var i=0; i < files.length; i++)
+				this.loadFileToMemory( files[i], inner_process, options);
+			return;
+		}
+
+		//one single file shows the dialog
+		var file = files[0];
+		var callback = skip_dialog ? inner_process : this.showImportResourceDialog.bind(this);
+		this.loadFileToMemory( file, callback, options );
+
+		function inner_process( file, options ){
+			var filename = file.name.toLowerCase(); //to lower case to avoid problems
+			NotifyModule.show("FILE: " + filename, { id: "res-msg-" + filename.hashCode(), closable: true, time: 3000, left: 60, top: 30, parent: "#visor" } );
+			CORE.log("File dropped: " + filename);
+			ImporterModule.processResource( filename, file, that.getImporterOptions( filename ), function( filename, resource ){
+				//meshes must be inserted
+				if(resource.constructor === GL.Mesh)
+					ImporterModule.insertMeshInScene( resource );
+			});
+		}
+	},
+
 	//just guesses the type and loads it into memory (reads the bytes, not processing) 
 	loadFileToMemory: function(file, callback, options)
 	{
@@ -191,7 +244,7 @@ var ImporterModule  = {
 		}
 		reader.onprogress = function(e)
 		{
-			console.log(e);
+			//console.log(e);
 		}
 
 		var extension = LS.ResourcesManager.getExtension( file.name ).toLowerCase();
@@ -505,8 +558,8 @@ var ImporterModule  = {
 		if(!file.data)
 			return console.error("File data missing, use FileReader");
 
-		var filename = options.filename || file.name;
-		if(this.force_lowercase)
+		var filename = options.filename || name || file.name; //why not name?
+		if(this.preferences.force_lowercase)
 			filename = filename.toLowerCase(); //force lower case in filenames to avoid case sensitive issues
 
 		var resource;

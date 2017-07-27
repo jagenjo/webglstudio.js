@@ -189,18 +189,37 @@ var TextureTools = {
 
 		function inner_apply()
 		{
-			var info = texture.getProperties();
-			info.wrap = GL.REPEAT;
-			info.minFilter = GL.LINEAR_MIPMAP_LINEAR;
-			if(width == texture.width && height == texture.height)
-				return;
-			var resized_texture = new GL.Texture( width, height, info );
-			texture.copyTo( resized_texture );
-			LS.RM.registerResource( texture.filename, resized_texture );
-
+			TextureTools.resizeTexture( texture, width, height );
 			if(on_complete)
 				on_complete(resized_texture);
 		}
+	},
+
+	resizeTexture: function( texture, width, height )
+	{
+		var info = texture.getProperties();
+		info.wrap = GL.REPEAT;
+		info.minFilter = GL.LINEAR_MIPMAP_LINEAR;
+		if(width == texture.width && height == texture.height)
+			return;
+		var resized_texture = new GL.Texture( width, height, info );
+		texture.copyTo( resized_texture );
+		LS.RM.registerResource( texture.filename, resized_texture );
+		var filename = texture.fullpath || texture.filename;
+		var ext = LS.RM.getExtension( filename );
+		var info = LS.Formats.getFileFormatInfo( ext );
+		if( info.native ) 
+		{
+			if(ext == "jpg")
+				ext = "jpeg";
+			texture._original_data = texture.toBinary( false, 'image/' + ext );
+		}
+		else //convert to PNG
+		{
+			texture._original_data = texture.toBinary( false, 'image/png' );
+			LS.RM.renameResource( filename, filename + ".png" );
+		}
+		return resized_texture;
 	},
 
 	showBlurDialog: function( texture )
@@ -272,8 +291,8 @@ GL.Texture.prototype.inspect = function( widgets, skip_default_widgets )
 	var types = { 5121: "gl.UNSIGNED_BYTE", 36193: "gl.HALF_FLOAT_OES", 5126: "gl.FLOAT" };
 
 	widgets.addString("Filename", texture.filename || "" );
-	widgets.addString("Width", texture.width );
-	widgets.addString("Height", texture.height );
+	widgets.addStringButton("Width", texture.width, { button: "POT", callback_button: resize_to_pot });
+	widgets.addStringButton("Height", texture.height, { button: "POT", callback_button: resize_to_pot });
 	widgets.addString("Format", formats[ texture.format ] || "unknown" );
 	widgets.addString("Type", types[ texture.type ] || "unknown" );
 	widgets.addString("Texture type", texture_types[ texture.texture_type ] || "unknown" );
@@ -300,6 +319,13 @@ GL.Texture.prototype.inspect = function( widgets, skip_default_widgets )
 
 	if(!skip_default_widgets)
 		DriveModule.addResourceInspectorFields( this, widgets );
+
+	function resize_to_pot()
+	{
+		var width = GL.Texture.nextPOT( texture.width );
+		var height = GL.Texture.nextPOT( texture.height );
+		TextureTools.resizeTexture( texture, width, height );
+	}
 }
 
 CORE.registerModule( TextureTools );

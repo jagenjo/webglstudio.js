@@ -11309,9 +11309,10 @@ Object.defineProperty( Resource.prototype, "uid", {
 *
 * @method Resource.getDataToStore
 * @param {Object} resource 
+* @param {Boolean} allow_blob [optional] 
 * @return {Object} it has two fields: data and encoding
 */
-Resource.getDataToStore = function( resource )
+Resource.getDataToStore = function( resource, allow_blob )
 {
 	var data = null;
 	var encoding = "text";
@@ -11341,9 +11342,12 @@ Resource.getDataToStore = function( resource )
 	{
 		data = resource.toBinary();
 		encoding = "binary";
-		extension = "wbin";
+		if(resource.constructor.binary_extension) //special case, textures are in PNG to keep alpha
+			extension = resource.constructor.binary_extension;
+		else
+			extension = "wbin";
 	}
-	else if(resource.toBlob) //a blob (Canvas should have this)
+	else if(resource.toBlob && allow_blob) //a blob (Canvas should have this)
 	{
 		data = resource.toBlob();
 		encoding = "file";
@@ -13326,7 +13330,7 @@ Prefab.prototype.configure = function(data)
 		this.prefab_data = JSON.parse( prefab_json );
 	}
 
-	this.resource_names = data["@resources_name"] || data.resource_names;
+	this.resource_names = data["@resources_name"] || data.resource_names || [];
 
 	//extract resource names
 	if(this.resource_names)
@@ -13360,6 +13364,8 @@ Prefab.prototype.processResources = function()
 	if(!this._resources_data)
 		return;
 
+	var pack_filename = this.fullpath || this.filename;
+
 	var resources = this._resources_data;
 
 	//block this resources of being loaded, this is to avoid chain reactions when a resource uses 
@@ -13380,10 +13386,10 @@ Prefab.prototype.processResources = function()
 		var resdata = resources[resname];
 		if(!resdata)
 		{
-			console.warn("resource data in prefab is undefined, skipping it:" + resname);
+			console.warn( "resource data in prefab is undefined, skipping it:" + resname );
 			continue;
 		}
-		var resource = LS.ResourcesManager.processResource( resname, resdata, { is_local: true, from_prefab: true } );
+		var resource = LS.ResourcesManager.processResource( resname, resdata, { is_local: true, from_prefab: pack_filename } );
 	}
 }
 
@@ -13475,18 +13481,29 @@ Prefab.packResources = function( resource_names_list, base_data )
 			else
 			{
 				var data_info = LS.Resource.getDataToStore( resource );
+				if(!data_info)
+				{
+					console.warn("Data to store from resource is null, skipping: ", res_name );
+					continue;
+				}
+				//HACK: resource could be renamed to extract the binary info (this happens in jpg textures that are converted to png)
+				if(data_info.extension && data_info.extension != LS.ResourcesManager.getExtension( res_name ))
+				{
+					console.warn("The resource extension has changed while saving, this could lead to problems: ", res_name, data_info.extension );
+					continue;
+				}
 				data = data_info.data;
 			}
 
 			if(!data)
 			{
-				console.warning("Wrong data in resource");
+				console.warn("Wrong data in resource");
 				continue;
 			}
 
 			if(data.constructor === Blob || data.constructor === File)
 			{
-				console.warning("WBin does not support to store File or Blob, please convert to ArrayBuffer using FileReader");
+				console.warn("WBin does not support to store File or Blob, please convert to ArrayBuffer using FileReader");
 				continue;
 			}
 
@@ -13525,12 +13542,15 @@ Prefab.prototype.flagResources = function()
 		if(!resource)
 			continue;
 
-		resource.from_prefab = this.fullpath || this.filename || true;
+		resource.from_prefab = this.fullpath || this.filename;
 	}
 }
 
 Prefab.prototype.setResourcesLink = function( value )
 {
+	if(!this.resource_names)
+		return;
+
 	for(var i = 0; i < this.resource_names.length; ++i)
 	{
 		var res_name = this.resource_names[i];
@@ -13647,6 +13667,8 @@ Pack.prototype.processResources = function()
 	if(!this.resource_names)
 		return;
 
+	var pack_filename = this.fullpath || this.filename;
+
 	//block this resources of being loaded, this is to avoid chain reactions when a resource uses 
 	//another one contained in this pack
 	for(var i = 0; i < this.resource_names.length; ++i)
@@ -13670,7 +13692,7 @@ Pack.prototype.processResources = function()
 			console.warn("resource data in Pack is undefined, skipping it:" + resname);
 			continue;
 		}
-		var resource = LS.ResourcesManager.processResource( resname, resdata, { is_local: true, from_pack: true } );
+		var resource = LS.ResourcesManager.processResource( resname, resdata, { is_local: true, from_pack: pack_filename } );
 	}
 }
 
@@ -13678,6 +13700,8 @@ Pack.prototype.setResources = function( resource_names, mark_them )
 {
 	this.resource_names = [];
 	this._resources_data = {};
+
+	var pack_filename = this.fullpath || this.filename;
 
 	//get resources
 	for(var i = 0; i < resource_names.length; ++i)
@@ -13689,7 +13713,7 @@ Pack.prototype.setResources = function( resource_names, mark_them )
 		if(!resource)
 			continue;
 		if(mark_them)
-			resource.from_pack = true;
+			resource.from_pack = pack_filename;
 		this.resource_names.push( res_name );
 	}
 
@@ -13759,7 +13783,7 @@ Pack.createPack = function( filename, resource_names, extra_data, mark_them )
 		if(!resource)
 			continue;
 		if(mark_them)
-			resource.from_pack = true;
+			resource.from_pack = pack.filename;
 	}
 
 	//create the WBIN in case this pack gets stored
@@ -13829,7 +13853,7 @@ Pack.prototype.flagResources = function()
 		if(!resource)
 			continue;
 
-		resource.from_pack = this.fullpath || this.filename || true;
+		resource.from_pack = this.fullpath || this.filename;
 	}
 }
 
@@ -27417,19 +27441,6 @@ function MeshRenderer(o)
 	*/
 	this._primitive = -1;
 
-	/**
-	* When rendering points the point size, if positive is in world space, if negative is in screen space
-	* @property point_size {number}
-	* @default -1;
-	*/
-	this._point_size = 0.1;
-	/**
-	* When rendering points tells if you want to use for every point the texture coordinates of the vertex or the point texture coordinates
-	* @property textured_points {boolean}
-	* @default false;
-	*/
-	this._textured_points = false;
-
 	this._must_update_static = true; //used in static meshes
 	this._transform_version = -1;
 
@@ -27497,18 +27508,6 @@ Object.defineProperty( MeshRenderer.prototype, 'lod_mesh', {
 Object.defineProperty( MeshRenderer.prototype, 'submesh_id', {
 	get: function() { return this._submesh_id; },
 	set: function(v) { this._submesh_id = v; },
-	enumerable: true
-});
-
-Object.defineProperty( MeshRenderer.prototype, 'point_size', {
-	get: function() { return this._point_size; },
-	set: function(v) { this._point_size = v; },
-	enumerable: true
-});
-
-Object.defineProperty( MeshRenderer.prototype, 'textured_points', {
-	get: function() { return this._textured_points; },
-	set: function(v) { this._textured_points = v; },
 	enumerable: true
 });
 
@@ -27586,9 +27585,6 @@ MeshRenderer.prototype.configure = function(o)
 	this.use_submaterials = !!o.use_submaterials;
 	if(o.submaterials)
 		this.submaterials = o.submaterials;
-	if(o.point_size !== undefined) //legacy
-		this.point_size = o.point_size;
-	this.textured_points = !!o.textured_points;
 	if(o.material && o.material.constructor === String)
 		this.material = o.material;
 }
@@ -27615,8 +27611,6 @@ MeshRenderer.prototype.serialize = function()
 		o.primitive = this.primitive;
 	if(this.submesh_id != -1)
 		o.submesh_id = this.submesh_id;
-	o.point_size = this.point_size;
-	o.textured_points = this.textured_points;
 	o.material = this.material;
 
 	if(this.use_submaterials)
@@ -27761,19 +27755,6 @@ MeshRenderer.prototype.updateRIs = function()
 	*/
 		RI.collision_mesh = mesh;
 
-	if(this.primitive == gl.POINTS)
-	{
-		RI.uniforms.u_point_size = this.point_size;
-		RI.query.macros["USE_POINTS"] = "";
-		if(this.textured_points)
-			RI.query.macros["USE_TEXTURED_POINTS"] = "";
-	}
-	
-	if(!this.textured_points && RI.query.macros["USE_TEXTURED_POINTS"])
-		delete RI.query.macros["USE_TEXTURED_POINTS"];
-
-
-
 	//mark it as ready once no more changes should be applied
 	if( is_static && LS.allow_static && !this.isLoading() )
 	{
@@ -27848,19 +27829,6 @@ MeshRenderer.prototype.onCollectInstances = function(e, instances)
 	else
 	*/
 		RI.collision_mesh = mesh;
-
-	if(this.primitive == gl.POINTS)
-	{
-		RI.uniforms.u_point_size = this.point_size;
-		RI.query.macros["USE_POINTS"] = "";
-		if(this.textured_points)
-			RI.query.macros["USE_TEXTURED_POINTS"] = "";
-	}
-	
-	if(!this.textured_points && RI.query.macros["USE_TEXTURED_POINTS"])
-		delete RI.query.macros["USE_TEXTURED_POINTS"];
-
-
 
 	//mark it as ready once no more changes should be applied
 	if( is_static && LS.allow_static && !this.isLoading() )
@@ -44802,18 +44770,11 @@ var parserOBJ = {
 		//groups
 		var group_id = 0;
 		var groups = [];
-		var groups_by_name = {};
 		var current_group_materials = {};
 		var last_group_name = null;
 		var materials_found = {};
 		var mtllib = null;
-		var group = {
-			name:"",
-			material:"",
-			start:-1,
-			length: -1,
-			indices: []
-		};
+		var group = createGroup();
 
 		var indices_map = new Map();
 		var next_index = 0;
@@ -44899,25 +44860,24 @@ var parserOBJ = {
 			}
 		}
 
-		//store last group
-		if(!group.name)
-			group.name = "group";
-		groups_by_name[ group.name ] = group;
-		groups.push(group);
-
 		//generate indices
 		var indices = [];
 		var group_index = 0;
+		var final_groups = [];
 		for(var i = 0; i < groups.length; ++i)
 		{
 			var group = groups[i];
+			if(!group.indices) //already added?
+				continue;
 			group.start = group_index;
 			group.length = group.indices.length;
 			indices = indices.concat( group.indices );
 			//TODO: compute bounding of group here
 			delete group.indices; //do not store indices in JSON format!
 			group_index += group.length;
+			final_groups.push( group );
 		}
+		groups = final_groups;
 
 		//finish mesh
 		var mesh = {};
@@ -44955,7 +44915,7 @@ var parserOBJ = {
 
 		if( mesh.bounding.radius == 0 || isNaN(mesh.bounding.radius))
 			console.log("no radius found in mesh");
-		console.log(mesh);
+		//console.log(mesh);
 		return mesh;
 
 		//this function helps reuse triplets that have been created before
@@ -45031,21 +44991,22 @@ var parserOBJ = {
 
 		function createGroup( name )
 		{
-			addGroup( group );
-			return {
+			var g = {
 				name: name || "",
 				material: "",
 				start: -1,
 				length: -1,
 				indices: []
 			};
+			groups.push(g);
+			return g;
 		}
 
 		function changeMaterial( material_name )
 		{
 			if( !group.material )
 			{
-				group.material = material_name;
+				group.material = material_name + ".json";
 				current_group_materials[ material_name ] = group;
 				return group;
 			}
@@ -45054,23 +45015,11 @@ var parserOBJ = {
 			if(!g)
 			{
 				g = createGroup( last_group_name + "_" + material_name );
-				g.material = material_name;
+				g.material = material_name + ".json";
 				current_group_materials[ material_name ] = g;
 			}
 			group = g;
 			return g;
-		}
-
-		function addGroup( group )
-		{
-			if(!group.indices.length)
-				return;
-			if(!group.name)
-				group.name = group.material || "group_" + groups.length;
-			if( groups_by_name[ group.name ] )
-				return;
-			groups_by_name[ group.name ] = group;
-			groups.push(group);
 		}
 	},
 
@@ -45473,8 +45422,9 @@ var parserMTL = {
 			switch(c)
 			{
 				case "newmtl":
-					current_material = { filename: tokens[1], textures: {} };
-					materials[ tokens[1] ] = current_material;
+					var filename = tokens[1] + ".json";
+					current_material = { filename: filename, textures: {} };
+					materials[ filename ] = current_material;
 					break;
 				case "Ka":
 					current_material.ambient = readVector3(tokens);

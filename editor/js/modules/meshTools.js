@@ -325,4 +325,18 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		DriveModule.addResourceInspectorFields( this, widgets );
 }
 
+GL.Mesh.prototype.optimize = function( options )
+{
+	var old_filename = this.fullpath || this.filename;
+	var ext = LS.RM.getExtension( old_filename );
+	if( ext == "wbin" )
+		return;
+	this._original_data = this.toBinary().buffer; //ArrayBuffer
+	this.filename += ".wbin";
+	if(this.fullpath)
+		this.fullpath += ".wbin";
+	LS.ResourcesManager.renameResource( old_filename, this.fullpath || this.filename );
+	LS.RM.resourceModified( this );
+}
+
 CORE.registerModule( MeshTools );

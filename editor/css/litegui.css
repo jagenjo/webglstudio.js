@@ -326,6 +326,11 @@
 	border-radius: 3px;	
 }
 
+.inspector .wcontent .inputfield input:focus, .inspector .wcontent .inputfield textarea:focus
+{
+	outline: none;
+}
+
 .inspector input::placeholder { 
     color: #687177;
 }
@@ -2222,4 +2227,52 @@ input[type="range"]::-moz-slider-thumb {
 	-moz-user-select: none;
 	-webkit-user-select: none;
 	cursor: pointer;
+}
+
+.liteconsole {
+	width: 100%;
+	height: 100%;
+	background-color: black;
+	border: 1px solid #222;
+}
+
+.liteconsole .log {
+	width: 100%;
+	height: calc( 100% - 26px );
+	overflow: auto;
+	color: #AAA;
+	padding: 4px;
+}
+
+.liteconsole .log .msg {
+    white-space: pre-wrap;
+	margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.liteconsole .log .msg.me {
+	color: white;
+}
+
+.liteconsole .foot {
+	width: 100%;
+	height: 24px;
+	color: #111;
+}
+
+.liteconsole .foot input {
+	width: 100%;
+	height: 24px;
+	color: white;
+	background-color: black;
+	border: 0;
+	border-top: 1px solid #444;
+	margin: 0;
+	padding-left: 10px;
+	resize: none;
+}
+
+.liteconsole .foot input:focus{
+    outline: none;
 }

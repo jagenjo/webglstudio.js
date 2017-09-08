@@ -552,15 +552,17 @@ LiteGUI.Inspector.prototype.addCode = function( name, value, options )
 	//setCode: function(v){ instance[name] = v;}
 
 	//hardcoded
+	var freeze_event = false;
 
-	if(!options.instance)
+	if(!options.instance) //some generic code in a string, embed editor
 	{
 		if(!options.name_width)
 			options.name_width = "20%";
 
 		if(typeof(CodeMirror) !== undefined)
 		{
-			element = this.createWidget(null,"<div class='wsectiontitle'>"+(name||"")+"</div><div class='code-container' style='min-height: 100px; width: 100%;'></div>", options);
+			var immediate = false;
+			element = this.createWidget(null,"<div class='wsectiontitle'>"+(name||"")+"</div><div class='code-container' style='min-height: 100px; width: 100%; overflow: auto'></div>", options);
 			element.editor = CodeMirror( element.querySelector(".code-container"), {
 				value: value,
 				mode:  options.code_lang || "javascript",
@@ -572,16 +574,28 @@ LiteGUI.Inspector.prototype.addCode = function( name, value, options )
 				matchBrackets: true,
 				styleActiveLine: true,
 				extraKeys: {
+						"Ctrl-Enter": "assign"
 					},
 				onCursorActivity: function(e) { //key pressed
 					//that.editor.matchHighlight("CodeMirror-matchhighlight");
 				}
 			});
 			element.editor.getScrollerElement().style.minHeight = "100px";
-			element.editor.on("change",function(editor){
+			element.editor.on( immediate ? "change" : "blur" , function(editor){
+				//any change in the code
 				var value = editor.getValue();
-				LiteGUI.Inspector.onWidgetChange.call( that, element, name, value, options );
+				if(!freeze_event)
+					LiteGUI.Inspector.onWidgetChange.call( that, element, name, value, options );
 			});
+
+			element.setValue = function(v, skip_event)
+			{
+				var old = freeze_event;
+				freeze_event = skip_event;
+				this.editor.setValue(v);
+				freeze_event = old;
+			}
+			element.style.overflow = "auto"; //force scroll
 		}
 		else
 		{
@@ -591,6 +605,13 @@ LiteGUI.Inspector.prototype.addCode = function( name, value, options )
 				var value = this.value;
 				LiteGUI.Inspector.onWidgetChange.call( that, element, name, value, options );
 			});
+			element.setValue = function(v, skip_event)
+			{
+				var old = freeze_event;
+				freeze_event = skip_event;
+				textarea.value = v;
+				freeze_event = old;
+			}
 		}
 	}
 	else if(!options.allow_inline)
@@ -602,8 +623,13 @@ LiteGUI.Inspector.prototype.addCode = function( name, value, options )
 			CodingModule.openTab();
 			CodingModule.editInstanceCode( instance, instance_settings );
 		});
+
+		element.setValue = function(v, skip_event)
+		{
+			console.warn("this shouldnt be called");
+		}
 	}
-	else
+	else //embeded editor
 	{
 		element = inspector.addContainer( null, { height: 300} );
 
@@ -617,6 +643,11 @@ LiteGUI.Inspector.prototype.addCode = function( name, value, options )
 			CodingModule.openTab();
 			CodingModule.editInstanceCode( instance, instance_settings );
 		}});
+
+		element.setValue = function(v, skip_event)
+		{
+			console.warn("this shouldnt be called");
+		}
 	}
 
 	this.tab_index += 1;

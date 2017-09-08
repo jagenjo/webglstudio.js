@@ -153,6 +153,12 @@ var DeployerTool = {
 		dialog.show();
 	},
 
+	log: function(v)
+	{
+
+		console.log(v);
+	},
+
 	deployToServer: function( server_info, password, on_complete, on_error, on_progress )
 	{
 		//check
@@ -179,7 +185,7 @@ var DeployerTool = {
 		config.files = [];
 
 		//resources
-		var resources = scene.getResources();
+		var resources = scene.getResources(null,null,true,true); //skip in pack/prefab
 		for(var i in resources)
 		{
 			if(i[0] == ":")
@@ -199,7 +205,7 @@ var DeployerTool = {
 			dataType: "json", 
 			data: {
 				key: password,
-				info: JSON.stringify( config )
+				info: JSON.stringify( config, null, 5 )
 			},
 			success: function(v){
 				if(v.status != 1)
@@ -224,14 +230,14 @@ var DeployerTool = {
 
 		function check_status()
 		{
-			LiteGUI.request({url: server_url, data:{ action:"report",token:"token"}, success: function(v){
+			LiteGUI.request({url: server_url, dataType:"json", data:{ action:"report",token: token }, success: function(v){
 				if(v.status != 1)
 				{
 					console.error(v.msg);
 					return;
 				}
 
-				var lines = v.log.split("\n");
+				var lines = v.log.split("\\n");
 				if(on_progress)
 				{
 					for(var i = log_lines.length; i < lines.length; ++i)
@@ -246,7 +252,7 @@ var DeployerTool = {
 					LiteGUI.request({ url: server_url, data: { action:"end", token: token }, success: function(v){ console.log("deploy end",v);}});
 					return;
 				}
-				setTimeout( check_status, 1000 );
+				//setTimeout( check_status, 1000 );
 			}});
 		}
 
@@ -260,9 +266,12 @@ var DeployerTool = {
 			url += "/deployer.php";
 
 		LiteGUI.requestJSON( url + "?action=test", function(v){
-			LiteGUI.alert("Connection stablished")
+			if(v.status != 1)
+				LiteGUI.alert( "Error in server:" + v.msg, { width: 400 } );
+			else
+				LiteGUI.alert( "Connection stablished" );
 		}, function(err){
-			LiteGUI.alert("Error, no server found")
+			LiteGUI.alert("Error, no server found");
 		});
 	}
 };

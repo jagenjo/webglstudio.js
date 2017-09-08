@@ -232,9 +232,10 @@ WBin.create = function( origin, origin_class_name )
 * @method WBin.load
 * @param {UInt8Array} data_array 
 * @param {bool} skip_classname avoid getting the instance of the class specified in classname, and get only the lumps
+* @param {String} filename [optional] the filename where this wbin came from (important to mark resources)
 * @return {*} Could be an Object with all the lumps or an instance to the class specified in the WBin data
 */
-WBin.load = function( data_array, skip_classname )
+WBin.load = function( data_array, skip_classname, filename )
 {
 	if(!data_array || ( data_array.constructor !== Uint8Array && data_array.constructor !== ArrayBuffer ) )
 		throw("WBin data must be ArrayBuffer or Uint8Array");
@@ -305,11 +306,11 @@ WBin.load = function( data_array, skip_classname )
 	{
 		var ctor = WBin.classes[ header.classname ] || window[ header.classname ];
 		if(ctor && ctor.fromBinary)
-			return ctor.fromBinary(object);
+			return ctor.fromBinary( object, filename );
 		else if(ctor && ctor.prototype.fromBinary)
 		{
 			var inst = new ctor();
-			inst.fromBinary(object);
+			inst.fromBinary( object, filename );
 			return inst;
 		}
 		else
@@ -2436,6 +2437,7 @@ var GUI = {
 		backgroundColorOver: "#AAA",
 		selected: "#AAF",
 		unselected: "#AAA",
+		outline: "#000",
 		margin: 0.2
 	},
 
@@ -3249,6 +3251,125 @@ var GUI = {
 		ctx.fillStyle = is_over ? this.GUIStyle.selected : this.GUIStyle.unselected;
 		var slider_height = Math.max(2, (area[3] - margin*2) * norm_value);
 		ctx.fillRect( area[0] + margin + this._offset[0], area[1] + area[3] - slider_height - margin + this._offset[1], area[2] - margin*2, slider_height );
+
+		return value;
+	},
+
+	/**
+	* Renders an knob slider widget, returns the current value
+	* Remember: you must pass as value the same value returned by this function in order to work propertly
+	*
+	* @method Knob
+	* @param {Array} area [x,y,width,height]
+	* @param {Number} value the value to show in the slider
+	* @param {Number} bottom_value the minimum value for the slider
+	* @param {Number} top_value the maximum value for the slider
+	* @param {Number} steps [optional] the numeber of steps (if 0 then infinite)
+	* @param {Image|GL.Texture} content [optional] a texture or image to use as the knob
+	* @return {Number} the current value of the slider (will be different from value if it was clicked)
+	*/
+	Knob: function( area, value, bottom_value, top_value, steps, content )
+	{
+		if(!area)
+			throw("No area");
+		this.blockEventArea( area );
+
+		value = Number(value);
+		if(bottom_value === undefined)
+			bottom_value = 0;
+		if(top_value === undefined)
+			top_value = 1;
+		steps = steps || 0;
+		bottom_value = Number(bottom_value);
+		top_value = Number(top_value);
+
+		var ctx = this._ctx;
+		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
+		if(is_over)
+		{
+			this._is_on_top_of_immediate_widget = true;
+			this.setCursor("pointer");
+		}
+		var mouse = LS.Input.current_click;
+		var clicked = false;
+		var range = top_value - bottom_value;
+		var norm_value = (value - bottom_value) / range;
+		if(norm_value < 0) norm_value = 0;
+		if(norm_value > 1) norm_value = 1;
+
+		var margin = (area[2]*this.GUIStyle.margin)
+		var start_angle = -Math.PI*0.75;
+		var total_angle = 1.5*Math.PI;
+
+		if( mouse )
+		{
+			clicked = LS.Input.isEventInRect( mouse, area, this._offset );
+			if(clicked)
+			{
+				var dx = LS.Input.Mouse.mousex - (area[0] + area[2] * 0.5) - this._offset[0];
+				var dy = LS.Input.Mouse.mousey - (area[1] + area[3] * 0.5) - this._offset[1];
+				//var angle = Math.atan2( dx, -dy ) / Math.PI;
+				var angle = ( Math.atan2( dx, -dy ) - start_angle ) / total_angle;
+				norm_value = angle;
+				//norm_value = ( (LS.Input.Mouse.mousey - this._offset[1]) - (area[1] + margin)) / (area[3] - margin*2);
+				//norm_value = 1 - norm_value; //reverse slider
+				if(norm_value < 0) norm_value = 0;
+				if(norm_value > 1) norm_value = 1;
+				value = norm_value * range + bottom_value;
+			}
+		}
+
+		if(steps)
+			norm_value = Math.round(norm_value * steps) / steps;
+
+		if( content !== undefined ) //texture
+		{
+			if( content !== null ) // in case we are loading the texture
+			{
+				var texture = null;
+				if(content.constructor === GL.Texture)
+				{
+					if(ctx.constructor === CanvasRenderingContext2D) //canvas 2D cannot render images
+						content = content.data && (content.data.constructor === HTMLImageElement || content.data.constructor === Image) ? content.data : null;
+					if(content)
+						texture = content;
+				}
+				else if(content.constructor === HTMLImageElement || content.constructor === Image)
+				{
+					if(ctx.constructor === CanvasRenderingContext2D)
+						texture = content;
+				}
+				if(texture)
+				{
+					ctx.save();
+					ctx.translate( area[0] + area[2] * 0.5 + this._offset[0], area[1] + area[3] * 0.5 + this._offset[1] );
+					ctx.rotate( norm_value * total_angle + start_angle );
+					ctx.scale( area[3] / texture.height , area[3] / texture.height );
+					ctx.drawImage( texture, -texture.width * 0.5, -texture.height * 0.5 );
+					ctx.restore();
+				}
+			}
+		}
+		else
+		{
+			//bg
+			ctx.strokeStyle = this.GUIStyle.outline;
+			ctx.fillStyle = this.GUIStyle.backgroundColor;
+			ctx.beginPath();
+			ctx.arc( area[0] + area[2] * 0.5 + this._offset[0], area[1] + area[3] * 0.5 + this._offset[1], area[3] * 0.45, 0, 2 * Math.PI, false );
+			ctx.fill();
+			ctx.stroke();
+
+			//slider
+			ctx.lineWidth = area[3]*0.1;
+			ctx.strokeStyle = is_over ? this.GUIStyle.selected : this.GUIStyle.unselected;
+			ctx.beginPath();
+
+			start_angle = -Math.PI*1.25;
+			ctx.arc( area[0] + area[2] * 0.5 + this._offset[0], area[1] + area[3] * 0.5 + this._offset[1], area[3] * 0.35, start_angle, start_angle + Math.max(DEG2RAD,total_angle * norm_value), false );
+			ctx.stroke();
+			ctx.lineWidth = 1;
+		}
 
 		return value;
 	},
@@ -4530,7 +4651,7 @@ LS.getTexture = function( name_or_texture ) {
 LS.ResourcesManager.registerResourcePreProcessor("wbin", function( filename, data, options) {
 
 	//WBin will detect there is a class name inside the data and do the conversion to the specified class (p.e. a Prefab or a Mesh)
-	var data = WBin.load( data );
+	var data = WBin.load( data, false, filename );
 	return data;
 },"binary");
 
@@ -9615,6 +9736,14 @@ uniform sampler2D reflectivity_texture;\n\
 uniform sampler2D detail_texture;\n\
 uniform sampler2D normal_texture;\n\
 \n\
+uniform vec4 u_color_texture_settings;\n\
+uniform vec4 u_opacity_texture_settings;\n\
+uniform vec4 u_specular_texture_settings;\n\
+uniform vec4 u_ambient_texture_settings;\n\
+uniform vec4 u_emissive_texture_settings;\n\
+uniform vec4 u_reflectivity_texture_settings;\n\
+uniform vec4 u_normal_texture_settings;\n\
+\n\
 \n\
 #pragma shaderblock \"light\"\n\
 #pragma shaderblock \"applyReflection\"\n\
@@ -13270,10 +13399,10 @@ LS.Interpolators["texture"] = function( a, b, t, last )
 * @constructor
 */
 
-function Prefab(o)
+function Prefab( o, filename )
 {
-	this.filename = null; //base file
-	this.fullpath = null; //full path 
+	this.filename = filename || null; //base file
+	this.fullpath = filename || null; //full path 
 	this.resource_names = []; 
 	this.prefab_json = null;
 	this.prefab_data = null; //json object
@@ -13350,12 +13479,12 @@ Prefab.prototype.configure = function(data)
 	this.processResources();
 }
 
-Prefab.fromBinary = function(data)
+Prefab.fromBinary = function( data, filename )
 {
 	if(data.constructor == ArrayBuffer)
 		data = WBin.load(data, true);
 
-	return new LS.Prefab(data);
+	return new LS.Prefab( data, filename );
 }
 
 //given a list of resources that come from a Prefab (usually a wbin) it extracts, process and register them 
@@ -15944,7 +16073,8 @@ function FXStack( o )
 
 	this._uniforms = { u_aspect: 1, u_viewport: vec2.create(), u_iviewport: vec2.create(), u_texture: 0, u_depth_texture: 1, u_random: vec2.create() };
 
-	this._passes = []; //WIP
+	this._passes = null;
+	this._must_update_passes = true;
 
 	if(o)
 		this.configure(o);
@@ -16018,11 +16148,10 @@ FXStack.available_fx = {
 	},
 	"aberration": {
 		name: "Chromatic Aberration",
-		pass: "before",
+		break_pass: true,
 		uniforms: {
 			difraction: { name: "u_difraction", type: "float", value: 1 }
 		},
-		next_pass: true,
 		code: "color.x = texture2D(u_texture, uv - to_center * 0.001 * u_difraction@ ).x;" + 
 			"color.z = texture2D(u_texture, uv + to_center * 0.001 * u_difraction@ ).z;"
 	},
@@ -16048,6 +16177,7 @@ FXStack.available_fx = {
 	},
 	"lens": {
 		name: "Lens Distortion",
+		break_pass: true,
 		uniforms: {
 			lens_k: { name: "u_lens_k", type: "float", value: -0.15 },
 			lens_kcube: { name: "u_lens_kcube", type: "float", value: 0.8 },
@@ -16066,13 +16196,14 @@ FXStack.available_fx = {
 	},
 	"warp": {
 		name: "Warp",
+		break_pass: true,
 		uniforms: {
 			warp_amp: { name: "u_warp_amp", type: "float", value: 0.01, step: 0.001 },
-			warp_offset_x: { name: "u_warp_offset_x", type: "float", value: 0, step: 0.001 },
-			warp_offset_y: { name: "u_warp_offset_y", type: "float", value: 0, step: 0.001 },
+			warp_offset: { name: "u_warp_offset", type: "vec2", value: [0,0], step: 0.001 },
+			warp_scale: { name: "u_warp_scale", type: "vec2", value: [1,1], step: 0.001 },
 			warp_texture: { name: "u_warp_texture", type: "sampler2D", widget: "Texture", value: "" }
 		},
-		uv_code:"uv = uv + u_warp_amp@ * (texture2D( u_warp_texture@, uv + vec2(u_warp_offset_x@, u_warp_offset_y@) ).xy - vec2(0.5));"
+		uv_code:"uv = uv + u_warp_amp@ * (texture2D( u_warp_texture@, uv * u_warp_scale@ + u_warp_offset@ ).xy - vec2(0.5));"
 	},
 	"LUT": {
 		name: "LUT",
@@ -16100,10 +16231,10 @@ FXStack.available_fx = {
 	},
 	"edges": {
 		name: "Edges",
+		break_pass: true,
 		uniforms: {
 			"Edges factor": { name: "u_edges_factor", type: "float", value: 1 }
 		},
-		next_pass: true,
 		code:"vec4 color@ = texture2D(u_texture, uv );\n\
 				vec4 color_up@ = texture2D(u_texture, uv + vec2(0., u_iviewport.y));\n\
 				vec4 color_right@ = texture2D(u_texture, uv + vec2(u_iviewport.x,0.));\n\
@@ -16130,15 +16261,11 @@ FXStack.available_fx = {
 	"ditherBN": {
 		name: "dither B/N",
 		functions: ["dither"],
-		uniforms: {
-		},
 		code:"color.xyz = vec3( dither( color.x ) );"
 	},
 	"dither": {
 		name: "Dither",
 		functions: ["dither"],
-		uniforms: {
-		},
 		code:"color.xyz = vec3( dither( color.x ), dither( color.y ), dither( color.z ) );"
 	},
 	"gamma": {
@@ -16308,6 +16435,7 @@ FXStack.prototype.configure = function(o)
 	this.apply_fxaa = !!o.apply_fxaa;
 	if(o.fx)
 		this.fx = o.fx.concat();
+	this._must_update_passes = true;
 }
 
 FXStack.prototype.serialize = FXStack.prototype.toJSON = function()
@@ -16371,6 +16499,7 @@ FXStack.prototype.addFX = function( name )
 		return;
 	}
 	this.fx.push({ name: name });
+	this._must_update_passes = true;
 }
 
 //returns the Nth FX in the FX Stack
@@ -16396,6 +16525,7 @@ FXStack.prototype.moveFX = function( fx, offset )
 		this.fx.splice(index,0,fx);
 	else
 		this.fx.push(fx);
+	this._must_update_passes = true;
 }
 
 //removes an FX from the FX stack
@@ -16407,9 +16537,300 @@ FXStack.prototype.removeFX = function( fx )
 			continue;
 
 		this.fx.splice(i,1);
+		this._must_update_passes = true;
 		return;
 	}
 }
+
+//extract the number of passes to do according to the fx enabled
+FXStack.prototype.buildPasses = function()
+{
+	var fxs = this.fx;
+
+	var passes = [];
+	var current_pass = {
+		fxs:[],
+		uniforms:{},
+		shader:null,
+		first_fx_id: 0
+	};
+
+	var uv_code = "";
+	var color_code = "";
+	var uniforms_code = "";
+	var included_functions = {};
+
+	var is_first = true;
+
+	var fx_id = 0;
+	for(var i = 0; i < fxs.length; i++)
+	{
+		//the FX settings
+		var fx = fxs[i];
+		fx_id = i;
+
+		//the FX definition
+		var fx_info = FXStack.available_fx[ fx.name ];
+		if(!fx_info)
+			continue;
+
+		//break this pass
+		if( fx_info.break_pass && !is_first)
+		{
+			current_pass.uv_code = uv_code;
+			current_pass.color_code = color_code;
+			current_pass.uniforms_code = uniforms_code;
+			current_pass.included_functions = included_functions;
+			passes.push(current_pass);
+			this.buildPassShader( current_pass );
+
+			uv_code = "";
+			color_code = "";
+			uniforms_code = "";
+			included_functions = {};
+
+			current_pass = {
+				fxs:[],
+				uniforms:{},
+				first_fx_id: fx_id
+			};
+			is_first = true;
+		}
+		else
+			is_first = false;
+
+		if(fx_info.functions)
+			for(var z in fx_info.functions)
+				included_functions[ fx_info.functions[z] ] = true;
+		if( fx_info.code )
+			color_code += fx_info.code.split("@").join( fx_id ) + ";\n";
+		if( fx_info.uv_code )
+			uv_code += fx_info.uv_code.split("@").join( fx_id ) + ";\n";
+
+		if(fx_info.uniforms)
+			for(var j in fx_info.uniforms)
+			{
+				var uniform = fx_info.uniforms[j];
+				var varname = uniform.name + fx_id;
+				uniforms_code += "uniform " + uniform.type + " " + varname + ";\n";
+			}
+
+		current_pass.fxs.push( fx );
+	}
+
+	if(!is_first)
+	{
+		current_pass.uv_code = uv_code;
+		current_pass.color_code = color_code;
+		current_pass.included_functions = included_functions;
+		passes.push( current_pass );
+		this.buildPassShader( current_pass );
+	}
+
+	this._passes = passes;
+}
+
+FXStack.prototype.buildPassShader = function( pass )
+{
+	var functions_code = "";
+	for(var i in pass.included_functions)
+	{
+		var func = FXStack.available_functions[ i ];
+		if(!func)
+		{
+			console.error("FXStack: Function not found: " + i);
+			continue;
+		}
+		functions_code += func + "\n";
+	}
+
+	var fullcode = "\n\
+		#extension GL_OES_standard_derivatives : enable\n\
+		precision highp float;\n\
+		#define color3 vec3\n\
+		#define color4 vec4\n\
+		uniform sampler2D u_texture;\n\
+		uniform sampler2D u_depth_texture;\n\
+		varying vec2 v_coord;\n\
+		uniform vec2 u_viewport;\n\
+		uniform vec2 u_iviewport;\n\
+		uniform float u_aspect;\n\
+		uniform vec2 u_depth_range;\n\
+		uniform vec2 u_random;\n\
+		vec2 uv;\n\
+		" + pass.uniforms_code + "\n\
+		" + functions_code + "\n\
+		void main() {\n\
+			uv = v_coord;\n\
+			vec2 to_center = vec2(0.5) - uv;\n\
+			float dist_to_center = length(to_center);\n\
+			" + pass.uv_code + "\n\
+			vec4 color = texture2D(u_texture, uv);\n\
+			float temp = 0.0;\n\
+			" + pass.color_code + "\n\
+			gl_FragColor = color;\n\
+		}\n\
+		";
+
+	this._must_update_passes = false;
+	pass.shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, fullcode );
+	return pass.shader;
+}
+
+
+FXStack.prototype.applyFX = function( input_texture, output_texture, options )
+{
+	var color_texture = input_texture;
+	var depth_texture = options.depth_texture;
+
+	var global_uniforms = this._uniforms;
+	global_uniforms.u_viewport[0] = color_texture.width;
+	global_uniforms.u_viewport[1] = color_texture.height;
+	global_uniforms.u_iviewport[0] = 1 / color_texture.width;
+	global_uniforms.u_iviewport[1] = 1 / color_texture.height;
+	global_uniforms.u_aspect = color_texture.width / color_texture.height;
+	global_uniforms.u_random[0] = Math.random();
+	global_uniforms.u_random[1] = Math.random();
+
+	if(!this._passes || this._must_update_passes )
+		this.buildPasses();
+
+	if(!this._passes.length)
+	{
+		if(output_texture)
+			input_texture.copyTo( output_texture );
+		else
+		{
+			var fxaa_shader = GL.Shader.getFXAAShader();
+			fxaa_shader.setup();
+			input_texture.toViewport( this.apply_fxaa ? fxaa_shader : null );
+		}
+		return;
+	}
+
+	var w = output_texture ? output_texture.width : input_texture.width;
+	var h = output_texture ? output_texture.height : input_texture.height;
+
+	var origin_texture = GL.Texture.getTemporary( w, h, { type: input_texture.type, format: input_texture.format } );
+	var target_texture = GL.Texture.getTemporary( w, h, { type: input_texture.type, format: input_texture.format } );
+
+	input_texture.copyTo( origin_texture );
+
+	var fx_id = 0;
+	for(var i = 0; i < this._passes.length; i++)
+	{
+		var pass = this._passes[i];
+		var texture_slot = 2;
+		var uniforms = pass.uniforms;
+
+		//gather uniform values
+		for(var j = 0; j < pass.fxs.length; ++j)
+		{
+			var fx = pass.fxs[j];
+			fx_id = pass.first_fx_id + j;
+
+			//the FX definition
+			var fx_info = FXStack.available_fx[ fx.name ];
+			if(!fx_info)
+				continue;
+
+			if(!fx_info.uniforms)
+				continue;
+
+			for(var k in fx_info.uniforms)
+			{
+				var uniform = fx_info.uniforms[k];
+				var varname = uniform.name + fx_id;
+				if(uniform.type == "sampler2D")
+				{
+					uniforms[ varname ] = texture_slot;
+					var tex = this.getTexture( fx[k] );
+					if(tex)
+					{
+						tex.bind( texture_slot );
+						if(uniform.filter == "nearest")
+						{
+							gl.texParameteri( tex.texture_type, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
+							gl.texParameteri( tex.texture_type, gl.TEXTURE_MIN_FILTER, gl.NEAREST );
+						}
+						if(uniform.wrap == "clamp")
+						{
+							gl.texParameteri( tex.texture_type, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
+							gl.texParameteri( tex.texture_type, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE );
+						}
+					}
+					else
+					{
+						//bind something to avoid problems
+						tex = LS.Renderer._missing_texture;
+						if(tex)
+							tex.bind( texture_slot );
+					}
+					texture_slot++;
+				}
+				else
+					uniforms[ varname ] = fx[j] !== undefined ? fx[j] : uniform.value;
+			}
+		}
+
+		//apply pass
+		var shader = pass.shader;
+		//error compiling shader
+		if(!shader)
+		{
+			input_texture.toViewport(); //what about output_texture?
+			break;
+		}
+
+		//set the depth texture for some FXs like fog or depth
+		if(shader.hasUniform("u_depth_texture"))
+		{
+			depth_texture.bind(1);
+			if(depth_texture.near_far_planes)
+				uniforms.u_depth_range = depth_texture.near_far_planes;
+		}
+
+		//apply FX and accumulate in secondary texture ***************
+		shader.uniforms( global_uniforms );
+		origin_texture.copyTo( target_texture, shader, uniforms );
+
+		//swap
+		var tmp = origin_texture;
+		origin_texture = target_texture;
+		target_texture = tmp;
+	}
+
+	//to the screen or the output_texture
+	var final_texture = target_texture;
+	final_texture.setParameter( gl.TEXTURE_MAG_FILTER, this.filter ? gl.LINEAR : gl.NEAREST );
+	final_texture.setParameter( gl.TEXTURE_MIN_FILTER, gl.LINEAR );
+
+	//to screen
+	if( this.apply_fxaa )
+	{
+		var fx_aa_shader = GL.Shader.getFXAAShader();
+		fx_aa_shader.setup();
+		if(!output_texture)
+			final_texture.toViewport( fx_aa_shader );
+		else
+			final_texture.copyTo( output_texture, fx_aa_shader );
+	}
+	else
+	{
+		if(!output_texture)
+			final_texture.toViewport();
+		else
+		{
+			shader.uniforms( uniforms );
+			final_texture.copyTo( output_texture, shader );
+		}
+	}
+
+	//release textures back to the pool
+	GL.Texture.releaseTemporary( origin_texture );
+	GL.Texture.releaseTemporary( target_texture );
+}
+
 
 //executes the FX stack in the input texture and outputs the result in the output texture (or the screen)
 FXStack.prototype.applyFX = function( input_texture, output_texture, options )
@@ -16419,20 +16840,7 @@ FXStack.prototype.applyFX = function( input_texture, output_texture, options )
 
 	var fxs = this.fx;
 
-	//shadercode: TODO, do this in a lazy way
-	var key = "";
-	var update_shader = true;
-	for(var i = 0; i < fxs.length; i++)
-		key += fxs[i].name + "|";
-	if(key == this._last_shader_key)
-		update_shader = false;
-	this._last_shader_key = key;
-
-	var uv_code = "";
-	var color_code = "";
-	var included_functions = {};
-	var uniforms_code = "";
-	var texture_slot = 2;
+	var update_shader = this._must_update_passes;
 
 	var uniforms = this._uniforms;
 	uniforms.u_viewport[0] = color_texture.width;
@@ -16443,17 +16851,24 @@ FXStack.prototype.applyFX = function( input_texture, output_texture, options )
 	uniforms.u_random[0] = Math.random();
 	uniforms.u_random[1] = Math.random();
 
-	//var passes = [];
-	//var current_pass = {};
+	var uv_code = "";
+	var color_code = "";
+	var included_functions = {};
+	var uniforms_code = "";
+	var texture_slot = 2;
 
 	var fx_id = 0;
 	for(var i = 0; i < fxs.length; i++)
 	{
+		//the FX settings
 		var fx = fxs[i];
 		fx_id = i;
+
+		//the FX definition
 		var fx_info = FXStack.available_fx[ fx.name ];
 		if(!fx_info)
 			continue;
+
 		if(update_shader)
 		{
 			if(fx_info.functions)
@@ -16464,6 +16879,7 @@ FXStack.prototype.applyFX = function( input_texture, output_texture, options )
 			if( fx_info.uv_code )
 				uv_code += fx_info.uv_code.split("@").join( fx_id ) + ";\n";
 		}
+
 		if(fx_info.uniforms)
 			for(var j in fx_info.uniforms)
 			{
@@ -16669,13 +17085,14 @@ FXStack.prototype.setPropertyValueFromPath = function( path, value, offset )
 		fx[ varname ] = value;
 }
 
+//static method to register new FX in the system
 FXStack.registerFX = function( name, fx_info )
 {
 	if( !fx_info.name )
 		fx_info.name = name;
 	if( fx_info.code === undefined )
 		throw("FXStack must have a code");
-	if( fx_info.uniforms && fx_info.code && fx_info.code.indexOf("@") )
+	if( fx_info.uniforms && Object.keys( fx_info.uniforms ) && fx_info.code && fx_info.code.indexOf("@") == -1 )
 		console.warn("FXStack using uniforms must use the character '@' at the end of every use to avoid collisions with other variables with the same name.");
 
 	FXStack.available_fx[ name ] = fx_info;
@@ -26096,7 +26513,7 @@ function Light(o)
 
 	//light uniforms
 	this._uniforms = {
-		u_light_info: vec4.fromValues( this._type, 0, 0, 0 ), //light type, spot cone, index of pass, num passes
+		u_light_info: vec4.fromValues( this._type, this._spot_cone ? 1 : 0, 0, 0 ), //light type, spot cone, index of pass, num passes
 		u_light_front: this._front,
 		u_light_angle: vec4.fromValues( this.angle * DEG2RAD, this.angle_end * DEG2RAD, Math.cos( this.angle * DEG2RAD * 0.5 ), Math.cos( this.angle_end * DEG2RAD * 0.5 ) ),
 		u_light_position: this._position,
@@ -26180,8 +26597,8 @@ Object.defineProperty( Light.prototype, 'color', {
 Object.defineProperty( Light.prototype, 'spot_cone', {
 	get: function() { return this._spot_cone; },
 	set: function(v) { 
-		this._uniforms.u_light_info[1] = v;
 		this._spot_cone = v;
+		this._uniforms.u_light_info[1] = v ? 1 : 0;
 	},
 	enumerable: true
 });
@@ -30704,6 +31121,10 @@ function SceneInclude( o )
 SceneInclude.max_recursive_level = 32;
 SceneInclude.recursive_level = 0;
 
+//which events from the scene should be propagated to the included scene...
+SceneInclude.propagable_events = ["finish","beforeRenderMainPass","beforeRenderInstances","afterRenderInstances","readyToRender","renderGUI","renderHelpers"];
+SceneInclude.fx_propagable_events = ["enableFrameContext","showFrameContext"];
+
 Object.defineProperty( SceneInclude.prototype, "scene_path", {
 	set: function(v){ 
 		if(this._scene_path == v)
@@ -30732,9 +31153,6 @@ SceneInclude["@scene_path"] = { type: LS.TYPES.SCENE, widget: "resource" };
 
 SceneInclude.icon = "mini-icon-teapot.png";
 
-//which events from the scene should be propagated to the included scene...
-SceneInclude.propagable_events = ["finish","beforeRenderMainPass","beforeRenderInstances","afterRenderInstances"];
-SceneInclude.fx_propagable_events = ["enableFrameContext","showFrameContext"];
 
 SceneInclude.prototype.onAddedToScene = function(scene)
 {
@@ -30781,6 +31199,17 @@ SceneInclude.prototype.onUpdate = function(e, dt)
 	SceneInclude.recursive_level -= 1;
 }
 
+//propagate events
+SceneInclude.prototype.onEvent = function(e,p)
+{
+	if(!this.enabled || !this.send_events || !this._scene_path)
+		return;
+
+	SceneInclude.recursive_level += 1;
+	if(SceneInclude.recursive_level < SceneInclude.max_recursive_level )
+		LEvent.trigger( this._scene, e, p );
+	SceneInclude.recursive_level -= 1;
+}
 
 SceneInclude.prototype.updateBindings = function()
 {
@@ -30848,18 +31277,6 @@ SceneInclude.prototype.onCollectData = function()
 	{
 		scene._cameras.push.apply( scene._cameras, inner_scene._cameras);
 	}
-}
-
-//propagate events
-SceneInclude.prototype.onEvent = function(e,p)
-{
-	if(!this.enabled || !this.send_events || !this._scene_path)
-		return;
-
-	SceneInclude.recursive_level += 1;
-	if(SceneInclude.recursive_level < SceneInclude.max_recursive_level )
-		LEvent.trigger( this._scene, e, p );
-	SceneInclude.recursive_level -= 1;
 }
 
 SceneInclude.prototype.load = function()
@@ -34777,6 +35194,9 @@ PlayAnimation.prototype.getDuration = function()
 */
 PlayAnimation.prototype.play = function()
 {
+	if(!this._root || !this._root.scene)
+		console.error("cannot play an animation if the component doesnt belong to a node in a scene");
+
 	this.playing = true;
 
 	this.current_time = 0;
@@ -40461,6 +40881,9 @@ SceneNode.prototype.reloadFromPrefab = function()
 	var prefab = LS.ResourcesManager.resources[ this.prefab ];
 	if(!prefab)
 		return;
+
+	if( prefab.constructor !== LS.Prefab )
+		throw("prefab must be a LS.Prefab class");
 
 	//apply info
 	this.removeAllChildren();

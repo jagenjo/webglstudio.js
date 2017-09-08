@@ -29,6 +29,7 @@ GL.STENCIL_BUFFER_BIT = 1024;
 
 GL.TEXTURE_2D = 3553;
 GL.TEXTURE_CUBE_MAP = 34067;
+GL.TEXTURE_3D = 32879;
 
 GL.TEXTURE_MAG_FILTER = 10240;
 GL.TEXTURE_MIN_FILTER = 10241;
@@ -42,8 +43,13 @@ GL.UNSIGNED_SHORT = 5123;
 GL.INT = 5124;
 GL.UNSIGNED_INT = 5125;
 GL.FLOAT = 5126;
-GL.HALF_FLOAT_OES = 36193;
+GL.HALF_FLOAT_OES = 36193; //webgl 1.0 only
+
+//webgl2 formats
+GL.HALF_FLOAT = 5131; 
 GL.DEPTH_COMPONENT16 = 33189;
+GL.DEPTH_COMPONENT24 = 33190;
+GL.DEPTH_COMPONENT32F = 36012;
 
 GL.FLOAT_VEC2 = 35664;
 GL.FLOAT_VEC3 = 35665;
@@ -59,6 +65,10 @@ GL.FLOAT_MAT2 = 35674;
 GL.FLOAT_MAT3 = 35675;
 GL.FLOAT_MAT4 = 35676;
 
+GL.SAMPLER_2D = 35678;
+GL.SAMPLER_3D = 35679;
+GL.SAMPLER_CUBE = 35680;
+
 GL.DEPTH_COMPONENT = 6402;
 GL.ALPHA = 6406;
 GL.RGB = 6407;
@@ -67,6 +77,32 @@ GL.LUMINANCE = 6409;
 GL.LUMINANCE_ALPHA = 6410;
 GL.DEPTH_STENCIL = 34041;
 GL.UNSIGNED_INT_24_8_WEBGL = 34042;
+
+//webgl2 formats
+GL.R8 = 33321;
+GL.R16F = 33325;
+GL.R32F = 33326;
+GL.R8UI = 33330;
+GL.RG8 = 33323;
+GL.RG16F = 33327;
+GL.RG32F = 33328;
+GL.RGB8 = 32849;
+GL.SRGB8 = 35905;
+GL.RGB565 = 36194;
+GL.R11F_G11F_B10F = 35898;
+GL.RGB9_E5 = 35901;
+GL.RGB16F = 34843;
+GL.RGB32F = 34837;
+GL.RGB8UI = 36221;
+GL.RGBA8 = 32856;
+GL.RGB5_A1 = 32855;
+GL.RGBA16F = 34842;
+GL.RGBA32F = 34836;
+GL.RGBA8UI = 36220;
+GL.RGBA16I = 36232;
+GL.RGBA16UI = 36214;
+GL.RGBA32I = 36226;
+GL.RGBA32UI = 36208;
 
 GL.NEAREST = 9728;
 GL.LINEAR = 9729;
@@ -559,9 +595,9 @@ global.typedArrayToArray = function(array)
 }
 
 global.RGBToHex = function(r, g, b) { 
-	r = Math.min(255, r*255);
-	g = Math.min(255, g*255);
-	b = Math.min(255, b*255);
+	r = Math.min(255, r*255)|0;
+	g = Math.min(255, g*255)|0;
+	b = Math.min(255, b*255)|0;
 	return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
 
@@ -4442,6 +4478,8 @@ Mesh.icosahedron = function( options, gl ) {
 	- no_flip : do not flip in Y, default TRUE <br/>
 	- anisotropic : number of anisotropic fetches, default 0 <br/>
 
+	check for more info about formats: https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/texImage2D
+
 * @class Texture
 * @param {number} width texture width (any supported but Power of Two allows to have mipmaps), 0 means no memory reserved till its filled
 * @param {number} height texture height (any supported but Power of Two allows to have mipmaps), 0 means no memory reserved till its filled
@@ -4470,8 +4508,11 @@ global.Texture = GL.Texture = function Texture( width, height, options, gl ) {
 	//set settings
 	this.width = width;
 	this.height = height;
+	if(options.depth) //for texture_3d
+		this.depth = options.depth; 
 	this.texture_type = options.texture_type || gl.TEXTURE_2D; //or gl.TEXTURE_CUBE_MAP
 	this.format = options.format || Texture.DEFAULT_FORMAT; //gl.RGBA (if gl.DEPTH_COMPONENT remember type: gl.UNSIGNED_SHORT)
+	this.internalFormat = options.internalFormat; //LUMINANCE, and weird formats with bits
 	this.type = options.type || Texture.DEFAULT_TYPE; //gl.UNSIGNED_BYTE, gl.UNSIGNED_SHORT, gl.FLOAT or gl.HALF_FLOAT_OES (or gl.HIGH_PRECISION_FORMAT which could be half or float)
 	this.magFilter = options.magFilter || options.filter || Texture.DEFAULT_MAG_FILTER;
 	this.minFilter = options.minFilter || options.filter || Texture.DEFAULT_MIN_FILTER;
@@ -4485,12 +4526,20 @@ global.Texture = GL.Texture = function Texture( width, height, options, gl ) {
 
 	this.has_mipmaps = false;
 
-	if(this.format == gl.DEPTH_COMPONENT && !gl.extensions["WEBGL_depth_texture"])
+	if( this.format == gl.DEPTH_COMPONENT && gl.webgl_version == 1 && !gl.extensions["WEBGL_depth_texture"] )
 		throw("Depth Texture not supported");
-	if(this.type == gl.FLOAT && !gl.extensions["OES_texture_float"])
+	if( this.type == gl.FLOAT && !gl.extensions["OES_texture_float"] && gl.webgl_version == 1 )
 		throw("Float Texture not supported");
-	if(this.type == gl.HALF_FLOAT_OES && !gl.extensions["OES_texture_half_float"])
-		throw("Half Float Texture not supported");
+	if( this.type == gl.HALF_FLOAT_OES)
+	{
+		if( !gl.extensions["OES_texture_half_float"] && gl.webgl_version == 1 )
+			throw("Half Float Texture extension not supported.");
+		else if( gl.webgl_version > 1 )
+		{
+			console.warn("using HALF_FLOAT_OES in WebGL2 is deprecated, suing HALF_FLOAT instead");
+			this.type = this.format == gl.RGB ? gl.RGB16F : gl.RGBA16F;
+		}
+	}
 	if( (!isPowerOfTwo(this.width) || !isPowerOfTwo(this.height)) && //non power of two
 		( (this.minFilter != gl.NEAREST && this.minFilter != gl.LINEAR) || //uses mipmaps
 		(this.wrapS != gl.CLAMP_TO_EDGE || this.wrapT != gl.CLAMP_TO_EDGE) ) ) //uses wrap
@@ -4504,51 +4553,67 @@ global.Texture = GL.Texture = function Texture( width, height, options, gl ) {
 		}
 	}
 
-	if(width && height)
+	//empty textures are allowed to be created
+	if(!width || !height)
+		return;
+
+	//because sometimes the internal format is not so obvious
+	if(!this.internalFormat)
+		this.computeInternalFormat();
+
+	//this is done because in some cases the user binds a texture to slot 0 and then creates a new one, which overrides slot 0
+	gl.activeTexture( gl.TEXTURE0 + Texture.MAX_TEXTURE_IMAGE_UNITS - 1);
+	//I use an invalid gl enum to say this texture is a depth texture, ugly, I know...
+	gl.bindTexture( this.texture_type, this.handler);
+	gl.texParameteri( this.texture_type, gl.TEXTURE_MAG_FILTER, this.magFilter );
+	gl.texParameteri( this.texture_type, gl.TEXTURE_MIN_FILTER, this.minFilter );
+	gl.texParameteri( this.texture_type, gl.TEXTURE_WRAP_S, this.wrapS );
+	gl.texParameteri( this.texture_type, gl.TEXTURE_WRAP_T, this.wrapT );
+
+	if(options.anisotropic && gl.extensions["EXT_texture_filter_anisotropic"])
+		gl.texParameterf( GL.TEXTURE_2D, gl.extensions["EXT_texture_filter_anisotropic"].TEXTURE_MAX_ANISOTROPY_EXT, options.anisotropic);
+
+	var pixel_data = options.pixel_data;
+	if(pixel_data && !pixel_data.buffer)
 	{
-		//this is done because in some cases the user binds a texture to slot 0 and then creates a new one, which overrides slot 0
-		gl.activeTexture(gl.TEXTURE0 + Texture.MAX_TEXTURE_IMAGE_UNITS - 1);
-		//I use an invalid gl enum to say this texture is a depth texture, ugly, I know...
-		gl.bindTexture(this.texture_type, this.handler);
-		gl.texParameteri(this.texture_type, gl.TEXTURE_MAG_FILTER, this.magFilter );
-		gl.texParameteri(this.texture_type, gl.TEXTURE_MIN_FILTER, this.minFilter );
-		gl.texParameteri(this.texture_type, gl.TEXTURE_WRAP_S, this.wrapS );
-		gl.texParameteri(this.texture_type, gl.TEXTURE_WRAP_T, this.wrapT );
-
-		if(options.anisotropic && gl.extensions["EXT_texture_filter_anisotropic"])
-			gl.texParameterf(gl.TEXTURE_2D, gl.extensions["EXT_texture_filter_anisotropic"].TEXTURE_MAX_ANISOTROPY_EXT, options.anisotropic);
-
-		var pixel_data = options.pixel_data;
-		if(pixel_data && !pixel_data.buffer)
-		{
-			pixel_data = new (this.type == gl.FLOAT ? Float32Array : Uint8Array)( pixel_data );
-			this.data = pixel_data;
-		}
-
-		//gl.TEXTURE_1D is not supported by WebGL...
-		if(this.texture_type == gl.TEXTURE_2D)
-		{
-			gl.texImage2D(gl.TEXTURE_2D, 0, this.format, width, height, 0, this.format, this.type, pixel_data || null );
-
-			//only generate mipmaps if pixel_data is provided?
-			if ( GL.isPowerOfTwo(width) && GL.isPowerOfTwo(height) && options.minFilter && options.minFilter != gl.NEAREST && options.minFilter != gl.LINEAR)
-			{
-				gl.generateMipmap( this.texture_type );
-				this.has_mipmaps = true;
-			}
-		}
-		else if(this.texture_type == gl.TEXTURE_CUBE_MAP)
-		{
-			gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_X, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
-			gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_Y, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
-			gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_Z, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
-			gl.texImage2D( gl.TEXTURE_CUBE_MAP_NEGATIVE_X, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
-			gl.texImage2D( gl.TEXTURE_CUBE_MAP_NEGATIVE_Y, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
-			gl.texImage2D( gl.TEXTURE_CUBE_MAP_NEGATIVE_Z, 0, this.format, this.width, this.height, 0, this.format, this.type, pixel_data || null );
-		}
-		gl.bindTexture(this.texture_type, null); //disable
-		gl.activeTexture(gl.TEXTURE0);
+		pixel_data = new (this.type == gl.FLOAT ? Float32Array : Uint8Array)( pixel_data );
+		this.data = pixel_data;
 	}
+
+	//gl.TEXTURE_1D is not supported by WebGL...
+
+	//here we create all **********************************
+	if(this.texture_type == GL.TEXTURE_2D)
+	{
+		//create the texture
+		gl.texImage2D( GL.TEXTURE_2D, 0, this.internalFormat, width, height, 0, this.format, this.type, pixel_data || null );
+
+		//generate empty mipmaps (necessary?)
+		if ( GL.isPowerOfTwo(width) && GL.isPowerOfTwo(height) && options.minFilter && options.minFilter != gl.NEAREST && options.minFilter != gl.LINEAR)
+		{
+			gl.generateMipmap( this.texture_type );
+			this.has_mipmaps = true;
+		}
+	}
+	else if(this.texture_type == GL.TEXTURE_CUBE_MAP)
+	{
+		gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_X, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+		gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_Y, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+		gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_Z, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+		gl.texImage2D( gl.TEXTURE_CUBE_MAP_NEGATIVE_X, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+		gl.texImage2D( gl.TEXTURE_CUBE_MAP_NEGATIVE_Y, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+		gl.texImage2D( gl.TEXTURE_CUBE_MAP_NEGATIVE_Z, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+	}
+	else if(this.texture_type == GL.TEXTURE_3D)
+	{
+		if(this.gl.webgl_version == 1)
+			throw("TEXTURE_3D not supported in WebGL 1. Enable WebGL 2 in the context by pasing webgl2:true");
+		if(!options.depth)
+			throw("3d texture depth must be set in the options.depth");
+		gl.texImage3D( GL.TEXTURE_3D, 0, this.internalFormat, width, height, options.depth, 0, this.format, this.type, pixel_data || null );
+	}
+	gl.bindTexture(this.texture_type, null); //disable
+	gl.activeTexture(gl.TEXTURE0);
 }
 
 Texture.DEFAULT_TYPE = GL.UNSIGNED_BYTE;
@@ -4563,6 +4628,73 @@ Texture.framebuffer = null;
 Texture.renderbuffer = null;
 Texture.loading_color = new Uint8Array([0,0,0,0]);
 Texture.use_renderbuffer_pool = true; //should improve performance
+
+//because usually you dont want to specify the internalFormat, this tries to guess it from its format
+//check https://webgl2fundamentals.org/webgl/lessons/webgl-data-textures.html for more info
+Texture.prototype.computeInternalFormat = function()
+{
+	this.internalFormat = this.format; //default
+
+	//automatic selection of internal format for depth textures to avoid problems between webgl1 and 2
+	if( this.format == GL.DEPTH_COMPONENT )
+	{
+		this.minFilter = this.magFilter = GL.NEAREST;
+
+		if( gl.webgl_version == 2 ) 
+		{
+			if( this.type == GL.UNSIGNED_SHORT )
+				this.internalFormat = GL.DEPTH_COMPONENT16;
+			else if( this.type == GL.UNSIGNED_INT )
+				this.internalFormat = GL.DEPTH_COMPONENT24;
+			else if( this.type == GL.FLOAT )
+				this.internalFormat = GL.DEPTH_COMPONENT32F;
+			else 
+				throw("unsupported type for a depth texture");
+		}
+		else if( gl.webgl_version == 1 )
+		{
+			if( this.type == GL.FLOAT )
+				throw("WebGL 1.0 does not support float depth textures");
+			this.internalFormat = GL.DEPTH_COMPONENT;
+		}
+	}
+	else if( this.format == gl.RGBA )
+	{
+		if( gl.webgl_version == 2 ) 
+		{
+			if( this.type == GL.FLOAT )
+				this.internalFormat = GL.RGBA32F;
+			else if( this.type == GL.HALF_FLOAT )
+				this.internalFormat = GL.RGBA16F;
+			else if( this.type == GL.HALF_FLOAT_OES )
+			{
+				console.warn("webgl 2 does not use HALF_FLOAT_OES, converting to HALF_FLOAT")
+				this.type = GL.HALF_FLOAT;
+				this.internalFormat = GL.RGBA16F;
+			}
+			/*
+			else if( this.type == GL.UNSIGNED_SHORT )
+			{
+				this.internalFormat = GL.RGBA16UI;
+				this.format = gl.RGBA_INTEGER;
+			}
+			else if( this.type == GL.UNSIGNED_INT )
+			{
+				this.internalFormat = GL.RGBA32UI;
+				this.format = gl.RGBA_INTEGER;
+			}
+			*/
+		}
+		else if( gl.webgl_version == 1 )
+		{
+			if( this.type == GL.HALF_FLOAT )
+			{
+				console.warn("webgl 1 does not use HALF_FLOAT, converting to HALF_FLOAT_OES")
+				this.type = GL.HALF_FLOAT_OES;
+			}
+		}
+	}
+}
 
 /**
 * Free the texture memory from the GPU, sets the texture handler to null
@@ -4744,7 +4876,13 @@ Texture.prototype.uploadData = function(data, options )
 	this.bind();
 	Texture.setUploadOptions(options, gl);
 
-	gl.texImage2D(this.texture_type, 0, this.format, this.width, this.height, 0, this.format, this.type, data);
+	if( this.texture_type == GL.TEXTURE_2D )
+		gl.texImage2D(this.texture_type, 0, this.format, this.width, this.height, 0, this.format, this.type, data);
+	else if( this.texture_type == GL.TEXTURE_3D )
+		gl.texImage3D(this.texture_type, 0, this.format, this.width, this.height, this.depth, 0, this.format, this.type, data);
+	else
+		throw("cannot uploadData for this texture type");
+
 	this.data = data; //should I clone it?
 
 	if (this.minFilter && this.minFilter != gl.NEAREST && this.minFilter != gl.LINEAR) {
@@ -5077,6 +5215,7 @@ Texture.drawToColorAndDepth = function( color_texture, depth_texture, callback )
 
 /**
 * Copy content of one texture into another
+* TODO: check using copyTexImage2D
 * @method copyTo
 * @param {GL.Texture} target_texture
 * @param {GL.Shader} [shader=null] optional shader to apply while copying
@@ -6324,10 +6463,22 @@ GL.FBO = FBO;
 */
 FBO.prototype.setTextures = function( color_textures, depth_texture, skip_disable )
 {
-	if( depth_texture && depth_texture.constructor === GL.Texture &&
-		( (depth_texture.format !== gl.DEPTH_COMPONENT && depth_texture.format !== gl.DEPTH_STENCIL) || 
-		( depth_texture.type != gl.UNSIGNED_INT && depth_texture.type != GL.UNSIGNED_INT_24_8_WEBGL ) ) )
-		throw("FBO Depth texture must be of format: gl.DEPTH_COMPONENT and type: gl.UNSIGNED_INT");
+	//test depth
+	if( depth_texture && depth_texture.constructor === GL.Texture )
+	{
+		if( depth_texture.format !== GL.DEPTH_COMPONENT && 
+			depth_texture.format !== GL.DEPTH_STENCIL && 
+			depth_texture.format !== GL.DEPTH_COMPONENT16 && 
+			depth_texture.format !== GL.DEPTH_COMPONENT24 &&
+			depth_texture.format !== GL.DEPTH_COMPONENT32F )
+			throw("FBO Depth texture must be of format: gl.DEPTH_COMPONENT, gl.DEPTH_STENCIL or gl.DEPTH_COMPONENT16/24/32F (only in webgl2)");
+
+		if( depth_texture.type != GL.UNSIGNED_SHORT && 
+			depth_texture.type != GL.UNSIGNED_INT && 
+			depth_texture.type != GL.UNSIGNED_INT_24_8_WEBGL &&
+			depth_texture.type != GL.FLOAT)
+			throw("FBO Depth texture must be of type: gl.UNSIGNED_SHORT, gl.UNSIGNED_INT, gl.UNSIGNED_INT_24_8_WEBGL");
+	}
 
 	//test if is already binded
 	var same = this.depth_texture == depth_texture;
@@ -6418,28 +6569,30 @@ FBO.prototype.update = function( skip_disable )
 
 	gl.bindFramebuffer( gl.FRAMEBUFFER, this.handler );
 
-	if(depth_texture && !gl.extensions["WEBGL_depth_texture"])
-		throw("Rendering to depth texture not supported by your browser");
-
 	//draw_buffers allow to have more than one color texture binded in a FBO
 	var ext = gl.extensions["WEBGL_draw_buffers"];
-	if(!ext && color_textures && color_textures.length > 1)
+	if( gl.webgl_version == 1 && !ext && color_textures && color_textures.length > 1)
 		throw("Rendering to several textures not supported by your browser");
 
-	gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null );
-	gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, null );
+	var target = gl.webgl_version == 1 ? gl.FRAMEBUFFER : gl.DRAW_FRAMEBUFFER;
+
+	gl.framebufferRenderbuffer( target, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null );
+	gl.framebufferRenderbuffer( target, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, null );
 	//detach color too?
 
 	//bind a buffer for the depth
 	if( depth_texture && depth_texture.constructor === GL.Texture )
 	{
+		if(gl.webgl_version == 1 && !gl.extensions["WEBGL_depth_texture"] )
+			throw("Rendering to depth texture not supported by your browser");
+
 		if(this.stencil && depth_texture.format !== gl.DEPTH_STENCIL )
 			console.warn("Stencil cannot be enabled if there is a depth texture with a DEPTH_STENCIL format");
 
 		if( depth_texture.format == gl.DEPTH_STENCIL )
-			gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.TEXTURE_2D, depth_texture.handler, 0);
+			gl.framebufferTexture2D( target, gl.DEPTH_STENCIL_ATTACHMENT, gl.TEXTURE_2D, depth_texture.handler, 0);
 		else
-			gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depth_texture.handler, 0);
+			gl.framebufferTexture2D( target, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depth_texture.handler, 0);
 	}
 	else //create a renderbuffer to store depth
 	{
@@ -6460,12 +6613,12 @@ FBO.prototype.update = function( skip_disable )
 		if(this.stencil)
 		{
 			gl.renderbufferStorage( gl.RENDERBUFFER, gl.DEPTH_STENCIL, w, h );
-			gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, depth_renderbuffer );
+			gl.framebufferRenderbuffer( target, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, depth_renderbuffer );
 		}
 		else
 		{
 			gl.renderbufferStorage( gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h );
-			gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth_renderbuffer );
+			gl.framebufferRenderbuffer( target, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth_renderbuffer );
 		}
 	}
 
@@ -6477,7 +6630,8 @@ FBO.prototype.update = function( skip_disable )
 		{
 			var t = color_textures[i];
 
-			gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, t.handler, 0 );
+			//not a bug, gl.COLOR_ATTACHMENT0 + i because COLOR_ATTACHMENT is sequential numbers
+			gl.framebufferTexture2D( target, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, t.handler, 0 );
 			this.order.push( gl.COLOR_ATTACHMENT0 + i );
 		}
 	}
@@ -6488,13 +6642,13 @@ FBO.prototype.update = function( skip_disable )
 		color_renderbuffer.height = h;
 		gl.bindRenderbuffer( gl.RENDERBUFFER, color_renderbuffer );
 		gl.renderbufferStorage( gl.RENDERBUFFER, gl.RGBA4, w, h );
-		gl.framebufferRenderbuffer( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, color_renderbuffer );
+		gl.framebufferRenderbuffer( target, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, color_renderbuffer );
 	}
 
 	//detach old ones (only if is reusing a FBO with a different set of textures)
 	var num = color_textures ? color_textures.length : 0;
 	for(var i = num; i < this._num_binded_textures; ++i)
-		gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, null, 0);
+		gl.framebufferTexture2D( target, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, null, 0);
 	this._num_binded_textures = num;
 
 	this._stencil_enabled = this.stencil;
@@ -6519,10 +6673,15 @@ FBO.prototype.update = function( skip_disable )
 
 	//when using more than one texture you need to use the multidraw extension
 	if(color_textures && color_textures.length > 1)
-		ext.drawBuffersWEBGL( this.order );
+	{
+		if( ext )
+			ext.drawBuffersWEBGL( this.order );
+		else
+			gl.drawBuffers( this.order );
+	}
 
 	//check completion
-	var complete = gl.checkFramebufferStatus( gl.FRAMEBUFFER );
+	var complete = gl.checkFramebufferStatus( target );
 	if(complete !== gl.FRAMEBUFFER_COMPLETE)
 		throw("FBO not complete: " + complete);
 
@@ -6530,7 +6689,7 @@ FBO.prototype.update = function( skip_disable )
 	gl.bindTexture(gl.TEXTURE_2D, null);
 	gl.bindRenderbuffer(gl.RENDERBUFFER, null);
 	if(!skip_disable)
-		gl.bindFramebuffer( gl.FRAMEBUFFER, this._old_fbo_handler );
+		gl.bindFramebuffer( target, this._old_fbo_handler );
 }
 
 /**
@@ -6627,6 +6786,9 @@ global.Shader = GL.Shader = function Shader( vertexSource, fragmentSource, macro
 	if(GL.debug)
 		console.log("GL.Shader created");
 
+	if( !vertexSource || !fragmentSource )
+		throw("GL.Shader source code parameter missing");
+
 	//used to avoid problems with resources moving between different webgl context
 	this._context_id = global.gl.context_id; 
 	var gl = this.gl = global.gl;
@@ -6634,10 +6796,13 @@ global.Shader = GL.Shader = function Shader( vertexSource, fragmentSource, macro
 	//expand macros
 	var extra_code = Shader.expandMacros( macros );
 
+	var final_vertexSource = vertexSource.constructor === String ? Shader.injectCode( extra_code, vertexSource, gl ) : vertexSource;
+	var final_fragmentSource = fragmentSource.constructor === String ? Shader.injectCode( extra_code, fragmentSource, gl ) : fragmentSource;
+
 	this.program = gl.createProgram();
 
-	var vs = vertexSource.constructor === String ? GL.Shader.compileSource( gl.VERTEX_SHADER, extra_code + vertexSource ) : vertexSource;
-	var fs = fragmentSource.constructor === String ? GL.Shader.compileSource( gl.FRAGMENT_SHADER, extra_code + fragmentSource ) : fragmentSource;
+	var vs = vertexSource.constructor === String ? GL.Shader.compileSource( gl.VERTEX_SHADER, final_vertexSource ) : vertexSource;
+	var fs = fragmentSource.constructor === String ? GL.Shader.compileSource( gl.FRAGMENT_SHADER, final_fragmentSource ) : fragmentSource;
 
 	gl.attachShader( this.program, vs, gl );
 	gl.attachShader( this.program, fs, gl );
@@ -6666,6 +6831,18 @@ Shader.expandMacros = function(macros)
 			extra_code += "#define " + i + " " + (macros[i] ? macros[i] : "") + "\n";
 	return extra_code;
 }
+
+//this is done to avoid problems with the #version which must be in the first line
+Shader.injectCode = function( inject_code, code, gl )
+{
+	var index = code.indexOf("\n");
+	var version = ( gl ? "#define WEBGL" + gl.webgl_version + "\n" : "");
+	var first_line = code.substr(0,index).trim();
+	if( first_line.indexOf("#version") == -1 )
+		return version + inject_code + code;
+	return first_line + "\n" + version + inject_code + code.substr(index);
+}
+
 
 /**
 * Compiles one single shader source (could be gl.VERTEX_SHADER or gl.FRAGMENT_SHADER) and returns the webgl shader handler 
@@ -6722,8 +6899,13 @@ Shader.prototype.updateShader = function( vertexSource, fragmentSource, macros )
 	if(this.program)
 		this.program = gl.createProgram();
 
-	var vs = vertexSource.constructor === String ? GL.Shader.compileSource( gl.VERTEX_SHADER, extra_code + vertexSource, gl, this.vs_shader ) : vertexSource;
-	var fs = fragmentSource.constructor === String ? GL.Shader.compileSource( gl.FRAGMENT_SHADER, extra_code + fragmentSource, gl, this.fs_shader ) : fragmentSource;
+	var extra_code = Shader.expandMacros( macros );
+
+	var final_vertexSource = vertexSource.constructor === String ? Shader.injectCode( extra_code, vertexSource, gl ) : vertexSource;
+	var final_fragmentSource = fragmentSource.constructor === String ? Shader.injectCode( extra_code, fragmentSource, gl ) : fragmentSource;
+
+	var vs = vertexSource.constructor === String ? GL.Shader.compileSource( gl.VERTEX_SHADER, final_vertexSource ) : vertexSource;
+	var fs = fragmentSource.constructor === String ? GL.Shader.compileSource( gl.FRAGMENT_SHADER, final_fragmentSource ) : fragmentSource;
 
 	gl.attachShader( this.program, vs, gl );
 	gl.attachShader( this.program, fs, gl );
@@ -6839,32 +7021,33 @@ Shader.getUniformFunc = function( data )
 	var func = null;
 	switch (data.type)
 	{
-		case gl.FLOAT: 		
+		case GL.FLOAT: 		
 			if(data.size == 1)
 				func = gl.uniform1f; 
 			else
 				func = gl.uniform1fv; 
 			break;
-		case gl.FLOAT_MAT2: func = gl.uniformMatrix2fv; break;
-		case gl.FLOAT_MAT3:	func = gl.uniformMatrix3fv; break;
-		case gl.FLOAT_MAT4:	func = gl.uniformMatrix4fv; break;
-		case gl.FLOAT_VEC2: func = gl.uniform2fv; break;
-		case gl.FLOAT_VEC3: func = gl.uniform3fv; break;
-		case gl.FLOAT_VEC4: func = gl.uniform4fv; break;
+		case GL.FLOAT_MAT2: func = gl.uniformMatrix2fv; break;
+		case GL.FLOAT_MAT3:	func = gl.uniformMatrix3fv; break;
+		case GL.FLOAT_MAT4:	func = gl.uniformMatrix4fv; break;
+		case GL.FLOAT_VEC2: func = gl.uniform2fv; break;
+		case GL.FLOAT_VEC3: func = gl.uniform3fv; break;
+		case GL.FLOAT_VEC4: func = gl.uniform4fv; break;
 
-		case gl.UNSIGNED_INT: 
-		case gl.INT: 	  
+		case GL.UNSIGNED_INT: 
+		case GL.INT: 	  
 			if(data.size == 1)
 				func = gl.uniform1i; 
 			else
 				func = gl.uniform1iv; 
 			break;
-		case gl.INT_VEC2: func = gl.uniform2iv; break;
-		case gl.INT_VEC3: func = gl.uniform3iv; break;
-		case gl.INT_VEC4: func = gl.uniform4iv; break;
+		case GL.INT_VEC2: func = gl.uniform2iv; break;
+		case GL.INT_VEC3: func = gl.uniform3iv; break;
+		case GL.INT_VEC4: func = gl.uniform4iv; break;
 
-		case gl.SAMPLER_2D:
-		case gl.SAMPLER_CUBE:
+		case GL.SAMPLER_2D:
+		case GL.SAMPLER_3D:
+		case GL.SAMPLER_CUBE:
 			func = gl.uniform1i; break;
 		default: func = gl.uniform1f; break;
 	}	
@@ -7248,6 +7431,37 @@ Shader.dumpErrorToConsole = function(err, vscode, fscode)
 	console.groupEnd();
 }
 
+Shader.convertTo100 = function(code,type)
+{
+	//in VERTEX
+		//change in for attribute
+		//change out for varying
+		//add #extension GL_OES_standard_derivatives
+	//in FRAGMENT
+		//change in for varying 
+		//remove out vec4 _gl_FragColor
+		//rename _gl_FragColor for gl_FragColor
+	//in both
+		//change #version 300 es for #version 100
+		//replace 'texture(' for 'texture2D('
+}
+
+
+Shader.convertTo300 = function(code,type)
+{
+	//in VERTEX
+		//change attribute for in
+		//change varying for out
+		//remove #extension GL_OES_standard_derivatives
+	//in FRAGMENT
+		//change varying for in
+		//rename gl_FragColor for _gl_FragColor
+		//rename gl_FragData[0] for _gl_FragColor
+		//add out vec4 _gl_FragColor
+	//in both
+		//replace texture2D for texture
+}
+
 //helps to check if a variable value is valid to an specific uniform in a shader
 Shader.validateValue = function( value, uniform_info )
 {
@@ -7435,6 +7649,8 @@ Shader.FLAT_FRAGMENT_SHADER = "\n\
 */
 Shader.createFX = function(code, uniforms, shader)
 {
+	//remove comments
+	code = GL.Shader.removeComments( code, true ); //remove comments and breaklines to avoid problems with the macros
 	var macros = {
 		FX_CODE: code,
 		FX_UNIFORMS: uniforms || ""
@@ -7443,6 +7659,28 @@ Shader.createFX = function(code, uniforms, shader)
 		return new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, GL.Shader.SCREEN_FRAGMENT_FX, macros );
 	shader.updateShader( GL.Shader.SCREEN_VERTEX_SHADER, GL.Shader.SCREEN_FRAGMENT_FX, macros );
 	return shader;
+}
+
+Shader.removeComments = function(code, one_line)
+{
+	if(!code)
+		return "";
+
+	var rx = /(\/\*([^*]|[\r\n]|(\*+([^*\/]|[\r\n])))*\*+\/)|(\/\/.*)/g;
+	var code = code.replace( rx ,"");
+	var lines = code.split("\n");
+	var result = [];
+	for(var i = 0; i < lines.length; ++i)
+	{
+		var line = lines[i]; 
+		var pos = line.indexOf("//");
+		if(pos != -1)
+			line = lines[i].substr(0,pos);
+		line = line.trim();
+		if(line.length)
+			result.push(line);
+	}
+	return result.join( one_line ? "" : "\n" );
 }
 
 /**
@@ -7811,24 +8049,48 @@ GL.create = function(options) {
 	*/
 	var gl = null;
 
-	if(options.webgl2)
+	var seq = null;
+	if(options.version == 2)	
+		seq = ['webgl2','experimental-webgl2'];
+	else if(options.version == 1 || options.version === undefined) //default
+		seq = ['webgl','experimental-webgl'];
+	else if(options.version === 0) //latest
+		seq = ['webgl2','experimental-webgl2','webgl','experimental-webgl'];
+
+	if(!seq)
+		throw 'Incorrect WebGL version, must be 1 or 2';
+
+	var context_options = {
+		alpha: options.alpha === undefined ? true : options.alpha,
+		depth: options.depth === undefined ? true : options.depth,
+		stencil: options.stencil === undefined ? true : options.stencil,
+		antialias: options.antialias === undefined ? true : options.antialias,
+		premultipliedAlpha: options.premultipliedAlpha === undefined ? true : options.premultipliedAlpha,
+		preserveDrawingBuffer: options.preserveDrawingBuffer === undefined ? true : options.preserveDrawingBuffer
+	};
+
+	for(var i = 0; i < seq.length; ++i)
 	{
-		try { gl = canvas.getContext('webgl2', options); gl.webgl_version = 2; } catch (e) {}
-		try { gl = gl || canvas.getContext('experimental-webgl2', options); gl.webgl_version = 2; } catch (e) {}
+		try { gl = canvas.getContext( seq[i], context_options ); } catch (e) {}
+		if(gl)
+			break;
 	}
-	try { gl = gl || canvas.getContext('webgl', options); } catch (e) {}
-	try { gl = gl || canvas.getContext('experimental-webgl', options); } catch (e) {}
-	if (!gl) { throw 'WebGL not supported'; }
 
-	if(gl.webgl_version === undefined)
-		gl.webgl_version = 1;
+	if (!gl)
+	{
+		if( canvas.getContext( "webgl" ) )
+			throw 'WebGL supported but not with those parameters';
+		throw 'WebGL not supported';
+	}
 
+	//context globals
+	gl.webgl_version = gl.constructor.name === "WebGL2RenderingContext" ? 2 : 1;
 	global.gl = gl;
 	canvas.is_webgl = true;
 	canvas.gl = gl;
 	gl.context_id = this.last_context_id++;
 
-	//get some common extensions
+	//get some common extensions for webgl 1
 	gl.extensions = {};
 	gl.extensions["OES_standard_derivatives"] = gl.derivatives_supported = gl.getExtension('OES_standard_derivatives') || false;
 	gl.extensions["WEBGL_depth_texture"] = gl.getExtension("WEBGL_depth_texture") || gl.getExtension("WEBKIT_WEBGL_depth_texture") || gl.getExtension("MOZ_WEBGL_depth_texture");
@@ -7844,15 +8106,17 @@ GL.create = function(options) {
 	gl.extensions["OES_texture_float_linear"] = gl.getExtension("OES_texture_float_linear");
 	if(gl.extensions["OES_texture_float_linear"])
 		gl.extensions["OES_texture_float"] = gl.getExtension("OES_texture_float");
+	gl.extensions["EXT_color_buffer_float"] = gl.getExtension("EXT_color_buffer_float");
 
+	//for half float textures in webgl 1 require extension
 	gl.extensions["OES_texture_half_float_linear"] = gl.getExtension("OES_texture_half_float_linear");
 	if(gl.extensions["OES_texture_half_float_linear"])
 		gl.extensions["OES_texture_half_float"] = gl.getExtension("OES_texture_half_float");
 
-	gl.HALF_FLOAT_OES = 0x8D61; 
-	if(gl.extensions["OES_texture_half_float"])
-		gl.HALF_FLOAT_OES = gl.extensions["OES_texture_half_float"].HALF_FLOAT_OES;
-	gl.HIGH_PRECISION_FORMAT = gl.extensions["OES_texture_half_float"] ? gl.HALF_FLOAT_OES : (gl.extensions["OES_texture_float"] ? gl.FLOAT : gl.UNSIGNED_BYTE); //because Firefox dont support half float
+	if( gl.webgl_version == 1 )
+		gl.HIGH_PRECISION_FORMAT = gl.extensions["OES_texture_half_float"] ? GL.HALF_FLOAT_OES : (gl.extensions["OES_texture_float"] ? GL.FLOAT : GL.UNSIGNED_BYTE); //because Firefox dont support half float
+	else
+		gl.HIGH_PRECISION_FORMAT = GL.HALF_FLOAT_OES;
 
 	gl.max_texture_units = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS);
 
@@ -8051,9 +8315,9 @@ GL.create = function(options) {
 		mouse.y = e.canvasy;
 		mouse.clientx = e.mousex;
 		mouse.clienty = e.mousey;
-		mouse.left_button = mouse.buttons & (1<<GL.LEFT_MOUSE_BUTTON);
-		mouse.middle_button = mouse.buttons & (1<<GL.MIDDLE_MOUSE_BUTTON);
-		mouse.right_button = mouse.buttons & (1<<GL.RIGHT_MOUSE_BUTTON);
+		mouse.left_button = !!(mouse.buttons & (1<<GL.LEFT_MOUSE_BUTTON));
+		mouse.middle_button = !!(mouse.buttons & (1<<GL.MIDDLE_MOUSE_BUTTON));
+		mouse.right_button = !!(mouse.buttons & (1<<GL.RIGHT_MOUSE_BUTTON));
 
 		if(e.eventType == "mousedown")
 		{
@@ -8467,6 +8731,30 @@ GL.create = function(options) {
 		return final_canvas;
 	}
 
+	//from https://webgl2fundamentals.org/webgl/lessons/webgl1-to-webgl2.html
+	function getAndApplyExtension( gl, name ) {
+		var ext = gl.getExtension(name);
+		if (!ext) {
+			return false;
+		}
+		var suffix = name.split("_")[0];
+		var prefix = suffix = '_';
+		var suffixRE = new RegExp(suffix + '$');
+		var prefixRE = new RegExp('^' + prefix);
+		for (var key in ext) {
+			var val = ext[key];
+			if (typeof(val) === 'function') {
+				// remove suffix (eg: bindVertexArrayOES -> bindVertexArray)
+				var unsuffixedKey = key.replace(suffixRE, '');
+				if (key.substing)
+					gl[unprefixedKey] = ext[key].bind(ext);
+			} else {
+				var unprefixedKey = key.replace(prefixRE, '');
+				gl[unprefixedKey] = ext[key];
+			}
+		}
+	}
+
 
 	//mini textures manager
 	var loading_textures = {};
@@ -8677,9 +8965,9 @@ GL.augmentEvent = function(e, root_element)
 	//insert info in event
 	e.dragging = this.dragging;
 	e.buttons_mask = gl.mouse.buttons;
-	e.leftButton = gl.mouse.buttons & (1<<GL.LEFT_MOUSE_BUTTON);
-	e.middleButton = gl.mouse.buttons & (1<<GL.MIDDLE_MOUSE_BUTTON);
-	e.rightButton = gl.mouse.buttons & (1<<GL.RIGHT_MOUSE_BUTTON);
+	e.leftButton = !!(gl.mouse.buttons & (1<<GL.LEFT_MOUSE_BUTTON));
+	e.middleButton = !!(gl.mouse.buttons & (1<<GL.MIDDLE_MOUSE_BUTTON));
+	e.rightButton = !!(gl.mouse.buttons & (1<<GL.RIGHT_MOUSE_BUTTON));
 	e.isButtonPressed = function(num) { return this.buttons_mask & (1<<num); }
 }
 

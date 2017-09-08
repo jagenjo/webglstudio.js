@@ -3,30 +3,32 @@
 	It allow to configure every one of them using a common interface and to use a localStorage
 	to save the previous configuration.
 */
-var SettingsModule = {
+var PreferencesModule = {
+
+	name: "preferences",
 
 	sections: {},
 	current_section: "editor",
 
 	init: function()
 	{
-		LiteGUI.menubar.add("Edit/Preferences", { order:20, callback: function() { SettingsModule.showSettings(); }});
+		LiteGUI.menubar.add("Edit/Preferences", { order:20, callback: function() { PreferencesModule.showDialog(); }});
 	},
 
-	showSettings: function()
+	showDialog: function()
 	{
-		if(SettingsModule.dialog)
+		if(PreferencesModule.dialog)
 		{
-			SettingsModule.dialog.highlight();
+			PreferencesModule.dialog.highlight();
 			return;
 		}
 
-		var dialog = new LiteGUI.Dialog("dialog_settings", {title:"Settings", width: 800, height: 500, close: true, minimize: true, scroll: false, draggable: true });
+		var dialog = new LiteGUI.Dialog({ id: "dialog_settings", title:"Settings", width: 800, height: 500, close: true, minimize: true, scroll: false, draggable: true });
 		this.dialog = dialog;
 
 		dialog.show();
 		dialog.on_close = function() {
-			SettingsModule.dialog = null;
+			PreferencesModule.dialog = null;
 		}
 
 		this.updateDialogContent();
@@ -76,7 +78,7 @@ var SettingsModule = {
 		split.sections[1].style.fontSize = "16px";
 
 		list.callback = function(v) {
-			SettingsModule.changeSection( v.name );
+			PreferencesModule.changeSection( v.name );
 		};
 
 		list.setSelectedItem( this.sections[ this.current_section ] );
@@ -92,7 +94,7 @@ var SettingsModule = {
 		var root = this.dialog.root.querySelector("#settings-widgets-area .content");
 		root.innerHTML = "";
 
-		var widgets = new LiteGUI.Inspector("settings-widgets",{ name_width:"40%" });
+		var widgets = new LiteGUI.Inspector({ id: "settings-widgets", name_width:"40%" });
 		widgets.onchange = function()
 		{
 			RenderModule.requestFrame();
@@ -110,4 +112,4 @@ var SettingsModule = {
 }
 
 
-CORE.registerModule( SettingsModule );
+CORE.registerModule( PreferencesModule );

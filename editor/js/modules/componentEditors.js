@@ -541,7 +541,7 @@ LS.FXStack.prototype.inspect = function( inspector, component )
 		if(dialog)
 			dialog.clear();
 		else
-			dialog = new LiteGUI.Dialog("dialog_show_fx", { title:"FX Settings", close: true, width: 360, height: 370, scroll: false, draggable: true});
+			dialog = new LiteGUI.Dialog({ id: "dialog_show_fx", title:"FX Settings", close: true, width: 360, height: 370, scroll: false, draggable: true});
 
 		dialog.show();
 
@@ -549,7 +549,7 @@ LS.FXStack.prototype.inspect = function( inspector, component )
 		dialog.add(split);
 
 		//left side
-		var widgets_left = new LiteGUI.Inspector("camera_fx_list",{});
+		var widgets_left = new LiteGUI.Inspector();
 		widgets_left.addTitle("Available FX");
 		split.getSection(0).add( widgets_left );
 		var fx = LS.FXStack.available_fx;
@@ -568,7 +568,7 @@ LS.FXStack.prototype.inspect = function( inspector, component )
 			inner();
 		}});
 
-		var widgets_right = new LiteGUI.Inspector("camera_fx_enabled",{});
+		var widgets_right = new LiteGUI.Inspector();
 		widgets_right.addTitle("Current FX");
 		var enabled_list = widgets_right.addList(null, enabled_fx, { selected: selected_enabled_fx, height: 240, callback: function(v) {
 			selected_enabled_fx = v;
@@ -648,9 +648,9 @@ EditorModule.showBonesDialog = function( mesh )
 		return;
 	}
 
-	var dialog = new LiteGUI.Dialog("dialog_show_bones", {title:"Bones in Mesh", close: true, width: 360, height: 270, resizable: true, scroll: false, draggable: true});
+	var dialog = new LiteGUI.Dialog({ id: "dialog_show_bones", title:"Bones in Mesh", close: true, width: 360, height: 270, resizable: true, scroll: false, draggable: true});
 
-	var widgets = new LiteGUI.Inspector("bones_widgets",{ height: "100%", noscroll: true });
+	var widgets = new LiteGUI.Inspector({ id: "bones_widgets", height: "100%", noscroll: true });
 	dialog.add( widgets );
 	dialog.show('fade');
 	widgets.on_refresh = inner_refresh;

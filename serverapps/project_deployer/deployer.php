@@ -4,12 +4,11 @@
 	Created for WebGLStudio, it can be used in any project. It requires a json with a list of files to download.
  */
 
-	//CONFIGURE HERE *****************
-
-	$KEY = ""; //set validation key (used as pass to allow deploying to this folder) MUST BE SET TO SOMETHING
-	$BASE_DEPLOY_FOLDER = ""; //folder relative to this script where all deploys will be done
-	$IGNORE_EXTENSIONS = "php,asp,jsp,vbs,exe,cgi,py"; //file formats not allowed to be uploaded to the machine
-
+	if(file_exists('config.php'))
+		require('config.php');
+	else
+		die('{"status":-1,"msg":"config.php not found. remember to copy config.sample.php to config.php as you edit the content."}');
+	
 	//*************************************
 
 
@@ -53,10 +52,21 @@
 		]);
 
 		$result = curl_exec($curl);
-		curl_close($curl);
 
 		if($result === false) {
 			echo 'Curl error: ' . curl_error($curl);
+			curl_close($curl);
+			return false;
+		}
+
+		//check if there was an error
+		$code = curl_getinfo( $curl, CURLINFO_HTTP_CODE );
+		curl_close($curl);
+
+		if($code !== 200)
+		{
+			echo "[STATUS:". strval($code). "]";
+			//echo print_r(curl_getinfo( $curl ),true);
 			return false;
 		}
 
@@ -71,6 +81,7 @@
 	{
 		//allow to deploy from any remote server
 		header("Access-Control-Allow-Origin: *");
+		header('Content-Type: application/json');
 
 		if( isset($_REQUEST["action"]) )
 		{
@@ -84,7 +95,9 @@
 				$token = $_REQUEST["token"];
 				if( !file_exists( "deploy_" . $token . ".log") )
 					die('{"status":-1,"msg":"deploy not found"}');
-				$content = addslashes( file_get_contents( "deploy_" . $token . ".log" ) );
+				$content = file_get_contents( "deploy_" . $token . ".log" );
+				$content = str_replace( "\n","\\n", $content );
+				$content = addslashes( $content );
 				die('{"status":1,"msg":"report","log":"'.$content.'"}');
 			}
 			else if($action == "end")
@@ -104,7 +117,7 @@
 				die('{"status":0,"msg":"unknown action"}');
 		}
 
-		if( empty($KEY) && 1 )
+		if( empty($KEY) )
 			die('{"status":-1,"msg":"local key not set, remember to change the local key in the top of the deployer.php file"}');
 
 		if( !isset($_REQUEST["key"]) )
@@ -124,7 +137,7 @@
 
 			$token = md5(uniqid(rand(), true));
 			$log_file = "deploy_" . $token . ".log";
-			$info_filename = $BASE_DEPLOY_FOLDER . $token . ".json";
+			$info_filename = $BASE_DEPLOY_FOLDER . "/" . $token . ".json";
 			$data = $_REQUEST["info"];
 			mkdir( $BASE_DEPLOY_FOLDER, 0774, true );
 			$temp = fopen( $info_filename, "w" );
@@ -146,7 +159,7 @@
 	if(!file_exists( $input_filename ))
 		die("file info not found\nDONE\n");
 	$info_data = file_get_contents( $input_filename );
-	unlink( $input_filename ); //remove json
+	//unlink( $input_filename ); //remove json
 	$info = json_decode($info_data);
 	if($info == null)
 		die("ERROR: file is not a valid json: ".$input_filename."\nDONE\n");

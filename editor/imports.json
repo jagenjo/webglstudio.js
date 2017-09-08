@@ -46,7 +46,7 @@
 		"js/modules/intro.js",
 		"js/modules/cameraTools.js",
 		"js/modules/notify.js",
-		"js/modules/settings.js",
+		"js/modules/preferences.js",
 		"js/modules/drive.js",
 		"js/modules/play.js",
 		"js/modules/login.js",

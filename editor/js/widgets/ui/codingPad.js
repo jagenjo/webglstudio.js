@@ -1283,6 +1283,12 @@ CodingPadWidget.prepareCodeMirror = function()
 		LS.GlobalScene.requestFrame();
 	}
 
+	CodeMirror.commands.assign = function(cm) {
+		cm.display.input.blur();
+		LS.GlobalScene.requestFrame();
+		setTimeout( LS.GlobalScene.requestFrame.bind( LS.GlobalScene ), 100 );
+	}
+
 	CodeMirror.commands.compile = function(cm) {
 		var pad = cm.coding_area;
 		pad.evalueCode();

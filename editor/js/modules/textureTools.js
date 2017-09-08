@@ -11,12 +11,12 @@ var TextureTools = {
 		if(this.dialog)
 			this.dialog.close();
 
-		var dialog = new LiteGUI.Dialog( { title:"Texture Tools", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog( { title:"Texture Tools", close: true, minimize: true, width: 400, height: 440, scroll: false, draggable: true});
 		dialog.show();
 		dialog.setPosition(100,100);
 		this.dialog = dialog;
 
-		var widgets = new LiteGUI.Inspector( { name_width: "50%" } );
+		var widgets = new LiteGUI.Inspector( { name_width: "30%" } );
 		widgets.onchange = function()
 		{
 			RenderModule.requestFrame();
@@ -28,7 +28,7 @@ var TextureTools = {
 		{
 			var texture = null;
 			if( texture_name )
-				texture = LS.ResourcesManager.getMesh( texture_name );
+				texture = LS.ResourcesManager.getTexture( texture_name );
 
 			widgets.clear();
 
@@ -62,6 +62,25 @@ var TextureTools = {
 		dialog.adjustSize();		
 	},
 
+	shader_presets: {
+		nothing: "color.xyz = color.xyz",
+		invert: "color.xyz = vec3(1.0) - color.xyz",
+		generate_normalmap: "\
+float z0 = texture2D(u_texture, uv + vec2(-u_size.z, -u_size.w) ).x;\n\
+float z1 = texture2D(u_texture, uv + vec2(0.0, -u_size.w) ).x;\n\
+float z2 = texture2D(u_texture, uv + vec2(u_size.z, -u_size.w) ).x;\n\
+float z3 = texture2D(u_texture, uv + vec2(-u_size.z, 0.0) ).x;\n\
+float z4 = color.x;\n\
+float z5 = texture2D(u_texture, uv + vec2(u_size.z, 0.0) ).x;\n\
+float z6 = texture2D(u_texture, uv + vec2(-u_size.z, u_size.w) ).x;\n\
+float z7 = texture2D(u_texture, uv + vec2(0.0, u_size.w) ).x;\n\
+float z8 = texture2D(u_texture, uv + vec2(u_size.z, u_size.w) ).x;\n\
+vec3 normal = vec3( z2 + 2.0*z4 + z7 - z0 - 2.0*z3 - z5, z5 + 2.0*z6 + z7 -z0 - 2.0*z1 - z2, 1.0 );\n\
+color.xyz = normalize(normal) * 0.5 + vec3(0.5);\n",
+		reverse_normalmap: "color.xyz = vec3( 1.0 - color.x, 1.0 - color.y, color.z );",
+		constrast: "float contrast = 2.0;\ncolor.xyz = (color.xyz - vec3(0.5)) * contrast + vec3(0.5);"
+	},
+
 	showApplyShaderDialog: function( texture )
 	{
 		if(!texture)
@@ -71,10 +90,12 @@ var TextureTools = {
 		if(texture)
 			filename = texture.fullpath || texture.filename;
 
-		var dialog = new LiteGUI.Dialog( { title:"Apply Shader", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog( { title:"Apply Shader", close: true, minimize: true, width: 400, height: 540, scroll: false, resizable: true, draggable: true});
 		dialog.show();
-		dialog.setPosition(100,100);
+		dialog.setPosition(100,400);
 
+		var code = "color.xyz = vec3(1.0) - color.xyz";
+		var textarea_widget = null;
 		var widgets = new LiteGUI.Inspector( { name_width: "50%" } );
 		dialog.add( widgets );
 
@@ -83,10 +104,14 @@ var TextureTools = {
 			//reload?
 		}});
 
-		var code = "color.xyz = vec3(1.0) - color.xyz";
+		widgets.addCombo("Presets", "nothing", { values: TextureTools.shader_presets, callback: function(v) {
+			textarea_widget.setValue(v);
+			code = v;
+		}});
+
 		widgets.addTitle("Code");
 		widgets.addInfo(null,"vec4 color and vec2 uv");
-		widgets.addTextarea(null,code,{ height: 100, callback: function(v){
+		textarea_widget = widgets.addCode(null,code,{ height: 200, callback: function(v){
 			code = v;
 		},callback_keydown: function(e){
 			if(e.keyCode == 13 && e.ctrlKey)
@@ -114,12 +139,13 @@ var TextureTools = {
 		{
 			try
 			{
-				shader = GL.Shader.createFX( code, null, shader );
+				shader = GL.Shader.createFX( code, "uniform vec4 u_size;\n", shader );
 			}
 			catch (err)
 			{
 				console.error(err);
 				error_widget.setValue("Error: " + err );
+				dialog.adjustSize();	//otherwise the button is left outside	
 				return;
 			}
 			if(!clone)
@@ -129,7 +155,7 @@ var TextureTools = {
 			}
 			else
 				texture.copyTo( clone );
-			clone.copyTo( texture, shader );
+			clone.copyTo( texture, shader, { u_size: vec4.fromValues( texture.width, texture.height, 1/texture.width, 1/texture.height )} );
 			LS.RM.resourceModified( texture );
 			RenderModule.requestFrame();
 		}
@@ -316,6 +342,16 @@ GL.Texture.prototype.inspect = function( widgets, skip_default_widgets )
 	});
 
 	widgets.widgets_per_row = 1;
+
+	var clone_name = LS.RM.getBasename( texture.filename ) + "_clone.png";
+	widgets.addStringButton("Clone", clone_name, { button: "Clone", button_width: "25%", callback: function(v){
+		clone_name = v;
+	},callback_button: function(v){
+		if(!clone_name)
+			return;
+		var cloned_texture = texture.clone();
+		LS.RM.registerResource( clone_name, cloned_texture );
+	}});
 
 	if(!skip_default_widgets)
 		DriveModule.addResourceInspectorFields( this, widgets );

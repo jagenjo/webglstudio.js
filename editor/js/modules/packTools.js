@@ -360,6 +360,12 @@ LS.Pack.prototype.inspect = LS.Prefab.prototype.inspect = function( widgets, ski
 	widgets.widgets_per_row = 1;
 	widgets.endContainer();
 
+	widgets.addButton(null,"Check names",{ callback: function(v){
+		var r = pack.checkResourceNames();
+		LiteGUI.alert("Changed resources: " + r );
+		widgets.refresh();
+	}});
+
 	widgets.addButtons(null,["Add locals","Add all"],{ callback: function(v){
 		for(var i in LS.RM.resources)
 		{

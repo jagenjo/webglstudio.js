@@ -3,7 +3,7 @@
 var PluginsModule = {
 	name: "plugins",
 
-	settings_panel: [ {name:"plugins", title:"Plugins", icon:null } ],
+	preferences_panel: [ {name:"plugins", title:"Plugins", icon:null } ],
 	plugins: [], //loaded plugins
 
 	preferences: {
@@ -30,7 +30,7 @@ var PluginsModule = {
 		}
 	},
 
-	onShowSettingsPanel: function(name,widgets)
+	onShowPreferencesPanel: function(name,widgets)
 	{
  		if(name != "plugins")
 			return;
@@ -47,23 +47,23 @@ var PluginsModule = {
 			if( v == "Remove" )
 			{
 				PluginsModule.removePlugin( selected );
-				SettingsModule.updateDialogContent();
+				PreferencesModule.updateDialogContent();
 			}
 			else if( v == "Refresh" )
 			{
 				var plugin = PluginsModule.removePlugin( selected );
 				if(!plugin || !plugin.url)
 					return;
-				PluginsModule.loadPlugin( plugin.url, function(){ SettingsModule.updateDialogContent(); } );
-				SettingsModule.updateDialogContent();
+				PluginsModule.loadPlugin( plugin.url, function(){ PreferencesModule.updateDialogContent(); } );
+				PreferencesModule.updateDialogContent();
 			}
 		});
 
 		widgets.addStringButton("Add Plugin URL","js/plugins/", { button:"+", callback_button: function(value) { 
 			console.log("Loading: " + value);
 			PluginsModule.loadPlugin( value, function(){
-				SettingsModule.updateDialogContent();
-				SettingsModule.changeSection("plugins");
+				PreferencesModule.updateDialogContent();
+				PreferencesModule.changeSection("plugins");
 			}, function(){
 				LiteGUI.alert("Plugin cannot be loaded");
 			});

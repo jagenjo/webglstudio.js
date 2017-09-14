@@ -11,12 +11,12 @@ var MeshTools = {
 		if(this.dialog)
 			this.dialog.close();
 
-		var dialog = new LiteGUI.Dialog("dialog_mesh_tools", {title:"Mesh Tools", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog({ id: "dialog_mesh_tools", title:"Mesh Tools", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
 		dialog.show('fade');
 		dialog.setPosition(100,100);
 		this.dialog = dialog;
 
-		var widgets = new LiteGUI.Inspector("mesh_tools",{ name_width: "50%" });
+		var widgets = new LiteGUI.Inspector({ id: "mesh_tools", name_width: "50%" });
 		widgets.onchange = function()
 		{
 			RenderModule.requestFrame();
@@ -199,6 +199,35 @@ var MeshTools = {
 		vertices.applyTransform( matrix ).upload( gl.STATIC_DRAW );
 		mesh.updateBounding();
 		return true;
+	},
+
+	applyTransform: function( mesh )
+	{
+		var selected_node = SelectionModule.getSelectedNode();
+		if(!selected_node || !selected_node.transform )
+			return false;
+
+		var matrix = mat4.create();
+		matrix.set( SelectionModule.getSelectedNode().transform.getGlobalMatrix() );
+		var normal_matrix = mat4.create();
+		normal_matrix.set( matrix );
+		mat4.invert( normal_matrix, normal_matrix );
+		mat4.transpose( normal_matrix, normal_matrix );
+
+		selected_node.transform.reset();
+
+		var vertices = mesh.getBuffer("vertices");
+		if(!vertices)
+			return false;
+		vertices.applyTransform( matrix ).upload( gl.STATIC_DRAW );
+
+		var normals = mesh.getBuffer("normals");
+		if(!normals)
+			return false;
+		normals.applyTransform( normal_matrix ).upload( gl.STATIC_DRAW );
+
+		mesh.updateBounding();
+		return true;
 	}
 
 };
@@ -207,7 +236,7 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 {
 	var mesh = this;
 
-	widgets.addTitle("Vertex Buffers");
+	widgets.addTitle("Vertex Buffers [num. vertex]");
 	widgets.widgets_per_row = 2;
 	var num_vertices = -1;
 	var vertices_buffer = mesh.vertexBuffers["vertices"];
@@ -216,7 +245,17 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 	for(var i in mesh.vertexBuffers)
 	{
 		var buffer = mesh.vertexBuffers[i];
-		var info = widgets.addInfo(i, (buffer.data.length / buffer.spacing), { width: "calc( 100% - 30px )" } );
+		var type = "";
+		switch( buffer.data.constructor )
+		{
+			case Float32Array: type = "Float32"; break;
+			case Float64Array: type = "Float64"; break;
+			case Uint8Array: type = "Uint8"; break;
+			case Uint16Array: type = "Uint16"; break;
+			case Uint32Array: type = "Uint32"; break;
+			default: type = "???"; break;
+		}
+		var info = widgets.addInfo(i, (buffer.data.length / buffer.spacing) + " [" + type + "]", { width: "calc( 100% - 30px )" } );
 		if( num_vertices != -1 && (buffer.data.length / buffer.spacing) != num_vertices )
 			info.style.backgroundColor = "#6b2d2d";
 
@@ -231,12 +270,22 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 	}
 	widgets.widgets_per_row = 1;
 
-	widgets.addTitle("Indices Buffers");
+	widgets.addTitle("Indices Buffers [num. indices]");
 	widgets.widgets_per_row = 2;
 	for(var i in mesh.indexBuffers)
 	{
 		var buffer = mesh.indexBuffers[i];
-		widgets.addInfo(i, buffer.data.length, { width: "calc( 100% - 30px )" } );
+		var type = "";
+		switch( buffer.data.constructor )
+		{
+			case Float32Array: type = "Float32"; break;
+			case Float64Array: type = "Float64"; break;
+			case Uint8Array: type = "Uint8"; break;
+			case Uint16Array: type = "Uint16"; break;
+			case Uint32Array: type = "Uint32"; break;
+			default: type = "???"; break;
+		}
+		widgets.addInfo(i, buffer.data.length + " [" + type + "]", { width: "calc( 100% - 30px )" } );
 		widgets.addButton(null,"<img src='imgs/mini-icon-trash.png'/>", { width: 30, stream: i, callback: function(){
 			//delete mesh.indexBuffers[ (this.options.stream) ];
 			mesh.explodeIndices( this.options.stream );
@@ -271,6 +320,13 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 
 	widgets.addButton(null, "Center Vertices", function(){
 		MeshTools.centerMeshVertices( mesh );
+		LS.RM.resourceModified(mesh);
+		RenderModule.requestFrame();
+		widgets.refresh();
+	} );
+
+	widgets.addButton(null, "Apply selected transform", function(){
+		MeshTools.applyTransform( mesh );
 		LS.RM.resourceModified(mesh);
 		RenderModule.requestFrame();
 		widgets.refresh();

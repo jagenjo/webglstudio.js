@@ -5,7 +5,7 @@ var EditorView = {
 
 	name: "view",
 
-	settings: {
+	preferences: {
 		render_grid: true, //floor grid
 		render_axis: false, //floor grid
 		render_component: true, //render component gizmos
@@ -38,13 +38,13 @@ var EditorView = {
 		LEvent.bind( LS.Renderer, "renderPicking", this.renderPicking.bind(this));
 	},
 
-	onShowSettingsPanel: function(name,widgets)
+	onShowPreferencesPanel: function(name,widgets)
 	{
 		if(name != "editor")
 			return;
 
 		widgets.addTitle("View");
-		widgets.inspectInstance( this.settings );
+		widgets.inspectInstance( this.preferences );
 
 		//RenderModule.requestFrame();
 	},
@@ -153,8 +153,8 @@ var EditorView = {
 
 	renderEditor: function( camera )
 	{
-		for(var i in this.settings)
-			this.debug_render.settings[i] = this.settings[i];
+		for(var i in this.preferences)
+			this.debug_render.settings[i] = this.preferences[i];
 
 		this.debug_render.render( camera, SelectionModule.isSelected.bind( SelectionModule ) );
 
@@ -211,7 +211,7 @@ var EditorView = {
 			{
 				var pos = vec3.create();
 				mat4.multiplyVec3(pos, node.transform.getGlobalMatrixRef(), pos); //create a new one to store them
-				if( this.settings.render_null_nodes )
+				if( this.preferences.render_null_nodes )
 					this.addPickingPoint( pos, 12, { instance: node } );
 			}
 
@@ -283,7 +283,7 @@ LS.SceneNode.prototype.renderEditor = function( node_selected )
 				//Draw.renderMesh( EditorView.debug_render.circle_mesh, gl.TRIANGLES );
 				LS.Draw.pop();
 
-				if(EditorView.settings.render_aabb) //render AABB
+				if(EditorView.preferences.render_aabb) //render AABB
 				{
 					var aabb = instance.aabb;
 					LS.Draw.push();
@@ -308,7 +308,7 @@ LS.SceneNode.prototype.renderEditor = function( node_selected )
 		LS.Draw.pop();
 	}
 
-	if(node_selected && EditorView.settings.render_height)
+	if(node_selected && EditorView.preferences.render_height)
 	{
 		//ground line
 		var center = this.transform.getGlobalPosition();
@@ -331,7 +331,7 @@ LS.Light.prototype.renderEditor = function(node_selected, component_selected )
 	LS.Draw.setColor([1,1,1, component_selected ? 0.8 : 0.5 ]);
 	gl.depthMask( false );
 
-	if(EditorView.settings.render_icons)
+	if(EditorView.preferences.render_icons)
 	{
 		gl.enable(gl.BLEND);
 		LS.Draw.setColor(this.enabled ? [1,1,1] :[0.2,0.2,0.2]);
@@ -468,7 +468,7 @@ LS.Light.prototype.renderEditor = function(node_selected, component_selected )
 		gl.disable( gl.BLEND );
 	}
 
-	if(!this._root.transform && EditorView.settings.render_height)
+	if(!this._root.transform && EditorView.preferences.render_height)
 	{
 		//ground line
 		gl.enable(gl.BLEND);
@@ -545,7 +545,7 @@ LS.Camera.prototype.renderEditor = function( node_selected, component_selected )
 	gl.depthMask( false );
 
 	//render camera icon
-	if(EditorView.settings.render_icons)
+	if(EditorView.preferences.render_icons)
 	{
 		gl.enable(gl.BLEND);
 		LS.Draw.renderImage( pos, EditorModule.icons_path + "gizmo-camera.png",50, true);
@@ -575,16 +575,10 @@ LS.Camera.prototype.renderEditor = function( node_selected, component_selected )
 
 		var focus_dist = 0;
 		focus_dist = this.focalLength;
-		/*
-		if(this._root && this._root.transform)
-			focus_dist = (far - near) * 0.5 + near;
-		else
-			focus_dist = vec3.length(delta);
-		*/
 		vec3.normalize(delta, delta);
 		gl.enable(gl.BLEND);
 
-		var up = this.up; //Math.abs(delta[1]) > 0.99 ? [1,0,0] : [0,1,0];
+		var up = this.getUp();
 
 		LS.Draw.push();
 		LS.Draw.lookAt(pos,target,up); //work in light space, thats easier to draw
@@ -628,7 +622,7 @@ LS.Camera.prototype.renderEditor = function( node_selected, component_selected )
 		gl.disable(gl.BLEND);
 	}
 
-	if( node_selected && !this._root.transform && EditorView.settings.render_height)
+	if( node_selected && !this._root.transform && EditorView.preferences.render_height)
 	{
 		//ground line
 		gl.enable(gl.BLEND);

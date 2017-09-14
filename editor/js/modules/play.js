@@ -4,7 +4,7 @@ var PlayModule = {
 
 	state: "stop",
 
-	settings_panel: [{name:"play", title:"Play", icon:null }],
+	preferences_panel: [{name:"play", title:"Play", icon:null }],
 
 	max_delta_time: 1/15,
 	inplayer: false,
@@ -384,7 +384,7 @@ var PlayModule = {
 		}
 	},
 
-	onShowSettingsPanel: function(name,widgets)
+	onShowPreferencesPanel: function(name,widgets)
 	{
  		if(name != "play")
 			return;

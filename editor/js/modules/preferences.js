@@ -23,7 +23,7 @@ var PreferencesModule = {
 			return;
 		}
 
-		var dialog = new LiteGUI.Dialog({ id: "dialog_settings", title:"Settings", width: 800, height: 500, close: true, minimize: true, scroll: false, draggable: true });
+		var dialog = new LiteGUI.Dialog({ id: "dialog_preferences", title:"Preferences", width: 800, height: 500, close: true, minimize: true, scroll: false, draggable: true });
 		this.dialog = dialog;
 
 		dialog.show();
@@ -44,12 +44,12 @@ var PreferencesModule = {
 		dialog.content.innerHTML = "";
 
 		//content
-		var split = new LiteGUI.Split("settings-content",[30,70]);
+		var split = new LiteGUI.Split("preferences-content",[30,70]);
 		dialog.content.appendChild(split.root);
 		dialog.content.style.height = "calc( 100% - 20px )";
 		split.root.style.height = "100%";
 		split.sections[1].style.overflow = "auto";
-		split.sections[1].id = "settings-widgets-area";
+		split.sections[1].id = "preferences-widgets-area";
 		split.sections[1].innerHTML = "<div class='content'></div>";
 
 		var sections = [];
@@ -57,22 +57,22 @@ var PreferencesModule = {
 		for(var i in CORE.Modules)
 		{
 			var module = CORE.Modules[i];
-			if(!module.settings_panel)
+			if(!module.preferences_panel)
 				continue;
 
-			for(var j in module.settings_panel)
+			for(var j in module.preferences_panel)
 			{
-				var settings = module.settings_panel[j];
+				var preferences = module.preferences_panel[j];
 
-				if (already_created[ settings.name ]) //avoid repeated
+				if (already_created[ preferences.name ]) //avoid repeated
 					continue;
-				sections.push( settings );
-				this.sections[ settings.name ] = settings;
-				already_created[ settings.name ] = true;
+				sections.push( preferences );
+				this.sections[ preferences.name ] = preferences;
+				already_created[ preferences.name ] = true;
 			}
 		}
 
-		var list = new LiteGUI.List("settings-list", sections );
+		var list = new LiteGUI.List("preferences-list", sections );
 		list.root.style.fontSize = "20px";
 		split.sections[0].appendChild( list.root );
 		split.sections[1].style.fontSize = "16px";
@@ -91,10 +91,10 @@ var PreferencesModule = {
 
 		this.current_section = name;
 
-		var root = this.dialog.root.querySelector("#settings-widgets-area .content");
+		var root = this.dialog.root.querySelector("#preferences-widgets-area .content");
 		root.innerHTML = "";
 
-		var widgets = new LiteGUI.Inspector({ id: "settings-widgets", name_width:"40%" });
+		var widgets = new LiteGUI.Inspector({ id: "preferences-widgets", name_width:"40%" });
 		widgets.onchange = function()
 		{
 			RenderModule.requestFrame();
@@ -104,9 +104,9 @@ var PreferencesModule = {
 
 		for(var i in CORE.Modules)
 		{
-			if (!CORE.Modules[i].onShowSettingsPanel)
+			if (!CORE.Modules[i].onShowPreferencesPanel)
 				continue;
-			CORE.Modules[i].onShowSettingsPanel(name, widgets);
+			CORE.Modules[i].onShowPreferencesPanel(name, widgets);
 		}
 	},
 }

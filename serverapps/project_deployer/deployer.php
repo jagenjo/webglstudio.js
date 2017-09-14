@@ -62,7 +62,6 @@
 		//check if there was an error
 		$code = curl_getinfo( $curl, CURLINFO_HTTP_CODE );
 		curl_close($curl);
-
 		if($code !== 200)
 		{
 			echo "[STATUS:". strval($code). "]";

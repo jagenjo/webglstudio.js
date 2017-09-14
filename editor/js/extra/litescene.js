@@ -1522,6 +1522,11 @@ var LS = {
 		LEvent.trigger( LS, "reset" );
 	},
 
+	log: function()
+	{
+		console.log.call( console, arguments );
+	},
+
 	stringToValue: function( v )
 	{
 		var value = v;
@@ -1764,11 +1769,6 @@ var LSQ = {
 		if( v === undefined && target[ varname ] === undefined )
 			return null;
 		return v !== undefined ? v : target[ varname ];
-	},
-
-	log: function()
-	{
-		console.log.call( console, arguments );
 	}
 };
 
@@ -3506,6 +3506,8 @@ var ResourcesManager = {
 	force_nocache_extensions: ["js","glsl","json"], //this file formats should be reloaded without using the cache
 	nocache_files: {}, //this is used by the editor to avoid using cached version of recently loaded files
 
+	valid_resource_name_reg: /^[A-Za-z\d\s\/\_\-\.]+$/,
+
 	/**
 	* Returns a string to append to any url that should use the browser cache (when updating server info)
 	*
@@ -4320,6 +4322,11 @@ var ResourcesManager = {
 	{
 		if(!filename || !resource)
 			throw("registerResource missing filename or resource");
+
+		//test filename is valid (alphanumeric with spaces, dot or underscore and dash and slash
+		if( this.valid_resource_name_reg.test( filename ) == false )
+			console.warn( "invalid filename for resource: ", filename );
+
 		//clean up the filename (to avoid problems with //)
 		filename = this.cleanFullpath( filename );
 
@@ -4429,8 +4436,17 @@ var ResourcesManager = {
 		this.resources[new_name] = res;
 		delete this.resources[ old_name ];
 
+		//inform everybody in the scene
 		if(!skip_event)
 			LS.GlobalScene.sendResourceRenamedEvent( old_name, new_name, res );
+
+		//inform prefabs and packs...
+		for(var i in this.resources)
+		{
+			var alert_res = this.resources[i];
+			if( alert_res != res && alert_res.onResourceRenamed )
+				alert_res.onResourceRenamed( old_name, new_name, res );
+		}
 
 		//ugly: too hardcoded
 		if( this.meshes[old_name] ) {
@@ -6230,6 +6246,9 @@ LS.ShadersManager.registerSnippet("surface","\n\
 
 //Add some functions to the classes in LiteGL to fit better in the LiteScene engine
 
+GL.Texture.EXTENSION = "png";
+GL.Mesh.EXTENSION = "wbin";
+
 //when working with animations sometimes you want the bones to be referenced by node name and no node uid, because otherwise you cannot reuse
 //the same animation with different characters in the same scene.
 GL.Mesh.prototype.convertBoneNames = function( root_node, use_uids )
@@ -6290,10 +6309,13 @@ GL.Mesh.prototype.convertBoneNames = function( root_node, use_uids )
 GL.Mesh.fromBinary = function( data_array )
 {
 	var o = null;
-	if(data_array.constructor == ArrayBuffer )
+	if( data_array.constructor == ArrayBuffer )
 		o = WBin.load( data_array );
 	else
 		o = data_array;
+
+	if( o.format )
+		GL.Mesh.uncompress( o );
 
 	var vertex_buffers = {};
 	for(var i in o.vertex_buffers)
@@ -6318,6 +6340,8 @@ GL.Mesh.fromBinary = function( data_array )
 	
 	return mesh;
 }
+
+GL.Mesh.enable_wbin_compression = true;
 
 GL.Mesh.prototype.toBinary = function()
 {
@@ -6370,12 +6394,168 @@ GL.Mesh.prototype.toBinary = function()
 	o.vertex_buffers = vertex_buffers;
 	o.index_buffers = index_buffers;
 
+	//compress wbin using the bounding
+	if( GL.Mesh.enable_wbin_compression ) //apply compression
+		GL.Mesh.compress( o );
+
 	//create pack file
 	var bin = WBin.create(o, "Mesh");
 
 	return bin;
 }
 
+GL.Mesh.compress = function( o )
+{
+	o.format = {
+		type: "bounding_compressed"
+	};
+
+	if(!o.vertex_buffers)
+		throw("buffers not found");
+
+	var min = BBox.getMin( o.bounding );
+	var max = BBox.getMax( o.bounding );
+	var range = vec3.sub( vec3.create(), max, min );
+
+	var vertices = o.vertices;
+	var new_vertices = new Uint16Array( vertices.length );
+	for(var i = 0; i < vertices.length; i+=3)
+	{
+		new_vertices[i] = ((vertices[i] - min[0]) / range[0]) * 65535;
+		new_vertices[i+1] = ((vertices[i+1] - min[1]) / range[1]) * 65535;
+		new_vertices[i+2] = ((vertices[i+2] - min[2]) / range[2]) * 65535;
+	}
+	o.vertices = new_vertices;		
+
+	if( o.normals )
+	{
+		var normals = o.normals;
+		var new_normals = new Uint8Array( normals.length );
+		var normals_range = new_normals.constructor == Uint8Array ? 255 : 65535;
+		for(var i = 0; i < normals.length; i+=3)
+		{
+			new_normals[i] = (normals[i] * 0.5 + 0.5) * normals_range;
+			new_normals[i+1] = (normals[i+1] * 0.5 + 0.5) * normals_range;
+			new_normals[i+2] = (normals[i+2] * 0.5 + 0.5) * normals_range;
+		}
+		o.normals = new_normals;
+	}
+
+	if( o.coords )
+	{
+		//compute uv bounding: [minu,minv,maxu,maxv]
+		var coords = o.coords;
+		var uvs_bounding = [10000,10000,-10000,-10000];
+		for(var i = 0; i < coords.length; i+=2)
+		{
+			var u = coords[i];
+			if( uvs_bounding[0] > u ) uvs_bounding[0] = u;
+			else if( uvs_bounding[2] < u ) uvs_bounding[2] = u;
+			var v = coords[i+1];
+			if( uvs_bounding[1] > v ) uvs_bounding[1] = v;
+			else if( uvs_bounding[3] < v ) uvs_bounding[3] = v;
+		}
+		o.format.uvs_bounding = uvs_bounding;
+
+		var new_coords = new Uint16Array( coords.length );
+		var range = [ uvs_bounding[2] - uvs_bounding[0], uvs_bounding[3] - uvs_bounding[1] ];
+		for(var i = 0; i < coords.length; i+=2)
+		{
+			new_coords[i] = ((coords[i] - uvs_bounding[0]) / range[0]) * 65535;
+			new_coords[i+1] = ((coords[i+1] - uvs_bounding[1]) / range[1]) * 65535;
+		}
+		o.coords = new_coords;
+	}
+
+	if( o.weights )
+	{
+		var weights = o.weights;
+		var new_weights = new Uint16Array( weights.length ); //using only one byte distorts the meshes a lot
+		var weights_range = new_weights.constructor == Uint8Array ? 255 : 65535;
+		for(var i = 0; i < weights.length; i+=4)
+		{
+			new_weights[i] = weights[i] * weights_range;
+			new_weights[i+1] = weights[i+1] * weights_range;
+			new_weights[i+2] = weights[i+2] * weights_range;
+			new_weights[i+3] = weights[i+3] * weights_range;
+		}
+		o.weights = new_weights;
+	}
+}
+
+GL.Mesh.uncompress = function( o )
+{
+	var bounding = o.bounding;
+	var min = BBox.getMin( bounding );
+	var max = BBox.getMax( bounding );
+	var range = vec3.sub( vec3.create(), max, min );
+
+	var format = o.format;
+
+	if(format.type == "bounding_compressed")
+	{
+		var inv8 = 1 / 255;
+		var inv16 = 1 / 65535;
+		var vertices = o.vertices;
+		var new_vertices = new Float32Array( vertices.length );
+		for( var i = 0, l = vertices.length; i < l; i += 3 )
+		{
+			new_vertices[i] = ((vertices[i] * inv16) * range[0]) + min[0];
+			new_vertices[i+1] = ((vertices[i+1] * inv16) * range[1]) + min[1];
+			new_vertices[i+2] = ((vertices[i+2] * inv16) * range[2]) + min[2];
+		}
+		o.vertices = new_vertices;		
+
+		if( o.normals && o.normals.constructor != Float32Array )
+		{
+			var normals = o.normals;
+			var new_normals = new Float32Array( normals.length );
+			var inormals_range = normals.constructor == Uint8Array ? inv8 : inv16;
+			for( var i = 0, l = normals.length; i < l; i += 3 )
+			{
+				new_normals[i] = (normals[i] * inormals_range) * 2.0 - 1.0;
+				new_normals[i+1] = (normals[i+1] * inormals_range) * 2.0 - 1.0;
+				new_normals[i+2] = (normals[i+2] * inormals_range) * 2.0 - 1.0;
+				var N = new_normals.subarray(i,i+3);
+				vec3.normalize(N,N);
+			}
+			o.normals = new_normals;
+		}
+
+		if( o.coords && format.uvs_bounding && o.coords.constructor != Float32Array )
+		{
+			var coords = o.coords;
+			var uvs_bounding = format.uvs_bounding;
+			var range = [ uvs_bounding[2] - uvs_bounding[0], uvs_bounding[3] - uvs_bounding[1] ];
+			var new_coords = new Float32Array( coords.length );
+			for( var i = 0, l = coords.length; i < l; i += 2 )
+			{
+				new_coords[i] = (coords[i] * inv16) * range[0] + uvs_bounding[0];
+				new_coords[i+1] = (coords[i+1] * inv16) * range[1] + uvs_bounding[1];
+			}
+			o.coords = new_coords;
+		}
+
+		//bones are already in Uint8 format so dont need to compress them further, but weights yes
+		if( o.weights && o.weights.constructor != Float32Array ) //do we really need to unpack them? what if we use them like this?
+		{
+			var weights = o.weights;
+			var new_weights = new Float32Array( weights.length );
+			var iweights_range = weights.constructor == Uint8Array ? inv8 : inv16;
+			for(var i = 0, l = weights.length; i < l; i += 4 )
+			{
+				new_weights[i] = weights[i] * iweights_range;
+				new_weights[i+1] = weights[i+1] * iweights_range;
+				new_weights[i+2] = weights[i+2] * iweights_range;
+				new_weights[i+3] = weights[i+3] * iweights_range;
+			}
+			o.weights = new_weights;
+		}
+
+	}
+	else
+		throw("unknown mesh format compression");
+}
 
 
 
@@ -9226,6 +9406,7 @@ function newStandardMaterial(o)
 		ignore_lights: false,
 		cast_shadows: true,
 		receive_shadows: true,
+//		flat_normals: false,
 		ignore_frustum: false
 	};
 
@@ -9428,6 +9609,9 @@ newStandardMaterial.prototype.getShaderCode = function( instance, render_setting
 	//flags
 	if( code_flags & FLAGS.ALPHA_TEST )
 		fs_code += "	if(o.Alpha < 0.5) discard;\n";
+
+	//if( code_flags & FLAGS.FLAT_NORMALS )
+	//	flat_normals += "";
 
 	//compile shader and cache
 	shader_code = new LS.ShaderCode();
@@ -11638,6 +11822,7 @@ function Animation(o)
 		this.configure(o);
 }
 
+Animation.EXTENSION = "wbin";
 Animation.DEFAULT_SCENE_NAME = "@scene";
 Animation.DEFAULT_DURATION = 10;
 
@@ -13390,6 +13575,349 @@ LS.Interpolators["texture"] = function( a, b, t, last )
 }
 
 
+//defined before Prefab
+
+/**
+* Pack is an object that contain several resources, helpful when you want to carry a whole scene in one single file
+* 
+* @class Pack
+* @constructor
+*/
+
+function Pack(o)
+{
+	this.resource_names = []; 
+	this.metadata = null;
+	this._data = {}; //the original chunks from the WBin, including the @JSON and @resource_names
+	this._resources_data = {}; //every resource in arraybuffer format
+	if(o)
+		this.configure(o);
+}
+
+Pack.version = "0.2"; //used to know where the file comes from 
+
+/**
+* configure the pack from an unpacked WBin
+* @method configure
+* @param {Object} data an unpacked WBIN (object with every chunk)
+**/
+Pack.prototype.configure = function( data )
+{
+	this._data = LS.cloneObject( data );
+
+	//extract resource names
+	this.resource_names = data["@resource_names"];
+	this._resources_data = {};
+	if(this.resource_names)
+	{
+		delete this._data["@resource_names"];
+		for(var i in this.resource_names)
+		{
+			this._resources_data[ this.resource_names[i] ] = data[ "@RES_" + i ];
+			delete this._data[ "@RES_" + i ];
+		}
+	}
+
+	//store resources in LS.ResourcesManager
+	this.processResources();
+}
+
+Object.defineProperty( Pack.prototype, 'bindata', {
+	set: function(name)
+	{
+		throw("Pack bindata cannot be assigned");
+	},
+	get: function(){
+		if(!this._original_data)
+			this._original_data = LS.Pack.packResources( this.resource_names, this._data );
+		return this._original_data;
+	},
+	enumerable: true
+});
+
+
+Pack.fromBinary = function(data)
+{
+	if(data.constructor == ArrayBuffer)
+		data = WBin.load(data, true);
+	return new LS.Pack(data);
+}
+
+//given a list of resources that come from the Pack (usually a wbin) it extracts, process and register them 
+Pack.prototype.processResources = function()
+{
+	if(!this.resource_names)
+		return;
+
+	var pack_filename = this.fullpath || this.filename;
+
+	//block this resources of being loaded, this is to avoid chain reactions when a resource uses 
+	//another one contained in this pack
+	for(var i = 0; i < this.resource_names.length; ++i)
+	{
+		var resname = this.resource_names[i];
+		if( LS.ResourcesManager.resources[ resname ] )
+			continue; //already loaded
+		LS.ResourcesManager.resources_being_processed[ resname ] = true;
+	}
+
+	//process and store in LS.ResourcesManager
+	for(var i = 0; i < this.resource_names.length; ++i)
+	{
+		var resname = this.resource_names[i];
+		if( LS.ResourcesManager.resources[resname] )
+			continue; //already loaded
+
+		var resdata = this._resources_data[ resname ];
+		if(!resdata)
+		{
+			console.warn("resource data in Pack is undefined, skipping it:" + resname);
+			continue;
+		}
+		var resource = LS.ResourcesManager.processResource( resname, resdata, { is_local: true, from_pack: pack_filename } );
+	}
+}
+
+Pack.prototype.setResources = function( resource_names, mark_them )
+{
+	this.resource_names = [];
+	this._resources_data = {};
+
+	var pack_filename = this.fullpath || this.filename;
+
+	//get resources
+	for(var i = 0; i < resource_names.length; ++i)
+	{
+		var res_name = resource_names[i];
+		if(this.resource_names.indexOf(res_name) != -1)
+			continue;
+		var resource = LS.ResourcesManager.resources[ res_name ];
+		if(!resource)
+			continue;
+		if(mark_them)
+			resource.from_pack = pack_filename;
+		this.resource_names.push( res_name );
+	}
+
+	//repack the pack info
+	this._original_data = LS.Pack.packResources( resource_names, this.getBaseData() );
+	this._modified = true;
+}
+
+Pack.prototype.getBaseData = function()
+{
+	return { "@metadata": this.metadata, "@version": LS.Pack.version };
+}
+
+//adds to every resource in this pack info about where it came from (the pack)
+Pack.prototype.setResourcesLink = function( value )
+{
+	for(var i = 0; i < this.resource_names.length; ++i)
+	{
+		var res_name = this.resource_names[i];
+		var resource = LS.ResourcesManager.resources[ res_name ];
+		if(!resource)
+			continue;
+		if(value)
+			resource.from_pack = value;
+		else
+			delete resource.from_pack;
+	}
+}
+
+//adds a new resource (or array of resources) to this pack
+Pack.prototype.addResources = function( resource_names, mark_them )
+{
+	if(!resource_names)
+		return;
+	if(resource_names.constructor !== Array)
+		resource_names = [ resource_names ];
+	this.setResources( this.resource_names.concat( resource_names ), mark_them );
+}
+
+/**
+* to create a WBin containing all the resource and metadata
+* @method Pack.createWBin
+* @param {String} fullpath for the pack
+* @param {Array} resource_names array with the names of all the resources to store
+* @param {Object} metadata [optional] extra data to store
+* @param {boolean} mark_them [optional] marks all the resources as if they come from a pack
+* @return object containing the pack data ready to be converted to WBin
+**/
+Pack.createPack = function( filename, resource_names, extra_data, mark_them )
+{
+	if(!filename)
+		return;
+
+	if(!resource_names || resource_names.constructor !== Array)
+		throw("Pack.createPack resources must be array with names");
+	if(extra_data && extra_data.constructor !== Object)
+		throw("Pack.createPack extra_data must be an object with the chunks to store");
+
+	filename = filename.replace(/ /gi,"_");
+
+	var pack = new LS.Pack();
+	filename += ".wbin";
+	pack.filename = filename;
+	if(extra_data)
+		pack._data = extra_data;
+
+	pack.resource_names = resource_names;
+	for(var i = 0; i < resource_names.length; ++i)
+	{
+		var res_name = resource_names[i];
+		var resource = LS.ResourcesManager.resources[ res_name ];
+		if(!resource)
+			continue;
+		if(mark_them)
+			resource.from_pack = pack.filename;
+	}
+
+	//create the WBIN in case this pack gets stored
+	this.metadata = extra_data;
+	var bindata = LS.Pack.packResources( resource_names, this.getBaseData() );
+	pack._original_data = bindata;
+
+	return pack;
+}
+
+//Given a bunch of resource names it creates a WBin with all inside
+Pack.packResources = function( resource_names, base_object )
+{
+	var to_binary = base_object || {};
+	var final_resource_names = [];
+
+	for(var i = 0; i < resource_names.length; ++i)
+	{
+		var res_name = resource_names[i];
+		var resource = LS.ResourcesManager.resources[ res_name ];
+		if(!resource)
+			continue;
+
+		var data = null;
+		if(resource._original_data) //must be string or bytes
+			data = resource._original_data;
+		else
+		{
+			var data_info = LS.Resource.getDataToStore( resource );
+			data = data_info.data;
+		}
+
+		if(!data)
+		{
+			console.warn("Wrong data in resource");
+			continue;
+		}
+
+		if(data.constructor === Blob || data.constructor === File)
+		{
+			if(!data.data || data.data.constructor !== ArrayBuffer )
+			{
+				console.warn("WBin does not support to store File or Blob, please, use ArrayBuffer");
+				continue;
+			}
+			data = data.data; //because files have an arraybuffer with the data if it was read
+		}
+
+		to_binary["@RES_" + final_resource_names.length ] = data;
+		final_resource_names.push( res_name );
+		//to_binary[res_name] = data;
+	}
+
+	to_binary["@resource_names"] = final_resource_names;
+	return WBin.create( to_binary, "Pack" );
+}
+
+//just tells the resources where they come from, we cannot do that before because we didnt have the name of the pack
+Pack.prototype.flagResources = function()
+{
+	if(!this.resource_names)
+		return;
+
+	for(var i = 0; i < this.resource_names.length; ++i)
+	{
+		var res_name = this.resource_names[i];
+		var resource = LS.ResourcesManager.resources[ res_name ];
+		if(!resource)
+			continue;
+
+		resource.from_pack = this.fullpath || this.filename;
+	}
+}
+
+Pack.prototype.getDataToStore = function()
+{
+	return LS.Pack.packResources( this.resource_names, this.getBaseData() );
+}
+
+Pack.prototype.checkResourceNames = function()
+{
+	if(!this.resource_names)
+		return 0;
+
+	var changed = 0;
+
+	for(var i = 0; i < this.resource_names.length; ++i)
+	{
+		var res_name = this.resource_names[i];
+		var old_name = res_name;
+		var resource = LS.ResourcesManager.resources[ res_name ];
+		if(!resource)
+			continue;
+
+		//avoid problematic symbols
+		if( LS.ResourcesManager.valid_resource_name_reg.test( res_name ) == false )
+		{
+			console.warn("Invalid filename in pack/prefab: ", res_name  );
+			res_name = res_name.replace( /[^a-zA-Z0-9-_\.\/]/g, '_' );
+		}
+
+		//ensure extensions
+		var extension = LS.ResourcesManager.getExtension( res_name );
+		if(!extension)
+		{
+			extension = resource.constructor.EXTENSION;
+			if(!extension)
+				console.warn("Resource without extension and not known default extension: ", res_name , resource.constructor.name );
+			else
+				res_name = res_name + "." + extension;
+		}
+
+		if(old_name == res_name)
+			continue;
+
+		this.resource_names[i] = res_name;
+		LS.ResourcesManager.renameResource( old_name, res_name ); //force change
+		changed++;
+	}
+
+	if(changed)
+		LS.ResourcesManager.resourceModified( this );
+
+	return changed;
+}
+
+Pack.prototype.onResourceRenamed = function( old_name, new_name, resource )
+{
+	if(!this.resource_names)
+		return;
+	var index = this.resource_names[ old_name ];
+	if( index == -1 )
+		return;
+	this.resource_names[ index ] = new_name;
+	LS.ResourcesManager.resourceModified( this );
+}
+
+Pack.prototype.containsResources = function()
+{
+	return this.resource_names && this.resource_names.length > 0 ? true : false;
+}
+
+LS.Pack = Pack;
+LS.registerResourceClass( Pack );
+
+
+
 /**
 * Prefab work in two ways: 
 * - It can contain a node structure and all the associated resources (textures, meshes, animations, etc)
@@ -13583,14 +14111,14 @@ Prefab.createPrefab = function( filename, node_data, resource_names_list )
 	prefab.setData( node_data );
 
 	//get all the resources and store them in a WBin
-	var bindata = LS.Prefab.packResources( resource_names_list, { "@json": prefab.prefab_json, "@version": Prefab.version } );
+	var bindata = LS.Prefab.packResources( resource_names_list, { "@json": prefab.prefab_json, "@version": Prefab.version }, this );
 	prefab._original_data = bindata;
 
 	return prefab;
 }
 
 //Given a list of resources and some base data, it creates a WBin with all the data
-Prefab.packResources = function( resource_names_list, base_data )
+Prefab.packResources = function( resource_names_list, base_data, from_prefab )
 {
 	var to_binary = base_data || {};
 	var resource_names = [];
@@ -13615,11 +14143,15 @@ Prefab.packResources = function( resource_names_list, base_data )
 					console.warn("Data to store from resource is null, skipping: ", res_name );
 					continue;
 				}
-				//HACK: resource could be renamed to extract the binary info (this happens in jpg textures that are converted to png)
+				//HACK: resource could be renamed to extract the binary info (this happens in jpg textures that are converted to png) or meshes that add wbin
 				if(data_info.extension && data_info.extension != LS.ResourcesManager.getExtension( res_name ))
 				{
 					console.warn("The resource extension has changed while saving, this could lead to problems: ", res_name, data_info.extension );
-					continue;
+					//after this change all the references will be wrong
+					var old_name = res_name;
+					res_name = res_name + "." + data_info.extension;
+					resource_names_list[i] = res_name;
+					LS.GlobalScene.sendResourceRenamedEvent( old_name, res_name, resource ); //force change
 				}
 				data = data_info.data;
 			}
@@ -13643,11 +14175,6 @@ Prefab.packResources = function( resource_names_list, base_data )
 
 	to_binary["@resources_name"] = resource_names;
 	return WBin.create( to_binary, "Prefab" );
-}
-
-Prefab.prototype.containsResources = function()
-{
-	return this.resource_names && this.resource_names.length > 0 ? true : false;
 }
 
 Prefab.prototype.updateFromNode = function( node, clear_uids )
@@ -13715,286 +14242,25 @@ Prefab.prototype.getDataToStore = function()
 
 	//prefab in json format
 	if( !(this.resource_names && this.resource_names.length) && filename && LS.RM.getExtension(filename) == "json" )
-		return JSON.stringify( { object_class:"Prefab", "@json": this.prefab_json } );
+		return JSON.stringify( { object_class: LS.getObjectClassName( this ), "@json": this.prefab_json } );
 
 	//return the binary data of the wbin
-	return LS.Prefab.packResources( this.resource_names, { "@json": this.prefab_json, "@version": LS.Prefab.version } );
+	return LS.Prefab.packResources( this.resource_names, this.getBaseData(), this );
 }
+
+Prefab.prototype.getBaseData = function()
+{
+	return { "@json": this.prefab_json, "@version": LS.Prefab.version };
+}
+
+//inheritet methods from Pack
+Prefab.prototype.containsResources = Pack.prototype.containsResources;
+Prefab.prototype.onResourceRenamed = Pack.prototype.onResourceRenamed;
+Prefab.prototype.checkResourceNames = Pack.prototype.checkResourceNames;
+Prefab.prototype.setResources = Pack.prototype.setResources;
 
 LS.Prefab = Prefab;
 LS.registerResourceClass( Prefab );
-
-
-/**
-* Pack is an object that contain several resources, helpful when you want to carry a whole scene in one single file
-* 
-* @class Pack
-* @constructor
-*/
-
-function Pack(o)
-{
-	this.resource_names = []; 
-	this._data = {}; //the original chunks from the WBin, including the @JSON and @resource_names
-	this._resources_data = {}; //every resource in arraybuffer format
-	if(o)
-		this.configure(o);
-}
-
-Pack.version = "0.2"; //used to know where the file comes from 
-
-/**
-* configure the pack from an unpacked WBin
-* @method configure
-* @param {Object} data an unpacked WBIN (object with every chunk)
-**/
-Pack.prototype.configure = function( data )
-{
-	this._data = LS.cloneObject( data );
-
-	//extract resource names
-	this.resource_names = data["@resource_names"];
-	this._resources_data = {};
-	if(this.resource_names)
-	{
-		delete this._data["@resource_names"];
-		for(var i in this.resource_names)
-		{
-			this._resources_data[ this.resource_names[i] ] = data[ "@RES_" + i ];
-			delete this._data[ "@RES_" + i ];
-		}
-	}
-
-	//store resources in LS.ResourcesManager
-	this.processResources();
-}
-
-Object.defineProperty( Pack.prototype, 'bindata', {
-	set: function(name)
-	{
-		throw("Pack bindata cannot be assigned");
-	},
-	get: function(){
-		if(!this._original_data)
-			this._original_data = LS.Pack.packResources( this.resource_names, this._data );
-		return this._original_data;
-	},
-	enumerable: true
-});
-
-
-Pack.fromBinary = function(data)
-{
-	if(data.constructor == ArrayBuffer)
-		data = WBin.load(data, true);
-	return new LS.Pack(data);
-}
-
-//given a list of resources that come from the Pack (usually a wbin) it extracts, process and register them 
-Pack.prototype.processResources = function()
-{
-	if(!this.resource_names)
-		return;
-
-	var pack_filename = this.fullpath || this.filename;
-
-	//block this resources of being loaded, this is to avoid chain reactions when a resource uses 
-	//another one contained in this pack
-	for(var i = 0; i < this.resource_names.length; ++i)
-	{
-		var resname = this.resource_names[i];
-		if( LS.ResourcesManager.resources[ resname ] )
-			continue; //already loaded
-		LS.ResourcesManager.resources_being_processed[ resname ] = true;
-	}
-
-	//process and store in LS.ResourcesManager
-	for(var i = 0; i < this.resource_names.length; ++i)
-	{
-		var resname = this.resource_names[i];
-		if( LS.ResourcesManager.resources[resname] )
-			continue; //already loaded
-
-		var resdata = this._resources_data[ resname ];
-		if(!resdata)
-		{
-			console.warn("resource data in Pack is undefined, skipping it:" + resname);
-			continue;
-		}
-		var resource = LS.ResourcesManager.processResource( resname, resdata, { is_local: true, from_pack: pack_filename } );
-	}
-}
-
-Pack.prototype.setResources = function( resource_names, mark_them )
-{
-	this.resource_names = [];
-	this._resources_data = {};
-
-	var pack_filename = this.fullpath || this.filename;
-
-	//get resources
-	for(var i = 0; i < resource_names.length; ++i)
-	{
-		var res_name = resource_names[i];
-		if(this.resource_names.indexOf(res_name) != -1)
-			continue;
-		var resource = LS.ResourcesManager.resources[ res_name ];
-		if(!resource)
-			continue;
-		if(mark_them)
-			resource.from_pack = pack_filename;
-		this.resource_names.push( res_name );
-	}
-
-	//repack the pack info
-	this._original_data = LS.Pack.packResources( resource_names, { "@metadata": JSON.stringify( this.metadata ), "@version": LS.Pack.version } );
-	this._modified = true;
-}
-
-//adds to every resource in this pack info about where it came from (the pack)
-Pack.prototype.setResourcesLink = function( value )
-{
-	for(var i = 0; i < this.resource_names.length; ++i)
-	{
-		var res_name = this.resource_names[i];
-		var resource = LS.ResourcesManager.resources[ res_name ];
-		if(!resource)
-			continue;
-		if(value)
-			resource.from_pack = value;
-		else
-			delete resource.from_pack;
-	}
-}
-
-//adds a new resource (or array of resources) to this pack
-Pack.prototype.addResources = function( resource_names, mark_them )
-{
-	if(!resource_names)
-		return;
-	if(resource_names.constructor !== Array)
-		resource_names = [ resource_names ];
-	this.setResources( this.resource_names.concat( resource_names ), mark_them );
-}
-
-/**
-* to create a WBin containing all the resource and metadata
-* @method Pack.createWBin
-* @param {String} fullpath for the pack
-* @param {Array} resource_names array with the names of all the resources to store
-* @param {Object} metadata [optional] extra data to store
-* @param {boolean} mark_them [optional] marks all the resources as if they come from a pack
-* @return object containing the pack data ready to be converted to WBin
-**/
-Pack.createPack = function( filename, resource_names, extra_data, mark_them )
-{
-	if(!filename)
-		return;
-
-	if(!resource_names || resource_names.constructor !== Array)
-		throw("Pack.createPack resources must be array with names");
-	if(extra_data && extra_data.constructor !== Object)
-		throw("Pack.createPack extra_data must be an object with the chunks to store");
-
-	filename = filename.replace(/ /gi,"_");
-
-	var pack = new LS.Pack();
-	filename += ".wbin";
-	pack.filename = filename;
-	if(extra_data)
-		pack._data = extra_data;
-
-	pack.resource_names = resource_names;
-	for(var i = 0; i < resource_names.length; ++i)
-	{
-		var res_name = resource_names[i];
-		var resource = LS.ResourcesManager.resources[ res_name ];
-		if(!resource)
-			continue;
-		if(mark_them)
-			resource.from_pack = pack.filename;
-	}
-
-	//create the WBIN in case this pack gets stored
-	var bindata = LS.Pack.packResources( resource_names, extra_data );
-	pack._original_data = bindata;
-
-	return pack;
-}
-
-//Given a bunch of resource names it creates a WBin with all inside
-Pack.packResources = function( resource_names, base_object )
-{
-	var to_binary = base_object || {};
-	var final_resource_names = [];
-
-	for(var i = 0; i < resource_names.length; ++i)
-	{
-		var res_name = resource_names[i];
-		var resource = LS.ResourcesManager.resources[ res_name ];
-		if(!resource)
-			continue;
-
-		var data = null;
-		if(resource._original_data) //must be string or bytes
-			data = resource._original_data;
-		else
-		{
-			var data_info = LS.Resource.getDataToStore( resource );
-			data = data_info.data;
-		}
-
-		if(!data)
-		{
-			console.warn("Wrong data in resource");
-			continue;
-		}
-
-		if(data.constructor === Blob || data.constructor === File)
-		{
-			if(!data.data || data.data.constructor !== ArrayBuffer )
-			{
-				console.warn("WBin does not support to store File or Blob, please, use ArrayBuffer");
-				continue;
-			}
-			data = data.data; //because files have an arraybuffer with the data if it was read
-		}
-
-		to_binary["@RES_" + final_resource_names.length ] = data;
-		final_resource_names.push( res_name );
-		//to_binary[res_name] = data;
-	}
-
-	to_binary["@resource_names"] = final_resource_names;
-	return WBin.create( to_binary, "Pack" );
-}
-
-//just tells the resources where they come from, we cannot do that before because we didnt have the name of the pack
-Pack.prototype.flagResources = function()
-{
-	if(!this.resource_names)
-		return;
-
-	for(var i = 0; i < this.resource_names.length; ++i)
-	{
-		var res_name = this.resource_names[i];
-		var resource = LS.ResourcesManager.resources[ res_name ];
-		if(!resource)
-			continue;
-
-		resource.from_pack = this.fullpath || this.filename;
-	}
-}
-
-Pack.prototype.getDataToStore = function()
-{
-	return LS.Pack.packResources( this.resource_names, { "@version": LS.Pack.version } );
-}
-
-
-LS.Pack = Pack;
-LS.registerResourceClass( Pack );
-
 
 
 /**
@@ -36820,6 +37086,9 @@ Cloner.prototype.onCollectInstances = function(e, instances)
 	var material = this.material || this._root.getMaterial();
 	var flags = 0;
 
+	if(!RIs)
+		return;
+
 	//resize the instances array to fit the new RIs (avoids using push)
 	var start_array_pos = instances.length;
 	instances.length = start_array_pos + RIs.length;
@@ -36855,7 +37124,8 @@ Cloner.prototype.updateRenderInstancesArray = function()
 
 	if(!total) 
 	{
-		this._RIs.length = 0;
+		if(this._RIs)
+			this._RIs.length = 0;
 		return;
 	}
 

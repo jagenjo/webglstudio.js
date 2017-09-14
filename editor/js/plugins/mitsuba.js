@@ -195,7 +195,6 @@ var MitsubaTool = {
 			<rfilter type="gaussian"/>\n\
 		</film>\n\
 </sensor>\n';
-
 		return xml;
 	},
 

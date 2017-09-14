@@ -196,6 +196,11 @@ ResourcesPanelWidget.prototype.createTreeWidget = function()
 				that.current_bridge = item.bridge;
 				item.bridge.onFolderSelected( item, that );
 			}
+			else
+			{
+				that.current_folder = "";
+				that.current_bridge = null; //MEMORY
+			}
 		}
 	});
 
@@ -480,7 +485,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 ResourcesPanelWidget.prototype.showItemContextMenu = function( item, event )
 {
 	var that = this;
-	var actions = ["Insert","Load","Rename","Clone","Move","Properties",null,"Delete"];
+	var actions = ["Insert","Load","Rename","Clone","Move","Set as Modifyed","Properties",null,"Delete"];
 
 	var menu = new LiteGUI.ContextMenu( actions, { ignore_item_callbacks: true, event: event, title: "Resource", callback: function(action, options, event) {
 		var fullpath = item.dataset["fullpath"] || item.dataset["filename"];
@@ -510,6 +515,11 @@ ResourcesPanelWidget.prototype.showItemContextMenu = function( item, event )
 		else if(action == "Properties")
 		{
 			DriveModule.showResourceInfoInDialog( item.resource );
+		}
+		else if(action == "Set as Modifyed")
+		{
+			LS.RM.resourceModified( item.resource );
+			that.refreshContent();
 		}
 		else if(action == "Delete")
 		{

@@ -31,13 +31,14 @@ var DriveModule = {
 
 	insert_resource_callbacks: [], //when inserting a resource from the drive to the scene, what should we do?
 
-	settings_panel: [ {name:"drive", title:"Drive", icon:null } ],
+	preferences_panel: [ {name:"drive", title:"Drive", icon:null } ],
 
 	preferences: {
 		show_leaving_warning: true,
 		fileserver_url: null, //default,
 		fileserver_files_url: null,
-		proxy: null
+		proxy: null,
+		store_meshes_with_lossy_compression: true
 	},
 
 	init: function()
@@ -52,6 +53,9 @@ var DriveModule = {
 			this.server_files_path = this.preferences.fileserver_files_url;
 		if( this.preferences.proxy )
 			this.proxy = this.preferences.proxy;
+		if( this.preferences.store_meshes_with_lossy_compression === undefined )
+			this.preferences.store_meshes_with_lossy_compression = true;
+		GL.Mesh.enable_wbin_compression = this.preferences.store_meshes_with_lossy_compression;
 
 		//assign
 		LS.ResourcesManager.setPath( this.server_files_path );
@@ -541,7 +545,9 @@ var DriveModule = {
 
 		//inspector.addInfo("Metadata", metadata, {height:50});
 		if( (category == "Prefab" || category == "Pack") && local_resource)
+		{
 			inspector.addButton( category,"Show content", function(){ PackTools.showPackDialog( local_resource ); });
+		}
 		else if( category == "json" && local_resource )
 			inspector.addButton( category,"Show content", function(){ EditorModule.checkJSON( local_resource._data ); });
 
@@ -606,7 +612,7 @@ var DriveModule = {
 					EditorModule.checkJSON( resource.serialize() );
 				});
 			else
-				inspector.addButton(null, "" , function(){});
+				inspector.addInfo(null,"");
 			inspector.widgets_per_row = 1;
 		}
 
@@ -698,11 +704,11 @@ var DriveModule = {
 				var file = DriveModule.getResourceAsBlob( resource );
 				if(!file)
 					return;
-				LiteGUI.downloadFile(file.filename, file);
+				LiteGUI.downloadFile( LS.RM.getFilename( file.filename ), file );
 			}
 			else
 			{
-				LiteGUI.downloadURL( LS.RM.getFullURL( resource.fullpath ), resource.filename );
+				LiteGUI.downloadURL( LS.RM.getFullURL( resource.fullpath ), LS.RM.getFilename( resource.filename ) );
 			}
 		}});
 		widget.querySelector("button").setAttribute("download", resource.filename );
@@ -724,10 +730,13 @@ var DriveModule = {
 		var data = internal_data.data;
 		if(data.data) //HACK, ugly, but sometimes returns an object with info about the file, but I want the data
 			data = data.data;
-		if( internal_data.extension && internal_data.extension != extension )
-			filename += "." + internal_data.extension;
-
 		var extension = LS.RM.getExtension( filename ); //recompute it in case it changed
+		if( internal_data.extension && internal_data.extension != extension )
+		{
+			filename += "." + internal_data.extension;
+			extension = internal_data.extension; //recompute it in case it changed
+		}
+
 		//if the file doesnt have an extension...
 		if( !extension )
 		{
@@ -1869,7 +1878,7 @@ var DriveModule = {
 		return o;
 	},
 
-	onShowSettingsPanel: function(name,widgets)
+	onShowPreferencesPanel: function(name,widgets)
 	{
 		if(name != "drive")
 			return;
@@ -1923,7 +1932,11 @@ var DriveModule = {
 		}});
 
 		widgets.addSeparator();
-		widgets.addCheckbox( "Show leaving warning", this.preferences.show_leaving_warning, function(v){ that.preferences.show_leaving_warning = v; } );
+		widgets.addCheckbox( "Show leaving warning", this.preferences.show_leaving_warning, { name_width: "80%", callback: function(v){ that.preferences.show_leaving_warning = v; }} );
+		widgets.addCheckbox( "Use lossy compression with meshes", this.preferences.store_meshes_with_lossy_compression, { name_width: "80%", callback: function(v){ 
+			that.preferences.store_meshes_with_lossy_compression = v;
+			GL.Mesh.enable_wbin_compression = v;
+		}});
 	},
 
 	retrieveNoCacheFiles: function()

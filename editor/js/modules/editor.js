@@ -10,8 +10,8 @@ var EditorModule = {
 
 	selected_data: null, //the extra info about this item selected (which component, which field, etc)
 
-	settings_panel: [ {name:"editor", title:"Editor", icon:null } ],
-	settings: { //persistent settings
+	preferences_panel: [ {name:"editor", title:"Editor", icon:null } ],
+	preferences: { //persistent preferences
 		autoselect: false,
 		autofocus: true,
 		save_on_exit: false,
@@ -175,7 +175,7 @@ var EditorModule = {
 			return (EditorModule.coordinates_system == v.value);
 		}
 
-		mainmenu.add("View/Show All Gizmos", {  instance: EditorModule.settings, property: "render_all_gizmos", type:"checkbox" });
+		mainmenu.add("View/Show All Gizmos", {  instance: EditorModule.preferences, property: "render_all_gizmos", type:"checkbox" });
 
 		mainmenu.add("View/Render Settings", { callback: function() { EditorModule.showRenderSettingsDialog( RenderModule.render_settings) }} );
 
@@ -2189,10 +2189,10 @@ var EditorModule = {
 				return false;
 				break;
 			case 116: //F5
-				if(EditorModule.settings.save_on_exit)
+				if(EditorModule.preferences.save_on_exit)
 					SceneStorageModule.saveLocalScene("last", {}, LS.GlobalScene, SceneStorageModule.takeScreenshot(256,256) );
 
-				if(EditorModule.settings.save_on_exit && EditorModule.settings.reload_on_start)
+				if(EditorModule.preferences.save_on_exit && EditorModule.preferences.reload_on_start)
 				{
 					window.location.href = "?session=last";
 					e.preventDefault();
@@ -2247,10 +2247,10 @@ var EditorModule = {
 	},
 
 	/***************/
-	onShowSettingsPanel: function(name,widgets)
+	onShowPreferencesPanel: function(name,widgets)
 	{
 		if(name != "editor") return;
-		widgets.addFlags( EditorModule.settings );
+		widgets.addFlags( EditorModule.preferences );
 	},
 };
 

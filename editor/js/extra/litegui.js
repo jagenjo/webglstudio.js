@@ -4401,7 +4401,7 @@ LiteGUI.Console = Console;
 		var that = this;
 		var precision = options.precision != undefined ? options.precision : 3; //num decimals
 
-		this.options = options = options || {};
+		this.options = options || {};
 		var element = document.createElement("div");
 		element.className = "dragger " + (options.extraclass ? options.extraclass : "");
 		this.root = element;
@@ -4532,6 +4532,12 @@ LiteGUI.Console = Console;
 				input.value += options.units;
 			LiteGUI.trigger(input,"change");
 		}
+	}
+
+	Dragger.prototype.setRange = function(min,max)
+	{
+		this.options.min = min;
+		this.options.max = max;
 	}
 
 	Dragger.prototype.setValue = function(v, skip_event) { 
@@ -7827,6 +7833,7 @@ Inspector.prototype.addNumber = function(name, value, options)
 	dragger.root.style.width = "calc( 100% - 1px )";
 	element.querySelector(".wcontent").appendChild( dragger.root );
 	dragger.root.addEventListener("start_dragging", inner_before_change.bind(options) );
+	element.dragger = dragger;
 
 	if( options.disabled )
 		dragger.input.setAttribute("disabled","disabled");
@@ -7871,6 +7878,7 @@ Inspector.prototype.addNumber = function(name, value, options)
 			LiteGUI.trigger( input,"change" );
 	};
 
+	element.setRange = function(min,max) { dragger.setRange(min,max); }
 	element.getValue = function() { return parseFloat( input.value ); };
 	element.focus = function() { LiteGUI.focus(input); };
 	this.processElement(element, options);
@@ -7924,6 +7932,7 @@ Inspector.prototype.addVector2 = function(name,value, options)
 	var dragger2 = new LiteGUI.Dragger(value[1], options);
 	dragger2.root.style.width = "calc( 50% - 1px )";
 	wcontent.appendChild( dragger2.root );
+	element.draggers = [dragger1,dragger2];
 
 	LiteGUI.bind( dragger1.root ,"start_dragging", inner_before_change.bind(options) );
 	LiteGUI.bind( dragger2.root, "start_dragging", inner_before_change.bind(options) );
@@ -7974,6 +7983,7 @@ Inspector.prototype.addVector2 = function(name,value, options)
 		if(dragger2.getValue() != v[1])
 			dragger2.setValue(v[1],skip_event); //last one triggers the event
 	}
+	element.setRange = function(min,max) { dragger1.setRange(min,max); dragger2.setRange(min,max); }
 	this.processElement(element, options);
 	return element;
 }
@@ -8030,6 +8040,7 @@ Inspector.prototype.addVector3 = function(name,value, options)
 	var dragger3 = new LiteGUI.Dragger(value[2], options );
 	dragger3.root.style.width = "calc( 33% - 1px )";
 	element.querySelector(".wcontent").appendChild( dragger3.root );
+	element.draggers = [dragger1,dragger2,dragger3];
 
 	dragger1.root.addEventListener( "start_dragging", inner_before_change.bind(options) );
 	dragger2.root.addEventListener( "start_dragging", inner_before_change.bind(options) );
@@ -8079,6 +8090,7 @@ Inspector.prototype.addVector3 = function(name,value, options)
 		dragger2.setValue(v[1],true);
 		dragger3.setValue(v[2],skip_event); //last triggers
 	}
+	element.setRange = function(min,max) { dragger1.setRange(min,max); dragger2.setRange(min,max); dragger3.setRange(min,max); }
 
 	this.processElement(element, options);
 	return element;
@@ -8118,7 +8130,7 @@ Inspector.prototype.addVector4 = function(name,value, options)
 	options.full = true;
 	this.tab_index++;
 
-	var draggers = [];
+	var draggers = element.draggers = [];
 
 	for(var i = 0; i < 4; i++)
 	{
@@ -8175,6 +8187,7 @@ Inspector.prototype.addVector4 = function(name,value, options)
 		for(var i = 0; i < draggers.length; i++)
 			draggers[i].setValue(v[i],skip_event);
 	}
+	element.setRange = function(min,max) { for(var i in draggers) { draggers[i].setRange(min,max); } }
 
 	this.processElement(element, options);
 	return element;

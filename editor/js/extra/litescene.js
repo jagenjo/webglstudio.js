@@ -40756,6 +40756,7 @@ SceneNode.prototype.getPropertyInfoFromPath = function( path )
 {
 	var target = this;
 	var varname = path[0];
+	var no_slice = false;
 
 	if(path.length == 0)
 	{
@@ -40817,6 +40818,7 @@ SceneNode.prototype.getPropertyInfoFromPath = function( path )
 			case "rotZ":
 				target = this.transform;
 				varname = path[0];
+				no_slice = true;
 				break;
 			default: 
 				target = this;
@@ -40859,7 +40861,7 @@ SceneNode.prototype.getPropertyInfoFromPath = function( path )
 
 	//this was moved to Component.prototype.getPropertyInfoFromPath  (if any errors check cases)
 	if( target != this && target.getPropertyInfoFromPath ) //avoid weird recursion
-		return target.getPropertyInfoFromPath( path.slice(1) );
+		return target.getPropertyInfoFromPath( no_slice ? path : path.slice(1) );
 
 	return null;
 }
@@ -40886,6 +40888,7 @@ SceneNode.prototype.getPropertyValueFromPath = function( path )
 {
 	var target = this;
 	var varname = path[0];
+	var no_slice = false;
 
 	if(path.length == 0)
 		return null
@@ -40911,6 +40914,7 @@ SceneNode.prototype.getPropertyValueFromPath = function( path )
 			case "rotZ":
 				target = this.transform;
 				varname = path[0];
+				no_slice = true;
 				break;
 			default: 
 				target = this;
@@ -40952,7 +40956,7 @@ SceneNode.prototype.getPropertyValueFromPath = function( path )
 
 	if( target.getPropertyValueFromPath && target != this )
 	{
-		var r = target.getPropertyValueFromPath( path.slice(1) );
+		var r = target.getPropertyValueFromPath( no_slice ? path : path.slice(1) );
 		if(r)
 			return r;
 	}
@@ -40965,7 +40969,7 @@ SceneNode.prototype.getPropertyValueFromPath = function( path )
 	//used in TextureFX
 	if (v === undefined && path.length > 2 && target[ varname ] && target[ varname ].getPropertyValueFromPath )
 	{
-		var r = target[ varname ].getPropertyValueFromPath( path.slice(2) );
+		var r = target[ varname ].getPropertyValueFromPath( no_slice ? path.slice(1) : path.slice(2) );
 		if(r)
 		{
 			r.node = this;

@@ -1403,6 +1403,8 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 				return;
 
 			total = action_callback( that.current_animation, that.current_take, inner_callback );
+			that.redrawCanvas();
+
 			if(total != null)
 			{
 				LiteGUI.alert("Tracks modified: " + total);
@@ -2755,5 +2757,40 @@ Timeline.actions.take["Only Rotations"] = function( animation, take )
 Timeline.actions.take["Remove scaling"] = function( animation, take )
 {
 	return take.removeScaling();
+}
+
+Timeline.actions.take["Mask tracks with selected nodes"] = function( animation, take )
+{
+	var nodes = SelectionModule.getSelectedNodes();
+
+	for(var i = 0; i < take.tracks.length; ++i)
+	{
+		var track = take.tracks[i];
+
+		var node = LSQ.get( track._property_path[0] );
+		if( node && node.constructor === LS.SceneNode )
+			track.enabled = (nodes.indexOf(node) != -1);
+	}
+	return 1; //force modifyed
+}
+
+Timeline.actions.take["Enable All Tracks"] = function( animation, take )
+{
+	for(var i = 0; i < take.tracks.length; ++i)
+		take.tracks[i].enabled = true;
+	return 1; //force modifyed
+}
+
+Timeline.actions.take["Remove Disabled Tracks"] = function( animation, take )
+{
+	var num = take.tracks.length;
+	var tracks = [];
+	for(var i = 0; i < num; ++i)
+	{
+		if( take.tracks[i].enabled )
+			tracks.push( take.tracks[i] );
+	}
+	take.tracks = tracks;
+	return num - tracks.length;
 }
 

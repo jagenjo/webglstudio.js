@@ -38723,6 +38723,8 @@ SceneTree.prototype.configure = function( scene_info )
 	if(!scene_info || scene_info.constructor === String)
 		throw("SceneTree configure requires object");
 
+	LEvent.trigger(this,"preConfigure",scene_info);
+
 	this._root.removeAllComponents(); //remove light, camera, skybox
 
 	//this._components = [];

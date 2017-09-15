@@ -9,6 +9,7 @@ function SceneTreeWidget( options )
 	var that = this;
 
 	var scene = LS.GlobalScene;
+	this.locked = false;
 
 	this.root = document.createElement("div");
 	this.root.className = "scene-tree";
@@ -285,9 +286,18 @@ SceneTreeWidget.prototype.bindEvents = function( scene )
 
 	//Events from the scene
 
+	LEvent.bind( scene, "preConfigure", function(e,node) {
+		that.locked = true;
+	}, this);
+
+	LEvent.bind( scene, "configure", function(e,node) {
+		that.locked = false;
+		that.refresh();
+	}, this);
+
 	//Triggered when a new node is attached to the scene tree
 	LEvent.bind( scene, "nodeAdded", function(e,node) {
-		if(this._ignore_events) 
+		if( this._ignore_events || that.locked )
 			return;
 
 		//add to tree

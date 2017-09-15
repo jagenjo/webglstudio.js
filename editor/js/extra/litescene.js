@@ -12642,7 +12642,12 @@ Track.prototype.serialize = function()
 	if(this.data)
 	{
 		if(this.value_size <= 1)
-			o.data = this.data.concat(); //regular array, clone it
+		{
+			if(this.data.concat)
+				o.data = this.data.concat(); //regular array, clone it
+			else
+				o.data = new this.data.constructor( o.data ); //clone for typed arrays (weird, this should never happen but it does)
+		}
 		else //pack data
 		{
 			this.packData();
@@ -24790,6 +24795,8 @@ function Camera(o)
 
 	this._background_color = vec4.fromValues(0,0,0,1);
 
+	this._use_custom_projection_matrix = false;
+
 	this._view_matrix = mat4.create();
 	this._projection_matrix = mat4.create();
 	this._viewprojection_matrix = mat4.create();
@@ -25100,6 +25107,35 @@ Object.defineProperty( Camera.prototype, "orthographic", {
 });
 
 /**
+* The view matrix of the camera 
+* @property projection_matrix {vec4}
+*/
+Object.defineProperty( Camera.prototype, "view_matrix", {
+	get: function() {
+		return this._view_matrix;
+	},
+	set: function(v) {
+		this.fromViewMatrix(v);
+	},
+	enumerable: true
+});
+
+/**
+* The projection matrix of the camera (cannot be set manually, use setCustomProjectionMatrix instead)
+* @property projection_matrix {mat4}
+*/
+Object.defineProperty( Camera.prototype, "projection_matrix", {
+	get: function() {
+		return this._projection_matrix;
+	},
+	set: function(v) {
+		throw("projection matrix cannot be set manually, use setCustomProjectionMatrix instead.");
+	},
+	enumerable: true
+});
+
+
+/**
 * The viewport in normalized coordinates (left,bottom, width, height)
 * @property viewport {vec4}
 */
@@ -25389,7 +25425,7 @@ Camera.prototype.updateMatrices = function( force )
 		return;
 
 	//update projection
-	if( this._must_update_projection_matrix || force )
+	if( (this._must_update_projection_matrix || force) && !this._use_custom_projection_matrix )
 	{
 		if(this.type == Camera.ORTHOGRAPHIC)
 			mat4.ortho(this._projection_matrix, -this._frustum_size*this._final_aspect*0.5, this._frustum_size*this._final_aspect*0.5, -this._frustum_size*0.5, this._frustum_size*0.5, this._near, this._far);
@@ -25910,7 +25946,12 @@ Camera.prototype.setEulerAngles = function(yaw,pitch,roll)
 	this.setOrientation(q);
 }
 
-Camera.prototype.fromViewmatrix = function(mat)
+/**
+* uses a view matrix to compute the eye,center,up vectors
+* @method fromViewMatrix
+* @param {mat4} mat the given view matrix
+*/
+Camera.prototype.fromViewMatrix = function(mat)
 {
 	var M = mat4.invert( mat4.create(), mat );
 	this.eye = vec3.transformMat4(vec3.create(),vec3.create(),M);
@@ -25918,6 +25959,28 @@ Camera.prototype.fromViewmatrix = function(mat)
 	this.up = mat4.rotateVec3( vec3.create(), M, [0,1,0] );
 	this._must_update_view_matrix = true;
 }
+
+/**
+* overwrites the current projection matrix with a given one (it also blocks the camera from modifying the projection matrix)
+* @method setCustomProjectionMatrix
+* @param {mat4} mat the given projection matrix (or null to disable it)
+*/
+Camera.prototype.setCustomProjectionMatrix = function( mat )
+{
+	if(!v)
+	{
+		this._use_custom_projection_matrix = false;
+		this._must_update_projection_matrix = true;
+	}
+	else
+	{
+		this._use_custom_projection_matrix = true;
+		this._projection_matrix.set( mat );
+		this._must_update_projection_matrix = false;
+		mat4.multiply( this._viewprojection_matrix, this._projection_matrix, this._view_matrix );
+	}
+}
+
 
 /**
 * Sets the viewport in pixels (using the gl.canvas as reference)

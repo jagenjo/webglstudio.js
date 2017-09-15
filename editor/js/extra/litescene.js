@@ -2804,7 +2804,7 @@ var GUI = {
 		{
 			if(content.constructor === Number)
 				content = content.toFixed(3);
-			else (content.constructor !== String)
+			else if (content.constructor !== String)
 				content = String(content);
 			ctx.fillStyle = this.GUIStyle.color;
 			ctx.font = (area[3]*0.75).toFixed(0) + "px " + this.GUIStyle.font;

@@ -467,7 +467,7 @@ LiteGUI.Inspector.prototype.addComponent = function( name, value, options )
 	input.setAttribute("placeHolder","Component");
 	
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
-		EditorModule.showSelectComponent( value, options.filter, options.callback, element );
+		EditorModule.showSelectComponent( value, options.filter || options.component_class , options.callback, element );
 		if(options.callback_button)
 			options.callback_button.call(element, input.value );
 	});
@@ -477,6 +477,8 @@ LiteGUI.Inspector.prototype.addComponent = function( name, value, options )
 		e.stopPropagation();
 		var locator = e.dataTransfer.getData("locator");
 		var comp = LSQ.get( locator );
+		if( options.component_class && comp.constructor !== LS.Components[ options.component_class ] )
+			return; //not the right type of component
 		if( comp && comp.constructor.is_component )
 		{
 			input.value = locator;

@@ -725,6 +725,48 @@ LScript.expandCode = function(code)
 		}
 	}
 
+	//allow to use public var foo = 10;
+	var lines = code.split("\n");
+	var update = false;
+	for(var i = 0; i < lines.length; ++i)
+	{
+		var line = lines[i].trim();
+		if(line.indexOf("public") != -1)
+		{
+			var index = line.indexOf("//");
+			if(index != -1)
+				line = line.substr(0,index); //remove one-line comments
+			var index = line.lastIndexOf(";");
+			if(index != -1)
+				line = line.substr(0,index); //remove one-line comments
+			var t = line.split(" ");
+			if(t[0] != 'public' || t[1] != 'var')
+				continue;
+			var varname = t[2];
+			if(!varname)
+				continue;
+			var name_type = varname.split(":");
+			var type = name_type[1] || "";
+			if( !type && t[3] == ":" && t[4] && t[4] != "=" )
+				type = t[4];
+			var index = line.indexOf("=");
+			var value = line.substr(index+1);
+			var type_options = {};
+			if(type)
+				type_options.type = type;
+			if( LS.Components[ type ] ) //for components
+			{
+				type_options.component_class = type;
+				type_options.type = LS.TYPES.COMPONENT;
+			}
+			lines[i] = "this.createProperty('" + name_type[0] + "'," + value + ", "+JSON.stringify( type_options )+" );";
+			update = true;
+		}
+	}
+	if(update)
+		code = lines.join("\n");
+
+
 	/* using regex, not working
 	if( code.indexOf("'''") != -1 )
 	{
@@ -12158,9 +12200,10 @@ Take.prototype.createTrack = function( data )
 * @param {boolean} ignore_interpolation in case you want to sample the nearest one
 * @param {SceneNode} weight [Optional] allows to blend animations with current value (default is 1)
 * @param {Number} root [Optional] if you want to limit the locator to search inside a node
+* @param {Function} on_pre_apply [Optional] a callback called before applying a keyframe, if the callback returns false the keyframe will be skipped
 * @return {Component} the target where the action was performed
 */
-Take.prototype.applyTracks = function( current_time, last_time, ignore_interpolation, root_node, scene, weight )
+Take.prototype.applyTracks = function( current_time, last_time, ignore_interpolation, root_node, scene, weight, on_pre_apply )
 {
 	scene = scene || LS.GlobalScene;
 	if(weight === 0)
@@ -12217,7 +12260,11 @@ Take.prototype.applyTracks = function( current_time, last_time, ignore_interpola
 
 			//apply the value to the property specified by the locator
 			if( sample !== undefined ) 
+			{
+				if( on_pre_apply && on_pre_apply( track._property_path, sample, root_node, 0 ) === false)
+					continue; //skip
 				track._target = scene.setPropertyValueFromPath( track._property_path, sample, root_node, 0 );
+			}
 		}
 	}
 }
@@ -19531,7 +19578,7 @@ var Renderer = {
 			if(gl.start2D)
 				gl.start2D();
 			LS.GUI.ResetImmediateGUI(); //mostly to change the cursor
-			LEvent.trigger( scene, "renderGUI", render_settings );
+			LEvent.trigger( scene, "renderGUI", gl );
 			if(gl.finish2D)
 				gl.finish2D();
 		}
@@ -19683,7 +19730,24 @@ var Renderer = {
 		LEvent.trigger( scene, "afterCameraEnabled", camera ); //used to change stuff according to the current camera (reflection textures)
 	},
 
-	//clear color using camerae info
+	/**
+	* Returns the camera active
+	*
+	* @method getCurrentCamera
+	* @return {Camera} camera
+	*/
+	getCurrentCamera: function()
+	{
+		return this._current_camera;
+	},
+
+	/**
+	* clear color using camera info ( background color, viewport scissors, clear depth, etc )
+	*
+	* @method clearBuffer
+	* @param {Camera} camera
+	* @param {LS.RenderSettings} render_settings
+	*/
 	clearBuffer: function( camera, render_settings )
 	{
 		if( render_settings.ignore_clear || (!camera.clear_color && !camera.clear_depth) )
@@ -24046,7 +24110,7 @@ Transform.prototype.getNormalMatrix = function (m)
 		mat4.multiply( this._global_matrix, this._parent.getGlobalMatrix(), this._local_matrix );
 	else
 		m.set(this._local_matrix); //return local because it has no parent
-	return mat4.transpose(m, mat4.invert(m,m));
+	return mat4.transpose(m, mat4.invert(m,m) );
 }
 
 /**
@@ -24069,7 +24133,9 @@ Transform.prototype.fromMatrix = (function() {
 		{
 			mat4.copy(this._global_matrix, m); //assign to global
 			var M_parent = this._parent.getGlobalMatrix( global_temp ); //get parent transform
-			mat4.invert(M_parent,M_parent); //invert
+			var r = mat4.invert( M_parent, M_parent ); //invert
+			if(!r)
+				return;
 			m = mat4.multiply( this._local_matrix, M_parent, m ); //transform from global to local
 		}
 
@@ -24426,6 +24492,8 @@ Transform.prototype.lookAt = (function() {
 		{
 			this._parent.getGlobalMatrix( GM );
 			var inv = mat4.invert(GM,GM);
+			if(!inv)
+				return;
 			mat4.multiplyVec3(temp_pos, inv, pos);
 			mat4.multiplyVec3(temp_target, inv, target);
 			mat4.rotateVec3(temp_up, inv, up );
@@ -24545,7 +24613,8 @@ Transform.prototype.globalToLocal = (function(){
 		dest = dest || vec3.create();
 		if(this._must_update)
 			this.updateMatrix();
-		mat4.invert( inv, this.getGlobalMatrixRef() );
+		if( !mat4.invert( inv, this.getGlobalMatrixRef() ) )
+			return inv;
 		return mat4.multiplyVec3( dest, inv, vec );
 	};
 })();
@@ -24659,7 +24728,9 @@ Transform.prototype.applyTransformMatrix = (function(){
 		var PGM = this._parent._global_matrix;
 		mat4.multiply( this._global_matrix, M, GM );
 
-		mat4.invert(temp,PGM);
+		if(!mat4.invert( temp, PGM ))
+			return;
+		
 		mat4.multiply( this._local_matrix, temp, this._global_matrix );
 		this.fromMatrix( this._local_matrix );
 		//*/
@@ -24667,32 +24738,40 @@ Transform.prototype.applyTransformMatrix = (function(){
 })();
 
 //applies matrix to position, rotation and scale individually, doesnt take into account parents
-Transform.prototype.applyLocalTransformMatrix = function( M )
-{
+Transform.prototype.applyLocalTransformMatrix = (function() {
 	var temp = vec3.create();
+	var temp_mat3 = mat3.create();
+	var temp_mat4 = mat4.create();
+	var temp_quat = quat.create();
 
-	//apply translation
-	vec3.transformMat4( this._position, this._position, M );
+	return (function( M )
+	{
+		//apply translation
+		vec3.transformMat4( this._position, this._position, M );
 
-	//apply scale
-	mat4.rotateVec3( temp, M, [1,0,0] );
-	this._scaling[0] *= vec3.length( temp );
-	mat4.rotateVec3( temp, M, [0,1,0] );
-	this._scaling[1] *= vec3.length( temp );
-	mat4.rotateVec3( temp, M, [0,0,1] );
-	this._scaling[2] *= vec3.length( temp );
+		//apply scale
+		mat4.rotateVec3( temp, M, [1,0,0] );
+		this._scaling[0] *= vec3.length( temp );
+		mat4.rotateVec3( temp, M, [0,1,0] );
+		this._scaling[1] *= vec3.length( temp );
+		mat4.rotateVec3( temp, M, [0,0,1] );
+		this._scaling[2] *= vec3.length( temp );
 
-	//apply rotation
-	var m = mat4.invert(mat4.create(), M);
-	mat4.transpose(m, m);
-	var m3 = mat3.fromMat4( mat3.create(), m);
-	var q = quat.fromMat3(quat.create(), m3);
-	quat.normalize(q, q);
-	quat.multiply( this._rotation, q, this._rotation );
+		//apply rotation
+		var m = mat4.invert( temp_mat4, M );
+		if(!m)
+			return;
 
-	this._must_update = true; //matrix must be redone?
-	this._on_change();
-}
+		mat4.transpose(m, m);
+		var m3 = mat3.fromMat4( temp_mat3, m);
+		var q = quat.fromMat3( temp_quat, m3);
+		quat.normalize(q, q);
+		quat.multiply( this._rotation, q, this._rotation );
+
+		this._must_update = true; //matrix must be redone?
+		this._on_change();
+	});
+})();
 
 
 /*
@@ -35220,6 +35299,8 @@ function PlayAnimation(o)
 	this.blend_time = 0;
 	this.range = null;
 
+	this.onPreApply = null;
+
 	this._last_time = 0;
 
 	this._use_blend_animation = false;
@@ -35629,7 +35710,7 @@ PlayAnimation.prototype.applyAnimation = function( take, time, last_time, weight
 		else
 			root_node = this._root.scene.getNode( this.root_node );
 	}
-	take.applyTracks( time, last_time, undefined, root_node, this._root.scene, weight );
+	take.applyTracks( time, last_time, undefined, root_node, this._root.scene, weight, this.onPreApply );
 }
 
 PlayAnimation.prototype._processSample = function(nodename, property, value, options)

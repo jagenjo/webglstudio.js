@@ -1269,6 +1269,7 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 
 	var selected_take_name = "default";
 	var new_take_name = "new_take";
+	var action = null;
 
 	inner_refresh_left();
 	inner_refresh_right();
@@ -1392,8 +1393,8 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 		for(var i in Timeline.actions.take)
 			values.push(i);
 
-		var action = values[0];
-		widgets.addCombo("Actions", action,{ values: values, width: "80%", callback: function(v){
+		action = action || values[0];
+		widgets.addCombo("Actions", action, { values: values, width: "80%", callback: function(v){
 			action = v;	
 		}});
 

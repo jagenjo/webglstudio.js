@@ -164,13 +164,13 @@ Timeline.prototype.onNewAnimation = function( name, duration, folder )
 }
 
 //called when an animation has been modified
-Timeline.prototype.animationModified = function()
+Timeline.prototype.animationModified = function( animation )
 {
-	if(!this.current_animation)
+	animation = animation || this.current_animation;
+	if(!animation)
 		return;
-
-	this.current_animation._modified = true;
-	LS.ResourcesManager.resourceModified( this.current_animation );
+	animation._modified = true;
+	LS.ResourcesManager.resourceModified( animation );
 	LS.GlobalScene.refresh();
 	this.redrawCanvas();
 }
@@ -1251,6 +1251,7 @@ Timeline.prototype.showOptionsContextMenu = function( e )
 Timeline.prototype.showTakeOptionsDialog = function( e )
 {
 	var that = this;
+	var animation = this.current_animation;
 
 	var dialog = new LiteGUI.Dialog({ title:"Take Options", closable: true, width: 600, draggable: true } );
 
@@ -1277,14 +1278,15 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 	{
 		var widgets = widgets1;
 
-		var selected_take = that.current_animation.takes[ selected_take_name ];
+		var selected_take = animation.takes[ selected_take_name ];
 		var duration = selected_take ? selected_take.duration : 0;
 		var tracks = selected_take ? selected_take.tracks.length : 0;
 
 		widgets.clear();
+		widgets.addString("Animation", animation.name );
 		widgets.addTitle("Takes");
 		var takes = [];
-		for( var i in that.current_animation.takes )
+		for( var i in animation.takes )
 			takes.push( i );
 		widgets.addList( null, takes, { height: 140, selected: selected_take_name, callback: function(v){
 			selected_take_name = v;
@@ -1297,13 +1299,13 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 				var data = selected_take.serialize();
 				var take = new LS.Animation.Take();
 				take.configure( data );
-				if( that.current_animation.takes[ take.name ] )
+				if( animation.takes[ take.name ] )
 					take.name = take.name + ((Math.random() * 100)|0);
 				selected_take_name = take.name;
-				that.addUndoAnimationEdited( that.current_animation );
-				that.current_animation.addTake( take );
-				that.setAnimation( that.current_animation, selected_take_name );
-				that.animationModified();
+				that.addUndoAnimationEdited( animation );
+				animation.addTake( take );
+				that.setAnimation( animation, selected_take_name );
+				that.animationModified( animation );
 			}
 			else if(v == "Copy")
 			{
@@ -1319,23 +1321,23 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 					return;
 				var take = new LS.Animation.Take();
 				take.configure( data );
-				if( that.current_animation.takes[ take.name ] )
+				if( animation.takes[ take.name ] )
 					take.name = take.name + ((Math.random() * 100)|0);
 				selected_take_name = take.name;
-				that.addUndoAnimationEdited( that.current_animation );
-				that.current_animation.addTake( take );
-				that.setAnimation( that.current_animation, selected_take_name );
-				that.animationModified();
+				that.addUndoAnimationEdited( animation );
+				animation.addTake( take );
+				that.setAnimation( animation, selected_take_name );
+				that.animationModified( animation );
 			}
 			else if(v == "Delete")
 			{
-				if( that.current_animation.getNumTakes() <= 1 )
+				if( animation.getNumTakes() <= 1 )
 					return;
-				that.addUndoAnimationEdited( that.current_animation );
-				that.current_animation.removeTake( selected_take_name );
-				selected_take_name = Object.keys( that.current_animation.takes )[0];
-				that.animationModified();
-				that.setAnimation( that.current_animation, selected_take_name );
+				that.addUndoAnimationEdited( animation );
+				animation.removeTake( selected_take_name );
+				selected_take_name = Object.keys( animation.takes )[0];
+				that.animationModified( animation );
+				that.setAnimation( animation, selected_take_name );
 			}
 			widgets1.refresh();
 			widgets2.refresh();
@@ -1355,22 +1357,22 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 	{
 		var widgets = widgets2;
 
-		var selected_take = that.current_animation.takes[ selected_take_name ];
+		var selected_take = animation.takes[ selected_take_name ];
 		var duration = selected_take ? selected_take.duration : 0;
 		var tracks = selected_take ? selected_take.tracks.length : 0;
 
 		widgets.clear();
 
 		widgets.addTitle("Animation");
-		widgets.addString("Name",  that.current_animation.fullpath || that.current_animation.filename );
+		widgets.addString("Name", animation.fullpath || animation.filename );
 
 		widgets.addTitle("Selected Take");
 		widgets.addStringButton("Name",selected_take_name,{ button: "&#9998;", callback_button: function(v){
-			that.addUndoAnimationEdited( that.current_animation );
-			that.current_animation.renameTake( selected_take_name, v );
+			that.addUndoAnimationEdited( animation );
+			animation.renameTake( selected_take_name, v );
 			selected_take_name = v;
 			that.animationModified();
-			that.setAnimation( that.current_animation, selected_take_name );
+			that.setAnimation( animation, selected_take_name );
 			widgets1.refresh();
 			widgets2.refresh();
 		}});
@@ -1402,14 +1404,14 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 			if(!action_callback || !selected_take)
 				return;
 
-			total = action_callback( that.current_animation, selected_take, inner_callback );
+			total = action_callback( animation, selected_take, inner_callback );
 			that.redrawCanvas();
 
 			if(total != null)
 			{
 				LiteGUI.alert("Tracks modified: " + total);
 				if(total)
-					that.animationModified();
+					that.animationModified( animation );
 			}
 
 			//dialog.close(); //close after action
@@ -1418,7 +1420,7 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 			{
 				LiteGUI.alert("Tracks modified: " + total);
 				if(total)
-					that.animationModified();
+					that.animationModified( animation );
 			}
 		}});
 		widgets.widgets_per_row = 1;
@@ -1431,11 +1433,11 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 		}});
 
 		widgets.addButton(null,"Go",{ width: "20%", callback: function(){
-			var total = that.current_take.setInterpolationToAllTracks( interpolation );
+			var total = selected_take.setInterpolationToAllTracks( interpolation );
 			if(total != null)
 				LiteGUI.alert("Tracks modified: " + total);
 			if(total)
-				that.animationModified();
+				that.animationModified( animation );
 		}});
 		widgets.widgets_per_row = 1;
 
@@ -1446,9 +1448,9 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 		widgets.addButton(null,"TRIM", function(){
 			var from_t = from_widget.getValue();
 			var to_t = to_widget.getValue();
-			var total = that.current_take.trimTracks( from_t, to_t );
+			var total = selected_take.trimTracks( from_t, to_t );
 			if(total)
-				that.animationModified();
+				that.animationModified( animation );
 			that.redrawCanvas();
 		});
 		widgets.widgets_per_row = 1;
@@ -1458,10 +1460,10 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 
 	function inner_new_take()
 	{
-		that.addUndoAnimationEdited( that.current_animation );
-		that.current_animation.createTake( new_take_name );
+		that.addUndoAnimationEdited( animation );
+		animation.createTake( new_take_name );
 		selected_take_name = new_take_name;
-		that.setAnimation( that.current_animation, selected_take_name );
+		that.setAnimation( animation, selected_take_name );
 		widgets1.refresh();
 	}
 }

@@ -1399,10 +1399,10 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 			var total = 0;
 
 			var action_callback = Timeline.actions.take[ action ];
-			if(!action_callback)
+			if(!action_callback || !selected_take)
 				return;
 
-			total = action_callback( that.current_animation, that.current_take, inner_callback );
+			total = action_callback( that.current_animation, selected_take, inner_callback );
 			that.redrawCanvas();
 
 			if(total != null)

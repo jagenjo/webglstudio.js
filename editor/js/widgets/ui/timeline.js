@@ -1412,7 +1412,7 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 					that.animationModified();
 			}
 
-			dialog.close();
+			//dialog.close(); //close after action
 
 			function inner_callback(total)
 			{

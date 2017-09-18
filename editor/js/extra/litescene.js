@@ -1873,6 +1873,11 @@ var Network = {
 
 		//change protocol when working over https
 		var url = request.url;
+
+		//apply proxy
+		if(request.use_proxy)
+			url = LS.ResourcesManager.getFullURL(url);
+
 		if( this.protocol === null )
 			this.protocol = LS.ResourcesManager.getProtocol( location.href );
 		var protocol = LS.ResourcesManager.getProtocol( url );
@@ -4946,6 +4951,12 @@ LS.ResourcesManager.processScene = function( filename, data, options ) {
 		console.error("Error parsing scene: " + filename);
 		return null;
 	}
+
+	if( scene_data && scene_data.constructor === LS.SceneTree )
+		throw("processScene must receive object, no SceneTree");
+
+	if(!scene_data.root)
+		throw("this is not an scene, root property missing");
 
 	LS.ResourcesManager._parsing_local_file = true;
 
@@ -41432,6 +41443,8 @@ SceneNode.prototype.configure = function(info)
 		this.transform.position = info.position;
 	if(info.model) 
 		this.transform.fromMatrix( info.model ); 
+	if(info.matrix) 
+		this.transform.fromMatrix( info.matrix ); 
 	if(info.transform) 
 		this.transform.configure( info.transform ); 
 

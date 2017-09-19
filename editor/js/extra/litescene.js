@@ -27758,7 +27758,7 @@ Light.prototype.generateShadowmap = function (render_settings)
 Light.prototype.getTransformMatrix = function( element, mat )
 {
 	if( this._root && this._root.transform )
-		return null; //use the node transform
+		return this._root.transform.getGlobalMatrix( mat ); //use the node transform
 
 	var p = null;
 	if (element == "target")

@@ -183,6 +183,10 @@ var LabModule = {
 			var item = LS.RM.textures[i];
 			if(!item) //just in case...
 				continue;
+
+			if(item._is_internal)
+				continue;
+
 			num++;
 			var tex = item;
 			var w = size * tex.width / tex.height;

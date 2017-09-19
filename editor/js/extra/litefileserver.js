@@ -547,6 +547,23 @@ Session.prototype.setUserSpace = function( username, space, on_complete )
 	});
 }
 
+Session.prototype.addUserRole = function( username, role, on_complete )
+{
+	var that = this;
+	return this.request( this.server_url,{action: "user/addRole", username: username, role: role }, function(resp){
+		if(on_complete)
+			on_complete(resp.status, resp);
+	});
+}
+
+Session.prototype.removeUserRole = function( username, role, on_complete )
+{
+	var that = this;
+	return this.request( this.server_url,{action: "user/removeRole", username: username, role: role }, function(resp){
+		if(on_complete)
+			on_complete(resp.status, resp);
+	});
+}
 
 //units
 Session.prototype.createUnit = function(unit_name, size, on_complete)

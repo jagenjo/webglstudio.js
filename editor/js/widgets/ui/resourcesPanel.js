@@ -243,7 +243,7 @@ ResourcesPanelWidget.prototype.createTreeWidget = function()
 	return tree_widget;
 }
 
-
+//where items are an array of Resources (LS.RM.resources)
 ResourcesPanelWidget.prototype.showInBrowserContent = function( items, options )
 {
 	options = options || {};
@@ -585,7 +585,10 @@ ResourcesPanelWidget.prototype.unbindEvents = function()
 ResourcesPanelWidget.prototype.onResourceRegistered = function(e,res)
 {
 	if(!this.current_folder)
-		this.refreshContent();
+	{
+		this.addItemToBrowser( res );
+		//this.refreshContent(); //very slow!
+	}
 }
 
 ResourcesPanelWidget.prototype.clear = function()

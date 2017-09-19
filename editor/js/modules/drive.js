@@ -556,7 +556,9 @@ var DriveModule = {
 			if( local_resource.from_pack )
 				inspector.addInfo( "From Pack" , local_resource.from_pack );
 			if( local_resource.from_prefab )
-				inspector.addInfo( "From Prefab" , local_resource.from_prefab );
+				inspector.addStringButton( "From Prefab" , local_resource.from_prefab, { callback_button: function(){
+					//TODO
+				}});
 		}
 
 

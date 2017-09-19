@@ -302,6 +302,7 @@ var EditorModule = {
 	{
 		if(!object)
 			return;
+		console.log(object); //helps navigating
 
 		var w = window.open("",'_blank');
 

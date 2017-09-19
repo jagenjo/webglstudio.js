@@ -4263,8 +4263,10 @@ LiteGUI.Console = Console;
 		if(tab.onclose)
 			tab.onclose(tab);
 
-		tab.tab.parentNode.removeChild( tab.tab );
-		tab.content.parentNode.removeChild( tab.content );
+		if(tab.tab.parentNode)
+			tab.tab.parentNode.removeChild( tab.tab );
+		if(tab.content.parentNode)
+			tab.content.parentNode.removeChild( tab.content );
 		delete this.tabs[id];
 
 		this.recomputeTabsByIndex();

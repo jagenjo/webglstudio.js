@@ -725,6 +725,48 @@ LScript.expandCode = function(code)
 		}
 	}
 
+	//allow to use public var foo = 10;
+	var lines = code.split("\n");
+	var update = false;
+	for(var i = 0; i < lines.length; ++i)
+	{
+		var line = lines[i].trim();
+		if(line.indexOf("public") != -1)
+		{
+			var index = line.indexOf("//");
+			if(index != -1)
+				line = line.substr(0,index); //remove one-line comments
+			var index = line.lastIndexOf(";");
+			if(index != -1)
+				line = line.substr(0,index); //remove one-line comments
+			var t = line.split(" ");
+			if(t[0] != 'public' || t[1] != 'var')
+				continue;
+			var varname = t[2];
+			if(!varname)
+				continue;
+			var name_type = varname.split(":");
+			var type = name_type[1] || "";
+			if( !type && t[3] == ":" && t[4] && t[4] != "=" )
+				type = t[4];
+			var index = line.indexOf("=");
+			var value = line.substr(index+1);
+			var type_options = {};
+			if(type)
+				type_options.type = type;
+			if( LS.Components[ type ] ) //for components
+			{
+				type_options.component_class = type;
+				type_options.type = LS.TYPES.COMPONENT;
+			}
+			lines[i] = "this.createProperty('" + name_type[0] + "'," + value + ", "+JSON.stringify( type_options )+" );";
+			update = true;
+		}
+	}
+	if(update)
+		code = lines.join("\n");
+
+
 	/* using regex, not working
 	if( code.indexOf("'''") != -1 )
 	{
@@ -1873,6 +1915,11 @@ var Network = {
 
 		//change protocol when working over https
 		var url = request.url;
+
+		//apply proxy
+		if(request.use_proxy)
+			url = LS.ResourcesManager.getFullURL(url);
+
 		if( this.protocol === null )
 			this.protocol = LS.ResourcesManager.getProtocol( location.href );
 		var protocol = LS.ResourcesManager.getProtocol( url );
@@ -2804,7 +2851,7 @@ var GUI = {
 		{
 			if(content.constructor === Number)
 				content = content.toFixed(3);
-			else (content.constructor !== String)
+			else if (content.constructor !== String)
 				content = String(content);
 			ctx.fillStyle = this.GUIStyle.color;
 			ctx.font = (area[3]*0.75).toFixed(0) + "px " + this.GUIStyle.font;
@@ -4946,6 +4993,12 @@ LS.ResourcesManager.processScene = function( filename, data, options ) {
 		console.error("Error parsing scene: " + filename);
 		return null;
 	}
+
+	if( scene_data && scene_data.constructor === LS.SceneTree )
+		throw("processScene must receive object, no SceneTree");
+
+	if(!scene_data.root)
+		throw("this is not an scene, root property missing");
 
 	LS.ResourcesManager._parsing_local_file = true;
 
@@ -12147,9 +12200,10 @@ Take.prototype.createTrack = function( data )
 * @param {boolean} ignore_interpolation in case you want to sample the nearest one
 * @param {SceneNode} weight [Optional] allows to blend animations with current value (default is 1)
 * @param {Number} root [Optional] if you want to limit the locator to search inside a node
+* @param {Function} on_pre_apply [Optional] a callback called before applying a keyframe, if the callback returns false the keyframe will be skipped
 * @return {Component} the target where the action was performed
 */
-Take.prototype.applyTracks = function( current_time, last_time, ignore_interpolation, root_node, scene, weight )
+Take.prototype.applyTracks = function( current_time, last_time, ignore_interpolation, root_node, scene, weight, on_pre_apply )
 {
 	scene = scene || LS.GlobalScene;
 	if(weight === 0)
@@ -12206,7 +12260,11 @@ Take.prototype.applyTracks = function( current_time, last_time, ignore_interpola
 
 			//apply the value to the property specified by the locator
 			if( sample !== undefined ) 
+			{
+				if( on_pre_apply && on_pre_apply( track._property_path, sample, root_node, 0 ) === false)
+					continue; //skip
 				track._target = scene.setPropertyValueFromPath( track._property_path, sample, root_node, 0 );
+			}
 		}
 	}
 }
@@ -12642,7 +12700,12 @@ Track.prototype.serialize = function()
 	if(this.data)
 	{
 		if(this.value_size <= 1)
-			o.data = this.data.concat(); //regular array, clone it
+		{
+			if(this.data.concat)
+				o.data = this.data.concat(); //regular array, clone it
+			else
+				o.data = new this.data.constructor( o.data ); //clone for typed arrays (weird, this should never happen but it does)
+		}
 		else //pack data
 		{
 			this.packData();
@@ -19323,6 +19386,9 @@ var Renderer = {
 		this._white_texture = new GL.Texture(1,1, { pixel_data: [255,255,255,255] });
 		this._normal_texture = new GL.Texture(1,1, { pixel_data: [128,128,255,255] });
 		this._missing_texture = this._gray_texture;
+		var internal_textures = [ this._black_texture, this._gray_texture, this._white_texture, this._normal_texture, this._missing_texture ];
+		internal_textures.forEach(function(t){ t._is_internal = true; });
+
 		LS.ResourcesManager.textures[":black"] = this._black_texture;
 		LS.ResourcesManager.textures[":gray"] = this._gray_texture;
 		LS.ResourcesManager.textures[":white"] = this._white_texture;
@@ -19512,7 +19578,7 @@ var Renderer = {
 			if(gl.start2D)
 				gl.start2D();
 			LS.GUI.ResetImmediateGUI(); //mostly to change the cursor
-			LEvent.trigger( scene, "renderGUI", render_settings );
+			LEvent.trigger( scene, "renderGUI", gl );
 			if(gl.finish2D)
 				gl.finish2D();
 		}
@@ -19664,7 +19730,24 @@ var Renderer = {
 		LEvent.trigger( scene, "afterCameraEnabled", camera ); //used to change stuff according to the current camera (reflection textures)
 	},
 
-	//clear color using camerae info
+	/**
+	* Returns the camera active
+	*
+	* @method getCurrentCamera
+	* @return {Camera} camera
+	*/
+	getCurrentCamera: function()
+	{
+		return this._current_camera;
+	},
+
+	/**
+	* clear color using camera info ( background color, viewport scissors, clear depth, etc )
+	*
+	* @method clearBuffer
+	* @param {Camera} camera
+	* @param {LS.RenderSettings} render_settings
+	*/
 	clearBuffer: function( camera, render_settings )
 	{
 		if( render_settings.ignore_clear || (!camera.clear_color && !camera.clear_depth) )
@@ -24027,7 +24110,7 @@ Transform.prototype.getNormalMatrix = function (m)
 		mat4.multiply( this._global_matrix, this._parent.getGlobalMatrix(), this._local_matrix );
 	else
 		m.set(this._local_matrix); //return local because it has no parent
-	return mat4.transpose(m, mat4.invert(m,m));
+	return mat4.transpose(m, mat4.invert(m,m) );
 }
 
 /**
@@ -24050,7 +24133,9 @@ Transform.prototype.fromMatrix = (function() {
 		{
 			mat4.copy(this._global_matrix, m); //assign to global
 			var M_parent = this._parent.getGlobalMatrix( global_temp ); //get parent transform
-			mat4.invert(M_parent,M_parent); //invert
+			var r = mat4.invert( M_parent, M_parent ); //invert
+			if(!r)
+				return;
 			m = mat4.multiply( this._local_matrix, M_parent, m ); //transform from global to local
 		}
 
@@ -24407,6 +24492,8 @@ Transform.prototype.lookAt = (function() {
 		{
 			this._parent.getGlobalMatrix( GM );
 			var inv = mat4.invert(GM,GM);
+			if(!inv)
+				return;
 			mat4.multiplyVec3(temp_pos, inv, pos);
 			mat4.multiplyVec3(temp_target, inv, target);
 			mat4.rotateVec3(temp_up, inv, up );
@@ -24526,7 +24613,8 @@ Transform.prototype.globalToLocal = (function(){
 		dest = dest || vec3.create();
 		if(this._must_update)
 			this.updateMatrix();
-		mat4.invert( inv, this.getGlobalMatrixRef() );
+		if( !mat4.invert( inv, this.getGlobalMatrixRef() ) )
+			return inv;
 		return mat4.multiplyVec3( dest, inv, vec );
 	};
 })();
@@ -24640,7 +24728,9 @@ Transform.prototype.applyTransformMatrix = (function(){
 		var PGM = this._parent._global_matrix;
 		mat4.multiply( this._global_matrix, M, GM );
 
-		mat4.invert(temp,PGM);
+		if(!mat4.invert( temp, PGM ))
+			return;
+		
 		mat4.multiply( this._local_matrix, temp, this._global_matrix );
 		this.fromMatrix( this._local_matrix );
 		//*/
@@ -24648,32 +24738,40 @@ Transform.prototype.applyTransformMatrix = (function(){
 })();
 
 //applies matrix to position, rotation and scale individually, doesnt take into account parents
-Transform.prototype.applyLocalTransformMatrix = function( M )
-{
+Transform.prototype.applyLocalTransformMatrix = (function() {
 	var temp = vec3.create();
+	var temp_mat3 = mat3.create();
+	var temp_mat4 = mat4.create();
+	var temp_quat = quat.create();
 
-	//apply translation
-	vec3.transformMat4( this._position, this._position, M );
+	return (function( M )
+	{
+		//apply translation
+		vec3.transformMat4( this._position, this._position, M );
 
-	//apply scale
-	mat4.rotateVec3( temp, M, [1,0,0] );
-	this._scaling[0] *= vec3.length( temp );
-	mat4.rotateVec3( temp, M, [0,1,0] );
-	this._scaling[1] *= vec3.length( temp );
-	mat4.rotateVec3( temp, M, [0,0,1] );
-	this._scaling[2] *= vec3.length( temp );
+		//apply scale
+		mat4.rotateVec3( temp, M, [1,0,0] );
+		this._scaling[0] *= vec3.length( temp );
+		mat4.rotateVec3( temp, M, [0,1,0] );
+		this._scaling[1] *= vec3.length( temp );
+		mat4.rotateVec3( temp, M, [0,0,1] );
+		this._scaling[2] *= vec3.length( temp );
 
-	//apply rotation
-	var m = mat4.invert(mat4.create(), M);
-	mat4.transpose(m, m);
-	var m3 = mat3.fromMat4( mat3.create(), m);
-	var q = quat.fromMat3(quat.create(), m3);
-	quat.normalize(q, q);
-	quat.multiply( this._rotation, q, this._rotation );
+		//apply rotation
+		var m = mat4.invert( temp_mat4, M );
+		if(!m)
+			return;
 
-	this._must_update = true; //matrix must be redone?
-	this._on_change();
-}
+		mat4.transpose(m, m);
+		var m3 = mat3.fromMat4( temp_mat3, m);
+		var q = quat.fromMat3( temp_quat, m3);
+		quat.normalize(q, q);
+		quat.multiply( this._rotation, q, this._rotation );
+
+		this._must_update = true; //matrix must be redone?
+		this._on_change();
+	});
+})();
 
 
 /*
@@ -24789,6 +24887,8 @@ function Camera(o)
 	this._viewport_in_pixels = vec4.create(); //viewport in screen coordinates
 
 	this._background_color = vec4.fromValues(0,0,0,1);
+
+	this._use_custom_projection_matrix = false;
 
 	this._view_matrix = mat4.create();
 	this._projection_matrix = mat4.create();
@@ -25100,6 +25200,35 @@ Object.defineProperty( Camera.prototype, "orthographic", {
 });
 
 /**
+* The view matrix of the camera 
+* @property view_matrix {vec4}
+*/
+Object.defineProperty( Camera.prototype, "view_matrix", {
+	get: function() {
+		return this._view_matrix;
+	},
+	set: function(v) {
+		this.fromViewMatrix(v);
+	},
+	enumerable: true
+});
+
+/**
+* The projection matrix of the camera (cannot be set manually, use setCustomProjectionMatrix instead)
+* @property projection_matrix {mat4}
+*/
+Object.defineProperty( Camera.prototype, "projection_matrix", {
+	get: function() {
+		return this._projection_matrix;
+	},
+	set: function(v) {
+		throw("projection matrix cannot be set manually, use setCustomProjectionMatrix instead.");
+	},
+	enumerable: true
+});
+
+
+/**
 * The viewport in normalized coordinates (left,bottom, width, height)
 * @property viewport {vec4}
 */
@@ -25389,7 +25518,7 @@ Camera.prototype.updateMatrices = function( force )
 		return;
 
 	//update projection
-	if( this._must_update_projection_matrix || force )
+	if( (this._must_update_projection_matrix || force) && !this._use_custom_projection_matrix )
 	{
 		if(this.type == Camera.ORTHOGRAPHIC)
 			mat4.ortho(this._projection_matrix, -this._frustum_size*this._final_aspect*0.5, this._frustum_size*this._final_aspect*0.5, -this._frustum_size*0.5, this._frustum_size*0.5, this._near, this._far);
@@ -25870,6 +25999,11 @@ Camera.prototype.setDistanceToCenter = function( new_distance, move_eye )
 	this._must_update_view_matrix = true;
 }
 
+/**
+* orients the camera (changes where is facing) according to the rotation supplied
+* @method setOrientation
+* @param {quat} q
+*/
 Camera.prototype.setOrientation = function(q, use_vr)
 {
 	var center = this.getCenter();
@@ -25903,6 +26037,13 @@ Camera.prototype.setOrientation = function(q, use_vr)
 	this._must_update_view_matrix = true;
 }
 
+/**
+* orients the camera (changes where is facing) using euler angles (yaw,pitch,roll)
+* @method setEulerAngles
+* @param {Number} yaw
+* @param {Number} pitch
+* @param {Number} roll
+*/
 Camera.prototype.setEulerAngles = function(yaw,pitch,roll)
 {
 	var q = quat.create();
@@ -25910,14 +26051,48 @@ Camera.prototype.setEulerAngles = function(yaw,pitch,roll)
 	this.setOrientation(q);
 }
 
-Camera.prototype.fromViewmatrix = function(mat)
+/**
+* uses a view matrix to compute the eye,center,up vectors
+* @method fromViewMatrix
+* @param {mat4} mat the given view matrix
+*/
+Camera.prototype.fromViewMatrix = function(mat)
 {
+	if( this._root && this._root.transform )
+	{
+		var model = mat4.invert( mat4.create(), mat );
+		this._root.transform.fromMatrix( model, true );
+		return;
+	}
+
 	var M = mat4.invert( mat4.create(), mat );
-	this.eye = vec3.transformMat4(vec3.create(),vec3.create(),M);
-	this.center = vec3.transformMat4(vec3.create(),[0,0,-1],M);
-	this.up = mat4.rotateVec3( vec3.create(), M, [0,1,0] );
+	this.eye = vec3.transformMat4( vec3.create(), LS.ZEROS, M );
+	this.center = vec3.transformMat4( vec3.create(), LS.FRONT, M );
+	this.up = mat4.rotateVec3( vec3.create(), M, LS.TOP );
 	this._must_update_view_matrix = true;
 }
+
+/**
+* overwrites the current projection matrix with a given one (it also blocks the camera from modifying the projection matrix)
+* @method setCustomProjectionMatrix
+* @param {mat4} mat the given projection matrix (or null to disable it)
+*/
+Camera.prototype.setCustomProjectionMatrix = function( mat )
+{
+	if(!v)
+	{
+		this._use_custom_projection_matrix = false;
+		this._must_update_projection_matrix = true;
+	}
+	else
+	{
+		this._use_custom_projection_matrix = true;
+		this._projection_matrix.set( mat );
+		this._must_update_projection_matrix = false;
+		mat4.multiply( this._viewprojection_matrix, this._projection_matrix, this._view_matrix );
+	}
+}
+
 
 /**
 * Sets the viewport in pixels (using the gl.canvas as reference)
@@ -35124,6 +35299,8 @@ function PlayAnimation(o)
 	this.blend_time = 0;
 	this.range = null;
 
+	this.onPreApply = null;
+
 	this._last_time = 0;
 
 	this._use_blend_animation = false;
@@ -35533,7 +35710,7 @@ PlayAnimation.prototype.applyAnimation = function( take, time, last_time, weight
 		else
 			root_node = this._root.scene.getNode( this.root_node );
 	}
-	take.applyTracks( time, last_time, undefined, root_node, this._root.scene, weight );
+	take.applyTracks( time, last_time, undefined, root_node, this._root.scene, weight, this.onPreApply );
 }
 
 PlayAnimation.prototype._processSample = function(nodename, property, value, options)
@@ -38638,6 +38815,8 @@ SceneTree.prototype.configure = function( scene_info )
 	if(!scene_info || scene_info.constructor === String)
 		throw("SceneTree configure requires object");
 
+	LEvent.trigger(this,"preConfigure",scene_info);
+
 	this._root.removeAllComponents(); //remove light, camera, skybox
 
 	//this._components = [];
@@ -40669,6 +40848,7 @@ SceneNode.prototype.getPropertyInfoFromPath = function( path )
 {
 	var target = this;
 	var varname = path[0];
+	var no_slice = false;
 
 	if(path.length == 0)
 	{
@@ -40730,6 +40910,7 @@ SceneNode.prototype.getPropertyInfoFromPath = function( path )
 			case "rotZ":
 				target = this.transform;
 				varname = path[0];
+				no_slice = true;
 				break;
 			default: 
 				target = this;
@@ -40772,7 +40953,7 @@ SceneNode.prototype.getPropertyInfoFromPath = function( path )
 
 	//this was moved to Component.prototype.getPropertyInfoFromPath  (if any errors check cases)
 	if( target != this && target.getPropertyInfoFromPath ) //avoid weird recursion
-		return target.getPropertyInfoFromPath( path.slice(1) );
+		return target.getPropertyInfoFromPath( no_slice ? path : path.slice(1) );
 
 	return null;
 }
@@ -40799,6 +40980,7 @@ SceneNode.prototype.getPropertyValueFromPath = function( path )
 {
 	var target = this;
 	var varname = path[0];
+	var no_slice = false;
 
 	if(path.length == 0)
 		return null
@@ -40824,6 +41006,7 @@ SceneNode.prototype.getPropertyValueFromPath = function( path )
 			case "rotZ":
 				target = this.transform;
 				varname = path[0];
+				no_slice = true;
 				break;
 			default: 
 				target = this;
@@ -40865,7 +41048,7 @@ SceneNode.prototype.getPropertyValueFromPath = function( path )
 
 	if( target.getPropertyValueFromPath && target != this )
 	{
-		var r = target.getPropertyValueFromPath( path.slice(1) );
+		var r = target.getPropertyValueFromPath( no_slice ? path : path.slice(1) );
 		if(r)
 			return r;
 	}
@@ -40878,7 +41061,7 @@ SceneNode.prototype.getPropertyValueFromPath = function( path )
 	//used in TextureFX
 	if (v === undefined && path.length > 2 && target[ varname ] && target[ varname ].getPropertyValueFromPath )
 	{
-		var r = target[ varname ].getPropertyValueFromPath( path.slice(2) );
+		var r = target[ varname ].getPropertyValueFromPath( no_slice ? path.slice(1) : path.slice(2) );
 		if(r)
 		{
 			r.node = this;
@@ -41341,6 +41524,8 @@ SceneNode.prototype.configure = function(info)
 		this.transform.position = info.position;
 	if(info.model) 
 		this.transform.fromMatrix( info.model ); 
+	if(info.matrix) 
+		this.transform.fromMatrix( info.matrix ); 
 	if(info.transform) 
 		this.transform.configure( info.transform ); 
 

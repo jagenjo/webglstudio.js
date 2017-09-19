@@ -38079,13 +38079,15 @@ ThreeJS.prototype.setupContext = function()
 		return; //this could happen if there was an error parsing THREE.JS
 	}
 
+	//GLOBAL VARS
 	this._engine = {
 		component: this,
 		node: this._root,
 		scene: new THREE.Scene(),
 		camera: new THREE.PerspectiveCamera( 70, gl.canvas.width / gl.canvas.height, 1, 1000 ),
 		renderer: new THREE.WebGLRenderer( { canvas: gl.canvas, context: gl } ),
-		root: new THREE.Object3D()
+		root: new THREE.Object3D(),
+		ThreeJS: this.constructor
 	};
 	this._engine.scene.add( this._engine.root );
 }
@@ -38171,22 +38173,7 @@ ThreeJS.prototype.onEvent = function( e, param )
 		engine.camera.lookAt( new THREE.Vector3( current_camera._global_center[0], current_camera._global_center[1], current_camera._global_center[2] ) );
 
 		//copy the root info
-		var global_position = vec3.create();
-		if(this._root.transform)
-			this._root.transform.getGlobalPosition(	global_position );
-		engine.root.position.set( global_position[0], global_position[1], global_position[2] );
-
-		//rotation
-		var global_rotation = quat.create();
-		if(this._root.transform)
-			this._root.transform.getGlobalRotation( global_rotation );
-		engine.root.quaternion.set( global_rotation[0], global_rotation[1], global_rotation[2], global_rotation[3] );
-
-		//scale
-		var global_scale = vec3.fromValues(1,1,1);
-		if(this._root.transform)
-			this._root.transform.getGlobalScale( global_scale );
-		engine.root.scale.set( global_scale[0], global_scale[1], global_scale[2] );
+		ThreeJS.copyTransform( this._root, engine.root );
 		
 		//render using ThreeJS
 		engine.renderer.setSize( gl.viewport_data[2], gl.viewport_data[3] );
@@ -38229,6 +38216,53 @@ ThreeJS.prototype.setCode = function( code, skip_events )
 	this.processCode( skip_events );
 }
 */
+
+ThreeJS.copyTransform = function( a, b )
+{
+	//litescene to threejs
+	if( a.constructor === LS.SceneNode )
+	{
+		var global_position = vec3.create();
+		if(a.transform)
+			a.transform.getGlobalPosition( global_position );
+		b.position.set( global_position[0], global_position[1], global_position[2] );
+
+		//rotation
+		var global_rotation = quat.create();
+		if(a.transform)
+			a.transform.getGlobalRotation( global_rotation );
+		b.quaternion.set( global_rotation[0], global_rotation[1], global_rotation[2], global_rotation[3] );
+
+		//scale
+		var global_scale = vec3.fromValues(1,1,1);
+		if(a.transform)
+			a.transform.getGlobalScale( global_scale );
+		b.scale.set( global_scale[0], global_scale[1], global_scale[2] );
+	}
+	if( a.constructor === LS.Transform )
+	{
+		var global_position = vec3.create();
+		a.getGlobalPosition( global_position );
+		b.position.set( global_position[0], global_position[1], global_position[2] );
+
+		//rotation
+		var global_rotation = quat.create();
+		a.getGlobalRotation( global_rotation );
+		b.quaternion.set( global_rotation[0], global_rotation[1], global_rotation[2], global_rotation[3] );
+
+		//scale
+		var global_scale = vec3.fromValues(1,1,1);
+		a.getGlobalScale( global_scale );
+		b.scale.set( global_scale[0], global_scale[1], global_scale[2] );
+	}
+	else //threejs to litescene
+	{
+		if( b.constructor == LS.Transform )
+			b.fromMatrix( a.matrixWorld );
+		else if( b.constructor == LS.SceneNode && b.transform )
+			b.transform.fromMatrix( a.matrixWorld );
+	}
+}
 
 ThreeJS.prototype.loadLibrary = function( on_complete )
 {

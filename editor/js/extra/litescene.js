@@ -750,7 +750,7 @@ LScript.expandCode = function(code)
 			if( !type && t[3] == ":" && t[4] && t[4] != "=" )
 				type = t[4];
 			var index = line.indexOf("=");
-			var value = line.substr(index+1);
+			var value = (index != -1) ? line.substr(index+1) : "undefined";
 			var type_options = {};
 			if(type)
 				type_options.type = type;
@@ -758,6 +758,11 @@ LScript.expandCode = function(code)
 			{
 				type_options.component_class = type;
 				type_options.type = LS.TYPES.COMPONENT;
+			}
+			else if( type == "int" || type == "integer")
+			{
+				type_options.step = 1;
+				type_options.type = LS.TYPES.NUMBER;
 			}
 			lines[i] = "this.createProperty('" + name_type[0] + "'," + value + ", "+JSON.stringify( type_options )+" );";
 			update = true;
@@ -1200,7 +1205,7 @@ var LS = {
 	* @param {Object} target=null optional, the destination object
 	* @return {Object} returns the cloned object (target if it is specified)
 	*/
-	cloneObject: function( object, target, recursive, only_existing )
+	cloneObject: function( object, target, recursive, only_existing, encode_objects )
 	{
 		if(object === undefined)
 			return undefined;
@@ -1274,13 +1279,25 @@ var LS = {
 			{
 				//not safe to use concat or slice(0) because it doesnt clone content, only container
 				if( o[i] && o[i].set && o[i].length >= v.length ) //reuse old container
+				{
 					o[i].set(v);
+					continue;
+				}
+
+				if( encode_objects && target && v[0] == "@ENC" ) //encoded object (component, node...)
+					o[i] = LS.decodeObject(v);
 				else
 					o[i] = LS.cloneObject( v ); 
 			}
-			else //Object: 
+			else //Objects: 
 			{
-				if(v.constructor !== Object && !target && !v.toJSON )
+				if( encode_objects && !target )
+				{
+					o[i] = LS.encodeObject(v);
+					continue;
+				}
+
+				if( v.constructor !== Object && !target && !v.toJSON )
 				{
 					console.warn("Cannot clone internal classes:", LS.getObjectClassName( v )," When serializing an object I found a var with a class that doesnt support serialization. If this var shouldnt be serialized start the name with underscore.'");
 					continue;
@@ -1315,6 +1332,53 @@ var LS = {
 		}
 		return o;
 	},
+
+	encodeObject: function( obj )
+	{
+		if( !obj || obj.constructor === Number || obj.constructor === String || obj.constructor === Boolean || obj.constructor === Object ) //regular objects
+			return obj;
+		if( obj.constructor.is_component && obj._root) //in case the value of this property is an actual component in the scene
+			return [ "@ENC", LS.TYPES.COMPONENT, obj.getLocator(), LS.getObjectClassName( obj ) ];
+		if( obj.constructor == LS.SceneNode && obj._in_tree) //in case the value of this property is an actual node in the scene
+			return [ "@ENC", LS.TYPES.NODE, obj.uid ];
+		if( obj.constructor == LS.SceneTree)
+			return [ "@ENC", LS.TYPES.SCENE, obj.fullpath ]; //weird case
+		if( obj.serialize || obj.toJSON )
+			return [ "@ENC", LS.TYPES.OBJECT, obj.serialize ? obj.serialize() : obj.toJSON(), LS.getObjectClassName( obj ) ];
+		console.warn("Cannot clone internal classes:", LS.getObjectClassName( obj )," When serializing an object I found a property with a class that doesnt support serialization. If this property shouldn't be serialized start the name with underscore.'");
+		return null;
+	},
+
+	decodeObject: function( data )
+	{
+		if(!data || data.constructor !== Array || data[0] != "@ENC" )
+			return null;
+
+		switch( data[1] )
+		{
+			case LS.TYPES.COMPONENT: 
+			case LS.TYPES.NODE: 
+				var obj = LSQ.get( data[2] );
+				if( obj )
+					return obj;
+				return data[2]; break;
+				//return  break;
+			case LS.TYPES.SCENE: return null; break; //weird case
+			case LS.TYPES.OBJECT: 
+			default:
+				if( !data[2] || !data[2].object_class )
+					return null;
+				var ctor = LS.Classes[ data[2].object_class ];
+				if(!ctor)
+					return null;
+				var v = new ctor();
+				v.configure(data[2]);
+				return v;
+			break;
+		}
+		return null;
+	},
+
 
 	/**
 	* Clears all the uids inside this object and children (it also works with serialized object)
@@ -1719,6 +1783,8 @@ var LSQ = {
 	*/
 	get: function( locator, root, scene )
 	{
+		if(!locator) //sometimes we have a var with a locator that is null
+			return null;
 		scene = scene || LS.GlobalScene;
 		var info;
 		if(!root)
@@ -1885,10 +1951,12 @@ LS.TYPES = {
 	RESOURCE: "resource",
 	TEXTURE : "texture",
 	MESH: "mesh",
+	OBJECT: "object",
 	SCENE: "scene",
 	SCENENODE: "node",
 	SCENENODE_ID: "node_id",
 	COMPONENT: "component",
+	COMPONENT_ID: "component_id",
 	MATERIAL: "material",
 	ARRAY: "array"
 };
@@ -10134,7 +10202,6 @@ function ComponentContainer()
 * @method configureComponents
 * @param {Object} info object containing all the info from a previous serialization
 */
-
 ComponentContainer.prototype.configureComponents = function( info )
 {
 	if(!info.components)
@@ -10197,12 +10264,13 @@ ComponentContainer.prototype.configureComponents = function( info )
 	}
 }
 
+
+
 /**
 * Adds a component to this node.
 * @method serializeComponents
 * @param {Object} o container where the components will be stored
 */
-
 ComponentContainer.prototype.serializeComponents = function( o )
 {
 	if(!this._components)
@@ -10215,6 +10283,17 @@ ComponentContainer.prototype.serializeComponents = function( o )
 		if( !comp.serialize || comp.skip_serialize )
 			continue;
 		var obj = comp.serialize();
+
+		//check for bad stuff inside the component
+		/*
+		for(var j in obj)
+		{
+			var v = obj[j];
+			if( !v || v.constructor === Number || v.constructor === String || v.constructor === Boolean || v.constructor === Object || v.constructor === Array ) //regular data
+				continue;
+			obj[j] = LS.encodeObject(v);
+		}
+		*/
 
 		if(comp._editor)
 			obj.editor = comp._editor;
@@ -11243,7 +11322,7 @@ Component.prototype.configure = function(o)
 **/
 Component.prototype.serialize = function()
 {
-	var o = LS.cloneObject(this);
+	var o = LS.cloneObject(this,null,false,false,true);
 	if(this.uid) //special case, not enumerable
 		o.uid = this.uid;
 	if(!o.object_class)
@@ -11278,7 +11357,7 @@ Component.prototype.createProperty = function( name, value, type, setter, getter
 	if(this[name] !== undefined)
 		return; //console.warn("createProperty: this component already has a property called " + name );
 
-	//if we have type info, stored in the constructor, useful for GUIs
+	//if we have type info, we must store it in the constructor, useful for GUIs
 	if(type)
 	{
 		//control errors
@@ -11292,6 +11371,38 @@ Component.prototype.createProperty = function( name, value, type, setter, getter
 			this.constructor[ "@" + name ] = type;
 		else
 			this.constructor[ "@" + name ] = { type: type };
+
+		//is a component
+		if( type == LS.TYPES.COMPONENT || LS.Components[ type ] || type.constructor.is_component || type.type == LS.TYPES.COMPONENT )
+		{
+			var property_root = this; //with proto is problematic, because the getters cannot do this.set (this is the proto, not the component)
+			var private_name = "_" + name;
+			Object.defineProperty( property_root, name, {
+				get: function() { 
+					if( !this[ private_name ] )
+						return null;
+					var scene = this._root && this._root.scene ? this._root._in_tree : LS.GlobalScene;
+					return LSQ.get( this[ private_name ], null, scene );
+				},
+				set: function(v) { 
+					if(!v)
+						this[ private_name ] = v;
+					else
+						this[ private_name ] = v.constructor === String ? v : v.uid;
+				},
+				enumerable: true
+				//writable: false //cannot be set to true if setter/getter
+			});
+
+			if( LS.Components[ type ] || type.constructor.is_component ) //passing component class name or component class constructor
+				type = { type: LS.TYPES.COMPONENT, component_class: type.constructor === String ? type : LS.getClassName( type ) };
+
+			if( typeof(type) == "object" )
+				this.constructor[ "@" + name ] = type;
+			else
+				this.constructor[ "@" + name ] = { type: type };
+			return;
+		}
 	}
 
 	//basic type
@@ -26079,7 +26190,7 @@ Camera.prototype.fromViewMatrix = function(mat)
 */
 Camera.prototype.setCustomProjectionMatrix = function( mat )
 {
-	if(!v)
+	if(!mat)
 	{
 		this._use_custom_projection_matrix = false;
 		this._must_update_projection_matrix = true;
@@ -35426,14 +35537,12 @@ PlayAnimation.prototype.configure = function(o)
 		this.blend_time = o.blend_time;
 }
 
-
 PlayAnimation.icon = "mini-icon-clock.png";
 
 PlayAnimation.prototype.onAddedToScene = function(scene)
 {
 	LEvent.bind( scene, "update", this.onUpdate, this);
 }
-
 
 PlayAnimation.prototype.onRemovedFromScene = function(scene)
 {
@@ -35701,6 +35810,10 @@ PlayAnimation.prototype.applyAnimation = function( take, time, last_time, weight
 {
 	if( last_time === undefined )
 		last_time = time;
+
+	//this could happen if the component was removed during the onUpdate
+	if(!this._root) 
+		return;
 
 	var root_node = null;
 	if(this.root_node && this._root.scene)
@@ -36268,7 +36381,7 @@ Script.prototype.getContextProperties = function()
 	var ctx = this.getContext();
 	if(!ctx)
 		return;
-	return LS.cloneObject( ctx );
+	return LS.cloneObject( ctx, null, false, false, true );
 }
 
 Script.prototype.setContextProperties = function( properties )
@@ -36283,7 +36396,7 @@ Script.prototype.setContextProperties = function( properties )
 	}
 
 	//to copy we use the clone in target method
-	LS.cloneObject( properties, ctx, false, true );
+	LS.cloneObject( properties, ctx, false, true, true );
 }
 
 //used for graphs
@@ -37954,6 +38067,18 @@ ThreeJS.prototype.setupContext = function()
 	if(this._engine)
 		return;
 
+	if( typeof(THREE) == "undefined")
+	{
+		console.error("ThreeJS library not loaded");
+		return;
+	}
+
+	if( !THREE.Scene )
+	{
+		console.error("ThreeJS error parsing library");
+		return; //this could happen if there was an error parsing THREE.JS
+	}
+
 	this._engine = {
 		component: this,
 		node: this._root,
@@ -37966,7 +38091,7 @@ ThreeJS.prototype.setupContext = function()
 }
 
 ThreeJS.default_code = "//renderer, camera, scene, already created, they are globals.\n//use root as your base Object3D node if you want to use the scene manipulators.\n\nthis.start = function() {\n}\n\nthis.render = function(){\n}\n\nthis.update = function(dt){\n}\n";
-ThreeJS.library_url = "http://threejs.org/build/three.min.js";
+ThreeJS.library_url = "http://threejs.org/build/three.js";
 
 
 Object.defineProperty( ThreeJS.prototype, "code", {
@@ -38065,7 +38190,10 @@ ThreeJS.prototype.onEvent = function( e, param )
 		
 		//render using ThreeJS
 		engine.renderer.setSize( gl.viewport_data[2], gl.viewport_data[3] );
-		engine.renderer.resetGLState();
+		if( engine.renderer.resetGLState )
+			engine.renderer.resetGLState();
+		else if( engine.renderer.state.reset )
+			engine.renderer.state.reset();
 
 		if(this._script)
 			this._script.callMethod( "render" );
@@ -38104,6 +38232,13 @@ ThreeJS.prototype.setCode = function( code, skip_events )
 
 ThreeJS.prototype.loadLibrary = function( on_complete )
 {
+	if( typeof(THREE) !== "undefined" )
+	{
+		if(on_complete)
+			on_complete.call(this);
+		return;
+	}
+
 	if( this._loading )
 	{
 		LEvent.bind( this, "threejs_loaded", on_complete, this );
@@ -38119,6 +38254,7 @@ ThreeJS.prototype.loadLibrary = function( on_complete )
 
 	this._loading = true;
 	var that = this;
+
 	LS.Network.requestScript( ThreeJS.library_url, function(){
 		console.log("ThreeJS library loaded");
 		that._loading = false;
@@ -47236,7 +47372,8 @@ if( !Object.prototype.hasOwnProperty("defineAttribute") )
 				enumerable: false
 			});
 		},
-		enumerable: false
+		enumerable: false,
+		writable: true
 	});
 
 	Object.defineProperty( Object.prototype, "getAttribute", {
@@ -47248,7 +47385,8 @@ if( !Object.prototype.hasOwnProperty("defineAttribute") )
 				return this.constructor[v];
 			return null;
 		},
-		enumerable: false
+		enumerable: false,
+		writable: true
 	});
 }
 

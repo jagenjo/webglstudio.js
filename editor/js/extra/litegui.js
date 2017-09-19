@@ -3933,7 +3933,10 @@ LiteGUI.Console = Console;
 	*	title: tab text, 
 	*	callback: called when selected, 
 	*	callback_leave: callback when leaving, 
-	*	content: HTML content, closable: if it can be closed (callback is onclose), 
+	*   callback_context: on right click on tab
+	*   callback_canopen: used to block if this tab can be opened or not (if it returns true then yes)
+	*	content: HTML content, 
+	*   closable: if it can be closed (callback is onclose), 
 	*	tab_width: size of the tab,
 	*	tab_className: classes for the tab element,
 	*	id: content id,

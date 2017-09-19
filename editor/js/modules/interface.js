@@ -448,6 +448,84 @@ LiteGUI.Inspector.widget_constructors["node"] = "addNode";
 LiteGUI.Inspector.prototype.addComponent = function( name, value, options )
 {
 	options = options || {};
+	value = value || null;
+	var that = this;
+	this.values[ name ] = value;
+	var input_text = "";
+	if(value )
+	{
+		if( !value.constructor.is_component)
+			console.warn("value must be component");
+		else
+			input_text = value.getLocator(); //getObjectClassName(value); 
+	}
+	
+	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+input_text+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
+	var input = element.querySelector(".wcontent input");
+
+	input.addEventListener("change", function(e) { 
+		var v = null;
+		if(e.target.value)
+			v = LSQ.get( e.target.value ); //do not change value here, it needs to remain different to trigger events
+		LiteGUI.Inspector.onWidgetChange.call( that, element, name, v, options );
+	});
+
+	var old_callback = options.callback;
+	options.callback = inner_onselect;
+
+	input.style.background = "transparent url('" + InterfaceModule.resource_icons.component +"') no-repeat left 4px center";
+	input.style.paddingLeft = "1.7em";
+	input.setAttribute("placeHolder","Component");
+	
+	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
+		EditorModule.showSelectComponent( value, options.filter || options.component_class , options.callback, element );
+		if(options.callback_button)
+			options.callback_button.call( element, value );
+	});
+
+	element.addEventListener("drop", function(e){
+		e.preventDefault();
+		e.stopPropagation();
+		var locator = e.dataTransfer.getData("locator");
+		var comp = LSQ.get( locator );
+		if(!comp || !comp.constructor.is_component)
+			return;
+		if( options.component_class && comp.constructor !== LS.Components[ options.component_class ] )
+			return; //not the right type of component
+		//input.value = LS.getObjectClassName( comp );
+		input.value = comp.getLocator();
+		//value = comp; 
+		LiteGUI.trigger( input, "change" );
+		return false;
+	}, true);
+
+	//after selecting a node or modifying the input.value
+	function inner_onselect( component, event )
+	{
+		if( value == component ) //sometimes the value is already assigned in a previous step 
+			return;
+		if( component && !component.constructor.is_component )
+			return;
+		value = component;
+		//input.value = component ? LS.getObjectClassName( component ) : "";
+		input.value = component ? component.getLocator() : "";
+		if(event && event.type !== "change") //to avoid triggering the change event infinitly
+			LiteGUI.trigger( input, "change" );
+		if(old_callback)
+			old_callback.call( element, value );
+	}
+
+	this.tab_index += 1;
+	this.append(element);
+	//LiteGUI.focus( input );
+	return element;
+}
+LiteGUI.Inspector.widget_constructors[ LS.TYPES.COMPONENT ] = "addComponent";
+
+//to select a node, value must be a valid node identifier (not the node itself)
+LiteGUI.Inspector.prototype.addComponentUID = function( name, value, options )
+{
+	options = options || {};
 	value = value || "";
 	var that = this;
 	this.values[ name ] = value;
@@ -516,7 +594,7 @@ LiteGUI.Inspector.prototype.addComponent = function( name, value, options )
 	//LiteGUI.focus( input );
 	return element;
 }
-LiteGUI.Inspector.widget_constructors["component"] = "addComponent";
+LiteGUI.Inspector.widget_constructors[ LS.TYPES.COMPONENT_ID ] = "addComponentUID";
 
 /*
 //to select a component from a node

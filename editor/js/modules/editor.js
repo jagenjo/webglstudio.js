@@ -1874,7 +1874,7 @@ var EditorModule = {
 	//shows a dialog to select an existing component
 	showSelectComponent: function( selected_component, filter_type, on_complete, widget )
 	{
-		var dialog = new LiteGUI.Dialog( { id: "dialog_component", title:"Select Component", close: true, minimize: true, width: 400, height: 610, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog( { id: "dialog_component", title:"Select Component " + ( filter_type ? "[" + filter_type + "]" : "" ), close: true, minimize: true, width: 400, height: 610, scroll: false, draggable: true});
 		dialog.show('fade');
 
 		var area = new LiteGUI.Area();
@@ -1925,7 +1925,7 @@ var EditorModule = {
 
 		dialog.adjustSize();
 
-		function inner_selected_node(value)
+		function inner_selected_node( value )
 		{
 			if(!value)
 				return;

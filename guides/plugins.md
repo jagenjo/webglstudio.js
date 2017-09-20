@@ -38,6 +38,17 @@ showDialog: function()
 
 For more info about LiteGUI check [the repository and guides for LiteGUI](https://github.com/jagenjo/litegui.js/tree/master).
 
+## Adding entries to the menus
+
+Probably you want to have a menu option to open your special panels. To do that you need to:
+```js
+//in the plugin init...
+LiteGUI.menubar.add("Window/MyPanel", { callback: function() { MyPlugin.showDialog(); }});
+
+//in the plugin deinit...
+LiteGUI.menubar.remove("Window/MyPanel");
+```
+
 ## Creating components for LiteScene
 
 You can create new components from the plugin. This components will only be available if the plugin is loaded so it is more a temporary way for developing components than a final solution. 

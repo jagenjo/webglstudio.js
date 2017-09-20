@@ -18,6 +18,31 @@ You must create a class that contains the next methods:
 
 Also if your plugin requires to save information locally you can store them in the preferences property of the plugin.
 
+## Creating panels
+
+The first use of plugins is to create new panels that can be openend for special purposes.
+
+Here is an example of how to create a simple dialog using LiteGUI:
+
+```js
+showDialog: function()
+{
+	var dialog = new LiteGUI.Dialog({title:"Editor", close: true, width: 300, height: 120, scroll: false, draggable: true});
+	var widgets = new LiteGUI.Inspector();
+	dialog.add(widgets);
+	widgets.addButton("My button","Click", function(){ console.log("clicked"); });
+	dialog.show();
+	dialog.adjustSize();
+}
+```
+
+For more info about LiteGUI check [the repository and guides for LiteGUI](https://github.com/jagenjo/litegui.js/tree/master).
+
+## Creating components for LiteScene
+
+You can create new components from the plugin. This components will only be available if the plugin is loaded so it is more a temporary way for developing components than a final solution. 
+
+Check the [guide to create components](https://github.com/jagenjo/litescene.js/blob/master/guides/programming_components.md) to know more.
 
 ## Example
 
@@ -45,5 +70,4 @@ var MyPlugin = {
 };
 
 CORE.registerPlugin( MyPlugin );
-
 ```

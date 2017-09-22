@@ -223,6 +223,7 @@ var CORE = {
 	{
 		this.last_plugin = plugin;
 		this.registerModule( plugin );
+		this.loadUserPreferences( plugin );
 		LiteGUI.trigger( CORE.root, "plugin_registered", plugin );
 	},
 
@@ -294,7 +295,7 @@ var CORE = {
 		return preferences;
 	},
 
-	loadUserPreferences: function()
+	loadUserPreferences: function( optional_module )
 	{
 		var preferences = this.getUserPreferences();
 		if(!preferences)
@@ -309,6 +310,9 @@ var CORE = {
 					continue;
 				if( !module.preferences && !module.onPreferencesLoaded)
 					continue;
+				if( optional_module && optional_module != module )
+					continue;
+
 				LS.cloneObject( module_preferences, module.preferences || {}, true, true ); //clone recursive and only_existing
 				if(module.onPreferencesLoaded)
 					module.onPreferencesLoaded( module.preferences );

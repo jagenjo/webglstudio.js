@@ -2605,7 +2605,7 @@ function Console( options )
 
 	this.root.innerHTML = "<div class='log'></div><div class='foot'><input type='text'/></div>";
 
-	this.log = this.root.querySelector('.log');
+	this.log_element = this.root.querySelector('.log');
 	this.input = this.root.querySelector('input');
 
 	this.input.addEventListener("keydown", this.onKeyDown.bind(this) );
@@ -2664,8 +2664,8 @@ Console.prototype.onKeyDown = function(e)
 
 Console.prototype.addMessage = function(text,className,as_text)
 {
-	var content = this.log;
-	var element = null;
+	var content = this.log_element;
+	var element = null; //contains the last message sent
 
 	if(text && text.constructor === Array)
 	{
@@ -2694,13 +2694,39 @@ Console.prototype.addMessage = function(text,className,as_text)
 			content.removeChild( content.children[0] );
 	}
 
-	this.log.scrollTop = 1000000;
+	this.log_element.scrollTop = 1000000;
+	element.update = function(v)
+	{
+		this.innerHTML = v;
+	}
+
 	return element;
+}
+
+Console.prototype.log = function()
+{
+	var args = Array.prototype.slice.call(arguments);
+	var d = args.join(",");
+	return this.addMessage( d, "msglog" );
+}
+
+Console.prototype.warn = function()
+{
+	var args = Array.prototype.slice.call(arguments);
+	var d = args.join(",");
+	return this.addMessage( d, "msgwarn" );
+}
+
+Console.prototype.error = function()
+{
+	var args = Array.prototype.slice.call(arguments);
+	var d = args.join(",");
+	return this.addMessage( d, "msgerror" );
 }
 
 Console.prototype.clear = function()
 {
-	this.log.innerHTML = "";
+	this.log_element.innerHTML = "";
 }
 
 LiteGUI.Console = Console;

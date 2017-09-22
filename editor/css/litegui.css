@@ -2255,6 +2255,11 @@ input[type="range"]::-moz-slider-thumb {
 	color: white;
 }
 
+.liteconsole .log .msg.msglog { color: #AAA; }
+.liteconsole .log .msg.msgwarn { color: #FFA; }
+.liteconsole .log .msg.msgerror { color: #FAA; }
+.liteconsole .log .msg.good { color: #AFA; }
+
 .liteconsole .foot {
 	width: 100%;
 	height: 24px;

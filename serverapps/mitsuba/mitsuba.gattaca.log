@@ -1,0 +1,8 @@
+2017-09-22 16:49:41 INFO  main [mitsuba.cpp:256] Mitsuba version 0.5.0 (Linux, 64 bit), Copyright (c) 2014 Wenzel Jakob
+2017-09-22 16:49:41 INFO  main [mitsuba.cpp:356] Parsing scene description from "temp/user_test/test.xml" ..
+2017-09-22 16:49:41 INFO  main [PluginManager] Loading plugin "plugins/bdpt.so" ..
+2017-09-22 16:49:41 WARN  main [scenehandler.cpp:795] In file "/srv/www/tamats.com/www/public_html/projects/webglstudio/serverapps/mitsuba/temp/user_test/test.xml" (near line 6): Unqueried attribute "shadingSamples" in element "integrator"
+2017-09-22 16:49:41 INFO  main [PluginManager] Loading plugin "plugins/diffuse.so" ..
+2017-09-22 16:49:41 WARN  main [scenehandler.cpp:795] In file "/srv/www/tamats.com/www/public_html/projects/webglstudio/serverapps/mitsuba/temp/user_test/test.xml" (near line 10): Unqueried attribute "alpha" in element "bsdf"
+2017-09-22 16:49:41 INFO  main [PluginManager] Loading plugin "plugins/obj.so" ..
+2017-09-22 16:49:41 INFO  main [WavefrontOBJ] Loading geometry from "lee_normal.obj.wbin.obj" ..

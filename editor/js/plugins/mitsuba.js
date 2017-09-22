@@ -4,12 +4,17 @@ var MitsubaTool = {
 
 	name: "mitsuba",
 	preferences: {
-		server_url: null
+		server_url: ""
 	},
+
+	host_url: "http://tamats.com/projects/webglstudio/serverapps/mitsuba/",
+	user_folder: "",
 
 	meshes_format: "obj",//"serialized", //"obj"
 	mesh_version: 3,
-	mesh_bom: 0x041C, //0x1C04
+	mesh_bom: 0x041C, //0x1C04 //move somehwere else
+
+	console: null,
 
 	_meshes: [],
 	_meshes_by_name: {},
@@ -28,7 +33,7 @@ var MitsubaTool = {
 	showDialog: function()
 	{
 		var that = this;
-		var dialog = new LiteGUI.Dialog( { title: "Mitsuba", close: true, width: 600, height: 350, scroll: false, draggable: true } );
+		var dialog = new LiteGUI.Dialog( { title: "Mitsuba", close: true, width: 1000, height: 450, scroll: false, resizable: true, draggable: true } );
 
 		var settings = {
 			resolution: [1024,768],
@@ -38,24 +43,45 @@ var MitsubaTool = {
 			light_factor: 1000
 		};
 
+		var show_image_widget = null;
+
 		var area = new LiteGUI.Area({width:"100%",height:"100%"});
-		area.split("horizontal",["40%",null]);
+		area.split("horizontal",["30%",null]);
 		dialog.add(area);
 		
 		var inspector_left = new LiteGUI.Inspector( null, { scroll: true, resizable: true, full: true});
 		inspector_left.addTitle("Settings");
-		inspector_left.addString("URL","");
-		inspector_left.addButton("Connection","Test server");
+		inspector_left.addString("URL", this.preferences.server_url, { placeHolder: "url without protocol", callback: function(v){
+			that.preferences.server_url = v;
+		}});
+
+		inspector_left.addButton("Connection","Connect to server", { callback: function(){ that.onTestServer( that.connectToServer.bind(that) ); }});
 		inspector_left.addTitle("Rendering");
 		inspector_left.addCombo("Quality","High",{ values:["Low","Medium","High"] });
-		inspector_left.addCombo("Meshes Format", this.meshes_format ,{ values:["serialized","obj","spheres"], callback: function(v){ MitsubaTool.meshes_format = v; }});
-		inspector_left.addCombo("Resolution","Viewport",{ values:["Viewport","720p","1080p","4K","Custom"] });
-		inspector_left.addSeparator();
-		inspector_left.addButton( null, "Render FRAME", { callback: function(){
+		//inspector_left.addCombo("Meshes Format", this.meshes_format ,{ values:["serialized","obj","spheres"], callback: function(v){ MitsubaTool.meshes_format = v; }});
+		inspector_left.addCombo("Resolution","Viewport",{ values:["Viewport","VGA","720p","1080p","4K","Custom"], callback: function(v){
+			switch(v)
+			{
+				case "SVGA": settings.resolution = [ 800, 600 ]; break;
+				case "720p": settings.resolution = [ 1280, 720 ]; break;
+				case "720p": settings.resolution = [ 1280, 720 ]; break;
+				case "1080p": settings.resolution = [ 1920, 1080 ]; break;
+				case "4K": settings.resolution = [ 1920, 1080 ]; break;
+				default:
+				case "Viewport": settings.resolution = [ gl.canvas.width, gl.canvas.height ]; break;
+			}
 		}});
+		inspector_left.addSeparator();
+		inspector_left.addButton( null, "Send SCENE", { callback: function(){
+			that.prepareRender( settings );
+		}});
+		inspector_left.addButton( null, "Render Frame", { callback: function(){
+			that.launchRender();
+		}});
+		inspector_left.addSeparator();
 		inspector_left.addButton( null, "Download XML", { callback: function(){
 			var xml = that.buildXML( settings );
-			LiteGUI.downloadFile( "test.xml", xml );
+			LiteGUI.downloadFile( "scene.xml", xml );
 		}});
 		inspector_left.addButton( null, "Download MESHES", { callback: function(){
 			var file = null;
@@ -66,29 +92,210 @@ var MitsubaTool = {
 			}
 			else if( MitsubaTool.meshes_format == "obj" )
 			{
-				that.generateMeshesZIP( function(file) {
+				that.generateMeshesZIP( function(data) {
+					var file = new Blob([data]);
 					LiteGUI.downloadFile( "meshes.zip", file );
 				});
 			}
+		}});
+		show_image_widget = inspector_left.addButton( "Result", "Show Image", { callback: function(){
+			window.open( MitsubaTool.host_url + "/" + MitsubaTool.user_folder + "/scene.png", "_blank" );
 		}});
 
 		area.getSection(0).add( inspector_left );
 
 		var console_area = area.getSection(1);
-		var console = new LiteGUI.Console();
+		var console = this.console;
+		if(!console)
+		{
+			this.console = console = new LiteGUI.Console();
+			this.console.root.style.fontSize = "0.8em";
+		}
 		console_area.add( console );
 		console.addMessage("not connected");
 
 		dialog.show();
 	},
 
-	renderFrame: function( settings, on_complete )
+	onTestServer: function( on_ready )
 	{
-		var msg = {};
+		var that = this;
+		if(!this.preferences.server_url)
+			return that.console.error("No server specified");
+		that.console.log("testing connection...");
+		LS.Network.requestJSON( "http://" + this.preferences.server_url, function(v){
+			if( v.server == "mitsuba" )
+			{
+			    that.console.addMessage("connection OK","good");
+				if( on_ready )
+					on_ready();
+			}
+			else
+			    that.console.error("wrong server connertion");
+		}, function(err){
+			that.console.error("error connecting to server");
+		});
+	},
 
-		msg.xml = this.buildXML( settings );
+	connectToServer: function( on_ready )
+	{
+		var that = this;
+		that.console.log("connecting to server...");
+		var ws = this.socket;
+		if( ws && ws.readyState == WebSocket.OPEN )
+		{
+			if(on_ready)
+				on_ready();
+			return;
+		}
 
-		LS.Network.request();		
+		ws = this.socket = new WebSocket( "ws://" + this.preferences.server_url );
+		ws.onopen = function(){
+			that.console.addMessage("connection established","good");
+			if(on_ready)
+				on_ready();
+		}
+
+		ws.onmessage = function( msg )
+		{
+			//that.console.log( "message:", msg.data );
+			that.onMessage( msg.data, msg );
+		}
+
+		ws.onclose = function(err)
+		{
+			that.console.warn("connection closed");
+		}
+	},
+
+	last_message: null,
+
+	onMessage: function( msg )
+	{
+		if(msg.constructor === String)
+			msg = JSON.parse( msg );
+		else //binary
+		{
+			console.log("bin data received");
+			return;
+		}
+
+		if(msg.action == "log")
+		{
+			var lines = msg.content.split("\n");
+			for(var i in lines)
+			{
+				var line = lines[i];
+				var index = line.indexOf("\r");
+				if( this.last_message && index != -1 )
+					this.last_message.update( "] " + line.substr(index+1) );
+				else
+					this.last_message = this.console.log( "] " + line );
+			}
+		}
+		else if(msg.action == "error")
+		{
+			this.console.error( "] " + msg.content );
+		}
+		else if(msg.action == "warn")
+		{
+			this.console.warn( "] " + msg.content );
+		}
+		else if( msg.action == "info" )
+		{
+			this.user_folder = msg.folder;
+		}
+		else if( msg.action == "frame_ready" )
+		{
+			this.console.addMessage( "Frame ready. <a href='" + this.host_url + "/" + msg.url +"' target='_blank'>Click here to open</a>", "good" );
+			var audio = new Audio('data/bell.wav');
+			audio.play();
+		}
+	},
+
+	//sends all the data to the server
+	prepareRender: function( settings, on_complete )
+	{
+		if(!this.socket || this.socket.readyState != WebSocket.OPEN )
+		{
+			this.console.error("no connected to server");
+			return;
+		}
+
+		var that = this;
+		var xml = this.buildXML( settings );
+		var zip = null;
+		this._scene_xml = xml;
+
+		//optional?
+		this.generateMeshesZIP( function(data) {
+			zip = data;
+			setTimeout( inner_ready, 1 ); //break the encapsulation
+		});
+
+		function inner_ready()
+		{
+			that.sendToServer( { action:"scene", xml: xml } );
+			that.sendFileToServer( "data.zip", zip );
+		}
+	},
+
+	launchRender: function( settings, on_complete )
+	{
+		this.sendToServer( { action:"renderFrame", xml: this._scene_xml } );
+	},
+
+	sendFileToServer: function( filename, data )
+	{
+		this.console.log("Sending File: " + filename + " Size: " + data.byteLength );
+		this.sendToServer( { action:"startbin", filename: filename } );
+		this.sendToServer( data );
+		this.sendToServer( { action:"endbin", size: data.byteLength, unzip: true } );
+	},
+
+	sendToServer: function( data, packet_size )
+	{
+		if(data.constructor === Object)
+		{
+			this.socket.send( JSON.stringify(data) );
+			return;
+		}
+		else if(data.constructor === String)
+		{
+			this.socket.send( JSON.stringify( { action: "str", content: data }));
+			return;
+		}
+		
+		var that = this;
+
+		//bin files: partition
+		packet_size = packet_size || 1024;
+		var array = data.constructor === ArrayBuffer ? new Uint8Array( data ) : data;
+
+		var num_packets = Math.ceil( array.length / packet_size );
+		var pos = 0;
+
+		for(var i = 0; i < num_packets; ++i)
+		{
+			var size = Math.min( packet_size, array.length - pos );
+			if( size <= 0 )
+				break;
+			var packet = array.subarray( pos, pos + packet_size );
+			this.socket.send( packet );
+			pos += size;
+			//this.console.log("packed sent: " + i + "/" + num_packets )
+		}
+
+		var msg = this.console.log("Sending... Progress: " + ( array.length - this.socket.bufferedAmount ) + "/" + array.length );
+
+		var timer = setInterval( inner_progress, 100 );
+
+		function inner_progress()
+		{
+			msg.update("Sending... Progress: " + ( array.length - that.socket.bufferedAmount ) + "/" + array.length );
+			if( that.socket.bufferedAmount == 0 )
+				clearInterval(timer);
+		}
 	},
 
 	buildXML: function( settings, scene )
@@ -97,7 +304,7 @@ var MitsubaTool = {
 		scene = scene || LS.GlobalScene;
 
 		if(!settings.integrator) settings.integrator = 'bdpt';
-		if(!settings.resolution) settings.resolution = [1024,768];
+		if(!settings.resolution) settings.resolution = [gl.canvas.width,gl.canvas.height];
 		if(!settings.samples) settings.samples = 64;
 		if(!settings.max_depth) settings.max_depth = 4;
 
@@ -212,7 +419,8 @@ var MitsubaTool = {
 		var factor = settings.light_factor || 1000;
 		var radiance = [ light.color[0] * light.intensity * factor, light.color[1] * light.intensity * factor, light.color[2] * light.intensity * factor];
 
-		var mat = mat4.transpose( mat4.create(), light.getTransformMatrix() );
+		var mat = light.getTransformMatrix();
+		mat4.transpose( mat, mat );
 
 		//<lookat origin="'+light.position.toString()+'" target="'+light.target.toString()+'"/>\n
 
@@ -287,7 +495,7 @@ var MitsubaTool = {
 			zip.file( mesh_info.filename, mesh_info.data );
 		}
 		if( on_complete )
-			zip.generateAsync({type:"blob"}).then( on_complete );
+			zip.generateAsync({type:"ArrayBuffer"}).then( on_complete );
 	},
 
 	getSerializedMeshIndex: function( mesh )
@@ -448,7 +656,7 @@ var MitsubaTool = {
 	}
 };
 
-CORE.registerModule( MitsubaTool );
+CORE.registerPlugin( MitsubaTool );
 
 //Format
 /*

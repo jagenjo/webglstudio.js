@@ -1,6 +1,8 @@
 var fs = require('fs');
 var exec = require('child_process').exec;
 var spawn = require('child_process').spawn;
+var http = require('http');
+//var download = require('download');
 
 var Mitsuba = {
 
@@ -9,6 +11,7 @@ var Mitsuba = {
 	clients_by_id: {},
 
 	temp_folder: "temp",
+	valid_extensions: {"jpg":true,"png":true,"obj":true,"serialized":true},
 
 	start: function()
 	{
@@ -139,6 +142,10 @@ Client.prototype.onMessage = function( msg )
 		});
 		this.current_bin = null;
 	}
+	else if(msg.action == "download")
+	{
+		this.downloadURL( msg.url, msg.full_url );
+	}
 }
 
 Client.prototype.writeFile = function( filename, data )
@@ -222,6 +229,54 @@ Client.prototype.error = function(msg)
 	this.send({ action:"error", content: d });
 }
 
+Client.prototype.getFileExtension = function( filename )
+{
+	var index = filename.lastIndexOf(".");
+	if(index == -1)
+		return "";
+	return filename.substr(index+1).toLowerCase();
+}
+
+Client.prototype.downloadURL = function( filename, url, on_complete )
+{
+	var that = this;
+	var ext = this.getFileExtension( filename );
+	if( !Mitsuba.valid_extensions[ ext ] || filename.indexOf("..") != -1 )
+	{
+		this.log("invalid filename");
+		return false;
+	}
+
+	var fullname = this.folder + "/" + filename;
+
+	if ( fs.existsSync( fullname ) )
+		return false; //already downloaded
+
+	this.log( "Downloading remote file: " + filename );
+
+	//node stuff
+	var file = fs.createWriteStream( fullname );
+	this._files_pending += 1;
+	var request = http.get( url, function(response) {
+		if(response.statusCode != 200)
+		{
+			that.log("File not found: " + filename);
+			return;
+		}
+		response.pipe(file);
+		that._files_pending -= 1;
+		that.log( "File downloaded: " + filename );
+		if(on_complete)
+			on_complete();
+	});
+
+	request.on('error', (e) => {
+		that.error('problem with request: ' + e.message );
+	});
+
+	return true;
+}
+
 Client.prototype.startRender = function()
 {
 	var that = this;
@@ -235,15 +290,20 @@ Client.prototype.startRender = function()
 	}
 	this.log("Files ready.");
 	this.log("Launching render process...");
-	this.launchMitsuba( inner_complete );
+	this.launchMitsuba( inner_complete, inner_on_error );
 
 	function inner_complete()
 	{
 		that.send({ action: "frame_ready", url: that.folder + "/scene.png" });
 	}
+
+	function inner_on_error(code)
+	{
+		that.send({ action: "error_mitsuba", code: code });
+	}
 }
 
-Client.prototype.launchMitsuba = function( on_complete )
+Client.prototype.launchMitsuba = function( on_complete, on_error )
 {
 	//kill if still running
 	if( this.mitsuba_process )
@@ -269,6 +329,12 @@ Client.prototype.launchMitsuba = function( on_complete )
 		var index = that.all_processes.indexOf( process );
 		if( index != -1 )
 			that.all_processes.splice( index, 1 );
+		if( code != 0 ) //error
+		{
+			if(on_error)
+				on_error(code)
+			return;
+		}
 		that.applyToneMapping( on_complete );
 	});	
 }

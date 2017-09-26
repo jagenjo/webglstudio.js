@@ -18,6 +18,7 @@ var MitsubaTool = {
 
 	_meshes: [],
 	_meshes_by_name: {},
+	_resources: {},
 
 	init: function()
 	{
@@ -33,7 +34,7 @@ var MitsubaTool = {
 	showDialog: function()
 	{
 		var that = this;
-		var dialog = new LiteGUI.Dialog( { title: "Mitsuba", close: true, width: 1000, height: 450, scroll: false, resizable: true, draggable: true } );
+		var dialog = new LiteGUI.Dialog( { title: "Mitsuba", close: true, width: 1000, height: 450, scroll: false, resizable: true, minimize: true, draggable: true } );
 
 		var settings = {
 			resolution: [1024,768],
@@ -188,9 +189,17 @@ var MitsubaTool = {
 				var line = lines[i];
 				var index = line.indexOf("\r");
 				if( this.last_message && index != -1 )
-					this.last_message.update( "] " + line.substr(index+1) );
+				{
+					var str = line.substr(index+1).trim();
+					if(str.length)
+						this.last_message.update( "] " + str );
+				}
 				else
-					this.last_message = this.console.log( "] " + line );
+				{
+					var str = line.trim();
+					if(str.length)
+						this.last_message = this.console.log( "] " + str );
+				}
 			}
 		}
 		else if(msg.action == "error")
@@ -211,6 +220,11 @@ var MitsubaTool = {
 			var audio = new Audio('data/bell.wav');
 			audio.play();
 		}
+		else if( msg.action == "error_mitsuba" )
+		{
+			this.console.error("Mitsuba exited with an error: " + msg.code );
+		}
+
 	},
 
 	//sends all the data to the server
@@ -223,9 +237,17 @@ var MitsubaTool = {
 		}
 
 		var that = this;
+		this._resources = {};
 		var xml = this.buildXML( settings );
 		var zip = null;
 		this._scene_xml = xml;
+
+		//assets
+		for(var i in this._resources)
+		{
+			var filename = i;
+			this.requestDownloadToServer( i );
+		}
 
 		//optional?
 		this.generateMeshesZIP( function(data) {
@@ -251,6 +273,16 @@ var MitsubaTool = {
 		this.sendToServer( { action:"startbin", filename: filename } );
 		this.sendToServer( data );
 		this.sendToServer( { action:"endbin", size: data.byteLength, unzip: true } );
+	},
+
+	requestDownloadToServer: function( url )
+	{
+		this.console.log("Sending File Download Request: " + url );
+		var protocol = LS.RM.getProtocol(url);
+		var full_url = url;
+		if(!protocol) //local file
+			full_url = document.location.href + "/" + LS.RM.getFullURL( url );
+		this.sendToServer( { action:"download", url: url, full_url: full_url } );
 	},
 
 	sendToServer: function( data, packet_size )
@@ -323,7 +355,7 @@ var MitsubaTool = {
 		for(var i in materials)
 		{
 			var mat = materials[i];
-			xml += this.materialToXML( mat );
+			xml += this.materialToXML( mat, this._resources );
 		}
 		
 		//add shapes (render instances)
@@ -342,27 +374,15 @@ var MitsubaTool = {
 		return xml + '</scene>';
 	},
 
-	materialToXML: function( material )
+	materialToXML: function( material, resources )
 	{
-		if( material.constructor !== LS.MaterialClasses.StandardMaterial )
+		if( !material.toMitsubaXML )
 		{
-			console.warn("Material not supported:", material);
+			this.console.error("Material has no toMitsubaXML method. Skipping: " + getObjectClassName( material ) );
 			return "";
 		}
 
-		var type = 'diffuse';
-		//if( material.reflection )
-		//	type = 'roughdielectric';
-
-		var xml = '<bsdf type="'+type+'" id="'+material.uid.substr(1)+'">\n';
-		xml += '	<srgb name="reflectance" value="'+tohex(material.color)+'"/>\n';
-		xml += '	<float name="alpha" value="'+material.opacity.toFixed(2)+'"/>\n';
-		return xml + "</bsdf>\n";
-
-		function tohex(color)
-		{
-			return RGBToHex(color[0],color[1],color[2]);
-		}
+		return material.toMitsubaXML( resources ) || "";
 	},
 
 	renderInstanceToXML: function( instance )
@@ -419,7 +439,7 @@ var MitsubaTool = {
 		var factor = settings.light_factor || 1000;
 		var radiance = [ light.color[0] * light.intensity * factor, light.color[1] * light.intensity * factor, light.color[2] * light.intensity * factor];
 
-		var mat = light.getTransformMatrix();
+		var mat = light.getGlobalMatrix();
 		mat4.transpose( mat, mat );
 
 		//<lookat origin="'+light.position.toString()+'" target="'+light.target.toString()+'"/>\n
@@ -431,7 +451,10 @@ var MitsubaTool = {
 		<spectrum name="intensity" value="'+radiance.toString()+'"/>\n';
 
 		if( light.type === LS.Light.SPOT )
-			xml += '		<float name="cutoffAngle" value="'+light.angle.toFixed(2)+'"/>\n';
+		{
+			//xml += '		<float name="cutoffAngle" value="'+light.angle_end.toFixed(2)+'"/>\n';
+			//xml += '		<float name="beamWidth" value="'+(light.angle_end - light.angle).toFixed(2)+'"/>\n';
+		}
 		xml += "</emitter>\n";
 		return xml;
 	},
@@ -1200,4 +1223,70 @@ Stream.prototype.readUTF8 = function() {
 				throw 'UTF-8 decode: code point 0x' + c.toString(16) + ' exceeds UTF-16 reach';
 	}
 	return s;
+}
+
+function tohex( color )
+{
+	return RGBToHex( color[0],color[1],color[2] );
+}
+
+LS.MaterialClasses.StandardMaterial.prototype.toMitsubaXML = function( resources )
+{
+	var type = 'roughdiffuse';
+
+	var xml = '<bsdf type="'+type+'" id="'+this.uid.substr(1)+'">\n';
+	var allow_textures = true;
+
+	//xml += '<string name="distribution" value="phong"/>\n';
+
+	//diffuse color
+	if(this.textures.color && this.textures.color.texture && allow_textures)
+	{
+		var filename = this.textures.color.texture;
+		resources[ filename ] = true;
+		xml += '	<texture type="bitmap" name="reflectance"><string name="filename" value="'+filename+'"/></texture>\n';
+	}
+	else
+		xml += '	<srgb name="reflectance" value="'+tohex(this.color)+'"/>\n';
+
+	//specular
+	/*
+	if(this.textures.specular && this.textures.specular.texture && allow_textures)
+	{
+		var filename = this.textures.specular.texture;
+		resources[ filename ] = true;
+		xml += '	<texture type="scale"><float name="scale" value="'+this.specular_factor.toFixed(3)+'"/><texture type="bitmap" name="alpha"><string name="filename" value="'+filename+'"/></texture></texture>\n';
+	}
+	else
+		xml += '	<float name="alpha" value="'+this.specular_factor.toFixed(3)+'"/>\n';
+	*/
+
+	xml += "</bsdf>\n";
+
+	//wrappers
+	
+	//diffuse normalmap
+	if(this.textures.normal && this.textures.normal.texture && allow_textures)
+	{
+		var filename = this.textures.normal.texture;
+		resources[ filename ] = true;
+		xml = '<bsdf type="normalmap">' + xml + '<texture type="bitmap"><string name="filename" value="'+filename+'"/></texture></bsdf>';
+	}
+
+	//mask
+	if( this.opacity != 1 ) //alpha_test?
+	{
+		if( this.textures.opacity && this.textures.opacity.texture && allow_textures)
+		{
+			var filename = this.textures.opacity.texture;
+			resources[ filename ] = true;
+			xml = '<bsdf type="mask">' + xml + '<texture name="opacity" type="bitmap"><string name="filename" value="'+filename+'" channel="a"/></texture></bsdf>';
+		}
+		else
+			xml = '<bsdf type="mask">' + xml + '<float name="opacity" value="'+this.opacity.toFixed(2)+'"/></bsdf>';
+	}
+
+
+	return xml;
+
 }

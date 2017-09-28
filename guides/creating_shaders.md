@@ -56,7 +56,6 @@ For the Input:
 - ```vec2 uv```: primary texture coordinates
 - ```vec2 uv1```: secondary uvs
 - ```vec4 color```: color of the vertex (if there are)
-
 - ```vec3 camPos```: camera global position
 - ```vec3 viewDir```: view vector (vector from pixel to camera)
 - ```vec3 worldPos```: pixel in world space

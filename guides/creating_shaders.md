@@ -86,16 +86,9 @@ If you want to create a new one just click the ```{}``` button. By default you w
 
 Once created you will see a file with different sections sepparated by a back-slash with a given name.
 
-It is important to note that there is one with the name ```\js```. This one is important because it allows you to define the uniforms that should be exported from the shader.
+You must now learn how to create properties and expose them for the editor, how to create the vertex and pixel shader and how to set the render state.
 
-To do so you must use the next syntax:
-
-```js
-this.createUniform("Refaction","u_refraction_factor","number",0.02, { precision: 3, step: 0.001 });
-this.createSampler("Colorbuff","u_texture",null,":color_buffer");
-```
-
-For more info about creating the shader check the [guide to create shaders](https://github.com/jagenjo/litescene.js/blob/master/guides/shaders.md).
+Go to the [guide to create shaders](https://github.com/jagenjo/litescene.js/blob/master/guides/shaders.md) to know all about creating shaders for WebGLStudio engine LiteScene.
 
 
 

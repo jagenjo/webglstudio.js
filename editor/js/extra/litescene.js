@@ -38885,7 +38885,7 @@ SceneTree.prototype.load = function( url, on_complete, on_error, on_progress, on
 	LS.Network.request({
 		url: url,
 		nocache: true,
-		dataType: format_info.dataType || "text",
+		dataType: extension == "json" ? "json" : (format_info.dataType || "text"), //datatype of json is text...
 		success: extension == "json" ? inner_json_loaded : inner_data_loaded,
 		progress: on_progress,
 		error: inner_error
@@ -38934,6 +38934,9 @@ SceneTree.prototype.load = function( url, on_complete, on_error, on_progress, on
 
 	function inner_json_loaded( response )
 	{
+		if( response.constructor !== Object )
+			throw("response must be object");
+
 		var scripts = LS.SceneTree.getScriptsList( response, true );
 
 		//check JSON for special scripts

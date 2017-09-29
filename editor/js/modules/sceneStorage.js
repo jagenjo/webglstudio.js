@@ -1,5 +1,5 @@
-/* Storage scenes locally using localStorage or in server if server connection available*/
-//Uses DriveModule to access the server
+/* This module controls the panel to load and save scenes. */
+// Uses DriveModule to access the files
 
 var SceneStorageModule = {
 	name: "scene_storage",

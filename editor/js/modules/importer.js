@@ -674,6 +674,7 @@ var ImporterModule  = {
 		}
 	},
 
+	//imports to memory
 	importZIP: function( file, on_complete )
 	{
 		if(!window.JSZip)

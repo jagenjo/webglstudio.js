@@ -1168,17 +1168,19 @@ var DriveModule = {
 				return;
 
 			var folder = root_path + "/" + name;
-			DriveModule.serverCreateFolder( folder, inner_complete );
+			DriveModule.serverCreateFolder( folder, inner_complete, inner_error );
 		}
 
 		function inner_complete(v)
 		{
-			if(v)
-				DriveModule.updateServerTreePanel();
-			else
-				LiteGUI.alert("Cannot be done (are you logged?)");
+			DriveModule.updateServerTreePanel();
 			if(on_complete)
 				on_complete(v);
+		}
+
+		function inner_error(v)
+		{
+			LiteGUI.alert("Cannot be done (be sure your are logged and have rights to write in this unit)");
 		}
 	},
 
@@ -1189,7 +1191,7 @@ var DriveModule = {
 		{
 			if(!v)
 				return;
-			LoginModule.session.moveFolder( origin_fullpath, target_fullpath, inner_complete);
+			LoginModule.session.moveFolder( origin_fullpath, target_fullpath, inner_complete );
 		}
 
 		function inner_complete(v)
@@ -1228,7 +1230,7 @@ var DriveModule = {
 
 	onImportToFolder: function( fullpath, on_complete )
 	{
-
+		LiteGUI.alert("feature not developed yet");
 	},
 
 	onUpdatePreview: function(resource, on_complete)
@@ -2158,7 +2160,7 @@ var DriveModule = {
 		});
 	},
 
-	//QUARANTINE
+	//QUARANTINE: move them to the bridge?
 
 	serverUpdatePreview: function( fullpath, preview, on_complete, on_error)
 	{
@@ -2166,15 +2168,12 @@ var DriveModule = {
 		LoginModule.session.updateFilePreview( fullpath, preview, on_complete, on_error);
 	},
 
-	serverCreateFolder: function(name, on_complete)
+	serverCreateFolder: function( name, on_complete, on_error )
 	{
 		console.warn("Quarantine method");
 		if(!name)
 			return;
-		LoginModule.session.createFolder( name, function(v,resp){
-			if(on_complete)
-				on_complete(v);
-		});
+		LoginModule.session.createFolder( name, on_complete, on_error );
 	},
 
 	serverDeleteFolder: function(name, on_complete)

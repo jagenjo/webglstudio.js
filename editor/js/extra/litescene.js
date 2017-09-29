@@ -38879,13 +38879,14 @@ SceneTree.prototype.load = function( url, on_complete, on_error, on_progress, on
 	var that = this;
 
 	var extension = LS.ResourcesManager.getExtension( url );
+	var format_info = LS.Formats.getFileFormatInfo( extension );
 
 	//request scene file using our own library
 	LS.Network.request({
 		url: url,
 		nocache: true,
-		dataType: extension == "json" ? "json" : "binary",
-		success: extension == "json" ? inner_json_loaded : inner_pack_loaded,
+		dataType: format_info.dataType || "text",
+		success: extension == "json" ? inner_json_loaded : inner_data_loaded,
 		progress: on_progress,
 		error: inner_error
 	});
@@ -38896,20 +38897,36 @@ SceneTree.prototype.load = function( url, on_complete, on_error, on_progress, on
 	 */
 	LEvent.trigger(this,"beforeLoad");
 
-	function inner_pack_loaded( response )
+	function inner_data_loaded( response )
 	{
-		//process pack
-		LS.ResourcesManager.processResource( url, response, null, inner_pack_processed );
+		//process whatever we loaded (in case it is a pack)
+		LS.ResourcesManager.processResource( url, response, null, inner_data_processed );
 	}
 
-	function inner_pack_processed( pack_url, pack )
+	function inner_data_processed( pack_url, pack )
 	{
-		if(!pack || !pack._data || !pack._data["scene.json"] )
+		if(!pack)
+			return;
+
+		//for DAEs
+		if( pack.object_class == "SceneTree")
+		{
+			inner_json_loaded( pack );
+			return;
+		}
+		else if( pack.object_class == "SceneNode") 
+		{
+			var root = pack.serialize();
+			inner_json_loaded( { object_class: "SceneTree", root: root } );
+			return;
+		}
+
+		//for packs
+		if( !pack._data || !pack._data["scene.json"] )
 		{
 			console.error("Error loading PACK, doesnt look like it has a valid scene inside");
 			return;
 		}
-
 		var scene = JSON.parse( pack._data["scene.json"] );
 
 		inner_json_loaded( scene );
@@ -41107,6 +41124,43 @@ SceneNode.prototype.getCamera = function() {
 }
 
 /**
+* Allows to load some kind of resource and associate it to this node.
+* It can be for prefabs, meshes, scenes from daes, etc
+* @method load
+* @param {string} url
+* @param {Function} on_complete
+**/
+SceneNode.prototype.load = function( url, on_complete )
+{
+	var that = this;
+	LS.ResourcesManager.load( url, inner );
+	function inner( resource )
+	{
+		if( resource.constructor === LS.SceneNode )
+			that.addChild( resource );
+		else if( resource.constructor === LS.SceneTree )
+			that.addChild( resource.root.clone() );
+		else if( resource.constructor === LS.Prefab )
+			that.prefab = resource.fullpath || resource.filename;
+		else if( resource.constructor === GL.Mesh )
+			that.setMesh( resource.fullpath || resource.filename );
+		else if( resource.constructor === GL.Texture )
+		{
+			console.error("feature not supported loading a texture as a node",resource);
+			//create a sprite and assign?
+		}
+		else if( resource.constructor === Object )
+		{
+			console.error("feature not supported loading an object as a node",resource);
+			//check info about the node?
+		}
+
+		if(on_complete)
+			on_complete();
+	}
+}
+
+/**
 * Simple way to assign a mesh to a node, it created a MeshRenderer component or reuses and existing one and assigns the mesh
 * @method setMesh
 * @param {string} mesh_name the name of the mesh (path to the file)
@@ -41123,39 +41177,7 @@ SceneNode.prototype.setMesh = function(mesh_name, submesh_id)
 
 SceneNode.prototype.loadAndSetMesh = function(mesh_filename, options)
 {
-	options = options || {};
-
-	if( LS.ResourcesManager.meshes[mesh_filename] || !mesh_filename )
-	{
-		this.setMesh( mesh_filename );
-		if(options.on_complete) options.on_complete( LS.ResourcesManager.meshes[mesh_filename] ,this);
-		return;
-	}
-
-	var that = this;
-	var loaded = LS.ResourcesManager.load(mesh_filename, options, function(mesh){
-		that.setMesh(mesh.filename);
-		that.loading -= 1;
-		if(that.loading == 0)
-		{
-			LEvent.trigger(that,"resource_loaded",that);
-			delete that.loading;
-		}
-		if(options.on_complete)
-			options.on_complete(mesh,that);
-	});
-
-	if(!loaded)
-	{
-		if(!this.loading)
-		{
-			this.loading = 1;
-
-			LEvent.trigger(this,"resource_loading");
-		}
-		else
-			this.loading += 1;
-	}
+	this.load( mesh_filename );
 }
 
 SceneNode.prototype.getMaterial = function()

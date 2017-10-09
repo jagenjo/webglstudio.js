@@ -9,7 +9,7 @@ You can create a regular component script but use some of the special editor eve
 - ```onEditorRenderGUI```: to render 2D stuff
 - ```onEditorEvent```: to catch events on the interface
 
-## Catch Events
+## Catch input events
 
 If you want to catch user mouse events in the Canvas, you can define the onEditorEvent method in your script.
 
@@ -19,7 +19,7 @@ The event will have a ```evt.layout``` property that tells you in which canvas l
 
 If the function returns true it means the event was blocked and nobody else should use it.
 
-## Render stuff
+## Render 
 
 Maybe you want to render info in the GUI or maybe you want to render something in the 3D Scene.
 

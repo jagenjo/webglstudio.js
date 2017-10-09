@@ -35,12 +35,6 @@ private var points = [];
 var active = false;
 var selected = -1;
 
-this.onInspector = function(inspector)
-{
-	inspector.addInfo(null, "Num. Points: " + this.points.length );
-	inspector.addButton("Clear points", "Clear", { callback: this.clearPoints.bind(this) } );
-}
-
 this.onEditorRenderGUI = function()
 {
 	var ctx = gl;
@@ -68,27 +62,59 @@ this.onEditorRender = function()
   } 
 }
 
+var temp_pos2d = vec3.create();
+
 this.onEditorEvent = function(e)
 {
-  //if(e.type != "update")
-	//	console.log(e);
-  if(active)
+  if(!active)
+    return;
+  
+  if(e.type != "update")
+		console.log(e);
+  
+  if(e.type == "mousedown")
+  	var foo = 1;
+  
+  //debugger;
+  var layout = e.layout;
+  var camera = layout.camera;
+  var ray = camera.getRay( e.canvasx, e.canvasy );
+	var mouse = vec2.fromValues( e.canvasx, e.canvasy );
+  
+  //find closer point
+  var closer = -1;
+  var dist = 100000;
+  for(var i = 0; i < this.points.length; ++i)
   {
-    if(e.type == "mousedown")
-    {
-      //debugger;
-      var layout = e.layout;
-      var camera = layout.camera;
-      var ray = camera.getRay( e.canvasx, e.canvasy );
-
-      if( ray.testPlane( [0,0,0], [0,1,0] ) )
-      {
-        console.log( ray.collision_point );
-        this.points.push( ray.collision_point );
-        selected = this.points.length - 1;
-      }
-    }
-   return true;
+    camera.project( this.points[i], null, temp_pos2d );
+    var d = vec2.dist( mouse, temp_pos2d );
+    if( d > 20 || d > dist )
+      continue;
+    closer = i;
+    dist = d;
   }
+
+  //find collision point
+  ray.testPlane( [0,0,0], [0,1,0] );
+
+  if(e.type == "mousedown")
+  {
+    if(closer == -1)
+    {
+      this.points.push( ray.collision_point );
+      selected = this.points.length - 1;
+    }
+    else
+    {
+      selected = closer;
+    }
+  }
+  else if(e.type == "mousemove" && e.dragging)
+  {
+    if( selected && selected != -1 )      
+      vec3.copy( this.points[ selected ], ray.collision_point );
+  }
+
+  return true;
 }
 ```

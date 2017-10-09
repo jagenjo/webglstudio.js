@@ -9,6 +9,16 @@ You can create a regular component script but use some of the special editor eve
 - ```onEditorRenderGUI```: to render 2D stuff
 - ```onEditorEvent```: to catch events on the interface
 
+## Catch Events
+
+If you want to catch user mouse events in the Canvas, you can define the onEditorEvent method in your script.
+
+Keep in mind that this event will be received before any other event, so if you blocked the canvas will stay inresponsive.
+
+The event will have a ```evt.layout``` property that tells you in which canvas layout was received (layouts are like viewports in case you have split screen).
+
+If the function returns true it means the event was blocked and nobody else should use it.
+
 ## Interface
 
 Probably your script will require some widgets, to add widgets to your component script that display in the inspector you must use the method ```onInspector```.

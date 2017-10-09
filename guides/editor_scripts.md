@@ -1,7 +1,7 @@
 # Editor Scripts
 
 Sometimes you want to have an script running only in your editor to help you with some tasks.
-You can use the Plugin system, and create Tools, but if you want to create something fast and simple the best way is to use the same scripting system from the LiteScene engine, the Script component.
+You can use the [Plugin system](plugins.md), and create Tools, but if you want to create something fast and simple the best way is to use the same scripting system from the LiteScene engine, the Script component.
 
 You can create a regular component script but use some of the special editor events:
 

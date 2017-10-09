@@ -89,17 +89,10 @@ this.onEditorEvent = function(e)
   if(!active)
     return;
   
-  if(e.type != "update")
-		console.log(e);
-  
-  if(e.type == "mousedown")
-  	var foo = 1;
-  
-  //debugger;
   var layout = e.layout;
   var camera = layout.camera;
   var ray = camera.getRay( e.canvasx, e.canvasy );
-	var mouse = vec2.fromValues( e.canvasx, e.canvasy );
+  var mouse = vec2.fromValues( e.canvasx, e.canvasy );
   
   //find closer point
   var closer = -1;

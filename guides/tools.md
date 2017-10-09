@@ -2,7 +2,9 @@
 
 To interact with the scene we resort to tools that transform our mouse inputs to actions.
 
-Common tools are Move, Rotate, Scale, etc.
+Common tools are Move, Rotate, Scale, but also Disable GUI, etc.
+
+Tool buttons are distributed around the Canvas.
 
 In case you want to create your own tool here is a simple guide.
 

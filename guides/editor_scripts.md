@@ -9,6 +9,20 @@ You can create a regular component script but use some of the special editor eve
 - ```onEditorRenderGUI```: to render 2D stuff
 - ```onEditorEvent```: to catch events on the interface
 
+## Interface
+
+Probably your script will require some widgets, to add widgets to your component script that display in the inspector you must use the method ```onInspector```.
+
+```js
+this.onInspector = function(inspector)
+{
+	inspector.addInfo(null, "Num. Points: " + this.points.length );
+	inspector.addButton("Clear points", "Clear", { callback: this.clearPoints.bind(this) } );
+}
+```
+
+For more info about the ```LiteGUI.Inspector``` [check the guide in LiteGUI](https://github.com/jagenjo/litegui.js/blob/master/guides/inspector.md).
+
 ## Example
 
 ```js
@@ -20,6 +34,12 @@ private var points = [];
 
 var active = false;
 var selected = -1;
+
+this.onInspector = function(inspector)
+{
+	inspector.addInfo(null, "Num. Points: " + this.points.length );
+	inspector.addButton("Clear points", "Clear", { callback: this.clearPoints.bind(this) } );
+}
 
 this.onEditorRenderGUI = function()
 {

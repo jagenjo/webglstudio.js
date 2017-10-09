@@ -19,7 +19,17 @@ The event will have a ```evt.layout``` property that tells you in which canvas l
 
 If the function returns true it means the event was blocked and nobody else should use it.
 
-## Interface
+## Render stuff
+
+Maybe you want to render info in the GUI or maybe you want to render something in the 3D Scene.
+
+To render in the GUI define the ```onEditorRenderGUI``` method.
+
+To render in the scene define the ```onEditorRender``` method.
+
+When rendering in the scene remember you can use the [LS.Draw](https://github.com/jagenjo/litescene.js/blob/master/guides/draw.md) class to help you render simple shapes like lines, points, etc.
+
+## Inspector
 
 Probably your script will require some widgets, to add widgets to your component script that display in the inspector you must use the method ```onInspector```.
 

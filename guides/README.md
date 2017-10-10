@@ -45,7 +45,7 @@ thanks to fundings from the European Union and local institutions.
 
 ## Is there any tutorials, videos, books or content to learn how to use it? ##
 
-Not yet, but I'm working on that, but there are guides in the repositories of LiteScene, LiteGraph and LiteGL.
+Not yet, but I'm working on that, but there are guides in the repositories of [LiteScene](https://github.com/jagenjo/litescene.js/tree/master/guides) and in this repository.
 
 ## Which major features are missing? ##
 

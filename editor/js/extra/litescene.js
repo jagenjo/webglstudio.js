@@ -4398,7 +4398,7 @@ var ResourcesManager = {
 			throw("registerResource missing filename or resource");
 
 		//test filename is valid (alphanumeric with spaces, dot or underscore and dash and slash
-		if( this.valid_resource_name_reg.test( filename ) == false )
+		if( filename[0] != ":" && this.valid_resource_name_reg.test( filename ) == false )
 			console.warn( "invalid filename for resource: ", filename );
 
 		//clean up the filename (to avoid problems with //)
@@ -41583,7 +41583,7 @@ SceneNode.prototype.addMeshComponents = function( mesh_id, extra_info )
 	//skinning
 	if(mesh && mesh.bones)
 	{
-		compo = new LS.Components.SkinDeformer();
+		compo = new LS.Components.SkinDeformer({search_bones_in_parent:false}); //search_bones_in_parent is false because usually DAEs come that way
 		this.addComponent( compo );
 	}
 
@@ -43617,7 +43617,7 @@ global.Collada = {
 		var mesh = null;
 		var xmlpolygons = xmlmesh.querySelector("polygons");
 		if( xmlpolygons )
-			mesh = this.readTriangles( xmlpolygons, sources );
+			mesh = this.readPolygons( xmlpolygons, sources );
 
 		if(!mesh)
 		{
@@ -43690,6 +43690,152 @@ global.Collada = {
 		mesh.object_class = "Mesh";
 
 		this._geometries_found[ id ] = mesh;
+		return mesh;
+	},
+
+	readPolygons: function( xmlpolygons, sources )
+	{
+		var use_indices = false;
+
+		var groups = [];
+		var last_index = 0;
+		var facemap = {};
+		var vertex_remap = []; //maps DAE vertex index to Mesh vertex index (because when meshes are triangulated indices are changed
+		var indicesArray = [];
+		var last_start = 0;
+		var group_name = "";
+		var material_name = xmlpolygons.getAttribute("material");
+		var buffers = [];
+
+		var xmlp_array = [];
+		var split_to_triangles = true;
+
+		//for every triangles set (warning, some times they are repeated...)
+		for(var i = 0; i < xmlpolygons.childNodes.length; i++)
+		{
+			var xml_elem = xmlpolygons.childNodes.item(i);
+
+			if(xml_elem.localName == "input")
+			{
+				var buffer = this.readInput( xml_elem, sources );
+				if(buffer)
+					buffers.push( buffer );
+			}
+			else if( xml_elem.localName == "p")
+			{
+				xmlp_array.push( xml_elem );
+			}
+			else if(xml_elem.localName)
+				console.warn("unknown xml tag in <polygons>: " + xml_elem.localName);
+		}
+
+		//assuming buffers are ordered by offset
+		//iterate data
+		var num_data_vertex = buffers.length; //one value per input buffer
+
+		//compute data to read per vertex
+		var num_values_per_vertex = 1;
+		var buffers_length = buffers.length;
+		for(var b = 0; b < buffers_length; ++b)
+			num_values_per_vertex = Math.max( num_values_per_vertex, buffers[b][4] + 1);
+
+		//for every polygon (could be one with all the indices, could be several, depends on the program)
+		for(var i = 0; i < xmlp_array.length; i++)
+		{
+			var xmlp = xmlp_array[i];
+			if(!xmlp || !xmlp.textContent) 
+				break;
+
+			var data = xmlp.textContent.trim().split(" ");
+
+			//used for triangulate polys
+			var first_index = -1;
+			var current_index = -1;
+			var prev_index = -1;
+
+			//discomment to force 16bits indices
+			//if(use_indices && last_index >= 256*256)
+			//	break;
+
+			//for every pack of indices in the polygon (vertex, normal, uv, ... )
+			for(var k = 0, l = data.length; k < l; k += num_values_per_vertex)
+			{
+				var vertex_id = data.slice(k,k+num_values_per_vertex).join(" "); //generate unique id
+
+				prev_index = current_index;
+				if(facemap.hasOwnProperty(vertex_id)) //add to arrays, keep the index
+					current_index = facemap[vertex_id];
+				else
+				{
+					//for every data buffer associated to this vertex
+					for(var j = 0; j < buffers_length; ++j)
+					{
+						var buffer = buffers[j];
+						var array = buffer[1]; //array where we accumulate the final data as we extract if from sources
+						var source = buffer[3]; //where to read the data from
+						
+						//compute the index inside the data source array
+						var index = parseInt( data[ k + buffer[4] ] );
+
+						//remember this index in case we need to remap
+						if(j == 0)
+							vertex_remap[ array.length / buffer[2] ] = index; //not sure if buffer[2], it should be number of floats per vertex (usually 3)
+
+						//compute the position inside the source buffer where the final data is located
+						index *= buffer[2]; //this works in most DAEs (not all)
+
+						//extract every value of this element and store it in its final array (every x,y,z, etc)
+						for(var x = 0; x < buffer[2]; ++x)
+						{
+							//if(source[index+x] === undefined) throw("UNDEFINED!"); //DEBUG
+							array.push( source[index+x] );
+						}
+					}
+					
+					current_index = last_index;
+					last_index += 1;
+					facemap[vertex_id] = current_index;
+				}
+
+				if(split_to_triangles) //the xml element is not triangles? then split polygons in triangles
+				{
+					if(k == 0)
+						first_index = current_index;
+					//if(k > 2 * num_data_vertex) //not sure if use this or the next line, the next one works in some DAEs but not sure if it works in all
+					if( (k/num_values_per_vertex) > 2) //triangulate polygons: k is the float, but is divided by num_values_per_vertex because every vertex could have several indices (for normals, etc)
+					{
+						indicesArray.push( first_index );
+						indicesArray.push( prev_index );
+					}
+				}
+
+				indicesArray.push( current_index );
+			}//per vertex
+		}//per polygon
+
+		var group = {
+			name: group_name || ("group"),
+			start: last_start,
+			length: indicesArray.length - last_start,
+			material: material_name || ""
+		};
+		last_start = indicesArray.length;
+		groups.push( group );
+
+		if(!buffers.length)
+		{
+			console.warn("collada: <polygon> without buffers");
+			return null;
+		}
+
+		var mesh = {
+			vertices: new Float32Array( buffers[0][1] ),
+			info: { groups: groups },
+			_remap: new Uint32Array(vertex_remap)
+		};
+
+		this.transformMeshInfo( mesh, buffers, indicesArray );
+
 		return mesh;
 	},
 
@@ -43960,21 +44106,33 @@ global.Collada = {
 		var xmlinputs = xml_shape_root.querySelectorAll("input");
 		for(var i = 0; i < xmlinputs.length; i++)
 		{
-			var xmlinput = xmlinputs.item(i);
-			if(!xmlinput.getAttribute) 
+			var xml_input = xmlinputs.item(i);
+			if(!xml_input.getAttribute) 
 				continue;
-			var semantic = xmlinput.getAttribute("semantic").toUpperCase();
-			var stream_source = sources[ xmlinput.getAttribute("source").substr(1) ];
-			var offset = parseInt( xmlinput.getAttribute("offset") );
-			var data_set = 0;
-			if(xmlinput.getAttribute("set"))
-				data_set = parseInt( xmlinput.getAttribute("set") );
-			buffers.push([semantic, [], stream_source.stride, stream_source.data, offset, data_set ]);
+			var buffer = this.readInput( xml_input, sources );
+			if(buffer)
+				buffers.push(buffer);
+			else
+				console.warn("no buffer in collada");
 		}
 
 		return buffers;
 	},
 
+	readInput: function( xml_input, sources )
+	{
+		if(!xml_input.getAttribute) 
+			return null;
+		var semantic = xml_input.getAttribute("semantic").toUpperCase();
+		var stream_source = sources[ xml_input.getAttribute("source").substr(1) ];
+		var offset = parseInt( xml_input.getAttribute("offset") );
+		var data_set = 0;
+		if(xml_input.getAttribute("set"))
+			data_set = parseInt( xml_input.getAttribute("set") );
+		return [semantic, [], stream_source.stride, stream_source.data, offset, data_set ];
+	},
+
+	//renames buffers to they match an standard imposed by the library
 	transformMeshInfo: function( mesh, buffers, indicesArray )
 	{
 		//rename buffers (DAE has other names)

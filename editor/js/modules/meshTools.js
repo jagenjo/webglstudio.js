@@ -255,7 +255,9 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 			case Uint32Array: type = "Uint32"; break;
 			default: type = "???"; break;
 		}
-		var info = widgets.addInfo(i, (buffer.data.length / buffer.spacing) + " [" + type + "]", { width: "calc( 100% - 30px )" } );
+		var info = widgets.addInfo(i, (buffer.data.length / buffer.spacing) + " [" + type + "]", { width: "calc( 100% - 30px )", buffer: buffer, callback: function(){
+			console.log(this.options.buffer);			
+		}});
 		if( num_vertices != -1 && (buffer.data.length / buffer.spacing) != num_vertices )
 			info.style.backgroundColor = "#6b2d2d";
 

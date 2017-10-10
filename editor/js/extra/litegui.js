@@ -8409,6 +8409,9 @@ Inspector.prototype.addInfo = function( name, value, options)
 
 	var info = element.querySelector(".winfo") || element.querySelector(".wcontent");
 
+	if(options.callback)
+		element.addEventListener("click",options.callback.bind(element));
+
 	element.setValue = function(v) { 
 		if(v === undefined)
 			return;

@@ -42465,6 +42465,7 @@ global.Collada = {
 
 	_xmlroot: null,
 	_nodes_by_id: null,
+	_nodes_by_sid: null,
 	_transferables: null,
 	_controllers_found: null,
 	_geometries_found: null,
@@ -42660,6 +42661,7 @@ global.Collada = {
 
 		//hack to avoid problems with bones with spaces in names
 		this._nodes_by_id = {}; //clear
+		this._nodes_by_sid = {}; //clear
 		this._controllers_found = {};//we need to check what controllers had been found, in case we miss one at the end
 		this._geometries_found = {};
 
@@ -42716,6 +42718,7 @@ global.Collada = {
 
 		//clear memory
 		this._nodes_by_id = {};
+		this._nodes_by_sid = {};
 		this._controllers_found = {};
 		this._geometries_found = {};
 		this._xmlroot = null;
@@ -42792,6 +42795,7 @@ global.Collada = {
 		var node = { 
 			name: node_name,
 			id: unique_name, 
+			sid: node_sid, //just in case
 			children:[], 
 			_depth: level 
 		};
@@ -42804,7 +42808,10 @@ global.Collada = {
 		if( node_id )
 			this._nodes_by_id[ node_id ] = node;
 		if( node_sid )
+		{
+			this._nodes_by_sid[ node_sid ] = node;
 			this._nodes_by_id[ node_sid ] = node;
+		}
 
 		//transform
 		node.model = this.readTransform(xmlnode, level, flip );
@@ -42829,6 +42836,8 @@ global.Collada = {
 		return node;
 	},
 
+	//extracts the info of a node
+	//this is done AFTER having created the scene tree to avoid problems of nodes referencing other nodes that are not yet created
 	readNodeInfo: function( xmlnode, scene, level, flip, parent )
 	{
 		var node_id = this.safeString( xmlnode.getAttribute("id") );
@@ -42836,16 +42845,6 @@ global.Collada = {
 		var node_name = this.safeString( xmlnode.getAttribute("name") );
 
 		var unique_name = node_id || node_sid || node_name;
-
-		/*
-		if(!node_id && !node_sid)
-		{
-			console.warn("Collada: node without id, creating a random one");
-			node_id = this.generateName("node_");
-			return null;
-		}
-		*/
-
 		var node;
 		if(!unique_name) {
 			//if there is no id, then either all of this node's properties 
@@ -42860,8 +42859,11 @@ global.Collada = {
 				return null;
 			}
 		} 
-		else
+		else //retrieve node
 			node = this._nodes_by_id[ unique_name ];
+
+		if(!node)
+			node = this._nodes_by_sid[ node_sid ];
 
 		if(!node)
 		{
@@ -44811,6 +44813,17 @@ global.Collada = {
 					joints = new_bones;
 				}
 				//console.log("Bones: ", joints.length, " used:", num_used_joints );
+			}
+
+			//check bone names are correct
+			for(var i = 0; i < joints.length; ++i)
+			{
+				var joint = joints[i];
+				var bone_node = this._nodes_by_id[ joint[0] ] || this._nodes_by_sid[ joint[0] ];
+				if(bone_node)
+					joint[0] = bone_node.id || bone_node.name;
+				else
+					console.warn("Bone not found");
 			}
 
 			//console.log("Bones: ", joints.length, "Max bone: ", max_bone);

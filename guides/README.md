@@ -31,6 +31,13 @@ No, WebGLStudio is not a 3D Modeling software (maybe in the future), for that pu
 
 WebGLStudio allows to code your own shaders from the editor, create your own post-processing effects, even redo the render pipeline. All the engine is done in Javascript, so it means you have total freedom to change any part.
 
+## What 3D Engine powers WebGLStudio? ##
+
+WebGLStudio was created around its own 3D engine called LiteScene, which was tailored to fulfill all the needs of the editor.
+
+If you want to know all about the inners of LiteScene, check the [guides in the LiteScene repository](https://github.com/jagenjo/litescene.js/tree/master/guides).
+
+
 ## Who has developed WebGLStudio? ##
 
 It has been developed by Javi Agenjo at the Interactive Technologies Group (GTI) at University Pompeu Fabra (Barcelona),
@@ -38,7 +45,7 @@ thanks to fundings from the European Union and local institutions.
 
 ## Is there any tutorials, videos, books or content to learn how to use it? ##
 
-Not yet, but I'm working on that, but there are guides in the repositories of LiteScene, LiteGraph and LiteGL.
+Not yet, but I'm working on that, but there are guides in the repositories of [LiteScene](https://github.com/jagenjo/litescene.js/tree/master/guides) and in this repository.
 
 ## Which major features are missing? ##
 

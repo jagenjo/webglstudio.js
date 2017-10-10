@@ -9085,6 +9085,15 @@ Inspector.prototype.addList = function(name, values, options)
 	element.filter = function(callback)
 	{
 		var items = this.querySelectorAll("ul li");
+		var use_string = false;
+
+		if(callback && callback.constructor === String)
+		{
+			var needle = callback;
+			use_string = true;
+			callback = function(v){ return (v.indexOf(needle) != -1); };
+		}
+
 		for(var i = 0; i < items.length; ++i)
 		{
 			var item = items[i];
@@ -9094,7 +9103,11 @@ Inspector.prototype.addList = function(name, values, options)
 				continue;
 			}
 
-			if( !callback( item.value, item, item.classList.contains("selected") ) )
+			var value = item.value;
+			if(use_string && value != null && value.constructor !== String)
+				value = item.innerHTML;
+
+			if( !callback( value, item, item.classList.contains("selected") ) )
 				item.style.display = "none";
 			else
 				item.style.display = "";

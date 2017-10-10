@@ -9262,13 +9262,16 @@ var LEvent = global.LEvent = GL.LEvent = {
 
 	/**
 	* Triggers and event in an instance
+	* If the callback returns true then it will stop the propagation and return true
 	* @method LEvent.trigger
 	* @param {Object} instance that triggers the event
 	* @param {String} event_name string defining the event name
 	* @param {*} parameters that will be received by the binded function
 	* @param {bool} reverse_order trigger in reverse order (binded last get called first)
+	* @param {bool} expand_parameters parameters are passed not as one single parameter, but as many
+	* return {bool} true if the event passed was blocked by any binded callback
 	**/
-	trigger: function( instance, event_type, params, reverse_order )
+	trigger: function( instance, event_type, params, reverse_order, expand_parameters )
 	{
 		if(!instance) 
 			throw("cannot trigger event from null");
@@ -9277,7 +9280,7 @@ var LEvent = global.LEvent = GL.LEvent = {
 
 		var events = instance.__levents;
 		if( !events || !events.hasOwnProperty(event_type) )
-			return true;
+			return false;
 
 		var inst = events[event_type];
 		if( reverse_order )
@@ -9285,8 +9288,16 @@ var LEvent = global.LEvent = GL.LEvent = {
 			for(var i = inst.length - 1; i >= 0; --i)
 			{
 				var v = inst[i];
-				if( v && v[0].call(v[1], event_type, params) == false)// || event.stop)
-					return false; //stopPropagation
+				if(expand_parameters)
+				{
+					if( v && v[0].apply( v[1], params ) === true)// || event.stop)
+						return true; //stopPropagation
+				}
+				else
+				{
+					if( v && v[0].call( v[1], event_type, params) === true)// || event.stop)
+						return true; //stopPropagation
+				}
 			}
 		}
 		else
@@ -9294,24 +9305,36 @@ var LEvent = global.LEvent = GL.LEvent = {
 			for(var i = 0, l = inst.length; i < l; ++i)
 			{
 				var v = inst[i];
-				if( v && v[0].call(v[1], event_type, params) == false)// || event.stop)
-					return false; //stopPropagation
+				if( expand_parameters )
+				{
+					if( v && v[0].apply( v[1], params ) === true)// || event.stop)
+						return true; //stopPropagation
+				}
+				else
+				{
+					if( v && v[0].call(v[1], event_type, params) === true)// || event.stop)
+						return true; //stopPropagation
+				}
 			}
 		}
 
-		return true;
+		return false;
 	},
 
 	/**
-	* Triggers and event to every element in an array
+	* Triggers and event to every element in an array.
+	* If the event returns true, it must be intercepted
 	* @method LEvent.triggerArray
 	* @param {Array} array contains all instances to triggers the event
 	* @param {String} event_name string defining the event name
 	* @param {*} parameters that will be received by the binded function
 	* @param {bool} reverse_order trigger in reverse order (binded last get called first)
+	* @param {bool} expand_parameters parameters are passed not as one single parameter, but as many
+	* return {bool} false 
 	**/
-	triggerArray: function( instances, event_type, params, reverse_order )
+	triggerArray: function( instances, event_type, params, reverse_order, expand_parameters )
 	{
+		var blocked = false;
 		for(var i = 0, l = instances.length; i < l; ++i)
 		{
 			var instance = instances[i];
@@ -9329,8 +9352,22 @@ var LEvent = global.LEvent = GL.LEvent = {
 				for(var j = events[event_type].length - 1; j >= 0; --j)
 				{
 					var v = events[event_type][j];
-					if( v[0].call(v[1], event_type, params) == false)// || event.stop)
-						break; //stopPropagation
+					if(expand_parameters)
+					{
+						if( v[0].apply(v[1], params ) === true)// || event.stop)
+						{
+							blocked = true;
+							break; //stopPropagation
+						}
+					}
+					else
+					{
+						if( v[0].call(v[1], event_type, params) === true)// || event.stop)
+						{
+							blocked = true;
+							break; //stopPropagation
+						}
+					}
 				}
 			}
 			else
@@ -9338,13 +9375,27 @@ var LEvent = global.LEvent = GL.LEvent = {
 				for(var j = 0, ll = events[event_type].length; j < ll; ++j)
 				{
 					var v = events[event_type][j];
-					if( v[0].call(v[1], event_type, params) == false)// || event.stop)
-						break; //stopPropagation
+					if(expand_parameters)
+					{
+						if( v[0].apply(v[1], params ) === true)// || event.stop)
+						{
+							blocked = true;
+							break; //stopPropagation
+						}
+					}
+					else
+					{
+						if( v[0].call(v[1], event_type, params) === true)// || event.stop)
+						{
+							blocked = true;
+							break; //stopPropagation
+						}
+					}
 				}
 			}
 		}
 
-		return true;
+		return blocked;
 	},
 
 	extendObject: function( object )
@@ -10995,6 +11046,29 @@ HitTest.prototype = {
   }
 };
 
+// ### new GL.Ray( origin, direction )
+global.Ray = GL.Ray = function Ray( origin, direction )
+{
+	this.origin = vec3.create();
+	this.direction = vec3.create();
+	this.collision_point = vec3.create();
+
+	if(origin)
+		this.origin.set( origin );
+	if(direction)
+		this.direction.set( direction );
+}
+
+Ray.prototype.testPlane = function( P, N )
+{
+	return geo.testRayPlane( this.origin, this.direction, P, N, this.collision_point );
+}
+
+Ray.prototype.testSphere = function( center, radius, max_dist )
+{
+	return geo.testRaySphere( this.origin, this.direction, center, radius, this.collision_point, max_dist );
+}
+
 // ### new GL.Raytracer()
 // 
 // This will read the current modelview matrix, projection matrix, and viewport,
@@ -11046,7 +11120,7 @@ Raytracer.prototype.setup = function( viewprojection_matrix, viewport )
 
   // ### .getRayForPixel(x, y)
   // 
-  // Returns the ray originating from the camera and traveling through the pixel `x, y`.
+  // Returns the ray direction originating from the camera and traveling through the pixel `x, y`.
 Raytracer.prototype.getRayForPixel = (function(){ 
 	var ray0 = vec3.create();
 	var ray1 = vec3.create();

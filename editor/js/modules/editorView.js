@@ -34,6 +34,8 @@ var EditorView = {
 		this.debug_render = new LS.DebugRender(); //in charge of rendering debug info in the scene
 		RenderModule.canvas_manager.addWidget(this);
 
+		LS.Renderer.on_render_gui = this.onRenderGUI.bind(this);
+
 		LEvent.bind( LS.Renderer, "renderHelpers", this.renderView.bind(this));
 		LEvent.bind( LS.Renderer, "renderPicking", this.renderPicking.bind(this));
 	},
@@ -87,50 +89,65 @@ var EditorView = {
 		return false;
 	},
 
-	sendToLayoutGizmos: function(name, params)
+	onRenderGUI: function(render_settings)
 	{
+		if(!render_settings.in_player)
+			LEvent.trigger( LS.GlobalScene, "renderEditorGUI", gl );
+	},
+
+	//called from the CanvasManager event handlers when any event is fired in the canvas
+	sendToLayoutGizmos: function( name, event )
+	{
+		var blocked = false;
+
+		//to every viewport
 		for(var i = 0; i < RenderModule.viewports.length; i++)
 		{
 			var viewport = RenderModule.viewports[i];
-			if(!viewport.gizmos || !viewport.gizmos.length )
-				continue;
 
-			for(var j = 0; j < viewport.gizmos.length; j++)
+			if( viewport.gizmos && viewport.gizmos.length )
 			{
-				var gizmo = viewport.gizmos[j];
-				var r = null;
-				if(gizmo[name])
-					r = gizmo[name].apply(gizmo, params);
-				if(r === true)
-					return true; //break
+				for(var j = 0; j < viewport.gizmos.length; j++)
+				{
+					var gizmo = viewport.gizmos[j];
+					var r = null;
+					if(gizmo[name]) //has method with that name (mousedown, etc)
+						r = gizmo[name].apply( gizmo, [ event ] );
+					if(r === true)
+						return true; //break
+				}
 			}
 		}
+
+		return blocked;
 	},
 
-	update: function(seconds)
-	{
-		this.sendToLayoutGizmos("update",[seconds]);
-	},
+	update: (function(){ 
+		var event = { type: "update", seconds: 0 };
+		return function(seconds)
+		{
+			event.seconds = seconds;
+			this.sendToLayoutGizmos("update", event);
+		}
+	})(),
 
 	mousedown: function(e)
 	{
 		//check if the mouse is between layouts
 		//TODO
-
-		var r = this.sendToLayoutGizmos("mousedown",[e]);
+		var r = this.sendToLayoutGizmos("mousedown", e );
 		return r;
 	},
 
 	mousemove: function(e)
 	{
-		var r = this.sendToLayoutGizmos("mousemove",[e]);
-
+		var r = this.sendToLayoutGizmos("mousemove", e );
 		return r;
 	},
 
 	mouseup: function(e)
 	{
-		var r = this.sendToLayoutGizmos("mouseup",[e]);
+		var r = this.sendToLayoutGizmos("mouseup", e );
 		if(r)
 			return r;
 
@@ -148,18 +165,21 @@ var EditorView = {
 
 	mousewheel: function(e)
 	{
-		return this.sendToLayoutGizmos("mousewheel",[e]);
+		return this.sendToLayoutGizmos("mousewheel", e );
 	},
 
 	renderEditor: function( camera )
 	{
+		//copy preferences... ?
 		for(var i in this.preferences)
 			this.debug_render.settings[i] = this.preferences[i];
 
+		//call debug render to render grid, etc
 		this.debug_render.render( camera, SelectionModule.isSelected.bind( SelectionModule ) );
 
 		gl.depthFunc( gl.LEQUAL );
 
+		//used to render script tools gizmos
 		LEvent.trigger( LS.GlobalScene, "renderEditor" );
 
 		gl.depthFunc( gl.LESS );

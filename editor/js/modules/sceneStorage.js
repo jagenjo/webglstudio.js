@@ -82,8 +82,8 @@ var SceneStorageModule = {
 		if(dialog)
 			return;
 
-		dialog = new LiteGUI.Dialog( { id: "dialog_load_scene", title:"Load Scene", close: true, minimize: true, width: 520, height: 290, scroll: false, draggable: true});
-		dialog.show('fade');
+		dialog = new LiteGUI.Dialog( { id: "dialog_load_scene", title:"Load Scene", close: true, minimize: true, width: 520, height: 320, scroll: false, draggable: true});
+		dialog.show();
 
 		var split = new LiteGUI.Split("load_scene_split",[50,50]);
 		dialog.add( split );
@@ -93,12 +93,23 @@ var SceneStorageModule = {
 		right_pane_style.paddingLeft = "2px";
 		right_pane_style.paddingTop = "2px";
 
+		var list = null;
 		var widgets = new LiteGUI.Inspector();
 		var scenes = ["Loading..."];
-		var list = widgets.addList(null,scenes, { height: 220, callback: inner_selected});
-		widgets.addButtons(null,["Load","Delete"], { className:"big", callback: inner_button });
+		var searchbox = widgets.addString( null, "", { placeHolder: "search...", immediate: true, callback: function(v){
+			list.filter(v);
+		}});
+
+		list = widgets.addList(null,scenes, { height: 230, callback: inner_selected, callback_dblclick: inner_dblclick});
+		widgets.widgets_per_row = 2;
+		widgets.addButton(null,"Load", { width: "80%", className:"big", callback: inner_load });
+		widgets.addButton(null,"<img src='imgs/mini-icon-trash.png'/>", { width: "20%", className:"big", callback: inner_delete });
+		widgets.widgets_per_row = 1;
 
 		split.getSection(0).add( widgets );
+		dialog.adjustSize(5);
+
+		split.getSection(1).style.height = "100%";
 
 		//load scenes
 		DriveModule.serverSearchFiles({ category: "SceneTree" }, inner_files, inner_error );
@@ -124,37 +135,41 @@ var SceneStorageModule = {
 
 		function inner_selected( item )
 		{
+			var root = split.getSection(1);
 			selected = item.fullpath;
-			split.getSection(1).innerHTML = "";
-			var img = new Image();
-			img.src = LFS.getPreviewPath( selected );
-			split.getSection(1).add(img);
+			var html = "<div style='height:260px'><img style='opacity: 0;' src='" + LFS.getPreviewPath( selected ) + "'/></div><span style='font-size:1.4em'>"+ item.timestamp +"</span>";
+			root.innerHTML = html;
+			root.querySelector("img").onload = function() { this.style.opacity = 1; }
 		}
 
-		function inner_button( button )
+		function inner_dblclick( item )
 		{
-			if(button == "Load")
-			{
-				dialog.close();
-				SceneStorageModule.loadScene( selected );
-			}
-			if(button == "Delete")
-			{
-				LiteGUI.confirm("Do you want to delete the file?", function() {
+			selected = item.fullpath;
+			inner_load();
+		}
 
-					//remove also the Pack
-					var folder = LS.RM.getFolder(selected);
-					var basename = LS.RM.getBasename(selected);
-					var pack_fullpath = LS.RM.cleanFullpath( folder + "/" + basename + ".PACK.wbin" );
-					DriveModule.serverDeleteFile( pack_fullpath );
+		function inner_load()
+		{
+			dialog.close();
+			SceneStorageModule.loadScene( selected );
+		}
 
-					DriveModule.serverDeleteFile( selected, function(v) { 
-						LiteGUI.alert(v?"File deleted":"Error deleting file");
-						if(v)
-							dialog.close();
-					});
+		function inner_delete()
+		{
+			LiteGUI.confirm("Do you want to delete the file?", function() {
+
+				//remove also the Pack
+				var folder = LS.RM.getFolder(selected);
+				var basename = LS.RM.getBasename(selected);
+				var pack_fullpath = LS.RM.cleanFullpath( folder + "/" + basename + ".PACK.wbin" );
+				DriveModule.serverDeleteFile( pack_fullpath );
+
+				DriveModule.serverDeleteFile( selected, function(v) { 
+					LiteGUI.alert(v?"File deleted":"Error deleting file");
+					if(v)
+						dialog.close();
 				});
-			}
+			});
 		}
 
 	},

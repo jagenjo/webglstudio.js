@@ -1,14 +1,15 @@
 /*  
 	This module is in charge or rendering the Scene.
-	The module initializes the CanvasManager that handles the Web3D canvas and the interaction.
+	The module initializes the CanvasManager that handles the WebGL canvas and the interaction.
 */
 
 var RenderModule = {
 
-	name: "Scene",
-	bigicon: "imgs/tabicon-scene.png",
+	name: "RenderModule",
 	enabled: true,
-	//settings_panel: [{name:"renderer", title:"Renderer", icon:null }],
+
+	tab_name: "Scene",
+	tab_bigicon: "imgs/tabicon-scene.png",
 
 	auto_render: false, //force render a frame every time
 	frame_updated: false,
@@ -33,9 +34,9 @@ var RenderModule = {
 		this.render_settings = new LS.RenderSettings();
 
 		//create 3D tab
-		this.tab = LiteGUI.main_tabs.addTab( this.name, {
+		this.tab = LiteGUI.main_tabs.addTab( this.tab_name, {
 				id:"visortab", 
-				bigicon: this.bigicon,
+				bigicon: this.tab_bigicon,
 				size: "full",
 				module: EditorModule,
 				callback: function() {
@@ -70,18 +71,19 @@ var RenderModule = {
 		var canvas_container = this.canvas_container = document.getElementById("maincanvas");
 		InterfaceModule.setVisorArea( visorarea );
 
-		//The WebGLContext is created from CanvasManager !!!!!!!
-
-		//create canvas and store inside the #visor
-		this.canvas_manager = new CanvasManager( { container: canvas_container, full: true, antialiasing: true} );
+		//The WebGLContext is created from CanvasManager, not here
+		//Create canvas and store inside the #visor
+		this.canvas_manager = new CanvasManager( { container: canvas_container, full: true, antialiasing: true } );
 		if(!this.canvas_manager.gl)
 		{
 			this.onWebGLNotEnabled();
 			return;
 		}
-		this.canvas_manager.addWidget(this); //capture render, update and mouse
 
-		//CANVAS
+		//capture render so we can render the scene, get mouse events to switch active viewport, etc
+		this.canvas_manager.addWidget( this, -10 );  //low priority, it renders first
+
+		//Prepare the CANVAS and the LiteScene engine
 		var canvas = this.canvas_manager.canvas;
 		this.shaders_url = CORE.config.shaders || this.shaders_url;
 		LS.ShadersManager.init( this.shaders_url ); //load shaders
@@ -94,8 +96,9 @@ var RenderModule = {
 		this.render_settings.in_player = false;
 		this.render_settings.keep_viewport = true;
 
+		window.addEventListener("resize", function() { RenderModule.requestFrame(); }, true ); 
 		//LiteGUI.bind( window, "resize", function() {  RenderModule.requestFrame(); }); //dont work
-		$(window).resize( function() {  RenderModule.requestFrame(); });
+		//$(window).resize( function() {  RenderModule.requestFrame(); });
 
 		LiteGUI.bind( LiteGUI, "resized", function(){
 			canvas.width = canvas.parentNode.offsetHeight;
@@ -285,9 +288,6 @@ var RenderModule = {
 		var scene_render_settings = LS.GlobalScene.info ? LS.GlobalScene.info.render_settings : global_render_settings;
 		render_settings = global_render_settings.in_player ? scene_render_settings : global_render_settings;
 
-
-		//gl.viewport(0,0,500,500); //test
-
 		//check if render one single camera or multiple cameras
 		var cameras = null;
 		if(!global_render_settings.in_player && !this.view_from_scene_cameras )
@@ -325,6 +325,7 @@ var RenderModule = {
 		LEvent.trigger(this,"post_scene_render");
 	},
 
+	//binded to the LS.Renderer so we can add special passes on top of the render
 	onAfterRenderInstances: function()
 	{
 		if(this.show_stencil_mask > -1)
@@ -336,7 +337,7 @@ var RenderModule = {
 			LS.Renderer._white_texture.toViewport();
 			gl.disable( gl.STENCIL_TEST );
 		}
-		else if(this.show_depth_buffer ) //superhack
+		else if(this.show_depth_buffer ) //superhack to render the depth buffer by rendering lots of planes with different Z
 		{
 			if(!this._depth_shader)
 				this._depth_shader = new GL.Shader( this._depth_vertex_shader_code, this._depth_fragment_shader_code );
@@ -375,6 +376,31 @@ var RenderModule = {
 			LS.Renderer.setRenderPass( pass );
 			LS.Renderer.renderInstances( new LS.RenderSettings() );
 		}
+	},
+
+	//used by playModule and renderModule to pass events to LiteScene
+	//returns true if it must stop propagation
+	passEventToLiteScene: function(e)
+	{
+		var blocked = false;
+		switch(e.type)
+		{
+			case "mousedown":
+			case "mousemove":
+			case "mouseup":
+				blocked = LS.Input.onMouse(e);
+				if( !blocked ) //send event only if not blocked
+					LEvent.trigger( LS.GlobalScene, e.eventType || e.type, e, true );
+				break;
+			case "keydown":
+			case "keyup":
+				LS.Input.onKey(e);
+				//no break to call the trigger
+			default:
+				LEvent.trigger( LS.GlobalScene, e.eventType || e.type, e, false );
+		}
+
+		return blocked;
 	},
 
 	//used to select viewport

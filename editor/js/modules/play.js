@@ -31,10 +31,13 @@ var PlayModule = {
 			#play-tools button.enabled { background: #AEE !important;} \
 		");
 
-		LEvent.bind( LS.GlobalScene, "clear", this.onSceneStop, this );
-		RenderModule.canvas_manager.addWidget( PlayModule ); //capture render from square, and update and events
+		//Register in CanvasManager to render the border on playmode
+		RenderModule.canvas_manager.addWidget( PlayModule, 10 );
 
-		//tools
+		//If the scene is cleared be sure to change mode to stop
+		LEvent.bind( LS.GlobalScene, "clear", this.onSceneStop, this );
+
+		//play tools panel
 		var container = document.createElement("div");
 		container.id = "play-tools";
 		container.className = "big-buttons";
@@ -85,7 +88,7 @@ var PlayModule = {
 		{
 			//send ready signal
 			var result = LEvent.trigger( LS.GlobalScene, "prepare_play" );
-			if( result === false )
+			if( result === true )
 			{
 				console.log("Play aborted");
 				return;
@@ -308,26 +311,14 @@ var PlayModule = {
 		this.play_button.innerHTML = this.icons.play;
 	},
 
+	//called from CanvasManager with every user event
 	onevent: function(e)
 	{
 		if(!this.inplayer)
 			return;
 
-		switch(e.type)
-		{
-			case "mousedown":
-			case "mousemove":
-			case "mouseup":
-				if( !LS.Input.onMouse(e) ) //send event only if not blocked
-					LEvent.trigger( LS.GlobalScene, e.eventType || e.type, e, true );
-				break;
-			case "keydown":
-			case "keyup":
-				LS.Input.onKey(e);
-				//no break to call the trigger
-			default:
-				LEvent.trigger( LS.GlobalScene, e.eventType || e.type, e, false );
-		}
+		//dont know where to put this
+		var r = RenderModule.passEventToLiteScene(e);
 
 		//block propagation (mousemove should be propagated so when dragging panels works)
 		if(e.type != "mousemove")
@@ -336,6 +327,7 @@ var PlayModule = {
 		return true;
 	},
 
+	//file (or item) dropped over the Player
 	onItemDrop: function(e)
 	{
 		if(!this.inplayer)

@@ -176,6 +176,36 @@ var ToolsModule = {
 			this.current_tool.renderEditor( camera );
 	},
 
+	//called from CanvasManager on every input event
+	//used mostly to allow Editor GUI Stuff
+	//Here because it is the upmost widget in the canvas...
+	onevent: function(e)
+	{
+		//if(e.type == "mousedown")
+		//	console.log("down");
+
+		var blocked = false;
+
+		//in case we have editor gui widgets we need to update the events
+		if( LEvent.hasBind( LS.GlobalScene, "renderEditorGUI" ) )
+			blocked = RenderModule.passEventToLiteScene(e);
+		if(blocked) //something happened
+			LS.GlobalScene.requestFrame();
+
+		//in case the user script grabs the input
+		if(!blocked)
+		{
+			var r = null;
+			var viewport = RenderModule.active_viewport;
+			e.layout = viewport;
+			r = LEvent.trigger( LS.GlobalScene, "editorEvent", e );//, false, true );
+			if( r === true ) //event intercepted by script
+				blocked = true;
+		}
+
+		return blocked;
+	},
+
 	mouseevent: function(e)
 	{
 		if(this.background_tools.length)

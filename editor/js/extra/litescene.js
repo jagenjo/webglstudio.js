@@ -461,6 +461,7 @@ global.WBin = WBin;
 
 /**
 * LScript allows to compile code during execution time having a clean context
+* It adds some syntactic features and controls errors in a safe way
 * @class LScript
 * @constructor
 */
@@ -481,6 +482,7 @@ LScript.eval = function(argv_names,code) { return eval("(function("+argv_names+"
 LScript.catch_exceptions = false;
 LScript.show_errors_in_console = true;
 
+//compiles the string, tryes to keep the current state
 LScript.prototype.compile = function( arg_vars, save_context_vars )
 {
 	var argv_names = [];
@@ -564,6 +566,7 @@ LScript.prototype.compile = function( arg_vars, save_context_vars )
 	return true;
 }
 
+//does this script contains this method?
 LScript.prototype.hasMethod = function(name)
 {
 	if(!this._context || !this._context[name] || typeof(this._context[name]) != "function") 
@@ -621,6 +624,7 @@ LScript.applyToConstructor = function(constructor, argArray, methods) {
     return factoryFunction;
 }
 
+//dumps all the code to the console
 LScript.showCodeInConsole = function( code, error_line)
 {
 	if(!code)
@@ -657,6 +661,9 @@ LScript.cleanCode = function(code)
 	return result.join("\n");
 }
 
+// Adds some extra features to JS like:
+// - support for multiline strings (this feature was introduced in ES6 but in case is not supported)
+// - the use of private or public in variables.
 LScript.expandCode = function(code)
 {
 	if(!code)
@@ -685,7 +692,10 @@ LScript.expandCode = function(code)
 	for(var i = 0; i < lines.length; ++i)
 	{
 		var line = lines[i].trim();
-		if(line.indexOf("public") != -1)
+		var pos = line.indexOf(" ");
+		var first_word = line.substr(0,pos);
+
+		if( first_word == "public" || first_word == "private" )
 		{
 			var index = line.indexOf("//");
 			if(index != -1)
@@ -694,7 +704,7 @@ LScript.expandCode = function(code)
 			if(index != -1)
 				line = line.substr(0,index); //remove one-line comments
 			var t = line.split(" ");
-			if(t[0] != 'public' || t[1] != 'var')
+			if( t[1] != 'var')
 				continue;
 			var varname = t[2];
 			if(!varname)
@@ -718,6 +728,8 @@ LScript.expandCode = function(code)
 				type_options.step = 1;
 				type_options.type = LS.TYPES.NUMBER;
 			}
+			if( t[0] == "private" )
+				type_options.widget = "null";
 			lines[i] = "this.createProperty('" + name_type[0] + "'," + value + ", "+JSON.stringify( type_options )+" );";
 			update = true;
 		}
@@ -725,23 +737,11 @@ LScript.expandCode = function(code)
 	if(update)
 		code = lines.join("\n");
 
-
-	/* using regex, not working
-	if( code.indexOf("'''") != -1 )
-	{
-		var exp = new RegExp("\'\'\'(.|\n)*\'\'\'", "mg");
-		code = code.replace( exp, addSlashes );
-	}
-
-	function addSlashes(a){ 
-		var str = a.split("\n").join("\\n\\\n");
-		return '"' + str.substr(3, str.length - 6 ) + '"'; //remove '''
-	}
-	*/
-
 	return code;
 }
 
+// In case of error inside the scripts, tries to determine the error line (not as easy as it seems)
+// Doesnt work in all cases
 LScript.computeLineFromError = function( err )
 {
 	if(err.lineNumber !== undefined)
@@ -2334,6 +2334,7 @@ var Input = {
 	},
 
 	//called from LS.Player when onmouse
+	//returns true if the event was blocked
 	onMouse: function(e)
 	{
 		this.last_mouse = e;
@@ -6338,8 +6339,62 @@ LS.ShadersManager.registerSnippet("surface","\n\
 		return o;\n\
 	}\n\
 ");
+//when working with animations sometimes you want the bones to be referenced by node name and no node uid, because otherwise you cannot reuse
+//the same animation with different characters in the same scene.
+GL.Mesh.prototype.convertBoneNames = function( root_node, use_uids )
+{
+	if(!this.bones || !this.bones.length)
+		return 0;
 
+	root_node = root_node || LS.GlobalScene;
+	if( root_node.constructor == LS.SceneTree )
+		root_node = root_node.root;
+	if(!root_node.findNode)
+	{
+		console.error("convertBoneNames first parameter must be node or scene");
+		return 0;
+	}
 
+	var modified = false;
+
+	//Rename the id to a relative name
+	for(var i = 0; i < this.bones.length; ++i)
+	{
+		var bone = this.bones[i];
+		var bone_name = bone[0];
+
+		if( !use_uids )
+		{
+			if( bone_name[0] != LS._uid_prefix)
+				continue; //already using a name, not a uid
+			var node = root_node.findNode( bone_name );
+			if(!node)
+			{
+				console.warn("Bone node not found: " + bone_name );
+				continue;
+			}
+			bone[0] = node.name;
+			modified = true;
+		}
+		else
+		{
+			if( bone_name[0] == LS._uid_prefix)
+				continue; //already using a uid
+			var node = root_node.findNode( bone_name );
+			if(!node)
+			{
+				console.warn("Bone node not found: " + bone_name );
+				continue;
+			}
+			bone[0] = node.uid;
+			modified = true;
+		}
+	}
+
+	//flag it
+	if(modified)
+		LS.RM.resourceModified( this );
+}
 
 
 
@@ -19259,15 +19314,13 @@ var Renderer = {
 			return;
 		}
 
+		//init frame
 		this._is_rendering_frame = true;
-
 		render_settings = render_settings || this.default_render_settings;
 		this._current_render_settings = render_settings;
 		this._current_scene = scene;
 		this._main_camera = cameras ? cameras[0] : null;
-
-		//done at the beginning just in case it crashes
-		scene._frame += 1;
+		scene._frame += 1; //done at the beginning just in case it crashes
 		this._frame += 1;
 		scene._must_redraw = false;
 		var start_time = getTime();
@@ -19345,22 +19398,22 @@ var Renderer = {
 		}
 
 		//renders GUI items using mostly the Canvas2DtoWebGL library
-		if(render_settings.render_gui && LEvent.hasBind( scene, "renderGUI") )
-		{
-			//assign full viewport?
-			gl.viewport( this._full_viewport[0], this._full_viewport[1], this._full_viewport[2], this._full_viewport[3] );
-			if(gl.start2D)
-				gl.start2D();
-			LS.GUI.ResetImmediateGUI(); //mostly to change the cursor
+		gl.viewport( this._full_viewport[0], this._full_viewport[1], this._full_viewport[2], this._full_viewport[3] ); //assign full viewport always?
+		if(gl.start2D) //in case we have Canvas2DtoWebGL installed (it is optional)
+			gl.start2D();
+		LS.GUI.ResetImmediateGUI(); //mostly to change the cursor
+		if( render_settings.render_gui )
 			LEvent.trigger( scene, "renderGUI", gl );
-			if(gl.finish2D)
-				gl.finish2D();
-		}
+		if( this.on_render_gui ) //used by the editor (here to ignore render_gui flag)
+			this.on_render_gui( render_settings );
+		if( gl.finish2D )
+			gl.finish2D();
 
+		//profiling
 		this._frame_cpu_time = getTime() - start_time;
 
 		//Event: afterRender to give closure to some actions
-		LEvent.trigger(scene, "afterRender", render_settings );
+		LEvent.trigger( scene, "afterRender", render_settings );
 		this._is_rendering_frame = false;
 	},
 
@@ -25898,6 +25951,9 @@ Camera.prototype.project = function( vec, viewport, result, skip_reverse )
 {
 	result = result || vec3.create();
 
+	if(!vec)
+		throw("camera project parameter 'vec' cannot be null");
+
 	viewport = this.getLocalViewport(viewport);
 
 	if( this._must_update_view_matrix || this._must_update_projection_matrix )
@@ -25913,15 +25969,6 @@ Camera.prototype.project = function( vec, viewport, result, skip_reverse )
 }
 
 /**
-* Converts a screen space 2D vector (with a Z value) to its 3D equivalent position
-* @method unproject
-* @param {vec3} vec 2D position we want to proyect to 3D
-* @param {vec4} [viewport=null] viewport info (if omited full canvas viewport is used)
-* @param {vec3} result where to store the result, if omited it is created
-* @return {vec3} the coordinates in 2D
-*/
-
-/**
 * It tells you the 2D position of a node center in the screen
 * @method projectNodeCenter
 * @param {vec3} vec 3D position we want to proyect to 2D
@@ -25935,6 +25982,14 @@ Camera.prototype.projectNodeCenter = function( node, viewport, result, skip_reve
 	return this.project( center, viewport, result, skip_reverse );
 }
 
+/**
+* Converts a screen space 2D vector (with a Z value) to its 3D equivalent position
+* @method unproject
+* @param {vec3} vec 2D position we want to proyect to 3D
+* @param {vec4} [viewport=null] viewport info (if omited full canvas viewport is used)
+* @param {vec3} result where to store the result, if omited it is created
+* @return {vec3} the coordinates in 2D
+*/
 Camera.prototype.unproject = function( vec, viewport, result )
 {
 	viewport = this.getLocalViewport(viewport);
@@ -25974,14 +26029,14 @@ Camera.prototype.getLocalViewport = function( viewport, result )
 
 /**
 * given an x and y position, returns the ray {start, dir}
-* @method getRayInPixel
+* @method getRay
 * @param {number} x
 * @param {number} y
 * @param {vec4} viewport viewport coordinates (if omited full viewport is used using the camera viewport)
 * @param {boolean} skip_local_viewport ignore the local camera viewport configuration when computing the viewport
-* @return {Object} {origin:vec3, direction:vec3} or null is values are undefined or NaN
+* @return {GL.Ray} {origin:vec3, direction:vec3} or null is values are undefined or NaN
 */
-Camera.prototype.getRayInPixel = function(x,y, viewport, skip_local_viewport )
+Camera.prototype.getRay = function(x,y, viewport, skip_local_viewport )
 {
 	//apply camera viewport
 	if(!skip_local_viewport)
@@ -25999,8 +26054,10 @@ Camera.prototype.getRayInPixel = function(x,y, viewport, skip_local_viewport )
 
 	var dir = vec3.subtract( pos, pos, eye );
 	vec3.normalize(dir, dir);
-	return { origin: eye, direction: dir };
+	return new GL.Ray( eye, dir );
 }
+
+Camera.prototype.getRayInPixel = Camera.prototype.getRay; //LEGACY
 
 /**
 * Returns true if the 2D point (in screen space coordinates) is inside the camera viewport area
@@ -35903,9 +35960,10 @@ Script.defineAPIFunction( "onButtonDown", Script.BIND_TO_SCENE, "buttondown" );
 Script.defineAPIFunction( "onButtonUp", Script.BIND_TO_SCENE, "buttonup" );
 //global
 Script.defineAPIFunction( "onFileDrop", Script.BIND_TO_SCENE, "fileDrop" );
-//dtor
-Script.defineAPIFunction( "onDestroy", Script.BIND_TO_NODE, "destroy" );
-
+//editor stuff
+Script.defineAPIFunction( "onEditorEvent", Script.BIND_TO_SCENE, "editorEvent" );
+Script.defineAPIFunction( "onEditorRender", Script.BIND_TO_SCENE, "renderEditor" );
+Script.defineAPIFunction( "onEditorRenderGUI", Script.BIND_TO_SCENE, "renderEditorGUI" );
 
 Script.coding_help = "For a complete guide check: <a href='https://github.com/jagenjo/litescene.js/blob/master/guides/scripting.md' target='blank'>Scripting Guide</a>";
 
@@ -36224,7 +36282,7 @@ Script.prototype.setPropertyValueFromPath = function( path, value, offset )
 }
 
 /**
-* This check if the context has API functions that should be called, if thats the case, it binds events automatically
+* This check if the context binds engine events to the methods in the context with an specific name.
 * This way we dont have to bind manually all the methods.
 * @method hookEvents
 */
@@ -36260,7 +36318,7 @@ Script.prototype.hookEvents = function()
 		//check if this function exist
 		if( context[ func_name ] && context[ func_name ].constructor === Function )
 		{
-			if( !LEvent.isBind( target, event_info.event, this.onScriptEvent, this )  )
+			if( !LEvent.isBind( target, event_info.event, this.onScriptEvent, this )  ) //not already binded
 				LEvent.bind( target, event_info.event, this.onScriptEvent, this );
 		}
 		else //if it doesnt ensure we are not binding the event
@@ -36272,12 +36330,27 @@ Script.prototype.hookEvents = function()
 * Called every time an event should be redirected to one function in the script context
 * @method onScriptEvent
 */
-Script.prototype.onScriptEvent = function(event_type, params)
+Script.prototype.onScriptEvent = function( event_type, params )
 {
 	if(!this.enabled)
 		return;
 
-	var event_info = LS.Script.API_events_to_function[ event_type ];
+	//special case: sometimes we want to pass several parameters to the 
+	var expand = false;
+	var type = event_type;
+	/*
+	if( type.constructor !== String && type.constructor !== Number ) //you can pass an event directly, in that case it will send all directly
+	{
+		type = event_type.type;
+		params = Array.prototype.slice.call(arguments, 0);
+		expand = true;
+	}
+	*/
+
+	if(!type)
+		throw("Event without type");
+
+	var event_info = LS.Script.API_events_to_function[ type ];
 	if(!event_info)
 		return; //????
 	if(this._breakpoint_on_call)
@@ -36289,7 +36362,7 @@ Script.prototype.onScriptEvent = function(event_type, params)
 	if( this._blocked_functions.has( event_info.name ) ) //prevent calling code with errors
 		return;
 
-	var r = this._script.callMethod( event_info.name, params, undefined, this );
+	var r = this._script.callMethod( event_info.name, params, expand, this );
 	return r;
 }
 
@@ -36301,6 +36374,9 @@ Script.prototype.onAddedToNode = function( node )
 
 Script.prototype.onRemovedFromNode = function( node )
 {
+	if(this._script._context.onDestroy)
+		this._script._context.onDestroy();
+
 	if(node.script == this)
 		delete node.script;
 }
@@ -41142,7 +41218,10 @@ SceneNode.prototype.load = function( url, on_complete )
 		if( resource.constructor === LS.SceneNode )
 			that.addChild( resource );
 		else if( resource.constructor === LS.SceneTree )
+		{
+			//warn: here we are missing all the global and external scripts of the scene
 			that.addChild( resource.root.clone() );
+		}
 		else if( resource.constructor === LS.Prefab )
 			that.prefab = resource.fullpath || resource.filename;
 		else if( resource.constructor === GL.Mesh )
@@ -43735,6 +43814,9 @@ global.Collada = {
 			last_start = indicesArray.length;
 			groups.push( group );
 		}//per triangles group
+
+		if(!buffers.length)
+			return null;
 
 		var mesh = {
 			vertices: new Float32Array( buffers[0][1] ),
@@ -46935,7 +47017,7 @@ Player.prototype._ontouch = function(e)
 	if(this.state != LS.Player.PLAYING)
 		return;
 
-	if( LEvent.trigger( this.scene, e.eventType || e.type, e, true ) === false )
+	if( LEvent.trigger( this.scene, e.eventType || e.type, e, true ) === true )
 		return false;
 
 	//hardcoded event handlers in the player

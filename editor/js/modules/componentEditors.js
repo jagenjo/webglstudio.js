@@ -937,8 +937,9 @@ LS.Components.Poser.showPoseNodesDialog = function( component, event )
 		});
 		widgets.addSeparator();
 		widgets.addButton(null, "Add current scene selected node", function(){
-			var node = SelectionModule.getSelectedNode();
-			component.addBaseNode( node );
+			var nodes = SelectionModule.getSelectedNodes();
+			for(var i in nodes)
+				component.addBaseNode( nodes[i] );
 			widgets.refresh();
 		});
 	}

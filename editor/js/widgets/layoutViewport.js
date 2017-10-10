@@ -1,6 +1,7 @@
 /*
 	Every area of the viewport where we render the scene in the editor.
-	Helps to control the camera.
+	Helps to control the cameras and render settings for every viewport.
+	All the Layouts are stored in RenderModule
 */
 function LayoutViewport( options )
 {
@@ -85,6 +86,33 @@ LayoutViewport.prototype.render = function()
 			gizmo.render();
 	}
 }
+
+Object.defineProperty( LayoutViewport.prototype, "viewport", {
+	set: function(v){
+		if(!v)
+			return;
+		this._viewport.set( v );
+		this.camera._viewport.set(v);
+	},
+	get: function()
+	{
+		return this._viewport;
+	},
+	enumerable: true
+});
+
+Object.defineProperty( LayoutViewport.prototype, "viewport_pixels", {
+	set: function(v){
+		this._viewport[0] = v[0] / gl.canvas.width;
+		this._viewport[1] = v[1] / gl.canvas.height;
+		this._viewport[2] = v[2] / gl.canvas.width;
+		this._viewport[3] = v[3] / gl.canvas.height;
+	},
+	get: function(){
+		return this._viewport_in_pixels;
+	}
+});
+
 
 Object.defineProperty( LayoutViewport.prototype, "width", {
 	set: function(v){
@@ -226,20 +254,6 @@ LayoutViewport.prototype.isPointInViewport = function(x,y)
 		return false;
 	return true;
 }
-
-Object.defineProperty( LayoutViewport.prototype, "viewport", {
-	set: function(v){
-		if(!v)
-			return;
-		this._viewport.set( v );
-		this.camera._viewport.set(v);
-	},
-	get: function()
-	{
-		return this._viewport;
-	},
-	enumerable: true
-});
 
 LayoutViewport.prototype.serialize = function()
 {

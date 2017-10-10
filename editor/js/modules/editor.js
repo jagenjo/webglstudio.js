@@ -583,128 +583,6 @@ var EditorModule = {
 		};
 	}(),
 
-	/*
-	showEditPropertiesDialog: function( properties, valid_fields, callback )
-	{
-		valid_fields = valid_fields || ["string","number","vec2","vec3","vec4","color","texture"];
-
-		var uid = Math.random().toString();
-		var id = "dialog_inspector_properties";
-		var dialog = document.getElementById( "dialog_inspector_" + uid );
-
-		var height = ($("#visor").height() * 0.8)|0;
-
-		var dialog = new LiteGUI.Dialog(id, {title: "Properties", parent:"#visor", close: true, minimize: true, width: 300, height: 200, scroll: true, resizable:true, draggable: true});
-		dialog.show('fade');
-		//dialog.setPosition(50 + (Math.random() * 10)|0,50 + (Math.random() * 10)|0);
-
-		var inspector = new LiteGUI.Inspector();
-		var selected = null;
-		var value_widget = null;
-
-		inner_update();
-
-		function inner_update()
-		{
-			var properties_by_name = {};
-			for(var i in properties)
-			{
-				if(!selected)
-					selected = properties[i].name;
-				properties_by_name[ properties[i].name ] = properties[i];
-			}
-
-			inspector.clear();
-
-			//choose which property
-			inspector.addCombo("Property", properties_by_name[ selected ], { values: properties_by_name, callback: function(v) { 
-				selected = v.name;
-				inner_update();
-			}});
-
-			var property = properties_by_name[ selected ];
-			if(!property)
-				return;	
-
-			//choose which property
-			inspector.addString("Label", property.label || "", { callback: function(v) { 
-				property.label = v;
-			}});
-
-			inspector.addCombo("Type", property.type, { values: valid_fields, callback: function(v) {
-				var change = false;
-				if(v != property.value)
-				{
-					property.type = v;
-					change = true;
-				}
-
-				inner_value_widget( property, change );
-			}});
-
-
-			//value_widget = inspector.addNumber("Value", property.value, { step: property.step, callback: function(v){ property.value = v; }});
-			inner_value_widget(property);
-
-			if( property.type == "number" )
-				inspector.addNumber("Step", property.step, { callback: function(v){ property.step = v; }});
-
-			inspector.addButton(null,"Delete",{ callback: function() {
-				for(var i = 0; i < properties.length; ++i)
-				{
-					if( properties[i] != property )
-						continue;
-					properties.splice(i,1);
-					break;
-				}
-				EditorModule.refreshAttributes();
-				inner_update();
-			}});
-
-			inspector.addButton(null,"Save",{ callback: function() {
-				if(callback) callback(property);
-				dialog.close();
-			}});
-
-			dialog.adjustSize();
-		}
-
-		function inner_value_widget(property, change)
-		{
-			var type = property.type;
-
-			if(type == "number")
-			{
-				if(change) property.value = 0.0;
-				inspector.addNumber("Value", property.value, { step: property.step, callback: function(v){ property.value = v; }});
-			}
-			else if(type == "vec2")
-			{
-				if(change) property.value = vec2.fromValues(0,0);
-				inspector.addVector2("Value", property.value, { step: property.step, callback: function(v){ property.value[0] = v[0]; property.value[1] = v[1]; }});
-			}
-			else if(type == "vec3")
-			{
-				if(change) property.value = vec3.fromValues(0,0,0);
-				inspector.addVector3("Value", property.value, { step: property.step, callback: function(v){ property.value[0] = v[0]; property.value[1] = v[1]; property.value[2] = v[2]; }});
-			}
-			else if(type == "color")
-			{
-				if(change) property.value = vec3.fromValues(0,0,0);
-				inspector.addColor("Value", property.value, { callback: function(v){ property.value[0] = v[0]; property.value[1] = v[1]; property.value[2] = v[2]; }});
-			}
-			else
-			{
-				if(change) property.value = "";
-				value_widget = inspector.add(property.type, "Value", property.value, { callback: function(v){ property.value = v; }});
-			}
-		}
-
-		dialog.content.appendChild(inspector.root);
-		dialog.adjustSize();
-	},
-	*/
-
 	showResetDialog: function()
 	{
 		LiteGUI.confirm("Are you sure?", function(v) {
@@ -1717,9 +1595,15 @@ var EditorModule = {
 			compos = [];
 			for(var i in LS.Components)
 			{
-				var name = LS.getClassName( LS.Components[i] );
+				var ctor = LS.Components[i];
+				var name = LS.getClassName( ctor );
 				if(name.toLowerCase().indexOf(filter) != -1)
-					compos.push( { icon: EditorModule.icons_path + LS.Components[i].icon, ctor: LS.Components[i], name: name });
+				{
+					var o = { ctor: ctor, name: name };
+					if( ctor.icon )
+						o.icon = EditorModule.icons_path + ctor.icon;
+					compos.push(o);
+				}
 			}
 			list_widget.updateItems(compos);
 		}});

@@ -1,3 +1,6 @@
+// This module controls how you login to the system, create user, etc
+// It is tightly connected to LiteFileServer because it uses its user authentification system
+
 var LoginModule = { 
 	name: "login",
 
@@ -158,11 +161,12 @@ var LoginModule = {
 			username_widget = widgets.addString("Username", "", {});
 			password_widget = widgets.addString("Password", "", { password:true, callback_enter: inner_login });
 			widgets.addButton(null, "Login", { callback: function(v){ inner_login(); }});
+			info = widgets.addInfo( null, " " );
 			widgets.addSeparator();
 			widgets.addButton("Forgot password","Reset my password", { callback: inner_forgot_password } );
 			widgets.addButton("Don't have account","Create Account", { callback: inner_create_account } );
 			widgets.addButton("Just visiting","Login as GUEST", { callback: function(v){ inner_login_guest(); }});
-			info = widgets.addInfo( null, "" );
+			dialog.adjustSize(10);
 		}
 
 		function inner_login()
@@ -171,7 +175,7 @@ var LoginModule = {
 			var password = widgets.values["Password"];
 			if(!username || !password)
 			{
-				info.setValue("You must specify username and password");
+				info.setValue("<span class='bad'>You must specify username and password.</span>");
 			}
 			else
 			{
@@ -215,6 +219,7 @@ var LoginModule = {
 			widgets.addButton( null, "Back to login", function(){
 				inner_show_login();
 			});
+			dialog.adjustSize(10);
 		}
 
 		function inner_forgot_password()
@@ -233,6 +238,7 @@ var LoginModule = {
 			widgets.addButton( null, "Back to login", function(){
 				inner_show_login();
 			});
+			dialog.adjustSize(10);
 		}
 
 		function inner_result(user)
@@ -240,7 +246,7 @@ var LoginModule = {
 			if(user)
 				dialog.close();
 			else
-				info.setValue("Wrong user/pass");
+				info.setValue("<span class='bad'>Wrong user/pass</span>");
 		}
 	},
 
@@ -261,7 +267,7 @@ var LoginModule = {
 
 		var user = this.session.user;
 
-		var dialog = new LiteGUI.Dialog( {title: "Account", close: true, width: 400, scroll: false, draggable: true });
+		var dialog = new LiteGUI.Dialog( {title: "Account Info", close: true, width: 400, scroll: false, draggable: true });
 		dialog.root.style.fontSize = "1.4em";
 		dialog.on_close = function()
 		{
@@ -276,6 +282,10 @@ var LoginModule = {
 			dialog.close();
 			LoginModule.showChangePasswordDialog();
 		
+		});
+		widgets.addButton( null, "Manage File System", function(){
+			dialog.close();
+			LFSBridge.onOpenLiteFileServer();
 		});
 		widgets.addSeparator();
 		widgets.addButton( null, "Close", function(){

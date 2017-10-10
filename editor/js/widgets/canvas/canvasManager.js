@@ -1,12 +1,5 @@
-/* Mini canvas wrapper for some lightgl common actions
-	- organizes different widgets accesing the 3d context (input and rendering)
-	- some debug utilities
-	- super and subsampling
-
-	Dependencies: 
-		litegl
-		Shaders
-*/
+// This creates the WebGL context and allows some ierarchical structure so several elements could access the canvas
+// It is created from RenderModule and all the modules that want to render something in the canvas must register here
 
 function CanvasManager( container, options)
 {
@@ -35,8 +28,8 @@ CanvasManager.prototype.init = function( options )
 
 	if( options.full )
 	{
-		options.width = container.offsetWidth; //$(container).width();
-		options.height = container.offsetHeight;// $(container).height();
+		options.width = container.offsetWidth; 
+		options.height = container.offsetHeight;
 	}
 
 	options.width = options.width || 500;
@@ -102,11 +95,7 @@ CanvasManager.prototype.init = function( options )
 
 	//attach
 	container.appendChild( gl.canvas );
-
-	//window.addEventListener("resize", this.onCheckSize.bind(this), true ); //dont work :(
-	$(window).resize( this.onCheckSize.bind(this) );
-
-	//this.timer = setInterval( this.onCheckSize.bind(this), 100 );
+	window.addEventListener("resize", this.onCheckSize.bind(this), true );
 	this.canvas = gl.canvas;
 	this.gl = gl;
 	gl.animate();
@@ -114,7 +103,6 @@ CanvasManager.prototype.init = function( options )
 
 CanvasManager.prototype.onCheckSize = function()
 {
-	//console.log("resize!");
 	this.resize();
 }
 
@@ -124,8 +112,8 @@ CanvasManager.prototype.resize = function(w,h)
 		return;
 
 	var parent = this.gl.canvas.parentNode;
-	w = w || $(parent).width();
-	h = h || $(parent).height();
+	w = w || parent.offsetWidth;
+	h = h || parent.offsetHeight;
 
 	if(w == 0 || h == 0) return;
 	if(w == this.gl.canvas.width && h == this.gl.canvas.height)
@@ -141,12 +129,15 @@ CanvasManager.prototype.enable = function()
 	window.gl = this.gl;
 }
 
-CanvasManager.prototype.addWidget = function(widget, index)
+//Adds a widget inside the canvas, the priority is a number used to sort the widgets
+//higher number means it renders the last one but receives the events first, default is 0
+CanvasManager.prototype.addWidget = function( widget, priority )
 {
-	if(index === undefined)
-		this.widgets.push(widget);
-	else
-		this.widgets.splice(index,0,widget);
+	priority = priority || 0;
+	widget.canvas_priority = priority;
+	this.widgets.push(widget);
+	//sort by priority
+	this.widgets.sort( function(a,b) { return a.canvas_priority - b.canvas_priority; } );
 },
 
 CanvasManager.prototype.removeWidget = function(widget)
@@ -240,8 +231,6 @@ CanvasManager.prototype.dispatchEvent = function(e)
 				break;
 	}
 }
-
-
 
 CanvasManager.prototype.refresh = function()
 {

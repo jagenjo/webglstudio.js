@@ -717,3 +717,5 @@ textarea.code {
 .prefab-child .wtitle, .prefab-child .wsectioncontent  {
     background-color: #4c4037 !important;
 }
+
+.bad { color: #f96a6a; }

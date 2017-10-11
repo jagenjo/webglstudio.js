@@ -35,7 +35,7 @@ var InterfaceModule = {
 		LiteGUI.menubar.add("Scene");
 		LiteGUI.menubar.add("Actions");
 
-		var side_panel_width = this.preferences.side_panel_width || 300;
+		var side_panel_width = this.preferences.side_panel_width || 360;
 
 		//create a main container and split it in two (workarea: leftwork, sidebar)
 		var mainarea = new LiteGUI.Area({ id: "mainarea", content_id:"workarea", height: "calc(100% - 30px)", autoresize: true, inmediateResize: true, minSplitSize: 200 });

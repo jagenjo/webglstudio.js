@@ -41663,7 +41663,11 @@ SceneNode.prototype._onChildAdded = function( child_node, recompute_transform )
 	}
 	//link transform
 	if(this.transform)
+	{
+		if(!child_node.transform)
+			child_node.transform.addComponent( new LS.Transform() );
 		child_node.transform._parent = this.transform;
+	}
 }
 
 SceneNode.prototype._onChangeParent = function( future_parent, recompute_transform )
@@ -42680,10 +42684,16 @@ global.Collada = {
 		var xmlnodes = xmlvisual_scene.childNodes;
 		for(var i = 0; i < xmlnodes.length; i++)
 		{
-			if(xmlnodes.item(i).localName != "node")
+			var item = xmlnodes.item(i);
+			if(item.nodeType != 1 ) //not tag
 				continue;
 
-			var node = this.readNodeTree( xmlnodes.item(i), scene, 0, flip );
+			var node = null;
+			if(item.localName == "node")
+				node = this.readNodeTree( item, scene, 0, flip );
+			else 
+				console.warn("DAE contains unknown node type: " + item.localName );
+
 			if(node)
 				scene.root.children.push(node);
 		}
@@ -42772,7 +42782,8 @@ global.Collada = {
 		return metadata;
 	},
 
-	readNodeTree: function(xmlnode, scene, level, flip)
+	//reads the tree structure (also the transform)
+	readNodeTree: function( xmlnode, scene, level, flip )
 	{
 		var node_id = this.safeString( xmlnode.getAttribute("id") );
 		var node_sid = this.safeString( xmlnode.getAttribute("sid") );
@@ -42825,6 +42836,23 @@ global.Collada = {
 				if(child_node)
 					node.children.push( child_node );
 				continue;
+			}
+			else if (xmlchild.localName == "instance_node") //DAE allows instancing (referencing nodes in the three so it can be reused several times)
+			{
+				var xmllibrarynodes = this._xmlroot.querySelector("library_nodes");
+				if(!xmllibrarynodes)
+					continue;
+				var url = xmlchild.getAttribute("url");
+				url = url.replace(/\./gi,"\\."); //url could contain dots which invalidates the querySelector, we need to escape them
+				var xmlchild2 = xmllibrarynodes.querySelector( url );
+				if(!xmlchild2)
+				{
+					console.warn("instanced node not found:" + url );
+					continue;
+				}
+				var child_node = this.readNodeTree( xmlchild2, scene, level+1, flip);
+				if(child_node)
+					node.children.push( child_node );
 			}
 		}
 
@@ -42880,9 +42908,12 @@ global.Collada = {
 				this.readNodeInfo( xmlchild, scene, level+1, flip, xmlnode );
 				continue;
 			}
-
-			//geometry
-			if(xmlchild.localName == "instance_geometry")
+			else if(xmlchild.localName == "instance_node")
+			{
+				this.readInstancedNodeInfo( xmlchild, scene, level+1, flip, xmlnode );
+				continue;
+			}
+			else if(xmlchild.localName == "instance_geometry") //geometry
 			{
 				var url = xmlchild.getAttribute("url");
 				var mesh_id = url.toString().substr(1);
@@ -42905,6 +42936,8 @@ global.Collada = {
 						scene.meshes[ mesh_id ] = mesh_data;
 					}
 				}
+				else
+					console.warn("DAE node references mesh but not found: " + url );
 
 				//binded material
 				var xmlmaterials = xmlchild.querySelectorAll("instance_material");
@@ -42942,94 +42975,108 @@ global.Collada = {
 					}
 				}
 			}
-
-
-			//this node has a controller: skinning, morph targets or even multimaterial are controllers
-			//warning: I detected that some nodes could have a controller but they are not referenced here.  ??
-			if(xmlchild.localName == "instance_controller")
+			else if(xmlchild.localName == "instance_controller") //this node has a controller: skinning, morph targets or even multimaterial are controllers
 			{
+				//warning: I detected that some nodes could have a controller but they are not referenced here.  ??
 				var url = xmlchild.getAttribute("url");
+				url = url.replace(/\./gi,"\\."); //url could contain dots which invalidates the querySelector, we need to escape them
 				var xmlcontroller = this._xmlroot.querySelector("controller" + url);
 
-				if(xmlcontroller)
+				if(!xmlcontroller)
 				{
+					console.warn("DAE, node controller not found: " + url );
+					continue;
+				}
 
-					var mesh_data = this.readController( xmlcontroller, flip, scene );
+				var mesh_data = this.readController( xmlcontroller, flip, scene );
 
-					//binded materials
-					var xmlbind_material = xmlchild.querySelector("bind_material");
-					if(xmlbind_material){
-						//removed readBindMaterials up here for consistency
-						var xmltechniques = xmlbind_material.querySelectorAll("technique_common");
-						for(var iTec = 0; iTec < xmltechniques.length; iTec++)
-						{
-							var xmltechnique = xmltechniques.item(iTec);
-							var xmlinstance_materials = xmltechnique.querySelectorAll("instance_material");
-							for(var iMat = 0; iMat < xmlinstance_materials.length; iMat++)
-							{
-								var xmlinstance_material = xmlinstance_materials.item(iMat);
-								if(!xmlinstance_material)
-								{
-									console.warn("instance_material for controller not found: " + xmlinstance_material);
-									continue;
-								}
-								var matname = xmlinstance_material.getAttribute("target").toString().substr(1);
-								if(!scene.materials[ matname ])
-								{
-
-									var material = this.readMaterial(matname);
-									if(material)
-									{
-										material.id = matname; 
-										scene.materials[ material.id ] = material;
-									}
-								}
-								if(iMat == 0)
-									node.material = matname;
-								else
-								{
-									if(!node.materials)
-										node.materials = [];
-									node.materials.push(matname);
-								}
-
-							}
-						}
-
-					}
-
-					if(mesh_data)
+				//binded materials
+				var xmlbind_material = xmlchild.querySelector("bind_material");
+				if(xmlbind_material){
+					//removed readBindMaterials up here for consistency
+					var xmltechniques = xmlbind_material.querySelectorAll("technique_common");
+					for(var iTec = 0; iTec < xmltechniques.length; iTec++)
 					{
-						var mesh = mesh_data;
-						if( mesh_data.type == "morph" )
+						var xmltechnique = xmltechniques.item(iTec);
+						var xmlinstance_materials = xmltechnique.querySelectorAll("instance_material");
+						for(var iMat = 0; iMat < xmlinstance_materials.length; iMat++)
 						{
-							mesh = mesh_data.mesh;
-							node.morph_targets = mesh_data.morph_targets;
-						}
+							var xmlinstance_material = xmlinstance_materials.item(iMat);
+							if(!xmlinstance_material)
+							{
+								console.warn("instance_material for controller not found: " + xmlinstance_material);
+								continue;
+							}
+							var matname = xmlinstance_material.getAttribute("target").toString().substr(1);
+							if(!scene.materials[ matname ])
+							{
 
-						mesh.name = url.toString();
-						node.mesh = url.toString();
-						scene.meshes[ url ] = mesh;
+								var material = this.readMaterial(matname);
+								if(material)
+								{
+									material.id = matname; 
+									scene.materials[ material.id ] = material;
+								}
+							}
+							if(iMat == 0)
+								node.material = matname;
+							else
+							{
+								if(!node.materials)
+									node.materials = [];
+								node.materials.push(matname);
+							}
+
+						}
 					}
+
+				}
+
+				if(mesh_data)
+				{
+					var mesh = mesh_data;
+					if( mesh_data.type == "morph" )
+					{
+						mesh = mesh_data.mesh;
+						node.morph_targets = mesh_data.morph_targets;
+					}
+
+					mesh.name = url.toString();
+					node.mesh = url.toString();
+					scene.meshes[ url ] = mesh;
 				}
 			}
-
-			//light
-			if(xmlchild.localName == "instance_light")
+			else if(xmlchild.localName == "instance_light") //light
 			{
 				var url = xmlchild.getAttribute("url");
 				this.readLight(node, url);
 			}
-
-			//camera
-			if(xmlchild.localName == "instance_camera")
+			else if(xmlchild.localName == "instance_camera") //camera
 			{
 				var url = xmlchild.getAttribute("url");
 				this.readCamera(node, url);
 			}
-
+			//else //disable to avoid translate, rotate, scale, etc
+			//	console.warn("DAE contains unknown nodes: " + xmlchild.localName );
 			//other possible tags?
 		}
+	},
+
+	readInstancedNodeInfo: function( xmlnode, scene, level, flip, parent )
+	{
+		var xmllibrarynodes = this._xmlroot.querySelector("library_nodes");
+		if(!xmllibrarynodes)
+			return false;
+		var url = xmlnode.getAttribute("url");
+		url = url.replace(/\./gi,"\\."); //url could contain dots which invalidates the querySelector, we need to escape them
+		var xmlnode2 = xmllibrarynodes.querySelector( url );
+		if(!xmlnode2)
+		{
+			console.warn("instanced node not found:" + url );
+			return false;
+		}
+		this.readNodeInfo( xmlnode2, scene, level+1, flip);
+		return true;
 	},
 
 	//if you want to rename some material names
@@ -43061,6 +43108,7 @@ global.Collada = {
 	//used when id have spaces (regular selector do not support spaces)
 	querySelectorAndId: function(root, selector, id)
 	{
+		//TODO: what about escaping spaces and dots?
 		var nodes = root.querySelectorAll(selector);
 		for(var i = 0; i < nodes.length; i++)
 		{
@@ -43549,7 +43597,7 @@ global.Collada = {
 	},
 
 	//for help read this: https://www.khronos.org/collada/wiki/Using_accessors
-	readGeometry: function(id, flip, scene)
+	readGeometry: function( id, flip, scene )
 	{
 		//already read, could happend if several controllers point to the same mesh
 		if( this._geometries_found[ id ] !== undefined )
@@ -43589,12 +43637,13 @@ global.Collada = {
 		}
 		
 		//get data sources
-		var sources = {};
+		var sources = xmlgeometry.sources = {};
 		var xmlsources = xmlmesh.querySelectorAll("source");
 		for(var i = 0; i < xmlsources.length; i++)
 		{
 			var xmlsource = xmlsources.item(i);
-			if(!xmlsource.querySelector) continue;
+			if(!xmlsource.querySelector)
+				continue;
 			var float_array = xmlsource.querySelector("float_array");
 			if(!float_array)
 				continue;
@@ -43602,8 +43651,9 @@ global.Collada = {
 
 			var xmlaccessor = xmlsource.querySelector("accessor");
 			var stride = parseInt( xmlaccessor.getAttribute("stride") );
-
-			sources[ xmlsource.getAttribute("id") ] = {stride: stride, data: floats};
+			//here we are not reading the <param> order to know if they are in X,Y,Z order, because we assume they are, this could lead to wrong meshes
+			var xmlparams = xmlaccessor.querySelector("param");
+			sources[ xmlsource.getAttribute("id") ] = { stride: stride, data: floats, params: xmlparams.length };
 		}
 
 		//get streams
@@ -43836,6 +43886,7 @@ global.Collada = {
 		return mesh;
 	},
 
+	//receives an array of <triangles>
 	readTriangles: function( xmltriangles, sources )
 	{
 		var use_indices = false;
@@ -43849,15 +43900,15 @@ global.Collada = {
 		var last_start = 0;
 		var group_name = "";
 		var material_name = "";
+		var count = -1;
 
 		//for every triangles set (warning, some times they are repeated...)
 		for(var tris = 0; tris < xmltriangles.length; tris++)
 		{
 			var xml_shape_root = xmltriangles.item(tris);
-			var triangles = xml_shape_root.localName == "triangles";
 
 			material_name = xml_shape_root.getAttribute("material");
-
+			count = parseFloat( xml_shape_root.getAttribute("count") );
 			//for each buffer (input) build the structure info
 			if(tris == 0)
 				buffers = this.readShapeInputs( xml_shape_root, sources );
@@ -43887,10 +43938,6 @@ global.Collada = {
 				var first_index = -1;
 				var current_index = -1;
 				var prev_index = -1;
-
-				//discomment to force 16bits indices
-				//if(use_indices && last_index >= 256*256)
-				//	break;
 
 				//for every pack of indices in the polygon (vertex, normal, uv, ... )
 				for(var k = 0, l = data.length; k < l; k += num_values_per_vertex)
@@ -43932,21 +43979,9 @@ global.Collada = {
 						facemap[vertex_id] = current_index;
 					}
 
-					if(!triangles) //the xml element is not triangles? then split polygons in triangles
-					{
-						if(k == 0)
-							first_index = current_index;
-						//if(k > 2 * num_data_vertex) //not sure if use this or the next line, the next one works in some DAEs but not sure if it works in all
-						if(k > 2) //triangulate polygons: ensure this works
-						{
-							indicesArray.push( first_index );
-							indicesArray.push( prev_index );
-						}
-					}
-
 					indicesArray.push( current_index );
 				}//per vertex
-			}//per polygon
+			}//per triangle
 
 			var group = {
 				name: group_name || ("group" + tris),
@@ -44030,16 +44065,23 @@ global.Collada = {
 			var current_index = -1;
 			var prev_index = -1;
 
+			if( pos >= data.length )
+			{
+				console.warn("DAE has wrong number of polygons in polylist");
+				break;
+			}
+
 			//iterate vertices of this polygon
 			for(var k = 0; k < num_vertices; ++k)
 			{
 				var vertex_id = data.slice( pos, pos + num_values_per_vertex).join(" "); //generate unique id
 
 				prev_index = current_index;
-				if(facemap.hasOwnProperty(vertex_id)) //add to arrays, keep the index
-					current_index = facemap[vertex_id];
+				if( facemap.hasOwnProperty( vertex_id ) ) //add to arrays, keep the index
+					current_index = facemap[ vertex_id ];
 				else
 				{
+					//for vertex, normal, uv
 					for(var j = 0; j < buffers_length; ++j)
 					{
 						var buffer = buffers[j];
@@ -44120,13 +44162,31 @@ global.Collada = {
 	{
 		if(!xml_input.getAttribute) 
 			return null;
+		var source_name = xml_input.getAttribute("source").substr(1);
+		var stream_source  = null;
+		if(source_name.indexOf("/") != -1)
+		{
+			//the source name uses ierarchical name
+			var path = source_name.split("/");
+			var geometry_node = this._xmlroot.getElementById(path[0]);
+			if(geometry_node && geometry_node.sources) //little hack, we have already parsed vertices probably...
+				stream_source = geometry_node.sources[ path[1] ];
+		}
+		else
+			stream_source = sources[ source_name ];
+
+		if(!stream_source)
+		{
+			console.warn("<input> source not found: " + source_name );
+			return null;
+		}
+
 		var semantic = xml_input.getAttribute("semantic").toUpperCase();
-		var stream_source = sources[ xml_input.getAttribute("source").substr(1) ];
 		var offset = parseInt( xml_input.getAttribute("offset") );
 		var data_set = 0;
 		if(xml_input.getAttribute("set"))
 			data_set = parseInt( xml_input.getAttribute("set") );
-		return [semantic, [], stream_source.stride, stream_source.data, offset, data_set ];
+		return [ semantic, [], stream_source.stride, stream_source.data, offset, data_set ];
 	},
 
 	//renames buffers to they match an standard imposed by the library
@@ -44482,8 +44542,13 @@ global.Collada = {
 		var path = target.split("/");
 
 		var anim = {};
-		var nodename = path[0]; //safeString ?
+		var nodename = this.safeString( path[0] ); //safeString ?
 		var node = this._nodes_by_id[ nodename ];
+		if(!node)
+		{
+			console.warn("Node target '" + nodename + "' not found reading animation channel");
+			return null;
+		}
 		var locator = node.id + "/" + path[1];
 		//anim.nodename = this.safeString( path[0] ); //where it goes
 		anim.name = path[1];
@@ -44974,9 +45039,11 @@ global.Collada = {
 		if(!xmlnode) return null;
 		var text = xmlnode.textContent;
 		text = text.replace(/\n/gi, " "); //remove line breaks
+		text = text.replace(/\s\s+/gi, " "); //remove double spaces
 		text = text.trim(); //remove empty spaces
 		if(text.length == 0) return null;
 		var numbers = text.split(" "); //create array
+		//numbers.filter(function(v){ return v != ""; }); //remove break lines that become empty values
 		var floats = new Uint32Array( numbers.length );
 		for(var k = 0; k < numbers.length; k++)
 			floats[k] = parseInt( numbers[k] );
@@ -44988,12 +45055,13 @@ global.Collada = {
 		if(!xmlnode) return null;
 		var text = xmlnode.textContent;
 		text = text.replace(/\n/gi, " "); //remove line breaks
-		text = text.replace(/\s\s+/gi, " ");
+		text = text.replace(/\s\s+/gi, " "); //remove double spaces
 		text = text.replace(/\t/gi, "");
 		text = text.trim(); //remove empty spaces
 		var numbers = text.split(" "); //create array
-		var count = xmlnode.getAttribute("count");
-		var length = count ? parseInt( count  ) : numbers.length;
+		//numbers.filter(function(v){ return v != ""; }); //remove break lines that become empty values
+		var count = xmlnode.getAttribute("count"); //WARNING: this is misleading, count is not the number of floats, in an array [1,0,0]  if could say 1 because its 1 vertex
+		var length = numbers.length; //count ? parseInt( count  ) : numbers.length;
 		var floats = new Float32Array( length );
 		for(var k = 0; k < numbers.length; k++)
 			floats[k] = parseFloat( numbers[k] );
@@ -45671,11 +45739,13 @@ var parserDAE = {
 	{
 		material.object_class = "StandardMaterial";
 
-		if(material.transparency)
+		if( material.transparency !== undefined )
 		{
-			material.opacity = 1.0 - parseFloat( material.transparency );
-			if(material.transparent)
-				material.opacity = material.transparency; //why? dont know but works
+			material.opacity = 1.0 - parseFloat( material.transparency ); //reverse?
+			if(material.transparent) //why? dont know but works
+				material.opacity = material.transparency; 
+			else if (material.transparency == 1.0)
+				material.opacity = 0.1; //avoid full transparent that become invisible
 		}
 
 		//collada supports materials with colors as specular_factor but StandardMaterial only support one value

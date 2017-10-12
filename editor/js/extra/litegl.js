@@ -11684,6 +11684,9 @@ Mesh.parsers["wbin"] = Mesh.fromBinary = function( data_array, options )
 			mesh.bind_matrix = mat4.clone( o.bind_matrix );		
 	}
 
+	if(o.morph_targets)
+		mesh.morph_targets = o.morph_targets;
+
 	if(options.only_data)
 		return mesh;
 

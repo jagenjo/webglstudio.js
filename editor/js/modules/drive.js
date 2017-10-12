@@ -2562,7 +2562,7 @@ DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], 
 
 	if( action == "replace" || action == "material" )
 	{
-		var channel = options.channel || LS.Material.COLOR_TEXTURE;
+		var channel = options.channel || options.target || LS.Material.COLOR_TEXTURE;
 		if( node )
 		{
 			if(!node.material)

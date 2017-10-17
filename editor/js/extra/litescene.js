@@ -38681,7 +38681,7 @@ VideoPlayer.TO_MATERIAL = 2;
 VideoPlayer.BACKGROUND = 5;
 VideoPlayer.BACKGROUND_STRETCH = 6;
 
-VideoPlayer["@render_mode"] = { type: "enum", values: {"NONE":VideoPlayer.NONE, "PLANE": VideoPlayer.PLANE, "TO_MATERIAL": VideoPlayer.TO_MATERIAL, "BACKGROUND": VideoPlayer.BACKGROUND, "BACKGROUND_STRETCH": VideoPlayer.BACKGROUND_STRETCH } };
+VideoPlayer["@render_mode"] = { type: "enum", values: {"NONE":VideoPlayer.NONE, "PLANE": VideoPlayer.PLANE, "TO_MATERIAL": VideoPlayer.TO_MATERIAL, /* "BACKGROUND": VideoPlayer.BACKGROUND,*/ "BACKGROUND_STRETCH": VideoPlayer.BACKGROUND_STRETCH } };
 
 VideoPlayer.prototype.onAddedToScene = function(scene)
 {

@@ -655,7 +655,7 @@ function addGenericResource ( name, value, options, resource_classname )
 	var input = element.querySelector(".wcontent input");
 
 	//resource missing
-	if(value && !LS.RM.resources[ value ])
+	if(value && value.constructor === String && value[0] != ":" && value[0] != "@" && !LS.RM.resources[ value ])
 		input.style.color = error_color;
 
 	if( options.align && options.align == "right" )
@@ -668,7 +668,7 @@ function addGenericResource ( name, value, options, resource_classname )
 
 	input.addEventListener( "change", function(e) { 
 		var v = e.target.value;
-		if(v && v[0] != ":" && !options.skip_load)
+		if(v && v[0] != "@" && v[0] != ":" && !options.skip_load)
 		{
 			input.style.color = "#EA8"; //loading...
 			LS.ResourcesManager.load(v, null, function(){

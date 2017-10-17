@@ -33320,7 +33320,7 @@ GraphComponent.prototype.onAddedToScene = function( scene )
 	LEvent.bind( scene , "unpause", this.onSceneEvent, this );
 	LEvent.bind( scene , "finish", this.onSceneEvent, this );
 	LEvent.bind( scene , "beforeRenderMainPass", this.onSceneEvent, this );
-	LEvent.bind( scene , "beforeRenderScene", this.onRenderScene, this );
+	LEvent.bind( scene , "beforeRenderScene", this.onSceneEvent, this );
 	LEvent.bind( scene , "update", this.onSceneEvent, this );
 }
 
@@ -33333,7 +33333,7 @@ GraphComponent.prototype.onRemovedFromScene = function( scene )
 	LEvent.unbind( scene, "unpause", this.onSceneEvent, this );
 	LEvent.unbind( scene, "finish", this.onSceneEvent, this );
 	LEvent.unbind( scene, "beforeRenderMainPass", this.onSceneEvent, this );
-	LEvent.unbind( scene, "beforeRenderScene", this.onRenderScene, this );
+	LEvent.unbind( scene, "beforeRenderScene", this.onSceneEvent, this );
 	LEvent.unbind( scene, "update", this.onSceneEvent, this );
 }
 

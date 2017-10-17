@@ -10322,15 +10322,15 @@ global.BBox = GL.BBox = {
 
 	/**
 	* Apply a matrix transformation to the BBox (applies to every corner and recomputes the BB)
-	* @method setCenterHalfsize
+	* @method transformMat4
 	* @param {BBox} out where to store the result
 	* @param {BBox} bb bbox you want to transform
 	* @param {mat4} mat transformation
 	* @return {BBox} returns out
 	*/
-	transformMat4: function(out, bb, mat)
+	transformMat4: function( out, bb, mat )
 	{
-		var center = bb; //.subarray(0,3); AVOID GC
+		var center = bb; //.subarray(0,3); hack to avoid garbage
 		var halfsize = bb.subarray(3,6);
 		var corners = this.tmp_corners;
 		corners.set( this.corners );
@@ -10343,7 +10343,7 @@ global.BBox = GL.BBox = {
 			mat4.multiplyVec3(corner, mat, corner);
 		}
 
-		return this.setFromPoints(out, corners);
+		return this.setFromPoints( out, corners );
 	},
 
 

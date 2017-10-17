@@ -201,6 +201,17 @@ GraphWidget.prototype.onDropItem = function( e )
 		graphnode.onExecute();
 		return true;
 	}
+	else if(item_type == "Material")
+	{
+		var graphnode = LiteGraph.createNode( "scene/material" );
+		graphnode.properties.node_id = item_node_uid;
+		graphnode.properties.material_id = item_uid;
+		graphnode.pos[0] = e.canvasX;
+		graphnode.pos[1] = e.canvasY;
+		this.graph.add( graphnode );
+		graphnode.onExecute();
+		return true;
+	}
 	else if(item_type == "property")
 	{
 		var graphnode = LiteGraph.createNode( "scene/property" );

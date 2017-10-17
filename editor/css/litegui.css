@@ -738,6 +738,27 @@ button.wcombobutton.selected {
 	background-color: #258;
 }
 
+/* array */
+.inspector .array-row {
+}
+
+.inspector .row-index, .inspector .row-cell, .inspector .row-trash {
+	display: inline-block;
+	vertical-align: top;
+}
+
+.inspector .row-index {
+	width: 30px;
+	text-align: center;
+}
+
+.inspector .row-cell {
+	width: calc( 100% - 70px );
+}
+
+.inspector .row-trash {
+	width: 30px;
+}
 /* Here goes all the CSS related to layout the web (panels, windows, bars, etc) */
 
 html, body {

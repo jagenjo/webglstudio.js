@@ -640,6 +640,8 @@ function addGenericResource ( name, value, options, resource_classname )
 	value = value || "";
 	var that = this;
 
+	var error_color = "#F43";
+
 	resource_classname = resource_classname || options.resource_classname;
 
 	if(value.constructor !== String)
@@ -652,6 +654,10 @@ function addGenericResource ( name, value, options, resource_classname )
 	//INPUT
 	var input = element.querySelector(".wcontent input");
 
+	//resource missing
+	if(value && !LS.RM.resources[ value ])
+		input.style.color = error_color;
+
 	if( options.align && options.align == "right" )
 		input.style.direction = "rtl";
 
@@ -663,8 +669,17 @@ function addGenericResource ( name, value, options, resource_classname )
 	input.addEventListener( "change", function(e) { 
 		var v = e.target.value;
 		if(v && v[0] != ":" && !options.skip_load)
-			LS.ResourcesManager.load(v);
+		{
+			input.style.color = "#EA8"; //loading...
+			LS.ResourcesManager.load(v, null, function(){
+				input.style.color = ""; //loaded
+			},false, function(){
+				input.style.color = error_color; //loaded
+			});
+		}
 		LiteGUI.Inspector.onWidgetChange.call(that,element,name,v, options);
+		if(v && !LS.RM.resources[ v ])
+			input.style.color = error_color;
 	});
 
 	//INPUT ICON
@@ -686,7 +701,7 @@ function addGenericResource ( name, value, options, resource_classname )
 	else if ( InterfaceModule.resource_icons[ resource_classname ] )
 		element.setIcon( InterfaceModule.resource_icons[ resource_classname ] );
 	
-	//BUTTON
+	//BUTTON select resource
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
 		var o = { type: resource_classname, on_complete: inner_onselect };
 		if(options.skip_load)
@@ -861,7 +876,7 @@ LiteGUI.Inspector.prototype.addAnimation = function( name,value, options)
 
 	this.widgets_per_row += 1;
 	var r = addGenericResource.call(this, name, value, options, "Animation" );
-	this.addButton(null,"Edit",{ width:"15%", callback: function(){
+	this.addButton(null,"Edit",{ width:"15%", widget_parent: options.widget_parent, callback: function(){
 		var path = r.getValue();
 		var anim = null;
 		if(!path)

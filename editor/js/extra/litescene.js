@@ -712,12 +712,22 @@ LScript.expandCode = function(code)
 			var name_type = varname.split(":");
 			var type = name_type[1] || "";
 			if( !type && t[3] == ":" && t[4] && t[4] != "=" )
-				type = t[4];
+				type = t[4].trim();
 			var index = line.indexOf("=");
 			var value = (index != -1) ? line.substr(index+1) : "undefined";
 			var type_options = {};
 			if(type)
-				type_options.type = type;
+			{
+				if(type[0] == '[')
+				{
+					type_options.type = LS.TYPES.ARRAY;
+					type_options.data_type = type.substr(1, type.indexOf(']') - 1 );
+				}
+				else
+				{
+					type_options.type = type;
+				}
+			}
 			if( LS.Components[ type ] ) //for components
 			{
 				type_options.component_class = type;
@@ -1912,8 +1922,17 @@ LS.TYPES = {
 	COMPONENT: "component",
 	COMPONENT_ID: "component_id",
 	MATERIAL: "material",
+	ANIMATION: "animation",
 	ARRAY: "array"
 };
+
+LS.RESOURCE_TYPES = {};
+LS.RESOURCE_TYPES[ LS.TYPES.RESOURCE ] = true;
+LS.RESOURCE_TYPES[ LS.TYPES.TEXTURE ] = true;
+LS.RESOURCE_TYPES[ LS.TYPES.MESH ] = true;
+LS.RESOURCE_TYPES[ LS.TYPES.ANIMATION ] = true;
+//audio and video?
+
 
 var Network = {
 
@@ -4083,8 +4102,9 @@ var ResourcesManager = {
 	* @param {Object}[options={}] options to apply to the loaded resource when processing it { force: to force a reload }
 	* @param {Function} [on_complete=null] callback when the resource is loaded and cached, params: callback( resource, url  ) //( url, resource, options )
 	* @param {Boolean} [force_load=false] if true it will load the resource, even if it already exists
+	* @param {Function} [on_error=null] callback in case the file wasnt found
 	*/
-	load: function( url, options, on_complete, force_load )
+	load: function( url, options, on_complete, force_load, on_error )
 	{
 		if(!url)
 			return console.error("LS.ResourcesManager.load requires url");
@@ -4159,6 +4179,8 @@ var ResourcesManager = {
 			},
 			error: function(err) { 	
 				LS.ResourcesManager._resourceLoadedError(url,err);
+				if(on_error)
+					on_error(url);
 			},
 			progress: function(e) { 
 				var partial_load = 0;
@@ -12029,10 +12051,11 @@ Take.prototype.createTrack = function( data )
 * @param {boolean} ignore_interpolation in case you want to sample the nearest one
 * @param {SceneNode} weight [Optional] allows to blend animations with current value (default is 1)
 * @param {Number} root [Optional] if you want to limit the locator to search inside a node
-* @param {Function} on_pre_apply [Optional] a callback called before applying a keyframe, if the callback returns false the keyframe will be skipped
+* @param {Function} on_pre_apply [Optional] a callback called per track to see if this track should be applyed, if it returns false it is skipped. callback receives (track, current_time, root_node, weight)
+* @param {Function} on_apply_sample [Optional] a callback called before applying a keyframe, if the callback returns false the keyframe will be skipped. callback parameters ( track, sample, root_node, weight )
 * @return {Component} the target where the action was performed
 */
-Take.prototype.applyTracks = function( current_time, last_time, ignore_interpolation, root_node, scene, weight, on_pre_apply )
+Take.prototype.applyTracks = function( current_time, last_time, ignore_interpolation, root_node, scene, weight, on_pre_apply, on_apply_sample )
 {
 	scene = scene || LS.GlobalScene;
 	if(weight === 0)
@@ -12044,6 +12067,9 @@ Take.prototype.applyTracks = function( current_time, last_time, ignore_interpola
 	{
 		var track = this.tracks[i];
 		if( track.enabled === false || !track.data )
+			continue;
+
+		if(on_pre_apply && on_pre_apply( track, current_time, root_node, weight ) === false)
 			continue;
 
 		//events are an special kind of tracks, they execute actions
@@ -12090,7 +12116,7 @@ Take.prototype.applyTracks = function( current_time, last_time, ignore_interpola
 			//apply the value to the property specified by the locator
 			if( sample !== undefined ) 
 			{
-				if( on_pre_apply && on_pre_apply( track._property_path, sample, root_node, 0 ) === false)
+				if( on_apply_sample && on_apply_sample( track, sample, root_node, weight ) === false)
 					continue; //skip
 				track._target = scene.setPropertyValueFromPath( track._property_path, sample, root_node, 0 );
 			}
@@ -15437,7 +15463,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	global.LGraphMaterial = function()
 	{
-		this.properties = {mat_name:""};
+		this.properties = { material_id: "", node_id: "" };
 		this.addInput("Material","Material");
 		this.size = [100,20];
 	}
@@ -15461,27 +15487,7 @@ if(typeof(LiteGraph) != "undefined")
 
 			if(input.name == "Material")
 				continue;
-
-			mat.setProperty(input.name, v);
-
-			/*
-			switch( input.name )
-			{
-				case "Alpha": mat.alpha = v; break;
-				case "Specular f.": mat.specular_factor = v; break;
-				case "Diffuse": vec3.copy(mat.diffuse,v); break;
-				case "Ambient": vec3.copy(mat.ambient,v); break;
-				case "Emissive": vec3.copy(mat.emissive,v); break;
-				case "UVs trans.": mat.uvs_matrix.set(v); break;
-				default:
-					if(input.name.substr(0,4) == "tex_")
-					{
-						var channel = input.name.substr(4);
-						mat.setTexture(v, channel);
-					}
-					break;
-			}
-			*/
+			mat.setProperty( input.name, v );
 		}
 
 		//write outputs
@@ -15492,24 +15498,8 @@ if(typeof(LiteGraph) != "undefined")
 			if(!output.links || !output.links.length)
 				continue;
 			var v = mat.getProperty( output.name );
-			/*
-			var v;
-			switch( output.name )
-			{
-				case "Material": v = mat; break;
-				case "Alpha": v = mat.alpha; break;
-				case "Specular f.": v = mat.specular_factor; break;
-				case "Diffuse": v = mat.diffuse; break;
-				case "Ambient": v = mat.ambient; break;
-				case "Emissive": v = mat.emissive; break;
-				case "UVs trans.": v = mat.uvs_matrix; break;
-				default: continue;
-			}
-			*/
 			this.setOutputData( i, v );
 		}
-
-		//this.setOutputData(0, parseFloat( this.properties["value"] ) );
 	}
 
 	LGraphMaterial.prototype.getMaterial = function()
@@ -15519,8 +15509,16 @@ if(typeof(LiteGraph) != "undefined")
 		if( slot != -1)
 			return this.getInputData( slot );
 
-		if(	this.properties.mat_name )
-			return LS.RM.materials[ this.properties.mat_name ];
+		if(	this.properties.material_id && LS.RM.materials[ this.properties.material_id ] )
+			return LS.RM.materials[ this.properties.material_id ];
+
+		if(	this.properties.node_id )
+		{
+			var scene = this.graph.getScene();
+			var node = scene.getNode( this.properties.node_id );
+			if(node)
+				return node.getMaterial();
+		}
 
 		return null;
 	}
@@ -17558,6 +17556,150 @@ LS.Tween = {
 		return t;
 	}
 };
+
+function AnimationBlender()
+{
+	this.active_entries = [];
+}
+
+AnimationBlender.prototype.addEntry = function( animation, take, time )
+{
+	var entry = new LS.AnimationBlender.Entry();
+
+	entry.animation_name = animation;
+	entry.take_name = take;
+	entry.time = time;
+
+	return entry;
+}
+
+AnimationBlender.prototype.removeEntry = function( entry )
+{
+	var index = this.active_entries.indexOf( entry );
+	if(index != -1)
+		this.active_entries.splice( index, 1 );
+}
+
+AnimationBlender.prototype.execute = function( root_node, scene )
+{
+	var total_weight = 0;
+	for(var i = 0; i < this.active_entries.length; ++i)
+	{
+		var entry = this.active_entries[i];
+		total_weight += entry.weight;
+	}
+
+	var remaining = total_weight;
+
+	for(var i = 0; i < this.active_entries.length; ++i)
+	{
+		var entry = this.active_entries[i];
+		entry.execute( remaining / total_weight, false, root_node, scene );
+		remaining -= entry.weight;
+	}
+}
+
+LS.AnimationBlender = AnimationBlender;
+
+
+
+function Entry()
+{
+	this.time = 0;
+	this.weight = 1;
+
+	this._animation_take = null; //pointer to the take
+
+	this._animation_name = null;
+	this._take_name = null;
+
+	this._last_time = 0;
+	this._must_update = false;
+}
+
+Object.defineProperty( Entry.prototype, "take_name", {
+	set: function(v)
+	{
+		if( this._take_name == v )
+			return;
+		this._take_name = v;
+		this._must_update = true;
+	},
+	get: function()
+	{
+		return this._take_name;
+	},
+	enumerable: false
+});
+
+Object.defineProperty( Entry.prototype, "animation_name", {
+	set: function(v)
+	{
+		if( this._animation_name == v )
+			return;
+		this._animation_name = v;
+		this._must_update = true;
+	},
+	get: function()
+	{
+		return this._animation_name;
+	},
+	enumerable: false
+});
+
+Object.defineProperty( Entry.prototype, "duration", {
+	set: function(v)
+	{
+		throw("duration cannot be set. It depends in the animation duration");
+	},
+	get: function()
+	{
+		if(!this._animation_take)
+			return -1;
+		return this._animation_take.duration;
+	},
+	enumerable: false
+});
+
+Object.defineProperty( Entry.prototype, "loaded", {
+	set: function(v)
+	{
+		throw("duration cannot be set. It depends in the animation duration");
+	},
+	get: function()
+	{
+		return !!this._animation_take; //to bool
+	},
+	enumerable: false
+});
+
+
+Entry.prototype.execute = function( final_weight, ignore_interpolation, root_node, scene )
+{
+	if( !this._animation_name || !this._take_name )
+		return false;
+
+	if( this._must_update )
+	{
+		var animation = LS.ResourcesManager.get( this._animation_name );
+		if( !animation )
+			return false;
+
+		this._animation_take = animation.takes[ this._take_name ];
+	}
+
+	if(!this._animation_take)
+		return;
+
+	this._animation_take.applyTracks( this.time, this._last_time, ignore_interpolation, root_node, scene, final_weight );
+
+	this._last_time = this.time;
+	return true;
+}
+
+
+AnimationBlender.Entry = Entry;
+
 
 //WORK IN PROGRESS
 
@@ -28152,7 +28294,7 @@ function MeshRenderer(o)
 	this._must_update_static = true; //used in static meshes
 	this._transform_version = -1;
 
-	//used to render with several materials
+	//used to render with several materials (WIP, not finished yet)
 	this.use_submaterials = false;
 	this.submaterials = [];
 
@@ -28548,6 +28690,7 @@ MeshRenderer.prototype.onCollectInstances = function(e, instances)
 	instances.push( RI );
 }
 
+//not fully tested
 MeshRenderer.prototype.onCollectInstancesSubmaterials = function(instances)
 {
 	if(!this._RIs)
@@ -35149,7 +35292,9 @@ function PlayAnimation(o)
 	this.blend_time = 0;
 	this.range = null;
 
-	this.onPreApply = null;
+	//coding callbacks
+	this.onPreApply = null; //configurable callback to check if this track must be applied
+	this.onApplySample = null; //configurable callback to check if this sample must be applied
 
 	this._last_time = 0;
 
@@ -35172,6 +35317,8 @@ PlayAnimation.ONCE = 3;
 PlayAnimation.PAUSED = 4;
 
 PlayAnimation.MODES = {"loop":PlayAnimation.LOOP, "pingpong":PlayAnimation.PINGPONG, "once":PlayAnimation.ONCE, "paused":PlayAnimation.PAUSED };
+
+PlayAnimation.properties_order = ["animation","take"]; //this ones should be the first ones to show in the inspector
 
 PlayAnimation["@animation"] = { widget: "animation" };
 PlayAnimation["@root_node"] = { type: "node" };
@@ -35562,7 +35709,7 @@ PlayAnimation.prototype.applyAnimation = function( take, time, last_time, weight
 		else
 			root_node = this._root.scene.getNode( this.root_node );
 	}
-	take.applyTracks( time, last_time, undefined, root_node, this._root.scene, weight, this.onPreApply );
+	take.applyTracks( time, last_time, undefined, root_node, this._root.scene, weight, this.onPreApply, this.onApplySample );
 }
 
 //not in use
@@ -36116,6 +36263,9 @@ Script.prototype.getContextProperties = function()
 	var ctx = this.getContext();
 	if(!ctx)
 		return;
+
+	if(this.onSerialize)
+		return this.onSerialize();
 	return LS.cloneObject( ctx, null, false, false, true );
 }
 
@@ -36132,6 +36282,9 @@ Script.prototype.setContextProperties = function( properties )
 
 	//to copy we use the clone in target method
 	LS.cloneObject( properties, ctx, false, true, true );
+
+	if(ctx.onConfigure)
+		ctx.onConfigure( properties );
 }
 
 //used for graphs
@@ -36502,8 +36655,17 @@ Script.prototype.getResources = function(res)
 		var info = ctx.constructor[ "@" + i];
 		if( !value || !info )
 			continue;
-		if( info.type == LS.TYPES.RESOURCE || info.type == LS.TYPES.TEXTURE || info.type == LS.TYPES.MESH )
+
+		//for basic resource types
+		if( LS.RESOURCE_TYPES[ info.type ] )
 			res[ value ] = true;
+
+		//for arrays
+		if( info.type == LS.TYPES.ARRAY && value.length && info.data_type && info.data_type.constructor === String && LS.RESOURCE_TYPES[ (info.data_type).toLowerCase() ] )
+		{
+			for(var j = 0; j < value.length; ++j)
+				res[ value[j] ] = true;
+		}
 	}
 
 	if(ctx && ctx.onGetResources )
@@ -38405,6 +38567,321 @@ Canvas3D.prototype.onResourceRenamed = function (old_name, new_name, resource)
 */
 
 LS.registerComponent( Canvas3D );
+//work in progress
+
+function VideoPlayer()
+{
+	this._enabled = true;
+
+	this._video = document.createElement("video");
+	this._video.muted = false;
+	this._video.autoplay = false;
+
+	this._autoplay = true;
+
+	this._src = "";
+	this.texture_name = ":video";
+	this.render_mode = true;
+
+	this._texture = null;
+}
+
+Object.defineProperty( VideoPlayer.prototype, "enabled", {
+	set: function(v){
+		this._enabled = v;
+		if(!v)
+			this._video.pause();
+		else
+		{
+			var scene = this._root ? this._root.scene : null;
+			if(scene && scene.state === LS.RUNNING && this._video.autoplay)
+				this._video.play();
+		}
+	},
+	get: function()
+	{
+		return this._enabled;
+	},
+	enumerable: true
+});
+
+Object.defineProperty( VideoPlayer.prototype, "src", {
+	set: function(v){
+		if(v == this._src)
+			return;
+		this._src = v;
+		this.load( this._src );
+	},
+	get: function()
+	{
+		return this._src;
+	},
+	enumerable: true
+});
+
+Object.defineProperty( VideoPlayer.prototype, "time", {
+	set: function(v){
+		this._video.currentTime = time;
+	},
+	get: function()
+	{
+		return this._video.currentTime;
+	},
+	enumerable: false
+});
+
+Object.defineProperty( VideoPlayer.prototype, "texture", {
+	set: function(v){
+		throw("videoPlayer texture cannot be set");
+	},
+	get: function()
+	{
+		return this._texture;
+	},
+	enumerable: false
+});
+
+Object.defineProperty( VideoPlayer.prototype, "autoplay", {
+	set: function(v){
+		this._autoplay = v;
+		//this._video.autoplay = v;
+	},
+	get: function()
+	{
+		return this._autoplay;
+	},
+	enumerable: true
+});
+
+Object.defineProperty( VideoPlayer.prototype, "muted", {
+	set: function(v){
+		this._video.muted = v;
+	},
+	get: function()
+	{
+		return this._video.muted;
+	},
+	enumerable: true
+});
+
+Object.defineProperty( VideoPlayer.prototype, "duration", {
+	set: function(v){
+		throw("VideoPlayer duration cannot be assigned, is read-only");
+	},
+	get: function()
+	{
+		return this._video.duration;
+	},
+	enumerable: false
+});
+
+VideoPlayer.NONE = 0;
+VideoPlayer.PLANE = 1;
+VideoPlayer.TO_MATERIAL = 2;
+VideoPlayer.BACKGROUND = 5;
+VideoPlayer.BACKGROUND_STRETCH = 6;
+
+VideoPlayer["@render_mode"] = { type: "enum", values: {"NONE":VideoPlayer.NONE, "PLANE": VideoPlayer.PLANE, "TO_MATERIAL": VideoPlayer.TO_MATERIAL, "BACKGROUND": VideoPlayer.BACKGROUND, "BACKGROUND_STRETCH": VideoPlayer.BACKGROUND_STRETCH } };
+
+VideoPlayer.prototype.onAddedToScene = function(scene)
+{
+	LEvent.bind( scene, "start", this.onStart, this);
+	LEvent.bind( scene, "pause", this.onPause, this);
+	LEvent.bind( scene, "unpause", this.onUnpause, this);
+	LEvent.bind( scene, "beforeRender", this.onBeforeRender, this ); //to upload texture
+	LEvent.bind( scene, "beforeRenderScene", this.onBeforeRenderScene, this ); //to render background quad
+	LEvent.bind( scene, "collectRenderInstances", this.onCollectInstances, this );
+	//LEvent.bind( scene, "update", this.onUpdate, this);
+	LEvent.bind( scene, "finish", this.onFinish, this);
+}
+
+VideoPlayer.prototype.onRemovedFromScene = function(scene)
+{
+	LEvent.unbindAll( scene, this );
+}
+
+VideoPlayer.prototype.onStart = function()
+{
+	if(this.autoplay)
+		this.play();
+}
+
+VideoPlayer.prototype.onPause = function()
+{
+	this.pause();
+}
+
+VideoPlayer.prototype.onUnpause = function()
+{
+	if(this.autoplay)
+		this.play();
+}
+
+VideoPlayer.prototype.onFinish = function()
+{
+	this.stop();
+}
+
+/*
+VideoPlayer.prototype.onUpdate = function( e, dt )
+{
+	if(!this.enabled || this._video.width == 0)
+		return;
+
+	this._time += dt;
+	this._video.currentTime = this._time;
+	this._video.dirty = true;
+}
+*/
+
+VideoPlayer.prototype.load = function( url )
+{
+	this._video.crossOrigin = "anonymous";
+	this._video.src = LS.RM.getFullURL(url);
+	//this._video.type = "type=video/mp4";
+	//this._video.autoplay = false;
+	
+	var that = this;
+	this._video.addEventListener("loadedmetadata",function(e) {
+		//onload
+		console.log("Duration: " + this.duration + " seconds");
+		console.log("Size: " + this.videoWidth + "," + this.videoHeight);
+		this.width = this.videoWidth;
+		this.height = this.videoHeight;
+		var scene = that._root ? that._root.scene : null;
+		if(scene && scene.state === LS.RUNNING && that._autoplay)
+		{
+			//this.autoplay = that._autoplay;
+			this.play();
+		}
+	});
+	this._video.addEventListener("progress",function(e) {
+		//onload
+	});
+	this._video.addEventListener("error",function(e) {
+		console.error("Error loading video: " + this.src);
+		if (this.error) {
+		 switch (this.error.code) {
+		   case this.error.MEDIA_ERR_ABORTED:
+			  console.error("You stopped the video.");
+			  break;
+		   case this.error.MEDIA_ERR_NETWORK:
+			  console.error("Network error - please try again later.");
+			  break;
+		   case this.error.MEDIA_ERR_DECODE:
+			  console.error("Video is broken..");
+			  break;
+		   case this.error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+			  console.error("Sorry, your browser can't play this video.");
+			  break;
+		 }
+		}
+	});
+
+	this._video.addEventListener("ended",function(e) {
+		console.log("Ended.");
+		if(that.autoplay)
+		{
+			this.currentTime = 0;
+			this.play(); //loop
+		}
+	});
+}
+
+VideoPlayer.prototype.play = function()
+{
+	if(this._video.videoWidth)
+		this._video.play();
+}
+
+VideoPlayer.prototype.playPause = function()
+{
+	if(this._video.paused)
+		this.play();
+	else
+		this.pause();
+}
+
+VideoPlayer.prototype.stop = function()
+{
+	this._video.pause();
+	this._video.currentTime = 0;
+}
+
+VideoPlayer.prototype.pause = function()
+{
+	this._video.pause();
+}
+
+//uploads the video frame to the GPU
+VideoPlayer.prototype.onBeforeRender = function(e)
+{
+	//no video assigned or not loaded yet
+	if(!this.enabled || this._video.videoWidth == 0)
+		return;
+
+	var video = this._video;
+
+	//create destination texture
+	if(!this._texture || this._texture.width != video.videoWidth )
+		this._texture = new GL.Texture( video.videoWidth, video.videoHeight, { format: GL.RGB, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+
+	//avoid reuploading the same frame again in case it is paused
+	if(this._texture._video_time != video.currentTime )
+	{
+		this._texture.uploadImage( video );	
+		this._texture._video_time = video.currentTime;
+	}
+
+	//make texture available to all the system
+	if(this.texture_name)
+		LS.RM.registerResource( this.texture_name, this._texture );
+
+	//assign to material color texture
+	if(this.render_mode == VideoPlayer.TO_MATERIAL)
+	{
+		var material = this._root.getMaterial();
+		if(material)
+			material.setTexture( "color", this.texture_name );
+	}
+}
+
+VideoPlayer.prototype.onBeforeRenderScene = function( e )
+{
+	if(!this.enabled)
+		return;
+
+	if(this.render_mode != VideoPlayer.BACKGROUND && this.render_mode != VideoPlayer.BACKGROUND_STRETCH)
+		return;
+
+	if(!this._texture)
+		return;
+
+	this._texture.toViewport();
+}
+
+VideoPlayer.prototype.onCollectInstances = function( e, RIs )
+{
+	if( !this.enabled || this.render_mode != VideoPlayer.PLANE )
+		return;
+
+	if( !this._material )
+		this._material = new LS.StandardMaterial({ flags: { ignore_lights: true, two_sided: true }});
+
+	if(!this._plane_ri)
+	{
+		var RI = this._plane_ri = new LS.RenderInstance();
+		var mesh = GL.Mesh.plane();
+		RI.setMesh( mesh );
+		RI.setMaterial( this._material );
+	}
+
+	this._plane_ri.fromNode( this._root ); //update model
+	this._material.setTexture("color", this._texture );
+	RIs.push( this._plane_ri);
+}
+
+LS.registerComponent( VideoPlayer );
 /**
 * Allows to easily test interaction between the user and the scene, attach the InteractiveController to the root and the mouse down,move and up events will
 * be processed using a raycast and trigger events.

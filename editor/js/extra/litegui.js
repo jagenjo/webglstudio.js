@@ -7188,6 +7188,27 @@ Inspector.prototype.inspectInstance = function( instance, properties, properties
 		for(var i in properties_to_skip)
 			delete properties_info[ properties_to_skip[i] ];
 
+	//allows to establish the order of the properties in the inspector
+	if(classObject.properties_order)
+	{
+		var sorted_properties = {};
+		for(var i in classObject.properties_order)
+		{
+			var name = classObject.properties_order[i];
+			if( properties_info[ name ] )
+				sorted_properties[ name ] = properties_info[ name ];
+			else
+				console.warn("property not found in instance:", name );
+		}
+		for(var i in properties_info) //add the missing ones at the end (should this be optional?)
+		{
+			if( !sorted_properties[i] )
+				sorted_properties[i] = properties_info[i];
+		}
+		properties_info = sorted_properties;
+	}
+
+
 	//showAttributes doesnt return anything but just in case...
 	return this.showProperties( instance, properties_info );
 
@@ -9613,7 +9634,7 @@ Inspector.prototype.addArray = function( name, value, options )
 		var value = container.value;
 		var size = Math.min( value.length, max_items );
 
-		that.widgets_per_row = 2;
+		that.widgets_per_row += 1;
 		container.innerHTML = "";
 
 		for(var i = 0; i < size; ++i)
@@ -9621,23 +9642,31 @@ Inspector.prototype.addArray = function( name, value, options )
 			var v = null;
 			if (value[i] !== undefined)
 				v = value[i];
-			var item_options = { widget_parent: container, name_width: 30, width: "100% - 40px", callback: assign.bind({value: this.value, index: i}) };
+			var row = document.createElement("div");
+			row.className = "array-row";
+			row.innerHTML = "<span class='row-index'>" + i + "</span><span class='row-cell'></span><button style='width: 30px;' class='litebutton single row-trash'><img src='imgs/mini-icon-trash.png'/></button>";
+			container.appendChild(row);
+
+			var widget_row_container = row.querySelector('.row-cell');
+			
+			var item_options = { widget_parent: widget_row_container, callback: assign.bind({value: this.value, index: i}) };
 			if(options.data_options)
 				for(var j in options.data_options)
 					item_options[j] = options.data_options[j];
-			var w = that.add( type, i, v, item_options );
+			var w = that.add( type, null, v, item_options );
 
-			that.addButton(null,"<img src='imgs/mini-icon-trash.png'/>", {  widget_parent: container, index: i,width: 30, callback: function(){
+			/*
+			that.addButton(null,"<img src='imgs/mini-icon-trash.png'/>", {  widget_parent: container, index: i, width: 30, callback: function(){
 				if( value && value.length > (this.options.index-1))
 				{
 					value.splice( this.options.index,1 );
 					length_widget.setValue( value.length, true );
 					refresh.call( container );
 				}
-
 			}});
+			*/
 		}
-		that.widgets_per_row = 1;
+		that.widgets_per_row -= 1;
 	}
 
 	function assign(v)

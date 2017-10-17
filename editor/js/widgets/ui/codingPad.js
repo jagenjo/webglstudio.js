@@ -7,6 +7,7 @@ function CodingPadWidget( options )
 	this.autocompile = false; //assign code to component on every keystroke
 	this.wrap_lines = false;
 	this.editor = null;
+	this.reset_state = false;
 	this.init();
 
 	this._binded = false;
@@ -206,7 +207,7 @@ CodingPadWidget.prototype.replaceInstanceCode = function( instance, options )
 }
 
 //puts the codemirror code inside the instance (component) and triggers event (which will evaluate it)
-CodingPadWidget.prototype.assignCurrentCode = function( skip_events )
+CodingPadWidget.prototype.assignCurrentCode = function( skip_events, reset_state )
 {
 	var info = this.getCurrentCodeInfo();
 	if(!info)
@@ -242,7 +243,11 @@ CodingPadWidget.prototype.assignCurrentCode = function( skip_events )
 	//if(text_content == old_text_content)
 	//	return;
 
-	this.setCodeFromInfo( info, text_content );
+	//ASSIGN TO RESOURCE/SCRIPT
+	if(info.instance && info.instance.setCode )
+		info.instance.setCode( text_content, false, this.reset_state ); //events, allow reset
+	else
+		this.setCodeFromInfo( info, text_content );
 
 	//update all the ScriptFromFile if we are editing a js file
 	this.processCodeInScripts();
@@ -1040,6 +1045,10 @@ CodingPadWidget.prototype.createCodingArea = function( container )
 		that.onShowHelp();
 	}});
 
+	top_widgets.addCheckbox("Reset",this.reset_state,{ width: 80, callback: function(v) { 
+		that.reset_state = !that.reset_state;
+	}});
+
 	top_widgets.addButton(null,"-",{ width: 30, callback: function(v) { 
 		that.changeFontSize(-1);
 	}});
@@ -1292,6 +1301,13 @@ CodingPadWidget.prepareCodeMirror = function()
 	CodeMirror.commands.compile = function(cm) {
 		var pad = cm.coding_area;
 		pad.evalueCode();
+		LS.GlobalScene.requestFrame();
+		setTimeout( LS.GlobalScene.requestFrame.bind( LS.GlobalScene ), 100 );
+	}
+
+	CodeMirror.commands.reset_and_compile = function(cm) {
+		var pad = cm.coding_area;
+		pad.evalueCode( true );
 		LS.GlobalScene.requestFrame();
 		setTimeout( LS.GlobalScene.requestFrame.bind( LS.GlobalScene ), 100 );
 	}

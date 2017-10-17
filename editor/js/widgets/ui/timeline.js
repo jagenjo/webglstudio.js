@@ -272,6 +272,13 @@ Timeline.prototype.setAnimation = function( animation, take_name )
 	this.take_widget.setOptionValues( takes, take_name );
 	this.duration_widget.setValue( this.current_take.duration );
 
+	//zoom
+	if(this.current_take.duration)
+	{
+		this.session.seconds_to_pixels = ( this.canvas.width - this.session.left_margin - 100 ) / this.current_take.duration;
+		this.session.start_time = -50 / this.session.seconds_to_pixels;
+	}
+
 	//to ensure data gets saved again
 	//LS.ResourcesManager.resourceModified( animation ); //disabled or just by watching an animation I need to send it again
 
@@ -729,19 +736,25 @@ Timeline.prototype.redrawCanvas = function()
 
 
 	//current time marker vertical line
-	var pos = Math.round( this.canvasTimeToX( current_time ) ) + 0.5;
+	var true_pos = Math.round( this.canvasTimeToX( this.session.current_time ) ) + 0.5;
+	var pos = Math.round( this.canvasTimeToX( current_time ) ) + 0.5; //current_time is quantized
 	if(pos >= margin)
 	{
+		ctx.strokeStyle = "#ABA";
+		ctx.beginPath();
+		ctx.moveTo(true_pos, 0); ctx.lineTo( true_pos, canvas.height );
+		ctx.stroke();
+
 		ctx.strokeStyle = ctx.fillStyle = "#AFD";
 		ctx.beginPath();
-		ctx.moveTo(pos, 0); ctx.lineTo(pos, canvas.height);
+		ctx.moveTo(pos, 0); ctx.lineTo(pos, canvas.height);//line
 		ctx.stroke();
 		ctx.beginPath();
-		ctx.moveTo(pos - 4, 0); ctx.lineTo(pos + 4, 0); ctx.lineTo(pos, 6);
+		ctx.moveTo(pos - 4, 0); ctx.lineTo(pos + 4, 0); ctx.lineTo(pos, 6);//triangle
 		ctx.closePath();
 		ctx.fill();
 		ctx.beginPath();
-		ctx.moveTo(pos - 4, canvas.height); ctx.lineTo(pos + 4, canvas.height); ctx.lineTo(pos, canvas.height - 6);
+		ctx.moveTo(pos - 4, canvas.height); ctx.lineTo(pos + 4, canvas.height); ctx.lineTo(pos, canvas.height - 6);//triangle
 		ctx.closePath();
 		ctx.fill();
 	}
@@ -1456,6 +1469,22 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 		});
 		widgets.widgets_per_row = 1;
 
+		widgets.addTitle("Stretch");
+		widgets.widgets_per_row = 2;
+		var stretch_widget = widgets.addNumber("To duration", duration );
+		widgets.addButton(null,"STRETCH", function(){
+			var new_duration = stretch_widget.getValue();
+			if(new_duration == selected_take.duration)
+				return;
+			var total = selected_take.stretchTracks( new_duration );
+			that.duration_widget.setValue( new_duration, true );
+			if(total)
+				that.animationModified( animation );
+			that.redrawCanvas();
+		});
+		widgets.widgets_per_row = 1;
+
+
 		dialog.adjustSize(10);
 	}
 
@@ -2148,6 +2177,7 @@ Timeline.prototype.onPrettifyNames = function()
 			track.name += " " + LS.getObjectClassName( info.target );
 		track.name += "." + info.name;
 	}
+	this.redrawCanvas();
 }
 
 Timeline.prototype.onShowAnimationOptionsDialog = function()
@@ -2459,10 +2489,16 @@ Timeline.prototype.showTrackOptionsDialog = function( track )
 			that.redrawCanvas();
 		}});
 
-		widgets.addButton(null,"Convert to Node Name", { width: "30%", callback: function(){
-			track.convertIDtoName();
-			widgets.refresh();
-		}});
+		if( track.property[0] == "@" )
+			widgets.addButton(null,"Convert to Node Name", { width: "30%", callback: function(){
+				track.convertIDtoName();
+				widgets.refresh();
+			}});
+		else
+			widgets.addButton(null,"Convert to Node UID", { width: "30%", callback: function(){
+				track.convertNameToID();
+				widgets.refresh();
+			}});
 
 		widgets.addString("Type", track.type, { disabled: true } );
 		widgets.addCombo("Interpolation", track.interpolation, { disabled: !track.isInterpolable(), values: Timeline.interpolation_values, callback: function(v){ 
@@ -2722,13 +2758,23 @@ Timeline.actions = {
 	track: {}
 };
 
+Timeline.actions.take["Use ids as names"] = function( animation, take, callback )
+{
+	EditorModule.showSelectNode(function(node){
+		var v = take.convertNamesToIDs(true, node);
+		if(callback)
+			callback(v);
+	},{ title: "Select Root Node", selected: LS.GlobalScene.root });
+	return null;
+}
+
 Timeline.actions.take["Use names as ids"] = function( animation, take, callback )
 {
 	EditorModule.showSelectNode(function(node){
-		var v = take.convertIDstoNames(true, node);
+		var v = take.convertIDsToNames(true, node);
 		if(callback)
 			callback(v);
-	},{ selected: LS.GlobalScene.root });
+	},{ title: "Select Root Node", selected: LS.GlobalScene.root });
 	return null;
 }
 

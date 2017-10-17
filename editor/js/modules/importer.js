@@ -664,7 +664,7 @@ var ImporterModule  = {
 					{
 						var animation = LS.RM.getResource(resource.animations);
 						if(animation)
-							animation.convertIDstoNames( true, resource );
+							animation.convertIDsToNames( true, resource );
 					}
 				}
 			}

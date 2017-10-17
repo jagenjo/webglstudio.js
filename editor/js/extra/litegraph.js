@@ -1191,23 +1191,20 @@ LGraph.prototype.serialize = function()
 	for(var i = 0, l = this._nodes.length; i < l; ++i)
 		nodes_info.push( this._nodes[i].serialize() );
 
-	//remove data from links, we dont want to store it
+	//pack link info into a non-verbose format
+	var links = [];
 	for(var i in this.links) //links is an OBJECT
 	{
 		var link = this.links[i];
-		link.data = null;
-		delete link._last_time;
+		links.push([ link.id, link.origin_id, link.origin_slot, link.target_id, link.target_slot ]);
 	}
 
 	var data = {
-//		graph: this.graph,
-
 		iteration: this.iteration,
 		frame: this.frame,
 		last_node_id: this.last_node_id,
 		last_link_id: this.last_link_id,
-		links: LiteGraph.cloneObject( this.links ),
-
+		links: links, //LiteGraph.cloneObject( this.links ),
 		config: this.config,
 		nodes: nodes_info
 	};
@@ -1227,6 +1224,18 @@ LGraph.prototype.configure = function(data, keep_old)
 		this.clear();
 
 	var nodes = data.nodes;
+
+	//decode links info (they are very verbose)
+	if(data.links && data.links.constructor === Array)
+	{
+		var links = {};
+		for(var i = 0; i < data.links.length; ++i)
+		{
+			var link = data.links[i];
+			links[ link[0] ] = { id: link[0], origin_id: link[1], origin_slot: link[2], target_id: link[3], target_slot: link[4] };
+		}
+		data.links = links;
+	}
 
 	//copy all stored fields
 	for (var i in data)

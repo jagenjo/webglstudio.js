@@ -718,10 +718,13 @@ LScript.expandCode = function(code)
 			var type_options = {};
 			if(type)
 			{
-				if(type[0] == '[')
+				var array_index = type.indexOf('[]');
+				if( array_index != -1 )
 				{
 					type_options.type = LS.TYPES.ARRAY;
-					type_options.data_type = type.substr(1, type.indexOf(']') - 1 );
+					type_options.data_type = type.substr( 0, array_index - 1 );
+					if(!value || value === "undefined")
+						value = "[]";
 				}
 				else
 				{
@@ -1946,7 +1949,11 @@ var Network = {
 	*
 	* @method request
 	* @param {Object} request object with the fields for the request: 
-    *			dataType: result type {text,xml,json,binary,arraybuffer,image}, data: object with form fields, callbacks supported: {success, error, progress}
+    *			dataType: result type {text,xml,json,binary,arraybuffer,image},
+				data: object with form fields,
+				method: "POST","GET","DELETE","PUT", if omited if will use post or get depending on the parameters,
+				use_proxy: if true it will use LiteScene proxy if available
+				callbacks supported: {success, error, progress}
 	* @return {XMLHttpRequest} the XMLHttpRequest of the petition
 	*/
 	request: function(request)
@@ -1993,7 +2000,7 @@ var Network = {
 
 		//regular case, use AJAX call
         var xhr = new XMLHttpRequest();
-        xhr.open(request.data ? 'POST' : 'GET', url, true);
+        xhr.open( request.method || (request.data ? 'POST' : 'GET'), url, true);
 		xhr.withCredentials = this.withCredentials; //if true doesnt work
 		if(request.withCredentials !== undefined)
 			xhr.withCredentials = request.withCredentials;
@@ -11923,15 +11930,28 @@ Animation.prototype.toBinary = function()
 	return bin;
 }
 
-//Used when the animation tracks use UIDs instead of node names
-//to convert the track locator to node names, so they can be reused between nodes in the same scene
-Animation.prototype.convertIDstoNames = function( use_basename, root )
+//Used when the animation tracks use names instead of node ids
+//to convert the track locator to node names, so they affect to only one node
+Animation.prototype.convertNamesToIDs = function( use_basename, root )
 {
 	var num = 0;
 	for(var i in this.takes)
 	{
 		var take = this.takes[i];
-		num += take.convertIDstoNames( use_basename, root );
+		num += take.convertNamesToIDs( use_basename, root );
+	}
+	return num;
+}
+
+//Used when the animation tracks use UIDs instead of node names
+//to convert the track locator to node names, so they can be reused between nodes in the same scene
+Animation.prototype.convertIDsToNames = function( use_basename, root )
+{
+	var num = 0;
+	for(var i in this.takes)
+	{
+		var take = this.takes[i];
+		num += take.convertIDsToNames( use_basename, root );
 	}
 	return num;
 }
@@ -12194,7 +12214,19 @@ Take.prototype.loadResources = function()
 }
 
 //convert track locators from using UIDs to use node names (this way the same animation can be used in several parts of the scene)
-Take.prototype.convertIDstoNames = function( use_basename, root )
+Take.prototype.convertNamesToIDs = function( use_basename, root )
+{
+	var num = 0;
+	for(var j = 0; j < this.tracks.length; ++j)
+	{
+		var track = this.tracks[j];
+		num += track.convertNameToID( use_basename, root )
+	}
+	return num;
+}
+
+//convert track locators from using UIDs to use node names (this way the same animation can be used in several parts of the scene)
+Take.prototype.convertIDsToNames = function( use_basename, root )
 {
 	var num = 0;
 	for(var j = 0; j < this.tracks.length; ++j)
@@ -12416,6 +12448,17 @@ Take.prototype.trimTracks = function( start, end )
 	return num;
 }
 
+Take.prototype.stretchTracks = function( duration )
+{
+	if(duration <= 0 || this.duration == 0)
+		return 0;
+	var scale = duration / this.duration;
+	this.duration *= scale;
+	for(var i = 0; i < this.tracks.length; ++i)
+		this.tracks[i].stretch( scale );
+	return this.tracks.length;
+}
+
 
 Animation.Take = Take;
 
@@ -12615,6 +12658,22 @@ Track.prototype.getIDasName = function( use_basename, root )
 	else
 		result[0] = node.fullname;
 	return result.join("/");
+}
+
+//used to change every track so instead of using node names for properties it uses node uids
+//this is used when you want to apply an animation to an specific node
+Track.prototype.convertNameToID = function( root )
+{
+	if(this._property_path[0][0] === LS._uid_prefix)
+		return false; //is already using UIDs
+
+	var node = LSQ.get( this._property_path[0], root );
+	if(!node)
+		return false;
+
+	this._property_path[0] = node.uid;
+	this._property = this._property_path[0].join("/");
+	return true;
 }
 
 //used to change every track so instead of using UIDs for properties it uses node names
@@ -13312,7 +13371,7 @@ Track.prototype.trim = function( start, end )
 	var size = this.data.length;
 
 	var result = [];
-	for(var i = 0; i < this.data.length; ++i)
+	for(var i = 0; i < size; ++i)
 	{
 		var d = this.data[i];
 		if(d[0] < start || d[0] > end)
@@ -13326,6 +13385,21 @@ Track.prototype.trim = function( start, end )
 	if(this.data.length != size)
 		return 1;
 	return 0;
+}
+
+/**
+* Scales the time in every keyframe
+* @method stretch
+* @param {number} scale the sacle to apply to all times
+*/
+Track.prototype.stretch = function( scale )
+{
+	if(this.packed_data)
+		this.unpackData();
+	var size = this.data.length;
+	for(var i = 0; i < size; ++i)
+		this.data[i][0] *= scale; //scale time
+	return 1;
 }
 
 //if the track used matrices, it transform them to position,quaternion and scale (10 floats, also known as trans10)
@@ -17564,12 +17638,17 @@ function AnimationBlender()
 
 AnimationBlender.prototype.addEntry = function( animation, take, time )
 {
-	var entry = new LS.AnimationBlender.Entry();
+	if(animation.constructor === LS.AnimationBlender.Entry)
+	{
+		this.active_entries.push(animation);
+		return;
+	}
 
+	var entry = new LS.AnimationBlender.Entry();
 	entry.animation_name = animation;
 	entry.take_name = take;
 	entry.time = time;
-
+	this.active_entries.push(entry);
 	return entry;
 }
 
@@ -17582,15 +17661,36 @@ AnimationBlender.prototype.removeEntry = function( entry )
 
 AnimationBlender.prototype.execute = function( root_node, scene )
 {
+	var tracks = {};
+
+	//compute total weight (sum of all weights)
 	var total_weight = 0;
+	for(var i = 0; i < this.active_entries.length; ++i)
+	{
+		var entry = this.active_entries[i];
+		if(!entry._animation_take)
+			continue;
+		total_weight += entry.weight;
+		var take = entry._animation_take;
+		for(var j = 0; j < take.tracks.length; ++j)
+		{
+			var track = take.tracks[j];
+			var samples = tracks[ track.property ];
+			if(!samples)
+				samples = tracks[ track.property ] = [];
+			var sample = track.getSample();
+			samples.push( sample );
+		}
+	}
+
+	//reverse weight system (hard to explain here...)
 	for(var i = 0; i < this.active_entries.length; ++i)
 	{
 		var entry = this.active_entries[i];
 		total_weight += entry.weight;
 	}
 
-	var remaining = total_weight;
-
+	//
 	for(var i = 0; i < this.active_entries.length; ++i)
 	{
 		var entry = this.active_entries[i];
@@ -33246,6 +33346,13 @@ function GraphComponent(o)
 
 GraphComponent["@on_event"] = { type:"enum", values: ["start","render","beforeRenderScene","update","trigger"] };
 
+/*
+GraphComponent.events_translator = {
+	beforeRender: "beforeRenderMainPass",
+	render: "beforeRenderScene"
+};
+*/
+
 GraphComponent.icon = "mini-icon-graph.png";
 
 /**
@@ -33346,6 +33453,8 @@ GraphComponent.prototype.onSceneEvent = function( event_type, event_data )
 {
 	if(event_type == "beforeRenderMainPass")
 		event_type = "render";
+	//if( GraphComponent.events_translator[ event_type ] )
+	//	event_type = GraphComponent.events_translator[ event_type ];
 
 	if(event_type == "init")
 		this._graph.sendEventToAllNodes("onInit");
@@ -36175,11 +36284,11 @@ Script.prototype.getCode = function()
 	return this.code;
 }
 
-Script.prototype.setCode = function( code, skip_events )
+Script.prototype.setCode = function( code, skip_events, reset_state )
 {
 	this.code = code;
 	this._blocked_functions.clear();
-	this.processCode( skip_events );
+	this.processCode( skip_events, reset_state );
 }
 
 /**
@@ -36196,7 +36305,7 @@ Script.prototype.reload = function()
 * It is called everytime the code is modified, that implies that the context is created when the component is configured.
 * @method processCode
 */
-Script.prototype.processCode = function( skip_events )
+Script.prototype.processCode = function( skip_events, reset_state )
 {
 	this._blocked_functions.clear();
 	this._script.code = this.code;
@@ -36230,7 +36339,9 @@ Script.prototype.processCode = function( skip_events )
 	if(!skip_events)
 		this.hookEvents();
 
-	this.setContextProperties( old );
+	if(!reset_state)
+		this.setContextProperties( old );
+
 	this._stored_properties = null;
 
 	//execute some starter functions
@@ -36524,7 +36635,7 @@ Script.prototype.onAddedToNode = function( node )
 
 Script.prototype.onRemovedFromNode = function( node )
 {
-	if(this._script._context.onDestroy)
+	if(this._script._context && this._script._context.onDestroy)
 		this._script._context.onDestroy();
 
 	if(node.script == this)
@@ -36801,7 +36912,7 @@ ScriptFromFile.prototype.reload = function( on_complete )
 }
 
 
-ScriptFromFile.prototype.processCode = function( skip_events, on_complete )
+ScriptFromFile.prototype.processCode = function( skip_events, on_complete, reset_state )
 {
 	var that = this;
 	if(!this.filename)
@@ -36861,7 +36972,8 @@ ScriptFromFile.prototype.processCode = function( skip_events, on_complete )
 	var ret = this._script.compile({component:this, node: this._root, scene: this._root.scene, transform: this._root.transform, globals: LS.Globals });
 	if(!skip_events)
 		this.hookEvents();
-	this.setContextProperties( old );
+	if(!reset_state)
+		this.setContextProperties( old );
 	this._stored_properties = null;
 
 	//try to catch up with all the events missed while loading the script
@@ -36953,13 +37065,13 @@ ScriptFromFile.prototype.getCode = function()
 	return script_resource.data;
 }
 
-ScriptFromFile.prototype.setCode = function( code, skip_events )
+ScriptFromFile.prototype.setCode = function( code, skip_events, reset_state )
 {
 	var script_resource = LS.ResourcesManager.getResource( this.filename );
 	if(!script_resource)
 		return "";
 	script_resource.data = code;
-	this.processCode( skip_events );
+	this.processCode( skip_events, null, reset_state );
 }
 
 ScriptFromFile.updateComponents = function( script, skip_events )
@@ -43672,6 +43784,8 @@ global.Collada = {
 		if(!xmlphong) 
 			return null;
 
+		material.type = xmlphong.localName;
+
 		//for every tag of properties
 		for(var i = 0; i < xmlphong.childNodes.length; ++i)
 		{
@@ -43693,7 +43807,10 @@ global.Collada = {
 			if(xmlparam_value.localName.toString() == "color")
 			{
 				var value = this.readContentAsFloats( xmlparam_value );
-				if( xmlparam.getAttribute("opaque") == "RGB_ZERO")
+				var opaque_value = xmlparam.getAttribute("opaque");
+				if(opaque_value)
+					material.opaque_info = opaque_value;
+				if( opaque_value == "RGB_ZERO")
 					material[ param_name ] = value.subarray(0,4);
 				else
 					material[ param_name ] = value.subarray(0,3);
@@ -46220,11 +46337,14 @@ var parserDAE = {
 
 		if( material.transparency !== undefined )
 		{
-			material.opacity = 1.0 - parseFloat( material.transparency ); //reverse?
-			if(material.transparent) //why? dont know but works
-				material.opacity = material.transparency; 
-			else if (material.transparency == 1.0)
-				material.opacity = 0.1; //avoid full transparent that become invisible
+			material.opacity = 1.0;
+			//I have no idea how to parse the transparency info from DAEs...
+			//https://github.com/openscenegraph/OpenSceneGraph/blob/master/src/osgPlugins/dae/daeRMaterials.cpp#L1185
+			/*
+			material.opacity = 1.0 - parseFloat( material.transparency );
+			if( material.opaque_info == "RGB_ZERO")
+				material.opacity = 1.0 - parseFloat( material.transparent[0] ); //use the red channel
+			*/
 		}
 
 		//collada supports materials with colors as specular_factor but StandardMaterial only support one value

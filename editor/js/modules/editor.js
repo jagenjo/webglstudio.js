@@ -1692,7 +1692,7 @@ var EditorModule = {
 	//shows a dialog to select a node
 	showSelectNode: function(on_complete, options)
 	{
-		var dialog = new LiteGUI.Dialog( { id: "dialog_nodes", title:"Scene nodes", close: true, minimize: true, width: 300, height: 410, resizable: true, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog( { id: "dialog_nodes", title: options.title || "Select node", close: true, minimize: true, width: 300, height: 410, resizable: true, scroll: false, draggable: true});
 		dialog.show( null, this.root );
 
 		/*

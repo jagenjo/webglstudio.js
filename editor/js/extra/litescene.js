@@ -722,7 +722,7 @@ LScript.expandCode = function(code)
 				if( array_index != -1 )
 				{
 					type_options.type = LS.TYPES.ARRAY;
-					type_options.data_type = type.substr( 0, array_index - 1 );
+					type_options.data_type = type.substr( 0, array_index );
 					if(!value || value === "undefined")
 						value = "[]";
 				}
@@ -46337,7 +46337,7 @@ var parserDAE = {
 
 		if( material.transparency !== undefined )
 		{
-			material.opacity = 1.0;
+			material.opacity = 1.0; //fuck it
 			//I have no idea how to parse the transparency info from DAEs...
 			//https://github.com/openscenegraph/OpenSceneGraph/blob/master/src/osgPlugins/dae/daeRMaterials.cpp#L1185
 			/*

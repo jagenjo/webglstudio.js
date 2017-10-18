@@ -898,6 +898,8 @@ var LS = {
 			console.warn("%c Component "+name+" could have a bug, check events: " + name , "font-size: 2em");
 		if( component.prototype.getResources && !component.prototype.onResourceRenamed )
 			console.warn("%c Component "+name+" could have a bug, it uses resources but doesnt implement onResourceRenamed, this could lead to problems when resources are renamed.", "font-size: 1.2em");
+		//if( !component.prototype.serialize || !component.prototype.configure )
+		//	console.warn("%c Component "+name+" could have a bug, it doesnt have a serialize or configure method. No state will be saved.", "font-size: 1.2em");
 
 		//add stuff to the class
 		if(!component.actions)
@@ -1258,6 +1260,12 @@ var LS = {
 			}
 			else //Objects: 
 			{
+				if( v.constructor.is_resource )
+				{
+					console.error("Resources cannot be saved as a property of a component nor script, they must be saved individually as files in the file system. If assigning them to a component/script use private variables (name start with underscore).");
+					continue;
+				}
+
 				if( encode_objects && !target )
 				{
 					o[i] = LS.encodeObject(v);
@@ -11042,24 +11050,7 @@ Component.prototype.configure = function(o)
 		return;
 	if(o.uid) 
 		this.uid = o.uid;
-	/*
-	{
-		//special case, uid must never be enumerable to avoid showing it in the editor
-		if(this.uid === undefined && !Object.hasOwnProperty(this, "uid"))
-		{
-			this._uid = o.uid;
-
-			Object.defineProperty(this, "uid", { 
-				set: o.uid, 
-				enumerable: false,
-				writable: true
-			});
-		}
-		else
-			this.uid = o.uid;
-	}
-	*/
-	LS.cloneObject(o, this, false, true); 
+	LS.cloneObject( o, this, false, true ); 
 }
 
 /**

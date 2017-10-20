@@ -1262,7 +1262,7 @@ var LS = {
 			{
 				if( v.constructor.is_resource )
 				{
-					console.error("Resources cannot be saved as a property of a component nor script, they must be saved individually as files in the file system. If assigning them to a component/script use private variables (name start with underscore).");
+					console.error("Resources cannot be saved as a property of a component nor script, they must be saved individually as files in the file system. If assigning them to a component/script use private variables (name start with underscore) to avoid being serialized.");
 					continue;
 				}
 
@@ -11980,6 +11980,20 @@ Animation.prototype.optimizeTracks = function()
 	return num;
 }
 
+/**
+* It creates a PlayAnimation component to the node (or reuse and old existing one). Used when a resource is assigned to a node
+* @method assignToNode
+* @param {LS.SceneNode} node node where to assign this animation
+*/
+Animation.prototype.assignToNode = function(node)
+{
+	var component = node.getComponent( LS.Components.PlayAnimation );
+	if(!component)
+		component = node.addComponent( LS.Components.PlayAnimation );
+	component.animation = this.fullpath || this.filename;
+}
+
+
 
 LS.Classes["Animation"] = LS.Animation = Animation;
 
@@ -12311,61 +12325,12 @@ Take.prototype.matchTranslation = function( root )
 Take.prototype.onlyRotations = function()
 {
 	var num = 0;
-	var temp = new Float32Array(10);
-	var temp_quat = new Float32Array(4);
-	var final_quat = temp.subarray(3,7);
 
 	for(var i = 0; i < this.tracks.length; ++i)
 	{
 		var track = this.tracks[i];
-
-		//convert locator
-		var path = track.property.split("/");
-		var last_path = path[ path.length - 1 ];
-		var old_size = track.value_size;
-		if( track.type != "mat4" && track.type != "trans10" )
-			continue;
-
-		if(last_path == "matrix")
-			path[ path.length - 1 ] = "Transform/rotation";
-		else if (last_path == "data")
-			path[ path.length - 1 ] = "rotation";
-
-		//convert samples
-		if(!track.packed_data)
-			track.packData();
-
-		track.property = path.join("/");
-		var old_type = track.type;
-		track.type = "quat";
-		track.value_size = 4;
-
-		var data = track.data;
-		var num_samples = data.length / (old_size+1);
-
-		if( old_type == "mat4" )
-		{
-			for(var k = 0; k < num_samples; ++k)
-			{
-				var sample = data.subarray(k*17+1,(k*17)+17);
-				var new_data = LS.Transform.fromMatrix4ToTransformData( sample, temp );
-				temp_quat.set( temp.subarray(3,7) );
-				data[k*5] = data[k*17]; //timestamp
-				data.set( temp_quat, k*5+1); //overwrite inplace (because the output is less big that the input)
-			}
-		}
-		else if( old_type == "trans10" )
-		{
-			for(var k = 0; k < num_samples; ++k)
-			{
-				var sample = data.subarray(k*11+4,(k*11)+8);
-				data[k*5] = data[k*11]; //timestamp
-				data.set( sample, k*5+1); //overwrite inplace (because the output is less big that the input)
-			}
-		}
-		
-		track.data = new Float32Array( data.subarray(0,num_samples*5) );
-		num += 1;
+		if( track.onlyRotations() )
+			num += 1;
 	}
 	return num;
 }
@@ -12381,30 +12346,8 @@ Take.prototype.removeScaling = function()
 	for(var i = 0; i < this.tracks.length; ++i)
 	{
 		var track = this.tracks[i];
-		var modified = false;
-
-		if(track.type == "matrix")
-		{
-			track.convertToTrans10();
-			modified = true;
-		}
-
-		if( track.type != "trans10" )
-		{
-			if(modified)
-				num += 1;
-			continue;
-		}
-
-		var num_keyframes = track.getNumberOfKeyframes();
-
-		for( var j = 0; j < num_keyframes; ++j )
-		{
-			var k = track.getKeyframe(j);
-			k[1][7] = k[1][8] = k[1][9] = 1; //set scale equal to 1
-		}
-
-		num += 1;
+		if( track.removeScaling() )
+			num += 1;
 	}
 	return num;
 }
@@ -13393,8 +13336,11 @@ Track.prototype.stretch = function( scale )
 	return 1;
 }
 
-//if the track used matrices, it transform them to position,quaternion and scale (10 floats, also known as trans10)
-//this makes working with animations faster
+/**
+* If the track used matrices, it transform them to position,quaternion and scale (10 floats, also known as trans10)
+* this makes working with animations faster
+* @method convertToTrans10
+*/
 Track.prototype.convertToTrans10 = function()
 {
 	if( this.value_size != 16 )
@@ -13428,6 +13374,94 @@ Track.prototype.convertToTrans10 = function()
 
 	return true;
 }
+
+/**
+* If this track changes the scale, it forces it to be 1,1,1
+* @method removeScaling
+*/
+Track.prototype.removeScaling = function()
+{
+	var modified = false;
+
+	if(this.type == "matrix")
+	{
+		this.convertToTrans10();
+		modified = true;
+	}
+
+	if( this.type != "trans10" )
+	{
+		if(modified)
+			return true;
+	}
+
+	var num_keyframes = this.getNumberOfKeyframes();
+	for( var j = 0; j < num_keyframes; ++j )
+	{
+		var k = this.getKeyframe(j);
+		k[1][7] = k[1][8] = k[1][9] = 1; //set scale equal to 1
+	}
+	return true;
+}
+
+
+Track.prototype.onlyRotations = (function()
+{
+	var temp = new Float32Array(10);
+	var temp_quat = new Float32Array(4);
+
+	return function(){
+
+		//convert locator
+		var path = this.property.split("/");
+		var last_path = path[ path.length - 1 ];
+		var old_size = this.value_size;
+		if( this.type != "mat4" && this.type != "trans10" )
+			return false;
+
+		if(last_path == "matrix")
+			path[ path.length - 1 ] = "Transform/rotation";
+		else if (last_path == "data")
+			path[ path.length - 1 ] = "rotation";
+
+		//convert samples
+		if(!this.packed_data)
+			this.packData();
+
+		this.property = path.join("/");
+		var old_type = this.type;
+		this.type = "quat";
+		this.value_size = 4;
+
+		var data = this.data;
+		var num_samples = data.length / (old_size+1);
+
+		if( old_type == "mat4" )
+		{
+			for(var k = 0; k < num_samples; ++k)
+			{
+				var sample = data.subarray(k*17+1,(k*17)+17);
+				var new_data = LS.Transform.fromMatrix4ToTransformData( sample, temp );
+				temp_quat.set( temp.subarray(3,7) );
+				data[k*5] = data[k*17]; //timestamp
+				data.set( temp_quat, k*5+1); //overwrite inplace (because the output is less big that the input)
+			}
+		}
+		else if( old_type == "trans10" )
+		{
+			for(var k = 0; k < num_samples; ++k)
+			{
+				var sample = data.subarray(k*11+4,(k*11)+8);
+				data[k*5] = data[k*11]; //timestamp
+				data.set( sample, k*5+1); //overwrite inplace (because the output is less big that the input)
+			}
+		}
+		
+		this.data = new Float32Array( data.subarray(0,num_samples*5) );
+		return true;
+	};
+})();
+
 
 Animation.Track = Track;
 
@@ -32933,11 +32967,12 @@ function GeometricPrimitive( o )
 	this._size = 10;
 	this._subdivisions = 10;
 	this._geometry = GeometricPrimitive.CUBE;
-	this._custom_mesh = null;
+	this._custom_mesh = null; //used for meshes that must be stored with the JSON
 	this._primitive = -1; //GL.POINTS, GL.LINES, GL.TRIANGLES, etc...
 	this._point_size = 0.1;
 
 	this._version = 1;
+	this._mesh = null;
 	this._mesh_version = 0;
 
 	if(o)
@@ -32950,7 +32985,7 @@ Object.defineProperty( GeometricPrimitive.prototype, 'geometry', {
 		if( this._geometry == v )
 			return;
 		v = (v === undefined || v === null ? -1 : v|0);
-		if( v < 0 || v > 100 )
+		if( !GeometricPrimitive.VALID[v] )
 			return;
 		this._geometry = v;
 		this._version++;
@@ -33001,6 +33036,20 @@ Object.defineProperty( GeometricPrimitive.prototype, 'point_size', {
 	enumerable: true
 });
 
+//assign a custom mesh
+Object.defineProperty( GeometricPrimitive.prototype, 'mesh', {
+	get: function() { return this._custom_mesh || this._mesh; },
+	set: function(v) { 
+		if(v && v.constructor !== GL.Mesh)
+			throw("mesh must be a GL.Mesh");
+		this._custom_mesh = v;
+		if(v)
+			this._geometry = GeometricPrimitive.CUSTOM;
+	},
+	enumerable: false
+});
+
+
 GeometricPrimitive.CUBE = 1;
 GeometricPrimitive.PLANE = 2;
 GeometricPrimitive.CYLINDER = 3;
@@ -33011,6 +33060,8 @@ GeometricPrimitive.ICOSAHEDRON = 7;
 GeometricPrimitive.CONE = 8;
 GeometricPrimitive.QUAD = 9;
 GeometricPrimitive.CUSTOM = 100;
+
+GeometricPrimitive.VALID = { 1:"CUBE", 2:"PLANE", 3:"CYLINDER", 4:"SPHERE", 5:"CIRCLE", 6:"HEMISPHERE", 7:"ICOSAHEDRON", 8: "CONE", 9:"QUAD", 100:"CUSTOM" };
 
 //Warning : if you add more primitives, be careful with the setter, it doesnt allow values bigger than 7
 
@@ -33893,6 +33944,8 @@ LS.registerComponent( FXGraphComponent );
 
 function Knob(o)
 {
+	this.enabled = true;
+
 	this.value = 0;
 	this.delta = 0.01;
 
@@ -33927,7 +33980,7 @@ Knob.prototype.onRemovedFromScene = function(scene)
 
 Knob.prototype.updateKnob = function()
 {
-	if(!this._root)
+	if(!this._root || !this.enabled)
 		return;
 
 	var f = this.value / (this.max_value - this.min_value);
@@ -33938,6 +33991,9 @@ Knob.prototype.updateKnob = function()
 
 Knob.prototype.onMouse = function(e, mouse_event)
 { 
+	if(!this.enabled)
+		return;
+
 	if( e == "mousedown")
 	{
 		if(!this._root || !this._root._instances || !this._root._instances.length)
@@ -43292,10 +43348,10 @@ global.Collada = {
 		this.readLibraryControllers( scene );
 
 		//read animations
-		var animations = this.readAnimations(root, scene);
+		var animations = this.readAnimations( root, scene );
 		if(animations)
 		{
-			var animations_name = "#animations_" + filename.substr(0,filename.indexOf("."));
+			var animations_name = "animations_" + filename.substr(0,filename.indexOf("."));
 			scene.resources[ animations_name ] = animations;
 			scene.root.animations = animations_name;
 		}

@@ -35,7 +35,7 @@ var AnimationModule = {
 
 	showTimeline: function( animation )
 	{
-		InterfaceModule.selectTab( RenderModule.name );
+		InterfaceModule.selectTab( RenderModule.tab_name );
 		InterfaceModule.setLowerPanelVisibility( true );
 		if(animation)
 			this.timeline.setAnimation( animation );

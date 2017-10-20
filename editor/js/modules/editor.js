@@ -73,6 +73,7 @@ var EditorModule = {
 				case "quad": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.QUAD, size: 10, subdivisions: 2 },"quad"); break;
 				case "cube": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.CUBE, size: 10, subdivisions: 10 },"cube"); break;
 				case "sphere": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.SPHERE, size: 10, subdivisions: 32 },"sphere"); break;
+				case "cylinder": that.createPrimitive({ geometry: LS.Components.GeometricPrimitive.CYLINDER, size: 10, subdivisions: 32 },"cylinder"); break;
 				default: break;
 			}
 		}
@@ -143,6 +144,7 @@ var EditorModule = {
 		mainmenu.add("Node/Primitive/Quad", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.QUAD, size: 10, subdivisions: 10 }); }});
 		mainmenu.add("Node/Primitive/Cube", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.CUBE, size: 10, subdivisions: 10 }); }});
 		mainmenu.add("Node/Primitive/Sphere", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.SPHERE, size: 10, subdivisions: 32 }); }});
+		mainmenu.add("Node/Primitive/Cylinder", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.CYLINDER, size: 10, subdivisions: 32 }); }});
 		mainmenu.add("Node/Primitive/Hemisphere", { callback: function() { EditorModule.createPrimitive( { geometry: LS.Components.GeometricPrimitive.HEMISPHERE, size: 10, subdivisions: 32 }); }});
 		mainmenu.add("Node/Templates/Sprite", { callback: function() { EditorModule.createTemplate("Sprite",[{ component: "Sprite" }]); }});
 		mainmenu.add("Node/Templates/ParticleEmissor", { callback: function() { EditorModule.createTemplate("Particles",[{ component: "ParticleEmissor" }]); }});
@@ -865,13 +867,21 @@ var EditorModule = {
 
 		function inner( resource )
 		{
-			if(!resource || !resource.assignToNode)
+			if( !resource )
+			{
+				console.warn("No resource");
 				return;
+			}
+			
+			if( !resource.assignToNode )
+			{
+				console.warn("Resource type has no assignToNode method: " + LS.getObjectClassName( resource ) );
+				return;
+			}
 
 			resource.assignToNode( node );
 			RenderModule.requestFrame();
 			EditorModule.inspectObject( node );
-			//EditorModule.refreshAttributes();
 		}
 
 	},

@@ -559,6 +559,24 @@ var UndoModule = {
 		});
 	},
 
+	//not tested
+	saveResourceChangeUndo: function( resource )
+	{
+		var res_data = resource.serialize();
+
+		this.addUndoStep({ 
+			title: "Resource modified: " + LS.getObjectClassName( resource ),
+			data: { resource_filename: resource.fullpath || resource.filename, data: res_data }, 
+			callback_undo: function(d) {
+				d.new_res_data = resource.configure();
+				d.resource.configure( d.data );
+			},
+			callback_redo: function(d) {
+				d.resource.configure( d.new_res_data );
+			}
+		});
+	},
+
 	saveSelectionRemovedUndo: function( data_removed )
 	{
 		this.addUndoStep({ 

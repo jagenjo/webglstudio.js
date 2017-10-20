@@ -2200,8 +2200,11 @@ global.Mesh = GL.Mesh = function Mesh( vertexbuffers, indexbuffers, options, gl 
 	this.vertexBuffers = {};
 	this.indexBuffers = {};
 
-	this.info = null; //here you can store extra info, like groups, which is an array of { name, start, length, material }
-	this.bounding = null; //here you can store a AABB in BBox format
+	//here you can store extra info, like groups, which is an array of { name, start, length, material }
+	this.info = {
+		groups: []
+	}; 
+	this._bounding = BBox.create(); //here you can store a AABB in BBox format
 
 	if(vertexbuffers || indexbuffers)
 		this.addBuffers( vertexbuffers, indexbuffers, options ? options.stream_type : null );
@@ -2230,6 +2233,20 @@ Mesh.common_buffers = {
 
 Mesh.default_datatype = Float32Array;
 
+Object.defineProperty( Mesh.prototype, "bounding", {
+	set: function(v)
+	{
+		if(!v)
+			return;
+		if(v.length < 13)
+			throw("Bounding must use the BBox bounding format of 13 floats: center, halfsize, min, max, radius");
+		this._bounding.set(v);
+	},
+	get: function()
+	{
+		return this._bounding;
+	}
+});
 
 /**
 * Adds buffer to mesh
@@ -2647,7 +2664,7 @@ Mesh.prototype.toObject = function()
 		vertexBuffers: vbs, 
 		indexBuffers: ibs,
 		info: this.info ? cloneObject( this.info ) : null,
-		bounding: this.bounding ? this.bounding.toJSON() : null
+		bounding: this._bounding.toJSON()
 	};
 }
 
@@ -2658,7 +2675,7 @@ Mesh.prototype.toJSON = function()
 		vertexBuffers: {},
 		indexBuffers: {},
 		info: this.info ? cloneObject( this.info ) : null,
-		bounding: this.bounding ? this.bounding.toJSON() : null
+		bounding: this._bounding.toJSON() 
 	};
 
 	for(var i in this.vertexBuffers)
@@ -2698,7 +2715,7 @@ Mesh.prototype.fromJSON = function(o)
 	if(o.info)
 		this.info = cloneObject( o.info );
 	if(o.bounding)
-		this.bounding = new Float32Array(o.bounding);
+		this.bounding = o.bounding; //setter does the job
 }
 
 
@@ -3322,7 +3339,7 @@ Mesh.prototype.computeTextureCoordinates = function( stream_type )
 
 
 /**
-* Computes bounding information
+* Computes the number of vertices
 * @method getVertexNumber
 * @param {typed Array} vertices array containing all the vertices
 */
@@ -3335,10 +3352,10 @@ Mesh.prototype.getNumVertices = function() {
 
 /**
 * Computes bounding information
-* @method Mesh.computeBounding
+* @method Mesh.computeBoundingBox
 * @param {typed Array} vertices array containing all the vertices
 */
-Mesh.computeBounding = function( vertices, bb ) {
+Mesh.computeBoundingBox = function( vertices, bb ) {
 
 	if(!vertices)
 		return;
@@ -3375,31 +3392,30 @@ Mesh.computeBounding = function( vertices, bb ) {
 */
 Mesh.prototype.getBoundingBox = function()
 {
-	if(!this.bounding)
-		this.updateBounding();
-	return this.bounding;
+	this.updateBoundingBox();
+	return this._bounding;
 }
 
 /**
 * Update bounding information of this mesh
-* @method updateBounding
+* @method updateBoundingBox
 */
-Mesh.prototype.updateBounding = function() {
+Mesh.prototype.updateBoundingBox = function() {
 	var vertices = this.vertexBuffers["vertices"];
 	if(!vertices)
 		return;
-	this.bounding = GL.Mesh.computeBounding( vertices.data, this.bounding );
+	GL.Mesh.computeBoundingBox( vertices.data, this._bounding );
 }
 
 
 /**
 * forces a bounding box to be set
-* @method setBounding
+* @method setBoundingBox
 * @param {vec3} center center of the bounding box
 * @param {vec3} half_size vector from the center to positive corner
 */
-Mesh.prototype.setBounding = function(center, half_size) {
-	this.bounding = BBox.setCenterHalfsize( this.bounding || BBox.create(), center, half_size );	
+Mesh.prototype.setBoundingBox = function( center, half_size ) {
+	BBox.setCenterHalfsize( this._bounding, center, half_size );	
 }
 
 
@@ -3461,8 +3477,8 @@ Mesh.prototype.configure = function( o, options )
 	for(var i in options)
 		this[i] = options[i];		
 
-	if(!this.bounding)
-		this.updateBounding();
+	if(!options.bounding)
+		this.updateBoundingBox();
 }
 
 /**
@@ -4144,10 +4160,12 @@ Mesh.cylinder = function( options, gl ) {
 
 	var pos = i*6*3;
 	var pos_uv = i*6*2;
+	var caps_start = pos;
 
 	//caps
 	if( options.caps === false )
 	{
+		//finalize arrays
 		vertices = vertices.subarray(0,pos);
 		normals = normals.subarray(0,pos);
 		coords = coords.subarray(0,pos_uv);
@@ -4198,6 +4216,13 @@ Mesh.cylinder = function( options, gl ) {
 		coords: coords
 	}
 	options.bounding = BBox.fromCenterHalfsize( [0,0,0], [radius,height*0.5,radius] );
+	options.info = { groups: [] };
+
+	if(options.caps !== false)
+	{
+		options.info.groups.push({ name:"side", start: 0, length: caps_start / 3});
+		options.info.groups.push({ name:"caps", start: caps_start / 3, length: (vertices.length - caps_start) / 3});
+	}
 
 	return Mesh.load( buffers, options, gl );
 }
@@ -10673,7 +10698,7 @@ Octree.prototype.testRay = (function(){
 	var min_temp = vec3.create();
 	var max_temp = vec3.create();
 
-	return function(origin, direction, dist_min, dist_max)
+	return function(origin, direction, dist_min, dist_max, test_backfaces )
 	{
 		octree_tested_boxes = 0;
 		octree_tested_triangles = 0;
@@ -10692,7 +10717,7 @@ Octree.prototype.testRay = (function(){
 		if(!test) //no collision with mesh bounding box
 			return null;
 
-		var test = Octree.testRayInNode( this.root, origin_temp, direction_temp );
+		var test = Octree.testRayInNode( this.root, origin_temp, direction_temp, test_backfaces );
 		if(test != null)
 		{
 			var pos = vec3.scale( vec3.create(), direction, test.t );
@@ -10731,7 +10756,7 @@ Octree.prototype.testSphere = function( origin, radius )
 }
 
 //WARNING: cannot use static here, it uses recursion
-Octree.testRayInNode = function( node, origin, direction )
+Octree.testRayInNode = function( node, origin, direction, test_backfaces )
 {
 	var test = null;
 	var prev_test = null;
@@ -10743,7 +10768,7 @@ Octree.testRayInNode = function( node, origin, direction )
 		{
 			var face = node.faces[i];
 			octree_tested_triangles += 1;
-			test = Octree.hitTestTriangle( origin, direction, face.subarray(0,3) , face.subarray(3,6), face.subarray(6,9) );
+			test = Octree.hitTestTriangle( origin, direction, face.subarray(0,3) , face.subarray(3,6), face.subarray(6,9), test_backfaces );
 			if (test==null)
 				continue;
 			test.face = face;
@@ -10776,7 +10801,7 @@ Octree.testRayInNode = function( node, origin, direction )
 				continue;
 
 			//test collision with node
-			test = Octree.testRayInNode( child, origin, direction );
+			test = Octree.testRayInNode( child, origin, direction, test_backfaces );
 			if(test == null)
 				continue;
 
@@ -10887,12 +10912,12 @@ Octree.hitTestTriangle = (function(){
 	var toHit = vec3.create();
 	var tmp = vec3.create();
 	
-	return function(origin, ray, A, B, C) {
+	return function( origin, ray, A, B, C, test_backfaces ) {
 		vec3.subtract( AB, B, A );
 		vec3.subtract( AC, C, A );
 		var normal = vec3.cross( vec3.create(), AB, AC ); //returned
 		vec3.normalize( normal, normal );
-		if( vec3.dot(normal,ray) > 0)
+		if( !test_backfaces && vec3.dot(normal,ray) > 0)
 			return null; //ignore backface
 
 		var t = vec3.dot(normal, vec3.subtract( tmp, A, origin )) / vec3.dot(normal,ray);

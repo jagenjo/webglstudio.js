@@ -324,6 +324,19 @@ LS.Components.Skybox.actions["bake"] = {
 	}
 };
 
+LS.Components.GeometricPrimitive.actions["to_mesh"] = { 
+	title:"Generate Mesh",
+	callback: function(){
+		var mesh = this._mesh;
+		if(!mesh)
+			return;
+		mesh.filename = "primitive_"+ LS.Components.GeometricPrimitive.VALID[ this._geometry ] +".wbin";
+		LS.RM.registerResource( mesh.filename, mesh );
+		LiteGUI.alert("Mesh created with name " + mesh.filename );
+		RenderModule.requestFrame();
+	}
+};
+
 
 //*********** Material Actions *************************************
 

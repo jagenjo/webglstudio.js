@@ -251,13 +251,13 @@ InspectorWidget.prototype.update = function( object )
 
 InspectorWidget.prototype.inspectObject = function( object )
 {
-	this.inspectObjectsArray( [ object ], inspector );
+	this.inspectObjectsArray( [ object ], this.inspector );
 	this.inspector.instance = object;
 }
 
-InspectorWidget.prototype.inspectObjectsArray = function( objects_array )
+InspectorWidget.prototype.inspectObjectsArray = function( objects_array, inspector )
 {
-	var inspector = this.inspector;
+	inspector = inspector || this.inspector;
 	inspector.instance = objects_array;
 
 	inspector.on_refresh = (function()

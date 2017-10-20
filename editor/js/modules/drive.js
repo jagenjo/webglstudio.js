@@ -196,12 +196,12 @@ var DriveModule = {
 
 	openTab: function()
 	{
-		LiteGUI.main_tabs.selectTab( this.name );
+		LiteGUI.main_tabs.selectTab( this.tab_name );
 	},
 
 	closeTab: function()
 	{
-		LiteGUI.main_tabs.selectTab( RenderModule.name );
+		LiteGUI.main_tabs.selectTab( RenderModule.tab_name );
 	},
 
 	//Bridges represent places to store resources (LiteFileServer, localStorage, Dropbox...)

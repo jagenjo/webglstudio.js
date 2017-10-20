@@ -20,11 +20,9 @@ function Timeline( options )
 	this.framerate = LS.Animation.Track.FRAMERATE;
 
 	LEvent.bind( LS.GlobalScene, "change", this.onReload, this );
-	//LEvent.bind( LS.GlobalScene, "reload", this.onReload, this );
 
 	this.createInterface( options );
 	LiteGUI.createDropArea( this.canvas, this.onItemDrop.bind(this) );
-	//this.onNewAnimation();
 }
 
 Timeline.widget_name = "Timeline";
@@ -170,6 +168,10 @@ Timeline.prototype.animationModified = function( animation )
 	if(!animation)
 		return;
 	animation._modified = true;
+
+	//add UNDO
+	//animation.toBinary()// too expensive... must create track undos or keyframe undos...
+
 	LS.ResourcesManager.resourceModified( animation );
 	LS.GlobalScene.refresh();
 	this.redrawCanvas();
@@ -464,7 +466,11 @@ Timeline.prototype.redrawCanvas = function()
 	{
 		ctx.fillStyle = (i+data.first_track) % 2 == 0 ? "#222" : "#2A2A2A";
 		//if(this._last_item && (i + this.session.scroll_y) == this._last_item.track)
-		if(this.session.selection && this.session.selection.type == "track" && (i + this.session.scroll_y) == this.session.selection.track )
+		var track = take.tracks[ data.first_track + i ];
+
+		if( track._marked )
+			ctx.fillStyle = "#543";
+		else if(this.session.selection && this.session.selection.type == "track" && (i + this.session.scroll_y) == this.session.selection.track )
 			ctx.fillStyle = "#333";
 
 		ctx.fillRect(0,timeline_height + i * line_height, w, line_height );
@@ -532,7 +538,7 @@ Timeline.prototype.redrawCanvas = function()
 		}
 
 		var main_word = track.name;
-		var secondary_word = track.type + (track.packed_data ? "*" : "");
+		var secondary_word = track.type + (track.packed_data ? " [p]" : "");
 
 		/*
 		if(track._property_path[0][0] != "@" || track._target && track._target._root )
@@ -1471,7 +1477,7 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 
 		widgets.addTitle("Stretch");
 		widgets.widgets_per_row = 2;
-		var stretch_widget = widgets.addNumber("To duration", duration );
+		var stretch_widget = widgets.addNumber("To duration", duration, { min: 0.01 } );
 		widgets.addButton(null,"STRETCH", function(){
 			var new_duration = stretch_widget.getValue();
 			if(new_duration == selected_take.duration)
@@ -1521,6 +1527,7 @@ Timeline.prototype.onContextMenu = function( e )
 	var values = [];
 
 	values.push( { title: "Add New Track", callback: this.showNewTrack.bind(this) } );
+	values.push( { title: "Mark tracks of selected node", callback: this.selectTracksOfNode.bind(this) } );
 	values.push( { title: "Assign Node Names", callback: this.assignNodeNames.bind(this) } );
 	values.push( null );
 
@@ -1529,6 +1536,7 @@ Timeline.prototype.onContextMenu = function( e )
 
 	if(track)
 	{
+		values.push( { title:"Actions", has_submenu: true, callback: inner_actions } );
 		values.push( { title: "Select Node", callback: inner_select } );
 		if(track.type == "events")
 			values.push( { title: "Add Event", callback: inner_add_event_keyframe } );
@@ -1589,6 +1597,26 @@ Timeline.prototype.onContextMenu = function( e )
 	function inner_edit()
 	{
 		that.showTrackOptionsDialog( track );
+	}
+
+	function inner_actions( value, parent_options, event, parent_menu )
+	{
+		var options = [];
+
+		for(var i in Timeline.actions.track)
+			options.push(i);
+
+		var new_menu = new LiteGUI.ContextMenu( options, { event: event, parentMenu: parent_menu, ignore_item_callbacks: true, callback: function(v) {
+			var action = Timeline.actions.track[v];
+			if(!action || !track)
+				return;
+
+			var r = action( track, that.current_take, that.current_animation );
+			if(r)
+				that.animationModified();
+			that.redrawCanvas();
+			RenderModule.requestFrame();
+		}});
 	}
 
 	function inner_copy_keyframe()
@@ -2371,6 +2399,31 @@ Timeline.prototype.assignNodeNames = function()
 	this.redrawCanvas();
 }
 
+Timeline.prototype.selectTracksOfNode = function()
+{
+	if(!this.current_take)
+		return;
+
+	var selected_nodes = SelectionModule.getSelectedNodes();
+
+	var take = this.current_take;
+	for(var i = 0; i < take.tracks.length; ++i)
+	{
+		var track = take.tracks[i];
+		var info = track.getPropertyInfo();
+		if(!info)
+			continue;
+		var node = info.node;
+		if(!node)
+			continue;
+		if( selected_nodes.indexOf(node) != -1 )
+			track._marked = true;
+		else
+			track._marked = false;
+	}
+	this.redrawCanvas();
+}
+
 Timeline.prototype.showNewTrack = function()
 {
 	var that = this;
@@ -2843,3 +2896,17 @@ Timeline.actions.take["Remove Disabled Tracks"] = function( animation, take )
 	return num - tracks.length;
 }
 
+Timeline.actions.track["Only rotations"] = function( track, take, animation )
+{
+	track.onlyRotations();
+}
+
+Timeline.actions.track["Convert to trans10"] = function( track, take, animation )
+{
+	track.convertToTrans10();
+}
+
+Timeline.actions.track["Remove scaling"] = function( track, take, animation )
+{
+	track.removeScaling();
+}

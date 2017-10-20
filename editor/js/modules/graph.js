@@ -1,5 +1,7 @@
 var GraphModule = {
 	name: "Graph",
+	tab_name: "Graph",
+
 	bigicon: "imgs/tabicon-graph.png",
 	_force_render: false,
 
@@ -15,7 +17,7 @@ var GraphModule = {
 
 	init: function()
 	{
-		this.tab = LiteGUI.main_tabs.addTab( this.name, {id:"graphtab", bigicon: this.bigicon, size: "full",  module: GraphModule, callback: function(tab) {
+		this.tab = LiteGUI.main_tabs.addTab( this.tab_name, {id:"graphtab", bigicon: this.bigicon, size: "full",  module: GraphModule, callback: function(tab) {
 			//GraphModule.openTab();
 			InterfaceModule.setSidePanelVisibility(true);
 			GraphModule.show3DWindow( GraphModule.is_sceneview_visible );
@@ -80,7 +82,7 @@ var GraphModule = {
 
 	openTab: function()
 	{
-		LiteGUI.main_tabs.selectTab("Graph");
+		LiteGUI.main_tabs.selectTab( GraphModule.tab_name );
 	},
 
 	//shows the side 3d window

@@ -265,6 +265,81 @@ LS.Components.Transform.prototype.getEditorActions = function( actions )
 }
 */
 
+LS.Components.Transform.actions["to_camera_position"] = { title: "To camera position", callback: function() { 
+	var cam = RenderModule.getActiveCamera();
+	var mat = cam.getModelMatrix();
+	this.fromMatrix( mat );
+	LS.GlobalScene.refresh();
+	EditorModule.refreshAttributes();
+}};
+
+LS.Components.MeshRenderer.actions["explode_to_submeshes"] = { title: "Explode submeshes to MeshRenderers", callback: function() { 
+	var node = this._root;
+	if(!node)
+		return;
+
+	var mesh = this.getMesh();
+	if(!mesh || !mesh.info || !mesh.info.groups )
+		return;
+
+	node.removeComponent( this );
+
+	for(var i = 0; i < mesh.info.groups.length; ++i)
+	{
+		var group = mesh.info.groups[i];
+		var comp = new LS.Components.MeshRenderer({ mesh: this.mesh, submesh_id: i, material: group.material });
+		node.addComponent( comp );	
+	}
+
+	LS.GlobalScene.refresh();
+	EditorModule.refreshAttributes();
+}};
+
+LS.Components.MeshRenderer.actions["explode_to_nodes"] = { title: "Explode submeshes to child nodes", callback: function() { 
+	var node = this._root;
+	if(!node)
+		return;
+
+	var mesh = this.getMesh();
+	if(!mesh || !mesh.info || !mesh.info.groups )
+		return;
+
+	node.removeComponent( this );
+
+	for(var i = 0; i < mesh.info.groups.length; ++i)
+	{
+		var group = mesh.info.groups[i];
+		var child_node = new LS.SceneNode();
+		node.addChild( child_node );
+		var comp = new LS.Components.MeshRenderer({ mesh: this.mesh, submesh_id: i, material: group.material });
+		child_node.addComponent( comp );	
+	}
+
+	LS.GlobalScene.refresh();
+	EditorModule.refreshAttributes();
+}};
+
+LS.Components.MeshRenderer.actions["meshrenders_to_childnodes"] = { title: "MeshRenderer's to child nodes", callback: function() { 
+	var node = this._root;
+	if(!node)
+		return;
+
+	var mesh_renderers = node.getComponents( LS.Components.MeshRenderer );
+
+	for(var i = 0; i < mesh_renderers.length; ++i)
+	{
+		var comp = mesh_renderers[i];
+		node.removeComponent( comp );
+		var child_node = new LS.SceneNode();
+		node.addChild( child_node );
+		child_node.addComponent( comp );	
+	}
+
+	LS.GlobalScene.refresh();
+	EditorModule.refreshAttributes();
+}};
+
+
 LS.Components.Light.actions["select_target"] = { title: "Select Target", callback: function() { SelectionModule.setSelection({ instance: this, info: "target" }); }};
 LS.Components.Camera.actions["select_center"] = { title: "Select Center", callback: function() { SelectionModule.setSelection({ instance: this, info: "center"}); }};
 LS.Components.Camera.actions["setview"] = { title: "Set to view", callback: function() { 

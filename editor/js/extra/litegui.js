@@ -9865,6 +9865,12 @@ Inspector.prototype.beginGroup = function( name, options )
 	content.className = "wgroupcontent";
 	if(options.collapsed)
 		content.style.display = "none";
+
+	if( options.height )
+		content.style.height = LiteGUI.sizeToCSS( options.height );
+	if( options.scrollable )
+		content.style.overflow = "auto";
+
 	element.appendChild( content );
 
 	var collapsed = options.collapsed || false;

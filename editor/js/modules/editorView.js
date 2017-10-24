@@ -16,6 +16,7 @@ var EditorView = {
 		grid_plane: "xz",
 		render_null_nodes: true,
 		render_aabb: false,
+		render_boundings: false,
 		render_tree: false,
 		render_skeletons: true,
 		render_names: false,
@@ -282,7 +283,7 @@ LS.SceneNode.prototype.renderEditor = function( node_selected )
 	//if this node has render instances...
 	if(this._instances)
 	{
-		if(node_selected)
+		if(node_selected || EditorView.preferences.render_boundings )
 		{
 			for(var i = 0; i < this._instances.length; ++i)
 			{

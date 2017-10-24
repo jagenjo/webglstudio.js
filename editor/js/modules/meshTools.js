@@ -310,11 +310,20 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		var group = widgets.beginGroup("Groups",{ collapsed: true, height: 150, scrollable: true });
 		for(var i = 0; i < mesh.info.groups.length; i++)
 		{
-			var str = mesh.info.groups[i].name;
-			if(mesh.info.groups[i].material)
-				str += "<span class='mat' style='color:white;'>"+mesh.info.groups[i].material+"<span>";
+			var group = mesh.info.groups[i];
+			var str = group.name;
+			if(group.material)
+				str += " <span class='mat' style='color:white;'>"+group.material+"<span>";
+			if(group.bounding)
+				str += " <span class='info' style='color:gray;'>[BB]<span>";
 			var w = widgets.addInfo(i, str, { name_width: 50 } );
 		}
+		widgets.addButton(null,"Compute bounding boxes", { callback: function(){
+			mesh.updateBoundingBox();
+			widgets.refresh();
+			LS.RM.resourceModified(mesh);
+			RenderModule.requestFrame();
+		}});
 		widgets.endGroup();
 	}
 

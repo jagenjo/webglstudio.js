@@ -781,6 +781,8 @@ var EditorModule = {
 		if(!node)
 			return;
 
+		var block = false;
+
 		var item_uid = event.dataTransfer.getData("uid");
 		var item_type = event.dataTransfer.getData("type");
 
@@ -792,12 +794,13 @@ var EditorModule = {
 		else if(item_type == "Material")
 			item = LS.GlobalScene.findMaterialByUId( item_uid );
 
-		if(item && item.constructor == LS.SceneNode && node != item )
+		if( item && item.constructor == LS.SceneNode && node != item )
 		{
 			node.addChild( item );		
 			console.log("Change parent");
+			block = true;
 		}
-
+		
 		if(item && item.constructor.is_component)
 		{
 			var component = item;
@@ -815,6 +818,7 @@ var EditorModule = {
 					node.addComponent( component );
 					console.log("Component moved");
 				}
+				block = true;
 			}
 		}
 
@@ -832,21 +836,23 @@ var EditorModule = {
 				node.material = material.uid;
 				console.log("Material assigned");
 			}
+			block = true;
 		}
-
+		
 		if (item_type == "resource")
 		{
 			var filename = event.dataTransfer.getData("res-fullpath");
-			this.onDropResourceOnNode( filename, node, event );
+			block = this.onDropResourceOnNode( filename, node, event );
 		}
 
 		if(event.dataTransfer.files && event.dataTransfer.files.length)
 		{
-			ImporterModule.onItemDrop( event, { node: node });
+			block = ImporterModule.onItemDrop( event, { node: node });
 		}
 
 		RenderModule.requestFrame();
 		EditorModule.refreshAttributes();
+		return block;
 	},
 
 	//allows to drop script or materials in a node

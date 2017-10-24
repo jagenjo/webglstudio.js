@@ -399,6 +399,11 @@ if(!String.prototype.hasOwnProperty("hashCode"))
 if(!Array.prototype.hasOwnProperty("subarray"))
 	Object.defineProperty(Array.prototype, "subarray", { value: Array.prototype.slice, enumerable: false });
 
+if(!Array.prototype.hasOwnProperty("clone"))
+	Object.defineProperty(Array.prototype, "clone", { value: Array.prototype.concat, enumerable: false });
+if(!Float32Array.prototype.hasOwnProperty("clone"))
+	Object.defineProperty(Float32Array.prototype, "clone", { value: function() { return new Float32Array(this); }, enumerable: false });
+
 
 // remove all properties on obj, effectively reverting it to a new object (to reduce garbage)
 global.wipeObject = function wipeObject(obj)
@@ -3354,17 +3359,39 @@ Mesh.prototype.getNumVertices = function() {
 * Computes bounding information
 * @method Mesh.computeBoundingBox
 * @param {typed Array} vertices array containing all the vertices
+* @param {BBox} bb where to store the bounding box
+* @param {Array} mask [optional] to specify which vertices must be considered when creating the bbox, used to create BBox of a submesh
 */
-Mesh.computeBoundingBox = function( vertices, bb ) {
+Mesh.computeBoundingBox = function( vertices, bb, mask ) {
 
 	if(!vertices)
 		return;
 
-	var min = vec3.clone( vertices.subarray(0,3) );
-	var max = vec3.clone( vertices.subarray(0,3) );
-	var v;
-	for(var i = 3; i < vertices.length; i+=3)
+	var start = 0;
+
+	if(mask)
 	{
+		for(var i = 0; i < mask.length; ++i)
+			if( mask[i] )
+			{
+				start = i;
+				break;
+			}
+		if(start == mask.length)
+		{
+			console.warn("mask contains only zeros, no vertices marked");
+			return;
+		}
+	}
+
+	var min = vec3.clone( vertices.subarray( start*3, start*3 + 3) );
+	var max = vec3.clone( vertices.subarray( start*3, start*3 + 3) );
+	var v;
+
+	for(var i = start*3; i < vertices.length; i+=3)
+	{
+		if( mask && !mask[i/3] )
+			continue;
 		v = vertices.subarray(i,i+3);
 		vec3.min( min,v, min);
 		vec3.max( max,v, max);
@@ -3405,7 +3432,56 @@ Mesh.prototype.updateBoundingBox = function() {
 	if(!vertices)
 		return;
 	GL.Mesh.computeBoundingBox( vertices.data, this._bounding );
+
+	if(this.info && this.info.groups && this.info.groups.length)
+		this.computeGroupsBoundingBoxes();
 }
+
+/**
+* Update bounding information for every group submesh
+* @method computeGroupsBoundingBoxes
+*/
+Mesh.prototype.computeGroupsBoundingBoxes = function()
+{
+	var indices = null;
+	var indices_buffer = this.getIndexBuffer("triangles");
+	if( indices_buffer )
+		indices = indices_buffer.data;
+
+	var vertices_buffer = this.getVertexBuffer("vertices");
+	if(!vertices_buffer)
+		return false;
+	var vertices = vertices_buffer.data;
+	if(!vertices.length)
+		return false;
+
+	var groups = this.info.groups;
+	for(var i = 0; i < groups.length; ++i)
+	{
+		var group = groups[i];
+		group.bounding = group.bounding || BBox.create();
+		var submesh_vertices = null;
+		if( indices )
+		{
+			var mask = new Uint8Array( vertices.length / 3 );
+			var s = group.start;
+			for( var j = 0, l = group.length; j < l; j += 3 )
+			{
+				mask[ indices[s+j] ] = 1;
+				mask[ indices[s+j+1] ] = 1;
+				mask[ indices[s+j+2] ] = 1;
+			}
+			GL.Mesh.computeBoundingBox( vertices, group.bounding, mask );
+		}
+		else
+		{
+			submesh_vertices = vertices.subarray( group.start * 3, ( group.start + group.length) * 3 );
+			GL.Mesh.computeBoundingBox( submesh_vertices, group.bounding );
+		}
+	}
+	return true;
+}
+
 
 
 /**
@@ -11581,7 +11657,7 @@ Mesh.parseOBJ = function( text, options )
 	//creates and returns a GL.Mesh
 	var final_mesh = null;
 	final_mesh = Mesh.load( mesh, null, options.mesh );
-	final_mesh.updateBounding();
+	final_mesh.updateBoundingBox();
 	return final_mesh;
 }
 
@@ -11754,7 +11830,7 @@ Mesh.prototype.toBinary = function( options )
 
 	//bounding box
 	if(!this.bounding)	
-		this.updateBounding();
+		this.updateBoundingBox();
 	o.bounding = this.bounding;
 
 	var vertex_buffers = [];

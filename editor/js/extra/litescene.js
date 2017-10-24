@@ -5057,7 +5057,7 @@ LS.ResourcesManager.processTextMesh = function( filename, data, options ) {
 		return null;
 	}
 
-	var mesh = GL.Mesh.load(mesh_data);
+	var mesh = GL.Mesh.load( mesh_data );
 	return mesh;
 }
 
@@ -5070,7 +5070,7 @@ LS.ResourcesManager.processScene = function( filename, data, options ) {
 
 	if(scene_data == null)
 	{
-		console.error("Error parsing scene: " + filename);
+		console.error( "Error parsing scene: " + filename );
 		return null;
 	}
 
@@ -5129,10 +5129,11 @@ LS.ResourcesManager.registerResourcePostProcessor("Mesh", function(filename, mes
 		mesh.metadata = {};
 		mesh.generateMetadata(); //useful
 	}
-	if(!mesh.bounding || mesh.bounding.length != BBox.data_length)
+	//force to regenerate boundings
+	if(!mesh.bounding || mesh.bounding.length != BBox.data_length || (mesh.info && mesh.info.groups && mesh.info.groups.length && !mesh.info.groups[0].bounding) )
 	{
 		mesh.bounding = null; //remove bad one (just in case)
-		mesh.updateBounding();
+		mesh.updateBoundingBox();
 	}
 	if(!mesh.getBuffer("normals"))
 		mesh.computeNormals();
@@ -17361,6 +17362,14 @@ FXStack.registerFunction = function( name, code )
 
 LS.FXStack = FXStack;
 LS.TextureFX = FXStack; //LEGACY
+/**
+* Allows to launch tweening 
+*
+* @class Tween
+* @namespace LS
+* @constructor
+*/
+
 LS.Tween = {
 	MAX_EASINGS: 256, //to avoid problems
 
@@ -17402,6 +17411,13 @@ LS.Tween = {
 		this.current_easings = [];
 		this._alife = [];
 	},
+
+	/*
+	ease: function()
+	{
+		this.easeProperty(
+	},
+	*/
 
 	easeProperty: function( object, property, target, time, easing_function, on_complete, on_progress )
 	{
@@ -17459,7 +17475,8 @@ LS.Tween = {
 			on_complete: on_complete, 
 			on_progress: on_progress, 
 			size: size, 
-			type: type
+			type: type,
+			running: true
 		};
 
 		for(var i = 0; i < this.current_easings.length; ++i)
@@ -17517,6 +17534,7 @@ LS.Tween = {
 		return data;
 	},
 
+	//updates all the active tweens
 	update: function( dt )
 	{
 		if( !this.current_easings.length )
@@ -17527,6 +17545,7 @@ LS.Tween = {
 		alive.length = easings.length;
 		var pos = 0;
 
+		//for every pending easing method
 		for(var i = 0, l = easings.length; i < l; ++i)
 		{
 			var item = easings[i];
@@ -17547,7 +17566,7 @@ LS.Tween = {
 			{
 				if(item.size == -1) //number
 					item.object[ item.property ] = item.target * f + item.origin * ( 1.0 - f );
-				else
+				else //array
 				{
 					var property = item.object[ item.property ];
 
@@ -17567,8 +17586,12 @@ LS.Tween = {
 			if(item.on_progress)
 				item.on_progress( item );
 
-			if(t == 1 && item.on_complete)
-				item.on_complete( item );
+			if(t >= 1)
+			{
+				if(item.on_complete)
+					item.on_complete( item );
+				item.running = false;
+			}
 		}
 
 		alive.length = pos; //trim
@@ -18009,11 +18032,12 @@ LS.RenderSettings = RenderSettings;
 22:	stencil_op_dpfail: GL.KEEP,
 23:	stencil_op_dppass: GL.KEEP
 
+24: flags
 */
 
 function RenderState( o )
 {
-	this._data = new Uint32Array(24);
+	this._data = new Uint32Array(25);
 	this.init();
 
 	if(o)
@@ -18025,6 +18049,10 @@ Object.defineProperty( RenderState.prototype, "front_face", {
 	get: function() { return this._data[0];	},
 	enumerable: true
 });
+
+RenderState.SKIP_BLEND = 1;
+RenderState.SKIP_DEPTH = 2;
+RenderState.SKIP_STENCIL = 4;
 
 RenderState["@front_face"] = { widget: "combo", values: { CW: GL.CW, CCW: GL.CCW } };
 
@@ -18174,6 +18202,25 @@ Object.defineProperty( RenderState.prototype, "stencil_mask", {
 	enumerable: true
 });
 
+Object.defineProperty( RenderState.prototype, "skip_blend", {
+	set: function(v) { this._data[25] = v ? (this._data[25] | RenderState.SKIP_BLEND) : (this._data[25] & ~(RenderState.SKIP_BLEND)); },
+	get: function() { return Boolean(this._data[25] & RenderState.SKIP_BLEND); },
+	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "skip_depth", {
+	set: function(v) { this._data[25] = v ? (this._data[25] | RenderState.SKIP_DEPTH) : (this._data[25] & ~(RenderState.SKIP_DEPTH)); },
+	get: function() { return Boolean(this._data[25] & RenderState.SKIP_DEPTH); },
+	enumerable: true
+});
+
+Object.defineProperty( RenderState.prototype, "skip_stencil", {
+	set: function(v) { this._data[25] = v ? (this._data[25] | RenderState.SKIP_STENCIL) : (this._data[25] & ~(RenderState.SKIP_STENCIL)); },
+	get: function() { return Boolean(this._data[25] & RenderState.SKIP_STENCIL); },
+	enumerable: true
+});
+
+
 RenderState["@stencil_mask"] = { widget: "number", min: 0, max: 256, step: 1, precision: 0 };
 
 Object.defineProperty( RenderState.prototype, "stencil_func", {
@@ -18246,6 +18293,12 @@ Object.defineProperty( RenderState.prototype, "stencil_op_dppass", {
 	enumerable: true
 });
 
+Object.defineProperty( RenderState.prototype, "flags", {
+	set: function(v) { this._data[24] = v; },
+	get: function() { return this._data[24]; },
+	enumerable: true
+});
+
 RenderState["@stencil_op_dppass"] = { widget: "combo", values: { KEEP: GL.KEEP, ZERO: GL.ZERO, REPLACE: GL.REPLACE, INCR: GL.INCR, INCR_WRAP: GL.INCR_WRAP, DECR: GL.DECR_WRAP, INVERT: GL.INVERT } };
 
 RenderState.default_state = {
@@ -18307,6 +18360,8 @@ RenderState.prototype.init = function()
 	this.stencil_op_sfail = GL.KEEP;
 	this.stencil_op_dpfail = GL.KEEP;
 	this.stencil_op_dppass = GL.KEEP;
+
+	this.flags = 0;
 }
 
 //helper, allows to set the blend mode from a string
@@ -18331,6 +18386,8 @@ RenderState.prototype.enable = function()
 
 RenderState.enable = function( state, prev )
 {
+	var flags = state.flags;
+
 	if(!prev)
 	{
 		//faces
@@ -18339,34 +18396,44 @@ RenderState.enable = function( state, prev )
 			gl.enable( gl.CULL_FACE );
 		else
 			gl.disable( gl.CULL_FACE );
+
 		//depth
-		if(state.depth_test)
-			gl.enable( gl.DEPTH_TEST );
-		else
-			gl.disable( gl.DEPTH_TEST );
-		gl.depthMask( state.depth_mask );
-		gl.depthFunc( state.depth_func );
+		if( !(flags & RenderState.SKIP_DEPTH) )
+		{
+			if(state.depth_test)
+				gl.enable( gl.DEPTH_TEST );
+			else
+				gl.disable( gl.DEPTH_TEST );
+			gl.depthMask( state.depth_mask );
+			gl.depthFunc( state.depth_func );
+		}
 
 		//blend
-		if(state.blend)
-			gl.enable( gl.BLEND );
-		else
-			gl.disable( gl.BLEND );
-		gl.blendFunc( state.blendFunc0, state.blendFunc1 );
+		if( !(flags & RenderState.SKIP_BLEND) )
+		{
+			if(state.blend)
+				gl.enable( gl.BLEND );
+			else
+				gl.disable( gl.BLEND );
+			gl.blendFunc( state.blendFunc0, state.blendFunc1 );
+		}
 
 		//color
 		gl.colorMask( state.colorMask0, state.colorMask1, state.colorMask2, state.colorMask3 );
 
 		//stencil
-		if(state.stencil_test)
+		if( !(flags & RenderState.SKIP_STENCIL) )
 		{
-			gl.enable( gl.STENCIL_TEST );
-			gl.stencilFunc( state.stencil_func_func, state.stencil_func_ref, state.stencil_func_mask );
-			gl.stencilOp( state.stencil_op_sfail, state.stencil_op_dpfail, state.stencil_op_dppass );
-			gl.stencilMask( state.stencil_mask );
+			if(state.stencil_test)
+			{
+				gl.enable( gl.STENCIL_TEST );
+				gl.stencilFunc( state.stencil_func_func, state.stencil_func_ref, state.stencil_func_mask );
+				gl.stencilOp( state.stencil_op_sfail, state.stencil_op_dpfail, state.stencil_op_dppass );
+				gl.stencilMask( state.stencil_mask );
+			}
+			else
+				gl.disable( gl.STENCIL_TEST );
 		}
-		else
-			gl.disable( gl.STENCIL_TEST );
 
 		this.last_state = state;
 		return;
@@ -18384,52 +18451,61 @@ RenderState.enable = function( state, prev )
 	}
 
 	//depth
-	if(prev.depth_test !== state.depth_test)
+	if( !(flags & RenderState.SKIP_DEPTH) )
 	{
-		if(state.depth_test)
-			gl.enable( gl.DEPTH_TEST );
-		else
-			gl.disable( gl.DEPTH_TEST );
+		if(prev.depth_test !== state.depth_test)
+		{
+			if(state.depth_test)
+				gl.enable( gl.DEPTH_TEST );
+			else
+				gl.disable( gl.DEPTH_TEST );
+		}
+		if(prev.depth_mask !== state.depth_mask)
+			gl.depthMask( state.depth_mask );
+		if(prev.depth_func !== state.depth_func)
+			gl.depthFunc( state.depth_func );
 	}
-	if(prev.depth_mask !== state.depth_mask)
-		gl.depthMask( state.depth_mask );
-	if(prev.depth_func !== state.depth_func)
-		gl.depthFunc( state.depth_func );
 
 	//blend
-	if(prev.blend !== state.blend)
+	if( !(flags & RenderState.SKIP_BLEND) )
 	{
-		if(state.blend)
-			gl.enable( gl.BLEND );
-		else
-			gl.disable( gl.BLEND );
+		if(prev.blend !== state.blend)
+		{
+			if(state.blend)
+				gl.enable( gl.BLEND );
+			else
+				gl.disable( gl.BLEND );
+		}
+		if(prev.blendFunc0 !== state.blendFunc0 || prev.blendFunc1 !== state.blendFunc1)
+			gl.blendFunc( state.blendFunc0, state.blendFunc1 );
 	}
-	if(prev.blendFunc0 !== state.blendFunc0 || prev.blendFunc1 !== state.blendFunc1)
-		gl.blendFunc( state.blendFunc0, state.blendFunc1 );
 
 	//color
 	if(prev.colorMask0 !== state.colorMask0 || prev.colorMask1 !== state.colorMask1 || prev.colorMask2 !== state.colorMask2 || prev.colorMask3 !== state.colorMask3 )
 		gl.colorMask( state.colorMask0, state.colorMask1, state.colorMask2, state.colorMask3 );
 
 	//stencil
-	if(prev.stencil_test != state.stencil_test )
+	if( !(flags & RenderState.SKIP_STENCIL) )
 	{
+		if(prev.stencil_test != state.stencil_test )
+		{
+			if(state.stencil_test)
+				gl.enable( gl.STENCIL_TEST);
+			else
+				gl.disable( gl.STENCIL_TEST );
+		}
+
 		if(state.stencil_test)
-			gl.enable( gl.STENCIL_TEST);
-		else
-			gl.disable( gl.STENCIL_TEST );
-	}
+		{
+			if( state.stencil_func_func !== prev.stencil_func_func || state.stencil_func_ref !== prev.stencil_func_ref || state.stencil_func_mask !== prev.stencil_func_mask )
+				gl.stencilFunc( state.stencil_func_func, state.stencil_func_ref, state.stencil_func_mask );
 
-	if(state.stencil_test)
-	{
-		if( state.stencil_func_func !== prev.stencil_func_func || state.stencil_func_ref !== prev.stencil_func_ref || state.stencil_func_mask !== prev.stencil_func_mask )
-			gl.stencilFunc( state.stencil_func_func, state.stencil_func_ref, state.stencil_func_mask );
+			if(state.stencil_op_sfail !== prev.stencil_op_sfail || state.stencil_op_dpfail !== stencil_op_dpfail || state.stencil_op_dppass !== stencil_op_dppass )
+				gl.stencilOp( state.stencil_op_sfail, state.stencil_op_dpfail, state.stencil_op_dppass );
 
-		if(state.stencil_op_sfail !== prev.stencil_op_sfail || state.stencil_op_dpfail !== stencil_op_dpfail || state.stencil_op_dppass !== stencil_op_dppass )
-			gl.stencilOp( state.stencil_op_sfail, state.stencil_op_dpfail, state.stencil_op_dppass );
-
-		if(state.stencil_mask !== prev.stencil_mask)
-			gl.stencilMask( prev.stencil_mask );
+			if(state.stencil_mask !== prev.stencil_mask)
+				gl.stencilMask( prev.stencil_mask );
+		}
 	}
 
 	//save state
@@ -18633,7 +18709,7 @@ RenderInstance.prototype.setMaterial = function(material)
 }
 
 //sets the buffers to render, the primitive, and the bounding
-RenderInstance.prototype.setMesh = function(mesh, primitive)
+RenderInstance.prototype.setMesh = function( mesh, primitive )
 {
 	if( primitive == -1 || primitive === undefined )
 		primitive = gl.TRIANGLES;
@@ -18686,10 +18762,28 @@ RenderInstance.prototype.setMesh = function(mesh, primitive)
 		this.use_bounding = false;
 }
 
-RenderInstance.prototype.setRange = function(start, offset)
+/**
+* Sets the object oriented bounding box using the BBox format (usually is the mesh bounding but in some cases could be different like with skinning or submeshes)
+*
+* @method setBoundinbBox
+* @param {BBox} bbox bounding in bbox format
+*/
+RenderInstance.prototype.setBoundingBox = function(bbox)
+{
+	this.oobb.set( bbox );
+}
+
+/**
+* specifies the rendering range for the mesh (from where and how many primitives), if -1 then ignored
+*
+* @method setRange
+* @param {Number} start
+* @param {Number} length
+*/
+RenderInstance.prototype.setRange = function( start, length )
 {
 	this.range[0] = start;
-	this.range[1] = offset;
+	this.range[1] = length;
 }
 
 /**
@@ -18733,7 +18827,7 @@ RenderInstance.prototype.isFlag = function(flag)
 */
 RenderInstance.prototype.updateAABB = function()
 {
-	BBox.transformMat4(this.aabb, this.oobb, this.matrix );
+	BBox.transformMat4( this.aabb, this.oobb, this.matrix );
 }
 
 /**
@@ -19461,6 +19555,9 @@ var Renderer = {
 	//safety
 	_is_rendering_frame: false,
 
+	//debug
+	allow_textures: true,
+
 	//fixed texture slots for global textures
 	SHADOWMAP_TEXTURE_SLOT: 6,
 	ENVIRONMENT_TEXTURE_SLOT: 5,
@@ -19641,40 +19738,23 @@ var Renderer = {
 		//Event: beforeRenderMainPass in case a last step is missing
 		LEvent.trigger(scene, "beforeRenderMainPass", render_settings );
 
-		//allows to overwrite renderer
-		if(this.custom_renderer && this.custom_renderer.render && render_settings.custom_renderer )
-		{
-			this.custom_renderer.render( cameras, render_settings );
-		}
-		else
-		{
-			//enable FX
-			if(render_settings.render_fx)
-				LEvent.trigger( scene, "enableFrameContext", render_settings );
+		//enable global FX context
+		if(render_settings.render_fx)
+			LEvent.trigger( scene, "enableFrameContext", render_settings );
 
-			//render
-			this.renderFrameCameras( cameras, render_settings );
+		//render all cameras
+		this.renderFrameCameras( cameras, render_settings );
 
-			//keep original viewport
-			if( render_settings.keep_viewport )
-				gl.setViewport( this._global_viewport );
+		//keep original viewport
+		if( render_settings.keep_viewport )
+			gl.setViewport( this._global_viewport );
 
-			//disable and show FX
-			if(render_settings.render_fx)
-				LEvent.trigger( scene, "showFrameContext", render_settings );
-		}
+		//disable and show final FX context
+		if(render_settings.render_fx)
+			LEvent.trigger( scene, "showFrameContext", render_settings );
 
-		//renders GUI items using mostly the Canvas2DtoWebGL library
-		gl.viewport( this._full_viewport[0], this._full_viewport[1], this._full_viewport[2], this._full_viewport[3] ); //assign full viewport always?
-		if(gl.start2D) //in case we have Canvas2DtoWebGL installed (it is optional)
-			gl.start2D();
-		LS.GUI.ResetImmediateGUI(); //mostly to change the cursor
-		if( render_settings.render_gui )
-			LEvent.trigger( scene, "renderGUI", gl );
-		if( this.on_render_gui ) //used by the editor (here to ignore render_gui flag)
-			this.on_render_gui( render_settings );
-		if( gl.finish2D )
-			gl.finish2D();
+		//renderGUI
+		this.renderGUI( render_settings );
 
 		//profiling
 		this._frame_cpu_time = getTime() - start_time;
@@ -20068,6 +20148,21 @@ var Renderer = {
 		return this._rendered_instances - start;
 	},
 
+	renderGUI: function( render_settings )
+	{
+		//renders GUI items using mostly the Canvas2DtoWebGL library
+		gl.viewport( this._full_viewport[0], this._full_viewport[1], this._full_viewport[2], this._full_viewport[3] ); //assign full viewport always?
+		if(gl.start2D) //in case we have Canvas2DtoWebGL installed (it is optional)
+			gl.start2D();
+		LS.GUI.ResetImmediateGUI(); //mostly to change the cursor
+		if( render_settings.render_gui )
+			LEvent.trigger( this._current_scene, "renderGUI", gl );
+		if( this.on_render_gui ) //used by the editor (here to ignore render_gui flag)
+			this.on_render_gui( render_settings );
+		if( gl.finish2D )
+			gl.finish2D();
+	},
+
 	/**
 	* returns a list of all the lights overlapping this instance (it uses sperical bounding so it could returns lights that are not really overlapping)
 	* It is used by the multipass lighting to iterate 
@@ -20393,6 +20488,8 @@ var Renderer = {
 		if(!samplers)
 			return;
 
+		var allow_textures = this.allow_textures; //used for debug
+
 		for(var i = 0; i < samplers.length; ++i)
 		{
 			var sampler = samplers[i];
@@ -20413,8 +20510,11 @@ var Renderer = {
 				//continue; //if we continue the sampler slot will remain empty which could lead to problems
 			}
 
-			if(tex && tex.constructor === String)
+			if( tex && tex.constructor === String)
 				tex = LS.ResourcesManager.textures[ tex ];
+			if(!allow_textures)
+				tex = null;
+
 			if(!tex)
 			{
 				if(sampler)
@@ -21511,6 +21611,7 @@ var Draw = {
 		this.mvp_matrix = mat4.create();
 		this.temp_matrix = mat4.create();
 		this.point_size = 2;
+		this.line_width = 1;
 
 		this.stack = new Float32Array(16 * 32); //stack max size
 		this.model_matrix = new Float32Array(this.stack.buffer,0,16);
@@ -21782,6 +21883,12 @@ var Draw = {
 	{
 		if(!this.ready)
 			this.init();
+		else
+		{
+			this.color.set([1,1,1,1]);
+			this.point_size = 2;
+			this.line_width = 1;
+		}
 
 		if( reset_memory )
 			this.images = {}; //clear images
@@ -21822,6 +21929,20 @@ var Draw = {
 	setPointSize: function(v)
 	{
 		this.point_size = v;
+	},
+
+	/**
+	* Sets the line width
+	* @method setLineWidth
+	* @param {number} v width in pixels
+	*/
+	setLineWidth: function(v)
+	{
+		if(gl.setLineWidth)
+			gl.setLineWidth(v);
+		else
+			gl.lineWidth(v);
+		this.line_width = v;
 	},
 
 	/**
@@ -28482,7 +28603,10 @@ Object.defineProperty( MeshRenderer.prototype, 'lod_mesh', {
 
 Object.defineProperty( MeshRenderer.prototype, 'submesh_id', {
 	get: function() { return this._submesh_id; },
-	set: function(v) { this._submesh_id = v; },
+	set: function(v) { 
+		//what about if v is a string, search for the index?
+		this._submesh_id = v;
+	},
 	enumerable: true
 });
 
@@ -28786,7 +28910,11 @@ MeshRenderer.prototype.onCollectInstances = function(e, instances)
 	{
 		var group = mesh.info.groups[this.submesh_id];
 		if(group)
+		{
 			RI.setRange( group.start, group.length );
+			if( group.bounding )
+				RI.setBoundingBox( group.bounding );
+		}
 	}
 	else
 		RI.setRange(0,-1);
@@ -35186,7 +35314,7 @@ PointCloud.prototype.configure = function(o)
 LS.registerComponent( PointCloud );
 /* lineCloud.js */
 
-function LineCloud(o)
+function LinesRenderer(o)
 {
 	this.enabled = true;
 	this.max_lines = 1024;
@@ -35196,6 +35324,8 @@ function LineCloud(o)
 	this.global_opacity = 1;
 	this.color = vec3.fromValues(1,1,1);
 	this.additive_blending = false;
+
+	this.line_width = 1;
 
 	this.use_node_material = false; 
 	this.premultiplied_alpha = false;
@@ -35219,24 +35349,24 @@ function LineCloud(o)
 	*/
 
 }
-LineCloud.icon = "mini-icon-lines.png";
-LineCloud["@color"] = { widget: "color" };
+LinesRenderer.icon = "mini-icon-lines.png";
+LinesRenderer["@color"] = { widget: "color" };
 
-Object.defineProperty( LineCloud.prototype, "num_lines", {
+Object.defineProperty( LinesRenderer.prototype, "num_lines", {
 	set: function(v) {},
 	get: function() { return this._lines.length; },
 	enumerable: true
 });
 
-LineCloud.prototype.clear = function()
+LinesRenderer.prototype.clear = function()
 {
 	this._lines.length = 0;
 }
 
-LineCloud.prototype.reset = LineCloud.prototype.clear;
+LinesRenderer.prototype.reset = LinesRenderer.prototype.clear;
 
 //Adds a point connect to the last one
-LineCloud.prototype.addPoint = function( point, color )
+LinesRenderer.prototype.addPoint = function( point, color )
 {
 	//last
 	var start = null;
@@ -35255,7 +35385,7 @@ LineCloud.prototype.addPoint = function( point, color )
 	this.addLine( start, point, start_color, color );
 }
 
-LineCloud.prototype.addLine = function( start, end, start_color, end_color )
+LinesRenderer.prototype.addLine = function( start, end, start_color, end_color )
 {
 	var data = new Float32Array(3+3+4+4);
 	data.set(start,0);
@@ -35279,7 +35409,7 @@ LineCloud.prototype.addLine = function( start, end, start_color, end_color )
 	return this._lines.length - 1;
 }
 
-LineCloud.prototype.setLine = function(id, start, end, start_color, end_color )
+LinesRenderer.prototype.setLine = function(id, start, end, start_color, end_color )
 {
 	var data = this._lines[id];
 
@@ -35296,28 +35426,24 @@ LineCloud.prototype.setLine = function(id, start, end, start_color, end_color )
 	this._must_update = true;
 }
 
-LineCloud.prototype.removeLine = function(id)
+LinesRenderer.prototype.removeLine = function(id)
 {
 	this._lines.splice(id,1);
 	this._must_update = true;
 }
 
 
-LineCloud.prototype.onAddedToNode = function(node)
+LinesRenderer.prototype.onAddedToNode = function(node)
 {
-	LEvent.bind(node, "collectRenderInstances", this.onCollectInstances, this);
+	LEvent.bind(node, "afterRenderScene", this.onAfterRender, this);
 }
 
-LineCloud.prototype.onRemovedFromNode = function(node)
+LinesRenderer.prototype.onRemovedFromNode = function(node)
 {
-	LEvent.unbind(node, "collectRenderInstances", this.onCollectInstances, this);
+	LEvent.unbind(node, "afterRenderScene", this.onAfterRender, this);
 }
 
-LineCloud.prototype.onResourceRenamed = function (old_name, new_name, resource)
-{
-}
-
-LineCloud.prototype.createMesh = function ()
+LinesRenderer.prototype.createMesh = function ()
 {
 	if( this._mesh_max_lines == this.max_lines) return;
 
@@ -35329,7 +35455,7 @@ LineCloud.prototype.createMesh = function ()
 	this._mesh_max_lines = this.max_lines;
 }
 
-LineCloud.prototype.updateMesh = function ()
+LinesRenderer.prototype.updateMesh = function ()
 {
 	if( this._mesh_max_lines != this.max_lines)
 		this.createMesh();
@@ -35360,59 +35486,22 @@ LineCloud.prototype.updateMesh = function ()
 	this._mesh.vertexBuffers["colors"].upload();
 }
 
-LineCloud._identity = mat4.create();
+LinesRenderer._identity = mat4.create();
 
-LineCloud.prototype.onCollectInstances = function(e, instances, options)
+LinesRenderer.prototype.onAfterRender = function(e)
 {
-	if(!this._root) return;
-
-	if(this._lines.length == 0 || !this.enabled)
+	if( !this._root )
 		return;
 
-	var camera = Renderer._current_camera;
+	if( this._lines.length == 0 || !this.enabled )
+		return;
 
-	if(this._must_update)
-		this.updateMesh();
-
-	if(!this._material)
-	{
-		this._material = new Material({ shader_name:"lowglobal" });
-	}
-
-	var material = this._material;
-
-	material.color.set(this.color);
-	material.opacity = this.global_opacity - 0.01; //try to keep it under 1
-	material.blend_mode = this.additive_blending ? Blend.ADD : Blend.ALPHA;
-	material.constant_diffuse = true;
-
-	if(!this._mesh)
-		return null;
-
-	var RI = this._render_instance;
-	if(!RI)
-		this._render_instance = RI = new RenderInstance(this._root, this);
-
-	if(this.in_world_coordinates && this._root.transform )
-		RI.matrix.set( this._root.transform._global_matrix );
-	else
-		mat4.copy( RI.matrix, LineCloud._identity );
-
-	var material = (this._root.material && this.use_node_material) ? this._root.getMaterial() : this._material;
-	mat4.multiplyVec3(RI.center, RI.matrix, vec3.create());
-
-	RI.setMaterial( material );
-	RI.setMesh( this._mesh, gl.LINES );
-	var primitives = this._lines.length * 2;
-	if(primitives > this._vertices.length / 3)
-		primitives = this._vertices.length / 3;
-	RI.setRange(0,primitives);
-
-	instances.push(RI);
+	LS.Draw.setLineWidth( this.line_width );
+	LS.Draw.renderMesh( this._mesh, GL.LINES );
 }
 
 
-LS.registerComponent( LineCloud );
+LS.registerComponent( LinesRenderer );
 /**
 * Reads animation tracks from an Animation resource and applies the properties to the objects referenced
 * @class PlayAnimation
@@ -36231,6 +36320,7 @@ Script.defineAPIFunction = function( func_name, target, event, info ) {
 
 //init
 Script.defineAPIFunction( "onStart", Script.BIND_TO_SCENE, "start" );
+Script.defineAPIFunction( "onAwake", Script.BIND_TO_SCENE, "awake" );
 Script.defineAPIFunction( "onFinish", Script.BIND_TO_SCENE, "finish" );
 Script.defineAPIFunction( "onPrefabReady", Script.BIND_TO_NODE, "prefabReady" );
 //behaviour
@@ -38730,21 +38820,30 @@ Canvas3D.prototype.onResourceRenamed = function (old_name, new_name, resource)
 LS.registerComponent( Canvas3D );
 //work in progress
 
-function VideoPlayer()
+function VideoPlayer(o)
 {
 	this._enabled = true;
 
 	this._video = document.createElement("video");
 	this._video.muted = false;
 	this._video.autoplay = false;
+	this.bindVideoEvents( this._video );
 
 	this._autoplay = true;
+	this.generate_mipmaps = false;
 
 	this._src = "";
+	this._url_loading = null;
 	this.texture_name = ":video";
 	this.render_mode = true;
+	this._playback_rate = 1;
+
+	this._ignore_proxy = false;
 
 	this._texture = null;
+
+	if(o)
+		this.configure(o);
 }
 
 Object.defineProperty( VideoPlayer.prototype, "enabled", {
@@ -38756,12 +38855,31 @@ Object.defineProperty( VideoPlayer.prototype, "enabled", {
 		{
 			var scene = this._root ? this._root.scene : null;
 			if(scene && scene.state === LS.RUNNING && this._video.autoplay)
+			{
+				if(this._video.currentTime >= this._video.duration)
+					this._video.currentTime = 0;
 				this._video.play();
+			}
 		}
 	},
 	get: function()
 	{
 		return this._enabled;
+	},
+	enumerable: true
+});
+
+//in case you are referencing a url with video that allow cors
+Object.defineProperty( VideoPlayer.prototype, "ignore_proxy", {
+	set: function(v){
+		if( v == this._ignore_proxy )
+			return;
+		this._ignore_proxy = v;
+		this.load( this.src );
+	},
+	get: function()
+	{
+		return this._ignore_proxy;
 	},
 	enumerable: true
 });
@@ -38836,12 +38954,48 @@ Object.defineProperty( VideoPlayer.prototype, "duration", {
 	enumerable: false
 });
 
+Object.defineProperty( VideoPlayer.prototype, "playback_rate", {
+	set: function(v){
+		if(v < 0)
+			return;
+		this._playback_rate = v;
+		this._video.playbackRate = v;
+	},
+	get: function()
+	{
+		return this._playback_rate;
+	},
+	enumerable: true
+});
+
+
+Object.defineProperty( VideoPlayer.prototype, "video", {
+	set: function(v){
+		if(!v || v.constructor !== HTMLVideoElement)
+			throw("Video must a HTMLVideoElement");
+		if( v == this._video )
+			return;
+	
+		this._video = v;
+		this._video.muted = false;
+		this._video.autoplay = false;
+		this._video.playbackRate = this._playback_rate;
+		this.bindVideoEvents( this._video );
+	},
+	get: function()
+	{
+		return this._video;
+	},
+	enumerable: false
+});
+
 VideoPlayer.NONE = 0;
 VideoPlayer.PLANE = 1;
 VideoPlayer.TO_MATERIAL = 2;
 VideoPlayer.BACKGROUND = 5;
 VideoPlayer.BACKGROUND_STRETCH = 6;
 
+VideoPlayer["@src"] = { type: "resource" };
 VideoPlayer["@render_mode"] = { type: "enum", values: {"NONE":VideoPlayer.NONE, "PLANE": VideoPlayer.PLANE, "TO_MATERIAL": VideoPlayer.TO_MATERIAL, /* "BACKGROUND": VideoPlayer.BACKGROUND,*/ "BACKGROUND_STRETCH": VideoPlayer.BACKGROUND_STRETCH } };
 
 VideoPlayer.prototype.onAddedToScene = function(scene)
@@ -38895,30 +39049,50 @@ VideoPlayer.prototype.onUpdate = function( e, dt )
 }
 */
 
-VideoPlayer.prototype.load = function( url )
+VideoPlayer.prototype.load = function( url, force )
 {
+	if(!url)
+		return;
+
+	var final_url = LS.RM.getFullURL( url, { ignore_proxy: this.ignore_proxy  } );
+
+	if( this._url_loading == final_url && !force )
+		return;
+
+	this._url_loading = url;
 	this._video.crossOrigin = "anonymous";
-	this._video.src = LS.RM.getFullURL(url);
+	this._video.src = final_url;
 	//this._video.type = "type=video/mp4";
-	//this._video.autoplay = false;
-	
-	var that = this;
+}
+
+VideoPlayer.prototype.bindVideoEvents = function( video )
+{
+	video._component = this;
+
+	if(video.has_litescene_events)
+		return;
+
+	video.has_litescene_events = true;
+
 	this._video.addEventListener("loadedmetadata",function(e) {
 		//onload
 		console.log("Duration: " + this.duration + " seconds");
 		console.log("Size: " + this.videoWidth + "," + this.videoHeight);
 		this.width = this.videoWidth;
 		this.height = this.videoHeight;
-		var scene = that._root ? that._root.scene : null;
-		if(scene && scene.state === LS.RUNNING && that._autoplay)
-		{
-			//this.autoplay = that._autoplay;
-			this.play();
-		}
+		if(!this._component)
+			return;
+		var scene = this._component._root ? this._component._root.scene : null;
+		if(scene && scene.state === LS.RUNNING && this._component._autoplay)
+			this._component.play();
 	});
+
+	/*
 	this._video.addEventListener("progress",function(e) {
 		//onload
 	});
+	*/
+
 	this._video.addEventListener("error",function(e) {
 		console.error("Error loading video: " + this.src);
 		if (this.error) {
@@ -38940,11 +39114,14 @@ VideoPlayer.prototype.load = function( url )
 	});
 
 	this._video.addEventListener("ended",function(e) {
+		if(!this._component)
+			return;
 		console.log("Ended.");
-		if(that.autoplay)
+		var scene = this._component._root ? this._component._root.scene : null;
+		if(scene && scene.state === LS.RUNNING && this._component._autoplay)
 		{
 			this.currentTime = 0;
-			this.play(); //loop
+			this._component.play(); //loop
 		}
 	});
 }
@@ -38983,15 +39160,30 @@ VideoPlayer.prototype.onBeforeRender = function(e)
 
 	var video = this._video;
 
+	var must_have_mipmaps = this.generate_mipmaps;
+	if( !GL.isPowerOfTwo(video.videoWidth) || !GL.isPowerOfTwo(video.videoHeight) )
+		must_have_mipmaps = false;
+
 	//create destination texture
-	if(!this._texture || this._texture.width != video.videoWidth )
-		this._texture = new GL.Texture( video.videoWidth, video.videoHeight, { format: GL.RGB, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+	if(!this._texture || this._texture.width != video.videoWidth || this._texture.has_mipmaps != must_have_mipmaps )
+	{
+		this._texture = new GL.Texture( video.videoWidth, video.videoHeight, { format: GL.RGB, minFilter: must_have_mipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR, magFilter: gl.LINEAR });
+		this._texture.has_mipmaps = must_have_mipmaps;
+	}
 
 	//avoid reuploading the same frame again in case it is paused
 	if(this._texture._video_time != video.currentTime )
 	{
 		this._texture.uploadImage( video );	
+		if( must_have_mipmaps )
+		{
+			this._texture.bind(0);
+			gl.generateMipmap( this._texture.texture_type );
+			this._texture.unbind(0);
+		}
+
 		this._texture._video_time = video.currentTime;
+		
 	}
 
 	//make texture available to all the system
@@ -39018,6 +39210,9 @@ VideoPlayer.prototype.onBeforeRenderScene = function( e )
 	if(!this._texture)
 		return;
 
+	gl.disable( gl.BLEND );
+	gl.disable( gl.CULL_FACE );
+	gl.disable( gl.DEPTH_TEST );
 	this._texture.toViewport();
 }
 
@@ -39430,6 +39625,7 @@ SceneTree.prototype.configure = function( scene_info )
 	 * @param {Object} scene_info contains all the info to do the configuration
 	 */
 	LEvent.trigger(this,"configure",scene_info);
+	LEvent.trigger(this,"awake");
 	/**
 	 * Fired when something changes in the scene
 	 * @event change
@@ -46611,7 +46807,6 @@ var parserOBJ = {
 			group.start = group_index;
 			group.length = group.indices.length;
 			indices = indices.concat( group.indices );
-			//TODO: compute bounding of group here
 			delete group.indices; //do not store indices in JSON format!
 			group_index += group.length;
 			final_groups.push( group );
@@ -46637,12 +46832,12 @@ var parserOBJ = {
 			mesh.triangles = new ( support_uint && group_index > 256*256 ? Uint32Array : Uint16Array )(indices);
 
 		//extra info
-		mesh.bounding = GL.Mesh.computeBounding( mesh.vertices );
+		mesh.bounding = GL.Mesh.computeBoundingBox( mesh.vertices );
 		var info = {};
 		if(groups.length > 1)
 		{
 			info.groups = groups;
-			//compute bounding of groups? //TODO
+			//compute bounding of groups? //TODO: this is complicated, it is affected by indices, etc, better done afterwards
 		}
 
 		mesh.info = info;
@@ -47106,7 +47301,7 @@ var parserOBJ = {
 			mesh.triangles = new (support_uint && max_index > 256*256 ? Uint32Array : Uint16Array)(indicesArray);
 
 		//extra info
-		mesh.bounding = GL.Mesh.computeBounding( mesh.vertices );
+		mesh.bounding = GL.Mesh.computeBoundingBox( mesh.vertices );
 		var info = {};
 		if(groups.length > 1)
 		{

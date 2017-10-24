@@ -25,6 +25,8 @@ function LayoutViewport( options )
 		far:10000,
 		layers: 0xFF,
 		viewport: this._viewport
+		//use_fixed_viewport: false,
+		//fixed_viewport: vec2.fromValues(800,600),
 	};
 
 	if( options.camera )
@@ -52,11 +54,36 @@ function LayoutViewport( options )
 
 LayoutViewport.temp_vec4 = vec4.create();
 
+//called from CanvasManager
 LayoutViewport.prototype.render = function()
 {
 	//called after rendering the scene
 	var camera = this.camera;
 	var viewport = camera.getLocalViewport( null, this._viewport_in_pixels );
+
+	/*
+	if(this.use_fixed_viewport)
+	{
+		var w = this.fixed_viewport[0];
+		var h = this.fixed_viewport[1];
+		if( this.fixed_viewport[0] > this.fixed_viewport[1] ) //width is bigger
+		{
+			if( this.fixed_viewport[0] > gl.drawingBufferWidth )
+			{
+				h = h * ( w / gl.drawingBufferWidth );
+				w = gl.drawingBufferWidth;
+			}
+		}
+		else
+		{
+			if( this.fixed_viewport[1] > gl.drawingBufferHeight )
+			{
+				w = w * ( h / gl.drawingBufferHeight );
+				w = gl.drawingBufferHeight;
+			}
+		}
+	}
+	*/
 
 	//render outline 
 	gl.start2D();

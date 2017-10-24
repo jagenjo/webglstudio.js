@@ -217,7 +217,13 @@ function SceneTreeWidget( options )
 		var node = LS.GlobalScene.getNode( tree_item_uid );
 		if(!node)
 			return;
-		EditorModule.onDropOnNode( node, event );
+		var r = EditorModule.onDropOnNode( node, event );
+		if(r === true)
+		{
+			e.stopPropagation();
+			e.stopImmediatePropagation();
+			e.preventDefault();
+		}
 	}
 
 	this.refresh();

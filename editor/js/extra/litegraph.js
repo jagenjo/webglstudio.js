@@ -10499,11 +10499,13 @@ if(typeof(LiteGraph) != "undefined")
 	{
 		this.addInput("Texture","Texture");
 		this.addOutput("","Texture");
-		this.properties = { low_precision: false };
+		this.properties = { mipmap_offset: 0, low_precision: false };
+
+		this._uniforms = { u_texture: 0, u_mipmap_offset: this.properties.mipmap_offset };
 	}
 
 	LGraphTextureAverage.title = "Average";
-	LGraphTextureAverage.desc = "Compute the total average of a texture and stores it as a 1x1 pixel texture";
+	LGraphTextureAverage.desc = "Compute a partial average (32 random samples) of a texture and stores it as a 1x1 pixel texture";
 
 	LGraphTextureAverage.prototype.onExecute = function()
 	{
@@ -10517,6 +10519,7 @@ if(typeof(LiteGraph) != "undefined")
 		if(!LGraphTextureAverage._shader)
 		{
 			LGraphTextureAverage._shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphTextureAverage.pixel_shader);
+			//creates 32 random numbers and stores the, in two mat4 
 			var samples = new Float32Array(32);
 			for(var i = 0; i < 32; ++i)	
 				samples[i] = Math.random();
@@ -10529,8 +10532,10 @@ if(typeof(LiteGraph) != "undefined")
 			this._temp_texture = new GL.Texture( 1, 1, { type: type, format: gl.RGBA, filter: gl.NEAREST });
 
 		var shader = LGraphTextureAverage._shader;
+		var uniforms = this._uniforms;
+		uniforms.u_mipmap_offset = this.properties.mipmap_offset;
 		this._temp_texture.drawTo(function(){
-			tex.toViewport(shader,{u_texture:0});
+			tex.toViewport( shader, uniforms );
 		});
 
 		this.setOutputData(0,this._temp_texture);
@@ -10541,6 +10546,7 @@ if(typeof(LiteGraph) != "undefined")
 			uniform mat4 u_samples_a;\n\
 			uniform mat4 u_samples_b;\n\
 			uniform sampler2D u_texture;\n\
+			uniform float u_mipmap_offset;\n\
 			varying vec2 v_coord;\n\
 			\n\
 			void main() {\n\
@@ -10548,8 +10554,8 @@ if(typeof(LiteGraph) != "undefined")
 				for(int i = 0; i < 4; ++i)\n\
 					for(int j = 0; j < 4; ++j)\n\
 					{\n\
-						color += texture2D(u_texture, vec2( u_samples_a[i][j], u_samples_b[i][j] ) );\n\
-						color += texture2D(u_texture, vec2( 1.0 - u_samples_a[i][j], u_samples_b[i][j] ) );\n\
+						color += texture2D(u_texture, vec2( u_samples_a[i][j], u_samples_b[i][j] ), u_mipmap_offset );\n\
+						color += texture2D(u_texture, vec2( 1.0 - u_samples_a[i][j], 1.0 - u_samples_b[i][j] ), u_mipmap_offset );\n\
 					}\n\
 			   gl_FragColor = color * 0.03125;\n\
 			}\n\

@@ -117,7 +117,7 @@ var LabModule = {
 			return;
 
 		gl.clearColor(0.02,0.02,0.02,1.0);
-		gl.clear( gl.COLOR_BUFFER_BIT );
+		gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
 
 		this.camera.setOrthographic(0, gl.canvas.width, gl.canvas.height, 0, -1, 1 );
 		this.camera.updateMatrices();

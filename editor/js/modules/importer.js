@@ -596,6 +596,7 @@ var ImporterModule  = {
 				if( resource.constructor == GL.Mesh && extension != "wbin" )
 				{
 					resource._original_data = resource.toBinary().buffer; //ArrayBuffer
+
 					filename = filename + ".wbin";
 					LS.ResourcesManager.renameResource( resource.filename, filename );
 				}
@@ -613,9 +614,21 @@ var ImporterModule  = {
 					LS.ResourcesManager.renameResource( resource.filename, filename );
 				}
 			}
-			
-			if(!resource._original_file && !resource._original_data)
-				resource._original_file = file;
+
+			//remove original file if the extension has changed
+			var file_extension = LS.RM.getExtension( file.filename );
+			var res_extension = LS.RM.getExtension( resource.fullpath || resource.filename );
+			if( file_extension != res_extension )
+			{
+				resource._original_file = null;
+				resource._original_data = null;
+			}
+			else
+			{
+				//assign file
+				if(!resource._original_file && !resource._original_data)
+					resource._original_file = file;
+			}
 
 			if(resource.constructor === GL.Texture )
 			{

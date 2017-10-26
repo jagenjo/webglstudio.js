@@ -468,7 +468,7 @@ Timeline.prototype.redrawCanvas = function()
 		//if(this._last_item && (i + this.session.scroll_y) == this._last_item.track)
 		var track = take.tracks[ data.first_track + i ];
 
-		if( track._marked )
+		if( track && track._marked )
 			ctx.fillStyle = "#543";
 		else if(this.session.selection && this.session.selection.type == "track" && (i + this.session.scroll_y) == this.session.selection.track )
 			ctx.fillStyle = "#333";

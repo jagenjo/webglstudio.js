@@ -1546,6 +1546,23 @@ var DriveModule = {
 
 	saveResourcesToFolder: function( list, folder, on_complete, on_error, on_progress )
 	{
+		//sort list
+		list.sort( function( a, b ) {
+			var res_a = null;
+			var res_b = null;
+			if(!a || !b)
+				return 0;
+
+			if(a.constructor === String)
+				res_a = LS.ResourcesManager.resources[a];
+			if(b.constructor === String)
+				res_b = LS.ResourcesManager.resources[b];
+			
+			if(!res_a || !res_b)
+				return 0;
+			return (res_a.constructor.save_priority || 0) - (res_b.constructor.save_priority || 0);
+		});
+
 		var total = list.length;
 		inner(true);
 
@@ -2819,4 +2836,5 @@ LiteGUI.Inspector.prototype.addFolder = function( name,value, options )
 
 LiteGUI.Inspector.widget_constructors["folder"] = "addFolder";
 
-
+GL.Texture.save_priority = -10;
+GL.Mesh.save_priority = -5;

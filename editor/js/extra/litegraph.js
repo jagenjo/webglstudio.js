@@ -13200,7 +13200,7 @@ LGAudioSource.prototype.onExecute = function()
 		for(var i = 0; i < this.inputs.length; ++i)
 		{
 			var input = this.inputs[i];
-			if(!input.link)
+			if(input.link == null)
 				continue;
 			var v = this.getInputData(i);
 			if( v === undefined )
@@ -13401,7 +13401,7 @@ LGAudioAnalyser.prototype.onExecute = function()
 	for(var i = 1; i < this.inputs.length; ++i)
 	{
 		var input = this.inputs[i];
-		if(!input.link)
+		if(input.link == null)
 			continue;
 		var v = this.getInputData(i);
 		if (v !== undefined)
@@ -13564,7 +13564,7 @@ LGAudioDynamicsCompressor.prototype.onExecute = function()
 	for(var i = 1; i < this.inputs.length; ++i)
 	{
 		var input = this.inputs[i];
-		if(!input.link)
+		if(input.link == null)
 			continue;
 		var v = this.getInputData(i);
 		if(v !== undefined)
@@ -13669,7 +13669,7 @@ LGAudioMixer.prototype.onExecute = function()
 	{
 		var input = this.inputs[i];
 
-		if(!input.link || input.type == "audio")
+		if(input.link == null || input.type == "audio")
 			continue;
 
 		var v = this.getInputData(i);
@@ -13744,7 +13744,7 @@ LGAudioBiquadFilter.prototype.onExecute = function()
 	for(var i = 1; i < this.inputs.length; ++i)
 	{
 		var input = this.inputs[i];
-		if(!input.link)
+		if(input.link == null)
 			continue;
 		var v = this.getInputData(i);
 		if(v !== undefined)
@@ -13811,7 +13811,7 @@ LGAudioOscillatorNode.prototype.onExecute = function()
 	for(var i = 0; i < this.inputs.length; ++i)
 	{
 		var input = this.inputs[i];
-		if(!input.link)
+		if(input.link == null)
 			continue;
 		var v = this.getInputData(i);
 		if(v !== undefined)

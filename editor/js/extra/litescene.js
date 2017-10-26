@@ -4273,7 +4273,10 @@ var ResourcesManager = {
 
 			//Keep original file inside the resource in case we want to save it
 			if(LS.ResourcesManager.keep_files && (data.constructor == ArrayBuffer || data.constructor == String) && (!resource._original_data && !resource._original_file) )
-				resource._original_data = data;
+			{
+				if( extension == LS.ResourcesManager.getExtension( resource.filename ) )
+					resource._original_data = data;
+			}
 		}
 
 		//this.resources_being_loaded[url] = [];
@@ -20964,7 +20967,10 @@ var Renderer = {
 		}
 
 		if(options.rotate)
+		{
+			node.transform.reset();
 			node.transform.rotateY( options.rotate );
+		}
 
 		var new_material = null;
 		if( material.constructor === String )
@@ -28766,6 +28772,8 @@ MeshRenderer.prototype.onResourceRenamed = function (old_name, new_name, resourc
 		this.mesh = new_name;
 	if(this.lod_mesh == old_name)
 		this.lod_mesh = new_name;
+	if(this.material == old_name)
+		this.material = new_name;
 	if(this.morph_targets)
 		for(var i in this.morph_targets)
 			if( this.morph_targets[i].mesh == old_name )
@@ -29010,6 +29018,29 @@ MeshRenderer.prototype.isLoading = function()
 	return false;
 }
 
+//used when a node has too many submeshes with materials
+MeshRenderer.prototype.explodeSubmeshesToChildNodes = function() { 
+	var node = this._root;
+	if(!node)
+		return;
+
+	var mesh = this.getMesh();
+	if(!mesh || !mesh.info || !mesh.info.groups )
+		return;
+
+	node.removeComponent( this );
+
+	for(var i = 0; i < mesh.info.groups.length; ++i)
+	{
+		var group = mesh.info.groups[i];
+		var child_node = new LS.SceneNode();
+		node.addChild( child_node );
+		var comp = new LS.Components.MeshRenderer({ mesh: this.mesh, submesh_id: i, material: group.material });
+		child_node.addComponent( comp );	
+	}
+
+	LS.GlobalScene.refresh();
+}
 
 LS.registerComponent( MeshRenderer );
 LS.MeshRenderer = MeshRenderer;
@@ -47389,6 +47420,10 @@ var parserMTL = {
 				case "map_Ks":
 					current_material.textures["specular"] = this.clearPath( tokens[1] );
 					current_material.specular_factor = 1;
+					break;
+				case "map_d":
+					current_material.textures["opacity"] = this.clearPath( tokens[1] );
+					current_material.blend_mode = LS.Blend.ALPHA;
 					break;
 				case "bump":
 				case "map_bump":

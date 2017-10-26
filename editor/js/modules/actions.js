@@ -296,26 +296,7 @@ LS.Components.MeshRenderer.actions["explode_to_submeshes"] = { title: "Explode s
 }};
 
 LS.Components.MeshRenderer.actions["explode_to_nodes"] = { title: "Explode submeshes to child nodes", callback: function() { 
-	var node = this._root;
-	if(!node)
-		return;
-
-	var mesh = this.getMesh();
-	if(!mesh || !mesh.info || !mesh.info.groups )
-		return;
-
-	node.removeComponent( this );
-
-	for(var i = 0; i < mesh.info.groups.length; ++i)
-	{
-		var group = mesh.info.groups[i];
-		var child_node = new LS.SceneNode();
-		node.addChild( child_node );
-		var comp = new LS.Components.MeshRenderer({ mesh: this.mesh, submesh_id: i, material: group.material });
-		child_node.addComponent( comp );	
-	}
-
-	LS.GlobalScene.refresh();
+	this.explodeSubmeshesToChildNodes();
 	EditorModule.refreshAttributes();
 }};
 

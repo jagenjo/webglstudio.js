@@ -5706,6 +5706,8 @@ Texture.fromURL = function( url, options, on_complete, gl ) {
 			if(!img_data)
 				return;
 			options.texture = texture;
+			if(img_data.format == "RGB")
+				texture.format = gl.RGB;
 			texture = GL.Texture.fromMemory( img_data.width, img_data.height, img_data.pixels, options );
 			delete texture["ready"]; //texture.ready = true;
 			if(on_complete)

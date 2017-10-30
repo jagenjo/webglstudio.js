@@ -695,6 +695,7 @@ LScript.expandCode = function(code)
 		var pos = line.indexOf(" ");
 		var first_word = line.substr(0,pos);
 
+		//all this horrendous code to parse "public var name : type = value;" and all the possible combinations
 		if( first_word == "public" || first_word == "private" )
 		{
 			var index = line.indexOf("//");
@@ -702,19 +703,31 @@ LScript.expandCode = function(code)
 				line = line.substr(0,index); //remove one-line comments
 			var index = line.lastIndexOf(";");
 			if(index != -1)
-				line = line.substr(0,index); //remove one-line comments
+				line = line.substr(0,index); //remove semicolon
 			var t = line.split(" ");
 			if( t[1] != 'var')
 				continue;
-			var varname = t[2];
+			var text = line;
+			var type = null;
+			var value = "undefined";
+			var equal_index = text.indexOf("=");
+			if( equal_index != -1 )
+			{
+				value = text.substr( equal_index + 1 ).trim();
+				text = text.substr( 0, equal_index ).trim();
+			}
+
+			var colon_index = text.indexOf(":");
+			if(colon_index != -1)
+			{
+				type = text.substr( colon_index + 1 ).trim();
+				text = text.substr( 0, colon_index ).trim();
+			}
+			var keywords = text.split(" ");
+
+			var varname = keywords[2];
 			if(!varname)
 				continue;
-			var name_type = varname.split(":");
-			var type = name_type[1] || "";
-			if( !type && t[3] == ":" && t[4] && t[4] != "=" )
-				type = t[4].trim();
-			var index = line.indexOf("=");
-			var value = (index != -1) ? line.substr(index+1) : "undefined";
 			var type_options = {};
 			if(type)
 			{
@@ -730,20 +743,26 @@ LScript.expandCode = function(code)
 				{
 					type_options.type = type;
 				}
+
+				if( LS.Components[ type ] ) //for components
+				{
+					type_options.component_class = type;
+					type_options.type = LS.TYPES.COMPONENT;
+				}
+				else if( LS.ResourceClasses[ type ] ) //for resources
+				{
+					type_options.resource_classname = type;
+					type_options.type = LS.TYPES.RESOURCE;
+				}
+				else if( type == "int" || type == "integer")
+				{
+					type_options.step = 1;
+					type_options.type = LS.TYPES.NUMBER;
+				}
 			}
-			if( LS.Components[ type ] ) //for components
-			{
-				type_options.component_class = type;
-				type_options.type = LS.TYPES.COMPONENT;
-			}
-			else if( type == "int" || type == "integer")
-			{
-				type_options.step = 1;
-				type_options.type = LS.TYPES.NUMBER;
-			}
-			if( t[0] == "private" )
+			if( keywords[0] == "private" )
 				type_options.widget = "null";
-			lines[i] = "this.createProperty('" + name_type[0] + "'," + value + ", "+JSON.stringify( type_options )+" );";
+			lines[i] = "this.createProperty('" + varname + "'," + value + ", "+JSON.stringify( type_options )+" );";
 			update = true;
 		}
 	}

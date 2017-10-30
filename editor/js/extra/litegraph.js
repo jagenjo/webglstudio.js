@@ -360,6 +360,8 @@ LGraph.prototype.clear = function()
 	this.elapsed_time = 0.01;
 	this.starttime = 0;
 
+	this.catch_errors = true;
+
 	//globals
 	this.global_inputs = {};
 	this.global_outputs = {};
@@ -433,7 +435,7 @@ LGraph.prototype.start = function(interval)
 
 	this.execution_timer_id = setInterval( function() { 
 		//execute
-		that.runStep(1); 
+		that.runStep(1, !this.catch_errors ); 
 	},interval);
 }
 
@@ -2610,7 +2612,7 @@ LGraphNode.prototype.localToScreen = function(x,y, graphcanvas)
 *
 * @class LGraphCanvas
 * @constructor
-* @param {HTMLCanvas} canvas the canvas where you want to render (it accepts a selector in string format or the canvas itself)
+* @param {HTMLCanvas} canvas the canvas where you want to render (it accepts a selector in string format or the canvas element itself)
 * @param {LGraph} graph [optional]
 * @param {Object} options [optional] { skip_rendering, autoresize }
 */
@@ -2780,7 +2782,7 @@ LGraphCanvas.prototype.closeSubgraph = function()
 * assigns a canvas
 *
 * @method setCanvas
-* @param {Canvas} assigns a canvas
+* @param {Canvas} assigns a canvas (also accepts the ID of the element (not a selector)
 */
 LGraphCanvas.prototype.setCanvas = function( canvas, skip_events )
 {
@@ -2826,6 +2828,8 @@ LGraphCanvas.prototype.setCanvas = function( canvas, skip_events )
 
 	if(canvas.getContext == null)
 	{
+		if( canvas.localName != "canvas" )
+			throw("Element supplied for LGraphCanvas must be a <canvas> element, you passed a " + canvas.localName );
 		throw("This browser doesnt support Canvas");
 	}
 
@@ -12323,6 +12327,15 @@ MIDIEvent.computePitch = function( note )
 	return Math.pow(2, (note - 69) / 12 ) * 440;
 }
 
+MIDIEvent.prototype.getCC = function()
+{
+	return this.data[1];
+}
+
+MIDIEvent.prototype.getCCValue = function()
+{
+	return this.data[2];
+}
 
 //not tested, there is a formula missing here
 MIDIEvent.prototype.getPitchBend = function()
@@ -12450,8 +12463,17 @@ function MIDIInterface( on_ready, on_error )
 
 	this.on_ready = on_ready;
 
+	this.state = {
+		note: [],
+		cc: []
+	};
+
+
+
 	navigator.requestMIDIAccess().then( this.onMIDISuccess.bind(this), this.onMIDIFailure.bind(this) );
 }
+
+MIDIInterface.input = null;
 
 MIDIInterface.MIDIEvent = MIDIEvent;
 
@@ -12471,8 +12493,41 @@ MIDIInterface.prototype.updatePorts = function()
 	var midi = this.midi;
 	this.input_ports = midi.inputs;
 	var num = 0;
+
+	var it = this.input_ports.values();
+	var it_value = it.next();
+	while( it_value && it_value.done === false )
+	{
+		var port_info = it_value.value;
+		console.log( "Input port [type:'" + port_info.type + "'] id:'" + port_info.id +
+		  "' manufacturer:'" + port_info.manufacturer + "' name:'" + port_info.name +
+		  "' version:'" + port_info.version + "'" );
+			num++;
+		it_value = it.next();
+	}
+	this.num_input_ports = num;
+
+	num = 0;
+	this.output_ports = midi.outputs;
+	var it = this.output_ports.values();
+	var it_value = it.next();
+	while( it_value && it_value.done === false )
+	{
+		var port_info = it_value.value;
+		console.log( "Output port [type:'" + port_info.type + "'] id:'" + port_info.id +
+		  "' manufacturer:'" + port_info.manufacturer + "' name:'" + port_info.name +
+		  "' version:'" + port_info.version + "'" );
+			num++;
+		it_value = it.next();
+	  }
+	this.num_output_ports = num;
+
+
+	/* OLD WAY
 	for (var i = 0; i < this.input_ports.size; ++i) {
 		  var input = this.input_ports.get(i);
+		  if(!input)
+			  continue; //sometimes it is null?!
 			console.log( "Input port [type:'" + input.type + "'] id:'" + input.id +
 		  "' manufacturer:'" + input.manufacturer + "' name:'" + input.name +
 		  "' version:'" + input.version + "'" );
@@ -12485,12 +12540,15 @@ MIDIInterface.prototype.updatePorts = function()
 	this.output_ports = midi.outputs;
 	for (var i = 0; i < this.output_ports.size; ++i) {
 		  var output = this.output_ports.get(i);
+		  if(!output)
+			  continue; 
 		console.log( "Output port [type:'" + output.type + "'] id:'" + output.id +
 		  "' manufacturer:'" + output.manufacturer + "' name:'" + output.name +
 		  "' version:'" + output.version + "'" );
 			num++;
 	  }
 	this.num_output_ports = num;
+	*/
 }
 
 MIDIInterface.prototype.onMIDIFailure = function(msg)
@@ -12498,14 +12556,17 @@ MIDIInterface.prototype.onMIDIFailure = function(msg)
 	console.error( "Failed to get MIDI access - " + msg );
 }
 
-MIDIInterface.prototype.openInputPort = function( port, callback)
+MIDIInterface.prototype.openInputPort = function( port, callback )
 {
-	var input_port = this.input_ports.get( port );
+	var input_port = this.input_ports.get( "input-" + port );
 	if(!input_port)
 		return false;
+	MIDIInterface.input = this;
+	var that = this;
 
 	input_port.onmidimessage = function(a) {
 		var midi_event = new MIDIEvent(a.data);
+		that.updateState( midi_event );
 		if(callback)
 			callback(a.data, midi_event );
 		if(MIDIInterface.on_message)
@@ -12520,14 +12581,26 @@ MIDIInterface.parseMsg = function(data)
 
 }
 
+MIDIInterface.prototype.updateState = function( midi_event )
+{
+	switch( midi_event.cmd )
+	{
+		case MIDIEvent.NOTEON: this.state.note[ midi_event.value1|0 ] = midi_event.value2; break;
+		case MIDIEvent.NOTEOFF: this.state.note[ midi_event.value1|0 ] = 0; break;
+		case MIDIEvent.CONTROLLERCHANGE: this.state.cc[ midi_event.getCC() ] = midi_event.getCCValue(); break;
+	}
+}
+
 MIDIInterface.prototype.sendMIDI = function( port, midi_data )
 {
 	if( !midi_data )
 		return;
 
-	var output_port = this.output_ports.get(port);
+	var output_port = this.output_ports.get( "output-" + port );
 	if(!output_port)
 		return;
+
+	MIDIInterface.output = this;
 
 	if( midi_data.constructor === MIDIEvent)
 		output_port.send( midi_data.data ); 
@@ -12570,7 +12643,7 @@ LGMIDIIn.prototype.getPropertyInfo = function(name)
 		var values = {};
 		for (var i = 0; i < this._midi.input_ports.size; ++i)
 		{
-			var input = this._midi.input_ports.get(i);
+			var input = this._midi.input_ports.get( "input-" + i);
 			values[i] = i + ".- " + input.name + " version:" + input.version;
 		}
 		return { type: "enum", values: values };
@@ -12613,6 +12686,7 @@ LGMIDIIn.prototype.onExecute = function()
 			var v = null;
 			switch (output.name)
 			{
+				case "midi": v = this._midi; break;
 				case "last_midi": v = last; break;
 				default:
 					continue;
@@ -12827,8 +12901,10 @@ LGMIDIEvent.prototype.onExecute = function()
 					v.channel = props.channel;
 					break;
 				case "command": v = props.cmd; break;
-				case "note": v = (props.cmd == MIDIEvent.NOTEON || props.cmd == MIDIEvent.NOTEOFF) ? props.value1 : NULL; break;
-				case "velocity": v = props.cmd == MIDIEvent.NOTEON ? props.value2 : NULL; break;
+				case "cc": v = props.value1; break;
+				case "cc_value": v = props.value2; break;
+				case "note": v = (props.cmd == MIDIEvent.NOTEON || props.cmd == MIDIEvent.NOTEOFF) ? props.value1 : null; break;
+				case "velocity": v = props.cmd == MIDIEvent.NOTEON ? props.value2 : null; break;
 				case "pitch": v = props.cmd == MIDIEvent.NOTEON ? MIDIEvent.computePitch( props.value1 ) : null; break;
 				case "pitchbend": v = props.cmd == MIDIEvent.PITCHBEND ? MIDIEvent.computePitchBend( props.value1, props.value2 ) : null; break;
 				default:
@@ -12854,6 +12930,8 @@ LGMIDIEvent.prototype.onGetOutputs = function() {
 		["command","number"],
 		["note","number"],
 		["velocity","number"],
+		["cc","number"],
+		["cc_value","number"],
 		["pitch","number"],
 		["pitchbend","number"]
 	];
@@ -12861,6 +12939,31 @@ LGMIDIEvent.prototype.onGetOutputs = function() {
 
 
 LiteGraph.registerNodeType("midi/event", LGMIDIEvent);
+
+
+function LGMIDICC()
+{
+	this.properties = {
+//		channel: 0,
+		cc: 1,
+		value: 0
+	};
+
+	this.addOutput( "value", "number" );
+}
+
+LGMIDICC.title = "MIDICC";
+LGMIDICC.desc = "gets a Controller Change";
+
+LGMIDICC.prototype.onExecute = function()
+{
+	var props = this.properties;
+	if( MIDIInterface.input )
+		this.properties.value = MIDIInterface.input.state.cc[ this.properties.cc ];
+	this.setOutputData( 0, this.properties.value );
+}
+
+LiteGraph.registerNodeType("midi/cc", LGMIDICC);
 
 
 
@@ -13178,7 +13281,11 @@ LGAudioSource.prototype.stopAllSounds = function()
 	//iterate and stop
 	for(var i = 0; i < this._audionodes.length; ++i )
 	{
-		this._audionodes[i].stop();
+		if(this._audionodes[i].started)
+		{
+			this._audionodes[i].started = false;
+			this._audionodes[i].stop();
+		}
 		//this._audionodes[i].disconnect( this.audionode );
 	}
 	this._audionodes.length = 0;
@@ -13274,7 +13381,11 @@ LGAudioSource.prototype.playBuffer = function( buffer )
 			that._audionodes.splice(index,1);
 	}
 
-	audionode.start();
+	if(!audionode.started)
+	{
+		audionode.started = true;
+		audionode.start();
+	}
 	return audionode;
 }
 
@@ -13785,12 +13896,20 @@ function LGAudioOscillatorNode()
 
 LGAudioOscillatorNode.prototype.onStart = function()
 {
-	this.audionode.start();
+	if(!this.audionode.started)
+	{
+		this.audionode.started = true;
+		this.audionode.start();
+	}
 }
 
 LGAudioOscillatorNode.prototype.onStop = function()
 {
-	this.audionode.stop();
+	if(this.audionode.started)
+	{
+		this.audionode.started = false;
+		this.audionode.stop();
+	}
 }
 
 LGAudioOscillatorNode.prototype.onPause = function()

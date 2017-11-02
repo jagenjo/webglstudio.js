@@ -340,8 +340,11 @@ var SceneStorageModule = {
 			scene_name = scene_name.substr(0, pos);
 
 		var widgets = new LiteGUI.Inspector();
-		var string_widget = widgets.addString("Filename", scene_name , { placeHolder: "choose a name", callback: function(v) { 
+		var filename_widget = widgets.addString("Filename", scene_name , { placeHolder: "choose a name", callback: function(v) { 
 			scene_name = v;
+		}});
+		var folder_widget = widgets.addString("Folder", "", { callback: function(v) { 
+			scene_folder = v;
 		}});
 		var scenes = { id:"Server", children: [] };
 		var tree_widget = widgets.addTree(null, scenes, { height: 210, callback: inner_selected});
@@ -363,6 +366,7 @@ var SceneStorageModule = {
 		//load tree
 		DriveModule.getServerFoldersTree(inner_tree);
 
+		//load tree...
 		function inner_tree(tree)
 		{
 			tree_widget.setValue( tree );
@@ -370,18 +374,18 @@ var SceneStorageModule = {
 			{
 				tree_widget.tree.setSelectedItem( scene.extra.folder , true );
 				scene_folder = scene.extra.folder;
+				folder_widget.setValue(scene_folder);
 			}
 		}
 
 		function inner_selected(item)
 		{
 			scene_folder = item.fullpath;
+			folder_widget.setValue(scene_folder);
 		}
 
 		function inner_button(button)
 		{
-			var scene = LS.GlobalScene;
-
 			if(!scene_name)
 			{
 				LiteGUI.alert("Scene must have a name");
@@ -394,7 +398,36 @@ var SceneStorageModule = {
 				return;
 			}
 
+			//check folder exist
+			DriveModule.checkFolderExist( scene_folder, inner_check_folder );
+		}
+
+		function inner_check_folder(v)
+		{
+			if(v)
+			{
+				inner_save();
+				return;
+			}
+
+			LiteGUI.confirm("Folder does not exist, do you want to create it?", function(v){
+				if(!v)
+					return;
+
+				LoginModule.session.createFolder( scene_folder, function(v){
+					if(v)
+						inner_save();
+					else
+						LiteGUI.alert("Couldnt create the folder");
+				});
+			});
+		}
+
+		function inner_save()
+		{
 			//remove extension
+			var scene = LS.GlobalScene;
+
 			var pos = scene_name.indexOf(".");
 			if(pos != -1) //strip extensions
 				scene_name = scene_name.substr(0, pos);

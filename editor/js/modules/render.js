@@ -29,6 +29,8 @@ var RenderModule = {
 	show_stencil_mask: -1,
 	view_from_scene_cameras: false,
 
+	//_render_callback: null, //used by some modules to overwrite the rendering momentary
+
 	init: function()
 	{
 		this.render_settings = new LS.RenderSettings();
@@ -262,7 +264,7 @@ var RenderModule = {
 	},
 
 	//called by the CanvasManager on requestAnimationFrame
-	render: function(context, force_render)
+	render: function( context, force_render )
 	{
 		if(context === true) //allows to pass the second parameter as first
 		{
@@ -283,6 +285,12 @@ var RenderModule = {
 
 		this.frame_updated = true;
 		this.canvas_manager.frame_rendered = true;
+
+		if( this._overwrite_render_callback )
+		{
+			if( this._overwrite_render_callback( this.selected_camera ) === true )
+				return;
+		}
 
 		var global_render_settings = this.render_settings;
 		var scene_render_settings = LS.GlobalScene.info ? LS.GlobalScene.info.render_settings : global_render_settings;

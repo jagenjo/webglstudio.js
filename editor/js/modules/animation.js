@@ -250,7 +250,7 @@ var AnimationModule = {
 		for(var i = 0; i < take.tracks.length; ++i)
 		{
 			var track = take.tracks[i];
-			if(track.type != "position" || !track.enabled)
+			if( (track.type != "position" && track.type != "vec3") || !track.enabled)
 				continue;
 
 			var num = track.getNumberOfKeyframes();

@@ -6273,6 +6273,7 @@ Texture.prototype.toCanvas = function( canvas, flip_y, max_size )
 /**
 * returns the texture file in binary format 
 * @method toBinary
+* @param {Boolean} flip_y
 * @return {ArrayBuffer} the arraybuffer of the file containing the image
 */
 Texture.binary_extension = "png";

@@ -78,7 +78,9 @@ float z8 = texture2D(u_texture, uv + vec2(u_size.z, u_size.w) ).x;\n\
 vec3 normal = vec3( z2 + 2.0*z4 + z7 - z0 - 2.0*z3 - z5, z5 + 2.0*z6 + z7 -z0 - 2.0*z1 - z2, 1.0 );\n\
 color.xyz = normalize(normal) * 0.5 + vec3(0.5);\n",
 		reverse_normalmap: "color.xyz = vec3( 1.0 - color.x, 1.0 - color.y, color.z );",
-		constrast: "float contrast = 2.0;\ncolor.xyz = (color.xyz - vec3(0.5)) * contrast + vec3(0.5);"
+		constrast: "float contrast = 2.0;\ncolor.xyz = (color.xyz - vec3(0.5)) * contrast + vec3(0.5);",
+		flip_x: "color = texture2D(u_texture, vec2( 1.0 - uv.x, uv.y) );",
+		flip_y: "color = texture2D(u_texture, vec2( uv.x, 1.0 - uv.y) );"
 	},
 
 	showApplyShaderDialog: function( texture )

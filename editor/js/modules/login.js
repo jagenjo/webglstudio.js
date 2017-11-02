@@ -24,18 +24,31 @@ var LoginModule = {
 		document.querySelector("#mainmenubar").appendChild( loginarea );
 
 		if(!CORE.server_url)
-			console.warn("No server url found in LoginModule");
+		{
+			console.warn("No server url found in LoginModule from config.json.");
+			inner(null); //shows the reconnect button
+		}
 
-		LFS.setup( CORE.server_url, function(v){
+		LFS.setup( CORE.server_url, inner );
+
+		function inner(v){
 			if(!v)
 			{
 				LiteGUI.alert("Cannot connect with server");
+				loginarea.innerHTML = "not connected <button class='litebutton btn'>reconnect</button>";
+				loginarea.querySelector("button").addEventListener( "click", function(e){ 
+					if(!CORE.server_url)
+						return LiteGUI.alert("config.json not loaded in LoginModule");
+					LFS.setup( CORE.server_url, inner );
+					e.preventDefault();	
+					return true;
+				});
 				return;
 			}
 
 			LoginModule.server_ready = true;
 			LoginModule.checkSession();
-		});
+		}
 	},
 
 	checkSession: function()

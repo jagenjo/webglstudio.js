@@ -2173,11 +2173,12 @@ Timeline.prototype.getMouseItem = function( e )
 	return null;
 }
 
+/* trajectories are rendered from the AnimationModule
 Timeline.prototype.renderEditor = function()
 {
-	//used to render trajectories
-	//?? but it does! where is the code then?
+	
 }
+*/
 
 Timeline.prototype.selectKeyframe = function( track_index, keyframe_index )
 {

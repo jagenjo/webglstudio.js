@@ -52,7 +52,7 @@
 		"js/modules/login.js",
 		"js/modules/componentEditors.js",
 		"js/modules/materialEditors.js",
-		"js/modules/cubemapGenerator.js",
+		"js/modules/cubemapTools.js",
 		"js/modules/lfsbridge.js",
 		"js/modules/localFilesBridge.js",
 		"js/modules/importer.js",

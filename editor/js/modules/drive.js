@@ -1644,6 +1644,14 @@ var DriveModule = {
 		return missing;
 	},
 
+	checkFolderExist: function( folder_name, on_complete )
+	{
+		LoginModule.session.checkFolderExist(folder_name, function(v){
+			if(on_complete)
+				on_complete(v);
+		});
+	},
+
 	//Shows a warning dialog if you have resources in memory that are not stored in the server
 	checkResourcesSaved: function( only_in_scene, on_complete )
 	{
@@ -2777,6 +2785,19 @@ DriveModule.registerAssignResourceCallback("Prefab", function( fullpath, restype
 			node.transform.position = position;
 		EditorModule.inspect( node );
 		SelectionModule.setSelection( node );
+	});
+});
+
+DriveModule.registerAssignResourceCallback("Animation", function( fullpath, restype, options ) {
+
+	//prefab
+	DriveModule.loadResource( fullpath, function(resource) { 
+		if(resource.constructor !== LS.Animation)
+			return console.error("This resource is not an Animation");
+		var filename = resource.fullpath || resource.filename;
+		var node = SelectionModule.getSelectedNode() || LS.GlobalScene.root;
+		node.addComponent( new LS.Components.PlayAnimation({ animation: filename }) );
+		EditorModule.inspect( node );
 	});
 });
 

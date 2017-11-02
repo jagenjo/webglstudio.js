@@ -1,5 +1,5 @@
 /* This module allows to create Cubemaps and store them as resources */
-var CubemapGenerator = {
+var CubemapTools = {
 	default_resolution: 256,
 
 	current_cubemap: null,
@@ -7,7 +7,7 @@ var CubemapGenerator = {
 
 	init: function()
 	{
-		LiteGUI.menubar.add("Actions/Cubemap generator", { callback: function() { CubemapGenerator.showDialog(); }});
+		LiteGUI.menubar.add("Actions/Cubemap tools", { callback: function() { CubemapTools.showDialog(); }});
 
 		this.loadShaders();
 	},
@@ -22,23 +22,23 @@ var CubemapGenerator = {
 			return;
 		}
 
-		//RenderModule.canvas_manager.addWidget( CubemapGenerator );
+		//RenderModule.canvas_manager.addWidget( CubemapTools );
 
-		var dialog = new LiteGUI.Dialog( "dialog_cubemap", { title:"Cubemap generator", parent:"#visor", close: true, minimize: true, width: 300, min_height: 160, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog( { id: "dialog_cubemap", title:"Cubemap generator", parent:"#visor", close: true, minimize: true, width: 360, min_height: 160, scroll: false, draggable: true});
 		dialog.show('fade');
 		dialog.setPosition(100,100);
 		dialog.on_close = function(){ 
-
-			CubemapGenerator.dialog = null;
-			//RenderModule.canvas_manager.removeWidget( CubemapGenerator );
+			CubemapTools.dialog = null;
+			CubemapTools.preview_in_viewport = false;
+			RenderModule._overwrite_render_callback = null;
 		}
 		this.dialog = dialog;
 
 		LiteGUI.createDropArea( dialog.content, enableDragDropCubemapImages );
 
 		var name = "cubemap_" + (Math.random() * 1000).toFixed(0);
-		var resolution = CubemapGenerator.default_resolution;
-		var loaded_resolution = CubemapGenerator.default_resolution;
+		var resolution = CubemapTools.default_resolution;
+		var loaded_resolution = CubemapTools.default_resolution;
 		var center = "camera eye";
 		var result = "cubemap";
 		var cubemap_modes = { "Cross Left": "CUBECROSSL", "Vertical": "CUBEVERT" };
@@ -49,7 +49,7 @@ var CubemapGenerator = {
 		var original_file = null;
 		var cubemap_options = { keep_image: true, is_cross: 1 };
 
-		var widgets = new LiteGUI.Inspector("cubemapgen_widgets",{ name_width: 100 });
+		var widgets = new LiteGUI.Inspector( { id: "cubemapgen_widgets", name_width: 100 });
 		dialog.content.appendChild( widgets.root );
 		widgets.on_refresh = refresh;
 
@@ -60,24 +60,18 @@ var CubemapGenerator = {
 			widgets.clear();
 
 			//widgets.addTitle("Current Cubemap");
-			widgets.addString("Name", CubemapGenerator.current_cubemap ? CubemapGenerator.current_cubemap.filename : "Not selected", { disabled: true });
+			widgets.addString("Name", CubemapTools.current_cubemap ? CubemapTools.current_cubemap.filename : "Not selected", { disabled: true });
 
-			if( CubemapGenerator.current_cubemap )
+			if( CubemapTools.current_cubemap )
 			{
 				widgets.widgets_per_row = 1;
-				widgets.addCombo("Resolution", CubemapGenerator.current_cubemap.width, { values: [1,2,4,8,16,32,64,128,256,512,1024,2048], callback: function(v) { 
+				widgets.addCombo("Resolution", CubemapTools.current_cubemap.width, { values: [1,2,4,8,16,32,64,128,256,512,1024,2048], callback: function(v) { 
 					loaded_resolution = v;
 				}});
-				/*
-				widgets.addCheckbox("Preview", CubemapGenerator.preview_in_viewport, { callback: function(v) { 
-					CubemapGenerator.preview_in_viewport = v; 
-					RenderModule.requestFrame();
-				}});
-				*/
 				widgets.widgets_per_row = 1;
 
-				widgets.addButtons("Actions", ["Blur","Resize","Clone"], { callback: function(v) { 
-					var cubemap = CubemapGenerator.current_cubemap;
+				widgets.addButtons("Actions", ["Blur","Resize","Clone","Irradiance"], { callback: function(v) { 
+					var cubemap = CubemapTools.current_cubemap;
 					if(!cubemap)
 						return;
 
@@ -95,22 +89,37 @@ var CubemapGenerator = {
 						copy_cubemap.filename = cubemap.filename;
 						copy_cubemap.fullpath = cubemap.fullpath;
 						copy_cubemap.remotepath = cubemap.remotepath;
-						CubemapGenerator.current_cubemap = copy_cubemap;
+						CubemapTools.current_cubemap = copy_cubemap;
 						LS.RM.registerResource( copy_cubemap.fullpath || copy_cubemap.filename, copy_cubemap );
 					}
 					else if(v == "Clone")
 					{
 						var copy_cubemap = cubemap.clone();
 						copy_cubemap.filename = "copy_" + LS.RM.getFilename( cubemap.filename );
-						CubemapGenerator.current_cubemap = copy_cubemap;
+						CubemapTools.current_cubemap = copy_cubemap;
 						LS.RM.registerResource( copy_cubemap.filename, copy_cubemap );
+						widgets.refresh();
+					}
+					else if(v == "Irradiance")
+					{
+						var fullpath = cubemap.fullpath || cubemap.filename;
+						var extension = LS.RM.getExtension( fullpath );
+						var basename = LS.RM.getBasename( fullpath );
+						var folder = LS.RM.getFolder( fullpath );
+
+						cubemap = CubemapTools.generateIrradianceFromCubemap( cubemap );
+						cubemap.filename = "IR_" + basename + "." + extension;
+
+						//cubemap.fullpath = folder + "/" + fullpath;
+						CubemapTools.current_cubemap = cubemap;
+						LS.RM.registerResource( cubemap.filename, cubemap );
 						widgets.refresh();
 					}
 					LS.GlobalScene.refresh();
 				}});
 
 				widgets.addButton("Helper", "Set as Environment", { callback: function(v) {
-					var cubemap = CubemapGenerator.current_cubemap;
+					var cubemap = CubemapTools.current_cubemap;
 					if(!cubemap)
 						return;
 					if(!LS.GlobalScene.info)
@@ -121,6 +130,16 @@ var CubemapGenerator = {
 					LS.GlobalScene.refresh();
 					EditorModule.refreshAttributes();
 				}});
+
+				widgets.addCheckbox("Preview in viewport", CubemapTools.preview_in_viewport, function(v){
+					CubemapTools.preview_in_viewport = v;
+					RenderModule._overwrite_render_callback = v ? CubemapTools.render.bind(CubemapTools) : null;
+				});
+			}
+			else
+			{
+				CubemapTools.preview_in_viewport = false;
+				RenderModule._overwrite_render_callback = null;
 			}
 
 			widgets.addSection("Generate from Scene");
@@ -129,11 +148,11 @@ var CubemapGenerator = {
 				name = v;
 			}});
 
-			widgets.addCombo("Resolution", CubemapGenerator.default_resolution, { values: [32,64,128,256,512,1024], callback: function(v) { 
+			widgets.addCombo("Resolution", CubemapTools.default_resolution, { values: [32,64,128,256,512,1024], callback: function(v) { 
 				resolution = v;
 			}});
 
-			widgets.addCombo("Center", center , { values: ["camera eye","camera target","node"], callback: function(v) { 
+			widgets.addCombo("Center", center , { values: ["camera eye","camera target","node","mesh"], callback: function(v) { 
 				center = v;
 			}});
 
@@ -147,7 +166,7 @@ var CubemapGenerator = {
 
 			widgets.addButton("Preview", "Open Window", { callback: function(v) { 
 				var position = computePosition();
-				var image = CubemapGenerator.generateCubemapFromScene( position, { layers: layers, size: resolution, mode: mode } );
+				var image = CubemapTools.generateCubemapFromScene( position, { layers: layers, size: resolution, mode: mode } );
 				if(!image)
 					return;
 				var new_window = window.open("","Visualizer","width="+(image.width + 20)+", height="+(image.height));
@@ -170,7 +189,7 @@ var CubemapGenerator = {
 
 			widgets.addButton(null, "Create cubemap", { callback: function() {
 				var position = computePosition();
-				var image = CubemapGenerator.generateCubemapFromScene( position, { layers: layers, size: resolution, mode: mode } );
+				var image = CubemapTools.generateCubemapFromScene( position, { layers: layers, size: resolution, mode: mode } );
 				if(!image)
 					return;
 				/*
@@ -185,7 +204,7 @@ var CubemapGenerator = {
 				texture.image = image;
 				LS.ResourcesManager.registerResource( name + "_" + mode + ".png", texture );
 				LiteGUI.alert("Cubemap created with name: " + name + ".png");
-				CubemapGenerator.current_cubemap = texture;
+				CubemapTools.current_cubemap = texture;
 				widgets.refresh();
 			}});
 
@@ -210,6 +229,7 @@ var CubemapGenerator = {
 			}});
 			widgets.addTexture("From Memory/Server","", { skip_load: true, callback: function(name){ 
 				url = name; original_file = null;
+				loadCubemap();
 			}});
 
 			info_widget = widgets.addInfo(null, "" );
@@ -221,9 +241,10 @@ var CubemapGenerator = {
 			widgets.addString("Ouput name", name, { callback: function(v) { 
 				dialog.cubemap_name = v;
 			}});
-			widgets.addCombo("Output size", CubemapGenerator.default_resolution, { values: [0,32,64,128,256,512,1024], callback: function(v) { 
+			widgets.addCombo("Output size", CubemapTools.default_resolution, { values: [0,32,64,128,256,512,1024], callback: function(v) { 
 				dialog.cubemap_resolution = v;
 			}});
+
 		}//refresh
 
 		widgets.refresh();
@@ -231,7 +252,10 @@ var CubemapGenerator = {
 		function loadCubemap()
 		{
 			if(!name)
+			{
+				LiteGUI.alert("No Cubemap name specified");
 				return;
+			}
 
 			//is a texture in memory
 			var res = LS.ResourcesManager.getResource( url );
@@ -239,7 +263,7 @@ var CubemapGenerator = {
 			{
 				if( res.texture_type == gl.TEXTURE_CUBE_MAP )
 				{
-					CubemapGenerator.current_cubemap = res;
+					CubemapTools.current_cubemap = res;
 					widgets.refresh();
 					return;
 				}
@@ -256,7 +280,7 @@ var CubemapGenerator = {
 				if(!tex)
 					return LiteGUI.alert("Error creating the cubemap, check the size. Only 1x6 (vertical) or 6x3 (cross) formats supported.");
 				processResult( tex );
-				CubemapGenerator.current_cubemap = tex;
+				CubemapTools.current_cubemap = tex;
 				widgets.refresh();
 			});
 		}
@@ -294,6 +318,11 @@ var CubemapGenerator = {
 				position = camera.getCenter();
 			else if(center == "node" && node && node.transform )
 				position = node.transform.getGlobalPosition();
+			else if(center == "mesh" && node && node._instances && node._instances.length )
+			{
+				var ri = node._instances[0];
+				position = BBox.getCenter( ri.aabb );
+			}
 			return position;
 		}
 
@@ -349,6 +378,9 @@ var CubemapGenerator = {
 		render_settings.layers = options.layers !== undefined ? options.layers : 0xFF;
 		var bg_color = LS.GlobalScene.root.camera ? LS.GlobalScene.root.camera.background_color : [0,0,0,1];
 
+		var near = RenderModule.selected_camera.near;
+		var far = RenderModule.selected_camera.far;
+
 		gl.viewport( 0, 0, size, size );
 
 		for(var i = 0; i < 6; ++i)
@@ -357,7 +389,7 @@ var CubemapGenerator = {
 			gl.clearColor( bg_color[0], bg_color[1], bg_color[2], bg_color[3]);
 			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 			var face = cams[i];
-			var cam_info = { layers: 0xFF, eye: position, center: [ position[0] + face.dir[0], position[1] + face.dir[1], position[2] + face.dir[2]], up: face.up, fov: 90, aspect: 1.0, near: 0.01, far: 1000 };
+			var cam_info = { layers: 0xFF, eye: position, center: [ position[0] + face.dir[0], position[1] + face.dir[1], position[2] + face.dir[2]], up: face.up, fov: 90, aspect: 1.0, near: near, far: far };
 			var camera = new LS.Camera( cam_info );
 			//LS.Renderer.renderFrame( camera, render_settings );
 
@@ -378,6 +410,35 @@ var CubemapGenerator = {
 
 		render_settings.skip_viewport = false;
 		return canvas;
+	},
+
+	generateIrradianceFromCubemap: function( cubemap )
+	{
+		//downscale
+		var copy_cubemap = new GL.Texture( 32, 32, cubemap.getProperties() );
+		cubemap.copyTo( copy_cubemap );
+		cubemap = copy_cubemap;
+		
+		//blur
+		for(var i = 0; i < 8; ++i)
+		{
+			cubemap._tmp = cubemap.applyBlur( i,i,1, null, cubemap._tmp );
+			cubemap._tmp.copyTo( cubemap );
+		}
+
+		//downscale again
+		var copy_cubemap = new GL.Texture( 4, 4, cubemap.getProperties() );
+		cubemap.copyTo( copy_cubemap );
+		cubemap = copy_cubemap;
+
+		//blur again
+		for(var i = 0; i < 3; ++i)
+		{
+			cubemap._tmp = cubemap.applyBlur( i,i,1, null, cubemap._tmp );
+			cubemap._tmp.copyTo( cubemap );
+		}
+
+		return cubemap;
 	},
 
 	convertCubemapToPolar: function(cubemap_texture, size, target_texture)
@@ -578,24 +639,39 @@ var CubemapGenerator = {
 		',"cubemap_to_polar");
 	},
 
-	render: function()
+	render: function( camera )
 	{
 		//disabled
 
 		if(!this.dialog || !this.current_cubemap || !this.preview_in_viewport)
-			return;
+			return false;
 
 		if(!RenderModule.frame_updated || this.inplayer )
-			return;
+			return false;
 
-		var ctx = gl;
-		ctx.start2D();
-		ctx.fillStyle = "red";
-		ctx.fillRect(100,100,200,200);
-		ctx.finish2D();
+		var scene = this._preview_scene;
+		if(!this._preview_scene)
+		{
+			scene = this._preview_scene = new LS.SceneTree();
+			scene.root.addComponent( new LS.Components.Skybox() );
+			scene.info.ambient_color = [1,1,1];
+			scene._sphere = new LS.SceneNode();
+			scene._sphere.addComponent( new LS.Components.GeometricPrimitive({ geometry: LS.Components.GeometricPrimitive.SPHERE, subdivisions: 20 }) );
+			scene.root.addChild( scene._sphere );
+		}
+		scene.root.camera.configure( camera.serialize() );
+		LS.RM.textures[ ":cubemap" ] = this.current_cubemap;
+		scene.info.textures.environment = ":cubemap";
+		scene.info.textures.irradiance = ":cubemap";
+
+		scene._sphere.transform.position = camera.getCenter();
+
+		LS.Renderer.render( scene );
+
+		return true;
 	}
 }
 
-CORE.registerModule( CubemapGenerator );
+CORE.registerModule( CubemapTools );
 
 

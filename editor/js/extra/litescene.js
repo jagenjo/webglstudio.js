@@ -696,7 +696,7 @@ LScript.expandCode = function(code)
 		var first_word = line.substr(0,pos);
 
 		//all this horrendous code to parse "public var name : type = value;" and all the possible combinations
-		if( first_word == "public" || first_word == "private" )
+		if( first_word == "public" || first_word == "private" || first_word == "hidden" )
 		{
 			var index = line.indexOf("//");
 			if(index != -1)
@@ -748,19 +748,25 @@ LScript.expandCode = function(code)
 				{
 					type_options.component_class = type;
 					type_options.type = LS.TYPES.COMPONENT;
+					if(!value)
+						value = "null";
 				}
 				else if( LS.ResourceClasses[ type ] ) //for resources
 				{
 					type_options.resource_classname = type;
 					type_options.type = LS.TYPES.RESOURCE;
+					if(!value)
+						value = "null";
 				}
 				else if( type == "int" || type == "integer")
 				{
 					type_options.step = 1;
 					type_options.type = LS.TYPES.NUMBER;
+					if(!value)
+						value = 0;
 				}
 			}
-			if( keywords[0] == "private" )
+			if( keywords[0] == "private" || keywords[0] == "hidden" )
 				type_options.widget = "null";
 			lines[i] = "this.createProperty('" + varname + "'," + value + ", "+JSON.stringify( type_options )+" );";
 			update = true;
@@ -811,6 +817,10 @@ if( !Uint8Array.prototype.toJSON )
 	var typed_arrays = [ Uint8Array, Int8Array, Uint16Array, Int16Array, Uint32Array, Int32Array, Float32Array, Float64Array ];
 	typed_arrays.forEach( function(v) { v.prototype.toJSON = function(){ return Array.prototype.slice.call(this); } } );
 }
+
+if( typeof(GL) === "undefined" )
+	console.error("LiteScene requires to include LiteGL first. More info: https://github.com/jagenjo/litegl.js");
+
 
 /**
 * LS is the global scope for the global functions and containers of LiteScene
@@ -1235,12 +1245,13 @@ var LS = {
 				o = {};
 		}
 
+		//copy every property of this object
 		for(var i in object)
 		{
 			if(i[0] == "@" || i[0] == "_" || i.substr(0,6) == "jQuery") //skip vars with _ (they are private) or '@' (they are definitions)
 				continue;
 
-			if(only_existing && target[i] === undefined)
+			if(only_existing && !target.hasOwnProperty(i) && !target.__proto__.hasOwnProperty(i) ) //target[i] === undefined)
 				continue;
 
 			//if(o.constructor === Array) //not necessary
@@ -1879,6 +1890,11 @@ if(global.GL)
 {
 	LS.registerResourceClass( GL.Mesh );
 	LS.registerResourceClass( GL.Texture );
+
+	LS.Mesh = GL.Mesh;
+	LS.Texture = GL.Texture;
+	LS.Buffer = GL.Buffer;
+	//LS.Shader = GL.Shader; //this could be confussing since there is also ShaderBlocks etc in LiteScene
 }
 
 
@@ -11578,7 +11594,10 @@ Resource.getDataToStore = function( resource, allow_blob )
 	}
 	else if(resource.toBinary) //a function to compute the ArrayBuffer format
 	{
-		data = resource.toBinary();
+		if( resource.constructor === GL.Texture ) //HACK: textures require that extra parameter...
+			data = resource.toBinary(true);
+		else
+			data = resource.toBinary();
 		encoding = "binary";
 		if(resource.constructor.binary_extension) //special case, textures are in PNG to keep alpha
 			extension = resource.constructor.binary_extension;
@@ -11884,6 +11903,9 @@ Animation.fromBinary = function( data )
 		data = WBin.load(data, true);
 
 	var o = data["@json"];
+	if(!o) //sometimes the data already comes extractedin the object itself
+		o = data;
+
 	for(var i in o.takes)
 	{
 		var take = o.takes[i];
@@ -13140,7 +13162,7 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 
 		if(this.type == "quat")
 		{
-			quat.slerp( result, a[1], b[1], t ); //force quats without bezier interpolation
+			quat.slerp( result, b[1], a[1], t ); //force quats without bezier interpolation
 			quat.normalize( result, result );
 		}
 		else if(this.type == "trans10")
@@ -42094,30 +42116,59 @@ SceneNode.prototype.load = function( url, on_complete )
 	LS.ResourcesManager.load( url, inner );
 	function inner( resource )
 	{
-		if( resource.constructor === LS.SceneNode )
-			that.addChild( resource );
-		else if( resource.constructor === LS.SceneTree )
-		{
-			//warn: here we are missing all the global and external scripts of the scene
-			that.addChild( resource.root.clone() );
-		}
-		else if( resource.constructor === LS.Prefab )
-			that.prefab = resource.fullpath || resource.filename;
-		else if( resource.constructor === GL.Mesh )
-			that.setMesh( resource.fullpath || resource.filename );
-		else if( resource.constructor === GL.Texture )
-		{
-			console.error("feature not supported loading a texture as a node",resource);
-			//create a sprite and assign?
-		}
-		else if( resource.constructor === Object )
-		{
-			console.error("feature not supported loading an object as a node",resource);
-			//check info about the node?
-		}
-
+		if(!resource)
+			return;
+		that.assign( resource );
 		if(on_complete)
 			on_complete();
+	}
+}
+
+/**
+* Assign a resource inteligently to a node: if it is a mesh it creates a MeshRenderer, if it is a Material it assigns it, if it is an animation creates a PlayAnimation, if it is a prefab assigns the prefab. etc
+* @method assign
+* @param {*} resource the resource to assign (it also accepts a resource filename that has been previously loaded).
+* @param {Function} on_complete
+**/
+SceneNode.prototype.assign = function( item )
+{
+	if(!item)
+	{
+		console.error("assignResource cannot have null as resource");
+		return;
+	}
+
+	//assume is the filename of a resource
+	if(item.constructor === String)
+		item = LS.ResourcesManager.getResource( item );
+
+	if(!item)
+		return;
+
+	switch( item.constructor )
+	{
+		case LS.SceneNode: this.addChild( item ); break;
+		case LS.SceneTree: 	this.addChild( item.root.clone() ); break; //warn: here we are missing all the global and external scripts of the scene
+		case LS.Prefab: this.prefab = item.fullpath || item.filename; break;
+		case GL.Mesh: this.setMesh( item.fullpath || item.filename ); break;
+		case LS.Animation: 
+			var comp = this.getComponent( LS.Components.PlayAnimation );
+			if(!comp)
+				comp = this.addComponent( new LS.Components.PlayAnimation() );
+			comp.animation = item.fullpath || item.filename;
+			break;
+		case LS.Resource: //generic resource
+			var ext = LS.ResourcesManager.getExtension( item.filename );
+			if(ext == "js") //scripts
+			{
+				var comp = this.getComponent( LS.Components.ScriptFromFile );
+				if(!comp)
+					comp = this.addComponent( new LS.Components.ScriptFromFile() );
+				comp.src = item.fullpath || item.filename;
+			}
+			break;
+		default:
+			console.error("feature not supported loading this type of resource" , item );
 	}
 }
 
@@ -42382,10 +42433,10 @@ SceneNode.prototype.configure = function(info)
 			this.flags[i] = info.flags[i];
 	
 	//add animation tracks player
-	if(info.animations)
+	if(info.animation)
 	{
-		this.animations = info.animations;
-		this.addComponent( new LS.Components.PlayAnimation({animation:this.animations}) );
+		this.animation = info.animation;
+		this.addComponent( new LS.Components.PlayAnimation({ animation: this.animation }) );
 	}
 
 	//extra user info
@@ -42462,7 +42513,7 @@ SceneNode.prototype.addMeshComponents = function( mesh_id, extra_info )
 	//skinning
 	if(mesh && mesh.bones)
 	{
-		compo = new LS.Components.SkinDeformer({search_bones_in_parent:false}); //search_bones_in_parent is false because usually DAEs come that way
+		compo = new LS.Components.SkinDeformer({ search_bones_in_parent: false }); //search_bones_in_parent is false because usually DAEs come that way
 		this.addComponent( compo );
 	}
 
@@ -43171,8 +43222,9 @@ var parserBVH = {
 			var track = tracks[i];
 			track.duration = duration;
 		}
-		var animation = { name: "#animation", object_class: "Animation", takes: { "default": { name: "default", duration: duration, tracks: tracks } } };
-		root.animations = animation.name;
+		var basename = LS.ResourcesManager.getBasename( filename );
+		var animation = { name: basename + "_animation.wbin", object_class: "Animation", takes: { "default": { name: "default", duration: duration, tracks: tracks } } };
+		root.animation = animation.name;
 		scene.resources[ animation["name"] ] = animation;
 
 		console.log(scene);
@@ -43599,7 +43651,7 @@ global.Collada = {
 		{
 			var animations_name = "animations_" + filename.substr(0,filename.indexOf("."));
 			scene.resources[ animations_name ] = animations;
-			scene.root.animations = animations_name;
+			scene.root.animation = animations_name;
 		}
 
 		//read external files (images)
@@ -46419,6 +46471,21 @@ var parserDAE = {
 				delete node.type; //to be sure it doesnt overlaps with some existing var
 			}
 
+			//rename materials
+			if(node.material)
+			{
+				var new_name = node.material.replace(/[^a-z0-9\.\-]/gi,"_") + ".json";
+				renamed[ node.material ] = new_name
+				node.material = new_name;
+			}
+			if(node.materials)
+				for(var i in node.materials)
+				{
+					var new_name = node.materials[i].replace(/[^a-z0-9\.\-]/gi,"_") + ".json";
+					renamed[ node.material ] = new_name
+					node.materials[i] = new_name;
+				}
+
 			//change mesh names to engine friendly ids
 			if(node.meshes)
 			{
@@ -46450,19 +46517,48 @@ var parserDAE = {
 			}
 		}
 
+		//replace animation name
+		if(	scene.root.animation )
+			scene.root.animation = this.renameResource( scene.root.animation, scene.root.animation + ".wbin", scene.resources );
+
 		//Materials need some renames
+		var renamed_materials = {};
 		for(var i in scene.materials)
-			this.processMaterial( scene.materials[i] );
+		{
+			var mat = scene.materials[i];
+			this.processMaterial( mat );
+			renamed_materials[ mat.id ] = mat;
+			//this.renameResource( i, mat.id, scene.resources ); //materials are not stored in the resources container
+		}
+		scene.materials = renamed_materials;
 
 		//check resources
 		for(var i in scene.resources)
 		{
 			var res = scene.resources[i];
+			var ext = LS.ResourcesManager.getBasename( i );
+			if(!ext)
+				console.warn("DAE contains resources without extension: " + i, res.constructor );
 			if(res.object_class == "Animation")
 				this.processAnimation( res, renamed );
 		}
 
 		return scene;
+	},
+
+	renameResource: function( old_name, new_name, resources )
+	{
+		var res = resources[ old_name ];
+		if(!res)
+		{
+			if(!resources[ new_name ])
+				console.warn("Resource not found: " + old_name );
+			return new_name;
+		}
+		delete resources[ old_name ];
+		resources[ new_name ] = res;
+		res.filename = new_name;
+		return new_name;
 	},
 
 	processMesh: function( mesh, renamed )
@@ -46627,6 +46723,8 @@ var parserDAE = {
 	processMaterial: function(material)
 	{
 		material.object_class = "StandardMaterial";
+		if(material.id)
+			material.id = material.id.replace(/[^a-z0-9\.\-]/gi,"_") + ".json";
 
 		if( material.transparency !== undefined )
 		{

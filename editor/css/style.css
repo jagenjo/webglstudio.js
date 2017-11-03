@@ -467,6 +467,10 @@ textarea.code {
 }
 
 /* inspector */
+.inspector {
+	
+}
+
 .inspector .icon img {
 	margin-top: 2px;
 }
@@ -500,6 +504,7 @@ textarea.code {
 	color: #444;
 	text-shadow: 0 0 0 transparent;
 	line-height: 10px;
+	vertical-align: top !important;
 }
 
 .inspector_widget .header button:hover {

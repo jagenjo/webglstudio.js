@@ -13837,7 +13837,7 @@ Pack.createPack = function( filename, resource_names, extra_data, mark_them )
 
 	//create the WBIN in case this pack gets stored
 	this.metadata = extra_data;
-	var bindata = LS.Pack.packResources( resource_names, this.getBaseData() );
+	var bindata = LS.Pack.packResources( resource_names, pack.getBaseData() );
 	pack._original_data = bindata;
 
 	return pack;

@@ -1734,7 +1734,7 @@ function ContextMenu( values, options )
 		}
 	}
 
-	if(options.event && options.event.constructor !== MouseEvent && options.event.constructor !== CustomEvent)
+	if( options.event && options.event.constructor.name !== "MouseEvent" && options.event.constructor.name !== "CustomEvent" )
 	{
 		console.error("Event passed to ContextMenu is not of type MouseEvent or CustomEvent. Ignoring it.");
 		options.event = null;
@@ -1811,7 +1811,7 @@ function ContextMenu( values, options )
 	var top = options.top || 0;
 	if(options.event)
 	{
-		if( options.event.constructor !== MouseEvent && options.event.constructor !== CustomEvent )
+		if( options.event.constructor.name !== "MouseEvent" && options.event.constructor.name !== "CustomEvent" )
 		{
 			console.warn("Event passed to ContextMenu is not of type MouseEvent");
 			options.event = null;
@@ -4169,6 +4169,11 @@ LiteGUI.Console = Console;
 		this.plus_tab = this.addTab( "plus_tab", { title: "+", tab_width: 20, button: true, callback: callback, skip_callbacks: true });
 	}
 
+	Tabs.prototype.addButtonTab = function( id, title, callback )
+	{
+		return this.addTab( id, { title: title, tab_width: 20, button: true, callback: callback, skip_callbacks: true });
+	}
+
 	//this is tab
 	Tabs.prototype.onTabClicked = function(e)
 	{
@@ -4287,7 +4292,10 @@ LiteGUI.Console = Console;
 	{
 		var tab = this.tabs[id];
 		if(!tab)
+		{
+			console.warn( "tab not found: " + id );
 			return;
+		}
 
 		if(tab.onclose)
 			tab.onclose(tab);

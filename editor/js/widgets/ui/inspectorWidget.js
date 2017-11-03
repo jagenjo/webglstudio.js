@@ -59,6 +59,8 @@ InspectorWidget.prototype.init = function( options )
 		this.bindEvents();
 
 	LiteGUI.createDropArea( this.root, this.onItemDrop.bind(this) );
+
+	this.inspector.root.style.overflowX = "hidden";
 }
 
 InspectorWidget.prototype.onPrevious = function()

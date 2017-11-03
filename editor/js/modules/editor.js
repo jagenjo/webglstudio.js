@@ -271,9 +271,9 @@ var EditorModule = {
 			return;
 		}
 
-		var height = ($("#visor").height() * 0.8)|0;
+		var height = (InterfaceModule.visorarea.root.offsetHeight * 0.8)|0;
 
-		var dialog = new LiteGUI.Dialog( { id: id, title: title, close: true, minimize: true, width: 300, height: height, scroll: true, resizable:true, draggable: true});
+		var dialog = new LiteGUI.Dialog( { id: id, title: title, close: true, minimize: true, width: 300, height: height, detachable:true, scroll: true, resizable:true, draggable: true});
 		dialog.show('fade');
 		dialog.setPosition(50 + (Math.random() * 10)|0,50 + (Math.random() * 10)|0);
 		dialog.on_close = function()
@@ -285,12 +285,12 @@ var EditorModule = {
 		inspector_widget.inspector.on_refresh = function()
 		{
 			inspector_widget.inspect( object );
-			dialog.adjustSize();
+			//dialog.adjustSize();
 		}
 
 		inspector_widget.inspector.refresh();
 		dialog.add( inspector_widget );
-		dialog.adjustSize();
+		//dialog.adjustSize();
 		return dialog;
 	},
 

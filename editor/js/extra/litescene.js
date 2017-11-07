@@ -20054,12 +20054,12 @@ var Renderer = {
 	* @param {RenderSettings} render_settings
 	* @param {Array} instances array of RIs, if not specified the last visible_instances are rendered
 	*/
-	renderInstances: function( render_settings, instances )
+	renderInstances: function( render_settings, instances, scene )
 	{
-		var scene = this._current_scene;
+		scene = scene || this._current_scene;
 		if(!scene)
 		{
-			console.warn("LS.Renderer.renderInstances: no scene found");
+			console.warn("LS.Renderer.renderInstances: no scene found in LS.Renderer._current_scene");
 			return 0;
 		}
 
@@ -20495,6 +20495,15 @@ var Renderer = {
 		instance.render( shader );
 	},
 
+	regenerateShadowmaps: function( scene, render_settings )
+	{
+		scene = scene || this._current_scene;
+		render_settings = render_settings || this.default_render_settings;
+		LEvent.trigger( scene, "renderShadows", render_settings );
+		for(var i = 0; i < this._visible_lights.length; ++i)
+			this._visible_lights[i].prepare( render_settings );
+	},
+
 	mergeSamplers: function( samplers, result )
 	{
 		result = result || [];
@@ -20709,6 +20718,8 @@ var Renderer = {
 	{
 		//options = options || {};
 		//options.scene = scene;
+
+		this._current_scene = scene;
 
 		//update info about scene (collecting it all or reusing the one collected in the frame before)
 		if(!skip_collect_data)
@@ -20930,11 +20941,17 @@ var Renderer = {
 		near = near || 1;
 		far = far || 1000;
 
+		if(render_settings && render_settings.constructor !== LS.RenderSettings)
+			throw("render_settings parameter must be LS.RenderSettings.");
+
 		var eye = position;
 		if( !texture || texture.constructor != GL.Texture)
 			texture = null;
 
 		var scene = this._current_scene;
+		if(!scene)
+			scene = this._current_scene = LS.GlobalScene;
+
 		var camera = this._cubemap_camera;
 		if(!camera)
 			camera = this._cubemap_camera = new LS.Camera();
@@ -20952,7 +20969,7 @@ var Renderer = {
 			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 			camera.configure({ eye: eye, center: [ eye[0] + info.dir[0], eye[1] + info.dir[1], eye[2] + info.dir[2]], up: info.up });
 			LS.Renderer.enableCamera( camera, render_settings, true );
-			LS.Renderer.renderInstances( render_settings, instances );
+			LS.Renderer.renderInstances( render_settings, instances, scene );
 		});
 
 		this._current_target = null;
@@ -24024,14 +24041,27 @@ Transform.prototype.configure = function(o)
 */
 Transform.prototype.serialize = function()
 {
-	return {
+	
+	var o = {
 		object_class: "Transform",
 		uid: this.uid,
 		position: [ this._position[0],this._position[1],this._position[2] ],
 		rotation: [ this._rotation[0],this._rotation[1],this._rotation[2],this._rotation[3] ],
-		scaling: [ this._scaling[0],this._scaling[1],this._scaling[2] ],
-		matrix: toArray( this._local_matrix ) //could be useful
+		scaling: [ this._scaling[0],this._scaling[1],this._scaling[2] ]
 	};
+
+	if( !this.isIdentity() )
+		o.matrix = toArray( this._local_matrix );; //could be useful
+
+	return o;
+}
+
+Transform.prototype.isIdentity = function()
+{
+	for(var i = 0; i < this._local_matrix.length; ++i)
+		if( Math.abs( this._local_matrix[i] - LS.IDENTITY[i] ) > 0.001 )
+			return false;
+	return true;
 }
 
 /**
@@ -36114,9 +36144,9 @@ ReflectionProbe.prototype.afterConfigure = function(o)
 	}
 }
 
-ReflectionProbe.prototype.onRenderReflection = function( e, render_settings )
+ReflectionProbe.prototype.onRenderReflection = function( e )
 {
-	this.updateTextures( render_settings );
+	this.updateTextures();
 }
 
 ReflectionProbe.prototype.updateTextures = function( render_settings, force )
@@ -36180,6 +36210,13 @@ ReflectionProbe.prototype.updateCubemap = function( position, render_settings )
 		position = this._root.transform.getGlobalPosition( this._position );
 
 	texture._in_current_fbo = true; //block binding this texture during rendering of the reflection
+
+	//first render
+	if( !LS.Renderer._visible_instances )
+	{
+		LS.Renderer.processVisibleData( scene, render_settings );
+		LS.Renderer.regenerateShadowmaps( scene, render_settings );
+	}
 
 	LS.Renderer.renderToCubemap( position, 0, texture, render_settings, this.near, this.far, this.background_color );
 
@@ -36249,7 +36286,7 @@ ReflectionProbe.prototype.updateIrradiance = function()
 	//blur again
 	for(var i = 0; i < 4; ++i)
 	{
-		irradiance_cubemap._tmp = downscale_cubemap.applyBlur( i,i,1, null, irradiance_cubemap._tmp );
+		irradiance_cubemap._tmp = irradiance_cubemap.applyBlur( i,i,1, null, irradiance_cubemap._tmp );
 		irradiance_cubemap._tmp.copyTo( irradiance_cubemap );
 	}
 

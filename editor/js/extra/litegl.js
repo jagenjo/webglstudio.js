@@ -5016,10 +5016,11 @@ Texture.prototype.uploadImage = function( image, options )
 * Uploads data to the GPU (data must have the appropiate size)
 * @method uploadData
 * @param {ArrayBuffer} data
-* @param {Object} options [optional] upload options (premultiply_alpha, no_flip)
+* @param {Object} options [optional] upload options (premultiply_alpha, no_flip, cubemap_face)
 */
-Texture.prototype.uploadData = function(data, options )
+Texture.prototype.uploadData = function( data, options, skip_mipmaps )
 {
+	options = options || {};
 	var gl = this.gl;
 	this.bind();
 	Texture.setUploadOptions(options, gl);
@@ -5028,12 +5029,14 @@ Texture.prototype.uploadData = function(data, options )
 		gl.texImage2D(this.texture_type, 0, this.format, this.width, this.height, 0, this.format, this.type, data);
 	else if( this.texture_type == GL.TEXTURE_3D )
 		gl.texImage3D(this.texture_type, 0, this.format, this.width, this.height, this.depth, 0, this.format, this.type, data);
+	else if( this.texture_type == GL.TEXTURE_CUBE_MAP )
+		gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_X + (options.cubemap_face || 0), 0, this.format, this.width, this.height, 0, this.format, this.type, data);
 	else
 		throw("cannot uploadData for this texture type");
 
 	this.data = data; //should I clone it?
 
-	if (this.minFilter && this.minFilter != gl.NEAREST && this.minFilter != gl.LINEAR) {
+	if (!skip_mipmaps && this.minFilter && this.minFilter != gl.NEAREST && this.minFilter != gl.LINEAR) {
 		gl.generateMipmap(texture.texture_type);
 		this.has_mipmaps = true;
 	}
@@ -6190,6 +6193,17 @@ Texture.prototype.getPixels = function( type, force_rgba, cubemap_face )
 	return buffer;
 }
 
+/**
+* uploads some pixels to the texture (see uploadData method for more options)
+* @method setPixels
+* @param {ArrayBuffer} data gl.UNSIGNED_BYTE or gl.FLOAT data
+* @param {Number} cubemap_face if the texture is a cubemap, which face
+* @param {Boolean} skip_mipmaps do not update mipmaps when possible
+*/
+Texture.prototype.setPixels = function( data, cubemap_face, skip_mipmaps )
+{
+	this.uploadData( data, cubemap_face ? { cubemap_face: cubemap_face } : null, skip_mipmaps );
+}
 
 /**
 * Copy texture content to a canvas
@@ -7647,6 +7661,24 @@ Shader.validateValue = function( value, uniform_info )
 
 //**************** SHADERS ***********************************
 
+Shader.DEFAULT_VERTEX_SHADER = "\n\
+			precision highp float;\n\
+			attribute vec3 a_vertex;\n\
+			attribute vec3 a_normal;\n\
+			attribute vec2 a_coord;\n\
+			varying vec3 v_position;\n\
+			varying vec3 v_normal;\n\
+			varying vec2 v_coord;\n\
+			uniform mat4 u_model;\n\
+			uniform mat4 u_mvp;\n\
+			void main() {\n\
+				v_position = (u_model * vec4(a_vertex,1.0)).xyz;\n\
+				v_normal = (u_model * vec4(a_normal,0.0)).xyz;\n\
+				v_coord = a_coord;\n\
+				gl_Position = u_mvp * vec4(a_vertex,1.0);\n\
+			}\n\
+			";
+
 Shader.SCREEN_VERTEX_SHADER = "\n\
 			precision highp float;\n\
 			attribute vec3 a_vertex;\n\
@@ -7975,6 +8007,25 @@ Shader.getCopyDepthShader = function(gl)
 			}\n\
 			");
 	return gl.shaders[":copy_depth"] = shader;
+}
+
+Shader.getCubemapShowShader = function(gl)
+{
+	gl = gl || global.gl;
+	var shader = gl.shaders[":show_cubemap"];
+	if(shader)
+		return shader;
+
+	var shader = new GL.Shader( Shader.DEFAULT_VERTEX_SHADER,"\n\
+			precision highp float;\n\
+			varying vec3 v_normal;\n\
+			uniform samplerCube u_texture;\n\
+			void main() {\n\
+			   gl_FragColor = textureCube( u_texture, v_normal );\n\
+			}\n\
+			");
+	shader.uniforms({u_texture:0});
+	return gl.shaders[":show_cubemap"] = shader;
 }
 
 //shader to copy a cubemap into another 

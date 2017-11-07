@@ -72,6 +72,8 @@ var DriveModule = {
 
 		// Events related to resources being loaded **********************************
 		LEvent.bind( LS.ResourcesManager, "resource_loading", function( e, url ) {
+			if(url.indexOf("_th_") != -1)
+				return;
 			NotifyModule.show("FILE: " + url, { id: "res-msg-" + url.hashCode(), closable: true, time: 0, left: 60, top: 30, parent: "#visor" } );
 		});
 

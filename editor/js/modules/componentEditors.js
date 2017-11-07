@@ -946,3 +946,12 @@ LS.Components.Poser.showPoseNodesDialog = function( component, event )
 
 	return dialog;
 }
+
+LS.Components.ReflectionProbe.onShowProperties = function( component, inspector )
+{
+	inspector.addButton( null, "update", function(){ component.updateTextures(null,true); LS.GlobalScene.requestFrame(); });
+	inspector.widgets_per_row = 2;
+	inspector.addCheckbox( "Visualize probes", LS.Components.ReflectionProbe.render_helpers, function(v){ LS.Components.ReflectionProbe.render_helpers = v; LS.GlobalScene.requestFrame(); });
+	inspector.addNumber( "Size", LS.Components.ReflectionProbe.helper_size, function(v){ LS.Components.ReflectionProbe.helper_size = v; LS.GlobalScene.requestFrame(); });
+	inspector.widgets_per_row = 1;
+}

@@ -655,6 +655,24 @@ LS.Camera.prototype.renderEditor = function( node_selected, component_selected )
 	gl.depthMask( true );
 }
 
+LS.Components.ReflectionProbe.prototype.renderEditor = function()
+{
+	if(!this._texture || !LS.Components.ReflectionProbe.render_helpers || !LS.Components.ReflectionProbe.helper_size )
+		return;
+
+	this.renderProbe();
+}
+
+
+LS.Components.ReflectionProbe.prototype.renderPicking = function()
+{
+	if(!this._texture || !LS.Components.ReflectionProbe.render_helpers || !LS.Components.ReflectionProbe.helper_size )
+		return;
+
+	this.renderProbe( LS.Picking.getNextPickingColor( this._root, [this] ) );
+}
+
+
 //PRELOAD STUFF
 EditorView.grid_img = new Image();
 EditorView.grid_img.src = "imgs/grid.png";

@@ -11,14 +11,15 @@
 var ToolsModule = {
 	name: "tools",
 
-	tool: 'select',
+	tool: "select",
 
 	current_tool: null,
 	background_tools: [],
 	tools: {},
 	buttons: {},
 
-	coordinates_system: 'object',
+	coordinates_system: "object",
+	center_system: "instances", //"node"
 
 	_initialized: false,
 	_active_camera: null, //camera under the mouse
@@ -51,7 +52,7 @@ var ToolsModule = {
 
 	registerButton: function( button )
 	{
-		this.buttons[button.name] = button;
+		this.buttons[ button.name ] = button;
 	},
 
 	// a tool that is always active (used for selection tool)
@@ -74,17 +75,17 @@ var ToolsModule = {
 
 	enableTool: function(name)
 	{
-		if(this.current_tool) {
+		if( this.current_tool ) {
 
 			//avoid to reactivate same tool
-			if(this.current_tool.name == name)
+			if( this.current_tool.name == name )
 			{
 				if( this.current_tool.onClick )
 					this.current_tool.onClick();
 				return;
 			}
 
-			if(this.current_tool.module) 
+			if( this.current_tool.module )
 			{
 				if(!this.current_tool.keep_module)
 					RenderModule.canvas_manager.removeWidget(this.current_tool.module);

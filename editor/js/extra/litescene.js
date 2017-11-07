@@ -1947,6 +1947,8 @@ LS.LEFT = vec3.fromValues(-1,0,0);
 LS.FRONT = vec3.fromValues(0,0,-1);
 LS.BACK = vec3.fromValues(0,0,1);
 LS.IDENTITY = mat4.create();
+LS.WHITE = LS.ONES;
+LS.BLACK = LS.ZEROS;
 
 //types
 LS.TYPES = {
@@ -3857,21 +3859,32 @@ var ResourcesManager = {
 	* Loads all the resources in the Object (it uses an object to store not only the filename but also the type)
 	*
 	* @method loadResources
-	* @param {Object} resources contains all the resources, associated with its type
+	* @param {Object|Array} resources contains all the resources, associated with its type
 	* @param {Object}[options={}] options to apply to the loaded resources
 	* @return {number} the actual amount of resources being loaded (this differs fromt he resources passed because some could be already in memory)
 	*/
-	loadResources: function(res, options )
+	loadResources: function( resources, options )
 	{
-		if(!res)
+		if(!resources)
 			return;
 
-		for(var i in res)
+		if(resources.constructor === Array)
 		{
-			if( !i || i[0] == ":" || i[0] == "_" )
-				continue;
-			this.load( i, options );
+			for( var i = 0; i < resources.length; ++i )
+			{
+				var name = resources[i];
+				if( !name || name[0] == ":" || name[0] == "_" )
+					continue;
+				this.load( name, options );
+			}
 		}
+		else //object
+			for(var i in resources)
+			{
+				if( !i || i[0] == ":" || i[0] == "_" )
+					continue;
+				this.load( i, options );
+			}
 
 		this._total_resources_to_load = this.num_resources_being_loaded;
 		LEvent.trigger( this, "start_loading_resources", this._total_resources_to_load );
@@ -4444,8 +4457,8 @@ var ResourcesManager = {
 			delete LS.ResourcesManager.resources_being_processed[ fullpath ];
 
 		//Load associated resources (some resources like LS.Prefab or LS.SceneTree have other resources associated that must be loaded too)
-		if(resource.getResources)
-			ResourcesManager.loadResources( resource.getResources({}) );
+		if( resource.getResources )
+			LS.ResourcesManager.loadResources( resource.getResources({}) );
 
 		//REGISTER adds to containers *******************************************
 		LS.ResourcesManager.registerResource( fullpath, resource );
@@ -5210,6 +5223,9 @@ LS.ResourcesManager.registerResourcePostProcessor("ShaderCode", function( filena
 	shader_code.applyToMaterials();
 });
 
+
+//load priority
+GL.Mesh.load_priority = -10;
 
 /* Basic shader manager 
 	- Allows to load all shaders from XML
@@ -6385,36 +6401,7 @@ GLSLCode.breakLines = function(lines)
 	return clean_lines;
 }
 
-//SNIPPETS ******************************
 
-LS.ShadersManager.registerSnippet("surface","\n\
-	//used to store surface shading properties\n\
-	struct SurfaceOutput {\n\
-		vec3 Albedo;\n\
-		vec3 Normal; //separated in case there is a normal map\n\
-		vec3 Emission;\n\
-		vec3 Ambient;\n\
-		float Specular;\n\
-		float Gloss;\n\
-		float Alpha;\n\
-		float Reflectivity;\n\
-		vec4 Extra; //for special purposes\n\
-	};\n\
-	\n\
-	SurfaceOutput getSurfaceOutput()\n\
-	{\n\
-		SurfaceOutput o;\n\
-		o.Albedo = u_material_color.xyz;\n\
-		o.Alpha = u_material_color.a;\n\
-		o.Normal = normalize( v_normal );\n\
-		o.Specular = 0.5;\n\
-		o.Gloss = 10.0;\n\
-		o.Ambient = vec3(1.0);\n\
-		o.Emission = vec3(0.0);\n\
-		o.Reflectivity = 0.0;\n\
-		return o;\n\
-	}\n\
-");
 //when working with animations sometimes you want the bones to be referenced by node name and no node uid, because otherwise you cannot reuse
 //the same animation with different characters in the same scene.
 GL.Mesh.prototype.convertBoneNames = function( root_node, use_uids )
@@ -11085,11 +11072,14 @@ Component.prototype.getRootNode = function()
 **/
 Component.prototype.configure = function(o)
 { 
-	if(!o)
+	if( !o )
 		return;
-	if(o.uid) 
+	if( o.uid ) 
 		this.uid = o.uid;
 	LS.cloneObject( o, this, false, true ); 
+
+	if( this.afterConfigure )
+		this.afterConfigure( o );
 }
 
 /**
@@ -11104,6 +11094,10 @@ Component.prototype.serialize = function()
 		o.uid = this.uid;
 	if(!o.object_class)
 		o.object_class = LS.getObjectClassName( this );
+
+	if( this.afterSerialize )
+		this.afterSerialize( o );
+
 	return o;
 }
 
@@ -18636,6 +18630,7 @@ function RenderInstance( node, component )
 	this.uid = LS.generateUId("RINS"); //unique identifier for this RI
 	this.layers = 3; //in layer 1 and 2 by default
 	this.index = -1; //used to know the rendering order
+	this.version = -1; //not used yet
 
 	//info about the mesh
 	this.vertex_buffers = {};
@@ -18643,6 +18638,8 @@ function RenderInstance( node, component )
 	this.wireframe_index_buffer = null;
 	this.range = new Int32Array([0,-1]); //start, offset
 	this.primitive = GL.TRIANGLES;
+
+	this.transform = null; //parented transform: not finished
 
 	this.mesh = null; //shouldnt be used (buffers are added manually), but just in case
 	this.collision_mesh = null; //in case of raycast
@@ -19601,6 +19598,7 @@ var Renderer = {
 
 	//debug
 	allow_textures: true,
+	_sphere_mesh: null,
 
 	//fixed texture slots for global textures
 	SHADOWMAP_TEXTURE_SLOT: 6,
@@ -19625,6 +19623,8 @@ var Renderer = {
 		this._missing_texture = this._gray_texture;
 		var internal_textures = [ this._black_texture, this._gray_texture, this._white_texture, this._normal_texture, this._missing_texture ];
 		internal_textures.forEach(function(t){ t._is_internal = true; });
+
+		this._sphere_mesh = GL.Mesh.sphere({size:1,detail:32});
 
 		LS.ResourcesManager.textures[":black"] = this._black_texture;
 		LS.ResourcesManager.textures[":gray"] = this._gray_texture;
@@ -21673,6 +21673,9 @@ var Draw = {
 
 		this.camera_stack = []; //not used yet
 
+		//temp containers
+		this._temp = vec3.create();
+
 		//Meshes
 		var vertices = [[-1,1,0],[1,1,0],[1,-1,0],[-1,-1,0]];
 		var coords = [[0,1],[1,1],[1,0],[0,0]];
@@ -22228,7 +22231,7 @@ var Draw = {
 		var axis = [0,1,0];
 		var num_segments = segments || 100;
 		var R = quat.create();
-		var temp = vec3.create();
+		var temp = this._temp;
 		var vertices = new Float32Array(num_segments * 3);
 
 		var offset =  2 * Math.PI / num_segments;
@@ -22287,7 +22290,7 @@ var Draw = {
 		var axis = [0,1,0];
 		segments = segments || 100;
 		var R = quat.create();
-		var temp = vec3.create();
+		var temp = this._temp;
 		var vertices = new Float32Array( segments * 2 * 3 * 3); 
 
 		var delta = 1.0 / segments * Math.PI * 2;
@@ -22483,7 +22486,7 @@ var Draw = {
 		var axis = [0,1,0];
 		segments = segments || 100;
 		var R = quat.create();
-		var temp = vec3.create();
+		var temp = this._temp;
 		var vertices = new Float32Array( (segments+2) * 3);
 		vertices.set(in_z ? [0,0,height] : [0,height,0], 0);
 
@@ -22521,7 +22524,7 @@ var Draw = {
 		var axis = [0,1,0];
 		segments = segments || 100;
 		var R = quat.create();
-		var temp = vec3.create();
+		var temp = this._temp;
 		var vertices = new Float32Array( (segments+1) * 3 * 2);
 
 		for(var i = 0; i <= segments; i++)
@@ -22831,11 +22834,19 @@ var Draw = {
 	scale: function(x,y,z)
 	{
 		if(arguments.length == 3)
-			mat4.scale(this.model_matrix,this.model_matrix,[x,y,z]);
+		{
+			var temp = this._temp;
+			temp[0] = x; temp[1] = y; temp[2] = z;
+			mat4.scale(this.model_matrix,this.model_matrix,temp);
+		}
 		else if(x.length)//one argument: x is vec3
 			mat4.scale(this.model_matrix,this.model_matrix,x);
 		else //is number
-			mat4.scale(this.model_matrix,this.model_matrix,[x,x,x]);
+		{
+			var temp = this._temp;
+			temp[0] = temp[1] = temp[2] = x;
+			mat4.scale(this.model_matrix,this.model_matrix,temp);
+		}
 	},
 
 	/**
@@ -22848,7 +22859,11 @@ var Draw = {
 	translate: function(x,y,z)
 	{
 		if(arguments.length == 3)
-			mat4.translate(this.model_matrix,this.model_matrix,[x,y,z]);
+		{
+			var temp = this._temp;
+			temp[0] = x; temp[1] = y; temp[2] = z;
+			mat4.translate(this.model_matrix,this.model_matrix,temp);
+		}
 		else  //one argument: x -> vec3
 			mat4.translate(this.model_matrix,this.model_matrix,x);
 	},
@@ -22864,7 +22879,11 @@ var Draw = {
 	rotate: function(angle, x,y,z)
 	{
 		if(arguments.length == 4)
+		{
+			var temp = this._temp;
+			temp[0] = x; temp[1] = y; temp[2] = z;
 			mat4.rotate(this.model_matrix, this.model_matrix, angle * DEG2RAD, [x,y,z]);
+		}
 		else //two arguments: x -> vec3
 			mat4.rotate(this.model_matrix, this.model_matrix, angle * DEG2RAD, x);
 	},
@@ -23011,6 +23030,11 @@ function Deformer()
 	this.macros = {}
 	this.uniforms = {}
 }
+
+Deformer.prototype.applyToRenderInstance = function( RI )
+{
+}
+
 
 Deformer.prototype.applyByCPU = function( vertex_data, normals_data )
 {
@@ -23656,7 +23680,9 @@ var Physics = {
 
 
 LS.Physics = Physics;
-/** Transform that contains the position (vec3), rotation (quat) and scale (vec3) 
+/**
+* Transform that contains the position (vec3), rotation (quat) and scale (vec3) 
+* It uses lazy update to recompute the matrices.
 * @class Transform
 * @constructor
 * @param {Object} object to configure from
@@ -23884,8 +23910,8 @@ Object.defineProperty( Transform.prototype, 'globalPosition', {
 });
 
 /**
-* The local matrix transform relative to its parent in mat4 format
-* @property matrix {mat4}
+* The matrix transform relative to world coordinates
+* @property globalMatrix {mat4}
 */
 Object.defineProperty( Transform.prototype, 'globalMatrix', {
 	get: function() { 
@@ -23899,8 +23925,8 @@ Object.defineProperty( Transform.prototype, 'globalMatrix', {
 });
 
 /**
-* The local matrix transform relative to its parent in mat4 format
-* @property matrix {mat4}
+* The forward vector in global coordinates
+* @property forward {mat4}
 */
 Object.defineProperty( Transform.prototype, 'forward', {
 	get: function() { 
@@ -23914,7 +23940,7 @@ Object.defineProperty( Transform.prototype, 'forward', {
 });
 
 /**
-* Force object to update matrices
+* Force object to update matrices in case they were modified
 * @property mustUpdate {boolean}
 */
 Object.defineProperty( Transform.prototype, 'mustUpdate', {
@@ -28011,334 +28037,7 @@ Light.registerShadowType = function( name, shaderblock )
 LS.registerComponent( Light );
 LS.Light = Light;
 
-// LIGHT GLSL STRUCTS AND FUNCTIONS *****************************************
-
-LS.ShadersManager.registerSnippet("light_structs","\n\
-	#ifndef SB_LIGHT_STRUCTS\n\
-	#define SB_LIGHT_STRUCTS\n\
-	uniform lowp vec4 u_light_info;\n\
-	uniform vec3 u_light_position;\n\
-	uniform vec3 u_light_front;\n\
-	uniform vec3 u_light_color;\n\
-	uniform vec4 u_light_angle; //cone start,end,phi,theta \n\
-	uniform vec4 u_light_att; //start,end \n\
-	uniform float u_light_offset; //ndotl offset\n\
-	uniform vec4 u_light_extra; //user data\n\
-	uniform mat4 u_light_matrix; //to light space\n\
-	uniform vec3 u_ambient_light;\n\
-	struct Light {\n\
-		lowp vec4 Info; //type of light (3: DIRECTIONAL), falloff type, pass index, num passes \n\
-		vec3 Color;\n\
-		vec3 Ambient;\n\
-		vec3 Position;\n\
-		vec3 Front;\n\
-		vec4 ConeInfo; //for spotlights\n\
-		vec4 Attenuation; //start,end,type,extra\n\
-		float Offset; //phong_offset\n\
-		vec4 Extra; //users can use this\n\
-		mat4 Matrix; //converts to light space\n\
-		float Distance;\n\
-	};\n\
-	//Returns the info about the light\n\
-	Light getLight()\n\
-	{\n\
-		Light LIGHT;\n\
-		LIGHT.Info = u_light_info;\n\
-		LIGHT.Color = u_light_color;\n\
-		if(u_light_info.z == 0.0)\n\
-			LIGHT.Ambient = u_ambient_light;\n\
-		else\n\
-			LIGHT.Ambient = vec3(0.0);\n\
-		LIGHT.Position = u_light_position;\n\
-		LIGHT.Front = u_light_front;\n\
-		LIGHT.ConeInfo = u_light_angle; //for spotlights\n\
-		LIGHT.Attenuation = u_light_att; //start and end\n\
-		LIGHT.Offset = u_light_offset;\n\
-		LIGHT.Distance = length( u_light_position - v_pos );\n\
-		LIGHT.Extra = u_light_extra;\n\
-		LIGHT.Matrix = u_light_matrix; //converts to light space\n\
-		return LIGHT;\n\
-	}\n\
-	//used to store light contribution\n\
-	struct FinalLight {\n\
-		vec3 Color;\n\
-		vec3 Ambient;\n\
-		float Diffuse; //NdotL\n\
-		float Specular; //RdotL\n\
-		vec3 Emission;\n\
-		vec3 Reflection;\n\
-		float Attenuation;\n\
-		float Shadow; //1.0 means fully lit\n\
-	};\n\
-	#endif\n\
-");
-
-
-//Light ShaderBlocks
-/*
-	Light Modifiers (Cookies)
-	Light Attenuation (Linear, Exponential)
-	Light Shadowing (Hard, Soft)
-*/
-
-Light._vs_shaderblock_code = "\n\
-	#pragma shaderblock \"testShadow\"\n\
-";
-
-Light._enabled_fs_shaderblock_code = "\n\
-	#pragma snippet \"input\"\n\
-	#pragma snippet \"surface\"\n\
-	#pragma snippet \"light_structs\"\n\
-	#pragma snippet \"spotFalloff\"\n\
-	#pragma shaderblock \"attenuation\"\n\
-	#pragma shaderblock SHADOWBLOCK \"testShadow\"\n\
-	\n\
-	//Light is separated in two functions, computeLight (how much light receives the object) and applyLight (compute resulting final color)\n\
-	// FINAL LIGHT EQUATION, takes all the info from FinalLight and computes the final color \n\
-	vec3 applyLight( in SurfaceOutput o, in FinalLight LIGHT )\n\
-	{\n\
-		vec3 total_light = LIGHT.Ambient * o.Ambient + LIGHT.Color * LIGHT.Diffuse * LIGHT.Attenuation * LIGHT.Shadow;\n\
-		vec3 final_color = o.Albedo * total_light;\n\
-		if(u_light_info.z == 0.0)\n\
-			final_color += o.Emission;\n\
-		final_color	+= o.Albedo * (LIGHT.Color * LIGHT.Specular * LIGHT.Attenuation * LIGHT.Shadow);\n\
-		return max( final_color, vec3(0.0) );\n\
-	}\n\
-	\n\
-	// HERE we fill FinalLight structure with all the info (colors,NdotL,diffuse,specular,etc) \n\
-	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT, out FinalLight FINALLIGHT)\n\
-	{\n\
-		// INIT\n\
-		FINALLIGHT.Color = LIGHT.Color;\n\
-		FINALLIGHT.Ambient = LIGHT.Ambient;\n\
-		\n\
-		// COMPUTE VECTORS\n\
-		vec3 N = o.Normal; //use the final normal (should be the same as IN.worldNormal)\n\
-		vec3 E = (u_camera_eye - v_pos);\n\
-		float cam_dist = length(E);\n\
-		E /= cam_dist;\n\
-		\n\
-		vec3 L = (LIGHT.Position - v_pos) / LIGHT.Distance;\n\
-		\n\
-		if( LIGHT.Info.x == 3.0 )\n\
-			L = -LIGHT.Front;\n\
-		\n\
-		vec3 R = reflect(E,N);\n\
-		\n\
-		// PHONG FORMULA\n\
-		float NdotL = 1.0;\n\
-		NdotL = dot(N,L);\n\
-		float EdotN = dot(E,N); //clamp(dot(E,N),0.0,1.0);\n\
-		NdotL = max( 0.0, NdotL + LIGHT.Offset );\n\
-		FINALLIGHT.Diffuse = abs(NdotL);\n\
-		FINALLIGHT.Specular = o.Specular * pow( clamp(dot(R,-L),0.001,1.0), o.Gloss );\n\
-		\n\
-		// ATTENUATION\n\
-		FINALLIGHT.Attenuation = 1.0;\n\
-		\n\
-		#ifdef BLOCK_ATTENUATION\n\
-			FINALLIGHT.Attenuation = computeAttenuation( LIGHT );\n\
-		#endif\n\
-		if( LIGHT.Info.x == 2.0 && LIGHT.Info.y == 1.0 )\n\
-			FINALLIGHT.Attenuation *= spotFalloff( LIGHT.Front, normalize( LIGHT.Position - v_pos ), LIGHT.ConeInfo.z, LIGHT.ConeInfo.w );\n\
-		\n\
-		// SHADOWS\n\
-		FINALLIGHT.Shadow = 1.0;\n\
-		#ifdef BLOCK_TESTSHADOW\n\
-			FINALLIGHT.Shadow = testShadow( LIGHT );\n\
-		#endif\n\
-		\n\
-		// LIGHT MODIFIERS\n\
-		#ifdef LIGHT_MODIFIER\n\
-		#endif\n\
-		// FINAL LIGHT FORMULA ************************* \n\
-		return applyLight(o,FINALLIGHT);\n\
-	}\n\
-	\n\
-	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT)\n\
-	{\n\
-		FinalLight FINALLIGHT;\n\
-		return computeLight(o,IN,LIGHT,FINALLIGHT);\n\
-	}\n\
-	\n\
-";
-
-Light._disabled_shaderblock_code = "\n\
-	#pragma snippet \"input\"\n\
-	#pragma snippet \"surface\"\n\
-	#pragma snippet \"light_structs\"\n\
-	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT, inout FinalLight FINALLIGHT)\n\
-	{\n\
-		FINALLIGHT.Diffuse = 0.0;\n\
-		FINALLIGHT.Specular = 0.0;\n\
-		FINALLIGHT.Attenuation = 0.0;\n\
-		FINALLIGHT.Shadow = 0.0;\n\
-		vec3 final_color = o.Albedo * LIGHT.Ambient;\n\
-		if(u_light_info.z == 0.0)\n\
-			final_color += o.Emission;\n\
-		return final_color;\n\
-	}\n\
-	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT)\n\
-	{\n\
-		FinalLight FINALLIGHT;\n\
-		return computeLight(o,IN,LIGHT,FINALLIGHT);\n\
-	}\n\
-";
-
-var light_block = new LS.ShaderBlock("light");
-light_block.addCode( GL.VERTEX_SHADER, Light._vs_shaderblock_code, Light._vs_shaderblock_code );
-light_block.addCode( GL.FRAGMENT_SHADER, Light._enabled_fs_shaderblock_code, Light._disabled_shaderblock_code );
-light_block.register();
-Light.shader_block = light_block;
-
-// ATTENUATION
-Light._attenuation_enabled_fragment_code = "\n\
-	const float LINEAR_ATTENUATION = 1.0;\n\
-	const float RANGE_ATTENUATION = 2.0;\n\
-	float computeAttenuation( in Light LIGHT )\n\
-	{\n\
-		//no attenuation\n\
-		if(LIGHT.Attenuation.z == 0.0)\n\
-			return 1.0;\n\
-		//directional light\n\
-		if( LIGHT.Info.x == 3.0 )\n\
-			return 1.0;\n\
-		if( LIGHT.Attenuation.z == LINEAR_ATTENUATION )\n\
-			return 10.0 / LIGHT.Distance;\n\
-		if( LIGHT.Attenuation.z == RANGE_ATTENUATION )\n\
-		{\n\
-			if(LIGHT.Distance >= LIGHT.Attenuation.y)\n\
-				return 0.0;\n\
-			if(LIGHT.Distance >= LIGHT.Attenuation.x)\n\
-				return 1.0 - (LIGHT.Distance - LIGHT.Attenuation.x) / (LIGHT.Attenuation.y - LIGHT.Attenuation.x);\n\
-		}\n\
-		return 1.0;\n\
-	}\n\
-";
-Light._attenuation_disabled_fragment_code = "";
-
-var attenuation_block = Light.attenuation_block = new LS.ShaderBlock("attenuation");
-attenuation_block.addCode( GL.FRAGMENT_SHADER, Light._attenuation_enabled_fragment_code, Light._attenuation_disabled_fragment_code  );
-attenuation_block.register();
-
-//OMNI LIGHT SHADOWMAP *****************************************
-Light._shadowmap_cubemap_code = "\n\
-	#define SHADOWMAP_ACTIVE\n\
-	uniform samplerCube shadowmap;\n\
-	uniform vec4 u_shadow_params; // (1.0/(texture_size), bias, near, far)\n\
-	\n\
-	float VectorToDepthValue(vec3 Vec)\n\
-	{\n\
-		vec3 AbsVec = abs(Vec);\n\
-		float LocalZcomp = max(AbsVec.x, max(AbsVec.y, AbsVec.z));\n\
-		float n = u_shadow_params.z;\n\
-		float f = u_shadow_params.w;\n\
-		float NormZComp = (f+n) / (f-n) - (2.0*f*n)/(f-n)/LocalZcomp;\n\
-		return (NormZComp + 1.0) * 0.5;\n\
-	}\n\
-	\n\
-	float UnpackDepth32(vec4 depth)\n\
-	{\n\
-		const vec4 bitShifts = vec4( 1.0/(256.0*256.0*256.0), 1.0/(256.0*256.0), 1.0/256.0, 1);\n\
-		return dot(depth.xyzw , bitShifts);\n\
-	}\n\
-	\n\
-	float testShadow( Light LIGHT, vec3 offset )\n\
-	{\n\
-		float shadow = 0.0;\n\
-		float depth = 0.0;\n\
-		float bias = u_shadow_params.y;\n\
-		\n\
-		vec3 l_vector = (v_pos - u_light_position);\n\
-		float dist = length(l_vector);\n\
-		float pixel_z = VectorToDepthValue( l_vector );\n\
-		if(pixel_z >= 0.998)\n\
-			return 0.0; //fixes a little bit the far edge bug\n\
-		vec4 depth_color = textureCube( shadowmap, l_vector + offset * dist );\n\
-		float ShadowVec = UnpackDepth32( depth_color );\n\
-		if ( ShadowVec > pixel_z - bias )\n\
-			return 0.0; //no shadow\n\
-		return 1.0; //full shadow\n\
-	}\n\
-";
-
-Light._shadowmap_vertex_enabled_code ="\n\
-	#pragma snippet \"light_structs\"\n\
-	varying vec4 v_light_coord;\n\
-	void applyLight( vec3 pos ) { v_light_coord = u_light_matrix * vec4(pos,1.0); }\n\
-";
-
-Light._shadowmap_vertex_disabled_code ="\n\
-	void applyLight(vec3 pos) {}\n\
-";
-
-// DIRECTIONAL AND SPOTLIGHT SHADOWMAP *****************************************
-Light._shadowmap_2d_enabled_fragment_code = "\n\
-	#ifndef TESTSHADOW\n\
-		#define TESTSHADOW\n\
-	#endif\n\
-	uniform sampler2D shadowmap;\n\
-	varying vec4 v_light_coord;\n\
-	uniform vec4 u_shadow_params; // (1.0/(texture_size), bias, near, far)\n\
-	\n\
-	float UnpackDepth(vec4 depth)\n\
-	{\n\
-		#ifdef BLOCK_DEPTH_IN_COLOR\n\
-			const vec4 bitShifts = vec4( 1.0/(256.0*256.0*256.0), 1.0/(256.0*256.0), 1.0/256.0, 1);\n\
-			return dot(depth.xyzw , bitShifts);\n\
-		#else\n\
-			return depth.x;\n\
-		#endif\n\
-	}\n\
-	\n\
-	float testShadow( Light LIGHT )\n\
-	{\n\
-		vec3 offset = vec3(0.0);\n\
-		float shadow = 0.0;\n\
-		float depth = 0.0;\n\
-		float bias = u_shadow_params.y;\n\
-		\n\
-		vec2 sample = (v_light_coord.xy / v_light_coord.w) * vec2(0.5) + vec2(0.5) + offset.xy;\n\
-		//is inside light frustum\n\
-		if (clamp(sample, 0.0, 1.0) != sample) \n\
-			return LIGHT.Info.x == 3.0 ? 1.0 : 0.0; //outside of shadowmap, no shadow\n\
-		float sampleDepth = UnpackDepth( texture2D(shadowmap, sample) );\n\
-		depth = (sampleDepth == 1.0) ? 1.0e9 : sampleDepth; //on empty data send it to far away\n\
-		if (depth > 0.0) \n\
-			shadow = ((v_light_coord.z - bias) / v_light_coord.w * 0.5 + 0.5) > depth ? 0.0 : 1.0;\n\
-		return shadow;\n\
-	}\n\
-";
-
-Light._shadowmap_2d_disabled_code = "\nfloat testShadow( Light LIGHT ) { return 1.0; }\n";
-
-var shadowmapping_depth_in_color_block = new LS.ShaderBlock("depth_in_color");
-shadowmapping_depth_in_color_block.register();
-Light.shadowmapping_depth_in_color_block = shadowmapping_depth_in_color_block;
-
-var shadowmapping_block = new LS.ShaderBlock("testShadow");
-shadowmapping_block.addCode( GL.VERTEX_SHADER, Light._shadowmap_vertex_enabled_code, Light._shadowmap_vertex_disabled_code);
-shadowmapping_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_2d_enabled_fragment_code, Light._shadowmap_2d_disabled_code );
-//shadowmapping_block.defineContextMacros({"SHADOWBLOCK":"testShadow"});
-shadowmapping_block.register();
-Light.shadowmapping_2d_shader_block = shadowmapping_block;
-Light.registerShadowType( "hard", shadowmapping_block );
-
-var shadowmapping_2D_hard_shader_block = new LS.ShaderBlock("testShadow2D_hard");
-shadowmapping_2D_hard_shader_block.addCode( GL.VERTEX_SHADER, Light._shadowmap_vertex_enabled_code, Light._shadowmap_vertex_disabled_code );
-shadowmapping_2D_hard_shader_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_2d_enabled_code, "" );
-shadowmapping_2D_hard_shader_block.register();
-Light.shadowmapping_2D_hard_shader_block = shadowmapping_2D_hard_shader_block;
-//Light.registerShadowType( "hard", shadowmapping_hard_2d_shader_block );
-
-var shadowmapping_2D_soft_block = new LS.ShaderBlock("testShadow2D_soft");
-shadowmapping_2D_soft_block.addCode( GL.VERTEX_SHADER, Light._shadowmap_vertex_enabled_code, Light._shadowmap_vertex_disabled_code );
-shadowmapping_2D_soft_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_2d_enabled_code, "" );
-shadowmapping_2D_soft_block.register();
-Light.shadowmapping_2D_soft_block = shadowmapping_2D_soft_block;
-//Light.registerShadowType( "soft", shadowmappingsoft_block );
-
-
+//Shader blocks are moved to basePipeline.js
 //TODO
 
 /**
@@ -36316,6 +36015,329 @@ RealtimeReflector.prototype.onCameraEnabled = function(e, camera)
 }
 
 LS.registerComponent( RealtimeReflector );
+/**
+* Realtime Reflective surface
+* @class RealtimeReflector
+* @constructor
+* @param {String} object to configure from
+*/
+
+
+function ReflectionProbe(o)
+{
+	this._enabled = true;
+	this.texture_size = 512;
+	this.high_precision = false;
+	this.texture_name = "";
+	this.generate_irradiance = true;
+	this.generate_mipmaps = false;
+	this.refresh_rate = 1; //in frames
+	this.layers = 0xFF;
+
+	this.near = 0.1;
+	this.far = 1000;
+	this.background_color = vec4.create();
+
+	this._position = vec3.create();
+	this._current = vec3.create();
+	this._version = -1;
+
+	this._texture = null;
+	this._irradiance_texture = null;
+
+	this._texid = ":probe_" + ReflectionProbe.last_id;
+	ReflectionProbe.last_id++;
+
+	if(o)
+		this.configure(o);
+}
+
+ReflectionProbe.last_id = 0;
+
+ReflectionProbe.icon = "mini-icon-reflector.png";
+
+ReflectionProbe["@texture_size"] = { type:"enum", values:["viewport",64,128,256,512,1024,2048] };
+ReflectionProbe["@layers"] = { type:"layers" };
+ReflectionProbe["@background_color"] = { type:"color" };
+
+Object.defineProperty( ReflectionProbe.prototype, "enabled", {
+	set: function(v){ 
+		if(v == this._enabled)
+			return;
+		this._enabled = v; 
+		if(!this._enabled)
+			return;
+		this.onRenderReflection();
+		LS.GlobalScene.requestFrame();
+	},
+	get: function() { return this._enabled; },
+	enumerable: true
+});
+
+ReflectionProbe.prototype.onAddedToScene = function(scene)
+{
+	LEvent.bind( scene,"start", this.onRenderReflection, this );
+	LEvent.bind( scene,"renderReflections", this.onRenderReflection, this );
+	//LEvent.bind( scene,"afterCameraEnabled", this.onCameraEnabled, this );
+	//LEvent.bind( LS.Renderer,"renderHelpers", this.onVisualizeProbe, this );
+
+	this.assignCubemaps(scene);
+}
+
+ReflectionProbe.prototype.onRemovedFromScene = function(scene)
+{
+	LEvent.unbindAll( scene, this );
+	//LEvent.unbindAll( LS.Renderer, this );
+	
+	if(this._texture)
+		LS.ResourcesManager.unregisterResource( this._texid );
+	if(this._irradiance_texture)
+		LS.ResourcesManager.unregisterResource( this._texid + "_IR" );
+
+	//TODO: USE POOL!!
+	this._texture = null;
+	this._irradiance_texture = null;
+}
+
+ReflectionProbe.prototype.afterSerialize = function(o)
+{
+	if(this._irradiance_texture)
+		o.irradiance_info = ReflectionProbe.cubemapToObject( this._irradiance_texture );
+}
+
+ReflectionProbe.prototype.afterConfigure = function(o)
+{
+	if(o.irradiance_info)
+	{
+		this._irradiance_texture = ReflectionProbe.objectToCubemap( o.irradiance_info, this._irradiance_texture );
+		this.assignCubemaps();
+	}
+}
+
+ReflectionProbe.prototype.onRenderReflection = function( e, render_settings )
+{
+	this.updateTextures( render_settings );
+}
+
+ReflectionProbe.prototype.updateTextures = function( render_settings, force )
+{
+	if(!this._enabled || !this._root || !this._root.scene )
+		return;
+
+	var scene = this._root.scene;
+
+	this._root.transform.getGlobalPosition( this._current );
+	//if ( vec3.distance( this._current, this._position ) < 0.1 )
+	//	force = true;
+
+	if( LS.ResourcesManager.isLoading() )
+		return;
+
+	this.refresh_rate = this.refresh_rate|0;
+	if( this.refresh_rate < 1 && this._texture && !force )
+		return;
+
+	if ( this._texture && (scene._frame % this.refresh_rate) != 0 && !force )
+		return;
+
+	this.updateCubemap( this._current, render_settings );
+
+	if(this.generate_irradiance)
+		this.updateIrradiance();
+}
+
+ReflectionProbe.prototype.updateCubemap = function( position, render_settings )
+{
+	render_settings = render_settings || LS.Renderer.default_render_settings;
+
+	var scene = this._root.scene;
+	if(!scene)
+		return;
+
+	var texture_size = parseInt( this.texture_size );
+
+	//add flags
+	var old_layers = render_settings.layers;
+	render_settings.layers = this.layers;
+
+	LS.Renderer.clearSamplers();
+
+	var texture_type = gl.TEXTURE_CUBE_MAP;
+	var type = this.high_precision ? gl.HIGH_PRECISION_FORMAT : gl.UNSIGNED_BYTE;
+
+	var texture = this._texture;
+
+	if(!texture || texture.width != texture_size || texture.height != texture_size || texture.type != type || texture.texture_type != texture_type || texture.minFilter != (this.generate_mipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR) )
+	{
+		texture = new GL.Texture( texture_size, texture_size, { type: type, texture_type: texture_type, minFilter: this.generate_mipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR });
+		texture.has_mipmaps = this.generate_mipmaps;
+		this._texture = texture;
+	}
+
+	if(position)
+		this._position.set( position );
+	else
+		position = this._root.transform.getGlobalPosition( this._position );
+
+	texture._in_current_fbo = true; //block binding this texture during rendering of the reflection
+
+	LS.Renderer.renderToCubemap( position, 0, texture, render_settings, this.near, this.far, this.background_color );
+
+	texture._in_current_fbo = false;
+
+	if(this.blur)
+	{
+		/* TODO
+		*/
+	}
+
+	if(this.generate_mipmaps && isPowerOfTwo( texture_size ) )
+	{
+		texture.setParameter( gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR );
+		gl.generateMipmap(texture.texture_type);
+		texture.unbind();
+	}
+
+	if(this.texture_name)
+		LS.ResourcesManager.registerResource( this.texture_name, texture );
+	LS.ResourcesManager.registerResource( this._texid, texture );
+
+	//add probe to LS.Renderer
+	//TODO
+	//HACK
+	if( scene.info )
+		scene.info.textures.environment = this._texid;
+
+	//remove flags
+	render_settings.layers = old_layers;
+}
+
+ReflectionProbe.prototype.updateIrradiance = function()
+{
+	var scene = this._root.scene;
+	if(!scene)
+		return;
+
+	if(!this._texture)
+		this.updateCubemap();
+
+	if(!this._texture)
+		return;
+
+	var cubemap = this._texture;
+
+	if(!ReflectionProbe._downscale_cubemap)
+		ReflectionProbe._downscale_cubemap = new GL.Texture( 32, 32, { texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGB, filter: gl.LINEAR } );
+	var downscale_cubemap = ReflectionProbe._downscale_cubemap;
+
+	//downscale
+	cubemap.copyTo( downscale_cubemap );
+	
+	//blur
+	for(var i = 0; i < 8; ++i)
+	{
+		downscale_cubemap._tmp = downscale_cubemap.applyBlur( i,i,1, null, downscale_cubemap._tmp );
+		downscale_cubemap._tmp.copyTo( downscale_cubemap );
+	}
+
+	//downscale again
+	var irradiance_cubemap = this._irradiance_texture;
+	if(!irradiance_cubemap)
+		irradiance_cubemap = this._irradiance_texture = new GL.Texture( 4, 4, { texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGB, filter: gl.LINEAR } );
+	downscale_cubemap.copyTo( irradiance_cubemap );
+
+	//blur again
+	for(var i = 0; i < 4; ++i)
+	{
+		irradiance_cubemap._tmp = downscale_cubemap.applyBlur( i,i,1, null, irradiance_cubemap._tmp );
+		irradiance_cubemap._tmp.copyTo( irradiance_cubemap );
+	}
+
+	this.assignCubemaps();
+
+	return irradiance_cubemap;
+}
+
+ReflectionProbe.prototype.assignCubemaps = function( scene )
+{
+	if(!scene && this._root)
+		scene = this._root.scene;
+	if(!scene)
+		scene = LS.GlobalScene;
+
+	if(this._texture)
+	{
+		LS.ResourcesManager.registerResource( this._texid, this._texture );
+		if( scene.info )
+			scene.info.textures.environment = this._texid;
+	}
+
+	if(this._irradiance_texture)
+	{
+		var ir_name = this._texid + "_IR";
+		LS.ResourcesManager.registerResource( ir_name, this._irradiance_texture );
+		if( scene.info )
+			scene.info.textures.irradiance = ir_name;
+	}
+}
+
+
+ReflectionProbe.prototype.renderProbe = function( picking_color )
+{
+	if( !this._texture || !this._enabled )
+		return;
+
+	LS.Draw.push();
+	LS.Draw.translate( this._position );
+	LS.Draw.scale( ReflectionProbe.helper_size );
+
+	if(!picking_color) //regular texture
+	{
+		var shader = GL.Shader.getCubemapShowShader();
+		this._texture.bind(0);
+		LS.Draw.renderMesh( LS.Renderer._sphere_mesh, GL.TRIANGLES, shader );
+		LS.Draw.setColor( LS.WHITE );
+		LS.Draw.scale( 1.1 );
+		gl.enable( gl.CULL_FACE );
+		gl.frontFace( gl.CW );
+		LS.Draw.renderMesh( LS.Renderer._sphere_mesh, GL.TRIANGLES );
+		gl.frontFace( gl.CCW );
+	}
+	else
+	{
+		LS.Draw.setColor( picking_color )
+		LS.Draw.renderMesh( LS.Renderer._sphere_mesh, GL.TRIANGLES );
+	}
+
+	LS.Draw.pop();
+}
+
+ReflectionProbe.cubemapToObject = function( cubemap )
+{
+	var faces = [];
+	for( var i = 0; i < 6; ++i )
+		faces.push( typedArrayToArray( cubemap.getPixels(null,null,i) ) );
+	return {
+		texture_type: cubemap.texture_type,
+		size: cubemap.width,
+		format: cubemap.format,
+		faces: faces
+	};
+}
+
+ReflectionProbe.objectToCubemap = function( data, out )
+{
+	if(!out)
+		out = new GL.Texture( data.size, data.size, { texture_type: gl.TEXTURE_CUBE_MAP, format: GL.RGBA });
+	for(var i = 0; i < data.faces.length; ++i )
+		out.setPixels( new Uint8Array( data.faces[i] ), i, i == 5 );
+	return out;
+}
+
+ReflectionProbe.render_helpers = true;
+ReflectionProbe.helper_size = 1;
+
+LS.registerComponent( ReflectionProbe );
 
 /** Script is the component in charge of executing scripts to control the behaviour of the application.
 * Script must be coded in Javascript and they have full access to all the engine, so one script could replace the behaviour of any part of the engine.
@@ -39935,10 +39957,6 @@ SceneTree.prototype.load = function( url, on_complete, on_error, on_progress, on
 			on_complete(that, url);
 
 		that.loadResources( inner_all_loaded );
-		/**
-		 * Fired when the scene has been loaded but before the resources
-		 * @event load
-		 */
 		LEvent.trigger(that,"load");
 
 		if(!LS.ResourcesManager.isLoading())
@@ -39949,10 +39967,6 @@ SceneTree.prototype.load = function( url, on_complete, on_error, on_progress, on
 	{
 		if(on_resources_loaded)
 			on_resources_loaded(that, url);
-		/**
-		 * Fired after all resources have been loaded
-		 * @event loadCompleted
-		 */
 		LEvent.trigger(that,"loadCompleted");
 	}
 
@@ -40642,6 +40656,16 @@ SceneTree.prototype.getResources = function( resources, as_array, skip_in_pack, 
 {
 	resources = resources || {};
 
+	//to get the resources as array
+	var array = null;
+	if(resources.constructor === Array)
+	{
+		array = resources;
+		resources = {};
+		as_array = true;
+	}
+
+	//first the preload
 	//resources that must be preloaded (because they will be used in the future)
 	if(this.preloaded_resources)
 		for(var i in this.preloaded_resources)
@@ -40690,7 +40714,7 @@ SceneTree.prototype.getResources = function( resources, as_array, skip_in_pack, 
 		return resources;
 
 	//return as array
-	var r = [];
+	var r = array || [];
 	for(var i in resources)
 		r.push(i);
 	return r;
@@ -40706,7 +40730,8 @@ SceneTree.prototype.getResources = function( resources, as_array, skip_in_pack, 
 */
 SceneTree.prototype.loadResources = function( on_complete )
 {
-	var resources = this.getResources();
+	//resources is an object format
+	var resources = this.getResources([]);
 
 	//used for scenes with special repository folders
 	var options = {};
@@ -40736,6 +40761,7 @@ SceneTree.prototype.loadResources = function( on_complete )
 			on_complete();
 	}
 }
+
 
 /**
 * Adds a resource that must be loaded when the scene is loaded
@@ -42125,12 +42151,12 @@ SceneNode.prototype.load = function( url, on_complete )
 }
 
 /**
-* Assign a resource inteligently to a node: if it is a mesh it creates a MeshRenderer, if it is a Material it assigns it, if it is an animation creates a PlayAnimation, if it is a prefab assigns the prefab. etc
+* Assign a resource/element inteligently to a node: if it is a mesh it creates a MeshRenderer, if it is a Material it assigns it, if it is an animation creates a PlayAnimation, if it is a prefab assigns the prefab. etc
 * @method assign
 * @param {*} resource the resource to assign (it also accepts a resource filename that has been previously loaded).
 * @param {Function} on_complete
 **/
-SceneNode.prototype.assign = function( item )
+SceneNode.prototype.assign = function( item, extra )
 {
 	if(!item)
 	{
@@ -42147,10 +42173,21 @@ SceneNode.prototype.assign = function( item )
 
 	switch( item.constructor )
 	{
-		case LS.SceneNode: this.addChild( item ); break;
-		case LS.SceneTree: 	this.addChild( item.root.clone() ); break; //warn: here we are missing all the global and external scripts of the scene
-		case LS.Prefab: this.prefab = item.fullpath || item.filename; break;
-		case GL.Mesh: this.setMesh( item.fullpath || item.filename ); break;
+		case LS.SceneNode: 
+			this.addChild( item );
+			break;
+		case LS.SceneTree: 	
+			this.addChild( item.root.clone() );
+			break; //warn: here we are missing all the global and external scripts of the scene
+		case LS.Prefab: 
+			this.prefab = item.fullpath || item.filename; break;
+		case GL.Mesh: 
+			var component = this.getComponent( LS.Components.MeshRenderer );
+			if(component)
+				component.configure({ mesh: item.fullpath || item.filename });
+			else
+				this.addComponent( new LS.MeshRenderer({ mesh: mesh_name, submesh_id: submesh_id }) );
+			break;
 		case LS.Animation: 
 			var comp = this.getComponent( LS.Components.PlayAnimation );
 			if(!comp)
@@ -42185,11 +42222,6 @@ SceneNode.prototype.setMesh = function(mesh_name, submesh_id)
 		component.configure({ mesh: mesh_name, submesh_id: submesh_id });
 	else
 		this.addComponent( new LS.MeshRenderer({ mesh: mesh_name, submesh_id: submesh_id }) );
-}
-
-SceneNode.prototype.loadAndSetMesh = function(mesh_filename, options)
-{
-	this.load( mesh_filename );
 }
 
 SceneNode.prototype.getMaterial = function()
@@ -42383,7 +42415,7 @@ SceneNode.prototype.configure = function(info)
 	if(info.node_type)
 	{
 		this.node_type = info.node_type;
-		if(info.node_type == "JOINT")
+		if(info.node_type == "JOINT") //used in editor
 			this._is_bone = true;
 	}
 
@@ -42463,6 +42495,7 @@ SceneNode.prototype.configure = function(info)
 }
 
 //adds components according to a mesh
+//used mostly to addapt a node to a collada mesh info
 SceneNode.prototype.addMeshComponents = function( mesh_id, extra_info )
 {
 	extra_info = extra_info || {};
@@ -42667,6 +42700,361 @@ SceneNode.prototype.getBoundingBox = function( bbox, only_instances )
 
 LS.SceneNode = SceneNode;
 LS.Classes.SceneNode = SceneNode;
+
+//this file defines the shaderblocks that interact in the render of any standard material
+//the pipeline is quite standard
+
+//define surface structures
+LS.ShadersManager.registerSnippet("surface","\n\
+	//used to store surface shading properties\n\
+	struct SurfaceOutput {\n\
+		vec3 Albedo;\n\
+		vec3 Normal; //separated in case there is a normal map\n\
+		vec3 Emission;\n\
+		vec3 Ambient;\n\
+		float Specular;\n\
+		float Gloss;\n\
+		float Alpha;\n\
+		float Reflectivity;\n\
+		vec4 Extra; //for special purposes\n\
+	};\n\
+	\n\
+	SurfaceOutput getSurfaceOutput()\n\
+	{\n\
+		SurfaceOutput o;\n\
+		o.Albedo = u_material_color.xyz;\n\
+		o.Alpha = u_material_color.a;\n\
+		o.Normal = normalize( v_normal );\n\
+		o.Specular = 0.5;\n\
+		o.Gloss = 10.0;\n\
+		o.Ambient = vec3(1.0);\n\
+		o.Emission = vec3(0.0);\n\
+		o.Reflectivity = 0.0;\n\
+		return o;\n\
+	}\n\
+");
+
+// LIGHT STRUCTS AND FUNCTIONS *****************************************
+LS.ShadersManager.registerSnippet("light_structs","\n\
+	#ifndef SB_LIGHT_STRUCTS\n\
+	#define SB_LIGHT_STRUCTS\n\
+	uniform lowp vec4 u_light_info;\n\
+	uniform vec3 u_light_position;\n\
+	uniform vec3 u_light_front;\n\
+	uniform vec3 u_light_color;\n\
+	uniform vec4 u_light_angle; //cone start,end,phi,theta \n\
+	uniform vec4 u_light_att; //start,end \n\
+	uniform float u_light_offset; //ndotl offset\n\
+	uniform vec4 u_light_extra; //user data\n\
+	uniform mat4 u_light_matrix; //to light space\n\
+	uniform vec3 u_ambient_light;\n\
+	struct Light {\n\
+		lowp vec4 Info; //type of light (3: DIRECTIONAL), falloff type, pass index, num passes \n\
+		vec3 Color;\n\
+		vec3 Ambient;\n\
+		vec3 Position;\n\
+		vec3 Front;\n\
+		vec4 ConeInfo; //for spotlights\n\
+		vec4 Attenuation; //start,end,type,extra\n\
+		float Offset; //phong_offset\n\
+		vec4 Extra; //users can use this\n\
+		mat4 Matrix; //converts to light space\n\
+		float Distance;\n\
+	};\n\
+	//Returns the info about the light\n\
+	Light getLight()\n\
+	{\n\
+		Light LIGHT;\n\
+		LIGHT.Info = u_light_info;\n\
+		LIGHT.Color = u_light_color;\n\
+		if(u_light_info.z == 0.0)\n\
+			LIGHT.Ambient = u_ambient_light;\n\
+		else\n\
+			LIGHT.Ambient = vec3(0.0);\n\
+		LIGHT.Position = u_light_position;\n\
+		LIGHT.Front = u_light_front;\n\
+		LIGHT.ConeInfo = u_light_angle; //for spotlights\n\
+		LIGHT.Attenuation = u_light_att; //start and end\n\
+		LIGHT.Offset = u_light_offset;\n\
+		LIGHT.Distance = length( u_light_position - v_pos );\n\
+		LIGHT.Extra = u_light_extra;\n\
+		LIGHT.Matrix = u_light_matrix; //converts to light space\n\
+		return LIGHT;\n\
+	}\n\
+	//used to store light contribution\n\
+	struct FinalLight {\n\
+		vec3 Color;\n\
+		vec3 Ambient;\n\
+		float Diffuse; //NdotL\n\
+		float Specular; //RdotL\n\
+		vec3 Emission;\n\
+		vec3 Reflection;\n\
+		float Attenuation;\n\
+		float Shadow; //1.0 means fully lit\n\
+	};\n\
+	#endif\n\
+");
+
+// LIGHT ************************************************
+
+Light._vs_shaderblock_code = "\n\
+	#pragma shaderblock \"testShadow\"\n\
+";
+
+Light._enabled_fs_shaderblock_code = "\n\
+	#pragma snippet \"input\"\n\
+	#pragma snippet \"surface\"\n\
+	#pragma snippet \"light_structs\"\n\
+	#pragma snippet \"spotFalloff\"\n\
+	#pragma shaderblock \"attenuation\"\n\
+	#pragma shaderblock SHADOWBLOCK \"testShadow\"\n\
+	\n\
+	//Light is separated in two functions, computeLight (how much light receives the object) and applyLight (compute resulting final color)\n\
+	// FINAL LIGHT EQUATION, takes all the info from FinalLight and computes the final color \n\
+	vec3 applyLight( in SurfaceOutput o, in FinalLight LIGHT )\n\
+	{\n\
+		vec3 total_light = LIGHT.Ambient * o.Ambient + LIGHT.Color * LIGHT.Diffuse * LIGHT.Attenuation * LIGHT.Shadow;\n\
+		vec3 final_color = o.Albedo * total_light;\n\
+		if(u_light_info.z == 0.0)\n\
+			final_color += o.Emission;\n\
+		final_color	+= o.Albedo * (LIGHT.Color * LIGHT.Specular * LIGHT.Attenuation * LIGHT.Shadow);\n\
+		return max( final_color, vec3(0.0) );\n\
+	}\n\
+	\n\
+	// HERE we fill FinalLight structure with all the info (colors,NdotL,diffuse,specular,etc) \n\
+	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT, out FinalLight FINALLIGHT)\n\
+	{\n\
+		// INIT\n\
+		FINALLIGHT.Color = LIGHT.Color;\n\
+		FINALLIGHT.Ambient = LIGHT.Ambient;\n\
+		\n\
+		// COMPUTE VECTORS\n\
+		vec3 N = o.Normal; //use the final normal (should be the same as IN.worldNormal)\n\
+		vec3 E = (u_camera_eye - v_pos);\n\
+		float cam_dist = length(E);\n\
+		E /= cam_dist;\n\
+		\n\
+		vec3 L = (LIGHT.Position - v_pos) / LIGHT.Distance;\n\
+		\n\
+		if( LIGHT.Info.x == 3.0 )\n\
+			L = -LIGHT.Front;\n\
+		\n\
+		vec3 R = reflect(E,N);\n\
+		\n\
+		// PHONG FORMULA\n\
+		float NdotL = 1.0;\n\
+		NdotL = dot(N,L);\n\
+		float EdotN = dot(E,N); //clamp(dot(E,N),0.0,1.0);\n\
+		NdotL = max( 0.0, NdotL + LIGHT.Offset );\n\
+		FINALLIGHT.Diffuse = abs(NdotL);\n\
+		FINALLIGHT.Specular = o.Specular * pow( clamp(dot(R,-L),0.001,1.0), o.Gloss );\n\
+		\n\
+		// ATTENUATION\n\
+		FINALLIGHT.Attenuation = 1.0;\n\
+		\n\
+		#ifdef BLOCK_ATTENUATION\n\
+			FINALLIGHT.Attenuation = computeAttenuation( LIGHT );\n\
+		#endif\n\
+		if( LIGHT.Info.x == 2.0 && LIGHT.Info.y == 1.0 )\n\
+			FINALLIGHT.Attenuation *= spotFalloff( LIGHT.Front, normalize( LIGHT.Position - v_pos ), LIGHT.ConeInfo.z, LIGHT.ConeInfo.w );\n\
+		\n\
+		// SHADOWS\n\
+		FINALLIGHT.Shadow = 1.0;\n\
+		#ifdef BLOCK_TESTSHADOW\n\
+			FINALLIGHT.Shadow = testShadow( LIGHT );\n\
+		#endif\n\
+		\n\
+		// LIGHT MODIFIERS\n\
+		#ifdef LIGHT_MODIFIER\n\
+		#endif\n\
+		// FINAL LIGHT FORMULA ************************* \n\
+		return applyLight(o,FINALLIGHT);\n\
+	}\n\
+	\n\
+	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT)\n\
+	{\n\
+		FinalLight FINALLIGHT;\n\
+		return computeLight(o,IN,LIGHT,FINALLIGHT);\n\
+	}\n\
+	\n\
+";
+
+Light._disabled_shaderblock_code = "\n\
+	#pragma snippet \"input\"\n\
+	#pragma snippet \"surface\"\n\
+	#pragma snippet \"light_structs\"\n\
+	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT, inout FinalLight FINALLIGHT)\n\
+	{\n\
+		FINALLIGHT.Diffuse = 0.0;\n\
+		FINALLIGHT.Specular = 0.0;\n\
+		FINALLIGHT.Attenuation = 0.0;\n\
+		FINALLIGHT.Shadow = 0.0;\n\
+		vec3 final_color = o.Albedo * LIGHT.Ambient;\n\
+		if(u_light_info.z == 0.0)\n\
+			final_color += o.Emission;\n\
+		return final_color;\n\
+	}\n\
+	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT)\n\
+	{\n\
+		FinalLight FINALLIGHT;\n\
+		return computeLight(o,IN,LIGHT,FINALLIGHT);\n\
+	}\n\
+";
+
+var light_block = new LS.ShaderBlock("light");
+light_block.addCode( GL.VERTEX_SHADER, Light._vs_shaderblock_code, Light._vs_shaderblock_code );
+light_block.addCode( GL.FRAGMENT_SHADER, Light._enabled_fs_shaderblock_code, Light._disabled_shaderblock_code );
+light_block.register();
+Light.shader_block = light_block;
+
+// ATTENUATION ************************************************
+
+Light._attenuation_enabled_fragment_code = "\n\
+	const float LINEAR_ATTENUATION = 1.0;\n\
+	const float RANGE_ATTENUATION = 2.0;\n\
+	float computeAttenuation( in Light LIGHT )\n\
+	{\n\
+		//no attenuation\n\
+		if(LIGHT.Attenuation.z == 0.0)\n\
+			return 1.0;\n\
+		//directional light\n\
+		if( LIGHT.Info.x == 3.0 )\n\
+			return 1.0;\n\
+		if( LIGHT.Attenuation.z == LINEAR_ATTENUATION )\n\
+			return 10.0 / LIGHT.Distance;\n\
+		if( LIGHT.Attenuation.z == RANGE_ATTENUATION )\n\
+		{\n\
+			if(LIGHT.Distance >= LIGHT.Attenuation.y)\n\
+				return 0.0;\n\
+			if(LIGHT.Distance >= LIGHT.Attenuation.x)\n\
+				return 1.0 - (LIGHT.Distance - LIGHT.Attenuation.x) / (LIGHT.Attenuation.y - LIGHT.Attenuation.x);\n\
+		}\n\
+		return 1.0;\n\
+	}\n\
+";
+Light._attenuation_disabled_fragment_code = "";
+
+var attenuation_block = Light.attenuation_block = new LS.ShaderBlock("attenuation");
+attenuation_block.addCode( GL.FRAGMENT_SHADER, Light._attenuation_enabled_fragment_code, Light._attenuation_disabled_fragment_code  );
+attenuation_block.register();
+
+// OMNI LIGHT SHADOWMAP *****************************************
+Light._shadowmap_cubemap_code = "\n\
+	#define SHADOWMAP_ACTIVE\n\
+	uniform samplerCube shadowmap;\n\
+	uniform vec4 u_shadow_params; // (1.0/(texture_size), bias, near, far)\n\
+	\n\
+	float VectorToDepthValue(vec3 Vec)\n\
+	{\n\
+		vec3 AbsVec = abs(Vec);\n\
+		float LocalZcomp = max(AbsVec.x, max(AbsVec.y, AbsVec.z));\n\
+		float n = u_shadow_params.z;\n\
+		float f = u_shadow_params.w;\n\
+		float NormZComp = (f+n) / (f-n) - (2.0*f*n)/(f-n)/LocalZcomp;\n\
+		return (NormZComp + 1.0) * 0.5;\n\
+	}\n\
+	\n\
+	float UnpackDepth32(vec4 depth)\n\
+	{\n\
+		const vec4 bitShifts = vec4( 1.0/(256.0*256.0*256.0), 1.0/(256.0*256.0), 1.0/256.0, 1);\n\
+		return dot(depth.xyzw , bitShifts);\n\
+	}\n\
+	\n\
+	float testShadow( Light LIGHT, vec3 offset )\n\
+	{\n\
+		float shadow = 0.0;\n\
+		float depth = 0.0;\n\
+		float bias = u_shadow_params.y;\n\
+		\n\
+		vec3 l_vector = (v_pos - u_light_position);\n\
+		float dist = length(l_vector);\n\
+		float pixel_z = VectorToDepthValue( l_vector );\n\
+		if(pixel_z >= 0.998)\n\
+			return 0.0; //fixes a little bit the far edge bug\n\
+		vec4 depth_color = textureCube( shadowmap, l_vector + offset * dist );\n\
+		float ShadowVec = UnpackDepth32( depth_color );\n\
+		if ( ShadowVec > pixel_z - bias )\n\
+			return 0.0; //no shadow\n\
+		return 1.0; //full shadow\n\
+	}\n\
+";
+
+Light._shadowmap_vertex_enabled_code ="\n\
+	#pragma snippet \"light_structs\"\n\
+	varying vec4 v_light_coord;\n\
+	void applyLight( vec3 pos ) { v_light_coord = u_light_matrix * vec4(pos,1.0); }\n\
+";
+
+Light._shadowmap_vertex_disabled_code ="\n\
+	void applyLight(vec3 pos) {}\n\
+";
+
+// DIRECTIONAL AND SPOTLIGHT SHADOWMAP *****************************************
+Light._shadowmap_2d_enabled_fragment_code = "\n\
+	#ifndef TESTSHADOW\n\
+		#define TESTSHADOW\n\
+	#endif\n\
+	uniform sampler2D shadowmap;\n\
+	varying vec4 v_light_coord;\n\
+	uniform vec4 u_shadow_params; // (1.0/(texture_size), bias, near, far)\n\
+	\n\
+	float UnpackDepth(vec4 depth)\n\
+	{\n\
+		#ifdef BLOCK_DEPTH_IN_COLOR\n\
+			const vec4 bitShifts = vec4( 1.0/(256.0*256.0*256.0), 1.0/(256.0*256.0), 1.0/256.0, 1);\n\
+			return dot(depth.xyzw , bitShifts);\n\
+		#else\n\
+			return depth.x;\n\
+		#endif\n\
+	}\n\
+	\n\
+	float testShadow( Light LIGHT )\n\
+	{\n\
+		vec3 offset = vec3(0.0);\n\
+		float shadow = 0.0;\n\
+		float depth = 0.0;\n\
+		float bias = u_shadow_params.y;\n\
+		\n\
+		vec2 sample = (v_light_coord.xy / v_light_coord.w) * vec2(0.5) + vec2(0.5) + offset.xy;\n\
+		//is inside light frustum\n\
+		if (clamp(sample, 0.0, 1.0) != sample) \n\
+			return LIGHT.Info.x == 3.0 ? 1.0 : 0.0; //outside of shadowmap, no shadow\n\
+		float sampleDepth = UnpackDepth( texture2D(shadowmap, sample) );\n\
+		depth = (sampleDepth == 1.0) ? 1.0e9 : sampleDepth; //on empty data send it to far away\n\
+		if (depth > 0.0) \n\
+			shadow = ((v_light_coord.z - bias) / v_light_coord.w * 0.5 + 0.5) > depth ? 0.0 : 1.0;\n\
+		return shadow;\n\
+	}\n\
+";
+
+Light._shadowmap_2d_disabled_code = "\nfloat testShadow( Light LIGHT ) { return 1.0; }\n";
+
+var shadowmapping_depth_in_color_block = new LS.ShaderBlock("depth_in_color");
+shadowmapping_depth_in_color_block.register();
+Light.shadowmapping_depth_in_color_block = shadowmapping_depth_in_color_block;
+
+var shadowmapping_block = new LS.ShaderBlock("testShadow");
+shadowmapping_block.addCode( GL.VERTEX_SHADER, Light._shadowmap_vertex_enabled_code, Light._shadowmap_vertex_disabled_code);
+shadowmapping_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_2d_enabled_fragment_code, Light._shadowmap_2d_disabled_code );
+//shadowmapping_block.defineContextMacros({"SHADOWBLOCK":"testShadow"});
+shadowmapping_block.register();
+Light.shadowmapping_2d_shader_block = shadowmapping_block;
+Light.registerShadowType( "hard", shadowmapping_block );
+
+var shadowmapping_2D_hard_shader_block = new LS.ShaderBlock("testShadow2D_hard");
+shadowmapping_2D_hard_shader_block.addCode( GL.VERTEX_SHADER, Light._shadowmap_vertex_enabled_code, Light._shadowmap_vertex_disabled_code );
+shadowmapping_2D_hard_shader_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_2d_enabled_code, "" );
+shadowmapping_2D_hard_shader_block.register();
+Light.shadowmapping_2D_hard_shader_block = shadowmapping_2D_hard_shader_block;
+//Light.registerShadowType( "hard", shadowmapping_hard_2d_shader_block );
+
+var shadowmapping_2D_soft_block = new LS.ShaderBlock("testShadow2D_soft");
+shadowmapping_2D_soft_block.addCode( GL.VERTEX_SHADER, Light._shadowmap_vertex_enabled_code, Light._shadowmap_vertex_disabled_code );
+shadowmapping_2D_soft_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_2d_enabled_code, "" );
+shadowmapping_2D_soft_block.register();
+Light.shadowmapping_2D_soft_block = shadowmapping_2D_soft_block;
+//Light.registerShadowType( "soft", shadowmappingsoft_block );
+
 
 /**
 * Formats is the class where all the info about what is every format, how to parse it, etc, is located

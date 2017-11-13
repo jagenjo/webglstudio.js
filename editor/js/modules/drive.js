@@ -680,9 +680,17 @@ var DriveModule = {
 				if( resource.from_pack || resource.from_prefab )
 					return LiteGUI.alert("Resource belongs to Pack or Prefab, save that one instead: " + resource.from_pack ? resource.from_pack : resource.from_prefab );
 
-				if(!resource.fullpath)
-					return LiteGUI.alert("Resource must have a folder assigned");
-				DriveModule.saveResource( resource );
+				if(resource.fullpath)
+				{
+					DriveModule.saveResource( resource );
+					return;
+				}
+
+				//return LiteGUI.alert("Resource must have a folder assigned");
+				DriveModule.showSelectFolderFilenameDialog( "", function(folder, filename, fullpath){
+					LS.RM.renameResource( resource.fullpath || resource.filename, fullpath );
+					DriveModule.saveResource( resource );
+				}, { filename: resource.filename, extension: LS.RM.getExtension( resource.filename) });
 				return;
 			}
 
@@ -937,6 +945,10 @@ var DriveModule = {
 			folder = LS.RM.getFolder(fullpath);
 			filename = LS.RM.getFilename(fullpath);
 		}
+		if(options.filename)
+			filename = options.filename;
+		if(options.folder)
+			folder = options.folder;
 
 		var dialog = new LiteGUI.Dialog( { id: "select-folder-filename-dialog", title:"Select folder and filename", close: true, width: 360, height: 240, scroll: false, draggable: true});
 		var widgets = new LiteGUI.Inspector();

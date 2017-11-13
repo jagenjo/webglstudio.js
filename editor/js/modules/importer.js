@@ -359,12 +359,25 @@ var ImporterModule  = {
 			{
 				var filename = DriveModule.getFilename(v);
 				file = { name: filename, size: 0, type: "?", data: null };
+				var request = { 
+					url: LS.RM.getFullURL( v ),
+					success: function( data, response) { 
+						inner_setContent( data, this.getResponseHeader("Content-Type") );
+					} 
+				};
+
 				var info = LS.Formats.getFileFormatInfo( file.name );
-				var proxy_url = LS.RM.getFullURL( v );
-				if(info && info.format == "text")
-					LiteGUI.requestText( proxy_url, function(v, response) { inner_setContent(v, response.getResponseHeader("Content-Type") ); });
-				else
-					LiteGUI.requestBinary( proxy_url, function(v, response) { inner_setContent(v, response.getResponseHeader("Content-Type") ); });
+				if( info )
+				{
+					if( info.format )
+						request.type = info.format;
+					if( info.dataType )
+						request.dataType = info.dataType;
+					if( info.mimeType )
+						request.mimeType = info.mimeType;
+				}
+
+				LS.Network.request( request );
 				return;
 			}
 

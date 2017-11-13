@@ -343,6 +343,20 @@ GL.Texture.prototype.inspect = function( widgets, skip_default_widgets )
 		TextureTools.showResizeDialog( texture );
 	});
 
+	widgets.addButton(null, "Mipmaps", function(){
+		if( !isPowerOfTwo(texture.width) || !isPowerOfTwo(texture.height) )
+		{
+			LiteGUI.alert("this texture size is no power of two");
+			return;
+		}
+
+		texture.bind(0);
+		texture.setParameter( gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR );
+		gl.generateMipmap( texture.texture_type );
+		texture.unbind();
+		LS.GlobalScene.requestFrame();
+	});
+
 	widgets.widgets_per_row = 1;
 
 	var clone_name = LS.RM.getBasename( texture.filename ) + "_clone.png";

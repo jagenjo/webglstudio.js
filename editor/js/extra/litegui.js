@@ -2245,7 +2245,10 @@ function Slider(value, options)
 
 	function setFromX(x)
 	{
-		var width = canvas.getClientRects()[0].width;
+		var rect = canvas.getBoundingClientRect();
+		if(!rect)
+			return;
+		var width = rect.width;
 		var norm = x / width;
 		var min = options.min || 0.0;
 		var max = options.max || 1.0;
@@ -2267,7 +2270,9 @@ function Slider(value, options)
 
 	function onMouseMove(e)
 	{
-		var rect = canvas.getClientRects()[0];
+		var rect = canvas.getBoundingClientRect();
+		if(!rect)
+			return;
 		var x = e.x === undefined ? e.pageX : e.x;
 		var mouseX = x - rect.left;
 		setFromX(mouseX);

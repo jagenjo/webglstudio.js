@@ -111,6 +111,9 @@ var EditorModule = {
 		this.commands["frame"] = function() {
 			EditorModule.focusCameraInAll();
 		};
+		this.commands["upgrade_materials"] = function() {
+			EditorModule.upgradeMaterials();
+		};
 	},
 
 	registerCanvasWidget: function( widget_class )
@@ -2153,6 +2156,22 @@ var EditorModule = {
 		if(name != "editor") return;
 		widgets.addFlags( EditorModule.preferences );
 	},
+
+	upgradeMaterials: function()
+	{
+		for(var i in LS.RM.materials)
+		{
+			var mat = LS.RM.materials[i];
+			if(mat.constructor === LS.MaterialClasses.newStandardMaterial)
+				continue;
+			var new_mat = new LS.MaterialClasses.newStandardMaterial( mat.serialize() );
+			new_mat.fullpath = mat.fullpath;
+			new_mat.filename = mat.filename;
+			LS.RM.materials[i] = new_mat;
+			LS.RM.materials_by_uid[ new_mat.uid ] = new_mat;
+			LS.RM.resources[ new_mat.fullpath || new_mat.filename ] = new_mat;
+		}
+	}
 };
 
 CORE.registerModule( EditorModule );

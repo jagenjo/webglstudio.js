@@ -8608,10 +8608,10 @@ GL.create = function(options) {
 			first = touches[0],
 			type = "";
 
-		if( gl.ontouch && gl.ontouch(e) === false )
+		if( gl.ontouch && gl.ontouch(e) === true )
 			return;
 
-		if( LEvent.trigger( gl, e.type, e ) === false )
+		if( LEvent.trigger( gl, e.type, e ) === true )
 			return;
 
 		if(!translate_touches)

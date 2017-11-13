@@ -177,12 +177,13 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 			if(!data ) return;
 
 			var material = data;
-			if( material.type == "value" )
+			if( material.type == "value" ) //????
 				material = material.data;
 			else if( LS.MaterialClasses[ material.object_class ] )
 			{
 				material = new LS.MaterialClasses[ material.object_class ]();
 				delete data["object_class"];
+				delete data["uid"]; //avoid materials with same uid
 				material.configure(data);
 				material.loadTextures();
 			}
@@ -450,6 +451,7 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 	}});
 
 	inspector.addSlider("Normalmap factor", material.normalmap_factor, { pretitle: AnimationModule.getKeyframeCode( material, "normalmap_factor" ), min: 0, step:0.01, max:1.5, callback: function (value) { material.normalmap_factor = value; } });
+	inspector.addColor("Extra Color", material.extra, { pretitle: AnimationModule.getKeyframeCode( material, "extra" ), callback: function(color) { material.extra = color; } });
 
 	inspector.addTitle("Velvet");
 	inspector.addColor("Velvet", material.velvet, { pretitle: AnimationModule.getKeyframeCode( material, "velvet" ), callback: function(color) { vec3.copy(material.velvet,color); }});
@@ -777,6 +779,11 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 
 	widgets.addCombo("Missing", sampler["missing"] || "black", { values: ["black","grey","white","normal"], callback: function(v) {
 		sampler.missing = v;
+		LS.GlobalScene.refresh();
+	}});
+
+	widgets.addCheckbox("Degamma", sampler["degamma"], { callback: function(v) {
+		sampler.degamma = v;
 		LS.GlobalScene.refresh();
 	}});
 

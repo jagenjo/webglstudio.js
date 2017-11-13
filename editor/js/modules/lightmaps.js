@@ -140,6 +140,8 @@ var LightmapTools = {
 				}});
 			widgets.addLayers("Layers", options.layers, { callback: function(v){ options.layers = v; } });
 			widgets.addNumber("Multiplier", options.multiplier, { min: 0, max: 3, callback: function(v){ options.multiplier = v; }});
+			widgets.addColor("Fill color", options.fill_color, { callback: function(v){ options.fill_color = v; }});
+			widgets.addTitle("For Indirect Lighting");
 			widgets.addInfo(null,"Be careful changing the next parameters");
 			widgets.addCombo("View size",options.view_size, { values: view_sizes, callback: function(v){ options.view_size = v; }});
 			widgets.addNumber("FOV", options.fov, { min: 45, max: 160, precision: 0, step: 1, callback: function(v){ options.fov = v; }});
@@ -147,15 +149,20 @@ var LightmapTools = {
 			widgets.addCheckbox("Random orientation", options.random_orientation, { callback: function(v){ options.random_orientation = v; }});
 			widgets.addCheckbox("Blend with previous", options.blend, { callback: function(v){ options.blend = v; }});
 			widgets.widgets_per_row = 1;
-			widgets.addColor("Fill color", options.fill_color, { callback: function(v){ options.fill_color = v; }});
 
 			widgets.addSeparator();
 
-			widgets.addButton(null,"Generate Lightmap", function(){
+			widgets.addButton(null,"Generate Indirect Lightmap", function(){
 				var node = LS.GlobalScene.getNode(node_id);
 				options.node = node;
 				dialog_progress = LiteGUI.alert("<p>Generating Lightmap, this could take some time...</p><p class='progress'>0% Estimating time...</p>",{width:400,height:200,noclose:true});
 				setTimeout( inner_start_async, 100); //wait to show modal
+			});
+
+			widgets.addButton(null,"Generate Direct Lightmap", function(){
+				var node = LS.GlobalScene.getNode(node_id);
+				options.node = node;
+				LightmapTools.generateDirectLightmap( options );
 			});
 
 			widgets.addSeparator();
@@ -170,13 +177,13 @@ var LightmapTools = {
 
 		function inner_start()
 		{
-			var lightmap = LightmapTools.generateLightmap( options );
+			var lightmap = LightmapTools.generateIndirectLightmap( options );
 			inner_complete( lightmap );
 		}
 
 		function inner_start_async()
 		{
-			LightmapTools.generateLightmap( options, inner_complete, inner_progress );
+			LightmapTools.generateIndirectLightmap( options, inner_complete, inner_progress );
 		}
 
 		function inner_start_all_async()
@@ -210,7 +217,7 @@ var LightmapTools = {
 				options.node = node_info.node;
 				options.name = node_info.name;
 				inner_progress(0,1);
-				LightmapTools.generateLightmap( options, step, inner_progress );
+				LightmapTools.generateIndirectLightmap( options, step, inner_progress );
 			}
 		}
 
@@ -240,7 +247,7 @@ var LightmapTools = {
 		}
 	},
 
-	generateLightmap: function( options, on_complete, on_progress )
+	generateIndirectLightmap: function( options, on_complete, on_progress )
 	{
 		if(!options)
 			throw("options missing");
@@ -868,6 +875,79 @@ var LightmapTools = {
 			}
 		}
 		return nodes;
+	},
+
+	generateDirectLightmap: function( options )
+	{
+		if(!options)
+			throw("options missing");
+
+		var texture = null;
+		var size = options.size || 512;
+		var data_type = options.high ? gl.HALF_FLOAT_OES : gl.UNSIGNED_BYTE;
+		var node = options.node;
+		if(!node)
+		{
+			console.error("no node selected");
+			return false;
+		}
+
+		var scene = node.scene;
+		this.render_settings.layers = options.layers === undefined ? 0xFF : options.layers;
+		var session = this._session_direct;
+
+		
+		if( session && size == session.size && session.data_type == data_type )
+			texture = session.lightmap;
+		else
+		{
+			session = this._session_direct = {};
+			session.size = size;
+			session.data_type = data_type;
+			session.lightmap = texture = new GL.Texture( size, size, { format: gl.RGB, type: data_type, minFilter: gl.LINEAR_MIPMAP_LINEAR, magFilter: gl.LINEAR });
+			session.background_color = vec4.fromValues(0,0,0,1);
+		}
+
+		if( options.fill_color )
+			session.background_color.set( options.fill_color );
+
+		//get shaderblock "modifyFinalVertexPosition"
+		if( !this._shader_block )
+		{
+			var shaderblock = new LS.ShaderBlock("modifyFinalVertexPosition");
+			shaderblock.addCode( GL.VERTEX_SHADER, "gl_Position = vec4(a_coord * 2.0 - vec2(1.0),0.0,1.0);\n", "" );
+			shaderblock.register();
+			this._shader_block = shaderblock;
+		}
+
+		//enable scene shaderblock flag
+		LS.Renderer._global_block_flags |= this._shader_block.flag_mask;
+		var instances = node._instances;
+		if(!instances || !instances.length)
+		{
+			console.error("node has no instances");
+			return false;
+		}
+
+		texture.drawTo(function(){
+			gl.clearColor( session.background_color[0], session.background_color[1], session.background_color[2], session.background_color[3] );
+			gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
+			LightmapTools.render_settings.frustum_culling = false;
+			LS.Renderer.renderInstances( LightmapTools.render_settings, instances, scene );
+			LightmapTools.render_settings.frustum_culling = true;
+		});
+
+		texture.bind(0);
+		gl.generateMipmap( texture.texture_type );
+		texture.unbind();
+
+		LS.Renderer._global_block_flags &= ~(this._shader_block.flag_mask);
+
+		//register texture
+		LS.RM.registerResource( options.name || ":lightmap", session.lightmap );
+		
+		//assign texture to lightmap?
+		return true;
 	},
 
 	_world_shader_vs: "\n\

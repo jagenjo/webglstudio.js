@@ -1997,6 +1997,7 @@ var Network = {
     *			dataType: result type {text,xml,json,binary,arraybuffer,image},
 				data: object with form fields,
 				method: "POST","GET","DELETE","PUT", if omited if will use post or get depending on the parameters,
+				mimeType: to overwrite,
 				use_proxy: if true it will use LiteScene proxy if available
 				callbacks supported: {success, error, progress}
 	* @return {XMLHttpRequest} the XMLHttpRequest of the petition
@@ -4261,8 +4262,13 @@ var ResourcesManager = {
 
 		//in case we need to force a response format 
 		var format_info = LS.Formats.supported[ extension ];
-		if( format_info && format_info.dataType ) //force dataType, otherwise it will be set by http server
-			settings.dataType = format_info.dataType;
+		if( format_info )
+		{
+			if( format_info.dataType ) //force dataType, otherwise it will be set by http server
+				settings.dataType = format_info.dataType;
+			if( format_info.mimeType ) //force mimeType
+				settings.mimeType = format_info.mimeType;
+		}
 
 		//send the REQUEST
 		LS.Network.request( settings ); //ajax call
@@ -4487,7 +4493,10 @@ var ResourcesManager = {
 
 		//test filename is valid (alphanumeric with spaces, dot or underscore and dash and slash
 		if( filename[0] != ":" && this.valid_resource_name_reg.test( filename ) == false )
-			console.warn( "invalid filename for resource: ", filename );
+		{
+			if( filename.substr(0,4) != "http" )
+				console.warn( "invalid filename for resource: ", filename );
+		}
 
 		//clean up the filename (to avoid problems with //)
 		filename = this.cleanFullpath( filename );
@@ -4865,6 +4874,8 @@ LS.ResourcesManager.registerResourcePreProcessor("json", function(filename, data
 	}
 
 	var class_name = data.object_class || data.object_type; //object_type for LEGACY
+	if(!class_name && data.material_class)
+		class_name = data.material_class; //HACK to fix one error
 
 	if( class_name && !data.is_data )
 	{
@@ -5279,8 +5290,10 @@ var ShadersManager = {
 
 		//base intro code for shaders
 		this.global_extra_code = String.fromCharCode(10) + "#define WEBGL" + String.fromCharCode(10);
-		if( gl.extensions.OES_standard_derivatives )
+		if( gl.webgl_version == 2 || gl.extensions.OES_standard_derivatives )
 			this.global_extra_code = "#define STANDARD_DERIVATIVES" + String.fromCharCode(10);
+		if( gl.webgl_version == 2 || gl.extensions.WEBGL_draw_buffers )
+			this.global_extra_code = "#define DRAW_BUFFERS" + String.fromCharCode(10);
 
 		//compile some shaders
 		this.createDefaultShaders();
@@ -6334,7 +6347,7 @@ GLSLCode.pragma_methods["shaderblock"] = {
 		var shader_block = LS.ShadersManager.getShaderBlock( shader_block_name );
 		if(!shader_block)
 		{
-			console.error("ShaderCode uses unknown ShaderBlock: ", fragment.shader_block);
+			//console.error("ShaderCode uses unknown ShaderBlock: ", fragment.shader_block);
 			return null;
 		}
 
@@ -6635,6 +6648,7 @@ Material.AMBIENT_TEXTURE = "ambient";
 Material.SPECULAR_TEXTURE = "specular"; //defines specular factor and glossiness per pixel
 Material.EMISSIVE_TEXTURE = "emissive";
 Material.ENVIRONMENT_TEXTURE = "environment";
+Material.IRRADIANCE_TEXTURE = "irradiance";
 
 Material.COORDS_UV0 = "0";
 Material.COORDS_UV1 = "1";
@@ -6746,6 +6760,9 @@ Material.prototype.configure = function(o)
 Material.prototype.serialize = function()
 {
 	 var o = LS.cloneObject(this);
+	 delete o.filename;
+ 	 delete o.fullpath;
+ 	 delete o.remotepath;
 	 o.material_class = LS.getObjectClassName(this);
 	 return o;
 }
@@ -7609,6 +7626,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 
 	//compute flags: checks the ShaderBlocks attached to this instance and resolves the flags
 	var block_flags = instance.computeShaderBlockFlags();
+	block_flags |= LS.Renderer._global_block_flags; //apply global block_flags
 
 	//global stuff
 	this.render_state.enable();
@@ -7625,6 +7643,10 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 			else
 				global_flags |= environment_cubemap_block.flag_mask;
 		}
+		if( LS.Renderer._global_textures.irradiance )
+		{
+			global_flags |= irradiance_block.flag_mask;
+		}
 	}
 
 	if(this.onRenderInstance)
@@ -7633,7 +7655,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	//add flags related to lights
 	var lights = null;
 
-	//ignore lights renders the object with illumination
+	//ignore lights renders the object with flat illumination
 	var ignore_lights = pass.id != COLOR_PASS || render_settings.lights_disabled || this._light_mode === Material.NO_LIGHTS;
 
 	if( !ignore_lights )
@@ -7662,11 +7684,13 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 		return true;
 	}
 
+	var base_block_flags = block_flags;
+
 	var prev_shader = null;
 	for(var i = 0; i < lights.length; ++i)
 	{
 		var light = lights[i];
-		block_flags = light.applyShaderBlockFlags( block_flags, pass, render_settings );
+		block_flags = light.applyShaderBlockFlags( base_block_flags, pass, render_settings );
 
 		//global
 		block_flags |= global_flags;
@@ -8194,6 +8218,28 @@ var reflection_block = new LS.ShaderBlock("applyReflection");
 ShaderMaterial.reflection_block = reflection_block;
 reflection_block.addCode( GL.FRAGMENT_SHADER, reflection_code, reflection_disabled_code );
 reflection_block.register();
+
+
+var irradiance_code = "\n\
+	uniform samplerCube irradiance_texture;\n\
+	\n\
+	void applyIrradiance( in SurfaceOutput o, inout FinalLight FINALLIGHT )\n\
+	{\n\
+		FINALLIGHT.Ambient *= textureCube( irradiance_texture, o.Normal ).xyz;\n\
+	}\n\
+";
+
+var irradiance_disabled_code = "\n\
+	void applyIrradiance( in SurfaceOutput o, inout FinalLight FINALLIGHT )\n\
+	{\n\
+	}\n\
+";
+
+var irradiance_block = new LS.ShaderBlock("applyIrradiance");
+ShaderMaterial.irradiance_block = irradiance_block;
+irradiance_block.addCode( GL.FRAGMENT_SHADER, irradiance_code, irradiance_disabled_code );
+irradiance_block.register();
+
 
 
 
@@ -9265,7 +9311,7 @@ void main() {\n\
 
 function newStandardMaterial(o)
 {
-	Material.call(this,null); //do not pass the data object, it is called later
+	ShaderMaterial.call(this,null); //do not pass the data object, it is called later
 
 	this.blend_mode = LS.Blend.NORMAL;
 
@@ -9292,10 +9338,13 @@ function newStandardMaterial(o)
 
 	this.normalmap_factor = 1.0;
 	this.normalmap_tangent = true;
+	this.bumpmap_factor = 1.0;
 
 	this.displacementmap_factor = 0.1;
 
 	this.use_scene_ambient = true;
+
+	this.createProperty( "extra", new Float32Array([1,1,1,1]), "color" ); //used in special situations
 
 	//used to change the render state
 	this.flags = {
@@ -9322,7 +9371,8 @@ function newStandardMaterial(o)
 		u_velvet_info: vec4.create(),
 		u_normal_info: vec2.create(),
 		u_detail_info: this._detail,
-		u_texture_matrix: this.uvs_matrix
+		u_texture_matrix: this.uvs_matrix,
+		u_extra_color: this._extra
 	};
 
 	this._samplers = [];
@@ -9374,6 +9424,7 @@ newStandardMaterial.NORMAL_TEXTURE = "normal";
 newStandardMaterial.DISPLACEMENT_TEXTURE = "displacement";
 newStandardMaterial.BUMP_TEXTURE = "bump";
 newStandardMaterial.REFLECTIVITY_TEXTURE = "reflectivity";
+newStandardMaterial.EXTRA_TEXTURE = "extra";
 newStandardMaterial.IRRADIANCE_TEXTURE = "irradiance";
 
 newStandardMaterial.prototype.renderInstance = ShaderMaterial.prototype.renderInstance;
@@ -9416,16 +9467,22 @@ newStandardMaterial.FLAGS = {
 	DETAIL_TEXTURE: 1<<7,
 	NORMAL_TEXTURE: 1<<8,
 	DISPLACEMENT_TEXTURE: 1<<9,
+	EXTRA_TEXTURE: 1<<10,
 
 	ALPHA_TEST: 1<<16,
 
 	ENVIRONMENT_TEXTURE: 1<<18,
-	ENVIRONMENT_CUBEMAP: 1<<19
+	ENVIRONMENT_CUBEMAP: 1<<19,
+	IRRADIANCE_CUBEMAP: 1<<21,
+
+	DEGAMMA_COLOR: 1<<24,
+	SPEC_ON_ALPHA: 1<<25
 };	
 
 newStandardMaterial.shader_codes = {};
 
-
+//returns the LS.ShaderCode required to render
+//here we cannot filter by light pass because this is done before applying shaderblocks
 newStandardMaterial.prototype.getShaderCode = function( instance, render_settings, pass )
 {
 	var FLAGS = newStandardMaterial.FLAGS;
@@ -9436,7 +9493,11 @@ newStandardMaterial.prototype.getShaderCode = function( instance, render_setting
 
 	//TEXTURES
 	if( this.textures.color )
+	{
 		code_flags |= FLAGS.COLOR_TEXTURE;
+		if( this.textures.color.degamma && pass.id == COLOR_PASS )
+			code_flags |= FLAGS.DEGAMMA_COLOR;
+	}
 	if( this.textures.opacity )
 		code_flags |= FLAGS.OPACITY_TEXTURE;
 
@@ -9459,12 +9520,17 @@ newStandardMaterial.prototype.getShaderCode = function( instance, render_setting
 			code_flags |= FLAGS.AMBIENT_TEXTURE;
 		if( this.textures.detail )
 			code_flags |= FLAGS.DETAIL_TEXTURE;
+		if( this.textures.extra )
+			code_flags |= FLAGS.EXTRA_TEXTURE;
+		if( this.specular_on_alpha )
+			code_flags |= FLAGS.SPEC_ON_ALPHA;
 	}
 
 	//flags
 	if( (this.flags.alpha_test && pass.id == COLOR_PASS) ||
 		(this.flags.alpha_test_shadows && pass.id == SHADOW_PASS) )
 		code_flags |= FLAGS.ALPHA_TEST;
+
 
 	//check if we already have this shader created
 	var shader_code = LS.newStandardMaterial.shader_codes[ code_flags ];
@@ -9487,8 +9553,10 @@ newStandardMaterial.prototype.getShaderCode = function( instance, render_setting
 
 	if( code_flags & FLAGS.COLOR_TEXTURE )
 	{
-		fs_code += "	vec4 tex_color = texture2D( color_texture, IN.uv );\n\
-	o.Albedo *= tex_color.xyz;\n\
+		fs_code += "	vec4 tex_color = texture2D( color_texture, IN.uv );\n";
+		if( code_flags & FLAGS.DEGAMMA_COLOR )
+			fs_code += "	tex_color.xyz = pow( tex_color.xyz, vec3(2.0) );\n";
+		fs_code += "	o.Albedo *= tex_color.xyz;\n\
 	o.Alpha *= tex_color.w;\n";
 	}
 	if( code_flags & FLAGS.OPACITY_TEXTURE )
@@ -9507,10 +9575,15 @@ newStandardMaterial.prototype.getShaderCode = function( instance, render_setting
 		fs_code += "	o.Ambient *= texture2D( ambient_texture, IN.uv ).xyz;\n";
 	if( code_flags & FLAGS.DETAIL_TEXTURE )
 		fs_code += "	o.Albedo += (texture2D( detail_texture, IN.uv * u_detail_info.yz).xyz - vec3(0.5)) * u_detail_info.x;\n";
+	if( code_flags & FLAGS.EXTRA_TEXTURE )
+		fs_code += "	if(u_light_info.z == 0.0) o.Extra = u_extra_color * texture2D( extra_texture, IN.uv );\n";
 
 	//flags
 	if( code_flags & FLAGS.ALPHA_TEST )
 		fs_code += "	if(o.Alpha < 0.5) discard;\n";
+
+	if( code_flags & FLAGS.SPEC_ON_ALPHA )
+		fs_code += "	#define SPEC_ON_ALPHA\n";
 
 	//if( code_flags & FLAGS.FLAT_NORMALS )
 	//	flat_normals += "";
@@ -9574,7 +9647,7 @@ newStandardMaterial.prototype.fillUniforms = function( scene, options )
 
 newStandardMaterial.prototype.getTextureChannels = function()
 {
-	return [ Material.COLOR_TEXTURE, Material.OPACITY_TEXTURE, Material.AMBIENT_TEXTURE, Material.SPECULAR_TEXTURE, Material.EMISSIVE_TEXTURE, newStandardMaterial.DETAIL_TEXTURE, newStandardMaterial.NORMAL_TEXTURE, newStandardMaterial.DISPLACEMENT_TEXTURE, newStandardMaterial.BUMP_TEXTURE, newStandardMaterial.REFLECTIVITY_TEXTURE, Material.ENVIRONMENT_TEXTURE, newStandardMaterial.IRRADIANCE_TEXTURE ];
+	return [ Material.COLOR_TEXTURE, Material.OPACITY_TEXTURE, Material.AMBIENT_TEXTURE, Material.SPECULAR_TEXTURE, Material.EMISSIVE_TEXTURE, newStandardMaterial.DETAIL_TEXTURE, newStandardMaterial.NORMAL_TEXTURE, newStandardMaterial.DISPLACEMENT_TEXTURE, newStandardMaterial.BUMP_TEXTURE, newStandardMaterial.REFLECTIVITY_TEXTURE, newStandardMaterial.EXTRA_TEXTURE, Material.ENVIRONMENT_TEXTURE, newStandardMaterial.IRRADIANCE_TEXTURE ];
 }
 
 /**
@@ -9603,6 +9676,7 @@ newStandardMaterial.prototype.setProperty = function(name, value)
 		case "velvet_additive":
 		case "normalmap_tangent":
 		case "normalmap_factor":
+		case "bumpmap_factor":
 		case "displacementmap_factor":
 		case "detail_factor":
 		case "emissive_extra":
@@ -9629,6 +9703,7 @@ newStandardMaterial.prototype.setProperty = function(name, value)
 		case "ambient":	
 		case "emissive": 
 		case "velvet":
+		case "extra":
 		case "detail_scale":
 			if(this[name].length == value.length)
 				this[name].set(value);
@@ -9662,12 +9737,14 @@ newStandardMaterial.prototype.getPropertiesInfo = function()
 		velvet_exp: LS.TYPES.NUMBER,
 
 		normalmap_factor: LS.TYPES.NUMBER,
+		bumpmap_factor: LS.TYPES.NUMBER,
 		displacementmap_factor: LS.TYPES.NUMBER,
 		emissive_extra: LS.TYPES.NUMBER,
 
 		ambient: LS.TYPES.VEC3,
 		emissive: LS.TYPES.VEC3,
 		velvet: LS.TYPES.VEC3,
+		extra: LS.TYPES.VEC4,
 		detail_factor: LS.TYPES.NUMBER,
 		detail_scale: LS.TYPES.VEC2,
 
@@ -9701,10 +9778,13 @@ newStandardMaterial.prototype.getPropertyInfoFromPath = function( path )
 		case "reflection_fresnel":
 		case "velvet_exp":
 		case "normalmap_factor":
+		case "bumpmap_factor":
 		case "displacementmap_factor":
 		case "emissive_extra":
 		case "detail_factor":
 			type = LS.TYPES.NUMBER; break;
+		case "extra":
+			type = LS.TYPES.VEC4; break;
 		case "ambient":
 		case "emissive":
 		case "velvet":
@@ -9774,22 +9854,28 @@ void main() {\n\
 	vec4 vertex4 = vec4(a_vertex,1.0);\n\
 	v_normal = a_normal;\n\
 	v_uvs = a_coord;\n\
-  \n\
-  //deforms\n\
-  applyMorphing( vertex4, v_normal );\n\
-  applySkinning( vertex4, v_normal );\n\
+	\n\
+	//deforms\n\
+	applyMorphing( vertex4, v_normal );\n\
+	applySkinning( vertex4, v_normal );\n\
 	\n\
 	//vertex\n\
 	v_pos = (u_model * vertex4).xyz;\n\
-  \n\
-  applyLight(v_pos);\n\
-  \n\
+	\n\
+	applyLight(v_pos);\n\
+	\n\
 	//normal\n\
 	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
 	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
+	gl_PointSize = u_point_size;\n\
+	#pragma shaderblock \"modifyFinalVertexPosition\"\n\
 }\n\
 \n\
 \\color.fs\n\
+\n\
+#ifdef DRAW_BUFFERS\n\
+	#extension GL_EXT_draw_buffers : require \n\
+#endif\n\
 \n\
 precision mediump float;\n\
 \n\
@@ -9812,6 +9898,8 @@ uniform vec4 u_velvet_info;\n\
 uniform vec2 u_normal_info;\n\
 uniform vec3 u_detail_info;\n\
 uniform mat3 u_texture_matrix;\n\
+uniform vec4 u_extra_color;\n\
+uniform float u_backlight_factor;\n\
 \n\
 uniform sampler2D color_texture;\n\
 uniform sampler2D opacity_texture;\n\
@@ -9821,6 +9909,7 @@ uniform sampler2D emissive_texture;\n\
 uniform sampler2D reflectivity_texture;\n\
 uniform sampler2D detail_texture;\n\
 uniform sampler2D normal_texture;\n\
+uniform sampler2D extra_texture;\n\
 \n\
 uniform vec4 u_color_texture_settings;\n\
 uniform vec4 u_opacity_texture_settings;\n\
@@ -9836,6 +9925,8 @@ uniform vec4 u_normal_texture_settings;\n\
 \n\
 #pragma snippet \"perturbNormal\"\n\
 \n\
+#pragma shaderblock \"extraBuffers\"\n\
+\n\
 void surf(in Input IN, out SurfaceOutput o)\n\
 {\n\
 	o.Albedo = u_material_color.xyz;\n\
@@ -9846,6 +9937,7 @@ void surf(in Input IN, out SurfaceOutput o)\n\
 	o.Ambient = u_ambient_color;\n\
 	o.Emission = u_emissive_color.xyz;\n\
 	o.Reflectivity = u_reflection_info.x;\n\
+	o.Extra = u_extra_color;\n\
 	\n\
 	{{}}\n\
 	\n\
@@ -9860,15 +9952,25 @@ void surf(in Input IN, out SurfaceOutput o)\n\
 \n\
 \n\
 void main() {\n\
-  Input IN = getInput();\n\
-  SurfaceOutput o = getSurfaceOutput();\n\
-  surf(IN,o);\n\
-  vec4 final_color = vec4(0.0);\n\
-  Light LIGHT = getLight();\n\
-  final_color.xyz = computeLight( o, IN, LIGHT );\n\
-  final_color.a = o.Alpha;\n\
-  final_color = applyReflection( IN, o, final_color );\n\
-  gl_FragColor = final_color;\n\
+	Input IN = getInput();\n\
+	SurfaceOutput o = getSurfaceOutput();\n\
+	surf(IN,o);\n\
+	Light LIGHT = getLight();\n\
+	FinalLight FINALLIGHT = computeLight( o, IN, LIGHT );\n\
+	FINALLIGHT.Diffuse += u_backlight_factor * max(0.0, dot(FINALLIGHT.Vector, -o.Normal));\n\
+	vec4 final_color = vec4( 0.0,0.0,0.0, o.Alpha );\n\
+	#ifdef SPEC_ON_ALPHA\n\
+		final_color.a += FINALLIGHT.Specular;\n\
+	#endif\n\
+	final_color.xyz = applyLight( o, FINALLIGHT );\n\
+	final_color = applyReflection( IN, o, final_color );\n\
+	#ifdef DRAW_BUFFERS\n\
+	  gl_FragData[0] = final_color;\n\
+	  if(u_light_info.z == 0.0)\n\
+		  gl_FragData[1] = o.Extra;\n\
+	#else\n\
+	  gl_FragColor = final_color;\n\
+	#endif\n\
 }\n\
 \\shadow.vs\n\
 \n\
@@ -14588,8 +14690,13 @@ ShaderCode.prototype.getShader = function( render_mode, block_flags )
 	}
 
 	//globals
-	if( gl.extensions.OES_standard_derivatives )
-		fs_code = "#define STANDARD_DERIVATIVES\n" + fs_code;
+	var global_fs = "";
+	if( gl.webgl_version == 2 || gl.extensions.OES_standard_derivatives )
+		global_fs += "#define STANDARD_DERIVATIVES\n";
+	if( gl.webgl_version == 2 || gl.extensions.WEBGL_draw_buffers )
+		global_fs += "#define DRAW_BUFFERS\n";
+	if(global_fs)
+		fs_code = global_fs + fs_code;
 
 	//compile the shader and return it
 	var shader = this.compileShader( vs_code, fs_code );
@@ -17099,6 +17206,10 @@ FXStack.prototype.applyFX = function( input_texture, output_texture, options )
 	final_texture.setParameter( gl.TEXTURE_MAG_FILTER, this.filter ? gl.LINEAR : gl.NEAREST );
 	final_texture.setParameter( gl.TEXTURE_MIN_FILTER, gl.LINEAR );
 
+	gl.disable( gl.DEPTH_TEST );
+	gl.disable( gl.BLEND );
+	gl.disable( gl.CULL_FACE );
+
 	//to screen
 	if( this.apply_fxaa )
 	{
@@ -17265,6 +17376,10 @@ FXStack.prototype.applyFX = function( input_texture, output_texture, options )
 	}
 
 	shader = this._last_shader;
+
+	gl.disable( gl.DEPTH_TEST );
+	gl.disable( gl.BLEND );
+	gl.disable( gl.CULL_FACE );
 
 	//error compiling shader
 	if(!shader)
@@ -18744,6 +18859,11 @@ RenderInstance.prototype.applyTransform = function( matrix, normal_matrix )
 //set the material and apply material flags to render instance
 RenderInstance.prototype.setMaterial = function(material)
 {
+	if(material && !material.constructor.is_material)
+	{
+		//console.error("Material in RenderInstance is not a material class:",material);
+		return;
+	}
 	this.material = material;
 	if(material && material.applyToRenderInstance)
 		material.applyToRenderInstance(this);
@@ -19221,6 +19341,11 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 
 	//extra color texture (multibuffer rendering)
 	var total_extra = Math.min( this.num_extra_textures, 4 );
+	
+	//extra buffers not supported in this webgl context
+	if(gl.webgl_version == 1 && !gl.extensions["WEBGL_draw_buffers"])
+		total_extra = 0;
+
 	for(var i = 0; i < total_extra; ++i) //MAX is 4
 	{
 		var extra_texture = textures[1 + i];
@@ -19560,6 +19685,7 @@ var Renderer = {
 	_current_target: null, //texture where the image is being rendered
 	_current_pass: null,
 	_global_textures: {}, //used to speed up fetching global textures
+	_global_block_flags: 0, //used to add extra shadarblocks to all objects (it gets reseted every frame)
 
 	_queues: [], //render queues in order
 
@@ -19735,6 +19861,7 @@ var Renderer = {
 		this._rendercalls = 0;
 		this._rendered_instances = 0;
 		this._rendered_passes = 0;
+		this._global_block_flags = 0;
 
 		//to restore from a possible exception (not fully tested, remove if problem)
 		if(!render_settings.ignore_reset)
@@ -20699,6 +20826,8 @@ var Renderer = {
 
 			if( i == "environment" )
 				this._global_textures.environment = texture;
+			else if( i == "irradiance" )
+				this._global_textures.irradiance = texture;
 		}
 
 		LEvent.trigger( scene, "fillSceneUniforms", scene._uniforms );
@@ -20780,7 +20909,7 @@ var Renderer = {
 			if(!instance.material)
 				instance.material = this.default_material;
 			if( materials[ instance.material.uid ] && instance.material !== materials[ instance.material.uid ] )
-				console.warn("Different Materials with same UID");
+				console.warn( "Different Materials with same UID: ", instance.material.uid );
 			materials[ instance.material.uid ] = instance.material;
 
 			//add extra info
@@ -36222,12 +36351,6 @@ ReflectionProbe.prototype.updateCubemap = function( position, render_settings )
 
 	texture._in_current_fbo = false;
 
-	if(this.blur)
-	{
-		/* TODO
-		*/
-	}
-
 	if(this.generate_mipmaps && isPowerOfTwo( texture_size ) )
 	{
 		texture.setParameter( gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR );
@@ -42767,6 +42890,7 @@ LS.ShadersManager.registerSnippet("surface","\n\
 		o.Ambient = vec3(1.0);\n\
 		o.Emission = vec3(0.0);\n\
 		o.Reflectivity = 0.0;\n\
+		o.Extra = vec4(0.0);\n\
 		return o;\n\
 	}\n\
 ");
@@ -42827,6 +42951,7 @@ LS.ShadersManager.registerSnippet("light_structs","\n\
 		vec3 Emission;\n\
 		vec3 Reflection;\n\
 		float Attenuation;\n\
+		vec3 Vector; //light vector\n\
 		float Shadow; //1.0 means fully lit\n\
 	};\n\
 	#endif\n\
@@ -42843,24 +42968,17 @@ Light._enabled_fs_shaderblock_code = "\n\
 	#pragma snippet \"surface\"\n\
 	#pragma snippet \"light_structs\"\n\
 	#pragma snippet \"spotFalloff\"\n\
+	#pragma shaderblock \"applyIrradiance\"\n\
 	#pragma shaderblock \"attenuation\"\n\
 	#pragma shaderblock SHADOWBLOCK \"testShadow\"\n\
 	\n\
 	//Light is separated in two functions, computeLight (how much light receives the object) and applyLight (compute resulting final color)\n\
 	// FINAL LIGHT EQUATION, takes all the info from FinalLight and computes the final color \n\
-	vec3 applyLight( in SurfaceOutput o, in FinalLight LIGHT )\n\
-	{\n\
-		vec3 total_light = LIGHT.Ambient * o.Ambient + LIGHT.Color * LIGHT.Diffuse * LIGHT.Attenuation * LIGHT.Shadow;\n\
-		vec3 final_color = o.Albedo * total_light;\n\
-		if(u_light_info.z == 0.0)\n\
-			final_color += o.Emission;\n\
-		final_color	+= o.Albedo * (LIGHT.Color * LIGHT.Specular * LIGHT.Attenuation * LIGHT.Shadow);\n\
-		return max( final_color, vec3(0.0) );\n\
-	}\n\
 	\n\
 	// HERE we fill FinalLight structure with all the info (colors,NdotL,diffuse,specular,etc) \n\
-	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT, out FinalLight FINALLIGHT)\n\
+	FinalLight computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT )\n\
 	{\n\
+		FinalLight FINALLIGHT;\n\
 		// INIT\n\
 		FINALLIGHT.Color = LIGHT.Color;\n\
 		FINALLIGHT.Ambient = LIGHT.Ambient;\n\
@@ -42876,8 +42994,11 @@ Light._enabled_fs_shaderblock_code = "\n\
 		if( LIGHT.Info.x == 3.0 )\n\
 			L = -LIGHT.Front;\n\
 		\n\
+		FINALLIGHT.Vector = L;\n\
 		vec3 R = reflect(E,N);\n\
 		\n\
+		// IRRADIANCE\n\
+		applyIrradiance( o, FINALLIGHT );\n\
 		// PHONG FORMULA\n\
 		float NdotL = 1.0;\n\
 		NdotL = dot(N,L);\n\
@@ -42905,13 +43026,24 @@ Light._enabled_fs_shaderblock_code = "\n\
 		#ifdef LIGHT_MODIFIER\n\
 		#endif\n\
 		// FINAL LIGHT FORMULA ************************* \n\
-		return applyLight(o,FINALLIGHT);\n\
+		return FINALLIGHT;\n\
+	}\n\
+	//here we apply the FINALLIGHT to the SurfaceOutput\n\
+	vec3 applyLight( in SurfaceOutput o, in FinalLight FINALLIGHT )\n\
+	{\n\
+		vec3 total_light = FINALLIGHT.Ambient * o.Ambient + FINALLIGHT.Color * FINALLIGHT.Diffuse * FINALLIGHT.Attenuation * FINALLIGHT.Shadow;\n\
+		vec3 final_color = o.Albedo * total_light;\n\
+		if(u_light_info.z == 0.0)\n\
+			final_color += o.Emission;\n\
+		final_color	+= o.Albedo * (FINALLIGHT.Color * FINALLIGHT.Specular * FINALLIGHT.Attenuation * FINALLIGHT.Shadow);\n\
+		return max( final_color, vec3(0.0) );\n\
 	}\n\
 	\n\
-	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT)\n\
+	//all done in one single step\n\
+	vec3 processLight(in SurfaceOutput o, in Input IN, in Light LIGHT)\n\
 	{\n\
-		FinalLight FINALLIGHT;\n\
-		return computeLight(o,IN,LIGHT,FINALLIGHT);\n\
+		FinalLight FINALLIGHT = computeLight( o, IN,LIGHT );\n\
+		return applyLight(o,FINALLIGHT);\n\
 	}\n\
 	\n\
 ";
@@ -42920,22 +43052,33 @@ Light._disabled_shaderblock_code = "\n\
 	#pragma snippet \"input\"\n\
 	#pragma snippet \"surface\"\n\
 	#pragma snippet \"light_structs\"\n\
-	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT, inout FinalLight FINALLIGHT)\n\
+	#pragma shaderblock \"applyIrradiance\"\n\
+	FinalLight computeLight( in SurfaceOutput o, in Input IN, in Light LIGHT )\n\
 	{\n\
+		FinalLight FINALLIGHT;\n\
+		FINALLIGHT.Ambient = LIGHT.Ambient;\n\
 		FINALLIGHT.Diffuse = 0.0;\n\
 		FINALLIGHT.Specular = 0.0;\n\
 		FINALLIGHT.Attenuation = 0.0;\n\
 		FINALLIGHT.Shadow = 0.0;\n\
-		vec3 final_color = o.Albedo * LIGHT.Ambient;\n\
+		applyIrradiance( o, FINALLIGHT );\n\
+		return FINALLIGHT;\n\
+	}\n\
+	vec3 applyLight( in SurfaceOutput o, in FinalLight FINALLIGHT )\n\
+	{\n\
+		vec3 final_color = o.Albedo * FINALLIGHT.Ambient;\n\
 		if(u_light_info.z == 0.0)\n\
 			final_color += o.Emission;\n\
 		return final_color;\n\
 	}\n\
-	vec3 computeLight(in SurfaceOutput o, in Input IN, in Light LIGHT)\n\
+	\n\
+	//all done in one single step\n\
+	vec3 processLight(in SurfaceOutput o, in Input IN, in Light LIGHT)\n\
 	{\n\
-		FinalLight FINALLIGHT;\n\
-		return computeLight(o,IN,LIGHT,FINALLIGHT);\n\
+		FinalLight FINALLIGHT = computeLight( o, IN,LIGHT );\n\
+		return applyLight(o,FINALLIGHT);\n\
 	}\n\
+	\n\
 ";
 
 var light_block = new LS.ShaderBlock("light");
@@ -48632,7 +48775,7 @@ Player.prototype._ondraw = function()
 
 		if(scene._must_redraw || this.force_redraw )
 		{
-			scene.render( scene.info ? scene.info.render_settings : this.render_settings );
+			scene.render( scene.info && scene.info.render_settings ? scene.info.render_settings : this.render_settings );
 		}
 
 		if(this.onDraw)

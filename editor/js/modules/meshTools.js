@@ -201,6 +201,55 @@ var MeshTools = {
 		return true;
 	},
 
+	generateTextureCoords: function( mesh, mode, param )
+	{
+		if(mode == "triplanar")
+		{
+			mesh.computeTextureCoordinates();
+			return true;
+		}
+
+		var vertices_buffer = mesh.getBuffer("vertices");
+		if(!vertices_buffer)
+			return false;
+		var coords_buffer = mesh.getBuffer("coords");
+		if(!vertices_buffer)
+			return false;
+		var vertices = vertices_buffer.data;
+		var coords = coords_buffer.data;
+		var num = vertices.length / 3;
+		var bounding = mesh.getBoundingBox();
+		var min = BBox.getMin(bounding);
+		var size = vec3.scale( vec3.create(), BBox.getHalfsize(bounding), 2 );
+
+		var index_u = 0;
+		var index_v = 1;
+
+		switch (mode)
+		{
+			case "+x": 
+			case "x": index_u = 1; index_v = 2; break;
+			case "+y": 
+			case "y": index_u = 0; index_v = 2; break;
+			case "+z": 
+			case "z": index_u = 0; index_v = 1; break;
+			case "-x": index_u = 2; index_v = 1; break;
+			case "-y": index_u = 2; index_v = 0; break;
+			case "-z": index_u = 1; index_v = 0; break;
+			default: return false;
+		}
+
+		for(var i = 0; i < num; ++i)
+		{
+			var vertex = vertices.subarray(i*3,i*3+3);
+			var coord = coords.subarray(i*2,i*2+2);
+			coord[0] = (vertex[index_u] - min[index_u]) / size[index_u]; 
+			coord[1] = (vertex[index_v] - min[index_v]) / size[index_v]; 
+		}
+		coords_buffer.upload();
+		return true;
+	},
+
 	applyTransform: function( mesh )
 	{
 		var selected_node = SelectionModule.getSelectedNode();
@@ -355,12 +404,6 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		RenderModule.requestFrame();
 		widgets.refresh();
 	} );
-	widgets.addButton(null, "Generate Coords", function(){
-		mesh.computeTextureCoordinates();
-		LS.RM.resourceModified(mesh);
-		RenderModule.requestFrame();
-		widgets.refresh();
-	} );
 	
 	widgets.widgets_per_row = 2;
 	var sort_mode = "+X";
@@ -384,6 +427,19 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		RenderModule.requestFrame();
 		widgets.refresh();
 	});
+
+	var uvs_mode = "triplanar";
+	widgets.addCombo("UVs", uvs_mode, { values:["triplanar","+x","-x","+y","-y","+z","-z"], callback: function(v){
+		uvs_mode = v;
+	}});
+
+	widgets.addButton(null, "Generate Coords", function(){
+		MeshTools.generateTextureCoords( mesh, uvs_mode );
+		LS.RM.resourceModified(mesh);
+		RenderModule.requestFrame();
+		widgets.refresh();
+	} );
+
 
 	widgets.widgets_per_row = 1;
 	//widgets.addButton(null, "Weld", function(){} );

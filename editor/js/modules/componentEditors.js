@@ -1,5 +1,6 @@
 //Inspector Editors for the most common Components plus Materials and Scene.
 //Editors are not included in LiteScene because they do not depend on them
+var TRASH_ICON_CODE = "<img src='imgs/mini-icon-trash.png'/>";
 
 LS.Components.GlobalInfo["@inspector"] = function( component, inspector )
 {
@@ -29,7 +30,15 @@ LS.Components.GlobalInfo["@inspector"] = function( component, inspector )
 		}});
 	}
 
-	//inspector.addButton( "Render Settings", "Edit", function(){ EditorModule.showRenderSettingsDialog( component.render_settings ); } );
+	if( component.render_settings )
+	{
+		inspector.widgets_per_row = 2;
+		inspector.addButton( "Render Settings", "Edit", { width: "calc(100% - 30px)", callback: function(){ EditorModule.showRenderSettingsDialog( component.render_settings ); } } );
+		inspector.addButton( null, TRASH_ICON_CODE, { width: "30px", callback: function(){ component.render_settings = null; EditorModule.refreshAttributes(); } } );
+		inspector.widgets_per_row = 1;
+	}
+	else
+		inspector.addButton( "Render Settings", "Create", { callback: function(){ component.render_settings = new LS.RenderSettings(); EditorModule.refreshAttributes(); } } );
 }
 
 // Some components need special inspectors
@@ -618,7 +627,7 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 				LS.GlobalScene.refresh();
 			}});
 
-			inspector.addButton(null, "<img src='imgs/mini-icon-trash.png'/>", { width: "15%", index: i, callback: function() { 
+			inspector.addButton(null, TRASH_ICON_CODE, { width: "15%", index: i, callback: function() { 
 				component.morph_targets.splice( this.options.index, 1);
 				inspector.refresh();
 				LS.GlobalScene.refresh();

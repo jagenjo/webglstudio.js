@@ -399,6 +399,21 @@ LS.Components.GeometricPrimitive.actions["to_mesh"] = {
 
 LS.MaterialClasses.StandardMaterial.actions = {}
 
+/*
+LS.MaterialClasses.newStandardMaterial.actions["to_ShaderMaterial"] = {
+	title:"Convert to ShaderMaterial",
+	callback: function( node )
+	{
+		var new_material = new LS.MaterialClasses.ShaderMaterial();
+		var shadercode = this.getShaderCode();
+		LS.RM.registerResource( "shader.glsl", shadercode );
+		new_material.shader = shadercode.filename;
+		node.material = new_material;
+		RenderModule.requestFrame();
+	}
+}
+*/
+
 LS.MaterialClasses.StandardMaterial.actions["to_newStandardMaterial"] = {
 	title:"Convert to newStandardMaterial",
 	callback: function( node )

@@ -6197,12 +6197,16 @@ Texture.prototype.getPixels = function( type, force_rgba, cubemap_face )
 * uploads some pixels to the texture (see uploadData method for more options)
 * @method setPixels
 * @param {ArrayBuffer} data gl.UNSIGNED_BYTE or gl.FLOAT data
-* @param {Number} cubemap_face if the texture is a cubemap, which face
+* @param {Boolean} no_flip do not flip in Y 
 * @param {Boolean} skip_mipmaps do not update mipmaps when possible
+* @param {Number} cubemap_face if the texture is a cubemap, which face
 */
-Texture.prototype.setPixels = function( data, cubemap_face, skip_mipmaps )
+Texture.prototype.setPixels = function( data, no_flip, skip_mipmaps, cubemap_face )
 {
-	this.uploadData( data, cubemap_face ? { cubemap_face: cubemap_face } : null, skip_mipmaps );
+	var options = { no_flip: no_flip };
+	if(cubemap_face)
+		options.cubemap_face = cubemap_face;
+	this.uploadData( data, options, skip_mipmaps );
 }
 
 /**
@@ -8303,6 +8307,7 @@ GL.create = function(options) {
 	gl.extensions["EXT_texture_filter_anisotropic"] = gl.getExtension("EXT_texture_filter_anisotropic") || gl.getExtension("WEBKIT_EXT_texture_filter_anisotropic") || gl.getExtension("MOZ_EXT_texture_filter_anisotropic");
 	gl.extensions["EXT_frag_depth"] = gl.getExtension("EXT_frag_depth") || gl.getExtension("WEBKIT_EXT_frag_depth") || gl.getExtension("MOZ_EXT_frag_depth");
 	gl.extensions["WEBGL_lose_context"] = gl.getExtension("WEBGL_lose_context") || gl.getExtension("WEBKIT_WEBGL_lose_context") || gl.getExtension("MOZ_WEBGL_lose_context");
+	gl.extensions["ANGLE_instanced_arrays"] = gl.getExtension("ANGLE_instanced_arrays");
 
 	//for float textures
 	gl.extensions["OES_texture_float_linear"] = gl.getExtension("OES_texture_float_linear");

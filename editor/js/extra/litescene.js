@@ -1349,7 +1349,10 @@ var LS = {
 		if( obj.constructor == LS.SceneTree)
 			return [ "@ENC", LS.TYPES.SCENE, obj.fullpath ]; //weird case
 		if( obj.serialize || obj.toJSON )
+		{
+			//return obj.serialize ? obj.serialize() : obj.toJSON(); //why not this?
 			return [ "@ENC", LS.TYPES.OBJECT, obj.serialize ? obj.serialize() : obj.toJSON(), LS.getObjectClassName( obj ) ];
+		}
 		console.warn("Cannot clone internal classes:", LS.getObjectClassName( obj )," When serializing an object I found a property with a class that doesnt support serialization. If this property shouldn't be serialized start the name with underscore.'");
 		return null;
 	},
@@ -1366,7 +1369,10 @@ var LS = {
 				var obj = LSQ.get( data[2] );
 				if( obj )
 					return obj;
-				return data[2]; break;
+				if(!obj)
+					console.warn( "Object UID referencing object not found in the scene:", data[2] );
+				return data[2];
+				break;
 				//return  break;
 			case LS.TYPES.SCENE: return null; break; //weird case
 			case LS.TYPES.OBJECT: 
@@ -1390,14 +1396,22 @@ var LS = {
 	* @method clearUIds
 	* @param {Object} root could be a node or an object from a node serialization
 	*/
-	clearUIds: function(root)
+	clearUIds: function( root, uids_removed )
 	{
+		uids_removed = uids_removed || {};
+
 		if(root.uid)
+		{
+			uids_removed[ root.uid ] = root;
 			delete root.uid;
+		}
 
 		//remove for embeded materials
 		if(root.material && root.material.uid)
+		{
+			uids_removed[ root.material.uid ] = root.material;
 			delete root.material.uid;
+		}
 
 		var components = root.components;
 		if(!components && root.getComponents)
@@ -1412,9 +1426,15 @@ var LS = {
 			{
 				var comp = components[i];
 				if(comp[1].uid)
+				{
+					uids_removed[ comp[1].uid ] = comp[1];
 					delete comp[1].uid;
+				}
 				if(comp[1]._uid)
+				{
+					uids_removed[ comp[1]._uid ] = comp[1];
 					delete comp[1]._uid;
+				}
 			}
 		}
 
@@ -1424,8 +1444,11 @@ var LS = {
 
 		if(!children)
 			return;
+
 		for(var i in children)
-			LS.clearUIds(children[i]);
+			LS.clearUIds( children[i], uids_removed );
+
+		return uids_removed;
 	},
 
 
@@ -1960,6 +1983,7 @@ LS.TYPES = {
 	VEC4 : "vec3",
 	COLOR : "color",
 	COLOR4 : "color4",
+	EVENT : "event",
 	RESOURCE: "resource",
 	TEXTURE : "texture",
 	MESH: "mesh",
@@ -1971,8 +1995,16 @@ LS.TYPES = {
 	COMPONENT_ID: "component_id",
 	MATERIAL: "material",
 	ANIMATION: "animation",
-	ARRAY: "array"
+	ARRAY: "array",
+	QUAT : "quat",
+	TRANS10 : "trans10",
+	POSITION : "position"
 };
+
+LS.TYPES_INDEX = {};
+var index = 0;
+for(var i in LS.TYPES)
+	LS.TYPES_INDEX[ LS.TYPES[i] ] = index++;
 
 LS.RESOURCE_TYPES = {};
 LS.RESOURCE_TYPES[ LS.TYPES.RESOURCE ] = true;
@@ -6490,6 +6522,11 @@ function Material( o )
 	this.uid = LS.generateUId("MAT-");
 	this._must_update = true;
 
+	//used locally during rendering
+	this._index = -1;
+	this._local_id = Material.last_index++;
+	this._last_frame_update = -1;
+
 	/**
 	* materials have at least a basic color property and opacity
 	* @property color
@@ -6610,7 +6647,7 @@ function Material( o )
 Material["@color"] = { type:"color" };
 
 Material.icon = "mini-icon-material.png";
-
+Material.last_index = 0;
 
 Material.NO_LIGHTS = 0;
 Material.ONE_LIGHT = 1;
@@ -7329,6 +7366,7 @@ function ShaderMaterial( o )
 	this._passes = {};
 	this._light_mode = 0;
 	this._primitive = -1;
+	this._allows_instancing = false;
 
 	this._version = -1;
 	this._shader_version = -1;
@@ -9377,6 +9415,7 @@ function newStandardMaterial(o)
 
 	this._samplers = [];
 
+	this._allows_instancing = true;
 	this.needsUpdate = true;
 
 	if(o) 
@@ -9418,6 +9457,7 @@ Object.defineProperty( newStandardMaterial.prototype, 'specular_gloss', {
 });
 
 newStandardMaterial["@blend_mode"] = { type: "enum", values: LS.Blend };
+newStandardMaterial.actions = {};
 
 newStandardMaterial.DETAIL_TEXTURE = "detail";
 newStandardMaterial.NORMAL_TEXTURE = "normal";
@@ -9468,15 +9508,23 @@ newStandardMaterial.FLAGS = {
 	NORMAL_TEXTURE: 1<<8,
 	DISPLACEMENT_TEXTURE: 1<<9,
 	EXTRA_TEXTURE: 1<<10,
+	ENVIRONMENT_TEXTURE: 1<<11,
+	ENVIRONMENT_CUBEMAP: 1<<12,
+	IRRADIANCE_CUBEMAP: 1<<13,
 
-	ALPHA_TEST: 1<<16,
+	COLOR_TEXTURE_OPTIONS: 1<<16,
+	OPACITY_TEXTURE_OPTIONS: 1<<17,
+	SPECULAR_TEXTURE_OPTIONS: 1<<18,
+	REFLECTIVITY_TEXTURE_OPTIONS: 1<<19,
+	AMBIENT_TEXTURE_OPTIONS: 1<<20,
+	EMISSIVE_TEXTURE_OPTIONS: 1<<21,
+	NORMAL_TEXTURE_OPTIONS: 1<<22,
+	DISPLACEMENT_TEXTURE_OPTIONS: 1<<23,
+	EXTRA_TEXTURE_OPTIONS: 1<<24,
 
-	ENVIRONMENT_TEXTURE: 1<<18,
-	ENVIRONMENT_CUBEMAP: 1<<19,
-	IRRADIANCE_CUBEMAP: 1<<21,
-
-	DEGAMMA_COLOR: 1<<24,
-	SPEC_ON_ALPHA: 1<<25
+	DEGAMMA_COLOR: 1<<31,
+	SPEC_ON_ALPHA: 1<<32,
+	ALPHA_TEST: 1<<33
 };	
 
 newStandardMaterial.shader_codes = {};
@@ -9495,44 +9543,42 @@ newStandardMaterial.prototype.getShaderCode = function( instance, render_setting
 	if( this.textures.color )
 	{
 		code_flags |= FLAGS.COLOR_TEXTURE;
-		if( this.textures.color.degamma && pass.id == COLOR_PASS )
+		if( this.textures.color.degamma )
 			code_flags |= FLAGS.DEGAMMA_COLOR;
 	}
 	if( this.textures.opacity )
 		code_flags |= FLAGS.OPACITY_TEXTURE;
 
+	if( this.textures.displacement )
+		code_flags |= FLAGS.DISPLACEMENT_TEXTURE;
+
 	//color textures are not necessary 
-	if( pass.id == COLOR_PASS )
+	if( this.textures.normal )
+		code_flags |= FLAGS.NORMAL_TEXTURE;
+	if( this.textures.specular )
+		code_flags |= FLAGS.SPECULAR_TEXTURE;
+	if( this.reflection_factor > 0 )
 	{
-		if( this.textures.normal )
-			code_flags |= FLAGS.NORMAL_TEXTURE;
-		if( this.textures.specular )
-			code_flags |= FLAGS.SPECULAR_TEXTURE;
-		if( this.reflection_factor > 0 )
-		{
-			//code_flags |= FLAGS.REFLECTION;
-			if( this.textures.reflectivity )
-				code_flags |= FLAGS.REFLECTIVITY_TEXTURE;
-		}
-		if( this.textures.emissive )
-			code_flags |= FLAGS.EMISSIVE_TEXTURE;
-		if( this.textures.ambient )
-			code_flags |= FLAGS.AMBIENT_TEXTURE;
-		if( this.textures.detail )
-			code_flags |= FLAGS.DETAIL_TEXTURE;
-		if( this.textures.extra )
-			code_flags |= FLAGS.EXTRA_TEXTURE;
-		if( this.specular_on_alpha )
-			code_flags |= FLAGS.SPEC_ON_ALPHA;
+		//code_flags |= FLAGS.REFLECTION;
+		if( this.textures.reflectivity )
+			code_flags |= FLAGS.REFLECTIVITY_TEXTURE;
 	}
+	if( this.textures.emissive )
+		code_flags |= FLAGS.EMISSIVE_TEXTURE;
+	if( this.textures.ambient )
+		code_flags |= FLAGS.AMBIENT_TEXTURE;
+	if( this.textures.detail )
+		code_flags |= FLAGS.DETAIL_TEXTURE;
+	if( this.textures.extra )
+		code_flags |= FLAGS.EXTRA_TEXTURE;
+	if( this.specular_on_alpha )
+		code_flags |= FLAGS.SPEC_ON_ALPHA;
 
 	//flags
-	if( (this.flags.alpha_test && pass.id == COLOR_PASS) ||
-		(this.flags.alpha_test_shadows && pass.id == SHADOW_PASS) )
+	if( this.flags.alpha_test )
 		code_flags |= FLAGS.ALPHA_TEST;
 
-
-	//check if we already have this shader created
+	//check if we already have this ShaderCode created
 	var shader_code = LS.newStandardMaterial.shader_codes[ code_flags ];
 
 	//reuse shader codes when possible
@@ -9540,11 +9586,18 @@ newStandardMaterial.prototype.getShaderCode = function( instance, render_setting
 		return shader_code;
 
 	//generate code
-	var fs_code = "";
+	var code = {
+		vs: "",
+		fs: "",
+		fs_shadows: ""
+	};
+
+	if( code_flags & FLAGS.DISPLACEMENT_TEXTURE )
+		code.vs += "	vertex4.xyz += v_normal * texture2D( displacement_texture, v_uvs ).x * u_displacementmap_factor;\n";	
 
 	if( code_flags & FLAGS.NORMAL_TEXTURE )
 	{
-		fs_code += "	vec3 normal_pixel = texture2D( normal_texture, IN.uv ).xyz;\n\
+		code.fs += "	vec3 normal_pixel = texture2D( normal_texture, IN.uv ).xyz;\n\
 		normal_pixel.xy = vec2(1.0) - normal_pixel.xy;\n\
 		if( u_normal_info.y > 0.0 )\n\
 			normal_pixel = normalize( perturbNormal( IN.worldNormal, IN.viewDir, IN.uv, normal_pixel ));\n\
@@ -9553,45 +9606,63 @@ newStandardMaterial.prototype.getShaderCode = function( instance, render_setting
 
 	if( code_flags & FLAGS.COLOR_TEXTURE )
 	{
-		fs_code += "	vec4 tex_color = texture2D( color_texture, IN.uv );\n";
+		var str = "	vec4 tex_color = texture2D( color_texture, IN.uv );\n";
+		code.fs += str;
+		code.fs_shadows += str;
+
 		if( code_flags & FLAGS.DEGAMMA_COLOR )
-			fs_code += "	tex_color.xyz = pow( tex_color.xyz, vec3(2.0) );\n";
-		fs_code += "	o.Albedo *= tex_color.xyz;\n\
+			code.fs += "	tex_color.xyz = pow( tex_color.xyz, vec3(2.0) );\n";
+		str = "	o.Albedo *= tex_color.xyz;\n\
 	o.Alpha *= tex_color.w;\n";
+		code.fs += str;
+		code.fs_shadows += str;
 	}
 	if( code_flags & FLAGS.OPACITY_TEXTURE )
-		fs_code += "	o.Alpha *= texture2D( opacity_texture, IN.uv ).x;\n";
+	{
+		var str =  "	o.Alpha *= texture2D( opacity_texture, IN.uv ).x;\n";
+		code.fs += str;
+		code.fs_shadows += str;
+	}
 	if( code_flags & FLAGS.SPECULAR_TEXTURE )
 	{
-		fs_code += "	vec4 spec_info = texture2D( specular_texture, IN.uv );\n\
+		code.fs += "	vec4 spec_info = texture2D( specular_texture, IN.uv );\n\
 	o.Specular *= spec_info.x;\n\
 	o.Gloss *= spec_info.y;\n";
 	}
 	if( code_flags & FLAGS.REFLECTIVITY_TEXTURE )
-		fs_code += "	o.Reflectivity *= texture2D( reflectivity_texture, IN.uv ).x;\n";
+		code.fs += "	o.Reflectivity *= texture2D( reflectivity_texture, IN.uv ).x;\n";
 	if( code_flags & FLAGS.EMISSIVE_TEXTURE )
-		fs_code += "	o.Emission *= texture2D( emissive_texture, IN.uv ).xyz;\n";
+		code.fs += "	o.Emission *= texture2D( emissive_texture, IN.uv ).xyz;\n";
 	if( code_flags & FLAGS.AMBIENT_TEXTURE )
-		fs_code += "	o.Ambient *= texture2D( ambient_texture, IN.uv ).xyz;\n";
+		code.fs += "	o.Ambient *= texture2D( ambient_texture, IN.uv ).xyz;\n";
 	if( code_flags & FLAGS.DETAIL_TEXTURE )
-		fs_code += "	o.Albedo += (texture2D( detail_texture, IN.uv * u_detail_info.yz).xyz - vec3(0.5)) * u_detail_info.x;\n";
+		code.fs += "	o.Albedo += (texture2D( detail_texture, IN.uv * u_detail_info.yz).xyz - vec3(0.5)) * u_detail_info.x;\n";
 	if( code_flags & FLAGS.EXTRA_TEXTURE )
-		fs_code += "	if(u_light_info.z == 0.0) o.Extra = u_extra_color * texture2D( extra_texture, IN.uv );\n";
+		code.fs += "	if(u_light_info.z == 0.0) o.Extra = u_extra_color * texture2D( extra_texture, IN.uv );\n";
 
 	//flags
 	if( code_flags & FLAGS.ALPHA_TEST )
-		fs_code += "	if(o.Alpha < 0.5) discard;\n";
+	{
+		var str = "	if(o.Alpha < 0.01) discard;\n";
+		code.fs += str;
+		code.fs_shadows += str;
+	}
 
 	if( code_flags & FLAGS.SPEC_ON_ALPHA )
-		fs_code += "	#define SPEC_ON_ALPHA\n";
+		code.fs += "	#define SPEC_ON_ALPHA\n";
 
 	//if( code_flags & FLAGS.FLAT_NORMALS )
 	//	flat_normals += "";
 
 	//compile shader and cache
 	shader_code = new LS.ShaderCode();
-	var code = newStandardMaterial.code_template.replace( /{{}}/gi, fs_code );
-	shader_code.code = code;
+	var final_code = newStandardMaterial.code_template;
+
+	shader_code.code = final_code.replace(/\{\{[a-zA-Z0-9_]*\}\}/g, function(v){
+		v = v.replace( /[\{\}]/g, "" );
+		return code[v] || "";
+	});
+
 	LS.newStandardMaterial.shader_codes[ code_flags ] = shader_code;
 	return shader_code;
 }
@@ -9833,10 +9904,17 @@ varying vec3 v_normal;\n\
 varying vec2 v_uvs;\n\
 \n\
 //matrices\n\
-uniform mat4 u_model;\n\
+#ifdef BLOCK_INSTANCING\n\
+	attribute mat4 u_model;\n\
+#else\n\
+	uniform mat4 u_model;\n\
+#endif\n\
 uniform mat4 u_normal_model;\n\
 uniform mat4 u_view;\n\
 uniform mat4 u_viewprojection;\n\
+//material\n\
+uniform float u_displacementmap_factor;\n\
+uniform sampler2D displacement_texture;\n\
 \n\
 //globals\n\
 uniform float u_time;\n\
@@ -9855,6 +9933,7 @@ void main() {\n\
 	v_normal = a_normal;\n\
 	v_uvs = a_coord;\n\
 	\n\
+	{{vs}}\n\
 	//deforms\n\
 	applyMorphing( vertex4, v_normal );\n\
 	applySkinning( vertex4, v_normal );\n\
@@ -9865,7 +9944,11 @@ void main() {\n\
 	applyLight(v_pos);\n\
 	\n\
 	//normal\n\
-	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+	#ifdef SHADERBLOCK_INSTANCING\n\
+		v_normal = (u_model * vec4(v_normal,0.0)).xyz;\n\
+	#else\n\
+		v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+	#endif\n\
 	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
 	gl_PointSize = u_point_size;\n\
 	#pragma shaderblock \"modifyFinalVertexPosition\"\n\
@@ -9939,7 +10022,7 @@ void surf(in Input IN, out SurfaceOutput o)\n\
 	o.Reflectivity = u_reflection_info.x;\n\
 	o.Extra = u_extra_color;\n\
 	\n\
-	{{}}\n\
+	{{fs}}\n\
 	\n\
 	if(u_velvet_info.w > 0.0)\n\
 		o.Albedo += u_velvet_info.xyz * ( 1.0 - pow( max(0.0, dot( IN.viewDir, o.Normal )), u_velvet_info.w ));\n\
@@ -9988,10 +10071,17 @@ varying vec3 v_normal;\n\
 varying vec2 v_uvs;\n\
 \n\
 //matrices\n\
-uniform mat4 u_model;\n\
+#ifdef BLOCK_INSTANCING\n\
+	attribute mat4 u_model;\n\
+#else\n\
+	uniform mat4 u_model;\n\
+#endif\n\
 uniform mat4 u_normal_model;\n\
 uniform mat4 u_view;\n\
 uniform mat4 u_viewprojection;\n\
+//material\n\
+uniform float u_displacementmap_factor;\n\
+uniform sampler2D displacement_texture;\n\
 \n\
 //globals\n\
 uniform float u_time;\n\
@@ -10010,6 +10100,7 @@ void main() {\n\
 	v_normal = a_normal;\n\
 	v_uvs = a_coord;\n\
   \n\
+	{{vs}}\n\
   //deforms\n\
   applyMorphing( vertex4, v_normal );\n\
   applySkinning( vertex4, v_normal );\n\
@@ -10020,7 +10111,11 @@ void main() {\n\
   applyLight(v_pos);\n\
   \n\
 	//normal\n\
-	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+	#ifdef SHADERBLOCK_INSTANCING\n\
+		v_normal = (u_model * vec4(v_normal,0.0)).xyz;\n\
+	#else\n\
+		v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+	#endif\n\
 	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
 }\n\
 \\shadow.fs\n\
@@ -10050,7 +10145,7 @@ void surf(in Input IN, out SurfaceOutput o)\n\
 	o.Albedo = u_material_color.xyz;\n\
 	o.Alpha = u_material_color.a;\n\
 	\n\
-	{{}}\n\
+	{{fs_shadows}}\n\
 }\n\
 \n\
 void main() {\n\
@@ -12239,7 +12334,7 @@ Take.prototype.applyTracks = function( current_time, last_time, ignore_interpola
 			continue;
 
 		//events are an special kind of tracks, they execute actions
-		if( track.type == "events" )
+		if( track._type_index == Track.EVENT )
 		{
 			var keyframe = track.getKeyframeByTime( current_time );
 			if( !keyframe || keyframe[0] < last_time || keyframe[0] > current_time )
@@ -12276,7 +12371,7 @@ Take.prototype.applyTracks = function( current_time, last_time, ignore_interpola
 			if(weight !== 1)
 			{
 				var current_value = scene.getPropertyValueFromPath( track._property_path, sample, root_node, 0 );
-				sample = LS.Animation.interpolateLinear( sample, current_value, weight, null, track.type, track.value_size, track );
+				sample = LS.Animation.interpolateLinear( sample, current_value, weight, null, track._type, track.value_size, track );
 			}
 
 			//apply the value to the property specified by the locator
@@ -12346,7 +12441,7 @@ Take.prototype.loadResources = function()
 	for(var i = 0; i < this.tracks.length; ++i)
 	{
 		var track = this.tracks[i];
-		if(track.type == "texture")
+		if(track._type == "texture")
 		{
 			var l = track.getNumberOfKeyframes();
 			for(var j = 0; j < l; ++j)
@@ -12427,7 +12522,7 @@ Take.prototype.matchTranslation = function( root )
 	{
 		var track = this.tracks[i];
 
-		if(track.type != "trans10" && track.type != "mat4")
+		if(track._type != "trans10" && track._type != "mat4")
 			continue;
 
 		if( !track._property_path || !track._property_path.length )
@@ -12442,12 +12537,12 @@ Take.prototype.matchTranslation = function( root )
 
 		var data = track.data;
 		var num_samples = data.length / offset;
-		if(track.type == "trans10")
+		if(track._type == "trans10")
 		{
 			for(var j = 0; j < num_samples; ++j)
 				data.set( position, j*offset + 1 );
 		}
-		else if(track.type == "mat4")
+		else if(track._type == "mat4")
 		{
 			for(var j = 0; j < num_samples; ++j)
 				data.set( position, j*offset + 1 + 12 ); //12,13,14 contain translation
@@ -12560,7 +12655,8 @@ function Track(o)
 	/** 
 	* @property type {String} if the data is number, vec2, color, etc
 	**/
-	this.type = null; //type of data (number, vec2, color, texture, etc)
+	this._type = null; //type of data (number, vec2, color, texture, etc)
+	this._type_index = null; //type in number format (to optimize)
 	/** 
 	* @property interpolation {Number} type of interpolation LS.NONE, LS.LINEAR, LS.TRIGONOMETRIC, LS.BEZIER, LS.SPLICE
 	**/
@@ -12598,6 +12694,12 @@ function Track(o)
 
 Track.FRAMERATE = 30;
 
+//for optimization
+Track.QUAT = LS.TYPES_INDEX["quat"];
+Track.TRANS10 = LS.TYPES_INDEX["trans10"];
+Track.EVENT = LS.TYPES_INDEX["event"];
+
+
 /** 
 * @property property {String} the locator to the property this track should modify ( "node/component_uid/property" )
 **/
@@ -12609,6 +12711,18 @@ Object.defineProperty( Track.prototype, 'property', {
 	},
 	get: function(){
 		return this._property;
+	},
+	enumerable: true
+});
+
+Object.defineProperty( Track.prototype, 'type', {
+	set: function( t )
+	{
+		this._type = t;
+		this._type_index = LS.TYPES_INDEX[t];
+	},
+	get: function(){
+		return this._type;
 	},
 	enumerable: true
 });
@@ -12662,7 +12776,7 @@ Track.prototype.serialize = function()
 		enabled: this.enabled,
 		name: this.name,
 		property: this.property, 
-		type: this.type,
+		type: this._type,
 		interpolation: this.interpolation,
 		looped: this.looped,
 		value_size: this.value_size,
@@ -12946,7 +13060,7 @@ Track.prototype.computeDuration = function()
 
 Track.prototype.isInterpolable = function()
 {
-	if( this.value_size > 0 || LS.Interpolators[ this.type ] )
+	if( this.value_size > 0 || LS.Interpolators[ this._type ] )
 		return true;
 	return false;
 }
@@ -13173,7 +13287,7 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 	var index_b = index + 1;
 	var data = this.data;
 
-	interpolate = interpolate && this.interpolation && (this.value_size > 0 || LS.Interpolators[ this.type ] );
+	interpolate = interpolate && this.interpolation && (this.value_size > 0 || LS.Interpolators[ this._type ] );
 
 	if(!interpolate || (data.length == 1) || index_b == data.length || (index_a == 0 && this.data[0][0] > time)) //(index_b == this.data.length && !this.looped)
 		return this.data[ index ][1];
@@ -13186,7 +13300,7 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 	if(this.interpolation === LS.LINEAR)
 	{
 		/*
-		if(this.value_size === 0 && LS.Interpolators[ this.type ] )
+		if(this.value_size === 0 && LS.Interpolators[ this._type ] )
 		{
 			var func = LS.Interpolators[ this.type ];
 			var r = func( a[1], b[1], t, this._last_value );
@@ -13198,7 +13312,7 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 		if(this.value_size == 1)
 			return a[1] * t + b[1] * (1-t);
 
-		return LS.Animation.interpolateLinear( a[1], b[1], t, null, this.type, this.value_size, this );
+		return LS.Animation.interpolateLinear( a[1], b[1], t, null, this._type, this.value_size, this );
 
 		/*
 
@@ -13207,7 +13321,7 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 		if(!result || result.length != this.value_size)
 			result = this._result = new Float32Array( this.value_size );
 
-		switch(this.type)
+		switch(this._type)
 		{
 			case "quat": 
 				quat.slerp( result, a[1], b[1], t );
@@ -13233,9 +13347,9 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 	else if(this.interpolation === LS.BEZIER)
 	{
 		//bezier not implemented for interpolators
-		if(this.value_size === 0 && LS.Interpolators[ this.type ] )
+		if(this.value_size === 0 && LS.Interpolators[ this._type ] )
 		{
-			var func = LS.Interpolators[ this.type ];
+			var func = LS.Interpolators[ this._type ];
 			var r = func( a[1], b[1], t, this._last_value );
 			this._last_value = r;
 			return r;
@@ -13256,12 +13370,12 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 		result = result || this._result;
 		result = Animation.EvaluateHermiteSplineVector( a[1], b[1], pre_a[1], post_b[1], 1 - t, result );
 
-		if(this.type == "quat")
+		if(this._type_index == Track.QUAT)
 		{
 			quat.slerp( result, b[1], a[1], t ); //force quats without bezier interpolation
 			quat.normalize( result, result );
 		}
-		else if(this.type == "trans10")
+		else if(this._type_index == Track.TRANS10)
 		{
 			var rotR = result.subarray(3,7);
 			var rotA = a[1].subarray(3,7);
@@ -13290,7 +13404,7 @@ Track.prototype.getSamplePacked = function( time, interpolate, result )
 	var data = this.data;
 	var num_keyframes = data.length / offset;
 
-	interpolate = interpolate && this.interpolation && (this.value_size > 0 || LS.Interpolators[ this.type ] );
+	interpolate = interpolate && this.interpolation && (this.value_size > 0 || LS.Interpolators[ this._type ] );
 
 	if( !interpolate || num_keyframes == 1 || index_b == num_keyframes || (index_a == 0 && this.data[0] > time)) //(index_b == this.data.length && !this.looped)
 		return this.getKeyframe( index )[1];
@@ -13307,46 +13421,7 @@ Track.prototype.getSamplePacked = function( time, interpolate, result )
 
 		var a_data = a.subarray(1, this.value_size+1 );
 		var b_data = b.subarray(1, this.value_size+1 );
-		return LS.Animation.interpolateLinear( a_data, b_data, t, null, this.type, this.value_size, this );
-
-		/*
-		if(this.value_size == 1)
-			return a[1] * t + b[1] * (1-t);
-		else if( LS.Interpolators[ this.type ] )
-		{
-			var func = LS.Interpolators[ this.type ];
-			var r = func( a[1], b[1], t, this._last_v );
-			this._last_v = r;
-			return r;
-		}
-
-		result = result || this._result;
-
-		if(!result || result.length != this.value_size)
-			result = this._result = new Float32Array( this.value_size );
-
-		switch(this.type)
-		{
-			case "quat": 
-				quat.slerp( result, b.subarray(1,5), a.subarray(1,5), t );
-				quat.normalize( result, result );
-				break;
-			case "trans10": 
-				for(var i = 0; i < 10; i++) //this.value_size should be 10
-					result[i] = a[1+i] * t + b[1+i] * (1-t);
-				var rotA = a.subarray(4,8);
-				var rotB = b.subarray(4,8);
-				var rotR = result.subarray(3,7);
-				quat.slerp( rotR, rotB, rotA, t );
-				quat.normalize( rotR, rotR );
-				break;
-			default:
-				for(var i = 0; i < this.value_size; i++)
-					result[i] = a[1+i] * t + b[1+i] * (1-t);
-		}
-
-		return result;
-		*/
+		return LS.Animation.interpolateLinear( a_data, b_data, t, null, this._type, this.value_size, this );
 	}
 	else if(this.interpolation === LS.BEZIER)
 	{
@@ -13371,12 +13446,12 @@ Track.prototype.getSamplePacked = function( time, interpolate, result )
 
 		result = Animation.EvaluateHermiteSplineVector( a_value, b_value, pre_a.subarray(1,offset), post_b.subarray(1,offset), 1 - t, result );
 
-		if(this.type == "quat")
+		if(this._type_index == Track.QUAT )
 		{
 			quat.slerp( result, a_value, b_value, t );
 			quat.normalize(result, result);
 		}
-		else if(this.type == "trans10")
+		else if(this._type_index == Track.TRANS10 )
 		{
 			var rotR = result.subarray(3,7);
 			var rotA = a_value.subarray(3,7);
@@ -13570,7 +13645,7 @@ Track.prototype.onlyRotations = (function()
 			this.packData();
 
 		this.property = path.join("/");
-		var old_type = this.type;
+		var old_type = this._type;
 		this.type = "quat";
 		this.value_size = 4;
 
@@ -13624,13 +13699,15 @@ Animation.interpolateLinear = function( a, b, t, result, type, value_size, track
 	if(!result || result.length != value_size)
 		result = track._result = new Float32Array( value_size );
 
-	switch( type )
+	var type_index = LS.TYPES_INDEX[ type ];
+
+	switch( type_index )
 	{
-		case "quat": 
+		case Track.QUAT:
 			quat.slerp( result, b, a, t );
 			quat.normalize( result, result );
 			break;
-		case "trans10": 
+		case Track.TRANS10: 
 			for(var i = 0; i < 10; i++) //this.value_size should be 10
 				result[i] = a[i] * t + b[i] * (1-t);
 			var rotA = a.subarray(3,7);
@@ -19666,7 +19743,7 @@ var PICKING_PASS = 3;
 var Renderer = {
 
 	default_render_settings: new LS.RenderSettings(), //overwritten by the global info or the editor one
-	default_material: new LS.StandardMaterial(), //used for objects without material
+	default_material: new LS.newStandardMaterial(), //used for objects without material
 
 	render_passes: {}, //used to specify the render function for every kind of render pass (color, shadow, picking, etc)
 	renderPassFunction: null, //function to call when rendering instances
@@ -19685,7 +19762,8 @@ var Renderer = {
 	_current_target: null, //texture where the image is being rendered
 	_current_pass: null,
 	_global_textures: {}, //used to speed up fetching global textures
-	_global_block_flags: 0, //used to add extra shadarblocks to all objects (it gets reseted every frame)
+	_global_shader_blocks: [], //used to add extra shaderblocks to all objects in the scene (it gets reseted every frame)
+	_global_shader_blocks_flags: 0, 
 
 	_queues: [], //render queues in order
 
@@ -19714,9 +19792,10 @@ var Renderer = {
 	_2Dviewprojection_matrix: mat4.create(),
 
 	_temp_matrix: mat4.create(),
+	_temp_cameye: vec3.create(),
 	_identity_matrix: mat4.create(),
 	_render_uniforms: {},
-
+	_instancing_data: [],
 	_reflection_probes: [],
 
 	//safety
@@ -19741,7 +19820,7 @@ var Renderer = {
 	//called from...
 	init: function()
 	{
-		//this is used in case a texture is missing
+		//create some useful textures: this is used in case a texture is missing
 		this._black_texture = new GL.Texture(1,1, { pixel_data: [0,0,0,255] });
 		this._gray_texture = new GL.Texture(1,1, { pixel_data: [128,128,128,255] });
 		this._white_texture = new GL.Texture(1,1, { pixel_data: [255,255,255,255] });
@@ -19749,13 +19828,13 @@ var Renderer = {
 		this._missing_texture = this._gray_texture;
 		var internal_textures = [ this._black_texture, this._gray_texture, this._white_texture, this._normal_texture, this._missing_texture ];
 		internal_textures.forEach(function(t){ t._is_internal = true; });
-
-		this._sphere_mesh = GL.Mesh.sphere({size:1,detail:32});
-
 		LS.ResourcesManager.textures[":black"] = this._black_texture;
 		LS.ResourcesManager.textures[":gray"] = this._gray_texture;
 		LS.ResourcesManager.textures[":white"] = this._white_texture;
 		LS.ResourcesManager.textures[":flatnormal"] = this._normal_texture;
+
+		//some global meshes could be helpful: used for irradiance probes
+		this._sphere_mesh = GL.Mesh.sphere({size:1,detail:32});
 
 		//draw helps rendering debug stuff
 		LS.Draw.init();
@@ -19862,6 +19941,9 @@ var Renderer = {
 		this._rendered_instances = 0;
 		this._rendered_passes = 0;
 		this._global_block_flags = 0;
+		for(var i in this._global_textures)
+			this._global_textures[i] = null;
+
 
 		//to restore from a possible exception (not fully tested, remove if problem)
 		if(!render_settings.ignore_reset)
@@ -20068,7 +20150,7 @@ var Renderer = {
 
 		//Draw allows to render debug info easily
 		Draw.reset(); //clear 
-		Draw.setCameraPosition( camera.getEye() );
+		Draw.setCameraPosition( camera.getEye( Draw.camera_position ) );
 		Draw.setViewProjectionMatrix( this._view_matrix, this._projection_matrix, this._viewprojection_matrix );
 
 		LEvent.trigger( camera, "afterEnabled", render_settings );
@@ -20125,7 +20207,7 @@ var Renderer = {
 		var instances = this._visible_instances;
 
 		//compute distance to camera
-		var camera_eye = camera.getEye();
+		var camera_eye = camera.getEye( this._temp_cameye );
 		for(var i = 0, l = instances.length; i < l; ++i)
 		{
 			var instance = instances[i];
@@ -20198,6 +20280,7 @@ var Renderer = {
 		var apply_frustum_culling = render_settings.frustum_culling;
 		var frustum_planes = camera.updateFrustumPlanes();
 		var layers_filter = camera.layers & render_settings.layers;
+		var instancing_supported = gl.webgl_version > 1 || gl.extensions["ANGLE_instanced_arrays"];
 
 		LEvent.trigger( scene, "beforeRenderInstances", render_settings );
 		//scene.triggerInNodes( "beforeRenderInstances", render_settings );
@@ -20223,8 +20306,10 @@ var Renderer = {
 
 		this.bindSamplers( scene._samplers );
 
+		var instancing_data = this._instancing_data;
 
-		//compute visibility pass
+
+		//compute visibility pass: checks which RIs are visible from this camera
 		for(var i = 0, l = render_instances.length; i < l; ++i)
 		{
 			//render instance
@@ -20248,11 +20333,13 @@ var Renderer = {
 			if(!instance.material) //somethinig went wrong
 				continue;
 
-			if(instance.material.opacity <= 0) //TODO: remove this, do it somewhere else
+			var material = instance.material;
+
+			if(material.opacity <= 0) //TODO: remove this, do it somewhere else
 				continue;
 
 			//test visibility against camera frustum
-			if( apply_frustum_culling && instance.use_bounding && !instance.material.flags.ignore_frustum )
+			if( apply_frustum_culling && instance.use_bounding && !material.flags.ignore_frustum )
 			{
 				if(geo.frustumTestBox( frustum_planes, instance.aabb ) == CLIP_OUTSIDE )
 					continue;
@@ -20262,6 +20349,17 @@ var Renderer = {
 			instance._is_visible = true;
 			if(camera_index_flag) //shadowmap cameras dont have an index
 				instance._camera_visibility |= camera_index_flag;
+
+			//if material supports instancing
+			/*
+			if( instancing_supported && material._allows_instancing && !instance._shader_blocks.length )
+			{
+				var instancing_ri_info = null;
+				if(!instancing_data[ material._index ] )
+					instancing_data[ material._index ] = instancing_ri_info = [];
+				instancing_ri_info.push( instance );
+			}
+			*/
 		}
 
 		var start = this._rendered_instances;
@@ -20292,6 +20390,7 @@ var Renderer = {
 				this._rendered_instances += 1;
 
 				//choose the appropiate render pass
+				//TODO: KILL THIS AND REPLACE BY CALLING MATERIAL.renderInstance
 				render_instance_func.call( this, instance, render_settings, pass ); //by default calls renderColorInstance but it could call renderShadowPassInstance
 
 				//some instances do a post render action
@@ -20797,6 +20896,7 @@ var Renderer = {
 
 		//clear globals
 		this._global_textures.environment = null;
+		this._global_textures.irradiance = null;
 
 		//fetch globals
 		for(var i in scene.info.textures)
@@ -20883,7 +20983,7 @@ var Renderer = {
 
 		instances = instances || scene._instances;
 		var camera = this._main_camera; // || scene.getCamera();
-		var camera_eye = camera.getEye();
+		var camera_eye = camera.getEye( this._temp_cameye );
 
 		//clear render queues
 		for(var i = 0; i < this._queues.length; ++i)
@@ -21003,9 +21103,11 @@ var Renderer = {
 	//outside of processVisibleData to allow optimizations in processVisibleData
 	_prepareMaterials: function( materials, scene )
 	{
+		var index = 0;
 		for(var i in materials)
 		{
 			var material = materials[i];
+			material._index = index++;
 			material._last_frame_update = this._frame;
 			if( material.prepare )
 				material.prepare( scene );
@@ -21264,6 +21366,28 @@ var Renderer = {
 		if(options)
 			for(var i in options)
 				queue[i] = options[i];
+	},
+	
+	
+	/**
+	* Enables a ShaderBlock ONLY DURING THIS FRAME
+	*
+	* @method enableFrameShaderBlock
+	* @param {String} shader_block_name
+	*/
+	enableFrameShaderBlock: function( shader_block_name, uniforms )
+	{
+		var shader_block = LS.ShadersManager.getShaderBlock( shader_block_name );
+
+		if( !shader_block || this._global_shader_blocks_flags | shader_block.flag_mask )
+			return; //already added
+		this._global_shader_blocks.push( shader_block );
+		this._global_shader_blocks_flags |= shader_block.flag_mask;
+
+		//add uniforms to renderer uniforms?
+		if(uniforms)
+			for(var i in uniforms)
+				this._renderer_uniforms[i] = uniforms[i];
 	}
 };
 
@@ -23914,6 +24038,8 @@ Transform.prototype.onRemovedFromNode = function(node)
 Object.defineProperty( Transform.prototype, 'position', {
 	get: function() { return this._position; },
 	set: function(v) { 
+		if(!v || !v.length)
+			return;
 		this._position.set(v); 
 		this._must_update = true; 
 	},
@@ -27695,7 +27821,8 @@ Light.prototype.getUp = function( out )
 Light.prototype.getFront = function( out ) 
 {
 	var front = out || vec3.create();
-	vec3.subtract(front, this.getPosition(), this.getTarget() ); //front is reversed?
+	this.getPosition( front );
+	vec3.subtract( front, front, this.getTarget( Light._temp_position ) ); //front is reversed?
 	//vec3.subtract(front, this.getTarget(), this.getPosition() ); //front is reversed?
 	vec3.normalize(front, front);
 	return front;
@@ -27826,7 +27953,7 @@ Light.prototype.prepare = function( render_settings )
 	uniforms.u_light_offset = this.offset;
 
 	//generate shadowmaps
-	var must_update_shadowmap = render_settings.update_shadowmaps && render_settings.shadows_enabled && !render_settings.lights_disabled && !render_settings.low_quality;
+	var must_update_shadowmap = (render_settings.update_shadowmaps || (!this._shadowmap && !LS.ResourcesManager.isLoading())) && render_settings.shadows_enabled && !render_settings.lights_disabled && !render_settings.low_quality;
 
 	if(must_update_shadowmap)
 	{
@@ -30385,7 +30512,7 @@ SkinDeformer.prototype.applySkinning = function(RI)
 	}
 	else
 		this._root.transform.getGlobalMatrix( RI.matrix );
-	mat4.multiplyVec3( RI.center, RI.matrix, vec3.create() );
+	mat4.multiplyVec3( RI.center, RI.matrix, LS.ZEROS );
 
 	RI.use_bounding = false;
 }
@@ -33263,9 +33390,7 @@ LS.registerComponent( GeometricPrimitive );
 function GlobalInfo(o)
 {
 	this.createProperty( "ambient_color", GlobalInfo.DEFAULT_AMBIENT_COLOR, "color" );
-
-	//this._render_settings = new LS.RenderSettings();
-
+	this._render_settings = null;
 	this._textures = {};
 
 	if(o)
@@ -33287,20 +33412,30 @@ Object.defineProperty( GlobalInfo.prototype, 'textures', {
 	enumerable: true
 });
 
-/*
+
 Object.defineProperty( GlobalInfo.prototype, 'render_settings', {
 	set: function( v )
 	{
+		if( !v )
+		{
+			this._render_settings = null;
+			return;
+		}
 		if(typeof(v) != "object")
 			return;
-		this._render_settings.configure(v);
+		if(!this._render_settings)
+			this._render_settings = new LS.RenderSettings();
+		if(v.constructor === Array && v[3] == "RenderSettings") //encoded object ["@ENC","object",data,"RenderSettings"]
+			this._render_settings.configure( v[2] );
+		else
+			this._render_settings.configure(v);
 	},
 	get: function(){
 		return this._render_settings;
 	},
 	enumerable: true
 });
-*/
+
 
 GlobalInfo.icon = "mini-icon-bg.png";
 GlobalInfo.DEFAULT_AMBIENT_COLOR = vec3.fromValues(0.2, 0.2, 0.2);
@@ -36490,7 +36625,7 @@ ReflectionProbe.objectToCubemap = function( data, out )
 	if(!out)
 		out = new GL.Texture( data.size, data.size, { texture_type: gl.TEXTURE_CUBE_MAP, format: GL.RGBA });
 	for(var i = 0; i < data.faces.length; ++i )
-		out.setPixels( new Uint8Array( data.faces[i] ), i, i == 5 );
+		out.setPixels( new Uint8Array( data.faces[i] ), true, i == 5, i );
 	return out;
 }
 
@@ -42337,10 +42472,16 @@ SceneNode.prototype.assign = function( item, extra )
 			this.addChild( item );
 			break;
 		case LS.SceneTree: 	
-			this.addChild( item.root.clone() );
-			break; //warn: here we are missing all the global and external scripts of the scene
+			var node = this;
+			item.loadScripts( null, function(){
+				item.loadResources( function(){ 
+					node.addChild( item.root.clone() );
+				});
+			});
+			break;
 		case LS.Prefab: 
-			this.prefab = item.fullpath || item.filename; break;
+			this.prefab = item.fullpath || item.filename; 
+			break;
 		case GL.Mesh: 
 			var component = this.getComponent( LS.Components.MeshRenderer );
 			if(component)

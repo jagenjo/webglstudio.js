@@ -89,7 +89,7 @@ function ConsoleWidget( options )
 	if(!LS.Documentation)
 	{
 		LS.Documentation = { classes: {}, flat_classes: {} }; //placeholder
-		LiteGUI.requestJSON( ConsoleWidget.lsdoc_json, function(d){
+		LiteGUI.requestJSON( location.protocol + "//" + ConsoleWidget.lsdoc_json, function(d){
 			LS.Documentation = d;
 			LS.Documentation.flat_classes = {};
 			for(var i in d.classes )
@@ -115,8 +115,8 @@ function ConsoleWidget( options )
 	}
 }
 
-ConsoleWidget.lsroot_doc = "http://webglstudio.org/doc/litescene/classes/";
-ConsoleWidget.lsdoc_json = "http://webglstudio.org/doc/litescene/data.json";
+ConsoleWidget.lsroot_doc = "webglstudio.org/doc/litescene/classes/";
+ConsoleWidget.lsdoc_json = "webglstudio.org/doc/litescene/data.json";
 ConsoleWidget.commands = {};
 ConsoleWidget.special_objects = new Map();
 
@@ -205,7 +205,7 @@ ConsoleWidget.prototype.log = function( msg )
 			elem.innerHTML = "<span class='danger'>" + msg.content + "</span>";
 			break;
 		case "method":
-			var link = ConsoleWidget.lsroot_doc + "LS.";
+			var link = "http://" + ConsoleWidget.lsroot_doc + "LS.";
 			if( msg.classtype == "component" )
 				link += "Components.";
 			link += msg.classname + ".html#method_" + msg.name;
@@ -272,19 +272,19 @@ ConsoleWidget.prototype.logClass = function( classname, cmd )
 	var elem = null;
 	if( class_info ) //Using the info from the doxygen doc
 	{
-		var link = ConsoleWidget.lsroot_doc + "" + class_info.namespace + "." + classname + ".html";
+		var link = "http://" + ConsoleWidget.lsroot_doc + "" + class_info.namespace + "." + classname + ".html";
 		elem = this.log("<a href='"+link+"' target='_blank'>"+class_info.name+"</a> "+ class_info.description +" [<a href='#' class='methods'>methods</a>].");
 	}
 	else //guessing from the code
 	{
 		if( LS.Components[ classname ] )
 		{
-			var link = ConsoleWidget.lsroot_doc + "LS.Components." + classname + ".html";
+			var link = "http://" + ConsoleWidget.lsroot_doc + "LS.Components." + classname + ".html";
 			elem = this.log("<a href='"+link+"' target='_blank'>LS.Components."+classname+"</a> [<a href='#' class='methods'>methods</a>].");
 		}
 		else if( LS[ classname ] )
 		{
-			var link = ConsoleWidget.lsroot_doc + "LS." + classname + ".html";
+			var link = "http://" + ConsoleWidget.lsroot_doc + "LS." + classname + ".html";
 			elem = this.log("<a href='"+link+"' target='_blank'>LS."+classname+"</a>  [<a href='#' class='methods'>methods</a>].");
 		}
 		else
@@ -376,7 +376,7 @@ ConsoleWidget.prototype.logMethods = function( object )
 		var class_info = LS.Documentation ? LS.Documentation.flat_classes[ classname ] : null;
 		if( class_info ) //Using the info from the doxygen doc
 		{
-			var link = ConsoleWidget.lsroot_doc + "classes/" + class_info.namespace + "." + classname + ".html";
+			var link = location.protocol + "//" + ConsoleWidget.lsroot_doc + "classes/" + class_info.namespace + "." + classname + ".html";
 			elem = this.log("<a href='"+link+"' target='_blank'>"+class_info.name+"</a> "+ class_info.description +" [<a href='#' data-classname='"+classname+"' class='methods'>methods</a>].");
 		}
 		else if( value.constructor === Function )

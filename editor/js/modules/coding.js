@@ -72,8 +72,11 @@ var CodingModule = //do not change
 		this.console_area = left_area.getSection(1).content;
 
 		//CONSOLE
-		this.console_widget = new ConsoleWidget();
-		this.console_area.appendChild( this.console_widget.root );
+		if(window.ConsoleWidget)
+		{
+			this.console_widget = new ConsoleWidget();
+			this.console_area.appendChild( this.console_widget.root );
+		}
 
 		//console._log = console.log;
 		//console.log = this.onConsoleLog.bind(this);

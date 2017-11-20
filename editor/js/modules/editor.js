@@ -2162,7 +2162,7 @@ var EditorModule = {
 		for(var i in LS.RM.materials)
 		{
 			var mat = LS.RM.materials[i];
-			if(mat.constructor === LS.MaterialClasses.newStandardMaterial)
+			if( mat.constructor !== LS.MaterialClasses.StandardMaterial )
 				continue;
 			var new_mat = new LS.MaterialClasses.newStandardMaterial( mat.serialize() );
 			new_mat.fullpath = mat.fullpath;
@@ -2171,6 +2171,18 @@ var EditorModule = {
 			LS.RM.materials_by_uid[ new_mat.uid ] = new_mat;
 			LS.RM.resources[ new_mat.fullpath || new_mat.filename ] = new_mat;
 		}
+
+		for(var i in LS.GlobalScene._nodes)
+		{
+			var node = LS.GlobalScene._nodes[i];
+			var mat = node.material;
+			if(!mat)
+				continue;
+			if( mat.constructor !== LS.MaterialClasses.StandardMaterial )
+				continue;
+			node.material = new LS.MaterialClasses.newStandardMaterial( mat.serialize() );
+		}
+
 	}
 };
 

@@ -748,11 +748,6 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 
 	widgets.addSeparator();
 
-	widgets.addCombo("UVs", sampler["uvs"] || LS.Material.DEFAULT_UVS[ channel ], { values: LS.Material.TEXTURE_COORDINATES, callback: function(v) {
-		sampler.uvs = v;
-		LS.GlobalScene.refresh();
-	}});
-
 	widgets.addCombo("Wrap", sampler["wrap"] || gl.REPEAT, { values: {"default":0, "CLAMP_TO_EDGE": gl.CLAMP_TO_EDGE, "REPEAT": gl.REPEAT, "MIRRORED_REPEAT": gl.MIRRORED_REPEAT }, callback: function(v) {
 		sampler.wrap = v;
 		//sampler._must_update = true;
@@ -782,28 +777,40 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 		LS.GlobalScene.refresh();
 	}});
 
-	widgets.addCheckbox("Degamma", sampler["degamma"], { callback: function(v) {
-		sampler.degamma = v;
-		LS.GlobalScene.refresh();
-	}});
-
-	if(material)
+	if(material )
 	{
-		if(channel == "normal")
+		if( material.constructor === LS.StandardMaterial || material.constructor === LS.newStandardMaterial )
 		{
-			widgets.addCheckbox("Tangent space", material.normalmap_tangent, { callback: function (value) { material.normalmap_tangent = value; } });
-			widgets.addSlider("Normal factor", material.normalmap_factor, { min:0, step:0.01, max:2, callback: function (value) { material.normalmap_factor = value; } });
-		}
-		else if(channel == "displacement")
-		{
-			widgets.addNumber("Displace factor", material.displacementmap_factor || 0, { step:0.001, callback: function (value) { material.displacementmap_factor = value; } });
-		}
-		else if(channel == "bump")
-		{
-			widgets.addSlider("Bump factor", material.bumpmap_factor || 0, { min:-2, step:0.01, max:2, callback: function (value) { material.bumpmap_factor = value; } });
+			if(channel == "color")
+			{
+				widgets.addCheckbox("Degamma", sampler["degamma"], { callback: function(v) {
+					sampler.degamma = v;
+					LS.GlobalScene.refresh();
+				}});
+			}
+
+			if(channel == "normal")
+			{
+				widgets.addCheckbox("Tangent space", material.normalmap_tangent, { callback: function (value) { material.normalmap_tangent = value; } });
+				widgets.addSlider("Normal factor", material.normalmap_factor, { min:0, step:0.01, max:2, callback: function (value) { material.normalmap_factor = value; } });
+			}
+			else if(channel == "displacement")
+			{
+				widgets.addNumber("Displace factor", material.displacementmap_factor || 0, { precision: 3, step:0.001, callback: function (value) { material.displacementmap_factor = value; } });
+			}
+			else if(channel == "bump")
+			{
+				widgets.addSlider("Bump factor", material.bumpmap_factor || 0, { min:-2, step:0.01, max:2, callback: function (value) { material.bumpmap_factor = value; } });
+			}
 		}
 
-		widgets.addTitle("UVs transformed");
+		widgets.addTitle("UVs");
+
+		widgets.addCombo("UVs Channel", sampler["uvs"] || LS.Material.DEFAULT_UVS[ channel ], { values: LS.Material.TEXTURE_COORDINATES, callback: function(v) {
+			sampler.uvs = v;
+			LS.GlobalScene.refresh();
+		}});
+
 		var m = material.uvs_matrix;
 		widgets.addVector2("Tiling", [m[0],m[4]], { step:0.001, callback: function (value) { 
 			material.uvs_matrix[0] = value[0]; material.uvs_matrix[4] = value[1];

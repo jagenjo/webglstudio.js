@@ -30,7 +30,8 @@ var PackTools = {
 		{
 			var resname = i;
 			var res = LS.ResourcesManager.resources[resname];
-			if(!res) continue;
+			if(!res) 
+				continue;
 			if(res.getResources)
 				res.getResources(second_level);
 		}
@@ -40,7 +41,8 @@ var PackTools = {
 		//get the names
 		var res_names = [];
 		for(var i in resources)
-			res_names.push(i);
+			if(i) //some nulls?
+				res_names.push(i);
 
 		var old_name = LS.RM.getBasename( node.name ); //remove extension in name
 		if(node.prefab)
@@ -77,8 +79,11 @@ var PackTools = {
 
 		widgets.widgets_per_row = 1;
 
-		//if(node._components.length > 1)
-		//	widgets.addInfo("Warning","this node has several components attached to the root, they will be lost");
+		var use_node_as_prefab_root = false;
+		widgets.addCheckbox("Use node as prefab root", use_node_as_prefab_root, { name_width: 160, callback: function(v) { use_node_as_prefab_root = v; }});
+		widgets.addInfo("Warning","Turning this ON will make the root node components not be saved in the prefab.");
+
+		widgets.addSeparator();
 
 		var folder = "";
 		widgets.addFolder("Save to",folder,{ callback: function(v){
@@ -94,11 +99,12 @@ var PackTools = {
 			var data = node.serialize();
 			node.transform.reset();
 
-			if(clear_uids)
-				LS.clearUIds(data);
+			if( clear_uids )
+				LS.clearUIds( data );
 
 			//prefab is stored inside a null node
-			data = { object_class:"SceneNode", children: [ data ] };
+			if(!use_node_as_prefab_root)
+				data = { object_class:"SceneNode", children: [ data ] };
 
 			dialog.close();
 
@@ -129,10 +135,13 @@ var PackTools = {
 				prefab.fullpath = fullpath;
 				DriveModule.saveResource( prefab );
 			}
+			else
+				LS.RM.registerResource( prefab.filename, prefab );
 
 			if(replace_with_prefab)
 			{
-				node.removeAllComponents();
+				if(!use_node_as_prefab_root)
+					node.removeAllComponents();
 				node.prefab = prefab.fullpath || prefab.filename;
 				node.reloadFromPrefab();
 				if(!node.transform)

@@ -180,7 +180,7 @@ var ImporterModule  = {
 		return files;
 	},
 
-	processFileList: function(files, options, skip_dialog )
+	processFileList: function( files, options, skip_dialog )
 	{
 		options = options || {};
 		var that = this;
@@ -202,7 +202,9 @@ var ImporterModule  = {
 		this.loadFileToMemory( file, callback, options );
 
 		function inner_process( file, options ){
-			var filename = file.name.toLowerCase(); //to lower case to avoid problems
+			var filename = file.name;
+			if( ImporterModule.preferences.force_lowercase )
+				filename = filename.toLowerCase(); //to lower case to avoid problems
 			NotifyModule.show("FILE: " + filename, { id: "res-msg-" + filename.hashCode(), closable: true, time: 3000, left: 60, top: 30, parent: "#visor" } );
 			CORE.log("File dropped: " + filename);
 			ImporterModule.processResource( filename, file, that.getImporterOptions( filename ), function( filename, resource ){

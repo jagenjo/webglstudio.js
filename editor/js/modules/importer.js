@@ -65,6 +65,11 @@ var ImporterModule  = {
 	onItemDrop: function (evt, options)
 	{
 		var that = this;
+
+		//HACK to fix bug that ImporterModule processed first the drop that Player so script.onFileDrop wasnt working
+		if( PlayModule.inplayer )
+			return;
+
 		options = options || {};
 		console.log("processing item drop...");
 

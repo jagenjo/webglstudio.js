@@ -49,7 +49,9 @@ var PackTools = {
 			old_name = LS.ResourcesManager.getBasename(node.prefab);
 		var filename = widgets.addString("Filename", old_name );
 		var list = widgets.addList("Include assets", res_names, { multiselection: true, height: 140 });
-		widgets.addButtons("Select",["Meshes","Textures","Materials","Animations","All"], { callback: function(v){
+		widgets.addButtons("Select",["Meshes","Textures","Materials","Animations","All","Locals"], { callback: inner_select });
+
+		function inner_select(v){
 			if(v == "All")
 				list.selectAll();
 			else
@@ -63,11 +65,14 @@ var PackTools = {
 					if( (resource.constructor === GL.Mesh && v == "Meshes") ||
 						(resource.constructor === GL.Texture && v == "Textures") ||
 						(resource.constructor.is_material && v == "Materials") ||
-						(resource.constructor === LS.Animation && v == "Animations") )
+						(resource.constructor === LS.Animation && v == "Animations") || 
+						( !resource.remotepath && v == "Locals") )
 						list.selectIndex( i, true );
 				}
 			}
-		}});
+		}
+
+		inner_select("Locals"); //select local files by default
 
 		widgets.widgets_per_row = 2;
 
@@ -78,6 +83,9 @@ var PackTools = {
 		widgets.addCheckbox("Replace with Prefab", replace_with_prefab, { name_width: 120, callback: function(v) { replace_with_prefab = v; }});
 
 		widgets.widgets_per_row = 1;
+
+		var optimize_morph_targets = true;
+		widgets.addCheckbox("Optimize MorphTargets", optimize_morph_targets, { name_width: 120, callback: function(v) { optimize_morph_targets = v; }});
 
 		var use_node_as_prefab_root = false;
 		widgets.addCheckbox("Use node as prefab root", use_node_as_prefab_root, { name_width: 160, callback: function(v) { use_node_as_prefab_root = v; }});
@@ -94,6 +102,13 @@ var PackTools = {
 		widgets.addSeparator();
 		widgets.addButton(null,"Create Prefab", { callback: function() {
 			var filename_str = filename.getValue(); //change spaces by underscores
+
+			if(optimize_morph_targets)
+			{
+				var morphers = node.findComponents( "MorphDeformer" );
+				for(var i = 0; i < morphers.length; ++i)
+					morphers[i].optimizeMorphTargets();
+			}
 
 			var transform_data = node.transform.serialize();
 			var data = node.serialize();
@@ -138,6 +153,7 @@ var PackTools = {
 			else
 				LS.RM.registerResource( prefab.filename, prefab );
 
+			//replace node in scene with new prefab
 			if(replace_with_prefab)
 			{
 				if(!use_node_as_prefab_root)

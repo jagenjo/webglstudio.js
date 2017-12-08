@@ -10567,6 +10567,35 @@ ComponentContainer.prototype.getComponentByIndex = function(index)
 }
 
 /**
+* Returns a list of components matching the search, it search in the node and child nodes
+* @method findComponent
+* @param {Class|String} component the component class or the class name
+* @return {Array} an array with all the components of the same class
+*/
+ComponentContainer.prototype.findComponents = function( comp_name, out )
+{
+	out = out || [];
+	if(!comp_name)
+		return out;
+	if( comp_name.constructor === String )
+		comp_name = LS.Components[ comp_name ];
+	if(!comp_name)
+		return out;
+
+	for(var i = 0; i < this._components.length; ++i )
+	{
+		var comp = this._components[i];
+		if( comp && comp.constructor === comp_name )
+			out.push( comp );
+	}
+
+	if(this._children)
+		for(var i = 0; i < this._children.length; ++i )
+			this._children[i].findComponents( comp_name, out );
+	return out;
+}
+
+/**
 * Changes the order of a component
 * @method setComponentIndex
 * @param {Object} component
@@ -29578,7 +29607,7 @@ MorphDeformer.prototype.onCollectInstances = function( e, render_instances )
 	if( !morph_RI || !morph_RI.mesh)
 		return;
 
-	this._valid_morphs = this.computeValidMorphs( this._valid_morphs );
+	this._valid_morphs = this.computeValidMorphs( this._valid_morphs, morph_RI.mesh );
 
 	//grab the RI created previously and modified
 	//this.applyMorphTargets( last_RI );
@@ -29610,10 +29639,13 @@ MorphDeformer.prototype.onCollectInstances = function( e, render_instances )
 }
 
 //gather morph targets data
-MorphDeformer.prototype.computeValidMorphs = function( valid_morphs )
+MorphDeformer.prototype.computeValidMorphs = function( valid_morphs, base_mesh )
 {
 	valid_morphs = valid_morphs || [];
 	valid_morphs.length = 0;
+
+	if(!base_mesh)
+		return valid_morphs;
 
 	//sort by weight
 	var morph_targets = this.morph_targets.concat();
@@ -29628,6 +29660,9 @@ MorphDeformer.prototype.computeValidMorphs = function( valid_morphs )
 		var morph_mesh = LS.ResourcesManager.resources[ morph.mesh ];
 		if(!morph_mesh || morph_mesh.constructor !== GL.Mesh)
 			continue;
+		if(!morph_mesh.info)
+			morph_mesh.info = {};
+		morph_mesh.info.morph_target_from = base_mesh.filename;
 		valid_morphs.push( { name: morph.mesh, weight: morph.weight, mesh: morph_mesh } );
 	}
 

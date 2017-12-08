@@ -858,6 +858,17 @@ var DriveModule = {
 
 		var fullpath = resource.fullpath || resource.filename;
 
+		//in memory: we do it from memory to avoid problems with resources having cloned UIDs (like materials)
+		var local_resource = LS.RM.resources[ resource.fullpath ];
+		if( local_resource && local_resource.clone )
+		{
+			var cloned = local_resource.clone();
+			LS.RM.registerResource( cloned_name, cloned );
+			if(resource.remotepath) //save in server
+				DriveModule.saveResource( cloned );
+			return;
+		}
+
 		//it is a server file
 		if(resource.in_server)
 		{
@@ -865,18 +876,8 @@ var DriveModule = {
 			return;
 		}
 
-		//is local
-		if(!resource.clone)
-		{
-			console.log("Resource type cannot be cloned: " + LS.getObjectClassName( resource ) );
-			return;
-		}
-
-		var cloned = resource.clone();
-		LS.RM.registerResource( cloned_name, cloned );
-
-		if(resource.remotepath) //save in server
-			DriveModule.saveResource( cloned );
+		LiteGUI.alert("Resource type cannot be cloned, doesnt have a clone method: " + LS.getObjectClassName( resource ) );
+		return;
 	},
 
 	showSelectFolderDialog: function(callback, callback_close, default_folder )

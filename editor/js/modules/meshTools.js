@@ -33,7 +33,7 @@ var MeshTools = {
 
 			widgets.clear();
 
-			widgets.addMesh("Mesh", mesh_name || "", { callback: function(v) {
+			widgets.addMesh("Mesh", mesh_name || "", { name_width: 100, callback: function(v) {
 				mesh_name = v;
 				inner_update();
 			}, callback_load: function( res ){

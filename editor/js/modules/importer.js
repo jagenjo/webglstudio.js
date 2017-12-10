@@ -16,6 +16,8 @@ var ImporterModule  = {
 		force_lowercase: true
 	},
 
+	preferences_panel: [ {name:"importer", title:"Importer", icon:null } ],
+
 	init: function()
 	{
 		//if(window.gl && window.gl.canvas )
@@ -35,6 +37,18 @@ var ImporterModule  = {
 			this.onLoadPastedItem( item0 );
 			return false; // Prevent the default handler from running.
 		}
+	},
+
+	onShowPreferencesPanel: function(name, widgets)
+	{
+		if(name != "importer")
+			return;
+
+		var that = this;
+
+		widgets.addCheckbox("Force lowercase", this.preferences.force_lowercase, function(v){ 
+			ImporterModule.preferences.force_lowercase = v;
+		});
 	},
 
 	onLoadPastedItem: function(item)
@@ -452,7 +466,10 @@ var ImporterModule  = {
 				if( ext === "zip" )
 					inspector.addInfo("ZIP FILE");
 
-				inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { import_options.optimize_data = v; }});
+				inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { 
+					import_options.optimize_data = v;
+					ImporterModule.preferences.optimize_data = v;
+				}});
 
 				var info = LS.Formats.getFileFormatInfo( file.name );
 				if(!info)

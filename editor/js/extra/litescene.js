@@ -22256,6 +22256,15 @@ var Draw = {
 	*/
 	setColor: function(color)
 	{
+		if( arguments.length >= 3 )
+		{
+			this.color[0] = arguments[0];
+			this.color[1] = arguments[1];
+			this.color[2] = arguments[2];
+			if( arguments.length == 3 )
+				this.color[3] = arguments[3];
+		}
+		else
 		for(var i = 0; i < color.length; i++)
 			this.color[i] = color[i];
 	},

@@ -22065,7 +22065,7 @@ var Draw = {
 			uniform sampler2D u_texture;\n\
 			void main() {\n\
 			  vec4 tex = texture2D(u_texture, vec2(gl_PointCoord.x,1.0 - gl_PointCoord.y) );\n\
-			  if(tex.a < 0.1)\n\
+			  if(tex.a < 0.01)\n\
 				discard;\n\
 			  gl_FragColor = u_color * tex;\n\
 			}\
@@ -26535,8 +26535,13 @@ Camera.prototype.orbit = (function() {
 
 	return function( angle_in_deg, axis, center )
 	{
+		angle_in_deg = angle_in_deg || 0;
+
 		if(angle_in_deg == 0)
 			return;
+
+		if(!axis)
+			throw("axis missing");
 
 		if(this._root && this._root.transform)
 		{
@@ -31495,6 +31500,13 @@ CustomData.prototype.setPropertyValueFromPath = function( path, value, offset )
 		property.value.set( value ); //typed arrays
 	else
 		property.value = value;
+}
+
+CustomData.prototype.get = function(name)
+{
+	var p = this._properties_by_name[ name ];
+	if(p)
+		return p.value;
 }
 
 
@@ -42268,7 +42280,7 @@ SceneNode.prototype.getPropertyValueFromPath = function( path )
 	}
 
 	//to know the value of a property of the given target
-	if( target.getPropertyValue )
+	if( target.getPropertyValue && target != this )
 		v = target.getPropertyValue( varname );
 
 	//special case when the component doesnt specify any locator info but the property referenced does

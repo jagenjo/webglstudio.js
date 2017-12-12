@@ -13737,7 +13737,9 @@ Animation.interpolateLinear = function( a, b, t, result, type, value_size, track
 			quat.normalize( result, result );
 			break;
 		case Track.TRANS10: 
-			for(var i = 0; i < 10; i++) //this.value_size should be 10
+			for(var i = 0; i < 3; i++) //this.value_size should be 10
+				result[i] = a[i] * t + b[i] * (1-t);
+			for(var i = 7; i < 10; i++) //this.value_size should be 10
 				result[i] = a[i] * t + b[i] * (1-t);
 			var rotA = a.subarray(3,7);
 			var rotB = b.subarray(3,7);

@@ -44,9 +44,11 @@ Scene nodes by themselves do not have any behaviour, to add them behaviour (draw
 
 # Creating an object
 
-Let's create an sphere, to do this click on the menu Node -> Primitive -> Sphere.
+Let's create an sphere, to do this click on the menu ```Node -> Primitive -> Sphere```.
 
 A new node will appear in the node tree, and we inspect it we will see it contains a GeometricPrimitive component attached to it.
+
+You can create more objects, or drag meshes from the Drive, add lights, play with the materials, till the scene looks the way you like.
 
 # Adding some behaviour
 

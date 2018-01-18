@@ -1045,11 +1045,11 @@ void main() {\n\
 	  \n\
 	vec4 final_color = vec4(0.0);\n\
 	Light LIGHT = getLight();\n\
-	final_color.xyz = computeLight( o, IN, LIGHT );\n\
+	FinalLight FINALLIGHT = computeLight( o, IN, LIGHT );\n\
+	final_color.xyz = applyLight( o, FINALLIGHT );\n\
 	final_color.a = surface_color.a;\n\
 	if( o.Reflectivity > 0.0 )\n\
 		final_color = applyReflection( IN, o, final_color );\n\
-	\n\
 	gl_FragColor = final_color;\n\
 }\n\
 ";

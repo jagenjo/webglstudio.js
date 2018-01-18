@@ -368,6 +368,7 @@ LS.Components.Light.actions["to_node"] = {
 };
 
 LS.Components.SkinDeformer.actions["convert_bones"] = { title: "Convert Bones to Relative", callback: function() { this.convertBonesToRelative(); }};
+//LS.Components.SkinDeformer.actions["apply_bindpose"] = { title: "Apply BindPose", callback: function() { this.applyBindPose(); }};
 //LS.Components.SkinDeformer.actions["set_to_bind_pose"] = { title: "Set bones to bind pose", callback: function() { this.setBonesToBindPose(); }};
 LS.Components.MorphDeformer.actions["optimize_moprhtargets"] = { title: "Optimize Morph Targets", callback: function() { this.optimizeMorphTargets(); }};
 

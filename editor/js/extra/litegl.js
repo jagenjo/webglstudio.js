@@ -3419,6 +3419,9 @@ Mesh.computeBoundingBox = function( vertices, bb, mask ) {
 */
 Mesh.prototype.getBoundingBox = function()
 {
+	if(this._bounding)
+		return this._bounding;
+
 	this.updateBoundingBox();
 	return this._bounding;
 }
@@ -3432,7 +3435,6 @@ Mesh.prototype.updateBoundingBox = function() {
 	if(!vertices)
 		return;
 	GL.Mesh.computeBoundingBox( vertices.data, this._bounding );
-
 	if(this.info && this.info.groups && this.info.groups.length)
 		this.computeGroupsBoundingBoxes();
 }

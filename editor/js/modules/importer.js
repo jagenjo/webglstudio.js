@@ -710,12 +710,22 @@ var ImporterModule  = {
 					}
 
 					//rename animation tracks
+					//if resource is a DAE object
 					if(resource.animations)
 					{
-						var animation = LS.RM.getResource(resource.animations);
-						if(animation)
+						var animation = LS.RM.getResource( resource.animations );
+						if( animation )
 							animation.convertIDsToNames( true, resource );
 					}
+
+					//if resource is a SceneNode
+					if(resource.animation)
+					{
+						var animation = LS.RM.getResource( resource.animation );
+						if( animation )
+							animation.convertIDsToNames( true, resource );
+					}
+
 				}
 			}
 

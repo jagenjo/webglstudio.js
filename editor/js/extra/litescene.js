@@ -7575,14 +7575,15 @@ ShaderMaterial.prototype.processShaderCode = function()
 		this.createUniform( global.name, global.uniform, global.type, global.value, global.options );
 	}
 
+	//set version before asssignOldProperties
+	this._shader_version = shader_code._version;
+	this._version++;
+
 	//restore old values
 	this.assignOldProperties( old_properties );
 
 	//set stuff
 	//TODO
-
-	this._shader_version = shader_code._version;
-	this._version++;
 }
 
 //used after changing the code of the ShaderCode and wanting to reload the material keeping the old properties
@@ -11179,7 +11180,12 @@ CompositePattern.prototype.moveAfter = function( sibling )
 }
 
 
-//search for a node using a string that could be a name, a fullname or a uid
+/**
+* Search for a node using a string that could be a name, a fullname or a uid
+* @method findNode
+* @param {String} name_or_uid
+* @return {SceneNode} the node or null
+**/
 CompositePattern.prototype.findNode = function( name_or_uid )
 {
 	if(name_or_uid == "")
@@ -11191,7 +11197,13 @@ CompositePattern.prototype.findNode = function( name_or_uid )
 	return this.findNodeByUId( name_or_uid );
 }
 
-//this function gets called a lot when using animations
+/**
+* search a node by its name
+* this function gets called a lot when using animations
+* @method findNodeByName
+* @param {String} name
+* @return {SceneNode} the node or null
+**/
 CompositePattern.prototype.findNodeByName = function( name )
 {
 	if(!name)
@@ -11220,6 +11232,12 @@ CompositePattern.prototype.findNodeByName = function( name )
 	return null;
 }
 
+/**
+* search a node by its uid
+* @method findNodeByUId
+* @param {String} id
+* @return {SceneNode} the node or null
+**/
 CompositePattern.prototype.findNodeByUId = function( uid )
 {
 	if(!uid)
@@ -11246,8 +11264,17 @@ CompositePattern.prototype.findNodeByUId = function( uid )
 	return null;
 }
 
-
-
+/**
+* returns how many levels deep is the node in the hierarchy
+* @method getHierarchyLevel
+* @return {Number} the level, 0 if it is the root
+**/
+CompositePattern.prototype.getHierarchyLevel = function()
+{
+	if(!this._parentNode)
+		return 0;
+	return this._parentNode.getHierarchyLevel() + 1;
+}
 
 /*
 *  Components are elements that attach to Nodes or other objects to add functionality
@@ -24003,14 +24030,14 @@ function Transform( o )
 	//packed data (helpful for animation stuff)
 	this._data = new Float32Array( 3 + 4 + 3 ); //pos, rot, scale, also known as trans10
 
+	//TSR
 	this._position = this._data.subarray(0,3);
-
 	this._rotation = this._data.subarray(3,7);
 	quat.identity(this._rotation);
-
 	this._scaling = this._data.subarray(7,10);
 	this._scaling[0] = this._scaling[1] = this._scaling[2] = 1;
 
+	//matrices
 	this._local_matrix = mat4.create();
 	this._global_matrix = mat4.create();
 
@@ -24036,8 +24063,6 @@ function Transform( o )
 
 	if(o)
 		this.configure(o);
-
-	//Object.seal(this);
 }
 
 Transform.temp_matrix = mat4.create();
@@ -24785,6 +24810,16 @@ Transform.prototype.fromMatrix = (function() {
 		this._on_change(true);
 	}
 })();
+
+/**
+* Configure the transform from a global Matrix (do not tested carefully)
+* @method fromGlobalMatrix
+* @param {mat4} matrix the matrix in array format
+*/
+Transform.prototype.fromGlobalMatrix = function(m)
+{
+	this.fromMatrix(m,true);	
+}
 
 Transform.fromMatrix4ToTransformData = (function() { 
 
@@ -30281,6 +30316,7 @@ function SkinDeformer( o )
 
 	this._mesh = null;
 	this._last_bones = null;
+	this._ris_skinned = [];
 	//this._skinning_mode = 0;
 
 	//check how many floats can we put in a uniform
@@ -30403,6 +30439,8 @@ SkinDeformer.prototype.onCollectInstances = function( e, render_instances )
 
 	var last_RI;
 
+	//TODO: fix this, allow multiple mesh renderers with one single deformer
+
 	//get index
 	var index = this.root.getIndexOfComponent(this);
 	var prev_comp = this.root.getComponentByIndex( index - 1);
@@ -30411,6 +30449,8 @@ SkinDeformer.prototype.onCollectInstances = function( e, render_instances )
 
 	if(!last_RI)
 		return;
+
+	this._ris_skinned.length = 0;
 
 	//take last one (although maybe using this._root.instances ...)
 	//last_RI = render_instances[ render_instances.length - 1];
@@ -30457,9 +30497,10 @@ SkinDeformer.prototype.applySkinning = function(RI)
 {
 	var mesh = RI.mesh;
 	this._mesh = mesh;
+	this._ris_skinned.push( RI );
 
 	//this mesh doesnt have skinning info
-	if(!mesh.getBuffer("vertices") || !mesh.getBuffer("bone_indices"))
+	if(!mesh || !mesh.getBuffer("vertices") || !mesh.getBuffer("bone_indices"))
 		return;
 
 	
@@ -30677,6 +30718,41 @@ SkinDeformer.prototype.applySoftwareSkinning = function(ref_mesh, skin_mesh)
 SkinDeformer.prototype.extractSkeleton = function()
 {
 	//TODO
+}
+
+
+//extracts the matrices from the bind pose and applies it to the bones
+SkinDeformer.prototype.applyBindPose = function()
+{
+	var mesh = this._mesh;
+
+	//this mesh doesnt have skinning info
+	if( !mesh || !mesh.bones )
+		return;
+
+	var imat = mat4.create();
+
+	var bone_nodes = this.getBones();
+	for(var i = 0; i < bone_nodes.length; ++i)
+	{
+		var node = bone_nodes[i];
+		node._level = node.getHierarchyLevel();
+	}
+
+	/*
+	for(var i = 0; i < bones.length; ++i)
+	{
+		var joint = bones[i];
+		var bone_name = joint[0];
+		var bind_matrix = joint[1];
+		var bone_node = this.getBoneNode( bone_name );
+		if( !bone_node || !bone_node.transform )
+			continue;
+
+		mat4.invert( imat, bind_matrix, bind_matrix );
+		bone_node.transform.fromGlobalMatrix( imat );
+	}
+	*/
 }
 
 //returns an array with all the bone nodes affecting this mesh
@@ -32518,6 +32594,7 @@ Rotator.prototype.onUpdate = function(e,dt)
 LS.registerComponent( Rotator );
 /**
 * Camera controller
+* Allows to move a camera with the user input. It uses the first camera attached to the same node
 * @class CameraController
 * @constructor
 * @param {String} object to configure from
@@ -32545,10 +32622,11 @@ function CameraController(o)
 CameraController.ORBIT = 1; //orbits around the center
 CameraController.FIRSTPERSON = 2; //moves relative to the camera
 CameraController.PLANE = 3; //moves paralel to a plane
+CameraController.HORIZONTALY = 4; //like first person but only yaw
 
 CameraController.icon = "mini-icon-cameracontroller.png";
 
-CameraController["@mode"] = { type:"enum", values: { "Orbit": CameraController.ORBIT, "FirstPerson": CameraController.FIRSTPERSON, "Plane": CameraController.PLANE }};
+CameraController["@mode"] = { type:"enum", values: { "Orbit": CameraController.ORBIT, "FirstPerson": CameraController.FIRSTPERSON, "Plane": CameraController.PLANE, "Horizontaly": CameraController.HORIZONTALY,  }};
 
 CameraController.prototype.onAddedToScene = function( scene )
 {
@@ -32573,12 +32651,18 @@ CameraController.prototype.onUpdate = function(e)
 	if(!this._root || !this.enabled) 
 		return;
 
+	//get first camera attached to this node
+	var cam = this._root.camera;
+
+	//no camera or disabled, then nothing to do
+	if(!cam || !cam.enabled)
+		return;
+
 	if(this._root.transform)
 	{
 	}
-	else if(this._root.camera)
+	else 
 	{
-		var cam = this._root.camera;
 		if(this.mode == CameraController.FIRSTPERSON)
 		{
 			//move using the delta vector
@@ -32605,7 +32689,7 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 	
 	var node = this._root;
 	var cam = node.camera;
-	if(!cam)
+	if(!cam || !cam.enabled)
 		return;
 
 	var is_global_camera = node._is_root;
@@ -32641,21 +32725,25 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 
 	var changed = false;
 
-	if(this.mode == CameraController.FIRSTPERSON)
+	if(this.mode == CameraController.FIRSTPERSON || this.mode == CameraController.HORIZONTALY)
 	{
-		cam.rotate(-mouse_event.deltax * this.rot_speed,LS.TOP);
+		var top = LS.TOP; //cam.getLocalVector(LS.TOP);
+		cam.rotate(-mouse_event.deltax * this.rot_speed,top);
 		cam.updateMatrices();
-		var right = cam.getLocalVector(LS.RIGHT);
 
-		if(is_global_camera)
+		if( this.mode == CameraController.FIRSTPERSON )
 		{
-			cam.rotate(-mouse_event.deltay * this.rot_speed,right);
-			cam.updateMatrices();
-		}
-		else
-		{
-			node.transform.rotate(-mouse_event.deltay * this.rot_speed,right);
-			cam.updateMatrices();
+			var right = cam.getLocalVector(LS.RIGHT);
+			if(is_global_camera)
+			{
+				cam.rotate(-mouse_event.deltay * this.rot_speed,right);
+				cam.updateMatrices();
+			}
+			else
+			{
+				node.transform.rotate(-mouse_event.deltay * this.rot_speed,LS.RIGHT);
+				cam.updateMatrices();
+			}
 		}
 
 		changed = true;
@@ -32758,6 +32846,7 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 		this._root.scene.requestFrame();
 }
 
+//manage pinching and dragging two fingers in a touch pad
 CameraController.prototype.onTouch = function( e, touch_event)
 {
 	if(!this._root || !this.enabled) 
@@ -32765,7 +32854,7 @@ CameraController.prototype.onTouch = function( e, touch_event)
 	
 	var node = this._root;
 	var cam = node.camera;
-	if(!cam)
+	if(!cam || !cam.enabled)
 		return;
 
 	var is_global_camera = node._is_root;

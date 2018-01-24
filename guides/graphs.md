@@ -14,7 +14,7 @@ It is very handy when you just want to ensure two properties have the same value
 
 To use graphs in our scene first you need to create a GraphComponent in any of the nodes in our scene.
 
-There are different Graph component clases depending if the graph is for behaviour or for rendering (GraphComponent, FXGraphComopnent).
+There are different Graph component clases depending if the graph is for behaviour or for rendering (```GraphComponent```, ```FXGraphComopnent```).
 
 Also you can choose when a graph is executed (before rendering, after rendering, during the update, on startup, on trigger etc).
 
@@ -40,7 +40,9 @@ To break a connection just click in the input node connection.
 
 To edit the properties of any node double-click on it and check the inspector info.
 
+## Documentation
 
+To know more about graph check the [LiteGraph documentation](https://github.com/jagenjo/litegraph.js).
 
 
 

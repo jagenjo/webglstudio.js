@@ -14,7 +14,7 @@ It is very handy when you just want to ensure two properties have the same value
 
 To use graphs in our scene first you need to create a GraphComponent in any of the nodes in our scene.
 
-There are different Graph component clases depending if the graph is for behaviour or for rendering (```GraphComponent```, ```FXGraphComopnent```).
+There are different Graph component clases depending if the graph is for behaviour or for rendering (```GraphComponent```, ```FXGraphComponent```).
 
 Also you can choose when a graph is executed (before rendering, after rendering, during the update, on startup, on trigger etc).
 

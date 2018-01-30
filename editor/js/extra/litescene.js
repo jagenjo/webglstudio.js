@@ -25078,11 +25078,11 @@ Transform.prototype.scale = function(x,y,z)
 * @param {number} factor from 0 to 1 
 * @param {Transform} the destination
 */
-Transform.interpolate = function(a,b,factor, result)
+Transform.interpolate = function( a, b, factor, result )
 {
-	vec3.lerp(result._scaling, a._scaling, b._scaling, factor); //scale
-	vec3.lerp(result._position, a._position, b._position, factor); //position
-	quat.slerp(result._rotation, a._rotation, b._rotation, factor); //rotation
+	vec3.lerp( result._scaling, a._scaling, b._scaling, factor); //scale
+	vec3.lerp( result._position, a._position, b._position, factor); //position
+	quat.slerp( result._rotation, a._rotation, b._rotation, factor); //rotation
 	this._must_update = true;
 	this._on_change();
 }
@@ -38424,22 +38424,25 @@ Poser.icon = "mini-icon-clock.png";
 
 Poser.prototype.onAddedToScene = function( scene )
 {
-	LEvent.bind(scene,"update",this.onUpdate, this);
+	//LEvent.bind(scene,"update",this.onUpdate, this);
 }
+
 
 Poser.prototype.onRemovedFromScene = function(scene)
 {
-	LEvent.unbind(scene,"update",this.onUpdate, this);
+	//LEvent.unbind(scene,"update",this.onUpdate, this);
 }
 
+/*
 Poser.prototype.onUpdate = function(e, dt)
 {
-	this.applyPoses();
+	this.applyPose();
 
 	var scene = this._root.scene;
 	if(!scene)
 		scene.requestFrame();
 }
+*/
 
 Poser.prototype.addBaseNode = function( node )
 {
@@ -38522,9 +38525,12 @@ Poser.prototype.removePose = function( name )
 	delete this.poses[ name ];
 }
 
-
+//call to update the value of a pose using the current nodes transform
 Poser.prototype.updatePose = function( name )
 {
+	if(!this._root || !this._root.scene) //could happen
+		return;
+
 	var pose = this.poses[ name ];
 	if(!pose)
 		return null;
@@ -38554,8 +38560,17 @@ Poser.prototype.updatePose = function( name )
 	return pose;
 }
 
-Poser.prototype.applyPose = function( name )
+//call to apply one pose to the nodes
+Poser.prototype.applyPose = function( name, weight )
 {
+	if(!name || !this._root || !this._root.scene)
+		return;
+
+	if(weight === undefined)
+		weight = 1;
+	if(weight <= 0)
+		return;
+
 	var pose = this.poses[ name ];
 	if(!pose)
 		return null;
@@ -38570,13 +38585,29 @@ Poser.prototype.applyPose = function( name )
 		var node = scene.getNode( info.node_uid );
 		if(!node || !node.transform)
 			continue; //maybe the node was removed from the scene
-		node.transform.data = info.data;
+
+		//overwrite
+		if(weight >= 1)		
+		{
+			node.transform.data = info.data;
+			continue;
+		}
+
+		var a = node.transform;
+		var b = info.data;
+
+		//interpolate
+		vec3.lerp( a._position, a._position, b, weight ); //position
+		vec3.lerp( a._scaling, a._scaling, b.subarray(7,10), weight ); //scale
+		quat.slerp( a._rotation, a._rotation, b.subarray(3,7), weight ); //rotation
+		node.transform._must_update = true;
 	}
 
 	this.poses[ name ] = pose;
 	return pose;
 }
 
+//remove nodes from poses if they are not used
 Poser.prototype.purgePoses = function()
 {
 	var valid_nodes = {};

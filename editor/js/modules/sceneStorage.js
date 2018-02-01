@@ -20,6 +20,7 @@ var SceneStorageModule = {
 		menubar.add("Project/Load/From URL", { callback: this.showLoadFromURLDialog.bind(this) });
 		menubar.add("Project/Load/From File", { callback: this.showLoadFromFileDialog.bind(this) });
 		menubar.add("Project/Load/From autobackup", { callback: this.recoverBackup.bind(this) });
+		menubar.add("Project/Load/From JSON text", { callback: this.showLoadFromJSONDialog.bind(this) });
 		menubar.add("Project/Save/In Server", { callback: this.showSaveSceneInServerDialog.bind(this,null) });
 		menubar.add("Project/Save/Local", { callback: this.showSaveSceneInLocalDialog.bind(this) });
 		menubar.add("Project/Download", { callback: this.showDownloadSceneDialog.bind(this) });
@@ -29,7 +30,12 @@ var SceneStorageModule = {
 		menubar.separator("Project");
 		menubar.add("Project/Reset All", { callback: EditorModule.showResetDialog.bind(EditorModule) });
 
-		menubar.add("Scene/Check JSON", { callback: function() { EditorModule.checkJSON( LS.GlobalScene ); } });
+		menubar.add("Scene/Show JSON", { callback: function() { EditorModule.checkJSON( LS.GlobalScene ); } });
+		menubar.add("Scene/Show JSON Simple", { callback: function() { 
+			var data = LS.GlobalScene.serialize(true);
+			delete data.extra;
+			EditorModule.checkJSON( data ); }
+		});
 
 		//feature in development...
 		menubar.add("Scene/Create", { callback: function() { SceneStorageModule.showCreateSceneDialog(); } });
@@ -566,6 +572,60 @@ var SceneStorageModule = {
 			$("#snapshot").append(img);
 		}
 	},
+
+	showLoadFromJSONDialog: function()
+	{
+		var dialog = new LiteGUI.Dialog({ id: "dialog_load_scene", title:"Load Scene from JSON", close: true, minimize: true, width: 520, height: 300, scroll: false, draggable: true });
+		dialog.show('fade');
+
+		var json = "";
+
+		var widgets = new LiteGUI.Inspector();
+		var info_widget = widgets.addInfo("Paste your JSON here");
+		widgets.addTextarea(null,"",{ height: 300, callback: function(v){
+			json = v;	
+		}});
+		widgets.addButtons(null,["Load","Cancel"], { className:"big", callback: inner_button });
+
+		dialog.add( widgets );
+		dialog.adjustSize(10);
+		dialog.show();
+
+		function inner_button(button)
+		{
+			if(button == "Load")
+			{
+				if(!json)
+					return;
+				var scene = null;
+				try
+				{
+					scene = JSON.parse( json );
+				}
+				catch (err)
+				{
+					info_widget.setValue("error in JSON");
+					return;
+				}
+
+				LiteGUI.confirm("Are you sure?", function(v) {
+					if(!v)
+						return;
+					LS.ResourcesManager.reset();
+					LS.GlobalScene.clear();
+					LS.Renderer.reset();
+					LS.GlobalScene.setFromJSON(scene);
+					dialog.close();
+				});
+
+			}
+			else if(button == "Cancel")
+			{
+				dialog.close();
+			}
+		}
+	},
+
 
 	showCreateSceneDialog: function()
 	{

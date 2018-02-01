@@ -623,14 +623,14 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 		this.showComponentsInterface( node,inspector );
 
 		//flags
-		inspector.addSection("Extras", { collapsed: true });
+		inspector.addSection("Extras", { collapsed: true }); //node._editor.collapsed
 		if(node.flags)
 		{
 			inspector.addTitle("Flags");
 			inspector.widgets_per_row = 2;
 			inspector.addFlags( node.flags, { visible: true, is_static: false, selectable: true, locked: false }, { name_width: "75%" } );
 			inspector.widgets_per_row = 1;
-			inspector.addString("Add flag","", { callback: function(v){
+			inspector.addString("Custom flags","", { callback: function(v){
 				node.flags[v] = true;	
 				inspector.refresh();
 			}});

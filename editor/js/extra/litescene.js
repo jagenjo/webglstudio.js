@@ -2013,6 +2013,15 @@ LS.RESOURCE_TYPES[ LS.TYPES.MESH ] = true;
 LS.RESOURCE_TYPES[ LS.TYPES.ANIMATION ] = true;
 //audio and video?
 
+/**
+* A Ray that contains an origin and a direction (it uses the Ray class from litegl, so to check documentation go to litegl doc
+* @class Ray
+* @namespace LS
+* @constructor
+* @param {vec3} origin
+* @param {vec3} direction
+*/
+LS.Ray = GL.Ray;
 
 var Network = {
 
@@ -6794,14 +6803,23 @@ Material.prototype.configure = function(o)
 * @method serialize
 * @return {Object} object with the serialization info
 */
-Material.prototype.serialize = function()
+Material.prototype.serialize = function( simplified )
 {
-	 var o = LS.cloneObject(this);
-	 delete o.filename;
- 	 delete o.fullpath;
- 	 delete o.remotepath;
-	 o.material_class = LS.getObjectClassName(this);
-	 return o;
+	var o = LS.cloneObject(this);
+	delete o.filename;
+	delete o.fullpath;
+	delete o.remotepath;
+	o.material_class = LS.getObjectClassName(this);
+
+	if( simplified )
+	{
+		delete o.render_state;
+		delete o.flags;
+		if( o.uvs_matrix && o.uvs_matrix.equal([1,0,0, 0,1,0, 0,0,1]) )
+			delete o.uvs_matrix;
+	}
+
+	return o;
 }
 
 
@@ -9523,9 +9541,9 @@ newStandardMaterial.FLAGS = {
 	DISPLACEMENT_TEXTURE_OPTIONS: 1<<23,
 	EXTRA_TEXTURE_OPTIONS: 1<<24,
 
-	DEGAMMA_COLOR: 1<<31,
-	SPEC_ON_ALPHA: 1<<32,
-	ALPHA_TEST: 1<<33
+	DEGAMMA_COLOR: 1<<26,
+	SPEC_ON_ALPHA: 1<<27,
+	ALPHA_TEST: 1<<28
 };	
 
 newStandardMaterial.shader_codes = {};
@@ -10250,7 +10268,7 @@ ComponentContainer.prototype.configureComponents = function( info )
 * @method serializeComponents
 * @param {Object} o container where the components will be stored
 */
-ComponentContainer.prototype.serializeComponents = function( o )
+ComponentContainer.prototype.serializeComponents = function( o, simplified )
 {
 	if(!this._components)
 		return;
@@ -10261,7 +10279,7 @@ ComponentContainer.prototype.serializeComponents = function( o )
 		var comp = this._components[i];
 		if( !comp.serialize || comp.skip_serialize )
 			continue;
-		var obj = comp.serialize();
+		var obj = comp.serialize( simplified );
 
 		//check for bad stuff inside the component
 		/*
@@ -10274,7 +10292,7 @@ ComponentContainer.prototype.serializeComponents = function( o )
 		}
 		*/
 
-		if(comp._editor)
+		if(comp._editor && !simplified )
 			obj.editor = comp._editor;
 
 		//enforce uid storage
@@ -10936,12 +10954,12 @@ CompositePattern.prototype.removeAllChildren = function( param1, param2 )
 * @method serializeChildren
 * @return {Array} array containing all serialized data from every children
 */
-CompositePattern.prototype.serializeChildren = function()
+CompositePattern.prototype.serializeChildren = function( simplified )
 {
 	var r = [];
 	if(this._children)
 		for(var i in this._children)
-			r.push( this._children[i].serialize() ); //serialize calls serializeChildren
+			r.push( this._children[i].serialize( false, simplified ) ); //serialize calls serializeChildren
 	return r;
 }
 
@@ -24359,7 +24377,7 @@ Transform.prototype.configure = function(o)
 * @method serialize
 * @return {Object} object with the serialized info
 */
-Transform.prototype.serialize = function()
+Transform.prototype.serialize = function( simplified )
 {
 	
 	var o = {
@@ -24370,7 +24388,7 @@ Transform.prototype.serialize = function()
 		scaling: [ this._scaling[0],this._scaling[1],this._scaling[2] ]
 	};
 
-	if( !this.isIdentity() )
+	if( !this.isIdentity() && !simplified )
 		o.matrix = toArray( this._local_matrix );; //could be useful
 
 	return o;
@@ -26860,9 +26878,10 @@ Camera.prototype.getLocalViewport = function( viewport, result )
 * @param {number} y
 * @param {vec4} viewport viewport coordinates (if omited full viewport is used using the camera viewport)
 * @param {boolean} skip_local_viewport ignore the local camera viewport configuration when computing the viewport
-* @return {GL.Ray} {origin:vec3, direction:vec3} or null is values are undefined or NaN
+* @param {LS.Ray} result [optional] to reuse ray
+* @return {LS.Ray} {origin:vec3, direction:vec3} or null is values are undefined or NaN
 */
-Camera.prototype.getRay = function(x,y, viewport, skip_local_viewport )
+Camera.prototype.getRay = function(x,y, viewport, skip_local_viewport, result )
 {
 	//apply camera viewport
 	if(!skip_local_viewport)
@@ -26880,7 +26899,11 @@ Camera.prototype.getRay = function(x,y, viewport, skip_local_viewport )
 
 	var dir = vec3.subtract( pos, pos, eye );
 	vec3.normalize(dir, dir);
-	return new GL.Ray( eye, dir );
+
+	result = result || new LS.Ray();
+	result.origin.set(eye);
+	result.direction.set(dir);
+	return result;
 }
 
 Camera.prototype.getRayInPixel = Camera.prototype.getRay; //LEGACY
@@ -32626,7 +32649,7 @@ CameraController.HORIZONTALY = 4; //like first person but only yaw
 
 CameraController.icon = "mini-icon-cameracontroller.png";
 
-CameraController["@mode"] = { type:"enum", values: { "Orbit": CameraController.ORBIT, "FirstPerson": CameraController.FIRSTPERSON, "Plane": CameraController.PLANE, "Horizontaly": CameraController.HORIZONTALY,  }};
+CameraController["@mode"] = { type:"enum", values: { "Orbit": CameraController.ORBIT, "FirstPerson": CameraController.FIRSTPERSON, "Plane": CameraController.PLANE, "Horizontaly": CameraController.HORIZONTALY  }};
 
 CameraController.prototype.onAddedToScene = function( scene )
 {
@@ -40210,7 +40233,7 @@ SceneTree.prototype.configure = function( scene_info )
 * @return {Object} return a JS Object with all the scene info
 */
 
-SceneTree.prototype.serialize = function()
+SceneTree.prototype.serialize = function( simplified  )
 {
 	var o = {};
 
@@ -40223,7 +40246,7 @@ SceneTree.prototype.serialize = function()
 	o.extra = this.extra || {};
 
 	//add nodes
-	o.root = this.root.serialize();
+	o.root = this.root.serialize( false, simplified );
 
 	if(this.animation)
 		o.animation = this.animation.serialize();
@@ -43049,7 +43072,7 @@ SceneNode.prototype.addMeshComponents = function( mesh_id, extra_info )
 * @param {bool} ignore_prefab serializing wont returns children if it is a prefab, if you set this to ignore_prefab it will return all the info
 * @return {Object} returns the object with the info
 */
-SceneNode.prototype.serialize = function( ignore_prefab )
+SceneNode.prototype.serialize = function( ignore_prefab, simplified )
 {
 	var o = {
 		object_class: "SceneNode"
@@ -43073,7 +43096,7 @@ SceneNode.prototype.serialize = function( ignore_prefab )
 	if(this.submesh_id != null) 
 		o.submesh_id = this.submesh_id;
 	if(this.material) 
-		o.material = typeof(this.material) == "string" ? this.material : this.material.serialize();
+		o.material = typeof(this.material) == "string" ? this.material : this.material.serialize( simplified );
 	if(this.prefab && !ignore_prefab && !this._is_root ) 
 		o.prefab = this.prefab;
 
@@ -43087,13 +43110,13 @@ SceneNode.prototype.serialize = function( ignore_prefab )
 		o.comments = this.comments;
 
 	if(this._children && (!this.prefab || ignore_prefab) )
-		o.children = this.serializeChildren();
+		o.children = this.serializeChildren( simplified );
 
 	if(this._editor)
 		o.editor = this._editor;
 
 	//save components
-	this.serializeComponents(o);
+	this.serializeComponents( o, simplified );
 
 	//extra serializing info
 	LEvent.trigger(this,"serialize",o);
@@ -49439,6 +49462,34 @@ Object.equals = function( x, y ) {
       // allows x[ p ] to be set to undefined
   }
   return true;
+}
+
+
+//used for on simplified serializations
+if( !Array.prototype.hasOwnProperty( "equal" ) )
+{
+	Object.defineProperty( Array.prototype, "equal", {
+		value: function(v){
+			for(var i = 0; i < this.length; ++i)
+				if( this[i] != v[i] )
+					return false;
+			return true;
+		},
+		enumerable: false
+	});
+}
+
+if( !Float32Array.prototype.hasOwnProperty( "equal" ) )
+{
+	Object.defineProperty( Float32Array.prototype, "equal", {
+		value: function(v){
+			for(var i = 0; i < this.length; ++i)
+				if( this[i] != v[i] )
+					return false;
+			return true;
+		},
+		enumerable: false
+	});
 }
 //here goes the ending of commonjs stuff
 

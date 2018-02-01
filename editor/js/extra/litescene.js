@@ -41878,7 +41878,8 @@ function SceneNode( name )
 	this.flags = {
 		visible: true,
 		is_static: false,
-		selectable: true
+		selectable: true,
+		locked: false
 	};
 
 	this.init(false,true);
@@ -42444,6 +42445,9 @@ SceneNode.prototype.setPropertyValue = function( locator, value )
 SceneNode.prototype.setPropertyValueFromPath = function( path, value, offset )
 {
 	offset = offset || 0;
+
+	if(this.flags && this.flags.locked)
+		return; //lock ignores changes from animations or graphs
 
 	var target = null;
 	var varname = path[offset];

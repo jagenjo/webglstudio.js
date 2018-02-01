@@ -2118,7 +2118,10 @@ Timeline.prototype.getMouseItem = function( e )
 			if( track && e.mousex < 10 )
 				this.insertKeyframe( track );
 			else if( track && e.mousex < 30 )
+			{
 				track.enabled = !track.enabled;
+				that.animationModified();
+			}
 			this.session.selection = { type: "track", track: track_index };
 			this._must_redraw = true;
 			RenderModule.requestFrame();

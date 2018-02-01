@@ -628,7 +628,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 		{
 			inspector.addTitle("Flags");
 			inspector.widgets_per_row = 2;
-			inspector.addFlags( node.flags, { depth_test: true, depth_write: true, ignore_lights: false, ignore_fog: false, selectable: true, locked: false }, { name_width: "75%" } );
+			inspector.addFlags( node.flags, { visible: true, is_static: false, selectable: true, locked: false }, { name_width: "75%" } );
 			inspector.widgets_per_row = 1;
 			inspector.addString("Add flag","", { callback: function(v){
 				node.flags[v] = true;	

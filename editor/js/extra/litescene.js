@@ -8662,6 +8662,7 @@ StandardMaterial.prototype.setProperty = function(name, value)
 		case "emissive_extra":
 		//strings
 		//bools
+		case "shader_name":
 		case "specular_on_top":
 		case "specular_on_alpha":
 		case "normalmap_tangent":
@@ -21125,6 +21126,7 @@ var Renderer = {
 			queue.add( instance );
 
 			//node & mesh constant information
+			//DEPRECATED
 			var query = instance.query;
 
 			/* deprecated
@@ -21135,11 +21137,14 @@ var Renderer = {
 				query.macros.NO_COORDS = "";
 			if(("coords1" in buffers))
 				query.macros.USE_COORDS1_STREAM = "";
-			if(("colors" in buffers))
+			if(("colors" in buffers)) //particles
 				query.macros.USE_COLOR_STREAM = "";
 			if(("tangents" in buffers))
 				query.macros.USE_TANGENT_STREAM = "";
 			*/
+			//deprecated?
+			if(("colors" in instance.mesh.vertexBuffers)) //particles
+				query.macros.USE_COLOR_STREAM = "";
 
 			instance._camera_visibility = 0|0;
 		}
@@ -34452,9 +34457,6 @@ function ParticleEmissor(o)
 
 	this.texture_grid_size = 1;
 
-	this._custom_emissor_code = null;
-	this._custom_update_code = null;
-
 	//physics
 	this.physics_gravity = [0,0,0];
 	this.physics_friction = 0;
@@ -34477,6 +34479,9 @@ function ParticleEmissor(o)
 	this.sort_in_z = true; //slower
 	this.stop_update = false; //do not move particles
 	this.ignore_lights = false; 
+
+	this.onCreateParticle = null;
+	this.onUpdateParticle = null;
 
 	if(o)
 		this.configure(o);
@@ -34527,47 +34532,6 @@ Object.defineProperty( ParticleEmissor.prototype, 'particle_end_color', {
 	set: function(v) { 
 		if(v)
 			this._particle_end_color.set(v); 
-	},
-	enumerable: true
-});
-
-
-Object.defineProperty( ParticleEmissor.prototype , 'custom_emissor_code', {
-	get: function() { return this._custom_emissor_code; },
-	set: function(v) { 
-		v = LScript.cleanCode(v);
-		this._custom_emissor_code = v;
-		try
-		{
-			if(v && v.length)
-				this._custom_emissor_func = new Function("p",v);
-			else
-				this._custom_emissor_func = null;
-		}
-		catch (err)
-		{
-			console.error("Error in ParticleEmissor custom emissor code: ", err);
-		}
-	},
-	enumerable: true
-});
-
-Object.defineProperty( ParticleEmissor.prototype , 'custom_update_code', {
-	get: function() { return this._custom_update_code; },
-	set: function(v) { 
-		v = LScript.cleanCode(v);
-		this._custom_update_code = v;
-		try
-		{
-			if(v && v.length)
-				this._custom_update_func = new Function("p","dt",v);
-			else
-				this._custom_update_func = null;
-		}
-		catch (err)
-		{
-			console.error("Error in ParticleEmissor custom emissor code: ", err);
-		}
 	},
 	enumerable: true
 });
@@ -34656,8 +34620,8 @@ ParticleEmissor.prototype.createParticle = function(p)
 	vec3.scale(p._vel, p._vel, this.particle_speed);
 
 	//after everything so the user can edit whatever he wants
-	if(this.emissor_type == ParticleEmissor.CUSTOM_EMISSOR && this._custom_emissor_func)
-		this._custom_emissor_func.call( this, p );
+	if(this.emissor_type == ParticleEmissor.CUSTOM_EMISSOR && this.onCreateParticle)
+		this.onCreateParticle( p, this );
 
 	//this._root.transform.transformPoint(p.pos, p.pos);
 	if(!this.follow_emitter) //the transform will be applyed in the matrix
@@ -34721,8 +34685,8 @@ ParticleEmissor.prototype.onUpdate = function(e, dt, do_not_updatemesh )
 			p.angle += p.rot * dt;
 			p.life -= dt;
 
-			if(this._custom_update_func)
-				this._custom_update_func.call(this,p,dt);
+			if(this.onUpdateParticle)
+				this.onUpdateParticle(p,dt,this);
 
 			if(p.life > 0) //keep alive
 				particles.push(p);
@@ -34789,6 +34753,8 @@ ParticleEmissor.prototype.createMesh = function ()
 	this._mesh_maxparticles = this.max_particles;
 }
 
+ParticleEmissor._tmp_quat = quat.create();
+
 ParticleEmissor.prototype.updateMesh = function (camera)
 {
 	if(!camera) //no main camera specified (happens at early updates)
@@ -34848,7 +34814,8 @@ ParticleEmissor.prototype.updateMesh = function (camera)
 	}
 
 	//avoid errors
-	if(this.particle_life == 0) this.particle_life = 0.0001;
+	if(this.particle_life == 0)
+		this.particle_life = 0.0001;
 
 	var color = new Float32Array([1,1,1,1]);
 	var particle_start_color = this._particle_start_color;
@@ -34891,7 +34858,7 @@ ParticleEmissor.prototype.updateMesh = function (camera)
 	var coords = this._coords;
 
 	//used for rotations
-	var rot = quat.create();
+	var rot = ParticleEmissor._tmp_quat;
 
 	//generate quads
 	var i = 0, f = 0;

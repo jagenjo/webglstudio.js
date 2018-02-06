@@ -15,7 +15,7 @@ var PackTools = {
 			return;
 		}
 
-		var dialog = new LiteGUI.Dialog({ id: "dialog_create_prefab", title:"Create Prefab", close: true, width: 500, height: 270, scroll: false, draggable: true, resizable: true});
+		var dialog = new LiteGUI.Dialog({ id: "dialog_create_prefab", title:"Create Prefab", close: true, width: 600, height: 270, scroll: false, draggable: true, resizable: true});
 		dialog.show();
 
 		var widgets = new LiteGUI.Inspector({ });
@@ -49,11 +49,13 @@ var PackTools = {
 			old_name = LS.ResourcesManager.getBasename(node.prefab);
 		var filename = widgets.addString("Filename", old_name );
 		var list = widgets.addList("Include assets", res_names, { multiselection: true, height: 140 });
-		widgets.addButtons("Select",["Meshes","Textures","Materials","Animations","All","Locals"], { callback: inner_select });
+		widgets.addButtons("Select",["Meshes","Textures","Materials","Animations","All","Locals","None"], { callback: inner_select });
 
 		function inner_select(v){
 			if(v == "All")
 				list.selectAll();
+			else if(v == "None")
+				list.deselectAll();
 			else
 			{
 				for(var i = 0; i < res_names.length; ++i)
@@ -73,6 +75,12 @@ var PackTools = {
 		}
 
 		inner_select("Locals"); //select local files by default
+
+		widgets.addResource("Other Resources", "", { callback: function(v) {
+			res_names.push(v);
+			list.updateItems( res_names, list.getSelected() );
+		}});
+
 
 		widgets.widgets_per_row = 2;
 

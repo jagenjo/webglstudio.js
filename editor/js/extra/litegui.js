@@ -9106,6 +9106,18 @@ Inspector.prototype.addList = function(name, values, options)
 		}
 	}
 
+	element.deselectAll = function()
+	{
+		var items = this.querySelectorAll("ul li");
+		for(var i = 0; i < items.length; ++i)
+		{
+			var item = items[i];
+			if( !item.classList.contains("selected") )
+				continue;
+			LiteGUI.trigger( item, "click" );
+		}
+	}
+
 	element.setValue = function(v)
 	{
 		if(v === undefined)

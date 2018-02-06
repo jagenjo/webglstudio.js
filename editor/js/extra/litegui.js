@@ -9108,6 +9108,7 @@ Inspector.prototype.addList = function(name, values, options)
 
 	element.deselectAll = function()
 	{
+		//there has to be a more efficient way to do this
 		var items = this.querySelectorAll("ul li");
 		for(var i = 0; i < items.length; ++i)
 		{

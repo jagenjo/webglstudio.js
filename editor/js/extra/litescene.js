@@ -1769,144 +1769,148 @@ LS.Classes.WBin = LS.WBin = global.WBin = WBin;
 
 /**
 * LSQ allows to set or get values easily from the global scene, using short strings as identifiers
+* similar to jQuery and the DOM:  LSQ("nod_name").material = ...
 *
 * @class  LSQ
 */
-var LSQ = {
-	/**
-	* Assigns a value to a property of one node in the scene, just by using a string identifier
-	* Example:  LSQ.set("mynode|a_child/MeshRenderer/enabled",false);
-	*
-	* @method set
-	* @param {String} locator the locator string identifying the property
-	* @param {*} value value to assign to property
-	*/
-	set: function( locator, value, root, scene )
+function LSQ(v)
+{
+	return LSQ.get(v);
+}
+
+/**
+* Assigns a value to a property of one node in the scene, just by using a string identifier
+* Example:  LSQ.set("mynode|a_child/MeshRenderer/enabled",false);
+*
+* @method set
+* @param {String} locator the locator string identifying the property
+* @param {*} value value to assign to property
+*/
+LSQ.set = function( locator, value, root, scene )
+{
+	scene = scene || LS.GlobalScene;
+	if(!root)
+		scene.setPropertyValue( locator, value );
+	else
 	{
-		scene = scene || LS.GlobalScene;
-		if(!root)
-			scene.setPropertyValue( locator, value );
-		else
+		if(root.constructor === LS.SceneNode)
 		{
-			if(root.constructor === LS.SceneNode)
-			{
-				var path = locator.split("/");
-				var node = root.findNodeByUId( path[0] );
-				if(!node)
-					return null;
-				return node.setPropertyValueFromPath( path.slice(1), value );
-			}
+			var path = locator.split("/");
+			var node = root.findNodeByUId( path[0] );
+			if(!node)
+				return null;
+			return node.setPropertyValueFromPath( path.slice(1), value );
 		}
-
-		scene.requestFrame();
-	},
-
-	/**
-	* Retrieves the value of a property of one node in the scene, just by using a string identifier
-	* Example: var value = LSQ.get("mynode|a_child/MeshRenderer/enabled");
-	*
-	* @method get
-	* @param {String} locator the locator string identifying the property
-	* @return {*} value of the property
-	*/
-	get: function( locator, root, scene )
-	{
-		if(!locator) //sometimes we have a var with a locator that is null
-			return null;
-		scene = scene || LS.GlobalScene;
-		var info;
-		if(!root)
-			info = scene.getPropertyInfo( locator );
-		else
-		{
-			if(root.constructor === LS.SceneNode)
-			{
-				var path = locator.split("/");
-				var node = root.findNodeByUId( path[0] );
-				if(!node)
-					return null;
-				info = node.getPropertyInfoFromPath( path.slice(1) );
-			}
-		}
-		if(info)
-			return info.value;
-		return null;
-	},
-
-	/**
-	* Shortens a locator that uses unique identifiers to a simpler one, but be careful, because it uses names instead of UIDs it could point to the wrong property
-	* Example: "@NODE--a40661-1e8a33-1f05e42-56/@COMP--a40661-1e8a34-1209e28-57/size" -> "node|child/Collider/size"
-	*
-	* @method shortify
-	* @param {String} locator the locator string to shortify
-	* @return {String} the locator using names instead of UIDs
-	*/
-	shortify: function( locator, scene )
-	{
-		if(!locator)
-			return;
-
-		var t = locator.split("/");
-		var node = null;
-
-		//already short
-		if( t[0][0] != LS._uid_prefix )
-			return locator;
-
-		scene = scene || LS.GlobalScene;
-
-		node = scene._nodes_by_uid[ t[0] ];
-		if(!node) //node not found
-			return locator;
-
-		t[0] = node.getPathName();
-		if(t[1])
-		{
-			if( t[1][0] == LS._uid_prefix )
-			{
-				var compo = node.getComponentByUId(t[1]);
-				if(compo)
-					t[1] = LS.getObjectClassName( compo );
-			}
-		}
-		return t.join("/");
-	},
-
-	/**
-	* Assigns a value using the getLocatorInfo object instead of searching it again
-	* This is faster but if the locator points to a different object it wont work.
-	*
-	* @method setFromInfo
-	* @param {Object} info information of a location (obtain using scene.getLocatorInfo
-	* @param {*} value to assign
-	*/
-	setFromInfo: function( info, value )
-	{
-		if(!info || !info.target)
-			return;
-		var target = info.target;
-		if( target.setPropertyValue  )
-			if( target.setPropertyValue( info.name, value ) === true )
-				return target;
-		if( target[ info.name ] === undefined )
-			return;
-		target[ info.name ] = value;	
-	},
-
-	getFromInfo: function( info )
-	{
-		if(!info || !info.target)
-			return;
-		var target = info.target;
-		var varname = info.name;
-		var v = undefined;
-		if( target.getPropertyValue )
-			v = target.getPropertyValue( varname );
-		if( v === undefined && target[ varname ] === undefined )
-			return null;
-		return v !== undefined ? v : target[ varname ];
 	}
-};
+
+	scene.requestFrame();
+}
+
+/**
+* Retrieves the value of a property of one node in the scene, just by using a string identifier
+* Example: var value = LSQ.get("mynode|a_child/MeshRenderer/enabled");
+*
+* @method get
+* @param {String} locator the locator string identifying the property
+* @return {*} value of the property
+*/
+LSQ.get = function( locator, root, scene )
+{
+	if(!locator) //sometimes we have a var with a locator that is null
+		return null;
+	scene = scene || LS.GlobalScene;
+	var info;
+	if(!root)
+		info = scene.getPropertyInfo( locator );
+	else
+	{
+		if(root.constructor === LS.SceneNode)
+		{
+			var path = locator.split("/");
+			var node = root.findNodeByUId( path[0] );
+			if(!node)
+				return null;
+			info = node.getPropertyInfoFromPath( path.slice(1) );
+		}
+	}
+	if(info)
+		return info.value;
+	return null;
+}
+
+/**
+* Shortens a locator that uses unique identifiers to a simpler one, but be careful, because it uses names instead of UIDs it could point to the wrong property
+* Example: "@NODE--a40661-1e8a33-1f05e42-56/@COMP--a40661-1e8a34-1209e28-57/size" -> "node|child/Collider/size"
+*
+* @method shortify
+* @param {String} locator the locator string to shortify
+* @return {String} the locator using names instead of UIDs
+*/
+LSQ.shortify = function( locator, scene )
+{
+	if(!locator)
+		return;
+
+	var t = locator.split("/");
+	var node = null;
+
+	//already short
+	if( t[0][0] != LS._uid_prefix )
+		return locator;
+
+	scene = scene || LS.GlobalScene;
+
+	node = scene._nodes_by_uid[ t[0] ];
+	if(!node) //node not found
+		return locator;
+
+	t[0] = node.getPathName();
+	if(t[1])
+	{
+		if( t[1][0] == LS._uid_prefix )
+		{
+			var compo = node.getComponentByUId(t[1]);
+			if(compo)
+				t[1] = LS.getObjectClassName( compo );
+		}
+	}
+	return t.join("/");
+}
+
+/**
+* Assigns a value using the getLocatorInfo object instead of searching it again
+* This is faster but if the locator points to a different object it wont work.
+*
+* @method setFromInfo
+* @param {Object} info information of a location (obtain using scene.getLocatorInfo
+* @param {*} value to assign
+*/
+LSQ.setFromInfo = function( info, value )
+{
+	if(!info || !info.target)
+		return;
+	var target = info.target;
+	if( target.setPropertyValue  )
+		if( target.setPropertyValue( info.name, value ) === true )
+			return target;
+	if( target[ info.name ] === undefined )
+		return;
+	target[ info.name ] = value;	
+}
+
+LSQ.getFromInfo = function( info )
+{
+	if(!info || !info.target)
+		return;
+	var target = info.target;
+	var varname = info.name;
+	var v = undefined;
+	if( target.getPropertyValue )
+		v = target.getPropertyValue( varname );
+	if( v === undefined && target[ varname ] === undefined )
+		return null;
+	return v !== undefined ? v : target[ varname ];
+}
 
 //register resource classes
 if(global.GL)

@@ -24048,6 +24048,7 @@ LS.Physics = Physics;
 * Transform that contains the position (vec3), rotation (quat) and scale (vec3) 
 * It uses lazy update to recompute the matrices.
 * @class Transform
+* @namespace LS.Components
 * @constructor
 * @param {Object} object to configure from
 */
@@ -25519,7 +25520,7 @@ LS.Transform = Transform;
 * @class Camera
 * @namespace LS.Components
 * @constructor
-* @param {String} object to configure from
+* @param {Object} object to configure from
 */
 
 function Camera(o)
@@ -25857,7 +25858,8 @@ Object.defineProperty( Camera.prototype, "frustum_size", {
 
 /**
 * The frustum size when working in pure ORTHOGRAPHIC 
-* @property orthographic {vec4} left,right,bottom,top (near and far are in the near,far properties)
+* left,right,bottom,top (near and far are in the near,far properties)
+* @property orthographic {vec4} 
 * @default 50
 */
 
@@ -25944,6 +25946,7 @@ Object.defineProperty( Camera.prototype, "viewport_size", {
 });
 
 /**
+* the clear color
 * @property background_color {vec4}
 */
 Object.defineProperty( Camera.prototype, "background_color", {
@@ -25955,6 +25958,11 @@ Object.defineProperty( Camera.prototype, "background_color", {
 	},
 	enumerable: true
 });
+
+/**
+* returns the texture from the render frame context
+* @property render_to_texture {GL.Texture} 
+*/
 
 Object.defineProperty( Camera.prototype, "render_to_texture", {
 	get: function() {
@@ -25973,7 +25981,8 @@ Object.defineProperty( Camera.prototype, "render_to_texture", {
 });
 
 /**
-* @property frame {LS.RenderFrameContext} contains the RenderFrameContext where the scene was stored
+* contains the RenderFrameContext where the scene was stored
+* @property frame {LS.RenderFrameContext} 
 */
 Object.defineProperty( Camera.prototype, "frame", {
 	set: function(v) {
@@ -25986,7 +25995,8 @@ Object.defineProperty( Camera.prototype, "frame", {
 });
 
 /**
-* @property frame_color_texture {GL.Texture} contains the color texture used by the RenderFrameContext
+* contains the color texture used by the RenderFrameContext
+* @property frame_color_texture {GL.Texture} 
 */
 Object.defineProperty( Camera.prototype, "frame_color_texture", {
 	set: function(v) {
@@ -26001,7 +26011,8 @@ Object.defineProperty( Camera.prototype, "frame_color_texture", {
 });
 
 /**
-* @property frame_depth_texture {GL.Texture} contains the depth texture used by the RenderFrameContext
+* contains the depth texture used by the RenderFrameContext
+* @property frame_depth_texture {GL.Texture} 
 */
 Object.defineProperty( Camera.prototype, "frame_depth_texture", {
 	set: function(v) {
@@ -26017,6 +26028,7 @@ Object.defineProperty( Camera.prototype, "frame_depth_texture", {
 
 
 /**
+* to force updating projection and view matrix
 * @property mustUpdate {Boolean}
 */
 Object.defineProperty( Camera.prototype, "mustUpdate", {
@@ -27126,7 +27138,17 @@ function CameraFX( o )
 {
 	this.enabled = true;
 
+	/**
+	* The FX Stack
+	* @property fx {LS.FXStack}
+	*/
 	this.fx = new LS.FXStack( o ? o.fx : null );
+
+	/**
+	* The position of the camera (in local space, node space)
+	* @property eye {vec3}
+	* @default [0,100,100]
+	*/
 	this.frame = new LS.RenderFrameContext();
 	this.frame.use_depth_texture = true;
 	this.use_antialiasing = false;
@@ -27140,6 +27162,10 @@ function CameraFX( o )
 CameraFX.icon = "mini-icon-fx.png";
 CameraFX["@camera_uid"] = { type: "String" };
 
+/**
+* Apply antialiasing post-processing shader
+* @property use_antialiasing {Boolean}
+*/
 Object.defineProperty( CameraFX.prototype, "use_antialiasing", { 
 	set: function(v) { this.fx.apply_fxaa = v; },
 	get: function() { return this.fx.apply_fxaa; },
@@ -27501,6 +27527,7 @@ LS.registerComponent( FrameFX );
 /**
 * Light contains all the info about the light (type: SPOT, OMNI, DIRECTIONAL, attenuations, shadows, etc)
 * @class Light
+* @namespace LS.Components
 * @constructor
 * @param {Object} object to configure from
 */
@@ -28648,7 +28675,7 @@ LightFX.prototype.onResourceRenamed = function (old_name, new_name, resource)
 * @class MeshRenderer
 * @namespace LS.Components
 * @constructor
-* @param {String} object to configure from
+* @param {Object} object to configure from
 */
 function MeshRenderer(o)
 {
@@ -30336,6 +30363,7 @@ MorphDeformer.morphing_texture_block = morphing_texture_block;
 * It also allow to limit the bone search to specific nodes.
 *
 * @class SkinDeformer
+* @namespace LS.Components
 * @constructor
 */
 function SkinDeformer( o )
@@ -31020,6 +31048,13 @@ SVGRenderer.prototype.onResourceRenamed = function (old_name, new_name, resource
 
 //LS.registerComponent( SVGRenderer );
 
+/**
+* Skybox allows to render a cubemap or polar image as a background for the 3D scene
+* @class Skybox
+* @namespace LS.Components
+* @constructor
+* @param {Object} object [optional] to configure from
+*/
 
 function Skybox(o)
 {
@@ -32000,6 +32035,15 @@ SpriteAtlas.Area = function SpriteAtlasArea()
 	this._start = vec2.create();
 	this._size = vec2.create();
 }
+
+/**
+* Allows to include a secondary scene inside this scene (with some limitations)
+* @class SceneInclude
+* @namespace LS.Components
+* @constructor
+* @param {Object} object to configure from
+*/
+
 function SceneInclude( o )
 {
 	this.enabled = true;
@@ -33319,8 +33363,9 @@ FollowNode.prototype.updatePosition = function(e,info)
 
 LS.registerComponent( FollowNode );
 /**
-* GeometricPrimitive renders a primitive
+* GeometricPrimitive renders a primitive like a Cube, Sphere, Plane, etc
 * @class GeometricPrimitive
+* @namespace LS.Components
 * @constructor
 * @param {String} object to configure from
 */
@@ -33343,6 +33388,12 @@ function GeometricPrimitive( o )
 		this.configure(o);
 }
 
+
+/**
+* The shape to render, valid values are: LS.Components.GeometricPrimitive.CUBE,PLANE,CYLINDER,SPHERE,CIRCLE,HEMISPHERE,ICOSAHEDRON,CONE,QUAD
+* @property geometry {enum}
+* @default LS.Components.GeometricPrimitive.CUBE
+*/
 Object.defineProperty( GeometricPrimitive.prototype, 'geometry', {
 	get: function() { return this._geometry; },
 	set: function(v) { 
@@ -33357,6 +33408,11 @@ Object.defineProperty( GeometricPrimitive.prototype, 'geometry', {
 	enumerable: true
 });
 
+/**
+* The size of the primitive (the global scale)
+* @property size {Number}
+* @default 10
+*/
 Object.defineProperty( GeometricPrimitive.prototype, 'size', {
 	get: function() { return this._size; },
 	set: function(v) { 
@@ -33379,6 +33435,11 @@ Object.defineProperty( GeometricPrimitive.prototype, 'subdivisions', {
 	enumerable: true
 });
 
+/**
+* The GL primitive to use (LINES,LINE_STRIP,TRIANGLES,TRIANGLE_FAN
+* @property primitive {enum}
+* @default 10
+*/
 Object.defineProperty( GeometricPrimitive.prototype, 'primitive', {
 	get: function() { return this._primitive; },
 	set: function(v) { 
@@ -33731,6 +33792,7 @@ if( typeof(LGAudio) != "undefined" )
 /**
 * This component allow to integrate a behaviour graph on any object
 * @class GraphComponent
+* @namespace LS.Components
 * @param {Object} o object with the serialized info
 */
 function GraphComponent(o)
@@ -34411,6 +34473,14 @@ Knob.prototype.onMouse = function(e, mouse_event)
 LS.registerComponent( Knob );
 
 })();
+
+/**
+* The base class used by the ParticlesEmissor
+* @class Particle
+* @namespace LS
+* @constructor
+* @param {Object} object to configure from
+*/
 function Particle()
 {
 	this.id = 0;
@@ -34434,7 +34504,13 @@ Object.defineProperty( Particle.prototype, 'vel', {
 	enumerable: true
 });
 
-
+/**
+* ParticlesEmissor allow to render a particle system, meant to render things like smoke or fire
+* @class ParticlesEmissor
+* @namespace LS.Components
+* @constructor
+* @param {Object} object to configure from
+*/
 function ParticleEmissor(o)
 {
 	this.enabled = true;
@@ -35518,8 +35594,13 @@ PointCloud.prototype.configure = function(o)
 
 
 LS.registerComponent( PointCloud );
-/* lineCloud.js */
-
+/**
+* Helps rendering several lines
+* @class LinesRenderer
+* @namespace LS.Components
+* @constructor
+* @param {Object} object to configure from
+*/
 function LinesRenderer(o)
 {
 	this.enabled = true;
@@ -35709,8 +35790,9 @@ LinesRenderer.prototype.onAfterRender = function(e)
 
 LS.registerComponent( LinesRenderer );
 /**
-* Reads animation tracks from an Animation resource and applies the properties to the objects referenced
+* Reads animation tracks from an LS.Animation resource and applies the properties to the objects referenced
 * @class PlayAnimation
+* @namespace LS.Components
 * @constructor
 * @param {String} object to configure from
 */
@@ -36453,6 +36535,7 @@ LS.registerComponent( RealtimeReflector );
 /**
 * Realtime Reflective surface
 * @class RealtimeReflector
+* @namespace LS.Components
 * @constructor
 * @param {String} object to configure from
 */
@@ -36780,6 +36863,7 @@ LS.registerComponent( ReflectionProbe );
 * Scripts are executed inside their own context, the context is local to the script so any variable defined in the context that is not attached to the context wont be accessible from other parts of the engine.
 * To interact with the engine Scripts must bind callback to events so the callbacks will be called when those events are triggered, however, there are some generic methods that will be called
 * @class Script
+* @namespace LS.Components
 * @constructor
 * @param {Object} object to configure from
 */
@@ -38390,6 +38474,7 @@ window.VRCameraController = VRCameraController;
 /**
 * Transitions between different poses
 * @class Poser
+* @namespace LS.Components
 * @constructor
 * @param {String} object to configure from
 */

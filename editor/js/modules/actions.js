@@ -255,6 +255,12 @@ LS.Component.actions["select"] = {
 	}
 };
 
+LS.Component.actions["help"] = { 
+	title:"Help",
+	callback: function(){
+		EditorModule.showComponentHelp(this);
+	}
+};
 
 
 /*

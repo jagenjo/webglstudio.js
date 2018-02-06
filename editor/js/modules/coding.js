@@ -11,6 +11,8 @@ var CodingModule = //do not change
 	APIs: {}, //here you can register function calls of the API
 	windows: [], //external windows
 
+	component_help_url: "http://webglstudio.org/doc/litescene/classes/LS.Components.",
+
 	init: function()
 	{
 		this.tab = LiteGUI.main_tabs.addTab( this.name, {

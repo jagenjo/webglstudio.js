@@ -1856,6 +1856,14 @@ var EditorModule = {
 		}
 	},
 
+	showComponentHelp: function( component )
+	{
+		var url = CodingModule.component_help_url + LS.getObjectClassName( component ) + ".html";
+		if(component.constructor.help_url)
+			url = component.constructor.help_url;
+		window.open( url, "_blank" );
+	},
+
 	showCreateFromJSONDialog: function()
 	{
 		var dialog = new LiteGUI.Dialog( {title:"from JSON", close: true, minimize: true, width: 400, height: 620, scroll: false, draggable: true});

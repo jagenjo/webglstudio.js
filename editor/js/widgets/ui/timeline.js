@@ -2117,10 +2117,10 @@ Timeline.prototype.getMouseItem = function( e )
 		{
 			if( track && e.mousex < 10 )
 				this.insertKeyframe( track );
-			else if( track && e.mousex < 30 )
+			else if( track && e.mousex < 30 ) //click enabled checkbox
 			{
 				track.enabled = !track.enabled;
-				that.animationModified();
+				this.animationModified();
 			}
 			this.session.selection = { type: "track", track: track_index };
 			this._must_redraw = true;

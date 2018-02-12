@@ -723,10 +723,6 @@ LS.Components.ParticleEmissor["@inspector"] = function(component, inspector)
 		if(filename)
 			LS.ResourcesManager.load(filename);
 	}});
-	inspector.addButton("Custom code", "Edit code", { callback: function() {
-		CodingModule.editInstanceCode( component, { id: component.uid + ":Emit", title: "P.Emit", lang:"javascript", getCode: function(){ return component.custom_emissor_code; }, setCode: function(code){ component.custom_emissor_code = code; }},true);
-	}});
-
 
 	inspector.addTitle("Particles");
 	inspector.addNumber("Life",component.particle_life, {step:0.1,min:0.01, callback: function (value) { component.particle_life = value; }});

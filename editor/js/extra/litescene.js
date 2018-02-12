@@ -35088,8 +35088,7 @@ ParticleEmissor.prototype.onCollectInstances = function(e, instances, options)
 
 	this._material.opacity = this.opacity - 0.01; //try to keep it under 1
 	this._material.setTexture( "color", this.texture );
-	this._material.blend_mode = this.additive_blending ? Blend.ADD : Blend.ALPHA;
-	this._material.soft_particles = this.soft_particles;
+	this._material.blend_mode = this.additive_blending ? LS.Blend.ADD : LS.Blend.ALPHA;
 	this._material.constant_diffuse = true;
 	this._material.uvs_matrix[0] = this._material.uvs_matrix[4] = 1 / this.texture_grid_size;
 	this._material.flags.depth_write = false;
@@ -35135,11 +35134,20 @@ ParticleEmissor.prototype.onCollectInstances = function(e, instances, options)
 		delete RI.uniforms["u_point_size"];
 	}
 
+	RI.use_bounding = false; //bounding is not valid
 	instances.push( RI );
 }
 
 LS.Particle = Particle;
 LS.registerComponent(ParticleEmissor);
+
+
+
+
+//shader
+// - apply light per vertex before expanding
+// - inflate with camera vectors
+
 
 function Label(o)
 {
@@ -35639,6 +35647,12 @@ function LinesRenderer(o)
 LinesRenderer.icon = "mini-icon-lines.png";
 LinesRenderer["@color"] = { widget: "color" };
 
+Object.defineProperty( LinesRenderer.prototype, "lines", {
+	set: function(v) { this.lines = v; },
+	get: function() { return this.lines; },
+	enumerable: true
+});
+
 Object.defineProperty( LinesRenderer.prototype, "num_lines", {
 	set: function(v) {},
 	get: function() { return this._lines.length; },
@@ -35720,14 +35734,14 @@ LinesRenderer.prototype.removeLine = function(id)
 }
 
 
-LinesRenderer.prototype.onAddedToNode = function(node)
+LinesRenderer.prototype.onAddedToScene = function( scene )
 {
-	LEvent.bind(node, "afterRenderScene", this.onAfterRender, this);
+	LEvent.bind( scene, "afterRenderScene", this.onAfterRender, this);
 }
 
-LinesRenderer.prototype.onRemovedFromNode = function(node)
+LinesRenderer.prototype.onRemovedFromScene = function( scene )
 {
-	LEvent.unbind(node, "afterRenderScene", this.onAfterRender, this);
+	LEvent.unbind( scene, "afterRenderScene", this.onAfterRender, this);
 }
 
 LinesRenderer.prototype.createMesh = function ()
@@ -35773,8 +35787,6 @@ LinesRenderer.prototype.updateMesh = function ()
 	this._mesh.vertexBuffers["colors"].upload();
 }
 
-LinesRenderer._identity = mat4.create();
-
 LinesRenderer.prototype.onAfterRender = function(e)
 {
 	if( !this._root )
@@ -35782,6 +35794,9 @@ LinesRenderer.prototype.onAfterRender = function(e)
 
 	if( this._lines.length == 0 || !this.enabled )
 		return;
+
+	if( this._must_update )
+		this.updateMesh();
 
 	LS.Draw.setLineWidth( this.line_width );
 	LS.Draw.renderMesh( this._mesh, GL.LINES );

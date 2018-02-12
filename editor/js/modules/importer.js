@@ -767,9 +767,12 @@ var ImporterModule  = {
 						{
 							var blob = new Blob([content],{name: "foo", type:"application/octet-stream"});
 							blob.name = this.name;
+							var filename = blob.name;
+							if( ImporterModule.preferences.force_lowercase )
+								filename = filename.toLowerCase(); //to lower case to avoid problems
 							console.log( blob );
 							//console.log(content);
-							LS.ResourcesManager.processResource( blob.name, content, null, on_complete );
+							LS.ResourcesManager.processResource( filename, content, null, on_complete );
 						}).bind(file) );
 					}
 				});

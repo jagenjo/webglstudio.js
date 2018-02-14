@@ -280,7 +280,7 @@ var LiteGraph = global.LiteGraph = {
 	{
 		if( !type_a ||  //generic output
 			!type_b || //generic input
-			type_a == type_a || //same type (is valid for triggers)
+			type_a == type_b || //same type (is valid for triggers)
 			(type_a !== LiteGraph.EVENT && type_b !== LiteGraph.EVENT && type_a.toLowerCase() == type_b.toLowerCase()) ) //same type
 			return true;
 		return false;

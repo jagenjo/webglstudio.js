@@ -7628,8 +7628,8 @@ ShaderMaterial.prototype.assignOldProperties = function( old_properties )
 			continue;
 
 
-		//validate
-		if( !old.internal && shader )
+		//validate (avoids error if we change the type of a uniform and try to reassign a value)
+		if( !old.internal && shader && !new_prop.is_texture ) //textures are not validated (because they are samplers, not values)
 		{
 			var uniform_info = shader.uniformInfo[ new_prop.uniform ];
 			if(!uniform_info)

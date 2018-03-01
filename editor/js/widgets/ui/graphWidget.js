@@ -485,7 +485,7 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 	inspector.addString("ID", String(graphnode.id), { name_width: 100 } );
 	inspector.widgets_per_row = 1;
 
-	var modes = { "Always": LiteGraph.ALWAYS, "On Trigger": LiteGraph.ON_TRIGGER, "Never": LiteGraph.NEVER };
+	var modes = { "Always": LiteGraph.ALWAYS, "On Event": LiteGraph.ON_Event, "On Trigger": LiteGraph.ON_TRIGGER, "Never": LiteGraph.NEVER };
 	var reversed_modes = {};
 	for(var i in modes)
 		reversed_modes[ modes[i] ] = i;

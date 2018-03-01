@@ -680,7 +680,7 @@ var EditorModule = {
 	{
 		var dialog = new LiteGUI.Dialog({ id: "component_info", title:"Component Info", width: 500, draggable: true, closable: true });
 		
-		var widgets = new LiteGUI.Inspector();
+		var widgets = new LiteGUI.Inspector({name_width: 120});
 		widgets.addString("Class", LS.getObjectClassName(component), { disabled: true } );
 		if(component.enabled !== undefined)
 			widgets.addCheckbox("Enabled", component.enabled, function(v){ component.enabled = v; });
@@ -708,6 +708,14 @@ var EditorModule = {
 				events[ i ] = component.__levents[i];
 		widgets.addCombo("Binded Events",null,{ values: events, callback: function(v){
 			console.log(v);
+		}});
+
+		var vars = [];
+		for(var i in component)
+			if( component[i] != null && !component[i].call )
+				vars.push(i);
+		widgets.addCombo("Properties",null,{ values: vars, callback: function(v){
+			console.log( v, component[v] );
 		}});
 
 		widgets.addSeparator();

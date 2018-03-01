@@ -9132,16 +9132,18 @@ Inspector.prototype.addList = function(name, values, options)
 		return items.length;
 	}
 
-	element.filter = function(callback)
+	element.filter = function( callback, case_sensitive )
 	{
 		var items = this.querySelectorAll("ul li");
 		var use_string = false;
 
-		if(callback && callback.constructor === String)
+		if( callback && callback.constructor === String )
 		{
 			var needle = callback;
+			if( case_sensitive )
+				needle.toLowerCase();
 			use_string = true;
-			callback = function(v){ return (v.indexOf(needle) != -1); };
+			callback = function(v){ return ( (case_sensitive ? v : v.toLowerCase()).indexOf(needle) != -1); };
 		}
 
 		for(var i = 0; i < items.length; ++i)

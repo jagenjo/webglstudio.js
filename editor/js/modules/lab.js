@@ -1,5 +1,5 @@
 var LabModule = {
-	name: "Lab",
+	name: "GPU",
 	bigicon: "imgs/tabicon-debug.png",
 
 	enabled: false,

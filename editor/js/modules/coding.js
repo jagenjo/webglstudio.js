@@ -339,6 +339,14 @@ var CodingModule = //do not change
 
 	onKeyDown: function(e)
 	{
+		//console.log(e);
+		if(e.keyCode == 117) //F6
+		{
+			localStorage.setItem("_refresh_scene", JSON.stringify( LS.GlobalScene.serialize() ) );
+			location.reload();
+			e.preventDefault();		
+		}
+
 		//this key event must be redirected when the 3D area is selected
 		if( this._block_event )
 			return;

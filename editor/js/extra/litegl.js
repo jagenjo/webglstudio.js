@@ -65,6 +65,16 @@ GL.FLOAT_MAT2 = 35674;
 GL.FLOAT_MAT3 = 35675;
 GL.FLOAT_MAT4 = 35676;
 
+//used to know the amount of data to reserve per uniform
+GL.TYPE_LENGTH = {};
+GL.TYPE_LENGTH[ GL.FLOAT ] = GL.TYPE_LENGTH[ GL.INT ] = GL.TYPE_LENGTH[ GL.BYTE ] = GL.TYPE_LENGTH[ GL.BOOL ] = 1;
+GL.TYPE_LENGTH[ GL.FLOAT_VEC2 ] = GL.TYPE_LENGTH[ GL.INT_VEC2 ] = GL.TYPE_LENGTH[ GL.BOOL_VEC2 ] = 2;
+GL.TYPE_LENGTH[ GL.FLOAT_VEC3 ] = GL.TYPE_LENGTH[ GL.INT_VEC3 ] = GL.TYPE_LENGTH[ GL.BOOL_VEC3 ] = 3;
+GL.TYPE_LENGTH[ GL.FLOAT_VEC4 ] = GL.TYPE_LENGTH[ GL.INT_VEC4 ] = GL.TYPE_LENGTH[ GL.BOOL_VEC4 ] = 4;
+GL.TYPE_LENGTH[ GL.FLOAT_MAT3 ] = 9;
+GL.TYPE_LENGTH[ GL.FLOAT_MAT4 ] = 16;
+
+
 GL.SAMPLER_2D = 35678;
 GL.SAMPLER_3D = 35679;
 GL.SAMPLER_CUBE = 35680;
@@ -1408,10 +1418,11 @@ vec2.computeSignedAngle = function( a, b )
 	return Math.atan2( vec2.perpdot(a,b), vec2.dot(a,b) );
 }
 
-vec2.random = function(vec)
+vec2.random = function( vec, scale )
 {
-	vec[0] = Math.random();
-	vec[1] = Math.random();
+	scale = scale || 1.0;
+	vec[0] = Math.random() * scale;
+	vec[1] = Math.random() * scale;
 	return vec;
 }
 
@@ -1502,11 +1513,12 @@ vec3.angle = function( a, b )
 	return Math.acos( vec3.dot(a,b) );
 }
 
-vec3.random = function(vec)
+vec3.random = function(vec, scale)
 {
-	vec[0] = Math.random();
-	vec[1] = Math.random();
-	vec[2] = Math.random();
+	scale = scale || 1.0;
+	vec[0] = Math.random() * scale;
+	vec[1] = Math.random() * scale;
+	vec[2] = Math.random() * scale;
 	return vec;
 }
 
@@ -1533,12 +1545,13 @@ vec3.reflect = function(out, v, n)
 }
 
 /* VEC4 */
-vec4.random = function(vec)
+vec4.random = function(vec, scale)
 {
-	vec[0] = Math.random();
-	vec[1] = Math.random();
-	vec[2] = Math.random();
-	vec[3] = Math.random();	
+	scale = scale || 1.0;
+	vec[0] = Math.random() * scale;
+	vec[1] = Math.random() * scale;
+	vec[2] = Math.random() * scale;
+	vec[3] = Math.random() * scale;	
 	return vec;
 }
 
@@ -7103,6 +7116,8 @@ Shader.prototype.updateShader = function( vertexSource, fragmentSource, macros )
 * This info is stored so it works faster during rendering.
 * @method extractShaderInfo
 */
+
+
 Shader.prototype.extractShaderInfo = function()
 {
 	var gl = this.gl;
@@ -7135,21 +7150,32 @@ Shader.prototype.extractShaderInfo = function()
 		var is_matrix = false;
 		if(data.type == gl.FLOAT_MAT2 || data.type == gl.FLOAT_MAT3 || data.type == gl.FLOAT_MAT4)
 			is_matrix = true;
-
+		var type_length = GL.TYPE_LENGTH[ data.type ] || 1;
 
 		//save the info so the user doesnt have to specify types when uploading data to the shader
-		this.uniformInfo[ uniformName ] = { type: data.type, func: func, size: data.size, is_matrix: is_matrix, loc: gl.getUniformLocation(this.program, uniformName) };
+		this.uniformInfo[ uniformName ] = { 
+			type: data.type,
+			func: func,
+			size: data.size,
+			type_length: type_length,
+			is_matrix: is_matrix,
+			loc: gl.getUniformLocation(this.program, uniformName),
+			data: new Float32Array( type_length * data.size ) //prealloc space to assign uniforms that are not typed
+		};
 	}
 
 	//extract attributes info
 	for(var i = 0, l = gl.getProgramParameter(this.program, gl.ACTIVE_ATTRIBUTES); i < l; ++i)
 	{
 		var data = gl.getActiveAttrib( this.program, i);
-		if(!data) break;
+		if(!data)
+			break;
 		var func = Shader.getUniformFunc(data);
+		var type_length = GL.TYPE_LENGTH[ data.type ] || 1;
 		this.uniformInfo[ data.name ] = { 
 			type: data.type,
 			func: func,
+			type_length: type_length,
 			size: data.size,
 			loc: null 
 		}; //gl.getAttribLocation( this.program, data.name )
@@ -7353,9 +7379,6 @@ Shader.prototype.uniformsArray = function(array) {
 * @param {*} value
 */
 Shader.prototype.setUniform = (function(){
-	var temps = [];
-	for(var i = 2; i <= 16; ++i)
-		temps[i] = new Float32Array(i);
 
 	return (function(name, value)
 	{
@@ -7374,14 +7397,8 @@ Shader.prototype.setUniform = (function(){
 
 		if(value.constructor === Array)
 		{
-			var v = temps[ value.length ]; //reuse same container
-			if(v)
-			{
-				v.set(value);
-				value = v;
-			}
-			else
-				value = new Float32Array( value );  //garbage generated...
+			info.data.set( value );
+			value = info.data;
 		}
 
 		if(info.is_matrix)
@@ -7393,9 +7410,6 @@ Shader.prototype.setUniform = (function(){
 
 //skips enabling shader
 Shader.prototype._setUniform = (function(){
-	var temps = [];
-	for(var i = 2; i <= 16; ++i)
-		temps[i] = new Float32Array(i);
 
 	return (function(name, value)
 	{
@@ -7414,14 +7428,8 @@ Shader.prototype._setUniform = (function(){
 
 		if(value.constructor === Array)
 		{
-			var v = temps[ value.length ]; //reuse same container
-			if(v)
-			{
-				v.set(value);
-				value = v;
-			}
-			else
-				value = new Float32Array( value );  //garbage generated...
+			info.data.set( value );
+			value = info.data;
 		}
 
 		if(info.is_matrix)
@@ -7464,7 +7472,7 @@ Shader.prototype.drawRange = function(mesh, mode, start, length, index_buffer_na
 }
 
 /**
-* Renders a range of a mesh using this shader
+* render several buffers with a given index buffer
 * @method drawBuffers
 * @param {Object} vertexBuffers an object containing all the buffers
 * @param {IndexBuffer} indexBuffer
@@ -7547,6 +7555,181 @@ Shader.prototype.drawBuffers = function( vertexBuffers, indexBuffer, mode, range
 
 	return this;
 }
+
+Shader._instancing_arrays = [];
+
+Shader.prototype.drawInstanced = function( mesh, primitive, indices, instanced_uniforms, gl )
+{
+	//bind buffers
+	var gl = this.gl;
+
+	if( gl.webgl_version == 1 && !gl.extensions.ANGLE_instanced_arrays )
+		throw("instancing not supported");
+
+	gl.useProgram(this.program); //this could be removed assuming every shader is called with some uniforms 
+
+	// enable attributes as necessary.
+	var length = 0;
+	var attribs_in_use = temp_attribs_array; //hack to avoid garbage
+	attribs_in_use.set( temp_attribs_array_zero ); //reset
+
+	var vertexBuffers = mesh.vertexBuffers;
+
+	for (var name in vertexBuffers)
+	{
+		var buffer = vertexBuffers[name];
+		var attribute = buffer.attribute || name;
+		//precompute attribute locations in shader
+		var location = this.attributes[attribute];// || gl.getAttribLocation(this.program, attribute);
+
+		if (location == null || !buffer.buffer) //-1 changed for null
+			continue; //ignore this buffer
+
+		attribs_in_use[location] = 1; //mark it as used
+
+		//this.attributes[attribute] = location;
+		gl.bindBuffer(gl.ARRAY_BUFFER, buffer.buffer);
+		gl.enableVertexAttribArray(location);
+
+		gl.vertexAttribPointer(location, buffer.buffer.spacing, buffer.buffer.gl_type, false, 0, 0);
+		length = buffer.buffer.length / buffer.buffer.spacing;
+	}
+
+	var indexBuffer = indices ? mesh.getIndexBuffer( indices ) : null;
+
+	//range rendering
+	var offset = 0; //in bytes
+	if (indexBuffer)
+		length = indexBuffer.buffer.length - offset;
+
+	var BYTES_PER_ELEMENT = (indexBuffer && indexBuffer.data) ? indexBuffer.data.constructor.BYTES_PER_ELEMENT : 1;
+	offset *= BYTES_PER_ELEMENT;
+
+	// Force to disable buffers in this shader that are not in this mesh
+	for (var attribute in this.attributes)
+	{
+		var location = this.attributes[attribute];
+		if (!(attribs_in_use[location])) {
+			gl.disableVertexAttribArray(this.attributes[attribute]);
+		}
+	}
+
+	var ext = gl.extensions.ANGLE_instanced_arrays;
+	var batch_length = 0;
+
+	//pack the instanced uniforms
+	var index = 0;
+	for(var uniform in instanced_uniforms)
+	{
+		var values = instanced_uniforms[ uniform ];
+		batch_length = values.length;
+		var uniformLocation = this.attributes[ uniform ];
+		if( uniformLocation == null )
+			return; //not found
+		var element_size = 0;
+		var total_size = 0;
+		if( values.constructor === Array )
+		{
+			element_size = values[0].constructor === Number ? 1 : values[0].length;
+			total_size = element_size * values.length;
+		}
+		else //typed array
+		{
+			element_size = this.uniformInfo[ uniform ].type_length;
+			total_size = values.length;
+			batch_length = total_size / element_size;
+		}
+
+		var data_array = Shader._instancing_arrays[ index ];
+		if( !data_array || data_array.data.length < total_size )
+			data_array = Shader._instancing_arrays[ index ] = { data: new Float32Array( total_size ), buffer: gl.createBuffer() };
+		data_array.uniform = uniform;
+		data_array.element_size = element_size;
+		if( values.constructor === Array )
+			for(var j = 0; j < values.length; ++j)
+				data_array.data.set( values[j], j*element_size ); //flatten array
+		else
+			data_array.data.set( values ); //copy
+		gl.bindBuffer( gl.ARRAY_BUFFER, data_array.buffer );
+		gl.bufferData( gl.ARRAY_BUFFER, data_array.data, gl.STREAM_DRAW );
+
+		if(element_size == 16) //mat4
+		{
+			for(var k = 0; k < 4; ++k)
+			{
+				gl.enableVertexAttribArray( uniformLocation+k );
+				gl.vertexAttribPointer( uniformLocation+k, 4, gl.FLOAT , false, 16*4, k*4*4 ); //4 bytes per float
+				if( ext ) //webgl 1
+					ext.vertexAttribDivisorANGLE( uniformLocation+k, 1 ); // This makes it instanced!
+				else
+					gl.vertexAttribDivisor( uniformLocation+k, 1 ); // This makes it instanced!
+			}
+		}
+		else //others
+		{
+			gl.enableVertexAttribArray( uniformLocation );
+			gl.vertexAttribPointer( uniformLocation, element_size, gl.FLOAT, false, element_size*4, element_size*4 ); //4 bytes per float
+			if( ext ) //webgl 1
+				ext.vertexAttribDivisorANGLE( uniformLocation, 1 ); // This makes it instanced!
+			else
+				gl.vertexAttribDivisor( uniformLocation, 1 ); // This makes it instanced!
+		}
+		index+=1;
+	}
+
+	if( ext ) //webgl 1.0
+	{
+		if(indexBuffer)
+		{
+			gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer.buffer);
+			ext.drawElementsInstancedANGLE( primitive, length, indexBuffer.buffer.gl_type, 0, batch_length );
+			gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null );
+		}
+		else
+			ext.drawArraysInstancedANGLE( primitive, 0, length, batch_length);
+	}
+	else
+	{
+		if(indexBuffer)
+		{
+			gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer.buffer);
+			gl.drawElementsInstanced( primitive, length, indexBuffer.buffer.gl_type, 0, batch_length );
+			gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null );
+		}
+		else
+			gl.drawArraysInstanced( primitive, 0, length, batch_length);
+	}
+
+	//disable instancing buffers
+	for(var i = 0; i < index; ++i)
+	{
+		var info = Shader._instancing_arrays[ i ];
+		var uniformLocation = this.attributes[ info.uniform ];
+		var element_size = info.element_size;
+		if( element_size == 16) //mat4
+		{
+			for(var k = 0; k < 4; ++k)
+			{
+				gl.disableVertexAttribArray( uniformLocation+k );
+				if( ext ) //webgl 1
+					ext.vertexAttribDivisorANGLE( uniformLocation+k, 0 );
+				else
+					gl.vertexAttribDivisor( uniformLocation+k, 0 ); 
+			}
+		}
+		else //others
+		{
+			gl.enableVertexAttribArray( uniformLocation );
+			if( ext ) //webgl 1
+				ext.vertexAttribDivisorANGLE( uniformLocation, 0 );
+			else
+				gl.vertexAttribDivisor( uniformLocation, 0 );
+		}
+	}
+
+	return this;
+}
+
 
 
 /**

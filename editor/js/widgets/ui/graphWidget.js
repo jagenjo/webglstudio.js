@@ -20,6 +20,7 @@ GraphWidget.prototype.init = function( options )
 	var that = this;
 
 	this.inspector = null;
+	this.redraw_canvas = true;
 
 	//create area
 	this.root = LiteGUI.createElement("div",null,null,{ width:"100%", height:"100%" });
@@ -32,6 +33,7 @@ GraphWidget.prototype.init = function( options )
 	top_widgets.addButton(null,"New", { callback: this.onNewGraph.bind(this), width: 50 });
 	top_widgets.addButton(null,"Open", this.onOpenGraph.bind(this) );
 	top_widgets.addButton(null,"Run Step", this.onStepGraph.bind(this) );
+	top_widgets.addCheckbox("Redraw",this.redraw_canvas, { callback: function(v){ that.redraw_canvas = v; } } );
 	/* top_widgets.addButton(null,"Overgraph", this.onSelectOvergraph.bind(this) ); */
 	this.root.appendChild( top_widgets.root );
 
@@ -97,6 +99,32 @@ GraphWidget.prototype.bindEvents = function()
 	LEvent.bind( LS.GlobalScene, "nodeComponentRemoved", this.onComponentRemoved, this );
 	LEvent.bind( LS.GlobalScene, "beforeReload", this.onBeforeReload, this );
 	LEvent.bind( LS.GlobalScene, "reload", this.onReload, this );
+
+	if( !this._ondraw_func )
+		this._ondraw_func = this.onDraw.bind(this)
+
+	requestAnimationFrame( this._ondraw_func  );
+}
+
+GraphWidget.prototype.unbindEvents = function()
+{
+	LEvent.unbindAll( LS.GlobalScene, this );
+	LEvent.unbindAll( LS, this );
+}
+
+GraphWidget.prototype.onDraw = function()
+{
+	if(this.root.parentNode)
+		requestAnimationFrame( this._ondraw_func );
+	
+	if(!this.redraw_canvas)
+		return;
+	var canvas = this.graphcanvas.canvas;
+	if(!canvas)
+		return;
+	var rect = canvas.getBoundingClientRect();
+	if(rect.width && rect.height)
+		this.graphcanvas.setDirty(true);
 }
 
 GraphWidget.prototype.resizeCanvas = function()
@@ -113,11 +141,6 @@ GraphWidget.prototype.resizeCanvas = function()
 	}
 }
 
-GraphWidget.prototype.unbindEvents = function()
-{
-	LEvent.unbindAll( LS.GlobalScene, this );
-	LEvent.unbindAll( LS, this );
-}
 
 GraphWidget.prototype.editInstanceGraph = function( instance, options )
 {
@@ -462,10 +485,10 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 	inspector.addString("ID", String(graphnode.id), { name_width: 100 } );
 	inspector.widgets_per_row = 1;
 
-	var modes = { "Always": LiteGraph.ALWAYS,"On Trigger": LiteGraph.ON_TRIGGER,"Never": LiteGraph.NEVER };
+	var modes = { "Always": LiteGraph.ALWAYS, "On Trigger": LiteGraph.ON_TRIGGER, "Never": LiteGraph.NEVER };
 	var reversed_modes = {};
 	for(var i in modes)
-		reversed_modes[ modes[i] ] = reversed_modes[i];
+		reversed_modes[ modes[i] ] = i;
 
 	inspector.addCombo("Mode", reversed_modes[ graphnode.mode ], { name_width: 100, values: modes, callback: function(v) { graphnode.mode = v; }});
 	inspector.addSeparator();

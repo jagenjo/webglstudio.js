@@ -9340,7 +9340,8 @@ void main() {\n\
 	surf(IN,o);\n\
 	vec4 final_color = vec4(0.0);\n\
 	Light LIGHT = getLight();\n\
-	final_color.xyz = computeLight( o, IN, LIGHT );\n\
+	FinalLight final_light = computeLight( o, IN, LIGHT );\n\
+	final_color.xyz = applyLight( o, final_light );\n\
 	final_color.a = o.Alpha;\n\
 	if( o.Reflectivity > 0.0 )\n\
 		final_color = applyReflection( IN, o, final_color );\n\
@@ -16443,6 +16444,9 @@ LGraphFXStack.prototype.onExecute = function()
 		this._final_texture = new GL.Texture( tex.width, tex.height, { type: tex.type, format: gl.RGBA, filter: gl.LINEAR });
 	}
 
+	if( this.isInputConnected(1) )
+		this._fx_options.depth_texture = this.getInputData(1);
+
 	var intensity = this.properties.intensity;
 	if( this.isInputConnected(2) )
 	{
@@ -16487,6 +16491,110 @@ LGraphFXStack.prototype.onConfigure = function( o )
 LiteGraph.registerNodeType("texture/fxstack", LGraphFXStack );
 
 
+
+
+function LGraphCameraMotionBlur()
+{
+	this.addInput("color","Texture");
+	this.addInput("depth","Texture");
+	this.addInput("camera","Camera");
+	this.addOutput("out","Texture");
+	this.properties = { precision: LGraphTexture.DEFAULT };
+
+	this._temp_matrix = mat4.create();
+	this._previous_viewprojection_matrix = mat4.create();
+}
+
+LGraphCameraMotionBlur.widgets_info = {
+	"precision": { widget:"combo", values: LGraphTexture.MODE_VALUES }
+};
+
+LGraphCameraMotionBlur.title = "Camera Motion Blur";
+LGraphCameraMotionBlur.desc = "A motion blur but only for camera movement";
+
+LGraphCameraMotionBlur.prototype.onExecute = function()
+{
+	var tex = this.getInputData(0);
+	var depth = this.getInputData(1);
+	var camera = this.getInputData(2);
+
+	if( !this.isOutputConnected(0) || !tex || !depth || !camera)
+		return; //saves work
+
+	if(this.properties.precision === LGraphTexture.PASS_THROUGH)
+	{
+		this.setOutputData(0, tex);
+		return;
+	}
+
+	var width = tex.width;
+	var height = tex.height;
+	var type = this.precision === LGraphTexture.LOW ? gl.UNSIGNED_BYTE : gl.HIGH_PRECISION_FORMAT;
+	if (this.precision === LGraphTexture.DEFAULT)
+		type = tex.type;
+	if(!this._tex || this._tex.width != width || this._tex.height != height || this._tex.type != type )
+		this._tex = new GL.Texture( width, height, { type: type, format: gl.RGBA, filter: gl.LINEAR });
+
+	var shader = this._shader;
+	if(!shader)
+		shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphCameraMotionBlur.pixel_shader );
+
+	var inv = this._temp_matrix;
+	var prev = this._previous_viewprojection_matrix;
+	mat4.invert( inv, camera._viewprojection_matrix );
+
+	this._tex.drawTo(function() {
+		gl.disable( gl.DEPTH_TEST );
+		gl.disable( gl.CULL_FACE );
+		gl.disable( gl.BLEND );
+		tex.bind(0);
+		depth.bind(1);
+		var mesh = Mesh.getScreenQuad();
+		shader.uniforms({ 
+							u_color_texture:0,
+							u_depth_texture:1,
+							u_inv_vp: inv,
+							u_camera_planes: camera._uniforms.u_camera_planes,
+							u_viewprojection_matrix: camera._viewprojection_matrix,
+							u_previous_viewprojection_matrix: prev
+						}).draw( mesh );
+	});
+
+	prev.set( camera._viewprojection_matrix );
+	this.setOutputData( 0, this._tex );
+}
+
+LGraphCameraMotionBlur.pixel_shader = "precision highp float;\n\
+		\n\
+		uniform sampler2D u_color_texture;\n\
+		uniform sampler2D u_depth_texture;\n\
+		varying vec2 v_coord;\n\
+		uniform mat4 u_inv_vp;\n\
+		uniform mat4 u_viewprojection_matrix;\n\
+		uniform mat4 u_previous_viewprojection_matrix;\n\
+		uniform vec2 u_camera_planes;\n\
+		\n\
+		void main() {\n\
+			vec2 uv = v_coord;\n\
+			float depth = texture2D(u_depth_texture, uv).x;\n\
+			//float z = 2.0 * u_camera_planes.x * u_camera_planes.y / (u_camera_planes.y + u_camera_planes.x - depth * (u_camera_planes.y - u_camera_planes.x));\n\
+			vec4 screenpos = vec4( (uv - vec2(0.5)) * 2.0, depth, 1.0 );\n\
+			vec4 pos = u_inv_vp * screenpos;\n\
+			vec4 old_screenpos = u_previous_viewprojection_matrix * pos;\n\
+			old_screenpos.xy /= old_screenpos.w;\n\
+			vec2 uv_final = old_screenpos.xy * 0.5 + vec2(0.5);\n\
+			vec2 uv_delta = (uv_final - uv) / 16.0;\n\
+			vec4 color = vec4(0.0);\n\
+			for(int i = 0; i < 16; ++i)\n\
+			{\n\
+				color += texture2D( u_color_texture, uv );\n\
+				uv += uv_delta;\n\
+			}\n\
+			gl_FragColor = color / 16.0;\n\
+		}\n\
+		";
+
+LiteGraph.registerNodeType("texture/motionBlur", LGraphCameraMotionBlur );
 
 }
 
@@ -17430,7 +17538,7 @@ FXStack.prototype.applyFX = function( input_texture, output_texture, options )
 		}
 
 		//set the depth texture for some FXs like fog or depth
-		if(shader.hasUniform("u_depth_texture"))
+		if(depth_texture && shader.hasUniform("u_depth_texture"))
 		{
 			depth_texture.bind(1);
 			if(depth_texture.near_far_planes)
@@ -17636,7 +17744,7 @@ FXStack.prototype.applyFX = function( input_texture, output_texture, options )
 	}
 
 	//set the depth texture for some FXs like fog or depth
-	if(shader.hasUniform("u_depth_texture"))
+	if(shader.hasUniform("u_depth_texture") && depth_texture )
 	{
 		depth_texture.bind(1);
 		if(depth_texture.near_far_planes)
@@ -19452,7 +19560,7 @@ function RenderFrameContext( o )
 	this.precision = RenderFrameContext.DEFAULT_PRECISION; //LOW_PRECISION uses a byte, MEDIUM uses a half_float, HIGH uses a float, or directly the texture type (p.e gl.UNSIGNED_SHORT_4_4_4_4 )
 	this.filter_texture = true; //magFilter: in case the texture is shown, do you want to see it pixelated?
 	this.format = GL.RGBA; //how many color channels, or directly the texture internalformat (p.e. gl.RGB10_A2 )
-	this.use_depth_texture = false; //store the depth in a texture
+	this.use_depth_texture = true; //store the depth in a texture
 	this.use_stencil_buffer = false; //add an stencil buffer (cannot be read as a texture in webgl)
 	this.num_extra_textures = 0; //number of extra textures in case we want to render to several buffers
 	this.name = null; //if a name is provided all the textures will be stored in the LS.ResourcesManager
@@ -25745,9 +25853,7 @@ function Camera(o)
 	this._projection_matrix = mat4.create();
 	this._viewprojection_matrix = mat4.create();
 	this._model_matrix = mat4.create(); //inverse of viewmatrix (used for local vectors)
-	this._previous_viewprojection_matrix = mat4.create(); //viewmatrix from previous frame
-
-	//this._previous_viewprojection_matrix = mat4.create(); //used for motion blur
+	this._previous_viewprojection_matrix = mat4.create(); //viewmatrix from previous frame, used in some algorithms
 
 	//lazy upload
 	this._must_update_view_matrix = true;
@@ -27267,10 +27373,8 @@ Camera.prototype.disableRenderFrameContext = function()
 
 Camera.prototype.prepare = function()
 {
-	this.updateMatrices(); 
-
 	this._previous_viewprojection_matrix.set( this._viewprojection_matrix );
-
+	this.updateMatrices(); 
 	this.fillShaderQuery();
 	this.fillShaderUniforms();
 }

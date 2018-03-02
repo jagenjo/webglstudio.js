@@ -11,7 +11,7 @@ function Timeline( options )
 	this.preview = true;
 	this.paths_widget = false;
 	this.autoresize = true;
-	this.show_paths = true;
+	this.show_paths = false;
 
 	this.current_take = null;
 

@@ -190,8 +190,13 @@ var AnimationModule = {
 		if( !EditorView.render_helpers || !this.render_helpers || RenderModule.render_settings.in_player || !RenderModule.frame_updated )
 			return;
 
+
 		if(this.timeline.show_paths)
-			this.renderTrajectories(camera);
+		{
+			var rect = this.timeline.root.getBoundingClientRect();
+			if(rect.width && rect.height)
+				this.renderTrajectories(camera);
+		}
 	},
 
 	renderPicking: function(e, mouse_pos)

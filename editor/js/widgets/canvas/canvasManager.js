@@ -6,6 +6,8 @@ function CanvasManager( container, options)
 	this.widgets = [];
 	this.keys = {};
 
+	this.pause_render = false;
+
 	this.root = new CanvasElement();
 	this.root.use_normalized_viewport = 1;
 	this.root.size = [1,1];
@@ -166,6 +168,9 @@ CanvasManager.prototype.setWidgetOrder = function(widget, order)
 
 CanvasManager.prototype.ondraw = function()
 {
+	if(this.pause_render)
+		return;
+
 	this.frame_rendered = false;
 	var force_frame = this.must_update;
 

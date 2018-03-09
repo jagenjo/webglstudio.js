@@ -57,10 +57,11 @@ var AnimationModule = {
 				e.stopPropagation();
 				return false;
 			}).bind(this));
-			element.addEventListener("dragstart", inner_dragstart);
+			element.addEventListener("dragstart", inner_dragstart );
+			element.addEventListener("drop", inner_drop );
 		}
 
-		function inner_click(e)
+		function inner_click( e )
 		{
 			AnimationModule.insertKeyframe( e.target, e.shiftKey );
 			e.preventDefault();
@@ -68,12 +69,12 @@ var AnimationModule = {
 			return true;
 		}
 
-		function inner_rightclick(e)
+		function inner_rightclick( e )
 		{
-			var menu = new LiteGUI.ContextMenu( ["Add UID track","Add name track","Show Info","Copy Query","Copy Unique Query"], { event: e, title:"Keyframe", callback: function(value) {
-				if(value == "Add UID track")
+			var menu = new LiteGUI.ContextMenu( ["Add track [UID]","Add track [name]","Copy Query","Copy Unique Query",null,"Show Info"], { event: e, title:"Property", callback: function(value) {
+				if(value == "Add track [UID]")
 					AnimationModule.insertKeyframe(e.target);
-				else if(value == "Add name track")
+				else if(value == "Add track [name]")
 					AnimationModule.insertKeyframe(e.target, true);
 				else if(value == "Copy Query")
 					AnimationModule.copyQueryToClipboard( e.target.dataset["propertyuid"], true );
@@ -97,6 +98,13 @@ var AnimationModule = {
 				locator = LSQ.shortify( locator );
 			e.dataTransfer.setData("locator", locator );
 		}
+
+		function inner_drop(e)
+		{
+			var element = EditorModule.getSceneElementFromDropEvent(e);
+			//something to do?
+		}
+
 	},
 
 	copyQueryToClipboard: function( locator, shorten )

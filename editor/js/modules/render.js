@@ -12,6 +12,7 @@ var RenderModule = {
 	tab_bigicon: "imgs/tabicon-scene.png",
 
 	auto_render: false, //force render a frame every time
+	pause_render: false, //blocks any rendering
 	frame_updated: false,
 	render_mode: "full",
 	shaders_url: "../litescene/data/shaders.xml",
@@ -28,7 +29,7 @@ var RenderModule = {
 	temp_camera: null, //used to clone preview camera
 	show_stencil_mask: -1,
 	view_from_scene_cameras: false,
-
+	
 	//_render_callback: null, //used by some modules to overwrite the rendering momentary
 
 	init: function()

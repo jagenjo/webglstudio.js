@@ -1968,6 +1968,16 @@ var EditorModule = {
 		return icon;
 	},
 
+	getSceneElementFromDropEvent: function(event)
+	{
+		var item_uid = event.dataTransfer.getData("uid");
+		var item_type = event.dataTransfer.getData("type");
+		var item = null;
+		if(item_type == "SceneNode" || item_type == "Component")
+			item = LSQ.get( item_uid );
+		return item;
+	},
+
 	centerCameraInSelection: function()
 	{
 		var center = SelectionModule.getSelectionCenter();
@@ -2108,6 +2118,13 @@ var EditorModule = {
 				e.preventDefault();
 				e.stopPropagation();
 				EditorModule.removeSelectedNodes(); 
+				return false;
+				break;
+			case 113: //F2
+				console.log( RenderModule.canvas_manager.pause_render ? "unpausing render" : "pausing rendering");
+				RenderModule.canvas_manager.pause_render = !RenderModule.canvas_manager.pause_render;
+				e.preventDefault();
+				e.stopPropagation();
 				return false;
 				break;
 			case 116: //F5

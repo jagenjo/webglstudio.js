@@ -399,6 +399,10 @@ LiteGUI.Inspector.prototype.addNode = function( name, value, options )
 			options.callback_button.call(element, $(element).find(".wcontent input").val() );
 	});
 
+	element.addEventListener("dragover",function(e){ 
+		e.preventDefault();
+	},true);
+
 	element.addEventListener("drop", function(e){
 		e.preventDefault();
 		e.stopPropagation();
@@ -436,7 +440,8 @@ LiteGUI.Inspector.prototype.addNode = function( name, value, options )
 		//LiteGUI.trigger( input, "change" );
 	}
 
-	this.getValue = function() { return value; }
+	element.getValue = function() { return value; }
+	element.setValue = inner_onselect;
 
 	this.tab_index += 1;
 	this.append(element);

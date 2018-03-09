@@ -2103,7 +2103,7 @@ Timeline.prototype.getMouseItem = function( e )
 		return { type: "timeline", draggable: true, cursor: "col-resize" };
 
 	//splitter
-	if( Math.abs(this.session.left_margin - e.mousex) < 3 )
+	if( Math.abs(this.session.left_margin - e.mousex) < 6 )
 		return { type: "split", draggable: true, cursor: "e-resize" };
 
 	//margin

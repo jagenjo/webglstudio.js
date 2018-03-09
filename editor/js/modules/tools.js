@@ -47,11 +47,15 @@ var ToolsModule = {
 
 	registerTool: function(tool)
 	{
+		if( this.tools[ tool.name ] )
+			console.warn("there is already a tool with this name: ", tool.name );
 		this.tools[ tool.name ] = tool;
 	},
 
 	registerButton: function( button )
 	{
+		if( this.buttons[ button.name ] )
+			console.warn("there is already a button with this name: ", button.name );
 		this.buttons[ button.name ] = button;
 	},
 

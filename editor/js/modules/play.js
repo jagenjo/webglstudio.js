@@ -14,7 +14,8 @@ var PlayModule = {
 		stop: "&#8718;",
 		pause: "&#10074;&#10074;",
 		stoprecord: "&#8718;&#10004;",
-		eject: "&#9167;"
+		eject: "&#9167;",
+		reload: "&#8635"
 	},
 
 	preferences: { //persistent settings
@@ -29,6 +30,7 @@ var PlayModule = {
 			#play-tools { position: fixed; top: 2px; right: 300px; font-size: 1.4em; padding-right: 3px; z-index: 10; } \
 			#play-tools button { padding: 0 0.5em; overflow: hidden; height: 1.25em; } \
 			#play-tools button.enabled { background: #AEE !important;} \
+			#restore-button { background: #944 !important;} \
 		");
 
 		//Register in CanvasManager to render the border on playmode
@@ -36,20 +38,24 @@ var PlayModule = {
 
 		//If the scene is cleared be sure to change mode to stop
 		LEvent.bind( LS.GlobalScene, "clear", this.onSceneStop, this );
+		LEvent.bind( LS.GlobalScene, "code_error", this.onSceneError, this );
 
 		//play tools panel
 		var container = document.createElement("div");
 		container.id = "play-tools";
 		container.className = "big-buttons";
-		container.innerHTML = "<button class='litebutton' id='play-button' title='Play'>"+this.icons.play+"</button><button class='litebutton' id='pause-button' title='Pause' disabled>"+this.icons.pause+"</button><button class='litebutton' id='stopkeep-button' disabled title='Stop And Save'>"+this.icons.stoprecord+"</button><button class='litebutton' id='launch-button' title='launch'>"+this.icons.eject+"</button>";
+		container.innerHTML = "<button class='litebutton' id='play-button' title='Play'>"+this.icons.play+"</button><button class='litebutton' id='pause-button' title='Pause' disabled>"+this.icons.pause+"</button><button class='litebutton' id='stopkeep-button' disabled title='Stop And Save'>"+this.icons.stoprecord+"</button><button class='litebutton' id='restore-button' title='restore'>"+this.icons.reload+"</button><button class='litebutton' id='launch-button' title='launch'>"+this.icons.eject+"</button>";
 		this.play_button = container.querySelector("#play-button");
 		this.pause_button = container.querySelector("#pause-button");
 		this.stopkeep_button = container.querySelector("#stopkeep-button");
+		this.restore_button = container.querySelector("#restore-button");
+		this.restore_button.style.display = "none";
 		this.launch_button = container.querySelector("#launch-button");
 		this.play_button.addEventListener("click", this.onPlay.bind(this) );
 		this.pause_button.addEventListener("click", this.onPause.bind(this) );
 		this.stopkeep_button.addEventListener("click", this.onStopKeep.bind(this) );
 		this.launch_button.addEventListener("click", this.launch.bind(this) );
+		this.restore_button.addEventListener("click", this.restore.bind(this) );
 
 		setTimeout( function() { //timeout because some weird glitch
 			document.getElementById("mainmenubar").appendChild( container );
@@ -115,21 +121,7 @@ var PlayModule = {
 
 			//restore old scene
 			if(this.preferences.restore_state_after_play)
-			{
-				var scene = LS.GlobalScene;
-				LEvent.trigger(scene,"beforeReload");
-				scene.clear();
-				scene.configure(this._backup);
-				LEvent.trigger(scene,"reload");
-
-				if(this._selected_node_uid)
-				{
-					var old_selected_node = scene.getNodeByUId( this._selected_node_uid );
-					if(old_selected_node)
-						SelectionModule.setSelection( old_selected_node );
-				}
-				EditorModule.refreshAttributes();
-			}
+				this.restore();
 		}
 	},
 
@@ -240,6 +232,23 @@ var PlayModule = {
 		this.changeState("stop");
 	},
 
+	restore: function()
+	{
+		this.restore_button.style.display = "none";
+		var scene = LS.GlobalScene;
+		LEvent.trigger(scene,"beforeReload");
+		scene.clear();
+		scene.configure(this._backup);
+		LEvent.trigger(scene,"reload");
+		if(this._selected_node_uid)
+		{
+			var old_selected_node = scene.getNodeByUId( this._selected_node_uid );
+			if(old_selected_node)
+				SelectionModule.setSelection( old_selected_node );
+		}
+		EditorModule.refreshAttributes();
+	},
+
 	changeState: function(state)
 	{
 		if(state == this.state) 
@@ -309,6 +318,13 @@ var PlayModule = {
 	{
 		this.changeState("stop");
 		this.play_button.innerHTML = this.icons.play;
+	},
+
+	onSceneError: function()
+	{
+		if(this.state != "play")
+			return;
+		this.restore_button.style.display = "";
 	},
 
 	//called from CanvasManager with every user event

@@ -849,14 +849,12 @@ LS.Components.SceneInclude["@inspector"] = function( component, inspector )
 
 LS.Components.Poser["@inspector"] = function( component, inspector)
 {
+	inspector.widgets_per_row = 2;
 	inspector.addInfo("Nodes posed", component.base_nodes.length );
-	inspector.addButtons(null,["Edit pose nodes","Set to Children"], { callback: function(v,e){
-		if(v == "Edit pose nodes")
-			LS.Components.Poser.showPoseNodesDialog( component, e );
-		else
-			component.setChildrenAsBaseNodes(true);
-		inspector.refresh();
+	inspector.addButton(null,"Edit pose nodes", { callback: function(v,e){
+		LS.Components.Poser.showPoseNodesDialog( component, e );
 	}});
+	inspector.widgets_per_row = 1;
 
 	var poses = [];
 	for(var i in component.poses)
@@ -906,17 +904,29 @@ LS.Components.Poser["@inspector"] = function( component, inspector)
 
 LS.Components.Poser.showPoseNodesDialog = function( component, event )
 {
-	var dialog = new LiteGUI.Dialog({title:"Nodes in Pose", close: true, width: 360, height: 270, resizable: true, scroll: false, draggable: true});
+	var dialog = new LiteGUI.Dialog({title:"Nodes in Pose", close: true, width: 600, height: 300, resizable: true, scroll: false, draggable: true});
 
-	var widgets = new LiteGUI.Inspector({ height: "100%", noscroll: true });
-	dialog.add( widgets );
+	var area = new LiteGUI.Area();
+	area.split( LiteGUI.Area.HORIZONTAL );
+	dialog.add(area);
+
+	var widgets_left = new LiteGUI.Inspector({ height: "100%", noscroll: true });
+	area.getSection(0).add( widgets_left );
 	dialog.show('fade');
-	widgets.on_refresh = inner_refresh;
-	widgets.refresh();
+	widgets_left.on_refresh = inner_refresh_left;
 
-	function inner_refresh()
+	var widgets_right = new LiteGUI.Inspector({ height: "100%", noscroll: true });
+	area.getSection(1).add( widgets_right );
+	widgets_right.on_refresh = inner_refresh_right;
+
+	var node = null;
+
+	widgets_left.refresh();
+	widgets_right.refresh();
+
+	function inner_refresh_left()
 	{
-		widgets.clear();
+		widgets_left.clear();
 
 		//get the names
 		var selected = null;
@@ -930,22 +940,59 @@ LS.Components.Poser.showPoseNodesDialog = function( component, event )
 				node_names.push( base_node.name );
 		}
 
-		var list = widgets.addList(null, node_names, { height: "calc( 100% - 60px)", callback: function(v) {
+		var list = widgets_left.addList(null, node_names, { height: "calc( 100% - 30px)", callback: function(v) {
 			selected = v;
 		}});
 
-		widgets.addButtons(null,["Remove Selected"],{
+		widgets_left.addButtons(null,["Remove Selected"],{
 			callback: function(v){
 				component.removeBaseNode( selected );
-				widgets.refresh();
+				widgets_left.refresh();
 			}
 		});
-		widgets.addSeparator();
-		widgets.addButton(null, "Add current scene selected node", function(){
+	}
+
+	function inner_refresh_right()
+	{
+		widgets_right.clear();
+		widgets_right.addTitle("Select a node");
+		widgets_right.widgets_per_row = 2;
+		var node_widget = widgets_right.addNode("Node", "", { width: "70%", use_node: true, callback: function(v){
+			node = v;
+		}});
+		widgets_right.addButton(null,"From Select.", { width: "30%", callback: function(){
+			node_widget.setValue( SelectionModule.getSelectedNode() );
+		}});
+		widgets_right.widgets_per_row = 1;
+		widgets_right.addTitle("Actions");
+		widgets_right.addButtons(null,["Add Node", "Add Children"], function(v){
+			if(!node)
+				return;
+			if(v == "Add Node")
+			{
+				component.addBaseNode( node );
+			}
+			else if(v == "Add Children")
+			{
+				var nodes = node.getDescendants();
+				for(var i in nodes)
+					component.addBaseNode( nodes[i] );
+			}
+			widgets_left.refresh();
+		});
+		widgets_right.widgets_per_row = 1;
+		widgets_right.addSeparator();
+		widgets_right.addButton(null, "Add current scene selected nodes", function(){
 			var nodes = SelectionModule.getSelectedNodes();
 			for(var i in nodes)
 				component.addBaseNode( nodes[i] );
-			widgets.refresh();
+			widgets_right.refresh();
+		});
+		widgets_right.addButton(null, "Remove current scene selected nodes", function(){
+			var nodes = SelectionModule.getSelectedNodes();
+			for(var i in nodes)
+				component.removeBaseNode( nodes[i] );
+			widgets_right.refresh();
 		});
 	}
 

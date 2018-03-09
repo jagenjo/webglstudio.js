@@ -319,6 +319,7 @@ var cameraTool = {
 
 		//var eye = this.smooth_camera ? camera._editor.destination_eye : camera.getEye();
 		//var center = this.smooth_camera ? camera._editor.destination_center : camera.getCenter();
+		camera.updateMatrices(true);
 
 		var eye = camera.getEye();
 		var center = camera.getCenter();

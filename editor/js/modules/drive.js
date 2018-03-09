@@ -93,7 +93,7 @@ var DriveModule = {
 			msg.kill(500);
 
 			//we fetch asset previews in case the user browses the assets in the drive
-			if( url.substr(0,7) != "http://" && url.indexOf("_th_") == -1 )
+			if( url.substr(0,7) != "http://" && url.indexOf("_th_") == -1 && url.indexOf(".js") == -1 )
 				DriveModule.fetchPreview(url);
 		});
 

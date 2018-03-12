@@ -23507,6 +23507,10 @@ var Draw = {
 
 	linearize: function(array)
 	{
+		if(!array.length)
+			return [];
+		if(array[0].constructor === Number) //array of numbers
+			return new Float32Array(array);
 		var n = array[0].length;
 		var result = new Float32Array(array.length * n);
 		var l = array.length;

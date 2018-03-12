@@ -270,6 +270,11 @@ CodingPadWidget.prototype.assignCurrentCode = function( skip_events, reset_state
 
 CodingPadWidget.prototype.getCodeFromInfo = function( info )
 {
+	if(!info)
+	{
+		console.warn("no info passed to getCodeFromInfo, returning empty string");
+		return "";
+	}
 	var instance = info.instance;
 
 	if(info.options.getCode)
@@ -738,9 +743,12 @@ CodingPadWidget.prototype.onResourceRenamed = function( e, info )
 	LiteGUI.trigger( this, "renamed", filename );
 }
 
-
+//executed from CodeMirror when the code changes
 CodingPadWidget.prototype.onEditorContentChange = function( editor )
 {
+	if(!this.current_code_info)
+		return;
+
 	//let the tab know this code has been changed
 	var code = this.getCodeFromInfo( this.current_code_info );
 	var value = editor.getValue();

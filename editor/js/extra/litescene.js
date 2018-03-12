@@ -33509,6 +33509,7 @@ function Target(o)
 	this.front = Target.NEGZ;
 	this.up = Target.POSY;
 	
+	this._global_position = vec3.create();
 	this._target_position = vec3.create();
 
 	if(o)
@@ -33561,7 +33562,7 @@ Target.prototype.updateOrientation = function()
 	var eye = null;
 	var target_position = null;
 	var up = null;
-	var position = transform.getGlobalPosition();
+	var position = transform.getGlobalPosition( this._global_position );
 
 	switch( this.up )
 	{

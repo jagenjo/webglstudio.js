@@ -10508,8 +10508,8 @@ global.BBox = GL.BBox = {
 	radius:12,
 	data_length: 13,
 	
-	corners: new Float32Array([1,1,1,  1,1,-1,  1,-1,1,  1,-1,-1,  -1,1,1,  -1,1,-1,  -1,-1,1,  -1,-1,-1 ]),
-	tmp_corners: new Float32Array(24), //to avoid GC
+	//corners: new Float32Array([1,1,1,  1,1,-1,  1,-1,1,  1,-1,-1,  -1,1,1,  -1,1,-1,  -1,-1,1,  -1,-1,-1 ]),
+	corners: [ vec3.fromValues(1,1,1), vec3.fromValues(1,1,-1), vec3.fromValues(1,-1,1), vec3.fromValues(1,-1,-1), vec3.fromValues(-1,1,1), vec3.fromValues(-1,1,-1), vec3.fromValues(-1,-1,1), vec3.fromValues(-1,-1,-1) ] ,
 
 	/**
 	* create an empty bbox
@@ -10612,21 +10612,46 @@ global.BBox = GL.BBox = {
 		var min = bb.subarray(6,9);
 		var max = bb.subarray(9,12);
 
-		min.set( points.subarray(0,3) );
+		min[0] = points[0]; //min.set( points.subarray(0,3) );
+		min[1] = points[1];
+		min[2] = points[2];
 		max.set( min );
 
 		var v = 0;
 		for(var i = 3, l = points.length; i < l; i+=3)
 		{
+			var x = points[i];
+			var y = points[i+1];
+			var z = points[i+2];
+			if( x < min[0] ) min[0] = x;
+			else if( x > max[0] ) max[0] = x;
+			if( y < min[1] ) min[1] = y;
+			else if( y > max[1] ) max[1] = y;
+			if( z < min[2] ) min[2] = z;
+			else if( z > max[2] ) max[2] = z;
+			/*
 			v = points.subarray(i,i+3);
 			vec3.min( min, v, min);
 			vec3.max( max, v, max);
+			*/
 		}
 
+		//center
+		bb[0] = (min[0] + max[0]) * 0.5;
+		bb[1] = (min[1] + max[1]) * 0.5;
+		bb[2] = (min[2] + max[2]) * 0.5;
+		//halfsize
+		bb[3] = max[0] - bb[0];
+		bb[4] = max[1] - bb[1];
+		bb[5] = max[2] - bb[2];
+		bb[12] = Math.sqrt( bb[3]*bb[3] + bb[4]*bb[4] + bb[5]*bb[5] );
+
+		/*
 		var center = vec3.add( bb.subarray(0,3), min, max );
 		vec3.scale( center, center, 0.5);
 		vec3.subtract( bb.subarray(3,6), max, center );
 		bb[12] = vec3.length(bb.subarray(3,6)); //radius		
+		*/
 		return bb;
 	},
 
@@ -10696,23 +10721,39 @@ global.BBox = GL.BBox = {
 	* @param {mat4} mat transformation
 	* @return {BBox} returns out
 	*/
-	transformMat4: function( out, bb, mat )
-	{
-		var center = bb; //.subarray(0,3); hack to avoid garbage
-		var halfsize = bb.subarray(3,6);
-		var corners = this.tmp_corners;
-		corners.set( this.corners );
-
-		for(var i = 0; i < 8; ++i)		
+	transformMat4: (function(){
+		var hsx = 0;
+		var hsy = 0;
+		var hsz = 0;
+		var points_buffer = new Float32Array(8*3);
+		var points = [];
+		for(var i = 0; i < 24; i += 3 )
+			points.push( points_buffer.subarray( i, i+3 ) );
+		
+		return function( out, bb, mat )
 		{
-			var corner = corners.subarray(i*3, i*3+3);
-			vec3.multiply( corner, halfsize, corner );
-			vec3.add( corner, corner, center );
-			mat4.multiplyVec3(corner, mat, corner);
-		}
+			var centerx = bb[0];
+			var centery = bb[1];
+			var centerz = bb[2];
+			hsx = bb[3];
+			hsy = bb[4];
+			hsz = bb[5];
 
-		return this.setFromPoints( out, corners );
-	},
+			var corners = this.corners;
+
+			for(var i = 0; i < 8; ++i)		
+			{
+				var corner = corners[i];
+				var result = points[i];
+				result[0] = hsx * corner[0] + centerx;
+				result[1] = hsy * corner[1] + centery;
+				result[2] = hsz * corner[2] + centerz;
+				mat4.multiplyVec3( result, mat, result );
+			}
+
+			return this.setFromPoints( out, points_buffer );
+		}
+	})(),
 
 
 	/**
@@ -10722,7 +10763,7 @@ global.BBox = GL.BBox = {
 	* @param {Float32Array} result optional, should be 8 * 3
 	* @return {Float32Array} returns the 8 corners
 	*/
-	getCorners: function(bb, result)
+	getCorners: function( bb, result )
 	{
 		var center = bb; //.subarray(0,3); AVOID GC
 		var halfsize = bb.subarray(3,6);

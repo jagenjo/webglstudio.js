@@ -4527,7 +4527,7 @@ LiteGUI.Console = Console;
 			var diff = [ deltax, deltay ];
 			if(e.movementX !== undefined)
 				diff = [e.movementX, -e.movementY]
-			console.log(e);
+			//console.log(e);
 			dragger.data = [e.screenX, e.screenY];
 			var axis = options.horizontal ? 0 : 1;
 			inner_inc( diff[axis], e );

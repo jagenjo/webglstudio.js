@@ -16587,7 +16587,7 @@ LGraphCameraMotionBlur.pixel_shader = "precision highp float;\n\
 LiteGraph.registerNodeType("texture/motionBlur", LGraphCameraMotionBlur );
 
 
-
+/* not finished
 
 function LGraphVolumetricLight()
 {
@@ -16750,7 +16750,7 @@ LGraphVolumetricLight.pixel_shader = "precision highp float;\n\
 		";
 
 LiteGraph.registerNodeType("texture/volumetric_light", LGraphVolumetricLight );
-
+*/
 
 
 

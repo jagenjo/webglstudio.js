@@ -307,8 +307,20 @@ var LiteGraph = global.LiteGraph = {
 		if( !type_a ||  //generic output
 			!type_b || //generic input
 			type_a == type_b || //same type (is valid for triggers)
-			(type_a !== LiteGraph.EVENT && type_b !== LiteGraph.EVENT && type_a.toLowerCase() == type_b.toLowerCase()) ) //same type
-			return true;
+			type_a == LiteGraph.EVENT && type_b == LiteGraph.ACTION ) 
+				return true;
+
+		type_a = type_a.toLowerCase();
+		type_b = type_b.toLowerCase();
+		if( type_a.indexOf(",") == -1 && type_b.indexOf(",") == -1 )
+			return type_a == type_b;
+
+		var supported_types_a = type_a.split(",");
+		var supported_types_b = type_b.split(",");
+		for(var i = 0; i < supported_types_a.length; ++i) 
+			for(var j = 0; j < supported_types_b.length; ++j) 
+				if( supported_types_a[i] == supported_types_b[i] )
+					return true;
 		return false;
 	}
 };
@@ -3545,8 +3557,8 @@ LGraphCanvas.prototype.processMouseUp = function(e)
 						if(this.connecting_output.type == LiteGraph.EVENT)
 							this.connecting_node.connect( this.connecting_slot, node, LiteGraph.EVENT );
 						else
-							if(input && !input.link && input.type == this.connecting_output.type) //toLowerCase missing
-								this.connecting_node.connect(this.connecting_slot, node, 0);
+							if(input && !input.link && LiteGraph.isValidConnection( input.type && this.connecting_output.type ) )
+								this.connecting_node.connect( this.connecting_slot, node, 0 );
 					}
 				}
 			}
@@ -6578,6 +6590,24 @@ Watch.prototype.onDrawBackground = function(ctx)
 }
 
 LiteGraph.registerNodeType("basic/watch", Watch);
+
+//Watch a value in the editor
+function Pass()
+{
+	this.addInput("in",0);
+	this.addOutput("out",0);
+	this.size = [40,20];
+}
+
+Pass.title = "Pass";
+Pass.desc = "Allows to connect different types";
+
+Pass.prototype.onExecute = function()
+{
+	this.setOutputData( 0, this.getInputData(0) );
+}
+
+LiteGraph.registerNodeType("basic/pass", Pass);
 
 
 //Show value inside the debug console

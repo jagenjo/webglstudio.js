@@ -7799,6 +7799,10 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 
 	if( !lights || lights.length == 0 || ignore_lights )
 	{
+		//global flags for environment and irradiance
+		if( !ignore_lights )
+			block_flags |= global_flags;
+
 		//extract shader compiled
 		var shader = shader_code.getShader( pass.name, block_flags );
 		if(!shader)
@@ -7808,10 +7812,12 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 		}
 
 		//assign
-		shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, light ? light._uniforms : null, this._uniforms, instance.uniforms ] );
+		shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, this._uniforms, instance.uniforms ] ); //removed, why this was in?? light ? light._uniforms : null, 
 
+		shader.setUniform( "u_light_info", LS.ZEROS4 );
 		if( ignore_lights )
-			shader.setUniform("u_ambient_light", LS.ONES );
+			shader.setUniform( "u_ambient_light", LS.ONES );
+
 
 		//render
 		instance.render( shader, this._primitive != -1 ? this._primitive : undefined );
@@ -7821,6 +7827,8 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	}
 
 	var base_block_flags = block_flags;
+
+	var uniforms_array = [ scene._uniforms, camera._uniforms, render_uniforms, null, this._uniforms, instance.uniforms ];
 
 	var prev_shader = null;
 	for(var i = 0; i < lights.length; ++i)
@@ -7842,10 +7850,11 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 		//light parameters (like index of pass or num passes)
 		light._uniforms.u_light_info[2] = i;
 		light._uniforms.u_light_info[3] = lights.length;
+		uniforms_array[3] = light._uniforms;
 
 		//assign
 		if(prev_shader != shader)
-			shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, light._uniforms, this._uniforms, instance.uniforms ] );
+			shader.uniformsArray( uniforms_array );
 		else
 			shader.uniforms( light._uniforms );
 		prev_shader = shader;
@@ -8278,104 +8287,6 @@ ShaderMaterial.getDefaultPickingShaderCode = function()
 
 LS.registerMaterialClass( ShaderMaterial );
 LS.ShaderMaterial = ShaderMaterial;
-
-//Register ShaderBlocks
-//TODO?
-
-//ENVIRONMENT 
-var environment_code = "\n\
-	#ifdef ENVIRONMENT_TEXTURE\n\
-		uniform sampler2D environment_texture;\n\
-	#endif\n\
-	#ifdef ENVIRONMENT_CUBEMAP\n\
-		uniform samplerCube environment_texture;\n\
-	#endif\n\
-	vec2 polarToCartesian(in vec3 V)\n\
-	{\n\
-		return vec2( 0.5 - (atan(V.z, V.x) / -6.28318531), asin(V.y) / 1.57079633 * 0.5 + 0.5);\n\
-	}\n\
-	\n\
-	vec3 getEnvironmentColor( vec3 V, float area )\n\
-	{\n\
-		#ifdef ENVIRONMENT_TEXTURE\n\
-			vec2 uvs = polarToCartesian(V);\n\
-			return texture2D( environment_texture, uvs ).xyz;\n\
-		#endif\n\
-		#ifdef ENVIRONMENT_CUBEMAP\n\
-			return textureCube( environment_texture, -V ).xyz;\n\
-		#endif\n\
-		return u_background_color.xyz;\n\
-	}\n\
-";
-var environment_disabled_code = "\n\
-	vec3 getEnvironmentColor( vec3 V, float area )\n\
-	{\n\
-		return u_background_color.xyz;\n\
-	}\n\
-";
-
-var environment_cubemap_block = new LS.ShaderBlock("environment_cubemap");
-environment_cubemap_block.addCode( GL.FRAGMENT_SHADER, environment_code, environment_disabled_code, { ENVIRONMENT_CUBEMAP: "" } );
-environment_cubemap_block.defineContextMacros({ENVIRONMENTBLOCK:"environment_cubemap"});
-environment_cubemap_block.register();
-
-var environment_2d_block = new LS.ShaderBlock("environment_2D");
-environment_2d_block.defineContextMacros({ENVIRONMENTBLOCK:"environment_2D"});
-environment_2d_block.addCode( GL.FRAGMENT_SHADER, environment_code, environment_disabled_code, { ENVIRONMENT_TEXTURE: "" } );
-environment_2d_block.register();
-
-var environment_block = new LS.ShaderBlock("environment");
-environment_block.addCode( GL.FRAGMENT_SHADER, environment_code, environment_disabled_code );
-environment_block.register();
-
-
-var reflection_code = "\n\
-	#pragma shaderblock ENVIRONMENTBLOCK \"environment\"\n\
-	\n\
-	vec4 applyReflection( Input IN, SurfaceOutput o, vec4 final_color )\n\
-	{\n\
-		vec3 R = reflect( IN.viewDir, o.Normal );\n\
-		vec3 bg = vec3(0.0);\n\
-		if(u_light_info.z == (u_light_info.w - 1.0))\n\
-			bg = getEnvironmentColor( R, 0.0 );\n\
-		final_color.xyz = mix( final_color.xyz, bg, clamp( o.Reflectivity, 0.0, 1.0) );\n\
-		return final_color;\n\
-	}\n\
-";
-
-var reflection_disabled_code = "\n\
-	vec4 applyReflection( Input IN, SurfaceOutput o, vec4 final_color )\n\
-	{\n\
-		return final_color;\n\
-	}\n\
-";
-
-var reflection_block = new LS.ShaderBlock("applyReflection");
-ShaderMaterial.reflection_block = reflection_block;
-reflection_block.addCode( GL.FRAGMENT_SHADER, reflection_code, reflection_disabled_code );
-reflection_block.register();
-
-
-var irradiance_code = "\n\
-	uniform samplerCube irradiance_texture;\n\
-	\n\
-	void applyIrradiance( in SurfaceOutput o, inout FinalLight FINALLIGHT )\n\
-	{\n\
-		FINALLIGHT.Ambient *= textureCube( irradiance_texture, o.Normal ).xyz;\n\
-	}\n\
-";
-
-var irradiance_disabled_code = "\n\
-	void applyIrradiance( in SurfaceOutput o, inout FinalLight FINALLIGHT )\n\
-	{\n\
-	}\n\
-";
-
-var irradiance_block = new LS.ShaderBlock("applyIrradiance");
-ShaderMaterial.irradiance_block = irradiance_block;
-irradiance_block.addCode( GL.FRAGMENT_SHADER, irradiance_code, irradiance_disabled_code );
-irradiance_block.register();
-
 
 
 
@@ -9794,7 +9705,7 @@ newStandardMaterial.prototype.fillUniforms = function( scene, options )
 		if(!texture)
 			continue;
 
-		if(texture.constructor === String)
+		if(texture.constructor === String) //name of texture
 			texture = LS.ResourcesManager.textures[texture];
 		else if (texture.constructor != Texture)
 			continue;		
@@ -16675,6 +16586,178 @@ LGraphCameraMotionBlur.pixel_shader = "precision highp float;\n\
 
 LiteGraph.registerNodeType("texture/motionBlur", LGraphCameraMotionBlur );
 
+
+
+
+function LGraphVolumetricLight()
+{
+	this.addInput("color","Texture");
+	this.addInput("depth","Texture");
+	this.addInput("camera","Camera");
+	this.addInput("light","Light,Component");
+	this.addOutput("out","Texture");
+	this.properties = { enabled: true, intensity: 1, precision: LGraphTexture.DEFAULT };
+
+	this._inv_matrix = mat4.create();
+
+	this._uniforms = { 
+		u_color_texture:0,
+		u_depth_texture:1,
+		u_shadow_texture:2,
+		u_intensity: 1,
+		u_camera_planes: null,
+		u_inv_vp: this._inv_matrix
+	};
+}
+
+LGraphVolumetricLight.widgets_info = {
+	"precision": { widget:"combo", values: LGraphTexture.MODE_VALUES }
+};
+
+LGraphVolumetricLight.title = "Volumetric Light";
+LGraphVolumetricLight.desc = "Adds fog with volumetric light";
+
+LGraphVolumetricLight.prototype.onExecute = function()
+{
+	var tex = this.getInputData(0);
+	var depth = this.getInputData(1);
+	var camera = this.getInputData(2);
+	var light = this.getInputData(3);
+
+	if( !this.isOutputConnected(0) || !tex || !depth || !camera || !light || !light._shadowmap )
+		return; //saves work
+
+	var enabled = this.getInputData(4);
+	if(enabled != null)
+		this.properties.enabled = Boolean( enabled );
+
+	if(this.properties.precision === LGraphTexture.PASS_THROUGH || this.properties.enabled === false )
+	{
+		this.setOutputData(0, tex);
+		return;
+	}
+
+	var width = tex.width;
+	var height = tex.height;
+	var type = this.precision === LGraphTexture.LOW ? gl.UNSIGNED_BYTE : gl.HIGH_PRECISION_FORMAT;
+	if (this.precision === LGraphTexture.DEFAULT)
+		type = tex.type;
+	if(!this._tex || this._tex.width != width || this._tex.height != height || this._tex.type != type )
+		this._tex = new GL.Texture( width, height, { type: type, format: gl.RGBA, filter: gl.LINEAR });
+
+	if(!LGraphVolumetricLight._shader_spot)
+	{
+		LGraphVolumetricLight._shader_spot = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphVolumetricLight.pixel_shader, { USE_SPOT:"" } );
+		LGraphVolumetricLight._shader_directional = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphVolumetricLight.pixel_shader, { USE_DIRECTIONAL:"" } );
+		//LGraphVolumetricLight._shader_omni = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphVolumetricLight.pixel_shader, { USE_OMNI:"" } );
+	}
+
+	var shader = null;
+
+	switch( light.type )
+	{
+		case LS.Light.SPOT: shader = LGraphVolumetricLight._shader_spot; break;
+		case LS.Light.DIRECTIONAL: shader = LGraphVolumetricLight._shader_directional; break;
+		case LS.Light.OMNI: //shader = LGraphVolumetricLight._shader_omni;
+			//not supported yet
+			console.warn("volumetric light not supported for omni lights");
+			this.properties.enabled = false;
+			return;
+			break;
+		default:
+			return;
+	}
+
+	var vp = camera._viewprojection_matrix;
+	var intensity = this.properties.intensity;
+	var inv = this._inv_matrix;
+	mat4.invert( inv, camera._viewprojection_matrix );
+
+	var shadow = light._shadowmap;
+
+	var uniforms = this._uniforms;
+	uniforms.u_intensity = intensity;
+	uniforms.u_camera_planes = camera._uniforms.u_camera_planes;
+	uniforms.u_light_viewprojection_matrix = light._light_matrix;
+	uniforms.u_shadow_params = light._uniforms.u_shadow_params;
+	uniforms.u_light_color = light._uniforms.u_light_color;
+
+	this._tex.drawTo(function() {
+		gl.disable( gl.DEPTH_TEST );
+		gl.disable( gl.CULL_FACE );
+		gl.disable( gl.BLEND );
+		tex.bind(0);
+		depth.bind(1);
+		shadow.bind(2);
+		var mesh = Mesh.getScreenQuad();
+		shader.uniforms( uniforms ).draw( mesh );
+	});
+
+	this.setOutputData( 0, this._tex );
+}
+
+LGraphVolumetricLight.prototype.onGetInputs = function()
+{
+	return [["enabled","boolean"]];
+}
+
+LGraphVolumetricLight.pixel_shader = "precision highp float;\n\
+		\n\
+		uniform sampler2D u_color_texture;\n\
+		uniform sampler2D u_depth_texture;\n\
+		uniform sampler2D u_shadow_texture;\n\
+		varying vec2 v_coord;\n\
+		uniform mat4 u_inv_vp;\n\
+		uniform mat4 u_light_viewprojection_matrix;\n\
+		uniform vec2 u_camera_planes;\n\
+		uniform vec4 u_shadow_params;\n\
+		uniform vec3 u_light_color;\n\
+		uniform float u_intensity;\n\
+		#define SAMPLES 16\n\
+		\n\
+		void main() {\n\
+			vec2 uv = v_coord;\n\
+			vec4 color = texture2D(u_color_texture, uv);\n\
+			float depth = texture2D(u_depth_texture, uv).x;\n\
+			float zNear = u_camera_planes.x;\n\
+			float zFar = u_camera_planes.y;\n\
+			//float z = (2.0 * zNear) / (zFar + zNear - depth * (zFar - zNear));\n\
+			depth = depth * 2.0 - 1.0;\n\
+			float z = zNear * (depth + 1.0) / (zFar + zNear - depth * (zFar - zNear));\n\
+			vec4 screenpos = vec4( uv * 2.0 - vec2(1.0), depth, 1.0 );\n\
+			vec4 farpos = u_inv_vp * screenpos;\n\
+			farpos /= farpos.w;\n\
+			screenpos.z = 0.0;\n\
+			vec4 nearpos = u_inv_vp * screenpos;\n\
+			nearpos.xyz /= nearpos.w;\n\
+			vec3 delta = (farpos.xyz - nearpos.xyz) / float(SAMPLES);\n\
+			vec4 current_pos = vec4( nearpos.xyz, 1.0 );\n\
+			float brightness = 0.0;\n\
+			float bias = u_shadow_params.y;\n\
+			for(int i = 0; i < SAMPLES; ++i)\n\
+			{\n\
+				vec4 light_uv = u_light_viewprojection_matrix * current_pos;\n\
+				light_uv.xy /= light_uv.w;\n\
+				light_uv.xy = light_uv.xy * 0.5 + vec2(0.5);\n\
+				float shadow_depth = texture2D( u_shadow_texture, light_uv.xy ).x;\n\
+				if (((light_uv.z - bias) / light_uv.w * 0.5 + 0.5) > shadow_depth )\n\
+					brightness += 1.0;\n\
+				current_pos.xyz += delta;\n\
+			}\n\
+			color.xyz += u_light_color * brightness / float(SAMPLES);\n\
+			gl_FragColor = color;\n\
+		}\n\
+		";
+
+LiteGraph.registerNodeType("texture/volumetric_light", LGraphVolumetricLight );
+
+
+
+
+
+
+
+
 }
 
 function Path()
@@ -21327,7 +21410,7 @@ var Renderer = {
 		this._current_scene = scene;
 
 		//update info about scene (collecting it all or reusing the one collected in the frame before)
-		if(!skip_collect_data)
+		if(!skip_collect_data && !this._skip_collect_data )
 		{
 			if( this._frame % this._collect_frequency == 0)
 				scene.collectData();
@@ -34253,6 +34336,12 @@ GraphComponent.prototype.serialize = function()
 	};
 }
 
+GraphComponent.prototype.getResources = function(res)
+{
+	this._graph.sendEventToAllNodes("getResources",res);
+	return res;
+}
+
 GraphComponent.prototype.onAddedToNode = function(node)
 {
 	this._graph._scenenode = node;
@@ -43915,7 +44004,7 @@ Light._disabled_shaderblock_code = "\n\
 	}\n\
 	vec3 applyLight( in SurfaceOutput o, in FinalLight FINALLIGHT )\n\
 	{\n\
-		vec3 final_color = o.Albedo * FINALLIGHT.Ambient;\n\
+		vec3 final_color = o.Albedo * o.Ambient * FINALLIGHT.Ambient;\n\
 		if(u_light_info.z == 0.0)\n\
 			final_color += o.Emission;\n\
 		return final_color;\n\
@@ -44084,6 +44173,101 @@ shadowmapping_2D_soft_block.register();
 Light.shadowmapping_2D_soft_block = shadowmapping_2D_soft_block;
 //Light.registerShadowType( "soft", shadowmappingsoft_block );
 
+
+// ENVIRONMENT *************************************
+var environment_code = "\n\
+	#ifdef ENVIRONMENT_TEXTURE\n\
+		uniform sampler2D environment_texture;\n\
+	#endif\n\
+	#ifdef ENVIRONMENT_CUBEMAP\n\
+		uniform samplerCube environment_texture;\n\
+	#endif\n\
+	vec2 polarToCartesian(in vec3 V)\n\
+	{\n\
+		return vec2( 0.5 - (atan(V.z, V.x) / -6.28318531), asin(V.y) / 1.57079633 * 0.5 + 0.5);\n\
+	}\n\
+	\n\
+	vec3 getEnvironmentColor( vec3 V, float area )\n\
+	{\n\
+		#ifdef ENVIRONMENT_TEXTURE\n\
+			vec2 uvs = polarToCartesian(V);\n\
+			return texture2D( environment_texture, uvs ).xyz;\n\
+		#endif\n\
+		#ifdef ENVIRONMENT_CUBEMAP\n\
+			return textureCube( environment_texture, -V ).xyz;\n\
+		#endif\n\
+		return u_background_color.xyz;\n\
+	}\n\
+";
+var environment_disabled_code = "\n\
+	vec3 getEnvironmentColor( vec3 V, float area )\n\
+	{\n\
+		return u_background_color.xyz;\n\
+	}\n\
+";
+
+var environment_cubemap_block = new LS.ShaderBlock("environment_cubemap");
+environment_cubemap_block.addCode( GL.FRAGMENT_SHADER, environment_code, environment_disabled_code, { ENVIRONMENT_CUBEMAP: "" } );
+environment_cubemap_block.defineContextMacros({ENVIRONMENTBLOCK:"environment_cubemap"});
+environment_cubemap_block.register();
+
+var environment_2d_block = new LS.ShaderBlock("environment_2D");
+environment_2d_block.defineContextMacros({ENVIRONMENTBLOCK:"environment_2D"});
+environment_2d_block.addCode( GL.FRAGMENT_SHADER, environment_code, environment_disabled_code, { ENVIRONMENT_TEXTURE: "" } );
+environment_2d_block.register();
+
+var environment_block = new LS.ShaderBlock("environment");
+environment_block.addCode( GL.FRAGMENT_SHADER, environment_code, environment_disabled_code );
+environment_block.register();
+
+
+var reflection_code = "\n\
+	#pragma shaderblock ENVIRONMENTBLOCK \"environment\"\n\
+	\n\
+	vec4 applyReflection( Input IN, SurfaceOutput o, vec4 final_color )\n\
+	{\n\
+		vec3 R = reflect( IN.viewDir, o.Normal );\n\
+		vec3 bg = vec3(0.0);\n\
+		//is last pass for this object?\n\
+		if(u_light_info.w == 0.0 || u_light_info.z == (u_light_info.w - 1.0))\n\
+			bg = getEnvironmentColor( R, 0.0 );\n\
+		final_color.xyz = mix( final_color.xyz, bg, clamp( o.Reflectivity, 0.0, 1.0) );\n\
+		return final_color;\n\
+	}\n\
+";
+
+var reflection_disabled_code = "\n\
+	vec4 applyReflection( Input IN, SurfaceOutput o, vec4 final_color )\n\
+	{\n\
+		return final_color;\n\
+	}\n\
+";
+
+var reflection_block = new LS.ShaderBlock("applyReflection");
+ShaderMaterial.reflection_block = reflection_block;
+reflection_block.addCode( GL.FRAGMENT_SHADER, reflection_code, reflection_disabled_code );
+reflection_block.register();
+
+// IRRADIANCE *************************************
+var irradiance_code = "\n\
+	uniform samplerCube irradiance_texture;\n\
+	\n\
+	void applyIrradiance( in SurfaceOutput o, inout FinalLight FINALLIGHT )\n\
+	{\n\
+		FINALLIGHT.Ambient *= textureCube( irradiance_texture, o.Normal ).xyz;\n\
+	}\n\
+";
+
+var irradiance_disabled_code = "\n\
+	void applyIrradiance( in SurfaceOutput o, inout FinalLight FINALLIGHT )\n\
+	{\n\
+	}\n\
+";
+
+var irradiance_block = new LS.ShaderBlock("applyIrradiance");
+ShaderMaterial.irradiance_block = irradiance_block;
+irradiance_block.addCode( GL.FRAGMENT_SHADER, irradiance_code, irradiance_disabled_code );
+irradiance_block.register();
 
 /**
 * Formats is the class where all the info about what is every format, how to parse it, etc, is located
@@ -45532,6 +45716,11 @@ global.Collada = {
 				parent = init_from.innerHTML;
 			else {
 				var source = xmlnewparams[i].querySelector("source");
+				if(!parent)
+				{
+					console.warn("no source found for material for newparam");
+					continue;
+				}
 				parent = source.innerHTML;
 			}
 

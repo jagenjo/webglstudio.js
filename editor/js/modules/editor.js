@@ -40,8 +40,6 @@ var EditorModule = {
 		
 		SelectionModule.setSelection( scene.root );
 
-		document.addEventListener("keydown", this.globalKeyDown.bind(this), false );
-
 		var scene = localStorage.getItem("_refresh_scene");
 		if(scene)
 			setTimeout(function(){ 
@@ -50,13 +48,19 @@ var EditorModule = {
 			},1000);
 		else
 		{
-			//set default scene
-			LS.GlobalScene.root.addComponent( new LS.Components.Skybox() );
+			this.resetScene();
 		}
 
 		EditorModule.refreshAttributes();
 
 		this.registerCommands();
+	},
+
+	resetScene: function()
+	{
+		//set default scene
+		LS.GlobalScene.clear();
+		LS.GlobalScene.root.addComponent( new LS.Components.Skybox() );
 	},
 
 	registerCommands: function()
@@ -757,6 +761,10 @@ var EditorModule = {
 		
 		var inspector = new LiteGUI.Inspector( {name_width:"50%"});
 		inspector.showObjectFields( render_context );
+		inspector.addButton(null,"Clear Textures",{ callback: function(){
+			render_context.clearTextures();
+			LS.GlobalScene.refresh();
+		}});
 
 		inspector.onchange = function(){
 			if(callback)
@@ -1434,12 +1442,13 @@ var EditorModule = {
 		}
 	},
 
+	//show the context menu of a component
 	showComponentContextMenu: function( component, event, prev_menu )
 	{
 		if( !component || !component.constructor.is_component )
 			return;
 
-		var actions = LS.Component.getActions( component );
+		var actions = LS.BaseComponent.getActions( component );
 		if(!actions)
 			return;
 
@@ -2052,28 +2061,6 @@ var EditorModule = {
 		}
 
 		this.focusCameraInBoundingBox( bbox );
-	},
-
-	/* send keydown to current tab */
-	globalKeyDown: function(e) {
-		var target_element = e.target.nodeName.toLowerCase();
-		if(target_element === "input" || target_element === "textarea" || target_element === "select")
-			return;
-
-		if(LiteGUI.focus_widget && LiteGUI.focus_widget.onKeyDown)
-		{
-			var r = LiteGUI.focus_widget.onKeyDown(e);
-			if(r)
-				return;
-		}
-
-		var current_tab = LiteGUI.main_tabs.current_tab[2];
-		if(!current_tab) 
-			return;
-
-		var module = current_tab.module;
-		if(module && module.onKeyDown)
-			return module.onKeyDown(e);
 	},
 
 	//key actions

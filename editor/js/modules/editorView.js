@@ -657,19 +657,19 @@ LS.Camera.prototype.renderEditor = function( node_selected, component_selected )
 
 LS.Components.ReflectionProbe.prototype.renderEditor = function()
 {
-	if(!this._texture || !LS.Components.ReflectionProbe.render_helpers || !LS.Components.ReflectionProbe.helper_size )
+	if(!this._texture || !LS.Components.ReflectionProbe.visualize_helpers || !LS.Components.ReflectionProbe.helper_size )
 		return;
 
-	this.renderProbe();
+	this.renderProbe( LS.Components.ReflectionProbe.visualize_irradiance );
 }
 
 
 LS.Components.ReflectionProbe.prototype.renderPicking = function()
 {
-	if(!this._texture || !LS.Components.ReflectionProbe.render_helpers || !LS.Components.ReflectionProbe.helper_size )
+	if(!this._texture || !LS.Components.ReflectionProbe.visualize_helpers || !LS.Components.ReflectionProbe.helper_size )
 		return;
 
-	this.renderProbe( LS.Picking.getNextPickingColor( this._root, [this] ) );
+	this.renderProbe(false, LS.Picking.getNextPickingColor( this._root, [this] ) );
 }
 
 

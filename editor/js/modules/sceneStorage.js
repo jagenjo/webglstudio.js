@@ -4,6 +4,9 @@
 var SceneStorageModule = {
 	name: "scene_storage",
 	localscene_prefix: "wgl_localscenes_",
+	scene_templates: {
+		"empty":null
+	},
 	
 	preferences: {
 		show_guest_warning: true
@@ -60,25 +63,103 @@ var SceneStorageModule = {
 
 	onNewScene: function()
 	{
-		LiteGUI.confirm("Are you sure?", function(v) {
-			if(!v)
+		//cheap way to check for changed stuff
+		var res = Object.keys( LS.GlobalScene.getResources() );
+		var components = LS.GlobalScene.root._components.map(a=>a.constructor.name.toString()).join(" ");
+		var modified = LS.GlobalScene.root.childNodes.length || res.length || components != "GlobalInfo Camera Light Skybox";
+
+		if(!modified)
+			inner_new()
+		else
+			LiteGUI.confirm("Are you sure?", function(v) {
+				if(!v)
+					return;
+				inner_new();
+			});
+
+		function inner_new()
+		{
+			LS.ResourcesManager.reset();
+			LS.Renderer.reset();
+			EditorModule.resetScene(); //does the clear and attaches default components
+			SceneStorageModule.showNewSceneDialog();
+		}
+	},
+
+	showNewSceneDialog: function()
+	{
+		var dialog = LiteGUI.Dialog.getDialog("dialog_new_scene");
+		if(dialog)
+			return;
+
+		dialog = new LiteGUI.Dialog( { id: "dialog_new_scene", title:"New Scene", close: true, minimize: true, width: 420, height: 320, scroll: false, draggable: true});
+
+		var widgets = new LiteGUI.Inspector({ name_width: 160 });
+		dialog.add(widgets);
+
+		var name_widget = widgets.addString("Name","",{ placeHolder:"write name..." });
+		var folder_widget = widgets.addFolder("Folder", ProfileModule.user ? ProfileModule.user.username + "/projects" : "" );
+		var create_folder_widget = widgets.addCheckbox("Create project folder",true);
+		var data_folder_widget = widgets.addString("data subfolder","data");
+
+		var template_names = Object.keys( this.scene_templates );
+		var template_widget = widgets.addCombo("Templates", "empty", { values: template_names });
+
+		widgets.addButtons(null,["Create","Skip"], { className:"big", callback: function(button){
+			if(button == "Skip")
+			{
+				dialog.close();
+				return;
+			}
+
+			inner_create();
+			
+			dialog.close();
+		}});
+
+		dialog.show();
+		dialog.adjustSize();
+		name_widget.focus();
+
+		function inner_create()
+		{
+			var name = name_widget.getValue();
+			var folder = folder_widget.getValue();
+			var template = SceneStorageModule.scene_templates[ template_widget.getValue() ];
+			if(!name)
 				return;
 
-			LS.ResourcesManager.reset();
-			LS.GlobalScene.clear();
-			LS.Renderer.reset();
-		});
+			name = name.toLowerCase();
+			if(create_folder_widget.getValue() == true)
+				folder += "/" + name;
+			if( name.indexOf(".json") == -1 )
+				name += ".json";
+
+			LS.GlobalScene.extra.filename = name;
+			LS.GlobalScene.extra.folder = folder;
+			LS.GlobalScene.extra.fullname = folder + "/" + name;
+			LS.GlobalScene.extra.data_folder = folder + "/" + data_folder_widget.getValue();
+
+			if(!ProfileModule.user)
+				return LiteGUI.alert("User not logged, cannot create folder");
+
+			if(create_folder_widget.getValue())
+			{
+				DriveModule.serverCreateFolder( LS.GlobalScene.extra.folder );
+				DriveModule.serverCreateFolder( LS.GlobalScene.extra.data_subfolder );
+			}
+		}
 	},
 
 	showLoadSceneFromServerDialog: function()
 	{
-		if(!LoginModule.session)
+		if(!ProfileModule.session)
 		{
 			var dialog = LiteGUI.alert("You must be logged in to load scenes, click the <button>Login</button> button.");
 			var button = dialog.content.querySelector("button");
 			button.addEventListener("click", function(){
 				dialog.close();
-				LoginModule.showLoginDialog();
+				ProfileModule.showLoginDialog();
 			});
 			return;
 		}
@@ -91,7 +172,7 @@ var SceneStorageModule = {
 		dialog = new LiteGUI.Dialog( { id: "dialog_load_scene", title:"Load Scene", close: true, minimize: true, width: 520, height: 320, scroll: false, draggable: true});
 		dialog.show();
 
-		var split = new LiteGUI.Split("load_scene_split",[50,50]);
+		var split = new LiteGUI.Split([50,50]);
 		dialog.add( split );
 
 		var right_pane_style = split.getSection(1).style;
@@ -218,6 +299,8 @@ var SceneStorageModule = {
 		{
 			if(msg)
 				msg.kill();
+
+			scene.extra.filename = LS.ResourcesManager.getFilename( fullpath );
 			scene.extra.folder = LS.ResourcesManager.getFolder( fullpath );
 			scene.extra.fullpath = fullpath;
 			that.onSceneReady( scene );
@@ -257,6 +340,9 @@ var SceneStorageModule = {
 			//EditorModule.inspect(scene);
 			EditorModule.inspect(scene.root);
 		}
+
+		if(scene.extra.folder)
+			DriveModule.selectFolder(scene.extra.folder);
 
 		LEvent.trigger( scene, "scene_loaded" );
 	},
@@ -311,31 +397,32 @@ var SceneStorageModule = {
 
 	showSaveSceneInServerDialog: function( on_complete )
 	{
-		var scene_name = "";
-		var scene_folder = "";
+		var scene = LS.GlobalScene;
+		var scene_name = scene.extra.filename || "";
+		var scene_folder = scene.extra.folder || ProfileModule.user ? ProfileModule.user.username : "";
 		var scene = LS.GlobalScene;
 
-		if(!LoginModule.session)
+		if(!ProfileModule.session)
 		{
 			var dialog = LiteGUI.alert("You must be logged in to save scenes, click the <button>Login</button> button.");
 			var button = dialog.content.querySelector("button");
 			button.addEventListener("click", function(){
 				dialog.close();
-				LoginModule.showLoginDialog();
+				ProfileModule.showLoginDialog();
 			});
 			return;
 		}
 
-		if(LoginModule.session.user.username == "guest" && this.preferences.show_guest_warning )
+		if(ProfileModule.session.user.username == "guest" && this.preferences.show_guest_warning )
 		{
-			LoginModule.showGuestAlert();
+			ProfileModule.showGuestAlert();
 			return;
 		}
 
-		var dialog = new LiteGUI.Dialog({ id: "dialog_save_scene", title:"Save Scene", close: true, minimize: true, width: 520, height: 300, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog({ id: "dialog_save_scene", title:"Save Scene", close: true, minimize: true, width: 530, height: 320, scroll: false, draggable: true});
 		dialog.show('fade');
 
-		var split = new LiteGUI.Split("save_scene_split",[50,50]);
+		var split = new LiteGUI.Split([50,"calc(50% - 1px)"]);
 		dialog.add(split);
 
 		if(scene.extra && scene.extra.filename)
@@ -349,7 +436,7 @@ var SceneStorageModule = {
 		var filename_widget = widgets.addString("Filename", scene_name , { placeHolder: "choose a name", callback: function(v) { 
 			scene_name = v;
 		}});
-		var folder_widget = widgets.addString("Folder", "", { callback: function(v) { 
+		var folder_widget = widgets.addString("Folder", scene_folder, { callback: function(v) { 
 			scene_folder = v;
 		}});
 		var scenes = { id:"Server", children: [] };
@@ -420,7 +507,7 @@ var SceneStorageModule = {
 				if(!v)
 					return;
 
-				LoginModule.session.createFolder( scene_folder, function(v){
+				ProfileModule.session.createFolder( scene_folder, function(v){
 					if(v)
 						inner_save();
 					else
@@ -481,7 +568,7 @@ var SceneStorageModule = {
 		var dialog = new LiteGUI.Dialog({ id: "dialog_load_scene", title:"Load Scene", close: true, minimize: true, width: 520, height: 300, scroll: false, draggable: true });
 		dialog.show('fade');
 
-		var split = new LiteGUI.Split("load_scene_split",[50,50]);
+		var split = new LiteGUI.Split([50,50]);
 		dialog.add(split);
 
 		var selected = null;

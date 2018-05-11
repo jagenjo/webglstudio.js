@@ -582,19 +582,24 @@ LScript.prototype.callMethod = function( name, argv, expand_parameters, parent_o
 
 	if(!LScript.catch_exceptions)
 	{
+		//call expanding parameters
 		if(argv && argv.constructor === Array && expand_parameters)
 			return this._context[name].apply(this._context, argv);
+		//call without expanding parameters
 		return this._context[name].call(this._context, argv);
 	}
 
 	try
 	{
+		//call expanding parameters
 		if(argv && argv.constructor === Array && expand_parameters)
 			return this._context[name].apply(this._context, argv);
+		//call without expanding parameters
 		return this._context[name].call(this._context, argv);
 	}
 	catch(err)
 	{
+		//catch error in script, detect line and show console info
 		var error_line = LScript.computeLineFromError(err);
 		var parent_info = ""; 
 		if (parent_object && parent_object.toInfoString )
@@ -610,7 +615,6 @@ LScript.prototype.callMethod = function( name, argv, expand_parameters, parent_o
 			console.error("Error line: " + error_line);
 		if(this.onerror)
 			this.onerror({ error: err, msg: err.toString(), line: error_line, lscript: this, code: this._last_executed_code, method_name: name });
-		//throw new Error( err.stack ); //TEST THIS
 	}
 }
 
@@ -815,7 +819,9 @@ global.LScript = LScript;
 if( !Uint8Array.prototype.toJSON )
 {
 	var typed_arrays = [ Uint8Array, Int8Array, Uint16Array, Int16Array, Uint32Array, Int32Array, Float32Array, Float64Array ];
-	typed_arrays.forEach( function(v) { v.prototype.toJSON = function(){ return Array.prototype.slice.call(this); } } );
+	typed_arrays.forEach( function(v) { 
+		v.prototype.toJSON = function(){ return Array.prototype.slice.call(this); }
+	});
 }
 
 if( typeof(GL) === "undefined" )
@@ -935,8 +941,8 @@ var LS = {
 			component.actions = {};
 
 		//add default methods
-		LS.extendClass( component, LS.Component );
-		Component.addExtraMethods( component );
+		LS.extendClass( component, LS.BaseComponent );
+		BaseComponent.addExtraMethods( component );
 
 		if( LS.debug )
 		{
@@ -2672,6 +2678,18 @@ var Input = {
 		});
 	}
 };
+
+
+Object.defineProperty( MouseEvent.prototype, "getRay", { value: function(){
+		//get camera under position
+		var camera = LS.Renderer.getCameraAtPosition( this.mousex, this.mousey, LS.Renderer._visible_cameras );
+		if(!camera)
+			return null;
+		//get ray
+		return camera.getRay( this.mousex, this.mousey );
+	},
+	enumerable: false 
+});
 
 LS.Input = Input;
 
@@ -11310,10 +11328,10 @@ CompositePattern.prototype.getHierarchyLevel = function()
 * instead components get all the methods from this class attached when the component is registered.
 * Components can overwrite this methods if they want.
 *
-* @class  Component
+* @class  BaseComponent
 * @namespace  LS
 */
-function Component(o)
+function BaseComponent(o)
 {
 	if(o)
 		this.configure(o);
@@ -11323,7 +11341,7 @@ function Component(o)
 * Returns the node where this components is attached
 * @method getRootNode
 **/
-Component.prototype.getRootNode = function()
+BaseComponent.prototype.getRootNode = function()
 {
 	return this._root;
 }
@@ -11333,7 +11351,7 @@ Component.prototype.getRootNode = function()
 * @method configure
 * @param {Object} o object with the serialized info
 **/
-Component.prototype.configure = function(o)
+BaseComponent.prototype.configure = function(o)
 { 
 	if( !o )
 		return;
@@ -11350,7 +11368,7 @@ Component.prototype.configure = function(o)
 * @method serialize
 * @return {Object} object with the serialized info
 **/
-Component.prototype.serialize = function()
+BaseComponent.prototype.serialize = function()
 {
 	var o = LS.cloneObject(this,null,false,false,true);
 	if(this.uid) //special case, not enumerable
@@ -11369,7 +11387,7 @@ Component.prototype.serialize = function()
 * @method clone
 * @return {*} component clone
 **/
-Component.prototype.clone = function()
+BaseComponent.prototype.clone = function()
 {
 	var data = this.serialize();
 	data.uid = null; //remove id when cloning
@@ -11386,7 +11404,7 @@ Component.prototype.clone = function()
 * @param {Function} setter [optional] setter function, otherwise one will be created
 * @param {Function} getter [optional] getter function, otherwise one will be created
 **/
-Component.prototype.createProperty = function( name, value, type, setter, getter )
+BaseComponent.prototype.createProperty = function( name, value, type, setter, getter )
 {
 	if(this[name] !== undefined)
 		return; //console.warn("createProperty: this component already has a property called " + name );
@@ -11494,7 +11512,7 @@ Component.prototype.createProperty = function( name, value, type, setter, getter
 }
 
 //not finished
-Component.prototype.createAction = function( name, callback, options )
+BaseComponent.prototype.createAction = function( name, callback, options )
 {
 	var safe_name = name.replace(/ /gi,"_"); //replace spaces
 	this[ safe_name ] = callback;
@@ -11508,7 +11526,7 @@ Component.prototype.createAction = function( name, callback, options )
 * @param {string} property_name [optional] you can pass the name of a property in this component
 * @return {String} the locator string of this component
 **/
-Component.prototype.getLocator = function( property_name )
+BaseComponent.prototype.getLocator = function( property_name )
 {
 	if(!this._root)
 		return "";
@@ -11521,7 +11539,7 @@ Component.prototype.getLocator = function( property_name )
 	return this._root.uid + "/" + this.uid;
 }
 
-Component.prototype.getPropertyInfoFromPath = function( path )
+BaseComponent.prototype.getPropertyInfoFromPath = function( path )
 {
 	if( !path.length )
 		return null;
@@ -11582,7 +11600,7 @@ Component.prototype.getPropertyInfoFromPath = function( path )
 * @param {String} method_name 
 * @param {*} data
 **/
-Component.prototype.broadcastMessage = function( method_name, data )
+BaseComponent.prototype.broadcastMessage = function( method_name, data )
 {
 	var node = this._root;
 	if(!node)
@@ -11596,7 +11614,7 @@ Component.prototype.broadcastMessage = function( method_name, data )
 * @param {String|Component} class_name the name of the class in string format or the component class itself
 * @return {*} Component or null
 **/
-Component.prototype.getComponent = function( class_name )
+BaseComponent.prototype.getComponent = function( class_name )
 {
 	if(!this._root)
 		return null;
@@ -11613,7 +11631,7 @@ Component.prototype.getComponent = function( class_name )
 * @param {Function} setter [optional] setter function, otherwise one will be created
 * @param {Function} getter [optional] getter function, otherwise one will be created
 **/
-Component.prototype.bind = function( object, method, callback )
+BaseComponent.prototype.bind = function( object, method, callback )
 {
 	var instance = this;
 	if(arguments.length > 3 )
@@ -11658,7 +11676,7 @@ Component.prototype.bind = function( object, method, callback )
 	return LEvent.bind( object, method, callback, instance );
 }
 
-Component.prototype.unbind = function( object, method, callback )
+BaseComponent.prototype.unbind = function( object, method, callback )
 {
 	var instance = this;
 
@@ -11680,7 +11698,7 @@ Component.prototype.unbind = function( object, method, callback )
 	return r;
 }
 
-Component.prototype.unbindAll = function()
+BaseComponent.prototype.unbindAll = function()
 {
 	if( !this.__targeted_instances )
 		return;
@@ -11691,7 +11709,7 @@ Component.prototype.unbindAll = function()
 }
 
 //called by register component to add setters and getters to registered Component Classes
-Component.addExtraMethods = function( component )
+BaseComponent.addExtraMethods = function( component )
 {
 	//add uid property
 	Object.defineProperty( component.prototype, 'uid', {
@@ -11748,7 +11766,7 @@ Component.addExtraMethods = function( component )
 
 
 
-LS.Component = Component;
+LS.BaseComponent = BaseComponent;
 
 /**
 * This class contains all the info about a resource and it works as a template for any resource class
@@ -20071,6 +20089,21 @@ RenderFrameContext.prototype.getDepthTexture = function()
 	return this._depth_texture || null;
 }
 
+/**
+* Fills the textures with a flat color
+* @method clearTextures
+*/
+RenderFrameContext.prototype.clearTextures = function()
+{
+	for(var i = 0; i < this._textures.length; ++i)
+	{
+		var texture = this._textures[i];
+		if(!texture)
+			continue;
+		texture.fill([0,0,0,0]);
+	}
+}
+
 //enables the FBO and sets every texture with a flag so it cannot be used during the rendering process
 RenderFrameContext.enableFBO = function( fbo, adjust_aspect )
 {
@@ -20533,8 +20566,11 @@ var Renderer = {
 		LEvent.trigger(scene, "beforeRenderScene", camera );
 		LEvent.trigger(this, "beforeRenderScene", camera );
 
+		//in case the user wants to filter instances
+		LEvent.trigger(this, "computeVisibility", this._visible_instances );
+
 		//here we render all the instances
-		this.renderInstances( render_settings );
+		this.renderInstances( render_settings, this._visible_instances );
 
 		//send after events
 		LEvent.trigger( scene, "afterRenderScene", camera );
@@ -20609,8 +20645,7 @@ var Renderer = {
 
 		//Draw allows to render debug info easily
 		Draw.reset(); //clear 
-		Draw.setCameraPosition( camera.getEye( Draw.camera_position ) );
-		Draw.setViewProjectionMatrix( this._view_matrix, this._projection_matrix, this._viewprojection_matrix );
+		Draw.setCamera( camera );
 
 		LEvent.trigger( camera, "afterEnabled", render_settings );
 		LEvent.trigger( scene, "afterCameraEnabled", camera ); //used to change stuff according to the current camera (reflection textures)
@@ -20789,7 +20824,7 @@ var Renderer = {
 				if( instance.onPreRender( render_settings ) === false)
 					continue;
 
-			if(!instance.material) //somethinig went wrong
+			if(!instance.material) //in case something went wrong...
 				continue;
 
 			var material = instance.material;
@@ -22414,6 +22449,8 @@ var Draw = {
 				u_color: this.color,
 				u_camera_position: this.camera_position,
 				u_point_size: this.point_size,
+				u_point_perspective: 0,
+				u_perspective: 1, //viewport.w * this._projection_matrix[5]
 				u_texture: 0
 		};
 
@@ -22446,11 +22483,15 @@ var Draw = {
 			#endif\n\
 			uniform mat4 u_viewprojection;\n\
 			uniform float u_point_size;\n\
+			uniform float u_perspective;\n\
+			uniform float u_point_perspective;\n\
+			float computePointSize(float radius, float w)\n\
+			{\n\
+				if(radius < 0.0)\n\
+					return -radius;\n\
+				return u_perspective * radius / w;\n\
+			}\n\
 			void main() {\n\
-				gl_PointSize = u_point_size;\n\
-				#ifdef USE_SIZE\n\
-					gl_PointSize = a_extra;\n\
-				#endif\n\
 				#ifdef USE_TEXTURE\n\
 					v_coord = a_coord;\n\
 				#endif\n\
@@ -22459,6 +22500,12 @@ var Draw = {
 				#endif\n\
 				vec3 vertex = ( u_model * vec4( a_vertex, 1.0 )).xyz;\n\
 				gl_Position = u_viewprojection * vec4(vertex,1.0);\n\
+				gl_PointSize = u_point_size;\n\
+				#ifdef USE_SIZE\n\
+					gl_PointSize = a_extra;\n\
+				#endif\n\
+				if(u_point_perspective != 0.0)\n\
+					gl_PointSize = computePointSize( gl_PointSize, gl_Position.w );\n\
 			}\
 			';
 
@@ -22744,12 +22791,14 @@ var Draw = {
 	/**
 	* Sets the point size
 	* @method setPointSize
-	* @param {number} v
+	* @param {number} v size of points
+	* @param {number} perspective [optional] if set to true, the points will be affected by perspective
 	*/
-	setPointSize: function(v)
+	setPointSize: function(v, perspective)
 	{
 		this.point_size = v;
 		this.uniforms.u_point_size = v;
+		this.uniforms.u_point_perspective = perspective ? 1 : 0;
 	},
 
 	/**
@@ -22779,6 +22828,7 @@ var Draw = {
 		this.view_matrix.set( camera._view_matrix );
 		this.projection_matrix.set( camera._projection_matrix );
 		this.viewprojection_matrix.set( camera._viewprojection_matrix );
+		this.uniforms.u_perspective = gl.viewport_data[3] * this.projection_matrix[5];
 	},
 
 	/**
@@ -26180,14 +26230,20 @@ Object.defineProperty( Camera.prototype, "center", {
 * @property focalLength {Number}
 * @default (depends)
 */
+var tmp = vec3.create();
+
 Object.defineProperty( Camera.prototype, "focalLength", {
 	get: function() {
 		return vec3.distance( this._eye, this._center );
 	},
 	set: function(v) {
-		var tmp = vec3.create();
+		v = Math.max(0.001,v); //avoid 0
 		vec3.sub( tmp, this._center, this._eye );
-		vec3.normalize( tmp, tmp );
+		var length = vec3.length(tmp);
+		if(length < 0.0001)
+			tmp.set([0,0,-1]);
+		else
+			v /= length;
 		vec3.scaleAndAdd( tmp, this._eye, tmp, v );
 		this._center.set( tmp );
 		this._must_update_view_matrix = true;
@@ -33966,7 +34022,7 @@ GeometricPrimitive.prototype.onRemovedFromNode = function( node )
 
 GeometricPrimitive.prototype.serialize = function()
 {
-	var r = LS.Component.prototype.serialize.call(this);
+	var r = LS.BaseComponent.prototype.serialize.call(this);
 	if(this._geometry == GeometricPrimitive.CUSTOM && this._custom_mesh)
 		r.custom_mesh = this._custom_mesh.toJSON();
 
@@ -33975,7 +34031,7 @@ GeometricPrimitive.prototype.serialize = function()
 
 GeometricPrimitive.prototype.configure = function(o)
 {
-	LS.Component.prototype.configure.call(this,o);
+	LS.BaseComponent.prototype.configure.call(this,o);
 
 	//legacy
 	if(this._geometry == GeometricPrimitive.PLANE && o.align_z === false )
@@ -37184,7 +37240,19 @@ ReflectionProbe.prototype.updateCubemap = function( position, render_settings )
 		LS.Renderer.regenerateShadowmaps( scene, render_settings );
 	}
 
+	//avoid reusing same irradiance from previous pass
+	var tmp = null;
+	if( LS.GlobalScene.info.textures.irradiance == this._irradiance_texture )
+	{
+		tmp = LS.GlobalScene.info.textures.irradiance;
+		LS.GlobalScene.info.textures.irradiance = null;
+	}
+
+	//render all the scene inside the cubemap
 	LS.Renderer.renderToCubemap( position, 0, texture, render_settings, this.near, this.far, this.background_color );
+
+	if(tmp)
+		LS.GlobalScene.info.textures.irradiance = tmp;
 
 	texture._in_current_fbo = false;
 
@@ -37222,10 +37290,15 @@ ReflectionProbe.prototype.updateIrradiance = function()
 		return;
 
 	var cubemap = this._texture;
+	var type = this.high_precision ? gl.HIGH_PRECISION_FORMAT : gl.UNSIGNED_BYTE;
 
 	if(!ReflectionProbe._downscale_cubemap)
+	{
 		ReflectionProbe._downscale_cubemap = new GL.Texture( 32, 32, { texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGB, filter: gl.LINEAR } );
-	var downscale_cubemap = ReflectionProbe._downscale_cubemap;
+		ReflectionProbe._downscale_cubemap_high = new GL.Texture( 32, 32, { type: gl.HIGH_PRECISION_FORMAT, texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGB, filter: gl.LINEAR } );
+	}
+
+	var downscale_cubemap = this.high_precision ? ReflectionProbe._downscale_cubemap_high : ReflectionProbe._downscale_cubemap;
 
 	//downscale
 	cubemap.copyTo( downscale_cubemap );
@@ -37239,8 +37312,8 @@ ReflectionProbe.prototype.updateIrradiance = function()
 
 	//downscale again
 	var irradiance_cubemap = this._irradiance_texture;
-	if(!irradiance_cubemap)
-		irradiance_cubemap = this._irradiance_texture = new GL.Texture( 4, 4, { texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGB, filter: gl.LINEAR } );
+	if(!irradiance_cubemap || irradiance_cubemap.type != type)
+		irradiance_cubemap = this._irradiance_texture = new GL.Texture( 4, 4, { type: type, texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGB, filter: gl.LINEAR } );
 	downscale_cubemap.copyTo( irradiance_cubemap );
 
 	//blur again
@@ -37279,7 +37352,7 @@ ReflectionProbe.prototype.assignCubemaps = function( scene )
 }
 
 
-ReflectionProbe.prototype.renderProbe = function( picking_color )
+ReflectionProbe.prototype.renderProbe = function( visualize_irradiance, picking_color )
 {
 	if( !this._texture || !this._enabled )
 		return;
@@ -37291,14 +37364,22 @@ ReflectionProbe.prototype.renderProbe = function( picking_color )
 	if(!picking_color) //regular texture
 	{
 		var shader = GL.Shader.getCubemapShowShader();
-		this._texture.bind(0);
+
+        if(visualize_irradiance)
+		    this._irradiance_texture.bind(0);
+        else
+		    this._texture.bind(0);
+            
 		LS.Draw.renderMesh( LS.Renderer._sphere_mesh, GL.TRIANGLES, shader );
-		LS.Draw.setColor( LS.WHITE );
-		LS.Draw.scale( 1.1 );
-		gl.enable( gl.CULL_FACE );
-		gl.frontFace( gl.CW );
-		LS.Draw.renderMesh( LS.Renderer._sphere_mesh, GL.TRIANGLES );
-		gl.frontFace( gl.CCW );
+        if(1) //contour
+        {
+            LS.Draw.setColor( LS.WHITE );
+            LS.Draw.scale( 1.1 );
+            gl.enable( gl.CULL_FACE );
+            gl.frontFace( gl.CW );
+            LS.Draw.renderMesh( LS.Renderer._sphere_mesh, GL.TRIANGLES );
+            gl.frontFace( gl.CCW );
+        }
 	}
 	else
 	{
@@ -37331,7 +37412,8 @@ ReflectionProbe.objectToCubemap = function( data, out )
 	return out;
 }
 
-ReflectionProbe.render_helpers = true;
+ReflectionProbe.visualize_helpers = true;
+ReflectionProbe.visualize_irradiance = false;
 ReflectionProbe.helper_size = 1;
 
 LS.registerComponent( ReflectionProbe );
@@ -37364,17 +37446,17 @@ function Script(o)
 			return this._root.getComponent(type,index)
 			}).bind(this),
 		getLocator: function() { return this.getComponent().getLocator() + "/context"; },
-		createProperty: LS.Component.prototype.createProperty,
-		createAction: LS.Component.prototype.createAction,
-		bind: LS.Component.prototype.bind,
-		unbind: LS.Component.prototype.unbind,
-		unbindAll: LS.Component.prototype.unbindAll
+		createProperty: LS.BaseComponent.prototype.createProperty,
+		createAction: LS.BaseComponent.prototype.createAction,
+		bind: LS.BaseComponent.prototype.bind,
+		unbind: LS.BaseComponent.prototype.unbind,
+		unbindAll: LS.BaseComponent.prototype.unbindAll
 	};
 
 	this._script.onerror = this.onError.bind(this);
 	this._script.exported_functions = [];
 	this._last_error = null;
-	this._breakpoint_on_call = false;
+	this._breakpoints = null;
 
 	if(o)
 		this.configure(o);
@@ -37417,6 +37499,7 @@ Script.defineAPIFunction( "onFinish", Script.BIND_TO_SCENE, "finish" );
 Script.defineAPIFunction( "onPrefabReady", Script.BIND_TO_NODE, "prefabReady" );
 //behaviour
 Script.defineAPIFunction( "onUpdate", Script.BIND_TO_SCENE, "update" );
+Script.defineAPIFunction( "onFixedUpdate", Script.BIND_TO_SCENE, "fixedUpdate" );
 Script.defineAPIFunction( "onNodeClicked", Script.BIND_TO_NODE, "node_clicked" );
 Script.defineAPIFunction( "onClicked", Script.BIND_TO_NODE, "clicked" );
 //rendering
@@ -37530,6 +37613,44 @@ Script.prototype.reload = function()
 {
 	this.processCode();
 }
+
+/**
+* It will stop the execution when this method is called, but only if the console is open and the method is an event related method (onRender, onUpdate, etc)
+* @method setBreakpoint
+* @param {String} method_name name of the method to add breakpoint
+* @param {Boolean} value true to set, false to remove
+*/
+Script.prototype.setBreakpoint = function( method_name, value )
+{
+	if(!this._breakpoints && !value)
+		return;
+
+	if(!this._breakpoints)
+		this._breakpoints = {};
+
+	if(value)
+		this._breakpoints[ method_name ] = true;
+	else
+	{
+		delete this._breakpoints[ method_name ];
+		if( Object.keys(this._breakpoints).length == 0 )
+			this._breakpoints = null;
+	}
+}
+
+/**
+* tells if there is a breakpoint set (using addBreakpoint) in this method
+* @method hasBreakpoint
+* @param {String} method_name name of the method to check if it has a breakpoint
+* @return {Boolean} true if there is a breakpoint
+*/
+Script.prototype.hasBreakpoint = function( method_name )
+{
+	if(!this._breakpoints)
+		return false;
+	return this._breakpoints[ method_name ];
+}
+
 
 /**
 * This is the method in charge of compiling the code and executing the constructor, which also creates the context.
@@ -37667,18 +37788,33 @@ Script.prototype.onAction = function( action, params )
 		return ctx.onAction( action, params );
 }
 
-Script.prototype.getActions = function()
+/**
+* get actions that could be performed from graphs or animations
+* @method getActions
+*/
+Script.prototype.getActions = function(actions)
 {
 	var ctx = this.getContext();
-	if(ctx.getActions)
-		return ctx.getActions();
+	if(!ctx || !ctx.getActions)
+		return actions;
+
+	var new_actions = ctx.getActions();
+	if(new_actions)
+		for(var i in new_actions)
+			actions[i] = new_actions[i];
+	return actions;
 }
 
+/**
+* get events that could be triggered by this component
+* @method getEvents
+*/
 Script.prototype.getEvents = function()
 {
 	var ctx = this.getContext();
-	if(ctx.getEvents)
-		return ctx.getEvents();
+	if(!ctx || !ctx.getEvents)
+		return null;
+	return ctx.getEvents();
 }
 
 /*
@@ -37866,10 +38002,15 @@ Script.prototype.onScriptEvent = function( event_type, params )
 	var event_info = LS.Script.API_events_to_function[ type ];
 	if(!event_info)
 		return; //????
-	if(this._breakpoint_on_call)
+
+	var has_breakpoint = false;
+	if( this._breakpoints )
 	{
-		this._breakpoint_on_call = false;
-		{{debugger}} //stops the execution if the console is open
+		if( this._breakpoints[ event_info.name ] )
+		{
+			has_breakpoint = true;
+			this.setBreakpoint( event_info.name, false );
+		}
 	}
 
 	if( this._blocked_functions.has( event_info.name ) ) //prevent calling code with errors
@@ -37877,6 +38018,9 @@ Script.prototype.onScriptEvent = function( event_type, params )
 		console.warn("Script: blocked function trying to be executed, skipping: " + event_info.name );
 		return;
 	}
+
+	if(has_breakpoint)
+		{{debugger}}; //stops the execution if the console is open
 
 	var r = this._script.callMethod( event_info.name, params, expand, this );
 	return r;
@@ -38296,19 +38440,8 @@ ScriptFromFile.prototype.onAction = function( action, params )
 		return ctx.onAction( action, params );
 }
 
-ScriptFromFile.prototype.getActions = function()
-{
-	var ctx = this.getContext();
-	if(ctx && ctx.getActions)
-		return ctx.getActions();
-}
-
-ScriptFromFile.prototype.getEvents = function()
-{
-	var ctx = this.getContext();
-	if(ctx && ctx.getEvents)
-		return ctx.getEvents();
-}
+ScriptFromFile.prototype.getActions = Script.prototype.getActions();
+ScriptFromFile.prototype.getEvents = Script.prototype.getEvents();
 
 ScriptFromFile.prototype.getResources = function(res)
 {
@@ -38524,7 +38657,7 @@ TerrainRenderer.prototype.updateMesh = function()
 	}
 
 	var mesh = new GL.Mesh({vertices:vertices,normals:normals,coords:coords},{triangles:triangles, wireframe: wireframe});
-	mesh.setBounding( [0,this.height*0.5,0], [hsize,this.height*0.5,hsize] );
+	mesh.setBoundingBox( [0,this.height*0.5,0], [hsize,this.height*0.5,hsize] );
 	this._mesh = mesh;
 	this._info = [ this.heightmap, this.size, this.height, this.subdivisions, this.smooth ];
 }
@@ -40698,6 +40831,8 @@ SceneTree.prototype.init = function()
 	this._start_time = 0; //in seconds
 	this._last_dt = 1/60; //in seconds
 	this._must_redraw = true;
+	this._fixed_update_timestep = 1/60;
+	this._remaining_fixed_update_time = 0;
 
 	if(this.selected_node) 
 		delete this.selected_node;
@@ -42043,7 +42178,7 @@ SceneTree.prototype.collectData = function()
 	{
 		var instance = instances[i];
 		//compute the axis aligned bounding box
-		if(instance.use_bounding) //no test if render_settings?
+		if(instance.use_bounding)
 			instance.updateAABB();
 	}
 
@@ -42106,6 +42241,12 @@ SceneTree.prototype.updateCollectedData = function()
 
 }
 
+/**
+* updates the scene (it handles variable update and fixedUpdate)
+*
+* @method update
+* @param {Number} dt delta time in seconds
+*/
 SceneTree.prototype.update = function(dt)
 {
 	/**
@@ -42128,7 +42269,25 @@ SceneTree.prototype.update = function(dt)
 	 * @param {number} dt
 	 */
 	LEvent.trigger(this,"update", dt);
-	//this.triggerInNodes("update",dt, true); //REMOVED
+
+	/**
+	 * Fired while updating but using a fixed timestep (1/60)
+	 *
+	 * @event fixedUpdate
+	 * @param {number} dt
+	 */
+	if(this._fixed_update_timestep > 0)
+	{
+		this._remaining_fixed_update_time += dt;
+		if(LEvent.hasBind(this,"fixedUpdate"))
+			while( this._remaining_fixed_update_time > this._fixed_update_timestep )
+			{
+				LEvent.trigger(this, "fixedUpdate", this._fixed_update_timestep );
+				this._remaining_fixed_update_time -= this._fixed_update_timestep;
+			}
+		else
+			this._remaining_fixed_update_time = this._remaining_fixed_update_time % this._fixed_update_timestep;
+	}
 
 	/**
 	 * Fired after updating the scene
@@ -42908,7 +43067,7 @@ SceneNode.prototype.getPropertyInfoFromPath = function( path )
 		if(!target)
 			return null;
 	}
-	else //¿?
+	else //ï¿½?
 	{
 	}
 
@@ -43004,7 +43163,7 @@ SceneNode.prototype.getPropertyValueFromPath = function( path )
 		if(!target)
 			return null;
 	}
-	else //¿?
+	else //ï¿½?
 	{
 	}
 
@@ -43632,11 +43791,16 @@ SceneNode.prototype.addMeshComponents = function( mesh_id, extra_info )
 	var compo = new LS.Components.MeshRenderer( mesh_render_config );
 
 	//parsed meshes have info about primitive
-	if( mesh.primitive === "line_strip" )
-	{
-		compo.primitive = 3;
+	if( mesh.primitive )
+    {
+        switch(mesh.primitive)
+        {
+    		case 'points': compo.primitive = GL.POINTS; break;
+    		case 'lines': compo.primitive = GL.LINES; break;
+    		case 'line_strip': compo.primitive = GL.LINE_STRIP; break;
+        }
 		delete mesh.primitive;
-	}
+    }
 
 	//add MeshRenderer
 	this.addComponent( compo );

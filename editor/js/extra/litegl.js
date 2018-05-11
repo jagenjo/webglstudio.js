@@ -616,6 +616,33 @@ global.RGBToHex = function(r, g, b) {
 	return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
 
+global.HUEToRGB = function ( p, q, t ){
+	if(t < 0) t += 1;
+	if(t > 1) t -= 1;
+	if(t < 1/6) return p + (q - p) * 6 * t;
+	if(t < 1/2) return q;
+	if(t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+	return p;
+}
+
+global.HSLToRGB = function( h, s, l, out ){
+	var r, g, b;
+	out = out || vec3.create();
+	if(s == 0){
+		r = g = b = l; // achromatic
+	}else{
+		var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+		var p = 2 * l - q;
+		r = HUEToRGB(p, q, h + 1/3);
+		g = HUEToRGB(p, q, h);
+		b = HUEToRGB(p, q, h - 1/3);
+	}
+	out[0] = r;
+	out[1] = g;
+	out[2] = b;
+	return out;
+}
+
 global.hexColorToRGBA = (function() {
 	//to change the color: from http://www.w3schools.com/cssref/css_colorsfull.asp
 	var string_colors = {
@@ -637,33 +664,6 @@ global.hexColorToRGBA = (function() {
 		gold: [1, 0.843137264251709, 0],
 		transparent: [0,0,0,0]
 	};
-
-	function hue2rgb( p, q, t ){
-		if(t < 0) t += 1;
-		if(t > 1) t -= 1;
-		if(t < 1/6) return p + (q - p) * 6 * t;
-		if(t < 1/2) return q;
-		if(t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-		return p;
-	}
-
-	function hslToRgb( h, s, l, out ){
-		var r, g, b;
-		out = out || vec3.create();
-		if(s == 0){
-			r = g = b = l; // achromatic
-		}else{
-			var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-			var p = 2 * l - q;
-			r = hue2rgb(p, q, h + 1/3);
-			g = hue2rgb(p, q, h);
-			b = hue2rgb(p, q, h - 1/3);
-		}
-		out[0] = r;
-		out[1] = g;
-		out[2] = b;
-		return out;
-	}
 
 	return function( hex, color, alpha )
 	{
@@ -705,7 +705,7 @@ global.hexColorToRGBA = (function() {
 	{
 		var str = hex.substr(5);
 		str = str.split(",");
-		hslToRgb( parseInt( str[0] ) / 360, parseInt( str[1] ) / 100, parseInt( str[2] ) / 100, color );
+		HSLToRGB( parseInt( str[0] ) / 360, parseInt( str[1] ) / 100, parseInt( str[2] ) / 100, color );
 		color[3] = parseFloat( str[3] ) * alpha;
 		return color;
 	}
@@ -729,7 +729,7 @@ global.hexColorToRGBA = (function() {
 	{
 		var str = hex.substr(5);
 		str = str.split(",");
-		hslToRgb( parseInt( str[0] ) / 360, parseInt( str[1] ) / 100, parseInt( str[2] ) / 100, color );
+		HSLToRGB( parseInt( str[0] ) / 360, parseInt( str[1] ) / 100, parseInt( str[2] ) / 100, color );
 		return color;
 	}
 
@@ -737,7 +737,7 @@ global.hexColorToRGBA = (function() {
 	//the rest
 	// Expand shorthand form (e.g. "03F") to full form (e.g. "0033FF")
 	var shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
-	hex = hex.replace(shorthandRegex, function(m, r, g, b) {
+	hex = hex.replace( shorthandRegex, function(m, r, g, b) {
 		return r + r + g + g + b + b;
 	});
 
@@ -2051,6 +2051,13 @@ GL.Buffer.prototype.upload = function( stream_type ) { //default gl.STATIC_DRAW 
 		case Uint32Array: this.buffer.gl_type = gl.UNSIGNED_INT; break;
 		case Float32Array: this.buffer.gl_type = gl.FLOAT; break;
 		default: throw("unsupported buffer type");
+	}
+
+	if(this.target == gl.ARRAY_BUFFER && ( this.buffer.gl_type == gl.INT || this.buffer.gl_type == gl.UNSIGNED_INT ))
+	{
+		console.warn("WebGL does not support UINT32 or INT32 as vertex buffer types, converting to FLOAT");
+		this.buffer.gl_type = gl.FLOAT;
+		data = new Float32Array(data);
 	}
 
 	gl.bindBuffer(this.target, this.buffer);
@@ -10838,18 +10845,14 @@ global.planeBoxOverlap = GL.planeBoxOverlap = function planeBoxOverlap(plane, bo
 	var center = box; //.subarray(0,3);
 	var halfsize = box; //.subarray(3,6);
 
-	var tmp = vec3.fromValues(
-		Math.abs( halfsize[3] * n[0] ),
-		Math.abs( halfsize[4] * n[1] ),
-		Math.abs( halfsize[5] * n[2] )
-	);
-
-	var radius = tmp[0]+tmp[1]+tmp[2];
+	var radius = Math.abs( halfsize[3] * n[0] ) + Math.abs( halfsize[4] * n[1] ) + Math.abs( halfsize[5] * n[2] );
 	var distance = vec3.dot(n,center) + d;
 
-	if (distance <= - radius) return CLIP_OUTSIDE;
-	else if (distance <= radius) return CLIP_OVERLAP;
-	else return CLIP_INSIDE;
+	if (distance <= -radius)
+		return CLIP_OUTSIDE;
+	else if (distance <= radius)
+		return CLIP_OVERLAP;
+	return CLIP_INSIDE;
 }
 
 /**

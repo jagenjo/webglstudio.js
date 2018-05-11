@@ -320,7 +320,7 @@ var LabModule = {
 				LS.Draw.renderMesh( mesh, gl.TRIANGLES, LS.Draw.shader_phong );
 				gl.enable( gl.BLEND );
 
-				if(1) //wireframe
+				if( mesh.vertexBuffers["vertices"] ) //wireframe
 				{
 					if(!mesh.indexBuffers["wireframe"])
 						mesh.computeWireframe();

@@ -120,7 +120,7 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 	if(camera.type != LS.Camera.ORTHO2D)
 	{
 		if(camera.type == LS.Camera.PERSPECTIVE)
-			inspector.addNumber("Fov", camera.fov, { pretitle: AnimationModule.getKeyframeCode( camera, "fov"), min: 2, max: 180, units:'º', callback: function (value) { camera.fov = value; }});
+			inspector.addNumber("Fov", camera.fov, { pretitle: AnimationModule.getKeyframeCode( camera, "fov"), min: 2, max: 180, units:'ï¿½', callback: function (value) { camera.fov = value; }});
 		inspector.addNumber("Aspect", camera.aspect, { pretitle: AnimationModule.getKeyframeCode( camera, "aspect" ), min: 0.1, max: 10, step: 0.01, callback: function (value) { camera.aspect = value; }});
 	}
 	inspector.addNumber("Near", camera.near, { pretitle: AnimationModule.getKeyframeCode( camera, "near" ), callback: function (value) { camera.near = value; }});
@@ -1002,8 +1002,11 @@ LS.Components.Poser.showPoseNodesDialog = function( component, event )
 LS.Components.ReflectionProbe.onShowProperties = function( component, inspector )
 {
 	inspector.addButton( null, "update", function(){ component.updateTextures(null,true); LS.GlobalScene.requestFrame(); });
-	inspector.widgets_per_row = 2;
-	inspector.addCheckbox( "Visualize probes", LS.Components.ReflectionProbe.render_helpers, function(v){ LS.Components.ReflectionProbe.render_helpers = v; LS.GlobalScene.requestFrame(); });
+    inspector.addSeparator();
+
+	inspector.widgets_per_row = 3;
+	inspector.addCheckbox( "Visualize", LS.Components.ReflectionProbe.visualize_helpers, function(v){ LS.Components.ReflectionProbe.visualize_helpers = v; LS.GlobalScene.requestFrame(); });
+	inspector.addCheckbox( "Irradiance", LS.Components.ReflectionProbe.visualize_irradiance, function(v){ LS.Components.ReflectionProbe.visualize_irradiance = v; LS.GlobalScene.requestFrame(); });
 	inspector.addNumber( "Size", LS.Components.ReflectionProbe.helper_size, function(v){ LS.Components.ReflectionProbe.helper_size = v; LS.GlobalScene.requestFrame(); });
 	inspector.widgets_per_row = 1;
 }

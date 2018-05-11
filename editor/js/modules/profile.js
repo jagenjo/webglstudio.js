@@ -1,8 +1,8 @@
 // This module controls how you login to the system, create user, etc
 // It is tightly connected to LiteFileServer because it uses its user authentification system
 
-var LoginModule = { 
-	name: "login",
+var ProfileModule = { 
+	name: "profile",
 
 	server_ready: false,
 	session: null,
@@ -12,6 +12,11 @@ var LoginModule = {
 	},
 
 	init: function()
+	{
+		this.createProfilePanel();
+	},
+
+	createProfilePanel: function()
 	{
 		var loginarea = document.createElement("div");
 		loginarea.id = "login-area";
@@ -25,7 +30,7 @@ var LoginModule = {
 
 		if(!CORE.server_url)
 		{
-			console.warn("No server url found in LoginModule from config.json.");
+			console.warn("No server url found in ProfileModule from config.json.");
 			inner(null); //shows the reconnect button
 		}
 
@@ -38,7 +43,7 @@ var LoginModule = {
 				loginarea.innerHTML = "not connected <button class='litebutton btn'>reconnect</button>";
 				loginarea.querySelector("button").addEventListener( "click", function(e){ 
 					if(!CORE.server_url)
-						return LiteGUI.alert("config.json not loaded in LoginModule");
+						return LiteGUI.alert("config.json not loaded in ProfileModule");
 					LFS.setup( CORE.server_url, inner );
 					e.preventDefault();	
 					return true;
@@ -46,8 +51,8 @@ var LoginModule = {
 				return;
 			}
 
-			LoginModule.server_ready = true;
-			LoginModule.checkSession();
+			ProfileModule.server_ready = true;
+			ProfileModule.checkSession();
 		}
 	},
 
@@ -89,7 +94,7 @@ var LoginModule = {
 		info.style.paddingLeft = "10px";
 		dialog.add(info);
 		var checkbox = new LiteGUI.Checkbox(false,function(v){
-			LoginModule.preferences.show_guest_warning = !v;
+			ProfileModule.preferences.show_guest_warning = !v;
 		});
 		info.appendChild( checkbox.root );
 	},
@@ -99,8 +104,8 @@ var LoginModule = {
 		var dialog = LiteGUI.alert("<p>You are connected as <span style='color:white'>GUEST</span> user. Guest users cannot save their work so if you want to save your creations or your resources consider going to <button class='litebutton'>Create Account</button> (its free).</p>", {title:"We have a problem"});
 		dialog.content.querySelector("button").addEventListener("click", function(e){
 			dialog.close();
-			LoginModule.logout( function(){ 
-				LoginModule.showLoginDialog(false,"create");
+			ProfileModule.logout( function(){ 
+				ProfileModule.showLoginDialog(false,"create");
 			});
 		});
 		dialog.setSize(400,200);
@@ -112,19 +117,19 @@ var LoginModule = {
 		{
 			this.loginarea.innerHTML = "logged as <a href=''>"+this.user.username+"</a> <button class='litebutton btn'>Logout</button>";
 			this.loginarea.querySelector("a").addEventListener( "click", function(e){ 
-				LoginModule.showAccountDialog();
+				ProfileModule.showAccountDialog();
 				e.preventDefault();	
 				return true;
 			});
 			this.loginarea.querySelector("button").addEventListener( "click", function() {
-				LoginModule.showLogoutDialog();
+				ProfileModule.showLogoutDialog();
 			});
 		}
 		else
 		{
 			this.loginarea.innerHTML = "not logged in <button class='litebutton btn'>Login</button>";
 			this.loginarea.querySelector("button").addEventListener("click", function() {
-				LoginModule.showLoginDialog();
+				ProfileModule.showLoginDialog();
 			});
 		}
 	},
@@ -143,7 +148,7 @@ var LoginModule = {
 
 			this.login_dialog.on_close = function()
 			{
-				LoginModule.login_dialog = null;
+				ProfileModule.login_dialog = null;
 			}
 			this.login_dialog.show('fade');
 			this.login_dialog.widgets = new LiteGUI.Inspector({ name_width: "40%" });
@@ -192,14 +197,14 @@ var LoginModule = {
 			}
 			else
 			{
-				LoginModule.login(username,password, inner_result );
+				ProfileModule.login(username,password, inner_result );
 				info.setValue("Waiting server...");
 			}
 		}
 
 		function inner_login_guest()
 		{
-			LoginModule.login("guest","guest", inner_result );
+			ProfileModule.login("guest","guest", inner_result );
 			info.setValue("Waiting server...");
 		}
 
@@ -217,9 +222,9 @@ var LoginModule = {
 					if(v)
 					{
 						create_info.setValue("Account created!");
-						LoginModule.login( username_widget.getValue(), password_widget.getValue() );
-						if( LoginModule.login_dialog )
-							LoginModule.login_dialog.close();
+						ProfileModule.login( username_widget.getValue(), password_widget.getValue() );
+						if( ProfileModule.login_dialog )
+							ProfileModule.login_dialog.close();
 					}
 					else if(resp)
 						create_info.setValue("Problem: " + resp.msg);
@@ -269,7 +274,7 @@ var LoginModule = {
 		function inner(v)
 		{
 			if(v)
-				LoginModule.logout();
+				ProfileModule.logout();
 		}
 	},
 
@@ -293,7 +298,7 @@ var LoginModule = {
 		widgets.addString( "Email", user.email, { disabled: true} );
 		widgets.addButton( null, "Change Password", function(){
 			dialog.close();
-			LoginModule.showChangePasswordDialog();
+			ProfileModule.showChangePasswordDialog();
 		
 		});
 		widgets.addButton( null, "Manage File System", function(){
@@ -341,7 +346,7 @@ var LoginModule = {
 				return;
 			dialog.close();
 			alert_dialog = LiteGUI.alert("Wait...");
-			LoginModule.session.setPassword( current_pass, new_pass, inner_complete	);
+			ProfileModule.session.setPassword( current_pass, new_pass, inner_complete	);
 		});
 		widgets.addButton( null, "Close", function(){
 			dialog.close();		
@@ -366,9 +371,9 @@ var LoginModule = {
 
 		function inner_success(session, response)
 		{
-			LoginModule.setSession(session);
+			ProfileModule.setSession(session);
 			if(callback)
-				callback(LoginModule.user);
+				callback(ProfileModule.user);
 		}
 
 		function inner_error(err)
@@ -382,8 +387,8 @@ var LoginModule = {
 			this.session.logout( inner_success );
 		function inner_success()
 		{
-			LoginModule.user = null;
-			LoginModule.setSession(null);
+			ProfileModule.user = null;
+			ProfileModule.setSession(null);
 			if(callback) 
 				callback();
 		}
@@ -395,4 +400,4 @@ var LoginModule = {
 	}
 };
 
-CORE.registerModule( LoginModule );
+CORE.registerModule( ProfileModule );

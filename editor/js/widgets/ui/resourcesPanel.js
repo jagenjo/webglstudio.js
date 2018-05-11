@@ -25,6 +25,7 @@ function ResourcesPanelWidget( options )
 	this.area.split("horizontal",[320,null],{draggable: true});
 	this.area.getSection(0).content.style.overflow = "auto";
 	this.area.getSection(0).content.style.backgroundColor = "black";
+    this.area.root.style.borderTop = "1px solid #222";
 	this.root.appendChild( this.area.root );
 
 	//tree
@@ -38,9 +39,9 @@ function ResourcesPanelWidget( options )
 	files_section.add( browser_root );
 	browser_root.split("vertical",[30,null]);
 
-	//craete top bar
+	//create top bar
 	var top_inspector = new LiteGUI.Inspector( { one_line: true } );
-	top_inspector.root.style.marginTop = "4px";
+	top_inspector.root.style.marginTop = "3px";
 
 	//filter by name
 	top_inspector.addString("Filter","",{ name_width: 40, content_width: 120, width: 160, callback: function(v) { 
@@ -145,7 +146,7 @@ ResourcesPanelWidget.prototype.update = function( callback )
 
 ResourcesPanelWidget.prototype.createTreeWidget = function()
 {
-	var tree_widget = new LiteGUI.Tree( this.getTreeData(), { allow_rename: true, indent_offset: -1 } );
+	var tree_widget = new LiteGUI.Tree( this.getTreeData(), { allow_rename: true, collapsed_depth: 3, indent_offset: -1 } );
 	tree_widget.root.classList.add("resources-tree");
 	tree_widget.root.style.backgroundColor = "black";
 	tree_widget.root.style.padding = "5px";
@@ -187,6 +188,7 @@ ResourcesPanelWidget.prototype.createTreeWidget = function()
 	tree_widget.root.addEventListener("item_selected", function(e) {
 		var info = e.detail;
 		var item = info.data;
+        item.DOM.listbox.expand();
 
 		if(item.className)
 		{
@@ -380,6 +382,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 				var img = new Image();
 				img.src = preview;
 				img.style.maxWidth = 200;
+                img.style.width = "100%";
 				DriveModule.generated_previews[ res_name ] = img;
 				preview = img;
 			}
@@ -419,6 +422,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 		{
 			var img = new Image();
 			img.src = preview;
+            img.style.width = "100%";
 			img.style.maxWidth = 200;
 			img.onerror = function() { this.parentNode.removeChild( this ); }
 		}

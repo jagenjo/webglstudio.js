@@ -704,6 +704,17 @@ var LiteGUI = {
 		return elem;
 	},
 
+	getParents: function(element)
+	{
+		var elements = [];
+		while ((element = element.parentElement) !== null) {
+			if (element.nodeType !== Node.ELEMENT_NODE)
+				continue;
+			elements.push(elem);
+		}
+		return elements;
+	},
+
 	//used to create a window that retains all the CSS info or the scripts.
 	newWindow: function(title, width, height, options)
 	{
@@ -1982,7 +1993,6 @@ LiteGUI.ContextMenu = ContextMenu;
 LiteGUI.ContextualMenu = ContextMenu; //LEGACY: REMOVE
 
 
-//the tiny box to expand the children of a node
 function Checkbox( value, on_change)
 {
 	var that = this;
@@ -3298,13 +3308,23 @@ LiteGUI.Console = Console;
 	* @class Split
 	* @constructor
 	*/
-	function Split(id, sections, options)
+	function Split( sections, options, legacy )
 	{
 		options = options || {};
 
+		if(sections && sections.constructor === String)
+		{
+			var id = sections;
+			sections = options;
+			options = legacy || {};
+			options.id = id;
+			console.warn("LiteGUI.Split legacy parameter, use sections as first parameter instead of id.");
+		}
+
 		var root = document.createElement("div");
 		this.root = root;
-		root.id = id;
+		if(options.id)
+			root.id = id;
 		root.className = "litesplit " + (options.vertical ? "vsplit" : "hsplit");
 		this.sections = [];
 
@@ -4673,6 +4693,10 @@ LiteGUI.Console = Console;
 		if(options.height)
 			this.root.style.height = typeof(options.height) == "string" ? options.height : Math.round(options.height) + "px";
 
+        this.collapsed_depth = 3;
+        if(options.collapsed_depth != null)
+            this.collapsed_depth = options.collapsed_depth;
+
 		//bg click
 		root.addEventListener("click", function(e){
 			if(e.srcElement != that.root)
@@ -4710,14 +4734,13 @@ LiteGUI.Console = Console;
 	* @method updateTree
 	* @param {object} data
 	*/
-	Tree.prototype.updateTree = function(data)
+	Tree.prototype.updateTree = function( data )
 	{
 		this.root.innerHTML = "";
-		var root_item = this.createAndInsert( data, this.options, null);
+		var root_item = this.createAndInsert( data, this.options, null );
 		if(root_item)
 		{
 			root_item.className += " root_item";
-			//this.root.appendChild(root_item);
 			this.root_item = root_item;
 		}
 		else
@@ -4803,7 +4826,7 @@ LiteGUI.Console = Console;
 		}
 
 		//update collapse button
-		this._updateListBox( element, options );
+		this._updateListBox( element, options, child_level );
 
 		if(options && options.selected)
 			this.markAsSelected( element, true );
@@ -4999,7 +5022,6 @@ LiteGUI.Console = Console;
 			title_element.className += " " + data.className;
 
 		title_element.innerHTML = "<span class='precontent'></span><span class='indentblock'></span><span class='collapsebox'></span><span class='incontent'></span><span class='postcontent'></span>";
-
 
 		var content = data.content || data.id || "";
 		title_element.querySelector(".incontent").innerHTML = content;
@@ -5370,7 +5392,7 @@ LiteGUI.Console = Console;
 	* @method expandItem
 	* @param {string} id
 	*/
-	Tree.prototype.expandItem = function(id)
+	Tree.prototype.expandItem = function(id, parents)
 	{
 		var item = this.getItem(id);
 		if(!item)
@@ -5379,7 +5401,14 @@ LiteGUI.Console = Console;
 		if(!item.listbox)
 			return;
 
-		listbox.setValue(true); //this propagates changes
+		item.listbox.setValue(true); //this propagates changes
+
+		if(!parents)
+			return;
+
+		var parent = this.getParent( item );
+		if(parent)
+			this.expandItem(parent,parents);
 	}
 
 	/**
@@ -5473,6 +5502,9 @@ LiteGUI.Console = Console;
 		this.markAsSelected(node);
 		if( scroll && !this._skip_scroll )
 			this.scrollToItem(node);
+
+		//expand parents
+		this.expandItem( node, true );
 
 		if(send_event)
 			LiteGUI.trigger( node, "click" );
@@ -5860,7 +5892,7 @@ LiteGUI.Console = Console;
 	}
 
 	//updates the widget to collapse
-	Tree.prototype._updateListBox = function( node, options )
+	Tree.prototype._updateListBox = function( node, options, current_level )
 	{
 		if(!node)
 			return;
@@ -5880,7 +5912,7 @@ LiteGUI.Console = Console;
 			node.listbox = box;
 		}
 
-		if(options && options.collapsed)
+		if( (options && options.collapsed) || current_level >= this.collapsed_depth )
 			node.listbox.collapse();
 
 		var child_elements = this.getChildren( node.dataset["item_id"] );
@@ -8572,8 +8604,7 @@ Inspector.prototype.addSlider = function(name, value, options)
 Inspector.prototype.addCheckbox = function(name, value, options)
 {
 	options = this.processOptions(options);
-
-	value = value || "";
+	value = !!value;
 	var that = this;
 	this.values[name] = value;
 
@@ -8592,21 +8623,23 @@ Inspector.prototype.addCheckbox = function(name, value, options)
 	});
 
 	element.addEventListener("click", function() {
-		var v = !this.data;
-		this.data = v;
-		element.querySelector("span.flag").innerHTML = v ? label_on : label_off;
-		if(v)
+		value = !value;
+		element.querySelector("span.flag").innerHTML = value ? label_on : label_off;
+		if(value)
 			checkbox.classList.add("on");
 		else
 			checkbox.classList.remove("on");
-		Inspector.onWidgetChange.call(that,element,name,v, options);
+		Inspector.onWidgetChange.call(that,element,name,value, options);
 	});
 	
-	element.data = value;
+	element.getValue = function() { 
+		return value;
+	}
 
 	element.setValue = function(v,skip_event) { 
 		if(v === undefined)
 			return;
+		value = v;
 		if(	that.values[name] != v && !skip_event)
 			LiteGUI.trigger( checkbox, "click" ); 
 	};
@@ -8703,11 +8736,16 @@ Inspector.prototype.addCombo = function(name, value, options)
 	var select = element.querySelector(".wcontent select");
 	select.addEventListener("change", function(e) { 
 		var index = e.target.value;
-		var value = values[index];
+		value = values[index];
 		if(stop_event)
 			return;
 		Inspector.onWidgetChange.call( that,element,name,value, options );
 	});
+
+	element.getValue = function()
+	{
+		return value;		
+	}
 
 	element.setValue = function(v, skip_event) { 
 		if(v === undefined)

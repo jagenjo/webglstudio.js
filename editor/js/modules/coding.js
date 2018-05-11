@@ -159,6 +159,28 @@ var CodingModule = //do not change
 		}
 	},
 
+	onShowBreakpointDialog: function( component )
+	{
+		var context = component.getContext();
+		if(!context)
+		{
+			LiteGUI.alert("Script without context");
+			return;
+		}
+
+		var dialog = new LiteGUI.Dialog( { title: "Select breakpoints", close: true, width: 200, height: 410, resizable: true, scroll: true, draggable: true});
+		var widgets = new LiteGUI.Inspector({height: "100%"});
+		dialog.add( widgets );
+		for(var i in context)
+		{
+			if( !isFunction( context[i] ) || !context.hasOwnProperty(i) )
+				continue;
+			widgets.addCheckbox(i,component.hasBreakpoint(i),{ method:i, name_width: 150,callback: function(v){ component.setBreakpoint( this.options.method,v); }});
+		}
+
+		dialog.show();
+	},
+
 	//used to extract editor options of a given instance
 	extractOptionsFromInstance: function( instance, options )
 	{
@@ -679,7 +701,7 @@ LS.Components.Script.actions["breakpoint_on_call"] = {
 			console.warn("Script is not attached to a node?");
 			return;
 		}
-		this._breakpoint_on_call = true;
+		CodingModule.onShowBreakpointDialog(this);
 	}
 };
 

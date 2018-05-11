@@ -59,6 +59,8 @@ var InterfaceModule = {
 		this.createSidePanel();
 
 		LiteGUI.createDropArea( mainarea.root, this.onItemDrop.bind(this) );
+		
+		document.addEventListener("keydown", this.globalKeyDown.bind(this), false );
 
 		//window.onbeforeunload = function() { return "You work will be lost."; };
 	},
@@ -252,11 +254,37 @@ var InterfaceModule = {
 		}
 	},
 
-	/*
-	inspectNode: function(node)
+	// send keydown to current tab module
+	globalKeyDown: function(e)
 	{
+
+		if(e.keyCode == 27 && document.activeElement.closest ) //ESC: close dialog
+		{
+			var dialog_element = document.activeElement.closest(".litedialog");
+			if( dialog_element && dialog_element.dialog )
+				dialog_element.dialog.close();
+			return;
+		}
+
+		var target_element = e.target.nodeName.toLowerCase();
+		if(target_element === "input" || target_element === "textarea" || target_element === "select")
+			return;
+
+		if(LiteGUI.focus_widget && LiteGUI.focus_widget.onKeyDown)
+		{
+			var r = LiteGUI.focus_widget.onKeyDown(e);
+			if(r)
+				return;
+		}
+
+		var current_tab = LiteGUI.main_tabs.current_tab[2];
+		if(!current_tab) 
+			return;
+
+		var module = current_tab.module;
+		if(module && module.onKeyDown)
+			return module.onKeyDown(e);
 	},
-	*/
 
 	//show side panel
 	toggleInspectorTab: function()

@@ -307,7 +307,7 @@ var LiteFileServer = {
 
 		//apply "../", sometimes this gives me problems
 		var result = [];
-		for(var i = 1; i < t.length; i++)
+		for(var i = 0; i < t.length; i++)
 		{
 			if(t[i] == "..")
 				result.pop();
@@ -315,7 +315,7 @@ var LiteFileServer = {
 				result.push( t[i] );
 		}
 
-		return protocol + t.join("/");
+		return protocol + result.join("/");
 	},
 
 	getFullpath: function(unit,folder,filename)

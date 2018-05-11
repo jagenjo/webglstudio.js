@@ -2781,7 +2781,7 @@ Timeline.prototype.onItemDrop = function(e)
 
 	if( locator )
 	{
-		this.processInsertLocator( locator );
+		this.processInsertLocator( locator, { add_keyframe: false } );
 		/*
 		var info = LS.GlobalScene.getPropertyInfo( locator );
 		if(!info)

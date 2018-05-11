@@ -882,11 +882,15 @@ var DriveModule = {
 
 	showSelectFolderDialog: function(callback, callback_close, default_folder )
 	{
-		if(!LoginModule.session)
+		if(!ProfileModule.session)
 		{
 			LiteGUI.alert("You must be logged in to select a folder");
 			return;
 		}
+
+
+		default_folder = default_folder || ("/" + ProfileModule.user.username);
+
 
 		this.serverGetFolders( inner );
 
@@ -900,21 +904,30 @@ var DriveModule = {
 
 			var data = DriveModule.convertToTree( tree_data );
 
-			var dialog = new LiteGUI.Dialog( { id: "select-folder-dialog", title:"Select folder", close: true, width: 360, height: 240, scroll: false, draggable: true});
+			var dialog = new LiteGUI.Dialog( { id: "select-folder-dialog", title:"Select folder", close: true, width: 360, height: 260, scroll: false, draggable: true});
+			var selected = null;
 
-			var tree_widget = new LiteGUI.Tree( data , { id: "files-tree", allow_rename: false, height: 200} );
+			var inspector = new LiteGUI.Inspector();
+			var folder_widget = inspector.addString("Folder",default_folder,{ callback: function(v){
+				selected = v;
+			}});
+
+			dialog.add(inspector);
+
+			var tree_widget = new LiteGUI.Tree( data , { id: "files-tree", allow_rename: false, height: 220} );
 
 			tree_widget.root.style.backgroundColor = "#111";
 			tree_widget.root.style.padding = "5px";
 			tree_widget.root.style.width = "100%";
 			tree_widget.root.style.overflow = "auto";
+			tree_widget.setSelectedItem( default_folder );
 
 			dialog.add( tree_widget );
-			var selected = null;
 
 			tree_widget.root.addEventListener("item_selected", function(e) {
 				var data = e.detail;
 				selected = data.item.data;
+				folder_widget.setValue(selected.fullpath, false);
 			});
 
 			dialog.addButton("Select", { className: "big", callback: function ()
@@ -927,8 +940,7 @@ var DriveModule = {
 				dialog.close();
 			}});
 
-
-			dialog.adjustSize(20);
+			dialog.adjustSize(0);
 			dialog.show('fade');
 
 			if(default_folder)
@@ -1091,8 +1103,8 @@ var DriveModule = {
 		}
 
 		//fetch info
-		if(LoginModule.session)
-			LoginModule.session.getFileInfo( fullpath, function(info) { 
+		if(ProfileModule.session)
+			ProfileModule.session.getFileInfo( fullpath, function(info) { 
 				if(info)
 					DriveModule.processServerResource(info); 
 			});
@@ -1206,7 +1218,7 @@ var DriveModule = {
 		{
 			if(!v)
 				return;
-			LoginModule.session.moveFolder( origin_fullpath, target_fullpath, inner_complete );
+			ProfileModule.session.moveFolder( origin_fullpath, target_fullpath, inner_complete );
 		}
 
 		function inner_complete(v)
@@ -1661,7 +1673,7 @@ var DriveModule = {
 
 	checkFolderExist: function( folder_name, on_complete )
 	{
-		LoginModule.session.checkFolderExist(folder_name, function(v){
+		ProfileModule.session.checkFolderExist(folder_name, function(v){
 			if(on_complete)
 				on_complete(v);
 		});
@@ -1680,13 +1692,7 @@ var DriveModule = {
 		}
 
 		//extra from scene
-		var pack_folder = "";
-		if( LS.GlobalScene.extra.folder )
-			pack_folder = LS.GlobalScene.extra.folder;
-		var pack_filename = LS.generateUId("").substr(1) + ".PACK";
-		if( LS.GlobalScene.extra.filename )
-			pack_filename = LS.RM.getBasename( LS.GlobalScene.extra.filename ) + ".PACK";
-		var files_folder = pack_folder;
+		var files_folder = LS.GlobalScene.extra.data_folder || LS.GlobalScene.extra.folder;
 
 		var dialog = new LiteGUI.Dialog( { title:"Resources not saved", closable: true, draggable: true, width: 400 });
 		var widgets = new LiteGUI.Inspector();
@@ -1735,6 +1741,18 @@ var DriveModule = {
 					DriveModule.saveResource( resource, function() { widgets.refresh() }, { skip_alerts: true } );
 				});
 
+			widgets.addFolder("Folder", files_folder, { name_width: 60, callback: function(v){
+				files_folder = v;
+			}});
+			widgets.addButton(null,"Save them", inner_save_modified );
+
+			/*
+			if( LS.GlobalScene.extra.folder )
+				data_folder = LS.GlobalScene.extra.folder;
+			var pack_filename = LS.generateUId("").substr(1) + ".PACK";
+			if( LS.GlobalScene.extra.filename )
+				pack_filename = LS.RM.getBasename( LS.GlobalScene.extra.filename ) + ".PACK";
+
 			widgets.addTitle("Save individually");
 			widgets.addButton(null,"Save only modified ones", inner_save_modified );
 			widgets.widgets_per_row = 2;
@@ -1762,6 +1780,7 @@ var DriveModule = {
 				dialog.close();
 				inner_save_to_pack();
 			}});
+			*/
 
 			widgets.widgets_per_row = 1;
 			widgets.addSeparator();
@@ -1814,6 +1833,7 @@ var DriveModule = {
 			widgets.refresh();
 		}
 
+		/*
 		function inner_save_to_pack()
 		{
 			var alert_dialog = LiteGUI.alert("Saving...");
@@ -1841,6 +1861,7 @@ var DriveModule = {
 				DriveModule.saveResource( pack, inner_complete );
 			}
 		}
+		*/
 
 		function inner_complete( res )
 		{
@@ -2022,14 +2043,14 @@ var DriveModule = {
 	serverGetFolders: function(on_complete)
 	{
 		var that = this;
-		if(!LoginModule.session)
+		if(!ProfileModule.session)
 		{
 			if(on_complete)
 				on_complete(null);
 			return;
 		}
 
-		LoginModule.session.getUnitsAndFolders(function(units){
+		ProfileModule.session.getUnitsAndFolders(function(units){
 			that.units = units;
 			if(on_complete)
 				on_complete(units);
@@ -2039,10 +2060,10 @@ var DriveModule = {
 	serverGetFiles: function(folder, on_complete)
 	{
 		var that = this;
-		if(!LoginModule.session)
+		if(!ProfileModule.session)
 			throw("Session not found");
 
-		LoginModule.session.getFilesByPath( folder, function(files){
+		ProfileModule.session.getFilesByPath( folder, function(files){
 			if(on_complete)
 				on_complete(files);
 		});
@@ -2051,16 +2072,16 @@ var DriveModule = {
 	serverSearchFiles: function( filter, on_complete, on_error )
 	{
 		var that = this;
-		if(!LoginModule.session)
+		if(!ProfileModule.session)
 			throw("Session not found");
 
 		if(!filter || typeof(filter) != "object")
 			throw("filter must be object");
 
 		if(filter.category)
-			LoginModule.session.searchByCategory( filter.category, inner, inner_error );
+			ProfileModule.session.searchByCategory( filter.category, inner, inner_error );
 		else if(filter.filename)
-			LoginModule.session.searchByFilename( filter.filename, inner, inner_error );
+			ProfileModule.session.searchByFilename( filter.filename, inner, inner_error );
 
 		function inner( files ){
 			if(on_complete)
@@ -2075,17 +2096,17 @@ var DriveModule = {
 
 	serverCopyFile: function( fullpath, new_fullpath, on_complete )
 	{
-		LoginModule.session.copyFile( fullpath, new_fullpath, on_complete );
+		ProfileModule.session.copyFile( fullpath, new_fullpath, on_complete );
 	},
 
 	serverMoveFile: function( fullpath, new_fullpath, on_complete )
 	{
-		LoginModule.session.moveFile( fullpath, new_fullpath, on_complete );
+		ProfileModule.session.moveFile( fullpath, new_fullpath, on_complete );
 	},
 
 	serverDeleteFile: function(fullpath, on_complete)
 	{
-		LoginModule.session.deleteFile( fullpath, on_complete );
+		ProfileModule.session.deleteFile( fullpath, on_complete );
 	},
 
 	//Takes into account if the file is already uploaded
@@ -2111,7 +2132,7 @@ var DriveModule = {
 				info.category = resource.category;
 
 			//update info like filename, category and metadata (and maybe preview)
-			LoginModule.session.updateFileInfo( fullpath, info, 
+			ProfileModule.session.updateFileInfo( fullpath, info, 
 				function(v,resp){ //on_complete
 					console.log("updated!");
 					if(on_complete)
@@ -2182,7 +2203,7 @@ var DriveModule = {
 		}
 		*/
 
-		LoginModule.session.uploadFile( fullpath, data, extra_info, 
+		ProfileModule.session.uploadFile( fullpath, data, extra_info, 
 			function(v,resp){ //on_complete
 				console.log("uploaded: ", fullpath );
 				if(on_complete)
@@ -2204,24 +2225,24 @@ var DriveModule = {
 
 	serverUpdatePreview: function( fullpath, preview, on_complete, on_error)
 	{
-		console.warn("Quarantine method");
-		LoginModule.session.updateFilePreview( fullpath, preview, on_complete, on_error);
+		//console.warn("Quarantine method");
+		ProfileModule.session.updateFilePreview( fullpath, preview, on_complete, on_error);
 	},
 
 	serverCreateFolder: function( name, on_complete, on_error )
 	{
-		console.warn("Quarantine method");
+		//console.warn("Quarantine method");
 		if(!name)
 			return;
-		LoginModule.session.createFolder( name, on_complete, on_error );
+		ProfileModule.session.createFolder( name, on_complete, on_error );
 	},
 
 	serverDeleteFolder: function(name, on_complete)
 	{
-		console.warn("Quarantine method");
+		//console.warn("Quarantine method");
 		if(!name)
 			return;
-		LoginModule.session.deleteFolder( name, function(v,resp){
+		ProfileModule.session.deleteFolder( name, function(v,resp){
 			if(on_complete)
 				on_complete(v);
 		});

@@ -303,6 +303,7 @@ InspectorWidget.prototype.showComponentsInterface = function( object, inspector 
 		this.inspector.showComponent( component, inspector );
 	}
 
+	//missing components are components which class is not found in the system, we keep them in case the class will be loaded afterwards
 	if( object._missing_components && object._missing_components.length )
 	{
 		for(var i = 0; i < object._missing_components.length; ++i )
@@ -346,13 +347,15 @@ InspectorWidget.prototype.inspectScene = function( scene )
 	inspector.on_refresh = function()
 	{
 		inspector.clear();
+		inspector.addTitle("Info");
+		inspector.addString("Fullname", scene.extra.fullname || "", { name_width: 120 });
+		inspector.addFolder("Data folder", scene.extra.data_folder || "", { name_width: 120, callback: function(v) { scene.extra.data_folder = v; }});
+
 		inspector.addTitle("Metadata");
-		inspector.addString("Title", scene.extra.title || "", function(v) { scene.extra.title = v; });
-		inspector.addString("Author", scene.extra.author || "", function(v) { scene.extra.author = v; });
-		inspector.addTextarea("Comments", scene.extra.comments || "", { callback: function(v) { scene.extra.comments = v; } });
+		inspector.addString("Author", scene.extra.author || "", { name_width: 120, callback: function(v) { scene.extra.author = v; }});
 		inspector.addSeparator();
 		if( window.PlayModule )
-		inspector.addStringButton("Test URL", scene.extra.test_url || "", { callback: function(v) { scene.extra.test_url = v; }, callback_button: function(){
+		inspector.addStringButton("Test URL", scene.extra.test_url || "", { name_width: 120, button: "&#9658;", callback: function(v) { scene.extra.test_url = v; }, callback_button: function(){
 			PlayModule.launch();
 		}});
 		inspector.addSeparator();
@@ -471,6 +474,7 @@ InspectorWidget.prototype.inspectScene = function( scene )
 			inspector.refresh();
 		}});
 
+		inspector.addSeparator();
 		inspector.addButton(null,"Show Root Node", function(){
 			that.inspect(LS.GlobalScene.root);
 		});
@@ -767,6 +771,7 @@ LiteGUI.Inspector.prototype.showComponentTitle = function(component, inspector)
 
 }
 
+//displays a component info (title, options button, etc)
 LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 {
 	if(!component)
@@ -869,7 +874,7 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 		EditorModule.showComponentContextMenu( component, e );
 		e.preventDefault();
 		e.stopPropagation();
-	}		
+	}
 
 	var drag_counter = 0; //hack because HTML5 sux sometimes
 

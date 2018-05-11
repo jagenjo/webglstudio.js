@@ -212,12 +212,13 @@ var MeshTools = {
 		var vertices_buffer = mesh.getBuffer("vertices");
 		if(!vertices_buffer)
 			return false;
-		var coords_buffer = mesh.getBuffer("coords");
-		if(!vertices_buffer)
-			return false;
 		var vertices = vertices_buffer.data;
-		var coords = coords_buffer.data;
 		var num = vertices.length / 3;
+
+		var coords_buffer = mesh.getBuffer("coords");
+		if(!coords_buffer) //generate?
+			coords_buffer = mesh.createVertexBuffer( "coords",null,null,new Float32Array(num*2) );
+		var coords = coords_buffer.data;
 		var bounding = mesh.getBoundingBox();
 		var min = BBox.getMin(bounding);
 		var size = vec3.scale( vec3.create(), BBox.getHalfsize(bounding), 2 );
@@ -299,8 +300,11 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		{
 			case Float32Array: type = "Float32"; break;
 			case Float64Array: type = "Float64"; break;
+			case Int8Array: type = "Int8"; break;
 			case Uint8Array: type = "Uint8"; break;
+			case Int16Array: type = "Int16"; break;
 			case Uint16Array: type = "Uint16"; break;
+			case Int32Array: type = "Int32"; break;
 			case Uint32Array: type = "Uint32"; break;
 			default: type = "???"; break;
 		}

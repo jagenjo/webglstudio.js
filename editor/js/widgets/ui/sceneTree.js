@@ -163,19 +163,6 @@ function SceneTreeWidget( options )
 		parent_node.addChild(node,null,true);
 		this._ignore_events = false;
 
-		/*
-		var parent_node = parent_item.data.id != "scene-root-node" ? Scene.getNode(parent_item.data.node_uid) : null;
-		if(node && parent_node)
-		{
-			parent_node.addChild(node, true);
-		}
-		else if(node && node.parentNode) //remove from parent
-		{
-			node.parentNode.removeChild(node, true);
-		}
-		else
-			trace("node not found");
-		*/
 		RenderModule.requestFrame();
 	}
 
@@ -399,11 +386,6 @@ SceneTreeWidget.prototype.clear = function()
 	if(!this.tree)
 		return;
 	this.tree.clear(true);
-	/*
-	if(!this.scene_tree) return;
-	$(this.scene_tree.root).remove();
-	this.scene_tree = null;
-	*/
 }
 
 SceneTreeWidget.prototype.showContextMenu = function(e){

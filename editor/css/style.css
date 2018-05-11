@@ -269,6 +269,16 @@ body.player #work-area, body.player #main-area  {
 	transform: scale(1.1);
 }
 
+.file-list .file-item .info {
+	font-size: 3.4em;
+    position: absolute;
+    bottom: 0px;
+    background-color: rgba(0,0,0,0.75);
+    overflow: hidden;
+    text-align: left;
+    padding: 4px;
+}
+
 
 .file-list-block .info {
 	margin: 20px;

@@ -142,15 +142,15 @@ LS.SceneNode.actions["delete"] = {
 };
 
 /* Components *************************/
-LS.Component.actions = {};
+LS.BaseComponent.actions = {};
 
-LS.Component.getActions = function( component )
+LS.BaseComponent.getActions = function( component )
 {
 	var actions = {};
 
 	//global component actions (like copy, paste, delete)
-	for(var i in LS.Component.actions)
-		actions[i] = LS.Component.actions[i];
+	for(var i in LS.BaseComponent.actions)
+		actions[i] = LS.BaseComponent.actions[i];
 
 	//specific actions of a component
 	if( component.constructor.actions )
@@ -170,7 +170,7 @@ LS.Component.getActions = function( component )
 	return actions;
 }
 
-LS.Component.doAction = function( component, name_action )
+LS.BaseComponent.doAction = function( component, name_action )
 {
 	if(!name_action)
 		return;
@@ -191,7 +191,7 @@ LS.Component.doAction = function( component, name_action )
 }
 
 
-LS.Component.actions["enable"] = { 
+LS.BaseComponent.actions["enable"] = { 
 	title:"Enable/Disable",
 	callback: function(){
 		this.enabled = !this.enabled;
@@ -199,63 +199,63 @@ LS.Component.actions["enable"] = {
 };
 
 
-LS.Component.actions["info"] = { 
+LS.BaseComponent.actions["info"] = { 
 	title:"Show Information",
 	callback: function(){
 		EditorModule.showComponentInfo(this);
 	}
 };
 
-LS.Component.actions["copy"] = { 
+LS.BaseComponent.actions["copy"] = { 
 	title:"Copy",
 	callback: function(){
 		EditorModule.copyComponentToClipboard(this);
 	}
 };
 
-LS.Component.actions["paste"] = { 
+LS.BaseComponent.actions["paste"] = { 
 	title:"Paste",
 	callback: function(){
 		EditorModule.pasteComponentFromClipboard(this);
 	}
 };
 
-LS.Component.actions["paste"] = { 
+LS.BaseComponent.actions["paste"] = { 
 	title:"Paste",
 	callback: function(){
 		EditorModule.pasteComponentFromClipboard(this);
 	}
 };
 
-LS.Component.actions["delete"] = { 
+LS.BaseComponent.actions["delete"] = { 
 	title:"Delete",
 	callback: function(){
 		EditorModule.deleteNodeComponent(this);
 	}
 };
 
-LS.Component.actions["reset"] = { 
+LS.BaseComponent.actions["reset"] = { 
 	title:"Reset",
 	callback: function(){
 		EditorModule.resetNodeComponent(this);
 	}
 };
 
-LS.Component.actions["share"] = { 
+LS.BaseComponent.actions["share"] = { 
 	title:"Share",
 	callback: function(){
 		EditorModule.shareNodeComponent(this);
 	}
 };
 
-LS.Component.actions["select"] = { 
+LS.BaseComponent.actions["select"] = { 
 	title:"Select",
 	callback: function(){
 		SelectionModule.setSelection(this);
 	}
 };
 
-LS.Component.actions["help"] = { 
+LS.BaseComponent.actions["help"] = { 
 	title:"Help",
 	callback: function(){
 		EditorModule.showComponentHelp(this);

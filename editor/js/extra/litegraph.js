@@ -86,7 +86,7 @@ var LiteGraph = global.LiteGraph = {
 			console.log("Node registered: " + type);
 
 		var categories = type.split("/");
-		var classname = base_class.constructor.name;
+		var classname = base_class.name;
 
 		var pos = type.lastIndexOf("/");
 		base_class.category = type.substr(0,pos);
@@ -100,7 +100,7 @@ var LiteGraph = global.LiteGraph = {
 			for(var i in LGraphNode.prototype)
 				if(!base_class.prototype[i])
 					base_class.prototype[i] = LGraphNode.prototype[i];
-		
+
 		Object.defineProperty( base_class.prototype, "shape",{
 			set: function(v) {
 				switch(v)
@@ -337,7 +337,7 @@ var LiteGraph = global.LiteGraph = {
 		if( !type_a ||  //generic output
 			!type_b || //generic input
 			type_a == type_b || //same type (is valid for triggers)
-			type_a == LiteGraph.EVENT && type_b == LiteGraph.ACTION ) 
+			type_a == LiteGraph.EVENT && type_b == LiteGraph.ACTION )
 				return true;
 
 		type_a = type_a.toLowerCase();
@@ -347,9 +347,9 @@ var LiteGraph = global.LiteGraph = {
 
 		var supported_types_a = type_a.split(",");
 		var supported_types_b = type_b.split(",");
-		for(var i = 0; i < supported_types_a.length; ++i) 
-			for(var j = 0; j < supported_types_b.length; ++j) 
-				if( supported_types_a[i] == supported_types_b[i] )
+		for(var i = 0; i < supported_types_a.length; ++i)
+			for(var j = 0; j < supported_types_b.length; ++j)
+				if( supported_types_a[i] == supported_types_b[j] )
 					return true;
 		return false;
 	}
@@ -440,7 +440,7 @@ LGraph.prototype.clear = function()
 
 	this.catch_errors = true;
 
-	//globals
+	//subgraph_data
 	this.global_inputs = {};
 	this.global_outputs = {};
 
@@ -1028,7 +1028,7 @@ LGraph.prototype.findNodesByType = function(type)
 
 /**
 * Returns a list of nodes that matches a name
-* @method findNodesByName
+* @method findNodesByTitle
 * @param {String} name the name of the node to search
 * @return {Array} a list with all the nodes with this name
 */
@@ -1050,7 +1050,6 @@ LGraph.prototype.findNodesByTitle = function(title)
 * @param {Array} nodes_list a list with all the nodes to search from, by default is all the nodes in the graph
 * @return {Array} a list with all the nodes that intersect this coordinate
 */
-
 LGraph.prototype.getNodeOnPos = function(x,y, nodes_list)
 {
 	nodes_list = nodes_list || this._nodes;
@@ -1065,7 +1064,13 @@ LGraph.prototype.getNodeOnPos = function(x,y, nodes_list)
 
 // ********** GLOBALS *****************
 
-//Tell this graph has a global input of this type
+/**
+* Tell this graph it has a global graph input of this type
+* @method addGlobalInput
+* @param {String} name
+* @param {String} type
+* @param {*} value [optional]
+*/
 LGraph.prototype.addGlobalInput = function(name, type, value)
 {
 	this.global_inputs[name] = { name: name, type: type, value: value };
@@ -1077,7 +1082,12 @@ LGraph.prototype.addGlobalInput = function(name, type, value)
 		this.onGlobalsChange();
 }
 
-//assign a data to the global input
+/**
+* Assign a data to the global graph input
+* @method setGlobalInputData
+* @param {String} name
+* @param {*} data
+*/
 LGraph.prototype.setGlobalInputData = function(name, data)
 {
 	var input = this.global_inputs[name];
@@ -1086,7 +1096,21 @@ LGraph.prototype.setGlobalInputData = function(name, data)
 	input.value = data;
 }
 
-//assign a data to the global input
+/**
+* Assign a data to the global graph input (same as setGlobalInputData)
+* @method setInputData
+* @param {String} name
+* @param {*} data
+*/
+LGraph.prototype.setInputData = LGraph.prototype.setGlobalInputData;
+
+
+/**
+* Returns the current value of a global graph input
+* @method getGlobalInputData
+* @param {String} name
+* @return {*} the data
+*/
 LGraph.prototype.getGlobalInputData = function(name)
 {
 	var input = this.global_inputs[name];
@@ -1095,7 +1119,12 @@ LGraph.prototype.getGlobalInputData = function(name)
 	return input.value;
 }
 
-//rename the global input
+/**
+* Changes the name of a global graph input
+* @method renameGlobalInput
+* @param {String} old_name
+* @param {String} new_name
+*/
 LGraph.prototype.renameGlobalInput = function(old_name, name)
 {
 	if(name == old_name)
@@ -1120,6 +1149,12 @@ LGraph.prototype.renameGlobalInput = function(old_name, name)
 		this.onGlobalsChange();
 }
 
+/**
+* Changes the type of a global graph input
+* @method changeGlobalInputType
+* @param {String} name
+* @param {String} type
+*/
 LGraph.prototype.changeGlobalInputType = function(name, type)
 {
 	if(!this.global_inputs[name])
@@ -1133,6 +1168,12 @@ LGraph.prototype.changeGlobalInputType = function(name, type)
 		this.onGlobalInputTypeChanged(name, type);
 }
 
+/**
+* Removes a global graph input
+* @method removeGlobalInput
+* @param {String} name
+* @param {String} type
+*/
 LGraph.prototype.removeGlobalInput = function(name)
 {
 	if(!this.global_inputs[name])
@@ -1148,7 +1189,13 @@ LGraph.prototype.removeGlobalInput = function(name)
 	return true;
 }
 
-
+/**
+* Creates a global graph output
+* @method addGlobalOutput
+* @param {String} name
+* @param {String} type
+* @param {*} value
+*/
 LGraph.prototype.addGlobalOutput = function(name, type, value)
 {
 	this.global_outputs[name] = { name: name, type: type, value: value };
@@ -1160,7 +1207,12 @@ LGraph.prototype.addGlobalOutput = function(name, type, value)
 		this.onGlobalsChange();
 }
 
-//assign a data to the global output
+/**
+* Assign a data to the global output
+* @method setGlobalOutputData
+* @param {String} name
+* @param {String} value
+*/
 LGraph.prototype.setGlobalOutputData = function(name, value)
 {
 	var output = this.global_outputs[ name ];
@@ -1169,7 +1221,12 @@ LGraph.prototype.setGlobalOutputData = function(name, value)
 	output.value = value;
 }
 
-//assign a data to the global input
+/**
+* Returns the current value of a global graph output
+* @method getGlobalOutputData
+* @param {String} name
+* @return {*} the data
+*/
 LGraph.prototype.getGlobalOutputData = function(name)
 {
 	var output = this.global_outputs[name];
@@ -1178,8 +1235,21 @@ LGraph.prototype.getGlobalOutputData = function(name)
 	return output.value;
 }
 
+/**
+* Returns the current value of a global graph output (sames as getGlobalOutputData)
+* @method getOutputData
+* @param {String} name
+* @return {*} the data
+*/
+LGraph.prototype.getOutputData = LGraph.prototype.getGlobalOutputData;
 
-//rename the global output
+
+/**
+* Renames a global graph output
+* @method renameGlobalOutput
+* @param {String} old_name
+* @param {String} new_name
+*/
 LGraph.prototype.renameGlobalOutput = function(old_name, name)
 {
 	if(!this.global_outputs[old_name])
@@ -1201,6 +1271,12 @@ LGraph.prototype.renameGlobalOutput = function(old_name, name)
 		this.onGlobalsChange();
 }
 
+/**
+* Changes the type of a global graph output
+* @method changeGlobalOutputType
+* @param {String} name
+* @param {String} type
+*/
 LGraph.prototype.changeGlobalOutputType = function(name, type)
 {
 	if(!this.global_outputs[name])
@@ -1214,6 +1290,11 @@ LGraph.prototype.changeGlobalOutputType = function(name, type)
 		this.onGlobalOutputTypeChanged(name, type);
 }
 
+/**
+* Removes a global graph output
+* @method removeGlobalOutput
+* @param {String} name
+*/
 LGraph.prototype.removeGlobalOutput = function(name)
 {
 	if(!this.global_outputs[name])
@@ -1228,49 +1309,16 @@ LGraph.prototype.removeGlobalOutput = function(name)
 	return true;
 }
 
-
-/**
-* Assigns a value to all the nodes that matches this name. This is used to create global variables of the node that
-* can be easily accesed from the outside of the graph
-* @method setInputData
-* @param {String} name the name of the node
-* @param {*} value value to assign to this node
-*/
-
-LGraph.prototype.setInputData = function(name,value)
-{
-	var nodes = this.findNodesByName( name );
-	for(var i = 0, l = nodes.length; i < l; ++i)
-		nodes[i].setValue(value);
-}
-
-/**
-* Returns the value of the first node with this name. This is used to access global variables of the graph from the outside
-* @method setInputData
-* @param {String} name the name of the node
-* @return {*} value of the node
-*/
-
-LGraph.prototype.getOutputData = function(name)
-{
-	var n = this.findNodesByName(name);
-	if(n.length)
-		return m[0].getValue();
-	return null;
-}
-
-//This feature is not finished yet, is to create graphs where nodes are not executed unless a trigger message is received
-
 LGraph.prototype.triggerInput = function(name,value)
 {
-	var nodes = this.findNodesByName(name);
+	var nodes = this.findNodesByTitle(name);
 	for(var i = 0; i < nodes.length; ++i)
 		nodes[i].onTrigger(value);
 }
 
 LGraph.prototype.setCallback = function(name,func)
 {
-	var nodes = this.findNodesByName(name);
+	var nodes = this.findNodesByTitle(name);
 	for(var i = 0; i < nodes.length; ++i)
 		nodes[i].setTrigger(func);
 }
@@ -2809,6 +2857,12 @@ function LGraphCanvas( canvas, graph, options )
 	this.title_text_font = "bold 14px Arial";
 	this.inner_text_font = "normal 12px Arial";
 	this.default_link_color = "#AAC";
+	this.default_connection_color = {
+		input_off: "#AAB",
+		input_on: "#7F7",
+		output_off: "#AAB",
+		output_on: "#7F7"
+	};
 
 	this.highquality_render = true;
 	this.editor_alpha = 1; //used for transition
@@ -2826,6 +2880,7 @@ function LGraphCanvas( canvas, graph, options )
 	this.dragging_rectangle = null;
 
 	this.always_render_background = false;
+	this.render_canvas_area = true;
 	this.render_connections_shadows = false; //too much cpu
 	this.render_connections_border = true;
 	this.render_curved_connections = true;
@@ -3049,7 +3104,7 @@ LGraphCanvas.prototype.bindEvents = function()
 
 	var canvas = this.canvas;
 	var ref_window = this.getCanvasWindow();
-	var document = ref_window.document; //hack used when moving canvas between windows 
+	var document = ref_window.document; //hack used when moving canvas between windows
 
 	this._mousedown_callback = this.processMouseDown.bind(this);
 	this._mousewheel_callback = this.processMouseWheel.bind(this);
@@ -4539,8 +4594,10 @@ LGraphCanvas.prototype.drawBackCanvas = function()
 		//ctx.fillRect( this.visible_area[0] + 10, this.visible_area[1] + 10, this.visible_area[2] - 20, this.visible_area[3] - 20);
 
 		//bg
-		ctx.strokeStyle = "#235";
-		ctx.strokeRect(0,0,canvas.width,canvas.height);
+		if (this.render_canvas_area) {
+			ctx.strokeStyle = "#235";
+			ctx.strokeRect(0,0,canvas.width,canvas.height);
+		}
 
 		if(this.render_connections_shadows)
 		{
@@ -4692,7 +4749,7 @@ LGraphCanvas.prototype.drawNode = function(node, ctx )
 				if ( this.connecting_node && LiteGraph.isValidConnection( slot.type && out_slot.type ) )
 					ctx.globalAlpha = 0.4 * editor_alpha;
 
-				ctx.fillStyle = slot.link != null ? "#7F7" : "#AAA";
+				ctx.fillStyle = slot.link != null ? this.default_connection_color.input_on : this.default_connection_color.input_off;
 
 				var pos = node.getConnectionPos(true,i);
 				pos[0] -= node.pos[0];
@@ -4736,7 +4793,7 @@ LGraphCanvas.prototype.drawNode = function(node, ctx )
 				pos[0] -= node.pos[0];
 				pos[1] -= node.pos[1];
 
-				ctx.fillStyle = slot.links && slot.links.length ? "#7F7" : "#AAA";
+				ctx.fillStyle = slot.links && slot.links.length ? this.default_connection_color.output_on : this.default_connection_color.output_off;
 				ctx.beginPath();
 				//ctx.rect( node.size[0] - 14,i*14,10,10);
 
@@ -5929,7 +5986,7 @@ LGraphCanvas.prototype.processContextMenu = function( node, event )
 					if( slot_info )
 						slot_info.label = input.value;
 					that.setDirty(true);
-				}	
+				}
 				dialog.close();
 			});
 		}
@@ -6441,15 +6498,16 @@ LiteGraph.extendClass = function ( target, origin )
 		}
 }
 
-LiteGraph.getParameterNames = function(func) {  
+//used to create nodes from wrapping functions
+LiteGraph.getParameterNames = function(func) {
     return (func + '')
       .replace(/[/][/].*$/mg,'') // strip single-line comments
       .replace(/\s+/g, '') // strip white space
       .replace(/[/][*][^/*]*[*][/]/g, '') // strip multi-line comments  /**/
-      .split('){', 1)[0].replace(/^[^(]*[(]/, '') // extract the parameters  
-      .replace(/=[^,]+/g, '') // strip any ES6 defaults  
+      .split('){', 1)[0].replace(/^[^(]*[(]/, '') // extract the parameters
+      .replace(/=[^,]+/g, '') // strip any ES6 defaults
       .split(',').filter(Boolean); // split & filter [""]
-} 
+}
 
 if( typeof(window) != "undefined" && !window["requestAnimationFrame"] )
 {
@@ -6507,7 +6565,6 @@ function Subgraph()
 	this.subgraph.onGlobalOutputRenamed = this.onSubgraphRenamedGlobalOutput.bind(this);
 	this.subgraph.onGlobalOutputTypeChanged = this.onSubgraphTypeChangeGlobalOutput.bind(this);
 	
-
 	this.bgcolor = "#663";
 }
 
@@ -6703,6 +6760,8 @@ function GlobalOutput()
 
 	this.addInput(output_name, null);
 
+	this._value = null;
+
 	this.properties = {name: output_name, type: null };
 
 	var that = this;
@@ -6737,7 +6796,7 @@ function GlobalOutput()
 	});
 }
 
-GlobalOutput.title = "Ouput";
+GlobalOutput.title = "Output";
 GlobalOutput.desc = "Output of the graph";
 
 GlobalOutput.prototype.onAdded = function()
@@ -6745,9 +6804,15 @@ GlobalOutput.prototype.onAdded = function()
 	var name = this.graph.addGlobalOutput( this.properties.name, this.properties.type );
 }
 
+GlobalOutput.prototype.getValue = function()
+{
+	return this._value;
+}
+
 GlobalOutput.prototype.onExecute = function()
 {
-	this.graph.setGlobalOutputData( this.properties.name, this.getInputData(0) );
+	this._value = this.getInputData(0);
+	this.graph.setGlobalOutputData( this.properties.name, this._value );
 }
 
 LiteGraph.registerNodeType("graph/output", GlobalOutput);
@@ -12212,6 +12277,141 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 	LiteGraph.registerNodeType("texture/webcam", LGraphTextureWebcam );
 
 
+	//simple exposition, but plan to expand it to support different gamma curves
+	function LGraphExposition()
+	{
+		this.addInput("in","Texture");
+		this.addInput("exp","number");
+		this.addOutput("out","Texture");
+		this.properties = { exposition: 1, precision: LGraphTexture.LOW };
+	}
+
+	LGraphExposition.title = "Exposition";
+	LGraphExposition.desc = "Controls texture exposition";
+
+	LGraphExposition.widgets_info = {
+		"exposition": { widget:"slider", min:0,max:3 },
+		"precision": { widget:"combo", values: LGraphTexture.MODE_VALUES }
+	};
+
+	LGraphExposition.prototype.onExecute = function()
+	{
+		var tex = this.getInputData(0);
+		if(!tex)
+			return;
+
+		if(!this.isOutputConnected(0))
+			return; //saves work
+
+		var temp = this._temp_texture;
+		if(!temp || temp.width != tex.width || temp.height != tex.height || temp.type != tex.type )
+			temp = this._temp_texture = new GL.Texture( tex.width, tex.height, { type: tex.type, format: gl.RGBA, filter: gl.LINEAR });
+
+		var shader = LGraphExposition._shader;
+		if(!shader)
+			shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphExposition.pixel_shader );
+
+		var exp = this.properties.exposition;
+		var exp_input = this.getInputData(1);
+		if(exp_input != null)
+			exp = this.properties.exposition = exp_input;
+
+		//apply shader
+		temp.drawTo(function(){
+			gl.disable( gl.DEPTH_TEST );
+			tex.bind(0);
+			var mesh = GL.Mesh.getScreenQuad();
+			shader.uniforms({ u_texture: 0, u_exposition: exp }).draw(mesh);
+		});
+
+		this.setOutputData(0,temp);
+	}
+
+	LGraphExposition.pixel_shader = "precision highp float;\n\
+			varying vec2 v_coord;\n\
+			uniform sampler2D u_texture;\n\
+			uniform float u_exposition;\n\
+			\n\
+			void main() {\n\
+				vec4 color = texture2D( u_texture, v_coord );\n\
+				gl_FragColor = vec4( color.xyz * u_exposition, color.a );\n\
+			}";
+
+	LiteGraph.registerNodeType("texture/exposition", LGraphExposition );
+
+
+
+	function LGraphToneMapping()
+	{
+		this.addInput("in","Texture");
+		this.addOutput("out","Texture");
+		this.properties = { precision: LGraphTexture.LOW };
+	}
+
+	LGraphToneMapping.title = "Tone Mapping";
+	LGraphToneMapping.desc = "Applies Tone Mapping algorithm";
+
+	LGraphToneMapping.prototype.onExecute = function()
+	{
+		var tex = this.getInputData(0);
+		if(!tex)
+			return;
+
+		if(!this.isOutputConnected(0))
+			return; //saves work
+
+		var temp = this._temp_texture;
+
+		if(!temp || temp.width != tex.width || temp.height != tex.height || temp.type != tex.type )
+			temp = this._temp_texture = new GL.Texture( tex.width, tex.height, { type: tex.type, format: gl.RGBA, filter: gl.LINEAR });
+
+
+		//apply shader
+
+
+
+		this.setOutputData(0,this._temp_texture);
+	}
+
+	LGraphToneMapping.pixel_shader = "precision highp float;\n\
+			varying vec2 v_coord;\n\
+			uniform sampler2D u_texture;\n\
+			uniform float scale;\n\
+			uniform float averageLum;\n\
+			uniform vec3 lumwhite2;\n\
+			vec3 RGB2xyY (vec3 rgb)\n\
+			{\n\
+				 const mat3 RGB2XYZ = mat3(0.4124, 0.3576, 0.1805,\n\
+										   0.2126, 0.7152, 0.0722,\n\
+										   0.0193, 0.1192, 0.9505);\n\
+				vec3 XYZ = RGB2XYZ * rgb;\n\
+				\n\
+				float f = (XYZ.x + XYZ.y + XYZ.z);\n\
+				return vec3(XYZ.x / f,\n\
+							XYZ.y / f,\n\
+							XYZ.y);\n\
+			}\n\
+			\n\
+			void main() {\n\
+				vec4 color = texture2D( u_texture, v_coord ).xyz;\n\
+				vec3 rgb = color.xyz;\n\
+				//Ld - this part of the code is the same for both versions\n\
+				float lum = dot(rgb, vec3(0.2126f, 0.7152f, 0.0722f));\n\
+				float L = (scale / averageLum) * lum;\n\
+				float Ld = (L * (1.0 + L / lumwhite2)) / (1.0 + L);\n\
+				//first\n\
+				//vec3 xyY = RGB2xyY(rgb);\n\
+				//xyY.z *= Ld;\n\
+				//rgb = xyYtoRGB(xyY);\n\
+				//second\n\
+				rgb = (rgb / lum) * Ld;\n\
+				gl_FragColor = vec4( rgb, color.a );\n\
+			}";
+
+
+	//LiteGraph.registerNodeType("texture/tonemapping", LGraphToneMapping );
+
+
 	function LGraphTextureMatte()
 	{
 		this.addInput("in","Texture");
@@ -12287,6 +12487,7 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 			}";
 
 	LiteGraph.registerNodeType("texture/matte", LGraphTextureMatte );
+
 
 	//***********************************
 	//Cubemap reader (to pass a cubemap to a node that requires cubemaps and no images)

@@ -140,6 +140,7 @@ var CORE = {
 	{
 		//remove loading info
 		LiteGUI.remove(".startup-console-msg");
+		LiteGUI.remove( this.loader_dialog );
 		this.send_log_to_console = true;
 
 		//launch LiteGUI
@@ -369,7 +370,7 @@ var CORE = {
 
 	selectScene: function( scene, save_current )
 	{
-		if(scene.constructor !== LS.SceneTree)
+		if(scene.constructor !== LS.Scene)
 			throw("Not an scene");
 
 		if(save_current)

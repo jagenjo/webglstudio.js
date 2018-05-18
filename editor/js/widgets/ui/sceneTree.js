@@ -111,7 +111,7 @@ function SceneTreeWidget( options )
 			}
 			else
 			{
-				console.warn( "Node uid not found in SceneTree: " + item.uid );
+				console.warn( "Node uid not found in Scene: " + item.uid );
 				that.tree.removeItem( item.uid );
 			}
 		}
@@ -264,11 +264,11 @@ SceneTreeWidget.prototype.onKeyDown = function( e )
 }
 
 
-//Catch events from the LS.SceneTree to update the tree automatically
+//Catch events from the LS.Scene to update the tree automatically
 SceneTreeWidget.prototype.bindEvents = function( scene )
 {
-	if( !scene || scene.constructor !== LS.SceneTree )
-		throw("bindEvents require SceneTree");
+	if( !scene || scene.constructor !== LS.Scene )
+		throw("bindEvents require Scene");
 
 	var that = this;
 	//scene = scene || LS.GlobalScene;
@@ -296,7 +296,7 @@ SceneTreeWidget.prototype.bindEvents = function( scene )
 		//add to tree
 		var node_id = this.addNode( node );
 
-		//special feature, allows to put stuff in the tree that is not directly related to the SceneTree structure
+		//special feature, allows to put stuff in the tree that is not directly related to the Scene structure
 		if(!node.getSpecialTreeChilds)
 			return;
 		var tree_childs = node.getSpecialTreeChilds();

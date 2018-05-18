@@ -120,7 +120,7 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 	if(camera.type != LS.Camera.ORTHO2D)
 	{
 		if(camera.type == LS.Camera.PERSPECTIVE)
-			inspector.addNumber("Fov", camera.fov, { pretitle: AnimationModule.getKeyframeCode( camera, "fov"), min: 2, max: 180, units:'�', callback: function (value) { camera.fov = value; }});
+			inspector.addNumber("Fov", camera.fov, { pretitle: AnimationModule.getKeyframeCode( camera, "fov"), min: 2, max: 180, units:'', callback: function (value) { camera.fov = value; }});
 		inspector.addNumber("Aspect", camera.aspect, { pretitle: AnimationModule.getKeyframeCode( camera, "aspect" ), min: 0.1, max: 10, step: 0.01, callback: function (value) { camera.aspect = value; }});
 	}
 	inspector.addNumber("Near", camera.near, { pretitle: AnimationModule.getKeyframeCode( camera, "near" ), callback: function (value) { camera.near = value; }});
@@ -188,6 +188,8 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 	inspector.addCheckbox("clear depth", camera.clear_depth , { name_width: "65%", callback: function (v) { camera.clear_depth = v; } });
 	inspector.addCheckbox("bg. alpha", camera.background_color[3] == 0 , { name_width: "65%", callback: function (v) { camera.background_color[3] = v ? 0 : 1; } });
 	inspector.widgets_per_row = 1;
+
+	inspector.addMaterial("Overwrite Material", this.overwrite_material, { callback: function(v) { camera.overwrite_material = v; } });
 
 	inspector.addTitle("Render to Texture");
 	inspector.addCheckbox("Enable", camera.render_to_texture , { callback: function (v) { camera.render_to_texture = v; inspector.refresh(); } });

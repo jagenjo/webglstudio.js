@@ -218,7 +218,7 @@ InspectorWidget.prototype.inspect = function( object, skip_history )
 		this.inspector.clear();
 		object.constructor.inspect( object, this.inspector );
 	}
-	else if( object.constructor == LS.SceneTree )
+	else if( object.constructor == LS.Scene )
 		this.inspectScene( object );
 	else if( object.constructor == LS.SceneNode )
 		this.inspectNode( object );
@@ -473,6 +473,13 @@ InspectorWidget.prototype.inspectScene = function( scene )
 			scene.preloaded_resources[v] = true;
 			inspector.refresh();
 		}});
+
+		inspector.addSeparator();
+		inspector.addTitle("Texture Atlas");
+		inspector.widgets_per_row = 2;
+		inspector.addCheckbox("Use atlas", !!scene.texture_atlas, function(v){ if(!v) scene.texture_atlas = null; });
+		inspector.addButton(null,"Generate", function(){ TextureTools.generateTextureAtlas(); });
+		inspector.widgets_per_row = 1;
 
 		inspector.addSeparator();
 		inspector.addButton(null,"Show Root Node", function(){

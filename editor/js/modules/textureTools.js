@@ -307,8 +307,65 @@ color.xyz = normalize(normal) * 0.5 + vec3(0.5);\n",
 
 		dialog.show();
 		dialog.adjustSize();		
-	}
+	},
 
+	generateTextureAtlas: function( thumbnail_size )
+	{
+		thumbnail_size = thumbnail_size || 16;
+		var textures = {};
+		var textures_array = [];
+
+		if(LS.RM.isLoading())
+		{
+			console.error("cannot genereate atlas while loading");
+			return null;
+		}
+
+		for(var i in LS.RM.textures)
+		{
+			var tex = LS.RM.textures[i];
+			if( tex._is_internal || i[0] == ":" || i.indexOf(".ATLAS.") != -1 || i.indexOf("_th_") != -1 || tex.texture_type != GL.TEXTURE_2D )
+				continue;
+			textures[i] = tex;
+			textures_array.push( {name:i} );
+		}
+
+		var num = textures_array.length;
+
+		var num_per_side = Math.ceil( Math.sqrt( num ) );
+		var atlas_size = num_per_side * thumbnail_size;
+		if(0) //nearest power of two
+			atlas_size = Math.pow(2, Math.ceil(Math.log(atlas_size)/Math.log(2)));
+		var atlas_texture = new GL.Texture( atlas_size, atlas_size, { format: GL.RGBA, magFilter: GL.NEAREST, minFilter: GL.LINEAR, wrap: gl.CLAMP_TO_EDGE });
+
+		atlas_texture.drawTo(function(){
+			gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
+			var x = 0;
+			var y = 0;
+			for(var i = 0; i < textures_array.length; ++i)
+			{
+				var info = textures_array[i];
+				info.pos = [x,y];
+				gl.viewport(x, atlas_size - y - thumbnail_size,thumbnail_size,thumbnail_size);
+				var tex = textures[ info.name ];
+				tex.toViewport();
+				x += thumbnail_size;
+				if(x >= atlas_texture.width)
+				{
+					x = 0;
+					y += thumbnail_size;
+				}
+			}
+		});
+
+		var filename = LS.RM.cleanFullpath( (LS.GlobalScene.extra.folder || "") + "/" + "textures.ATLAS.png" );
+		LS.RM.registerResource( filename, atlas_texture );
+		var info = { filename: filename, thumbnail_size: thumbnail_size, textures: textures_array };
+		atlas_texture._atlas_info = info
+		LS.GlobalScene.texture_atlas = info;
+
+		return atlas_texture;
+	}
 };
 
 GL.Texture.prototype.inspect = function( widgets, skip_default_widgets )

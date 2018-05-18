@@ -187,6 +187,15 @@ GraphWidget.prototype.onShowNodePanel = function( node )
 {
 	var inspector = this.inspector || EditorModule.inspector;
 	inspector.inspect( node );
+
+	if(GraphModule._texture_preview)
+	{
+		var tex = node.getOutputData(0);
+		if(!tex || tex.constructor !== GL.Texture)
+			GraphModule._texture_preview._texture = null;
+		else
+			GraphModule._texture_preview._texture = tex;
+	}
 }
 
 GraphWidget.prototype.onDropItem = function( e )

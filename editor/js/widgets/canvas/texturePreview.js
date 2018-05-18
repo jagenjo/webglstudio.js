@@ -11,6 +11,8 @@ function TexturePreviewWidget()
 	this.position = [40,40];
 	this.size = [250,200];
 
+	this._texture = null;
+
 	this.channel = "all";
 }
 
@@ -22,7 +24,7 @@ TexturePreviewWidget.prototype.onClose = function()
 
 TexturePreviewWidget.prototype.onRender = function( ctx, viewport )
 {
-	var texture = LS.ResourcesManager.textures[ this.texture_name ];
+	var texture = this._texture ? this._texture : LS.ResourcesManager.textures[ this.texture_name ];
 	if(!texture)
 		texture = GL.Texture.getBlackTexture();
 

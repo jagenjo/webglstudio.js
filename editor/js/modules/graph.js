@@ -71,6 +71,10 @@ var GraphModule = {
 				GraphModule.show3DWindow(); //toggle
 			}});
 
+			inspector.addButton(null,"Preview", { width: 100, callback: function(){
+				GraphModule.showPreviewSelection();
+			}});
+
 			inspector.addButton(null,"Side", { width: 80, callback: function(){
 				GraphModule.showSidePanel();
 			}});
@@ -163,6 +167,20 @@ var GraphModule = {
 
 		this.graph_canvas.setGraph( this.current_overgraph );
 		this.graph_canvas.draw();
+	},
+
+	showPreviewSelection: function()
+	{
+		if(!this._texture_preview)
+		{
+			this._texture_preview = new TexturePreviewWidget();
+			RenderModule.canvas_manager.root.addChild(this._texture_preview);
+		}
+		else
+		{
+			RenderModule.canvas_manager.root.removeChild(this._texture_preview);
+			this._texture_preview = null;
+		}
 	}
 };
 

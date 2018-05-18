@@ -1455,7 +1455,7 @@ var EditorModule = {
 		var title = LS.getObjectClassName( component );
 
 		var menu = new LiteGUI.ContextMenu( actions, { ignore_item_callbacks: true, event: event, parentMenu: prev_menu, title: LS.getObjectClassName( component ), callback: function(action, options, event) {
-			LS.Component.doAction( component, action );
+			LS.BaseComponent.doAction( component, action );
 			LS.GlobalScene.requestFrame();
 			EditorModule.refreshAttributes();
 		}});

@@ -199,7 +199,7 @@ var SceneStorageModule = {
 		split.getSection(1).style.height = "100%";
 
 		//load scenes
-		DriveModule.serverSearchFiles({ category: "SceneTree" }, inner_files, inner_error );
+		DriveModule.serverSearchFiles({ category: "Scene" }, inner_files, inner_error );
 
 		function inner_files(items)
 		{
@@ -207,7 +207,7 @@ var SceneStorageModule = {
 			for(var i in items)
 			{
 				var item = items[i];
-				if(!item.category == "SceneTree")
+				if(!item.category == "Scene")
 					continue;
 				var name = item.filename.substr(0, item.filename.indexOf("."));
 				r[name] = item;
@@ -288,7 +288,7 @@ var SceneStorageModule = {
 			LS.Renderer.reset();
 			LS.GlobalScene.clear();
 
-			//the SceneTree.load function bypasses the LS.RM (uses relative urls), something that is a problem when loading an scene stored in the Drive
+			//the Scene.load function bypasses the LS.RM (uses relative urls), something that is a problem when loading an scene stored in the Drive
 			//SceneStorage also includes the url
 			msg = NotifyModule.show("FILE: " + fullpath, { id: msg_id, closable: true, time: 0, left: 60, top: 30, parent: "#visor" } );
 			LS.GlobalScene.load( real_path, inner_complete, inner_error, inner_progress ); 
@@ -726,7 +726,7 @@ var SceneStorageModule = {
 
 		widgets.addButton(null,"Create", { className:"big", callback: function() { 
 
-			var new_scene = new LS.SceneTree();
+			var new_scene = new LS.Scene();
 			new_scene.extra.title = name;
 			CORE.addScene( new_scene );
 

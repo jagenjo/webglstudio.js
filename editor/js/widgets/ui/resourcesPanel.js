@@ -575,7 +575,7 @@ ResourcesPanelWidget.prototype.destroy = function()
 		this.root.parentNode.removeChild( this.root );
 }
 
-//Catch events from the LS.SceneTree to update the tree automatically
+//Catch events from the LS.Scene to update the tree automatically
 ResourcesPanelWidget.prototype.bindEvents = function()
 {
 	var that = this;

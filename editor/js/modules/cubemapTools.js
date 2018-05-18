@@ -652,7 +652,7 @@ var CubemapTools = {
 		var scene = this._preview_scene;
 		if(!this._preview_scene)
 		{
-			scene = this._preview_scene = new LS.SceneTree();
+			scene = this._preview_scene = new LS.Scene();
 			scene.root.addComponent( new LS.Components.Skybox() );
 			scene.info.ambient_color = [1,1,1];
 			scene._sphere = new LS.SceneNode();

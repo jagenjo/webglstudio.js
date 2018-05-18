@@ -505,7 +505,7 @@ var ImporterModule  = {
 					}
 					inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { import_options.optimize_data = v; }});
 				}
-				else if(info.resource == "SceneTree" || info.resource == "SceneNode")
+				else if(info.resource == "Scene" || info.resource == "SceneNode" || info.resource == "SceneTree") //SceneTree legacy
 				{
 					inspector.addTitle("Scene");
 					inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { import_options.optimize_data = v; }});
@@ -675,7 +675,7 @@ var ImporterModule  = {
 
 
 			//scenes require to rename some stuff 
-			if(resource.constructor === LS.SceneTree || resource.constructor === LS.SceneNode )
+			if(resource.constructor === LS.Scene || resource.constructor === LS.SceneNode )
 			{
 				//remove node root, dragging to canvas should add to scene.root
 				options.node = null;

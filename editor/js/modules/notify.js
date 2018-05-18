@@ -1,4 +1,6 @@
 var NotifyModule = {
+	root: null, 
+
 	init: function()
 	{
 		LiteGUI.addCSS(".notify-msg { position: absolute; opacity: 0; color: #9AB; margin: 2px; margin-left: 6px; transform: scale(1) translate(0, -100px); transition: all ease-in-out 0.2s; }" + 

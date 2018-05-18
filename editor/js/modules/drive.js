@@ -85,7 +85,7 @@ var DriveModule = {
 		});
 		
 		LEvent.bind( LS.ResourcesManager, "resource_loaded", function(e, url) {
-			EditorModule.refreshAttributes();
+			//EditorModule.refreshAttributes(); //SLOW!!!!!
 			var msg = document.getElementById( "res-msg-" + url.hashCode() );
 			if(!msg)
 				return;
@@ -2749,7 +2749,7 @@ DriveModule.registerAssignResourceCallback("component", function( fullpath, rest
 	});
 });
 
-DriveModule.registerAssignResourceCallback( "SceneTree", function( fullpath, restype, options ) {
+function registerSceneFunc( fullpath, restype, options ) {
 
 	LiteGUI.confirm("Are you sure? you will loose the current scene", function(v) {
 		if(!v)
@@ -2769,7 +2769,10 @@ DriveModule.registerAssignResourceCallback( "SceneTree", function( fullpath, res
 		DriveModule.closeTab();
 	});
 
-});
+}
+
+DriveModule.registerAssignResourceCallback( "Scene", registerSceneFunc );
+DriveModule.registerAssignResourceCallback( "SceneTree", registerSceneFunc ); //legacy
 
 DriveModule.registerAssignResourceCallback("Pack", function( fullpath, restype, options ) {
 	DriveModule.loadResource( fullpath, function(pack){

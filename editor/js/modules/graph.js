@@ -175,6 +175,10 @@ var GraphModule = {
 		{
 			this._texture_preview = new TexturePreviewWidget();
 			RenderModule.canvas_manager.root.addChild(this._texture_preview);
+			this._texture_preview.onClose = function()
+			{
+				GraphModule._texture_preview = null;
+			}
 		}
 		else
 		{

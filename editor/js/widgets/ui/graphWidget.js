@@ -21,6 +21,7 @@ GraphWidget.prototype.init = function( options )
 
 	this.inspector = null;
 	this.redraw_canvas = true;
+	this.inspected_node = null;
 
 	//create area
 	this.root = LiteGUI.createElement("div",null,null,{ width:"100%", height:"100%" });
@@ -112,10 +113,25 @@ GraphWidget.prototype.unbindEvents = function()
 	LEvent.unbindAll( LS, this );
 }
 
+//on draw canvas, not scene
 GraphWidget.prototype.onDraw = function()
 {
 	if(this.root.parentNode)
 		requestAnimationFrame( this._ondraw_func );
+
+	//preview
+	if(GraphModule._texture_preview && this.inspected_node)
+	{
+		var widget = GraphModule._texture_preview;
+		var tex = this.inspected_node.getOutputData(0);
+		if(!tex || tex.constructor !== GL.Texture)
+			widget._texture = null;
+		else
+		{
+			widget.title = this.inspected_node.title;
+			widget._texture = tex;
+		}
+	}
 	
 	if(!this.redraw_canvas)
 		return;
@@ -125,6 +141,8 @@ GraphWidget.prototype.onDraw = function()
 	var rect = canvas.getBoundingClientRect();
 	if(rect.width && rect.height)
 		this.graphcanvas.setDirty(true);
+
+
 }
 
 GraphWidget.prototype.resizeCanvas = function()
@@ -187,15 +205,7 @@ GraphWidget.prototype.onShowNodePanel = function( node )
 {
 	var inspector = this.inspector || EditorModule.inspector;
 	inspector.inspect( node );
-
-	if(GraphModule._texture_preview)
-	{
-		var tex = node.getOutputData(0);
-		if(!tex || tex.constructor !== GL.Texture)
-			GraphModule._texture_preview._texture = null;
-		else
-			GraphModule._texture_preview._texture = tex;
-	}
+	this.inspected_node = node;
 }
 
 GraphWidget.prototype.onDropItem = function( e )

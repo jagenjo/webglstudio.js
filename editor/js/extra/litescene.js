@@ -2522,6 +2522,8 @@ var Input = {
 	RIGHT_MOUSE_BUTTON: 3,
 
 	Keyboard: [],
+	Keyboard_previous: [],
+
 	Mouse: {},
 	Gamepads: [],
 
@@ -2530,7 +2532,7 @@ var Input = {
 	last_click: null,
 	current_click: null,
 	current_key: null,
-	keys_buffer: [],
+	keys_buffer: [], //array of keys that have been pressed from the last frame
 
 	//_mouse_event_offset: [0,0],
 	_last_frame: -1, //internal
@@ -2549,8 +2551,94 @@ var Input = {
 
 	update: function()
 	{
+		//copy prev keys state
+		for(var i = 0, l = this.Keyboard.length; i < l; ++i)
+			this.Keyboard_previous[i] = this.Keyboard[i];
+
+		//copy prev mouse state (this is only necessary if the update is not called from litegl main loop)
+		this.Mouse.last_buttons = this.Mouse.buttons;
+
 		//capture gamepads snapshot
 		this.Gamepads = gl.getGamepads();
+	},
+
+	/**
+	* returns true is the key is pressed now
+	*
+	* @method isKeyPressed
+	* @param {Number} key_code
+	* @return {boolean}
+	*/
+	isKeyPressed: function(key_code)
+	{
+		return !!this.Keyboard[ key_code ];
+	},
+
+	/**
+	* returns true is the key was pressed between previous frame and now
+	*
+	* @method wasKeyPressed
+	* @param {Number} key_code as in https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/keyCode#Browser_compatibility
+	* @return {boolean}
+	*/
+	wasKeyPressed: function(key_code)
+	{
+		return this.Keyboard[ key_code ] && !this.Keyboard_previous[ key_code ];
+	},
+
+	/**
+	* returns true is the mouse button is pressed now
+	*
+	* @method isMouseButtonPressed
+	* @param {Number} button could be "left","middle","right" or GL.LEFT_MOUSE_BUTTON, GL.MIDDLE_MOUSE_BUTTON, GL.RIGHT_MOUSE_BUTTON
+	* @return {boolean}
+	*/
+	isMouseButtonPressed: function(button)
+	{
+		var num = 0;
+		if(button && button.constructor === String)
+			num = this.mapping[button];
+		else
+			num = button;
+		if(button === undefined)
+			return false;
+
+		return this.Mouse.isButtonPressed(num);
+	},
+
+	/**
+	* returns true is the mouse button was pressed between previous frame and now
+	*
+	* @method wasMouseButtonPressed
+	* @param {Number} button could be "left","middle","right" or GL.LEFT_MOUSE_BUTTON, GL.MIDDLE_MOUSE_BUTTON, GL.RIGHT_MOUSE_BUTTON
+	* @return {boolean}
+	*/
+	wasMouseButtonPressed: function(button)
+	{
+		var num = 0;
+		if(button && button.constructor === String)
+			num = this.mapping[button];
+		else
+			num = button;
+		if(button === undefined)
+			return false;
+
+		return this.Mouse.wasButtonPressed(num);
+	},
+
+	/**
+	* locks the mouse (to use with first person view cameras) so when the mouse moves, the cameras moves
+	*
+	* @method lockMouse
+	* @param {Boolean} v if true, the camera is locked, otherwise unlocked
+	* @return {boolean}
+	*/
+	lockMouse: function(v)
+	{
+		if(v)
+			gl.canvas.requestPointerLock();
+		else
+			document.exitPointerLock();
 	},
 
 	//called from LS.Player when onmouse
@@ -2685,25 +2773,6 @@ var Input = {
 			return 0;
 		var button = gamepad.buttons[num];
 		return button && button.pressed;
-	},
-
-	/**
-	* Returns if the given mouse button is pressed
-	*
-	* @method isMouseButtonPressed
-	* @param {String} name the name of the button  "LEFT","MIDDLE,"RIGHT" (also you could specify the number)
-	* @return {Boolean} if the button is pressed
-	*/
-	isMouseButtonPressed: function(name)
-	{
-		var num = 0;
-		if(name && name.constructor === String)
-			num = this.mapping[name];
-		else
-			num = name;
-		if(num === undefined)
-			return false;
-		return (this.Mouse.buttons & (1<<num)) !== 0;
 	},
 
 	/**
@@ -11652,6 +11721,8 @@ BaseComponent.prototype.createProperty = function( name, value, type, setter, ge
 //not finished
 BaseComponent.prototype.createAction = function( name, callback, options )
 {
+	if(!callback)
+		console.error("action '" + name + "' with no callback associated. Remember to create the action after the callback is defined.");
 	var safe_name = name.replace(/ /gi,"_"); //replace spaces
 	this[ safe_name ] = callback;
 	this.constructor["@" + safe_name ] = options || { type: "function", button_text: name, widget:"button", callback: callback };
@@ -20806,8 +20877,8 @@ var Renderer = {
 		this._current_camera = camera;
 
 		//Draw allows to render debug info easily
-		Draw.reset(); //clear 
-		Draw.setCamera( camera );
+		LS.Draw.reset(); //clear 
+		LS.Draw.setCamera( camera );
 
 		LEvent.trigger( camera, "afterEnabled", render_settings );
 		LEvent.trigger( scene, "afterCameraEnabled", camera ); //used to change stuff according to the current camera (reflection textures)
@@ -23805,13 +23876,14 @@ var Draw = {
 		this.font_atlas.atlas = atlas;
 	},
 
-	linearize: function(array)
+	linearize: function(array) //fairly optimized
 	{
 		if(!array.length)
 			return [];
 		if(array[0].constructor === Number) //array of numbers
-			return new Float32Array(array);
-		var n = array[0].length;
+			return array.constructor === Float32Array ? array : new Float32Array(array);
+		//linearize
+		var n = array[0].length; //assuming all values have the same size!
 		var result = new Float32Array(array.length * n);
 		var l = array.length;
 		for(var i = 0; i < l; ++i)
@@ -31760,6 +31832,7 @@ function Skybox(o)
 	this.material = null;
 	this._intensity = 1;
 	this.use_environment = true;
+	this.gamma = false;
 	this._bake_to_cubemap = false;
 	if(o)
 		this.configure(o);
@@ -31878,7 +31951,7 @@ Skybox.prototype.onCollectInstances = function(e, instances)
 	else
 	{
 		var texture_name = null;
-		if (this.use_environment)
+		if (this.use_environment && LS.Renderer._current_scene.info)
 			texture_name = LS.Renderer._current_scene.info.textures["environment"];
 		else
 			texture_name = this.texture;
@@ -31892,6 +31965,10 @@ Skybox.prototype.onCollectInstances = function(e, instances)
 
 		mat = this._material;
 		if(!mat)
+		{
+			//mat = this._material = new LS.ShaderMaterial({});
+
+
 			mat = this._material = new LS.StandardMaterial({ 
 				flags: { 
 					two_sided: true, 
@@ -31902,9 +31979,14 @@ Skybox.prototype.onCollectInstances = function(e, instances)
 					depth_test: false 
 					},
 				use_scene_ambient:false,
-				color: [ this.intensity, this.intensity, this.intensity, 1 ]
+				color: [ this.intensity, this.intensity, this.intensity ]
 			});
+		}
+		else
+			mat.color.set([this.intensity, this.intensity, this.intensity]);
+
 		var sampler = mat.setTexture( LS.Material.COLOR, texture_name );
+		//sampler.gamma = this.gamma;
 
 		if(texture && texture.texture_type == gl.TEXTURE_2D)
 		{
@@ -31983,6 +32065,48 @@ Skybox.prototype.bakeToCubemap = function( size, render_settings )
 		this.root.scene.info.textures[ "environment" ] = ":baked_skybox";
 }
 
+Skybox.shader_code = "\\color.vs\n\
+	precision mediump float;\n\
+	attribute vec3 a_vertex;\n\
+	varying vec3 v_world_position;\n\
+	uniform mat4 u_model;\n\
+	uniform mat4 u_viewprojection;\n\
+	void main() {\n\
+		vec4 vertex4 = u_model * vec4(a_vertex,1.0);\n\
+		v_world_position = vertex4.xyz;\n\
+		gl_Position = u_viewprojection * vertex4;\n\
+	}\n\
+\\color.fs\n\
+	precision mediump float;\n\
+	varying vec3 v_world_position;\n\
+	uniform vec4 u_material_color;\n\
+	uniform vec3 u_camera_eye;\n\
+	uniform samplerCube u_color_texture;\n\
+	vec2 polarToCartesian(in vec3 V)\n\
+	{\n\
+		return vec2( 0.5 - (atan(V.z, V.x) / -6.28318531), asin(V.y) / 1.57079633 * 0.5 + 0.5);\n\
+	}\n\
+	void main() {\n\
+		vec3 E = normalize( v_world_position - u_camera_eye);\n\
+		vec4 color = textureCube( u_color_texture, E );\n\
+		gl_FragColor = u_material_color;\n\
+	}\n\
+\\picking.vs\n\
+	precision mediump float;\n\
+	attribute vec3 a_vertex;\n\
+	uniform mat4 u_model;\n\
+	uniform mat4 u_viewprojection;\n\
+	void main() {\n\
+		vec4 vertex4 = vec4(a_vertex,1.0);\n\
+		gl_Position = (u_viewprojection * u_model) * vertex4;\n\
+	}\n\
+\\picking.fs\n\
+	precision mediump float;\n\
+	uniform vec4 u_material_color;\n\
+	void main() {\n\
+		gl_FragColor = u_material_color;\n\
+	}\n\
+";
 
 
 LS.registerComponent(Skybox);
@@ -33386,32 +33510,79 @@ function CameraController(o)
 {
 	this.enabled = true;
 
-	this.speed = 10;
+	this.no_button_action = CameraController.NONE;
+	this.left_button_action = CameraController.ORBIT;
+	this.right_button_action = CameraController.PAN;
+	this.middle_button_action = CameraController.PAN;
+	this.mouse_wheel_action = CameraController.CHANGE_DISTANCE;
+
+	this.keyboard_walk = false;
+	this.lock_mouse = false;
+
 	this.rot_speed = 1;
+	this.walk_speed = 10;
 	this.wheel_speed = 1;
 	this.smooth = false;
-	this.allow_panning = true;
-	this.mode = CameraController.ORBIT;
 
 	this._moving = vec3.fromValues(0,0,0);
-	this._collision = vec3.create();
+
+	this._collision_none = vec3.create();
+	this._collision_left = vec3.create();
+	this._collision_middle = vec3.create();
+	this._collision_right = vec3.create();
 	this._dragging = false; //true if the mousedown was caught so the drag belongs to this component
-	this._button = null;
+	this._camera = null;
 
 	this.configure(o);
 }
 
+CameraController.NONE = 0; //no action
+
 CameraController.ORBIT = 1; //orbits around the center
-CameraController.FIRSTPERSON = 2; //moves relative to the camera
-CameraController.PLANE = 3; //moves paralel to a plane
-CameraController.HORIZONTALY = 4; //like first person but only yaw
+CameraController.ORBIT_HORIZONTAL = 2; //orbits around the center only around Y axis
+
+CameraController.ROTATE = 5; //rotates relative to the camera
+CameraController.ROTATE_HORIZONTAL = 6; //moves relative to the camera
+
+CameraController.PAN = 10; //moves paralel to the near plane
+CameraController.PAN_XZ = 11; //pans only in the XZ plane
+
+CameraController.CHANGE_DISTANCE = 15; //scales the center from eye to center
+CameraController.WALK = 16; //moves forward or backward
+CameraController.ELEVATE = 17; //moves forward or backward
+
 
 CameraController.icon = "mini-icon-cameracontroller.png";
 
-CameraController["@mode"] = { type:"enum", values: { "Orbit": CameraController.ORBIT, "FirstPerson": CameraController.FIRSTPERSON, "Plane": CameraController.PLANE, "Horizontaly": CameraController.HORIZONTALY  }};
+CameraController.mode_values = { 
+		"None": CameraController.NONE,
+		"Orbit": CameraController.ORBIT,
+		"Orbit Horizontal": CameraController.ORBIT_HORIZONTAL, 
+		"Rotate": CameraController.ROTATE,
+		"Rotate Horizontal": CameraController.ROTATE_HORIZONTAL, 
+		"Pan": CameraController.PAN,
+		"Pan XZ": CameraController.PAN_XZ,
+		"Change Distance": CameraController.CHANGE_DISTANCE,
+		"Walk": CameraController.WALK,
+		"Elevate": CameraController.ELEVATE
+	};
+
+CameraController.wheel_values = { 
+		"Change Distance": CameraController.CHANGE_DISTANCE,
+		"Walk": CameraController.WALK,
+		"Elevate": CameraController.ELEVATE
+};
+
+CameraController["@no_button_action"] = { type:"enum", values: CameraController.mode_values };
+CameraController["@left_button_action"] = { type:"enum", values: CameraController.mode_values };
+CameraController["@middle_button_action"] = { type:"enum", values: CameraController.mode_values };
+CameraController["@right_button_action"] = { type:"enum", values: CameraController.mode_values };
+CameraController["@mouse_wheel_action"] = { type:"enum", values: CameraController.wheel_values };
 
 CameraController.prototype.onAddedToScene = function( scene )
 {
+	LEvent.bind( scene, "start",this.onStart,this);
+	LEvent.bind( scene, "finish",this.onFinish,this);
 	LEvent.bind( scene, "mousedown",this.onMouse,this);
 	LEvent.bind( scene, "mousemove",this.onMouse,this);
 	LEvent.bind( scene, "mousewheel",this.onMouse,this);
@@ -33428,6 +33599,22 @@ CameraController.prototype.onRemovedFromScene = function( scene )
 	LEvent.unbindAll( scene, this );
 }
 
+CameraController.prototype.onStart = function(e)
+{
+	if(this.lock_mouse)
+	{
+		LS.Input.lockMouse(true);
+	}
+}
+
+CameraController.prototype.onFinish = function(e)
+{
+	if(this.lock_mouse)
+	{
+		LS.Input.lockMouse(false);
+	}
+}
+
 CameraController.prototype.onUpdate = function(e)
 {
 	if(!this._root || !this.enabled) 
@@ -33440,18 +33627,18 @@ CameraController.prototype.onUpdate = function(e)
 	if(!cam || !cam.enabled)
 		return;
 
-	if(this._root.transform)
+	if(this._root.transform) //attached to node
 	{
 	}
 	else 
 	{
-		if(this.mode == CameraController.FIRSTPERSON)
+		if(this.keyboard_walk)
 		{
 			//move using the delta vector
 			if(this._moving[0] != 0 || this._moving[1] != 0 || this._moving[2] != 0)
 			{
 				var delta = cam.getLocalVector( this._moving );
-				vec3.scale(delta, delta, this.speed * (this._move_fast?10:1));
+				vec3.scale(delta, delta, this.walk_speed );
 				cam.move(delta);
 				cam.updateMatrices();
 			}
@@ -33464,6 +33651,185 @@ CameraController.prototype.onUpdate = function(e)
 	}
 }
 
+CameraController.prototype.processMouseButtonDownEvent = function( mode, mouse_event, coll_point )
+{
+	var node = this._root;
+	var cam = this._camera = node.camera;
+	if(!cam || !cam.enabled)
+		return;
+
+	var is_global_camera = node._is_root;
+	var changed = false;
+
+	if(mode == CameraController.PAN)
+		this.testPerpendicularPlane( mouse_event.canvasx, gl.canvas.height - mouse_event.canvasy, cam.getCenter(), coll_point );
+	else if(mode == CameraController.PAN_XZ)
+		this.testOriginPlane( mouse_event.canvasx, gl.canvas.height - mouse_event.canvasy, coll_point );
+
+	return changed;
+}
+
+CameraController.prototype.processMouseButtonMoveEvent = function( mode, mouse_event, coll_point )
+{
+	var node = this._root;
+	var cam = this._camera = node.camera;
+	if(!cam || !cam.enabled)
+		return;
+
+	var is_global_camera = node._is_root;
+	var changed = false;
+
+	if(mode == CameraController.NONE)
+		return false;
+
+	if(mode == CameraController.ORBIT)
+	{
+		var yaw = mouse_event.deltax * this.rot_speed;
+		var pitch = -mouse_event.deltay * this.rot_speed;
+
+		//yaw rotation
+		if( Math.abs(yaw) > 0.0001 )
+		{
+			if(is_global_camera)
+			{
+				cam.orbit( -yaw, [0,1,0] );
+				cam.updateMatrices();
+			}
+			else
+			{
+				var eye = cam.getEye();
+				node.transform.globalToLocal( eye, eye );
+				node.transform.orbit( -yaw, [0,1,0], eye );
+				cam.updateMatrices();
+			}
+			changed = true;
+		}
+
+		//pitch rotation
+		var right = cam.getRight();
+		var front = cam.getFront();
+		var up = cam.getUp();
+		var problem_angle = vec3.dot( up, front );
+		if( !(problem_angle > 0.99 && pitch > 0 || problem_angle < -0.99 && pitch < 0)) //avoid strange behaviours
+		{
+			if(is_global_camera)
+			{
+				cam.orbit( -pitch, right, this.orbit_center );
+			}
+			else
+			{
+				var eye = cam.getEye();
+				node.transform.globalToLocal( eye, eye );
+				node.transform.orbit( -pitch, right, eye );
+			}
+			changed = true;
+		}
+	}
+	else if(mode == CameraController.ORBIT_HORIZONTAL)
+	{
+		var yaw = mouse_event.deltax * this.rot_speed;
+
+		if( Math.abs(yaw) > 0.0001 )
+		{
+			if(is_global_camera)
+			{
+				cam.orbit( -yaw, [0,1,0] );
+				cam.updateMatrices();
+			}
+			else
+			{
+				var eye = cam.getEye();
+				node.transform.globalToLocal( eye, eye );
+				node.transform.orbit( -yaw, [0,1,0], eye );
+				cam.updateMatrices();
+			}
+			changed = true;
+		}
+	}
+	else if(mode == CameraController.ROTATE || mode == CameraController.ROTATE_HORIZONTAL )
+	{
+		var top = LS.TOP; //cam.getLocalVector(LS.TOP);
+		cam.rotate(-mouse_event.deltax * this.rot_speed * 0.2,top);
+		cam.updateMatrices();
+
+		if( mode == CameraController.ROTATE )
+		{
+			var right = cam.getLocalVector(LS.RIGHT);
+			if(is_global_camera)
+			{
+				cam.rotate(-mouse_event.deltay * this.rot_speed * 0.2,right);
+				cam.updateMatrices();
+			}
+			else
+			{
+				node.transform.rotate(-mouse_event.deltay * this.rot_speed,LS.RIGHT);
+				cam.updateMatrices();
+			}
+		}
+		changed = true;
+	}
+	else if(mode == CameraController.PAN)
+	{
+		var collision = vec3.create();
+		var center = vec3.create();
+		var delta = vec3.create();
+
+		cam.getCenter( center );
+		this.testPerpendicularPlane( mouse_event.canvasx, gl.canvas.height - mouse_event.canvasy, center, collision );
+		vec3.sub( delta, coll_point, collision );
+
+		if(is_global_camera)
+		{
+			cam.move( delta );
+			cam.updateMatrices();
+		}
+		else
+		{
+			node.transform.translateGlobal( delta );
+			cam.updateMatrices();
+		}
+
+		changed = true;	
+	}
+	else if(mode == CameraController.PAN_XZ)
+	{
+		var collision = vec3.create();
+		var delta = vec3.create();
+		this.testOriginPlane( mouse_event.canvasx, gl.canvas.height - mouse_event.canvasy, collision );
+		vec3.sub( delta, coll_point, collision );
+		if(is_global_camera)
+			cam.move( delta );
+		else
+			node.transform.translateGlobal( delta );
+		cam.updateMatrices();
+
+		changed = true;
+	}
+	else if(mode == CameraController.CHANGE_DISTANCE)
+	{
+		var factor = mouse_event.deltay * this.wheel_speed;
+		cam.orbitDistanceFactor(1 + factor * -0.05 );
+		cam.updateMatrices();
+		changed = true;
+	}
+	else if(mode == CameraController.WALK)
+	{
+		var delta = cam.getLocalVector( [0,0, mouse_event.deltay * this.walk_speed] );
+		cam.move(delta);
+		cam.updateMatrices();
+		changed = true;
+	}
+	else if(mode == CameraController.ELEVATE)
+	{
+		cam.move([0,mouse_event.deltay * this.walk_speed,0]);
+		cam.updateMatrices();
+		changed = true;
+	}
+
+	return changed;
+}
+
+//triggered on mouse move, or button clicked
 CameraController.prototype.onMouse = function(e, mouse_event)
 {
 	if(!this._root || !this.enabled) 
@@ -33488,140 +33854,34 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 		return;
 	}
 
+	var changed = false;
+
 	if(mouse_event.eventType == "mousedown")
 	{
-		if(this.mode == CameraController.PLANE)
-			this.testOriginPlane( mouse_event.canvasx, gl.canvas.height - mouse_event.canvasy, this._collision );
-		else
-			this.testPerpendicularPlane( mouse_event.canvasx, gl.canvas.height - mouse_event.canvasy, cam.getCenter(), this._collision );
-		this._button = mouse_event.button;
+		if( LS.Input.Mouse.isButtonPressed( GL.LEFT_MOUSE_BUTTON ) )
+			changed |= this.processMouseButtonDownEvent( this.left_button_action, mouse_event, this._collision_left );
+		if( LS.Input.Mouse.isButtonPressed( GL.MIDDLE_MOUSE_BUTTON ) )
+			changed |= this.processMouseButtonDownEvent( this.middle_button_action, mouse_event, this._collision_middle );
+		if( LS.Input.Mouse.isButtonPressed( GL.RIGHT_MOUSE_BUTTON ) )
+			changed |= this.processMouseButtonDownEvent( this.right_button_action, mouse_event, this._collision_right );
 		this._dragging = true;
 	}
-
 	if(!mouse_event.dragging)
 		this._dragging = false;
 
+	//mouse move
+	if( mouse_event.eventType == "mousemove" && this.lock_mouse && document.pointerLockElement )
+		changed |= this.processMouseButtonMoveEvent( this.no_button_action, mouse_event, this._collision_none  );
+
 	//regular mouse dragging
-	if( mouse_event.eventType != "mousemove" || !mouse_event.dragging || !this._dragging )
-		return;
-
-	var changed = false;
-
-	if(this.mode == CameraController.FIRSTPERSON || this.mode == CameraController.HORIZONTALY)
+	if( mouse_event.eventType == "mousemove" && mouse_event.dragging && this._dragging )
 	{
-		var top = LS.TOP; //cam.getLocalVector(LS.TOP);
-		cam.rotate(-mouse_event.deltax * this.rot_speed,top);
-		cam.updateMatrices();
-
-		if( this.mode == CameraController.FIRSTPERSON )
-		{
-			var right = cam.getLocalVector(LS.RIGHT);
-			if(is_global_camera)
-			{
-				cam.rotate(-mouse_event.deltay * this.rot_speed,right);
-				cam.updateMatrices();
-			}
-			else
-			{
-				node.transform.rotate(-mouse_event.deltay * this.rot_speed,LS.RIGHT);
-				cam.updateMatrices();
-			}
-		}
-
-		changed = true;
-	}
-	else if(this.mode == CameraController.ORBIT)
-	{
-		if(this.allow_panning && (mouse_event.ctrlKey || mouse_event.button == 1)) //pan
-		{
-			var collision = vec3.create();
-			var center = vec3.create();
-			var delta = vec3.create();
-
-			cam.getCenter( center );
-			this.testPerpendicularPlane( mouse_event.canvasx, gl.canvas.height - mouse_event.canvasy, center, collision );
-			vec3.sub( delta, this._collision, collision );
-
-			if(is_global_camera)
-			{
-				cam.move( delta );
-				cam.updateMatrices();
-			}
-			else
-			{
-				node.transform.translateGlobal( delta );
-				cam.updateMatrices();
-			}
-
-			changed = true;
-		}
-		else //regular orbit
-		{
-			var yaw = mouse_event.deltax * this.rot_speed;
-			var pitch = -mouse_event.deltay * this.rot_speed;
-
-			if( Math.abs(yaw) > 0.0001 )
-			{
-				if(is_global_camera)
-				{
-					cam.orbit( -yaw, [0,1,0] );
-					cam.updateMatrices();
-				}
-				else
-				{
-					var eye = cam.getEye();
-					node.transform.globalToLocal( eye, eye );
-					node.transform.orbit( -yaw, [0,1,0], eye );
-					cam.updateMatrices();
-				}
-				changed = true;
-			}
-
-			var right = cam.getRight();
-			var front = cam.getFront();
-			var up = cam.getUp();
-			var problem_angle = vec3.dot( up, front );
-			if( !(problem_angle > 0.99 && pitch > 0 || problem_angle < -0.99 && pitch < 0)) //avoid strange behaviours
-			{
-				if(is_global_camera)
-				{
-					cam.orbit( -pitch, right, this.orbit_center );
-				}
-				else
-				{
-					var eye = cam.getEye();
-					node.transform.globalToLocal( eye, eye );
-					node.transform.orbit( -pitch, right, eye );
-				}
-				changed = true;
-			}
-		}
-	}
-	else if(this.mode == CameraController.PLANE)
-	{
-		if(this._button == 2)
-		{
-			var center = vec3.create();
-			cam.getCenter( center );
-			if(is_global_camera)
-				cam.orbit( -mouse_event.deltax * this.rot_speed, LS.TOP, center );
-			else
-				node.transform.orbit( -mouse_event.deltax * this.rot_speed, LS.TOP, center );
-			changed = true;
-		}
-		else
-		{
-			var collision = vec3.create();
-			var delta = vec3.create();
-			this.testOriginPlane( mouse_event.canvasx, gl.canvas.height - mouse_event.canvasy, collision );
-			vec3.sub( delta, this._collision, collision );
-			if(is_global_camera)
-				cam.move( delta );
-			else
-				node.transform.translateGlobal( delta );
-			cam.updateMatrices();
-			changed = true;
-		}
+		if( LS.Input.Mouse.isButtonPressed( GL.LEFT_MOUSE_BUTTON ) )
+			changed |= this.processMouseButtonMoveEvent( this.left_button_action, mouse_event, this._collision_left  );
+		if( LS.Input.Mouse.isButtonPressed( GL.MIDDLE_MOUSE_BUTTON ) )
+			changed |= this.processMouseButtonMoveEvent( this.middle_button_action, mouse_event, this._collision_middle  );
+		if( LS.Input.Mouse.isButtonPressed( GL.RIGHT_MOUSE_BUTTON ) )
+			changed |= this.processMouseButtonMoveEvent( this.right_button_action, mouse_event, this._collision_right  );
 	}
 
 	if(changed)
@@ -33750,16 +34010,12 @@ CameraController.prototype.onKey = function(e, key_event)
 		else
 			this._moving[0] = 0;
 	}
-	else if(key_event.keyCode == 16) //shift in windows chrome
+	
+	if(key_event.keyCode == 16) //shift in windows chrome
 	{
 		if(key_event.type == "keydown")
-			this._move_fast = true;
-		else
-			this._move_fast = false;
+			vec3.scale( this._moving, this._moving, 10 );
 	}
-
-	//if(e.shiftKey) vec3.scale(this._moving,10);
-
 
 	//LEvent.trigger(Scene,"change");
 }
@@ -37370,7 +37626,7 @@ ReflectionProbe.prototype.afterConfigure = function(o)
 {
 	if(o.irradiance_info)
 	{
-		this._irradiance_texture = ReflectionProbe.objectToCubemap( o.irradiance_info, this._irradiance_texture );
+		this._irradiance_texture = ReflectionProbe.objectToCubemap( o.irradiance_info, this._irradiance_texture, this.high_precision );
 		this.assignCubemaps();
 	}
 }
@@ -37603,7 +37859,10 @@ ReflectionProbe.cubemapToObject = function( cubemap )
 {
 	var faces = [];
 	for( var i = 0; i < 6; ++i )
-		faces.push( typedArrayToArray( cubemap.getPixels(null,null,i) ) );
+	{
+		var data = typedArrayToArray( cubemap.getPixels(i) );
+		faces.push( data );
+	}
 	return {
 		texture_type: cubemap.texture_type,
 		size: cubemap.width,
@@ -37612,12 +37871,22 @@ ReflectionProbe.cubemapToObject = function( cubemap )
 	};
 }
 
-ReflectionProbe.objectToCubemap = function( data, out )
+ReflectionProbe.objectToCubemap = function( data, out, high_precision )
 {
+	var type = high_precision ? gl.HIGH_PRECISION_FORMAT : gl.UNSIGNED_BYTE;
 	if(!out)
-		out = new GL.Texture( data.size, data.size, { texture_type: gl.TEXTURE_CUBE_MAP, format: GL.RGBA });
+		out = new GL.Texture( data.size, data.size, { type: type, texture_type: gl.TEXTURE_CUBE_MAP, format: GL.RGBA });
 	for(var i = 0; i < data.faces.length; ++i )
-		out.setPixels( new Uint8Array( data.faces[i] ), true, i == 5, i );
+	{
+		var data_typed;
+		if(type == gl.FLOAT)
+			data_typed = new Float32Array( data.faces[i] );
+		else if(type == gl.HIGH_PRECISION_FORMAT)
+			data_typed = new Uint16Array( data.faces[i] );
+		else //if(type == gl.UNSIGNED_BYTE)
+			data_typed = new Uint8Array( data.faces[i] );
+		out.setPixels( data_typed, true, i == 5, i );
+	}
 	return out;
 }
 
@@ -37929,6 +38198,8 @@ Script.prototype.processCode = function( skip_events, reset_state )
 
 	if( this._name && this._root && this._root.scene )
 		LS.Script.active_scripts[ this._name ] = this;
+
+	console.log(" + Script: " + this._name + " CTX: ", this._script._context );
 
 	return ret;
 }
@@ -38613,6 +38884,8 @@ ScriptFromFile.prototype.processCode = function( skip_events, on_complete, reset
 
 	if(on_complete)
 		on_complete(this);
+
+	console.log(" + Script: " + this._name + " CTX: ", this._script._context );
 
 	return ret;
 }

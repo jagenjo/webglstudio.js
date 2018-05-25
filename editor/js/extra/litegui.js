@@ -7321,7 +7321,11 @@ Inspector.prototype.showProperties = function( instance, properties_info )
 		if(!options.callback) //generate default callback to modify data
 		{
 			var o = { instance: instance, name: varname, options: options };
-			options.callback = Inspector.assignValue.bind( o );
+			if(options.type == "function")
+			{
+			}
+			else
+				options.callback = Inspector.assignValue.bind( o );
 
 		}
 		if(!options.callback_update) //generate default refresh

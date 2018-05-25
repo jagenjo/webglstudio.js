@@ -192,7 +192,7 @@ function enableWebGLCanvas( canvas, options )
 	var tmp_vec2b = vec2.create();
 	ctx._stack = [];
 	var global_angle = 0;
-	var viewport = vec2.fromValues(1,1);
+	var viewport = ctx.viewport_data.subarray(2,4);
 
 	ctx.translate = function(x,y)
 	{
@@ -919,8 +919,8 @@ function enableWebGLCanvas( canvas, options )
 		window.gl = this;
 		var gl = this;
 
-		viewport[0] = gl.viewport_data[2];
-		viewport[1] = gl.viewport_data[3];
+		//viewport[0] = gl.viewport_data[2];
+		//viewport[1] = gl.viewport_data[3];
 		gl.disable( gl.CULL_FACE );
 		gl.disable( gl.DEPTH_TEST );
 		gl.disable( gl.STENCIL_TEST );

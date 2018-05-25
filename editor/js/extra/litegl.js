@@ -600,6 +600,55 @@ global.processFileAtlas = GL.processFileAtlas = function(data, skip_trim)
 	return files;
 }
 
+
+/*
+global.halfFloatToFloat = function( h )
+{
+	function convertMantissa(i) {
+	    if (i == 0) 
+			return 0
+		else if (i < 1024)
+		{
+	        var m = i << 13;
+			var e = 0;
+			while (!(m & 0x00800000))
+			{
+				e -= 0x00800000
+				m = m << 1
+			}
+	        m &= ~0x00800000
+		    e += 0x38800000
+	        return m | e;
+		}
+		return 0x38000000 + ((i - 1024) << 13);
+	}
+
+	function convertExponent(i)	{
+		if (i == 0)
+			return 0;
+		else if (i >= 1 && i <= 31)
+			return i << 23;
+		else if (i == 31)
+			return 0x47800000;
+		else if (i == 32)
+			return 0x80000000;
+		else if (i >= 33 && i <= 63)
+			return 0x80000000 + ((i - 32) << 23);
+		return 0xC7800000;
+	}
+
+	function convertOffset(i) {
+	    if (i == 0 || i == 32)
+		    return 0
+		return 1024;
+	}
+
+	var v = convertMantissa( convertOffset( h >> 10) + (h & 0x3ff) ) + convertExponent(h >> 10);
+	var a = new Uint32Array([v]);
+	return (new Float32Array(a.buffer))[0]; 
+}
+*/
+
 global.typedArrayToArray = function(array)
 {
 	var r = [];
@@ -5043,12 +5092,19 @@ Texture.prototype.uploadImage = function( image, options )
 Texture.prototype.uploadData = function( data, options, skip_mipmaps )
 {
 	options = options || {};
+	if(!data)
+		throw("no data passed");
 	var gl = this.gl;
 	this.bind();
 	Texture.setUploadOptions(options, gl);
 
 	if( this.texture_type == GL.TEXTURE_2D )
-		gl.texImage2D(this.texture_type, 0, this.format, this.width, this.height, 0, this.format, this.type, data);
+	{
+		if(data.buffer && data.buffer.constructor == ArrayBuffer)
+			gl.texImage2D(this.texture_type, 0, this.format, this.width, this.height, 0, this.format, this.type, data);
+		else
+			gl.texImage2D(this.texture_type, 0, this.format, this.format, this.type, data);
+	}
 	else if( this.texture_type == GL.TEXTURE_3D )
 		gl.texImage3D(this.texture_type, 0, this.format, this.width, this.height, this.depth, 0, this.format, this.type, data);
 	else if( this.texture_type == GL.TEXTURE_CUBE_MAP )
@@ -5059,7 +5115,7 @@ Texture.prototype.uploadData = function( data, options, skip_mipmaps )
 	this.data = data; //should I clone it?
 
 	if (!skip_mipmaps && this.minFilter && this.minFilter != gl.NEAREST && this.minFilter != gl.LINEAR) {
-		gl.generateMipmap(texture.texture_type);
+		gl.generateMipmap(this.texture_type);
 		this.has_mipmaps = true;
 	}
 	gl.bindTexture(this.texture_type, null); //disable
@@ -6164,17 +6220,15 @@ Texture.cubemapFromURL = function(url, options, on_complete) {
 /**
 * returns an ArrayBuffer with the pixels in the texture, they are fliped in Y
 * @method getPixels
-* @param {enum} type gl.UNSIGNED_BYTE or gl.FLOAT, if omited then the one in the texture is read
-* @param {bool} force_rgba if yo want to force the output to have 4 components per pixel (useful to transfer to canvas)
-* @return {ArrayBuffer} the data ( Uint8Array or Float32Array )
+* @return {ArrayBuffer} the data ( Uint8Array, Uint16Array or Float32Array )
 */
-Texture.prototype.getPixels = function( type, force_rgba, cubemap_face )
+Texture.prototype.getPixels = function( cubemap_face, legacy_parameter )
 {
+	if(legacy_parameter !== undefined)
+		throw("legacy parameter, not longer supported");
 	var gl = this.gl;
 	var v = gl.getViewport();
 	var old_fbo = gl.getParameter( gl.FRAMEBUFFER_BINDING );
-
-	type = type || this.type;
 
 	if(this.format == gl.DEPTH_COMPONENT)
 		throw("cannot use getPixels in depth textures");
@@ -6197,14 +6251,15 @@ Texture.prototype.getPixels = function( type, force_rgba, cubemap_face )
 		gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + (cubemap_face || 0), this.handler, 0);
 
 	var channels = this.format == gl.RGB ? 3 : 4;
-	if(force_rgba)
-		channels = 4;
 	channels = 4; //WEBGL DOES NOT SUPPORT READING 3 CHANNELS ONLY, YET...
-	//type = gl.UNSIGNED_BYTE; //WEBGL DOES NOT SUPPORT READING FLOAT seems, YET...
+	var type = this.type;
+	//type = gl.UNSIGNED_BYTE; //WEBGL DOES NOT SUPPORT READING FLOAT seems, YET... 23/5/18 now it seems it does now
 
 	if(type == gl.UNSIGNED_BYTE)
 		buffer = new Uint8Array( this.width * this.height * channels );
-	else //half float and float forced to float
+	else if(type == GL.HALF_FLOAT || type == GL.HALF_FLOAT_OES) //previously half float couldnot be read
+		buffer = new Uint16Array( this.width * this.height * channels ); //gl.UNSIGNED_SHORT_4_4_4_4 is only for texture that are SHORT per pixel, not per channel!
+	else 
 		buffer = new Float32Array( this.width * this.height * channels );
 
 	gl.readPixels( 0,0, this.width, this.height, channels == 3 ? gl.RGB : gl.RGBA, type, buffer ); //NOT SUPPORTED FLOAT or RGB BY WEBGL YET
@@ -6267,10 +6322,10 @@ Texture.prototype.toCanvas = function( canvas, flip_y, max_size )
 			//create a temporary texture
 			var temp = new GL.Texture(w,h,{ format: gl.RGBA, filter: gl.NEAREST });
 			this.copyTo( temp );	
-			buffer = temp.getPixels( gl.UNSIGNED_BYTE, true );
+			buffer = temp.getPixels();
 		}
 		else
-			buffer = this.getPixels( gl.UNSIGNED_BYTE, true );
+			buffer = this.getPixels();
 
 		var ctx = canvas.getContext("2d");
 		var pixels = ctx.getImageData(0,0,w,h);
@@ -6298,7 +6353,7 @@ Texture.prototype.toCanvas = function( canvas, flip_y, max_size )
 
 		for(var i = 0; i < 6; i++)
 		{
-			buffer = this.getPixels( gl.UNSIGNED_BYTE, true, i );
+			buffer = this.getPixels(i);
 			var pixels = temp_ctx.getImageData(0,0, temp_canvas.width, temp_canvas.height );
 			pixels.data.set( buffer );
 			temp_ctx.putImageData(pixels,0,0);
@@ -8608,10 +8663,11 @@ GL.create = function(options) {
 
 			var now = getTime();
 			var dt = (now - time) * 0.001;
-
+			if(context.mouse)
+				context.mouse.last_buttons = context.mouse.buttons;
 			if (context.onupdate) 
 				context.onupdate(dt);
-			LEvent.trigger(gl,"update",dt);
+			LEvent.trigger( context, "update", dt);
 			if (context.ondraw)
 			{
 				//make sure the ondraw is called using this gl context (in case there is more than one)
@@ -8619,7 +8675,7 @@ GL.create = function(options) {
 				global.gl = context;
 				//call ondraw
 				context.ondraw();
-				LEvent.trigger(gl,"draw");
+				LEvent.trigger(context,"draw");
 				//restore old context
 				global.gl = old_gl;
 			}
@@ -8658,6 +8714,7 @@ GL.create = function(options) {
 
 	var mouse = gl.mouse = {
 		buttons: 0, //this should always be up-to-date with mouse state
+		last_buttons: 0, //button state in the previous frame
 		left_button: false,
 		middle_button: false,
 		right_button: false,
@@ -8678,10 +8735,21 @@ GL.create = function(options) {
 				return true;
 			return false;
 		},
+
+		/**
+		* returns true if button num is pressed (where num could be GL.LEFT_MOUSE_BUTTON, GL.RIGHT_MOUSE_BUTTON, GL.MIDDLE_MOUSE_BUTTON
+		* @method captureMouse
+		* @param {boolean} capture_wheel capture also the mouse wheel
+		*/
 		isButtonPressed: function(num)
 		{
-			return this.buttons & (1<<GL.RIGHT_MOUSE_BUTTON);
-		}
+			return this.buttons & (1<<num);
+		},
+
+		wasButtonPressed: function(num)
+		{
+			return (this.buttons & (1<<num)) && !(this.last_buttons & (1<<num));
+		},
 	};
 
 	/**
@@ -10887,7 +10955,7 @@ Octree.OCTREE_MIN_MARGIN = 0.1;
 var octree_tested_boxes = 0;
 var octree_tested_triangles = 0;
 
-Octree.prototype.buildFromMesh = function(mesh)
+Octree.prototype.buildFromMesh = function( mesh )
 {
 	this.total_depth = 0;
 	this.total_nodes = 0;

@@ -60,7 +60,7 @@ TexturePreviewWidget.prototype.onRender = function( ctx, viewport )
 	if(this.title)
 	{
 		gl.fillStyle = "white";
-		gl.fillText( this.title, 10,14 );
+		gl.fillText( this.title, 10,18 );
 	}
 
 	gl.setViewport( old );//restore
@@ -127,8 +127,13 @@ TexturePreviewWidget.prototype.inspect = function( inspector )
 	var texture = this.getTexture();
 	if(this.texture_name.length || this._texture)
 	{
+		var formats = { 6407: "gl.RGB", 6408: "gl.RGBA", };
+		var types = { 5121: "gl.UNSIGNED_BYTE", 36193: "gl.HALF_FLOAT_OES", 5126: "gl.FLOAT" };
+
 		inspector.addString("Width", texture.width );
 		inspector.addString("Height", texture.height );
+		inspector.addString("Format", formats[ texture.format ]);
+		inspector.addString("Type", types[ texture.type ]);
 	}
 
 	inspector.addSeparator();

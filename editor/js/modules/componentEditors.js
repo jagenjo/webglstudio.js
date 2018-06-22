@@ -1012,3 +1012,14 @@ LS.Components.ReflectionProbe.onShowProperties = function( component, inspector 
 	inspector.addNumber( "Size", LS.Components.ReflectionProbe.helper_size, function(v){ LS.Components.ReflectionProbe.helper_size = v; LS.GlobalScene.requestFrame(); });
 	inspector.widgets_per_row = 1;
 }
+
+LS.Components.IrradianceCache.onShowProperties = function( component, inspector )
+{
+	inspector.addButton( null, "update", function(){ component.recompute(); LS.GlobalScene.requestFrame(); });
+    inspector.addSeparator();
+
+	inspector.widgets_per_row = 2;
+	inspector.addCheckbox( "Visualize", LS.Components.IrradianceCache.show_probes, function(v){ LS.Components.IrradianceCache.show_probes = v; LS.GlobalScene.requestFrame(); });
+	inspector.addNumber( "Size", LS.Components.IrradianceCache.probes_size, function(v){ LS.Components.IrradianceCache.probes_size = v; LS.GlobalScene.requestFrame(); });
+	inspector.widgets_per_row = 1;
+}

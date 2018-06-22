@@ -89,7 +89,7 @@ var RenderModule = {
 		//Prepare the CANVAS and the LiteScene engine
 		var canvas = this.canvas_manager.canvas;
 		this.shaders_url = CORE.config.shaders || this.shaders_url;
-		LS.ShadersManager.init( this.shaders_url ); //load shaders
+		LS.Shaders.init( this.shaders_url ); //load shaders
 		LS.Renderer.init();
 		LS.Input.init();
 		LS.catch_errors = false; //helps coding
@@ -378,7 +378,7 @@ var RenderModule = {
 	{
 		if( pass == "picking" )
 		{
-			LS.Picking.renderPickingBuffer( LS.GlobalScene, this.cameras[0] );
+			LS.Picking.renderPickingBuffer( LS.GlobalScene, this.cameras[0], 0xFFFF );
 		}
 		else
 		{

@@ -385,16 +385,20 @@ GL.Texture.prototype.inspect = function( widgets, skip_default_widgets )
 	widgets.addTitle("Actions");
 
 	widgets.widgets_per_row = 2;
-	
+
+	widgets.addButton(null, "Clear", function(){
+		texture.fill([0,0,0,0]);
+	});
+	widgets.addButton(null, "Fill", function(){
+		TextureTools.showFillDialog( texture );
+	});
+
 	widgets.addButton(null, "Blur", function(){
 		TextureTools.showBlurDialog( texture );
 	});
 
 	widgets.addButton(null, "Apply shader", function(){
 		TextureTools.showApplyShaderDialog( texture );
-	});
-	widgets.addButton(null, "Fill", function(){
-		TextureTools.showFillDialog( texture );
 	});
 	widgets.addButton(null, "Resize", function(){
 		TextureTools.showResizeDialog( texture );

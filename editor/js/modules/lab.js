@@ -172,19 +172,27 @@ var LabModule = {
 		this.items.length = 0;
 
 		var num = 0;
+		var textures = [];
+
 		for(var i in LS.RM.textures)
 		{
-			var filename = LS.RM.getFilename(i);
+			var item = LS.RM.textures[i];
+			if(item._is_internal)
+				continue;
+			textures.push(item);
+		}
+
+		textures = textures.concat( gl._texture_pool );
+
+		for(var i = 0; i < textures.length; ++i)
+		{
+			var item = textures[i];
+			if(!item)
+				continue;
+			var filename = item.filename || "";
 
 			//is a thumbnail texture
 			if(filename.substr(0,4) == "_th_")
-				continue;
-
-			var item = LS.RM.textures[i];
-			if(!item) //just in case...
-				continue;
-
-			if(item._is_internal)
 				continue;
 
 			num++;
@@ -226,8 +234,7 @@ var LabModule = {
 					LS.Draw.renderPlane([ gl._matrix[6] + (posx + w*0.5) * gl._matrix[0], gl._matrix[7] + (posy + h*0.5) * gl._matrix[4], 0], [ w*0.5 * gl._matrix[0], -h*0.5 * gl._matrix[4] ], tex, this._cubemap_shader );
 				}
 
-				var filename = LS.RM.getFilename(i).substr(0,24);
-				var text = filename;
+				var text = filename.substr(0,24);
 				if(this.settings.render_frame)
 				{
 					gl.globalAlpha = (this.selected_item && this.selected_item.item == item) ? 1 : 0.5;

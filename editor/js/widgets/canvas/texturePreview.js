@@ -102,6 +102,7 @@ TexturePreviewWidget.prototype.showContextMenu = function( e )
 
 	var options = [
 		"inspect",
+		"x-ray",
 		null,
 		"close"
 	];
@@ -109,6 +110,8 @@ TexturePreviewWidget.prototype.showContextMenu = function( e )
 	var menu = new LiteGUI.ContextMenu( options, {  event: e, title: "TexturePreview", callback: function( action, o, e ) {
 		if(action == "inspect")
 			EditorModule.inspect( that );
+		else if(action == "x-ray")
+			that.xray_mode = !that.xray_mode;
 		else if(action == "close")
 			that.close();
 	}});

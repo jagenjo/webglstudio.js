@@ -8,8 +8,6 @@ var CubemapTools = {
 	init: function()
 	{
 		LiteGUI.menubar.add("Actions/Cubemap tools", { callback: function() { CubemapTools.showDialog(); }});
-
-		this.loadShaders();
 	},
 
 	showDialog: function()
@@ -463,10 +461,12 @@ var CubemapTools = {
 			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
 			cubemap_texture.bind();
-			var shader = ShadersManager.get("cubemap_to_polar");
-			//var shader = ShadersManager.get("screen");
+			var shader = this.shader_cubemap_to_polar;
 			if(!shader)
-				throw("No shader");
+			{
+				this.compileShaders();
+				shader = this.shader_cubemap_to_polar;
+			}
 
 			cubemap_texture.toViewport( shader );
 			//shader.uniforms({color:[1,1,1,1], texture: 0}).draw( RenderModule.canvas_manager.screen_plane );
@@ -617,15 +617,15 @@ var CubemapTools = {
 		}
 	},
 
-	loadShaders: function()
+	compileShaders: function()
 	{
-		LS.ShadersManager.registerGlobalShader( LS.ShadersManager.common_vscode + '\
+		this.shader_cubemap_to_polar = LS.Shaders.compile( LS.Shaders.common_vscode + '\
 			varying vec2 coord;\
 			void main() {\
 			coord = a_coord;\
 			gl_Position = vec4(coord * 2.0 - 1.0, 0.0, 1.0);\
 		}\
-		', LS.ShadersManager.common_pscode + '\
+		', LS.Shaders.common_pscode + '\
 			#define PI 3.14159265358979323846264\n\
 			uniform samplerCube texture;\
 			uniform vec4 color;\

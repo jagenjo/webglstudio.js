@@ -238,3 +238,15 @@ GraphModule.showGraphComponent = function(component, inspector)
 
 LS.Components.GraphComponent["@inspector"] = GraphModule.showGraphComponent;
 LS.Components.FXGraphComponent["@inspector"] = GraphModule.showGraphComponent;
+
+if(!LS.Components.GraphComponent.actions)
+	LS.Components.GraphComponent.actions = {}
+if(!LS.Components.FXGraphComponent.actions)
+	LS.Components.FXGraphComponent.actions = {}
+
+LS.Components.GraphComponent.actions["show_graph_json"] = LS.Components.FXGraphComponent.actions["show_graph_json"] = { 
+	title: "Show Graph JSON",
+	callback: function(){
+		EditorModule.checkJSON( this._graph );
+	}
+};

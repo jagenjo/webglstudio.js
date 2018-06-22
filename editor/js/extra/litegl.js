@@ -3983,6 +3983,8 @@ function linearizeArray( array, typed_array_class )
 	return buffer;
 }
 
+GL.linearizeArray = linearizeArray;
+
 /* BINARY MESHES */
 //Add some functions to the classes in LiteGL to allow store in binary
 GL.Mesh.EXTENSION = "wbin";
@@ -5547,6 +5549,54 @@ Texture.prototype.copyTo = function( target_texture, shader, uniforms ) {
 	return this;
 }
 
+
+/**
+* Similar to CopyTo, but more specific, only for color texture_2D. It doesnt change the blend flag
+* @method blit
+* @param {GL.Texture} target_texture
+* @param {GL.Shader} [shader=null] optional shader to apply while copying
+* @param {Object} [uniforms=null] optional uniforms for the shader
+*/
+Texture.prototype.blit = (function(){ 
+	var viewport = new Float32Array(4);	
+	
+	return function( target_texture, shader, uniforms ) {
+		var that = this;
+		var gl = this.gl;
+
+		if ( this.texture_type != gl.TEXTURE_2D || this.format === gl.DEPTH_COMPONENT || this.format === gl.DEPTH_STENCIL )
+			throw("blit only support TEXTURE_2D of RGB or RGBA. use copyTo instead");
+
+		//save state
+		var previous_fbo = gl.getParameter( gl.FRAMEBUFFER_BINDING );
+		viewport.set( gl.viewport_data ); 
+
+		shader = shader || GL.Shader.getScreenShader();
+		if(shader && uniforms)
+			shader.uniforms( uniforms );
+
+		//reuse fbo
+		var fbo = gl.__copy_fbo;
+		if(!fbo)
+			fbo = gl.__copy_fbo = gl.createFramebuffer();
+		gl.bindFramebuffer( gl.FRAMEBUFFER, fbo );
+
+		gl.viewport(0,0,target_texture.width, target_texture.height);
+		gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, target_texture.handler, 0);
+
+		this.bind(0);
+		shader.draw( GL.Mesh.getScreenQuad(), gl.TRIANGLES );
+		
+		//restore previous state
+		gl.setViewport(viewport); //restore viewport
+		gl.bindFramebuffer( gl.FRAMEBUFFER, previous_fbo ); //restore fbo
+
+		target_texture.data = null;
+		gl.bindTexture( target_texture.texture_type, null ); //disable
+		return this;
+	}
+})();
+
 /**
 * Render texture in a quad to full viewport size
 * @method toViewport
@@ -5623,11 +5673,11 @@ Texture.prototype.renderQuad = (function() {
 * @param {Number} offsetx scalar that multiplies the offset when fetching pixels horizontally (default 1)
 * @param {Number} offsety scalar that multiplies the offset when fetching pixels vertically (default 1)
 * @param {Number} intensity scalar that multiplies the result (default 1)
-* @param {Texture} temp_texture blur needs a temp texture, if not supplied it will create a new one each time!
 * @param {Texture} output_texture [optional] if not passed the output is the own texture
+* @param {Texture} temp_texture blur needs a temp texture, if not supplied it will use the temporary textures pool
 * @return {Texture} returns the temp_texture in case you want to reuse it
 */
-Texture.prototype.applyBlur = function( offsetx, offsety, intensity, temp_texture, output_texture )
+Texture.prototype.applyBlur = function( offsetx, offsety, intensity, output_texture, temp_texture )
 {
 	var that = this;
 	var gl = this.gl;
@@ -5635,18 +5685,21 @@ Texture.prototype.applyBlur = function( offsetx, offsety, intensity, temp_textur
 		offsetx = 1;
 	if(offsety === undefined)
 		offsety = 1;
-	offsetx = offsetx / this.width;
-	offsety = offsety / this.height;
 	gl.disable( gl.DEPTH_TEST );
 	gl.disable( gl.BLEND );
+	output_texture = output_texture || this;
+	var is_temp = !temp_texture;
 
-	if(this === output_texture && this.texture_type === gl.TEXTURE_CUBE_MAP )
-		throw("cannot use applyBlur in a texture with itself when blurring a CUBE_MAP");
+	//if(this === output_texture && this.texture_type === gl.TEXTURE_CUBE_MAP )
+	//	throw("cannot use applyBlur in a texture with itself when blurring a CUBE_MAP");
+	if(temp_texture === output_texture)
+		throw("cannot use applyBlur in a texture using as temporary itself");
 
 	if(output_texture && this.texture_type !== output_texture.texture_type )
 		throw("cannot use applyBlur with textures of different texture_type");
 
-	var result_texture = null;
+	if(this.width != output_texture.width || this.height != output_texture.height)
+		throw("cannot use applyBlur with an output texture of different size, it doesnt work");
 
 	//save state
 	var current_fbo = gl.getParameter( gl.FRAMEBUFFER_BINDING );
@@ -5664,36 +5717,38 @@ Texture.prototype.applyBlur = function( offsetx, offsety, intensity, temp_textur
 		var shader = GL.Shader.getBlurShader();
 
 		if(!temp_texture)
-			temp_texture = new GL.Texture( this.width, this.height, this.getProperties() );
+			temp_texture = GL.Texture.getTemporary( this.width, this.height, this );
 
+		//horizontal blur
 		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, temp_texture.handler, 0);
-		this.toViewport( shader, {u_texture: 0, u_intensity: intensity, u_offset: [0, offsety ] });
+		this.toViewport( shader, {u_texture: 0, u_intensity: intensity, u_offset: [0, offsety / this.height ] });
 
-		output_texture = output_texture || this;
+		//vertical blur
 		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, output_texture.handler, 0);
-		temp_texture.toViewport( shader, {u_intensity: intensity, u_offset: [offsetx, 0] });
+		gl.viewport(0,0,output_texture.width, output_texture.height);
+		temp_texture.toViewport( shader, {u_intensity: intensity, u_offset: [offsetx / temp_texture.width, 0] });
 
-		result_texture = temp_texture;
+		if(is_temp)
+			GL.Texture.releaseTemporary( temp_texture );
 	}
 	else if( this.texture_type === gl.TEXTURE_CUBE_MAP )
 	{
 		//var weights = new Float32Array([ 0.16/0.98, 0.15/0.98, 0.12/0.98, 0.09/0.98, 0.05/0.98 ]);
 		//var weights = new Float32Array([ 0.05/0.98, 0.09/0.98, 0.12/0.98, 0.15/0.98, 0.16/0.98, 0.15/0.98, 0.12/0.98, 0.09/0.98, 0.05/0.98, 0.0 ]); //extra 0 to avoid mat3
-
 		var shader = GL.Shader.getCubemapBlurShader();
-		shader.uniforms({u_texture: 0, u_intensity: intensity, u_offset: [ offsetx, offsety ] });
+		shader.uniforms({u_texture: 0, u_intensity: intensity, u_offset: [ offsetx / this.width, offsety / this.height ] });
 		this.bind(0);
 		var mesh = Mesh.getScreenQuad();
 		mesh.bindBuffers( shader );
 		shader.bind();
 
-		if(!output_texture)
-			output_texture = new GL.Texture( this.width, this.height, this.getProperties() );
+		if(!temp_texture)
+			temp_texture = GL.Texture.getTemporary( output_texture.width, output_texture.height, output_texture );
 
 		var rot_matrix = GL.temp_mat3;
 		for(var i = 0; i < 6; ++i)
 		{
-			gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, output_texture.handler, 0);
+			gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, temp_texture.handler, 0);
 			var face_info = GL.Texture.cubemap_camera_parameters[ i ];
 			mat3.identity(rot_matrix);
 			rot_matrix.set( face_info.right, 0 );
@@ -5705,7 +5760,10 @@ Texture.prototype.applyBlur = function( offsetx, offsety, intensity, temp_textur
 		}
 
 		mesh.unbindBuffers( shader );
-		result_texture = output_texture;
+		temp_texture.copyTo( output_texture );
+
+		if(is_temp)
+			GL.Texture.releaseTemporary( temp_texture );
 	}
 
 	//restore previous state
@@ -5721,8 +5779,7 @@ Texture.prototype.applyBlur = function( offsetx, offsety, intensity, temp_textur
 		output_texture.has_mipmaps = true;
 	}
 
-	gl.bindTexture(output_texture.texture_type, null); //disable
-	return result_texture;
+	gl.bindTexture( output_texture.texture_type, null ); //disable
 }
 
 
@@ -6570,7 +6627,7 @@ Texture.getBlackTexture = function( gl )
 * @method Texture.getTemporary
 * @param {Number} width the texture width
 * @param {Number} height the texture height
-* @param {Object} options to specifiy texture_type,type,format
+* @param {Object|Texture} options to specifiy texture_type,type,format, it can be an object or another texture
 * @param {WebGLContext} gl [optional]
 * @return {Texture} the textures that matches this settings
 */
@@ -6597,19 +6654,20 @@ Texture.getTemporary = function( width, height, options, gl )
 			format = options.format;
 	}
 
-	// 64bits key: 0x0000 type width height
-	var key = (type&0xFFFF) + ((width&0xFFFF)<<16) + ((height&0xFFFF)<<32);
+	//var key = (type&0xFFFF) + ((width&0xFFFF)<<16) + ((height&0xFFFF)<<32); // 64bits key: 0x0000 type width height WRONG
+	var key = texture_type + ":" + type + ":" + width + "x" + height + ":" + format;
 
 	//iterate
 	var pool = gl._texture_pool;
 	for(var i = 0; i < pool.length; ++i)
 	{
 		var tex = pool[i];
-		if( tex._key != key || tex.texture_type != texture_type || tex.format != format )
+		if( tex._key != key ) //|| tex.texture_type != texture_type || tex.format != format )
 			continue;
-		pool.splice(i,1); //remove from the pool
+		//remove from the pool
+		pool.splice(i,1); 
 		tex._pool = 0;
-		return tex;
+		return tex; //return
 	}
 
 	//not found, create it
@@ -6644,7 +6702,7 @@ Texture.releaseTemporary = function( tex, gl )
 	pool.push( tex );
 
 	//do not store too much textures in the textures pool
-	if( pool.length > 15 )
+	if( pool.length > 20 )
 	{
 		pool.sort( function(a,b) { return b._pool - a._pool } ); //sort by time
 		//pool.sort( function(a,b) { return a._key - b._key } ); //sort by size
@@ -7998,14 +8056,6 @@ Shader.BLEND_FRAGMENT_SHADER = "\n\
 			}\n\
 			";
 
-Shader.SCREEN_FLAT_FRAGMENT_SHADER = "\n\
-			precision highp float;\n\
-			uniform vec4 u_color;\n\
-			void main() {\n\
-				gl_FragColor = u_color;\n\
-			}\n\
-			";
-
 //used to paint quads
 Shader.QUAD_VERTEX_SHADER = "\n\
 			precision highp float;\n\
@@ -8083,6 +8133,8 @@ Shader.FLAT_FRAGMENT_SHADER = "\n\
 				gl_FragColor = u_color;\n\
 			}\n\
 			";
+Shader.SCREEN_FLAT_FRAGMENT_SHADER = Shader.FLAT_FRAGMENT_SHADER; //legacy
+
 
 /**
 * Allows to create a simple shader meant to be used to process a texture, instead of having to define the generic Vertex & Fragment Shader code
@@ -8143,7 +8195,7 @@ Shader.prototype.toViewport = function(uniforms)
 
 /**
 * Returns a shader ready to render a textured quad in fullscreen, use with Mesh.getScreenQuad() mesh
-* shader params sampler2D u_texture
+* shader params: sampler2D u_texture
 * @method Shader.getScreenShader
 */
 Shader.getScreenShader = function(gl)
@@ -8154,6 +8206,21 @@ Shader.getScreenShader = function(gl)
 		return shader;
 	shader = gl.shaders[":screen"] = new GL.Shader( Shader.SCREEN_VERTEX_SHADER, Shader.SCREEN_FRAGMENT_SHADER );
 	return shader.uniforms({u_texture:0}); //do it the first time so I dont have to do it every time
+}
+
+/**
+* Returns a shader ready to render a flat color quad in fullscreen, use with Mesh.getScreenQuad() mesh
+* shader params: vec4 u_color
+* @method Shader.getFlatScreenShader
+*/
+Shader.getFlatScreenShader = function(gl)
+{
+	gl = gl || global.gl;
+	var shader = gl.shaders[":flat_screen"];
+	if(shader)
+		return shader;
+	shader = gl.shaders[":flat_screen"] = new GL.Shader( Shader.SCREEN_VERTEX_SHADER, Shader.FLAT_FRAGMENT_SHADER );
+	return shader.uniforms({u_color:[1,1,1,1]}); //do it the first time so I dont have to do it every time
 }
 
 /**

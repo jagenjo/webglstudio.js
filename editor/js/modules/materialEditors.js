@@ -524,10 +524,6 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 	//inspector.addButtons(null,["Make Global","Copy","Paste"],{});
 }
 
-if(LS.MaterialClasses.newStandardMaterial)
-	LS.MaterialClasses.newStandardMaterial["@inspector"] = LS.MaterialClasses.StandardMaterial["@inspector"];
-
-
 LS.Material.showFlagsEditor = function( material )
 {
 	var dialog = new LiteGUI.Dialog( { title:"Standard Material Flags", close: true, minimize: true, width: 260, scroll: false, draggable: true});
@@ -779,7 +775,7 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 
 	if(material )
 	{
-		if( material.constructor === LS.StandardMaterial || material.constructor === LS.newStandardMaterial )
+		if( material.constructor === LS.StandardMaterial )
 		{
 			if(channel == "color")
 			{
@@ -806,10 +802,12 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 
 		widgets.addTitle("UVs");
 
+		/* removed
 		widgets.addCombo("UVs Channel", sampler["uvs"] || LS.Material.DEFAULT_UVS[ channel ], { values: LS.Material.TEXTURE_COORDINATES, callback: function(v) {
 			sampler.uvs = v;
 			LS.GlobalScene.refresh();
 		}});
+		*/
 
 		var m = material.uvs_matrix;
 		widgets.addVector2("Tiling", [m[0],m[4]], { step:0.001, callback: function (value) { 

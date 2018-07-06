@@ -59,14 +59,13 @@ var GraphModule = {
 
 		this.tabs_widget = new GenericTabsWidget();
 		graph_area.getSection(1).add( this.tabs_widget );
-		//this.root.appendChild( this.tabs_widget.root );
 		this.tabs_widget.supported_widgets = [ GraphWidget ];
 
 		LiteGUI.bind( this.tabs_widget, "tab_created", function(e){
 			var tab = e.detail;
 			var widget = tab.widget;
 			var inspector = widget.top_widgets;
-			
+
 			inspector.addButton(null,"3D", { width: 50, callback: function(){
 				GraphModule.show3DWindow(); //toggle
 			}});
@@ -139,15 +138,34 @@ var GraphModule = {
 		return this.tabs_widget.closeInstanceTab( instance, options );
 	},
 
-	onNewGraph: function( node )
+	onNewGraph: function( node, from_file )
 	{
 		node = node || SelectionModule.getSelectedNode();
 		if(!node)
 			node = LS.GlobalScene.root;
+
 		var component = new LS.Components.GraphComponent();
+		component.from_file = from_file;
 		node.addComponent( component );
 		CORE.userAction("component_created", component );
-		this.editInstanceGraph( component, { id: component.uid, title: node.id } );
+
+		if( from_file )
+		{
+		}
+		else
+		{
+			this.editInstanceGraph( component, { id: component.uid, title: node.id } );
+			this.openTab();
+		}
+	},
+
+	onNewGraphCode: function( fullpath )
+	{
+		var graphcode = new LS.GraphCode();
+		graphcode.fullpath = fullpath;
+		graphcode.filename = filename;
+
+		//this.editInstanceGraph( graphcode, { id: fullpath, title: LS.RM.getFilename( fullpath ) } );
 		this.openTab();
 	},
 
@@ -167,6 +185,39 @@ var GraphModule = {
 
 		this.graph_canvas.setGraph( this.current_overgraph );
 		this.graph_canvas.draw();
+	},
+
+	onKeyDown: function(e)
+	{
+		//console.log("key",e);
+		if(e.code == "KeyS" && e.ctrlKey)
+			this.saveGraph();
+		else if(e.code == "F6")
+			EditorModule.reloadEditor(true);
+		else if(e.code == "Enter" && e.ctrlKey)
+			this.compileGraph();
+		else
+			return;
+
+		e.preventDefault();
+		e.stopPropagation();
+		return true;
+	},
+
+	saveGraph: function()
+	{
+		//store changes in GraphCode
+		var graph_widget = this.tabs_widget.getCurrentWidget();
+		if(graph_widget)
+			graph_widget.saveGraph();
+	},
+
+	compileGraph: function()
+	{
+		//store changes in GraphCode
+		var graph_widget = this.tabs_widget.getCurrentWidget();
+		if(graph_widget)
+			graph_widget.compile();
 	},
 
 	showPreviewSelection: function()
@@ -194,10 +245,13 @@ CORE.registerModule( GraphModule );
 
 GraphModule.showGraphComponent = function(component, inspector)
 {
+	if(component.from_file)
+		inspector.addGraph("filename", component.filename, { name_width: 60, callback: function(v) { component.filename = v; }});
+
 	if(component.constructor == LS.Components.GraphComponent)
 	{
 		inspector.widgets_per_row = 2;
-		inspector.addCombo("on event", component.on_event, { name_width: 100, width:"70%", values: LS.Components.GraphComponent["@on_event"].values , callback: function(v) { component.on_event = v; }});
+		inspector.addCombo("on event", component.on_event, { name_width: 60, width:"70%", values: LS.Components.GraphComponent["@on_event"].values , callback: function(v) { component.on_event = v; }});
 		inspector.addCheckbox("redraw", component.force_redraw, { width:"30%", callback: function(v) { component.force_redraw = v; }});
 		inspector.widgets_per_row = 1;
 	}
@@ -250,3 +304,18 @@ LS.Components.GraphComponent.actions["show_graph_json"] = LS.Components.FXGraphC
 		EditorModule.checkJSON( this._graph );
 	}
 };
+
+LS.Components.GraphComponent.actions["to_inner"] = { 
+	title: "Convert to Inner Graph",
+	callback: function(){
+		this.from_file = false;
+	}
+};
+
+LS.Components.GraphComponent.actions["to_file"] = { 
+	title: "Convert to Graph From File",
+	callback: function(){
+		this.from_file = true;
+	}
+};
+

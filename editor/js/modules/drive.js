@@ -196,6 +196,11 @@ var DriveModule = {
 		return category;
 	},
 
+	getSceneBaseFolder: function()
+	{
+		return LS.GlobalScene.extra.data_folder || LS.GlobalScene.extra.folder || ( ProfileModule.user ? "/" + ProfileModule.user.username : "" );
+	},
+
 	openTab: function()
 	{
 		LiteGUI.main_tabs.selectTab( this.tab_name );
@@ -880,7 +885,7 @@ var DriveModule = {
 		return;
 	},
 
-	showSelectFolderDialog: function(callback, callback_close, default_folder )
+	showSelectFolderDialog: function( callback, callback_close, default_folder )
 	{
 		if(!ProfileModule.session)
 		{
@@ -889,7 +894,7 @@ var DriveModule = {
 		}
 
 
-		default_folder = default_folder || ("/" + ProfileModule.user.username);
+		default_folder = default_folder || this.getSceneBaseFolder();
 
 
 		this.serverGetFolders( inner );
@@ -934,7 +939,7 @@ var DriveModule = {
 			{
 				var path = null;
 				if(selected)
-					path = LS.ResourcesManager.cleanFullpath( selected.fullpath ); //remove extra trails
+					path = LS.ResourcesManager.cleanFullpath( selected.constructor === String ? selected : selected.fullpath ); 
 				if(callback)
 					callback( path );
 				dialog.close();
@@ -963,6 +968,9 @@ var DriveModule = {
 		if(options.folder)
 			folder = options.folder;
 
+		if(!folder)
+			folder = this.getSceneBaseFolder();
+
 		var dialog = new LiteGUI.Dialog( { id: "select-folder-filename-dialog", title:"Select folder and filename", close: true, width: 360, height: 240, scroll: false, draggable: true});
 		var widgets = new LiteGUI.Inspector();
 		if(options.text)
@@ -978,7 +986,7 @@ var DriveModule = {
 			filename = v;
 		}});
 
-		widgets.addButton(null,"Continue",function(){
+		widgets.addButton(null, options.button || "Continue",function(){
 			if( (!folder && !options.allow_no_folder) || !filename)
 				return;
 
@@ -986,9 +994,9 @@ var DriveModule = {
 			//force extension
 			if(options.extension)
 			{
-				var ext = LS.RM.getExtension( filename );
-				if(ext != options.extension)
-					filename += "." + options.extension;
+				var ext = LS.RM.getExtension( filename, true );
+				if( ext.toLowerCase() != options.extension.toLowerCase() )
+					filename = LS.RM.replaceExtension( filename, options.extension );
 			}
 
 			var fullpath = LS.RM.cleanFullpath( folder + "/" + filename );
@@ -997,7 +1005,7 @@ var DriveModule = {
 		});
 
 		dialog.add(widgets);
-		dialog.adjustSize(20);
+		dialog.adjustSize(5);
 		dialog.show();
 	},
 
@@ -1531,7 +1539,7 @@ var DriveModule = {
 		}
 
 		//add to nocache
-		LS.RM.nocache_files[ resource.fullpath ] = new Date().getTime();
+		LS.RM.nocache_files[ resource.fullpath ] = getTime();
 
 		this.serverUploadResource( resource, resource.fullpath,
 			function(v, msg) {  //after resource saved
@@ -1619,8 +1627,8 @@ var DriveModule = {
 				return;
 			}
 			if(resource.constructor === String)
-				resource = LS.ResourcesManager.resources[resource];
-			var new_name = folder + "/" + resource.filename;
+				resource = LS.ResourcesManager.resources[ resource ];
+			var new_name = folder + "/" + LS.RM.getFilename( resource.filename ); //resource.filename could be the fullpath
 			//ensure the scene info gets updated
 			LS.RM.renameResource( resource.fullpath || resource.filename, new_name );
 			DriveModule.saveResource( resource, inner );
@@ -1692,7 +1700,7 @@ var DriveModule = {
 		}
 
 		//extra from scene
-		var files_folder = LS.GlobalScene.extra.data_folder || LS.GlobalScene.extra.folder;
+		var files_folder = this.getSceneBaseFolder();
 
 		var dialog = new LiteGUI.Dialog( { title:"Resources not saved", closable: true, draggable: true, width: 400 });
 		var widgets = new LiteGUI.Inspector();
@@ -1889,7 +1897,7 @@ var DriveModule = {
 		var resource = data;
 		
 		resource.id = parseInt(resource.id);
-		resource.fullpath = resource.folder + "/" + resource.filename;
+		resource.fullpath = resource.folder + "/" + LS.RM.getFilename( resource.filename );
 		resource.url = CORE.server_url + "resources/" + resource.fullpath;
 		resource.object_class = resource.category;
 		if(resource.metadata)
@@ -2286,7 +2294,8 @@ var DriveModule = {
 			"Text",
 			"Shader",
 			"Pack",
-			"Material"
+			"Material",
+			"Graph"
 		];
 
 		var menu = new LiteGUI.ContextMenu( options, { event: e, title: "Create", callback: inner, parentMenu: prev_menu });
@@ -2297,6 +2306,8 @@ var DriveModule = {
 				that.showCreateScriptDialog({filename: "script.js", folder: folder });
 			else if(action == "Text")
 				that.showCreateFileDialog({filename: "text.txt", folder: folder});
+			else if(action == "Graph")
+				that.showCreateFileDialog({filename: "graph.GRAPH.json", folder: folder});
 			else if(action == "Pack")
 				PackTools.showCreatePackDialog({folder: folder });
 			else if(action == "Shader")
@@ -2354,9 +2365,9 @@ var DriveModule = {
 				material = new material_class();
 			}
 
-			var fullpath = LS.RM.cleanFullpath( folder + "/" + filename );
-			material.filename = filename;
-			material.fullpath = LS.RM.cleanFullpath( folder + "/" + filename );
+			material.filename = LS.RM.getFilename( filename );
+			var fullpath = LS.RM.cleanFullpath( folder + "/" + material.filename );
+			material.fullpath = LS.RM.cleanFullpath( fullpath );
 
 			LS.RM.registerResource( fullpath, material );
 			LS.RM.resourceModified( material );

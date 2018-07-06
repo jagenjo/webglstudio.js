@@ -7771,6 +7771,8 @@ Inspector.prototype.addString = function(name,value, options)
 	};
 	element.getValue = function() { return input.value; };
 	element.focus = function() { $(this).find("input").focus(); };
+	element.disable = function() { input.disabled = true; };
+	element.enable = function() { input.disabled = false; };
 	element.wchange = function(callback) { $(this).wchange(callback); }
 	this.append(element,options);
 	this.processElement(element, options);
@@ -7845,6 +7847,8 @@ Inspector.prototype.addStringButton = function( name, value, options)
 		if(!skip_event)
 			LiteGUI.trigger(input, "change" );
 	};
+	element.disable = function() { input.disabled = true; button.disabled = true; };
+	element.enable = function() { input.disabled = false; button.disabled = false; };
 	element.getValue = function() { return input.value; };
 	element.focus = function() { LiteGUI.focus(input); };
 	this.processElement(element, options);
@@ -7900,6 +7904,8 @@ Inspector.prototype.addTextarea = function(name,value, options)
 		return textarea.value;
 	}
 	element.focus = function() { LiteGUI.focus(textarea); };
+	element.disable = function() { textarea.disabled = true;};
+	element.enable = function() { textarea.disabled = false;};
 	this.processElement(element, options);
 	return element;
 }
@@ -7993,6 +7999,8 @@ Inspector.prototype.addNumber = function(name, value, options)
 	element.setRange = function(min,max) { dragger.setRange(min,max); }
 	element.getValue = function() { return parseFloat( input.value ); };
 	element.focus = function() { LiteGUI.focus(input); };
+	element.disable = function() { input.disabled = true;};
+	element.enable = function() { input.disabled = false;};
 	this.processElement(element, options);
 	return element;
 }
@@ -9278,6 +9286,9 @@ Inspector.prototype.addButton = function(name, value, options)
 			return;
 		button.innerHTML = v;
 	}
+
+	element.disable = function() { button.disabled = true; };
+	element.enable = function() { button.disabled = false; };
 
 	this.processElement(element, options);
 	return element;

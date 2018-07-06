@@ -23,6 +23,8 @@ GraphWidget.prototype.init = function( options )
 	this.redraw_canvas = true;
 	this.inspected_node = null;
 
+	this.graph_filename_widget = null;
+
 	//create area
 	this.root = LiteGUI.createElement("div",null,null,{ width:"100%", height:"100%" });
 
@@ -32,7 +34,10 @@ GraphWidget.prototype.init = function( options )
 	//top bar
 	var top_widgets = this.top_widgets = new LiteGUI.Inspector( { one_line: true });
 	top_widgets.addButton(null,"New", { callback: this.onNewGraph.bind(this), width: 50 });
-	top_widgets.addButton(null,"Open", this.onOpenGraph.bind(this) );
+	top_widgets.addButton(null,"Open", { width: 80, callback: this.onOpenGraph.bind(this) } );
+	this.graph_filename_widget = top_widgets.addString( "Graph","", { name_width: 50, content_width: 200, width: 250, disabled: true } );
+	this.save_graph_widget = top_widgets.addButton(null,"Save", { width: 50, callback: this.saveGraph.bind(this) } );
+	this.compile_graph_widget = top_widgets.addButton(null,"Compile", { width: 70, callback: this.compileGraph.bind(this) } );
 	top_widgets.addButton(null,"Run Step", this.onStepGraph.bind(this) );
 	top_widgets.addCheckbox("Redraw",this.redraw_canvas, { callback: function(v){ that.redraw_canvas = v; } } );
 	/* top_widgets.addButton(null,"Overgraph", this.onSelectOvergraph.bind(this) ); */
@@ -142,7 +147,11 @@ GraphWidget.prototype.onDraw = function()
 	if(rect.width && rect.height)
 		this.graphcanvas.setDirty(true);
 
-
+	if(this.current_graph_info && this.graph && this.graph._version != this.current_graph_info.version && this.current_graph_info.instance && this.current_graph_info.instance.constructor === LS.GraphCode )
+	{
+		this.current_graph_info.version = this.graph._version;
+		LS.RM.resourceModified( this.current_graph_info.instance );
+	}
 }
 
 GraphWidget.prototype.resizeCanvas = function()
@@ -159,7 +168,7 @@ GraphWidget.prototype.resizeCanvas = function()
 	}
 }
 
-
+//instance could be a GraphCode or a GraphComponent
 GraphWidget.prototype.editInstanceGraph = function( instance, options )
 {
 	options = options || {};
@@ -186,19 +195,98 @@ GraphWidget.prototype.editInstanceGraph = function( instance, options )
 
 	//update graph selected
 	this.current_graph_info = { instance: instance, options: options };
+	this.graph = instance.graph || (instance.getGraph ? instance.getGraph() : null);
+
+	/*
+	if( instance.constructor == LS.GraphCode )
+	{
+		if( instance.graph._version !== undefined )
+		this.current_graph_info.version = instance.graph._version;
+		this.graph_filename_widget.setValue( instance.filename );
+	}
+	*/
+
+	if( instance.filename )
+	{
+		this.save_graph_widget.enable();
+		this.graph_filename_widget.setValue( instance.filename );
+	}
+	else
+	{
+		this.graph_filename_widget.setValue( "inner graph" );
+		this.save_graph_widget.disable();
+	}
+
 	this.onNodeSelected(null); //TODO: store old selected node id
-	this.graph = instance.getGraph() || instance.graph;
+	if(!this.graph)
+		console.warn("no graph in resource or component");
 	this.graphcanvas.setGraph( this.graph );
 
-	if(this.onRename)
-		this.onRename( (instance && instance._root) ? instance._root.name : "Empty");
+	if(this.onRename) //used for the title of the tab
+	{
+		var name = "";
+		if(instance)
+		{
+			if( instance.constructor === LS.GraphCode )
+				name = LS.RM.getBasename( instance.fullpath || instance.filename );
+			else if (instance._root) 
+				name = instance._root.name;
+		}
+		else
+			name = "None";
+		this.onRename(name);
+	}
 }
 
-GraphWidget.prototype.isInstance = function(instance, options)
+//a GraphComponent
+GraphWidget.prototype.getInstance = function()
+{
+	if(!this.current_graph_info)
+		return null;
+	return this.current_graph_info.instance;
+}
+
+GraphWidget.prototype.isInstance = function( instance, options )
 {
 	if(this.current_graph_info && this.current_graph_info.instance == instance)
 		return true;
 	return false;
+}
+
+GraphWidget.prototype.saveGraph = function()
+{
+	if(!this.current_graph_info)
+		return;
+
+	this.compileGraph();
+
+	var instance = this.current_graph_info.instance;
+	if( instance.from_file )
+	{
+		var graphcode = instance.graphcode;
+		if(graphcode)
+			DriveModule.saveResource( graphcode );
+	}
+}
+
+GraphWidget.prototype.compileGraph = function()
+{
+	if(!this.current_graph_info)
+		return;
+
+	var instance = this.current_graph_info.instance;
+	if( !instance.from_file )
+		return;
+
+	var graphcode = instance.graphcode;
+	if(!graphcode)
+		return;
+
+	//copy changes in this graph to graphcode
+	graphcode.data = instance.graph.serialize();
+
+	//propagate to all other graphcomponents using this graphcode
+	graphcode.propagate();
 }
 
 GraphWidget.prototype.onShowNodePanel = function( node )
@@ -593,6 +681,7 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 	{
 		//safe way
 		LS.setObjectProperty( graphnode.properties, this.options.field_name, v );
+		graphnode._version++;
 		if( graphnode.onPropertyChanged )
 			graphnode.onPropertyChanged( this.options.field_name, v );
 

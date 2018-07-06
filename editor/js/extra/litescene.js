@@ -863,6 +863,7 @@ var LS = {
 	//containers
 	Classes: {}, //maps classes name like "Prefab" or "Animation" to its namespace "LS.Prefab". Used in Formats and ResourceManager when reading classnames from JSONs or WBin.
 	ResourceClasses: {}, //classes that can contain a resource of the system
+	ResourceClasses_by_extension: {},
 	Globals: {}, //global scope to share info among scripts
 
 	/**
@@ -1107,6 +1108,8 @@ var LS = {
 		this.ResourceClasses[ class_name ] = resourceClass;
 		this.Classes[ class_name ] = resourceClass;
 		resourceClass.is_resource = true;
+		if( resourceClass.EXTENSION ) //used in GRAPH.json
+			this.ResourceClasses_by_extension[ resourceClass.EXTENSION.toLowerCase() ] = resourceClass;
 
 		//some validation here? maybe...
 	},
@@ -2246,6 +2249,10 @@ var Network = {
 						request.error(err);
 				}
 			}
+			else if(request.dataType == "blob")
+			{
+				response.name = LS.ResourcesManager.getFilename(url);
+			}
 
 			//call callback
 			if(LS.catch_errors)
@@ -2334,13 +2341,13 @@ var Network = {
 	},
 
 	/**
-	* retrieve a file from url (you can bind LEvents to done and fail)
+	* retrieve a file from url (you can bind LEvents to done and fail) as a ArrayBuffer or Blob
 	* @method requestFile
 	* @param {string} url
 	* @param {object} params form params
 	* @param {function} callback( file )
 	*/
-	requestFile: function( url, form_data, callback, callback_error )
+	requestFile: function( url, form_data, callback, callback_error, as_blob )
 	{
 		if(typeof(form_data) == "function")
 		{
@@ -2348,7 +2355,7 @@ var Network = {
 			callback = form_data;
 			form_data = null;
 		}
-		return LS.Network.request({url:url, data: form_data, success: callback, error: callback_error });
+		return LS.Network.request({ url:url, dataType: as_blob ? "blob" : "binary", data: form_data, success: callback, error: callback_error });
 	},
 
 	/**
@@ -4014,6 +4021,24 @@ var ResourcesManager = {
 	},
 
 	/**
+	* Replaces the extension of a filename
+	*
+	* @method replaceExtension
+	* @param {String} fullpath url or filename
+	* @param {String} extension
+	* @return {String} url with the new extension
+	*/
+	replaceExtension: function( fullpath, extension )
+	{
+		if(!fullpath)
+			return "";
+		extension = extension || "";
+		var folder = this.getFolder( fullpath );
+		var filename = this.getFilename( fullpath );
+		return this.cleanFullpath( (folder ? ( folder + "/" ) : "") + filename + "." + extension );
+	},
+
+	/**
 	* Returns the filename from a full path
 	*
 	* @method getFilename
@@ -4025,8 +4050,7 @@ var ResourcesManager = {
 		if(!fullpath)
 			return "";
 		var pos = fullpath.lastIndexOf("/");
-		//if(pos == -1) return fullpath;
-		var question = fullpath.lastIndexOf("?");
+		var question = fullpath.lastIndexOf("?"); //to avoid problems with URLs line scene.json?nocache=...
 		question = (question == -1 ? fullpath.length : (question - 1) ) - pos;
 		return fullpath.substr(pos+1,question);
 	},	
@@ -5136,6 +5160,14 @@ LS.ResourcesManager.registerResourcePreProcessor("json", function(filename, data
 	var class_name = data.object_class || data.object_type; //object_type for LEGACY
 	if(!class_name && data.material_class)
 		class_name = data.material_class; //HACK to fix one error
+
+	if(!class_name)
+	{
+		var complex = LS.ResourcesManager.getExtension( filename, true );
+		var ctor = LS.ResourceClasses_by_extension[ complex ];
+		if(ctor)
+			class_name = LS.getClassName( ctor );
+	}
 
 	if( class_name && !data.is_data )
 	{
@@ -14674,6 +14706,133 @@ ShaderCode.flat_code = "\\color.vs\n\
 LS.ShaderCode = ShaderCode;
 LS.registerResourceClass( ShaderCode );
 
+///@FILE:../src/resources/graphCode.js
+/**
+* This is a class to contain the code from a graph, it doesnt execute the graph (this is done in GraphComponent)
+* It is here so different GraphComponent can share the same Graph structure and it can be stored in a JSON
+* 
+* @class GraphCode
+* @constructor
+*/
+
+function GraphCode( data )
+{
+	this._data = { "object_class":"GraphCode" };
+	this._modified = false;
+
+	//graph?
+	this._graph = new LiteGraph.LGraph();
+	this._version = 0;
+
+	if(data)
+		this.setData( data, true );
+}
+
+GraphCode.EXTENSION = "GRAPH.json";
+GraphCode.hasPreview = false; //should this resource use a preview image?
+
+Object.defineProperty( GraphCode.prototype, "graph", {
+	enumerable: false,
+	get: function() {
+		return this._graph;
+	},
+	set: function(v) {
+		console.error("graph cannot be set manually");
+	}
+});
+
+Object.defineProperty( GraphCode.prototype, "data", {
+	enumerable: false,
+	get: function() {
+		return this.getData();
+	},
+	set: function(v) {
+		this.setData( v );
+	}
+});
+
+Object.defineProperty( GraphCode.prototype, "version", {
+	enumerable: false,
+	get: function() {
+		return this._version;
+	},
+	set: function(v) {
+		console.error("version cannot be set manually");
+	}
+});
+
+//used when storing/retrieving the resource
+GraphCode.prototype.setData = function( data, skip_modified_flag )
+{
+	if(!data)
+	{
+		this._data = null;
+		return;
+	}
+
+	if(LS.catch_exceptions)
+		try
+		{
+			if(data.constructor === String)
+				this._data = JSON.parse( data );
+			else
+				this._data = JSON.parse( JSON.stringify( data ) ); //clone...
+			this._graph.configure( this._data );
+		}
+		catch (err)
+		{
+			console.error("error in graph data");
+		}
+	else
+	{
+		if(data.constructor === String)
+			this._data = JSON.parse( data );
+		else
+			this._data = JSON.parse( JSON.stringify( data ) ); //clone...
+		this._graph.configure( this._data );
+	}
+
+	if(!skip_modified_flag)
+	{
+		this._version++;
+		this._modified = true;
+	}
+}
+
+GraphCode.prototype.getData = function()
+{
+	var data = this.graph.serialize();
+	data.object_class = "GraphCode";
+	return data;
+}
+
+GraphCode.prototype.getDataToStore = function(){
+	return JSON.stringify( this.getData() );
+}
+
+GraphCode.prototype.getCategory = function()
+{
+	return "Graph";
+}
+
+//sends changes in this graphcode to all nodes  using this graph
+GraphCode.prototype.propagate = function()
+{
+	var filename = this.fullpath || this.filename;
+
+	var components = LS.GlobalScene.findNodeComponents( LS.Components.GraphComponent );
+	for(var i = 0; i < components.length; ++i)
+	{
+		var comp = components[i];
+		if(comp.filename != this.filename )
+			continue;
+		comp.graphcode = this;
+	}
+}
+
+LS.GraphCode = GraphCode;
+LS.registerResourceClass( GraphCode );
+
 ///@FILE:../src/graph/scene.js
 ///@INFO: GRAPHS
 if(typeof(LiteGraph) != "undefined")
@@ -14685,7 +14844,6 @@ if(typeof(LiteGraph) != "undefined")
 		this.addOutput("Time","number");
 		this._scene = null;
 	}
-
 
 	LGraphScene.title = "Scene";
 	LGraphScene.desc = "Scene";
@@ -14708,7 +14866,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphScene.prototype.onAdded = function( graph )
 	{
-		this.bindEvents( this.graph.getScene() );
+		this.bindEvents( this.graph.getScene ? this.graph.getScene() : LS.GlobalScene );
 	}
 
 	LGraphScene.prototype.onRemoved = function()
@@ -14718,7 +14876,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphScene.prototype.onConnectionsChange = function()
 	{
-		this.bindEvents( this.graph.getScene() );
+		this.bindEvents( this.graph.getScene ? this.graph.getScene() : LS.GlobalScene );
 	}
 
 	//bind events attached to this component
@@ -14750,7 +14908,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphScene.prototype.onExecute = function()
 	{
-		var scene = this.graph.getScene();
+		var scene = this.graph.getScene ? this.graph.getScene() : LS.GlobalScene;
 
 		//read inputs
 		if(this.inputs)
@@ -14794,11 +14952,8 @@ if(typeof(LiteGraph) != "undefined")
 
 	global.LGraphSceneNode = function()
 	{
-		this.properties = {node_id:""};
+		this.properties = { node_id: "" };
 		this.size = [100,20];
-
-		this.addInput("node_id", "string", { locked: true });
-
 		this._node = null;
 	}
 
@@ -14820,6 +14975,9 @@ if(typeof(LiteGraph) != "undefined")
 	{
 		var node_id = null;
 
+		if(!this.graph)
+			return null;
+
 		//first check input
 		if(this.inputs && this.inputs[0])
 			node_id = this.getInputData(0);
@@ -14830,8 +14988,15 @@ if(typeof(LiteGraph) != "undefined")
 		if(	!node_id && this.properties.node_id )
 			node_id = this.properties.node_id;
 
+		if( node_id == "@" )
+		{
+			if( this.graph._scenenode )
+				return this.graph._scenenode;
+			return null;
+		}
+
 		//get node from scene
-		var scene = this.graph.getScene();
+		var scene = this.graph && this.graph.getScene ? this.graph.getScene() : LS.GlobalScene;
 		if(!scene)
 			return;
 
@@ -14855,7 +15020,7 @@ if(typeof(LiteGraph) != "undefined")
 		//read inputs
 		if(this.inputs) //there must be inputs always but just in case
 		{
-			for(var i = 1; i < this.inputs.length; ++i)
+			for(var i = 0; i < this.inputs.length; ++i)
 			{
 				var input = this.inputs[i];
 				if( input.type === LiteGraph.ACTION )
@@ -14865,11 +15030,12 @@ if(typeof(LiteGraph) != "undefined")
 					continue;
 				switch( input.name )
 				{
+					case "UID": this.properties.node_id = v; break;
+					case "SceneNode": this.properties.node_id = v ? v.uid : null; if(v) node = v; break;
 					case "Transform": node.transform.copyFrom(v); break;
 					case "Material": node.material = v;	break;
 					case "Visible": node.flags.visible = v; break;
 					default:
-
 						break;
 				}
 			}
@@ -14887,6 +15053,9 @@ if(typeof(LiteGraph) != "undefined")
 				case "SceneNode": this.setOutputData( i, node ); break;
 				case "Material": this.setOutputData( i, node.getMaterial() ); break;
 				case "Transform": this.setOutputData( i, node.transform ); break;
+				case "Name": this.setOutputData( i, node.name ); break;
+				case "Children": this.setOutputData( i, node.children ); break;
+				case "UID": this.setOutputData( i, node.uid ); break;
 				case "Mesh": this.setOutputData(i, node.getMesh()); break;
 				case "Visible": this.setOutputData(i, node.flags.visible ); break;
 				default:
@@ -14976,13 +15145,13 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphSceneNode.prototype.onGetInputs = function()
 	{
-		var result = [["Visible","boolean"],["Material","Material"]];
+		var result = [["Visible","boolean"],["UID","string"],["SceneNode","SceneNode"],["Material","Material"]];
 		return this.getComponents(result);
 	}
 
 	LGraphSceneNode.prototype.onGetOutputs = function()
 	{
-		var result = [["SceneNode","SceneNode"],["Visible","boolean"],["Material","Material"],["on_clicked",LiteGraph.EVENT]];
+		var result = [["SceneNode","SceneNode"],["Visible","boolean"],["Material","Material"],["Name","string"],["UID","string"],["Children","scenenode[]"],["on_clicked",LiteGraph.EVENT]];
 		return this.getComponents(result);
 	}
 
@@ -15369,10 +15538,13 @@ if(typeof(LiteGraph) != "undefined")
 				case "Rotation": transform.setRotation(v); break;
 				case "Scale": transform.setScale(v); break;
 				case "Matrix": transform.fromMatrix(v); break;
+				case "Mult.Matrix": transform.applyTransformMatrix(v); break;
 				case "Translate": transform.translate(v); break;
 				case "Translate Global": transform.translateGlobal(v); break;
 				case "Rotate": quat.multiply( transform._rotation, transform._rotation, v ); transform._must_update = true; break;
+				case "RotateX": transform.rotateX(v); break;
 				case "RotateY": transform.rotateY(v); break;
+				case "RotateZ": transform.rotateZ(v); break;
 			}
 		}
 
@@ -15407,7 +15579,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphTransform.prototype.onGetInputs = function()
 	{
-		return [["Position","vec3"],["Rotation","quat"],["Scale","number"],["x","number"],["y","number"],["z","number"],["Global Position","vec3"],["Global Rotation","quat"],["Matrix","mat4"],["Translate","vec3"],["Translate Global","vec3"],["Rotate","quat"],["RotateY","number"]];
+		return [["Position","vec3"],["Rotation","quat"],["Scale","number"],["x","number"],["y","number"],["z","number"],["Global Position","vec3"],["Global Rotation","quat"],["Matrix","mat4"],["Mult.Matrix","mat4"],["Translate","vec3"],["Translate Global","vec3"],["Rotate","quat"],["RotateX","number"],["RotateY","number"],["RotateZ","number"]];
 	}
 
 	LGraphTransform.prototype.onGetOutputs = function()
@@ -34061,29 +34233,83 @@ if( typeof(LGAudio) != "undefined" )
 function GraphComponent(o)
 {
 	this.enabled = true;
+	this.from_file = false;
 	this.force_redraw = false;
+	this._filename = null;
+	this._graphcode = null;
 
 	this.on_event = "update";
 
-	if(typeof(LGraphTexture) == "undefined")
+	if(typeof(LiteGraph) == "undefined")
 		return console.error("Cannot use GraphComponent if LiteGraph is not installed");
 
+	this._graph_version = -1;
 	this._graph = new LGraph();
 	this._graph.getScene = function() { return this._scene || LS.GlobalScene; } //this OR is ugly
+	this._graph._scenenode = null;
+	this._loading = false;
 
 	if(o)
 		this.configure(o);
-	else //default
+	else if(!this.from_file)//default
 	{
 		var graphnode = this._default_node = LiteGraph.createNode("scene/node");
 		this._graph.add( graphnode );
-		//graphnode.properties.node_id = //cannot be set yet, not attached to node
 	}
 	
-	LEvent.bind(this,"trigger", this.trigger, this );	
+	LEvent.bind( this,"trigger", this.trigger, this );	
 }
 
 GraphComponent["@on_event"] = { type:"enum", values: ["start","render","beforeRenderScene","update","trigger"] };
+GraphComponent["@filename"] = { type:"resource", data_type: "graph" };
+
+
+Object.defineProperty( GraphComponent.prototype, "graph", {
+	enumerable: false,
+	get: function() {
+		return this._graph;
+	},
+	set: function(v) {
+		console.error("graph cannot be set manually");
+	}
+});
+
+
+Object.defineProperty( GraphComponent.prototype, "filename", {
+	enumerable: false,
+	get: function() {
+		return this._filename;
+	},
+	set: function(v) {
+		if(this._filename == v)
+			return;
+		if(v) //to avoid double slashes
+			v = LS.ResourcesManager.cleanFullpath( v );
+		this.from_file = true;
+		this._filename = v;
+		this._loading = false;
+		this._graphcode = null;
+		this.processGraph();
+	}
+});
+
+Object.defineProperty( GraphComponent.prototype, "graphcode", {
+	enumerable: false,
+	get: function() {
+		return this._graphcode;
+	},
+	set: function(v) {
+		//if(this._graphcode == v) return; //disabled because sometimes we want to force reload
+		this._loading = false;
+		this._graphcode = v;
+		this.from_file = true; //if assigning a graphcode, then its a from_file, even if it is null
+		if( this._graphcode )
+			this._filename = this._graphcode.fullpath || this._graphcode.filename;
+		else 
+			this._filename = null;
+		this.processGraph();
+	}
+});
 
 /*
 GraphComponent.events_translator = {
@@ -34101,15 +34327,25 @@ GraphComponent.icon = "mini-icon-graph.png";
 */
 GraphComponent.prototype.configure = function(o)
 {
-	this.uid = o.uid;
-	this.enabled = !!o.enabled;
-	if(o.graph_data)
+	this._graph_version = -1;
+
+	if(o.uid)
+		this.uid = o.uid;
+	if(o.enabled != null)
+		this.enabled = !!o.enabled;
+	if(o.from_file)
 	{
+		this.from_file = true;
+		this.filename = o.filename;
+	}
+	else if(o.graph_data)
+	{
+		this.from_file = false;
 		if(LS.catch_exceptions)
 		{
 			try
 			{
-				var obj = JSON.parse(o.graph_data);
+				var obj = JSON.parse( o.graph_data );
 				this._graph.configure( obj );
 			}
 			catch (err)
@@ -34126,7 +34362,7 @@ GraphComponent.prototype.configure = function(o)
 
 	if(o.on_event)
 		this.on_event = o.on_event;
-	if(o.force_redraw)
+	if(o.force_redraw != null)
 		this.force_redraw = o.force_redraw;
 }
 
@@ -34136,14 +34372,18 @@ GraphComponent.prototype.serialize = function()
 		object_class: "GraphComponent",
 		uid: this.uid,
 		enabled: this.enabled, 
+		from_file: this.from_file,
 		force_redraw: this.force_redraw , 
-		graph_data: JSON.stringify( this._graph.serialize() ),
+		filename: this._filename,
+		graph_data: this.from_file ? null : JSON.stringify( this._graph.serialize() ),
 		on_event: this.on_event
 	};
 }
 
 GraphComponent.prototype.getResources = function(res)
 {
+	if(this._filename)
+		res[this._filename] = true;
 	this._graph.sendEventToAllNodes("getResources",res);
 	return res;
 }
@@ -34191,7 +34431,9 @@ GraphComponent.prototype.onRemovedFromScene = function( scene )
 
 GraphComponent.prototype.onResourceRenamed = function( old_name, new_name, resource )
 {
-	this._graph.sendEventToAllNodes("onResourceRenamed",[old_name, new_name, resource]);
+	if( old_name == this._filename)
+		this._filename = new_name;
+	this._graph.sendEventToAllNodes("onResourceRenamed",[ old_name, new_name, resource ]);
 }
 
 GraphComponent.prototype.onSceneEvent = function( event_type, event_data )
@@ -34238,15 +34480,49 @@ GraphComponent.prototype.runGraph = function()
 {
 	if(!this._root._in_tree || !this.enabled)
 		return;
-	if(this._graph)
-		this._graph.runStep( 1, LS.catch_exceptions );
+
+	//if(!this._graphcode || this._graphcode._version != this._graph_version )
+	//	this.processGraph();
+
+	if(!this._graphcode)
+		return;
+
+	this._graph.runStep( 1, LS.catch_exceptions );
 	if(this.force_redraw)
 		this._root.scene.requestFrame();
 }
 
-GraphComponent.prototype.getGraph = function()
+GraphComponent.prototype.processGraph = function( skip_events, on_complete )
 {
-	return this._graph;
+	//use inner graph
+	if(!this.from_file)
+		return;
+
+	var that = this;
+	this._graphcode = LS.ResourcesManager.getResource( this._filename );
+	if(!this._graphcode && !this._loading) //must be loaded
+	{
+		this._loading = true;
+		LS.ResourcesManager.load( this._filename, null, function( res, url ){
+			this._loading = false;
+			if( url != that.filename )
+				return;
+			that.processGraph( skip_events );
+			if(on_complete)
+				on_complete(that);
+		});
+		return;
+	}
+
+	this._graph.configure( this._graphcode.data );
+	this._graph_version = this._graphcode._version;
+}
+
+GraphComponent.prototype.getResources = function(res)
+{
+	res[ this._filename ] = true;
+	this._graph.sendEventToAllNodes("getResources",res);
+	return res;
 }
 
 GraphComponent.prototype.getPropertyValue = function( property )
@@ -34288,9 +34564,89 @@ GraphComponent.prototype.setPropertyValue = function( property, value )
 	}
 }
 
+
 LS.registerComponent( GraphComponent );
 
+/**
+* This component encapsulates a graph that comes from a file
+* @class GraphFromFile
+* @param {Object} o object with the serialized info
+*/
+/*
+function GraphFromFile( o )
+{
+	this.enabled = true;
 
+	this._filename = "";
+
+	this.force_redraw = false;
+	this.on_event = "update";
+	if(typeof(LGraphTexture) == "undefined")
+		return console.error("Cannot use GraphComponent if LiteGraph is not installed");
+
+	this._graph = new LGraph();
+	this._graph.getScene = function() { return this._scene || LS.GlobalScene; } //this OR is ugly
+
+	if(o)
+		this.configure(o);
+	else //default
+	{
+		var graphnode = this._default_node = LiteGraph.createNode("scene/node");
+		this._graph.add( graphnode );
+		//graphnode.properties.node_id = //cannot be set yet, not attached to node
+	}
+	
+	LEvent.bind(this,"trigger", this.trigger, this );	
+}
+
+GraphFromFile.icon = "mini-icon-graph.png";
+LS.extendClass( GraphFromFile, GraphComponent );
+
+Object.defineProperty( GraphFromFile.prototype, "filename", {
+	enumerable: true,
+	get: function() {
+		return this._filename;
+	},
+	set: function(v) {
+		if(v)
+			v = LS.ResourcesManager.cleanFullpath(v);
+		if(this._filename == v)
+			return;
+		this._filename = v;
+		this.processGraph();
+	}
+});
+
+GraphFromFile.prototype.processGraph = function()
+{
+}
+
+GraphFromFile.prototype.configure = function( o )
+{
+	if(o.enabled != null)
+		this.enabled = !!o.enabled;
+	if(o.force_redraw != null)
+		this.force_redraw = !!o.force_redraw;
+	if(o.on_event)
+		this.on_event = o.on_event;
+	if(o.filename)
+		this.filename = o.filename;
+}
+
+GraphFromFile.prototype.serialize = function()
+{
+	return { 
+		object_class: "GraphFromFile",
+		uid: this.uid,
+		enabled: this.enabled, 
+		force_redraw: this.force_redraw , 
+		filename: this._filename,
+		on_event: this.on_event
+	};
+}
+
+LS.registerComponent( GraphFromFile );
+*/
 
 /**
 * This component allow to integrate a rendering post FX using a graph
@@ -34342,6 +34698,17 @@ function FXGraphComponent(o)
 
 FXGraphComponent.icon = "mini-icon-graph.png";
 FXGraphComponent.buffer_size = [1024,512];
+
+
+Object.defineProperty( FXGraphComponent.prototype, "graph", {
+	enumerable: false,
+	get: function() {
+		return this._graph;
+	},
+	set: function(v) {
+		console.error("graph cannot be set manually");
+	}
+});
 
 /**
 * Returns the first component of this container that is of the same class
@@ -34456,11 +34823,6 @@ FXGraphComponent.prototype.setPropertyValue = function( property, value )
 	}
 }
 
-
-FXGraphComponent.prototype.getGraph = function()
-{
-	return this._graph;
-}
 
 FXGraphComponent.prototype.onResourceRenamed = function(old_name, new_name, res)
 {
@@ -49739,10 +50101,7 @@ function Player(options)
 	this.scene = LS.GlobalScene;
 	this._file_drop_enabled = false; //use enableFileDrop
 
-	LS.ShadersManager.init( options.shaders || "data/shaders.xml" );
-	if(!options.shaders)
-		console.warn("LS: no shaders folder specified, using default file.");
-
+	LS.Shaders.init();
 	LS.Renderer.init();
 
 	//this will repaint every frame and send events when the mouse clicks objects
@@ -49954,10 +50313,10 @@ Player.prototype.setScene = function( scene_info, on_complete, on_before_play )
 
 	function inner_all_resources_loaded()
 	{
-		if( LS.ShadersManager.ready )
-			inner_all_loaded();
-		else
-			LS.ShadersManager.on_ready = inner_all_loaded;
+		//add here any extra step...
+
+		//on ready
+		inner_all_loaded();
 	}
 
 	function inner_all_loaded()

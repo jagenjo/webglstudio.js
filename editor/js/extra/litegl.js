@@ -2171,6 +2171,7 @@ GL.Buffer.prototype.uploadRange = function(start, size)
 	if(!data.buffer)
 		throw("Buffers must be typed arrays");
 
+	//cut fragment to upload (no way to avoid GC here, no function to specify the size in WebGL 1.0, but there is one in WebGL 2.0)
 	var view = new Uint8Array( this.data.buffer, start, size );
 
 	var gl = this.gl;

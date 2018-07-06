@@ -48,30 +48,23 @@ GenericTabsWidget.createDialog = function( parent )
 
 GenericTabsWidget.prototype.bindEvents = function()
 {
-	//TODO: Crawl the tabs and let them know they should bind events
-
-	/*
-	LEvent.bind( LS.GlobalScene, "beforeReload", this.onBeforeReload, this );
-	LEvent.bind( LS.GlobalScene, "reload", this.onReload, this );
-	LEvent.bind( LS.GlobalScene, "nodeRemoved", this.onNodeRemoved, this );
-	LEvent.bind( LS.GlobalScene, "nodeComponentRemoved", this.onComponentRemoved, this );
-	LEvent.bind( LS.Components.Script, "renamed", this.onScriptRenamed, this );
-	LEvent.bind( CodingTabsWidget, "code_changed", this.onCodeChanged, this);
-
-	LEvent.bind( LS.Components.Script, "code_error", this.onScriptError, this );
-	LEvent.bind( LS, "code_error", this.onGlobalError, this );
-	*/
 }
 
 GenericTabsWidget.prototype.unbindEvents = function()
 {
-	//TODO: Crawl the tabs and let them know they should unbind events
+}
 
-	/*
-	LEvent.unbindAll( LS.GlobalScene, this );
-	LEvent.unbindAll( LS.Components.Script, this );
-	LEvent.unbindAll( LS, this );
-	*/
+GenericTabsWidget.prototype.getCurrentTab = function()
+{
+	return this.tabs.current_tab;
+}
+
+GenericTabsWidget.prototype.getCurrentWidget = function()
+{
+	var tab = this.tabs.current_tab; //tab is an array of [id,root,object]
+	if(!tab)
+		return null;
+	return tab[2].widget;
 }
 
 GenericTabsWidget.prototype.onPlusTab = function( tab_id, e )

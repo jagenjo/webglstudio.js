@@ -671,10 +671,14 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 			}
 			else if(v == "Add Graph")
 			{
-				GraphModule.onNewGraph( node );
-				inspector.refresh();
+				var menu = new LiteGUI.ContextMenu( ["Inner Graph","Graph From File"], { event: evt, callback: function(action) {
+					if(action == "Inner Graph")
+						GraphModule.onNewGraph( node );
+					else if(action == "Graph From File")
+						GraphModule.onNewGraph( node, true );
+					inspector.refresh();
+				}});
 			}
-			//inspector.refresh();
 		}});
 
 		if(component_to_focus)

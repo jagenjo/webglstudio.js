@@ -920,6 +920,13 @@ var EditorModule = {
 		InterfaceModule.setStatusBar();
 	},
 
+	reloadEditor: function( keep_scene )
+	{
+		if(keep_scene)
+			localStorage.setItem("_refresh_scene", JSON.stringify( LS.GlobalScene.serialize() ) );
+		location.reload();
+	},
+
 	copyNodeToClipboard: function( node )
 	{
 		if(!node)
@@ -2127,14 +2134,7 @@ var EditorModule = {
 				}
 				break;
 			case 117:  //F6
-				localStorage.setItem("_refresh_scene", JSON.stringify( LS.GlobalScene.serialize() ) );
-				location.reload();
-
-				/*
-				console.log("recompiling shaders...");
-				Shaders.reloadShaders(); 
-				LS.GlobalScene.refresh();
-				*/
+				this.reloadEditor(true);
 				e.preventDefault();
 				e.stopPropagation();
 				return false;

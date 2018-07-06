@@ -407,11 +407,9 @@ LiteGUI.Inspector.prototype.addNode = function( name, value, options )
 	
 	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+node_name+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro'>"+(options.button || "...")+"</button>", options);
 	var input = element.querySelector(".wcontent input");
-
 	input.style.background = "transparent url('" + InterfaceModule.resource_icons.node +"') no-repeat left 4px center";
 	input.style.paddingLeft = "1.7em";
 	input.setAttribute("placeHolder","Node");
-
 
 	input.addEventListener("change", function(e) { 
 		if(options.use_node)
@@ -674,6 +672,7 @@ function addGenericResource ( name, value, options, resource_classname )
 	var that = this;
 
 	var error_color = "#F43";
+	var modified_color = "#E4E";
 
 	resource_classname = resource_classname || options.resource_classname;
 
@@ -688,8 +687,14 @@ function addGenericResource ( name, value, options, resource_classname )
 	var input = element.querySelector(".wcontent input");
 
 	//resource missing
-	if(value && value.constructor === String && value[0] != ":" && value[0] != "@" && !LS.RM.resources[ value ])
-		input.style.color = error_color;
+	if(value && value.constructor === String && value[0] != ":" && value[0] != "@")
+	{
+		var res = LS.RM.resources[ value ];
+		if( !res )
+			input.style.color = error_color;
+		else if( res._modified )
+			input.style.color = modified_color;
+	}
 
 	if( options.align && options.align == "right" )
 		input.style.direction = "rtl";
@@ -880,7 +885,7 @@ LiteGUI.Inspector.prototype.addScript = function( name, value, options )
 		var script = LS.RM.getResource( path );
 		if(!script)
 		{
-			DriveModule.showCreateScriptDialog({filename: "script.js"}, function(resource){
+			DriveModule.showCreateScriptDialog({filename: "script.js", folder: DriveModule.getSceneBaseFolder() }, function(resource){
 				if(!resource)
 					return;
 				CodingModule.openTab();
@@ -899,6 +904,48 @@ LiteGUI.Inspector.prototype.addScript = function( name, value, options )
 }
 LiteGUI.Inspector.widget_constructors["script"] = "addScript";
 
+
+//to select a graph
+LiteGUI.Inspector.prototype.addGraph = function( name, value, options )
+{
+	options = options || {};
+	var that = this;
+
+	if(!options.width)
+		options.width = "100% - 50px";
+	options.icon = "imgs/mini-icon-graph.png";
+
+	this.widgets_per_row += 1;
+	var r = addGenericResource.call(this, name, value, options, "Graph" );
+	this.addButton(null,"New",{ width:"50px", callback: function(){
+		if(options.callback_edit)
+			if( options.callback_edit.call( this ) )
+				return;
+		var path = r.getValue();
+		if(path && path.indexOf(".json") == -1)
+			return;
+
+		var graph = LS.RM.getResource( path );
+		if(graph)
+		{
+			//GraphModule.editInstanceGraph( graph, null, true );
+			return;
+		}
+
+		DriveModule.showSelectFolderFilenameDialog(null, function( folder, filename, fullpath ){
+			//GraphModule.editInstanceGraph( resource );
+			var graph = new LS.GraphCode();
+			LS.RM.registerResource( fullpath, graph );
+			if(options.callback)
+				options.callback( fullpath, graph );
+			that.refresh();
+		}, { button: "Create", filename: "mygraph.GRAPH.json", folder: DriveModule.getSceneBaseFolder(), extension:"GRAPH.json" } );
+		return;
+	}});
+	this.widgets_per_row -= 1;
+	return r;
+}
+LiteGUI.Inspector.widget_constructors["graph"] = "addGraph";
 
 
 //to select a material
@@ -1128,7 +1175,7 @@ LiteGUI.Inspector.prototype.addShader = function( name, value, options )
 
 		function inner_create_shader()
 		{
-			DriveModule.showCreateShaderDialog({ filename: "my_shader.glsl", on_complete: function(shader_code, filename, folder, fullpath ){
+			DriveModule.showCreateShaderDialog({ filename: "my_shader.glsl", folder: DriveModule.getSceneBaseFolder(), on_complete: function( shader_code, filename, folder, fullpath ){
 				if(options.callback_open)
 					options.callback_open.call( widget, fullpath || filename );
 				if(options.callback)

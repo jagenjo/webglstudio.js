@@ -61,6 +61,7 @@
 		"js/modules/fpsCounter.js",
 		"js/widgets/canvas/cameraGizmo.js",
 		"js/modules/coding.js",
+		"js/modules/shaders.js",
 		"js/modules/graph.js",
 		"js/modules/quickbar.js",
 		"js/modules/packTools.js",

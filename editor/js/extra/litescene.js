@@ -1733,7 +1733,7 @@ var LS = {
 
 	log: function()
 	{
-		console.log.call( console, arguments );
+		console.log.apply( console, arguments );
 	},
 
 	stringToValue: function( v )
@@ -7759,6 +7759,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 		}
 	}
 
+	//for those cases
 	if(this.onRenderInstance)
 		this.onRenderInstance( instance );
 
@@ -7771,6 +7772,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	if( !ignore_lights )
 		lights = LS.Renderer.getNearLights( instance );
 
+	//if no lights are set or the render mode is flat
 	if( !lights || lights.length == 0 || ignore_lights )
 	{
 		//global flags for environment and irradiance
@@ -7804,6 +7806,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 
 	var uniforms_array = [ scene._uniforms, camera._uniforms, render_uniforms, null, this._uniforms, instance.uniforms ];
 
+	//render multipass with several lights
 	var prev_shader = null;
 	for(var i = 0; i < lights.length; ++i)
 	{
@@ -7921,6 +7924,7 @@ ShaderMaterial.prototype.renderPickingInstance = function( instance, render_sett
 	return true;
 }
 
+//used by the editor to know which possible texture channels are available
 ShaderMaterial.prototype.getTextureChannels = function()
 {
 	var channels = [];
@@ -8532,13 +8536,13 @@ StandardMaterial.prototype.getShaderCode = function( instance, render_settings, 
 
 	//generate code
 	var code = {
-		vs: "",
+		vs_local: "",
 		fs: "",
 		fs_shadows: ""
 	};
 
 	if( code_flags & FLAGS.DISPLACEMENT_TEXTURE )
-		code.vs += "	vertex4.xyz += v_normal * texture2D( displacement_texture, v_uvs ).x * u_displacementmap_factor;\n";	
+		code.vs_local += "	vertex4.xyz += v_normal * texture2D( displacement_texture, v_uvs ).x * u_displacementmap_factor;\n";	
 
 	//uvs
 	code.fs += "vec2 uv0 = (vec3(IN.uv,1.0) * u_texture_matrix).xy;\n";
@@ -8613,10 +8617,13 @@ StandardMaterial.prototype.getShaderCode = function( instance, render_settings, 
 	if( StandardMaterial.onShaderCode )
 		StandardMaterial.onShaderCode( code, this, code_flags );
 
+	shader_code.code = ShaderCode.replaceCode( final_code, code );
+	/*
 	shader_code.code = final_code.replace(/\{\{[a-zA-Z0-9_]*\}\}/g, function(v){
 		v = v.replace( /[\{\}]/g, "" );
 		return code[v] || "";
 	});
+	*/
 
 	LS.StandardMaterial.shader_codes[ code_flags ] = shader_code;
 	return shader_code;
@@ -8909,11 +8916,10 @@ void main() {\n\
 	v_normal = a_normal;\n\
 	v_uvs = a_coord;\n\
 	\n\
-	{{vs}}\n\
 	//local deforms\n\
+	{{vs_local}}\n\
 	applyMorphing( vertex4, v_normal );\n\
 	applySkinning( vertex4, v_normal );\n\
-	{{vs_local_deform}}\n\
 	\n\
 	//vertex\n\
 	v_pos = (u_model * vertex4).xyz;\n\
@@ -8927,7 +8933,7 @@ void main() {\n\
 		v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
 	#endif\n\
 	//world deform\n\
-	{{vs_deform}}\n\
+	{{vs_global}}\n\
 	\n\
 	#pragma event \"vs_final_pass\"\n\
 	\n\
@@ -9100,11 +9106,10 @@ void main() {\n\
 	v_normal = a_normal;\n\
 	v_uvs = a_coord;\n\
   \n\
-	{{vs}}\n\
   //deforms\n\
+  {{vs_local}}\n\
   applyMorphing( vertex4, v_normal );\n\
   applySkinning( vertex4, v_normal );\n\
-  {{vs_local_deform}}\n\
 	\n\
 	//vertex\n\
 	v_pos = (u_model * vertex4).xyz;\n\
@@ -9117,7 +9122,7 @@ void main() {\n\
 	#else\n\
 		v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
 	#endif\n\
-  {{vs_deform}}\n\
+  {{vs_global}}\n\
 	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
 }\n\
 \\shadow.fs\n\
@@ -9209,11 +9214,10 @@ void main() {\n\
 	v_normal = a_normal;\n\
 	v_uvs = a_coord;\n\
   \n\
-	{{vs}}\n\
   //deforms\n\
+  {{vs_local}}\n\
   applyMorphing( vertex4, v_normal );\n\
   applySkinning( vertex4, v_normal );\n\
-  {{vs_local_deform}}\n\
 	\n\
 	//vertex\n\
 	v_pos = (u_model * vertex4).xyz;\n\
@@ -9226,7 +9230,7 @@ void main() {\n\
 	#else\n\
 		v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
 	#endif\n\
-  {{vs_deform}}\n\
+  {{vs_global}}\n\
 	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
 	#pragma event \"vs_final\"\n\
 }\n\
@@ -9240,7 +9244,7 @@ void main() {\n\
 
 
 /* example to inject code in the standardMaterial without having to edit it
-//hooks are vs_out (out of main), vs_local_deformer (vertex4 to deform vertices localy), vs_deformer (v_pos to deform final position), fs_out (out of main), fs_encode (final_color before being written)
+//hooks are vs_out (out of main), vs_local (vertex4 to deform vertices localy), vs_global (v_pos to deform final position), fs_out (out of main), fs_encode (final_color before being written)
 this.onStart = function()
 {
   LS.StandardMaterial.onShaderCode = function(code,mat)
@@ -9353,7 +9357,14 @@ SurfaceMaterial.prototype.computeCode = function()
 	*/
 
 	this.surf_code = uniforms_code + "\n" + this._code;
-	var final_code = LS.SurfaceMaterial.code_template.replace( /{{}}/gi, this.surf_code );
+
+	var context = {
+		fs_out: this.surf_code
+	};
+
+	var final_code = LS.ShaderCode.replaceCode( LS.SurfaceMaterial.code_template, context );
+	//var final_code = LS.SurfaceMaterial.code_template.replace( /{{}}/gi, this.surf_code );
+
 	if(!this._shadercode)
 		this._shadercode = new LS.ShaderCode();
 	this._shadercode.code = final_code;
@@ -9665,6 +9676,7 @@ uniform float u_point_size;\n\
 \n\
 //camera\n\
 uniform vec3 u_camera_eye;\n\
+{{vs_out}}\n\
 void main() {\n\
 	\n\
 	vec4 vertex4 = vec4(a_vertex,1.0);\n\
@@ -9672,6 +9684,7 @@ void main() {\n\
 	v_uvs = a_coord;\n\
   \n\
   //deforms\n\
+  {{vs_local}}\n\
   applyMorphing( vertex4, v_normal );\n\
   applySkinning( vertex4, v_normal );\n\
 	\n\
@@ -9682,6 +9695,7 @@ void main() {\n\
   \n\
 	//normal\n\
 	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+    {{vs_global}}\n\
 	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
 }\n\
 \n\
@@ -9706,7 +9720,7 @@ uniform vec4 u_material_color;\n\
 \n\
 #pragma snippet \"perturbNormal\"\n\
 \n\
-{{}}\n\
+{{fs_out}}\n\
 \n\
 void main() {\n\
 	Input IN = getInput();\n\
@@ -9755,6 +9769,7 @@ uniform float u_point_size;\n\
 \n\
 //camera\n\
 uniform vec3 u_camera_eye;\n\
+{{vs_out}}\n\
 void main() {\n\
 	\n\
 	vec4 vertex4 = vec4(a_vertex,1.0);\n\
@@ -9762,6 +9777,7 @@ void main() {\n\
 	v_uvs = a_coord;\n\
   \n\
   //deforms\n\
+  {{vs_local}}\n\
   applyMorphing( vertex4, v_normal );\n\
   applySkinning( vertex4, v_normal );\n\
 	\n\
@@ -9772,6 +9788,7 @@ void main() {\n\
   \n\
 	//normal\n\
 	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+    {{vs_global}}\n\
 	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
 }\n\
 \\shadow.fs\n\
@@ -9795,7 +9812,7 @@ uniform mat3 u_texture_matrix;\n\
 #pragma snippet \"perturbNormal\"\n\
 #define SHADOWMAP\n\
 \n\
-{{}}\n\
+{{fs_out}}\n\
 \n\
 void main() {\n\
   Input IN = getInput();\n\
@@ -9804,6 +9821,307 @@ void main() {\n\
   gl_FragColor = vec4(o.Albedo,o.Alpha);\n\
 }\n\
 ";
+///@FILE:../src/materials/graphMaterial.js
+function GraphMaterial(o)
+{
+	ShaderMaterial.call(this,null); //do not pass the data object, it is called later
+
+	this.blend_mode = LS.Blend.NORMAL;
+
+	this._filename = "";
+
+	this._shader = "";
+	this._shader_version = -1;
+	this._shader_flags = 0; //?
+
+	this._uniforms = {};
+	this._samplers = [];
+	this._properties = [];
+	this._properties_by_name = {};
+
+	this._passes = {};
+	this._light_mode = Material.ONE_LIGHT;
+	this._primitive = -1;
+	this._allows_instancing = false;
+
+	this._version = -1;
+	this._shader_version = -1;
+
+	this._loading = false;
+
+	if(o)
+		this.configure(o);
+}
+
+GraphMaterial.icon = "mini-icon-graph.png";
+
+GraphMaterial["@filename"] = { type:"resource", data_type: "graph" };
+
+GraphMaterial.prototype.renderInstance = ShaderMaterial.prototype.renderInstance;
+GraphMaterial.prototype.renderShadowInstance = ShaderMaterial.prototype.renderShadowInstance;
+GraphMaterial.prototype.renderPickingInstance = ShaderMaterial.prototype.renderPickingInstance;
+
+Object.defineProperty( GraphMaterial.prototype, "filename", {
+	enumerable: false,
+	get: function() {
+		return this._filename;
+	},
+	set: function(v) {
+		if(this._filename == v)
+			return;
+		if(v) //to avoid double slashes
+			v = LS.ResourcesManager.cleanFullpath( v );
+		this._filename = v;
+		this._loading = false;
+		this.processGraph();
+	}
+});
+
+Object.defineProperty( GraphMaterial.prototype, "graphcode", {
+	enumerable: false,
+	get: function() {
+		return this._graphcode;
+	},
+	set: function(v) {
+		//if(this._graphcode == v) return; //disabled because sometimes we want to force reload
+		this._loading = false;
+		this._graphcode = v;
+		if( this._graphcode )
+			this._filename = this._graphcode.fullpath || this._graphcode.filename;
+		else 
+			this._filename = null;
+		//this._graph_properties = this.serializeProperties();
+		this.processGraph();
+	}
+});
+
+Object.defineProperty( GraphMaterial.prototype, "graph", {
+	enumerable: false,
+	get: function() {
+		return this._graphcode ? this._graphcode.graph : null;
+	},
+	set: function(v) {
+		throw("graph cannot be set to a material, you must assign a graphcode instead");
+	}
+});
+
+GraphMaterial.shader_codes = {};
+
+//returns the LS.ShaderCode required to render
+//here we cannot filter by light pass because this is done before applying shaderblocks
+//in the StandardMaterial we cache versions of the ShaderCode according to the settings
+GraphMaterial.prototype.getShaderCode = function( instance, render_settings, pass )
+{
+	if(!this._graphcode)
+		return null;
+	return this._graphcode.getShaderCode();
+}
+
+
+/**
+* Collects all the resources needed by this material (textures)
+* @method getResources
+* @param {Object} resources object where all the resources are stored
+* @return {Texture}
+*/
+GraphMaterial.prototype.getResources = function (res)
+{
+	if(!this._graphcode)
+		return res;
+
+	res[ this.filename ] = true;
+	if(this._graphcode)
+		this._graphcode.graph.sendEventToAllNodes("getResources",res);
+	
+	return res;
+}
+
+GraphMaterial.prototype.serialize = function() { 
+	//var o = LS.Material.prototype.serialize.apply(this);
+	return {
+		uid: this.uid,
+		material_class: LS.getObjectClassName(this),
+		filename: this.filename,
+		properties: null //TO DO
+	}
+	return o;
+}
+
+
+GraphMaterial.prototype.configure = function(o) { 
+	LS.cloneObject(o, this);
+	this.processGraph();
+}
+
+GraphMaterial.prototype.processGraph = function( skip_events, on_complete )
+{
+	if(!this._filename)
+	{
+		this._graphcode = null;
+		return;
+	}
+
+	var that = this;
+	this._graphcode = LS.ResourcesManager.getResource( this._filename );
+	if(!this._graphcode && !this._loading) //must be loaded
+	{
+		this._loading = true;
+		LS.ResourcesManager.load( this._filename, null, function( res, url ){
+			this._loading = false;
+			if( url != that.filename )
+				return;
+			if( res && res.type == GraphCode.SHADER_GRAPH )
+				that._graphcode = res;
+			else
+				console.error("Shader Graph not found or now a Shader Graph");
+			if(on_complete)
+				on_complete(that);
+		});
+		return;
+	}
+}
+
+
+/**
+* gets all the properties and its types
+* @method getProperties
+* @return {Object} object with name:type
+*/
+GraphMaterial.prototype.getProperties = function()
+{
+	var o = {
+		color:"vec3",
+		opacity:"number",
+		shader_name: "string",
+		blend_mode: "number",
+		code: "string"
+	};
+
+	//from this material
+	for(var i in this.properties)
+	{
+		var prop = this.properties[i];
+		o[prop.name] = prop.type;
+	}	
+
+	return o;
+}
+
+/**
+* Event used to inform if one resource has changed its name
+* @method onResourceRenamed
+* @param {Object} resources object where all the resources are stored
+* @return {Texture}
+*/
+GraphMaterial.prototype.onResourceRenamed = function (old_name, new_name, resource)
+{
+	//global
+	Material.prototype.onResourceRenamed.call( this, old_name, new_name, resource );
+
+	//specific
+	for(var i in this.properties)
+	{
+		var prop = this.properties[i];
+		if( prop.value == old_name)
+			prop.value = new_name;
+	}
+}
+
+
+/**
+* gets all the properties and its types
+* @method getProperty
+* @return {Object} object with name:type
+*/
+GraphMaterial.prototype.getProperty = function(name)
+{
+	if(this[name])
+		return this[name];
+
+	if( name.substr(0,4) == "tex_")
+		return this.textures[ name.substr(4) ];
+
+	for(var i in this.properties)
+	{
+		var prop = this.properties[i];
+		if(prop.name == name)
+			return prop.value;
+	}	
+
+	return null;
+}
+
+/**
+* assign a value to a property in a safe way
+* @method setProperty
+* @param {Object} object to configure from
+*/
+GraphMaterial.prototype.setProperty = function(name, value)
+{
+	//redirect to base material
+	if( Material.prototype.setProperty.call(this,name,value) )
+		return true;
+
+	for(var i in this.properties)
+	{
+		var prop = this.properties[i];
+		if(prop.name != name)
+			continue;
+		prop.value = value;
+		return true;
+	}
+
+	return false;
+}
+
+
+GraphMaterial.prototype.getTextureChannels = function()
+{
+	var channels = [];
+
+	for(var i in this.properties)
+	{
+		var prop = this.properties[i];
+		if(prop.type != "texture" && prop.type != "cubemap")
+			continue;
+		channels.push(prop.name);
+	}
+
+	return channels;
+}
+
+/**
+* Assigns a texture to a channel
+* @method setTexture
+* @param {Texture} texture
+* @param {String} channel default is COLOR
+*/
+GraphMaterial.prototype.setTexture = function(texture, channel, uvs) {
+
+	for(var i in this.properties)
+	{
+		var prop = this.properties[i];
+		if(prop.type != "texture" && prop.type != "cubemap")
+			continue;
+		if(channel && prop.name != channel) //assign to the channel or if there is no channel just to the first one
+			continue;
+
+		prop.value = texture;
+		if(this.textures)
+			this.textures[channel] = texture;
+		if(!channel)
+			break;
+	}
+
+	if(!texture) return;
+	if(texture.constructor == String && texture[0] != ":")
+		ResourcesManager.load(texture);
+}
+
+LS.registerMaterialClass( GraphMaterial );
+LS.GraphMaterial = GraphMaterial;
+
+
 ///@FILE:../src/componentContainer.js
 ///@INFO: BASE
 /*
@@ -14143,7 +14461,6 @@ LS.Prefab = Prefab;
 LS.registerResourceClass( Prefab );
 
 ///@FILE:../src/resources/shaderCode.js
-
 /**
 * ShaderCode is a resource containing all the code associated to a shader
 * It is used to define special ways to render scene objects, having full control of the rendering algorithm
@@ -14565,6 +14882,14 @@ ShaderCode.removeComments = function( code )
 	return code.replace(/(\/\*([\s\S]*?)\*\/)|(\/\/(.*)$)/gm, '');
 }
 
+ShaderCode.replaceCode = function( code, context )
+{
+	return code.replace(/\{\{[a-zA-Z0-9_]*\}\}/g, function(v){
+		v = v.replace( /[\{\}]/g, "" );
+		return context[v] || "";
+	});
+}
+
 //WIP: parses ShaderLab (unity) syntax
 ShaderCode.parseShaderLab = function( code )
 {
@@ -14722,11 +15047,18 @@ function GraphCode( data )
 
 	//graph?
 	this._graph = new LiteGraph.LGraph();
+	this._graph._graphcode = this; //double link
+	this.extra = {
+		type: GraphCode.LOGIC_GRAPH
+	}
 	this._version = 0;
 
 	if(data)
 		this.setData( data, true );
 }
+
+GraphCode.LOGIC_GRAPH = 1;
+GraphCode.SHADER_GRAPH = 2;
 
 GraphCode.EXTENSION = "GRAPH.json";
 GraphCode.hasPreview = false; //should this resource use a preview image?
@@ -14761,6 +15093,16 @@ Object.defineProperty( GraphCode.prototype, "version", {
 	}
 });
 
+Object.defineProperty( GraphCode.prototype, "type", {
+	enumerable: false,
+	get: function() {
+		return this.extra.type;
+	},
+	set: function(v) {
+		this.extra.type = v;
+	}
+});
+
 //used when storing/retrieving the resource
 GraphCode.prototype.setData = function( data, skip_modified_flag )
 {
@@ -14777,11 +15119,11 @@ GraphCode.prototype.setData = function( data, skip_modified_flag )
 				this._data = JSON.parse( data );
 			else
 				this._data = JSON.parse( JSON.stringify( data ) ); //clone...
-			this._graph.configure( this._data );
 		}
 		catch (err)
 		{
 			console.error("error in graph data");
+			return;
 		}
 	else
 	{
@@ -14789,8 +15131,11 @@ GraphCode.prototype.setData = function( data, skip_modified_flag )
 			this._data = JSON.parse( data );
 		else
 			this._data = JSON.parse( JSON.stringify( data ) ); //clone...
-		this._graph.configure( this._data );
 	}
+
+	this._graph.configure( this._data );
+	if( this._data.extra )
+		this.extra = this._data.extra;
 
 	if(!skip_modified_flag)
 	{
@@ -14803,6 +15148,7 @@ GraphCode.prototype.getData = function()
 {
 	var data = this.graph.serialize();
 	data.object_class = "GraphCode";
+	data.extra = this.extra;
 	return data;
 }
 
@@ -14820,14 +15166,64 @@ GraphCode.prototype.propagate = function()
 {
 	var filename = this.fullpath || this.filename;
 
-	var components = LS.GlobalScene.findNodeComponents( LS.Components.GraphComponent );
-	for(var i = 0; i < components.length; ++i)
+	if( this.type == GraphCode.LOGIC_GRAPH )
 	{
-		var comp = components[i];
-		if(comp.filename != this.filename )
-			continue;
-		comp.graphcode = this;
+		var components = LS.GlobalScene.findNodeComponents( LS.Components.GraphComponent );
+		for(var i = 0; i < components.length; ++i)
+		{
+			var comp = components[i];
+			if(comp.filename != this.filename )
+				continue;
+			comp.graphcode = this;
+		}
 	}
+}
+
+//used in materials
+GraphCode.prototype.getShaderCode = function()
+{
+	if( this._shader_code && this._code_version == this._graph._version )
+		return this._shader_code;
+
+	if(!this._shader_code)
+		this._shader_code = new LS.ShaderCode();
+
+	var final_code = LS.SurfaceMaterial.code_template;
+
+	var context = { uniforms: [] };
+	var graph_code = "";
+
+	var nodes = this._graph._nodes_in_order;
+	for(var i = 0; i < nodes.length; ++i)
+	{
+		var node = nodes[i];
+		if( node.onGetCode )
+			graph_code += node.onGetCode( "glsl", context );
+	}
+
+	var uniforms_code = "";
+	for(var i = 0; i < context.uniforms.length; ++i)
+	{
+		var uniform = context.uniforms[i];
+		uniforms_code += "uniform " + uniform.type + " " + uniform.link_name + ";\n";
+	}
+
+	var surface_code = "void surf( in Input IN, inout SurfaceOutput o ) {\n\
+	o.Albedo = vec3(1.0) * IN.color.xyz;\n\
+	o.Normal = IN.worldNormal;\n\
+	o.Emission = vec3(0.0);\n\
+	o.Specular = 1.0;\n\
+	o.Gloss = 40.0;\n\
+	o.Reflectivity = max(0.0, 0.5 - dot(IN.viewDir,o.Normal));\n\
+	o.Alpha = IN.color.a;\n";
+
+	var context = {
+		fs_out: uniforms_code + "\n\n" + surface_code + "\n" + graph_code + "\n}\n"
+	};
+
+	this._shader_code.code = LS.ShaderCode.replaceCode( final_code, context );
+	this._code_version = this._graph._version;
+	return this._shader_code;
 }
 
 LS.GraphCode = GraphCode;
@@ -16575,6 +16971,295 @@ if(typeof(LiteGraph) != "undefined")
 	LiteGraph.registerNodeType("gui/text", LGraphGUIText );
 }
 
+///@FILE:../src/graph/shader.js
+///@INFO: GRAPHS
+if(typeof(LiteGraph) != "undefined")
+{
+	var getInputLinkID = LiteGraph.getInputLinkID = function getInputLinkID( node, num )
+	{
+		var info = node.getInputInfo( num );	
+		if(!info)
+			return null;
+		if(info.link == -1)
+			return null;
+		var link = node.graph.links[ info.link ];
+		if(!link)
+			return null;
+		return "LINK_" + link.origin_id + "_" + link.origin_slot;
+	}
+
+	var getOutputLinkID = LiteGraph.getOutputLinkID = function getOutputLinkID( node, num )
+	{
+		var info = node.getOutputInfo( num );	
+		if(!info || !info.links || !info.links.length)
+			return null;
+		return "LINK_" + node.id + "_" + num;
+	}
+
+	function LGraphShaderSurface()
+	{
+		this.addInput("Albedo","vec3");
+		this.addInput("Emission","vec3");
+		this.addInput("Normal","vec3");
+		this.addInput("Specular","number");
+		this.addInput("Gloss","number");
+		this.addInput("Reflectivity","number");
+		this.addInput("Alpha","number");
+
+		this.properties = {};
+	}
+
+	LGraphShaderSurface.title = "Surface";
+	LGraphShaderSurface.desc = "Surface properties";
+	LGraphShaderSurface.category = "shader";
+
+	LGraphShaderSurface.prototype.onExecute = function()
+	{
+	}
+
+	LGraphShaderSurface.prototype.onGetCode = function( lang )
+	{
+		if( lang != "glsl" )
+			return "";
+
+		var code = "\n";
+		var input = getInputLinkID( this, 0 );
+		if( input )
+			code += "o.Albedo = "+input+";\n";
+		input = getInputLinkID( this, 1 );
+		if( input )
+			code += "o.Emission = "+input+";\n";
+		input = getInputLinkID( this, 2 );
+		if( input )
+			code += "o.Normal = "+input+";\n";
+		input = getInputLinkID( this, 3 );
+		if( input )
+			code += "o.Specular = "+input+";\n";
+		input = getInputLinkID( this, 4 );
+		if( input )
+			code += "o.Gloss = "+input+";\n";
+		input = getInputLinkID( this, 5 );
+		if( input )
+			code += "o.Reflectivity = "+input+";\n";
+		input = getInputLinkID( this, 6 );
+		if( input )
+			code += "o.Alpha = "+input+";\n";
+
+		return code;
+	}
+
+	LiteGraph.registerNodeType("shader/surface", LGraphShaderSurface );
+
+	function LGraphShaderColor()
+	{
+		this.addOutput("c","vec3");
+		this.properties = {
+			value: [1,1,1],
+			uniform: ""
+		};
+	}
+
+	LGraphShaderColor.title = "Color";
+	LGraphShaderColor.desc = "Color RGB";
+	LGraphShaderColor.filter = "shader";
+
+	LGraphShaderColor.prototype.onDrawBackground = function(ctx)
+	{
+		var rgb = this.properties.value;
+		ctx.fillStyle = RGBToHex( rgb[0],rgb[1],rgb[2] );
+		ctx.fillRect(0,0,this.size[0],this.size[1]);
+	}
+
+	LGraphShaderColor.prototype.onGetCode = function( type, context )
+	{
+		if(type != "glsl")
+			return "";
+
+		var output = getOutputLinkID( this, 0 );
+
+		if(this.properties.uniform)
+		{
+			context.uniforms.push({ name: this.properties.name, link_name: output, type: "vec3", value: this.properties.value });
+			return "";
+		}
+
+		return "vec3 "+output+" = vec3("+this.properties.value.toString()+");\n";
+	}
+
+	LiteGraph.registerNodeType("shader/color", LGraphShaderColor );
+
+	//mult vec3
+	function LGraphShaderScale()
+	{
+		this.addInput("in","vec3");
+		this.addInput("f","number");
+		this.addOutput("out","vec3");
+	}
+
+	LGraphShaderScale.title = "Scale";
+	LGraphShaderScale.desc = "Multiply by number";
+	LGraphShaderScale.filter = "shader";
+
+	LGraphShaderScale.prototype.onGetCode = function(type)
+	{
+		if(type != "glsl")
+			return "";
+		var input_0 = getInputLinkID( this, 0 );
+		var input_1 = getInputLinkID( this, 1 );
+		var output = getOutputLinkID( this, 0 );
+		if(input_0 && input_1 && output)
+			return "vec3 "+output+" = "+ input_0 +" * "+ input_1 +";\n";
+		return "";
+	}
+
+	LiteGraph.registerNodeType("shader/scale", LGraphShaderScale );
+
+
+	/*
+	function LGraphShaderAbs()
+	{
+		this.addInput("in");
+		this.addOutput("out");
+	}
+
+	LGraphShaderAbs.title = "Scale";
+	LGraphShaderAbs.desc = "Multiply by number";
+	LGraphShaderAbs.filter = "shader";
+
+	LGraphShaderAbs.prototype.onGetCode = function(type)
+	{
+		if(type != "glsl")
+			return "";
+		var input = getInputLinkID( this, 0 );
+		var output = getOutputLinkID( this, 0 );
+		if(input && output)
+			return "vec3 "+output+" = "+ input_0 +" * "+ input_1 +";\n";
+		return "";
+	}
+
+	LiteGraph.registerNodeType("shader/scale", LGraphShaderAbs );
+	*/
+
+
+	function LGraphShaderConst()
+	{
+		this.addOutput("out","number");
+		this.properties = { value: 1, uniform: "" };
+	}
+
+	LGraphShaderConst.title = "Const";
+	LGraphShaderConst.desc = "Multiply by number";
+	LGraphShaderConst.filter = "shader";
+
+	LGraphShaderConst.prototype.onGetCode = function( type, context )
+	{
+		if(type != "glsl")
+			return "";
+
+		var output = getOutputLinkID( this, 0 );
+		if(!output)
+			return "";
+
+		if(this.properties.uniform)
+		{
+			context.uniforms.push({ name: this.properties.name, link_name: output, type: "float", value: this.properties.value });
+			return "";
+		}
+
+		return "float "+output+" = "+ this.properties.value.toFixed(3) +";\n";
+	}
+
+	LiteGraph.registerNodeType("shader/const", LGraphShaderConst );
+
+
+	function LGraphShaderSampler2D()
+	{
+		this.addOutput("out","sampler2d");
+		this.properties = { name:"texture", value: "" };
+	}
+
+	LGraphShaderSampler2D.title = "Texture";
+	LGraphShaderSampler2D.desc = "To pass a texture";
+	LGraphShaderSampler2D.filter = "shader";
+
+	LGraphShaderSampler2D.prototype.onGetCode = function( type, context )
+	{
+		if(type != "glsl")
+			return "";
+
+		var output = getOutputLinkID( this, 0 );
+		if(!output)
+			return "";
+		context.uniforms.push({ name: this.properties.name, link_name: output, type: "sampler2D", value: this.properties.value });
+	}
+
+	//LiteGraph.registerNodeType("shader/sampler2D", LGraphShaderSampler2D );
+
+	/*
+		vec4 color;\n\
+		vec3 vertex;\n\
+		vec3 normal;\n\
+		vec2 uv;\n\
+		vec2 uv1;\n\
+		\n\
+		vec3 camPos;\n\
+		vec3 viewDir;\n\
+		vec3 worldPos;\n\
+		vec3 worldNormal;\n\
+		vec4 screenPos;\n\
+	*/
+
+	function LGraphShaderVertex()
+	{
+		this.addOutput("position","vec3");
+		this.addOutput("local_position","vec3");
+		this.addOutput("normal","vec3");
+		this.addOutput("local_normal","vec3");
+		this.addOutput("uv","vec2");
+		this.addOutput("screen","vec4");
+		this.addOutput("viewDir","vec3");
+		this.addOutput("camPos","vec3");
+	}
+
+	LGraphShaderVertex.title = "Vertex";
+	LGraphShaderVertex.desc = "Reads info from vertex shader";
+	LGraphShaderVertex.filter = "shader";
+
+	LGraphShaderVertex.prototype.onGetCode = function( type, context )
+	{
+		if(type != "glsl")
+			return "";
+
+		var code = "";
+		var output = getOutputLinkID( this, 0 );
+		if(output)
+			code += "vec3 "+output+" = IN.worldPos;\n";
+		output = getOutputLinkID( this, 1 );
+		if(output)
+			code += "vec3 "+output+" = IN.vertex;\n";
+		output = getOutputLinkID( this, 2 );
+		if(output)
+			code += "vec3 "+output+" = IN.worldNormal;\n";
+		output = getOutputLinkID( this, 3 );
+		if(output)
+			code += "vec3 "+output+" = IN.normal;\n";
+		output = getOutputLinkID( this, 4 );
+		if(output)
+			code += "vec2 "+output+" = IN.uv;\n";
+		output = getOutputLinkID( this, 5 );
+		if(output)
+			code += "vec4 "+output+" = IN.screenPos;\n";
+		output = getOutputLinkID( this, 6 );
+		if(output)
+			code += "vec3 "+output+" = IN.viewDir;\n";
+		output = getOutputLinkID( this, 7 );
+		if(output)
+			code += "vec3 "+output+" = IN.camPos;\n";
+		return code;
+	}
+
+	LiteGraph.registerNodeType("shader/vertex", LGraphShaderVertex );
+}
 ///@FILE:../src/helpers/path.js
 ///@INFO: UNCOMMON
 function Path()
@@ -20115,7 +20800,6 @@ var Renderer = {
 	_identity_matrix: mat4.create(),
 	_render_uniforms: {},
 	_instancing_data: [],
-	_reflection_probes: [],
 
 	//safety
 	_is_rendering_frame: false,
@@ -25258,13 +25942,17 @@ Transform.prototype.translateGlobal = function(x,y,z)
 * @method rotate
 * @param {number} angle_in_deg 
 * @param {vec3} axis
+* @param {boolean} is_global tells if the axis is in global coordinates or local coordinates
 */
 Transform.prototype.rotate = (function(){
 
 	var temp = quat.create();
+	var temp_axis = quat.create();
 
-	return function(angle_in_deg, axis)
+	return function(angle_in_deg, axis, is_global )
 	{
+		if( is_global ) //convert global vector to local
+			axis = this.globalVectorToLocal( axis, temp_axis );
 		quat.setAxisAngle( temp, axis, angle_in_deg * 0.0174532925 );
 		quat.multiply( this._rotation, this._rotation, temp );
 		this._must_update = true;
@@ -26848,19 +27536,19 @@ Camera.prototype.rotate = (function() {
 	var tmp_quat = quat.create();
 	var tmp_vec3 = vec3.create();
 	
-	return function(angle_in_deg, axis, in_local_space)
+	return function( angle_in_deg, axis, in_local_space )
 	{
 		if(angle_in_deg == 0)
 			return;
 
 		if(this._root && this._root.transform)
 		{
-			this._root.transform.rotate(angle_in_deg, axis, in_local_space);
+			this._root.transform.rotate( angle_in_deg, axis, !in_local_space );
 			this._must_update_view_matrix = true;
 			return;
 		}
 
-		if(in_local_space)
+		if( in_local_space )
 			this.getLocalVector( axis, tmp_vec3 );
 		else
 			tmp_vec3.set( axis );
@@ -32985,6 +33673,7 @@ CameraController.PAN_XZ = 11; //pans only in the XZ plane
 CameraController.CHANGE_DISTANCE = 15; //scales the center from eye to center
 CameraController.WALK = 16; //moves forward or backward
 CameraController.ELEVATE = 17; //moves forward or backward
+CameraController.FOV = 18; //changes zoom (FOV)
 
 
 CameraController.icon = "mini-icon-cameracontroller.png";
@@ -33003,7 +33692,9 @@ CameraController.mode_values = {
 	};
 
 CameraController.wheel_values = { 
+		"None": CameraController.NONE,
 		"Change Distance": CameraController.CHANGE_DISTANCE,
+		"FOV": CameraController.FOV,
 		"Walk": CameraController.WALK,
 		"Elevate": CameraController.ELEVATE
 };
@@ -33184,7 +33875,7 @@ CameraController.prototype.processMouseButtonMoveEvent = function( mode, mouse_e
 	else if(mode == CameraController.ROTATE || mode == CameraController.ROTATE_HORIZONTAL )
 	{
 		var top = LS.TOP; //cam.getLocalVector(LS.TOP);
-		cam.rotate(-mouse_event.deltax * this.rot_speed * 0.2,top);
+		cam.rotate( -mouse_event.deltax * this.rot_speed * 0.2, top );
 		cam.updateMatrices();
 
 		if( mode == CameraController.ROTATE )
@@ -33197,7 +33888,7 @@ CameraController.prototype.processMouseButtonMoveEvent = function( mode, mouse_e
 			}
 			else
 			{
-				node.transform.rotate(-mouse_event.deltay * this.rot_speed,LS.RIGHT);
+				node.transform.rotate( -mouse_event.deltay * this.rot_speed * 0.2, LS.RIGHT );
 				cam.updateMatrices();
 			}
 		}
@@ -33283,8 +33974,19 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 	if(mouse_event.eventType == "mousewheel")
 	{
 		var wheel = mouse_event.wheel > 0 ? 1 : -1;
-		cam.orbitDistanceFactor(1 + wheel * -0.05 * this.wheel_speed );
-		cam.updateMatrices();
+
+		switch( this.mouse_wheel_action )
+		{
+			case CameraController.CHANGE_DISTANCE: 
+				cam.orbitDistanceFactor(1 + wheel * -0.05 * this.wheel_speed );
+				cam.updateMatrices();
+				break;
+			case CameraController.FOV: 
+				cam.fov = cam.fov - wheel;
+				cam.updateMatrices();
+				break;
+		}
+
 		node.scene.requestFrame();
 		return;
 	}
@@ -34237,6 +34939,8 @@ function GraphComponent(o)
 	this.force_redraw = false;
 	this._filename = null;
 	this._graphcode = null;
+	this._graph_properties = null;
+	//this._properties_by_id = {};
 
 	this.on_event = "update";
 
@@ -34307,6 +35011,7 @@ Object.defineProperty( GraphComponent.prototype, "graphcode", {
 			this._filename = this._graphcode.fullpath || this._graphcode.filename;
 		else 
 			this._filename = null;
+		this._graph_properties = this.serializeProperties();
 		this.processGraph();
 	}
 });
@@ -34337,6 +35042,13 @@ GraphComponent.prototype.configure = function(o)
 	{
 		this.from_file = true;
 		this.filename = o.filename;
+		if( o.graph_properties )
+		{
+			if(this._loading)
+				this._graph_properties = o.graph_properties; //should be cloned?
+			else
+				this.configureProperties( o.graph_properties );
+		}
 	}
 	else if(o.graph_data)
 	{
@@ -34355,7 +35067,7 @@ GraphComponent.prototype.configure = function(o)
 		}
 		else
 		{
-			var obj = JSON.parse(o.graph_data);
+			var obj = JSON.parse( o.graph_data );
 			this._graph.configure( obj );
 		}
 	}
@@ -34375,6 +35087,7 @@ GraphComponent.prototype.serialize = function()
 		from_file: this.from_file,
 		force_redraw: this.force_redraw , 
 		filename: this._filename,
+		graph_properties: this.from_file ? this.serializeProperties() : null,
 		graph_data: this.from_file ? null : JSON.stringify( this._graph.serialize() ),
 		on_event: this.on_event
 	};
@@ -34515,6 +35228,11 @@ GraphComponent.prototype.processGraph = function( skip_events, on_complete )
 	}
 
 	this._graph.configure( this._graphcode.data );
+	if( this._graph_properties )
+	{
+		this.configureProperties( this._graph_properties );
+		this._graph_properties = null;
+	}
 	this._graph_version = this._graphcode._version;
 }
 
@@ -34525,128 +35243,79 @@ GraphComponent.prototype.getResources = function(res)
 	return res;
 }
 
+GraphComponent.prototype.serializeProperties = function()
+{
+	var properties = {};
+
+	var nodes = this._graph.findNodesByType("scene/global");
+	if(!nodes.length)
+		return properties;
+
+	for(var i = 0; i < nodes.length; ++i)
+	{
+		var n = nodes[i];
+		properties[ n.id ] = n.properties.value;
+	}
+
+	return properties;
+}
+
+GraphComponent.prototype.configureProperties = function( properties )
+{
+	var nodes = this._graph.findNodesByType("scene/global");
+	if(!nodes.length)
+		return properties;
+
+	for(var i = 0; i < nodes.length; ++i)
+	{
+		var n = nodes[i];
+		if( properties[ n.id ] === undefined )
+			continue;
+		n.properties.value = properties[ n.id ];
+	}
+}
+
 GraphComponent.prototype.getPropertyValue = function( property )
 {
 	var nodes = this._graph.findNodesByType("scene/global");
-	if(nodes.length)
+	if(!nodes.length)
+		return null;
+	for(var i = 0; i < nodes.length; ++i)
 	{
-		for(var i = 0; i < nodes.length; ++i)
-		{
-			var n = nodes[i];
-			var type = n.properties.type;
-			if(n.properties.name != property)
-				continue;
+		var n = nodes[i];
+		var type = n.properties.type;
+		if(n.properties.name != property)
+			continue;
 
-			return n.properties.value;
-		}
+		return n.properties.value;
 	}
 }
 
-
+//TODO: optimize this precaching nodes of type scene/global
 GraphComponent.prototype.setPropertyValue = function( property, value )
 {
 	var nodes = this._graph.findNodesByType("scene/global");
-	if(nodes.length)
+	if(!nodes.length)
+		return;
+	for(var i = 0; i < nodes.length; ++i)
 	{
-		for(var i = 0; i < nodes.length; ++i)
-		{
-			var n = nodes[i];
-			var type = n.properties.type;
-			if(n.properties.name != property)
-				continue;
+		var n = nodes[i];
+		var type = n.properties.type;
+		if(n.properties.name != property)
+			continue;
 
-			if(n.properties.value && n.properties.value.set)
-				n.properties.value.set(value);
-			else
-				n.properties.value = value;
-			return true;
-		}
+		if(n.properties.value && n.properties.value.set)
+			n.properties.value.set(value);
+		else
+			n.properties.value = value;
+		return true;
 	}
 }
-
 
 LS.registerComponent( GraphComponent );
 
-/**
-* This component encapsulates a graph that comes from a file
-* @class GraphFromFile
-* @param {Object} o object with the serialized info
-*/
-/*
-function GraphFromFile( o )
-{
-	this.enabled = true;
 
-	this._filename = "";
 
-	this.force_redraw = false;
-	this.on_event = "update";
-	if(typeof(LGraphTexture) == "undefined")
-		return console.error("Cannot use GraphComponent if LiteGraph is not installed");
-
-	this._graph = new LGraph();
-	this._graph.getScene = function() { return this._scene || LS.GlobalScene; } //this OR is ugly
-
-	if(o)
-		this.configure(o);
-	else //default
-	{
-		var graphnode = this._default_node = LiteGraph.createNode("scene/node");
-		this._graph.add( graphnode );
-		//graphnode.properties.node_id = //cannot be set yet, not attached to node
-	}
-	
-	LEvent.bind(this,"trigger", this.trigger, this );	
-}
-
-GraphFromFile.icon = "mini-icon-graph.png";
-LS.extendClass( GraphFromFile, GraphComponent );
-
-Object.defineProperty( GraphFromFile.prototype, "filename", {
-	enumerable: true,
-	get: function() {
-		return this._filename;
-	},
-	set: function(v) {
-		if(v)
-			v = LS.ResourcesManager.cleanFullpath(v);
-		if(this._filename == v)
-			return;
-		this._filename = v;
-		this.processGraph();
-	}
-});
-
-GraphFromFile.prototype.processGraph = function()
-{
-}
-
-GraphFromFile.prototype.configure = function( o )
-{
-	if(o.enabled != null)
-		this.enabled = !!o.enabled;
-	if(o.force_redraw != null)
-		this.force_redraw = !!o.force_redraw;
-	if(o.on_event)
-		this.on_event = o.on_event;
-	if(o.filename)
-		this.filename = o.filename;
-}
-
-GraphFromFile.prototype.serialize = function()
-{
-	return { 
-		object_class: "GraphFromFile",
-		uid: this.uid,
-		enabled: this.enabled, 
-		force_redraw: this.force_redraw , 
-		filename: this._filename,
-		on_event: this.on_event
-	};
-}
-
-LS.registerComponent( GraphFromFile );
-*/
 
 /**
 * This component allow to integrate a rendering post FX using a graph

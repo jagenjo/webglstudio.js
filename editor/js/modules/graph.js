@@ -190,11 +190,11 @@ var GraphModule = {
 	onKeyDown: function(e)
 	{
 		//console.log("key",e);
-		if(e.code == "KeyS" && e.ctrlKey)
+		if( e.code == "KeyS" && e.ctrlKey )
 			this.saveGraph();
-		else if(e.code == "F6")
+		else if( e.code == "F6" )
 			EditorModule.reloadEditor(true);
-		else if(e.code == "Enter" && e.ctrlKey)
+		else if( e.code == "Enter" && e.ctrlKey )
 			this.compileGraph();
 		else
 			return;
@@ -217,7 +217,7 @@ var GraphModule = {
 		//store changes in GraphCode
 		var graph_widget = this.tabs_widget.getCurrentWidget();
 		if(graph_widget)
-			graph_widget.compile();
+			graph_widget.compileGraph();
 	},
 
 	showPreviewSelection: function()
@@ -243,7 +243,7 @@ CORE.registerModule( GraphModule );
 
 //UPDATE GRAPH
 
-GraphModule.showGraphComponent = function(component, inspector)
+GraphModule.showGraphComponent = function( component, inspector )
 {
 	if(component.from_file)
 		inspector.addGraph("filename", component.filename, { name_width: 60, callback: function(v) { component.filename = v; }});

@@ -647,7 +647,16 @@ LS.MaterialClasses.SurfaceMaterial["@inspector"] = function( material, inspector
 		if(p.type == "texture" || p.type == "cubemap")
 			material.textures[p.name] = p.value;
 	}
+}
 
+LS.MaterialClasses.GraphMaterial["@inspector"] = function( material, inspector )
+{
+	inspector.addGraph("filename", material.filename, { name_width: 60, graph_type: LS.GraphCode.SHADER_GRAPH, callback: function(v) { material.filename = v; }});
+	inspector.addButton(null,"Edit Graph", { callback: function(){
+		ShadersModule.openTab();
+		ShadersModule.editGraph( material, { id: material.filename, title: material.filename } );
+	}});
+	//inspector.addTitle("Properties");
 }
 
 LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector, is_fx )
@@ -838,3 +847,4 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 	dialog.adjustSize(30);
 	//widgets.addString("Name", last_file ? last_file.name : "");
 }
+

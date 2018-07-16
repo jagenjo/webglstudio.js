@@ -390,7 +390,6 @@ GraphWidget.prototype.onReload = function( e )
 	EditorModule.refreshAttributes(); //avoid inspecting old version
 }
 
-
 GraphWidget.prototype.onNodeSelected = function( node )
 {
 	//TODO
@@ -406,7 +405,6 @@ GraphWidget.prototype.onComponentRemoved = function( component )
 	//check if this component is the one being edited
 	if( !this.current_graph_info || this.current_graph_info.id != component.uid )
 		return;
-
 }
 
 /*
@@ -441,8 +439,6 @@ GraphWidget.prototype.onMenuNodeOutputs = function( options )
 	return options;
 }
 
-
-
 GraphWidget.prototype.onNewGraph = function()
 {
 	var that = this;
@@ -463,7 +459,7 @@ GraphWidget.prototype.onNewGraph = function()
 	dialog.show( null, this.root );
 
 	function inner(v){
-		var component = new LS.Components[graph_type]();
+		var component = new LS.Components[ graph_type ]();
 		var root = node || LS.GlobalScene.root;
 		root.addComponent( component );
 		CORE.userAction("component_created", component );
@@ -602,6 +598,26 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 
 	var widgets_info = graphnode.constructor.widgets_info || graphnode.widgets_info;
 
+	//special case
+	if( graphnode.type == "scene/global" )
+	{
+		inspector.addString("Name", graphnode.properties.name, { callback: function(v){ graphnode.properties.name = v; }});
+		inspector.addCombo("Type", graphnode.properties.name, { values: LGraphGlobal["@type"].values, callback: function(v){
+			graphnode.properties.type =	v;
+			if( v == "boolean" )
+				graphnode.properties.value = !!graphnode.properties.value;
+			else if ( v == "number" )
+				graphnode.properties.value = 0;
+			inspector.refresh();
+		}});
+		inspector.add( graphnode.properties.type, "Value", graphnode.properties.value, { callback: function(v){} });
+		if( graphnode.properties.type == "number" )
+		{
+			inspector.addNumber( "Min", graphnode.properties.min, { callback: function(v){ graphnode.properties.min = v; } });
+			inspector.addNumber( "Max", graphnode.properties.max, { callback: function(v){ graphnode.properties.max = v; } });
+		}
+	}
+	else
 	for(var i in graphnode.properties)
 	{
 		var value = graphnode.properties[i];

@@ -3991,7 +3991,104 @@ GL.linearizeArray = linearizeArray;
 GL.Mesh.EXTENSION = "wbin";
 GL.Mesh.enable_wbin_compression = true;
 
+//this is used when a mesh is dynamic and constantly changes
+function DynamicMesh( size, normals, coords, colors, gl )
+{
+	size = size || 1024;
 
+	if(GL.debug)
+		console.log("GL.Mesh created");
+
+	if( gl !== null )
+	{
+		gl = gl || global.gl;
+		this.gl = gl;
+	}
+
+	//used to avoid problems with resources moving between different webgl context
+	this._context_id = gl.context_id; 
+
+	this.vertexBuffers = {};
+	this.indexBuffers = {};
+
+	//here you can store extra info, like groups, which is an array of { name, start, length, material }
+	this.info = {
+		groups: []
+	}; 
+	this._bounding = BBox.create(); //here you can store a AABB in BBox format
+
+	this.resize( size );
+}
+
+DynamicMesh.DEFAULT_NORMAL = vec3.fromValues(0,1,0);
+DynamicMesh.DEFAULT_COORD = vec2.fromValues(0.5,0.5);
+DynamicMesh.DEFAULT_COLOR = vec4.fromValues(1,1,1,1);
+
+DynamicMesh.prototype.resize = function( size )
+{
+	var buffers = {};
+
+	this._vertex_data = new Float32Array( size * 3 );
+	buffers.vertices = this._vertex_data;
+
+	if( normals )
+		buffers.normals = this._normal_data = new Float32Array( size * 3 );
+	if( coords )
+		buffers.coords = this._coord_data = new Float32Array( size * 2 );
+	if( colors )
+		buffers.colors = this._color_data = new Float32Array( size * 4 );
+
+	this.addBuffers( buffers );
+
+	this.current_pos = 0;
+	this.max_size = size;
+	this._must_update = true;
+}
+
+DynamicMesh.prototype.clear = function()
+{
+	this.current_pos = 0;
+}
+
+DynamicMesh.prototype.addPoint = function( vertex, normal, coord, color )
+{
+	if (pos >= this.max_size)
+	{
+		console.warn("DynamicMesh: not enough space, reserve more");
+		return false;
+	}
+	var pos = this.current_pos++;
+
+	this._vertex_data.set( vertex, pos*3 );
+
+	if(this._normal_data)
+		this._normal_data.set( normal || DynamicMesh.DEFAULT_NORMAL, pos*3 );
+	if(this._coord_data)
+		this._coord_data.set( coord || DynamicMesh.DEFAULT_COORD, pos*2 );
+	if(this._color_data)
+		this._color_data.set( color || DynamicMesh.DEFAULT_COLOR, pos*4 );
+
+	this._must_update = true;
+	return true;
+}
+
+DynamicMesh.prototype.update = function( force )
+{
+	if(!this._must_update && !force)
+		return this.current_pos;
+	this._must_update = false;
+
+	this.getBuffer("vertices").upload( gl.STREAM_DRAW );
+	if(this._normal_data)
+		this.getBuffer("normal").upload( gl.STREAM_DRAW );
+	if(this._coord_data)
+		this.getBuffer("coord").upload( gl.STREAM_DRAW );
+	if(this._color_data)
+		this.getBuffer("color").upload( gl.STREAM_DRAW );
+	return this.current_pos;
+}
+
+extendClass( DynamicMesh, Mesh );
 
 /**
 * @class Mesh
@@ -7567,9 +7664,9 @@ Shader.prototype._setUniform = (function(){
 * @param {number} mode could be gl.LINES, gl.POINTS, gl.TRIANGLES, gl.TRIANGLE_STRIP, gl.TRIANGLE_FAN
 * @param {String} index_buffer_name the name of the index buffer, if not provided triangles will be assumed
 */
-Shader.prototype.draw = function(mesh, mode, index_buffer_name ) {
+Shader.prototype.draw = function( mesh, mode, index_buffer_name ) {
 	index_buffer_name = index_buffer_name === undefined ? (mode == gl.LINES ? 'lines' : 'triangles') : index_buffer_name;
-	this.drawBuffers(mesh.vertexBuffers,
+	this.drawBuffers( mesh.vertexBuffers,
 	  index_buffer_name ? mesh.indexBuffers[ index_buffer_name ] : null,
 	  arguments.length < 2 ? gl.TRIANGLES : mode);
 }
@@ -7587,7 +7684,7 @@ Shader.prototype.drawRange = function(mesh, mode, start, length, index_buffer_na
 {
 	index_buffer_name = index_buffer_name === undefined ? (mode == gl.LINES ? 'lines' : 'triangles') : index_buffer_name;
 
-	this.drawBuffers(mesh.vertexBuffers,
+	this.drawBuffers( mesh.vertexBuffers,
 	  index_buffer_name ? mesh.indexBuffers[ index_buffer_name ] : null,
 	  mode, start, length);
 }
@@ -7798,7 +7895,7 @@ Shader.prototype.drawInstanced = function( mesh, primitive, indices, instanced_u
 		else //others
 		{
 			gl.enableVertexAttribArray( uniformLocation );
-			gl.vertexAttribPointer( uniformLocation, element_size, gl.FLOAT, false, element_size*4, element_size*4 ); //4 bytes per float
+			gl.vertexAttribPointer( uniformLocation, element_size, gl.FLOAT, false, element_size*4, 0 ); //4 bytes per float, 0 offset
 			if( ext ) //webgl 1
 				ext.vertexAttribDivisorANGLE( uniformLocation, 1 ); // This makes it instanced!
 			else

@@ -48,12 +48,12 @@ function ConsoleWidget( options )
 		that.unbindEvents();
 	});
 
-	ConsoleWidget.commands["clear"] = function(a,console_widget)
+	ConsoleWidget.commands["clear"] = function( a, console_widget )
 	{
 		console_widget.clear();
 	}
 
-	ConsoleWidget.commands["log"] = function(a,console_widget)
+	ConsoleWidget.commands["log"] = function( a, console_widget )
 	{
 		if(!console._log)
 		{
@@ -84,7 +84,6 @@ function ConsoleWidget( options )
 			console_widget.log("login console: off");
 		}
 	}
-
 
 	if(!LS.Documentation)
 	{

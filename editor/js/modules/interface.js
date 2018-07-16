@@ -932,14 +932,22 @@ LiteGUI.Inspector.prototype.addGraph = function( name, value, options )
 			return;
 		}
 
+		var default_filename = "";
+		if (options.graph_type == LS.GraphCode.SHADER_GRAPH)
+			default_filename = "shader.GRAPH.json";
+		else
+			default_filename = "graph.GRAPH.json";
+
 		DriveModule.showSelectFolderFilenameDialog(null, function( folder, filename, fullpath ){
 			//GraphModule.editInstanceGraph( resource );
 			var graph = new LS.GraphCode();
+			if(options.graph_type)
+				graph.type = options.graph_type;
 			LS.RM.registerResource( fullpath, graph );
 			if(options.callback)
 				options.callback( fullpath, graph );
 			that.refresh();
-		}, { button: "Create", filename: "mygraph.GRAPH.json", folder: DriveModule.getSceneBaseFolder(), extension:"GRAPH.json" } );
+		}, { button: "Create", filename: default_filename, folder: DriveModule.getSceneBaseFolder(), extension:"GRAPH.json" } );
 		return;
 	}});
 	this.widgets_per_row -= 1;

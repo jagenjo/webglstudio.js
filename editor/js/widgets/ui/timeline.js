@@ -1058,7 +1058,7 @@ Timeline.prototype.onMouse = function(e)
 					newt = Math.round( newt * this.framerate ) / this.framerate; //round
 					var track = this.current_take.tracks[ this._item_dragged.track ];
 					if(track.packed_data)
-						return;
+						track.unpackData();
 
 					var keyframe = track.data[this._item_dragged.keyframe];
 					keyframe[0] = newt;

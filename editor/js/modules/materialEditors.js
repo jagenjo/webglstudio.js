@@ -649,6 +649,7 @@ LS.MaterialClasses.SurfaceMaterial["@inspector"] = function( material, inspector
 	}
 }
 
+if(LS.MaterialClasses.GraphMaterial)
 LS.MaterialClasses.GraphMaterial["@inspector"] = function( material, inspector )
 {
 	inspector.addGraph("filename", material.filename, { name_width: 60, graph_type: LS.GraphCode.SHADER_GRAPH, callback: function(v) { material.filename = v; }});

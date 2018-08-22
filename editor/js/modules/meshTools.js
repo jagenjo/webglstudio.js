@@ -278,6 +278,66 @@ var MeshTools = {
 
 		mesh.updateBounding();
 		return true;
+	},
+
+	deindexMesh: function(mesh)
+	{
+		var indices_buffer = mesh.getIndexBuffer("triangles");
+		if(!indices_buffer)
+		{
+			return false;
+		}
+		var vertex_buffer = mesh.getBuffer("vertices");
+		var normal_buffer = mesh.getBuffer("normals");
+		var uv_buffer = mesh.getBuffer("coords");
+
+		var old_vertices = vertex_buffer ? vertex_buffer.data : null;
+		var old_normals = normal_buffer ? normal_buffer.data : null;
+		var old_uvs = uv_buffer ? uv_buffer.data : null;
+		var indices = indices_buffer.data;
+
+		var vertices = [];
+		var normals = [];
+		var uvs = [];
+
+		if( mesh.getBuffer("weights") )
+		{
+			console.error("cannot deindex skinned meshes, sorry");
+			return false;
+		}
+		
+		for(var i = 0; i < indices.length; ++i)
+		{
+			var index = indices[i];
+			var v = old_vertices.subarray( index*3, index*3+3 );
+			vertices.push( v[0], v[1], v[2] );
+			if( old_normals )
+			{
+				var v = old_normals.subarray( index*3, index*3+3 );
+				normals.push( v[0], v[1], v[2] );
+			}
+			if( old_uvs )
+			{
+				var v = old_uvs.subarray( index*2, index*2+2 );
+				uvs.push( v[0], v[1] );
+			}
+		}
+
+		vertex_buffer.data = new Float32Array( vertices );
+		vertex_buffer.upload( gl.STATIC_DRAW );
+		if( normal_buffer )
+		{
+			normal_buffer.data = new Float32Array( normals );
+			normal_buffer.upload( gl.STATIC_DRAW );
+		}
+		if( uv_buffer )
+		{
+			uv_buffer.data = new Float32Array( uvs );
+			uv_buffer.upload( gl.STATIC_DRAW );
+		}
+		mesh.removeIndexBuffer("triangles");
+
+		return true;
 	}
 
 };
@@ -444,6 +504,15 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		widgets.refresh();
 	} );
 
+	widgets.addButton(null, "De-index", function(){
+		if( MeshTools.deindexMesh( mesh ) )
+		{
+			LS.RM.resourceModified(mesh);
+			RenderModule.requestFrame();
+		}
+		widgets.refresh();
+	} );
+
 
 	widgets.widgets_per_row = 1;
 	//widgets.addButton(null, "Weld", function(){} );
@@ -465,5 +534,7 @@ GL.Mesh.prototype.optimize = function( options )
 	LS.ResourcesManager.renameResource( old_filename, this.fullpath || this.filename );
 	LS.RM.resourceModified( this );
 }
+
+
 
 CORE.registerModule( MeshTools );

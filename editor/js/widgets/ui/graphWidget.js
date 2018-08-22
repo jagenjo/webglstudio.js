@@ -587,6 +587,7 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 	inspector.addString("Title", graphnode.title, { name_width: 100, disabled: graphnode.ignore_rename, callback: function(v) { graphnode.title = v; }});
 	inspector.addString("ID", String(graphnode.id), { name_width: 100 } );
 	inspector.widgets_per_row = 1;
+	inspector.addVector2("Size", graphnode.size, { name_width: 100, callback: function(v) { graphnode.size[0] = v[0]; graphnode.size[1] = v[1];  }} );
 
 	var modes = { "Always": LiteGraph.ALWAYS, "On Event": LiteGraph.ON_Event, "On Trigger": LiteGraph.ON_TRIGGER, "Never": LiteGraph.NEVER };
 	var reversed_modes = {};
@@ -686,9 +687,14 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 		});
 	}
 
-	inspector.addButtons(null, ["Collapse","Remove"], { callback: function(v) { 
+	inspector.addButtons(null, ["Collapse","Remove","Show JSON"], { callback: function(v) { 
 		if(v == "Collapse")
 			graphnode.collapse();
+		else if(v == "Show JSON")
+		{
+			EditorModule.checkJSON( graphnode.serialize() );
+			console.log( graphnode );
+		}
 		else if(v == "Remove")
 			graphnode.graph.remove(graphnode);
 	}});

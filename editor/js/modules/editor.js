@@ -306,23 +306,29 @@ var EditorModule = {
 		return this.inspector.instance;
 	},
 
+	//given a code it shows in a tab
+	checkCode: function( code )
+	{
+		if(!code)
+			return;
+		console.log(code); //helps navigating
+		var w = window.open("",'_blank');
+		w.document.write("<style>* { margin: 0; padding: 0; } html,body { margin: 20px; background-color: #222; color: #eee; } </style>");
+		var str = beautifyJSON( code );
+		w.document.write("<pre>"+str+"</pre>");
+		w.document.close();
+		return w;
+	},
+
 	//given a string or object of a JSON, it opens a popup with the code beautified
 	checkJSON: function( object )
 	{
 		if(!object)
 			return;
-		console.log(object); //helps navigating
-
-		var w = window.open("",'_blank');
-
-		w.document.write("<style>* { margin: 0; padding: 0; } html,body { margin: 20px; background-color: #222; color: #eee; } </style>");
-
 		if(object.constructor === String)
 			object = JSON.parse(object); //transform to object so we can use the propper stringify function
 		var data = JSON.stringify( object.serialize ? object.serialize() : object, null, '\t');
-		var str = beautifyJSON( data );
-		w.document.write("<pre>"+str+"</pre>");
-		w.document.close();
+		return this.checkCode(data);
 	},
 
 	showAddPropertyDialog: function( callback, valid_fields )

@@ -1,7 +1,7 @@
 var ShadersModule = {
 
-	enabled: false,
 	name: "Shaders",
+	enabled: false,
 	tab_name: "Shaders",
 	bigicon: "imgs/tabicon-shaders.png",
 
@@ -9,14 +9,18 @@ var ShadersModule = {
 	},
 
 	preferences: { //persistent settings
+		overlay_graph: false
 	},
 
 	init: function()
 	{
+		if( !LS.GraphMaterial )
+			return;
+
 		//Register in CanvasManager to render the border on playmode
 		//RenderModule.canvas_manager.addWidget( PlayModule, 10 );
 
-		this.tab = LiteGUI.main_tabs.addTab("Shaders", {id:"shaderstab", bigicon: this.bigicon, size: "full", module: EditorModule, callback: function() {
+		this.tab = LiteGUI.main_tabs.addTab("Shaders", {id:"shaderstab", bigicon: this.bigicon, size: "full", module: this, callback: function() {
 			//get the canvas
 			ShadersModule.enabled = true;
 			RenderModule.canvas_manager.addWidget( ShadersModule );
@@ -38,6 +42,8 @@ var ShadersModule = {
 		top_widgets.addButton(null,"Open", this.onOpenGraph.bind(this) );
 		top_widgets.addButton(null,"Save", this.saveGraph.bind(this) );
 		top_widgets.addButton(null,"Compile", this.compileGraph.bind(this) );
+		top_widgets.addButton(null,"GLSL", this.showCode.bind(this) );
+		top_widgets.addCheckbox("Overlay", ShadersModule.preferences.overlay_graph, function(v){ ShadersModule.preferences.overlay_graph = v; } );
 		top_widgets.root.style.borderTop = "1px solid #222";
 		this.root.appendChild( top_widgets.root );
 
@@ -49,6 +55,8 @@ var ShadersModule = {
 		this.graph = null;
 		this.graphcanvas = new LiteGraph.LGraphCanvas(null,null,{ skip_render: true });
 		this.graphcanvas.onShowNodePanel = this.onShowNodePanel.bind(this);
+		this.graphcanvas.onRenderBackground = this.onRenderCanvasBackground.bind(this);
+		this.graphcanvas.filter = "shader";
 	},
 
 	openTab: function()
@@ -101,11 +109,33 @@ var ShadersModule = {
 
 	},	
 
+	showCode: function()
+	{
+		if(!this.graph)
+			return;
+		var graphcode = this.graph._graphcode;
+		if(!graphcode)
+			return;
+		EditorModule.checkCode( graphcode.getShaderCode( true ) );
+	},
+
 	onShowNodePanel: function( node )
 	{
 		var inspector = this.inspector || EditorModule.inspector;
 		inspector.inspect( node );
 		this.inspected_node = node;
+	},
+
+	onRenderCanvasBackground: function()
+	{
+		if(!this.preferences.overlay_graph)
+			return false;
+
+		gl.finish2D(); //WebGLtoCanvas2D
+		this.renderPreview( true );
+		gl.start2D(); //WebGLtoCanvas2D
+
+		return true;
 	},
 
 	render: function()
@@ -129,26 +159,35 @@ var ShadersModule = {
 		if(this.graph)
 			this.graphcanvas.draw();
 
-
 		gl.restore();
 		gl.finish2D(); //WebGLtoCanvas2D
 
+		if(!this.preferences.overlay_graph)
+			this.renderPreview();
+
+		return true;
+	},
+
+	renderPreview: function( fullscreen )
+	{
 		gl.clear( gl.DEPTH_BUFFER_BIT );
+
+		if(fullscreen)
+		{
+			var camera = RenderModule.getActiveCamera();
+			LS.Renderer.renderFrame( camera, RenderModule.render_settings, LS.GlobalScene );		
+			return;
+		}
 
 		gl.viewport(0,0,256,256);
 		LS.Renderer.setFullViewport(0,0,256,256);
-
 		var temp = RenderModule.render_settings.keep_viewport;
 		RenderModule.render_settings.keep_viewport = true;
-
 		var camera = RenderModule.getActiveCamera();
 		LS.Renderer.renderFrame( camera, RenderModule.render_settings, LS.GlobalScene );		
 		LS.Renderer.setFullViewport(0,0,gl.canvas.width,gl.canvas.height);
 		gl.viewport(0,0,gl.canvas.width,gl.canvas.height);
-
 		RenderModule.render_settings.keep_viewport = temp;
-
-		return true;
 	},
 
 	mousedown: function(e)
@@ -158,7 +197,7 @@ var ShadersModule = {
 			EditorModule.inspect( this.selected_item.item );
 		else
 		*/
-			this.graphcanvas.processMouseDown(e);
+		this.graphcanvas.processMouseDown(e);
 
 		return true;
 	},

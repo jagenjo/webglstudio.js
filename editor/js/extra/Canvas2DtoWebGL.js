@@ -56,7 +56,6 @@ function enableWebGLCanvas( canvas, options )
 	var global_mesh = new GL.Mesh();
 	var global_buffer = global_mesh.createVertexBuffer("vertices", null, null, global_vertices, gl.STREAM_DRAW );
 	var quad_mesh = GL.Mesh.getScreenQuad();
-	var is_rect = false;
 	var extra_projection = mat4.create();
 	var stencil_enabled = false;
 	var anisotropic = options.anisotropic !== undefined ? options.anisotropic : 2;
@@ -477,7 +476,6 @@ function enableWebGLCanvas( canvas, options )
 	ctx.beginPath = function()
 	{
 		global_index = 0;
-		is_rect = false;
 	}
 
 	ctx.closePath = function()
@@ -488,7 +486,6 @@ function enableWebGLCanvas( canvas, options )
 		global_vertices[ global_index + 1] = global_vertices[1];
 		global_vertices[ global_index + 2] = 1;
 		global_index += 3;
-		is_rect = false;
 	}
 
 	ctx.moveTo = function(x,y)
@@ -513,7 +510,6 @@ function enableWebGLCanvas( canvas, options )
 			global_index += 3;
 		}
 
-		is_rect = false;
 	}
 
 	ctx.lineTo = function(x,y)
@@ -522,13 +518,12 @@ function enableWebGLCanvas( canvas, options )
 		global_vertices[ global_index + 1] = y;
 		global_vertices[ global_index + 2] = 1;
 		global_index += 3;
-		is_rect = false;
 	}
 
 	ctx.bezierCurveTo = function(m1x,m1y, m2x,m2y, ex,ey)
 	{
-		if(global_index < 3) return;
-		is_rect = false;
+		if(global_index < 3)
+			return;
 
 		var last = [ global_vertices[ global_index - 3 ], global_vertices[ global_index - 2 ] ];
 		cp = [ last, [m1x, m1y], [m2x, m2y], [ex, ey] ];
@@ -563,8 +558,8 @@ function enableWebGLCanvas( canvas, options )
 
 	ctx.quadraticCurveTo = function(mx,my,ex,ey)
 	{
-		if(global_index < 3) return;
-		is_rect = false;
+		if(global_index < 3)
+			return;
 
 		var sx = global_vertices[ global_index - 3 ];
 		var sy = global_vertices[ global_index - 2 ];
@@ -593,11 +588,7 @@ function enableWebGLCanvas( canvas, options )
 		if(global_index < 9)
 			return;
 
-		//if(is_rect)
-		//	return this.fillRect();
-
 		//update buffer
-		//global_buffer.upload( gl.STREAM_DRAW );
 		global_buffer.uploadRange(0, global_index * 4); //4 bytes per float
 		uniforms.u_viewport = viewport;
 		var shader = flat_primitive_shader;
@@ -824,13 +815,69 @@ function enableWebGLCanvas( canvas, options )
 		global_vertices[ global_index + 14] = 1;
 
 		global_index += 15;
-
-		if(global_index == 15)
-			is_rect = true;
 	}
 
-	//roundRect is a function I use sometimes, but here we dont have it
-	ctx.roundRect = ctx.rect;
+	ctx.roundRect = function (x, y, w, h, radius, radius_low)
+	{
+		if ( radius === undefined )
+			radius = 5;
+		if(radius_low === undefined)
+			radius_low  = radius;
+		var gv = global_vertices;
+		var gi = global_index;
+
+		for(var i = 0; i < 10; ++i)
+		{
+			var ang = (i/10)*Math.PI*0.5;
+			gv[ gi ] = x+radius*(1.0 - Math.cos(ang));
+			gv[ gi + 1] = y+radius*(1.0 - Math.sin(ang));
+			gv[ gi + 2] = 1;
+			gi += 3;
+		}
+
+		gv[ gi + 0] = x+radius; gv[ gi + 1] = y; gv[ gi + 2] = 1;
+		gv[ gi + 3] = x+w-radius; gv[ gi + 4] = y; gv[ gi + 5] = 1;
+		gi += 6;
+
+		for(var i = 0; i < 10; ++i)
+		{
+			var ang = (i/10)*Math.PI*0.5;
+			gv[ gi + 0] = x+w-radius*(1.0 - Math.sin(ang));
+			gv[ gi + 1] = y+radius*(1.0 - Math.cos(ang));
+			gv[ gi + 2] = 1;
+			gi += 3;
+		}
+
+		gv[ gi + 0] = x+w; gv[ gi + 1] = y+radius; gv[ gi + 2] = 1;
+		gv[ gi + 3] = x+w; gv[ gi + 4] = y+h-radius_low; gv[ gi + 5] = 1;
+		gi += 6;
+
+		for(var i = 0; i < 10; ++i)
+		{
+			var ang = (i/10)*Math.PI*0.5;
+			gv[ gi + 0] = x+w-radius_low*(1.0 - Math.cos(ang));
+			gv[ gi + 1] = y+h-radius_low*(1.0 - Math.sin(ang));
+			gv[ gi + 2] = 1;
+			gi += 3;
+		}
+
+		gv[ gi + 0] = x+w-radius_low; gv[ gi + 1] = y+h; gv[ gi + 2] = 1;
+		gv[ gi + 3] = x+radius_low; gv[ gi + 4] = y+h; gv[ gi + 5] = 1;
+		gi += 6;
+
+		for(var i = 0; i < 10; ++i)
+		{
+			var ang = (i/10)*Math.PI*0.5;
+			gv[ gi + 0] = x+radius_low*(1.0 - Math.sin(ang));
+			gv[ gi + 1] = y+h-radius_low*(1.0 - Math.cos(ang));
+			gv[ gi + 2] = 1;
+			gi += 3;
+		}
+
+		gv[ gi + 0] = x; gv[ gi + 1] = y+radius; gv[ gi + 2] = 1;
+		global_index = gi + 3;
+	}
+
 
 	ctx.arc = function(x,y,radius, start_ang, end_ang)
 	{
@@ -848,7 +895,6 @@ function enableWebGLCanvas( canvas, options )
 			var f = start_ang + i*delta;
 			this.lineTo(x + Math.cos(f) * radius, y + Math.sin(f) * radius);
 		}
-		is_rect = false;
 	}
 
 	ctx.strokeRect = function(x,y,w,h)
@@ -928,7 +974,6 @@ function enableWebGLCanvas( canvas, options )
 		gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
 		gl.lineWidth = 1;
 		global_index = 0;
-		is_rect = false;
 	}
 
 	ctx.finish2D = function()
@@ -1151,7 +1196,7 @@ function enableWebGLCanvas( canvas, options )
 	{
 		var atlas = createFontAtlas.call( this, this._font_family, this._font_mode );
 		var info = atlas.info;
-		var point_size = this._font_size * 1.1;
+		var point_size = Math.ceil( this._font_size * 1.1 );
 		var spacing = point_size * atlas.info.spacing / atlas.info.char_size - 1 ;
 		return { width: text.length * spacing, height: point_size };
 	}

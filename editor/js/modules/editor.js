@@ -1461,6 +1461,7 @@ var EditorModule = {
 		if( !component || !component.constructor.is_component )
 			return;
 
+		//defined in actions.js (editor, not LS)
 		var actions = LS.BaseComponent.getActions( component );
 		if(!actions)
 			return;

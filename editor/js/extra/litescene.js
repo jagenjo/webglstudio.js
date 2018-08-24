@@ -15833,7 +15833,7 @@ if(typeof(LiteGraph) != "undefined")
 		var compo = this.getComponent();
 		if(compo && compo.getActions)
 		{
-			var actions = compo.getActions();
+			var actions = compo.getActions({});
 			if(actions)
 			{
 				if(actions.constructor === Array)
@@ -37787,9 +37787,13 @@ PlayAnimation.prototype.getEvents = function()
 }
 
 //returns which actions can be triggered in this component
-PlayAnimation.prototype.getActions = function()
+PlayAnimation.prototype.getActions = function( actions )
 {
-	return { "play": "function","pause": "function","stop": "function" };
+	actions = actions || {};
+	actions["play"] = "function";
+	actions["pause"] = "function";
+	actions["stop"] = "function";
+	return actions;
 }
 
 

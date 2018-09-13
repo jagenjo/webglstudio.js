@@ -741,6 +741,17 @@ function addGenericResource ( name, value, options, resource_classname )
 	
 	//BUTTON select resource
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
+
+		if(e.ctrlKey)
+		{
+			if(!input.value)
+				return;
+			var res = LS.RM.getResource( input.value );
+			if(res)
+				EditorModule.inspect(res);
+			return;
+		}
+
 		var o = { type: resource_classname, on_complete: inner_onselect };
 		if(options.skip_load)
 			o.skip_load = true;

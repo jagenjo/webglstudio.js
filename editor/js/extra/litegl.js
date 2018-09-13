@@ -5766,7 +5766,7 @@ Texture.prototype.renderQuad = (function() {
 
 
 /**
-* Applies a blur filter of four pixels to the texture (be careful using it, it is slow)
+* Applies a blur filter of 5x5 pixels to the texture (be careful using it, it is slow)
 * @method applyBlur
 * @param {Number} offsetx scalar that multiplies the offset when fetching pixels horizontally (default 1)
 * @param {Number} offsety scalar that multiplies the offset when fetching pixels vertically (default 1)
@@ -5796,8 +5796,8 @@ Texture.prototype.applyBlur = function( offsetx, offsety, intensity, output_text
 	if(output_texture && this.texture_type !== output_texture.texture_type )
 		throw("cannot use applyBlur with textures of different texture_type");
 
-	if(this.width != output_texture.width || this.height != output_texture.height)
-		throw("cannot use applyBlur with an output texture of different size, it doesnt work");
+	//if(this.width != output_texture.width || this.height != output_texture.height)
+	//	throw("cannot use applyBlur with an output texture of different size, it doesnt work");
 
 	//save state
 	var current_fbo = gl.getParameter( gl.FRAMEBUFFER_BINDING );
@@ -5840,13 +5840,17 @@ Texture.prototype.applyBlur = function( offsetx, offsety, intensity, output_text
 		mesh.bindBuffers( shader );
 		shader.bind();
 
-		if(!temp_texture)
-			temp_texture = GL.Texture.getTemporary( output_texture.width, output_texture.height, output_texture );
+		var destination = null;
+		
+		if(!temp_texture && output_texture == this) //we need a temporary texture
+			destination = temp_texture = GL.Texture.getTemporary( output_texture.width, output_texture.height, output_texture );
+		else
+			destination = output_texture; //blur directly to output texture
 
 		var rot_matrix = GL.temp_mat3;
 		for(var i = 0; i < 6; ++i)
 		{
-			gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, temp_texture.handler, 0);
+			gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, destination.handler, 0);
 			var face_info = GL.Texture.cubemap_camera_parameters[ i ];
 			mat3.identity(rot_matrix);
 			rot_matrix.set( face_info.right, 0 );
@@ -5858,9 +5862,11 @@ Texture.prototype.applyBlur = function( offsetx, offsety, intensity, output_text
 		}
 
 		mesh.unbindBuffers( shader );
-		temp_texture.copyTo( output_texture );
 
-		if(is_temp)
+		if(temp_texture) //copy back 
+			temp_texture.copyTo( output_texture );
+
+		if(temp_texture && is_temp) //release temp
 			GL.Texture.releaseTemporary( temp_texture );
 	}
 

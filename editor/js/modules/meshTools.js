@@ -513,6 +513,10 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		widgets.refresh();
 	} );
 
+	widgets.addButton(null, "Download OBJ", function(){
+		var data = mesh.encode("obj");
+		LS.downloadFile( mesh.filename + ".obj", data );
+	});
 
 	widgets.widgets_per_row = 1;
 	//widgets.addButton(null, "Weld", function(){} );

@@ -7350,6 +7350,7 @@ Material.prototype.getShader = function( pass_name )
 	return shader;
 }
 
+//main function called to render an object
 Material.prototype.renderInstance = function( instance, render_settings, pass )
 {
 	//some globals
@@ -7743,7 +7744,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	var global_flags = LS.Renderer._global_shader_blocks_flags;
 
 	//TODO: could this part be precomputed before rendering color pass?
-	if( pass.id == COLOR_PASS ) //allow reflections only in color pass
+	if( pass == COLOR_PASS ) //allow reflections only in color pass
 	{
 		global_flags |= LS.ShaderMaterial.reflection_block.flag_mask;
 		if( LS.Renderer._global_textures.environment )
@@ -7767,7 +7768,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	var lights = null;
 
 	//ignore lights renders the object with flat illumination
-	var ignore_lights = pass.id != COLOR_PASS || render_settings.lights_disabled || this._light_mode === Material.NO_LIGHTS;
+	var ignore_lights = pass != COLOR_PASS || render_settings.lights_disabled || this._light_mode === Material.NO_LIGHTS;
 
 	if( !ignore_lights )
 		lights = LS.Renderer.getNearLights( instance );
@@ -7858,11 +7859,6 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	gl.depthFunc( gl.LESS );
 
 	return true;
-}
-
-ShaderMaterial.prototype.renderShadowInstance = function( instance, render_settings, pass )
-{
-	return this.renderInstance( instance, render_settings, pass );
 }
 
 ShaderMaterial.prototype.renderPickingInstance = function( instance, render_settings, pass )
@@ -10118,8 +10114,8 @@ GraphMaterial.prototype.setTexture = function(texture, channel, uvs) {
 		ResourcesManager.load(texture);
 }
 
-//LS.registerMaterialClass( GraphMaterial );
-//LS.GraphMaterial = GraphMaterial;
+LS.registerMaterialClass( GraphMaterial );
+LS.GraphMaterial = GraphMaterial;
 
 
 ///@FILE:../src/componentContainer.js
@@ -20922,20 +20918,16 @@ LS.RenderQueue = RenderQueue;
 */
 
 //passes
-var COLOR_PASS = 1;
-var SHADOW_PASS = 2;
-var PICKING_PASS = 3;
+var COLOR_PASS = LS.COLOR_PASS = { name: "color", id: 1 };
+var SHADOW_PASS = LS.SHADOW_PASS = { name: "shadow", id: 2 };
+var PICKING_PASS = LS.PICKING_PASS = { name: "picking", id: 3 };
 
 var Renderer = {
 
 	default_render_settings: new LS.RenderSettings(), //overwritten by the global info or the editor one
 	default_material: new LS.StandardMaterial(), //used for objects without material
 
-	render_passes: {}, //used to specify the render function for every kind of render pass (color, shadow, picking, etc)
-	renderPassFunction: null, //function to call when rendering instances
-
 	global_aspect: 1, //used when rendering to a texture that doesnt have the same aspect as the screen
-
 	default_point_size: 1, //point size in pixels (could be overwritte by render instances)
 
 	_global_viewport: vec4.create(), //the viewport we have available to render the full frame (including subviewports), usually is the 0,0,gl.canvas.width,gl.canvas.height
@@ -20946,7 +20938,7 @@ var Renderer = {
 	_current_render_settings: null,
 	_current_camera: null,
 	_current_target: null, //texture where the image is being rendered
-	_current_pass: null,
+	_current_pass: COLOR_PASS, //object containing info about the pass
 	_global_textures: {}, //used to speed up fetching global textures
 	_global_shader_blocks: [], //used to add extra shaderblocks to all objects in the scene (it gets reseted every frame)
 	_global_shader_blocks_flags: 0, 
@@ -21034,11 +21026,6 @@ var Renderer = {
 		if(global.enableWebGLCanvas && !gl.canvas.canvas2DtoWebGL_enabled)
 			global.enableWebGLCanvas( gl.canvas );
 
-		//there are different render passes, they have different render functions
-		this.registerRenderPass( "color", { id: COLOR_PASS, render_instance: this.renderColorPassInstance } );
-		this.registerRenderPass( "shadow", { id: SHADOW_PASS, render_instance: this.renderShadowPassInstance } );
-		this.registerRenderPass( "picking", { id: PICKING_PASS, render_instance: this.renderPickingPassInstance } );
-
 		// we use fixed slots to avoid changing texture slots all the time
 		// from more common to less (to avoid overlappings with material textures)
 		// the last slot is reserved for litegl binding stuff
@@ -21076,7 +21063,6 @@ var Renderer = {
 	reset: function()
 	{
 	},
-
 
 	//used to clear the state
 	resetState: function()
@@ -21134,6 +21120,8 @@ var Renderer = {
 		this._global_shader_blocks_flags = 0;
 		for(var i in this._global_textures)
 			this._global_textures[i] = null;
+		if(!this._current_pass)
+			this._current_pass = COLOR_PASS;
 
 
 		//to restore from a possible exception (not fully tested, remove if problem)
@@ -21204,10 +21192,8 @@ var Renderer = {
 
 		//profiling must go here
 		this._frame_cpu_time = getTime() - start_time;
-		if( LS.Draw )
-		{
+		if( LS.Draw ) //developers may decide not to include LS.Draw
 			this._rendercalls += LS.Draw._rendercalls; LS.Draw._rendercalls = 0; //stats are not centralized
-		}
 
 		//Event: afterRender to give closure to some actions
 		LEvent.trigger( scene, "afterRender", render_settings ); 
@@ -21502,9 +21488,11 @@ var Renderer = {
 		//reset again!
 		this.resetGLState( render_settings );
 
+		/*
 		var render_instance_func = pass.render_instance;
 		if(!render_instance_func)
 			return 0;
+		*/
 
 		var render_instances = instances || this._visible_instances;
 
@@ -21522,9 +21510,9 @@ var Renderer = {
 			instance._is_visible = false;
 
 			//hidden nodes
-			if( pass.id == SHADOW_PASS && !(instance.material.flags.cast_shadows) )
+			if( pass == SHADOW_PASS && !(instance.material.flags.cast_shadows) )
 				continue;
-			if( pass.id == PICKING_PASS && node_flags.selectable === false )
+			if( pass == PICKING_PASS && node_flags.selectable === false )
 				continue;
 			if( (layers_filter & instance.layers) === 0 )
 				continue;
@@ -21537,7 +21525,7 @@ var Renderer = {
 			if(!instance.material) //in case something went wrong...
 				continue;
 
-			var material = instance.material;
+			var material = camera.overwrite_material || instance.material;
 
 			if(material.opacity <= 0) //TODO: remove this, do it somewhere else
 				continue;
@@ -21554,7 +21542,7 @@ var Renderer = {
 			if(camera_index_flag) //shadowmap cameras dont have an index
 				instance._camera_visibility |= camera_index_flag;
 
-			//if material supports instancing WIP
+			//TODO: if material supports instancing WIP
 			/*
 			if( instancing_supported && material._allows_instancing && !instance._shader_blocks.length )
 			{
@@ -21593,9 +21581,14 @@ var Renderer = {
 
 				this._rendered_instances += 1;
 
-				//choose the appropiate render pass
-				//TODO: KILL THIS AND REPLACE BY CALLING MATERIAL.renderInstance
-				render_instance_func.call( this, instance, render_settings, pass ); //by default calls renderColorInstance but it could call renderShadowPassInstance
+				var material = camera.overwrite_material || instance.material;
+
+				if( pass == PICKING_PASS && material.renderPickingInstance )
+					material.renderPickingInstance( instance, render_settings, pass );
+				else if( material.renderInstance )
+					material.renderInstance( instance, render_settings, pass );
+				else
+					continue;
 
 				//some instances do a post render action
 				if(instance.onPostRender)
@@ -21684,45 +21677,6 @@ var Renderer = {
 		}
 
 		return result;
-	},
-
-	//this function is in charge of rendering the regular color pass (used also for reflections)
-	renderColorPassInstance: function( instance, render_settings, pass )
-	{
-		//render instance
-		var renderered = false;
-		if( instance.material && instance.material.renderInstance )
-			renderered = instance.material.renderInstance( instance, render_settings, pass );
-
-		//render using default system (slower but it works)
-		if(!renderered)
-			return;
-	},
-
-	//this function is in charge of rendering an instance in the shadowmap
-	renderShadowPassInstance: function( instance, render_settings, pass )
-	{
-		//render instance
-		var renderered = false;
-		if( instance.material && instance.material.renderInstance )
-			renderered = instance.material.renderInstance( instance, render_settings, pass );
-
-		//render using default system (slower but it works)
-		if(!renderered)
-			return;
-	},
-
-	//this function is in charge of rendering an instance in the shadowmap
-	renderPickingPassInstance: function( instance, render_settings, pass )
-	{
-		//render instance
-		var renderered = false;
-		if( instance.material && instance.material.renderPickingInstance )
-			renderered = instance.material.renderPickingInstance( instance, render_settings, pass );
-
-		//render using default system (slower but it works)
-		if(!renderered)
-			return;
 	},
 
 	regenerateShadowmaps: function( scene, render_settings )
@@ -21842,34 +21796,10 @@ var Renderer = {
 
 				//sRGB textures must specified ON CREATION, so no
 				//if(sampler.anisotropic != null && gl.extensions.EXT_sRGB )
-
 				//sampler._must_update = false;
 			}
 		}
 	},
-
-	/**
-	* Update the scene shader query according to the render pass
-	* Do not reuse the query, they change between rendering passes (shadows, reflections, etc)
-	*
-	* @method fillSceneShaderQuery
-	* @param {Scene} scene
-	* @param {RenderSettings} render_settings
-	*/
-	/*
-	fillSceneShaderQuery: function( scene, render_settings )
-	{
-		var query = new LS.ShaderQuery();
-
-		if(this._current_renderframe && this._current_renderframe.use_extra_texture && gl.extensions["WEBGL_draw_buffers"])
-			query.setMacro("USE_DRAW_BUFFERS");
-
-		//so components can add stuff (like Fog, etc)
-		LEvent.trigger( scene, "fillSceneQuery", query );
-
-		scene._query = query;
-	},
-	*/
 
 	//Called at the beginning of renderInstances (once per renderFrame)
 	//DO NOT CACHE, parameters can change between render passes
@@ -21883,9 +21813,6 @@ var Renderer = {
 			u_viewport: gl.viewport_data
 		};
 
-		if( this._current_pass.id == COLOR_PASS && render_settings.linear_pipeline )
-			uniforms.u_gamma = 2.2;
-
 		scene._uniforms = uniforms;
 		scene._samplers = scene._samplers || [];
 		scene._samplers.length = 0;
@@ -21894,7 +21821,7 @@ var Renderer = {
 		this._global_textures.environment = null;
 		this._global_textures.irradiance = null;
 
-		//fetch globals
+		//fetch global textures
 		for(var i in scene.info.textures)
 		{
 			var texture = LS.getTexture( scene.info.textures[i] );
@@ -22053,27 +21980,6 @@ var Renderer = {
 			if(!queue)
 				continue;
 			queue.add( instance );
-
-			//node & mesh constant information
-			//DEPRECATED
-			//var query = instance.query;
-
-			/* deprecated
-			var buffers = instance.vertex_buffers;
-			if(!("normals" in buffers))
-				query.macros.NO_NORMALS = "";
-			if(!("coords" in buffers))
-				query.macros.NO_COORDS = "";
-			if(("coords1" in buffers))
-				query.macros.USE_COORDS1_STREAM = "";
-			if(("colors" in buffers)) //particles
-				query.macros.USE_COLOR_STREAM = "";
-			if(("tangents" in buffers))
-				query.macros.USE_TANGENT_STREAM = "";
-			*/
-			//deprecated?
-			//if(("colors" in instance.mesh.vertexBuffers)) //particles
-			//	query.macros.USE_COLOR_STREAM = "";
 
 			instance._camera_visibility = 0|0;
 		}
@@ -22327,32 +22233,6 @@ var Renderer = {
 	},
 
 	/**
-	* Sets the render pass to use, this allow to change between "color","shadow","picking",etc
-	*
-	* @method setRenderPass
-	* @param {String} name name of the render pass as in render_passes
-	*/
-	setRenderPass: function( name )
-	{
-		this._current_pass = this.render_passes[ name ] || this.render_passes[ "color" ];
-	},
-
-	/**
-	* Register a render pass to be used during the rendering
-	*
-	* @method registerRenderPass
-	* @param {String} name name of the render pass as in render_passes
-	* @param {Object} info render pass info, { render_instance: Function( instance, render_settings ) }
-	*/
-	registerRenderPass: function( name, info )
-	{
-		info.name = name;
-		this.render_passes[ name ] = info;
-		if(!this._current_pass)
-			this._current_pass = info;
-	},
-
-	/**
 	* Adds a new RenderQueue to the Renderer.
 	*
 	* @method addRenderQueue
@@ -22374,6 +22254,13 @@ var Renderer = {
 			for(var i in options)
 				queue[i] = options[i];
 	},
+
+	setRenderPass: function( pass )
+	{
+		if(!pass)
+			pass = COLOR_PASS;
+		this._current_pass = pass;
+	},
 	
 	/**
 	* Enables a ShaderBlock ONLY DURING THIS FRAME
@@ -22394,7 +22281,7 @@ var Renderer = {
 		//add uniforms to renderer uniforms?
 		if(uniforms)
 			for(var i in uniforms)
-				this._renderer_uniforms[i] = uniforms[i];
+				this._render_uniforms[i] = uniforms[i];
 	},
 
 	/**
@@ -22403,9 +22290,10 @@ var Renderer = {
 	* @method blit
 	* @param {GL.Texture} source
 	* @param {GL.Texture} destination
-	* @param {GL.Shader} shader [optional]
+	* @param {GL.Shader} shader [optional] shader to apply, it must use the GL.Shader.QUAD_VERTEX_SHADER as vertex shader
+	* @param {Object} uniforms [optional] uniforms for the shader
 	*/
-	blit: function( source, destination, shader )
+	blit: function( source, destination, shader, uniforms )
 	{
 		if(!source || !destination)
 			throw("data missing in blit");
@@ -22413,7 +22301,7 @@ var Renderer = {
 		if(source != destination)
 		{
 			destination.drawTo( function(){
-				source.toViewport( shader);
+				source.toViewport( shader, uniforms );
 			});
 			return;
 		}
@@ -22423,7 +22311,7 @@ var Renderer = {
 
 		var temp = GL.Texture.getTemporary( source.width, source.height, source );
 		source.copyTo( temp );
-		temp.copyTo( source, shader );
+		temp.copyTo( source, shader, uniforms );
 		GL.Texture.releaseTemporary( temp );
 	}
 };
@@ -24681,7 +24569,7 @@ var Picking = {
 		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
 		this._picking_next_color_id = 0;
-		LS.Renderer.setRenderPass("picking");
+		LS.Renderer.setRenderPass( PICKING_PASS );
 		picking_render_settings.layers = layers;
 
 		//check instances colliding with cursor using a ray against AABBs
@@ -24706,7 +24594,7 @@ var Picking = {
 		LEvent.trigger( scene, "renderPicking", mouse_pos );
 		LEvent.trigger( LS.Renderer, "renderPicking", mouse_pos );
 
-		LS.Renderer.setRenderPass("color");
+		LS.Renderer.setRenderPass( COLOR_PASS );
 	}
 };
 
@@ -26708,7 +26596,7 @@ function Camera(o)
 	//in case we want to overwrite the view matrix manually
 	this._use_custom_projection_matrix = false; 
 
-	//in case we want to overwrite the view matrix manually
+	//in case we want to overwrite the shader of all visible objects
 	this.overwrite_material = null;
 
 	this._view_matrix = mat4.create();
@@ -29415,7 +29303,7 @@ Light.prototype.generateShadowmap = function (render_settings)
 		}
 	}
 
-	LS.Renderer.setRenderPass("shadow");
+	LS.Renderer.setRenderPass( SHADOW_PASS );
 	LS.Renderer._current_light = this;
 
 	//render the scene inside the texture
@@ -29447,7 +29335,7 @@ Light.prototype.generateShadowmap = function (render_settings)
 		LS.Renderer._current_target = null;
 	}
 
-	LS.Renderer.setRenderPass("color");
+	LS.Renderer.setRenderPass( COLOR_PASS );
 	LS.Renderer._current_light = null;
 }
 
@@ -38255,20 +38143,33 @@ ReflectionProbe.prototype.updateIrradiance = function()
 	cubemap.copyTo( downscale_cubemap );
 	
 	//blur
+	var temp_texture = GL.Texture.getTemporary( downscale_cubemap.width, downscale_cubemap.height, downscale_cubemap );
+
+	var origin = downscale_cubemap;
+	var destination = temp_texture;
+
 	for(var i = 0; i < 8; ++i)
-		downscale_cubemap.applyBlur( i,i,1 );
+	{
+		origin.applyBlur( i,i,1, destination );
+		var tmp = origin;
+		origin = destination;
+		destination = tmp;
+	}
+	destination = origin;
 
 	//downscale again
 	var irradiance_cubemap = this._irradiance_texture;
 	if(!irradiance_cubemap || irradiance_cubemap.type != type)
 		irradiance_cubemap = this._irradiance_texture = new GL.Texture( 4, 4, { type: type, texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGB, filter: gl.LINEAR } );
-	downscale_cubemap.copyTo( irradiance_cubemap );
+	destination.copyTo( irradiance_cubemap );
 
 	//blur again
 	for(var i = 0; i < 4; ++i)
 		irradiance_cubemap.applyBlur( i,i,1 );
 
 	this.assignCubemaps();
+
+	GL.Texture.releaseTemporary( temp_texture );
 
 	return irradiance_cubemap;
 }
@@ -38371,6 +38272,32 @@ ReflectionProbe.objectToCubemap = function( data, out, high_precision )
 	return out;
 }
 
+/*
+ReflectionProbe.cubemapToIrradiance = function( origin_cubemap, destination_cubemap )
+{
+	var iterations = Math.log(origin_cubemap.width) / Math.log(2);
+
+	var width = origin_cubemap.width;
+	var temp_textures = [];
+	var origin = origin_cubemap;
+	var dest = null;
+	for( var i = 0; i < iterations; ++i)
+	{
+		width = width >> 1;
+		if(width <= 8)
+			break;
+		var temp = GL.Texture.getTemporary( width, width, destination_cubemap );
+		temp_textures.push( temp );
+		origin.applyBlur(0.5,0.5,1, temp);
+		origin = temp;
+	}
+
+	temp.copyTo( destination_cubemap );
+	for(var i = 0; i < temp_textures.length; ++i)
+		GL.Texture.releaseTemporary( temp_textures[i] );
+}
+*/
+
 ReflectionProbe.visualize_helpers = true;
 ReflectionProbe.visualize_irradiance = false;
 ReflectionProbe.helper_size = 1;
@@ -38431,7 +38358,7 @@ IrradianceCache.prototype.recompute = function()
 	LS.GlobalScene.info.textures.irradiance = null;
 
 	var final_cubemap_size = IrradianceCache.final_cubemap_size;
-	var texture_size = IrradianceCache.capture_cubemap_size;
+	var texture_size = IrradianceCache.capture_cubemap_size; //default is 64
 	var texture_settings = { type: type, texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGB };
 	var texture = this._temp_cubemap;
 	if( !texture || texture.width != texture_size || texture.height != texture_size || texture.type != texture_settings.type )
@@ -38483,13 +38410,12 @@ IrradianceCache.prototype.captureIrradiance = function( position, output_cubemap
 {
 	LS.Renderer.clearSamplers();
 
-	var texture = this._temp_cubemap;
-
 	//render all the scene inside the cubemap
-	LS.Renderer.renderToCubemap( position, 0, texture, render_settings, this.near, this.far, this.background_color );
+	LS.Renderer.renderToCubemap( position, 0, this._temp_cubemap, render_settings, this.near, this.far, this.background_color );
 
 	//downsample
-	texture.copyTo( output_cubemap );
+	//ReflectionProbe.cubemapToIrradiance( this._temp_cubemap, output_cubemap );
+	this._temp_cubemap.copyTo( output_cubemap );
 }
 
 IrradianceCache.prototype.encodeCacheInTexture = function()
@@ -45343,6 +45269,10 @@ LS.Shaders.registerSnippet("light_structs","\n\
 ");
 
 // LIGHT ************************************************
+
+
+
+
 
 Light._vs_shaderblock_code = "\n\
 	#pragma shaderblock \"testShadow\"\n\

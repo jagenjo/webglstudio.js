@@ -547,8 +547,14 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 				}});
 
 				inspector.addButton( null, LiteGUI.special_codes.navicon, { height: "1em", width: 30, callback: function(v,evt){
-					var menu = new LiteGUI.ContextMenu( ["Choose Prefab","Unlink prefab","Reload from Prefab","Update to Prefab"], { title:"Prefab Menu", event: evt, callback: function(action) {
-						if(action == "Choose Prefab")
+					var menu = new LiteGUI.ContextMenu( ["Show Prefab Info","Choose Prefab","Unlink prefab","Reload from Prefab","Update to Prefab"], { title:"Prefab Menu", event: evt, callback: function(action) {
+						if(action == "Show Prefab Info")
+						{
+							var res = LS.ResourcesManager.getResource( node.prefab );
+							if(res)
+								PackTools.showPackDialog( res );
+						}
+						else if(action == "Choose Prefab")
 						{
 							EditorModule.showSelectResource( { type:"Prefab", on_complete: function(v){
 								CORE.userAction("node_changed",node);
@@ -556,7 +562,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 								inspector.refresh();
 							}});
 						}
-						if(action == "Unlink prefab")
+						else if(action == "Unlink prefab")
 						{
 							//add prefab to resources otherwise all the info will be lost
 							var prefab_fullpath = node.prefab;
@@ -574,13 +580,13 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 							inspector.refresh();
 							InterfaceModule.scene_tree.refresh();
 						}
-						if(action == "Reload from Prefab")
+						else if(action == "Reload from Prefab")
 						{
 							CORE.userAction("node_changed",node);
 							node.reloadFromPrefab();
 							inspector.refresh();
 						}
-						if(action == "Update to Prefab")
+						else if(action == "Update to Prefab")
 						{
 							PackTools.updatePrefabFromNode(node);
 							inspector.refresh();

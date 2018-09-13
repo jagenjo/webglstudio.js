@@ -29,6 +29,7 @@ var CubemapTools = {
 			CubemapTools.dialog = null;
 			CubemapTools.preview_in_viewport = false;
 			RenderModule._overwrite_render_callback = null;
+			LS.GlobalScene.requestFrame();
 		}
 		this.dialog = dialog;
 
@@ -75,9 +76,7 @@ var CubemapTools = {
 
 					if(v == "Blur")
 					{
-						var tmp = cubemap.applyBlur( 1,1,1, null, cubemap._tmp );
-						cubemap._tmp = tmp;
-						tmp.copyTo( cubemap );
+						cubemap.applyBlur( 1,1,1 );
 						LS.RM.resourceModified( cubemap );
 					}
 					else if(v == "Resize")
@@ -132,6 +131,7 @@ var CubemapTools = {
 				widgets.addCheckbox("Preview in viewport", CubemapTools.preview_in_viewport, function(v){
 					CubemapTools.preview_in_viewport = v;
 					RenderModule._overwrite_render_callback = v ? CubemapTools.render.bind(CubemapTools) : null;
+					LS.GlobalScene.requestFrame();
 				});
 			}
 			else
@@ -252,6 +252,12 @@ var CubemapTools = {
 			if(!name)
 			{
 				LiteGUI.alert("No Cubemap name specified");
+				return;
+			}
+
+			if(!url)
+			{
+				LiteGUI.alert("No Cubemap url specified");
 				return;
 			}
 
@@ -413,28 +419,22 @@ var CubemapTools = {
 	generateIrradianceFromCubemap: function( cubemap )
 	{
 		//downscale
-		var copy_cubemap = new GL.Texture( 32, 32, cubemap.getProperties() );
+		var copy_cubemap = new GL.Texture( 64, 64, cubemap.getProperties() );
 		cubemap.copyTo( copy_cubemap );
 		cubemap = copy_cubemap;
 		
 		//blur
 		for(var i = 0; i < 8; ++i)
-		{
-			cubemap._tmp = cubemap.applyBlur( i,i,1, null, cubemap._tmp );
-			cubemap._tmp.copyTo( cubemap );
-		}
+			cubemap.applyBlur( i,i,1 );
 
 		//downscale again
-		var copy_cubemap = new GL.Texture( 4, 4, cubemap.getProperties() );
+		var copy_cubemap = new GL.Texture( 8, 8, cubemap.getProperties() );
 		cubemap.copyTo( copy_cubemap );
 		cubemap = copy_cubemap;
 
 		//blur again
-		for(var i = 0; i < 3; ++i)
-		{
-			cubemap._tmp = cubemap.applyBlur( i,i,1, null, cubemap._tmp );
-			cubemap._tmp.copyTo( cubemap );
-		}
+		for(var i = 0; i < 6; ++i)
+			cubemap.applyBlur( i, i, 1 );
 
 		return cubemap;
 	},
@@ -658,6 +658,13 @@ var CubemapTools = {
 			scene._sphere = new LS.SceneNode();
 			scene._sphere.addComponent( new LS.Components.GeometricPrimitive({ geometry: LS.Components.GeometricPrimitive.SPHERE, subdivisions: 20 }) );
 			scene.root.addChild( scene._sphere );
+			scene._sphere.material = new LS.StandardMaterial();
+			scene._sphere.material.reflection_factor = 1;
+			scene._sphere.material.reflection_fresnel = 0;
+
+			var render_settings = new LS.RenderSettings();
+			//render_settings.lights_disabled = true;
+			this.preview_render_settings = render_settings;
 		}
 		scene.root.camera.configure( camera.serialize() );
 		LS.RM.textures[ ":cubemap" ] = this.current_cubemap;
@@ -666,7 +673,7 @@ var CubemapTools = {
 
 		scene._sphere.transform.position = camera.getCenter();
 
-		LS.Renderer.render( scene );
+		LS.Renderer.render( scene, this.preview_render_settings );
 
 		return true;
 	}

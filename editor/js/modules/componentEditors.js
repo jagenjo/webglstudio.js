@@ -638,10 +638,16 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 		inspector.widgets_per_row = 1;
 	}
 
-	inspector.addButton(null,"Add Morph Target", { callback: function() { 
+	inspector.widgets_per_row = 2;
+	inspector.addButton(null,"Add Morph Target", { width: "85%", callback: function() { 
 		component.morph_targets.push({ mesh:"", weight: 0.0 });
 		inspector.refresh();
 	}});
+	inspector.addButton(null,"Zero", { width: "15%", callback: function() { 
+		component.clearWeights();
+		inspector.refresh();
+	}});
+	inspector.widgets_per_row = 1;
 }
 
 LS.Components.SkinDeformer.onShowProperties = LS.Components.SkinnedMeshRenderer.onShowProperties = function( component, inspector )

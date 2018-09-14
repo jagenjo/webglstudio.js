@@ -706,11 +706,7 @@ var DriveModule = {
 				if (v == "Delete")
 				{
 					var fullpath = resource.fullpath || resource.filename;
-					LS.RM.unregisterResource( fullpath );
-					DriveModule.serverDeleteFile( fullpath, function(v) { 
-						if(v)
-							DriveModule.refreshContent();
-					});
+					DriveModule.deleteResource( fullpath );
 				}
 			});
 		}});
@@ -852,8 +848,38 @@ var DriveModule = {
 
 		var res = LS.ResourcesManager.resources[ old_name ];
 		if(!res)
+		{
+			console.warn("During file renaming, I cannot find the file with the old name: " + old_name );
 			return;
+		}
 		LS.ResourcesManager.renameResource( old_name, new_name ); //rename and inform
+	},
+
+	deleteResource: function( fullpath, on_complete )
+	{
+		var resource = LS.RM.resources[ fullpath ];
+		if(resource)
+		{
+			var container_fullpath = resource.from_pack || resource.from_prefab;
+			if( container_fullpath )
+			{
+				var container = LS.RM.resources[ container_fullpath ];
+				if(container)
+				{
+					container.removeResource( fullpath );
+					LS.RM.resourceModified( container_fullpath );
+				}
+				return;
+			}
+			LS.RM.unregisterResource( fullpath );
+		}
+
+		DriveModule.serverDeleteFile( fullpath, function(v) { 
+			if(v)
+				DriveModule.refreshContent();
+			if(on_complete)
+				on_complete();
+		});
 	},
 
 	cloneResource: function( resource, cloned_name, callback )
@@ -1579,6 +1605,7 @@ var DriveModule = {
 		);
 	},
 
+	//save resources without folder to this folder
 	saveResourcesToFolder: function( list, folder, on_complete, on_error, on_progress )
 	{
 		//sort list
@@ -1628,9 +1655,15 @@ var DriveModule = {
 			}
 			if(resource.constructor === String)
 				resource = LS.ResourcesManager.resources[ resource ];
-			var new_name = folder + "/" + LS.RM.getFilename( resource.filename ); //resource.filename could be the fullpath
-			//ensure the scene info gets updated
-			LS.RM.renameResource( resource.fullpath || resource.filename, new_name );
+
+			var fullpath = resource.fullpath || resource.filename;
+			var original_folder = LS.RM.getFolder( fullpath );
+
+			if( !original_folder )
+			{
+				var new_name = folder + "/" + LS.RM.getFilename( fullpath );
+				LS.RM.renameResource( fullpath, new_name ); //ensure the scene info gets the name change
+			}
 			DriveModule.saveResource( resource, inner );
 		}
 	},

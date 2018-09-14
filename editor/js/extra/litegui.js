@@ -837,6 +837,7 @@ var LiteGUI = {
 		var buttons = dialog.content.querySelectorAll("button");
 		for(var i = 0; i < buttons.length; i++)
 			buttons[i].addEventListener("click", inner);
+		buttons[0].focus();
 
 		function inner(v) {
 			var v = this.dataset["value"] == "yes";
@@ -8966,6 +8967,8 @@ Inspector.prototype.addList = function(name, values, options)
 	var infocontent = element.querySelector(".info_content");
 	infocontent.style.height = "100%";
 
+	var list_element = element.querySelector(".lite-list");
+
 	var inputfield = element.querySelector(".inputfield");
 	inputfield.style.height = "100%";
 	inputfield.style.paddingBottom = "0.2em";
@@ -8988,17 +8991,29 @@ Inspector.prototype.addList = function(name, values, options)
 		if( !selected )
 			return;
 
-		if(e.keyCode == 40)
+		if(e.keyCode == 13) //intro
+		{
+			if(!selected)
+				return;
+			var value = values[ selected.dataset["pos"] ];
+			if(options.callback_dblclick)
+				options.callback_dblclick.call(that,value);
+		}
+		else if(e.keyCode == 40) //arrow down
 		{
 			var next = selected.nextSibling;
 			if(next)
 				LiteGUI.trigger(next, "click");
+			if(selected.scrollIntoViewIfNeeded)
+				selected.scrollIntoViewIfNeeded({block: "end", behavior: "smooth"});
 		}
-		else if(e.keyCode == 38)
+		else if(e.keyCode == 38) //arrow up
 		{
 			var prev = selected.previousSibling;
 			if(prev)
 				LiteGUI.trigger(prev,"click");
+			if(selected.scrollIntoViewIfNeeded)
+				selected.scrollIntoViewIfNeeded({block: "end", behavior: "smooth"});
 		}
 		else
 			return;

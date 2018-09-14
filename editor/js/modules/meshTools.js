@@ -346,6 +346,7 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 {
 	var mesh = this;
 
+	widgets.addString("Name", mesh.filename || mesh.fullpath );
 	widgets.addTitle("Vertex Buffers [num. vertex]");
 	widgets.widgets_per_row = 2;
 	var num_vertices = -1;

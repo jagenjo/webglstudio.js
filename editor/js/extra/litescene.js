@@ -292,7 +292,13 @@ WBin.load = function( data_array, skip_classname, filename )
 					break;
 			case "WideObject": 
 							lump_data = new Uint16Array( (new Uint8Array( lump_data )).buffer ); //no break
-			case "Object":	lump_final = JSON.parse( WBin.TypedArrayToString( lump_data ) ); break;
+			case "Object":	
+				var str = WBin.TypedArrayToString( lump_data );
+				if(str)
+					lump_final = JSON.parse( str ); 
+				else
+					console.warn("WBIN: lump \""+ lump.name +"\" string is empty, skipping.");
+				break;
 			case "ArrayBuffer": lump_final = new Uint8Array(lump_data).buffer; break; //clone
 			default:
 				lump_data = new Uint8Array(lump_data); //clone to avoid problems with bytes alignment
@@ -5236,8 +5242,11 @@ LS.ResourcesManager.processDataResource = function( url, data, options, callback
 	//WBIN?
 	if(data.constructor == ArrayBuffer)
 	{
-		if(!data.length) //empty file?
+		if(!data.byteLength) //empty file?
+		{
+			console.warn("Empty WBin?");
 			return null;
+		}
 
 		resource = WBin.load(data);
 		if(callback)
@@ -7724,10 +7733,6 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	var camera = LS.Renderer._current_camera;
 	var scene = LS.Renderer._current_scene;
 	var model = instance.matrix;
-
-	//node matrix info
-	var instance_final_query = instance._final_query;
-	var instance_final_samplers = instance._final_samplers;
 	var render_uniforms = LS.Renderer._render_uniforms;
 
 	//maybe this two should be somewhere else
@@ -7741,6 +7746,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	//global stuff
 	this._render_state.enable();
 	LS.Renderer.bindSamplers( this._samplers );
+	LS.Renderer.bindSamplers( instance.samplers );
 	var global_flags = LS.Renderer._global_shader_blocks_flags;
 
 	//TODO: could this part be precomputed before rendering color pass?
@@ -7874,10 +7880,6 @@ ShaderMaterial.prototype.renderPickingInstance = function( instance, render_sett
 	var scene = LS.Renderer._current_scene;
 	var model = instance.matrix;
 	var node = instance.node;
-
-	//node matrix info
-	var instance_final_query = instance._final_query;
-	var instance_final_samplers = instance._final_samplers;
 	var render_uniforms = LS.Renderer._render_uniforms;
 
 	//maybe this two should be somewhere else
@@ -7890,6 +7892,7 @@ ShaderMaterial.prototype.renderPickingInstance = function( instance, render_sett
 	//global stuff
 	this._render_state.enable();
 	LS.Renderer.bindSamplers( this._samplers );
+	LS.Renderer.bindSamplers( instance.samplers );
 
 	//extract shader compiled
 	var shader = shader_code.getShader( pass.name, block_flags );
@@ -13929,6 +13932,32 @@ Pack.prototype.addResources = function( resource_names, mark_them )
 }
 
 /**
+* Adds a resource to the prefab
+* @method addResource
+* @param {String} filename filename of the resource
+**/
+Pack.prototype.addResource = function( filename )
+{
+	filename = LS.ResourcesManager.cleanFullpath( filename );
+	var index = this.resource_names.indexOf(filename);
+	if(index == -1)
+		this.resource_names.push( filename );
+}
+
+/**
+* Remove a resource to the prefab
+* @method removeResource
+* @param {String} filename filename of the resource
+**/
+Pack.prototype.removeResource = function(filename)
+{
+	filename = LS.ResourcesManager.cleanFullpath( filename );
+	var index = this.resource_names.indexOf(filename);
+	if(index != -1)
+		this.resource_names.splice( index, 1 );
+}
+
+/**
 * to create a WBin containing all the resource and metadata
 * @method Pack.createWBin
 * @param {String} fullpath for the pack
@@ -14272,6 +14301,33 @@ Prefab.prototype.createObject = function()
 
 	return node;
 }
+
+/**
+* Adds a resource to the prefab
+* @method addResource
+* @param {String} filename filename of the resource
+**/
+Prefab.prototype.addResource = function( filename )
+{
+	filename = LS.ResourcesManager.cleanFullpath( filename );
+	var index = this.resource_names.indexOf(filename);
+	if(index == -1)
+		this.resource_names.push( filename );
+}
+
+/**
+* Remove a resource to the prefab
+* @method removeResource
+* @param {String} filename filename of the resource
+**/
+Prefab.prototype.removeResource = function(filename)
+{
+	filename = LS.ResourcesManager.cleanFullpath( filename );
+	var index = this.resource_names.indexOf(filename);
+	if(index != -1)
+		this.resource_names.splice( index, 1 );
+}
+
 
 /**
 * to create a new prefab, it packs all the data an instantiates the resource
@@ -29673,31 +29729,14 @@ function MeshRenderer(o)
 {
 	this._enabled = true;
 
-	/**
-	* The name of the mesh to render
-	* @property mesh {string}
-	* @default null;
-	*/
 	this._mesh = null;
-	/**
-	* The name of the mesh to render in case the mesh is far away, this mesh is also used for collision testing if using raycast to RenderInstances
-	* @property lod_mesh {string}
-	* @default null;
-	*/
+
 	this._lod_mesh = null;
-	/**
-	* The id of the submesh group to render, if the id is -1 then all the mesh is rendered.
-	* @property submesh_id {number}
-	* @default -1;
-	*/
+
 	this._submesh_id = -1;
 
 	this._material = null;
-	/**
-	* The GL primitive to use when rendering this mesh (gl.POINTS, gl.TRIANGLES, etc), -1 is default, it also supports the option 10 which means Wireframe
-	* @property primitive {number}
-	* @default -1;
-	*/
+
 	this._primitive = -1;
 
 	this._must_update_static = true; //used in static meshes
@@ -29725,6 +29764,11 @@ Object.defineProperty( MeshRenderer.prototype, 'enabled', {
 	enumerable: true
 });
 
+/**
+* The GL primitive to use when rendering this mesh (gl.POINTS, gl.TRIANGLES, etc), -1 is default, it also supports the option 10 which means Wireframe
+* @property primitive {number}
+* @default -1;
+*/
 Object.defineProperty( MeshRenderer.prototype, 'primitive', {
 	get: function() { return this._primitive; },
 	set: function(v) { 
@@ -29737,6 +29781,11 @@ Object.defineProperty( MeshRenderer.prototype, 'primitive', {
 	enumerable: true
 });
 
+/**
+* The material to apply to this render, if not provided the one in the node will be used
+* @property material {string}
+* @default -1;
+*/
 Object.defineProperty( MeshRenderer.prototype, 'material', {
 	get: function() { return this._material; },
 	set: function(v) { 
@@ -29746,6 +29795,11 @@ Object.defineProperty( MeshRenderer.prototype, 'material', {
 	enumerable: true
 });
 
+/**
+* The name of the mesh to render
+* @property mesh {string}
+* @default null;
+*/
 Object.defineProperty( MeshRenderer.prototype, 'mesh', {
 	get: function() { return this._mesh; },
 	set: function(v) { 
@@ -29755,6 +29809,11 @@ Object.defineProperty( MeshRenderer.prototype, 'mesh', {
 	enumerable: true
 });
 
+/**
+* The name of the mesh to render in case the mesh is far away, this mesh is also used for collision testing if using raycast to RenderInstances
+* @property lod_mesh {string}
+* @default null;
+*/
 Object.defineProperty( MeshRenderer.prototype, 'lod_mesh', {
 	get: function() { return this._lod_mesh; },
 	set: function(v) { 
@@ -29764,6 +29823,11 @@ Object.defineProperty( MeshRenderer.prototype, 'lod_mesh', {
 	enumerable: true
 });
 
+/**
+* The id of the submesh group to render, if the id is -1 then all the mesh is rendered.
+* @property submesh_id {number}
+* @default -1;
+*/
 Object.defineProperty( MeshRenderer.prototype, 'submesh_id', {
 	get: function() { return this._submesh_id; },
 	set: function(v) { 
@@ -30627,19 +30691,39 @@ LS.registerComponent(SkinnedMeshRenderer);
 LS.SkinnedMeshRenderer = SkinnedMeshRenderer;
 ///@FILE:../src/components/morphDeformer.js
 ///@INFO: UNCOMMON
+
+/**
+* It complements a MeshRenderer to add Morph Targets (Blend Shapes) to deform meshes.
+* Morph Targets of a mesh must have the same topology and number of vertex, otherwise it won't work.
+* @class MorphDeformer
+* @namespace LS.Components
+* @constructor
+* @param {Object} object to configure from
+*/
 function MorphDeformer(o)
 {
 	this.enabled = true;
+
+	/**
+	* The mode used to apply the morph targets, could be using the CPU, the GPU using uniforms( limited by the browser/driver) or using Textures (more expensive). Leave it as automatic so the system knows the best case.
+	* @property mode {Number} MorphDeformer.AUTOMATIC, MorphDeformer.CPU, MorphDeformer.STREAMS, MorphDeformer.TEXTURES
+	* @default MorphDeformer.AUTOMATIC;
+	*/
 	this.mode = MorphDeformer.AUTOMATIC;
 
+	/**
+	* An array with every morph targets info in the form of { mesh: mesh_name, weight: number }
+	* @property morph_targets {Array}
+	* @default [];
+	*/
 	this.morph_targets = [];
 
 	if(global.gl)
 	{
 		if(MorphDeformer.max_supported_vertex_attribs === undefined)
 			MorphDeformer.max_supported_vertex_attribs = gl.getParameter( gl.MAX_VERTEX_ATTRIBS );
-		if(MorphDeformer.max_supported_morph_targets === undefined)
-			MorphDeformer.max_supported_morph_targets = (gl.getParameter( gl.MAX_VERTEX_ATTRIBS ) - 6) / 2;
+		if(MorphDeformer.max_supported_morph_targets_using_streams === undefined)
+			MorphDeformer.max_supported_morph_targets_using_streams = (gl.getParameter( gl.MAX_VERTEX_ATTRIBS ) - 6) / 2; //6 reserved for vertex, normal, uvs, uvs2, weights, bones. 
 	}
 
 	if(o)
@@ -30672,18 +30756,28 @@ MorphDeformer.prototype.onRemovedFromNode = function(node)
 
 MorphDeformer.prototype.getResources = function(res)
 {
-	if(this.morph_targets.length)
-		for(var i = 0; i < this.morph_targets.length; ++i)
-			if( this.morph_targets[i].mesh )
-				res[ this.morph_targets[i].mesh ] = GL.Mesh;
+	for(var i = 0; i < this.morph_targets.length; ++i)
+		if( this.morph_targets[i].mesh )
+			res[ this.morph_targets[i].mesh ] = GL.Mesh;
 }
 
 MorphDeformer.prototype.onResourceRenamed = function (old_name, new_name, resource)
 {
-	if(this.morph_targets.length)
-		for(var i = 0; i < this.morph_targets.length; ++i)
-			if( this.morph_targets[i].mesh == old_name )
-				this.morph_targets[i].mesh = new_name;
+	for(var i = 0; i < this.morph_targets.length; ++i)
+		if( this.morph_targets[i].mesh == old_name )
+			this.morph_targets[i].mesh = new_name;
+}
+
+
+/**
+* Sets the weight for all the 
+* @method clearWeights
+* @param {Object} object with the serialized info
+*/
+MorphDeformer.prototype.clearWeights = function()
+{
+	for(var i = 0; i < this.morph_targets.length; ++i)
+		this.morph_targets[i].weight = 0;
 }
 
 MorphDeformer.prototype.onCollectInstances = function( e, render_instances )
@@ -30700,6 +30794,7 @@ MorphDeformer.prototype.onCollectInstances = function( e, render_instances )
 	if( !morph_RI || !morph_RI.mesh)
 		return;
 
+	this._last_base_mesh = morph_RI.mesh;
 	this._valid_morphs = this.computeValidMorphs( this._valid_morphs, morph_RI.mesh );
 
 	//grab the RI created previously and modified
@@ -30713,7 +30808,7 @@ MorphDeformer.prototype.onCollectInstances = function( e, render_instances )
 		if( this._valid_morphs.length == 0 && !MorphDeformer.force_GPU )
 			return;
 
-		if( this._valid_morphs.length <= 4 ) //use GPU
+		if( this._valid_morphs.length <= MorphDeformer.max_supported_morph_targets_using_streams ) //use GPU
 			this.applyMorphTargetsByGPU( morph_RI, this._valid_morphs );
 		else if( this._morph_texture_supported ) //use GPU with textures
 			this.applyMorphUsingTextures( morph_RI, this._valid_morphs );
@@ -30731,7 +30826,7 @@ MorphDeformer.prototype.onCollectInstances = function( e, render_instances )
 	}
 }
 
-//gather morph targets data
+//returns a list of the morph targets that have some weight and with a mesh that is loaded
 MorphDeformer.prototype.computeValidMorphs = function( valid_morphs, base_mesh )
 {
 	valid_morphs = valid_morphs || [];
@@ -30826,7 +30921,7 @@ MorphDeformer.prototype.applyMorphTargetsByGPU = function( RI, valid_morphs )
 	RI.uniforms["u_morph_weights"] = weights;
 
 	//SHADER BLOCK
-	RI.addShaderBlock( MorphDeformer.shader_block );
+	RI.addShaderBlock( MorphDeformer.shader_block ); //global
 	RI.addShaderBlock( LS.MorphDeformer.morphing_streams_block, { u_morph_weights: weights } );
 	RI.removeShaderBlock( LS.MorphDeformer.morphing_texture_block );
 }
@@ -30976,7 +31071,7 @@ MorphDeformer.prototype.disableMorphingGPU = function( RI )
 		delete RI.uniforms["u_morph_normals_texture"];
 	}
 
-	RI.removeShaderBlock( MorphDeformer.shader_block );
+	RI.removeShaderBlock( LS.MorphDeformer.shader_block );
 	RI.removeShaderBlock( LS.MorphDeformer.morphing_streams_block );
 	RI.removeShaderBlock( LS.MorphDeformer.morphing_texture_block );
 }
@@ -31118,6 +31213,26 @@ MorphDeformer.prototype.createGeometryTexture = function( data_buffer )
 	return texture;
 }
 
+/**
+* returns the index of the morph target that uses this mesh
+* @method getMorphIndex
+* @param {String} mesh_name the name (filename) of the mesh in the morph target
+* @return {number} the index
+*/
+MorphDeformer.prototype.getMorphIndex = function(mesh_name)
+{
+	for(var i = 0; i < this.morph_targets.length; ++i)
+		if (this.morph_targets[i].mesh == mesh_name )
+			return i;
+	return -1;
+}
+
+/**
+* sets the mesh for a morph target
+* @method setMorphMesh
+* @param {number} index the index of the morph target
+* @param {String} mesh the mesh resource
+*/
 MorphDeformer.prototype.setMorphMesh = function(index, value)
 {
 	if(index >= this.morph_targets.length)
@@ -31125,6 +31240,12 @@ MorphDeformer.prototype.setMorphMesh = function(index, value)
 	this.morph_targets[index].mesh = value;
 }
 
+/**
+* sets the weight for a morph target
+* @method setMorphWeight
+* @param {number} index the index of the morph target
+* @param {number} weight the weight
+*/
 MorphDeformer.prototype.setMorphWeight = function(index, value)
 {
 	if(index >= this.morph_targets.length)
@@ -31215,11 +31336,36 @@ MorphDeformer.prototype.getPropertiesInfo = function()
 	return properties;
 }
 
+/**
+* Returns the base mesh on which the morph targets will be applied
+* @method getBaseMesh
+*/
+MorphDeformer.prototype.getBaseMesh = function()
+{
+	if(!this._root)
+		return null;
+	if( this._last_base_mesh )
+		return this._last_base_mesh;
+	var mesh_renderer = this._root.getComponent( LS.Components.MeshRenderer );
+	if( mesh_renderer )
+		return LS.ResourcesManager.resources[ mesh_renderer.mesh ];
+	return null;
+}
+
+/**
+* Removes innecesary morph targets and removes data from mesh that is already in the base mesh
+* @method optimizeMorphTargets
+*/
 MorphDeformer.prototype.optimizeMorphTargets = function()
 {
-	for(var i = 0; i < this.morph_targets.length; ++i)
+	//base mesh
+	var base_mesh = this.getBaseMesh();
+
+	var morph_targets = this.morph_targets.concat();
+
+	for(var i = 0; i < morph_targets.length; ++i)
 	{
-		var morph = this.morph_targets[i];
+		var morph = morph_targets[i];
 		var mesh = LS.ResourcesManager.meshes[ morph.mesh ];
 		if(!mesh)
 			continue;
@@ -31229,12 +31375,51 @@ MorphDeformer.prototype.optimizeMorphTargets = function()
 		mesh.removeIndexBuffer("triangles", true);
 		mesh.removeIndexBuffer("wireframe", true);
 
+		//compute difference
+		if( base_mesh )
+		{
+			var diff = MorphDeformer.computeMeshDifference( base_mesh, mesh );
+			if( diff < 0.1 ) //too similar
+			{
+				var mesh_fullpath = mesh.fullpath || mesh.filename;
+				console.log("morph target is too similar to base mesh, removing it: " + mesh_fullpath );
+				var index = this.morph_targets.indexOf( morph );
+				this.morph_targets.splice( index,1 );
+				LS.ResourcesManager.unregisterResource( mesh_fullpath );
+				var container_fullpath = mesh.from_pack || mesh.from_prefab;
+				if( container_fullpath )
+				{
+					var container = LS.ResourcesManager.resources[ container_fullpath ];
+					if(container)
+						container.removeResource( mesh_fullpath );
+				}
+				continue;
+			}
+		}
+
 		LS.ResourcesManager.resourceModified( mesh );
 	}
 
 	console.log("Morph targets optimized");
 }
 
+//computes the difference between to meshes, used to detect useless morph targets
+MorphDeformer.computeMeshDifference = function( mesh_a, mesh_b )
+{
+	if(!mesh_a || !mesh_b || !mesh_a.vertexBuffers["vertices"] || !mesh_b.vertexBuffers["vertices"])
+		return 0;
+
+	var vertices_a = mesh_a.vertexBuffers["vertices"].data;
+	var vertices_b = mesh_b.vertexBuffers["vertices"].data;
+
+	if( !vertices_a || !vertices_b || vertices_a.length != vertices_b.length )
+		return 0;
+
+	var diff = 0;
+	for( var i = 0; i < vertices_a.length; i+=3 )
+		diff += vec3.distance( vertices_a.subarray(i,i+3), vertices_b.subarray(i,i+3) );
+	return diff;
+}
 
 LS.registerComponent( MorphDeformer );
 LS.MorphDeformer = MorphDeformer;

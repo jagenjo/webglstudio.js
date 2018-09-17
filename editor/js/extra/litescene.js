@@ -4548,7 +4548,7 @@ var ResourcesManager = {
 		};
 
 		//force no cache by request
-		settings.nocache = this.ignore_cache || this.force_nocache_extensions[ extension ] || this.nocache_files[ url ];
+		settings.nocache = this.ignore_cache || (this.force_nocache_extensions.indexOf[ extension ] != -1) || this.nocache_files[ url ];
 
 		//in case we need to force a response format 
 		var format_info = LS.Formats.supported[ extension ];
@@ -30778,6 +30778,22 @@ MorphDeformer.prototype.clearWeights = function()
 {
 	for(var i = 0; i < this.morph_targets.length; ++i)
 		this.morph_targets[i].weight = 0;
+}
+
+/**
+* Adds a new morph target
+* @method addMorph
+* @param {String} mesh_name
+* @param {Number} weight
+*/
+MorphDeformer.prototype.addMorph = function( mesh_name, weight)
+{
+	weight = weight || 0;
+	var index = this.getMorphIndex( mesh_name );
+	if(index == -1)
+		this.morph_targets.push({mesh: mesh_name, weight: weight});
+	else
+		this.morph_targets[index] = {mesh: mesh_name, weight: weight};
 }
 
 MorphDeformer.prototype.onCollectInstances = function( e, render_instances )

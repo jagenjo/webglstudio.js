@@ -6,6 +6,18 @@ This guide is meant for people willing to improve the editor somehow (through pl
 
 ## Structure
 
+### Libraries
+
+WebGLStudio relies in several libraries that were developed for this project. 
+
+* **LiteGL**: is the library in charge of wrapping the WebGL driver
+* **LiteScene**: is the engine used to handle the 3D scenes.
+* **LiteGUI**: is the library used to build the interface
+* **LiteGraph**: is the library used to create graphs
+* **LiteFileSystem**: is the library in charge of storing files in the back-end
+
+You do now need to understand all of them in depth, just to know what features bring to the editor in case you want to extend them.
+
 ### CORE
 
 The ```CORE``` (core.js) is the global class created once the website is loaded, is the one in charge of loading the rest of the files.
@@ -59,15 +71,5 @@ The most important tools are:
 - scale: to scale nodes
 - manipulate: to move in a friendly way
 - parenting: to select node parent
-
-## Libraries
-
-Some functionalities of the editor come from different libraries:
-
-- LiteGUI: for the interface
-- Canvas2DtoWebGL: to render in the 3D area 2D content
-- LiteFileServer: to access remote files
-
-If you plan to improve the editor it will useful to give them a look.
 
 

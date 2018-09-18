@@ -3,9 +3,9 @@ You can create your own plugins for WebGLStudio, this way if you miss some funct
 
 The plugin can be loaded from the Edit -> Preferences -> Plugins menu.
 
-Plugins are javascript files loaded once the application has been loaded, they can add new options to the menus, new buttons in the interface, new parsers, etc.
+Plugins are javascript files loaded once the application has been loaded, they can add new options to the menus, new buttons in the interface, new parsers, etc. Plugins shouldn't be used to add new features to the engine LiteScene, because plugins are not exported with the scenes. New features for the engine should be in a script that is included in the scene, and a plugin can be made to add an editor to that feature.
 
-To code plugins you must understand a little bit how WebGLStudio is organized, check the WebGLStudio code structure guide.
+To code plugins you must understand a little bit how WebGLStudio is organized, check the WebGLStudio [architecture guide](editor_architecture.md).
 
 You also need to use the LiteGUI library that allows you to create panels, widgets, contextual menus, etc.
 
@@ -17,6 +17,12 @@ You must create a class that contains the next methods:
 * ```deinit```: called if the user decides to remove the plugin from memory
 
 Also if your plugin requires to save information locally you can store them in the preferences property of the plugin.
+
+And after defining your class you must register it:
+
+```js
+CORE.registerPlugin( MyPlugin );
+```
 
 ## Creating panels
 

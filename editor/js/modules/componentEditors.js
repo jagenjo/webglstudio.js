@@ -189,7 +189,7 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 	inspector.addCheckbox("bg. alpha", camera.background_color[3] == 0 , { name_width: "65%", callback: function (v) { camera.background_color[3] = v ? 0 : 1; } });
 	inspector.widgets_per_row = 1;
 
-	inspector.addMaterial("Overwrite Material", this.overwrite_material, { callback: function(v) { camera.overwrite_material = v; } });
+	inspector.addMaterial("Overwrite Material", camera.overwrite_material, { callback: function(v) { camera.overwrite_material = v; } });
 
 	inspector.addTitle("Render to Texture");
 	inspector.addCheckbox("Enable", camera.render_to_texture , { callback: function (v) { camera.render_to_texture = v; inspector.refresh(); } });

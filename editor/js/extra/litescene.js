@@ -4558,6 +4558,8 @@ var ResourcesManager = {
 				settings.dataType = format_info.dataType;
 			if( format_info.mimeType ) //force mimeType
 				settings.mimeType = format_info.mimeType;
+			if( format_info.native )
+				settings.dataType = null;
 		}
 
 		//send the REQUEST
@@ -7745,8 +7747,8 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 
 	//global stuff
 	this._render_state.enable();
-	LS.Renderer.bindSamplers( this._samplers );
-	LS.Renderer.bindSamplers( instance.samplers );
+	LS.Renderer.bindSamplers( this._samplers ); //material samplers
+	LS.Renderer.bindSamplers( instance.samplers ); //RI samplers (like morph targets encoded in textures)
 	var global_flags = LS.Renderer._global_shader_blocks_flags;
 
 	//TODO: could this part be precomputed before rendering color pass?
@@ -16145,90 +16147,6 @@ if(typeof(LiteGraph) != "undefined")
 	LiteGraph.registerNodeType("scene/material", LGraphMaterial );
 	global.LGraphMaterial = LGraphMaterial;
 
-	//************************************************************
-	/*
-	global.LGraphLight = function()
-	{
-		this.properties = {mat_name:""};
-		this.addInput("Light","Light");
-		this.addOutput("Intensity","number");
-		this.addOutput("Color","color");
-	}
-
-	LGraphLight.title = "Light";
-	LGraphLight.desc = "Light from a scene";
-
-	LGraphLight.prototype.onExecute = function()
-	{
-		var scene = this.graph.getScene();
-		if(!scene)
-			return;
-
-		var node = this._node;
-		if(	this.properties.node_id )
-			node = scene.getNode( this.properties.node_id );
-
-		if(!node)
-			node = this.graph._scenenode;
-
-		var light = null;
-		if(node) //use light of the node
-			light = node.getLight();
-		//if it has an input light
-		var slot = this.findInputSlot("Light");
-		if( slot != -1 )
-			light = this.getInputData(slot);
-		if(!light)
-			return;
-
-		//read inputs
-		for(var i = 0; i < this.inputs.length; ++i)
-		{
-			var input = this.inputs[i];
-			var v = this.getInputData(i);
-			if(v === undefined)
-				continue;
-
-			switch( input.name )
-			{
-				case "Intensity": light.intensity = v; break;
-				case "Color": vec3.copy(light.color,v); break;
-				case "Eye": vec3.copy(light.eye,v); break;
-				case "Center": vec3.copy(light.center,v); break;
-			}
-		}
-
-		//write outputs
-		for(var i = 0; i < this.outputs.length; ++i)
-		{
-			var output = this.outputs[i];
-			if(!output.links || !output.links.length)
-				continue;
-
-			switch( output.name )
-			{
-				case "Light": this.setOutputData(i, light ); break;
-				case "Intensity": this.setOutputData(i, light.intensity ); break;
-				case "Color": this.setOutputData(i, light.color ); break;
-				case "Eye": this.setOutputData(i, light.eye ); break;
-				case "Center": this.setOutputData(i, light.center ); break;
-			}
-		}
-	}
-
-	LGraphLight.prototype.onGetInputs = function()
-	{
-		return [["Light","Light"],["Intensity","number"],["Color","color"],["Eye","vec3"],["Center","vec3"]];
-	}
-
-	LGraphLight.prototype.onGetOutputs = function()
-	{
-		return [["Light","Light"],["Intensity","number"],["Color","color"],["Eye","vec3"],["Center","vec3"]];
-	}
-
-	LiteGraph.registerNodeType("scene/light", LGraphLight );
-	*/
-
 	//************************************
 
 	global.LGraphGlobal = function LGraphGlobal()
@@ -16354,10 +16272,20 @@ if(typeof(LiteGraph) != "undefined")
 		}
 	}
 
+	/*
 	LGraphLocatorProperty.prototype.onGetInputs = function()
 	{
-		return [["Toggle",LiteGraph.ACTION]];
+		var r = [["Toggle",LiteGraph.ACTION]];
+		var info = this.getLocatorInfo();
+		if(!info)
+			return r;
+		var properties = LS.getObjectProperties( info.target );
+		for(var i in properties)
+			r.push([i,properties[i]]);
+		return r;
 	}
+	LGraphLocatorProperty.prototype.onGetOutputs = LGraphLocatorProperty.prototype.onGetInputs;
+	*/
 
 	LiteGraph.registerNodeType("scene/property", LGraphLocatorProperty );
 
@@ -21113,7 +21041,7 @@ var Renderer = {
 		});
 
 		this.createRenderQueue( LS.RenderQueue.OVERLAY, LS.RenderQueue.NO_SORT );
-
+		this._full_viewport.set([0,0,gl.drawingBufferWidth,gl.drawingBufferHeight]);
 	},
 
 	reset: function()
@@ -21301,8 +21229,11 @@ var Renderer = {
 		render_settings = render_settings || this.default_render_settings;
 
 		//get all the data
-		if(scene) //in case we use another scene
+		if(scene) //in case we use another scene than the default one
+		{
+			scene._frame++;
 			this.processVisibleData( scene, render_settings );
+		}
 		this._current_scene = scene = scene || this._current_scene; //ugly, I know
 
 		//set as active camera and set viewport
@@ -21361,6 +21292,12 @@ var Renderer = {
 		var starty = this._full_viewport[1];
 		var width = this._full_viewport[2];
 		var height = this._full_viewport[3];
+		if(width == 0 && height == 0)
+		{
+			console.warn("enableCamera: full viewport was 0, assigning to full viewport");
+			width = gl.viewport_data[2];
+			height = gl.viewport_data[3];
+		}
 
 		var final_x = Math.floor(width * camera._viewport[0] + startx);
 		var final_y = Math.floor(height * camera._viewport[1] + starty);
@@ -21382,12 +21319,18 @@ var Renderer = {
 			}
 		}
 
+		//recompute the matrices (view,proj and viewproj)
 		camera.updateMatrices();
 
 		//store matrices locally
 		mat4.copy( this._view_matrix, camera._view_matrix );
 		mat4.copy( this._projection_matrix, camera._projection_matrix );
 		mat4.copy( this._viewprojection_matrix, camera._viewprojection_matrix );
+
+		//safety in case something went wrong in the camera
+		for(var i = 0; i < 16; ++i)
+			if( isNaN( this._viewprojection_matrix[i] ) )
+				console.warn("warning: viewprojection matrix contains NaN when enableCamera is used");
 
 		//2D Camera: TODO: MOVE THIS SOMEWHERE ELSE
 		mat4.ortho( this._2Dviewprojection_matrix, -1, 1, -1, 1, 1, -1 );
@@ -44410,7 +44353,7 @@ SceneNode.prototype.getPropertyInfoFromPath = function( path )
 	}
     else if(path.length == 1) //compo or //var
 	{
-		if(path[0][0] == "@")
+		if(path[0][0] == "@") //compo uid
 		{
 			target = this.getComponentByUId( path[0] );
 			return {

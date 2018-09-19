@@ -310,42 +310,37 @@ GraphWidget.prototype.onDropItem = function( e )
 	var item_class = e.dataTransfer.getData("class");
 	var item_node_uid = e.dataTransfer.getData("node_uid");
 
+	var graphnode = null;
+
 	if(item_type == "SceneNode")
 	{
-		var graphnode = LiteGraph.createNode("scene/node");
+		graphnode = LiteGraph.createNode("scene/node");
 		graphnode.properties.node_id = item_uid;
-		graphnode.pos[0] = e.canvasX;
-		graphnode.pos[1] = e.canvasY;
-		this.graph.add( graphnode );
-		graphnode.onExecute();
-		return true;
 	}
 	else if(item_type == "Component")
 	{
-		var graphnode = LiteGraph.createNode( item_class == "Transform" ? "scene/transform" : "scene/component");
+		graphnode = LiteGraph.createNode( item_class == "Transform" ? "scene/transform" : "scene/component");
 		graphnode.properties.node_id = item_node_uid;
 		graphnode.properties.component_id = item_uid;
-		graphnode.pos[0] = e.canvasX;
-		graphnode.pos[1] = e.canvasY;
-		this.graph.add( graphnode );
-		graphnode.onExecute();
-		return true;
 	}
 	else if(item_type == "Material")
 	{
-		var graphnode = LiteGraph.createNode( "scene/material" );
+		graphnode = LiteGraph.createNode( "scene/material" );
 		graphnode.properties.node_id = item_node_uid;
 		graphnode.properties.material_id = item_uid;
-		graphnode.pos[0] = e.canvasX;
-		graphnode.pos[1] = e.canvasY;
-		this.graph.add( graphnode );
-		graphnode.onExecute();
-		return true;
 	}
 	else if(item_type == "property")
 	{
-		var graphnode = LiteGraph.createNode( "scene/property" );
+		graphnode = LiteGraph.createNode( "scene/property" );
 		graphnode.properties.locator = item_uid;
+	}
+	else if(item_type == "object")
+	{
+		LiteGUI.alert("Objects cannot be dragged into the graph");
+	}
+
+	if(graphnode)
+	{
 		graphnode.pos[0] = e.canvasX;
 		graphnode.pos[1] = e.canvasY;
 		this.graph.add( graphnode );

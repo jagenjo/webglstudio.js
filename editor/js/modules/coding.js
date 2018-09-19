@@ -435,7 +435,7 @@ LS.Components.Script["@inspector"] = function( component, inspector )
 	icon.addEventListener("dragstart", function(event) { 
 		var context_locator = component.getLocator() + "/context";
 		if(!event.shiftKey)
-			context_locator = component.root.name + "/_" + component.name + "/context";
+			context_locator = component.root.name + "/" + component.uid + "/context";
 		event.dataTransfer.setData("uid", context_locator );
 		event.dataTransfer.setData("locator", context_locator );
 		event.dataTransfer.setData("type", "object");

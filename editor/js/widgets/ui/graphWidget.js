@@ -292,7 +292,7 @@ GraphWidget.prototype.compileGraph = function()
 GraphWidget.prototype.onShowNodePanel = function( node )
 {
 	var inspector = this.inspector || EditorModule.inspector;
-	inspector.inspect( node );
+	inspector.inspect( node, false, node.constructor.type );
 	this.inspected_node = node;
 }
 

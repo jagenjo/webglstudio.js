@@ -1,5 +1,5 @@
-// This creates the WebGL context and allows some ierarchical structure so several elements could access the canvas
-// It is created from RenderModule and all the modules that want to render something in the canvas must register here
+// This creates the WebGL context and allows some ierarchical structure so several elements could access the same canvas
+// It is instantiated from RenderModule and all the modules that want to render something in the canvas must register here
 
 function CanvasManager( container, options)
 {

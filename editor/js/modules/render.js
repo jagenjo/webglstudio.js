@@ -18,7 +18,7 @@ var RenderModule = {
 	shaders_url: "../litescene/data/shaders.xml",
 
 	render_settings: null,
-	viewports: [], //viewports
+	viewports: [], //viewports from LayoutViewport (utils/LayoutViewport)
 	cameras: [], //cameras
 	selected_viewport: null, //last viewport clicked by the mouse
 	active_viewport: null, //viewport below the mouse

@@ -4558,7 +4558,7 @@ var ResourcesManager = {
 				settings.dataType = format_info.dataType;
 			if( format_info.mimeType ) //force mimeType
 				settings.mimeType = format_info.mimeType;
-			if( format_info.native )
+			if( format_info["native"] )
 				settings.dataType = null;
 		}
 
@@ -8739,7 +8739,7 @@ StandardMaterial.prototype.setProperty = function(name, value)
 		case "velvet":
 		case "extra":
 		case "detail_scale":
-			if(this[name].length == value.length)
+			if(this[name].length >= value.length)
 				this[name].set(value);
 			break;
 		default:
@@ -15248,12 +15248,13 @@ GraphCode.prototype.getShaderCode = function( as_string )
 	var graph_code = "";
 
 	var nodes = this._graph._nodes_in_order;
-	for(var i = 0; i < nodes.length; ++i)
-	{
-		var node = nodes[i];
-		if( node.onGetCode )
-			graph_code += node.onGetCode( "glsl", context );
-	}
+	if(nodes)
+		for(var i = 0; i < nodes.length; ++i)
+		{
+			var node = nodes[i];
+			if( node.onGetCode )
+				graph_code += node.onGetCode( "glsl", context );
+		}
 
 	var uniforms_code = "";
 	for(var i = 0; i < context.uniforms.length; ++i)
@@ -16296,18 +16297,23 @@ if(typeof(LiteGraph) != "undefined")
 	{
 		this.addInput("target","Component");
 		this.addInput("toggle",LiteGraph.ACTION);
-		this.properties = {property_name:""};
+		this.properties = {property_name:"enabled"};
 	}
 
 	LGraphToggleValue.title = "Toggle";
 	LGraphToggleValue.desc = "Toggle a property value";
+
+	LGraphToggleValue.prototype.getTitle = function()
+	{
+		return "Toggle: " + this.properties.property_name;
+	}
 
 	LGraphToggleValue.prototype.onAction = function( action_name, params ) { 
 
 		var target = this.getInputData(0,true);
 		if(!target)
 			return;
-		var prop_name = this.properties.property_name;
+		var prop_name = this.properties.property_name || "enabled";
 		if( target[ prop_name ] !== undefined )
 			target[ prop_name ] = !target[ prop_name ];
 	}
@@ -16444,6 +16450,14 @@ if(typeof(LiteGraph) != "undefined")
 if(typeof(LiteGraph) != "undefined")
 {
 
+var litegraph_texture_found = false;
+if(typeof(LGraphTexture) == "undefined")
+	console.error("LiteGraph found but no LGraphTexture, this means LiteGL wasnt not included BEFORE litegraph. Be sure to include LiteGL before LiteGraph to ensure all functionalities.");
+else
+	litegraph_texture_found = true;
+
+
+
 // Texture Blur *****************************************
 function LGraphFXStack()
 {
@@ -16549,7 +16563,7 @@ function LGraphCameraMotionBlur()
 }
 
 LGraphCameraMotionBlur.widgets_info = {
-	"precision": { widget:"combo", values: LGraphTexture.MODE_VALUES }
+	"precision": { widget:"combo", values: litegraph_texture_found ? LGraphTexture.MODE_VALUES : [] }
 };
 
 LGraphCameraMotionBlur.title = "Camera Motion Blur";
@@ -21077,8 +21091,7 @@ var Renderer = {
 	*/
 	render: function( scene, render_settings, cameras )
 	{
-		//if( !LS.ShadersManager.ready )
-		//	return; //not ready
+		scene = scene || LS.GlobalScene;
 
 		if( this._is_rendering_frame )
 		{
@@ -21258,6 +21271,8 @@ var Renderer = {
 		//send after events
 		LEvent.trigger( scene, "afterRenderScene", camera );
 		LEvent.trigger( this, "afterRenderScene", camera );
+		if(this.onRenderScene)
+			this.onRenderScene( camera, render_settings, scene);
 
 		//render helpers (guizmos)
 		if(render_settings.render_helpers)
@@ -35615,6 +35630,27 @@ Object.defineProperty( FXGraphComponent.prototype, "graph", {
 	}
 });
 
+Object.defineProperty( FXGraphComponent.prototype, "render_node", {
+	enumerable: false,
+	get: function() {
+		return this._graph_frame_node;
+	},
+	set: function(v) {
+		console.error("render_node cannot be set manually");
+	}
+});
+
+Object.defineProperty( FXGraphComponent.prototype, "viewport_node", {
+	enumerable: false,
+	get: function() {
+		return this._graph_viewport_node;
+	},
+	set: function(v) {
+		console.error("viewport_node cannot be set manually");
+	}
+});
+
+
 /**
 * Returns the first component of this container that is of the same class
 * @method configure
@@ -35622,7 +35658,7 @@ Object.defineProperty( FXGraphComponent.prototype, "graph", {
 */
 FXGraphComponent.prototype.configure = function(o)
 {
-	if(!o.graph_data)
+	if(!this._graph || !o.graph_data)
 		return;
 
 	this.uid = o.uid;
@@ -35679,12 +35715,14 @@ FXGraphComponent.prototype.serialize = function()
 		frame: this.frame.serialize(),
 		use_node_camera: this.use_node_camera,
 
-		graph_data: JSON.stringify( this._graph.serialize() )
+		graph_data: this._graph ? JSON.stringify( this._graph.serialize() ) : null
 	};
 }
 
 FXGraphComponent.prototype.getResources = function(res)
 {
+	if(!this._graph) //in case it wasnt connected
+		return;
 	this._graph.sendEventToAllNodes("getResources",res);
 	return res;
 }
@@ -35731,11 +35769,15 @@ FXGraphComponent.prototype.setPropertyValue = function( property, value )
 
 FXGraphComponent.prototype.onResourceRenamed = function(old_name, new_name, res)
 {
+	if(!this._graph) //in case it wasnt connected
+		return;
 	this._graph.sendEventToAllNodes("onResourceRenamed",[old_name, new_name, res]);
 }
 
 FXGraphComponent.prototype.onAddedToNode = function(node)
 {
+	if(!this._graph) //in case litegraph is not installed
+		return;
 	this._graph._scenenode = node;
 	//catch the global rendering
 	//LEvent.bind( LS.GlobalScene, "beforeRenderMainPass", this.onBeforeRender, this );
@@ -35743,12 +35785,16 @@ FXGraphComponent.prototype.onAddedToNode = function(node)
 
 FXGraphComponent.prototype.onRemovedFromNode = function(node)
 {
+	if(!this._graph) //in case it wasnt connected
+		return;
 	this._graph._scenenode = null;
 	//LEvent.unbind( LS.GlobalScene, "beforeRenderMainPass", this.onBeforeRender, this );
 }
 
 FXGraphComponent.prototype.onAddedToScene = function( scene )
 {
+	if(!this._graph) //in case it wasnt connected
+		return;
 	this._graph._scene = scene;
 	LEvent.bind( scene, "enableFrameContext", this.onBeforeRender, this );
 	LEvent.bind( scene, "showFrameContext", this.onAfterRender, this );
@@ -35756,6 +35802,8 @@ FXGraphComponent.prototype.onAddedToScene = function( scene )
 
 FXGraphComponent.prototype.onRemovedFromScene = function( scene )
 {
+	if(!this._graph) //in case it wasnt connected
+		return;
 	this._graph._scene = null;
 	LEvent.unbind( scene, "enableFrameContext", this.onBeforeRender, this );
 	LEvent.unbind( scene, "showFrameContext", this.onAfterRender, this );
@@ -38806,6 +38854,7 @@ function Script(o)
 		createAction: LS.BaseComponent.prototype.createAction,
 		bind: LS.BaseComponent.prototype.bind,
 		unbind: LS.BaseComponent.prototype.unbind,
+		trigger: (function(event,param) { return LEvent.trigger( this, event, param); }).bind(this),
 		unbindAll: LS.BaseComponent.prototype.unbindAll
 	};
 
@@ -39165,7 +39214,9 @@ Script.prototype.getActions = function(actions)
 
 /**
 * get events that could be triggered by this component
+* the result 
 * @method getEvents
+* @return {Array} an array with the name of the events: ["event_1","event_2", ...]
 */
 Script.prototype.getEvents = function()
 {

@@ -87,8 +87,12 @@ LayoutViewport.prototype.render = function()
 
 	//render outline 
 	gl.start2D();
-	gl.strokeColor = this == RenderModule.active_viewport ? [0.75,0.75,0.75] : [0.5,0.5,0.5];
-	gl.strokeRect( viewport[0], gl.canvas.height - viewport[3] - viewport[1],viewport[2] - 2,viewport[3] - 2);
+
+	if( RenderModule.viewports.length > 1)
+	{
+		gl.strokeColor = this == RenderModule.active_viewport ? [0.5,0.5,0.5] : [0.25,0.25,0.25];
+		gl.strokeRect( viewport[0], gl.canvas.height - viewport[3] - viewport[1],viewport[2] - 1,viewport[3] - 1);
+	}
 
 	//render corner button
 	gl.globalAlpha = !this._over_corner ? 0.5 : 1.0;

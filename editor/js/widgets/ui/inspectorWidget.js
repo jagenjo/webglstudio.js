@@ -183,7 +183,7 @@ InspectorWidget.prototype.setTitle = function( v )
 }
 
 //clears the inspector and inspects the given object
-InspectorWidget.prototype.inspect = function( object, skip_history )
+InspectorWidget.prototype.inspect = function( object, skip_history, title )
 {
 	if(this.locked)
 		return;
@@ -229,10 +229,13 @@ InspectorWidget.prototype.inspect = function( object, skip_history )
 	else 
 		this.inspectObject( object );
 
-	var title = "";
+	var title_code = "";
 	if(object)
-		title = "<span class='classname'>" + (object.className || LS.getObjectClassName(object)) + "</span> : <span class='name'>" + (object.name || "") + "</span>";
-	this.setTitle( title );
+	{
+		var class_name = title|| object.className || LS.getObjectClassName(object);
+		title_code = "<span class='classname'>" + class_name + "</span> <span class='name'>" + (object.name || "") + "</span>";
+	}
+	this.setTitle( title_code );
 }
 
 InspectorWidget.prototype.clear = function()

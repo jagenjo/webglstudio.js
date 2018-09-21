@@ -1,5 +1,4 @@
-
-//This widget allows to preview a texture in the canvas
+//This widget allows to preview a the texture content directly in the canvas scene view
 function TexturePreviewWidget()
 {
 	this._ctor();

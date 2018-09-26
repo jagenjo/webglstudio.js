@@ -2614,7 +2614,7 @@ var Input = {
 		//mouse
 		LEFT:0,
 		MIDDLE:1,
-		RIGHT:2,
+		RIGHT:2
 	},
 
 	LEFT_MOUSE_BUTTON: 1,

@@ -87,15 +87,23 @@ var AnimationModule = {
 
 		function inner_dragstart(e)
 		{
-			e.dataTransfer.setData("type", "property" );
-			e.dataTransfer.setData("uid", e.target.dataset["propertyuid"] );
-
 			var locator = e.target.dataset["propertyuid"];
-
-			//var info = LS.
-
 			if(e.shiftKey)
 				locator = LSQ.shortify( locator );
+
+			var info = LSQ.get( locator );
+			if(info && info.node)
+			{
+				var prefab = info.node.insidePrefab();
+				if(prefab)
+				{
+					console.warn("locator belongs to a node in a prefab, converting locator to name");
+					locator = LS.convertLocatorFromUIDsToName( locator );
+				}
+			}
+
+			e.dataTransfer.setData("type", "property" );
+			e.dataTransfer.setData("uid", locator );
 			e.dataTransfer.setData("locator", locator );
 		}
 
@@ -470,6 +478,11 @@ var AnimationModule = {
 		var locator = target.getLocator();
 		if(!locator)
 			return "";
+
+		var prefab = LS.checkLocatorBelongsToPrefab( locator );
+		if( prefab )
+			locator = LS.convertLocatorFromUIDsToName( locator );
+
 		return "<span title='Create keyframe for "+property+"' class='keyframe_icon' data-propertyname='" + property + "' data-propertyuid='" + locator + "/" + property + "' ></span>";
 	},
 

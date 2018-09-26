@@ -1725,6 +1725,87 @@ var LS = {
 		return String.fromCharCode.apply(null,data);
 	},
 
+	
+	/**
+	* Checks if this locator belongs to a property inside a prefab, which could be tricky in some situations
+	* @method checkLocatorBelongsToPrefab
+	**/
+	checkLocatorBelongsToPrefab: function( locator, root )
+	{
+		root = root || LS.GlobalScene.root;
+		var property_path = locator.split("/");
+
+		if( !property_path.length )
+			return null;
+
+		var node = LSQ.get( property_path[0], root );
+		if(!node)
+			return null;
+
+		return node.insidePrefab();
+	},
+
+	/**
+	* Used to convert locators so instead of using UIDs for properties it uses Names
+	* This is used when you cannot rely on the UIDs because they belong to prefabs that could change them
+	* @method convertLocatorFromUIDsToName
+	* @param {String} locator string with info about a property (p.e. "my_node/Transform/y")
+	* @param {boolean} use_basename if you want to just use the node name, othewise it uses the fullname (name with path)
+	* @param {LS.SceneNode} root
+	* @return {String} the result name without UIDs
+	*/
+	convertLocatorFromUIDsToName: function( locator, use_basename, root )
+	{
+		root = root || LS.GlobalScene.root;
+		var property_path = locator.split("/");
+
+		if( !property_path.length )
+			return null;
+
+		if( property_path[0][0] !== LS._uid_prefix && ( property_path.length == 1 || property_path[1][0] !== LS._uid_prefix))
+			return null; //is already using names
+
+		var node = LSQ.get( property_path[0], root );
+		if(!node)
+		{
+			console.warn("getIDasName: node not found in LS.GlobalScene: " + property_path[0] );
+			return false;
+		}
+
+		if(!node.name)
+		{
+			console.warn("getIDasName: node without name?");
+			return false;
+		}
+
+		//what about the component?
+		if( property_path.length > 1 && property_path[1][0] == LS._uid_prefix )
+		{
+			var comp = LS.GlobalScene.findComponentByUId( property_path[1] );
+			if(comp)
+			{
+				var comp_name = comp.constructor.name;
+				if(comp_name == "Script" || comp_name == "ScriptFromFile")
+				{
+					comp_name = comp.name;
+					if( comp_name == "unnamed" )
+					{
+						console.error("converting component UIDs to component name, but property belongs to a Script without name. You must name the script to avoid errors.");
+						comp_name = comp.constructor.name;
+					}
+				}
+				property_path[1] = comp_name;	
+			}
+		}
+
+		var result = property_path.concat();
+		if(use_basename)
+			result[0] = node.name;
+		else
+			result[0] = node.fullname;
+		return result.join("/");
+	},
+
 	/**
 	* clears the global scene and the resources manager
 	*
@@ -2533,7 +2614,7 @@ var Input = {
 		//mouse
 		LEFT:0,
 		MIDDLE:1,
-		RIGHT:2
+		RIGHT:2,
 	},
 
 	LEFT_MOUSE_BUTTON: 1,
@@ -2726,6 +2807,42 @@ var Input = {
 			offsety = offset[1];
 		}
 		return ( (e.mousex - offsetx) >= area[0] && (e.mousex - offsetx) < (area[0] + area[2]) && (e.mousey - offsety) >= area[1] && (e.mousey - offsety) < (area[1] + area[3]) );
+	},
+
+	/**
+	* Returns the axis based on the gamepad or the keyboard cursors. Useful when you do now know if the player will use keyboard of gamepad
+	*
+	* @method getAxis
+	* @param {String} "vertical" or "horizontal"
+	* @return {Number} the value of the axis
+	*/
+	getAxis: function( axis )
+	{
+		if( axis == "vertical" )
+		{
+			if( this.isKeyPressed( 38 )	|| this.isKeyPressed( "W" )) //up
+				return 1;
+			if( this.isKeyPressed( 40 )	|| this.isKeyPressed( "S" )) //down
+				return -1;
+		}
+		else if( axis == "horizontal" )
+		{
+			if( this.isKeyPressed( 37 )	|| this.isKeyPressed( "A" )) //left
+				return -1;
+			else if( this.isKeyPressed( 39 ) || this.isKeyPressed( "D" )) //right
+				return 1;
+		}
+
+		var gamepad = this.Gamepads[0];
+		if(gamepad)
+		{
+			if(axis == "horizontal")
+				return gamepad.axes[0];
+			else if(axis == "vertical")
+				return gamepad.axes[1];
+		}
+
+		return 0;
 	},
 
 	/**
@@ -12846,7 +12963,7 @@ Track.prototype.clear = function()
 }
 
 /**
-* used to change every track so instead of using UIDs for properties it uses node names
+* used to change every track so instead of using UIDs for properties it uses names
 * this is used when you want to apply the same animation to different nodes in the scene
 * @method getIDasName
 * @param {boolean} use_basename if you want to just use the node name, othewise it uses the fullname (name with path)
@@ -12858,28 +12975,7 @@ Track.prototype.getIDasName = function( use_basename, root )
 	if( !this._property_path || !this._property_path.length )
 		return null;
 
-	if(this._property_path[0][0] !== LS._uid_prefix)
-		return null; //is already using names
-
-	var node = LSQ.get( this._property_path[0], root );
-	if(!node)
-	{
-		console.warn("getIDasName: node not found in LS.GlobalScene: " + this._property_path[0] );
-		return false;
-	}
-
-	if(!node.name)
-	{
-		console.warn("getIDasName: node without name?");
-		return false;
-	}
-
-	var result = this._property_path.concat();
-	if(use_basename)
-		result[0] = node.name;
-	else
-		result[0] = node.fullname;
-	return result.join("/");
+	return LS.convertLocatorFromUIDsToName( this._property,  use_basename, root );
 }
 
 //used to change every track so instead of using node names for properties it uses node uids
@@ -12893,8 +12989,18 @@ Track.prototype.convertNameToID = function( root )
 	if(!node)
 		return false;
 
+	//convert node uid
 	this._property_path[0] = node.uid;
-	this._property = this._property_path[0].join("/");
+
+	//convert component uid
+	if( this._property_path.length > 1)
+	{
+		var comp = node.getComponent( this._property_path[1] );
+		if(comp)
+			this._property_path[1] = comp.uid;
+	}
+
+	this._property = this._property_path.join("/");
 	return true;
 }
 

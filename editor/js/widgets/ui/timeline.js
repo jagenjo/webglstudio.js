@@ -1602,6 +1602,18 @@ Timeline.prototype.onInsertKeyframeButton = function( element, relative )
 
 	var locator = element.dataset["propertyuid"];
 	var name = element.dataset["propertyname"];
+
+	var info = LS.GlobalScene.getPropertyInfo( locator );
+	if( info && info.node && locator.indexOf("@") != -1 )
+	{
+		var prefab = info.node.insidePrefab();
+		if(prefab)
+		{
+			console.warn("This properties belongs to a node inside a prefab. Using name instead of UIDs because UIDs on prefabs are volatile");
+			locator = LS.convertLocatorFromUIDsToName( locator );
+		}
+	}
+
 	this.processInsertLocator( locator, { add_keyframe: true, name: name, relative: relative } );
 }
 
@@ -2283,12 +2295,12 @@ Timeline.prototype.showTrackOptionsDialog = function( track )
 		}});
 
 		if( track.property[0] == "@" )
-			widgets.addButton(null,"Convert to Node Name", { width: "30%", callback: function(){
+			widgets.addButton(null,"Convert to Names", { width: "30%", callback: function(){
 				track.convertIDtoName();
 				widgets.refresh();
 			}});
 		else
-			widgets.addButton(null,"Convert to Node UID", { width: "30%", callback: function(){
+			widgets.addButton(null,"Convert to UIDs", { width: "30%", callback: function(){
 				track.convertNameToID();
 				widgets.refresh();
 			}});

@@ -117,9 +117,11 @@ var ExportModule = {
 					var alert = LiteGUI.alert("Exporting...");
 					var info = {};
 					info.resources = resources_list.getSelected();
-					exporter.export( info, function(){
-						alert.close();
-					});
+					setTimeout( function(){ 
+						exporter.export( info, function(){
+							alert.close();
+						});
+					},1);
 				}
 			}});
 		}
@@ -346,13 +348,17 @@ var ExportModule = {
 			LS.RM.processResource("export.obj", data );
 	},
 
-	exportToZIP: function( include_player, strip_unitnames, use_optimized_engine )
+	exportToZIP: function( include_player, settings, on_complete )
 	{
 		if(!window.JSZip)
 		{
 			LiteGUI.alert("JSZIP.js not found.");
+			if(on_complete)
+				on_complete(null);
 			return;
 		}
+
+		settings = settings || {};
 
 		//get all resource and its names
 		var resources = [];
@@ -368,7 +374,7 @@ var ExportModule = {
 
 		//rename resources in case we need it
 		var renamed_resources = {};
-		if( strip_unitnames )
+		if( settings.strip_unitnames )
 		{
 			var new_resource_names = [];
 			for(var i in resource_names)
@@ -398,7 +404,7 @@ var ExportModule = {
 		}
 
 		//restore stuff: this is done in case we messed up some global resource filename (like textures in shared materials)
-		if( strip_unitnames )
+		if( settings.strip_unitnames )
 		{
 			for(var i in resource_names)
 			{
@@ -413,7 +419,15 @@ var ExportModule = {
 		var filename = "scene.zip";
 
 		if( include_player )
-			this.loadPlayerFiles( zip, inner_ready, use_optimized_engine && ExportModule.engine_lib);
+		{
+			var extra_settings = {};
+			if( settings.alpha_canvas )
+				extra_settings.alpha = settings.alpha_canvas;
+			if( settings.ignore_scroll )
+				extra_settings.ignore_scroll = settings.ignore_scroll;
+
+			this.loadPlayerFiles( zip, inner_ready, settings.use_optimized_engine && ExportModule.engine_lib, extra_settings );
+		}
 		else
 			inner_ready();
 
@@ -422,6 +436,8 @@ var ExportModule = {
 			//create ZIP file
 			zip.generateAsync({type:"blob"}).then(function(content) {
 				LiteGUI.downloadFile( filename, content );
+				if( on_complete )
+					on_complete();
 			});
 		}
 	},
@@ -433,7 +449,7 @@ var ExportModule = {
 			LiteGUI.downloadFile( "scene.PACK.wbin", pack.bindata );
 	},
 
-	loadPlayerFiles: function( zip, on_complete, use_optimized_engine )
+	loadPlayerFiles: function( zip, on_complete, use_optimized_engine, extra_settings )
 	{
 		//it could be nice to add a dialog to config the player options here
 		var player_options = { 
@@ -444,21 +460,33 @@ var ExportModule = {
 
 		var files = this.player_files.concat();
 		var filename = files.pop();
-		LS.Network.requestFile( filename, inner );
+		LS.Network.requestText( filename, inner );
 
 		function inner( file )
 		{
 			//change player to index
 			if(filename == "player.html")
+			{
 				filename = "index.html";
+				if( extra_settings )
+				{
+					var extra_code = "";
+					for(var i in extra_settings)
+						extra_code += "\tsettings." + i + " = " + extra_settings[i] + ";\n";
+					file = file.replace( "/*SETTINGS_SETUP*/",extra_code);
+				}
+			}
 			
-			if(use_optimized_engine && filename == "js/extra/litegraph.js" && !ExportModule.includes.litegraph )
-				file = null;
-			if(use_optimized_engine && filename == "js/extra/Canvas2DtoWebGL.js" && !ExportModule.includes.canvas2D )
-				file = null;
+			if( use_optimized_engine )
+			{
+				if(filename == "js/extra/litegraph.js" && !ExportModule.includes.litegraph )
+					file = null;
+				if(filename == "js/extra/Canvas2DtoWebGL.js" && !ExportModule.includes.canvas2D )
+					file = null;
 
-			if(use_optimized_engine && filename == "js/extra/litescene.js")
-				file = ExportModule.engine_lib.optimized_file;
+				if(filename == "js/extra/litescene.js")
+					file = ExportModule.engine_lib.optimized_file;
+			}
 
 			//add to zip
 			if(file)
@@ -466,9 +494,10 @@ var ExportModule = {
 
 			if(!files.length)
 				on_complete();
+
 			//seek another file
 			filename = files.pop();
-			LS.Network.requestFile( filename, inner );
+			LS.Network.requestText( filename, inner );
 		}
 	}
 }
@@ -478,7 +507,9 @@ ExportModule.registerExporter({
 	name:"zip",
 	settings: {
 		player: true,
-		strip_unitnames: false
+		strip_unitnames: false,
+		alpha_canvas: false,
+		ignore_scroll: false
 	},
 	inspect: function(inspector)
 	{
@@ -489,12 +520,12 @@ ExportModule.registerExporter({
 		inspector.addButton( null, "Optimize Engine Size", ExportModule.showOptimizeLibrariesDialog.bind(ExportModule) );
 		inspector.widgets_per_row = 1;
 		inspector.addCheckbox("Strip unit names", this.settings.strip_unitnames, function(v){ that.settings.strip_unitnames = v; });
+		inspector.addCheckbox("Ignore scroll", this.settings.ignore_scroll, function(v){ that.settings.ignore_scroll = v; });
+		inspector.addCheckbox("Alpha canvas", this.settings.alpha_canvas, function(v){ that.settings.alpha_canvas = v; });
 	},
 	export: function( info, on_complete )
 	{
-		ExportModule.exportToZIP( this.settings.player, this.settings.strip_unitnames, this.settings.use_optimized );
-		if(on_complete)
-			on_complete();
+		ExportModule.exportToZIP( this.settings.player, this.settings, on_complete );
 	}
 });
 

@@ -27136,6 +27136,20 @@ Object.defineProperty( Camera.prototype, "background_color", {
 });
 
 /**
+* the clear alpha value
+* @property background_alpha {Number}
+*/
+Object.defineProperty( Camera.prototype, "background_alpha", {
+	get: function() {
+		return this._background_color[3];
+	},
+	set: function(v) {
+		this._background_color[3] = v;
+	},
+	enumerable: true
+});
+
+/**
 * returns the texture from the render frame context
 * @property render_to_texture {GL.Texture} 
 */
@@ -51159,6 +51173,8 @@ LS.Formats.addSupportedFormat( "tga", parserTGA );
 	- autoplay: boolean to automatically start playing the scene once the load is completed
 	- loadingbar: boolean to show a loading bar
 	- debug: boolean allows to render debug info like nodes and skeletons
+	- alpha: to set the canvas to transparent
+	- ignore_scroll: to skip mouse wheel events
 
 	Optional callbacks to attach
 	============================
@@ -51245,9 +51261,9 @@ function Player(options)
 	this.gl.ongamepadButtonUp = gamepad_event_callback;
 
 	//capture input
-	gl.captureMouse(true);
+	gl.captureMouse( !(options.ignore_scroll) );
 	gl.captureKeys(true);
-	gl.captureTouch(true);
+	gl.captureTouch( !(options.ignore_touch) );
 	gl.captureGamepads(true);
 
 	if(LS.Input)

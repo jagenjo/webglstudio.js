@@ -10236,7 +10236,7 @@ global.geo = {
 	* @param {vec3} direction ray direction (normalized)
 	* @param {vec3} center center of the sphere
 	* @param {number} radius radius of the sphere
-	* @param {vec3} result collision position
+	* @param {vec3} result [optional] collision position
 	* @param {number} max_dist not fully tested
 	* @return {boolean} returns if the ray collides the sphere
 	*/
@@ -10268,7 +10268,7 @@ global.geo = {
 				var r1 = ( -b + sq ) * d;
 				var r2 = ( -b - sq ) * d;
 				var t = r1 < r2 ? r1 : r2;
-				if(t > max_dist)
+				if(max_dist !== undefined && t > max_dist)
 					return false;
 				vec3.add(result, start, vec3.scale( result, direction, t ) );
 			}
@@ -10277,8 +10277,8 @@ global.geo = {
 	})(),
 
 	/**
-	* test a ray cylinder collision and retrieves the collision point
-	* @method testRaySphere
+	* test a ray cylinder collision (only vertical cylinders) and retrieves the collision point [not fully tested]
+	* @method testRayCylinder
 	* @param {vec3} start ray start
 	* @param {vec3} direction ray direction
 	* @param {vec3} p center of the cylinder
@@ -10324,7 +10324,8 @@ global.geo = {
 			// Intersect segment against ’q’ endcap
 			else t = 0.0;
 			// ’a’ lies inside cylinder
-			if(result) vec3.add(result, sa, vec3.scale(vec3.create(), n,t) );
+			if(result) 
+				vec3.add(result, sa, vec3.scale(result, n,t) );
 			return true;
 		}
 		var b = dd * mn - nd * md;
@@ -10344,8 +10345,8 @@ global.geo = {
 			// Segment pointing away from endcap
 			t = -md / nd;
 			// Keep intersection if Dot(S(t) - p, S(t) - p) <= r^2
-			if(result) vec3.add(result, sa, vec3.scale(vec3.create(), n,t) );
-
+			if(result) 
+				vec3.add(result, sa, vec3.scale(result, n,t) );
 			return k+2*t*(mn+t*nn) <= 0.0;
 		} else if (md+t*nd>dd)
 		{
@@ -10353,11 +10354,13 @@ global.geo = {
 			if (nd >= 0.0) return false; //Segment pointing away from endcap
 			t = (dd - md) / nd;
 			// Keep intersection if Dot(S(t) - q, S(t) - q) <= r^2
-			if(result) vec3.add(result, sa, vec3.scale(vec3.create(), n,t) );
+			if(result) 
+				vec3.add(result, sa, vec3.scale(result, n,t) );
 			return k+dd - 2*md+t*(2*(mn - nd)+t*nn) <= 0.0;
 		}
 		// Segment intersects cylinder between the endcaps; t is correct
-		if(result) vec3.add(result, sa, vec3.scale(vec3.create(), n,t) );
+		if(result)
+			vec3.add(result, sa, vec3.scale(result, n,t) );
 		return true;
 	},
 

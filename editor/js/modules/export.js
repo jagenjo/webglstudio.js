@@ -425,6 +425,8 @@ var ExportModule = {
 				extra_settings.alpha = settings.alpha_canvas;
 			if( settings.ignore_scroll )
 				extra_settings.ignore_scroll = settings.ignore_scroll;
+			if( settings.ignore_touch )
+				extra_settings.ignore_touch = settings.ignore_touch;
 
 			this.loadPlayerFiles( zip, inner_ready, settings.use_optimized_engine && ExportModule.engine_lib, extra_settings );
 		}
@@ -509,7 +511,8 @@ ExportModule.registerExporter({
 		player: true,
 		strip_unitnames: false,
 		alpha_canvas: false,
-		ignore_scroll: false
+		ignore_scroll: false,
+		ignore_touch: false
 	},
 	inspect: function(inspector)
 	{
@@ -521,6 +524,7 @@ ExportModule.registerExporter({
 		inspector.widgets_per_row = 1;
 		inspector.addCheckbox("Strip unit names", this.settings.strip_unitnames, function(v){ that.settings.strip_unitnames = v; });
 		inspector.addCheckbox("Ignore scroll", this.settings.ignore_scroll, function(v){ that.settings.ignore_scroll = v; });
+		inspector.addCheckbox("Ignore touch", this.settings.ignore_touch, function(v){ that.settings.ignore_touch = v; });
 		inspector.addCheckbox("Alpha canvas", this.settings.alpha_canvas, function(v){ that.settings.alpha_canvas = v; });
 	},
 	export: function( info, on_complete )

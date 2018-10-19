@@ -7852,38 +7852,61 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	var camera = LS.Renderer._current_camera;
 	var scene = LS.Renderer._current_scene;
 	var model = instance.matrix;
-	var render_uniforms = LS.Renderer._render_uniforms;
+	var renderer_uniforms = LS.Renderer._uniforms;
 
 	//maybe this two should be somewhere else
-	render_uniforms.u_model = model; 
-	render_uniforms.u_normal_model = instance.normal_matrix; 
+	renderer_uniforms.u_model = model; 
+	renderer_uniforms.u_normal_model = instance.normal_matrix; 
 
 	//compute flags: checks the ShaderBlocks attached to this instance and resolves the flags
 	var block_flags = instance.computeShaderBlockFlags();
-	block_flags |= LS.Renderer._global_block_flags; //apply global block_flags
+	var global_flags = LS.Renderer._global_block_flags;
+
+	//find environment texture
+	if( pass == COLOR_PASS ) //allow reflections only in color pass
+	{
+		global_flags |= LS.ShaderMaterial.reflection_block.flag_mask;
+
+		var environment_texture = null;
+		var irradiance_texture = null;
+		if( LS.Renderer._global_textures.environment )
+			environment_texture = LS.Renderer._global_textures.environment;
+		if( LS.Renderer._global_textures.irradiance )
+			irradiance_texture = LS.Renderer._global_textures.irradiance;
+
+		if(instance._nearest_reflection_probe )
+		{
+			if( instance._nearest_reflection_probe._texture )
+				environment_texture = instance._nearest_reflection_probe._tex_id;
+			if( instance._nearest_reflection_probe._irradiance_texture )
+				irradiance_texture = instance._nearest_reflection_probe._tex_ir_id;
+		}
+
+		if( environment_texture )
+		{
+			var tex = LS.ResourcesManager.textures[ environment_texture ];
+			if( tex && tex.texture_type == GL.TEXTURE_2D )
+				global_flags |= environment_2d_block.flag_mask;
+			else
+				global_flags |= environment_cubemap_block.flag_mask;
+		}
+
+		if( irradiance_texture )
+			global_flags |= irradiance_block.flag_mask;
+
+		this._samplers[ LS.Renderer.ENVIRONMENT_TEXTURE_SLOT ] = environment_texture;
+		this._samplers[ LS.Renderer.IRRADIANCE_TEXTURE_SLOT ] = irradiance_texture;
+	}
+	else
+	{
+		this._samplers[ LS.Renderer.ENVIRONMENT_TEXTURE_SLOT ] = null;
+		this._samplers[ LS.Renderer.IRRADIANCE_TEXTURE_SLOT ] = null;
+	}
 
 	//global stuff
 	this._render_state.enable();
 	LS.Renderer.bindSamplers( this._samplers ); //material samplers
 	LS.Renderer.bindSamplers( instance.samplers ); //RI samplers (like morph targets encoded in textures)
-	var global_flags = LS.Renderer._global_shader_blocks_flags;
-
-	//TODO: could this part be precomputed before rendering color pass?
-	if( pass == COLOR_PASS ) //allow reflections only in color pass
-	{
-		global_flags |= LS.ShaderMaterial.reflection_block.flag_mask;
-		if( LS.Renderer._global_textures.environment )
-		{
-			if( LS.Renderer._global_textures.environment.texture_type == GL.TEXTURE_2D )
-				global_flags |= environment_2d_block.flag_mask;
-			else
-				global_flags |= environment_cubemap_block.flag_mask;
-		}
-		if( LS.Renderer._global_textures.irradiance )
-		{
-			global_flags |= irradiance_block.flag_mask;
-		}
-	}
 
 	//for those cases
 	if(this.onRenderInstance)
@@ -7914,7 +7937,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 		}
 
 		//assign
-		shader.uniformsArray( [ scene._uniforms, camera._uniforms, render_uniforms, this._uniforms, instance.uniforms ] ); //removed, why this was in?? light ? light._uniforms : null, 
+		shader.uniformsArray( [ scene._uniforms, camera._uniforms, renderer_uniforms, this._uniforms, instance.uniforms ] ); //removed, why this was in?? light ? light._uniforms : null, 
 
 		shader.setUniform( "u_light_info", LS.ZEROS4 );
 		if( ignore_lights )
@@ -7930,7 +7953,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 
 	var base_block_flags = block_flags;
 
-	var uniforms_array = [ scene._uniforms, camera._uniforms, render_uniforms, null, this._uniforms, instance.uniforms ];
+	var uniforms_array = [ scene._uniforms, camera._uniforms, renderer_uniforms, null, this._uniforms, instance.uniforms ];
 
 	//render multipass with several lights
 	var prev_shader = null;
@@ -7999,11 +8022,11 @@ ShaderMaterial.prototype.renderPickingInstance = function( instance, render_sett
 	var scene = LS.Renderer._current_scene;
 	var model = instance.matrix;
 	var node = instance.node;
-	var render_uniforms = LS.Renderer._render_uniforms;
+	var renderer_uniforms = LS.Renderer._uniforms;
 
 	//maybe this two should be somewhere else
-	render_uniforms.u_model = model; 
-	render_uniforms.u_normal_model = instance.normal_matrix; 
+	renderer_uniforms.u_model = model; 
+	renderer_uniforms.u_normal_model = instance.normal_matrix; 
 
 	//compute flags
 	var block_flags = instance.computeShaderBlockFlags();
@@ -8024,7 +8047,7 @@ ShaderMaterial.prototype.renderPickingInstance = function( instance, render_sett
 	}
 
 	//assign uniforms
-	shader.uniformsArray( [ camera._uniforms, render_uniforms, this._uniforms, instance.uniforms ] );
+	shader.uniformsArray( [ camera._uniforms, renderer_uniforms, this._uniforms, instance.uniforms ] );
 
 	//set color
 	var pick_color = LS.Picking.getNextPickingColor( instance.picking_node || node );
@@ -20086,11 +20109,12 @@ function RenderInstance( node, component )
 	//transformation
 	this.matrix = mat4.create();
 	this.normal_matrix = mat4.create();
-	this.center = vec3.create();
+	this.position = vec3.create(); //the origin of the node
 
 	//for visibility computation
 	this.oobb = BBox.create(); //object space bounding box
 	this.aabb = BBox.create(); //axis aligned bounding box
+	this.center = BBox.getCenter( this.aabb ); //the center of the AABB
 
 	//info about the material
 	this.material = null; //the material, cannot be a string
@@ -20116,6 +20140,7 @@ function RenderInstance( node, component )
 	this._camera_visibility = 0; //tells in which camera was visible this instance during the last rendering (using bit operations)
 	this._is_visible = false; //used during the rendering to mark if it was seen
 	this._dist = 0; //computed during rendering, tells the distance to the current camera
+	this._nearest_reflection_probe = null;
 }
 
 RenderInstance.NO_SORT = 0;
@@ -20133,7 +20158,7 @@ RenderInstance.prototype.fromNode = function(node)
 		this.setMatrix( node.transform._global_matrix );
 	else
 		this.setMatrix( LS.IDENTITY );
-	mat4.multiplyVec3( this.center, this.matrix, LS.ZEROS );
+	mat4.multiplyVec3( this.position, this.matrix, LS.ZEROS );
 	this.layers = node.layers;
 }
 
@@ -21057,7 +21082,6 @@ var Renderer = {
 	_visible_materials: [],
 	_near_lights: [],
 	_active_samples: [],
-	_reflection_probes: [],
 
 	//stats
 	_frame_cpu_time: 0,
@@ -21078,7 +21102,7 @@ var Renderer = {
 	_temp_matrix: mat4.create(),
 	_temp_cameye: vec3.create(),
 	_identity_matrix: mat4.create(),
-	_render_uniforms: {},
+	_uniforms: {},
 	_instancing_data: [],
 
 	//safety
@@ -21162,6 +21186,10 @@ var Renderer = {
 
 		this.createRenderQueue( LS.RenderQueue.OVERLAY, LS.RenderQueue.NO_SORT );
 		this._full_viewport.set([0,0,gl.drawingBufferWidth,gl.drawingBufferHeight]);
+
+		this._uniforms.u_viewport = gl.viewport_data;
+		this._uniforms.environment_texture = this.ENVIRONMENT_TEXTURE_SLOT;
+		this._uniforms.irradiance_texture = this.IRRADIANCE_TEXTURE_SLOT;
 	},
 
 	reset: function()
@@ -21600,9 +21628,6 @@ var Renderer = {
 		LEvent.trigger( scene, "beforeRenderInstances", render_settings );
 		//scene.triggerInNodes( "beforeRenderInstances", render_settings );
 
-		//compute global scene info
-		this.fillSceneUniforms( scene, render_settings );
-
 		//reset state of everything!
 		this.resetGLState( render_settings );
 
@@ -21925,19 +21950,14 @@ var Renderer = {
 		}
 	},
 
-	//Called at the beginning of renderInstances (once per renderFrame)
-	//DO NOT CACHE, parameters can change between render passes
+	//Called at the beginning of processVisibleData 
 	fillSceneUniforms: function( scene, render_settings )
 	{
 		//global uniforms
-		var uniforms = {
-			u_point_size: this.default_point_size,
-			u_time: scene._time || getTime() * 0.001,
-			u_ambient_light: scene.info.ambient_color,
-			u_viewport: gl.viewport_data
-		};
+		var uniforms = scene._uniforms;
+		uniforms.u_time = scene._time || getTime() * 0.001;
+		uniforms.u_ambient_light = scene.info ? scene.info.ambient_color : vec3.create();
 
-		scene._uniforms = uniforms;
 		scene._samplers = scene._samplers || [];
 		scene._samplers.length = 0;
 
@@ -21946,6 +21966,7 @@ var Renderer = {
 		this._global_textures.irradiance = null;
 
 		//fetch global textures
+		if(scene.info)
 		for(var i in scene.info.textures)
 		{
 			var texture = LS.getTexture( scene.info.textures[i] );
@@ -21996,6 +22017,8 @@ var Renderer = {
 		var frame = scene._frame;
 
 		this._current_scene = scene;
+		//compute global scene info
+		this.fillSceneUniforms( scene, render_settings );
 
 		//update info about scene (collecting it all or reusing the one collected in the frame before)
 		if(!skip_collect_data)
@@ -22416,7 +22439,7 @@ var Renderer = {
 		//add uniforms to renderer uniforms?
 		if(uniforms)
 			for(var i in uniforms)
-				this._render_uniforms[i] = uniforms[i];
+				this._uniforms[i] = uniforms[i];
 	},
 
 	/**
@@ -30198,7 +30221,7 @@ MeshRenderer.prototype.onCollectInstances = function(e, instances)
 
 	if(this.use_submaterials)
 	{
-		this.onCollectInstancesSubmaterials(instances);
+		this.onCollectInstancesSubmaterials( instances );
 		return;
 	}
 
@@ -30531,7 +30554,7 @@ SkinnedMeshRenderer.prototype.getNodeMatrix = function(name)
 	return node.transform.getGlobalMatrixRef();
 }
 
-//checks the list of bones in mesh.bones and retrieves its matrices
+//checks the list of bones in mesh.bones and returns an array of mat4 with their transform
 SkinnedMeshRenderer.prototype.getBoneMatrices = function(ref_mesh)
 {
 	//bone matrices
@@ -30689,7 +30712,7 @@ SkinnedMeshRenderer.prototype.onCollectInstances = function(e, instances, option
 	RI.material = this.material || this._root.getMaterial();
 
 	if( this.apply_skinning )
-		RI.use_bounding = false; //no frustum test in skinned meshes, hard to compute the frustrum in CPU
+		RI.use_bounding = false; //no frustum test in skinned meshes, hard to compute the frustrum when deformations are applied
 
 	if(this.primitive == gl.POINTS)
 		RI.uniforms.u_point_size = this.point_size;
@@ -31832,11 +31855,12 @@ SkinDeformer.prototype.applySkinning = function(RI)
 	if(!mesh || !mesh.getBuffer("vertices") || !mesh.getBuffer("bone_indices"))
 		return;
 
+	var bones = null;
 	
 	if( SkinDeformer.gpu_skinning_supported && !this.cpu_skinning ) 
 	{
 		//retrieve all the bones
-		var bones = this.getBoneMatrices( mesh );
+		bones = this.getBoneMatrices( mesh );
 		var bones_size = bones.length * 12;
 		if(!bones.length)
 		{
@@ -31925,7 +31949,21 @@ SkinDeformer.prototype.applySkinning = function(RI)
 	}
 	else
 		this._root.transform.getGlobalMatrix( RI.matrix );
-	mat4.multiplyVec3( RI.center, RI.matrix, LS.ZEROS );
+
+	if(bones && bones.length) //extract at least one position from the bones, we need for probes and sorting
+	{
+		RI.center.set( LS.ZEROS );
+		for(var i = 0; i < bones.length; ++i)
+		{
+			RI.center[0] += bones[i][3];
+			RI.center[1] += bones[i][7];
+			RI.center[2] += bones[i][11];
+		}
+		RI.center[0] /= bones.length;
+		RI.center[1] /= bones.length;
+		RI.center[2] /= bones.length;
+	}
+	mat4.multiplyVec3( RI.position, RI.matrix, LS.ZEROS );
 
 	RI.use_bounding = false;
 }
@@ -38245,7 +38283,7 @@ LS.registerComponent( RealtimeReflector );
 */
 
 
-function ReflectionProbe(o)
+function ReflectionProbe( o )
 {
 	this._enabled = true;
 	this.texture_size = 512;
@@ -38260,15 +38298,17 @@ function ReflectionProbe(o)
 	this.far = 1000;
 	this.background_color = vec4.create();
 
-	this._position = vec3.create();
-	this._current = vec3.create();
+	this._position = vec3.create(); //position where the cubemap was captured
+	this._current = vec3.create(); //position where the node is
 	this._version = -1;
 
 	this._texture = null;
 	this._irradiance_texture = null;
 
-	this._texid = ":probe_" + ReflectionProbe.last_id;
+	this._tex_id = ":probe_" + ReflectionProbe.last_id;
+	this._tex_ir_id = ":probe_IR_" + ReflectionProbe.last_id;
 	ReflectionProbe.last_id++;
+	this._registered = false;
 
 	if(o)
 		this.configure(o);
@@ -38286,9 +38326,16 @@ Object.defineProperty( ReflectionProbe.prototype, "enabled", {
 	set: function(v){ 
 		if(v == this._enabled)
 			return;
-		this._enabled = v; 
+		this._enabled = v;
+		var scene = this._root ? this._root.scene : null;
 		if(!this._enabled)
+		{
+			if(this._registered)
+				this.unregister(scene);
 			return;
+		}
+		if(!this._registered)
+			this.register(scene);
 		this.onRenderReflection();
 		LS.GlobalScene.requestFrame();
 	},
@@ -38303,7 +38350,7 @@ ReflectionProbe.prototype.onAddedToScene = function(scene)
 	//LEvent.bind( scene,"afterCameraEnabled", this.onCameraEnabled, this );
 	//LEvent.bind( LS.Renderer,"renderHelpers", this.onVisualizeProbe, this );
 
-	this.assignCubemaps(scene);
+	this.register( scene );
 }
 
 ReflectionProbe.prototype.onRemovedFromScene = function(scene)
@@ -38312,13 +38359,15 @@ ReflectionProbe.prototype.onRemovedFromScene = function(scene)
 	//LEvent.unbindAll( LS.Renderer, this );
 	
 	if(this._texture)
-		LS.ResourcesManager.unregisterResource( this._texid );
+		LS.ResourcesManager.unregisterResource( this._tex_id );
 	if(this._irradiance_texture)
-		LS.ResourcesManager.unregisterResource( this._texid + "_IR" );
+		LS.ResourcesManager.unregisterResource( this._tex_ir_id );
 
 	//TODO: USE POOL!!
 	this._texture = null;
 	this._irradiance_texture = null;
+
+	this.unregister( scene );
 }
 
 ReflectionProbe.prototype.afterSerialize = function(o)
@@ -38435,13 +38484,13 @@ ReflectionProbe.prototype.updateCubemap = function( position, render_settings )
 
 	if(this.texture_name)
 		LS.ResourcesManager.registerResource( this.texture_name, texture );
-	LS.ResourcesManager.registerResource( this._texid, texture );
+	LS.ResourcesManager.registerResource( this._tex_id, texture );
 
 	//add probe to LS.Renderer
 	//TODO
 	//HACK
-	if( scene.info )
-		scene.info.textures.environment = this._texid;
+	//if( scene.info )
+	//	scene.info.textures.environment = this._tex_id;
 
 	//remove flags
 	render_settings.layers = old_layers;
@@ -38506,31 +38555,60 @@ ReflectionProbe.prototype.updateIrradiance = function()
 	return irradiance_cubemap;
 }
 
+//assigns the cubemaps to the scene global
 ReflectionProbe.prototype.assignCubemaps = function( scene )
 {
-	if(!scene && this._root)
-		scene = this._root.scene;
-	if(!scene)
-		scene = LS.GlobalScene;
-
 	if(this._texture)
-	{
-		var tex = this._texture;
-		LS.ResourcesManager.registerResource( this._texid, this._texture );
-		if( scene.info )
-			scene.info.textures.environment = this._texid;
-	}
+		LS.ResourcesManager.registerResource( this._tex_id, this._texture );
 
 	if(this._irradiance_texture)
-	{
-		var ir_name = this._texid + "_IR";
-		LS.ResourcesManager.registerResource( ir_name, this._irradiance_texture );
-		if( scene.info )
-			scene.info.textures.irradiance = ir_name;
-	}
+		LS.ResourcesManager.registerResource( this._tex_ir_id, this._irradiance_texture );
 }
 
+/**
+* Adds a reflection probe to the scene
+*
+* @method register
+* @param {LS.Scene} scene
+*/
+ReflectionProbe.prototype.register = function( scene )
+{
+	if( scene._reflection_probes.indexOf( this ) != -1 )
+	{
+		console.warn("this reflection probe is already registered");
+		return;
+	}
 
+	scene._reflection_probes.push( this );
+	this._registered = true;
+}
+
+/**
+* removes a reflection probe from the scene
+*
+* @method unregister
+* @param {ReflectionProbe} probe
+*/
+ReflectionProbe.prototype.unregister = function( scene )
+{
+	var index = scene._reflection_probes.indexOf( this );
+	if( index == -1 )
+	{
+		console.warn("this reflection probe is not registered");
+		return;
+	}
+
+	scene._reflection_probes.splice( index, 1);
+	this._registered = false;
+}
+
+/**
+* visualizes the content of a probe
+*
+* @method renderProbe
+* @param {bool} visualize_irradiance if true the irradiance is shown, otherwise the reflection
+* @param {bool} picking_color if true it is rendered with a giben color for mouse picking
+*/
 ReflectionProbe.prototype.renderProbe = function( visualize_irradiance, picking_color )
 {
 	if( !this._texture || !this._enabled )
@@ -38569,6 +38647,7 @@ ReflectionProbe.prototype.renderProbe = function( visualize_irradiance, picking_
 	LS.Draw.pop();
 }
 
+//this functions transform the irradiance info into data so it can be stored in the JSON directly
 ReflectionProbe.cubemapToObject = function( cubemap )
 {
 	var faces = [];
@@ -38604,6 +38683,8 @@ ReflectionProbe.objectToCubemap = function( data, out, high_precision )
 	return out;
 }
 
+
+
 /*
 ReflectionProbe.cubemapToIrradiance = function( origin_cubemap, destination_cubemap )
 {
@@ -38629,6 +38710,25 @@ ReflectionProbe.cubemapToIrradiance = function( origin_cubemap, destination_cube
 		GL.Texture.releaseTemporary( temp_textures[i] );
 }
 */
+
+/**
+* Static method to update all the reflection probes active in the scene
+*
+* @method ReflectionProbe.updateAll
+* @param {LS.Scene} scene the scene
+* @param {LS.RenderSettings} render_settings the render settings to use while rendering the cubemaps
+*/
+
+ReflectionProbe.updateAll = function( scene, render_settings )
+{
+	scene = scene || LS.GlobalScene;
+
+	for(var i = 0; i < scene._reflection_probes.length; ++i)
+	{
+		var probe = scene._reflection_probes[i];
+		probe.updateTextures( render_settings, true );
+	}
+}
 
 ReflectionProbe.visualize_helpers = true;
 ReflectionProbe.visualize_irradiance = false;
@@ -42239,16 +42339,18 @@ function Scene()
 	this._root._is_root  = true;
 	this._root._in_tree = this;
 	this._nodes = [ this._root ];
-	this._nodes_by_name = {"root":this._root};
+	this._nodes_by_name = { "root" : this._root };
 	this._nodes_by_uid = {};
 	this._nodes_by_uid[ this._root.uid ] = this._root;
 	this._components_by_uid = {};
 
 	//used to stored info when collecting from nodes
+	this._uniforms = {};
 	this._instances = [];
 	this._lights = [];
 	this._cameras = [];
 	this._colliders = [];
+	this._reflection_probes = [];
 
 	//MOST OF THE PARAMETERS ARE CREATED IN init() METHOD
 
@@ -42411,6 +42513,12 @@ Scene.prototype.clear = function()
 	//remove scene components
 	this._root.processActionInComponents("onRemovedFromNode",this); //send to components
 	this._root.processActionInComponents("onRemovedFromScene",this); //send to components
+
+	this._instances.length = 0;
+	this._lights.length = 0;
+	this._cameras.length = 0;
+	this._colliders.length = 0;
+	this._reflection_probes.length = 0;
 
 	this.init();
 	/**
@@ -43752,6 +43860,10 @@ Scene.prototype.collectData = function( cameras )
 		//compute the axis aligned bounding box
 		if(instance.use_bounding)
 			instance.updateAABB();
+
+		//find nearest reflection probe
+		if(this._reflection_probes.length)
+			instance._nearest_reflection_probe = this.findNearestReflectionProbe( instance.center );
 	}
 
 	//for each physics instance collected
@@ -44040,6 +44152,37 @@ Scene.prototype.updateStaticObjects = function()
 	this.collectData();
 	LS.allow_static = old;
 }
+
+/**
+* search for the nearest reflection probe to the point
+*
+* @method findNearestReflectionProbe
+* @param {vec3} position
+* @return {LS.ReflectionProbe} the reflection probe
+*/
+Scene.prototype.findNearestReflectionProbe = function( position )
+{
+	if(!this._reflection_probes.length)
+		return null;
+
+	if( this._reflection_probes.length == 1 )
+		return this._reflection_probes[0];
+
+	var probes = this._reflection_probes;
+	var min_dist = 1000000;
+	var nearest_probe = null;
+	for(var i = 0; i < probes.length; ++i)
+	{
+		var probe = probes[i];
+		var dist = vec3.distance( position, probe._position );
+		if( dist > min_dist )
+			continue;
+		min_dist = dist;
+		nearest_probe = probe;
+	}
+	return nearest_probe;
+}
+
 
 //tells to all the components, nodes, materials, etc, that one resource has changed its name so they can update it inside
 Scene.prototype.sendResourceRenamedEvent = function( old_name, new_name, resource )

@@ -20,7 +20,9 @@ var EditorView = {
 		render_tree: false,
 		render_skeletons: true,
 		render_names: false,
-		render_height: true
+		render_height: true,
+		render_selection_wireframe: false,
+		render_probes_link: false
 	},
 
 	render_debug_info: true,
@@ -280,17 +282,41 @@ LS.SceneNode.prototype.renderEditor = function( node_selected )
 	LS.Draw.setColor([0.3,0.3,0.3,0.5]);
 	gl.enable(gl.BLEND);
 
+	var probe_links = EditorView.preferences.render_probes_link ? [] : null;
+
 	//if this node has render instances...
 	if(this._instances)
 	{
-		if(node_selected || EditorView.preferences.render_boundings )
+		for(var i = 0; i < this._instances.length; ++i)
 		{
-			for(var i = 0; i < this._instances.length; ++i)
-			{
-				var instance = this._instances[i];
-				if(instance.flags & LS.RI_IGNORE_FRUSTUM)
-					continue;
+			var instance = this._instances[i];
+			var aabb = instance.aabb;
 
+			if( EditorView.preferences.render_probes_link && instance._nearest_reflection_probe )
+			{
+				if( node_selected )
+				{
+					LS.Draw.setColor([1,1,1,1]);
+					LS.Draw.renderLines([instance.center, instance._nearest_reflection_probe._position]);
+				}
+				else
+					probe_links.push( instance.center, instance._nearest_reflection_probe._position );
+			}
+
+			if(node_selected && EditorView.preferences.render_selection_wireframe )
+			{
+				LS.Draw.setColor([1,1,0.5,0.01]);
+				gl.disable( gl.DEPTH_TEST );
+				LS.Draw.push();
+				LS.Draw.multMatrix( instance.matrix );
+				LS.Draw.renderMesh( instance.mesh, gl.TRIANGLES, null, "triangles", instance.range[0], instance.range[1] );
+				LS.Draw.pop();
+				gl.enable( gl.DEPTH_TEST );
+			}
+
+			//render bounding
+			if( (node_selected || EditorView.preferences.render_boundings) && !(instance.flags & LS.RI_IGNORE_FRUSTUM) )
+			{
 				var oobb = instance.oobb;
 				LS.Draw.setColor([0.8,0.5,0.3,0.5]);
 				LS.Draw.push();
@@ -327,6 +353,12 @@ LS.SceneNode.prototype.renderEditor = function( node_selected )
 		var s = 5;
 		LS.Draw.renderLines([[s,0,0],[-s,0,0],[0,s,0],[0,-s,0],[0,0,s],[0,0,-s]]);
 		LS.Draw.pop();
+	}
+
+	if( probe_links && probe_links.length )
+	{
+		LS.Draw.setColor([0.5,0.8,0.9,0.5]);
+		LS.Draw.renderLines(probe_links);
 	}
 
 	if(node_selected && EditorView.preferences.render_height)

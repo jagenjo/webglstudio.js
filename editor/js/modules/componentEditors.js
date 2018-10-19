@@ -1009,7 +1009,9 @@ LS.Components.Poser.showPoseNodesDialog = function( component, event )
 
 LS.Components.ReflectionProbe.onShowProperties = function( component, inspector )
 {
-	inspector.addButton( null, "update", function(){ component.updateTextures(null,true); LS.GlobalScene.requestFrame(); });
+	inspector.widgets_per_row = 2;
+	inspector.addButton( null, "Update", function(){ component.updateTextures(null,true); LS.GlobalScene.requestFrame(); });
+	inspector.addButton( null, "Update all", function(){ LS.Components.ReflectionProbe.updateAll(); LS.GlobalScene.requestFrame(); });
     inspector.addSeparator();
 
 	inspector.widgets_per_row = 3;

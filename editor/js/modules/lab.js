@@ -4,6 +4,12 @@ var LabModule = {
 
 	enabled: false,
 	mode: "textures",
+	channels: "rgba",
+	exposure: 1,
+
+	rotate: true,
+	meshes_axis: "Y",
+	meshes_mode: "phong_wireframe",
 
 	offset: vec2.create(0,0),
 	scale: 1,
@@ -15,8 +21,7 @@ var LabModule = {
 
 	settings: {
 		render_frame: false,
-		render_filename: true,
-		render_alpha: true
+		render_filename: true
 	},
 
 	init: function()
@@ -42,24 +47,61 @@ var LabModule = {
 		mode_tabs.root.style.backgroundColor = "#111";
 		this.mode_tabs = mode_tabs;
 
+		var inspector = this.top_inspector = new LiteGUI.Inspector({ widgets_width: 200, one_line: true });
+		content.appendChild( inspector.root );
+
 		mode_tabs.addTab("Textures", function(){
-			LabModule.mode = "textures";
+			LabModule.setMode("textures");
 		});
 		mode_tabs.addTab("Meshes",function(){
-			LabModule.mode = "meshes";
+			LabModule.setMode("meshes");
 		});
 		mode_tabs.addTab("Materials",function(){
-			LabModule.mode = "materials";
+			LabModule.setMode("materials");
 		});
 
-		/*
-		mode_tabs.addTab("Shaders",function(){
-			LabModule.mode = "shaders";
-		});
-		*/
 		//enable WebGL Canvas2D renderer
 		if( RenderModule.canvas_manager.canvas )
 			this.prepareGL();
+	},
+
+	setMode: function( mode )
+	{
+		this.mode = mode;
+		var inspector = this.top_inspector;
+		inspector.clear();
+
+		if( this.mode == "textures" )
+		{
+			inspector.addButton( null, "Reset", { callback: function(){ 
+				LabModule.channels = "RGBA";
+				LabModule.exposure = 1;
+			}});
+			inspector.addCombo("Channels", this.channels, { values:["RGBA","RGB","R","G","B","A"], callback: function(v){
+				LabModule.channels = v;			
+			}});		
+			inspector.addSlider("Exposure", this.exposure, { max: 4, callback: function(v){
+				LabModule.exposure = v;			
+			}});		
+		}
+		else if( this.mode == "meshes" )
+		{
+			inspector.addCheckbox("Rotate", this.rotate, { callback: function(v){
+				LabModule.rotate = v;			
+			}});
+			inspector.addCombo("Axis", this.meshes_axis, { values:["X","Y","Z"], callback: function(v){
+				LabModule.meshes_axis = v;			
+			}});		
+			inspector.addCombo("Render Mode", this.meshes_mode, { values:["phong_wireframe","phong","wireframe"], callback: function(v){
+				LabModule.meshes_mode = v;			
+			}});		
+		}
+		else if( this.mode == "materials" )
+		{
+			inspector.addCheckbox("Rotate", this.rotate, { callback: function(v){
+				LabModule.rotate = v;			
+			}});		
+		}
 	},
 
 	prepareGL: function()
@@ -69,15 +111,49 @@ var LabModule = {
 		this.camera = new LS.Camera();
 		this.camera.lookAt([0,0,0],[0,0,-1],[0,1,0]);
 
+		this._channel_shader = new GL.Shader('\
+			precision mediump float;\n\
+			attribute vec3 a_vertex;\n\
+			attribute vec2 a_coord;\n\
+			varying vec2 v_coord;\n\
+			uniform mat4 u_mvp;\n\
+			void main() {\n\
+				v_coord = a_coord;\n\
+				gl_Position = u_mvp * vec4(a_vertex,1.0);\n\
+			}\
+			','\
+			precision mediump float;\n\
+			varying vec2 v_coord;\n\
+			uniform vec4 u_color;\n\
+			uniform float u_channel;\n\
+			uniform float u_exposure;\n\
+			uniform sampler2D u_texture;\n\
+			void main() {\n\
+			  vec2 coord = v_coord;\n\
+			  vec4 channels = texture2D( u_texture, coord );\n\
+			  vec4 color;\n\
+			  if( u_channel == 0.0 )\n\
+				color = vec4( channels[0], channels[0], channels[0], 1.0);\n\
+			  else if( u_channel == 1.0 )\n\
+				color = vec4( channels[1], channels[1], channels[1], 1.0);\n\
+			  else if( u_channel == 2.0 )\n\
+				color = vec4( channels[2], channels[2], channels[2], 1.0);\n\
+			  else if( u_channel == 3.0 )\n\
+				color = vec4( channels[3], channels[3], channels[3], 1.0);\n\
+			  else\n\
+				color = channels;\n\
+			  color.xyz *= u_exposure;\n\
+			  gl_FragColor = color;\n\
+			}\
+		');
+
 		this._cubemap_shader = new GL.Shader('\
 			precision mediump float;\n\
 			attribute vec3 a_vertex;\n\
 			attribute vec2 a_coord;\n\
 			varying vec2 v_coord;\n\
 			uniform mat4 u_mvp;\n\
-			uniform float u_point_size;\n\
 			void main() {\n\
-				gl_PointSize = u_point_size;\n\
 				v_coord = a_coord;\n\
 				gl_Position = u_mvp * vec4(a_vertex,1.0);\n\
 			}\
@@ -177,10 +253,21 @@ var LabModule = {
 		for(var i in LS.RM.textures)
 		{
 			var item = LS.RM.textures[i];
-			if(item._is_internal)
+			if(!item || item._is_internal)
 				continue;
 			textures.push(item);
 		}
+
+		var channel = 1;
+		switch( this.channels )
+		{
+			case "R": channel = 0; break;
+			case "G": channel = 1; break;
+			case "B": channel = 2; break;
+			case "A": channel = 3; break;
+			default: channel = -1; break;
+		}
+		this._channel_shader.uniforms({ u_channel: channel, u_exposure: this.exposure });
 
 		textures = textures.concat( gl._texture_pool );
 
@@ -215,20 +302,21 @@ var LabModule = {
 			var white = [1,1,1,1];
 			var black = [0,0,0,1];
 
+			//inside camera
 			if(startx <= gl.canvas.width && starty <= gl.canvas.height && 
 				startx + sizex > 0 && starty + sizey > 0 )
 			{
 				if(tex.texture_type == gl.TEXTURE_2D)
 				{
 					//LS.Draw.renderPlane([posx + size*0.6, posy + size*0.6, 0], [size*0.5,-size*0.5], tex );
-					if(!this.settings.render_alpha)
-						gl.disable( gl.BLEND );
-					else
+					if(this.channels == "RGBA")
 						gl.enable( gl.BLEND );
-					gl.drawImage(tex, posx, posy, w, h );
+					else 
+						gl.disable( gl.BLEND );
+					LS.Draw.renderPlane([ gl._matrix[6] + (posx + w*0.5) * gl._matrix[0], gl._matrix[7] + (posy + h*0.5) * gl._matrix[4], 0], [ w*0.5 * gl._matrix[0], -h*0.5 * gl._matrix[4] ], tex, this._channel_shader );
 					gl.enable( gl.BLEND );
 				}
-				else
+				else if(tex.texture_type == gl.TEXTURE_CUBE_MAP)//cubemaps
 				{
 					this._cubemap_shader.uniforms({u_rotation: getTime() * 0.001 });
 					LS.Draw.renderPlane([ gl._matrix[6] + (posx + w*0.5) * gl._matrix[0], gl._matrix[7] + (posy + h*0.5) * gl._matrix[4], 0], [ w*0.5 * gl._matrix[0], -h*0.5 * gl._matrix[4] ], tex, this._cubemap_shader );
@@ -279,17 +367,25 @@ var LabModule = {
 		var old_viewport = gl.getViewport();
 
 		var matrix = mat4.create();
-		if(this.meshes_axis == "Y")
-			mat4.rotateY( matrix, matrix, getTime() * 0.0005 );
-		else
-			mat4.rotateZ( matrix, matrix, getTime() * 0.0005 );
+		if( this.rotate )
+		{
+			if(this.meshes_axis == "Y")
+				mat4.rotateY( matrix, matrix, getTime() * 0.0005 );
+			else
+				mat4.rotateZ( matrix, matrix, getTime() * 0.0005 );
+		}
 
 		this.items.length = 0;
+		var phong = this.meshes_mode.indexOf("phong") != -1;
+		var wireframe = this.meshes_mode.indexOf("wireframe") != -1;
 
 		var num = 0;
 		for(var i in LS.RM.meshes)
 		{
 			var item = LS.RM.meshes[i];
+			if(!item)
+				continue;
+
 			num++;
 			var mesh = item;
 			var w = size;
@@ -300,6 +396,7 @@ var LabModule = {
 			var sizex = w * gl._matrix[0];
 			var sizey = h * gl._matrix[4];
 
+			//inside camera
 			if(startx <= gl.canvas.width && starty <= gl.canvas.height && 
 				startx + sizex > 0 && starty + sizey > 0 )
 			{
@@ -324,10 +421,12 @@ var LabModule = {
 
 				gl.disable( gl.BLEND );
 				gl.enable( gl.DEPTH_TEST );
-				LS.Draw.renderMesh( mesh, gl.TRIANGLES, LS.Draw.shader_phong );
+
+				if(phong)
+					LS.Draw.renderMesh( mesh, gl.TRIANGLES, LS.Draw.shader_phong );
 				gl.enable( gl.BLEND );
 
-				if( mesh.vertexBuffers["vertices"] ) //wireframe
+				if( wireframe && mesh.vertexBuffers["vertices"] ) //wireframe
 				{
 					if(!mesh.indexBuffers["wireframe"])
 						mesh.computeWireframe();
@@ -372,6 +471,9 @@ var LabModule = {
 		LS.Draw.reset_stack_on_reset = false;
 
 		var old_viewport = gl.getViewport();
+		var angle = 0;
+		if( this.rotate )
+			angle = getTime() * 0.0005;
 
 		this.items.length = 0;
 		var num = 0;
@@ -394,7 +496,7 @@ var LabModule = {
 				gl.viewport( startx, starty, sizex, sizey );
 
 				//render
-				LS.Renderer.renderMaterialPreview( material, 1, { to_viewport: true, background_color: [0.1,0.1,0.1,1.0], rotate: 0.02 } );
+				LS.Renderer.renderMaterialPreview( material, 1, { to_viewport: true, background_color: [0.1,0.1,0.1,1.0], rotate: angle } );
 
 				gl.setViewport( old_viewport );
 

@@ -286,6 +286,7 @@ var SceneStorageModule = {
 
 			//clear
 			LS.Renderer.reset();
+			LS.ResourcesManager.reset();
 			LS.GlobalScene.clear();
 
 			//the Scene.load function bypasses the LS.RM (uses relative urls), something that is a problem when loading an scene stored in the Drive

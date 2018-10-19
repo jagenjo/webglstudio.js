@@ -2280,6 +2280,8 @@ function Slider(value, options)
 		doc_binded = root.ownerDocument;
 		doc_binded.addEventListener("mousemove", onMouseMove );
 		doc_binded.addEventListener("mouseup", onMouseUp );
+		e.preventDefault();
+		e.stopPropagation();
 	});
 
 	function onMouseMove(e)

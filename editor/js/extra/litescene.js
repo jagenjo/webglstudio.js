@@ -17774,7 +17774,7 @@ if(typeof(LiteGraph) != "undefined")
 		inspector.addSeparator();
 	}
 
-	LiteGraph.registerNodeType("math/remap", LGraphRemapWeights );
+	LiteGraph.registerNodeType("math/remap_weights", LGraphRemapWeights );
 }
 
 ///@FILE:../src/graph/shader.js

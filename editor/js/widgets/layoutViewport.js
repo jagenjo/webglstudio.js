@@ -61,30 +61,6 @@ LayoutViewport.prototype.render = function()
 	var camera = this.camera;
 	var viewport = camera.getLocalViewport( null, this._viewport_in_pixels );
 
-	/*
-	if(this.use_fixed_viewport)
-	{
-		var w = this.fixed_viewport[0];
-		var h = this.fixed_viewport[1];
-		if( this.fixed_viewport[0] > this.fixed_viewport[1] ) //width is bigger
-		{
-			if( this.fixed_viewport[0] > gl.drawingBufferWidth )
-			{
-				h = h * ( w / gl.drawingBufferWidth );
-				w = gl.drawingBufferWidth;
-			}
-		}
-		else
-		{
-			if( this.fixed_viewport[1] > gl.drawingBufferHeight )
-			{
-				w = w * ( h / gl.drawingBufferHeight );
-				w = gl.drawingBufferHeight;
-			}
-		}
-	}
-	*/
-
 	//render outline 
 	gl.start2D();
 
@@ -218,6 +194,31 @@ LayoutViewport.prototype.addGizmos = function()
 	this.gizmos.push( new CameraGizmo( this ) );
 }
 
+LayoutViewport.prototype.setDefaultCamera = function(v)
+{
+	this.scene_camera = null;
+	this.editor_camera.type = LS.Camera.ORTHOGRAPHIC;
+	var dir;
+	var up;
+	switch(v)
+	{
+		case "top": dir = [0,-1,0]; up = [0,0,-1]; break;
+		case "bottom": dir = [0,1,0]; up = [0,0,1]; break;
+		case "left": dir = [-1,0,0]; up = [0,1,0]; break;
+		case "right": dir = [1,0,0]; up = [0,1,0]; break;
+		case "back": dir = [0,0,1]; up = [0,1,0]; break;
+		case "front": 
+		default:
+			dir = [0,0,-1]; up = [0,1,0]; break;
+	}
+	var center = [0,0,0];
+	vec3.scale(dir,dir,100);
+	var eye = vec3.sub(vec3.create(),center,dir);
+	this.editor_camera.lookAt(eye,dir,up);
+
+	LS.GlobalScene.refresh();
+}
+
 LayoutViewport.prototype.setCamera = function(camera)
 {
 	//restore old scene camera viewport
@@ -325,6 +326,7 @@ LayoutViewport.prototype.showContextMenu = function( e, prev_menu )
 		"Perspective",
 		"Orthographic",
 		null,
+		{ title: "Default Views", has_submenu: true, callback: inner_views },
 		{ title: "Select Camera", has_submenu: true, callback: inner_cameras }
 	];
 
@@ -349,6 +351,15 @@ LayoutViewport.prototype.showContextMenu = function( e, prev_menu )
 
 		LS.GlobalScene.refresh();
 	}});
+
+	function inner_views( v,o,e ) 
+	{
+		var options = ["Top","Bottom","Left","Right","Front","Back"];
+
+		var submenu = new LiteGUI.ContextMenu( options, { event: e, title: "Views", parentMenu: menu, callback: function(v) {
+			that.setDefaultCamera(v.toLowerCase());
+		}});
+	}
 
 	function inner_cameras( v,o,e ) 
 	{

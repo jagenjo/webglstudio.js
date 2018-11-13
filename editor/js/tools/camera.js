@@ -401,7 +401,12 @@ var cameraTool = {
 		vec3.scale( dist, dist, dt );
 
 		if(camera.type == LS.Camera.ORTHOGRAPHIC)
-			camera.frustum_size = vec3.length(dist);
+		{
+			//camera.frustum_size = vec3.length(dist);
+			camera.frustum_size *= dt;
+			LS.GlobalScene.refresh();
+			return;
+		}
 
 		var new_eye = vec3.create();
 

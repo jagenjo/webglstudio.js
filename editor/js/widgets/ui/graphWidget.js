@@ -289,6 +289,7 @@ GraphWidget.prototype.compileGraph = function()
 	graphcode.propagate();
 }
 
+//node panel defined later in the file, search for "inspect"
 GraphWidget.prototype.onShowNodePanel = function( node )
 {
 	var inspector = this.inspector || EditorModule.inspector;
@@ -572,11 +573,18 @@ GraphWidget.prototype.onGetExtraMenuOptions = function(options)
 	}
 }
 
+//here we create a panel
 LiteGraph.addNodeMethod( "inspect", function( inspector )
 {
 	var graphnode = this;
 
-	inspector.addSection("Node");
+	var icon = "imgs/mini-icon-graph.png";
+
+	var title = inspector.addSection("<img src='"+icon+"' draggable='true'/> Node");
+	var icon_img = title.querySelector("img");
+	icon_img.addEventListener("dragstart", function(event) { 
+		//event.dataTransfer.setData("uid", component.uid);
+	});
 
 	inspector.widgets_per_row = 2;
 	inspector.addString("Title", graphnode.title, { name_width: 100, disabled: graphnode.ignore_rename, callback: function(v) { graphnode.title = v; }});
@@ -655,32 +663,10 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 		}
 	}
 
-	if(graphnode._inspect)
-		graphnode._inspect( inspector );
-
-	if(graphnode.help)
-		inspector.addInfo( null, graphnode.help );
+	if(graphnode.onInspect)
+		graphnode.onInspect( inspector );
 
 	inspector.addSeparator();
-
-	if( graphnode.constructor == LGraphSceneNode )
-	{
-		inspector.addButton(null, "Inspect node", function(){
-			var node = graphnode.getNode();
-			if(node)
-				EditorModule.inspect( node );
-		});
-	}
-
-	if( graphnode.constructor == LGraphComponent )
-	{
-		inspector.addButton(null, "Inspect Component", function(){
-			var compo = graphnode.getComponent();
-			if(!compo)
-				return;
-			EditorModule.inspect( compo );
-		});
-	}
 
 	inspector.addButtons(null, ["Collapse","Remove","Show JSON"], { callback: function(v) { 
 		if(v == "Collapse")
@@ -693,6 +679,9 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 		else if(v == "Remove")
 			graphnode.graph.remove(graphnode);
 	}});
+
+	if(graphnode.help)
+		inspector.addInfo( null, graphnode.help );
 
 	function inner_assign(v)
 	{

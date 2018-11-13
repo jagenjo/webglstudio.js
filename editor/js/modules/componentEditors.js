@@ -16,7 +16,6 @@ LS.Components.GlobalInfo["@inspector"] = function( component, inspector )
 	inspector.addSeparator();
 
 	inner_setTexture("environment");
-	inner_setTexture("irradiance");
 
 	inspector.addSeparator();
 	//inspector.addCheckbox("Linear Pipeline", component.linear_pipeline, { pretitle: AnimationModule.getKeyframeCode( component, "linear_pipeline"), callback: function(v) { component.linear_pipeline = v; } });
@@ -1023,11 +1022,19 @@ LS.Components.ReflectionProbe.onShowProperties = function( component, inspector 
 
 LS.Components.IrradianceCache.onShowProperties = function( component, inspector )
 {
-	inspector.addButton( null, "update", function(){ component.recompute(); LS.GlobalScene.requestFrame(); });
+	var info = null;
+
+	inspector.addButton( null, "update", function(){ 
+		component.recompute(); LS.GlobalScene.requestFrame();
+		info.setValue( (component.getSizeInBytes()/1024).toFixed(1) + " KBs" );
+	});
     inspector.addSeparator();
 
-	inspector.widgets_per_row = 2;
+	inspector.widgets_per_row = 3;
 	inspector.addCheckbox( "Visualize", LS.Components.IrradianceCache.show_probes, function(v){ LS.Components.IrradianceCache.show_probes = v; LS.GlobalScene.requestFrame(); });
+	inspector.addCheckbox( "Cubemaps", LS.Components.IrradianceCache.show_cubemaps, function(v){ LS.Components.IrradianceCache.show_cubemaps = v; LS.GlobalScene.requestFrame(); });
 	inspector.addNumber( "Size", LS.Components.IrradianceCache.probes_size, function(v){ LS.Components.IrradianceCache.probes_size = v; LS.GlobalScene.requestFrame(); });
 	inspector.widgets_per_row = 1;
+	info = inspector.addInfo( "Total Size", (component.getSizeInBytes()/1024).toFixed(1) + " KBs" );
+
 }

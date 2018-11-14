@@ -5321,7 +5321,7 @@ Texture.prototype.drawTo = function(callback, params)
 	{
 		if( GL.getTime() - this.time >= 1000*60 )
 		{
-			console.log("Buffer cleared");
+			//console.log("Buffer cleared");
 			gl.deleteRenderbuffer( gl._renderbuffers_pool[ key ] );
 			delete gl._renderbuffers_pool[ key ];
 		}

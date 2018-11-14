@@ -1024,10 +1024,16 @@ LS.Components.IrradianceCache.onShowProperties = function( component, inspector 
 {
 	var info = null;
 
-	inspector.addButton( null, "update", function(){ 
+	inspector.widgets_per_row = 2;
+	inspector.addButton( null, "update all", { width:"70%", callback: function(){ 
 		component.recompute(); LS.GlobalScene.requestFrame();
 		info.setValue( (component.getSizeInBytes()/1024).toFixed(1) + " KBs" );
-	});
+	}});
+	inspector.addButton( null, "[only view]", { width:"30%", callback: function(){ 
+		component.recompute( LS.Renderer._current_camera ); LS.GlobalScene.requestFrame();
+		info.setValue( (component.getSizeInBytes()/1024).toFixed(1) + " KBs" );
+	}});
+	inspector.widgets_per_row = 1;
     inspector.addSeparator();
 
 	inspector.widgets_per_row = 3;

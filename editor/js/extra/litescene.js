@@ -23058,7 +23058,7 @@ var Renderer = {
 			if(!camera.enabled || camera.render_to_texture)
 				continue;
 
-			if( camera.isPointInCamera(x,y) )
+			if( camera.isPoint2DInCameraViewport(x,y) )
 				return camera;
 		}
 		return null;
@@ -27494,8 +27494,8 @@ function Camera(o)
 		u_previous_viewprojection: this._previous_viewprojection_matrix
 	};
 
+	this._frustum_planes = this.updateFrustumPlanes(); //to create
 	this.updateMatrices();
-	this._frustum_planes = geo.extractPlanes( this._viewprojection_matrix );
 
 	//LEvent.bind(this,"cameraEnabled", this.onCameraEnabled.bind(this));
 }
@@ -28145,15 +28145,8 @@ Camera.prototype.updateMatrices = function( force )
 		mat4.invert(this._model_matrix, this._view_matrix );
 	}
 
-	/*
-	if(this.flip_x) //used in reflections
-	{
-		//mat4.scale(this._projection_matrix,this._projection_matrix, [-1,1,1]);
-	};
-	*/
-	//if(this._root && this._root.transform)
-
 	mat4.multiply(this._viewprojection_matrix, this._projection_matrix, this._view_matrix );
+	this.updateFrustumPlanes();
 
 	this._must_update_view_matrix = false;
 	this._must_update_projection_matrix = false;
@@ -28166,6 +28159,8 @@ Camera.prototype.updateMatrices = function( force )
 */
 Camera.prototype.updateFrustumPlanes = function()
 {
+	if(!this._frustum_planes)
+		this._frustum_planes = new Float32Array(24);
 	geo.extractPlanes( this._viewprojection_matrix, this._frustum_planes );
 	return this._frustum_planes;
 }
@@ -28851,13 +28846,13 @@ Camera.prototype.getRayInPixel = Camera.prototype.getRay; //LEGACY
 
 /**
 * Returns true if the 2D point (in screen space coordinates) is inside the camera viewport area
-* @method isPointInCamera
+* @method isPoint2DInCameraViewport
 * @param {number} x
 * @param {number} y
 * @param {vec4} viewport viewport coordinates (if omited full viewport is used)
 * @return {boolean} 
 */
-Camera.prototype.isPointInCamera = function( x, y, viewport )
+Camera.prototype.isPoint2DInCameraViewport = function( x, y, viewport )
 {
 	var v = this.getLocalViewport( viewport, this._viewport_in_pixels );
 	if( x < v[0] || x > v[0] + v[2] ||
@@ -28865,6 +28860,19 @@ Camera.prototype.isPointInCamera = function( x, y, viewport )
 		return false;
 	return true;
 }
+
+/**
+* Returns true if the 3D point is inside the camera frustum
+* @method testSphereInsideFrustum
+* @param {vec3} center
+* @param {vec3} radius
+* @return {boolean} 
+*/
+Camera.prototype.testSphereInsideFrustum = function( center, radius )
+{
+	return geo.frustumTestSphere( this._frustum_planes, center, radius || 0 ) != CLIP_OUTSIDE;
+}
+
 
 Camera.prototype.configure = function(o)
 {
@@ -28990,6 +28998,7 @@ Camera.prototype.applyTransformMatrix = function( matrix, center, element )
 	this._must_update_view_matrix = true;
 	return true;
 }
+
 
 //Rendering stuff ******************************************
 
@@ -39507,8 +39516,8 @@ function IrradianceCache( o )
 		u_irradiance_subdivisions: this._irradiance_subdivisions,
 		u_irradiance_color: this.intensity_color,
 		u_irradiance_imatrix: mat4.create(),
-		u_irradiance_distance: 0,
-		u_irradiance_debug: 0
+		u_irradiance_distance: 0
+		//u_irradiance_debug: 0
 	};
 	this._samplers = [];
 
@@ -39519,8 +39528,8 @@ function IrradianceCache( o )
 IrradianceCache.show_probes = false;
 IrradianceCache.show_cubemaps = false;
 IrradianceCache.probes_size = 1;
-IrradianceCache.capture_cubemap_size = 64;
-IrradianceCache.final_cubemap_size = 8;
+IrradianceCache.capture_cubemap_size = 64; //renders the scene to this size
+IrradianceCache.final_cubemap_size = 16; //downsamples to this size
 
 IrradianceCache.OBJECT_MODE = 1;
 IrradianceCache.VERTEX_MODE = 2;
@@ -39550,17 +39559,20 @@ IrradianceCache.prototype.fillSceneUniforms = function()
 		return;
 	this._samplers[ LS.Renderer.IRRADIANCE_TEXTURE_SLOT ] = this._sh_texture;
 	this._uniforms.u_irradiance_distance = this.sampling_distance;
-	this._uniforms.u_irradiance_debug = this.debug;
+	//this._uniforms.u_irradiance_debug = this.debug;
 	LS.Renderer.enableFrameShaderBlock( "applyIrradiance", this._uniforms, this._samplers );
 }
 
-IrradianceCache.prototype.recompute = function()
+IrradianceCache.prototype.recompute = function( camera )
 {
 	var subs = this.subdivisions;
 	var size = this.size;
 	if(subs[0] < 1) subs[0] = 1;
 	if(subs[1] < 1) subs[1] = 1;
 	if(subs[2] < 1) subs[2] = 1;
+
+	var start = getTime();
+	console.log("Capturing irradiance...");
 
 	var iscale = vec3.fromValues( size[0]/subs[0], size[1]/subs[1], size[2]/subs[2] );
 
@@ -39602,7 +39614,7 @@ IrradianceCache.prototype.recompute = function()
 		this._root.transform.getGlobalMatrix( matrix );
 	mat4.scale( matrix, matrix, iscale );
 
-	var i = 0;
+	var i = 0, generated = 0;
 	for(var y = 0; y < subs[1]; ++y)
 	for(var z = 0; z < subs[2]; ++z)
 	for(var x = 0; x < subs[0]; ++x)
@@ -39613,6 +39625,12 @@ IrradianceCache.prototype.recompute = function()
 		if( matrix )
 			mat4.multiplyVec3( position, matrix, position );
 
+		if( camera && !camera.testSphereInsideFrustum( position ) )
+		{
+			i+=1;
+			continue;
+		}
+
 		var cubemap = this._irradiance_cubemaps[ i ];
 		if(!cubemap || cubemap.type != texture_settings.type || cubemap.width != final_cubemap_size )
 			this._irradiance_cubemaps[ i ] = cubemap = new GL.Texture( final_cubemap_size, final_cubemap_size, texture_settings );
@@ -39621,9 +39639,17 @@ IrradianceCache.prototype.recompute = function()
 		this._irradiance_shs[i] = this.computeSH( cubemap );
 
 		i+=1;
+		generated+=1;
 	}
 
+	var end_irradiance_time = getTime();
+	console.log("Capturing light time: " + (end_irradiance_time - start).toFixed(1) + "ms. Num. probes updated: " + generated );
+
 	this.encodeCacheInTexture();
+	var end_packing_time = getTime();
+	console.log("Packing in texture time: " + (end_packing_time - end_irradiance_time).toFixed(1) + "ms");
+
+	console.log("Irradiance Total: " + (getTime() - start).toFixed(1) + "ms");
 
 	//remove flags
 	render_settings.layers = old_layers;
@@ -40016,7 +40042,7 @@ var irradiance_code = "\n\
 	uniform vec3 u_irradiance_subdivisions;\n\
 	uniform vec3 u_irradiance_color;\n\
 	uniform mat4 u_irradiance_imatrix;\n\
-	uniform float u_irradiance_debug;\n\
+	//uniform float u_irradiance_debug;\n\
 	uniform float u_irradiance_distance;\n\
 	\n\
 	" + IrradianceCache.include_code + "\n\
@@ -40038,13 +40064,17 @@ var irradiance_code = "\n\
 		coeffs.c[8] = texture2D( irradiance_texture, vec2(8.0/9.0, i)).xyz;\n\
 		return max( vec3(0.001), ComputeSHDiffuse( normal, coeffs ) );\n\
 	}\n\
+	float irr_expFunc(float f)\n\
+	{\n\
+		return f*f*f*(f*(f*6.0-15.0)+10.0);\n\
+	}\n\
 	vec3 computeSHRadianceAtPositionSmooth( in vec3 pos, in vec3 normal )\n\
 	{\n\
-		vec3 local_pos = (u_irradiance_imatrix * vec4(pos + u_irradiance_distance * normal, 1.0)).xyz - vec3(u_irradiance_debug);\n\
+		vec3 local_pos = (u_irradiance_imatrix * vec4(pos + u_irradiance_distance * normal, 1.0)).xyz - vec3(0.5);\n\
 		local_pos = clamp( local_pos, vec3(0.0), u_irradiance_subdivisions - vec3(1.0));\n\
 		float fx = fract(local_pos.x);\n\
-		float fy = 1.0 - fract(local_pos.y);\n\
-		float fz = 1.0 - fract(local_pos.z);\n\
+		float fy = irr_expFunc(1.0 - fract(local_pos.y));\n\
+		float fz = irr_expFunc(1.0 - fract(local_pos.z));\n\
 		vec3 LTF = computeSHRadianceAtLocalPos( vec3( floor(local_pos.x), ceil(local_pos.y), ceil(local_pos.z)), normal );\n\
 		vec3 LTB = computeSHRadianceAtLocalPos( vec3( floor(local_pos.x), ceil(local_pos.y), floor(local_pos.z)), normal );\n\
 		vec3 RTF = computeSHRadianceAtLocalPos( vec3( ceil(local_pos.x), ceil(local_pos.y), ceil(local_pos.z)), normal );\n\

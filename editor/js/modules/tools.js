@@ -422,7 +422,7 @@ var ToolUtils = {
 		var camera = cameras[0];
 		for(var i = cameras.length-1; i >= 0; --i)
 		{
-			if( cameras[i].isPointInCamera( x,y ) )
+			if( cameras[i].isPoint2DInCameraViewport( x,y ) )
 			{
 				camera = cameras[i];
 				break;

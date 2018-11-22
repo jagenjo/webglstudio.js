@@ -1028,10 +1028,12 @@ LS.Components.IrradianceCache.onShowProperties = function( component, inspector 
 	inspector.addButton( null, "update all", { width:"70%", callback: function(){ 
 		component.recompute(); LS.GlobalScene.requestFrame();
 		info.setValue( (component.getSizeInBytes()/1024).toFixed(1) + " KBs" );
+		info_num.setValue( component._irradiance_shs.length );
 	}});
 	inspector.addButton( null, "[only view]", { width:"30%", callback: function(){ 
 		component.recompute( LS.Renderer._current_camera ); LS.GlobalScene.requestFrame();
 		info.setValue( (component.getSizeInBytes()/1024).toFixed(1) + " KBs" );
+		info_num.setValue( component._irradiance_shs.length );
 	}});
 	inspector.widgets_per_row = 1;
     inspector.addSeparator();
@@ -1040,7 +1042,9 @@ LS.Components.IrradianceCache.onShowProperties = function( component, inspector 
 	inspector.addCheckbox( "Visualize", LS.Components.IrradianceCache.show_probes, function(v){ LS.Components.IrradianceCache.show_probes = v; LS.GlobalScene.requestFrame(); });
 	inspector.addCheckbox( "Cubemaps", LS.Components.IrradianceCache.show_cubemaps, function(v){ LS.Components.IrradianceCache.show_cubemaps = v; LS.GlobalScene.requestFrame(); });
 	inspector.addNumber( "Size", LS.Components.IrradianceCache.probes_size, function(v){ LS.Components.IrradianceCache.probes_size = v; LS.GlobalScene.requestFrame(); });
-	inspector.widgets_per_row = 1;
+	inspector.widgets_per_row = 2;
 	info = inspector.addInfo( "Total Size", (component.getSizeInBytes()/1024).toFixed(1) + " KBs" );
+	info_num = inspector.addInfo( "Num. probes", component._irradiance_shs.length );
+	inspector.widgets_per_row = 1;
 
 }

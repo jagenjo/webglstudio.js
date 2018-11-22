@@ -461,6 +461,15 @@ LGraph.prototype.clear = function()
 
 	this._version = -1; //used to detect changes
 
+	//safe clear
+	if(this._nodes)
+	for(var i = 0; i < this._nodes.length; ++i)
+	{
+		var node = this._nodes[i];
+		if(node.onRemoved)
+			node.onRemoved();
+	}
+
 	//nodes
 	this._nodes = [];
 	this._nodes_by_id = {};
@@ -1767,7 +1776,6 @@ LGraphNode.prototype._ctor = function( title )
 	this.properties = {}; //for the values
 	this.properties_info = []; //for the info
 
-	this.data = null; //persistent local data
 	this.flags = {};
 }
 
@@ -1888,7 +1896,6 @@ LGraphNode.prototype.serialize = function()
 		type: this.type,
 		pos: this.pos,
 		size: this.size,
-		data: this.data,
 		flags: LiteGraph.cloneObject(this.flags),
 		mode: this.mode
 	};
@@ -2359,6 +2366,7 @@ LGraphNode.prototype.addOutput = function(name,type,extra_info)
 	if(this.onOutputAdded)
 		this.onOutputAdded(o);
 	this.size = this.computeSize();
+	this.setDirtyCanvas(true,true);
 	return o;
 }
 
@@ -2385,6 +2393,7 @@ LGraphNode.prototype.addOutputs = function(array)
 	}
 
 	this.size = this.computeSize();
+	this.setDirtyCanvas(true,true);
 }
 
 /**
@@ -2396,9 +2405,24 @@ LGraphNode.prototype.removeOutput = function(slot)
 {
 	this.disconnectOutput(slot);
 	this.outputs.splice(slot,1);
+	for(var i = slot; i < this.outputs.length; ++i)
+	{
+		if( !this.outputs[i] || !this.outputs[i].links )
+			continue;
+		var links = this.outputs[i].links;
+		for(var j = 0; j < links.length; ++j)
+		{
+			var link = this.graph.links[ links[j] ];
+			if(!link)
+				continue;
+			link.origin_slot -= 1;
+		}
+	}
+
 	this.size = this.computeSize();
 	if(this.onOutputRemoved)
 		this.onOutputRemoved(slot);
+	this.setDirtyCanvas(true,true);
 }
 
 /**
@@ -2422,6 +2446,7 @@ LGraphNode.prototype.addInput = function(name,type,extra_info)
 	this.size = this.computeSize();
 	if(this.onInputAdded)
 		this.onInputAdded(o);
+	this.setDirtyCanvas(true,true);
 	return o;
 }
 
@@ -2448,6 +2473,7 @@ LGraphNode.prototype.addInputs = function(array)
 	}
 
 	this.size = this.computeSize();
+	this.setDirtyCanvas(true,true);
 }
 
 /**
@@ -2459,9 +2485,19 @@ LGraphNode.prototype.removeInput = function(slot)
 {
 	this.disconnectInput(slot);
 	this.inputs.splice(slot,1);
+	for(var i = slot; i < this.inputs.length; ++i)
+	{
+		if(!this.inputs[i])
+			continue;
+		var link = this.graph.links[ this.inputs[i].link ];
+		if(!link)
+			continue;
+		link.target_slot -= 1;
+	}
 	this.size = this.computeSize();
 	if(this.onInputRemoved)
 		this.onInputRemoved(slot);
+	this.setDirtyCanvas(true,true);
 }
 
 /**
@@ -5806,6 +5842,7 @@ LGraphCanvas.prototype.drawConnections = function(ctx)
 
 			var start_slot = start_node.outputs[start_node_slot];
 			var end_slot = node.inputs[i];
+			if(!start_slot || !end_slot) continue;
 			var start_dir = start_slot.dir || (start_node.flags.horizontal ? LiteGraph.DOWN : LiteGraph.RIGHT);
 			var end_dir = end_slot.dir || (node.flags.horizontal ? LiteGraph.UP : LiteGraph.LEFT);
 
@@ -6772,6 +6809,9 @@ LGraphCanvas.prototype.prompt = function( title, value, callback, event )
 	return dialog;
 }
 
+
+LGraphCanvas.search_filter = false;
+LGraphCanvas.search_limit = -1;
 LGraphCanvas.prototype.showSearchBox = function(event)
 {
 	var that = this;
@@ -6900,30 +6940,51 @@ LGraphCanvas.prototype.showSearchBox = function(event)
 		selected.scrollIntoView();
 	}
 
-	function refreshHelper()
-	{
-		timeout = null;
-		var str = input.value;
-		first = null;
-		helper.innerHTML = "";
-		if(!str)
-			return;
+	function refreshHelper() {
+        timeout = null;
+        var str = input.value;
+        first = null;
+        helper.innerHTML = "";
+        if (!str)
+            return;
 
-		if( that.onSearchBox )
-			that.onSearchBox( help, str, graphcanvas );
-		else
-			for( var i in LiteGraph.registered_node_types )
-				if(i.indexOf(str) != -1)
-				{
-					var help = document.createElement("div");
-					if(!first) first = i;
-					help.innerText = i;
-					help.className = "litegraph lite-search-item";
-					help.addEventListener("click", function(e){
-						select( this.innerText );
-					});
-					helper.appendChild(help);
+        if (that.onSearchBox){
+            that.onSearchBox(help, str, graphcanvas);
+    	} else {
+            var c = 0;
+        	if(LGraphCanvas.search_filter) {
+        		str = str.toLowerCase();
+
+        		var keys = Object.keys(LiteGraph.registered_node_types);
+        		var filtered = keys.filter(function (item) {
+					return item.toLowerCase().indexOf(str) !== -1;
+                });
+        		for(var i = 0; i < filtered.length; i++) {
+                    addResult(filtered[i]);
+                    if(LGraphCanvas.search_limit !== -1 && c++ > LGraphCanvas.search_limit)
+						break;
 				}
+			} else {
+                for (var i in LiteGraph.registered_node_types) {
+                    if (i.indexOf(str) != -1) {
+                        addResult(i);
+                        if(LGraphCanvas.search_limit !== -1 && c++ > LGraphCanvas.search_limit)
+							break;
+                    }
+                }
+            }
+        }
+
+		function addResult(result) {
+			var help = document.createElement("div");
+			if (!first) first = result;
+			help.innerText = result;
+			help.className = "litegraph lite-search-item";
+			help.addEventListener("click", function (e) {
+				select(this.innerText);
+			});
+			helper.appendChild(help);
+		}
 	}
 
 	return dialog;
@@ -11409,10 +11470,6 @@ ImageWebcam.desc = "Webcam image";
 
 ImageWebcam.prototype.openStream = function()
 {
-	//Vendor prefixes hell
-	navigator.getUserMedia = (navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia);
-	window.URL = window.URL || window.webkitURL;
-
 	if (!navigator.getUserMedia) {
 	  //console.log('getUserMedia() is not supported in your browser, use chrome and enable WebRTC from about://flags');
 	  return;
@@ -11421,13 +11478,13 @@ ImageWebcam.prototype.openStream = function()
 	this._waiting_confirmation = true;
 
 	// Not showing vendor prefixes.
-	navigator.getUserMedia({video: true}, this.streamReady.bind(this), onFailSoHard);		
+	navigator.mediaDevices.getUserMedia({audio: false, video: true}).then( this.streamReady.bind(this) ).catch( onFailSoHard );
 
 	var that = this;
 	function onFailSoHard(e) {
 		console.log('Webcam rejected', e);
 		that._webcam_stream = false;
-		that.box_color = "red";
+		that.boxcolor = "red";
 	};
 }
 
@@ -11451,7 +11508,7 @@ ImageWebcam.prototype.streamReady = function(localMediaStream)
 	{
 		video = document.createElement("video");
 		video.autoplay = true;
-		video.src = window.URL.createObjectURL(localMediaStream);
+		video.srcObject = localMediaStream;
 		this._video = video;
 		//document.body.appendChild( video ); //debug
 		//when video info is loaded (size and so)
@@ -11460,7 +11517,7 @@ ImageWebcam.prototype.streamReady = function(localMediaStream)
 			console.log(e);
 		};
 	}
-},
+}
 
 ImageWebcam.prototype.onExecute = function()
 {
@@ -14007,9 +14064,6 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 	LGraphTextureWebcam.prototype.openStream = function()
 	{
 		//Vendor prefixes hell
-		navigator.getUserMedia = (navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia);
-		window.URL = window.URL || window.webkitURL;
-
 		if (!navigator.getUserMedia) {
 		  //console.log('getUserMedia() is not supported in your browser, use chrome and enable WebRTC from about://flags');
 		  return;
@@ -14019,12 +14073,12 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 		var that = this;
 
 		// Not showing vendor prefixes.
-		navigator.getUserMedia({video: true}, this.streamReady.bind(this), onFailSoHard);		
+		navigator.mediaDevices.getUserMedia({audio: false, video: true}).then( this.streamReady.bind(this) ).catch( onFailSoHard );
 
 		function onFailSoHard(e) {
 			console.log('Webcam rejected', e);
 			that._webcam_stream = false;
-			that.box_color = "red";
+			that.boxcolor = "red";
 		};
 	}
 
@@ -14038,7 +14092,7 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 		{
 			video = document.createElement("video");
 			video.autoplay = true;
-		    video.src = window.URL.createObjectURL( localMediaStream );
+		    video.srcObject = localMediaStream;
 			this._video = video;
 			//document.body.appendChild( video ); //debug
 			//when video info is loaded (size and so)
@@ -14054,12 +14108,11 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 		if(!this._webcam_stream)
 			return;
 
-		var video_streams = this._webcam_stream.getVideoTracks();
-		if(video_streams.length)
+		var tracks = this._webcam_stream.getTracks();
+		if(tracks.length)
 		{
-			var webcam = video_streams[0];
-			if( webcam.stop )
-				webcam.stop();
+			for(var i = 0;i < tracks.length; ++i)
+				tracks[i].stop();
 		}
 
 		this._webcam_stream = null;
@@ -14077,11 +14130,7 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 		//render to graph canvas
 		ctx.save();
 		if(!ctx.webgl) //reverse image
-		{
-			ctx.translate(0,this.size[1]);
-			ctx.scale(1,-1);
 			ctx.drawImage(this._video, 0, 0, this.size[0], this.size[1]);
-		}
 		else
 		{
 			if(this._temp_texture)
@@ -16620,6 +16669,153 @@ LGAudioSource.prototype.onDropFile = function(file)
 LGAudioSource.title = "Source";
 LGAudioSource.desc = "Plays audio";
 LiteGraph.registerNodeType("audio/source", LGAudioSource);
+
+
+//****************************************************
+
+function LGAudioMediaSource()
+{
+	this.properties = {
+		gain: 0.5
+	};
+
+	this._audionodes = [];
+	this._media_stream = null;
+
+	this.addOutput( "out", "audio" );
+	this.addInput( "gain", "number" );
+
+	//create gain node to control volume
+	var context = LGAudio.getAudioContext();
+	this.audionode = context.createGain();
+	this.audionode.graphnode = this;
+	this.audionode.gain.value = this.properties.gain;
+}
+
+
+LGAudioMediaSource.prototype.onAdded = function(graph)
+{
+	if(graph.status === LGraph.STATUS_RUNNING)
+		this.onStart();
+}
+
+LGAudioMediaSource.prototype.onStart = function()
+{
+	if(this._media_stream == null && !this._waiting_confirmation)
+		this.openStream();
+}
+
+LGAudioMediaSource.prototype.onStop = function()
+{
+	this.audionode.gain.value = 0;
+}
+
+LGAudioMediaSource.prototype.onPause = function()
+{
+	this.audionode.gain.value = 0;
+}
+
+LGAudioMediaSource.prototype.onUnpause = function()
+{
+	this.audionode.gain.value = this.properties.gain;
+}
+
+LGAudioMediaSource.prototype.onRemoved = function()
+{
+	this.audionode.gain.value = 0;
+	if( this.audiosource_node )
+	{
+		this.audiosource_node.disconnect( this.audionode );
+		this.audiosource_node = null;
+	}
+	if(this._media_stream)
+	{
+		var tracks = this._media_stream.getTracks();
+		if(tracks.length)
+			tracks[0].stop();
+	}
+}
+
+LGAudioMediaSource.prototype.openStream = function()
+{
+	if (!navigator.mediaDevices) {
+	  console.log('getUserMedia() is not supported in your browser, use chrome and enable WebRTC from about://flags');
+	  return;
+	}
+
+	this._waiting_confirmation = true;
+
+	// Not showing vendor prefixes.
+	navigator.mediaDevices.getUserMedia({audio: true, video: false}).then( this.streamReady.bind(this) ).catch( onFailSoHard );
+
+	var that = this;
+	function onFailSoHard(err) {
+		console.log('Media rejected', err);
+		that._media_stream = false;
+		that.boxcolor = "red";
+	};
+}
+
+LGAudioMediaSource.prototype.streamReady = function( localMediaStream )
+{
+	this._media_stream = localMediaStream;
+	//this._waiting_confirmation = false;
+
+	//init context
+	if( this.audiosource_node )
+		this.audiosource_node.disconnect( this.audionode );
+	var context = LGAudio.getAudioContext();
+	this.audiosource_node = context.createMediaStreamSource( localMediaStream );
+	this.audiosource_node.graphnode = this;
+	this.audiosource_node.connect( this.audionode );
+	this.boxcolor = "white";
+}
+
+LGAudioMediaSource.prototype.onExecute = function()
+{
+	if(this._media_stream == null && !this._waiting_confirmation)
+		this.openStream();
+
+
+	if(this.inputs)
+		for(var i = 0; i < this.inputs.length; ++i)
+		{
+			var input = this.inputs[i];
+			if(input.link == null)
+				continue;
+			var v = this.getInputData(i);
+			if( v === undefined )
+				continue;
+			if( input.name == "gain" )
+				this.audionode.gain.value = this.properties.gain = v;
+		}
+}
+
+LGAudioMediaSource.prototype.onAction = function(event)
+{
+	if(event == "Play")
+		this.audionode.gain.value = this.properties.gain;
+	else if(event == "Stop")
+		this.audionode.gain.value = 0;
+}
+
+LGAudioMediaSource.prototype.onPropertyChanged = function( name, value )
+{
+	if(name == "gain")
+		this.audionode.gain.value = value;
+}
+
+//Helps connect/disconnect AudioNodes when new connections are made in the node
+LGAudioMediaSource.prototype.onConnectionsChange = LGAudio.onConnectionsChange;
+
+LGAudioMediaSource.prototype.onGetInputs = function()
+{
+	return [["playbackRate","number"],["Play",LiteGraph.ACTION],["Stop",LiteGraph.ACTION]];
+}
+
+LGAudioMediaSource.title = "MediaSource";
+LGAudioMediaSource.desc = "Plays microphone";
+LiteGraph.registerNodeType("audio/media_source", LGAudioMediaSource);
 
 
 //*****************************************************

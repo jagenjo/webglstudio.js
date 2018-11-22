@@ -4791,7 +4791,7 @@ Mesh.icosahedron = function( options, gl ) {
 	- magFilter: magnifying filter: gl.NEAREST, gl.LINEAR, default gl.NEAREST <br/>
 	- minFilter: minifying filter: gl.NEAREST, gl.LINEAR, gl.LINEAR_MIPMAP_LINEAR, default gl.NEAREST <br/>
 	- wrap: texture wrapping: gl.CLAMP_TO_EDGE, gl.REPEAT, gl.MIRROR, default gl.CLAMP_TO_EDGE (also accepts wrapT and wrapS for separate settings) <br/>
-	- pixel_data: ArrayBufferView with the pixel data to upload to the texture, otherwise the texture will be black <br/>
+	- pixel_data: ArrayBufferView with the pixel data to upload to the texture, otherwise the texture will be black (if cubemaps then pass an array[6] with the data for every face)<br/>
 	- premultiply_alpha : multiply the color by the alpha value when uploading, default FALSE <br/>
 	- no_flip : do not flip in Y, default TRUE <br/>
 	- anisotropic : number of anisotropic fetches, default 0 <br/>
@@ -4894,7 +4894,13 @@ global.Texture = GL.Texture = function Texture( width, height, options, gl ) {
 	var pixel_data = options.pixel_data;
 	if(pixel_data && !pixel_data.buffer)
 	{
-		pixel_data = new (this.type == gl.FLOAT ? Float32Array : Uint8Array)( pixel_data );
+		if( this.texture_type == GL.TEXTURE_CUBE_MAP )
+		{
+			for(var i = 0; i < pixel_data.length; ++i)
+				pixel_data[i] = new (this.type == gl.FLOAT ? Float32Array : Uint8Array)( pixel_data[i] );
+		}
+		else
+			pixel_data = new (this.type == gl.FLOAT ? Float32Array : Uint8Array)( pixel_data );
 		this.data = pixel_data;
 	}
 
@@ -4915,12 +4921,12 @@ global.Texture = GL.Texture = function Texture( width, height, options, gl ) {
 	}
 	else if(this.texture_type == GL.TEXTURE_CUBE_MAP)
 	{
-		gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_X, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data || null );
-		gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_Y, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data || null );
-		gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_Z, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data || null );
-		gl.texImage2D( gl.TEXTURE_CUBE_MAP_NEGATIVE_X, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data || null );
-		gl.texImage2D( gl.TEXTURE_CUBE_MAP_NEGATIVE_Y, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data || null );
-		gl.texImage2D( gl.TEXTURE_CUBE_MAP_NEGATIVE_Z, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data || null );
+		gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_X, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data ? pixel_data[0] : null );
+		gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_Y, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data ? pixel_data[1] : null );
+		gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_Z, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data ? pixel_data[2] : null );
+		gl.texImage2D( gl.TEXTURE_CUBE_MAP_NEGATIVE_X, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data ? pixel_data[3] : null );
+		gl.texImage2D( gl.TEXTURE_CUBE_MAP_NEGATIVE_Y, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data ? pixel_data[4] : null );
+		gl.texImage2D( gl.TEXTURE_CUBE_MAP_NEGATIVE_Z, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data ? pixel_data[5] : null );
 	}
 	else if(this.texture_type == GL.TEXTURE_3D)
 	{
@@ -5197,6 +5203,9 @@ Texture.prototype.uploadData = function( data, options, skip_mipmaps )
 	var gl = this.gl;
 	this.bind();
 	Texture.setUploadOptions(options, gl);
+
+	if( this.type == GL.HALF_FLOAT_OES )
+		console.warn("cannot uploadData to a HALF_FLOAT texture, to upload it we recomment to create a FLOAT texture, upload data there and copy to your HALF_FLOAT.");
 
 	if( this.texture_type == GL.TEXTURE_2D )
 	{

@@ -7894,7 +7894,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	}
 
 	//global stuff
-	this._render_state.enable();
+	this._render_state.enable( render_settings );
 	LS.Renderer.bindSamplers( this._samplers ); //material samplers
 	LS.Renderer.bindSamplers( instance.samplers ); //RI samplers (like morph targets encoded in textures)
 
@@ -8022,7 +8022,7 @@ ShaderMaterial.prototype.renderPickingInstance = function( instance, render_sett
 	var block_flags = instance.computeShaderBlockFlags();
 
 	//global stuff
-	this._render_state.enable();
+	this._render_state.enable( render_settings );
 	LS.Renderer.bindSamplers( this._samplers );
 	LS.Renderer.bindSamplers( instance.samplers );
 
@@ -9163,6 +9163,8 @@ void main() {\n\
 	surf(IN,o);\n\
 	Light LIGHT = getLight();\n\
 	applyLightTexture( IN, LIGHT );\n\
+	if( !gl_FrontFacing )\n\
+		o.Normal *= -1.0;\n\
 	FinalLight FINALLIGHT = computeLight( o, IN, LIGHT );\n\
 	FINALLIGHT.Diffuse += u_backlight_factor * max(0.0, dot(FINALLIGHT.Vector, -o.Normal));\n\
 	vec4 final_color = vec4( 0.0,0.0,0.0, o.Alpha );\n\
@@ -12574,7 +12576,7 @@ Take.prototype.removeTrack = function( track )
 }
 
 
-Take.prototype.getPropertiesSample = function(time, result)
+Take.prototype.getPropertiesSample = function( time, result )
 {
 	result = result || [];
 	for(var i = 0; i < this.tracks.length; ++i)
@@ -13029,11 +13031,27 @@ Track.prototype.convertIDtoName = function( use_basename, root )
 	return true;
 }
 
+
 /**
-* Adds a new keyframe to this track
+* Adds a new keyframe from the current value of that property
+* @method addKeyframeFromCurrent
+* @param {Number} time time stamp in seconds
+* @param {LS.SceneTree} scene 
+*/
+Track.prototype.addKeyframeFromCurrent = function( time, scene )
+{
+	scene = scene || LS.GlobalScene;
+	var info = scene.getPropertyInfoFromPath( this._property_path );
+	if(!info)
+		return null;
+	return this.addKeyframe( time, info.value );
+}
+
+/**
+* Adds a new keyframe to this track given a value
 * @method addKeyframe
 * @param {Number} time time stamp in seconds
-* @param {*} value anything you want to store
+* @param {*} value anything you want to store, if omited then the current value is used
 * @param {Boolean} skip_replace if you want to replace existing keyframes at same time stamp or add it next to that
 * @return {Number} index of keyframe
 */
@@ -20549,20 +20567,22 @@ RenderState.prototype.setBlendMode = function( mode )
 	this.blendFunc1 = mode[1];
 }
 
-RenderState.prototype.enable = function()
+RenderState.prototype.enable = function( render_settings )
 {
-	RenderState.enable( this );
+	RenderState.enable( this, null, render_settings );
 }
 
-RenderState.enable = function( state, prev )
+RenderState.enable = function( state, prev, render_settings )
 {
 	var flags = state.flags;
+
+	var force_two_sided = render_settings && render_settings.force_two_sided ? true : false;
 
 	if(!prev)
 	{
 		//faces
 		gl.frontFace( state.front_face );
-		if(state.cull_face)
+		if(state.cull_face && !force_two_sided )
 			gl.enable( gl.CULL_FACE );
 		else
 			gl.disable( gl.CULL_FACE );
@@ -20610,11 +20630,11 @@ RenderState.enable = function( state, prev )
 	}
 
 	//faces
-	if(prev.front_face !== state.front_face)
+	if( prev.front_face !== state.front_face )
 		gl.frontFace( state.front_face );
-	if(prev.cull_face !== state.cull_face)
+	if( prev.cull_face !== state.cull_face || force_two_sided )
 	{
-		if(state.cull_face)
+		if( state.cull_face && !force_two_sided )
 			gl.enable( gl.CULL_FACE );
 		else
 			gl.disable( gl.CULL_FACE );
@@ -39494,7 +39514,7 @@ function IrradianceCache( o )
 	this.size = vec3.fromValues(10,10,10);
 	this.subdivisions = new Uint8Array([4,1,4]);
 	this.layers = 0xFF; //layers that can contribute to the irradiance
-	this.high_precision = false;
+	this.force_two_sided = false;
 
 	this.near = 0.1;
 	this.far = 1000;
@@ -39521,8 +39541,15 @@ function IrradianceCache( o )
 	};
 	this._samplers = [];
 
+	this.cache_filename = "";
+	this._cache_resource = null;
+
 	if(o)
+	{
 		this.configure(o);
+		if(o.uid && !this.cache_filename)
+			this.cache_filename = "IR_cache_" + o.uid.substr(1) + ".bin";
+	}
 }
 
 IrradianceCache.show_probes = false;
@@ -39537,11 +39564,13 @@ IrradianceCache.PIXEL_MODE = 3;
 
 IrradianceCache["@mode"] = { type:"enum", values: { "object": IrradianceCache.OBJECT_MODE, "vertex": IrradianceCache.VERTEX_MODE, "pixel": IrradianceCache.PIXEL_MODE } };
 IrradianceCache["@size"] = { type:"vec3", min: 0.1, step: 0.1, precision:3 };
-IrradianceCache["@subdivisions"] = { type:"vec3", min: 1, max: 100, step: 1, precision:0 };
+IrradianceCache["@subdivisions"] = { type:"vec3", min: 1, max: 256, step: 1, precision:0 };
 IrradianceCache["@layers"] = { widget:"layers" };
 IrradianceCache["@background_color"] = { type:"color" };
 IrradianceCache["@intensity_color"] = { type:"color" };
 IrradianceCache.default_coeffs = new Float32Array([ 0,0,0, 0.5,0.75,1, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0 ]);
+
+IrradianceCache.use_sh_low = true; //set to false before shader compilation to use 9 coeffs instead of 4
 
 IrradianceCache.prototype.onAddedToScene = function(scene)
 {
@@ -39551,6 +39580,38 @@ IrradianceCache.prototype.onAddedToScene = function(scene)
 IrradianceCache.prototype.onRemovedFromScene = function(scene)
 {
 	LEvent.unbind( scene, "fillSceneUniforms", this.fillSceneUniforms, this);
+}
+
+IrradianceCache.prototype.afterConfigure = function(o)
+{
+	if(!this.cache_filename)
+		return; //???
+
+	var that = this;
+	LS.ResourcesManager.load( this.cache_filename, function( res ){
+		if(!res)
+			return;
+		that._cache_resource = res;
+		if(!that._sh_texture && res._sh_texture) //optimization to avoid to create a texture every time
+			that._sh_texture = res._sh_texture; 
+		that.fromData( res.data );
+		that.encodeCacheInTexture();
+		res._sh_texture = that._sh_texture;
+		LS.GlobalScene.requestFrame();
+	});
+}
+
+IrradianceCache.prototype.getResources = function(res)
+{
+	if( this.cache_filename && this._cache_resource )
+		res[ this.cache_filename ] = LS.Resource;
+}
+
+
+IrradianceCache.prototype.onResourceRenamed = function(old_name, new_name)
+{
+	if( old_name == this.cache_filename)
+		this.cache_filename = new_name;
 }
 
 IrradianceCache.prototype.fillSceneUniforms = function()
@@ -39577,8 +39638,7 @@ IrradianceCache.prototype.recompute = function( camera )
 	var iscale = vec3.fromValues( size[0]/subs[0], size[1]/subs[1], size[2]/subs[2] );
 
 	//cubemap
-	var type = this.high_precision ? gl.HIGH_PRECISION_FORMAT : gl.UNSIGNED_BYTE;
-	type = this.high_precision ? gl.FLOAT : gl.UNSIGNED_BYTE; //half float cannot be read easily, so better go for float
+	var type = gl.FLOAT; //enforce floats even in low precision, they get better coefficients, I dont use gl.HIGH_PRECISION_FORMAT because I cant read them back
 	var render_settings = LS.Renderer.default_render_settings;
 	var old_layers = render_settings.layers;
 	render_settings.layers = this.layers;
@@ -39651,6 +39711,18 @@ IrradianceCache.prototype.recompute = function( camera )
 
 	console.log("Irradiance Total: " + (getTime() - start).toFixed(1) + "ms");
 
+	//store in file
+	if(!this.cache_filename)
+		this.cache_filename = "IR_cache_" + this.uid.substr(1) + ".bin";
+	var cache_res = this._cache_resource = LS.ResourcesManager.getResource( cache_res );
+	if(!cache_res)
+	{
+		this._cache_resource = cache_res = new LS.Resource();
+		LS.ResourcesManager.registerResource( this.cache_filename, cache_res );
+	}
+	cache_res.data = this.toData();
+	LS.RM.resourceModified( cache_res );
+
 	//remove flags
 	render_settings.layers = old_layers;
 }
@@ -39662,8 +39734,14 @@ IrradianceCache.prototype.captureIrradiance = function( position, output_cubemap
 	//disable IR cache first
 	LS.Renderer.disableFrameShaderBlock("applyIrradiance");
 
+	if( this.force_two_sided )
+		render_settings.force_two_sided = true;
+
 	//render all the scene inside the cubemap
 	LS.Renderer.renderToCubemap( position, 0, this._temp_cubemap, render_settings, this.near, this.far, this.background_color );
+
+	if( this.force_two_sided )
+		render_settings.force_two_sided = false;
 
 	//downsample
 	//ReflectionProbe.cubemapToIrradiance( this._temp_cubemap, output_cubemap );
@@ -39686,10 +39764,14 @@ IrradianceCache.prototype.encodeCacheInTexture = function()
 	if(!this._irradiance_shs.length)
 		return;
 
-	if( !this._sh_texture || this._sh_texture.height != this._irradiance_shs.length )
+	var sh_temp_texture_type = gl.FLOAT; //HIGH_PRECISION_FORMAT
+	var sh_texture_type = gl.HIGH_PRECISION_FORMAT;
+
+	//create texture
+	if( !this._sh_texture || this._sh_texture.height != this._irradiance_shs.length || this._sh_texture.type != sh_texture_type )
 	{
-		this._sh_texture = new GL.Texture(9, this._irradiance_shs.length, { format: gl.RGB, type: gl.FLOAT, magFilter: gl.NEAREST, minFilter: gl.NEAREST, wrap: gl.CLAMP_TO_EDGE });
-		LS.ResourcesManager.registerResource( ":IR_cache", this._sh_texture ); //debug
+		this._sh_texture = new GL.Texture(9, this._irradiance_shs.length, { format: gl.RGB, type: sh_texture_type, magFilter: gl.NEAREST, minFilter: gl.NEAREST, wrap: gl.CLAMP_TO_EDGE });
+		LS.ResourcesManager.registerResource( ":IR_SHs", this._sh_texture ); //debug
 	}
 
 	///prepare data
@@ -39697,8 +39779,18 @@ IrradianceCache.prototype.encodeCacheInTexture = function()
 	for(var i = 0; i < this._irradiance_shs.length; ++i)
 		data.set( this._irradiance_shs[i], i*27 );
 
+	
 	//upload to GPU
-	this._sh_texture.uploadData( data, { no_flip: true }, true );
+	if( sh_texture_type == sh_temp_texture_type )
+		this._sh_texture.uploadData( data, { no_flip: true }, true );
+	else 
+	{
+		//we cannot upload Float16 directly, so we use the trick of uploading at 32bits and copying to 16 bits
+		if( !this._sh_temp_texture || this._sh_temp_texture.height != this._sh_temp_texture.length || this._sh_temp_texture.type != sh_temp_texture_type )
+			this._sh_temp_texture = new GL.Texture(9, this._irradiance_shs.length, { format: gl.RGB, type: sh_temp_texture_type, magFilter: gl.NEAREST, minFilter: gl.NEAREST, wrap: gl.CLAMP_TO_EDGE });
+		this._sh_temp_texture.uploadData( data, { no_flip: true }, true );
+		this._sh_temp_texture.copyTo( this._sh_texture );
+	}
 
 	//uniforms
 	var matrix = this._uniforms.u_irradiance_imatrix;
@@ -39708,10 +39800,82 @@ IrradianceCache.prototype.encodeCacheInTexture = function()
 
 IrradianceCache.prototype.getSizeInBytes = function()
 {
-	return this._irradiance_shs.length * 27 * 4;
+	return this._irradiance_shs.length * 27 * 4;//( this.high_precision ? 4 : 1 );
 }
 
-IrradianceCache.prototype.renderEditor = function()
+//helper
+IrradianceCache.prototype.showStats = function()
+{
+	var max_coeffs = new Float32Array(9);
+	var min_coeffs = new Float32Array(9);
+	var avg_coeffs = new Float32Array(9);
+
+	for( var i = 0; i < this._irradiance_shs.length; ++i)
+	{
+	}
+}
+
+IrradianceCache.prototype.fromData = function(data)
+{
+	if(!data)
+		return;
+
+	var uint8view = new Uint8Array( data );
+
+	var header_str = LS.typedArrayToString( uint8view.subarray(0,4) );
+	if( header_str != "IR_C" )
+	{
+		console.error("Irradiance data do not match");
+		return false;
+	}
+
+	var dv = new DataView(data);
+	var subs = this._irradiance_subdivisions;
+	subs[0] = dv.getUint8(4);
+	subs[1] = dv.getUint8(5);
+	subs[2] = dv.getUint8(6);
+	var num_probes = subs[0] * subs[1] * subs[2];
+
+	var float32view = new Float32Array( data, 16 );
+
+	this._irradiance_matrix.set( float32view.subarray(0,16) );
+
+	var shs = this._irradiance_shs;
+	shs.length = num_probes;
+	for( var i = 0; i < shs.length; ++i)
+		shs[i] = float32view.subarray( 16 + i*9*3, 16 + (i+1)*9*3 );
+
+	return true;
+}
+
+IrradianceCache.prototype.toData = function()
+{
+	var subs = this._irradiance_subdivisions;
+	var num_probes = subs[0] * subs[1] * subs[2];
+	var data = new ArrayBuffer( 16 + 16*4 + num_probes * 9 * 3 * 4); //16 bytes header + mat4x4 + probes(9,3 channels, float32)
+
+	var uint8view = new Uint8Array( data );
+	uint8view.set( LS.stringToTypedArray("IR_C"), 0 ); //from Irradiance Cache
+
+	var dv = new DataView(data);
+	dv.setUint8(4,subs[0]);
+	dv.setUint8(5,subs[1]);
+	dv.setUint8(6,subs[2]);
+
+	var float32view = new Float32Array( data, 16 );
+	float32view.set( this._irradiance_matrix );
+
+	var shs = this._irradiance_shs;
+	for( var i = 0; i < shs.length; ++i)
+	{
+		var sh = shs[i];
+		float32view.set( sh, 16 + i*9*3 );
+	}
+
+	return data;
+}
+
+IrradianceCache.prototype.renderEditor = function( camera )
 {
 	if(!this.enabled || !IrradianceCache.show_probes)
 		return;
@@ -39750,6 +39914,12 @@ IrradianceCache.prototype.renderEditor = function()
 		position[1] = y + 0.5;
 		position[2] = z + 0.5;
 		mat4.multiplyVec3( position, matrix, position );
+
+		if( camera && !camera.testSphereInsideFrustum( position, IrradianceCache.probes_size ) )
+		{
+			i+=1;
+			continue;
+		}
 
 		LS.Draw.push();
 		LS.Draw.translate( position );
@@ -39809,11 +39979,15 @@ void SHCosineLobe(in float3 dir, out SH9 sh)\n\
     sh.c[3] = 0.488603 * dir.x * CosineA1;\n\
 	\n\
     // Band 2\n\
+	#ifndef SH_LOW\n\
+	\n\
     sh.c[4] = 1.092548 * dir.x * dir.y * CosineA2;\n\
     sh.c[5] = 1.092548 * dir.y * dir.z * CosineA2;\n\
     sh.c[6] = 0.315392 * (3.0 * dir.z * dir.z - 1.0) * CosineA2;\n\
     sh.c[7] = 1.092548 * dir.x * dir.z * CosineA2;\n\
     sh.c[8] = 0.546274 * (dir.x * dir.x - dir.y * dir.y) * CosineA2;\n\
+	#endif\n\
+	\n\
 }\n\
 \n\
 vec3 ComputeSHIrradiance(in float3 normal, in SH9Color radiance)\n\
@@ -39824,7 +39998,12 @@ vec3 ComputeSHIrradiance(in float3 normal, in SH9Color radiance)\n\
 	\n\
     // Compute the SH dot product to get irradiance\n\
     float3 irradiance = vec3(0.0);\n\
-    for(int i = 0; i < 9; ++i)\n\
+	#ifndef SH_LOW\n\
+	const int num = 9;\n\
+	#else\n\
+	const int num = 4;\n\
+	#endif\n\
+    for(int i = 0; i < num; ++i)\n\
         irradiance += radiance.c[i] * shCosine.c[i];\n\
 	\n\
     return irradiance;\n\
@@ -39950,21 +40129,6 @@ function computeSH( faces, cubemapSize, ch) {
           if (gammaCorrect)
 			  value = Math.pow(value, 2.2)
 		  //value = Math.clamp( value, 0, 2 );
-
-          // indexed by coeffiecent + color
-		  /*
-          sh[0][c] += value * weight1
-          sh[1][c] += value * weight2 * dx
-          sh[2][c] += value * weight2 * dy
-          sh[3][c] += value * weight2 * dz
-
-          sh[4][c] += value * weight3 * dx * dz
-          sh[5][c] += value * weight3 * dz * dy
-          sh[6][c] += value * weight3 * dy * dx
-
-          sh[7][c] += value * weight4 * (3.0 * dz * dz - 1.0)
-          sh[8][c] += value * weight5 * (dx * dx - dy * dy)
-		  */
 	
 		  sh[0][c] += value * weight1
           sh[1][c] += value * weight2 * dy
@@ -39977,20 +40141,6 @@ function computeSH( faces, cubemapSize, ch) {
 
           sh[7][c] += value * weight3 * dx * dz
           sh[8][c] += value * weight5 * (dx * dx - dy * dy)
-
-	/*
-    sh.c[1] = 0.488603 * dir.y * CosineA1;\n\
-    sh.c[2] = 0.488603 * dir.z * CosineA1;\n\
-    sh.c[3] = 0.488603 * dir.x * CosineA1;\n\
-	\n\
-    // Band 2\n\
-    sh.c[4] = 1.092548 * dir.x * dir.y * CosineA2;\n\
-    sh.c[5] = 1.092548 * dir.y * dir.z * CosineA2;\n\
-    sh.c[6] = 0.315392 * (3.0 * dir.z * dir.z - 1.0) * CosineA2;\n\
-
-    sh.c[7] = 1.092548 * dir.x * dir.z * CosineA2;\n\
-    sh.c[8] = 0.546274 * (dir.x * dir.x - dir.y * dir.y) * CosineA2;\n\
-	*/
 
           weightAccum += weight
         }
@@ -40044,6 +40194,7 @@ var irradiance_code = "\n\
 	uniform mat4 u_irradiance_imatrix;\n\
 	//uniform float u_irradiance_debug;\n\
 	uniform float u_irradiance_distance;\n\
+	" + ( IrradianceCache.use_sh_low ? "#define SH_LOW" : "" ) + "\n\
 	\n\
 	" + IrradianceCache.include_code + "\n\
 	vec3 computeSHRadianceAtLocalPos( in vec3 local_pos, in vec3 normal )\n\
@@ -40053,15 +40204,17 @@ var irradiance_code = "\n\
 		float i = floor(local_pos.x) + floor(local_pos.z) * u_irradiance_subdivisions.x + floor(local_pos.y) * floor_probes;\n\
 		i = (i+0.5) / (total_probes);\n\
 		SH9Color coeffs;\n\
-		coeffs.c[0] = texture2D( irradiance_texture, vec2(0.0, i)).xyz;\n\
-		coeffs.c[1] = texture2D( irradiance_texture, vec2(1.0/9.0, i)).xyz;\n\
-		coeffs.c[2] = texture2D( irradiance_texture, vec2(2.0/9.0, i)).xyz;\n\
-		coeffs.c[3] = texture2D( irradiance_texture, vec2(3.0/9.0, i)).xyz;\n\
-		coeffs.c[4] = texture2D( irradiance_texture, vec2(4.0/9.0, i)).xyz;\n\
-		coeffs.c[5] = texture2D( irradiance_texture, vec2(5.0/9.0, i)).xyz;\n\
-		coeffs.c[6] = texture2D( irradiance_texture, vec2(6.0/9.0, i)).xyz;\n\
-		coeffs.c[7] = texture2D( irradiance_texture, vec2(7.0/9.0, i)).xyz;\n\
-		coeffs.c[8] = texture2D( irradiance_texture, vec2(8.0/9.0, i)).xyz;\n\
+		coeffs.c[0] = texture2D( irradiance_texture, vec2(0.5/9.0, i)).xyz;\n\
+		coeffs.c[1] = texture2D( irradiance_texture, vec2(1.5/9.0, i)).xyz;\n\
+		coeffs.c[2] = texture2D( irradiance_texture, vec2(2.5/9.0, i)).xyz;\n\
+		coeffs.c[3] = texture2D( irradiance_texture, vec2(3.5/9.0, i)).xyz;\n\
+		#ifndef SH_LOW\n\
+		coeffs.c[4] = texture2D( irradiance_texture, vec2(4.5/9.0, i)).xyz;\n\
+		coeffs.c[5] = texture2D( irradiance_texture, vec2(5.5/9.0, i)).xyz;\n\
+		coeffs.c[6] = texture2D( irradiance_texture, vec2(6.5/9.0, i)).xyz;\n\
+		coeffs.c[7] = texture2D( irradiance_texture, vec2(7.5/9.0, i)).xyz;\n\
+		coeffs.c[8] = texture2D( irradiance_texture, vec2(8.5/9.0, i)).xyz;\n\
+		#endif\n\
 		return max( vec3(0.001), ComputeSHDiffuse( normal, coeffs ) );\n\
 	}\n\
 	float irr_expFunc(float f)\n\
@@ -40073,8 +40226,11 @@ var irradiance_code = "\n\
 		vec3 local_pos = (u_irradiance_imatrix * vec4(pos + u_irradiance_distance * normal, 1.0)).xyz - vec3(0.5);\n\
 		local_pos = clamp( local_pos, vec3(0.0), u_irradiance_subdivisions - vec3(1.0));\n\
 		float fx = fract(local_pos.x);\n\
-		float fy = irr_expFunc(1.0 - fract(local_pos.y));\n\
-		float fz = irr_expFunc(1.0 - fract(local_pos.z));\n\
+		float fy = 1.0 - fract(local_pos.y);\n\
+		float fz = 1.0 - fract(local_pos.z);\n\
+		fx = irr_expFunc(fx);\n\
+		fy = irr_expFunc(fy);\n\
+		fz = irr_expFunc(fz);\n\
 		vec3 LTF = computeSHRadianceAtLocalPos( vec3( floor(local_pos.x), ceil(local_pos.y), ceil(local_pos.z)), normal );\n\
 		vec3 LTB = computeSHRadianceAtLocalPos( vec3( floor(local_pos.x), ceil(local_pos.y), floor(local_pos.z)), normal );\n\
 		vec3 RTF = computeSHRadianceAtLocalPos( vec3( ceil(local_pos.x), ceil(local_pos.y), ceil(local_pos.z)), normal );\n\
@@ -40090,6 +40246,13 @@ var irradiance_code = "\n\
 		vec3 RB = mix(RBF,RBB,fz);\n\
 		vec3 R = mix(RT,RB,fy);\n\
 		return mix(L,R,fx);\n\
+		\n\
+	}\n\
+	vec3 computeSHRadianceAtPosition( in vec3 pos, in vec3 normal )\n\
+	{\n\
+		vec3 local_pos = (u_irradiance_imatrix * vec4(pos + u_irradiance_distance * normal, 1.0)).xyz - vec3(0.5);\n\
+		local_pos = clamp( local_pos, vec3(0.0), u_irradiance_subdivisions - vec3(1.0));\n\
+		return computeSHRadianceAtLocalPos( local_pos, normal );\n\
 		\n\
 	}\n\
 	\n\
@@ -46881,7 +47044,8 @@ Light._enabled_fs_shaderblock_code = "\n\
 		float NdotL = 1.0;\n\
 		NdotL = dot(N,L);\n\
 		float EdotN = dot(E,N); //clamp(dot(E,N),0.0,1.0);\n\
-		NdotL = max( 0.0, NdotL + LIGHT.Offset );\n\
+		NdotL = NdotL + LIGHT.Offset;\n\
+		NdotL = max( 0.0, NdotL );\n\
 		FINALLIGHT.Diffuse = abs(NdotL);\n\
 		FINALLIGHT.Specular = o.Specular * pow( clamp(dot(R,-L),0.001,1.0), o.Gloss );\n\
 		\n\
@@ -47438,27 +47602,6 @@ LS.Formats.addSupportedFormat( "zip", { dataType: "arraybuffer" } );
 WBin.classes = LS.Classes; //WBin need to know which classes are accesible to be instantiated right from the WBin data info, in case the class is not a global class
 
 
-//parsers usually need this
-//takes an string an returns a Uint8Array typed array containing that string
-function stringToTypedArray(str, fixed_length)
-{
-	var r = new Uint8Array( fixed_length ? fixed_length : str.length);
-	for(var i = 0; i < str.length; i++)
-		r[i] = str.charCodeAt(i);
-	return r;
-}
-
-//takes a typed array with ASCII codes and returns the string
-function typedArrayToString(typed_array, same_size)
-{
-	var r = "";
-	for(var i = 0; i < typed_array.length; i++)
-		if (typed_array[i] == 0 && !same_size)
-			break;
-		else
-			r += String.fromCharCode( typed_array[i] );
-	return r;
-}
 ///@FILE:../src/parsers/parserASE.js
 ///@INFO: PARSER
 //***** ASE Parser *****************
@@ -53202,6 +53345,32 @@ if( !Float32Array.prototype.hasOwnProperty( "equal" ) )
 		enumerable: false
 	});
 }
+
+
+//parsers usually need this
+//takes an string an returns a Uint8Array typed array containing that string
+function stringToTypedArray( str, fixed_length )
+{
+	var r = new Uint8Array( fixed_length ? fixed_length : str.length);
+	for(var i = 0; i < str.length; i++)
+		r[i] = str.charCodeAt(i);
+	return r;
+}
+
+//takes a typed array with ASCII codes and returns the string
+function typedArrayToString( typed_array, same_size )
+{
+	var r = "";
+	for(var i = 0; i < typed_array.length; i++)
+		if (typed_array[i] == 0 && !same_size)
+			break;
+		else
+			r += String.fromCharCode( typed_array[i] );
+	return r;
+}
+
+LS.stringToTypedArray = stringToTypedArray;
+LS.typedArrayToString = typedArrayToString;
 ///@FILE:../src/outro.js
 ///@INFO: BASE
 //here goes the ending of commonjs stuff

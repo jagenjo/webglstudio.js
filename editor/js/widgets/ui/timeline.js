@@ -988,7 +988,7 @@ Timeline.prototype.onMouse = function(e)
 					if( track.type == "events")
 						this.showAddEventKeyframeDialog( track, time, track.getKeyframe( item.keyframe ) );
 					else
-						this.showEditKeyframeDialog( track, time, track.getKeyframe( item.keyframe ) );
+						this.showEditKeyframeDialog( track, time, track.getKeyframe( item.keyframe ), item.keyframe );
 				}
 				if(item.type == "track" && track)
 					this.showTrackOptionsDialog( track );
@@ -2315,6 +2315,11 @@ Timeline.prototype.showTrackOptionsDialog = function( track )
 
 		widgets.widgets_per_row = 1;
 
+		widgets.addButtons(null, ["Add keyframe"], { callback: function(v){
+			track.addKeyframeFromCurrent( that.current_time );		
+			that.animationModified();
+		}});
+
 		widgets.addButtons(null,["Close"], function(v){
 			dialog.close();
 			return;
@@ -2384,7 +2389,7 @@ Timeline.prototype.showAddEventKeyframeDialog = function( track, time, keyframe 
 	dialog.show( null, this.root );
 }
 
-Timeline.prototype.showEditKeyframeDialog = function( track, time, keyframe )
+Timeline.prototype.showEditKeyframeDialog = function( track, time, keyframe, keyframe_index )
 {
 	if(!track)
 		return;
@@ -2418,6 +2423,12 @@ Timeline.prototype.showEditKeyframeDialog = function( track, time, keyframe )
 	else
 		widgets.addInfo( "Value", String( value ) );
 	widgets.addCheckbox("Preview", preview, function(v) { preview = v; } );
+	widgets.addButton("Delete", "Delete", function(v) { 
+		track.removeKeyframe( keyframe_index );
+		that.redrawCanvas();
+		that.animationModified();
+		dialog.close();
+	});
 
 	dialog.add( widgets );
 	dialog.adjustSize();

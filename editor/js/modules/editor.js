@@ -750,7 +750,15 @@ var EditorModule = {
 		var dialog = new LiteGUI.Dialog( { title:"Render Settings", width: 400, draggable: true, closable: true });
 		
 		var inspector = new LiteGUI.Inspector( {name_width:"50%"});
-		inspector.showObjectFields( render_settings );
+
+		inspector.on_refresh = function()
+		{
+			inspector.showObjectFields( render_settings );
+			inspector.addSeparator();
+			inspector.addStringButton(null,"",{ callback_button: function(v) { render_settings[v] = true; inspector.refresh(); },button:"+" });
+		}
+
+		inspector.refresh();
 
 		inspector.onchange = function(){
 			LS.GlobalScene.refresh();

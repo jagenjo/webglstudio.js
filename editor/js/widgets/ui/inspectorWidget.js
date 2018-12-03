@@ -393,6 +393,11 @@ InspectorWidget.prototype.inspectScene = function( scene )
 			},
 			button: "+"
 		});
+
+		//inspector.addButton(null,"Add from Oficial Repository",{ callback: function(){
+		//	PluginsModule.showOficialScriptsDialog();
+		//}});
+
 		if(scene.external_scripts && scene.external_scripts.length)
 			inspector.addButton(null,"Reload scripts", function(){
 				LS.GlobalScene.loadScripts( null, null, LiteGUI.alert, true );

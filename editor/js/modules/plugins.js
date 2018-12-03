@@ -194,6 +194,16 @@ var PluginsModule = {
 	reset: function()
 	{
 		this.plugins = [];
+	},
+
+	showOficialScriptsDialog: function()
+	{
+		var dialog = new LiteGUI.Dialog( { title: "Oficial Scripts", close: true, minimize: true, width: 600, height: 300, resizable:true, draggable: true } );
+		dialog.show();
+
+		var inspector = new LiteGUI.Inspector();
+		dialog.add( inspector );
+
 	}
 }
 

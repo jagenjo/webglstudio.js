@@ -7,8 +7,7 @@ var ExportModule = {
 		"js/extra/litegl.js",
 		"js/extra/litegraph.js",
 		"js/extra/Canvas2DtoWebGL.js",
-		"js/extra/litescene.js",
-		"data/shaders.xml"
+		"js/extra/litescene.js"
 	],
 
 	//allows to create new exporters easily for propietary formats

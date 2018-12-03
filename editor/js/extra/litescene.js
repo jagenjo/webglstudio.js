@@ -2736,9 +2736,23 @@ var Input = {
 	lockMouse: function(v)
 	{
 		if(v)
+		{
 			gl.canvas.requestPointerLock();
+
+		}
 		else
 			document.exitPointerLock();
+	},
+
+	/**
+	* returns true is mouse is in pointer lock mode
+	*
+	* @method isMouseLocked
+	* @return {boolean}
+	*/
+	isMouseLocked: function()
+	{
+		return !!document.pointerLockElement;
 	},
 
 	//called from LS.Player when onmouse
@@ -2747,8 +2761,14 @@ var Input = {
 	{
 		this.last_mouse = e;
 
-		this.Mouse.mousex = e.mousex;
-		this.Mouse.mousey = e.mousey;
+		if( this.isMouseLocked() )
+		{
+			e.mousex = (gl.canvas.width * 0.5)|0;
+			e.mousey = (gl.canvas.height * 0.5)|0;
+		}
+
+		this.Mouse.x = e.mousex;
+		this.Mouse.y = e.mousey;
 
 		//save it in case we need to know where was the last click
 		if(e.type == "mousedown")
@@ -3692,7 +3712,7 @@ var GUI = {
 			clicked = LS.Input.isEventInRect( mouse, area, this._offset );
 			if(clicked)
 			{
-				norm_value = ( (LS.Input.Mouse.mousex - this._offset[0]) - (area[0] + margin)) / (area[2] - margin*2);
+				norm_value = ( (LS.Input.Mouse.x - this._offset[0]) - (area[0] + margin)) / (area[2] - margin*2);
 				if(norm_value < 0) norm_value = 0;
 				if(norm_value > 1) norm_value = 1;
 				value = norm_value * range + left_value;
@@ -3763,7 +3783,7 @@ var GUI = {
 			clicked = LS.Input.isEventInRect( mouse, area, this._offset );
 			if(clicked)
 			{
-				norm_value = ( (LS.Input.Mouse.mousey - this._offset[1]) - (area[1] + margin)) / (area[3] - margin*2);
+				norm_value = ( (LS.Input.Mouse.y - this._offset[1]) - (area[1] + margin)) / (area[3] - margin*2);
 				if(norm_value < 0) norm_value = 0;
 				if(norm_value > 1) norm_value = 1;
 				norm_value = 1 - norm_value; //reverse slider
@@ -3833,12 +3853,12 @@ var GUI = {
 			clicked = LS.Input.isEventInRect( mouse, area, this._offset );
 			if(clicked)
 			{
-				var dx = LS.Input.Mouse.mousex - (area[0] + area[2] * 0.5) - this._offset[0];
-				var dy = LS.Input.Mouse.mousey - (area[1] + area[3] * 0.5) - this._offset[1];
+				var dx = LS.Input.Mouse.x - (area[0] + area[2] * 0.5) - this._offset[0];
+				var dy = LS.Input.Mouse.y - (area[1] + area[3] * 0.5) - this._offset[1];
 				//var angle = Math.atan2( dx, -dy ) / Math.PI;
 				var angle = ( Math.atan2( dx, -dy ) - start_angle ) / total_angle;
 				norm_value = angle;
-				//norm_value = ( (LS.Input.Mouse.mousey - this._offset[1]) - (area[1] + margin)) / (area[3] - margin*2);
+				//norm_value = ( (LS.Input.Mouse.y - this._offset[1]) - (area[1] + margin)) / (area[3] - margin*2);
 				//norm_value = 1 - norm_value; //reverse slider
 				if(norm_value < 0) norm_value = 0;
 				if(norm_value > 1) norm_value = 1;
@@ -5025,7 +5045,8 @@ var ResourcesManager = {
 		{
 			var alert_res = this.resources[i];
 			if( alert_res != res && alert_res.onResourceRenamed )
-				alert_res.onResourceRenamed( old_name, new_name, res );
+				if( alert_res.onResourceRenamed( old_name, new_name, res ) )
+					this.resourceModified(alert_res);
 		}
 
 		//ugly: too hardcoded
@@ -6311,7 +6332,7 @@ GLSLCode.pragma_methods["shaderblock"] = {
 		}
 
 		var block_code = shader_block.getFinalCode( shader_type, block_flags, context );
-		if( !block_code )
+		if( block_code == null )
 			return null;
 
 		//add the define BLOCK_name only if enabled
@@ -6610,6 +6631,26 @@ LS.Shaders.registerSnippet("computePointSize","\n\
 				return u_viewport.w * u_camera_perspective.z * radius / w;\n\
 			}\n\
 	");
+
+
+//base blocks that behave more like booleans 
+
+//used to have the BLOCK_FIRSTPASS macro
+var firstpass_block = LS.Shaders.firstpass_block = new LS.ShaderBlock("firstPass");
+firstpass_block.addCode( GL.FRAGMENT_SHADER, "", "" );
+firstpass_block.register();
+
+//used to have the BLOCK_LASTPASS macro
+var lastpass_block = LS.Shaders.lastpass_block = new LS.ShaderBlock("lastPass");
+lastpass_block.addCode( GL.FRAGMENT_SHADER, "", "" );
+lastpass_block.register();
+
+//used to render normalinfo to buffer
+var normalbuffer_block = LS.Shaders.normalbuffer_block = new LS.ShaderBlock("normalBuffer");
+normalbuffer_block.addCode( GL.FRAGMENT_SHADER, "", "" );
+normalbuffer_block.register();
+
+
 ///@FILE:../src/utils/litegl-extra.js
 ///@INFO: BASE
 //when working with animations sometimes you want the bones to be referenced by node name and no node uid, because otherwise you cannot reuse
@@ -7326,6 +7367,7 @@ Material.prototype.onResourceRenamed = function (old_name, new_name, resource)
 		{
 			sampler.texture = new_name;
 			v = true;
+
 		}
 	}
 	return v;
@@ -7911,12 +7953,17 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	if( !ignore_lights )
 		lights = LS.Renderer.getNearLights( instance );
 
+	if(LS.Renderer._use_normalbuffer)
+		block_flags |= LS.Shaders.normalbuffer_block.flag_mask;
+
 	//if no lights are set or the render mode is flat
 	if( !lights || lights.length == 0 || ignore_lights )
 	{
 		//global flags (like environment maps, irradiance, etc)
 		if( !ignore_lights )
 			block_flags |= global_flags;
+		block_flags |= LS.Shaders.firstpass_block.flag_mask;
+		block_flags |= LS.Shaders.lastpass_block.flag_mask;
 
 		//extract shader compiled
 		var shader = shader_code.getShader( pass.name, block_flags );
@@ -7947,13 +7994,19 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 
 	//render multipass with several lights
 	var prev_shader = null;
-	for(var i = 0; i < lights.length; ++i)
+	for(var i = 0, l = lights.length; i < l; ++i)
 	{
 		var light = lights[i];
 		block_flags = light.applyShaderBlockFlags( base_block_flags, pass, render_settings );
 
 		//global
 		block_flags |= global_flags;
+
+		//shaders require to know in which pass they are (ambient is applied in the first, reflections in the last)
+		if(i == 0)
+			block_flags |= LS.Shaders.firstpass_block.flag_mask;
+		if(i == l - 1)
+			block_flags |= LS.Shaders.lastpass_block.flag_mask;
 
 		//extract shader compiled
 		var shader = shader_code.getShader( null, block_flags );
@@ -7967,8 +8020,8 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 		LS.Renderer.bindSamplers( light._samplers );
 
 		//light parameters (like index of pass or num passes)
-		light._uniforms.u_light_info[2] = i;
-		light._uniforms.u_light_info[3] = lights.length;
+		light._uniforms.u_light_info[2] = i; //num pass
+		light._uniforms.u_light_info[3] = lights.length; //total passes
 		uniforms_array[3] = light._uniforms;
 
 		//assign
@@ -9125,6 +9178,7 @@ uniform vec4 u_normal_texture_settings;\n\
 #pragma shaderblock \"light\"\n\
 #pragma shaderblock \"light_texture\"\n\
 #pragma shaderblock \"applyReflection\"\n\
+#pragma shaderblock \"normalBuffer\"\n\
 \n\
 #pragma snippet \"perturbNormal\"\n\
 \n\
@@ -9184,8 +9238,15 @@ void main() {\n\
 	{{fs_encode}}\n\
 	#ifdef DRAW_BUFFERS\n\
 	  gl_FragData[0] = final_color;\n\
-	  if(u_light_info.z == 0.0)\n\
-		  gl_FragData[1] = o.Extra;\n\
+	  #ifdef BLOCK_FIRSTPASS\n\
+		  #ifdef BLOCK_NORMALBUFFER\n\
+			  gl_FragData[1] = vec4( o.Normal * 0.5 + vec3(0.5), 1.0 );\n\
+		  #else\n\
+			  gl_FragData[1] = o.Extra;\n\
+		  #endif\n\
+	  #else\n\
+		  gl_FragData[1] = vec4(0.0);\n\
+	 #endif\n\
 	#else\n\
 	  gl_FragColor = final_color;\n\
 	#endif\n\
@@ -34817,15 +34878,18 @@ function CameraController(o)
 	this.left_button_action = CameraController.ORBIT;
 	this.right_button_action = CameraController.PAN;
 	this.middle_button_action = CameraController.PAN;
+	//this.touch_button_action = CameraController.ORBIT;
 	this.mouse_wheel_action = CameraController.CHANGE_DISTANCE;
 
 	this.keyboard_walk = false;
+	this.keyboard_walk_plane = false;
 	this.lock_mouse = false;
 
 	this.rot_speed = 1;
 	this.walk_speed = 10;
 	this.wheel_speed = 1;
 	this.smooth = false;
+	this.render_crosshair = false;
 
 	this._moving = vec3.fromValues(0,0,0);
 
@@ -34898,6 +34962,7 @@ CameraController.prototype.onAddedToScene = function( scene )
 	LEvent.bind( scene, "keydown",this.onKey,this);
 	LEvent.bind( scene, "keyup",this.onKey,this);
 	LEvent.bind( scene, "update",this.onUpdate,this);
+	LEvent.bind( scene, "renderGUI",this.onRenderGUI,this);
 }
 
 CameraController.prototype.onRemovedFromScene = function( scene )
@@ -34933,18 +34998,24 @@ CameraController.prototype.onUpdate = function(e)
 	if(!cam || !cam.enabled)
 		return;
 
-	if(this._root.transform) //attached to node
+	//move using the delta vector
+	if(this._moving[0] != 0 || this._moving[1] != 0 || this._moving[2] != 0)
 	{
-	}
-	else 
-	{
-		if(this.keyboard_walk)
+		var delta = cam.getLocalVector( this._moving );
+		if( this.keyboard_walk_plane )
+			delta[1] = 0;
+		if(vec3.length(delta))
 		{
-			//move using the delta vector
-			if(this._moving[0] != 0 || this._moving[1] != 0 || this._moving[2] != 0)
+			vec3.normalize( delta, delta );
+			vec3.scale(delta, delta, this.walk_speed * (this._fast ? 10 : 1));
+
+			if(this._root.transform) //attached to node
 			{
-				var delta = cam.getLocalVector( this._moving );
-				vec3.scale(delta, delta, this.walk_speed );
+				this._root.transform.translateGlobal(delta);
+				cam.updateMatrices();
+			}
+			else
+			{
 				cam.move(delta);
 				cam.updateMatrices();
 			}
@@ -35142,6 +35213,7 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 		return;
 	
 	var node = this._root;
+	var scene = node.scene;
 	var cam = node.camera;
 	if(!cam || !cam.enabled)
 		return;
@@ -35175,6 +35247,9 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 
 	if(mouse_event.eventType == "mousedown")
 	{
+		if(this.lock_mouse && !document.pointerLockElement && scene._state == LS.PLAYING)
+			LS.Input.lockMouse(true);
+
 		if( LS.Input.Mouse.isButtonPressed( GL.LEFT_MOUSE_BUTTON ) )
 			changed |= this.processMouseButtonDownEvent( this.left_button_action, mouse_event, this._collision_left );
 		if( LS.Input.Mouse.isButtonPressed( GL.MIDDLE_MOUSE_BUTTON ) )
@@ -35183,11 +35258,12 @@ CameraController.prototype.onMouse = function(e, mouse_event)
 			changed |= this.processMouseButtonDownEvent( this.right_button_action, mouse_event, this._collision_right );
 		this._dragging = true;
 	}
+
 	if(!mouse_event.dragging)
 		this._dragging = false;
 
 	//mouse move
-	if( mouse_event.eventType == "mousemove" && this.lock_mouse && document.pointerLockElement )
+	if( ( mouse_event.eventType == "mousemove" || mouse_event.eventType == "touchmove" ) && (this.lock_mouse && ( document.pointerLockElement || mouse_event.is_touch )) )
 		changed |= this.processMouseButtonMoveEvent( this.no_button_action, mouse_event, this._collision_none  );
 
 	//regular mouse dragging
@@ -35298,43 +35374,60 @@ CameraController.prototype.onKey = function(e, key_event)
 	if(!this._root || !this.enabled) 
 		return;
 
-	//trace(key_event);
-	if(key_event.keyCode == 87)
+	//keyboard movement
+	if( this.keyboard_walk )
 	{
-		if(key_event.type == "keydown")
-			this._moving[2] = -1;
-		else
-			this._moving[2] = 0;
-	}
-	else if(key_event.keyCode == 83)
-	{
-		if(key_event.type == "keydown")
-			this._moving[2] = 1;
-		else
-			this._moving[2] = 0;
-	}
-	else if(key_event.keyCode == 65)
-	{
-		if(key_event.type == "keydown")
-			this._moving[0] = -1;
-		else
-			this._moving[0] = 0;
-	}
-	else if(key_event.keyCode == 68)
-	{
-		if(key_event.type == "keydown")
-			this._moving[0] = 1;
-		else
-			this._moving[0] = 0;
-	}
-	
-	if(key_event.keyCode == 16) //shift in windows chrome
-	{
-		if(key_event.type == "keydown")
-			vec3.scale( this._moving, this._moving, 10 );
+		if(key_event.keyCode == 87)
+		{
+			if(key_event.type == "keydown")
+				this._moving[2] = -1;
+			else
+				this._moving[2] = 0;
+		}
+		else if(key_event.keyCode == 83)
+		{
+			if(key_event.type == "keydown")
+				this._moving[2] = 1;
+			else
+				this._moving[2] = 0;
+		}
+		else if(key_event.keyCode == 65)
+		{
+			if(key_event.type == "keydown")
+				this._moving[0] = -1;
+			else
+				this._moving[0] = 0;
+		}
+		else if(key_event.keyCode == 68)
+		{
+			if(key_event.type == "keydown")
+				this._moving[0] = 1;
+			else
+				this._moving[0] = 0;
+		}
+		else if(key_event.keyCode == 16) //shift in windows chrome
+		{
+			if(key_event.type == "keydown")
+				this._fast = true;
+			else if(key_event.type == "keyup")
+				this._fast = false;
+		}
 	}
 
 	//LEvent.trigger(Scene,"change");
+}
+
+CameraController.prototype.onRenderGUI = function()
+{
+	if(!this.render_crosshair || !this.enabled || !this._camera || !this._camera.enabled || !LS.Input.isMouseLocked() )
+		return;
+	var ctx = gl;
+	gl.start2D();
+	ctx.fillStyle = "rgba(0,0,0,0.5)";
+	ctx.fillRect( gl.viewport_data[2] * 0.5 - 1, gl.viewport_data[3] * 0.5 - 1, 4, 4 );
+	ctx.fillStyle = "rgba(255,255,255,1)";
+	ctx.fillRect( gl.viewport_data[2] * 0.5, gl.viewport_data[3] * 0.5, 2, 2 );
+	gl.finish2D();
 }
 
 LS.registerComponent( CameraController );
@@ -35589,7 +35682,7 @@ LS.registerComponent(FogFX);
 var fog_block = new LS.ShaderBlock("fog");
 //fog_block.addInclude("computeFog");
 fog_block.bindEvent("fs_functions", "	uniform vec3 u_fog_info;\n	uniform vec3 u_fog_color;\n");
-fog_block.bindEvent("fs_final_pass", "	float cam_dist = length(u_camera_eye - v_pos);\n	float fog = 1. - 1.0 / exp(max(0.0,cam_dist - u_fog_info.x) * u_fog_info.z);\n	final_color.xyz = mix(final_color.xyz, u_fog_color, fog);\n");
+fog_block.bindEvent("fs_final_pass", "	if(u_light_info.z == 0.0) { float cam_dist = length(u_camera_eye - v_pos);\n	float fog = 1. - 1.0 / exp(max(0.0,cam_dist - u_fog_info.x) * u_fog_info.z);\n	final_color.xyz = mix(final_color.xyz, u_fog_color, fog);\n}\n\n");
 fog_block.register();
 FogFX.block = fog_block;
 
@@ -39875,7 +39968,7 @@ IrradianceCache.prototype.toData = function()
 	return data;
 }
 
-IrradianceCache.prototype.renderEditor = function( camera )
+IrradianceCache.prototype.renderEditor = function( is_selected )
 {
 	if(!this.enabled || !IrradianceCache.show_probes)
 		return;
@@ -39904,6 +39997,7 @@ IrradianceCache.prototype.renderEditor = function( camera )
 	mat4.scale( matrix, matrix, iscale );
 	var start = mat4.multiplyVec3(vec3.create(),matrix,[0,0,0]);
 	var end = mat4.multiplyVec3(vec3.create(),matrix,subs);
+	var camera = LS.Renderer._current_camera;
 
 	var i = 0;
 	for(var y = 0; y < subs[1]; ++y)
@@ -40060,8 +40154,8 @@ function computeSH( faces, cubemapSize, ch) {
   // generate cube map vectors
   faces.forEach((face, index) => {
     var faceVecs = []
-    for (let v = 0; v < size; v++) {
-      for (let u = 0; u < size; u++) {
+    for (var v = 0; v < size; v++) {
+      for (var u = 0; u < size; u++) {
         var fU = (2.0 * u / (size - 1.0)) - 1.0
         var fV = (2.0 * v / (size - 1.0)) - 1.0
 
@@ -40083,7 +40177,7 @@ function computeSH( faces, cubemapSize, ch) {
   })
 
   // generate shperical harmonics
-  let sh = [
+  var sh = [
     new Float32Array(3),
     new Float32Array(3),
     new Float32Array(3),
@@ -40094,7 +40188,7 @@ function computeSH( faces, cubemapSize, ch) {
     new Float32Array(3),
     new Float32Array(3)
   ]
-  let weightAccum = 0
+  var weightAccum = 0
   
 
   faces.forEach((face, index) => {
@@ -40118,12 +40212,12 @@ function computeSH( faces, cubemapSize, ch) {
         const weight4 = weight * 5 / 68
         const weight5 = weight * 15 / 68
 
-        let dx = texelVect[0]
-        let dy = texelVect[1]
-        let dz = texelVect[2]
+        var dx = texelVect[0]
+        var dy = texelVect[1]
+        var dz = texelVect[2]
 
-        for (let c = 0; c < 3; c++) {
-          let value = pixels[y * size * channels + x * channels + c]
+        for (var c = 0; c < 3; c++) {
+          var value = pixels[y * size * channels + x * channels + c]
 		  if(low_precision)
 			  value /= 255;
           if (gammaCorrect)
@@ -40149,7 +40243,7 @@ function computeSH( faces, cubemapSize, ch) {
   })
 
   var linear_sh = new Float32Array(sh.length*3);
-  for (let i = 0; i < sh.length; i++) {
+  for (var i = 0; i < sh.length; i++) {
     linear_sh[i*3] = sh[i][0] *= 4 * Math.PI / weightAccum;
     linear_sh[i*3+1] = sh[i][1] *= 4 * Math.PI / weightAccum;
     linear_sh[i*3+2] = sh[i][2] *= 4 * Math.PI / weightAccum;
@@ -42708,6 +42802,7 @@ function Canvas3D(o)
 	this.input_active = true; //used for LS.GUI methods
 	this.use_node_material = false;
 	this.generate_mipmaps = false;
+	this.max_interactive_distance = 100; //distance beyong which the mouse is no longer projected
 
 	this._clear_buffer = true; //not public, just here in case somebody wants it
 	this._skip_backside = true;
@@ -42927,9 +43022,14 @@ Canvas3D.prototype.projectMouse = function()
 	{
 		this._mouse[0] = LS.Input.Mouse.x;
 		this._mouse[1] = LS.Input.Mouse.y;
+		this._mouse[2] = 0;
 		this._is_mouse_inside = true;
 		return;
 	}
+
+	var cam_dist = 0;
+	cam_dist = vec3.distance( camera.getEye(), this.root.transform.getGlobalPosition() );
+	var too_far = cam_dist > this.max_interactive_distance;
 
 	this._is_mouse_inside = false;
 
@@ -42938,17 +43038,19 @@ Canvas3D.prototype.projectMouse = function()
 	var w = this.width|0;
 	var h = this.height|0;
 
-	if( !this.input_active )
+	if( !this.input_active || too_far )
 	{
 		mousex = -1;
 		mousey = -1;
 		this._mouse[0] = mousex;
 		this._mouse[1] = mousey;
+		this._mouse[2] = -1;
 	}
 	else
 	{
 		this._mouse[0] = -1;
 		this._mouse[1] = -1;
+		this._mouse[2] = cam_dist;
 
 		var ray = camera.getRayInPixel( mousex, mousey );
 		var camera_front = camera.getFront();
@@ -43566,6 +43668,8 @@ LS.registerComponent( InteractiveController );
 function Scene()
 {
 	this.uid = LS.generateUId("TREE-");
+
+	this._state = LS.STOPPED;
 
 	this._root = new LS.SceneNode("root");
 	this._root.removeAllComponents();
@@ -47009,6 +47113,8 @@ Light._enabled_fs_shaderblock_code = "\n\
 	#pragma snippet \"surface\"\n\
 	#pragma snippet \"light_structs\"\n\
 	#pragma snippet \"spotFalloff\"\n\
+	#pragma shaderblock \"firstPass\"\n\
+	#pragma shaderblock \"lastPass\"\n\
 	#pragma shaderblock \"applyIrradiance\"\n\
 	#pragma shaderblock \"attenuation\"\n\
 	#pragma shaderblock SHADOWBLOCK \"testShadow\"\n\
@@ -47022,7 +47128,6 @@ Light._enabled_fs_shaderblock_code = "\n\
 		FinalLight FINALLIGHT;\n\
 		// INIT\n\
 		FINALLIGHT.Color = LIGHT.Color;\n\
-		FINALLIGHT.Ambient = LIGHT.Ambient;\n\
 		\n\
 		// COMPUTE VECTORS\n\
 		vec3 N = o.Normal; //use the final normal (should be the same as IN.worldNormal)\n\
@@ -47039,7 +47144,10 @@ Light._enabled_fs_shaderblock_code = "\n\
 		vec3 R = reflect(E,N);\n\
 		\n\
 		// IRRADIANCE\n\
-		applyIrradiance( IN, o, FINALLIGHT );\n\
+		#ifdef BLOCK_FIRSTPASS\n\
+			FINALLIGHT.Ambient = LIGHT.Ambient;\n\
+			applyIrradiance( IN, o, FINALLIGHT );\n\
+		#endif\n\
 		// PHONG FORMULA\n\
 		float NdotL = 1.0;\n\
 		NdotL = dot(N,L);\n\
@@ -47075,8 +47183,9 @@ Light._enabled_fs_shaderblock_code = "\n\
 	{\n\
 		vec3 total_light = FINALLIGHT.Ambient * o.Ambient + FINALLIGHT.Color * FINALLIGHT.Diffuse * FINALLIGHT.Attenuation * FINALLIGHT.Shadow;\n\
 		vec3 final_color = o.Albedo * total_light;\n\
-		if(u_light_info.z == 0.0)\n\
-			final_color += o.Emission;\n\
+		#ifdef BLOCK_FIRSTPASS\n\
+		final_color += o.Emission;\n\
+		#endif\n\
 		final_color	+= o.Albedo * (FINALLIGHT.Color * FINALLIGHT.Specular * FINALLIGHT.Attenuation * FINALLIGHT.Shadow);\n\
 		return max( final_color, vec3(0.0) );\n\
 	}\n\
@@ -47109,8 +47218,9 @@ Light._disabled_shaderblock_code = "\n\
 	vec3 applyLight( in SurfaceOutput o, in FinalLight FINALLIGHT )\n\
 	{\n\
 		vec3 final_color = o.Albedo * o.Ambient * FINALLIGHT.Ambient;\n\
-		if(u_light_info.z == 0.0)\n\
-			final_color += o.Emission;\n\
+		#ifdef BLOCK_FIRSTPASS\n\
+		final_color += o.Emission;\n\
+		#endif\n\
 		return final_color;\n\
 	}\n\
 	\n\
@@ -47379,8 +47489,9 @@ var reflection_code = "\n\
 		vec3 R = reflect( IN.viewDir, o.Normal );\n\
 		vec3 bg = vec3(0.0);\n\
 		//is last pass for this object?\n\
-		if(u_light_info.w == 0.0 || u_light_info.z == (u_light_info.w - 1.0))\n\
-			bg = getEnvironmentColor( R, 0.0 );\n\
+		#ifdef BLOCK_LASTPASS\n\
+		bg = getEnvironmentColor( R, 0.0 );\n\
+		#endif\n\
 		final_color.xyz = mix( final_color.xyz, bg, clamp( o.Reflectivity, 0.0, 1.0) );\n\
 		return final_color;\n\
 	}\n\
@@ -52582,6 +52693,8 @@ function Player(options)
 	}
 
 	this.debug = false;
+	this.autoplay = false;
+	this.skip_play_button = false;
 
 	this.gl = GL.create(options); //create or reuse
 	this.canvas = this.gl.canvas;
@@ -52675,6 +52788,7 @@ Player.prototype.configure = function( options, on_scene_loaded )
 {
 	var that = this;
 
+	this.skip_play_button = options.skip_play_button !== undefined ? options.skip_play_button : false;
 	this.autoplay = options.autoplay !== undefined ? options.autoplay : true;
 	if(options.debug)
 		this.enableDebug();
@@ -52744,9 +52858,12 @@ Player.prototype.loadScene = function(url, on_complete, on_progress)
 		//start playing once loaded the json
 		if(that.autoplay)
 			that.play();
+		else if(!that.skip_play_button)
+			that.showPlayDialog();
 		//console.log("Scene playing");
 		if(	that.loading )
 			that.loading.visible = false;
+		that._ondraw( true );
 		if(on_complete)
 			on_complete();
 	}
@@ -52976,12 +53093,33 @@ Player.prototype._onfiledrop = function( file, evt )
 	return LEvent.trigger( LS.GlobalScene, "fileDrop", { file: file, event: evt } );
 }
 
+Player.prototype.showPlayDialog = function()
+{
+	var element = document.createElement("div");
+	element.style.width = "128px";
+	element.style.position = "absolute";
+	element.style.top = ((this.canvas.offsetHeight * 0.5 - 64)|0) + "px";
+	element.style.left = ((this.canvas.offsetWidth * 0.5 - 64)|0) + "px";
+	element.style.cursor = "pointer";
+	element.style.borderRadius = "10px";
+	element.style.backgroundColor = "rgba(0,0,0,0.5)";
+	element.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><circle fill="#3bd0bc" cx="64" cy="64" r="50"/><polygon id="play-button-triangle" name="play-button-triangle" fill="#FFFFFF" points="42,32 100,64, 42,96"/></svg>';
+	this.canvas.parentNode.appendChild(element);
+
+	var that = this;
+	element.addEventListener("click", function(){
+		console.log("play!");
+		this.parentNode.removeChild( this );
+		that.play();
+	});
+}
+
 //called by the render loop to draw every frame
-Player.prototype._ondraw = function()
+Player.prototype._ondraw = function( force )
 {
 	var scene = this.scene;
 
-	if(this.state == LS.Player.PLAYING)
+	if( this.state == LS.Player.PLAYING || force )
 	{
 		if(this.onPreDraw)
 			this.onPreDraw();

@@ -7,6 +7,8 @@
 
 var GL = global.GL = {};
 
+if(typeof(glMatrix) == "undefined")
+	throw("litegl.js requires gl-matrix to work. It must be included before litegl.");
 
 //polyfill
 global.requestAnimationFrame = global.requestAnimationFrame || global.mozRequestAnimationFrame || global.webkitRequestAnimationFrame || function(callback) { setTimeout(callback, 1000 / 60); };
@@ -368,6 +370,7 @@ if(typeof(Image) != "undefined") //not existing inside workers
 	}
 }
 
+//you must pass an object with characters to replace and replace with what {"a":"A","c":"C"}
 if(!String.prototype.hasOwnProperty("replaceAll")) 
 	Object.defineProperty(String.prototype, "replaceAll", {
 		value: function(words){
@@ -5204,8 +5207,8 @@ Texture.prototype.uploadData = function( data, options, skip_mipmaps )
 	this.bind();
 	Texture.setUploadOptions(options, gl);
 
-	if( this.type == GL.HALF_FLOAT_OES )
-		console.warn("cannot uploadData to a HALF_FLOAT texture, to upload it we recomment to create a FLOAT texture, upload data there and copy to your HALF_FLOAT.");
+	if( this.type == GL.HALF_FLOAT_OES && data.constructor === Float32Array )
+		console.warn("cannot uploadData to a HALF_FLOAT texture from a Float32Array, must be Uint16Array. To upload it we recomment to create a FLOAT texture, upload data there and copy to your HALF_FLOAT.");
 
 	if( this.texture_type == GL.TEXTURE_2D )
 	{

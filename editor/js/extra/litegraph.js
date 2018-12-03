@@ -13245,6 +13245,7 @@ if(typeof(GL) != "undefined")
 			this._tex = new GL.Texture(1,1,{ format: gl.RGBA, type: type, minFilter: gl.NEAREST });
 		var color = this.properties.color;
 
+		if(this.inputs)
 		for(var i = 0; i < this.inputs.length; i++)
 		{
 			var input = this.inputs[i];

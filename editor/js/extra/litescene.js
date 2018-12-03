@@ -43081,7 +43081,7 @@ Canvas3D.prototype.projectMouse = function()
 			if( geo.testRayPlane( local_origin, local_direction, LS.ZEROS, LS.FRONT, this._mouse ) )
 			{
 				this._mouse[0] = (this._mouse[0] + 0.5) * w;
-				this._mouse[1] = h - (this._mouse[1] + 0.5) * h;
+				this._mouse[1] = (this._mouse[1] + 0.5) * h;
 			}
 		}
 	}
@@ -45802,6 +45802,9 @@ Object.defineProperty( SceneNode.prototype, 'visible', {
 	set: function(v)
 	{
 		this.flags.visible = v;
+		if( this._children )
+		for(var i = 0; i < this._children.length; ++i )
+			this._children[i].visible = v;
 	},
 	get: function(){
 		return this.flags.visible;
@@ -45813,6 +45816,9 @@ Object.defineProperty( SceneNode.prototype, 'is_static', {
 	set: function(v)
 	{
 		this.flags.is_static = v;
+		if( this._children )
+		for(var i = 0; i < this._children.length; ++i )
+			this._children[i].is_static = v;
 	},
 	get: function(){
 		return this.flags.is_static;

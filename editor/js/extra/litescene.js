@@ -42849,7 +42849,8 @@ function Canvas3D(o)
 
 	this._local_mouse = {
 		mousex: 0,
-		mousey: 0
+		mousey: 0,
+		buttons: 0
 	};
 
 	this._local_mouse_click = {
@@ -43021,7 +43022,7 @@ Canvas3D.prototype.onCollectInstances = function(e,instances)
 	if(!this._mesh)
 		this._mesh = GL.Mesh.plane();
 	RI.setMesh(this._mesh);
-	instances.push(RI);
+	instances.push( RI );
 
 	return instances;
 }
@@ -43052,8 +43053,8 @@ Canvas3D.prototype.projectMouse = function()
 	//Canvas Plane
 	if(!this.root.transform)
 	{
-		this._mouse[0] = LS.Input.Mouse.x;
-		this._mouse[1] = LS.Input.Mouse.y;
+		this._mouse[0] = LS.Input.Mouse.mousex;
+		this._mouse[1] = LS.Input.Mouse.mousey;
 		this._mouse[2] = 0;
 		this._is_mouse_inside = true;
 		return;
@@ -43065,8 +43066,8 @@ Canvas3D.prototype.projectMouse = function()
 
 	this._is_mouse_inside = false;
 
-	var x = LS.Input.Mouse.x;
-	var mousey = LS.Input.Mouse.y;
+	var x = LS.Input.Mouse.canvasx;
+	var y = LS.Input.Mouse.canvasy;
 	var w = this.width|0;
 	var h = this.height|0;
 
@@ -43075,7 +43076,7 @@ Canvas3D.prototype.projectMouse = function()
 		x = -1;
 		mousey = -1;
 		this._mouse[0] = x;
-		this._mouse[1] = mousey;
+		this._mouse[1] = y;
 		this._mouse[2] = -1;
 	}
 	else
@@ -43084,8 +43085,7 @@ Canvas3D.prototype.projectMouse = function()
 		this._mouse[1] = -1;
 		this._mouse[2] = cam_dist;
 
-		var canvasy = mousey;
-		var ray = camera.getRay( x, canvasy );
+		var ray = camera.getRay( x, y );
 
 		var temp = vec3.create();
 		var plane_normal = this.root.transform.localVectorToGlobal( LS.FRONT, temp );
@@ -43099,6 +43099,8 @@ Canvas3D.prototype.projectMouse = function()
 			{
 				this._mouse[0] = (this._mouse[0] + 0.5) * w;
 				this._mouse[1] = (this._mouse[1] + 0.5) * h;
+				//flip Y
+				this._mouse[1] = h - this._mouse[1];
 			}
 		}
 	}
@@ -43109,6 +43111,7 @@ Canvas3D.prototype.projectMouse = function()
 		this._is_mouse_inside = true;
 
 	//hacks to work with the LS.GUI...
+	//*
 	this._local_mouse.mousex = this._mouse[0];
 	this._local_mouse.mousey = this._mouse[1];
 	this._prev_mouse = LS.Input.Mouse;
@@ -43121,6 +43124,7 @@ Canvas3D.prototype.projectMouse = function()
 		this._prev_click_mouse = LS.Input.current_click;
 		LS.Input.current_click = this._local_mouse_click;
 	}
+	//*/
 }
 
 /*

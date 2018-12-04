@@ -88,10 +88,12 @@ var LiteGraph = global.LiteGraph = {
 
 	debug: false,
 	throw_errors: true,
-	allow_scripts: true,
+	allow_scripts: false,
 	registered_node_types: {}, //nodetypes by string
 	node_types_by_file_extension: {}, //used for droping files in the canvas
 	Nodes: {}, //node types by classname
+
+	searchbox_extras: {}, //used to add extra features to the search box
 
 	/**
 	* Register a node class so it can be listed when the user wants to create a new one
@@ -391,6 +393,11 @@ var LiteGraph = global.LiteGraph = {
 					return true;
 
 		return false;
+	},
+
+	registerSearchboxExtra: function( node_type, description, data )
+	{
+		this.searchbox_extras[ description ] = { type: node_type, desc: description, data: data };
 	}
 };
 
@@ -6918,11 +6925,38 @@ LGraphCanvas.prototype.showSearchBox = function(event)
 				that.onSearchBoxSelection( name, event, graphcanvas );
 			else
 			{
+				var extra = LiteGraph.searchbox_extras[ name ];
+				if( extra )
+					name = extra.type;
+
 				var node = LiteGraph.createNode( name );
 				if(node)
 				{
 					node.pos = graphcanvas.convertEventToCanvas( event );
 					graphcanvas.graph.add( node );
+				}
+
+				if( extra && extra.data )
+				{
+					if(extra.data.properties)
+						for(var i in extra.data.properties)
+							node.addProperty( extra.data.properties[i][0], extra.data.properties[i][0] );
+					if(extra.data.inputs)
+					{
+						node.inputs = [];
+						for(var i in extra.data.inputs)
+							node.addOutput( extra.data.inputs[i][0],extra.data.inputs[i][1] );
+					}
+					if(extra.data.outputs)
+					{
+						node.outputs = [];
+						for(var i in extra.data.outputs)
+							node.addOutput( extra.data.outputs[i][0],extra.data.outputs[i][1] );
+					}
+					if(extra.data.title)
+						node.title = extra.data.title;
+					if(extra.data.json)
+						node.configure( extra.data.json );
 				}
 			}
 		}
@@ -6957,24 +6991,41 @@ LGraphCanvas.prototype.showSearchBox = function(event)
         if (!str)
             return;
 
-        if (that.onSearchBox){
-            that.onSearchBox(help, str, graphcanvas);
+        if (that.onSearchBox) {
+            var list = that.onSearchBox( help, str, graphcanvas );
+			if(list)
+				for( var i = 0; i < list.length; ++i )
+					addResult( list[i] );
     	} else {
             var c = 0;
-        	if(LGraphCanvas.search_filter) {
-        		str = str.toLowerCase();
+       		str = str.toLowerCase();
+			//extras
+			for(var i in LiteGraph.searchbox_extras)
+			{
+				var extra = LiteGraph.searchbox_extras[i];
+				if( extra.desc.toLowerCase().indexOf(str) === -1 )
+					continue;
+				addResult( extra.desc, "searchbox_extra" );
+				if(LGraphCanvas.search_limit !== -1 && c++ > LGraphCanvas.search_limit )
+					break;
+			}
 
-        		var keys = Object.keys(LiteGraph.registered_node_types);
+        	if(LGraphCanvas.search_filter)
+			{
+				//types
+        		var keys = Object.keys( LiteGraph.registered_node_types );
         		var filtered = keys.filter(function (item) {
 					return item.toLowerCase().indexOf(str) !== -1;
                 });
-        		for(var i = 0; i < filtered.length; i++) {
+        		for(var i = 0; i < filtered.length; i++)
+				{
                     addResult(filtered[i]);
                     if(LGraphCanvas.search_limit !== -1 && c++ > LGraphCanvas.search_limit)
 						break;
 				}
 			} else {
-                for (var i in LiteGraph.registered_node_types) {
+                for (var i in LiteGraph.registered_node_types)
+				{
                     if (i.indexOf(str) != -1) {
                         addResult(i);
                         if(LGraphCanvas.search_limit !== -1 && c++ > LGraphCanvas.search_limit)
@@ -6984,13 +7035,18 @@ LGraphCanvas.prototype.showSearchBox = function(event)
             }
         }
 
-		function addResult(result) {
+		function addResult( type, className )
+		{
 			var help = document.createElement("div");
-			if (!first) first = result;
-			help.innerText = result;
+			if (!first)
+				first = type;
+			help.innerText = type;
+			help.dataset["type"] = escape(type);
 			help.className = "litegraph lite-search-item";
+			if( className )
+				help.className +=  " " + className;
 			help.addEventListener("click", function (e) {
-				select(this.innerText);
+				select( unescape( this.dataset["type"] ) );
 			});
 			helper.appendChild(help);
 		}
@@ -10255,6 +10311,14 @@ MathCompare.prototype.onGetOutputs = function()
 
 LiteGraph.registerNodeType("math/compare",MathCompare);
 
+LiteGraph.registerSearchboxExtra("math/compare","==", { outputs:[["A==B","boolean"]], title: "A==B" });
+LiteGraph.registerSearchboxExtra("math/compare","!=", { outputs:[["A!=B","boolean"]], title: "A!=B" });
+LiteGraph.registerSearchboxExtra("math/compare",">", { outputs:[["A>B","boolean"]], title: "A>B" });
+LiteGraph.registerSearchboxExtra("math/compare","<", { outputs:[["A<B","boolean"]], title: "A<B" });
+LiteGraph.registerSearchboxExtra("math/compare",">=", { outputs:[["A>=B","boolean"]], title: "A>=B" });
+LiteGraph.registerSearchboxExtra("math/compare","<=", { outputs:[["A<=B","boolean"]], title: "A<=B" });
+
+
 function MathCondition()
 {
 	this.addInput("A","number");
@@ -10389,54 +10453,67 @@ MathTrigonometry.prototype.onGetOutputs = function()
 
 LiteGraph.registerNodeType("math/trigonometry", MathTrigonometry );
 
+LiteGraph.registerSearchboxExtra("math/trigonometry","SIN()", { outputs:[["sin","number"]], title: "SIN()" });
+LiteGraph.registerSearchboxExtra("math/trigonometry","COS()", { outputs:[["cos","number"]], title: "COS()"  });
+LiteGraph.registerSearchboxExtra("math/trigonometry","TAN()", { outputs:[["tan","number"]], title: "TAN()"  });
 
 
 //math library for safe math operations without eval
-if(typeof(math) != undefined)
+function MathFormula()
 {
-	function MathFormula()
-	{
-		this.addInputs("x","number");
-		this.addInputs("y","number");
-		this.addOutputs("","number");
-		this.properties = {x:1.0, y:1.0, formula:"x+y"};
-	}
-
-	MathFormula.title = "Formula";
-	MathFormula.desc = "Compute safe formula";
-		
-	MathFormula.prototype.onExecute = function()
-	{
-		var x = this.getInputData(0);
-		var y = this.getInputData(1);
-		if(x != null)
-			this.properties["x"] = x;
-		else
-			x = this.properties["x"];
-
-		if(y!=null)
-			this.properties["y"] = y;
-		else
-			y = this.properties["y"];
-
-		var f = this.properties["formula"];
-		var value = math.eval(f,{x:x,y:y,T: this.graph.globaltime });
-		this.setOutputData(0, value );
-	}
-
-	MathFormula.prototype.onDrawBackground = function()
-	{
-		var f = this.properties["formula"];
-		this.outputs[0].label = f;
-	}
-
-	MathFormula.prototype.onGetOutputs = function()
-	{
-		return [["A-B","number"],["A*B","number"],["A/B","number"]];
-	}
-
-	LiteGraph.registerNodeType("math/formula", MathFormula );
+	this.addInput("x","number");
+	this.addInput("y","number");
+	this.addOutput("","number");
+	this.properties = {x:1.0, y:1.0, formula:"x+y"};
+	this.addWidget("toggle","allow",LiteGraph.allow_scripts,function(v){ LiteGraph.allow_scripts = v; });
+	this._func = null;
 }
+
+MathFormula.title = "Formula";
+MathFormula.desc = "Compute formula";
+	
+MathFormula.prototype.onExecute = function()
+{
+	if(!LiteGraph.allow_scripts)
+		return;
+
+	var x = this.getInputData(0);
+	var y = this.getInputData(1);
+	if(x != null)
+		this.properties["x"] = x;
+	else
+		x = this.properties["x"];
+
+	if(y!=null)
+		this.properties["y"] = y;
+	else
+		y = this.properties["y"];
+
+	var f = this.properties["formula"];
+
+	if(!this._func || this._func_code != this.properties.formula)
+	{
+		this._func = new Function( "x","y","TIME", "return " + this.properties.formula );
+		this._func_code = this.properties.formula;
+	}
+
+	var value = this._func(x,y,this.graph.globaltime);
+	this.setOutputData(0, value );
+}
+
+MathFormula.prototype.getTitle = function()
+{
+	return this._func_code || "";
+}
+
+MathFormula.prototype.onDrawBackground = function()
+{
+	var f = this.properties["formula"];
+	if(this.outputs && this.outputs.length)
+		this.outputs[0].label = f;
+}
+
+LiteGraph.registerNodeType("math/formula", MathFormula );
 
 
 function Math3DVec2ToXYZ()
@@ -10843,9 +10920,12 @@ GraphicsPlot.prototype.onDrawBackground = function(ctx)
 	ctx.lineTo(size[0], offset);
 	ctx.stroke();
 
+	if( this.inputs )
 	for(var i = 0; i < 4; ++i)
 	{
 		var values = this.values[i];
+		if( !this.inputs[i] || !this.inputs[i].link )
+			continue;
 		ctx.strokeStyle = colors[i];
 		ctx.beginPath();
 		var v = values[0] * scale * -1 + offset;
@@ -11470,7 +11550,7 @@ LiteGraph.registerNodeType("graphics/video", ImageVideo );
 function ImageWebcam()
 {
 	this.addOutput("Webcam","image");
-	this.properties = {};
+	this.properties = { facingMode: "user" };
 	this.boxcolor = "black";
 	this.frame = 0;
 }
@@ -11489,7 +11569,7 @@ ImageWebcam.prototype.openStream = function()
 	this._waiting_confirmation = true;
 
 	// Not showing vendor prefixes.
-	var constraints = { audio: false, video: { facingMode: "user" } };
+	var constraints = { audio: false, video: { facingMode: this.properties.facingMode } };
 	navigator.mediaDevices.getUserMedia( constraints ).then( this.streamReady.bind(this) ).catch( onFailSoHard );
 
 	var that = this;
@@ -11515,6 +11595,16 @@ ImageWebcam.prototype.closeStream = function()
 		this._video = null;
 		this.boxcolor = "black";
 		this.trigger("stream_closed");
+	}
+}
+
+ImageWebcam.prototype.onPropertyChanged = function(name,value)
+{
+	if(name == "facingMode")
+	{
+		this.properties.facingMode = value;
+		this.closeStream();
+		this.openStream();
 	}
 }
 
@@ -14201,7 +14291,7 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 	function LGraphTextureWebcam()
 	{
 		this.addOutput("Webcam","Texture");
-		this.properties = { texture_name: "" };
+		this.properties = { texture_name: "", facingMode: "user" };
 		this.boxcolor = "black";
 		this.version = 0;
 	}
@@ -14220,7 +14310,7 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 		this._waiting_confirmation = true;
 
 		// Not showing vendor prefixes.
-		var constraints = { audio: false, video: { facingMode: "user" } };
+		var constraints = { audio: false, video: { facingMode: this.properties.facingMode } };
 		navigator.mediaDevices.getUserMedia( constraints ).then( this.streamReady.bind(this) ).catch( onFailSoHard );
 
 		var that = this;
@@ -14269,6 +14359,16 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 			};
 		}
 		this.trigger("stream_ready",video);
+	}
+
+	LGraphTextureWebcam.prototype.onPropertyChanged = function(name,value)
+	{
+		if(name == "facingMode")
+		{
+			this.properties.facingMode = value;
+			this.closeStream();
+			this.openStream();
+		}
 	}
 
 	LGraphTextureWebcam.prototype.onRemoved = function()

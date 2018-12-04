@@ -22227,6 +22227,7 @@ var Renderer = {
 				gl.viewport( final_x, final_y, final_width, final_height );
 			}
 		}
+		camera._last_viewport_in_pixels.set( gl.viewport_data );
 
 		//recompute the matrices (view,proj and viewproj)
 		camera.updateMatrices();
@@ -23122,8 +23123,8 @@ var Renderer = {
 	* Returns the last camera that falls into a given screen position
 	*
 	* @method getCameraAtPosition
-	* @param {number} x
-	* @param {number} y
+	* @param {number} x in canvas coordinates (0,0 is bottom-left)
+	* @param {number} y in canvas coordinates (0,0 is bottom-left)
 	* @param {Scene} scene if not specified last rendered scene will be used
 	* @return {Camera} the camera
 	*/
@@ -25403,7 +25404,7 @@ var Picking = {
 	/**
 	* Returns the instance under a screen position
 	* @method getInstanceAtCanvasPosition
-	* @param {number} x in canvas coordinates
+	* @param {number} x in canvas coordinates (0,0 is bottom-left)
 	* @param {number} y in canvas coordinates
 	* @param {Camera} camera
 	* @param {number} layers default is 0xFFFF which is all
@@ -25423,7 +25424,7 @@ var Picking = {
 		this._picking_nodes = {};
 
 		//render all Render Instances
-		this.getPickingColorFromBuffer( scene, camera, x,y, layers );
+		this.getPickingColorFromBuffer( scene, camera, x, y, layers );
 
 		this._picking_color[3] = 0; //remove alpha, because alpha is always 255
 		var id = new Uint32Array(this._picking_color.buffer)[0]; //get only element
@@ -25460,6 +25461,7 @@ var Picking = {
 	_picking_nodes: {},
 	_picking_render_settings: new RenderSettings(),
 
+	//x,y must be in canvas coordinates (0,0 is bottom-left)
 	getPickingColorFromBuffer: function( scene, camera, x, y, layers )
 	{
 		//create texture
@@ -25470,9 +25472,7 @@ var Picking = {
 			//LS.ResourcesManager.textures[":picking"] = this._pickingMap; //debug the texture
 		}
 
-		//y = gl.canvas.height - y; //reverse Y
 		var small_area = true;
-
 		LS.Renderer._current_target = this._pickingMap;
 
 		this._pickingFBO.bind();
@@ -25503,7 +25503,8 @@ var Picking = {
 		return this._picking_color;
 	},
 
-	renderPickingBuffer: function( scene, camera, layers, mouse_pos )
+	//pos must be in canvas coordinates (0,0 is bottom-left)
+	renderPickingBuffer: function( scene, camera, layers, pos )
 	{
 		if(layers === undefined)
 			layers = 0xFFFF;
@@ -25520,9 +25521,9 @@ var Picking = {
 
 		//check instances colliding with cursor using a ray against AABBs
 		var instances = null;
-		if( mouse_pos ) //not tested yet
+		if( pos ) //not tested yet
 		{
-			var ray = camera.getRayInPixel( mouse_pos[0], mouse_pos[1] );
+			var ray = camera.getRay( pos[0], pos[1] );
 			var instances_collisions = LS.Physics.raycastRenderInstances( ray.origin, ray.direction );
 			if( instances_collisions )
 			{
@@ -25537,8 +25538,8 @@ var Picking = {
 
 		LS.Renderer.renderInstances( picking_render_settings, instances );
 
-		LEvent.trigger( scene, "renderPicking", mouse_pos );
-		LEvent.trigger( LS.Renderer, "renderPicking", mouse_pos );
+		LEvent.trigger( scene, "renderPicking", pos );
+		LEvent.trigger( LS.Renderer, "renderPicking", pos );
 
 		LS.Renderer.setRenderPass( COLOR_PASS );
 	}
@@ -27536,6 +27537,7 @@ function Camera(o)
 	//viewport in normalized coordinates: left, bottom, width, height
 	this._viewport = new Float32Array([0,0,1,1]);
 	this._viewport_in_pixels = vec4.create(); //viewport in screen coordinates
+	this._last_viewport_in_pixels = vec4.create(); //updated when the camera is enabled from Renderer.enableCamera
 
 	this._background_color = vec4.fromValues(0,0,0,1);
 
@@ -28889,10 +28891,25 @@ Camera.prototype.getLocalViewport = function( viewport, result )
 }
 
 /**
+* transform from mouse coordinates (0,0 is top-left on the canvas) to local camera viewport coordinates (0,0 is bottom-left corner of the camera viewport)
+* @method mouseToViewport
+* @param {vec2} pos in mouse coordinates
+* @return {vec2} the pos in local camera viewport coordinates
+*/
+Camera.prototype.mouseToViewport = function(pos, out)
+{
+	out = out || vec2.create();
+	var v = this._last_viewport_in_pixels;
+	out[0] = pos[0] - v[0];
+	out[1] = v[3] - (pos[1] - v[1]);
+	return out;
+}
+
+/**
 * given an x and y position, returns the ray {start, dir}
 * @method getRay
-* @param {number} x in mouse coordinates (top-left is 0,0)
-* @param {number} y in mouse coordinates (top-left is 0,0)
+* @param {number} x in canvas coordinates (bottom-left is 0,0)
+* @param {number} y in canvas coordinates (bottom-left is 0,0)
 * @param {vec4} viewport viewport coordinates (if omited full viewport is used using the camera viewport)
 * @param {boolean} skip_local_viewport ignore the local camera viewport configuration when computing the viewport
 * @param {LS.Ray} result [optional] to reuse ray
@@ -28901,7 +28918,7 @@ Camera.prototype.getLocalViewport = function( viewport, result )
 Camera.prototype.getRay = (function(){
 	var tmp_pos = vec3.create();
 	var tmp_eye = vec3.create();
-	return function( x, y, viewport, skip_local_viewport, result )
+	return function getRay( x, y, viewport, skip_local_viewport, result )
 	{
 		//apply camera viewport
 		if(!skip_local_viewport)
@@ -28910,7 +28927,7 @@ Camera.prototype.getRay = (function(){
 			viewport = gl.viewport_data;
 
 		//flip Y
-		y = (viewport[3] - y) - viewport[1];
+		//y = (viewport[3] - y) - viewport[1];
 
 		if( this._must_update_view_matrix || this._must_update_projection_matrix )
 			this.updateMatrices();
@@ -28923,7 +28940,7 @@ Camera.prototype.getRay = (function(){
 		if(this.type == Camera.ORTHOGRAPHIC)
 		{
 			tmp_eye[0] = x; tmp_eye[1] = y; tmp_eye[2] = 0;
-			eye = vec3.unproject(tmp_eye, tmp_eye, this._viewprojection_matrix, viewport );
+			eye = vec3.unproject( tmp_eye, tmp_eye, this._viewprojection_matrix, viewport );
 		}
 		else
 			eye = this.getEye( tmp_eye );
@@ -28943,8 +28960,8 @@ Camera.prototype.getRayInPixel = Camera.prototype.getRay; //LEGACY
 /**
 * Returns true if the 2D point (in screen space coordinates) is inside the camera viewport area
 * @method isPoint2DInCameraViewport
-* @param {number} x
-* @param {number} y
+* @param {number} x in canvas coordinates (0,0 is bottom-left)
+* @param {number} y in canvas coordinates (0,0 is bottom-left)
 * @param {vec4} viewport viewport coordinates (if omited full viewport is used)
 * @return {boolean} 
 */
@@ -35360,7 +35377,7 @@ CameraController.prototype.onTouch = function( e, touch_event)
 CameraController.prototype.testOriginPlane = function(x,y, result)
 {
 	var cam = this._root.camera;
-	var ray = cam.getRayInPixel( x, gl.canvas.height - y );
+	var ray = cam.getRay( x, gl.canvas.height - y );
 	var result = result || vec3.create();
 
 	//test against plane at 0,0,0
@@ -35372,7 +35389,7 @@ CameraController.prototype.testOriginPlane = function(x,y, result)
 CameraController.prototype.testPerpendicularPlane = function(x,y, center, result)
 {
 	var cam = this._root.camera;
-	var ray = cam.getRayInPixel( x, gl.canvas.height - y );
+	var ray = cam.getRay( x, gl.canvas.height - y );
 
 	var front = cam.getFront();
 	var center = center || cam.getCenter();
@@ -37060,7 +37077,7 @@ Knob.prototype.onMouse = function(e, mouse_event)
 		var cam = LS.Renderer.getCameraAtPosition( mouse_event.canvasx, mouse_event.canvasy );
 		if(!cam)
 			return;
-		var ray = cam.getRayInPixel( mouse_event.canvasx, mouse_event.canvasy );
+		var ray = cam.getRay( mouse_event.canvasx, mouse_event.canvasy );
 		if(!ray)
 			return;
 
@@ -43048,16 +43065,16 @@ Canvas3D.prototype.projectMouse = function()
 
 	this._is_mouse_inside = false;
 
-	var mousex = LS.Input.Mouse.x;
+	var x = LS.Input.Mouse.x;
 	var mousey = LS.Input.Mouse.y;
 	var w = this.width|0;
 	var h = this.height|0;
 
 	if( !this.input_active || too_far )
 	{
-		mousex = -1;
+		x = -1;
 		mousey = -1;
-		this._mouse[0] = mousex;
+		this._mouse[0] = x;
 		this._mouse[1] = mousey;
 		this._mouse[2] = -1;
 	}
@@ -43067,8 +43084,8 @@ Canvas3D.prototype.projectMouse = function()
 		this._mouse[1] = -1;
 		this._mouse[2] = cam_dist;
 
-		var ray = camera.getRayInPixel( mousex, mousey );
-		var camera_front = camera.getFront();
+		var canvasy = mousey;
+		var ray = camera.getRay( x, canvasy );
 
 		var temp = vec3.create();
 		var plane_normal = this.root.transform.localVectorToGlobal( LS.FRONT, temp );
@@ -43598,7 +43615,7 @@ InteractiveController.prototype.getNodeUnderMouse = function( e )
 	var camera = LS.Renderer.getCameraAtPosition( e.canvasx, e.canvasy );
 	if(!camera)
 		return null;
-	var ray = camera.getRayInPixel( e.canvasx, e.canvasy );
+	var ray = camera.getRay( e.canvasx, e.canvasy );
 
 	if(this.mode == InteractiveController.BOUNDING)
 	{

@@ -7351,6 +7351,20 @@ LGraphCanvas.prototype.getNodeMenuOptions = function( node )
 			null
 		];
 
+	if(node.onGetInputs)
+	{
+		var inputs = node.onGetInputs();
+		if(inputs && inputs.length)
+			options[0].disabled = false;
+	}
+
+	if(node.onGetOutputs)
+	{
+		var outputs = node.onGetOutputs();
+		if(outputs && outputs.length )
+			options[1].disabled = false;
+	}
+
 	if(node.getExtraMenuOptions)
 	{
 		var extra = node.getExtraMenuOptions(this);
@@ -7365,20 +7379,6 @@ LGraphCanvas.prototype.getNodeMenuOptions = function( node )
 			options.push({content:"Clone", callback: LGraphCanvas.onMenuNodeClone });
 	if( node.removable !== false )
 			options.push(null,{content:"Remove", callback: LGraphCanvas.onMenuNodeRemove });
-
-	if(node.onGetInputs)
-	{
-		var inputs = node.onGetInputs();
-		if(inputs && inputs.length)
-			options[0].disabled = false;
-	}
-
-	if(node.onGetOutputs)
-	{
-		var outputs = node.onGetOutputs();
-		if(outputs && outputs.length )
-			options[1].disabled = false;
-	}
 
 	if(node.graph && node.graph.onGetNodeMenuOptions )
 		node.graph.onGetNodeMenuOptions( options, node );
@@ -11471,6 +11471,8 @@ function ImageWebcam()
 {
 	this.addOutput("Webcam","image");
 	this.properties = {};
+	this.boxcolor = "black";
+	this.frame = 0;
 }
 
 ImageWebcam.title = "Webcam";
@@ -11487,30 +11489,45 @@ ImageWebcam.prototype.openStream = function()
 	this._waiting_confirmation = true;
 
 	// Not showing vendor prefixes.
-	navigator.mediaDevices.getUserMedia({audio: false, video: true}).then( this.streamReady.bind(this) ).catch( onFailSoHard );
+	var constraints = { audio: false, video: { facingMode: "user" } };
+	navigator.mediaDevices.getUserMedia( constraints ).then( this.streamReady.bind(this) ).catch( onFailSoHard );
 
 	var that = this;
 	function onFailSoHard(e) {
 		console.log('Webcam rejected', e);
 		that._webcam_stream = false;
 		that.boxcolor = "red";
+		that.trigger("stream_error");
 	};
+}
+
+ImageWebcam.prototype.closeStream = function()
+{
+	if(this._webcam_stream)
+	{
+		var tracks = this._webcam_stream.getTracks();
+		if(tracks.length)
+		{
+			for(var i = 0;i < tracks.length; ++i)
+				tracks[i].stop();
+		}
+		this._webcam_stream = null;
+		this._video = null;
+		this.boxcolor = "black";
+		this.trigger("stream_closed");
+	}
 }
 
 ImageWebcam.prototype.onRemoved = function()
 {
-	if(this._webcam_stream)
-	{
-		this._webcam_stream.stop();
-		this._webcam_stream = null;
-		this._video = null;
-	}
+	this.closeStream();
 }
 
 ImageWebcam.prototype.streamReady = function(localMediaStream)
 {
 	this._webcam_stream = localMediaStream;
 	//this._waiting_confirmation = false;
+	this.boxcolor = "green";
 
 	var video = this._video;
 	if(!video)
@@ -11526,6 +11543,8 @@ ImageWebcam.prototype.streamReady = function(localMediaStream)
 			console.log(e);
 		};
 	}
+
+	this.trigger("stream_ready",video);
 }
 
 ImageWebcam.prototype.onExecute = function()
@@ -11533,11 +11552,23 @@ ImageWebcam.prototype.onExecute = function()
 	if(this._webcam_stream == null && !this._waiting_confirmation)
 		this.openStream();
 
-	if(!this._video || !this._video.videoWidth) return;
+	if(!this._video || !this._video.videoWidth)
+		return;
 
+	this._video.frame = ++this.frame;
 	this._video.width = this._video.videoWidth;
 	this._video.height = this._video.videoHeight;
 	this.setOutputData(0, this._video);
+	for(var i = 1; i < this.outputs.length; ++i)
+	{
+		if(!this.outputs[i])
+			continue;
+		switch( this.outputs[i].name )
+		{
+			case "width": this.setOutputData(i,this._video.videoWidth);break;
+			case "height": this.setOutputData(i,this._video.videoHeight);break;
+		}
+	}
 }
 
 ImageWebcam.prototype.getExtraMenuOptions = function(graphcanvas)
@@ -11563,6 +11594,11 @@ ImageWebcam.prototype.onDrawBackground = function(ctx)
 	ctx.save();
 	ctx.drawImage(this._video, 0, 0, this.size[0], this.size[1]);
 	ctx.restore();
+}
+
+ImageWebcam.prototype.onGetOutputs = function()
+{
+	return [["width","number"],["height","number"],["stream_ready",LiteGraph.EVENT],["stream_closed",LiteGraph.EVENT],["stream_error",LiteGraph.EVENT]];
 }
 
 LiteGraph.registerNodeType("graphics/webcam", ImageWebcam );
@@ -14166,6 +14202,8 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 	{
 		this.addOutput("Webcam","Texture");
 		this.properties = { texture_name: "" };
+		this.boxcolor = "black";
+		this.version = 0;
 	}
 
 	LGraphTextureWebcam.title = "Webcam";
@@ -14174,30 +14212,48 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 
 	LGraphTextureWebcam.prototype.openStream = function()
 	{
-		//Vendor prefixes hell
 		if (!navigator.getUserMedia) {
 		  //console.log('getUserMedia() is not supported in your browser, use chrome and enable WebRTC from about://flags');
 		  return;
 		}
 
 		this._waiting_confirmation = true;
-		var that = this;
 
 		// Not showing vendor prefixes.
-		navigator.mediaDevices.getUserMedia({audio: false, video: true}).then( this.streamReady.bind(this) ).catch( onFailSoHard );
+		var constraints = { audio: false, video: { facingMode: "user" } };
+		navigator.mediaDevices.getUserMedia( constraints ).then( this.streamReady.bind(this) ).catch( onFailSoHard );
 
+		var that = this;
 		function onFailSoHard(e) {
 			console.log('Webcam rejected', e);
 			that._webcam_stream = false;
 			that.boxcolor = "red";
+			that.trigger("stream_error");
 		};
+	}
+
+	LGraphTextureWebcam.prototype.closeStream = function()
+	{
+		if(this._webcam_stream)
+		{
+			var tracks = this._webcam_stream.getTracks();
+			if(tracks.length)
+			{
+				for(var i = 0;i < tracks.length; ++i)
+					tracks[i].stop();
+			}
+			this._webcam_stream = null;
+			this._video = null;
+			this.boxcolor = "black";
+			this.trigger("stream_closed");
+		}
 	}
 
 	LGraphTextureWebcam.prototype.streamReady = function(localMediaStream)
 	{
 		this._webcam_stream = localMediaStream;
 		//this._waiting_confirmation = false;
-
+		this.boxcolor = "green";
 	    var video = this._video;
 		if(!video)
 		{
@@ -14212,6 +14268,7 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 				console.log(e);
 			};
 		}
+		this.trigger("stream_ready",video);
 	}
 
 	LGraphTextureWebcam.prototype.onRemoved = function()
@@ -14244,8 +14301,8 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 			ctx.drawImage(this._video, 0, 0, this.size[0], this.size[1]);
 		else
 		{
-			if(this._temp_texture)
-				ctx.drawImage(this._temp_texture, 0, 0, this.size[0], this.size[1]);
+			if(this._video_texture)
+				ctx.drawImage(this._video_texture, 0, 0, this.size[0], this.size[1]);
 		}
 		ctx.restore();
 	}
@@ -14261,19 +14318,35 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 		var width = this._video.videoWidth;
 		var height = this._video.videoHeight;
 
-		var temp = this._temp_texture;
+		var temp = this._video_texture;
 		if(!temp || temp.width != width || temp.height != height )
-			this._temp_texture = new GL.Texture( width, height, { format: gl.RGB, filter: gl.LINEAR });
+			this._video_texture = new GL.Texture( width, height, { format: gl.RGB, filter: gl.LINEAR });
 
-		this._temp_texture.uploadImage( this._video );
+		this._video_texture.uploadImage( this._video );
+		this._video_texture.version = ++this.version;
 		
 		if(this.properties.texture_name)
 		{
 			var container = LGraphTexture.getTexturesContainer();
-			container[ this.properties.texture_name ] = this._temp_texture;
+			container[ this.properties.texture_name ] = this._video_texture;
 		}
 
-		this.setOutputData(0,this._temp_texture);
+		this.setOutputData(0,this._video_texture);
+		for(var i = 1; i < this.outputs.length; ++i)
+		{
+			if(!this.outputs[i])
+				continue;
+			switch( this.outputs[i].name )
+			{
+				case "width": this.setOutputData(i,this._video.videoWidth);break;
+				case "height": this.setOutputData(i,this._video.videoHeight);break;
+			}
+		}
+	}
+
+	LGraphTextureWebcam.prototype.onGetOutputs = function()
+	{
+		return [["width","number"],["height","number"],["stream_ready",LiteGraph.EVENT],["stream_closed",LiteGraph.EVENT],["stream_error",LiteGraph.EVENT]];
 	}
 
 	LiteGraph.registerNodeType("texture/webcam", LGraphTextureWebcam );

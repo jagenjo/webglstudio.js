@@ -2763,12 +2763,12 @@ var Input = {
 
 		if( this.isMouseLocked() )
 		{
-			e.mousex = (gl.canvas.width * 0.5)|0;
-			e.mousey = (gl.canvas.height * 0.5)|0;
+			e.canvasx = e.mousex = (gl.canvas.width * 0.5)|0;
+			e.canvasy = e.mousey = (gl.canvas.height * 0.5)|0;
 		}
 
-		this.Mouse.x = e.mousex;
-		this.Mouse.y = e.mousey;
+		this.Mouse.x = this.Mouse.mousex = this.Mouse.canvasx = e.canvasx;
+		this.Mouse.y = this.Mouse.mousex = this.Mouse.canvasy = e.canvasy;
 
 		//save it in case we need to know where was the last click
 		if(e.type == "mousedown")
@@ -21869,6 +21869,7 @@ var Renderer = {
 
 	//safety
 	_is_rendering_frame: false,
+	_ignore_reflection_probes: false,
 
 	//debug
 	allow_textures: true,
@@ -22861,6 +22862,12 @@ var Renderer = {
 
 			//add extra info: distance to main camera (used for sorting)
 			instance._dist = vec3.dist( instance.center, camera_eye );
+
+			//find nearest reflection probe
+			if( scene._reflection_probes.length && !this._ignore_reflection_probes )
+				instance._nearest_reflection_probe = scene.findNearestReflectionProbe( instance.center );
+			else
+				instance._nearest_reflection_probe = null;
 
 			//change conditionaly
 			if(render_settings.force_wireframe && instance.primitive != gl.LINES ) 
@@ -39282,12 +39289,13 @@ ReflectionProbe.prototype.afterConfigure = function(o)
 
 ReflectionProbe.prototype.onRenderReflection = function( e )
 {
-	this.updateTextures();
+	if( this._enabled )
+		this.updateTextures();
 }
 
 ReflectionProbe.prototype.updateTextures = function( render_settings, force )
 {
-	if(!this._enabled || !this._root || !this._root.scene )
+	if( !this._root || !this._root.scene )
 		return;
 
 	var scene = this._root.scene;
@@ -39361,6 +39369,10 @@ ReflectionProbe.prototype.updateCubemap = function( position, render_settings )
 		tmp = LS.GlobalScene.info.textures.irradiance;
 		LS.GlobalScene.info.textures.irradiance = null;
 	}
+
+	//fix: there was a problem because there was no texture bind in ENVIRONMENT_SLOT, this fix it
+	for(var i = 0; i < LS.Renderer._visible_instances.length; ++i)
+		LS.Renderer._visible_instances[i]._nearest_reflection_probe = null;
 
 	//render all the scene inside the cubemap
 	LS.Renderer.renderToCubemap( position, 0, texture, render_settings, this.near, this.far, this.background_color );
@@ -43053,8 +43065,8 @@ Canvas3D.prototype.projectMouse = function()
 	//Canvas Plane
 	if(!this.root.transform)
 	{
-		this._mouse[0] = LS.Input.Mouse.mousex;
-		this._mouse[1] = LS.Input.Mouse.mousey;
+		this._mouse[0] = LS.Input.Mouse.canvasx;
+		this._mouse[1] = LS.Input.Mouse.canvasy;
 		this._mouse[2] = 0;
 		this._is_mouse_inside = true;
 		return;
@@ -43074,7 +43086,7 @@ Canvas3D.prototype.projectMouse = function()
 	if( !this.input_active || too_far )
 	{
 		x = -1;
-		mousey = -1;
+		y = -1;
 		this._mouse[0] = x;
 		this._mouse[1] = y;
 		this._mouse[2] = -1;
@@ -45230,13 +45242,10 @@ Scene.prototype.collectData = function( cameras )
 	for(var i = 0, l = instances.length; i < l; ++i)
 	{
 		var instance = instances[i];
+
 		//compute the axis aligned bounding box
 		if(instance.use_bounding)
 			instance.updateAABB();
-
-		//find nearest reflection probe
-		if(this._reflection_probes.length)
-			instance._nearest_reflection_probe = this.findNearestReflectionProbe( instance.center );
 	}
 
 	//for each physics instance collected

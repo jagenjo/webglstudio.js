@@ -6331,14 +6331,17 @@ GLSLCode.pragma_methods["shaderblock"] = {
 			return null;
 		}
 
-		var block_code = shader_block.getFinalCode( shader_type, block_flags, context );
-		if( block_code == null )
-			return null;
+		var code = "";
 
 		//add the define BLOCK_name only if enabled
 		if( shader_block.flag_mask & block_flags )
-			return "\n#define BLOCK_" + ( shader_block.name.toUpperCase() ) +"\n" + block_code + "\n";
-		return block_code + "\n";
+			code = "\n#define BLOCK_" + ( shader_block.name.toUpperCase() ) +"\n";
+
+		var block_code = shader_block.getFinalCode( shader_type, block_flags, context );
+		if( block_code )
+			code += block_code + "\n";
+
+		return code;
 	}
 };
 
@@ -6645,6 +6648,14 @@ var lastpass_block = LS.Shaders.lastpass_block = new LS.ShaderBlock("lastPass");
 lastpass_block.addCode( GL.FRAGMENT_SHADER, "", "" );
 lastpass_block.register();
 
+//used when a mesh contains color info by vertex
+var vertex_color_block = LS.Shaders.vertex_color_block = new LS.ShaderBlock("vertex_color");
+vertex_color_block.register();
+
+//used when a mesh contains extra uv set
+var coord1_block = LS.Shaders.coord1_block = new LS.ShaderBlock("coord1");
+coord1_block.register();
+
 //used to render normalinfo to buffer
 var normalbuffer_block = LS.Shaders.normalbuffer_block = new LS.ShaderBlock("normalBuffer");
 normalbuffer_block.addCode( GL.FRAGMENT_SHADER, "", "" );
@@ -6893,21 +6904,12 @@ Material.EMISSIVE_TEXTURE = "emissive";
 Material.ENVIRONMENT_TEXTURE = "environment";
 Material.IRRADIANCE_TEXTURE = "irradiance";
 
-Material.COORDS_UV0 = "0";
-Material.COORDS_UV1 = "1";
-Material.COORDS_UV_TRANSFORMED = "transformed";
-Material.COORDS_SCREEN = "screen";					//project to screen space
-Material.COORDS_SCREENCENTERED = "screen_centered";	//project to screen space and centers and corrects aspect
-Material.COORDS_FLIPPED_SCREEN = "flipped_screen";	//used for realtime reflections
-Material.COORDS_POLAR = "polar";					//use view vector as polar coordinates
-Material.COORDS_POLAR_REFLECTED = "polar_reflected";//use reflected view vector as polar coordinates
-Material.COORDS_POLAR_VERTEX = "polar_vertex";		//use normalized vertex as polar coordinates
-Material.COORDS_WORLDXZ = "worldxz";
-Material.COORDS_WORLDXY = "worldxy";
-Material.COORDS_WORLDYZ = "worldyz";
+Material.COORDS_UV0 = 0;
+Material.COORDS_UV1 = 1;
+Material.COORDS_UV0_TRANSFORMED = 2;
+Material.COORDS_UV1_TRANSFORMED = 3;
 
-Material.TEXTURE_COORDINATES = [ Material.COORDS_UV0, Material.COORDS_UV1, Material.COORDS_UV_TRANSFORMED, Material.COORDS_SCREEN, Material.COORDS_SCREENCENTERED, Material.COORDS_FLIPPED_SCREEN, Material.COORDS_POLAR, Material.COORDS_POLAR_REFLECTED, Material.COORDS_POLAR_VERTEX, Material.COORDS_WORLDXY, Material.COORDS_WORLDXZ, Material.COORDS_WORLDYZ ];
-Material.DEFAULT_UVS = { "normal":Material.COORDS_UV0, "displacement":Material.COORDS_UV0, "environment": Material.COORDS_POLAR_REFLECTED, "irradiance" : Material.COORDS_POLAR };
+Material.TEXTURE_COORDINATES = { "uv0":Material.COORDS_UV0, "uv1":Material.COORDS_UV1, "uv0_transformed":Material.COORDS_UV0_TRANSFORMED, "uv1_transformed":Material.COORDS_UV1_TRANSFORMED };
 
 Material.available_shaders = ["default","global","lowglobal","phong_texture","flat","normal","phong","flat_texture","cell_outline"];
 
@@ -7106,9 +7108,11 @@ Material.prototype.setProperty = function( name, value )
 			{
 				var tex = value[i];
 				if( tex && tex.constructor === String )
-					tex = { texture: tex, uvs: "0", wrap: 0, minFilter: 0, magFilter: 0 };
+					tex = { texture: tex, uvs: 0, wrap: 0, minFilter: 0, magFilter: 0 };
 				tex._must_update = true;
 				this.textures[i] = tex;
+				if( tex.uvs != null && tex.uvs.constructor === String )
+					tex.uvs = 0;
 				//this is to ensure there are no wrong characters in the texture name
 				if( this.textures[i] && this.textures[i].texture )
 					this.textures[i].texture = LS.ResourcesManager.cleanFullpath( this.textures[i].texture );
@@ -7221,7 +7225,7 @@ Material.prototype.setTexture = function( channel, texture, sampler_options ) {
 	if(!sampler)
 		this.textures[channel] = sampler = { 
 			texture: texture, 
-			uvs: Material.DEFAULT_UVS[channel] || "0", 
+			uvs: 0, 
 			wrap: 0, 
 			minFilter: 0, 
 			magFilter: 0,
@@ -7257,7 +7261,7 @@ Material.prototype.setTextureProperty = function( channel, property, value )
 	if(!sampler)
 	{
 		if(property == "texture")
-			this.textures[channel] = sampler = { texture: value, uvs: Material.DEFAULT_UVS[channel] || "0", wrap: 0, minFilter: 0, magFilter: 0 };
+			this.textures[channel] = sampler = { texture: value, uvs: 0, wrap: 0, minFilter: 0, magFilter: 0 };
 		return;
 	}
 
@@ -7940,6 +7944,12 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	LS.Renderer.bindSamplers( this._samplers ); //material samplers
 	LS.Renderer.bindSamplers( instance.samplers ); //RI samplers (like morph targets encoded in textures)
 
+	//blocks for extra streams
+	if( instance.vertex_buffers["colors"] )
+		block_flags |= LS.Shaders.vertex_color_block.flag_mask;
+	if( instance.vertex_buffers["coords1"] )
+		block_flags |= LS.Shaders.coord1_block.flag_mask;
+
 	//for those cases
 	if(this.onRenderInstance)
 		this.onRenderInstance( instance );
@@ -8503,6 +8513,7 @@ function StandardMaterial(o)
 	this.bumpmap_factor = 1.0;
 
 	this.displacementmap_factor = 0.1;
+	this._texture_settings = new Uint8Array(9);
 
 	this.use_scene_ambient = true;
 
@@ -8534,7 +8545,8 @@ function StandardMaterial(o)
 		u_normal_info: vec2.create(),
 		u_detail_info: this._detail,
 		u_texture_matrix: this.uvs_matrix,
-		u_extra_color: this._extra
+		u_extra_color: this._extra,
+		u_texture_settings: this._texture_settings
 	};
 
 	this._samplers = [];
@@ -8591,11 +8603,13 @@ StandardMaterial.REFLECTIVITY_TEXTURE = "reflectivity";
 StandardMaterial.EXTRA_TEXTURE = "extra";
 StandardMaterial.IRRADIANCE_TEXTURE = "irradiance";
 
+StandardMaterial.TEXTURES_INDEX = { "color":0, "opacity":1, "ambient":2, "specular":3, "emissive":4, "detail":5, "normal":6, "displacement":7, "bump":8, "reflectivity":9, "extra":10, "environment":11 };
+
 StandardMaterial.prototype.renderInstance = ShaderMaterial.prototype.renderInstance;
 StandardMaterial.prototype.renderShadowInstance = ShaderMaterial.prototype.renderShadowInstance;
 StandardMaterial.prototype.renderPickingInstance = ShaderMaterial.prototype.renderPickingInstance;
 
-
+//called from LS.Renderer.processVisibleData
 StandardMaterial.prototype.prepare = function( scene )
 {
 	var flags = this.flags;
@@ -8617,6 +8631,16 @@ StandardMaterial.prototype.prepare = function( scene )
 			render_state.blendFunc0 = func[0];
 			render_state.blendFunc1 = func[1];
 		}
+	}
+
+	for(var i in this.textures)
+	{
+		var tex = this.textures[i];
+		if(!tex)
+			continue;
+		if(tex.index == null)
+			tex.index = StandardMaterial.TEXTURES_INDEX[i];
+		this._texture_settings[ tex.index ] = tex.uvs;
 	}
 
 	this._light_mode = this.flags.ignore_lights ? Material.NO_LIGHTS : 1;
@@ -8641,21 +8665,13 @@ StandardMaterial.FLAGS = {
 	ENVIRONMENT_CUBEMAP: 1<<12,
 	IRRADIANCE_CUBEMAP: 1<<13,
 
-	COLOR_TEXTURE_OPTIONS: 1<<16,
-	OPACITY_TEXTURE_OPTIONS: 1<<17,
-	SPECULAR_TEXTURE_OPTIONS: 1<<18,
-	REFLECTIVITY_TEXTURE_OPTIONS: 1<<19,
-	AMBIENT_TEXTURE_OPTIONS: 1<<20,
-	EMISSIVE_TEXTURE_OPTIONS: 1<<21,
-	NORMAL_TEXTURE_OPTIONS: 1<<22,
-	DISPLACEMENT_TEXTURE_OPTIONS: 1<<23,
-	EXTRA_TEXTURE_OPTIONS: 1<<24,
-
 	DEGAMMA_COLOR: 1<<26,
 	SPEC_ON_ALPHA: 1<<27,
 	SPEC_ON_TOP: 1<<28,
 	ALPHA_TEST: 1<<29
 }; //max is 32	
+
+
 
 StandardMaterial.shader_codes = {};
 
@@ -8679,11 +8695,8 @@ StandardMaterial.prototype.getShaderCode = function( instance, render_settings, 
 	}
 	if( this.textures.opacity )
 		code_flags |= FLAGS.OPACITY_TEXTURE;
-
 	if( this.textures.displacement )
 		code_flags |= FLAGS.DISPLACEMENT_TEXTURE;
-
-	//color textures are not necessary 
 	if( this.textures.normal )
 		code_flags |= FLAGS.NORMAL_TEXTURE;
 	if( this.textures.specular )
@@ -8714,7 +8727,7 @@ StandardMaterial.prototype.getShaderCode = function( instance, render_settings, 
 	//check if we already have this ShaderCode created
 	var shader_code = LS.StandardMaterial.shader_codes[ code_flags ];
 
-	//reuse shader codes when possible
+	//reuse shader codes when possible **************************************
 	if(shader_code)
 		return shader_code;
 
@@ -8729,21 +8742,31 @@ StandardMaterial.prototype.getShaderCode = function( instance, render_settings, 
 		code.vs_local += "	vertex4.xyz += v_normal * texture2D( displacement_texture, v_uvs ).x * u_displacementmap_factor;\n";	
 
 	//uvs
-	code.fs += "vec2 uv0 = (vec3(IN.uv,1.0) * u_texture_matrix).xy;\n";
-	code.fs_shadows += "vec2 uv0 = (vec3(IN.uv,1.0) * u_texture_matrix).xy;\n";
+	var uvs_common = "\n\
+	uvs[0] = IN.uv;\n\
+	uvs[1] = IN.uv1;\n\
+	uvs[2] = (u_texture_matrix * vec3(uvs[0],1.0)).xy;\n\
+	#ifdef COORD1_BLOCK\n\
+		uvs[3] = (vec3(uvs[1],1.0) * u_texture_matrix).xy;\n\
+	#else\n\
+		uvs[3] = uvs[2];\n\
+	#endif\n";
+	code.fs += uvs_common;
+	code.fs_shadows += uvs_common;
 
 	if( code_flags & FLAGS.NORMAL_TEXTURE )
 	{
-		code.fs += "	vec3 normal_pixel = texture2D( normal_texture, uv0 ).xyz;\n\
+		code.fs += "vec2 normal_uv = getUVs( u_texture_settings["+StandardMaterial.TEXTURES_INDEX["normal"]+"]);\n\
+		vec3 normal_pixel = texture2D( normal_texture, normal_uv ).xyz;\n\
 		normal_pixel.xy = vec2(1.0) - normal_pixel.xy;\n\
 		if( u_normal_info.y > 0.0 )\n\
-			normal_pixel = normalize( perturbNormal( IN.worldNormal, IN.viewDir, uv0, normal_pixel ));\n\
+			normal_pixel = normalize( perturbNormal( IN.worldNormal, IN.viewDir, normal_uv, normal_pixel ));\n\
 		o.Normal = normalize( mix( o.Normal, normal_pixel, u_normal_info.x ) );\n";
 	}
 
 	if( code_flags & FLAGS.COLOR_TEXTURE )
 	{
-		var str = "	vec4 tex_color = texture2D( color_texture, uv0 );\n";
+		var str = "	vec4 tex_color = texture2D( color_texture, getUVs( u_texture_settings["+StandardMaterial.TEXTURES_INDEX["color"]+"] ) );\n";
 		code.fs += str;
 		code.fs_shadows += str;
 
@@ -8756,26 +8779,26 @@ StandardMaterial.prototype.getShaderCode = function( instance, render_settings, 
 	}
 	if( code_flags & FLAGS.OPACITY_TEXTURE )
 	{
-		var str =  "	o.Alpha *= texture2D( opacity_texture, uv0 ).x;\n";
+		var str =  "	o.Alpha *= texture2D( opacity_texture, getUVs( u_texture_settings["+StandardMaterial.TEXTURES_INDEX["opacity"]+"]) ).x;\n";
 		code.fs += str;
 		code.fs_shadows += str;
 	}
 	if( code_flags & FLAGS.SPECULAR_TEXTURE )
 	{
-		code.fs += "	vec4 spec_info = texture2D( specular_texture, uv0 );\n\
+		code.fs += "	vec4 spec_info = texture2D( specular_texture, getUVs( u_texture_settings["+StandardMaterial.TEXTURES_INDEX["specular"]+"]) );\n\
 	o.Specular *= spec_info.x;\n\
 	o.Gloss *= spec_info.y;\n";
 	}
 	if( code_flags & FLAGS.REFLECTIVITY_TEXTURE )
-		code.fs += "	o.Reflectivity *= texture2D( reflectivity_texture, uv0 ).x;\n";
+		code.fs += "	o.Reflectivity *= texture2D( reflectivity_texture, getUVs( u_texture_settings["+StandardMaterial.TEXTURES_INDEX["reflectivity"]+"]) ).x;\n";
 	if( code_flags & FLAGS.EMISSIVE_TEXTURE )
-		code.fs += "	o.Emission *= texture2D( emissive_texture, uv0 ).xyz;\n";
+		code.fs += "	o.Emission *= texture2D( emissive_texture, getUVs( u_texture_settings["+StandardMaterial.TEXTURES_INDEX["emissive"]+"]) ).xyz;\n";
 	if( code_flags & FLAGS.AMBIENT_TEXTURE )
-		code.fs += "	o.Ambient *= texture2D( ambient_texture, uv0 ).xyz;\n";
+		code.fs += "	o.Ambient *= texture2D( ambient_texture, getUVs( u_texture_settings["+StandardMaterial.TEXTURES_INDEX["ambient"]+"]) ).xyz;\n";
 	if( code_flags & FLAGS.DETAIL_TEXTURE )
-		code.fs += "	o.Albedo += (texture2D( detail_texture, uv0 * u_detail_info.yz).xyz - vec3(0.5)) * u_detail_info.x;\n";
+		code.fs += "	o.Albedo += (texture2D( detail_texture, getUVs( u_texture_settings["+StandardMaterial.TEXTURES_INDEX["detail"]+"]) * u_detail_info.yz).xyz - vec3(0.5)) * u_detail_info.x;\n";
 	if( code_flags & FLAGS.EXTRA_TEXTURE )
-		code.fs += "	if(u_light_info.z == 0.0) o.Extra = u_extra_color * texture2D( extra_texture, uv0 );\n";
+		code.fs += "	if(u_light_info.z == 0.0) o.Extra = u_extra_color * texture2D( extra_texture, getUVs( u_texture_settings["+StandardMaterial.TEXTURES_INDEX["extra"]+"] ) );\n";
 
 	//flags
 	if( code_flags & FLAGS.ALPHA_TEST )
@@ -9043,7 +9066,23 @@ LS.Classes["newStandardMaterial"] = StandardMaterial;
 //LS.MaterialClasses.newStandardMaterial = StandardMaterial;
 
 //**********************************************
-
+var UVS_CODE = "\n\
+uniform int u_texture_settings[11];\n\
+\n\
+vec2 uvs[4];\n\
+vec2 getUVs(int index)\n\
+{\n\
+	if(index == 0)\n\
+		return uvs[0];\n\
+	if(index == 1)\n\
+		return uvs[1];\n\
+	if(index == 2)\n\
+		return uvs[2];\n\
+	if(index == 3)\n\
+		return uvs[3];\n\
+	return uvs[0];\n\
+}\n\
+";
 
 StandardMaterial.code_template = "\n\
 \n\
@@ -9051,11 +9090,20 @@ StandardMaterial.code_template = "\n\
 \\color.vs\n\
 \n\
 precision mediump float;\n\
+//global defines from blocks\n\
+#pragma shaderblock \"vertex_color\"\n\
+#pragma shaderblock \"coord1\"\n\
+\n\
 attribute vec3 a_vertex;\n\
 attribute vec3 a_normal;\n\
 attribute vec2 a_coord;\n\
-#ifdef USE_COLORS\n\
-attribute vec4 a_color;\n\
+#ifdef BLOCK_COORD1\n\
+	attribute vec2 a_coord1;\n\
+	varying vec2 v_uvs1;\n\
+#endif\n\
+#ifdef BLOCK_VERTEX_COLOR\n\
+	attribute vec4 a_color;\n\
+	varying vec4 v_vertex_color;\n\
 #endif\n\
 \n\
 //varyings\n\
@@ -9099,6 +9147,12 @@ void main() {\n\
 	vec4 vertex4 = vec4(a_vertex,1.0);\n\
 	v_normal = a_normal;\n\
 	v_uvs = a_coord;\n\
+	#ifdef BLOCK_COORD1\n\
+		v_uvs1 = a_coord1;\n\
+	#endif\n\
+	#ifdef BLOCK_VERTEX_COLOR\n\
+		v_vertex_color = a_color;\n\
+	#endif\n\
 	\n\
 	//local deforms\n\
 	{{vs_local}}\n\
@@ -9134,10 +9188,20 @@ void main() {\n\
 \n\
 precision mediump float;\n\
 \n\
+//global defines from blocks\n\
+#pragma shaderblock \"vertex_color\"\n\
+#pragma shaderblock \"coord1\"\n\
+\n\
 //varyings\n\
 varying vec3 v_pos;\n\
 varying vec3 v_normal;\n\
 varying vec2 v_uvs;\n\
+#ifdef BLOCK_COORD1\n\
+	varying vec2 v_uvs1;\n\
+#endif\n\
+#ifdef BLOCK_VERTEX_COLOR\n\
+	varying vec4 v_vertex_color;\n\
+#endif\n\
 \n\
 //globals\n\
 uniform vec3 u_camera_eye;\n\
@@ -9166,14 +9230,6 @@ uniform sampler2D detail_texture;\n\
 uniform sampler2D normal_texture;\n\
 uniform sampler2D extra_texture;\n\
 \n\
-uniform vec4 u_color_texture_settings;\n\
-uniform vec4 u_opacity_texture_settings;\n\
-uniform vec4 u_specular_texture_settings;\n\
-uniform vec4 u_ambient_texture_settings;\n\
-uniform vec4 u_emissive_texture_settings;\n\
-uniform vec4 u_reflectivity_texture_settings;\n\
-uniform vec4 u_normal_texture_settings;\n\
-\n\
 \n\
 #pragma shaderblock \"light\"\n\
 #pragma shaderblock \"light_texture\"\n\
@@ -9184,10 +9240,16 @@ uniform vec4 u_normal_texture_settings;\n\
 \n\
 #pragma shaderblock \"extraBuffers\"\n\
 \n\
+"+ UVS_CODE +"\n\
+\n\
 void surf(in Input IN, out SurfaceOutput o)\n\
 {\n\
 	o.Albedo = u_material_color.xyz;\n\
 	o.Alpha = u_material_color.a;\n\
+	#ifdef BLOCK_VERTEX_COLOR\n\
+	o.Albedo *= IN.color.xyz;\n\
+	o.Alpha *= IN.color.a;\n\
+	#endif\n\
 	o.Normal = normalize( v_normal );\n\
 	o.Specular = u_specular.x;\n\
 	o.Gloss = u_specular.y;\n\
@@ -9214,6 +9276,12 @@ void surf(in Input IN, out SurfaceOutput o)\n\
 void main() {\n\
 	Input IN = getInput();\n\
 	SurfaceOutput o = getSurfaceOutput();\n\
+	#ifdef BLOCK_VERTEX_COLOR\n\
+		IN.color = v_vertex_color;\n\
+	#endif\n\
+	#ifdef BLOCK_COORD1\n\
+		IN.uv1 = v_uvs1;\n\
+	#endif\n\
 	surf(IN,o);\n\
 	Light LIGHT = getLight();\n\
 	applyLightTexture( IN, LIGHT );\n\
@@ -9252,15 +9320,13 @@ void main() {\n\
 	#endif\n\
 	#pragma event \"fs_final\"\n\
 }\n\
+\n\
 \\shadow.vs\n\
 \n\
 precision mediump float;\n\
 attribute vec3 a_vertex;\n\
 attribute vec3 a_normal;\n\
 attribute vec2 a_coord;\n\
-#ifdef USE_COLORS\n\
-attribute vec4 a_color;\n\
-#endif\n\
 \n\
 //varyings\n\
 varying vec3 v_pos;\n\
@@ -9335,6 +9401,9 @@ uniform vec4 u_material_color;\n\
 \n\
 uniform mat3 u_texture_matrix;\n\
 \n\
+"+ UVS_CODE +"\n\
+\n\
+\n\
 uniform sampler2D color_texture;\n\
 uniform sampler2D opacity_texture;\n\
 \n\
@@ -9364,8 +9433,8 @@ precision mediump float;\n\
 attribute vec3 a_vertex;\n\
 attribute vec3 a_normal;\n\
 attribute vec2 a_coord;\n\
-#ifdef USE_COLORS\n\
-attribute vec4 a_color;\n\
+#ifdef VERTEX_COLOR_BLOCK\n\
+	attribute vec4 a_color;\n\
 #endif\n\
 \n\
 //varyings\n\
@@ -21154,23 +21223,36 @@ RenderInstance.prototype.render = function(shader, primitive)
 		this.vertex_buffers["coords1"] = this.mesh.vertexBuffers["coords1"];
 	}
 
+	if(shader.attributes["a_normal"] && !this.vertex_buffers["normals"])
+	{
+		this.mesh.computeNormals();		
+		this.vertex_buffers["normals"] = this.mesh.vertexBuffers["normals"];
+	}
+
 	//in case no secondary coords found but they are required
 	if(shader.attributes["a_extra"] && !this.vertex_buffers["extra"])
 	{
-		this.mesh.createVertexBuffer("a_extra", 1 );
+		this.mesh.createVertexBuffer("extra", "a_extra", 1 );
 		this.vertex_buffers["extra"] = this.mesh.vertexBuffers["extra"];
 	}
 
 	if(shader.attributes["a_extra2"] && !this.vertex_buffers["extra2"])
 	{
-		this.mesh.createVertexBuffer("a_extra2", 2 );
+		this.mesh.createVertexBuffer("extra2","a_extra2", 2 );
 		this.vertex_buffers["extra2"] = this.mesh.vertexBuffers["extra2"];
 	}
 
 	if(shader.attributes["a_extra3"] && !this.vertex_buffers["extra3"])
 	{
-		this.mesh.createVertexBuffer("a_extra3", 3 );
+		this.mesh.createVertexBuffer("extra3","a_extra3", 3 );
 		this.vertex_buffers["extra3"] = this.mesh.vertexBuffers["extra3"];
+	}
+
+	//in case no secondary coords found but they are required
+	if(shader.attributes["a_color"] && !this.vertex_buffers["colors"])
+	{
+		this.mesh.createVertexBuffer( "colors", "a_color", 4 );
+		this.vertex_buffers["colors"] = this.mesh.vertexBuffers["colors"];
 	}
 
 	shader.drawBuffers( this.vertex_buffers,
@@ -22453,6 +22535,7 @@ var Renderer = {
 			instance._is_visible = true;
 			if(camera_index_flag) //shadowmap cameras dont have an index
 				instance._camera_visibility |= camera_index_flag;
+
 
 			//TODO: if material supports instancing WIP
 			/*
@@ -35482,36 +35565,51 @@ LS.registerComponent( CameraController );
 
 function NodeManipulator(o)
 {
+	this.enabled = true;
+	this.on_node_clicked = false;
+	this.use_global_up_for_yaw = false;
 	this.rot_speed = [1,1]; //degrees
-	this.smooth = false;
 	if(o)
 		this.configure(o);
 }
 
 NodeManipulator.icon = "mini-icon-rotator.png";
 
+NodeManipulator.prototype.onAddedToScene = function(scene)
+{
+	LEvent.bind( scene, "mousemove",this.onSceneMouse,this);
+}
+
+NodeManipulator.prototype.onRemovedFromScene = function(scene)
+{
+	LEvent.unbind( scene, "mousemove",this.onSceneMouse, this);
+}
+
 NodeManipulator.prototype.onAddedToNode = function(node)
 {
-	LEvent.bind( node, "mousemove",this.onMouse,this);
-	LEvent.bind( node, "update",this.onUpdate,this);
+	LEvent.bind( node, "mousemove",this.onNodeMouse,this);
 }
 
 NodeManipulator.prototype.onRemovedFromNode = function(node)
 {
-	LEvent.unbind( node, "mousemove",this.onMouse,this);
-	LEvent.unbind( node, "update",this.onUpdate,this);
+	LEvent.unbind( node, "mousemove",this.onNodeMouse,this);
 }
 
-NodeManipulator.prototype.onUpdate = function(e)
+NodeManipulator.prototype.onNodeMouse = function( e, mouse_event )
 {
-	if(!this._root)
+	if(!this.on_node_clicked || !this.enabled)
 		return;
-
-	if(!this._root.transform)
-		return;
+	return this.onMouse( e, mouse_event );
 }
 
-NodeManipulator.prototype.onMouse = function(e, mouse_event)
+NodeManipulator.prototype.onSceneMouse = function( e, mouse_event )
+{
+	if(this.on_node_clicked || !this.enabled)
+		return;
+	return this.onMouse( e, mouse_event );
+}
+
+NodeManipulator.prototype.onMouse = function( e, mouse_event )
 {
 	if(!this._root || !this._root.transform)
 		return;
@@ -35523,16 +35621,18 @@ NodeManipulator.prototype.onMouse = function(e, mouse_event)
 	var scene = this._root.scene;
 	var camera = scene.getCamera();
 
-	var right = camera.getLocalVector( LS.Components.Transform.RIGHT );
-	this._root.transform.rotateGlobal( mouse_event.deltax * this.rot_speed[0], LS.Components.Transform.UP );
-	this._root.transform.rotateGlobal( mouse_event.deltay * this.rot_speed[1], right );
-	scene.requestFrame();
+	//yaw
+	var up = this.use_global_up_for_yaw ? LS.Components.Transform.UP : camera.getLocalVector( LS.Components.Transform.UP );
+	this._root.transform.rotateGlobal( mouse_event.deltax * this.rot_speed[0], up );
 
-	//this._root.transform.rotate(mouse_event.deltax * this.rot_speed[0], [0,1,0] );
-	//this._root.transform.rotateLocal(-mouse_event.deltay * this.rot_speed[1], [1,0,0] );
+	//pitch
+	var right = camera.getLocalVector( LS.Components.Transform.RIGHT );
+	this._root.transform.rotateGlobal( mouse_event.deltay * this.rot_speed[1], right );
+
+	scene.requestFrame();
 }
 
-LS.registerComponent(NodeManipulator);
+LS.registerComponent( NodeManipulator );
 ///@FILE:../src/components/target.js
 ///@INFO: UNCOMMON
 /**
@@ -39174,14 +39274,14 @@ RealtimeReflector.prototype.onCameraEnabled = function(e, camera)
 }
 
 LS.registerComponent( RealtimeReflector );
-///@FILE:../src/components/reflectionProbe.js
+///@FILE:../src/components/probes.js
 ///@INFO: UNCOMMON
 /**
-* Realtime Reflective surface
+* Realtime Reflective probe
 * @class RealtimeReflector
 * @namespace LS.Components
 * @constructor
-* @param {String} object to configure from
+* @param {Object} object to configure from
 */
 
 
@@ -39644,6 +39744,14 @@ ReflectionProbe.helper_size = 1;
 LS.registerComponent( ReflectionProbe );
 
 
+/**
+* Precomputed Irradiance probes
+* @class IrradianceCache
+* @namespace LS.Components
+* @constructor
+* @param {Object} object to configure from
+*/
+
 
 function IrradianceCache( o )
 {
@@ -39935,6 +40043,30 @@ IrradianceCache.prototype.encodeCacheInTexture = function()
 	mat4.invert( matrix, matrix );
 }
 
+IrradianceCache.prototype.getIrradiance = function( position, normal, out )
+{	
+	out = out || vec3.create();
+
+	var subs = this._irradiance_subdivisionsl;
+	var imatrix = this._uniforms.u_irradiance_imatrix;
+	var shs = this._irradiance_shs;
+	if(!shs)
+		return null;
+
+	var local_pos = vec3.create();
+	vec3.transformMat4( local_pos, position, imatrix );
+	Math.clamp( local_pos[0], 0, subs[0] - 1 );
+	Math.clamp( local_pos[1], 0, subs[1] - 1 );
+	Math.clamp( local_pos[2], 0, subs[2] - 1 );
+	var floor_probes = subs[0] * subs[2];
+	var total_probes = floor_probes * subs[1];
+	var i = Math.floor(local_pos[0]) + Math.floor(local_pos[2]) * subs[0] + Math.floor(local_pos[1]) * floor_probes;
+	var sh = shs[i];
+
+	//TODO: read coeffs
+	return out;
+}
+
 IrradianceCache.prototype.getSizeInBytes = function()
 {
 	return this._irradiance_shs.length * 27 * 4;//( this.high_precision ? 4 : 1 );
@@ -40196,7 +40328,7 @@ function computeSH( faces, cubemapSize, ch) {
   var cubeMapVecs = []
 
   // generate cube map vectors
-  faces.forEach((face, index) => {
+  faces.forEach( function(face, index) {
     var faceVecs = []
     for (var v = 0; v < size; v++) {
       for (var u = 0; u < size; u++) {
@@ -40235,7 +40367,7 @@ function computeSH( faces, cubemapSize, ch) {
   var weightAccum = 0
   
 
-  faces.forEach((face, index) => {
+  faces.forEach( function(face, index) {
     var pixels = face
     var gammaCorrect = true
 	var low_precision = true
@@ -40246,15 +40378,15 @@ function computeSH( faces, cubemapSize, ch) {
 	}
     for (var y = 0; y < size; y++) {
       for (var x = 0; x < size; x++) {
-        const texelVect = cubeMapVecs[index][y * size + x]
+        var texelVect = cubeMapVecs[index][y * size + x]
 
-        const weight = texelSolidAngle(x, y, size, size)
+        var weight = texelSolidAngle(x, y, size, size)
         // forsyths weights
-        const weight1 = weight * 4 / 17
-        const weight2 = weight * 8 / 17
-        const weight3 = weight * 15 / 17
-        const weight4 = weight * 5 / 68
-        const weight5 = weight * 15 / 68
+        var weight1 = weight * 4 / 17
+        var weight2 = weight * 8 / 17
+        var weight3 = weight * 15 / 17
+        var weight4 = weight * 5 / 68
+        var weight5 = weight * 15 / 68
 
         var dx = texelVect[0]
         var dy = texelVect[1]
@@ -40299,20 +40431,20 @@ function computeSH( faces, cubemapSize, ch) {
 function texelSolidAngle (aU, aV, width, height) {
   // transform from [0..res - 1] to [- (1 - 1 / res) .. (1 - 1 / res)]
   // ( 0.5 is for texel center addressing)
-  const U = (2.0 * (aU + 0.5) / width) - 1.0
-  const V = (2.0 * (aV + 0.5) / height) - 1.0
+  var U = (2.0 * (aU + 0.5) / width) - 1.0
+  var V = (2.0 * (aV + 0.5) / height) - 1.0
 
   // shift from a demi texel, mean 1.0 / size  with U and V in [-1..1]
-  const invResolutionW = 1.0 / width
-  const invResolutionH = 1.0 / height
+  var invResolutionW = 1.0 / width
+  var invResolutionH = 1.0 / height
 
   // U and V are the -1..1 texture coordinate on the current face.
   // get projected area for this texel
-  const x0 = U - invResolutionW
-  const y0 = V - invResolutionH
-  const x1 = U + invResolutionW
-  const y1 = V + invResolutionH
-  const angle = areaElement(x0, y0) - areaElement(x0, y1) - areaElement(x1, y0) + areaElement(x1, y1)
+  var x0 = U - invResolutionW
+  var y0 = V - invResolutionH
+  var x1 = U + invResolutionW
+  var y1 = V + invResolutionH
+  var angle = areaElement(x0, y0) - areaElement(x0, y1) - areaElement(x1, y0) + areaElement(x1, y1)
 
   return angle
 }

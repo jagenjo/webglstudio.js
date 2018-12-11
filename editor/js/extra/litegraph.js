@@ -3414,7 +3414,7 @@ function LGraphCanvas( canvas, graph, options )
 
 global.LGraphCanvas = LiteGraph.LGraphCanvas = LGraphCanvas;
 
-LGraphCanvas.link_type_colors = {"-1":"#F85",'number':"#AAC","node":"#DCA"};
+LGraphCanvas.link_type_colors = {"-1":"#F85",'number':"#AAA","node":"#DCA"};
 LGraphCanvas.gradients = {}; //cache of gradients
 
 /**
@@ -5142,7 +5142,7 @@ LGraphCanvas.prototype.drawFrontCanvas = function()
 					link_color = LiteGraph.CONNECTING_LINK_COLOR;
 			}
 			//the connection being dragged by the mouse
-			this.renderLink( ctx, this.connecting_pos, [this.canvas_mouse[0],this.canvas_mouse[1]], null, false, null, link_color, this.connecting_output.dir || (this.connecting_node.flags.horizontal ? LiteGraph.DOWN : LiteGraph.RIGHT), LiteGraph.CENTER );
+			this.renderLink( ctx, this.connecting_pos, [ this.canvas_mouse[0], this.canvas_mouse[1] ], null, false, null, link_color, this.connecting_output.dir || (this.connecting_node.flags.horizontal ? LiteGraph.DOWN : LiteGraph.RIGHT), LiteGraph.CENTER );
 
 			ctx.beginPath();
 				if( this.connecting_output.type === LiteGraph.EVENT || this.connecting_output.shape === LiteGraph.BOX_SHAPE )
@@ -6826,7 +6826,6 @@ LGraphCanvas.prototype.prompt = function( title, value, callback, event )
 }
 
 
-LGraphCanvas.search_filter = false;
 LGraphCanvas.search_limit = -1;
 LGraphCanvas.prototype.showSearchBox = function(event)
 {
@@ -6875,7 +6874,7 @@ LGraphCanvas.prototype.showSearchBox = function(event)
 				if(selected)
 					select( selected.innerHTML )
 				else if(first)
-					select(first);
+					select( first );
 				else
 					dialog.close();
 			}
@@ -7010,7 +7009,7 @@ LGraphCanvas.prototype.showSearchBox = function(event)
 					break;
 			}
 
-        	if(LGraphCanvas.search_filter)
+        	if(Array.prototype.filter)//filter supported
 			{
 				//types
         		var keys = Object.keys( LiteGraph.registered_node_types );
@@ -11704,6 +11703,9 @@ global.LGraphTexture = null;
 
 if(typeof(GL) != "undefined")
 {
+
+	LGraphCanvas.link_type_colors["Texture"] = "#AEF";
+
 	function LGraphTexture()
 	{
 		this.addOutput("Texture","Texture");

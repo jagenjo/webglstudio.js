@@ -812,25 +812,17 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 
 		widgets.addTitle("UVs");
 
-		/* removed
-		widgets.addCombo("UVs Channel", sampler["uvs"] || LS.Material.DEFAULT_UVS[ channel ], { values: LS.Material.TEXTURE_COORDINATES, callback: function(v) {
+		widgets.addCombo("UVs Channel", sampler["uvs"] || 0, { values: LS.Material.TEXTURE_COORDINATES, callback: function(v) {
 			sampler.uvs = v;
 			LS.GlobalScene.refresh();
 		}});
-		*/
 
 		var m = material.uvs_matrix;
 		widgets.addVector2("Tiling", [m[0],m[4]], { step:0.001, callback: function (value) { 
 			material.uvs_matrix[0] = value[0]; material.uvs_matrix[4] = value[1];
-			var sampler = material.textures[ channel ];
-			if(sampler)
-				sampler.uvs = "transformed";
 		}});
 		widgets.addVector2("Offset", [m[6],m[7]], { step:0.001, callback: function (value) { 
 			material.uvs_matrix[6] = value[0]; material.uvs_matrix[7] = value[1];
-			var sampler = material.textures[ channel ];
-			if(sampler)
-				sampler.uvs = "transformed";
 		}});
 	}
 

@@ -555,7 +555,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 				}});
 
 				inspector.addButton( null, LiteGUI.special_codes.navicon, { height: "1em", width: 30, callback: function(v,evt){
-					var menu = new LiteGUI.ContextMenu( ["Show Prefab Info","Choose Prefab","Unlink prefab","Reload from Prefab","Update to Prefab"], { title:"Prefab Menu", event: evt, callback: function(action) {
+					var menu = new LiteGUI.ContextMenu( ["Show Prefab Info","Choose Prefab","Reload from Prefab","Update to Prefab",null,"Unlink prefab"], { title:"Prefab Menu", event: evt, callback: function(action) {
 						if(action == "Show Prefab Info")
 						{
 							var res = LS.ResourcesManager.getResource( node.prefab );

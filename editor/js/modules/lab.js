@@ -92,7 +92,7 @@ var LabModule = {
 			inspector.addCombo("Axis", this.meshes_axis, { values:["X","Y","Z"], callback: function(v){
 				LabModule.meshes_axis = v;			
 			}});		
-			inspector.addCombo("Render Mode", this.meshes_mode, { values:["phong_wireframe","phong","wireframe"], callback: function(v){
+			inspector.addCombo("Render Mode", this.meshes_mode, { values:["phong_wireframe","phong","wireframe","X-RAY"], callback: function(v){
 				LabModule.meshes_mode = v;			
 			}});		
 		}
@@ -376,8 +376,17 @@ var LabModule = {
 		}
 
 		this.items.length = 0;
-		var phong = this.meshes_mode.indexOf("phong") != -1;
+		var shader = null;
+		if( this.meshes_mode.indexOf("phong") != -1 )
+			shader = LS.Draw.shader_phong;
 		var wireframe = this.meshes_mode.indexOf("wireframe") != -1;
+		var blend = false;
+		if( this.meshes_mode == "X-RAY" )
+		{
+			shader = LS.Draw.shader;
+			LS.Draw.setColor(0.05,0.05,0.05,1);
+			blend = true;
+		}
 
 		var num = 0;
 		for(var i in LS.RM.meshes)
@@ -419,11 +428,20 @@ var LabModule = {
 
 				gl.viewport( startx, starty, sizex, sizey );
 
-				gl.disable( gl.BLEND );
-				gl.enable( gl.DEPTH_TEST );
+				if(blend)
+				{
+					gl.enable( gl.BLEND );
+					gl.blendFunc( gl.ONE, gl.ONE );
+					gl.disable( gl.DEPTH_TEST );
+				}
+				else
+				{
+					gl.disable( gl.BLEND );
+					gl.enable( gl.DEPTH_TEST );
+				}
 
-				if(phong)
-					LS.Draw.renderMesh( mesh, gl.TRIANGLES, LS.Draw.shader_phong );
+				if(shader)
+					LS.Draw.renderMesh( mesh, gl.TRIANGLES, shader );
 				gl.enable( gl.BLEND );
 
 				if( wireframe && mesh.vertexBuffers["vertices"] ) //wireframe
@@ -433,11 +451,12 @@ var LabModule = {
 					LS.Draw.renderMesh( mesh, gl.LINES, null, "wireframe" );
 				}
 
-				gl.disable( gl.DEPTH_TEST );
-
 				gl.setViewport( old_viewport );
 				LS.Draw.popCamera();
 
+				gl.disable( gl.DEPTH_TEST );
+				gl.enable( gl.BLEND );
+				gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
 				var filename = LS.RM.getFilename(i).substr(0,24);
 				var text = filename;
 				gl.globalAlpha = (this.selected_item && this.selected_item.item == item) ? 1 : 0.5;

@@ -429,9 +429,11 @@ LS.Pack.prototype.inspect = LS.Prefab.prototype.inspect = function( widgets, ski
 	}
 
 	if(class_type == "Prefab")
+	{
 		widgets.addButton( null, "Show JSON Data", { callback: function(v){
 			EditorModule.checkJSON( pack.prefab_data );
 		}});
+	}
 
 	widgets.addSeparator();
 	widgets.addResource("Add Resource","",{ name_width: 140, callback: function( fullpath ){

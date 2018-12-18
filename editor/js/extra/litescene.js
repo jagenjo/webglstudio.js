@@ -16856,7 +16856,7 @@ function LGraphCameraMotionBlur()
 	this.addInput("depth","Texture");
 	this.addInput("camera","Camera");
 	this.addOutput("out","Texture");
-	this.properties = { enabled: true, intensity: 1, ghosting_mitigation: true, ghosting_threshold: 0.4, freeze_camera: false, precision: LGraphTexture.DEFAULT };
+	this.properties = { enabled: true, intensity: 1, ghosting_mitigation: true, ghosting_threshold: 0.4, freeze_camera: false, low_quality: false, precision: LGraphTexture.DEFAULT };
 
 	this._inv_matrix = mat4.create();
 	this._previous_viewprojection_matrix = mat4.create();
@@ -16906,13 +16906,29 @@ LGraphCameraMotionBlur.prototype.onExecute = function()
 	if(!this._tex || this._tex.width != width || this._tex.height != height || this._tex.type != type )
 		this._tex = new GL.Texture( width, height, { type: type, format: gl.RGBA, filter: gl.LINEAR });
 
-	if(!LGraphCameraMotionBlur._shader)
+	if( this.properties.low_quality )
 	{
-		LGraphCameraMotionBlur._shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphCameraMotionBlur.pixel_shader );
-		LGraphCameraMotionBlur._shader_no_ghosting = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphCameraMotionBlur.pixel_shader, { GHOST_CORRECTION: "" } );
+		if(!LGraphCameraMotionBlur._shader_low)
+		{
+			LGraphCameraMotionBlur._shader_low = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphCameraMotionBlur.pixel_shader, { SAMPLES:"4" } );
+			LGraphCameraMotionBlur._shader_no_ghosting_low = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphCameraMotionBlur.pixel_shader, { GHOST_CORRECTION: "", SAMPLES:"4" } );
+		}
+	}
+	else
+	{
+		if(!LGraphCameraMotionBlur._shader)
+		{
+			LGraphCameraMotionBlur._shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphCameraMotionBlur.pixel_shader );
+			LGraphCameraMotionBlur._shader_no_ghosting = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphCameraMotionBlur.pixel_shader, { GHOST_CORRECTION: "" } );
+		}
 	}
 
-	var shader = this.properties.ghosting_mitigation ? LGraphCameraMotionBlur._shader_no_ghosting : LGraphCameraMotionBlur._shader;
+	var shader = null;
+	
+	if( this.properties.low_quality )
+		shader = this.properties.ghosting_mitigation ? LGraphCameraMotionBlur._shader_no_ghosting_low : LGraphCameraMotionBlur._shader_low;
+	else
+		shader = this.properties.ghosting_mitigation ? LGraphCameraMotionBlur._shader_no_ghosting : LGraphCameraMotionBlur._shader;
 
 	var inv = this._inv_matrix;
 	var vp = camera._viewprojection_matrix;
@@ -16969,7 +16985,9 @@ LGraphCameraMotionBlur.pixel_shader = "precision highp float;\n\
 		uniform vec2 u_camera_planes;\n\
 		uniform float u_intensity;\n\
 		uniform float u_ghosting_threshold;\n\
-		#define SAMPLES 16\n\
+		#ifndef SAMPLES\n\
+			#define SAMPLES 16\n\
+		#endif\n\
 		\n\
 		void main() {\n\
 			vec2 uv = v_coord;\n\
@@ -22658,7 +22676,7 @@ var Renderer = {
 		{
 			var light = lights[j];
 			//same layer?
-			if( (light.layers & instance.layers) == 0 || (light.layers & this._current_camera.layers) == 0)
+			if( (light.illuminated_layers & instance.layers) == 0 || (light.illuminated_layers & this._current_camera.layers) == 0)
 				continue;
 			var light_intensity = light.computeLightIntensity();
 			//light intensity too low?
@@ -29689,12 +29707,19 @@ function Light(o)
 
 	/**
 	* Layers mask, this layers define which objects are iluminated by this light
-	* @property layers
+	* @property illuminated_layers
 	* @type {Number}
 	* @default true
 	*/
-	this.layers = 0xFF;
+	this.illuminated_layers = 0xFF;
 
+	/**
+	* Layers mask, this layers define which objects affect the shadow map (cast shadows)
+	* @property shadows_layers
+	* @type {Number}
+	* @default true
+	*/
+	this.shadows_layers = 0xFF;
 
 	/**
 	* Near distance
@@ -30117,12 +30142,12 @@ Light.prototype.onResourceRenamed = function (old_name, new_name, resource)
 //Layer stuff
 Light.prototype.checkLayersVisibility = function( layers )
 {
-	return (this.layers & layers) !== 0;
+	return (this.illuminated_layers & layers) !== 0;
 }
 
 Light.prototype.isInLayer = function(num)
 {
-	return (this.layers & (1<<num)) !== 0;
+	return (this.illuminated_layers & (1<<num)) !== 0;
 }
 
 /**
@@ -30375,6 +30400,9 @@ Light.prototype.generateShadowmap = function (render_settings)
 	if(shadowmap_resolution == 0)
 		shadowmap_resolution = render_settings.default_shadowmap_resolution;
 
+	var tmp_layer = render_settings.layers;
+	render_settings.layers = this.shadows_layers;
+
 	var tex_type = this.type == Light.OMNI ? gl.TEXTURE_CUBE_MAP : gl.TEXTURE_2D;
 	if(this._shadowmap == null || this._shadowmap.width != shadowmap_resolution || this._shadowmap.texture_type != tex_type )
 	{
@@ -30431,6 +30459,7 @@ Light.prototype.generateShadowmap = function (render_settings)
 		LS.Renderer._current_target = null;
 	}
 
+	render_settings.layers = tmp_layer;
 	LS.Renderer.setRenderPass( COLOR_PASS );
 	LS.Renderer._current_light = null;
 }

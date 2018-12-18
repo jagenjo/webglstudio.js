@@ -1806,7 +1806,15 @@ function ContextMenu( values, options )
 	root.addEventListener("mouseleave", function(e) {
 		if(that.lock)
 			return;
-		that.close(e);
+		if(root.closing_timer)
+			clearTimeout( root.closing_timer );
+		root.closing_timer = setTimeout( that.close.bind(that, e), 500 );
+		//that.close(e);
+	});
+
+	root.addEventListener("mouseenter", function(e) {
+		if(root.closing_timer)
+			clearTimeout( root.closing_timer );
 	});
 
 	function on_mouse_wheel(e)
@@ -1985,6 +1993,8 @@ ContextMenu.prototype.close = function(e, ignore_parent_menu)
 	}
 	if(this.current_submenu)
 		this.current_submenu.close(e, true);
+	if(this.root.closing_timer)
+		clearTimeout( this.root.closing_timer );
 }
 
 //returns the top most menu
@@ -5882,9 +5892,11 @@ LiteGUI.Console = Console;
 
 		//go up and semiselect
 		var parent = this.getParent( node );
-		while(parent)
+		var visited = [];
+		while(parent && visited.indexOf(parent) == -1)
 		{
 			parent.classList.add("semiselected");
+			visited.push( parent );
 			parent = this.getParent( parent );
 		}
 		/*

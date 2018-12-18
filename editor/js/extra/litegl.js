@@ -5196,7 +5196,7 @@ Texture.prototype.uploadImage = function( image, options )
 * Uploads data to the GPU (data must have the appropiate size)
 * @method uploadData
 * @param {ArrayBuffer} data
-* @param {Object} options [optional] upload options (premultiply_alpha, no_flip, cubemap_face)
+* @param {Object} options [optional] upload options (premultiply_alpha, no_flip, cubemap_face, mipmap_level)
 */
 Texture.prototype.uploadData = function( data, options, skip_mipmaps )
 {
@@ -5206,6 +5206,11 @@ Texture.prototype.uploadData = function( data, options, skip_mipmaps )
 	var gl = this.gl;
 	this.bind();
 	Texture.setUploadOptions(options, gl);
+	var mipmap_level = options.mipmap_level || 0;
+	var width = this.width;
+	var height = this.height;
+	width = width >> mipmap_level; 
+	height = height >> mipmap_level;
 
 	if( this.type == GL.HALF_FLOAT_OES && data.constructor === Float32Array )
 		console.warn("cannot uploadData to a HALF_FLOAT texture from a Float32Array, must be Uint16Array. To upload it we recomment to create a FLOAT texture, upload data there and copy to your HALF_FLOAT.");
@@ -5213,14 +5218,14 @@ Texture.prototype.uploadData = function( data, options, skip_mipmaps )
 	if( this.texture_type == GL.TEXTURE_2D )
 	{
 		if(data.buffer && data.buffer.constructor == ArrayBuffer)
-			gl.texImage2D(this.texture_type, 0, this.format, this.width, this.height, 0, this.format, this.type, data);
+			gl.texImage2D(this.texture_type, mipmap_level, this.format, width, height, 0, this.format, this.type, data);
 		else
-			gl.texImage2D(this.texture_type, 0, this.format, this.format, this.type, data);
+			gl.texImage2D(this.texture_type, mipmap_level, this.format, this.format, this.type, data);
 	}
 	else if( this.texture_type == GL.TEXTURE_3D )
-		gl.texImage3D(this.texture_type, 0, this.format, this.width, this.height, this.depth, 0, this.format, this.type, data);
+		gl.texImage3D( this.texture_type, mipmap_level, this.format, width, height, this.depth >> mipmap_level, 0, this.format, this.type, data);
 	else if( this.texture_type == GL.TEXTURE_CUBE_MAP )
-		gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_X + (options.cubemap_face || 0), 0, this.format, this.width, this.height, 0, this.format, this.type, data);
+		gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_X + (options.cubemap_face || 0), mipmap_level, this.format, width, height, 0, this.format, this.type, data);
 	else
 		throw("cannot uploadData for this texture type");
 
@@ -6393,12 +6398,13 @@ Texture.cubemapFromURL = function(url, options, on_complete) {
 /**
 * returns an ArrayBuffer with the pixels in the texture, they are fliped in Y
 * @method getPixels
+* @param {number} cubemap_face [optional] the index of the cubemap face to read (ignore if texture_2D)
+* @param {number} mipmap level [optional, default is 0]
 * @return {ArrayBuffer} the data ( Uint8Array, Uint16Array or Float32Array )
 */
-Texture.prototype.getPixels = function( cubemap_face, legacy_parameter )
+Texture.prototype.getPixels = function( cubemap_face, mipmap_level )
 {
-	if(legacy_parameter !== undefined)
-		throw("legacy parameter, not longer supported");
+	mipmap_level = mipmap_level || 0;
 	var gl = this.gl;
 	var v = gl.getViewport();
 	var old_fbo = gl.getParameter( gl.FRAMEBUFFER_BINDING );
@@ -6416,12 +6422,14 @@ Texture.prototype.getPixels = function( cubemap_face, legacy_parameter )
 
 	var buffer = null;
 
-	gl.viewport(0, 0, this.width, this.height);
+	var width = this.width >> mipmap_level;
+	var height = this.height >> mipmap_level;
+	gl.viewport(0, 0, width, height);
 
 	if(this.texture_type == gl.TEXTURE_2D)
-		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.handler, 0);
+		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.handler, mipmap_level);
 	else if(this.texture_type == gl.TEXTURE_CUBE_MAP)
-		gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + (cubemap_face || 0), this.handler, 0);
+		gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + (cubemap_face || 0), this.handler, mipmap_level);
 
 	var channels = this.format == gl.RGB ? 3 : 4;
 	channels = 4; //WEBGL DOES NOT SUPPORT READING 3 CHANNELS ONLY, YET...
@@ -6429,13 +6437,13 @@ Texture.prototype.getPixels = function( cubemap_face, legacy_parameter )
 	//type = gl.UNSIGNED_BYTE; //WEBGL DOES NOT SUPPORT READING FLOAT seems, YET... 23/5/18 now it seems it does now
 
 	if(type == gl.UNSIGNED_BYTE)
-		buffer = new Uint8Array( this.width * this.height * channels );
+		buffer = new Uint8Array( width * height * channels );
 	else if(type == GL.HALF_FLOAT || type == GL.HALF_FLOAT_OES) //previously half float couldnot be read
-		buffer = new Uint16Array( this.width * this.height * channels ); //gl.UNSIGNED_SHORT_4_4_4_4 is only for texture that are SHORT per pixel, not per channel!
+		buffer = new Uint16Array( width * height * channels ); //gl.UNSIGNED_SHORT_4_4_4_4 is only for texture that are SHORT per pixel, not per channel!
 	else 
-		buffer = new Float32Array( this.width * this.height * channels );
+		buffer = new Float32Array( width * height * channels );
 
-	gl.readPixels( 0,0, this.width, this.height, channels == 3 ? gl.RGB : gl.RGBA, type, buffer ); //NOT SUPPORTED FLOAT or RGB BY WEBGL YET
+	gl.readPixels( 0,0, width, height, channels == 3 ? gl.RGB : gl.RGBA, type, buffer ); //NOT SUPPORTED FLOAT or RGB BY WEBGL YET
 
 	//restore
 	gl.bindFramebuffer(gl.FRAMEBUFFER, old_fbo );

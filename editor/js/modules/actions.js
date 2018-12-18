@@ -84,6 +84,7 @@ LS.SceneNode.actions["create_child_node"] = {
 };
 
 LS.SceneNode.actions["create_prefab"] = { 
+	submenu: "Prefab",
 	title:"Create Prefab",
 	callback: function(){
 		PackTools.showCreatePrefabDialog( this );
@@ -92,6 +93,7 @@ LS.SceneNode.actions["create_prefab"] = {
 
 LS.SceneNode.actions["use_prefab"] = { 
 	title:"Assign Prefab",
+	submenu: "Prefab",
 	callback: function(){
 		var node = this;
 		EditorModule.showSelectResource( { type:"Prefab", on_complete: function(v){
@@ -341,15 +343,6 @@ LS.Components.Camera.actions["setview"] = { title: "Set to view", callback: func
 LS.Components.Camera.actions["preview"] = { title: "Preview", callback: function() { 
 		cameraTool.addCameraPreviewWidget( this );
 		LS.GlobalScene.refresh();
-	}
-};
-
-LS.Components.Light.actions["edit_layers"] = LS.Components.Camera.actions["edit_layers"] = { title: "Edit Layers", callback: function() { 
-		var component = this;
-		EditorModule.showLayersEditor( this.layers, function(v){
-			component.layers = v;
-			RenderModule.requestFrame();
-		});	
 	}
 };
 

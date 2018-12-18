@@ -145,7 +145,6 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 		inspector.refresh();
 	}});
 
-
 	if(!is_node_camera)
 	{
 		inspector.addSeparator();
@@ -225,12 +224,16 @@ LS.Components.Light["@inspector"] = function(light, inspector)
 
 	inspector.addColor("Color", light.color, { pretitle: AnimationModule.getKeyframeCode( light, "color"), callback: function(color) { light.color = color; } });
 	inspector.addSlider("Intensity", light.intensity, { pretitle: AnimationModule.getKeyframeCode( light, "intensity"), min:0, max:2, step:0.01, callback: function (value) { light.intensity = value; }});
-	inspector.widgets_per_row = 2;
+	inspector.widgets_per_row = 3;
 	inspector.addNumber("Angle", light.angle, { pretitle: AnimationModule.getKeyframeCode( light, "angle"), callback: function (value) { light.angle = value; }});
 	inspector.addNumber("Angle End", light.angle_end, { pretitle: AnimationModule.getKeyframeCode( light, "angle_end"), callback: function (value) { light.angle_end = value; }});
-	inspector.widgets_per_row = 1;
 	inspector.addCheckbox("Spot cone", light.spot_cone != false, { pretitle: AnimationModule.getKeyframeCode( light, "spot_cone"), callback: function(v) { light.spot_cone = v; }});
+	inspector.widgets_per_row = 1;
 	inspector.addNumber("Frustum size", light.frustum_size || 100, { pretitle: AnimationModule.getKeyframeCode( light, "frustum_size"), callback: function (value) { light.frustum_size = value; }});
+	inspector.addLayers("Illuminated Layers", light.illuminated_layers, { pretitle: AnimationModule.getKeyframeCode( light, "illuminated_layers"), callback: function (value) { 
+		light.illuminated_layers = value;
+		inspector.refresh();
+	}});
 
 	var is_root_camera = node._is_root;
 
@@ -264,7 +267,12 @@ LS.Components.Light["@inspector"] = function(light, inspector)
 
 	if(light.cast_shadows)
 	{
+		inspector.widgets_per_row = 2;
 		inspector.addCheckbox("Hard shadows", light.hard_shadows, { pretitle: AnimationModule.getKeyframeCode( light, "hard_shadows"), callback: function(v) { light.hard_shadows = v; }});
+		inspector.addLayers("Shadows Layers", light.shadows_layers, { pretitle: AnimationModule.getKeyframeCode( light, "shadows_layers"), callback: function (value) { 
+			light.shadows_layers = value;
+			inspector.refresh();
+		}});
 		inspector.widgets_per_row = 2;
 		inspector.addNumber("Near", light.near, { pretitle: AnimationModule.getKeyframeCode( light, "near"), callback: function (value) { light.near = value;}});
 		inspector.addNumber("Far", light.far, { pretitle: AnimationModule.getKeyframeCode( light, "far"), callback: function (value) { light.far = value; }});

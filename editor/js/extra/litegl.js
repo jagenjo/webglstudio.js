@@ -2034,6 +2034,31 @@ GL.Buffer = function Buffer( target, data, spacing, stream_type, gl ) {
 }
 
 /**
+* binds the buffer to a attrib location
+* @method bind
+* @param {number} location the location of the shader  (from shader.attributes[ name ])
+*/
+GL.Buffer.prototype.bind = function( location, gl )
+{
+	gl = gl || this.gl;
+
+	gl.bindBuffer( gl.ARRAY_BUFFER, this.buffer );
+	gl.enableVertexAttribArray( location );
+	gl.vertexAttribPointer( location, this.spacing, this.buffer.gl_type, false, 0, 0);
+}
+
+/**
+* unbinds the buffer from an attrib location
+* @method unbind
+* @param {number} location the location of the shader
+*/
+GL.Buffer.prototype.unbind = function( location, gl )
+{
+	gl = gl || this.gl;
+	gl.disableVertexAttribArray( location );
+}
+
+/**
 * Applies an action to every vertex in this buffer
 * @method forEach
 * @param {function} callback to be called for every vertex (or whatever is contained in the buffer)
@@ -9165,7 +9190,6 @@ GL.create = function(options) {
 
 	function onkey(e, prevent_default)
 	{
-		//trace(e);
 		e.eventType = e.type; //type cannot be overwritten, so I make a clone to allow me to overwrite
 
 		var target_element = e.target.nodeName.toLowerCase();
@@ -9263,6 +9287,8 @@ GL.create = function(options) {
 		var gamepads = getGamepads.call(navigator);
 		if(!this.gamepads)
 			this.gamepads = [];
+
+		//iterate to generate events
 		for(var i = 0; i < 4; i++)
 		{
 			var gamepad = gamepads[i]; //current state
@@ -9270,18 +9296,18 @@ GL.create = function(options) {
 			if(gamepad && !skip_mapping)
 				addGamepadXBOXmapping(gamepad);
 
-			var old_gamepad = this.gamepads[i]; //old state
-
 			//launch connected gamepads events
-			if(!old_gamepad && gamepad)
+			if(gamepad && !gamepad.prev_buttons)
 			{
+				gamepad.prev_buttons = new Uint8Array(32);
 				var event = new CustomEvent("gamepadconnected");
 				event.eventType = event.type;
-				event.gamepad = gamepad;;
+				event.gamepad = gamepad;
 				if(this.ongamepadconnected)
 					this.ongamepadconnected(event);
 				LEvent.trigger(gl,"gamepadconnected",event);
 			}
+			/*
 			else if(old_gamepad && !gamepad)
 			{
 				var event = new CustomEvent("gamepaddisconnected");
@@ -9291,6 +9317,7 @@ GL.create = function(options) {
 					this.ongamepaddisconnected(event);
 				LEvent.trigger(gl,"gamepaddisconnected",event);
 			}
+			*/
 
 			//seek buttons changes to trigger events
 			if(gamepad)
@@ -9298,8 +9325,10 @@ GL.create = function(options) {
 				for(var j = 0; j < gamepad.buttons.length; ++j)
 				{
 					var button = gamepad.buttons[j];
-					if( button.pressed && (!old_gamepad || !old_gamepad.buttons[j].pressed))
+					button.was_pressed = false;
+					if( button.pressed && !gamepad.prev_buttons[j] )
 					{
+						button.was_pressed = true;
 						var event = new CustomEvent("gamepadButtonDown");
 						event.eventType = event.type;
 						event.button = button;
@@ -9309,7 +9338,7 @@ GL.create = function(options) {
 							gl.onbuttondown(event);
 						LEvent.trigger(gl,"buttondown",event);
 					}
-					else if( !button.pressed && (old_gamepad && old_gamepad.buttons[j].pressed))
+					else if( !button.pressed && gamepad.prev_buttons[j] )
 					{
 						var event = new CustomEvent("gamepadButtonUp");
 						event.eventType = event.type;
@@ -9320,6 +9349,8 @@ GL.create = function(options) {
 							gl.onbuttondown(event);
 						LEvent.trigger(gl,"buttonup",event);
 					}
+
+					gamepad.prev_buttons[j] = button.pressed ? 1 : 0;
 				}
 			}
 		}
@@ -9330,7 +9361,7 @@ GL.create = function(options) {
 	function addGamepadXBOXmapping(gamepad)
 	{
 		//xbox controller mapping
-		var xbox = { axes:[], buttons:{}, hat: ""};
+		var xbox = gamepad.xbox || { axes:[], buttons:{}, hat: ""};
 		xbox.axes["lx"] = gamepad.axes[0];
 		xbox.axes["ly"] = gamepad.axes[1];
 		xbox.axes["rx"] = gamepad.axes[2];

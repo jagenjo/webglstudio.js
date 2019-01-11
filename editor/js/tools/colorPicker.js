@@ -20,9 +20,9 @@ var colorPickerTool = {
 		gl.finish2D();
 	},
 
-	getColorFromMouse: function(e, skip_redraw)
+	getColorFromMouse: function( e, skip_redraw )
 	{
-		RenderModule.render(!skip_redraw); //force repaint so there is something in the buffer
+		RenderModule.render( !skip_redraw ); //force repaint so there is something in the buffer
 		var image_data = gl.getImageData( e.canvasx, e.canvasy, 1, 1 );
 		var color_bytes = image_data.data.subarray(0,3);
 		this.last_color.set( [color_bytes[0]/255, color_bytes[1]/255, color_bytes[2]/255] );

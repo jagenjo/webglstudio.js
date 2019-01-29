@@ -2180,7 +2180,7 @@ LS.TYPES = {
 	STRING : "string",
 	VEC2 : "vec2",
 	VEC3 : "vec3",
-	VEC4 : "vec3",
+	VEC4 : "vec4",
 	COLOR : "color",
 	COLOR4 : "color4",
 	EVENT : "event",
@@ -16824,7 +16824,7 @@ LGraphFXStack.prototype.onExecute = function()
 	this.setOutputData(0, this._final_texture);
 }
 
-LGraphFXStack.prototype.inspect = function( inspector )
+LGraphFXStack.prototype.onInspect = function( inspector )
 {
 	return this._fx_stack.inspect( inspector );
 }
@@ -37061,6 +37061,9 @@ FXGraphComponent.prototype.enableCameraFBO = function(e, render_settings )
 	var viewport = this._viewport = camera.getLocalViewport( null, this._viewport );
 	this.frame.enable( render_settings, viewport );
 	render_settings.ignore_viewports = true;
+
+	if(this._graph)
+		this._graph.sendEventToAllNodes("onPreRenderExecute");
 }
 
 FXGraphComponent.prototype.showCameraFBO = function(e, render_settings )
@@ -37079,6 +37082,9 @@ FXGraphComponent.prototype.enableGlobalFBO = function( render_settings )
 
 	//configure
 	this.frame.enable( render_settings, null, LS.Renderer._main_camera );
+
+	if(this._graph)
+		this._graph.sendEventToAllNodes("onPreRenderExecute");
 }
 
 FXGraphComponent.prototype.showFBO = function()
@@ -37119,6 +37125,7 @@ FXGraphComponent.prototype.applyGraph = function()
 	this._graph_frame_node._depth_texture = ":depth_" + this.uid;
 	this._graph_frame_node._extra_texture = ":extra0_" + this.uid;
 	this._graph_frame_node._camera = this._last_camera;
+	this._graph_frame_node._extra_texture = ":extra0_" + this.uid;
 
 	if(this._graph_viewport_node) //force antialiasing
 	{
@@ -39844,7 +39851,7 @@ IrradianceCache["@background_color"] = { type:"color" };
 IrradianceCache["@intensity_color"] = { type:"color" };
 IrradianceCache.default_coeffs = new Float32Array([ 0,0,0, 0.5,0.75,1, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0 ]);
 
-IrradianceCache.use_sh_low = true; //set to false before shader compilation to use 9 coeffs instead of 4
+IrradianceCache.use_sh_low = false; //set to false before shader compilation to use 9 coeffs instead of 4
 
 IrradianceCache.prototype.onAddedToScene = function(scene)
 {
@@ -40518,7 +40525,9 @@ var irradiance_code = "\n\
 	}\n\
 	float irr_expFunc(float f)\n\
 	{\n\
-		return f*f*f*(f*(f*6.0-15.0)+10.0);\n\
+		//f = f*f*f*(f*(f*6.0-15.0)+10.0);\n\
+		//if( f < 0.0 || f > 1.0 ) return 0.0;\n\
+		return f;\n\
 	}\n\
 	vec3 computeSHRadianceAtPositionSmooth( in vec3 pos, in vec3 normal )\n\
 	{\n\

@@ -245,15 +245,9 @@ function enableWebGLCanvas( canvas, options )
 
 	ctx.transform = function(a,b,c,d,e,f) {
 		var m = tmp_mat3;
-		m[0] = a;
-		m[1] = c;
-		m[2] = e;
-		m[3] = b;
-		m[4] = d;
-		m[5] = f;
-		m[6] = 0;
-		m[7] = 0;
-		m[8] = 1;
+
+        m[0] = a; m[1] = b; m[2] = 0; m[3] = c; m[4] = d; m[5] = 0; m[6] = e; m[7] = f; m[8] = 1; //fix
+		//m[0] = a; m[1] = c;	m[2] = e; m[3] = b;	m[4] = d; m[5] = f;	m[6] = 0; m[7] = 0;	m[8] = 1;
 
 		mat3.multiply( this._matrix, this._matrix, m );
 		global_angle = Math.atan2( this._matrix[0], this._matrix[1] );
@@ -261,15 +255,10 @@ function enableWebGLCanvas( canvas, options )
 
 	ctx.setTransform = function(a,b,c,d,e,f) {
 		var m = this._matrix;
-		m[0] = a;
-		m[1] = c;
-		m[2] = e;
-		m[3] = b;
-		m[4] = d;
-		m[5] = f;
-		m[6] = 0;
-		m[7] = 0;
-		m[8] = 1;
+
+		m[0] = a; m[1] = b; m[2] = 0; m[3] = c; m[4] = d; m[5] = 0; m[6] = e; m[7] = f; m[8] = 1; //fix
+		//m[0] = a; m[1] = c;	m[2] = e; m[3] = b;	m[4] = d; m[5] = f;	m[6] = 0; m[7] = 0;	m[8] = 1;
+
 		//this._matrix.set([a,c,e,b,d,f,0,0,1]);
 		global_angle = Math.atan2( this._matrix[0], this._matrix[1] );
 	}

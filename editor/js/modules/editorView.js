@@ -190,15 +190,6 @@ var EditorView = {
 	},
 
 	//used for picking just points **************************************************
-	_picking_points: [], //used to collect all points to render during picking
-
-	addPickingPoint: function( position, size, info )
-	{
-		size = size || 5.0;
-		var color = LS.Picking.getNextPickingColor( info );
-		this._picking_points.push([position,color,size]);
-	},
-
 	renderPicking: function(e, mouse_pos)
 	{
 		//cannot pick what is hidden
@@ -235,7 +226,7 @@ var EditorView = {
 				var pos = vec3.create();
 				mat4.multiplyVec3(pos, node.transform.getGlobalMatrixRef(), pos); //create a new one to store them
 				if( this.preferences.render_null_nodes )
-					this.addPickingPoint( pos, 12, { instance: node } );
+					LS.Picking.addPickingPoint( pos, 12, { instance: node } );
 			}
 
 			for(var j in node._components)
@@ -246,25 +237,7 @@ var EditorView = {
 			}
 		}
 
-		//render all the picking points 
-		if(this._picking_points.length)
-		{
-			var points = new Float32Array( this._picking_points.length * 3 );
-			var colors = new Float32Array( this._picking_points.length * 4 );
-			var sizes = new Float32Array( this._picking_points.length );
-			for(var i = 0; i < this._picking_points.length; i++)
-			{
-				points.set( this._picking_points[i][0], i*3 );
-				colors.set( this._picking_points[i][1], i*4 );
-				sizes[i] = this._picking_points[i][2];
-			}
-			LS.Draw.setPointSize(1);
-			LS.Draw.setColor([1,1,1,1]);
-			gl.disable( gl.DEPTH_TEST ); //because nodes are show over meshes
-			LS.Draw.renderPointsWithSize( points, colors, sizes );
-			gl.enable( gl.DEPTH_TEST );
-			this._picking_points.length = 0;
-		}
+		LS.Picking.renderPickingPoints();
 	}
 };
 
@@ -536,23 +509,14 @@ LS.Light.prototype.renderEditor = function(node_selected, component_selected )
 LS.Light.prototype.renderPicking = function(ray)
 {
 	var pos = this.getPosition();
-	EditorView.addPickingPoint( pos, LS.Light.gizmo_size, { instance: this, info: "position" } );
-	/*
-	var color = Renderer.getNextPickingColor( this._root, [this, "position"] );
-	EditorView._picking_points.push([pos,color]);
-	*/
+	LS.Picking.addPickingPoint( pos, LS.Light.gizmo_size, { instance: this, info: "position" } );
 
 	//target only pick if necessary
 	if( this._root && this._root.transform || this.type == LS.Light.OMNI)
 		return; 
 
 	var target = this.getTarget();
-	EditorView.addPickingPoint( target, 0, { instance: this, info: "target" } );
-
-	/*
-	var color = Renderer.getNextPickingColor( this._root, [this, "target"] );
-	EditorView._picking_points.push([target,color]);
-	*/
+	LS.Picking.addPickingPoint( target, 0, { instance: this, info: "target" } );
 }
 
 LS.Camera.gizmo_size = 50;
@@ -560,28 +524,18 @@ LS.Camera.gizmo_size = 50;
 LS.Camera.prototype.renderPicking = function(ray)
 {
 	var pos = this.getEye();
-	EditorView.addPickingPoint( pos, LS.Camera.gizmo_size, { instance: this, info: "eye" } );
-
-	/*
-	var color = Renderer.getNextPickingColor( this._root, [this, "eye"] );
-	EditorView._picking_points.push([pos,color]);
-	*/
+	LS.Picking.addPickingPoint( pos, LS.Camera.gizmo_size, { instance: this, info: "eye" } );
 
 	//target only pick if necessary
 	if( this._root && this._root.transform )
 		return; 
 
 	var center = this.getCenter();
-	EditorView.addPickingPoint( center, 0, { instance: this, info: "center" } );
+	LS.Picking.addPickingPoint( center, 0, { instance: this, info: "center" } );
 
 	//middle center
-	vec3.lerp( center, pos, center, 0.5 );
-	EditorView.addPickingPoint( center, 0, { instance: this, info: "center" } );
-
-	/*
-	var color = Renderer.getNextPickingColor( this._root, [this, "center"] );
-	EditorView._picking_points.push([center,color]);
-	*/
+	var middle = vec3.lerp( vec3.create(), pos, center, 0.5 );
+	LS.Picking.addPickingPoint( middle, 0, { instance: this, info: "center" } );
 }
 
 LS.Camera.prototype.renderEditor = function( node_selected, component_selected )

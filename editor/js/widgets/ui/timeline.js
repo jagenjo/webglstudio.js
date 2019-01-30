@@ -26,7 +26,7 @@ function Timeline( options )
 }
 
 Timeline.widget_name = "Timeline";
-Timeline.interpolation_values = {"none": LS.NONE, "linear": LS.LINEAR, "bezier": LS.BEZIER }
+Timeline.interpolation_values = {"none": LS.NONE, "linear": LS.LINEAR, "cubic": LS.CUBIC }
 
 CORE.registerWidget( Timeline );
 
@@ -1668,7 +1668,7 @@ Timeline.prototype.processInsertLocator = function( locator, options )
 
 	var size = 0;
 	var value = info.value;
-	var interpolation = LS.BEZIER;
+	var interpolation = LS.CUBIC;
 	if(info.value !== null)
 	{
 		if( info.value.constructor == Float32Array )

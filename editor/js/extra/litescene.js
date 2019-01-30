@@ -2151,6 +2151,14 @@ LS.BlendFunctions[ Blend.MULTIPLY ] = [GL.DST_COLOR, GL.ONE_MINUS_SRC_ALPHA];
 LS.BlendFunctions[ Blend.SCREEN ] =	[GL.SRC_ALPHA, GL.ONE];
 LS.BlendFunctions[ Blend.CUSTOM ] =	[GL.SRC_ALPHA, GL.ONE_MINUS_SRC_ALPHA];
 
+//USed for interpolation and splines
+LS.NONE = 0;
+LS.LINEAR = 1;
+LS.TRIGONOMETRIC = 2;
+LS.CUBIC = 3;
+LS.SPLINE = 4;
+LS.BEZIER = 5;
+
 //used to know the state of the application
 LS.STOPPED = 0;
 LS.PLAYING = 1; 
@@ -12227,13 +12235,6 @@ LS.registerResourceClass( Resource );
 ///@FILE:../src/resources/animation.js
 ///@INFO: ANIMATION
 
-//Interpolation methods
-LS.NONE = 0;
-LS.LINEAR = 1;
-LS.TRIGONOMETRIC = 2;
-LS.BEZIER = 3;
-LS.SPLINE = 4;
-
 /**
 * An Animation is a resource that contains samples of properties over time, similar to animation curves
 * Values could be associated to an specific node.
@@ -12953,7 +12954,7 @@ function Track(o)
 	this._type = null; //type of data (number, vec2, color, texture, etc)
 	this._type_index = null; //type in number format (to optimize)
 	/** 
-	* @property interpolation {Number} type of interpolation LS.NONE, LS.LINEAR, LS.TRIGONOMETRIC, LS.BEZIER, LS.SPLICE
+	* @property interpolation {Number} type of interpolation LS.NONE, LS.LINEAR, LS.TRIGONOMETRIC, LS.CUBIC, LS.SPLICE
 	**/
 	this.interpolation = LS.NONE;
 	/** 
@@ -13522,7 +13523,7 @@ Track.prototype.findTimeIndex = function(time)
 * Warning: if no result container is provided the same container is reused between samples to avoid garbage, be careful.
 * @method getSample
 * @param {number} time
-* @param {number} interpolation [optional] the interpolation method could be LS.NONE, LS.LINEAR, LS.BEZIER
+* @param {number} interpolation [optional] the interpolation method could be LS.NONE, LS.LINEAR, LS.CUBIC
 * @param {*} result [optional] the container where to store the data (in case is an array). IF NOT CONTAINER IS PROVIDED THE SAME ONE IS RETURNED EVERY TIME!
 * @return {*} data
 */
@@ -13575,9 +13576,9 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 
 		return LS.Animation.interpolateLinear( a[1], b[1], t, result, this._type, value_size, this );
 	}
-	else if(this.interpolation === LS.BEZIER)
+	else if(this.interpolation === LS.CUBIC)
 	{
-		//bezier not implemented for interpolators
+		//cubic not implemented for interpolators
 		if(value_size === 0 && LS.Interpolators[ this._type ] )
 		{
 			var func = LS.Interpolators[ this._type ];
@@ -13596,7 +13597,7 @@ Track.prototype.getSampleUnpacked = function( time, interpolate, result )
 
 		if(this._type_index == Track.QUAT)
 		{
-			quat.slerp( result, b[1], a[1], t ); //force quats without bezier interpolation
+			quat.slerp( result, b[1], a[1], t ); //force quats without CUBIC interpolation
 			quat.normalize( result, result );
 		}
 		else if(this._type_index == Track.TRANS10)
@@ -13657,9 +13658,9 @@ Track.prototype.getSamplePacked = function( time, interpolate, result )
 		var b_data = b.subarray(1, value_size + 1 );
 		return LS.Animation.interpolateLinear( a_data, b_data, t, result, this._type, value_size, this );
 	}
-	else if(this.interpolation === LS.BEZIER)
+	else if(this.interpolation === LS.CUBIC)
 	{
-		if( value_size === 0 ) //bezier not supported in interpolators
+		if( value_size === 0 ) //CUBIC not supported in interpolators
 			return a[1];
 
 		var pre_a = index > 0 ? data.subarray( (index-1) * offset, (index) * offset ) : a;
@@ -18419,12 +18420,13 @@ function Path()
 {
 	this.points = [];
 	this.closed = false;
-	this.type = Path.LINE;
+	this.type = LS.LINEAR;
 }
 
-Path.LINE = 1;
-Path.SPLINE = 2;
-Path.BEZIER = 3;
+Path.prototype.clear = function()
+{
+	this.points.length = 0;
+}
 
 Path.prototype.addPoint = function(p)
 {
@@ -18442,15 +18444,15 @@ Path.prototype.getSegments = function()
 
 	switch(this.type)
 	{
-		case Path.LINE: 
+		case LS.LINEAR: 
 			if(l < 2) 
 				return 0;
-			return l - 1; 
+			return l - 1 + (this.closed ? 1 : 0); 
 			break;
-		case Path.SPLINE:
+		case LS.BEZIER:
 			if(l < 3) 
 				return 0;
-			return (((l-1)/3)|0); 
+			return (((l-1)/3)|0) + (this.closed ? 1 : 0);
 			break;
 	}
 	return 0;
@@ -18460,8 +18462,8 @@ Path.prototype.computePoint = function(f, out)
 {
 	switch(this.type)
 	{
-		case Path.LINE: return this.getLinearPoint(f,out); break;
-		case Path.SPLINE: 
+		case LS.LINEAR: return this.getLinearPoint(f,out); break;
+		case LS.BEZIER: 
 		default:
 			return this.getSplinePoint(f,out); break;
 	}
@@ -18472,42 +18474,80 @@ Path.prototype.computePoint = function(f, out)
 Path.prototype.getLinearPoint = function(f, out)
 {
 	out = out || vec3.create();
-	var l = this.points.length;
+	var num = this.points.length;
+	var l = num;
 	if(l < 2)
 		return out;
 
 	if(f <= 0)
 		return vec3.copy(out, this.points[0]);
 	if(f >= 1)
+	{
+		if(this.closed)
+			return vec3.copy(out, this.points[0]);
 		return vec3.copy(out, this.points[l-1]);
+	}
+
+	if( this.closed )
+		l += 1;
 
 	var v = ((l-1) * f);
 	var i = v|0;
 	var fract = v-i;
-	var p = this.points[ i ];
-	var p2 = this.points[ i+1 ];
+	var p = this.points[ i % num ];
+	var p2 = this.points[ (i+1) % num ];
 	return vec3.lerp(out, p, p2, fract);
 }
+
+Path.temp_vec3a = vec3.create();
+Path.temp_vec3b = vec3.create();
+Path.temp_vec3c = vec3.create();
 
 Path.prototype.getSplinePoint = function(f, out)
 {
 	out = out || vec3.create();
+	var num = this.points.length;
 	var l = this.points.length;
 	if(l < 4)
 		return out;
 	l = (((l-1)/3)|0) * 3 + 1; //take only useful points
+
 	if(f <= 0)
 		return vec3.copy(out, this.points[0]);
 	if(f >= 1)
+	{
+		if(this.closed)
+			return vec3.copy(out, this.points[0]);
 		return vec3.copy(out, this.points[l-1]);
+	}
 
-	var v = ((l-1)/3*f); 
-	var i = v|0;//spline number
+	var v = (((l-1)/3 + (this.closed ? 1 : 0))*f); //num segment
+	var i = (v|0);
 	var t = v-i;//weight
-	var p = this.points[ i ];
-	var p1 = this.points[ i+1 ];
-	var p2 = this.points[ i+2 ];
-	var p3 = this.points[ i+3 ];
+
+	var i1 = (i*3);
+	var i2 = (i*3+1);
+	var i3 = (i*3+2);
+	var i4 = (i*3+3);
+
+	var p,p1,p2,p3;
+
+	if(i == l-1)
+	{
+		p = this.points[l-1];
+		p4 = this.points[0];
+		var diff = vec3.sub( Path.temp_vec3c, p, this.points[l-2] );
+		p2 = vec3.add( Path.temp_vec3a, p, diff );
+		diff = vec3.sub( Path.temp_vec3c, p4, this.points[1] );
+		p3 = vec3.add( Path.temp_vec3b, p4, diff );
+	}
+	else
+	{
+		p = this.points[ i1 ];
+		p1 = this.points[ i2 ];
+		p2 = this.points[ i3 ];
+		p3 = this.points[ i4 ];
+	}
 
 	var b1 = (1-t)*(1-t)*(1-t);
 	var b2 = 3*t*(1-t)*(1-t);
@@ -18559,21 +18599,23 @@ Path.interpolate = function ( p0, p1, p2, p3, t, t2, t3 ) {
 */
 
 
-Path.prototype.samplePoints = function( n )
+Path.prototype.samplePoints = function( n, out )
 {
 	if(n <= 0)
 	{
 		var segments = this.getSegments();
-		if(this.type == LS.Path.LINE)
+		if(this.type == LS.LINEAR)
 			n = segments + 1;
 		else
 			n = segments * 20;
 	}
 
-	var result = Array(n);
+	out = out || Array(n);
+	out.length = n;
+
 	for(var i = 0; i < n; i++)
-		result[i] = this.computePoint(i/(n-1));
-	return result;
+		out[i] = this.computePoint(i/(n-1));
+	return out;
 }
 
 Path.prototype.samplePointsTyped = function( n, out )
@@ -18584,7 +18626,7 @@ Path.prototype.samplePointsTyped = function( n, out )
 	if(n <= 0)
 	{
 		var segments = this.getSegments();
-		if(this.type == LS.Path.LINE)
+		if(this.type == LS.LINEAR)
 			n = segments + 1;
 		else
 			n = segments * 20;
@@ -25472,7 +25514,7 @@ LS.Deformer = Deformer;
 ///@FILE:../src/picking.js
 ///@INFO: UNCOMMON
 /**
-* Picking is used to detect which element is below one pixel (used the GPU) or using raycast
+* Picking is used to detect which element is below one pixel (using the GPU) or using raycast
 *
 * @class Picking
 * @namespace LS
@@ -25481,6 +25523,8 @@ LS.Deformer = Deformer;
 var Picking = {
 
 	picking_color_offset: 10, //color difference between picking objects
+	_picking_points: [], //used during picking fetching
+	_picking_nodes: null, //created before picking
 
 	/**
 	* Renders the pixel and retrieves the color to detect which object it was, slow but accurate
@@ -25650,15 +25694,51 @@ var Picking = {
 		LEvent.trigger( LS.Renderer, "renderPicking", pos );
 
 		LS.Renderer.setRenderPass( COLOR_PASS );
+	},
+
+	addPickingPoint: function( position, size, info )
+	{
+		size = size || 5.0;
+		var color = LS.Picking.getNextPickingColor( info );
+		this._picking_points.push([ position,color,size]);
+	},
+
+	renderPickingPoints: function()
+	{
+		//render all the picking points 
+		if(this._picking_points.length)
+		{
+			var points = new Float32Array( this._picking_points.length * 3 );
+			var colors = new Float32Array( this._picking_points.length * 4 );
+			var sizes = new Float32Array( this._picking_points.length );
+			for(var i = 0; i < this._picking_points.length; i++)
+			{
+				points.set( this._picking_points[i][0], i*3 );
+				colors.set( this._picking_points[i][1], i*4 );
+				sizes[i] = this._picking_points[i][2];
+			}
+			LS.Draw.setPointSize(1);
+			LS.Draw.setColor([1,1,1,1]);
+			gl.disable( gl.DEPTH_TEST ); //because nodes are show over meshes
+			LS.Draw.renderPointsWithSize( points, colors, sizes );
+			gl.enable( gl.DEPTH_TEST );
+			this._picking_points.length = 0;
+		}
 	}
+
+	/*
+	visualize: function(v)
+	{
+		//to visualize picking buffer
+		if(v)
+			LS.Renderer.registerRenderPass( "color", { id: 1, render_instance: LS.Renderer.renderPickingPassInstance } );
+	}
+	*/
 };
 
 LS.Picking = Picking;
 
 
-//helper
-//to visualize picking buffer
-//LS.Renderer.registerRenderPass( "color", { id: 1, render_instance: LS.Renderer.renderPickingPassInstance } );
 
 ///@FILE:../src/physics.js
 ///@INFO: UNCOMMON
@@ -26717,9 +26797,9 @@ Transform.prototype.getGlobalMatrix = function (out, fast)
 * @method getGlobalMatrix
 * @return {mat4} the matrix in array format
 */
-Transform.prototype.getGlobalMatrixRef = function ()
+Transform.prototype.getGlobalMatrixRef = function (fast)
 {
-	this.updateGlobalMatrix();
+	this.updateGlobalMatrix(fast);
 	return this._global_matrix;
 }
 
@@ -41867,8 +41947,6 @@ TerrainRenderer.prototype.onCollectInstances = function(e, instances)
 	this._root.mesh = this._mesh;
 	this._root.transform.getGlobalMatrix( RI.matrix );
 	mat4.multiplyVec3(RI.center, RI.matrix, vec3.create());
-
-	RI.flags = RI_DEFAULT_FLAGS;
 	RI.applyNodeFlags();
 	
 	instances.push(RI);
@@ -42578,14 +42656,37 @@ function Spline( o )
 	this.enabled = true;
 	this._render_in_viewport = false;
 	this.path = new LS.Path();
-	this._type = LS.Path.LINE;
 	this._must_update = false;
+	this._subdivisions = 20;
 
 	if(o)
 		this.configure(o);
 
 	this._max_points = 1024;
 	this._range = 0;
+	this._middle_points = new Float32Array(3*1024);
+}
+
+Spline["@subdivisions"] = { type: "number", step:1, min:1, max:100, precision:0 };
+Spline["@type"] = { type: "enum", values: { line: LS.LINEAR, bezier: LS.BEZIER, cubic: LS.CUBIC } };
+
+Spline.prototype.serialize = function()
+{
+	return {
+		enabled: this.enabled,
+		render: this._render_in_viewport,
+		path: this.path.serialize(),
+		subs: this._subdivisions
+	};
+}
+
+Spline.prototype.configure = function(o)
+{
+	this._must_update = true;
+	this.enabled = o.enabled;
+	this.render_in_viewport = o.render;
+	this.path.configure( o.path );
+	this._subdivisions = o.subs || 1;
 }
 
 Object.defineProperty( Spline.prototype, 'render_in_viewport', {
@@ -42595,12 +42696,30 @@ Object.defineProperty( Spline.prototype, 'render_in_viewport', {
 			return;
 		this._render_in_viewport = v;
 		//set events
-		if(!this._root || !this._root.scene)
+		if(!this._root)
 			return;
 		if(v)
-			LEvent.bind( this._root.scene, "collectRenderInstances", this.onCollectInstances, this );
+			LEvent.bind( this._root, "collectRenderInstances", this.onCollectInstances, this );
 		else
-			LEvent.unbind( this._root.scene, "collectRenderInstances", this.onCollectInstances, this );
+			LEvent.unbind( this._root, "collectRenderInstances", this.onCollectInstances, this );
+	},
+	enumerable: true
+});
+
+Object.defineProperty( Spline.prototype, 'subdivisions', {
+	get: function() { return this._subdivisions; },
+	set: function(v) { 
+		this._subdivisions = v|0;
+		this._must_update = true;
+	},
+	enumerable: true
+});
+
+Object.defineProperty( Spline.prototype, 'closed', {
+	get: function() { return this.path.closed; },
+	set: function(v) { 
+		this.path.closed = v;
+		this._must_update = true;
 	},
 	enumerable: true
 });
@@ -42614,19 +42733,25 @@ Object.defineProperty( Spline.prototype, 'type', {
 	enumerable: true
 });
 
+Object.defineProperty( Spline.prototype, 'numberOfPoints', {
+	get: function() { return this.path.points.length; },
+	set: function(v) { 
+		throw("number of points cannot be set, use addPoint");
+	},
+	enumerable: false
+});
 
-Spline["@type"] = { type: "enum", values: { line: LS.Path.LINE, spline: LS.Path.SPLINE, bezier: LS.Path.BEZIER } };
 
-Spline.prototype.onAddedToScene = function(scene)
+Spline.prototype.onAddedToNode = function(node)
 {
 	if(this._render_in_viewport)
-		LEvent.bind( this._root.scene, "collectRenderInstances", this.onCollectInstances, this );
+		LEvent.bind( node, "collectRenderInstances", this.onCollectInstances, this );
 }
 
-Spline.prototype.onRemovedFromScene = function(scene)
+Spline.prototype.onRemovedFromNode = function(node)
 {
 	if(this._render_in_viewport)
-		LEvent.unbind( this._root.scene, "collectRenderInstances", this.onCollectInstances, this );
+		LEvent.unbind( node, "collectRenderInstances", this.onCollectInstances, this );
 }
 
 Spline.prototype.onCollectInstances = function(e, instances)
@@ -42647,16 +42772,10 @@ Spline.prototype.onCollectInstances = function(e, instances)
 	if(!RI)
 		this._render_instance = RI = new LS.RenderInstance(this._root, this);
 
-	if(this._root.transform)
-		this._root.transform.getGlobalMatrix( RI.matrix );
-	RI.setMatrix( RI.matrix ); //force normal
-	//mat4.multiplyVec3( RI.center, RI.matrix, vec3.create() );
-	mat4.getTranslation( RI.center, RI.matrix );
+	RI.fromNode( this._root );
 	RI.setMesh( this._mesh, gl.LINE_STRIP );
 	RI.setRange( 0, this._range );
-	RI.flags = RI_DEFAULT_FLAGS;
-	RI.applyNodeFlags();
-	RI.setMaterial( this.material || this._root.getMaterial() );
+	RI.setMaterial( this._root.getMaterial() );
 
 	instances.push(RI);	
 }
@@ -42671,30 +42790,158 @@ Spline.prototype.updateMesh = function()
 
 	var total = 0;
 
-	if(this.path.type == LS.Path.LINE)
+	if( this.path.type == LS.LINEAR )
 		total = this.path.getSegments() + 1;
 	else
-		total = this.path.getSegments() * 10; //10 points per segment
+		total = this.path.getSegments() * this._subdivisions; //20 points per segment
 
 	if(total > this._max_points)
 		total = this._max_points;
 
 	this.path.samplePointsTyped( total, vertices_data );
-	vertices_buffer.upload( gl.STREAM_TYPE );
+	vertices_buffer.uploadRange( 0, total * 4 * 3 );
 
 	this._range = total;
 
 	this._must_update = false;
 }
 
+Spline.prototype.clear = function()
+{
+	this._must_update = true;
+	this.path.clear();
+}
+
+
 Spline.prototype.addPoint = function( point )
+{
+	if( this._root.transform )
+	{
+		var model = this._root.transform.getGlobalMatrix();
+		mat4.invert(model,model);
+		point = mat4.multiplyVec3( vec3.create(), model, point );
+	}
+
+	this.path.addPoint( point );
+	this._must_update = true;
+}
+
+Spline.prototype.addPointLocal = function( point )
 {
 	this.path.addPoint( point );
 	this._must_update = true;
 }
 
+Spline.prototype.renderEditor = function( is_selected )
+{
+	var path = this.path;
+
+	if(path.points.length < 2)
+		return;
+
+	LS.Draw.push();
+
+	if( this._root.transform )
+		LS.Draw.setMatrix( this._root.transform.getGlobalMatrixRef(true) );
+
+	if(is_selected)
+	{
+		LS.Draw.setColor(0.7,0.7,0.6,1);
+		LS.Draw.setPointSize( 6 );
+		LS.Draw.renderRoundPoints( path.points );
+	}
+
+	if(this._render_in_viewport) //already rendered in the 
+	{
+		LS.Draw.pop();
+		return;
+	}
+
+	if(!this._mesh || this._must_update)
+	{
+		if(!is_selected)
+			LS.Draw.setColor(0.6,0.6,0.5,0.5);
+
+		this.updateMesh();
+	}
+
+	LS.Draw.renderMesh( this._mesh, GL.LINE_STRIP, null,null, 0, this._range );
+	LS.Draw.pop();
+}
+
+Spline.prototype.renderPicking = function( ray )
+{
+	var model = this._root.transform.getGlobalMatrixRef(true);
+
+	var path = this.path;
+	for(var i = 0; i < path.points.length; ++i)
+	{
+		var pos = path.points[i];
+		if( this._root.transform )
+			pos = mat4.multiplyVec3( vec3.create(), model, pos );
+		LS.Picking.addPickingPoint( pos, 7, { instance: this, info: i } );
+	}
+}
+
+Spline.prototype.applyTransformMatrix = function( matrix, center, info )
+{
+	var p = this.path.points[info];
+	if(!p)
+		return false;
+
+	this._must_update = true;
+
+	var old_pos = vec3.clone( p );
+	mat4.multiplyVec3( p, matrix, p );
+	var total_diff = vec3.sub( vec3.create(), p, old_pos );
+
+	if( this.path.type == LS.BEZIER )
+	{
+		if(info % 3 == 2 && this.path.points.length > info + 2 )
+		{
+			var middle_pos = this.path.points[info + 1];
+			var next_pos = this.path.points[info + 2];
+			var diff = vec3.sub( vec3.create(), middle_pos, p );
+			vec3.add( next_pos, middle_pos, diff );
+		}
+		else if(info % 3 == 1 && info > 3 )
+		{
+			var middle_pos = this.path.points[info - 1];
+			var prev_pos = this.path.points[info - 2];
+			var diff = vec3.sub( vec3.create(), middle_pos, p );
+			vec3.add( prev_pos, middle_pos, diff );
+		}
+		else if( info % 3 == 0 )
+		{
+			if( info > 1 )
+			{
+				var prev_pos = this.path.points[info - 1];
+				vec3.add( prev_pos, prev_pos, total_diff );
+			}
+			if( info < this.path.points.length - 1 )
+			{
+				var next_pos = this.path.points[info + 1];
+				vec3.add( next_pos, next_pos, total_diff );
+			}
+		}
+	}
+	return true;
+}
+
+Spline.prototype.getTransformMatrix = function( info )
+{
+	var p = this.path.points[info];
+	if(!p)
+		return null;
+
+	var model = this._root.transform.getGlobalMatrix();
+	mat4.translate( model, model, p );
+	return model;
+}
+
+
 //not finished yet
-//LS.registerComponent( Spline );
+LS.registerComponent( Spline );
 ///@FILE:../src/components/threeJS.js
 ///@INFO: UNCOMMON
 // This Component shows the possibility of using another Render Engine within WebGLStudio.

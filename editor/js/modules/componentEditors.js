@@ -1056,3 +1056,10 @@ LS.Components.IrradianceCache.onShowProperties = function( component, inspector 
 	inspector.widgets_per_row = 1;
 
 }
+
+
+LS.Components.Spline.onShowProperties = function( component, inspector )
+{
+	inspector.addButton( null, "Clear Points", function(){ component.clear(); LS.GlobalScene.requestFrame(); });
+	inspector.addInfo( "Num. Points", String(component.numberOfPoints) );
+}

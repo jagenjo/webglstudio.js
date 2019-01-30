@@ -2151,13 +2151,14 @@ LS.BlendFunctions[ Blend.MULTIPLY ] = [GL.DST_COLOR, GL.ONE_MINUS_SRC_ALPHA];
 LS.BlendFunctions[ Blend.SCREEN ] =	[GL.SRC_ALPHA, GL.ONE];
 LS.BlendFunctions[ Blend.CUSTOM ] =	[GL.SRC_ALPHA, GL.ONE_MINUS_SRC_ALPHA];
 
-//USed for interpolation and splines
+//Used for interpolation and splines
 LS.NONE = 0;
 LS.LINEAR = 1;
 LS.TRIGONOMETRIC = 2;
 LS.CUBIC = 3;
 LS.SPLINE = 4;
 LS.BEZIER = 5;
+LS.HERMITE = 6;
 
 //used to know the state of the application
 LS.STOPPED = 0;
@@ -13961,7 +13962,6 @@ Animation.EvaluateHermiteSpline = function( p0, p1, pre_p0, post_p1, s )
 	var h2 = -2*s3 + 3*s2;              // calculate basis function 2
 	var h3 =   s3 - 2*s2 + s;         // calculate basis function 3
 	var h4 =   s3 -  s2;              // calculate basis function 4
-	
 	var t0 = p1 - pre_p0;
 	var t1 = post_p1 - p0;
 
@@ -18449,6 +18449,10 @@ Path.prototype.getSegments = function()
 				return 0;
 			return l - 1 + (this.closed ? 1 : 0); 
 			break;
+		case LS.HERMITE:
+			if(l < 2) 
+				return 0;
+			return l - 1 + (this.closed ? 1 : 0); 
 		case LS.BEZIER:
 			if(l < 3) 
 				return 0;
@@ -18462,10 +18466,12 @@ Path.prototype.computePoint = function(f, out)
 {
 	switch(this.type)
 	{
-		case LS.LINEAR: return this.getLinearPoint(f,out); break;
-		case LS.BEZIER: 
+		case LS.HERMITE: return this.getHermitePoint(f,out); break;
+		case LS.BEZIER: return this.getBezierPoint(f,out); break;
+		case LS.LINEAR: 
 		default:
-			return this.getSplinePoint(f,out); break;
+			return this.getLinearPoint(f,out);
+			break;
 	}
 	//throw("Impossible path type");
 }
@@ -18503,10 +18509,9 @@ Path.temp_vec3a = vec3.create();
 Path.temp_vec3b = vec3.create();
 Path.temp_vec3c = vec3.create();
 
-Path.prototype.getSplinePoint = function(f, out)
+Path.prototype.getBezierPoint = function(f, out)
 {
 	out = out || vec3.create();
-	var num = this.points.length;
 	var l = this.points.length;
 	if(l < 4)
 		return out;
@@ -18515,14 +18520,11 @@ Path.prototype.getSplinePoint = function(f, out)
 	if(f <= 0)
 		return vec3.copy(out, this.points[0]);
 	if(f >= 1)
-	{
-		if(this.closed)
-			return vec3.copy(out, this.points[0]);
-		return vec3.copy(out, this.points[l-1]);
-	}
+		return vec3.copy(out, this.points[ this.closed ? 0 : l-1 ]);
 
-	var v = (((l-1)/3 + (this.closed ? 1 : 0))*f); //num segment
-	var i = (v|0);
+	var num = (l-1)/3 + (this.closed ? 1 : 0); //num segment
+	var v = num*f; //id.weight
+	var i = (v|0); //id
 	var t = v-i;//weight
 
 	var i1 = (i*3);
@@ -18532,14 +18534,14 @@ Path.prototype.getSplinePoint = function(f, out)
 
 	var p,p1,p2,p3;
 
-	if(i == l-1)
+	if( this.closed && i == num-1 )
 	{
 		p = this.points[l-1];
-		p4 = this.points[0];
+		p3 = this.points[0];
 		var diff = vec3.sub( Path.temp_vec3c, p, this.points[l-2] );
-		p2 = vec3.add( Path.temp_vec3a, p, diff );
-		diff = vec3.sub( Path.temp_vec3c, p4, this.points[1] );
-		p3 = vec3.add( Path.temp_vec3b, p4, diff );
+		p1 = vec3.add( Path.temp_vec3a, p, diff );
+		diff = vec3.sub( Path.temp_vec3c, p3, this.points[1] );
+		p2 = vec3.add( Path.temp_vec3b, p3, diff );
 	}
 	else
 	{
@@ -18560,8 +18562,41 @@ Path.prototype.getSplinePoint = function(f, out)
 	return out;
 }
 
+Path.prototype.getHermitePoint = function(f, out)
+{
+	out = out || vec3.create();
+	var l = this.points.length;
+	if(l < 2)
+		return out;
+	if(f <= 0)
+		return vec3.copy(out, this.points[0]);
+	if(f >= 1)
+		return vec3.copy(out, this.points[ this.closed ? 0 : l-1]);
+
+	var num = (l-1) + (this.closed ? 1 : 0); //num segments
+	var v = num*f; //id.weight
+	var i = (v|0); //id
+	var t = v-i;//weight
+
+	var pre_p0 = this.points[i - 1];
+	var p0 = this.points[ i ];
+	var p1 = this.points[ i+1 ];
+	var post_p1 = this.points[ i+2 ];
+
+	if(!pre_p0)
+		pre_p0 = this.closed ? this.points[l - 1] : p0;
+	if(!p1)
+		p1 = this.points[ (i+1) % l ];
+	if(!post_p1)
+		post_p1 = this.closed ? this.points[ (i+2) % l ] : p1;
+
+	Animation.EvaluateHermiteSplineVector( p0, p1, pre_p0, post_p1, t, out );
+	return out;
+}
+
+
 /*
-Path.prototype.getSplinePoint = function(f, out)
+Path.prototype.getCatmullPoint = function(f, out)
 {
 	out = out || vec3.create();
 	var l = this.points.length;
@@ -18595,9 +18630,7 @@ Path.interpolate = function ( p0, p1, p2, p3, t, t2, t3 ) {
 	var v1 = ( p3 - p1 ) * 0.5;
 	return ( 2 * ( p1 - p2 ) + v0 + v1 ) * t3 + ( - 3 * ( p1 - p2 ) - 2 * v0 - v1 ) * t2 + v0 * t + p1;
 };
-
 */
-
 
 Path.prototype.samplePoints = function( n, out )
 {
@@ -42648,7 +42681,7 @@ LS.registerComponent( Poser );
 * Spline allows to define splines in 3D
 * @class Spline
 * @constructor
-* @param {String} object to configure from
+* @param {Object} object to configure from
 */
 
 function Spline( o )
@@ -42668,7 +42701,7 @@ function Spline( o )
 }
 
 Spline["@subdivisions"] = { type: "number", step:1, min:1, max:100, precision:0 };
-Spline["@type"] = { type: "enum", values: { line: LS.LINEAR, bezier: LS.BEZIER, cubic: LS.CUBIC } };
+Spline["@type"] = { type: "enum", values: { line: LS.LINEAR, bezier: LS.BEZIER, hermite: LS.HERMITE } };
 
 Spline.prototype.serialize = function()
 {
@@ -42812,6 +42845,28 @@ Spline.prototype.clear = function()
 	this.path.clear();
 }
 
+Spline.prototype.getPoint = function( f, out )
+{
+	out = out || vec3.create();
+
+	if(this.path.closed) //cycle
+	{
+		f = f % 1;
+		if(f < 0)
+			f = 1 + f;
+	}
+
+	this.path.computePoint( f, out );
+
+	if( this._root.transform )
+	{
+		var model = this._root.transform.getGlobalMatrix();
+		mat4.multiplyVec3( out, model, out );
+	}
+
+	return out;
+}
+
 
 Spline.prototype.addPoint = function( point )
 {
@@ -42839,6 +42894,7 @@ Spline.prototype.renderEditor = function( is_selected )
 	if(path.points.length < 2)
 		return;
 
+	gl.disable( gl.DEPTH_TEST );
 	LS.Draw.push();
 
 	if( this._root.transform )
@@ -42846,26 +42902,27 @@ Spline.prototype.renderEditor = function( is_selected )
 
 	if(is_selected)
 	{
-		LS.Draw.setColor(0.7,0.7,0.6,1);
-		LS.Draw.setPointSize( 6 );
+		LS.Draw.setColor(0.9,0.5,0.9,1);
+		LS.Draw.setPointSize( 9 );
 		LS.Draw.renderRoundPoints( path.points );
 	}
 
 	if(this._render_in_viewport) //already rendered in the 
 	{
 		LS.Draw.pop();
+		gl.enable( gl.DEPTH_TEST );
 		return;
 	}
 
 	if(!this._mesh || this._must_update)
-	{
-		if(!is_selected)
-			LS.Draw.setColor(0.6,0.6,0.5,0.5);
-
 		this.updateMesh();
-	}
 
+	if(!is_selected)
+		LS.Draw.setColor(0.6,0.5,0.4,0.5);
+	else
+		LS.Draw.setColor(0.6,0.6,0.6,0.8);
 	LS.Draw.renderMesh( this._mesh, GL.LINE_STRIP, null,null, 0, this._range );
+	gl.enable( gl.DEPTH_TEST );
 	LS.Draw.pop();
 }
 
@@ -42879,7 +42936,7 @@ Spline.prototype.renderPicking = function( ray )
 		var pos = path.points[i];
 		if( this._root.transform )
 			pos = mat4.multiplyVec3( vec3.create(), model, pos );
-		LS.Picking.addPickingPoint( pos, 7, { instance: this, info: i } );
+		LS.Picking.addPickingPoint( pos, 9, { instance: this, info: i } );
 	}
 }
 
@@ -42895,7 +42952,7 @@ Spline.prototype.applyTransformMatrix = function( matrix, center, info )
 	mat4.multiplyVec3( p, matrix, p );
 	var total_diff = vec3.sub( vec3.create(), p, old_pos );
 
-	if( this.path.type == LS.BEZIER )
+	if( this.path.type == LS.BEZIER ) //recompute tangents
 	{
 		if(info % 3 == 2 && this.path.points.length > info + 2 )
 		{
@@ -42940,8 +42997,78 @@ Spline.prototype.getTransformMatrix = function( info )
 }
 
 
-//not finished yet
 LS.registerComponent( Spline );
+
+
+
+///@INFO: UNCOMMON
+/**
+* Allows to set an object position from a spline
+* @class FollowSpline
+* @constructor
+* @param {Object} object to configure from
+*/
+
+function FollowSpline( o )
+{
+	this.enabled = true;
+	this.spline = "";
+	this.factor = 0;
+
+	this._last_position = vec3.create();
+
+	if(o)
+		this.configure(o);
+}
+
+FollowSpline["@spline"] = { type: LS.TYPES.COMPONENT_ID };
+FollowSpline["@factor"] = { type: "number", step:0.001, precision:3 };
+
+FollowSpline.prototype.serialize = function()
+{
+	return {
+		enabled: this.enabled,
+		spline: this.spline,
+		factor: this.factor
+	};
+}
+
+FollowSpline.prototype.configure = function(o)
+{
+	this.enabled = o.enabled;
+	this.spline = o.spline;
+	this.factor = o.factor;
+}
+
+FollowSpline.prototype.onAddedToScene = function( scene )
+{
+	LEvent.bind( scene, "update", this.onUpdate, this);
+}
+
+FollowSpline.prototype.onRemovedFromScene = function( scene )
+{
+	LEvent.unbind( scene, "update", this.onUpdate, this);
+}
+
+FollowSpline.prototype.onUpdate = function(e, dt)
+{
+	var node = this._root;
+	if(!node || !node.transform )
+		return;
+
+	var spline = LS.GlobalScene.findComponentByUId( this.spline );
+	if(!spline)
+		return;
+
+	var pos = this._last_position;
+	spline.getPoint( this.factor, pos );
+	if( node._parentNode && node._parentNode.transform )
+		node._parentNode.transform.globalToLocal(pos, pos);
+	node.transform.setPosition(pos);
+}
+
+LS.registerComponent( FollowSpline );
+
 ///@FILE:../src/components/threeJS.js
 ///@INFO: UNCOMMON
 // This Component shows the possibility of using another Render Engine within WebGLStudio.

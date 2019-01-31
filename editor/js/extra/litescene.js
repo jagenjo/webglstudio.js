@@ -18462,6 +18462,47 @@ Path.prototype.getSegments = function()
 	return 0;
 }
 
+Path.prototype.movePoint = function( index, pos, preserve_tangents )
+{
+	if(index < 0 && index >= this.points.length)
+		return;
+
+	var p = this.points[ index ];
+	var total_diff = vec3.sub( vec3.create(), pos, p );
+	vec3.copy(p, pos);
+
+	if( !preserve_tangents || this.type != LS.BEZIER )
+		return;
+
+	if(index % 3 == 2 && this.points.length > index + 2 )
+	{
+		var middle_pos = this.points[index + 1];
+		var next_pos = this.points[index + 2];
+		var diff = vec3.sub( vec3.create(), middle_pos, p );
+		vec3.add( next_pos, middle_pos, diff );
+	}
+	else if(index % 3 == 1 && index > 3 )
+	{
+		var middle_pos = this.points[index - 1];
+		var prev_pos = this.points[index - 2];
+		var diff = vec3.sub( vec3.create(), middle_pos, p );
+		vec3.add( prev_pos, middle_pos, diff );
+	}
+	else if( index % 3 == 0 )
+	{
+		if( index > 1 )
+		{
+			var prev_pos = this.points[index - 1];
+			vec3.add( prev_pos, prev_pos, total_diff );
+		}
+		if( index < this.points.length - 1 )
+		{
+			var next_pos = this.points[index + 1];
+			vec3.add( next_pos, next_pos, total_diff );
+		}
+	}
+}
+
 Path.prototype.computePoint = function(f, out)
 {
 	switch(this.type)
@@ -42691,6 +42732,7 @@ function Spline( o )
 	this.path = new LS.Path();
 	this._must_update = false;
 	this._subdivisions = 20;
+	this.preserve_tangents = true; //for bezier
 
 	if(o)
 		this.configure(o);
@@ -42709,7 +42751,8 @@ Spline.prototype.serialize = function()
 		enabled: this.enabled,
 		render: this._render_in_viewport,
 		path: this.path.serialize(),
-		subs: this._subdivisions
+		subs: this._subdivisions,
+		tangents: this.preserve_tangents
 	};
 }
 
@@ -42719,6 +42762,7 @@ Spline.prototype.configure = function(o)
 	this.enabled = o.enabled;
 	this.render_in_viewport = o.render;
 	this.path.configure( o.path );
+	this.preserve_tangents = o.tangents;
 	this._subdivisions = o.subs || 1;
 }
 
@@ -42947,41 +42991,9 @@ Spline.prototype.applyTransformMatrix = function( matrix, center, info )
 		return false;
 
 	this._must_update = true;
+	var new_pos = mat4.multiplyVec3( vec3.create(), matrix, p );
+	this.path.movePoint( info, new_pos, this.preserve_tangents );
 
-	var old_pos = vec3.clone( p );
-	mat4.multiplyVec3( p, matrix, p );
-	var total_diff = vec3.sub( vec3.create(), p, old_pos );
-
-	if( this.path.type == LS.BEZIER ) //recompute tangents
-	{
-		if(info % 3 == 2 && this.path.points.length > info + 2 )
-		{
-			var middle_pos = this.path.points[info + 1];
-			var next_pos = this.path.points[info + 2];
-			var diff = vec3.sub( vec3.create(), middle_pos, p );
-			vec3.add( next_pos, middle_pos, diff );
-		}
-		else if(info % 3 == 1 && info > 3 )
-		{
-			var middle_pos = this.path.points[info - 1];
-			var prev_pos = this.path.points[info - 2];
-			var diff = vec3.sub( vec3.create(), middle_pos, p );
-			vec3.add( prev_pos, middle_pos, diff );
-		}
-		else if( info % 3 == 0 )
-		{
-			if( info > 1 )
-			{
-				var prev_pos = this.path.points[info - 1];
-				vec3.add( prev_pos, prev_pos, total_diff );
-			}
-			if( info < this.path.points.length - 1 )
-			{
-				var next_pos = this.path.points[info + 1];
-				vec3.add( next_pos, next_pos, total_diff );
-			}
-		}
-	}
 	return true;
 }
 

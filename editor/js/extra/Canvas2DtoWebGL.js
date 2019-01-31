@@ -69,7 +69,7 @@ function enableWebGLCanvas( canvas, options )
 		extra_macros.EXTRA_PROJECTION = "";
 
 	//used to store font atlas textures (images are not stored here)
-	var textures = {};
+	var textures = ctx.WebGLCanvas.texture_atlas = {};
 
 	var vertex_shader = "\n\
 			precision highp float;\n\

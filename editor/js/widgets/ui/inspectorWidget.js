@@ -664,36 +664,32 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 		inspector.addSection();
 
 		//final buttons
+		inspector.widgets_per_row = 2;
+
 		inspector.addButton(null,"Add component", { callback: function(v) { 
 			EditorModule.showAddComponentToNode( node, function(){
 				inspector.refresh();
 			});
 		}});
 
-		inspector.addButtons(null,["Add Script","Add Graph"], { callback: function(v,evt) { 
-			if(v == "Add Script")
-			{
-				var menu = new LiteGUI.ContextMenu( ["Inner Script","Script From File","Global Script"], { event: evt, callback: function(action) {
-					if(action == "Inner Script")
-						CodingModule.onNewScript( node );
-					else if(action == "Script From File")
-						CodingModule.onNewScript( node, "ScriptFromFile" );
-					else if(action == "Global Script")
-						CodingModule.onNewScript( node, "Global" );
-					inspector.refresh();
-				}});
-			}
-			else if(v == "Add Graph")
-			{
-				var menu = new LiteGUI.ContextMenu( ["Inner Graph","Graph From File"], { event: evt, callback: function(action) {
-					if(action == "Inner Graph")
-						GraphModule.onNewGraph( node );
-					else if(action == "Graph From File")
-						GraphModule.onNewGraph( node, true );
-					inspector.refresh();
-				}});
-			}
+		inspector.addButtons(null,["Add Behaviour"], { callback: function(v,evt) { 
+
+			var menu = new LiteGUI.ContextMenu( ["Inner Script","Script From File","Global Script","Inner Graph","Graph From File"], { event: evt, callback: function(action) {
+				if(action == "Inner Script")
+					CodingModule.onNewScript( node );
+				else if(action == "Script From File")
+					CodingModule.onNewScript( node, "ScriptFromFile" );
+				else if(action == "Global Script")
+					CodingModule.onNewScript( node, "Global" );
+				else if(action == "Inner Graph")
+					GraphModule.onNewGraph( node );
+				else if(action == "Graph From File")
+					GraphModule.onNewGraph( node, true );
+				inspector.refresh();
+			}});
 		}});
+
+		inspector.widgets_per_row = 1;
 
 		if(component_to_focus)
 			inspector.scrollTo( component_to_focus.uid.substr(1) );

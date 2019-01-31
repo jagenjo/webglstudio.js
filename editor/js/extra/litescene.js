@@ -42931,6 +42931,8 @@ Spline.prototype.addPointLocal = function( point )
 	this._must_update = true;
 }
 
+// to render in the editor
+
 Spline.prototype.renderEditor = function( is_selected )
 {
 	var path = this.path;
@@ -42969,6 +42971,8 @@ Spline.prototype.renderEditor = function( is_selected )
 	gl.enable( gl.DEPTH_TEST );
 	LS.Draw.pop();
 }
+
+//used to allow the editor to edit the points ****************
 
 Spline.prototype.renderPicking = function( ray )
 {
@@ -43028,6 +43032,8 @@ function FollowSpline( o )
 	this.factor = 0;
 
 	this._last_position = vec3.create();
+	this._last_position_inc = vec3.create();
+	this._last_rotation = quat.create();
 
 	if(o)
 		this.configure(o);
@@ -43073,10 +43079,38 @@ FollowSpline.prototype.onUpdate = function(e, dt)
 		return;
 
 	var pos = this._last_position;
+	var pos2 = this._last_position_inc;
+	var rot = this._last_rotation;
+
 	spline.getPoint( this.factor, pos );
+	spline.getPoint( this.factor+0.001, pos2 );
+
 	if( node._parentNode && node._parentNode.transform )
-		node._parentNode.transform.globalToLocal(pos, pos);
+	{
+		var mat = node._parentNode.transform.getGlobalMatrix();
+		mat4.invert( mat, mat );
+		mat4.multiplyVec3( pos, mat, pos );
+		mat4.multiplyVec3( pos2, mat, pos2 );
+	}
+
+	if( vec3.distance(pos,pos2) < 0.00001 ) //too close
+	{
+		node.transform.setPosition(pos);
+		return;
+	}
+
+	node.transform.lookAt( pos, pos2, LS.TOP );
+
+	/*
+	//pos
 	node.transform.setPosition(pos);
+
+	//rot
+	var mat = mat4.lookAt( mat4.create(), pos, pos2, LS.TOP );
+	//mat4.invert(mat,mat);
+	quat.fromMat4( rot, mat );
+	node.transform.rotation = rot;
+	*/
 }
 
 LS.registerComponent( FollowSpline );

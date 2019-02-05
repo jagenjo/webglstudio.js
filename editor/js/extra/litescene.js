@@ -1455,7 +1455,7 @@ var LS = {
 		switch( data[1] )
 		{
 			case LS.TYPES.COMPONENT: 
-			case LS.TYPES.NODE: 
+			case LS.TYPES.SCENENODE: 
 				var obj = LSQ.get( data[2] );
 				if( obj )
 					return obj;
@@ -8624,6 +8624,9 @@ StandardMaterial.prototype.prepare = function( scene )
 	var flags = this.flags;
 
 	var render_state = this._render_state;
+
+	if(!this._texture_settings) //HACK to fix BUG
+		this._texture_settings = this._uniforms.u_texture_settings = new Uint8Array(9);
 
 	//set flags in render state
 	render_state.cull_face = !flags.two_sided;

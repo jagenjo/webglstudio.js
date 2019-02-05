@@ -409,8 +409,8 @@ if(!String.prototype.hasOwnProperty("hashCode"))
 
 //avoid errors when Typed array is expected and regular array is found
 //Array.prototype.subarray = Array.prototype.slice;
-if(!Array.prototype.hasOwnProperty("subarray"))
-	Object.defineProperty(Array.prototype, "subarray", { value: Array.prototype.slice, enumerable: false });
+//if(!Array.prototype.hasOwnProperty("subarray"))
+//	Object.defineProperty(Array.prototype, "subarray", { value: Array.prototype.slice, enumerable: false });
 
 if(!Array.prototype.hasOwnProperty("clone"))
 	Object.defineProperty(Array.prototype, "clone", { value: Array.prototype.concat, enumerable: false });

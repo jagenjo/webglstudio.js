@@ -1672,8 +1672,13 @@ LGraph.prototype.configure = function( data, keep_old )
 			{
 				if(LiteGraph.debug)
 					console.log("Node not found or has errors: " + n_info.type);
+
+				//in case of error we create a replacement node to avoid losing info
+				node = new LGraphNode();
+				node.last_serialization = n_info;
+				node.has_errors = true;
 				error = true;
-				continue;
+				//continue;
 			}
 
 			node.id = n_info.id; //id it or it will create a new id
@@ -1889,9 +1894,6 @@ LGraphNode.prototype.configure = function(info)
 
 	for (var j in info)
 	{
-		if(j == "console")
-			continue;
-
 		if(j == "properties")
 		{
 			//i dont want to clone properties, I want to reuse the old container
@@ -1945,41 +1947,6 @@ LGraphNode.prototype.configure = function(info)
 		}
 	}
 
-	/*
-	//FOR LEGACY, PLEASE REMOVE, used when nodes stored link info, now they only store link_id
-	for(var i in this.inputs)
-	{
-		var input = this.inputs[i];
-		if(!input.link || !input.link.length )
-			continue;
-		var link = input.link;
-		if(typeof(link) != "object")
-			continue;
-		input.link = link[0];
-		if(this.graph)
-		{
-			//create link
-			var new_link = new LLink();
-			new_link.configure( link );
-			this.graph.links[ new_link.id ] = new_link;
-		}
-	}
-	for(var i in this.outputs)
-	{
-		var output = this.outputs[i];
-		if(!output.links || output.links.length == 0)
-			continue;
-		for(var j in output.links)
-		{
-			var link = output.links[j];
-			if(typeof(link) != "object")
-				continue;
-			output.links[j] = link[0]; //only the id
-		}
-	}
-	*/
-
-
 	if( this.onConfigure )
 		this.onConfigure( info );
 }
@@ -2000,6 +1967,10 @@ LGraphNode.prototype.serialize = function()
 		flags: LiteGraph.cloneObject(this.flags),
 		mode: this.mode
 	};
+
+	//special case for when there were errors
+	if( this.constructor === LGraphNode && this.last_serialization )
+		return this.last_serialization;
 
 	if( this.inputs )
 		o.inputs = this.inputs;
@@ -5655,6 +5626,8 @@ LGraphCanvas.prototype.drawNode = function(node, ctx )
 	}
 
 	//draw shape
+	if( node.has_errors )
+		bgcolor = "red";
 	this.drawNodeShape( node, ctx, size, color, bgcolor, node.is_selected, node.mouseOver );
 	ctx.shadowColor = "transparent";
 

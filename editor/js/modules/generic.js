@@ -38,14 +38,14 @@ var GenericTools = {
 		var first_time = true;
 		var backup = LS.GlobalScene.serialize();
 
-		textarea.bind("keydown",function(e) {
+		textarea.addEventListener("keydown",function(e) {
 			var keyCode = e.keyCode || e.which;
 
 			if(keyCode == 9) //tab
 			{
 				e.preventDefault();
 				var node = this.childNodes[0];
-				var start = .selectionStart;
+				var start = node.selectionStart;
 				var end = node.selectionEnd;
 
 				// set textarea value to: text before caret + tab + text after caret

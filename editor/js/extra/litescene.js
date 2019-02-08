@@ -36655,7 +36655,10 @@ GraphComponent.prototype.configure = function(o)
 			try
 			{
 				var obj = JSON.parse( o.graph_data );
-				this._graph.configure( obj );
+				if( this._graph.configure( obj ) == true ) //has errors
+				{
+					LS.GlobalScene.has_errors = true;
+				}
 			}
 			catch (err)
 			{
@@ -36665,7 +36668,10 @@ GraphComponent.prototype.configure = function(o)
 		else
 		{
 			var obj = JSON.parse( o.graph_data );
-			this._graph.configure( obj );
+			if( this._graph.configure( obj ) == true ) //has errors
+			{
+				LS.GlobalScene.has_errors = true;
+			}
 		}
 	}
 
@@ -37014,7 +37020,11 @@ FXGraphComponent.prototype.configure = function(o)
 	if(o.frame)
 		this.frame.configure(o.frame);
 
-	this._graph.configure( JSON.parse( o.graph_data ) );
+	var graph_data = JSON.parse( o.graph_data )
+	if( this._graph.configure( graph_data ) == true ) //has errors
+	{
+		LS.GlobalScene.has_error = true;
+	}
 
 	this._graph_frame_node = this._graph.findNodesByTitle("Rendered Frame")[0];
 	this._graph_viewport_node = this._graph.findNodesByType("texture/toviewport")[0];

@@ -414,6 +414,14 @@ var SceneStorageModule = {
 			return;
 		}
 
+		if(LS.GlobalScene.has_errors)
+		{
+			var v = confirm("This scene contains errors. If you save this scene your could lose some data. Are you sure?");
+			if(!v)
+				return;
+			LS.GlobalScene.has_errors = false;
+		}
+
 		if(ProfileModule.session.user.username == "guest" && this.preferences.show_guest_warning )
 		{
 			ProfileModule.showGuestAlert();
@@ -545,6 +553,14 @@ var SceneStorageModule = {
 	fastSaveScene: function( on_complete )
 	{
 		var scene = LS.GlobalScene;
+
+		if(LS.GlobalScene.has_errors)
+		{
+			var v = confirm("This scene contains errors. If you save this scene your could lose some data. Are you sure?");
+			if(!v)
+				return;
+			LS.GlobalScene.has_errors = false;
+		}
 
 		if(!scene.extra || !scene.extra.folder)
 		{

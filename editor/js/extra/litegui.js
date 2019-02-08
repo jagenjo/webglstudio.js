@@ -173,6 +173,19 @@ var LiteGUI = {
 	},
 
 	/**
+	* removes a class 
+	* @method removeClass
+	* @param {HTMLElement} root
+	* @param {String} selector
+	* @param {String} class_name
+	*/
+	removeClass: function( elem, selector, class_name ){
+		var list = (elem || document).querySelectorAll( class_name );
+		for(var i = 0; i < list.length; ++i)
+			list[i].classList.remove(class_name);
+	},
+
+	/**
 	* Appends litegui widget to the global interface
 	* @method add
 	* @param {Object} litegui_element
@@ -192,7 +205,7 @@ var LiteGUI = {
 		if(!element)
 			return;
 
-		if( element.constructor === String) //selector
+		if( element.constructor === String ) //selector
 		{
 			var elements = document.querySelectorAll( element );
 			for(var i = 0; i < elements.length; ++i)

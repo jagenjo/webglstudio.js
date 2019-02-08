@@ -76,6 +76,7 @@ var LiteGraph = global.LiteGraph = {
 	node_images_path: "",
 
 	debug: false,
+	catch_exceptions: true,
 	throw_errors: true,
 	allow_scripts: false,
 	registered_node_types: {}, //nodetypes by string
@@ -221,7 +222,23 @@ var LiteGraph = global.LiteGraph = {
 
 		title = title || base_class.title || type;
 
-		var node = new base_class( title );
+		var node = null;
+
+		if( LiteGraph.catch_exceptions )
+		{
+			try
+			{
+				node = new base_class( title );
+			}
+			catch (err)
+			{
+				console.error(err);
+				return null;
+			}
+		}
+		else
+			node = new base_class( title );
+
 		node.type = type;
 
 		if(!node.title && title) node.title = title;
@@ -1654,7 +1671,7 @@ LGraph.prototype.configure = function( data, keep_old )
 			if(!node)
 			{
 				if(LiteGraph.debug)
-					console.log("Node not found: " + n_info.type);
+					console.log("Node not found or has errors: " + n_info.type);
 				error = true;
 				continue;
 			}
@@ -2027,6 +2044,8 @@ LGraphNode.prototype.serialize = function()
 LGraphNode.prototype.clone = function()
 {
 	var node = LiteGraph.createNode(this.type);
+	if(!node)
+		return null;
 
 	//we clone it because serialize returns shared containers
 	var data = LiteGraph.cloneObject( this.serialize() );

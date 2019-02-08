@@ -355,49 +355,6 @@ var DriveModule = {
 		return type;
 	},
 
-	/*
-	filterResources: function(type)
-	{
-		//if(!this.dialog) return;
-
-		//var parent = $("#dialog_resources-browser .resources-container ul.file-list")[0];
-		var parent = this.root.querySelector(".resources-container ul.file-list");
-
-		$(parent).find(".resource").show();
-		if(!type)
-		{
-			$(parent).find(".resource").show();
-			return;
-		}
-
-		$(parent).find(".resource").hide();
-		$(parent).find(".resource-" + type).show();
-	},
-
-	filterResourcesByName: function(text)
-	{
-		//if(!this.dialog) return;
-
-		//var parent = $("#dialog_resources-browser .resources-container ul.file-list")[0];
-		var parent = this.root.querySelector(".resources-container ul.file-list");
-
-		$(parent).find(".resource").show();
-		if(!text)
-		{
-			$(this.dialog).find(".resource").show();
-			return;
-		}
-
-		var res = $(parent).find(".resource");
-		$.each(res, function(i,e) {
-			if( e.dataset["filename"].indexOf(text) == -1 )
-				$(e).hide();
-			else
-				$(e).show();
-		});
-	},
-	*/
-
 	showUploadDialog: function(resource)
 	{
 
@@ -1096,9 +1053,8 @@ var DriveModule = {
 
 	showLoadingBrowserContent: function()
 	{
-		var parent = $(this.root).find(".resources-container")[0];
-		$(parent).empty();
-		$(parent).append("<strong>loading...</strong>");
+		var parent = this.root.querySelector(".resources-container");
+		parent.innerHTML = "<strong>loading...</strong>";
 	},
 
 	//Retrieve a resource from the server and stores it for later use, it shoudnt do anything with it, just ensure is in memory.

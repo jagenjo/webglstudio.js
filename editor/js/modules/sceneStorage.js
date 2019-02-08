@@ -584,12 +584,12 @@ var SceneStorageModule = {
 		var list = widgets.addList(null,SceneStorageModule.local_scenes, { height: 200, callback: inner_selected});
 		widgets.addButtons(null,["Load","Delete"], { className:"big", callback: inner_button });
 
-		$(split.sections[0]).append(widgets.root);
+		split.sections[0].appendChild(widgets.root);
 
 		function inner_selected(value)
 		{
 			selected = value;
-			$(split.sections[1]).empty();
+			split.sections[1].innerHTML = "";
 			if(!selected) return;
 
 			var preview = localStorage.getItem( SceneStorageModule.localscene_prefix + "preview_" + value.name );
@@ -656,8 +656,8 @@ var SceneStorageModule = {
 			var img = new Image();
 			preview_info = SceneStorageModule.takeScreenshot(256,256);
 			img.src = preview_info;
-			$("#snapshot img").remove();
-			$("#snapshot").append(img);
+			LiteGUI.remove("#snapshot img");
+			document.querySelector("#snapshot").appendChild(img);
 		}
 	},
 
@@ -1136,7 +1136,6 @@ var SceneStorageModule = {
 		var canvas = document.createElement("canvas");
 		canvas.width = width;
 		canvas.height = height;
-		//$("body").append(canvas);
 
 		var s = gl.canvas.height / height;
 		var startx = (gl.canvas.width - width*s) * 0.5;

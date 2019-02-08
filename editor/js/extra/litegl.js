@@ -6388,11 +6388,11 @@ Texture.generateCubemapCrossFacesInfo = function(width, column)
 * @param {Function} on_complete callback
 * @return {Texture} the texture
 */
-Texture.cubemapFromURL = function(url, options, on_complete) {
+Texture.cubemapFromURL = function( url, options, on_complete ) {
 	options = options || {};
+	options = Object.create(options); //creates a new options using the old one as prototype
 	options.texture_type = gl.TEXTURE_CUBE_MAP;
 	var texture = options.texture || new GL.Texture(1, 1, options);
-	options = Object.create(options); //creates a new options using the old one as prototype
 
 	texture.bind();
 	Texture.setUploadOptions(options);

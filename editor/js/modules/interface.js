@@ -422,7 +422,7 @@ LiteGUI.Inspector.prototype.addNode = function( name, value, options )
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
 		EditorModule.showSelectNode( inner_onselect );
 		if(options.callback_button)
-			options.callback_button.call(element, $(element).find(".wcontent input").val() );
+			options.callback_button.call(element, element.querySelector(".wcontent input").value );
 	});
 
 	element.addEventListener("dragover",function(e){ 
@@ -646,7 +646,7 @@ LiteGUI.Inspector.prototype.addNodeComponent = function(name, value, options)
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
 		EditorModule.showSelectNode( inner_onselect );
 		if(options.callback_button)
-			options.callback_button.call(element, $(element).find(".wcontent input").val() );
+			options.callback_button.call(element, element.querySelector(".wcontent input").value );
 	});
 
 	//after selecting a node
@@ -1080,7 +1080,6 @@ LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
 		if(sampler)
 			sampler._must_update = true;
 		LiteGUI.trigger( input, "change" );
-		//$(element).find("input").val(filename).change();
 	}
 
 	this.tab_index += 1;

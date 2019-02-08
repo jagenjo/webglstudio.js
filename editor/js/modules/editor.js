@@ -987,7 +987,7 @@ var EditorModule = {
 			return;
 		data.uid = null; //remove UID
 		component.configure( data ); 
-		$(component).trigger("changed");
+		LiteGUI.trigger(component,"changed");
 		EditorModule.inspect(LS.GlobalScene.selected_node); //update interface
 		RenderModule.requestFrame();
 	},

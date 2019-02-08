@@ -271,8 +271,8 @@ var ToolsModule = {
 			return;
 		}
 
-		$(root).append("<div id='canvas-tools' class='ineditor'></div>");
-		$(root).append("<div id='canvas-buttons' class='ineditor'></div>");
+		root.appendChild( LiteGUI.createElement("div","canvas-tools .ineditor" ));
+		root.appendChild( LiteGUI.createElement("div","canvas-buttons .ineditor" ));
 
 		for(var i in this.tools)
 		{
@@ -303,7 +303,7 @@ var ToolsModule = {
 		element.addEventListener("click", function(e){
 			ToolsModule.enableTool( this.data );
 			LS.GlobalScene.refresh();
-			$("#canvas-tools .enabled").removeClass("enabled");
+			LiteGUI.removeClass( null, "#canvas-tools .enabled", "enabled");
 			this.classList.add("enabled");
 		});
 
@@ -330,7 +330,7 @@ var ToolsModule = {
 			if(button.combo)
 			{
 				var section_name = "tool-section-" + button.section;
-				$(root).find("." + section_name + " .tool-button").removeClass("enabled");
+				LiteGUI.removeClass( root, "." + section_name + " .tool-button", "enabled");
 			}
 
 			if(!button.callback)
@@ -658,7 +658,6 @@ var notoolButton = {
 	callback: function()
 	{
 		ToolsModule.enableTool(null);
-		//$("#canvas-tools .enabled").removeClass("enabled");
 		return false;
 	}
 };

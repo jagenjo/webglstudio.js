@@ -26,7 +26,7 @@ var GenericTools = {
 		dialog.content.style.width = "calc( 100% - 2px )";
 		dialog.content.style.height = "calc( 100% - 50px )";
 		dialog.content.innerHTML = "<div class='tools'><button class='execute'>Execute</button> <button class='auto-compile'>Auto-compile</button> | Scene <button class='reset'>Restore</button> <button class='update'>Save</button><button class='example' style='float: right'>Example</button></div><textarea class='code' style='height:calc(100% - 40px); height:-webkit-calc(100% - 40px);'></textarea>";
-		var textarea = $(dialog.content).find("textarea");
+		var textarea = dialog.content.querySelector("textarea");
 		var old_code = localStorage.getItem("wglstudio-scripter-code");
 		if(!old_code)
 			old_code = "if($1)\n   $1.transform.rotateY(10);";
@@ -44,30 +44,31 @@ var GenericTools = {
 			if(keyCode == 9) //tab
 			{
 				e.preventDefault();
-				var start = $(this).get(0).selectionStart;
-				var end = $(this).get(0).selectionEnd;
+				var node = this.childNodes[0];
+				var start = .selectionStart;
+				var end = node.selectionEnd;
 
 				// set textarea value to: text before caret + tab + text after caret
-				$(this).val($(this).val().substring(0, start)
+				this.value = this.value.substring(0, start)
 							+ "\t"
-							+ $(this).val().substring(end));
+							+ this.value.substring(end);
 
 				// put caret at right position again
-				$(this).get(0).selectionStart =
-				$(this).get(0).selectionEnd = start + 1;
+				node.selectionStart =
+				node.selectionEnd = start + 1;
 				return false;
 			}
 			else if (keyCode == 13 && e.ctrlKey)
 			{
-				$(dialog.content).find("button.compile").click();
+				dialog.content.querySelector("button.compile").click();
 			}
 		});
 
-		$(dialog.content).find("button.update").click(function() {
+		dialog.content.querySelector("button.update").onclick = function() {
 			backup = LS.GlobalScene.serialize();
-		});
+		};
 
-		$(dialog.content).find("button.reset").click(function() {
+		dialog.content.querySelector("button.reset").onclick = function() {
 			var id = null;
 			if(LS.GlobalScene.selected_node)
 				id = LS.GlobalScene.selected_node.id;
@@ -76,36 +77,37 @@ var GenericTools = {
 			if(id != null)
 				LS.GlobalScene.selected_node = LS.GlobalScene.getNode( id );
 			RenderModule.requestFrame();
-		});
+		};
 
-		$(dialog.content).find("button.execute").click(function() {
+		dialog.content.querySelector("button.execute").onclick = function() {
 			UndoModule.saveSceneUndo();
 			GenericTools.compileCode();
-		});
+		};
 
-		$(dialog.content).find("button.auto-compile").click(function() {
-			if( $(this).hasClass("enabled") )
+		var autocompile = dialog.content.querySelector("button.auto-compile");
+		autocompile.onclick = function() {
+			if( this.classList.contains("enabled") )
 			{
-				$(this).removeClass("enabled");
+				this.classList.remove("enabled");
 				clearInterval( GenericTools._autocompile_timer  );
 				GenericTools._autocompile_timer = null;
 			}
 			else
 			{
-				$(this).addClass("enabled");
+				this.classList.add("enabled");
 				UndoModule.saveSceneUndo();
 				GenericTools._autocompile_timer = setInterval(function() {
 					GenericTools.compileCode();
 					if(LS.GlobalScene.nodes.length > 200)
-						$("button.auto-compile").click(); //fail safe
+						autocompile.click(); //fail safe
 				}, 1000/60);
 			}
-		});
+		};
 
-		$(dialog.content).find("button.example").click(function() {
+		dialog.content.querySelector("button.example").onclick = function() {
 			var example = "var node = $1; //$1 contains the selected node\nif(!node) return LiteGUI.alert('select a node');\nfor(var i = 0; i < 50; i++)\n{\n	var newnode = node.clone();\n	newnode.transform.translate( [ Math.random() * 500, 0, Math.random()*-500]);\n	LS.GlobalScene.root.addChild(newnode);\n}\n";
 			textarea.val(example);
-		});
+		};
 
 		dialog.show();
 	},

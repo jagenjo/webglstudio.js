@@ -449,7 +449,6 @@ var CubemapTools = {
 		size = size || 256;
 		var canvas = document.createElement("canvas");
 		canvas.width = canvas.height = size;
-		//$("body").append(canvas);
 
 		var texture = target_texture || new GL.Texture(size,size,{minFilter: gl.NEAREST});
 		texture.drawTo(function() {

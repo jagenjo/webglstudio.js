@@ -100,8 +100,6 @@ var RenderModule = {
 		this.render_settings.keep_viewport = true;
 
 		window.addEventListener("resize", function() { RenderModule.requestFrame(); }, true ); 
-		//LiteGUI.bind( window, "resize", function() {  RenderModule.requestFrame(); }); //dont work
-		//$(window).resize( function() {  RenderModule.requestFrame(); });
 
 		LiteGUI.bind( LiteGUI, "resized", function(){
 			canvas.width = canvas.parentNode.offsetHeight;

@@ -1699,15 +1699,15 @@ function SearchBox( value, options )
 	this.root = element;
 	var that = this;
 
-	$(this.input).change( function(e) { 
+	this.input.onchange = function(e) { 
 		var value = e.target.value;
 		if(options.callback)
 			options.callback.call(that,value);
-	});
+	};
 }
 
-SearchBox.prototype.setValue = function(v) { $(this.input).val(v).change(); };
-SearchBox.prototype.getValue = function() { return $(this.input).val(); };
+SearchBox.prototype.setValue = function(v) { this.input.value = v; this.input.onchange(); };
+SearchBox.prototype.getValue = function() { return this.input.value; };
 
 LiteGUI.SearchBox = SearchBox;
 
@@ -2185,9 +2185,11 @@ function List( id, items, options )
 
 		item.addEventListener("click", function() {
 
-			$(root).find(".list-item.selected").removeClass("selected");
+			var list = root.querySelectorAll(".list-item.selected");
+			for(var j = 0; j < list.length; ++j)
+				list[j].classList.remove("selected");
 			this.classList.add("selected");
-			$(that.root).trigger("wchanged", this);
+			LiteGUI.trigger( that.root, "wchanged", this );
 			if(that.callback)
 				that.callback( this.data  );
 		});
@@ -2349,15 +2351,16 @@ function LineEditor(value, options)
 	element.no_trespassing = options.no_trespassing || false;
 	element.show_samples = options.show_samples || 0;
 	element.options = options;
+	element.style.minWidth = "50px";
+	element.style.minHeight = "20px";
 
 	var canvas = document.createElement("canvas");
 	canvas.width = options.width || 200;
 	canvas.height = options.height || 50;
-	element.appendChild(canvas);
+	element.appendChild( canvas );
 	element.canvas = canvas;
 
-	$(canvas).bind("mousedown",onmousedown);
-	$(element).resize(onresize);
+	element.addEventListener("mousedown",onmousedown);
 
 	element.getValueAt = function(x)
 	{
@@ -2427,6 +2430,12 @@ function LineEditor(value, options)
 
 	element.redraw = function()
 	{
+		var rect = canvas.parentNode.getBoundingClientRect();
+		if(rect && canvas.width != rect.width && rect.width && rect.width < 1000)
+			canvas.width = rect.width;
+		if(rect && canvas.height != rect.height && rect.height && rect.height < 1000)
+			canvas.height = rect.height;
+
 		var ctx = canvas.getContext("2d");
 		ctx.setTransform(1, 0, 0, 1, 0, 0);
 		ctx.translate(0,canvas.height);
@@ -2485,8 +2494,8 @@ function LineEditor(value, options)
 	var last_mouse = [0,0];
 	function onmousedown(evt)
 	{
-		$(document).bind("mousemove",onmousemove);
-		$(document).bind("mouseup",onmouseup);
+		document.addEventListener("mousemove",onmousemove);
+		document.addEventListener("mouseup",onmouseup);
 
 		var rect = canvas.getBoundingClientRect();
 		var mousex = evt.clientX - rect.left;
@@ -2564,8 +2573,8 @@ function LineEditor(value, options)
 	{
 		selected = -1;
 		element.redraw();
-		$(document).unbind("mousemove",onmousemove);
-		$(document).unbind("mouseup",onmouseup);
+		document.removeEventListener("mousemove",onmousemove);
+		document.removeEventListener("mouseup",onmouseup);
 		onchange();
 		evt.preventDefault();
 		evt.stopPropagation();
@@ -2573,8 +2582,6 @@ function LineEditor(value, options)
 
 	function onresize(e)
 	{
-		canvas.width = $(this).width();
-		canvas.height = $(this).height();
 		element.redraw();
 	}
 	
@@ -2583,7 +2590,7 @@ function LineEditor(value, options)
 		if(options.callback)
 			options.callback.call(element,element.value);
 		else
-			$(element).change();
+			LiteGUI.trigger(element,"change");
 	}
 
 	function distance(a,b) { return Math.sqrt( Math.pow(b[0]-a[0],2) + Math.pow(b[1]-a[1],2) ); };
@@ -2612,7 +2619,7 @@ function LineEditor(value, options)
 		var v = null;
 		if(selected != -1)
 			v = element.value[selected];
-		element.value.sort(function(a,b) { return a[0] > b[0]; });
+		element.value.sort(function(a,b) { return a[0] - b[0]; });
 		if(v)
 			selected = element.value.indexOf(v);
 	}
@@ -2816,10 +2823,6 @@ LiteGUI.Console = Console;
 		this.options = options;
 
 		var that = this;
-		//window.addEventListener("resize",function(e) { that.onResize(e); });
-		//$(this).bind("resize",function(e) { that.resize(e); });
-
-		//this._computed_size = [ $(this.root).width(), $(this.root).height() ];
 		this._computed_size = [ this.root.offsetWidth, this.root.offserHeight ];
 
 		var content = document.createElement("div");
@@ -2856,7 +2859,6 @@ LiteGUI.Console = Console;
 
 	Area.prototype.onResize = function(e)
 	{
-		//this._computed_size = [ $(this.root).width(), $(this.root).height() ];
 		var computed_size = [ this.root.offsetWidth, this.root.offsetHeight ];
 		if( e && this._computed_size && computed_size[0] == this._computed_size[0] && computed_size[1] == this._computed_size[1])
 			return;
@@ -2872,12 +2874,6 @@ LiteGUI.Console = Console;
 			{
 				var section = this.sections[i];
 				section.onResize(e);
-				//$(section).trigger("resize"); //it is a LiteArea
-				//$(section.root).trigger("resize");
-				/*
-				for (var j = 0; j < section.root.childNodes.length; j++)
-					$(section.root.childNodes[j]).trigger("resize");
-				*/
 			}
 		else //send it to the children
 		{
@@ -3200,7 +3196,6 @@ LiteGUI.Console = Console;
 
 			if (this.dynamic_section == area1)
 			{
-				//var size = ($(area2.root).width() + delta) + "px";
 				var size = (area2.root.offsetWidth + delta);
 				if(size < min_size)
 					size = min_size;
@@ -3211,7 +3206,6 @@ LiteGUI.Console = Console;
 			}
 			else
 			{
-				//var size = ($(area1.root).width() - delta) + "px";
 				var size = (area1.root.offsetWidth - delta);
 				if(size < min_size)
 					size = min_size;
@@ -3225,7 +3219,6 @@ LiteGUI.Console = Console;
 		{
 			if (this.dynamic_section == area1)
 			{
-				//var size = ($(area2.root).height() - delta) + "px";
 				var size = (area2.root.offsetHeight - delta);
 				if(size < min_size)
 					size = min_size;
@@ -3236,7 +3229,6 @@ LiteGUI.Console = Console;
 			}
 			else
 			{
-				//var size = ($(area1.root).height() + delta) + "px";
 				var size = (area1.root.offsetHeight + delta);
 				if(size < min_size)
 					size = min_size;
@@ -3801,7 +3793,7 @@ LiteGUI.Console = Console;
 			var id = options;
 			options = legacy || {};
 			options.id = id;
-			console.warn("LiteGUI.Dialog legacy parameter, use options as first parameter instead of id.");
+			console.warn("LiteGUI.Tabs legacy parameter, use options as first parameter instead of id.");
 		}
 
 		options = options || {};
@@ -3921,9 +3913,9 @@ LiteGUI.Console = Console;
 	Tabs.prototype.appendTo = function(parent, at_front)
 	{
 		if(at_front)
-			$(parent).prepend(this.root);
+			parent.prepend(this.root);
 		else
-			$(parent).append(this.root);
+			parent.appendChild(this.root);
 	}
 
 	/**
@@ -4262,7 +4254,9 @@ LiteGUI.Console = Console;
 			}
 		}
 
-		$(that.list).find("li.wtab").removeClass("selected");
+		var list = that.list.querySelectorAll("li.wtab");
+		for(var i = 0; i < list.length; ++i)
+			list[i].classList.remove("selected");
 		this.classList.add("selected");
 
 		//change tab
@@ -4275,7 +4269,7 @@ LiteGUI.Console = Console;
 			if(options.callback) 
 				options.callback(tab_id, tab_content,e);
 
-			$(that).trigger("wchange",[tab_id, tab_content]);
+			LiteGUI.trigger(that,"wchange",[tab_id, tab_content]);
 			if(that.onchange)
 				that.onchange( tab_id, tab_content );
 		}
@@ -5092,13 +5086,15 @@ LiteGUI.Console = Console;
 				if( that.isNodeSelected( node ) )
 				{
 					node.classList.remove("selected");
-					LiteGUI.trigger(that.root, "item_remove_from_selection", { item: node, data: node.data} );
+					LiteGUI.trigger(that, "item_remove_from_selection", { item: node, data: node.data} );
+					LiteGUI.trigger(that.root, "item_remove_from_selection", { item: node, data: node.data} ); //LEGACY
 					return;
 				}
 
 				//mark as selected
 				that.markAsSelected( node, true );
-				LiteGUI.trigger(that.root, "item_add_to_selection", { item: node, data: node.data} );
+				LiteGUI.trigger(that, "item_add_to_selection", { item: node, data: node.data} );
+				LiteGUI.trigger(that.root, "item_add_to_selection", { item: node, data: node.data} ); //LEGACY
 				var r = false;
 				if(data.callback) 
 					r = data.callback.call(that,node);
@@ -5128,7 +5124,8 @@ LiteGUI.Console = Console;
 					//console.log(item);
 					//mark as selected
 					that.markAsSelected( item, true );
-					LiteGUI.trigger( that.root, "item_add_to_selection", { item: item, data: item.data } );
+					LiteGUI.trigger( that, "item_add_to_selection", { item: item, data: item.data } );
+					LiteGUI.trigger( that.root, "item_add_to_selection", { item: item, data: item.data } ); //LEGACY
 				}
 			}
 			else
@@ -5137,7 +5134,8 @@ LiteGUI.Console = Console;
 				that.markAsSelected( node );
 
 				that._skip_scroll = true; //avoid scrolling while user clicks something
-				LiteGUI.trigger(that.root, "item_selected", { item: node, data: node.data} );
+				LiteGUI.trigger( that, "item_selected", { item: node, data: node.data } );
+				LiteGUI.trigger( that.root, "item_selected", { item: node, data: node.data } ); //LEGACY
 				var r = false;
 				if(data.callback) 
 					r = data.callback.call(that,node);
@@ -5153,7 +5151,8 @@ LiteGUI.Console = Console;
 			var node = this; //this.parentNode;
 			var title = node.title_element.querySelector(".incontent");
 
-			LiteGUI.trigger( that.root, "item_dblclicked", node );
+			LiteGUI.trigger( that, "item_dblclicked", node );
+			LiteGUI.trigger( that.root, "item_dblclicked", node ); //LEGACY
 
 			if(!title._editing && that.options.allow_rename)
 			{
@@ -5970,7 +5969,7 @@ LiteGUI.Console = Console;
 })();
 //enclose in a scope
 (function(){
-	
+
 	/****************** PANEL **************/
 	function Panel(id, options)
 	{
@@ -6019,6 +6018,12 @@ LiteGUI.Console = Console;
 	Panel.prototype.add = function( litegui_item )
 	{
 		this.content.appendChild( litegui_item.root );
+	}
+
+	Panel.prototype.clear = function()
+	{
+		while (this.content.firstChild)
+			this.content.removeChild(this.content.firstChild);
 	}
 
 	LiteGUI.Panel = Panel;
@@ -6349,7 +6354,6 @@ LiteGUI.Console = Console;
 
 		if(this.draggable)
 		{
-			//$(panel).draggable({disabled: true});
 			LiteGUI.draggable(panel);
 		}
 		
@@ -6462,7 +6466,6 @@ LiteGUI.Console = Console;
 			var dialog = LiteGUI.Dialog.minimized[i];
 			var parent = dialog.root.parentNode;
 			var pos = parent.getBoundingClientRect().height - 20;
-			//$(dialog.root).animate({ left: LiteGUI.Dialog.MINIMIZED_WIDTH * i, top: pos + "px" },100);
 			dialog.root.style.left = LiteGUI.Dialog.MINIMIZED_WIDTH * i;
 			dialog.root.style.top = pos + "px";
 		}
@@ -6536,7 +6539,6 @@ LiteGUI.Console = Console;
 			this.center();
 		}
 
-		//$(this.root).show(v,null,100,callback);
 		if(!this.detach_window)
 		{
 			this.root.style.display = "";
@@ -7520,9 +7522,7 @@ Inspector.onWidgetChange = function( element, name, value, options, expand_value
 	{
 		if(section)
 			LiteGUI.trigger( section, "wbeforechange", value );
-		//$(this.current_section).trigger("wbeforechange",value); //used for undo //TODO: use LiteGUI.trigger
 		LiteGUI.trigger( element, "wbeforechange", value );
-		//$(element).trigger("wbeforechange",value); //TODO: REPLACE by LiteGUI.trigger
 	}
 
 	//assign and launch callbacks
@@ -7540,9 +7540,7 @@ Inspector.onWidgetChange = function( element, name, value, options, expand_value
 	{
 		if(section)
 			LiteGUI.trigger( section, "wchange", value, element );
-		//$(this.current_section).trigger("wchange",value); //used for undo //TODO: use LiteGUI.trigger
 		LiteGUI.trigger( element, "wchange", value, element );
-		//$(element).trigger("wchange",value); //TODO: REPLACE by LiteGUI.trigger
 	}
 
 	if(this.onchange) 
@@ -7785,10 +7783,9 @@ Inspector.prototype.addString = function(name,value, options)
 			LiteGUI.trigger(input, "change" );
 	};
 	element.getValue = function() { return input.value; };
-	element.focus = function() { $(this).find("input").focus(); };
+	element.focus = function() { this.querySelector("input").focus(); };
 	element.disable = function() { input.disabled = true; };
 	element.enable = function() { input.disabled = false; };
-	element.wchange = function(callback) { $(this).wchange(callback); }
 	this.append(element,options);
 	this.processElement(element, options);
 	return element;
@@ -7855,8 +7852,6 @@ Inspector.prototype.addStringButton = function( name, value, options)
 
 	this.tab_index += 1;
 	this.append(element,options);
-	element.wchange = function(callback) { $(this).wchange(callback); }
-	element.wclick = function(callback) { $(this).wclick(callback); }
 	element.setValue = function(v, skip_event) { 
 		input.value = v;
 		if(!skip_event)
@@ -8206,7 +8201,7 @@ Inspector.prototype.addVector3 = function(name,value, options)
 			if(typeof(new_val) == "object" && new_val.length >= 3)
 			{
 				for(var i = 0; i < elems.length; i++)
-					$(elems[i]).val(new_val[i]);
+					elems[i].value = new_val[i];
 				r = new_val;
 			}
 		}
@@ -8873,8 +8868,8 @@ Inspector.prototype.addComboButtons = function(name, value, options)
 		that.values[name] = buttonname;
 
 		var elements = element.querySelectorAll(".selected");
-		for(var i in elements)
-			elements.classList.remove("selected");
+		for(var i = 0; i < elements.length; ++i)
+			elements[i].classList.remove("selected");
 		this.classList.add("selected");
 
 		Inspector.onWidgetChange.call( that,element,name,buttonname, options );
@@ -9191,7 +9186,6 @@ Inspector.prototype.addList = function(name, values, options)
 			var item = items[i];
 			if( item.classList.contains("selected") )
 				continue;
-			//$(item).click();
 			LiteGUI.trigger( item, "click" );
 		}
 	}
@@ -9613,6 +9607,7 @@ Inspector.prototype.addLine = function(name, value, options)
 	this.values[name] = value;
 	
 	var element = this.createWidget(name,"<span class='line-editor'></span>", options);
+	element.style.width = "100%";
 
 	var line_editor = new LiteGUI.LineEditor(value,options);
 	element.querySelector("span.line-editor").appendChild(line_editor);
@@ -10061,78 +10056,6 @@ Inspector.prototype.scrollTo = function( id )
 	var delta = element.offsetTop - top;
 	this.root.parentNode.parentNode.scrollTop = delta;
 }
-
-/*
-Inspector.prototype.addImageSlot = function(title, callback_drop, callback_set)
-{
-	var element = this.createElement("DIV");
-	element.innerHTML = "<strong>"+title+"</strong><input class='text' type='text' value=''/><button class='load confirm_button'>Ok</button><div class='img-slot'>Drop img here</div>";
-	this.append(element);
-
-	var confirm_button = $(element).find(".confirm_button")[0];
-	$(confirm_button).click(function() {
-		var text = $(element).find(".text")[0];
-		if(callback_set)
-			callback_set( $(text).val() );
-	});
-
-	var slot = $(element).find(".img-slot")[0];
-
-	slot.addEventListener("dragenter", onDragEnter, false);
-	slot.addEventListener("dragexit", onDragExit, false);
-	slot.addEventListener("dragover", onDragNull, false);
-	slot.addEventListener("drop", onFileDrop, false);
-
-
-	function onDragEnter(evt)
-	{
-		$(slot).addClass("highlight");
-		evt.stopPropagation();
-		evt.preventDefault();
-	}
-
-	function onDragExit(evt)
-	{
-		$(slot).removeClass("highlight");
-		evt.stopPropagation();
-		evt.preventDefault();
-	}
-
-	function onDragNull(evt)
-	{
-		evt.stopPropagation();
-		evt.preventDefault();
-	}
-
-	function onFileDrop(evt)
-	{
-		$(slot).removeClass("highlight");
-		evt.stopPropagation();
-		evt.preventDefault();
-
-		var files = evt.dataTransfer.files;
-		var count = files.length;
-		
-		var file = files[0];
-		if(file == null) return;
-
-		var reader = new FileReader();
-		var extension = file.name.substr( file.name.lastIndexOf(".") + 1).toLowerCase();
-
-		reader.onload = function(e) {
-			if(callback_drop)
-				callback_drop(e, file);
-		}
-
-		var image_extensions = ["png","jpg"];
-		if (image_extensions.indexOf(extension) != -1)
-			reader.readAsDataURL(file);
-		else
-			reader.readAsArrayBuffer(file);
-	}
-}
-*/
-
 
 Inspector.prototype.processOptions = function(options)
 {

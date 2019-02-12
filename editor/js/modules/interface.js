@@ -479,7 +479,7 @@ function generalNodeWidget( name, value, options, force_node )
 
 LiteGUI.Inspector.prototype.addNode = function( name, value, options )
 {
-	return generalNodeWidget( name, value, options, true );
+	return generalNodeWidget.call(this, name, value, options, true );
 }
 
 LiteGUI.Inspector.widget_constructors["scenenode"] = "addNode";
@@ -487,7 +487,7 @@ LiteGUI.Inspector.widget_constructors["node"] = "addNode";
 
 LiteGUI.Inspector.prototype.addNodeId = function( name, value, options )
 {
-	return generalNodeWidget( name, value, options, false );
+	return generalNodeWidget.call(this, name, value, options, false );
 }
 
 LiteGUI.Inspector.widget_constructors[ LS.TYPES.SCENENODE_ID ] = "addNodeId";

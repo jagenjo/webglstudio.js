@@ -169,7 +169,7 @@ TerrainRenderer.prototype.onCollectInstances = function(e, instances)
 
 	var RI = this._render_instance;
 	if(!RI)
-		this._render_instance = RI = new RenderInstance(this._root, this);
+		this._render_instance = RI = new LS.RenderInstance(this._root, this);
 
 	if(!this._mesh)
 	{

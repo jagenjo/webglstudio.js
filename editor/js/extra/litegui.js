@@ -9093,10 +9093,8 @@ Inspector.prototype.addList = function(name, values, options)
 
 	function insert_item( value, selected, index )
 	{
-		var item_name = index;
-		if(item_name == null)
-			item_name = value;
-		var item_title = item_name.constructor === String ? item_name : item_name;
+		var item_name = value;
+		var item_title = item_name.constructor === String ? item_name : index;
 		var item_style = null;
 		if(item_name && item_name.constructor === String)
 			item_name = item_name.replace(/<(?:.|\n)*?>/gm, ''); //remove html tags that could break the html

@@ -3,7 +3,7 @@
 var PluginsModule = {
 	name: "plugins",
 
-	official_scripts_url: "https://www.webglstudio.js/oficial_scripts/",
+	official_scripts_url: "https://www.webglstudio.org/oficial_scripts/",
 
 	preferences_panel: [ {name:"plugins", title:"Plugins", icon:null } ],
 	plugins: [], //loaded plugins

@@ -393,14 +393,15 @@ InspectorWidget.prototype.inspectScene = function( scene )
 			button: "+"
 		});
 
-		inspector.addButton(null,"Add from Oficial Repository",{ callback: function(){
-			PluginsModule.showOficialScriptsDialog();
+		inspector.widgets_per_row = 2;
+		inspector.addButton(null,"Reload scripts", { width: "60%", callback: function(){
+			LS.GlobalScene.loadScripts( null, null, LiteGUI.alert, true );
 		}});
 
-		if(scene.external_scripts && scene.external_scripts.length)
-			inspector.addButton(null,"Reload scripts", function(){
-				LS.GlobalScene.loadScripts( null, null, LiteGUI.alert, true );
-			});
+		inspector.addButton(null,"Add from Repository",{ width: "40%", callback: function(){
+			PluginsModule.showOficialScriptsDialog();
+		}});
+		inspector.widgets_per_row = 1;
 
 		inspector.addTitle("Global Scripts");
 		inspector.widgets_per_row = 2;

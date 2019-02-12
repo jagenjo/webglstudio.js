@@ -389,7 +389,7 @@ LiteGUI.Inspector.widget_constructors["position"] = LiteGUI.Inspector.prototype.
 
 
 //to select a node, it uses identifiers, if you want to use nodes then add options.use_node
-LiteGUI.Inspector.prototype.addNode = function( name, value, options )
+function generalNodeWidget( name, value, options, force_node )
 {
 	options = options || {};
 	value = value || "";
@@ -397,6 +397,8 @@ LiteGUI.Inspector.prototype.addNode = function( name, value, options )
 	this.values[ name ] = value;
 
 	var node_name = "";
+
+	//value is always a node
 	if( value && value.constructor == LS.SceneNode )
 		node_name = value.name;
 	else if(value && value.constructor == String)
@@ -412,7 +414,7 @@ LiteGUI.Inspector.prototype.addNode = function( name, value, options )
 	input.setAttribute("placeHolder","Node");
 
 	input.addEventListener("change", function(e) { 
-		if(options.use_node)
+		if( force_node )
 			value = LS.GlobalScene.getNode( e.target.value );
 		else
 			value = e.target.value;
@@ -429,11 +431,12 @@ LiteGUI.Inspector.prototype.addNode = function( name, value, options )
 		e.preventDefault();
 	},true);
 
+
 	element.addEventListener("drop", function(e){
 		e.preventDefault();
 		e.stopPropagation();
 		var node_uid = e.dataTransfer.getData("node_uid");
-		if(options.use_node)
+		if(force_node) //options.use_node
 		{
 			value = LS.GlobalScene.getNode( node_uid );
 			input.value = value ? value.name : value;
@@ -451,7 +454,7 @@ LiteGUI.Inspector.prototype.addNode = function( name, value, options )
 	//after selecting a node
 	function inner_onselect( node )
 	{
-		if(options.use_node)
+		if(options.use_node || force_node)
 		{
 			value = node;
 			input.value = node ? node.name : "";
@@ -473,7 +476,22 @@ LiteGUI.Inspector.prototype.addNode = function( name, value, options )
 	this.append(element);
 	return element;
 }
+
+LiteGUI.Inspector.prototype.addNode = function( name, value, options )
+{
+	return generalNodeWidget( name, value, options, true );
+}
+
+LiteGUI.Inspector.widget_constructors["scenenode"] = "addNode";
 LiteGUI.Inspector.widget_constructors["node"] = "addNode";
+
+LiteGUI.Inspector.prototype.addNodeId = function( name, value, options )
+{
+	return generalNodeWidget( name, value, options, false );
+}
+
+LiteGUI.Inspector.widget_constructors[ LS.TYPES.SCENENODE_ID ] = "addNodeId";
+
 
 //to select a node, value must be a valid node identifier (not the node itself)
 LiteGUI.Inspector.prototype.addComponent = function( name, value, options )

@@ -303,34 +303,33 @@ InspectorWidget.prototype.showComponentsInterface = function( object, inspector 
 	for(var i in components)
 	{
 		var component = components[i];
-		this.inspector.showComponent( component, inspector );
-	}
 
-	//missing components are components which class is not found in the system, we keep them in case the class will be loaded afterwards
-	if( object._missing_components && object._missing_components.length )
-	{
-		for(var i = 0; i < object._missing_components.length; ++i )
+		if( component.constructor === LS.MissingComponent )
 		{
-			var comp_info = object._missing_components[i];
-			var name = comp_info[0];
+			var name = component._comp_class;
 			var title = "<span class='title'>"+name+" <span style='color:#FAA'>(missing)</span></span>";
 			var buttons = " <span class='buttons'></span>";
 			var section = inspector.addSection( title + buttons );
 			section.classList.add("error");
 			inspector.widgets_per_row = 2;
-			inspector.addStringButton( "Component class", name, { name_width: 120, width: "90%", comp_info: comp_info, button_width: 80, button:"Convert", callback_button: function(v){
+			inspector.addStringButton( "Component class", name, { name_width: 120, width: "90%", comp_class: name, button_width: 80, button:"Convert", callback_button: function(v){
 				CORE.userAction( "node_changed", object );
-				LS.replaceComponentClass( LS.GlobalScene, this.options.comp_info[0], v );
+				LS.replaceComponentClass( LS.GlobalScene, this.options.comp_class, v );
 				inspector.refresh();
 			}});
-			inspector.addButton(null,"<img src='imgs/mini-icon-trash.png'/>",{ index: i, width: "10%", callback: function(){
+			inspector.addButton(null,"<img src='imgs/mini-icon-trash.png'/>",{ component: component, width: "10%", callback: function(){
 				CORE.userAction( "node_changed", object );
-				object._missing_components.splice( this.options.index, 1 );
+				object.removeComponent( this.options.component );
 				inspector.refresh();
 			}});
 			inspector.widgets_per_row = 1;
+			continue;
 		}
+
+		this.inspector.showComponent( component, inspector );
 	}
+
+	//missing components are components which class is not found in the system, we keep them in case the class will be loaded afterwards
 }
 
 //special cases
@@ -394,9 +393,9 @@ InspectorWidget.prototype.inspectScene = function( scene )
 			button: "+"
 		});
 
-		//inspector.addButton(null,"Add from Oficial Repository",{ callback: function(){
-		//	PluginsModule.showOficialScriptsDialog();
-		//}});
+		inspector.addButton(null,"Add from Oficial Repository",{ callback: function(){
+			PluginsModule.showOficialScriptsDialog();
+		}});
 
 		if(scene.external_scripts && scene.external_scripts.length)
 			inspector.addButton(null,"Reload scripts", function(){
@@ -418,6 +417,9 @@ InspectorWidget.prototype.inspectScene = function( scene )
 				}
 			});
 			inspector.addButton(null, "<img src='imgs/mini-icon-trash.png'/>", { width: 30, index: i, callback: function(){
+				var r = confirm("Do you want to remove the script from the list?");
+				if(!r)
+					return;
 				scene.global_scripts.splice( this.options.index, 1 );
 				inspector.refresh();
 			}});

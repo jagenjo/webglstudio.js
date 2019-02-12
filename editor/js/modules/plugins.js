@@ -3,6 +3,8 @@
 var PluginsModule = {
 	name: "plugins",
 
+	official_scripts_url: "https://www.webglstudio.js/oficial_scripts/",
+
 	preferences_panel: [ {name:"plugins", title:"Plugins", icon:null } ],
 	plugins: [], //loaded plugins
 
@@ -198,12 +200,72 @@ var PluginsModule = {
 
 	showOficialScriptsDialog: function()
 	{
-		var dialog = new LiteGUI.Dialog( { title: "Oficial Scripts", close: true, minimize: true, width: 600, height: 300, resizable:true, draggable: true } );
+		var dialog = new LiteGUI.Dialog( { title: "Oficial Scripts", close: true, width: 800, height: 380, scroll: false, draggable: true } );
+
+		var area = new LiteGUI.Area({width:"100%",height:"100%"});
+		area.split("horizontal",["50%",null]);
+		dialog.add(area);
+
+		var selected = null;
+
+		var inspector_left = new LiteGUI.Inspector( { scroll: true, resizable: true, full: true } );
+		area.getSection(0).add( inspector_left );
+
+		var inspector_right = new LiteGUI.Inspector( { scroll: true, name_width: 150, resizable: true, full: true } );
+		area.getSection(1).add( inspector_right );
+
+		inspector_right.addTitle("Info");
+		inspector_right.startContainer("",{ height: 290 });
+		var title = inspector_right.addString("Title","" );
+		var author = inspector_right.addString("Author","" );
+		var version = inspector_right.addString("Version","" );
+		var description = inspector_right.addTextarea("Description","",{height:200} );
+		inspector_right.endContainer();
+		inspector_right.addSeparator();
+		inspector_right.addButton(null,"Include",{ callback: function(){
+			if(!selected)
+				return;
+			LS.GlobalScene.external_scripts.push( PluginsModule.official_scripts_url + selected.script_url );
+			LS.GlobalScene.loadScripts();
+			EditorModule.refreshAttributes();
+			dialog.close();
+		}});
+
+		//left
+		inspector_left.addTitle("Scripts");
+		var list = inspector_left.addList(null,[],{ height: 290, callback: function(v){
+			selected = v;
+			title.setValue(v.name);
+			author.setValue(v.author);
+			version.setValue(v.version);
+			description.setValue(v.description);
+		}});
+		inspector_left.addSeparator();
+		inspector_left.addButton(null,"Refresh",{ callback: function(){
+			this.fetchOficialScripts( inner );
+		}});
+
+		//fetch list
+		this.fetchOficialScripts( inner );
+		function inner(v)
+		{
+			if(!v)
+				return;
+			list.updateItems(v.scripts);
+		}
+
 		dialog.show();
+	},
 
-		var inspector = new LiteGUI.Inspector();
-		dialog.add( inspector );
-
+	fetchOficialScripts: function( on_complete )
+	{
+		LiteGUI.requestJSON( PluginsModule.official_scripts_url + "list.json", inner );
+		function inner(v)
+		{
+			if(!v)
+				return;
+			on_complete(v);
+		}
 	}
 }
 

@@ -40,7 +40,7 @@ var ExportModule = {
 	showDialog: function()
 	{
 		var that = this;
-		var dialog = new LiteGUI.Dialog( { title: "Export", close: true, width: 800, height: 400, scroll: false, draggable: true } );
+		var dialog = new LiteGUI.Dialog( { title: "Export", close: true, width: 800, height: 420, scroll: false, draggable: true } );
 
 		var area = new LiteGUI.Area({width:"100%",height:"100%"});
 		area.split("horizontal",["50%",null]);
@@ -63,6 +63,13 @@ var ExportModule = {
 			resources_list = inspector_left.addList( null, resources, { multiselection: true, height: 300 });
 			for(var j = 0; j < resources.length; ++j)
 				resources_list.selectIndex(j,true);
+			inspector_left.addResource("Add Resource","",{ name_width: 200, callback: function(v){ 
+				this.setValue("",true);
+				var res = resources_list.getSelected();
+				if(res.indexOf(v) != -1)
+					return;
+				resources_list.addItem( v, true );
+			}});
 			inspector_left.addCheckbox("Set unselected as links",unselected_as_links,{ name_width: 200, callback: function(v){ unselected_as_links = v; }} );
 			inspector_left.addButtons("Select",["All","None","Scripts"], function(v){
 				if(v == "All")
@@ -103,7 +110,7 @@ var ExportModule = {
 				inspector.refresh();
 			}});
 			inspector.addSeparator();
-			inspector.startContainer("",{ height: 300 });
+			inspector.startContainer("",{ height: 320 });
 			if(exporter.inspect)
 				exporter.inspect( inspector );
 			inspector.endContainer();
@@ -347,7 +354,7 @@ var ExportModule = {
 			LS.RM.processResource("export.obj", data );
 	},
 
-	exportToZIP: function( include_player, settings, on_complete )
+	exportToZIP: function( resources, include_player, settings, on_complete )
 	{
 		if(!window.JSZip)
 		{
@@ -360,13 +367,14 @@ var ExportModule = {
 		settings = settings || {};
 
 		//get all resource and its names
-		var resources = [];
-		var resource_names = LS.GlobalScene.getResources( null, true, true, true );
-		for(var i in resource_names)
+		var resource_names = null;
+		if(resources)
+			resource_names = resources;
+		else
 		{
-			var res = LS.RM.getResource( resource_names[i] );
-			if(res)
-				resources.push(res);
+			var resources = LS.GlobalScene.getResources( null, true, true, true );
+			for(var i in resources)
+				resource_names.push(i);
 		}
 
 		var zip = new JSZip();
@@ -528,7 +536,7 @@ ExportModule.registerExporter({
 	},
 	export: function( info, on_complete )
 	{
-		ExportModule.exportToZIP( this.settings.player, this.settings, on_complete );
+		ExportModule.exportToZIP( info.resources, this.settings.player, this.settings, on_complete );
 	}
 });
 

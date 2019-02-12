@@ -9082,52 +9082,72 @@ Inspector.prototype.addList = function(name, values, options)
 			for(var i in values)
 			{
 				var	value = values[i];
-				var item_name = values.constructor === Array ? value : i;
-				if(!item_name)
-					item_name = i;
-				var item_title = item_name.constructor === String ? item_name : i;
-				var item_style = null;
-				if(item_name && item_name.constructor === String)
-					item_name = item_name.replace(/<(?:.|\n)*?>/gm, ''); //remove html tags that could break the html
-
-				var icon = "";
-				if( value === null || value === undefined )
-				{
-				
-				}
-				else if( value.constructor === String || value.constructor === Number || value.constructor === Boolean )
-				{
-					//?
-				}
-				else if( value )
-				{
-					item_title = value.content || value.name || i;
-					item_style = value.style;
-					if(value.icon)
-						icon = "<img src='"+value.icon+"' class='icon' />";
-				}
-
-				var selected = false;
-				if( (typeof(values[i]) == "object" && values[i].selected) || (item_selected == values[i]) )
-					selected = true;
-				var li_element = document.createElement("li");
-				li_element.classList.add( 'item-' + LiteGUI.safeName(i) );
-				if( selected )
-					li_element.classList.add( 'selected' );
-				li_element.dataset["name"] = item_name;
-				li_element.dataset["pos"] = i;
-				li_element.value = values[i];
-				if(item_style)
-					li_element.setAttribute("style", item_style );
-				li_element.innerHTML = icon + item_title;
+				var name = values.constructor === Array ? value : i;
+				var li_element = insert_item( value, item_selected, i );
 				ul.appendChild( li_element );
-				li_element.addEventListener( "click", inner_item_click );
-				if(options.callback_dblclick)
-					li_element.addEventListener( "dblclick", inner_item_dblclick );
 			}
 
 		//ul.innerHTML = code;
 		LiteGUI.bind( ul.querySelectorAll("li"), "click", inner_item_click );
+	}
+
+	function insert_item( value, selected, index )
+	{
+		var item_name = index;
+		if(item_name == null)
+			item_name = value;
+		var item_title = item_name.constructor === String ? item_name : item_name;
+		var item_style = null;
+		if(item_name && item_name.constructor === String)
+			item_name = item_name.replace(/<(?:.|\n)*?>/gm, ''); //remove html tags that could break the html
+
+		var icon = "";
+		if( value === null || value === undefined )
+		{
+		
+		}
+		else if( value.constructor === String || value.constructor === Number || value.constructor === Boolean )
+		{
+			//?
+		}
+		else if( value )
+		{
+			item_title = value.content || value.name || item_name;
+			item_style = value.style;
+			if(value.icon)
+				icon = "<img src='"+value.icon+"' class='icon' />";
+		}
+
+		selected = !!selected;
+		if( (typeof(value) == "object" && value.selected) )
+			selected = true;
+		var li_element = document.createElement("li");
+		li_element.classList.add( 'item-' + LiteGUI.safeName(item_name) );
+		if( selected )
+			li_element.classList.add( 'selected' );
+		li_element.dataset["name"] = item_title;
+		li_element.dataset["pos"] = index;
+		li_element.value = value;
+		if(item_style)
+			li_element.setAttribute("style", item_style );
+		li_element.innerHTML = icon + item_title;
+		li_element.addEventListener( "click", inner_item_click );
+		if(options.callback_dblclick)
+			li_element.addEventListener( "dblclick", inner_item_dblclick );
+		return li_element;
+	}
+
+	element.addItem = function( value, selected, name )
+	{
+		if(values.constructor !== Array)
+		{
+			console.error("cannot add item to list of object, only array");
+			return;
+		}
+		values.push( value );
+		var ul = this.querySelector("ul");
+		var li_element = insert_item( value, selected);
+		ul.appendChild( li_element );
 	}
 
 	element.removeItem = function(name)

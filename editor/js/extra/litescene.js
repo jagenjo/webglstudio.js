@@ -1053,7 +1053,8 @@ var LS = {
 		if(	old_class_name.constructor === String )
 		{
 			old_class = LS.Components[ old_class_name ];
-			old_class_name = LS.getClassName( old_class );
+			if( old_class )
+				old_class_name = LS.getClassName( old_class );
 		}
 
 		var num = 0;
@@ -1066,37 +1067,34 @@ var LS = {
 			for(var j = 0; j < node._components.length; ++j)
 			{
 				var comp = node._components[j];
+				var comp_name = comp.constructor === LS.MissingComponent ? comp._comp_class : LS.getObjectClassName( comp );
+
 				//it it is the exact same class then skip it
-				if(comp.constructor === proposed_class)
+				if( comp.constructor === proposed_class )
 					continue;
-				var comp_name = LS.getObjectClassName( comp );
+
 				//if this component is neither the old comp nor the new one
 				if( comp_name != old_class_name && comp_name != new_class_name ) 
 					continue;
 
 				var info = comp.serialize();
 				node.removeComponent( comp );
-				var new_comp = new proposed_class();
+
+				var new_comp = null;
+				try
+				{
+					new_comp = new proposed_class();
+				}
+				catch (err)
+				{
+					console.error("Error in replacement component constructor");
+					console.error(err);
+					continue;
+				}
 				node.addComponent( new_comp, j < node._components.length ? j : undefined );
 				new_comp.configure( info );
 				num++;
 			}
-
-			//search in missing components
-			if(node._missing_components)
-			for(var j = 0; j < node._missing_components.length; ++j)
-			{
-				var comp_info = node._missing_components[j];
-				if( comp_info[0] !== old_class_name )
-					continue;
-				node._missing_components.splice(j,1); //remove from the list
-				var new_comp = new proposed_class();
-				node.addComponent( new_comp, comp_info[2] < node._components.length ? comp_info[2] : undefined ); //add in the place where it should be
-				new_comp.configure( comp_info[1] );
-				j--; 
-				num++;
-			}
-		
 		}
 
 		return num;
@@ -1291,6 +1289,9 @@ var LS = {
 	* @method cloneObject
 	* @param {Object} object the object to clone
 	* @param {Object} target=null optional, the destination object
+	* @param {bool} recursive=false optional, if you want to encode objects recursively
+	* @param {bool} only_existing=false optional, only assign to methods existing in the target object
+	* @param {bool} encode_objets=false optional, if a special object is found, encode it as ["@ENC",node,object]
 	* @return {Object} returns the cloned object (target if it is specified)
 	*/
 	cloneObject: function( object, target, recursive, only_existing, encode_objects )
@@ -1374,7 +1375,17 @@ var LS = {
 				}
 
 				if( encode_objects && target && v[0] == "@ENC" ) //encoded object (component, node...)
-					o[i] = LS.decodeObject(v);
+				{
+					var decoded_obj = LS.decodeObject(v);
+					o[i] = decoded_obj;
+					if(!decoded_obj) //object not found
+					{
+						if( LS._pending_encoded_objects )
+							LS._pending_encoded_objects.push([o,i,v]);
+						else
+							console.warn( "Object UID referencing object not found in the scene:", v[2] );
+					}
+				}
 				else
 					o[i] = LS.cloneObject( v ); 
 			}
@@ -1435,7 +1446,7 @@ var LS = {
 		if( obj.constructor.is_component && obj._root) //in case the value of this property is an actual component in the scene
 			return [ "@ENC", LS.TYPES.COMPONENT, obj.getLocator(), LS.getObjectClassName( obj ) ];
 		if( obj.constructor == LS.SceneNode && obj._in_tree) //in case the value of this property is an actual node in the scene
-			return [ "@ENC", LS.TYPES.NODE, obj.uid ];
+			return [ "@ENC", LS.TYPES.SCENENODE, obj.uid ];
 		if( obj.constructor == LS.Scene)
 			return [ "@ENC", LS.TYPES.SCENE, obj.fullpath ]; //weird case
 		if( obj.serialize || obj.toJSON )
@@ -1455,13 +1466,12 @@ var LS = {
 		switch( data[1] )
 		{
 			case LS.TYPES.COMPONENT: 
+			case "node":  //legacy
 			case LS.TYPES.SCENENODE: 
 				var obj = LSQ.get( data[2] );
 				if( obj )
 					return obj;
-				if(!obj)
-					console.warn( "Object UID referencing object not found in the scene:", data[2] );
-				return data[2];
+				return null;
 				break;
 				//return  break;
 			case LS.TYPES.SCENE: return null; break; //weird case
@@ -1480,6 +1490,24 @@ var LS = {
 		return null;
 	},
 
+	resolvePendingEncodedObjects: function()
+	{
+		if(!LS._pending_encoded_objects)
+		{
+			console.warn("no pending enconded objects");
+			return;
+		}
+		for(var i = 0; i < LS._pending_encoded_objects.length; ++i)
+		{
+			var pending = LS._pending_encoded_objects[i];
+			var decoded_object = LS.decodeObject(pending[2]);
+			if(decoded_object)
+				pending[0][ pending[1] ] = decoded_object;
+			else
+				console.warn("Decoded object not found when configuring from JSON");
+		}
+		LS._pending_encoded_objects = null;
+	},
 
 	/**
 	* Clears all the uids inside this object and children (it also works with serialized object)
@@ -2198,6 +2226,7 @@ LS.TYPES = {
 	MESH: "mesh",
 	OBJECT: "object",
 	SCENE: "scene",
+	NODE: "node",
 	SCENENODE: "node",
 	SCENENODE_ID: "node_id",
 	COMPONENT: "component",
@@ -4487,6 +4516,12 @@ var ResourcesManager = {
 	*/
 	getResourcesData: function( resource_names, allow_files )
 	{
+		if( resource_names.constructor !== Array )
+		{
+			console.error("getResourcesData expects Array");
+			return null;
+		}
+
 		var result = {};
 
 		for(var i = 0; i < resource_names.length; ++i)
@@ -10414,7 +10449,6 @@ function ComponentContainer()
 	//this function never will be called (because only the methods are attached to other classes)
 	//unless you instantiate this class directly, something that would be weird
 	this._components = [];
-	this._missing_components = null; //here we store info about components with missing info
 	//this._components_by_uid = {}; //TODO
 }
 
@@ -10446,19 +10480,18 @@ ComponentContainer.prototype.configureComponents = function( info )
 		else
 		{
 			//search for the class
-			var classObject = LS.Components[comp_class];
+			var classObject = LS.Components[ comp_class ];
 			if(!classObject){
 				console.error("Unknown component found: " + comp_class);
-				if(!this._missing_components)
-					this._missing_components = [];
-				comp_info[2] = i; //store index
-				this._missing_components.push( comp_info );
-				continue;
+				classObject = LS.MissingComponent;
 			}
 			//create component
-			comp = new classObject(); //comp_info[1]
+			comp = new classObject();
 			//attach to node
-			this.addComponent(comp);
+			this.addComponent( comp );
+
+			if( comp.constructor === LS.MissingComponent )
+				comp._comp_class = comp_class;
 		}
 
 		//what about configure the comp after adding it? 
@@ -10524,24 +10557,18 @@ ComponentContainer.prototype.serializeComponents = function( o, simplified )
 		if(comp.hasOwnProperty("_uid") && !obj.uid)
 			obj.uid = comp.uid;
 
-		var object_class = LS.getObjectClassName(comp);
-		if(LS.debug && object_class != obj.object_class )
-			console.warn("Component serialize without object_class:",object_class);
+		var object_class = null;
+		if( comp.constructor === LS.MissingComponent )
+			object_class = comp._comp_class;
+		else
+			object_class = LS.getObjectClassName( comp );
+
+		if( LS.debug && object_class != obj.object_class )
+			console.warn("Component serialize without object_class: ", object_class );
 		if(!obj.object_class)
 			obj.object_class = object_class; //enforce
 		
 		o.components.push([ object_class, obj ]);
-	}
-
-	//missing components are stored in another container and should be mergen with the rest of the components
-	if( this._missing_components && this._missing_components.length )
-	{
-		//try to copy in place (not perfect but this shouldnt happend very often)
-		for(var i = 0; i < this._missing_components.length; ++i )
-		{
-			var comp_info = this._missing_components[i];
-			o.components.splice( comp_info[2] || 0, 0, comp_info );
-		}
 	}
 }
 
@@ -10673,7 +10700,6 @@ ComponentContainer.prototype.removeAllComponents = function()
 {
 	while(this._components.length)
 		this.removeComponent( this._components[0] );
-	this._missing_components = null;
 }
 
 
@@ -10681,22 +10707,11 @@ ComponentContainer.prototype.removeAllComponents = function()
 * Returns if the container has a component of this class
 * @method hasComponent
 * @param {String|Class} component_class the component to search for, could be a string or the class itself
-* @param {Boolean} search_missing [optional] true if you want to search in the missing components too
 */
-ComponentContainer.prototype.hasComponent = function( component_class, search_missing )
+ComponentContainer.prototype.hasComponent = function( component_class )
 {
-	if(!this._components && !this._missing_components)
+	if(!this._components)
 		return false;
-
-	//search in missing components
-	if(search_missing && this._missing_components && this._missing_components.length)
-	{
-		if(component_class.constructor !== String) //weird case
-			component_class = LS.getClassName( component_class );
-		for(var i = 0, l = this._missing_components.length; i < l; ++i)
-			if( this._missing_components[i][0] == component_class )
-				return true;
-	}
 
 	//string
 	if( component_class.constructor === String )
@@ -11983,10 +11998,28 @@ BaseComponent.addExtraMethods = function( component )
 
 };
 
-
-
-
 LS.BaseComponent = BaseComponent;
+
+//Used when a component is missing
+function MissingComponent()
+{
+	this._last_serialization = null;
+	this._comp_class = "";
+}
+
+MissingComponent.prototype.configure = function(o)
+{
+	this.uid = o.uid;
+	this._last_serialization = o;
+}
+
+MissingComponent.prototype.serialize = function()
+{
+	return this._last_serialization;
+}
+
+LS.MissingComponent = MissingComponent;
+
 ///@FILE:../src/resources/resource.js
 ///@INFO: BASE
 /**
@@ -44555,7 +44588,9 @@ Scene.prototype.configure = function( scene_info )
 	if(scene_info.root)
 	{
 		this._spatial_container.clear(); // is this necessary?
+		LS._pending_encoded_objects = [];
 		this._root.configure( scene_info.root );
+		LS.resolvePendingEncodedObjects();
 	}
 
 	if( scene_info.global_scripts )
@@ -44983,40 +45018,20 @@ Scene.prototype.checkComponentsCodeModification = function()
 		{
 			var compo = node._components[j];
 			var class_name = LS.getObjectClassName( compo );
+			if( compo.constructor == LS.MissingComponent )
+				class_name = compo._comp_class;
+
 			var current_class = LS.Components[ class_name ];
-			if( current_class == compo.constructor )
+			if( !current_class || current_class == compo.constructor ) //already uses the right class
 				continue;
+
 			//replace class instance in-place
 			var data = compo.serialize();
-
 			var new_compo = new current_class( data );
-
 			var index = node.getIndexOfComponent( compo );
 			node.removeComponent( compo );
-			
 			node.addComponent( new_compo, index );
 			console.log("Class replaced: " + class_name );
-		}
-
-		//missing
-		if(node._missing_components && node._missing_components.length)
-		{
-			var still_missing = [];
-			for(var j = 0; j < node._missing_components.length; ++j)
-			{
-				var compo_info = node._missing_components[j];
-				var class_name = compo_info[0];
-				var current_class = LS.Components[ class_name ];
-				if(!current_class)
-				{
-					still_missing.push(compo_info);
-					continue; //still missing
-				}
-				var new_compo = new current_class( compo_info[1] );
-				node.addComponent( new_compo );
-				console.log("Missing repaired: " + class_name );
-			}
-			node._missing_components = still_missing.length ? still_missing : null;
 		}
 	}
 }
@@ -46303,7 +46318,6 @@ function SceneNode( name )
 
 	//from Componentcontainer
 	this._components = []; //used for logic actions
-	this._missing_components = null; //used to store state of component that couldnt be created
 
 	//from CompositePattern
 	this._parentNode = null;
@@ -46354,7 +46368,6 @@ SceneNode.prototype.init = function( keep_components, keep_info )
 		if( this._components && this._components.length )
 			console.warn("SceneNode.init() should not be called if it contains components, call clear instead");
 		this._components = []; //used for logic actions
-		this._missing_components = null;
 		this.addComponent( new LS.Transform() );
 	}
 }

@@ -35886,7 +35886,7 @@ Target.NEGY = 4;
 Target.POSZ = 5;
 Target.NEGZ = 6;
 
-Target["@node_id"] = { type: 'node' };
+Target["@node_id"] = { type: 'node_id' };
 Target["@front"] = { type: 'enum', values: { "-Z": Target.NEGZ,"+Z": Target.POSZ, "-Y": Target.NEGY,"+Y": Target.POSY,"-X": Target.NEGX,"+X": Target.POSX }};
 Target["@up"] = { type: 'enum', values: { "-Z": Target.NEGZ,"+Z": Target.POSZ, "-Y": Target.NEGY,"+Y": Target.POSY,"-X": Target.NEGX,"+X": Target.POSX }};
 
@@ -38848,7 +38848,7 @@ PlayAnimation.MODES = {"loop":PlayAnimation.LOOP, "pingpong":PlayAnimation.PINGP
 PlayAnimation.properties_order = ["animation","take"]; //this ones should be the first ones to show in the inspector
 
 PlayAnimation["@animation"] = { widget: "animation" };
-PlayAnimation["@root_node"] = { type: "node" };
+PlayAnimation["@root_node"] = { type: "node_id" };
 PlayAnimation["@mode"] = { type:"enum", values: PlayAnimation.MODES };
 PlayAnimation["@current_time"] = { type: LS.TYPES.NUMBER, min: 0, units:"s" };
 PlayAnimation["@blend_time"] = { type: LS.TYPES.NUMBER, min: 0, units:"s" };

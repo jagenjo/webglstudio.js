@@ -185,7 +185,7 @@ TerrainRenderer.prototype.onCollectInstances = function(e, instances)
 	this._root.mesh = this._mesh;
 	this._root.transform.getGlobalMatrix( RI.matrix );
 	mat4.multiplyVec3(RI.center, RI.matrix, vec3.create());
-	RI.applyNodeFlags();
+	RI.fromNode( this._root );
 	
 	instances.push(RI);
 }

@@ -12189,7 +12189,7 @@ function ImageWebcam()
 
 ImageWebcam.title = "Webcam";
 ImageWebcam.desc = "Webcam image";
-
+ImageWebcam.is_webcam_open = false;
 
 ImageWebcam.prototype.openStream = function()
 {
@@ -12208,6 +12208,7 @@ ImageWebcam.prototype.openStream = function()
 	function onFailSoHard(e) {
 		console.log('Webcam rejected', e);
 		that._webcam_stream = false;
+		ImageWebcam.is_webcam_open = false;
 		that.boxcolor = "red";
 		that.trigger("stream_error");
 	};
@@ -12223,6 +12224,7 @@ ImageWebcam.prototype.closeStream = function()
 			for(var i = 0;i < tracks.length; ++i)
 				tracks[i].stop();
 		}
+		ImageWebcam.is_webcam_open = false;
 		this._webcam_stream = null;
 		this._video = null;
 		this.boxcolor = "black";
@@ -12263,6 +12265,7 @@ ImageWebcam.prototype.streamReady = function(localMediaStream)
 		video.onloadedmetadata = function(e) {
 			// Ready to go. Do some stuff.
 			console.log(e);
+			ImageWebcam.is_webcam_open = true;
 		};
 	}
 
@@ -14948,6 +14951,7 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 	LGraphTextureWebcam.title = "Webcam";
 	LGraphTextureWebcam.desc = "Webcam texture";
 
+	LGraphTextureWebcam.is_webcam_open = false;
 
 	LGraphTextureWebcam.prototype.openStream = function()
 	{
@@ -14964,6 +14968,7 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 
 		var that = this;
 		function onFailSoHard(e) {
+			LGraphTextureWebcam.is_webcam_open = false;
 			console.log('Webcam rejected', e);
 			that._webcam_stream = false;
 			that.boxcolor = "red";
@@ -14981,6 +14986,7 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 				for(var i = 0;i < tracks.length; ++i)
 					tracks[i].stop();
 			}
+			LGraphTextureWebcam.is_webcam_open = false;
 			this._webcam_stream = null;
 			this._video = null;
 			this.boxcolor = "black";
@@ -15004,6 +15010,7 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 			//when video info is loaded (size and so)
 			video.onloadedmetadata = function(e) {
 				// Ready to go. Do some stuff.
+				LGraphTextureWebcam.is_webcam_open = true;
 				console.log(e);
 			};
 		}

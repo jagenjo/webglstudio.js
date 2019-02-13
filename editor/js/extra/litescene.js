@@ -53545,6 +53545,7 @@ Player.prototype.setScene = function( scene_info, on_complete, on_before_play )
 	function inner_all_resources_loaded()
 	{
 		//add here any extra step...
+		that.loading.visible = false;
 
 		//on ready
 		inner_all_loaded();

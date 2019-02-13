@@ -207,6 +207,7 @@ var PlayModule = {
 			{
 				if(!demo_window.player)
 					return LiteGUI.alert("Error loading player window");
+				demo_window.player.autoplay = true;
 				demo_window.player.setScene( scene_info, inner_launched, inner_before_play );
 			};
 

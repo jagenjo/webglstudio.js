@@ -9082,7 +9082,6 @@ Inspector.prototype.addList = function(name, values, options)
 			for(var i in values)
 			{
 				var	value = values[i];
-				var name = values.constructor === Array ? value : i;
 				var li_element = insert_item( value, item_selected, i );
 				ul.appendChild( li_element );
 			}
@@ -9093,38 +9092,38 @@ Inspector.prototype.addList = function(name, values, options)
 
 	function insert_item( value, selected, index )
 	{
-		var item_name = value;
-		var item_title = item_name.constructor === String ? item_name : index;
-		var item_style = null;
-		if(item_name && item_name.constructor === String)
-			item_name = item_name.replace(/<(?:.|\n)*?>/gm, ''); //remove html tags that could break the html
-
-		var icon = "";
-		if( value === null || value === undefined )
-		{
-		
-		}
-		else if( value.constructor === String || value.constructor === Number || value.constructor === Boolean )
-		{
-			//?
-		}
-		else if( value )
-		{
-			item_title = value.content || value.name || item_name;
-			item_style = value.style;
-			if(value.icon)
-				icon = "<img src='"+value.icon+"' class='icon' />";
-		}
-
+		var item_index = index; //to reference it
+		var item_title = index; //to show in the list
 		selected = !!selected;
-		if( (typeof(value) == "object" && value.selected) )
-			selected = true;
+
+		var item_style = null;
+		var icon = "";
+		if( value != null )
+		{
+			if( value.constructor === String || value.constructor === Number || value.constructor === Boolean )
+			{
+				item_title = String(value);
+			}
+			else if( value )
+			{
+				item_title = value.title || value.content || value.name || index;
+				item_style = value.style;
+				if(value.icon)
+					icon = "<img src='"+value.icon+"' class='icon' /> ";
+				if(value.selected)
+					selected = true;
+			}
+		}
+
+		if(item_title && item_title.constructor === String)
+			item_title = item_title.replace(/<(?:.|\n)*?>/gm, ''); //remove html tags that could break the html
+
 		var li_element = document.createElement("li");
-		li_element.classList.add( 'item-' + LiteGUI.safeName(item_name) );
+		li_element.classList.add( 'item-' + LiteGUI.safeName(item_index) );
 		if( selected )
 			li_element.classList.add( 'selected' );
 		li_element.dataset["name"] = item_title;
-		li_element.dataset["pos"] = index;
+		li_element.dataset["pos"] = item_index;
 		li_element.value = value;
 		if(item_style)
 			li_element.setAttribute("style", item_style );

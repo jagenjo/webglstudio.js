@@ -136,7 +136,6 @@ var RenderModule = {
 		LiteGUI.menubar.add("View/Camera/Smooth", { type: "checkbox", instance: cameraTool, property:"smooth_camera" });
 		LiteGUI.menubar.add("View/Camera/Lock Angle", { type: "checkbox", instance: cameraTool.settings, property:"lock_angle" });
 
-
 		LiteGUI.menubar.add("View/Layout/One", { callback: function(){ RenderModule.setViewportLayout(1); } });
 		LiteGUI.menubar.add("View/Layout/Two Vertical", { callback: function(){ RenderModule.setViewportLayout(2); } });
 		LiteGUI.menubar.add("View/Layout/Two Horitzontal", { callback: function(){ RenderModule.setViewportLayout(3); } });
@@ -146,6 +145,7 @@ var RenderModule = {
 
 		LiteGUI.menubar.separator("View");
 		//LiteGUI.menubar.add("Actions/System/Relaunch", { callback: RenderModule.relaunch });
+		LiteGUI.menubar.add("View/Profiler", { type: "checkbox", instance: LS.Renderer, property:"render_profiler" });
 
 		this.registerCommands();
 

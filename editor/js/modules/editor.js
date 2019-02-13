@@ -1660,6 +1660,8 @@ var EditorModule = {
 					var o = { ctor: ctor, name: name };
 					if( ctor.icon )
 						o.icon = EditorModule.icons_path + ctor.icon;
+					else
+						o.icon = EditorModule.icons_path + "mini-icon-question.png";
 					compos.push(o);
 				}
 			}

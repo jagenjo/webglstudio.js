@@ -9106,7 +9106,7 @@ Inspector.prototype.addList = function(name, values, options)
 			}
 			else if( value )
 			{
-				item_title = value.title || value.content || value.name || index;
+				item_title = value.content || value.title || value.name || index;
 				item_style = value.style;
 				if(value.icon)
 					icon = "<img src='"+value.icon+"' class='icon' /> ";
@@ -9115,14 +9115,14 @@ Inspector.prototype.addList = function(name, values, options)
 			}
 		}
 
-		if(item_title && item_title.constructor === String)
-			item_title = item_title.replace(/<(?:.|\n)*?>/gm, ''); //remove html tags that could break the html
+		var item_name = item_title;
+		item_name = item_name.replace(/<(?:.|\n)*?>/gm, ''); //remove html tags that could break the html
 
 		var li_element = document.createElement("li");
 		li_element.classList.add( 'item-' + LiteGUI.safeName(item_index) );
 		if( selected )
 			li_element.classList.add( 'selected' );
-		li_element.dataset["name"] = item_title;
+		li_element.dataset["name"] = item_name;
 		li_element.dataset["pos"] = item_index;
 		li_element.value = value;
 		if(item_style)

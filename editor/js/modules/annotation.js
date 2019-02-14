@@ -87,7 +87,9 @@ var AnnotationModule = {
 		textarea.focus();
 
 		if(options.on_close)
-			dialog.addEventListener("closed", function() { options.on_close(textarea.value); });
+			dialog.root.addEventListener("closed", function() { 
+			options.on_close(textarea.value);
+		});
 
 		if(options.on_delete)
 			dialog.addButton("Delete", { className: "big", callback: function() { 

@@ -35276,21 +35276,34 @@ AnnotationComponent.prototype.renderEditor = function( selected )
 	gl.depthFunc( gl.LESS );
 
 	//texts
-	gl.disable( gl.CULL_FACE );
-	LS.Draw.setColor( LS.Components.AnnotationComponent.editor_color );
-	for(var i = 0; i < this.notes.length; ++i)
+	if( gl.start2D )
 	{
-		var note = this.notes[i];
-		LS.Draw.push();
-		//Draw.lookAt( note.end_world, camera_eye, [0,1,0] );
-		LS.Draw.fromTranslationFrontTop(note.end_world, front, top );
+		LS.Draw.setColor( LS.Components.AnnotationComponent.editor_color );
+		var pos2D = vec3.create();
+		gl.start2D();
+		gl.fillColor = LS.Components.AnnotationComponent.editor_color;
+		gl.font = "20px Arial";
 
-		LS.Draw.translate( [-1,-1,0] );
-		LS.Draw.scale( [-0.0004 * f,0.0004 * f,0.0004 * f] );
-		var first_line = note.text.split("\n")[0];
-		LS.Draw.renderText( first_line );
-		//Draw.renderWireBox(10,10,10);
-		LS.Draw.pop();
+		for(var i = 0; i < this.notes.length; ++i)
+		{
+			var note = this.notes[i];
+			camera.project( note.end_world, null, pos2D, true );
+			var first_line = note.text.split("\n")[0];
+			gl.fillText( first_line, pos2D[0] + 10, pos2D[1] + 8);
+
+			/*
+			LS.Draw.push();
+			//Draw.lookAt( note.end_world, camera_eye, [0,1,0] );
+			LS.Draw.fromTranslationFrontTop(note.end_world, front, top );
+
+			LS.Draw.translate( [-1,-1,0] );
+			LS.Draw.scale( [-0.0004 * f,0.0004 * f,0.0004 * f] );
+			var first_line = note.text.split("\n")[0];
+			LS.Draw.renderText( first_line );
+			//Draw.renderWireBox(10,10,10);
+			LS.Draw.pop();
+			*/
+		}
 	}
 
 	gl.disable(gl.BLEND);

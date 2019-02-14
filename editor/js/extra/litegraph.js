@@ -7202,12 +7202,26 @@ LGraphCanvas.prototype.showSearchBox = function(event)
 	dialog.close = function()
 	{
 		that.search_box = null;
+		document.body.focus();
 		setTimeout( function(){ that.canvas.focus(); },20 ); //important, if canvas loses focus keys wont be captured
 		dialog.parentNode.removeChild( dialog );
 	}
 
+	var timeout_close = null;
+
+	dialog.addEventListener("mouseenter",function(e){
+		if(timeout_close)
+		{
+			clearTimeout(timeout_close);
+			timeout_close = null;
+		}
+	});
+
 	dialog.addEventListener("mouseleave",function(e){
-		 dialog.close();
+		 //dialog.close();
+		timeout_close = setTimeout(function(){
+			dialog.close();
+		},500);
 	});
 
 	if(that.search_box)

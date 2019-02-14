@@ -24,7 +24,7 @@ var ImporterModule  = {
 		//	LiteGUI.createDropArea( gl.canvas, ImporterModule.onItemDrop.bind(this) );
 		LiteGUI.menubar.add("Actions/Import Files", { callback: function() { ImporterModule.showImportResourceDialog(); }});
 
-		window.addEventListener("paste", this.onPaste.bind(this) );
+		//window.addEventListener("paste", this.onPaste.bind(this) );
 	},
 
 	onPaste: function(e)

@@ -22116,7 +22116,9 @@ var Renderer = {
 		total: 0,
 		shadows: 0,
 		reflections: 0,
-		main: 0,
+		clearBuffer: 0,
+		renderInstances: 0,
+		renderHelpers: 0,
 		postpo: 0,
 		gui: 0
 	},
@@ -22406,16 +22408,15 @@ var Renderer = {
 			LEvent.trigger(current_camera, "enableFrameContext", render_settings );
 
 			//main render
-			this.startQuery("main");
 			this.renderFrame( current_camera, render_settings ); 
-			this.endQuery();
 
 			//show buffer on the screen
 			this.startQuery("postpo");
 			LEvent.trigger(current_camera, "showFrameContext", render_settings );
+			this.endQuery();
+
 			LEvent.trigger(current_camera, "afterRenderFrame", render_settings );
 			LEvent.trigger(scene, "afterRenderFrame", render_settings );
-			this.endQuery();
 		}
 	},
 
@@ -22446,7 +22447,9 @@ var Renderer = {
 		this.sortRenderQueues( camera, render_settings );
 
 		//clear buffer
+		this.startQuery("clearBuffer");
 		this.clearBuffer( camera, render_settings );
+		this.endQuery();
 
 		//send before events
 		LEvent.trigger(scene, "beforeRenderScene", camera );
@@ -22456,7 +22459,9 @@ var Renderer = {
 		LEvent.trigger(this, "computeVisibility", this._visible_instances );
 
 		//here we render all the instances
+		this.startQuery("renderInstances");
 		this.renderInstances( render_settings, this._visible_instances );
+		this.endQuery();
 
 		//send after events
 		LEvent.trigger( scene, "afterRenderScene", camera );
@@ -22465,8 +22470,10 @@ var Renderer = {
 			this.onRenderScene( camera, render_settings, scene);
 
 		//render helpers (guizmos)
+		this.startQuery("renderHelpers");
 		if(render_settings.render_helpers)
 			LEvent.trigger(this, "renderHelpers", camera );
+		this.endQuery();
 	},
 
 	//shows a RenderFrameContext to the viewport (warning, some components may do it bypassing this function)
@@ -23613,18 +23620,20 @@ var Renderer = {
 			text.push( this._frame_cpu_time.toFixed(2) + " ms" );
 			text.push( "GPU: " + this.gpu_times.total.toFixed(2) + " ms");
 			text.push( " - Shadows: " + this.gpu_times.shadows.toFixed(2) + " ms");
-			text.push( " - Scene: " + this.gpu_times.main.toFixed(2) + " ms");
+			text.push( " - Clear: " + this.gpu_times.clearBuffer.toFixed(2) + " ms");
+			text.push( " - Scene: " + this.gpu_times.renderInstances.toFixed(2) + " ms");
+			text.push( " - Helpers: " + this.gpu_times.renderHelpers.toFixed(2) + " ms");
 			text.push( " - Postpo: " + this.gpu_times.postpo.toFixed(2) + " ms");
 			text.push( " - GUI: " + this.gpu_times.gui.toFixed(2) + " ms");
 		}
 
 		var ctx = gl;
 		ctx.save();
-		ctx.translate( gl.canvas.width - 200, gl.canvas.height - 200 );
+		ctx.translate( gl.canvas.width - 200, gl.canvas.height - 220 );
 		ctx.globalAlpha = 0.7;
 		ctx.font = "14px Tahoma";
 		ctx.fillStyle = "black";
-		ctx.fillRect(0,0,200,200);
+		ctx.fillRect(0,0,200,220);
 		ctx.fillStyle = "white";
 			ctx.fillText( "Profiler", 20, 20 );
 		ctx.fillStyle = "#AFA";

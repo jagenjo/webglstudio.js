@@ -4728,6 +4728,7 @@ LGraphCanvas.prototype.processKey = function(e)
 	if(block_default)
 	{
 		e.preventDefault();
+		e.stopImmediatePropagation();
 		return false;
 	}
 }
@@ -7201,7 +7202,7 @@ LGraphCanvas.prototype.showSearchBox = function(event)
 	dialog.close = function()
 	{
 		that.search_box = null;
-		setTimeout( function(){ that.canvas.focus(); },10 ); //important, if canvas loses focus keys wont be captured
+		setTimeout( function(){ that.canvas.focus(); },20 ); //important, if canvas loses focus keys wont be captured
 		dialog.parentNode.removeChild( dialog );
 	}
 
@@ -13622,6 +13623,7 @@ if(typeof(GL) != "undefined")
 		this.setOutputData(2,(v[0] + v[1] + v[2]) / 3);
 	}
 
+	//executed before rendering the frame
 	LGraphTextureAverage.prototype.onPreRenderExecute = function()
 	{
 		this.updateAverage();
@@ -13657,6 +13659,8 @@ if(typeof(GL) != "undefined")
 		var shader = LGraphTextureAverage._shader;
 		var uniforms = this._uniforms;
 		uniforms.u_mipmap_offset = this.properties.mipmap_offset;
+		gl.disable( gl.DEPTH_TEST );
+		gl.disable( gl.BLEND );
 		this._temp_texture.drawTo(function(){
 			tex.toViewport( shader, uniforms );
 		});

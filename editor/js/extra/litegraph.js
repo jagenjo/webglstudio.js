@@ -11396,6 +11396,35 @@ if(global.glMatrix)
 } //glMatrix
 
 })(this);
+//basic nodes
+(function(global){
+
+	var LiteGraph = global.LiteGraph;
+	function compare(a,b)
+	{
+	   return a==b;
+	}
+
+	LiteGraph.wrapFunctionAsNode("string/compare",compare, ["String","String"],"Boolean");
+
+	var LiteGraph = global.LiteGraph;
+	function concatenate(a,b)
+	{
+	   return a + b;
+	}
+
+	LiteGraph.wrapFunctionAsNode("string/concatenate",concatenate, ["String","String"],"String");
+
+	var LiteGraph = global.LiteGraph;
+	function contains(a,b)
+	{
+	   return a.indexOf(b) != -1;
+	}
+
+	LiteGraph.wrapFunctionAsNode("string/contains",contains, ["String","String"],"Boolean");
+
+
+})(this);
 (function(global){
 var LiteGraph = global.LiteGraph;
 

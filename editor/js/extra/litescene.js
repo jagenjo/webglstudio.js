@@ -22313,7 +22313,9 @@ var Renderer = {
 		this._global_viewport.set( gl.viewport_data );
 
 		//Event: beforeRender used in actions that could affect which info is collected for the rendering
+		this.startGPUQuery("beforeRender");
 		LEvent.trigger( scene, "beforeRender", render_settings );
+		this.endGPUQuery();
 
 		//get render instances, cameras, lights, materials and all rendering info ready (computeVisibility)
 		this.processVisibleData( scene, render_settings, cameras );
@@ -22332,17 +22334,17 @@ var Renderer = {
 		//TODO
 
 		//Event: renderShadowmaps helps to generate shadowMaps that need some camera info (which could be not accessible during processVisibleData)
-		this.startQuery("shadows");
+		this.startGPUQuery("shadows");
 		LEvent.trigger(scene, "renderShadows", render_settings );
-		this.endQuery();
+		this.endGPUQuery();
 
 		//Event: afterVisibility allows to cull objects according to the main camera
 		LEvent.trigger(scene, "afterVisibility", render_settings );
 
 		//Event: renderReflections in case some realtime reflections are needed, this is the moment to render them inside textures
-		this.startQuery("reflections");
+		this.startGPUQuery("reflections");
 		LEvent.trigger(scene, "renderReflections", render_settings );
-		this.endQuery();
+		this.endGPUQuery();
 
 		//Event: beforeRenderMainPass in case a last step is missing
 		LEvent.trigger(scene, "beforeRenderMainPass", render_settings );
@@ -22361,15 +22363,15 @@ var Renderer = {
 		//disable and show final FX context
 		if(render_settings.render_fx)
 		{
-			this.startQuery("postpo");
+			this.startGPUQuery("postpo");
 			LEvent.trigger( scene, "showFrameContext", render_settings );
-			this.endQuery();
+			this.endGPUQuery();
 		}
 
 		//renderGUI
-		this.startQuery("gui");
+		this.startGPUQuery("gui");
 		this.renderGUI( render_settings );
-		this.endQuery();
+		this.endGPUQuery();
 
 		//profiling must go here
 		this._frame_cpu_time = getTime() - start_time;
@@ -22408,16 +22410,16 @@ var Renderer = {
 			LEvent.trigger(current_camera, "enableFrameContext", render_settings );
 
 			//main render
-			this.startQuery("main");
+			this.startGPUQuery("main");
 			this.renderFrame( current_camera, render_settings ); 
-			this.endQuery();
+			this.endGPUQuery();
 
 			//show buffer on the screen
-			this.startQuery("postpo");
+			this.startGPUQuery("postpo");
 			LEvent.trigger(current_camera, "showFrameContext", render_settings );
 			LEvent.trigger(current_camera, "afterRenderFrame", render_settings );
 			LEvent.trigger(scene, "afterRenderFrame", render_settings );
-			this.endQuery();
+			this.endGPUQuery();
 		}
 	},
 
@@ -23531,7 +23533,7 @@ var Renderer = {
 	//time queries for profiling
 	_current_query: null,
 
-	startQuery: function( name )
+	startGPUQuery: function( name )
 	{
 		if(!gl.extensions["disjoint_timer_query"]) //if not supported
 			return;
@@ -23545,7 +23547,7 @@ var Renderer = {
 		this._current_query = query;
 	},
 
-	endQuery: function()
+	endGPUQuery: function()
 	{
 		if(!gl.extensions["disjoint_timer_query"]) //if not supported
 			return;
@@ -23561,9 +23563,9 @@ var Renderer = {
 		if(!gl.extensions["disjoint_timer_query"]) //if not supported
 			return;
 
-		var err = gl.getError();
-		if(err != gl.NO_ERROR)
-			console.log("GL_ERROR: " + err );
+		//var err = gl.getError();
+		//if(err != gl.NO_ERROR)
+		//	console.log("GL_ERROR: " + err );
 
 		var ext = gl.extensions["disjoint_timer_query"];
 
@@ -23606,18 +23608,25 @@ var Renderer = {
 			return;
 
 		var text = this.profiler_text;
+		var ext = gl.extensions["disjoint_timer_query"];
 
-		if(this._frame % 10 == 0)
+		if(this._frame % 5 == 0)
 		{
 			text.length = 0;
 			var fps = 1000 / this._frame_time;
 			text.push( fps.toFixed(2) + " FPS" );
 			text.push( "CPU: " + this._frame_cpu_time.toFixed(2) + " ms" );
-			text.push( "GPU: " + this.gpu_times.total.toFixed(2) + " ms");
-			text.push( " - Shadows: " + this.gpu_times.shadows.toFixed(2) + " ms");
-			text.push( " - Scene: " + this.gpu_times.main.toFixed(2) + " ms");
-			text.push( " - Postpo: " + this.gpu_times.postpo.toFixed(2) + " ms");
-			text.push( " - GUI: " + this.gpu_times.gui.toFixed(2) + " ms");
+			if( ext )
+			{
+				text.push( "GPU: " + this.gpu_times.total.toFixed(2) + " ms");
+				text.push( " - PreRender: " + this.gpu_times.beforeRender.toFixed(2) + " ms");
+				text.push( " - Shadows: " + this.gpu_times.shadows.toFixed(2) + " ms");
+				text.push( " - Scene: " + this.gpu_times.main.toFixed(2) + " ms");
+				text.push( " - Postpo: " + this.gpu_times.postpo.toFixed(2) + " ms");
+				text.push( " - GUI: " + this.gpu_times.gui.toFixed(2) + " ms");
+			}
+			else
+				text.push( "GPU: ???");
 		}
 
 		var ctx = gl;
@@ -23628,7 +23637,7 @@ var Renderer = {
 		ctx.fillStyle = "black";
 		ctx.fillRect(0,0,200,200);
 		ctx.fillStyle = "white";
-			ctx.fillText( "Profiler", 20, 20 );
+		ctx.fillText( "Profiler", 20, 20 );
 		ctx.fillStyle = "#AFA";
 		for(var i = 0; i < text.length; ++i)
 			ctx.fillText( text[i], 20,50 + 20 * i );
@@ -37367,7 +37376,8 @@ FXGraphComponent.prototype.onAddedToScene = function( scene )
 	if(!this._graph) //in case it wasnt connected
 		return;
 	this._graph._scene = scene;
-	LEvent.bind( scene, "enableFrameContext", this.onBeforeRender, this );
+	LEvent.bind( scene, "beforeRender", this.onBeforeRender, this );
+	LEvent.bind( scene, "enableFrameContext", this.onEnableContext, this );
 	LEvent.bind( scene, "showFrameContext", this.onAfterRender, this );
 }
 
@@ -37376,7 +37386,8 @@ FXGraphComponent.prototype.onRemovedFromScene = function( scene )
 	if(!this._graph) //in case it wasnt connected
 		return;
 	this._graph._scene = null;
-	LEvent.unbind( scene, "enableFrameContext", this.onBeforeRender, this );
+	LEvent.unbind( scene, "beforeRender", this.onBeforeRender, this );
+	LEvent.unbind( scene, "enableFrameContext", this.onEnableContext, this );
 	LEvent.unbind( scene, "showFrameContext", this.onAfterRender, this );
 
 	LS.ResourcesManager.unregisterResource( ":color_" + this.uid );
@@ -37384,8 +37395,13 @@ FXGraphComponent.prototype.onRemovedFromScene = function( scene )
 	LS.ResourcesManager.unregisterResource( ":extra_" + this.uid );
 }
 
-
 FXGraphComponent.prototype.onBeforeRender = function(e, render_settings)
+{
+	if(this.enabled && this._graph) //used to read back from textures to avoid stalling
+		this._graph.sendEventToAllNodes("onPreRenderExecute");
+}
+
+FXGraphComponent.prototype.onEnableContext = function(e, render_settings)
 {
 	this._last_camera = LS.Renderer._main_camera; //LS.Renderer._current_camera;
 
@@ -37443,9 +37459,6 @@ FXGraphComponent.prototype.enableCameraFBO = function(e, render_settings )
 	var viewport = this._viewport = camera.getLocalViewport( null, this._viewport );
 	this.frame.enable( render_settings, viewport );
 	render_settings.ignore_viewports = true;
-
-	if(this._graph)
-		this._graph.sendEventToAllNodes("onPreRenderExecute");
 }
 
 FXGraphComponent.prototype.showCameraFBO = function(e, render_settings )
@@ -40440,8 +40453,11 @@ IrradianceCache.prototype.encodeCacheInTexture = function()
 	///prepare data
 	var data = new Float32Array( this._irradiance_shs.length * 27 );
 	for(var i = 0; i < this._irradiance_shs.length; ++i)
-		data.set( this._irradiance_shs[i], i*27 );
-
+	{
+		var shs = this._irradiance_shs[i];
+		if(shs) //if you do not regenerate all there could be missing SHs
+			data.set( shs, i*27 );
+	}
 	
 	//upload to GPU
 	if( sh_texture_type == sh_temp_texture_type )
@@ -40556,7 +40572,8 @@ IrradianceCache.prototype.toData = function()
 	for( var i = 0; i < shs.length; ++i)
 	{
 		var sh = shs[i];
-		float32view.set( sh, 16 + i*9*3 );
+		if(sh)
+			float32view.set( sh, 16 + i*9*3 );
 	}
 
 	return data;

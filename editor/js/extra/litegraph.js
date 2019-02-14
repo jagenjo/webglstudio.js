@@ -11410,7 +11410,11 @@ if(global.glMatrix)
 	var LiteGraph = global.LiteGraph;
 	function concatenate(a,b)
 	{
-	   return a + b;
+		if(a === undefined)
+			return b;
+		if(b === undefined)
+			return a;
+		return a + b;
 	}
 
 	LiteGraph.wrapFunctionAsNode("string/concatenate",concatenate, ["String","String"],"String");
@@ -11418,6 +11422,8 @@ if(global.glMatrix)
 	var LiteGraph = global.LiteGraph;
 	function contains(a,b)
 	{
+		if(a === undefined || b === undefined )
+			return false;
 	   return a.indexOf(b) != -1;
 	}
 

@@ -10480,10 +10480,7 @@ MathRand.prototype.onExecute = function()
 MathRand.prototype.onDrawBackground = function(ctx)
 {
 	//show the current value
-	if(this._last_v)
-		this.outputs[0].label = this._last_v.toFixed(3);
-	else
-		this.outputs[0].label = "?";
+	this.outputs[0].label = ( this._last_v || 0 ).toFixed(3);
 }
 
 MathRand.prototype.onGetInputs = function() {
@@ -10491,6 +10488,103 @@ MathRand.prototype.onGetInputs = function() {
 }
 
 LiteGraph.registerNodeType("math/rand", MathRand);
+
+
+//basic continuous noise
+function MathNoise()
+{
+	this.addInput("in","number");
+	this.addOutput("out","number");
+	this.addProperty( "min", 0 );
+	this.addProperty( "max", 1 );
+	this.addProperty( "smooth", true );
+	this.size = [90,20];
+}
+
+MathNoise.title = "Noise";
+MathNoise.desc = "Random number with temporal continuity";
+MathNoise.data = null;
+
+MathNoise.getValue = function(f,smooth)
+{
+	if( !MathNoise.data )
+	{
+		MathNoise.data = new Float32Array(1024);
+		for(var i = 0; i < MathNoise.data.length; ++i)
+			MathNoise.data[i] = Math.random();
+	}
+	f = f % 1024;
+	if(f < 0)
+		f += 1024;
+	var f_min = Math.floor(f);
+	var f = f - f_min;
+	var r1 = MathNoise.data[ f_min ];
+	var r2 = MathNoise.data[ f_min == 1023 ? 0 : f_min + 1 ];
+	if(smooth)
+		f = f*f*f*(f*(f*6.0-15.0)+10.0);
+	return r1 * (1-f) + r2 * f;
+}
+
+MathNoise.prototype.onExecute = function()
+{
+	var f = (this.getInputData(0) || 0);
+	var r = MathNoise.getValue( f, this.properties.smooth );
+	var min = this.properties.min;
+	var max = this.properties.max;
+	this._last_v = r * (max-min) + min;
+	this.setOutputData(0, this._last_v );
+}
+
+MathNoise.prototype.onDrawBackground = function(ctx)
+{
+	//show the current value
+	this.outputs[0].label = ( this._last_v || 0 ).toFixed(3);
+}
+
+LiteGraph.registerNodeType("math/noise", MathNoise);
+
+//generates spikes every random time
+function MathSpikes()
+{
+	this.addOutput("out","number");
+	this.addProperty( "min_time", 1 );
+	this.addProperty( "max_time", 2 );
+	this.addProperty( "duration", 0.2 );
+	this.size = [90,20];
+	this._remaining_time = 0;
+	this._blink_time = 0;
+}
+
+MathSpikes.title = "Spikes";
+MathSpikes.desc = "spike every random time";
+
+MathSpikes.prototype.onExecute = function()
+{
+	var dt = this.graph.elapsed_time; //in secs
+
+	this._remaining_time -= dt;
+	this._blink_time -= dt;
+
+	var v = 0;
+	if(this._blink_time > 0)
+	{
+		var f = this._blink_time / this.properties.duration;
+		v = 1/(Math.pow(f*8-4,4)+1);
+	}
+
+	if( this._remaining_time < 0)
+	{
+		this._remaining_time = Math.random() * (this.properties.max_time-this.properties.min_time) + this.properties.min_time;
+		this._blink_time = this.properties.duration;
+		this.boxcolor = "#FFF";
+	}
+	else
+		this.boxcolor = "#000";
+	this.setOutputData( 0, v );
+}
+
+LiteGraph.registerNodeType("math/spikes", MathSpikes);
+
 
 //Math clamp
 function MathClamp()
@@ -13793,7 +13887,7 @@ if(typeof(GL) != "undefined")
 		this.addInput("in","Texture");
 		this.addInput("factor","Number");
 		this.addOutput("out","Texture");
-		this.properties = { factor: 0.5, low_precision: false };
+		this.properties = { factor: 0.5 };
 		this._uniforms = { u_texture: 0, u_textureB: 1, u_factor: this.properties.factor };
 	}
 
@@ -13814,6 +13908,7 @@ if(typeof(GL) != "undefined")
 		{
 			this._temp_texture = new GL.Texture( tex.width, tex.height, { type: tex.type, format: gl.RGBA, filter: gl.NEAREST });
 			this._temp_texture2 = new GL.Texture( tex.width, tex.height, { type: tex.type, format: gl.RGBA, filter: gl.NEAREST });
+			tex.copyTo( this._temp_texture2 );
 		}
 
 		var tempA = this._temp_texture;
@@ -13821,8 +13916,10 @@ if(typeof(GL) != "undefined")
 
 		var shader = LGraphTextureTemporalSmooth._shader;
 		var uniforms = this._uniforms;
-		uniforms.u_factor = this.getInputOrProperty("factor");
+		uniforms.u_factor = 1.0 - this.getInputOrProperty("factor");
 
+		gl.disable( gl.BLEND );
+		gl.disable( gl.DEPTH_TEST );
 		tempA.drawTo(function(){
 			tempB.bind(1);
 			tex.toViewport( shader, uniforms );			
@@ -13832,7 +13929,7 @@ if(typeof(GL) != "undefined")
 		
 		//swap
 		this._temp_texture = tempB;
-		this._temp_textureB = temp;
+		this._temp_texture2 = tempA;
 	}
 
 	LGraphTextureTemporalSmooth.pixel_shader = "precision highp float;\n\
@@ -13843,7 +13940,7 @@ if(typeof(GL) != "undefined")
 			varying vec2 v_coord;\n\
 			\n\
 			void main() {\n\
-				gl_FragColor = lerp( texture2D( u_texture, v_coord ), texture2D( u_textureB, v_coord ), u_factor );\n\
+				gl_FragColor = mix( texture2D( u_texture, v_coord ), texture2D( u_textureB, v_coord ), u_factor );\n\
 			}\n\
 			";
 

@@ -7925,6 +7925,8 @@ ShaderMaterial.prototype.assignOldProperties = function( old_properties )
 	}
 }
 
+ShaderMaterial.nolights_vec4 = new Float32Array([0,0,0,1]);
+
 //called from LS.Renderer when rendering an instance
 ShaderMaterial.prototype.renderInstance = function( instance, render_settings, pass )
 {
@@ -8020,7 +8022,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 		block_flags |= LS.Shaders.lastpass_block.flag_mask;
 
 		//extract shader compiled
-		var shader = shader_code.getShader( pass.name, block_flags );
+		var shader = shader_code.getShader( null, block_flags ); //pass.name
 		if(!shader)
 		{
 			//var shader = shader_code.getShader( "surface", block_flags );
@@ -8030,10 +8032,9 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 		//assign
 		shader.uniformsArray( [ scene._uniforms, camera._uniforms, renderer_uniforms, this._uniforms, instance.uniforms ] ); //removed, why this was in?? light ? light._uniforms : null, 
 
-		shader.setUniform( "u_light_info", LS.ZEROS4 );
+		shader.setUniform( "u_light_info", ShaderMaterial.nolights_vec4 );
 		if( ignore_lights )
 			shader.setUniform( "u_ambient_light", LS.ONES );
-
 
 		//render
 		instance.render( shader, this._primitive != -1 ? this._primitive : undefined );
@@ -9242,6 +9243,8 @@ precision mediump float;\n\
 //global defines from blocks\n\
 #pragma shaderblock \"vertex_color\"\n\
 #pragma shaderblock \"coord1\"\n\
+//#pragma shaderblock \"firstPass\"\n\
+//#pragma shaderblock \"lastPass\"\n\
 \n\
 //varyings\n\
 varying vec3 v_pos;\n\
@@ -23625,6 +23628,9 @@ var Renderer = {
 			var fps = 1000 / this._frame_time;
 			text.push( fps.toFixed(2) + " FPS" );
 			text.push( "CPU: " + this._frame_cpu_time.toFixed(2) + " ms" );
+			text.push( " - RIs: " + this._rendered_instances );
+			text.push( " - Draws: " + this._rendercalls );
+
 			if( ext )
 			{
 				text.push( "GPU: " + this.gpu_times.total.toFixed(2) + " ms");
@@ -23640,11 +23646,11 @@ var Renderer = {
 
 		var ctx = gl;
 		ctx.save();
-		ctx.translate( gl.canvas.width - 200, gl.canvas.height - 200 );
+		ctx.translate( gl.canvas.width - 200, gl.canvas.height - 240 );
 		ctx.globalAlpha = 0.7;
 		ctx.font = "14px Tahoma";
 		ctx.fillStyle = "black";
-		ctx.fillRect(0,0,200,200);
+		ctx.fillRect(0,0,200,240);
 		ctx.fillStyle = "white";
 		ctx.fillText( "Profiler", 20, 20 );
 		ctx.fillStyle = "#AFA";
@@ -47880,6 +47886,8 @@ Light._enabled_fs_shaderblock_code = "\n\
 ";
 
 Light._disabled_shaderblock_code = "\n\
+	#pragma shaderblock \"firstPass\"\n\
+	#pragma shaderblock \"lastPass\"\n\
 	#pragma snippet \"input\"\n\
 	#pragma snippet \"surface\"\n\
 	#pragma snippet \"light_structs\"\n\

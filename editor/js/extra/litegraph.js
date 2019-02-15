@@ -9211,7 +9211,7 @@ LiteGraph.registerNodeType("events/counter", EventCounter );
 function DelayEvent()
 {
 	this.size = [60,20];
-	this.addProperty( "time", 1000 );
+	this.addProperty( "time_in_ms", 1000 );
 	this.addInput("event", LiteGraph.ACTION);
 	this.addOutput("on_time", LiteGraph.EVENT);
 
@@ -9223,12 +9223,19 @@ DelayEvent.desc = "Delays one event";
 
 DelayEvent.prototype.onAction = function(action, param)
 {
-	this._pending.push([ this.properties.time, param ]);
+	var time = this.properties.time_in_ms;
+	if(time <= 0)
+		this.trigger(null, param);
+	else
+		this._pending.push([ time, param ]);
 }
 
 DelayEvent.prototype.onExecute = function()
 {
 	var dt = this.graph.elapsed_time * 1000; //in ms
+
+	if(this.isInputConnected(1))
+		this.properties.time_in_ms = this.getInputData(1);
 
 	for(var i = 0; i < this._pending.length; ++i)
 	{
@@ -9248,7 +9255,7 @@ DelayEvent.prototype.onExecute = function()
 
 DelayEvent.prototype.onGetInputs = function()
 {
-	return [["event",LiteGraph.ACTION]];
+	return [["event",LiteGraph.ACTION],["time_in_ms","number"]];
 }
 
 LiteGraph.registerNodeType("events/delay", DelayEvent );
@@ -11400,6 +11407,14 @@ if(global.glMatrix)
 (function(global){
 
 	var LiteGraph = global.LiteGraph;
+
+	function toString(a)
+	{
+	   return String(a);
+	}
+
+	LiteGraph.wrapFunctionAsNode("string/toString",compare, ["*"],"String");
+	
 	function compare(a,b)
 	{
 	   return a==b;
@@ -11407,7 +11422,6 @@ if(global.glMatrix)
 
 	LiteGraph.wrapFunctionAsNode("string/compare",compare, ["String","String"],"Boolean");
 
-	var LiteGraph = global.LiteGraph;
 	function concatenate(a,b)
 	{
 		if(a === undefined)
@@ -11419,7 +11433,6 @@ if(global.glMatrix)
 
 	LiteGraph.wrapFunctionAsNode("string/concatenate",concatenate, ["String","String"],"String");
 
-	var LiteGraph = global.LiteGraph;
 	function contains(a,b)
 	{
 		if(a === undefined || b === undefined )
@@ -11428,6 +11441,25 @@ if(global.glMatrix)
 	}
 
 	LiteGraph.wrapFunctionAsNode("string/contains",contains, ["String","String"],"Boolean");
+
+	function toUpperCase(a)
+	{
+		if(a != null && a.constructor === String)
+			return a.toUpperCase();
+		return a;
+	}
+
+	LiteGraph.wrapFunctionAsNode("string/toUpperCase",toUpperCase, ["String"],"String");
+
+	function split(a,b)
+	{
+		if(a != null && a.constructor === String)
+			return a.split(b || " ");
+		return [a];
+	}
+
+	LiteGraph.wrapFunctionAsNode("string/split",toUpperCase, ["String","String"],"Array");
+
 
 
 })(this);
@@ -13645,7 +13677,7 @@ if(typeof(GL) != "undefined")
 
 
 
-	// Texture Copy *****************************************
+	// Texture Average  *****************************************
 	function LGraphTextureAverage()
 	{
 		this.addInput("Texture","Texture");
@@ -13727,7 +13759,6 @@ if(typeof(GL) != "undefined")
 				else if(type == GL.HALF_FLOAT || type == GL.HALF_FLOAT_OES)
 				{
 					//no half floats possible, hard to read back unless copyed to a FLOAT texture, so temp_texture is always forced to FLOAT
-					//vec4.scale( v,v, 1/(255*255) ); //is this correct?
 				}
 			}
 		}
@@ -13754,6 +13785,69 @@ if(typeof(GL) != "undefined")
 			";
 
 	LiteGraph.registerNodeType("texture/average", LGraphTextureAverage );
+
+
+
+	function LGraphTextureTemporalSmooth()
+	{
+		this.addInput("in","Texture");
+		this.addInput("factor","Number");
+		this.addOutput("out","Texture");
+		this.properties = { factor: 0.5, low_precision: false };
+		this._uniforms = { u_texture: 0, u_textureB: 1, u_factor: this.properties.factor };
+	}
+
+	LGraphTextureTemporalSmooth.title = "Smooth";
+	LGraphTextureTemporalSmooth.desc = "Smooth texture over time";
+
+	LGraphTextureTemporalSmooth.prototype.onExecute = function()
+	{
+		var tex = this.getInputData(0);
+		if(!tex || !this.isOutputConnected(0))
+			return;
+
+		if(!LGraphTextureTemporalSmooth._shader)
+			LGraphTextureTemporalSmooth._shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphTextureTemporalSmooth.pixel_shader);
+
+		var temp = this._temp_texture;
+		if(!temp || temp.type != tex.type || temp.width != tex.width || temp.height != tex.height )
+		{
+			this._temp_texture = new GL.Texture( tex.width, tex.height, { type: tex.type, format: gl.RGBA, filter: gl.NEAREST });
+			this._temp_texture2 = new GL.Texture( tex.width, tex.height, { type: tex.type, format: gl.RGBA, filter: gl.NEAREST });
+		}
+
+		var tempA = this._temp_texture;
+		var tempB = this._temp_texture2;
+
+		var shader = LGraphTextureTemporalSmooth._shader;
+		var uniforms = this._uniforms;
+		uniforms.u_factor = this.getInputOrProperty("factor");
+
+		tempA.drawTo(function(){
+			tempB.bind(1);
+			tex.toViewport( shader, uniforms );			
+		});
+
+		this.setOutputData(0, tempA );
+		
+		//swap
+		this._temp_texture = tempB;
+		this._temp_textureB = temp;
+	}
+
+	LGraphTextureTemporalSmooth.pixel_shader = "precision highp float;\n\
+			precision highp float;\n\
+			uniform sampler2D u_texture;\n\
+			uniform sampler2D u_textureB;\n\
+			uniform float u_factor;\n\
+			varying vec2 v_coord;\n\
+			\n\
+			void main() {\n\
+				gl_FragColor = lerp( texture2D( u_texture, v_coord ), texture2D( u_textureB, v_coord ), u_factor );\n\
+			}\n\
+			";
+
+	LiteGraph.registerNodeType("texture/temporal_smooth", LGraphTextureTemporalSmooth );
 
 	// Image To Texture *****************************************
 	function LGraphImageToTexture()
@@ -15345,7 +15439,7 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 	function LGraphToneMapping()
 	{
 		this.addInput("in","Texture");
-		this.addInput("avg","number");
+		this.addInput("avg","number,Texture");
 		this.addOutput("out","Texture");
 		this.properties = { enabled: true, scale:1, gamma: 1, average_lum: 1, lum_white: 1, precision: LGraphTexture.LOW };
 
@@ -15389,19 +15483,34 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 		if(!temp || temp.width != tex.width || temp.height != tex.height || temp.type != tex.type )
 			temp = this._temp_texture = new GL.Texture( tex.width, tex.height, { type: tex.type, format: gl.RGBA, filter: gl.LINEAR });
 
-		//apply shader
-		var shader = LGraphToneMapping._shader;
-		if(!shader)
-			shader = LGraphToneMapping._shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphToneMapping.pixel_shader );
-
 		var avg = this.getInputData(1);
-		if(avg != null)
-			this.properties.average_lum = avg;
+		if(avg == null)
+		{
+			this.setOutputData(0, tex );
+			return;
+		}
 
 		var uniforms = this._uniforms;
+		var shader = null;
+
+		if( avg.constructor === Number )
+		{
+			this.properties.average_lum = avg;
+			uniforms.u_average_lum = this.properties.average_lum;
+			shader = LGraphToneMapping._shader;
+			if(!shader)
+				shader = LGraphToneMapping._shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphToneMapping.pixel_shader );
+		}
+		else if( avg.constructor === GL.Texture )
+		{
+			uniforms.u_average_texture = avg.bind(1);
+			shader = LGraphToneMapping._shader_texture;
+			if(!shader)
+				shader = LGraphToneMapping._shader_texture = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphToneMapping.pixel_shader, { AVG_TEXTURE:"" } );
+		}
+
 		uniforms.u_lumwhite2 = this.properties.lum_white * this.properties.lum_white;
 		uniforms.u_scale = this.properties.scale;
-		uniforms.u_average_lum = this.properties.average_lum;
 		uniforms.u_igamma = 1/this.properties.gamma;
 
 		//apply shader
@@ -15418,7 +15527,11 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 			varying vec2 v_coord;\n\
 			uniform sampler2D u_texture;\n\
 			uniform float u_scale;\n\
-			uniform float u_average_lum;\n\
+			#ifdef AVG_TEXTURE\n\
+				uniform sampler2D u_average_texture;\n\
+			#else\n\
+				uniform float u_average_lum;\n\
+			#endif\n\
 			uniform float u_lumwhite2;\n\
 			uniform float u_igamma;\n\
 			vec3 RGB2xyY (vec3 rgb)\n\
@@ -15437,9 +15550,16 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 			void main() {\n\
 				vec4 color = texture2D( u_texture, v_coord );\n\
 				vec3 rgb = color.xyz;\n\
+				float average_lum = 0.0;\n\
+				#ifdef AVG_TEXTURE\n\
+					vec3 pixel = texture2D(u_average_texture,vec2(0.5)).xyz;\n\
+					average_lum = (pixel.x + pixel.y + pixel.z) / 3.0;\n\
+				#else\n\
+					average_lum = u_average_lum;\n\
+				#endif\n\
 				//Ld - this part of the code is the same for both versions\n\
 				float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));\n\
-				float L = (u_scale / u_average_lum) * lum;\n\
+				float L = (u_scale / average_lum) * lum;\n\
 				float Ld = (L * (1.0 + L / u_lumwhite2)) / (1.0 + L);\n\
 				//first\n\
 				//vec3 xyY = RGB2xyY(rgb);\n\

@@ -32,7 +32,7 @@
 		"js/tools/colorPicker.js",
 		"js/tools/drag.js",
 		"js/tools/generic.js",
-		"js/widgets/ui/sceneTree.js",
+		"js/widgets/ui/sceneTreeCanvas.js",
 		"js/widgets/ui/timeline.js",
 		"js/widgets/ui/resourcesPanel.js",
 		"js/widgets/ui/inspectorWidget.js",

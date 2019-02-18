@@ -36146,7 +36146,7 @@ Target.prototype.updateOrientation = function()
 	if( this.node_id )
 	{
 		var node = scene.getNode( this.node_id );
-		if(!node || node == this._root ) //avoid same node
+		if(!node || node == this._root || !node.transform ) //avoid same node
 			return;
 		target_position = node.transform.getGlobalPosition( this._target_position );
 	}

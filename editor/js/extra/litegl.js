@@ -1950,7 +1950,25 @@ quat.fromMat4 = function(out,m)
 	quat.normalize(out,out);
 }
 
-quat.fromMat4.lookAt = (function(){ 
+/*
+//http://matthias-mueller-fischer.ch/publications/stablePolarDecomp.pdf
+//reusing the previous quaternion as an indicator
+quat.fromMat3 = function( q, m, max_iter )
+{
+	for (var iter = 0; iter < max_iter; ++iter)
+	{
+		Matrix3d R = q.matrix();
+		Vector3d omega = (R.col(0).cross(A.col(0)) + R.col(1).cross(A.col(1)) + R.col(2).cross(A.col(2))) * (1.0 / fabs(R.col(0).dot(A.col(0)) + R.col(1).dot(A.col(1)) + R.col(2).dot(A.col(2))) +	1.0e-9);
+		double w = omega.norm();
+		if (w < 1.0e-9)
+			break;
+		q = Quaterniond(AngleAxisd(w, (1.0 / w) * omega)) * q;
+		q.normalize();
+	}
+}
+*/
+
+quat.lookAt = (function(){ 
 	var axis = vec3.create();
 	
 	return function( out, forwardVector, up )

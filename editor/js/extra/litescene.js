@@ -6201,7 +6201,10 @@ GLSLCode.prototype.parse = function()
 				continue;
 			}
 			if( method.parse.call( this, pragma_info, t ) === false )
+			{
+				//current_fragment.push("\n"); //add line to current fragment lines
 				continue;
+			}
 			this.fragments.push( pragma_info ); //add pragma fragment
 		}
 		else
@@ -6239,7 +6242,10 @@ GLSLCode.prototype.getFinalCode = function( shader_type, block_flags, context )
 
 		var pragma_method = GLSLCode.pragma_methods[ fragment.action ];
 		if(!pragma_method || !pragma_method.getCode )
+		{
+			code += "\n";
 			continue;
+		}
 
 		var r = pragma_method.getCode.call( this, shader_type, fragment, block_flags, context );
 		if( r )
@@ -6375,7 +6381,7 @@ GLSLCode.pragma_methods["shaderblock"] = {
 			return null;
 		}
 
-		var code = "";
+		var code = "\n";
 
 		//add the define BLOCK_name only if enabled
 		if( shader_block.flag_mask & block_flags )
@@ -6595,6 +6601,28 @@ LS.Shaders.registerSnippet("getFlatNormal","\n\
 				}\n\
 			#endif\n\
 	");
+
+
+LS.Shaders.registerSnippet("PackDepth32","\n\
+			\n\
+			float linearDepth(float z, float near, float far)\n\
+			{\n\
+				return (z - near) / (far - near);\n\
+			}\n\
+			\n\
+			//packs depth normalized \n\
+			vec4 PackDepth32(float depth)\n\
+			{\n\
+				const vec4 bitSh  = vec4(   256*256*256, 256*256,   256,         1);\n\
+				const vec4 bitMsk = vec4(   0,      1.0/256.0,    1.0/256.0,    1.0/256.0);\n\
+				vec4 comp;\n\
+				comp	= depth * bitSh;\n\
+				comp	= fract(comp);\n\
+				comp	-= comp.xxyz * bitMsk;\n\
+				return comp;\n\
+			}\n\
+");
+
 
 LS.Shaders.registerSnippet("perturbNormal","\n\
 			#ifdef STANDARD_DERIVATIVES\n\
@@ -7894,7 +7922,6 @@ ShaderMaterial.prototype.assignOldProperties = function( old_properties )
 		if(old.value === undefined)
 			continue;
 
-
 		//validate (avoids error if we change the type of a uniform and try to reassign a value)
 		if( !old.internal && shader && !new_prop.is_texture ) //textures are not validated (because they are samplers, not values)
 		{
@@ -7999,6 +8026,27 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	//for those cases
 	if(this.onRenderInstance)
 		this.onRenderInstance( instance );
+
+	if( pass == SHADOW_PASS )
+	{
+		//global flags (like environment maps, irradiance, etc)
+		block_flags |= LS.Shaders.firstpass_block.flag_mask;
+		block_flags |= LS.Shaders.lastpass_block.flag_mask;
+		//extract shader compiled
+		var shader = shader_code.getShader( pass.name, block_flags ); //pass.name
+		if(!shader)
+			return false;
+
+		//assign
+		shader.uniformsArray( [ scene._uniforms, camera._uniforms, renderer_uniforms, this._uniforms, instance.uniforms ] ); //removed, why this was in?? light ? light._uniforms : null, 
+
+		//render
+		gl.disable( gl.BLEND );
+		instance.render( shader, this._primitive != -1 ? this._primitive : undefined );
+		renderer._rendercalls += 1;
+	
+		return true;
+	}
 
 	//add flags related to lights
 	var lights = null;
@@ -9386,6 +9434,7 @@ attribute vec2 a_coord;\n\
 varying vec3 v_pos;\n\
 varying vec3 v_normal;\n\
 varying vec2 v_uvs;\n\
+varying vec4 v_screenpos;\n\
 \n\
 //matrices\n\
 #ifdef BLOCK_INSTANCING\n\
@@ -9411,6 +9460,7 @@ uniform float u_point_size;\n\
 \n\
 //camera\n\
 uniform vec3 u_camera_eye;\n\
+uniform vec2 u_camera_planes;\n\
 \n\
 {{vs_out}}\n\
 \n\
@@ -9436,8 +9486,9 @@ void main() {\n\
 	#else\n\
 		v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
 	#endif\n\
-  {{vs_global}}\n\
-	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
+	{{vs_global}}\n\
+	v_screenpos = u_viewprojection * vec4(v_pos,1.0);\n\
+	gl_Position = v_screenpos;\n\
 }\n\
 \\shadow.fs\n\
 \n\
@@ -9447,9 +9498,11 @@ precision mediump float;\n\
 varying vec3 v_pos;\n\
 varying vec3 v_normal;\n\
 varying vec2 v_uvs;\n\
+varying vec4 v_screenpos;\n\
 \n\
 //globals\n\
 uniform vec3 u_camera_eye;\n\
+uniform vec2 u_camera_planes;\n\
 uniform vec4 u_clipping_plane;\n\
 uniform vec4 u_material_color;\n\
 \n\
@@ -9463,6 +9516,7 @@ uniform sampler2D opacity_texture;\n\
 \n\
 #pragma snippet \"input\"\n\
 #pragma snippet \"surface\"\n\
+#pragma snippet \"PackDepth32\"\n\
 \n\
 void surf(in Input IN, out SurfaceOutput o)\n\
 {\n\
@@ -9478,8 +9532,12 @@ void main() {\n\
   Input IN = getInput();\n\
   SurfaceOutput o = getSurfaceOutput();\n\
   surf(IN,o);\n\
+  float depth = length( IN.worldPos - u_camera_eye );\n\
+  depth = linearDepth( depth, u_camera_planes.x, u_camera_planes.y );\n\
+  vec4 final_color;\n\
+  final_color = PackDepth32(depth);\n\
   {{fs_shadow_encode}}\n\
-  gl_FragColor = vec4(o.Albedo,o.Alpha);\n\
+  gl_FragColor = final_color;\n\
 }\n\
 \\picking.vs\n\
 \n\
@@ -11061,6 +11119,14 @@ CompositePattern.prototype.addChild = function(node, index, options)
 		aux = aux._parentNode;
 	}
 
+	//siblings
+	if( node._parentNode && node._parentNode == this._parentNode && index !== undefined)
+	{
+		var prev_index = this._parentNode._children.indexOf( node );
+		if(prev_index < index) //in case it was in the position before
+			index--;
+	}
+
 	//has a parent
 	if(node._parentNode)
 		node._parentNode.removeChild(node, options);
@@ -11085,7 +11151,9 @@ CompositePattern.prototype.addChild = function(node, index, options)
 	else if(index == undefined)
 		this._children.push(node);
 	else
+	{
 		this._children.splice(index,0,node);
+	}
 
 	//the same as scene but we called tree to make it more generic
 	var tree = this._in_tree;
@@ -22909,7 +22977,11 @@ var Renderer = {
 		render_settings = render_settings || this.default_render_settings;
 		LEvent.trigger( scene, "renderShadows", render_settings );
 		for(var i = 0; i < this._visible_lights.length; ++i)
-			this._visible_lights[i].prepare( render_settings );
+		{
+			var light = this._visible_lights[i];
+			light.prepare( render_settings );
+			light.onGenerateShadowmap();
+		}
 	},
 
 	mergeSamplers: function( samplers, result )
@@ -25797,6 +25869,251 @@ Deformer.prototype.applyByCPU = function( vertex_data, normals_data )
 }
 
 LS.Deformer = Deformer;
+///@FILE:../src/render/shadows.js
+///@INFO: UNCOMMON
+//Shadows are complex because there are too many combinations: SPOT/DIRECT,OMNI or DEPTH_COMPONENT,RGBA or HARD,SOFT,VARIANCE
+//It would be nice to have classes that can encapsulate different shadowmap algorithms so they are easy to develop
+
+function Shadowmap( light )
+{
+	this.light = light;
+
+	this.resolution = 512;
+	this.bias = 0;
+	this.format = GL.DEPTH_COMPONENT;
+	this.layers = 0xFF; //visible layers
+	this.texture = null;
+	this.fbo = null;
+	this.shadow_params = vec4.create(); //1.0 / this.texture.width, this.shadow_bias, this.near, closest_far
+}
+
+Shadowmap.use_shadowmap_depth_texture = true;
+
+Shadowmap.prototype.getReadShaderBlock = function()
+{
+	if( this.texture.format != GL.DEPTH_COMPONENT )
+		return Shadowmap.shader_block.flag_mask | Shadowmap.depth_in_color_block.flag_mask;
+	return Shadowmap.shader_block.flag_mask;
+}
+
+Shadowmap.prototype.getWriteShaderBlock = function()
+{
+	return 0;
+}
+
+Shadowmap.prototype.generate = function( instances, render_settings, precompute_static )
+{
+	var light = this.light;
+
+	var light_intensity = light.computeLightIntensity();
+	if( light_intensity < 0.0001 )
+		return;
+
+	//create the texture
+	var shadowmap_resolution = this.resolution;
+	if(shadowmap_resolution == 0)
+		shadowmap_resolution = render_settings.default_shadowmap_resolution;
+
+	//shadowmap size
+	var shadowmap_width = shadowmap_resolution;
+	var shadowmap_height = shadowmap_resolution;
+	if( light.type == LS.Light.OMNI)
+		shadowmap_height *= 6; //for every face
+
+	//var tex_type = this.type == Light.OMNI ? gl.TEXTURE_CUBE_MAP : gl.TEXTURE_2D;
+	var tex_type = gl.TEXTURE_2D;
+	if(this.texture == null || this.texture.width != shadowmap_width || this.texture.height != shadowmap_height ||  this.texture.texture_type != tex_type )
+	{
+		var type = gl.UNSIGNED_BYTE;
+		var format = gl.RGBA;
+
+		//not all webgl implementations support depth textures
+		if( Shadowmap.use_shadowmap_depth_texture && gl.extensions.WEBGL_depth_texture )
+		{
+			format = gl.DEPTH_COMPONENT;
+			type = gl.UNSIGNED_INT;
+		}
+
+		//create texture to store the shadowmap
+		this.texture = new GL.Texture( shadowmap_width, shadowmap_height, { type: type, texture_type: tex_type, format: format, magFilter: gl.NEAREST, minFilter: gl.NEAREST });
+
+		//if( this.precompute_static_shadowmap && (format != gl.DEPTH_COMPONENT || gl.extensions.EXT_frag_depth) )
+		//	this._static_shadowmap = new GL.Texture( shadowmap_width, shadowmap_height, { type: type, texture_type: tex_type, format: format, magFilter: gl.NEAREST, minFilter: gl.NEAREST });
+
+		//index, for debug
+		this.texture.filename = ":shadowmap_" + light.uid;
+		LS.ResourcesManager.textures[ this.texture.filename ] = this.texture; 
+
+		if( this.texture.texture_type == gl.TEXTURE_2D )
+		{
+			if(format == gl.RGBA)
+				this.fbo = new GL.FBO( [this.texture] );
+			else
+				this.fbo = new GL.FBO( null, this.texture );
+		}
+	}
+
+	LS.Renderer.setRenderPass( SHADOW_PASS );
+	LS.Renderer._current_light = light;
+	var tmp_layer = render_settings.layers;
+	render_settings.layers = this.layers;
+
+	//render the scene inside the texture
+	// Render the object viewed from the light using a shader that returns the fragment depth.
+	this.texture.unbind(); 
+
+	LS.Renderer._current_target = this.texture;
+	this.fbo.bind();
+
+	var sides = 1;
+	var viewport_width = this.texture.width;
+	var viewport_height = this.texture.height;
+	if( light.type == LS.Light.OMNI )
+	{
+		sides = 6;
+		viewport_height /= 6;
+	}
+
+	if( this.texture.type == gl.DEPTH_COMPONENT )
+		gl.colorMask(false,false,false,false);
+
+	for(var i = 0; i < sides; ++i) //in case of omni
+	{
+		var shadow_camera = light.getLightCamera(i);
+		LS.Renderer.enableCamera( shadow_camera, render_settings, true );
+
+		var viewport_y = 0;
+		if( light.type == LS.Light.OMNI )
+			viewport_y = i * viewport_height;
+		gl.viewport(0,viewport_y,viewport_width,viewport_height);
+		gl.scissor(0,viewport_y,viewport_width,viewport_height);
+		if( light.type == LS.Light.OMNI )
+			gl.enable( gl.SCISSOR_TEST );
+		gl.clearColor(0, 0, 0, 0);
+		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		gl.disable( gl.SCISSOR_TEST );
+
+		//RENDER INSTANCES in the shadowmap
+		LS.Renderer.renderInstances( render_settings, instances );
+	}
+
+	this.fbo.unbind();
+	LS.Renderer._current_target = null;
+	gl.colorMask(true,true,true,true);
+
+	render_settings.layers = tmp_layer;
+	LS.Renderer.setRenderPass( COLOR_PASS );
+	LS.Renderer._current_light = null;
+	
+	if(this.onPostProcessShadowMap)
+		this.onPostProcessShadowMap( this.texture );
+}
+
+Shadowmap.prototype.prepare = function( uniforms, samplers )
+{
+	var light = this.light;
+	var closest_far = light.computeFar();
+	uniforms.u_shadow_params = this.shadow_params;
+	uniforms.u_shadow_params.set([ 1.0 / this.texture.width, this.bias, light.near, closest_far ]);
+	uniforms.shadowmap = LS.Renderer.SHADOWMAP_TEXTURE_SLOT;
+	samplers[ LS.Renderer.SHADOWMAP_TEXTURE_SLOT ] = this.texture;
+}
+
+Shadowmap.prototype.toViewport = function()
+{
+	if(!this.texture)
+		return;
+	this.texture.toViewport(); //TODO: create shader to visualize correctly
+}
+
+//*******************************
+
+Shadowmap._enabled_vertex_code ="\n\
+	#pragma snippet \"light_structs\"\n\
+	varying vec4 v_light_coord;\n\
+	void applyLight( vec3 pos ) { v_light_coord = u_light_matrix * vec4(pos,1.0); }\n\
+";
+
+Shadowmap._disabled_vertex_code ="\n\
+	void applyLight(vec3 pos) {}\n\
+";
+
+Shadowmap._enabled_fragment_code = "\n\
+	#ifndef TESTSHADOW\n\
+		#define TESTSHADOW\n\
+	#endif\n\
+	#pragma shaderblock \"depth_in_color\"\n\
+	\n\
+	uniform sampler2D shadowmap;\n\
+	varying vec4 v_light_coord;\n\
+	uniform vec4 u_shadow_params; // (1.0/(texture_size), bias, near, far)\n\
+	\n\
+	float UnpackDepth(vec4 depth)\n\
+	{\n\
+		#ifdef BLOCK_DEPTH_IN_COLOR\n\
+			const vec4 bitShifts = vec4( 1.0/(256.0*256.0*256.0), 1.0/(256.0*256.0), 1.0/256.0, 1);\n\
+			return dot(depth.xyzw , bitShifts);\n\
+		#else\n\
+			return depth.x;\n\
+		#endif\n\
+	}\n\
+	float texsize = 1.0 / u_shadow_params.x;\n\
+	float real_depth = 0.0;\n\
+	\n\
+	float pixelShadow( vec2 uv )\n\
+	{\n\
+		float sampleDepth = UnpackDepth( texture2D(shadowmap, uv) );\n\
+		float depth = (sampleDepth == 1.0) ? 1.0e9 : sampleDepth; //on empty data send it to far away\n\
+		if (depth > 0.0) \n\
+			return real_depth > depth ? 0.0 : 1.0;\n\
+		return 0.0;\n\
+	}\n\
+	float expFunc(float f)\n\
+	{\n\
+		return f*f*f*(f*(f*6.0-15.0)+10.0);\n\
+	}\n\
+	\n\
+	float testShadow( Light LIGHT )\n\
+	{\n\
+		vec3 offset = vec3(0.0);\n\
+		float depth = 0.0;\n\
+		float bias = u_shadow_params.y;\n\
+		\n\
+		vec2 sample = (v_light_coord.xy / v_light_coord.w) * vec2(0.5) + vec2(0.5) + offset.xy;\n\
+		//is inside light frustum\n\
+		if (clamp(sample, 0.0, 1.0) != sample) \n\
+			return LIGHT.Info.x == 3.0 ? 1.0 : 0.0; //outside of shadowmap, no shadow\n\
+		\n\
+		real_depth = (v_light_coord.z - bias) / v_light_coord.w * 0.5 + 0.5;\n\
+		vec2 topleft_uv = sample * texsize;\n\
+		vec2 offset_uv = fract( topleft_uv );\n\
+		offset_uv.x = expFunc(offset_uv.x);\n\
+		offset_uv.y = expFunc(offset_uv.y);\n\
+		topleft_uv = floor(topleft_uv) * u_shadow_params.x;\n\
+		float topleft = pixelShadow( topleft_uv );\n\
+		float topright = pixelShadow( topleft_uv + vec2(u_shadow_params.x,0.0) );\n\
+		float bottomleft = pixelShadow( topleft_uv + vec2(0.0, u_shadow_params.x) );\n\
+		float bottomright = pixelShadow( topleft_uv + vec2(u_shadow_params.x, u_shadow_params.x) );\n\
+		float top = mix( topleft, topright, offset_uv.x );\n\
+		float bottom = mix( bottomleft, bottomright, offset_uv.x );\n\
+		return mix( top, bottom, offset_uv.y );\n\
+	}\n\
+";
+
+Shadowmap._disabled_fragment_code = "\nfloat testShadow( Light LIGHT ) { return 1.0; }\n";
+
+var shadowmapping_depth_in_color_block = new LS.ShaderBlock("depth_in_color");
+shadowmapping_depth_in_color_block.register();
+Shadowmap.depth_in_color_block = shadowmapping_depth_in_color_block;
+
+var shadowmapping_block = new LS.ShaderBlock("testShadow");
+shadowmapping_block.addCode( GL.VERTEX_SHADER, Shadowmap._enabled_vertex_code, Shadowmap._disabled_vertex_code);
+shadowmapping_block.addCode( GL.FRAGMENT_SHADER, Shadowmap._enabled_fragment_code, Shadowmap._disabled_fragment_code );
+//shadowmapping_block.defineContextMacros({"SHADOWBLOCK":"testShadow"});
+shadowmapping_block.register();
+Shadowmap.shader_block = shadowmapping_block;
+
+
 ///@FILE:../src/picking.js
 ///@INFO: UNCOMMON
 /**
@@ -27642,6 +27959,45 @@ Transform.prototype.lookAt = (function() {
 		this.fromMatrix(temp);
 		this.updateGlobalMatrix();
 		*/
+	}
+})();
+
+
+/**
+* Orients the transform to look at a position
+* @method orientTo
+* @param {vec3} target the position where to look at
+* @param {boolean} in_world tells if the target is in world coordinates (otherwise asume its in local coordinates)
+* @param {vec3} top [optional] a helper top vector, otherwise [0,1,0] is assumed
+* @param {vec3} right [optional] a helper right vector, otherwise [1,0,0] is assumed
+*/
+Transform.prototype.orientTo = (function() { 
+
+	//avoid garbage
+	var GM = mat4.create();
+	var temp = mat3.create();
+	var temp_pos = vec3.create();
+	//function
+	return function( pos, in_world, top, right )
+	{
+		right = right || LS.RIGHT;
+		top = top || LS.TOP;
+		//convert to local space
+		if(in_world && this._parent)
+		{
+			this._parent.getGlobalMatrix( GM );
+			var inv = mat4.invert(GM,GM);
+			if(!inv)
+				return;
+			mat4.multiplyVec3(temp_pos, inv, pos);
+		}
+		else
+			temp_pos.set( pos );
+		mat3.setColumn( temp, right, 0 );
+		mat3.setColumn( temp, top, 1 );
+		mat3.setColumn( temp, pos, 2 );
+		quat.fromMat3( this._rotation, temp );
+		this._must_update = true;
 	}
 })();
 
@@ -30164,12 +30520,15 @@ function Light(o)
 	* @default false
 	*/
 	this.cast_shadows = false;
+	this.precompute_static_shadowmap = false;
 	this.shadow_bias = 0.05;
 	this.shadowmap_resolution = 0; //use automatic shadowmap size
-	this.shadow_type = "hard"; //0 hard shadows
+
+	//shadowmap class
+	this._shadowmap = null;
+	this._update_shadowmap_render_settings = null;
 
 	//used to force the computation of the light matrix for the shader (otherwise only if projective texture or shadows are enabled)
-	this.force_light_matrix = false; 
 	this._light_matrix = mat4.create();
 
 	this.extra_texture = null;
@@ -30193,22 +30552,12 @@ function Light(o)
 		u_light_offset: this.offset,
 		u_light_extra: vec4.create(),
 		u_light_matrix: this._light_matrix
-//		u_shadow_params: vec4.fromValues( 1, this.shadow_bias, 1, 100 ),
-//		shadowmap: LS.Renderer.SHADOWMAP_TEXTURE_SLOT
 	};
 
 	//configure
 	if(o) 
-	{
 		this.configure(o);
-		if(o.shadowmap_resolution !== undefined)
-			this.shadowmap_resolution = parseInt(o.shadowmap_resolution); //LEGACY: REMOVE
-	}
 
-	if(global.gl && !gl.extensions.WEBGL_depth_texture)
-		Light.use_shadowmap_depth_texture = false;
-
-	this._update_shadowmap_render_settings = null;
 }
 
 Light.NO_ATTENUATION = 0;
@@ -30282,10 +30631,6 @@ Light.DIRECTIONAL = 3;
 
 Light.DEFAULT_DIRECTIONAL_FRUSTUM_SIZE = 50;
 
-Light.use_shadowmap_depth_texture = true;
-Light.shadow_shaderblocks = [];
-Light.shadow_shaderblocks_by_name = [];
-
 Light.prototype.onAddedToNode = function(node)
 {
 	if(!node.light)
@@ -30307,7 +30652,8 @@ Light.prototype.onAddedToScene = function(scene)
 Light.prototype.onRemovedFromScene = function(scene)
 {
 	LEvent.unbind( scene, "collectLights", this.onCollectLights, this );
-	LEvent.unbind( scene, "renderShadows", this.onGenerateShadowmap, this ); 
+	LEvent.unbind( scene, "renderShadows", this.onGenerateShadowmap, this );
+
 	LS.ResourcesManager.unregisterResource( ":shadowmap_" + this.uid );
 }
 
@@ -30329,6 +30675,18 @@ Light.prototype.onCollectLights = function(e, lights)
 	lights.push(this);
 }
 
+/**
+* Returns the camera that will match the light orientation (taking into account fov, etc), useful for shadowmaps
+* @method getLightCamera
+* @param {number} face_index only used when rendering to a cubemap
+* @return {Camera} the camera
+*/
+Light.prototype.getLightCamera = function( face_index )
+{
+	this.updateLightCamera( face_index );
+	return this._light_camera;
+}
+
 Light._temp_matrix = mat4.create();
 Light._temp2_matrix = mat4.create();
 Light._temp3_matrix = mat4.create();
@@ -30338,56 +30696,67 @@ Light._temp_up = vec3.create();
 Light._temp_front = vec3.create();
 
 //Used to create a camera from a light
-Light.prototype.updateLightCamera = function()
+Light.prototype.updateLightCamera = function( face_index )
 {
 	if(!this._light_camera)
 		this._light_camera = new LS.Components.Camera();
 
 	var camera = this._light_camera;
-	camera.eye = this.getPosition( Light._temp_position );
-	camera.center = this.getTarget( Light._temp_target );
-
-	var up = this.getUp( Light._temp_up );
-	var front = this.getFront( Light._temp_front );
-	if( Math.abs( vec3.dot(front,up) ) > 0.999 ) 
-		vec3.set(up,0,0,1);
-	camera.up = up;
 	camera.type = this.type == Light.DIRECTIONAL ? LS.Components.Camera.ORTHOGRAPHIC : LS.Components.Camera.PERSPECTIVE;
+	camera.eye = this.getPosition( Light._temp_position );
 
-	var closest_far = this.computeShadowmapFar();
+	if( this.type == Light.OMNI && face_index != null )
+	{
+		var info = LS.Camera.cubemap_camera_parameters[ face_index ];
+		var target = Light._temp_target;
+		vec3.add( target, Light._temp_position, info.dir );
+		camera.center = target;
+		camera.fov = 45;
+		camera.up = info.up;
+	}
+	else
+	{
+		camera.center = this.getTarget( Light._temp_target );
+		var up = this.getUp( Light._temp_up );
+		var front = this.getFront( Light._temp_front );
+		if( Math.abs( vec3.dot(front,up) ) > 0.999 ) 
+			vec3.set(up,0,0,1);
+		camera.up = up;
+		camera.fov = (this.angle_end || 45); //fov is in degrees
+	}
+
+	var closest_far = this.computeFar();
 
 	camera.frustum_size = this.frustum_size || Light.DEFAULT_DIRECTIONAL_FRUSTUM_SIZE;
 	camera.near = this.near;
 	camera.far = closest_far;
-	camera.fov = (this.angle_end || 45); //fov is in degrees
 
 	camera.updateMatrices();
 
 	this._light_matrix.set( camera._viewprojection_matrix );
 
-	/* ALIGN TEXEL OF SHADOWMAP IN DIRECTIONAL
-	if(this.type == Light.DIRECTIONAL && this.cast_shadows && this.enabled)
-	{
-		var shadowmap_resolution = this.shadowmap_resolution || Light.DEFAULT_SHADOWMAP_RESOLUTION;
-		var texelSize = frustum_size / shadowmap_resolution;
-		view_matrix[12] = Math.floor( view_matrix[12] / texelSize) * texelSize;
-		view_matrix[13] = Math.floor( view_matrix[13] / texelSize) * texelSize;
-	}
-	*/	
-
 	return camera;
 }
 
-/**
-* Returns the camera that will match the light orientation (taking into account fov, etc), useful for shadowmaps
-* @method getLightCamera
-* @return {Camera} the camera
-*/
-Light.prototype.getLightCamera = function()
+
+Light.prototype.computeFar = function()
 {
-	if(!this._light_camera)
-		this.updateLightCamera();
-	return this._light_camera;
+	var closest_far = this.far;
+
+	if( this.type == Light.OMNI )
+	{
+		//Math.SQRT2 because in a 45º triangle the hypotenuse is sqrt(1+1) * side
+		if( this.attenuation_type == this.RANGE_ATTENUATION  && (this.att_end * Math.SQRT2) < closest_far)
+			closest_far = this.att_end / Math.SQRT2;
+		//TODO, if no range_attenuation but linear_attenuation also check intensity to reduce the far
+	}
+	else 
+	{
+		if( this.attenuation_type == this.RANGE_ATTENUATION && this.att_end < closest_far)
+			closest_far = this.att_end;
+	}
+
+	return closest_far;
 }
 
 /**
@@ -30552,12 +30921,6 @@ Light.prototype.prepare = function( render_settings )
 
 	this.updateVectors();
 
-	if( this.cast_shadows )
-	{
-		this._shadow_shaderblock_info = Light.shadow_shaderblocks_by_name[ this.shadow_type ];
-		//this._shadow_shaderblock_info = Light.shadow_shaderblocks_by_name[ this.hard_shadows ? "hard" : "soft" ];
-	}
-
 	//PREPARE UNIFORMS
 	//if(this.type == Light.DIRECTIONAL || this.type == Light.SPOT)
 	//	uniforms.u_light_front = this._front;
@@ -30575,42 +30938,8 @@ Light.prototype.prepare = function( render_settings )
 	this._attenuation_info[2] = this.attenuation_type;
 	uniforms.u_light_offset = this.offset;
 
-	//generate shadowmaps
-	var must_update_shadowmap = (render_settings.update_shadowmaps || (!this._shadowmap && !LS.ResourcesManager.isLoading())) && render_settings.shadows_enabled && !render_settings.lights_disabled && !render_settings.low_quality;
-
-	if(must_update_shadowmap)
-	{
-		var cameras = LS.Renderer._visible_cameras;
-		var is_inside_one_camera = false;
-
-		if( !render_settings.update_all_shadowmaps && cameras && this.type == Light.OMNI && this.attenuation_type > Light.LINEAL_ATTENUATION )
-		{
-			var closest_far = this.computeShadowmapFar();
-			for(var i = 0; i < cameras.length; i++)
-			{
-				if( geo.frustumTestSphere( cameras[i]._frustum_planes, this.position, closest_far ) != CLIP_OUTSIDE )
-				{
-					is_inside_one_camera = true;
-					break;
-				}
-			}
-		}
-		else //we only check for omnis, cone frustum collision not developed yet
-			is_inside_one_camera = true;
-
-		if( is_inside_one_camera )
-		{
-			this._update_shadowmap_render_settings = render_settings;
-			//this.generateShadowmap( render_settings );
-		}
-	}
-
-	if( this._shadowmap && !this.cast_shadows )
-		this._shadowmap = null; //remove shadowmap
-
 	//prepare samplers
 	this._samplers.length = 0;
-	var use_shadows = this.cast_shadows && this._shadowmap && this._light_matrix != null && !render_settings.shadows_disabled;
 
 	//projective texture
 	if(this.projective_texture)
@@ -30649,91 +30978,22 @@ Light.prototype.prepare = function( render_settings )
 		delete uniforms["extra_light_cubemap"];
 	}
 
-	//use shadows?
-	if(use_shadows)
+	//generate shadowmaps
+	var must_update_shadowmap = (render_settings.update_shadowmaps || (!this._shadowmap && !LS.ResourcesManager.isLoading())) && render_settings.shadows_enabled && !render_settings.lights_disabled && !render_settings.low_quality;
+	if(must_update_shadowmap)
 	{
-		var closest_far = this.computeShadowmapFar();
-		if(!uniforms.u_shadow_params)
-			uniforms.u_shadow_params = vec4.create();
-		uniforms.u_shadow_params.set([ 1.0 / this._shadowmap.width, this.shadow_bias, this.near, closest_far ]);
-		//uniforms.shadowmap = this._shadowmap.bind(10); //fixed slot
-		uniforms.shadowmap = LS.Renderer.SHADOWMAP_TEXTURE_SLOT;
-		uniforms.u_light_matrix = this._light_matrix;
-		samplers[ LS.Renderer.SHADOWMAP_TEXTURE_SLOT ] = this._shadowmap;
-	}
-	else
-	{
-		delete uniforms["u_shadow_params"];
-		delete uniforms["shadowmap"];
-	}
-}
-
-/**
-* Collects and returns the shader query of the light (some macros have to be computed now because they depend not only on the light, also on the node or material)
-* @method getQuery
-* @param {RenderInstance} instance the render instance where this light will be applied
-* @param {Object} render_settings info about how the scene will be rendered
-* @return {ShaderQuery} the macros
-*/
-/*
-Light.prototype.getQuery = function(instance, render_settings)
-{
-	var query = this._query;
-
-	var use_shadows = this.cast_shadows && this._shadowmap && this._light_matrix != null && !render_settings.shadows_disabled;
-
-	if(!this.constant_diffuse && !instance.material.constant_diffuse)
-		query.macros.USE_DIFFUSE_LIGHT = "";
-	else
-		delete query.macros["USE_DIFFUSE_LIGHT"];
-
-	if(this.use_specular && instance.material.specular_factor > 0)
-		query.macros.USE_SPECULAR_LIGHT = "";	
-	else
-		delete query.macros["USE_SPECULAR_LIGHT"];
-
-	if(use_shadows && instance.material.flags.receive_shadows )
-	{
-		query.macros.USE_SHADOW_MAP = "";
-		if(this._shadowmap && this._shadowmap.texture_type == gl.TEXTURE_CUBE_MAP)
-			query.macros.USE_SHADOW_CUBEMAP = "";
-		if(this.hard_shadows)// || macros.USE_SHADOW_CUBEMAP != null)
-			query.macros.USE_HARD_SHADOWS = "";
-		if(this._shadowmap && this._shadowmap.format == gl.DEPTH_COMPONENT)
-			query.macros.USE_SHADOW_DEPTH_TEXTURE = "";
-		query.macros.SHADOWMAP_OFFSET = "";
-	}
-	else
-		delete query.macros["USE_SHADOW_MAP"];
-
-	return query;
-}
-*/
-
-/**
-* Optimization: instead of using the far plane, we take into account the attenuation to avoid rendering objects where the light will never reach
-* @method computeShadowmapFar
-* @return {number} distance
-*/
-Light.prototype.computeShadowmapFar = function()
-{
-	var closest_far = this.far;
-
-	if( this.type == Light.OMNI )
-	{
-		//Math.SQRT2 because in a 45º triangle the hypotenuse is sqrt(1+1) * side
-		if( this.attenuation_type == Light.RANGE_ATTENUATION  && (this.att_end * Math.SQRT2) < closest_far)
-			closest_far = this.att_end / Math.SQRT2;
-
-		//TODO, if no range_attenuation but linear_attenuation also check intensity to reduce the far
-	}
-	else 
-	{
-		if( this.attenuation_type == Light.RANGE_ATTENUATION && this.att_end < closest_far)
-			closest_far = this.att_end;
+		var is_inside_one_frustum = false;
+		is_inside_one_frustum = this.isInsideVisibleFrustum();
+		if( is_inside_one_frustum )
+			this._update_shadowmap_render_settings = render_settings; //mark shadowmap to be updated
 	}
 
-	return closest_far;
+	if( this._shadowmap && !this.cast_shadows )
+		this._shadowmap = null; //remove shadowmap
+
+	//prepare shadowmap
+	if( this.cast_shadows && this._shadowmap && this._light_matrix != null && !render_settings.shadows_disabled ) //render_settings.update_all_shadowmaps
+		this._shadowmap.prepare( uniforms, this._samplers );
 }
 
 /**
@@ -30769,82 +31029,17 @@ Light.prototype.computeLightRadius = function()
 * @method generateShadowmap
 * @return {Object} render_settings
 */
-Light.prototype.generateShadowmap = function (render_settings)
+Light.prototype.generateShadowmap = function ( render_settings, precompute_static )
 {
 	if(!this.cast_shadows)
 		return;
 
-	var light_intensity = this.computeLightIntensity();
-	if( light_intensity < 0.0001 )
-		return;
-
-	//create the texture
-	var shadowmap_resolution = this.shadowmap_resolution;
-	if(shadowmap_resolution == 0)
-		shadowmap_resolution = render_settings.default_shadowmap_resolution;
-
-	var tmp_layer = render_settings.layers;
-	render_settings.layers = this.shadows_layers;
-
-	var tex_type = this.type == Light.OMNI ? gl.TEXTURE_CUBE_MAP : gl.TEXTURE_2D;
-	if(this._shadowmap == null || this._shadowmap.width != shadowmap_resolution || this._shadowmap.texture_type != tex_type )
-	{
-		var type = gl.UNSIGNED_BYTE;
-		var format = gl.RGBA;
-
-		//not all webgl implementations support depth textures
-		if( LS.Light.use_shadowmap_depth_texture && gl.extensions.WEBGL_depth_texture && this.type != LS.Light.OMNI )
-		{
-			format = gl.DEPTH_COMPONENT;
-			type = gl.UNSIGNED_INT;
-		}
-		//create texture to store the shadowmap
-		this._shadowmap = new GL.Texture( shadowmap_resolution, shadowmap_resolution, { type: type, texture_type: tex_type, format: format, magFilter: gl.NEAREST, minFilter: gl.NEAREST });
-		LS.ResourcesManager.textures[":shadowmap_" + this.uid ] = this._shadowmap; //debug
-		if( this._shadowmap.texture_type == gl.TEXTURE_2D )
-		{
-			if(format == gl.RGBA)
-				this._fbo = new GL.FBO( [this._shadowmap] );
-			else
-				this._fbo = new GL.FBO( null, this._shadowmap );
-		}
-	}
-
-	LS.Renderer.setRenderPass( SHADOW_PASS );
-	LS.Renderer._current_light = this;
-
-	//render the scene inside the texture
-	if(this.type == Light.OMNI) //render to cubemap
-	{
-		var closest_far = this.computeShadowmapFar();
-		this._shadowmap.unbind(); 
-		LS.Renderer.renderToCubemap( this.getPosition(), shadowmap_resolution, this._shadowmap, render_settings, this.near, closest_far );
-	}
-	else //DIRECTIONAL and SPOTLIGHT
-	{
-		var shadow_camera = this.getLightCamera();
-		LS.Renderer.enableCamera( shadow_camera, render_settings, true );
-
-		// Render the object viewed from the light using a shader that returns the
-		// fragment depth.
-		this._shadowmap.unbind(); 
-		LS.Renderer._current_target = this._shadowmap;
-		this._fbo.bind();
-
-		gl.clearColor(0, 0, 0, 0);
-		//gl.clearColor(1, 1, 1, 1);
-		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-		//RENDER INSTANCES in the shadowmap
-		LS.Renderer.renderInstances( render_settings );
-
-		this._fbo.unbind();
-		LS.Renderer._current_target = null;
-	}
-
-	render_settings.layers = tmp_layer;
-	LS.Renderer.setRenderPass( COLOR_PASS );
-	LS.Renderer._current_light = null;
+	if(!this._shadowmap)
+		this._shadowmap = new Shadowmap( this );
+	this._shadowmap.bias = this.shadow_bias;
+	this._shadowmap.resolution = this.shadowmap_resolution;
+	this._shadowmap.layers = this.shadows_layers;
+	this._shadowmap.generate( null, render_settings, precompute_static );
 }
 
 /**
@@ -30912,6 +31107,7 @@ Light.prototype.applyTransformMatrix = function( matrix, center, property_name )
 	return true;
 }
 
+//for when rendering to color
 Light.prototype.applyShaderBlockFlags = function( flags, pass, render_settings )
 {
 	if(!this.enabled)
@@ -30924,36 +31120,35 @@ Light.prototype.applyShaderBlockFlags = function( flags, pass, render_settings )
 	if(this.attenuation_type)
 		flags |= Light.attenuation_block.flag_mask;
 
-	//texture
+	//projective texture
 	if(this.projective_texture)
 		flags |= Light.light_texture_block.flag_mask;
 
-	//disabled now
-	if( this.cast_shadows && render_settings.shadows_enabled )
-	{
-		if(this.type == Light.OMNI)
-		{
-			//flags |= Light.shadowmapping_cube_shader_block.flag_mask;
-		}
-		else
-		{
-			//take into account if using depth texture or color texture
-			var shadow_block = this._shadow_shaderblock_info ? this._shadow_shaderblock_info.shaderblock : null;
-			if(shadow_block)
-				flags |= shadow_block.flag_mask;
-		}
+	if( this.cast_shadows && render_settings.shadows_enabled && this._shadowmap )
+		flags |= this._shadowmap.getReadShaderBlock();
 
-		if(this._shadowmap && this._shadowmap.format == gl.RGBA )
-			flags |= LS.Light.shadowmapping_depth_in_color_block.flag_mask;
-	}
 	return flags;
 }
 
-Light.registerShadowType = function( name, shaderblock )
+//tells you if this light is inside any active camera
+Light.prototype.isInsideVisibleFrustum = function()
 {
-	var info = { id: this.shadow_shaderblocks.length, name: name, shaderblock: shaderblock };
-	this.shadow_shaderblocks.push( info );
-	this.shadow_shaderblocks_by_name[ name ] = info;
+	if( this.type != Light.OMNI ) //TODO: detect cone inside frustum
+		return true;
+
+	var cameras = LS.Renderer._visible_cameras;
+	if(!cameras)
+		return true;
+
+	//test sphere inside frustum
+	var closest_far = this.computeFar();
+	var pos = this.position;
+	for(var i = 0; i < cameras.length; i++)
+	{
+		if( geo.frustumTestSphere( cameras[i]._frustum_planes, pos, closest_far ) != CLIP_OUTSIDE )
+			return true;
+	}
+	return false;
 }
 
 LS.registerComponent( Light );
@@ -46481,7 +46676,7 @@ Object.defineProperty( SceneNode.prototype, 'is_static', {
 	set: function(v)
 	{
 		this.flags.is_static = v;
-		if( this._children )
+		if( v && this._children )
 		for(var i = 0; i < this._children.length; ++i )
 			this._children[i].is_static = v;
 	},
@@ -47803,7 +47998,7 @@ Light._enabled_fs_shaderblock_code = "\n\
 	#pragma shaderblock \"lastPass\"\n\
 	#pragma shaderblock \"applyIrradiance\"\n\
 	#pragma shaderblock \"attenuation\"\n\
-	#pragma shaderblock SHADOWBLOCK \"testShadow\"\n\
+	#pragma shaderblock \"testShadow\"\n\
 	\n\
 	//Light is separated in two functions, computeLight (how much light receives the object) and applyLight (compute resulting final color)\n\
 	// FINAL LIGHT EQUATION, takes all the info from FinalLight and computes the final color \n\
@@ -47979,7 +48174,7 @@ var light_texture_block = Light.light_texture_block = new LS.ShaderBlock("light_
 light_texture_block.addCode( GL.FRAGMENT_SHADER, Light._light_texture_fragment_enabled_code, Light._light_texture_fragment_disabled_code );
 light_texture_block.register();
 
-
+/*
 // OMNI LIGHT SHADOWMAP *****************************************
 Light._shadowmap_cubemap_code = "\n\
 	#define SHADOWMAP_ACTIVE\n\
@@ -48120,7 +48315,7 @@ shadowmapping_2D_soft_block.addCode( GL.FRAGMENT_SHADER, Light._shadowmap_2d_ena
 shadowmapping_2D_soft_block.register();
 Light.shadowmapping_2D_soft_block = shadowmapping_2D_soft_block;
 //Light.registerShadowType( "soft", shadowmappingsoft_block );
-
+*/
 
 // ENVIRONMENT *************************************
 var environment_code = "\n\

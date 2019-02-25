@@ -1,4 +1,5 @@
 //Represents the tree view of the Scene Tree, and controls basic events like dragging or double clicking
+//this one is rendered using a canvas instead of HTML, it is way faster
 function SceneTreeWidget( options )
 {
 	options = options || {};
@@ -26,11 +27,16 @@ function SceneTreeWidget( options )
 
 	var root_uid = scene.root.uid;
 
+	this.font = "14px Tahoma";
 	this.line_height = 20;
+	this.indent = 20;
+	this.num_items = 1;
 	this.scroll_items = 0;
 	this.scroll_x = 0;
 	this.mouse = [-1,-1];
 	this.prev_selected = new Set();
+	this.dragging_scroll = false;
+	this.locked = false;
 
 	this.canvas = document.createElement("canvas");
 	this.canvas.width = 100;
@@ -81,22 +87,20 @@ SceneTreeWidget.prototype.onDraw = function()
 	ctx.fillStyle = "#111";
 	ctx.fillRect(10,10,canvas.width - 20, canvas.height - 20 );
 
-	ctx.font = "14px Tahoma";
+	ctx.font = this.font || "14px Tahoma";
 
-	var indent = 20;
-	var x = 30;
-	var y = 20;
+	var indent = this.indent;
 	var line_height = this.line_height;
 	var scene = LS.GlobalScene;
 	var that = this;
 
-	this.visible_nodes.length = 0;
-	var scroll = this.scroll_items;
 	var scroll_x = this.scroll_x;
 	var mouse = this.mouse;
 	var num_items = 0;
 	var filter = this.filter_str.length;
 	var prev_selected = this.prev_selected;
+	var visible_nodes = this.visible_nodes;
+	visible_nodes.length = 0;
 
 	var selected_node = SelectionModule.getSelectedNode();
 	this.prev_selected.clear();
@@ -108,84 +112,151 @@ SceneTreeWidget.prototype.onDraw = function()
 	}
 
 	//first step, collect nodes
-	inner( scene.root, 0 );
+	var scroll = this.scroll_items;
+	var max_items = Math.ceil((canvas.height - 20) / line_height);
+	var last_item = max_items + scroll;
+	inner_fetch( scene.root, 0, -1 );
+	this.num_items = num_items;
 
 	this.scroll_items = Math.clamp( this.scroll_items, 0, num_items - 2);
+	if(this.scroll_items < 0)
+		this.scroll_items = 0;
 
-	function inner(node, level)
+	//then render
+	var x = 30;
+	var y = 20;
+	for(var i = 0, l = visible_nodes.length; i < l; ++i )
 	{
-		var nodes = node._children;
-		var has_children = nodes && nodes.length;
+		var info = visible_nodes[i];
+		var node = info[0];
+		var level = info[2];
+		var child_nodes = node._children;
+		var has_children = child_nodes && child_nodes.length;
 		var start_x = x + level * indent + scroll_x;
 		var start_y = y;
 		var is_selected = SelectionModule.isSelected( node );
 		var is_collapsed = node && node._editor ? node._editor.collapsed : false;
 		var is_inside_prefab = node.insidePrefab();
-		var is_over = mouse[1] > start_y - 10 && mouse[1] < start_y + 10;
+		var is_over = mouse[1] > start_y && mouse[1] < start_y + line_height;
+		var is_under = is_over && mouse[1] >= start_y + line_height - 4;
 		var is_visible = !filter ? true : that.testFilteringRule( node );
 		var is_dragged = node == that.dragging_node;
 		var is_prev_selected = prev_selected.has(node);
 		var is_highlight = that.dragging_node && is_over && !is_dragged;
-		num_items++;
+
+		if(is_dragged)
+		{
+			ctx.fillStyle = "#335";
+			ctx.fillRect( start_x - 4, y, canvas.width, line_height );
+		}
+		else if(that.dragging_node && is_over)
+		{
+			ctx.fillStyle = "#542";
+			if(is_under)
+				ctx.fillRect( start_x - 4, y + line_height - 4, canvas.width, 4 );
+			else
+				ctx.fillRect( start_x - 4, y, canvas.width, line_height );
+		}
+		else if( i % 2 == 0 )
+		{
+			ctx.fillStyle = "#000";
+			ctx.fillRect( 0, y, canvas.width, line_height );
+		}
+
+		ctx.fillStyle = (is_highlight || is_selected) ? "#FFF" : ( is_over ? "#CCC" : ( is_prev_selected ? "#99B" : "#999" ) );
+		ctx.fillText( node.name, start_x + 20, y + line_height * 0.7 );
+
+		if(is_selected)
+			ctx.fillStyle = "#FFF";
+		else if(is_highlight)
+			ctx.fillStyle = "#FFF";
+		else
+			ctx.fillStyle = is_inside_prefab ? "#A63" : "#36A";
+		var center_y = Math.floor(y + line_height * 0.5) + 0.5;
+		if(node._is_root)
+		{
+			ctx.fillStyle = "#7C7";
+			ctx.fillRect( start_x,center_y - 4,8,8 );
+		}
+		else if( !has_children )
+		{
+			ctx.fillRect( start_x, center_y - 3,6,6 );
+		}
+		else if( !is_collapsed ) //V
+		{
+			ctx.beginPath();
+			ctx.moveTo( start_x - 2.5, center_y - 6);
+			ctx.lineTo( start_x + 3.5, center_y + 6);
+			ctx.lineTo( start_x + 9.8, center_y - 6);
+			ctx.fill();
+		}
+		else //is_collapsed >
+		{
+			ctx.beginPath();
+			ctx.moveTo( start_x - 2.5, center_y - 6);
+			ctx.lineTo( start_x + 9.5, center_y );
+			ctx.lineTo( start_x - 2.5, center_y + 6 );
+			ctx.fill();
+		}
+
+		y += line_height;
+	}
+
+	//render lines
+	/*
+	var x = 30;
+	var y = Math.floor(20 - line_height * 0.25) + 0.5;
+	ctx.strokeStyle = "white";
+	ctx.beginPath();
+	for(var i = 0, l = visible_nodes.length; i < l; ++i )
+	{
+		var info = visible_nodes[i];
+		var node = info[0];
+		var level = info[2];
+		var child_nodes = node._children;
+		var has_children = child_nodes && child_nodes.length;
+		var start_x = x + level * indent + scroll_x;
+		ctx.moveTo(start_x - indent, y );
+		ctx.lineTo(start_x, y );
+		if (info[3] == -1)
+			ctx.lineTo(start_x, canvas.height );
+		//else if (info[3] != 0)
+		//	ctx.lineTo(start_x, y + info[2] * line_height );
+		if (info[4] == -1)
+		{
+			ctx.moveTo(start_x, 0 );
+			ctx.lineTo(start_x, y );
+		}
+
+		y += line_height;
+	}
+	ctx.stroke();
+	*/
+
+	//render scroll
+	if( this.scroll_items || num_items * line_height > canvas.height )
+	{
+		ctx.fillStyle = "#999";
+		ctx.fillRect( canvas.width - 10, (this.scroll_items / num_items) * canvas.height, 10, (max_items / num_items) * canvas.height);
+	}
+
+	function inner_fetch( node, level, parent_index )
+	{
+		var child_nodes = node._children;
+		var has_children = child_nodes && child_nodes.length;
+		var is_collapsed = node && node._editor ? node._editor.collapsed : false;
+		var is_visible = !filter ? true : that.testFilteringRule( node );
+		var item_num = num_items;
+		++num_items;
+
+		var visible_info = null;
 
 		if( scroll <= 0 && is_visible )
 		{
-			that.visible_nodes.push( [ node, start_x ] );
-
-			if(is_dragged)
-			{
-				ctx.fillStyle = "#335";
-				ctx.fillRect( start_x - 4, y - 14, canvas.width, line_height );
-			}
-			else if(that.dragging_node && is_over)
-			{
-				ctx.fillStyle = "#553";
-				ctx.fillRect( start_x - 4, y - 14, canvas.width, line_height );
-			}
-			else if( num_items % 2 == 0 )
-			{
-				ctx.fillStyle = "#000";
-				ctx.fillRect( 0, y - 14, canvas.width, line_height );
-			}
-
-			ctx.fillStyle = (is_highlight || is_selected) ? "#FFF" : ( is_over ? "#CCC" : ( is_prev_selected ? "#99B" : "#999" ) );
-			ctx.fillText( node.name, start_x + 20, y );
-
-			if(is_selected)
-				ctx.fillStyle = "#FFF";
-			else if(is_highlight)
-				ctx.fillStyle = "#FFF";
-			else
-				ctx.fillStyle = is_inside_prefab ? "#A63" : "#36A";
-			if(node._is_root)
-			{
-				ctx.fillStyle = "#7C7";
-				ctx.fillRect( start_x,y - 10,8,8 );
-			}
-			else if( !has_children )
-			{
-				ctx.fillRect( start_x,y - 8,6,6 );
-			}
-			else if( !is_collapsed ) //V
-			{
-				ctx.beginPath();
-				ctx.moveTo( start_x - 2.5, y - 10);
-				ctx.lineTo( start_x + 3.5, y + 2);
-				ctx.lineTo( start_x + 9.8, y - 10 );
-				ctx.fill();
-			}
-			else //is_collapsed >
-			{
-				ctx.beginPath();
-				ctx.moveTo( start_x - 2.5, y - 10);
-				ctx.lineTo( start_x + 9.5, y - 4 );
-				ctx.lineTo( start_x - 2.5, y + 2);
-				ctx.fill();
-			}
-
-			y += line_height;
-			if(y > canvas.height + 10)
-				return;
+			visible_info = [ node, item_num, level, 0, parent_index ]; //[ node, index, depth_level, last_child_lines, parent_index ]
+			visible_nodes.push( visible_info );
+			//if(num_items >= last_item)
+			//	return visible_info;
 		}
 		else
 			scroll--;
@@ -193,43 +264,30 @@ SceneTreeWidget.prototype.onDraw = function()
 		if( (!has_children || is_collapsed) && !node._is_root )
 			return;
 
-		var child_ys = [];
 		var child_outside = false;
-
-		if(nodes)
-		for(var i = 0; i < nodes.length; ++i)
-		{
-			var child_node = nodes[i];
-			child_ys.push(y);
-			inner( child_node, level + 1 );
-			if(y > canvas.height + 10)
+		if(child_nodes)
+			for(var i = 0; i < child_nodes.length; ++i)
 			{
-				child_outside = true;
-				break;
+				var child_node = child_nodes[i];
+				var child_visible_info = inner_fetch( child_node, level + 1, item_num );
+				/*
+				if(child_visible_info && visible_info)
+				{
+					visible_info[3] = item_num - child_visible_info[1] - 1;
+					child_visible_info[4] = item_num;
+				}
+				*/
+				if(num_items >= last_item)
+				{
+					if( i < child_nodes.length - 1)
+						child_outside = true;
+					//break;
+				}
 			}
-		}
 
-		ctx.strokeStyle = "#666";
-		ctx.beginPath();
-		ctx.moveTo( start_x + 2.5, start_y + 8);
-		var last_y = start_y + 4.5;
-		for(var i = 0; i < child_ys.length; ++i)
-		{
-			if(child_ys[i] == 20)
-				continue;
-
-			ctx.lineTo( start_x + 2.5, last_y );
-			last_y = child_ys[i] - 4.5;
-			ctx.lineTo( start_x + 2.5, last_y );
-			ctx.lineTo( start_x + 12.5, last_y );
-		}
-
-		if(child_outside && 0)
-		{
-			ctx.moveTo( start_x + 2.5, start_y - 4.5 );
-			ctx.lineTo( start_x + 2.5, canvas.height );
-		}
-		ctx.stroke();
+		if(child_outside && visible_info)
+			visible_info[3] = -1;
+		return visible_info;
 	}
 }
 
@@ -241,34 +299,48 @@ SceneTreeWidget.prototype.processMouse = function(e)
 	var line_height = this.line_height;
 	this.mouse[0] = x;
 	this.mouse[1] = y;
+	var margin_y = 20;
 	var block = true;
 	var now = getTime();
 
 	if(e.type == "mousedown")
 	{
-		var info = this.visible_nodes[ Math.floor((y - 10) / line_height) ];
+		var info = this.visible_nodes[ Math.floor((y - margin_y) / line_height) ];
 		var node = info ? info[0] : null;
 
 		if(e.button == 0) //left
 		{
-			if( node )
+			this.dragging_scroll = false;
+
+			if( x >= this.canvas.height - 10 )
 			{
-				this.last_click_time = now;
-				if( x > info[1] + 10 )
-				{
-					this.dragging_node = node;
-					this.clicked_node = node;
-				}
-				else if( x > info[1] - 10 )
-				{
-					if(!node._editor)
-						node._editor = {};
-					node._editor.collapsed = !node._editor.collapsed;
-				}
-				block = false;
+				this.dragging_scroll = true;
+				var f = Math.clamp( y / this.canvas.height,0,1);
+				this.drag_scroll_start = y;
 			}
 			else
-				this.clicked_node = null;
+			{
+				if( node )
+				{
+					this.last_click_time = now;
+					var level = info[2];
+					var start_x = 30 + level * this.indent + this.scroll_x;
+					if( x > start_x + 10 )
+					{
+						this.dragging_node = node;
+						this.clicked_node = node;
+					}
+					else if( x > start_x - margin_y )
+					{
+						if(!node._editor)
+							node._editor = {};
+						node._editor.collapsed = !node._editor.collapsed;
+					}
+					block = false;
+				}
+				else
+					this.clicked_node = null;
+			}
 		}
 		else if(e.button == 2) //right
 		{
@@ -280,8 +352,22 @@ SceneTreeWidget.prototype.processMouse = function(e)
 	}
 	else if(e.type == "mousemove")
 	{
+		if( this.dragging_scroll )
+		{
+			var scroll_y = y - this.drag_scroll_start;
+			var f = Math.clamp( scroll_y / this.canvas.height,0,1);
+			this.scroll_items = Math.floor( f * this.num_items );
+		}
+		else if( this.dragging_node )
+		{
+			if( y < 30 )
+				this.scroll_items--;
+			else if( y > this.canvas.height - 30 )
+				this.scroll_items++;
+		}
+
 		this.onDraw();
-		var info = this.visible_nodes[ Math.floor((y - 10) / line_height) ];
+		var info = this.visible_nodes[ Math.floor((y - margin_y) / line_height) ];
 		if(info)
 			this.canvas.style.cursor = "pointer";
 		else
@@ -291,23 +377,38 @@ SceneTreeWidget.prototype.processMouse = function(e)
 	{
 		if(e.button == 0) //left
 		{
-			e.click_time = now - this.last_click_time;
-			if( e.click_time < 200 )
+			if( this.dragging_scroll )
 			{
-				SelectionModule.setSelection( this.clicked_node );
+				this.dragging_scroll = false;
 			}
-			else //dragging
+			else
 			{
-				var info = this.visible_nodes[ Math.floor((y - 10) / line_height) ];
-				var node = info ? info[0] : null;
-				if(node) //parenting
+				e.click_time = now - this.last_click_time;
+				if( e.click_time < 200 )
 				{
-					node.addChild( this.clicked_node );
-					this.onDraw();
+					SelectionModule.setSelection( this.clicked_node );
 				}
-			
+				else if( this.dragging_node ) //dragging
+				{
+					var index = Math.floor((y - margin_y) / line_height);
+					var local_y = (y - margin_y) % line_height;
+					var info = this.visible_nodes[ index ];
+					var node = info ? info[0] : null;
+					if(node && node != this.clicked_node) //parenting
+					{
+						if( local_y > line_height - 4 && node.parentNode)
+						{
+							var node_index = node.parentNode._children.indexOf( node );
+							node.parentNode.addChild( this.clicked_node, node_index + 1 );
+						}
+						else
+							node.addChild( this.clicked_node );
+						this.onDraw();
+					}
+				
+				}
+				this.dragging_node = null;
 			}
-			this.dragging_node = null;
 			this.onDraw();
 		}
 	}
@@ -451,8 +552,14 @@ SceneTreeWidget.prototype.bindEvents = function( scene )
 	this._scene = scene;
 
 	//Events from the scene
-	LEvent.bind( scene, "preConfigure", this.refresh, this);
-	LEvent.bind( scene, "configure", this.refresh, this);
+	LEvent.bind( scene, "preConfigure", function(e,node) {
+		that.locked = true;
+	}, this);
+
+	LEvent.bind( scene, "configure", function(e,node) {
+		that.locked = false;
+		that.refresh();
+	}, this);
 
 	//Triggered when a new node is attached to the scene tree
 	LEvent.bind( scene, "nodeAdded", this.refresh, this);
@@ -513,7 +620,8 @@ SceneTreeWidget.prototype.showContextMenu = function(e){
 
 SceneTreeWidget.prototype.refresh = function()
 {
-	this.onDraw();
+	if(!this.locked)
+		this.onDraw();
 }
 
 SceneTreeWidget.prototype.serialize = function()
@@ -528,13 +636,7 @@ SceneTreeWidget.prototype.serialize = function()
 	for(var i = 0; i < nodes.length; ++i)
 	{
 		var node = nodes[i];
-		var element = this.tree.root.querySelector(".ltreeitem-" + this.getIdString( node.uid ));
-		if(!element)
-			continue;
-		var listbox = element.querySelector(".listbox");
-		if(!listbox)
-			continue;
-		if(listbox.classList.contains("listclosed"))
+		if(node && node._editor && node._editor.collapsed)
 			r.collapsed[ node.uid ] = true;
 	}
 	return r;
@@ -546,15 +648,10 @@ SceneTreeWidget.prototype.configure = function(o)
 	for(var i = 0; i < nodes.length; ++i)
 	{
 		var node = nodes[i];
-		var element = this.tree.root.querySelector(".ltreeitem-" + this.getIdString( node.uid ));
-		if(!element)
-			continue;
-		var listbox = element.querySelector(".listbox");
-		if(!listbox)
-			continue;
-		if(!o.collapsed[ node.uid ])
-			continue;
-		listbox.collapse();
+		if(!node._editor)
+			node._editor = {};
+		if(o.collapsed[ node.uid ])
+			node._editor.collapsed = true;
 	}
 }
 

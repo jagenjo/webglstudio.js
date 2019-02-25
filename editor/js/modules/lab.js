@@ -279,7 +279,7 @@ var LabModule = {
 			var filename = item.filename || "";
 
 			//is a thumbnail texture
-			if(filename.substr(0,4) == "_th_")
+			if(filename.substr(0,4) == "_th_" || item.is_preview )
 				continue;
 
 			num++;

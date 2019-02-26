@@ -2210,6 +2210,13 @@ LS.IDENTITY = mat4.create();
 LS.WHITE = LS.ONES;
 LS.BLACK = LS.ZEROS;
 
+LS.POSX = 1;
+LS.POSY = 2;
+LS.POSZ = 3;
+LS.NEGX = 4;
+LS.NEGY = 5;
+LS.NEGZ = 6;
+
 //types
 LS.TYPES = {
 	BOOLEAN: "boolean",
@@ -27996,6 +28003,53 @@ Transform.prototype.orientTo = (function() {
 		mat3.setColumn( temp, right, 0 );
 		mat3.setColumn( temp, top, 1 );
 		mat3.setColumn( temp, pos, 2 );
+		quat.fromMat3( this._rotation, temp );
+		this._must_update = true;
+	}
+})();
+
+/**
+* Orients the transform so the axis points in that direction
+* @method orientAxis
+* @param {vec3} vector the vector to use as axis
+* @param {number} axis a enum that could be LS.POSX, LS.POSY, LS.POSZ, LS.NEGX, LS.NEGY, LS.NEGZ
+*/
+Transform.prototype.orientAxis = (function() { 
+	//avoid garbage
+	var GM = mat4.create();
+	var temp = mat3.create();
+	//function
+	return function( vector, axis )
+	{
+		switch(axis)
+		{
+			case LS.POSX: 
+				mat3.setColumn( temp, vector, 0 ); //x
+				mat3.setColumn( temp, LS.TOP, 1 ); //y
+				mat3.setColumn( temp, LS.FRONT, 2 ); //z
+			case LS.POSY:
+				mat3.setColumn( temp, LS.RIGHT, 0 ); //x
+				mat3.setColumn( temp, vector, 1 ); //y
+				mat3.setColumn( temp, LS.FRONT, 2 ); //z
+			case LS.POSZ:
+				mat3.setColumn( temp, LS.RIGHT, 0 ); //x
+				mat3.setColumn( temp, LS.TOP, 1 ); //y
+				mat3.setColumn( temp, vector, 2 ); //z
+			case LS.NEGX: 
+				mat3.setColumn( temp, vector, 0 ); //x
+				mat3.setColumn( temp, LS.BOTTOM, 1 ); //y
+				mat3.setColumn( temp, LS.BACK, 2 ); //z
+			case LS.NEGY:
+				mat3.setColumn( temp, LS.LEFT, 0 ); //x
+				mat3.setColumn( temp, vector, 1 ); //y
+				mat3.setColumn( temp, LS.BACK, 2 ); //z
+			case LS.NEGZ:
+				mat3.setColumn( temp, LS.LEFT, 0 ); //x
+				mat3.setColumn( temp, LS.BOTTOM, 1 ); //y
+				mat3.setColumn( temp, vector, 2 ); //z
+			default:
+				return;
+		}
 		quat.fromMat3( this._rotation, temp );
 		this._must_update = true;
 	}

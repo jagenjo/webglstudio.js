@@ -28027,26 +28027,32 @@ Transform.prototype.orientAxis = (function() {
 				mat3.setColumn( temp, vector, 0 ); //x
 				mat3.setColumn( temp, LS.TOP, 1 ); //y
 				mat3.setColumn( temp, LS.FRONT, 2 ); //z
+				break;
 			case LS.POSY:
 				mat3.setColumn( temp, LS.RIGHT, 0 ); //x
 				mat3.setColumn( temp, vector, 1 ); //y
 				mat3.setColumn( temp, LS.FRONT, 2 ); //z
+				break;
 			case LS.POSZ:
 				mat3.setColumn( temp, LS.RIGHT, 0 ); //x
 				mat3.setColumn( temp, LS.TOP, 1 ); //y
 				mat3.setColumn( temp, vector, 2 ); //z
+				break;
 			case LS.NEGX: 
 				mat3.setColumn( temp, vector, 0 ); //x
 				mat3.setColumn( temp, LS.BOTTOM, 1 ); //y
 				mat3.setColumn( temp, LS.BACK, 2 ); //z
+				break;
 			case LS.NEGY:
 				mat3.setColumn( temp, LS.LEFT, 0 ); //x
 				mat3.setColumn( temp, vector, 1 ); //y
 				mat3.setColumn( temp, LS.BACK, 2 ); //z
+				break;
 			case LS.NEGZ:
 				mat3.setColumn( temp, LS.LEFT, 0 ); //x
 				mat3.setColumn( temp, LS.BOTTOM, 1 ); //y
 				mat3.setColumn( temp, vector, 2 ); //z
+				break;
 			default:
 				return;
 		}

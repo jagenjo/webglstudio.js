@@ -2032,6 +2032,29 @@ quat.fromMat3 = function( q, m, max_iter )
 }
 */
 
+//http://number-none.com/product/IK%20with%20Quaternion%20Joint%20Limits/
+quat.rotateToFrom = (function(){ 
+	var tmp = vec3.create();
+	return function(out, v1, v2)
+	{
+		out = out || quat.create();
+		var axis = vec3.cross(tmp, v1, v2);
+		var dot = vec3.dot(v1, v2);
+		if( dot < -1 + 0.01){
+			out[0] = 0;
+			out[1] = 1; 
+			out[2] = 0; 
+			out[3] = 0; 
+			return out;
+		}
+		out[0] = axis[0] * 0.5;
+		out[1] = axis[1] * 0.5; 
+		out[2] = axis[2] * 0.5; 
+		out[3] = (1 + dot) * 0.5; 
+		quat.normalize(out, out); 
+		return out;    
+	}
+})();
 
 quat.lookAt = (function(){ 
 	var axis = vec3.create();

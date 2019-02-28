@@ -30,6 +30,7 @@ function SceneTreeWidget( options )
 	this.font = "14px Tahoma";
 	this.line_height = 20;
 	this.indent = 20;
+	this.scroll_distance = 2; //num items scrolled per wheel spin
 	this.num_items = 1;
 	this.scroll_items = 0;
 	this.scroll_x = 0;
@@ -37,6 +38,7 @@ function SceneTreeWidget( options )
 	this.prev_selected = new Set();
 	this.dragging_scroll = false;
 	this.locked = false;
+	this.max_visible_items = 1;
 
 	this.canvas = document.createElement("canvas");
 	this.canvas.width = 100;
@@ -51,7 +53,7 @@ function SceneTreeWidget( options )
 	this.canvas.addEventListener("mousedown", this._mouse_callback, true ); //down do not need to store the binded
 	this.canvas.addEventListener("mousemove", this._mouse_callback );
 	this.canvas.addEventListener("mouseup", this._mouse_callback, true ); //down do not need to store the binded
-	this.canvas.addEventListener("mousewheel", this._mouse_callback, false);
+	//this.canvas.addEventListener("mousewheel", this._mouse_callback, false);
 	this.canvas.addEventListener("mouseleave", this._mouse_callback, false);
 	this.canvas.addEventListener("dragstart", this._drag_callback, false);
 	this.canvas.addEventListener("mousewheel", this._mouse_wheel_callback, false );
@@ -113,7 +115,7 @@ SceneTreeWidget.prototype.onDraw = function()
 
 	//first step, collect nodes
 	var scroll = this.scroll_items;
-	var max_items = Math.ceil((canvas.height - 20) / line_height);
+	var max_items = this.max_visible_items = Math.ceil((canvas.height - 20) / line_height);
 	var last_item = max_items + scroll;
 	inner_fetch( scene.root, 0, -1 );
 	this.num_items = num_items;
@@ -125,7 +127,7 @@ SceneTreeWidget.prototype.onDraw = function()
 	//then render
 	var x = 30;
 	var y = 20;
-	for(var i = 0, l = visible_nodes.length; i < l; ++i )
+	for(var i = this.scroll_items, l = visible_nodes.length; i < l; ++i )
 	{
 		var info = visible_nodes[i];
 		var node = info[0];
@@ -240,6 +242,7 @@ SceneTreeWidget.prototype.onDraw = function()
 		ctx.fillRect( canvas.width - 10, (this.scroll_items / num_items) * canvas.height, 10, (max_items / num_items) * canvas.height);
 	}
 
+	//fetch all nodes
 	function inner_fetch( node, level, parent_index )
 	{
 		var child_nodes = node._children;
@@ -251,7 +254,7 @@ SceneTreeWidget.prototype.onDraw = function()
 
 		var visible_info = null;
 
-		if( scroll <= 0 && is_visible )
+		if( is_visible ) //scroll <= 0 && 
 		{
 			visible_info = [ node, item_num, level, 0, parent_index ]; //[ node, index, depth_level, last_child_lines, parent_index ]
 			visible_nodes.push( visible_info );
@@ -291,21 +294,29 @@ SceneTreeWidget.prototype.onDraw = function()
 	}
 }
 
+SceneTreeWidget.prototype.getItemAtPos = function(y)
+{
+	var margin_y = 20;
+	var line_height = this.line_height;
+	var row = Math.floor((y - margin_y) / line_height);
+	return this.visible_nodes[ row  + this.scroll_items ];
+}
+
 SceneTreeWidget.prototype.processMouse = function(e)
 {
 	var b = this.canvas.getBoundingClientRect();
 	var x = e.pageX - b.left;
 	var y = e.pageY - b.top;
+	var margin_y = 20;
 	var line_height = this.line_height;
 	this.mouse[0] = x;
 	this.mouse[1] = y;
-	var margin_y = 20;
 	var block = true;
 	var now = getTime();
 
 	if(e.type == "mousedown")
 	{
-		var info = this.visible_nodes[ Math.floor((y - margin_y) / line_height) ];
+		var info = this.getItemAtPos(y);
 		var node = info ? info[0] : null;
 
 		if(e.button == 0) //left
@@ -330,8 +341,9 @@ SceneTreeWidget.prototype.processMouse = function(e)
 						this.dragging_node = node;
 						this.clicked_node = node;
 					}
-					else if( x > start_x - margin_y )
+					else if( x > start_x - margin_y ) //collapse
 					{
+						this.last_click_time = 0; //avoid mouseup
 						if(!node._editor)
 							node._editor = {};
 						node._editor.collapsed = !node._editor.collapsed;
@@ -387,6 +399,7 @@ SceneTreeWidget.prototype.processMouse = function(e)
 				if( e.click_time < 200 )
 				{
 					SelectionModule.setSelection( this.clicked_node );
+					EditorModule.inspect( this.clicked_node );
 				}
 				else if( this.dragging_node ) //dragging
 				{
@@ -411,10 +424,6 @@ SceneTreeWidget.prototype.processMouse = function(e)
 			}
 			this.onDraw();
 		}
-	}
-	else if(e.type == "mousewheel")
-	{
-		
 	}
 	else if(e.type == "mouseleave")
 	{
@@ -476,9 +485,8 @@ SceneTreeWidget.prototype.processMouseWheel = function(e)
 	e.mousex = e.pageX - b.left;
 	e.mousey = e.pageY - b.top;
 
-
 	if(e.deltaY)
-		this.scroll_items += e.deltaY > 0 ? 1 : -1;
+		this.scroll_items += e.deltaY > 0 ? this.scroll_distance : -this.scroll_distance;
 	if(this.scroll_items < 0 )
 		this.scroll_items = 0;
 
@@ -572,6 +580,8 @@ SceneTreeWidget.prototype.bindEvents = function( scene )
 
 	//Triggered when the user selects a node in the scene
 	LEvent.bind( scene, "selected_node_changed", function(e,node){
+		if(!node)
+			return;
 		this.scrollTo( node );
 		this.refresh();
 	}, this);
@@ -657,7 +667,24 @@ SceneTreeWidget.prototype.configure = function(o)
 
 SceneTreeWidget.prototype.scrollTo = function( node )
 {
-	//TODO
+	//find node in list
+	var visible_nodes = this.visible_nodes;
+	var ancestors = node.getAncestors(true);
+
+	for(var j = 0; j < ancestors.length; ++j)
+	{
+		var aux = ancestors[j];
+		for(var i = 0; i < visible_nodes.length; ++i)
+		{
+			if( visible_nodes[i][0] != aux )
+				continue;
+			if( i > this.scroll_items && i - this.scroll_items < this.max_visible_items )
+				return;
+			this.scroll_items = Math.max(0,i - 4);
+			return;
+		}
+	}
+	return;
 }
 
 SceneTreeWidget.prototype.testFilteringRule = function( node )

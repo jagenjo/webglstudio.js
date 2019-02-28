@@ -390,7 +390,21 @@ var PlayModule = {
 			LS.Tween.update(dt);
 			LS.Input.update(dt);
 			LS.GlobalScene.update(dt);
+			this.checkErrors();
 		}
+	},
+
+	checkErrors: function()
+	{
+		if( vec3.distance(LS.ZEROS,[0,0,0]) > 0 ||
+			vec3.distance(LS.ONES,[1,1,1]) > 0 ||
+			vec3.distance(LS.RIGHT,[1,0,0]) > 0 ||
+			vec3.distance(LS.LEFT,[-1,0,0]) > 0 ||
+			vec3.distance(LS.TOP,[0,1,0]) > 0 ||
+			vec3.distance(LS.BOTTOM,[0,-1,0]) > 0 ||
+			vec3.distance(LS.FRONT,[0,0,-1]) > 0 ||
+			vec3.distance(LS.BACK,[0,0,1]) > 0 )
+			console.error("LS base vectors have been modifyed!, you never should change LS.FRONT,LS.BACK,LS.RIGHT,LS.LEFT,LS.TOP,LS.BOTTOM,LS.ZEROs");
 	},
 
 	onShowPreferencesPanel: function(name,widgets)

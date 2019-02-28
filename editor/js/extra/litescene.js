@@ -6616,17 +6616,20 @@ LS.Shaders.registerSnippet("PackDepth32","\n\
 			{\n\
 				return (z - near) / (far - near);\n\
 			}\n\
+			float linearDepthNormalized(float z, float near, float far)\n\
+			{\n\
+				float z_n = 2.0 * z - 1.0;\n\
+				return 2.0 * near * far / (far + near - z_n * (far - near));\n\
+			}\n\
 			\n\
 			//packs depth normalized \n\
 			vec4 PackDepth32(float depth)\n\
 			{\n\
-				const vec4 bitSh  = vec4(   256*256*256, 256*256,   256,         1);\n\
-				const vec4 bitMsk = vec4(   0,      1.0/256.0,    1.0/256.0,    1.0/256.0);\n\
-				vec4 comp;\n\
-				comp	= depth * bitSh;\n\
-				comp	= fract(comp);\n\
-				comp	-= comp.xxyz * bitMsk;\n\
-				return comp;\n\
+			  const vec4 bitShift = vec4( 256.0 * 256.0 * 256.0, 256.0 * 256.0, 256.0, 1.0 );\n\
+			  const vec4 bitMask = vec4( 0.0, 1.0 / 256.0, 1.0 / 256.0, 1.0 / 256.0 );\n\
+			  vec4 comp = fract(depth * bitShift);\n\
+			  comp -= comp.xxyz * bitMask;\n\
+			  return comp;\n\
 			}\n\
 ");
 
@@ -9539,8 +9542,10 @@ void main() {\n\
   Input IN = getInput();\n\
   SurfaceOutput o = getSurfaceOutput();\n\
   surf(IN,o);\n\
-  float depth = length( IN.worldPos - u_camera_eye );\n\
-  depth = linearDepth( depth, u_camera_planes.x, u_camera_planes.y );\n\
+  //float depth = length( IN.worldPos - u_camera_eye );\n\
+  //depth = linearDepth( depth, u_camera_planes.x, u_camera_planes.y );\n\
+  float depth = (v_screenpos.z / v_screenpos.w) * 0.5 + 0.5;\n\
+  //depth = linearDepthNormalized( depth, u_camera_planes.x, u_camera_planes.y );\n\
   vec4 final_color;\n\
   final_color = PackDepth32(depth);\n\
   {{fs_shadow_encode}}\n\
@@ -11431,6 +11436,28 @@ Object.defineProperty( CompositePattern.prototype, "scene", {
 		throw("Scene cannot be set, you must use addChild in parent");
 	}
 });
+
+
+/**
+* get all nodes above this in his hierarchy (parent, parent of parent, ...)
+*
+* @method getAncestors
+* @param {Boolean} include_itself if it must include first itself
+* @return {Array} array containing all descendants
+*/
+CompositePattern.prototype.getAncestors = function( include_itself )
+{
+	var r = [];
+	var aux = this._parentNode;
+	if(include_itself)
+		r.push(this);
+	while( aux )
+	{
+		r.push(aux);
+		aux = aux._parentNode;
+	}
+	return r;
+}
 
 /**
 * get all nodes below this in the hierarchy (children and children of children)
@@ -25981,24 +26008,22 @@ Shadowmap.prototype.generate = function( instances, render_settings, precompute_
 		viewport_height /= 6;
 	}
 
+	gl.clearColor(1, 1, 1, 1);
 	if( this.texture.type == gl.DEPTH_COMPONENT )
 		gl.colorMask(false,false,false,false);
+	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
 	for(var i = 0; i < sides; ++i) //in case of omni
 	{
 		var shadow_camera = light.getLightCamera(i);
+		this.shadow_params[2] = shadow_camera.near;
+		this.shadow_params[3] = shadow_camera.far;
 		LS.Renderer.enableCamera( shadow_camera, render_settings, true );
 
 		var viewport_y = 0;
 		if( light.type == LS.Light.OMNI )
 			viewport_y = i * viewport_height;
 		gl.viewport(0,viewport_y,viewport_width,viewport_height);
-		gl.scissor(0,viewport_y,viewport_width,viewport_height);
-		if( light.type == LS.Light.OMNI )
-			gl.enable( gl.SCISSOR_TEST );
-		gl.clearColor(0, 0, 0, 0);
-		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-		gl.disable( gl.SCISSOR_TEST );
 
 		//RENDER INSTANCES in the shadowmap
 		LS.Renderer.renderInstances( render_settings, instances );
@@ -26021,7 +26046,10 @@ Shadowmap.prototype.prepare = function( uniforms, samplers )
 	var light = this.light;
 	var closest_far = light.computeFar();
 	uniforms.u_shadow_params = this.shadow_params;
-	uniforms.u_shadow_params.set([ 1.0 / this.texture.width, this.bias, light.near, closest_far ]);
+	this.shadow_params[0] = 1.0 / this.texture.width;
+	this.shadow_params[1] = this.bias;
+	//2 and 3 are set when rendering the shadowmap
+
 	uniforms.shadowmap = LS.Renderer.SHADOWMAP_TEXTURE_SLOT;
 	samplers[ LS.Renderer.SHADOWMAP_TEXTURE_SLOT ] = this.texture;
 }
@@ -26050,6 +26078,7 @@ Shadowmap._enabled_fragment_code = "\n\
 		#define TESTSHADOW\n\
 	#endif\n\
 	#pragma shaderblock \"depth_in_color\"\n\
+	#pragma snippet \"PackDepth32\"\n\
 	\n\
 	uniform sampler2D shadowmap;\n\
 	varying vec4 v_light_coord;\n\
@@ -26058,8 +26087,8 @@ Shadowmap._enabled_fragment_code = "\n\
 	float UnpackDepth(vec4 depth)\n\
 	{\n\
 		#ifdef BLOCK_DEPTH_IN_COLOR\n\
-			const vec4 bitShifts = vec4( 1.0/(256.0*256.0*256.0), 1.0/(256.0*256.0), 1.0/256.0, 1);\n\
-			return dot(depth.xyzw , bitShifts);\n\
+			const vec4 bitShift = vec4( 1.0 / (256.0 * 256.0 * 256.0), 1.0 / (256.0 * 256.0), 1.0 / 256.0, 1.0 );\n\
+			return dot(depth, bitShift);\n\
 		#else\n\
 			return depth.x;\n\
 		#endif\n\
@@ -26092,6 +26121,9 @@ Shadowmap._enabled_fragment_code = "\n\
 			return LIGHT.Info.x == 3.0 ? 1.0 : 0.0; //outside of shadowmap, no shadow\n\
 		\n\
 		real_depth = (v_light_coord.z - bias) / v_light_coord.w * 0.5 + 0.5;\n\
+		#ifdef BLOCK_DEPTH_IN_COLOR\n\
+			//real_depth = linearDepthNormalized( real_depth, u_shadow_params.z, u_shadow_params.w );\n\
+		#endif\n\
 		vec2 topleft_uv = sample * texsize;\n\
 		vec2 offset_uv = fract( topleft_uv );\n\
 		offset_uv.x = expFunc(offset_uv.x);\n\

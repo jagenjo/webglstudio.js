@@ -404,7 +404,7 @@ var PlayModule = {
 			vec3.distance(LS.BOTTOM,[0,-1,0]) > 0 ||
 			vec3.distance(LS.FRONT,[0,0,-1]) > 0 ||
 			vec3.distance(LS.BACK,[0,0,1]) > 0 )
-			console.error("LS base vectors have been modifyed!, you never should change LS.FRONT,LS.BACK,LS.RIGHT,LS.LEFT,LS.TOP,LS.BOTTOM,LS.ZEROs");
+			console.error("LS base vectors have been modifyed!, you never should change LS.FRONT,LS.BACK,LS.RIGHT,LS.LEFT,LS.TOP,LS.BOTTOM,LS.ZEROS or LS.ONES");
 	},
 
 	onShowPreferencesPanel: function(name,widgets)

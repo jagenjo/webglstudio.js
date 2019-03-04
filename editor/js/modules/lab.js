@@ -7,9 +7,11 @@ var LabModule = {
 	channels: "rgba",
 	exposure: 1,
 
+	show_name: true,
 	rotate: true,
 	meshes_axis: "Y",
 	meshes_mode: "phong_wireframe",
+	cull_face: true,
 
 	offset: vec2.create(0,0),
 	scale: 1,
@@ -71,6 +73,10 @@ var LabModule = {
 		var inspector = this.top_inspector;
 		inspector.clear();
 
+		inspector.addCheckbox("Show name", this.show_name, { callback: function(v){
+			LabModule.show_name = v;			
+		}});		
+
 		if( this.mode == "textures" )
 		{
 			inspector.addButton( null, "Reset", { callback: function(){ 
@@ -92,8 +98,11 @@ var LabModule = {
 			inspector.addCombo("Axis", this.meshes_axis, { values:["X","Y","Z"], callback: function(v){
 				LabModule.meshes_axis = v;			
 			}});		
-			inspector.addCombo("Render Mode", this.meshes_mode, { values:["phong_wireframe","phong","wireframe","X-RAY"], callback: function(v){
+			inspector.addCombo("Render Mode", this.meshes_mode, { values:["phong_wireframe","phong","wireframe","X-RAY","UV_wireframe"], callback: function(v){
 				LabModule.meshes_mode = v;			
+			}});		
+			inspector.addCheckbox("Cull face", this.cull_face, { callback: function(v){
+				LabModule.cull_face = v;			
 			}});		
 		}
 		else if( this.mode == "materials" )
@@ -144,6 +153,25 @@ var LabModule = {
 				color = channels;\n\
 			  color.xyz *= u_exposure;\n\
 			  gl_FragColor = color;\n\
+			}\
+		');
+
+		this._uv_shader = new GL.Shader('\
+			precision mediump float;\n\
+			attribute vec3 a_vertex;\n\
+			attribute vec2 a_coord;\n\
+			varying vec3 v_pos;\n\
+			uniform mat4 u_model;\n\
+			uniform mat4 u_mvp;\n\
+			void main() {\n\
+				v_pos = (u_model * vec4(a_vertex,1.0)).xyz;\n\
+				gl_Position = vec4(a_coord * 2.0 - vec2(1.0),0.0,1.0);\n\
+			}\
+			','\
+			precision mediump float;\n\
+			uniform vec4 u_color;\n\
+			void main() {\n\
+			  gl_FragColor = u_color;\n\
 			}\
 		');
 
@@ -329,7 +357,7 @@ var LabModule = {
 					gl.strokeRect( posx, posy, w, h );
 					gl.globalAlpha = 1;
 				}
-				if(this.settings.render_filename)
+				if(this.settings.render_filename && this.show_name)
 				{
 					gl.fillColor = black;
 					gl.fillText(text,posx + 6,posy + 16);
@@ -379,7 +407,9 @@ var LabModule = {
 		var shader = null;
 		if( this.meshes_mode.indexOf("phong") != -1 )
 			shader = LS.Draw.shader_phong;
-		var wireframe = this.meshes_mode.indexOf("wireframe") != -1;
+		var wireframe_shader = null;
+		if( this.meshes_mode.indexOf("wireframe") != -1 )
+			wireframe_shader = LS.Draw.shader;
 		var blend = false;
 		if( this.meshes_mode == "X-RAY" )
 		{
@@ -387,6 +417,15 @@ var LabModule = {
 			LS.Draw.setColor(0.05,0.05,0.05,1);
 			blend = true;
 		}
+		else if( this.meshes_mode == "UV_wireframe" )
+		{
+			shader = this._uv_shader;
+			wireframe_shader = this._uv_shader;
+			LS.Draw.setColor(0.2,0.2,0.2,1);
+			blend = true;
+		}
+
+		gl.depthFunc( gl.LEQUAL );
 
 		var num = 0;
 		for(var i in LS.RM.meshes)
@@ -440,21 +479,27 @@ var LabModule = {
 					gl.enable( gl.DEPTH_TEST );
 				}
 
+				if(this.cull_face)
+					gl.enable( gl.CULL_FACE );
+				else
+					gl.disable( gl.CULL_FACE );
+
 				if(shader)
 					LS.Draw.renderMesh( mesh, gl.TRIANGLES, shader );
 				gl.enable( gl.BLEND );
 
-				if( wireframe && mesh.vertexBuffers["vertices"] ) //wireframe
+				if( wireframe_shader && mesh.vertexBuffers["vertices"] ) //wireframe
 				{
 					if(!mesh.indexBuffers["wireframe"])
 						mesh.computeWireframe();
-					LS.Draw.renderMesh( mesh, gl.LINES, null, "wireframe" );
+					LS.Draw.renderMesh( mesh, gl.LINES, wireframe_shader, "wireframe" );
 				}
 
 				gl.setViewport( old_viewport );
 				LS.Draw.popCamera();
 
 				gl.disable( gl.DEPTH_TEST );
+				gl.disable( gl.CULL_FACE );
 				gl.enable( gl.BLEND );
 				gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
 				var filename = LS.RM.getFilename(i).substr(0,24);
@@ -462,7 +507,8 @@ var LabModule = {
 				gl.globalAlpha = (this.selected_item && this.selected_item.item == item) ? 1 : 0.5;
 				gl.strokeRect( posx, posy, w, h );
 				gl.globalAlpha = 1;
-				gl.fillText(text,posx + 5,posy + 15);
+				if(this.settings.render_filename && this.show_name)
+					gl.fillText(text,posx + 5,posy + 15);
 				this.items.push({id:i,type:"Mesh",item: mesh, x:posx,y:posy,w:w,h:h});
 			}
 
@@ -473,6 +519,10 @@ var LabModule = {
 				posy += h + margin;
 			}
 		}
+
+
+		gl.depthFunc( gl.LESS );
+
 		return num;
 	},
 
@@ -528,8 +578,8 @@ var LabModule = {
 				gl.globalAlpha = (this.selected_item && this.selected_item.item == item) ? 1 : 0.5;
 				gl.strokeRect( posx, posy, w, h );
 				gl.globalAlpha = 1;
-				gl.fillText(text,posx + 5,posy + 15);
-
+				if(this.settings.render_filename && this.show_name)
+					gl.fillText(text,posx + 5,posy + 15);
 				this.items.push({id:i, item: material, type:"Material",x:posx,y:posy,w:w,h:h});
 			}
 

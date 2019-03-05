@@ -622,7 +622,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 
 			inspector.widgets_per_row = 2;
 
-			inspector.addLayers("layers", node.layers, { name_width: 80, pretitle: AnimationModule.getKeyframeCode( node, "layers"), callback: function(v) {
+			inspector.addLayers("layers", node.layers, { name_width: 80, pretitle: AnimationModule.getKeyframeCode( node, "layers"), node: node, callback: function(v) {
 				node.layers = v;
 				RenderModule.requestFrame();
 			}});
@@ -640,6 +640,8 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 
 			if(inside_prefab)
 				inspector.addInfo(null,"This node belongs to a prefab, any changes made won't be saved with the scene.");
+			else if( node.prefab && !LS.RM.resources[ node.prefab ] && LS.RM.resources_being_loaded[ node.prefab ])
+				inspector.addButton("Prefab being loaded...","refresh",{callback: function(){ inspector.refresh(); }});
 
 			//Special node editors ****************************************
 			//like Materials mostly

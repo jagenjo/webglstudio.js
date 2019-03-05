@@ -580,6 +580,7 @@ var LabModule = {
 				gl.globalAlpha = 1;
 				if(this.settings.render_filename && this.show_name)
 					gl.fillText(text,posx + 5,posy + 15);
+
 				this.items.push({id:i, item: material, type:"Material",x:posx,y:posy,w:w,h:h});
 			}
 

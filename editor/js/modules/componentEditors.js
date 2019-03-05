@@ -616,9 +616,12 @@ LS.FXStack.prototype.inspect = function( inspector, component )
 
 LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 {
-	inspector.addCombo("mode",component.mode, { values: LS.Components.MorphDeformer["@mode"].values, callback: function (value) { 
+	inspector.widgets_per_row = 2;
+	inspector.addCombo("mode",component.mode, { name_width: 100, values: LS.Components.MorphDeformer["@mode"].values, width:"60%", callback: function (value) { 
 		component.mode = value; 
 	}});
+	inspector.addCheckbox("delta_meshes", component.delta_meshes, { name_width: 120, width:"40%", callback: function(v){ component.delta_meshes = v; }});
+	inspector.widgets_per_row = 1;
 
 	if( component.morph_targets.length )
 	{

@@ -1120,7 +1120,7 @@ LiteGUI.Inspector.prototype.addLayers = function(name, value, options)
 			widget.setValue(text);
 			if(options.callback)
 				options.callback.call( widget, layers, bit, v );
-		});
+		}, options.node );
 	};
 
 	var widget = this.addStringButton(name, text, options);

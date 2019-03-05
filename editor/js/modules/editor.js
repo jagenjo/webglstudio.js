@@ -638,7 +638,7 @@ var EditorModule = {
 		dialog.show();
 	},
 
-	showLayersEditor: function( layers, callback )
+	showLayersEditor: function( layers, callback, node )
 	{
 		var scene = LS.GlobalScene;
 
@@ -673,6 +673,13 @@ var EditorModule = {
 
 		widgets.widgets_per_row = 1;
 		widgets.endContainer();
+
+		if(node)
+			widgets.addButton("Apply Layers to children","Apply", { name_width: 200, callback:function(v){
+				var nodes = node.getDescendants();
+				for(var i = 0; i < nodes.length; ++i)
+					nodes[i].layers = layers;
+			}});
 
 		widgets.addButtons(null,["Close"], function(v){
 			if(v == "Close")

@@ -40,10 +40,10 @@ var ExportModule = {
 	showDialog: function()
 	{
 		var that = this;
-		var dialog = new LiteGUI.Dialog( { title: "Export", close: true, width: 800, height: 420, scroll: false, draggable: true } );
+		var dialog = new LiteGUI.Dialog( { title: "Export", close: true, width: 900, height: 420, scroll: false, draggable: true } );
 
 		var area = new LiteGUI.Area({width:"100%",height:"100%"});
-		area.split("horizontal",["50%",null]);
+		area.split("horizontal",["60%",null]);
 		dialog.add(area);
 
 		var inspector_left = new LiteGUI.Inspector( { scroll: true, resizable: true, full: true } );
@@ -389,10 +389,43 @@ var ExportModule = {
 				var old_name = resource_names[i];
 				var folder = LS.RM.getFolder( old_name );
 				var filename = LS.RM.getFilename( old_name );
+				var ext = LS.RM.getExtension( old_name );
+				var ext2 = LS.RM.getExtension( old_name, true );
+
+				folder = "other";
+				var res = LS.RM.getResource( old_name );
+				if(res)
+				{
+					if(res.constructor == GL.Texture)
+						folder = "textures";
+					else if(res.constructor == GL.Mesh)
+						folder = "meshes";
+					else if(res.constructor == LS.Animation )
+						folder = "animations";
+					else if(res.constructor.is_material)
+						folder = "materials";
+					else if(res.constructor == LS.Prefab)
+						folder = "prefabs";
+				}
+				else
+				{
+					if(ext == "js")
+						folder = "scripts";
+					else if(ext == "json")
+					{
+						if(ext2 == "MAT")
+							folder = "materials";
+					}
+				}
+
+				/*
 				var t = LS.RM.cleanFullpath( folder ).split("/");
 				t.shift(); //remove unit name
-				var new_name = t.join("/") + "/" + filename;
-				renamed_resources[ old_name ] = new_name;
+				folder = t.join("/");
+				*/
+
+				var new_name = "data/" + folder + "/" + filename;
+				renamed_resources[ new_name ] = old_name;
 				LS.RM.renameResource( old_name, new_name );
 				new_resource_names.push( new_name );
 			}
@@ -415,11 +448,17 @@ var ExportModule = {
 		{
 			for(var i in resource_names)
 			{
-				var old_name = resource_names[i];
-				var new_name = renamed_resources[old_name];
+				var new_name = resource_names[i];
+				var old_name = renamed_resources[new_name];
+				if(!old_name)
+				{
+					console.warn("Resource renamed cannot find previous name: " + new_name);
+					continue;
+				}
 				LS.RM.renameResource( new_name, old_name ); //back to normal
 				var res = LS.RM.getResource( old_name );
-				old_name._modified = false; //to leave it as it was (assuming it wasnt modified)
+				if(res)
+					res._modified = false; //to leave it as it was (assuming it wasnt modified)
 			}
 		}
 

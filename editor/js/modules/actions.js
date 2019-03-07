@@ -281,6 +281,13 @@ LS.Components.Transform.actions["to_camera_position"] = { title: "To camera posi
 	EditorModule.refreshAttributes();
 }};
 
+
+
+LS.Components.MeshRenderer.actions["mesh_tools"] = { title: "Open Mesh tools", callback: function() { 
+	MeshTools.showToolsDialog( this.mesh );
+	EditorModule.refreshAttributes();
+}};
+
 LS.Components.MeshRenderer.actions["explode_to_submeshes"] = { title: "Explode submeshes to MeshRenderers", callback: function() { 
 	var node = this._root;
 	if(!node)
@@ -302,6 +309,7 @@ LS.Components.MeshRenderer.actions["explode_to_submeshes"] = { title: "Explode s
 	LS.GlobalScene.refresh();
 	EditorModule.refreshAttributes();
 }};
+
 
 LS.Components.MeshRenderer.actions["explode_to_nodes"] = { title: "Explode submeshes to child nodes", callback: function() { 
 	this.explodeSubmeshesToChildNodes();
@@ -370,6 +378,7 @@ LS.Components.SkinDeformer.actions["convert_bones"] = { title: "Convert Bones to
 //LS.Components.SkinDeformer.actions["apply_bindpose"] = { title: "Apply BindPose", callback: function() { this.applyBindPose(); }};
 //LS.Components.SkinDeformer.actions["set_to_bind_pose"] = { title: "Set bones to bind pose", callback: function() { this.setBonesToBindPose(); }};
 LS.Components.MorphDeformer.actions["optimize_moprhtargets"] = { title: "Optimize Morph Targets", callback: function() { this.optimizeMorphTargets(); }};
+LS.Components.MorphDeformer.actions["clear_textures"] = { title: "Clear Textures", callback: function() { this.recomputeGeometryTextures(); }};
 
 
 LS.Components.Skybox.actions["bake"] = { 

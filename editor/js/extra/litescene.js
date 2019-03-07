@@ -11701,8 +11701,8 @@ BaseComponent.prototype.configure = function(o)
 		this.uid = o.uid;
 	LS.cloneObject( o, this, false, true ); 
 
-	if( this.afterConfigure )
-		this.afterConfigure( o );
+	if( this.onConfigure )
+		this.onConfigure( o );
 }
 
 /**
@@ -11718,8 +11718,8 @@ BaseComponent.prototype.serialize = function()
 	if(!o.object_class)
 		o.object_class = LS.getObjectClassName( this );
 
-	if( this.afterSerialize )
-		this.afterSerialize( o );
+	if( this.onSerialize )
+		this.onSerialize( o );
 
 	return o;
 }
@@ -23244,6 +23244,9 @@ var Renderer = {
 				this._main_camera = new LS.Camera(); // ??
 		}
 
+
+		var nearest_reflection_probe = scene.findNearestReflectionProbe( this._main_camera.getEye() );
+
 		instances = instances || scene._instances;
 		var camera = this._main_camera; // || scene.getCamera();
 		var camera_eye = camera.getEye( this._temp_cameye );
@@ -23283,7 +23286,7 @@ var Renderer = {
 
 			//find nearest reflection probe
 			if( scene._reflection_probes.length && !this._ignore_reflection_probes )
-				instance._nearest_reflection_probe = scene.findNearestReflectionProbe( instance.center );
+				instance._nearest_reflection_probe = nearest_reflection_probe;//scene.findNearestReflectionProbe( instance.center );
 			else
 				instance._nearest_reflection_probe = null;
 
@@ -23739,12 +23742,12 @@ var Renderer = {
 
 			if( ext )
 			{
-				text.push( "GPU: " + this.gpu_times.total.toFixed(2) + " ms");
-				text.push( " - PreRender: " + this.gpu_times.beforeRender.toFixed(2) + " ms");
-				text.push( " - Shadows: " + this.gpu_times.shadows.toFixed(2) + " ms");
-				text.push( " - Scene: " + this.gpu_times.main.toFixed(2) + " ms");
-				text.push( " - Postpo: " + this.gpu_times.postpo.toFixed(2) + " ms");
-				text.push( " - GUI: " + this.gpu_times.gui.toFixed(2) + " ms");
+				text.push( "GPU: " + this.gpu_times.total.toFixed(2) );
+				text.push( " - PreRender: " + this.gpu_times.beforeRender.toFixed(2) );
+				text.push( " - Shadows: " + this.gpu_times.shadows.toFixed(2) );
+				text.push( " - Scene: " + this.gpu_times.main.toFixed(2) );
+				text.push( " - Postpo: " + this.gpu_times.postpo.toFixed(2) );
+				text.push( " - GUI: " + this.gpu_times.gui.toFixed(2) );
 			}
 			else
 				text.push( "GPU: ???");
@@ -30827,7 +30830,7 @@ Light.prototype.updateLightCamera = function( face_index )
 	camera.frustum_size = this.frustum_size || Light.DEFAULT_DIRECTIONAL_FRUSTUM_SIZE;
 	camera.near = this.near;
 	camera.far = closest_far;
-
+	camera.layers = this.illuminated_layers;
 	camera.updateMatrices();
 
 	this._light_matrix.set( camera._viewprojection_matrix );
@@ -32760,7 +32763,6 @@ MorphDeformer.prototype.applyMorphUsingTextures = function( RI, valid_morphs )
 		if(!normals_buffer)
 			continue;
 
-		//create textures: TODO: share this buffers among different instances of this component, in case we have the same mesh in different scene nodes
 		if(!vertices_buffer._texture)
 			vertices_buffer._texture = this.createGeometryTexture( vertices_buffer );
 		if(!normals_buffer._texture)
@@ -32768,7 +32770,6 @@ MorphDeformer.prototype.applyMorphUsingTextures = function( RI, valid_morphs )
 
 		//LS.RM.textures[":debug_morph_vertex_" + i] = vertices_buffer._texture;
 		//LS.RM.textures[":debug_morph_normal_" + i] = normals_buffer._texture;
-
 		morphs_textures.push( { weight: morph.weight, vertices: vertices_buffer._texture, normals: normals_buffer._texture } );
 	}
 
@@ -33024,7 +33025,8 @@ MorphDeformer.prototype.getMorphTextureShader = function()
 	return this._blend_shader;
 }
 
-MorphDeformer.prototype.createGeometryTexture = function( data_buffer )
+//transfers the geometry to a texture
+MorphDeformer.prototype.createGeometryTexture = function( data_buffer, texture )
 {
 	var stream_data = data_buffer.data;
 	var buffer = stream_data.buffer;
@@ -33038,9 +33040,45 @@ MorphDeformer.prototype.createGeometryTexture = function( data_buffer )
 
 	var buffer_padded = new Float32Array( width * height * 3 );
 	buffer_padded.set( stream_data );
-	
-	var texture = new GL.Texture( width, height, { format: gl.RGB, type: gl.FLOAT, filter: gl.NEAREST, wrap: gl.CLAMP_TO_EDGE, pixel_data: buffer_padded, no_flip: true });
+	if(!texture || texture.width != width || texture.height != height )
+		texture = new GL.Texture( width, height, { format: gl.RGB, type: gl.FLOAT, filter: gl.NEAREST, wrap: gl.CLAMP_TO_EDGE, pixel_data: buffer_padded, no_flip: true });
+	else
+		texture.uploadData( buffer_padded );
 	return texture;
+}
+
+//in case the textures has been modyfied
+MorphDeformer.prototype.recomputeGeometryTextures = function()
+{
+	var RI = this._last_RI;
+	if(!RI)
+		return;
+
+	var base_mesh = RI.mesh;
+	var base_vertices_buffer = base_mesh.vertexBuffers["vertices"];
+	var base_normals_buffer = base_mesh.vertexBuffers["normals"];
+
+	//create textures for the base mesh
+	base_vertices_buffer._texture = this.createGeometryTexture( base_vertices_buffer, base_vertices_buffer._texture );
+	base_normals_buffer._texture = this.createGeometryTexture( base_normals_buffer, base_normals_buffer._texture );
+
+	var valid_morphs = this._valid_morphs;
+	if(!valid_morphs)
+		return;
+
+	for(var i = 0; i < valid_morphs.length; ++i)
+	{
+		var morph = valid_morphs[i];
+		var morph_mesh = morph.mesh;
+
+		var vertices_buffer = morph_mesh.vertexBuffers["vertices"];
+		if( vertices_buffer && vertices_buffer._texture )
+			this.createGeometryTexture( vertices_buffer, vertices_buffer._texture );
+
+		var normals_buffer = morph_mesh.vertexBuffers["normals"];
+		if( normals_buffer && normals_buffer._texture )
+			this.createGeometryTexture( normals_buffer, normals_buffer._texture );
+	}
 }
 
 /**
@@ -36954,6 +36992,7 @@ function GlobalInfo(o)
 	this.createProperty( "ambient_color", GlobalInfo.DEFAULT_AMBIENT_COLOR, "color" );
 	this._render_settings = null;
 	this._textures = {};
+	this._irradiance = null; //in SH form of float32(3*9)
 
 	if(o)
 		this.configure(o);
@@ -36998,6 +37037,26 @@ Object.defineProperty( GlobalInfo.prototype, 'render_settings', {
 	enumerable: true
 });
 
+
+GlobalInfo.prototype.computeIrradiance = function( position, near, far, background_color )
+{
+	if(!LS.Components.IrradianceCache)
+		throw("cannot compute, no LS.Components.IrradianceCache component found");
+
+	position = position || vec3.create();
+	var texture_size = LS.Components.IrradianceCache.capture_cubemap_size; //default is 64
+	var texture_settings = { type: gl.FLOAT, texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGB };
+	var cubemap = new GL.Texture( LS.Components.IrradianceCache.final_cubemap_size, LS.Components.IrradianceCache.final_cubemap_size, texture_settings );
+	var temp_cubemap = new GL.Texture( texture_size, texture_size, texture_settings );
+	LS.Components.IrradianceCache.captureIrradiance( position, cubemap, render_settings, near || 0.1, far || 1000, background_color || [0,0,0,1], true, temp_cubemap );
+	this._irradiance = LS.Components.IrradianceCache.computeSH( cubemap );
+	console.log( "IR factor", this._irradiance );
+}
+
+GlobalInfo.prototype.clearIrradiance = function()
+{
+	this._irradiance = null;
+}
 
 GlobalInfo.icon = "mini-icon-bg.png";
 GlobalInfo.DEFAULT_AMBIENT_COLOR = vec3.fromValues(0.2, 0.2, 0.2);
@@ -40101,10 +40160,9 @@ function ReflectionProbe( o )
 	this._version = -1;
 
 	this._texture = null;
-	this._irradiance_texture = null;
+	this._irradiance_shs = new Float32Array( 3 * 9 );
 
 	this._tex_id = ":probe_" + ReflectionProbe.last_id;
-	this._tex_ir_id = ":probe_IR_" + ReflectionProbe.last_id;
 	ReflectionProbe.last_id++;
 	this._registered = false;
 
@@ -40158,47 +40216,36 @@ ReflectionProbe.prototype.onRemovedFromScene = function(scene)
 	
 	if(this._texture)
 		LS.ResourcesManager.unregisterResource( this._tex_id );
-	if(this._irradiance_texture)
-		LS.ResourcesManager.unregisterResource( this._tex_ir_id );
 
 	//TODO: USE POOL!!
 	this._texture = null;
-	this._irradiance_texture = null;
 
 	this.unregister( scene );
 }
 
-ReflectionProbe.prototype.afterSerialize = function(o)
+ReflectionProbe.prototype.onSerialize = function(o)
 {
-	if(this._irradiance_texture)
-		o.irradiance_info = ReflectionProbe.cubemapToObject( this._irradiance_texture );
+	o.irradiance_shs = typedArrayToArray( this._irradiance_shs );
 }
 
-ReflectionProbe.prototype.afterConfigure = function(o)
+ReflectionProbe.prototype.onConfigure = function(o)
 {
-	if(o.irradiance_info)
-	{
-		this._irradiance_texture = ReflectionProbe.objectToCubemap( o.irradiance_info, this._irradiance_texture, this.high_precision );
-		this.assignCubemaps();
-	}
+	if(o.irradiance_shs)
+		this._irradiance_shs.set( o.irradiance_shs );
 }
 
 ReflectionProbe.prototype.onRenderReflection = function( e )
 {
 	if( this._enabled )
-		this.updateTextures();
+		this.recompute();
 }
 
-ReflectionProbe.prototype.updateTextures = function( render_settings, force )
+ReflectionProbe.prototype.recompute = function( render_settings, force )
 {
 	if( !this._root || !this._root.scene )
 		return;
 
 	var scene = this._root.scene;
-
-	this._root.transform.getGlobalPosition( this._current );
-	//if ( vec3.distance( this._current, this._position ) < 0.1 )
-	//	force = true;
 
 	if( LS.ResourcesManager.isLoading() )
 		return;
@@ -40210,13 +40257,14 @@ ReflectionProbe.prototype.updateTextures = function( render_settings, force )
 	if ( this._texture && (scene._frame % this.refresh_rate) != 0 && !force )
 		return;
 
-	this.updateCubemap( this._current, render_settings );
+	this._root.transform.getGlobalPosition( this._current );
+	//if ( vec3.distance( this._current, this._position ) < 0.1 )
+	//	force = true;
 
-	if(this.generate_irradiance)
-		this.updateIrradiance();
+	this.updateCubemap( this._current, render_settings, force );
 }
 
-ReflectionProbe.prototype.updateCubemap = function( position, render_settings )
+ReflectionProbe.prototype.updateCubemap = function( position, render_settings, generate_spherical_harmonics )
 {
 	render_settings = render_settings || LS.Renderer.default_render_settings;
 
@@ -40259,12 +40307,6 @@ ReflectionProbe.prototype.updateCubemap = function( position, render_settings )
 	}
 
 	//avoid reusing same irradiance from previous pass
-	var tmp = null;
-	if( LS.GlobalScene.info.textures.irradiance == this._irradiance_texture )
-	{
-		tmp = LS.GlobalScene.info.textures.irradiance;
-		LS.GlobalScene.info.textures.irradiance = null;
-	}
 
 	//fix: there was a problem because there was no texture bind in ENVIRONMENT_SLOT, this fix it
 	for(var i = 0; i < LS.Renderer._visible_instances.length; ++i)
@@ -40272,9 +40314,6 @@ ReflectionProbe.prototype.updateCubemap = function( position, render_settings )
 
 	//render all the scene inside the cubemap
 	LS.Renderer.renderToCubemap( position, 0, texture, render_settings, this.near, this.far, this.background_color );
-
-	if(tmp)
-		LS.GlobalScene.info.textures.irradiance = tmp;
 
 	texture._in_current_fbo = false;
 
@@ -40289,73 +40328,21 @@ ReflectionProbe.prototype.updateCubemap = function( position, render_settings )
 		LS.ResourcesManager.registerResource( this.texture_name, texture );
 	LS.ResourcesManager.registerResource( this._tex_id, texture );
 
-	//add probe to LS.Renderer
-	//TODO
-	//HACK
-	//if( scene.info )
-	//	scene.info.textures.environment = this._tex_id;
+	//compute SHs (VERY SLOW)
+	if(generate_spherical_harmonics)
+	{
+		//TODO: copy to lowres cubemap
+		var temp_texture = ReflectionProbe._temp_cubemap;
+		var texture_size = IrradianceCache.capture_cubemap_size;
+		var texture_settings = { type: gl.FLOAT, texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGB };
+		if( !temp_texture || temp_texture.width != texture_size || temp_texture.height != texture_size  )
+			ReflectionProbe._temp_cubemap = temp_texture = new GL.Texture( texture_size, texture_size, texture_settings );
+		texture.copyTo( temp_texture ); //downsample
+		this._irradiance_shs = IrradianceCache.computeSH( temp_texture );
+	}
 
 	//remove flags
 	render_settings.layers = old_layers;
-}
-
-ReflectionProbe.prototype.updateIrradiance = function()
-{
-	var scene = this._root.scene;
-	if(!scene)
-		return;
-
-	if(!this._texture)
-		this.updateCubemap();
-
-	if(!this._texture)
-		return;
-
-	var cubemap = this._texture;
-	var type = this.high_precision ? gl.HIGH_PRECISION_FORMAT : gl.UNSIGNED_BYTE;
-
-	//create textures for high and low
-	if(!ReflectionProbe._downscale_cubemap)
-	{
-		ReflectionProbe._downscale_cubemap = new GL.Texture( 32, 32, { texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGB, filter: gl.LINEAR } );
-		ReflectionProbe._downscale_cubemap_high = new GL.Texture( 32, 32, { type: gl.HIGH_PRECISION_FORMAT, texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGB, filter: gl.LINEAR } );
-	}
-
-	var downscale_cubemap = this.high_precision ? ReflectionProbe._downscale_cubemap_high : ReflectionProbe._downscale_cubemap;
-
-	//downscale
-	cubemap.copyTo( downscale_cubemap );
-	
-	//blur
-	var temp_texture = GL.Texture.getTemporary( downscale_cubemap.width, downscale_cubemap.height, downscale_cubemap );
-
-	var origin = downscale_cubemap;
-	var destination = temp_texture;
-
-	for(var i = 0; i < 8; ++i)
-	{
-		origin.applyBlur( i,i,1, destination );
-		var tmp = origin;
-		origin = destination;
-		destination = tmp;
-	}
-	destination = origin;
-
-	//downscale again
-	var irradiance_cubemap = this._irradiance_texture;
-	if(!irradiance_cubemap || irradiance_cubemap.type != type)
-		irradiance_cubemap = this._irradiance_texture = new GL.Texture( 4, 4, { type: type, texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGB, filter: gl.LINEAR } );
-	destination.copyTo( irradiance_cubemap );
-
-	//blur again
-	for(var i = 0; i < 4; ++i)
-		irradiance_cubemap.applyBlur( i,i,1 );
-
-	this.assignCubemaps();
-
-	GL.Texture.releaseTemporary( temp_texture );
-
-	return irradiance_cubemap;
 }
 
 //assigns the cubemaps to the scene global
@@ -40363,9 +40350,6 @@ ReflectionProbe.prototype.assignCubemaps = function( scene )
 {
 	if(this._texture)
 		LS.ResourcesManager.registerResource( this._tex_id, this._texture );
-
-	if(this._irradiance_texture)
-		LS.ResourcesManager.registerResource( this._tex_ir_id, this._irradiance_texture );
 }
 
 /**
@@ -40450,70 +40434,6 @@ ReflectionProbe.prototype.renderProbe = function( visualize_irradiance, picking_
 	LS.Draw.pop();
 }
 
-//this functions transform the irradiance info into data so it can be stored in the JSON directly
-ReflectionProbe.cubemapToObject = function( cubemap )
-{
-	var faces = [];
-	for( var i = 0; i < 6; ++i )
-	{
-		var data = typedArrayToArray( cubemap.getPixels(i) );
-		faces.push( data );
-	}
-	return {
-		texture_type: cubemap.texture_type,
-		size: cubemap.width,
-		format: cubemap.format,
-		faces: faces
-	};
-}
-
-ReflectionProbe.objectToCubemap = function( data, out, high_precision )
-{
-	var type = high_precision ? gl.HIGH_PRECISION_FORMAT : gl.UNSIGNED_BYTE;
-	if(!out)
-		out = new GL.Texture( data.size, data.size, { type: type, texture_type: gl.TEXTURE_CUBE_MAP, format: GL.RGBA });
-	for(var i = 0; i < data.faces.length; ++i )
-	{
-		var data_typed;
-		if(type == gl.FLOAT)
-			data_typed = new Float32Array( data.faces[i] );
-		else if(type == gl.HIGH_PRECISION_FORMAT)
-			data_typed = new Uint16Array( data.faces[i] );
-		else //if(type == gl.UNSIGNED_BYTE)
-			data_typed = new Uint8Array( data.faces[i] );
-		out.setPixels( data_typed, true, i == 5, i );
-	}
-	return out;
-}
-
-
-
-/*
-ReflectionProbe.cubemapToIrradiance = function( origin_cubemap, destination_cubemap )
-{
-	var iterations = Math.log(origin_cubemap.width) / Math.log(2);
-
-	var width = origin_cubemap.width;
-	var temp_textures = [];
-	var origin = origin_cubemap;
-	var dest = null;
-	for( var i = 0; i < iterations; ++i)
-	{
-		width = width >> 1;
-		if(width <= 8)
-			break;
-		var temp = GL.Texture.getTemporary( width, width, destination_cubemap );
-		temp_textures.push( temp );
-		origin.applyBlur(0.5,0.5,1, temp);
-		origin = temp;
-	}
-
-	temp.copyTo( destination_cubemap );
-	for(var i = 0; i < temp_textures.length; ++i)
-		GL.Texture.releaseTemporary( temp_textures[i] );
-}
-*/
-
 /**
 * Static method to update all the reflection probes active in the scene
 *
@@ -40529,7 +40449,7 @@ ReflectionProbe.updateAll = function( scene, render_settings )
 	for(var i = 0; i < scene._reflection_probes.length; ++i)
 	{
 		var probe = scene._reflection_probes[i];
-		probe.updateTextures( render_settings, true );
+		probe.recompute( render_settings, true );
 	}
 }
 
@@ -40552,7 +40472,7 @@ LS.registerComponent( ReflectionProbe );
 function IrradianceCache( o )
 {
 	this.enabled = true;
-	this.size = vec3.fromValues(10,10,10);
+	this.size = vec3.fromValues(10,10,10); //grid size
 	this.subdivisions = new Uint8Array([4,1,4]);
 	this.layers = 0xFF; //layers that can contribute to the irradiance
 	this.force_two_sided = false;
@@ -40623,7 +40543,7 @@ IrradianceCache.prototype.onRemovedFromScene = function(scene)
 	LEvent.unbind( scene, "fillSceneUniforms", this.fillSceneUniforms, this);
 }
 
-IrradianceCache.prototype.afterConfigure = function(o)
+IrradianceCache.prototype.onConfigure = function(o)
 {
 	if(!this.cache_filename)
 		return; //???
@@ -40688,9 +40608,9 @@ IrradianceCache.prototype.recompute = function( camera )
 	var final_cubemap_size = IrradianceCache.final_cubemap_size;
 	var texture_size = IrradianceCache.capture_cubemap_size; //default is 64
 	var texture_settings = { type: type, texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGB };
-	var texture = this._temp_cubemap;
+	var texture = IrradianceCache._temp_cubemap;
 	if( !texture || texture.width != texture_size || texture.height != texture_size || texture.type != texture_settings.type )
-		this._temp_cubemap = texture = new GL.Texture( texture_size, texture_size, texture_settings );
+		IrradianceCache._temp_cubemap = texture = new GL.Texture( texture_size, texture_size, texture_settings );
 
 	//first render
 	if( !LS.Renderer._visible_instances )
@@ -40736,8 +40656,8 @@ IrradianceCache.prototype.recompute = function( camera )
 		if(!cubemap || cubemap.type != texture_settings.type || cubemap.width != final_cubemap_size )
 			this._irradiance_cubemaps[ i ] = cubemap = new GL.Texture( final_cubemap_size, final_cubemap_size, texture_settings );
 
-		this.captureIrradiance( position, cubemap, render_settings );
-		this._irradiance_shs[i] = this.computeSH( cubemap );
+		IrradianceCache.captureIrradiance( position, cubemap, render_settings, this.near, this.far, this.background_color, true, IrradianceCache._temp_cubemap );
+		this._irradiance_shs[i] = IrradianceCache.computeSH( cubemap );
 
 		i+=1;
 		generated+=1;
@@ -40768,28 +40688,30 @@ IrradianceCache.prototype.recompute = function( camera )
 	render_settings.layers = old_layers;
 }
 
-IrradianceCache.prototype.captureIrradiance = function( position, output_cubemap, render_settings )
+//captures the illumination to a cubemap
+IrradianceCache.captureIrradiance = function( position, output_cubemap, render_settings, near, far, bg_color, force_two_sided, temp_cubemap )
 {
+	temp_cubemap = temp_cubemap;
+
 	LS.Renderer.clearSamplers();
 
 	//disable IR cache first
 	LS.Renderer.disableFrameShaderBlock("applyIrradiance");
 
-	if( this.force_two_sided )
+	if( force_two_sided )
 		render_settings.force_two_sided = true;
 
 	//render all the scene inside the cubemap
-	LS.Renderer.renderToCubemap( position, 0, this._temp_cubemap, render_settings, this.near, this.far, this.background_color );
+	LS.Renderer.renderToCubemap( position, 0, temp_cubemap, render_settings, near, far, bg_color );
 
-	if( this.force_two_sided )
+	if( force_two_sided )
 		render_settings.force_two_sided = false;
 
 	//downsample
-	//ReflectionProbe.cubemapToIrradiance( this._temp_cubemap, output_cubemap );
-	this._temp_cubemap.copyTo( output_cubemap );
+	temp_cubemap.copyTo( output_cubemap );
 }
 
-IrradianceCache.prototype.computeSH = function( cubemap )
+IrradianceCache.computeSH = function( cubemap )
 {
 	//read 6 images from cubemap
 	var faces = [];
@@ -40842,6 +40764,7 @@ IrradianceCache.prototype.encodeCacheInTexture = function()
 	mat4.invert( matrix, matrix );
 }
 
+/*
 IrradianceCache.prototype.getIrradiance = function( position, normal, out )
 {	
 	out = out || vec3.create();
@@ -40865,6 +40788,7 @@ IrradianceCache.prototype.getIrradiance = function( position, normal, out )
 	//TODO: read coeffs
 	return out;
 }
+*/
 
 IrradianceCache.prototype.getSizeInBytes = function()
 {
@@ -45979,6 +45903,10 @@ Scene.prototype.getResources = function( resources, as_array, skip_in_pack, skip
 		if(resource.getResources)
 			resource.getResources(resources);
 	}
+
+	//Hack: sometimes some component add this shit
+	delete resources[""];
+	delete resources["null"];
 
 	//return as object
 	if(!as_array)

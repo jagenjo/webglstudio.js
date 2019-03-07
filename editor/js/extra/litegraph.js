@@ -8856,6 +8856,7 @@ function ConstantString()
 	this.addProperty( "value", "" );
 	this.widget = this.addWidget("text","value","", this.setValue.bind(this) );
 	this.widgets_up = true;
+	this.size = [100,30];
 }
 
 ConstantString.title = "Const String";
@@ -8877,6 +8878,85 @@ ConstantString.prototype.onExecute = function()
 }
 
 LiteGraph.registerNodeType("basic/string", ConstantString );
+
+
+function ConstantData()
+{
+	this.addOutput("","");
+	this.addProperty( "value", "" );
+	this.widget = this.addWidget("text","json","", this.setValue.bind(this) );
+	this.widgets_up = true;
+	this.size = [140,30];
+	this._value = null;
+}
+
+ConstantData.title = "Const Data";
+ConstantData.desc = "Constant Data";
+
+ConstantData.prototype.setValue = function(v)
+{
+	this.properties.value = v;
+	this.onPropertyChanged("value",v);
+}
+
+ConstantData.prototype.onPropertyChanged = function(name,value)
+{
+	this.widget.value = value;
+	if(value == null || value == "")
+		return;
+
+	try
+	{
+		this._value = JSON.parse(value);
+		this.boxcolor = "#AEA";
+	}
+	catch (err)
+	{
+		this.boxcolor = "red";
+	}
+}
+
+ConstantData.prototype.onExecute = function()
+{
+	this.setOutputData(0, this._value );
+}
+
+LiteGraph.registerNodeType("basic/data", ConstantData );
+
+
+function ObjectProperty()
+{
+	this.addInput("obj","");
+	this.addOutput("","");
+	this.addProperty( "value", "" );
+	this.widget = this.addWidget("text","prop.","", this.setValue.bind(this) );
+	this.widgets_up = true;
+	this.size = [140,30];
+	this._value = null;
+}
+
+ObjectProperty.title = "Object property";
+ObjectProperty.desc = "Outputs the property of an object";
+
+ObjectProperty.prototype.setValue = function(v)
+{
+	this.properties.value = v;
+	this.widget.value = v;
+}
+
+ObjectProperty.prototype.onPropertyChanged = function(name,value)
+{
+	this.widget.value = value;
+}
+
+ObjectProperty.prototype.onExecute = function()
+{
+	var data = this.getInputData(0);
+	if(data != null)
+		this.setOutputData(0, data[ this.properties.value ] );
+}
+
+LiteGraph.registerNodeType("basic/object_property", ObjectProperty );
 
 
 //Watch a value in the editor

@@ -9562,6 +9562,10 @@ Inspector.prototype.addColor = function( name, value, options )
 			if(!skip_event)
 				LiteGUI.trigger( dragger.input, "change" ); 
 		};
+
+		element.getValue = function() { 
+			return value;
+		};
 	}
 	else
 	{

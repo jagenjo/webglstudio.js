@@ -26,7 +26,7 @@ var SceneStorageModule = {
 		menubar.add("Project/Load/From JSON text", { callback: this.showLoadFromJSONDialog.bind(this) });
 		menubar.add("Project/Save/In Server", { callback: this.showSaveSceneInServerDialog.bind(this,null) });
 		menubar.add("Project/Save/Local", { callback: this.showSaveSceneInLocalDialog.bind(this) });
-		menubar.add("Project/Download", { callback: this.showDownloadSceneDialog.bind(this) });
+		//menubar.add("Project/Download", { callback: this.showDownloadSceneDialog.bind(this) });
 		menubar.add("Project/Test", { callback: this.testScene.bind(this) });
 		menubar.add("Project/Publish", { callback: this.showPublishDialog.bind(this) });
 

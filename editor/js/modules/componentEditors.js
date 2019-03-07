@@ -13,6 +13,16 @@ LS.Components.GlobalInfo["@inspector"] = function( component, inspector )
 
 	//inspector.addColor("Background", component.background_color, { pretitle: AnimationModule.getKeyframeCode( component, "background_color"), callback: function(color) { vec3.copy(component.background_color,color); } });
 	inspector.addColor("Ambient light", component.ambient_color, { pretitle: AnimationModule.getKeyframeCode( component, "ambient_color"), callback: function(color) { vec3.copy(component.ambient_color,color); } });
+	inspector.addButtons("Compute SH Irradiance",["Update","Clear"],{ callback: function(v){
+		if( v == "Update" )
+		{
+			var camera = LS.Renderer._current_camera;
+			var position = camera.getCenter();
+			component.computeIrradiance( position, camera.near, camera.far, camera.background_color );
+		}
+		else
+			component.clearIrradiance();
+	}});
 	inspector.addSeparator();
 
 	inner_setTexture("environment");
@@ -1020,7 +1030,7 @@ LS.Components.Poser.showPoseNodesDialog = function( component, event )
 LS.Components.ReflectionProbe.onShowProperties = function( component, inspector )
 {
 	inspector.widgets_per_row = 2;
-	inspector.addButton( null, "Update", function(){ component.updateTextures(null,true); LS.GlobalScene.requestFrame(); });
+	inspector.addButton( null, "Update", function(){ component.recompute(null,true); LS.GlobalScene.requestFrame(); });
 	inspector.addButton( null, "Update all", function(){ LS.Components.ReflectionProbe.updateAll(); LS.GlobalScene.requestFrame(); });
     inspector.addSeparator();
 

@@ -558,6 +558,8 @@ var ToolUtils = {
 		result = result || vec3.create();
 
 		var ray = camera.getRayInPixel( x, gl.canvas.height - y );
+		if(!ray) //could happen if near is too small
+			return;
 		//ray.end = vec3.add( vec3.create(), ray.origin, vec3.scale(vec3.create(), ray.direction, 10000) );
 
 		//test against plane

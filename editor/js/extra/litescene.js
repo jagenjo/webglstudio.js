@@ -17003,6 +17003,150 @@ LGraphFXStack.prototype.onConfigure = function( o )
 LiteGraph.registerNodeType("texture/fxstack", LGraphFXStack );
 
 
+function LGraphHistogram()
+{
+	this.addInput("in","Texture");
+	this.addInput("enabled","Boolean");
+	this.addOutput("out","Texture");
+	this.properties = { enabled: true, scale: 0.5 };
+}
+
+LGraphHistogram.title = "Histogram";
+LGraphHistogram.desc = "Overlaps an histogram";
+LGraphHistogram.priority = 2; //render at the end
+
+LGraphHistogram.prototype.onExecute = function()
+{
+	var tex = this.getInputData(0);
+
+	if( !tex )
+		return; //saves work
+
+	var enabled = this.getInputData(1);
+	if(enabled != null)
+		this.properties.enabled = Boolean( enabled );
+
+	if(this.properties.precision === LGraphTexture.PASS_THROUGH || this.properties.enabled === false )
+	{
+		this.setOutputData(0, tex);
+		return;
+	}
+
+	if(!this._points_mesh)
+	{
+		var w = 512;
+		var h = 256;
+		var vertices = new Float32Array(w*h*3);
+		for(var y = 0; y < h; ++y)
+			for(var x = 0; x < w; ++x)
+				vertices.set([x/w,y/h,0], y*w*3 + x*3);
+		this._points_mesh = GL.Mesh.load({ vertices: vertices });
+	}
+
+	var histogram_bins = 256;
+
+	if(!this._texture)
+		this._texture = new GL.Texture(histogram_bins,1,{ type: gl.FLOAT, magFilter: gl.LINEAR, format: gl.RGB});
+
+	if(!LGraphHistogram._shader)
+		LGraphHistogram._shader = new GL.Shader( LGraphHistogram.vertex_shader, LGraphHistogram.pixel_shader );
+
+	var mesh = this._points_mesh;
+	var shader = LGraphHistogram._shader;
+	var scale = this.properties.scale;
+	shader.setUniform("u_texture",0);
+	shader.setUniform("u_factor",1/512);
+	tex.bind(0);
+
+	gl.disable(gl.DEPTH_TEST);
+	gl.enable(gl.BLEND);
+	gl.blendFunc(gl.ONE,gl.ONE);
+
+	//compute
+	this._texture.drawTo( function(){
+		gl.clearColor(0,0,0,1);
+		gl.clear( gl.COLOR_BUFFER_BIT );
+		for(var i = 0; i < 3; ++i)
+		{
+			gl.colorMask( i == 0, i == 1, i == 2, true );
+			shader.setUniform("u_mask",LGraphHistogram.masks[i]);
+			shader.draw( mesh, gl.POINTS );
+		}
+		gl.colorMask( true,true,true, true );
+	});
+
+	if(!this._line_mesh)
+	{
+		var vertices = new Float32Array(histogram_bins*3);
+		for(var x = 0; x < histogram_bins; ++x)
+			vertices.set([x/histogram_bins,0,0], x*3);
+		this._line_mesh = GL.Mesh.load({ vertices: vertices });
+	}
+
+	if(!LGraphHistogram._line_shader)
+		LGraphHistogram._line_shader = new GL.Shader( LGraphHistogram.line_vertex_shader, LGraphHistogram.line_pixel_shader );
+
+	var mesh = this._line_mesh;
+	var shader = LGraphHistogram._line_shader;
+	shader.setUniform("u_texture",0);
+	shader.setUniform("u_scale",scale);
+	this._texture.bind(0);
+	gl.disable(gl.BLEND);
+
+	for(var i = 0; i < 3; ++i)
+	{
+		shader.setUniform("u_mask",LGraphHistogram.masks[i]);
+		shader.draw( mesh, gl.LINE_STRIP );
+	}
+
+	this.setOutputData(0, this._texture );
+}
+
+LGraphHistogram.masks = [vec3.fromValues(1,0,0),vec3.fromValues(0,1,0),vec3.fromValues(0,0,1)];
+
+LGraphHistogram.vertex_shader = "precision highp float;\n\
+	\n\
+	attribute vec3 a_vertex;\n\
+	uniform sampler2D u_texture;\n\
+	uniform vec3 u_mask;\n\
+	\n\
+	void main() {\n\
+		vec3 color = texture2D( u_texture, a_vertex.xy ).xyz * u_mask;\n\
+		float pos = min(1.0,length(color));\n\
+		gl_Position = vec4(pos*2.0-1.0,0.5,0.0,1.0);\n\
+		gl_PointSize = 1.0;\n\
+	}\n\
+";
+
+LGraphHistogram.pixel_shader = "precision highp float;\n\
+	uniform float u_factor;\n\
+	void main() {\n\
+		gl_FragColor = vec4(u_factor);\n\
+	}\n\
+";
+
+LGraphHistogram.line_vertex_shader = "precision highp float;\n\
+	\n\
+	attribute vec3 a_vertex;\n\
+	uniform sampler2D u_texture;\n\
+	uniform vec3 u_mask;\n\
+	uniform float u_scale;\n\
+	\n\
+	void main() {\n\
+		vec3 color = texture2D( u_texture, a_vertex.xy ).xyz * u_mask;\n\
+		float pos = length(color);\n\
+		gl_Position = vec4(a_vertex.x*2.0-1.0, u_scale*pos*2.0-1.0,0.0,1.0);\n\
+	}\n\
+";
+
+LGraphHistogram.line_pixel_shader = "precision highp float;\n\
+	uniform vec3 u_mask;\n\
+	void main() {\n\
+		gl_FragColor = vec4(u_mask,1.0);\n\
+	}\n\
+";
+
+LiteGraph.registerNodeType("texture/histogram", LGraphHistogram );
 
 
 function LGraphCameraMotionBlur()
@@ -17192,8 +17336,6 @@ LGraphCameraMotionBlur.pixel_shader = "precision highp float;\n\
 LiteGraph.registerNodeType("texture/motionBlur", LGraphCameraMotionBlur );
 
 
-/* not finished
-
 function LGraphVolumetricLight()
 {
 	this.addInput("color","Texture");
@@ -17201,7 +17343,7 @@ function LGraphVolumetricLight()
 	this.addInput("camera","Camera");
 	this.addInput("light","Light,Component");
 	this.addOutput("out","Texture");
-	this.properties = { enabled: true, intensity: 1, precision: LGraphTexture.DEFAULT };
+	this.properties = { enabled: true, intensity: 1, attenuation: 2.0, precision: LGraphTexture.DEFAULT };
 
 	this._inv_matrix = mat4.create();
 
@@ -17229,21 +17371,25 @@ LGraphVolumetricLight.prototype.onExecute = function()
 	var camera = this.getInputData(2);
 	var light = this.getInputData(3);
 
-	if( !this.isOutputConnected(0) || !tex || !depth || !camera || !light || !light._shadowmap )
+	if( !this.isOutputConnected(0) || !tex)
 		return; //saves work
 
 	var enabled = this.getInputData(4);
 	if(enabled != null)
 		this.properties.enabled = Boolean( enabled );
 
-	if(this.properties.precision === LGraphTexture.PASS_THROUGH || this.properties.enabled === false )
+	var shadowmap = null;
+	if(light && light._shadowmap)
+		shadowmap = light._shadowmap.texture;
+
+	if(this.properties.precision === LGraphTexture.PASS_THROUGH || this.properties.enabled === false || !depth || !camera || !light || !shadowmap )
 	{
 		this.setOutputData(0, tex);
 		return;
 	}
 
-	var width = tex.width;
-	var height = tex.height;
+	var width = depth.width;
+	var height = depth.height;
 	var type = this.precision === LGraphTexture.LOW ? gl.UNSIGNED_BYTE : gl.HIGH_PRECISION_FORMAT;
 	if (this.precision === LGraphTexture.DEFAULT)
 		type = tex.type;
@@ -17278,14 +17424,15 @@ LGraphVolumetricLight.prototype.onExecute = function()
 	var inv = this._inv_matrix;
 	mat4.invert( inv, camera._viewprojection_matrix );
 
-	var shadow = light._shadowmap;
-
 	var uniforms = this._uniforms;
 	uniforms.u_intensity = intensity;
 	uniforms.u_camera_planes = camera._uniforms.u_camera_planes;
 	uniforms.u_light_viewprojection_matrix = light._light_matrix;
 	uniforms.u_shadow_params = light._uniforms.u_shadow_params;
 	uniforms.u_light_color = light._uniforms.u_light_color;
+	uniforms.u_attenuation = this.properties.attenuation;
+
+	//TODO: add noise pattern
 
 	this._tex.drawTo(function() {
 		gl.disable( gl.DEPTH_TEST );
@@ -17293,7 +17440,7 @@ LGraphVolumetricLight.prototype.onExecute = function()
 		gl.disable( gl.BLEND );
 		tex.bind(0);
 		depth.bind(1);
-		shadow.bind(2);
+		shadowmap.bind(2);
 		var mesh = Mesh.getScreenQuad();
 		shader.uniforms( uniforms ).draw( mesh );
 	});
@@ -17305,6 +17452,18 @@ LGraphVolumetricLight.prototype.onGetInputs = function()
 {
 	return [["enabled","boolean"]];
 }
+
+/* from http://www.alexandre-pestana.com/volumetric-lights/
+// Mie scaterring approximated with Henyey-Greenstein phase function.
+float ComputeScattering(float lightDotView)
+{
+float result = 1.0f - G_SCATTERING * G_SCATTERING;
+result /= (4.0f * PI * pow(1.0f + G_SCATTERING * G_SCATTERING - (2.0f * G_SCATTERING) *      lightDotView, 1.5f));
+return result;
+}
+
+accumFog += ComputeScattering(dot(rayDirection, sunDirection)).xxx * g_SunColor;
+*/
 
 LGraphVolumetricLight.pixel_shader = "precision highp float;\n\
 		\n\
@@ -17318,7 +17477,8 @@ LGraphVolumetricLight.pixel_shader = "precision highp float;\n\
 		uniform vec4 u_shadow_params;\n\
 		uniform vec3 u_light_color;\n\
 		uniform float u_intensity;\n\
-		#define SAMPLES 16\n\
+		uniform float u_attenuation;\n\
+		#define SAMPLES 64\n\
 		\n\
 		void main() {\n\
 			vec2 uv = v_coord;\n\
@@ -17326,7 +17486,6 @@ LGraphVolumetricLight.pixel_shader = "precision highp float;\n\
 			float depth = texture2D(u_depth_texture, uv).x;\n\
 			float zNear = u_camera_planes.x;\n\
 			float zFar = u_camera_planes.y;\n\
-			//float z = (2.0 * zNear) / (zFar + zNear - depth * (zFar - zNear));\n\
 			depth = depth * 2.0 - 1.0;\n\
 			float z = zNear * (depth + 1.0) / (zFar + zNear - depth * (zFar - zNear));\n\
 			vec4 screenpos = vec4( uv * 2.0 - vec2(1.0), depth, 1.0 );\n\
@@ -17345,17 +17504,18 @@ LGraphVolumetricLight.pixel_shader = "precision highp float;\n\
 				light_uv.xy /= light_uv.w;\n\
 				light_uv.xy = light_uv.xy * 0.5 + vec2(0.5);\n\
 				float shadow_depth = texture2D( u_shadow_texture, light_uv.xy ).x;\n\
-				if (((light_uv.z - bias) / light_uv.w * 0.5 + 0.5) > shadow_depth )\n\
+				if (((light_uv.z - bias) / light_uv.w * 0.5 + 0.5) < shadow_depth )\n\
 					brightness += 1.0;\n\
 				current_pos.xyz += delta;\n\
 			}\n\
-			color.xyz += u_light_color * brightness / float(SAMPLES);\n\
+			//color.xyz += u_intensity * u_light_color * brightness / float(SAMPLES);\n\
+			color.xyz = mix(color.xyz, u_light_color, clamp( pow(u_intensity * brightness / float(SAMPLES), u_attenuation),0.0,1.0));\n\
 			gl_FragColor = color;\n\
 		}\n\
 		";
 
 LiteGraph.registerNodeType("texture/volumetric_light", LGraphVolumetricLight );
-*/
+
 
 
 
@@ -27626,7 +27786,11 @@ Transform.prototype.fromMatrix = (function() {
 		vec3.normalize( M.subarray(8,11), M.subarray(8,11) );
 
 		var M3 = mat3.fromMat4( temp_mat3, M );
-		mat3.transpose( M3, M3 );
+		quat.fromMat3AndQuat( this._rotation, M3 );
+
+		/* works with default fromMat3, not with fromMat3AndQuat
+		var M3 = mat3.fromMat4( temp_mat3, M );
+		mat3.transpose( M3, M3 ); //why transpose?!?!
 		quat.fromMat3( this._rotation, M3 );
 		quat.normalize( this._rotation, this._rotation );
 		//*/
@@ -30625,7 +30789,7 @@ function Light(o)
 	this.shadowmap_resolution = 0; //use automatic shadowmap size
 
 	//shadowmap class
-	this._shadowmap = null;
+	this._shadowmap = null; //Shadowmap class
 	this._update_shadowmap_render_settings = null;
 
 	//used to force the computation of the light matrix for the shader (otherwise only if projective texture or shadows are enabled)

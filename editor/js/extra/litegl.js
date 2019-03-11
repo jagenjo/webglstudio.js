@@ -1970,7 +1970,7 @@ mat3.setColumn = function(out, v, index )
 
 //http://matthias-mueller-fischer.ch/publications/stablePolarDecomp.pdf
 //reusing the previous quaternion as an indicator to keep perpendicularity
-quat.fromMat3 = (function(){
+quat.fromMat3AndQuat = (function(){
 	var temp_mat3 = mat3.create();
 	var temp_quat = quat.create();
 	var Rcol0 = vec3.create();
@@ -2015,22 +2015,6 @@ quat.fromMat3 = (function(){
 		return q;
 	};
 })();
-
-/*
-quat.fromMat3 = function( q, m, max_iter )
-{
-	for (var iter = 0; iter < max_iter; ++iter)
-	{
-		Matrix3d R = q.matrix();
-		Vector3d omega = (R.col(0).cross(A.col(0)) + R.col(1).cross(A.col(1)) + R.col(2).cross(A.col(2))) * (1.0 / fabs(R.col(0).dot(A.col(0)) + R.col(1).dot(A.col(1)) + R.col(2).dot(A.col(2))) +	1.0e-9);
-		double w = omega.norm();
-		if (w < 1.0e-9)
-			break;
-		q = Quaterniond(AngleAxisd(w, (1.0 / w) * omega)) * q;
-		q.normalize();
-	}
-}
-*/
 
 //http://number-none.com/product/IK%20with%20Quaternion%20Joint%20Limits/
 quat.rotateToFrom = (function(){ 
@@ -5025,17 +5009,29 @@ global.Texture = GL.Texture = function Texture( width, height, options, gl ) {
 	if(options.anisotropic && gl.extensions["EXT_texture_filter_anisotropic"])
 		gl.texParameterf( GL.TEXTURE_2D, gl.extensions["EXT_texture_filter_anisotropic"].TEXTURE_MAX_ANISOTROPY_EXT, options.anisotropic);
 
+	var type = this.type;
 	var pixel_data = options.pixel_data;
 	if(pixel_data && !pixel_data.buffer)
 	{
 		if( this.texture_type == GL.TEXTURE_CUBE_MAP )
 		{
 			for(var i = 0; i < pixel_data.length; ++i)
-				pixel_data[i] = new (this.type == gl.FLOAT ? Float32Array : Uint8Array)( pixel_data[i] );
+				pixel_data[i] = toTypedArray( pixel_data[i] );
 		}
 		else
-			pixel_data = new (this.type == gl.FLOAT ? Float32Array : Uint8Array)( pixel_data );
+			pixel_data = toTypedArray( pixel_data );
 		this.data = pixel_data;
+	}
+
+	function toTypedArray( data )
+	{
+		if(data.constructor !== Array)
+			return data;
+		if( type == gl.FLOAT)
+			return new Float32Array( data );
+		if( type == gl.HALF_FLOAT_OES)
+			return new Uint16Array( data );
+		return new Uint8Array( data );
 	}
 
 	//gl.TEXTURE_1D is not supported by WebGL...

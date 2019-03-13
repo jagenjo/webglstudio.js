@@ -5,7 +5,7 @@ Also you will need to have shell access to that server to execute some scripts.
 
 ## Requirements
 
-You need to have installed an HTTP Server (Apache) with PHP support and MySQL.
+You need to have installed an HTTP Server (Apache or nginx) with PHP support and MySQL.
 
 ## Download
 You need to download two projects from github:

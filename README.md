@@ -19,6 +19,12 @@ For more information, visit http://webglstudio.org
 
 ![Interface](press/images/interface.jpg "Interface")
 
+Features missing:
+* Mesh editing, you cannot select faces and move them
+* Support for FBX, it has some sort of support but not fully functional
+* Physics
+
+
 Installing
 ----------
 

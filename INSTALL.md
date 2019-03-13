@@ -23,11 +23,11 @@ Upload the files to your server and unpack them following the next steps:
 
 To install litefileserver follow this guide: [Guide to install LiteFileSystem](https://github.com/jagenjo/litefilesystem.js/blob/master/INSTALL.md)
 
-Check that your installation works by entering to the fileserver/ folder from your browser.
+Check that your installation works by entering to the ```fileserver/``` folder from your browser.
 
 ## Configure 
 
-Now we need to configure WebGLStudio, edit the config.json to specify where is the fileserver located ( the fileserver/ folder ) and where are the files ( the fileserver/files folder ).
+Now we need to configure WebGLStudio, edit the config.json to specify where is the fileserver located ( the ```fileserver/``` folder ) and where are the files ( the ```fileserver/files``` folder ).
 By default they should have that name.
 
 ## Ready

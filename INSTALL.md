@@ -1,6 +1,6 @@
 # Install
 
-First remember that to use WebGLStudio you need to install it in server that has a http server installed to host websites.
+First remember that to use WebGLStudio you need to install it in a server that has a http server installed to host websites.
 Also you will need to have shell access to that server to execute some scripts.
 
 ## Requirements

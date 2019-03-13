@@ -17,7 +17,7 @@ Upload the files to your server and unpack them following the next steps:
 
 - Unpack the webglstudio ```editor/``` folder in a folder inside a public folder in your server.
 - Create a folder called ```fileserver/``` inside that folder
-- Unpack the litefileserver inside the fileserver/ folder created
+- Unpack the litefileserver inside the ```fileserver/``` folder created
 
 ## Install LiteFileServer
 

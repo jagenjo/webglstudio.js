@@ -46,7 +46,7 @@ function enableWebGLCanvas( canvas, options )
 	var white = vec4.fromValues(1,1,1,1);
 
 	//some generic shaders
-	var	flat_shader = new GL.Shader( GL.Shader.QUAD_VERTEX_SHADER, GL.Shader.SCREEN_FLAT_FRAGMENT_SHADER );
+	var	flat_shader = new GL.Shader( GL.Shader.QUAD_VERTEX_SHADER, GL.Shader.FLAT_FRAGMENT_SHADER );
 	var	texture_shader = new GL.Shader( GL.Shader.QUAD_VERTEX_SHADER, GL.Shader.SCREEN_COLORED_FRAGMENT_SHADER );
 	var circle = GL.Mesh.circle({size:1});
 
@@ -56,7 +56,6 @@ function enableWebGLCanvas( canvas, options )
 	var global_mesh = new GL.Mesh();
 	var global_buffer = global_mesh.createVertexBuffer("vertices", null, null, global_vertices, gl.STREAM_DRAW );
 	var quad_mesh = GL.Mesh.getScreenQuad();
-	var is_rect = false;
 	var extra_projection = mat4.create();
 	var stencil_enabled = false;
 	var anisotropic = options.anisotropic !== undefined ? options.anisotropic : 2;
@@ -70,7 +69,11 @@ function enableWebGLCanvas( canvas, options )
 		extra_macros.EXTRA_PROJECTION = "";
 
 	//used to store font atlas textures (images are not stored here)
-	var textures = {};
+	var textures = gl.WebGLCanvas.textures_atlas = {};
+	gl.WebGLCanvas.clearAtlas = function()
+	{
+		textures = gl.WebGLCanvas.textures_atlas = {};
+	}
 
 	var vertex_shader = "\n\
 			precision highp float;\n\
@@ -192,7 +195,7 @@ function enableWebGLCanvas( canvas, options )
 	var tmp_vec2b = vec2.create();
 	ctx._stack = [];
 	var global_angle = 0;
-	var viewport = vec2.fromValues(1,1);
+	var viewport = ctx.viewport_data.subarray(2,4);
 
 	ctx.translate = function(x,y)
 	{
@@ -246,15 +249,9 @@ function enableWebGLCanvas( canvas, options )
 
 	ctx.transform = function(a,b,c,d,e,f) {
 		var m = tmp_mat3;
-		m[0] = a;
-		m[1] = c;
-		m[2] = e;
-		m[3] = b;
-		m[4] = d;
-		m[5] = f;
-		m[6] = 0;
-		m[7] = 0;
-		m[8] = 1;
+
+        m[0] = a; m[1] = b; m[2] = 0; m[3] = c; m[4] = d; m[5] = 0; m[6] = e; m[7] = f; m[8] = 1; //fix
+		//m[0] = a; m[1] = c;	m[2] = e; m[3] = b;	m[4] = d; m[5] = f;	m[6] = 0; m[7] = 0;	m[8] = 1;
 
 		mat3.multiply( this._matrix, this._matrix, m );
 		global_angle = Math.atan2( this._matrix[0], this._matrix[1] );
@@ -262,15 +259,10 @@ function enableWebGLCanvas( canvas, options )
 
 	ctx.setTransform = function(a,b,c,d,e,f) {
 		var m = this._matrix;
-		m[0] = a;
-		m[1] = c;
-		m[2] = e;
-		m[3] = b;
-		m[4] = d;
-		m[5] = f;
-		m[6] = 0;
-		m[7] = 0;
-		m[8] = 1;
+
+		m[0] = a; m[1] = b; m[2] = 0; m[3] = c; m[4] = d; m[5] = 0; m[6] = e; m[7] = f; m[8] = 1; //fix
+		//m[0] = a; m[1] = c;	m[2] = e; m[3] = b;	m[4] = d; m[5] = f;	m[6] = 0; m[7] = 0;	m[8] = 1;
+
 		//this._matrix.set([a,c,e,b,d,f,0,0,1]);
 		global_angle = Math.atan2( this._matrix[0], this._matrix[1] );
 	}
@@ -477,7 +469,6 @@ function enableWebGLCanvas( canvas, options )
 	ctx.beginPath = function()
 	{
 		global_index = 0;
-		is_rect = false;
 	}
 
 	ctx.closePath = function()
@@ -488,7 +479,6 @@ function enableWebGLCanvas( canvas, options )
 		global_vertices[ global_index + 1] = global_vertices[1];
 		global_vertices[ global_index + 2] = 1;
 		global_index += 3;
-		is_rect = false;
 	}
 
 	ctx.moveTo = function(x,y)
@@ -513,7 +503,6 @@ function enableWebGLCanvas( canvas, options )
 			global_index += 3;
 		}
 
-		is_rect = false;
 	}
 
 	ctx.lineTo = function(x,y)
@@ -522,13 +511,12 @@ function enableWebGLCanvas( canvas, options )
 		global_vertices[ global_index + 1] = y;
 		global_vertices[ global_index + 2] = 1;
 		global_index += 3;
-		is_rect = false;
 	}
 
 	ctx.bezierCurveTo = function(m1x,m1y, m2x,m2y, ex,ey)
 	{
-		if(global_index < 3) return;
-		is_rect = false;
+		if(global_index < 3)
+			return;
 
 		var last = [ global_vertices[ global_index - 3 ], global_vertices[ global_index - 2 ] ];
 		cp = [ last, [m1x, m1y], [m2x, m2y], [ex, ey] ];
@@ -563,8 +551,8 @@ function enableWebGLCanvas( canvas, options )
 
 	ctx.quadraticCurveTo = function(mx,my,ex,ey)
 	{
-		if(global_index < 3) return;
-		is_rect = false;
+		if(global_index < 3)
+			return;
 
 		var sx = global_vertices[ global_index - 3 ];
 		var sy = global_vertices[ global_index - 2 ];
@@ -593,11 +581,7 @@ function enableWebGLCanvas( canvas, options )
 		if(global_index < 9)
 			return;
 
-		//if(is_rect)
-		//	return this.fillRect();
-
 		//update buffer
-		//global_buffer.upload( gl.STREAM_DRAW );
 		global_buffer.uploadRange(0, global_index * 4); //4 bytes per float
 		uniforms.u_viewport = viewport;
 		var shader = flat_primitive_shader;
@@ -824,13 +808,69 @@ function enableWebGLCanvas( canvas, options )
 		global_vertices[ global_index + 14] = 1;
 
 		global_index += 15;
-
-		if(global_index == 15)
-			is_rect = true;
 	}
 
-	//roundRect is a function I use sometimes, but here we dont have it
-	ctx.roundRect = ctx.rect;
+	ctx.roundRect = function (x, y, w, h, radius, radius_low)
+	{
+		if ( radius === undefined )
+			radius = 5;
+		if(radius_low === undefined)
+			radius_low  = radius;
+		var gv = global_vertices;
+		var gi = global_index;
+
+		for(var i = 0; i < 10; ++i)
+		{
+			var ang = (i/10)*Math.PI*0.5;
+			gv[ gi ] = x+radius*(1.0 - Math.cos(ang));
+			gv[ gi + 1] = y+radius*(1.0 - Math.sin(ang));
+			gv[ gi + 2] = 1;
+			gi += 3;
+		}
+
+		gv[ gi + 0] = x+radius; gv[ gi + 1] = y; gv[ gi + 2] = 1;
+		gv[ gi + 3] = x+w-radius; gv[ gi + 4] = y; gv[ gi + 5] = 1;
+		gi += 6;
+
+		for(var i = 0; i < 10; ++i)
+		{
+			var ang = (i/10)*Math.PI*0.5;
+			gv[ gi + 0] = x+w-radius*(1.0 - Math.sin(ang));
+			gv[ gi + 1] = y+radius*(1.0 - Math.cos(ang));
+			gv[ gi + 2] = 1;
+			gi += 3;
+		}
+
+		gv[ gi + 0] = x+w; gv[ gi + 1] = y+radius; gv[ gi + 2] = 1;
+		gv[ gi + 3] = x+w; gv[ gi + 4] = y+h-radius_low; gv[ gi + 5] = 1;
+		gi += 6;
+
+		for(var i = 0; i < 10; ++i)
+		{
+			var ang = (i/10)*Math.PI*0.5;
+			gv[ gi + 0] = x+w-radius_low*(1.0 - Math.cos(ang));
+			gv[ gi + 1] = y+h-radius_low*(1.0 - Math.sin(ang));
+			gv[ gi + 2] = 1;
+			gi += 3;
+		}
+
+		gv[ gi + 0] = x+w-radius_low; gv[ gi + 1] = y+h; gv[ gi + 2] = 1;
+		gv[ gi + 3] = x+radius_low; gv[ gi + 4] = y+h; gv[ gi + 5] = 1;
+		gi += 6;
+
+		for(var i = 0; i < 10; ++i)
+		{
+			var ang = (i/10)*Math.PI*0.5;
+			gv[ gi + 0] = x+radius_low*(1.0 - Math.sin(ang));
+			gv[ gi + 1] = y+h-radius_low*(1.0 - Math.cos(ang));
+			gv[ gi + 2] = 1;
+			gi += 3;
+		}
+
+		gv[ gi + 0] = x; gv[ gi + 1] = y+radius; gv[ gi + 2] = 1;
+		global_index = gi + 3;
+	}
+
 
 	ctx.arc = function(x,y,radius, start_ang, end_ang)
 	{
@@ -848,7 +888,6 @@ function enableWebGLCanvas( canvas, options )
 			var f = start_ang + i*delta;
 			this.lineTo(x + Math.cos(f) * radius, y + Math.sin(f) * radius);
 		}
-		is_rect = false;
 	}
 
 	ctx.strokeRect = function(x,y,w,h)
@@ -919,8 +958,8 @@ function enableWebGLCanvas( canvas, options )
 		window.gl = this;
 		var gl = this;
 
-		viewport[0] = gl.viewport_data[2];
-		viewport[1] = gl.viewport_data[3];
+		//viewport[0] = gl.viewport_data[2];
+		//viewport[1] = gl.viewport_data[3];
 		gl.disable( gl.CULL_FACE );
 		gl.disable( gl.DEPTH_TEST );
 		gl.disable( gl.STENCIL_TEST );
@@ -928,7 +967,6 @@ function enableWebGLCanvas( canvas, options )
 		gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
 		gl.lineWidth = 1;
 		global_index = 0;
-		is_rect = false;
 	}
 
 	ctx.finish2D = function()
@@ -1151,7 +1189,7 @@ function enableWebGLCanvas( canvas, options )
 	{
 		var atlas = createFontAtlas.call( this, this._font_family, this._font_mode );
 		var info = atlas.info;
-		var point_size = this._font_size * 1.1;
+		var point_size = Math.ceil( this._font_size * 1.1 );
 		var spacing = point_size * atlas.info.spacing / atlas.info.char_size - 1 ;
 		return { width: text.length * spacing, height: point_size };
 	}
@@ -1271,7 +1309,7 @@ function enableWebGLCanvas( canvas, options )
 
 		//console.log("Font Atlas Generated:", ((getTime() - now)*0.001).toFixed(2),"s");
 
-		texture = GL.Texture.fromImage( canvas, {magFilter: imageSmoothingEnabled ? gl.LINEAR : gl.NEAREST, minFilter: imageSmoothingEnabled ? gl.LINEAR : gl.NEAREST, premultiply_alpha: false} );
+		texture = GL.Texture.fromImage( canvas, { magFilter: imageSmoothingEnabled ? gl.LINEAR : gl.NEAREST, minFilter: imageSmoothingEnabled ? gl.LINEAR : gl.NEAREST, premultiply_alpha: false, anisotropic: 8 } );
 		texture.info = info; //font generation info
 
 		return textures[texture_name] = texture;

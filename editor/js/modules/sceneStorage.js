@@ -4,6 +4,9 @@
 var SceneStorageModule = {
 	name: "scene_storage",
 	localscene_prefix: "wgl_localscenes_",
+	scene_templates: {
+		"empty":null
+	},
 	
 	preferences: {
 		show_guest_warning: true
@@ -20,16 +23,22 @@ var SceneStorageModule = {
 		menubar.add("Project/Load/From URL", { callback: this.showLoadFromURLDialog.bind(this) });
 		menubar.add("Project/Load/From File", { callback: this.showLoadFromFileDialog.bind(this) });
 		menubar.add("Project/Load/From autobackup", { callback: this.recoverBackup.bind(this) });
+		menubar.add("Project/Load/From JSON text", { callback: this.showLoadFromJSONDialog.bind(this) });
 		menubar.add("Project/Save/In Server", { callback: this.showSaveSceneInServerDialog.bind(this,null) });
 		menubar.add("Project/Save/Local", { callback: this.showSaveSceneInLocalDialog.bind(this) });
-		menubar.add("Project/Download", { callback: this.showDownloadSceneDialog.bind(this) });
+		//menubar.add("Project/Download", { callback: this.showDownloadSceneDialog.bind(this) });
 		menubar.add("Project/Test", { callback: this.testScene.bind(this) });
 		menubar.add("Project/Publish", { callback: this.showPublishDialog.bind(this) });
 
 		menubar.separator("Project");
 		menubar.add("Project/Reset All", { callback: EditorModule.showResetDialog.bind(EditorModule) });
 
-		menubar.add("Scene/Check JSON", { callback: function() { EditorModule.checkJSON( LS.GlobalScene ); } });
+		menubar.add("Scene/Show JSON", { callback: function() { EditorModule.checkJSON( LS.GlobalScene ); } });
+		menubar.add("Scene/Show JSON Simple", { callback: function() { 
+			var data = LS.GlobalScene.serialize(true);
+			delete data.extra;
+			EditorModule.checkJSON( data ); }
+		});
 
 		//feature in development...
 		menubar.add("Scene/Create", { callback: function() { SceneStorageModule.showCreateSceneDialog(); } });
@@ -54,25 +63,103 @@ var SceneStorageModule = {
 
 	onNewScene: function()
 	{
-		LiteGUI.confirm("Are you sure?", function(v) {
-			if(!v)
+		//cheap way to check for changed stuff
+		var res = Object.keys( LS.GlobalScene.getResources() );
+		var components = LS.GlobalScene.root._components.map(a=>a.constructor.name.toString()).join(" ");
+		var modified = LS.GlobalScene.root.childNodes.length || res.length || components != "GlobalInfo Camera Light Skybox";
+
+		if(!modified)
+			inner_new()
+		else
+			LiteGUI.confirm("Are you sure?", function(v) {
+				if(!v)
+					return;
+				inner_new();
+			});
+
+		function inner_new()
+		{
+			LS.ResourcesManager.reset();
+			LS.Renderer.reset();
+			EditorModule.resetScene(); //does the clear and attaches default components
+			SceneStorageModule.showNewSceneDialog();
+		}
+	},
+
+	showNewSceneDialog: function()
+	{
+		var dialog = LiteGUI.Dialog.getDialog("dialog_new_scene");
+		if(dialog)
+			return;
+
+		dialog = new LiteGUI.Dialog( { id: "dialog_new_scene", title:"New Scene", close: true, minimize: true, width: 420, height: 320, scroll: false, draggable: true});
+
+		var widgets = new LiteGUI.Inspector({ name_width: 160 });
+		dialog.add(widgets);
+
+		var name_widget = widgets.addString("Name","",{ placeHolder:"write name..." });
+		var folder_widget = widgets.addFolder("Folder", ProfileModule.user ? ProfileModule.user.username + "/projects" : "" );
+		var create_folder_widget = widgets.addCheckbox("Create project folder",true);
+		var data_folder_widget = widgets.addString("data subfolder","data");
+
+		var template_names = Object.keys( this.scene_templates );
+		var template_widget = widgets.addCombo("Templates", "empty", { values: template_names });
+
+		widgets.addButtons(null,["Create","Skip"], { className:"big", callback: function(button){
+			if(button == "Skip")
+			{
+				dialog.close();
+				return;
+			}
+
+			inner_create();
+			
+			dialog.close();
+		}});
+
+		dialog.show();
+		dialog.adjustSize();
+		name_widget.focus();
+
+		function inner_create()
+		{
+			var name = name_widget.getValue();
+			var folder = folder_widget.getValue();
+			var template = SceneStorageModule.scene_templates[ template_widget.getValue() ];
+			if(!name)
 				return;
 
-			LS.ResourcesManager.reset();
-			LS.GlobalScene.clear();
-			LS.Renderer.reset();
-		});
+			name = name.toLowerCase();
+			if(create_folder_widget.getValue() == true)
+				folder += "/" + name;
+			if( name.indexOf(".json") == -1 )
+				name += ".json";
+
+			LS.GlobalScene.extra.filename = name;
+			LS.GlobalScene.extra.folder = folder;
+			LS.GlobalScene.extra.fullname = folder + "/" + name;
+			LS.GlobalScene.extra.data_folder = folder + "/" + data_folder_widget.getValue();
+
+			if(!ProfileModule.user)
+				return LiteGUI.alert("User not logged, cannot create folder");
+
+			if(create_folder_widget.getValue())
+			{
+				DriveModule.serverCreateFolder( LS.GlobalScene.extra.folder );
+				DriveModule.serverCreateFolder( LS.GlobalScene.extra.data_subfolder );
+			}
+		}
 	},
 
 	showLoadSceneFromServerDialog: function()
 	{
-		if(!LoginModule.session)
+		if(!ProfileModule.session)
 		{
 			var dialog = LiteGUI.alert("You must be logged in to load scenes, click the <button>Login</button> button.");
 			var button = dialog.content.querySelector("button");
 			button.addEventListener("click", function(){
 				dialog.close();
-				LoginModule.showLoginDialog();
+				ProfileModule.showLoginDialog();
 			});
 			return;
 		}
@@ -82,10 +169,10 @@ var SceneStorageModule = {
 		if(dialog)
 			return;
 
-		dialog = new LiteGUI.Dialog( { id: "dialog_load_scene", title:"Load Scene", close: true, minimize: true, width: 520, height: 290, scroll: false, draggable: true});
-		dialog.show('fade');
+		dialog = new LiteGUI.Dialog( { id: "dialog_load_scene", title:"Load Scene", close: true, minimize: true, width: 520, height: 320, scroll: false, draggable: true});
+		dialog.show();
 
-		var split = new LiteGUI.Split("load_scene_split",[50,50]);
+		var split = new LiteGUI.Split([50,50]);
 		dialog.add( split );
 
 		var right_pane_style = split.getSection(1).style;
@@ -93,15 +180,26 @@ var SceneStorageModule = {
 		right_pane_style.paddingLeft = "2px";
 		right_pane_style.paddingTop = "2px";
 
+		var list = null;
 		var widgets = new LiteGUI.Inspector();
 		var scenes = ["Loading..."];
-		var list = widgets.addList(null,scenes, { height: 220, callback: inner_selected});
-		widgets.addButtons(null,["Load","Delete"], { className:"big", callback: inner_button });
+		var searchbox = widgets.addString( null, "", { placeHolder: "search...", immediate: true, callback: function(v){
+			list.filter(v);
+		}});
+
+		list = widgets.addList(null,scenes, { height: 230, callback: inner_selected, callback_dblclick: inner_dblclick});
+		widgets.widgets_per_row = 2;
+		widgets.addButton(null,"Load", { width: "80%", className:"big", callback: inner_load });
+		widgets.addButton(null,"<img src='imgs/mini-icon-trash.png'/>", { width: "20%", className:"big", callback: inner_delete });
+		widgets.widgets_per_row = 1;
 
 		split.getSection(0).add( widgets );
+		dialog.adjustSize(5);
+
+		split.getSection(1).style.height = "100%";
 
 		//load scenes
-		DriveModule.serverSearchFiles({ category: "SceneTree" }, inner_files, inner_error );
+		DriveModule.serverSearchFiles({ category: "Scene" }, inner_files, inner_error );
 
 		function inner_files(items)
 		{
@@ -109,7 +207,7 @@ var SceneStorageModule = {
 			for(var i in items)
 			{
 				var item = items[i];
-				if(!item.category == "SceneTree")
+				if(!item.category == "Scene")
 					continue;
 				var name = item.filename.substr(0, item.filename.indexOf("."));
 				r[name] = item;
@@ -124,37 +222,41 @@ var SceneStorageModule = {
 
 		function inner_selected( item )
 		{
+			var root = split.getSection(1);
 			selected = item.fullpath;
-			split.getSection(1).innerHTML = "";
-			var img = new Image();
-			img.src = LFS.getPreviewPath( selected );
-			split.getSection(1).add(img);
+			var html = "<div style='height:260px'><img style='opacity: 0;' src='" + LFS.getPreviewPath( selected ) + "'/></div><span style='font-size:1.4em'>"+ item.timestamp +"</span>";
+			root.innerHTML = html;
+			root.querySelector("img").onload = function() { this.style.opacity = 1; }
 		}
 
-		function inner_button( button )
+		function inner_dblclick( item )
 		{
-			if(button == "Load")
-			{
-				dialog.close();
-				SceneStorageModule.loadScene( selected );
-			}
-			if(button == "Delete")
-			{
-				LiteGUI.confirm("Do you want to delete the file?", function() {
+			selected = item.fullpath;
+			inner_load();
+		}
 
-					//remove also the Pack
-					var folder = LS.RM.getFolder(selected);
-					var basename = LS.RM.getBasename(selected);
-					var pack_fullpath = LS.RM.cleanFullpath( folder + "/" + basename + ".PACK.wbin" );
-					DriveModule.serverDeleteFile( pack_fullpath );
+		function inner_load()
+		{
+			dialog.close();
+			SceneStorageModule.loadScene( selected );
+		}
 
-					DriveModule.serverDeleteFile( selected, function(v) { 
-						LiteGUI.alert(v?"File deleted":"Error deleting file");
-						if(v)
-							dialog.close();
-					});
+		function inner_delete()
+		{
+			LiteGUI.confirm("Do you want to delete the file?", function() {
+
+				//remove also the Pack
+				var folder = LS.RM.getFolder(selected);
+				var basename = LS.RM.getBasename(selected);
+				var pack_fullpath = LS.RM.cleanFullpath( folder + "/" + basename + ".PACK.wbin" );
+				DriveModule.serverDeleteFile( pack_fullpath );
+
+				DriveModule.serverDeleteFile( selected, function(v) { 
+					LiteGUI.alert(v?"File deleted":"Error deleting file");
+					if(v)
+						dialog.close();
 				});
-			}
+			});
 		}
 
 	},
@@ -184,9 +286,10 @@ var SceneStorageModule = {
 
 			//clear
 			LS.Renderer.reset();
+			LS.ResourcesManager.reset();
 			LS.GlobalScene.clear();
 
-			//the SceneTree.load function bypasses the LS.RM (uses relative urls), something that is a problem when loading an scene stored in the Drive
+			//the Scene.load function bypasses the LS.RM (uses relative urls), something that is a problem when loading an scene stored in the Drive
 			//SceneStorage also includes the url
 			msg = NotifyModule.show("FILE: " + fullpath, { id: msg_id, closable: true, time: 0, left: 60, top: 30, parent: "#visor" } );
 			LS.GlobalScene.load( real_path, inner_complete, inner_error, inner_progress ); 
@@ -197,6 +300,8 @@ var SceneStorageModule = {
 		{
 			if(msg)
 				msg.kill();
+
+			scene.extra.filename = LS.ResourcesManager.getFilename( fullpath );
 			scene.extra.folder = LS.ResourcesManager.getFolder( fullpath );
 			scene.extra.fullpath = fullpath;
 			that.onSceneReady( scene );
@@ -236,6 +341,9 @@ var SceneStorageModule = {
 			//EditorModule.inspect(scene);
 			EditorModule.inspect(scene.root);
 		}
+
+		if(scene.extra.folder)
+			DriveModule.selectFolder(scene.extra.folder);
 
 		LEvent.trigger( scene, "scene_loaded" );
 	},
@@ -290,31 +398,40 @@ var SceneStorageModule = {
 
 	showSaveSceneInServerDialog: function( on_complete )
 	{
-		var scene_name = "";
-		var scene_folder = "";
+		var scene = LS.GlobalScene;
+		var scene_name = scene.extra.filename || "";
+		var scene_folder = scene.extra.folder || ProfileModule.user ? ProfileModule.user.username : "";
 		var scene = LS.GlobalScene;
 
-		if(!LoginModule.session)
+		if(!ProfileModule.session)
 		{
 			var dialog = LiteGUI.alert("You must be logged in to save scenes, click the <button>Login</button> button.");
 			var button = dialog.content.querySelector("button");
 			button.addEventListener("click", function(){
 				dialog.close();
-				LoginModule.showLoginDialog();
+				ProfileModule.showLoginDialog();
 			});
 			return;
 		}
 
-		if(LoginModule.session.user.username == "guest" && this.preferences.show_guest_warning )
+		if(LS.GlobalScene.has_errors)
 		{
-			LoginModule.showGuestAlert();
+			var v = confirm("This scene contains errors. If you save this scene your could lose some data. Are you sure?");
+			if(!v)
+				return;
+			LS.GlobalScene.has_errors = false;
+		}
+
+		if(ProfileModule.session.user.username == "guest" && this.preferences.show_guest_warning )
+		{
+			ProfileModule.showGuestAlert();
 			return;
 		}
 
-		var dialog = new LiteGUI.Dialog({ id: "dialog_save_scene", title:"Save Scene", close: true, minimize: true, width: 520, height: 300, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog({ id: "dialog_save_scene", title:"Save Scene", close: true, minimize: true, width: 530, height: 320, scroll: false, draggable: true});
 		dialog.show('fade');
 
-		var split = new LiteGUI.Split("save_scene_split",[50,50]);
+		var split = new LiteGUI.Split([50,"calc(50% - 1px)"]);
 		dialog.add(split);
 
 		if(scene.extra && scene.extra.filename)
@@ -325,8 +442,11 @@ var SceneStorageModule = {
 			scene_name = scene_name.substr(0, pos);
 
 		var widgets = new LiteGUI.Inspector();
-		var string_widget = widgets.addString("Filename", scene_name , { placeHolder: "choose a name", callback: function(v) { 
+		var filename_widget = widgets.addString("Filename", scene_name , { placeHolder: "choose a name", callback: function(v) { 
 			scene_name = v;
+		}});
+		var folder_widget = widgets.addString("Folder", scene_folder, { callback: function(v) { 
+			scene_folder = v;
 		}});
 		var scenes = { id:"Server", children: [] };
 		var tree_widget = widgets.addTree(null, scenes, { height: 210, callback: inner_selected});
@@ -348,6 +468,7 @@ var SceneStorageModule = {
 		//load tree
 		DriveModule.getServerFoldersTree(inner_tree);
 
+		//load tree...
 		function inner_tree(tree)
 		{
 			tree_widget.setValue( tree );
@@ -355,18 +476,18 @@ var SceneStorageModule = {
 			{
 				tree_widget.tree.setSelectedItem( scene.extra.folder , true );
 				scene_folder = scene.extra.folder;
+				folder_widget.setValue(scene_folder);
 			}
 		}
 
 		function inner_selected(item)
 		{
 			scene_folder = item.fullpath;
+			folder_widget.setValue(scene_folder);
 		}
 
 		function inner_button(button)
 		{
-			var scene = LS.GlobalScene;
-
 			if(!scene_name)
 			{
 				LiteGUI.alert("Scene must have a name");
@@ -379,7 +500,36 @@ var SceneStorageModule = {
 				return;
 			}
 
+			//check folder exist
+			DriveModule.checkFolderExist( scene_folder, inner_check_folder );
+		}
+
+		function inner_check_folder(v)
+		{
+			if(v)
+			{
+				inner_save();
+				return;
+			}
+
+			LiteGUI.confirm("Folder does not exist, do you want to create it?", function(v){
+				if(!v)
+					return;
+
+				ProfileModule.session.createFolder( scene_folder, function(v){
+					if(v)
+						inner_save();
+					else
+						LiteGUI.alert("Couldnt create the folder");
+				});
+			});
+		}
+
+		function inner_save()
+		{
 			//remove extension
+			var scene = LS.GlobalScene;
+
 			var pos = scene_name.indexOf(".");
 			if(pos != -1) //strip extensions
 				scene_name = scene_name.substr(0, pos);
@@ -404,6 +554,14 @@ var SceneStorageModule = {
 	{
 		var scene = LS.GlobalScene;
 
+		if(LS.GlobalScene.has_errors)
+		{
+			var v = confirm("This scene contains errors. If you save this scene your could lose some data. Are you sure?");
+			if(!v)
+				return;
+			LS.GlobalScene.has_errors = false;
+		}
+
 		if(!scene.extra || !scene.extra.folder)
 		{
 			this.showSaveSceneInServerDialog( on_complete );
@@ -427,7 +585,7 @@ var SceneStorageModule = {
 		var dialog = new LiteGUI.Dialog({ id: "dialog_load_scene", title:"Load Scene", close: true, minimize: true, width: 520, height: 300, scroll: false, draggable: true });
 		dialog.show('fade');
 
-		var split = new LiteGUI.Split("load_scene_split",[50,50]);
+		var split = new LiteGUI.Split([50,50]);
 		dialog.add(split);
 
 		var selected = null;
@@ -442,12 +600,12 @@ var SceneStorageModule = {
 		var list = widgets.addList(null,SceneStorageModule.local_scenes, { height: 200, callback: inner_selected});
 		widgets.addButtons(null,["Load","Delete"], { className:"big", callback: inner_button });
 
-		$(split.sections[0]).append(widgets.root);
+		split.sections[0].appendChild(widgets.root);
 
 		function inner_selected(value)
 		{
 			selected = value;
-			$(split.sections[1]).empty();
+			split.sections[1].innerHTML = "";
 			if(!selected) return;
 
 			var preview = localStorage.getItem( SceneStorageModule.localscene_prefix + "preview_" + value.name );
@@ -514,10 +672,64 @@ var SceneStorageModule = {
 			var img = new Image();
 			preview_info = SceneStorageModule.takeScreenshot(256,256);
 			img.src = preview_info;
-			$("#snapshot img").remove();
-			$("#snapshot").append(img);
+			LiteGUI.remove("#snapshot img");
+			document.querySelector("#snapshot").appendChild(img);
 		}
 	},
+
+	showLoadFromJSONDialog: function()
+	{
+		var dialog = new LiteGUI.Dialog({ id: "dialog_load_scene", title:"Load Scene from JSON", close: true, minimize: true, width: 520, height: 300, scroll: false, draggable: true });
+		dialog.show('fade');
+
+		var json = "";
+
+		var widgets = new LiteGUI.Inspector();
+		var info_widget = widgets.addInfo("Paste your JSON here");
+		widgets.addTextarea(null,"",{ height: 300, callback: function(v){
+			json = v;	
+		}});
+		widgets.addButtons(null,["Load","Cancel"], { className:"big", callback: inner_button });
+
+		dialog.add( widgets );
+		dialog.adjustSize(10);
+		dialog.show();
+
+		function inner_button(button)
+		{
+			if(button == "Load")
+			{
+				if(!json)
+					return;
+				var scene = null;
+				try
+				{
+					scene = JSON.parse( json );
+				}
+				catch (err)
+				{
+					info_widget.setValue("error in JSON");
+					return;
+				}
+
+				LiteGUI.confirm("Are you sure?", function(v) {
+					if(!v)
+						return;
+					LS.ResourcesManager.reset();
+					LS.GlobalScene.clear();
+					LS.Renderer.reset();
+					LS.GlobalScene.setFromJSON(scene);
+					dialog.close();
+				});
+
+			}
+			else if(button == "Cancel")
+			{
+				dialog.close();
+			}
+		}
+	},
+
 
 	showCreateSceneDialog: function()
 	{
@@ -531,7 +743,7 @@ var SceneStorageModule = {
 
 		widgets.addButton(null,"Create", { className:"big", callback: function() { 
 
-			var new_scene = new LS.SceneTree();
+			var new_scene = new LS.Scene();
 			new_scene.extra.title = name;
 			CORE.addScene( new_scene );
 
@@ -940,7 +1152,6 @@ var SceneStorageModule = {
 		var canvas = document.createElement("canvas");
 		canvas.width = width;
 		canvas.height = height;
-		//$("body").append(canvas);
 
 		var s = gl.canvas.height / height;
 		var startx = (gl.canvas.width - width*s) * 0.5;

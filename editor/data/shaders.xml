@@ -418,10 +418,13 @@
 		<![CDATA[
 			#ifdef STANDARD_DERIVATIVES
 				#extension GL_OES_standard_derivatives : enable 
+			#endif
 
 				mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
 				{
 					// get edge vectors of the pixel triangle
+					#ifdef STANDARD_DERIVATIVES
+
 					vec3 dp1 = dFdx( p );
 					vec3 dp2 = dFdy( p );
 					vec2 duv1 = dFdx( uv );
@@ -432,6 +435,11 @@
 					vec3 dp1perp = cross( N, dp1 );
 					vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
 					vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+					#else
+					vec3 T = vec3(1.0,0.0,0.0); //this is wrong but its a fake solution
+					vec3 B = cross(N,T);
+					T = cross(B,N);
+					#endif
 				 
 					// construct a scale-invariant frame 
 					float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
@@ -451,12 +459,6 @@
 					mat3 TBN = cotangent_frame(N, V, texcoord);
 					return normalize(TBN * normal_pixel);
 				}	
-			#else
-				vec3 perturbNormal( vec3 N, vec3 V, vec2 texcoord, vec3 normal_pixel )
-				{
-					return N;
-				}
-			#endif
 		]]>
 	</snippet>
 

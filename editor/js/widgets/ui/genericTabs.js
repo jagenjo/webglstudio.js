@@ -20,6 +20,7 @@ GenericTabsWidget.prototype.init = function( options )
 	
 	//tabs for every file
 	var tabs = this.tabs = new LiteGUI.Tabs( { height: "100%" });
+	this.splice_button = tabs.addButtonTab( "slice_tab", "|", this.onSliceTab.bind(this) );
 	tabs.addPlusTab( this.onPlusTab.bind(this) );
 	this.root.add( tabs );
 	/*tabs.root.style.marginTop = "4px";*/
@@ -47,30 +48,23 @@ GenericTabsWidget.createDialog = function( parent )
 
 GenericTabsWidget.prototype.bindEvents = function()
 {
-	//TODO: Crawl the tabs and let them know they should bind events
-
-	/*
-	LEvent.bind( LS.GlobalScene, "beforeReload", this.onBeforeReload, this );
-	LEvent.bind( LS.GlobalScene, "reload", this.onReload, this );
-	LEvent.bind( LS.GlobalScene, "nodeRemoved", this.onNodeRemoved, this );
-	LEvent.bind( LS.GlobalScene, "nodeComponentRemoved", this.onComponentRemoved, this );
-	LEvent.bind( LS.Components.Script, "renamed", this.onScriptRenamed, this );
-	LEvent.bind( CodingTabsWidget, "code_changed", this.onCodeChanged, this);
-
-	LEvent.bind( LS.Components.Script, "code_error", this.onScriptError, this );
-	LEvent.bind( LS, "code_error", this.onGlobalError, this );
-	*/
 }
 
 GenericTabsWidget.prototype.unbindEvents = function()
 {
-	//TODO: Crawl the tabs and let them know they should unbind events
+}
 
-	/*
-	LEvent.unbindAll( LS.GlobalScene, this );
-	LEvent.unbindAll( LS.Components.Script, this );
-	LEvent.unbindAll( LS, this );
-	*/
+GenericTabsWidget.prototype.getCurrentTab = function()
+{
+	return this.tabs.current_tab;
+}
+
+GenericTabsWidget.prototype.getCurrentWidget = function()
+{
+	var tab = this.tabs.current_tab; //tab is an array of [id,root,object]
+	if(!tab)
+		return null;
+	return tab[2].widget;
 }
 
 GenericTabsWidget.prototype.onPlusTab = function( tab_id, e )
@@ -101,6 +95,20 @@ GenericTabsWidget.prototype.onPlusTab = function( tab_id, e )
 	var menu = new LiteGUI.ContextMenu( widgets, { event: e, callback: function(value, options) {
 		that.addWidgetTab( value["class"] );
 	}});
+}
+
+GenericTabsWidget.prototype.onSliceTab = function( tab_id, e )
+{
+	var that = this;
+	var area = new LiteGUI.Area({ width: "100%" });
+	area.split( LiteGUI.Area.HORIZONTAL, ["50%",null], true );
+	area.getSection(0).content.appendChild( this.tabs.root );
+	this.tabs.removeTab("slice_tab");
+
+	var gentabs = new GenericTabsWidget();
+	area.getSection(1).add( gentabs );
+
+	this.root.appendChild(area.root);
 }
 
 GenericTabsWidget.prototype.openInstanceTab = function( instance )

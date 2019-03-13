@@ -1,5 +1,7 @@
 var GraphModule = {
 	name: "Graph",
+	tab_name: "Graph",
+
 	bigicon: "imgs/tabicon-graph.png",
 	_force_render: false,
 
@@ -15,7 +17,7 @@ var GraphModule = {
 
 	init: function()
 	{
-		this.tab = LiteGUI.main_tabs.addTab( this.name, {id:"graphtab", bigicon: this.bigicon, size: "full",  module: GraphModule, callback: function(tab) {
+		this.tab = LiteGUI.main_tabs.addTab( this.tab_name, {id:"graphtab", bigicon: this.bigicon, size: "full",  module: GraphModule, callback: function(tab) {
 			//GraphModule.openTab();
 			InterfaceModule.setSidePanelVisibility(true);
 			GraphModule.show3DWindow( GraphModule.is_sceneview_visible );
@@ -57,16 +59,19 @@ var GraphModule = {
 
 		this.tabs_widget = new GenericTabsWidget();
 		graph_area.getSection(1).add( this.tabs_widget );
-		//this.root.appendChild( this.tabs_widget.root );
 		this.tabs_widget.supported_widgets = [ GraphWidget ];
 
 		LiteGUI.bind( this.tabs_widget, "tab_created", function(e){
 			var tab = e.detail;
 			var widget = tab.widget;
 			var inspector = widget.top_widgets;
-			
+
 			inspector.addButton(null,"3D", { width: 50, callback: function(){
 				GraphModule.show3DWindow(); //toggle
+			}});
+
+			inspector.addButton(null,"Preview", { width: 100, callback: function(){
+				GraphModule.showPreviewSelection();
 			}});
 
 			inspector.addButton(null,"Side", { width: 80, callback: function(){
@@ -80,7 +85,7 @@ var GraphModule = {
 
 	openTab: function()
 	{
-		LiteGUI.main_tabs.selectTab("Graph");
+		LiteGUI.main_tabs.selectTab( GraphModule.tab_name );
 	},
 
 	//shows the side 3d window
@@ -133,15 +138,34 @@ var GraphModule = {
 		return this.tabs_widget.closeInstanceTab( instance, options );
 	},
 
-	onNewGraph: function( node )
+	onNewGraph: function( node, from_file )
 	{
 		node = node || SelectionModule.getSelectedNode();
 		if(!node)
 			node = LS.GlobalScene.root;
+
 		var component = new LS.Components.GraphComponent();
+		component.from_file = from_file;
 		node.addComponent( component );
 		CORE.userAction("component_created", component );
-		this.editInstanceGraph( component, { id: component.uid, title: node.id } );
+
+		if( from_file )
+		{
+		}
+		else
+		{
+			this.editInstanceGraph( component, { id: component.uid, title: node.id } );
+			this.openTab();
+		}
+	},
+
+	onNewGraphCode: function( fullpath )
+	{
+		var graphcode = new LS.GraphCode();
+		graphcode.fullpath = fullpath;
+		graphcode.filename = filename;
+
+		//this.editInstanceGraph( graphcode, { id: fullpath, title: LS.RM.getFilename( fullpath ) } );
 		this.openTab();
 	},
 
@@ -161,6 +185,57 @@ var GraphModule = {
 
 		this.graph_canvas.setGraph( this.current_overgraph );
 		this.graph_canvas.draw();
+	},
+
+	onKeyDown: function(e)
+	{
+		//console.log("key",e);
+		if( e.code == "KeyS" && e.ctrlKey )
+			this.saveGraph();
+		else if( e.code == "F6" )
+			EditorModule.reloadEditor(true);
+		else if( e.code == "Enter" && e.ctrlKey )
+			this.compileGraph();
+		else
+			return;
+
+		e.preventDefault();
+		e.stopPropagation();
+		return true;
+	},
+
+	saveGraph: function()
+	{
+		//store changes in GraphCode
+		var graph_widget = this.tabs_widget.getCurrentWidget();
+		if(graph_widget)
+			graph_widget.saveGraph();
+	},
+
+	compileGraph: function()
+	{
+		//store changes in GraphCode
+		var graph_widget = this.tabs_widget.getCurrentWidget();
+		if(graph_widget)
+			graph_widget.compileGraph();
+	},
+
+	showPreviewSelection: function()
+	{
+		if(!this._texture_preview)
+		{
+			this._texture_preview = new TexturePreviewWidget();
+			RenderModule.canvas_manager.root.addChild(this._texture_preview);
+			this._texture_preview.onClose = function()
+			{
+				GraphModule._texture_preview = null;
+			}
+		}
+		else
+		{
+			RenderModule.canvas_manager.root.removeChild(this._texture_preview);
+			this._texture_preview = null;
+		}
 	}
 };
 
@@ -168,12 +243,15 @@ CORE.registerModule( GraphModule );
 
 //UPDATE GRAPH
 
-GraphModule.showGraphComponent = function(component, inspector)
+GraphModule.showGraphComponent = function( component, inspector )
 {
+	if(component.from_file)
+		inspector.addGraph("filename", component.filename, { name_width: 60, callback: function(v) { component.filename = v; }});
+
 	if(component.constructor == LS.Components.GraphComponent)
 	{
 		inspector.widgets_per_row = 2;
-		inspector.addCombo("on event", component.on_event, { name_width: 100, width:"70%", values: LS.Components.GraphComponent["@on_event"].values , callback: function(v) { component.on_event = v; }});
+		inspector.addCombo("on event", component.on_event, { name_width: 60, width:"70%", values: LS.Components.GraphComponent["@on_event"].values , callback: function(v) { component.on_event = v; }});
 		inspector.addCheckbox("redraw", component.force_redraw, { width:"30%", callback: function(v) { component.force_redraw = v; }});
 		inspector.widgets_per_row = 1;
 	}
@@ -214,3 +292,30 @@ GraphModule.showGraphComponent = function(component, inspector)
 
 LS.Components.GraphComponent["@inspector"] = GraphModule.showGraphComponent;
 LS.Components.FXGraphComponent["@inspector"] = GraphModule.showGraphComponent;
+
+if(!LS.Components.GraphComponent.actions)
+	LS.Components.GraphComponent.actions = {}
+if(!LS.Components.FXGraphComponent.actions)
+	LS.Components.FXGraphComponent.actions = {}
+
+LS.Components.GraphComponent.actions["show_graph_json"] = LS.Components.FXGraphComponent.actions["show_graph_json"] = { 
+	title: "Show Graph JSON",
+	callback: function(){
+		EditorModule.checkJSON( this._graph );
+	}
+};
+
+LS.Components.GraphComponent.actions["to_inner"] = { 
+	title: "Convert to Inner Graph",
+	callback: function(){
+		this.from_file = false;
+	}
+};
+
+LS.Components.GraphComponent.actions["to_file"] = { 
+	title: "Convert to Graph From File",
+	callback: function(){
+		this.from_file = true;
+	}
+};
+

@@ -15,7 +15,7 @@ var PackTools = {
 			return;
 		}
 
-		var dialog = new LiteGUI.Dialog({ id: "dialog_create_prefab", title:"Create Prefab", close: true, width: 500, height: 270, scroll: false, draggable: true, resizable: true});
+		var dialog = new LiteGUI.Dialog({ id: "dialog_create_prefab", title:"Create Prefab", close: true, width: 600, height: 270, scroll: false, draggable: true, resizable: true});
 		dialog.show();
 
 		var widgets = new LiteGUI.Inspector({ });
@@ -30,7 +30,8 @@ var PackTools = {
 		{
 			var resname = i;
 			var res = LS.ResourcesManager.resources[resname];
-			if(!res) continue;
+			if(!res) 
+				continue;
 			if(res.getResources)
 				res.getResources(second_level);
 		}
@@ -40,16 +41,21 @@ var PackTools = {
 		//get the names
 		var res_names = [];
 		for(var i in resources)
-			res_names.push(i);
+			if(i) //some nulls?
+				res_names.push(i);
 
 		var old_name = LS.RM.getBasename( node.name ); //remove extension in name
 		if(node.prefab)
 			old_name = LS.ResourcesManager.getBasename(node.prefab);
 		var filename = widgets.addString("Filename", old_name );
 		var list = widgets.addList("Include assets", res_names, { multiselection: true, height: 140 });
-		widgets.addButtons("Select",["Meshes","Textures","Materials","Animations","All"], { callback: function(v){
+		widgets.addButtons("Select",["Meshes","Textures","Materials","Animations","All","Locals","None"], { callback: inner_select });
+
+		function inner_select(v){
 			if(v == "All")
 				list.selectAll();
+			else if(v == "None")
+				list.deselectAll();
 			else
 			{
 				for(var i = 0; i < res_names.length; ++i)
@@ -61,11 +67,20 @@ var PackTools = {
 					if( (resource.constructor === GL.Mesh && v == "Meshes") ||
 						(resource.constructor === GL.Texture && v == "Textures") ||
 						(resource.constructor.is_material && v == "Materials") ||
-						(resource.constructor === LS.Animation && v == "Animations") )
+						(resource.constructor === LS.Animation && v == "Animations") || 
+						( !resource.remotepath && v == "Locals") )
 						list.selectIndex( i, true );
 				}
 			}
+		}
+
+		inner_select("Locals"); //select local files by default
+
+		widgets.addResource("Other Resources", "", { callback: function(v) {
+			res_names.push(v);
+			list.updateItems( res_names, list.getSelected() );
 		}});
+
 
 		widgets.widgets_per_row = 2;
 
@@ -77,8 +92,14 @@ var PackTools = {
 
 		widgets.widgets_per_row = 1;
 
-		//if(node._components.length > 1)
-		//	widgets.addInfo("Warning","this node has several components attached to the root, they will be lost");
+		var optimize_morph_targets = true;
+		widgets.addCheckbox("Optimize MorphTargets", optimize_morph_targets, { name_width: 120, callback: function(v) { optimize_morph_targets = v; }});
+
+		var use_node_as_prefab_root = false;
+		widgets.addCheckbox("Use node as prefab root", use_node_as_prefab_root, { name_width: 160, callback: function(v) { use_node_as_prefab_root = v; }});
+		widgets.addInfo("Warning","Turning this ON will make the root node components not be saved in the prefab.");
+
+		widgets.addSeparator();
 
 		var folder = "";
 		widgets.addFolder("Save to",folder,{ callback: function(v){
@@ -90,15 +111,23 @@ var PackTools = {
 		widgets.addButton(null,"Create Prefab", { callback: function() {
 			var filename_str = filename.getValue(); //change spaces by underscores
 
+			if(optimize_morph_targets)
+			{
+				var morphers = node.findComponents( "MorphDeformer" );
+				for(var i = 0; i < morphers.length; ++i)
+					morphers[i].optimizeMorphTargets();
+			}
+
 			var transform_data = node.transform.serialize();
 			var data = node.serialize();
 			node.transform.reset();
 
-			if(clear_uids)
-				LS.clearUIds(data);
+			if( clear_uids )
+				LS.clearUIds( data );
 
 			//prefab is stored inside a null node
-			data = { object_class:"SceneNode", children: [ data ] };
+			if(!use_node_as_prefab_root)
+				data = { object_class:"SceneNode", children: [ data ] };
 
 			dialog.close();
 
@@ -129,10 +158,14 @@ var PackTools = {
 				prefab.fullpath = fullpath;
 				DriveModule.saveResource( prefab );
 			}
+			else
+				LS.RM.registerResource( prefab.filename, prefab );
 
+			//replace node in scene with new prefab
 			if(replace_with_prefab)
 			{
-				node.removeAllComponents();
+				if(!use_node_as_prefab_root)
+					node.removeAllComponents();
 				node.prefab = prefab.fullpath || prefab.filename;
 				node.reloadFromPrefab();
 				if(!node.transform)
@@ -396,9 +429,11 @@ LS.Pack.prototype.inspect = LS.Prefab.prototype.inspect = function( widgets, ski
 	}
 
 	if(class_type == "Prefab")
+	{
 		widgets.addButton( null, "Show JSON Data", { callback: function(v){
 			EditorModule.checkJSON( pack.prefab_data );
 		}});
+	}
 
 	widgets.addSeparator();
 	widgets.addResource("Add Resource","",{ name_width: 140, callback: function( fullpath ){

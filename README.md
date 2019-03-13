@@ -4,27 +4,28 @@
 
 # WebGLStudio.js
 
-WebGLStudio.js is an open source full 3D graphics suite inside the browser. You can edit the scene, the materials, code behaviours, design effects, shaders, and share it, all inside the browser using standard technologies.
+WebGLStudio.js is an open-source, browser-based 3D graphics suite. You can edit scenes and materials, design effects and shaders, code behaviours, and share your work - all within a browser using standard web technologies.
 
-Some of the important features:
+Some important WebGLStudio.js features:
 
- * Full 3D graphics engine ([LiteScene.js](https://github.com/jagenjo/litescene.js)) that support multiple lights, shadowmaps, realtime reflections, custom materials, postFX, skinning, animation and many more.
- * System based in components so very easy to extend (controlling the rendering pipeline or hooking for interaction events).
- * Easy to use WYSIWYG editor, with all the features in one place (coding, graph compositing, timeline).
- * Graph editor to create interesting behaviours or post-production effects.
- * Virtual File System to store all the resources on the web [LiteFileSystem.js](https://github.com/jagenjo/litefilesystem.js) just by dragging them (with quotas, users and shared folders).
- * Easy to export and share, just by sending one link.
+ * A full 3D graphics engine ([LiteScene.js](https://github.com/jagenjo/litescene.js)) that supports multiple lights, shadowmaps, realtime reflections, custom materials, postFX, skinning, animation, and much more.
+ * An easily extended, component-based system for controlling the rendering pipeline and interaction event hooks 
+ * An easy to use, what you see is what you get (WYSIWYG) editor that provides a single interface for all coding, graph compositing and timeline features.
+ * A graph editor for controlling behaviours and post-production effects.
+ * Supports the [LiteFileSystem.js](https://github.com/jagenjo/litefilesystem.js), a virtual file system that allows drag-and-drop storage of resources on the web, with configurable quotas, users and shared folders.
+ * Export and share your work by sending a single link.
 
-For more information visit http://webglstudio.org
+For more information, visit http://webglstudio.org
 
 ![Interface](press/images/interface.jpg "Interface")
 
 Installing
 ----------
 
-To install you need to copy the editor files in your server and install [LiteFileSystem.js](https://github.com/jagenjo/litefilesystem.js) (the library in charge of handling remote files) in the folder fileserver/ inside editor folder. For more info check [LiteFileSystem.js](https://github.com/jagenjo/litefilesystem.js) documentation.
+To install WebGLStudio.js, copy the editor files to your server, then install [LiteFileSystem.js](https://github.com/jagenjo/litefilesystem.js) into a `fileserver/` folder within the `editor/` directory. 
+LiteFileSystem is a library that handles remote file storage. For more information, see the `/INSTALL.md` file and the [LiteFileSystem.js](https://github.com/jagenjo/litefilesystem.js) documentation.
 
 Feedback
 --------
 
-You can write any feedback to javi.agenjo@gmail.com
+Send all feedback to javi.agenjo@gmail.com

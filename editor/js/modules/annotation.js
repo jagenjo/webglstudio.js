@@ -48,12 +48,12 @@ var AnnotationModule = {
 
 		dialog.content.appendChild(textarea);
 
-		$(textarea).change( function(e) {
+		textarea.onchange = function(e) {
 			comp.text = this.value;
 			if(window.EditorModule)
 				EditorModule.refreshAttributes();
 			LS.GlobalScene.refresh();
-		});
+		};
 
 		dialog.addButton("Delete", { className: "big", callback: function() { 
 			node.removeComponent( comp );
@@ -84,10 +84,12 @@ var AnnotationModule = {
 
 		dialog.content.appendChild(textarea);
 
-		$(textarea).focus();
+		textarea.focus();
 
 		if(options.on_close)
-			$(dialog).bind("closed", function() { options.on_close(textarea.value); });
+			dialog.root.addEventListener("closed", function() { 
+			options.on_close(textarea.value);
+		});
 
 		if(options.on_delete)
 			dialog.addButton("Delete", { className: "big", callback: function() { 
@@ -117,10 +119,13 @@ var AnnotationModule = {
 		var node = comp._root;
 
 		//var section = attributes.addSection("Light <span class='buttons'><button class='options_this'>Options</button></span>");
-		$(attributes.current_section).find('.options_section').click(function(e) { 
-			var menu = new LiteGUI.ContextMenu(["Copy","Paste","Reset","Delete"], {component: comp, event: e, callback: EditorModule._onComponentOptionsSelect });
-		});
-		$(attributes.current_section).bind("wchange", function() { 
+		var list = attributes.current_section.querySelectorAll('.options_section');
+		for(var i = 0; i < list.length; ++i)
+			list[i].onclick = function(e) { 
+				var menu = new LiteGUI.ContextMenu(["Copy","Paste","Reset","Delete"], {component: comp, event: e, callback: EditorModule._onComponentOptionsSelect });
+			}
+
+		LiteGUI.bind( attributes.current_section, "wchange", function() { 
 			CORE.userAction( "component_changed", comp );
 		});
 

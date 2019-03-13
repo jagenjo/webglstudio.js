@@ -14,7 +14,8 @@ var PlayModule = {
 		stop: "&#8718;",
 		pause: "&#10074;&#10074;",
 		stoprecord: "&#8718;&#10004;",
-		eject: "&#9167;"
+		eject: "&#9167;",
+		reload: "&#8635"
 	},
 
 	preferences: { //persistent settings
@@ -29,24 +30,32 @@ var PlayModule = {
 			#play-tools { position: fixed; top: 2px; right: 300px; font-size: 1.4em; padding-right: 3px; z-index: 10; } \
 			#play-tools button { padding: 0 0.5em; overflow: hidden; height: 1.25em; } \
 			#play-tools button.enabled { background: #AEE !important;} \
+			#restore-button { background: #944 !important;} \
 		");
 
-		LEvent.bind( LS.GlobalScene, "clear", this.onSceneStop, this );
-		RenderModule.canvas_manager.addWidget( PlayModule ); //capture render from square, and update and events
+		//Register in CanvasManager to render the border on playmode
+		RenderModule.canvas_manager.addWidget( PlayModule, 10 );
 
-		//tools
+		//If the scene is cleared be sure to change mode to stop
+		LEvent.bind( LS.GlobalScene, "clear", this.onSceneStop, this );
+		LEvent.bind( LS.GlobalScene, "code_error", this.onSceneError, this );
+
+		//play tools panel
 		var container = document.createElement("div");
 		container.id = "play-tools";
 		container.className = "big-buttons";
-		container.innerHTML = "<button class='litebutton' id='play-button' title='Play'>"+this.icons.play+"</button><button class='litebutton' id='pause-button' title='Pause' disabled>"+this.icons.pause+"</button><button class='litebutton' id='stopkeep-button' disabled title='Stop And Save'>"+this.icons.stoprecord+"</button><button class='litebutton' id='launch-button' title='launch'>"+this.icons.eject+"</button>";
+		container.innerHTML = "<button class='litebutton' id='play-button' title='Play'>"+this.icons.play+"</button><button class='litebutton' id='pause-button' title='Pause' disabled>"+this.icons.pause+"</button><button class='litebutton' id='stopkeep-button' disabled title='Stop And Save'>"+this.icons.stoprecord+"</button><button class='litebutton' id='restore-button' title='restore'>"+this.icons.reload+"</button><button class='litebutton' id='launch-button' title='launch'>"+this.icons.eject+"</button>";
 		this.play_button = container.querySelector("#play-button");
 		this.pause_button = container.querySelector("#pause-button");
 		this.stopkeep_button = container.querySelector("#stopkeep-button");
+		this.restore_button = container.querySelector("#restore-button");
+		this.restore_button.style.display = "none";
 		this.launch_button = container.querySelector("#launch-button");
 		this.play_button.addEventListener("click", this.onPlay.bind(this) );
 		this.pause_button.addEventListener("click", this.onPause.bind(this) );
 		this.stopkeep_button.addEventListener("click", this.onStopKeep.bind(this) );
 		this.launch_button.addEventListener("click", this.launch.bind(this) );
+		this.restore_button.addEventListener("click", this.restore.bind(this) );
 
 		setTimeout( function() { //timeout because some weird glitch
 			document.getElementById("mainmenubar").appendChild( container );
@@ -85,7 +94,7 @@ var PlayModule = {
 		{
 			//send ready signal
 			var result = LEvent.trigger( LS.GlobalScene, "prepare_play" );
-			if( result === false )
+			if( result === true )
 			{
 				console.log("Play aborted");
 				return;
@@ -112,21 +121,7 @@ var PlayModule = {
 
 			//restore old scene
 			if(this.preferences.restore_state_after_play)
-			{
-				var scene = LS.GlobalScene;
-				LEvent.trigger(scene,"beforeReload");
-				scene.clear();
-				scene.configure(this._backup);
-				LEvent.trigger(scene,"reload");
-
-				if(this._selected_node_uid)
-				{
-					var old_selected_node = scene.getNodeByUId( this._selected_node_uid );
-					if(old_selected_node)
-						SelectionModule.setSelection( old_selected_node );
-				}
-				EditorModule.refreshAttributes();
-			}
+				this.restore();
 		}
 	},
 
@@ -212,6 +207,7 @@ var PlayModule = {
 			{
 				if(!demo_window.player)
 					return LiteGUI.alert("Error loading player window");
+				demo_window.player.autoplay = true;
 				demo_window.player.setScene( scene_info, inner_launched, inner_before_play );
 			};
 
@@ -235,6 +231,23 @@ var PlayModule = {
 	stop: function()
 	{
 		this.changeState("stop");
+	},
+
+	restore: function()
+	{
+		this.restore_button.style.display = "none";
+		var scene = LS.GlobalScene;
+		LEvent.trigger(scene,"beforeReload");
+		scene.clear();
+		scene.configure(this._backup);
+		LEvent.trigger(scene,"reload");
+		if(this._selected_node_uid)
+		{
+			var old_selected_node = scene.getNodeByUId( this._selected_node_uid );
+			if(old_selected_node)
+				SelectionModule.setSelection( old_selected_node );
+		}
+		EditorModule.refreshAttributes();
 	},
 
 	changeState: function(state)
@@ -308,26 +321,21 @@ var PlayModule = {
 		this.play_button.innerHTML = this.icons.play;
 	},
 
+	onSceneError: function()
+	{
+		if(this.state != "play")
+			return;
+		this.restore_button.style.display = "";
+	},
+
+	//called from CanvasManager with every user event
 	onevent: function(e)
 	{
 		if(!this.inplayer)
 			return;
 
-		switch(e.type)
-		{
-			case "mousedown":
-			case "mousemove":
-			case "mouseup":
-				if( !LS.Input.onMouse(e) ) //send event only if not blocked
-					LEvent.trigger( LS.GlobalScene, e.eventType || e.type, e, true );
-				break;
-			case "keydown":
-			case "keyup":
-				LS.Input.onKey(e);
-				//no break to call the trigger
-			default:
-				LEvent.trigger( LS.GlobalScene, e.eventType || e.type, e, false );
-		}
+		//dont know where to put this
+		var r = RenderModule.passEventToLiteScene(e);
 
 		//block propagation (mousemove should be propagated so when dragging panels works)
 		if(e.type != "mousemove")
@@ -336,6 +344,7 @@ var PlayModule = {
 		return true;
 	},
 
+	//file (or item) dropped over the Player
 	onItemDrop: function(e)
 	{
 		if(!this.inplayer)
@@ -381,7 +390,21 @@ var PlayModule = {
 			LS.Tween.update(dt);
 			LS.Input.update(dt);
 			LS.GlobalScene.update(dt);
+			this.checkErrors();
 		}
+	},
+
+	checkErrors: function()
+	{
+		if( vec3.distance(LS.ZEROS,[0,0,0]) > 0 ||
+			vec3.distance(LS.ONES,[1,1,1]) > 0 ||
+			vec3.distance(LS.RIGHT,[1,0,0]) > 0 ||
+			vec3.distance(LS.LEFT,[-1,0,0]) > 0 ||
+			vec3.distance(LS.TOP,[0,1,0]) > 0 ||
+			vec3.distance(LS.BOTTOM,[0,-1,0]) > 0 ||
+			vec3.distance(LS.FRONT,[0,0,-1]) > 0 ||
+			vec3.distance(LS.BACK,[0,0,1]) > 0 )
+			console.error("LS base vectors have been modifyed!, you never should change LS.FRONT,LS.BACK,LS.RIGHT,LS.LEFT,LS.TOP,LS.BOTTOM,LS.ZEROS or LS.ONES");
 	},
 
 	onShowPreferencesPanel: function(name,widgets)

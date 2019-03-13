@@ -11,14 +11,15 @@
 var ToolsModule = {
 	name: "tools",
 
-	tool: 'select',
+	tool: "select",
 
 	current_tool: null,
 	background_tools: [],
 	tools: {},
 	buttons: {},
 
-	coordinates_system: 'object',
+	coordinates_system: "object",
+	center_system: "instances", //"node"
 
 	_initialized: false,
 	_active_camera: null, //camera under the mouse
@@ -46,12 +47,16 @@ var ToolsModule = {
 
 	registerTool: function(tool)
 	{
+		if( this.tools[ tool.name ] )
+			console.warn("there is already a tool with this name: ", tool.name );
 		this.tools[ tool.name ] = tool;
 	},
 
 	registerButton: function( button )
 	{
-		this.buttons[button.name] = button;
+		if( this.buttons[ button.name ] )
+			console.warn("there is already a button with this name: ", button.name );
+		this.buttons[ button.name ] = button;
 	},
 
 	// a tool that is always active (used for selection tool)
@@ -74,17 +79,17 @@ var ToolsModule = {
 
 	enableTool: function(name)
 	{
-		if(this.current_tool) {
+		if( this.current_tool ) {
 
 			//avoid to reactivate same tool
-			if(this.current_tool.name == name)
+			if( this.current_tool.name == name )
 			{
 				if( this.current_tool.onClick )
 					this.current_tool.onClick();
 				return;
 			}
 
-			if(this.current_tool.module) 
+			if( this.current_tool.module )
 			{
 				if(!this.current_tool.keep_module)
 					RenderModule.canvas_manager.removeWidget(this.current_tool.module);
@@ -176,6 +181,36 @@ var ToolsModule = {
 			this.current_tool.renderEditor( camera );
 	},
 
+	//called from CanvasManager on every input event
+	//used mostly to allow Editor GUI Stuff
+	//Here because it is the upmost widget in the canvas...
+	onevent: function(e)
+	{
+		//if(e.type == "mousedown")
+		//	console.log("down");
+
+		var blocked = false;
+
+		//in case we have editor gui widgets we need to update the events
+		if( LEvent.hasBind( LS.GlobalScene, "renderEditorGUI" ) )
+			blocked = RenderModule.passEventToLiteScene(e);
+		if(blocked) //something happened
+			LS.GlobalScene.requestFrame();
+
+		//in case the user script grabs the input
+		if(!blocked)
+		{
+			var r = null;
+			var viewport = RenderModule.active_viewport;
+			e.layout = viewport;
+			r = LEvent.trigger( LS.GlobalScene, "editorEvent", e );//, false, true );
+			if( r === true ) //event intercepted by script
+				blocked = true;
+		}
+
+		return blocked;
+	},
+
 	mouseevent: function(e)
 	{
 		if(this.background_tools.length)
@@ -236,8 +271,8 @@ var ToolsModule = {
 			return;
 		}
 
-		$(root).append("<div id='canvas-tools' class='ineditor'></div>");
-		$(root).append("<div id='canvas-buttons' class='ineditor'></div>");
+		root.appendChild( LiteGUI.createElement("div","canvas-tools .ineditor" ));
+		root.appendChild( LiteGUI.createElement("div","canvas-buttons .ineditor" ));
 
 		for(var i in this.tools)
 		{
@@ -268,7 +303,7 @@ var ToolsModule = {
 		element.addEventListener("click", function(e){
 			ToolsModule.enableTool( this.data );
 			LS.GlobalScene.refresh();
-			$("#canvas-tools .enabled").removeClass("enabled");
+			LiteGUI.removeClass( null, "#canvas-tools .enabled", "enabled");
 			this.classList.add("enabled");
 		});
 
@@ -295,7 +330,7 @@ var ToolsModule = {
 			if(button.combo)
 			{
 				var section_name = "tool-section-" + button.section;
-				$(root).find("." + section_name + " .tool-button").removeClass("enabled");
+				LiteGUI.removeClass( root, "." + section_name + " .tool-button", "enabled");
 			}
 
 			if(!button.callback)
@@ -387,7 +422,7 @@ var ToolUtils = {
 		var camera = cameras[0];
 		for(var i = cameras.length-1; i >= 0; --i)
 		{
-			if( cameras[i].isPointInCamera( x,y ) )
+			if( cameras[i].isPoint2DInCameraViewport( x,y ) )
 			{
 				camera = cameras[i];
 				break;
@@ -523,6 +558,8 @@ var ToolUtils = {
 		result = result || vec3.create();
 
 		var ray = camera.getRayInPixel( x, gl.canvas.height - y );
+		if(!ray) //could happen if near is too small
+			return;
 		//ray.end = vec3.add( vec3.create(), ray.origin, vec3.scale(vec3.create(), ray.direction, 10000) );
 
 		//test against plane
@@ -623,7 +660,6 @@ var notoolButton = {
 	callback: function()
 	{
 		ToolsModule.enableTool(null);
-		//$("#canvas-tools .enabled").removeClass("enabled");
 		return false;
 	}
 };

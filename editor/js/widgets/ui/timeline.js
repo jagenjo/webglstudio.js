@@ -11,7 +11,7 @@ function Timeline( options )
 	this.preview = true;
 	this.paths_widget = false;
 	this.autoresize = true;
-	this.show_paths = true;
+	this.show_paths = false;
 
 	this.current_take = null;
 
@@ -20,15 +20,13 @@ function Timeline( options )
 	this.framerate = LS.Animation.Track.FRAMERATE;
 
 	LEvent.bind( LS.GlobalScene, "change", this.onReload, this );
-	//LEvent.bind( LS.GlobalScene, "reload", this.onReload, this );
 
 	this.createInterface( options );
 	LiteGUI.createDropArea( this.canvas, this.onItemDrop.bind(this) );
-	//this.onNewAnimation();
 }
 
 Timeline.widget_name = "Timeline";
-Timeline.interpolation_values = {"none": LS.NONE, "linear": LS.LINEAR, "bezier": LS.BEZIER }
+Timeline.interpolation_values = {"none": LS.NONE, "linear": LS.LINEAR, "cubic": LS.CUBIC }
 
 CORE.registerWidget( Timeline );
 
@@ -166,13 +164,7 @@ Timeline.prototype.onNewAnimation = function( name, duration, folder )
 //called when an animation has been modified
 Timeline.prototype.animationModified = function( animation )
 {
-	animation = animation || this.current_animation;
-	if(!animation)
-		return;
-	animation._modified = true;
-	LS.ResourcesManager.resourceModified( animation );
-	LS.GlobalScene.refresh();
-	this.redrawCanvas();
+	AnimationModule.animationModified( animation || this.current_animation, this );
 }
 
 Timeline.prototype.onLoadAnimation = function()
@@ -271,6 +263,13 @@ Timeline.prototype.setAnimation = function( animation, take_name )
 		takes.push(i);
 	this.take_widget.setOptionValues( takes, take_name );
 	this.duration_widget.setValue( this.current_take.duration );
+
+	//zoom
+	if(this.current_take.duration)
+	{
+		this.session.seconds_to_pixels = ( this.canvas.width - this.session.left_margin - 100 ) / this.current_take.duration;
+		this.session.start_time = -50 / this.session.seconds_to_pixels;
+	}
 
 	//to ensure data gets saved again
 	//LS.ResourcesManager.resourceModified( animation ); //disabled or just by watching an animation I need to send it again
@@ -457,7 +456,11 @@ Timeline.prototype.redrawCanvas = function()
 	{
 		ctx.fillStyle = (i+data.first_track) % 2 == 0 ? "#222" : "#2A2A2A";
 		//if(this._last_item && (i + this.session.scroll_y) == this._last_item.track)
-		if(this.session.selection && this.session.selection.type == "track" && (i + this.session.scroll_y) == this.session.selection.track )
+		var track = take.tracks[ data.first_track + i ];
+
+		if( track && track._marked )
+			ctx.fillStyle = "#543";
+		else if(this.session.selection && this.session.selection.type == "track" && (i + this.session.scroll_y) == this.session.selection.track )
 			ctx.fillStyle = "#333";
 
 		ctx.fillRect(0,timeline_height + i * line_height, w, line_height );
@@ -525,7 +528,7 @@ Timeline.prototype.redrawCanvas = function()
 		}
 
 		var main_word = track.name;
-		var secondary_word = track.type + (track.packed_data ? "*" : "");
+		var secondary_word = track.type + (track.packed_data ? " [p]" : "");
 
 		/*
 		if(track._property_path[0][0] != "@" || track._target && track._target._root )
@@ -729,19 +732,25 @@ Timeline.prototype.redrawCanvas = function()
 
 
 	//current time marker vertical line
-	var pos = Math.round( this.canvasTimeToX( current_time ) ) + 0.5;
+	var true_pos = Math.round( this.canvasTimeToX( this.session.current_time ) ) + 0.5;
+	var pos = Math.round( this.canvasTimeToX( current_time ) ) + 0.5; //current_time is quantized
 	if(pos >= margin)
 	{
+		ctx.strokeStyle = "#ABA";
+		ctx.beginPath();
+		ctx.moveTo(true_pos, 0); ctx.lineTo( true_pos, canvas.height );
+		ctx.stroke();
+
 		ctx.strokeStyle = ctx.fillStyle = "#AFD";
 		ctx.beginPath();
-		ctx.moveTo(pos, 0); ctx.lineTo(pos, canvas.height);
+		ctx.moveTo(pos, 0); ctx.lineTo(pos, canvas.height);//line
 		ctx.stroke();
 		ctx.beginPath();
-		ctx.moveTo(pos - 4, 0); ctx.lineTo(pos + 4, 0); ctx.lineTo(pos, 6);
+		ctx.moveTo(pos - 4, 0); ctx.lineTo(pos + 4, 0); ctx.lineTo(pos, 6);//triangle
 		ctx.closePath();
 		ctx.fill();
 		ctx.beginPath();
-		ctx.moveTo(pos - 4, canvas.height); ctx.lineTo(pos + 4, canvas.height); ctx.lineTo(pos, canvas.height - 6);
+		ctx.moveTo(pos - 4, canvas.height); ctx.lineTo(pos + 4, canvas.height); ctx.lineTo(pos, canvas.height - 6);//triangle
 		ctx.closePath();
 		ctx.fill();
 	}
@@ -979,7 +988,7 @@ Timeline.prototype.onMouse = function(e)
 					if( track.type == "events")
 						this.showAddEventKeyframeDialog( track, time, track.getKeyframe( item.keyframe ) );
 					else
-						this.showEditKeyframeDialog( track, time, track.getKeyframe( item.keyframe ) );
+						this.showEditKeyframeDialog( track, time, track.getKeyframe( item.keyframe ), item.keyframe );
 				}
 				if(item.type == "track" && track)
 					this.showTrackOptionsDialog( track );
@@ -1039,7 +1048,7 @@ Timeline.prototype.onMouse = function(e)
 					newt = Math.round( newt * this.framerate ) / this.framerate; //round
 					var track = this.current_take.tracks[ this._item_dragged.track ];
 					if(track.packed_data)
-						return;
+						track.unpackData();
 
 					var keyframe = track.data[this._item_dragged.keyframe];
 					keyframe[0] = newt;
@@ -1252,223 +1261,8 @@ Timeline.prototype.showTakeOptionsDialog = function( e )
 {
 	var that = this;
 	var animation = this.current_animation;
-
-	var dialog = new LiteGUI.Dialog({ title:"Take Options", closable: true, width: 600, draggable: true } );
-
-	var area = new LiteGUI.Area();
-	area.split("horizontal",["50%",null]);
-	dialog.add( area );
-
-	var widgets1 = new LiteGUI.Inspector();
-	widgets1.on_refresh = inner_refresh_left;
-	area.getSection(0).add( widgets1 );
-
-	var widgets2 = new LiteGUI.Inspector();
-	widgets2.on_refresh = inner_refresh_right;
-	area.getSection(1).add( widgets2 );
-
-	var selected_take_name = "default";
-	var new_take_name = "new_take";
-	var action = null;
-
-	inner_refresh_left();
-	inner_refresh_right();
-	dialog.show();
-
-	function inner_refresh_left()
-	{
-		var widgets = widgets1;
-
-		var selected_take = animation.takes[ selected_take_name ];
-		var duration = selected_take ? selected_take.duration : 0;
-		var tracks = selected_take ? selected_take.tracks.length : 0;
-
-		widgets.clear();
-		widgets.addString("Animation", animation.name );
-		widgets.addTitle("Takes");
-		var takes = [];
-		for( var i in animation.takes )
-			takes.push( i );
-		widgets.addList( null, takes, { height: 140, selected: selected_take_name, callback: function(v){
-			selected_take_name = v;
-			widgets1.refresh();
-			widgets2.refresh();
-		}});
-		widgets.addButtons( null, ["Clone","Copy","Paste","Delete"], function(v){
-			if(v == "Clone")
-			{
-				var data = selected_take.serialize();
-				var take = new LS.Animation.Take();
-				take.configure( data );
-				if( animation.takes[ take.name ] )
-					take.name = take.name + ((Math.random() * 100)|0);
-				selected_take_name = take.name;
-				that.addUndoAnimationEdited( animation );
-				animation.addTake( take );
-				that.setAnimation( animation, selected_take_name );
-				that.animationModified( animation );
-			}
-			else if(v == "Copy")
-			{
-				var data = selected_take.serialize();
-				data._object_class = "LS.Animation.Take";
-				if( selected_take )
-					LiteGUI.toClipboard( data, true );
-			}
-			else if(v == "Paste")
-			{
-				var data = LiteGUI.getLocalClipboard();
-				if(!data || data._object_class !== "LS.Animation.Take")
-					return;
-				var take = new LS.Animation.Take();
-				take.configure( data );
-				if( animation.takes[ take.name ] )
-					take.name = take.name + ((Math.random() * 100)|0);
-				selected_take_name = take.name;
-				that.addUndoAnimationEdited( animation );
-				animation.addTake( take );
-				that.setAnimation( animation, selected_take_name );
-				that.animationModified( animation );
-			}
-			else if(v == "Delete")
-			{
-				if( animation.getNumTakes() <= 1 )
-					return;
-				that.addUndoAnimationEdited( animation );
-				animation.removeTake( selected_take_name );
-				selected_take_name = Object.keys( animation.takes )[0];
-				that.animationModified( animation );
-				that.setAnimation( animation, selected_take_name );
-			}
-			widgets1.refresh();
-			widgets2.refresh();
-			EditorModule.refreshAttributes();
-		});
-
-		widgets.addTitle("Create New take");
-		widgets.addString("Name",new_take_name,{ callback: function(v){
-			new_take_name = v;
-		}});
-		widgets.addButton( null, "Create Take", inner_new_take);
-
-		dialog.adjustSize(10);
-	}
-
-	function inner_refresh_right()
-	{
-		var widgets = widgets2;
-
-		var selected_take = animation.takes[ selected_take_name ];
-		var duration = selected_take ? selected_take.duration : 0;
-		var tracks = selected_take ? selected_take.tracks.length : 0;
-
-		widgets.clear();
-
-		widgets.addTitle("Animation");
-		widgets.addString("Name", animation.fullpath || animation.filename );
-
-		widgets.addTitle("Selected Take");
-		widgets.addStringButton("Name",selected_take_name,{ button: "&#9998;", callback_button: function(v){
-			that.addUndoAnimationEdited( animation );
-			animation.renameTake( selected_take_name, v );
-			selected_take_name = v;
-			that.animationModified();
-			that.setAnimation( animation, selected_take_name );
-			widgets1.refresh();
-			widgets2.refresh();
-		}});
-
-		widgets.widgets_per_row = 2;
-		widgets.addString("Duration", duration + "s");
-		widgets.addString("Num. Tracks", tracks|0 );
-		widgets.widgets_per_row = 1;
-
-		//actions
-		widgets.addTitle("Actions on Take");
-
-		widgets.widgets_per_row = 2;
-		var values = [];
-		//"Pack all tracks","Unpack all tracks","Use names as ids","Optimize Tracks","Match Translation","Only Rotations"
-
-		for(var i in Timeline.actions.take)
-			values.push(i);
-
-		action = action || values[0];
-		widgets.addCombo("Actions", action, { values: values, width: "80%", callback: function(v){
-			action = v;	
-		}});
-
-		widgets.addButton(null,"Go",{ width: "20%", callback: function(){
-			var total = 0;
-
-			var action_callback = Timeline.actions.take[ action ];
-			if(!action_callback || !selected_take)
-				return;
-
-			total = action_callback( animation, selected_take, inner_callback );
-			that.redrawCanvas();
-
-			if(total != null)
-			{
-				LiteGUI.alert("Tracks modified: " + total);
-				if(total)
-					that.animationModified( animation );
-			}
-
-			//dialog.close(); //close after action
-
-			function inner_callback(total)
-			{
-				LiteGUI.alert("Tracks modified: " + total);
-				if(total)
-					that.animationModified( animation );
-			}
-		}});
-		widgets.widgets_per_row = 1;
-
-		//interpolation
-		widgets.widgets_per_row = 2;
-		var interpolation = Timeline.interpolation_values["linear"];
-		widgets.addCombo("Set Interpolation to all tracks", interpolation, { values: Timeline.interpolation_values, width: "80%", callback: function(v){
-			interpolation = v;	
-		}});
-
-		widgets.addButton(null,"Go",{ width: "20%", callback: function(){
-			var total = selected_take.setInterpolationToAllTracks( interpolation );
-			if(total != null)
-				LiteGUI.alert("Tracks modified: " + total);
-			if(total)
-				that.animationModified( animation );
-		}});
-		widgets.widgets_per_row = 1;
-
-		widgets.addTitle("Trim the tracks");
-		widgets.widgets_per_row = 3;
-		var from_widget = widgets.addNumber("from", 0, { name_width: 40 } );
-		var to_widget = widgets.addNumber("to", duration, { name_width: 40 } );
-		widgets.addButton(null,"TRIM", function(){
-			var from_t = from_widget.getValue();
-			var to_t = to_widget.getValue();
-			var total = selected_take.trimTracks( from_t, to_t );
-			if(total)
-				that.animationModified( animation );
-			that.redrawCanvas();
-		});
-		widgets.widgets_per_row = 1;
-
-		dialog.adjustSize(10);
-	}
-
-	function inner_new_take()
-	{
-		that.addUndoAnimationEdited( animation );
-		animation.createTake( new_take_name );
-		selected_take_name = new_take_name;
-		that.setAnimation( animation, selected_take_name );
-		widgets1.refresh();
-	}
+	AnimationModule.showAnimationTakeOptionsDialog( animation, this );
 }
-
 
 
 Timeline.prototype.onContextMenu = function( e )
@@ -1492,6 +1286,7 @@ Timeline.prototype.onContextMenu = function( e )
 	var values = [];
 
 	values.push( { title: "Add New Track", callback: this.showNewTrack.bind(this) } );
+	values.push( { title: "Mark tracks of selected node", callback: this.selectTracksOfNode.bind(this) } );
 	values.push( { title: "Assign Node Names", callback: this.assignNodeNames.bind(this) } );
 	values.push( null );
 
@@ -1500,6 +1295,7 @@ Timeline.prototype.onContextMenu = function( e )
 
 	if(track)
 	{
+		values.push( { title:"Actions", has_submenu: true, callback: inner_actions } );
 		values.push( { title: "Select Node", callback: inner_select } );
 		if(track.type == "events")
 			values.push( { title: "Add Event", callback: inner_add_event_keyframe } );
@@ -1560,6 +1356,26 @@ Timeline.prototype.onContextMenu = function( e )
 	function inner_edit()
 	{
 		that.showTrackOptionsDialog( track );
+	}
+
+	function inner_actions( value, parent_options, event, parent_menu )
+	{
+		var options = [];
+
+		for(var i in Timeline.actions.track)
+			options.push(i);
+
+		var new_menu = new LiteGUI.ContextMenu( options, { event: event, parentMenu: parent_menu, ignore_item_callbacks: true, callback: function(v) {
+			var action = Timeline.actions.track[v];
+			if(!action || !track)
+				return;
+
+			var r = action( track, that.current_take, that.current_animation );
+			if(r)
+				that.animationModified();
+			that.redrawCanvas();
+			RenderModule.requestFrame();
+		}});
 	}
 
 	function inner_copy_keyframe()
@@ -1624,30 +1440,7 @@ Timeline.prototype.addUndoAnimationEdited = function( animation )
 {
 	if(!animation)
 		return;
-
-	var that = this;
-
-	UndoModule.addUndoStep({ 
-		title: "Animation modified: " + animation.name,
-		data: { animation_name: animation.name, data: animation.serialize() },
-		callback_undo: function(d) {
-			var anim = d.animation_name == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation_name ];
-			if(!anim)
-				return;
-			d.new_data = anim.serialize();
-			anim.configure( d.data );
-			that.animationModified();
-			that.redrawCanvas();
-		},
-		callback_redo: function(d) {
-			var anim = d.animation_name == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation_name ];
-			if(!anim)
-				return;
-			anim.configure( d.new_data );
-			that.animationModified();
-			that.redrawCanvas();
-		}
-	});
+	AnimationModule.addUndoAnimationEdited( animation, this );
 }
 
 Timeline.prototype.addUndoTakeEdited = function( info )
@@ -1809,6 +1602,18 @@ Timeline.prototype.onInsertKeyframeButton = function( element, relative )
 
 	var locator = element.dataset["propertyuid"];
 	var name = element.dataset["propertyname"];
+
+	var info = LS.GlobalScene.getPropertyInfo( locator );
+	if( info && info.node && locator.indexOf("@") != -1 )
+	{
+		var prefab = info.node.insidePrefab();
+		if(prefab)
+		{
+			console.warn("This properties belongs to a node inside a prefab. Using name instead of UIDs because UIDs on prefabs are volatile");
+			locator = LS.convertLocatorFromUIDsToName( locator );
+		}
+	}
+
 	this.processInsertLocator( locator, { add_keyframe: true, name: name, relative: relative } );
 }
 
@@ -1863,7 +1668,7 @@ Timeline.prototype.processInsertLocator = function( locator, options )
 
 	var size = 0;
 	var value = info.value;
-	var interpolation = LS.BEZIER;
+	var interpolation = LS.CUBIC;
 	if(info.value !== null)
 	{
 		if( info.value.constructor == Float32Array )
@@ -2046,7 +1851,7 @@ Timeline.prototype.getMouseItem = function( e )
 		return { type: "timeline", draggable: true, cursor: "col-resize" };
 
 	//splitter
-	if( Math.abs(this.session.left_margin - e.mousex) < 3 )
+	if( Math.abs(this.session.left_margin - e.mousex) < 6 )
 		return { type: "split", draggable: true, cursor: "e-resize" };
 
 	//margin
@@ -2060,8 +1865,11 @@ Timeline.prototype.getMouseItem = function( e )
 		{
 			if( track && e.mousex < 10 )
 				this.insertKeyframe( track );
-			else if( track && e.mousex < 30 )
+			else if( track && e.mousex < 30 ) //click enabled checkbox
+			{
 				track.enabled = !track.enabled;
+				this.animationModified();
+			}
 			this.session.selection = { type: "track", track: track_index };
 			this._must_redraw = true;
 			RenderModule.requestFrame();
@@ -2116,11 +1924,12 @@ Timeline.prototype.getMouseItem = function( e )
 	return null;
 }
 
+/* trajectories are rendered from the AnimationModule
 Timeline.prototype.renderEditor = function()
 {
-	//used to render trajectories
-	//?? but it does! where is the code then?
+	
 }
+*/
 
 Timeline.prototype.selectKeyframe = function( track_index, keyframe_index )
 {
@@ -2148,6 +1957,7 @@ Timeline.prototype.onPrettifyNames = function()
 			track.name += " " + LS.getObjectClassName( info.target );
 		track.name += "." + info.name;
 	}
+	this.redrawCanvas();
 }
 
 Timeline.prototype.onShowAnimationOptionsDialog = function()
@@ -2341,6 +2151,31 @@ Timeline.prototype.assignNodeNames = function()
 	this.redrawCanvas();
 }
 
+Timeline.prototype.selectTracksOfNode = function()
+{
+	if(!this.current_take)
+		return;
+
+	var selected_nodes = SelectionModule.getSelectedNodes();
+
+	var take = this.current_take;
+	for(var i = 0; i < take.tracks.length; ++i)
+	{
+		var track = take.tracks[i];
+		var info = track.getPropertyInfo();
+		if(!info)
+			continue;
+		var node = info.node;
+		if(!node)
+			continue;
+		if( selected_nodes.indexOf(node) != -1 )
+			track._marked = true;
+		else
+			track._marked = false;
+	}
+	this.redrawCanvas();
+}
+
 Timeline.prototype.showNewTrack = function()
 {
 	var that = this;
@@ -2459,10 +2294,16 @@ Timeline.prototype.showTrackOptionsDialog = function( track )
 			that.redrawCanvas();
 		}});
 
-		widgets.addButton(null,"Convert to Node Name", { width: "30%", callback: function(){
-			track.convertIDtoName();
-			widgets.refresh();
-		}});
+		if( track.property[0] == "@" )
+			widgets.addButton(null,"Convert to Names", { width: "30%", callback: function(){
+				track.convertIDtoName();
+				widgets.refresh();
+			}});
+		else
+			widgets.addButton(null,"Convert to UIDs", { width: "30%", callback: function(){
+				track.convertNameToID();
+				widgets.refresh();
+			}});
 
 		widgets.addString("Type", track.type, { disabled: true } );
 		widgets.addCombo("Interpolation", track.interpolation, { disabled: !track.isInterpolable(), values: Timeline.interpolation_values, callback: function(v){ 
@@ -2473,6 +2314,11 @@ Timeline.prototype.showTrackOptionsDialog = function( track )
 		}});
 
 		widgets.widgets_per_row = 1;
+
+		widgets.addButtons(null, ["Add keyframe"], { callback: function(v){
+			track.addKeyframeFromCurrent( that.current_time );		
+			that.animationModified();
+		}});
 
 		widgets.addButtons(null,["Close"], function(v){
 			dialog.close();
@@ -2543,7 +2389,7 @@ Timeline.prototype.showAddEventKeyframeDialog = function( track, time, keyframe 
 	dialog.show( null, this.root );
 }
 
-Timeline.prototype.showEditKeyframeDialog = function( track, time, keyframe )
+Timeline.prototype.showEditKeyframeDialog = function( track, time, keyframe, keyframe_index )
 {
 	if(!track)
 		return;
@@ -2577,6 +2423,12 @@ Timeline.prototype.showEditKeyframeDialog = function( track, time, keyframe )
 	else
 		widgets.addInfo( "Value", String( value ) );
 	widgets.addCheckbox("Preview", preview, function(v) { preview = v; } );
+	widgets.addButton("Delete", "Delete", function(v) { 
+		track.removeKeyframe( keyframe_index );
+		that.redrawCanvas();
+		that.animationModified();
+		dialog.close();
+	});
 
 	dialog.add( widgets );
 	dialog.adjustSize();
@@ -2688,7 +2540,7 @@ Timeline.prototype.onItemDrop = function(e)
 
 	if( locator )
 	{
-		this.processInsertLocator( locator );
+		this.processInsertLocator( locator, { add_keyframe: false } );
 		/*
 		var info = LS.GlobalScene.getPropertyInfo( locator );
 		if(!info)
@@ -2722,13 +2574,23 @@ Timeline.actions = {
 	track: {}
 };
 
+Timeline.actions.take["Use ids as names"] = function( animation, take, callback )
+{
+	EditorModule.showSelectNode(function(node){
+		var v = take.convertNamesToIDs(true, node);
+		if(callback)
+			callback(v);
+	},{ title: "Select Root Node", selected: LS.GlobalScene.root });
+	return null;
+}
+
 Timeline.actions.take["Use names as ids"] = function( animation, take, callback )
 {
 	EditorModule.showSelectNode(function(node){
-		var v = take.convertIDstoNames(true, node);
+		var v = take.convertIDsToNames(true, node);
 		if(callback)
 			callback(v);
-	},{ selected: LS.GlobalScene.root });
+	},{ title: "Select Root Node", selected: LS.GlobalScene.root });
 	return null;
 }
 
@@ -2797,3 +2659,17 @@ Timeline.actions.take["Remove Disabled Tracks"] = function( animation, take )
 	return num - tracks.length;
 }
 
+Timeline.actions.track["Only rotations"] = function( track, take, animation )
+{
+	track.onlyRotations();
+}
+
+Timeline.actions.track["Convert to trans10"] = function( track, take, animation )
+{
+	track.convertToTrans10();
+}
+
+Timeline.actions.track["Remove scaling"] = function( track, take, animation )
+{
+	track.removeScaling();
+}

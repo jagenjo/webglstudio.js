@@ -13,6 +13,20 @@ var manipulateTool = {
 	gizmo_center: vec3.create(),
 	click_pos: vec3.create(),
 
+	getGizmoLocalCenter: function( node, result )
+	{
+		result = result || vec3.create();
+
+		if( ToolsModule.center_system == "instances" && node._instances && node._instances.length )
+		{
+			for(var i in node._instances)
+				vec3.add( result, result, node._instances[i].oobb ); //node._instances[i].center
+			vec3.scale(result,result,1/node._instances.length);
+		}
+
+		return result;
+	},
+
 	//called form ToolsModule
 	renderEditor: function(camera)
 	{
@@ -29,7 +43,8 @@ var manipulateTool = {
 			return null;
 
 		//var pos = node.transform.getGlobalPosition( this.gizmo_center );
-		var pos = vec3.create();
+		var pos = selection.instance.constructor === LS.SceneNode ?  this.getGizmoLocalCenter(node) : vec3.create();
+
 		mat4.multiplyVec3( pos, gizmo_model, pos );
 		this.gizmo_center.set( pos );
 
@@ -89,7 +104,7 @@ var manipulateTool = {
 		var gizmo_model = ToolUtils.getSelectionMatrix();
 		if(!gizmo_model)
 			return null;
-		var pos = vec3.create();
+		var pos = selection.instance.constructor === LS.SceneNode ?  this.getGizmoLocalCenter(node) : vec3.create();
 		mat4.multiplyVec3( pos, gizmo_model, pos );
 
 		var camera = ToolUtils.getCamera(e);
@@ -223,7 +238,7 @@ var manipulateTool = {
 		var gizmo_model = ToolUtils.getSelectionMatrix();
 		if(!gizmo_model)
 			return null;
-		var pos = vec3.create();
+		var pos = selection.instance.constructor === LS.SceneNode ?  this.getGizmoLocalCenter(node) : vec3.create();
 		mat4.multiplyVec3( pos, gizmo_model, pos );
 
 		if(this.state == "move")

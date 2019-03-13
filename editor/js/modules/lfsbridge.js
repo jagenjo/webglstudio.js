@@ -138,7 +138,20 @@ var LFSBridge = {
 				var name = unit.name;
 				if( unit.metadata && unit.metadata.name )
 					name = unit.metadata.name;
-				var item = { id: unit.name, content: name, unit: unit, type:"unit", dataset: { bridge: LFSBridge.name, allow_write: true }, candrag: false, className: 'folder unit', fullpath: unit.name, bridge: bridge };
+				var item = { 
+					id: unit.name, 
+					content: name, 
+					unit: unit, 
+					type:"unit", 
+					dataset: { 
+						bridge: LFSBridge.name, 
+						allow_write: true 
+					}, 
+					candrag: false, 
+					className: 'folder unit', 
+					fullpath: unit.name, 
+					bridge: bridge 
+				};
 				item.children = get_folders( unit.name, unit.folders );
 				server_root.children.push( item );
 			}
@@ -154,7 +167,20 @@ var LFSBridge = {
 			for(var i in root)
 			{
 				var folder_path =  fullpath + "/" + i;
-				var folder = { id: folder_path, content: i, dataset: { bridge: LFSBridge.name, allow_write: true }, fullpath: folder_path, type:"folder", candrag: true, className: 'folder', folder: i, bridge: bridge };
+				var folder = { 
+					id: folder_path,
+					content: i,
+					dataset: { 
+						bridge: LFSBridge.name,
+						allow_write: true
+					}, 
+					fullpath: folder_path,
+					type:"folder",
+					candrag: true,
+					className: 'folder',
+					folder: i,
+					bridge: bridge
+				};
 				if(root[i])
 					folder.children = get_folders(fullpath + "/" + i, root[i] );
 				folders.push( folder );
@@ -261,10 +287,10 @@ var LFSBridge = {
 			warning.style.backgroundColor = "#346";
 			warning.style.color = "#ABF";
 			warning.style.padding = "10px";
-			warning.innerHTML = "<p>You must be logged to see the files in the server.</p><p>Click <button>Login</button> to enter your username and password or enter as <a href=\"javascript:LoginModule.login('guest','guest');\">GUEST</a>.</p>";
+			warning.innerHTML = "<p>You must be logged to see the files in the server.</p><p>Click <button>Login</button> to enter your username and password or enter as <a href=\"javascript:ProfileModule.login('guest','guest');\">GUEST</a>.</p>";
 			var button = warning.querySelector("button");
 			button.style.verticalAlign = "initial";
-			button.addEventListener("click", function(){ LoginModule.showLoginDialog(); });
+			button.addEventListener("click", function(){ ProfileModule.showLoginDialog(); });
 			container.appendChild( warning );	
 			return;
 		}

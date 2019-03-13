@@ -20,6 +20,10 @@ GraphWidget.prototype.init = function( options )
 	var that = this;
 
 	this.inspector = null;
+	this.redraw_canvas = true;
+	this.inspected_node = null;
+
+	this.graph_filename_widget = null;
 
 	//create area
 	this.root = LiteGUI.createElement("div",null,null,{ width:"100%", height:"100%" });
@@ -30,8 +34,12 @@ GraphWidget.prototype.init = function( options )
 	//top bar
 	var top_widgets = this.top_widgets = new LiteGUI.Inspector( { one_line: true });
 	top_widgets.addButton(null,"New", { callback: this.onNewGraph.bind(this), width: 50 });
-	top_widgets.addButton(null,"Open", this.onOpenGraph.bind(this) );
+	top_widgets.addButton(null,"Open", { width: 80, callback: this.onOpenGraph.bind(this) } );
+	this.graph_filename_widget = top_widgets.addString( "Graph","", { name_width: 50, content_width: 200, width: 250, disabled: true } );
+	this.save_graph_widget = top_widgets.addButton(null,"Save", { width: 50, callback: this.saveGraph.bind(this) } );
+	this.compile_graph_widget = top_widgets.addButton(null,"Compile", { width: 70, callback: this.compileGraph.bind(this) } );
 	top_widgets.addButton(null,"Run Step", this.onStepGraph.bind(this) );
+	top_widgets.addCheckbox("Redraw",this.redraw_canvas, { callback: function(v){ that.redraw_canvas = v; } } );
 	/* top_widgets.addButton(null,"Overgraph", this.onSelectOvergraph.bind(this) ); */
 	this.root.appendChild( top_widgets.root );
 
@@ -97,6 +105,53 @@ GraphWidget.prototype.bindEvents = function()
 	LEvent.bind( LS.GlobalScene, "nodeComponentRemoved", this.onComponentRemoved, this );
 	LEvent.bind( LS.GlobalScene, "beforeReload", this.onBeforeReload, this );
 	LEvent.bind( LS.GlobalScene, "reload", this.onReload, this );
+
+	if( !this._ondraw_func )
+		this._ondraw_func = this.onDraw.bind(this)
+
+	requestAnimationFrame( this._ondraw_func  );
+}
+
+GraphWidget.prototype.unbindEvents = function()
+{
+	LEvent.unbindAll( LS.GlobalScene, this );
+	LEvent.unbindAll( LS, this );
+}
+
+//on draw canvas, not scene
+GraphWidget.prototype.onDraw = function()
+{
+	if(this.root.parentNode)
+		requestAnimationFrame( this._ondraw_func );
+
+	//preview
+	if(GraphModule._texture_preview && this.inspected_node)
+	{
+		var widget = GraphModule._texture_preview;
+		var tex = this.inspected_node.getOutputData(0);
+		if(!tex || tex.constructor !== GL.Texture)
+			widget._texture = null;
+		else
+		{
+			widget.title = this.inspected_node.title;
+			widget._texture = tex;
+		}
+	}
+	
+	if(!this.redraw_canvas)
+		return;
+	var canvas = this.graphcanvas.canvas;
+	if(!canvas)
+		return;
+	var rect = canvas.getBoundingClientRect();
+	if(rect.width && rect.height)
+		this.graphcanvas.setDirty(true);
+
+	if(this.current_graph_info && this.graph && this.graph._version != this.current_graph_info.version && this.current_graph_info.instance && this.current_graph_info.instance.constructor === LS.GraphCode )
+	{
+		this.current_graph_info.version = this.graph._version;
+		LS.RM.resourceModified( this.current_graph_info.instance );
+	}
 }
 
 GraphWidget.prototype.resizeCanvas = function()
@@ -113,12 +168,7 @@ GraphWidget.prototype.resizeCanvas = function()
 	}
 }
 
-GraphWidget.prototype.unbindEvents = function()
-{
-	LEvent.unbindAll( LS.GlobalScene, this );
-	LEvent.unbindAll( LS, this );
-}
-
+//instance could be a GraphCode or a GraphComponent
 GraphWidget.prototype.editInstanceGraph = function( instance, options )
 {
 	options = options || {};
@@ -145,25 +195,106 @@ GraphWidget.prototype.editInstanceGraph = function( instance, options )
 
 	//update graph selected
 	this.current_graph_info = { instance: instance, options: options };
+	this.graph = instance.graph || (instance.getGraph ? instance.getGraph() : null);
+
+	/*
+	if( instance.constructor == LS.GraphCode )
+	{
+		if( instance.graph._version !== undefined )
+		this.current_graph_info.version = instance.graph._version;
+		this.graph_filename_widget.setValue( instance.filename );
+	}
+	*/
+
+	if( instance.filename )
+	{
+		this.save_graph_widget.enable();
+		this.graph_filename_widget.setValue( instance.filename );
+	}
+	else
+	{
+		this.graph_filename_widget.setValue( "inner graph" );
+		this.save_graph_widget.disable();
+	}
+
 	this.onNodeSelected(null); //TODO: store old selected node id
-	this.graph = instance.getGraph() || instance.graph;
+	if(!this.graph)
+		console.warn("no graph in resource or component");
 	this.graphcanvas.setGraph( this.graph );
 
-	if(this.onRename)
-		this.onRename( (instance && instance._root) ? instance._root.name : "Empty");
+	if(this.onRename) //used for the title of the tab
+	{
+		var name = "";
+		if(instance)
+		{
+			if( instance.constructor === LS.GraphCode )
+				name = LS.RM.getBasename( instance.fullpath || instance.filename );
+			else if (instance._root) 
+				name = instance._root.name;
+		}
+		else
+			name = "None";
+		this.onRename(name);
+	}
 }
 
-GraphWidget.prototype.isInstance = function(instance, options)
+//a GraphComponent
+GraphWidget.prototype.getInstance = function()
+{
+	if(!this.current_graph_info)
+		return null;
+	return this.current_graph_info.instance;
+}
+
+GraphWidget.prototype.isInstance = function( instance, options )
 {
 	if(this.current_graph_info && this.current_graph_info.instance == instance)
 		return true;
 	return false;
 }
 
+GraphWidget.prototype.saveGraph = function()
+{
+	if(!this.current_graph_info)
+		return;
+
+	this.compileGraph();
+
+	var instance = this.current_graph_info.instance;
+	if( instance.from_file )
+	{
+		var graphcode = instance.graphcode;
+		if(graphcode)
+			DriveModule.saveResource( graphcode );
+	}
+}
+
+GraphWidget.prototype.compileGraph = function()
+{
+	if(!this.current_graph_info)
+		return;
+
+	var instance = this.current_graph_info.instance;
+	if( !instance.from_file )
+		return;
+
+	var graphcode = instance.graphcode;
+	if(!graphcode)
+		return;
+
+	//copy changes in this graph to graphcode
+	graphcode.data = instance.graph.serialize();
+
+	//propagate to all other graphcomponents using this graphcode
+	graphcode.propagate();
+}
+
+//node panel defined later in the file, search for "inspect"
 GraphWidget.prototype.onShowNodePanel = function( node )
 {
 	var inspector = this.inspector || EditorModule.inspector;
-	inspector.inspect( node );
+	inspector.inspect( node, false, node.constructor.type );
+	this.inspected_node = node;
 }
 
 GraphWidget.prototype.onDropItem = function( e )
@@ -180,31 +311,37 @@ GraphWidget.prototype.onDropItem = function( e )
 	var item_class = e.dataTransfer.getData("class");
 	var item_node_uid = e.dataTransfer.getData("node_uid");
 
+	var graphnode = null;
+
 	if(item_type == "SceneNode")
 	{
-		var graphnode = LiteGraph.createNode("scene/node");
+		graphnode = LiteGraph.createNode("scene/node");
 		graphnode.properties.node_id = item_uid;
-		graphnode.pos[0] = e.canvasX;
-		graphnode.pos[1] = e.canvasY;
-		this.graph.add( graphnode );
-		graphnode.onExecute();
-		return true;
 	}
 	else if(item_type == "Component")
 	{
-		var graphnode = LiteGraph.createNode( item_class == "Transform" ? "scene/transform" : "scene/component");
+		graphnode = LiteGraph.createNode( item_class == "Transform" ? "scene/transform" : "scene/component");
 		graphnode.properties.node_id = item_node_uid;
 		graphnode.properties.component_id = item_uid;
-		graphnode.pos[0] = e.canvasX;
-		graphnode.pos[1] = e.canvasY;
-		this.graph.add( graphnode );
-		graphnode.onExecute();
-		return true;
+	}
+	else if(item_type == "Material")
+	{
+		graphnode = LiteGraph.createNode( "scene/material" );
+		graphnode.properties.node_id = item_node_uid;
+		graphnode.properties.material_id = item_uid;
 	}
 	else if(item_type == "property")
 	{
-		var graphnode = LiteGraph.createNode( "scene/property" );
+		graphnode = LiteGraph.createNode( "scene/property" );
 		graphnode.properties.locator = item_uid;
+	}
+	else if(item_type == "object")
+	{
+		LiteGUI.alert("Objects cannot be dragged into the graph");
+	}
+
+	if(graphnode)
+	{
 		graphnode.pos[0] = e.canvasX;
 		graphnode.pos[1] = e.canvasY;
 		this.graph.add( graphnode );
@@ -249,7 +386,6 @@ GraphWidget.prototype.onReload = function( e )
 	EditorModule.refreshAttributes(); //avoid inspecting old version
 }
 
-
 GraphWidget.prototype.onNodeSelected = function( node )
 {
 	//TODO
@@ -265,7 +401,6 @@ GraphWidget.prototype.onComponentRemoved = function( component )
 	//check if this component is the one being edited
 	if( !this.current_graph_info || this.current_graph_info.id != component.uid )
 		return;
-
 }
 
 /*
@@ -300,8 +435,6 @@ GraphWidget.prototype.onMenuNodeOutputs = function( options )
 	return options;
 }
 
-
-
 GraphWidget.prototype.onNewGraph = function()
 {
 	var that = this;
@@ -322,7 +455,7 @@ GraphWidget.prototype.onNewGraph = function()
 	dialog.show( null, this.root );
 
 	function inner(v){
-		var component = new LS.Components[graph_type]();
+		var component = new LS.Components[ graph_type ]();
 		var root = node || LS.GlobalScene.root;
 		root.addComponent( component );
 		CORE.userAction("component_created", component );
@@ -440,27 +573,55 @@ GraphWidget.prototype.onGetExtraMenuOptions = function(options)
 	}
 }
 
+//here we create a panel
 LiteGraph.addNodeMethod( "inspect", function( inspector )
 {
 	var graphnode = this;
 
-	inspector.addSection("Node");
+	var icon = "imgs/mini-icon-graph.png";
+
+	var title = inspector.addSection("<img src='"+icon+"' draggable='true'/> Node");
+	var icon_img = title.querySelector("img");
+	icon_img.addEventListener("dragstart", function(event) { 
+		//event.dataTransfer.setData("uid", component.uid);
+	});
 
 	inspector.widgets_per_row = 2;
 	inspector.addString("Title", graphnode.title, { name_width: 100, disabled: graphnode.ignore_rename, callback: function(v) { graphnode.title = v; }});
 	inspector.addString("ID", String(graphnode.id), { name_width: 100 } );
 	inspector.widgets_per_row = 1;
+	inspector.addVector2("Size", graphnode.size, { name_width: 100, callback: function(v) { graphnode.size[0] = v[0]; graphnode.size[1] = v[1];  }} );
 
-	var modes = { "Always": LiteGraph.ALWAYS,"On Trigger": LiteGraph.ON_TRIGGER,"Never": LiteGraph.NEVER };
+	var modes = { "Always": LiteGraph.ALWAYS, "On Event": LiteGraph.ON_Event, "On Trigger": LiteGraph.ON_TRIGGER, "Never": LiteGraph.NEVER };
 	var reversed_modes = {};
 	for(var i in modes)
-		reversed_modes[ modes[i] ] = reversed_modes[i];
+		reversed_modes[ modes[i] ] = i;
 
 	inspector.addCombo("Mode", reversed_modes[ graphnode.mode ], { name_width: 100, values: modes, callback: function(v) { graphnode.mode = v; }});
 	inspector.addSeparator();
 
 	var widgets_info = graphnode.constructor.widgets_info || graphnode.widgets_info;
 
+	//special case
+	if( graphnode.type == "scene/global" )
+	{
+		inspector.addString("Name", graphnode.properties.name, { callback: function(v){ graphnode.properties.name = v; }});
+		inspector.addCombo("Type", graphnode.properties.name, { values: LGraphGlobal["@type"].values, callback: function(v){
+			graphnode.properties.type =	v;
+			if( v == "boolean" )
+				graphnode.properties.value = !!graphnode.properties.value;
+			else if ( v == "number" )
+				graphnode.properties.value = 0;
+			inspector.refresh();
+		}});
+		inspector.add( graphnode.properties.type, "Value", graphnode.properties.value, { callback: function(v){} });
+		if( graphnode.properties.type == "number" )
+		{
+			inspector.addNumber( "Min", graphnode.properties.min, { callback: function(v){ graphnode.properties.min = v; } });
+			inspector.addNumber( "Max", graphnode.properties.max, { callback: function(v){ graphnode.properties.max = v; } });
+		}
+	}
+	else
 	for(var i in graphnode.properties)
 	{
 		var value = graphnode.properties[i];
@@ -502,44 +663,31 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 		}
 	}
 
-	if(graphnode._inspect)
-		graphnode._inspect( inspector );
-
-	if(graphnode.help)
-		inspector.addInfo( null, graphnode.help );
+	if(graphnode.onInspect)
+		graphnode.onInspect( inspector );
 
 	inspector.addSeparator();
 
-	if( graphnode.constructor == LGraphSceneNode )
-	{
-		inspector.addButton(null, "Inspect node", function(){
-			var node = graphnode.getNode();
-			if(node)
-				EditorModule.inspect( node );
-		});
-	}
-
-	if( graphnode.constructor == LGraphComponent )
-	{
-		inspector.addButton(null, "Inspect Component", function(){
-			var compo = graphnode.getComponent();
-			if(!compo)
-				return;
-			EditorModule.inspect( compo );
-		});
-	}
-
-	inspector.addButtons(null, ["Collapse","Remove"], { callback: function(v) { 
+	inspector.addButtons(null, ["Collapse","Remove","Show JSON"], { callback: function(v) { 
 		if(v == "Collapse")
 			graphnode.collapse();
+		else if(v == "Show JSON")
+		{
+			EditorModule.checkJSON( graphnode.serialize() );
+			console.log( graphnode );
+		}
 		else if(v == "Remove")
 			graphnode.graph.remove(graphnode);
 	}});
+
+	if(graphnode.help)
+		inspector.addInfo( null, graphnode.help );
 
 	function inner_assign(v)
 	{
 		//safe way
 		LS.setObjectProperty( graphnode.properties, this.options.field_name, v );
+		graphnode._version++;
 		if( graphnode.onPropertyChanged )
 			graphnode.onPropertyChanged( this.options.field_name, v );
 

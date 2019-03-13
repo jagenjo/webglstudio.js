@@ -16,10 +16,13 @@ var EditorView = {
 		grid_plane: "xz",
 		render_null_nodes: true,
 		render_aabb: false,
+		render_boundings: false,
 		render_tree: false,
 		render_skeletons: true,
 		render_names: false,
-		render_height: true
+		render_height: true,
+		render_selection_wireframe: false,
+		render_probes_link: false
 	},
 
 	render_debug_info: true,
@@ -33,6 +36,8 @@ var EditorView = {
 
 		this.debug_render = new LS.DebugRender(); //in charge of rendering debug info in the scene
 		RenderModule.canvas_manager.addWidget(this);
+
+		LS.Renderer.on_render_gui = this.onRenderGUI.bind(this);
 
 		LEvent.bind( LS.Renderer, "renderHelpers", this.renderView.bind(this));
 		LEvent.bind( LS.Renderer, "renderPicking", this.renderPicking.bind(this));
@@ -87,50 +92,65 @@ var EditorView = {
 		return false;
 	},
 
-	sendToLayoutGizmos: function(name, params)
+	onRenderGUI: function(render_settings)
 	{
+		if(!render_settings.in_player)
+			LEvent.trigger( LS.GlobalScene, "renderEditorGUI", gl );
+	},
+
+	//called from the CanvasManager event handlers when any event is fired in the canvas
+	sendToLayoutGizmos: function( name, event )
+	{
+		var blocked = false;
+
+		//to every viewport
 		for(var i = 0; i < RenderModule.viewports.length; i++)
 		{
 			var viewport = RenderModule.viewports[i];
-			if(!viewport.gizmos || !viewport.gizmos.length )
-				continue;
 
-			for(var j = 0; j < viewport.gizmos.length; j++)
+			if( viewport.gizmos && viewport.gizmos.length )
 			{
-				var gizmo = viewport.gizmos[j];
-				var r = null;
-				if(gizmo[name])
-					r = gizmo[name].apply(gizmo, params);
-				if(r === true)
-					return true; //break
+				for(var j = 0; j < viewport.gizmos.length; j++)
+				{
+					var gizmo = viewport.gizmos[j];
+					var r = null;
+					if(gizmo[name]) //has method with that name (mousedown, etc)
+						r = gizmo[name].apply( gizmo, [ event ] );
+					if(r === true)
+						return true; //break
+				}
 			}
 		}
+
+		return blocked;
 	},
 
-	update: function(seconds)
-	{
-		this.sendToLayoutGizmos("update",[seconds]);
-	},
+	update: (function(){ 
+		var event = { type: "update", seconds: 0 };
+		return function(seconds)
+		{
+			event.seconds = seconds;
+			this.sendToLayoutGizmos("update", event);
+		}
+	})(),
 
 	mousedown: function(e)
 	{
 		//check if the mouse is between layouts
 		//TODO
-
-		var r = this.sendToLayoutGizmos("mousedown",[e]);
+		var r = this.sendToLayoutGizmos("mousedown", e );
 		return r;
 	},
 
 	mousemove: function(e)
 	{
-		var r = this.sendToLayoutGizmos("mousemove",[e]);
-
+		var r = this.sendToLayoutGizmos("mousemove", e );
 		return r;
 	},
 
 	mouseup: function(e)
 	{
-		var r = this.sendToLayoutGizmos("mouseup",[e]);
+		var r = this.sendToLayoutGizmos("mouseup", e );
 		if(r)
 			return r;
 
@@ -148,18 +168,21 @@ var EditorView = {
 
 	mousewheel: function(e)
 	{
-		return this.sendToLayoutGizmos("mousewheel",[e]);
+		return this.sendToLayoutGizmos("mousewheel", e );
 	},
 
 	renderEditor: function( camera )
 	{
+		//copy preferences... ?
 		for(var i in this.preferences)
 			this.debug_render.settings[i] = this.preferences[i];
 
+		//call debug render to render grid, etc
 		this.debug_render.render( camera, SelectionModule.isSelected.bind( SelectionModule ) );
 
 		gl.depthFunc( gl.LEQUAL );
 
+		//used to render script tools gizmos
 		LEvent.trigger( LS.GlobalScene, "renderEditor" );
 
 		gl.depthFunc( gl.LESS );
@@ -167,15 +190,6 @@ var EditorView = {
 	},
 
 	//used for picking just points **************************************************
-	_picking_points: [], //used to collect all points to render during picking
-
-	addPickingPoint: function( position, size, info )
-	{
-		size = size || 5.0;
-		var color = LS.Picking.getNextPickingColor( info );
-		this._picking_points.push([position,color,size]);
-	},
-
 	renderPicking: function(e, mouse_pos)
 	{
 		//cannot pick what is hidden
@@ -212,7 +226,7 @@ var EditorView = {
 				var pos = vec3.create();
 				mat4.multiplyVec3(pos, node.transform.getGlobalMatrixRef(), pos); //create a new one to store them
 				if( this.preferences.render_null_nodes )
-					this.addPickingPoint( pos, 12, { instance: node } );
+					LS.Picking.addPickingPoint( pos, 12, { instance: node } );
 			}
 
 			for(var j in node._components)
@@ -223,25 +237,7 @@ var EditorView = {
 			}
 		}
 
-		//render all the picking points 
-		if(this._picking_points.length)
-		{
-			var points = new Float32Array( this._picking_points.length * 3 );
-			var colors = new Float32Array( this._picking_points.length * 4 );
-			var sizes = new Float32Array( this._picking_points.length );
-			for(var i = 0; i < this._picking_points.length; i++)
-			{
-				points.set( this._picking_points[i][0], i*3 );
-				colors.set( this._picking_points[i][1], i*4 );
-				sizes[i] = this._picking_points[i][2];
-			}
-			LS.Draw.setPointSize(1);
-			LS.Draw.setColor([1,1,1,1]);
-			gl.disable( gl.DEPTH_TEST ); //because nodes are show over meshes
-			LS.Draw.renderPointsWithSize( points, colors, sizes );
-			gl.enable( gl.DEPTH_TEST );
-			this._picking_points.length = 0;
-		}
+		LS.Picking.renderPickingPoints();
 	}
 };
 
@@ -259,17 +255,41 @@ LS.SceneNode.prototype.renderEditor = function( node_selected )
 	LS.Draw.setColor([0.3,0.3,0.3,0.5]);
 	gl.enable(gl.BLEND);
 
+	var probe_links = EditorView.preferences.render_probes_link ? [] : null;
+
 	//if this node has render instances...
 	if(this._instances)
 	{
-		if(node_selected)
+		for(var i = 0; i < this._instances.length; ++i)
 		{
-			for(var i = 0; i < this._instances.length; ++i)
-			{
-				var instance = this._instances[i];
-				if(instance.flags & LS.RI_IGNORE_FRUSTUM)
-					continue;
+			var instance = this._instances[i];
+			var aabb = instance.aabb;
 
+			if( EditorView.preferences.render_probes_link && instance._nearest_reflection_probe )
+			{
+				if( node_selected )
+				{
+					LS.Draw.setColor([1,1,1,1]);
+					LS.Draw.renderLines([instance.center, instance._nearest_reflection_probe._position]);
+				}
+				else
+					probe_links.push( instance.center, instance._nearest_reflection_probe._position );
+			}
+
+			if(node_selected && EditorView.preferences.render_selection_wireframe )
+			{
+				LS.Draw.setColor([1,1,0.5,0.01]);
+				gl.disable( gl.DEPTH_TEST );
+				LS.Draw.push();
+				LS.Draw.multMatrix( instance.matrix );
+				LS.Draw.renderMesh( instance.mesh, gl.TRIANGLES, null, "triangles", instance.range[0], instance.range[1] );
+				LS.Draw.pop();
+				gl.enable( gl.DEPTH_TEST );
+			}
+
+			//render bounding
+			if( (node_selected || EditorView.preferences.render_boundings) && !(instance.flags & LS.RI_IGNORE_FRUSTUM) )
+			{
 				var oobb = instance.oobb;
 				LS.Draw.setColor([0.8,0.5,0.3,0.5]);
 				LS.Draw.push();
@@ -306,6 +326,12 @@ LS.SceneNode.prototype.renderEditor = function( node_selected )
 		var s = 5;
 		LS.Draw.renderLines([[s,0,0],[-s,0,0],[0,s,0],[0,-s,0],[0,0,s],[0,0,-s]]);
 		LS.Draw.pop();
+	}
+
+	if( probe_links && probe_links.length )
+	{
+		LS.Draw.setColor([0.5,0.8,0.9,0.5]);
+		LS.Draw.renderLines(probe_links);
 	}
 
 	if(node_selected && EditorView.preferences.render_height)
@@ -483,23 +509,14 @@ LS.Light.prototype.renderEditor = function(node_selected, component_selected )
 LS.Light.prototype.renderPicking = function(ray)
 {
 	var pos = this.getPosition();
-	EditorView.addPickingPoint( pos, LS.Light.gizmo_size, { instance: this, info: "position" } );
-	/*
-	var color = Renderer.getNextPickingColor( this._root, [this, "position"] );
-	EditorView._picking_points.push([pos,color]);
-	*/
+	LS.Picking.addPickingPoint( pos, LS.Light.gizmo_size, { instance: this, info: "position" } );
 
 	//target only pick if necessary
 	if( this._root && this._root.transform || this.type == LS.Light.OMNI)
 		return; 
 
 	var target = this.getTarget();
-	EditorView.addPickingPoint( target, 0, { instance: this, info: "target" } );
-
-	/*
-	var color = Renderer.getNextPickingColor( this._root, [this, "target"] );
-	EditorView._picking_points.push([target,color]);
-	*/
+	LS.Picking.addPickingPoint( target, 0, { instance: this, info: "target" } );
 }
 
 LS.Camera.gizmo_size = 50;
@@ -507,28 +524,18 @@ LS.Camera.gizmo_size = 50;
 LS.Camera.prototype.renderPicking = function(ray)
 {
 	var pos = this.getEye();
-	EditorView.addPickingPoint( pos, LS.Camera.gizmo_size, { instance: this, info: "eye" } );
-
-	/*
-	var color = Renderer.getNextPickingColor( this._root, [this, "eye"] );
-	EditorView._picking_points.push([pos,color]);
-	*/
+	LS.Picking.addPickingPoint( pos, LS.Camera.gizmo_size, { instance: this, info: "eye" } );
 
 	//target only pick if necessary
 	if( this._root && this._root.transform )
 		return; 
 
 	var center = this.getCenter();
-	EditorView.addPickingPoint( center, 0, { instance: this, info: "center" } );
+	LS.Picking.addPickingPoint( center, 0, { instance: this, info: "center" } );
 
 	//middle center
-	vec3.lerp( center, pos, center, 0.5 );
-	EditorView.addPickingPoint( center, 0, { instance: this, info: "center" } );
-
-	/*
-	var color = Renderer.getNextPickingColor( this._root, [this, "center"] );
-	EditorView._picking_points.push([center,color]);
-	*/
+	var middle = vec3.lerp( vec3.create(), pos, center, 0.5 );
+	LS.Picking.addPickingPoint( middle, 0, { instance: this, info: "center" } );
 }
 
 LS.Camera.prototype.renderEditor = function( node_selected, component_selected )
@@ -633,6 +640,24 @@ LS.Camera.prototype.renderEditor = function( node_selected, component_selected )
 
 	gl.depthMask( true );
 }
+
+LS.Components.ReflectionProbe.prototype.renderEditor = function()
+{
+	if(!this._texture || !LS.Components.ReflectionProbe.visualize_helpers || !LS.Components.ReflectionProbe.helper_size )
+		return;
+
+	this.renderProbe( LS.Components.ReflectionProbe.visualize_irradiance );
+}
+
+
+LS.Components.ReflectionProbe.prototype.renderPicking = function()
+{
+	if(!this._texture || !LS.Components.ReflectionProbe.visualize_helpers || !LS.Components.ReflectionProbe.helper_size )
+		return;
+
+	this.renderProbe(false, LS.Picking.getNextPickingColor( this._root, [this] ) );
+}
+
 
 //PRELOAD STUFF
 EditorView.grid_img = new Image();

@@ -1,9 +1,17 @@
 var LabModule = {
-	name: "Lab",
+	name: "GPU",
 	bigicon: "imgs/tabicon-debug.png",
 
 	enabled: false,
 	mode: "textures",
+	channels: "rgba",
+	exposure: 1,
+
+	show_name: true,
+	rotate: true,
+	meshes_axis: "Y",
+	meshes_mode: "phong_wireframe",
+	cull_face: true,
 
 	offset: vec2.create(0,0),
 	scale: 1,
@@ -15,8 +23,7 @@ var LabModule = {
 
 	settings: {
 		render_frame: false,
-		render_filename: true,
-		render_alpha: true
+		render_filename: true
 	},
 
 	init: function()
@@ -42,24 +49,68 @@ var LabModule = {
 		mode_tabs.root.style.backgroundColor = "#111";
 		this.mode_tabs = mode_tabs;
 
+		var inspector = this.top_inspector = new LiteGUI.Inspector({ widgets_width: 200, one_line: true });
+		content.appendChild( inspector.root );
+
 		mode_tabs.addTab("Textures", function(){
-			LabModule.mode = "textures";
+			LabModule.setMode("textures");
 		});
 		mode_tabs.addTab("Meshes",function(){
-			LabModule.mode = "meshes";
+			LabModule.setMode("meshes");
 		});
 		mode_tabs.addTab("Materials",function(){
-			LabModule.mode = "materials";
+			LabModule.setMode("materials");
 		});
 
-		/*
-		mode_tabs.addTab("Shaders",function(){
-			LabModule.mode = "shaders";
-		});
-		*/
 		//enable WebGL Canvas2D renderer
 		if( RenderModule.canvas_manager.canvas )
 			this.prepareGL();
+	},
+
+	setMode: function( mode )
+	{
+		this.mode = mode;
+		var inspector = this.top_inspector;
+		inspector.clear();
+
+		inspector.addCheckbox("Show name", this.show_name, { callback: function(v){
+			LabModule.show_name = v;			
+		}});		
+
+		if( this.mode == "textures" )
+		{
+			inspector.addButton( null, "Reset", { callback: function(){ 
+				LabModule.channels = "RGBA";
+				LabModule.exposure = 1;
+			}});
+			inspector.addCombo("Channels", this.channels, { values:["RGBA","RGB","R","G","B","A"], callback: function(v){
+				LabModule.channels = v;			
+			}});		
+			inspector.addSlider("Exposure", this.exposure, { max: 4, callback: function(v){
+				LabModule.exposure = v;			
+			}});		
+		}
+		else if( this.mode == "meshes" )
+		{
+			inspector.addCheckbox("Rotate", this.rotate, { callback: function(v){
+				LabModule.rotate = v;			
+			}});
+			inspector.addCombo("Axis", this.meshes_axis, { values:["X","Y","Z"], callback: function(v){
+				LabModule.meshes_axis = v;			
+			}});		
+			inspector.addCombo("Render Mode", this.meshes_mode, { values:["phong_wireframe","phong","wireframe","X-RAY","UV_wireframe"], callback: function(v){
+				LabModule.meshes_mode = v;			
+			}});		
+			inspector.addCheckbox("Cull face", this.cull_face, { callback: function(v){
+				LabModule.cull_face = v;			
+			}});		
+		}
+		else if( this.mode == "materials" )
+		{
+			inspector.addCheckbox("Rotate", this.rotate, { callback: function(v){
+				LabModule.rotate = v;			
+			}});		
+		}
 	},
 
 	prepareGL: function()
@@ -69,15 +120,68 @@ var LabModule = {
 		this.camera = new LS.Camera();
 		this.camera.lookAt([0,0,0],[0,0,-1],[0,1,0]);
 
+		this._channel_shader = new GL.Shader('\
+			precision mediump float;\n\
+			attribute vec3 a_vertex;\n\
+			attribute vec2 a_coord;\n\
+			varying vec2 v_coord;\n\
+			uniform mat4 u_mvp;\n\
+			void main() {\n\
+				v_coord = a_coord;\n\
+				gl_Position = u_mvp * vec4(a_vertex,1.0);\n\
+			}\
+			','\
+			precision mediump float;\n\
+			varying vec2 v_coord;\n\
+			uniform vec4 u_color;\n\
+			uniform float u_channel;\n\
+			uniform float u_exposure;\n\
+			uniform sampler2D u_texture;\n\
+			void main() {\n\
+			  vec2 coord = v_coord;\n\
+			  vec4 channels = texture2D( u_texture, coord );\n\
+			  vec4 color;\n\
+			  if( u_channel == 0.0 )\n\
+				color = vec4( channels[0], channels[0], channels[0], 1.0);\n\
+			  else if( u_channel == 1.0 )\n\
+				color = vec4( channels[1], channels[1], channels[1], 1.0);\n\
+			  else if( u_channel == 2.0 )\n\
+				color = vec4( channels[2], channels[2], channels[2], 1.0);\n\
+			  else if( u_channel == 3.0 )\n\
+				color = vec4( channels[3], channels[3], channels[3], 1.0);\n\
+			  else\n\
+				color = channels;\n\
+			  color.xyz *= u_exposure;\n\
+			  gl_FragColor = color;\n\
+			}\
+		');
+
+		this._uv_shader = new GL.Shader('\
+			precision mediump float;\n\
+			attribute vec3 a_vertex;\n\
+			attribute vec2 a_coord;\n\
+			varying vec3 v_pos;\n\
+			uniform mat4 u_model;\n\
+			uniform mat4 u_mvp;\n\
+			void main() {\n\
+				v_pos = (u_model * vec4(a_vertex,1.0)).xyz;\n\
+				gl_Position = vec4(a_coord * 2.0 - vec2(1.0),0.0,1.0);\n\
+			}\
+			','\
+			precision mediump float;\n\
+			uniform vec4 u_color;\n\
+			void main() {\n\
+			  gl_FragColor = u_color;\n\
+			}\
+		');
+
 		this._cubemap_shader = new GL.Shader('\
 			precision mediump float;\n\
 			attribute vec3 a_vertex;\n\
 			attribute vec2 a_coord;\n\
 			varying vec2 v_coord;\n\
 			uniform mat4 u_mvp;\n\
-			uniform float u_point_size;\n\
 			void main() {\n\
-				gl_PointSize = u_point_size;\n\
 				v_coord = a_coord;\n\
 				gl_Position = u_mvp * vec4(a_vertex,1.0);\n\
 			}\
@@ -117,7 +221,7 @@ var LabModule = {
 			return;
 
 		gl.clearColor(0.02,0.02,0.02,1.0);
-		gl.clear( gl.COLOR_BUFFER_BIT );
+		gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
 
 		this.camera.setOrthographic(0, gl.canvas.width, gl.canvas.height, 0, -1, 1 );
 		this.camera.updateMatrices();
@@ -172,19 +276,38 @@ var LabModule = {
 		this.items.length = 0;
 
 		var num = 0;
+		var textures = [];
+
 		for(var i in LS.RM.textures)
 		{
-			var filename = LS.RM.getFilename(i);
+			var item = LS.RM.textures[i];
+			if(!item || item._is_internal)
+				continue;
+			textures.push(item);
+		}
+
+		var channel = 1;
+		switch( this.channels )
+		{
+			case "R": channel = 0; break;
+			case "G": channel = 1; break;
+			case "B": channel = 2; break;
+			case "A": channel = 3; break;
+			default: channel = -1; break;
+		}
+		this._channel_shader.uniforms({ u_channel: channel, u_exposure: this.exposure });
+
+		textures = textures.concat( gl._texture_pool );
+
+		for(var i = 0; i < textures.length; ++i)
+		{
+			var item = textures[i];
+			if(!item)
+				continue;
+			var filename = item.filename || "";
 
 			//is a thumbnail texture
-			if(filename.substr(0,4) == "_th_")
-				continue;
-
-			var item = LS.RM.textures[i];
-			if(!item) //just in case...
-				continue;
-
-			if(item._is_internal)
+			if(filename.substr(0,4) == "_th_" || item.is_preview )
 				continue;
 
 			num++;
@@ -207,34 +330,34 @@ var LabModule = {
 			var white = [1,1,1,1];
 			var black = [0,0,0,1];
 
+			//inside camera
 			if(startx <= gl.canvas.width && starty <= gl.canvas.height && 
 				startx + sizex > 0 && starty + sizey > 0 )
 			{
 				if(tex.texture_type == gl.TEXTURE_2D)
 				{
 					//LS.Draw.renderPlane([posx + size*0.6, posy + size*0.6, 0], [size*0.5,-size*0.5], tex );
-					if(!this.settings.render_alpha)
-						gl.disable( gl.BLEND );
-					else
+					if(this.channels == "RGBA")
 						gl.enable( gl.BLEND );
-					gl.drawImage(tex, posx, posy, w, h );
+					else 
+						gl.disable( gl.BLEND );
+					LS.Draw.renderPlane([ gl._matrix[6] + (posx + w*0.5) * gl._matrix[0], gl._matrix[7] + (posy + h*0.5) * gl._matrix[4], 0], [ w*0.5 * gl._matrix[0], -h*0.5 * gl._matrix[4] ], tex, this._channel_shader );
 					gl.enable( gl.BLEND );
 				}
-				else
+				else if(tex.texture_type == gl.TEXTURE_CUBE_MAP)//cubemaps
 				{
 					this._cubemap_shader.uniforms({u_rotation: getTime() * 0.001 });
 					LS.Draw.renderPlane([ gl._matrix[6] + (posx + w*0.5) * gl._matrix[0], gl._matrix[7] + (posy + h*0.5) * gl._matrix[4], 0], [ w*0.5 * gl._matrix[0], -h*0.5 * gl._matrix[4] ], tex, this._cubemap_shader );
 				}
 
-				var filename = LS.RM.getFilename(i).substr(0,24);
-				var text = filename;
+				var text = filename.substr(0,24);
 				if(this.settings.render_frame)
 				{
 					gl.globalAlpha = (this.selected_item && this.selected_item.item == item) ? 1 : 0.5;
 					gl.strokeRect( posx, posy, w, h );
 					gl.globalAlpha = 1;
 				}
-				if(this.settings.render_filename)
+				if(this.settings.render_filename && this.show_name)
 				{
 					gl.fillColor = black;
 					gl.fillText(text,posx + 6,posy + 16);
@@ -272,17 +395,45 @@ var LabModule = {
 		var old_viewport = gl.getViewport();
 
 		var matrix = mat4.create();
-		if(this.meshes_axis == "Y")
-			mat4.rotateY( matrix, matrix, getTime() * 0.0005 );
-		else
-			mat4.rotateZ( matrix, matrix, getTime() * 0.0005 );
+		if( this.rotate )
+		{
+			if(this.meshes_axis == "Y")
+				mat4.rotateY( matrix, matrix, getTime() * 0.0005 );
+			else
+				mat4.rotateZ( matrix, matrix, getTime() * 0.0005 );
+		}
 
 		this.items.length = 0;
+		var shader = null;
+		if( this.meshes_mode.indexOf("phong") != -1 )
+			shader = LS.Draw.shader_phong;
+		var wireframe_shader = null;
+		if( this.meshes_mode.indexOf("wireframe") != -1 )
+			wireframe_shader = LS.Draw.shader;
+		var blend = false;
+		if( this.meshes_mode == "X-RAY" )
+		{
+			shader = LS.Draw.shader;
+			LS.Draw.setColor(0.05,0.05,0.05,1);
+			blend = true;
+		}
+		else if( this.meshes_mode == "UV_wireframe" )
+		{
+			shader = this._uv_shader;
+			wireframe_shader = this._uv_shader;
+			LS.Draw.setColor(0.2,0.2,0.2,1);
+			blend = true;
+		}
+
+		gl.depthFunc( gl.LEQUAL );
 
 		var num = 0;
 		for(var i in LS.RM.meshes)
 		{
 			var item = LS.RM.meshes[i];
+			if(!item)
+				continue;
+
 			num++;
 			var mesh = item;
 			var w = size;
@@ -293,6 +444,7 @@ var LabModule = {
 			var sizex = w * gl._matrix[0];
 			var sizey = h * gl._matrix[4];
 
+			//inside camera
 			if(startx <= gl.canvas.width && starty <= gl.canvas.height && 
 				startx + sizex > 0 && starty + sizey > 0 )
 			{
@@ -315,29 +467,48 @@ var LabModule = {
 
 				gl.viewport( startx, starty, sizex, sizey );
 
-				gl.disable( gl.BLEND );
-				gl.enable( gl.DEPTH_TEST );
-				LS.Draw.renderMesh( mesh, gl.TRIANGLES, LS.Draw.shader_phong );
+				if(blend)
+				{
+					gl.enable( gl.BLEND );
+					gl.blendFunc( gl.ONE, gl.ONE );
+					gl.disable( gl.DEPTH_TEST );
+				}
+				else
+				{
+					gl.disable( gl.BLEND );
+					gl.enable( gl.DEPTH_TEST );
+				}
+
+				if(this.cull_face)
+					gl.enable( gl.CULL_FACE );
+				else
+					gl.disable( gl.CULL_FACE );
+
+				if(shader)
+					LS.Draw.renderMesh( mesh, gl.TRIANGLES, shader );
 				gl.enable( gl.BLEND );
 
-				if(1) //wireframe
+				if( wireframe_shader && mesh.vertexBuffers["vertices"] ) //wireframe
 				{
 					if(!mesh.indexBuffers["wireframe"])
 						mesh.computeWireframe();
-					LS.Draw.renderMesh( mesh, gl.LINES, null, "wireframe" );
+					LS.Draw.renderMesh( mesh, gl.LINES, wireframe_shader, "wireframe" );
 				}
-
-				gl.disable( gl.DEPTH_TEST );
 
 				gl.setViewport( old_viewport );
 				LS.Draw.popCamera();
 
+				gl.disable( gl.DEPTH_TEST );
+				gl.disable( gl.CULL_FACE );
+				gl.enable( gl.BLEND );
+				gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
 				var filename = LS.RM.getFilename(i).substr(0,24);
 				var text = filename;
 				gl.globalAlpha = (this.selected_item && this.selected_item.item == item) ? 1 : 0.5;
 				gl.strokeRect( posx, posy, w, h );
 				gl.globalAlpha = 1;
-				gl.fillText(text,posx + 5,posy + 15);
+				if(this.settings.render_filename && this.show_name)
+					gl.fillText(text,posx + 5,posy + 15);
 				this.items.push({id:i,type:"Mesh",item: mesh, x:posx,y:posy,w:w,h:h});
 			}
 
@@ -348,6 +519,10 @@ var LabModule = {
 				posy += h + margin;
 			}
 		}
+
+
+		gl.depthFunc( gl.LESS );
+
 		return num;
 	},
 
@@ -365,6 +540,9 @@ var LabModule = {
 		LS.Draw.reset_stack_on_reset = false;
 
 		var old_viewport = gl.getViewport();
+		var angle = 0;
+		if( this.rotate )
+			angle = getTime() * 0.0005;
 
 		this.items.length = 0;
 		var num = 0;
@@ -387,7 +565,7 @@ var LabModule = {
 				gl.viewport( startx, starty, sizex, sizey );
 
 				//render
-				LS.Renderer.renderMaterialPreview( material, 1, { to_viewport: true, background_color: [0.1,0.1,0.1,1.0], rotate: 0.02 } );
+				LS.Renderer.renderMaterialPreview( material, 1, { to_viewport: true, background_color: [0.1,0.1,0.1,1.0], rotate: angle } );
 
 				gl.setViewport( old_viewport );
 
@@ -400,7 +578,8 @@ var LabModule = {
 				gl.globalAlpha = (this.selected_item && this.selected_item.item == item) ? 1 : 0.5;
 				gl.strokeRect( posx, posy, w, h );
 				gl.globalAlpha = 1;
-				gl.fillText(text,posx + 5,posy + 15);
+				if(this.settings.render_filename && this.show_name)
+					gl.fillText(text,posx + 5,posy + 15);
 
 				this.items.push({id:i, item: material, type:"Material",x:posx,y:posy,w:w,h:h});
 			}

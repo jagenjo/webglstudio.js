@@ -1,6 +1,7 @@
 /*
 	Every area of the viewport where we render the scene in the editor.
-	Helps to control the camera.
+	Helps to control the cameras and render settings for every viewport.
+	All the Layouts are stored in RenderModule
 */
 function LayoutViewport( options )
 {
@@ -24,6 +25,8 @@ function LayoutViewport( options )
 		far:10000,
 		layers: 0xFF,
 		viewport: this._viewport
+		//use_fixed_viewport: false,
+		//fixed_viewport: vec2.fromValues(800,600),
 	};
 
 	if( options.camera )
@@ -51,6 +54,7 @@ function LayoutViewport( options )
 
 LayoutViewport.temp_vec4 = vec4.create();
 
+//called from CanvasManager
 LayoutViewport.prototype.render = function()
 {
 	//called after rendering the scene
@@ -59,8 +63,12 @@ LayoutViewport.prototype.render = function()
 
 	//render outline 
 	gl.start2D();
-	gl.strokeColor = this == RenderModule.active_viewport ? [0.75,0.75,0.75] : [0.5,0.5,0.5];
-	gl.strokeRect( viewport[0], gl.canvas.height - viewport[3] - viewport[1],viewport[2] - 2,viewport[3] - 2);
+
+	if( RenderModule.viewports.length > 1)
+	{
+		gl.strokeColor = this == RenderModule.active_viewport ? [0.5,0.5,0.5] : [0.25,0.25,0.25];
+		gl.strokeRect( viewport[0], gl.canvas.height - viewport[3] - viewport[1],viewport[2] - 1,viewport[3] - 1);
+	}
 
 	//render corner button
 	gl.globalAlpha = !this._over_corner ? 0.5 : 1.0;
@@ -85,6 +93,33 @@ LayoutViewport.prototype.render = function()
 			gizmo.render();
 	}
 }
+
+Object.defineProperty( LayoutViewport.prototype, "viewport", {
+	set: function(v){
+		if(!v)
+			return;
+		this._viewport.set( v );
+		this.camera._viewport.set(v);
+	},
+	get: function()
+	{
+		return this._viewport;
+	},
+	enumerable: true
+});
+
+Object.defineProperty( LayoutViewport.prototype, "viewport_pixels", {
+	set: function(v){
+		this._viewport[0] = v[0] / gl.canvas.width;
+		this._viewport[1] = v[1] / gl.canvas.height;
+		this._viewport[2] = v[2] / gl.canvas.width;
+		this._viewport[3] = v[3] / gl.canvas.height;
+	},
+	get: function(){
+		return this._viewport_in_pixels;
+	}
+});
+
 
 Object.defineProperty( LayoutViewport.prototype, "width", {
 	set: function(v){
@@ -159,6 +194,31 @@ LayoutViewport.prototype.addGizmos = function()
 	this.gizmos.push( new CameraGizmo( this ) );
 }
 
+LayoutViewport.prototype.setDefaultCamera = function(v)
+{
+	this.scene_camera = null;
+	this.editor_camera.type = LS.Camera.ORTHOGRAPHIC;
+	var dir;
+	var up;
+	switch(v)
+	{
+		case "top": dir = [0,-1,0]; up = [0,0,-1]; break;
+		case "bottom": dir = [0,1,0]; up = [0,0,1]; break;
+		case "left": dir = [-1,0,0]; up = [0,1,0]; break;
+		case "right": dir = [1,0,0]; up = [0,1,0]; break;
+		case "back": dir = [0,0,1]; up = [0,1,0]; break;
+		case "front": 
+		default:
+			dir = [0,0,-1]; up = [0,1,0]; break;
+	}
+	var center = [0,0,0];
+	vec3.scale(dir,dir,100);
+	var eye = vec3.sub(vec3.create(),center,dir);
+	this.editor_camera.lookAt(eye,dir,up);
+
+	LS.GlobalScene.refresh();
+}
+
 LayoutViewport.prototype.setCamera = function(camera)
 {
 	//restore old scene camera viewport
@@ -227,20 +287,6 @@ LayoutViewport.prototype.isPointInViewport = function(x,y)
 	return true;
 }
 
-Object.defineProperty( LayoutViewport.prototype, "viewport", {
-	set: function(v){
-		if(!v)
-			return;
-		this._viewport.set( v );
-		this.camera._viewport.set(v);
-	},
-	get: function()
-	{
-		return this._viewport;
-	},
-	enumerable: true
-});
-
 LayoutViewport.prototype.serialize = function()
 {
 	return {
@@ -280,6 +326,7 @@ LayoutViewport.prototype.showContextMenu = function( e, prev_menu )
 		"Perspective",
 		"Orthographic",
 		null,
+		{ title: "Default Views", has_submenu: true, callback: inner_views },
 		{ title: "Select Camera", has_submenu: true, callback: inner_cameras }
 	];
 
@@ -304,6 +351,15 @@ LayoutViewport.prototype.showContextMenu = function( e, prev_menu )
 
 		LS.GlobalScene.refresh();
 	}});
+
+	function inner_views( v,o,e ) 
+	{
+		var options = ["Top","Bottom","Left","Right","Front","Back"];
+
+		var submenu = new LiteGUI.ContextMenu( options, { event: e, title: "Views", parentMenu: menu, callback: function(v) {
+			that.setDefaultCamera(v.toLowerCase());
+		}});
+	}
 
 	function inner_cameras( v,o,e ) 
 	{

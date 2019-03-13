@@ -1,13 +1,47 @@
 # Editor Scripts
 
 Sometimes you want to have an script running only in your editor to help you with some tasks.
-You can use the Plugin system, and create Tools, but if you want to create something fast and simple the best way is to use the same scripting system from the LiteScene engine, the Script component.
+You can use the [Plugin system](plugins.md), and create [Tools](tools.md), but if you want to create something fast and simple the best way is to use the same scripting system from the LiteScene engine, the Script component.
 
 You can create a regular component script but use some of the special editor events:
 
 - ```onEditorRender```: to render gizmos
 - ```onEditorRenderGUI```: to render 2D stuff
 - ```onEditorEvent```: to catch events on the interface
+
+## Catch input events
+
+If you want to catch user mouse events in the Canvas, you can define the onEditorEvent method in your script.
+
+Keep in mind that this event will be received before any other event, so if you blocked the canvas will stay inresponsive.
+
+The event will have a ```evt.layout``` property that tells you in which canvas layout was received (layouts are like viewports in case you have split screen).
+
+If the function returns true it means the event was blocked and nobody else should use it.
+
+## Render 
+
+Maybe you want to render info in the GUI or maybe you want to render something in the 3D Scene.
+
+To render in the GUI define the ```onEditorRenderGUI``` method.
+
+To render in the scene define the ```onEditorRender``` method.
+
+When rendering in the scene remember you can use the [LS.Draw](https://github.com/jagenjo/litescene.js/blob/master/guides/draw.md) class to help you render simple shapes like lines, points, etc.
+
+## Inspector
+
+Probably your script will require some widgets, to add widgets to your component script that display in the inspector you must use the method ```onInspector```.
+
+```js
+this.onInspector = function(inspector)
+{
+	inspector.addInfo(null, "Num. Points: " + this.points.length );
+	inspector.addButton("Clear points", "Clear", { callback: this.clearPoints.bind(this) } );
+}
+```
+
+For more info about the ```LiteGUI.Inspector``` [check the guide in LiteGUI](https://github.com/jagenjo/litegui.js/blob/master/guides/inspector.md).
 
 ## Example
 
@@ -48,27 +82,52 @@ this.onEditorRender = function()
   } 
 }
 
+var temp_pos2d = vec3.create();
+
 this.onEditorEvent = function(e)
 {
-  //if(e.type != "update")
-	//	console.log(e);
-  if(active)
+  if(!active)
+    return;
+  
+  var layout = e.layout;
+  var camera = layout.camera;
+  var ray = camera.getRay( e.canvasx, e.canvasy );
+  var mouse = vec2.fromValues( e.canvasx, e.canvasy );
+  
+  //find closer point
+  var closer = -1;
+  var dist = 100000;
+  for(var i = 0; i < this.points.length; ++i)
   {
-    if(e.type == "mousedown")
-    {
-      //debugger;
-      var layout = e.layout;
-      var camera = layout.camera;
-      var ray = camera.getRay( e.canvasx, e.canvasy );
-
-      if( ray.testPlane( [0,0,0], [0,1,0] ) )
-      {
-        console.log( ray.collision_point );
-        this.points.push( ray.collision_point );
-        selected = this.points.length - 1;
-      }
-    }
-   return true;
+    camera.project( this.points[i], null, temp_pos2d );
+    var d = vec2.dist( mouse, temp_pos2d );
+    if( d > 20 || d > dist )
+      continue;
+    closer = i;
+    dist = d;
   }
+
+  //find collision point
+  ray.testPlane( [0,0,0], [0,1,0] );
+
+  if(e.type == "mousedown")
+  {
+    if(closer == -1)
+    {
+      this.points.push( ray.collision_point );
+      selected = this.points.length - 1;
+    }
+    else
+    {
+      selected = closer;
+    }
+  }
+  else if(e.type == "mousemove" && e.dragging)
+  {
+    if( selected && selected != -1 )      
+      vec3.copy( this.points[ selected ], ray.collision_point );
+  }
+
+  return true;
 }
 ```

@@ -49,6 +49,7 @@ var PreferencesModule = {
 		dialog.content.style.height = "calc( 100% - 20px )";
 		split.root.style.height = "100%";
 		split.sections[1].style.overflow = "auto";
+		split.sections[1].style.paddingLeft = "10px";
 		split.sections[1].id = "preferences-widgets-area";
 		split.sections[1].innerHTML = "<div class='content'></div>";
 

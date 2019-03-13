@@ -111,7 +111,7 @@ function SceneTreeWidget( options )
 			}
 			else
 			{
-				console.warn( "Node uid not found in SceneTree: " + item.uid );
+				console.warn( "Node uid not found in Scene: " + item.uid );
 				that.tree.removeItem( item.uid );
 			}
 		}
@@ -163,19 +163,6 @@ function SceneTreeWidget( options )
 		parent_node.addChild(node,null,true);
 		this._ignore_events = false;
 
-		/*
-		var parent_node = parent_item.data.id != "scene-root-node" ? Scene.getNode(parent_item.data.node_uid) : null;
-		if(node && parent_node)
-		{
-			parent_node.addChild(node, true);
-		}
-		else if(node && node.parentNode) //remove from parent
-		{
-			node.parentNode.removeChild(node, true);
-		}
-		else
-			trace("node not found");
-		*/
 		RenderModule.requestFrame();
 	}
 
@@ -217,7 +204,13 @@ function SceneTreeWidget( options )
 		var node = LS.GlobalScene.getNode( tree_item_uid );
 		if(!node)
 			return;
-		EditorModule.onDropOnNode( node, event );
+		var r = EditorModule.onDropOnNode( node, event );
+		if(r === true)
+		{
+			e.stopPropagation();
+			e.stopImmediatePropagation();
+			e.preventDefault();
+		}
 	}
 
 	this.refresh();
@@ -271,11 +264,11 @@ SceneTreeWidget.prototype.onKeyDown = function( e )
 }
 
 
-//Catch events from the LS.SceneTree to update the tree automatically
+//Catch events from the LS.Scene to update the tree automatically
 SceneTreeWidget.prototype.bindEvents = function( scene )
 {
-	if( !scene || scene.constructor !== LS.SceneTree )
-		throw("bindEvents require SceneTree");
+	if( !scene || scene.constructor !== LS.Scene )
+		throw("bindEvents require Scene");
 
 	var that = this;
 	//scene = scene || LS.GlobalScene;
@@ -303,7 +296,7 @@ SceneTreeWidget.prototype.bindEvents = function( scene )
 		//add to tree
 		var node_id = this.addNode( node );
 
-		//special feature, allows to put stuff in the tree that is not directly related to the SceneTree structure
+		//special feature, allows to put stuff in the tree that is not directly related to the Scene structure
 		if(!node.getSpecialTreeChilds)
 			return;
 		var tree_childs = node.getSpecialTreeChilds();
@@ -393,11 +386,6 @@ SceneTreeWidget.prototype.clear = function()
 	if(!this.tree)
 		return;
 	this.tree.clear(true);
-	/*
-	if(!this.scene_tree) return;
-	$(this.scene_tree.root).remove();
-	this.scene_tree = null;
-	*/
 }
 
 SceneTreeWidget.prototype.showContextMenu = function(e){

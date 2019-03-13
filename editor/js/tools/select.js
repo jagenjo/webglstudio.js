@@ -20,7 +20,7 @@ var selectTool = {
 	},
 
 	mousedown: function(e) {
-		this.click_pos = [e.canvasx,e.canvasy];
+		this.click_pos = [e.mousex,e.mousey];
 		this._got_mousedown = true;
 		var now = getTime();
 
@@ -50,7 +50,7 @@ var selectTool = {
 			return;
 
 		var now = getTime();
-		var dist = Math.sqrt( (e.canvasx - this.click_pos[0])<<2 + (e.canvasy - this.click_pos[1])<<2 );
+		var dist = Math.sqrt( (e.mousex - this.click_pos[0])<<2 + (e.mousey - this.click_pos[1])<<2 );
 
 		//if it was a fast click and the mouse didnt move too much (dragging)
 		if (e.click_time < this.click_time && dist < this.click_dist)
@@ -59,6 +59,7 @@ var selectTool = {
 			//TODO
 
 			//PICKING in the Scene (this is slow, it requires to render the scene again)
+			//use canvas because this func works in canvas coordinates, no mouse coordinates
 			var instance_info = LS.Picking.getInstanceAtCanvasPosition( e.canvasx, e.canvasy, ToolUtils.getCamera(e) );
 			if(!instance_info)
 				return false;

@@ -11,6 +11,8 @@ var CodingModule = //do not change
 	APIs: {}, //here you can register function calls of the API
 	windows: [], //external windows
 
+	component_help_url: "http://webglstudio.org/doc/litescene/classes/LS.Components.",
+
 	init: function()
 	{
 		this.tab = LiteGUI.main_tabs.addTab( this.name, {
@@ -72,8 +74,11 @@ var CodingModule = //do not change
 		this.console_area = left_area.getSection(1).content;
 
 		//CONSOLE
-		this.console_widget = new ConsoleWidget();
-		this.console_area.appendChild( this.console_widget.root );
+		if(window.ConsoleWidget)
+		{
+			this.console_widget = new ConsoleWidget();
+			this.console_area.appendChild( this.console_widget.root );
+		}
 
 		//console._log = console.log;
 		//console.log = this.onConsoleLog.bind(this);
@@ -152,6 +157,28 @@ var CodingModule = //do not change
 		{
 			LiteGUI.alert("TO DO");
 		}
+	},
+
+	onShowBreakpointDialog: function( component )
+	{
+		var context = component.getContext();
+		if(!context)
+		{
+			LiteGUI.alert("Script without context");
+			return;
+		}
+
+		var dialog = new LiteGUI.Dialog( { title: "Select breakpoints", close: true, width: 200, height: 410, resizable: true, scroll: true, draggable: true});
+		var widgets = new LiteGUI.Inspector({height: "100%"});
+		dialog.add( widgets );
+		for(var i in context)
+		{
+			if( !isFunction( context[i] ) || !context.hasOwnProperty(i) )
+				continue;
+			widgets.addCheckbox(i,component.hasBreakpoint(i),{ method:i, name_width: 150,callback: function(v){ component.setBreakpoint( this.options.method,v); }});
+		}
+
+		dialog.show();
 	},
 
 	//used to extract editor options of a given instance
@@ -254,23 +281,18 @@ var CodingModule = //do not change
 		if(!help)
 		{
 			if(options.type === LS.TYPES.COMPONENT)
-			{
 				window.open( "https://github.com/jagenjo/litescene.js/blob/master/guides/scripting.md"	);
-			}
 			else if(options.type === LS.TYPES.RESOURCE)
 			{
 				if(options.lang == "glsl")
 				{
 					if(LS.ShaderCode.help_url)
 						window.open( LS.ShaderCode.help_url	);
-					return;
-					//help = LS.SurfaceMaterial.coding_help;
 				}
 				else
 					window.open( "https://github.com/jagenjo/litescene.js/blob/master/guides/scripting.md"	);
 			}
-			else
-				return;
+			return;
 		}
 
 		var help_options = {
@@ -339,6 +361,14 @@ var CodingModule = //do not change
 
 	onKeyDown: function(e)
 	{
+		//console.log(e);
+		if(e.keyCode == 117) //F6
+		{
+			localStorage.setItem("_refresh_scene", JSON.stringify( LS.GlobalScene.serialize() ) );
+			location.reload();
+			e.preventDefault();		
+		}
+
 		//this key event must be redirected when the 3D area is selected
 		if( this._block_event )
 			return;
@@ -405,7 +435,7 @@ LS.Components.Script["@inspector"] = function( component, inspector )
 	icon.addEventListener("dragstart", function(event) { 
 		var context_locator = component.getLocator() + "/context";
 		if(!event.shiftKey)
-			context_locator = component.root.name + "/_" + component.name + "/context";
+			context_locator = component.root.name + "/" + component.uid + "/context";
 		event.dataTransfer.setData("uid", context_locator );
 		event.dataTransfer.setData("locator", context_locator );
 		event.dataTransfer.setData("type", "object");
@@ -671,7 +701,7 @@ LS.Components.Script.actions["breakpoint_on_call"] = {
 			console.warn("Script is not attached to a node?");
 			return;
 		}
-		this._breakpoint_on_call = true;
+		CodingModule.onShowBreakpointDialog(this);
 	}
 };
 
@@ -1047,11 +1077,11 @@ void main() {\n\
 	  \n\
 	vec4 final_color = vec4(0.0);\n\
 	Light LIGHT = getLight();\n\
-	final_color.xyz = computeLight( o, IN, LIGHT );\n\
+	FinalLight FINALLIGHT = computeLight( o, IN, LIGHT );\n\
+	final_color.xyz = applyLight( o, FINALLIGHT );\n\
 	final_color.a = surface_color.a;\n\
 	if( o.Reflectivity > 0.0 )\n\
 		final_color = applyReflection( IN, o, final_color );\n\
-	\n\
 	gl_FragColor = final_color;\n\
 }\n\
 ";

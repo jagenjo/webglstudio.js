@@ -76,7 +76,15 @@ CodingTabsWidget.prototype.findTab = function( id )
 			continue;
 		var info = pad.getCurrentCodeInfo();
 		if(info.id == id)
+		{
+			if(!tab.tab || !tab.tab.parentNode) //HACK to avoid bug
+			{
+				console.warn("tab was closed, should had been removed, doing it now");
+				delete this.tabs.tabs[i];
+				continue;
+			}
 			return tab;
+		}
 	}
 	return null;
 }

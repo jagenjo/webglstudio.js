@@ -269,6 +269,16 @@ body.player #work-area, body.player #main-area  {
 	transform: scale(1.1);
 }
 
+.file-list .file-item .info {
+	font-size: 3.4em;
+    position: absolute;
+    bottom: 0px;
+    background-color: rgba(0,0,0,0.75);
+    overflow: hidden;
+    text-align: left;
+    padding: 4px;
+}
+
 
 .file-list-block .info {
 	margin: 20px;
@@ -467,6 +477,10 @@ textarea.code {
 }
 
 /* inspector */
+.inspector {
+	
+}
+
 .inspector .icon img {
 	margin-top: 2px;
 }
@@ -500,6 +514,7 @@ textarea.code {
 	color: #444;
 	text-shadow: 0 0 0 transparent;
 	line-height: 10px;
+	vertical-align: top !important;
 }
 
 .inspector_widget .header button:hover {
@@ -717,3 +732,5 @@ textarea.code {
 .prefab-child .wtitle, .prefab-child .wsectioncontent  {
     background-color: #4c4037 !important;
 }
+
+.bad { color: #f96a6a; }

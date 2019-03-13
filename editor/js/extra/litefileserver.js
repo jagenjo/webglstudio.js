@@ -307,7 +307,7 @@ var LiteFileServer = {
 
 		//apply "../", sometimes this gives me problems
 		var result = [];
-		for(var i = 1; i < t.length; i++)
+		for(var i = 0; i < t.length; i++)
 		{
 			if(t[i] == "..")
 				result.pop();
@@ -315,7 +315,7 @@ var LiteFileServer = {
 				result.push( t[i] );
 		}
 
-		return protocol + t.join("/");
+		return protocol + result.join("/");
 	},
 
 	getFullpath: function(unit,folder,filename)
@@ -738,7 +738,7 @@ Session.prototype.getUnits = function(on_complete)
 	});
 }
 
-Session.prototype.getUnitsAndFolders = function(on_complete)
+Session.prototype.getUnitsAndFolders = function( on_complete ) 
 {
 	var that = this;
 	return this.request( this.server_url,{action: "files/getUnits", folders: true}, function(resp){
@@ -760,6 +760,9 @@ Session.prototype.getUnitsAndFolders = function(on_complete)
 //folders
 Session.prototype.getFolders = function( unit, on_complete, on_error )
 {
+	if(!unit)
+		throw("no fullpath specified");
+
 	return this.request( this.server_url,{ action: "files/getFolders", unit: unit }, function(resp){
 		if(resp.status != 1)
 		{
@@ -775,6 +778,9 @@ Session.prototype.getFolders = function( unit, on_complete, on_error )
 
 Session.prototype.createFolder = function( fullpath, on_complete, on_error )
 {
+	if(!fullpath)
+		throw("no fullpath specified");
+
 	return this.request( this.server_url,{action: "files/createFolder", fullpath: fullpath }, function(resp){
 
 		if(resp.status != 1)
@@ -791,6 +797,9 @@ Session.prototype.createFolder = function( fullpath, on_complete, on_error )
 
 Session.prototype.downloadFolder = function( fullpath, on_complete, on_error )
 {
+	if(!fullpath)
+		throw("no fullpath specified");
+
 	return this.request( this.server_url,{action: "files/downloadFolder", fullpath: fullpath }, function(resp){
 
 		if(resp.status != 1)
@@ -807,6 +816,9 @@ Session.prototype.downloadFolder = function( fullpath, on_complete, on_error )
 
 Session.prototype.deleteFolder = function( fullpath, on_complete, on_error )
 {
+	if(!fullpath)
+		throw("no fullpath specified");
+
 	return this.request( this.server_url,{action: "files/deleteFolder", fullpath: fullpath }, function(resp){
 
 		if(resp.status != 1)
@@ -848,6 +860,9 @@ Session.processFileList = function(list)
 
 Session.prototype.getFiles = function( unit, folder, on_complete, on_error )
 {
+	if(!unit)
+		throw("no unit specified");
+
 	return this.request( this.server_url,{ action: "files/getFilesInFolder", unit: unit, folder: folder }, function(resp){
 
 		if(resp.status < 1)
@@ -866,6 +881,9 @@ Session.prototype.getFiles = function( unit, folder, on_complete, on_error )
 
 Session.prototype.getFilesByPath = function( fullpath, on_complete, on_error )
 {
+	if(!fullpath)
+		throw("no fullpath specified");
+
 	return this.request( this.server_url,{ action: "files/getFilesInFolder", fullpath: fullpath }, function(resp){
 
 		if(resp.status < 0)
@@ -884,6 +902,9 @@ Session.prototype.getFilesByPath = function( fullpath, on_complete, on_error )
 
 Session.prototype.searchByCategory = function( category, on_complete, on_error, on_progress  )
 {
+	//if(!category)
+	//	throw("no category specified");
+
 	return this.request( this.server_url,{ action: "files/searchFiles", category: category }, function(resp){
 		Session.processFileList(resp.data);
 		if(on_complete)
@@ -893,11 +914,26 @@ Session.prototype.searchByCategory = function( category, on_complete, on_error, 
 
 Session.prototype.searchByFilename = function( filename, on_complete, on_error, on_progress )
 {
+	if(!filename)
+		throw("no filename specified");
+
 	return this.request( this.server_url,{ action: "files/searchFiles", filename: filename }, function(resp){
 		Session.processFileList(resp.data);
 		if(on_complete)
 			on_complete(resp.data);
 	}, on_error, on_progress );
+}
+
+Session.prototype.checkFolderExist = function( fullpath, on_complete )
+{
+	if(!fullpath)
+		throw("no fullpath specified");
+
+	fullpath = LiteFileServer.cleanPath( fullpath );
+	return this.request( this.server_url,{ action: "files/folderExist", fullpath: fullpath }, function(resp){
+		if(on_complete)
+			on_complete(resp.exist, resp);
+	});
 }
 
 Session.prototype.getFileInfo = function( fullpath, on_complete )
@@ -1028,7 +1064,7 @@ Session.prototype.uploadFile = function( fullpath, data, extra, on_complete, on_
 		if(data.constructor === String)
 		{
 			//TODO
-			throw("String big file split not implemented yet");
+			throw("String big file split not implemented yet, " + filename);
 		}
 		else if(data.constructor === ArrayBuffer)
 		{

@@ -1,5 +1,6 @@
 //Inspector Editors for the most common Components plus Materials and Scene.
 //Editors are not included in LiteScene because they do not depend on them
+var TRASH_ICON_CODE = "<img src='imgs/mini-icon-trash.png'/>";
 
 LS.Components.GlobalInfo["@inspector"] = function( component, inspector )
 {
@@ -12,10 +13,19 @@ LS.Components.GlobalInfo["@inspector"] = function( component, inspector )
 
 	//inspector.addColor("Background", component.background_color, { pretitle: AnimationModule.getKeyframeCode( component, "background_color"), callback: function(color) { vec3.copy(component.background_color,color); } });
 	inspector.addColor("Ambient light", component.ambient_color, { pretitle: AnimationModule.getKeyframeCode( component, "ambient_color"), callback: function(color) { vec3.copy(component.ambient_color,color); } });
+	inspector.addButtons("Compute SH Irradiance",["Update","Clear"],{ callback: function(v){
+		if( v == "Update" )
+		{
+			var camera = LS.Renderer._current_camera;
+			var position = camera.getCenter();
+			component.computeIrradiance( position, camera.near, camera.far, camera.background_color );
+		}
+		else
+			component.clearIrradiance();
+	}});
 	inspector.addSeparator();
 
 	inner_setTexture("environment");
-	inner_setTexture("irradiance");
 
 	inspector.addSeparator();
 	//inspector.addCheckbox("Linear Pipeline", component.linear_pipeline, { pretitle: AnimationModule.getKeyframeCode( component, "linear_pipeline"), callback: function(v) { component.linear_pipeline = v; } });
@@ -29,7 +39,15 @@ LS.Components.GlobalInfo["@inspector"] = function( component, inspector )
 		}});
 	}
 
-	//inspector.addButton( "Render Settings", "Edit", function(){ EditorModule.showRenderSettingsDialog( component.render_settings ); } );
+	if( component.render_settings )
+	{
+		inspector.widgets_per_row = 2;
+		inspector.addButton( "Render Settings", "Edit", { width: "calc(100% - 30px)", callback: function(){ EditorModule.showRenderSettingsDialog( component.render_settings ); } } );
+		inspector.addButton( null, TRASH_ICON_CODE, { width: "30px", callback: function(){ component.render_settings = null; EditorModule.refreshAttributes(); } } );
+		inspector.widgets_per_row = 1;
+	}
+	else
+		inspector.addButton( "Render Settings", "Create", { callback: function(){ component.render_settings = new LS.RenderSettings(); EditorModule.refreshAttributes(); } } );
 }
 
 // Some components need special inspectors
@@ -111,7 +129,7 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 	if(camera.type != LS.Camera.ORTHO2D)
 	{
 		if(camera.type == LS.Camera.PERSPECTIVE)
-			inspector.addNumber("Fov", camera.fov, { pretitle: AnimationModule.getKeyframeCode( camera, "fov"), min: 2, max: 180, units:'º', callback: function (value) { camera.fov = value; }});
+			inspector.addNumber("Fov", camera.fov, { pretitle: AnimationModule.getKeyframeCode( camera, "fov"), min: 2, max: 180, units:'', callback: function (value) { camera.fov = value; }});
 		inspector.addNumber("Aspect", camera.aspect, { pretitle: AnimationModule.getKeyframeCode( camera, "aspect" ), min: 0.1, max: 10, step: 0.01, callback: function (value) { camera.aspect = value; }});
 	}
 	inspector.addNumber("Near", camera.near, { pretitle: AnimationModule.getKeyframeCode( camera, "near" ), callback: function (value) { camera.near = value; }});
@@ -136,7 +154,6 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 		camera.layers = value;
 		inspector.refresh();
 	}});
-
 
 	if(!is_node_camera)
 	{
@@ -180,6 +197,8 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 	inspector.addCheckbox("bg. alpha", camera.background_color[3] == 0 , { name_width: "65%", callback: function (v) { camera.background_color[3] = v ? 0 : 1; } });
 	inspector.widgets_per_row = 1;
 
+	inspector.addMaterial("Overwrite Material", camera.overwrite_material, { callback: function(v) { camera.overwrite_material = v; } });
+
 	inspector.addTitle("Render to Texture");
 	inspector.addCheckbox("Enable", camera.render_to_texture , { callback: function (v) { camera.render_to_texture = v; inspector.refresh(); } });
 	if(camera.render_to_texture)
@@ -215,12 +234,16 @@ LS.Components.Light["@inspector"] = function(light, inspector)
 
 	inspector.addColor("Color", light.color, { pretitle: AnimationModule.getKeyframeCode( light, "color"), callback: function(color) { light.color = color; } });
 	inspector.addSlider("Intensity", light.intensity, { pretitle: AnimationModule.getKeyframeCode( light, "intensity"), min:0, max:2, step:0.01, callback: function (value) { light.intensity = value; }});
-	inspector.widgets_per_row = 2;
+	inspector.widgets_per_row = 3;
 	inspector.addNumber("Angle", light.angle, { pretitle: AnimationModule.getKeyframeCode( light, "angle"), callback: function (value) { light.angle = value; }});
 	inspector.addNumber("Angle End", light.angle_end, { pretitle: AnimationModule.getKeyframeCode( light, "angle_end"), callback: function (value) { light.angle_end = value; }});
-	inspector.widgets_per_row = 1;
 	inspector.addCheckbox("Spot cone", light.spot_cone != false, { pretitle: AnimationModule.getKeyframeCode( light, "spot_cone"), callback: function(v) { light.spot_cone = v; }});
+	inspector.widgets_per_row = 1;
 	inspector.addNumber("Frustum size", light.frustum_size || 100, { pretitle: AnimationModule.getKeyframeCode( light, "frustum_size"), callback: function (value) { light.frustum_size = value; }});
+	inspector.addLayers("Illuminated Layers", light.illuminated_layers, { pretitle: AnimationModule.getKeyframeCode( light, "illuminated_layers"), callback: function (value) { 
+		light.illuminated_layers = value;
+		inspector.refresh();
+	}});
 
 	var is_root_camera = node._is_root;
 
@@ -254,7 +277,12 @@ LS.Components.Light["@inspector"] = function(light, inspector)
 
 	if(light.cast_shadows)
 	{
+		inspector.widgets_per_row = 2;
 		inspector.addCheckbox("Hard shadows", light.hard_shadows, { pretitle: AnimationModule.getKeyframeCode( light, "hard_shadows"), callback: function(v) { light.hard_shadows = v; }});
+		inspector.addLayers("Shadows Layers", light.shadows_layers, { pretitle: AnimationModule.getKeyframeCode( light, "shadows_layers"), callback: function (value) { 
+			light.shadows_layers = value;
+			inspector.refresh();
+		}});
 		inspector.widgets_per_row = 2;
 		inspector.addNumber("Near", light.near, { pretitle: AnimationModule.getKeyframeCode( light, "near"), callback: function (value) { light.near = value;}});
 		inspector.addNumber("Far", light.far, { pretitle: AnimationModule.getKeyframeCode( light, "far"), callback: function (value) { light.far = value; }});
@@ -598,9 +626,12 @@ LS.FXStack.prototype.inspect = function( inspector, component )
 
 LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 {
-	inspector.addCombo("mode",component.mode, { values: LS.Components.MorphDeformer["@mode"].values, callback: function (value) { 
+	inspector.widgets_per_row = 2;
+	inspector.addCombo("mode",component.mode, { name_width: 100, values: LS.Components.MorphDeformer["@mode"].values, width:"60%", callback: function (value) { 
 		component.mode = value; 
 	}});
+	inspector.addCheckbox("delta_meshes", component.delta_meshes, { name_width: 120, width:"40%", callback: function(v){ component.delta_meshes = v; }});
+	inspector.widgets_per_row = 1;
 
 	if( component.morph_targets.length )
 	{
@@ -618,7 +649,7 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 				LS.GlobalScene.refresh();
 			}});
 
-			inspector.addButton(null, "<img src='imgs/mini-icon-trash.png'/>", { width: "15%", index: i, callback: function() { 
+			inspector.addButton(null, TRASH_ICON_CODE, { width: "15%", index: i, callback: function() { 
 				component.morph_targets.splice( this.options.index, 1);
 				inspector.refresh();
 				LS.GlobalScene.refresh();
@@ -627,10 +658,16 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 		inspector.widgets_per_row = 1;
 	}
 
-	inspector.addButton(null,"Add Morph Target", { callback: function() { 
+	inspector.widgets_per_row = 2;
+	inspector.addButton(null,"Add Morph Target", { width: "85%", callback: function() { 
 		component.morph_targets.push({ mesh:"", weight: 0.0 });
 		inspector.refresh();
 	}});
+	inspector.addButton(null,"Zero", { width: "15%", callback: function() { 
+		component.clearWeights();
+		inspector.refresh();
+	}});
+	inspector.widgets_per_row = 1;
 }
 
 LS.Components.SkinDeformer.onShowProperties = LS.Components.SkinnedMeshRenderer.onShowProperties = function( component, inspector )
@@ -714,10 +751,6 @@ LS.Components.ParticleEmissor["@inspector"] = function(component, inspector)
 		if(filename)
 			LS.ResourcesManager.load(filename);
 	}});
-	inspector.addButton("Custom code", "Edit code", { callback: function() {
-		CodingModule.editInstanceCode( component, { id: component.uid + ":Emit", title: "P.Emit", lang:"javascript", getCode: function(){ return component.custom_emissor_code; }, setCode: function(code){ component.custom_emissor_code = code; }},true);
-	}});
-
 
 	inspector.addTitle("Particles");
 	inspector.addNumber("Life",component.particle_life, {step:0.1,min:0.01, callback: function (value) { component.particle_life = value; }});
@@ -844,14 +877,12 @@ LS.Components.SceneInclude["@inspector"] = function( component, inspector )
 
 LS.Components.Poser["@inspector"] = function( component, inspector)
 {
+	inspector.widgets_per_row = 2;
 	inspector.addInfo("Nodes posed", component.base_nodes.length );
-	inspector.addButtons(null,["Edit pose nodes","Set to Children"], { callback: function(v,e){
-		if(v == "Edit pose nodes")
-			LS.Components.Poser.showPoseNodesDialog( component, e );
-		else
-			component.setChildrenAsBaseNodes(true);
-		inspector.refresh();
+	inspector.addButton(null,"Edit pose nodes", { callback: function(v,e){
+		LS.Components.Poser.showPoseNodesDialog( component, e );
 	}});
+	inspector.widgets_per_row = 1;
 
 	var poses = [];
 	for(var i in component.poses)
@@ -901,17 +932,29 @@ LS.Components.Poser["@inspector"] = function( component, inspector)
 
 LS.Components.Poser.showPoseNodesDialog = function( component, event )
 {
-	var dialog = new LiteGUI.Dialog({title:"Nodes in Pose", close: true, width: 360, height: 270, resizable: true, scroll: false, draggable: true});
+	var dialog = new LiteGUI.Dialog({title:"Nodes in Pose", close: true, width: 600, height: 300, resizable: true, scroll: false, draggable: true});
 
-	var widgets = new LiteGUI.Inspector({ height: "100%", noscroll: true });
-	dialog.add( widgets );
+	var area = new LiteGUI.Area();
+	area.split( LiteGUI.Area.HORIZONTAL );
+	dialog.add(area);
+
+	var widgets_left = new LiteGUI.Inspector({ height: "100%", noscroll: true });
+	area.getSection(0).add( widgets_left );
 	dialog.show('fade');
-	widgets.on_refresh = inner_refresh;
-	widgets.refresh();
+	widgets_left.on_refresh = inner_refresh_left;
 
-	function inner_refresh()
+	var widgets_right = new LiteGUI.Inspector({ height: "100%", noscroll: true });
+	area.getSection(1).add( widgets_right );
+	widgets_right.on_refresh = inner_refresh_right;
+
+	var node = null;
+
+	widgets_left.refresh();
+	widgets_right.refresh();
+
+	function inner_refresh_left()
 	{
-		widgets.clear();
+		widgets_left.clear();
 
 		//get the names
 		var selected = null;
@@ -925,23 +968,111 @@ LS.Components.Poser.showPoseNodesDialog = function( component, event )
 				node_names.push( base_node.name );
 		}
 
-		var list = widgets.addList(null, node_names, { height: "calc( 100% - 60px)", callback: function(v) {
+		var list = widgets_left.addList(null, node_names, { height: "calc( 100% - 30px)", callback: function(v) {
 			selected = v;
 		}});
 
-		widgets.addButtons(null,["Remove Selected"],{
+		widgets_left.addButtons(null,["Remove Selected"],{
 			callback: function(v){
 				component.removeBaseNode( selected );
-				widgets.refresh();
+				widgets_left.refresh();
 			}
 		});
-		widgets.addSeparator();
-		widgets.addButton(null, "Add current scene selected node", function(){
-			var node = SelectionModule.getSelectedNode();
-			component.addBaseNode( node );
-			widgets.refresh();
+	}
+
+	function inner_refresh_right()
+	{
+		widgets_right.clear();
+		widgets_right.addTitle("Select a node");
+		widgets_right.widgets_per_row = 2;
+		var node_widget = widgets_right.addNode("Node", "", { width: "70%", use_node: true, callback: function(v){
+			node = v;
+		}});
+		widgets_right.addButton(null,"From Select.", { width: "30%", callback: function(){
+			node_widget.setValue( SelectionModule.getSelectedNode() );
+		}});
+		widgets_right.widgets_per_row = 1;
+		widgets_right.addTitle("Actions");
+		widgets_right.addButtons(null,["Add Node", "Add Children"], function(v){
+			if(!node)
+				return;
+			if(v == "Add Node")
+			{
+				component.addBaseNode( node );
+			}
+			else if(v == "Add Children")
+			{
+				var nodes = node.getDescendants();
+				for(var i in nodes)
+					component.addBaseNode( nodes[i] );
+			}
+			widgets_left.refresh();
+		});
+		widgets_right.widgets_per_row = 1;
+		widgets_right.addSeparator();
+		widgets_right.addButton(null, "Add current scene selected nodes", function(){
+			var nodes = SelectionModule.getSelectedNodes();
+			for(var i in nodes)
+				component.addBaseNode( nodes[i] );
+			widgets_right.refresh();
+		});
+		widgets_right.addButton(null, "Remove current scene selected nodes", function(){
+			var nodes = SelectionModule.getSelectedNodes();
+			for(var i in nodes)
+				component.removeBaseNode( nodes[i] );
+			widgets_right.refresh();
 		});
 	}
 
 	return dialog;
+}
+
+LS.Components.ReflectionProbe.onShowProperties = function( component, inspector )
+{
+	inspector.widgets_per_row = 2;
+	inspector.addButton( null, "Update", function(){ component.recompute(null,true); LS.GlobalScene.requestFrame(); });
+	inspector.addButton( null, "Update all", function(){ LS.Components.ReflectionProbe.updateAll(); LS.GlobalScene.requestFrame(); });
+    inspector.addSeparator();
+
+	inspector.widgets_per_row = 3;
+	inspector.addCheckbox( "Visualize", LS.Components.ReflectionProbe.visualize_helpers, function(v){ LS.Components.ReflectionProbe.visualize_helpers = v; LS.GlobalScene.requestFrame(); });
+	inspector.addCheckbox( "Irradiance", LS.Components.ReflectionProbe.visualize_irradiance, function(v){ LS.Components.ReflectionProbe.visualize_irradiance = v; LS.GlobalScene.requestFrame(); });
+	inspector.addNumber( "Size", LS.Components.ReflectionProbe.helper_size, function(v){ LS.Components.ReflectionProbe.helper_size = v; LS.GlobalScene.requestFrame(); });
+	inspector.widgets_per_row = 1;
+}
+
+LS.Components.IrradianceCache.onShowProperties = function( component, inspector )
+{
+	var info = null;
+
+	inspector.widgets_per_row = 2;
+	inspector.addButton( null, "update all", { width:"70%", callback: function(){ 
+		component.recompute(); LS.GlobalScene.requestFrame();
+		info.setValue( (component.getSizeInBytes()/1024).toFixed(1) + " KBs" );
+		info_num.setValue( component._irradiance_shs.length );
+	}});
+	inspector.addButton( null, "[only view]", { width:"30%", callback: function(){ 
+		component.recompute( LS.Renderer._current_camera ); LS.GlobalScene.requestFrame();
+		info.setValue( (component.getSizeInBytes()/1024).toFixed(1) + " KBs" );
+		info_num.setValue( component._irradiance_shs.length );
+	}});
+	inspector.widgets_per_row = 1;
+    inspector.addSeparator();
+
+	inspector.widgets_per_row = 3;
+	inspector.addCheckbox( "Visualize", LS.Components.IrradianceCache.show_probes, function(v){ LS.Components.IrradianceCache.show_probes = v; LS.GlobalScene.requestFrame(); });
+	inspector.addCheckbox( "Cubemaps", LS.Components.IrradianceCache.show_cubemaps, function(v){ LS.Components.IrradianceCache.show_cubemaps = v; LS.GlobalScene.requestFrame(); });
+	inspector.addNumber( "Size", LS.Components.IrradianceCache.probes_size, function(v){ LS.Components.IrradianceCache.probes_size = v; LS.GlobalScene.requestFrame(); });
+	inspector.widgets_per_row = 2;
+	info = inspector.addInfo( "Total Size", (component.getSizeInBytes()/1024).toFixed(1) + " KBs" );
+	info_num = inspector.addInfo( "Num. probes", component._irradiance_shs.length );
+	inspector.widgets_per_row = 1;
+
+}
+
+
+LS.Components.Spline.onShowProperties = function( component, inspector )
+{
+	inspector.addButton( null, "Clear Points", function(){ component.clear(); LS.GlobalScene.requestFrame(); });
+	inspector.addInfo( "Num. Points", String(component.numberOfPoints) );
 }

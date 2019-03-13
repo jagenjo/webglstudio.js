@@ -7,6 +7,9 @@ var SelectionModule = {
 	init: function()
 	{
 		LEvent.bind( LS.GlobalScene, "treeItemRemoved", this.onNodeRemoved, this );
+		LiteGUI.menubar.add("Edit/Selection/Save", {callback: this.saveSelection.bind(this) });
+		LiteGUI.menubar.add("Edit/Selection/Restore", {callback: this.restoreSelection.bind(this) });
+
 	},
 
 	onNodeRemoved: function(e, node)
@@ -566,6 +569,28 @@ var SelectionModule = {
 		var selected = children[ index % children.length ];
 		if(selected)
 			this.setSelection( selected );
+	},
+
+	saveSelection: function()
+	{
+		var nodes = this.getSelectedNodes();
+		var r = { 
+			type: "selection",
+			nodes: []
+		};
+
+		for(var i in nodes)
+			r.nodes.push( nodes[i].uid );
+
+		LiteGUI.toClipboard(r);
+	},
+
+	restoreSelection: function()
+	{
+		var r = LiteGUI.getLocalClipboard();
+		//console.log(r);
+		if(r && r.type == "selection")
+			this.setSelectionFromUIds(r.nodes);
 	}
 };
 

@@ -59,6 +59,8 @@ InspectorWidget.prototype.init = function( options )
 		this.bindEvents();
 
 	LiteGUI.createDropArea( this.root, this.onItemDrop.bind(this) );
+
+	this.inspector.root.style.overflowX = "hidden";
 }
 
 InspectorWidget.prototype.onPrevious = function()
@@ -181,7 +183,7 @@ InspectorWidget.prototype.setTitle = function( v )
 }
 
 //clears the inspector and inspects the given object
-InspectorWidget.prototype.inspect = function( object, skip_history )
+InspectorWidget.prototype.inspect = function( object, skip_history, title )
 {
 	if(this.locked)
 		return;
@@ -216,7 +218,7 @@ InspectorWidget.prototype.inspect = function( object, skip_history )
 		this.inspector.clear();
 		object.constructor.inspect( object, this.inspector );
 	}
-	else if( object.constructor == LS.SceneTree )
+	else if( object.constructor == LS.Scene )
 		this.inspectScene( object );
 	else if( object.constructor == LS.SceneNode )
 		this.inspectNode( object );
@@ -227,10 +229,13 @@ InspectorWidget.prototype.inspect = function( object, skip_history )
 	else 
 		this.inspectObject( object );
 
-	var title = "";
+	var title_code = "";
 	if(object)
-		title = "<span class='classname'>" + (object.className || LS.getObjectClassName(object)) + "</span> : <span class='name'>" + (object.name || "") + "</span>";
-	this.setTitle( title );
+	{
+		var class_name = title|| object.className || LS.getObjectClassName(object);
+		title_code = "<span class='classname'>" + class_name + "</span> <span class='name'>" + (object.name || "") + "</span>";
+	}
+	this.setTitle( title_code );
 }
 
 InspectorWidget.prototype.clear = function()
@@ -251,13 +256,13 @@ InspectorWidget.prototype.update = function( object )
 
 InspectorWidget.prototype.inspectObject = function( object )
 {
-	this.inspectObjectsArray( [ object ], inspector );
+	this.inspectObjectsArray( [ object ], this.inspector );
 	this.inspector.instance = object;
 }
 
-InspectorWidget.prototype.inspectObjectsArray = function( objects_array )
+InspectorWidget.prototype.inspectObjectsArray = function( objects_array, inspector )
 {
-	var inspector = this.inspector;
+	inspector = inspector || this.inspector;
 	inspector.instance = objects_array;
 
 	inspector.on_refresh = (function()
@@ -298,33 +303,33 @@ InspectorWidget.prototype.showComponentsInterface = function( object, inspector 
 	for(var i in components)
 	{
 		var component = components[i];
-		this.inspector.showComponent( component, inspector );
-	}
 
-	if( object._missing_components && object._missing_components.length )
-	{
-		for(var i = 0; i < object._missing_components.length; ++i )
+		if( component.constructor === LS.MissingComponent )
 		{
-			var comp_info = object._missing_components[i];
-			var name = comp_info[0];
+			var name = component._comp_class;
 			var title = "<span class='title'>"+name+" <span style='color:#FAA'>(missing)</span></span>";
 			var buttons = " <span class='buttons'></span>";
 			var section = inspector.addSection( title + buttons );
 			section.classList.add("error");
 			inspector.widgets_per_row = 2;
-			inspector.addStringButton( "Component class", name, { name_width: 120, width: "90%", comp_info: comp_info, button_width: 80, button:"Convert", callback_button: function(v){
+			inspector.addStringButton( "Component class", name, { name_width: 120, width: "90%", comp_class: name, button_width: 80, button:"Convert", callback_button: function(v){
 				CORE.userAction( "node_changed", object );
-				LS.replaceComponentClass( LS.GlobalScene, this.options.comp_info[0], v );
+				LS.replaceComponentClass( LS.GlobalScene, this.options.comp_class, v );
 				inspector.refresh();
 			}});
-			inspector.addButton(null,"<img src='imgs/mini-icon-trash.png'/>",{ index: i, width: "10%", callback: function(){
+			inspector.addButton(null,"<img src='imgs/mini-icon-trash.png'/>",{ component: component, width: "10%", callback: function(){
 				CORE.userAction( "node_changed", object );
-				object._missing_components.splice( this.options.index, 1 );
+				object.removeComponent( this.options.component );
 				inspector.refresh();
 			}});
 			inspector.widgets_per_row = 1;
+			continue;
 		}
+
+		this.inspector.showComponent( component, inspector );
 	}
+
+	//missing components are components which class is not found in the system, we keep them in case the class will be loaded afterwards
 }
 
 //special cases
@@ -344,13 +349,15 @@ InspectorWidget.prototype.inspectScene = function( scene )
 	inspector.on_refresh = function()
 	{
 		inspector.clear();
+		inspector.addTitle("Info");
+		inspector.addString("Fullname", scene.extra.fullname || "", { name_width: 120 });
+		inspector.addFolder("Data folder", scene.extra.data_folder || "", { name_width: 120, callback: function(v) { scene.extra.data_folder = v; }});
+
 		inspector.addTitle("Metadata");
-		inspector.addString("Title", scene.extra.title || "", function(v) { scene.extra.title = v; });
-		inspector.addString("Author", scene.extra.author || "", function(v) { scene.extra.author = v; });
-		inspector.addTextarea("Comments", scene.extra.comments || "", { callback: function(v) { scene.extra.comments = v; } });
+		inspector.addString("Author", scene.extra.author || "", { name_width: 120, callback: function(v) { scene.extra.author = v; }});
 		inspector.addSeparator();
 		if( window.PlayModule )
-		inspector.addStringButton("Test URL", scene.extra.test_url || "", { callback: function(v) { scene.extra.test_url = v; }, callback_button: function(){
+		inspector.addStringButton("Test URL", scene.extra.test_url || "", { name_width: 120, button: "&#9658;", callback: function(v) { scene.extra.test_url = v; }, callback_button: function(){
 			PlayModule.launch();
 		}});
 		inspector.addSeparator();
@@ -385,10 +392,16 @@ InspectorWidget.prototype.inspectScene = function( scene )
 			},
 			button: "+"
 		});
-		if(scene.external_scripts && scene.external_scripts.length)
-			inspector.addButton(null,"Reload scripts", function(){
-				LS.GlobalScene.loadScripts( null, null, LiteGUI.alert, true );
-			});
+
+		inspector.widgets_per_row = 2;
+		inspector.addButton(null,"Reload scripts", { width: "60%", callback: function(){
+			LS.GlobalScene.loadScripts( null, null, LiteGUI.alert, true );
+		}});
+
+		inspector.addButton(null,"Add from Repository",{ width: "40%", callback: function(){
+			PluginsModule.showOficialScriptsDialog();
+		}});
+		inspector.widgets_per_row = 1;
 
 		inspector.addTitle("Global Scripts");
 		inspector.widgets_per_row = 2;
@@ -405,6 +418,9 @@ InspectorWidget.prototype.inspectScene = function( scene )
 				}
 			});
 			inspector.addButton(null, "<img src='imgs/mini-icon-trash.png'/>", { width: 30, index: i, callback: function(){
+				var r = confirm("Do you want to remove the script from the list?");
+				if(!r)
+					return;
 				scene.global_scripts.splice( this.options.index, 1 );
 				inspector.refresh();
 			}});
@@ -469,6 +485,14 @@ InspectorWidget.prototype.inspectScene = function( scene )
 			inspector.refresh();
 		}});
 
+		inspector.addSeparator();
+		inspector.addTitle("Texture Atlas");
+		inspector.widgets_per_row = 2;
+		inspector.addCheckbox("Use atlas", !!scene.texture_atlas, function(v){ if(!v) scene.texture_atlas = null; });
+		inspector.addButton(null,"Generate", function(){ TextureTools.generateTextureAtlas(); });
+		inspector.widgets_per_row = 1;
+
+		inspector.addSeparator();
 		inspector.addButton(null,"Show Root Node", function(){
 			that.inspect(LS.GlobalScene.root);
 		});
@@ -534,8 +558,14 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 				}});
 
 				inspector.addButton( null, LiteGUI.special_codes.navicon, { height: "1em", width: 30, callback: function(v,evt){
-					var menu = new LiteGUI.ContextMenu( ["Choose Prefab","Unlink prefab","Reload from Prefab","Update to Prefab"], { title:"Prefab Menu", event: evt, callback: function(action) {
-						if(action == "Choose Prefab")
+					var menu = new LiteGUI.ContextMenu( ["Show Prefab Info","Choose Prefab","Reload from Prefab","Update to Prefab",null,"Unlink prefab"], { title:"Prefab Menu", event: evt, callback: function(action) {
+						if(action == "Show Prefab Info")
+						{
+							var res = LS.ResourcesManager.getResource( node.prefab );
+							if(res)
+								PackTools.showPackDialog( res );
+						}
+						else if(action == "Choose Prefab")
 						{
 							EditorModule.showSelectResource( { type:"Prefab", on_complete: function(v){
 								CORE.userAction("node_changed",node);
@@ -543,7 +573,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 								inspector.refresh();
 							}});
 						}
-						if(action == "Unlink prefab")
+						else if(action == "Unlink prefab")
 						{
 							//add prefab to resources otherwise all the info will be lost
 							var prefab_fullpath = node.prefab;
@@ -561,13 +591,13 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 							inspector.refresh();
 							InterfaceModule.scene_tree.refresh();
 						}
-						if(action == "Reload from Prefab")
+						else if(action == "Reload from Prefab")
 						{
 							CORE.userAction("node_changed",node);
 							node.reloadFromPrefab();
 							inspector.refresh();
 						}
-						if(action == "Update to Prefab")
+						else if(action == "Update to Prefab")
 						{
 							PackTools.updatePrefabFromNode(node);
 							inspector.refresh();
@@ -592,7 +622,7 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 
 			inspector.widgets_per_row = 2;
 
-			inspector.addLayers("layers", node.layers, { name_width: 80, pretitle: AnimationModule.getKeyframeCode( node, "layers"), callback: function(v) {
+			inspector.addLayers("layers", node.layers, { name_width: 80, pretitle: AnimationModule.getKeyframeCode( node, "layers"), node: node, callback: function(v) {
 				node.layers = v;
 				RenderModule.requestFrame();
 			}});
@@ -610,6 +640,8 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 
 			if(inside_prefab)
 				inspector.addInfo(null,"This node belongs to a prefab, any changes made won't be saved with the scene.");
+			else if( node.prefab && !LS.RM.resources[ node.prefab ] && LS.RM.resources_being_loaded[ node.prefab ])
+				inspector.addButton("Prefab being loaded...","refresh",{callback: function(){ inspector.refresh(); }});
 
 			//Special node editors ****************************************
 			//like Materials mostly
@@ -621,44 +653,48 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 		this.showComponentsInterface( node,inspector );
 
 		//flags
-		inspector.addSection("Extras", { collapsed: true });
+		inspector.addSection("Extras", { collapsed: true }); //node._editor.collapsed
 		if(node.flags)
 		{
 			inspector.addTitle("Flags");
 			inspector.widgets_per_row = 2;
-			inspector.addFlags( node.flags, { depth_test: true, depth_write: true, ignore_lights: false, ignore_fog: false, selectable: true }, { name_width: "75%" } );
+			inspector.addFlags( node.flags, { visible: true, is_static: false, selectable: true, locked: false }, { name_width: "75%" } );
 			inspector.widgets_per_row = 1;
+			inspector.addString("Custom flags","", { callback: function(v){
+				node.flags[v] = true;	
+				inspector.refresh();
+			}});
 		}
 
 		inspector.addSection();
 
 		//final buttons
+		inspector.widgets_per_row = 2;
+
 		inspector.addButton(null,"Add component", { callback: function(v) { 
 			EditorModule.showAddComponentToNode( node, function(){
 				inspector.refresh();
 			});
 		}});
 
-		inspector.addButtons(null,["Add Script","Add Graph"], { callback: function(v,evt) { 
-			if(v == "Add Script")
-			{
-				var menu = new LiteGUI.ContextMenu( ["Inner Script","Script From File","Global Script"], { event: evt, callback: function(action) {
-					if(action == "Inner Script")
-						CodingModule.onNewScript( node );
-					else if(action == "Script From File")
-						CodingModule.onNewScript( node, "ScriptFromFile" );
-					else if(action == "Global Script")
-						CodingModule.onNewScript( node, "Global" );
-					inspector.refresh();
-				}});
-			}
-			else if(v == "Add Graph")
-			{
-				GraphModule.onNewGraph( node );
+		inspector.addButtons(null,["Add Behaviour"], { callback: function(v,evt) { 
+
+			var menu = new LiteGUI.ContextMenu( ["Inner Script","Script From File","Global Script","Inner Graph","Graph From File"], { event: evt, callback: function(action) {
+				if(action == "Inner Script")
+					CodingModule.onNewScript( node );
+				else if(action == "Script From File")
+					CodingModule.onNewScript( node, "ScriptFromFile" );
+				else if(action == "Global Script")
+					CodingModule.onNewScript( node, "Global" );
+				else if(action == "Inner Graph")
+					GraphModule.onNewGraph( node );
+				else if(action == "Graph From File")
+					GraphModule.onNewGraph( node, true );
 				inspector.refresh();
-			}
-			//inspector.refresh();
+			}});
 		}});
+
+		inspector.widgets_per_row = 1;
 
 		if(component_to_focus)
 			inspector.scrollTo( component_to_focus.uid.substr(1) );
@@ -761,6 +797,7 @@ LiteGUI.Inspector.prototype.showComponentTitle = function(component, inspector)
 
 }
 
+//displays a component info (title, options button, etc)
 LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 {
 	if(!component)
@@ -863,7 +900,7 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 		EditorModule.showComponentContextMenu( component, e );
 		e.preventDefault();
 		e.stopPropagation();
-	}		
+	}
 
 	var drag_counter = 0; //hack because HTML5 sux sometimes
 

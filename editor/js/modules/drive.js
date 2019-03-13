@@ -72,6 +72,8 @@ var DriveModule = {
 
 		// Events related to resources being loaded **********************************
 		LEvent.bind( LS.ResourcesManager, "resource_loading", function( e, url ) {
+			if(url.indexOf("_th_") != -1)
+				return;
 			NotifyModule.show("FILE: " + url, { id: "res-msg-" + url.hashCode(), closable: true, time: 0, left: 60, top: 30, parent: "#visor" } );
 		});
 
@@ -83,7 +85,7 @@ var DriveModule = {
 		});
 		
 		LEvent.bind( LS.ResourcesManager, "resource_loaded", function(e, url) {
-			EditorModule.refreshAttributes();
+			//EditorModule.refreshAttributes(); //SLOW!!!!!
 			var msg = document.getElementById( "res-msg-" + url.hashCode() );
 			if(!msg)
 				return;
@@ -91,7 +93,7 @@ var DriveModule = {
 			msg.kill(500);
 
 			//we fetch asset previews in case the user browses the assets in the drive
-			if( url.substr(0,7) != "http://" && url.indexOf("_th_") == -1 )
+			if( url.substr(0,7) != "http://" && url.indexOf("_th_") == -1 && url.indexOf(".js") == -1 )
 				DriveModule.fetchPreview(url);
 		});
 
@@ -194,14 +196,19 @@ var DriveModule = {
 		return category;
 	},
 
+	getSceneBaseFolder: function()
+	{
+		return LS.GlobalScene.extra.data_folder || LS.GlobalScene.extra.folder || ( ProfileModule.user ? "/" + ProfileModule.user.username : "" );
+	},
+
 	openTab: function()
 	{
-		LiteGUI.main_tabs.selectTab( this.name );
+		LiteGUI.main_tabs.selectTab( this.tab_name );
 	},
 
 	closeTab: function()
 	{
-		LiteGUI.main_tabs.selectTab( RenderModule.name );
+		LiteGUI.main_tabs.selectTab( RenderModule.tab_name );
 	},
 
 	//Bridges represent places to store resources (LiteFileServer, localStorage, Dropbox...)
@@ -347,49 +354,6 @@ var DriveModule = {
 			type = "unknown";
 		return type;
 	},
-
-	/*
-	filterResources: function(type)
-	{
-		//if(!this.dialog) return;
-
-		//var parent = $("#dialog_resources-browser .resources-container ul.file-list")[0];
-		var parent = this.root.querySelector(".resources-container ul.file-list");
-
-		$(parent).find(".resource").show();
-		if(!type)
-		{
-			$(parent).find(".resource").show();
-			return;
-		}
-
-		$(parent).find(".resource").hide();
-		$(parent).find(".resource-" + type).show();
-	},
-
-	filterResourcesByName: function(text)
-	{
-		//if(!this.dialog) return;
-
-		//var parent = $("#dialog_resources-browser .resources-container ul.file-list")[0];
-		var parent = this.root.querySelector(".resources-container ul.file-list");
-
-		$(parent).find(".resource").show();
-		if(!text)
-		{
-			$(this.dialog).find(".resource").show();
-			return;
-		}
-
-		var res = $(parent).find(".resource");
-		$.each(res, function(i,e) {
-			if( e.dataset["filename"].indexOf(text) == -1 )
-				$(e).hide();
-			else
-				$(e).show();
-		});
-	},
-	*/
 
 	showUploadDialog: function(resource)
 	{
@@ -678,9 +642,17 @@ var DriveModule = {
 				if( resource.from_pack || resource.from_prefab )
 					return LiteGUI.alert("Resource belongs to Pack or Prefab, save that one instead: " + resource.from_pack ? resource.from_pack : resource.from_prefab );
 
-				if(!resource.fullpath)
-					return LiteGUI.alert("Resource must have a folder assigned");
-				DriveModule.saveResource( resource );
+				if(resource.fullpath)
+				{
+					DriveModule.saveResource( resource );
+					return;
+				}
+
+				//return LiteGUI.alert("Resource must have a folder assigned");
+				DriveModule.showSelectFolderFilenameDialog( "", function(folder, filename, fullpath){
+					LS.RM.renameResource( resource.fullpath || resource.filename, fullpath );
+					DriveModule.saveResource( resource );
+				}, { filename: resource.filename, extension: LS.RM.getExtension( resource.filename) });
 				return;
 			}
 
@@ -691,11 +663,7 @@ var DriveModule = {
 				if (v == "Delete")
 				{
 					var fullpath = resource.fullpath || resource.filename;
-					LS.RM.unregisterResource( fullpath );
-					DriveModule.serverDeleteFile( fullpath, function(v) { 
-						if(v)
-							DriveModule.refreshContent();
-					});
+					DriveModule.deleteResource( fullpath );
 				}
 			});
 		}});
@@ -837,8 +805,38 @@ var DriveModule = {
 
 		var res = LS.ResourcesManager.resources[ old_name ];
 		if(!res)
+		{
+			console.warn("During file renaming, I cannot find the file with the old name: " + old_name );
 			return;
+		}
 		LS.ResourcesManager.renameResource( old_name, new_name ); //rename and inform
+	},
+
+	deleteResource: function( fullpath, on_complete )
+	{
+		var resource = LS.RM.resources[ fullpath ];
+		if(resource)
+		{
+			var container_fullpath = resource.from_pack || resource.from_prefab;
+			if( container_fullpath )
+			{
+				var container = LS.RM.resources[ container_fullpath ];
+				if(container)
+				{
+					container.removeResource( fullpath );
+					LS.RM.resourceModified( container_fullpath );
+				}
+				return;
+			}
+			LS.RM.unregisterResource( fullpath );
+		}
+
+		DriveModule.serverDeleteFile( fullpath, function(v) { 
+			if(v)
+				DriveModule.refreshContent();
+			if(on_complete)
+				on_complete();
+		});
 	},
 
 	cloneResource: function( resource, cloned_name, callback )
@@ -848,6 +846,17 @@ var DriveModule = {
 
 		var fullpath = resource.fullpath || resource.filename;
 
+		//in memory: we do it from memory to avoid problems with resources having cloned UIDs (like materials)
+		var local_resource = LS.RM.resources[ resource.fullpath ];
+		if( local_resource && local_resource.clone )
+		{
+			var cloned = local_resource.clone();
+			LS.RM.registerResource( cloned_name, cloned );
+			if(resource.remotepath) //save in server
+				DriveModule.saveResource( cloned );
+			return;
+		}
+
 		//it is a server file
 		if(resource.in_server)
 		{
@@ -855,27 +864,21 @@ var DriveModule = {
 			return;
 		}
 
-		//is local
-		if(!resource.clone)
-		{
-			console.log("Resource type cannot be cloned: " + LS.getObjectClassName( resource ) );
-			return;
-		}
-
-		var cloned = resource.clone();
-		LS.RM.registerResource( cloned_name, cloned );
-
-		if(resource.remotepath) //save in server
-			DriveModule.saveResource( cloned );
+		LiteGUI.alert("Resource type cannot be cloned, doesnt have a clone method: " + LS.getObjectClassName( resource ) );
+		return;
 	},
 
-	showSelectFolderDialog: function(callback, callback_close, default_folder )
+	showSelectFolderDialog: function( callback, callback_close, default_folder )
 	{
-		if(!LoginModule.session)
+		if(!ProfileModule.session)
 		{
 			LiteGUI.alert("You must be logged in to select a folder");
 			return;
 		}
+
+
+		default_folder = default_folder || this.getSceneBaseFolder();
+
 
 		this.serverGetFolders( inner );
 
@@ -889,35 +892,43 @@ var DriveModule = {
 
 			var data = DriveModule.convertToTree( tree_data );
 
-			var dialog = new LiteGUI.Dialog( { id: "select-folder-dialog", title:"Select folder", close: true, width: 360, height: 240, scroll: false, draggable: true});
+			var dialog = new LiteGUI.Dialog( { id: "select-folder-dialog", title:"Select folder", close: true, width: 360, height: 260, scroll: false, draggable: true});
+			var selected = null;
 
-			var tree_widget = new LiteGUI.Tree( data , { id: "files-tree", allow_rename: false, height: 200} );
+			var inspector = new LiteGUI.Inspector();
+			var folder_widget = inspector.addString("Folder",default_folder,{ callback: function(v){
+				selected = v;
+			}});
+
+			dialog.add(inspector);
+
+			var tree_widget = new LiteGUI.Tree( data , { id: "files-tree", allow_rename: false, height: 220} );
 
 			tree_widget.root.style.backgroundColor = "#111";
 			tree_widget.root.style.padding = "5px";
 			tree_widget.root.style.width = "100%";
 			tree_widget.root.style.overflow = "auto";
+			tree_widget.setSelectedItem( default_folder );
 
 			dialog.add( tree_widget );
-			var selected = null;
 
 			tree_widget.root.addEventListener("item_selected", function(e) {
 				var data = e.detail;
 				selected = data.item.data;
+				folder_widget.setValue(selected.fullpath, false);
 			});
 
 			dialog.addButton("Select", { className: "big", callback: function ()
 			{
 				var path = null;
 				if(selected)
-					path = LS.ResourcesManager.cleanFullpath( selected.fullpath ); //remove extra trails
+					path = LS.ResourcesManager.cleanFullpath( selected.constructor === String ? selected : selected.fullpath ); 
 				if(callback)
 					callback( path );
 				dialog.close();
 			}});
 
-
-			dialog.adjustSize(20);
+			dialog.adjustSize(0);
 			dialog.show('fade');
 
 			if(default_folder)
@@ -935,6 +946,13 @@ var DriveModule = {
 			folder = LS.RM.getFolder(fullpath);
 			filename = LS.RM.getFilename(fullpath);
 		}
+		if(options.filename)
+			filename = options.filename;
+		if(options.folder)
+			folder = options.folder;
+
+		if(!folder)
+			folder = this.getSceneBaseFolder();
 
 		var dialog = new LiteGUI.Dialog( { id: "select-folder-filename-dialog", title:"Select folder and filename", close: true, width: 360, height: 240, scroll: false, draggable: true});
 		var widgets = new LiteGUI.Inspector();
@@ -951,7 +969,7 @@ var DriveModule = {
 			filename = v;
 		}});
 
-		widgets.addButton(null,"Continue",function(){
+		widgets.addButton(null, options.button || "Continue",function(){
 			if( (!folder && !options.allow_no_folder) || !filename)
 				return;
 
@@ -959,9 +977,9 @@ var DriveModule = {
 			//force extension
 			if(options.extension)
 			{
-				var ext = LS.RM.getExtension( filename );
-				if(ext != options.extension)
-					filename += "." + options.extension;
+				var ext = LS.RM.getExtension( filename, true );
+				if( ext.toLowerCase() != options.extension.toLowerCase() )
+					filename = LS.RM.replaceExtension( filename, options.extension );
 			}
 
 			var fullpath = LS.RM.cleanFullpath( folder + "/" + filename );
@@ -970,7 +988,7 @@ var DriveModule = {
 		});
 
 		dialog.add(widgets);
-		dialog.adjustSize(20);
+		dialog.adjustSize(5);
 		dialog.show();
 	},
 
@@ -1035,9 +1053,8 @@ var DriveModule = {
 
 	showLoadingBrowserContent: function()
 	{
-		var parent = $(this.root).find(".resources-container")[0];
-		$(parent).empty();
-		$(parent).append("<strong>loading...</strong>");
+		var parent = this.root.querySelector(".resources-container");
+		parent.innerHTML = "<strong>loading...</strong>";
 	},
 
 	//Retrieve a resource from the server and stores it for later use, it shoudnt do anything with it, just ensure is in memory.
@@ -1076,8 +1093,8 @@ var DriveModule = {
 		}
 
 		//fetch info
-		if(LoginModule.session)
-			LoginModule.session.getFileInfo( fullpath, function(info) { 
+		if(ProfileModule.session)
+			ProfileModule.session.getFileInfo( fullpath, function(info) { 
 				if(info)
 					DriveModule.processServerResource(info); 
 			});
@@ -1191,7 +1208,7 @@ var DriveModule = {
 		{
 			if(!v)
 				return;
-			LoginModule.session.moveFolder( origin_fullpath, target_fullpath, inner_complete );
+			ProfileModule.session.moveFolder( origin_fullpath, target_fullpath, inner_complete );
 		}
 
 		function inner_complete(v)
@@ -1504,7 +1521,7 @@ var DriveModule = {
 		}
 
 		//add to nocache
-		LS.RM.nocache_files[ resource.fullpath ] = new Date().getTime();
+		LS.RM.nocache_files[ resource.fullpath ] = getTime();
 
 		this.serverUploadResource( resource, resource.fullpath,
 			function(v, msg) {  //after resource saved
@@ -1544,8 +1561,26 @@ var DriveModule = {
 		);
 	},
 
+	//save resources without folder to this folder
 	saveResourcesToFolder: function( list, folder, on_complete, on_error, on_progress )
 	{
+		//sort list
+		list.sort( function( a, b ) {
+			var res_a = null;
+			var res_b = null;
+			if(!a || !b)
+				return 0;
+
+			if(a.constructor === String)
+				res_a = LS.ResourcesManager.resources[a];
+			if(b.constructor === String)
+				res_b = LS.ResourcesManager.resources[b];
+			
+			if(!res_a || !res_b)
+				return 0;
+			return (res_a.constructor.save_priority || 0) - (res_b.constructor.save_priority || 0);
+		});
+
 		var total = list.length;
 		inner(true);
 
@@ -1575,10 +1610,16 @@ var DriveModule = {
 				return;
 			}
 			if(resource.constructor === String)
-				resource = LS.ResourcesManager.resources[resource];
-			var new_name = folder + "/" + resource.filename;
-			//ensure the scene info gets updated
-			LS.RM.renameResource( resource.fullpath || resource.filename, new_name );
+				resource = LS.ResourcesManager.resources[ resource ];
+
+			var fullpath = resource.fullpath || resource.filename;
+			var original_folder = LS.RM.getFolder( fullpath );
+
+			if( !original_folder )
+			{
+				var new_name = folder + "/" + LS.RM.getFilename( fullpath );
+				LS.RM.renameResource( fullpath, new_name ); //ensure the scene info gets the name change
+			}
 			DriveModule.saveResource( resource, inner );
 		}
 	},
@@ -1627,6 +1668,14 @@ var DriveModule = {
 		return missing;
 	},
 
+	checkFolderExist: function( folder_name, on_complete )
+	{
+		ProfileModule.session.checkFolderExist(folder_name, function(v){
+			if(on_complete)
+				on_complete(v);
+		});
+	},
+
 	//Shows a warning dialog if you have resources in memory that are not stored in the server
 	checkResourcesSaved: function( only_in_scene, on_complete )
 	{
@@ -1640,13 +1689,7 @@ var DriveModule = {
 		}
 
 		//extra from scene
-		var pack_folder = "";
-		if( LS.GlobalScene.extra.folder )
-			pack_folder = LS.GlobalScene.extra.folder;
-		var pack_filename = LS.generateUId("").substr(1) + ".PACK";
-		if( LS.GlobalScene.extra.filename )
-			pack_filename = LS.RM.getBasename( LS.GlobalScene.extra.filename ) + ".PACK";
-		var files_folder = pack_folder;
+		var files_folder = this.getSceneBaseFolder();
 
 		var dialog = new LiteGUI.Dialog( { title:"Resources not saved", closable: true, draggable: true, width: 400 });
 		var widgets = new LiteGUI.Inspector();
@@ -1695,6 +1738,18 @@ var DriveModule = {
 					DriveModule.saveResource( resource, function() { widgets.refresh() }, { skip_alerts: true } );
 				});
 
+			widgets.addFolder("Folder", files_folder, { name_width: 60, callback: function(v){
+				files_folder = v;
+			}});
+			widgets.addButton(null,"Save them", inner_save_modified );
+
+			/*
+			if( LS.GlobalScene.extra.folder )
+				data_folder = LS.GlobalScene.extra.folder;
+			var pack_filename = LS.generateUId("").substr(1) + ".PACK";
+			if( LS.GlobalScene.extra.filename )
+				pack_filename = LS.RM.getBasename( LS.GlobalScene.extra.filename ) + ".PACK";
+
 			widgets.addTitle("Save individually");
 			widgets.addButton(null,"Save only modified ones", inner_save_modified );
 			widgets.widgets_per_row = 2;
@@ -1722,6 +1777,7 @@ var DriveModule = {
 				dialog.close();
 				inner_save_to_pack();
 			}});
+			*/
 
 			widgets.widgets_per_row = 1;
 			widgets.addSeparator();
@@ -1774,6 +1830,7 @@ var DriveModule = {
 			widgets.refresh();
 		}
 
+		/*
 		function inner_save_to_pack()
 		{
 			var alert_dialog = LiteGUI.alert("Saving...");
@@ -1801,6 +1858,7 @@ var DriveModule = {
 				DriveModule.saveResource( pack, inner_complete );
 			}
 		}
+		*/
 
 		function inner_complete( res )
 		{
@@ -1828,7 +1886,7 @@ var DriveModule = {
 		var resource = data;
 		
 		resource.id = parseInt(resource.id);
-		resource.fullpath = resource.folder + "/" + resource.filename;
+		resource.fullpath = resource.folder + "/" + LS.RM.getFilename( resource.filename );
 		resource.url = CORE.server_url + "resources/" + resource.fullpath;
 		resource.object_class = resource.category;
 		if(resource.metadata)
@@ -1982,14 +2040,14 @@ var DriveModule = {
 	serverGetFolders: function(on_complete)
 	{
 		var that = this;
-		if(!LoginModule.session)
+		if(!ProfileModule.session)
 		{
 			if(on_complete)
 				on_complete(null);
 			return;
 		}
 
-		LoginModule.session.getUnitsAndFolders(function(units){
+		ProfileModule.session.getUnitsAndFolders(function(units){
 			that.units = units;
 			if(on_complete)
 				on_complete(units);
@@ -1999,10 +2057,10 @@ var DriveModule = {
 	serverGetFiles: function(folder, on_complete)
 	{
 		var that = this;
-		if(!LoginModule.session)
+		if(!ProfileModule.session)
 			throw("Session not found");
 
-		LoginModule.session.getFilesByPath( folder, function(files){
+		ProfileModule.session.getFilesByPath( folder, function(files){
 			if(on_complete)
 				on_complete(files);
 		});
@@ -2011,16 +2069,16 @@ var DriveModule = {
 	serverSearchFiles: function( filter, on_complete, on_error )
 	{
 		var that = this;
-		if(!LoginModule.session)
+		if(!ProfileModule.session)
 			throw("Session not found");
 
 		if(!filter || typeof(filter) != "object")
 			throw("filter must be object");
 
 		if(filter.category)
-			LoginModule.session.searchByCategory( filter.category, inner, inner_error );
+			ProfileModule.session.searchByCategory( filter.category, inner, inner_error );
 		else if(filter.filename)
-			LoginModule.session.searchByFilename( filter.filename, inner, inner_error );
+			ProfileModule.session.searchByFilename( filter.filename, inner, inner_error );
 
 		function inner( files ){
 			if(on_complete)
@@ -2035,17 +2093,17 @@ var DriveModule = {
 
 	serverCopyFile: function( fullpath, new_fullpath, on_complete )
 	{
-		LoginModule.session.copyFile( fullpath, new_fullpath, on_complete );
+		ProfileModule.session.copyFile( fullpath, new_fullpath, on_complete );
 	},
 
 	serverMoveFile: function( fullpath, new_fullpath, on_complete )
 	{
-		LoginModule.session.moveFile( fullpath, new_fullpath, on_complete );
+		ProfileModule.session.moveFile( fullpath, new_fullpath, on_complete );
 	},
 
 	serverDeleteFile: function(fullpath, on_complete)
 	{
-		LoginModule.session.deleteFile( fullpath, on_complete );
+		ProfileModule.session.deleteFile( fullpath, on_complete );
 	},
 
 	//Takes into account if the file is already uploaded
@@ -2071,7 +2129,7 @@ var DriveModule = {
 				info.category = resource.category;
 
 			//update info like filename, category and metadata (and maybe preview)
-			LoginModule.session.updateFileInfo( fullpath, info, 
+			ProfileModule.session.updateFileInfo( fullpath, info, 
 				function(v,resp){ //on_complete
 					console.log("updated!");
 					if(on_complete)
@@ -2142,7 +2200,7 @@ var DriveModule = {
 		}
 		*/
 
-		LoginModule.session.uploadFile( fullpath, data, extra_info, 
+		ProfileModule.session.uploadFile( fullpath, data, extra_info, 
 			function(v,resp){ //on_complete
 				console.log("uploaded: ", fullpath );
 				if(on_complete)
@@ -2164,24 +2222,24 @@ var DriveModule = {
 
 	serverUpdatePreview: function( fullpath, preview, on_complete, on_error)
 	{
-		console.warn("Quarantine method");
-		LoginModule.session.updateFilePreview( fullpath, preview, on_complete, on_error);
+		//console.warn("Quarantine method");
+		ProfileModule.session.updateFilePreview( fullpath, preview, on_complete, on_error);
 	},
 
 	serverCreateFolder: function( name, on_complete, on_error )
 	{
-		console.warn("Quarantine method");
+		//console.warn("Quarantine method");
 		if(!name)
 			return;
-		LoginModule.session.createFolder( name, on_complete, on_error );
+		ProfileModule.session.createFolder( name, on_complete, on_error );
 	},
 
 	serverDeleteFolder: function(name, on_complete)
 	{
-		console.warn("Quarantine method");
+		//console.warn("Quarantine method");
 		if(!name)
 			return;
-		LoginModule.session.deleteFolder( name, function(v,resp){
+		ProfileModule.session.deleteFolder( name, function(v,resp){
 			if(on_complete)
 				on_complete(v);
 		});
@@ -2225,7 +2283,8 @@ var DriveModule = {
 			"Text",
 			"Shader",
 			"Pack",
-			"Material"
+			"Material",
+			"Graph"
 		];
 
 		var menu = new LiteGUI.ContextMenu( options, { event: e, title: "Create", callback: inner, parentMenu: prev_menu });
@@ -2236,6 +2295,8 @@ var DriveModule = {
 				that.showCreateScriptDialog({filename: "script.js", folder: folder });
 			else if(action == "Text")
 				that.showCreateFileDialog({filename: "text.txt", folder: folder});
+			else if(action == "Graph")
+				that.showCreateFileDialog({filename: "graph.GRAPH.json", folder: folder});
 			else if(action == "Pack")
 				PackTools.showCreatePackDialog({folder: folder });
 			else if(action == "Shader")
@@ -2293,9 +2354,9 @@ var DriveModule = {
 				material = new material_class();
 			}
 
-			var fullpath = LS.RM.cleanFullpath( folder + "/" + filename );
-			material.filename = filename;
-			material.fullpath = LS.RM.cleanFullpath( folder + "/" + filename );
+			material.filename = LS.RM.getFilename( filename );
+			var fullpath = LS.RM.cleanFullpath( folder + "/" + material.filename );
+			material.fullpath = LS.RM.cleanFullpath( fullpath );
 
 			LS.RM.registerResource( fullpath, material );
 			LS.RM.resourceModified( material );
@@ -2562,7 +2623,7 @@ DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], 
 
 	if( action == "replace" || action == "material" )
 	{
-		var channel = options.channel || LS.Material.COLOR_TEXTURE;
+		var channel = options.channel || options.target || LS.Material.COLOR_TEXTURE;
 		if( node )
 		{
 			if(!node.material)
@@ -2688,7 +2749,7 @@ DriveModule.registerAssignResourceCallback("component", function( fullpath, rest
 	});
 });
 
-DriveModule.registerAssignResourceCallback( "SceneTree", function( fullpath, restype, options ) {
+function registerSceneFunc( fullpath, restype, options ) {
 
 	LiteGUI.confirm("Are you sure? you will loose the current scene", function(v) {
 		if(!v)
@@ -2708,7 +2769,10 @@ DriveModule.registerAssignResourceCallback( "SceneTree", function( fullpath, res
 		DriveModule.closeTab();
 	});
 
-});
+}
+
+DriveModule.registerAssignResourceCallback( "Scene", registerSceneFunc );
+DriveModule.registerAssignResourceCallback( "SceneTree", registerSceneFunc ); //legacy
 
 DriveModule.registerAssignResourceCallback("Pack", function( fullpath, restype, options ) {
 	DriveModule.loadResource( fullpath, function(pack){
@@ -2760,6 +2824,19 @@ DriveModule.registerAssignResourceCallback("Prefab", function( fullpath, restype
 			node.transform.position = position;
 		EditorModule.inspect( node );
 		SelectionModule.setSelection( node );
+	});
+});
+
+DriveModule.registerAssignResourceCallback("Animation", function( fullpath, restype, options ) {
+
+	//prefab
+	DriveModule.loadResource( fullpath, function(resource) { 
+		if(resource.constructor !== LS.Animation)
+			return console.error("This resource is not an Animation");
+		var filename = resource.fullpath || resource.filename;
+		var node = SelectionModule.getSelectedNode() || LS.GlobalScene.root;
+		node.addComponent( new LS.Components.PlayAnimation({ animation: filename }) );
+		EditorModule.inspect( node );
 	});
 });
 
@@ -2819,4 +2896,5 @@ LiteGUI.Inspector.prototype.addFolder = function( name,value, options )
 
 LiteGUI.Inspector.widget_constructors["folder"] = "addFolder";
 
-
+GL.Texture.save_priority = -10;
+GL.Mesh.save_priority = -5;

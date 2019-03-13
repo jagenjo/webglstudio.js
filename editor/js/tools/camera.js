@@ -9,6 +9,7 @@ var cameraTool = {
 	auto_select: true,
 	smooth_camera: false,
 
+	first_person_mode: false,
 	wsad_controls: false,
 	last_camera: null,
 	fps_speed: 100, //units per second
@@ -41,6 +42,14 @@ var cameraTool = {
 	onRegister: function()
 	{
 		RenderModule.canvas_manager.addWidget(this);
+
+		document.addEventListener('pointerlockchange', function(e){
+			if(!document.pointerLockElement)
+			{
+				cameraTool.first_person_mode = false;
+				cameraTool.wsad_controls = false;
+			}
+		}, false);
 	},
 
 	keydown: function(e) {
@@ -95,7 +104,7 @@ var cameraTool = {
 		if(!this.enabled) 
 			return;
 
-		if (e.dragging) {
+		if ( e.dragging || this.first_person_mode ) {
 			var r = this.onCameraDrag(e);
 			LS.GlobalScene.refresh();
 			return r;
@@ -112,7 +121,7 @@ var cameraTool = {
 		if(e.wheel)
 		{
 			var amount = this.getWheelDelta(e);
-			if(e.dragging)
+			if( e.dragging || this.first_person_mode )
 			{
 				this.fps_speed /= amount;
 			}
@@ -140,21 +149,29 @@ var cameraTool = {
 
 		var update_frame = false;
 
+		var move_vector = [0,0,0];
+
 		if(gl.mouse.right_button || this.wsad_controls)
 		{
-			if( gl.keys["W"] ) { this.moveCamera([0,0,-speed*dt], true); update_frame = true; }
-			else if( gl.keys["S"]  ) { this.moveCamera([0,0,speed*dt], true); update_frame = true; }
-			if( gl.keys["A"]  ) { this.moveCamera([-speed*dt,0,0],true); update_frame = true; }
-			else if( gl.keys["D"]  ) { this.moveCamera([speed*dt,0,0],true); update_frame = true; }
-			if( gl.keys["Q"]  ) { this.moveCamera([0,speed*dt,0],false); update_frame = true; }
-			else if( gl.keys["E"]  ) { this.moveCamera([0,-speed*dt,0],false); update_frame = true; }
+			if( gl.keys["W"] ) move_vector[2] = -1;
+			else if( gl.keys["S"] ) move_vector[2] = 1;
+			if( gl.keys["A"]  ) move_vector[0] = -1;
+			else if( gl.keys["D"] ) move_vector[0] = 1;
+			if( gl.keys["Q"]  ) move_vector[1] = 1;
+			else if( gl.keys["E"] ) move_vector[1] = -1;
 		}
 
-		if( gl.keys["UP"] ) { this.moveCamera([0,0,-speed*dt], true); update_frame = true; }
-		else if( gl.keys["DOWN"]  ) { this.moveCamera([0,0,speed*dt], true); update_frame = true; }
+		if( gl.keys["UP"] ) move_vector[2] = -1;
+		else if( gl.keys["DOWN"] ) move_vector[2] = 1;
+		if( gl.keys["LEFT"]  ) move_vector[0] = -1;
+		else if( gl.keys["RIGHT"] ) move_vector[0] = 1;
 
-		if( gl.keys["LEFT"]  ) { this.moveCamera([-speed*dt,0,0],true); update_frame = true; }
-		else if( gl.keys["RIGHT"]  ) { this.moveCamera([speed*dt,0,0],true); update_frame = true; }
+		if(move_vector[0] || move_vector[1] || move_vector[2])
+		{
+			vec3.scale( move_vector, move_vector, speed * dt );
+			this.moveCamera( move_vector, true );
+			update_frame = true;		
+		}
 
 		//apply camera smoothing
 		var viewports = RenderModule.viewports;
@@ -170,14 +187,14 @@ var cameraTool = {
 				if(!camera._editor)
 					continue;
 
-				if(vec3.distance(camera.eye, camera._editor.destination_eye) > 0.001)
+				if( vec3.distance( camera.eye, camera._editor.destination_eye ) > 0.001)
 				{
 					vec3.lerp( camera.eye, camera.eye, camera._editor.destination_eye, factor );
 					camera._must_update_view_matrix = true; //force must_update
 					update_frame = true;
 				}
 
-				if(vec3.distance(camera.center, camera._editor.destination_center) > 0.001)
+				if( vec3.distance( camera.center, camera._editor.destination_center ) > 0.001)
 				{
 					vec3.lerp( camera.center, camera.center, camera._editor.destination_center, factor );
 					camera._must_update_view_matrix = true; //force must_update
@@ -210,18 +227,25 @@ var cameraTool = {
 			controls = this.controls[ "MIDDLE_MOUSE" ];
 		else if (e.isButtonPressed(GL.RIGHT_MOUSE_BUTTON))
 			controls = this.controls[ "RIGHT_MOUSE" ];
-		if(!controls)
+		if( !controls && !this.first_person_mode )
 			return;
 
-		var action = null;
-		if( (e.altKey || e.metaKey) && controls.metakey )
-			action = controls.metakey;
-		else if( e.isButtonPressed(GL.RIGHT_MOUSE_BUTTON) && controls.right_mouse )
-			action = controls.right_mouse;
-		else if( e.isButtonPressed(GL.MIDDLE_MOUSE_BUTTON) && controls.middle_mouse )
-			action = controls.middle_mouse;
+
+
+		var action;
+		if( this.first_person_mode )
+			action = "rotate";
 		else
-			action = controls["default"];
+		{
+			if( (e.altKey || e.metaKey) && controls.metakey )
+				action = controls.metakey;
+			else if( e.isButtonPressed(GL.RIGHT_MOUSE_BUTTON) && controls.right_mouse )
+				action = controls.right_mouse;
+			else if( e.isButtonPressed(GL.MIDDLE_MOUSE_BUTTON) && controls.middle_mouse )
+				action = controls.middle_mouse;
+			else
+				action = controls["default"];
+		}
 
 		if(!action)
 			return;
@@ -313,12 +337,13 @@ var cameraTool = {
 		}
 	},
 
-	moveCamera: function(delta, in_local_space, camera )
+	moveCamera: function( delta, in_local_space, camera )
 	{
 		camera = camera || ToolUtils.getCamera();
 
 		//var eye = this.smooth_camera ? camera._editor.destination_eye : camera.getEye();
 		//var center = this.smooth_camera ? camera._editor.destination_center : camera.getCenter();
+		camera.updateMatrices(true);
 
 		var eye = camera.getEye();
 		var center = camera.getCenter();
@@ -400,7 +425,12 @@ var cameraTool = {
 		vec3.scale( dist, dist, dt );
 
 		if(camera.type == LS.Camera.ORTHOGRAPHIC)
-			camera.frustum_size = vec3.length(dist);
+		{
+			//camera.frustum_size = vec3.length(dist);
+			camera.frustum_size *= dt;
+			LS.GlobalScene.refresh();
+			return;
+		}
 
 		var new_eye = vec3.create();
 
@@ -465,3 +495,24 @@ var cameraTool = {
 
 CORE.registerModule( cameraTool );
 ToolsModule.registerTool({ name: "camera_control", display: false, module: cameraTool });
+
+var fpsModeButton = {
+	name: "first_person_camera",
+	description: "First Person Camera",
+	section: "camera",
+	icon: "imgs/mini-icon-camera.png",
+	callback: function()
+	{
+		//toggle mouse lock
+		if( !gl.canvas.requestPointerLock )
+			return;
+
+		gl.canvas.requestPointerLock();
+		cameraTool.first_person_mode = true;
+		cameraTool.wsad_controls = true;
+
+		return false;
+	}
+};
+
+ToolsModule.registerButton( fpsModeButton );

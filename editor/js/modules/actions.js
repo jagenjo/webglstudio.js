@@ -84,6 +84,7 @@ LS.SceneNode.actions["create_child_node"] = {
 };
 
 LS.SceneNode.actions["create_prefab"] = { 
+	submenu: "Prefab",
 	title:"Create Prefab",
 	callback: function(){
 		PackTools.showCreatePrefabDialog( this );
@@ -92,6 +93,7 @@ LS.SceneNode.actions["create_prefab"] = {
 
 LS.SceneNode.actions["use_prefab"] = { 
 	title:"Assign Prefab",
+	submenu: "Prefab",
 	callback: function(){
 		var node = this;
 		EditorModule.showSelectResource( { type:"Prefab", on_complete: function(v){
@@ -142,15 +144,15 @@ LS.SceneNode.actions["delete"] = {
 };
 
 /* Components *************************/
-LS.Component.actions = {};
+LS.BaseComponent.actions = {};
 
-LS.Component.getActions = function( component )
+LS.BaseComponent.getActions = function( component )
 {
 	var actions = {};
 
 	//global component actions (like copy, paste, delete)
-	for(var i in LS.Component.actions)
-		actions[i] = LS.Component.actions[i];
+	for(var i in LS.BaseComponent.actions)
+		actions[i] = LS.BaseComponent.actions[i];
 
 	//specific actions of a component
 	if( component.constructor.actions )
@@ -170,7 +172,7 @@ LS.Component.getActions = function( component )
 	return actions;
 }
 
-LS.Component.doAction = function( component, name_action )
+LS.BaseComponent.doAction = function( component, name_action )
 {
 	if(!name_action)
 		return;
@@ -191,7 +193,7 @@ LS.Component.doAction = function( component, name_action )
 }
 
 
-LS.Component.actions["enable"] = { 
+LS.BaseComponent.actions["enable"] = { 
 	title:"Enable/Disable",
 	callback: function(){
 		this.enabled = !this.enabled;
@@ -199,62 +201,68 @@ LS.Component.actions["enable"] = {
 };
 
 
-LS.Component.actions["info"] = { 
+LS.BaseComponent.actions["info"] = { 
 	title:"Show Information",
 	callback: function(){
 		EditorModule.showComponentInfo(this);
 	}
 };
 
-LS.Component.actions["copy"] = { 
+LS.BaseComponent.actions["copy"] = { 
 	title:"Copy",
 	callback: function(){
 		EditorModule.copyComponentToClipboard(this);
 	}
 };
 
-LS.Component.actions["paste"] = { 
+LS.BaseComponent.actions["paste"] = { 
 	title:"Paste",
 	callback: function(){
 		EditorModule.pasteComponentFromClipboard(this);
 	}
 };
 
-LS.Component.actions["paste"] = { 
+LS.BaseComponent.actions["paste"] = { 
 	title:"Paste",
 	callback: function(){
 		EditorModule.pasteComponentFromClipboard(this);
 	}
 };
 
-LS.Component.actions["delete"] = { 
+LS.BaseComponent.actions["delete"] = { 
 	title:"Delete",
 	callback: function(){
 		EditorModule.deleteNodeComponent(this);
 	}
 };
 
-LS.Component.actions["reset"] = { 
+LS.BaseComponent.actions["reset"] = { 
 	title:"Reset",
 	callback: function(){
 		EditorModule.resetNodeComponent(this);
 	}
 };
 
-LS.Component.actions["share"] = { 
+LS.BaseComponent.actions["share"] = { 
 	title:"Share",
 	callback: function(){
 		EditorModule.shareNodeComponent(this);
 	}
 };
 
-LS.Component.actions["select"] = { 
+LS.BaseComponent.actions["select"] = { 
 	title:"Select",
 	callback: function(){
 		SelectionModule.setSelection(this);
 	}
 };
 
+LS.BaseComponent.actions["help"] = { 
+	title:"Help",
+	callback: function(){
+		EditorModule.showComponentHelp(this);
+	}
+};
 
 
 /*
@@ -264,6 +272,70 @@ LS.Components.Transform.prototype.getEditorActions = function( actions )
 	return actions;
 }
 */
+
+LS.Components.Transform.actions["to_camera_position"] = { title: "To camera position", callback: function() { 
+	var cam = RenderModule.getActiveCamera();
+	var mat = cam.getModelMatrix();
+	this.fromMatrix( mat );
+	LS.GlobalScene.refresh();
+	EditorModule.refreshAttributes();
+}};
+
+
+
+LS.Components.MeshRenderer.actions["mesh_tools"] = { title: "Open Mesh tools", callback: function() { 
+	MeshTools.showToolsDialog( this.mesh );
+	EditorModule.refreshAttributes();
+}};
+
+LS.Components.MeshRenderer.actions["explode_to_submeshes"] = { title: "Explode submeshes to MeshRenderers", callback: function() { 
+	var node = this._root;
+	if(!node)
+		return;
+
+	var mesh = this.getMesh();
+	if(!mesh || !mesh.info || !mesh.info.groups )
+		return;
+
+	node.removeComponent( this );
+
+	for(var i = 0; i < mesh.info.groups.length; ++i)
+	{
+		var group = mesh.info.groups[i];
+		var comp = new LS.Components.MeshRenderer({ mesh: this.mesh, submesh_id: i, material: group.material });
+		node.addComponent( comp );	
+	}
+
+	LS.GlobalScene.refresh();
+	EditorModule.refreshAttributes();
+}};
+
+
+LS.Components.MeshRenderer.actions["explode_to_nodes"] = { title: "Explode submeshes to child nodes", callback: function() { 
+	this.explodeSubmeshesToChildNodes();
+	EditorModule.refreshAttributes();
+}};
+
+LS.Components.MeshRenderer.actions["meshrenders_to_childnodes"] = { title: "MeshRenderer's to child nodes", callback: function() { 
+	var node = this._root;
+	if(!node)
+		return;
+
+	var mesh_renderers = node.getComponents( LS.Components.MeshRenderer );
+
+	for(var i = 0; i < mesh_renderers.length; ++i)
+	{
+		var comp = mesh_renderers[i];
+		node.removeComponent( comp );
+		var child_node = new LS.SceneNode();
+		node.addChild( child_node );
+		child_node.addComponent( comp );	
+	}
+
+	LS.GlobalScene.refresh();
+	EditorModule.refreshAttributes();
+}};
+
 
 LS.Components.Light.actions["select_target"] = { title: "Select Target", callback: function() { SelectionModule.setSelection({ instance: this, info: "target" }); }};
 LS.Components.Camera.actions["select_center"] = { title: "Select Center", callback: function() { SelectionModule.setSelection({ instance: this, info: "center"}); }};
@@ -279,15 +351,6 @@ LS.Components.Camera.actions["setview"] = { title: "Set to view", callback: func
 LS.Components.Camera.actions["preview"] = { title: "Preview", callback: function() { 
 		cameraTool.addCameraPreviewWidget( this );
 		LS.GlobalScene.refresh();
-	}
-};
-
-LS.Components.Light.actions["edit_layers"] = LS.Components.Camera.actions["edit_layers"] = { title: "Edit Layers", callback: function() { 
-		var component = this;
-		EditorModule.showLayersEditor( this.layers, function(v){
-			component.layers = v;
-			RenderModule.requestFrame();
-		});	
 	}
 };
 
@@ -312,8 +375,10 @@ LS.Components.Light.actions["to_node"] = {
 };
 
 LS.Components.SkinDeformer.actions["convert_bones"] = { title: "Convert Bones to Relative", callback: function() { this.convertBonesToRelative(); }};
+//LS.Components.SkinDeformer.actions["apply_bindpose"] = { title: "Apply BindPose", callback: function() { this.applyBindPose(); }};
 //LS.Components.SkinDeformer.actions["set_to_bind_pose"] = { title: "Set bones to bind pose", callback: function() { this.setBonesToBindPose(); }};
 LS.Components.MorphDeformer.actions["optimize_moprhtargets"] = { title: "Optimize Morph Targets", callback: function() { this.optimizeMorphTargets(); }};
+LS.Components.MorphDeformer.actions["clear_textures"] = { title: "Clear Textures", callback: function() { this.recomputeGeometryTextures(); }};
 
 
 LS.Components.Skybox.actions["bake"] = { 
@@ -324,11 +389,39 @@ LS.Components.Skybox.actions["bake"] = {
 	}
 };
 
+LS.Components.GeometricPrimitive.actions["to_mesh"] = { 
+	title:"Generate Mesh",
+	callback: function(){
+		var mesh = this._mesh;
+		if(!mesh)
+			return;
+		mesh.filename = "primitive_"+ LS.Components.GeometricPrimitive.VALID[ this._geometry ] +".wbin";
+		LS.RM.registerResource( mesh.filename, mesh );
+		LiteGUI.alert("Mesh created with name " + mesh.filename );
+		RenderModule.requestFrame();
+	}
+};
+
 
 //*********** Material Actions *************************************
 
 
 LS.MaterialClasses.StandardMaterial.actions = {}
+
+/*
+LS.MaterialClasses.newStandardMaterial.actions["to_ShaderMaterial"] = {
+	title:"Convert to ShaderMaterial",
+	callback: function( node )
+	{
+		var new_material = new LS.MaterialClasses.ShaderMaterial();
+		var shadercode = this.getShaderCode();
+		LS.RM.registerResource( "shader.glsl", shadercode );
+		new_material.shader = shadercode.filename;
+		node.material = new_material;
+		RenderModule.requestFrame();
+	}
+}
+*/
 
 LS.MaterialClasses.StandardMaterial.actions["to_newStandardMaterial"] = {
 	title:"Convert to newStandardMaterial",

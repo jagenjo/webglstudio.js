@@ -16,13 +16,15 @@ var ImporterModule  = {
 		force_lowercase: true
 	},
 
+	preferences_panel: [ {name:"importer", title:"Importer", icon:null } ],
+
 	init: function()
 	{
 		//if(window.gl && window.gl.canvas )
 		//	LiteGUI.createDropArea( gl.canvas, ImporterModule.onItemDrop.bind(this) );
 		LiteGUI.menubar.add("Actions/Import Files", { callback: function() { ImporterModule.showImportResourceDialog(); }});
 
-		window.addEventListener("paste", this.onPaste.bind(this) );
+		//window.addEventListener("paste", this.onPaste.bind(this) );
 	},
 
 	onPaste: function(e)
@@ -35,6 +37,18 @@ var ImporterModule  = {
 			this.onLoadPastedItem( item0 );
 			return false; // Prevent the default handler from running.
 		}
+	},
+
+	onShowPreferencesPanel: function(name, widgets)
+	{
+		if(name != "importer")
+			return;
+
+		var that = this;
+
+		widgets.addCheckbox("Force lowercase", this.preferences.force_lowercase, function(v){ 
+			ImporterModule.preferences.force_lowercase = v;
+		});
 	},
 
 	onLoadPastedItem: function(item)
@@ -65,6 +79,11 @@ var ImporterModule  = {
 	onItemDrop: function (evt, options)
 	{
 		var that = this;
+
+		//HACK to fix bug that ImporterModule processed first the drop that Player so script.onFileDrop wasnt working
+		if( PlayModule.inplayer )
+			return;
+
 		options = options || {};
 		console.log("processing item drop...");
 
@@ -180,7 +199,7 @@ var ImporterModule  = {
 		return files;
 	},
 
-	processFileList: function(files, options, skip_dialog )
+	processFileList: function( files, options, skip_dialog )
 	{
 		options = options || {};
 		var that = this;
@@ -202,7 +221,9 @@ var ImporterModule  = {
 		this.loadFileToMemory( file, callback, options );
 
 		function inner_process( file, options ){
-			var filename = file.name.toLowerCase(); //to lower case to avoid problems
+			var filename = file.name;
+			if( ImporterModule.preferences.force_lowercase )
+				filename = filename.toLowerCase(); //to lower case to avoid problems
 			NotifyModule.show("FILE: " + filename, { id: "res-msg-" + filename.hashCode(), closable: true, time: 3000, left: 60, top: 30, parent: "#visor" } );
 			CORE.log("File dropped: " + filename);
 			ImporterModule.processResource( filename, file, that.getImporterOptions( filename ), function( filename, resource ){
@@ -359,12 +380,25 @@ var ImporterModule  = {
 			{
 				var filename = DriveModule.getFilename(v);
 				file = { name: filename, size: 0, type: "?", data: null };
+				var request = { 
+					url: LS.RM.getFullURL( v ),
+					success: function( data, response) { 
+						inner_setContent( data, this.getResponseHeader("Content-Type") );
+					} 
+				};
+
 				var info = LS.Formats.getFileFormatInfo( file.name );
-				var proxy_url = LS.RM.getFullURL( v );
-				if(info && info.format == "text")
-					LiteGUI.requestText( proxy_url, function(v, response) { inner_setContent(v, response.getResponseHeader("Content-Type") ); });
-				else
-					LiteGUI.requestBinary( proxy_url, function(v, response) { inner_setContent(v, response.getResponseHeader("Content-Type") ); });
+				if( info )
+				{
+					if( info.format )
+						request.type = info.format;
+					if( info.dataType )
+						request.dataType = info.dataType;
+					if( info.mimeType )
+						request.mimeType = info.mimeType;
+				}
+
+				LS.Network.request( request );
 				return;
 			}
 
@@ -432,7 +466,10 @@ var ImporterModule  = {
 				if( ext === "zip" )
 					inspector.addInfo("ZIP FILE");
 
-				inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { import_options.optimize_data = v; }});
+				inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { 
+					import_options.optimize_data = v;
+					ImporterModule.preferences.optimize_data = v;
+				}});
 
 				var info = LS.Formats.getFileFormatInfo( file.name );
 				if(!info)
@@ -468,7 +505,7 @@ var ImporterModule  = {
 					}
 					inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { import_options.optimize_data = v; }});
 				}
-				else if(info.resource == "SceneTree" || info.resource == "SceneNode")
+				else if(info.resource == "Scene" || info.resource == "SceneNode" || info.resource == "SceneTree") //SceneTree legacy
 				{
 					inspector.addTitle("Scene");
 					inspector.addCheckbox("Optimize data", import_options.optimize_data, { callback: function(v) { import_options.optimize_data = v; }});
@@ -596,6 +633,7 @@ var ImporterModule  = {
 				if( resource.constructor == GL.Mesh && extension != "wbin" )
 				{
 					resource._original_data = resource.toBinary().buffer; //ArrayBuffer
+
 					filename = filename + ".wbin";
 					LS.ResourcesManager.renameResource( resource.filename, filename );
 				}
@@ -613,9 +651,21 @@ var ImporterModule  = {
 					LS.ResourcesManager.renameResource( resource.filename, filename );
 				}
 			}
-			
-			if(!resource._original_file && !resource._original_data)
-				resource._original_file = file;
+
+			//remove original file if the extension has changed
+			var file_extension = LS.RM.getExtension( file.filename );
+			var res_extension = LS.RM.getExtension( resource.fullpath || resource.filename );
+			if( file_extension != res_extension )
+			{
+				resource._original_file = null;
+				resource._original_data = null;
+			}
+			else
+			{
+				//assign file
+				if(!resource._original_file && !resource._original_data)
+					resource._original_file = file;
+			}
 
 			if(resource.constructor === GL.Texture )
 			{
@@ -625,7 +675,7 @@ var ImporterModule  = {
 
 
 			//scenes require to rename some stuff 
-			if(resource.constructor === LS.SceneTree || resource.constructor === LS.SceneNode )
+			if(resource.constructor === LS.Scene || resource.constructor === LS.SceneNode )
 			{
 				//remove node root, dragging to canvas should add to scene.root
 				options.node = null;
@@ -660,12 +710,22 @@ var ImporterModule  = {
 					}
 
 					//rename animation tracks
+					//if resource is a DAE object
 					if(resource.animations)
 					{
-						var animation = LS.RM.getResource(resource.animations);
-						if(animation)
-							animation.convertIDstoNames( true, resource );
+						var animation = LS.RM.getResource( resource.animations );
+						if( animation )
+							animation.convertIDsToNames( true, resource );
 					}
+
+					//if resource is a SceneNode
+					if(resource.animation)
+					{
+						var animation = LS.RM.getResource( resource.animation );
+						if( animation )
+							animation.convertIDsToNames( true, resource );
+					}
+
 				}
 			}
 
@@ -707,9 +767,12 @@ var ImporterModule  = {
 						{
 							var blob = new Blob([content],{name: "foo", type:"application/octet-stream"});
 							blob.name = this.name;
+							var filename = blob.name;
+							if( ImporterModule.preferences.force_lowercase )
+								filename = filename.toLowerCase(); //to lower case to avoid problems
 							console.log( blob );
 							//console.log(content);
-							LS.ResourcesManager.processResource( blob.name, content, null, on_complete );
+							LS.ResourcesManager.processResource( filename, content, null, on_complete );
 						}).bind(file) );
 					}
 				});

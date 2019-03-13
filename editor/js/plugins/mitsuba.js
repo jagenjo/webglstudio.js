@@ -725,7 +725,7 @@ var parserMitsubaSerialized = {
 		var num_meshes = dv.getUint32( data.byteLength - 4, true );
 		console.log( "num meshes:", num_meshes );
 
-		var scene = { object_class: "SceneTree", root: {}, meshes: {} };
+		var scene = { object_class: "Scene", root: {}, meshes: {} };
 
 		var meshes = [];
 		var bytes_in_offset = version == 3 ? 4 : 8;

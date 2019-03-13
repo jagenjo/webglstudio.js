@@ -33,7 +33,7 @@ var MeshTools = {
 
 			widgets.clear();
 
-			widgets.addMesh("Mesh", mesh_name || "", { callback: function(v) {
+			widgets.addMesh("Mesh", mesh_name || "", { name_width: 100, callback: function(v) {
 				mesh_name = v;
 				inner_update();
 			}, callback_load: function( res ){
@@ -201,6 +201,56 @@ var MeshTools = {
 		return true;
 	},
 
+	generateTextureCoords: function( mesh, mode, param )
+	{
+		if(mode == "triplanar")
+		{
+			mesh.computeTextureCoordinates();
+			return true;
+		}
+
+		var vertices_buffer = mesh.getBuffer("vertices");
+		if(!vertices_buffer)
+			return false;
+		var vertices = vertices_buffer.data;
+		var num = vertices.length / 3;
+
+		var coords_buffer = mesh.getBuffer("coords");
+		if(!coords_buffer) //generate?
+			coords_buffer = mesh.createVertexBuffer( "coords",null,null,new Float32Array(num*2) );
+		var coords = coords_buffer.data;
+		var bounding = mesh.getBoundingBox();
+		var min = BBox.getMin(bounding);
+		var size = vec3.scale( vec3.create(), BBox.getHalfsize(bounding), 2 );
+
+		var index_u = 0;
+		var index_v = 1;
+
+		switch (mode)
+		{
+			case "+x": 
+			case "x": index_u = 1; index_v = 2; break;
+			case "+y": 
+			case "y": index_u = 0; index_v = 2; break;
+			case "+z": 
+			case "z": index_u = 0; index_v = 1; break;
+			case "-x": index_u = 2; index_v = 1; break;
+			case "-y": index_u = 2; index_v = 0; break;
+			case "-z": index_u = 1; index_v = 0; break;
+			default: return false;
+		}
+
+		for(var i = 0; i < num; ++i)
+		{
+			var vertex = vertices.subarray(i*3,i*3+3);
+			var coord = coords.subarray(i*2,i*2+2);
+			coord[0] = (vertex[index_u] - min[index_u]) / size[index_u]; 
+			coord[1] = (vertex[index_v] - min[index_v]) / size[index_v]; 
+		}
+		coords_buffer.upload();
+		return true;
+	},
+
 	applyTransform: function( mesh )
 	{
 		var selected_node = SelectionModule.getSelectedNode();
@@ -228,6 +278,66 @@ var MeshTools = {
 
 		mesh.updateBounding();
 		return true;
+	},
+
+	deindexMesh: function(mesh)
+	{
+		var indices_buffer = mesh.getIndexBuffer("triangles");
+		if(!indices_buffer)
+		{
+			return false;
+		}
+		var vertex_buffer = mesh.getBuffer("vertices");
+		var normal_buffer = mesh.getBuffer("normals");
+		var uv_buffer = mesh.getBuffer("coords");
+
+		var old_vertices = vertex_buffer ? vertex_buffer.data : null;
+		var old_normals = normal_buffer ? normal_buffer.data : null;
+		var old_uvs = uv_buffer ? uv_buffer.data : null;
+		var indices = indices_buffer.data;
+
+		var vertices = [];
+		var normals = [];
+		var uvs = [];
+
+		if( mesh.getBuffer("weights") )
+		{
+			console.error("cannot deindex skinned meshes, sorry");
+			return false;
+		}
+		
+		for(var i = 0; i < indices.length; ++i)
+		{
+			var index = indices[i];
+			var v = old_vertices.subarray( index*3, index*3+3 );
+			vertices.push( v[0], v[1], v[2] );
+			if( old_normals )
+			{
+				var v = old_normals.subarray( index*3, index*3+3 );
+				normals.push( v[0], v[1], v[2] );
+			}
+			if( old_uvs )
+			{
+				var v = old_uvs.subarray( index*2, index*2+2 );
+				uvs.push( v[0], v[1] );
+			}
+		}
+
+		vertex_buffer.data = new Float32Array( vertices );
+		vertex_buffer.upload( gl.STATIC_DRAW );
+		if( normal_buffer )
+		{
+			normal_buffer.data = new Float32Array( normals );
+			normal_buffer.upload( gl.STATIC_DRAW );
+		}
+		if( uv_buffer )
+		{
+			uv_buffer.data = new Float32Array( uvs );
+			uv_buffer.upload( gl.STATIC_DRAW );
+		}
+		mesh.removeIndexBuffer("triangles");
+
+		return true;
 	}
 
 };
@@ -236,6 +346,7 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 {
 	var mesh = this;
 
+	widgets.addString("Name", mesh.filename || mesh.fullpath );
 	widgets.addTitle("Vertex Buffers [num. vertex]");
 	widgets.widgets_per_row = 2;
 	var num_vertices = -1;
@@ -250,12 +361,17 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		{
 			case Float32Array: type = "Float32"; break;
 			case Float64Array: type = "Float64"; break;
+			case Int8Array: type = "Int8"; break;
 			case Uint8Array: type = "Uint8"; break;
+			case Int16Array: type = "Int16"; break;
 			case Uint16Array: type = "Uint16"; break;
+			case Int32Array: type = "Int32"; break;
 			case Uint32Array: type = "Uint32"; break;
 			default: type = "???"; break;
 		}
-		var info = widgets.addInfo(i, (buffer.data.length / buffer.spacing) + " [" + type + "]", { width: "calc( 100% - 30px )" } );
+		var info = widgets.addInfo(i, (buffer.data.length / buffer.spacing) + " [" + type + "]", { width: "calc( 100% - 30px )", buffer: buffer, callback: function(){
+			console.log(this.options.buffer);			
+		}});
 		if( num_vertices != -1 && (buffer.data.length / buffer.spacing) != num_vertices )
 			info.style.backgroundColor = "#6b2d2d";
 
@@ -308,11 +424,20 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		var group = widgets.beginGroup("Groups",{ collapsed: true, height: 150, scrollable: true });
 		for(var i = 0; i < mesh.info.groups.length; i++)
 		{
-			var str = mesh.info.groups[i].name;
-			if(mesh.info.groups[i].material)
-				str += "<span class='mat' style='color:white;'>"+mesh.info.groups[i].material+"<span>";
+			var group = mesh.info.groups[i];
+			var str = group.name;
+			if(group.material)
+				str += " <span class='mat' style='color:white;'>"+group.material+"<span>";
+			if(group.bounding)
+				str += " <span class='info' style='color:gray;'>[BB]<span>";
 			var w = widgets.addInfo(i, str, { name_width: 50 } );
 		}
+		widgets.addButton(null,"Compute bounding boxes", { callback: function(){
+			mesh.updateBoundingBox();
+			widgets.refresh();
+			LS.RM.resourceModified(mesh);
+			RenderModule.requestFrame();
+		}});
 		widgets.endGroup();
 	}
 
@@ -344,12 +469,6 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		RenderModule.requestFrame();
 		widgets.refresh();
 	} );
-	widgets.addButton(null, "Generate Coords", function(){
-		mesh.computeTextureCoordinates();
-		LS.RM.resourceModified(mesh);
-		RenderModule.requestFrame();
-		widgets.refresh();
-	} );
 	
 	widgets.widgets_per_row = 2;
 	var sort_mode = "+X";
@@ -374,6 +493,32 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		widgets.refresh();
 	});
 
+	var uvs_mode = "triplanar";
+	widgets.addCombo("UVs", uvs_mode, { values:["triplanar","+x","-x","+y","-y","+z","-z"], callback: function(v){
+		uvs_mode = v;
+	}});
+
+	widgets.addButton(null, "Generate Coords", function(){
+		MeshTools.generateTextureCoords( mesh, uvs_mode );
+		LS.RM.resourceModified(mesh);
+		RenderModule.requestFrame();
+		widgets.refresh();
+	} );
+
+	widgets.addButton(null, "De-index", function(){
+		if( MeshTools.deindexMesh( mesh ) )
+		{
+			LS.RM.resourceModified(mesh);
+			RenderModule.requestFrame();
+		}
+		widgets.refresh();
+	} );
+
+	widgets.addButton(null, "Download OBJ", function(){
+		var data = mesh.encode("obj");
+		LS.downloadFile( mesh.filename + ".obj", data );
+	});
+
 	widgets.widgets_per_row = 1;
 	//widgets.addButton(null, "Weld", function(){} );
 
@@ -394,5 +539,7 @@ GL.Mesh.prototype.optimize = function( options )
 	LS.ResourcesManager.renameResource( old_filename, this.fullpath || this.filename );
 	LS.RM.resourceModified( this );
 }
+
+
 
 CORE.registerModule( MeshTools );

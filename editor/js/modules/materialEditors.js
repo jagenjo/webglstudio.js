@@ -177,12 +177,13 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 			if(!data ) return;
 
 			var material = data;
-			if( material.type == "value" )
+			if( material.type == "value" ) //????
 				material = material.data;
 			else if( LS.MaterialClasses[ material.object_class ] )
 			{
 				material = new LS.MaterialClasses[ material.object_class ]();
 				delete data["object_class"];
+				delete data["uid"]; //avoid materials with same uid
 				material.configure(data);
 				material.loadTextures();
 			}
@@ -450,6 +451,7 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 	}});
 
 	inspector.addSlider("Normalmap factor", material.normalmap_factor, { pretitle: AnimationModule.getKeyframeCode( material, "normalmap_factor" ), min: 0, step:0.01, max:1.5, callback: function (value) { material.normalmap_factor = value; } });
+	inspector.addColor("Extra Color", material.extra, { pretitle: AnimationModule.getKeyframeCode( material, "extra" ), callback: function(color) { material.extra = color; } });
 
 	inspector.addTitle("Velvet");
 	inspector.addColor("Velvet", material.velvet, { pretitle: AnimationModule.getKeyframeCode( material, "velvet" ), callback: function(color) { vec3.copy(material.velvet,color); }});
@@ -521,10 +523,6 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 	//inspector.addTitle("Actions");
 	//inspector.addButtons(null,["Make Global","Copy","Paste"],{});
 }
-
-if(LS.MaterialClasses.newStandardMaterial)
-	LS.MaterialClasses.newStandardMaterial["@inspector"] = LS.MaterialClasses.StandardMaterial["@inspector"];
-
 
 LS.Material.showFlagsEditor = function( material )
 {
@@ -649,7 +647,17 @@ LS.MaterialClasses.SurfaceMaterial["@inspector"] = function( material, inspector
 		if(p.type == "texture" || p.type == "cubemap")
 			material.textures[p.name] = p.value;
 	}
+}
 
+if(LS.MaterialClasses.GraphMaterial)
+LS.MaterialClasses.GraphMaterial["@inspector"] = function( material, inspector )
+{
+	inspector.addGraph("filename", material.filename, { name_width: 60, graph_type: LS.GraphCode.SHADER_GRAPH, callback: function(v) { material.filename = v; }});
+	inspector.addButton(null,"Edit Graph", { callback: function(){
+		ShadersModule.openTab();
+		ShadersModule.editGraph( material, { id: material.filename, title: material.filename } );
+	}});
+	//inspector.addTitle("Properties");
 }
 
 LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector, is_fx )
@@ -746,11 +754,6 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 
 	widgets.addSeparator();
 
-	widgets.addCombo("UVs", sampler["uvs"] || LS.Material.DEFAULT_UVS[ channel ], { values: LS.Material.TEXTURE_COORDINATES, callback: function(v) {
-		sampler.uvs = v;
-		LS.GlobalScene.refresh();
-	}});
-
 	widgets.addCombo("Wrap", sampler["wrap"] || gl.REPEAT, { values: {"default":0, "CLAMP_TO_EDGE": gl.CLAMP_TO_EDGE, "REPEAT": gl.REPEAT, "MIRRORED_REPEAT": gl.MIRRORED_REPEAT }, callback: function(v) {
 		sampler.wrap = v;
 		//sampler._must_update = true;
@@ -780,35 +783,46 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 		LS.GlobalScene.refresh();
 	}});
 
-	if(material)
+	if(material )
 	{
-		if(channel == "normal")
+		if( material.constructor === LS.StandardMaterial )
 		{
-			widgets.addCheckbox("Tangent space", material.normalmap_tangent, { callback: function (value) { material.normalmap_tangent = value; } });
-			widgets.addSlider("Normal factor", material.normalmap_factor, { min:0, step:0.01, max:2, callback: function (value) { material.normalmap_factor = value; } });
-		}
-		else if(channel == "displacement")
-		{
-			widgets.addNumber("Displace factor", material.displacementmap_factor || 0, { step:0.001, callback: function (value) { material.displacementmap_factor = value; } });
-		}
-		else if(channel == "bump")
-		{
-			widgets.addSlider("Bump factor", material.bumpmap_factor || 0, { min:-2, step:0.01, max:2, callback: function (value) { material.bumpmap_factor = value; } });
+			if(channel == "color")
+			{
+				widgets.addCheckbox("Degamma", sampler["degamma"], { callback: function(v) {
+					sampler.degamma = v;
+					LS.GlobalScene.refresh();
+				}});
+			}
+
+			if(channel == "normal")
+			{
+				widgets.addCheckbox("Tangent space", material.normalmap_tangent, { callback: function (value) { material.normalmap_tangent = value; } });
+				widgets.addSlider("Normal factor", material.normalmap_factor, { min:0, step:0.01, max:2, callback: function (value) { material.normalmap_factor = value; } });
+			}
+			else if(channel == "displacement")
+			{
+				widgets.addNumber("Displace factor", material.displacementmap_factor || 0, { precision: 3, step:0.001, callback: function (value) { material.displacementmap_factor = value; } });
+			}
+			else if(channel == "bump")
+			{
+				widgets.addSlider("Bump factor", material.bumpmap_factor || 0, { min:-2, step:0.01, max:2, callback: function (value) { material.bumpmap_factor = value; } });
+			}
 		}
 
-		widgets.addTitle("UVs transformed");
+		widgets.addTitle("UVs");
+
+		widgets.addCombo("UVs Channel", sampler["uvs"] || 0, { values: LS.Material.TEXTURE_COORDINATES, callback: function(v) {
+			sampler.uvs = v;
+			LS.GlobalScene.refresh();
+		}});
+
 		var m = material.uvs_matrix;
 		widgets.addVector2("Tiling", [m[0],m[4]], { step:0.001, callback: function (value) { 
 			material.uvs_matrix[0] = value[0]; material.uvs_matrix[4] = value[1];
-			var sampler = material.textures[ channel ];
-			if(sampler)
-				sampler.uvs = "transformed";
 		}});
 		widgets.addVector2("Offset", [m[6],m[7]], { step:0.001, callback: function (value) { 
 			material.uvs_matrix[6] = value[0]; material.uvs_matrix[7] = value[1];
-			var sampler = material.textures[ channel ];
-			if(sampler)
-				sampler.uvs = "transformed";
 		}});
 	}
 
@@ -826,3 +840,4 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 	dialog.adjustSize(30);
 	//widgets.addString("Name", last_file ? last_file.name : "");
 }
+

@@ -79,7 +79,9 @@ var CORE = {
 		}
 
 		var imports_list = imports_info.imports;
+		var async_imports_list = imports_info.async;
 		this.config.imports = imports_info;
+		this.config.async = async_imports_list;
 
 		this.showLoadingPopup( imports_list );
 
@@ -99,6 +101,8 @@ var CORE = {
 			var nocache = "nocache=" + String(performance.now());
 			for(var i in imports_list)
 				imports_list[i] = imports_list[i] + (imports_list[i].indexOf("?") == -1 ? "?" : "") + nocache;
+			for(var i in async_imports_list)
+				async_imports_list[i] = async_imports_list[i] + (async_imports_list[i].indexOf("?") == -1 ? "?" : "") + nocache;
 		}
 
 		//require all import scripts
@@ -125,6 +129,9 @@ var CORE = {
 		{
 			that.log("Loading done",true);
 			setTimeout(function(){ CORE.launch(); },500 );
+
+			//load async scripts (things that are not so relevant)
+			LiteGUI.requireScript( async_imports_list, null,null,null, CORE.config.imports.version );
 		}
 	},
 
@@ -133,6 +140,7 @@ var CORE = {
 	{
 		//remove loading info
 		LiteGUI.remove(".startup-console-msg");
+		LiteGUI.remove( this.loader_dialog );
 		this.send_log_to_console = true;
 
 		//launch LiteGUI
@@ -362,7 +370,7 @@ var CORE = {
 
 	selectScene: function( scene, save_current )
 	{
-		if(scene.constructor !== LS.SceneTree)
+		if(scene.constructor !== LS.Scene)
 			throw("Not an scene");
 
 		if(save_current)

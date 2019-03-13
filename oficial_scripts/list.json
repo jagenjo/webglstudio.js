@@ -1,0 +1,24 @@
+{
+	"scripts":[
+		{
+			"name":"Volumetric Render",
+			"author":"Javi Agenjo",
+			"version": "0.1",
+			"script_url":"scripts/volumetric.js",
+			"includes":[],
+			"description":"Allows to render volumetric data (like medical scans or clouds)",
+			"preview_url":null,
+			"video_url":null
+		},
+		{
+			"name":"Terrain Render",
+			"author":"Javi Agenjo",
+			"version": "0.1",
+			"script_url":"scripts/terrainRenderer.js",
+			"includes":[],
+			"description":"Allows to render heightmaps from a texture",
+			"preview_url":null,
+			"video_url":null
+		}
+	]
+}

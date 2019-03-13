@@ -13,6 +13,12 @@
 		}
 	</style>
 
+<meta property="og:title" content="WebGLStudio Player" />
+<meta property="og:description" content="Edit 3D on the web" />
+<meta property="og:image" content="" />
+
+<link rel="icon" type="image/png" href="favicon.ico">
+
 </head>
 <body>
 
@@ -26,15 +32,19 @@
 <script type="text/javascript">
 
 	//LiteSCENE CODE *************************
-	var player = new LS.Player( {
+	var settings = {
 		alpha: false, //enables to have alpha in the canvas to blend with background
 		stencil: true,
 		redraw: true, //force to redraw
+		autoplay: false,
 		resources: "fileserver/files/",
 		autoresize: true, //resize the 3D window if the browser window is resized
 		loadingbar: true, //shows loading bar progress
 		proxy: "@/proxy.php?url=" //allows to proxy request to avoid cross domain problems, in this case the @ means same domain, so it will be http://hostname/proxy
-	});
+	};
+	/*SETTINGS_SETUP*/
+
+	var player = new LS.Player(settings);
 
 	var allow_remote_scenes = false; //allow scenes with full urls? this could be not safe...
 

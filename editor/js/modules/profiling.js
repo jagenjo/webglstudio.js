@@ -1,3 +1,4 @@
+//Deprecated
 var ProfilingModule = {
 	name: "Profiling",
 	bigicon: "imgs/tabicon-profiling.png",
@@ -32,4 +33,4 @@ var ProfilingModule = {
 };
 
 
-CORE.registerModule( ProfilingModule );
+//CORE.registerModule( ProfilingModule );

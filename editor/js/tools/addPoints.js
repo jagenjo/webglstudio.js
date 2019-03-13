@@ -5,7 +5,7 @@ var AddPointsTool = {
 	icon: "imgs/mini-icon-points_tool.png",
 
 	enabled: false,
-	continuous: true,
+	continuous: false, //add while dragging
 	mode: "camera_plane", //"colliders","render_instances","camera_plane","XZ","YZ","XY"
 	min_distance: 0.1,
 	valid_modes: ["colliders","render_instances","camera_plane","XZ","YZ","XY"],

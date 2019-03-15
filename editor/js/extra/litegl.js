@@ -7333,7 +7333,7 @@ FBO.prototype.delete = function()
 
 //WebGL 1.0 support for certaing FBOs is not very clear and can crash sometimes
 FBO.supported = {};
-
+//type: gl.FLOAT, format: gl.RGBA
 FBO.testSupport = function( type, format ) {
 	var name = type +":" + format;
 	if( FBO.supported[ name ] != null );

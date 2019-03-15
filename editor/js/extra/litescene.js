@@ -17434,13 +17434,11 @@ LGraphVolumetricLight.prototype.onExecute = function()
 	var uniforms = this._uniforms;
 	uniforms.u_intensity = intensity;
 	uniforms.u_camera_planes = camera._uniforms.u_camera_planes;
-	uniforms.u_light_viewprojection_matrix = light._light_matrix;
 	uniforms.u_shadow_params = light._uniforms.u_shadow_params;
-	uniforms.u_light_color = light._uniforms.u_light_color;
-	uniforms.u_light_info = light._uniforms.u_light_info;
-	uniforms.u_light_vector = light._front;
 	uniforms.u_attenuation = this.properties.attenuation;
 	uniforms.u_rand[1] = uniforms.u_rand[0] = 0;
+
+	var light_uniforms = light._uniforms;
 
 	if(!tex)
 		tex = LS.Renderer._black_texture;
@@ -17455,6 +17453,7 @@ LGraphVolumetricLight.prototype.onExecute = function()
 		shadowmap.bind(2);
 		noise_texture.bind(3);
 		var mesh = Mesh.getScreenQuad();
+		shader.uniforms( light_uniforms );
 		shader.uniforms( uniforms ).draw( mesh );
 	});
 
@@ -17484,8 +17483,9 @@ LGraphVolumetricLight.pixel_shader = "precision highp float;\n\
 		uniform vec2 u_camera_planes;\n\
 		uniform vec4 u_shadow_params;\n\
 		uniform vec4 u_light_info;\n\
-		uniform vec3 u_light_vector;\n\
+		uniform vec3 u_light_front;\n\
 		uniform vec3 u_light_color;\n\
+		uniform mat4 u_light_matrix;\n\
 		uniform float u_intensity;\n\
 		uniform float u_attenuation;\n\
 		uniform vec2 u_rand;\n\
@@ -17518,10 +17518,10 @@ LGraphVolumetricLight.pixel_shader = "precision highp float;\n\
 			current_pos.xyz += rayDir * texture2D(u_noise_texture, uv * 2.0 + u_rand ).x;\n\
 			float brightness = 0.0;\n\
 			float bias = u_shadow_params.y;\n\
-			float accum = ComputeScattering( dot( normalize(rayDir), -u_light_vector));\n\
+			float accum = ComputeScattering( dot( normalize(rayDir), -u_light_front));\n\
 			for(int i = 0; i < SAMPLES; ++i)\n\
 			{\n\
-				vec4 light_uv = u_light_viewprojection_matrix * current_pos;\n\
+				vec4 light_uv = u_light_matrix * current_pos;\n\
 				light_uv.xy /= light_uv.w;\n\
 				light_uv.xy = light_uv.xy * 0.5 + vec2(0.5);\n\
 				float shadow_depth = texture2D( u_shadow_texture, light_uv.xy ).x;\n\
@@ -40923,7 +40923,9 @@ IrradianceCache.prototype.encodeCacheInTexture = function()
 		return;
 
 	var sh_temp_texture_type = gl.FLOAT; //HIGH_PRECISION_FORMAT
-	var sh_texture_type = gl.FLOAT;//gl.HIGH_PRECISION_FORMAT;
+	var sh_texture_type = gl.HIGH_PRECISION_FORMAT;
+	if( !GL.FBO.testSupport( sh_texture_type, gl.RGB ) )
+		sh_texture_type = gl.FLOAT;
 
 	//create texture
 	if( !this._sh_texture || this._sh_texture.height != this._irradiance_shs.length || this._sh_texture.type != sh_texture_type )

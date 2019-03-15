@@ -17008,7 +17008,7 @@ function LGraphHistogram()
 	this.addInput("in","Texture");
 	this.addInput("enabled","Boolean");
 	this.addOutput("out","Texture");
-	this.properties = { enabled: true, scale: 0.5 };
+	this.properties = { enabled: true, scale: 0.5, position: [0,0], size: [1,1] };
 }
 
 LGraphHistogram.title = "Histogram";
@@ -17093,6 +17093,9 @@ LGraphHistogram.prototype.onExecute = function()
 	this._texture.bind(0);
 	gl.disable(gl.BLEND);
 
+	gl.viewport( this.properties.position[0] * gl.canvas.width, this.properties.position[1] * gl.canvas.height, 
+				this.properties.size[0] * gl.canvas.width, this.properties.size[1] * gl.canvas.height );
+
 	for(var i = 0; i < 3; ++i)
 	{
 		shader.setUniform("u_mask",LGraphHistogram.masks[i]);
@@ -17100,6 +17103,8 @@ LGraphHistogram.prototype.onExecute = function()
 	}
 
 	this.setOutputData(0, this._texture );
+
+	gl.viewport( 0,0, gl.canvas.width, gl.canvas.height );
 }
 
 LGraphHistogram.masks = [vec3.fromValues(1,0,0),vec3.fromValues(0,1,0),vec3.fromValues(0,0,1)];
@@ -17351,9 +17356,11 @@ function LGraphVolumetricLight()
 		u_color_texture:0,
 		u_depth_texture:1,
 		u_shadow_texture:2,
+		u_noise_texture:3,
 		u_intensity: 1,
 		u_camera_planes: null,
-		u_inv_vp: this._inv_matrix
+		u_inv_vp: this._inv_matrix,
+		u_rand: vec2.create()
 	};
 }
 
@@ -17371,7 +17378,7 @@ LGraphVolumetricLight.prototype.onExecute = function()
 	var camera = this.getInputData(2);
 	var light = this.getInputData(3);
 
-	if( !this.isOutputConnected(0) || !tex)
+	if( !this.isOutputConnected(0))
 		return; //saves work
 
 	var enabled = this.getInputData(4);
@@ -17392,7 +17399,7 @@ LGraphVolumetricLight.prototype.onExecute = function()
 	var height = depth.height;
 	var type = this.precision === LGraphTexture.LOW ? gl.UNSIGNED_BYTE : gl.HIGH_PRECISION_FORMAT;
 	if (this.precision === LGraphTexture.DEFAULT)
-		type = tex.type;
+		type = tex ? tex.type : gl.UNSIGNED_BYTE;
 	if(!this._tex || this._tex.width != width || this._tex.height != height || this._tex.type != type )
 		this._tex = new GL.Texture( width, height, { type: type, format: gl.RGBA, filter: gl.LINEAR });
 
@@ -17430,9 +17437,14 @@ LGraphVolumetricLight.prototype.onExecute = function()
 	uniforms.u_light_viewprojection_matrix = light._light_matrix;
 	uniforms.u_shadow_params = light._uniforms.u_shadow_params;
 	uniforms.u_light_color = light._uniforms.u_light_color;
+	uniforms.u_light_info = light._uniforms.u_light_info;
+	uniforms.u_light_vector = light._front;
 	uniforms.u_attenuation = this.properties.attenuation;
+	uniforms.u_rand[1] = uniforms.u_rand[0] = 0;
 
-	//TODO: add noise pattern
+	if(!tex)
+		tex = LS.Renderer._black_texture;
+	var noise_texture = LGraphTexture.getNoiseTexture();
 
 	this._tex.drawTo(function() {
 		gl.disable( gl.DEPTH_TEST );
@@ -17441,6 +17453,7 @@ LGraphVolumetricLight.prototype.onExecute = function()
 		tex.bind(0);
 		depth.bind(1);
 		shadowmap.bind(2);
+		noise_texture.bind(3);
 		var mesh = Mesh.getScreenQuad();
 		shader.uniforms( uniforms ).draw( mesh );
 	});
@@ -17455,12 +17468,6 @@ LGraphVolumetricLight.prototype.onGetInputs = function()
 
 /* from http://www.alexandre-pestana.com/volumetric-lights/
 // Mie scaterring approximated with Henyey-Greenstein phase function.
-float ComputeScattering(float lightDotView)
-{
-float result = 1.0f - G_SCATTERING * G_SCATTERING;
-result /= (4.0f * PI * pow(1.0f + G_SCATTERING * G_SCATTERING - (2.0f * G_SCATTERING) *      lightDotView, 1.5f));
-return result;
-}
 
 accumFog += ComputeScattering(dot(rayDirection, sunDirection)).xxx * g_SunColor;
 */
@@ -17470,14 +17477,26 @@ LGraphVolumetricLight.pixel_shader = "precision highp float;\n\
 		uniform sampler2D u_color_texture;\n\
 		uniform sampler2D u_depth_texture;\n\
 		uniform sampler2D u_shadow_texture;\n\
+		uniform sampler2D u_noise_texture;\n\
 		varying vec2 v_coord;\n\
 		uniform mat4 u_inv_vp;\n\
 		uniform mat4 u_light_viewprojection_matrix;\n\
 		uniform vec2 u_camera_planes;\n\
 		uniform vec4 u_shadow_params;\n\
+		uniform vec4 u_light_info;\n\
+		uniform vec3 u_light_vector;\n\
 		uniform vec3 u_light_color;\n\
 		uniform float u_intensity;\n\
 		uniform float u_attenuation;\n\
+		uniform vec2 u_rand;\n\
+		const float G_SCATTERING = 0.5;\n\
+		const float PI = 3.14159265358979323846;\n\
+		float ComputeScattering(float lightDotView)\n\
+		{\n\
+			float result = 1.0 - G_SCATTERING * G_SCATTERING;\n\
+			result /= (4.0 * PI * pow(1.0 + G_SCATTERING * G_SCATTERING - (2.0 * G_SCATTERING) * lightDotView, 1.5));\n\
+			return result;\n\
+		}\n\
 		#define SAMPLES 64\n\
 		\n\
 		void main() {\n\
@@ -17494,10 +17513,12 @@ LGraphVolumetricLight.pixel_shader = "precision highp float;\n\
 			screenpos.z = 0.0;\n\
 			vec4 nearpos = u_inv_vp * screenpos;\n\
 			nearpos.xyz /= nearpos.w;\n\
-			vec3 delta = (farpos.xyz - nearpos.xyz) / float(SAMPLES);\n\
+			vec3 rayDir = (farpos.xyz - nearpos.xyz) / float(SAMPLES);\n\
 			vec4 current_pos = vec4( nearpos.xyz, 1.0 );\n\
+			current_pos.xyz += rayDir * texture2D(u_noise_texture, uv * 2.0 + u_rand ).x;\n\
 			float brightness = 0.0;\n\
 			float bias = u_shadow_params.y;\n\
+			float accum = ComputeScattering( dot( normalize(rayDir), -u_light_vector));\n\
 			for(int i = 0; i < SAMPLES; ++i)\n\
 			{\n\
 				vec4 light_uv = u_light_viewprojection_matrix * current_pos;\n\
@@ -17505,8 +17526,8 @@ LGraphVolumetricLight.pixel_shader = "precision highp float;\n\
 				light_uv.xy = light_uv.xy * 0.5 + vec2(0.5);\n\
 				float shadow_depth = texture2D( u_shadow_texture, light_uv.xy ).x;\n\
 				if (((light_uv.z - bias) / light_uv.w * 0.5 + 0.5) < shadow_depth )\n\
-					brightness += 1.0;\n\
-				current_pos.xyz += delta;\n\
+					brightness += accum;\n\
+				current_pos.xyz += rayDir;\n\
 			}\n\
 			//color.xyz += u_intensity * u_light_color * brightness / float(SAMPLES);\n\
 			color.xyz = mix(color.xyz, u_light_color, clamp( pow(u_intensity * brightness / float(SAMPLES), u_attenuation),0.0,1.0));\n\
@@ -21865,6 +21886,7 @@ function RenderFrameContext( o )
 		this.configure(o);
 }
 
+
 RenderFrameContext.current = null;
 RenderFrameContext.stack = [];
 
@@ -21889,7 +21911,10 @@ RenderFrameContext["@precision"] = { widget: "combo", values: {
 
 RenderFrameContext["@format"] = { widget: "combo", values: { 
 		"RGB": GL.RGB,
-		"RGBA": GL.RGBA
+		"RGBA": GL.RGBA,
+		"LUMINANCE": GL.LUMINANCE,
+		"LUMINANCE_ALPHA": GL.LUMINANCE_ALPHA,
+		"ALPHA": GL.ALPHA
 	}
 };
 
@@ -21980,6 +22005,12 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 		default:
 			type = this.precision; break; //used for custom formats
 	}
+
+	//check support
+	if( type == GL.HALF_FLOAT_OES && !GL.FBO.testSupport( type, format ) )
+		format = gl.RGBA;
+	if( type == GL.HALF_FLOAT_OES && !GL.FBO.testSupport( type, format ) )
+		type = gl.FLOAT;
 
 	var textures = this._textures;
 
@@ -40892,7 +40923,7 @@ IrradianceCache.prototype.encodeCacheInTexture = function()
 		return;
 
 	var sh_temp_texture_type = gl.FLOAT; //HIGH_PRECISION_FORMAT
-	var sh_texture_type = gl.HIGH_PRECISION_FORMAT;
+	var sh_texture_type = gl.FLOAT;//gl.HIGH_PRECISION_FORMAT;
 
 	//create texture
 	if( !this._sh_texture || this._sh_texture.height != this._irradiance_shs.length || this._sh_texture.type != sh_texture_type )
@@ -45441,17 +45472,24 @@ Scene.prototype.loadScripts = function( scripts, on_complete, on_error, force_re
 	for(var i in scripts)
 	{
 		var script_url = scripts[i];
-		var res = LS.ResourcesManager.getResource( script_url );
-		if(!res || force_reload)
+		var is_external = this.external_scripts.indexOf( script_url ) != -1;
+		if( !is_external )
 		{
-			final_scripts.push( LS.ResourcesManager.getFullURL( script_url ) );
-			continue;
-		}
+			var res = LS.ResourcesManager.getResource( script_url );
+			if(!res || force_reload)
+			{
+				var final_url = LS.ResourcesManager.getFullURL( script_url );
+				final_scripts.push( final_url );
+				continue;
+			}
 
-		var blob = new Blob([res.data],{encoding:"UTF-8", type: 'text/plain;charset=UTF-8'});
-		var objectURL = URL.createObjectURL( blob );
-		final_scripts.push( objectURL );
-		revokable.push( objectURL );
+			var blob = new Blob([res.data],{encoding:"UTF-8", type: 'text/plain;charset=UTF-8'});
+			var objectURL = URL.createObjectURL( blob );
+			final_scripts.push( objectURL );
+			revokable.push( objectURL );
+		}
+		else
+			final_scripts.push( script_url );
 	}
 
 	LS.Network.requestScript( final_scripts, inner_complete, on_error );
@@ -49297,10 +49335,11 @@ LS.Formats.addSupportedFormat( "bvh", parserBVH );
 // Collada.js  https://github.com/jagenjo/collada.js
 // Javi Agenjo 2015 
 // Specification from https://www.khronos.org/collada/wiki
+var _collada;
 
 (function(global){
 
-var isWorker = global.document === undefined;
+var isWorker = typeof(window) == "undefined" && typeof(exports) == "undefined";
 var DEG2RAD = Math.PI * 2 / 360;
 
 //global temporal variables
@@ -49331,7 +49370,7 @@ if( isWorker )
 }
 
 //Collada parser
-global.Collada = {
+global.Collada = _collada = {
 
 	libsPath: "./",
 	workerPath: "./",
@@ -52244,6 +52283,7 @@ global.Collada = {
 	}
 };
 
+var Collada = global.Collada;
 
 //add worker launcher
 if(!isWorker)
@@ -52383,7 +52423,10 @@ if(isWorker)
 	}, false);
 }
 
-})( typeof(window) != "undefined" ? window : self );
+//})( typeof(window) != "undefined" ? window : self );
+})( typeof(window) != "undefined" ? window : ( typeof(exports) != "undefined" ? exports : self ) );
+
+
 ///@FILE:../src/parsers/parserDAE.js
 ///@INFO: PARSER
 var parserDAE = {

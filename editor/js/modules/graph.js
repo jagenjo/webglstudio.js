@@ -172,19 +172,6 @@ var GraphModule = {
 	render: function()
 	{
 		return;
-
-		if( !EditorView.render_overgraph || !this.current_overgraph || RenderModule.render_settings.in_player || !RenderModule.frame_updated )
-			return;
-
-		if(!this.graph_canvas)
-		{
-			this.graph_canvas = new LGraphCanvas();
-			this.graph_canvas.pause_rendering = true;
-			this.graph_canvas.setCanvas( gl.canvas );
-		}
-
-		this.graph_canvas.setGraph( this.current_overgraph );
-		this.graph_canvas.draw();
 	},
 
 	onKeyDown: function(e)
@@ -284,10 +271,20 @@ GraphModule.showGraphComponent = function( component, inspector )
 		}
 	}
 
-	inspector.addButton(null,"Edit Graph", { callback: function() {
+	inspector.widgets_per_row = 2;
+	inspector.addButton(null,"Edit Graph", { width: "80%", callback: function() {
 		GraphModule.openTab();
 		GraphModule.editInstanceGraph( component, { id: component.uid, title: component._root.uid } );
 	}});
+
+	inspector.addButton(null,"Nodes", { width: "20%", callback: function(v,event) {
+		var graph = component.graph;
+		var options = graph._nodes;
+		var menu = new LiteGUI.ContextMenu( options, { ignore_item_callbacks: true, event: event, title: "Nodes", autoopen: false, callback: function( v, o, e ) {
+			EditorModule.inspect(v);
+		}});
+	}});
+	inspector.widgets_per_row = 1;
 }
 
 LS.Components.GraphComponent["@inspector"] = GraphModule.showGraphComponent;

@@ -15,6 +15,8 @@ global.requestAnimationFrame = global.requestAnimationFrame || global.mozRequest
 
 GL.blockable_keys = {"Up":true,"Down":true,"Left":true,"Right":true};
 
+GL.reverse = null;
+
 //some consts
 GL.LEFT_MOUSE_BUTTON = 1;
 GL.MIDDLE_MOUSE_BUTTON = 2;
@@ -5015,8 +5017,14 @@ global.Texture = GL.Texture = function Texture( width, height, options, gl ) {
 	{
 		if( this.texture_type == GL.TEXTURE_CUBE_MAP )
 		{
-			for(var i = 0; i < pixel_data.length; ++i)
-				pixel_data[i] = toTypedArray( pixel_data[i] );
+			if(pixel_data[0].constructor === Number) //special case, specify just one face and copy it
+			{
+				pixel_data = toTypedArray( pixel_data );
+				pixel_data = [pixel_data,pixel_data,pixel_data,pixel_data,pixel_data,pixel_data]; 
+			}
+			else
+				for(var i = 0; i < pixel_data.length; ++i)
+					pixel_data[i] = toTypedArray( pixel_data[i] );
 		}
 		else
 			pixel_data = toTypedArray( pixel_data );
@@ -5027,9 +5035,9 @@ global.Texture = GL.Texture = function Texture( width, height, options, gl ) {
 	{
 		if(data.constructor !== Array)
 			return data;
-		if( type == gl.FLOAT)
+		if( type == GL.FLOAT)
 			return new Float32Array( data );
-		if( type == gl.HALF_FLOAT_OES)
+		if( type == GL.HALF_FLOAT_OES)
 			return new Uint16Array( data );
 		return new Uint8Array( data );
 	}
@@ -5061,7 +5069,7 @@ global.Texture = GL.Texture = function Texture( width, height, options, gl ) {
 	else if(this.texture_type == GL.TEXTURE_3D)
 	{
 		if(this.gl.webgl_version == 1)
-			throw("TEXTURE_3D not supported in WebGL 1. Enable WebGL 2 in the context by pasing webgl2:true");
+			throw("TEXTURE_3D not supported in WebGL 1. Enable WebGL 2 in the context by passing webgl2:true to the context");
 		if(!options.depth)
 			throw("3d texture depth must be set in the options.depth");
 		gl.texImage3D( GL.TEXTURE_3D, 0, this.internalFormat, width, height, options.depth, 0, this.format, this.type, pixel_data || null );
@@ -7131,6 +7139,7 @@ FBO.prototype.update = function( skip_disable )
 
 	var target = gl.webgl_version == 1 ? gl.FRAMEBUFFER : gl.DRAW_FRAMEBUFFER;
 
+	//detach anything bindede
 	gl.framebufferRenderbuffer( target, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null );
 	gl.framebufferRenderbuffer( target, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, null );
 	//detach color too?
@@ -7237,7 +7246,7 @@ FBO.prototype.update = function( skip_disable )
 
 	//check completion
 	var complete = gl.checkFramebufferStatus( target );
-	if(complete !== gl.FRAMEBUFFER_COMPLETE)
+	if(complete !== gl.FRAMEBUFFER_COMPLETE) //36054: GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT
 		throw("FBO not complete: " + complete);
 
 	//restore state
@@ -7320,6 +7329,28 @@ FBO.prototype.delete = function()
 {
 	gl.deleteFramebuffer( this.handler );
 	this.handler = null;
+}
+
+//WebGL 1.0 support for certaing FBOs is not very clear and can crash sometimes
+FBO.supported = {};
+
+FBO.testSupport = function( type, format ) {
+	var name = type +":" + format;
+	if( FBO.supported[ name ] != null );
+		return FBO.supported[ name ];
+
+	var tex = new GL.Texture(1,1,{ format: format, type: type });
+	try
+	{
+		var fbo = new GL.FBO([tex]);
+	}
+	catch (err)
+	{
+		console.warn("This browser WEBGL implementation doesn't support this FBO format: " + GL.reverse[type] + " " + GL.reverse[format] );
+		return FBO.supported[ name ] = false;
+	}
+	FBO.supported[ name ] = true;
+	return true;
 }
 
 
@@ -8921,6 +8952,15 @@ GL.create = function(options) {
 	}
 	else
 		console.warn("Creating LiteGL context over the same canvas twice");
+
+	//reverse names helper (assuming no names repeated)
+	if(!GL.reverse)
+	{
+		GL.reverse = {}; 
+		for(var i in gl)
+			if( gl[i] && gl[i].constructor === Number )
+				GL.reverse[ gl[i] ] = i;
+	}
 	
 	//just some checks
 	if(typeof(glMatrix) == "undefined")

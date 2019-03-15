@@ -14197,7 +14197,7 @@ if(typeof(GL) != "undefined")
 	LGraphTextureDownsample.title = "Downsample";
 	LGraphTextureDownsample.desc = "Downsample Texture";
 	LGraphTextureDownsample.widgets_info = { 
-		iterations: { type:"number", step: 1, precision: 0, min: 1 },
+		iterations: { type:"number", step: 1, precision: 0, min: 0 },
 		precision: { widget:"combo", values: LGraphTexture.MODE_VALUES }
 	};
 
@@ -14213,6 +14213,12 @@ if(typeof(GL) != "undefined")
 		//we do not allow any texture different than texture 2D
 		if(!tex || tex.texture_type !== GL.TEXTURE_2D )
 			return;
+
+		if( this.properties.iterations < 1)
+		{
+			this.setOutputData(0,tex);
+			return;
+		}
 
 		var shader = LGraphTextureDownsample._shader;
 		if(!shader)
@@ -16106,10 +16112,7 @@ LGraphTextureKuwaharaFilter.pixel_shader = "\n\
 
 		var avg = this.getInputData(1);
 		if(avg == null)
-		{
-			this.setOutputData(0, tex );
-			return;
-		}
+			avg = this.properties.average_lum;
 
 		var uniforms = this._uniforms;
 		var shader = null;

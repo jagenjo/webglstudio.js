@@ -3,12 +3,15 @@
 var PluginsModule = {
 	name: "plugins",
 
-	official_scripts_url: "https://www.webglstudio.org/oficial_scripts/",
+	addons_url: "https://www.webglstudio.org/addons/",
+	plugins_url: "https://www.webglstudio.org/plugins/",
 
-	preferences_panel: [ {name:"plugins", title:"Plugins", icon:null } ],
+	preferences_panel: [ { name:"plugins", title:"Plugins", icon:null } ],
 	plugins: [], //loaded plugins
 
 	preferences: {
+		custom_addons_url: null,
+		custom_plugins_url: null,
 		plugins: [] //contains objects with info about the plugin
 	},
 
@@ -38,6 +41,7 @@ var PluginsModule = {
 			return;
 
 		var selected = null;
+
 		var list = widgets.addList("Installed", this.plugins, { height: 380, callback: function(v){
 			selected = v;
 		}});
@@ -70,6 +74,12 @@ var PluginsModule = {
 				LiteGUI.alert("Plugin cannot be loaded");
 			});
 		}});
+
+		widgets.addButton("Fetch from official repository","Search",function(v){
+			PluginsModule.showPluginsDialog(function(v){
+				
+			});
+		});
 	},
 
 	loadPlugin: function( url, on_complete, on_error )
@@ -198,13 +208,37 @@ var PluginsModule = {
 		this.plugins = [];
 	},
 
-	showOficialScriptsDialog: function()
+	showAddonsDialog: function( on_callback )
 	{
-		var dialog = new LiteGUI.Dialog( { title: "Oficial Scripts", close: true, width: 800, height: 380, scroll: false, draggable: true } );
+		this.showExternalListDialog("addons", function(url){
+			LS.GlobalScene.external_scripts.push( url + selected.script_url );
+			LS.GlobalScene.loadScripts();
+			if(on_callback)
+				on_callback(url);
+		});
+	},
+
+	showPluginsDialog: function( on_callback )
+	{
+		this.showExternalListDialog("plugins", function(url){
+			if(on_callback)
+				on_callback(url);
+		});
+	},
+
+	showExternalListDialog: function( mode, on_callback )
+	{
+		var dialog = new LiteGUI.Dialog( { title: mode + " Scripts", close: true, width: 800, height: 380, scroll: false, draggable: true } );
 
 		var area = new LiteGUI.Area({width:"100%",height:"100%"});
 		area.split("horizontal",["50%",null]);
 		dialog.add(area);
+
+		var url;
+		if(mode == "plugins")
+			url = PluginsModule.preferences.custom_plugins_url || PluginsModule.plugins_url;
+		else
+			url = PluginsModule.preferences.custom_addons_url || PluginsModule.addons_url;
 
 		var selected = null;
 
@@ -225,15 +259,26 @@ var PluginsModule = {
 		inspector_right.addButton(null,"Include",{ callback: function(){
 			if(!selected)
 				return;
-			LS.GlobalScene.external_scripts.push( PluginsModule.official_scripts_url + selected.script_url );
-			LS.GlobalScene.loadScripts();
+			var url;
+			if(mode == "plugins")
+				url = PluginsModule.preferences.custom_plugins_url || PluginsModule.plugins_url;
+			else
+				url = PluginsModule.preferences.custom_addons_url || PluginsModule.addons_url;
+			if(on_callback)
+				on_callback( url + selected.script_url );
 			EditorModule.refreshAttributes();
 			dialog.close();
 		}});
 
 		//left
+		inspector_left.addString("Repository", url, function(v){
+			if(mode == "plugins")
+				url = PluginsModule.preferences.custom_plugins_url = v;
+			else
+				url = PluginsModule.preferences.custom_addons_url = v;
+		});
 		inspector_left.addTitle("Scripts");
-		var list = inspector_left.addList(null,[],{ height: 290, callback: function(v){
+		var list = inspector_left.addList(null,[],{ height: 270, callback: function(v){
 			selected = v;
 			title.setValue(v.name);
 			author.setValue(v.author);
@@ -242,11 +287,12 @@ var PluginsModule = {
 		}});
 		inspector_left.addSeparator();
 		inspector_left.addButton(null,"Refresh",{ callback: function(){
-			this.fetchOficialScripts( inner );
+			this.fetchList( url, inner );
 		}});
 
 		//fetch list
-		this.fetchOficialScripts( inner );
+		this.fetchList( url, inner );
+
 		function inner(v)
 		{
 			if(!v)
@@ -257,9 +303,9 @@ var PluginsModule = {
 		dialog.show();
 	},
 
-	fetchOficialScripts: function( on_complete )
+	fetchList: function( url, on_complete )
 	{
-		LiteGUI.requestJSON( PluginsModule.official_scripts_url + "list.json", inner );
+		LiteGUI.requestJSON( url + "list.json", inner );
 		function inner(v)
 		{
 			if(!v)

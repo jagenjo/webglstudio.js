@@ -359,7 +359,7 @@ function enableWebGLCanvas( canvas, options )
 		return getTexture( img );
 	}
 
-	//to craete gradients
+	//to create gradients
 	function WebGLCanvasGradient(x,y,x2,y2)
 	{
 		this.id = (ctx._last_gradient_id++) % ctx._max_gradients;
@@ -1269,13 +1269,13 @@ function enableWebGLCanvas( canvas, options )
 				{
 					ctx.save();
 					ctx.beginPath();
-					ctx.rect( Math.floor(x)+0.5,Math.floor(y)+0.5, char_size-2, char_size-2 );
+					ctx.rect( Math.floor(x)+0.5, Math.floor(y)+0.5, char_size-2, char_size-2 );
 					ctx.clip();
-					ctx.fillText(character,Math.floor(x+char_size*xoffset),Math.floor(y+char_size+yoffset),char_size);
+					ctx.fillText( character, Math.floor(x+char_size*xoffset), Math.floor(y+char_size+yoffset), char_size );
 					ctx.restore();
 				}
 				else
-					ctx.fillText(character,Math.floor(x+char_size*xoffset),Math.floor(y+char_size+yoffset),char_size);
+					ctx.fillText( character, Math.floor(x+char_size*xoffset), Math.floor(y+char_size+yoffset), char_size );
 				x += char_size; //cannot pack chars closer because rendering points, no quads
 				if((x + char_size) > canvas.width)
 				{
@@ -1307,9 +1307,7 @@ function enableWebGLCanvas( canvas, options )
 			}
 		}
 
-		//console.log("Font Atlas Generated:", ((getTime() - now)*0.001).toFixed(2),"s");
-
-		texture = GL.Texture.fromImage( canvas, { magFilter: imageSmoothingEnabled ? gl.LINEAR : gl.NEAREST, minFilter: imageSmoothingEnabled ? gl.LINEAR : gl.NEAREST, premultiply_alpha: false, anisotropic: 8 } );
+		texture = GL.Texture.fromImage( canvas, { format: gl.ALPHA, magFilter: imageSmoothingEnabled ? gl.LINEAR : gl.NEAREST, minFilter: imageSmoothingEnabled ? gl.NEAREST_MIPMAP_LINEAR : gl.NEAREST, premultiply_alpha: false, anisotropic: 8 } );
 		texture.info = info; //font generation info
 
 		return textures[texture_name] = texture;

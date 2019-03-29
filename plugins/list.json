@@ -1,6 +1,26 @@
 {
 	"scripts":[
 		{
+			"name":"IK Solver",
+			"author":"Eva Valls",
+			"version": "0.1",
+			"script_url":"scripts/ik.js",
+			"includes":[],
+			"description":"Solves a simple IK Chain",
+			"preview_url":null,
+			"video_url":null
+		},
+		{
+			"name":"ThreeJS bridge",
+			"author":"Javi Agenjo",
+			"version": "0.1",
+			"script_url":"scripts/threeJS.js",
+			"includes":[],
+			"description":"Allows to include ThreeJS code inside a LiteScene",
+			"preview_url":null,
+			"video_url":null
+		},
+		{
 			"name":"Volumetric Render",
 			"author":"Javi Agenjo",
 			"version": "0.1",

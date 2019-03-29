@@ -6283,19 +6283,20 @@ Texture.fromMemory = function( width, height, pixels, options) //format in optio
 	Texture.setUploadOptions(options);
 	texture.bind();
 
-	try {
-		gl.texImage2D( gl.TEXTURE_2D, 0, texture.format, width, height, 0, texture.format, texture.type, pixels );
-		texture.width = width;
-		texture.height = height;
-		texture.data = pixels;
-	} catch (e) {
-		if (location.protocol == 'file:') {
-		  throw 'image not loaded for security reasons (serve this page over "http://" instead)';
-		} else {
-		  throw 'image not loaded for security reasons (image must originate from the same ' +
-			'domain as this page or use Cross-Origin Resource Sharing)';
-		}
+	if(pixels.constructor === Array)
+	{
+		if(options.type == gl.FLOAT)
+			pixels = new Float32Array( pixels );
+		else if(options.type == GL.HALF_FLOAT || options.type == GL.HALF_FLOAT_OES) 
+			pixels = new Uint16Array( pixels ); //gl.UNSIGNED_SHORT_4_4_4_4 is only for texture that are SHORT per pixel, not per channel!
+		else 
+			pixels = new Uint8Array( pixels );
 	}
+
+	gl.texImage2D( gl.TEXTURE_2D, 0, texture.format, width, height, 0, texture.format, texture.type, pixels );
+	texture.width = width;
+	texture.height = height;
+	texture.data = pixels;
 	if (options.minFilter && options.minFilter != gl.NEAREST && options.minFilter != gl.LINEAR) {
 		gl.generateMipmap(gl.TEXTURE_2D);
 		texture.has_mipmaps = true;
@@ -7960,9 +7961,9 @@ Shader.prototype.drawBuffers = function( vertexBuffers, indexBuffer, mode, range
 
 Shader._instancing_arrays = [];
 
-Shader.prototype.drawInstanced = function( mesh, primitive, indices, instanced_uniforms, range_start, range_length )
+Shader.prototype.drawInstanced = function( mesh, primitive, indices, instanced_uniforms, range_start, range_length, num_intances )
 {
-	if(range_length == 0)
+	if(range_length === 0)
 		return;
 
 	//bind buffers
@@ -8005,7 +8006,7 @@ Shader.prototype.drawInstanced = function( mesh, primitive, indices, instanced_u
 	//range rendering
 	var offset = 0; //in bytes
 	if(range_start > 0) //render a polygon range
-		offset = range_start; //in bytes (Uint16 == 2 bytes)
+		offset = range_start; 
 
 	if (indexBuffer)
 		length = indexBuffer.buffer.length - offset;
@@ -8087,6 +8088,9 @@ Shader.prototype.drawInstanced = function( mesh, primitive, indices, instanced_u
 		}
 		index+=1;
 	}
+
+	if( num_intances )
+		batch_length = num_intances;
 
 	if( ext ) //webgl 1.0
 	{

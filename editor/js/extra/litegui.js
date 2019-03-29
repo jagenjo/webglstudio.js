@@ -43,25 +43,39 @@ var LiteGUI = {
 		if(!this.container )
 			this.container = document.body;
 
-		//create litegui root element
-		var root = document.createElement("div");
-		root.className = "litegui-wrap fullscreen";
-		root.style.position = "relative";
-		root.style.overflow = "hidden";
-		this.root = root;
-		this.container.appendChild( root );
+		if( options.wrapped )
+		{
+			//create litegui root element
+			var root = document.createElement("div");
+			root.style.position = "relative";
+			root.style.overflow = "hidden";
+			this.root = root;
+			this.container.appendChild( root );
+
+			//content: the main container for everything
+			var content = document.createElement("div");
+			this.content = content;
+			this.root.appendChild(content);
+
+			//maximize
+			if( this.root.classList.contains("fullscreen") )
+			{
+				window.addEventListener("resize", function(e) { 
+					LiteGUI.maximizeWindow();
+				});
+			}
+		}
+		else
+			this.root = this.content = this.container;
+
+		this.root.className = "litegui-wrap fullscreen";
+		this.content.className = "litegui-maincontent";
 
 		//create modal dialogs container
 		var modalbg = this.modalbg_div = document.createElement("div");
 		this.modalbg_div.className = "litemodalbg";
 		this.root.appendChild(this.modalbg_div);
 		modalbg.style.display = "none";
-
-		//content: the main container for everything
-		var content = document.createElement("div");
-		content.className = "litegui-maincontent";
-		this.content = content;
-		this.root.appendChild(content);
 
 		//create menubar
 		if(options.menubar)
@@ -71,14 +85,7 @@ var LiteGUI = {
 		if(options.gui_callback)
 			options.gui_callback();
 
-		//maximize
-		if( this.root.classList.contains("fullscreen") )
-		{
-			window.addEventListener("resize", function(e) { 
-				LiteGUI.maximizeWindow();
-			});
-		}
-
+		//external windows
 		window.addEventListener("beforeunload", function(e) {
 			for(var i in LiteGUI.windows)
 				LiteGUI.windows[i].close();
@@ -2653,21 +2660,22 @@ function Console( options )
 
 	this.root = document.createElement("div");
 	this.root.className = "liteconsole";
-
 	this.root.innerHTML = "<div class='log'></div><div class='foot'><input type='text'/></div>";
 
 	this.log_element = this.root.querySelector('.log');
 	this.input = this.root.querySelector('input');
 
-	this.input.addEventListener("keydown", this.onKeyDown.bind(this) );
-
+	this.input.addEventListener("keydown", this.processKeyDown.bind(this) );
 	this._prompt = options.prompt || "]";
+
+	this.onAutocomplete = null; //receives string, must return final string
+	this.onProcessCommand = null; //receives input value
 
 	this.history = [];
 	this._history_offset = 0;
 }
 
-Console.prototype.onKeyDown = function(e)
+Console.prototype.processKeyDown = function(e)
 {
 	if(this._input_blocked)
 		return;
@@ -7055,8 +7063,14 @@ function Inspector( options )
 }
 
 //append the inspector to a parent
-Inspector.prototype.appendTo = function( parent, at_front)
+Inspector.prototype.appendTo = function( parent, at_front )
 {
+	if(!parent)
+		return;
+	if(parent.constructor === String)
+		parent = document.querySelector(parent);
+	if(!parent)
+		return;
 	if( at_front )
 		parent.insertBefore( this.root, parent.firstChild );
 	else

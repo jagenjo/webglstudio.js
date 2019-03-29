@@ -310,7 +310,12 @@ var LiteFileServer = {
 		for(var i = 0; i < t.length; i++)
 		{
 			if(t[i] == "..")
-				result.pop();
+			{
+				if(result.length) //removing ".." when they are at the beginning is problematic as they refer to the hostname path
+					result.pop();
+				else
+					result.push("..");
+			}
 			else
 				result.push( t[i] );
 		}

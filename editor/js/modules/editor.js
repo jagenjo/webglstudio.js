@@ -1683,7 +1683,7 @@ var EditorModule = {
 		  return 0;
 		});
 
-		list_widget = widgets.addList(null, compos, { height: 340, callback: inner_selected, callback_dblclick: function(v){
+		list_widget = widgets.addList(null, compos, { height: 364, callback: inner_selected, callback_dblclick: function(v){
 			selected_component = v;
 			inner_add();
 		}});
@@ -1694,7 +1694,9 @@ var EditorModule = {
 		for(var i = 0; i < icons.length; i++)
 			icons[i].onerror = function() { this.src = "imgs/mini-icon-question.png"; }
 
-
+		widgets.addButton("Import from repository","Open", { name_width: 200, callback: function(){
+			PluginsModule.showAddonsDialog();
+		}});
 		widgets.addButton(null,"Add", { className:"big", callback: inner_add });
 
 		dialog.add( widgets );

@@ -399,7 +399,9 @@ InspectorWidget.prototype.inspectScene = function( scene )
 		}});
 
 		inspector.addButton(null,"Add from Repository",{ width: "40%", callback: function(){
-			PluginsModule.showOficialScriptsDialog();
+			PluginsModule.showAddonsDialog(function(){
+				inspector.refresh();
+			});
 		}});
 		inspector.widgets_per_row = 1;
 

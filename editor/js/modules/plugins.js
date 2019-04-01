@@ -210,19 +210,17 @@ var PluginsModule = {
 
 	showAddonsDialog: function( on_callback )
 	{
-		this.showExternalListDialog("addons", function(url){
-			LS.GlobalScene.external_scripts.push( url + selected.script_url );
-			LS.GlobalScene.loadScripts();
-			if(on_callback)
-				on_callback(url);
+		this.showExternalListDialog("addons", function( url ){
+			LS.GlobalScene.external_scripts.push( url );
+			LS.GlobalScene.loadScripts( null, on_callback );
 		});
 	},
 
 	showPluginsDialog: function( on_callback )
 	{
-		this.showExternalListDialog("plugins", function(url){
-			if(on_callback)
-				on_callback(url);
+		this.showExternalListDialog("plugins", function( url ){
+			if( on_callback )
+				on_callback( url );
 		});
 	},
 
@@ -287,7 +285,7 @@ var PluginsModule = {
 		}});
 		inspector_left.addSeparator();
 		inspector_left.addButton(null,"Refresh",{ callback: function(){
-			this.fetchList( url, inner );
+			PluginsModule.fetchList( url, inner );
 		}});
 
 		//fetch list

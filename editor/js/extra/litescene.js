@@ -15828,7 +15828,7 @@ if(typeof(LiteGraph) != "undefined")
 	global.LGraphSceneNode = function()
 	{
 		this.properties = { node_id: "" };
-		this.size = [100,20];
+		this.size = [140,20];
 		this._node = null;
 	}
 
@@ -17672,35 +17672,37 @@ if(typeof(LiteGraph) != "undefined")
 	function LGraphGUIText()
 	{
 		this.addInput("text");
-		this.properties = { text: "", font: "", color: [1,1,1,1], position: [20,20], corner: LGraphGUIText.CORNER_TOP_LEFT };
+		this.properties = { enabled: true, text: "", font: "", color: [1,1,1,1], position: [20,20], corner: LiteGraph.CORNER_TOP_LEFT };
 	}
 
 	LGraphGUIText.title = "GUIText";
 	LGraphGUIText.desc = "renders text on webgl canvas";
 	LGraphGUIText.priority = 2; //render at the end
 
-	LGraphGUIText.CORNER_TOP_LEFT = 0;
-	LGraphGUIText.CORNER_TOP_RIGHT = 1;
-	LGraphGUIText.CORNER_BOTTOM_LEFT = 2;
-	LGraphGUIText.CORNER_BOTTOM_RIGHT = 3;
-	LGraphGUIText.CORNER_TOP_CENTER = 4;
-	LGraphGUIText.CORNER_BOTTOM_CENTER = 5;
+	LiteGraph.CORNER_TOP_LEFT = 0;
+	LiteGraph.CORNER_TOP_RIGHT = 1;
+	LiteGraph.CORNER_BOTTOM_LEFT = 2;
+	LiteGraph.CORNER_BOTTOM_RIGHT = 3;
+	LiteGraph.CORNER_TOP_CENTER = 4;
+	LiteGraph.CORNER_BOTTOM_CENTER = 5;
 
-	LGraphGUIText["@corner"] = { type:"enum", values:{ 
-		"top-left": LGraphGUIText.CORNER_TOP_LEFT, 
-		"top-right": LGraphGUIText.CORNER_TOP_RIGHT,
-		"bottom-left": LGraphGUIText.CORNER_BOTTOM_LEFT,
-		"bottom-right": LGraphGUIText.CORNER_BOTTOM_RIGHT,
-		"top-center": LGraphGUIText.CORNER_TOP_CENTER,
-		"bottom-center": LGraphGUIText.CORNER_BOTTOM_CENTER
+	var corner_options = { type:"enum", values:{ 
+		"top-left": LiteGraph.CORNER_TOP_LEFT, 
+		"top-right": LiteGraph.CORNER_TOP_RIGHT,
+		"bottom-left": LiteGraph.CORNER_BOTTOM_LEFT,
+		"bottom-right": LiteGraph.CORNER_BOTTOM_RIGHT,
+		"top-center": LiteGraph.CORNER_TOP_CENTER,
+		"bottom-center": LiteGraph.CORNER_BOTTOM_CENTER
 	}};
+
+	LGraphGUIText["@corner"] = corner_options;
 	LGraphGUIText["@color"] = { type:"color" };
 
 	LGraphGUIText.prototype.onGetInputs = function(){
 		return [["enabled","boolean"]];
 	}
 
-	LGraphGUIText.prototype.onExecute = function()
+	LGraphGUIText.prototype.onRenderGUI = function()
 	{ 
 		var ctx = window.gl;
 		if(!ctx)
@@ -17709,7 +17711,7 @@ if(typeof(LiteGraph) != "undefined")
 		if( !window.LS || !LS.Renderer._current_render_settings || !LS.Renderer._current_render_settings.render_gui )
 			return;
 
-		var enabled = this.getInputData(1);
+		var enabled = this.getInputOrProperty("enabled");
 		if(enabled === false)
 			return;
 
@@ -17731,12 +17733,12 @@ if(typeof(LiteGraph) != "undefined")
 
 		switch( this.properties.corner )
 		{
-			case LGraphGUIText.CORNER_TOP_RIGHT: x = gl.canvas.width - x; break;
-			case LGraphGUIText.CORNER_BOTTOM_LEFT: y = gl.canvas.height - y; break;
-			case LGraphGUIText.CORNER_BOTTOM_RIGHT: x = gl.canvas.width - x; y = gl.canvas.height - y; break;
-			case LGraphGUIText.CORNER_TOP_CENTER: x = gl.canvas.width * 0.5; break;
-			case LGraphGUIText.CORNER_BOTTOM_CENTER: x = gl.canvas.width * 0.5; y = gl.canvas.height - y; break;
-			case LGraphGUIText.CORNER_TOP_LEFT:
+			case LiteGraph.CORNER_TOP_RIGHT: x = gl.canvas.width - x; break;
+			case LiteGraph.CORNER_BOTTOM_LEFT: y = gl.canvas.height - y; break;
+			case LiteGraph.CORNER_BOTTOM_RIGHT: x = gl.canvas.width - x; y = gl.canvas.height - y; break;
+			case LiteGraph.CORNER_TOP_CENTER: x = gl.canvas.width * 0.5; break;
+			case LiteGraph.CORNER_BOTTOM_CENTER: x = gl.canvas.width * 0.5; y = gl.canvas.height - y; break;
+			case LiteGraph.CORNER_TOP_LEFT:
 			default:
 		}
 
@@ -17747,6 +17749,50 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LiteGraph.registerNodeType("gui/text", LGraphGUIText );
+
+	//special kind of node
+	function LGraphGUISlider()
+	{
+		this.addOutput("v");
+		this.properties = { enabled: true, text: "", min: 0, max: 1, value: 0, position: [20,20], size: [200,40], corner: LiteGraph.CORNER_TOP_LEFT };
+		this._area = vec4.create();
+	}
+
+	LGraphGUISlider.title = "GUISlider";
+	LGraphGUISlider.desc = "Renders a widget on WebGL canvas";
+
+	LGraphGUISlider["@corner"] = corner_options;
+	LGraphGUISlider["@color"] = { type:"color" };
+
+	LGraphGUISlider.prototype.onRenderGUI = function()
+	{
+		var x = this.properties.position[0];
+		var y = this.properties.position[1];
+
+		switch( this.properties.corner )
+		{
+			case LiteGraph.CORNER_TOP_RIGHT: x = gl.canvas.width - x; break;
+			case LiteGraph.CORNER_BOTTOM_LEFT: y = gl.canvas.height - y; break;
+			case LiteGraph.CORNER_BOTTOM_RIGHT: x = gl.canvas.width - x; y = gl.canvas.height - y; break;
+			case LiteGraph.CORNER_TOP_CENTER: x = gl.canvas.width * 0.5; break;
+			case LiteGraph.CORNER_BOTTOM_CENTER: x = gl.canvas.width * 0.5; y = gl.canvas.height - y; break;
+			case LiteGraph.CORNER_TOP_LEFT:
+			default:
+		}
+
+		this._area[0] = x;
+		this._area[1] = y;
+		this._area[2] = this.properties.size[0];
+		this._area[3] = this.properties.size[1];
+		this.properties.value = LS.GUI.HorizontalSlider( this._area, Number(this.properties.value), Number(this.properties.min), Number(this.properties.max), true );
+	}
+
+	LGraphGUISlider.prototype.onExecute = function()
+	{
+		this.setOutputData(0, this.properties.value );
+	}
+
+	LiteGraph.registerNodeType("gui/slider", LGraphGUISlider );
 
 
 	//based in the NNI distance 
@@ -26244,9 +26290,9 @@ Deformer.prototype.applyByCPU = function( vertex_data, normals_data )
 LS.Deformer = Deformer;
 */
 ///@FILE:../src/render/shadows.js
-///@INFO: UNCOMMON
-//Shadows are complex because there are too many combinations: SPOT/DIRECT,OMNI or DEPTH_COMPONENT,RGBA or HARD,SOFT,VARIANCE
-//It would be nice to have classes that can encapsulate different shadowmap algorithms so they are easy to develop
+///@INFO: COMMON
+// Shadows are complex because there are too many combinations: SPOT/DIRECT,OMNI or DEPTH_COMPONENT,RGBA or HARD,SOFT,VARIANCE
+// This class encapsulates the shadowmap generation, and also how how it is read from the shader (using a ShaderBlock)
 
 function Shadowmap( light )
 {
@@ -26259,7 +26305,7 @@ function Shadowmap( light )
 	this.texture = null;
 	this.fbo = null;
 	this.shadow_params = vec4.create(); //1.0 / this.texture.width, this.shadow_bias, this.near, closest_far
-	this.reverse_faces = true; 
+	this.reverse_faces = false; //improves quality in some cases
 }
 
 Shadowmap.use_shadowmap_depth_texture = true;
@@ -37092,6 +37138,7 @@ GraphComponent.prototype.onAddedToScene = function( scene )
 	LEvent.bind( scene , "beforeRenderMainPass", this.onSceneEvent, this );
 	LEvent.bind( scene , "beforeRenderScene", this.onSceneEvent, this );
 	LEvent.bind( scene , "update", this.onSceneEvent, this );
+	LEvent.bind( scene , "renderGUI", this.onRenderGUI, this );
 }
 
 GraphComponent.prototype.onRemovedFromScene = function( scene )
@@ -37105,6 +37152,7 @@ GraphComponent.prototype.onRemovedFromScene = function( scene )
 	LEvent.unbind( scene, "beforeRenderMainPass", this.onSceneEvent, this );
 	LEvent.unbind( scene, "beforeRenderScene", this.onSceneEvent, this );
 	LEvent.unbind( scene, "update", this.onSceneEvent, this );
+	LEvent.unbind( scene, "renderGUI", this.onRenderGUI, this );
 }
 
 GraphComponent.prototype.onResourceRenamed = function( old_name, new_name, resource )
@@ -37112,6 +37160,13 @@ GraphComponent.prototype.onResourceRenamed = function( old_name, new_name, resou
 	if( old_name == this._filename)
 		this._filename = new_name;
 	this._graph.sendEventToAllNodes("onResourceRenamed",[ old_name, new_name, resource ]);
+}
+
+GraphComponent.prototype.onRenderGUI = function( e, canvas )
+{
+	if(!this.enabled)
+		return;
+	this._graph.sendEventToAllNodes("onRenderGUI", canvas );
 }
 
 GraphComponent.prototype.onSceneEvent = function( event_type, event_data )
@@ -37484,6 +37539,7 @@ FXGraphComponent.prototype.setPropertyValue = function( property, value )
 	}
 }
 
+FXGraphComponent.prototype.onRenderGUI = GraphComponent.prototype.onRenderGUI;
 
 FXGraphComponent.prototype.onResourceRenamed = function(old_name, new_name, res)
 {
@@ -37499,6 +37555,7 @@ FXGraphComponent.prototype.onAddedToNode = function(node)
 	this._graph._scenenode = node;
 	//catch the global rendering
 	//LEvent.bind( LS.GlobalScene, "beforeRenderMainPass", this.onBeforeRender, this );
+	LEvent.bind( scene , "renderGUI", this.onRenderGUI, this );
 }
 
 FXGraphComponent.prototype.onRemovedFromNode = function(node)
@@ -37507,6 +37564,7 @@ FXGraphComponent.prototype.onRemovedFromNode = function(node)
 		return;
 	this._graph._scenenode = null;
 	//LEvent.unbind( LS.GlobalScene, "beforeRenderMainPass", this.onBeforeRender, this );
+	LEvent.unbind( scene , "renderGUI", this.onRenderGUI, this );
 }
 
 FXGraphComponent.prototype.onAddedToScene = function( scene )

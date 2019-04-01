@@ -14,12 +14,16 @@ function TexturePreviewWidget()
 
 	this.channel = -1;
 	this.exposition = 1;
+	this.scale = 1;
+	this.offset = vec2.create();
 	this.xray_mode = false;
 	this._texture = null;
 	this._uniforms = {
 		u_texture: 0,
 		u_exposition: 1,
 		u_channel: -1,
+		u_scale: 1, 
+		u_offset: this.offset, 
 		u_resolution: vec2.create(),
 		u_viewport: vec4.create()
 	};
@@ -49,6 +53,7 @@ TexturePreviewWidget.prototype.onRender = function( ctx, viewport )
 		shader = TexturePreviewWidget._shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, TexturePreviewWidget.pixel_shader );
 
 	this._uniforms.u_exposition = this.exposition;
+	this._uniforms.u_scale = this.scale;
 	this._uniforms.u_channel = this.channel;
 	this._uniforms.u_xray_mode = this.xray_mode ? 1 : 0;
 	this._uniforms.u_viewport.set( old );
@@ -146,6 +151,12 @@ TexturePreviewWidget.prototype.inspect = function( inspector )
 	inspector.addSlider("Exposition", this.exposition, { min:0, max:2, step:0.001, precision: 3, callback: function(v){
 		that.exposition = v;
 	}});
+	inspector.addSlider("Scale", this.scale, { min:0, max:10, step:0.01, precision: 2, callback: function(v){
+		that.scale = v;
+	}});
+	inspector.addVector2("Offset", this.offset, { step:0.01, precision: 2, callback: function(v){
+		that.offset.set(v);
+	}});
 	inspector.addCheckbox("XRay mode", this.xray_mode, { callback: function(v){
 		that.xray_mode = v;
 	}});
@@ -159,12 +170,15 @@ TexturePreviewWidget.pixel_shader = "precision highp float;\n\
 	uniform int u_xray_mode;\n\
 	uniform vec4 u_viewport;\n\
 	uniform vec2 u_resolution;\n\
+	uniform float u_scale;\n\
+	uniform vec2 u_offset;\n\
 	\n\
 	void main() {\n\
 		vec2 uv = v_coord;\n\
 		vec2 ratio = u_viewport.zw / u_resolution;\n\
 		if(u_xray_mode == 1)\n\
 			uv = (gl_FragCoord.st / (u_resolution * ratio));\n\
+		uv = (uv - vec2(0.5) - u_offset) / u_scale + vec2(0.5) + u_offset;\n\
 		vec4 color = texture2D( u_texture, uv );\n\
 		color *= u_exposition;\n\
 		if( u_channel == 0 )\n\

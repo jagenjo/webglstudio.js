@@ -1,42 +1,12 @@
 {
 	"scripts":[
 		{
-			"name":"IK Solver",
-			"author":"Eva Valls",
-			"version": "0.1",
-			"script_url":"scripts/ik.js",
-			"includes":[],
-			"description":"Solves a simple IK Chain",
-			"preview_url":null,
-			"video_url":null
-		},
-		{
-			"name":"ThreeJS bridge",
+			"name":"Test",
 			"author":"Javi Agenjo",
 			"version": "0.1",
-			"script_url":"scripts/threeJS.js",
+			"script_url":"scripts/test.js",
 			"includes":[],
-			"description":"Allows to include ThreeJS code inside a LiteScene",
-			"preview_url":null,
-			"video_url":null
-		},
-		{
-			"name":"Volumetric Render",
-			"author":"Javi Agenjo",
-			"version": "0.1",
-			"script_url":"scripts/volumetric.js",
-			"includes":[],
-			"description":"Allows to render volumetric data (like medical scans or clouds)",
-			"preview_url":null,
-			"video_url":null
-		},
-		{
-			"name":"Terrain Render",
-			"author":"Javi Agenjo",
-			"version": "0.1",
-			"script_url":"scripts/terrainRenderer.js",
-			"includes":[],
-			"description":"Allows to render heightmaps from a texture",
+			"description":"This is a simple plugin test",
 			"preview_url":null,
 			"video_url":null
 		}

@@ -14,6 +14,8 @@
 
 var LiteGraph = global.LiteGraph = {
 
+	VERSION: 0.4,
+
 	CANVAS_GRID_SIZE: 10,
 	
 	NODE_TITLE_HEIGHT: 30,
@@ -974,15 +976,14 @@ LGraph.prototype.sendEventToAllNodes = function( eventname, params, mode )
 	for( var j = 0, l = nodes.length; j < l; ++j )
 	{
 		var node = nodes[j];
-		if(node[eventname] && node.mode == mode )
-		{
-			if(params === undefined)
-				node[eventname]();
-			else if(params && params.constructor === Array)
-				node[eventname].apply( node, params );
-			else
-				node[eventname](params);
-		}
+		if( !node[eventname] || node.mode != mode )
+			continue;
+		if(params === undefined)
+			node[eventname]();
+		else if(params && params.constructor === Array)
+			node[eventname].apply( node, params );
+		else
+			node[eventname](params);
 	}
 }
 
@@ -1620,7 +1621,8 @@ LGraph.prototype.serialize = function()
 		nodes: nodes_info,
 		links: links, 
 		groups: groups_info,
-		config: this.config
+		config: this.config,
+		version: LiteGraph.VERSION
 	};
 
 	return data;

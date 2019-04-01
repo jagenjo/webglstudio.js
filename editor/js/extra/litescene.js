@@ -17668,17 +17668,6 @@ LiteGraph.registerNodeType("texture/depthaware_upscale", LGraphDepthAwareUpscale
 ///@INFO: GRAPHS
 if(typeof(LiteGraph) != "undefined")
 {
-	//special kind of node
-	function LGraphGUIText()
-	{
-		this.addInput("text");
-		this.properties = { enabled: true, text: "", font: "", color: [1,1,1,1], position: [20,20], corner: LiteGraph.CORNER_TOP_LEFT };
-	}
-
-	LGraphGUIText.title = "GUIText";
-	LGraphGUIText.desc = "renders text on webgl canvas";
-	LGraphGUIText.priority = 2; //render at the end
-
 	LiteGraph.CORNER_TOP_LEFT = 0;
 	LiteGraph.CORNER_TOP_RIGHT = 1;
 	LiteGraph.CORNER_BOTTOM_LEFT = 2;
@@ -17694,6 +17683,38 @@ if(typeof(LiteGraph) != "undefined")
 		"top-center": LiteGraph.CORNER_TOP_CENTER,
 		"bottom-center": LiteGraph.CORNER_BOTTOM_CENTER
 	}};
+
+	function positionToArea( position, corner, area )
+	{
+		var x = position[0];
+		var y = position[1];
+
+		switch( corner )
+		{
+			case LiteGraph.CORNER_TOP_RIGHT: x = gl.canvas.width - x; break;
+			case LiteGraph.CORNER_BOTTOM_LEFT: y = gl.canvas.height - y; break;
+			case LiteGraph.CORNER_BOTTOM_RIGHT: x = gl.canvas.width - x; y = gl.canvas.height - y; break;
+			case LiteGraph.CORNER_TOP_CENTER: x = gl.canvas.width * 0.5; break;
+			case LiteGraph.CORNER_BOTTOM_CENTER: x = gl.canvas.width * 0.5; y = gl.canvas.height - y; break;
+			case LiteGraph.CORNER_TOP_LEFT:
+			default:
+		}
+
+		area[0] = x;
+		area[1] = y;
+	}
+
+	//special kind of node
+	function LGraphGUIText()
+	{
+		this.addInput("text");
+		this.properties = { enabled: true, text: "", font: "", color: [1,1,1,1], position: [20,20], corner: LiteGraph.CORNER_TOP_LEFT };
+		this._pos = vec2.create();
+	}
+
+	LGraphGUIText.title = "GUIText";
+	LGraphGUIText.desc = "renders text on webgl canvas";
+	LGraphGUIText.priority = 2; //render at the end
 
 	LGraphGUIText["@corner"] = corner_options;
 	LGraphGUIText["@color"] = { type:"color" };
@@ -17728,24 +17749,13 @@ if(typeof(LiteGraph) != "undefined")
 
 		ctx.font = this.properties.font || "20px Arial";
 		ctx.fillColor = this.properties.color || [1,1,1,1];
-		var x = this.properties.position[0];
-		var y = this.properties.position[1];
 
-		switch( this.properties.corner )
-		{
-			case LiteGraph.CORNER_TOP_RIGHT: x = gl.canvas.width - x; break;
-			case LiteGraph.CORNER_BOTTOM_LEFT: y = gl.canvas.height - y; break;
-			case LiteGraph.CORNER_BOTTOM_RIGHT: x = gl.canvas.width - x; y = gl.canvas.height - y; break;
-			case LiteGraph.CORNER_TOP_CENTER: x = gl.canvas.width * 0.5; break;
-			case LiteGraph.CORNER_BOTTOM_CENTER: x = gl.canvas.width * 0.5; y = gl.canvas.height - y; break;
-			case LiteGraph.CORNER_TOP_LEFT:
-			default:
-		}
+		positionToArea( this.properties.position, this.properties.corner, this._pos );
 
 		gl.disable( gl.DEPTH_TEST );
 		gl.enable( gl.BLEND );
 		gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
-		ctx.fillText( text, x, y );
+		ctx.fillText( text, this._pos[0], this._pos[1] );
 	}
 
 	LiteGraph.registerNodeType("gui/text", LGraphGUIText );
@@ -17759,29 +17769,13 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LGraphGUISlider.title = "GUISlider";
-	LGraphGUISlider.desc = "Renders a widget on WebGL canvas";
+	LGraphGUISlider.desc = "Renders a slider on the main canvas";
 
 	LGraphGUISlider["@corner"] = corner_options;
-	LGraphGUISlider["@color"] = { type:"color" };
 
 	LGraphGUISlider.prototype.onRenderGUI = function()
 	{
-		var x = this.properties.position[0];
-		var y = this.properties.position[1];
-
-		switch( this.properties.corner )
-		{
-			case LiteGraph.CORNER_TOP_RIGHT: x = gl.canvas.width - x; break;
-			case LiteGraph.CORNER_BOTTOM_LEFT: y = gl.canvas.height - y; break;
-			case LiteGraph.CORNER_BOTTOM_RIGHT: x = gl.canvas.width - x; y = gl.canvas.height - y; break;
-			case LiteGraph.CORNER_TOP_CENTER: x = gl.canvas.width * 0.5; break;
-			case LiteGraph.CORNER_BOTTOM_CENTER: x = gl.canvas.width * 0.5; y = gl.canvas.height - y; break;
-			case LiteGraph.CORNER_TOP_LEFT:
-			default:
-		}
-
-		this._area[0] = x;
-		this._area[1] = y;
+		positionToArea( this.properties.position, this.properties.corner, this._area );
 		this._area[2] = this.properties.size[0];
 		this._area[3] = this.properties.size[1];
 		this.properties.value = LS.GUI.HorizontalSlider( this._area, Number(this.properties.value), Number(this.properties.min), Number(this.properties.max), true );
@@ -17794,6 +17788,34 @@ if(typeof(LiteGraph) != "undefined")
 
 	LiteGraph.registerNodeType("gui/slider", LGraphGUISlider );
 
+
+	//special kind of node
+	function LGraphGUIToggle()
+	{
+		this.addOutput("v");
+		this.properties = { enabled: true, value: true, text:"toggle", position: [20,20], size: [140,40], corner: LiteGraph.CORNER_TOP_LEFT };
+		this._area = vec4.create();
+	}
+
+	LGraphGUIToggle.title = "GUIToggle";
+	LGraphGUIToggle.desc = "Renders a toggle widget on the main canvas";
+
+	LGraphGUIToggle["@corner"] = corner_options;
+
+	LGraphGUIToggle.prototype.onRenderGUI = function()
+	{
+		positionToArea( this.properties.position, this.properties.corner, this._area );
+		this._area[2] = this.properties.size[0];
+		this._area[3] = this.properties.size[1];
+		this.properties.value = LS.GUI.Toggle( this._area, this.properties.value, this.properties.text );
+	}
+
+	LGraphGUIToggle.prototype.onExecute = function()
+	{
+		this.setOutputData(0, this.properties.value );
+	}
+
+	LiteGraph.registerNodeType("gui/toggle", LGraphGUIToggle );
 
 	//based in the NNI distance 
 	function LGraphMap2D()

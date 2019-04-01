@@ -2621,7 +2621,7 @@ var Network = {
 
 LS.Network = Network;
 ///@FILE:../src/input.js
-
+///@INFO: BASE
 /**
 * Input is a static class used to read the input state (keyboard, mouse, gamepad, etc)
 *
@@ -2629,6 +2629,12 @@ LS.Network = Network;
 * @namespace LS
 * @constructor
 */
+
+//help info:
+//mouse.mousey 0 is top
+//mouse.canvasy 0 is bottom
+//mouse.y is mousey
+
 var Input = {
 	mapping: {
 
@@ -2812,8 +2818,12 @@ var Input = {
 			e.canvasy = e.mousey = (gl.canvas.height * 0.5)|0;
 		}
 
-		this.Mouse.x = this.Mouse.mousex = this.Mouse.canvasx = e.canvasx;
-		this.Mouse.y = this.Mouse.mousex = this.Mouse.canvasy = e.canvasy;
+		//mousey is from top
+		this.Mouse.x = this.Mouse.mousex = e.mousex;
+		this.Mouse.y = this.Mouse.mousey = e.mousey;
+		//canvasy is from bottom
+		this.Mouse.canvasx = e.canvasx;
+		this.Mouse.canvasy = e.canvasy;
 
 		//save it in case we need to know where was the last click
 		if(e.type == "mousedown")
@@ -2862,16 +2872,17 @@ var Input = {
 		return this.Mouse.isInsideRect(x,y,width,height,flip_y);
 	},
 
-	isEventInRect: function( e, area, offset )
+	//uses {x,y}, instead of mousex,mousey
+	isEventInRect: function( mouse, area, offset )
 	{
-		var offsetx = 0;
-		var offsety = 0;
+		var x = mouse.mousex != null ? mouse.mousex : mouse.x;
+		var y = mouse.mousey != null ? mouse.mousey : mouse.y;
 		if(offset)
 		{
-			offsetx = offset[0];
-			offsety = offset[1];
+			x -= offset[0];
+			y -= offset[1];
 		}
-		return ( (e.mousex - offsetx) >= area[0] && (e.mousex - offsetx) < (area[0] + area[2]) && (e.mousey - offsety) >= area[1] && (e.mousey - offsety) < (area[1] + area[3]) );
+		return ( x >= area[0] && x < (area[0] + area[2]) && y >= area[1] && y < (area[1] + area[3]) );
 	},
 
 	/**
@@ -17789,7 +17800,6 @@ if(typeof(LiteGraph) != "undefined")
 	LiteGraph.registerNodeType("gui/slider", LGraphGUISlider );
 
 
-	//special kind of node
 	function LGraphGUIToggle()
 	{
 		this.addOutput("v");
@@ -17816,6 +17826,39 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LiteGraph.registerNodeType("gui/toggle", LGraphGUIToggle );
+
+	function LGraphGUIButton()
+	{
+		this.addOutput("on",LiteGraph.EVENT);
+		this.addOutput("was_pressed");
+		this.properties = { enabled: true, text:"clickme", position: [20,20], size: [140,40], corner: LiteGraph.CORNER_TOP_LEFT };
+		this._area = vec4.create();
+		this._was_pressed = false;
+	}
+
+	LGraphGUIButton.title = "GUIButton";
+	LGraphGUIButton.desc = "Renders a toggle widget on the main canvas";
+
+	LGraphGUIButton["@corner"] = corner_options;
+
+	LGraphGUIButton.prototype.onRenderGUI = function()
+	{
+		positionToArea( this.properties.position, this.properties.corner, this._area );
+		this._area[2] = this.properties.size[0];
+		this._area[3] = this.properties.size[1];
+		this._was_pressed = LS.GUI.Button( this._area, this.properties.text );
+	}
+
+	LGraphGUIButton.prototype.onExecute = function()
+	{
+		if(this._was_pressed)
+			this.trigger("on");
+		this.setOutputData(1, this._was_pressed );
+		this._was_pressed = false;
+	}
+
+	LiteGraph.registerNodeType("gui/button", LGraphGUIButton );
+
 
 	//based in the NNI distance 
 	function LGraphMap2D()
@@ -37577,7 +37620,6 @@ FXGraphComponent.prototype.onAddedToNode = function(node)
 	this._graph._scenenode = node;
 	//catch the global rendering
 	//LEvent.bind( LS.GlobalScene, "beforeRenderMainPass", this.onBeforeRender, this );
-	LEvent.bind( scene , "renderGUI", this.onRenderGUI, this );
 }
 
 FXGraphComponent.prototype.onRemovedFromNode = function(node)
@@ -37586,6 +37628,15 @@ FXGraphComponent.prototype.onRemovedFromNode = function(node)
 		return;
 	this._graph._scenenode = null;
 	//LEvent.unbind( LS.GlobalScene, "beforeRenderMainPass", this.onBeforeRender, this );
+}
+
+FXGraphComponent.prototype.onAddedToScene = function(scene)
+{
+	LEvent.bind( scene , "renderGUI", this.onRenderGUI, this );
+}
+
+FXGraphComponent.prototype.onRemovedFromScene = function(scene)
+{
 	LEvent.unbind( scene , "renderGUI", this.onRenderGUI, this );
 }
 

@@ -167,8 +167,9 @@ var LiteGraph = global.LiteGraph = {
 	* @param {Function} func
 	* @param {Array} param_types [optional] an array containing the type of every parameter, otherwise parameters will accept any type
 	* @param {String} return_type [optional] string with the return type, otherwise it will be generic
+	* @param {Object} properties [optional] properties to be configurable
 	*/
-	wrapFunctionAsNode: function( name, func, param_types, return_type )
+	wrapFunctionAsNode: function( name, func, param_types, return_type, properties )
 	{
 		var params = Array(func.length);
 		var code = "";
@@ -176,6 +177,8 @@ var LiteGraph = global.LiteGraph = {
 		for(var i = 0; i < names.length; ++i)
 			code += "this.addInput('"+names[i]+"',"+(param_types && param_types[i] ? "'" + param_types[i] + "'" : "0") + ");\n";
 		code += "this.addOutput('out',"+( return_type ? "'" + return_type + "'" : 0 )+");\n";
+		if(properties)
+			code += "this.properties = " + JSON.stringify(properties) + ";\n";
 		var classobj = Function(code);
 		classobj.title = name.split("/").pop();
 		classobj.desc = "Generated from " + func.name;
@@ -5337,13 +5340,13 @@ LGraphCanvas.prototype.adjustMouseEvent = function(e)
 	if(this.canvas)
 	{
 		var b = this.canvas.getBoundingClientRect();
-		e.localX = e.pageX - b.left;
-		e.localY = e.pageY - b.top;
+		e.localX = e.clientX - b.left;
+		e.localY = e.clientY - b.top;
 	}
 	else
 	{
-		e.localX = e.pageX;
-		e.localY = e.pageY;
+		e.localX = e.clientX;
+		e.localY = e.clientY;
 	}
 
 	e.deltaX = e.localX - this.last_mouse_position[0];
@@ -5409,7 +5412,7 @@ LGraphCanvas.prototype.convertCanvasToOffset = function( pos, out )
 LGraphCanvas.prototype.convertEventToCanvasOffset = function(e)
 {
 	var rect = this.canvas.getBoundingClientRect();
-	return this.convertCanvasToOffset([e.pageX - rect.left,e.pageY - rect.top]);
+	return this.convertCanvasToOffset([e.clientX - rect.left,e.clientY - rect.top]);
 }
 
 /**
@@ -7393,8 +7396,8 @@ LGraphCanvas.onShowPropertyEditor = function( item, options, e, menu, node )
 
 	if( event )
 	{
-		dialog.style.left = (event.pageX + offsetx) + "px";
-		dialog.style.top = (event.pageY + offsety)+ "px";
+		dialog.style.left = (event.clientX + offsetx) + "px";
+		dialog.style.top = (event.clientY + offsety)+ "px";
 	}
 	else
 	{
@@ -7498,8 +7501,8 @@ LGraphCanvas.prototype.prompt = function( title, value, callback, event )
 
 	if( event )
 	{
-		dialog.style.left = (event.pageX + offsetx) + "px";
-		dialog.style.top = (event.pageY + offsety)+ "px";
+		dialog.style.left = (event.clientX + offsetx) + "px";
+		dialog.style.top = (event.clientY + offsety)+ "px";
 	}
 	else
 	{
@@ -7611,8 +7614,8 @@ LGraphCanvas.prototype.showSearchBox = function(event)
 
 	if( event )
 	{
-		dialog.style.left = (event.pageX + offsetx) + "px";
-		dialog.style.top = (event.pageY + offsety)+ "px";
+		dialog.style.left = (event.clientX + offsetx) + "px";
+		dialog.style.top = (event.clientY + offsety)+ "px";
 	}
 	else
 	{
@@ -7911,8 +7914,8 @@ LGraphCanvas.prototype.createDialog = function( html, options )
 	}
 	else if( options.event )
 	{
-		offsetx += options.event.pageX;
-		offsety += options.event.pageY;
+		offsetx += options.event.clientX;
+		offsety += options.event.clientY;
 	}
 	else //centered
 	{
@@ -8535,8 +8538,8 @@ function ContextMenu( values, options )
 	var top = options.top || 0;
 	if(options.event)
 	{
-		left = (options.event.pageX - 10);
-		top = (options.event.pageY - 10);
+		left = (options.event.clientX - 10);
+		top = (options.event.clientY - 10);
 		if(options.title)
 			top -= 20;
 
@@ -8725,8 +8728,8 @@ ContextMenu.prototype.getFirstEvent = function()
 
 ContextMenu.isCursorOverElement = function( event, element )
 {
-	var left = event.pageX;
-	var top = event.pageY;
+	var left = event.clientX;
+	var top = event.clientY;
 	var rect = element.getBoundingClientRect();
 	if(!rect)
 		return false;
@@ -12356,7 +12359,14 @@ if(global.glMatrix)
 
 	LiteGraph.wrapFunctionAsNode("string/split",toUpperCase, ["String","String"],"Array");
 
+	function toFixed(a)
+	{
+		if(a != null && a.constructor === Number)
+			return a.toFixed(this.properties.precision);
+		return a;
+	}
 
+	LiteGraph.wrapFunctionAsNode("string/toFixed", toFixed, ["Number"], "String", { precision: 0 } );
 
 })(this);
 (function(global){
@@ -19876,7 +19886,7 @@ function LGAudioADSR()
 		A: 0.1,
 		D: 0.1,
 		S: 0.1,
-		R: 0.1,
+		R: 0.1
 	};
 
 	this.audionode = LGAudio.getAudioContext().createGain();

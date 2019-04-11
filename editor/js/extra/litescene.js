@@ -895,6 +895,7 @@ var LS = {
 	_uid_prefix: "@", //WARNING: must be one character long
 	debug: false, //enable to see verbose output
 	allow_static: true, //used to disable static instances in the editor
+	allow_scripts: true, //if true, then Script components and Graphs can contain code
 
 	//for HTML GUI
 	_gui_element: null,
@@ -36984,6 +36985,8 @@ if(typeof(LGraphTexture) != "undefined")
 	LGraphTexture.getTexturesContainer = function() { return LS.ResourcesManager.textures };
 	LGraphTexture.storeTexture = function(name, texture) { return LS.ResourcesManager.registerResource(name, texture); };
 	LGraphTexture.loadTexture = LS.ResourcesManager.load.bind( LS.ResourcesManager );
+
+	LiteGraph.allow_scripts = LS.allow_scripts; //let graphs that contain code execute it
 }
 
 
@@ -41377,7 +41380,7 @@ Script.prototype.processCode = function( skip_events, reset_state )
 		}
 	}
 
-	if(!this._root || LS.Script.block_execution )
+	if( !this._root || LS.Script.block_execution || !LS.allow_scripts )
 		return true;
 
 	//unbind old stuff
@@ -44644,6 +44647,14 @@ Scene.getScriptsList = function( scene, allow_local, full_paths )
 //reloads external and global scripts taking into account if they come from wbins
 Scene.prototype.loadScripts = function( scripts, on_complete, on_error, force_reload )
 {
+	if(!LS.allow_scripts)
+	{
+		console.error("LiteScene.allow_scripts is set to false, so scripts imported into this scene are ignored.");
+		if(on_complete)
+			on_complete();
+		return;
+	}
+
 	//get a list of scripts (they cannot be fullpaths)
 	scripts = scripts || LS.Scene.getScriptsList( this, true );
 

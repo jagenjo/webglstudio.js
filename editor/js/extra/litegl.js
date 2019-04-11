@@ -5352,10 +5352,20 @@ Texture.prototype.uploadData = function( data, options, skip_mipmaps )
 
 	if( this.texture_type == GL.TEXTURE_2D )
 	{
-		if(data.buffer && data.buffer.constructor == ArrayBuffer)
-			gl.texImage2D(this.texture_type, mipmap_level, this.format, width, height, 0, this.format, this.type, data);
-		else
-			gl.texImage2D(this.texture_type, mipmap_level, this.format, this.format, this.type, data);
+		if(gl.webgl_version == 1)
+		{
+			if(data.buffer && data.buffer.constructor == ArrayBuffer)
+				gl.texImage2D(this.texture_type, mipmap_level, this.format, width, height, 0, this.format, this.type, data);
+			else
+				gl.texImage2D(this.texture_type, mipmap_level, this.format, this.format, this.type, data);
+		}
+		else if(gl.webgl_version == 2) //webgl forces to use width and height
+		{
+			if(data.buffer && data.buffer.constructor == ArrayBuffer)
+				gl.texImage2D(this.texture_type, mipmap_level, this.format, width, height, 0, this.format, this.type, data);
+			else
+				gl.texImage2D(this.texture_type, mipmap_level, this.format, width, height, 0, this.format, this.type, data);
+		}
 	}
 	else if( this.texture_type == GL.TEXTURE_3D )
 		gl.texImage3D( this.texture_type, mipmap_level, this.format, width, height, this.depth >> mipmap_level, 0, this.format, this.type, data);
@@ -7337,7 +7347,7 @@ FBO.supported = {};
 //type: gl.FLOAT, format: gl.RGBA
 FBO.testSupport = function( type, format ) {
 	var name = type +":" + format;
-	if( FBO.supported[ name ] != null );
+	if( FBO.supported[ name ] != null )
 		return FBO.supported[ name ];
 
 	var tex = new GL.Texture(1,1,{ format: format, type: type });

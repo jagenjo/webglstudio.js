@@ -9973,7 +9973,6 @@ var LiteGraph = global.LiteGraph;
 		this.clicked = false;
 	}
 
-
 	LiteGraph.registerNodeType("widget/button", WidgetButton );
 
 

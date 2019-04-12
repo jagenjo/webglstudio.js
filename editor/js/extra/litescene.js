@@ -3568,7 +3568,7 @@ var GUI = {
 	* @param {String|GL.Texture} content_off an string or image in case the checkbox is off 
 	* @return {Boolean} the current state of the checkbox (will be different from value if it was pressed)
 	*/
-	Toggle: function( area, value, content, content_off )
+	Toggle: function( area, value, content, content_off, circle )
 	{
 		if(!area)
 			throw("No area");
@@ -3612,9 +3612,18 @@ var GUI = {
 
 				var w = area[3] * 0.6;
 				ctx.fillStyle = this.GUIStyle.backgroundColor;
-				ctx.fillRect( area[0] + area[2] - margin*1.5 - w + this._offset[0], area[1] + margin*0.5 + this._offset[1], w+margin, area[3] - margin );
+				var x = area[0] + area[2] - margin*1.5 - w + this._offset[0];
+				var y = area[1] + margin*0.5 + this._offset[1];
+
+				if(circle)
+					ctx.fillCircle( x, y, area[3] - margin );
+				else
+					ctx.fillRect(x, y, w+margin, area[3] - margin );
 				ctx.fillStyle = value ? this.GUIStyle.selected : "#000";
-				ctx.fillRect( area[0] + area[2] - margin - w + this._offset[0], area[1] + margin + this._offset[1], w, area[3] - margin*2 );
+				if(circle)
+					ctx.fillCircle( area[0] + area[2] - margin - w + this._offset[0], area[1] + margin + this._offset[1], area[3] - margin*2 );
+				else
+					ctx.fillRect( area[0] + area[2] - margin - w + this._offset[0], area[1] + margin + this._offset[1], w, area[3] - margin*2 );
 			}
 		}
 
@@ -17859,6 +17868,56 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LiteGraph.registerNodeType("gui/button", LGraphGUIButton );
+
+
+	function LGraphGUIMultipleChoice()
+	{
+		this.addOutput("value");
+		this.properties = { enabled: true, value: "option1", options:"option1;option2;option3", position: [20,20], size: [180,100], corner: LiteGraph.CORNER_TOP_LEFT };
+		this._area = vec4.create();
+		this._options = this.properties.options.split(";");
+		var that = this;
+		this.widget = this.addWidget("text","Options",this.properties.options,function(v){
+			that.properties.values = v;
+			that.onPropertyChanged("options",v);
+		});
+		this.widgets_up = true;
+		this.size = [200,40];
+	}
+
+	LGraphGUIMultipleChoice.title = "GUIMultipleChoice";
+	LGraphGUIMultipleChoice.desc = "Renders a multiple choice widget on the main canvas";
+	LGraphGUIMultipleChoice["@corner"] = corner_options;
+
+	LGraphGUIMultipleChoice.prototype.onPropertyChanged = function(name,value)
+	{
+		if(name == "options")
+			this._options = value.split(";");
+	}
+
+	LGraphGUIMultipleChoice.prototype.onRenderGUI = function()
+	{
+		if(!this._options.length)
+			return;
+
+		positionToArea( this.properties.position, this.properties.corner, this._area );
+		this._area[2] = this.properties.size[0];
+		this._area[3] = this.properties.size[1] / this._options.length;
+		var y = this._area[1];
+		for(var i = 0; i < this._options.length; ++i)
+		{
+			this._area[1] = y + i * this._area[3];
+			if( LS.GUI.Toggle( this._area, this._options[i] == this.properties.value, this._options[i], null, true ) )
+				this.properties.value = this._options[i];
+		}
+	}
+
+	LGraphGUIMultipleChoice.prototype.onExecute = function()
+	{
+		this.setOutputData( 0, this.properties.value );
+	}
+
+	LiteGraph.registerNodeType("gui/multiple_choice", LGraphGUIMultipleChoice );
 
 
 	//based in the NNI distance 

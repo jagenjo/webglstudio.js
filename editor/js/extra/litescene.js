@@ -17733,9 +17733,10 @@ if(typeof(LiteGraph) != "undefined")
 	//special kind of node
 	function LGraphGUIPanel()
 	{
-		this.properties = { color: [0.1,0.1,0.1], opacity: 0.7, position: [10,10], size: [300,200], corner: LiteGraph.CORNER_TOP_LEFT };
+		this.properties = { title: "", color: [0.1,0.1,0.1], opacity: 0.7, titlecolor: [0,0,0], position: [10,10], size: [300,200], rounding: 8, corner: LiteGraph.CORNER_TOP_LEFT };
 		this._pos = vec2.create();
 		this._color = vec4.create();
+		this._titlecolor = vec4.create();
 	}
 
 	LGraphGUIPanel.title = "GUIPanel";
@@ -17744,6 +17745,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIPanel["@corner"] = corner_options;
 	LGraphGUIPanel["@color"] = { type:"color" };
+	LGraphGUIPanel["@titlecolor"] = { type:"color" };
 	LGraphGUIPanel["@opacity"] = { widget:"slider", min:0,max:1 };
 
 	LGraphGUIPanel.prototype.onRenderGUI = function()
@@ -17752,14 +17754,40 @@ if(typeof(LiteGraph) != "undefined")
 		if(!ctx)
 			return;
 
-		this._color.set( this.properties.color || [1,1,1,1] );
+		this._color.set( this.properties.color || [0.1,0.1,0.1] );
 		this._color[3] = this.properties.opacity;
 		ctx.fillColor = this._color;
 		positionToArea( this.properties.position, this.properties.corner, this._pos );
 		gl.disable( gl.DEPTH_TEST );
 		gl.enable( gl.BLEND );
 		gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
-		ctx.fillRect( this._pos[0], this._pos[1], this.properties.size[0], this.properties.size[1] );
+		var rounding = Math.min(15,this.properties.rounding);
+		if(rounding > 0)
+		{
+			ctx.beginPath();
+			ctx.roundRect( this._pos[0], this._pos[1], this.properties.size[0], this.properties.size[1], rounding, rounding );
+			ctx.fill();
+		}
+		else
+			ctx.fillRect( this._pos[0], this._pos[1], this.properties.size[0], this.properties.size[1] );
+
+		if(this.properties.title)
+		{
+			this._titlecolor.set( this.properties.titlecolor || [0.3,0.3,0.3] );
+			this._titlecolor[3] = this.properties.opacity;
+			ctx.fillColor = this._titlecolor;
+			if(rounding > 0)
+			{
+				ctx.beginPath();
+				ctx.roundRect( this._pos[0], this._pos[1], this.properties.size[0], 30, rounding, 0 );
+				ctx.fill();
+			}
+			else
+				ctx.fillRect( this._pos[0], this._pos[1], this.properties.size[0], 30 );
+			ctx.fillColor = [0.8,0.8,0.8,this.properties.opacity];
+			ctx.font = "20px Arial";
+			ctx.fillText( this.properties.title, 10 + this._pos[0],24 + this._pos[1]);
+		}
 	}
 
 	LiteGraph.registerNodeType("gui/panel", LGraphGUIPanel );

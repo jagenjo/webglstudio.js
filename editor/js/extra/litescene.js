@@ -17872,7 +17872,8 @@ if(typeof(LiteGraph) != "undefined")
 
 	function LGraphGUIMultipleChoice()
 	{
-		this.addOutput("value");
+		this.addOutput("v");
+		this.addOutput("i");
 		this.properties = { enabled: true, value: "option1", options:"option1;option2;option3", position: [20,20], size: [180,100], corner: LiteGraph.CORNER_TOP_LEFT };
 		this._area = vec4.create();
 		this._options = this.properties.options.split(";");
@@ -17882,6 +17883,7 @@ if(typeof(LiteGraph) != "undefined")
 			that.onPropertyChanged("options",v);
 		});
 		this.widgets_up = true;
+		this.index = 0;
 		this.size = [200,40];
 	}
 
@@ -17908,13 +17910,17 @@ if(typeof(LiteGraph) != "undefined")
 		{
 			this._area[1] = y + i * this._area[3];
 			if( LS.GUI.Toggle( this._area, this._options[i] == this.properties.value, this._options[i], null, true ) )
+			{
+				this.index = i;
 				this.properties.value = this._options[i];
+			}
 		}
 	}
 
 	LGraphGUIMultipleChoice.prototype.onExecute = function()
 	{
 		this.setOutputData( 0, this.properties.value );
+		this.setOutputData( 1, this.index );
 	}
 
 	LiteGraph.registerNodeType("gui/multiple_choice", LGraphGUIMultipleChoice );

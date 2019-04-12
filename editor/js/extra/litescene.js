@@ -17731,6 +17731,7 @@ if(typeof(LiteGraph) != "undefined")
 		this.addInput("text");
 		this.properties = { enabled: true, text: "", font: "", color: [1,1,1,1], position: [20,20], corner: LiteGraph.CORNER_TOP_LEFT };
 		this._pos = vec2.create();
+		this._text = "";
 	}
 
 	LGraphGUIText.title = "GUIText";
@@ -17742,6 +17743,15 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIText.prototype.onGetInputs = function(){
 		return [["enabled","boolean"]];
+	}
+
+	LGraphGUIText.prototype.onExecute = function()
+	{
+		var v = this.getInputData(0);
+		if(v != null && v.constructor === Number)
+			this._text = v.toFixed(3);
+		else
+			this._text = String(v);
 	}
 
 	LGraphGUIText.prototype.onRenderGUI = function()
@@ -17757,15 +17767,8 @@ if(typeof(LiteGraph) != "undefined")
 		if(enabled === false)
 			return;
 
-		var input_text = this.getInputData(0);
-		if( input_text == null )
-			input_text = "";
-
-		if(input_text.constructor === Number )
-			input_text = input_text.toFixed(3);
-
-		var text = (this.properties.text || "") + input_text;
-		if(text === "")
+		var text = (this.properties.text || "") + this._text;
+		if(text == "")
 			return;
 
 		ctx.font = this.properties.font || "20px Arial";
@@ -17883,7 +17886,7 @@ if(typeof(LiteGraph) != "undefined")
 			that.onPropertyChanged("values",v);
 		});
 		this.widgets_up = true;
-		this.size = [200,40];
+		this.size = [240,50];
 	}
 
 	LGraphGUIMultipleChoice.title = "GUIMultipleChoice";
@@ -17916,8 +17919,8 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIMultipleChoice.prototype.onExecute = function()
 	{
-		this.setOutputData( 0, this.properties.value );
-		this.setOutputData( 1, this.index );
+		this.setOutputData( 0, this._values[ this.properties.selected ] );
+		this.setOutputData( 1, this.properties.selected );
 	}
 
 	LiteGraph.registerNodeType("gui/multiple_choice", LGraphGUIMultipleChoice );

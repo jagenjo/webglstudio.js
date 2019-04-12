@@ -17874,16 +17874,15 @@ if(typeof(LiteGraph) != "undefined")
 	{
 		this.addOutput("v");
 		this.addOutput("i");
-		this.properties = { enabled: true, value: "option1", options:"option1;option2;option3", position: [20,20], size: [180,100], corner: LiteGraph.CORNER_TOP_LEFT };
+		this.properties = { enabled: true, selected: 0, values:"option1;option2;option3", position: [20,20], size: [180,100], corner: LiteGraph.CORNER_TOP_LEFT };
 		this._area = vec4.create();
-		this._options = this.properties.options.split(";");
+		this._values = this.properties.values.split(";");
 		var that = this;
-		this.widget = this.addWidget("text","Options",this.properties.options,function(v){
+		this.widget = this.addWidget("text","Options",this.properties.values,function(v){
 			that.properties.values = v;
-			that.onPropertyChanged("options",v);
+			that.onPropertyChanged("values",v);
 		});
 		this.widgets_up = true;
-		this.index = 0;
 		this.size = [200,40];
 	}
 
@@ -17893,27 +17892,25 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIMultipleChoice.prototype.onPropertyChanged = function(name,value)
 	{
-		if(name == "options")
-			this._options = value.split(";");
+		if(name == "values")
+			this._values = value.split(";");
 	}
 
 	LGraphGUIMultipleChoice.prototype.onRenderGUI = function()
 	{
-		if(!this._options.length)
+		if(!this._values.length)
 			return;
 
+		this.properties.selected = Math.floor( this.properties.selected );
 		positionToArea( this.properties.position, this.properties.corner, this._area );
 		this._area[2] = this.properties.size[0];
-		this._area[3] = this.properties.size[1] / this._options.length;
+		this._area[3] = this.properties.size[1] / this._values.length;
 		var y = this._area[1];
-		for(var i = 0; i < this._options.length; ++i)
+		for(var i = 0; i < this._values.length; ++i)
 		{
 			this._area[1] = y + i * this._area[3];
-			if( LS.GUI.Toggle( this._area, this._options[i] == this.properties.value, this._options[i], null, true ) )
-			{
-				this.index = i;
-				this.properties.value = this._options[i];
-			}
+			if( LS.GUI.Toggle( this._area, i == this.properties.selected, this._values[i], null, true ) )
+				this.properties.selected = i;
 		}
 	}
 

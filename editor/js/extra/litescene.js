@@ -16280,7 +16280,8 @@ if(typeof(LiteGraph) != "undefined")
 		if(!this.properties.locator)
 			return;
 		var scene = this.graph._scene || LS.GlobalScene;
-		return this._locator_info = scene.getPropertyInfo( locator );
+		this._locator_info = scene.getPropertyInfo( locator );
+		return this._locator_info;
 	}
 
 	LGraphLocatorProperty.prototype.onAction = function( action, param )
@@ -16290,13 +16291,17 @@ if(typeof(LiteGraph) != "undefined")
 		LSQ.setFromInfo( info, !LSQ.getFromInfo( info ) );
 	}
 
+	LGraphLocatorProperty.prototype.getTitle = function()
+	{
+		return this.title || ( this._locator_info ? this._locator_info.name : "Property" );
+	}
+
 	LGraphLocatorProperty.prototype.onExecute = function()
 	{
 		var info = this.getLocatorInfo();
 
 		if(info && info.target)
 		{
-			this.title = info.name;
 			if( this.inputs.length && this.inputs[0].link !== null )
 				LSQ.setFromInfo( info, this.getInputData(0) );
 			if( this.outputs.length && this.outputs[0].links && this.outputs[0].links.length )
@@ -17726,6 +17731,35 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	//special kind of node
+	function LGraphGUIPanel()
+	{
+		this.properties = { color: [0.1,0.1,0.1,0.7], position: [20,20], size: [300,200], corner: LiteGraph.CORNER_TOP_LEFT };
+		this._pos = vec4.create();
+	}
+
+	LGraphGUIPanel.title = "GUIPanel";
+	LGraphGUIPanel.desc = "renders a rectangle on webgl canvas";
+	LGraphGUIPanel.priority = 3; //render at the end
+
+	LGraphGUIPanel["@corner"] = corner_options;
+	LGraphGUIPanel["@color"] = { type:"color" };
+
+	LGraphGUIPanel.prototype.onRenderGUI = function()
+	{ 
+		var ctx = window.gl;
+		if(!ctx)
+			return;
+		ctx.fillColor = this.properties.color || [1,1,1,1];
+		positionToArea( this.properties.position, this.properties.corner, this._pos );
+		gl.disable( gl.DEPTH_TEST );
+		gl.enable( gl.BLEND );
+		gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
+		ctx.fillRect( this._pos[0], this._pos[1], this.properties.size[0], this.properties.size[1] );
+	}
+
+	LiteGraph.registerNodeType("gui/panel", LGraphGUIPanel );
+
+	//special kind of node
 	function LGraphGUIText()
 	{
 		this.addInput("text");
@@ -17758,9 +17792,6 @@ if(typeof(LiteGraph) != "undefined")
 	{ 
 		var ctx = window.gl;
 		if(!ctx)
-			return;
-
-		if( !window.LS || !LS.Renderer._current_render_settings || !LS.Renderer._current_render_settings.render_gui )
 			return;
 
 		var enabled = this.getInputOrProperty("enabled");

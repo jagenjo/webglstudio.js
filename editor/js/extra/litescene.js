@@ -17729,7 +17729,7 @@ if(typeof(LiteGraph) != "undefined")
 	function LGraphGUIText()
 	{
 		this.addInput("text");
-		this.properties = { enabled: true, text: "", font: "", color: [1,1,1,1], position: [20,20], corner: LiteGraph.CORNER_TOP_LEFT };
+		this.properties = { enabled: true, text: "", font: "", color: [1,1,1,1], precision: 3, position: [20,20], corner: LiteGraph.CORNER_TOP_LEFT };
 		this._pos = vec2.create();
 		this._text = "";
 	}
@@ -17749,7 +17749,7 @@ if(typeof(LiteGraph) != "undefined")
 	{
 		var v = this.getInputData(0);
 		if(v != null && v.constructor === Number)
-			this._text = v.toFixed(3);
+			this._text = v.toFixed( this.properties.precision );
 		else
 			this._text = String(v);
 	}

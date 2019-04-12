@@ -17733,23 +17733,28 @@ if(typeof(LiteGraph) != "undefined")
 	//special kind of node
 	function LGraphGUIPanel()
 	{
-		this.properties = { color: [0.1,0.1,0.1,0.7], position: [20,20], size: [300,200], corner: LiteGraph.CORNER_TOP_LEFT };
-		this._pos = vec4.create();
+		this.properties = { color: [0.1,0.1,0.1], opacity: 0.7, position: [10,10], size: [300,200], corner: LiteGraph.CORNER_TOP_LEFT };
+		this._pos = vec2.create();
+		this._color = vec4.create();
 	}
 
 	LGraphGUIPanel.title = "GUIPanel";
 	LGraphGUIPanel.desc = "renders a rectangle on webgl canvas";
-	LGraphGUIPanel.priority = 3; //render at the end
+	LGraphGUIPanel.priority = 1; //render first
 
 	LGraphGUIPanel["@corner"] = corner_options;
 	LGraphGUIPanel["@color"] = { type:"color" };
+	LGraphGUIPanel["@opacity"] = { widget:"slider", min:0,max:1 };
 
 	LGraphGUIPanel.prototype.onRenderGUI = function()
 	{ 
 		var ctx = window.gl;
 		if(!ctx)
 			return;
-		ctx.fillColor = this.properties.color || [1,1,1,1];
+
+		this._color.set( this.properties.color || [1,1,1,1] );
+		this._color[3] = this.properties.opacity;
+		ctx.fillColor = this._color;
 		positionToArea( this.properties.position, this.properties.corner, this._pos );
 		gl.disable( gl.DEPTH_TEST );
 		gl.enable( gl.BLEND );
@@ -17770,7 +17775,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIText.title = "GUIText";
 	LGraphGUIText.desc = "renders text on webgl canvas";
-	LGraphGUIText.priority = 2; //render at the end
+	LGraphGUIText.priority = 5; //render at the end
 
 	LGraphGUIText["@corner"] = corner_options;
 	LGraphGUIText["@color"] = { type:"color" };
@@ -17825,7 +17830,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUISlider.title = "GUISlider";
 	LGraphGUISlider.desc = "Renders a slider on the main canvas";
-
+	LGraphGUISlider.priority = 5; //render at the end
 	LGraphGUISlider["@corner"] = corner_options;
 
 	LGraphGUISlider.prototype.onRenderGUI = function()
@@ -17853,7 +17858,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIToggle.title = "GUIToggle";
 	LGraphGUIToggle.desc = "Renders a toggle widget on the main canvas";
-
+	LGraphGUIToggle.priority = 5; //render at the end
 	LGraphGUIToggle["@corner"] = corner_options;
 
 	LGraphGUIToggle.prototype.onRenderGUI = function()
@@ -17882,7 +17887,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIButton.title = "GUIButton";
 	LGraphGUIButton.desc = "Renders a toggle widget on the main canvas";
-
+	LGraphGUIButton.priority = 5; //render at the end
 	LGraphGUIButton["@corner"] = corner_options;
 
 	LGraphGUIButton.prototype.onRenderGUI = function()
@@ -17922,6 +17927,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIMultipleChoice.title = "GUIMultipleChoice";
 	LGraphGUIMultipleChoice.desc = "Renders a multiple choice widget on the main canvas";
+	LGraphGUIMultipleChoice.priority = 5; //render at the end
 	LGraphGUIMultipleChoice["@corner"] = corner_options;
 
 	LGraphGUIMultipleChoice.prototype.onPropertyChanged = function(name,value)

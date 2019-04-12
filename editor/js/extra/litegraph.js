@@ -729,7 +729,7 @@ LGraph.prototype.updateExecutionOrder = function()
 			this._nodes_executable.push( this._nodes_in_order[i] );
 }
 
-//This is more internal, it computes the order and returns it
+//This is more internal, it computes the executable nodes in order and returns it
 LGraph.prototype.computeExecutionOrder = function( only_onExecute, set_level )
 {
 	var L = [];
@@ -763,7 +763,7 @@ LGraph.prototype.computeExecutionOrder = function( only_onExecute, set_level )
 		{
 			if(set_level)
 				node._level = 0;
-			remaining_links[node.id] = num;
+			remaining_links[ node.id ] = num;
 		}
 	}
 
@@ -835,9 +835,9 @@ LGraph.prototype.computeExecutionOrder = function( only_onExecute, set_level )
 	L = L.sort(function(A,B){ 
 		var Ap = A.constructor.priority || A.priority || 0;
 		var Bp = B.constructor.priority || B.priority || 0;
-		if(Ap == Bp)
+		if(Ap == Bp) //if same priority, sort by order
 			return A.order - B.order;
-		return Ap - Bp;
+		return Ap - Bp; //sort by priority
 	});
 
 	//save order number in the node, again...
@@ -967,7 +967,6 @@ LGraph.prototype.getElapsedTime = function()
 * @param {String} eventname the name of the event (function to be called)
 * @param {Array} params parameters in array format
 */
-
 LGraph.prototype.sendEventToAllNodes = function( eventname, params, mode )
 {
 	mode = mode || LiteGraph.ALWAYS;
@@ -979,6 +978,14 @@ LGraph.prototype.sendEventToAllNodes = function( eventname, params, mode )
 	for( var j = 0, l = nodes.length; j < l; ++j )
 	{
 		var node = nodes[j];
+
+		if(node.constructor === LiteGraph.Subgraph && eventname != "onExecute" )
+		{
+			if(node.mode == mode)
+				node.sendEventToAllNodes( eventname, params, mode );
+			continue;
+		}
+
 		if( !node[eventname] || node.mode != mode )
 			continue;
 		if(params === undefined)
@@ -8879,6 +8886,7 @@ function Subgraph()
 	var that = this;
 	this.size = [140,80];
 	this.properties = { enabled: true };
+	this.enabled = true;
 
 	//create inner graph
 	this.subgraph = new LGraph();
@@ -8946,7 +8954,8 @@ Subgraph.prototype.onAction = function( action, param )
 
 Subgraph.prototype.onExecute = function()
 {
-	if( !this.getInputOrProperty("enabled") )
+	this.enabled = this.getInputOrProperty("enabled");
+	if( !this.enabled )
 		return;
 
 	//send inputs to subgraph global inputs
@@ -8969,6 +8978,12 @@ Subgraph.prototype.onExecute = function()
 			var value = this.subgraph.getOutputData( output.name );
 			this.setOutputData(i, value);
 		}
+}
+
+Subgraph.prototype.sendEventToAllNodes = function( eventname, param, mode )
+{
+	if(this.enabled)
+		this.subgraph.sendEventToAllNodes( eventname, param, mode );
 }
 
 //**** INPUTS ***********************************
@@ -9081,6 +9096,7 @@ Subgraph.prototype.clone = function()
 	return node;
 }
 
+LiteGraph.Subgraph = Subgraph;
 LiteGraph.registerNodeType("graph/subgraph", Subgraph );
 
 

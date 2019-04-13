@@ -1984,6 +1984,13 @@ LGraphNode.prototype.configure = function(info)
 		}
 	}
 
+	if(info.widgets_values && this.widgets)
+	{
+		for(var i = 0; i < info.widgets_values.length; ++i)
+			if( this.widgets[i] )
+				this.widgets[i].value = info.widgets_values[i];
+	}
+
 	if( this.onConfigure )
 		this.onConfigure( info );
 }
@@ -2025,6 +2032,13 @@ LGraphNode.prototype.serialize = function()
 
 	if( this.properties )
 		o.properties = LiteGraph.cloneObject( this.properties );
+
+	if( this.widgets && this.serialize_widgets )
+	{
+		o.widgets_values = [];
+		for(var i = 0; i < this.widgets.length; ++i)
+			o.widgets_values[i] = this.widgets[i].value;
+	}
 
 	if( !o.type )
 		o.type = this.constructor.type;
@@ -2819,7 +2833,7 @@ LGraphNode.prototype.addWidget = function( type, name, value, callback, options 
 		w.y = w.options.y;
 
 	if( !callback )
-		console.warn("LiteGraph addWidget('button',...) without a callback");
+		console.warn("LiteGraph addWidget(...) without a callback");
 	if( type == "combo" && !w.options.values )
 		throw("LiteGraph addWidget('combo',...) requires to pass values in options: { values:['red','blue'] }");
 	this.widgets.push(w);
@@ -6891,7 +6905,7 @@ LGraphCanvas.prototype.processNodeWidgets = function( node, pos, event, active_w
 					var nvalue = Math.clamp( (x - 10) / (width - 20), 0, 1);
 					w.value = w.options.min + (w.options.max - w.options.min) * nvalue;
 					if(w.callback)
-						setTimeout( function(){	w.callback( w.value, that, node, pos ); }, 20 );
+						setTimeout( function(){	inner_value_change( w, w.value ); }, 20 );
 					this.dirty_canvas = true;
 					break;
 				case "number": 
@@ -6934,13 +6948,13 @@ LGraphCanvas.prototype.processNodeWidgets = function( node, pos, event, active_w
 							function inner_clicked( v, option, event )
 							{
 								this.value = v;
+								inner_value_change( this, v );
 								that.dirty_canvas = true;
 								return false;
 							}
 						}
 					}
-					if(w.callback)
-						setTimeout( (function(){ this.callback( this.value, that, node, pos ); }).bind(w), 20 );
+					setTimeout( (function(){ inner_value_change( this, this.value ); }).bind(w), 20 );
 					this.dirty_canvas = true;
 					break;
 				case "toggle":
@@ -6948,13 +6962,13 @@ LGraphCanvas.prototype.processNodeWidgets = function( node, pos, event, active_w
 					{
 						w.value = !w.value;
 						if(w.callback)
-							setTimeout( function(){	w.callback( w.value, that, node, pos ); }, 20 );
+							setTimeout( function(){	inner_value_change( w, w.value ); }, 20 );
 					}
 					break;
 				case "string":
 				case "text":
 					if( event.type == "mousedown" )
-						this.prompt( "Value", w.value, (function(v){ this.value = v; if(w.callback) w.callback(v, that, node ); }).bind(w), event );
+						this.prompt( "Value", w.value, (function(v){ this.value = v; inner_value_change( this, v ); }).bind(w), event );
 					break;
 				default: 
 					if( w.mouse )
@@ -6965,6 +6979,16 @@ LGraphCanvas.prototype.processNodeWidgets = function( node, pos, event, active_w
 			return w;
 		}
 	}
+
+	function inner_value_change( widget, value )
+	{
+		widget.value = value;
+		if(widget.property && node.properties[ widget.property ] !== undefined )
+			node.properties[ widget.property ] = value;
+		if(widget.callback)
+			widget.callback( widget.value, that, node, pos, event );
+	}
+
 	return null;
 }
 

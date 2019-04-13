@@ -11930,7 +11930,7 @@ BaseComponent.prototype.getPropertyInfoFromPath = function( path )
 		}
 	}
 
-	if(v === undefined && this[ varname ] === undefined )
+	if( v === undefined && Object.hasOwnProperty( this, varname ) )//this[ varname ] === undefined )
 		return null;
 
 	//if we dont have a value yet then take it directly from the object
@@ -15849,7 +15849,7 @@ if(typeof(LiteGraph) != "undefined")
 	global.LGraphSceneNode = function()
 	{
 		this.properties = { node_id: "" };
-		this.size = [140,20];
+		this.size = [140,30];
 		this._node = null;
 	}
 
@@ -16070,7 +16070,7 @@ if(typeof(LiteGraph) != "undefined")
 	{
 		this.properties = { material_id: "", node_id: "" };
 		this.addInput("Material","Material");
-		this.size = [100,20];
+		this.size = [100,30];
 	}
 
 	LGraphMaterial.title = "Material";
@@ -16267,8 +16267,10 @@ if(typeof(LiteGraph) != "undefined")
 	{
 		this.addInput("in");
 		this.addOutput("out");
-		this.size = [80,20];
-		this.properties = {locator:""};
+		this.size = [90,30];
+		this.properties = { locator: "", cache_object: true };
+		this.locator_split = null;
+		this._locator_info = null;
 	}
 
 	LGraphLocatorProperty.title = "Property";
@@ -16276,12 +16278,24 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphLocatorProperty.prototype.getLocatorInfo = function()
 	{
-		var locator = this.properties.locator;
-		if(!this.properties.locator)
-			return;
+		if(!this.locator_split)
+			return null;
+		if( this.properties.cache_object && this._locator_info )
+			return this._locator_info;
 		var scene = this.graph._scene || LS.GlobalScene;
-		this._locator_info = scene.getPropertyInfo( locator );
+		this._locator_info = scene.getPropertyInfoFromPath( this.locator_split );
 		return this._locator_info;
+	}
+
+	LGraphLocatorProperty.prototype.onPropertyChanged = function(name,value)
+	{
+		if(name == "locator")
+		{
+			if( value )
+				this.locator_split = value.split("/");
+			else
+				this.locator_split = null;
+		}
 	}
 
 	LGraphLocatorProperty.prototype.onAction = function( action, param )
@@ -17741,7 +17755,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIPanel.title = "GUIPanel";
 	LGraphGUIPanel.desc = "renders a rectangle on webgl canvas";
-	LGraphGUIPanel.priority = 1; //render first
+	LGraphGUIPanel.priority = -1; //render first
 
 	LGraphGUIPanel["@corner"] = corner_options;
 	LGraphGUIPanel["@color"] = { type:"color" };
@@ -17803,7 +17817,6 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIText.title = "GUIText";
 	LGraphGUIText.desc = "renders text on webgl canvas";
-	LGraphGUIText.priority = 5; //render at the end
 
 	LGraphGUIText["@corner"] = corner_options;
 	LGraphGUIText["@color"] = { type:"color" };
@@ -17858,7 +17871,6 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUISlider.title = "GUISlider";
 	LGraphGUISlider.desc = "Renders a slider on the main canvas";
-	LGraphGUISlider.priority = 5; //render at the end
 	LGraphGUISlider["@corner"] = corner_options;
 
 	LGraphGUISlider.prototype.onRenderGUI = function()
@@ -17886,7 +17898,6 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIToggle.title = "GUIToggle";
 	LGraphGUIToggle.desc = "Renders a toggle widget on the main canvas";
-	LGraphGUIToggle.priority = 5; //render at the end
 	LGraphGUIToggle["@corner"] = corner_options;
 
 	LGraphGUIToggle.prototype.onRenderGUI = function()
@@ -17915,7 +17926,6 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIButton.title = "GUIButton";
 	LGraphGUIButton.desc = "Renders a toggle widget on the main canvas";
-	LGraphGUIButton.priority = 5; //render at the end
 	LGraphGUIButton["@corner"] = corner_options;
 
 	LGraphGUIButton.prototype.onRenderGUI = function()
@@ -17955,7 +17965,6 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIMultipleChoice.title = "GUIMultipleChoice";
 	LGraphGUIMultipleChoice.desc = "Renders a multiple choice widget on the main canvas";
-	LGraphGUIMultipleChoice.priority = 5; //render at the end
 	LGraphGUIMultipleChoice["@corner"] = corner_options;
 
 	LGraphGUIMultipleChoice.prototype.onPropertyChanged = function(name,value)

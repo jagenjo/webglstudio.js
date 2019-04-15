@@ -16269,21 +16269,23 @@ if(typeof(LiteGraph) != "undefined")
 		this.addOutput("out");
 		this.size = [90,30];
 		this.properties = { locator: "", cache_object: true };
-		this.locator_split = null;
+		this._locator_split = null;
 		this._locator_info = null;
 	}
 
 	LGraphLocatorProperty.title = "Property";
 	LGraphLocatorProperty.desc = "A property of a node or component of the scene specified by its locator string";
 
-	LGraphLocatorProperty.prototype.getLocatorInfo = function()
+	LGraphLocatorProperty.prototype.getLocatorInfo = function( force )
 	{
-		if(!this.locator_split)
+		if(!this._locator_split)
 			return null;
-		if( this.properties.cache_object && this._locator_info )
+		if( !force && this.properties.cache_object && this._locator_info )
 			return this._locator_info;
+		if(!this.graph || !this.graph._scene)
+			return null;
 		var scene = this.graph._scene || LS.GlobalScene;
-		this._locator_info = scene.getPropertyInfoFromPath( this.locator_split );
+		this._locator_info = scene.getPropertyInfoFromPath( this._locator_split );
 		return this._locator_info;
 	}
 
@@ -16292,9 +16294,9 @@ if(typeof(LiteGraph) != "undefined")
 		if(name == "locator")
 		{
 			if( value )
-				this.locator_split = value.split("/");
+				this._locator_split = value.split("/");
 			else
-				this.locator_split = null;
+				this._locator_split = null;
 		}
 	}
 
@@ -16307,7 +16309,9 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphLocatorProperty.prototype.getTitle = function()
 	{
-		return this.title || ( this._locator_info ? this._locator_info.name : "Property" );
+		if( (!this.title || this.title == LGraphLocatorProperty.title) && this._locator_info)
+			return this._locator_info.name;
+		return this.title || LGraphLocatorProperty.title;
 	}
 
 	LGraphLocatorProperty.prototype.onExecute = function()
@@ -16323,20 +16327,26 @@ if(typeof(LiteGraph) != "undefined")
 		}
 	}
 
-	/*
-	LGraphLocatorProperty.prototype.onGetInputs = function()
+	LGraphLocatorProperty.prototype.onInspect = function( inspector )
 	{
-		var r = [["Toggle",LiteGraph.ACTION]];
-		var info = this.getLocatorInfo();
+		var info = this.getLocatorInfo(true);
 		if(!info)
-			return r;
-		var properties = LS.getObjectProperties( info.target );
-		for(var i in properties)
-			r.push([i,properties[i]]);
-		return r;
+			return;
+		inspector.addSeparator();
+		var type = info.type;
+		var var_info = null;
+		if( info.target && info.target.constructor["@" + info.name] )
+		{
+			var_info = info.target.constructor["@" + info.name];
+			if( var_info.widget )
+				type = var_info.widget;
+			else if( var_info.type )
+				type = var_info.type;
+		}
+		inspector.add( type, info.name, info.value, { callback: function(v){
+			LS.setObjectProperty( info.target, info.name, v );
+		}});
 	}
-	LGraphLocatorProperty.prototype.onGetOutputs = LGraphLocatorProperty.prototype.onGetInputs;
-	*/
 
 	LiteGraph.registerNodeType("scene/property", LGraphLocatorProperty );
 

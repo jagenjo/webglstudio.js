@@ -2561,6 +2561,12 @@ LGraphNode.prototype.addProperty = function( name, default_value, type, extra_in
 	return o;
 }
 
+LGraphNode.prototype.setProperty = function( name, value )
+{
+	this.properties[ name ] = value;
+	if(this.onPropertyChanged)
+		this.onPropertyChanged( name, value );
+}
 
 //connections
 

@@ -318,24 +318,25 @@ GraphWidget.prototype.onDropItem = function( e )
 	if(item_type == "SceneNode")
 	{
 		graphnode = LiteGraph.createNode("scene/node");
-		graphnode.properties.node_id = item_uid;
+		graphnode.setProperty("node_id",item_uid);
 	}
 	else if(item_type == "Component")
 	{
 		graphnode = LiteGraph.createNode( item_class == "Transform" ? "scene/transform" : "scene/component");
-		graphnode.properties.node_id = item_node_uid;
-		graphnode.properties.component_id = item_uid;
+		graphnode.setProperty("node_id",item_node_uid);
+		graphnode.setProperty("component_id",item_uid);
 	}
 	else if(item_type == "Material")
 	{
 		graphnode = LiteGraph.createNode( "scene/material" );
-		graphnode.properties.node_id = item_node_uid;
-		graphnode.properties.material_id = item_uid;
+		graphnode.setProperty("node_id",item_node_uid);
+		graphnode.setProperty("material_id",item_uid);
 	}
 	else if(item_type == "property")
 	{
 		graphnode = LiteGraph.createNode( "scene/property" );
-		graphnode.properties.locator = item_uid;
+		graphnode.title = null;
+		graphnode.setProperty( "locator", item_uid );
 	}
 	else if(item_type == "object")
 	{
@@ -351,6 +352,8 @@ GraphWidget.prototype.onDropItem = function( e )
 		//get active graph
 		graph.add( graphnode );
 		graphnode.onExecute();
+		if(graphnode.getTitle) //refresh title
+			graphnode.getTitle();
 		return true;
 	}
 

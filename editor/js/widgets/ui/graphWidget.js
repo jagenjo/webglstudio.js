@@ -302,7 +302,9 @@ GraphWidget.prototype.onDropItem = function( e )
 	e.preventDefault();
 	e.stopPropagation();
 
-	if(!this.graph)
+	var graph = this.graphcanvas.getCurrentGraph();
+
+	if(!graph)
 		return;
 
 	//scene node
@@ -342,9 +344,12 @@ GraphWidget.prototype.onDropItem = function( e )
 
 	if(graphnode)
 	{
-		graphnode.pos[0] = e.canvasX;
-		graphnode.pos[1] = e.canvasY;
-		this.graph.add( graphnode );
+		var s = Math.floor(LiteGraph.NODE_TITLE_HEIGHT * 0.5);
+		graphnode.pos[0] = e.canvasX - s;
+		graphnode.pos[1] = e.canvasY + s;
+
+		//get active graph
+		graph.add( graphnode );
 		graphnode.onExecute();
 		return true;
 	}
@@ -471,19 +476,6 @@ GraphWidget.prototype.onOpenGraph = function()
 	var dialog = new LiteGUI.Dialog( { title:"Select Graph", draggable: true, closable: true });
 	
 	var widgets = new LiteGUI.Inspector();
-
-	/*
-	widgets.addTitle("New Script");
-	widgets.addNode("Node", LS.GlobalScene.root.name );
-	widgets.addString("Name","unnamed");
-	widgets.addButton(null,"Create", function(){
-		//TODO
-		dialog.close();
-	});
-
-	widgets.addTitle("Open Script");
-	*/
-
 	var selected = null;
 
 	var graph_components = LS.GlobalScene.findNodeComponents( LS.Components.GraphComponent );
@@ -525,7 +517,7 @@ GraphWidget.prototype.onStepGraph = function()
 
 GraphWidget.prototype.onSelectOvergraph = function()
 {
-	GraphModule.current_overgraph = this.graph;
+	GraphModule.current_overgraph = this.graphcanvas.getCurrentGraph();
 }
 
 GraphWidget.prototype.onGetExtraMenuOptions = function(options)
@@ -568,7 +560,8 @@ GraphWidget.prototype.onGetExtraMenuOptions = function(options)
 		this.graphcanvas.adjustMouseEvent(e);
 		graphnode.pos[0] = e.canvasX;
 		graphnode.pos[1] = e.canvasY;
-		this.graph.add( graphnode );
+		var graph = this.graphcanvas.getCurrentGraph();
+		graph.add( graphnode );
 		graphnode.onExecute();
 	}
 }

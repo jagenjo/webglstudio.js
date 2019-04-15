@@ -3876,6 +3876,7 @@ function LGraphCanvas( canvas, graph, options )
 	this.last_mouse_position = [0,0];
 	this.visible_area = this.ds.visible_area;
 	this.visible_links = [];
+	this._graph_stack = null;
 
 	//link canvas and graph
 	if(graph)
@@ -3921,6 +3922,8 @@ LGraphCanvas.prototype.clear = function()
 	this.node_capturing_input = null;
 	this.connecting_node = null;
 	this.highlighted_links = {};
+	if(this._graph_stack)
+		this._graph_stack.length = 0;
 
 	this.dirty_canvas = true;
 	this.dirty_bgcanvas = true;
@@ -3958,15 +3961,21 @@ LGraphCanvas.prototype.setGraph = function( graph, skip_clear )
 		return;
 	}
 
-	/*
-	if(this.graph)
-		this.graph.canvas = null; //remove old graph link to the canvas
-	this.graph = graph;
-	if(this.graph)
-		this.graph.canvas = this;
-	*/
+	if( this._graph_stack )
+		this._graph_stack.length = 0;
 	graph.attachCanvas(this);
 	this.setDirty(true,true);
+}
+
+/**
+* Returns the active graph in the canvas (in case there are subgraphs open)
+*
+* @method getCurrentGraph
+* @param {LGraph} graph
+*/
+LGraphCanvas.prototype.getCurrentGraph = function()
+{
+	return this.graph;
 }
 
 /**

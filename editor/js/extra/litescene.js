@@ -16282,10 +16282,12 @@ if(typeof(LiteGraph) != "undefined")
 			return null;
 		if( !force && this.properties.cache_object && this._locator_info )
 			return this._locator_info;
-		if(!this.graph || !this.graph._scene)
+		if( !this.graph )
 			return null;
-		var scene = this.graph._scene || LS.GlobalScene;
+		var scene = this.graph._scene || LS.GlobalScene; //subgraphs do not have an scene assigned
 		this._locator_info = scene.getPropertyInfoFromPath( this._locator_split );
+		if(this._locator_info && this.inputs && this.inputs.length)
+			this.inputs[0].type = this._locator_info.type;
 		return this._locator_info;
 	}
 
@@ -27503,8 +27505,6 @@ Transform.UP = vec3.fromValues(0,1,0);
 Transform.RIGHT = vec3.fromValues(1,0,0);
 Transform.FRONT = vec3.fromValues(0,0,-1);
 
-
-Transform["@position"] = { type: "position"};
 Transform["@rotation"] = { type: "quat"};
 Transform["@data"] = { type: "trans10" };
 
@@ -29137,7 +29137,7 @@ Camera["@layers"] = { type: "layers" };
 
 // used when rendering a cubemap to set the camera view direction (crossx and crossy are for when generating a CROSS cubemap image)
 
-//OLD VERSION
+//OLD VERSION, it doesnt make sense but is the one that works perfectly
 Camera.cubemap_camera_parameters = [
 	{ name: "posx", dir: vec3.fromValues(1,0,0), up: vec3.fromValues(0,-1,0), crossx:2, crossy:1 },
 	{ name: "negx", dir: vec3.fromValues(-1,0,0), up: vec3.fromValues(0,-1,0), crossx:0, crossy:1 },

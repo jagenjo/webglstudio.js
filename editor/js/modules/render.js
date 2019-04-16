@@ -595,6 +595,91 @@ var RenderModule = {
 		}
 	},
 
+	/**
+	* Renders the material preview to an image (or to the screen)
+	*
+	* @method renderMaterialPreview
+	* @param {Material} material
+	* @param {number} size image size
+	* @param {Object} options could be environment_texture, to_viewport
+	* @param {HTMLCanvas} canvas [optional] the output canvas where to store the preview
+	* @return {Image} the preview image (in canvas format) or null if it was rendered to the viewport
+	*/
+	renderMaterialPreview: function( material, size, options, canvas )
+	{
+		options = options || {};
+
+		if(!material)
+		{
+			console.error("No material provided to renderMaterialPreview");
+			return;
+		}
+
+		//create scene
+		var scene = LS.Renderer._material_scene;
+		if(!scene)
+		{
+			scene = LS.Renderer._material_scene = new LS.Scene();
+			scene.root.camera.background_color.set([0.0,0.0,0.0,0]);
+			if(options.environment_texture)
+				scene.info.textures.environment = options.environment_texture;
+			var node = new LS.SceneNode( "sphere" );
+			var compo = new LS.Components.GeometricPrimitive( { size: 40, subdivisions: 50, geometry: LS.Components.GeometricPrimitive.SPHERE } );
+			node.addComponent( compo );
+			scene.root.addChild( node );
+		}
+
+		if(!LS.Renderer._preview_material_render_settings)
+			LS.Renderer._preview_material_render_settings = new LS.RenderSettings({ skip_viewport: true, render_helpers: false, update_materials: true });
+		var render_settings = LS.Renderer._preview_material_render_settings;
+
+		if(options.background_color)
+			scene.root.camera.background_color.set(options.background_color);
+
+		var node = scene.getNode( "sphere");
+		if(!node)
+		{
+			console.error("Node not found in Material Preview Scene");
+			return null;
+		}
+
+		if(options.rotate)
+		{
+			node.transform.reset();
+			node.transform.rotateY( options.rotate );
+		}
+
+		var new_material = null;
+		if( material.constructor === String )
+			new_material = material;
+		else
+		{
+			new_material = new material.constructor();
+			new_material.configure( material.serialize() );
+		}
+		node.material = new_material;
+
+		if(options.to_viewport)
+		{
+			LS.Renderer.renderFrame( scene.root.camera, render_settings, scene );
+			return;
+		}
+
+		var tex = LS.Renderer._material_preview_texture || new GL.Texture(size,size);
+		if(!LS.Renderer._material_preview_texture)
+			LS.Renderer._material_preview_texture = tex;
+
+		tex.drawTo( function()
+		{
+			//it already clears everything
+			//just render
+			LS.Renderer.renderFrame( scene.root.camera, render_settings, scene );
+		});
+
+		var canvas = tex.toCanvas( canvas, true );
+		return canvas;
+	},
+
 	//returns string or blob
 	takeScreenshot: function( width, height, on_complete )
 	{
@@ -741,7 +826,35 @@ RenderModule._depth_fragment_shader_code = "\n\
 }";
 
 
+LS.Material.prototype.updatePreview = function(size, options)
+{
+	options = options || {};
 
+	var res = {};
+	this.getResources(res);
+
+	for(var i in res)
+	{
+		var resource = LS.ResourcesManager.resources[i];
+		if(!resource)
+		{
+			console.warn("Cannot generate preview with resources missing.");
+			return null;
+		}
+	}
+
+	if(LS.GlobalScene.info.textures.environment)
+		options.environment = LS.GlobalScene.info.textures.environment;
+
+	size = size || 256;
+	var preview = RenderModule.renderMaterialPreview( this, size, options, this._preview );
+	if(!preview)
+		return;
+
+	this._preview = preview;
+	if(preview.toDataURL)
+		this._preview_url = preview.toDataURL("image/png");
+}
 
 
 

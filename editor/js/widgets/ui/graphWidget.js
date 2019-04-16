@@ -8,6 +8,8 @@ GraphWidget.litegraph_path = "../../litegraph/";
 GraphWidget.litegraph_css_url = "css/litegraph.css";
 GraphWidget.litegraph_background = "imgs/litegraph_grid.png";
 
+GraphWidget.item_drop_types = {}; //.used when droping stuff on a graphcanvas
+
 LGraphCanvas.link_type_colors["Component"] = "#D99";
 
 GraphWidget.widget_name = "Graph";
@@ -297,6 +299,12 @@ GraphWidget.prototype.onShowNodePanel = function( node )
 	this.inspected_node = node;
 }
 
+//in case you want to have the option to drop stuff in the editor
+GraphWidget.registerItemDropType = function( type, callback )
+{
+	this.item_drop_types[ type ] = callback;
+}
+
 GraphWidget.prototype.onDropItem = function( e )
 {
 	e.preventDefault();
@@ -305,59 +313,32 @@ GraphWidget.prototype.onDropItem = function( e )
 	var graph = this.graphcanvas.getCurrentGraph();
 
 	if(!graph)
-		return;
+		return false;
 
 	//scene node
-	var item_uid = e.dataTransfer.getData("uid");
 	var item_type = e.dataTransfer.getData("type");
-	var item_class = e.dataTransfer.getData("class");
-	var item_node_uid = e.dataTransfer.getData("node_uid");
 
-	var graphnode = null;
+	//get function in charge of processing drop
+	var callback = GraphWidget.item_drop_types[ item_type ];
+	if( !callback )
+		return false; 
 
-	if(item_type == "SceneNode")
-	{
-		graphnode = LiteGraph.createNode("scene/node");
-		graphnode.setProperty("node_id",item_uid);
-	}
-	else if(item_type == "Component")
-	{
-		graphnode = LiteGraph.createNode( item_class == "Transform" ? "scene/transform" : "scene/component");
-		graphnode.setProperty("node_id",item_node_uid);
-		graphnode.setProperty("component_id",item_uid);
-	}
-	else if(item_type == "Material")
-	{
-		graphnode = LiteGraph.createNode( "scene/material" );
-		graphnode.setProperty("node_id",item_node_uid);
-		graphnode.setProperty("material_id",item_uid);
-	}
-	else if(item_type == "property")
-	{
-		graphnode = LiteGraph.createNode( "scene/property" );
-		graphnode.title = null;
-		graphnode.setProperty( "locator", item_uid );
-	}
-	else if(item_type == "object")
-	{
-		LiteGUI.alert("Objects cannot be dragged into the graph");
-	}
+	//get node
+	var graphnode = callback(e);
+	if(!graphnode)
+		return false;
 
-	if(graphnode)
-	{
-		var s = Math.floor(LiteGraph.NODE_TITLE_HEIGHT * 0.5);
-		graphnode.pos[0] = e.canvasX - s;
-		graphnode.pos[1] = e.canvasY + s;
+	//position node
+	var s = Math.floor(LiteGraph.NODE_TITLE_HEIGHT * 0.5);
+	graphnode.pos[0] = e.canvasX - s;
+	graphnode.pos[1] = e.canvasY + s;
 
-		//get active graph
-		graph.add( graphnode );
-		graphnode.onExecute();
-		if(graphnode.getTitle) //refresh title
-			graphnode.getTitle();
-		return true;
-	}
-
-	return false;
+	//get active graph
+	graph.add( graphnode );
+	graphnode.onExecute();
+	if(graphnode.getTitle) //refresh title
+		graphnode.getTitle();
+	return true;
 }
 
 GraphWidget.prototype.onBeforeReload = function( e )
@@ -729,3 +710,42 @@ LiteGraph.LGraph.prototype.onGetNodeMenuOptions = function( options, node )
 	}
 }
 
+// drop types
+
+GraphWidget.registerItemDropType( "SceneNode", function(e){
+	var graphnode = LiteGraph.createNode("scene/node");
+	var item_uid = e.dataTransfer.getData("uid");
+	graphnode.setProperty("node_id",item_uid);
+	return graphnode;
+})
+
+GraphWidget.registerItemDropType( "Component", function(e){
+	var item_class = e.dataTransfer.getData("class");
+	var graphnode = LiteGraph.createNode( item_class == "Transform" ? "scene/transform" : "scene/component");
+	var item_node_uid = e.dataTransfer.getData("node_uid");
+	graphnode.setProperty("node_id",item_node_uid);
+	var item_uid = e.dataTransfer.getData("uid");
+	graphnode.setProperty("component_id",item_uid);
+	return graphnode;
+});
+
+GraphWidget.registerItemDropType( "Material", function(e){
+	graphnode = LiteGraph.createNode( "scene/material" );
+	var item_node_uid = e.dataTransfer.getData("node_uid");
+	graphnode.setProperty("node_id",item_node_uid);
+	var item_uid = e.dataTransfer.getData("uid");
+	graphnode.setProperty("material_id",item_uid);
+	return graphnode;
+});
+
+GraphWidget.registerItemDropType( "property", function(e){
+	var graphnode = LiteGraph.createNode( "scene/property" );
+	graphnode.title = null;
+	var item_uid = e.dataTransfer.getData("uid");
+	graphnode.setProperty( "locator", item_uid );
+	return graphnode;
+});
+
+GraphWidget.registerItemDropType( "object", function(e){
+	LiteGUI.alert("Objects cannot be dragged into the graph");
+});

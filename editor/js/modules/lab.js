@@ -565,7 +565,7 @@ var LabModule = {
 				gl.viewport( startx, starty, sizex, sizey );
 
 				//render
-				LS.Renderer.renderMaterialPreview( material, 1, { to_viewport: true, background_color: [0.1,0.1,0.1,1.0], rotate: angle } );
+				RenderModule.renderMaterialPreview( material, 1, { to_viewport: true, background_color: [0.1,0.1,0.1,1.0], rotate: angle } );
 
 				gl.setViewport( old_viewport );
 

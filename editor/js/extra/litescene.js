@@ -17852,7 +17852,7 @@ if(typeof(LiteGraph) != "undefined")
 	function LGraphGUIImage()
 	{
 		this.addInput("","image,canvas,texture");
-		this.properties = { enabled: true, opacity: 1, keep_aspect: true, position: [20,20], size: [300,200], corner: LiteGraph.CORNER_TOP_LEFT };
+		this.properties = { enabled: true, opacity: 1, keep_aspect: true, flipX: false, flipY: false, position: [20,20], size: [300,200], corner: LiteGraph.CORNER_TOP_LEFT };
 		this._pos = vec2.create();
 	}
 
@@ -17884,10 +17884,23 @@ if(typeof(LiteGraph) != "undefined")
 		gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
 		var tmp = ctx.globalAlpha;
 		ctx.globalAlpha *= this.properties.opacity;
+		var x = this._pos[0];
+		var y = this._pos[1];
+		var w = this.properties.size[0];
 		var h = this.properties.size[1];
 		if(this.properties.keep_aspect)
 			h = (this.properties.size[0] / img.width) * img.height;
-		ctx.drawImage( img, this._pos[0], this._pos[1], this.properties.size[0], h );
+		if(this.properties.flipX)
+		{
+			x += w;
+			w *= -1;
+		}
+		if(this.properties.flipY)
+		{
+			y += h;
+			h *= -1;
+		}
+		ctx.drawImage( img, x, y, w, h );
 		ctx.globalAlpha = tmp;
 	}
 

@@ -3608,6 +3608,7 @@ var GUI = {
 			{
 				ctx.fillStyle = this.GUIStyle.color;
 				ctx.font = (area[3]*0.75).toFixed(0) + "px " + this.GUIStyle.font;
+				ctx.textAlign = "left";
 				ctx.fillText( content, area[0] + margin + this._offset[0], area[1] + area[3] * 0.75 + this._offset[1]);
 
 				var w = area[3] * 0.6;
@@ -3798,6 +3799,7 @@ var GUI = {
 			ctx.fillStyle = this.GUIStyle.color;
 			ctx.font = (area[3]*0.5).toFixed(0) + "px " + this.GUIStyle.font;
 			ctx.fillText( value.toFixed(2), area[0] + area[2] * 0.5 + this._offset[0], area[1] + area[3] * 0.7 + this._offset[1] );
+			ctx.textAlign = "left";
 		}
 
 		return value;
@@ -17834,6 +17836,7 @@ if(typeof(LiteGraph) != "undefined")
 			return;
 
 		ctx.font = this.properties.font || "20px Arial";
+		ctx.textAlign = "left";
 		ctx.fillColor = this.properties.color || [1,1,1,1];
 
 		positionToArea( this.properties.position, this.properties.corner, this._pos );
@@ -17860,6 +17863,8 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUISlider.prototype.onRenderGUI = function()
 	{
+		if(!this.properties.enabled)
+			return;
 		positionToArea( this.properties.position, this.properties.corner, this._area );
 		this._area[2] = this.properties.size[0];
 		this._area[3] = this.properties.size[1];
@@ -17868,7 +17873,17 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUISlider.prototype.onExecute = function()
 	{
+		if(this.inputs && this.inputs.length)
+		{
+			var v = this.getInputData( 0 );
+			if(v != null)
+				this.properties.enabled = v;
+		}
 		this.setOutputData(0, this.properties.value );
+	}
+
+	LGraphGUISlider.prototype.onGetInputs = function(){
+		return [["enabled","boolean"]];
 	}
 
 	LiteGraph.registerNodeType("gui/slider", LGraphGUISlider );
@@ -17960,7 +17975,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIMultipleChoice.prototype.onRenderGUI = function()
 	{
-		if(!this._values.length)
+		if(!this._values.length || !this.properties.enabled )
 			return;
 
 		this.properties.selected = Math.floor( this.properties.selected );
@@ -17976,8 +17991,18 @@ if(typeof(LiteGraph) != "undefined")
 		}
 	}
 
+	LGraphGUIMultipleChoice.prototype.onGetInputs = function(){
+		return [["enabled","boolean"]];
+	}
+
 	LGraphGUIMultipleChoice.prototype.onExecute = function()
 	{
+		if(this.inputs && this.inputs.length)
+		{
+			var v = this.getInputData( 0 );
+			if(v != null)
+				this.properties.enabled = v;
+		}
 		this.setOutputData( 0, this._values[ this.properties.selected ] );
 		this.setOutputData( 1, this.properties.selected );
 	}
@@ -36876,7 +36901,6 @@ Object.defineProperty( GlobalInfo.prototype, 'textures', {
 	enumerable: true
 });
 
-
 Object.defineProperty( GlobalInfo.prototype, 'render_settings', {
 	set: function( v )
 	{
@@ -36911,6 +36935,7 @@ GlobalInfo.prototype.computeIrradiance = function( position, near, far, backgrou
 	var texture_settings = { type: gl.FLOAT, texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGB };
 	var cubemap = new GL.Texture( LS.Components.IrradianceCache.final_cubemap_size, LS.Components.IrradianceCache.final_cubemap_size, texture_settings );
 	var temp_cubemap = new GL.Texture( texture_size, texture_size, texture_settings );
+	//renders scene to cubemap
 	LS.Components.IrradianceCache.captureIrradiance( position, cubemap, render_settings, near || 0.1, far || 1000, background_color || [0,0,0,1], true, temp_cubemap );
 	this._irradiance = LS.Components.IrradianceCache.computeSH( cubemap );
 	console.log( "IR factor", this._irradiance );
@@ -41155,6 +41180,8 @@ var irradiance_block = new LS.ShaderBlock("applyIrradiance");
 ShaderMaterial.irradiance_block = irradiance_block;
 irradiance_block.addCode( GL.FRAGMENT_SHADER, irradiance_code, irradiance_disabled_code );
 irradiance_block.register( true );
+
+
 
 ///@FILE:../src/components/script.js
 ///@INFO: SCRIPTS

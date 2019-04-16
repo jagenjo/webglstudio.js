@@ -17852,7 +17852,7 @@ if(typeof(LiteGraph) != "undefined")
 	function LGraphGUIImage()
 	{
 		this.addInput("","image,canvas,texture");
-		this.properties = { enabled: true, opacity: 1, keep_aspect: true, flipX: false, flipY: false, position: [20,20], size: [300,200], corner: LiteGraph.CORNER_TOP_LEFT };
+		this.properties = { enabled: true, opacity: 1, keep_aspect: true, flipX: false, flipY: false, force_update: false, position: [20,20], size: [300,200], corner: LiteGraph.CORNER_TOP_LEFT };
 		this._pos = vec2.create();
 	}
 
@@ -17876,6 +17876,9 @@ if(typeof(LiteGraph) != "undefined")
 		var enabled = this.getInputOrProperty("enabled");
 		if(enabled === false || !img)
 			return;
+
+		if(this.properties.force_update)
+			img.mustUpdate = true;
 
 		positionToArea( this.properties.position, this.properties.corner, this._pos );
 

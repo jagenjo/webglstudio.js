@@ -293,14 +293,28 @@ function enableWebGLCanvas( canvas, options )
 
 				tex = img.gl[ gl.context_id ];
 				if(tex)
+				{
+					if( img.mustUpdate )
+					{
+						tex.uploadData( img );
+						img.mustUpdate = false;
+					}
 					return tex;
+				}
 				return img.gl[ gl.context_id ] = GL.Texture.fromImage(img, { magFilter: gl.LINEAR, minFilter: gl.LINEAR_MIPMAP_LINEAR, wrap: wrap, ignore_pot:true, premultipliedAlpha: true, anisotropic: anisotropic } );
 			}
 			else //probably a canvas
 			{
 				tex = img.gl[ gl.context_id ];
 				if(tex)
+				{
+					if( img.mustUpdate )
+					{
+						tex.uploadData( img );
+						img.mustUpdate = false;
+					}
 					return tex;
+				}
 				return img.gl[ gl.context_id ] = GL.Texture.fromImage(img, { minFilter: gl.LINEAR, magFilter: gl.LINEAR, anisotropic: anisotropic });
 			}
 		}

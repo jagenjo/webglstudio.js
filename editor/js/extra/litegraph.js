@@ -6754,6 +6754,7 @@ LGraphCanvas.prototype.drawNodeWidgets = function( node, posY, ctx, active_widge
 	var outline_color = "#666";
 	var background_color = "#222";
 	var margin = 15;
+	ctx.font = "14px Arial";
 
 	for(var i = 0; i < widgets.length; ++i)
 	{
@@ -6873,7 +6874,11 @@ LGraphCanvas.prototype.drawNodeWidgets = function( node, posY, ctx, active_widge
 						ctx.fillText( w.name, margin*2, y + H*0.7 );
 					ctx.fillStyle = "#DDD";
 					ctx.textAlign = "right";
-					ctx.fillText( w.value, width - margin*2, y + H*0.7 );
+					var str = String(w.value);
+					var max_characters = (width - 60 - margin ) / 12;
+					if( str.length > max_characters)
+						str = str.substr(0,max_characters) + "...";
+					ctx.fillText( str, width - margin*2, y + H*0.7 );
 				}
 				break;
 			default:

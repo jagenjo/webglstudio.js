@@ -3566,6 +3566,7 @@ var GUI = {
 	* @param {Boolean} value if the checkbox is on or off
 	* @param {String|GL.Texture} content an string or image in case the checkbox is on
 	* @param {String|GL.Texture} content_off an string or image in case the checkbox is off 
+	* @param {Boolean} circle if true the checkboxes are circles instead of squares
 	* @return {Boolean} the current state of the checkbox (will be different from value if it was pressed)
 	*/
 	Toggle: function( area, value, content, content_off, circle )
@@ -17731,7 +17732,7 @@ if(typeof(LiteGraph) != "undefined")
 	//special kind of node
 	function LGraphGUIPanel()
 	{
-		this.properties = { title: "", color: [0.1,0.1,0.1], opacity: 0.7, titlecolor: [0,0,0], position: [10,10], size: [300,200], rounding: 8, corner: LiteGraph.CORNER_TOP_LEFT };
+		this.properties = { enabled: true, title: "", color: [0.1,0.1,0.1], opacity: 0.7, titlecolor: [0,0,0], position: [10,10], size: [300,200], rounding: 8, corner: LiteGraph.CORNER_TOP_LEFT };
 		this._pos = vec2.create();
 		this._color = vec4.create();
 		this._titlecolor = vec4.create();
@@ -17749,7 +17750,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphGUIPanel.prototype.onRenderGUI = function()
 	{ 
 		var ctx = window.gl;
-		if(!ctx)
+		if(!ctx || !this.properties.enabled)
 			return;
 
 		this._color.set( this.properties.color || [0.1,0.1,0.1] );
@@ -17790,7 +17791,6 @@ if(typeof(LiteGraph) != "undefined")
 
 	LiteGraph.registerNodeType("gui/panel", LGraphGUIPanel );
 
-	//special kind of node
 	function LGraphGUIText()
 	{
 		this.addInput("text");
@@ -17849,6 +17849,51 @@ if(typeof(LiteGraph) != "undefined")
 
 	LiteGraph.registerNodeType("gui/text", LGraphGUIText );
 
+	function LGraphGUIImage()
+	{
+		this.addInput("","image,canvas,texture");
+		this.properties = { enabled: true, opacity: 1, keep_aspect: true, position: [20,20], size: [300,200], corner: LiteGraph.CORNER_TOP_LEFT };
+		this._pos = vec2.create();
+	}
+
+	LGraphGUIImage.title = "GUIImage";
+	LGraphGUIImage.desc = "renders an image on webgl canvas";
+
+	LGraphGUIImage["@corner"] = corner_options;
+	LGraphGUIImage["@opacity"] = { widget:"slider", min:0,max:1 };
+
+	LGraphGUIImage.prototype.onGetInputs = function(){
+		return [["enabled","boolean"]];
+	}
+
+	LGraphGUIImage.prototype.onRenderGUI = function()
+	{ 
+		var ctx = window.gl;
+		if(!ctx)
+			return;
+
+		var img = this.getInputData(0);
+		var enabled = this.getInputOrProperty("enabled");
+		if(enabled === false || !img)
+			return;
+
+		positionToArea( this.properties.position, this.properties.corner, this._pos );
+
+		gl.disable( gl.DEPTH_TEST );
+		gl.enable( gl.BLEND );
+		gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
+		var tmp = ctx.globalAlpha;
+		ctx.globalAlpha *= this.properties.opacity;
+		var h = this.properties.size[1];
+		if(this.properties.keep_aspect)
+			h = (this.properties.size[0] / img.width) * img.height;
+		ctx.drawImage( img, this._pos[0], this._pos[1], this.properties.size[0], h );
+		ctx.globalAlpha = tmp;
+	}
+
+	LiteGraph.registerNodeType("gui/image", LGraphGUIImage );
+
+
 	//special kind of node
 	function LGraphGUISlider()
 	{
@@ -17869,16 +17914,19 @@ if(typeof(LiteGraph) != "undefined")
 		this._area[2] = this.properties.size[0];
 		this._area[3] = this.properties.size[1];
 		this.properties.value = LS.GUI.HorizontalSlider( this._area, Number(this.properties.value), Number(this.properties.min), Number(this.properties.max), true );
+		if(this.properties.text)
+		{
+			gl.textAlign = "right";
+			gl.fillStyle = "#AAA";
+			gl.fillText( this.properties.text, this._area[0] - 20, this._area[1] + this._area[3] * 0.75);
+			gl.textAlign = "left";
+		}
 	}
 
 	LGraphGUISlider.prototype.onExecute = function()
 	{
 		if(this.inputs && this.inputs.length)
-		{
-			var v = this.getInputData( 0 );
-			if(v != null)
-				this.properties.enabled = v;
-		}
+			this.properties.enabled = this.getInputOrProperty("enabled");
 		this.setOutputData(0, this.properties.value );
 	}
 
@@ -17902,6 +17950,8 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIToggle.prototype.onRenderGUI = function()
 	{
+		if(!this.properties.enabled)
+			return;
 		positionToArea( this.properties.position, this.properties.corner, this._area );
 		this._area[2] = this.properties.size[0];
 		this._area[3] = this.properties.size[1];
@@ -17930,6 +17980,8 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIButton.prototype.onRenderGUI = function()
 	{
+		if(!this.properties.enabled)
+			return;
 		positionToArea( this.properties.position, this.properties.corner, this._area );
 		this._area[2] = this.properties.size[0];
 		this._area[3] = this.properties.size[1];
@@ -17998,11 +18050,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphGUIMultipleChoice.prototype.onExecute = function()
 	{
 		if(this.inputs && this.inputs.length)
-		{
-			var v = this.getInputData( 0 );
-			if(v != null)
-				this.properties.enabled = v;
-		}
+			this.properties.enabled = this.getInputOrProperty("enabled");
 		this.setOutputData( 0, this._values[ this.properties.selected ] );
 		this.setOutputData( 1, this.properties.selected );
 	}
@@ -40861,7 +40909,6 @@ const float Pi = 3.141592654;\n\
 const float CosineA0 = Pi;\n\
 const float CosineA1 = (2.0 * Pi) / 3.0;\n\
 const float CosineA2 = Pi * 0.25;\n\
-#define float3 vec3\n\
 \n\
 struct SH9\n\
 {\n\
@@ -40870,10 +40917,10 @@ struct SH9\n\
 \n\
 struct SH9Color\n\
 {\n\
-    float3 c[9];\n\
+    vec3 c[9];\n\
 };\n\
 \n\
-void SHCosineLobe(in float3 dir, out SH9 sh)\n\
+void SHCosineLobe(in vec3 dir, out SH9 sh)\n\
 {\n\
 	\n\
     // Band 0\n\
@@ -40896,14 +40943,14 @@ void SHCosineLobe(in float3 dir, out SH9 sh)\n\
 	\n\
 }\n\
 \n\
-vec3 ComputeSHIrradiance(in float3 normal, in SH9Color radiance)\n\
+vec3 ComputeSHIrradiance(in vec3 normal, in SH9Color radiance)\n\
 {\n\
     // Compute the cosine lobe in SH, oriented about the normal direction\n\
     SH9 shCosine;\n\
 	SHCosineLobe(normal, shCosine);\n\
 	\n\
     // Compute the SH dot product to get irradiance\n\
-    float3 irradiance = vec3(0.0);\n\
+    vec3 irradiance = vec3(0.0);\n\
 	#ifndef SH_LOW\n\
 	const int num = 9;\n\
 	#else\n\
@@ -40915,7 +40962,7 @@ vec3 ComputeSHIrradiance(in float3 normal, in SH9Color radiance)\n\
     return irradiance;\n\
 }\n\
 \n\
-float3 ComputeSHDiffuse(in float3 normal, in SH9Color radiance)\n\
+vec3 ComputeSHDiffuse(in vec3 normal, in SH9Color radiance)\n\
 {\n\
     // Diffuse BRDF is albedo / Pi\n\
     return ComputeSHIrradiance( normal, radiance ) * (1.0 / Pi);\n\
@@ -40943,7 +40990,6 @@ void main()\n\
 	gl_FragColor = vec4( max( vec3(0.001), ComputeSHDiffuse( normal, coeffs ) ), 1.0 );\n\
 }\n\
 ";
-
 
 var cubemapFaceNormals = [
   [ [0, 0, -1], [0, -1, 0], [1, 0, 0] ],  // posx
@@ -41176,11 +41222,37 @@ var irradiance_disabled_code = "\n\
 	}\n\
 ";
 
+//uniform grid
 var irradiance_block = new LS.ShaderBlock("applyIrradiance");
 ShaderMaterial.irradiance_block = irradiance_block;
 irradiance_block.addCode( GL.FRAGMENT_SHADER, irradiance_code, irradiance_disabled_code );
 irradiance_block.register( true );
 
+var irradiance_single_code = "\n\
+	uniform vec3 u_sh_coeffs[9];\n\
+	" + IrradianceCache.include_code + "\n\
+	void applyIrradiance( in Input IN, in SurfaceOutput o, inout FinalLight FINALLIGHT )\n\
+	{\n\
+		SH9Color coeffs;\n\
+		coeffs.c[0] = u_sh_coeffs[0];\n\
+		coeffs.c[1] = u_sh_coeffs[1];\n\
+		coeffs.c[2] = u_sh_coeffs[2];\n\
+		coeffs.c[3] = u_sh_coeffs[3];\n\
+		coeffs.c[4] = u_sh_coeffs[4];\n\
+		coeffs.c[5] = u_sh_coeffs[5];\n\
+		coeffs.c[6] = u_sh_coeffs[6];\n\
+		coeffs.c[7] = u_sh_coeffs[7];\n\
+		coeffs.c[8] = u_sh_coeffs[8];\n\
+		vec3 irr_color = ComputeSHDiffuse( o.Normal, coeffs );\n\
+		FINALLIGHT.Ambient = o.Ambient * irr_color;\n\
+	}\n\
+";
+
+//single
+var irradiance_single_block = new LS.ShaderBlock("applyIrradianceSingle");
+ShaderMaterial.irradiance_single_block = irradiance_single_block;
+irradiance_single_block.addCode( GL.FRAGMENT_SHADER, irradiance_single_code, irradiance_disabled_code );
+irradiance_single_block.register( true );
 
 
 ///@FILE:../src/components/script.js

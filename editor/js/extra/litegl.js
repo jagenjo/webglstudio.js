@@ -7555,7 +7555,7 @@ Shader.prototype.extractShaderInfo = function()
 		}
 
 		//store texture samplers
-		if(data.type == gl.SAMPLER_2D || data.type == gl.SAMPLER_CUBE)
+		if(data.type == gl.SAMPLER_2D || data.type == gl.SAMPLER_CUBE || data.type == GL.SAMPLER_3D)
 			this.samplers[ uniformName ] = data.type;
 		
 		//get which function to call when uploading this uniform

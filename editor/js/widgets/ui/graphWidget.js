@@ -746,6 +746,24 @@ GraphWidget.registerItemDropType( "property", function(e){
 	return graphnode;
 });
 
+GraphWidget.registerItemDropType( "resource", function(e){
+	var filename = e.dataTransfer.getData("res-fullpath");
+	var res = LS.ResourcesManager.getResource( filename );
+	var graphnode = null;
+
+	var info = LS.Formats.getFileFormatInfo( filename );
+
+	if(info.type == "image")
+	{
+		graphnode = LiteGraph.createNode( "texture/texture" );
+		graphnode.setProperty( "name", filename );
+		if(!res)
+			LS.ResourcesManager.load( filename );
+	}
+
+	return graphnode;
+});
+
 GraphWidget.registerItemDropType( "object", function(e){
 	LiteGUI.alert("Objects cannot be dragged into the graph");
 });

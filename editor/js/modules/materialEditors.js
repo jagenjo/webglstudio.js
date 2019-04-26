@@ -225,7 +225,8 @@ EditorModule.showMaterialNodeInfo = function( node, inspector )
 			else
 				resource.object_class = LS.getObjectClassName( node.material );
 
-			resource.updatePreview( DriveModule.preview_size || 256 );
+			if(resource.updatePreview)
+				resource.updatePreview( DriveModule.preview_size || 256 );
 
 			DriveModule.showResourceMaterialDialog( { material: material, callback: function( material ){
 				node.material = material.fullpath || material.filename;

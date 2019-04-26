@@ -398,7 +398,10 @@ SceneTreeWidget.prototype.processMouse = function(e)
 				e.click_time = now - this.last_click_time;
 				if( e.click_time < 200 )
 				{
-					SelectionModule.setSelection( this.clicked_node );
+					if(e.shiftKey)
+						SelectionModule.addToSelection( this.clicked_node );
+					else
+						SelectionModule.setSelection( this.clicked_node );
 					EditorModule.inspect( this.clicked_node );
 				}
 				else if( this.dragging_node ) //dragging

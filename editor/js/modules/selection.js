@@ -7,6 +7,7 @@ var SelectionModule = {
 	init: function()
 	{
 		LEvent.bind( LS.GlobalScene, "treeItemRemoved", this.onNodeRemoved, this );
+		LiteGUI.menubar.add("Edit/Selection/Group to node", {callback: this.groupSelection.bind(this) });
 		LiteGUI.menubar.add("Edit/Selection/Save", {callback: this.saveSelection.bind(this) });
 		LiteGUI.menubar.add("Edit/Selection/Restore", {callback: this.restoreSelection.bind(this) });
 
@@ -16,6 +17,21 @@ var SelectionModule = {
 	{
 		if(this.isSelected( node ))
 			this.removeFromSelection( node );
+	},
+
+	groupSelection: function()
+	{
+		var node = new LS.SceneNode();
+		LS.GlobalScene.root.addChild( node );
+		for(var i = 0; i < this.selection_array.length; ++i)
+		{
+			var selection = this.selection_array[i];
+			if(!selection.node)
+				continue;
+			node.addChild( selection.node );
+		}
+		this.setSelection(node);
+		LS.GlobalScene.requestFrame();
 	},
 
 	//expect something along { instance: *, node: SceneNode, uid: String, data: * }

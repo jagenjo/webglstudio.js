@@ -745,7 +745,7 @@ global.hexColorToRGBA = (function() {
 	var pos = hex.indexOf("rgba(");
 	if(pos != -1)
 	{
-		var str = hex.substr(5);
+		var str = hex.substr(5,hex.length-2);
 		str = str.split(",");
 		color[0] = parseInt( str[0] ) / 255;
 		color[1] = parseInt( str[1] ) / 255;
@@ -757,7 +757,7 @@ global.hexColorToRGBA = (function() {
 	var pos = hex.indexOf("hsla(");
 	if(pos != -1)
 	{
-		var str = hex.substr(5);
+		var str = hex.substr(5,hex.length-2);
 		str = str.split(",");
 		HSLToRGB( parseInt( str[0] ) / 360, parseInt( str[1] ) / 100, parseInt( str[2] ) / 100, color );
 		color[3] = parseFloat( str[3] ) * alpha;
@@ -770,7 +770,7 @@ global.hexColorToRGBA = (function() {
 	var pos = hex.indexOf("rgb(");
 	if(pos != -1)
 	{
-		var str = hex.substr(3);
+		var str = hex.substr(4,hex.length-2);
 		str = str.split(",");
 		color[0] = parseInt( str[0] ) / 255;
 		color[1] = parseInt( str[1] ) / 255;
@@ -781,7 +781,7 @@ global.hexColorToRGBA = (function() {
 	var pos = hex.indexOf("hsl(");
 	if(pos != -1)
 	{
-		var str = hex.substr(5);
+		var str = hex.substr(4,hex.length-2);
 		str = str.split(",");
 		HSLToRGB( parseInt( str[0] ) / 360, parseInt( str[1] ) / 100, parseInt( str[2] ) / 100, color );
 		return color;

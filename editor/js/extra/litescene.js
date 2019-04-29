@@ -16240,7 +16240,6 @@ if(typeof(LiteGraph) != "undefined")
 	{
 		this.addInput("in");
 		this.addOutput("out");
-		this.size = [90,30];
 		this.properties = { locator: "", cache_object: true };
 		this._locator_split = null;
 		this._locator_info = null;

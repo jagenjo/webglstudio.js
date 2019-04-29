@@ -37124,6 +37124,18 @@ if( typeof(LGAudio) != "undefined" )
 	}
 }
 
+if(typeof(LiteGraph) != "undefined")
+{
+	LiteGraph.onNodeTypeReplaced = function(name,ctor,old)
+	{
+		var comps = LS.GlobalScene.findNodeComponents( LS.Components.GraphComponent );
+		comps = comps.concat( LS.GlobalScene.findNodeComponents( LS.Components.FXGraphComponent ) );
+		for(var i = 0; i < comps.length; ++i)
+			comps[i].graph.checkNodeTypes();
+	}
+}
+
+
 
 /**
 * This component allow to integrate a behaviour graph on any object

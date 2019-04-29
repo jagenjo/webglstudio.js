@@ -190,8 +190,6 @@ var rotateNodeTool = {
 			vec3.transformQuat( zaxis, zaxis, rot);
 			*/
 
-			
-
 			if(this._on_top_of == "center")
 			{
 				if(!geo.testRaySphere( ray.origin, ray.direction, this._center, this._radius*1.1, result ))

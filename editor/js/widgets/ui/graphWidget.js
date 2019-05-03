@@ -659,6 +659,13 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 
 	if(graphnode.help)
 		inspector.addInfo( null, graphnode.help );
+	else
+		inspector.addInfo( null, graphnode.constructor.desc, { name_width: 100, disabled: graphnode.ignore_rename, callback: function(v) { graphnode.title = v; }});
+
+	if(graphnode.constructor.pixel_shader)
+		inspector.addButton(null,"Show Pixel Shader", function(){
+			EditorModule.checkCode(	graphnode.constructor.pixel_shader );
+		});
 
 	function inner_assign(v)
 	{

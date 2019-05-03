@@ -11283,7 +11283,8 @@ global.BBox = GL.BBox = {
 	getHalfsize: function(bb) { return bb.subarray(3,6); },
 	getMin: function(bb) { return bb.subarray(6,9); },
 	getMax: function(bb) { return bb.subarray(9,12); },
-	getRadius: function(bb) { return bb[12]; }	
+	getRadius: function(bb) { return bb[12]; }
+	//setCenter,setHalfsize not coded, too much work to update all
 }
 
 global.distanceToPlane = GL.distanceToPlane = function distanceToPlane(plane, point)
@@ -12352,15 +12353,6 @@ Mesh.parseOBJ = function( text, options )
 			if(group)
 				group.material = tokens[1];
 		}
-		/*
-		else if (tokens[0] == "o" || tokens[0] == "s") {
-			//ignore
-		}
-		else
-		{
-			//console.log("unknown code: " + line);
-		}
-		*/
 	}
 
 	if(!positions.length)
@@ -12480,7 +12472,103 @@ Mesh.encoders["obj"] = function( mesh, options )
 	return result;
 }
 
-/* BINARYU FORMAT ************************************/
+//simple format to output meshes in ASCII
+Mesh.parsers["mesh"] = function( text, options )
+{
+	var mesh = {};
+
+	var lines = text.split("\n");
+	for(var i = 0; i < lines.length; ++i)
+	{
+		var line = lines[i];
+		var t = line.split(",");
+		var type = t[0][0];
+		var name = t[0].substr(1);
+
+		if(type == "-") //buffer
+		{
+			var data = Float32Array( Number(t[1]) );
+			for(var j = 0; j < data.length; ++j)
+				data[j] = Number(t[j+2]);
+			mesh[name] = data;
+		}
+		else if(type == "*") //index
+		{
+			var data = Uint16Array( Number(t[1]) );
+			for(var j = 0; j < data.length; ++j)
+				data[j] = Number(t[j+2]);
+			mesh[name] = data;
+		}
+		else if(type == "@") //info
+		{
+			if(name == "bones")
+			{
+				var bones = [];
+				var num_bones = Number(t[1]);
+				for(var j = 0; j < num_bones; ++j)
+				{
+					var m = (t.slice(2 + j*17, 2 + j*18)).map(Number);
+					bones.push( [ t[2 + j*17], m ] );
+				}
+			}
+			else if(name == "bind_matrix")
+				mesh.bind_matrix = t.slice(1,17).map(Number);
+			else if(name == "groups")
+			{
+				mesh.info = { groups: [] };
+				var num_groups = Number(t[1]);
+				for(var j = 0; j < num_groups; ++j)
+				{
+					var group = { name: t[2+j*4], material: t[2+j*4+1], start: Number(t[2+j*4+2]), length: Number(t[2+j*4+3]) };
+					mesh.info.groups.push(group);
+				}
+			}
+		}
+		else
+			console.warn("type unknown: " + t[0] );
+	}
+	return mesh;
+}
+
+Mesh.encoders["mesh"] = function( mesh, options )
+{
+	var lines = [];
+	for(var i in mesh.vertexBuffers )
+	{
+		var buffer = mesh.vertexBuffers[i];
+		var line = ["-"+i, buffer.data.length, buffer.data, typedArrayToArray( buffer.data ) ];
+		lines.push(line.join(","));
+	}
+
+	for(var i in mesh.indexBuffers )
+	{
+		var buffer = mesh.indexBuffers[i];
+		var line = [ "*" + i, buffer.data.length, buffer.data, typedArrayToArray( buffer.data ) ];
+		lines.push(line.join(","));
+	}
+
+	if(mesh.bounding)
+		lines.push( ["@bounding", typedArrayToArray(mesh.bounding.subarray(0,6))].join(",") );
+	if(mesh.info && mesh.info.groups)
+	{
+		var groups_info = [];
+		for(var j = 0; j < mesh.info.groups.length; ++j)
+		{
+			var group = mesh.info.groups[j];
+			groups_info.push( group.name, group.material, group.start, group.length );
+		}
+		lines.push( ["@groups", mesh.info.groups.length ].concat( groups_info ).join(",")  );
+	}
+
+	if(mesh.bones)
+		lines.push( ["@bones", mesh.bones.length, mesh.bones.flat()].join(",") );
+	if(mesh.bind_matrix)
+		lines.push( ["@bind_matrix", typedArrayToArray(mesh.bind_matrix) ].join(",") );
+
+	return lines.join("\n");
+}
+
+/* BINARY FORMAT ************************************/
 
 if(global.WBin)
 	global.WBin.classes["Mesh"] = Mesh;

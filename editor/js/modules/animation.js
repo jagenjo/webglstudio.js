@@ -7,6 +7,8 @@ var AnimationModule = {
 
 	_trajectories: [],
 
+	export_animation_formats: {},
+
 	init: function()
 	{
 		//create the timeline
@@ -224,7 +226,7 @@ var AnimationModule = {
 			var takes = [];
 			for( var i in animation.takes )
 				takes.push( i );
-			widgets.addList( null, takes, { height: 140, selected: selected_take_name, callback: function(v){
+			widgets.addList( null, takes, { height: 180, selected: selected_take_name, callback: function(v){
 				selected_take_name = v;
 				widgets1.refresh();
 				widgets2.refresh();
@@ -300,6 +302,7 @@ var AnimationModule = {
 			var widgets = widgets2;
 
 			var selected_take = animation.takes[ selected_take_name ];
+			console.log(selected_take);
 			var duration = selected_take ? selected_take.duration : 0;
 			var tracks = selected_take ? selected_take.tracks.length : 0;
 
@@ -330,7 +333,6 @@ var AnimationModule = {
 
 			widgets.widgets_per_row = 2;
 			var values = [];
-			//"Pack all tracks","Unpack all tracks","Use names as ids","Optimize Tracks","Match Translation","Only Rotations"
 
 			for(var i in Timeline.actions.take)
 				values.push(i);
@@ -413,6 +415,23 @@ var AnimationModule = {
 			});
 			widgets.widgets_per_row = 1;
 
+			widgets.addTitle("Export");
+			widgets.widgets_per_row = 2;
+			var export_selection = "anim";
+			widgets.addCombo("Format", export_selection, { values: Object.keys( AnimationModule.export_animation_formats ), width: "50%", callback: function(v){
+				export_selection = v;
+			}});
+			widgets.addButton(null,"Export", { width: "50%", callback: function(){
+				var exporter = AnimationModule.export_animation_formats[ export_selection ];
+				if(!exporter)
+					return;
+				var data = exporter( selected_take );
+				if(!data)
+					return;
+				LiteGUI.downloadFile( selected_take.name + "." + export_selection, data, data.constructor === String ? "text/plain" : "application/octet-stream" );
+			}});
+			widgets.widgets_per_row = 1;
+			
 			dialog.adjustSize(10);
 		}
 
@@ -710,3 +729,324 @@ LS.Animation.prototype.inspect = function( widgets, skip_default_widgets )
 	if(!skip_default_widgets)
 		DriveModule.addResourceInspectorFields( this, widgets );
 }
+
+
+AnimationModule.export_animation_formats["anim"] = function( take ){
+	var lines = [];
+	lines.push( [take.name,take.duration,take.tracks.length].join(",") );
+	for(var i = 0; i < take.tracks.length; ++i)
+	{
+		var track = take.tracks[i];
+		track.unpackData();
+		var nodename = track.property.split("/")[0];
+		var track_str = nodename + "," + track.type + "," + track.data.length + "," + track.data.flat();
+		lines.push( track_str );
+	}
+	return lines.join("\n");
+}
+
+//skeletal anim
+AnimationModule.export_animation_formats["skanim"] = function( take ){
+	var sampling = 30;
+	var total_samples = Math.ceil( sampling * take.duration );
+
+	var lines = [];
+	lines.push( [take.duration,sampling,total_samples].join(",") );
+	if(!take.tracks.length)
+		return null;
+
+	//find bones
+	var bone_names = [];
+	var bones = [];
+	var bones_by_name = {};
+	for(var i = 0; i < take.tracks.length; ++i)
+	{
+		var track = take.tracks[i];
+		var node = track.getPropertyNode();
+		if(!node)
+			continue;
+		bone_names.push( node.name );
+		bones.push( node );
+		bones_by_name[ node.name ] = node;
+	}
+
+	//find root
+	var root = null;
+	for(var i = 0; i < bones.length; ++i)
+	{
+		var bone = bones[i];
+		var parent = bone.parentNode;
+		if (!parent)
+			continue;
+		if( bones_by_name[ parent.name ] )
+			continue;
+		root = bone;
+	}
+
+	inner_tree(root,0);
+
+	function inner_tree(node,level)
+	{
+		if( !node._is_bone )
+			return;
+		lines.push( "*" + "\t".repeat(level) + node.name + "," + typedArrayToArray(node.transform.getMatrix()) );
+		if(node._children)
+		for(var i = 0; i < node._children.length; ++i)
+		{
+			var child = node._children[i];
+			inner_tree(child,level + 1);
+		}
+	}
+
+	lines.push( [ bone_names.length ].concat(bone_names).join(",") );
+
+	var offset = take.duration / (total_samples-1);
+	for(var i = 0; i < total_samples; ++i)
+	{
+		var t = i*offset;
+		take.applyTracks(t,t,false);
+		var data = [t.toFixed(3)]
+		for(var j=0; j < bones.length; ++j)
+			data.push( typedArrayToArray( bones[i].transform.getMatrix()) );
+		lines.push( data.flat().join(",") );
+	}
+
+	return lines.join("\n");
+}
+
+
+//**************** EXTRA STUFF ************************************************
+
+
+//assigns the same translation to all nodes?
+LS.Animation.Take.prototype.matchTranslation = function( root )
+{
+	var num = 0;
+
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+
+		if(track._type != "trans10" && track._type != "mat4")
+			continue;
+
+		if( !track._property_path || !track._property_path.length )
+			continue;
+
+		var node = LSQ.get( track._property_path[0], root );
+		if(!node)
+			continue;
+		
+		var position = node.transform.position;
+		var offset = track.value_size + 1;
+
+		var data = track.data;
+		var num_samples = data.length / offset;
+		if(track._type == "trans10")
+		{
+			for(var j = 0; j < num_samples; ++j)
+				data.set( position, j*offset + 1 );
+		}
+		else if(track._type == "mat4")
+		{
+			for(var j = 0; j < num_samples; ++j)
+				data.set( position, j*offset + 1 + 12 ); //12,13,14 contain translation
+		}
+
+		num += 1;
+	}
+
+	return num;
+}
+
+/**
+* If this is a transform track it removes translation and scale leaving only rotations
+* @method onlyRotations
+*/
+LS.Animation.Take.prototype.onlyRotations = function()
+{
+	var num = 0;
+
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+		if( track.onlyRotations() )
+			num += 1;
+	}
+	return num;
+}
+
+/**
+* removes scaling in transform tracks
+* @method removeScaling
+*/
+LS.Animation.Take.prototype.removeScaling = function()
+{
+	var num = 0;
+
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+		if( track.removeScaling() )
+			num += 1;
+	}
+	return num;
+}
+
+LS.Animation.Take.prototype.trimTracks = function( start, end )
+{
+	var num = 0;
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+		num += track.trim( start, end );
+	}
+
+	this.duration = end - start;
+
+	return num;
+}
+
+LS.Animation.Take.prototype.stretchTracks = function( duration )
+{
+	if(duration <= 0 || this.duration == 0)
+		return 0;
+	var scale = duration / this.duration;
+	this.duration *= scale;
+	for(var i = 0; i < this.tracks.length; ++i)
+		this.tracks[i].stretch( scale );
+	return this.tracks.length;
+}
+
+
+/**
+* removes keyframes that are before or after the time range
+* @method trim
+* @param {number} start time
+* @param {number} end time
+*/
+LS.Animation.Track.prototype.trim = function( start, end )
+{
+	if(this.packed_data)
+		this.unpackData();
+
+	var size = this.data.length;
+
+	var result = [];
+	for(var i = 0; i < size; ++i)
+	{
+		var d = this.data[i];
+		if(d[0] < start || d[0] > end)
+			continue;
+		d[0] -= start;
+		result.push(d);
+	}
+	this.data = result;
+
+	//changes has been made?
+	if(this.data.length != size)
+		return 1;
+	return 0;
+}
+
+/**
+* Scales the time in every keyframe
+* @method stretch
+* @param {number} scale the sacle to apply to all times
+*/
+LS.Animation.Track.prototype.stretch = function( scale )
+{
+	if(this.packed_data)
+		this.unpackData();
+	var size = this.data.length;
+	for(var i = 0; i < size; ++i)
+		this.data[i][0] *= scale; //scale time
+	return 1;
+}
+
+/**
+* If this track changes the scale, it forces it to be 1,1,1
+* @method removeScaling
+*/
+LS.Animation.Track.prototype.removeScaling = function()
+{
+	var modified = false;
+
+	if(this.type == "matrix")
+	{
+		this.convertToTrans10();
+		modified = true;
+	}
+
+	if( this.type != "trans10" )
+	{
+		if(modified)
+			return true;
+	}
+
+	var num_keyframes = this.getNumberOfKeyframes();
+	for( var j = 0; j < num_keyframes; ++j )
+	{
+		var k = this.getKeyframe(j);
+		k[1][7] = k[1][8] = k[1][9] = 1; //set scale equal to 1
+	}
+	return true;
+}
+
+
+LS.Animation.Track.prototype.onlyRotations = (function()
+{
+	var temp = new Float32Array(10);
+	var temp_quat = new Float32Array(4);
+
+	return function(){
+
+		//convert locator
+		var path = this.property.split("/");
+		var last_path = path[ path.length - 1 ];
+		var old_size = this.value_size;
+		if( this.type != "mat4" && this.type != "trans10" )
+			return false;
+
+		if(last_path == "matrix")
+			path[ path.length - 1 ] = "Transform/rotation";
+		else if (last_path == "data")
+			path[ path.length - 1 ] = "rotation";
+
+		//convert samples
+		if(!this.packed_data)
+			this.packData();
+
+		this.property = path.join("/");
+		var old_type = this._type;
+		this.type = "quat";
+		this.value_size = 4;
+
+		var data = this.data;
+		var num_samples = data.length / (old_size+1);
+
+		if( old_type == "mat4" )
+		{
+			for(var k = 0; k < num_samples; ++k)
+			{
+				var sample = data.subarray(k*17+1,(k*17)+17);
+				var new_data = LS.Transform.fromMatrix4ToTransformData( sample, temp );
+				temp_quat.set( temp.subarray(3,7) );
+				data[k*5] = data[k*17]; //timestamp
+				data.set( temp_quat, k*5+1); //overwrite inplace (because the output is less big that the input)
+			}
+		}
+		else if( old_type == "trans10" )
+		{
+			for(var k = 0; k < num_samples; ++k)
+			{
+				var sample = data.subarray(k*11+4,(k*11)+8);
+				data[k*5] = data[k*11]; //timestamp
+				data.set( sample, k*5+1); //overwrite inplace (because the output is less big that the input)
+			}
+		}
+		
+		this.data = new Float32Array( data.subarray(0,num_samples*5) );
+		return true;
+	};
+})();

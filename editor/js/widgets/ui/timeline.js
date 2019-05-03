@@ -2659,6 +2659,48 @@ Timeline.actions.take["Remove Disabled Tracks"] = function( animation, take )
 	return num - tracks.length;
 }
 
+Timeline.actions.take["Set prefix in tracks nodename"] = function( animation, take )
+{
+	LiteGUI.prompt("Change name prefix for tracks",inner)
+
+	function inner(v)
+	{
+		if(v === null)
+			return;
+
+		for(var i = 0; i < take.tracks.length; ++i)
+		{
+			var track = take.tracks[i];
+			var t = track.property.split("/");
+			var node = track.getPropertyNode();
+			var name = t[0];
+			if(name[0]=="@")
+				continue;
+			var parts = name.split("_");
+			if(parts.length > 1)
+			{
+				if(v)
+					parts[0] = v;
+				else
+					parts.shift();
+			}
+			else
+			{
+				if(v)
+					parts.unshift(String(v));
+			}
+			var newnodename = parts.join("_");
+			t[0] = newnodename;
+			track.property = t.join("/");
+			track.name = track.property;
+			if(node)
+				node.name = newnodename;
+		}
+	}
+}
+
+//*****************
+
 Timeline.actions.track["Only rotations"] = function( track, take, animation )
 {
 	track.onlyRotations();
@@ -2673,3 +2715,4 @@ Timeline.actions.track["Remove scaling"] = function( track, take, animation )
 {
 	track.removeScaling();
 }
+

@@ -312,6 +312,7 @@ var EditorModule = {
 		if(!code)
 			return;
 		console.log(code); //helps navigating
+		code = LiteGUI.htmlEncode( code ); //otherwise < is probleamtic
 		var w = window.open("",'_blank');
 		w.document.write("<style>* { margin: 0; padding: 0; } html,body { margin: 20px; background-color: #222; color: #eee; } </style>");
 		var str = beautifyJSON( code );

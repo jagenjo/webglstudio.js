@@ -203,14 +203,14 @@ var SceneStorageModule = {
 
 		function inner_files(items)
 		{
-			var r = {};
-			for(var i in items)
+			var r = []
+			for(var i = 0; i < items.length; ++i)
 			{
 				var item = items[i];
 				if(!item.category == "Scene")
 					continue;
 				var name = item.filename.substr(0, item.filename.indexOf("."));
-				r[name] = item;
+				r.push( { title: name, file: item } );
 			}
 			list.updateItems(r);
 		}
@@ -223,15 +223,16 @@ var SceneStorageModule = {
 		function inner_selected( item )
 		{
 			var root = split.getSection(1);
-			selected = item.fullpath;
-			var html = "<div style='height:260px'><img style='opacity: 0;' src='" + LFS.getPreviewPath( selected ) + "'/></div><span style='font-size:1.4em'>"+ item.timestamp +"</span>";
+			var file = item.file;
+			selected = file.fullpath;
+			var html = "<div style='height:260px'><img style='opacity: 0;' src='" + LFS.getPreviewPath( selected ) + "'/></div><span style='font-size:1.4em'>"+ file.timestamp +"</span>";
 			root.innerHTML = html;
 			root.querySelector("img").onload = function() { this.style.opacity = 1; }
 		}
 
 		function inner_dblclick( item )
 		{
-			selected = item.fullpath;
+			selected = item.file.fullpath;
 			inner_load();
 		}
 

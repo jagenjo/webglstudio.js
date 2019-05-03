@@ -280,6 +280,24 @@ var MeshTools = {
 		return true;
 	},
 
+	centerVertices: function( mesh )
+	{
+		if(!mesh)
+			return false;
+		var vertices = mesh.getBuffer("vertices");
+		if(!vertices)
+			return false;
+		var offset = BBox.getCenter( mesh.bounding );
+		for(var i = 0; i < vertices.data.length; i+=3 )
+		{
+			var v = vertices.data.subarray(i,i+3);
+			vec3.add(v, v, offset );
+		}
+		vertices.upload( gl.STATIC_DRAW );
+		mesh.updateBounding();
+		return true;
+	},
+
 	deindexMesh: function(mesh)
 	{
 		var indices_buffer = mesh.getIndexBuffer("triangles");
@@ -345,7 +363,7 @@ var MeshTools = {
 GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 {
 	var mesh = this;
-
+	console.log(mesh);
 	widgets.addString("Name", mesh.filename || mesh.fullpath );
 	widgets.addTitle("Vertex Buffers [num. vertex]");
 	widgets.widgets_per_row = 2;
@@ -514,10 +532,31 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		widgets.refresh();
 	} );
 
-	widgets.addButton(null, "Download OBJ", function(){
-		var data = mesh.encode("obj");
-		LS.downloadFile( mesh.filename + ".obj", data );
+	widgets.addButton(null, "Center", function(){
+		if( MeshTools.centerVertices( mesh ) )
+		{
+			LS.RM.resourceModified(mesh);
+			RenderModule.requestFrame();
+		}
+		widgets.refresh();
 	});
+
+	widgets.widgets_per_row = 1;
+
+	widgets.addTitle("Export");
+
+	widgets.widgets_per_row = 2;
+
+	var export_selection = "obj";
+	widgets.addCombo("Format", export_selection, { values: Object.keys( GL.Mesh.encoders ), width: "70%", callback: function(v){
+		export_selection = v;
+	}});
+	widgets.addButton(null,"Export", { width: "30%", callback: function(){
+		var data = mesh.encode(export_selection);
+		if(!data)
+			return;
+		LS.downloadFile( mesh.filename + "." + export_selection, data );
+	}});
 
 	widgets.widgets_per_row = 1;
 	//widgets.addButton(null, "Weld", function(){} );

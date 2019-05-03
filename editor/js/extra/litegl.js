@@ -6666,6 +6666,7 @@ Texture.prototype.toCanvas = function( canvas, flip_y, max_size )
 			temp_ctx.translate(0,temp.height);
 			temp_ctx.scale(1,-1);
 			temp_ctx.drawImage( canvas, 0, 0, temp.width, temp.height );
+			ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
 			ctx.drawImage( temp, 0, 0 );
 		}
 	}

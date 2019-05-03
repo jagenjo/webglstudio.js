@@ -146,7 +146,7 @@ var GenericTools = {
 			return;
 		}
 
-		dialog = new LiteGUI.Dialog("screencapture_panel", {title:'Screen Capture', fullcontent:true, width: 800, height: 400, closable: true, minimize: true, resizable: true, draggable: true });
+		dialog = new LiteGUI.Dialog({ title:'Screen Capture', fullcontent:true, width: 800, height: 400, closable: true, minimize: true, resizable: true, draggable: true });
 
 		var area = new LiteGUI.Area(null,{ size: "100%" });
 		dialog.add(area);

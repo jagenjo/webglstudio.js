@@ -42,7 +42,7 @@ var PluginsModule = {
 
 		var selected = null;
 
-		var list = widgets.addList("Installed", this.plugins, { height: 380, callback: function(v){
+		var list = widgets.addList("Installed", this.plugins, { name_width: 100, height: 380, callback: function(v){
 			selected = v;
 		}});
 

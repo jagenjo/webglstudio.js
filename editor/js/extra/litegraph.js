@@ -17207,11 +17207,12 @@ if (typeof exports != "undefined") {
                     GL.Shader.SCREEN_VERTEX_SHADER,
                     LGraphTextureAverage.pixel_shader
                 );
-                //creates 32 random numbers and stores the, in two mat4
-                var samples = new Float32Array(32);
-                for (var i = 0; i < 32; ++i) {
-                    samples[i] = Math.random();
+                //creates 256 random numbers and stores them in two mat4
+                var samples = new Float32Array(16);
+                for (var i = 0; i < samples.length; ++i) {
+                    samples[i] = Math.random(); //poorly distributed samples
                 }
+				//upload only once
                 LGraphTextureAverage._shader.uniforms({
                     u_samples_a: samples.subarray(0, 16),
                     u_samples_b: samples.subarray(16, 32)
@@ -17271,8 +17272,9 @@ if (typeof exports != "undefined") {
 			\n\
 			void main() {\n\
 				vec4 color = vec4(0.0);\n\
-				for(int i = 0; i < 4; ++i)\n\
-					for(int j = 0; j < 4; ++j)\n\
+				//random average\n\
+				for(int i = 0; i <= 4; ++i)\n\
+					for(int j = 0; j <= 4; ++j)\n\
 					{\n\
 						color += texture2D(u_texture, vec2( u_samples_a[i][j], u_samples_b[i][j] ), u_mipmap_offset );\n\
 						color += texture2D(u_texture, vec2( 1.0 - u_samples_a[i][j], 1.0 - u_samples_b[i][j] ), u_mipmap_offset );\n\

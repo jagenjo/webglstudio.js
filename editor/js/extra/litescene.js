@@ -22792,7 +22792,13 @@ var Renderer = {
 	//used to store which is the current full viewport available (could be different from the canvas in case is a FBO or the camera has a partial viewport)
 	setFullViewport: function(x,y,w,h)
 	{
-		if(x.constructor === Number)
+		if(arguments.length == 0) //restore
+		{
+			this._full_viewport[0] = this._full_viewport[1] = 0;
+			this._full_viewport[2] = gl.drawingBufferWidth;
+			this._full_viewport[3] = gl.drawingBufferHeight;
+		}
+		else if(x.constructor === Number)
 		{
 			this._full_viewport[0] = x; this._full_viewport[1] = y; this._full_viewport[2] = w; this._full_viewport[3] = h;
 		}

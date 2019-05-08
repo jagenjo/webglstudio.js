@@ -43,78 +43,50 @@ var AnimationModule = {
 			this.timeline.setAnimation( animation );
 	},
 
-	attachKeyframesBehaviour: function( inspector )
+	onBulletClick: function( e )
 	{
-		var elements = inspector.root.querySelectorAll(".keyframe_icon");
-		for(var i = 0; i < elements.length; i++)
-		{
-			var element = elements[i];
-			element.draggable = true;
-			element.addEventListener("click", inner_click );
-			element.addEventListener("contextmenu", (function(e) { 
-				if(e.button != 2) //right button
-					return false;
-				inner_rightclick(e);
-				e.preventDefault();
-				e.stopPropagation();
-				return false;
-			}).bind(this));
-			element.addEventListener("dragstart", inner_dragstart );
-			element.addEventListener("drop", inner_drop );
-		}
+		AnimationModule.insertKeyframe( e.target, e.shiftKey );
+		e.preventDefault();
+		e.stopPropagation();
+		return true;
+	},
 
-		function inner_click( e )
-		{
-			AnimationModule.insertKeyframe( e.target, e.shiftKey );
-			e.preventDefault();
-			e.stopPropagation();
-			return true;
-		}
+	onBulletRightClick: function( e )
+	{
+		var menu = new LiteGUI.ContextMenu( ["Add track [UID]","Add track [name]","Copy Query","Copy Unique Query",null,"Show Info"], { event: e, title:"Property", callback: function(value) {
+			if(value == "Add track [UID]")
+				AnimationModule.insertKeyframe(e.target);
+			else if(value == "Add track [name]")
+				AnimationModule.insertKeyframe(e.target, true);
+			else if(value == "Copy Query")
+				AnimationModule.copyQueryToClipboard( e.target.dataset["propertyuid"], true );
+			else if(value == "Copy Unique Query")
+				AnimationModule.copyQueryToClipboard( e.target.dataset["propertyuid"] );
+			else
+				AnimationModule.showPropertyInfo( e.target.dataset["propertyuid"] );
+		}});
+	},
 
-		function inner_rightclick( e )
-		{
-			var menu = new LiteGUI.ContextMenu( ["Add track [UID]","Add track [name]","Copy Query","Copy Unique Query",null,"Show Info"], { event: e, title:"Property", callback: function(value) {
-				if(value == "Add track [UID]")
-					AnimationModule.insertKeyframe(e.target);
-				else if(value == "Add track [name]")
-					AnimationModule.insertKeyframe(e.target, true);
-				else if(value == "Copy Query")
-					AnimationModule.copyQueryToClipboard( e.target.dataset["propertyuid"], true );
-				else if(value == "Copy Unique Query")
-					AnimationModule.copyQueryToClipboard( e.target.dataset["propertyuid"] );
-				else
-					AnimationModule.showPropertyInfo( e.target.dataset["propertyuid"] );
-			}});
-		}
+	onBulletDragStart: function( e )
+	{
+		var locator = e.target.dataset["propertyuid"];
+		if(e.shiftKey)
+			locator = LSQ.shortify( locator );
 
-		function inner_dragstart(e)
+		var info = LSQ.get( locator );
+		if(info && info.node)
 		{
-			var locator = e.target.dataset["propertyuid"];
-			if(e.shiftKey)
-				locator = LSQ.shortify( locator );
-
-			var info = LSQ.get( locator );
-			if(info && info.node)
+			var prefab = info.node.insidePrefab();
+			if(prefab)
 			{
-				var prefab = info.node.insidePrefab();
-				if(prefab)
-				{
-					console.warn("locator belongs to a node in a prefab, converting locator to name");
-					locator = LS.convertLocatorFromUIDsToName( locator );
-				}
+				console.warn("locator belongs to a node in a prefab, converting locator to name");
+				locator = LS.convertLocatorFromUIDsToName( locator );
 			}
-
-			e.dataTransfer.setData("type", "property" );
-			e.dataTransfer.setData("uid", locator );
-			e.dataTransfer.setData("locator", locator );
 		}
 
-		function inner_drop(e)
-		{
-			var element = EditorModule.getSceneElementFromDropEvent(e);
-			//something to do?
-		}
-
+		e.dataTransfer.setData("type", "property" );
+		e.dataTransfer.setData("uid", locator );
+		e.dataTransfer.setData("locator", locator );
 	},
 
 	copyQueryToClipboard: function( locator, shorten )
@@ -751,7 +723,6 @@ AnimationModule.export_animation_formats["skanim"] = function( take ){
 	var total_samples = Math.ceil( sampling * take.duration );
 
 	var lines = [];
-	lines.push( [take.duration,sampling,total_samples].join(",") );
 	if(!take.tracks.length)
 		return null;
 
@@ -762,6 +733,8 @@ AnimationModule.export_animation_formats["skanim"] = function( take ){
 	for(var i = 0; i < take.tracks.length; ++i)
 	{
 		var track = take.tracks[i];
+		if(!track.enabled)
+			continue;
 		var node = track.getPropertyNode();
 		if(!node)
 			continue;
@@ -783,22 +756,37 @@ AnimationModule.export_animation_formats["skanim"] = function( take ){
 		root = bone;
 	}
 
-	inner_tree(root,0);
+	var out = [];
+	var last_bone_index = 0;
+	var bone_index = {};
+	inner_tree(root,0,out);
 
-	function inner_tree(node,level)
+	function inner_tree(node,level,out)
 	{
 		if( !node._is_bone )
 			return;
-		lines.push( "*" + "\t".repeat(level) + node.name + "," + typedArrayToArray(node.transform.getMatrix()) );
+		bone_index[node.name] = last_bone_index++;
+		var parent = node.parentNode;
+		var parent_index = -1;
+		if( bone_index[parent.name] !== undefined )
+			parent_index = bone_index[parent.name];
+		var index = out.length;
+		out.push( "B" + index + "," + node.name + "," + parent_index + "," + typedArrayToArray(node.transform.getMatrix()) );
 		if(node._children)
 		for(var i = 0; i < node._children.length; ++i)
 		{
 			var child = node._children[i];
-			inner_tree(child,level + 1);
+			inner_tree(child,level + 1,out);
 		}
 	}
 
-	lines.push( [ bone_names.length ].concat(bone_names).join(",") );
+	//duration in seconds, samples per second, num. samples, number of bones in the skeleton
+	lines.push( [ take.duration.toFixed(3), sampling, total_samples, out.length ].join(",") );
+	var bones_indices = [];
+	for(var i = 0; i < bone_names.length; ++i)
+		bones_indices.push( bone_index[ bone_names[i] ] );
+	lines = lines.concat(out);
+	lines.push( "@" + bones_indices.length + "," + bones_indices.join(",") );
 
 	var offset = take.duration / (total_samples-1);
 	for(var i = 0; i < total_samples; ++i)
@@ -807,8 +795,8 @@ AnimationModule.export_animation_formats["skanim"] = function( take ){
 		take.applyTracks(t,t,false);
 		var data = [t.toFixed(3)]
 		for(var j=0; j < bones.length; ++j)
-			data.push( typedArrayToArray( bones[i].transform.getMatrix()) );
-		lines.push( data.flat().join(",") );
+			data.push( typedArrayToArray( bones[j].transform.getMatrix()) );
+		lines.push( "K" + data.flat().join(",") );
 	}
 
 	return lines.join("\n");

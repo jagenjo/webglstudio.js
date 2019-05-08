@@ -433,7 +433,7 @@ ResourcesPanelWidget.prototype.addItemToBrowser = function( resource )
 	
 	var info = document.createElement("span");
 	info.className = "info";
-	info.innerHTML = type_title;
+	info.innerHTML = "<span class='category'>" + category + "</span><span class='extension'>." + type_title.toLowerCase() + "</span>";
 	element.appendChild(info);
 
 	element.addEventListener("click", item_selected);

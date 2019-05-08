@@ -22,6 +22,11 @@ var InterfaceModule = {
 		"Script": "imgs/mini-icon-js.png"
 	},
 
+	icons: {
+		refresh: "<img src='imgs/mini-icon-refresh.png'/>",
+		trash: "<img src='imgs/mini-icon-trash.png'/>"
+	},
+
 	init: function()
 	{
 		//create menubar
@@ -379,6 +384,36 @@ var InterfaceModule = {
 		LiteGUI.trigger( this.visorarea.root, "visibility_change" );
 		this.lower_tabs_widget.onResize();
 	},
+
+	attachBulletsBehaviour: function( inspector, class_name, onBulletClick, onBulletRightClick, onBulletDragStart )
+	{
+		var elements = inspector.root.querySelectorAll( class_name );
+		for(var i = 0; i < elements.length; i++)
+		{
+			var element = elements[i];
+			element.draggable = true;
+			if(onBulletClick)
+				element.addEventListener("click", onBulletClick );
+			element.addEventListener("contextmenu", (function(e) { 
+				if(e.button != 2) //right button
+					return false;
+				if(onBulletRightClick)
+					onBulletRightClick(e);
+				e.preventDefault();
+				e.stopPropagation();
+				return false;
+			}).bind(this));
+			if(onBulletDragStart)
+				element.addEventListener("dragstart", onBulletDragStart );
+			element.addEventListener("drop", inner_drop );
+		}
+
+		function inner_drop(e)
+		{
+			var element = EditorModule.getSceneElementFromDropEvent(e);
+			//something to do?
+		}
+	}
 };
 
 CORE.registerModule( InterfaceModule );

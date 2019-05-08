@@ -108,13 +108,17 @@ var SpriteSheets = {
 		var offset_time = duration / num_frames;
 		var render_settings = RenderModule.render_settings;
 		render_settings.ignore_clear = true;
+		var node = playanim._root;
 
 		atlas_texture.drawTo(function(){
 			gl.clearColor(bg_color[0],bg_color[1],bg_color[2],bg_color[3]);
 			gl.clear( GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT );
 			for(var i = 0; i < num_views; ++i)
 			{
-				camera.orbit( offset_view, [0,1,0] );
+				if(node.transform)
+					node.transform.rotate( offset_view, [0,1,0] );
+				else
+					camera.orbit( offset_view, [0,1,0] );
 				for(var j = 0; j < num_frames; ++j)
 				{
 					var time = j * offset_time;

@@ -8518,7 +8518,7 @@ Inspector.prototype.addInfo = function( name, value, options)
 	value = (value === undefined || value === null) ? "" : value;
 	var element = null;
 	if(name != null)
-		element = this.createWidget(name,value, options);
+		element = this.createWidget( name, value, options);
 	else
 	{
 		element = document.createElement("div");
@@ -8549,6 +8549,13 @@ Inspector.prototype.addInfo = function( name, value, options)
 	if(!content)
 		content = element.querySelector(".winfo");
 
+	if(options.width)
+	{
+		element.style.width = LiteGUI.sizeToCSS(options.width);
+		element.style.display = "inline-block";
+		if(!name)
+			info.style.margin = "2px";
+	}
 	if(options.height)
 	{
 		content.style.height = LiteGUI.sizeToCSS(options.height);

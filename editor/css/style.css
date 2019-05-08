@@ -270,13 +270,18 @@ body.player #work-area, body.player #main-area  {
 }
 
 .file-list .file-item .info {
-	font-size: 3.4em;
+	font-size: 1.4em !important;
     position: absolute;
     bottom: 0px;
     background-color: rgba(0,0,0,0.75);
     overflow: hidden;
     text-align: left;
     padding: 4px;
+}
+
+.file-list .file-item .info .extension {
+	font-size: 0.8em;
+	opacity: 0.5;
 }
 
 
@@ -552,7 +557,7 @@ textarea.code {
 	height: 100%;
 }
 
-.keyframe_icon {
+.keyframe_icon, .bullet_icon {
 	border: 2px solid rgba(0,0,0,0.4);
 	/*box-shadow: 0 0 2px black;*/
 	border-radius: 10px;
@@ -566,7 +571,7 @@ textarea.code {
     -moz-transition: background-color 0.1s ease 0s;
 }
 
-.wsectiontitle .keyframe_icon {
+.wsectiontitle .keyframe_icon, .wsectiontitle .bullet_icon {
 	background-color: #333;
 	margin-bottom: -1px;
 	margin-right: 2px;
@@ -577,6 +582,12 @@ textarea.code {
 	background-color: #8EA;
 	cursor: pointer;
 }
+
+.bulletframe_icon:hover {
+	background-color: #A8E;
+	cursor: pointer;
+}
+
 
 /* locks */
 .locked_container {

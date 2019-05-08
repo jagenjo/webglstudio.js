@@ -26,6 +26,7 @@ var RenderModule = {
 	commands:{},
 
 	preview_camera: null,
+	view_safe_frame: false,
 	temp_camera: null, //used to clone preview camera
 	show_stencil_mask: -1,
 	view_from_scene_cameras: false,
@@ -329,8 +330,28 @@ var RenderModule = {
 			LS.Renderer.resetState(); //in case some error stopped the rendering inm the previous frame
 			LS.Renderer.render( LS.GlobalScene, render_settings, cameras );
 		}
+
+		if(this.view_safe_frame)
+			this.renderSafeFrame();
+
 		LEvent.trigger(this,"post_scene_render");
 	},
+
+	renderSafeFrame: function()
+	{
+		var w = 800;
+		var h = 600;
+		var x = (gl.drawingBufferWidth - w) * 0.5;
+		var y = (gl.drawingBufferHeight - h) * 0.5;
+		gl.start2D();
+		gl.strokeStyle = "white";
+		gl.globalAlpha = 0.5;
+		gl.strokeRect(x,y,w,h);
+		gl.strokeRect(gl.drawingBufferWidth*0.5,0, 0.5,gl.drawingBufferHeight);
+		gl.strokeRect(0,gl.drawingBufferHeight*0.5, gl.drawingBufferWidth, 0.5);
+		gl.globalAlpha = 1;
+	},
+
 
 	//binded to the LS.Renderer so we can add special passes on top of the render
 	onAfterRenderInstances: function()

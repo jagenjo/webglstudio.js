@@ -12,7 +12,7 @@ var PluginsModule = {
 	preferences: {
 		custom_addons_url: null,
 		custom_plugins_url: null,
-		plugins: [] //contains objects with info about the plugin
+		plugins: [] //contains objects with info about the plugin,
 	},
 
 	init: function()
@@ -30,7 +30,11 @@ var PluginsModule = {
 					info = { url: info };
 					plugins[i] = info;
 				}
-				this.loadPlugin( info.url );
+				if( info.enabled === undefined ) //legacy
+					info.enabled = true;
+
+				if( info.enabled )
+					this.loadPlugin( info.url );
 			}
 		}
 	},
@@ -40,31 +44,42 @@ var PluginsModule = {
  		if(name != "plugins")
 			return;
 
-		var selected = null;
+		var plugins = this.preferences.plugins;
 
-		var list = widgets.addList("Installed", this.plugins, { name_width: 100, height: 380, callback: function(v){
-			selected = v;
-		}});
+		widgets.addTitle("Plugins");
 
-		widgets.addButtons("", ["Remove","Refresh"], function(v){
-			if(!selected)
-				return;
+		var container = widgets.startContainer("",{ width: "calc( 100% - 10px )", height: 380});
+		container.style.backgroundColor = "black";
+		container.style.padding = "5px";
+		container.style.overflow = "auto";
 
-			if( v == "Remove" )
-			{
-				PluginsModule.removePlugin( selected );
-				PreferencesModule.updateDialogContent();
-			}
-			else if( v == "Refresh" )
-			{
-				var plugin = PluginsModule.removePlugin( selected );
-				if(!plugin || !plugin.url)
-					return;
-				PluginsModule.loadPlugin( plugin.url, function(){ PreferencesModule.updateDialogContent(); } );
-				PreferencesModule.updateDialogContent();
-			}
-		});
+		widgets.widgets_per_row = 4;
+		for(var i = 0; i < plugins.length; ++i)
+		{
+			var plugin = plugins[i];
+			widgets.addCheckbox(null, plugin.enabled, { plugin: plugin, width: 60, callback: function(v){ this.options.plugin.enabled = v; }});
+			widgets.addInfo(null, plugin.name, { width: "calc(100% - 120px)" });
+			widgets.addButton(null, InterfaceModule.icons.trash, { plugin: plugin, width: 30,
+				callback: function(){
+					PluginsModule.removePlugin( this.options.plugin );
+					PreferencesModule.updateDialogContent();
+				}
+			});
+			widgets.addButton(null, InterfaceModule.icons.refresh, { plugin: plugin, width: 30,
+				callback: function(){
+					var selected = this.options.plugin;
+					var plugin = PluginsModule.removePlugin( selected );
+					if(!plugin || !plugin.url)
+						return;
+					PluginsModule.loadPlugin( plugin.url, function(){ PreferencesModule.updateDialogContent(); } );
+					PreferencesModule.updateDialogContent();
+				}
+			});
+		}
 
+		widgets.endContainer({ width: "100%", height: 380});
+
+		widgets.widgets_per_row = 1;
 		widgets.addStringButton("Add Plugin URL","js/plugins/", { button:"+", callback_button: function(value) { 
 			console.log("Loading: " + value);
 			PluginsModule.loadPlugin( value, function(){

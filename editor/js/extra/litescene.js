@@ -33258,13 +33258,11 @@ SkinDeformer.prototype.getBoneMatrices = function( ref_mesh )
 		}
 		else
 		{
-			var inv = joint[1];
+			var inv = joint[1]; //inv bind pose pf the joint
 			mat4.multiply( m, mat, inv );
-			if(ref_mesh.bind_matrix)
+			if(ref_mesh.bind_matrix) //not sure why this
 				mat4.multiply( m, m, ref_mesh.bind_matrix);
 		}
-
-		//bones[i].push( m ); //multiply by the inv bindpose matrix
 	}
 
 	return bones;

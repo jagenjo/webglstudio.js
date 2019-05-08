@@ -173,6 +173,20 @@ var viewSceneCameraButton = {
 ToolsModule.registerButton( viewSceneCameraButton );
 
 
+var viewFrameButton = {
+	name: "view_safe_frame",
+	description: "View Safe Frame",
+	section: "view-modes",
+	icon: "imgs/mini-icon-frame.png",
+	enabled: false,
+	callback: function(e)
+	{
+		RenderModule.view_safe_frame = !RenderModule.view_safe_frame;
+	}
+};
+
+ToolsModule.registerButton( viewFrameButton );
+
 
 
 

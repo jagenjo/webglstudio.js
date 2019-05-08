@@ -437,6 +437,42 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		widgets.addVector3("Halfsize", BBox.getHalfsize( mesh.bounding ), { disabled: true } );
 	}
 
+	if(mesh.bones)
+	{
+		widgets.addTitle("Bones");
+		widgets.widgets_per_row = 2;
+		widgets.addCombo("Bones", "", { name_width: 60, width: "70%", values: mesh.bones.map(function(a){ return a[0]; }) } );
+		widgets.addButton(null,"Re-prefix", { width: "30%", callback: function(){
+			LiteGUI.prompt("Change name prefix for bones",inner)
+
+			function inner(v)
+			{
+				if(v === null)
+					return;
+				for(var i = 0; i < mesh.bones.length; ++i)
+				{
+					var bone = mesh.bones[i];
+					var name = bone[0];
+					var parts = name.split("_");
+					if(parts.length > 1)
+					{
+						if(v)
+							parts[0] = v;
+						else
+							parts.shift();
+					}
+					else if(v)
+							parts.unshift(String(v));
+					var newname = parts.join("_");
+					bone[0] = newname;
+					LS.RM.resourceModified(mesh);
+					widgets.refresh();
+				}
+			}			
+		}});
+		widgets.widgets_per_row = 1;
+	}
+
 	if(mesh.info && mesh.info.groups)
 	{
 		var group = widgets.beginGroup("Groups",{ collapsed: true, height: 150, scrollable: true });

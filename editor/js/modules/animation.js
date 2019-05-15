@@ -692,6 +692,7 @@ var AnimationModule = {
 		var widgets = new LiteGUI.Inspector({ name_width: 100 });
 		dialog.add( widgets );
 
+		var mesh = null;
 		var anim = null;
 		var take = null;
 		var anim_filename = "animation";

@@ -402,7 +402,7 @@ var cameraTool = {
 			camera._root.transform.rotate( -yaw, LS.TOP );
 			camera._root.transform.rotate( pitch, LS.RIGHT, true );
 		}
-		else
+		else //node cameras
 		{
 			camera.rotate( -yaw, LS.TOP );
 			camera.rotate( pitch, LS.RIGHT, true );

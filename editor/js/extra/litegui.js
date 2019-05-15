@@ -6338,8 +6338,6 @@ LiteGUI.Console = Console;
 			panel.style.height = "100%";
 			this.content.style.width = "100%";
 			this.content.style.height = "calc(100% - "+ LiteGUI.Panel.title_height +")"; //title offset: 20px
-			this.content.style.height = "-moz-calc(100% - "+ LiteGUI.Panel.title_height +")";
-			this.content.style.height = "-webkit-calc(100% - "+ LiteGUI.Panel.title_height +")"; 
 			this.content.style.overflow = "auto";
 		}
 		else if(dock_type == 'left' || dock_type == 'right')
@@ -6350,9 +6348,6 @@ LiteGUI.Console = Console;
 
 			panel.style.width = this.width + "px";
 			panel.style.height = "100%";
-
-			this.content.style.height = "-moz-calc(100% - "+ LiteGUI.Panel.title_height +")";
-			this.content.style.height = "-webkit-calc(100% - "+ LiteGUI.Panel.title_height +")";
 			this.content.style.height = "calc(100% - "+ LiteGUI.Panel.title_height +")";
 			this.content.style.overflow = "auto";
 

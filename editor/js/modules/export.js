@@ -336,6 +336,81 @@ var ExportModule = {
 
 	exportToOBJ: function( to_memory )
 	{
+		var final_vertices = [];
+		var final_normals = [];
+		var final_uvs = [];
+		var final_indices = [];
+
+		for(var i = 0; i < LS.Renderer._visible_instances.length; i++)
+		{
+			var ri = LS.Renderer._visible_instances[i];
+			var mesh = ri.mesh;
+			var vertices_buffer = ri.vertex_buffers.vertices;
+			var normals_buffer = ri.vertex_buffers.normals;
+			var coords_buffer = ri.vertex_buffers.coords;
+			var indices_buffer = ri.index_buffer;
+
+			var vertices = vertices_buffer.data;
+			var normals = normals_buffer ? normals_buffer.data : null;
+			var uvs = coords_buffer ? coords_buffer.data : null;
+
+			var v2 = vec3.create();
+
+			if(indices_buffer)
+			{
+				var indices_data = indices_buffer.data;
+				for(var j = 0; j < indices_data.length; ++j)
+				{
+					var index = indices_data[j];
+					var v = vertices.subarray( index*3, index*3 + 3 );
+					vec3.transformMat4( v2, v, ri.matrix );
+					final_vertices.push(v2[0],v2[1],v2[2]);
+
+					if(normals)
+					{
+						var v = normals.subarray( index*3, index*3 + 3 );
+						mat4.rotateVec3( v2, ri.normal_matrix, v );
+						final_normals.push(v2[0],v2[1],v2[2]);
+					}
+
+					if(uvs)
+					{
+						var uv = uvs.subarray( index*2, index*2 + 2 );
+						final_uvs.push( uv[0], v[1] );
+					}
+				}
+			}
+			else
+			{
+				var num = vertices.length/3;
+				for(var j = 0; j < num; ++j)
+				{
+					var index = j;
+					var v = vertices.subarray( index*3, index*3 + 3 );
+					vec3.transformMat4( v2, v, ri.matrix );
+					final_vertices.push(v2[0],v2[1],v2[2]);
+
+					if(normals)
+					{
+						var v = normals.subarray( index*3, index*3 + 3 );
+						mat4.rotateVec3( v2, ri.normal_matrix, v );
+						final_normals.push(v2[0],v2[1],v2[2]);
+					}
+
+					if(uvs)
+					{
+						var uv = uvs.subarray( index*2, index*2 + 2 );
+						final_uvs.push( uv[0], v[1] );
+					}
+				}
+			}
+
+		}
+
+		var final_mesh = GL.Mesh.load({ vertices: final_vertices, normals: final_normals, coords: final_uvs, triangles: final_indices });
+
+
+		/*
 		var meshes = [];
 		for(var i = 0; i < LS.Renderer._visible_instances.length; i++)
 		{
@@ -345,6 +420,8 @@ var ExportModule = {
 		if(!meshes.length)
 			return;
 		var final_mesh = GL.Mesh.mergeMeshes( meshes );
+		*/
+
 		LS.RM.registerResource( "export.obj", final_mesh );
 		var data = final_mesh.encode("obj");
 

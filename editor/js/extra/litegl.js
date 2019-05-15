@@ -11379,15 +11379,17 @@ Octree.prototype.buildFromMesh = function( mesh )
 		{
 			var face = new Float32Array([vertices[triangles[i]*3], vertices[triangles[i]*3+1],vertices[triangles[i]*3+2],
 						vertices[triangles[i+1]*3], vertices[triangles[i+1]*3+1],vertices[triangles[i+1]*3+2],
-						vertices[triangles[i+2]*3], vertices[triangles[i+2]*3+1],vertices[triangles[i+2]*3+2]]);
-			this.addToNode(face,root,0);
+						vertices[triangles[i+2]*3], vertices[triangles[i+2]*3+1],vertices[triangles[i+2]*3+2],i/3]);
+			this.addToNode( face,root,0);
 		}
 	}
 	else
 	{
 		for(var i = 0; i < vertices.length; i+=9)
 		{
-			var face = new Float32Array( vertices.subarray(i,i+9) );
+			var face = new Float32Array( 10 );
+			face.set( vertices.subarray(i,i+9) );
+			face[9] = i/9;
 			this.addToNode(face,root,0);
 		}
 	}
@@ -11395,7 +11397,7 @@ Octree.prototype.buildFromMesh = function( mesh )
 	return root;
 }
 
-Octree.prototype.addToNode = function(face,node, depth)
+Octree.prototype.addToNode = function( face, node, depth )
 {
 	node.inside += 1;
 
@@ -11423,7 +11425,8 @@ Octree.prototype.addToNode = function(face,node, depth)
 	}
 	else //add till full, then split
 	{
-		if(node.faces == null) node.faces = [];
+		if(node.faces == null)
+			node.faces = [];
 		node.faces.push(face);
 
 		//split

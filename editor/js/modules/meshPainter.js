@@ -6,6 +6,10 @@ var MeshPainter = {
 	last_collision_pos: null,
 	_mouse_over_the_mesh: false,
 
+	show_wireframe: false,
+	wireframe_color: vec4.fromValues(1,1,1,1),
+	outside_rotates: true,
+
 	current_texture: null,
 	settings: {
 		channel: "color",
@@ -43,6 +47,7 @@ var MeshPainter = {
 			u_brushpos2: vec3.create(),
 			u_brushsize: 1.0,
 			u_brushcolor: vec4.create(),
+			u_brushtype: vec4.create(),
 			u_brushtexture: 0,
 			u_erasing: 0
 		}
@@ -238,10 +243,10 @@ var MeshPainter = {
 
 			//Brush info
 			widgets.addTitle("Brush");
-			widgets.addCombo("Type", MeshPainter.brush.type, { values: ["brush","eraser","set_alpha"], callback: function(v) { 
+			widgets.addCombo("Type", MeshPainter.brush.type, { name_width: 80, values: ["brush","pencil","eraser","set_alpha"], callback: function(v) { 
 				MeshPainter.brush.type = v;
 			}});
-			widgets.addNumber("Size", MeshPainter.brush.size, { min:0.1, step: 0.1, callback: function(v) { 
+			widgets.addSlider("Size", MeshPainter.brush.size, { name_width: 80, min:0.01, max:10, step: 0.01, callback: function(v) { 
 				MeshPainter.brush.size = v;
 			}});
 			//widgets.addNumber("Spread", MeshPainter.brush.spread, { min:0.1, step: 0.1, callback: function(v) { MeshPainter.brush.spread = v; }});
@@ -251,7 +256,7 @@ var MeshPainter = {
 				MeshPainter.brush.alpha = v;
 			}});
 			widgets.widgets_per_row = 1;
-			widgets.addSlider("Opacity", MeshPainter.brush.opacity, { min:0.01, max: 1, callback: function(v) { 
+			widgets.addSlider("Opacity", MeshPainter.brush.opacity, { name_width: 80, min:0.01, max: 1, callback: function(v) { 
 				MeshPainter.brush.opacity = v;
 			}});
 			widgets.addCheckbox("Blending", MeshPainter.brush.blending, { callback: function(v) { MeshPainter.brush.blending = v; }});
@@ -280,7 +285,16 @@ var MeshPainter = {
 				LS.GlobalScene.requestFrame();
 			}});
 			widgets.widgets_per_row = 1;
+			widgets.addButton(null,"Download", { callback: function(v){
+				var filename = LS.RM.getBasename( MeshPainter.current_texture.filename ) + ".png";
+				LiteGUI.downloadFile( filename, MeshPainter.current_texture.toBlob(true) )
+			}});
 
+			widgets.widgets_per_row = 2;
+			widgets.addCheckbox("Wireframe", MeshPainter.show_wireframe, { callback: function(v){ MeshPainter.show_wireframe = v; }});
+			widgets.addColor("Color",MeshPainter.wireframe_color, { callback: function(v){ MeshPainter.wireframe_color.set(v); }});
+			widgets.widgets_per_row = 1;
+			widgets.addCheckbox("Clicking outside rotates", MeshPainter.outside_rotates, { callback: function(v){ MeshPainter.outside_rotates = v; }});
 
 			if(on_refresh)
 				on_refresh();
@@ -556,6 +570,7 @@ MeshPainter._paint_pixel_shader = "\n\
 	\n\
 	uniform float u_brushsize;\n\
 	uniform vec4 u_brushcolor;\n\
+	uniform vec4 u_brushtype;\n\
 	void main() {\n\
 	\n\
 		#ifdef USE_PAINT_LINE\n\
@@ -571,7 +586,8 @@ MeshPainter._paint_pixel_shader = "\n\
 		#endif\n\
 		\n\
 		vec4 color = u_brushcolor;\n\
-		color.a *= 1.0 - (dist / u_brushsize);\n\
+		if(u_brushtype.x == 1.0)\n\
+			color.a *= 1.0 - (dist / u_brushsize);\n\
 		gl_FragColor = color;\n\
 	}\n\
 ";
@@ -598,6 +614,7 @@ MeshPainter._brush_pixel_shader = "\n\
 	uniform vec3 u_brushpos;\n\
 	uniform float u_brushsize;\n\
 	uniform vec4 u_brushcolor;\n\
+	uniform vec4 u_brushtype;\n\
 	void main() {\n\
 		vec3 v = v_pos - u_brushpos;\n\
 		if( abs(v.x) > u_brushsize || abs(v.y) > u_brushsize)\n\
@@ -608,7 +625,8 @@ MeshPainter._brush_pixel_shader = "\n\
 			discard;\n\
 		\n\
 		vec4 color = u_brushcolor;\n\
-		color.a *= 1.0 - (dist / u_brushsize);\n\
+		if(u_brushtype.x == 1.0)\n\
+			color.a *= 1.0 - (dist / u_brushsize);\n\
 		gl_FragColor = color;\n\
 	}\n\
 ";
@@ -670,6 +688,17 @@ var meshPainterTool = {
 		gl.disable( gl.BLEND );
 		gl.enable( gl.DEPTH_TEST );
 
+		if( MeshPainter.show_wireframe )
+		{
+			gl.depthFunc( gl.LEQUAL );
+			LS.Draw.setColor( MeshPainter.wireframe_color );
+			if(!MeshPainter.painted_mesh.getIndexBuffer("wireframe"))
+				MeshPainter.painted_mesh.computeWireframe();
+			LS.Draw.renderMesh( MeshPainter.painted_mesh, gl.LINES, LS.Draw.shader, "wireframe" );
+			gl.depthFunc( gl.LESS );
+		}
+
+
 		if(MeshPainter.sphere_mesh && MeshPainter._mouse_over_the_mesh)
 		{
 			var shader_brush = this._shader_brush;
@@ -691,7 +720,10 @@ var meshPainterTool = {
 			uniforms.u_brushsize = MeshPainter.brush.size;
 			uniforms.u_brushcolor.set( MeshPainter.brush.color );
 			uniforms.u_brushcolor[3] = MeshPainter.brush.alpha * 3.0;
-
+			if( MeshPainter.brush.type == "pencil")
+				uniforms.u_brushtype[0] = 0;
+			else if( MeshPainter.brush.type == "brush")
+				uniforms.u_brushtype[0] = 1;
 			LS.Draw.push();
 			LS.Draw.setMatrix( model );
 			shader_brush.uniforms( uniforms );
@@ -727,7 +759,8 @@ var meshPainterTool = {
 
 	mousedown: function(e)
 	{
-		if(e.button != 0) return;
+		if(e.button != 0)
+			return;
 
 		var node = MeshPainter.getPaintedNode();
 		if(!node)
@@ -740,10 +773,16 @@ var meshPainterTool = {
 		{
 			camera.updateMatrices();
 			var ray = camera.getRayInPixel( e.canvasx, e.canvasy );
-			var pos = MeshPainter.testRay(ray);
-			if(pos)
-				MeshPainter.painting = true;
+			var hit = MeshPainter.testRay(ray);
+			if( MeshPainter.painted_mesh )
+			{
+				if( hit || MeshPainter.outside_rotates == false || e.ctrlKey )
+					MeshPainter.painting = true;
+				if( hit )
+					MeshPainter.addSprite3D( hit.pos, hit.normal );
+			}
 		}
+		RenderModule.requestFrame();
 	},
 
 	mousemove: function(e)

@@ -21996,6 +21996,23 @@ RenderInstance.prototype.addShaderBlock = function( block, uniforms )
 	return this.shader_blocks.length - 1;
 }
 
+RenderInstance.prototype.disableShaderBlock = function( block )
+{
+	if( ! (block.flag_mask & this.shader_block_flags) )
+		return;
+
+	for(var i = 0; i < this.shader_blocks.length; ++i)
+	{
+		if(!this.shader_blocks[i])
+			continue;
+		if( this.shader_blocks[i].block !== block )
+			continue;
+		this.shader_block_flags &= ~block.flag_mask;
+		break;
+	}
+}
+
+
 RenderInstance.prototype.removeShaderBlock = function( block )
 {
 	if( ! (block.flag_mask & this.shader_block_flags) )
@@ -33426,8 +33443,7 @@ SkinDeformer.prototype.applySkinning = function(RI)
 		this.applySoftwareSkinning( mesh, this._skinned_mesh );
 
 		RI.setMesh( this._skinned_mesh, this.primitive );
-		//remove the flags to avoid recomputing shaders
-		RI.samplers[ LS.Renderer.BONES_TEXTURE_SLOT ] = null;
+		this.disableSkinning( RI );
 	}
 
 	if( this.ignore_transform )
@@ -36930,6 +36946,7 @@ function GraphComponent(o)
 	this.enabled = true;
 	this.from_file = false;
 	this.force_redraw = false;
+	this.title = null;
 	this._filename = null;
 	this._graphcode = null;
 	this._graph_properties = null;
@@ -37031,6 +37048,8 @@ GraphComponent.prototype.configure = function(o)
 		this.uid = o.uid;
 	if(o.enabled != null)
 		this.enabled = !!o.enabled;
+	if(o.title)
+		this.title = String(o.title);
 	if(o.from_file)
 	{
 		this.from_file = true;
@@ -37082,6 +37101,7 @@ GraphComponent.prototype.serialize = function()
 	return { 
 		object_class: "GraphComponent",
 		uid: this.uid,
+		title: this.title,
 		enabled: this.enabled, 
 		from_file: this.from_file,
 		force_redraw: this.force_redraw , 
@@ -37320,6 +37340,12 @@ GraphComponent.prototype.setPropertyValue = function( property, value )
 	}
 }
 
+GraphComponent.prototype.getComponentTitle = function()
+{
+	return this.title;
+}
+
+
 LS.registerComponent( GraphComponent );
 
 
@@ -37336,6 +37362,7 @@ function FXGraphComponent(o)
 	this.frame = new LS.RenderFrameContext();
 	this.use_antialiasing = false;
 	this.use_node_camera = false;
+	this.title = null;
 
 	if(typeof(LGraphTexture) == "undefined")
 		return console.error("Cannot use FXGraphComponent if LiteGraph is not installed");
@@ -37420,6 +37447,8 @@ FXGraphComponent.prototype.configure = function(o)
 
 	this.uid = o.uid;
 	this.enabled = !!o.enabled;
+	if(o.title)
+		this.title = o.title;
 	this.use_antialiasing = !!o.use_antialiasing;
 	this.use_node_camera = !!o.use_node_camera;
 	if(o.frame)
@@ -37472,6 +37501,7 @@ FXGraphComponent.prototype.serialize = function()
 		object_class: "FXGraphComponent",
 		uid: this.uid,
 		enabled: this.enabled,
+		title: this.title,
 		use_antialiasing: this.use_antialiasing,
 		frame: this.frame.serialize(),
 		use_node_camera: this.use_node_camera,
@@ -37723,6 +37753,8 @@ FXGraphComponent.prototype.applyGraph = function()
 	//execute graph
 	this._graph.runStep(1, LS.catch_exceptions );
 }
+
+FXGraphComponent.prototype.getComponentTitle = GraphComponent.prototype.getComponentTitle;
 
 LS.registerComponent( FXGraphComponent );
 
@@ -49891,8 +49923,11 @@ global.Collada = _collada = {
 			{
 				//warning: I detected that some nodes could have a controller but they are not referenced here.  ??
 				var url = xmlchild.getAttribute("url");
-				url = url.replace(/\./gi,"\\."); //url could contain dots which invalidates the querySelector, we need to escape them
-				var xmlcontroller = this._xmlroot.querySelector("controller" + url);
+				var safe_url = url.replace(/\./gi,"\\."); //url could contain dots which invalidates the querySelector, we need to escape them
+				var xmlcontroller = this._xmlroot.querySelector("controller" + safe_url);
+
+				if( !xmlcontroller ) //search manually because ids could have invalid characters that querySelector doesnt support
+					xmlcontroller = this.searchManuallyById( "library_controllers", url.substr(1) ); //remove #
 
 				if(!xmlcontroller)
 				{
@@ -49989,6 +50024,20 @@ global.Collada = _collada = {
 		}
 		this.readNodeInfo( xmlnode2, scene, level+1, flip);
 		return true;
+	},
+
+	searchManuallyById: function( base_node_selector, id )
+	{
+		var xmlbase = this._xmlroot.querySelector( base_node_selector );
+		if(!xmlbase)
+			return null;
+		for(var i = 0; i < xmlbase.childNodes.length; ++i)
+		{
+			var xmlchild = xmlbase.childNodes[i];
+			if( xmlchild.id == id )
+				return xmlchild;
+		}
+		return null;
 	},
 
 	//if you want to rename some material names

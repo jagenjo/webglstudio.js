@@ -44,7 +44,7 @@ var PreferencesModule = {
 		dialog.content.innerHTML = "";
 
 		//content
-		var split = new LiteGUI.Split("preferences-content",[30,70]);
+		var split = new LiteGUI.Split([30,70]);
 		dialog.content.appendChild(split.root);
 		dialog.content.style.height = "calc( 100% - 20px )";
 		split.root.style.height = "100%";

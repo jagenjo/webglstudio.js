@@ -11,9 +11,10 @@ var MeshTools = {
 		if(this.dialog)
 			this.dialog.close();
 
-		var dialog = new LiteGUI.Dialog({ id: "dialog_mesh_tools", title:"Mesh Tools", close: true, minimize: true, width: 300, height: 440, scroll: false, draggable: true});
+		var dialog = new LiteGUI.Dialog({ id: "dialog_mesh_tools", title:"Mesh Tools", close: true, minimize: true, width: 400, height: 740, scroll: true, resizable:true, draggable: true});
 		dialog.show('fade');
 		dialog.setPosition(100,100);
+		dialog.content.style.height = "calc( 100% - 30px )";
 		this.dialog = dialog;
 
 		var widgets = new LiteGUI.Inspector({ id: "mesh_tools", name_width: "50%" });
@@ -66,12 +67,10 @@ var MeshTools = {
 			widgets.addButton("", "Close" , { callback: function (value) { 
 				dialog.close(); 
 			}});
-			dialog.adjustSize(10);
 
 		}//inner update
 
 		dialog.add( widgets );
-		dialog.adjustSize(10);		
 	},
 
 	sortMeshTriangles: function( mesh, sort_mode )
@@ -183,7 +182,7 @@ var MeshTools = {
 		var normals = mesh.getBuffer("normals");
 		if(normals)
 			normals.applyTransform( rot_matrix ).upload( gl.STATIC_DRAW );
-		mesh.updateBounding();
+		mesh.updateBoundingBox();
 		return true;
 	},
 
@@ -197,7 +196,7 @@ var MeshTools = {
 		if(!vertices)
 			return false;
 		vertices.applyTransform( matrix ).upload( gl.STATIC_DRAW );
-		mesh.updateBounding();
+		mesh.updateBoundingBox();
 		return true;
 	},
 
@@ -276,7 +275,11 @@ var MeshTools = {
 			return false;
 		normals.applyTransform( normal_matrix ).upload( gl.STATIC_DRAW );
 
-		mesh.updateBounding();
+		if(mesh.bones)
+			for(var i = 0; i < mesh.bones.length; ++i)
+				mat4.multiply( mesh.bones[i][1], matrix, mesh.bones[i][1] );
+
+		mesh.updateBoundingBox();
 		return true;
 	},
 
@@ -294,7 +297,7 @@ var MeshTools = {
 			vec3.add(v, v, offset );
 		}
 		vertices.upload( gl.STATIC_DRAW );
-		mesh.updateBounding();
+		mesh.updateBoundingBox();
 		return true;
 	},
 
@@ -481,9 +484,9 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 			var group = mesh.info.groups[i];
 			var str = group.name;
 			if(group.material)
-				str += " <span class='mat' style='color:white;'>"+group.material+"<span>";
+				str += " <span class='mat' style='color:white;'>"+group.material+"</span>";
 			if(group.bounding)
-				str += " <span class='info' style='color:gray;'>[BB]<span>";
+				str += " <span class='info' style='color:gray;'>[BB]</span> <span>"+group.start+":"+group.length+"</span>";
 			var w = widgets.addInfo(i, str, { name_width: 50 } );
 		}
 		widgets.addButton(null,"Compute bounding boxes", { callback: function(){

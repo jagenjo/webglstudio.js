@@ -19,6 +19,7 @@ var AnimationModule = {
 		LEvent.bind( LS.GlobalScene, "renderPicking", this.renderPicking.bind(this));
 
 		RenderModule.canvas_manager.addWidget( AnimationModule ); //capture update, render trajectories
+		LiteGUI.menubar.add("Actions/Skeletal export", { callback: AnimationModule.showSKAnimExportDialog.bind(AnimationModule) });
 	},
 
 	createTimeline: function()
@@ -679,6 +680,124 @@ var AnimationModule = {
 	{
 		if( this.timeline )
 			this.timeline.update(dt);
+	},
+
+	showSKAnimExportDialog: function()
+	{
+		var dialog = new LiteGUI.Dialog({ id:"dialog_skanim_exporter", title:"SKAnim exporter", close: true, minimize: true, width: 400, height: 440, scroll: false, draggable: true});
+		dialog.show();
+		dialog.setPosition(100,100);
+		this.dialog = dialog;
+
+		var widgets = new LiteGUI.Inspector({ name_width: 100 });
+		dialog.add( widgets );
+
+		var anim = null;
+		var take = null;
+		var anim_filename = "animation";
+		var duration = 1;
+		var frames_per_second = 30;
+		var mesh_filename = "character";
+
+		//fetch
+		var playanim = LS.GlobalScene.root.findComponents("PlayAnimation")[0];
+		if(playanim && playanim.getAnimation())
+		{
+			anim = playanim.getAnimation();
+			anim_filename = LS.RM.getBasename(anim.filename);
+			take = playanim.getTake();
+			duration = take.duration;
+		}
+
+		var skindeformer = LS.GlobalScene.root.findComponents("SkinDeformer")[0];
+		if(skindeformer)
+			mesh = skindeformer._root.getMesh();
+
+		widgets.on_refresh = inner_refresh;
+		inner_refresh();
+		dialog.adjustSize(10);
+
+		function inner_refresh()
+		{
+			widgets.clear();
+			widgets.addTitle("Animation");
+			widgets.widgets_per_row = 2;
+			widgets.addString("Animation", anim ? anim.filename : "", { name_width: 80, width: "calc( 100% - 80px )", callback: function(v){ 
+				anim = LS.RM.getResource(anim);
+				if(anim)
+					take = anim.takes["default"];
+				inner_refresh();
+			}});
+			widgets.addButton(null,"From node",{ width: 80, callback: inner_from_node });
+
+			widgets.addNumber("Duration", duration, { min: 0, callback: function(v){ duration = v; }});
+			widgets.addNumber("Frames per second",frames_per_second, { min: 1, callback: function(v){ frames_per_second = v; }});
+			widgets.widgets_per_row = 1;
+			widgets.addString("Filename",anim_filename, { callback: function(v){ filename = v; }});
+			widgets.addButton(null,"Export Animation", { callback: inner_export_anim });
+			widgets.addSeparator();
+			widgets.addTitle("Mesh");
+			widgets.widgets_per_row = 2;
+			widgets.addMesh("Mesh",mesh ? mesh.filename : "", { name_width: 80, width: "calc( 100% - 80px )", callback: function(v){ 
+				mesh = LS.RM.getResource(v); 
+				inner_refresh();
+			}});
+			widgets.addButton(null,"From node",{ width: 80, callback: inner_mesh_from_node });
+			widgets.widgets_per_row = 1;
+			widgets.addString("Filename",mesh_filename, { callback: function(v){ mesh_filename = v; }});
+			widgets.addButton(null,"Export Mesh", { callback: inner_export_mesh });
+		}
+
+		function inner_from_node()
+		{
+			var node = SelectionModule.getSelectedNode();
+			if(!node)
+				return LiteGUI.alert("No node selected");
+			var comp = node.getComponent("PlayAnimation");
+			if(!comp)
+				return LiteGUI.alert("No PlayAnimation in node");
+			take = comp.getTake();
+			if(!take)
+				return LiteGUI.alert("No Animation in node");
+			duration = take.duration;
+			var anim = comp.getAnimation();
+			anim_filename = LS.RM.getBasename(anim.filename);
+			inner_refresh();
+		}		
+
+		function inner_export_anim()
+		{
+			if(!take)
+				return LiteGUI.alert("You must select a node that contains a PlayAnimation, select the root node of your DAE and click From Selected Node.");
+			var data = exportTakeInSKANIM( take, frames_per_second, duration );
+			if(!data)
+				return;
+			LiteGUI.downloadFile( anim_filename + ".skanim", data );
+		}
+
+		function inner_mesh_from_node()
+		{
+			var node = SelectionModule.getSelectedNode();
+			if(!node)
+				return LiteGUI.alert("No node selected");
+			var comp = node.getComponent("MeshRenderer");
+			if(!comp)
+				return LiteGUI.alert("No MeshRenderer in node");
+			mesh = comp.getMesh();
+			if(!mesh)
+				return LiteGUI.alert("No mesh found");
+			inner_refresh();
+		}		
+
+		function inner_export_mesh()
+		{
+			if(!mesh)
+				return LiteGUI.alert("You must select a node that contains a MeshRenderer, select the mesh and click the From Selected Node");
+			var data = GL.Mesh.encoders["mesh"](mesh);
+			if(!data)
+				return;
+			LiteGUI.downloadFile( mesh_filename + ".mesh", data );
+		}
 	}
 
 };
@@ -718,9 +837,12 @@ AnimationModule.export_animation_formats["anim"] = function( take ){
 }
 
 //skeletal anim
-AnimationModule.export_animation_formats["skanim"] = function( take ){
-	var sampling = 30;
-	var total_samples = Math.ceil( sampling * take.duration );
+AnimationModule.export_animation_formats["skanim"] = exportTakeInSKANIM;
+	
+function exportTakeInSKANIM( take, sampling, duration ) {
+	sampling = sampling || 30;
+	duration = duration || take.duration;
+	var total_samples = Math.ceil( sampling * duration );
 
 	var lines = [];
 	if(!take.tracks.length)
@@ -781,14 +903,14 @@ AnimationModule.export_animation_formats["skanim"] = function( take ){
 	}
 
 	//duration in seconds, samples per second, num. samples, number of bones in the skeleton
-	lines.push( [ take.duration.toFixed(3), sampling, total_samples, out.length ].join(",") );
+	lines.push( [ duration.toFixed(3), sampling, total_samples, out.length ].join(",") );
 	var bones_indices = [];
 	for(var i = 0; i < bone_names.length; ++i)
 		bones_indices.push( bone_index[ bone_names[i] ] );
 	lines = lines.concat(out);
 	lines.push( "@" + bones_indices.length + "," + bones_indices.join(",") );
 
-	var offset = take.duration / (total_samples-1);
+	var offset = duration / (total_samples-1);
 	for(var i = 0; i < total_samples; ++i)
 	{
 		var t = i*offset;

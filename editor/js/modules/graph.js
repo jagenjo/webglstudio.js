@@ -295,6 +295,20 @@ if(!LS.Components.GraphComponent.actions)
 if(!LS.Components.FXGraphComponent.actions)
 	LS.Components.FXGraphComponent.actions = {}
 
+LS.Components.GraphComponent.actions["set_title"] = LS.Components.FXGraphComponent.actions["set_title"] = { 
+	title: "Set Title",
+	callback: function(){
+		var that = this;
+		LiteGUI.prompt("Set a title for the Graph", function(v){
+			if(v)
+				that.title = v;
+			else if (v == "")
+				that.title = null;
+		});
+	}
+};
+
+
 LS.Components.GraphComponent.actions["show_graph_json"] = LS.Components.FXGraphComponent.actions["show_graph_json"] = { 
 	title: "Show Graph JSON",
 	callback: function(){

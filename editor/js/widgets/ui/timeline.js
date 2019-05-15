@@ -88,7 +88,7 @@ Timeline.prototype.createInterface = function( options )
 		that.setAnimation( that.current_animation, v );
 	}});
 	widgets.addButton(null, LiteGUI.special_codes.navicon, { width: 30, callback: function(v,e){ that.showTakeOptionsDialog(e); } });
-	this.duration_widget = widgets.addNumber("Duration", 0, { units:"s", precision:2, min:0, callback: function(v){ that.setDuration(v); } } );
+	this.duration_widget = widgets.addNumber("Duration", 0, { units:"s", precision:2, min:0, width: 120, callback: function(v){ that.setDuration(v); } } );
 	this.current_time_widget = widgets.addNumber("Current", this.session ? this.session.current_time : 0, { units:"s", precision:2, min: 0, callback: function(v){ that.setCurrentTime(v); } } );
 	//widgets.addCheckbox("Preview", this.preview, { callback: function(v){ that.preview = v; } } );
 	//this.play_widget = widgets.addCheckbox("Play", !!this.playing, { callback: function(v){ that.playing = !that.playing ; } } );
@@ -101,6 +101,7 @@ Timeline.prototype.createInterface = function( options )
 	widgets.addIcon(null, false, { title:"record", image: "imgs/icons-timeline.png", index: 10, toggle: true, callback: function(v){ return that.toggleRecording(v); } } );
 	this.paths_widget = widgets.addIcon(null, this.show_paths, { title:"show paths", image: "imgs/icons-timeline.png", index: 12, toggle: true, callback: function(v){ RenderModule.requestFrame(); return that.show_paths = v; } } );
 	//widgets.addCheckbox("Curves", this.mode == "curves", { callback: function(v){ that.mode = v ? "curves" : "keyframes"; that.redrawCanvas(); } } );
+	widgets.addButton(null, LiteGUI.special_codes.refresh, { width: 30, callback: function(v,e){ that.resetView(); } });
 
 	/*
 	this.property_widget = widgets.addString("Property", "", { disabled: true, width: "auto" } );
@@ -142,6 +143,21 @@ Timeline.prototype.createInterface = function( options )
 
 	var that = this;
 	setTimeout( function(){ that.resize(); }, 100 );
+}
+
+Timeline.prototype.resetView = function()
+{
+	this.session = {
+		start_time: -0.2, //time at left side of window (use a negative number to leave some margin)
+		current_time: 0,
+		last_time: 0,
+		seconds_to_pixels: 50, //how many pixels represent one second
+		left_margin: 220,
+		scroll_y: 0,
+		offset_y: 0,
+		scale_y: 1, //pixels to units
+		selection: null
+	};
 }
 
 Timeline.prototype.onNewAnimation = function( name, duration, folder )
@@ -241,18 +257,7 @@ Timeline.prototype.setAnimation = function( animation, take_name )
 	if( !animation.getNumTakes() || !animation.takes[take_name] )
 		animation.createTake( take_name, LS.Animation.DEFAULT_DURATION );
 
-	this.session = {
-		start_time: -0.2, //time at left side of window (use a negative number to leave some margin)
-		current_time: 0,
-		last_time: 0,
-		seconds_to_pixels: 50, //how many pixels represent one second
-		left_margin: 220,
-		scroll_y: 0,
-		offset_y: 0,
-		scale_y: 1, //pixels to units
-		selection: null
-	};
-
+	this.resetView();
 	this.current_animation = animation;
 	this.animation_widget.setValue( animation.name );
 	this.current_take_name = take_name;
@@ -267,7 +272,8 @@ Timeline.prototype.setAnimation = function( animation, take_name )
 	//zoom
 	if(this.current_take.duration)
 	{
-		this.session.seconds_to_pixels = ( this.canvas.width - this.session.left_margin - 100 ) / this.current_take.duration;
+		var w = Math.max(100,this.canvas.width);
+		this.session.seconds_to_pixels = ( w - this.session.left_margin - 100 ) / this.current_take.duration;
 		this.session.start_time = -50 / this.session.seconds_to_pixels;
 	}
 
@@ -334,6 +340,8 @@ Timeline.prototype.updateTimelineData = function()
 {
 	var data = this._timeline_data;
 	var take = this.current_take;
+	var canvasw = Math.max(50,this.canvas.width);
+	var canvash = Math.max(50,this.canvas.height);
 
 	data.duration = take.duration;
 	data.current_time = Math.clamp( this.session.current_time, 0, data.duration );
@@ -343,9 +351,9 @@ Timeline.prototype.updateTimelineData = function()
 	data.start_time = Math.floor( this.session.start_time ); //seconds
 	if(data.start_time < 0)
 		data.start_time = 0;
-	data.seconds_to_pixels = this.session.seconds_to_pixels;
+	data.seconds_to_pixels = Math.max(20, this.session.seconds_to_pixels);
 	data.pixels_to_seconds = 1 / data.seconds_to_pixels;
-	data.end_time = Math.ceil( this.session.start_time + (this.canvas.width - this.session.left_margin) * data.pixels_to_seconds );
+	data.end_time = Math.ceil( this.session.start_time + (canvasw - this.session.left_margin) * data.pixels_to_seconds );
 	if(data.end_time > data.duration)
 		data.end_time = data.duration;
 	data.time_range = data.end_time - data.start_time;
@@ -363,7 +371,7 @@ Timeline.prototype.updateTimelineData = function()
 	data.first_track = this.session.scroll_y;
 	if(data.first_track < 0)
 		data.first_track = 0;
-	data.max_tracks = Math.ceil( (this.canvas.height - this.canvas_info.timeline_height) / this.canvas_info.row_height );
+	data.max_tracks = Math.ceil( (canvash - this.canvas_info.timeline_height) / this.canvas_info.row_height );
 	data.last_track = data.first_track + data.max_tracks;
 	if(data.last_track > data.num_tracks-1)
 		data.last_track = data.num_tracks-1;

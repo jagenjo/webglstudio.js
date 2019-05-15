@@ -215,7 +215,7 @@ LS.Components.Camera["@inspector"] = function(camera, inspector)
 
 	function inner_view_from_here()
 	{
-		RenderModule.camera.lookAt( camera.eye, camera.center, camera.up );
+		RenderModule.camera.lookAt( camera.getEye(), camera.getCenter(), camera.up );
 		inspector.refresh();
 	}
 }

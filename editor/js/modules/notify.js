@@ -1,4 +1,6 @@
 var NotifyModule = {
+	name:"NotifyModule",
+
 	root: null, 
 
 	init: function()

@@ -1,5 +1,6 @@
 // This module allows to import a project from a hard drive and uploads it to the server
 var ProjectImporter = {
+	name: "ProjectImporter",
 
 	init: function()
 	{

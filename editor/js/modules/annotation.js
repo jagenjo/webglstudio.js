@@ -1,4 +1,6 @@
 var AnnotationModule = {
+	name: "AnnotationModule",
+
 	init: function()
 	{
 		LiteGUI.menubar.add("Node/Add Annotation", { callback: function() { 

@@ -1,4 +1,6 @@
 var TextureTools = {
+	name: "TextureTools",
+
 	init: function()
 	{
 		LiteGUI.menubar.add("Actions/Texture Tools", { callback: function() { 

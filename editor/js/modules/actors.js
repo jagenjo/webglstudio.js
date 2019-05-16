@@ -1,4 +1,5 @@
 var ActorsModule = {
+	name:"ActorsModule",
 
 	init: function()
 	{

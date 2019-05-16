@@ -1,5 +1,6 @@
 // Javi Agenjo  (@tamat) May 2016
 var LightmapTools = {
+	name:"LightmapTools",
 
 	init: function()
 	{

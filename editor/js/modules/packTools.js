@@ -1,4 +1,5 @@
 var PackTools = {
+	name:"PackTools",
 
 	init: function()
 	{

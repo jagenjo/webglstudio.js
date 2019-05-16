@@ -1,4 +1,6 @@
 var fpsCounter = {
+	name: "fpsCounter",
+
 	show_counter: false,
 	show_stats: false,
 	max_samples: 100,

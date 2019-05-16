@@ -1,5 +1,7 @@
 /* This module allows to create Cubemaps and store them as resources */
 var CubemapTools = {
+	name: "CubemapTools",
+
 	default_resolution: 256,
 
 	current_cubemap: null,

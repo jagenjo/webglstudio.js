@@ -1,5 +1,6 @@
 //in charge of selection 
 var SelectionModule = {
+	name: "SelectionModule",
 
 	selection: null, // { uid, instance, node, info }
 	selection_array: [],

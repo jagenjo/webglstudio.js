@@ -1,4 +1,5 @@
 var ExportModule = {
+	name:"ExportModule",
 
 	//list of files to be included when exporting the player
 	player_files: [

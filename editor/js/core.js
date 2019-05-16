@@ -25,18 +25,6 @@ var CORE = {
 			dataType:"json",
 			success: this.configLoaded.bind(this)
 		});
-
-		/*
-		this.ProxyScene.onLEventBinded = function( event_type, callback, target_instance )
-		{
-		
-		}
-
-		this.ProxyScene.onLEventUnbinded = function( event_type, callback, target_instance )
-		{
-		
-		}
-		*/
 	},
 
 	configLoaded: function( config )
@@ -199,9 +187,12 @@ var CORE = {
 
 	registerModule: function( module )
 	{
+		if(this.Modules.indexOf(module) != -1)
+			return; //already present
+
 		this.Modules.push(module);
-		//if(!module.name)
-		//	console.warn("Module without name, some features wouldnt be available");
+		if(!module.name)
+			console.warn("Module without name, some features wont be available",module);
 
 		//initialize on late registration
 		if(this._modules_initialized)
@@ -217,7 +208,20 @@ var CORE = {
 	//used mostly to reload plugins
 	removeModule: function( module )
 	{
-		var index = this.Modules.indexOf( module );
+		var module_to_remove = null;
+		for(var i = 0; i < this.Modules.length; ++i)
+		{
+			var m = this.Modules[i];
+			if(m.name != module.name) //use names to avoid problems overwritting old module versions
+				continue;
+			module_to_remove = m;
+			break;
+		}
+
+		if(!module_to_remove)
+			return;
+
+		var index = this.Modules.indexOf( module_to_remove );
 		if(index == -1)
 			return;
 		if(module.deinit)

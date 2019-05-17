@@ -130,7 +130,11 @@ GraphWidget.prototype.onDraw = function()
 	if(GraphModule._texture_preview && this.inspected_node)
 	{
 		var widget = GraphModule._texture_preview;
-		var tex = this.inspected_node.getOutputData(0);
+		var tex = null;
+		if(this.inspected_node.getPreviewTexture)
+			tex = this.inspected_node.getPreviewTexture();
+		if(!tex)
+			tex = this.inspected_node.getOutputData(0);
 		if(!tex || tex.constructor !== GL.Texture)
 			widget._texture = null;
 		else

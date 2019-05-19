@@ -17385,6 +17385,7 @@ if (typeof exports != "undefined") {
         function LGraphTextureLinearAvgSmooth() {
             this.addInput("in", "Texture");
             this.addOutput("out", "Texture");
+            this.addOutput("array", "Texture");
             this.properties = { samples: 64, frames_interval: 1 };
             this._uniforms = {
                 u_texture: 0,
@@ -17463,6 +17464,7 @@ if (typeof exports != "undefined") {
 			}
 			else
 				this.setOutputData(0, this._temp_texture_out);
+			this.setOutputData(1, this._temp_texture2);
 			this.frame++;
         };
 
@@ -17563,7 +17565,7 @@ if (typeof exports != "undefined") {
             this.addInput("LUT", "Texture");
             this.addInput("Intensity", "number");
             this.addOutput("", "Texture");
-            this.properties = { intensity: 1, precision: LGraphTexture.DEFAULT, texture: null };
+            this.properties = { enabled: true, intensity: 1, precision: LGraphTexture.DEFAULT, texture: null };
 
             if (!LGraphTextureLUT._shader) {
                 LGraphTextureLUT._shader = new GL.Shader( Shader.SCREEN_VERTEX_SHADER, LGraphTextureLUT.pixel_shader );
@@ -17585,7 +17587,7 @@ if (typeof exports != "undefined") {
 
             var tex = this.getInputData(0);
 
-            if (this.properties.precision === LGraphTexture.PASS_THROUGH) {
+            if (this.properties.precision === LGraphTexture.PASS_THROUGH || this.properties.enabled === false) {
                 this.setOutputData(0, tex);
                 return;
             }

@@ -342,6 +342,10 @@ var ExportModule = {
 		var final_uvs = [];
 		var final_indices = [];
 
+		var groups = [];
+		var offset = 0;
+		var length = 0;
+
 		for(var i = 0; i < LS.Renderer._visible_instances.length; i++)
 		{
 			var ri = LS.Renderer._visible_instances[i];
@@ -360,6 +364,7 @@ var ExportModule = {
 			if(indices_buffer)
 			{
 				var indices_data = indices_buffer.data;
+				length = indices_data.length / 3;
 				for(var j = 0; j < indices_data.length; ++j)
 				{
 					var index = indices_data[j];
@@ -377,14 +382,14 @@ var ExportModule = {
 					if(uvs)
 					{
 						var uv = uvs.subarray( index*2, index*2 + 2 );
-						final_uvs.push( uv[0], v[1] );
+						final_uvs.push( uv[0], uv[1] );
 					}
 				}
 			}
 			else
 			{
-				var num = vertices.length/3;
-				for(var j = 0; j < num; ++j)
+				length = vertices.length/3;
+				for(var j = 0; j < length; ++j)
 				{
 					var index = j;
 					var v = vertices.subarray( index*3, index*3 + 3 );
@@ -406,22 +411,21 @@ var ExportModule = {
 				}
 			}
 
+			//groups
+			var group = {
+				name: "mesh_" + i,
+				start: offset,
+				length: length,
+				material: ri.material ? LS.RM.getBasename( ri.material.filename ) : ""
+			};
+
+			offset += length;
+			groups.push( group );
 		}
 
-		var final_mesh = GL.Mesh.load({ vertices: final_vertices, normals: final_normals, coords: final_uvs, triangles: final_indices });
+		var extra = { info: { groups: groups } };
 
-
-		/*
-		var meshes = [];
-		for(var i = 0; i < LS.Renderer._visible_instances.length; i++)
-		{
-			var ri = LS.Renderer._visible_instances[i];
-			meshes.push( { mesh: ri.mesh, vertices_matrix: ri.matrix, normals_matrix: ri.normal_matrix } );
-		}
-		if(!meshes.length)
-			return;
-		var final_mesh = GL.Mesh.mergeMeshes( meshes );
-		*/
+		var final_mesh = new GL.Mesh( { vertices: final_vertices, normals: final_normals, coords: final_uvs }, { triangles: final_indices }, extra );
 
 		LS.RM.registerResource( "export.obj", final_mesh );
 		var data = final_mesh.encode("obj");

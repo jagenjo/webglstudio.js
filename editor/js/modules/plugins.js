@@ -18,24 +18,28 @@ var PluginsModule = {
 	init: function()
 	{
 		LiteGUI.bind( CORE.root, "plugin_registered", this.onNewPlugin.bind(this) );
+		this.loadPlugins();
+	},
 
-		if(	this.preferences.plugins && this.preferences.plugins.length )
+	loadPlugins: function()
+	{
+		if(	!this.preferences.plugins || !this.preferences.plugins.length )
+			return;
+
+		var plugins = this.preferences.plugins;
+		for(var i = 0; i < plugins.length; ++i)
 		{
-			var plugins = this.preferences.plugins;
-			for(var i = 0; i < plugins.length; ++i)
+			var info = plugins[i];
+			if(info.constructor === String) //legacy
 			{
-				var info = plugins[i];
-				if(info.constructor === String) //legacy
-				{
-					info = { url: info };
-					plugins[i] = info;
-				}
-				if( info.enabled === undefined ) //legacy
-					info.enabled = true;
-
-				if( info.enabled )
-					this.loadPlugin( info.url );
+				info = { url: info };
+				plugins[i] = info;
 			}
+			if( info.enabled === undefined ) //legacy
+				info.enabled = true;
+
+			if( info.enabled )
+				this.loadPlugin( info.url );
 		}
 	},
 

@@ -335,7 +335,7 @@ var ExportModule = {
 		return code;
 	},
 
-	exportToOBJ: function( to_memory )
+	exportToOBJ: function( to_memory, group_materials )
 	{
 		var final_vertices = [];
 		var final_normals = [];
@@ -345,21 +345,36 @@ var ExportModule = {
 		var groups = [];
 		var offset = 0;
 		var length = 0;
+		var instances = LS.Renderer._visible_instances.concat();
 
-		for(var i = 0; i < LS.Renderer._visible_instances.length; i++)
+		//group by material
+		group_materials = true;
+		if(group_materials)
+			instances.sort(function(a,b){ if( a.material.uid < b.material.uid ) return -1; if( a.material.uid > b.material.uid ) return 1; return 0; });
+
+		var last_group = null;
+		var last_material = null;
+
+		for(var i = 0; i < instances.length; i++)
 		{
-			var ri = LS.Renderer._visible_instances[i];
+			var ri = instances[i];
 			var mesh = ri.mesh;
+
+			var indices_buffer = ri.index_buffer;
+			//if( indices_buffer )
+			//	mesh.explodeIndices("triangles");
+
 			var vertices_buffer = ri.vertex_buffers.vertices;
 			var normals_buffer = ri.vertex_buffers.normals;
 			var coords_buffer = ri.vertex_buffers.coords;
-			var indices_buffer = ri.index_buffer;
 
 			var vertices = vertices_buffer.data;
 			var normals = normals_buffer ? normals_buffer.data : null;
 			var uvs = coords_buffer ? coords_buffer.data : null;
 
 			var v2 = vec3.create();
+			var is_new_group = !last_material || !group_materials || ri.material != last_material;
+			last_material = ri.material;
 
 			if(indices_buffer)
 			{
@@ -411,16 +426,26 @@ var ExportModule = {
 				}
 			}
 
+			var material = ri.material;
+			var material_name = LS.RM.getBasename( ri.material.filename );
+			if(!material_name && ri.material.textures.color && ri.material.textures.color.texture)
+				material_name = LS.RM.getFilename( ri.material.textures.color.texture );
+
 			//groups
-			var group = {
-				name: "mesh_" + i,
-				start: offset,
-				length: length,
-				material: ri.material ? LS.RM.getBasename( ri.material.filename ) : ""
-			};
+			if(is_new_group)
+			{
+				var group = last_group = {
+					name: "mesh_" + i,
+					start: offset,
+					length: length,
+					material: material_name
+				};
+				groups.push( group );
+			}
+			else if(last_group)
+				last_group.length += length;
 
 			offset += length;
-			groups.push( group );
 		}
 
 		var extra = { info: { groups: groups } };

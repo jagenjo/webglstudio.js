@@ -2173,7 +2173,11 @@ var EditorModule = {
 				e.preventDefault();
 				e.stopPropagation();
 				return false;
-				break; //F6
+				break; 
+			case 118: //F7
+				if(window.CodingModule)
+					CodingModule.reloadProjectScripts();
+				break;
 			case 38: //UP
 				if(e.ctrlKey)
 					SelectionModule.selectParentNode();

@@ -11327,8 +11327,8 @@ if (typeof exports != "undefined") {
 
     NodeScript.prototype.compileCode = function(code) {
         this._func = null;
-        if (code.length > 100) {
-            console.warn("Script too long, max 100 chars");
+        if (code.length > 256) {
+            console.warn("Script too long, max 256 chars");
         } else {
             var code_low = code.toLowerCase();
             var forbidden_words = [
@@ -16248,7 +16248,8 @@ if (typeof exports != "undefined") {
                     shader = new GL.Shader( Shader.SCREEN_VERTEX_SHADER, final_pixel_code );
                     this.boxcolor = "#00FF00";
                 } catch (err) {
-                    console.log("Error compiling shader: ", err, final_pixel_code );
+                    //console.log("Error compiling shader: ", err, final_pixel_code );
+					GL.Shader.dumpErrorToConsole(err,Shader.SCREEN_VERTEX_SHADER, final_pixel_code);
                     this.boxcolor = "#FF0000";
 					this.has_error = true;
                     return;
@@ -16256,6 +16257,9 @@ if (typeof exports != "undefined") {
 				this._shader = shader;
                 this._shader_code = uvcode + "|" + pixelcode;
             }
+
+			if(!this._shader)
+				return;
 
             var value = this.getInputData(2);
             if (value != null) {
@@ -17384,7 +17388,7 @@ if (typeof exports != "undefined") {
 
         function LGraphTextureLinearAvgSmooth() {
             this.addInput("in", "Texture");
-            this.addOutput("out", "Texture");
+            this.addOutput("avg", "Texture");
             this.addOutput("array", "Texture");
             this.properties = { samples: 64, frames_interval: 1 };
             this._uniforms = {

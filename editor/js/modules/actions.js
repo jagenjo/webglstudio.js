@@ -409,35 +409,6 @@ LS.Components.GeometricPrimitive.actions["to_mesh"] = {
 LS.MaterialClasses.StandardMaterial.actions = {}
 
 /*
-LS.MaterialClasses.newStandardMaterial.actions["to_ShaderMaterial"] = {
-	title:"Convert to ShaderMaterial",
-	callback: function( node )
-	{
-		var new_material = new LS.MaterialClasses.ShaderMaterial();
-		var shadercode = this.getShaderCode();
-		LS.RM.registerResource( "shader.glsl", shadercode );
-		new_material.shader = shadercode.filename;
-		node.material = new_material;
-		RenderModule.requestFrame();
-	}
-}
-*/
-
-LS.MaterialClasses.StandardMaterial.actions["to_newStandardMaterial"] = {
-	title:"Convert to newStandardMaterial",
-	callback: function( node )
-	{
-		var info = this.serialize();
-		info.object_class = "newStandardMaterial";
-		delete info.uid;
-		var new_material = new LS.MaterialClasses.newStandardMaterial();
-		new_material.configure( info );
-		node.material = new_material;
-	}
-}
-
-
-/*
 LS.Material.actions = {};
 
 LS.Material.actions["copy"] = { title: "Copy", callback: function() { 

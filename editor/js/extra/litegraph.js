@@ -16327,14 +16327,16 @@ if (typeof exports != "undefined") {
             this.addOutput("out", "Texture");
             this.properties = {
                 code: "",
+				u_value: 1,
+				u_color: [1,1,1,1],
                 width: 512,
                 height: 512,
                 precision: LGraphTexture.DEFAULT
             };
 
             this.properties.code =
-                "\nvoid main() {\n  vec2 uv = v_coord;\n  vec3 color = vec3(0.0);\n//your code here\n\ngl_FragColor = vec4(color, 1.0);\n}\n";
-            this._uniforms = { in_texture: 0, texSize: vec2.create(), time: 0 };
+                "//time: time in seconds\n//texSize: vec2 with res\nuniform float u_value;\nuniform vec4 u_color;\n\nvoid main() {\n  vec2 uv = v_coord;\n  vec3 color = vec3(0.0);\n	//your code here\n	color.xy=uv;\n\ngl_FragColor = vec4(color, 1.0);\n}\n";
+            this._uniforms = { u_value: 1, u_color: vec4.create(), in_texture: 0, texSize: vec2.create(), time: 0 };
         }
 
         LGraphTextureShader.title = "Shader";
@@ -16470,6 +16472,7 @@ if (typeof exports != "undefined") {
             var in_tex = null;
 
             //set uniforms
+			if(this.inputs)
             for (var i = 0; i < this.inputs.length; ++i) {
                 var info = this.getInputInfo(i);
                 var data = this.getInputData(i);
@@ -16506,18 +16509,11 @@ if (typeof exports != "undefined") {
             uniforms.texSize[0] = w;
             uniforms.texSize[1] = h;
             uniforms.time = this.graph.getTime();
+			uniforms.u_value = this.properties.u_value;
+			uniforms.u_color.set( this.properties.u_color );
 
-            if (
-                !this._tex ||
-                this._tex.type != type ||
-                this._tex.width != w ||
-                this._tex.height != h
-            ) {
-                this._tex = new GL.Texture(w, h, {
-                    type: type,
-                    format: gl.RGBA,
-                    filter: gl.LINEAR
-                });
+            if ( !this._tex || this._tex.type != type ||  this._tex.width != w || this._tex.height != h ) {
+                this._tex = new GL.Texture(w, h, {  type: type, format: gl.RGBA, filter: gl.LINEAR });
             }
             var tex = this._tex;
             tex.drawTo(function() {

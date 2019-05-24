@@ -12397,6 +12397,9 @@ function Animation(o)
 
 LS.Classes["Animation"] = LS.Animation = Animation;
 
+//Animation.KEYFRAME_ANIMATION = 0;
+//Animation.CLIP_ANIMATION = 1;
+
 Animation.EXTENSION = "wbin";
 Animation.DEFAULT_SCENE_NAME = "@scene";
 Animation.DEFAULT_DURATION = 10;

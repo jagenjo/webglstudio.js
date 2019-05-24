@@ -17,6 +17,9 @@ var PluginsModule = {
 
 	init: function()
 	{
+		var mainmenu = LiteGUI.menubar;
+		mainmenu.add("Window/Plugins", { callback: function() { PluginsModule.showPluginsDialog(); }});
+
 		LiteGUI.bind( CORE.root, "plugin_registered", this.onNewPlugin.bind(this) );
 		this.loadPlugins();
 	},
@@ -41,6 +44,88 @@ var PluginsModule = {
 			if( info.enabled )
 				this.loadPlugin( info.url );
 		}
+	},
+
+	showPluginsDialog: function( on_callback )
+	{
+		var dialog = new LiteGUI.Dialog( { title: "Plugins", close: true, width: 800, height: 380, scroll: false, draggable: true } );
+
+		var area = new LiteGUI.Area({width:"100%",height:"100%"});
+		area.split("horizontal",["50%",null]);
+		dialog.add(area);
+
+		var url = PluginsModule.preferences.custom_plugins_url || PluginsModule.plugins_url;
+		var selected = null;
+		var plugins = this.preferences.plugins;
+
+		var inspector_left = new LiteGUI.Inspector( { scroll: true, resizable: true, full: true } );
+		area.getSection(0).add( inspector_left );
+
+		var inspector_right = new LiteGUI.Inspector( { scroll: true, name_width: 150, resizable: true, full: true } );
+		area.getSection(1).add( inspector_right );
+
+		inspector_left.addTitle("Plugins");
+
+		var container = inspector_left.startContainer("",{ width: "calc( 100% - 10px )", height: 380});
+		container.style.backgroundColor = "black";
+		container.style.padding = "5px";
+		container.style.overflow = "auto";
+
+		inspector_left.widgets_per_row = 4;
+		for(var i = 0; i < plugins.length; ++i)
+		{
+			var plugin = plugins[i];
+			inspector_left.addCheckbox(null, plugin.enabled, { plugin: plugin, width: 60, callback: function(v){ this.options.plugin.enabled = v; }});
+			inspector_left.addInfo(null, plugin.name, { width: "calc(100% - 120px)" });
+			inspector_left.addButton(null, InterfaceModule.icons.trash, { plugin: plugin, width: 30,
+				callback: function(){
+					PluginsModule.removePlugin( this.options.plugin );
+					PreferencesModule.updateDialogContent();
+				}
+			});
+			inspector_left.addButton(null, InterfaceModule.icons.refresh, { plugin: plugin, width: 30,
+				callback: function(){
+					var selected = this.options.plugin;
+					var plugin = PluginsModule.removePlugin( selected );
+					if(!plugin || !plugin.url)
+						return;
+					PluginsModule.loadPlugin( plugin.url, function(){ PreferencesModule.updateDialogContent(); } );
+					PreferencesModule.updateDialogContent();
+				}
+			});
+		}
+
+		inspector_left.endContainer({ width: "100%", height: 380});
+
+
+		//left
+		inspector_left.addString("Repository", url, function(v){
+			url = PluginsModule.preferences.custom_plugins_url = v;
+		});
+		inspector_left.addTitle("Scripts");
+		var list = inspector_left.addList(null,[],{ height: 270, callback: function(v){
+			selected = v;
+			title.setValue(v.name);
+			author.setValue(v.author);
+			version.setValue(v.version);
+			description.setValue(v.description);
+		}});
+		inspector_left.addSeparator();
+		inspector_left.addButton(null,"Refresh",{ callback: function(){
+			PluginsModule.fetchList( url, inner );
+		}});
+
+		//fetch list
+		this.fetchList( url, inner );
+
+		function inner(v)
+		{
+			if(!v)
+				return;
+			list.updateItems(v.scripts);
+		}
+
+		dialog.show();
 	},
 
 	onShowPreferencesPanel: function(name,widgets)

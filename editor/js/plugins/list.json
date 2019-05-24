@@ -1,0 +1,14 @@
+{
+	"scripts":[
+		{
+			"name":"Test",
+			"author":"Javi Agenjo",
+			"version": "0.1",
+			"script_url":"scripts/test.js",
+			"includes":[],
+			"description":"This is a simple plugin test",
+			"preview_url":null,
+			"video_url":null
+		}
+	]
+}

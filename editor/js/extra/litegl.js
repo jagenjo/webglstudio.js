@@ -12500,6 +12500,7 @@ Mesh.encoders["obj"] = function( mesh, options )
 		{
 			var group = groups[j];
 			lines.push("g " + group.name );
+			lines.push("usemtl " + (group.material || ("mat_"+j)));
 			var start = group.start;
 			var end = start + group.length;
 			for (var i = start; i < end; i+=3)
@@ -12514,10 +12515,9 @@ Mesh.encoders["obj"] = function( mesh, options )
 		{
 			var group = groups[j];
 			lines.push("g " + group.name);
-			if(group.material)
-				lines.push("usemtl " + group.material);
-			var start = group.start*3;
-			var end = start + group.length*3;
+			lines.push("usemtl " + (group.material || ("mat_"+j)));
+			var start = group.start;
+			var end = start + group.length;
 			for (var i = start; i < end; i+=3)
 				lines.push( "f " + (i+1) + "/" + (i+1) + "/" + (i+1) + " " + (i+2) + "/" + (i+2) + "/" + (i+2) + " " + (i+3) + "/" + (i+3) + "/" + (i+3) );
 		}

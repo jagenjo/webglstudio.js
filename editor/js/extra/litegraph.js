@@ -16117,8 +16117,7 @@ if (typeof exports != "undefined") {
             this.addInput("TextureB", "Texture");
             this.addInput("value", "number");
             this.addOutput("Texture", "Texture");
-            this.help =
-                "<p>pixelcode must be vec3, uvcode must be vec2, is optional</p>\
+            this.help = "<p>pixelcode must be vec3, uvcode must be vec2, is optional</p>\
 			<p><strong>uv:</strong> tex. coords</p><p><strong>color:</strong> texture <strong>colorB:</strong> textureB</p><p><strong>time:</strong> scene time <strong>value:</strong> input value</p><p>For multiline you must type: result = ...</p>";
 
             this.properties = {
@@ -16492,10 +16491,7 @@ if (typeof exports != "undefined") {
             }
 
             var uniforms = this._uniforms;
-            var type = LGraphTexture.getTextureType(
-                this.properties.precision,
-                in_tex
-            );
+            var type = LGraphTexture.getTextureType( this.properties.precision, in_tex );
 
             //render to texture
             var w = this.properties.width | 0;
@@ -16567,10 +16563,7 @@ if (typeof exports != "undefined") {
 
             var width = tex.width;
             var height = tex.height;
-            var type =
-                this.precision === LGraphTexture.LOW
-                    ? gl.UNSIGNED_BYTE
-                    : gl.HIGH_PRECISION_FORMAT;
+            var type =  this.precision === LGraphTexture.LOW ? gl.UNSIGNED_BYTE : gl.HIGH_PRECISION_FORMAT;
             if (this.precision === LGraphTexture.DEFAULT) {
                 type = tex.type;
             }
@@ -20034,6 +20027,7 @@ if (typeof exports != "undefined") {
                 code: "",
                 width: 512,
                 height: 512,
+				clear: true,
                 precision: LGraphTexture.DEFAULT
             };
             this._func = null;
@@ -20041,8 +20035,8 @@ if (typeof exports != "undefined") {
         }
 
         LGraphTextureCanvas2D.title = "Canvas2D";
-        LGraphTextureCanvas2D.desc =
-            "Executes Canvas2D code inside a texture or the viewport";
+        LGraphTextureCanvas2D.desc = "Executes Canvas2D code inside a texture or the viewport.";
+		LGraphTextureCanvas2D.help = "Set width and height to 0 to match viewport size.";
 
         LGraphTextureCanvas2D.widgets_info = {
             precision: { widget: "combo", values: LGraphTexture.MODE_VALUES },
@@ -20058,13 +20052,7 @@ if (typeof exports != "undefined") {
             if (name == "code" && LiteGraph.allow_scripts) {
                 this._func = null;
                 try {
-                    this._func = new Function(
-                        "canvas",
-                        "ctx",
-                        "time",
-                        "script",
-                        value
-                    );
+                    this._func = new Function( "canvas", "ctx", "time", "script", value );
                     this.boxcolor = "#00FF00";
                 } catch (err) {
                     this.boxcolor = "#FF0000";
@@ -20090,17 +20078,26 @@ if (typeof exports != "undefined") {
             var width = this.properties.width || gl.canvas.width;
             var height = this.properties.height || gl.canvas.height;
             var temp = this._temp_texture;
-            if (!temp || temp.width != width || temp.height != height) {
+            var type = LGraphTexture.getTextureType( this.properties.precision );
+            if (!temp || temp.width != width || temp.height != height || temp.type != type ) {
                 temp = this._temp_texture = new GL.Texture(width, height, {
                     format: gl.RGBA,
-                    filter: gl.LINEAR
+                    filter: gl.LINEAR,
+					type: type
                 });
             }
 
+			var properties = this.properties;
             var that = this;
             var time = this.graph.getTime();
             temp.drawTo(function() {
                 gl.start2D();
+				if(properties.clear)
+				{
+					gl.clearColor(0,0,0,0);
+					gl.clear( gl.COLOR_BUFFER_BIT );
+				}
+
                 try {
                     if (func.draw) {
                         func.draw.call(that, gl.canvas, gl, time, func);
@@ -20120,6 +20117,8 @@ if (typeof exports != "undefined") {
         };
 
         LiteGraph.registerNodeType("texture/canvas2D", LGraphTextureCanvas2D);
+
+		// To do chroma keying *****************
 
         function LGraphTextureMatte() {
             this.addInput("in", "Texture");

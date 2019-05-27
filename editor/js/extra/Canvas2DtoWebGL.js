@@ -322,9 +322,17 @@ function enableWebGLCanvas( canvas, options )
 		return null;
 	}
 
+	//it supports all versions of drawImage (3 params, 5 params or 9 params)
+	//it allows to pass a shader, otherwise it uses texture_shader (code is GL.Shader.SCREEN_COLORED_FRAGMENT_SHADER)
 	ctx.drawImage = function( img, x, y, w, h, shader )
 	{
-		if(!img || img.width == 0 || img.height == 0) 
+		if(!img)
+			return;
+
+		var img_width = img.videoWidth || img.width;
+		var img_height = img.videoHeight || img.height;
+			
+		if(img_width == 0 || img_height == 0) 
 			return;
 
 		var tex = getTexture(img);
@@ -333,7 +341,7 @@ function enableWebGLCanvas( canvas, options )
 
 		if(arguments.length == 9) //img, sx,sy,sw,sh, x,y,w,h
 		{
-			tmp_vec4b.set([x/img.width,y/img.height,w/img.width,h/img.height]);
+			tmp_vec4b.set([x/img_width,y/img_height,w/img_width,h/img_height]);
 			x = arguments[5];
 			y = arguments[6];
 			w = arguments[7];

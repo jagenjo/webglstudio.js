@@ -33008,7 +33008,7 @@ MorphDeformer.prototype.getPropertiesInfo = function()
 	for(var i = 0; i < this.morph_targets.length; i++)
 	{
 		properties[ "morph" + i + "_weight" ] = "number";
-		properties[ "morph" + i + "_mesh" ] = "Mesh";
+		//properties[ "morph" + i + "_mesh" ] = "Mesh";
 	}
 
 	return properties;

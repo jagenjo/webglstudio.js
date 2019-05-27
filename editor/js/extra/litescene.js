@@ -17860,10 +17860,12 @@ if(typeof(LiteGraph) != "undefined")
 	{
 		this.addInput("x","number");
 		this.addInput("y","number");
-		this.addOutput("weights","array");
+		this.addOutput("[]","array");
+		this.addOutput("obj","object");
 		this.addProperty("circular",false);
 		this.points = [];
 		this.weights = [];
+		this.weights_obj = {};
 		this.current_pos = new Float32Array([0.5,0.5]);
 		this.size = [200,200];
 		this.dragging = false;
@@ -17889,6 +17891,7 @@ if(typeof(LiteGraph) != "undefined")
 		pos[1] = this.getInputData(1) || pos[1];
 		this.computeWeights(pos);
 		this.setOutputData(0, this.weights );
+		this.setOutputData(1, this.weights_obj );
 	}
 
 	LGraphMap2D.prototype.computeWeights = function(pos)
@@ -17926,7 +17929,10 @@ if(typeof(LiteGraph) != "undefined")
 				}
 			}
 		for(var i = 0; i < weights.length; ++i)
+		{
 			weights[i] /= total_inside;
+			this.weights_obj[ this.points[i].name ] = weights[i];
+		}
 		return weights;
 	}
 
@@ -18316,10 +18322,10 @@ if(typeof(LiteGraph) != "undefined")
 
 	function LGraphRemapWeights()
 	{
-		this.addInput("in","array");
-		this.addOutput("out","array");
-		this.points = [];
-		this.weights = [];
+		this.addInput("in","array"); //array because they are already in order
+		this.addOutput("out","object");
+		this.points = [];	//2D points, name of point ("happy","sad") and weights ("mouth_left":0.4, "mouth_right":0.3)
+		this.current_weights = {}; //object that tells the current state of weights, like "mouth_left":0.3, ...
 
 		var node = this;
 		this.combo = this.addWidget("combo","Point", "", function(v){
@@ -18336,40 +18342,51 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphRemapWeights.prototype.onExecute = function()
 	{
-		var point_weights = this.getInputData(0);
+		var point_weights = this.getInputData(0); //array
 
-		var lw = this.weights.length;
-		for(var i = 0; i < lw; ++i)
-			this.weights[i] = 0;
+		for(var i in this.current_weights)
+			this.current_weights[i] = 0;
 
 		if( point_weights )
 		for(var i = 0; i < point_weights.length; ++i)
 		{
 			var point = this.points[i];
-			var w = point_weights[i];
-			for(var j = 0, l = point.weights.length; j < lw && j < l; ++j)
-				this.weights[j] += point.weights[j] * w;
+			var w = point_weights[i]; //input
+			//for(var j = 0, l = point.weights.length; j < lw && j < l; ++j)
+			for(var j in point.weights)
+			{
+				var v = (point.weights[j] || 0) * w;
+				this.current_weights[j] += v;
+			}
 		}
 
 		//output weights
-		this.setOutputData(0, this.weights );
+		this.setOutputData(0, this.current_weights );
 	}
 
-	LGraphRemapWeights.prototype.addPoint = function(name, weights)
+	//adds a 2D point with the weights associated to it (not used?)
+	LGraphRemapWeights.prototype.addPoint = function( name, weights )
 	{
 		if(!weights)
-			weights = new Array( this.weights.length );
-		this.points.push({name: name, weights:weights});	
+		{
+			console.warn("no weights passed to add point");
+			return;
+		}
+		var w = {};
+		for(var i in weights)
+			w[i] = weights[i];
+		this.points.push({name: name, weights: w});	
 	}
 
-	LGraphRemapWeights.prototype.importPoints = function(name, weights)
+	//import 2D points from input node (usually LGraphMap2D), just the names
+	LGraphRemapWeights.prototype.importPoints = function( name )
 	{
 		var input_node = this.getInputNode(0);
 		if(!input_node || !input_node.points || !input_node.points.length )
 			return;
 		this.points.length = input_node.points.length;
 		for(var i = 0; i < this.points.length; ++i)
-			this.points[i] = { name: input_node.points[i].name, weights: new Array( this.weights.length ) };
+			this.points[i] = { name: input_node.points[i].name, weights: {} };
 		this._selected_point = this.points[0];
 		if( this._selected_point )
 		{
@@ -18383,40 +18400,36 @@ if(typeof(LiteGraph) != "undefined")
 		}
 	}
 
+	//when called it reads the output nodes to get which morph targets it is using and read their weights
+	//then sets the current 2D point to this weights
 	LGraphRemapWeights.prototype.importWeights = function( assign )
 	{
 		var output_nodes = this.getOutputNodes(0);
 		if(!output_nodes || output_nodes.length == 0)
 			return;
-		if( output_nodes.length > 1)
-			console.warn("More than one node connected, taking the first one");
-		var output_node = output_nodes[0];
-		if( !output_node.getComponent )
-			return;
 
-		var component = output_node.getComponent();
-		if(!component)
-			return;
+		for(var i = 0; i < output_nodes.length; ++i)
+		{
+			var output_node = output_nodes[i];
+			if( !output_node.getComponent )
+				continue;
 
-		var compo_weights = component.weights;
-		this.weights.length = compo_weights.length;
-		for(var i = 0; i < this.weights.length; ++i)
-			this.weights[i] = compo_weights[i];
-		this.updatePointsWeight();
+			var component = output_node.getComponent();
+			if(!component)
+				continue;
+
+			var compo_weights = component.name_weights;
+			for(var j in compo_weights)
+				this.current_weights[j] = compo_weights[j];
+		}
+
 		this.setDirtyCanvas(true);
 
 		if( !assign || !this._selected_point)
 			return;
-		this._selected_point.weights = this.weights.concat();
-	}
-
-	LGraphRemapWeights.prototype.updatePointsWeight = function()
-	{
-		for(var i = 0; i < this.points.length; ++i)
-		{
-			var point = this.points[i];
-			point.weights.length = this.weights.length;
-		}
+		this._selected_point.weights = {};
+		for(var i in this.current_weights)
+			this._selected_point.weights[i] = this.current_weights[i];
 	}
 
 	LGraphRemapWeights.prototype.findPoint = function( name )
@@ -18429,17 +18442,27 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphRemapWeights.prototype.onSerialize = function(o)
 	{
-		o.weights = this.weights;
+		o.current_weights = this.current_weights;
 		o.points = this.points;
 	}
 
 	LGraphRemapWeights.prototype.onConfigure = function(o)
 	{
-		if(o.weights)
-			this.weights = o.weights;
+		if( o.current_weights )
+			this.current_weights = o.current_weights;
 		if(o.points)
 		{
 			this.points = o.points;
+
+			//legacy
+			for(var i = 0;i < this.points.length; ++i)
+			{
+				var p = this.points[i];
+				if(p.weights && p.weights.constructor !== Object)
+					p.weights = {};
+			}
+
+			//widget
 			this.combo.options.values = this.points.map(function(a){ return a.name; });
 			this.combo.value = this.combo.options.values[0] || "";
 		}
@@ -18482,18 +18505,17 @@ if(typeof(LiteGraph) != "undefined")
 		inspector.addSeparator();
 		inspector.addTitle("Weights");
 
-		for(var i = 0; i < this.weights.length; ++i)
+		for(var i in this.current_weights)
 		{
-			inspector.addNumber( i.toString(), this.weights[i], { index: i, callback: function(v){
-				node.weights[ this.options.index ] = v;
+			inspector.addNumber( i, this.current_weights[i], { name_width: "80%", index: i, callback: function(v){
+				node.current_weights[ this.options.index ] = v;
 			}});
 		}
 
-		inspector.addButton(null,"+", function(){
-			node.weights.push(0);
-			node.updatePointsWeight();
+		inspector.addStringButton("Add Weight","", { button: "+", callback_button: function(v){
+			node.current_weights[v] = 0;
 			inspector.refresh();
-		});
+		}});
 
 		inspector.addSeparator();
 	}
@@ -32258,6 +32280,32 @@ MorphDeformer.prototype.onAddedToNode = function(node)
 	LEvent.bind( node, "collectRenderInstances", this.onCollectInstances, this );
 }
 
+//object with name:weight
+Object.defineProperty( MorphDeformer.prototype, "name_weights", {
+	set: function(v) {
+		if(!v)
+			return;
+		for(var i = 0; i < this.morph_targets.length; ++i)
+		{
+			var m = this.morph_targets[i];
+			if(v[m.mesh] !== undefined)
+				m.weight = Number(v[m.mesh]);
+		}
+	},
+	get: function()
+	{
+		var result = {};
+		for(var i = 0; i < this.morph_targets.length; ++i)
+		{
+			var m = this.morph_targets[i];
+			result[ m.mesh ] = m.weight;
+		}
+		return result;
+	},
+	enumeration: false
+});
+
+
 Object.defineProperty( MorphDeformer.prototype, "weights", {
 	set: function(v) {
 		if(!v || !v.length)
@@ -32944,6 +32992,8 @@ MorphDeformer.prototype.setProperty = function(name, value)
 	}
 	else if( name == "weights" )
 		this.weights = value;
+	else if( name == "name_weights" )
+		this.name_weights = value;
 }
 
 
@@ -32951,7 +33001,8 @@ MorphDeformer.prototype.getPropertiesInfo = function()
 {
 	var properties = {
 		enabled: "boolean",
-		weights: "array"
+		weights: "array",
+		name_weights: "object"
 	};
 
 	for(var i = 0; i < this.morph_targets.length; i++)

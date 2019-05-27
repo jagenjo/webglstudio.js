@@ -18362,6 +18362,14 @@ if(typeof(LiteGraph) != "undefined")
 
 		//output weights
 		this.setOutputData(0, this.current_weights );
+
+		if(this.outputs)
+		for(var i = 1; i < this.outputs.length; ++i)
+		{
+			var output_info = this.outputs[i];
+			if(output_info)
+				this.setOutputData(i, this.current_weights[output_info.name] );
+		}
 	}
 
 	//adds a 2D point with the weights associated to it (not used?)
@@ -18519,6 +18527,14 @@ if(typeof(LiteGraph) != "undefined")
 
 		inspector.addSeparator();
 	}
+
+    LGraphRemapWeights.prototype.onGetOutputs = function() {
+        var r = [];
+		for(var i in this.current_weights)
+			r.push([i,"number"]);
+		return r;
+    };
+
 
 	LiteGraph.registerNodeType("math/remap_weights", LGraphRemapWeights );
 }

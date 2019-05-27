@@ -13361,7 +13361,7 @@ if (typeof exports != "undefined") {
         this.addProperty("OP", "+", "enum", { values: MathOperation.values });
     }
 
-    MathOperation.values = ["+", "-", "*", "/", "%", "^"];
+    MathOperation.values = ["+", "-", "*", "/", "%", "^", "max", "min"];
 
     MathOperation.title = "Operation";
     MathOperation.desc = "Easy math operators";
@@ -13419,6 +13419,12 @@ if (typeof exports != "undefined") {
                 break;
             case "^":
                 result = Math.pow(A, B);
+                break;
+            case "max":
+                result = Math.max(A, B);
+                break;
+            case "min":
+                result = Math.min(A, B);
                 break;
             default:
                 console.warn("Unknown operation: " + this.properties.OP);

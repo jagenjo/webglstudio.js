@@ -48797,6 +48797,30 @@ LS.Formats.addSupportedFormat( "zip", { dataType: "arraybuffer" } );
 WBin.classes = LS.Classes; //WBin need to know which classes are accesible to be instantiated right from the WBin data info, in case the class is not a global class
 
 
+var parserMESH = {
+	extension: 'mesh',
+	type: 'mesh',
+	resource: 'Mesh',
+	format: 'text',
+	dataType:'text',
+
+	flipAxis: false,
+
+	parse: function(text, options)
+	{
+		options = options || {};
+		var support_uint = true;
+
+		var parser = GL.Mesh.parsers["mesh"];
+		var mesh = parser(text, options);
+		if( mesh.bounding.radius == 0 || isNaN(mesh.bounding.radius))
+			console.log("no radius found in mesh");
+		//console.log(mesh);
+		return mesh;
+	}
+}
+
+LS.Formats.addSupportedFormat( "mesh", parserMESH );
 ///@FILE:../src/parsers/parserDDS.js
 ///@INFO: PARSER
 var parserDDS = { 
@@ -52564,6 +52588,13 @@ var parserDAE = {
 
 		function inner_replace_names( node )
 		{
+			if(node.id == "root")
+			{
+				console.warn("DAE contains a node named root, renamed to _root");
+				node.id = "_root";
+				renamed["root"] = node.id;
+			}
+
 			//change uid
 			if(node.id && !options.skip_renaming )
 			{

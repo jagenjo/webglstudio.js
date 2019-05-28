@@ -918,7 +918,13 @@ function exportTakeInSKANIM( take, sampling, duration ) {
 		take.applyTracks(t,t,false);
 		var data = [t.toFixed(3)]
 		for(var j=0; j < bones.length; ++j)
-			data.push( typedArrayToArray( bones[j].transform.getMatrix()) );
+		{
+			var b = bones[j];
+			if( b && b.transform ) //weird case
+				data.push( typedArrayToArray( b.transform.getMatrix()) );
+			else
+				data.push( typedArrayToArray( mat4.create() ) );
+		}
 		lines.push( "K" + data.flat().join(",") );
 	}
 

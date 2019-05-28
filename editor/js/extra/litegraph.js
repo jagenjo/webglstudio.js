@@ -482,7 +482,7 @@
         },
 
         registerSearchboxExtra: function(node_type, description, data) {
-            this.searchbox_extras[description] = {
+            this.searchbox_extras[description.toLowerCase()] = {
                 type: node_type,
                 desc: description,
                 data: data
@@ -9111,7 +9111,7 @@ LGraphNode.prototype.executeAction = function(action)
                 if (that.onSearchBoxSelection) {
                     that.onSearchBoxSelection(name, event, graphcanvas);
                 } else {
-                    var extra = LiteGraph.searchbox_extras[name];
+                    var extra = LiteGraph.searchbox_extras[name.toLowerCase()];
                     if (extra) {
                         name = extra.type;
                     }
@@ -9127,10 +9127,7 @@ LGraphNode.prototype.executeAction = function(action)
                     if (extra && extra.data) {
                         if (extra.data.properties) {
                             for (var i in extra.data.properties) {
-                                node.addProperty(
-                                    extra.data.properties[i][0],
-                                    extra.data.properties[i][0]
-                                );
+                                node.addProperty( i, extra.data.properties[i] );
                             }
                         }
                         if (extra.data.inputs) {
@@ -13363,7 +13360,7 @@ if (typeof exports != "undefined") {
 
     MathOperation.values = ["+", "-", "*", "/", "%", "^", "max", "min"];
 
-    MathOperation.title = "Operation";
+	MathOperation.title = "Operation";
     MathOperation.desc = "Easy math operators";
     MathOperation["@OP"] = {
         type: "enum",
@@ -13373,6 +13370,8 @@ if (typeof exports != "undefined") {
     MathOperation.size = [100, 60];
 
     MathOperation.prototype.getTitle = function() {
+		if(this.properties.OP == "max" || this.properties.OP == "min")
+			return this.properties.OP + "(A,B)";
         return "A " + this.properties.OP + " B";
     };
 
@@ -13449,6 +13448,16 @@ if (typeof exports != "undefined") {
     };
 
     LiteGraph.registerNodeType("math/operation", MathOperation);
+
+    LiteGraph.registerSearchboxExtra("math/operation", "MAX", {
+        properties: {OP:"max"},
+        title: "MAX()"
+    });
+
+    LiteGraph.registerSearchboxExtra("math/operation", "MIN", {
+        properties: {OP:"min"},
+        title: "MIN()"
+    });
 
     //Math compare
     function MathCompare() {
@@ -13647,7 +13656,7 @@ if (typeof exports != "undefined") {
 
     MathTrigonometry.title = "Trigonometry";
     MathTrigonometry.desc = "Sin Cos Tan";
-    MathTrigonometry.filter = "shader";
+    //MathTrigonometry.filter = "shader";
 
     MathTrigonometry.prototype.onExecute = function() {
         var v = this.getInputData(0);

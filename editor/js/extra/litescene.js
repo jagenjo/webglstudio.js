@@ -13962,6 +13962,505 @@ LS.Interpolators["texture"] = function( a, b, t, last )
 	return last;
 }
 
+///@FILE:../src/resources/skeletalAnimation.js
+//standalone class for skeletal animations
+
+function lerp(a,b,f) { return a*(1.0-f)+b*f; }
+
+if(!Math.lerp)
+	Math.lerp = lerp;
+
+function Skeleton()
+{
+	this.bones = []; //array of bones
+	this.global_bone_matrices = []; //internal array of mat4
+	this.bones_by_name = new Map(); //map of nodenames and index in the bones array
+}
+
+Skeleton.EXTENSION = "skanim";
+
+
+function Bone()
+{
+	this.name = "";
+	this.model = mat4.create();
+	this.parent = -1;
+	this.layer = 0;
+	this.num_children = 0;
+	this.children = new Int8Array(16);
+}
+
+Bone.prototype.serialize = function()
+{
+	return {
+		name: this.name,
+		model: typedArrayToArray( this.model ),
+		parent: this.parent,
+		layer: this.layer,
+		children: this.num_children ? typedArrayToArray( this.children.subarray(0,this.num_children) ) : null
+	};
+}
+
+Bone.prototype.configure = function(o)
+{
+	this.name = o.name;
+	this.model.set( o.model );
+	this.parent = o.parent;
+	this.layer = o.layer;
+	this.num_children = 0;
+	if(o.children)
+	{
+		this.children.set(o.children);
+		if(o.children.constructor === Array)
+			this.num_children = o.children.length;
+		else
+			this.num_children = o.num_children;
+	}
+}
+
+Bone.prototype.copyFrom = Bone.prototype.configure;
+
+Skeleton.Bone = Bone;
+
+//given a bone name and matrix, it multiplies the matrix to the bone
+Skeleton.prototype.applyTransformToBones = function(root, transform)
+{
+	var bone = this.getBone(root);
+	if (!bone)
+		return;
+	mat4.multiply( bone.model, bone.model, transform );
+};
+
+Skeleton.prototype.getBone = function(name)
+{
+	return this.bones[ this.bones_by_name.get(name) ];
+}
+
+Skeleton.identity = mat4.create();
+
+Skeleton.prototype.getBoneMatrix = function( name, local )
+{
+	if(local === undefined)
+		local = true;
+	var index = this.bones_by_name.get(name);
+	if( index === undefined )
+		return Skeleton.identity;
+	if(local)
+		return this.bones[ index ].model;
+	return this.global_bone_matrices[ index ];
+}
+
+Skeleton.temp_mat4 = mat4.create();
+Skeleton.temp_mat43 = Skeleton.temp_mat4.subarray(0,12);
+
+//fills the array with the bones ready for the shader
+//simplify allows to store as mat4x3 instead of mat4x4 (because the last column is always 0,0,0,1)
+Skeleton.prototype.computeFinalBoneMatrices = function( bone_matrices, mesh, simplify )
+{
+	if(!this.bones.length || !mesh || !mesh.bones)
+		return bone_matrices || [];
+
+	this.updateGlobalMatrices();
+
+	var size = simplify ? mesh.bones.length * 12 : mesh.bones.length * 16;
+
+	if(!bone_matrices || bone_matrices.length != size )
+		bone_matrices = new Float32Array( size );
+
+	if(simplify) //convert to mat4x3
+	{
+		var m = Skeleton.temp_mat4;
+		var m43 = Skeleton.temp_mat43;
+		for (var i = 0; i < mesh.bones.length; ++i)
+		{
+			var bone_info = mesh.bones[i];
+			mat4.multiply( temp_mat4, this.getBoneMatrix( bone_info[0], false ), bone_info[1] ); //use globals
+			mat4.transpose( temp_mat4, temp_mat4 );
+			bone_matrices.set(m43,i*12);
+		}
+	}
+	else
+		for (var i = 0; i < mesh.bones.length; ++i)
+		{
+			var bone_info = mesh.bones[i];
+			var m = bone_matrices.subarray(i*16,i*16+16);
+			mat4.multiply( m, this.getBoneMatrix( bone_info[0], false ), bone_info[1] ); //use globals
+		}
+
+	return bone_matrices;
+}
+
+//returns an array with the final global bone matrix in the order specified by the mesh, global_model is optional
+Skeleton.prototype.computeFinalBoneMatricesAsArray = function( bone_matrices, mesh, global_model )
+{
+	if(!this.bones.length || !mesh || !mesh.bones)
+		return bone_matrices || [];
+
+	this.updateGlobalMatrices();
+
+	bone_matrices = bone_matrices || [];
+	bone_matrices.length = mesh.bones.length;
+
+	for (var i = 0; i < mesh.bones.length; ++i)
+	{
+		var bone_info = mesh.bones[i];
+		if(!bone_matrices[i])
+			bone_matrices[i] = mat4.create();
+		var m = bone_matrices[i];
+		mat4.multiply( m, this.getBoneMatrix( bone_info[0], false ), bone_info[1] ); //use globals
+		if(global_model)
+			mat4.multiply( m, global_model, m );
+	}
+
+	return bone_matrices;
+}
+
+//updates the list of global matrices according to the local matrices
+Skeleton.prototype.updateGlobalMatrices = function()
+{
+	var bones = this.bones;
+	if(!bones.length)
+		return;
+
+	var num_bones = this.bones.length;
+
+	//compute global matrices
+	this.global_bone_matrices[0].set( bones[0].model );
+	//order dependant
+	for (var i = 1; i < num_bones; ++i)
+	{
+		var bone = bones[i];
+		mat4.multiply( this.global_bone_matrices[i], this.global_bone_matrices[ bone.parent ], bone.model );
+	}
+}
+
+//assigns a layer to a node and all its children
+Skeleton.prototype.assignLayer = function(bone, layer)
+{
+	//TODO
+}
+
+//for rendering the skeleton
+Skeleton.prototype.getVertices = function()
+{
+	if(!this.bones.length)
+		return null;
+	var size = (this.bones.length - 1) * 3 * 2;
+	if(!this._vertices || this._vertices.length != size)
+		this._vertices = new Float32Array( size );
+	var vertices = this._vertices;
+	for (var i = 0; i < this.bones.length - 1; ++i)
+	{
+		var bone = this.bones[i+1];
+		var parent_global_matrix = this.global_bone_matrices[ bone.parent ];
+		var global_matrix = this.global_bone_matrices[i+1];
+		var v1 = vertices.subarray(i*6,i*6+3);
+		var v2 = vertices.subarray(i*6+3,i*6+6);
+		mat4.getTranslation( v1, global_matrix );
+		mat4.getTranslation( v2, parent_global_matrix );
+	}
+	return vertices;
+}
+
+Skeleton.prototype.resizeBones = function(num)
+{
+	if(this.bones.length == num)
+		return;
+	if(this.bones.length > num)
+	{
+		this.bones.length = num;
+		this.global_bone_matrices.length = num;
+		return;
+	}
+
+	var old_num = this.bones.length;
+	this.bones.length = num;
+	for(var i = old_num; i < num; ++i)
+	{
+		this.bones[i] = new Bone();
+		this.global_bone_matrices[i] = mat4.create();
+	}
+}
+
+Skeleton.prototype.copyFrom = function( skeleton )
+{
+	this.resizeBones( skeleton.bones.length );
+	for(var i = 0; i < skeleton.bones.length; ++i)
+	{
+		this.bones[i].copyFrom( skeleton.bones[i] );
+		this.global_bone_matrices[i].set( skeleton.global_bone_matrices[i] );
+	}
+	this.bones_by_name = new Map( skeleton.bones_by_name );
+}
+
+Skeleton.prototype.serialize = function()
+{
+	var o = {
+		bones: [],
+		bone_names: {}
+	};
+
+	for(var i = 0; i < this.bones.length; ++i)
+		o.bones.push(this.bones[i].serialize());
+	return o;
+}
+
+Skeleton.prototype.configure = function(o)
+{
+	this.resizeBones( o.bones.length );
+	if(o.bones_by_name)
+		this.bones_by_name = new Map( o.bones_by_name );
+	else
+		this.bones_by_name.clear();
+	for(var i = 0; i < o.bones.length; ++i)
+	{
+		this.bones[i].copyFrom( o.bones[i] );
+		if(o.global_bone_matrices) //is an skeleton
+			this.global_bone_matrices[i].set( o.global_bone_matrices[i] );
+		else //is an object
+			this.bones_by_name[this.bones[i].name] = i;
+	}
+}
+
+var temp_axis = vec3.create();
+
+//blends between two skeletons
+Skeleton.blend = function(a, b, w, result, layer, skip_normalize )
+{
+	if(a.bones.length != b.bones.length)
+	{
+		console.error("skeleton must contain the same number of bones");
+		return;
+	}
+
+	w = Math.clamp(w, 0.0, 1.0);//safety
+
+	if (layer == 0xFF)
+	{
+		if (w == 0.0)
+		{
+			if(result == a) //nothing to do
+				return;
+			result.copyFrom(a); //copy A in Result
+			return;
+		}
+		if (w == 1.0) //copy B in result
+		{
+			result.copyFrom(b);
+			return;
+		}
+	}
+
+	if (result != a) //copy bone names
+	{
+		result.bones.length = a.bones.length;
+		for (var i = 0; i < result.bones.length; ++i)
+		{
+			var b = result.bones[i];
+			if(!b)
+				b = new Skeleton.Bone();
+			b.copyFrom(a.bones[i]);
+		}
+		result.bones_by_name = new Map(a.bones_by_name); //TODO: IMPROVE!
+	}
+
+	//blend bones locally
+	for (var i = 0; i < result.bones.length; ++i)
+	{
+		var bone = result.bones[i];
+		var boneA = a.bones[i];
+		var boneB = b.bones[i];
+		//if ( layer != 0xFF && !(bone.layer & layer) ) //not in the same layer
+		//	continue;
+		for (var j = 0; j < 16; ++j)
+			bone.model[j] = Math.lerp( boneA.model[j], boneB.model[j], w);
+
+		if(!skip_normalize)
+		{
+			var m = bone.model;
+			//not sure which one is the right one, row major or column major
+			//vec3.normalize(m.subarray(0,3),	m.subarray(0,3) );
+			//vec3.normalize(m.subarray(4,7),	m.subarray(4,7) );
+			//vec3.normalize(m.subarray(8,11), m.subarray(8,11) );
+			//*
+			for(var j = 0; j < 3; ++j)
+			{
+				temp_axis[0] = m[0+j]; temp_axis[1] = m[4+j]; temp_axis[2] = m[8+j];
+				vec3.normalize(temp_axis,temp_axis);
+				m[0+j] = temp_axis[0]; m[4+j] = temp_axis[1]; m[8+j] = temp_axis[2];
+			}
+			//*/
+		}
+	}
+}
+
+Skeleton.shader_code = '\n\
+	attribute vec4 a_bone_indices;\n\
+	attribute vec4 a_weights;\n\
+	uniform mat4 u_bones[64];\n\
+	void computeSkinning(inout vec3 vertex, inout vec3 normal)\n\
+	{\n\
+		vec4 v = vec4(vertex,1.0);\n\
+		vertex = (u_bones[int(a_bone_indices.x)] * a_weights.x * v + \n\
+				u_bones[int(a_bone_indices.y)] * a_weights.y * v + \n\
+				u_bones[int(a_bone_indices.z)] * a_weights.z * v + \n\
+				u_bones[int(a_bone_indices.w)] * a_weights.w * v).xyz;\n\
+		vec4 N = vec4(normal,0.0);\n\
+		normal =	(u_bones[int(a_bone_indices.x)] * a_weights.x * N + \n\
+				u_bones[int(a_bone_indices.y)] * a_weights.y * N + \n\
+				u_bones[int(a_bone_indices.z)] * a_weights.z * N + \n\
+				u_bones[int(a_bone_indices.w)] * a_weights.w * N).xyz;\n\
+		normal = normalize(normal);\n\
+	}\n\
+';
+
+//*******************************************************
+
+function SkeletalAnimation()
+{
+	this.skeleton = new Skeleton();
+
+	this.duration = 0;
+	this.samples_per_second = 0;
+	this.num_animated_bones = 0;
+	this.num_keyframes = 0;
+	this.bones_map = new Uint8Array(64); //maps from keyframe data index to bone
+
+	this.keyframes = null; //mat4 array
+}
+
+//change the skeleton to the given pose according to time
+SkeletalAnimation.prototype.assignTime = function(time, loop, interpolate, layers )
+{
+	if(!this.duration)
+		return;
+
+	if (loop || loop === undefined)
+	{
+		time = time % this.duration;
+		if (time < 0)
+			time = this.duration + time;
+	}
+	else
+		time = Math.clamp( time, 0.0, this.duration - (1.0/this.samples_per_second) );
+
+	if(interpolate === undefined)
+		interpolate = true;
+
+	var v = this.samples_per_second * time;
+	var index = Math.clamp( Math.floor(v), 0, this.num_keyframes - 1);
+	var index2 = index + 1;
+	if (index2 >= this.num_keyframes)
+		index2 = 0;
+	var f = v - Math.floor(v);
+	var num_animated_bones = this.num_animated_bones;
+
+	var offset = 16 * num_animated_bones;
+	var k = index * offset;
+	var k2 = index2 * offset;
+	var skeleton = this.skeleton;
+	var keyframes = this.keyframes;
+	var bones_map = this.bones_map;
+
+	//compute local bones
+	for (var i = 0; i < num_animated_bones; ++i)
+	{
+		var bone_index = bones_map[i];
+		var bone = skeleton.bones[bone_index];
+		var offset = i*16;
+		//if (layers != 0xFF && !(bone.layer & layers))
+		//	continue;
+		if(!interpolate)
+			bone.model.set( keyframes.subarray( k + offset, k + offset + 16) );
+		else
+			for (var j = 0; j < 16; ++j)
+			{
+				//lerp matrix
+				bone.model[j] = lerp( keyframes[ k + offset + j ], keyframes[ k2 + offset + j ], f );
+			}
+	}
+}
+
+SkeletalAnimation.prototype.resize = function( num_keyframes, num_animated_bones )
+{
+	this.num_keyframes = num_keyframes;
+	this.num_animated_bones = num_animated_bones;
+	this.keyframes = new Float32Array( num_keyframes * num_animated_bones * 16);
+}
+
+SkeletalAnimation.prototype.fromData = function(txt)
+{
+	var lines = txt.split("\n");
+	var header = lines[0].split(",");
+	this.duration = Number(header[0]);
+	this.samples_per_second = Number(header[1]);
+	this.num_keyframes = Number(header[2]);
+	
+	this.skeleton.resizeBones( Number(header[3]) );
+	var current_keyframe = 0;
+	for(var i = 1; i < lines.length; ++i)
+	{
+		var line = lines[i];
+		var type = line[0];
+		var t = line.substr(1).split(",");
+		if( type == 'B')
+		{
+			var index = Number(t[0]);
+			var bone = this.skeleton.bones[index];
+			bone.name = t[1];
+			bone.parent = Number(t[2]);
+			for(var j = 0; j < 16; ++j)
+				bone.model[j] = Number(t[3+j]);
+			if (bone.parent != -1)
+			{
+				var parent_bone = this.skeleton.bones[ bone.parent ];
+				if(parent_bone.num_children >= 16)
+					console.warn("too many child bones, max is 16");
+				else
+					parent_bone.children[ parent_bone.num_children++ ] = index;
+			}
+			this.skeleton.bones_by_name.set(bone.name,index);
+		}
+		else if( type == '@')
+		{
+			this.num_animated_bones = Number(t[0]);
+			for(var j = 0; j < this.num_animated_bones; ++j)
+				this.bones_map[j] = Number(t[j+1]);
+			this.resize( this.num_keyframes, this.num_animated_bones );
+		}
+		else if( type == 'K')
+		{
+			var pos = current_keyframe * this.num_animated_bones * 16;
+			for(var j = 0, l = this.num_animated_bones * 16; j < l; ++j)
+				this.keyframes[ pos + j ] = Number( t[j+1] );
+			current_keyframe++;
+		}
+		else 
+			break;
+	}
+
+	this.assignTime(0,false,false);
+}
+
+SkeletalAnimation.prototype.toData = function()
+{
+	var str = "";
+	return str;
+}
+
+//so it can be used from LiteScene or Rendeer
+if(typeof(LS) != "undefined")
+{
+	LS.Skeleton = Skeleton;
+	LS.Classes["SkeletalAnimation"] = LS.SkeletalAnimation = SkeletalAnimation;
+	LS.registerResourceClass( SkeletalAnimation );
+}
+
+
+
+
+
+
 ///@FILE:../src/resources/pack.js
 ///@INFO: PACK
 //defined before Prefab
@@ -17808,7 +18307,6 @@ if(typeof(LiteGraph) != "undefined")
 			that.properties.values = v;
 			that.onPropertyChanged("values",v);
 		});
-		this.widgets_up = true;
 		this.size = [240,50];
 	}
 
@@ -17841,13 +18339,27 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LGraphGUIMultipleChoice.prototype.onGetInputs = function(){
-		return [["enabled","boolean"]];
+		return [["enabled","boolean"],["options","array"]];
 	}
 
 	LGraphGUIMultipleChoice.prototype.onExecute = function()
 	{
-		if(this.inputs && this.inputs.length)
-			this.properties.enabled = this.getInputOrProperty("enabled");
+		if(this.inputs)
+		{
+			for(var i = 0; i < this.inputs.length; ++i)
+			{
+				var input_info = this.inputs[i];
+				var v = this.getInputData(i);
+				if( input_info.name == "enabled" )
+					this.properties.enabled = Boolean(v);
+				else if( input_info.name == "options" && v)
+				{
+					this._values = v;
+					this.properties.values = v.join(";");
+					this.widget.value = this.properties.values;
+				}
+			}
+		}
 		this.setOutputData( 0, this._values[ this.properties.selected ] );
 		this.setOutputData( 1, this.properties.selected );
 	}
@@ -18284,10 +18796,8 @@ if(typeof(LiteGraph) != "undefined")
 		inspector.widgets_per_row = 1;
 
 		var new_point_name = "";
-		inspector.addSeparator();
-		inspector.addTitle("New Point");
 		inspector.widgets_per_row = 2;
-		inspector.addString("Name","",{ width:"75%", callback: function(v){
+		inspector.addString("New Point","",{ width:"75%", callback: function(v){
 			new_point_name = v;
 		}});
 		inspector.addButton(null,"Create",{ width:"25%",callback: function(v){
@@ -18344,13 +18854,35 @@ if(typeof(LiteGraph) != "undefined")
 	{
 		var point_weights = this.getInputData(0); //array
 
+		if(this.inputs)
+		for(var i = 1; i < this.inputs.length; ++i)
+		{
+			var input_info = this.inputs[i];
+			if(input_info.name == "selected")
+			{
+				var selected = this.getInputData(i); 
+				if(selected)
+				{
+					this._selected_point = this.findPoint(selected);
+					this.combo.value = selected;
+				}
+			}
+		}
+
+
 		for(var i in this.current_weights)
 			this.current_weights[i] = 0;
 
+		var points_has_changed = false;
 		if( point_weights )
 		for(var i = 0; i < point_weights.length; ++i)
 		{
 			var point = this.points[i];
+			if(!point)
+			{
+				points_has_changed = true;
+				continue;
+			}
 			var w = point_weights[i]; //input
 			//for(var j = 0, l = point.weights.length; j < lw && j < l; ++j)
 			for(var j in point.weights)
@@ -18367,9 +18899,22 @@ if(typeof(LiteGraph) != "undefined")
 		for(var i = 1; i < this.outputs.length; ++i)
 		{
 			var output_info = this.outputs[i];
-			if(output_info)
+			if(!output_info)
+				continue;
+			if(output_info.name == "selected")
+				this.setOutputData(i, this._selected_point ? this._selected_point.name : "" );
+			else
 				this.setOutputData(i, this.current_weights[output_info.name] );
 		}
+
+		if(points_has_changed)
+			this.importPoints();
+	}
+
+	LGraphRemapWeights.prototype.onAction = function(name, params)
+	{
+		if(name == "import")
+			this.importWeights();
 	}
 
 	//adds a 2D point with the weights associated to it (not used?)
@@ -18387,7 +18932,7 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	//import 2D points from input node (usually LGraphMap2D), just the names
-	LGraphRemapWeights.prototype.importPoints = function( name )
+	LGraphRemapWeights.prototype.importPoints = function()
 	{
 		var input_node = this.getInputNode(0);
 		if(!input_node || !input_node.points || !input_node.points.length )
@@ -18529,12 +19074,16 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
     LGraphRemapWeights.prototype.onGetOutputs = function() {
-        var r = [];
+        var r = [["selected","string"]];
 		for(var i in this.current_weights)
 			r.push([i,"number"]);
 		return r;
     };
 
+	LGraphRemapWeights.prototype.onGetInputs = function()
+	{
+		return [["import",LiteGraph.ACTION],["selected","string"]];
+	}
 
 	LiteGraph.registerNodeType("math/remap_weights", LGraphRemapWeights );
 }
@@ -33246,6 +33795,7 @@ function SkinDeformer( o )
 	this._mesh = null;
 	this._last_bones = null;
 	this._ris_skinned = [];
+	this._skeleton = null; //used to overwrite the bones fetching
 	//this._skinning_mode = 0;
 
 	//check how many floats can we put in a uniform
@@ -33313,6 +33863,9 @@ SkinDeformer.prototype.getBoneNode = function( name )
 //returns a reference to the global matrix of the bone
 SkinDeformer.prototype.getBoneMatrix = function( name )
 {
+	if(this._skeleton)
+		return this._skeleton.getBoneMatrix(name); //global
+
 	var node = this.getBoneNode( name );
 	if(!node)
 		return null;
@@ -33321,6 +33874,7 @@ SkinDeformer.prototype.getBoneMatrix = function( name )
 }
 
 //checks the list of bones in mesh.bones and retrieves its matrices
+//returns an array with all the bones matrices
 SkinDeformer.prototype.getBoneMatrices = function( ref_mesh )
 {
 	//bone matrices
@@ -33332,6 +33886,13 @@ SkinDeformer.prototype.getBoneMatrices = function( ref_mesh )
 		bones = this._last_bones = [];
 		for(var i = 0; i < ref_mesh.bones.length; ++i)
 			bones[i] = mat4.create();
+	}
+
+	if(this._skeleton)
+	{
+		var global_model = this._root.transform ? this._root.transform.getGlobalMatrixRef() : null;
+		this._skeleton.computeFinalBoneMatricesAsArray( bones, ref_mesh, global_model );
+		return bones;		
 	}
 
 	for(var i = 0; i < ref_mesh.bones.length; ++i)
@@ -33431,19 +33992,21 @@ SkinDeformer.prototype.applySkinning = function(RI)
 		return;
 
 	var bones = null;
+	var u_bones = this._u_bones;
 	
 	if( SkinDeformer.gpu_skinning_supported && !this.cpu_skinning ) 
 	{
+		//get the final bone array to upload to the shader
 		//retrieve all the bones
 		bones = this.getBoneMatrices( mesh );
+
 		var bones_size = bones.length * 12;
-		if(!bones.length)
+		if(!bones_size)
 		{
 			console.warn("SkinDeformer.prototype.applySkinning: Bones not found");
 			return;
 		}
 
-		var u_bones = this._u_bones;
 		if(!u_bones || u_bones.length != bones_size)
 			this._u_bones = u_bones = new Float32Array( bones_size );
 
@@ -33537,7 +34100,14 @@ SkinDeformer.prototype.applySkinning = function(RI)
 		RI.center[1] /= bones.length;
 		RI.center[2] /= bones.length;
 	}
-	mat4.multiplyVec3( RI.position, RI.matrix, LS.ZEROS );
+	else if(u_bones) //take first bone
+	{
+		RI.center[0] = u_bones[9];
+		RI.center[1] = u_bones[10];
+		RI.center[2] = u_bones[11];
+	}
+
+	mat4.getTranslation( RI.position, RI.matrix );
 
 	RI.use_bounding = false;
 }
@@ -39783,6 +40353,295 @@ PlayAnimation.prototype.getActions = function( actions )
 
 
 LS.registerComponent( PlayAnimation );
+///@FILE:../src/components/playSkeletalAnimation.js
+///@INFO: ANIMATION
+/**
+* Reads animation from a LS.SkeletalAnimation resource and applies the properties to the SkinDeformer in this node
+* @class PlaySkeletalAnimation
+* @namespace LS.Components
+* @constructor
+* @param {String} object to configure from
+*/
+function PlaySkeletalAnimation(o)
+{
+	this.enabled = true;
+	this.animation = "";
+	this.playback_speed = 1.0;
+
+	this._skeleton = new LS.Skeleton();
+
+	/**
+	* how to play the animation, options are:
+    *   PlaySkeletalAnimation.LOOP
+	*	PlaySkeletalAnimation.PINGPONG
+	*	PlaySkeletalAnimation.ONCE
+	*	PlaySkeletalAnimation.PAUSED
+	* @property mode {Number}
+	*/
+	this.mode = PlaySkeletalAnimation.LOOP;
+	this.playing = true;
+	this.current_time = 0;
+	this.range = null;
+	this.interpolate = true;
+
+	if(o)
+		this.configure(o);
+}
+
+PlaySkeletalAnimation.LOOP = 1;
+PlaySkeletalAnimation.PINGPONG = 2;
+PlaySkeletalAnimation.ONCE = 3;
+PlaySkeletalAnimation.PAUSED = 4;
+
+PlaySkeletalAnimation.MODES = {"loop":PlaySkeletalAnimation.LOOP, "pingpong":PlaySkeletalAnimation.PINGPONG, "once":PlaySkeletalAnimation.ONCE, "paused":PlaySkeletalAnimation.PAUSED };
+
+PlaySkeletalAnimation["@animation"] = { widget: "resource", resource_classname:"SkeletalAnimation" };
+PlaySkeletalAnimation["@mode"] = { type:"enum", values: PlaySkeletalAnimation.MODES };
+PlaySkeletalAnimation["@current_time"] = { type: LS.TYPES.NUMBER, min: 0, units:"s" };
+
+PlaySkeletalAnimation.prototype.configure = function(o)
+{
+	if(o.enabled !== undefined)
+		this.enabled = !!o.enabled;
+	if(o.range) 
+		this.range = o.range.concat();
+	if(o.mode !== undefined) 
+		this.mode = o.mode;
+	if(o.animation)
+		this.animation = o.animation;
+	if(o.playback_speed != null)
+		this.playback_speed = parseFloat( o.playback_speed );
+	if(o.playing !== undefined)
+		this.playing = o.playing;
+}
+
+PlaySkeletalAnimation.icon = "mini-icon-clock.png";
+
+PlaySkeletalAnimation.prototype.onAddedToScene = function(scene)
+{
+	LEvent.bind( scene, "update", this.onUpdate, this);
+}
+
+PlaySkeletalAnimation.prototype.onRemovedFromScene = function(scene)
+{
+	LEvent.unbind( scene, "update", this.onUpdate, this);
+
+	//Remove from SkinDeformer
+}
+
+PlaySkeletalAnimation.prototype.onUpdate = function(e, dt)
+{
+	if(!this.enabled)
+		return;
+
+	if(!this.playing)
+		return;
+
+	if( this.mode != PlaySkeletalAnimation.PAUSED )
+		this.current_time += dt * this.playback_speed;
+
+	this.onUpdateAnimation( dt );
+}
+
+PlaySkeletalAnimation.prototype.onUpdateAnimation = function(dt)
+{
+	var animation = this.getAnimation();
+	if( !animation || animation.constructor != LS.SkeletalAnimation ) 
+		return;
+
+	var time = this.current_time;
+	var start_time = 0;
+	var duration = animation.duration;
+	var end_time = duration;
+
+	if(this.range)
+	{
+		start_time = this.range[0];
+		end_time = this.range[1];
+		duration = end_time - start_time;
+	}
+
+	if(time > end_time)
+	{
+		switch( this.mode )
+		{
+			case PlaySkeletalAnimation.ONCE: 
+				time = end_time; 
+				//time = start_time; //reset after
+				LEvent.trigger( this, "end_animation" );
+				this.playing = false;
+				break;
+			case PlaySkeletalAnimation.PINGPONG:
+				if( ((time / duration)|0) % 2 == 0 ) //TEST THIS
+					time = this.current_time % duration; 
+				else
+					time = duration - (this.current_time % duration);
+				break;
+			case PlaySkeletalAnimation.PINGPONG:
+				time = end_time; 
+				break;
+			case PlaySkeletalAnimation.LOOP: 
+			default: 
+				time = ((this.current_time - start_time) % duration) + start_time;
+				LEvent.trigger( this, "animation_loop" );
+				break;
+		}
+	}
+	else if(time < start_time)
+		time = start_time;
+
+	this.applyAnimation( time );
+
+	var scene = this._root.scene;
+	if(scene)
+		scene.requestFrame();
+}
+
+/**
+* returns the current animation or an animation with a given name
+* @method getAnimation
+* @param {String} name [optional] the name of the animation, if omited then uses the animation set in the component
+* @return {LS.Animation} the animation container
+*/
+PlaySkeletalAnimation.prototype.getAnimation = function( name )
+{
+	name = name === undefined ? this.animation : name;
+	var anim = LS.ResourcesManager.getResource( name );
+	if( anim && anim.constructor === LS.SkeletalAnimation )
+		return anim;
+	return null;
+}
+
+/**
+* Gets the duration of the current animation
+* @method getDuration
+* @return {Number} the duration of the animation, or -1 if the animation was not found
+*/
+PlaySkeletalAnimation.prototype.getDuration = function()
+{
+	var anim = this.getAnimation();
+	if(anim) 
+		return anim.duration;
+	return -1;
+}
+
+/**
+* Resets the time to zero and starts playing the current animation
+* It also triggers a "start_animation" event
+* @method play
+*/
+PlaySkeletalAnimation.prototype.play = function()
+{
+	if(!this._root || !this._root.scene)
+		console.error("cannot play an animation if the component doesnt belong to a node in a scene");
+
+	this.playing = true;
+
+	this.current_time = 0;
+	if(this.range)
+		this.current_time = this.range[0];
+	LEvent.trigger( this, "start_animation" );
+}
+
+/**
+* Pauses the animation
+* @method pause
+*/
+PlaySkeletalAnimation.prototype.pause = function()
+{
+	this.playing = false;
+}
+
+/**
+* Stops the animation and sets the time to zero
+* @method stop
+*/
+PlaySkeletalAnimation.prototype.stop = function()
+{
+	this.playing = false;
+
+	this.current_time = 0;
+	if(this.range)
+		this.current_time = this.range[0];
+}
+
+/**
+* Starts playing the animation but only using a range of it
+* @method playRange
+* @param {Number} start start time
+* @param {Number} end end time
+*/
+PlaySkeletalAnimation.prototype.playRange = function( start, end )
+{
+	this.playing = true;
+	this.current_time = start;
+	this.range = [ start, end ];
+}
+
+/**
+* applys the animation to the scene nodes
+* @method applyAnimation
+* @param {Number} time the time where to sample the tracks
+*/
+PlaySkeletalAnimation.prototype.applyAnimation = function( time )
+{
+	if(!this._root)
+		return;
+
+	var animation = this.getAnimation();
+	if(!animation)
+		return;
+
+	animation.assignTime(time, true, this.interpolate );
+	this._skeleton.copyFrom( animation.skeleton );
+
+	var deformer = this._root.getComponent( LS.Components.SkinDeformer );
+	if(deformer)
+		deformer._skeleton = this._skeleton;
+}
+
+PlaySkeletalAnimation.prototype.getResources = function(res)
+{
+	if(this.animation)
+		res[ this.animation ] = LS.SkeletalAnimation;
+}
+
+PlaySkeletalAnimation.prototype.onResourceRenamed = function (old_name, new_name, resource)
+{
+	if(this.animation == old_name)
+		this.animation = new_name;
+}
+
+//returns which events can trigger this component
+PlaySkeletalAnimation.prototype.getEvents = function()
+{
+	return { "start_animation": "event", "end_animation": "event" };
+}
+
+//returns which actions can be triggered in this component
+PlaySkeletalAnimation.prototype.getActions = function( actions )
+{
+	actions = actions || {};
+	actions["play"] = "function";
+	actions["pause"] = "function";
+	actions["stop"] = "function";
+	return actions;
+}
+
+PlaySkeletalAnimation.prototype.getPropertiesInfo = function()
+{
+	var properties = {
+		enabled: "boolean",
+		current_time: "number",
+		mode: "number",
+		playing: "boolean",
+		playback_speed: "number",
+		skeleton: "skeleton"
+	};
+	return properties;
+}
+
+LS.registerComponent( PlaySkeletalAnimation );
 ///@FILE:../src/components/realtimeReflector.js
 ///@INFO: UNCOMMON
 /**
@@ -48804,8 +49663,6 @@ var parserMESH = {
 	format: 'text',
 	dataType:'text',
 
-	flipAxis: false,
-
 	parse: function(text, options)
 	{
 		options = options || {};
@@ -48821,6 +49678,25 @@ var parserMESH = {
 }
 
 LS.Formats.addSupportedFormat( "mesh", parserMESH );
+
+var parserSKANIM = {
+	extension: 'skanim',
+	type: 'skeletalAnimation',
+	resource: 'SkeletalAnimation',
+	format: 'text',
+	dataType:'text',
+
+	parse: function(text, options)
+	{
+		options = options || {};
+		var anim = new LS.SkeletalAnimation();
+		anim.fromData(text);
+		return anim;
+	}
+}
+
+LS.Formats.addSupportedFormat( "skanim", parserSKANIM );
+
 ///@FILE:../src/parsers/parserDDS.js
 ///@INFO: PARSER
 var parserDDS = { 

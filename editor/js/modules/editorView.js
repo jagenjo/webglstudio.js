@@ -658,6 +658,28 @@ LS.Components.ReflectionProbe.prototype.renderPicking = function()
 	this.renderProbe(false, LS.Picking.getNextPickingColor( this._root, [this] ) );
 }
 
+if(LS.Components.PlaySkeletalAnimation)
+	LS.Components.PlaySkeletalAnimation.prototype.renderEditor = function( node_selected, component_selected )
+	{
+		if(node_selected && this._root.transform )
+		{
+			if(this._skeleton.bones.length == 0)
+				this.applyAnimation(this.current_time);
+			this._skeleton.updateGlobalMatrices();
+			gl.disable( gl.DEPTH_TEST );
+			LS.Draw.push();
+			LS.Draw.setMatrix( this._root.transform.getGlobalMatrixRef() );
+			var vertices = this._skeleton.getVertices();
+			if(vertices)
+			{
+				LS.Draw.setColor([1,0,1,0.5]);
+				LS.Draw.renderLines(vertices);
+			}
+			LS.Draw.pop();
+			gl.enable( gl.DEPTH_TEST );
+		}
+	}
+
 
 //PRELOAD STUFF
 EditorView.grid_img = new Image();

@@ -19103,7 +19103,7 @@ if(typeof(LiteGraph) != "undefined")
 		this.widgets_up = true;
 		this.addWidget("text","Key",this.properties.key,function(v){
 			if(v)
-				this.properties.key = v;
+				that.properties.key = v;
 		});
 	}
 

@@ -18283,10 +18283,17 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIButton.prototype.onExecute = function()
 	{
+		var enabled = this.getInputDataByName("enabled");
+		if(enabled === false || enabled === true)
+			this.properties.enabled = enabled;
 		if(this._was_pressed)
 			this.trigger("on");
 		this.setOutputData(1, this._was_pressed );
 		this._was_pressed = false;
+	}
+
+	LGraphGUIButton.prototype.onGetInputs = function(){
+		return [["enabled","boolean"]];
 	}
 
 	LiteGraph.registerNodeType("gui/button", LGraphGUIButton );
@@ -19083,6 +19090,42 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LiteGraph.registerNodeType("math/remap_weights", LGraphRemapWeights );
+
+
+	function LGraphInputKey()
+	{
+		this.addOutput("","boolean");
+		this.addOutput("",LiteGraph.EVENT);
+		this.properties = {
+			key: "SPACE"
+		};
+		var that = this;
+		this.widgets_up = true;
+		this.addWidget("text","Key",this.properties.key,function(v){
+			if(v)
+				this.properties.key = v;
+		});
+	}
+
+	LGraphInputKey.title = "Key";
+
+    LGraphInputKey.prototype.getTitle = function() {
+        if (this.flags.collapsed) {
+            return "Key: " + this.properties.key;
+        }
+        return this.title;
+    };
+
+	LGraphInputKey.prototype.onExecute = function()
+	{
+		var v = LS.Input.wasKeyPressed(this.properties.key);
+		this.boxcolor = v ? "#fff" : "#000";
+		this.setOutputData(0,v);
+		if(v)
+			this.triggerSlot(1,this.properties.key);
+	}
+
+	LiteGraph.registerNodeType("input/key", LGraphInputKey );
 }
 
 ///@FILE:../src/graph/shader.js

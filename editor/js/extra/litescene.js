@@ -18353,9 +18353,12 @@ if(typeof(LiteGraph) != "undefined")
 		}
 
 		var mouse = LS.Input.current_click;
-		var clicked = LS.Input.isEventInRect( mouse, this._area, LS.GUI._offset );
-		if(clicked)
-			LS.Input.current_click = false; //consume event
+		if(mouse)
+		{
+			var clicked = LS.Input.isEventInRect( mouse, this._area, LS.GUI._offset );
+			if(clicked)
+				LS.Input.current_click = false; //consume event
+		}
 	}
 
 	LGraphGUIMultipleChoice.prototype.onGetInputs = function(){
@@ -35903,6 +35906,81 @@ SceneInclude.prototype.onResourceRenamed = function( old_name, new_name, resourc
 }
 
 LS.registerComponent( SceneInclude );
+///@FILE:../src/components/helper.js
+///@INFO: UNCOMMON
+/**
+* Spline allows to define splines in 3D
+* @class Spline
+* @constructor
+* @param {Object} object to configure from
+*/
+
+function Helper( o )
+{
+	this.enabled = true;
+	this.in_viewport = true;
+	this.in_player = false;
+	this.type = "circle";
+	this.color = [1,1,1,1];
+	this.size = 1;
+	this.always_on_top = true;
+	this.vertical = true;
+
+	if(o)
+		this.configure(o);
+}
+
+Helper["@subdivisions"] = { type: "number", step:1, min:1, max:100, precision:0 };
+Helper["@type"] = { type: "enum", values: { circle: 0, square: 1 } };
+
+Helper.prototype.onAddedToScene = function(scene)
+{
+	LEvent.bind( LS.Renderer, "renderHelpers", this.onRender, this );
+}
+
+Helper.prototype.onRemovedFromScene = function(scene)
+{
+	LEvent.unbind( LS.Renderer, "renderHelpers", this.onRender, this );
+}
+
+Helper.prototype.onRender = function()
+{
+	var node = this._root;
+	if(!node || !node.transform)
+		return;
+
+	if(this.always_on_top)
+		gl.disable( gl.DEPTH_TEST );
+	LS.Draw.push();
+	var m = node.transform.getGlobalMatrixRef();
+	LS.Draw.setMatrix( m );
+	LS.Draw.setColor( this.color );
+	LS.Draw.renderCircle( this.size, 32, !this.vertical, false );
+	LS.Draw.pop();
+
+	gl.enable( gl.DEPTH_TEST );
+}
+
+
+/*
+Helper.prototype.renderPicking = function( ray )
+{
+	var model = this._root.transform.getGlobalMatrixRef(true);
+
+	var path = this.path;
+	for(var i = 0; i < path.points.length; ++i)
+	{
+		var pos = path.points[i];
+		if( this._root.transform )
+			pos = mat4.multiplyVec3( vec3.create(), model, pos );
+		LS.Picking.addPickingPoint( pos, 9, { instance: this, info: i } );
+	}
+}
+*/
+
+LS.registerComponent( Helper );
+
+
 ///@FILE:../src/components/annotations.js
 ///@INFO: UNCOMMON
 function AnnotationComponent(o)

@@ -323,7 +323,7 @@ SceneTreeWidget.prototype.processMouse = function(e)
 		{
 			this.dragging_scroll = false;
 
-			if( x >= this.canvas.height - 10 )
+			if( x >= this.canvas.width - 10 )
 			{
 				this.dragging_scroll = true;
 				var f = Math.clamp( y / this.canvas.height,0,1);

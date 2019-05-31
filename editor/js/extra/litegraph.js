@@ -14640,7 +14640,53 @@ if (typeof exports != "undefined") {
         };
 
         LiteGraph.registerNodeType("math3d/quat-slerp", Math3DQuatSlerp);
+
+
+        //Math3D rotate vec3
+        function Math3DRemapRange() {
+            this.addInput("vec3", "vec3");
+            this.addOutput("vec3", "vec3");
+            this.properties = { clamp: true, range_min: [-1, -1, 0], range_max: [1, 1, 0], target_min: [-1,-1,0], target_max:[1,1,0] };
+			this._value = vec3.create();
+        }
+
+        Math3DRemapRange.title = "Remap Range";
+        Math3DRemapRange.desc = "remap a range";
+
+        Math3DRemapRange.prototype.onExecute = function() {
+            var vec = this.getInputData(0);
+			if(vec)
+				this._value.set(vec);
+			var range_min = this.properties.range_min;
+			var range_max = this.properties.range_max;
+			var target_min = this.properties.target_min;
+			var target_max = this.properties.target_max;
+
+			for(var i = 0; i < 3; ++i)
+			{
+				var r = range_max[i] - range_min[i];
+				if(r == 0)
+				{
+					this._value[i] = (target_min[i] + target_max[i]) * 0.5;
+					continue;
+				}
+
+				var n = (this._value[i] - range_min[i]) / r;
+				if(this.properties.clamp)
+					n = Math.clamp(n,0,1);
+				var t = target_max[i] - target_min[i];
+				this._value[i] = target_min[i] + n * t;
+			}
+
+			this.setOutputData(0,this._value);
+        };
+
+        LiteGraph.registerNodeType("math3d/remap_range", Math3DRemapRange);
+
+
+
     } //glMatrix
+
 })(this);
 
 //basic nodes

@@ -18846,7 +18846,7 @@ if(typeof(LiteGraph) != "undefined")
 			node._selected_point = node.findPoint(v);
 		}, { values:[] } );
 		this.import_button = this.addWidget("button", "import weights", "", function(){
-			node.importWeights(true);
+			node.importWeights(true,true);
 		});
 		this.size = [170,80];
 		this._selected_point = null;
@@ -18921,7 +18921,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphRemapWeights.prototype.onAction = function(name, params)
 	{
 		if(name == "import")
-			this.importWeights();
+			this.importWeights(); //do not force or recursion ahead
 	}
 
 	//adds a 2D point with the weights associated to it (not used?)
@@ -18962,10 +18962,10 @@ if(typeof(LiteGraph) != "undefined")
 
 	//when called it reads the output nodes to get which morph targets it is using and read their weights
 	//then sets the current 2D point to this weights
-	LGraphRemapWeights.prototype.importWeights = function( assign )
+	LGraphRemapWeights.prototype.importWeights = function( assign, run_graph )
 	{
 		//force data to flow from inputs to here
-		if(this.graph)
+		if(this.graph && run_graph)
 			this.graph.runStep(1,false, this.order );
 
 		var name_weights = this.getInputDataByName("name_weights");
@@ -19055,7 +19055,7 @@ if(typeof(LiteGraph) != "undefined")
 			inspector.refresh();
 		}});
 		inspector.addButton(null,"Import weights", { callback: function(){
-			node.importWeights();
+			node.importWeights(null,true);
 			inspector.refresh();
 		}});
 

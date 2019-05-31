@@ -18010,7 +18010,7 @@ if(typeof(LiteGraph) != "undefined")
 	function LGraphGUIPanel()
 	{
 		this.properties = { enabled: true, title: "", color: [0.1,0.1,0.1], opacity: 0.7, titlecolor: [0,0,0], position: [10,10], size: [300,200], rounding: 8, corner: LiteGraph.CORNER_TOP_LEFT };
-		this._pos = vec2.create();
+		this._pos = vec4.create();
 		this._color = vec4.create();
 		this._titlecolor = vec4.create();
 	}
@@ -18034,6 +18034,14 @@ if(typeof(LiteGraph) != "undefined")
 		this._color[3] = this.properties.opacity;
 		ctx.fillColor = this._color;
 		positionToArea( this.properties.position, this.properties.corner, this._pos );
+		this._pos[2] = this.properties.size[0];
+		this._pos[3] = this.properties.size[1];
+
+		var mouse = LS.Input.current_click;
+		var clicked = LS.Input.isEventInRect( mouse, this._pos, LS.GUI._offset );
+		if(clicked)
+			LS.Input.current_click = false; //consume event
+
 		gl.disable( gl.DEPTH_TEST );
 		gl.enable( gl.BLEND );
 		gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
@@ -18321,7 +18329,10 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphGUIMultipleChoice.prototype.onPropertyChanged = function(name,value)
 	{
 		if(name == "values")
+		{
 			this._values = value.split(";");
+			this.widget.value = value;
+		}
 	}
 
 	LGraphGUIMultipleChoice.prototype.onRenderGUI = function()

@@ -18921,7 +18921,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphRemapWeights.prototype.onAction = function(name, params)
 	{
 		if(name == "import")
-			this.importWeights(); //do not force or recursion ahead
+			this.importWeights(true); //do not force or recursion ahead
 	}
 
 	//adds a 2D point with the weights associated to it (not used?)

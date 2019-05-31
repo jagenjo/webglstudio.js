@@ -18351,6 +18351,11 @@ if(typeof(LiteGraph) != "undefined")
 			if( LS.GUI.Toggle( this._area, i == this.properties.selected, this._values[i], null, true ) )
 				this.properties.selected = i;
 		}
+
+		var mouse = LS.Input.current_click;
+		var clicked = LS.Input.isEventInRect( mouse, this._area, LS.GUI._offset );
+		if(clicked)
+			LS.Input.current_click = false; //consume event
 	}
 
 	LGraphGUIMultipleChoice.prototype.onGetInputs = function(){

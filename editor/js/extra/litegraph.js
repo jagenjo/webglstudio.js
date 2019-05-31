@@ -11186,9 +11186,10 @@ if (typeof exports != "undefined") {
         this.addOutput("", "object");
 		this._result = {};
 		var that = this;
-		this.addWidget("button","clear",function(){
+		this.addWidget("button","clear","",function(){
 			that._result = {};
 		});
+		this.size = this.computeSize();
     }
 
     MergeObjects.title = "Merge Objects";

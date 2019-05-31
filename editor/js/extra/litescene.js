@@ -18037,10 +18037,10 @@ if(typeof(LiteGraph) != "undefined")
 		this._pos[2] = this.properties.size[0];
 		this._pos[3] = this.properties.size[1];
 
-		var mouse = LS.Input.current_click;
-		var clicked = LS.Input.isEventInRect( mouse, this._pos, LS.GUI._offset );
-		if(clicked)
-			LS.Input.current_click = false; //consume event
+		//var mouse = LS.Input.current_click;
+		//var clicked = LS.Input.isEventInRect( mouse, this._pos, LS.GUI._offset );
+		//if(clicked)
+		//	LS.Input.current_click = false; //consume event
 
 		gl.disable( gl.DEPTH_TEST );
 		gl.enable( gl.BLEND );

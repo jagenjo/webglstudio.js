@@ -18840,7 +18840,7 @@ if(typeof(LiteGraph) != "undefined")
 		this.addOutput("out","object");
 		this.points = [];	//2D points, name of point ("happy","sad") and weights ("mouth_left":0.4, "mouth_right":0.3)
 		this.current_weights = {}; //object that tells the current state of weights, like "mouth_left":0.3, ...
-
+		this.properties = { enabled: true };
 		var node = this;
 		this.combo = this.addWidget("combo","Point", "", function(v){
 			node._selected_point = node.findPoint(v);
@@ -18856,6 +18856,10 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphRemapWeights.prototype.onExecute = function()
 	{
+		var enabled = this.getInputOrProperty("enabled");
+		if(!enabled)
+			return;
+
 		var point_weights = this.getInputData(0); //array
 
 		if(this.inputs)
@@ -18872,7 +18876,6 @@ if(typeof(LiteGraph) != "undefined")
 				}
 			}
 		}
-
 
 		for(var i in this.current_weights)
 			this.current_weights[i] = 0;
@@ -18961,23 +18964,38 @@ if(typeof(LiteGraph) != "undefined")
 	//then sets the current 2D point to this weights
 	LGraphRemapWeights.prototype.importWeights = function( assign )
 	{
-		var output_nodes = this.getOutputNodes(0);
-		if(!output_nodes || output_nodes.length == 0)
-			return;
+		//force data to flow from inputs to here
+		if(this.graph)
+			this.graph.runStep(1,false, this.order );
 
-		for(var i = 0; i < output_nodes.length; ++i)
+		var name_weights = this.getInputDataByName("name_weights");
+		
+		if(name_weights)
 		{
-			var output_node = output_nodes[i];
-			if( !output_node.getComponent )
-				continue;
+			for(var j in name_weights)
+				this.current_weights[j] = name_weights[j];
+		}
+		else //get from output
+		{
+			var output_nodes = this.getOutputNodes(0);
+			if(!output_nodes || output_nodes.length == 0)
+				return;
 
-			var component = output_node.getComponent();
-			if(!component)
-				continue;
+			for(var i = 0; i < output_nodes.length; ++i)
+			{
+				var output_node = output_nodes[i];
+				if( !output_node.getComponent )
+					continue;
 
-			var compo_weights = component.name_weights;
-			for(var j in compo_weights)
-				this.current_weights[j] = compo_weights[j];
+				var component = output_node.getComponent();
+				if(!component)
+					continue;
+
+				var compo_weights = component.name_weights;
+				var compo_weights = component.name_weights;
+				for(var j in compo_weights)
+					this.current_weights[j] = compo_weights[j];
+			}
 		}
 
 		this.setDirtyCanvas(true);
@@ -19001,10 +19019,13 @@ if(typeof(LiteGraph) != "undefined")
 	{
 		o.current_weights = this.current_weights;
 		o.points = this.points;
+		o.enabled = this.enabled;
 	}
 
 	LGraphRemapWeights.prototype.onConfigure = function(o)
 	{
+		if(o.enabled !== undefined)
+			this.properties.enabled = o.enabled;
 		if( o.current_weights )
 			this.current_weights = o.current_weights;
 		if(o.points)
@@ -19086,7 +19107,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphRemapWeights.prototype.onGetInputs = function()
 	{
-		return [["import",LiteGraph.ACTION],["selected","string"]];
+		return [["enabled","boolean"],["import",LiteGraph.ACTION],["selected","string"],["name_weights","object"]];
 	}
 
 	LiteGraph.registerNodeType("math/remap_weights", LGraphRemapWeights );

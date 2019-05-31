@@ -721,9 +721,11 @@
      * Run N steps (cycles) of the graph
      * @method runStep
      * @param {number} num number of steps to run, default is 1
+     * @param {Boolean} do_not_catch_errors [optional] if you want to try/catch errors 
+     * @param {number} limit max number of nodes to execute (used to execute from start to a node)
      */
 
-    LGraph.prototype.runStep = function(num, do_not_catch_errors) {
+    LGraph.prototype.runStep = function(num, do_not_catch_errors, limit ) {
         num = num || 1;
 
         var start = LiteGraph.getTime();
@@ -736,10 +738,12 @@
             return;
         }
 
+		limit = limit || nodes.length;
+
         if (do_not_catch_errors) {
             //iterations
             for (var i = 0; i < num; i++) {
-                for (var j = 0, l = nodes.length; j < l; ++j) {
+                for (var j = 0; j < limit; ++j) {
                     var node = nodes[j];
                     if (node.mode == LiteGraph.ALWAYS && node.onExecute) {
                         node.onExecute();
@@ -759,7 +763,7 @@
             try {
                 //iterations
                 for (var i = 0; i < num; i++) {
-                    for (var j = 0, l = nodes.length; j < l; ++j) {
+                    for (var j = 0; j < limit; ++j) {
                         var node = nodes[j];
                         if (node.mode == LiteGraph.ALWAYS && node.onExecute) {
                             node.onExecute();
@@ -11176,6 +11180,34 @@ if (typeof exports != "undefined") {
 
     LiteGraph.registerNodeType("basic/object_keys", ObjectKeys);
 
+    function MergeObjects() {
+        this.addInput("A", "object");
+        this.addInput("B", "object");
+        this.addOutput("", "object");
+		this._result = {};
+		var that = this;
+		this.addWidget("button","clear",function(){
+			that._result = {};
+		});
+    }
+
+    MergeObjects.title = "Merge Objects";
+    MergeObjects.desc = "Creates an object copying properties from others";
+
+    MergeObjects.prototype.onExecute = function() {
+        var A = this.getInputData(0);
+        var B = this.getInputData(1);
+		var C = this._result;
+		if(A)
+			for(var i in A)
+				C[i] = A[i];
+		if(B)
+			for(var i in B)
+				C[i] = B[i];
+		this.setOutputData(0,C);
+    };
+
+    LiteGraph.registerNodeType("basic/merge_objects", MergeObjects );
 
     //Watch a value in the editor
     function Watch() {

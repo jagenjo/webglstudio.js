@@ -3418,6 +3418,36 @@ var GUI = {
 	},
 
 	/**
+	* Just defines an area that could be clicked
+	*
+	* @method ClickArea
+	* @param {Array} area [x,y,width,height]
+	* @return {Boolean} true if the button was pressed inside the area
+	*/
+	ClickArea: function( area )
+	{
+		if(!area)
+			throw("No area");
+		this.blockEventArea( area );
+		var is_over = LS.Input.isEventInRect( LS.Input.Mouse, area, this._offset );
+		if(is_over)
+		{
+			this._is_on_top_of_immediate_widget = true;
+			this.setCursor("pointer");
+		}
+		var mouse = LS.Input.current_click;
+		var clicked = false;
+		if( mouse )
+		{
+			clicked = LS.Input.isEventInRect( mouse, area, this._offset );
+			if(clicked)
+				LS.Input.current_click = false; //consume event
+		}
+
+		return clicked;
+	},
+
+	/**
 	* Renders a Button and returns if the button was pressed
 	*
 	* @method Button
@@ -18311,7 +18341,7 @@ if(typeof(LiteGraph) != "undefined")
 	{
 		this.addOutput("v");
 		this.addOutput("i");
-		this.properties = { enabled: true, selected: 0, values:"option1;option2;option3", position: [20,20], size: [180,100], corner: LiteGraph.CORNER_TOP_LEFT };
+		this.properties = { enabled: true, selected: 0, values:"option1;option2;option3", one_line: false, position: [20,20], size: [180,100], corner: LiteGraph.CORNER_TOP_LEFT };
 		this._area = vec4.create();
 		this._values = this.properties.values.split(";");
 		var that = this;
@@ -18319,7 +18349,7 @@ if(typeof(LiteGraph) != "undefined")
 			that.properties.values = v;
 			that.onPropertyChanged("values",v);
 		});
-		this.size = [240,50];
+		this.size = [240,70];
 	}
 
 	LGraphGUIMultipleChoice.title = "GUIMultipleChoice";
@@ -18335,22 +18365,79 @@ if(typeof(LiteGraph) != "undefined")
 		}
 	}
 
+	LGraphGUIMultipleChoice.prototype.onAction = function(name, param)
+	{
+		if(name == "prev")
+			this.properties.selected -= 1;
+		else if(name == "next")
+			this.properties.selected += 1;
+		this.properties.selected = this.properties.selected % this._values.length;
+		if(this.properties.selected < 0)
+			this.properties.selected += this._values.length;
+	}
+
 	LGraphGUIMultipleChoice.prototype.onRenderGUI = function()
 	{
 		if(!this._values.length || !this.properties.enabled )
 			return;
 
-		this.properties.selected = Math.floor( this.properties.selected );
+		var selected = this.properties.selected = Math.floor( this.properties.selected );
 		positionToArea( this.properties.position, this.properties.corner, this._area );
-		this._area[2] = this.properties.size[0];
-		this._area[3] = this.properties.size[1] / this._values.length;
-		var y = this._area[1];
-		for(var i = 0; i < this._values.length; ++i)
+		var ctx = gl;
+
+		if(this.properties.one_line)
 		{
-			this._area[1] = y + i * this._area[3];
-			if( LS.GUI.Toggle( this._area, i == this.properties.selected, this._values[i], null, true ) )
-				this.properties.selected = i;
+			var pos = this.properties.position;
+			var size = this.properties.size;
+			var w = size[1]; //use height as width
+			this._area[2] = w * 2;
+			this._area[3] = size[1];
+			if( LS.GUI.ClickArea( this._area ) )
+				selected -= 1;
+			this._area[0] += size[0] - w*2;
+			if( LS.GUI.ClickArea( this._area ) )
+				selected += 1;
+			selected = selected % this._values.length;
+			if(selected < 0)
+				selected += this._values.length;
+			ctx.fillStyle = "black";
+			ctx.strokeStyle = "#AAA";
+			ctx.lineWidth = 2;
+			ctx.beginPath();
+			ctx.roundRect( pos[0], pos[1], size[0], size[1], w * 0.5 );
+			ctx.fill();
+			ctx.stroke();
+			ctx.fillStyle = "white";
+			ctx.beginPath();
+			var m = w * 0.25;
+			ctx.moveTo( pos[0] + m, pos[1] + w * 0.5 );
+			ctx.lineTo( pos[0] + w*0.5 + m*2, pos[1] + m );
+			ctx.lineTo( pos[0] + w*0.5 + m*2, pos[1] + w - m);
+			ctx.fill();
+			ctx.beginPath();
+			ctx.moveTo( pos[0] + size[0] - m, pos[1] + w * 0.5 );
+			ctx.lineTo( pos[0] + size[0] - w*0.5 - m*2, pos[1] + m);
+			ctx.lineTo( pos[0] + size[0] - w*0.5 - m*2, pos[1] + w - m);
+			ctx.fill();
+			ctx.fillStyle = "#AAA";
+			ctx.textAlign = "center";
+			ctx.font = (w*0.75).toFixed(0) + "px " + LS.GUI.GUIStyle.font;
+			ctx.fillText( String(this._values[selected]), pos[0] + size[0] * 0.5, pos[1] + size[1] * 0.75 );
 		}
+		else
+		{
+			this._area[2] = this.properties.size[0];
+			this._area[3] = this.properties.size[1] / this._values.length;
+			var y = this._area[1];
+			for(var i = 0; i < this._values.length; ++i)
+			{
+				this._area[1] = y + i * this._area[3];
+				if( LS.GUI.Toggle( this._area, i == selected, this._values[i], null, true ) )
+					selected = i;
+			}
+		}
+
+		this.properties.selected = selected;
 
 		var mouse = LS.Input.current_click;
 		if(mouse)
@@ -18362,7 +18449,7 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LGraphGUIMultipleChoice.prototype.onGetInputs = function(){
-		return [["enabled","boolean"],["options","array"]];
+		return [["enabled","boolean"],["options","array"],["next",LiteGraph.ACTION],["prev",LiteGraph.ACTION]];
 	}
 
 	LGraphGUIMultipleChoice.prototype.onExecute = function()

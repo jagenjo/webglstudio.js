@@ -3134,6 +3134,7 @@
             throw "LiteGraph addWidget('combo',...) requires to pass values in options: { values:['red','blue'] }";
         }
         this.widgets.push(w);
+		this.size = this.computeSize();
         return w;
     };
 
@@ -11432,7 +11433,7 @@ if (typeof exports != "undefined") {
 
     //Show value inside the debug console
     function LogEvent() {
-        this.size = [60, 20];
+        this.size = [60, 30];
         this.addInput("event", LiteGraph.ACTION);
     }
 
@@ -11482,7 +11483,7 @@ if (typeof exports != "undefined") {
 
     //Filter events
     function FilterEvent() {
-        this.size = [60, 20];
+        this.size = [60, 30];
         this.addInput("event", LiteGraph.ACTION);
         this.addOutput("event", LiteGraph.EVENT);
         this.properties = {
@@ -11575,7 +11576,7 @@ if (typeof exports != "undefined") {
 
     //Show value inside the debug console
     function DelayEvent() {
-        this.size = [60, 20];
+        this.size = [60, 30];
         this.addProperty("time_in_ms", 1000);
         this.addInput("event", LiteGraph.ACTION);
         this.addOutput("on_time", LiteGraph.EVENT);
@@ -11693,6 +11694,41 @@ if (typeof exports != "undefined") {
     };
 
     LiteGraph.registerNodeType("events/timer", TimerEvent);
+
+    function DataStore() {
+        this.addInput("data", "");
+        this.addInput("assign", LiteGraph.ACTION);
+        this.addOutput("data", "");
+		this._last_value = null;
+		this.properties = { data: null, serialize: true };
+		var that = this;
+		this.addWidget("button","store","",function(){
+			that.properties.data = that._last_value;
+		});
+    }
+
+    DataStore.title = "Data Store";
+    DataStore.desc = "Stores data and only changes when event is received";
+
+	DataStore.prototype.onExecute = function()
+	{
+		this._last_value = this.getInputData(0);
+		this.setOutputData(0, this.properties.data );
+	}
+
+    DataStore.prototype.onAction = function(action, param) {
+		this.properties.data = this._last_value;
+    };
+
+	DataStore.prototype.onSerialize = function(o)
+	{
+		if(o.data == null)
+			return;
+		if(this.properties.serialize == false || (o.data.constructor !== String && o.data.constructor !== Number && o.data.constructor !== Boolean && o.data.constructor !== Array && o.data.constructor !== Object ))
+			o.data = null;
+	}
+
+    LiteGraph.registerNodeType("basic/data_store", DataStore);
 })(this);
 
 //widgets

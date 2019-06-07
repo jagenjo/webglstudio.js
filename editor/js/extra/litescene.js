@@ -5857,6 +5857,7 @@ var Shaders = {
 		//this.shader_blocks = {};//do not initialize, or we will loose all
 
 		//base intro code for shaders
+		//THERE IS OTHER CODE USED IN SHADERCODE, THIS ONE NOT SURE IF USED!!!
 		this.global_extra_code = String.fromCharCode(10) + "#define WEBGL\n";
 		if( gl.webgl_version == 2 || gl.extensions.OES_standard_derivatives )
 			this.global_extra_code += "#define STANDARD_DERIVATIVES\n#extension GL_OES_standard_derivatives : enable \n";
@@ -15497,10 +15498,15 @@ ShaderCode.prototype.getShader = function( render_mode, block_flags )
 
 	//globals
 	var global_fs = "";
-	if( gl.webgl_version == 2 || gl.extensions.OES_standard_derivatives )
-		global_fs += "#define STANDARD_DERIVATIVES\n#extension GL_OES_standard_derivatives : enable \n";
-	if( gl.webgl_version == 2 || gl.extensions.WEBGL_draw_buffers )
-		global_fs += "#define DRAW_BUFFERS\n";
+	if( gl.webgl_version == 2 )
+		global_fs += "#define STANDARD_DERIVATIVES\n#define DRAW_BUFFERS\n";
+	else 
+	{
+		if( gl.extensions.OES_standard_derivatives )
+			global_fs += "#define STANDARD_DERIVATIVES\n#extension GL_OES_standard_derivatives : enable \n";
+		if( gl.extensions.WEBGL_draw_buffers )
+			global_fs += "#define DRAW_BUFFERS\n";
+	}
 	if(global_fs)
 		fs_code = global_fs + fs_code;
 
@@ -28214,7 +28220,7 @@ Object.defineProperty( Transform.prototype, 'globalMatrix', {
 		return this._global_matrix;
 	},
 	set: function(v) { 
-		throw("globalMatrix cannot be set");
+		throw("globalMatrix cannot be set, use fromMatrix(m,true)");
 	},
 	enumerable: true
 });
@@ -44460,19 +44466,25 @@ Canvas3D.prototype.drawCanvas = function()
 			mvp = this._mvp = mat4.create();
 		mat4.identity(mvp);
 		if(this._root.transform)
-			mvp.set( this._root.transform.getGlobalMatrixRef() );
+			mat4.multiply(mvp,mvp, this._root.transform.getGlobalMatrixRef() );
+		mat4.scale(mvp,mvp,[1/this.width,-1/this.height,1]);
+		mat4.translate(mvp,mvp,[this.width*-0.5,this.height*-0.5,0]);
 		var camera = LS.Renderer._current_camera;
-		//mat4.multiply( mvp, camera._viewprojection_matrix, mvp );
-		mat4.multiply( mvp, mvp, camera._viewprojection_matrix );
-		mat4.scale(mvp,mvp,[100,100,1]);
+		mat4.multiply( mvp, camera._viewprojection_matrix, mvp );
+		//mat4.multiply( mvp, mvp, camera._viewprojection_matrix );
+		//mat4.identity(mvp);
 		gl.WebGLCanvas.set3DMatrix( mvp );
 		if(!this._canvas_info)
 			this._canvas_info = { width: 0, height: 0 };
 		this._canvas_info.width = this.width;
 		this._canvas_info.height = this.height;
+		gl.disable( gl.CULL_FACE );
+		gl.enable( gl.DEPTH_TEST );
+		gl.depthFunc( gl.LEQUAL );
 		this._root.processActionInComponents("onRenderCanvas",[ctx,this._canvas_info,this._mouse,this]);
 
 		gl.finish2D();
+		gl.depthFunc( gl.LESS );
 		gl.WebGLCanvas.set3DMatrix(null);
 		return;
 	}
@@ -44505,7 +44517,7 @@ Canvas3D.prototype.drawCanvas = function()
 
 Canvas3D.prototype.onCollectInstances = function(e,instances)
 {
-	if(!this.enabled || !this.visible || !this._texture)
+	if(!this.enabled || !this.visible || !this._texture || this.mode == Canvas3D.MODE_IMMEDIATE)
 		return;
 
 	if(!this._RI)

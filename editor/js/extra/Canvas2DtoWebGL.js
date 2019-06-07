@@ -78,6 +78,7 @@ function enableWebGLCanvas( canvas, options )
 	var textured_transform_shader = null;
 	var textured_primitive_shader = null;
 	var gradient_primitive_shader = null;
+	var	point_text_shader = null;
 
 	gl.WebGLCanvas.set3DMatrix = function(matrix)
 	{
@@ -91,6 +92,7 @@ function enableWebGLCanvas( canvas, options )
 			compileShaders();
 			uniforms.u_projection = extra_projection;
 		}
+		uniforms.u_projection_enabled = !!matrix;
 	}
 
 	compileShaders();
@@ -103,6 +105,7 @@ function enableWebGLCanvas( canvas, options )
 				uniform vec2 u_viewport;\n\
 				uniform mat3 u_transform;\n\
 				#ifdef EXTRA_PROJECTION\n\
+					uniform bool u_projection_enabled;\n\
 					uniform mat4 u_projection;\n\
 				#endif\n\
 				varying float v_visible;\n\
@@ -111,12 +114,16 @@ function enableWebGLCanvas( canvas, options )
 					v_visible = pos.z;\n\
 					pos = u_transform * vec3(pos.xy,1.0);\n\
 					pos.z = 0.0;\n\
+					#ifdef EXTRA_PROJECTION\n\
+						if(u_projection_enabled)\n\
+						{\n\
+							gl_Position = u_projection * vec4(pos.xy,0.0,1.0);\n\
+							return;\n\
+						}\n\
+					#endif\n\
 					//normalize\n\
 					pos.x = (2.0 * pos.x / u_viewport.x) - 1.0;\n\
 					pos.y = -((2.0 * pos.y / u_viewport.y) - 1.0);\n\
-					#ifdef EXTRA_PROJECTION\n\
-						pos = (u_projection * vec4(pos,1.0)).xyz;\n\
-					#endif\n\
 					gl_Position = vec4(pos, 1.0); \n\
 				}\n\
 				";
@@ -131,6 +138,7 @@ function enableWebGLCanvas( canvas, options )
 			uniform vec2 u_viewport;\n\
 			uniform mat3 u_transform;\n\
 			#ifdef EXTRA_PROJECTION\n\
+				uniform bool u_projection_enabled;\n\
 				uniform mat4 u_projection;\n\
 			#endif\n\
 			void main() { \n\
@@ -138,16 +146,19 @@ function enableWebGLCanvas( canvas, options )
 				v_coord = a_coord; \n\
 				pos = u_transform * pos;\n\
 				pos.z = 0.0;\n\
+				#ifdef EXTRA_PROJECTION\n\
+					if(u_projection_enabled)\n\
+					{\n\
+						gl_Position = u_projection * vec4(pos.xy,0.0,1.0);\n\
+						return;\n\
+					}\n\
+				#endif\n\
 				//normalize\n\
 				pos.x = (2.0 * pos.x / u_viewport.x) - 1.0;\n\
 				pos.y = -((2.0 * pos.y / u_viewport.y) - 1.0);\n\
-				#ifdef EXTRA_PROJECTION\n\
-					pos = (u_projection * vec4(pos,1.0)).xyz;\n\
-				#endif\n\
 				gl_Position = vec4(pos, 1.0); \n\
 			}\n\
 		";
-
 
 		//flat_shader = new GL.Shader( GL.Shader.QUAD_VERTEX_SHADER, GL.Shader.FLAT_FRAGMENT_SHADER );
 		//texture_shader = new GL.Shader( GL.Shader.QUAD_VERTEX_SHADER, GL.Shader.SCREEN_COLORED_FRAGMENT_SHADER );
@@ -233,6 +244,59 @@ function enableWebGLCanvas( canvas, options )
 					gl_FragColor = u_color * texture2D( u_texture, uv );\n\
 				}\n\
 			", extra_macros );
+
+		//used for text
+		var POINT_TEXT_VERTEX_SHADER = "\n\
+			precision highp float;\n\
+			attribute vec3 a_vertex;\n\
+			attribute vec2 a_coord;\n\
+			varying vec2 v_coord;\n\
+			uniform vec2 u_viewport;\n\
+			uniform mat3 u_transform;\n\
+			#ifdef EXTRA_PROJECTION\n\
+				uniform bool u_projection_enabled;\n\
+				uniform mat4 u_projection;\n\
+			#endif\n\
+			uniform float u_pointSize;\n\
+			void main() { \n\
+				vec3 pos = a_vertex;\n\
+				pos = u_transform * pos;\n\
+				pos.z = 0.0;\n\
+				#ifdef EXTRA_PROJECTION\n\
+					if(u_projection_enabled)\n\
+					{\n\
+						gl_Position = u_projection * vec4(pos.xy,0.0,1.0);\n\
+						return;\n\
+					}\n\
+				#endif\n\
+				//normalize\n\
+				pos.x = (2.0 * pos.x / u_viewport.x) - 1.0;\n\
+				pos.y = -((2.0 * pos.y / u_viewport.y) - 1.0);\n\
+				gl_Position = vec4(pos, 1.0); \n\
+				gl_PointSize = ceil(u_pointSize);\n\
+				v_coord = a_coord;\n\
+			}\n\
+			";
+
+		var POINT_TEXT_FRAGMENT_SHADER = "\n\
+			precision highp float;\n\
+			uniform sampler2D u_texture;\n\
+			uniform float u_iCharSize;\n\
+			uniform vec4 u_color;\n\
+			uniform float u_pointSize;\n\
+			uniform vec2 u_viewport;\n\
+			uniform vec2 u_angle_sincos;\n\
+			varying vec2 v_coord;\n\
+			void main() {\n\
+				vec2 uv = vec2(1.0 - gl_PointCoord.s, gl_PointCoord.t);\n\
+				uv = vec2( ((uv.y - 0.5) * u_angle_sincos.y - (uv.x - 0.5) * u_angle_sincos.x) + 0.5, ((uv.x - 0.5) * u_angle_sincos.y + (uv.y - 0.5) * u_angle_sincos.x) + 0.5);\n\
+				uv = v_coord - uv * u_iCharSize + vec2(u_iCharSize*0.5);\n\
+				uv.y = 1.0 - uv.y;\n\
+				gl_FragColor = vec4(u_color.xyz, u_color.a * texture2D(u_texture, uv, -1.0  ).a);\n\
+			}\n\
+			";
+
+		point_text_shader = new GL.Shader( POINT_TEXT_VERTEX_SHADER, POINT_TEXT_FRAGMENT_SHADER, extra_macros );
 	};
 
 	ctx.createImageShader = function(code)
@@ -447,6 +511,7 @@ function enableWebGLCanvas( canvas, options )
 		shader = shader || texture_shader;
 
 		shader.uniforms( uniforms ).draw(quad_mesh);
+		extra_projection[14] -= 0.001;
 	}
 
 	ctx.createPattern = function( img )
@@ -721,6 +786,7 @@ function enableWebGLCanvas( canvas, options )
 
 		//render
 		shader.uniforms(uniforms).drawRange(global_mesh, gl.TRIANGLE_FAN, 0, global_index / 3);
+		extra_projection[14] -= 0.001;
 	}
 
 	//basic stroke using gl.LINES
@@ -877,6 +943,7 @@ function enableWebGLCanvas( canvas, options )
 		//gl.setLineWidth( this.lineWidth );
 		uniforms.u_color = this._strokecolor;
 		flat_primitive_shader.uniforms( uniforms ).drawRange(lines_mesh, gl.TRIANGLE_STRIP, 0, pos / 3 );
+		extra_projection[14] -= 0.001;
 	}
 
 
@@ -1011,8 +1078,9 @@ function enableWebGLCanvas( canvas, options )
 		uniforms.u_position = tmp_vec2;
 		uniforms.u_size = tmp_vec2b;
 		uniforms.u_transform = this._matrix;
-		uniforms.u_viewport = viewport
+		uniforms.u_viewport = viewport;
 		flat_shader.uniforms(uniforms).draw(quad_mesh);
+		extra_projection[14] -= 0.001;
 	}
 
 	//other functions
@@ -1048,6 +1116,7 @@ function enableWebGLCanvas( canvas, options )
 		uniforms.u_transform = this._matrix;
 		uniforms.u_viewport = viewport
 		flat_shader.uniforms(uniforms).draw(circle_mesh);
+		extra_projection[14] -= 0.001;
 	}
 	
 	ctx.clip = function()
@@ -1084,6 +1153,7 @@ function enableWebGLCanvas( canvas, options )
 		gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
 		gl.lineWidth = 1;
 		global_index = 0;
+		mat4.identity( extra_projection );
 	}
 
 	ctx.finish2D = function()
@@ -1093,52 +1163,6 @@ function enableWebGLCanvas( canvas, options )
 		window.gl = prev_gl;
 		gl.disable( gl.STENCIL_TEST );
 	}
-
-	//extra
-	var POINT_TEXT_VERTEX_SHADER = "\n\
-			precision highp float;\n\
-			attribute vec3 a_vertex;\n\
-			attribute vec2 a_coord;\n\
-			varying vec2 v_coord;\n\
-			uniform vec2 u_viewport;\n\
-			uniform mat3 u_transform;\n\
-			#ifdef EXTRA_PROJECTION\n\
-				uniform mat4 u_projection;\n\
-			#endif\n\
-			uniform float u_pointSize;\n\
-			void main() { \n\
-				vec3 pos = a_vertex;\n\
-				pos = u_transform * pos;\n\
-				pos.z = 0.0;\n\
-				//normalize\n\
-				pos.x = (2.0 * pos.x / u_viewport.x) - 1.0;\n\
-				pos.y = -((2.0 * pos.y / u_viewport.y) - 1.0);\n\
-				#ifdef EXTRA_PROJECTION\n\
-					pos = (u_projection * mat4(pos,1.0)).xz;\n\
-				#endif\n\
-				gl_Position = vec4(pos, 1.0); \n\
-				gl_PointSize = ceil(u_pointSize);\n\
-				v_coord = a_coord;\n\
-			}\n\
-			";
-
-	var POINT_TEXT_FRAGMENT_SHADER = "\n\
-			precision highp float;\n\
-			uniform sampler2D u_texture;\n\
-			uniform float u_iCharSize;\n\
-			uniform vec4 u_color;\n\
-			uniform float u_pointSize;\n\
-			uniform vec2 u_viewport;\n\
-			uniform vec2 u_angle_sincos;\n\
-			varying vec2 v_coord;\n\
-			void main() {\n\
-				vec2 uv = vec2(1.0 - gl_PointCoord.s, gl_PointCoord.t);\n\
-				uv = vec2( ((uv.y - 0.5) * u_angle_sincos.y - (uv.x - 0.5) * u_angle_sincos.x) + 0.5, ((uv.x - 0.5) * u_angle_sincos.y + (uv.y - 0.5) * u_angle_sincos.x) + 0.5);\n\
-				uv = v_coord - uv * u_iCharSize + vec2(u_iCharSize*0.5);\n\
-				uv.y = 1.0 - uv.y;\n\
-				gl_FragColor = vec4(u_color.xyz, u_color.a * texture2D(u_texture, uv, -1.0  ).a);\n\
-			}\n\
-			";
 
 	/*
 	var max_triangle_characters = 64;
@@ -1197,7 +1221,6 @@ function enableWebGLCanvas( canvas, options )
 	*/
 
 	//text rendering
-	var	point_text_shader = new GL.Shader( POINT_TEXT_VERTEX_SHADER, POINT_TEXT_FRAGMENT_SHADER, extra_macros );
 	var point_text_vertices = new Float32Array( max_characters * 3 );
 	var point_text_coords = new Float32Array( max_characters * 2 );
 	var point_text_mesh = new GL.Mesh();

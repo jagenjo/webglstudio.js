@@ -415,10 +415,10 @@ SceneTreeWidget.prototype.processMouse = function(e)
 						if( local_y > line_height - 4 && node.parentNode)
 						{
 							var node_index = node.parentNode._children.indexOf( node );
-							node.parentNode.addChild( this.clicked_node, node_index + 1 );
+							this.onChangeParent( this.clicked_node, node.parentNode, node_index + 1 );
 						}
 						else
-							node.addChild( this.clicked_node );
+							this.onChangeParent( this.clicked_node, node );
 						this.onDraw();
 					}
 				
@@ -444,6 +444,20 @@ SceneTreeWidget.prototype.processMouse = function(e)
 		e.preventDefault();
 		return true;
 	}
+}
+
+SceneTreeWidget.prototype.onChangeParent = function(node, parent, index )
+{
+	if(node == parent)
+		return;
+	CORE.userAction("node_parenting", node);
+	var global = node.transform.getGlobalMatrix();
+	if(index)
+		parent.addChild( node, index );
+	else
+		parent.addChild( node );
+	node.transform.fromMatrix(global,true);
+	console.log("changing parent");
 }
 
 SceneTreeWidget.prototype.processDrag = function(e)
@@ -475,6 +489,7 @@ SceneTreeWidget.prototype.processDrag = function(e)
 		e.dataTransfer.setData( i, drag_data[i] );
 }
 
+//drop from outside to the canvas
 SceneTreeWidget.prototype.processDrop = function(e){
 	this.dragging_node = null;
 	this.onDraw();

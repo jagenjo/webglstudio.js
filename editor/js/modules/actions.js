@@ -76,6 +76,23 @@ LS.SceneNode.actions["move_after"] = {
 	}
 };
 
+LS.SceneNode.actions["move_to_parent"] = { 
+	title:"Move to parent",
+	callback: function(){
+		if(!this.parentNode || !this.parentNode.parentNode)
+			return;
+		CORE.userAction("node_parenting", this);
+		var global = null;
+		if(this.transform)
+			global = this.transform.getGlobalMatrix();
+		var grandpa = this.parentNode.parentNode;
+		var index = grandpa._children.indexOf(this.parentNode);
+		grandpa.addChild( this, index );
+		if(global)
+			this.transform.fromMatrix( global, true );
+	}
+};
+
 LS.SceneNode.actions["create_child_node"] = { 
 	title:"Create Child Node",
 	callback: function(){

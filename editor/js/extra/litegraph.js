@@ -14663,13 +14663,15 @@ if (typeof exports != "undefined") {
         //Math3D rotate vec3
         function Math3DRemapRange() {
             this.addInput("vec3", "vec3");
-            this.addOutput("vec3", "vec3");
+            this.addOutput("remap", "vec3");
+			this.addOutput("clamped", "vec3");
             this.properties = { clamp: true, range_min: [-1, -1, 0], range_max: [1, 1, 0], target_min: [-1,-1,0], target_max:[1,1,0] };
 			this._value = vec3.create();
+			this._clamped = vec3.create();
         }
 
         Math3DRemapRange.title = "Remap Range";
-        Math3DRemapRange.desc = "remap a range";
+        Math3DRemapRange.desc = "remap a 3D range";
 
         Math3DRemapRange.prototype.onExecute = function() {
             var vec = this.getInputData(0);
@@ -14683,6 +14685,7 @@ if (typeof exports != "undefined") {
 			for(var i = 0; i < 3; ++i)
 			{
 				var r = range_max[i] - range_min[i];
+				this._clamped[i] = Math.clamp( this._value[i], range_min[i], range_max[i] );
 				if(r == 0)
 				{
 					this._value[i] = (target_min[i] + target_max[i]) * 0.5;
@@ -14697,6 +14700,7 @@ if (typeof exports != "undefined") {
 			}
 
 			this.setOutputData(0,this._value);
+			this.setOutputData(1,this._clamped);
         };
 
         LiteGraph.registerNodeType("math3d/remap_range", Math3DRemapRange);
@@ -14835,9 +14839,8 @@ if (typeof exports != "undefined") {
 
     Selector.prototype.onExecute = function() {
         var sel = this.getInputData(0);
-        if (sel == null) {
+        if (sel == null || sel.constructor !== Number)
             sel = 0;
-        }
         this.selected = sel = Math.round(sel) % (this.inputs.length - 1);
         var v = this.getInputData(sel + 1);
         if (v !== undefined) {

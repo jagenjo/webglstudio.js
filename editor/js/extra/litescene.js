@@ -5859,7 +5859,7 @@ var Shaders = {
 		//base intro code for shaders
 		this.global_extra_code = String.fromCharCode(10) + "#define WEBGL\n";
 		if( gl.webgl_version == 2 || gl.extensions.OES_standard_derivatives )
-			this.global_extra_code += "#define STANDARD_DERIVATIVES\n";
+			this.global_extra_code += "#define STANDARD_DERIVATIVES\n#extension GL_OES_standard_derivatives : enable \n";
 		if( gl.webgl_version == 2 || gl.extensions.WEBGL_draw_buffers )
 			this.global_extra_code += "#define DRAW_BUFFERS\n";
 	},
@@ -6648,7 +6648,6 @@ LS.Shaders.registerSnippet("spotFalloff","\n\
 
 LS.Shaders.registerSnippet("getFlatNormal","\n\
 			#ifdef STANDARD_DERIVATIVES\n\
-				#extension GL_OES_standard_derivatives : enable \n\
 				vec3 getFlatNormal(vec3 pos)\n\
 				{\n\
 					vec3 A = dFdx( pos );\n\
@@ -6689,10 +6688,6 @@ LS.Shaders.registerSnippet("PackDepth32","\n\
 
 
 LS.Shaders.registerSnippet("perturbNormal","\n\
-			#ifdef STANDARD_DERIVATIVES\n\
-				#extension GL_OES_standard_derivatives : enable \n\
-			#endif\n\
-			\n\
 				mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)\n\
 				{\n\
 					// get edge vectors of the pixel triangle\n\
@@ -6735,9 +6730,6 @@ LS.Shaders.registerSnippet("perturbNormal","\n\
 		");
 
 LS.Shaders.registerSnippet("bumpNormal","\n\
-			#ifdef STANDARD_DERIVATIVES\n\
-				#extension GL_OES_standard_derivatives : enable \n\
-			#endif\n\
 				\n\
 				// Calculate the surface normal using screen-space partial derivatives of the height field\n\
 				vec3 bumpNormal(vec3 position, vec3 normal, sampler2D texture, vec2 uvs, float factor)\n\
@@ -15506,7 +15498,7 @@ ShaderCode.prototype.getShader = function( render_mode, block_flags )
 	//globals
 	var global_fs = "";
 	if( gl.webgl_version == 2 || gl.extensions.OES_standard_derivatives )
-		global_fs += "#define STANDARD_DERIVATIVES\n";
+		global_fs += "#define STANDARD_DERIVATIVES\n#extension GL_OES_standard_derivatives : enable \n";
 	if( gl.webgl_version == 2 || gl.extensions.WEBGL_draw_buffers )
 		global_fs += "#define DRAW_BUFFERS\n";
 	if(global_fs)
@@ -44343,11 +44335,11 @@ function Canvas3D(o)
 
 Canvas3D.icon = "mini-icon-brush.png";
 
-Canvas3D.MODE_CANVAS2D = 1;
-Canvas3D.MODE_WEBGL = 2;
-Canvas3D.MODE_IMMEDIATE = 3; //not supported yet
+Canvas3D.MODE_CANVAS2D = 1; //renders to a canvas2D, then uploads the texture to the GPU after every frame
+Canvas3D.MODE_WEBGL = 2;	//renders to a WebGLTexture translating the Canvas2D calls to WebGL (using Canvas2DtoWebGL)
+Canvas3D.MODE_IMMEDIATE = 3; //renders directly to current viewport (using Canvas2DtoWebGL)
 
-Canvas3D["@mode"] = { type:"enum", values: { "Canvas2D":Canvas3D.MODE_CANVAS2D, "WebGL":Canvas3D.MODE_WEBGL } };
+Canvas3D["@mode"] = { type:"enum", values: { "Canvas2D":Canvas3D.MODE_CANVAS2D, "WebGL":Canvas3D.MODE_WEBGL, "Immediate": Canvas3D.MODE_IMMEDIATE } };
 Canvas3D["@width"] = { type:"number", step:1, precision:0 };
 Canvas3D["@height"] = { type:"number", step:1, precision:0 };
 Canvas3D["@texture_name"] = { type:"string" };
@@ -44365,11 +44357,13 @@ Object.defineProperty( Canvas3D.prototype, "texture", {
 Canvas3D.prototype.onAddedToScene = function(scene)
 {
 	LEvent.bind(scene,"readyToRender",this.onRender,this);
+	LEvent.bind(scene,"afterRenderInstances",this.onRender,this);
 }
 
 Canvas3D.prototype.onRemovedFromScene = function(scene)
 {
 	LEvent.unbind(scene,"readyToRender",this.onRender,this);
+	LEvent.unbind(scene,"afterRenderInstances",this.onRender,this);
 }
 
 Canvas3D.prototype.onAddedToNode = function( node )
@@ -44386,11 +44380,21 @@ Canvas3D.prototype.onRemovedFromNode = function( node )
 }
 
 //called before rendering scene
-Canvas3D.prototype.onRender = function()
+Canvas3D.prototype.onRender = function(e)
 {
 	if(!this.enabled)
 		return;
 
+	if(	(e == "readyToRender" && ( this.mode == Canvas3D.MODE_CANVAS2D || this.mode == Canvas3D.MODE_WEBGL)) || 
+		(e == "afterRenderInstances" && this.mode == Canvas3D.MODE_IMMEDIATE)
+	)
+	{
+		this.drawCanvas();
+	}
+}
+
+Canvas3D.prototype.drawCanvas = function()
+{
 	var w = this.width|0;
 	var h = this.height|0;
 
@@ -44444,9 +44448,32 @@ Canvas3D.prototype.onRender = function()
 		gl.finish2D();
 		this._fbo.unbind();
 	}
-	else //not implemented yet
+	else if ( this.mode == Canvas3D.MODE_IMMEDIATE )
 	{
-		//requires to support extra_projection in canvas2DtoWebGL which is not yet implemented
+		var ctx = gl;
+		gl.start2D();
+		LS.GUI._ctx = gl;
+
+		//pass MVP matrix
+		var mvp = this._mvp;
+		if(!mvp)
+			mvp = this._mvp = mat4.create();
+		mat4.identity(mvp);
+		if(this._root.transform)
+			mvp.set( this._root.transform.getGlobalMatrixRef() );
+		var camera = LS.Renderer._current_camera;
+		//mat4.multiply( mvp, camera._viewprojection_matrix, mvp );
+		mat4.multiply( mvp, mvp, camera._viewprojection_matrix );
+		mat4.scale(mvp,mvp,[100,100,1]);
+		gl.WebGLCanvas.set3DMatrix( mvp );
+		if(!this._canvas_info)
+			this._canvas_info = { width: 0, height: 0 };
+		this._canvas_info.width = this.width;
+		this._canvas_info.height = this.height;
+		this._root.processActionInComponents("onRenderCanvas",[ctx,this._canvas_info,this._mouse,this]);
+
+		gl.finish2D();
+		gl.WebGLCanvas.set3DMatrix(null);
 		return;
 	}
 

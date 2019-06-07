@@ -45,10 +45,6 @@ function enableWebGLCanvas( canvas, options )
 	ctx.WebGLCanvas = {};
 	var white = vec4.fromValues(1,1,1,1);
 
-	//some generic shaders
-	var	flat_shader = new GL.Shader( GL.Shader.QUAD_VERTEX_SHADER, GL.Shader.FLAT_FRAGMENT_SHADER );
-	var	texture_shader = new GL.Shader( GL.Shader.QUAD_VERTEX_SHADER, GL.Shader.SCREEN_COLORED_FRAGMENT_SHADER );
-
 	//reusing same buffer
 	var global_index = 0;
 	var global_vertices = new Float32Array( max_points * 3 );
@@ -75,92 +71,169 @@ function enableWebGLCanvas( canvas, options )
 		textures = gl.WebGLCanvas.textures_atlas = {};
 	}
 
-	var vertex_shader = "\n\
+	var vertex_shader = null;
+	var	flat_shader = null;
+	var	texture_shader = null;
+	var flat_primitive_shader = null;
+	var textured_transform_shader = null;
+	var textured_primitive_shader = null;
+	var gradient_primitive_shader = null;
+
+	gl.WebGLCanvas.set3DMatrix = function(matrix)
+	{
+		if(!matrix)
+			mat4.identity( extra_projection );
+		else
+			extra_projection.set( matrix );
+		if(extra_macros.EXTRA_PROJECTION == null)
+		{
+			extra_macros.EXTRA_PROJECTION = "";
+			compileShaders();
+			uniforms.u_projection = extra_projection;
+		}
+	}
+
+	compileShaders();
+
+	function compileShaders()
+	{
+		vertex_shader = "\n\
+				precision highp float;\n\
+				attribute vec3 a_vertex;\n\
+				uniform vec2 u_viewport;\n\
+				uniform mat3 u_transform;\n\
+				#ifdef EXTRA_PROJECTION\n\
+					uniform mat4 u_projection;\n\
+				#endif\n\
+				varying float v_visible;\n\
+				void main() { \n\
+					vec3 pos = a_vertex;\n\
+					v_visible = pos.z;\n\
+					pos = u_transform * vec3(pos.xy,1.0);\n\
+					pos.z = 0.0;\n\
+					//normalize\n\
+					pos.x = (2.0 * pos.x / u_viewport.x) - 1.0;\n\
+					pos.y = -((2.0 * pos.y / u_viewport.y) - 1.0);\n\
+					#ifdef EXTRA_PROJECTION\n\
+						pos = (u_projection * vec4(pos,1.0)).xyz;\n\
+					#endif\n\
+					gl_Position = vec4(pos, 1.0); \n\
+				}\n\
+				";
+
+		vertex_shader2 = "\n\
 			precision highp float;\n\
 			attribute vec3 a_vertex;\n\
+			attribute vec2 a_coord;\n\
+			varying vec2 v_coord;\n\
+			uniform vec2 u_position;\n\
+			uniform vec2 u_size;\n\
 			uniform vec2 u_viewport;\n\
 			uniform mat3 u_transform;\n\
 			#ifdef EXTRA_PROJECTION\n\
 				uniform mat4 u_projection;\n\
 			#endif\n\
-			varying float v_visible;\n\
 			void main() { \n\
-				vec3 pos = a_vertex;\n\
-				v_visible = pos.z;\n\
-				pos = u_transform * vec3(pos.xy,1.0);\n\
+				vec3 pos = vec3(u_position + vec2(a_coord.x,1.0 - a_coord.y)  * u_size, 1.0);\n\
+				v_coord = a_coord; \n\
+				pos = u_transform * pos;\n\
 				pos.z = 0.0;\n\
 				//normalize\n\
 				pos.x = (2.0 * pos.x / u_viewport.x) - 1.0;\n\
 				pos.y = -((2.0 * pos.y / u_viewport.y) - 1.0);\n\
 				#ifdef EXTRA_PROJECTION\n\
-					pos = (u_projection * mat4(pos,1.0)).xz;\n\
+					pos = (u_projection * vec4(pos,1.0)).xyz;\n\
 				#endif\n\
 				gl_Position = vec4(pos, 1.0); \n\
 			}\n\
-			";
+		";
 
-	var	flat_primitive_shader = new GL.Shader(vertex_shader,"\n\
-			precision highp float;\n\
-			varying float v_visible;\n\
-			uniform vec4 u_color;\n\
-			void main() {\n\
-				if (v_visible == 0.0)\n\
-					discard;\n\
-				gl_FragColor = u_color;\n\
-			}\n\
-		", extra_macros );
 
-	var	textured_transform_shader = new GL.Shader(GL.Shader.QUAD_VERTEX_SHADER,"\n\
-			precision highp float;\n\
-			uniform sampler2D u_texture;\n\
-			uniform vec4 u_color;\n\
-			uniform vec4 u_texture_transform;\n\
-			varying vec2 v_coord;\n\
-			void main() {\n\
-				vec2 uv = v_coord * u_texture_transform.zw + vec2(u_texture_transform.x,0.0);\n\
-				uv.y = uv.y - u_texture_transform.y + (1.0 - u_texture_transform.w);\n\
-				uv = clamp(uv,vec2(0.0),vec2(1.0));\n\
-				gl_FragColor = u_color * texture2D(u_texture, uv);\n\
-			}\n\
-		", extra_macros );
+		//flat_shader = new GL.Shader( GL.Shader.QUAD_VERTEX_SHADER, GL.Shader.FLAT_FRAGMENT_SHADER );
+		//texture_shader = new GL.Shader( GL.Shader.QUAD_VERTEX_SHADER, GL.Shader.SCREEN_COLORED_FRAGMENT_SHADER );
 
-	var	textured_primitive_shader = new GL.Shader(vertex_shader,"\n\
-			precision highp float;\n\
-			varying float v_visible;\n\
-			uniform vec4 u_color;\n\
-			uniform sampler2D u_texture;\n\
-			uniform vec4 u_texture_transform;\n\
-			uniform vec2 u_viewport;\n\
-			uniform mat3 u_itransform;\n\
-			void main() {\n\
-				vec2 pos = (u_itransform * vec3( gl_FragCoord.s, u_viewport.y - gl_FragCoord.t,1.0)).xy;\n\
-				pos *= vec2( (u_viewport.x * u_texture_transform.z), (u_viewport.y * u_texture_transform.w) );\n\
-				vec2 uv = fract(pos / u_viewport) + u_texture_transform.xy;\n\
-				uv.y = 1.0 - uv.y;\n\
-				gl_FragColor = u_color * texture2D( u_texture, uv);\n\
-			}\n\
-		", extra_macros );
+		flat_shader = new GL.Shader(vertex_shader2,"\n\
+				precision highp float;\n\
+				uniform vec4 u_color;\n\
+				void main() {\n\
+					gl_FragColor = u_color;\n\
+				}\n\
+			", extra_macros );
 
-	var	gradient_primitive_shader = new GL.Shader(vertex_shader,"\n\
-			precision highp float;\n\
-			varying float v_visible;\n\
-			uniform vec4 u_color;\n\
-			uniform sampler2D u_texture;\n\
-			uniform vec4 u_gradient;\n\
-			uniform vec2 u_viewport;\n\
-			uniform mat3 u_itransform;\n\
-			void main() {\n\
-				vec2 pos = (u_itransform * vec3( gl_FragCoord.s, u_viewport.y - gl_FragCoord.t,1.0)).xy;\n\
-				//vec2 pos = vec2( gl_FragCoord.s, u_viewport.y - gl_FragCoord.t);\n\
-				vec2 AP = pos - u_gradient.xy;\n\
-				vec2 AB = u_gradient.zw - u_gradient.xy;\n\
-				float dotAPAB = dot(AP,AB);\n\
-				float dotABAB = dot(AB,AB);\n\
-				float x = dotAPAB / dotABAB;\n\
-				vec2 uv = vec2( x, 0.0 );\n\
-				gl_FragColor = u_color * texture2D( u_texture, uv );\n\
-			}\n\
-		", extra_macros );
+		texture_shader = new GL.Shader(vertex_shader2,"\n\
+				precision highp float;\n\
+				varying vec2 v_coord;\n\
+				uniform vec4 u_color;\n\
+				uniform sampler2D u_texture;\n\
+				void main() {\n\
+					gl_FragColor = u_color * texture2D( u_texture, v_coord );\n\
+				}\n\
+			", extra_macros );
+
+
+		flat_primitive_shader = new GL.Shader(vertex_shader,"\n\
+				precision highp float;\n\
+				varying float v_visible;\n\
+				uniform vec4 u_color;\n\
+				void main() {\n\
+					if (v_visible == 0.0)\n\
+						discard;\n\
+					gl_FragColor = u_color;\n\
+				}\n\
+			", extra_macros );
+
+		textured_transform_shader = new GL.Shader(GL.Shader.QUAD_VERTEX_SHADER,"\n\
+				precision highp float;\n\
+				uniform sampler2D u_texture;\n\
+				uniform vec4 u_color;\n\
+				uniform vec4 u_texture_transform;\n\
+				varying vec2 v_coord;\n\
+				void main() {\n\
+					vec2 uv = v_coord * u_texture_transform.zw + vec2(u_texture_transform.x,0.0);\n\
+					uv.y = uv.y - u_texture_transform.y + (1.0 - u_texture_transform.w);\n\
+					uv = clamp(uv,vec2(0.0),vec2(1.0));\n\
+					gl_FragColor = u_color * texture2D(u_texture, uv);\n\
+				}\n\
+			", extra_macros );
+
+		textured_primitive_shader = new GL.Shader(vertex_shader,"\n\
+				precision highp float;\n\
+				varying float v_visible;\n\
+				uniform vec4 u_color;\n\
+				uniform sampler2D u_texture;\n\
+				uniform vec4 u_texture_transform;\n\
+				uniform vec2 u_viewport;\n\
+				uniform mat3 u_itransform;\n\
+				void main() {\n\
+					vec2 pos = (u_itransform * vec3( gl_FragCoord.s, u_viewport.y - gl_FragCoord.t,1.0)).xy;\n\
+					pos *= vec2( (u_viewport.x * u_texture_transform.z), (u_viewport.y * u_texture_transform.w) );\n\
+					vec2 uv = fract(pos / u_viewport) + u_texture_transform.xy;\n\
+					uv.y = 1.0 - uv.y;\n\
+					gl_FragColor = u_color * texture2D( u_texture, uv);\n\
+				}\n\
+			", extra_macros );
+
+		gradient_primitive_shader = new GL.Shader(vertex_shader,"\n\
+				precision highp float;\n\
+				varying float v_visible;\n\
+				uniform vec4 u_color;\n\
+				uniform sampler2D u_texture;\n\
+				uniform vec4 u_gradient;\n\
+				uniform vec2 u_viewport;\n\
+				uniform mat3 u_itransform;\n\
+				void main() {\n\
+					vec2 pos = (u_itransform * vec3( gl_FragCoord.s, u_viewport.y - gl_FragCoord.t,1.0)).xy;\n\
+					//vec2 pos = vec2( gl_FragCoord.s, u_viewport.y - gl_FragCoord.t);\n\
+					vec2 AP = pos - u_gradient.xy;\n\
+					vec2 AB = u_gradient.zw - u_gradient.xy;\n\
+					float dotAPAB = dot(AP,AB);\n\
+					float dotABAB = dot(AB,AB);\n\
+					float x = dotAPAB / dotABAB;\n\
+					vec2 uv = vec2( x, 0.0 );\n\
+					gl_FragColor = u_color * texture2D( u_texture, uv );\n\
+				}\n\
+			", extra_macros );
+	};
 
 	ctx.createImageShader = function(code)
 	{

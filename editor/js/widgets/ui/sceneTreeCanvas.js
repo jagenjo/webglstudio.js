@@ -407,6 +407,7 @@ SceneTreeWidget.prototype.processMouse = function(e)
 				else if( this.dragging_node ) //dragging
 				{
 					var index = Math.floor((y - margin_y) / line_height);
+					index += this.scroll_items;
 					var local_y = (y - margin_y) % line_height;
 					var info = this.visible_nodes[ index ];
 					var node = info ? info[0] : null;

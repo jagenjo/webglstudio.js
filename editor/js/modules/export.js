@@ -340,7 +340,7 @@ var ExportModule = {
 		var final_vertices = [];
 		var final_normals = [];
 		var final_uvs = [];
-		var final_indices = [];
+		//meshes are deindexed to prevent problems
 
 		var groups = [];
 		var offset = 0;
@@ -361,8 +361,6 @@ var ExportModule = {
 			var mesh = ri.mesh;
 
 			var indices_buffer = ri.index_buffer;
-			//if( indices_buffer )
-			//	mesh.explodeIndices("triangles");
 
 			var vertices_buffer = ri.vertex_buffers.vertices;
 			var normals_buffer = ri.vertex_buffers.normals;
@@ -379,7 +377,7 @@ var ExportModule = {
 			if(indices_buffer)
 			{
 				var indices_data = indices_buffer.data;
-				length = indices_data.length / 3;
+				length = indices_data.length;
 				for(var j = 0; j < indices_data.length; ++j)
 				{
 					var index = indices_data[j];
@@ -442,7 +440,7 @@ var ExportModule = {
 				};
 				groups.push( group );
 			}
-			else if(last_group)
+			else
 				last_group.length += length;
 
 			offset += length;
@@ -450,8 +448,8 @@ var ExportModule = {
 
 		var extra = { info: { groups: groups } };
 
-		var final_mesh = new GL.Mesh( { vertices: final_vertices, normals: final_normals, coords: final_uvs }, { triangles: final_indices }, extra );
-
+		var final_mesh = new GL.Mesh( { vertices: final_vertices, normals: final_normals, coords: final_uvs }, null, extra );
+		window.LAST_EXPORTED_MESH = final_mesh;
 		LS.RM.registerResource( "export.obj", final_mesh );
 		var data = final_mesh.encode("obj");
 

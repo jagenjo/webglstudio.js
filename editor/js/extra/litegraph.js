@@ -746,7 +746,7 @@
                 for (var j = 0; j < limit; ++j) {
                     var node = nodes[j];
                     if (node.mode == LiteGraph.ALWAYS && node.onExecute) {
-                        node.onExecute();
+                        node.onExecute(); //hard to send elapsed time
                     }
                 }
 
@@ -11446,6 +11446,29 @@ if (typeof exports != "undefined") {
 
     LiteGraph.registerNodeType("events/log", LogEvent);
 
+    //convert to Event if the value is true
+    function TriggerEvent() {
+        this.size = [60, 30];
+        this.addInput("in", "");
+        this.addOutput("true", LiteGraph.EVENT);
+        this.addOutput("change", LiteGraph.EVENT);
+		this.was_true = false;
+    }
+
+    TriggerEvent.title = "TriggerEvent";
+    TriggerEvent.desc = "Triggers event if value is true";
+
+    TriggerEvent.prototype.onExecute = function(action, param) {
+		var v = this.getInputData(0);
+		if(v)
+	        this.triggerSlot(0, param);
+		if(v && !this.was_true)
+	        this.triggerSlot(1, param);
+		this.was_true = v;
+    };
+
+    LiteGraph.registerNodeType("events/trigger", TriggerEvent);
+
     //Sequencer for events
     function Sequencer() {
         this.addInput("", LiteGraph.ACTION);
@@ -13631,12 +13654,12 @@ if (typeof exports != "undefined") {
         this.addOutput("out", "boolean");
         this.addProperty("A", 1);
         this.addProperty("B", 1);
-        this.addProperty("OP", ">", "string", { values: MathCondition.values });
+        this.addProperty("OP", ">", "enum", { values: MathCondition.values });
 
         this.size = [80, 60];
     }
 
-    MathCondition.values = [">", "<", "==", "!=", "<=", ">="];
+    MathCondition.values = [">", "<", "==", "!=", "<=", ">=", "||", "&&" ];
     MathCondition["@OP"] = {
         type: "enum",
         title: "operation",
@@ -13645,6 +13668,10 @@ if (typeof exports != "undefined") {
 
     MathCondition.title = "Condition";
     MathCondition.desc = "evaluates condition between A and B";
+
+    MathCondition.prototype.getTitle = function() {
+        return "A " + this.properties.OP + " B";
+    };
 
     MathCondition.prototype.onExecute = function() {
         var A = this.getInputData(0);
@@ -13680,6 +13707,12 @@ if (typeof exports != "undefined") {
                 break;
             case ">=":
                 result = A >= B;
+                break;
+            case "||":
+                result = A || B;
+                break;
+            case "&&":
+                result = A && B;
                 break;
         }
 

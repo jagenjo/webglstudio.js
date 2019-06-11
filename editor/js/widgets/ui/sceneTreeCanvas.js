@@ -450,10 +450,27 @@ SceneTreeWidget.prototype.onChangeParent = function(node, parent, index )
 {
 	if(node == parent)
 		return;
+	if(node.parentNode == parent && index == null) //nothing to do
+		return;
+
 	CORE.userAction("node_parenting", node);
 	var global = node.transform.getGlobalMatrix();
-	if(index)
-		parent.addChild( node, index );
+	if(index != null)
+	{
+		if( node.parentNode == parent ) //when dragging to another pos in the same parent, if after its current position take into account that before 
+		{
+			var current_index = parent._children.indexOf(node);
+			if( current_index == index )
+				return;
+			if(current_index < index)
+				index--;
+			parent._children.splice(current_index,1);
+			parent._children.splice(index,0,node);
+			console.log("changing order in children");
+		}
+		else
+			parent.addChild( node, index );
+	}
 	else
 		parent.addChild( node );
 	node.transform.fromMatrix(global,true);

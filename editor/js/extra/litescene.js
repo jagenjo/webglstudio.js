@@ -16791,11 +16791,21 @@ if(typeof(LiteGraph) != "undefined")
 			var output = this.outputs[i];
 			if( !output.links || !output.links.length || output.type == LiteGraph.EVENT )
 				continue;
-
 			if(output.name == "Component")
 				this.setOutputData(i, compo );
 			else
-				this.setOutputData(i, compo[ output.name ] );
+			{
+				if(compo.getProperty)
+				{
+					var v = compo.getProperty(output.name);
+					if(v !== undefined)
+						this.setOutputData(i, v );
+					else
+						this.setOutputData(i, compo[ output.name ] );
+				}
+				else
+					this.setOutputData(i, compo[ output.name ] );
+			}
 		}
 	}
 
@@ -33724,6 +33734,25 @@ MorphDeformer.prototype.setProperty = function(name, value)
 		this.weights = value;
 	else if( name == "name_weights" )
 		this.name_weights = value;
+}
+
+MorphDeformer.prototype.getProperty = function(name)
+{
+	if(name.substr(0,5) == "morph" && name.length > 5)
+	{
+		var t = name.substr(5).split("_");
+		var index = Number(t[0]);
+		var morph = this.morph_targets[ index ];
+		if(morph)
+		{
+			if(t[1] == "mesh")
+				return morph.mesh;
+			else if(t[1] == "weight")
+				return morph.weight;
+			else
+				return morph;
+		}
+	}
 }
 
 

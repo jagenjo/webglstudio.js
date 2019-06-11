@@ -635,11 +635,16 @@ function computeSharedInitialString(array)
 	return first.length;
 }
 
-function removeSharedInitialString(array)
+function removeSharedString(array)
 {
 	var n = computeSharedInitialString(array);
-	if(n)
-		array = array.map(function(a){ return a.substr(n); });
+	array = array.map(function(a){ 
+		a = a.substr(n);
+		var last = a.lastIndexOf(".");
+		if(last != -1)
+			return a.substr(0,last);
+		return a;
+	});
 	return array;
 }
 
@@ -652,22 +657,28 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 	inspector.addCheckbox("delta_meshes", component.delta_meshes, { name_width: 120, width:"40%", callback: function(v){ component.delta_meshes = v; }});
 	inspector.widgets_per_row = 1;
 
-	inspector.addCheckbox("Use Sliders", LS.Components.MorphDeformer.use_sliders, { name_width: 120, width:"40%", callback: function(v){ LS.Components.MorphDeformer.use_sliders = v; inspector.refresh(); }});
-
 	if( component.morph_targets.length )
 	{
 		if(LS.Components.MorphDeformer.use_sliders)
 		{
 			var names = component.morph_targets.map(function(a){return a.mesh;});
-			removeSharedInitialString(names);
+			names = removeSharedString(names);
+			inspector.widgets_per_row = 2;
 			for(var i = 0; i < component.morph_targets.length; i++)
 			{
 				var morph = component.morph_targets[i];
-				inspector.addSlider(names[i], morph.weight, { min: -1, max: 2, pretitle: AnimationModule.getKeyframeCode( component, "morphs/"+i+"/weight" ), morph_index: i, callback: function(v) { 
+				inspector.addSlider(names[i].replace(/_/g," "), morph.weight, { min: -1, max: 1, width: "calc(100% - 40px)", pretitle: AnimationModule.getKeyframeCode( component, "morphs/"+i+"/weight" ), morph_index: i, callback: function(v) { 
 					component.setMorphWeight( this.options.morph_index, v );
 					LS.GlobalScene.refresh();
 				}});
+
+				inspector.addButton(null, "0", { width: "40px", morph_index: i, callback: function() { 
+					component.setMorphWeight( this.options.morph_index, 0 );
+					inspector.refresh();
+					LS.GlobalScene.refresh();
+				}});
 			}
+			inspector.widgets_per_row = 1;
 		}
 		else
 		{
@@ -685,8 +696,8 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 					LS.GlobalScene.refresh();
 				}});
 
-				inspector.addButton(null, TRASH_ICON_CODE, { width: "15%", index: i, callback: function() { 
-					component.morph_targets.splice( this.options.index, 1);
+				inspector.addButton(null, TRASH_ICON_CODE, { width: "15%", morph_index: i, callback: function() { 
+					component.morph_targets.splice( this.options.morph_index, 1);
 					inspector.refresh();
 					LS.GlobalScene.refresh();
 				}});
@@ -695,8 +706,8 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 		inspector.widgets_per_row = 1;
 	}
 
-	inspector.widgets_per_row = 2;
-	inspector.addButton(null,"Add Morph Target", { width: "85%", callback: function() { 
+	inspector.widgets_per_row = 3;
+	inspector.addButton(null,"Add Morph Target", { width: "55%", callback: function() { 
 		component.morph_targets.push({ mesh:"", weight: 0.0 });
 		inspector.refresh();
 	}});
@@ -704,6 +715,8 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 		component.clearWeights();
 		inspector.refresh();
 	}});
+	inspector.addCheckbox("Use Sliders", LS.Components.MorphDeformer.use_sliders, { name_width: 80, width:"30%", callback: function(v){ LS.Components.MorphDeformer.use_sliders = v; inspector.refresh(); }});
+
 	inspector.widgets_per_row = 1;
 }
 

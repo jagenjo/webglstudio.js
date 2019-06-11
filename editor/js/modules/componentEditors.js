@@ -625,6 +625,24 @@ LS.FXStack.prototype.inspect = function( inspector, component )
 	}
 }
 
+function computeSharedInitialString(array)
+{
+	var first = array[0];
+	for(var i = 0; i < first.length; ++i)
+		for(var j = 1; j < array.length; ++j)
+			if( first[i] != array[j][i] )
+				return i;
+	return first.length;
+}
+
+function removeSharedInitialString(array)
+{
+	var n = computeSharedInitialString(array);
+	if(n)
+		array = array.map(function(a){ return a.substr(n); });
+	return array;
+}
+
 LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 {
 	inspector.widgets_per_row = 2;
@@ -634,27 +652,45 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 	inspector.addCheckbox("delta_meshes", component.delta_meshes, { name_width: 120, width:"40%", callback: function(v){ component.delta_meshes = v; }});
 	inspector.widgets_per_row = 1;
 
+	inspector.addCheckbox("Use Sliders", LS.Components.MorphDeformer.use_sliders, { name_width: 120, width:"40%", callback: function(v){ LS.Components.MorphDeformer.use_sliders = v; inspector.refresh(); }});
+
 	if( component.morph_targets.length )
 	{
-		inspector.widgets_per_row = 3;
-		for(var i = 0; i < component.morph_targets.length; i++)
+		if(LS.Components.MorphDeformer.use_sliders)
 		{
-			var morph = component.morph_targets[i];
-			inspector.addMesh("", morph.mesh, { pretitle: AnimationModule.getKeyframeCode( component, "morphs/"+i+"/mesh" ), name_width: 20, align: "right", width: "60%", morph_index: i, callback: function(v) { 
-				component.setMorphMesh( this.options.morph_index, v );
-				LS.GlobalScene.refresh();
-			}});
+			var names = component.morph_targets.map(function(a){return a.mesh;});
+			removeSharedInitialString(names);
+			for(var i = 0; i < component.morph_targets.length; i++)
+			{
+				var morph = component.morph_targets[i];
+				inspector.addSlider(names[i], morph.weight, { min: -1, max: 2, pretitle: AnimationModule.getKeyframeCode( component, "morphs/"+i+"/weight" ), morph_index: i, callback: function(v) { 
+					component.setMorphWeight( this.options.morph_index, v );
+					LS.GlobalScene.refresh();
+				}});
+			}
+		}
+		else
+		{
+			inspector.widgets_per_row = 3;
+			for(var i = 0; i < component.morph_targets.length; i++)
+			{
+				var morph = component.morph_targets[i];
+				inspector.addMesh("", morph.mesh, { pretitle: AnimationModule.getKeyframeCode( component, "morphs/"+i+"/mesh" ), name_width: 20, align: "right", width: "60%", morph_index: i, callback: function(v) { 
+					component.setMorphMesh( this.options.morph_index, v );
+					LS.GlobalScene.refresh();
+				}});
 
-			inspector.addNumber("", morph.weight, { pretitle: AnimationModule.getKeyframeCode( component, "morphs/"+i+"/weight" ), name_width: 20, width: "25%", step: 0.01, morph_index: i, callback: function(v) { 
-				component.setMorphWeight( this.options.morph_index, v );
-				LS.GlobalScene.refresh();
-			}});
+				inspector.addNumber("", morph.weight, { pretitle: AnimationModule.getKeyframeCode( component, "morphs/"+i+"/weight" ), name_width: 20, width: "25%", step: 0.01, morph_index: i, callback: function(v) { 
+					component.setMorphWeight( this.options.morph_index, v );
+					LS.GlobalScene.refresh();
+				}});
 
-			inspector.addButton(null, TRASH_ICON_CODE, { width: "15%", index: i, callback: function() { 
-				component.morph_targets.splice( this.options.index, 1);
-				inspector.refresh();
-				LS.GlobalScene.refresh();
-			}});
+				inspector.addButton(null, TRASH_ICON_CODE, { width: "15%", index: i, callback: function() { 
+					component.morph_targets.splice( this.options.index, 1);
+					inspector.refresh();
+					LS.GlobalScene.refresh();
+				}});
+			}
 		}
 		inspector.widgets_per_row = 1;
 	}

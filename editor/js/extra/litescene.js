@@ -2259,6 +2259,10 @@ LS.RESOURCE_TYPES[ LS.TYPES.MESH ] = true;
 LS.RESOURCE_TYPES[ LS.TYPES.ANIMATION ] = true;
 //audio and video?
 
+
+//Events
+var EVENT = LS.EVENT = {};
+
 /**
 * A Ray that contains an origin and a direction (it uses the Ray class from litegl, so to check documentation go to litegl doc
 * @class Ray
@@ -23400,6 +23404,34 @@ var COLOR_PASS = LS.COLOR_PASS = { name: "color", id: 1 };
 var SHADOW_PASS = LS.SHADOW_PASS = { name: "shadow", id: 2 };
 var PICKING_PASS = LS.PICKING_PASS = { name: "picking", id: 3 };
 
+//events
+
+EVENT.BEFORE_RENDER = "beforeRender";
+EVENT.READY_TO_RENDER = "readyToRender";
+EVENT.RENDER_SHADOWS = "renderShadows";
+EVENT.AFTER_VISIBILITY = "afterVisibility";
+EVENT.RENDER_REFLECTIONS = "renderReflections";
+EVENT.BEFORE_RENDER_MAIN_PASS = "beforeRenderMainPass";
+EVENT.ENABLE_FRAME_CONTEXT = "enableFrameContext";
+EVENT.SHOW_FRAME_CONTEXT = "showFrameContext";
+EVENT.AFTER_RENDER = "afterRender";
+EVENT.BEFORE_RENDER_FRAME = "beforeRenderFrame";
+EVENT.BEFORE_RENDER_SCENE = "beforeRenderScene";
+EVENT.COMPUTE_VISIBILITY = "computeVisibility";
+EVENT.AFTER_RENDER_SCENE = "afterRenderScene";
+EVENT.RENDER_HELPERS = "renderHelpers";
+EVENT.BEFORE_SHOW_FRAME_CONTEXT = "beforeShowFrameContext";
+EVENT.BEFORE_CAMERA_ENABLED = "beforeCameraEnabled";
+EVENT.AFTER_CAMERA_ENABLED = "afterCameraEnabled";
+EVENT.BEFORE_RENDER_INSTANCES = "beforeRenderInstances";
+EVENT.RENDER_INSTANCES = "renderInstances";
+EVENT.RENDER_SCREEN_SPACE = "renderScreenSpace";
+EVENT.AFTER_RENDER_INSTANCES = "afterRenderInstances";
+EVENT.RENDER_GUI = "renderGUI";
+EVENT.FILL_SCENE_UNIFORMS = "fillSceneUniforms";
+EVENT.AFTER_COLLECT_DATA = "afterCollectData";
+EVENT.PREPARE_MATERIALS = "prepareMaterials";
+
 var Renderer = {
 
 	default_render_settings: new LS.RenderSettings(), //overwritten by the global info or the editor one
@@ -23423,6 +23455,7 @@ var Renderer = {
 	_global_shader_blocks: [], //used to add extra shaderblocks to all objects in the scene (it gets reseted every frame)
 	_global_shader_blocks_flags: 0, 
 	_reverse_faces: false,
+	_in_player: true, //true if rendering in the player
 
 	_queues: [], //render queues in order
 
@@ -23654,8 +23687,8 @@ var Renderer = {
 		this._global_viewport.set( gl.viewport_data );
 
 		//Event: beforeRender used in actions that could affect which info is collected for the rendering
-		this.startGPUQuery("beforeRender");
-		LEvent.trigger( scene, "beforeRender", render_settings );
+		this.startGPUQuery( EVENT.BEFORE_RENDER );
+		LEvent.trigger( scene, EVENT.BEFORE_RENDER, render_settings );
 		this.endGPUQuery();
 
 		//get render instances, cameras, lights, materials and all rendering info ready (computeVisibility)
@@ -23669,30 +23702,30 @@ var Renderer = {
 		this._main_camera = cameras[0];
 
 		//Event: readyToRender when we have all the info to render
-		LEvent.trigger( scene, "readyToRender", render_settings );
+		LEvent.trigger( scene, EVENT.READY_TO_RENDER, render_settings );
 
 		//remove the lights that do not lay in front of any camera (this way we avoid creating shadowmaps)
 		//TODO
 
 		//Event: renderShadowmaps helps to generate shadowMaps that need some camera info (which could be not accessible during processVisibleData)
 		this.startGPUQuery("shadows");
-		LEvent.trigger(scene, "renderShadows", render_settings );
+		LEvent.trigger(scene, EVENT.RENDER_SHADOWS, render_settings );
 		this.endGPUQuery();
 
 		//Event: afterVisibility allows to cull objects according to the main camera
-		LEvent.trigger(scene, "afterVisibility", render_settings );
+		LEvent.trigger(scene, EVENT.AFTER_VISIBILITY, render_settings );
 
 		//Event: renderReflections in case some realtime reflections are needed, this is the moment to render them inside textures
 		this.startGPUQuery("reflections");
-		LEvent.trigger(scene, "renderReflections", render_settings );
+		LEvent.trigger(scene, EVENT.RENDER_REFLECTIONS, render_settings );
 		this.endGPUQuery();
 
 		//Event: beforeRenderMainPass in case a last step is missing
-		LEvent.trigger(scene, "beforeRenderMainPass", render_settings );
+		LEvent.trigger(scene, EVENT.BEFORE_RENDER_MAIN_PASS, render_settings );
 
 		//enable global FX context
 		if(render_settings.render_fx)
-			LEvent.trigger( scene, "enableFrameContext", render_settings );
+			LEvent.trigger( scene, EVENT.ENABLE_FRAME_CONTEXT, render_settings );
 
 		//render all cameras
 		this.renderFrameCameras( cameras, render_settings );
@@ -23705,7 +23738,7 @@ var Renderer = {
 		if(render_settings.render_fx)
 		{
 			this.startGPUQuery("postpo");
-			LEvent.trigger( scene, "showFrameContext", render_settings );
+			LEvent.trigger( scene, EVENT.SHOW_FRAME_CONTEXT, render_settings );
 			this.endGPUQuery();
 		}
 
@@ -23720,7 +23753,7 @@ var Renderer = {
 			this._rendercalls += LS.Draw._rendercalls; LS.Draw._rendercalls = 0; //stats are not centralized
 
 		//Event: afterRender to give closure to some actions
-		LEvent.trigger( scene, "afterRender", render_settings ); 
+		LEvent.trigger( scene, EVENT.AFTER_RENDER, render_settings ); 
 		this._is_rendering_frame = false;
 
 		//coroutines
@@ -23746,9 +23779,9 @@ var Renderer = {
 		{
 			var current_camera = cameras[i];
 
-			LEvent.trigger(scene, "beforeRenderFrame", render_settings );
-			LEvent.trigger(current_camera, "beforeRenderFrame", render_settings );
-			LEvent.trigger(current_camera, "enableFrameContext", render_settings );
+			LEvent.trigger(scene, EVENT.BEFORE_RENDER_FRAME, render_settings );
+			LEvent.trigger(current_camera, EVENT.BEFORE_RENDER_FRAME, render_settings );
+			LEvent.trigger(current_camera, EVENT.ENABLE_FRAME_CONTEXT, render_settings );
 
 			//main render
 			this.startGPUQuery("main");
@@ -23757,9 +23790,9 @@ var Renderer = {
 
 			//show buffer on the screen
 			this.startGPUQuery("postpo");
-			LEvent.trigger(current_camera, "showFrameContext", render_settings );
-			LEvent.trigger(current_camera, "afterRenderFrame", render_settings );
-			LEvent.trigger(scene, "afterRenderFrame", render_settings );
+			LEvent.trigger(current_camera, EVENT.SHOW_FRAME_CONTEXT, render_settings );
+			LEvent.trigger(current_camera, EVENT.AFTER_RENDER_FRAME, render_settings );
+			LEvent.trigger(scene, EVENT.AFTER_RENDER_FRAME, render_settings );
 			this.endGPUQuery();
 		}
 	},
@@ -23794,24 +23827,24 @@ var Renderer = {
 		this.clearBuffer( camera, render_settings );
 
 		//send before events
-		LEvent.trigger(scene, "beforeRenderScene", camera );
-		LEvent.trigger(this, "beforeRenderScene", camera );
+		LEvent.trigger(scene, EVENT.BEFORE_RENDER_SCENE, camera );
+		LEvent.trigger(this, EVENT.BEFORE_RENDER_SCENE, camera );
 
 		//in case the user wants to filter instances
-		LEvent.trigger(this, "computeVisibility", this._visible_instances );
+		LEvent.trigger(this, EVENT.COMPUTE_VISIBILITY, this._visible_instances );
 
 		//here we render all the instances
 		this.renderInstances( render_settings, this._visible_instances );
 
 		//send after events
-		LEvent.trigger( scene, "afterRenderScene", camera );
-		LEvent.trigger( this, "afterRenderScene", camera );
+		LEvent.trigger( scene, EVENT.AFTER_RENDER_SCENE, camera );
+		LEvent.trigger( this, EVENT.AFTER_RENDER_SCENE, camera );
 		if(this.onRenderScene)
 			this.onRenderScene( camera, render_settings, scene);
 
 		//render helpers (guizmos)
 		if(render_settings.render_helpers)
-			LEvent.trigger(this, "renderHelpers", camera );
+			LEvent.trigger(this, EVENT.RENDER_HELPERS, camera );
 	},
 
 	//shows a RenderFrameContext to the viewport (warning, some components may do it bypassing this function)
@@ -23819,7 +23852,7 @@ var Renderer = {
 	{
 		//if( !this._current_render_settings.onPlayer)
 		//	return;
-		LEvent.trigger(this, "beforeShowFrameContext", render_frame_context );
+		LEvent.trigger(this, EVENT.BEFORE_SHOW_FRAME_CONTEXT, render_frame_context );
 		render_frame_context.show();
 	},
 
@@ -23834,8 +23867,8 @@ var Renderer = {
 	{
 		scene = scene || this._current_scene || LS.GlobalScene;
 
-		LEvent.trigger( camera, "beforeEnabled", render_settings );
-		LEvent.trigger( scene, "beforeCameraEnabled", camera );
+		LEvent.trigger( camera, EVENT.BEFORE_CAMERA_ENABLED, render_settings );
+		LEvent.trigger( scene, EVENT.BEFORE_CAMERA_ENABLED, camera );
 
 		//assign viewport manually (shouldnt use camera.getLocalViewport to unify?)
 		var startx = this._full_viewport[0];
@@ -23896,8 +23929,8 @@ var Renderer = {
 			LS.Draw.setCamera( camera );
 		}
 
-		LEvent.trigger( camera, "afterEnabled", render_settings );
-		LEvent.trigger( scene, "afterCameraEnabled", camera ); //used to change stuff according to the current camera (reflection textures)
+		LEvent.trigger( camera, EVENT.AFTER_CAMERA_ENABLED, render_settings );
+		LEvent.trigger( scene, EVENT.AFTER_CAMERA_ENABLED, camera ); //used to change stuff according to the current camera (reflection textures)
 	},
 
 	/**
@@ -24027,14 +24060,14 @@ var Renderer = {
 		var layers_filter = camera.layers & render_settings.layers;
 		var instancing_supported = gl.webgl_version > 1 || gl.extensions["ANGLE_instanced_arrays"];
 
-		LEvent.trigger( scene, "beforeRenderInstances", render_settings );
-		//scene.triggerInNodes( "beforeRenderInstances", render_settings );
+		LEvent.trigger( scene, EVENT.BEFORE_RENDER_INSTANCES, render_settings );
+		//scene.triggerInNodes( EVENT.BEFORE_RENDER_INSTANCES, render_settings );
 
 		//reset state of everything!
 		this.resetGLState( render_settings );
 
-		LEvent.trigger( scene, "renderInstances", render_settings );
-		LEvent.trigger( this, "renderInstances", render_settings );
+		LEvent.trigger( scene, EVENT.RENDER_INSTANCES, render_settings );
+		LEvent.trigger( this, EVENT.RENDER_INSTANCES, render_settings );
 
 		//reset again!
 		this.resetGLState( render_settings );
@@ -24154,13 +24187,13 @@ var Renderer = {
 
 		this.resetGLState( render_settings );
 
-		LEvent.trigger( scene, "renderScreenSpace", render_settings);
+		LEvent.trigger( scene, EVENT.RENDER_SCREEN_SPACE, render_settings);
 
 		//restore state
 		this.resetGLState( render_settings );
 
-		LEvent.trigger( scene, "afterRenderInstances", render_settings );
-		LEvent.trigger( this, "afterRenderInstances", render_settings );
+		LEvent.trigger( scene, EVENT.AFTER_RENDER_INSTANCES, render_settings );
+		LEvent.trigger( this, EVENT.AFTER_RENDER_INSTANCES, render_settings );
 
 		//and finally again
 		this.resetGLState( render_settings );
@@ -24176,11 +24209,11 @@ var Renderer = {
 			gl.start2D();
 		if( render_settings.render_gui )
 		{
-			if( LEvent.hasBind( this._current_scene, "renderGUI" ) ) //to avoid forcing a redraw if no gui is set
+			if( LEvent.hasBind( this._current_scene, EVENT.RENDER_GUI ) ) //to avoid forcing a redraw if no gui is set
 			{
 				if(LS.GUI)
 					LS.GUI.ResetImmediateGUI(); //mostly to change the cursor (warning, true to avoid forcing redraw)
-				LEvent.trigger( this._current_scene, "renderGUI", gl );
+				LEvent.trigger( this._current_scene, EVENT.RENDER_GUI, gl );
 			}
 		}
 		if( this.on_render_gui ) //used by the editor (here to ignore render_gui flag)
@@ -24236,7 +24269,7 @@ var Renderer = {
 	{
 		scene = scene || this._current_scene;
 		render_settings = render_settings || this.default_render_settings;
-		LEvent.trigger( scene, "renderShadows", render_settings );
+		LEvent.trigger( scene, EVENT.RENDER_SHADOWS, render_settings );
 		for(var i = 0; i < this._visible_lights.length; ++i)
 		{
 			var light = this._visible_lights[i];
@@ -24399,7 +24432,7 @@ var Renderer = {
 				this._global_textures.environment = texture;
 		}
 
-		LEvent.trigger( scene, "fillSceneUniforms", scene._uniforms );
+		LEvent.trigger( scene, EVENT.FILL_SCENE_UNIFORMS, scene._uniforms );
 	},	
 
 	/**
@@ -24427,7 +24460,7 @@ var Renderer = {
 		{
 			if( this._frame % this._collect_frequency == 0)
 				scene.collectData( cameras );
-			LEvent.trigger( scene, "afterCollectData", scene );
+			LEvent.trigger( scene, EVENT.AFTER_COLLECT_DATA, scene );
 		}
 
 		//set cameras: use the parameters ones or the ones found in the scene
@@ -24562,7 +24595,7 @@ var Renderer = {
 				material.prepare( scene );
 		}
 
-		LEvent.trigger( scene, "prepareMaterials" );
+		LEvent.trigger( scene, EVENT.PREPARE_MATERIALS );
 
 		//pack all macros, uniforms, and samplers relative to this instance in single containers
 		for(var i = 0, l = instances.length; i < l; ++i)
@@ -24592,7 +24625,7 @@ var Renderer = {
 		for(var i = 0, l = this._visible_lights.length; i < l; ++i)
 			this._visible_lights[i].prepare( render_settings );
 
-		LEvent.trigger( scene, "afterCollectData", scene );
+		LEvent.trigger( scene, EVENT.AFTER_COLLECT_DATA, scene );
 	},
 
 	/**
@@ -26023,7 +26056,7 @@ var Draw = {
 		return this.renderMesh(mesh, gl.POINTS, shader, undefined, 0, vertices.length / 3 );
 	},
 
-	createRectangleMesh: function(width, height, in_z, use_global)
+	createRectangleMesh: function( width, height, in_z, use_global )
 	{
 		var vertices = new Float32Array(4 * 3);
 		if(in_z)
@@ -26044,10 +26077,10 @@ var Draw = {
 	* @param {number} height
 	* @param {boolean} in_z [optional] if the plane is aligned with the z plane
 	*/
-	renderRectangle: function(width, height, in_z)
+	renderRectangle: function(width, height, in_z, fill)
 	{
-		var mesh = this.createRectangleMesh(width, height, in_z, true);
-		return this.renderMesh( mesh, gl.LINE_LOOP, undefined, undefined, 0, this._global_mesh_last_size );
+		var mesh = this.createRectangleMesh( width, height, in_z, true );
+		return this.renderMesh( mesh, fill ? gl.TRIANGLE_FAN : gl.LINE_LOOP, undefined, undefined, 0, this._global_mesh_last_size );
 	},
 
 	createCircleMesh: function(radius, segments, in_z, use_global)
@@ -26244,7 +26277,7 @@ var Draw = {
 	*/
 	renderSolidCube: function(size)
 	{
-		return this.renderSolidCube(size,size,size);
+		return this.renderSolidBox(size,size,size);
 	},
 
 	/**
@@ -27332,6 +27365,8 @@ var Picking = {
 	_picking_next_color_id: 0,
 	_picking_render_settings: new RenderSettings(),
 
+	_use_scissor_test: true,
+
 	/**
 	* Renders the pixel and retrieves the color to detect which object it was, slow but accurate
 	* @method getNodeAtCanvasPosition
@@ -27407,6 +27442,8 @@ var Picking = {
 		var byte_pick_color = new Uint8Array( pick_color.buffer ); //read is as bytes
 		//byte_pick_color[3] = 255; //Set the alpha to 1
 
+		if(!this._picking_nodes) //not necessary but used for debug
+			this._picking_nodes = {};
 		this._picking_nodes[ this._picking_next_color_id ] = info;
 		return vec4.fromValues( byte_pick_color[0] / 255, byte_pick_color[1] / 255, byte_pick_color[2] / 255, 1 );
 	},
@@ -27422,7 +27459,7 @@ var Picking = {
 			//LS.ResourcesManager.textures[":picking"] = this._pickingMap; //debug the texture
 		}
 
-		var small_area = true;
+		var small_area = this._use_scissor_test;
 		LS.Renderer._current_target = this._pickingMap;
 
 		this._pickingFBO.bind();
@@ -27488,6 +27525,40 @@ var Picking = {
 
 		LS.Renderer.renderInstances( picking_render_settings, instances );
 
+		//Nodes
+		/* done in EditorView
+		var ray = null;
+		if(mouse_pos)
+		{
+			ray = camera.getRayInPixel( pos[0], pos[1] );
+			ray.end = vec3.add( vec3.create(), ray.origin, vec3.scale(vec3.create(), ray.direction, 10000 ) );
+		}
+
+		for(var i = 0, l = scene._nodes.length; i < l; ++i)
+		{
+			var node = scene._nodes[i];
+			if(!node.visible)
+				continue;
+
+			//nodes with special pickings?
+			if(node.renderPicking)
+				node.renderPicking(ray);
+
+			if( node.transform )
+			{
+				var pos = vec3.create();
+				mat4.multiplyVec3(pos, node.transform.getGlobalMatrixRef(), pos); //create a new one to store them
+			}
+
+			for(var j in node._components)
+			{
+				var component = node._components[j];
+				if(component.renderPicking)
+					component.renderPicking(ray);
+			}
+		}
+		*/
+
 		LEvent.trigger( scene, "renderPicking", pos );
 		LEvent.trigger( LS.Renderer, "renderPicking", pos );
 
@@ -27522,17 +27593,17 @@ var Picking = {
 			gl.enable( gl.DEPTH_TEST );
 			this._picking_points.length = 0;
 		}
-	}
+	},
 
-	/*
 	visualize: function(v)
 	{
 		//to visualize picking buffer
-		if(v)
-			LS.Renderer.registerRenderPass( "color", { id: 1, render_instance: LS.Renderer.renderPickingPassInstance } );
+		LS.Renderer.setRenderPass( v ? LS.PICKING_PASS : LS.COLOR_PASS );
 	}
-	*/
 };
+
+//Extra info
+// renderPicking is not called from LiteScene, only from WebGLStudio EditorView
 
 LS.Picking = Picking;
 
@@ -36032,20 +36103,28 @@ LS.registerComponent( SceneInclude );
 function Helper( o )
 {
 	this.enabled = true;
-	this.in_viewport = true;
+	this.in_editor = true;
 	this.in_player = false;
-	this.type = "circle";
+	this.type = Helper.CIRCLE;
 	this.color = [1,1,1,1];
 	this.size = 1;
+	this.fill = false;
 	this.always_on_top = true;
 	this.vertical = true;
+
+	this._is_visible = false;
 
 	if(o)
 		this.configure(o);
 }
 
+Helper["@color"] = { type: "vec4", step:0.01 };
+
+Helper.CIRCLE = 1;
+Helper.SQUARE = 2;
+
 Helper["@subdivisions"] = { type: "number", step:1, min:1, max:100, precision:0 };
-Helper["@type"] = { type: "enum", values: { circle: 0, square: 1 } };
+Helper["@type"] = { type: "enum", values: { circle: Helper.CIRCLE, square: Helper.SQUARE } };
 
 Helper.prototype.onAddedToScene = function(scene)
 {
@@ -36057,40 +36136,61 @@ Helper.prototype.onRemovedFromScene = function(scene)
 	LEvent.unbind( LS.Renderer, "renderHelpers", this.onRender, this );
 }
 
-Helper.prototype.onRender = function()
+Helper.prototype.onRender = function( event, camera )
 {
+	if( !this.enabled || !((LS.Renderer._in_player && this.in_player) || (!LS.Renderer._in_player && this.in_editor)) )
+	{
+		this._is_visible = false;
+		return;
+	}
+
+	this._is_visible = true;
+
 	var node = this._root;
-	if(!node || !node.transform)
+	if(!node || !node.visible || !node.transform)
 		return;
 
+	var m = node.transform.getGlobalMatrixRef();
+	gl.enable( gl.BLEND );
+	gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
+	this.renderHelper( m, this.color, this.fill );
+	gl.disable( gl.BLEND );
+}
+
+Helper.prototype.renderHelper = function( model, color, fill )
+{
 	if(this.always_on_top)
 		gl.disable( gl.DEPTH_TEST );
-	LS.Draw.push();
-	var m = node.transform.getGlobalMatrixRef();
-	LS.Draw.setMatrix( m );
-	LS.Draw.setColor( this.color );
-	LS.Draw.renderCircle( this.size, 32, !this.vertical, false );
-	LS.Draw.pop();
 
+	gl.disable( gl.CULL_FACE );
+	LS.Draw.push();
+	LS.Draw.setMatrix( model );
+	LS.Draw.setColor( color );
+	if(this.type == Helper.CIRCLE )
+		LS.Draw.renderCircle( this.size, 32, !this.vertical, fill );
+	else if(this.type == Helper.SQUARE )
+	{
+		if(fill)
+			LS.Draw.renderRectangle( this.size, this.size, !this.vertical, true );
+		else
+			LS.Draw.renderRectangle( this.size, this.size, !this.vertical );
+			//LS.Draw.renderSolidBox( this.size, this.vertical ? this.size : 0, this.vertical ? 0 : this.size );
+	}
+	LS.Draw.pop();
+	gl.enable( gl.CULL_FACE );
 	gl.enable( gl.DEPTH_TEST );
 }
 
-
-/*
 Helper.prototype.renderPicking = function( ray )
 {
-	var model = this._root.transform.getGlobalMatrixRef(true);
+	if(!this._is_visible)
+		return;
 
-	var path = this.path;
-	for(var i = 0; i < path.points.length; ++i)
-	{
-		var pos = path.points[i];
-		if( this._root.transform )
-			pos = mat4.multiplyVec3( vec3.create(), model, pos );
-		LS.Picking.addPickingPoint( pos, 9, { instance: this, info: i } );
-	}
+	var model = this._root.transform.getGlobalMatrixRef(true);
+	var color = LS.Picking.getNextPickingColor( { instance: this } );
+	this.renderHelper( model, color, true );
 }
-*/
+
 
 LS.registerComponent( Helper );
 
@@ -37165,6 +37265,50 @@ Target.prototype.onBeforeRender = function(e)
 		this.updateOrientation();
 }
 
+Target.temp_mat3 = mat3.create();
+
+/*
+Target.prototype.updateOrientation = function()
+{
+	if(!this._root || !this._root.transform ) 
+		return;
+	var scene = this._root.scene;
+	var transform = this._root.transform;
+
+	var target_position = null;
+
+	if( this.node_id )
+	{
+		var node = scene.getNode( this.node_id );
+		if(!node || node == this._root || !node.transform ) //avoid same node
+			return;
+		target_position = node.transform.getGlobalPosition( this._target_position );
+	}
+	else if( this.face_camera )
+	{
+		var camera = LS.Renderer._main_camera ||  LS.Renderer._current_camera;
+		if(!camera)
+			return;
+		target_position = camera.getEye();
+	}
+	else
+		return;
+
+	if( this.cylindrical )
+	{
+		target_position[1] = position[1];
+	}
+
+	//TODO using quaternions and no matrices
+	
+
+	transform._on_change();
+}
+*/
+
+//*
+Target.temp_mat = mat4.create();
+
 Target.prototype.updateOrientation = function()
 {
 	if(!this._root || !this._root.transform ) 
@@ -37213,7 +37357,10 @@ Target.prototype.updateOrientation = function()
 		//up.set([0,1,0]);
 	}
 
-	transform.lookAt( position, target_position, up, true );
+	mat4.lookAt( Target.temp_mat, position, target_position, up );
+	quat.fromMat4( transform._rotation, Target.temp_mat );
+
+	//transform.lookAt( position, target_position, up, true );
 
 	switch( this.front )
 	{
@@ -37228,6 +37375,7 @@ Target.prototype.updateOrientation = function()
 
 	transform._on_change();
 }
+//*/
 
 LS.registerComponent( Target );
 ///@FILE:../src/components/fogFX.js
@@ -49615,6 +49763,7 @@ Player.prototype._ondraw = function( force )
 
 		if(scene._must_redraw || this.force_redraw )
 		{
+			LS.Renderer._in_player = true;
 			scene.render( scene.info && scene.info.render_settings ? scene.info.render_settings : this.render_settings );
 		}
 

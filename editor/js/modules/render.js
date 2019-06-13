@@ -95,6 +95,7 @@ var RenderModule = {
 		LS.Input.init();
 		LS.catch_errors = false; //helps coding
 		LS.GUI._allow_change_cursor = false;
+		LS.Renderer._in_player = false;
 
 		this.render_settings.render_all_cameras = false;
 		this.render_settings.in_player = false;

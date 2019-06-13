@@ -66,10 +66,12 @@ var PlayModule = {
 			var canvas = RenderModule.appendViewportTo( PlayModule.tab.content );
 			RenderModule.render_settings.in_player = true;
 			PlayModule.inplayer = true;
+			LS.Renderer._in_player = true;
 			LS.GUI._allow_change_cursor = true;
 		},
 		callback_leave: function() {
 			PlayModule.inplayer = false;
+			LS.Renderer._in_player = false;
 			LS.GUI._allow_change_cursor = false;
 			RenderModule.appendViewportTo(null);
 		}});

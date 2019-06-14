@@ -354,6 +354,24 @@ var PackTools = {
 	}
 };
 
+LS.Prefab.prototype.removeUnused = function()
+{
+	console.log(this);
+	var final_resources = [];
+	var scene_resources = LS.GlobalScene.getResources();
+	for(var i = 0; i < this.resource_names.length; ++i)
+	{
+		var name = this.resource_names[i];
+		if(scene_resources[name])
+			final_resources.push(name);
+		else
+			console.log("Resource not used, removed: " + name );
+	}
+	this.resource_names = final_resources;
+	LS.RM.resourceModified( this );
+	this.recomputeData(); //done after because resourceModified cleans the _original_data
+}
+
 LS.Pack.prototype.inspect = LS.Prefab.prototype.inspect = function( widgets, skip_default_widgets )
 {
 	var pack = this;
@@ -393,6 +411,7 @@ LS.Pack.prototype.inspect = LS.Prefab.prototype.inspect = function( widgets, ski
 	}
 	widgets.widgets_per_row = 1;
 	widgets.endContainer();
+	widgets.addInfo("Size in bytes", String(this.getSizeInBytes()) );
 
 	widgets.addButton(null,"Check names",{ callback: function(v){
 		var r = pack.checkResourceNames();
@@ -412,6 +431,12 @@ LS.Pack.prototype.inspect = LS.Prefab.prototype.inspect = function( widgets, ski
 			else
 				resource_names.push(i);
 		}
+		widgets.refresh();
+	}});
+
+	if(pack.constructor === LS.Prefab)
+	widgets.addButton(null,"Remove unused",{ callback: function(v){
+		var r = pack.removeUnused(); //defined in this file
 		widgets.refresh();
 	}});
 

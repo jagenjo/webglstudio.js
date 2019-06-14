@@ -14135,6 +14135,8 @@ Skeleton.prototype.computeFinalBoneMatricesAsArray = function( bone_matrices, me
 			bone_matrices[i] = mat4.create();
 		var m = bone_matrices[i];
 		mat4.multiply( m, this.getBoneMatrix( bone_info[0], false ), bone_info[1] ); //use globals
+		if(mesh.bind_matrix)
+			mat4.multiply( m, m, mesh.bind_matrix );
 		if(global_model)
 			mat4.multiply( m, global_model, m );
 	}
@@ -14854,6 +14856,13 @@ Pack.prototype.containsResources = function()
 	return this.resource_names && this.resource_names.length > 0 ? true : false;
 }
 
+Pack.prototype.getSizeInBytes = function()
+{
+	if(this._original_data)
+		return this._original_data.byteLength;
+	return 0;
+}
+
 LS.Pack = Pack;
 LS.registerResourceClass( Pack );
 
@@ -15222,11 +15231,19 @@ Prefab.prototype.getBaseData = function()
 	return { "@json": this.prefab_json, "@version": LS.Prefab.version };
 }
 
+Prefab.prototype.recomputeData = function()
+{
+	var data = this.getDataToStore();
+	if(data)
+		this._original_data = data.buffer;
+}
+
 //inheritet methods from Pack
 Prefab.prototype.containsResources = Pack.prototype.containsResources;
 Prefab.prototype.onResourceRenamed = Pack.prototype.onResourceRenamed;
 Prefab.prototype.checkResourceNames = Pack.prototype.checkResourceNames;
 Prefab.prototype.setResources = Pack.prototype.setResources;
+Prefab.prototype.getSizeInBytes = Pack.prototype.getSizeInBytes;
 
 LS.Prefab = Prefab;
 LS.registerResourceClass( Prefab );
@@ -16740,6 +16757,18 @@ if(typeof(LiteGraph) != "undefined")
 		}
 		ctx.drawImage( this._canvas, 0, 0, this.size[0], this.size[1] );
 		ctx.restore();
+	}
+
+	LGraphFrame.prototype.onInspect = function( inspector )
+	{
+		var that = this;
+		var render_context = this.graph.component.frame;
+		if(this.graph.component)
+		{
+			inspector.showObjectFields( render_context );
+			inspector.addSeparator();
+			inspector.addCheckbox("Antialiasing", this.graph.component.use_antialiasing, function(v){ that.graph.component.use_antialiasing = v; });
+		}
 	}
 
 	LiteGraph.registerNodeType("scene/frame", LGraphFrame );
@@ -37267,45 +37296,6 @@ Target.prototype.onBeforeRender = function(e)
 
 Target.temp_mat3 = mat3.create();
 
-/*
-Target.prototype.updateOrientation = function()
-{
-	if(!this._root || !this._root.transform ) 
-		return;
-	var scene = this._root.scene;
-	var transform = this._root.transform;
-
-	var target_position = null;
-
-	if( this.node_id )
-	{
-		var node = scene.getNode( this.node_id );
-		if(!node || node == this._root || !node.transform ) //avoid same node
-			return;
-		target_position = node.transform.getGlobalPosition( this._target_position );
-	}
-	else if( this.face_camera )
-	{
-		var camera = LS.Renderer._main_camera ||  LS.Renderer._current_camera;
-		if(!camera)
-			return;
-		target_position = camera.getEye();
-	}
-	else
-		return;
-
-	if( this.cylindrical )
-	{
-		target_position[1] = position[1];
-	}
-
-	//TODO using quaternions and no matrices
-	
-
-	transform._on_change();
-}
-*/
-
 //*
 Target.temp_mat = mat4.create();
 
@@ -38426,6 +38416,7 @@ function FXGraphComponent(o)
 
 	this._graph = new LGraph();
 	this._graph.getScene = function() { return this._scene; }
+	this._graph.component = this;
 
 	if(o)
 	{

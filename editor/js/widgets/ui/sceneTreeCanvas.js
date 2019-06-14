@@ -60,8 +60,13 @@ function SceneTreeWidget( options )
 	this.canvas.addEventListener("wheel", this._mouse_wheel_callback, false );
 	this.canvas.addEventListener("contextmenu", SceneTreeWidget._doNothing );
 
+	this._drop_callback = this.processItemDrop.bind(this);
+	this.canvas.addEventListener("drop",this._drop_callback,true);
+
+
 	this.visible_nodes = [];
 
+	//bind events to scene
 	this.root.addEventListener("DOMNodeInsertedIntoDocument", function(){ 
 		that.bindEvents( LS.GlobalScene );
 		LEvent.bind( CORE, "global_scene_selected", that.onGlobalSceneSelected, that );
@@ -294,6 +299,7 @@ SceneTreeWidget.prototype.onDraw = function()
 	}
 }
 
+//returns array [ node, index, depth_level, last_child_lines, parent_index ]
 SceneTreeWidget.prototype.getItemAtPos = function(y)
 {
 	var margin_y = 20;
@@ -486,8 +492,8 @@ SceneTreeWidget.prototype.processDrag = function(e)
 		return;
 
 	var that = this;
-	this._drop_callback = this.processDrop.bind(this);
-	document.addEventListener("drop",this._drop_callback,true);
+	this._drop_document_callback = this.processDrop.bind(this);
+	document.addEventListener("drop",this._drop_document_callback,true);
 
 	var img = document.createElement("img");
 	img.src = "imgs/mini-icon-node.png";
@@ -507,11 +513,32 @@ SceneTreeWidget.prototype.processDrag = function(e)
 		e.dataTransfer.setData( i, drag_data[i] );
 }
 
-//drop from outside to the canvas
-SceneTreeWidget.prototype.processDrop = function(e){
+//drop outside the canvas, set dragging to null
+SceneTreeWidget.prototype.processDocumentDrop = function(e){
 	this.dragging_node = null;
 	this.onDraw();
-	document.removeEventListener("drop",this._drop_callback);
+	document.removeEventListener("drop",this._drop_document_callback);
+}
+
+//drop inside the canvas
+SceneTreeWidget.prototype.processItemDrop = function(event){
+
+	var b = this.canvas.getBoundingClientRect();
+	var x = event.pageX - b.left;
+	var y = event.pageY - b.top;
+
+
+	var info = this.getItemAtPos(y);
+	if(!info || !info[0])
+		return;
+	var node = info[0];
+	var r = EditorModule.onDropOnNode( node, event );
+	if(r === true)
+	{
+		event.stopPropagation();
+		event.stopImmediatePropagation();
+		event.preventDefault();
+	}
 }
 
 SceneTreeWidget.prototype.processMouseWheel = function(e)

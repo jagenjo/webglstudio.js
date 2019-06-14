@@ -911,6 +911,7 @@ function exportTakeInSKANIM( take, sampling, duration ) {
 	lines = lines.concat(out);
 	lines.push( "@" + bones_indices.length + "," + bones_indices.join(",") );
 
+	//for every sample
 	var offset = duration / (total_samples-1);
 	for(var i = 0; i < total_samples; ++i)
 	{
@@ -921,7 +922,7 @@ function exportTakeInSKANIM( take, sampling, duration ) {
 		{
 			var b = bones[j];
 			if( b && b.transform ) //weird case
-				data.push( typedArrayToArray( b.transform.getMatrix()) );
+				data.push( typedArrayToArray( b == root ? b.transform.getGlobalMatrix() : b.transform.getMatrix() ) );
 			else
 				data.push( typedArrayToArray( mat4.create() ) );
 		}

@@ -174,6 +174,7 @@ var UndoModule = {
 			case "component_created": this.saveComponentCreatedUndo( data ); break;
 			case "component_changed": this.saveComponentChangeUndo( data ); break;
 			case "component_deleted": this.saveComponentDeletedUndo( data ); break;
+			case "component_moved": this.saveComponentMoveUndo( data ); break;
 			case "node_material_assigned": this.saveNodeMaterialChangeUndo( data ); break;
 			case "node_material_changed": this.saveNodeMaterialChangeUndo( data ); break;
 			case "selection_removed": this.saveSelectionRemovedUndo( data ); break;
@@ -518,6 +519,48 @@ var UndoModule = {
 				node.removeComponent( compo );
 				LEvent.trigger( node, "changed" );
 				SelectionModule.setSelection( node );
+			}
+		});
+	},
+
+	saveComponentMoveUndo: function( component )
+	{
+		if(!component._root)
+			return;
+
+		var node = component._root;
+
+		this.addUndoStep({ 
+			title: "Component Moved: " + LS.getObjectClassName(component),
+			data: { node_uid: node._uid, compo_uid: component.uid, index: node.getIndexOfComponent( component ) }, //stringify to save some space
+			callback_undo: function(d) {
+				var component = LS.GlobalScene.findComponentByUId( d.compo_uid );
+				if(!component)
+					return console.warn( "Component not found for UNDO" );
+				d.new_node_uid = component._root ? component._root.uid : null; //save new node
+				var node = LS.GlobalScene.getNode( d.node_uid );
+				if(!node)
+					return;
+				if( node == component._root)
+					return; //same parent
+				component._root.removeComponent( component );
+				node.addComponent( component, d.index );
+				LEvent.trigger( node, "changed" );
+				SelectionModule.setSelection( component );
+			},
+			callback_redo: function(d) {
+				if(!d.new_node_uid)
+					return;
+				var node = LS.GlobalScene.getNode( d.new_node_uid );
+				if(!node)
+					return;
+				var component = node.getComponentByUId( d.compo_uid );
+				if(!component)
+					return;
+				component._root.removeComponent( component );
+				node.addComponent( component );
+				LEvent.trigger( node, "changed" );
+				SelectionModule.setSelection( component );
 			}
 		});
 	},

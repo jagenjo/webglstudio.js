@@ -17460,6 +17460,150 @@ if (typeof exports != "undefined") {
 
         LiteGraph.registerNodeType("texture/average", LGraphTextureAverage);
 
+
+
+        // Computes operation between pixels (max, min)  *****************************************
+        function LGraphTextureClusteredOperation() {
+            this.addInput("Texture", "Texture");
+            this.addOutput("tex", "Texture");
+            this.addOutput("avg", "vec4");
+            this.properties = {
+				mode: "max",
+                use_previous_frame: true //to avoid stalls 
+            };
+
+            this._uniforms = {
+                u_texture: 0,
+                u_mipmap_offset: 0
+            };
+            this._luminance = new Float32Array(4);
+        }
+
+        LGraphTextureClusteredOperation.widgets_info = {
+            mode: { widget: "combo", values: ["min","max","avg"] }
+        };
+
+        LGraphTextureClusteredOperation.title = "ClusteredOperation";
+        LGraphTextureClusteredOperation.desc = "Compute complete operation between pixel pairs.";
+
+        LGraphTextureClusteredOperation.prototype.onExecute = function() {
+            if (!this.properties.use_previous_frame) {
+                this.updateAverage();
+            }
+
+            this.setOutputData(0, this._temp_texture);
+            this.setOutputData(1, this._luminance);
+        };
+
+        //executed before rendering the frame
+        LGraphTextureClusteredOperation.prototype.onPreRenderExecute = function() {
+            this.updateAverage();
+        };
+
+        LGraphTextureClusteredOperation.prototype.updateAverage = function() {
+            var tex = this.getInputData(0);
+            if (!tex) {
+                return;
+            }
+
+            if ( !this.isOutputConnected(0) && !this.isOutputConnected(1) ) {
+                return;
+            } //saves work
+
+            if (!LGraphTextureClusteredOperation._shader) {
+                LGraphTextureClusteredOperation._shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphTextureClusteredOperation.pixel_shader );
+                //creates 256 random numbers and stores them in two mat4
+                var samples = new Float32Array(16);
+                for (var i = 0; i < samples.length; ++i) {
+                    samples[i] = Math.random(); //poorly distributed samples
+                }
+				//upload only once
+                LGraphTextureClusteredOperation._shader.uniforms({
+                    u_samples_a: samples.subarray(0, 16),
+                    u_samples_b: samples.subarray(16, 32)
+                });
+            }
+
+            var temp = this._temp_texture;
+            var type = gl.UNSIGNED_BYTE;
+            if (tex.type != type) {
+                //force floats, half floats cannot be read with gl.readPixels
+                type = gl.FLOAT;
+            }
+
+            if (!temp || temp.type != type) {
+                this._temp_texture = new GL.Texture(1, 1, {
+                    type: type,
+                    format: gl.RGBA,
+                    filter: gl.NEAREST
+                });
+            }
+
+			if( !this._temp_pot2_texture || this._temp_pot2_texture.type != type )
+				this._temp_pot2_texture = new GL.Texture(512, 512, {
+					type: type,
+					format: gl.RGBA,
+					minFilter: gl.LINEAR_MIPMAP_LINEAR,
+					magFilter: gl.LINEAR
+				});
+
+			tex.copyTo( this._temp_pot2_texture );
+			tex = this._temp_pot2_texture;
+			tex.bind(0);
+			gl.generateMipmap(GL.TEXTURE_2D);
+
+            var shader = LGraphTextureClusteredOperation._shader;
+            var uniforms = this._uniforms;
+            uniforms.u_mipmap_offset = this.properties.mipmap_offset;
+            gl.disable(gl.DEPTH_TEST);
+            gl.disable(gl.BLEND);
+            this._temp_texture.drawTo(function() {
+                tex.toViewport(shader, uniforms);
+            });
+
+            if (this.isOutputConnected(1) || this.isOutputConnected(2)) {
+                var pixel = this._temp_texture.getPixels();
+                if (pixel) {
+                    var v = this._luminance;
+                    var type = this._temp_texture.type;
+                    v.set(pixel);
+                    if (type == gl.UNSIGNED_BYTE) {
+                        vec4.scale(v, v, 1 / 255);
+                    } else if (
+                        type == GL.HALF_FLOAT ||
+                        type == GL.HALF_FLOAT_OES
+                    ) {
+                        //no half floats possible, hard to read back unless copyed to a FLOAT texture, so temp_texture is always forced to FLOAT
+                    }
+                }
+            }
+        };
+
+        LGraphTextureClusteredOperation.pixel_shader =
+            "precision highp float;\n\
+			precision highp float;\n\
+			uniform mat4 u_samples_a;\n\
+			uniform mat4 u_samples_b;\n\
+			uniform sampler2D u_texture;\n\
+			uniform float u_mipmap_offset;\n\
+			varying vec2 v_coord;\n\
+			\n\
+			void main() {\n\
+				vec4 color = vec4(0.0);\n\
+				//random average\n\
+				for(int i = 0; i < 4; ++i)\n\
+					for(int j = 0; j < 4; ++j)\n\
+					{\n\
+						color += texture2D(u_texture, vec2( u_samples_a[i][j], u_samples_b[i][j] ), u_mipmap_offset );\n\
+						color += texture2D(u_texture, vec2( 1.0 - u_samples_a[i][j], 1.0 - u_samples_b[i][j] ), u_mipmap_offset );\n\
+					}\n\
+			   gl_FragColor = color * 0.03125;\n\
+			}\n\
+			";
+
+        //LiteGraph.registerNodeType("texture/clustered_operation", LGraphTextureClusteredOperation);
+
+
         function LGraphTextureTemporalSmooth() {
             this.addInput("in", "Texture");
             this.addInput("factor", "Number");

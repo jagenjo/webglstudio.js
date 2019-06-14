@@ -821,6 +821,11 @@ var EditorModule = {
 	{
 		if(!node)
 			return;
+		if(node.constructor !== LS.SceneNode )
+		{
+			console.error("onDropOnNode expect SceneNode");
+			return;
+		}
 
 		var block = false;
 
@@ -851,11 +856,13 @@ var EditorModule = {
 				{
 					var new_component = component.clone();
 					node.addComponent( new_component );
+					CORE.userAction( "component_created", new_component );
 					console.log("Component cloned");
 				}
 				else
 				{
-					component.root.removeComponent( component );
+					CORE.userAction( "component_moved", component );
+					component._root.removeComponent( component );
 					node.addComponent( component );
 					console.log("Component moved");
 				}

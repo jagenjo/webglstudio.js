@@ -5376,6 +5376,7 @@ Texture.prototype.uploadData = function( data, options, skip_mipmaps )
 	var height = this.height;
 	width = width >> mipmap_level; 
 	height = height >> mipmap_level;
+	var internal_format = this.internalFormat || this.format;
 
 	if( this.type == GL.HALF_FLOAT_OES && data.constructor === Float32Array )
 		console.warn("cannot uploadData to a HALF_FLOAT texture from a Float32Array, must be Uint16Array. To upload it we recomment to create a FLOAT texture, upload data there and copy to your HALF_FLOAT.");
@@ -5385,26 +5386,26 @@ Texture.prototype.uploadData = function( data, options, skip_mipmaps )
 		if(gl.webgl_version == 1)
 		{
 			if(data.buffer && data.buffer.constructor == ArrayBuffer)
-				gl.texImage2D(this.texture_type, mipmap_level, this.format, width, height, 0, this.format, this.type, data);
+				gl.texImage2D(this.texture_type, mipmap_level, internal_format, width, height, 0, this.format, this.type, data);
 			else
-				gl.texImage2D(this.texture_type, mipmap_level, this.format, this.format, this.type, data);
+				gl.texImage2D(this.texture_type, mipmap_level, internal_format, this.format, this.type, data);
 		}
 		else if(gl.webgl_version == 2) //webgl forces to use width and height
 		{
 			if(data.buffer && data.buffer.constructor == ArrayBuffer)
-				gl.texImage2D(this.texture_type, mipmap_level, this.format, width, height, 0, this.format, this.type, data);
+				gl.texImage2D(this.texture_type, mipmap_level, internal_format, width, height, 0, this.format, this.type, data);
 			else
-				gl.texImage2D(this.texture_type, mipmap_level, this.format, width, height, 0, this.format, this.type, data);
+				gl.texImage2D(this.texture_type, mipmap_level, internal_format, width, height, 0, this.format, this.type, data);
 		}
 	}
 	else if( this.texture_type == GL.TEXTURE_3D )
 	{
 		gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false ); //standard does not allow this flags for 3D textures
 		gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false );
-		gl.texImage3D( this.texture_type, mipmap_level, this.format, width, height, this.depth >> mipmap_level, 0, this.format, this.type, data);
+		gl.texImage3D( this.texture_type, mipmap_level, internal_format, width, height, this.depth >> mipmap_level, 0, this.format, this.type, data);
 	}
 	else if( this.texture_type == GL.TEXTURE_CUBE_MAP )
-		gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_X + (options.cubemap_face || 0), mipmap_level, this.format, width, height, 0, this.format, this.type, data);
+		gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_X + (options.cubemap_face || 0), mipmap_level, internal_format, width, height, 0, this.format, this.type, data);
 	else
 		throw("cannot uploadData for this texture type");
 

@@ -11357,9 +11357,10 @@ if (typeof exports != "undefined") {
     }
 
     NodeScript.prototype.onConfigure = function(o) {
-        if (o.properties.onExecute) {
+        if (o.properties.onExecute && LiteGraph.allow_scripts)
             this.compileCode(o.properties.onExecute);
-        }
+		else
+			console.warn("Script not compiled, LiteGraph.allow_scripts is false");
     };
 
     NodeScript.title = "Script";
@@ -11370,9 +11371,10 @@ if (typeof exports != "undefined") {
     };
 
     NodeScript.prototype.onPropertyChanged = function(name, value) {
-        if (name == "onExecute" && LiteGraph.allow_scripts) {
+        if (name == "onExecute" && LiteGraph.allow_scripts)
             this.compileCode(value);
-        }
+		else
+			console.warn("Script not compiled, LiteGraph.allow_scripts is false");
     };
 
     NodeScript.prototype.compileCode = function(code) {
@@ -14235,6 +14237,102 @@ if (typeof exports != "undefined") {
 (function(global) {
     var LiteGraph = global.LiteGraph;
 
+    //Math 3D operation
+    function Math3DOperation() {
+        this.addInput("A", "number,vec3");
+        this.addInput("B", "number,vec3");
+        this.addOutput("=", "vec3");
+        this.addProperty("OP", "+", "enum", { values: MathOperation.values });
+		this._result = vec3.create();
+    }
+
+    Math3DOperation.values = ["+", "-", "*", "/", "%", "^", "max", "min"];
+
+	Math3DOperation.title = "Operation";
+    Math3DOperation.desc = "Easy math 3D operators";
+    Math3DOperation["@OP"] = {
+        type: "enum",
+        title: "operation",
+        values: Math3DOperation.values
+    };
+    Math3DOperation.size = [100, 60];
+
+    Math3DOperation.prototype.getTitle = function() {
+		if(this.properties.OP == "max" || this.properties.OP == "min")
+			return this.properties.OP + "(A,B)";
+        return "A " + this.properties.OP + " B";
+    };
+
+    Math3DOperation.prototype.onExecute = function() {
+        var A = this.getInputData(0);
+        var B = this.getInputData(1);
+		if(A == null || B == null)
+			return;
+		if(A.constructor === Number)
+			A = [A,A,A];
+		if(B.constructor === Number)
+			B = [B,B,B];
+
+        var result = this._result;
+        switch (this.properties.OP) {
+            case "+":
+                result = vec3.add(result,A,B);
+                break;
+            case "-":
+                result = vec3.sub(result,A,B);
+                break;
+            case "x":
+            case "X":
+            case "*":
+                result = vec3.mul(result,A,B);
+                break;
+            case "/":
+                result = vec3.div(result,A,B);
+                break;
+            case "%":
+                result[0] = A[0]%B[0];
+                result[1] = A[1]%B[1];
+                result[2] = A[2]%B[2];
+                break;
+            case "^":
+                result[0] = Math.pow(A[0],B[0]);
+                result[1] = Math.pow(A[1],B[1]);
+                result[2] = Math.pow(A[2],B[2]);
+                break;
+            case "max":
+                result[0] = Math.max(A[0],B[0]);
+                result[1] = Math.max(A[1],B[1]);
+                result[2] = Math.max(A[2],B[2]);
+                break;
+            case "min":
+                result[0] = Math.min(A[0],B[0]);
+                result[1] = Math.min(A[1],B[1]);
+                result[2] = Math.min(A[2],B[2]);
+                break;
+            default:
+                console.warn("Unknown operation: " + this.properties.OP);
+        }
+        this.setOutputData(0, result);
+    };
+
+    Math3DOperation.prototype.onDrawBackground = function(ctx) {
+        if (this.flags.collapsed) {
+            return;
+        }
+
+        ctx.font = "40px Arial";
+        ctx.fillStyle = "#666";
+        ctx.textAlign = "center";
+        ctx.fillText(
+            this.properties.OP,
+            this.size[0] * 0.5,
+            (this.size[1] + LiteGraph.NODE_TITLE_HEIGHT) * 0.5
+        );
+        ctx.textAlign = "left";
+    };
+
+    LiteGraph.registerNodeType("math3d/operation", Math3DOperation);
+
     function Math3DVec2ToXYZ() {
         this.addInput("vec2", "vec2");
         this.addOutput("x", "number");
@@ -14741,6 +14839,8 @@ if (typeof exports != "undefined") {
 
 
     } //glMatrix
+	else
+		console.warn("No glmatrix found, some Math3D nodes may not work");
 
 })(this);
 
@@ -17463,32 +17563,37 @@ if (typeof exports != "undefined") {
 
 
         // Computes operation between pixels (max, min)  *****************************************
-        function LGraphTextureClusteredOperation() {
+        function LGraphTextureMinMax() {
             this.addInput("Texture", "Texture");
-            this.addOutput("tex", "Texture");
-            this.addOutput("avg", "vec4");
+            this.addOutput("min_t", "Texture");
+            this.addOutput("max_t", "Texture");
+            this.addOutput("min", "vec4");
+            this.addOutput("max", "vec4");
             this.properties = {
 				mode: "max",
                 use_previous_frame: true //to avoid stalls 
             };
 
             this._uniforms = {
-                u_texture: 0,
-                u_mipmap_offset: 0
+                u_texture: 0
             };
-            this._luminance = new Float32Array(4);
+
+			this._max = new Float32Array(4);
+            this._min = new Float32Array(4);
+
+			this._textures_chain = [];
         }
 
-        LGraphTextureClusteredOperation.widgets_info = {
+        LGraphTextureMinMax.widgets_info = {
             mode: { widget: "combo", values: ["min","max","avg"] }
         };
 
-        LGraphTextureClusteredOperation.title = "ClusteredOperation";
-        LGraphTextureClusteredOperation.desc = "Compute complete operation between pixel pairs.";
+        LGraphTextureMinMax.title = "MinMax";
+        LGraphTextureMinMax.desc = "Compute the scene min max";
 
-        LGraphTextureClusteredOperation.prototype.onExecute = function() {
+        LGraphTextureMinMax.prototype.onExecute = function() {
             if (!this.properties.use_previous_frame) {
-                this.updateAverage();
+                this.update();
             }
 
             this.setOutputData(0, this._temp_texture);
@@ -17496,11 +17601,11 @@ if (typeof exports != "undefined") {
         };
 
         //executed before rendering the frame
-        LGraphTextureClusteredOperation.prototype.onPreRenderExecute = function() {
-            this.updateAverage();
+        LGraphTextureMinMax.prototype.onPreRenderExecute = function() {
+            this.update();
         };
 
-        LGraphTextureClusteredOperation.prototype.updateAverage = function() {
+        LGraphTextureMinMax.prototype.update = function() {
             var tex = this.getInputData(0);
             if (!tex) {
                 return;
@@ -17510,18 +17615,8 @@ if (typeof exports != "undefined") {
                 return;
             } //saves work
 
-            if (!LGraphTextureClusteredOperation._shader) {
-                LGraphTextureClusteredOperation._shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphTextureClusteredOperation.pixel_shader );
-                //creates 256 random numbers and stores them in two mat4
-                var samples = new Float32Array(16);
-                for (var i = 0; i < samples.length; ++i) {
-                    samples[i] = Math.random(); //poorly distributed samples
-                }
-				//upload only once
-                LGraphTextureClusteredOperation._shader.uniforms({
-                    u_samples_a: samples.subarray(0, 16),
-                    u_samples_b: samples.subarray(16, 32)
-                });
+            if (!LGraphTextureMinMax._shader) {
+                LGraphTextureMinMax._shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphTextureMinMax.pixel_shader );
             }
 
             var temp = this._temp_texture;
@@ -17531,28 +17626,35 @@ if (typeof exports != "undefined") {
                 type = gl.FLOAT;
             }
 
-            if (!temp || temp.type != type) {
-                this._temp_texture = new GL.Texture(1, 1, {
-                    type: type,
-                    format: gl.RGBA,
-                    filter: gl.NEAREST
-                });
-            }
+			var size = 512;
 
-			if( !this._temp_pot2_texture || this._temp_pot2_texture.type != type )
-				this._temp_pot2_texture = new GL.Texture(512, 512, {
-					type: type,
-					format: gl.RGBA,
-					minFilter: gl.LINEAR_MIPMAP_LINEAR,
-					magFilter: gl.LINEAR
-				});
+			if( !this._textures_chain.length || this._textures_chain[0].type != type )
+			{
+				var index = 0;
+				while(i)
+				{
+					this._textures_chain[i] = new GL.Texture( size, size, {
+						type: type,
+						format: gl.RGBA,
+						filter: gl.NEAREST
+					});
+					size = size >> 2;
+					i++;
+					if(size == 1)
+						break;
+	            }
+			}
 
-			tex.copyTo( this._temp_pot2_texture );
-			tex = this._temp_pot2_texture;
-			tex.bind(0);
-			gl.generateMipmap(GL.TEXTURE_2D);
+			tex.copyTo( this._textures_chain[0] );
+			var prev = this._textures_chain[0];
+			for(var i = 1; i <= this._textures_chain.length; ++i)
+			{
+				var tex = this._textures_chain[i];
 
-            var shader = LGraphTextureClusteredOperation._shader;
+				prev = tex;				
+			}
+
+            var shader = LGraphTextureMinMax._shader;
             var uniforms = this._uniforms;
             uniforms.u_mipmap_offset = this.properties.mipmap_offset;
             gl.disable(gl.DEPTH_TEST);
@@ -17560,26 +17662,9 @@ if (typeof exports != "undefined") {
             this._temp_texture.drawTo(function() {
                 tex.toViewport(shader, uniforms);
             });
-
-            if (this.isOutputConnected(1) || this.isOutputConnected(2)) {
-                var pixel = this._temp_texture.getPixels();
-                if (pixel) {
-                    var v = this._luminance;
-                    var type = this._temp_texture.type;
-                    v.set(pixel);
-                    if (type == gl.UNSIGNED_BYTE) {
-                        vec4.scale(v, v, 1 / 255);
-                    } else if (
-                        type == GL.HALF_FLOAT ||
-                        type == GL.HALF_FLOAT_OES
-                    ) {
-                        //no half floats possible, hard to read back unless copyed to a FLOAT texture, so temp_texture is always forced to FLOAT
-                    }
-                }
-            }
         };
 
-        LGraphTextureClusteredOperation.pixel_shader =
+        LGraphTextureMinMax.pixel_shader =
             "precision highp float;\n\
 			precision highp float;\n\
 			uniform mat4 u_samples_a;\n\

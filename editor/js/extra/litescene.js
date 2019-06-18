@@ -41639,6 +41639,12 @@ function IrradianceCache( o )
 	};
 	this._samplers = [];
 
+	//callback
+	this.onRecomputingIrradiance = null; //called when recomputing
+	this.onPreprocessCubemap = null; //called before generating SHs
+	this.onComputedSphericalHarmonics = null; //called after generating SHs
+	this.onRecomputingFinished = null; //called when recomputing
+
 	this.cache_filename = "";
 	this._cache_resource = null;
 
@@ -41749,6 +41755,9 @@ IrradianceCache.prototype.recompute = function( camera )
 	if( !texture || texture.width != texture_size || texture.height != texture_size || texture.type != texture_settings.type )
 		IrradianceCache._temp_cubemap = texture = new GL.Texture( texture_size, texture_size, texture_settings );
 
+	if(this.onRecomputingIrradiance)
+		this.onRecomputingIrradiance(size);
+
 	//first render
 	if( !LS.Renderer._visible_instances )
 	{
@@ -41794,7 +41803,7 @@ IrradianceCache.prototype.recompute = function( camera )
 			this._irradiance_cubemaps[ i ] = cubemap = new GL.Texture( final_cubemap_size, final_cubemap_size, texture_settings );
 
 		IrradianceCache.captureIrradiance( position, cubemap, render_settings, this.near, this.far, this.background_color, true, IrradianceCache._temp_cubemap );
-		this._irradiance_shs[i] = IrradianceCache.computeSH( cubemap );
+		this._irradiance_shs[i] = this.computeCubemapSH( cubemap, position, i );
 
 		i+=1;
 		generated+=1;
@@ -41808,6 +41817,9 @@ IrradianceCache.prototype.recompute = function( camera )
 	console.log("Packing in texture time: " + (end_packing_time - end_irradiance_time).toFixed(1) + "ms");
 
 	console.log("Irradiance Total: " + (getTime() - start).toFixed(1) + "ms");
+
+	if(this.onRecomputingFinished)
+		this.onRecomputingFinished();
 
 	//store in file
 	if(!this.cache_filename)
@@ -41847,6 +41859,25 @@ IrradianceCache.captureIrradiance = function( position, output_cubemap, render_s
 	//downsample
 	temp_cubemap.copyTo( output_cubemap );
 }
+
+IrradianceCache.prototype.computeCubemapSH = function( cubemap, position, index )
+{
+	//read 6 images from cubemap
+	var faces = [];
+	for(var i = 0; i < 6; ++i)
+		faces.push( cubemap.getPixels(i) );
+
+	if(this.onPreprocessCubemap)
+		this.onPreprocessCubemap( faces, position, cubemap, index );
+
+	var coeffs = computeSH( faces, cubemap.width, 4 );
+
+	if(this.onComputedSphericalHarmonics)
+		this.onComputedSphericalHarmonics( coeffs, position );
+
+	return coeffs;
+}
+
 
 IrradianceCache.computeSH = function( cubemap )
 {

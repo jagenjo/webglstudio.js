@@ -318,7 +318,7 @@ LS.Components.Light["@inspector"] = function(light, inspector)
 LS.Components.MeshRenderer.onShowProperties = function( component, inspector )
 {
 	return; //work in progress
-
+	/*
 	var mesh = component.getMesh();
 
 	inspector.addCheckbox("use submaterials", component.use_submaterials, function(v){
@@ -366,6 +366,7 @@ LS.Components.MeshRenderer.onShowProperties = function( component, inspector )
 		component.submaterials.push(submaterial);
 		inspector.refresh();
 	}});
+	*/
 }
 
 EditorModule.onShowComponentCustomProperties = function( component, inspector, ignore_edit, replacement_component, extra_name )

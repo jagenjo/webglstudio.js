@@ -32642,8 +32642,10 @@ MeshRenderer["@primitive"] = { type:"enum", values: {"Default":-1, "Points": 0, 
 MeshRenderer["@submesh_id"] = { type:"enum", values: function() {
 	var component = this.instance;
 	var mesh = component.getMesh();
-	if(!mesh) return null;
-	if(!mesh || !mesh.info || !mesh.info.groups || mesh.info.groups.length < 2)
+	if(!mesh)
+		return null;
+
+	if(!mesh || !mesh.info || !mesh.info.groups)
 		return null;
 
 	var t = {"all":null};

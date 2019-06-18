@@ -3564,12 +3564,23 @@ Mesh.prototype.computeTextureCoordinates = function( stream_type )
 /**
 * Computes the number of vertices
 * @method getVertexNumber
-* @param {typed Array} vertices array containing all the vertices
 */
 Mesh.prototype.getNumVertices = function() {
 	var b = this.vertexBuffers["vertices"];
-	if(!b) return 0;
+	if(!b)
+		return 0;
 	return b.data.length / b.spacing;
+}
+
+/**
+* Computes the number of triangles (takes into account indices)
+* @method getNumTriangles
+*/
+Mesh.prototype.getNumTriangles = function() {
+	var indices_buffer = this.getIndexBuffer("triangles");
+	if(!indices_buffer)
+		return this.getNumVertices() / 3;
+	return indices_buffer.data.length / 3;
 }
 
 
@@ -3793,6 +3804,61 @@ Mesh.prototype.totalMemory = function()
 
 	return num;
 }
+
+Mesh.prototype.slice = function(start, length)
+{
+	var new_vertex_buffers = {};
+
+	var indices_buffer = this.indexBuffers["triangles"];
+	if(!indices_buffer)
+	{
+		console.warn("splice in not indexed not supported yet");
+		return null;
+	}
+
+	var indices = indices_buffer.data;
+
+	var new_triangles = [];
+	var reindex = new Int32Array( indices.length );
+	reindex.fill(-1);
+
+	var end = start + length;
+	if(end >= indices.length)
+		end = indices.length;
+
+	var last_index = 0;
+	for(var j = start; j < end; ++j)
+	{
+		var index = indices[j];
+		if( reindex[index] != -1 )
+		{
+			new_triangles.push(reindex[index]);
+			continue;
+		}
+
+		//new vertex
+		var new_index = last_index++;
+		reindex[index] = new_index;
+		new_triangles.push(new_index);
+
+		for( var i in this.vertexBuffers )
+		{
+			var buffer = this.vertexBuffers[i];
+			var data = buffer.data;
+			var spacing = buffer.spacing;
+			if(!new_vertex_buffers[i])
+				new_vertex_buffers[i] = [];
+			var new_buffer = new_vertex_buffers[i];
+			for(var k = 0; k < spacing; ++k)
+				new_buffer.push( data[k + index*spacing] );
+		}
+	}
+
+	var new_mesh = new GL.Mesh( new_vertex_buffers, {triangles: new_triangles}, null,gl);
+	new_mesh.updateBoundingBox();
+	return new_mesh;
+}
+
 
 /**
 * returns a low poly version of the mesh that takes much less memory (but breaks tiling of uvs and smoothing groups)

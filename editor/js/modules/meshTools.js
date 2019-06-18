@@ -361,6 +361,57 @@ var MeshTools = {
 		mesh.removeIndexBuffer("triangles");
 
 		return true;
+	},
+
+	showEditMeshGroupDialog: function( mesh, group_index )
+	{
+		var group = mesh.info.groups[ group_index ];
+		if(!group)
+			return;
+
+		var dialog = new LiteGUI.Dialog({ id: "dialog_mesh_groups", title:"Edit Mesh Group", close: true, minimize: true, width: 400, height: 340, scroll: true, resizable:true, draggable: true});
+		dialog.show();
+		dialog.setPosition(300,100);
+		//dialog.content.style.height = "calc( 100% - 30px )";
+		var widgets = new LiteGUI.Inspector({ id: "mesh_tools", name_width: 100 });
+		dialog.add(widgets);
+		widgets.addString("Mesh", mesh.fullpath || mesh.filename, { disbled: true} );
+
+		widgets.addString("Group Name", group.name, { callback: function(v){
+			group.name = v;
+			LS.RM.resourceModified(mesh);
+			RenderModule.requestFrame();
+		}});
+
+		widgets.addNumber("Start", group.start, { step: 3, min: 0, precision: 0, callback: function(v){
+			group.start = v|0;
+			LS.RM.resourceModified(mesh);
+			RenderModule.requestFrame();
+		}});
+		widgets.addNumber("Length", group.length, { step: 3, min: 0, precision: 0, callback: function(v){
+			group.length = v|0;
+			LS.RM.resourceModified(mesh);
+			RenderModule.requestFrame();
+		}});
+		widgets.addString("Material", group.material || "", { callback: function(v){
+			group.material = v;
+		}});
+
+		widgets.addSeparator();
+
+		widgets.addStringButton("Export as Mesh","mesh_" + group.name, { button:"Export", button_width: 100, callback_button: function(v){
+			var submesh = mesh.slice( group.start, group.length );
+			if(!submesh)
+				return;
+			LS.RM.registerResource( v, submesh );
+		}});
+
+		widgets.addSeparator();
+		widgets.addButton(null,"Close", { callback: function(v){
+			dialog.close();
+		}});
+
+		dialog.adjustSize(10);
 	}
 
 };
@@ -478,9 +529,8 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		widgets.widgets_per_row = 1;
 	}
 
+	var group = widgets.beginGroup("Groups",{ collapsed: true, height: 150, scrollable: true });
 	if(mesh.info && mesh.info.groups)
-	{
-		var group = widgets.beginGroup("Groups",{ collapsed: true, height: 150, scrollable: true });
 		for(var i = 0; i < mesh.info.groups.length; i++)
 		{
 			var group = mesh.info.groups[i];
@@ -489,16 +539,41 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 				str += " <span class='mat' style='color:white;'>"+group.material+"</span>";
 			if(group.bounding)
 				str += " <span class='info' style='color:gray;'>[BB]</span> <span>"+group.start+":"+group.length+"</span>";
-			var w = widgets.addInfo(i, str, { name_width: 50 } );
+			widgets.widgets_per_row = 2;
+			var w = widgets.addInfo(i, str, { width: "calc(100% - 60px)", name_width: 50, content_width: "calc(100% - 60px)" } );
+			var w = widgets.addButton(null,"Edit", { width: 50, group: i, callback: function(){
+				console.log("edit group " + this.options.group );
+				MeshTools.showEditMeshGroupDialog( mesh, this.options.group );
+			}});
+			widgets.widgets_per_row = 1;
 		}
-		widgets.addButton(null,"Compute bounding boxes", { callback: function(){
-			mesh.updateBoundingBox();
-			widgets.refresh();
-			LS.RM.resourceModified(mesh);
-			RenderModule.requestFrame();
-		}});
-		widgets.endGroup();
-	}
+	widgets.addStringButton("New Group","",{ name_width: 70, button:"+", callback_button: function(v){
+		if(!v)
+			return;
+		if(!mesh.info)
+			mesh.info = {};
+		if(!mesh.info.groups)
+			mesh.info.groups = [];
+		mesh.info.groups.push({
+			name: v,
+			start: 0,
+			material: "",
+			length: mesh.getNumTriangles() * 3
+		});
+		LS.RM.resourceModified(mesh);
+		widgets.refresh();
+		RenderModule.requestFrame();
+	}});
+
+	widgets.addButton(null,"Compute bounding boxes", { callback: function(){
+		mesh.updateBoundingBox();
+		widgets.refresh();
+		LS.RM.resourceModified(mesh);
+		RenderModule.requestFrame();
+	}});
+
+	widgets.endGroup();
+
 
 	widgets.addTitle("Actions");
 

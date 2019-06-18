@@ -14242,7 +14242,7 @@ if (typeof exports != "undefined") {
         this.addInput("A", "number,vec3");
         this.addInput("B", "number,vec3");
         this.addOutput("=", "vec3");
-        this.addProperty("OP", "+", "enum", { values: MathOperation.values });
+        this.addProperty("OP", "+", "enum", { values: Math3DOperation.values });
 		this._result = vec3.create();
     }
 

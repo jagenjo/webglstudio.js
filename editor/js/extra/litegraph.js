@@ -14246,7 +14246,7 @@ if (typeof exports != "undefined") {
 		this._result = vec3.create();
     }
 
-    Math3DOperation.values = ["+", "-", "*", "/", "%", "^", "max", "min"];
+    Math3DOperation.values = ["+", "-", "*", "/", "%", "^", "max", "min","dist"];
 
 	Math3DOperation.title = "Operation";
     Math3DOperation.desc = "Easy math 3D operators";
@@ -14258,7 +14258,7 @@ if (typeof exports != "undefined") {
     Math3DOperation.size = [100, 60];
 
     Math3DOperation.prototype.getTitle = function() {
-		if(this.properties.OP == "max" || this.properties.OP == "min")
+		if(this.properties.OP == "max" || this.properties.OP == "min" || this.properties.OP == "distance")
 			return this.properties.OP + "(A,B)";
         return "A " + this.properties.OP + " B";
     };
@@ -14308,6 +14308,9 @@ if (typeof exports != "undefined") {
                 result[0] = Math.min(A[0],B[0]);
                 result[1] = Math.min(A[1],B[1]);
                 result[2] = Math.min(A[2],B[2]);
+                break;
+            case "distance":
+                vec3.distance( result, A,B );
                 break;
             default:
                 console.warn("Unknown operation: " + this.properties.OP);

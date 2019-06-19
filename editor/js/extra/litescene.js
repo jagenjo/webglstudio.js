@@ -8017,21 +8017,30 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	{
 		global_flags |= LS.ShaderMaterial.reflection_block.flag_mask;
 
-		var environment_texture = null;
-		if( LS.Renderer._global_textures.environment )
-			environment_texture = LS.Renderer._global_textures.environment;
+		var environment_sampler = this.textures["environment"];
+		var environment_texture = environment_sampler && environment_sampler.texture ? environment_sampler.texture : null;
 
-		if(instance._nearest_reflection_probe )
+		if( !environment_texture ) //use global
 		{
-			if( instance._nearest_reflection_probe._texture )
-				environment_texture = instance._nearest_reflection_probe._tex_id;
+			if( LS.Renderer._global_textures.environment )
+				environment_texture = LS.Renderer._global_textures.environment;
+			if( instance._nearest_reflection_probe )
+			{
+				if( instance._nearest_reflection_probe._texture )
+					environment_texture = instance._nearest_reflection_probe._tex_id;
+			}
 		}
 
 		if( environment_texture )
 		{
 			var tex = LS.ResourcesManager.textures[ environment_texture ];
 			if( tex && tex.texture_type == GL.TEXTURE_2D )
-				global_flags |= environment_2d_block.flag_mask;
+			{
+				if( tex._is_planar )
+					global_flags |= environment_planar_block.flag_mask;
+				else
+					global_flags |= environment_2d_block.flag_mask;
+			}
 			else
 				global_flags |= environment_cubemap_block.flag_mask;
 		}
@@ -9337,6 +9346,7 @@ varying vec2 v_uvs;\n\
 #endif\n\
 \n\
 //globals\n\
+uniform vec4 u_viewport;\n\
 uniform vec3 u_camera_eye;\n\
 uniform vec4 u_clipping_plane;\n\
 uniform vec4 u_background_color;\n\
@@ -23542,6 +23552,7 @@ var Renderer = {
 	//debug
 	allow_textures: true,
 	_sphere_mesh: null,
+	_debug_instance: null,
 
 	//fixed texture slots for global textures
 	SHADOWMAP_TEXTURE_SLOT: 7,
@@ -24170,6 +24181,7 @@ var Renderer = {
 		}
 
 		var start = this._rendered_instances;
+		var debug_instance = this._debug_instance;
 
 		//process render queues
 		for(var j = 0; j < this._queues.length; ++j)
@@ -24190,6 +24202,13 @@ var Renderer = {
 			{
 				//render instance
 				var instance = render_instances[i];
+
+				//used to debug
+				if(instance == debug_instance)
+				{
+					console.log(debug_instance);
+					debugger; 
+				}
 
 				if( !instance._is_visible || !instance.mesh )
 					continue;
@@ -24633,15 +24652,6 @@ var Renderer = {
 			var node = instance.node;
 			var material = instance.material;
 			instance.index = i;
-
-			/*
-			var query = instance._final_query;
-			query.clear();
-			query.add( node._query );
-			if(material)
-				query.add( material._query );
-			query.add( instance.query );
-			*/
 		}
 
 		//store all the info
@@ -41068,13 +41078,13 @@ function RealtimeReflector(o)
 	this.texture_size = 512;
 	this.clip_offset = 0.5; //to avoid ugly edges near clipping plane
 	this.texture_name = "";
-	this.use_cubemap = false;
 	this.all_cameras = false; //renders the reflection for every active camera (very slow)
 	this.blur = 0;
 	this.generate_mipmaps = false;
 	this.use_mesh_info = false;
 	this.offset = vec3.create();
 	this.ignore_this_mesh = true;
+	this.skip_outside_frustum = true;
 	this.high_precision = false;
 	this.refresh_rate = 1; //in frames
 	this.layers = 0xFF;
@@ -41092,8 +41102,8 @@ RealtimeReflector["@layers"] = { type:"layers" };
 
 RealtimeReflector.prototype.onAddedToScene = function(scene)
 {
-	LEvent.bind( scene,"renderReflections", this.onRenderReflection, this );
-	LEvent.bind( scene,"afterCameraEnabled", this.onCameraEnabled, this );
+	LEvent.bind( scene, LS.EVENT.RENDER_REFLECTIONS, this.onRenderReflection, this );
+	LEvent.bind( scene, LS.EVENT.AFTER_CAMERA_ENABLED, this.onCameraEnabled, this );
 }
 
 
@@ -41124,8 +41134,7 @@ RealtimeReflector.prototype.onRenderReflection = function( e, render_settings )
 	var texture_height = texture_size;
 
 	var visible = this._root.flags.visible;
-	if(this.ignore_this_mesh)
-		this._root.flags.seen_by_reflections = false;
+	this._root.visible = !this.ignore_this_mesh;
 
 	//add flags
 	var old_layers = render_settings.layers;
@@ -41139,18 +41148,34 @@ RealtimeReflector.prototype.onRenderReflection = function( e, render_settings )
 	{
 		var camera = cameras[i];
 
+		//test if node in frustum
+		if( this.skip_outside_frustum )
+		{
+			if( !this._root._instances.length )
+				continue;
+
+			var is_seen = false;
+			for(var j = 0; j < this._root._instances.length; ++j)
+			{
+				var instance = this._root._instances[i];
+				if(geo.frustumTestBox( camera._frustum_planes, instance.aabb ) != CLIP_OUTSIDE )
+				{
+					is_seen = true;
+					break;
+				}
+			}
+			if(!is_seen)
+				continue;
+		}
+
 		if( isNaN( texture_size ) && this.texture_size == "viewport")
 		{
-			texture_size = 512; //used in cubemaps
 			var viewport = camera.getLocalViewport(null, camera._viewport_in_pixels );
 			texture_width = viewport[2];//gl.canvas.width;
 			texture_height = viewport[3];//gl.canvas.height;
 		}
 
-		if(this.use_cubemap)
-			texture_width = texture_height = texture_size;
-
-		var texture_type = this.use_cubemap ? gl.TEXTURE_CUBE_MAP : gl.TEXTURE_2D;
+		var texture_type = gl.TEXTURE_2D;
 		var type = this.high_precision ? gl.HIGH_PRECISION_FORMAT : gl.UNSIGNED_BYTE;
 
 		var texture = this._textures[ camera.uid ];
@@ -41188,26 +41213,21 @@ RealtimeReflector.prototype.onRenderReflection = function( e, render_settings )
 		this._reflected_camera = reflected_camera;
 		reflected_camera.configure( camera.serialize() );
 
-		if( !this.use_cubemap ) //planar reflection
-		{
-			reflected_camera.fov = camera.fov;
-			reflected_camera.aspect = camera.aspect;
-			reflected_camera.eye = geo.reflectPointInPlane( cam_eye, plane_center, plane_normal );
-			reflected_camera.center = geo.reflectPointInPlane( cam_center, plane_center, plane_normal );
-			reflected_camera.up = geo.reflectPointInPlane( cam_up, [0,0,0], plane_normal );
-			//reflected_camera.up = cam_up;
+		reflected_camera.fov = camera.fov;
+		reflected_camera.aspect = camera.aspect;
 
-			//little offset
-			vec3.add(plane_center, plane_center,vec3.scale(vec3.create(), plane_normal, -this.clip_offset));
-			var clipping_plane = [plane_normal[0], plane_normal[1], plane_normal[2], vec3.dot(plane_center, plane_normal)  ];
-			render_settings.clipping_plane = clipping_plane;
-			LS.Renderer.renderInstancesToRT(reflected_camera, texture, render_settings);
-		}
-		else //spherical reflection
-		{
-			reflected_camera.eye = plane_center;
-			LS.Renderer.renderInstancesToRT( reflected_camera, texture, render_settings );
-		}
+		var new_eye = geo.reflectPointInPlane( cam_eye, plane_center, plane_normal );
+		var new_center = geo.reflectPointInPlane( cam_center, plane_center, plane_normal );
+		var new_up = geo.reflectPointInPlane( cam_up, [0,0,0], plane_normal );
+		reflected_camera.lookAt( new_eye, new_center, new_up );
+		//reflected_camera.up = cam_up;
+
+		//little offset
+		vec3.add( plane_center, plane_center, vec3.scale(vec3.create(), plane_normal, -this.clip_offset) );
+		var clipping_plane = [plane_normal[0], plane_normal[1], plane_normal[2], vec3.dot(plane_center, plane_normal)  ];
+		render_settings.clipping_plane = clipping_plane;
+
+		LS.Renderer.renderInstancesToRT( reflected_camera, texture, render_settings );
 
 		if(this.blur)
 		{
@@ -41227,6 +41247,7 @@ RealtimeReflector.prototype.onRenderReflection = function( e, render_settings )
 		}
 
 		texture._locked = false;
+		texture._is_planar = true;
 
 		if(this.texture_name)
 			LS.ResourcesManager.registerResource( this.texture_name, texture );
@@ -41278,7 +41299,6 @@ LS.registerComponent( RealtimeReflector );
 * @param {Object} object to configure from
 */
 
-
 function ReflectionProbe( o )
 {
 	this._enabled = true;
@@ -41287,7 +41307,7 @@ function ReflectionProbe( o )
 	this.texture_name = "";
 	this.generate_irradiance = true;
 	this.generate_mipmaps = false;
-	this.refresh_rate = 1; //in frames
+	this.refresh_rate = 0; //in frames, 0 means only on demand (on start or if ReflectionProbe.updateAll() is called)
 	this.layers = 0xFF;
 
 	this.near = 0.1;
@@ -41304,6 +41324,7 @@ function ReflectionProbe( o )
 	this._tex_id = ":probe_" + ReflectionProbe.last_id;
 	ReflectionProbe.last_id++;
 	this._registered = false;
+	this._must_update = false;
 
 	if(o)
 		this.configure(o);
@@ -41375,35 +41396,52 @@ ReflectionProbe.prototype.onConfigure = function(o)
 
 ReflectionProbe.prototype.onRenderReflection = function( e )
 {
-	if( this._enabled )
-		this.recompute();
-}
+	if( !this._enabled )
+		return;
 
-ReflectionProbe.prototype.recompute = function( render_settings, force )
-{
 	if( !this._root || !this._root.scene )
 		return;
 
-	var scene = this._root.scene;
+	if(!this._must_update)
+	{
+		if( LS.ResourcesManager.isLoading() )
+			return;
 
-	if( LS.ResourcesManager.isLoading() )
-		return;
+		this.refresh_rate = this.refresh_rate|0;
+		if( this.refresh_rate < 1 && this._texture )
+			return;
 
-	this.refresh_rate = this.refresh_rate|0;
-	if( this.refresh_rate < 1 && this._texture && !force )
-		return;
+		if ( this._texture && (this._root.scene._frame % this.refresh_rate) != 0 )
+			return;
+	}
+	this._must_update = false;
 
-	if ( this._texture && (scene._frame % this.refresh_rate) != 0 && !force )
-		return;
-
-	this._root.transform.getGlobalPosition( this._current );
-	//if ( vec3.distance( this._current, this._position ) < 0.1 )
-	//	force = true;
-
-	this.updateCubemap( this._current, render_settings, force );
+	this.recompute();
 }
 
-ReflectionProbe.prototype.updateCubemap = function( position, render_settings, generate_spherical_harmonics )
+ReflectionProbe.prototype.recompute = function( render_settings, generate_spherical_harmonics )
+{
+	if( !this._root || !this._root.scene )
+		return;
+	this._root.transform.getGlobalPosition( this._current );
+	this.updateCubemap( this._current, render_settings, true );
+
+	//compute SHs (VERY SLOW)
+	if(generate_spherical_harmonics)
+	{
+		//TODO: copy to lowres cubemap
+		var temp_texture = ReflectionProbe._temp_cubemap;
+		var texture_size = IrradianceCache.capture_cubemap_size;
+		var texture_settings = { type: gl.FLOAT, texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGB };
+		if( !temp_texture || temp_texture.width != texture_size || temp_texture.height != texture_size  )
+			ReflectionProbe._temp_cubemap = temp_texture = new GL.Texture( texture_size, texture_size, texture_settings );
+		var texture = this._texture;
+		texture.copyTo( temp_texture ); //downsample
+		this._irradiance_shs = IrradianceCache.computeSH( temp_texture );
+	}
+}
+
+ReflectionProbe.prototype.updateCubemap = function( position, render_settings )
 {
 	render_settings = render_settings || LS.Renderer.default_render_settings;
 
@@ -41466,19 +41504,6 @@ ReflectionProbe.prototype.updateCubemap = function( position, render_settings, g
 	if(this.texture_name)
 		LS.ResourcesManager.registerResource( this.texture_name, texture );
 	LS.ResourcesManager.registerResource( this._tex_id, texture );
-
-	//compute SHs (VERY SLOW)
-	if(generate_spherical_harmonics)
-	{
-		//TODO: copy to lowres cubemap
-		var temp_texture = ReflectionProbe._temp_cubemap;
-		var texture_size = IrradianceCache.capture_cubemap_size;
-		var texture_settings = { type: gl.FLOAT, texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGB };
-		if( !temp_texture || temp_texture.width != texture_size || temp_texture.height != texture_size  )
-			ReflectionProbe._temp_cubemap = temp_texture = new GL.Texture( texture_size, texture_size, texture_settings );
-		texture.copyTo( temp_texture ); //downsample
-		this._irradiance_shs = IrradianceCache.computeSH( temp_texture );
-	}
 
 	//remove flags
 	render_settings.layers = old_layers;
@@ -45587,8 +45612,6 @@ Scene.prototype.init = function()
 	this.animation = null;
 	this._local_resources = {}; //not used yet
 	this.extra = {};
-
-	this._renderer = LS.Renderer;
 }
 
 /**
@@ -46879,17 +46902,6 @@ Scene.prototype.finish = function()
 	LEvent.trigger(this,"finish",this);
 	this.triggerInNodes("finish");
 	this.purgeResidualEvents();
-}
-
-
-/**
-* renders the scene using the assigned renderer
-*
-* @method render
-*/
-Scene.prototype.render = function(options)
-{
-	this._renderer.render(this, options);
 }
 
 /**
@@ -48963,6 +48975,7 @@ Light._enabled_fs_shaderblock_code = "\n\
 	\n\
 ";
 
+//the disabled block is included when no light should be present in the scene, but we do not want to break the shaders that rely on them
 Light._disabled_shaderblock_code = "\n\
 	#pragma shaderblock \"firstPass\"\n\
 	#pragma shaderblock \"lastPass\"\n\
@@ -48999,6 +49012,7 @@ Light._disabled_shaderblock_code = "\n\
 	\n\
 ";
 
+//this is the main light block
 var light_block = new LS.ShaderBlock("light");
 light_block.addCode( GL.VERTEX_SHADER, Light._vs_shaderblock_code, Light._vs_shaderblock_code );
 light_block.addCode( GL.FRAGMENT_SHADER, Light._enabled_fs_shaderblock_code, Light._disabled_shaderblock_code );
@@ -49006,7 +49020,7 @@ light_block.register();
 Light.shader_block = light_block;
 
 // ATTENUATION ************************************************
-
+//this block handles different types ot attenuation
 Light._attenuation_enabled_fragment_code = "\n\
 	const float LINEAR_ATTENUATION = 1.0;\n\
 	const float RANGE_ATTENUATION = 2.0;\n\
@@ -49037,6 +49051,7 @@ attenuation_block.addCode( GL.FRAGMENT_SHADER, Light._attenuation_enabled_fragme
 attenuation_block.register();
 
 // LIGHT TEXTURE **********************************************
+//this block handles light cookies (textures modulating light)
 Light._light_texture_fragment_enabled_code ="\n\
 uniform sampler2D light_texture;\n\
 void applyLightTexture( in Input IN, inout Light LIGHT )\n\
@@ -49201,8 +49216,15 @@ Light.shadowmapping_2D_soft_block = shadowmapping_2D_soft_block;
 */
 
 // ENVIRONMENT *************************************
+//this block handles a reflective texture
+//it is not part of the illumination, shadars must include it manually
+//most of it is solved inside ShaderMaterial.prototype.renderInstance 
+
 var environment_code = "\n\
 	#ifdef ENVIRONMENT_TEXTURE\n\
+		uniform sampler2D environment_texture;\n\
+	#endif\n\
+	#ifdef ENVIRONMENT_PLANAR\n\
 		uniform sampler2D environment_texture;\n\
 	#endif\n\
 	#ifdef ENVIRONMENT_CUBEMAP\n\
@@ -49221,6 +49243,11 @@ var environment_code = "\n\
 		#endif\n\
 		#ifdef ENVIRONMENT_CUBEMAP\n\
 			return textureCube( environment_texture, -V ).xyz;\n\
+		#endif\n\
+		#ifdef ENVIRONMENT_PLANAR\n\
+			vec2 screen_uv = gl_FragCoord.xy / u_viewport.zw;\n\
+			screen_uv.x = 1.0 - screen_uv.x;\n\
+			return texture2D( environment_texture, screen_uv ).xyz;\n\
 		#endif\n\
 		return u_background_color.xyz;\n\
 	}\n\
@@ -49242,6 +49269,11 @@ environment_2d_block.defineContextMacros({ENVIRONMENTBLOCK:"environment_2D"});
 environment_2d_block.addCode( GL.FRAGMENT_SHADER, environment_code, environment_disabled_code, { ENVIRONMENT_TEXTURE: "" } );
 environment_2d_block.register();
 
+var environment_planar_block = new LS.ShaderBlock("environment_planar");
+environment_planar_block.defineContextMacros({ENVIRONMENTBLOCK:"environment_planar"});
+environment_planar_block.addCode( GL.FRAGMENT_SHADER, environment_code, environment_disabled_code, { ENVIRONMENT_PLANAR: "" } );
+environment_planar_block.register();
+
 var environment_block = new LS.ShaderBlock("environment");
 environment_block.addCode( GL.FRAGMENT_SHADER, environment_code, environment_disabled_code );
 environment_block.register();
@@ -49256,7 +49288,7 @@ var reflection_code = "\n\
 		vec3 bg = vec3(0.0);\n\
 		//is last pass for this object?\n\
 		#ifdef BLOCK_LASTPASS\n\
-		bg = getEnvironmentColor( R, 0.0 );\n\
+			bg = getEnvironmentColor( R, 0.0 );\n\
 		#endif\n\
 		final_color.xyz = mix( final_color.xyz, bg, clamp( o.Reflectivity, 0.0, 1.0) );\n\
 		return final_color;\n\
@@ -49275,7 +49307,9 @@ ShaderMaterial.reflection_block = reflection_block;
 reflection_block.addCode( GL.FRAGMENT_SHADER, reflection_code, reflection_disabled_code );
 reflection_block.register();
 
-//dummy irradiance code (it is overwritten later)
+
+
+//dummy irradiance code (it is overwritten later) *****************************
 var irradiance_disabled_code = "\n\
 	void applyIrradiance( in Input IN, in SurfaceOutput o, inout FinalLight FINALLIGHT )\n\
 	{\n\
@@ -49363,7 +49397,10 @@ function Player(options)
 	this._file_drop_enabled = false; //use enableFileDrop
 
 	LS.Shaders.init();
-	LS.Renderer.init();
+
+	//this allows to use your custom renderer
+	this.renderer = options.renderer || LS.Renderer;
+	this.renderer.init();
 
 	//this will repaint every frame and send events when the mouse clicks objects
 	this.state = LS.Player.STOPPED;
@@ -49787,8 +49824,8 @@ Player.prototype._ondraw = function( force )
 
 		if(scene._must_redraw || this.force_redraw )
 		{
-			LS.Renderer._in_player = true;
-			scene.render( scene.info && scene.info.render_settings ? scene.info.render_settings : this.render_settings );
+			this.renderer._in_player = true;
+			this.renderer.render( scene, scene.info && scene.info.render_settings ? scene.info.render_settings : this.render_settings );
 		}
 
 		if(this.onDraw)

@@ -18076,7 +18076,7 @@ if (typeof exports != "undefined") {
             this.addOutput("B", "Texture");
             this.addOutput("A", "Texture");
 
-            this.properties = { use_luminance: true };
+            //this.properties = { use_single_channel: true };
             if (!LGraphTextureChannels._shader) {
                 LGraphTextureChannels._shader = new GL.Shader(
                     Shader.SCREEN_VERTEX_SHADER,
@@ -18098,7 +18098,8 @@ if (typeof exports != "undefined") {
                 this._channels = Array(4);
             }
 
-            var format = this.properties.use_luminance ? gl.LUMINANCE : gl.RGBA;
+            //var format = this.properties.use_single_channel ? gl.LUMINANCE : gl.RGBA; //not supported by WebGL1
+			var format = gl.RGB;
             var connections = 0;
             for (var i = 0; i < 4; i++) {
                 if (this.isOutputConnected(i)) {

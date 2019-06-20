@@ -22981,10 +22981,10 @@ RenderFrameContext["@precision"] = { widget: "combo", values: {
 
 RenderFrameContext["@format"] = { widget: "combo", values: { 
 		"RGB": GL.RGB,
-		"RGBA": GL.RGBA,
-		"LUMINANCE": GL.LUMINANCE,
-		"LUMINANCE_ALPHA": GL.LUMINANCE_ALPHA,
-		"ALPHA": GL.ALPHA
+		"RGBA": GL.RGBA
+//		"R8": GL.LUMINANCE,
+//		"LUMINANCE_ALPHA": GL.LUMINANCE_ALPHA,
+//		"ALPHA": GL.ALPHA
 	}
 };
 

@@ -1354,6 +1354,8 @@ var LS = {
 				o[i] = null;			
 			else if ( isFunction(v) ) //&& Object.getOwnPropertyDescriptor(object, i) && Object.getOwnPropertyDescriptor(object, i).get )
 				continue;//o[i] = v;
+			else if (v.constructor === File ) 
+				o[i] = null;
 			else if (v.constructor === Number || v.constructor === String || v.constructor === Boolean ) //elemental types
 				o[i] = v;
 			else if( v.buffer && v.byteLength && v.buffer.constructor === ArrayBuffer ) //typed arrays are ugly when serialized
@@ -13020,6 +13022,9 @@ Animation.Take = Take;
 * @namespace LS
 * @constructor
 */
+
+//KeyframesTrack: 0
+//ClipsTrack: 1
 
 function Track(o)
 {
@@ -27272,6 +27277,12 @@ Shadowmap.prototype.generate = function( instances, render_settings, precompute_
 
 Shadowmap.prototype.prepare = function( uniforms, samplers )
 {
+	if(!this.texture)
+	{
+		console.warn("shadowmap without texture?");
+		return;
+	}
+
 	var light = this.light;
 	var closest_far = light.computeFar();
 	uniforms.u_shadow_params = this.shadow_params;

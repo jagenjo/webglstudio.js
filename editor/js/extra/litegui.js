@@ -9604,43 +9604,48 @@ Inspector.prototype.addFile = function(name, value, options)
 	var that = this;
 	this.values[name] = value;
 	
-	var element = this.createWidget(name,"<span class='inputfield full whidden' style='width: calc(100% - 26px)'><span class='filename'>"+value+"</span></span><button class='litebutton' style='width:20px; margin-left: 2px;'>...</button><input type='file' size='100' class='file' value='"+value+"'/>", options);
+	var element = this.createWidget(name,"<span class='inputfield full whidden' style='width: calc(100% - 26px)'><span class='filename'></span></span><button class='litebutton' style='width:20px; margin-left: 2px;'>...</button><input type='file' size='100' class='file' value='"+value+"'/>", options);
 	var content = element.querySelector(".wcontent");
 	content.style.position = "relative";
 	var input = element.querySelector(".wcontent input");
 	var filename_element = element.querySelector(".wcontent .filename");
+	if(value)
+		filename_element.innerText = value.name;
+
 	input.addEventListener("change", function(e) { 
 		if(!e.target.files.length)
 		{
 			//nothing
-			filename_element.innerHTML = "";
+			filename_element.innerText = "";
 			Inspector.onWidgetChange.call(that, element, name, null, options);
 			return;
 		}
 
 		var url = null;
+		//var data = { url: url, filename: e.target.value, file: e.target.files[0], files: e.target.files };
+		var file = e.target.files[0];
+		file.files = e.target.files;
 		if( options.generate_url )
-			url = URL.createObjectURL( e.target.files[0] );
-		var data = { url: url, filename: e.target.value, file: e.target.files[0], files: e.target.files };
+			file.url = URL.createObjectURL( e.target.files[0] );
+		filename_element.innerText = file.name;
 
 		if(options.read_file)
 		{
 			 var reader = new FileReader();
 			 reader.onload = function(e2){
-				data.data = e2.target.result;
-				Inspector.onWidgetChange.call( that, element, name, data, options );
+				file.data = e2.target.result;
+				Inspector.onWidgetChange.call( that, element, name, file, options );
 			 }
 			 if( options.read_file == "binary" )
-				 reader.readAsArrayBuffer( data.file );
+				 reader.readAsArrayBuffer( file );
 			 else if( options.read_file == "data_url" )
-				 reader.readAsDataURL( data.file );
+				 reader.readAsDataURL( file );
 			 else
-				 reader.readAsText( data.file );
+				 reader.readAsText( file );
 		}
 		else
 		{
-			filename_element.innerHTML = e.target.files[0].name;
-			Inspector.onWidgetChange.call( that, element, name, data, options );
+			Inspector.onWidgetChange.call( that, element, name, file, options );
 		}
 	});
 

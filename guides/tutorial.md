@@ -11,7 +11,7 @@ Lets start
 The current interface of the editor is still in an alpha state, it is not as intuitive as we would like to but this will be addressed
 in future updates.
 
-The editor is divided in five sections that you can access through the buttons in the left side:
+The editor is divided in six sections that you can access through the buttons in the left side:
 
 - **Scene**: to view the current scene 
 - **Drive**: to manage files (on the server or in memory)
@@ -19,7 +19,6 @@ The editor is divided in five sections that you can access through the buttons i
 - **Code**: to edit the scripts in your scene
 - **Graph**: to edit the graphs in your scene
 - **Lab**: to check the resources stored in the GPU (name is temporary)
-- **Profile**: to check the performance
 
 To know more about the interface check the interface guide (not finished yet).
 
@@ -46,13 +45,13 @@ Scene nodes by themselves do not have any behaviour, to add them behaviour (draw
 
 Let's create an sphere, to do this click on the menu ```Node -> Primitive -> Sphere```.
 
-A new node will appear in the node tree, and we inspect it we will see it contains a GeometricPrimitive component attached to it.
+A new node will appear in the node tree, and we inspect it we will see it contains a ```Transform```that handles its position,rotation and scale into the scene, and a ```GeometricPrimitive``` component in charge of rendering the sphere.
 
-You can create more objects, or drag meshes from the Drive, add lights, play with the materials, till the scene looks the way you like.
+You can create more nodes, and attach components to give more behaviours. Drag meshes from the Drive or your harddrive, add lights, play with the materials, till the scene looks the way you like.
 
 # Adding some behaviour
 
-Now let's create an script to change its behaviour, to do this click in the button ```Add Script -> Inner script``` in the inspector of the sphere node.
+Now let's create an script to change its behaviour, to do this click in the button ```Add Behaviour -> Inner script``` in the inspector of the sphere node.
 
 Now we have an empty script attached to this node, we can use scripts to control how the objects behave or to control the user interactions.
 
@@ -66,12 +65,20 @@ To test the application now we can create a very simple script:
 //@sine movement
 this.onUpdate = function(dt)
 {
-  node.transform.y = Math.sin( scene.time ) * 50;
+	node.transform.y = Math.sin( scene.time ) * 50;
 	node.scene.refresh();
 }
 ```
 
 After writing an script, press the compile button (or control + enter) to evaluate it.
+
+# Setting the final camera
+
+Now we want to be sure the final project will be shown from the right camera position, so we need to configure the main camera.
+
+Select the root node in the scene tree, and you will see in the inspector a component named Camera. Here you will have lots of parameters to control the final camera, if you want to see the scene from that camera you can click the tab Player in the left side of the editor. 
+
+If you are in the Scene Editor and  you want to copy the current view to the Camera, inside the Camera component you will see a button named "Copy from View", click that button to move the camera to the same position as your actual view.
 
 # Testing the application
 

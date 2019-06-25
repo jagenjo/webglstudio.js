@@ -6761,6 +6761,15 @@ LS.Shaders.registerSnippet("bumpNormal","\n\
 				}\n\
 		");
 
+LS.Shaders.registerSnippet("testClippingPlane","\n\
+			float testClippingPlane(vec4 plane, vec3 p)\n\
+			{\n\
+				if(plane.x == 0.0 && plane.y == 0.0 && plane.z == 0.0)\n\
+					return 0.0;\n\
+				return (dot(plane.xyz, p) - plane.w) / dot(plane.xyz,plane.xyz);\n\
+			}\n\
+	");
+
 LS.Shaders.registerSnippet("computePointSize","\n\
 			float computePointSize(float radius, float w)\n\
 			{\n\
@@ -9349,6 +9358,7 @@ varying vec2 v_uvs;\n\
 \n\
 //globals\n\
 uniform vec4 u_viewport;\n\
+uniform mat4 u_view;\n\
 uniform vec3 u_camera_eye;\n\
 uniform vec4 u_clipping_plane;\n\
 uniform vec4 u_background_color;\n\
@@ -9415,11 +9425,15 @@ void surf(in Input IN, out SurfaceOutput o)\n\
 }\n\
 \n\
 #pragma event \"fs_functions\"\n\
+#pragma snippet \"testClippingPlane\"\n\
 \n\
 {{fs_out}}\n\
 \n\
 void main() {\n\
 	Input IN = getInput();\n\
+	if(testClippingPlane(u_clipping_plane,IN.worldPos) < 0.0)\n\
+		discard;\n\
+	\n\
 	SurfaceOutput o = getSurfaceOutput();\n\
 	#ifdef BLOCK_VERTEX_COLOR\n\
 		IN.color = v_vertex_color;\n\
@@ -23636,6 +23650,7 @@ var Renderer = {
 
 		this._uniforms.u_viewport = gl.viewport_data;
 		this._uniforms.environment_texture = this.ENVIRONMENT_TEXTURE_SLOT;
+		this._uniforms.u_clipping_plane = vec4.create();
 	},
 
 	reset: function()
@@ -40238,7 +40253,8 @@ LinesRenderer.prototype.updateMesh = function ()
 
 	for(var i = 0; i < l; ++i)
 	{
-		if( i*6 >= vl) break; //too many lines
+		if( i*6 >= vl)
+			break; //too many lines
 		var p = lines[i];
 
 		vertices.set(p.subarray(0,6), i * 6);
@@ -40264,7 +40280,7 @@ LinesRenderer.prototype.onAfterRender = function(e)
 	if( this._must_update )
 		this.updateMesh();
 
-	LS.Draw.renderMesh( this._mesh, GL.LINES );
+	LS.Draw.renderMesh( this._mesh, GL.LINES, null, null, 0, this._lines.length * 2 );
 }
 
 
@@ -41100,6 +41116,8 @@ function RealtimeReflector(o)
 	this.refresh_rate = 1; //in frames
 	this.layers = 0xFF;
 
+	this._clipping_plane = vec4.create();
+
 	this._textures = {};
 
 	if(o)
@@ -41235,10 +41253,14 @@ RealtimeReflector.prototype.onRenderReflection = function( e, render_settings )
 
 		//little offset
 		vec3.add( plane_center, plane_center, vec3.scale(vec3.create(), plane_normal, -this.clip_offset) );
-		var clipping_plane = [plane_normal[0], plane_normal[1], plane_normal[2], vec3.dot(plane_center, plane_normal)  ];
-		render_settings.clipping_plane = clipping_plane;
+		this._clipping_plane.set( plane_normal );
+		this._clipping_plane[3] = vec3.dot(plane_center, plane_normal);
+		//render_settings.clipping_plane = clipping_plane;
+		LS.Renderer._uniforms.u_clipping_plane.set( this._clipping_plane );
 
 		LS.Renderer.renderInstancesToRT( reflected_camera, texture, render_settings );
+
+		LS.Renderer._uniforms.u_clipping_plane.set([0,0,0,0]);
 
 		if(this.blur)
 		{
@@ -41269,7 +41291,6 @@ RealtimeReflector.prototype.onRenderReflection = function( e, render_settings )
 	}
 
 	//remove flags
-	render_settings.clipping_plane = null;
 	render_settings.layers = old_layers;
 	delete render_settings.brightness_factor;
 	delete render_settings.colorclip_factor;
@@ -49255,11 +49276,6 @@ var environment_code = "\n\
 		#ifdef ENVIRONMENT_CUBEMAP\n\
 			return textureCube( environment_texture, -V ).xyz;\n\
 		#endif\n\
-		#ifdef ENVIRONMENT_PLANAR\n\
-			vec2 screen_uv = gl_FragCoord.xy / u_viewport.zw;\n\
-			screen_uv.x = 1.0 - screen_uv.x;\n\
-			return texture2D( environment_texture, screen_uv ).xyz;\n\
-		#endif\n\
 		return u_background_color.xyz;\n\
 	}\n\
 ";
@@ -49299,7 +49315,14 @@ var reflection_code = "\n\
 		vec3 bg = vec3(0.0);\n\
 		//is last pass for this object?\n\
 		#ifdef BLOCK_LASTPASS\n\
-			bg = getEnvironmentColor( R, 0.0 );\n\
+			#ifdef ENVIRONMENT_PLANAR\n\
+				vec2 screen_uv = gl_FragCoord.xy / u_viewport.zw;\n\
+				screen_uv.x = 1.0 - screen_uv.x;\n\
+				screen_uv.xy += (u_view * vec4(o.Normal - IN.worldNormal, 0.0)).xy * 0.1;\n\
+				bg = texture2D( environment_texture, screen_uv ).xyz;\n\
+			#else\n\
+				bg = getEnvironmentColor( R, 0.0 );\n\
+			#endif\n\
 		#endif\n\
 		final_color.xyz = mix( final_color.xyz, bg, clamp( o.Reflectivity, 0.0, 1.0) );\n\
 		return final_color;\n\

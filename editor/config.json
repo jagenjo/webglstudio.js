@@ -3,7 +3,7 @@
 	"server":"fileserver/src/",
 	"resources":"fileserver/files/",
 	"proxy":"@/proxy.php?url=",
-	"shaders":"data/shaders.xml",
+	"plugins":"js/plugins",
 	"nocache": false,
 	"scene_url":"scene.json"
 }

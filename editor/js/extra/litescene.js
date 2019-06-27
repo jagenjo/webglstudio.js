@@ -23215,7 +23215,7 @@ RenderFrameContext.prototype.cloneBuffers = function()
 		{
 			var texture = textures[i];
 			var cloned_texture = this._cloned_textures[i];
-			if( !cloned_texture || cloned_texture.hasSameSize( texture[i] ) || !cloned_texture.hasSameProperties( texture ) )
+			if( !cloned_texture || !cloned_texture.hasSameSize( texture ) || !cloned_texture.hasSameProperties( texture ) )
 				cloned_texture = this._cloned_textures[i] = new GL.Texture( texture.width, texture.height, texture.getProperties() );
 			texture.copyTo( cloned_texture );
 			if(i == 0)
@@ -23747,7 +23747,7 @@ var Renderer = {
 		this._global_viewport.set( gl.viewport_data );
 
 		//Event: beforeRender used in actions that could affect which info is collected for the rendering
-		this.startGPUQuery( EVENT.BEFORE_RENDER );
+		this.startGPUQuery( "beforeRender" );
 		LEvent.trigger( scene, EVENT.BEFORE_RENDER, render_settings );
 		this.endGPUQuery();
 
@@ -24979,6 +24979,7 @@ var Renderer = {
 				text.push( "GPU: " + this.gpu_times.total.toFixed(2) );
 				text.push( " - PreRender: " + this.gpu_times.beforeRender.toFixed(2) );
 				text.push( " - Shadows: " + this.gpu_times.shadows.toFixed(2) );
+				text.push( " - Reflections: " + this.gpu_times.reflections.toFixed(2) );
 				text.push( " - Scene: " + this.gpu_times.main.toFixed(2) );
 				text.push( " - Postpo: " + this.gpu_times.postpo.toFixed(2) );
 				text.push( " - GUI: " + this.gpu_times.gui.toFixed(2) );
@@ -24989,11 +24990,11 @@ var Renderer = {
 
 		var ctx = gl;
 		ctx.save();
-		ctx.translate( gl.canvas.width - 200, gl.canvas.height - 240 );
+		ctx.translate( gl.canvas.width - 200, gl.canvas.height - 260 );
 		ctx.globalAlpha = 0.7;
 		ctx.font = "14px Tahoma";
 		ctx.fillStyle = "black";
-		ctx.fillRect(0,0,200,240);
+		ctx.fillRect(0,0,200,260);
 		ctx.fillStyle = "white";
 		ctx.fillText( "Profiler", 20, 20 );
 		ctx.fillStyle = "#AFA";
@@ -41231,7 +41232,7 @@ RealtimeReflector.prototype.onRenderReflection = function( e, render_settings )
 			if(mesh)
 			{
 				plane_center = this._root.transform.globalToLocal( BBox.getCenter( mesh.bounding ) );
-				plane_normal = this._root.transform.globalVectorToLocal( LS.UP );
+				plane_normal = this._root.transform.globalVectorToLocal( LS.TOP );
 			}
 		}
 

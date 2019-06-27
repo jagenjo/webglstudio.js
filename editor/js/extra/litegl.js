@@ -6745,7 +6745,7 @@ Texture.prototype.toCanvas = function( canvas, flip_y, max_size )
 	var buffer = null;
 	if(this.texture_type == gl.TEXTURE_2D )
 	{
-		if(this.width != w || this.height != h ) //resize image to fit the canvas
+		if(this.width != w || this.height != h || this.type != gl.UNSIGNED_BYTE) //resize image to fit the canvas
 		{
 			//create a temporary texture
 			var temp = new GL.Texture(w,h,{ format: gl.RGBA, filter: gl.NEAREST });
@@ -6780,10 +6780,18 @@ Texture.prototype.toCanvas = function( canvas, flip_y, max_size )
 		ctx.fillStyle = "black";
 		ctx.fillRect(0,0,canvas.width, canvas.height );
 
+		var cubemap = this;
+		if(this.type != gl.UNSIGNED_BYTE) //convert pixels to uint8 as it is the only supported format by the canvas
+		{
+			//create a temporary texture
+			cubemap = new GL.Texture( this.width, this.height, { format: gl.RGBA, texture_type: gl.TEXTURE_CUBE_MAP, filter: gl.NEAREST, type: gl.UNSIGNED_BYTE });
+			this.copyTo( cubemap );
+		}
+
 		for(var i = 0; i < 6; i++)
 		{
-			buffer = this.getPixels(i);
 			var pixels = temp_ctx.getImageData(0,0, temp_canvas.width, temp_canvas.height );
+			buffer = cubemap.getPixels(i);
 			pixels.data.set( buffer );
 			temp_ctx.putImageData(pixels,0,0);
 			ctx.drawImage( temp_canvas, info[i].x, info[i].y, temp_canvas.width, temp_canvas.height );

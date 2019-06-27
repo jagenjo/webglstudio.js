@@ -10815,12 +10815,15 @@ if (typeof exports != "undefined") {
                 if (v == "" || v == that.name_in_graph || v == "enabled") {
                     return;
                 }
-                if (that.name_in_graph) {
-                    //already added
-                    that.graph.renameInput(that.name_in_graph, v);
-                } else {
-                    that.graph.addInput(v, that.properties.type);
-                }
+				if(that.graph)
+				{
+					if (that.name_in_graph) {
+						//already added
+						that.graph.renameInput(that.name_in_graph, v);
+					} else {
+						that.graph.addInput(v, that.properties.type);
+					}
+				} //what if not?!
                 that.name_widget.value = v;
                 that.name_in_graph = v;
             },

@@ -1086,9 +1086,17 @@ LS.Components.Poser.showPoseNodesDialog = function( component, event )
 if(LS.Components.ReflectionProbe)
 LS.Components.ReflectionProbe.onShowProperties = function( component, inspector )
 {
-	inspector.widgets_per_row = 2;
-	inspector.addButton( null, "Update", function(){ component.recompute(null,true); LS.GlobalScene.requestFrame(); });
-	inspector.addButton( null, "Update all", function(){ LS.Components.ReflectionProbe.updateAll(); LS.GlobalScene.requestFrame(); });
+	inspector.widgets_per_row = 3;
+	inspector.addButton( null, "Update", { width: "40%", callback: function(){ component.recompute(null,true); LS.GlobalScene.requestFrame(); }});
+	inspector.addButton( null, "Update all", { width: "50%", callback: function(){ LS.Components.ReflectionProbe.updateAll(); LS.GlobalScene.requestFrame(); }});
+	inspector.addButton( null, LiteGUI.special_codes.download, { width: "10%", callback: function(){ 
+		var texture = component.texture;
+		if(!texture)
+			return;
+		var polar_texture = CubemapTools.convertCubemapToPolar(texture);
+		var data = polar_texture.toBinary(true);
+		LiteGUI.downloadFile("polar_cubemap.png", data );
+	}});
     inspector.addSeparator();
 
 	inspector.widgets_per_row = 3;

@@ -1173,7 +1173,8 @@ var LiteGUI = {
 		navicon: "&#9776;",
 		refresh: "&#8634;",
 		gear: "&#9881;",
-		open_folder: "&#128194;"
+		open_folder: "&#128194;",
+		download: "&#11123;"
 	},
 	
 	//given a html entity string it returns the equivalent unicode character

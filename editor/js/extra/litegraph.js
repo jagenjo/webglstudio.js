@@ -20615,69 +20615,63 @@ if (typeof exports != "undefined") {
         LiteGraph.registerNodeType("texture/matte", LGraphTextureMatte);
 
         //***********************************
-        //Cubemap reader (to pass a cubemap to a node that requires cubemaps and no images)
-        function LGraphCubemap() {
-            this.addOutput("Cubemap", "Cubemap");
-            this.properties = { name: "" };
-            this.size = [
-                LGraphTexture.image_preview_size,
-                LGraphTexture.image_preview_size
-            ];
+        function LGraphCubemapToTexture2D() {
+            this.addInput("in", "texture");
+            this.addOutput("out", "texture");
         }
 
-        LGraphCubemap.title = "Cubemap";
+        LGraphCubemapToTexture2D.title = "CubemapToTexture2D";
+        LGraphCubemapToTexture2D.desc = "Transforms a CUBEMAP texture into a TEXTURE2D in Polar Representation";
 
-        LGraphCubemap.prototype.onDropFile = function(data, filename, file) {
-            if (!data) {
-                this._drop_texture = null;
-                this.properties.name = "";
-            } else {
-                if (typeof data == "string") {
-                    this._drop_texture = GL.Texture.fromURL(data);
-                } else {
-                    this._drop_texture = GL.Texture.fromDDSInMemory(data);
-                }
-                this.properties.name = filename;
-            }
+        LGraphCubemapToTexture2D.prototype.onExecute = function() {
+            if (!this.isOutputConnected(0))
+				return;
+
+            var tex = this.getInputData(0);
+            if ( !tex || tex.texture_type != GL.TEXTURE_CUBE_MAP )
+                return;
+			if( this._last_tex && ( this._last_tex.height != tex.height || this._last_tex.type != tex.type ))
+				this._last_tex = null;
+            this._last_tex = LGraphCubemapToTexture2D.convert( tex, tex.height, this._last_tex, true );
+            this.setOutputData( 0, this._last_tex );
         };
 
-        LGraphCubemap.prototype.onExecute = function() {
-            if (this._drop_texture) {
-                this.setOutputData(0, this._drop_texture);
-                return;
-            }
+		LGraphCubemapToTexture2D.convert = function( cubemap_texture, size, target_texture, keep_type )
+		{
+			if(!cubemap_texture || cubemap_texture.texture_type != gl.TEXTURE_CUBE_MAP) {
+				throw("No cubemap in convert");
+				return null;
+			}
 
-            if (!this.properties.name) {
-                return;
-            }
+			size = size || cubemap_texture.width;
+			var type = keep_type ? cubemap_texture.type : gl.UNSIGNED_BYTE;
+			if(!target_texture)
+				target_texture = new GL.Texture(size*2,size,{ minFilter: gl.NEAREST, type: type });
+			var shader = LGraphCubemapToTexture2D.shader;
+			if(!shader)
+				shader = LGraphCubemapToTexture2D.shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphCubemapToTexture2D.fragment_code );
+			target_texture.drawTo(function() {
+				gl.disable(gl.DEPTH_TEST);
+				gl.disable(gl.CULL_FACE);
+				gl.disable(gl.BLEND);
+				cubemap_texture.toViewport( shader );
+			});
+			return target_texture;
+		}
 
-            var tex = LGraphTexture.getTexture(this.properties.name);
-            if (!tex) {
-                return;
-            }
+		LGraphCubemapToTexture2D.fragment_code = '\
+				precision mediump float;\n\
+				#define PI 3.14159265358979323846264\n\
+				uniform samplerCube texture;\
+				varying vec2 v_coord;\
+				void main() {\
+					float alpha = (v_coord.x * 2.0) * PI;\
+					float beta = (v_coord.y * 2.0 - 1.0) * PI * 0.5;\
+					vec3 N = vec3( -cos(alpha) * cos(beta), sin(beta), sin(alpha) * cos(beta) );\
+					gl_FragColor = textureCube(texture,N);\
+		}';
 
-            this._last_tex = tex;
-            this.setOutputData(0, tex);
-        };
-
-        LGraphCubemap.prototype.onDrawBackground = function(ctx) {
-            if (this.flags.collapsed || this.size[1] <= 20) {
-                return;
-            }
-
-            if (!ctx.webgl) {
-                return;
-            }
-
-            var cube_mesh = gl.meshes["cube"];
-            if (!cube_mesh) {
-                cube_mesh = gl.meshes["cube"] = GL.Mesh.cube({ size: 1 });
-            }
-
-            //var view = mat4.lookAt( mat4.create(), [0,0
-        };
-
-        LiteGraph.registerNodeType("texture/cubemap", LGraphCubemap);
+        LiteGraph.registerNodeType( "texture/cubemapToTexture2D", LGraphCubemapToTexture2D );
     } //litegl.js defined
 })(this);
 

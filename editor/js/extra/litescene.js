@@ -5529,6 +5529,7 @@ LS.ResourcesManager.processDataResource = function( url, data, options, callback
 
 //Images ********
 
+//Called after the http request for an image
 //Takes image data in some raw format and transforms it in regular image data, then converts it to GL.Texture
 LS.ResourcesManager.processImage = function( filename, data, options, callback ) {
 
@@ -17022,6 +17023,10 @@ if(typeof(LiteGraph) != "undefined")
 		result = result || [];
 		for(var i in attrs)
 			result.push( [i, attrs[i]] );
+
+		if(compo.getExtraProperties)
+			compo.getExtraProperties( result );
+
 		return result;
 	}
 
@@ -41371,6 +41376,12 @@ ReflectionProbe["@texture_size"] = { type:"enum", values:["viewport",64,128,256,
 ReflectionProbe["@layers"] = { type:"layers" };
 ReflectionProbe["@background_color"] = { type:"color" };
 
+Object.defineProperty( ReflectionProbe.prototype, "texture", {
+	get: function() { return this._texture; },
+	set: function() { throw("probe cubemap cannot be set"); },
+	enumerable: false
+});
+
 Object.defineProperty( ReflectionProbe.prototype, "enabled", {
 	set: function(v){ 
 		if(v == this._enabled)
@@ -41400,6 +41411,11 @@ ReflectionProbe.prototype.onAddedToScene = function(scene)
 	//LEvent.bind( LS.Renderer,"renderHelpers", this.onVisualizeProbe, this );
 
 	this.register( scene );
+}
+
+ReflectionProbe.prototype.getExtraProperties = function(properties)
+{
+	properties.push(["texture","texture"]);
 }
 
 ReflectionProbe.prototype.onRemovedFromScene = function(scene)

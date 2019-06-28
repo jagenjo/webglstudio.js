@@ -422,6 +422,15 @@ GL.Texture.prototype.inspect = function( widgets, skip_default_widgets )
 
 	widgets.widgets_per_row = 1;
 
+	if(texture.texture_type == gl.TEXTURE_CUBE_MAP)
+	{
+		widgets.addButton(null, "Download as Polar", function(){
+			var polar_texture = CubemapTools.convertCubemapToPolar(texture);
+			var data = polar_texture.toBinary();
+			LiteGUI.downloadFile("polar_cubemap.png", data );
+		});
+	}
+
 	var clone_name = LS.RM.getBasename( texture.filename ) + "_clone.png";
 	widgets.addStringButton("Clone", clone_name, { button: "Clone", button_width: "25%", callback: function(v){
 		clone_name = v;

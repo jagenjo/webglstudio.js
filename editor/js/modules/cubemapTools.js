@@ -441,50 +441,9 @@ var CubemapTools = {
 		return cubemap;
 	},
 
-	convertCubemapToPolar: function(cubemap_texture, size, target_texture)
+	convertCubemapToPolar: function( cubemap_texture, size, target_texture, keep_type )
 	{
-		if(!cubemap_texture || cubemap_texture.texture_type != gl.TEXTURE_CUBE_MAP) {
-			trace("No cubemap found");
-			return null;
-		}
-
-		size = size || 256;
-		var canvas = document.createElement("canvas");
-		canvas.width = canvas.height = size;
-
-		var texture = target_texture || new GL.Texture(size,size,{minFilter: gl.NEAREST});
-		texture.drawTo(function() {
-			gl.viewport(0,0,size,size);
-			gl.disable(gl.DEPTH_TEST);
-			gl.disable(gl.CULL_FACE);
-			gl.disable(gl.BLEND);
-			gl.clearColor(1,1,1,1);
-			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-			cubemap_texture.bind();
-			var shader = this.shader_cubemap_to_polar;
-			if(!shader)
-			{
-				this.compileShaders();
-				shader = this.shader_cubemap_to_polar;
-			}
-
-			cubemap_texture.toViewport( shader );
-			//shader.uniforms({color:[1,1,1,1], texture: 0}).draw( RenderModule.canvas_manager.screen_plane );
-
-			var ctx = canvas.getContext("2d");
-			var pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
-			buffer = pixels.data;
-			var buffer = new Uint8Array(size*size*4);
-			gl.readPixels(0,0,size,size,gl.RGBA,gl.UNSIGNED_BYTE,buffer);
-			//for(var i = 0; i < buffer.length; ++i) { pixels.data[i] = buffer[i]; }
-			pixels.data.set(buffer);
-			ctx.putImageData(pixels, 0, 0);
-		});
-
-		//document.body.appendChild(canvas);
-		ResourcesManager.processImage("cubemap_" + (Math.random()*1000).toFixed(),canvas);
-		return texture;
+		return LiteGraph.Nodes.LGraphCubemapToTexture2D.convert( cubemap_texture, size, target_texture, keep_type );
 	},
 
 	generateCubemapFromFiles: function( files, callback, options )
@@ -616,28 +575,6 @@ var CubemapTools = {
 			if(callback)
 				callback(texture);
 		}
-	},
-
-	compileShaders: function()
-	{
-		this.shader_cubemap_to_polar = LS.Shaders.compile( LS.Shaders.common_vscode + '\
-			varying vec2 coord;\
-			void main() {\
-			coord = a_coord;\
-			gl_Position = vec4(coord * 2.0 - 1.0, 0.0, 1.0);\
-		}\
-		', LS.Shaders.common_pscode + '\
-			#define PI 3.14159265358979323846264\n\
-			uniform samplerCube texture;\
-			uniform vec4 color;\
-			varying vec2 coord;\
-			void main() {\
-				float alpha = (coord.x * 2.0) * PI;\
-				float beta = (coord.y * 2.0 - 1.0) * PI * 0.5;\
-				vec3 N = vec3( -cos(alpha) * cos(beta), sin(beta), sin(alpha) * cos(beta) );\
-				gl_FragColor = color * textureCube(texture,N);\
-			}\
-		',"cubemap_to_polar");
 	},
 
 	render: function( camera )

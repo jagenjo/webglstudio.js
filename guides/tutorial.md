@@ -26,33 +26,33 @@ There are several areas in the interface:
 
 The editor is divided in six sections that you can access through the buttons in the left side:
 
-- **Scene**: to view the current scene 
+- **Scene**: to edit/view the current scene 
 - **Drive**: to manage files (on the server or in memory)
 - **Player**: to view the final result of your application
 - **Code**: to edit the scripts in your scene
 - **Graph**: to edit the graphs in your scene
-- **Lab**: to check the resources stored in the GPU (name is temporary)
+- **GPU**: to check the resources stored in the GPU
 
-To know more about the interface check the interface guide (not finished yet).
 
 # SceneTree, SceneNodes and Components
 
 Before going into detail on how to use the editor it is important to understand the basics about how a scene is created.
 
-To create our interactive application using WebGLStudio we need to create an scene. A scene contains all the visible objects (meshes, materials) and
-all the behaviour (scripts, graphs).
+To create our interactive application using WebGLStudio we need to create an Scene. A scene contains all the visible objects (meshes, materials) and all the behaviour (scripts, graphs).
 
 To store our project we just save the scene as it contains everything.
 (In the future maybe we will have another class on top of the scene called Project in case we want to load several scenes...).
 
-The scene is contained in a ```LS.SceneTree``` class, and it can only be one active (although there are some tricks to have more than one using special components).
+The scene is contained in a ```LS.Scene``` class, and it can only be one active (although there are some tricks to have more than one using special components).
 
-The scene contains ```LS.SceneNode``` that represent object in our scene, and every scene node also could contain inside other nodes, 
+The scene contains ```LS.SceneNode``` that represent objects in our scene, and every scene node also could contain inside other nodes, 
 creating what is known as an [scene graph](https://en.wikipedia.org/wiki/Scene_graph) (not to be confused with the behaviour graphs in our system).
 
 Scene nodes by themselves do not have any behaviour, to add them behaviour (draw something, interact with the user...) we need to attach components to them.
 
 ```LS.Component``` is the base class of every component in the system. There are components for many things, check the [guide about components](components.md) to know more about them.
+
+To know more about the nodes structure check the [guide about Scenes](https://github.com/jagenjo/litescene.js/blob/master/guides/scene.md).
 
 # Creating an object
 

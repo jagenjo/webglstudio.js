@@ -11,6 +11,19 @@ Lets start
 The current interface of the editor is still in an alpha state, it is not as intuitive as we would like to but this will be addressed
 in future updates.
 
+![Interface](imgs/webglstudio_interface.png)
+
+There are several areas in the interface:
+- **Scene View** where you can see the 3D area of your project
+- **Scene Tree** a list of all the nodes of the scene
+- **Inspector** the place where the properties of the selected object are shown
+- **Play Controls** to launch the project
+- **Sections** buttons to change between sections of the app
+- **Low panel** multi-use panel that can be hide
+
+
+# Sections
+
 The editor is divided in six sections that you can access through the buttons in the left side:
 
 - **Scene**: to view the current scene 

@@ -62,6 +62,8 @@ A new node will appear in the node tree, and we inspect it we will see it contai
 
 You can create more nodes, and attach components to give more behaviours. Drag meshes from the Drive or your harddrive, add lights, play with the materials, till the scene looks the way you like.
 
+You can also drag a mesh to the scene view to insert it, currently WebGLStudio supports OBJ or DAE.
+
 # Adding some behaviour
 
 Now let's create an script to change its behaviour, to do this click in the button ```Add Behaviour -> Inner script``` in the inspector of the sphere node.

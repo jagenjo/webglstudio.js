@@ -419,6 +419,12 @@ LS.Components.GeometricPrimitive.actions["to_mesh"] = {
 	}
 };
 
+LS.Components.ReflectionProbe.actions["preview"] = { title: "Preview", callback: function() { 
+		TextureTools.previewTexture( this._texture );
+		LS.GlobalScene.refresh();
+	}
+};
+
 
 //*********** Material Actions *************************************
 

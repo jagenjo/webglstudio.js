@@ -14,6 +14,7 @@ function TexturePreviewWidget()
 
 	this.channel = -1;
 	this.exposition = 1;
+	this.gamma = 1;
 	this.scale = 1;
 	this.offset = vec2.create();
 	this.xray_mode = false;
@@ -23,6 +24,7 @@ function TexturePreviewWidget()
 		u_exposition: 1,
 		u_channel: -1,
 		u_scale: 1, 
+		u_gamma: 1,
 		u_offset: this.offset, 
 		u_resolution: vec2.create(),
 		u_viewport: vec4.create()
@@ -48,11 +50,22 @@ TexturePreviewWidget.prototype.onRender = function( ctx, viewport )
 
 	gl.setViewport( viewport, true );
 
-	var shader = TexturePreviewWidget._shader;
-	if(!shader)
-		shader = TexturePreviewWidget._shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, TexturePreviewWidget.pixel_shader );
+	var shader = null;
+	if(texture.texture_type == GL.TEXTURE_CUBE_MAP )
+	{
+		shader = TexturePreviewWidget._shader_cube;
+		if(!shader)
+			shader = TexturePreviewWidget._shader_cube = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, TexturePreviewWidget.pixel_shader, { USE_CUBEMAP: "" } );
+	}
+	else
+	{
+		shader = TexturePreviewWidget._shader;
+		if(!shader)
+			shader = TexturePreviewWidget._shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, TexturePreviewWidget.pixel_shader );
+	}
 
 	this._uniforms.u_exposition = this.exposition;
+	this._uniforms.u_gamma = this.gamma;
 	this._uniforms.u_scale = this.scale;
 	this._uniforms.u_channel = this.channel;
 	this._uniforms.u_xray_mode = this.xray_mode ? 1 : 0;
@@ -151,6 +164,9 @@ TexturePreviewWidget.prototype.inspect = function( inspector )
 	inspector.addSlider("Exposition", this.exposition, { min:0, max:2, step:0.001, precision: 3, callback: function(v){
 		that.exposition = v;
 	}});
+	inspector.addSlider("Gamma", this.gamma, { min:0, max:2, step:0.001, precision: 3, callback: function(v){
+		that.gamma = v;
+	}});
 	inspector.addSlider("Scale", this.scale, { min:0, max:10, step:0.01, precision: 2, callback: function(v){
 		that.scale = v;
 	}});
@@ -160,26 +176,44 @@ TexturePreviewWidget.prototype.inspect = function( inspector )
 	inspector.addCheckbox("XRay mode", this.xray_mode, { callback: function(v){
 		that.xray_mode = v;
 	}});
+
+	inspector.addSeparator();
+
+	if(texture)
+		texture.inspect( inspector );
 }
 
 TexturePreviewWidget.pixel_shader = "precision highp float;\n\
 	varying vec2 v_coord;\n\
-	uniform sampler2D u_texture;\n\
+	#ifdef USE_CUBEMAP\n\
+		uniform samplerCube u_texture;\n\
+	#else\n\
+		uniform sampler2D u_texture;\n\
+	#endif\n\
 	uniform float u_exposition;\n\
 	uniform int u_channel;\n\
 	uniform int u_xray_mode;\n\
 	uniform vec4 u_viewport;\n\
 	uniform vec2 u_resolution;\n\
 	uniform float u_scale;\n\
+	uniform float u_gamma;\n\
 	uniform vec2 u_offset;\n\
 	\n\
+	#define PI 3.14159265358979323846264\n\
 	void main() {\n\
 		vec2 uv = v_coord;\n\
 		vec2 ratio = u_viewport.zw / u_resolution;\n\
 		if(u_xray_mode == 1)\n\
 			uv = (gl_FragCoord.st / (u_resolution * ratio));\n\
 		uv = (uv - vec2(0.5) - u_offset) / u_scale + vec2(0.5) + u_offset;\n\
-		vec4 color = texture2D( u_texture, uv );\n\
+		#ifdef USE_CUBEMAP\n\
+			float alpha = ((1.0 - uv.x) * 2.0) * PI;\
+			float beta = (uv.y * 2.0 - 1.0) * PI * 0.5;\
+			vec3 N = vec3( -cos(alpha) * cos(beta), sin(beta), sin(alpha) * cos(beta) );\
+			vec4 color = textureCube( u_texture, N );\n\
+		#else\n\
+			vec4 color = texture2D( u_texture, uv );\n\
+		#endif\n\
 		color *= u_exposition;\n\
 		if( u_channel == 0 )\n\
 			color.xyz = vec3(color.x);\n\
@@ -189,6 +223,7 @@ TexturePreviewWidget.pixel_shader = "precision highp float;\n\
 			color.xyz = vec3(color.z);\n\
 		else if( u_channel == 3 )\n\
 			color.xyz = vec3(color.w);\n\
+		color.xyz = pow( color.xyz, vec3(u_gamma) );\n\
 		gl_FragColor = vec4( color.xyz, 1.0 );\n\
 }";
 

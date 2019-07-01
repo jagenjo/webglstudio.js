@@ -584,6 +584,7 @@
 
         //custom data
         this.config = {};
+		this.vars = {};
 
         //timing
         this.globaltime = 0;
@@ -11214,9 +11215,36 @@ if (typeof exports != "undefined") {
 
     LiteGraph.registerNodeType("basic/merge_objects", MergeObjects );
 
+    //Store as variable
+    function Variable() {
+        this.size = [60, 30];
+        this.addInput("in");
+        this.addOutput("out");
+		this.properties = { varname: "myname", global: false };
+        this.value = null;
+    }
+
+    Variable.title = "Variable";
+    Variable.desc = "store/read variable value";
+
+    Variable.prototype.onExecute = function() {
+		this.value = this.getInputData(0);
+		if(this.graph)
+			this.graph.vars[ this.properties.varname ] = this.value;
+		if(this.properties.global)
+			global[this.properties.varname] = this.value;
+		this.setOutputData(0, this.value );
+    };
+
+    Variable.prototype.getTitle = function() {
+        return this.properties.varname;
+    };
+
+    LiteGraph.registerNodeType("basic/variable", Variable);
+
     //Watch a value in the editor
     function Watch() {
-        this.size = [60, 20];
+        this.size = [60, 30];
         this.addInput("value", 0, { label: "" });
         this.value = 0;
     }
@@ -11265,7 +11293,7 @@ if (typeof exports != "undefined") {
     function Cast() {
         this.addInput("in", 0);
         this.addOutput("out", 0);
-        this.size = [40, 20];
+        this.size = [40, 30];
     }
 
     Cast.title = "Cast";
@@ -11349,7 +11377,7 @@ if (typeof exports != "undefined") {
 
     //Execites simple code
     function NodeScript() {
-        this.size = [60, 20];
+        this.size = [60, 30];
         this.addProperty("onExecute", "return A;");
         this.addInput("A", "");
         this.addInput("B", "");
@@ -12876,7 +12904,7 @@ if (typeof exports != "undefined") {
     //Converter
     function Converter() {
         this.addInput("in", "*");
-        this.size = [60, 20];
+        this.size = [80, 30];
     }
 
     Converter.title = "Converter";
@@ -12951,7 +12979,7 @@ if (typeof exports != "undefined") {
     function Bypass() {
         this.addInput("in");
         this.addOutput("out");
-        this.size = [60, 20];
+        this.size = [80, 30];
     }
 
     Bypass.title = "Bypass";
@@ -12989,7 +13017,7 @@ if (typeof exports != "undefined") {
         this.addProperty("out_min", 0);
         this.addProperty("out_max", 1);
 
-        this.size = [80, 20];
+        this.size = [80, 30];
     }
 
     MathRange.title = "Range";
@@ -13053,7 +13081,7 @@ if (typeof exports != "undefined") {
         this.addOutput("value", "number");
         this.addProperty("min", 0);
         this.addProperty("max", 1);
-        this.size = [60, 20];
+        this.size = [80, 30];
     }
 
     MathRand.title = "Rand";
@@ -13095,7 +13123,7 @@ if (typeof exports != "undefined") {
         this.addProperty("min", 0);
         this.addProperty("max", 1);
         this.addProperty("smooth", true);
-        this.size = [90, 20];
+        this.size = [90, 30];
     }
 
     MathNoise.title = "Noise";
@@ -13145,7 +13173,7 @@ if (typeof exports != "undefined") {
         this.addProperty("min_time", 1);
         this.addProperty("max_time", 2);
         this.addProperty("duration", 0.2);
-        this.size = [90, 20];
+        this.size = [90, 30];
         this._remaining_time = 0;
         this._blink_time = 0;
     }
@@ -13184,7 +13212,7 @@ if (typeof exports != "undefined") {
     function MathClamp() {
         this.addInput("in", "number");
         this.addOutput("out", "number");
-        this.size = [60, 20];
+        this.size = [80, 30];
         this.addProperty("min", 0);
         this.addProperty("max", 1);
     }
@@ -13260,7 +13288,7 @@ if (typeof exports != "undefined") {
     function MathAbs() {
         this.addInput("in", "number");
         this.addOutput("out", "number");
-        this.size = [60, 20];
+        this.size = [80, 30];
     }
 
     MathAbs.title = "Abs";
@@ -20617,7 +20645,9 @@ if (typeof exports != "undefined") {
         //***********************************
         function LGraphCubemapToTexture2D() {
             this.addInput("in", "texture");
+            this.addInput("yaw", "number");
             this.addOutput("out", "texture");
+			this.properties = { yaw: 0 };
         }
 
         LGraphCubemapToTexture2D.title = "CubemapToTexture2D";
@@ -20632,44 +20662,10 @@ if (typeof exports != "undefined") {
                 return;
 			if( this._last_tex && ( this._last_tex.height != tex.height || this._last_tex.type != tex.type ))
 				this._last_tex = null;
-            this._last_tex = LGraphCubemapToTexture2D.convert( tex, tex.height, this._last_tex, true );
+			var yaw = this.getInputOrProperty("yaw");
+            this._last_tex = GL.Texture.cubemapToTexture2D( tex, tex.height, this._last_tex, true, yaw );
             this.setOutputData( 0, this._last_tex );
         };
-
-		LGraphCubemapToTexture2D.convert = function( cubemap_texture, size, target_texture, keep_type )
-		{
-			if(!cubemap_texture || cubemap_texture.texture_type != gl.TEXTURE_CUBE_MAP) {
-				throw("No cubemap in convert");
-				return null;
-			}
-
-			size = size || cubemap_texture.width;
-			var type = keep_type ? cubemap_texture.type : gl.UNSIGNED_BYTE;
-			if(!target_texture)
-				target_texture = new GL.Texture(size*2,size,{ minFilter: gl.NEAREST, type: type });
-			var shader = LGraphCubemapToTexture2D.shader;
-			if(!shader)
-				shader = LGraphCubemapToTexture2D.shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphCubemapToTexture2D.fragment_code );
-			target_texture.drawTo(function() {
-				gl.disable(gl.DEPTH_TEST);
-				gl.disable(gl.CULL_FACE);
-				gl.disable(gl.BLEND);
-				cubemap_texture.toViewport( shader );
-			});
-			return target_texture;
-		}
-
-		LGraphCubemapToTexture2D.fragment_code = '\
-				precision mediump float;\n\
-				#define PI 3.14159265358979323846264\n\
-				uniform samplerCube texture;\
-				varying vec2 v_coord;\
-				void main() {\
-					float alpha = (v_coord.x * 2.0) * PI;\
-					float beta = (v_coord.y * 2.0 - 1.0) * PI * 0.5;\
-					vec3 N = vec3( -cos(alpha) * cos(beta), sin(beta), sin(alpha) * cos(beta) );\
-					gl_FragColor = textureCube(texture,N);\
-		}';
 
         LiteGraph.registerNodeType( "texture/cubemapToTexture2D", LGraphCubemapToTexture2D );
     } //litegl.js defined

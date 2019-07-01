@@ -10579,6 +10579,17 @@ function ComponentContainer()
 	//this._components_by_uid = {}; //TODO
 }
 
+/*
+Object.defineProperty( ComponentContainer.prototype, "components", {
+	enumerable: false,
+	get: function() {
+		return this._components;
+	},
+	set: function(v) {
+		throw("Components cannot be set, you must use addComponent");
+	}
+});
+*/
 
 /**
 * Adds a component to this node.
@@ -24976,6 +24987,7 @@ var Renderer = {
 			var fps = 1000 / this._frame_time;
 			text.push( fps.toFixed(2) + " FPS" );
 			text.push( "CPU: " + this._frame_cpu_time.toFixed(2) + " ms" );
+			text.push( " - Passes: " + this._rendered_passes );
 			text.push( " - RIs: " + this._rendered_instances );
 			text.push( " - Draws: " + this._rendercalls );
 
@@ -24995,11 +25007,11 @@ var Renderer = {
 
 		var ctx = gl;
 		ctx.save();
-		ctx.translate( gl.canvas.width - 200, gl.canvas.height - 260 );
+		ctx.translate( gl.canvas.width - 200, gl.canvas.height - 280 );
 		ctx.globalAlpha = 0.7;
 		ctx.font = "14px Tahoma";
 		ctx.fillStyle = "black";
-		ctx.fillRect(0,0,200,260);
+		ctx.fillRect(0,0,200,280);
 		ctx.fillStyle = "white";
 		ctx.fillText( "Profiler", 20, 20 );
 		ctx.fillStyle = "#AFA";
@@ -41490,6 +41502,8 @@ ReflectionProbe.prototype.recompute = function( render_settings, generate_spheri
 	}
 }
 
+ReflectionProbe.use_float_for_high_precision = false; //by default it uses HALF_FLOAT
+
 ReflectionProbe.prototype.updateCubemap = function( position, render_settings )
 {
 	render_settings = render_settings || LS.Renderer.default_render_settings;
@@ -41507,7 +41521,7 @@ ReflectionProbe.prototype.updateCubemap = function( position, render_settings )
 	LS.Renderer.clearSamplers();
 
 	var texture_type = gl.TEXTURE_CUBE_MAP;
-	var type = this.high_precision ? gl.HIGH_PRECISION_FORMAT : gl.UNSIGNED_BYTE;
+	var type = this.high_precision ? ( ReflectionProbe.use_float_for_high_precision ? gl.FLOAT : gl.HIGH_PRECISION_FORMAT ) : gl.UNSIGNED_BYTE;
 
 	var texture = this._texture;
 
@@ -41536,7 +41550,8 @@ ReflectionProbe.prototype.updateCubemap = function( position, render_settings )
 
 	//fix: there was a problem because there was no texture bind in ENVIRONMENT_SLOT, this fix it
 	for(var i = 0; i < LS.Renderer._visible_instances.length; ++i)
-		LS.Renderer._visible_instances[i]._nearest_reflection_probe = null;
+		if( LS.Renderer._visible_instances[i]._nearest_reflection_probe == this )
+			LS.Renderer._visible_instances[i]._nearest_reflection_probe = null;
 
 	//render all the scene inside the cubemap
 	LS.Renderer.renderToCubemap( position, 0, texture, render_settings, this.near, this.far, this.background_color );
@@ -41549,6 +41564,10 @@ ReflectionProbe.prototype.updateCubemap = function( position, render_settings )
 		gl.generateMipmap(texture.texture_type);
 		texture.unbind();
 	}
+
+	for(var i = 0; i < LS.Renderer._visible_instances.length; ++i)
+		if( LS.Renderer._visible_instances[i]._nearest_reflection_probe == null )
+			LS.Renderer._visible_instances[i]._nearest_reflection_probe = this;
 
 	if(this.texture_name)
 		LS.ResourcesManager.registerResource( this.texture_name, texture );

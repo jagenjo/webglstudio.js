@@ -443,7 +443,7 @@ var CubemapTools = {
 
 	convertCubemapToPolar: function( cubemap_texture, size, target_texture, keep_type )
 	{
-		return LiteGraph.Nodes.LGraphCubemapToTexture2D.convert( cubemap_texture, size, target_texture, keep_type );
+		return GL.Texture.cubemapToTexture2D( cubemap_texture, size, target_texture, keep_type, 0 );
 	},
 
 	generateCubemapFromFiles: function( files, callback, options )

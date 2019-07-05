@@ -368,14 +368,15 @@
          * @return {Array} array with all the names of the categories
          */
 
-        getNodeTypesCategories: function() {
+        getNodeTypesCategories: function( filter ) {
             var categories = { "": 1 };
             for (var i in this.registered_node_types) {
-                if (
-                    this.registered_node_types[i].category &&
-                    !this.registered_node_types[i].skip_list
-                ) {
-                    categories[this.registered_node_types[i].category] = 1;
+				var type = this.registered_node_types[i];
+                if ( type.category && !type.skip_list )
+                {
+					if(filter && type.filter != filter)
+						continue;
+                    categories[type.category] = 1;
                 }
             }
             var result = [];
@@ -8501,31 +8502,20 @@ LGraphNode.prototype.executeAction = function(action)
         var canvas = LGraphCanvas.active_canvas;
         var ref_window = canvas.getCanvasWindow();
 
-        var values = LiteGraph.getNodeTypesCategories();
+        var values = LiteGraph.getNodeTypesCategories( canvas.filter );
         var entries = [];
         for (var i in values) {
             if (values[i]) {
-                entries.push({
-                    value: values[i],
-                    content: values[i],
-                    has_submenu: true
-                });
+                entries.push({ value: values[i], content: values[i], has_submenu: true });
             }
         }
 
         //show categories
-        var menu = new LiteGraph.ContextMenu(
-            entries,
-            { event: e, callback: inner_clicked, parentMenu: prev_menu },
-            ref_window
-        );
+        var menu = new LiteGraph.ContextMenu( entries, { event: e, callback: inner_clicked, parentMenu: prev_menu }, ref_window );
 
         function inner_clicked(v, option, e) {
             var category = v.value;
-            var node_types = LiteGraph.getNodeTypesInCategory(
-                category,
-                canvas.filter
-            );
+            var node_types = LiteGraph.getNodeTypesInCategory( category, canvas.filter );
             var values = [];
             for (var i in node_types) {
                 if (!node_types[i].skip_list) {
@@ -8536,11 +8526,7 @@ LGraphNode.prototype.executeAction = function(action)
                 }
             }
 
-            new LiteGraph.ContextMenu(
-                values,
-                { event: e, callback: inner_create, parentMenu: menu },
-                ref_window
-            );
+            new LiteGraph.ContextMenu( values, { event: e, callback: inner_create, parentMenu: menu }, ref_window );
             return false;
         }
 

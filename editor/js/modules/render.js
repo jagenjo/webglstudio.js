@@ -75,9 +75,12 @@ var RenderModule = {
 		var canvas_container = this.canvas_container = document.getElementById("maincanvas");
 		InterfaceModule.setVisorArea( visorarea );
 
+		// WEBGL_VERSION is set to 1 because some extensions are not supported (p.e. draw_buffers) in WebGL2 unless you migrate the code to 330
+		// So to support webgl 2 I would need to have all the shaders in two versions 
+
 		//The WebGLContext is created from CanvasManager, not here
 		//Create canvas and store inside the #visor
-		this.canvas_manager = new CanvasManager( { container: canvas_container, full: true, antialiasing: true } );
+		this.canvas_manager = new CanvasManager( { webgl_version: 1, container: canvas_container, full: true, antialiasing: true } );
 		if(!this.canvas_manager.gl)
 		{
 			this.onWebGLNotEnabled();

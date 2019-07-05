@@ -44,10 +44,14 @@ CanvasManager.prototype.init = function( options )
 	//setting this var to true will make the render slower but allow to call toDataURL
 	var allow_read = false;
 
+	var webgl_version = 1;
+	if( options.webgl_version )
+		webgl_version = options.webgl_version;
+
 	//create canvas and attach events
 	try
 	{
-		window.gl = GL.create({ antialias: antialiasing, alpha:false, stencil: true, premultipliedAlpha: false, debug: true, preserveDrawingBuffer: allow_read });
+		window.gl = GL.create({ version: webgl_version, antialias: antialiasing, alpha:false, stencil: true, premultipliedAlpha: false, debug: true, preserveDrawingBuffer: allow_read });
 	}
 	catch (err)
 	{

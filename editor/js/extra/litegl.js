@@ -214,6 +214,18 @@ global.isPowerOfTwo = GL.isPowerOfTwo = function isPowerOfTwo(v)
 	return ((Math.log(v) / Math.log(2)) % 1) == 0;
 }
 
+/**
+* Tells if one number is power of two (used for textures)
+* @method isPowerOfTwo
+* @param {v} number
+* @return {boolean}
+*/
+global.nearestPowerOfTwo = GL.nearestPowerOfTwo = function nearestPowerOfTwo(v)
+{
+	return Math.pow(2, Math.round( Math.log( v ) / Math.log(2) ) )
+}
+
+
 //Global Scope
 //better array conversion to string for serializing
 var typed_arrays = [ Uint8Array, Int8Array, Uint16Array, Int16Array, Uint32Array, Int32Array, Float32Array, Float64Array ];
@@ -6523,7 +6535,7 @@ Texture.cubemapFromImages = function(images, options) {
 Texture.cubemapFromImage = function( image, options ) {
 	options = options || {};
 
-	if(image.width != (image.height / 6) && image.height % 6 != 0 && !options.faces)
+	if(image.width != (image.height / 6) && image.height % 6 != 0 && !options.faces && !options.is_polar )
 	{
 		console.error( "Cubemap image not valid, only 1x6 (vertical) or 6x3 (cross) formats. Check size:", image.width, image.height );
 		return null;
@@ -6531,8 +6543,37 @@ Texture.cubemapFromImage = function( image, options ) {
 
 	var width = image.width;
 	var height = image.height;
-	
-	if(options.is_cross !== undefined)
+
+	if(options.is_polar)
+	{
+		var size = options.size || GL.nearestPowerOfTwo( image.height );
+		var temp_tex = GL.Texture.fromImage( image, { ignore_pot:true, wrap: gl.REPEAT, filter: gl.LINEAR } );
+		var cubemap = new GL.Texture( size, size, { texture_type: gl.TEXTURE_CUBE_MAP, format: gl.RGBA });
+		if(options.texture)
+		{
+			var old_tex = options.texture;
+			for(var i in cubemap)
+				old_tex[i] = cubemap[i];
+			cubemap = old_tex;
+		}
+		var rot_matrix = mat3.create();
+		var uniforms = { u_texture:0, u_rotation: rot_matrix };
+		gl.disable( gl.DEPTH_TEST );
+		gl.disable( gl.BLEND );
+		var shader = GL.Shader.getPolarToCubemapShader();
+		cubemap.drawTo(function(t,i){
+			var face_info = GL.Texture.cubemap_camera_parameters[ i ];
+			mat3.identity( rot_matrix );
+			rot_matrix.set( face_info.right, 0 );
+			rot_matrix.set( face_info.up, 3 );
+			rot_matrix.set( face_info.dir, 6 );
+			temp_tex.toViewport( shader, uniforms );
+		});
+		if(options.keep_image)
+			cubemap.img = image;
+		return cubemap;
+	}
+	else if(options.is_cross !== undefined)
 	{
 		options.faces = Texture.generateCubemapCrossFacesInfo(image.width, options.is_cross);
 		width = height = image.width / 4;
@@ -7663,8 +7704,13 @@ Shader.prototype.updateShader = function( vertexSource, fragmentSource, macros )
 	//expand macros
 	var extra_code = Shader.expandMacros( macros );
 
-	if(this.program)
+	if(!this.program)
 		this.program = gl.createProgram();
+	else
+	{
+		gl.detachShader( this.program, this.vs_shader );
+		gl.detachShader( this.program, this.fs_shader );
+	}
 
 	var extra_code = Shader.expandMacros( macros );
 
@@ -8820,6 +8866,34 @@ Shader.getCubemapShowShader = function(gl)
 	shader.uniforms({u_texture:0});
 	return gl.shaders[":show_cubemap"] = shader;
 }
+
+//shader to copy a cubemap into another 
+Shader.getPolarToCubemapShader = function(gl)
+{
+	gl = gl || global.gl;
+	var shader = gl.shaders[":polar_to_cubemap"];
+	if(shader)
+		return shader;
+
+	var shader = new GL.Shader( Shader.SCREEN_VERTEX_SHADER,"\n\
+			precision highp float;\n\
+			varying vec2 v_coord;\n\
+			uniform sampler2D u_texture;\n\
+			uniform mat3 u_rotation;\n\
+			void main() {\n\
+				vec2 uv = vec2( v_coord.x, 1.0 - v_coord.y );\n\
+				vec3 dir = normalize( vec3( uv - vec2(0.5), 0.5 ));\n\
+				dir = u_rotation * dir;\n\
+				float u = atan(dir.x,dir.z) / 6.28318531;\n\
+				float v = (asin(dir.y) / 1.57079633) * 0.5 + 0.5;\n\
+				u = mod(u,1.0);\n\
+				v = mod(v,1.0);\n\
+			   gl_FragColor = texture2D( u_texture, vec2(u,v) );\n\
+			}\n\
+			");
+	return gl.shaders[":polar_to_cubemap"] = shader;
+}
+
 
 //shader to copy a cubemap into another 
 Shader.getCubemapCopyShader = function(gl)

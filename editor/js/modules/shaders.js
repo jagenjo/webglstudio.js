@@ -240,7 +240,10 @@ var ShadersModule = {
 		else if( e.code == "Enter" && e.ctrlKey )
 			this.compileGraph();
 		else
+		{
+			this.graphcanvas.processKey(e);
 			return;
+		}
 
 		e.preventDefault();
 		e.stopPropagation();

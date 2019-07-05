@@ -42,9 +42,10 @@ var CubemapTools = {
 		var loaded_resolution = CubemapTools.default_resolution;
 		var center = "camera eye";
 		var result = "cubemap";
-		var cubemap_modes = { "Cross Left": "CUBECROSSL", "Vertical": "CUBEVERT" };
+		var cubemap_modes = { "Cross Left": "CUBECROSSL", "Vertical": "CUBEVERT", "Polar":"CUBEPOLAR" };
 		var mode = "CUBECROSSL";
 		var layers = 0x3;
+		var export_format = "Cross Left";
 
 		var url = "";
 		var original_file = null;
@@ -214,6 +215,8 @@ var CubemapTools = {
 				mode = v;
 				if(v == "CUBECROSSL")
 					cubemap_options = { keep_image: true, is_cross: 1 };
+				else if(v == "CUBEPOLAR")
+					cubemap_options = { keep_image: true, is_polar: 1 };
 				else
 					cubemap_options = { keep_image: true };
 			}});
@@ -244,6 +247,13 @@ var CubemapTools = {
 			widgets.addCombo("Output size", CubemapTools.default_resolution, { values: [0,32,64,128,256,512,1024], callback: function(v) { 
 				dialog.cubemap_resolution = v;
 			}});
+
+			widgets.addSection("Export", { collapsed: false });
+			widgets.addCombo("Format", "Cross Left", { values: cubemap_modes, callback: function(v) { 
+				export_format = v;
+			}});
+			widgets.addButton( null, "Download cubemap", { callback: downloadCubemap });
+
 
 		}//refresh
 
@@ -332,7 +342,7 @@ var CubemapTools = {
 			return position;
 		}
 
-		function enableDragDropCubemapImages( dialog )
+		function enableDragDropCubemapImages( e, dialog )
 		{
 			console.log(e.dataTransfer);
 			var path = e.dataTransfer.getData("res-fullpath");
@@ -353,6 +363,33 @@ var CubemapTools = {
 			}
 			e.preventDefault();
 			e.stopPropagation();
+		}
+
+		function downloadCubemap()
+		{
+			var cubemap = CubemapTools.current_cubemap;
+			if(!cubemap)
+				return;
+			var data = null;
+			if(export_format == "CUBECROSSL")
+			{
+				data = cubemap.toBinary();
+			}
+			else if(export_format == "CUBEPOLAR")
+			{
+				var polar_texture = CubemapTools.convertCubemapToPolar(cubemap);
+				data = polar_texture.toBinary();
+			}
+			else if(export_format == "CUBEVERT")
+			{
+				var image = CubemapTools.convertCubemapToVerticalImage(cubemap);
+				data = image.toBlob(function(v){
+					LiteGUI.downloadFile("cubemap.png", v );
+				});
+			}
+
+			if(data)
+				LiteGUI.downloadFile("cubemap.png", data );
 		}
 	},
 
@@ -444,6 +481,25 @@ var CubemapTools = {
 	convertCubemapToPolar: function( cubemap_texture, size, target_texture, keep_type )
 	{
 		return GL.Texture.cubemapToTexture2D( cubemap_texture, size, target_texture, keep_type, 0 );
+	},
+
+	convertCubemapToVerticalImage: function( cubemap_texture )
+	{
+		var pixels = cubemap_texture.getCubemapPixels();
+		var final_pixels = new Uint8Array( cubemap_texture.width * cubemap_texture.height * 6 * 4 );
+		var pos = 0;
+		for(var i = 0; i < 6; ++i)
+		{
+			final_pixels.set(pixels[i],pos);
+			pos += pixels[i].length;
+		}
+
+		var canvas = createCanvas(cubemap_texture.width, cubemap_texture.height*6 );
+		var ctx = canvas.getContext("2d");
+		var data = ctx.getImageData(0,0,canvas.width,canvas.height);
+		data.data.set(final_pixels);
+		ctx.putImageData(data,0,0);
+		return canvas;
 	},
 
 	generateCubemapFromFiles: function( files, callback, options )

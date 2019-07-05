@@ -5848,7 +5848,7 @@ var Shaders = {
 	shader_blocks: [],
 	num_shaderblocks: 0, //used to know the index
 
-	global_extra_code: null,
+	global_extra_shader_code: "",
 	dump_compile_errors: true, //dump errors in console
 	on_compile_error: null, //callback 
 
@@ -5864,12 +5864,22 @@ var Shaders = {
 		//this.shader_blocks = {};//do not initialize, or we will loose all
 
 		//base intro code for shaders
-		//THERE IS OTHER CODE USED IN SHADERCODE, THIS ONE NOT SURE IF USED!!!
-		this.global_extra_code = String.fromCharCode(10) + "#define WEBGL\n";
-		if( gl.webgl_version == 2 || gl.extensions.OES_standard_derivatives )
-			this.global_extra_code += "#define STANDARD_DERIVATIVES\n#extension GL_OES_standard_derivatives : enable \n";
-		if( gl.webgl_version == 2 || gl.extensions.WEBGL_draw_buffers )
-			this.global_extra_code += "#define DRAW_BUFFERS\n";
+		var supported_features = []; //[name, webgl1_extension_name, enabling code]
+		supported_features.push( ["STANDARD_DERIVATIVES", "OES_standard_derivatives", "#extension GL_OES_standard_derivatives : enable"] );
+		supported_features.push( ["DRAW_BUFFERS","WEBGL_draw_buffers"] ); //#extension GL_EXT_draw_buffers : require
+
+		this.global_extra_shader_code = String.fromCharCode(10) + "#define WEBGL_VERSION "+gl.webgl_version+"\n";
+
+		for(var i in supported_features)
+		{
+			var feature = supported_features[i];
+			if( gl.webgl_version == 2 || gl.extensions[ feature[1] ] )
+			{
+				this.global_extra_shader_code += "#define " + feature[0] + "\n";
+				if(gl.webgl_version == 1 && feature[2]) 
+					this.global_extra_shader_code += feature[2] + "\n";
+			}
+		}
 	},
 
 	/**
@@ -5902,8 +5912,8 @@ var Shaders = {
 		var shader = null;
 		try
 		{
-			vs_code = this.global_extra_code + vs_code;
-			fs_code = this.global_extra_code + fs_code;
+			vs_code = this.global_extra_shader_code + vs_code;
+			fs_code = this.global_extra_shader_code + fs_code;
 
 			//speed up compilations by caching shaders compiled
 			var vs_shader = this.compiled_shaders[name + ":VS"];
@@ -5964,14 +5974,14 @@ var Shaders = {
 		console.log(err);
 		console.groupCollapsed("Vertex Shader Code");
 		//console.log("VS CODE\n************");
-		var lines = (this.global_extra_code + vs_code).split("\n");
+		var lines = vs_code.split("\n");
 		for(var i in lines)
 			console.log(i + ": " + lines[i]);
 		console.groupEnd();
 
 		console.groupCollapsed("Fragment Shader Code");
 		//console.log("FS CODE\n************");
-		lines = (this.global_extra_code + fs_code).split("\n");
+		lines = fs_code.split("\n");
 		for(var i in lines)
 			console.log(i + ": " + lines[i]);
 		console.groupEnd();
@@ -7697,29 +7707,28 @@ function ShaderMaterial( o )
 {
 	Material.call( this, null );
 
-	this._shader = "";
-	this._shader_version = -1;
-	this._shader_flags = 0; //?
-	this._shader_code = null;
+	this._shader = ""; //resource filename to a GL.ShaderCode
+	this._shader_version = -1; //if the shader gets modified, the material should be modified too
+	this._shader_flags = 0; //not used
+	this._shader_code = null; //here the final code is stored (for debug)
 
-	this._uniforms = {};
-	this._samplers = [];
-	this._properties = [];
+	this._uniforms = {};	//uniforms to send to the shader
+	this._samplers = [];	//textures to send to the shader
+	this._properties = [];	//public properties to manipulate this material 
 	this._properties_by_name = {};
 
-	this._passes = {};
-	this._light_mode = 0;
-	this._primitive = -1;
-	this._allows_instancing = false;
+	this._passes = {};		//the same ShaderCode is  used for different render passes (like color, shadowmap, picking), so here we cache the final GL.Shader for every type of pass
+	this._light_mode = 0;	//info if this material should be rendered using lights: Material.NO_LIGHTS, Material.SEVERAL_LIGHTS 
+	this._primitive = -1;	//which primitive to use when rendering this material
+	this._allows_instancing = false;	//not supported yet
 
-	this._version = -1;
-	this._shader_version = -1;
+	this._version = -1;	
 
 	if(o) 
 		this.configure(o);
 }
 
-//assign a shader from a filename to a shadercode
+//assign a shader from a filename to a shadercode and reprocesses the code
 Object.defineProperty( ShaderMaterial.prototype, "shader", {
 	enumerable: true,
 	get: function() {
@@ -7736,7 +7745,7 @@ Object.defineProperty( ShaderMaterial.prototype, "shader", {
 	}
 });
 
-//allows to assign a shader code that doesnt come from a resource
+//allows to assign a shader code that doesnt come from a resource (used from StandardMaterial)
 Object.defineProperty( ShaderMaterial.prototype, "shader_code", {
 	enumerable: false,
 	get: function() {
@@ -7805,7 +7814,7 @@ ShaderMaterial.prototype.prepare = function( scene )
 		this.onPrepare( scene );
 }
 
-//called when filling uniforms from prepare
+//called when filling uniforms from this.prepare
 ShaderMaterial.prototype.fillUniforms = function()
 {
 	//gather uniforms & samplers
@@ -9262,6 +9271,8 @@ attribute vec2 a_coord;\n\
 varying vec3 v_pos;\n\
 varying vec3 v_normal;\n\
 varying vec2 v_uvs;\n\
+varying vec3 v_local_pos;\n\
+varying vec3 v_local_normal;\n\
 \n\
 //matrices\n\
 #ifdef BLOCK_INSTANCING\n\
@@ -9297,6 +9308,8 @@ uniform vec2 u_camera_planes;\n\
 void main() {\n\
 	\n\
 	vec4 vertex4 = vec4(a_vertex,1.0);\n\
+	v_local_pos = a_vertex;\n\
+	v_local_normal = a_normal;\n\
 	v_normal = a_normal;\n\
 	v_uvs = a_coord;\n\
 	#ifdef BLOCK_COORD1\n\
@@ -9350,6 +9363,8 @@ precision mediump float;\n\
 varying vec3 v_pos;\n\
 varying vec3 v_normal;\n\
 varying vec2 v_uvs;\n\
+varying vec3 v_local_pos;\n\
+varying vec3 v_local_normal;\n\
 #ifdef BLOCK_COORD1\n\
 	varying vec2 v_uvs1;\n\
 #endif\n\
@@ -9435,6 +9450,8 @@ void main() {\n\
 	if(testClippingPlane(u_clipping_plane,IN.worldPos) < 0.0)\n\
 		discard;\n\
 	\n\
+	IN.vertex = v_local_pos;\n\
+	IN.normal = v_local_normal;\n\
 	SurfaceOutput o = getSurfaceOutput();\n\
 	#ifdef BLOCK_VERTEX_COLOR\n\
 		IN.color = v_vertex_color;\n\
@@ -9487,6 +9504,8 @@ precision mediump float;\n\
 attribute vec3 a_vertex;\n\
 attribute vec3 a_normal;\n\
 attribute vec2 a_coord;\n\
+varying vec3 v_local_pos;\n\
+varying vec3 v_local_normal;\n\
 \n\
 //varyings\n\
 varying vec3 v_pos;\n\
@@ -9525,6 +9544,8 @@ uniform vec2 u_camera_planes;\n\
 void main() {\n\
 	\n\
 	vec4 vertex4 = vec4(a_vertex,1.0);\n\
+	v_local_pos = a_vertex;\n\
+	v_local_normal = a_normal;\n\
 	v_normal = a_normal;\n\
 	v_uvs = a_coord;\n\
   \n\
@@ -9557,6 +9578,8 @@ varying vec3 v_pos;\n\
 varying vec3 v_normal;\n\
 varying vec2 v_uvs;\n\
 varying vec4 v_screenpos;\n\
+varying vec3 v_local_pos;\n\
+varying vec3 v_local_normal;\n\
 \n\
 //globals\n\
 uniform vec3 u_camera_eye;\n\
@@ -9587,17 +9610,19 @@ void surf(in Input IN, out SurfaceOutput o)\n\
 {{fs_shadow_out}}\n\
 \n\
 void main() {\n\
-  Input IN = getInput();\n\
-  SurfaceOutput o = getSurfaceOutput();\n\
-  surf(IN,o);\n\
-  //float depth = length( IN.worldPos - u_camera_eye );\n\
-  //depth = linearDepth( depth, u_camera_planes.x, u_camera_planes.y );\n\
-  float depth = (v_screenpos.z / v_screenpos.w) * 0.5 + 0.5;\n\
-  //depth = linearDepthNormalized( depth, u_camera_planes.x, u_camera_planes.y );\n\
-  vec4 final_color;\n\
-  final_color = PackDepth32(depth);\n\
-  {{fs_shadow_encode}}\n\
-  gl_FragColor = final_color;\n\
+	Input IN = getInput();\n\
+	IN.vertex = v_local_pos;\n\
+	IN.normal = v_local_normal;\n\
+	SurfaceOutput o = getSurfaceOutput();\n\
+	surf(IN,o);\n\
+	//float depth = length( IN.worldPos - u_camera_eye );\n\
+	//depth = linearDepth( depth, u_camera_planes.x, u_camera_planes.y );\n\
+	float depth = (v_screenpos.z / v_screenpos.w) * 0.5 + 0.5;\n\
+	//depth = linearDepthNormalized( depth, u_camera_planes.x, u_camera_planes.y );\n\
+	vec4 final_color;\n\
+	final_color = PackDepth32(depth);\n\
+	{{fs_shadow_encode}}\n\
+	gl_FragColor = final_color;\n\
 }\n\
 \\picking.vs\n\
 \n\
@@ -9613,6 +9638,8 @@ attribute vec2 a_coord;\n\
 varying vec3 v_pos;\n\
 varying vec3 v_normal;\n\
 varying vec2 v_uvs;\n\
+varying vec3 v_local_pos;\n\
+varying vec3 v_local_normal;\n\
 \n\
 //matrices\n\
 #ifdef BLOCK_INSTANCING\n\
@@ -9646,6 +9673,8 @@ uniform vec3 u_camera_eye;\n\
 void main() {\n\
 	\n\
 	vec4 vertex4 = vec4(a_vertex,1.0);\n\
+	v_local_pos = a_vertex;\n\
+	v_local_normal = a_normal;\n\
 	v_normal = a_normal;\n\
 	v_uvs = a_coord;\n\
   \n\
@@ -10093,6 +10122,8 @@ attribute vec2 a_coord;\n\
 varying vec3 v_pos;\n\
 varying vec3 v_normal;\n\
 varying vec2 v_uvs;\n\
+varying vec3 v_local_pos;\n\
+varying vec3 v_local_normal;\n\
 \n\
 //matrices\n\
 uniform mat4 u_model;\n\
@@ -10115,6 +10146,8 @@ uniform vec3 u_camera_eye;\n\
 void main() {\n\
 	\n\
 	vec4 vertex4 = vec4(a_vertex,1.0);\n\
+	v_local_pos = a_vertex;\n\
+	v_local_normal = a_normal;\n\
 	v_normal = a_normal;\n\
 	v_uvs = a_coord;\n\
   \n\
@@ -10141,6 +10174,8 @@ precision mediump float;\n\
 //varyings\n\
 varying vec3 v_pos;\n\
 varying vec3 v_normal;\n\
+varying vec3 v_local_pos;\n\
+varying vec3 v_local_normal;\n\
 varying vec2 v_uvs;\n\
 \n\
 //globals\n\
@@ -10154,11 +10189,17 @@ uniform vec4 u_material_color;\n\
 #pragma shaderblock \"applyReflection\"\n\
 \n\
 #pragma snippet \"perturbNormal\"\n\
+#pragma snippet \"testClippingPlane\"\n\
 \n\
 {{fs_out}}\n\
 \n\
 void main() {\n\
 	Input IN = getInput();\n\
+	if(testClippingPlane(u_clipping_plane,IN.worldPos) < 0.0)\n\
+		discard;\n\
+	\n\
+	IN.vertex = v_local_pos;\n\
+	IN.normal = v_local_normal;\n\
 	SurfaceOutput o = getSurfaceOutput();\n\
 	surf(IN,o);\n\
 	vec4 final_color = vec4(0.0);\n\
@@ -10185,6 +10226,8 @@ attribute vec4 a_color;\n\
 //varyings\n\
 varying vec3 v_pos;\n\
 varying vec3 v_normal;\n\
+varying vec3 v_local_pos;\n\
+varying vec3 v_local_normal;\n\
 varying vec2 v_uvs;\n\
 \n\
 //matrices\n\
@@ -10208,6 +10251,8 @@ uniform vec3 u_camera_eye;\n\
 void main() {\n\
 	\n\
 	vec4 vertex4 = vec4(a_vertex,1.0);\n\
+	v_local_pos = a_vertex;\n\
+	v_local_normal = a_normal;\n\
 	v_normal = a_normal;\n\
 	v_uvs = a_coord;\n\
   \n\
@@ -10234,6 +10279,8 @@ precision mediump float;\n\
 varying vec3 v_pos;\n\
 varying vec3 v_normal;\n\
 varying vec2 v_uvs;\n\
+varying vec3 v_local_pos;\n\
+varying vec3 v_local_normal;\n\
 \n\
 //globals\n\
 uniform vec3 u_camera_eye;\n\
@@ -10250,10 +10297,12 @@ uniform mat3 u_texture_matrix;\n\
 {{fs_out}}\n\
 \n\
 void main() {\n\
-  Input IN = getInput();\n\
-  SurfaceOutput o = getSurfaceOutput();\n\
-  surf(IN,o);\n\
-  gl_FragColor = vec4(o.Albedo,o.Alpha);\n\
+	Input IN = getInput();\n\
+	IN.vertex = v_local_pos;\n\
+	IN.normal = v_local_normal;\n\
+	SurfaceOutput o = getSurfaceOutput();\n\
+	surf(IN,o);\n\
+	gl_FragColor = vec4(o.Albedo,o.Alpha);\n\
 }\n\
 ";
 ///@FILE:../src/materials/graphMaterial.js
@@ -15558,19 +15607,9 @@ ShaderCode.prototype.getShader = function( render_mode, block_flags )
 		return null;
 	}
 
-	//globals
-	var global_fs = "";
-	if( gl.webgl_version == 2 )
-		global_fs += "#define STANDARD_DERIVATIVES\n#define DRAW_BUFFERS\n";
-	else 
-	{
-		if( gl.extensions.OES_standard_derivatives )
-			global_fs += "#define STANDARD_DERIVATIVES\n#extension GL_OES_standard_derivatives : enable \n";
-		if( gl.extensions.WEBGL_draw_buffers )
-			global_fs += "#define DRAW_BUFFERS\n";
-	}
-	if(global_fs)
-		fs_code = global_fs + fs_code;
+	//add globals
+	vs_code = LS.Shaders.global_extra_shader_code + vs_code;
+	fs_code = LS.Shaders.global_extra_shader_code + fs_code;
 
 	//compile the shader and return it
 	var shader = this.compileShader( vs_code, fs_code );
@@ -19345,8 +19384,8 @@ if(typeof(LiteGraph) != "undefined")
 ///@INFO: GRAPHS
 if(typeof(LiteGraph) != "undefined")
 {
-	var SHADER_COLOR = "#2a363b";
-	var SHADER_BGCOLOR = "#444";
+	var SHADER_COLOR = "#333";
+	var SHADER_BGCOLOR = "#333";
 	var SHADER_TITLE_TEXT_COLOR = "#AAA";
 
 	var getInputLinkID = LiteGraph.getInputLinkID = function getInputLinkID( node, num )
@@ -19536,6 +19575,8 @@ if(typeof(LiteGraph) != "undefined")
 		return ctor;
 	}
 
+	createShaderOperationNode("Float->Vec2", ["float"], "vec2", "vec2(@0)", "vec2" );
+	createShaderOperationNode("Float->Vec3", ["float"], "vec3", "vec3(@0)", "vec3" );
 	createShaderOperationNode("Add Float", ["float","float"], "float", "@0 + @1", "A+B" );
 	createShaderOperationNode("Add Vec3", ["vec3","vec3"], "vec3", "@0 + @1", "A+B" );
 	createShaderOperationNode("Sub Vec3", ["vec3","vec3"], "vec3", "@0 - @1", "A-B" );
@@ -19547,6 +19588,8 @@ if(typeof(LiteGraph) != "undefined")
 	createShaderOperationNode("Pow Vec3", ["vec3","float"], "vec3", "pow(@0,@1)", "pow" );
 	createShaderOperationNode("Float->Vec3", ["float"], "vec3", "vec3(@0)", "vec3" );
 	createShaderOperationNode("Dot", ["vec3","vec3"], "float", "dot(@0,@1)", "dot" );
+	createShaderOperationNode("Abs Vec3", ["vec3"], "vec3", "abs(@0)", "abs" );
+	createShaderOperationNode("Abs Float", ["float"], "float", "abs(@0)", "abs" );
 
 	function LGraphShaderSurface()
 	{
@@ -19626,12 +19669,12 @@ if(typeof(LiteGraph) != "undefined")
 	function LGraphShaderScale()
 	{
 		this.addInput("in","vec3");
-		this.addInput("f","number");
+		this.addInput("f","float");
 		this.addOutput("out","vec3");
 	}
 
 	LGraphShaderScale.title = "Scale";
-	LGraphShaderScale.desc = "Multiply by number";
+	LGraphShaderScale.desc = "Multiply by float";
 	LGraphShaderScale.filter = "shader";
 
 	LGraphShaderScale.prototype.onGetCode = function(type)
@@ -23656,8 +23699,12 @@ var Renderer = {
 		//very special queue that must change the renderframecontext before start rendering anything
 		this.createRenderQueue( LS.RenderQueue.READBACK_COLOR, LS.RenderQueue.SORT_FAR_TO_NEAR, {
 			onStart: function( render_settings, pass ){
-				if( LS.RenderFrameContext.current && pass.name === "color" )
-					LS.RenderFrameContext.current.cloneBuffers();
+				if(pass.name === "color")
+				{
+					if( LS.RenderFrameContext.current )
+						LS.RenderFrameContext.current.cloneBuffers();
+					//if it is a cubemap where we are rendering, we cannot clone that face easily, too much work, so...
+				}
 			}
 		});
 
@@ -24788,6 +24835,7 @@ var Renderer = {
 				gl.clearColor( background_color[0], background_color[1], background_color[2], background_color[3] );
 			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 			camera.configure({ eye: eye, center: [ eye[0] + info.dir[0], eye[1] + info.dir[1], eye[2] + info.dir[2]], up: info.up });
+
 			LS.Renderer.enableCamera( camera, render_settings, true );
 			LS.Renderer.renderInstances( render_settings, instances, scene );
 		});
@@ -41527,7 +41575,7 @@ ReflectionProbe.prototype.updateCubemap = function( position, render_settings )
 
 	if(!texture || texture.width != texture_size || texture.height != texture_size || texture.type != type || texture.texture_type != texture_type || texture.minFilter != (this.generate_mipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR) )
 	{
-		texture = new GL.Texture( texture_size, texture_size, { type: type, texture_type: texture_type, minFilter: this.generate_mipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR });
+		texture = new GL.Texture( texture_size, texture_size, { type: type, format: gl.RGB, texture_type: texture_type, minFilter: this.generate_mipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR });
 		texture.has_mipmaps = this.generate_mipmaps;
 		this._texture = texture;
 	}

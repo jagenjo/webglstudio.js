@@ -463,7 +463,7 @@ var cameraTool = {
 				camera._root.transform.lookAt( eye, point, LS.TOP );
 				camera.focalLength = vec3.distance( eye, point );
 			}
-			else
+			else if( vec3.distance( camera.eye, point ) > 0.0001 )
 				camera.center = point;
 		}
 		else

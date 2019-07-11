@@ -64,6 +64,7 @@ GraphWidget.prototype.init = function( options )
 //	this.graphcanvas.onMenuNodeInputs = this.onMenuNodeInputs.bind(this);
 	this.graphcanvas.onMenuNodeOutputs = this.onMenuNodeOutputs.bind(this);
 	this.graphcanvas.getExtraMenuOptions = this.onGetExtraMenuOptions.bind(this);
+	this.graphcanvas.onDrawLinkTooltip = this.onDrawLinkTooltip.bind(this);
 
 	this.root.addEventListener("DOMNodeInsertedIntoDocument", function(){ 
 		that.bindEvents(); 
@@ -506,6 +507,13 @@ GraphWidget.prototype.onStepGraph = function()
 GraphWidget.prototype.onSelectOvergraph = function()
 {
 	GraphModule.current_overgraph = this.graphcanvas.getCurrentGraph();
+}
+
+GraphWidget.prototype.onDrawLinkTooltip = function( ctx, link, graphcanvas )
+{
+	GraphModule._link_texture = null;
+	if(link && link.data && link.data.constructor === GL.Texture)
+		GraphModule._link_texture = link.data;
 }
 
 GraphWidget.prototype.onGetExtraMenuOptions = function(options)

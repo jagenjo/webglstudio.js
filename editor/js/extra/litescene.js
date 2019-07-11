@@ -3038,7 +3038,7 @@ var GUI = {
 	_allow_change_cursor: true,
 	_is_on_top_of_immediate_widget: false,
 
-	GUIStyle: {
+	defaultGUIStyle: {
 		font: "Arial",
 		color: "#FFF",
 		colorTextOver: "#FFF",
@@ -3049,6 +3049,9 @@ var GUI = {
 		outline: "#000",
 		margin: 0.2
 	},
+
+	GUIStyle: null,
+	_style_stack: [],
 
 	_offset: [0,0],
 
@@ -3306,7 +3309,7 @@ var GUI = {
 	//IMMEDIATE GUI STUFF
 
 	/**
-	* Called by the LS.Renderer to clear intermediate stuff
+	* Called by the LS.Renderer to clear inmediate stuff
 	*
 	* @method ResetImmediateGUI
 	*/
@@ -3319,6 +3322,8 @@ var GUI = {
 		this._offset[1] = 0;
 		this._gui_areas.offset = 0;
 		this._ctx = gl;
+		this.GUIStyle = this.defaultGUIStyle;
+		this._style_stack.length = 0;
 		if(!skip_redraw)
 			LS.GlobalScene.requestFrame(); //force redraws
 	},
@@ -4067,6 +4072,19 @@ var GUI = {
 		return value;
 	},
 	//*/
+
+	pushStyle: function()
+	{
+		var new_style = LS.cloneObject( this.GUIStyle );
+		this._style_stack.push(this.GUIStyle);
+		this.GUIStyle = new_style;
+	},
+
+	popStyle: function()
+	{
+		if(this._style_stack.length)
+			this.GUIStyle = this._style_stack.pop();
+	},
 
 	setCursor: function(type)
 	{
@@ -10117,6 +10135,16 @@ precision mediump float;\n\
 attribute vec3 a_vertex;\n\
 attribute vec3 a_normal;\n\
 attribute vec2 a_coord;\n\
+#pragma shaderblock \"vertex_color\"\n\
+#pragma shaderblock \"coord1\"\n\
+#ifdef BLOCK_COORD1\n\
+	attribute vec2 a_coord1;\n\
+	varying vec2 v_uvs1;\n\
+#endif\n\
+#ifdef BLOCK_VERTEX_COLOR\n\
+	attribute vec4 a_color;\n\
+	varying vec4 v_vertex_color;\n\
+#endif\n\
 \n\
 //varyings\n\
 varying vec3 v_pos;\n\
@@ -10150,6 +10178,12 @@ void main() {\n\
 	v_local_normal = a_normal;\n\
 	v_normal = a_normal;\n\
 	v_uvs = a_coord;\n\
+	#ifdef BLOCK_COORD1\n\
+		v_uvs1 = a_coord1;\n\
+	#endif\n\
+	#ifdef BLOCK_VERTEX_COLOR\n\
+		v_vertex_color = a_color;\n\
+	#endif\n\
   \n\
   //deforms\n\
   {{vs_local}}\n\
@@ -10177,6 +10211,14 @@ varying vec3 v_normal;\n\
 varying vec3 v_local_pos;\n\
 varying vec3 v_local_normal;\n\
 varying vec2 v_uvs;\n\
+#pragma shaderblock \"vertex_color\"\n\
+#pragma shaderblock \"coord1\"\n\
+#ifdef BLOCK_COORD1\n\
+	varying vec2 v_uvs1;\n\
+#endif\n\
+#ifdef BLOCK_VERTEX_COLOR\n\
+	varying vec4 v_vertex_color;\n\
+#endif\n\
 \n\
 //globals\n\
 uniform vec3 u_camera_eye;\n\
@@ -10200,6 +10242,12 @@ void main() {\n\
 	\n\
 	IN.vertex = v_local_pos;\n\
 	IN.normal = v_local_normal;\n\
+	#ifdef BLOCK_VERTEX_COLOR\n\
+		IN.color = v_vertex_color;\n\
+	#endif\n\
+	#ifdef BLOCK_COORD1\n\
+		IN.uv1 = v_uvs1;\n\
+	#endif\n\
 	SurfaceOutput o = getSurfaceOutput();\n\
 	surf(IN,o);\n\
 	vec4 final_color = vec4(0.0);\n\
@@ -10398,7 +10446,7 @@ GraphMaterial.shader_codes = {};
 //in the StandardMaterial we cache versions of the ShaderCode according to the settings
 GraphMaterial.prototype.getShaderCode = function( instance, render_settings, pass )
 {
-	if(!this._graphcode)
+	if(!this._graphcode || !this._graphcode.getShaderCode)
 		return null;
 	return this._graphcode.getShaderCode();
 }
@@ -19590,6 +19638,10 @@ if(typeof(LiteGraph) != "undefined")
 	createShaderOperationNode("Dot", ["vec3","vec3"], "float", "dot(@0,@1)", "dot" );
 	createShaderOperationNode("Abs Vec3", ["vec3"], "vec3", "abs(@0)", "abs" );
 	createShaderOperationNode("Abs Float", ["float"], "float", "abs(@0)", "abs" );
+	createShaderOperationNode(".xyz", [""], "vec3", "(@0).xyz", "xyz" );
+	createShaderOperationNode(".x", [""], "float", "(@0).x", "x" );
+	createShaderOperationNode(".y", [""], "float", "(@0).y", "y" );
+	createShaderOperationNode(".z", [""], "float", "(@0).z", "z" );
 
 	function LGraphShaderSurface()
 	{
@@ -19829,7 +19881,8 @@ if(typeof(LiteGraph) != "undefined")
 		this.addOutput("screen","vec4");
 		this.addOutput("viewDir","vec3");
 		this.addOutput("camPos","vec3");
-		this.size = [97,126];
+		this.addOutput("color","vec4");
+		this.size = [97,156];
 	}
 
 	LGraphShaderVertex.title = "Vertex";
@@ -19865,6 +19918,9 @@ if(typeof(LiteGraph) != "undefined")
 		output = getOutputLinkID( this, 7 );
 		if(output)
 			code += "\t vec3 "+output+" = IN.camPos;\n";
+		output = getOutputLinkID( this, 8 );
+		if(output)
+			code += "\t vec4 "+output+" = IN.color;\n";
 		return code;
 	}
 
@@ -23154,7 +23210,7 @@ RenderFrameContext.prototype.prepare = function( viewport_width, viewport_height
 			type = this.precision; break; //used for custom formats
 	}
 
-	//check support
+	//check support due to weirdeness of webgl 1.0
 	if( type == GL.HALF_FLOAT_OES && !GL.FBO.testSupport( type, format ) )
 		format = gl.RGBA;
 	if( type == GL.HALF_FLOAT_OES && !GL.FBO.testSupport( type, format ) )
@@ -23798,6 +23854,8 @@ var Renderer = {
 
 		if(gl.canvas.canvas2DtoWebGL_enabled)
 			gl.resetTransform(); //reset 
+
+		LS.GUI.ResetImmediateGUI(true);//just to let the GUI ready
 
 		//force fullscreen viewport
 		if( !render_settings.keep_viewport )
@@ -41177,7 +41235,7 @@ function RealtimeReflector(o)
 	this.use_mesh_info = false;
 	this.offset = vec3.create();
 	this.ignore_this_mesh = true;
-	this.skip_outside_frustum = true;
+	this.skip_if_node_not_visible = true;
 	this.high_precision = false;
 	this.refresh_rate = 1; //in frames
 	this.layers = 0xFF;
@@ -41213,7 +41271,7 @@ RealtimeReflector.prototype.onRemovedFromScene = function(scene)
 
 RealtimeReflector.prototype.onRenderReflection = function( e, render_settings )
 {
-	if(!this.enabled || !this._root)
+	if( !this.enabled || !this._root || !this._root.visible )
 		return;
 
 	var scene = this._root.scene;
@@ -41244,7 +41302,7 @@ RealtimeReflector.prototype.onRenderReflection = function( e, render_settings )
 		var camera = cameras[i];
 
 		//test if node in frustum
-		if( this.skip_outside_frustum )
+		if( this.skip_if_node_not_visible )
 		{
 			if( !this._root._instances.length )
 				continue;
@@ -44654,6 +44712,7 @@ function Canvas3D(o)
 	this.use_node_material = false;
 	this.generate_mipmaps = false;
 	this.max_interactive_distance = 100; //distance beyong which the mouse is no longer projected
+	this.high_precision = false; //use a texture format of more than one byte per channel
 
 	this._clear_buffer = true; //not public, just here in case somebody wants it
 	this._skip_backside = true;
@@ -44757,10 +44816,12 @@ Canvas3D.prototype.drawCanvas = function()
 			this._canvas.height = h;
 	}
 
+	var type = this.high_precision ? gl.HIGH_PRECISION_FORMAT : gl.UNSIGNED_BYTE;
+
 	if(this.mode != Canvas3D.MODE_IMMEDIATE)
 	{
-		if(!this._texture || this._texture.width != w || this._texture.height != h)
-			this._texture = new GL.Texture(w,h,{ format: GL.RGBA, filter: GL.LINEAR, wrap: GL.CLAMP_TO_EDGE });
+		if(!this._texture || this._texture.width != w || this._texture.height != h || this._texture.type != type)
+			this._texture = new GL.Texture(w,h,{ type: type, format: GL.RGBA, filter: GL.LINEAR, wrap: GL.CLAMP_TO_EDGE });
 	}
 
 	//project mouse into the canvas plane
@@ -47918,6 +47979,16 @@ SceneNode.prototype.getPropertyInfoFromPath = function( path )
 				value: target
 			};
 		}
+		else if (path[0] == "visible")
+		{
+			return {
+				node: this,
+				target: this,
+				name: "visible",
+				type: "boolean",
+				value: this.visible
+			};
+		}
 
 		var target = this.getComponent( path[0] );
 		if(target)
@@ -48065,6 +48136,11 @@ SceneNode.prototype.getPropertyValueFromPath = function( path )
 			target = this.flags;
 			varname = path[1];
 		}
+		else if (path[0] == "visible")
+		{
+			target = this;
+			varname = path[0];
+		}
 		else
 		{
 			target = this.getComponent( path[0] );
@@ -48153,6 +48229,11 @@ SceneNode.prototype.setPropertyValueFromPath = function( path, value, offset )
 		{
 			target = this.flags;
 			varname = path[offset+1];
+		}
+		else if( path[offset] == "visible" )
+		{
+			target = this;
+			varname = path[offset];
 		}
 		else 
 		{

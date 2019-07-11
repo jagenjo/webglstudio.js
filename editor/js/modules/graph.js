@@ -7,6 +7,7 @@ var GraphModule = {
 
 	current_graph_info: null,
 	current_overgraph: null,
+	_link_texture: null,
 
 	is_sceneview_visible: true,
 	show_panel: true,
@@ -171,6 +172,15 @@ var GraphModule = {
 
 	render: function()
 	{
+		if( !EditorView.render_helpers || RenderModule.render_settings.in_player || !RenderModule.frame_updated )
+			return;
+
+		if(!this._link_texture || !GraphModule._force_render)
+			return;
+
+		var h = gl.canvas.height * 0.8;
+		var w = h * (this._link_texture.width / this._link_texture.height);
+		gl.drawImage( this._link_texture, 50, gl.canvas.height * 0.1,w,h );
 		return;
 	},
 

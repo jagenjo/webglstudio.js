@@ -511,9 +511,15 @@ GraphWidget.prototype.onSelectOvergraph = function()
 
 GraphWidget.prototype.onDrawLinkTooltip = function( ctx, link, graphcanvas )
 {
-	GraphModule._link_texture = null;
+	var tex = null;
 	if(link && link.data && link.data.constructor === GL.Texture)
-		GraphModule._link_texture = link.data;
+		tex = link.data;
+
+	if(GraphModule._link_texture != tex)
+	{
+		GraphModule._link_texture = tex;
+		LS.GlobalScene.requestFrame();
+	}
 }
 
 GraphWidget.prototype.onGetExtraMenuOptions = function(options)

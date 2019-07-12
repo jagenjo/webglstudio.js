@@ -12763,7 +12763,7 @@ Mesh.parsers["mesh"] = function( text, options )
 		}
 		else if(type == "*") //index
 		{
-			var data = new Uint16Array( Number(t[1]) );
+			var data = Number(t[1]) > 256*256 ? new Uint32Array( Number(t[1]) ) : new Uint16Array( Number(t[1]) );
 			for(var j = 0; j < data.length; ++j)
 				data[j] = Number(t[j+2]);
 			mesh[name] = data;

@@ -18688,7 +18688,10 @@ if(typeof(LiteGraph) != "undefined")
 		this.setOutputData(0, this.weights );
 		this.setOutputData(1, this.weights_obj );
 	}
-
+	
+	//now to compute the final weight we iterate for every cell to see if our point is nearer to the cell than the nearest point of the cell,
+	//if that is the case we increase the weight of the nearest point. At the end we normalize the weights of the points by the number of near points
+	//and that give us the weight for every point
 	LGraphMap2D.prototype.computeWeights = function(pos)
 	{
 		if(!this.points.length)
@@ -18926,6 +18929,9 @@ if(typeof(LiteGraph) != "undefined")
 		return null;
 	}
 
+	//here we precompute for every cell, which is the closest point of the points set and how far it is from the center of the cell
+	//we store point index and distance in this._precomputed_weights
+	//this is done only when the points set change
 	LGraphMap2D.prototype.precomputeWeights = function()
 	{
 		var points = this.points;

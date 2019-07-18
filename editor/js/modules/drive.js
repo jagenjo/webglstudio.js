@@ -2828,14 +2828,42 @@ DriveModule.registerAssignResourceCallback("Prefab", function( fullpath, restype
 });
 
 DriveModule.registerAssignResourceCallback("Animation", function( fullpath, restype, options ) {
-
-	//prefab
 	DriveModule.loadResource( fullpath, function(resource) { 
 		if(resource.constructor !== LS.Animation)
 			return console.error("This resource is not an Animation");
 		var filename = resource.fullpath || resource.filename;
 		var node = SelectionModule.getSelectedNode() || LS.GlobalScene.root;
-		node.addComponent( new LS.Components.PlayAnimation({ animation: filename }) );
+		var comp = node.getComponent( LS.Components.PlayAnimation );
+		if(!comp)
+		{
+			comp = new LS.Components.PlayAnimation()
+			node.addComponent( comp );
+		}
+		comp.animation = filename;
+		EditorModule.inspect( node );
+	});
+});
+
+DriveModule.registerAssignResourceCallback("SkeletalAnimation", function( fullpath, restype, options ) {
+	DriveModule.loadResource( fullpath, function(resource) { 
+		if(resource.constructor !== LS.SkeletalAnimation)
+			return console.error("This resource is not an Animation");
+		var filename = resource.fullpath || resource.filename;
+		var node = SelectionModule.getSelectedNode() || LS.GlobalScene.root;
+		var comp = node.getComponent( LS.Components.SkinDeformer );
+		if(!comp)
+		{
+			comp = new LS.Components.SkinDeformer();
+			node.addComponent( comp );
+		}
+
+		comp = node.getComponent( LS.Components.PlaySkeletalAnimation );
+		if(!comp)
+		{
+			comp = new LS.Components.PlaySkeletalAnimation()
+			node.addComponent( comp );
+		}
+		comp.animation = filename;
 		EditorModule.inspect( node );
 	});
 });

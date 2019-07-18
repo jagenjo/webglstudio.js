@@ -185,6 +185,12 @@ var MeshTools = {
 		if(normals)
 			normals.applyTransform( rot_matrix ).upload( gl.STATIC_DRAW );
 		mesh.updateBoundingBox();
+
+		if (mesh.bind_matrix)
+		{
+			var inv = mat4.invert( mat4.create(), rot_matrix );
+			mat4.multiply( mesh.bind_matrix, mesh.bind_matrix, inv );
+		}
 		return true;
 	},
 
@@ -199,6 +205,13 @@ var MeshTools = {
 			return false;
 		vertices.applyTransform( matrix ).upload( gl.STATIC_DRAW );
 		mesh.updateBoundingBox();
+
+		if (mesh.bind_matrix)
+		{
+			var inv = mat4.invert( mat4.create(), matrix );
+			mat4.multiply( mesh.bind_matrix, mesh.bind_matrix, inv );
+		}
+
 		return true;
 	},
 
@@ -277,9 +290,16 @@ var MeshTools = {
 			return false;
 		normals.applyTransform( normal_matrix ).upload( gl.STATIC_DRAW );
 
+		/*
 		if(mesh.bones)
 			for(var i = 0; i < mesh.bones.length; ++i)
 				mat4.multiply( mesh.bones[i][1], matrix, mesh.bones[i][1] );
+		*/
+		if (mesh.bind_matrix)
+		{
+			var inv = mat4.invert( mat4.create(), matrix );
+			mat4.multiply( mesh.bind_matrix, mesh.bind_matrix, inv );
+		}
 
 		mesh.updateBoundingBox();
 		return true;
@@ -300,6 +320,15 @@ var MeshTools = {
 		}
 		vertices.upload( gl.STATIC_DRAW );
 		mesh.updateBoundingBox();
+
+		if (mesh.bind_matrix)
+		{
+			var matrix = mat4.create();
+			mat4.translate( matrix, matrix, offset);
+			var inv = mat4.invert( mat4.create(), matrix );
+			mat4.multiply( mesh.bind_matrix, mesh.bind_matrix, inv );
+		}
+
 		return true;
 	},
 

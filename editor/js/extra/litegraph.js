@@ -2207,6 +2207,7 @@
             pos: this.pos,
             size: this.size,
             flags: LiteGraph.cloneObject(this.flags),
+			order: this.order,
             mode: this.mode
         };
 

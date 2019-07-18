@@ -335,7 +335,7 @@ var ExportModule = {
 		return code;
 	},
 
-	exportToOBJ: function( to_memory, group_materials )
+	exportToMesh: function( group_materials )
 	{
 		var final_vertices = [];
 		var final_normals = [];
@@ -450,13 +450,29 @@ var ExportModule = {
 
 		var final_mesh = new GL.Mesh( { vertices: final_vertices, normals: final_normals, coords: final_uvs }, null, extra );
 		window.LAST_EXPORTED_MESH = final_mesh;
+		return final_mesh;
+	},
+
+	exportToMeshOBJ: function( to_memory, group_materials )
+	{
+		var final_mesh = this.exportToMesh( group_materials );
 		LS.RM.registerResource( "export.obj", final_mesh );
 		var data = final_mesh.encode("obj");
-
 		if(!to_memory)
 			LiteGUI.downloadFile("export.OBJ", data );
 		else
 			LS.RM.processResource("export.obj", data );
+	},
+
+	exportToMeshWBIN: function( to_memory, group_materials )
+	{
+		var final_mesh = this.exportToMesh( group_materials );
+		LS.RM.registerResource( "export.wbin", final_mesh );
+		var data = final_mesh.encode("wbin");
+		if(!to_memory)
+			LiteGUI.downloadFile("export.WBIN", data );
+		else
+			LS.RM.processResource("export.wbin", data );
 	},
 
 	exportToZIP: function( resources, include_player, settings, on_complete )
@@ -595,7 +611,7 @@ var ExportModule = {
 		}
 	},
 
-	exportToWBIN: function( resources )
+	exportSceneToWBIN: function( resources )
 	{
 		var pack = LS.GlobalScene.toPack( "scene", resources );
 		if(pack)
@@ -657,7 +673,7 @@ var ExportModule = {
 
 
 ExportModule.registerExporter({
-	name:"zip",
+	name:"scene in zip",
 	settings: {
 		player: true,
 		strip_unitnames: false,
@@ -685,7 +701,7 @@ ExportModule.registerExporter({
 });
 
 ExportModule.registerExporter({
-	name:"wbin",
+	name:"scene in wbin",
 	settings: {
 		player: true
 	},
@@ -695,15 +711,14 @@ ExportModule.registerExporter({
 	},
 	export: function( info, on_complete )
 	{
-		ExportModule.exportToWBIN( info.resources );
+		ExportModule.exportSceneToWBIN( info.resources );
 		if(on_complete)
 			on_complete();
 	}
 });
 
-
 ExportModule.registerExporter({
-	name:"obj",
+	name:"mesh in wbin",
 	settings: {
 		to_memory: false
 	},
@@ -714,7 +729,25 @@ ExportModule.registerExporter({
 	},
 	export: function( info, on_complete )
 	{
-		ExportModule.exportToOBJ( this.settings.to_memory );
+		ExportModule.exportToMeshWBIN( this.settings.to_memory );
+		if(on_complete)
+			on_complete();
+	}
+});
+
+ExportModule.registerExporter({
+	name:"mesh in obj",
+	settings: {
+		to_memory: false
+	},
+	inspect: function(inspector)
+	{
+		var that = this;
+		inspector.addCheckbox("Export to memory", this.settings.to_memory, function(v){ that.settings.to_memory = v; });
+	},
+	export: function( info, on_complete )
+	{
+		ExportModule.exportToMeshOBJ( this.settings.to_memory );
 		if(on_complete)
 			on_complete();
 	}

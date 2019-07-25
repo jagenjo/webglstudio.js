@@ -816,7 +816,10 @@ function enableWebGLCanvas( canvas, options )
 		if(global_index < 6)
 			return;
 
-		if( (this.lineWidth * this._matrix[0]) <= 1.0 )
+		tmp_vec2[0] = this._matrix[0];
+		tmp_vec2[1] = this._matrix[1];
+
+		if( (this.lineWidth * vec2.length(tmp_vec2)) <= 1.0 )
 			return this.strokeThin();
 
 		var num_points = global_index / 3;

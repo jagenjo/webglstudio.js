@@ -58,6 +58,9 @@ var AddPointsTool = {
 				selected = component_info;
 			components_data.push(component_info);
 		}
+
+		if(components_data.length == 1)
+			AddPointsTool.setComponent( components_data[0].component );
 		inspector.addCombo("Select Component", selected , { values: components_data, callback: function(v){
 			if(v)
 				AddPointsTool.setComponent( v.component );
@@ -80,14 +83,29 @@ var AddPointsTool = {
 			EditorModule.refreshAttributes();
 			return;
 		});
-		inspector.addButtons("Actions",["Set node flags","Clear"], function(v){
+		inspector.addButtons("Actions",["Flatten","Set node flags","Clear"], { name_width: 120, callback:function(v){
 			if(!AddPointsTool._component)
 				return;
 			var component = AddPointsTool._component;
+			CORE.userAction("component_changed", component );
 
 			if(v == "Clear")
 			{
 				component.reset();
+			}
+			else if(v == "Flatten")
+			{
+				var points = component.points;
+				if(points)
+				{
+					for(var i = 0; i < points.length; ++i)
+					{
+						var p = points[i];
+						if(p.length > 2)
+							p[1] = 0;
+					}
+					component._must_update = true;
+				}
 			}
 			else //set node flags
 			{
@@ -95,7 +113,25 @@ var AddPointsTool = {
 			}
 
 			EditorModule.refreshAttributes();
-		});
+		}});
+		inspector.addSeparator();
+
+		if(SelectionModule.selection && SelectionModule.selection.instance && SelectionModule.selection.instance.getPointRef)
+		{
+			var ref = SelectionModule.selection.instance.getPointRef( SelectionModule.selection.info );
+			if(ref)
+			{
+				inspector.widgets_per_row = 2;
+				inspector.addVector3("Selected", ref , { width: "calc( 100 % - 40px )", callback: function(v){ ref[0] = v[0]; ref[1] = v[1]; ref[2] = v[2]; }});
+				inspector.addButton(null, TRASH_ICON_CODE, { width: "40px", callback: function(){
+					CORE.userAction("component_changed", SelectionModule.selection.instance );
+					SelectionModule.selection.instance.removePoint( SelectionModule.selection.info );
+					SelectionModule.selection = null;
+				}});
+				inspector.widgets_per_row = 1;
+			}
+		}
+
 		inspector.addSeparator();
 		if( this._component )
 			inspector.showComponent( this._component );
@@ -120,8 +156,20 @@ var AddPointsTool = {
 			}
 		}
 
-		if(e.which == GL.LEFT_MOUSE_BUTTON && !e.ctrlKey && !this.continuous)
+		if(e.which == GL.LEFT_MOUSE_BUTTON && !e.ctrlKey && !this.continuous) //continuos is add while dragging, like painting
 		{
+			//test first closer point
+			var index = this.findNearestPointIndex(this.click_pos, 20);
+			if(index != -1)
+			{
+				console.log("selected point");
+				SelectionModule.setSelection({ instance: this._component, info: index, node: this._component._root });
+				return true;
+			}
+
+			//if no point, then add
+			if(this._component)
+				CORE.userAction("component_changed", this._component );
 			var point = this.computePoint(e);
 			if(point)
 				this.addPoint( point );
@@ -175,6 +223,39 @@ var AddPointsTool = {
 			valid.push( component );
 		}
 		return valid;
+	},
+
+	findNearestPointIndex: function(pos, max_dist)
+	{
+		if(max_dist === undefined)
+			max_dist = 100000;
+		var comp = this._component;
+		if(!comp)
+			return -1;
+		var points = comp.points;
+		var model = mat4.create();
+		comp._root.transform.getGlobalMatrix(model);
+		var camera = RenderModule.getActiveCamera();
+		var points = comp.points;
+		if(!points)
+			return -1;
+		var min_dist = 100000;
+		var nearest = -1;
+		var result = vec3.create();
+		for(var i = 0; i < points.length; ++i)
+		{
+			var point = points[i];
+			vec3.transformMat4( result, point, model );
+			camera.project(result,null,result);
+			//TODO; discard behind
+			var dist = vec2.distance(pos, result);
+			if( dist > min_dist || dist > max_dist )
+				continue;
+			min_dist = dist;
+			nearest = i;
+		}
+
+		return nearest;
 	},
 
 	addPoint: function( point )

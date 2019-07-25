@@ -2332,9 +2332,13 @@
         if (!this.properties) {
             this.properties = {};
         }
+		if( value === this.properties[name] )
+			return;
+		var prev_value = this.properties[name];
         this.properties[name] = value;
         if (this.onPropertyChanged) {
-            this.onPropertyChanged(name, value);
+            if( this.onPropertyChanged(name, value) === false ) //abort change
+				this.properties[name] = prev_value;
         }
     };
 
@@ -9827,6 +9831,9 @@ LGraphNode.prototype.executeAction = function(action)
             extra: node
         };
 
+		if(node)
+			options.title = node.type;
+
         //check if mouse is in input
         var slot = null;
         if (node) {
@@ -10847,55 +10854,16 @@ if (typeof exports != "undefined") {
 
     //Input for a subgraph
     function GraphInput() {
-        this.addOutput("", "");
+        this.addOutput("", "number");
 
         this.name_in_graph = "";
-        this.properties = {};
+        this.properties = {
+			name: "",
+			type: "number",
+			value: 0
+		}; 
+
         var that = this;
-
-        Object.defineProperty(this.properties, "name", {
-            get: function() {
-                return that.name_in_graph;
-            },
-            set: function(v) {
-                if (v == "" || v == that.name_in_graph || v == "enabled") {
-                    return;
-                }
-				if(that.graph)
-				{
-					if (that.name_in_graph) {
-						//already added
-						that.graph.renameInput(that.name_in_graph, v);
-					} else {
-						that.graph.addInput(v, that.properties.type);
-					}
-				} //what if not?!
-                that.name_widget.value = v;
-                that.name_in_graph = v;
-            },
-            enumerable: true
-        });
-
-        Object.defineProperty(this.properties, "type", {
-            get: function() {
-                return that.outputs[0].type;
-            },
-            set: function(v) {
-                if (v == "event") {
-                    v = LiteGraph.EVENT;
-                }
-                that.outputs[0].type = v;
-                if (that.name_in_graph) {
-                    //already added
-                    that.graph.changeInputType(
-                        that.name_in_graph,
-                        that.outputs[0].type
-                    );
-                }
-                that.type_widget.value = v;
-            },
-            enumerable: true
-        });
 
         this.name_widget = this.addWidget(
             "text",
@@ -10905,7 +10873,7 @@ if (typeof exports != "undefined") {
                 if (!v) {
                     return;
                 }
-                that.properties.name = v;
+                that.setProperty("name",v);
             }
         );
         this.type_widget = this.addWidget(
@@ -10913,17 +10881,86 @@ if (typeof exports != "undefined") {
             "Type",
             this.properties.type,
             function(v) {
-                v = v || "";
-                that.properties.type = v;
+				that.setProperty("type",v);
+            }
+        );
+
+        this.value_widget = this.addWidget(
+            "number",
+            "Value",
+            this.properties.value,
+            function(v) {
+                that.setProperty("value",v);
             }
         );
 
         this.widgets_up = true;
-        this.size = [180, 60];
+        this.size = [180, 90];
     }
 
     GraphInput.title = "Input";
     GraphInput.desc = "Input of the graph";
+
+	GraphInput.prototype.onConfigure = function()
+	{
+		this.updateType();
+	}
+
+	GraphInput.prototype.updateType = function()
+	{
+		var type = this.properties.type;
+		this.type_widget.value = type;
+		if(type == "number")
+		{
+			this.value_widget.type = "number";
+			this.value_widget.value = 0;
+		}
+		else if(type == "bool")
+		{
+			this.value_widget.type = "toggle";
+			this.value_widget.value = true;
+		}
+		else if(type == "string")
+		{
+			this.value_widget.type = "text";
+			this.value_widget.value = "";
+		}
+		else
+		{
+			this.value_widget.type = null;
+			this.value_widget.value = null;
+		}
+		this.properties.value = this.value_widget.value;
+	}
+
+	GraphInput.prototype.onPropertyChanged = function(name,v)
+	{
+		if( name == "name" )
+		{
+			if (v == "" || v == this.name_in_graph || v == "enabled") {
+				return false;
+			}
+			if(this.graph)
+			{
+				if (this.name_in_graph) {
+					//already added
+					this.graph.renameInput( this.name_in_graph, v );
+				} else {
+					this.graph.addInput( v, this.properties.type );
+				}
+			} //what if not?!
+			this.name_widget.value = v;
+			this.name_in_graph = v;
+		}
+		else if( name == "type" )
+		{
+			v = v || "";
+			this.updateType(v);
+		}
+		else if( name == "value" )
+		{
+		}
+	}
 
     GraphInput.prototype.getTitle = function() {
         if (this.flags.collapsed) {
@@ -10940,15 +10977,12 @@ if (typeof exports != "undefined") {
 
     GraphInput.prototype.onExecute = function() {
         var name = this.properties.name;
-
         //read from global input
         var data = this.graph.inputs[name];
         if (!data) {
-            return;
+            this.setOutputData(0, this.properties.value );
         }
-
-        //put through output
-        this.setOutputData(0, data.value);
+        this.setOutputData(0, data.value === undefined ? this.properties.value : data.value);
     };
 
     GraphInput.prototype.onRemoved = function() {
@@ -13439,6 +13473,25 @@ if (typeof exports != "undefined") {
 
     LiteGraph.registerNodeType("math/scale", MathScale);
 
+	//Gate
+	function Gate() {
+		this.addInput("v","boolean");
+		this.addInput("A");
+		this.addInput("B");
+		this.addOutput("out");
+	}
+
+	Gate.title = "Gate";
+	Gate.desc = "if v is true, then outputs A, otherwise B";
+
+	Gate.prototype.onExecute = function() {
+		var v = this.getInputData(0);
+		this.setOutputData(0, this.getInputData( v ? 1 : 2 ));
+	};
+
+	LiteGraph.registerNodeType("math/gate", Gate);
+
+
     //Math Average
     function MathAverageFilter() {
         this.addInput("in", "number");
@@ -13729,7 +13782,8 @@ if (typeof exports != "undefined") {
     function MathCondition() {
         this.addInput("A", "number");
         this.addInput("B", "number");
-        this.addOutput("out", "boolean");
+        this.addOutput("true", "boolean");
+        this.addOutput("false", "boolean");
         this.addProperty("A", 1);
         this.addProperty("B", 1);
         this.addProperty("OP", ">", "enum", { values: MathCondition.values });
@@ -13795,6 +13849,7 @@ if (typeof exports != "undefined") {
         }
 
         this.setOutputData(0, result);
+        this.setOutputData(1, !result);
     };
 
     LiteGraph.registerNodeType("math/condition", MathCondition);
@@ -20495,13 +20550,15 @@ if (typeof exports != "undefined") {
         LiteGraph.registerNodeType("texture/perlin", LGraphTexturePerlin);
 
         function LGraphTextureCanvas2D() {
+            this.addInput("v");
             this.addOutput("out", "Texture");
             this.properties = {
                 code: "",
                 width: 512,
                 height: 512,
 				clear: true,
-                precision: LGraphTexture.DEFAULT
+                precision: LGraphTexture.DEFAULT,
+				use_html_canvas: false
             };
             this._func = null;
             this._temp_texture = null;
@@ -20518,21 +20575,24 @@ if (typeof exports != "undefined") {
             height: { type: "Number", precision: 0, step: 1 }
         };
 
-        LGraphTextureCanvas2D.prototype.onPropertyChanged = function(
-            name,
-            value
-        ) {
-            if (name == "code" && LiteGraph.allow_scripts) {
-                this._func = null;
-                try {
-                    this._func = new Function( "canvas", "ctx", "time", "script", value );
-                    this.boxcolor = "#00FF00";
-                } catch (err) {
-                    this.boxcolor = "#FF0000";
-                    console.error("Error parsing script");
-                    console.error(err);
-                }
-            }
+        LGraphTextureCanvas2D.prototype.onPropertyChanged = function( name, value ) {
+            if (name == "code" )
+				this.compileCode( value );
+		}
+		
+		LGraphTextureCanvas2D.prototype.compileCode = function( code ) {
+            this._func = null;
+			if( !LiteGraph.allow_scripts )
+				return;
+
+			try {
+				this._func = new Function( "canvas", "ctx", "time", "script","v", code );
+				this.boxcolor = "#00FF00";
+			} catch (err) {
+				this.boxcolor = "#FF0000";
+				console.error("Error parsing script");
+				console.error(err);
+			}
         };
 
         LGraphTextureCanvas2D.prototype.onExecute = function() {
@@ -20540,13 +20600,10 @@ if (typeof exports != "undefined") {
             if (!func || !this.isOutputConnected(0)) {
                 return;
             }
+			this.executeDraw( func );
+		}
 
-            if (!global.enableWebGLCanvas) {
-                console.warn(
-                    "cannot use LGraphTextureCanvas2D if Canvas2DtoWebGL is not included"
-                );
-                return;
-            }
+        LGraphTextureCanvas2D.prototype.executeDraw = function( func_context ) {
 
             var width = this.properties.width || gl.canvas.width;
             var height = this.properties.height || gl.canvas.height;
@@ -20560,31 +20617,71 @@ if (typeof exports != "undefined") {
                 });
             }
 
+			var v = this.getInputData(0);
+
 			var properties = this.properties;
             var that = this;
             var time = this.graph.getTime();
-            temp.drawTo(function() {
-                gl.start2D();
-				if(properties.clear)
+			var ctx = gl;
+			var canvas = gl.canvas;
+			if( this.properties.use_html_canvas || !global.enableWebGLCanvas )
+			{
+				if(!this._canvas)
 				{
-					gl.clearColor(0,0,0,0);
-					gl.clear( gl.COLOR_BUFFER_BIT );
+					canvas = this._canvas = createCanvas(width.height);
+					ctx = this._ctx = canvas.getContext("2d");
 				}
+				else
+				{
+					canvas = this._canvas;
+					ctx = this._ctx;
+				}
+				canvas.width = width;
+				canvas.height = height;
+			}
 
-                try {
-                    if (func.draw) {
-                        func.draw.call(that, gl.canvas, gl, time, func);
-                    } else {
-                        func.call(that, gl.canvas, gl, time, func);
-                    }
-                    that.boxcolor = "#00FF00";
-                } catch (err) {
-                    that.boxcolor = "#FF0000";
-                    console.error("Error executing script");
-                    console.error(err);
-                }
-                gl.finish2D();
-            });
+			if(ctx == gl) //using Canvas2DtoWebGL
+				temp.drawTo(function() {
+					gl.start2D();
+					if(properties.clear)
+					{
+						gl.clearColor(0,0,0,0);
+						gl.clear( gl.COLOR_BUFFER_BIT );
+					}
+
+					try {
+						if (func_context.draw) {
+							func_context.draw.call(that, canvas, ctx, time, func_context, v);
+						} else {
+							func_context.call(that, canvas, ctx, time, func_context,v);
+						}
+						that.boxcolor = "#00FF00";
+					} catch (err) {
+						that.boxcolor = "#FF0000";
+						console.error("Error executing script");
+						console.error(err);
+					}
+					gl.finish2D();
+				});
+			else //rendering to offscren canvas and uploading to texture
+			{
+				if(properties.clear)
+					ctx.clearRect(0,0,canvas.width,canvas.height);
+
+				try {
+					if (func_context.draw) {
+						func_context.draw.call(this, canvas, ctx, time, func_context, v);
+					} else {
+						func_context.call(this, canvas, ctx, time, func_context,v);
+					}
+					this.boxcolor = "#00FF00";
+				} catch (err) {
+					this.boxcolor = "#FF0000";
+					console.error("Error executing script");
+					console.error(err);
+				}
+				temp.uploadImage( canvas );
+			}
 
             this.setOutputData(0, temp);
         };

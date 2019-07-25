@@ -492,7 +492,7 @@ SceneTreeWidget.prototype.processDrag = function(e)
 		return;
 
 	var that = this;
-	this._drop_document_callback = this.processDrop.bind(this);
+	this._drop_document_callback = this.processItemDrop.bind(this);
 	document.addEventListener("drop",this._drop_document_callback,true);
 
 	var img = document.createElement("img");

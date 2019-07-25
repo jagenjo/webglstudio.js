@@ -315,6 +315,12 @@ var ToolsModule = {
 			return false;
 		} );
 
+		element.addEventListener("dblclick", function(e) { 
+			e.preventDefault(); 
+			ToolsModule.showToolProperties( this.data );
+			return false;
+		} );
+
 	},
 
 	addStateButton: function( button )

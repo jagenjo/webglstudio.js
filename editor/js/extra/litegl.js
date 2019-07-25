@@ -1688,16 +1688,18 @@ vec3.project = function(out, vec,  mvp, viewport) {
 	var iy = vec[1];
 	var iz = vec[2];
 
-	var ox = m[0] * ix + m[4] * iy + m[8] * iz + m[12]
-	var oy = m[1] * ix + m[5] * iy + m[9] * iz + m[13]
-	var ow = m[3] * ix + m[7] * iy + m[11] * iz + m[15]
+	var ox = m[0] * ix + m[4] * iy + m[8] * iz + m[12];
+	var oy = m[1] * ix + m[5] * iy + m[9] * iz + m[13];
+	var oz = m[2] * ix + m[6] * iy + m[10] * iz + m[14];
+	var ow = m[3] * ix + m[7] * iy + m[11] * iz + m[15];
 
 	var projx =     (ox / ow + 1) / 2;
 	var projy = 1 - (oy / ow + 1) / 2;
+	var projz =     (oz / ow + 1) / 2;
 
 	out[0] = projx * viewport[2] + viewport[0];
 	out[1] = projy * viewport[3] + viewport[1];
-	out[2] = ow;
+	out[2] = projz; //ow
 	return out;
 };
 

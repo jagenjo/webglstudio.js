@@ -934,61 +934,39 @@ LS.Components.Poser["@inspector"] = function( component, inspector)
 {
 	inspector.widgets_per_row = 2;
 	inspector.addInfo("Nodes posed", component.base_nodes.length );
-	inspector.addButton(null,"Edit pose nodes", { callback: function(v,e){
+	inspector.addButton(null,"Edit poses", { callback: function(v,e){
 		LS.Components.Poser.showPoseNodesDialog( component, e );
 	}});
+
 	inspector.widgets_per_row = 1;
 
-	var poses = [];
-	for(var i in component.poses)
-		poses.push(i);
+	inspector.widgets_per_row = 2;
+	for(var i in component.poses )
+	{
+		var pose = component.poses[i];
+		inspector.addSlider(pose.name, pose.weight, { min: 0, max: 1, width: "calc(100% - 40px)", pretitle: AnimationModule.getKeyframeCode( component, "pose/"+i+"/weight" ), pose_name: pose.name, callback: function(v) { 
+			component.setPoseWeight( this.options.pose_name, v );
+			LS.GlobalScene.refresh();
+		}});
 
-	if(!component._selected)
-		component._selected = poses[0];
-	
-	inspector.addCombo("Pose", component._selected ,{values: poses, callback: function(v){
-		component._selected = v;
-	}});
+		inspector.addButton(null, "0", { width: "40px", pose_name: pose.name, callback: function() { 
+			component.setPoseWeight( this.options.pose_name, 0 );
+			inspector.refresh();
+			LS.GlobalScene.refresh();
+		}});
+	}
+	inspector.widgets_per_row = 1;
 
-	inspector.addButtons(null,["Apply","Overwrite","Delete"], function(v){
-		if(!component._selected)
-			return;
-		var pose_name = component._selected;
-		var pose = component.poses[ pose_name ];
-		if(!pose)
-			return;
-		if(v == "Apply")
-			component.applyPose( pose_name );
-		else if( v == "Overwrite")
-			component.updatePose( pose_name );
-		else if( v == "Delete" )
-		{
-			component.removePose( pose_name );
-			component._selected = null;
-		}
-		inspector.refresh();
-		LS.GlobalScene.requestFrame();
-	});
-
-	inspector.addSeparator();
-
-	var new_pose_name = "";
-
-	inspector.addStringButton( "New Pose", new_pose_name, { callback: function(v) { 
-		new_pose_name = v;
-	}, callback_button: function(){
-		if(!new_pose_name)
-			return;
-		component.addPose( new_pose_name );
-		component._selected = new_pose_name;
-		inspector.refresh();
+	inspector.addButton(null,"Reset to base", { callback: function(v,e){
+		component.applyBasePose();
+		LS.GlobalScene.refresh();
 	}});
 }
 
 if(LS.Components.Poser)
 LS.Components.Poser.showPoseNodesDialog = function( component, event )
 {
-	var dialog = new LiteGUI.Dialog({title:"Nodes in Pose", close: true, width: 600, height: 300, resizable: true, scroll: false, draggable: true});
+	var dialog = new LiteGUI.Dialog({title:"Poses editor", close: true, width: 600, height: 400, resizable: true, scroll: false, draggable: true});
 
 	var area = new LiteGUI.Area();
 	area.split( LiteGUI.Area.HORIZONTAL );
@@ -1012,44 +990,66 @@ LS.Components.Poser.showPoseNodesDialog = function( component, event )
 	{
 		widgets_left.clear();
 
-		//get the names
-		var selected = null;
-		var node_names = [];
+		widgets_left.addTitle("Poses");
 
-		var base_nodes = component.base_nodes;
-		for(var i in base_nodes)
-		{
-			var base_node = LS.GlobalScene.getNode( base_nodes[i].node_uid );
-			if( base_node )
-				node_names.push( base_node.name );
-		}
+		var poses = [];
+		for(var i = 0; i < component.poses.length; ++i)
+			poses.push( component.poses[i].name );
 
-		var list = widgets_left.addList(null, node_names, { height: "calc( 100% - 30px)", callback: function(v) {
-			selected = v;
+		if(!component._selected)
+			component._selected = poses[0];
+		
+		widgets_left.addCombo("Pose", component._selected ,{values: poses, callback: function(v){
+			component._selected = v;
 		}});
 
-		widgets_left.addButtons(null,["Remove Selected"],{
-			callback: function(v){
-				component.removeBaseNode( selected );
-				widgets_left.refresh();
+		widgets_left.addButtons(null,["Update","Apply","Delete"], function(v){
+			if(!component._selected)
+				return;
+			var pose_name = component._selected;
+			var pose = component._poses_by_name[ pose_name ];
+			if(!pose)
+				return;
+			//if(v == "Apply")
+			//	component.applyPose( pose_name );
+			if( v == "Update")
+				component.updatePose( pose_name );
+			else if( v == "Apply")
+				component.applyPose( pose_name );
+			else if( v == "Delete" )
+			{
+				component.removePose( pose_name );
+				component._selected = null;
 			}
+			widgets_left.refresh();
+			LS.GlobalScene.requestFrame();
 		});
-	}
 
-	function inner_refresh_right()
-	{
-		widgets_right.clear();
-		widgets_right.addTitle("Select a node");
-		widgets_right.widgets_per_row = 2;
-		var node_widget = widgets_right.addNode("Node", "", { width: "70%", use_node: true, callback: function(v){
+		var new_pose_name = "";
+
+		widgets_left.addStringButton( "New Pose", new_pose_name, { button:"+", callback: function(v) { 
+			new_pose_name = v;
+		}, callback_button: function(){
+			if(!new_pose_name)
+				return;
+			component.addPose( new_pose_name );
+			component._selected = new_pose_name;
+			widgets_left.refresh();
+		}});
+
+		widgets_left.addSeparator();
+
+		widgets_left.addTitle("Select a node");
+		widgets_left.widgets_per_row = 2;
+		var node_widget = widgets_left.addNode("Node", "", { width: "70%", use_node: true, callback: function(v){
 			node = v;
 		}});
-		widgets_right.addButton(null,"From Select.", { width: "30%", callback: function(){
+		widgets_left.addButton(null,"From Select.", { width: "30%", callback: function(){
 			node_widget.setValue( SelectionModule.getSelectedNode() );
 		}});
-		widgets_right.widgets_per_row = 1;
-		widgets_right.addTitle("Actions");
-		widgets_right.addButtons(null,["Add Node", "Add Children"], function(v){
+		widgets_left.widgets_per_row = 1;
+		widgets_left.addTitle("Actions");
+		widgets_left.addButtons(null,["Add Node", "Add Children"], function(v){
 			if(!node)
 				return;
 			if(v == "Add Node")
@@ -1062,21 +1062,57 @@ LS.Components.Poser.showPoseNodesDialog = function( component, event )
 				for(var i in nodes)
 					component.addBaseNode( nodes[i] );
 			}
-			widgets_left.refresh();
+			widgets_right.refresh();
 		});
-		widgets_right.widgets_per_row = 1;
-		widgets_right.addSeparator();
-		widgets_right.addButton(null, "Add current scene selected nodes", function(){
+		widgets_left.widgets_per_row = 1;
+		widgets_left.addSeparator();
+		widgets_left.addButton(null, "Add current scene selected nodes", function(){
 			var nodes = SelectionModule.getSelectedNodes();
 			for(var i in nodes)
 				component.addBaseNode( nodes[i] );
 			widgets_right.refresh();
 		});
-		widgets_right.addButton(null, "Remove current scene selected nodes", function(){
+		widgets_left.addButton(null, "Remove current scene selected nodes", function(){
 			var nodes = SelectionModule.getSelectedNodes();
 			for(var i in nodes)
 				component.removeBaseNode( nodes[i] );
 			widgets_right.refresh();
+		});
+
+		widgets_left.addSeparator();
+		widgets_left.addButton(null,"Reset to base", { callback: function(v,e){
+			component.applyBasePose();
+			LS.GlobalScene.refresh();
+		}});
+	}
+
+	function inner_refresh_right()
+	{
+		widgets_right.clear();
+
+		//get the names
+		var selected = null;
+		var node_names = [];
+
+		var base_nodes = component.base_nodes;
+		for(var i in base_nodes)
+		{
+			var base_node = LS.GlobalScene.getNode( base_nodes[i].node_uid );
+			if( base_node )
+				node_names.push( base_node.name );
+		}
+
+		widgets_right.addTitle("Nodes in poses");
+
+		var list = widgets_right.addList(null, node_names, { height: "calc( 100% - 30px)", callback: function(v) {
+			selected = v;
+		}});
+
+		widgets_right.addButtons(null,["Remove Selected"],{
+			callback: function(v){
+				component.removeBaseNode( selected );
+				widgets_right.refresh();
+			}
 		});
 	}
 
@@ -1141,6 +1177,8 @@ LS.Components.IrradianceCache.onShowProperties = function( component, inspector 
 if(LS.Components.Spline)
 LS.Components.Spline.onShowProperties = function( component, inspector )
 {
-	inspector.addButton( null, "Clear Points", function(){ component.clear(); LS.GlobalScene.requestFrame(); });
+	inspector.widgets_per_row = 2;
 	inspector.addInfo( "Num. Points", String(component.numberOfPoints) );
+	inspector.addButton( null, "Clear Points", function(){ component.clear(); LS.GlobalScene.requestFrame(); });
+	inspector.widgets_per_row = 1;
 }

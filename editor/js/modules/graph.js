@@ -247,9 +247,16 @@ GraphModule.showGraphComponent = function( component, inspector )
 
 	if(component.constructor == LS.Components.GraphComponent)
 	{
-		inspector.widgets_per_row = 2;
-		inspector.addCombo("on event", component.on_event, { name_width: 60, width:"70%", values: LS.Components.GraphComponent["@on_event"].values , callback: function(v) { component.on_event = v; }});
-		inspector.addCheckbox("redraw", component.force_redraw, { width:"30%", callback: function(v) { component.force_redraw = v; }});
+		inspector.widgets_per_row = 3;
+		inspector.addCombo("on event", component.on_event, { name_width: 60, width:"calc( 100% - 110px )", values: LS.Components.GraphComponent["@on_event"].values , callback: function(v) { component.on_event = v; }});
+		inspector.addCheckbox("redraw", component.force_redraw, { width:80, callback: function(v) { component.force_redraw = v; }});
+		inspector.addButton(null,LiteGUI.special_codes.navicon, { width: 30, callback: function(v,event) {
+			var graph = component.graph;
+			var options = graph._nodes;
+			var menu = new LiteGUI.ContextMenu( options, { ignore_item_callbacks: true, event: event, title: "Nodes", autoopen: false, callback: function( v, o, e ) {
+				EditorModule.inspect(v);
+			}});
+		}});
 		inspector.widgets_per_row = 1;
 	}
 	else if(component.constructor == LS.Components.FXGraphComponent)
@@ -281,19 +288,12 @@ GraphModule.showGraphComponent = function( component, inspector )
 		}
 	}
 
-	inspector.widgets_per_row = 2;
-	inspector.addButton(null,"Edit Graph", { width: "80%", callback: function() {
+	inspector.widgets_per_row = 1;
+	inspector.addButton(null,"Edit Graph", { callback: function() {
 		GraphModule.openTab();
 		GraphModule.editInstanceGraph( component, { id: component.uid, title: component._root.uid } );
 	}});
 
-	inspector.addButton(null,"Nodes", { width: "20%", callback: function(v,event) {
-		var graph = component.graph;
-		var options = graph._nodes;
-		var menu = new LiteGUI.ContextMenu( options, { ignore_item_callbacks: true, event: event, title: "Nodes", autoopen: false, callback: function( v, o, e ) {
-			EditorModule.inspect(v);
-		}});
-	}});
 	inspector.widgets_per_row = 1;
 }
 

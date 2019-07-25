@@ -45,7 +45,7 @@ var CubemapTools = {
 		var cubemap_modes = { "Cross Left": "CUBECROSSL", "Vertical": "CUBEVERT", "Polar":"CUBEPOLAR" };
 		var mode = "CUBECROSSL";
 		var layers = 0x3;
-		var export_format = "Cross Left";
+		var export_format = "CUBECROSSL";
 
 		var url = "";
 		var original_file = null;
@@ -249,7 +249,7 @@ var CubemapTools = {
 			}});
 
 			widgets.addSection("Export", { collapsed: false });
-			widgets.addCombo("Format", "Cross Left", { values: cubemap_modes, callback: function(v) { 
+			widgets.addCombo("Format", export_format, { values: cubemap_modes, callback: function(v) { 
 				export_format = v;
 			}});
 			widgets.addButton( null, "Download cubemap", { callback: downloadCubemap });
@@ -371,11 +371,7 @@ var CubemapTools = {
 			if(!cubemap)
 				return;
 			var data = null;
-			if(export_format == "CUBECROSSL")
-			{
-				data = cubemap.toBinary();
-			}
-			else if(export_format == "CUBEPOLAR")
+			if(export_format == "CUBEPOLAR")
 			{
 				var polar_texture = CubemapTools.convertCubemapToPolar(cubemap);
 				data = polar_texture.toBinary();
@@ -386,6 +382,10 @@ var CubemapTools = {
 				data = image.toBlob(function(v){
 					LiteGUI.downloadFile("cubemap.png", v );
 				});
+			}
+			else //if(export_format == "CUBECROSSL")
+			{
+				data = cubemap.toBinary();
 			}
 
 			if(data)

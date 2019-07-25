@@ -14518,10 +14518,9 @@ SkeletalAnimation.prototype.assignTime = function(time, loop, interpolate, layer
 		interpolate = true;
 
 	var v = this.samples_per_second * time;
-	var index = Math.clamp( Math.floor(v), 0, this.num_keyframes - 1);
-	var index2 = index + 1;
-	if (index2 >= this.num_keyframes)
-		index2 = 0;
+	var index = Math.floor(v);
+	var index2 = (index + 1) % this.num_keyframes;
+	index = index % this.num_keyframes;
 	var f = v - Math.floor(v);
 	var num_animated_bones = this.num_animated_bones;
 

@@ -44209,7 +44209,7 @@ function Poser(o)
 
 Poser.icon = "mini-icon-clock.png";
 
-Object.defineProperty( MorphDeformer.prototype, "weights", {
+Object.defineProperty( Poser.prototype, "weights", {
 	set: function(v) {
 		if(!v || !v.length)
 			return;

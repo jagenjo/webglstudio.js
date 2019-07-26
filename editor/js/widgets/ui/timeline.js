@@ -11,7 +11,7 @@ function Timeline( options )
 	this.preview = true;
 	this.paths_widget = false;
 	this.autoresize = true;
-	this.show_paths = false;
+	this.show_paths = false; //show trajectories in the 3D view
 
 	this.current_take = null;
 
@@ -23,6 +23,10 @@ function Timeline( options )
 
 	this.createInterface( options );
 	LiteGUI.createDropArea( this.canvas, this.onItemDrop.bind(this) );
+
+	this._times = [];
+	this.scroll_curves_y = 0;
+	this.curves_scale_y = 1;
 }
 
 Timeline.widget_name = "Timeline";
@@ -100,7 +104,7 @@ Timeline.prototype.createInterface = function( options )
 	widgets.addIcon(null, false, { title:"next keyframe", image: "imgs/icons-timeline.png", index: 3, toggle: false, callback: function(v){ that.nextKeyframe(); } } );
 	widgets.addIcon(null, false, { title:"record", image: "imgs/icons-timeline.png", index: 10, toggle: true, callback: function(v){ return that.toggleRecording(v); } } );
 	this.paths_widget = widgets.addIcon(null, this.show_paths, { title:"show paths", image: "imgs/icons-timeline.png", index: 12, toggle: true, callback: function(v){ RenderModule.requestFrame(); return that.show_paths = v; } } );
-	//widgets.addCheckbox("Curves", this.mode == "curves", { callback: function(v){ that.mode = v ? "curves" : "keyframes"; that.redrawCanvas(); } } );
+	widgets.addCheckbox("Curves", this.mode == "curves", { callback: function(v){ that.mode = v ? "curves" : "keyframes"; that.redrawCanvas(); } } );
 	widgets.addButton(null, LiteGUI.special_codes.refresh, { width: 30, callback: function(v,e){ that.resetView(); } });
 
 	/*
@@ -383,10 +387,13 @@ Timeline.prototype.updateTimelineData = function()
 Timeline.prototype.redrawCanvas = function()
 {
 	this._must_redraw = false;
+
 	var canvas = this.canvas;
 	var ctx = canvas.getContext("2d");
 	ctx.fillStyle = "#222";
 	ctx.fillRect(0,0, canvas.width, canvas.height );
+
+	var take = this.current_take;
 
 	if(!this.current_take)
 	{
@@ -399,12 +406,327 @@ Timeline.prototype.redrawCanvas = function()
 
 	this.updateTimelineData();
 
+	//top time area
+	this.drawTimeInfo( canvas, ctx );
+
+	//draw tracks info in the left side
+	this.drawTracksInfo( canvas, ctx );
+
+	//main content ***********************************
+	if(this.mode == "keyframes")
+		this.drawKeyframesView( canvas, ctx );
+	else if(this.mode == "curves")
+		this.drawCurvesView( canvas, ctx );
+
+	var duration = take.duration;
+	var data = this._timeline_data;
+	var current_time = data.current_time;
+	var margin = this.session.left_margin;
+
+	//current time marker vertical line
+	var true_pos = Math.round( this.canvasTimeToX( this.session.current_time ) ) + 0.5;
+	var pos = Math.round( this.canvasTimeToX( current_time ) ) + 0.5; //current_time is quantized
+	if(pos >= margin)
+	{
+		ctx.strokeStyle = "#ABA";
+		ctx.beginPath();
+		ctx.moveTo(true_pos, 0); ctx.lineTo( true_pos, canvas.height );
+		ctx.stroke();
+
+		ctx.strokeStyle = ctx.fillStyle = "#AFD";
+		ctx.beginPath();
+		ctx.moveTo(pos, 0); ctx.lineTo(pos, canvas.height);//line
+		ctx.stroke();
+		ctx.beginPath();
+		ctx.moveTo(pos - 4, 0); ctx.lineTo(pos + 4, 0); ctx.lineTo(pos, 6);//triangle
+		ctx.closePath();
+		ctx.fill();
+		ctx.beginPath();
+		ctx.moveTo(pos - 4, canvas.height); ctx.lineTo(pos + 4, canvas.height); ctx.lineTo(pos, canvas.height - 6);//triangle
+		ctx.closePath();
+		ctx.fill();
+	}
+
+	//scroll
+	if(this.session.scroll_y != 0)
+	{
+		ctx.save();
+		ctx.translate( margin - 30, timeline_height * 0.5 );
+		ctx.fillStyle = "#999";
+		ctx.beginPath();
+		ctx.moveTo(-10, 5); ctx.lineTo(0, -5); ctx.lineTo(10, 5);
+		ctx.closePath();
+		ctx.fill();
+		ctx.restore();
+	}
+
+	if(data.last_track < data.num_tracks - 1)
+	{
+		ctx.save();
+		ctx.translate( margin - 30, canvas.height - 30 );
+		ctx.fillStyle = "#999";
+		ctx.beginPath();
+		ctx.moveTo(-10, -5); ctx.lineTo(0, 5); ctx.lineTo(10, -5);
+		ctx.closePath();
+		ctx.fill();
+		ctx.restore();
+	}
+}
+
+Timeline.prototype.convertValueToCanvas = function(v)
+{
+	return this.canvas.height * 0.5 - v * this.curves_scale_y + this.scroll_curves_y;
+}
+
+Timeline.curves_colors = ["#F44","#4F4","#77F"];
+
+Timeline.prototype.drawCurvesView = function( canvas, ctx )
+{
 	var take = this.current_take;
 	var duration = take.duration;
 	var data = this._timeline_data;
 	var current_time = data.current_time;
 
 	//show timeline
+	var timeline_height = this.canvas_info.timeline_height;
+	var margin = this.session.left_margin;
+
+	//content
+	var line_height = this.canvas_info.row_height;
+	var times = this._times;
+
+	//black bg
+	ctx.globalAlpha = 0.2;
+	ctx.fillStyle = "black";
+	ctx.fillRect( margin, timeline_height, canvas.width - margin, canvas.height - timeline_height );
+	ctx.globalAlpha = 1;
+
+	//base lines
+	var base_line_y = this.convertValueToCanvas( 0 );
+	ctx.globalAlpha = 0.2;
+	ctx.fillStyle = "white";
+	ctx.fillRect( margin, base_line_y, canvas.width - margin, 1 );
+	ctx.fillStyle = "#555";
+	ctx.fillRect( margin, this.convertValueToCanvas( 10 ), canvas.width - margin, 1 );
+	ctx.fillRect( margin, this.convertValueToCanvas( 1 ), canvas.width - margin, 1 );
+	ctx.fillRect( margin, this.convertValueToCanvas( -1 ), canvas.width - margin, 1 );
+	ctx.fillRect( margin, this.convertValueToCanvas( -10 ), canvas.width - margin, 1 );
+	ctx.globalAlpha = 1;
+
+
+	//keyframes
+	var keyframe_time = 1/this.framerate; //how many seconds last every tick (line in timeline)
+	var keyframe_width = keyframe_time * data.seconds_to_pixels;
+	if(keyframe_width < 10)
+		keyframe_width = 10;
+
+	for(var i = 0; i < data.total_tracks; i++)
+	{
+		var track = take.tracks[ data.first_track + i ];
+		var num = track.getNumberOfKeyframes();
+		var y = timeline_height + i * line_height;
+		ctx.fillStyle = ctx.strokeStyle = "#9AF";
+
+		if(!track.enabled)
+			continue;
+
+		if(track.interpolation != LS.NONE && track.value_size != 0)
+		{
+			//curves
+			var num_samples = (data.endx - data.startx) / 10; //every 10 pixels
+			var samples = track.getSampledData( data.start_time, data.end_time, num_samples );
+			if(!samples || samples.length == 0)
+				continue;
+
+			if(track.value_size == 1)
+			{
+				ctx.strokeStyle = "#AAA";
+				ctx.beginPath();
+				var v = this.convertValueToCanvas( samples[0] );
+				ctx.moveTo( data.startx, v );
+				for(var k = 0; k < samples.length; ++k)
+				{
+					v = this.convertValueToCanvas( samples[k] );
+					ctx.lineTo( data.startx + k * 10, v );
+				}
+				ctx.stroke();
+			}
+			else
+			{
+				for(var j = 0; j < track.value_size; ++j)
+				{
+					ctx.strokeStyle = Timeline.curves_colors[j%Timeline.curves_colors.length];
+					ctx.beginPath();
+					var v = this.convertValueToCanvas( samples[0][j] );
+					ctx.moveTo( data.startx, v );
+					for(var k = 0; k < samples.length; ++k)
+					{
+						v = this.convertValueToCanvas( samples[k][j] );
+						ctx.lineTo( data.startx + k * 10, v );
+					}
+					ctx.stroke();
+				}
+			}
+		}
+
+		//keyframes
+		ctx.fillStyle = ctx.strokeStyle = "#AAA";
+		ctx.beginPath();
+		for(var j = 0; j < num; ++j)
+		{
+			var keyframe = track.getKeyframe(j);
+			if(!keyframe) //weird bugs
+				continue;
+			var posx = this.canvasTimeToX( keyframe[0] );
+			var w = keyframe_width;
+			var h = line_height - 4;
+
+			if(track.value_size == 1)
+			{
+				var v = this.convertValueToCanvas( keyframe[1] );
+				ctx.rect( posx - 4, v - 4, 8, 8 );
+			}
+			else if(track.value_size > 1)
+			{
+				var min_v = 0;
+				var max_v = 0;
+				for(var k = 0; k < track.value_size; ++k)
+				{
+					var v = this.convertValueToCanvas( keyframe[1][k] );
+					if(k==0)
+						min_v = max_v = v;
+					else
+					{
+						if(v < min_v) min_v = v;
+						if(v > max_v) max_v = v;
+					}
+					ctx.rect( posx - 4, v - 4, 8, 8 );
+				}
+				if( Math.abs(min_v - max_v) > 0.001 )
+					ctx.rect( posx - 1, min_v, 2, max_v - min_v );
+			}
+		}
+		ctx.fill();
+	}
+}
+
+Timeline.prototype.drawKeyframesView = function( canvas, ctx )
+{
+	var take = this.current_take;
+	var duration = take.duration;
+	var data = this._timeline_data;
+	var current_time = data.current_time;
+
+	var timeline_height = this.canvas_info.timeline_height;
+	var margin = this.session.left_margin;
+
+	//content
+	var line_height = this.canvas_info.row_height;
+	var times = this._times;
+
+	ctx.save();
+
+	//clip right side, disabled, very slow!
+	//ctx.rect( this.session.left_margin, 0, canvas.width - this.session.left_margin, canvas.height );
+	//ctx.clip(); 
+
+	var timeline_keyframe_lines = [];
+
+	//keyframes
+	var keyframe_width = data.keyframe_width;
+	var selection = this.session.selection;
+
+	for(var i = 0; i < data.total_tracks; i++)
+	{
+		var track = take.tracks[ data.first_track + i ];
+		var num = track.getNumberOfKeyframes();
+		if(num == 0)
+			continue;
+
+		var y = timeline_height + i * line_height;
+		ctx.fillStyle = "#9AF";
+		ctx.globalAlpha = track.enabled ? 1 : 0.5;
+
+		for(var j = 0; j < num; ++j)
+		{
+			var keyframe = track.getKeyframe(j);
+			if(keyframe[0] < data.start_time || keyframe[0] > data.end_time)
+				continue;
+
+			if(selection && selection.type == "keyframe" && selection.track == i && selection.keyframe == j)
+				ctx.fillStyle = "#FC6";
+			else
+				ctx.fillStyle = "#9AF";
+			ctx.strokeStyle = ctx.fillStyle;
+
+			var posx = this.canvasTimeToX( keyframe[0] );
+
+			if( track.type != "events" ) //diamonds
+			{
+				if( (posx + 5) < margin)
+					continue;
+
+				ctx.save();
+				var offset_y = y + line_height * 0.5;
+
+				//mini line
+				if(track.enabled)
+					timeline_keyframe_lines.push( posx );
+
+				//keyframe
+				ctx.beginPath();
+				ctx.moveTo( posx, offset_y + 5);
+				ctx.lineTo( posx + 5, offset_y);
+				ctx.lineTo( posx, offset_y - 5);
+				ctx.lineTo( posx - 5, offset_y );
+				ctx.fill();
+				ctx.restore();
+			}
+			else //rectangles
+			{
+				var w = keyframe_width;
+				if( (posx + w) < margin)
+					continue;
+				if( posx < margin )
+				{
+					w -= margin - posx;
+					posx = margin;
+				}
+				ctx.fillRect( posx - 4, y + 2, w - 1, line_height - 4);
+			}
+		}
+
+		ctx.globalAlpha = 1;
+	}
+
+	//timeline keyframe vertical lines
+	ctx.globalAlpha = 0.5;
+	ctx.beginPath();
+	timeline_keyframe_lines.sort(); //avoid repeating
+	var last = -1;
+	for(var i = 0; i < timeline_keyframe_lines.length; ++i)
+	{
+		var posx = timeline_keyframe_lines[i];
+		if(posx == last)
+			continue;
+		ctx.moveTo( posx + 0.5, 14);
+		ctx.lineTo( posx + 0.5, timeline_height);
+		last = posx;
+	}
+	ctx.stroke();
+	ctx.globalAlpha = 1;
+
+	ctx.restore();
+}
+
+Timeline.prototype.drawTimeInfo = function( canvas, ctx )
+{
+	var take = this.current_take;
+	var duration = take.duration;
+	var data = this._timeline_data;
+	var current_time = data.current_time;
+
+	//draw time markers
 	var timeline_height = this.canvas_info.timeline_height;
 	var margin = this.session.left_margin;
 
@@ -431,7 +753,8 @@ Timeline.prototype.redrawCanvas = function()
 	ctx.globalAlpha = 0.5;
 	ctx.strokeStyle = "#AFD";
 	ctx.beginPath();
-	var times = [];
+	var times = this._times;
+	this._times.length = 0;
 	for( var time = data.start_time; time <= data.end_time; time += data.tick_time )
 	{
 		var x = this.canvasTimeToX( time );
@@ -455,8 +778,30 @@ Timeline.prototype.redrawCanvas = function()
 	ctx.stroke();
 	ctx.globalAlpha = 1;
 
+	//time seconds in text
+	ctx.font = "10px Arial";
+	ctx.textAlign = "center";
+	ctx.fillStyle = "#888";
+	for(var i = 0; i < times.length; ++i)
+	{
+		var time = times[i][1];
+		ctx.fillText( time == (time|0) ? time : time.toFixed(1), times[i][0],10);
+	}
+}
+
+Timeline.prototype.drawTracksInfo = function( canvas, ctx )
+{
+	var take = this.current_take;
+	var duration = take.duration;
+	var data = this._timeline_data;
+	var current_time = data.current_time;
+
+	var timeline_height = this.canvas_info.timeline_height;
+	var margin = this.session.left_margin;
+
 	//content
 	var line_height = this.canvas_info.row_height;
+	var times = this._times;
 
 	//fill track lines
 	var w = this.mode == "keyframes" ? canvas.width : this.session.left_margin;
@@ -495,16 +840,6 @@ Timeline.prototype.redrawCanvas = function()
 	ctx.moveTo( Math.round( this.canvasTimeToX( duration ) ) + 0.5, timeline_height);
 	ctx.lineTo( Math.round( this.canvasTimeToX( duration ) ) + 0.5, canvas.height);
 	ctx.stroke();
-
-	//timeline texts
-	ctx.font = "10px Arial";
-	ctx.textAlign = "center";
-	ctx.fillStyle = "#888";
-	for(var i = 0; i < times.length; ++i)
-	{
-		var time = times[i][1];
-		ctx.fillText( time == (time|0) ? time : time.toFixed(1), times[i][0],10);
-	}
 
 	//tracks property info
 	ctx.textAlign = "left";
@@ -562,232 +897,8 @@ Timeline.prototype.redrawCanvas = function()
 	}
 
 	ctx.restore();
-
-	ctx.save();
-
-	//clip right side, disabled, very slow!
-	//ctx.rect( this.session.left_margin, 0, canvas.width - this.session.left_margin, canvas.height );
-	//ctx.clip(); 
-
-	var timeline_keyframe_lines = [];
-
-	//render right side
-	if( this.mode == "keyframes" )
-	{
-		//keyframes
-		var keyframe_width = data.keyframe_width;
-		var selection = this.session.selection;
-
-		for(var i = 0; i < data.total_tracks; i++)
-		{
-			var track = take.tracks[ data.first_track + i ];
-			var num = track.getNumberOfKeyframes();
-			if(num == 0)
-				continue;
-
-			var y = timeline_height + i * line_height;
-			ctx.fillStyle = "#9AF";
-			ctx.globalAlpha = track.enabled ? 1 : 0.5;
-
-			for(var j = 0; j < num; ++j)
-			{
-				var keyframe = track.getKeyframe(j);
-				if(keyframe[0] < data.start_time || keyframe[0] > data.end_time)
-					continue;
-
-				if(selection && selection.type == "keyframe" && selection.track == i && selection.keyframe == j)
-					ctx.fillStyle = "#FC6";
-				else
-					ctx.fillStyle = "#9AF";
-				ctx.strokeStyle = ctx.fillStyle;
-
-				var posx = this.canvasTimeToX( keyframe[0] );
-
-				if( track.type != "events" ) //diamonds
-				{
-					if( (posx + 5) < margin)
-						continue;
-
-					ctx.save();
-					var offset_y = y + line_height * 0.5;
-
-					//mini line
-					if(track.enabled)
-						timeline_keyframe_lines.push( posx );
-
-					//keyframe
-					ctx.beginPath();
-					ctx.moveTo( posx, offset_y + 5);
-					ctx.lineTo( posx + 5, offset_y);
-					ctx.lineTo( posx, offset_y - 5);
-					ctx.lineTo( posx - 5, offset_y );
-					ctx.fill();
-					ctx.restore();
-				}
-				else //rectangles
-				{
-					var w = keyframe_width;
-					if( (posx + w) < margin)
-						continue;
-					if( posx < margin )
-					{
-						w -= margin - posx;
-						posx = margin;
-					}
-					ctx.fillRect( posx - 4, y + 2, w - 1, line_height - 4);
-				}
-			}
-
-			ctx.globalAlpha = 1;
-		}
-
-	}
-	else if( this.mode == "curves" ) //not working yet
-	{
-		//keyframes
-		var keyframe_time = 1/this.framerate; //how many seconds last every tick (line in timeline)
-		var keyframe_width = keyframe_time * data.seconds_to_pixels;
-		if(keyframe_width < 10)
-			keyframe_width = 10;
-
-		for(var i = 0; i < data.total_tracks; i++)
-		{
-			var track = take.tracks[ data.first_track + i ];
-			var num = track.getNumberOfKeyframes();
-			var y = timeline_height + i * line_height;
-			ctx.fillStyle = ctx.strokeStyle = "#9AF";
-
-			//keyframes
-			for(var j = 0; j < num; ++j)
-			{
-				var keyframe = track.getKeyframe(j);
-				if(!keyframe) //weird bugs
-					continue;
-				var posx = this.canvasTimeToX( keyframe[0] );
-				var w = keyframe_width;
-				var h = line_height - 4;
-
-				if(track.interpolation == LS.NONE)
-				{
-					//next
-					var keyframe2 = track.getKeyframe(j+1);
-					if(keyframe2)
-					{
-						var posx2 = this.canvasTimeToX( keyframe2[0] );
-						w = posx2 - posx;
-					}
-				}
-
-				if( (posx + w) < margin)
-					continue;
-				if(posx < margin)
-				{
-					w -= margin - posx;
-					posx = margin;
-				}
-				ctx.strokeRect( posx + 0.5, y + 2.5, w, h);
-			}
-
-			if(track.interpolation == LS.NONE || track.value_size == 0)
-				continue;
-
-			//curves
-			var num_samples = (data.endx - data.startx) / 10; //every 10 pixels
-			var samples = track.getSampledData( data.start_time, data.end_time, num_samples );
-			if(!samples)
-				continue;
-
-			if(track.value_size == 1)
-			{
-				ctx.beginPath();
-				ctx.moveTo( data.startx, samples[0] );
-				for(var k = 0; k < samples.length; ++k)
-					ctx.lineTo( data.startx + k * 10, samples[k] );
-				ctx.stroke();
-			}
-			else
-			{
-				for(var j = 0; j < track.value_size; ++j)
-				{
-					ctx.beginPath();
-					ctx.moveTo( data.startx, samples[0][j] );
-					for(var k = 0; k < samples.length; ++k)
-						ctx.lineTo( data.startx + k * 10, samples[k][j] );
-					ctx.stroke();
-				}
-			}
-		}
-	}
-
-	//timeline keyframe vertical lines
-	ctx.globalAlpha = 0.5;
-	ctx.beginPath();
-	timeline_keyframe_lines.sort(); //avoid repeating
-	var last = -1;
-	for(var i = 0; i < timeline_keyframe_lines.length; ++i)
-	{
-		var posx = timeline_keyframe_lines[i];
-		if(posx == last)
-			continue;
-		ctx.moveTo( posx + 0.5, 14);
-		ctx.lineTo( posx + 0.5, timeline_height);
-		last = posx;
-	}
-	ctx.stroke();
-	ctx.globalAlpha = 1;
-
-	ctx.restore();
-
-
-	//current time marker vertical line
-	var true_pos = Math.round( this.canvasTimeToX( this.session.current_time ) ) + 0.5;
-	var pos = Math.round( this.canvasTimeToX( current_time ) ) + 0.5; //current_time is quantized
-	if(pos >= margin)
-	{
-		ctx.strokeStyle = "#ABA";
-		ctx.beginPath();
-		ctx.moveTo(true_pos, 0); ctx.lineTo( true_pos, canvas.height );
-		ctx.stroke();
-
-		ctx.strokeStyle = ctx.fillStyle = "#AFD";
-		ctx.beginPath();
-		ctx.moveTo(pos, 0); ctx.lineTo(pos, canvas.height);//line
-		ctx.stroke();
-		ctx.beginPath();
-		ctx.moveTo(pos - 4, 0); ctx.lineTo(pos + 4, 0); ctx.lineTo(pos, 6);//triangle
-		ctx.closePath();
-		ctx.fill();
-		ctx.beginPath();
-		ctx.moveTo(pos - 4, canvas.height); ctx.lineTo(pos + 4, canvas.height); ctx.lineTo(pos, canvas.height - 6);//triangle
-		ctx.closePath();
-		ctx.fill();
-	}
-
-	//scroll
-	if(this.session.scroll_y != 0)
-	{
-		ctx.save();
-		ctx.translate( margin - 30, timeline_height * 0.5 );
-		ctx.fillStyle = "#999";
-		ctx.beginPath();
-		ctx.moveTo(-10, 5); ctx.lineTo(0, -5); ctx.lineTo(10, 5);
-		ctx.closePath();
-		ctx.fill();
-		ctx.restore();
-	}
-
-	if(data.last_track < data.num_tracks - 1)
-	{
-		ctx.save();
-		ctx.translate( margin - 30, canvas.height - 30 );
-		ctx.fillStyle = "#999";
-		ctx.beginPath();
-		ctx.moveTo(-10, -5); ctx.lineTo(0, 5); ctx.lineTo(10, -5);
-		ctx.closePath();
-		ctx.fill();
-		ctx.restore();
-	}
 }
+
 
 Timeline.prototype.setCurrentTime = function( time, skip_redraw )
 {
@@ -820,7 +931,7 @@ Timeline.prototype.setCurrentTime = function( time, skip_redraw )
 		this.redrawCanvas();
 
 	//preview: apply track samples to scene
-	if(this.preview && this.current_take)
+	if(this.current_take) // && this.preview 
 	{
 		//recording is special case
 		if(this.recording && this._recording_time >= 0)
@@ -834,12 +945,16 @@ Timeline.prototype.setCurrentTime = function( time, skip_redraw )
 				var sample = track.getSample( time );
 				if( sample !== undefined )
 				{
-					track._target = LS.GlobalScene.setPropertyValueFromPath( track._property_path, sample, 0 );
+					//apply?
+					//track._target = LS.GlobalScene.setPropertyValueFromPath( track._property_path, sample, 0 );
+					//track._last_sample = sample; //store last value
+
+					//track._last_sample = LS.GlobalScene.getPropertyValueFromPath( track._property_path, 0 );
 					track._last_sample = sample; //store last value
 				}
 			}
 		}
-		else
+		else if( this.preview )
 			this.current_take.applyTracks( this.session.current_time, this.session.last_time );
 
 		this.session.last_time = this.session.current_time;
@@ -1026,8 +1141,11 @@ Timeline.prototype.onMouse = function(e)
 		}
 
 		this._binded_mouseup = this.onMouse.bind(this);
-		document.body.addEventListener("mousemove", this._binded_mouseup );
-		document.body.addEventListener("mouseup", this._binded_mouseup );
+
+		var ref_window = LiteGUI.getElementWindow(this.canvas);
+		ref_window.document.body.addEventListener("mousemove", this._binded_mouseup );
+		ref_window.document.body.addEventListener("mouseup", this._binded_mouseup );
+
 		e.preventDefault();
 		e.stopPropagation();
 	}
@@ -1088,6 +1206,9 @@ Timeline.prototype.onMouse = function(e)
 					this.session.start_time += old - now;
 					this.prev_mouse[0] = e.mousex;
 					//*/
+
+					if(this.mode == "curves")
+						this.scroll_curves_y += e.movementY;// * this.curves_scale_y;
 				}
 
 				this._must_redraw = true;
@@ -1099,8 +1220,9 @@ Timeline.prototype.onMouse = function(e)
 	}
 	else if( e.type == "mouseup" )
 	{
-		document.body.removeEventListener("mousemove", this._binded_mouseup );
-		document.body.removeEventListener("mouseup", this._binded_mouseup );
+		var ref_window = LiteGUI.getElementWindow(this.canvas);
+		ref_window.document.body.removeEventListener("mousemove", this._binded_mouseup );
+		ref_window.document.body.removeEventListener("mouseup", this._binded_mouseup );
 
 		if(this.preview && this._item_dragged && this._item_dragged.type == "timeline")
 			EditorModule.refreshAttributes();
@@ -1227,10 +1349,20 @@ Timeline.prototype.onMouseWheel = function(e)
 	}
 	else
 	{
-		if(e.deltaY > 0)
-			this.zoom( 0.95, this.session.left_margin ); //e.mousex
-		else
-			this.zoom( 1.05, this.session.left_margin );
+		if( this.mode == "curves" && e.mousey > this.canvas_info.timeline_height )
+		{
+			if(e.deltaY > 0)
+				this.curves_scale_y *= 0.95;
+			else
+				this.curves_scale_y *= 1.05;
+		}
+		else //keyframes
+		{
+			if(e.deltaY > 0)
+				this.zoom( 0.95, this.session.left_margin ); //e.mousex
+			else
+				this.zoom( 1.05, this.session.left_margin );
+		}
 	}
 
 	this.updateTimelineData();
@@ -1790,6 +1922,7 @@ Timeline.prototype.insertKeyframe = function( track, only_different, time )
 	return true;
 }
 
+//used when recording
 Timeline.prototype.sampleAllTracks = function( only_different, time )
 {
 	if(!this.current_take)
@@ -1803,7 +1936,7 @@ Timeline.prototype.sampleAllTracks = function( only_different, time )
 		if(track.enabled === false)
 			continue;
 
-		if( this.insertKeyframe(track, only_different, time) )
+		if( this.insertKeyframe( track, only_different, time ) )
 			sampled_tracks[i] = true;
 		//var sample = track.getSample(this.session.current_time, true);
 		//var info = track.getPropertyInfo();
@@ -2451,6 +2584,7 @@ Timeline.prototype.toggleRecording = function(v)
 
 	this.recording = v;
 
+	//start recording
 	if( this.recording )
 	{
 		if(this.current_take.tracks.length == 0)
@@ -2468,10 +2602,11 @@ Timeline.prototype.toggleRecording = function(v)
 		elem.innerHTML = "REC";
 		elem.style.pointerEvents = "none";
 		document.body.appendChild(elem);
-		//this.preview_widget.setValue(false);
+		this.preview_widget.setValue(false);
 
 		//save UNDO
 		this._recording_undo = this.current_take.serialize();
+
 		//this.addUndoTakeEdited(this.current_take);
 	}
 	else //stop recording
@@ -2479,9 +2614,10 @@ Timeline.prototype.toggleRecording = function(v)
 		var elem = document.getElementById("timeline-recording-countdown");
 		if(elem)
 			elem.parentNode.removeChild(elem);
-		
-		//this.preview_widget.setValue(true);
+	
+		this.preview_widget.setValue(true);
 		this.addUndoTakeEdited( this._recording_undo );
+		//this.cleanRepeatedKeyframes();
 		delete this._recording_undo;
 	}
 

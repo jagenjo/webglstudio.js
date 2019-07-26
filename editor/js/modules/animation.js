@@ -843,7 +843,6 @@ AnimationModule.export_animation_formats["skanim"] = exportTakeInSKANIM;
 function exportTakeInSKANIM( take, sampling, duration ) {
 	sampling = sampling || 30;
 	duration = duration || take.duration;
-	var total_samples = Math.ceil( sampling * duration );
 
 	var lines = [];
 	if(!take.tracks.length)
@@ -903,19 +902,29 @@ function exportTakeInSKANIM( take, sampling, duration ) {
 		}
 	}
 
+	var time_offset = duration / (total_samples-1);
+
+	if(1) //remove last frame for better looping
+	{
+		duration -= 1/sampling;
+		time_offset = duration / (total_samples-1);
+		total_samples--;
+	}
+
 	//duration in seconds, samples per second, num. samples, number of bones in the skeleton
 	lines.push( [ duration.toFixed(3), sampling, total_samples, out.length ].join(",") );
+
+	//write bones
 	var bones_indices = [];
 	for(var i = 0; i < bone_names.length; ++i)
 		bones_indices.push( bone_index[ bone_names[i] ] );
 	lines = lines.concat(out);
 	lines.push( "@" + bones_indices.length + "," + bones_indices.join(",") );
 
-	//for every sample
-	var offset = duration / (total_samples-1);
+	//write keyframes for every sample
 	for(var i = 0; i < total_samples; ++i)
 	{
-		var t = i*offset;
+		var t = i*time_offset;
 		take.applyTracks(t,t,false);
 		var data = [t.toFixed(3)]
 		for(var j=0; j < bones.length; ++j)

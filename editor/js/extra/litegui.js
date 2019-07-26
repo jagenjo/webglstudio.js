@@ -1211,6 +1211,18 @@ var LiteGUI = {
 	},
 
 	/**
+	* Returns the window where this element is attached (used in multi window applications)
+	* @method getElementWindow
+	* @param {HTMLElement} v
+	* @return {Window} the window element
+	**/
+	getElementWindow: function(v)
+	{
+        var doc = v.ownerDocument;
+        return doc.defaultView || doc.parentWindow;
+	},
+
+	/**
 	* Helper, makes drag and drop easier by enabling drag and drop in a given element
 	* @method createDropArea
 	* @param {HTMLElement} element the element where users could drop items

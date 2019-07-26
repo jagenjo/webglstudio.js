@@ -869,7 +869,7 @@ var LS = {
 	//containers
 	Classes: {}, //maps classes name like "Prefab" or "Animation" to its namespace "LS.Prefab". Used in Formats and ResourceManager when reading classnames from JSONs or WBin.
 	ResourceClasses: {}, //classes that can contain a resource of the system
-	ResourceClasses_by_extension: {},
+	ResourceClasses_by_extension: {}, //used to associate JSONs to resources, only used by GRAPHs
 	Globals: {}, //global scope to share info among scripts
 
 	/**
@@ -1115,6 +1115,15 @@ var LS = {
 		resourceClass.is_resource = true;
 		if( resourceClass.EXTENSION ) //used in GRAPH.json
 			this.ResourceClasses_by_extension[ resourceClass.EXTENSION.toLowerCase() ] = resourceClass;
+		if( resourceClass.FORMAT )
+		{
+			if( resourceClass.FORMAT.extension )
+				this.ResourceClasses_by_extension[ resourceClass.FORMAT.extension.toLowerCase() ] = resourceClass;
+			resourceClass.FORMAT.resource_ctor = resourceClass;
+			resourceClass.FORMAT.resource = LS.getClassName( resourceClass );
+			if(LS.Formats)
+				LS.Formats.supported[ resourceClass.FORMAT.extension.toLowerCase() ] = resourceClass.FORMAT;
+		}
 
 		//some validation here? maybe...
 	},
@@ -4864,7 +4873,7 @@ var ResourcesManager = {
 		if(extension)
 			format_info = LS.Formats.supported[ extension ];
 
-		//callback to embede a parameter, ugly but I dont see a work around to create this
+		//callback to embed a parameter, ugly but I dont see a work around to create this
 		var process_final = function( url, resource, options ){
 			if(!resource)
 			{
@@ -4949,6 +4958,20 @@ var ResourcesManager = {
 					else
 						console.warn("Format Info without parse function");
 			}
+
+			//we have a resource
+			if( resource && resource !== true )
+				process_final( url, resource, options );
+		}
+		else if( format_info && format_info.resource_ctor) //this format has a class associated
+		{
+			var resource = new format_info.resource_ctor();
+			if(resource.fromData)
+				resource.fromData( data );
+			else if(resource.configure)
+				resource.configure( JSON.parse(data) );
+			else
+				console.error("Resource Class doesnt have a function to process data after loading: ", format_info.ctor.name );
 
 			//we have a resource
 			if( resource && resource !== true )
@@ -6838,6 +6861,218 @@ normalbuffer_block.addCode( GL.FRAGMENT_SHADER, "", "" );
 normalbuffer_block.register();
 
 
+///@FILE:../src/formats.js
+///@INFO: BASE
+/**
+* Formats is the class where all the info about what is every format, how to parse it, etc, is located
+*
+* @class LS.Formats
+* @param{String} id the id (otherwise a random one is computed)
+* @constructor
+*/
+LS.Formats = {
+
+	//all the supported file formats and their parsers
+	supported: {},
+
+	safe_parsing: false, //catch exceptions during parsing
+	merge_smoothgroups: false,
+
+	/**
+	* Tells the system info about this file format
+	* Info should contain fields like type:"image", resource: "Mesh|Texture", format: "text|binary", parse: function, native: true|false
+	* 
+	* @method addFormat
+	*/
+	addSupportedFormat: function( extensions, info )
+	{
+		if( extensions.constructor === String )
+			extensions = extensions.split(",");
+
+		for(var i = 0; i < extensions.length; ++i)
+		{
+			var extension = extensions[i].toLowerCase();
+			if( this.supported[ extension ] )
+				console.warn("There is already another parser associated to this extension: " + extension);
+			this.supported[ extension ] = info;
+		}
+	},
+
+	/**
+	* Parse some data and returns the resulting resource
+	* 
+	* @method parse
+	* @param {string} filename
+	* @param {*} data could be a string, binary, arraybuffer, xml...
+	* @param {Object} options how the file should be parsed
+	* @return {*} the final resource, could be a Texture, a Mesh, or an object
+	*/
+	parse: function( filename, data, options)
+	{
+		options = options || {};
+		var info = this.getFileFormatInfo( filename );
+		if(!info) //unsupported extension
+			return null;
+
+		if(options.extension)
+			info.extension = options.extension; //force a format
+		else
+			info.extension = LS.ResourcesManager.getExtension( filename );
+
+		var format = this.supported[ info.extension ];
+		if(!format || !format.parse)
+		{
+			console.error("Parser Error: No parser found for " + info.extension + " format");
+			return null;
+		}
+
+		var result = null;
+		if(!this.safe_parsing)
+			result = format.parse( data, options, filename );
+		else
+			try
+			{
+				result = format.parse( data, options, filename );
+			}
+			catch (err)
+			{
+				console.error("Error parsing content", err );
+				return null;
+			}
+		if(result)
+			result.name = filename;
+		return result;
+	},
+
+	//Returns info about a resource according to its filename
+	TEXT_FORMAT: "text",
+	JSON_FORMAT: "json",
+	XML_FORMAT: "xml",
+	BINARY_FORMAT: "binary",
+
+	MESH_DATA: "MESH",
+	IMAGE_DATA: "IMAGE",
+	NONATIVE_IMAGE_DATA: "NONATIVE_IMAGE",
+	SCENE_DATA: "SCENE",
+	GENERIC_DATA: "GENERIC",
+	
+	getFileFormatInfo: function( filename )
+	{
+		var extension = filename.substr( filename.lastIndexOf(".") + 1).toLowerCase();
+		return this.supported[ extension ];
+	},
+
+	guessType: function( filename )
+	{
+		if(!filename)
+			return null;
+
+		var ext = LS.RM.getExtension( filename ).toLowerCase();
+		var info = this.supported[ ext ];
+		if(!info)
+			return null;
+		return info.resource;
+	},
+
+	//Helpers ******************************
+
+	//gets raw image information {width,height,pixels:ArrayBuffer} and create a dataurl to use in images
+	convertToDataURL: function( img_data )
+	{
+		var canvas = document.createElement("canvas");
+		canvas.width = img_data.width;
+		canvas.height = img_data.height;
+		//document.body.appendChild(canvas);
+		var ctx = canvas.getContext("2d");
+		var pixelsData = ctx.createImageData(img_data.width, img_data.height);
+		var num_pixels = canvas.width * canvas.height;
+
+		//flip and copy the pixels
+		if(img_data.bytesPerPixel == 3)
+		{
+			for(var i = 0; i < canvas.width; ++i)
+				for(var j = 0; j < canvas.height; ++j)
+				{
+					var pos = j*canvas.width*4 + i*4;
+					var pos2 = (canvas.height - j - 1)*canvas.width*3 + i*3;
+					pixelsData.data[pos+2] = img_data.pixels[pos2];
+					pixelsData.data[pos+1] = img_data.pixels[pos2+1];
+					pixelsData.data[pos+0] = img_data.pixels[pos2+2];
+					pixelsData.data[pos+3] = 255;
+				}
+		}
+		else {
+			for(var i = 0; i < canvas.width; ++i)
+				for(var j = 0; j < canvas.height; ++j)
+				{
+					var pos = j*canvas.width*4 + i*4;
+					var pos2 = (canvas.height - j - 1)*canvas.width*4 + i*4;
+					pixelsData.data[pos+0] = img_data.pixels[pos2+2];
+					pixelsData.data[pos+1] = img_data.pixels[pos2+1];
+					pixelsData.data[pos+2] = img_data.pixels[pos2+0];
+					pixelsData.data[pos+3] = img_data.pixels[pos2+3];
+				}
+		}
+
+		ctx.putImageData(pixelsData,0,0);
+		img_data.dataurl = canvas.toDataURL("image/png");
+		return img_data.dataurl;
+	},
+
+	/* extract important Mesh info from vertices (center, radius, bouding box) */
+	computeMeshBounding: function(vertices)
+	{
+		//compute AABB and useful info
+		var min = [vertices[0],vertices[1],vertices[2]];
+		var max = [vertices[0],vertices[1],vertices[2]];
+		for(var i = 0; i < vertices.length; i += 3)
+		{
+			var v = [vertices[i],vertices[i+1],vertices[i+2]];
+			if (v[0] < min[0]) min[0] = v[0];
+			else if (v[0] > max[0]) max[0] = v[0];
+			if (v[1] < min[1]) min[1] = v[1];
+			else if (v[1] > max[1]) max[1] = v[1];
+			if (v[2] < min[2]) min[2] = v[2];
+			else if (v[2] > max[2]) max[2] = v[2];
+		}
+
+		var center = [(min[0] + max[0]) * 0.5,(min[1] + max[1]) * 0.5, (min[2] + max[2]) * 0.5];
+		var halfsize = [ min[0] - center[0], min[1] - center[1], min[2] - center[2]];
+		return BBox.setCenterHalfsize( BBox.create(), center, halfsize );
+	}
+};
+
+//native formats do not need parser
+LS.Formats.addSupportedFormat( "png,jpg,jpeg,webp,bmp,gif", { "native": true, dataType: "arraybuffer", resource: "Texture", "resourceClass": GL.Texture, has_preview: true, type: "image" } );
+LS.Formats.addSupportedFormat( "wbin", { dataType: "arraybuffer" } );
+LS.Formats.addSupportedFormat( "json,js,txt,html,css,csv", { dataType: "text" } );
+LS.Formats.addSupportedFormat( "glsl", { dataType: "text", resource: "ShaderCode", "resourceClass": LS.ShaderCode  } );
+LS.Formats.addSupportedFormat( "zip", { dataType: "arraybuffer" } );
+WBin.classes = LS.Classes; //WBin need to know which classes are accesible to be instantiated right from the WBin data info, in case the class is not a global class
+
+
+var parserMESH = {
+	extension: 'mesh',
+	type: 'mesh',
+	resource: 'Mesh',
+	format: 'text',
+	dataType:'text',
+
+	parse: function(text, options)
+	{
+		options = options || {};
+		var support_uint = true;
+
+		var parser = GL.Mesh.parsers["mesh"];
+		var mesh = parser(text, options);
+		if( mesh.bounding.radius == 0 || isNaN(mesh.bounding.radius))
+			console.log("no radius found in mesh");
+		//console.log(mesh);
+		return mesh;
+	}
+}
+
+LS.Formats.addSupportedFormat( "mesh", parserMESH );
 ///@FILE:../src/utils/litegl-extra.js
 ///@INFO: BASE
 //when working with animations sometimes you want the bones to be referenced by node name and no node uid, because otherwise you cannot reuse
@@ -14145,7 +14380,7 @@ function Skeleton()
 	this.bones_by_name = new Map(); //map of nodenames and index in the bones array
 }
 
-Skeleton.EXTENSION = "skanim";
+//Skeleton.EXTENSION = "skanim";
 
 
 function Bone()
@@ -14499,6 +14734,8 @@ function SkeletalAnimation()
 	this.keyframes = null; //mat4 array
 }
 
+SkeletalAnimation.FORMAT = { extension: "skanim", dataType: "text" };
+
 //change the skeleton to the given pose according to time
 SkeletalAnimation.prototype.assignTime = function(time, loop, interpolate, layers )
 {
@@ -14614,6 +14851,8 @@ SkeletalAnimation.prototype.fromData = function(txt)
 SkeletalAnimation.prototype.toData = function()
 {
 	var str = "";
+	//this is currently done from WebGLStudio in the AnimationModule exportTakeInSKANIM
+	console.error("no toData in Skeletal Animation");
 	return str;
 }
 
@@ -20074,8 +20313,11 @@ if(typeof(LiteGraph) != "undefined")
 }
 ///@FILE:../src/helpers/path.js
 ///@INFO: UNCOMMON
-//Used to store splines
-//types defined in defines.js: LINEAR, HERMITE, BEZIER
+/** Path
+* Used to store splines
+* types defined in defines.js: LINEAR, HERMITE, BEZIER
+* @class Path
+*/
 function Path()
 {
 	this.points = [];
@@ -36835,7 +37077,7 @@ LS.registerComponent( AnnotationComponent );
 /**
 * Rotator rotate a mesh over time
 * @class Rotator
-* @namespace LS.Components
+* @namespace Components
 * @constructor
 * @param {String} object to configure from
 */
@@ -41133,6 +41375,8 @@ PlaySkeletalAnimation.prototype.configure = function(o)
 		this.animation = o.animation;
 	if(o.playback_speed != null)
 		this.playback_speed = parseFloat( o.playback_speed );
+	if(o.current_time != null)
+		this.current_time = parseFloat( o.current_time );
 	if(o.playing !== undefined)
 		this.playing = o.playing;
 }
@@ -50652,237 +50896,6 @@ Player.prototype.setDebugRender = function(v)
 
 
 LS.Player = Player;
-
-///@FILE:../src/formats.js
-///@INFO: BASE
-/**
-* Formats is the class where all the info about what is every format, how to parse it, etc, is located
-*
-* @class LS.Formats
-* @param{String} id the id (otherwise a random one is computed)
-* @constructor
-*/
-LS.Formats = {
-
-	//all the supported file formats and their parsers
-	supported: {},
-
-	safe_parsing: false, //catch exceptions during parsing
-	merge_smoothgroups: false,
-
-	/**
-	* Tells the system info about this file format
-	* Info should contain fields like type:"image", resource: "Mesh|Texture", format: "text|binary", parse: function, native: true|false
-	* 
-	* @method addFormat
-	*/
-	addSupportedFormat: function( extensions, info )
-	{
-		if( extensions.constructor === String )
-			extensions = extensions.split(",");
-
-		for(var i = 0; i < extensions.length; ++i)
-		{
-			var extension = extensions[i].toLowerCase();
-			if( this.supported[ extension ] )
-				console.warn("There is already another parser associated to this extension: " + extension);
-			this.supported[ extension ] = info;
-		}
-	},
-
-	/**
-	* Parse some data and returns the resulting resource
-	* 
-	* @method parse
-	* @param {string} filename
-	* @param {*} data could be a string, binary, arraybuffer, xml...
-	* @param {Object} options how the file should be parsed
-	* @return {*} the final resource, could be a Texture, a Mesh, or an object
-	*/
-	parse: function( filename, data, options)
-	{
-		options = options || {};
-		var info = this.getFileFormatInfo( filename );
-		if(!info) //unsupported extension
-			return null;
-
-		if(options.extension)
-			info.extension = options.extension; //force a format
-		else
-			info.extension = LS.ResourcesManager.getExtension( filename );
-
-		var format = this.supported[ info.extension ];
-		if(!format || !format.parse)
-		{
-			console.error("Parser Error: No parser found for " + info.extension + " format");
-			return null;
-		}
-
-		var result = null;
-		if(!this.safe_parsing)
-			result = format.parse( data, options, filename );
-		else
-			try
-			{
-				result = format.parse( data, options, filename );
-			}
-			catch (err)
-			{
-				console.error("Error parsing content", err );
-				return null;
-			}
-		if(result)
-			result.name = filename;
-		return result;
-	},
-
-	//Returns info about a resource according to its filename
-	TEXT_FORMAT: "text",
-	JSON_FORMAT: "json",
-	XML_FORMAT: "xml",
-	BINARY_FORMAT: "binary",
-
-	MESH_DATA: "MESH",
-	IMAGE_DATA: "IMAGE",
-	NONATIVE_IMAGE_DATA: "NONATIVE_IMAGE",
-	SCENE_DATA: "SCENE",
-	GENERIC_DATA: "GENERIC",
-	
-	getFileFormatInfo: function( filename )
-	{
-		var extension = filename.substr( filename.lastIndexOf(".") + 1).toLowerCase();
-		return this.supported[ extension ];
-	},
-
-	guessType: function( filename )
-	{
-		if(!filename)
-			return null;
-
-		var ext = LS.RM.getExtension( filename ).toLowerCase();
-		var info = this.supported[ ext ];
-		if(!info)
-			return null;
-		return info.resource;
-	},
-
-	//Helpers ******************************
-
-	//gets raw image information {width,height,pixels:ArrayBuffer} and create a dataurl to use in images
-	convertToDataURL: function( img_data )
-	{
-		var canvas = document.createElement("canvas");
-		canvas.width = img_data.width;
-		canvas.height = img_data.height;
-		//document.body.appendChild(canvas);
-		var ctx = canvas.getContext("2d");
-		var pixelsData = ctx.createImageData(img_data.width, img_data.height);
-		var num_pixels = canvas.width * canvas.height;
-
-		//flip and copy the pixels
-		if(img_data.bytesPerPixel == 3)
-		{
-			for(var i = 0; i < canvas.width; ++i)
-				for(var j = 0; j < canvas.height; ++j)
-				{
-					var pos = j*canvas.width*4 + i*4;
-					var pos2 = (canvas.height - j - 1)*canvas.width*3 + i*3;
-					pixelsData.data[pos+2] = img_data.pixels[pos2];
-					pixelsData.data[pos+1] = img_data.pixels[pos2+1];
-					pixelsData.data[pos+0] = img_data.pixels[pos2+2];
-					pixelsData.data[pos+3] = 255;
-				}
-		}
-		else {
-			for(var i = 0; i < canvas.width; ++i)
-				for(var j = 0; j < canvas.height; ++j)
-				{
-					var pos = j*canvas.width*4 + i*4;
-					var pos2 = (canvas.height - j - 1)*canvas.width*4 + i*4;
-					pixelsData.data[pos+0] = img_data.pixels[pos2+2];
-					pixelsData.data[pos+1] = img_data.pixels[pos2+1];
-					pixelsData.data[pos+2] = img_data.pixels[pos2+0];
-					pixelsData.data[pos+3] = img_data.pixels[pos2+3];
-				}
-		}
-
-		ctx.putImageData(pixelsData,0,0);
-		img_data.dataurl = canvas.toDataURL("image/png");
-		return img_data.dataurl;
-	},
-
-	/* extract important Mesh info from vertices (center, radius, bouding box) */
-	computeMeshBounding: function(vertices)
-	{
-		//compute AABB and useful info
-		var min = [vertices[0],vertices[1],vertices[2]];
-		var max = [vertices[0],vertices[1],vertices[2]];
-		for(var i = 0; i < vertices.length; i += 3)
-		{
-			var v = [vertices[i],vertices[i+1],vertices[i+2]];
-			if (v[0] < min[0]) min[0] = v[0];
-			else if (v[0] > max[0]) max[0] = v[0];
-			if (v[1] < min[1]) min[1] = v[1];
-			else if (v[1] > max[1]) max[1] = v[1];
-			if (v[2] < min[2]) min[2] = v[2];
-			else if (v[2] > max[2]) max[2] = v[2];
-		}
-
-		var center = [(min[0] + max[0]) * 0.5,(min[1] + max[1]) * 0.5, (min[2] + max[2]) * 0.5];
-		var halfsize = [ min[0] - center[0], min[1] - center[1], min[2] - center[2]];
-		return BBox.setCenterHalfsize( BBox.create(), center, halfsize );
-	}
-};
-
-//native formats do not need parser
-LS.Formats.addSupportedFormat( "png,jpg,jpeg,webp,bmp,gif", { "native": true, dataType: "arraybuffer", resource: "Texture", "resourceClass": GL.Texture, has_preview: true, type: "image" } );
-LS.Formats.addSupportedFormat( "wbin", { dataType: "arraybuffer" } );
-LS.Formats.addSupportedFormat( "json,js,txt,html,css,csv", { dataType: "text" } );
-LS.Formats.addSupportedFormat( "glsl", { dataType: "text", resource: "ShaderCode", "resourceClass": LS.ShaderCode  } );
-LS.Formats.addSupportedFormat( "zip", { dataType: "arraybuffer" } );
-WBin.classes = LS.Classes; //WBin need to know which classes are accesible to be instantiated right from the WBin data info, in case the class is not a global class
-
-
-var parserMESH = {
-	extension: 'mesh',
-	type: 'mesh',
-	resource: 'Mesh',
-	format: 'text',
-	dataType:'text',
-
-	parse: function(text, options)
-	{
-		options = options || {};
-		var support_uint = true;
-
-		var parser = GL.Mesh.parsers["mesh"];
-		var mesh = parser(text, options);
-		if( mesh.bounding.radius == 0 || isNaN(mesh.bounding.radius))
-			console.log("no radius found in mesh");
-		//console.log(mesh);
-		return mesh;
-	}
-}
-
-LS.Formats.addSupportedFormat( "mesh", parserMESH );
-
-var parserSKANIM = {
-	extension: 'skanim',
-	type: 'skeletalAnimation',
-	resource: 'SkeletalAnimation',
-	format: 'text',
-	dataType:'text',
-
-	parse: function(text, options)
-	{
-		options = options || {};
-		var anim = new LS.SkeletalAnimation();
-		anim.fromData(text);
-		return anim;
-	}
-}
-
-LS.Formats.addSupportedFormat( "skanim", parserSKANIM );
 
 ///@FILE:../src/parsers/parserDDS.js
 ///@INFO: PARSER

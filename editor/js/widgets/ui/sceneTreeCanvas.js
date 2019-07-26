@@ -493,7 +493,9 @@ SceneTreeWidget.prototype.processDrag = function(e)
 
 	var that = this;
 	this._drop_document_callback = this.processItemDrop.bind(this);
-	document.addEventListener("drop",this._drop_document_callback,true);
+
+	var ref_window = LiteGUI.getElementWindow(this.root);
+	ref_window.document.addEventListener("drop",this._drop_document_callback,true);
 
 	var img = document.createElement("img");
 	img.src = "imgs/mini-icon-node.png";
@@ -517,7 +519,8 @@ SceneTreeWidget.prototype.processDrag = function(e)
 SceneTreeWidget.prototype.processDocumentDrop = function(e){
 	this.dragging_node = null;
 	this.onDraw();
-	document.removeEventListener("drop",this._drop_document_callback);
+	var ref_window = LiteGUI.getElementWindow(this.root);
+	ref_window.document.removeEventListener("drop",this._drop_document_callback);
 }
 
 //drop inside the canvas

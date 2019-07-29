@@ -7,7 +7,7 @@ function Timeline( options )
 		row_height: 20
 	};
 
-	this.mode = "keyframes"; //values, clips...
+	this.mode = "keyframes"; //curves, clips...
 	this.preview = true;
 	this.paths_widget = false;
 	this.autoresize = true;
@@ -24,7 +24,9 @@ function Timeline( options )
 	this.createInterface( options );
 	LiteGUI.createDropArea( this.canvas, this.onItemDrop.bind(this) );
 
+	//internal info
 	this._times = [];
+	this._visible_keyframes = [];
 	this.scroll_curves_y = 0;
 	this.curves_scale_y = 1;
 }
@@ -418,10 +420,12 @@ Timeline.prototype.redrawCanvas = function()
 	else if(this.mode == "curves")
 		this.drawCurvesView( canvas, ctx );
 
+	//extra info
 	var duration = take.duration;
 	var data = this._timeline_data;
 	var current_time = data.current_time;
 	var margin = this.session.left_margin;
+	var timeline_height = this.canvas_info.timeline_height;
 
 	//current time marker vertical line
 	var true_pos = Math.round( this.canvasTimeToX( this.session.current_time ) ) + 0.5;
@@ -460,6 +464,7 @@ Timeline.prototype.redrawCanvas = function()
 		ctx.restore();
 	}
 
+	//triangles on the side
 	if(data.last_track < data.num_tracks - 1)
 	{
 		ctx.save();
@@ -478,7 +483,12 @@ Timeline.prototype.convertValueToCanvas = function(v)
 	return this.canvas.height * 0.5 - v * this.curves_scale_y + this.scroll_curves_y;
 }
 
-Timeline.curves_colors = ["#F44","#4F4","#77F"];
+Timeline.prototype.convertCanvasToValue = function(v)
+{
+	return -( v - this.scroll_curves_y - this.canvas.height * 0.5 ) / this.curves_scale_y;
+}
+
+Timeline.curves_colors = ["#F44","#4F4","#77F","#DD2","#2DD","#D2D"];
 
 Timeline.prototype.drawCurvesView = function( canvas, ctx )
 {
@@ -496,9 +506,13 @@ Timeline.prototype.drawCurvesView = function( canvas, ctx )
 	var times = this._times;
 
 	//black bg
+	ctx.save();
 	ctx.globalAlpha = 0.2;
 	ctx.fillStyle = "black";
-	ctx.fillRect( margin, timeline_height, canvas.width - margin, canvas.height - timeline_height );
+	ctx.beginPath();
+	ctx.rect( margin, timeline_height, canvas.width - margin, canvas.height - timeline_height );
+	ctx.fill();
+	ctx.clip();
 	ctx.globalAlpha = 1;
 
 	//base lines
@@ -512,7 +526,6 @@ Timeline.prototype.drawCurvesView = function( canvas, ctx )
 	ctx.fillRect( margin, this.convertValueToCanvas( -1 ), canvas.width - margin, 1 );
 	ctx.fillRect( margin, this.convertValueToCanvas( -10 ), canvas.width - margin, 1 );
 	ctx.globalAlpha = 1;
-
 
 	//keyframes
 	var keyframe_time = 1/this.framerate; //how many seconds last every tick (line in timeline)
@@ -546,23 +559,27 @@ Timeline.prototype.drawCurvesView = function( canvas, ctx )
 				ctx.moveTo( data.startx, v );
 				for(var k = 0; k < samples.length; ++k)
 				{
+					var x = data.startx + k * 10;
 					v = this.convertValueToCanvas( samples[k] );
-					ctx.lineTo( data.startx + k * 10, v );
+					if(x > margin && x < canvas.width)
+						ctx.lineTo( x, v );
 				}
 				ctx.stroke();
 			}
-			else
+			else 
 			{
-				for(var j = 0; j < track.value_size; ++j)
+				for(var j = 0; j < track.value_size && j <= 7; ++j) //limit to 7 values (useful for trans10)
 				{
-					ctx.strokeStyle = Timeline.curves_colors[j%Timeline.curves_colors.length];
+					ctx.strokeStyle = Timeline.curves_colors[j % Timeline.curves_colors.length];
 					ctx.beginPath();
 					var v = this.convertValueToCanvas( samples[0][j] );
 					ctx.moveTo( data.startx, v );
 					for(var k = 0; k < samples.length; ++k)
 					{
 						v = this.convertValueToCanvas( samples[k][j] );
-						ctx.lineTo( data.startx + k * 10, v );
+						var x = data.startx + k * 10;
+						if(x > margin && x < canvas.width)
+							ctx.lineTo( x, v );
 					}
 					ctx.stroke();
 				}
@@ -570,21 +587,31 @@ Timeline.prototype.drawCurvesView = function( canvas, ctx )
 		}
 
 		//keyframes
-		ctx.fillStyle = ctx.strokeStyle = "#AAA";
-		ctx.beginPath();
+		var selection = this.session.selection;
+		this._visible_keyframes.length = 0;
+		var visible_keyframes = this._visible_keyframes;
 		for(var j = 0; j < num; ++j)
 		{
 			var keyframe = track.getKeyframe(j);
 			if(!keyframe) //weird bugs
 				continue;
 			var posx = this.canvasTimeToX( keyframe[0] );
+			if(posx < margin - 5 || posx > canvas.width + 5)
+				continue;
+
 			var w = keyframe_width;
 			var h = line_height - 4;
 
+			var is_selected_keyframe = selection && selection.type == "keyframe" && selection.track == i && selection.keyframe == j;
+
+			ctx.fillStyle = ctx.strokeStyle = is_selected_keyframe ? "#FC6" : "#AAA";
+			ctx.beginPath();
 			if(track.value_size == 1)
 			{
 				var v = this.convertValueToCanvas( keyframe[1] );
 				ctx.rect( posx - 4, v - 4, 8, 8 );
+				//[posx,v,i,j,0]
+				visible_keyframes.push([posx,v,i,j,0]);
 			}
 			else if(track.value_size > 1)
 			{
@@ -601,13 +628,17 @@ Timeline.prototype.drawCurvesView = function( canvas, ctx )
 						if(v > max_v) max_v = v;
 					}
 					ctx.rect( posx - 4, v - 4, 8, 8 );
+					//[posx,v,i,j,k]
+					visible_keyframes.push([posx,v,i,j,k]);
 				}
-				if( Math.abs(min_v - max_v) > 0.001 )
+				if( Math.abs(min_v - max_v) > 0.001 ) //vertical line
 					ctx.rect( posx - 1, min_v, 2, max_v - min_v );
 			}
+			ctx.fill();
 		}
-		ctx.fill();
 	}
+
+	ctx.restore(); //clip
 }
 
 Timeline.prototype.drawKeyframesView = function( canvas, ctx )
@@ -1151,7 +1182,6 @@ Timeline.prototype.onMouse = function(e)
 	}
 	else if( e.type == "mousemove" )
 	{
-
 		if( this.mouse_dragging )
 		{
 			if( this._item_dragged )
@@ -1176,14 +1206,37 @@ Timeline.prototype.onMouse = function(e)
 					if(track.packed_data)
 						track.unpackData();
 
+					//set new time
 					var keyframe = track.data[this._item_dragged.keyframe];
 					keyframe[0] = newt;
+
+					if( this.mode =="curves" && this._item_dragged.value_index >= 0 )
+					{
+						var v = this.convertCanvasToValue( e.mousey );
+						if(track.value_size == 1)
+							keyframe[1] = v;
+						else if(track.value_size > 1 && this._item_dragged.value_index < track.value_size)
+							keyframe[1][this._item_dragged.value_index] = v;
+						if(track._type_index == LS.TYPES_INDEX.TRANS10 )
+						{
+							var q = keyframe[1].subarray(3,7);
+							quat.normalize( q,q );
+						}
+						else if(track._type_index == LS.TYPES_INDEX.QUAT )
+							quat.normalize( keyframe[1], keyframe[1] );
+					}
+
 					track.sortKeyframes();
+					//in case its index changed after sorting them, update info
 					var index = track.data.indexOf(keyframe);
 					if(this.selection && this.selection.type == "keyframe" && this.selection.track == this._item_dragged.track && this.selection.keyframe == this._item_dragged.keyframe)
 						this.selection.keyframe = index;
+
 					this._item_dragged.keyframe = index;
 					this.animationModified();
+
+					if(this.preview)
+						this.applyPreview();
 
 					/*
 					var keyframe = track.moveKeyframe( this._item_dragged.keyframe, newt );
@@ -1995,13 +2048,45 @@ Timeline.prototype.getMouseItem = function( e )
 	if( Math.abs(this.session.left_margin - e.mousex) < 6 )
 		return { type: "split", draggable: true, cursor: "e-resize" };
 
-	//margin
-	var track_index = Math.floor((e.mousey - this.canvas_info.timeline_height) / this.canvas_info.row_height) + this.session.scroll_y;
-	var track = this.current_take.tracks[ track_index ];
 	var time = this.canvasXToTime( e.mousex );
+	var track_index = -1;
+	var keyframe_index = -1;
+	var value_index = -1;
+	var keyframe = null
+	var track = null;
+	var keyframe_info = null; //[x,y,track_index,keyframe_index,value_index]
 
+	var mouse_track_index = Math.floor((e.mousey - this.canvas_info.timeline_height) / this.canvas_info.row_height) + this.session.scroll_y;
+
+	//select track
+	if( this.mode == "keyframes" )
+	{
+		track_index = mouse_track_index;
+		track = this.current_take.tracks[ track_index ];
+	}
+	else if( this.mode == "curves" )
+	{
+		var visible_keyframes = this._visible_keyframes;
+		for(var i = 0; i < visible_keyframes.length; ++i)
+		{
+			var kf = visible_keyframes[i];
+			if( Math.abs( e.mousex - kf[0] ) > 5 || Math.abs( e.mousey - kf[1] ) > 5 )
+				continue;
+			keyframe_info = kf;
+			track_index = keyframe_info[2];
+			keyframe_index = keyframe_info[3];
+			value_index = keyframe_info[4];
+			track = this.current_take.tracks[ track_index ];
+			break;
+		}
+	}
+
+	//left side
 	if(e.mousex < this.session.left_margin )
 	{
+		track_index = mouse_track_index;
+		track = this.current_take.tracks[ track_index ];
+
 		if( e.type == "mousedown" && track )
 		{
 			if( track && e.mousex < 10 )
@@ -2019,24 +2104,25 @@ Timeline.prototype.getMouseItem = function( e )
 		if(track)
 			return { type: "track", track: track_index, cursor: "pointer" };
 	}
+	else //right side
+	{
+		if( this.mode == "keyframes" && track )
+			keyframe_index = track.findTimeIndex( time + 5 / this.session.seconds_to_pixels );
+	}
 
 	//test keyframe
 	if(!track || e.button == 1 || time < 0)
 		return { type: "background", track: track_index, draggable: true, cursor: null };
 
-	var index = track.findTimeIndex( time + 5 / this.session.seconds_to_pixels );
-	//if(index == -1)
-	//	index = track.findTimeIndex( time );
-	if(index == -1)
+	if(keyframe_index == -1)
 		return { type: "background", track: track_index, draggable: true };
 	
-	var keyframe = track.getKeyframe( index );
+	var keyframe = track.getKeyframe( keyframe_index );
 	if(!keyframe) //weird bugs happend sometimes
 		return null;
 
 	var key_pos = this.canvasTimeToX( keyframe[0] );
 	var over = false;
-
 	if( (key_pos - 5) < e.mousex && e.mousex < (key_pos + 10) )
 		over = true;
 
@@ -2050,15 +2136,16 @@ Timeline.prototype.getMouseItem = function( e )
 	{
 		if(over)
 		{
-			this.session.selection = { type: "keyframe", animation: animation_filename , track: track_index, keyframe: index };
-			this.setCurrentTime( keyframe[0] );
+			this.session.selection = { type: "keyframe", animation: animation_filename , track: track_index, keyframe: keyframe_index, value_index: value_index };
+			if(this.mode == "keyframes") //changes time on keyframe selection
+				this.setCurrentTime( keyframe[0] );
 		}
 		else
 			this.session.selection = null;
 	}
 
 	if(over)
-		return { type: "keyframe", animation: animation_filename, track: track_index, keyframe: index, cursor: "crosshair", draggable: true };
+		return { type: "keyframe", animation: animation_filename, track: track_index, keyframe: keyframe_index, value_index: value_index , cursor: "crosshair", draggable: true };
 	else
 		return { type: "background", animation: animation_filename, track: track_index, draggable: true, cursor: null };
 

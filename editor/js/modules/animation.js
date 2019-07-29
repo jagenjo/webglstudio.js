@@ -526,7 +526,7 @@ var AnimationModule = {
 				var pos = points[j];
 				if( parent_matrix )
 					pos = vec3.transformMat4( vec3.create(), pos, parent_matrix );
-				EditorView.addPickingPoint( pos, 10, { pos: pos, value: points[j], type: "keyframe", traj:i, instance: this, take: this.timeline.current_take, track: traj.index, num: j, callback: callback } );
+				LS.Picking.addPickingPoint( pos, 10, { pos: pos, value: points[j], type: "keyframe", traj:i, instance: this, take: this.timeline.current_take, track: traj.index, num: j, callback: callback } );
 			}
 		}
 	},
@@ -554,7 +554,7 @@ var AnimationModule = {
 		for(var i = 0; i < take.tracks.length; ++i)
 		{
 			var track = take.tracks[i];
-			if( track.type != "vec3" || !track.enabled)
+			if( !track.enabled || (track._type_index != LS.TYPES_INDEX.VEC3 && track._type_index != LS.TYPES_INDEX.TRANS10))
 				continue;
 
 			var num = track.getNumberOfKeyframes();
@@ -586,10 +586,10 @@ var AnimationModule = {
 					start = keyframe[0];
 				else if(j == num - 1)
 					end = keyframe[0];
-				var pos = keyframe[1];
+				var pos = track.value_size == 3 ? keyframe[1] : keyframe[1].subarray(0,3);
 				points.push(pos);
 				if(colors)
-					colors.push( j == selection.index ? colorB : colorA );
+					colors.push( j == selection.keyframe_index ? colorB : colorA );
 			}
 
 			LS.Draw.setColor( colors ? white : colorA );
@@ -624,10 +624,10 @@ var AnimationModule = {
 					for(var k = 0; k <= num_samples; ++k)
 					{
 						var t = start_t + offset * k;
-						var sample = track.getSample(t, true, vec3.create());
+						var sample = track.getSample( t, true );
 						if(!sample)
 							continue;
-						points.push(sample);
+						points.push( vec3.clone( sample.subarray(0,3) ) );
 					}
 				}
 				last = keyframe;
@@ -672,7 +672,12 @@ var AnimationModule = {
 		vec3.transformMat4( point, point, matrix );
 		if(selection.pos != selection.value) //update the visual point
 			vec3.transformMat4( selection.pos, selection.pos, matrix );
-		this.timeline.applyTracks();
+		if(this.timeline)
+		{
+			this.timeline.applyTracks();
+			this.timeline.redrawCanvas();
+		}
+
 		return true;
 	},
 

@@ -5034,7 +5034,7 @@ var ResourcesManager = {
 		}
 		else //or just store the resource as a plain data buffer
 		{
-			var resource = LS.ResourcesManager.createResource( filename, data );
+			var resource = LS.ResourcesManager.createResource( url, data );
 			if(resource)
 			{
 				resource.filename = resource.fullpath = url;
@@ -37867,15 +37867,13 @@ Target["@up"] = { type: 'enum', values: { "-Z": Target.NEGZ,"+Z": Target.POSZ, "
 
 Target.prototype.onAddedToScene = function( scene )
 {
-	LEvent.bind( scene, "beforeRender", this.onBeforeRender, this);
-	//beforeRenderInstances because in case we want to face the camera we need it to be per camera, no per scene
-	LEvent.bind( scene, "beforeRenderInstances", this.onBeforeRender, this);
+	//it must be done before collect, otherwise elements wont have the right orientation
+	LEvent.bind( scene, LS.EVENT.BEFORE_RENDER, this.onBeforeRender, this);
 }
 
 Target.prototype.onRemovedFromScene = function( scene )
 {
-	LEvent.unbind( scene, "beforeRender", this.onBeforeRender, this);
-	LEvent.unbind( scene, "beforeRenderInstances", this.onBeforeRender, this);
+	LEvent.unbind( scene, LS.EVENT.BEFORE_RENDER, this.onBeforeRender, this);
 }
 
 Target.prototype.onBeforeRender = function(e)
@@ -37883,8 +37881,7 @@ Target.prototype.onBeforeRender = function(e)
 	if(!this.enabled)
 		return;
 
-	if( (this.face_camera && e == "beforeRenderInstances") || (!this.face_camera && e == "beforeRender") )
-		this.updateOrientation();
+	this.updateOrientation();
 }
 
 Target.temp_mat3 = mat3.create();
@@ -37926,7 +37923,7 @@ Target.prototype.updateOrientation = function()
 	}
 	else if( this.face_camera )
 	{
-		var camera = LS.Renderer._main_camera ||  LS.Renderer._current_camera;
+		var camera = LS.Renderer._current_camera ||  LS.Renderer._main_camera;
 		if(!camera)
 			return;
 		target_position = camera.getEye();

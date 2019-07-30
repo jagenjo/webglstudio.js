@@ -5197,7 +5197,7 @@ LiteGUI.Console = Console;
 				var input = title.querySelector("input");
 
 				//loose focus when renaming
-				$(input).blur(function(e) { 
+				input.addEventListener("blur",function(e) { 
 					var new_name = e.target.value;
 					setTimeout(function() { that2.innerHTML = new_name; },1); //bug fix, if I destroy input inside the event, it produce a NotFoundError
 					//item.node_name = new_name;
@@ -5210,11 +5210,11 @@ LiteGUI.Console = Console;
 				input.addEventListener("keydown", function(e) {
 					if(e.keyCode != 13)
 						return;
-					$(this).blur();
+					this.blur();
 				});
 
 				//set on focus
-				$(input).focus();
+				input.focus();
 
 				e.preventDefault();
 			}

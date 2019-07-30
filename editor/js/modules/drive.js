@@ -2381,35 +2381,62 @@ var DriveModule = {
 		return dialog;
 	},
 
-	showCreateFileDialog: function( options )
+	//you can pass the kind of file you want: { filename: "text.txt" }
+	showCreateFileDialog: function( options, on_ready )
 	{
 		var that = this;
 		options = options || {};
 		var filename = options.filename || "unnamed.txt";
 		var folder = options.folder || this.current_folder;
+		var resource_type = "Resource";
+		var types = Object.keys(LS.ResourceClasses);
 
-		var dialog = new LiteGUI.Dialog( { title: "New File", fullcontent: true, closable: true, draggable: true, resizable: true, width: 300, height: 300 });
-		var inspector = new LiteGUI.Inspector();
-
-		inspector.addString("Filename",filename, function(v){ filename = v; });
+		var dialog = new LiteGUI.Dialog( { title: "New File", fullcontent: true, closable: true, draggable: true, resizable: true, width: 400, height: 300 });
+		var inspector = new LiteGUI.Inspector({name_width: 120});
+		var res_widget = null;
+		var filename_widget = inspector.addString("Filename",filename, function(v){ 
+			if(filename == v)
+				return;
+			filename = v;
+			update_type(v);
+		});
 		inspector.addFolder("Folder",folder, function(v){ folder = v; });
+		res_widget = inspector.addCombo("Resource Type",resource_type, { values: types, callback: function(v){
+			if(resource_type == v)
+				return;
+			resource_type = v;
+			var extension = "";
+			var res_ctor = LS.ResourceClasses[ resource_type ];
+			if( res_ctor && res_ctor.EXTENSION )
+				extension = res_ctor.EXTENSION;
+			var new_filename = LS.RM.removeExtension(filename) + (extension ? "." + extension : "");
+			filename_widget.setValue( new_filename, true );
+		}});
 		inspector.addButton(null,"Create", inner);
+
+		function update_type( filename )
+		{
+			var extension = LS.RM.getExtension( filename );
+			var format_info = LS.Formats.getFileFormatInfo(extension);
+			if(format_info)
+				resource_type = format_info.resource;
+			res_widget.setValue(resource_type || "Resource");
+		}
 
 		function inner()
 		{
 			folder = folder || "";
-			//create dummy file
-			var resource = new LS.Resource();
-			resource.filename = filename;
-			if(folder && folder != "")
-				resource.fullpath = folder + "/" + filename;
-			resource.data = options.content || "";
+			var fullpath = folder + "/" + filename;
+
+			var resource = LS.RM.createResource( fullpath, options.content, true );
+			resource.fullpath = fullpath;
 
 			//upload to server? depends if it is local or not
-			resource.register();
-			if(resource.fullpath)
+			if(folder)
 			{
 				DriveModule.saveResource( resource, function(v){
+					if(on_ready)
+						on_ready(resource);
 					that.refreshContent();
 				}, { skip_alerts: true });
 			}

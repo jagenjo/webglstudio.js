@@ -1118,9 +1118,13 @@ var LS = {
 		if( resourceClass.FORMAT )
 		{
 			if( resourceClass.FORMAT.extension )
+			{
 				this.ResourceClasses_by_extension[ resourceClass.FORMAT.extension.toLowerCase() ] = resourceClass;
+				resourceClass.EXTENSION = resourceClass.FORMAT.extension;
+			}
 			resourceClass.FORMAT.resource_ctor = resourceClass;
 			resourceClass.FORMAT.resource = LS.getClassName( resourceClass );
+			
 			if(LS.Formats)
 				LS.Formats.supported[ resourceClass.FORMAT.extension.toLowerCase() ] = resourceClass.FORMAT;
 		}
@@ -2150,6 +2154,9 @@ LSQ.getFromInfo = function( info )
 //register resource classes
 if(global.GL)
 {
+	GL.Mesh.EXTENSION = "wbin";
+	GL.Texture.EXTENSION = "png";
+
 	LS.registerResourceClass( GL.Mesh );
 	LS.registerResourceClass( GL.Texture );
 
@@ -4661,6 +4668,50 @@ var ResourcesManager = {
 		return result;
 	},
 
+	createResource: function( filename, data, must_register )
+	{
+		var resource = null;
+
+		var extension = this.getExtension( filename );
+		//get all the info about this file format
+		var format_info = null;
+		if(extension)
+			format_info = LS.Formats.supported[ extension ];
+
+		//has this resource an special class specified?
+		if(format_info && format_info.resourceClass)
+			resource = new format_info.resourceClass();
+		else //otherwise create a generic LS.Resource (they store data or scripts)
+		{
+			//if we already have a LS.Resource, reuse it (this is to avoid garbage and solve a problem with the editor
+			var old_res = this.resources[ filename ];
+			if( old_res && old_res.constructor === LS.Resource )
+			{
+				resource = old_res;
+				delete resource._original_data;
+				delete resource._original_file;
+				resource._modified = false;
+			}
+			else
+				resource = new LS.Resource();
+		}
+
+		if(data)
+		{
+			if(resource.setData)
+				resource.setData( data, true );
+			else if(resource.fromData)
+				resource.fromData( data );
+			else
+				throw("Resource without setData, cannot assign");
+		}
+
+		if(must_register)
+			LS.ResourcesManager.registerResource( filename, resource );
+
+		return resource;
+	},
+
 	/**
 	* Marks the resource as modified, used in editor to know when a resource data should be updated
 	*
@@ -4896,7 +4947,7 @@ var ResourcesManager = {
 					options.filename += "." + format_info.convert_to;
 			}
 
-			//apply last changes
+			//apply last changes: add to containers, remove from pending_loads, add special properties like fullpath, load associated resources...
 			LS.ResourcesManager.processFinalResource( url, resource, options, on_complete, was_loaded );
 
 			//Keep original file inside the resource in case we want to save it
@@ -4983,30 +5034,7 @@ var ResourcesManager = {
 		}
 		else //or just store the resource as a plain data buffer
 		{
-			var resource = null;
-			//has this resource an special class specified?
-			if(format_info && format_info.resourceClass)
-				resource = new format_info.resourceClass();
-			else //otherwise create a generic LS.Resource (they store data or scripts)
-			{
-				//if we already have a LS.Resource, reuse it (this is to avoid garbage and solve a problem with the editor
-				var old_res = this.resources[url];
-				if( old_res && old_res.constructor === LS.Resource )
-				{
-					resource = old_res;
-					delete resource._original_data;
-					delete resource._original_file;
-					resource._modified = false;
-				}
-				else
-					resource = new LS.Resource();
-			}
-
-			if(resource.setData)
-				resource.setData(data, true)
-			else
-				throw("Resource without setData, cannot assign");
-
+			var resource = LS.ResourcesManager.createResource( filename, data );
 			if(resource)
 			{
 				resource.filename = resource.fullpath = url;
@@ -7284,6 +7312,8 @@ Material.last_index = 0;
 Material.NO_LIGHTS = 0;
 Material.ONE_LIGHT = 1;
 Material.SEVERAL_LIGHTS = 2;
+
+Material.EXTENSION = "json";
 
 //material info attributes, use this to avoid errors when settings the attributes of a material
 
@@ -14895,6 +14925,7 @@ function Pack(o)
 }
 
 Pack.version = "0.2"; //used to know where the file comes from 
+Pack.EXTENSION = "wbin";
 
 /**
 * configure the pack from an unpacked WBin
@@ -15275,6 +15306,7 @@ function Prefab( o, filename )
 }
 
 Prefab.version = "0.2"; //used to know where the file comes from 
+Prefab.EXTENSION = "wbin";
 
 /**
 * assign the json object
@@ -15670,6 +15702,8 @@ ShaderCode.PRAGMA = 2;
 ShaderCode.INCLUDE = 1;
 ShaderCode.SHADERBLOCK = 2;
 ShaderCode.SNIPPET = 3;
+
+ShaderCode.EXTENSION = "glsl";
 
 Object.defineProperty( ShaderCode.prototype, "code", {
 	enumerable: true,
@@ -45507,7 +45541,7 @@ Canvas3D.prototype.onRemovedFromNode = function( node )
 Canvas3D.prototype.onRender = function(e)
 {
 	var camera = LS.Renderer._current_camera;
-	if(!this.enabled || !camera.checkLayersVisibility( this._root.layers ) )
+	if(!this.enabled || !camera || !camera.checkLayersVisibility( this._root.layers ) )
 		return;
 
 	if(	(e == LS.EVENT.READY_TO_RENDER && ( this.mode == Canvas3D.MODE_CANVAS2D || this.mode == Canvas3D.MODE_WEBGL)) || 

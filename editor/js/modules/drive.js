@@ -2388,7 +2388,7 @@ var DriveModule = {
 		options = options || {};
 		var filename = options.filename || "unnamed.txt";
 		var folder = options.folder || this.current_folder;
-		if(options.resource_type)
+		if(options.resource_type && options.resource_type.constructor !== String)
 			options.resource_type = LS.getClassName( options.resource_type );
 		var resource_type = options.resource_type || "Resource";
 		var types = Object.keys(LS.ResourceClasses);

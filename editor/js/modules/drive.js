@@ -2381,14 +2381,16 @@ var DriveModule = {
 		return dialog;
 	},
 
-	//you can pass the kind of file you want: { filename: "text.txt" }
+	//you can pass the kind of file you want: { filename: "text.txt", resource_type: "Animation", folder: "" }
 	showCreateFileDialog: function( options, on_ready )
 	{
 		var that = this;
 		options = options || {};
 		var filename = options.filename || "unnamed.txt";
 		var folder = options.folder || this.current_folder;
-		var resource_type = "Resource";
+		if(options.resource_type)
+			options.resource_type = LS.getClassName( options.resource_type );
+		var resource_type = options.resource_type || "Resource";
 		var types = Object.keys(LS.ResourceClasses);
 
 		var dialog = new LiteGUI.Dialog( { title: "New File", fullcontent: true, closable: true, draggable: true, resizable: true, width: 400, height: 300 });
@@ -2416,12 +2418,17 @@ var DriveModule = {
 
 		function update_type( filename )
 		{
+			if(options.resource_type)
+				return;
+
 			var extension = LS.RM.getExtension( filename );
 			var format_info = LS.Formats.getFileFormatInfo(extension);
 			if(format_info)
 				resource_type = format_info.resource;
 			res_widget.setValue(resource_type || "Resource");
 		}
+
+		update_type(); //to assign type to widget
 
 		function inner()
 		{
@@ -2440,8 +2447,12 @@ var DriveModule = {
 					that.refreshContent();
 				}, { skip_alerts: true });
 			}
+			else
+				if(on_ready)
+					on_ready(resource);
 
 			//refresh
+			that.refreshContent();
 			//close
 			dialog.close();
 		}

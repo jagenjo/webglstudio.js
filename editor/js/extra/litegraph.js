@@ -20839,13 +20839,14 @@ void main(void){\n\
 
 	function LGraphPoints3D() {
 		this.addOutput("out", "geometry");
+		this.addOutput("points", "array");
 		this.properties = {
 			radius: 1,
-			size: 1024,
+			num_points: 1024,
 			mode: LGraphPoints3D.SPHERE
 		};
 
-		this.points = new Float32Array( this.properties.size * 3 );
+		this.points = new Float32Array( this.properties.num_points * 3 );
 		this.must_update = true;
 		this.version = 0;
 
@@ -20854,6 +20855,8 @@ void main(void){\n\
 			_id: generateGeometryId()
 		}
 	}
+
+	global.LGraphPoints3D = LGraphPoints3D;
 
 	LGraphPoints3D.RECTANGLE = 1;
 	LGraphPoints3D.CIRCLE = 2;
@@ -20890,33 +20893,27 @@ void main(void){\n\
 		this.setOutputData( 0, this.geometry );
 	}
 
-	LGraphPoints3D.prototype.updatePoints = function() {
-		var size = this.properties.size|0;
-		if(size < 1)
-			size = 1;
-		if(this.points.length != size * 3)
-			this.points = new Float32Array( size * 3 );
+	LGraphPoints3D.generatePoints = function( radius, num_points, mode, points )
+	{
+		var size = num_points * 3;
+		if(!points || points.length != size)
+			points = new Float32Array( size );
 
-		var points = this.points;
-		var radius = this.properties.radius;
-
-		size *= 3;
-
-		if( this.properties.mode == LGraphPoints3D.RECTANGLE)
+		if( mode == LGraphPoints3D.RECTANGLE)
 			for(var i = 0; i < size; i+=3)
 			{
 				points[i] = (Math.random() - 0.5) * radius * 2;
 				points[i+1] = 0;
 				points[i+2] = (Math.random() - 0.5) * radius * 2;
 			}
-		else if( this.properties.mode == LGraphPoints3D.CUBE)
+		else if( mode == LGraphPoints3D.CUBE)
 			for(var i = 0; i < size; i+=3)
 			{
 				points[i] = (Math.random() - 0.5) * radius * 2;
 				points[i+1] = (Math.random() - 0.5) * radius * 2;
 				points[i+2] = (Math.random() - 0.5) * radius * 2;
 			}
-		else if( this.properties.mode == LGraphPoints3D.SPHERE)
+		else if( mode == LGraphPoints3D.SPHERE)
 			for(var i = 0; i < size; i+=3)
 			{
 				var r1 = Math.random();
@@ -20928,7 +20925,7 @@ void main(void){\n\
 				points[i+1] = y * radius;
 				points[i+2] = z * radius;
 			}			
-		else if( this.properties.mode == LGraphPoints3D.HEMISPHERE)
+		else if( mode == LGraphPoints3D.HEMISPHERE)
 			for(var i = 0; i < size; i+=3)
 			{
 				var r1 = Math.random();
@@ -20940,7 +20937,7 @@ void main(void){\n\
 				points[i+1] = y * radius;
 				points[i+2] = z * radius;
 			}
-		else if( this.properties.mode == LGraphPoints3D.CIRCLE)
+		else if( mode == LGraphPoints3D.CIRCLE)
 			for(var i = 0; i < size; i+=3)
 			{
 				var r1 = Math.random();
@@ -20952,7 +20949,7 @@ void main(void){\n\
 				points[i+1] = 0;
 				points[i+2] = z * radius;
 			}
-		else if( this.properties.mode == LGraphPoints3D.INSIDE_SPHERE)
+		else if( mode == LGraphPoints3D.INSIDE_SPHERE)
 			for(var i = 0; i < size; i+=3)
 			{
 				var u = Math.random();
@@ -20970,6 +20967,23 @@ void main(void){\n\
 			}
 		else
 			console.warn("wrong mode in LGraphPoints3D");
+
+		return points;
+	}
+
+	LGraphPoints3D.prototype.updatePoints = function() {
+		var num_points = this.properties.num_points|0;
+		if(num_points < 1)
+			num_points = 1;
+		if(this.points.length != num_points * 3)
+			this.points = new Float32Array( num_points * 3 );
+
+		var points = this.points;
+		var radius = this.properties.radius;
+		var mode = this.properties.mode;
+
+		LGraphPoints3D.generatePoints( radius, num_points, mode, this.points );
+
 		this.version++;
 	}
 
@@ -21007,6 +21021,8 @@ void main(void){\n\
 		}
 
 		this.setOutputData(0,this.geometry);
+		if(this.geometry)
+			this.setOutputData(1,this.geometry.vertices);
 	}
 
 	LiteGraph.registerNodeType( "geometry/toGeometry", LGraphToGeometry );

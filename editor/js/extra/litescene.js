@@ -1113,6 +1113,7 @@ var LS = {
 		this.ResourceClasses[ class_name ] = resourceClass;
 		this.Classes[ class_name ] = resourceClass;
 		resourceClass.is_resource = true;
+
 		if( resourceClass.EXTENSION ) //used in GRAPH.json
 			this.ResourceClasses_by_extension[ resourceClass.EXTENSION.toLowerCase() ] = resourceClass;
 		if( resourceClass.FORMAT )
@@ -1122,8 +1123,9 @@ var LS = {
 				this.ResourceClasses_by_extension[ resourceClass.FORMAT.extension.toLowerCase() ] = resourceClass;
 				resourceClass.EXTENSION = resourceClass.FORMAT.extension;
 			}
-			resourceClass.FORMAT.resource_ctor = resourceClass;
-			resourceClass.FORMAT.resource = LS.getClassName( resourceClass );
+
+			resourceClass.FORMAT.resource = class_name;
+			resourceClass.FORMAT.resourceClass = resourceClass;
 			
 			if(LS.Formats)
 				LS.Formats.supported[ resourceClass.FORMAT.extension.toLowerCase() ] = resourceClass.FORMAT;
@@ -5018,9 +5020,9 @@ var ResourcesManager = {
 			if( resource && resource !== true )
 				process_final( url, resource, options );
 		}
-		else if( format_info && format_info.resource_ctor) //this format has a class associated
+		else if( format_info && format_info.resourceClass) //this format has a class associated
 		{
-			var resource = new format_info.resource_ctor();
+			var resource = new format_info.resourceClass();
 			if(resource.fromData)
 				resource.fromData( data );
 			else if(resource.configure)

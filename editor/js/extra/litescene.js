@@ -16659,6 +16659,7 @@ if(typeof(LiteGraph) != "undefined")
 				case "SceneNode": this.setOutputData( i, node ); break;
 				case "Material": this.setOutputData( i, node.getMaterial() ); break;
 				case "Transform": this.setOutputData( i, node.transform ); break;
+				case "Global Model": this.setOutputData( i, node.transform ? node.transform._global_matrix : LS.IDENTITY ); break;
 				case "Name": this.setOutputData( i, node.name ); break;
 				case "Children": this.setOutputData( i, node.children ); break;
 				case "UID": this.setOutputData( i, node.uid ); break;
@@ -16757,7 +16758,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphSceneNode.prototype.onGetOutputs = function()
 	{
-		var result = [["SceneNode","SceneNode"],["Visible","boolean"],["Material","Material"],["Name","string"],["UID","string"],["Children","scenenode[]"],["on_clicked",LiteGraph.EVENT]];
+		var result = [["SceneNode","SceneNode"],["Visible","boolean"],["Material","Material"],["Name","string"],["UID","string"],["Global Model","mat4"],["Children","scenenode[]"],["on_clicked",LiteGraph.EVENT]];
 		return this.getComponents(result);
 	}
 
@@ -18561,6 +18562,38 @@ if(typeof(LiteGraph) != "undefined")
 		area[0] = x;
 		area[1] = y;
 	}
+
+
+	function LGraphGetMesh() {
+		this.addOutput("out", "mesh");
+		this.properties = {
+			name: ""
+		};
+	}
+
+	LGraphGetMesh.title = "mesh";
+	LGraphGetMesh.desc = "gets mesh";
+
+	LGraphGetMesh.widgets_info = {
+		name: { widget: "resource" }
+	};
+
+	LGraphGetMesh.prototype.onExecute = function() {
+		var mesh = null;
+		if(this.properties.name)
+			mesh = LS.ResourcesManager.meshes[this.properties.name];
+		if(mesh && mesh.constructor !== GL.Mesh)
+			mesh = null;
+		this.setOutputData(0,mesh);
+	}
+
+	LGraphGetMesh.prototype.getResources = function(o)
+	{
+		if(this.properties.name)
+			o[this.properties.name] = true;
+	}
+
+	LiteGraph.registerNodeType( "geometry/getMesh", LGraphGetMesh );	
 
 	//special kind of node
 	function LGraphGUIPanel()
@@ -38550,6 +38583,19 @@ if(typeof(LGraphTexture) != "undefined")
 	LiteGraph.allow_scripts = LS.allow_scripts; //let graphs that contain code execute it
 }
 
+if(typeof(LiteGraph.LGraphRender) != "undefined")
+{
+	LiteGraph.LGraphRender.onRequestCameraMatrices = function(view,proj,viewproj)
+	{
+		var camera = LS.Renderer.getCurrentCamera();
+		if(!camera)
+			return;
+		view.set( camera._view_matrix );
+		proj.set( camera._projection_matrix );
+		viewproj.set( camera._viewprojection_matrix );
+	}
+}
+
 
 if( typeof(LGAudio) != "undefined" )
 {
@@ -38611,7 +38657,7 @@ function GraphComponent(o)
 	LEvent.bind( this,"trigger", this.trigger, this );	
 }
 
-GraphComponent["@on_event"] = { type:"enum", values: ["start","render","beforeRenderScene","update","trigger"] };
+GraphComponent["@on_event"] = { type:"enum", values: ["start","render","beforeRenderScene","afterRenderScene","update","trigger"] };
 GraphComponent["@filename"] = { type:"resource", data_type: "graph" };
 
 
@@ -38782,6 +38828,7 @@ GraphComponent.prototype.onAddedToScene = function( scene )
 	LEvent.bind( scene , "finish", this.onSceneEvent, this );
 	LEvent.bind( scene , "beforeRenderMainPass", this.onSceneEvent, this );
 	LEvent.bind( scene , "beforeRenderScene", this.onSceneEvent, this );
+	LEvent.bind( scene , "afterRenderScene", this.onSceneEvent, this );
 	LEvent.bind( scene , "update", this.onSceneEvent, this );
 	LEvent.bind( scene , "renderGUI", this.onRenderGUI, this );
 }
@@ -38796,6 +38843,7 @@ GraphComponent.prototype.onRemovedFromScene = function( scene )
 	LEvent.unbind( scene, "finish", this.onSceneEvent, this );
 	LEvent.unbind( scene, "beforeRenderMainPass", this.onSceneEvent, this );
 	LEvent.unbind( scene, "beforeRenderScene", this.onSceneEvent, this );
+	LEvent.unbind( scene, "afterRenderScene", this.onSceneEvent, this );
 	LEvent.unbind( scene, "update", this.onSceneEvent, this );
 	LEvent.unbind( scene, "renderGUI", this.onRenderGUI, this );
 }
@@ -38809,7 +38857,7 @@ GraphComponent.prototype.onResourceRenamed = function( old_name, new_name, resou
 
 GraphComponent.prototype.onRenderGUI = function( e, canvas )
 {
-	if(!this.enabled)
+	if( !this.enabled || !this._root.visible )
 		return;
 	this._graph.sendEventToAllNodes("onRenderGUI", canvas );
 }
@@ -38856,7 +38904,7 @@ GraphComponent.prototype.trigger = function(e)
 
 GraphComponent.prototype.runGraph = function()
 {
-	if(!this._root._in_tree || !this.enabled)
+	if(!this._root._in_tree || !this.enabled || !this._root.visible)
 		return;
 
 	//if(!this._graphcode || this._graphcode._version != this._graph_version )
@@ -39257,7 +39305,7 @@ FXGraphComponent.prototype.onRemovedFromScene = function( scene )
 
 FXGraphComponent.prototype.onBeforeRender = function(e, render_settings)
 {
-	if(this.enabled && this._graph) //used to read back from textures to avoid stalling
+	if(this.enabled && this._graph && this._root.visible) //used to read back from textures to avoid stalling
 		this._graph.sendEventToAllNodes("onPreRenderExecute");
 }
 
@@ -39265,7 +39313,7 @@ FXGraphComponent.prototype.onEnableContext = function(e, render_settings)
 {
 	this._last_camera = LS.Renderer._main_camera; //LS.Renderer._current_camera;
 
-	if(!this.enabled)
+	if(!this.enabled || !this._root.visible)
 	{
 		if( this._binded_camera )
 		{
@@ -39300,7 +39348,7 @@ FXGraphComponent.prototype.onEnableContext = function(e, render_settings)
 
 FXGraphComponent.prototype.onAfterRender = function(e, render_settings )
 {
-	if(!this.enabled)
+	if(!this.enabled || !this._root.visible)
 		return;
 
 	if(this.use_node_camera)
@@ -39311,7 +39359,7 @@ FXGraphComponent.prototype.onAfterRender = function(e, render_settings )
 
 FXGraphComponent.prototype.enableCameraFBO = function(e, render_settings )
 {
-	if(!this.enabled)
+	if(!this.enabled || !this._root.visible)
 		return;
 
 	var camera = this._binded_camera;
@@ -39323,7 +39371,7 @@ FXGraphComponent.prototype.enableCameraFBO = function(e, render_settings )
 
 FXGraphComponent.prototype.showCameraFBO = function(e, render_settings )
 {
-	if(!this.enabled)
+	if(!this.enabled || !this._root.visible)
 		return;
 	render_settings.ignore_viewports = false;
 
@@ -39332,7 +39380,7 @@ FXGraphComponent.prototype.showCameraFBO = function(e, render_settings )
 
 FXGraphComponent.prototype.enableGlobalFBO = function( render_settings )
 {
-	if(!this.enabled)
+	if(!this.enabled || !this._root.visible)
 		return;
 
 	//configure
@@ -39344,7 +39392,7 @@ FXGraphComponent.prototype.enableGlobalFBO = function( render_settings )
 
 FXGraphComponent.prototype.showFBO = function()
 {
-	if(!this.enabled)
+	if(!this.enabled || !this._root.visible)
 		return;
 
 	this.frame.disable();

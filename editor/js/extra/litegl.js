@@ -2472,7 +2472,11 @@ Mesh.prototype.addBuffer = function(name, buffer)
 		this.indexBuffers[name] = buffer;
 
 	if(!buffer.attribute)
-		buffer.attribute = GL.Mesh.common_buffers[name].attribute;
+	{
+		var info = GL.Mesh.common_buffers[name];
+		if(info)
+			buffer.attribute = info.attribute;
+	}
 }
 
 

@@ -2400,7 +2400,7 @@ var DriveModule = {
 			if(filename == v)
 				return;
 			filename = v;
-			update_type(v);
+			update_type();
 		});
 		inspector.addFolder("Folder",folder, function(v){ folder = v; });
 		res_widget = inspector.addCombo("Resource Type",resource_type, { values: types, callback: function(v){
@@ -2416,7 +2416,7 @@ var DriveModule = {
 		}});
 		inspector.addButton(null,"Create", inner);
 
-		function update_type( filename )
+		function update_type()
 		{
 			if(options.resource_type)
 				return;

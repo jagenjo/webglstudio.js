@@ -41,7 +41,10 @@ var AnimationModule = {
 		InterfaceModule.selectTab( RenderModule.tab_name );
 		InterfaceModule.setLowerPanelVisibility( true );
 		if(animation)
+		{
 			this.timeline.setAnimation( animation );
+			this.timeline.resetView();
+		}
 	},
 
 	onBulletClick: function( e )

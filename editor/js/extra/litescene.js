@@ -1114,22 +1114,26 @@ var LS = {
 		this.Classes[ class_name ] = resourceClass;
 		resourceClass.is_resource = true;
 
-		if( resourceClass.EXTENSION ) //used in GRAPH.json
-			this.ResourceClasses_by_extension[ resourceClass.EXTENSION.toLowerCase() ] = resourceClass;
-		if( resourceClass.FORMAT )
-		{
-			if( resourceClass.FORMAT.extension )
-			{
-				this.ResourceClasses_by_extension[ resourceClass.FORMAT.extension.toLowerCase() ] = resourceClass;
-				resourceClass.EXTENSION = resourceClass.FORMAT.extension;
-			}
+		if( !resourceClass.FORMAT )
+			resourceClass.FORMAT = {};
 
-			resourceClass.FORMAT.resource = class_name;
-			resourceClass.FORMAT.resourceClass = resourceClass;
-			
-			if(LS.Formats)
-				LS.Formats.supported[ resourceClass.FORMAT.extension.toLowerCase() ] = resourceClass.FORMAT;
+		resourceClass.FORMAT.resource = class_name;
+		resourceClass.FORMAT.resourceClass = resourceClass;
+
+		if( resourceClass.EXTENSION )
+			resourceClass.FORMAT.extension = resourceClass.EXTENSION.toLowerCase();
+
+		var extension = resourceClass.FORMAT.extension;
+		if(!extension && resourceClass != LS.Resource )
+			console.warn("Resource without extension info? " + class_name );
+		else
+		{
+			this.ResourceClasses_by_extension[ extension ] = resourceClass;
+			resourceClass.EXTENSION = extension;
 		}
+
+		if( LS.Formats && extension && !LS.Formats.supported[ extension ] )
+			LS.Formats.supported[ extension ] = resourceClass.FORMAT;
 
 		//some validation here? maybe...
 	},
@@ -2553,22 +2557,61 @@ var Network = {
 			script.async = false;
 			//if( script.src.substr(0,5) == "blob:") //local scripts could contain utf-8
 				script.charset = "UTF-8";
-			script.onload = function(e) { 
-				total--;
-				if(total)
-				{
-					if(on_progress)
-						on_progress(this.src, this.num);
-				}
-				else if(on_complete)
-					on_complete();
-			};
+			script.onload = inner_script_loaded;
 			if(on_error)
 				script.onerror = function(err) { 
 					on_error(err, this.src, this.num );
 				}
 			document.getElementsByTagName('head')[0].appendChild( script );
 		}
+
+		function inner_script_loaded(e) { 
+			total--;
+			if(total)
+			{
+				if(on_progress)
+					on_progress(this.src, this.num);
+			}
+			else 
+				inner_check_pending();
+		};
+
+		function inner_check_pending()
+		{
+			if( LS.Network.pending_scripts.length ) //scripts included from scripts
+				setTimeout(inner_check_pending,1000); //wait one second
+			else if(on_complete)
+				on_complete();
+		}
+	},
+
+	//used to import scripts from scripts
+	pending_scripts: [],
+
+	importScript: function( url, on_complete, on_error )
+	{
+		var script = document.createElement('script');
+		script.type = 'text/javascript';
+		script.src = url;
+		script.async = false;
+		script.charset = "UTF-8";
+		script.onload = function(e) { 
+			var index = LS.Network.pending_scripts.indexOf( this );
+			if(index != -1)
+				LS.Network.pending_scripts.splice(index);
+			if(on_complete)
+				on_complete();
+		};
+		script.onerror = function(err) { 
+			var index = LS.Network.pending_scripts.indexOf( this );
+			if(index != -1)
+				LS.Network.pending_scripts.splice(index);
+			if(on_error)
+				on_error();
+		}
+		this.pending_scripts.push( script );
+		document.getElementsByTagName('head')[0].appendChild( script );
+		return script;
 	},
 
 	requestFont: function( name, url )

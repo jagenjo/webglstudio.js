@@ -16540,6 +16540,8 @@ if (typeof exports != "undefined") {
 	LGraphTextureOperation.title = "Operation";
 	LGraphTextureOperation.desc = "Texture shader operation";
 
+	LGraphTextureOperation.presets = {};
+
 	LGraphTextureOperation.prototype.getExtraMenuOptions = function(
 		graphcanvas
 	) {
@@ -16611,6 +16613,9 @@ if (typeof exports != "undefined") {
 			width = texB.width;
 			height = texB.height;
 		}
+
+		if(!texB)
+			texB = GL.Texture.getWhiteTexture();
 
 		var type = LGraphTexture.getTextureType( this.properties.precision, tex );
 
@@ -16718,6 +16723,41 @@ if (typeof exports != "undefined") {
 			gl_FragColor = vec4(result, alpha);\n\
 		}\n\
 		";
+
+	LGraphTextureOperation.registerPreset = function ( name, code )
+	{
+		LGraphTextureOperation.presets[name] = code;
+	}
+
+	LGraphTextureOperation.registerPreset("","");
+	LGraphTextureOperation.registerPreset("bypass","color");
+	LGraphTextureOperation.registerPreset("add","color + colorB * value");
+	LGraphTextureOperation.registerPreset("substract","(color - colorB) * value");
+	LGraphTextureOperation.registerPreset("mate","mix( color, colorB, color4B.a * value)");
+	LGraphTextureOperation.registerPreset("invert","vec3(1.0) - color");
+	LGraphTextureOperation.registerPreset("multiply","color * colorB * value");
+	LGraphTextureOperation.registerPreset("divide","(color / colorB) / value");
+	LGraphTextureOperation.registerPreset("difference","abs(color - colorB) * value");
+	LGraphTextureOperation.registerPreset("max","max(color, colorB) * value");
+	LGraphTextureOperation.registerPreset("min","min(color, colorB) * value");
+	LGraphTextureOperation.registerPreset("displace","texture2D(u_texture, uv + (colorB.xy - vec2(0.5)) * value).xyz");
+	LGraphTextureOperation.registerPreset("grayscale","vec3(color.x + color.y + color.z) * value / 3.0");
+	LGraphTextureOperation.registerPreset("saturation","mix( vec3(color.x + color.y + color.z) / 3.0, color, value )");
+	LGraphTextureOperation.registerPreset("threshold","vec3(color.x > colorB.x * value ? 1.0 : 0.0,color.y > colorB.y * value ? 1.0 : 0.0,color.z > colorB.z * value ? 1.0 : 0.0)");
+
+	//webglstudio stuff...
+	LGraphTextureOperation.prototype.onInspect = function(widgets)
+	{
+		var that = this;
+		widgets.addCombo("Presets","",{ values: Object.keys(LGraphTextureOperation.presets), callback: function(v){
+			var code = LGraphTextureOperation.presets[v];
+			if(!code)
+				return;
+			that.setProperty("pixelcode",code);
+			that.title = v;
+			widgets.refresh();
+		}});
+	}
 
 	LiteGraph.registerNodeType("texture/operation", LGraphTextureOperation);
 

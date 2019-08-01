@@ -5082,7 +5082,7 @@ var ResourcesManager = {
 			else if(resource.configure)
 				resource.configure( JSON.parse(data) );
 			else
-				console.error("Resource Class doesnt have a function to process data after loading: ", format_info.ctor.name );
+				console.error("Resource Class doesnt have a function to process data after loading: ", format_info.resourceClass.name );
 
 			//we have a resource
 			if( resource && resource !== true )
@@ -15921,6 +15921,9 @@ ShaderCode.prototype.getData = function()
 {
 	return this._code;
 }
+
+ShaderCode.prototype.fromData = ShaderCode.prototype.setData;
+ShaderCode.prototype.toData = ShaderCode.prototype.getData;
 
 ShaderCode.prototype.getDataToStore = function()
 {

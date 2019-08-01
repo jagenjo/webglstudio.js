@@ -1132,8 +1132,19 @@ var LS = {
 			resourceClass.EXTENSION = extension;
 		}
 
-		if( LS.Formats && extension && !LS.Formats.supported[ extension ] )
-			LS.Formats.supported[ extension ] = resourceClass.FORMAT;
+		if( LS.Formats && extension )
+		{
+			var format_info = LS.Formats.supported[ extension ];
+			if( !format_info )
+				format_info = resourceClass.FORMAT;
+			else
+			{
+				if(!format_info.resourceClass)
+					format_info.resourceClass = resourceClass;
+				//else if(format_info.resourceClass != resourceClass) //animations and prefab use the same file extension
+				//	console.warn("format has resourceClass that do not match this resource: ", LS.getClassName(format_info.resourceClass), LS.getClassName(resourceClass) );
+			}
+		}
 
 		//some validation here? maybe...
 	},

@@ -1460,9 +1460,9 @@ Timeline.prototype.onMouseWheel = function(e)
 		else //keyframes
 		{
 			if(e.deltaY > 0)
-				this.zoom( 0.95, this.session.left_margin ); //e.mousex
+				this.zoom( 0.95, this.canvas.width * 0.5 ); //this.session.left_margin );
 			else
-				this.zoom( 1.05, this.session.left_margin );
+				this.zoom( 1.05, this.canvas.width * 0.5 ); //this.session.left_margin );
 		}
 	}
 

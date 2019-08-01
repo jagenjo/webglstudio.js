@@ -929,7 +929,7 @@ Timeline.prototype.drawTracksSidebar = function( canvas, ctx )
 		var is_selected = false;
 		if(this.session.selection)
 		{
-			if( this.session.selection.type == "track" && this.session.selection.track == track_index )
+			if( (this.session.selection.type == "track" || this.session.selection.type == "keyframe") && this.session.selection.track == track_index )
 				is_selected = true;
 			else if( this.session.selection.type == "multitrack" && this.session.selection.tracks.indexOf( track_index ) != -1 )
 				is_selected = true;

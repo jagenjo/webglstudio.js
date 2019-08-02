@@ -1028,6 +1028,39 @@ LS.Animation.Take.prototype.removeScaling = function()
 	return num;
 }
 
+LS.Animation.Take.prototype.removeUnusedKeyframes = function()
+{
+	var num = 0;
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+		if(track.packed_data)
+			track.unpackData();
+		var value_size = track.value_size;
+		for(var j = 1; j < track.data.length - 1; ++j)
+		{
+			var prev = track.data[j-1];
+			var now = track.data[j];
+			var next = track.data[j+1];
+
+			var diff = 0;
+			if(value_size == 1)
+				diff += Math.abs((now[1] - prev[1]) - (next[1] - now[1]));
+			else if(value_size > 1)
+				for(var k = 0; k < value_size; ++k)
+					diff += Math.abs((now[1][k] - prev[1][k]) - (next[1][k] - now[1][k]));
+			if(diff > 0.00001)
+				continue;
+
+			track.data.splice(j,1);
+			j--;
+			num++;
+		}
+	}
+
+	return num;
+}
+
 LS.Animation.Take.prototype.trimTracks = function( start, end )
 {
 	var num = 0;

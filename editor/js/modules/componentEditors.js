@@ -97,13 +97,12 @@ LS.Components.Transform["@inspector"] = function(transform, inspector)
 			CORE.userAction("component_changed", transform );
 	}});
 
-	inspector.addNumber("Uniform Scale", transform._scaling[0].toFixed(3), {
+	inspector.addNumber("Uniform Scale", transform.uniform_scaling, {
 		name_width: 100,
 		step: 0.01,
-		pretitle: AnimationModule.getKeyframeCode( transform, "scaling"),
+		pretitle: AnimationModule.getKeyframeCode( transform, "uniform_scaling"),
 		callback: function(v) {
 			scale_widget.setValue([v,v,v]);
-			//transform.setScale(v,v,v);
 		}, callback_before: function() {
 			CORE.userAction("component_changed", transform );
 	}});

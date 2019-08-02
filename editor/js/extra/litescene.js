@@ -1136,7 +1136,7 @@ var LS = {
 		{
 			var format_info = LS.Formats.supported[ extension ];
 			if( !format_info )
-				format_info = resourceClass.FORMAT;
+				LS.Formats.supported[ extension ] = format_info = resourceClass.FORMAT;
 			else
 			{
 				if(!format_info.resourceClass)
@@ -28930,6 +28930,19 @@ Object.defineProperty( Transform.prototype, 'scaling', {
 			this._scaling[0] = this._scaling[1] = this._scaling[2] = v;
 		else
 			this._scaling.set(v);
+		this._must_update = true;
+	},
+	enumerable: true
+});
+
+/**
+* The scaling relative to its parent in vec3 format (default is [1,1,1])
+* @property scaling {vec3}
+*/
+Object.defineProperty( Transform.prototype, 'uniform_scaling', {
+	get: function() { return this._scaling[0]; },
+	set: function(v) { 
+		this._scaling[0] = this._scaling[1] = this._scaling[2] = v;
 		this._must_update = true;
 	},
 	enumerable: true

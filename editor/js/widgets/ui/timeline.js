@@ -90,14 +90,15 @@ Timeline.prototype.createInterface = function( options )
 	*/
 	var that = this;
 	this.animation_widget = widgets.addString(null, "", { disabled: true } );
-	this.take_widget = widgets.addCombo("Take", "", { values:{}, name_width: 50, content_width: 150, width: 200, callback: function(v){
+	this.take_widget = widgets.addCombo("Take", "", { values:{}, name_width: 50, content_width: 110, width: 160, callback: function(v){
 		that.setAnimation( that.current_animation, v );
 	}});
 	widgets.addButton(null, LiteGUI.special_codes.navicon, { width: 30, callback: function(v,e){ that.showTakeOptionsDialog(e); } });
-	this.duration_widget = widgets.addNumber("Duration", 0, { units:"s", precision:2, min:0, width: 120, callback: function(v){ that.setDuration(v); } } );
-	this.current_time_widget = widgets.addNumber("Current", this.session ? this.session.current_time : 0, { units:"s", precision:2, min: 0, callback: function(v){ that.setCurrentTime(v); } } );
+	this.duration_widget = widgets.addNumber("Duration", 0, { units:"s", precision:2, min:0, width: 120, content_width: 80, callback: function(v){ that.setDuration(v); } } );
+	this.current_time_widget = widgets.addNumber("Current", this.session ? this.session.current_time : 0, { units:"s", width: 120, content_width: 80, precision:2, min: 0, callback: function(v){ that.setCurrentTime(v); } } );
 	//widgets.addCheckbox("Preview", this.preview, { callback: function(v){ that.preview = v; } } );
 	//this.play_widget = widgets.addCheckbox("Play", !!this.playing, { callback: function(v){ that.playing = !that.playing ; } } );
+	widgets.addButton(null, "Edit", { width: 60, callback: function(){ that.mode = that.mode == "keyframes" ? "curves" : "keyframes"; that.redrawCanvas(); } } );
 	this.preview_widget = widgets.addIcon(null, !!this.preview, { image: "imgs/icons-timeline.png", index: 6, title:"preview",  callback: function(v){ that.preview = !that.preview ; } } );
 	this.play_widget = widgets.addIcon(null, !!this.playing, { title:"play", image: "imgs/icons-timeline.png",  callback: function(v){ that.playing = !that.playing ; } } );
 	widgets.addIcon(null, false, { title:"zoom in", image: "imgs/icons-timeline.png", index: 8, toggle: false, callback: function(v){ that.zoom(1.05); 	that.redrawCanvas(); } } );
@@ -106,7 +107,7 @@ Timeline.prototype.createInterface = function( options )
 	widgets.addIcon(null, false, { title:"next keyframe", image: "imgs/icons-timeline.png", index: 3, toggle: false, callback: function(v){ that.nextKeyframe(); } } );
 	widgets.addIcon(null, false, { title:"record", image: "imgs/icons-timeline.png", index: 10, toggle: true, callback: function(v){ return that.toggleRecording(v); } } );
 	this.paths_widget = widgets.addIcon(null, this.show_paths, { title:"show paths", image: "imgs/icons-timeline.png", index: 12, toggle: true, callback: function(v){ RenderModule.requestFrame(); return that.show_paths = v; } } );
-	widgets.addCheckbox("Curves", this.mode == "curves", { width: 80, callback: function(v){ that.mode = v ? "curves" : "keyframes"; that.redrawCanvas(); } } );
+	//widgets.addCheckbox("Curves", this.mode == "curves", { width: 80, callback: function(v){ that.mode = v ? "curves" : "keyframes"; that.redrawCanvas(); } } );
 	widgets.addButton(null, LiteGUI.special_codes.refresh, { width: 30, callback: function(v,e){ that.resetView(); } });
 
 	/*
@@ -501,7 +502,7 @@ Timeline.prototype.redrawCanvas = function()
 
 Timeline.prototype.convertValueToCanvas = function(v)
 {
-	return this.canvas.height * 0.5 - v * this.curves_scale_y + this.scroll_curves_y;
+	return Math.round( this.canvas.height * 0.5 - v * this.curves_scale_y + this.scroll_curves_y ) + 0.5;
 }
 
 Timeline.prototype.convertCanvasToValue = function(v)
@@ -663,7 +664,7 @@ Timeline.prototype.drawCurvesView = function( canvas, ctx )
 						visible_keyframes.push([posx,v,i,j,k]);
 				}
 				if( Math.abs(min_v - max_v) > 0.001 ) //vertical line
-					ctx.rect( posx - 1, min_v, 2, max_v - min_v );
+					ctx.rect( posx - 1, min_v, 1, max_v - min_v );
 			}
 			ctx.fill();
 		}
@@ -2975,6 +2976,11 @@ Timeline.actions.take["Unpack all tracks"] = function( animation, take )
 Timeline.actions.take["Optimize Tracks"] = function( animation, take )
 {
 	return take.optimizeTracks();
+}
+
+Timeline.actions.take["Remove unused keyframes"] = function( animation, take )
+{
+	return take.removeUnusedKeyframes();
 }
 
 Timeline.actions.take["Match Translation"] = function( animation, take )

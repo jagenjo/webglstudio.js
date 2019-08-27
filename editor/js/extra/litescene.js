@@ -4993,7 +4993,7 @@ var ResourcesManager = {
 			}
 
 			//do it again to avoid reusing old
-			var extension = this.getExtension( url );
+			var extension = LS.ResourcesManager.getExtension( url );
 			if(extension)
 				format_info = LS.Formats.supported[ extension ];
 

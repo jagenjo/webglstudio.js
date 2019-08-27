@@ -4992,6 +4992,11 @@ var ResourcesManager = {
 				return;
 			}
 
+			//do it again to avoid reusing old
+			var extension = this.getExtension( url );
+			if(extension)
+				format_info = LS.Formats.supported[ extension ];
+
 			//convert format
 			if( format_info && format_info.convert_to && extension != format_info.convert_to )
 			{

@@ -129,35 +129,41 @@
                 }
             }
 
-            Object.defineProperty(base_class.prototype, "shape", {
-                set: function(v) {
-                    switch (v) {
-                        case "default":
-                            delete this._shape;
-                            break;
-                        case "box":
-                            this._shape = LiteGraph.BOX_SHAPE;
-                            break;
-                        case "round":
-                            this._shape = LiteGraph.ROUND_SHAPE;
-                            break;
-                        case "circle":
-                            this._shape = LiteGraph.CIRCLE_SHAPE;
-                            break;
-                        case "card":
-                            this._shape = LiteGraph.CARD_SHAPE;
-                            break;
-                        default:
-                            this._shape = v;
-                    }
-                },
-                get: function(v) {
-                    return this._shape;
-                },
-                enumerable: true
-            });
+			if( !Object.hasOwnProperty( base_class.prototype, "shape") )
+			{
+				Object.defineProperty(base_class.prototype, "shape", {
+					set: function(v) {
+						switch (v) {
+							case "default":
+								delete this._shape;
+								break;
+							case "box":
+								this._shape = LiteGraph.BOX_SHAPE;
+								break;
+							case "round":
+								this._shape = LiteGraph.ROUND_SHAPE;
+								break;
+							case "circle":
+								this._shape = LiteGraph.CIRCLE_SHAPE;
+								break;
+							case "card":
+								this._shape = LiteGraph.CARD_SHAPE;
+								break;
+							default:
+								this._shape = v;
+						}
+					},
+					get: function(v) {
+						return this._shape;
+					},
+					enumerable: true
+				});
+			}
 
             var prev = this.registered_node_types[type];
+			if(prev)
+				console.log("replacing node type: " + type);
+
             this.registered_node_types[type] = base_class;
             if (base_class.constructor.name) {
                 this.Nodes[classname] = base_class;
@@ -178,6 +184,7 @@
                 );
             }
 
+			//used to know which nodes create when dragging files to the canvas
             if (base_class.supported_extensions) {
                 for (var i in base_class.supported_extensions) {
                     this.node_types_by_file_extension[
@@ -3402,7 +3409,7 @@
 
         if (LiteGraph.isValidConnection(output.type, input.type)) {
             link_info = new LLink(
-                this.graph.last_link_id++,
+                ++this.graph.last_link_id,
                 input.type,
                 this.id,
                 slot,
@@ -11321,6 +11328,69 @@ if (typeof exports != "undefined") {
 
     LiteGraph.registerNodeType("basic/variable", Variable);
 
+
+	function DownloadData() {
+        this.size = [60, 30];
+        this.addInput("data", 0 );
+        this.addInput("download", LiteGraph.ACTION );
+		this.properties = { filename: "data.json" };
+        this.value = null;
+		var that = this;
+		this.addWidget("button","Download","", function(v){
+			if(!that.value)
+				return;
+			that.downloadAsFile();
+		});
+    }
+
+    DownloadData.title = "Download";
+    DownloadData.desc = "Download some data";
+
+	DownloadData.prototype.downloadAsFile = function()
+	{
+		if(this.value == null)
+			return;
+
+		var str = null;
+		if(this.value.constructor === String)
+			str = this.value;
+		else
+			str = JSON.stringify(this.value);
+
+		var file = new Blob([str]);
+		var url = URL.createObjectURL( file );
+		var element = document.createElement("a");
+		element.setAttribute('href', url);
+		element.setAttribute('download', this.properties.filename );
+		element.style.display = 'none';
+		document.body.appendChild(element);
+		element.click();
+		document.body.removeChild(element);
+		setTimeout( function(){ URL.revokeObjectURL( url ); }, 1000*60 ); //wait one minute to revoke url
+	}
+
+    DownloadData.prototype.onAction = function(action, param) {
+		var that = this;
+		setTimeout( function(){ that.downloadAsFile(); }, 100); //deferred to avoid blocking the renderer with the popup
+	}
+
+    DownloadData.prototype.onExecute = function() {
+        if (this.inputs[0]) {
+            this.value = this.getInputData(0);
+        }
+    };
+
+    DownloadData.prototype.getTitle = function() {
+        if (this.flags.collapsed) {
+            return this.properties.filename;
+        }
+        return this.title;
+    };
+
+    LiteGraph.registerNodeType("basic/download", DownloadData);
+
+
+
     //Watch a value in the editor
     function Watch() {
         this.size = [60, 30];
@@ -15255,7 +15325,7 @@ if (typeof exports != "undefined") {
         if (this.flags.collapsed) {
             return;
         }
-        if (this.img && this.size[0] > 5 && this.size[1] > 5) {
+        if (this.img && this.size[0] > 5 && this.size[1] > 5 && this.img.width) {
             ctx.drawImage(this.img, 0, 0, this.size[0], this.size[1]);
         }
     };
@@ -15309,6 +15379,9 @@ if (typeof exports != "undefined") {
             that.boxcolor = "#9F9";
             that.setDirtyCanvas(true);
         };
+        this.img.onerror = function() {
+			console.log("error loading the image:" + url);
+		}
     };
 
     GraphicsImage.prototype.onWidget = function(e, widget) {
@@ -16478,7 +16551,7 @@ if (typeof exports != "undefined") {
 	function LGraphTextureSave() {
 		this.addInput("Texture", "Texture");
 		this.addOutput("", "Texture");
-		this.properties = { name: "" };
+		this.properties = { name: "", generate_mipmaps: false };
 	}
 
 	LGraphTextureSave.title = "Save";
@@ -16493,6 +16566,13 @@ if (typeof exports != "undefined") {
 		var tex = this.getInputData(0);
 		if (!tex) {
 			return;
+		}
+
+		if (this.properties.generate_mipmaps) {
+			tex.bind(0);
+			tex.setParameter( gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR );
+			gl.generateMipmap(tex.texture_type);
+			tex.unbind(0);
 		}
 
 		if (this.properties.name) {
@@ -17095,7 +17175,17 @@ if (typeof exports != "undefined") {
 		this.addOutput("out", "Texture");
 		this.properties = {
 			factor: 0.01,
+			scale: [1,1],
+			offset: [0,0],
 			precision: LGraphTexture.DEFAULT
+		};
+
+		this._uniforms = { 
+			u_texture: 0, 
+			u_textureB: 1, 
+			u_factor: 1, 
+			u_scale: vec2.create(),
+			u_offset: vec2.create()
 		};
 	}
 
@@ -17165,6 +17255,10 @@ if (typeof exports != "undefined") {
 		} else {
 			factor = parseFloat(this.properties.factor);
 		}
+		var uniforms = this._uniforms;
+		uniforms.u_factor = factor;
+		uniforms.u_scale.set( this.properties.scale );
+		uniforms.u_offset.set( this.properties.offset );
 
 		this._tex.drawTo(function() {
 			gl.disable(gl.DEPTH_TEST);
@@ -17178,7 +17272,7 @@ if (typeof exports != "undefined") {
 			}
 			var mesh = Mesh.getScreenQuad();
 			shader
-				.uniforms({ u_texture: 0, u_textureB: 1, u_factor: factor })
+				.uniforms( uniforms )
 				.draw(mesh);
 		});
 
@@ -17192,10 +17286,12 @@ if (typeof exports != "undefined") {
 		uniform sampler2D u_textureB;\n\
 		varying vec2 v_coord;\n\
 		uniform float u_factor;\n\
+		uniform vec2 u_scale;\n\
+		uniform vec2 u_offset;\n\
 		\n\
 		void main() {\n\
 			vec2 uv = v_coord;\n\
-			uv += ( texture2D(u_textureB, uv).rg - vec2(0.5)) * u_factor;\n\
+			uv += ( texture2D(u_textureB, uv).rg - vec2(0.5)) * u_factor * u_scale + u_offset;\n\
 			gl_FragColor = texture2D(u_texture, uv);\n\
 		}\n\
 		";
@@ -20882,7 +20978,8 @@ void main(void){\n\
 		this.addOutput("points", "array");
 		this.properties = {
 			radius: 1,
-			num_points: 1024,
+			num_points: 4096,
+			regular: false,
 			mode: LGraphPoints3D.SPHERE
 		};
 
@@ -20912,8 +21009,8 @@ void main(void){\n\
 		mode: { widget: "combo", values: LGraphPoints3D.MODE_VALUES }
 	};
 
-	LGraphPoints3D.title = "random points";
-	LGraphPoints3D.desc = "returns an array of random points";
+	LGraphPoints3D.title = "list of points";
+	LGraphPoints3D.desc = "returns an array of points";
 
 	LGraphPoints3D.prototype.onPropertyChanged = function(name,value)
 	{
@@ -20933,80 +21030,122 @@ void main(void){\n\
 		this.setOutputData( 0, this.geometry );
 	}
 
-	LGraphPoints3D.generatePoints = function( radius, num_points, mode, points )
+	LGraphPoints3D.generatePoints = function( radius, num_points, mode, points, regular )
 	{
 		var size = num_points * 3;
 		if(!points || points.length != size)
 			points = new Float32Array( size );
 
-		if( mode == LGraphPoints3D.RECTANGLE)
-			for(var i = 0; i < size; i+=3)
+		if(regular)
+		{
+			if( mode == LGraphPoints3D.RECTANGLE)
 			{
-				points[i] = (Math.random() - 0.5) * radius * 2;
-				points[i+1] = 0;
-				points[i+2] = (Math.random() - 0.5) * radius * 2;
+				var side = Math.floor(Math.sqrt(num_points));
+				for(var i = 0; i < side; ++i)
+				for(var j = 0; j < side; ++j)
+				{
+					var pos = i*3 + j*3*side;
+					points[pos] = ((i/side) - 0.5) * radius * 2;
+					points[pos+1] = 0;
+					points[pos+2] = ((j/side) - 0.5) * radius * 2;
+				}
+				points = new Float32Array( points.subarray(0,side*side*3) );
 			}
-		else if( mode == LGraphPoints3D.CUBE)
-			for(var i = 0; i < size; i+=3)
+			else if( mode == LGraphPoints3D.SPHERE)
 			{
-				points[i] = (Math.random() - 0.5) * radius * 2;
-				points[i+1] = (Math.random() - 0.5) * radius * 2;
-				points[i+2] = (Math.random() - 0.5) * radius * 2;
+				var side = Math.floor(Math.sqrt(num_points));
+				var temp = vec3.create();
+				for(var i = 0; i < side; ++i)
+				for(var j = 0; j < side; ++j)
+				{
+					var pos = i*3 + j*3*side;
+					polarToCartesian( temp, (i/side) * 2 * Math.PI, ((j/side) - 0.5) * 2 * Math.PI, radius );
+					points[pos] = temp[0];
+					points[pos+1] = temp[1];
+					points[pos+2] = temp[2];
+				}
+				points = new Float32Array( points.subarray(0,side*side*3) );
 			}
-		else if( mode == LGraphPoints3D.SPHERE)
-			for(var i = 0; i < size; i+=3)
-			{
-				var r1 = Math.random();
-				var r2 = Math.random();
-				var x = 2 * Math.cos( 2 * Math.PI * r1 ) * Math.sqrt( r2 * (1-r2) );
-				var y = 1 - 2 * r2;
-				var z = 2 * Math.sin( 2 * Math.PI * r1 ) * Math.sqrt( r2 * (1-r2) );
-				points[i] = x * radius;
-				points[i+1] = y * radius;
-				points[i+2] = z * radius;
-			}			
-		else if( mode == LGraphPoints3D.HEMISPHERE)
-			for(var i = 0; i < size; i+=3)
-			{
-				var r1 = Math.random();
-				var r2 = Math.random();
-				var x = Math.cos( 2 * Math.PI * r1 ) * Math.sqrt(1 - r2*r2 );
-				var y = r2;
-				var z = Math.sin( 2 * Math.PI * r1 ) * Math.sqrt(1 - r2*r2 );
-				points[i] = x * radius;
-				points[i+1] = y * radius;
-				points[i+2] = z * radius;
-			}
-		else if( mode == LGraphPoints3D.CIRCLE)
-			for(var i = 0; i < size; i+=3)
-			{
-				var r1 = Math.random();
-				var r2 = Math.random();
-				var x = Math.cos( 2 * Math.PI * r1 ) * Math.sqrt(1 - r2*r2 );
-				var y = r2;
-				var z = Math.sin( 2 * Math.PI * r1 ) * Math.sqrt(1 - r2*r2 );
-				points[i] = x * radius;
-				points[i+1] = 0;
-				points[i+2] = z * radius;
-			}
-		else if( mode == LGraphPoints3D.INSIDE_SPHERE)
-			for(var i = 0; i < size; i+=3)
-			{
-				var u = Math.random();
-				var v = Math.random();
-				var theta = u * 2.0 * Math.PI;
-				var phi = Math.acos(2.0 * v - 1.0);
-				var r = Math.cbrt(Math.random()) * radius;
-				var sinTheta = Math.sin(theta);
-				var cosTheta = Math.cos(theta);
-				var sinPhi = Math.sin(phi);
-				var cosPhi = Math.cos(phi);
-				points[i] = r * sinPhi * cosTheta;
-				points[i+1] = r * sinPhi * sinTheta;
-				points[i+2] = r * cosPhi;
-			}
+			else if( mode == LGraphPoints3D.CIRCLE)
+				for(var i = 0; i < size; i+=3)
+				{
+					var angle = 2 * Math.PI * (i/size);
+					points[i] = Math.cos( angle ) * radius;
+					points[i+1] = 0;
+					points[i+2] = Math.sin( angle ) * radius;
+				}
+		}
 		else
-			console.warn("wrong mode in LGraphPoints3D");
+		{
+			if( mode == LGraphPoints3D.RECTANGLE)
+				for(var i = 0; i < size; i+=3)
+				{
+					points[i] = (Math.random() - 0.5) * radius * 2;
+					points[i+1] = 0;
+					points[i+2] = (Math.random() - 0.5) * radius * 2;
+				}
+			else if( mode == LGraphPoints3D.CUBE)
+				for(var i = 0; i < size; i+=3)
+				{
+					points[i] = (Math.random() - 0.5) * radius * 2;
+					points[i+1] = (Math.random() - 0.5) * radius * 2;
+					points[i+2] = (Math.random() - 0.5) * radius * 2;
+				}
+			else if( mode == LGraphPoints3D.SPHERE)
+				for(var i = 0; i < size; i+=3)
+				{
+					var r1 = Math.random();
+					var r2 = Math.random();
+					var x = 2 * Math.cos( 2 * Math.PI * r1 ) * Math.sqrt( r2 * (1-r2) );
+					var y = 1 - 2 * r2;
+					var z = 2 * Math.sin( 2 * Math.PI * r1 ) * Math.sqrt( r2 * (1-r2) );
+					points[i] = x * radius;
+					points[i+1] = y * radius;
+					points[i+2] = z * radius;
+				}			
+			else if( mode == LGraphPoints3D.HEMISPHERE)
+				for(var i = 0; i < size; i+=3)
+				{
+					var r1 = Math.random();
+					var r2 = Math.random();
+					var x = Math.cos( 2 * Math.PI * r1 ) * Math.sqrt(1 - r2*r2 );
+					var y = r2;
+					var z = Math.sin( 2 * Math.PI * r1 ) * Math.sqrt(1 - r2*r2 );
+					points[i] = x * radius;
+					points[i+1] = y * radius;
+					points[i+2] = z * radius;
+				}
+			else if( mode == LGraphPoints3D.CIRCLE)
+				for(var i = 0; i < size; i+=3)
+				{
+					var r1 = Math.random();
+					var r2 = Math.random();
+					var x = Math.cos( 2 * Math.PI * r1 ) * Math.sqrt(1 - r2*r2 );
+					var y = r2;
+					var z = Math.sin( 2 * Math.PI * r1 ) * Math.sqrt(1 - r2*r2 );
+					points[i] = x * radius;
+					points[i+1] = 0;
+					points[i+2] = z * radius;
+				}
+			else if( mode == LGraphPoints3D.INSIDE_SPHERE)
+				for(var i = 0; i < size; i+=3)
+				{
+					var u = Math.random();
+					var v = Math.random();
+					var theta = u * 2.0 * Math.PI;
+					var phi = Math.acos(2.0 * v - 1.0);
+					var r = Math.cbrt(Math.random()) * radius;
+					var sinTheta = Math.sin(theta);
+					var cosTheta = Math.cos(theta);
+					var sinPhi = Math.sin(phi);
+					var cosPhi = Math.cos(phi);
+					points[i] = r * sinPhi * cosTheta;
+					points[i+1] = r * sinPhi * sinTheta;
+					points[i+2] = r * cosPhi;
+				}
+			else
+				console.warn("wrong mode in LGraphPoints3D");
+		}
 
 		return points;
 	}
@@ -21022,7 +21161,7 @@ void main(void){\n\
 		var radius = this.properties.radius;
 		var mode = this.properties.mode;
 
-		LGraphPoints3D.generatePoints( radius, num_points, mode, this.points );
+		this.points = LGraphPoints3D.generatePoints( radius, num_points, mode, this.points, this.properties.regular );
 
 		this.version++;
 	}
@@ -21067,8 +21206,132 @@ void main(void){\n\
 
 	LiteGraph.registerNodeType( "geometry/toGeometry", LGraphToGeometry );
 
-	function LGraphGeometryQuantize() {
+	function LGraphGeometryEval() {
 		this.addInput("in", "geometry");
+		this.addOutput("out", "geometry");
+
+		this.properties = {
+			code: "V[1] += 0.01 * Math.sin(I + T*0.001);",
+			execute_every_frame: false
+		};
+
+		this.geometry = null;
+		this.geometry_id = -1;
+		this.version = -1;
+		this.must_update = true;
+
+		this.vertices = null;
+		this.func = null;
+	}
+
+	LGraphGeometryEval.title = "geoeval";
+	LGraphGeometryEval.desc = "eval code";
+
+	LGraphGeometryEval.widgets_info = {
+		code: { widget: "code" }
+	};
+
+	LGraphGeometryEval.prototype.onConfigure = function(o)
+	{
+		this.compileCode();
+	}
+
+	LGraphGeometryEval.prototype.compileCode = function()
+	{
+		if(!this.properties.code)
+			return;
+
+		try
+		{
+			this.func = new Function("V","I","T", this.properties.code); 
+			this.boxcolor = "#AFA";
+			this.must_update = true;
+		}
+		catch (err)
+		{
+			this.boxcolor = "red";
+		}
+	}
+
+	LGraphGeometryEval.prototype.onPropertyChanged = function(name, value)
+	{
+		if(name == "code")
+		{
+			this.properties.code = value;
+			this.compileCode();
+		}
+	}
+
+	LGraphGeometryEval.V = vec3.create();
+
+	LGraphGeometryEval.prototype.onExecute = function() {
+		var geometry = this.getInputData(0);
+		if(!geometry)
+			return;
+
+		if(!this.func)
+		{
+			this.setOutputData(0,geometry);
+			return;
+		}
+
+		if( this.geometry_id != geometry._id || this.version != geometry._version || this.must_update || this.properties.execute_every_frame )
+		{
+			this.must_update = false;
+			this.geometry_id = geometry._id;
+			if(this.properties.execute_every_frame)
+				this.version++;
+			else
+				this.version = geometry._version;
+			var func = this.func;
+			var T = getTime();
+
+			//clone
+			if(!this.geometry)
+				this.geometry = {};
+			for(var i in geometry)
+			{
+				if(geometry[i] == null)
+					continue;
+				if( geometry[i].constructor == Float32Array )
+					this.geometry[i] = new Float32Array( geometry[i] );
+				else
+					this.geometry[i] = geometry[i];
+			}
+			this.geometry._id = geometry._id;
+			if(this.properties.execute_every_frame)
+				this.geometry._version = this.version;
+			else
+				this.geometry._version = geometry._version + 1;
+
+			var V = LGraphGeometryEval.V;
+			var vertices = this.vertices;
+			if(!vertices || this.vertices.length != geometry.vertices.length)
+				vertices = this.vertices = new Float32Array( geometry.vertices );
+			else
+				vertices.set( geometry.vertices );
+			for(var i = 0; i < vertices.length; i+=3)
+			{
+				V[0] = vertices[i];
+				V[1] = vertices[i+1];
+				V[2] = vertices[i+2];
+				func(V,i/3,T);
+				vertices[i] = V[0];
+				vertices[i+1] = V[1];
+				vertices[i+2] = V[2];
+			}
+			this.geometry.vertices = vertices;
+		}
+
+		this.setOutputData(0,this.geometry);
+	}
+
+	LiteGraph.registerNodeType( "geometry/eval", LGraphGeometryEval );
+
+/*
+function LGraphGeometryDisplace() {
+		this.addInput("in", "geometry");
+		this.addInput("img", "image");
 		this.addOutput("out", "geometry");
 
 		this.properties = {
@@ -21083,13 +21346,20 @@ void main(void){\n\
 		this.vertices = null;
 	}
 
-	LGraphGeometryQuantize.title = "quantize";
-	LGraphGeometryQuantize.desc = "quantize vertices";
+	LGraphGeometryDisplace.title = "displace";
+	LGraphGeometryDisplace.desc = "displace points";
 
-	LGraphGeometryQuantize.prototype.onExecute = function() {
+	LGraphGeometryDisplace.prototype.onExecute = function() {
 		var geometry = this.getInputData(0);
+		var image = this.getInputData(1);
 		if(!geometry)
 			return;
+
+		if(!image)
+		{
+			this.setOutputData(0,geometry);
+			return;
+		}
 
 		if( this.geometry_id != geometry._id || this.version != geometry._version || this.must_update )
 		{
@@ -21123,7 +21393,8 @@ void main(void){\n\
 		this.setOutputData(0,this.geometry);
 	}
 
-	LiteGraph.registerNodeType( "geometry/quantize", LGraphGeometryQuantize );
+	LiteGraph.registerNodeType( "geometry/displace", LGraphGeometryDisplace );
+*/
 
 	function LGraphConnectPoints() {
 		this.addInput("in", "geometry");
@@ -21309,13 +21580,13 @@ void main(void){\n\
 		{
 			shader = gl.shaders["textured"];
 			if(!shader)
-				shader = gl.shaders["textured"] = new GL.Shader( vertex_shader_code, fragment_shader_code, { USE_TEXTURE:"" });
+				shader = gl.shaders["textured"] = new GL.Shader( LGraphRenderPoints.vertex_shader_code, LGraphRenderPoints.fragment_shader_code, { USE_TEXTURE:"" });
 		}
 		else
 		{
 			shader = gl.shaders["flat"];
 			if(!shader)
-				shader = gl.shaders["flat"] = new GL.Shader( vertex_shader_code, fragment_shader_code );
+				shader = gl.shaders["flat"] = new GL.Shader( LGraphRenderPoints.vertex_shader_code, LGraphRenderPoints.fragment_shader_code );
 		}
 
 		this.color.set( this.properties.color );
@@ -21428,13 +21699,13 @@ void main(void){\n\
 		{
 			shader = gl.shaders["textured_points"];
 			if(!shader)
-				shader = gl.shaders["textured_points"] = new GL.Shader( vertex_shader_code, fragment_shader_code, { USE_TEXTURED_POINTS:"" });
+				shader = gl.shaders["textured_points"] = new GL.Shader( LGraphRenderPoints.vertex_shader_code, LGraphRenderPoints.fragment_shader_code, { USE_TEXTURED_POINTS:"" });
 		}
 		else
 		{
 			shader = gl.shaders["points"];
 			if(!shader)
-				shader = gl.shaders["points"] = new GL.Shader( vertex_shader_code, fragment_shader_code, { USE_POINTS: "" });
+				shader = gl.shaders["points"] = new GL.Shader( LGraphRenderPoints.vertex_shader_code, LGraphRenderPoints.fragment_shader_code, { USE_POINTS: "" });
 		}
 
 		this.color.set( this.properties.color );
@@ -21475,7 +21746,7 @@ void main(void){\n\
 
 	LiteGraph.registerNodeType( "geometry/render_points", LGraphRenderPoints );
 
-	var vertex_shader_code = '\
+	LGraphRenderPoints.vertex_shader_code = '\
 		precision mediump float;\n\
 		attribute vec3 a_vertex;\n\
 		varying vec3 v_vertex;\n\
@@ -21522,7 +21793,7 @@ void main(void){\n\
 		}\
 	';
 
-	var fragment_shader_code = '\
+	LGraphRenderPoints.fragment_shader_code = '\
 		precision mediump float;\n\
 		uniform vec4 u_color;\n\
 		#ifdef USE_COLOR\n\
@@ -21552,6 +21823,212 @@ void main(void){\n\
 			gl_FragColor = color;\n\
 		}\
 	';
+
+	//based on https://inconvergent.net/2019/depth-of-field/
+	/*
+	function LGraphRenderGeometryDOF() {
+		this.addInput("in", "geometry");
+		this.addInput("mat4", "mat4");
+		this.addInput("tex", "texture");
+		this.properties = {
+			enabled: true,
+			lines: true,
+			point_size: 0.1,
+			fixed_size: false,
+			additive: true,
+			color: [1,1,1],
+			opacity: 1
+		};
+
+		this.color = vec4.create([1,1,1,1]);
+
+		this.uniforms = {
+			u_point_size: 1,
+			u_perspective: 1,
+			u_point_perspective: 1,
+			u_color: this.color
+		};
+
+		this.geometry_id = -1;
+		this.version = -1;
+		this.mesh = null;
+	}
+
+	LGraphRenderGeometryDOF.widgets_info = {
+		color: { widget: "color" }
+	};
+
+	LGraphRenderGeometryDOF.prototype.updateMesh = function(geometry)
+	{
+		var buffer = this.buffer;
+		if(!this.buffer || this.buffer.data.length != geometry.vertices.length)
+			this.buffer = new GL.Buffer( GL.ARRAY_BUFFER, geometry.vertices,3,GL.DYNAMIC_DRAW);
+		else
+		{
+			this.buffer.data.set( geometry.vertices );
+			this.buffer.upload(GL.DYNAMIC_DRAW);
+		}
+
+		if(!this.mesh)
+			this.mesh = new GL.Mesh();
+
+		this.mesh.addBuffer("vertices",this.buffer);
+		this.geometry_id = this.mesh.id = geometry._id;
+		this.version = this.mesh.version = geometry._version;
+	}
+
+	LGraphRenderGeometryDOF.prototype.onExecute = function() {
+
+		if(!this.properties.enabled)
+			return;
+
+		var geometry = this.getInputData(0);
+		if(!geometry)
+			return;
+		if(this.version != geometry._version || this.geometry_id != geometry._id )
+			this.updateMesh( geometry );
+
+		if(!LiteGraph.LGraphRender.onRequestCameraMatrices)
+		{
+			console.warn("cannot render geometry, LiteGraph.onRequestCameraMatrices is null, remember to fill this with a callback(view_matrix, projection_matrix,viewprojection_matrix) to use 3D rendering from the graph");
+			return;
+		}
+
+		LiteGraph.LGraphRender.onRequestCameraMatrices( view_matrix, projection_matrix,viewprojection_matrix );
+		var shader = null;
+
+		var texture = this.getInputData(2);
+		
+		if(texture)
+		{
+			shader = gl.shaders["textured_points"];
+			if(!shader)
+				shader = gl.shaders["textured_points"] = new GL.Shader( LGraphRenderGeometryDOF.vertex_shader_code, LGraphRenderGeometryDOF.fragment_shader_code, { USE_TEXTURED_POINTS:"" });
+		}
+		else
+		{
+			shader = gl.shaders["points"];
+			if(!shader)
+				shader = gl.shaders["points"] = new GL.Shader( LGraphRenderGeometryDOF.vertex_shader_code, LGraphRenderGeometryDOF.fragment_shader_code, { USE_POINTS: "" });
+		}
+
+		this.color.set( this.properties.color );
+		this.color[3] = this.properties.opacity;
+
+		var m = this.getInputData(1);
+		if(m)
+			model_matrix.set(m);
+		else
+			mat4.identity( model_matrix );
+
+		this.uniforms.u_point_size = this.properties.point_size;
+		this.uniforms.u_point_perspective = this.properties.fixed_size ? 0 : 1;
+		this.uniforms.u_perspective = gl.viewport_data[3] * projection_matrix[5];
+
+		shader.uniforms( global_uniforms );
+		shader.uniforms( this.uniforms );
+
+		if(this.properties.opacity >= 1)
+			gl.disable( gl.BLEND );
+		else
+			gl.enable( gl.BLEND );
+
+		gl.enable( gl.DEPTH_TEST );
+		if( this.properties.additive )
+		{
+			gl.blendFunc( gl.SRC_ALPHA, gl.ONE );
+			gl.depthMask( false );
+		}
+		else
+			gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
+
+		shader.draw( this.mesh, GL.POINTS );
+
+		gl.disable( gl.BLEND );
+		gl.depthMask( true );
+	}
+
+	LiteGraph.registerNodeType( "geometry/render_dof", LGraphRenderGeometryDOF );
+
+	LGraphRenderGeometryDOF.vertex_shader_code = '\
+		precision mediump float;\n\
+		attribute vec3 a_vertex;\n\
+		varying vec3 v_vertex;\n\
+		attribute vec3 a_normal;\n\
+		varying vec3 v_normal;\n\
+		#ifdef USE_COLOR\n\
+			attribute vec4 a_color;\n\
+			varying vec4 v_color;\n\
+		#endif\n\
+		attribute vec2 a_coord;\n\
+		varying vec2 v_coord;\n\
+		#ifdef USE_SIZE\n\
+			attribute float a_extra;\n\
+		#endif\n\
+		#ifdef USE_INSTANCING\n\
+			attribute mat4 u_model;\n\
+		#else\n\
+			uniform mat4 u_model;\n\
+		#endif\n\
+		uniform mat4 u_viewprojection;\n\
+		uniform float u_point_size;\n\
+		uniform float u_perspective;\n\
+		uniform float u_point_perspective;\n\
+		float computePointSize(float radius, float w)\n\
+		{\n\
+			if(radius < 0.0)\n\
+				return -radius;\n\
+			return u_perspective * radius / w;\n\
+		}\n\
+		void main() {\n\
+			v_coord = a_coord;\n\
+			#ifdef USE_COLOR\n\
+				v_color = a_color;\n\
+			#endif\n\
+			v_vertex = ( u_model * vec4( a_vertex, 1.0 )).xyz;\n\
+			v_normal = ( u_model * vec4( a_normal, 0.0 )).xyz;\n\
+			gl_Position = u_viewprojection * vec4(v_vertex,1.0);\n\
+			gl_PointSize = u_point_size;\n\
+			#ifdef USE_SIZE\n\
+				gl_PointSize = a_extra;\n\
+			#endif\n\
+			if(u_point_perspective != 0.0)\n\
+				gl_PointSize = computePointSize( gl_PointSize, gl_Position.w );\n\
+		}\
+	';
+
+	LGraphRenderGeometryDOF.fragment_shader_code = '\
+		precision mediump float;\n\
+		uniform vec4 u_color;\n\
+		#ifdef USE_COLOR\n\
+			varying vec4 v_color;\n\
+		#endif\n\
+		varying vec2 v_coord;\n\
+		uniform sampler2D u_texture;\n\
+		void main() {\n\
+			vec4 color = u_color;\n\
+			#ifdef USE_TEXTURED_POINTS\n\
+				color *= texture2D(u_texture, gl_PointCoord.xy);\n\
+			#else\n\
+				#ifdef USE_TEXTURE\n\
+				  color *= texture2D(u_texture, v_coord);\n\
+				  if(color.a < 0.1)\n\
+					discard;\n\
+				#endif\n\
+				#ifdef USE_POINTS\n\
+					float dist = length( gl_PointCoord.xy - vec2(0.5) );\n\
+					if( dist > 0.45 )\n\
+						discard;\n\
+				#endif\n\
+			#endif\n\
+			#ifdef USE_COLOR\n\
+				color *= v_color;\n\
+			#endif\n\
+			gl_FragColor = color;\n\
+		}\
+	';
+	*/
+
 
 
 })(this);

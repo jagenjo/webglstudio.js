@@ -44976,8 +44976,10 @@ Poser.prototype.applyPoseFromWeights = function()
 		var scale = scalings.subarray(i*3,i*3+3);
 		quat.normalize( rot, rot );
 
-		vec3.add( node.transform._position, pos, base_node_info.position );
-		quat.mul( node.transform._rotation, rot, base_node_info.rotation );
+		if( base_node_info.position ) //patch to avoid weird bug
+			vec3.add( node.transform._position, pos, base_node_info.position );
+		if( base_node_info.rotation ) //patch to avoid weird bug
+			quat.mul( node.transform._rotation, rot, base_node_info.rotation );
 		//vec3.mul( node.transform._scaling, scale, base_node_info.scaling );
 		node.transform._must_update = true;
 	}

@@ -1358,6 +1358,10 @@ function enableWebGLCanvas( canvas, options )
 		var max_ascii_code = 200;
 		var chars_per_row = 10;
 
+		//check if font is being loaded
+		//if( document.fonts && !document.fonts.check( fontname + " " + fontmode ) )
+		//	return null;
+
 		if(useInternationalFont) //more characters
 		{
 			max_ascii_code = 400;

@@ -226,6 +226,42 @@ global.nearestPowerOfTwo = GL.nearestPowerOfTwo = function nearestPowerOfTwo(v)
 }
 
 
+/**
+* converts from polar to cartesian
+* @method polarToCartesian
+* @param {vec3} out
+* @param {number} azimuth orientation from 0 to 2PI
+* @param {number} inclianation from -PI to PI
+* @param {number} radius
+* @return {vec3} returns out
+*/
+global.polarToCartesian = function( out, azimuth, inclination, radius )
+{
+	out = out || vec3.create();
+	out[0] = radius * Math.sin(inclination) * Math.cos(azimuth);
+	out[1] = radius * Math.cos(inclination);
+	out[2] = radius * Math.sin(inclination) * Math.sin(azimuth);
+	return out;
+}
+
+/**
+* converts from cartesian to polar
+* @method cartesianToPolar
+* @param {vec3} out
+* @param {number} x
+* @param {number} y
+* @param {number} z
+* @return {vec3} returns [azimuth,inclination,radius]
+*/
+global.cartesianToPolar = function( out, x,y,z )
+{
+	out = out || vec3.create();
+	out[2] = Math.sqrt(x*x+y*y+z*z);
+	out[0] = Math.atan2(x,z);
+	out[1] = Math.acos(z/out[2]);
+	return out;
+}
+
 //Global Scope
 //better array conversion to string for serializing
 var typed_arrays = [ Uint8Array, Int8Array, Uint16Array, Int16Array, Uint32Array, Int32Array, Float32Array, Float64Array ];
@@ -11527,6 +11563,13 @@ global.BBox = GL.BBox = {
 		vec3.subtract( out.subarray(3,6), max, center );
 		out[12] = vec3.length( out.subarray(3,6) ); //radius		
 		return out;
+	},
+
+	clampPoint: function(out, box, point)
+	{
+		out[0] = Math.clamp( point[0], box[0] - box[3], box[0] + box[3]);
+		out[1] = Math.clamp( point[1], box[1] - box[4], box[1] + box[4]);
+		out[2] = Math.clamp( point[2], box[2] - box[5], box[2] + box[5]);
 	},
 
 	getCenter: function(bb) { return bb.subarray(0,3); },

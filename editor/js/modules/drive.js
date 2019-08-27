@@ -1083,7 +1083,7 @@ var DriveModule = {
 		if(!fullpath)
 			return;
 
-		if(fullpath[0] == "#") 
+		if(fullpath[0] == "#" || fullpath[0] == ":") 
 			return;
 
 		if( this.server_resources[ fullpath ] )

@@ -23,6 +23,7 @@ LS.Components.GlobalInfo["@inspector"] = function( component, inspector )
 		else
 			component.clearIrradiance();
 	}});
+	inspector.addColor("Irradiance color", component.irradiance_color, { pretitle: AnimationModule.getKeyframeCode( component, "irradiance_color"), callback: function(color) { vec3.copy(component.irradiance_color,color); } });
 	inspector.addSeparator();
 
 	inner_setTexture("environment");

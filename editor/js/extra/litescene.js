@@ -2756,8 +2756,8 @@ var Input = {
 	MIDDLE_MOUSE_BUTTON: 2,
 	RIGHT_MOUSE_BUTTON: 3,
 
-	Keyboard: [],
-	Keyboard_previous: [],
+	Keyboard: null, //gl.keys
+	Keyboard_previous: {},
 
 	Mouse: {},
 	Gamepads: [],
@@ -2787,8 +2787,10 @@ var Input = {
 	update: function()
 	{
 		//copy prev keys state
-		for(var i = 0, l = this.Keyboard.length; i < l; ++i)
-			this.Keyboard_previous[i] = this.Keyboard[i];
+		for(var i in this.Keyboard_previous) //first reset
+			this.Keyboard_previous[i] = false;
+		for(var i in this.Keyboard) //then copy
+			this.Keyboard_previous[i] = true;
 
 		//copy prev mouse state (this is only necessary if the update is not called from litegl main loop)
 		this.Mouse.last_buttons = this.Mouse.buttons;
@@ -2925,6 +2927,8 @@ var Input = {
 	//called from LS.Player when onkey
 	onKey: function(e)
 	{
+		//Info: this.Keyboard is not updated here, litegl already does it and stores it in gl.keys which is the same object as LS.Input.Keyboard
+
 		if(e.type == "keydown")
 		{
 			this.current_key = e;
@@ -2937,7 +2941,9 @@ var Input = {
 				this.keys_buffer.push(e);
 		}
 		else
+		{
 			this.current_key = null;
+		}
 	},
 
 	/**
@@ -6948,6 +6954,21 @@ vertex_color_block.register();
 var coord1_block = LS.Shaders.coord1_block = new LS.ShaderBlock("coord1");
 coord1_block.register();
 
+//used when a mesh contains extra buffers
+var extra2_block = LS.Shaders.extra2_block = new LS.ShaderBlock("extra2");
+extra2_block.bindEvent("vs_attributes", "attribute vec2 a_extra2;\n");
+extra2_block.register();
+
+//used when a mesh contains extra buffers
+var extra3_block = LS.Shaders.extra3_block = new LS.ShaderBlock("extra3");
+extra3_block.bindEvent("vs_attributes", "attribute vec3 a_extra3;\n");
+extra3_block.register();
+
+//used when a mesh contains extra buffers
+var extra4_block = LS.Shaders.extra4_block = new LS.ShaderBlock("extra4");
+extra4_block.bindEvent("vs_attributes", "attribute vec4 a_extra4;\n");
+extra4_block.register();
+
 //used to render normalinfo to buffer
 var normalbuffer_block = LS.Shaders.normalbuffer_block = new LS.ShaderBlock("normalBuffer");
 normalbuffer_block.addCode( GL.FRAGMENT_SHADER, "", "" );
@@ -9037,7 +9058,6 @@ function StandardMaterial(o)
 		ignore_lights: false,
 		cast_shadows: true,
 		receive_shadows: true,
-//		flat_normals: false,
 		ignore_frustum: false
 	};
 
@@ -9058,7 +9078,7 @@ function StandardMaterial(o)
 
 	this._samplers = [];
 
-	this._allows_instancing = true;
+	//this._allows_instancing = true; //WIP
 	this.needsUpdate = true;
 
 	if(o) 
@@ -9619,6 +9639,7 @@ attribute vec2 a_coord;\n\
 	attribute vec4 a_color;\n\
 	varying vec4 v_vertex_color;\n\
 #endif\n\
+#pragma event \"vs_attributes\"\n\
 \n\
 //varyings\n\
 varying vec3 v_pos;\n\
@@ -9652,6 +9673,7 @@ uniform float u_point_size;\n\
 //camera\n\
 uniform vec3 u_camera_eye;\n\
 uniform vec2 u_camera_planes;\n\
+uniform vec3 u_camera_perspective;\n\
 \n\
 #pragma event \"vs_functions\"\n\
 \n\
@@ -38489,9 +38511,12 @@ LS.registerComponent( GeometricPrimitive );
 function GlobalInfo(o)
 {
 	this.createProperty( "ambient_color", GlobalInfo.DEFAULT_AMBIENT_COLOR, "color" );
+	this.createProperty( "irradiance_color", [1,1,1], "color" );
 	this._render_settings = null;
 	this._textures = {};
-	this._irradiance = null; //in SH form of float32(3*9)
+	this.irradiance = null; //in SH form of float32(3*9)
+	this._irradiance_final = null; 
+	this._uniforms = {};
 
 	if(o)
 		this.configure(o);
@@ -38548,13 +38573,13 @@ GlobalInfo.prototype.computeIrradiance = function( position, near, far, backgrou
 	var temp_cubemap = new GL.Texture( texture_size, texture_size, texture_settings );
 	//renders scene to cubemap
 	LS.Components.IrradianceCache.captureIrradiance( position, cubemap, render_settings, near || 0.1, far || 1000, background_color || [0,0,0,1], true, temp_cubemap );
-	this._irradiance = LS.Components.IrradianceCache.computeSH( cubemap );
-	console.log( "IR factor", this._irradiance );
+	this.irradiance = LS.Components.IrradianceCache.computeSH( cubemap );
+	console.log( "IR factor", this.irradiance );
 }
 
 GlobalInfo.prototype.clearIrradiance = function()
 {
-	this._irradiance = null;
+	this.irradiance = null;
 }
 
 GlobalInfo.icon = "mini-icon-bg.png";
@@ -38563,12 +38588,29 @@ GlobalInfo.DEFAULT_AMBIENT_COLOR = vec3.fromValues(0.2, 0.2, 0.2);
 GlobalInfo.prototype.onAddedToScene = function(scene)
 {
 	scene.info = this;
+	LEvent.bind( scene, "fillSceneUniforms", this.fillSceneUniforms, this);
 }
 
 GlobalInfo.prototype.onRemovedFromScene = function(scene)
 {
 	//scene.info = null;
+	LEvent.unbind( scene, "fillSceneUniforms", this.fillSceneUniforms, this);
 }
+
+GlobalInfo.prototype.fillSceneUniforms = function()
+{
+	if(this.irradiance && 0)
+	{
+		if(!this._irradiance_final)
+			this._irradiance_final = new Float32Array( this.irradiance.length );
+		for(var i = 0; i < this._irradiance_final.length; ++i)
+			this._irradiance_final[i] = this.irradiance[i] * this._irradiance_color[i%3];
+
+		this._uniforms.u_sh_coeffs = this._irradiance_final;
+		LS.Renderer.enableFrameShaderBlock( "applyIrradiance", this._uniforms );
+	}
+}
+
 
 GlobalInfo.prototype.getResources = function(res)
 {
@@ -40143,6 +40185,7 @@ ParticleEmissor.prototype.updateMesh = function (camera)
 		if(Math.abs(s * particle_size) < MIN_SIZE)
 			continue; //ignore almost transparent particles
 
+		//fill the extra2 with scale and particle index
 		if(points)
 		{
 			vertices.set(p._pos, i*3);
@@ -40161,7 +40204,7 @@ ParticleEmissor.prototype.updateMesh = function (camera)
 			++i;
 			if(i*3 >= max_vertices)
 				break; //too many particles
-			continue;
+			continue; //continue to avoid computing the inflation of every particle
 		}
 
 		s *= particle_size;
@@ -40251,7 +40294,7 @@ ParticleEmissor.prototype.onCollectInstances = function(e, instances, options)
 	var camera = LS.Renderer._current_camera;
 
 	if(!this._material)
-		this._material = new LS.StandardMaterial({ shader_name:"lowglobal" });
+		this._material = new LS.StandardMaterial();
 
 	this._material.opacity = this.opacity - 0.01; //try to keep it under 1
 	this._material.setTexture( "color", this.texture );
@@ -40267,6 +40310,19 @@ ParticleEmissor.prototype.onCollectInstances = function(e, instances, options)
 	var RI = this._render_instance;
 	if(!RI)
 		this._render_instance = RI = new LS.RenderInstance(this._root, this);
+
+	if( this.point_particles )
+	{
+		//enable extra2
+		RI.addShaderBlock( LS.Shaders.extra2_block );
+		//enable point particles 
+		RI.addShaderBlock( ParticleEmissor.point_block );
+	}
+	else
+	{
+		RI.removeShaderBlock( LS.Shaders.extra2_block );
+		RI.removeShaderBlock( ParticleEmissor.point_block );
+	}
 
 	if(this.follow_emitter)
 		mat4.translate( RI.matrix, ParticleEmissor._identity, this._root.transform._position );
@@ -40286,12 +40342,12 @@ ParticleEmissor.prototype.onCollectInstances = function(e, instances, options)
 	{
 		RI.setMesh( this._mesh, gl.POINTS );
 		RI.uniforms.u_point_size = this.particle_size;
-		RI.setRange(0, this._visible_particles);
+		RI.setRange(0, this._visible_particles );
 	}
 	else
 	{
 		RI.setMesh( this._mesh, gl.TRIANGLES );
-		RI.setRange(0, this._visible_particles * 6); //6 vertex per particle
+		RI.setRange(0, this._visible_particles * 6 ); //6 vertex per particle
 		delete RI.uniforms["u_point_size"];
 	}
 
@@ -40303,11 +40359,17 @@ LS.Particle = Particle;
 LS.registerComponent(ParticleEmissor);
 
 
+//@paraboloid render
+var point_code = "\n\
+	gl_PointSize = u_point_size * a_extra2.x * u_viewport.w * u_camera_perspective.z / gl_Position.w;\n\
+";
+
+var pointparticles_block = ParticleEmissor.point_block = new LS.ShaderBlock("pointparticles");
+pointparticles_block.bindEvent("vs_final", point_code);
+pointparticles_block.register();
 
 
-//shader
-// - apply light per vertex before expanding
-// - inflate with camera vectors
+
 
 ///@FILE:../src/components/label.js
 ///@INFO: UNCOMMON
@@ -43196,6 +43258,7 @@ ShaderMaterial.irradiance_block = irradiance_block;
 irradiance_block.addCode( GL.FRAGMENT_SHADER, irradiance_code, irradiance_disabled_code );
 irradiance_block.register( true );
 
+//single probe
 var irradiance_single_code = "\n\
 	uniform vec3 u_sh_coeffs[9];\n\
 	" + IrradianceCache.include_code + "\n\
@@ -43216,7 +43279,6 @@ var irradiance_single_code = "\n\
 	}\n\
 ";
 
-//single
 var irradiance_single_block = new LS.ShaderBlock("applyIrradianceSingle");
 ShaderMaterial.irradiance_single_block = irradiance_single_block;
 irradiance_single_block.addCode( GL.FRAGMENT_SHADER, irradiance_single_code, irradiance_disabled_code );

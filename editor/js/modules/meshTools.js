@@ -332,6 +332,96 @@ var MeshTools = {
 		return true;
 	},
 
+	filterTriangleByVolume: function(V1,V2,V3,i)
+	{
+		var volume = SelectionModule.selection_volume;
+		if( !BBox.isPointInside( volume, V1 ) ||
+			!BBox.isPointInside( volume, V2 ) ||
+			!BBox.isPointInside( volume, V3 ) )
+			return false;
+		return true;
+	},
+
+	filterTriangles: function( mesh, model, filter_func )
+	{
+		var vertices_buffer = mesh.getBuffer("vertices"); 
+		var vertices = vertices_buffer.data;
+		var indices_buffer = mesh.getIndexBuffer("triangles");
+		var v1m = vec3.create();
+		var v2m = vec3.create();
+		var v3m = vec3.create();
+		var final_mesh = { vertices: [], indices: [] };
+		if(indices_buffer)
+		{
+			var last_index = 0;
+			var new_indices = [];
+			var indices_remap = {};
+			var indices = indices_buffer.data;
+			for(var i = 0; i < indices.length; i+=3)
+			{
+				var index1 = indices[i];
+				var index2 = indices[i+1];
+				var index3 = indices[i+2];
+				var V1 = vertices.subarray( index1*3, index1*3+3 );
+				var V2 = vertices.subarray( index2*3, index2*3+3 );
+				var V3 = vertices.subarray( index3*3, index3*3+3 );
+				if(model)
+				{
+					V1 = vec3.transformMat4( v1m, V1, model );
+					V2 = vec3.transformMat4( v2m, V2, model );
+					V3 = vec3.transformMat4( v3m, V3, model );
+				}
+
+				if( !filter_func( V1, V2, V3, i ) )
+					continue;
+
+				for( var w = 0; w < 3; ++w )
+				{
+					var index = indices[i + w];
+					var final_index = indices_remap[index];
+					if( final_index != null )
+					{
+						new_indices.push( final_index );
+						continue;
+					}
+
+					final_index = last_index++;
+					new_indices.push( final_index );
+					indices_remap[index] = final_index;
+
+					for(var j in mesh.vertexBuffers)
+					{
+						var buffer = mesh.vertexBuffers[j];
+						var final_data = final_mesh[j];
+						if(!final_data)
+							final_data = final_mesh[j] = [];
+
+						for(var k = 0; k < buffer.spacing; ++k)
+							final_data.push( buffer.data[ index*buffer.spacing + k ] );
+					}
+
+					//TODO: groups
+				}
+			}
+
+			//all out
+			if(final_mesh.vertices.length == 0)
+				return null;
+
+			final_mesh = new GL.Mesh( final_mesh, { triangles: new_indices } );
+			final_mesh.info = mesh.info || {};
+			final_mesh.info.groups = [];
+			if(mesh.bones)
+				final_mesh.bones = mesh.bones;
+			if(mesh.bind_matrix)
+				final_mesh.bind_matrix = new Float32Array( mesh.bind_matrix );
+			final_mesh.updateBoundingBox();
+			return final_mesh;
+		}
+		else //not indexed
+			throw("not indexed not supported");
+	},
+
 	deindexMesh: function(mesh)
 	{
 		var indices_buffer = mesh.getIndexBuffer("triangles");
@@ -667,6 +757,33 @@ GL.Mesh.prototype.inspect = function( widgets, skip_default_widgets )
 		RenderModule.requestFrame();
 		widgets.refresh();
 	} );
+
+	var filter_mode = "volume";
+	widgets.addCombo("Filter", filter_mode, { values:["volume"], callback: function(v){
+		filter_mode = v;
+	}});
+
+	widgets.addButton(null, "Filter triangles", function(){
+		var func = null;
+		if(filter_mode == "volume")
+			func = MeshTools.filterTriangleByVolume;
+		if(!func)
+			return;
+		var node = SelectionModule.getSelectedNode();
+		var model = null;
+		if( node && node.transform )
+			model = node.transform.getGlobalMatrix();
+		var new_mesh = MeshTools.filterTriangles( mesh, model, func );
+		if(!new_mesh)
+		{
+			console.log("mesh empty!");
+			return;
+		}
+		LS.RM.registerResource( mesh.filename, new_mesh );
+		LS.RM.resourceModified( new_mesh );
+		RenderModule.requestFrame();
+		widgets.refresh();
+	});
 
 	widgets.addButton(null, "De-index", function(){
 		if( MeshTools.deindexMesh( mesh ) )

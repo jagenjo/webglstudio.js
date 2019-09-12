@@ -36,6 +36,11 @@
         DEFAULT_SHADOW_COLOR: "rgba(0,0,0,0.5)",
         DEFAULT_GROUP_FONT: 24,
 
+		WIDGET_BGCOLOR: "#222",
+		WIDGET_OUTLINE_COLOR: "#666",
+		WIDGET_TEXT_COLOR: "#DDD",
+		WIDGET_SECONDARY_TEXT_COLOR: "#999",
+
         LINK_COLOR: "#9A9",
         EVENT_LINK_COLOR: "#A86",
         CONNECTING_LINK_COLOR: "#AFA",
@@ -8043,8 +8048,10 @@ LGraphNode.prototype.executeAction = function(action)
         var show_text = this.ds.scale > 0.5;
         ctx.save();
         ctx.globalAlpha = this.editor_alpha;
-        var outline_color = "#666";
-        var background_color = "#222";
+        var outline_color = LiteGraph.WIDGET_OUTLINE_COLOR;
+        var background_color = LiteGraph.WIDGET_BGCOLOR;
+        var text_color = LiteGraph.WIDGET_TEXT_COLOR;
+		var secondary_text_color = LiteGraph.WIDGET_SECONDARY_TEXT_COLOR;
         var margin = 15;
 
         for (var i = 0; i < widgets.length; ++i) {
@@ -8069,7 +8076,7 @@ LGraphNode.prototype.executeAction = function(action)
                     ctx.strokeRect(margin, y, width - margin * 2, H);
                     if (show_text) {
                         ctx.textAlign = "center";
-                        ctx.fillStyle = "#AAA";
+                        ctx.fillStyle = text_color;
                         ctx.fillText(w.name, width * 0.5, y + H * 0.7);
                     }
                     break;
@@ -8092,11 +8099,11 @@ LGraphNode.prototype.executeAction = function(action)
                     );
                     ctx.fill();
                     if (show_text) {
-                        ctx.fillStyle = "#999";
+                        ctx.fillStyle = secondary_text_color;
                         if (w.name != null) {
                             ctx.fillText(w.name, margin * 2, y + H * 0.7);
                         }
-                        ctx.fillStyle = w.value ? "#DDD" : "#888";
+                        ctx.fillStyle = w.value ? text_color : secondary_text_color;
                         ctx.textAlign = "right";
                         ctx.fillText(
                             w.value
@@ -8127,7 +8134,7 @@ LGraphNode.prototype.executeAction = function(action)
                     }
                     if (show_text) {
                         ctx.textAlign = "center";
-                        ctx.fillStyle = "#DDD";
+                        ctx.fillStyle = text_color;
                         ctx.fillText(
                             w.name + "  " + Number(w.value).toFixed(3),
                             width * 0.5,
@@ -8145,7 +8152,7 @@ LGraphNode.prototype.executeAction = function(action)
                     ctx.fill();
                     ctx.stroke();
                     if (show_text) {
-                        ctx.fillStyle = "#AAA";
+                        ctx.fillStyle = text_color;
                         ctx.beginPath();
                         ctx.moveTo(margin + 16, posY + 5);
                         ctx.lineTo(margin + 6, posY + H * 0.5);
@@ -8154,9 +8161,9 @@ LGraphNode.prototype.executeAction = function(action)
                         ctx.lineTo(width - margin - 6, posY + H * 0.5);
                         ctx.lineTo(width - margin - 16, posY + H - 5);
                         ctx.fill();
-                        ctx.fillStyle = "#999";
+                        ctx.fillStyle = secondary_text_color;
                         ctx.fillText(w.name, margin * 2 + 5, y + H * 0.7);
-                        ctx.fillStyle = "#DDD";
+                        ctx.fillStyle = text_color;
                         ctx.textAlign = "right";
                         if (w.type == "number") {
                             ctx.fillText(
@@ -8187,11 +8194,11 @@ LGraphNode.prototype.executeAction = function(action)
                     ctx.fill();
                     ctx.stroke();
                     if (show_text) {
-                        ctx.fillStyle = "#999";
+                        ctx.fillStyle = secondary_text_color;
                         if (w.name != null) {
                             ctx.fillText(w.name, margin * 2, y + H * 0.7);
                         }
-                        ctx.fillStyle = "#DDD";
+                        ctx.fillStyle = text_color;
                         ctx.textAlign = "right";
                         ctx.fillText(w.value, width - margin * 2, y + H * 0.7);
                     }
@@ -14120,16 +14127,16 @@ if (typeof exports != "undefined") {
 
     LiteGraph.registerNodeType("math/formula", MathFormula);
 
-    function Math3DVec2ToXYZ() {
+    function Math3DVec2ToXY() {
         this.addInput("vec2", "vec2");
         this.addOutput("x", "number");
         this.addOutput("y", "number");
     }
 
-    Math3DVec2ToXYZ.title = "Vec2->XY";
-    Math3DVec2ToXYZ.desc = "vector 2 to components";
+    Math3DVec2ToXY.title = "Vec2->XY";
+    Math3DVec2ToXY.desc = "vector 2 to components";
 
-    Math3DVec2ToXYZ.prototype.onExecute = function() {
+    Math3DVec2ToXY.prototype.onExecute = function() {
         var v = this.getInputData(0);
         if (v == null) {
             return;
@@ -14139,7 +14146,7 @@ if (typeof exports != "undefined") {
         this.setOutputData(1, v[1]);
     };
 
-    LiteGraph.registerNodeType("math3d/vec2-to-xyz", Math3DVec2ToXYZ);
+    LiteGraph.registerNodeType("math3d/vec2-to-xy", Math3DVec2ToXY);
 
     function Math3DXYToVec2() {
         this.addInputs([["x", "number"], ["y", "number"]]);
@@ -14533,182 +14540,6 @@ if (typeof exports != "undefined") {
     };
 
     LiteGraph.registerNodeType("math3d/operation", Math3DOperation);
-
-    function Math3DVec2ToXYZ() {
-        this.addInput("vec2", "vec2");
-        this.addOutput("x", "number");
-        this.addOutput("y", "number");
-    }
-
-    Math3DVec2ToXYZ.title = "Vec2->XY";
-    Math3DVec2ToXYZ.desc = "vector 2 to components";
-
-    Math3DVec2ToXYZ.prototype.onExecute = function() {
-        var v = this.getInputData(0);
-        if (v == null) {
-            return;
-        }
-
-        this.setOutputData(0, v[0]);
-        this.setOutputData(1, v[1]);
-    };
-
-    LiteGraph.registerNodeType("math3d/vec2-to-xyz", Math3DVec2ToXYZ);
-
-    function Math3DXYToVec2() {
-        this.addInputs([["x", "number"], ["y", "number"]]);
-        this.addOutput("vec2", "vec2");
-        this.properties = { x: 0, y: 0 };
-        this._data = new Float32Array(2);
-    }
-
-    Math3DXYToVec2.title = "XY->Vec2";
-    Math3DXYToVec2.desc = "components to vector2";
-
-    Math3DXYToVec2.prototype.onExecute = function() {
-        var x = this.getInputData(0);
-        if (x == null) {
-            x = this.properties.x;
-        }
-        var y = this.getInputData(1);
-        if (y == null) {
-            y = this.properties.y;
-        }
-
-        var data = this._data;
-        data[0] = x;
-        data[1] = y;
-
-        this.setOutputData(0, data);
-    };
-
-    LiteGraph.registerNodeType("math3d/xy-to-vec2", Math3DXYToVec2);
-
-    function Math3DVec3ToXYZ() {
-        this.addInput("vec3", "vec3");
-        this.addOutput("x", "number");
-        this.addOutput("y", "number");
-        this.addOutput("z", "number");
-    }
-
-    Math3DVec3ToXYZ.title = "Vec3->XYZ";
-    Math3DVec3ToXYZ.desc = "vector 3 to components";
-
-    Math3DVec3ToXYZ.prototype.onExecute = function() {
-        var v = this.getInputData(0);
-        if (v == null) {
-            return;
-        }
-
-        this.setOutputData(0, v[0]);
-        this.setOutputData(1, v[1]);
-        this.setOutputData(2, v[2]);
-    };
-
-    LiteGraph.registerNodeType("math3d/vec3-to-xyz", Math3DVec3ToXYZ);
-
-    function Math3DXYZToVec3() {
-        this.addInputs([["x", "number"], ["y", "number"], ["z", "number"]]);
-        this.addOutput("vec3", "vec3");
-        this.properties = { x: 0, y: 0, z: 0 };
-        this._data = new Float32Array(3);
-    }
-
-    Math3DXYZToVec3.title = "XYZ->Vec3";
-    Math3DXYZToVec3.desc = "components to vector3";
-
-    Math3DXYZToVec3.prototype.onExecute = function() {
-        var x = this.getInputData(0);
-        if (x == null) {
-            x = this.properties.x;
-        }
-        var y = this.getInputData(1);
-        if (y == null) {
-            y = this.properties.y;
-        }
-        var z = this.getInputData(2);
-        if (z == null) {
-            z = this.properties.z;
-        }
-
-        var data = this._data;
-        data[0] = x;
-        data[1] = y;
-        data[2] = z;
-
-        this.setOutputData(0, data);
-    };
-
-    LiteGraph.registerNodeType("math3d/xyz-to-vec3", Math3DXYZToVec3);
-
-    function Math3DVec4ToXYZW() {
-        this.addInput("vec4", "vec4");
-        this.addOutput("x", "number");
-        this.addOutput("y", "number");
-        this.addOutput("z", "number");
-        this.addOutput("w", "number");
-    }
-
-    Math3DVec4ToXYZW.title = "Vec4->XYZW";
-    Math3DVec4ToXYZW.desc = "vector 4 to components";
-
-    Math3DVec4ToXYZW.prototype.onExecute = function() {
-        var v = this.getInputData(0);
-        if (v == null) {
-            return;
-        }
-
-        this.setOutputData(0, v[0]);
-        this.setOutputData(1, v[1]);
-        this.setOutputData(2, v[2]);
-        this.setOutputData(3, v[3]);
-    };
-
-    LiteGraph.registerNodeType("math3d/vec4-to-xyzw", Math3DVec4ToXYZW);
-
-    function Math3DXYZWToVec4() {
-        this.addInputs([
-            ["x", "number"],
-            ["y", "number"],
-            ["z", "number"],
-            ["w", "number"]
-        ]);
-        this.addOutput("vec4", "vec4");
-        this.properties = { x: 0, y: 0, z: 0, w: 0 };
-        this._data = new Float32Array(4);
-    }
-
-    Math3DXYZWToVec4.title = "XYZW->Vec4";
-    Math3DXYZWToVec4.desc = "components to vector4";
-
-    Math3DXYZWToVec4.prototype.onExecute = function() {
-        var x = this.getInputData(0);
-        if (x == null) {
-            x = this.properties.x;
-        }
-        var y = this.getInputData(1);
-        if (y == null) {
-            y = this.properties.y;
-        }
-        var z = this.getInputData(2);
-        if (z == null) {
-            z = this.properties.z;
-        }
-        var w = this.getInputData(3);
-        if (w == null) {
-            w = this.properties.w;
-        }
-
-        var data = this._data;
-        data[0] = x;
-        data[1] = y;
-        data[2] = z;
-        data[3] = w;
-
-        this.setOutputData(0, data);
-    };
-
-    LiteGraph.registerNodeType("math3d/xyzw-to-vec4", Math3DXYZWToVec4);
 
     function Math3DVec3Scale() {
         this.addInput("in", "vec3");
@@ -21262,8 +21093,6 @@ void main(void){\n\
 		}
 	}
 
-	LGraphGeometryEval.V = vec3.create();
-
 	LGraphGeometryEval.prototype.onExecute = function() {
 		var geometry = this.getInputData(0);
 		if(!geometry)
@@ -21304,7 +21133,7 @@ void main(void){\n\
 			else
 				this.geometry._version = geometry._version + 1;
 
-			var V = LGraphGeometryEval.V;
+			var V = vec3.create();
 			var vertices = this.vertices;
 			if(!vertices || this.vertices.length != geometry.vertices.length)
 				vertices = this.vertices = new Float32Array( geometry.vertices );

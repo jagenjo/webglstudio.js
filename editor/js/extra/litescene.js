@@ -24143,6 +24143,7 @@ EVENT.BEFORE_RENDER_SCENE = "beforeRenderScene";
 EVENT.COMPUTE_VISIBILITY = "computeVisibility";
 EVENT.AFTER_RENDER_SCENE = "afterRenderScene";
 EVENT.RENDER_HELPERS = "renderHelpers";
+EVENT.RENDER_PICKING = "renderPicking";
 EVENT.BEFORE_SHOW_FRAME_CONTEXT = "beforeShowFrameContext";
 EVENT.BEFORE_CAMERA_ENABLED = "beforeCameraEnabled";
 EVENT.AFTER_CAMERA_ENABLED = "afterCameraEnabled";
@@ -24575,7 +24576,10 @@ var Renderer = {
 
 		//render helpers (guizmos)
 		if(render_settings.render_helpers)
+		{
 			LEvent.trigger(this, EVENT.RENDER_HELPERS, camera );
+			LEvent.trigger(scene, EVENT.RENDER_HELPERS, camera );
+		}
 	},
 
 	//shows a RenderFrameContext to the viewport (warning, some components may do it bypassing this function)
@@ -43363,25 +43367,25 @@ Script.defineAPIFunction = function( func_name, target, event, info ) {
 }
 
 //init
-Script.defineAPIFunction( "onStart", Script.BIND_TO_SCENE, "start" );
-Script.defineAPIFunction( "onAwake", Script.BIND_TO_SCENE, "awake" );
-Script.defineAPIFunction( "onFinish", Script.BIND_TO_SCENE, "finish" );
+Script.defineAPIFunction( "onStart", Script.BIND_TO_SCENE, LS.EVENT.START );
+Script.defineAPIFunction( "onAwake", Script.BIND_TO_SCENE, LS.EVENT.AWAKE );
+Script.defineAPIFunction( "onFinish", Script.BIND_TO_SCENE, LS.EVENT.FINISH );
 Script.defineAPIFunction( "onPrefabReady", Script.BIND_TO_NODE, "prefabReady" );
 //behaviour
-Script.defineAPIFunction( "onUpdate", Script.BIND_TO_SCENE, "update" );
+Script.defineAPIFunction( "onUpdate", Script.BIND_TO_SCENE, LS.EVENT.UPDATE );
 Script.defineAPIFunction( "onFixedUpdate", Script.BIND_TO_SCENE, "fixedUpdate" );
 Script.defineAPIFunction( "onNodeClicked", Script.BIND_TO_NODE, "node_clicked" );
 Script.defineAPIFunction( "onClicked", Script.BIND_TO_NODE, "clicked" );
 //rendering
-Script.defineAPIFunction( "onSceneRender", Script.BIND_TO_SCENE, "beforeRender" );
-Script.defineAPIFunction( "onCollectRenderInstances", Script.BIND_TO_NODE, "collectRenderInstances" ); //TODO: move to SCENE
-Script.defineAPIFunction( "onRender", Script.BIND_TO_SCENE, "beforeRenderInstances" );
-Script.defineAPIFunction( "onAfterRender", Script.BIND_TO_SCENE, "afterRenderInstances" );
-Script.defineAPIFunction( "onAfterSceneRender", Script.BIND_TO_SCENE, "afterRender" );
-Script.defineAPIFunction( "onRenderHelpers", Script.BIND_TO_SCENE, "renderHelpers" );
-Script.defineAPIFunction( "onRenderGUI", Script.BIND_TO_SCENE, "renderGUI" );
-Script.defineAPIFunction( "onEnableFrameContext", Script.BIND_TO_SCENE, "enableFrameContext" );
-Script.defineAPIFunction( "onShowFrameContext", Script.BIND_TO_SCENE, "showFrameContext" );
+Script.defineAPIFunction( "onSceneRender", Script.BIND_TO_SCENE, LS.EVENT.BEFORE_RENDER );
+Script.defineAPIFunction( "onCollectRenderInstances", Script.BIND_TO_NODE, LS.EVENT.COLLECT_RENDER_INSTANCES ); //TODO: move to SCENE
+Script.defineAPIFunction( "onRender", Script.BIND_TO_SCENE, LS.EVENT.BEFORE_RENDER_INSTANCES );
+Script.defineAPIFunction( "onAfterRender", Script.BIND_TO_SCENE, LS.EVENT.AFTER_RENDER_INSTANCES );
+Script.defineAPIFunction( "onAfterSceneRender", Script.BIND_TO_SCENE, LS.EVENT.AFTER_RENDER );
+Script.defineAPIFunction( "onRenderHelpers", Script.BIND_TO_SCENE, LS.EVENT.RENDER_HELPERS );
+Script.defineAPIFunction( "onRenderGUI", Script.BIND_TO_SCENE, LS.EVENT.RENDER_GUI );
+Script.defineAPIFunction( "onEnableFrameContext", Script.BIND_TO_SCENE, LS.EVENT.ENABLE_FRAME_CONTEXT );
+Script.defineAPIFunction( "onShowFrameContext", Script.BIND_TO_SCENE, LS.EVENT.SHOW_FRAME_CONTEXT );
 //input
 Script.defineAPIFunction( "onMouseDown", Script.BIND_TO_SCENE, "mousedown" );
 Script.defineAPIFunction( "onMouseMove", Script.BIND_TO_SCENE, "mousemove" );

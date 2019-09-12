@@ -39,8 +39,8 @@ var EditorView = {
 
 		LS.Renderer.on_render_gui = this.onRenderGUI.bind(this);
 
-		LEvent.bind( LS.Renderer, "renderHelpers", this.renderView.bind(this));
-		LEvent.bind( LS.Renderer, "renderPicking", this.renderPicking.bind(this));
+		LEvent.bind( LS.GlobalScene, LS.EVENT.RENDER_HELPERS, this.renderView.bind(this));
+		LEvent.bind( LS.GlobalScene, LS.EVENT.RENDER_PICKING, this.renderPicking.bind(this));
 	},
 
 	onShowPreferencesPanel: function(name,widgets)

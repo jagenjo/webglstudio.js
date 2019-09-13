@@ -154,7 +154,7 @@ var EditorView = {
 		if(r)
 			return r;
 
-		if(e.button == 2 && e.click_time < 200)
+		if(e.button == LS.Input.RIGHT_MOUSE_BUTTON && e.click_time < 200)
 		{
 			var instance_info = LS.Picking.getInstanceAtCanvasPosition( e.canvasx, e.canvasy, ToolUtils.getCamera() );
 			var instance = instance_info;

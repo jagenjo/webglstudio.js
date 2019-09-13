@@ -2752,9 +2752,10 @@ var Input = {
 		RIGHT:2
 	},
 
-	LEFT_MOUSE_BUTTON: 1,
-	MIDDLE_MOUSE_BUTTON: 2,
-	RIGHT_MOUSE_BUTTON: 3,
+	//according to the specification
+	LEFT_MOUSE_BUTTON: 0,
+	MIDDLE_MOUSE_BUTTON: 1,
+	RIGHT_MOUSE_BUTTON: 2,
 
 	Keyboard: null, //gl.keys
 	Keyboard_previous: {},
@@ -2790,7 +2791,7 @@ var Input = {
 		for(var i in this.Keyboard_previous) //first reset
 			this.Keyboard_previous[i] = false;
 		for(var i in this.Keyboard) //then copy
-			this.Keyboard_previous[i] = true;
+			this.Keyboard_previous[i] = this.Keyboard[i];
 
 		//copy prev mouse state (this is only necessary if the update is not called from litegl main loop)
 		this.Mouse.last_buttons = this.Mouse.buttons;

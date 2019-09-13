@@ -76,7 +76,7 @@ var cameraTool = {
 			ToolUtils.testPerpendicularPlane( e.canvasx, gl.canvas.height - e.canvasy, center, cameraTool.collision );
 		}
 
-		if(e.which == GL.RIGHT_MOUSE_BUTTON)
+		if(e.which == 3) //GL.RIGHT_MOUSE_BUTTON
 		{
 			e.cancelBubble = true;
 			if( gl.canvas.requestPointerLock )
@@ -229,8 +229,6 @@ var cameraTool = {
 			controls = this.controls[ "RIGHT_MOUSE" ];
 		if( !controls && !this.first_person_mode )
 			return;
-
-
 
 		var action;
 		if( this.first_person_mode )

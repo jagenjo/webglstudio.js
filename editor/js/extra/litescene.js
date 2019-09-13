@@ -12644,6 +12644,3379 @@ MissingComponent.prototype.serialize = function()
 
 LS.MissingComponent = MissingComponent;
 
+///@FILE:../src/scene.js
+///@INFO: BASE
+/**
+* The Scene contains all the info about the Scene and nodes
+*
+* @class Scene
+* @constructor
+*/
+
+//event definitions for scene
+EVENT.INIT = "init";
+EVENT.CLEAR = "clear";
+EVENT.PRECONFIGURE = "preConfigure";
+EVENT.CONFIGURE = "configure";
+EVENT.CHANGE = "change";
+EVENT.BEFORE_LOAD = "beforeLoad";
+EVENT.LOAD = "load";
+EVENT.LOAD_COMPLETED = "load_completed";
+EVENT.BEFORE_RELOAD = "beforeReload";
+EVENT.RELOAD = "reload";
+EVENT.AWAKE = "awake";
+EVENT.START = "start";
+EVENT.PAUSE = "pause";
+EVENT.UNPAUSE = "unpause";
+EVENT.BEFORE_UPDATE = "before_update";
+EVENT.UPDATE = "update";
+EVENT.FIXED_UPDATE = "fixedUpdate";
+EVENT.AFTER_UPDATE = "afterUpdate";
+EVENT.COLLECT_RENDER_INSTANCES = "collectRenderInstances";
+EVENT.COLLECT_PHYSIC_INSTANCES = "collectPhysicInstances";
+EVENT.COLLECT_LIGHTS = "collectLights";
+EVENT.COLLECT_CAMERAS = "collectCameras";
+EVENT.COLLECT_DATA = "collectData";
+EVENT.SERIALIZE = "serialize";
+EVENT.FINISH = "finish";
+EVENT.NODE_ADDED = "nodeAdded";
+EVENT.NODE_REMOVED = "nodeRemoved";
+EVENT.REQUEST_FRAME = "requestFrame";
+
+
+
+function Scene()
+{
+	this.uid = LS.generateUId("TREE-");
+
+	this._state = LS.STOPPED;
+
+	this._root = new LS.SceneNode("root");
+	this._root.removeAllComponents();
+	this._root._is_root  = true;
+	this._root._in_tree = this;
+	this._nodes = [ this._root ];
+	this._nodes_by_name = { "root" : this._root };
+	this._nodes_by_uid = {};
+	this._nodes_by_uid[ this._root.uid ] = this._root;
+	this._components_by_uid = {};
+
+	//used to stored info when collecting from nodes
+	this._uniforms = {};
+	this._instances = [];
+	this._lights = [];
+	this._cameras = [];
+	this._colliders = [];
+	this._reflection_probes = [];
+
+	//MOST OF THE PARAMETERS ARE CREATED IN init() METHOD
+
+	//in case the resources base path are located somewhere else, if null the default is used
+	this.external_repository = null;
+
+	//work in progress, not finished yet. This will contain all the objects in cells
+	this._spatial_container = new LS.SpatialContainer();
+
+	this.external_scripts = []; //external scripts that must be loaded before initializing the scene (mostly libraries used by this scene)
+	this.global_scripts = []; //scripts that are located in the resources folder and must be loaded before launching the app
+	this.preloaded_resources = {}; //resources that must be loaded, appart from the ones in the components
+
+	//track with global animations of the scene
+	this.animation = null;
+
+	//FEATURES NOT YET FULLY IMPLEMENTED
+	this._local_resources = {}; //used to store resources that go with the scene
+	this.texture_atlas = null;
+
+	this.layer_names = ["main","secondary"];
+
+	LEvent.bind( this, "treeItemAdded", this.onNodeAdded, this );
+	LEvent.bind( this, "treeItemRemoved", this.onNodeRemoved, this );
+
+	this._shaderblock_info = null;
+
+	this.init();
+}
+
+//LS.extendClass( Scene, ComponentContainer ); //scene could also have components
+
+Object.defineProperty( Scene.prototype, "root", {
+	enumerable: true,
+	get: function() {
+		return this._root;
+	},
+	set: function(v) {
+		throw("Root node cannot be replaced");
+	}
+});
+
+Object.defineProperty( Scene.prototype, "time", {
+	enumerable: true,
+	get: function() {
+		return this._time;
+	},
+	set: function(v) {
+		throw("Cannot set time directly");
+	}
+});
+
+Object.defineProperty( Scene.prototype, "state", {
+	enumerable: true,
+	get: function() {
+		return this._state;
+	},
+	set: function(v) {
+		throw("Cannot set state directly, use start, finish, pause, unpause");
+	}
+});
+
+Object.defineProperty( Scene.prototype, "globalTime", {
+	enumerable: true,
+	get: function() {
+		return this._global_time;
+	},
+	set: function(v) {
+		throw("Cannot set global_time directly");
+	}
+});
+
+Object.defineProperty( Scene.prototype, "frame", {
+	enumerable: true,
+	get: function() {
+		return this._frame;
+	},
+	set: function(v) {
+		throw("Cannot set frame directly");
+	}
+});
+
+//Some useful events
+Scene.supported_events = [LS.EVENT.START,LS.EVENT.UPDATE,LS.EVENT.FINISH,LS.EVENT.CLEAR,LS.EVENT.BEFORE_RELOAD,LS.EVENT.CHANGE,EVENT.AFTER_RENDER,LS.EVENT.CONFIGURE,EVENT.NODE_ADDED,"nodeChangeParent","nodeComponentRemoved",LS.EVENT.RELOAD,"renderPicking","scene_loaded",LS.EVENT.SERIALIZE];
+
+//methods
+
+/**
+* This initializes the content of the scene.
+* Call it to clear the scene content
+*
+* @method init
+* @return {Boolean} Returns true on success
+*/
+Scene.prototype.init = function()
+{
+	this.id = "";
+	//this.materials = {}; //shared materials cache: moved to LS.RM.resources
+	this.external_repository = null;
+
+	this.global_scripts = [];
+	this.external_scripts = [];
+	this.preloaded_resources = {};
+	this.texture_atlas = null;
+
+	this._root.removeAllComponents();
+	this._root.uid = LS.generateUId("NODE-");
+
+	this._nodes = [ this._root ];
+	this._nodes_by_name = { "root": this._root };
+	this._nodes_by_uid = {};
+	this._nodes_by_uid[ this._root.uid ] = this._root;
+	this._components_by_uid = {};
+
+	//WIP
+	this._spatial_container.clear();
+
+	//default components
+	this.info = new LS.Components.GlobalInfo();
+	this._root.addComponent( this.info );
+	this._root.addComponent( new LS.Camera({ eye:[0,100,100], center:[0,0,0]} ) );
+	this._root.addComponent( new LS.Light({ position: vec3.fromValues(100,100,100), target: vec3.fromValues(0,0,0) }) );
+
+	this._frame = 0;
+	this._last_collect_frame = -1; //force collect
+	this._state = LS.STOPPED;
+
+	this._time = 0;
+	this._global_time = 0; //in seconds
+	this._start_time = 0; //in seconds
+	this._last_dt = 1/60; //in seconds
+	this._must_redraw = true;
+	this._fixed_update_timestep = 1/60;
+	this._remaining_fixed_update_time = 0;
+
+	if(this.selected_node) 
+		delete this.selected_node;
+
+	this.layer_names = ["main","secondary"];
+	this.animation = null;
+	this._local_resources = {}; //not used yet
+	this.extra = {};
+}
+
+/**
+* Clears the scene using the init function
+* and trigger a "clear" LEvent
+*
+* @method clear
+*/
+Scene.prototype.clear = function()
+{
+	//remove all nodes to ensure no lose callbacks are left
+	while(this._root._children && this._root._children.length)
+		this._root.removeChild(this._root._children[0], false, true ); //recompute_transform, remove_components
+
+	//remove scene components
+	this._root.processActionInComponents("onRemovedFromNode",this); //send to components
+	this._root.processActionInComponents("onRemovedFromScene",this); //send to components
+
+	this._instances.length = 0;
+	this._lights.length = 0;
+	this._cameras.length = 0;
+	this._colliders.length = 0;
+	this._reflection_probes.length = 0;
+	this._local_resources = {};
+
+	this.init();
+	/**
+	 * Fired when the whole scene is cleared
+	 *
+	 * @event clear
+	 */
+	LEvent.trigger(this, EVENT.CLEAR );
+	LEvent.trigger(this, EVENT.CHANGE );
+}
+
+/**
+* Configure the Scene using an object (the object can be obtained from the function serialize)
+* Inserts the nodes, configure them, and change the parameters
+* ATTENTION: Destroys all previously existing info
+*
+* @method configure
+* @param {Object} scene_info the object containing all the info about the nodes and config of the scene
+*/
+Scene.prototype.configure = function( scene_info )
+{
+	if(!scene_info || scene_info.constructor === String)
+		throw("Scene configure requires object");
+
+	LEvent.trigger(this, EVENT.PRECONFIGURE, scene_info);
+
+	this._root.removeAllComponents(); //remove light, camera, skybox
+
+	//this._components = [];
+	//this.camera = this.light = null; //legacy
+
+	if(scene_info.uid)
+		this.uid = scene_info.uid;
+
+	if((scene_info.object_class || scene_info.object_type) != "Scene") //legacy
+		console.warn("Warning: object set to scene doesnt look like a propper one.", scene_info);
+
+	if(scene_info.external_repository)
+		this.external_repository = scene_info.external_repository;
+
+	//extra info that the user wanted to save (comments, etc)
+	if(scene_info.extra)
+		this.extra = scene_info.extra;
+
+	//this clears all the nodes
+	if(scene_info.root)
+	{
+		this._spatial_container.clear(); // is this necessary?
+		LS._pending_encoded_objects = [];
+		this._root.configure( scene_info.root );
+		LS.resolvePendingEncodedObjects();
+	}
+
+	if( scene_info.global_scripts )
+		this.global_scripts = scene_info.global_scripts.concat();
+
+	if( scene_info.external_scripts )
+		this.external_scripts = scene_info.external_scripts.concat();
+
+	if( scene_info.preloaded_resources )
+		this.preloaded_resources = LS.cloneObject( scene_info.preloaded_resources );
+
+	if( scene_info.local_resources )
+		this._local_resources = scene_info.local_resources;
+
+	if( scene_info.layer_names )
+		this.layer_names = scene_info.layer_names.concat();
+
+	if( scene_info.animation )
+		this.animation = new LS.Animation( scene_info.animation );
+
+	//if(scene_info.components)
+	//	this.configureComponents( scene_info );
+
+	if( scene_info.editor )
+		this._editor = scene_info.editor;
+
+	if( scene_info.texture_atlas )
+		this.texture_atlas = scene_info.texture_atlas;
+
+	/**
+	 * Fired after the scene has been configured
+	 * @event configure
+	 * @param {Object} scene_info contains all the info to do the configuration
+	 */
+	LEvent.trigger(this, EVENT.CONFIGURE,scene_info);
+	LEvent.trigger(this, EVENT.AWAKE );
+	/**
+	 * Fired when something changes in the scene
+	 * @event change
+	 * @param {Object} scene_info contains all the info to do the configuration
+	 */
+	LEvent.trigger(this, EVENT.CHANGE );
+}
+
+/**
+* Creates and object containing all the info about the scene and nodes.
+* The oposite of configure.
+* It calls the serialize method in every node
+*
+* @method serialize
+* @return {Object} return a JS Object with all the scene info
+*/
+
+Scene.prototype.serialize = function( simplified  )
+{
+	var o = {};
+
+	o.uid = this.uid;
+	o.object_class = LS.getObjectClassName(this);
+
+	o.external_repository = this.external_repository;
+
+	//o.nodes = [];
+	o.extra = this.extra || {};
+
+	//add nodes
+	o.root = this.root.serialize( false, simplified );
+
+	if(this.animation)
+		o.animation = this.animation.serialize();
+
+	o.layer_names = this.layer_names.concat();
+	o.global_scripts = this.global_scripts.concat();
+	o.external_scripts = this.external_scripts.concat();
+	o.preloaded_resources = LS.cloneObject( this.preloaded_resources );
+	o.texture_atlas = LS.cloneObject( this.texture_atlas );
+	o.local_resources = LS.cloneObject( this._local_resources );
+
+	if( this._editor )
+		o.editor = this._editor;
+
+	//this.serializeComponents( o );
+
+	/**
+	 * Fired after the scene has been serialized to an object
+	 * @event serialize
+	 * @param {Object} object to store the persistent info
+	 */
+	LEvent.trigger(this,EVENT.SERIALIZE,o);
+
+	return o;
+}
+
+
+/**
+* Assigns a scene from a JSON description (or WBIN,ZIP)
+*
+* @method setFromJSON
+* @param {String} data JSON object containing the scene
+* @param {Function}[on_complete=null] the callback to call when the scene is ready
+* @param {Function}[on_error=null] the callback to call if there is a  loading error
+* @param {Function}[on_progress=null] it is called while loading the scene info (not the associated resources)
+* @param {Function}[on_resources_loaded=null] it is called when all the resources had been loaded
+* @param {Function}[on_scripts_loaded=null] the callback to call when the loading is complete but before assigning the scene
+*/
+
+Scene.prototype.setFromJSON = function( data, on_complete, on_error, on_progress, on_resources_loaded, on_scripts_loaded )
+{
+	if(!data)
+		return;
+
+	var that = this;
+
+	if(data.constructor === String)
+	{
+		try
+		{
+			data = JSON.parse( data );
+		}
+		catch (err)
+		{
+			console.log("Error: " + err );
+			return;
+		}
+	}
+
+	var scripts = LS.Scene.getScriptsList( data, true );
+
+	//check JSON for special scripts
+	if ( scripts.length )
+		this.loadScripts( scripts, function(){ inner_success( data ); }, inner_error );
+	else
+		inner_success( data );
+
+	function inner_success( response )
+	{
+		if(on_scripts_loaded)
+			on_scripts_loaded(that,response);
+
+		that.init();
+		that.configure(response);
+
+		if( that.texture_atlas )
+			LS.RM.loadTextureAtlas( that.texture_atlas, inner_preloaded_all );
+		else
+			inner_preloaded_all();
+	}
+
+	function inner_preloaded_all()
+	{
+		that.loadResources( inner_all_loaded );
+		/**
+		 * Fired when the scene has been loaded but before the resources
+		 * @event load
+		 */
+		LEvent.trigger(that, EVENT.LOAD );
+
+		if(!LS.ResourcesManager.isLoading())
+			inner_all_loaded();
+
+		if(on_complete)
+			on_complete(that);
+	}
+
+	function inner_all_loaded()
+	{
+		if(on_resources_loaded)
+			on_resources_loaded(that);
+		/**
+		 * Fired after all resources have been loaded
+		 * @event loadCompleted
+		 */
+		LEvent.trigger( that, EVENT.LOAD_COMPLETED );
+	}
+
+	function inner_error(err,script_url)
+	{
+		console.error("Error loading script: " + script_url);
+		if(on_error)
+			on_error(err);
+	}
+}
+
+
+/**
+* Loads a scene from a relative url pointing to a JSON description (or WBIN,ZIP)
+* Warning: this url is not passed through the LS.ResourcesManager so the url is absolute
+*
+* @method load
+* @param {String} url where the JSON object containing the scene is stored
+* @param {Function}[on_complete=null] the callback to call when the loading is complete
+* @param {Function}[on_error=null] the callback to call if there is a  loading error
+* @param {Function}[on_progress=null] it is called while loading the scene info (not the associated resources)
+* @param {Function}[on_resources_loaded=null] it is called when all the resources had been loaded
+*/
+
+Scene.prototype.load = function( url, on_complete, on_error, on_progress, on_resources_loaded, on_loaded )
+{
+	if(!url)
+		return;
+
+	var that = this;
+
+	var extension = LS.ResourcesManager.getExtension( url );
+	var format_info = LS.Formats.getFileFormatInfo( extension );
+	if(!format_info) //hack, to avoid errors
+		format_info = { dataType: "json" };
+
+	//request scene file using our own library
+	LS.Network.request({
+		url: url,
+		nocache: true,
+		dataType: extension == "json" ? "json" : (format_info.dataType || "text"), //datatype of json is text...
+		success: extension == "json" ? inner_json_loaded : inner_data_loaded,
+		progress: on_progress,
+		error: inner_error
+	});
+
+	this._state = LS.LOADING;
+
+	/**
+	 * Fired before loading scene
+	 * @event beforeLoad
+	 */
+	LEvent.trigger(this,EVENT.BEFORE_LOAD);
+
+	function inner_data_loaded( response )
+	{
+		//process whatever we loaded (in case it is a pack)
+		LS.ResourcesManager.processResource( url, response, null, inner_data_processed );
+	}
+
+	function inner_data_processed( pack_url, pack )
+	{
+		if(!pack)
+			return;
+
+		//for DAEs
+		if( pack.object_class == "Scene")
+		{
+			inner_json_loaded( pack );
+			return;
+		}
+		else if( pack.object_class == "SceneNode") 
+		{
+			var root = pack.serialize();
+			inner_json_loaded( { object_class: "Scene", root: root } );
+			return;
+		}
+
+		//for packs
+		if( !pack._data || !pack._data["scene.json"] )
+		{
+			console.error("Error loading PACK, doesnt look like it has a valid scene inside");
+			return;
+		}
+		var scene = JSON.parse( pack._data["scene.json"] );
+
+		inner_json_loaded( scene );
+	}
+
+	function inner_json_loaded( response )
+	{
+		if( response.constructor !== Object )
+			throw("response must be object");
+
+		var scripts = LS.Scene.getScriptsList( response, true );
+
+		//check JSON for special scripts
+		if ( scripts.length )
+			that.loadScripts( scripts, function(){ inner_success(response); }, on_error );
+		else
+			inner_success( response );
+	}
+
+	function inner_success( response )
+	{
+		if(on_loaded)
+			on_loaded(that, url);
+
+		that.init();
+		that.configure(response);
+
+		if(on_complete)
+			on_complete(that, url);
+
+		that.loadResources( inner_all_loaded );
+		LEvent.trigger(that, EVENT.LOAD );
+
+		if(!LS.ResourcesManager.isLoading())
+			inner_all_loaded();
+	}
+
+	function inner_all_loaded()
+	{
+		if(on_resources_loaded)
+			on_resources_loaded(that, url);
+		LEvent.trigger(that, EVENT.LOAD_COMPLETED );
+	}
+
+	function inner_error(e)
+	{
+		var err_code = (e && e.target) ? e.target.status : 0;
+		console.warn("Error loading scene: " + url + " -> " + err_code);
+		if(on_error)
+			on_error(url, err_code, e);
+	}
+}
+
+
+/**
+* Loads a scene from a relative url pointing to a JSON description (or WBIN,ZIP)
+* It uses the resources folder as the root folder (in comparison with the regular load function)
+*
+* @method loadFromResources
+* @param {String} url where the JSON object containing the scene is stored
+* @param {Function}[on_complete=null] the callback to call when the loading is complete
+* @param {Function}[on_error=null] the callback to call if there is a  loading error
+* @param {Function}[on_progress=null] it is called while loading the scene info (not the associated resources)
+* @param {Function}[on_resources_loaded=null] it is called when all the resources had been loaded
+*/
+Scene.prototype.loadFromResources = function( url, on_complete, on_error, on_progress, on_resources_loaded )
+{
+	url = LS.ResourcesManager.getFullURL( url );
+	this.load( url, on_complete, on_error, on_progress, on_resources_loaded );
+}
+
+
+
+/**
+* Static method, returns a list of all the scripts that must be loaded, in order and with the full path
+*
+* @method Scene.getScriptsList
+* @param {Scene|Object} scene the object containing info about the scripts (could be a scene or a JSON object)
+* @param {Boolean} allow_local if we allow local resources
+* @param {Boolean} full_paths if true it will return the full path to every resource
+*/
+Scene.getScriptsList = function( scene, allow_local, full_paths )
+{
+	if(!scene)
+		throw("Scene.getScriptsList: scene cannot be null");
+
+	var scripts = [];
+	if ( scene.external_scripts && scene.external_scripts.length )
+		scripts = scripts.concat( scene.external_scripts );
+	if ( scene.global_scripts && scene.global_scripts.length )
+	{
+		for(var i in scene.global_scripts)
+		{
+			var script_url = scene.global_scripts[i];
+			if(!script_url || LS.ResourcesManager.getExtension( script_url ) != "js" )
+				continue;
+
+			var res = LS.ResourcesManager.getResource( script_url );
+			if(res)
+			{
+				if( allow_local )
+					script_url = LS.ResourcesManager.cleanFullpath( script_url );
+			}
+
+			if(full_paths)
+				script_url = LS.ResourcesManager.getFullURL( script_url );
+
+			scripts.push( script_url );
+		}
+	}
+	return scripts;
+}
+
+//reloads external and global scripts taking into account if they come from wbins
+Scene.prototype.loadScripts = function( scripts, on_complete, on_error, force_reload )
+{
+	if(!LS.allow_scripts)
+	{
+		console.error("LiteScene.allow_scripts is set to false, so scripts imported into this scene are ignored.");
+		if(on_complete)
+			on_complete();
+		return;
+	}
+
+	//get a list of scripts (they cannot be fullpaths)
+	scripts = scripts || LS.Scene.getScriptsList( this, true );
+
+	if(!scripts.length)
+	{
+		if(on_complete)
+			on_complete();
+		return;
+	}
+
+	if( LS._block_scripts )
+	{
+		console.error("Safety: LS.block_scripts enabled, cannot request script");
+		return;
+	}
+
+	//All this is to allow the use of scripts that are in memory (they came packed inside a WBin with the scene)
+	var final_scripts = [];
+	var revokable = [];
+
+	for(var i in scripts)
+	{
+		var script_url = scripts[i];
+		var is_external = this.external_scripts.indexOf( script_url ) != -1;
+		if( !is_external )
+		{
+			var res = LS.ResourcesManager.getResource( script_url );
+			if(!res || force_reload)
+			{
+				var final_url = LS.ResourcesManager.getFullURL( script_url );
+				final_scripts.push( final_url );
+				continue;
+			}
+
+			var blob = new Blob([res.data],{encoding:"UTF-8", type: 'text/plain;charset=UTF-8'});
+			var objectURL = URL.createObjectURL( blob );
+			final_scripts.push( objectURL );
+			revokable.push( objectURL );
+		}
+		else
+			final_scripts.push( script_url );
+	}
+
+	LS.Network.requestScript( final_scripts, inner_complete, on_error );
+
+	function inner_complete()
+	{
+		//revoke urls created
+		for(var i in revokable)
+			URL.revokeObjectURL( revokable[i] );
+
+		if(on_complete)
+			on_complete();
+	}
+}
+
+//used to ensure that components use the right class when the class comes from a global script
+Scene.prototype.checkComponentsCodeModification = function()
+{
+	for(var i = 0; i < this._nodes.length; ++i )
+	{
+		//current components
+		var node = this._nodes[i];
+		for(var j = 0; j < node._components.length; ++j)
+		{
+			var compo = node._components[j];
+			var class_name = LS.getObjectClassName( compo );
+			if( compo.constructor == LS.MissingComponent )
+				class_name = compo._comp_class;
+
+			var current_class = LS.Components[ class_name ];
+			if( !current_class || current_class == compo.constructor ) //already uses the right class
+				continue;
+
+			//replace class instance in-place
+			var data = compo.serialize();
+			var new_compo = new current_class( data );
+			var index = node.getIndexOfComponent( compo );
+			node.removeComponent( compo );
+			node.addComponent( new_compo, index );
+			console.log("Class replaced: " + class_name );
+		}
+	}
+}
+
+Scene.prototype.appendScene = function(scene)
+{
+	//clone: because addNode removes it from scene.nodes array
+	var nodes = scene.root.childNodes;
+
+	/*
+	//bring materials
+	for(var i in scene.materials)
+		this.materials[i] = scene.materials[i];
+	*/
+	
+	//add every node one by one
+	for(var i in nodes)
+	{
+		var node = nodes[i];
+		var new_node = new LS.SceneNode( node.id );
+		this.root.addChild( new_node );
+		new_node.configure( node.constructor == LS.SceneNode ? node.serialize() : node  );
+	}
+}
+
+Scene.prototype.getCamera = function()
+{
+	var camera = this._root.camera;
+	if(camera) 
+		return camera;
+
+	if(this._cameras && this._cameras.length)
+		return this._cameras[0];
+
+	this.collectData(); //slow
+	return this._cameras[0];
+}
+
+/**
+* Returns an array with all the cameras enabled in the scene
+*
+* @method getActiveCameras
+* @param {boolean} force [optional] if you want to collect the cameras again, otherwise it returns the last ones collected
+* @return {Array} cameras
+*/
+Scene.prototype.getActiveCameras = function( force )
+{
+	if(force)
+		LEvent.trigger(this, EVENT.COLLECT_CAMERAS, this._cameras );
+	return this._cameras;
+}
+
+/**
+* Returns an array with all the cameras in the scene (even if they are disabled)
+*
+* @method getAllCameras
+* @return {Array} cameras
+*/
+Scene.prototype.getAllCameras = function()
+{
+	var cameras = [];
+	for(var i = 0; i < this._nodes.length; ++i)
+	{
+		var node = this._nodes[i];
+		var node_cameras = node.getComponents( LS.Components.Camera );
+		if(node_cameras && node_cameras.length)
+			cameras = cameras.concat( node_cameras );
+	}
+	return cameras;
+}
+
+Scene.prototype.getLight = function()
+{
+	return this._root.light;
+}
+
+/**
+* Returns an array with all the lights enabled in the scene
+*
+* @method getActiveLights
+* @param {boolean} force [optional] if you want to collect the lights again, otherwise it returns the last ones collected
+* @return {Array} lights
+*/
+Scene.prototype.getActiveLights = function( force )
+{
+	if(force)
+		LEvent.trigger(this, EVENT.COLLECT_LIGHTS, this._lights );
+	return this._lights;
+}
+
+Scene.prototype.onNodeAdded = function(e,node)
+{
+	//remove from old scene
+	if(node._in_tree && node._in_tree != this)
+		throw("Cannot add a node from other scene, clone it");
+
+	if( node._name && !this._nodes_by_name[ node._name ] )
+		this._nodes_by_name[ node._name ] = node;
+
+	/*
+	//generate unique id
+	if(node.id && node.id != -1)
+	{
+		if(this._nodes_by_id[node.id] != null)
+			node.id = node.id + "_" + (Math.random() * 1000).toFixed(0);
+		this._nodes_by_id[node.id] = node;
+	}
+	*/
+
+	//store by uid
+	if(!node.uid || this._nodes_by_uid[ node.uid ])
+		node._uid = LS.generateUId("NODE-");
+	//if( this._nodes_by_uid[ node.uid ] )
+	//	console.warn("There are more than one node with the same UID: ", node.uid );
+	this._nodes_by_uid[ node.uid ] = node;
+
+	//store nodes linearly
+	this._nodes.push(node);
+
+	node.processActionInComponents("onAddedToScene",this); //send to components
+	for(var i = 0; i < node._components.length; ++i)
+		if(node._components[i].uid)
+			this._components_by_uid[ node._components[i].uid ] = node._components[i];
+		else
+			console.warn("component without uid?", node._components[i].uid );
+
+	/**
+	 * Fired when a new node is added to this scene
+	 *
+	 * @event nodeAdded
+	 * @param {LS.SceneNode} node
+	 */
+	LEvent.trigger(this, EVENT.NODE_ADDED, node);
+	LEvent.trigger(this, EVENT.CHANGE );
+}
+
+Scene.prototype.onNodeRemoved = function(e,node)
+{
+	var pos = this._nodes.indexOf(node);
+	if(pos == -1) 
+		return;
+
+	this._nodes.splice(pos,1);
+	if(node._name && this._nodes_by_name[ node._name ] == node )
+		delete this._nodes_by_name[ node._name ];
+	if(node.uid)
+		delete this._nodes_by_uid[ node.uid ];
+
+	//node.processActionInComponents("onRemovedFromNode",node);
+	node.processActionInComponents("onRemovedFromScene",this); //send to components
+	for(var i = 0; i < node._components.length; ++i)
+		delete this._components_by_uid[ node._components[i].uid ];
+
+	/**
+	 * Fired after a node has been removed
+	 *
+	 * @event nodeRemoved
+	 * @param {LS.SceneNode} node
+	 */
+	LEvent.trigger(this, EVENT.NODE_REMOVED, node);
+	LEvent.trigger(this, EVENT.CHANGE );
+	return true;
+}
+
+/**
+* all nodes are stored in an array, this function recomputes the array so they are in the right order in case one has changed order
+*
+* @method recomputeNodesArray
+*/
+Scene.prototype.recomputeNodesArray = function()
+{
+	var nodes = this._nodes;
+	var pos = 0;
+	inner( this._root );
+
+	function inner(node)
+	{
+		nodes[pos] = node;
+		pos+=1;
+		if(!node._children || !node._children.length)
+			return;
+		for(var i = 0; i < node._children.length; ++i)
+			inner( node._children[i] );
+	}
+}
+
+//WIP
+Scene.prototype.attachSceneElement = function( element )
+{
+	this._spatial_container.add( element );
+}
+
+Scene.prototype.detachSceneElement = function( element )
+{
+	this._spatial_container.remove( element );
+}
+
+
+/**
+* Returns the array containing all the nodes in the scene
+*
+* @method getNodes
+* @param {bool} recompute [optional] in case you want to rearrange the nodes
+* @return {Array} array containing every SceneNode in the scene
+*/
+Scene.prototype.getNodes = function( recompute )
+{
+	if(recompute)
+		this.recomputeNodesArray();
+	return this._nodes;
+}
+
+/**
+* retrieves a Node based on the name, path ( name|childname|etc ) or uid
+*
+* @method getNode
+* @param {String} name node name to search
+* @return {Object} the node or null if it didnt find it
+*/
+Scene.prototype.getNode = function( name )
+{
+	if(name == "")
+		return this.root;
+	if(!name || name.constructor !== String)
+		return null;
+	if(name.charAt(0) == LS._uid_prefix)
+		return this._nodes_by_uid[ name ];
+
+	// the | char is used to specify a node child of another node
+	if( name.indexOf("|") != -1)
+	{
+		var tokens = name.split("|");
+		var node = this.root; //another option could be to start in this._nodes_by_name[ tokens[0] ]
+		for(var i = 0; i < tokens.length && node; ++i)
+			node = node.getChildByName( tokens[i] );
+		return node;
+	}
+
+	return this._nodes_by_name[ name ];
+}
+
+/**
+* retrieves a Node that matches that name. It is fast because they are stored in an object.
+* If more than one object has the same name, the first one added to the tree is returned
+*
+* @method getNodeByName
+* @param {String} name name of the node
+* @return {Object} the node or null if it didnt find it
+*/
+Scene.prototype.getNodeByName = function( name )
+{
+	return this._nodes_by_name[ name ];
+}
+
+/**
+* retrieves a Node based on a given uid. It is fast because they are stored in an object
+*
+* @method getNodeByUId
+* @param {String} uid uid of the node
+* @return {Object} the node or null if it didnt find it
+*/
+Scene.prototype.getNodeByUId = function( uid )
+{
+	return this._nodes_by_uid[ uid ];
+}
+
+/**
+* retrieves a Node by its index
+*
+* @method getNodeByIndex
+* @param {Number} node index
+* @return {Object} returns the node at the 'index' position in the nodes array
+*/
+Scene.prototype.getNodeByIndex = function(index)
+{
+	return this._nodes[ index ];
+}
+
+//for those who are more traditional
+Scene.prototype.getElementById = Scene.prototype.getNode;
+
+/**
+* retrieves a node array filtered by the filter function
+*
+* @method filterNodes
+* @param {function} filter a callback function that receives every node and must return true or false
+* @return {Array} array containing the nodes that passes the filter
+*/
+Scene.prototype.filterNodes = function( filter )
+{
+	var r = [];
+	for(var i = 0; i < this._nodes.length; ++i)
+		if( filter(this._nodes[i]) )
+			r.push(this._nodes[i]);
+	return r;
+}
+
+/**
+* searches the component with this uid, it iterates through all the nodes and components (slow)
+*
+* @method findComponentByUId
+* @param {String} uid uid of the node
+* @return {Object} component or null
+*/
+Scene.prototype.findComponentByUId = function(uid)
+{
+	for(var i = 0; i < this._nodes.length; ++i)
+	{
+		var compo = this._nodes[i].getComponentByUId( uid );
+		if(compo)
+			return compo;
+	}
+	return null;
+}
+
+/**
+* searches the material with this uid, it iterates through all the nodes (slow)
+*
+* @method findMaterialByUId
+* @param {String} uid uid of the material
+* @return {Object} Material or null
+*/
+Scene.prototype.findMaterialByUId = function(uid)
+{
+	if(LS.RM.materials[uid])
+		return LS.RM.materials[uid];
+
+	for(var i = 0; i < this._nodes.length; ++i)
+	{
+		var material = this._nodes[i].getMaterial();
+		if(material && material.uid == uid)
+			return material;
+	}
+
+	return null;
+}
+
+
+/**
+* Returns information of a node component property based on the locator of that property
+* Locators are in the form of "{NODE_UID}/{COMPONENT_UID}/{property_name}"
+*
+* @method getPropertyInfo
+* @param {String} locator locator of the property
+* @return {Object} object with node, component, name, and value
+*/
+Scene.prototype.getPropertyInfo = function( property_uid )
+{
+	var path = property_uid.split("/");
+
+	var start = path[0].substr(0,5);
+
+	//for global materials
+	if( start == "@MAT-")
+	{
+		var material = LS.RM.materials_by_uid[ path[0] ];
+		if(!material)
+			return null;
+		return material.getPropertyInfoFromPath( path.slice(1) );
+	}
+
+	//for components
+	if( start == "@COMP")
+	{
+		var comp = this.findComponentByUId( path[0] );
+		if(!comp)
+			return null;
+		if(path.length == 1)
+			return {
+				node: comp.root,
+				target: comp,
+				name: comp ? LS.getObjectClassName( comp ) : "",
+				type: "component",
+				value: comp
+			};
+		return comp.getPropertyInfoFromPath( path.slice(1) );
+	}
+
+	//for regular locators
+	var node = this.getNode( path[0] );
+	if(!node)
+		return null;
+
+	return node.getPropertyInfoFromPath( path.slice(1) );
+}
+
+/**
+* Returns information of a node component property based on the locator of that property
+* Locators are in the form of "{NODE_UID}/{COMPONENT_UID}/{property_name}"
+*
+* @method getPropertyInfoFromPath
+* @param {Array} path
+* @return {Object} object with node, component, name, and value
+*/
+Scene.prototype.getPropertyInfoFromPath = function( path )
+{
+	if(path[0].substr(0,5) == "@MAT-")
+	{
+		var material = LS.RM.materials_by_uid[ path[0] ];
+		if(!material)
+			return null;
+		return material.getPropertyInfoFromPath( path.slice(1) );
+	}
+
+	var node = this.getNode( path[0] );
+	if(!node)
+		return null;
+	return node.getPropertyInfoFromPath( path.slice(1) );
+}
+
+
+/**
+* Assigns a value to the property of a component in a node based on the locator of that property
+* Locators are in the form of "{NODE_UID}/{COMPONENT_UID}/{property_name}"
+*
+* @method getPropertyValue
+* @param {String} locator locator of the property
+* @param {*} value the value to assign
+* @param {SceneNode} root [Optional] if you want to limit the locator to search inside a node
+* @return {Component} the target where the action was performed
+*/
+Scene.prototype.getPropertyValue = function( locator, root_node )
+{
+	var path = property_uid.split("/");
+
+	if(path[0].substr(0,5) == "@MAT-")
+	{
+		var material = LS.RM.materials_by_uid[ path[0] ];
+		if(!material)
+			return null;
+		return material.getPropertyValueFromPath( path.slice(1) );
+	}
+
+	var node = this.getNode( path[0] );
+	if(!node)
+		return null;
+	return node.getPropertyValueFromPath( path.slice(1) );
+}
+
+Scene.prototype.getPropertyValueFromPath = function( path )
+{
+	if(path[0].substr(0,5) == "@MAT-")
+	{
+		var material = LS.RM.materials_by_uid[ path[0] ];
+		if(!material)
+			return null;
+		return material.getPropertyValueFromPath( path.slice(1) );
+	}
+	var node = this.getNode( path[0] );
+	if(!node)
+		return null;
+	return node.getPropertyValueFromPath( path.slice(1) );
+}
+
+/**
+* Assigns a value to the property of a component in a node based on the locator of that property
+* Locators are in the form of "{NODE_UID}/{COMPONENT_UID}/{property_name}"
+*
+* @method setPropertyValue
+* @param {String} locator locator of the property
+* @param {*} value the value to assign
+* @param {SceneNode} root [Optional] if you want to limit the locator to search inside a node
+* @return {Component} the target where the action was performed
+*/
+Scene.prototype.setPropertyValue = function( locator, value, root_node )
+{
+	var path = locator.split("/");
+	this.setPropertyValueFromPath( path, value, root_node, 0 );
+}
+
+/**
+* Assigns a value to the property of a component in a node based on the locator that property
+* Locators are in the form of "{NODE_UID}/{COMPONENT_UID}/{property_name}"
+*
+* @method setPropertyValueFromPath
+* @param {Array} path a property locator split by "/"
+* @param {*} value the value to assign
+* @param {SceneNode} root_node [optional] the root node where you want to search the locator (this is to limit the locator to a branch of the scene tree)
+* @param {Number} offset [optional] used to avoir generating garbage, instead of slicing the array every time, we pass the array index
+* @return {Component} the target where the action was performed
+*/
+Scene.prototype.setPropertyValueFromPath = function( path, value, root_node, offset )
+{
+	offset = offset || 0;
+	if(path.length < (offset+1))
+		return;
+
+	if(path[offset].substr(0,5) == "@MAT-")
+	{
+		var material = LS.RM.materials_by_uid[ path[offset] ];
+		if(!material)
+			return null;
+		return material.setPropertyValueFromPath( path, value, offset + 1 );
+	}
+
+	//get node
+	var node = root_node ? root_node.findNode( path[offset] ) : this.getNode( path[offset] );
+	if(!node)
+		return null;
+
+	return node.setPropertyValueFromPath( path, value, offset + 1 );
+}
+
+
+/**
+* Returns the resources used by the scene
+* includes the nodes, components, preloads and global_scripts
+* doesn't include external_scripts
+*
+* @method getResources
+* @param {Object} resources [optional] object with resources
+* @param {Boolean} as_array [optional] returns data in array format instead of object format
+* @param {Boolean} skip_in_pack [optional] skips resources that come from a pack
+* @param {Boolean} skip_local [optional] skips resources whose name starts with ":" (considered local resources)
+* @return {Object|Array} the resources in object format (or if as_array is true, then an array)
+*/
+Scene.prototype.getResources = function( resources, as_array, skip_in_pack, skip_local )
+{
+	resources = resources || {};
+
+	//to get the resources as array
+	var array = null;
+	if(resources.constructor === Array)
+	{
+		array = resources;
+		resources = {};
+		as_array = true;
+	}
+
+	//first the preload
+	//resources that must be preloaded (because they will be used in the future)
+	if(this.preloaded_resources)
+		for(var i in this.preloaded_resources)
+			resources[ i ] = true;
+
+	if(this.texture_atlas)
+		resources[ this.texture_atlas.filename ] = true;
+
+	//global scripts
+	for(var i = 0; i < this.global_scripts.length; ++i)
+		if( this.global_scripts[i] )
+			resources[ this.global_scripts[i] ] = true;
+
+	//resources from nodes
+	for(var i = 0; i < this._nodes.length; ++i)
+		this._nodes[i].getResources( resources );
+
+	//remove the resources that belong to packs or prefabs
+	if(skip_in_pack)
+		for(var i in resources)
+		{
+			var resource = LS.ResourcesManager.resources[i];
+			if(!resource)
+				continue;
+			if(resource && (resource.from_prefab || resource.from_pack))
+				delete resources[i];
+		}
+
+	//remove the resources that are local (generated by the system)
+	if(skip_local)
+		for(var i in resources)
+		{
+			if(i[0] == ":")
+				delete resources[i];
+		}
+
+	//check if any resource requires another resource (a material that requires textures)
+	for(var i in resources)
+	{
+		var resource = LS.ResourcesManager.resources[i];
+		if(!resource)
+			continue;
+		if(resource.getResources)
+			resource.getResources(resources);
+	}
+
+	//Hack: sometimes some component add this shit
+	delete resources[""];
+	delete resources["null"];
+
+	//return as object
+	if(!as_array)
+		return resources;
+
+	//return as array
+	var r = array || [];
+	for(var i in resources)
+		r.push(i);
+	return r;
+}
+
+/**
+* Loads all the resources of all the nodes in this scene
+* it sends a signal to every node to get all the resources info
+* and load them in bulk using the ResourceManager
+*
+* @method loadResources
+* @param {Function} on_complete called when the load of all the resources is complete
+*/
+Scene.prototype.loadResources = function( on_complete )
+{
+	//resources is an object format
+	var resources = this.getResources([]);
+
+	//used for scenes with special repository folders
+	var options = {};
+	if( this.external_repository )
+		options.external_repository = this.external_repository;
+
+	//count resources
+	var num_resources = 0;
+	for(var i in resources)
+		++num_resources;
+
+	//load them
+	if(num_resources == 0)
+	{
+		if(on_complete)
+			on_complete();
+		return;
+	}
+
+	LEvent.bind( LS.ResourcesManager, "end_loading_resources", on_loaded );
+	LS.ResourcesManager.loadResources( resources );
+
+	function on_loaded()
+	{
+		LEvent.unbind( LS.ResourcesManager, "end_loading_resources", on_loaded );
+		if(on_complete)
+			on_complete();
+	}
+}
+
+
+/**
+* Adds a resource that must be loaded when the scene is loaded
+*
+* @method addPreloadResource
+* @param {String} fullpath the name of the resource
+*/
+Scene.prototype.addPreloadResource = function( fullpath )
+{
+	this.preloaded_resources[ fullpath ] = true;
+}
+
+/**
+* Remove a resource from the list of resources to preload
+*
+* @method removePreloadResource
+* @param {String} fullpath the name of the resource
+*/
+Scene.prototype.removePreloadResource = function( fullpath )
+{
+	delete this.preloaded_resources[ fullpath ];
+}
+
+
+/**
+* start the scene (triggers an "start" event)
+*
+* @method start
+* @param {Number} dt delta time
+*/
+Scene.prototype.start = function()
+{
+	if(this._state == LS.PLAYING)
+		return;
+
+	this._state = LS.PLAYING;
+	this._start_time = getTime() * 0.001;
+	/**
+	 * Fired when the nodes need to be initialized
+	 *
+	 * @event init
+	 * @param {LS.Scene} scene
+	 */
+	LEvent.trigger(this, EVENT.INIT, this);
+	this.triggerInNodes( EVENT.INIT );
+	/**
+	 * Fired when the scene is starting to play
+	 *
+	 * @event start
+	 * @param {LS.Scene} scene
+	 */
+	LEvent.trigger(this, EVENT.START ,this);
+	this.triggerInNodes( EVENT.START );
+}
+
+/**
+* pauses the scene (triggers an "pause" event)
+*
+* @method pause
+*/
+Scene.prototype.pause = function()
+{
+	if( this._state != LS.PLAYING )
+		return;
+
+	this._state = LS.PAUSED;
+	/**
+	 * Fired when the scene pauses (mostly in the editor)
+	 *
+	 * @event pause
+	 * @param {LS.Scene} scene
+	 */
+	LEvent.trigger(this, EVENT.PAUSE,this);
+	this.triggerInNodes( EVENT.PAUSE );
+	this.purgeResidualEvents();
+}
+
+/**
+* unpauses the scene (triggers an "unpause" event)
+*
+* @method unpause
+*/
+Scene.prototype.unpause = function()
+{
+	if(this._state != LS.PAUSED)
+		return;
+
+	this._state = LS.PLAYING;
+	/**
+	 * Fired when the scene unpauses (mostly in the editor)
+	 *
+	 * @event unpause
+	 * @param {LS.Scene} scene
+	 */
+	LEvent.trigger(this, EVENT.UNPAUSE,this);
+	this.triggerInNodes( EVENT.UNPAUSE );
+	this.purgeResidualEvents();
+}
+
+
+/**
+* stop the scene (triggers an "finish" event)
+*
+* @method finish
+* @param {Number} dt delta time
+*/
+Scene.prototype.finish = function()
+{
+	if(this._state == LS.STOPPED)
+		return;
+
+	this._state = LS.STOPPED;
+	/**
+	 * Fired when the scene stops playing
+	 *
+	 * @event finish
+	 * @param {LS.Scene} scene
+	 */
+	LEvent.trigger(this, EVENT.FINISH,this);
+	this.triggerInNodes( EVENT.FINISH );
+	this.purgeResidualEvents();
+}
+
+/**
+* This methods crawls the whole tree and collects all the useful info (cameras, lights, render instances, colliders, etc)
+* Mostly rendering stuff but also some collision info.
+* TO DO: refactor this so it doesnt redo the same task in every frame, only if changes are made
+* @param {Array} cameras [optional] an array of cameras in case we want to force some viewpoint
+* @method collectData
+*/
+Scene.prototype.collectData = function( cameras )
+{
+	var instances = this._instances;
+	var lights = this._lights;
+	var colliders = this._colliders;
+
+	//empty containers
+	instances.length = 0;
+	lights.length = 0;
+	colliders.length = 0;
+
+	//first collect cameras (in case we want to filter nodes by proximity to camera
+	if(!cameras || cameras.length == 0)
+	{
+		cameras = this._cameras;
+		cameras.length = 0;
+		LEvent.trigger( this, EVENT.COLLECT_CAMERAS, cameras );
+	}
+
+	//get nodes: TODO find nodes close to the active cameras
+	var nodes = this.getNodes();
+
+	//collect render instances and lights
+	for(var i = 0, l = nodes.length; i < l; ++i)
+	{
+		var node = nodes[i];
+
+		//skip stuff inside invisible nodes
+		if(node.flags.visible == false) 
+			continue;
+
+		//compute global matrix: shouldnt it be already computed?
+		if(node.transform)
+			node.transform.updateGlobalMatrix();
+
+		//clear instances per node: TODO: if static maybe just leave it as it is
+		node._instances.length = 0;
+
+		//get render instances: remember, triggers only support one parameter
+		LEvent.trigger( node, EVENT.COLLECT_RENDER_INSTANCES, node._instances );
+		LEvent.trigger( node, EVENT.COLLECT_PHYSIC_INSTANCES, colliders );
+
+		//concatenate all instances in a single array
+		instances.push.apply(instances, node._instances);
+	}
+
+	//we also collect from the scene itself (used for lights, skybox, etc)
+	LEvent.trigger( this, EVENT.COLLECT_RENDER_INSTANCES, instances );
+	LEvent.trigger( this, EVENT.COLLECT_PHYSIC_INSTANCES, colliders );
+	LEvent.trigger( this, EVENT.COLLECT_LIGHTS, lights );
+
+	//before processing (in case somebody wants to add some data to the containers)
+	LEvent.trigger( this, EVENT.COLLECT_DATA );
+
+	//for each render instance collected
+	for(var i = 0, l = instances.length; i < l; ++i)
+	{
+		var instance = instances[i];
+
+		//compute the axis aligned bounding box
+		if(instance.use_bounding)
+			instance.updateAABB();
+	}
+
+	//for each physics instance collected
+	for(var i = 0, l = colliders.length; i < l; ++i)
+	{
+		var collider = colliders[i];
+		collider.updateAABB();
+	}
+
+	//remember when was last time I collected to avoid repeating it
+	this._last_collect_frame = this._frame;
+}
+
+/**
+* updates the scene (it handles variable update and fixedUpdate)
+*
+* @method update
+* @param {Number} dt delta time in seconds
+*/
+Scene.prototype.update = function(dt)
+{
+	/**
+	 * Fired before doing an update
+	 *
+	 * @event beforeUpdate
+	 * @param {LS.Scene} scene
+	 */
+	LEvent.trigger(this,LS.EVENT.BEFORE_UPDATE, this);
+
+	this._global_time = getTime() * 0.001;
+	//this._time = this._global_time - this._start_time;
+	this._time += dt;
+	this._last_dt = dt;
+
+	/**
+	 * Fired while updating
+	 *
+	 * @event update
+	 * @param {number} dt
+	 */
+	LEvent.trigger(this, LS.EVENT.UPDATE, dt);
+
+	/**
+	 * Fired while updating but using a fixed timestep (1/60)
+	 *
+	 * @event fixedUpdate
+	 * @param {number} dt
+	 */
+	if(this._fixed_update_timestep > 0)
+	{
+		this._remaining_fixed_update_time += dt;
+		if(LEvent.hasBind(this, LS.EVENT.FIXED_UPDATE))
+			while( this._remaining_fixed_update_time > this._fixed_update_timestep )
+			{
+				LEvent.trigger(this, LS.EVENT.FIXED_UPDATE, this._fixed_update_timestep );
+				this._remaining_fixed_update_time -= this._fixed_update_timestep;
+			}
+		else
+			this._remaining_fixed_update_time = this._remaining_fixed_update_time % this._fixed_update_timestep;
+	}
+
+	/**
+	 * Fired after updating the scene
+	 *
+	 * @event afterUpdate
+	 */
+	LEvent.trigger(this, LS.EVENT.AFTER_UPDATE, this);
+}
+
+/**
+* triggers an event to all nodes in the scene
+* this is slow if the scene has too many nodes, thats why we use bindings
+*
+* @method triggerInNodes
+* @param {String} event_type event type name
+* @param {Object} data data to send associated to the event
+*/
+
+Scene.prototype.triggerInNodes = function(event_type, data)
+{
+	LEvent.triggerArray( this._nodes, event_type, data);
+}
+
+/**
+* generate a unique node name given a prefix
+*
+* @method generateUniqueNodeName
+* @param {String} prefix the prefix, if not given then "node" is used
+* @return {String} a node name that it is not in the scene
+*/
+Scene.prototype.generateUniqueNodeName = function(prefix)
+{
+	prefix = prefix || "node";
+	var i = 1;
+
+	var pos = prefix.lastIndexOf("_");
+	if(pos)
+	{
+		var n = prefix.substr(pos+1);
+		if( parseInt(n) )
+		{
+			i = parseInt(n);
+			prefix = prefix.substr(0,pos);
+		}
+	}
+
+	var node_name = prefix + "_" + i;
+	while( this.getNode(node_name) != null )
+		node_name = prefix + "_" + (i++);
+	return node_name;
+}
+
+/**
+* Marks that this scene must be rendered again
+*
+* @method requestFrame
+*/
+Scene.prototype.requestFrame = function()
+{
+	this._must_redraw = true;
+	LEvent.trigger( this, LS.EVENT.REQUEST_FRAME );
+}
+
+Scene.prototype.refresh = Scene.prototype.requestFrame; //DEPRECATED
+
+/**
+* returns current scene time (remember that scene time remains freezed if the scene is not playing)
+*
+* @method getTime
+* @return {Number} scene time in seconds
+*/
+Scene.prototype.getTime = function()
+{
+	return this._time;
+}
+
+//This is ugly but sometimes if scripts fail there is a change the could get hooked to the scene forever
+//so this way we remove any event that belongs to a component thats doesnt belong to this scene tree
+Scene.prototype.purgeResidualEvents = function()
+{
+	if(!this.__events)
+		return;
+
+	//crawl all 
+	for(var i in this.__events)
+	{
+		var event = this.__events[i];
+		if(!event)
+			continue;
+		var to_keep = [];
+		for(var j = 0; j < event.length; ++j)
+		{
+			var inst = event[j][1];
+			if(inst && LS.isClassComponent( inst.constructor ) )
+			{
+				//no attached node or node not attached to any scene
+				if(!inst._root || inst._root.scene !== this )
+				{
+					console.warn("Event attached to the Scene belongs to a removed node, purged. Event:",i,"Class:", LS.getObjectClassName( inst ) );
+					continue; //skip keeping it, so it will no longer exist
+				}
+			}
+			to_keep.push(event[j]);
+		}
+		this.__events[i] = to_keep;
+	}
+}
+
+/**
+* returns an array with the name of all the layers given a layers mask
+*
+* @method getLayerNames
+* @param {Number} layers a number with the enabled layers in bit mask format, if ommited all layers are returned
+* @return {Array} array of strings with the layer names
+*/
+Scene.prototype.getLayerNames = function(layers)
+{
+	var r = [];
+
+	for(var i = 0; i < 32; ++i)
+	{
+		if( layers === undefined || layers & (1<<i) )
+			r.push( this.layer_names[i] || ("layer"+i) );
+	}
+	return r;
+}
+
+/**
+* returns an array with all the components in the scene and scenenodes that matches this class
+*
+* @method findNodeComponents
+* @param {String||Component} type the type of the components to search (could be a string with the name or the class itself)
+* @return {Array} array with the components found
+*/
+Scene.prototype.findNodeComponents = function( type )
+{
+	if(!type)
+		return;
+
+	var find_component = null;
+	if(type.constructor === String)
+		find_component = LS.Components[ type ];
+	else
+		find_component = type;
+	if(!find_component)
+		return;
+
+	var result = [];
+	var nodes = this._nodes;
+	for(var i = 0; i < nodes.length; ++i)
+	{
+		var node = nodes[i];
+		var components = node._components;
+		for(var j = 0; j < components.length; ++j)
+			if( components[j].constructor === find_component )
+				result.push( components[j] );
+	}
+	return result;
+}
+
+/**
+* Allows to instantiate a prefab from the fullpath of the resource
+*
+* @method instantiate
+* @param {String} prefab_url the filename to the resource containing the prefab
+* @param {vec3} position where to instantiate
+* @param {quat} rotation the orientation
+* @param {SceneNode} parent [optional] if no parent then scene.root will be used
+* @return {SceneNode} the resulting prefab node
+*/
+Scene.prototype.instantiate = function( prefab_url, position, rotation, parent )
+{
+	if(!prefab_url || prefab_url.constructor !== String)
+		throw("prefab must be the url to the prefab");
+
+	var node = new LS.SceneNode();
+	if(position && position.length === 3)
+		node.transform.position = position;
+	if(rotation && rotation.length === 4)
+		node.transform.rotation = rotation;
+
+	parent = parent || this.root;
+	parent.addChild( node );
+
+	node.prefab = prefab_url;
+
+	return node;
+}
+
+/**
+* returns a pack containing all the scene and resources, used to save a scene to harddrive
+*
+* @method toPack
+* @param {String} fullpath a given fullpath name, it will be assigned to the scene with the appropiate extension
+* @param {Array} resources [optional] array with all the resources to add, if no array is given it will get the active resources in this scene
+* @return {LS.Pack} the pack
+*/
+Scene.prototype.toPack = function( fullpath, resources )
+{
+	fullpath = fullpath || "unnamed_scene";
+
+	//change name to valid name
+	var basename = LS.RM.removeExtension( fullpath, true );
+	var final_fullpath = basename + ".SCENE.wbin";
+
+	//extract json info
+	var scene_json = JSON.stringify( this.serialize() );
+
+	//get all resources
+	if(!resources)
+		resources = this.getResources( null, true, true, true );
+
+	//create pack
+	var pack = LS.Pack.createPack( LS.RM.getFilename( final_fullpath ), resources, { "scene.json": scene_json } );
+	pack.fullpath = final_fullpath;
+	pack.category = "Scene";
+
+	return pack;
+}
+
+//WIP: this is in case we have static nodes in the scene
+Scene.prototype.updateStaticObjects = function()
+{
+	var old = LS.allow_static;
+	LS.allow_static = false;
+	this.collectData();
+	LS.allow_static = old;
+}
+
+/**
+* search for the nearest reflection probe to the point
+*
+* @method findNearestReflectionProbe
+* @param {vec3} position
+* @return {LS.ReflectionProbe} the reflection probe
+*/
+Scene.prototype.findNearestReflectionProbe = function( position )
+{
+	if(!this._reflection_probes.length)
+		return null;
+
+	if( this._reflection_probes.length == 1 )
+		return this._reflection_probes[0];
+
+	var probes = this._reflection_probes;
+	var min_dist = 1000000;
+	var nearest_probe = null;
+	for(var i = 0; i < probes.length; ++i)
+	{
+		var probe = probes[i];
+		var dist = vec3.distance( position, probe._position );
+		if( dist > min_dist )
+			continue;
+		min_dist = dist;
+		nearest_probe = probe;
+	}
+	return nearest_probe;
+}
+
+
+//tells to all the components, nodes, materials, etc, that one resource has changed its name so they can update it inside
+Scene.prototype.sendResourceRenamedEvent = function( old_name, new_name, resource )
+{
+	//scene globals that use resources
+	for(var i = 0; i < this.external_scripts.length; i++)
+	{
+		if(this.external_scripts[i] == old_name)
+			this.external_scripts[i] = new_name;
+	}
+
+	for(var i = 0; i < this.global_scripts.length; i++)
+	{
+		if(this.global_scripts[i] == old_name)
+			this.global_scripts[i] = new_name;
+	}
+
+	for(var i in this.preloaded_resources)
+	{
+		if(i == old_name)
+		{
+			delete this.preloaded_resources[old_name];
+			this.preloaded_resources[ new_name ] = true;
+		}
+	}
+
+	if( this.texture_atlas && this.texture_atlas.filename == old_name )
+		this.texture_atlas.filename = new_name;
+
+	//to nodes
+	var nodes = this._nodes.concat();
+
+	//for every node
+	for(var i = 0; i < nodes.length; i++)
+	{
+		//nodes
+		var node = nodes[i];
+
+		//prefabs
+		if( node.prefab && node.prefab === old_name )
+			node.prefab = new_name; //does this launch a reload prefab? dont know
+
+		//components
+		for(var j = 0; j < node._components.length; j++)
+		{
+			var component = node._components[j];
+			if(component.onResourceRenamed)
+				component.onResourceRenamed( old_name, new_name, resource )
+		}
+
+		//materials
+		if( node.material )
+		{
+			if( node.material == old_name )
+				node.material = new_name;
+			else
+			{
+				var material = node.getMaterial();
+				if( material && material.onResourceRenamed )
+				{
+					var modified = material.onResourceRenamed( old_name, new_name, resource );
+					if(modified) //we need this to remove material._original_data or anything that could interfiere
+						LS.RM.resourceModified( material );
+				}
+				else
+					console.warn("sendResourceRenamedEvent: Material not found or it didnt have a onResourceRenamed");
+			}
+		}
+	}
+}
+
+//used to search a resource according to the data path of this scene
+Scene.prototype.getDataPath = function( path )
+{
+	path = path || "";
+	var folder = this.extra.data_folder || this.extra.folder;
+	return LS.RM.cleanFullpath( folder + "/" + path );
+}
+
+
+/**
+* Creates and returns an scene animation track
+*
+* @method createAnimation
+* @return {LS.Animation} the animation track
+*/
+Scene.prototype.createAnimation = function()
+{
+	if(this.animation)
+		return this.animation;
+	this.animation = new LS.Animation();
+	this.animation.name = LS.Animation.DEFAULT_SCENE_NAME;
+	this.animation.createTake( "default", LS.Animation.DEFAULT_DURATION );
+	return this.animation;
+}
+
+LS.Scene = Scene;
+LS.Classes.Scene = Scene;
+LS.Classes.SceneTree = Scene; //LEGACY
+
+
+///@FILE:../src/sceneNode.js
+///@INFO: BASE
+//****************************************************************************
+
+/**
+* The SceneNode class represents and object in the scene
+* Is the base class for all objects in the scene as meshes, lights, cameras, and so
+*
+* @class SceneNode
+* @param {String} name the name for this node (otherwise a random one is computed)
+* @constructor
+*/
+
+function SceneNode( name )
+{
+	if(name && name.constructor !== String)
+	{
+		name = null;
+		console.warn("SceneNode constructor first parameter must be a String with the name");
+	}
+
+	//Generic identifying info
+	this._name = name || ("node_" + (Math.random() * 10000).toFixed(0)); //generate random number
+	this._uid = LS.generateUId("NODE-");
+	this._classList = {}; //to store classes
+	this.layers = 3|0; //32 bits for layers (force to int)
+	this.node_type = null; //used to store a string defining the node info
+
+	//more generic info
+	this._prefab = null;
+	this._material = null;
+
+	//from Componentcontainer
+	this._components = []; //used for logic actions
+
+	//from CompositePattern
+	this._parentNode = null;
+	this._children = null;
+	this._in_tree = null;
+	this._instances = []; //render instances
+
+	//flags
+	this.flags = {
+		visible: true,
+		is_static: false,
+		selectable: true,
+		locked: false
+	};
+
+	this.init(false,true);
+
+	/** Fired here (from Transform) when the node transform changes
+	 * @event transformChanged
+	 */
+}
+
+SceneNode.prototype.init = function( keep_components, keep_info )
+{
+	if(!keep_info)
+	{
+		this.layers = 3|0; //32 bits for layers (force to int)
+		this._name = name || ("node_" + (Math.random() * 10000).toFixed(0)); //generate random number
+		this._uid = LS.generateUId("NODE-");
+		this._classList = {};
+
+		//material
+		this._material = null;
+		this.extra = {}; //for extra info
+		this.node_type = null;
+
+		//flags
+		this.flags = {
+			visible: true,
+			is_static: false,
+			selectable: true
+		};
+	}
+
+	//Basic components
+	if(!keep_components)
+	{
+		if( this._components && this._components.length )
+			console.warn("SceneNode.init() should not be called if it contains components, call clear instead");
+		this._components = []; //used for logic actions
+		this.addComponent( new LS.Transform() );
+	}
+}
+
+//get methods from other classes
+LS.extendClass( SceneNode, ComponentContainer ); //container methods
+LS.extendClass( SceneNode, CompositePattern ); //container methods
+
+/**
+* changes the node name
+* @method setName
+* @param {String} new_name the new name
+* @return {Object} returns true if the name changed
+*/
+
+Object.defineProperty( SceneNode.prototype, 'name', {
+	set: function(name)
+	{
+		this.setName( name );
+	},
+	get: function(){
+		return this._name;
+	},
+	enumerable: true
+});
+
+Object.defineProperty( SceneNode.prototype, 'fullname', {
+	set: function(name)
+	{
+		throw("You cannot set fullname, it depends on the parent nodes");
+	},
+	get: function(){
+		return this.getPathName();
+	},
+	enumerable: false
+});
+
+//Changing the UID  has lots of effects (because nodes are indexed by UID in the scene)
+//If you want to catch the event of the uid_change, remember, the previous uid is stored in LS.SceneNode._last_uid_changed (it is not passed in the event)
+Object.defineProperty( SceneNode.prototype, 'uid', {
+	set: function(uid)
+	{
+		if(!uid)
+			return;
+
+		//valid uid?
+		if(uid[0] != LS._uid_prefix)
+		{
+			console.warn("Invalid UID, renaming it to: " + uid );
+			uid = LS._uid_prefix + uid;
+		}
+
+		//no changes?
+		if(uid == this._uid)
+			return;
+
+		SceneNode._last_uid_changed = this._uid; //hack, in case we want the previous uid of a node 
+
+		//update scene tree indexing
+		if( this._in_tree && this._in_tree._nodes_by_uid[ this.uid ] )
+			delete this._in_tree._nodes_by_uid[ this.uid ];
+		this._uid = uid;
+		if( this._in_tree )
+			this._in_tree._nodes_by_uid[ this.uid ] = this;
+		//events
+		LEvent.trigger( this, "uid_changed", uid );
+		if(this._in_tree)
+			LEvent.trigger( this._in_tree, "node_uid_changed", this );
+	},
+	get: function(){
+		return this._uid;
+	},
+	enumerable: true
+});
+
+
+Object.defineProperty( SceneNode.prototype, 'visible', {
+	set: function(v)
+	{
+		this.flags.visible = v;
+		if( this._children )
+		for(var i = 0; i < this._children.length; ++i )
+			this._children[i].visible = v;
+	},
+	get: function(){
+		return this.flags.visible;
+	},
+	enumerable: true
+});
+
+Object.defineProperty( SceneNode.prototype, 'is_static', {
+	set: function(v)
+	{
+		this.flags.is_static = v;
+		if( v && this._children )
+		for(var i = 0; i < this._children.length; ++i )
+			this._children[i].is_static = v;
+	},
+	get: function(){
+		return this.flags.is_static;
+	},
+	enumerable: true
+});
+
+Object.defineProperty( SceneNode.prototype, 'material', {
+	set: function(v)
+	{
+		if( this._material == v )
+			return;
+
+		this._material = v;
+		if(v)
+		{
+			if(v.constructor === String)
+				return;
+			if(v._root && v._root != this) //has root and its not me
+				console.warn( "Cannot assign a material of one SceneNode to another, you must clone it or register it" )
+			else
+				v._root = this; //link
+		}
+		LEvent.trigger( this, "materialChanged" );
+	},
+	get: function(){
+		return this._material;
+	},
+	enumerable: true
+});
+
+Object.defineProperty( SceneNode.prototype, 'prefab', {
+	set: function(name)
+	{
+		this._prefab = name;
+		if(!this._prefab)
+			return;
+		var prefab = LS.RM.getResource(name);
+		var that = this;
+		if(prefab)
+			this.reloadFromPrefab();
+		else 
+			LS.ResourcesManager.load( name, function(){
+				that.reloadFromPrefab();
+			});
+	},
+	get: function(){
+		return this._prefab;
+	},
+	enumerable: true
+});
+
+SceneNode.prototype.clear = function()
+{
+	this.removeAllComponents();
+	this.removeAllChildren();
+	this.init();
+}
+
+SceneNode.prototype.setName = function(new_name)
+{
+	if(this._name == new_name) 
+		return true; //no changes
+
+	//check that the name is valid (doesnt have invalid characters)
+	if(!LS.validateName(new_name))
+	{
+		console.warn("invalid name for node: " + new_name );
+		//new_name = new_name.replace(/[^a-z0-9\.\-]/gi,"_");
+		return false;
+	}
+
+	var scene = this._in_tree;
+	if(!scene)
+	{
+		this._name = new_name;
+		return true;
+	}
+
+	//remove old link
+	if( this._name )
+		delete scene._nodes_by_name[ this._name ];
+
+	//assign name
+	this._name = new_name;
+
+	//we already have another node with this name
+	if( new_name && !scene._nodes_by_name[ new_name ] )
+		scene._nodes_by_name[ this._name ] = this;
+
+	/**
+	 * Node changed name
+	 *
+	 * @event name_changed
+	 * @param {String} new_name
+	 */
+	LEvent.trigger( this, "name_changed", new_name );
+	if(scene)
+		LEvent.trigger( scene, "node_name_changed", this );
+	return true;
+}
+
+Object.defineProperty( SceneNode.prototype, 'classList', {
+	get: function() { return this._classList },
+	set: function(v) {},
+	enumerable: false
+});
+
+/**
+* @property className {String}
+*/
+Object.defineProperty( SceneNode.prototype, 'className', {
+	get: function() {
+			var keys = null;
+			if(Object.keys)
+				keys = Object.keys(this._classList); 
+			else
+			{
+				keys = [];
+				for(var k in this._classList)
+					keys.push(k);
+			}
+			return keys.join(" ");
+		},
+	set: function(v) { 
+		this._classList = {};
+		if(!v)
+			return;
+		var t = v.split(" ");
+		for(var i in t)
+			this._classList[ t[i] ] = true;
+	},
+	enumerable: true
+});
+
+/**
+* Destroys this node
+* @method destroy
+* @param {number} time [optional] time in seconds to wait till destroying the node
+**/
+SceneNode.prototype.destroy = function( time )
+{
+	if(time && time.constructor === Number && time > 0)
+	{
+		setTimeout( this.destroy.bind(this,0), time * 0.001 );
+		return;
+	}
+
+	LEvent.trigger( this, "destroy" );
+	this.removeAllComponents();
+	if(this.children)
+		while(this.children.length)
+			this.children[0].destroy();
+	if(this._parentNode)
+		this._parentNode.removeChild( this );
+}
+
+/**
+* Returns the locator string of this node
+* @method getLocator
+* @param {string} property_name [optional] you can pass the name of a property in this node to get the locator of that one
+* @return {String} the locator string of this node
+**/
+SceneNode.prototype.getLocator = function( property_name )
+{
+	if(!property_name)
+		return this.uid;
+	return this.uid + "/" + property_name;
+}
+
+/**
+* Returns and object with info about a property given a locator
+* @method getPropertyInfo
+* @param {string} locator
+* @return {Object} object with { node, target, name, value and type }
+**/
+SceneNode.prototype.getPropertyInfo = function( locator )
+{
+	var path = locator.split("/");
+	return this.getPropertyInfoFromPath(path);
+}
+
+/**
+* Returns and object with info about a property given a locator in path format
+* @method getPropertyInfoFromPath
+* @param {Array} path a locator in path format (split by /)
+* @return {Object} object with { node, target, name, value and type }
+**/
+SceneNode.prototype.getPropertyInfoFromPath = function( path )
+{
+	var target = this;
+	var varname = path[0];
+	var no_slice = false;
+
+	if(path.length == 0)
+	{
+		return {
+			node: this,
+			target: null,
+			name: "",
+			value: this,
+			type: "node" //node because thats the global type for nodes
+		};
+	}
+    else if(path.length == 1) //compo or //var
+	{
+		if(path[0][0] == "@") //compo uid
+		{
+			target = this.getComponentByUId( path[0] );
+			return {
+				node: this,
+				target: target,
+				name: target ? LS.getObjectClassName( target ) : "",
+				type: "component",
+				value: target
+			};
+		}
+		else if (path[0] == "material")
+		{
+			target = this.getMaterial();
+			return {
+				node: this,
+				target: target,
+				name: target ? LS.getObjectClassName( target ) : "",
+				type: "material",
+				value: target
+			};
+		}
+		else if (path[0] == "visible")
+		{
+			return {
+				node: this,
+				target: this,
+				name: "visible",
+				type: "boolean",
+				value: this.visible
+			};
+		}
+
+		var target = this.getComponent( path[0] );
+		if(target)
+		{
+			return {
+				node: this,
+				target: target,
+				name: target ? LS.getObjectClassName( target ) : "",
+				type: "component",
+				value: target
+			};
+		}
+
+		//special cases for a node
+		switch(path[0])
+		{
+			case "matrix":
+			case "x":
+			case "y": 
+			case "z": 
+			case "position":
+			case "rotX":
+			case "rotY":
+			case "rotZ":
+				target = this.transform;
+				varname = path[0];
+				no_slice = true;
+				break;
+			default: 
+				target = this;
+				varname = path[0];
+			break;
+		}
+	}
+    else if(path.length > 1) //compo/var
+	{
+		if(path[0][0] == "@")
+		{
+			varname = path[1];
+			target = this.getComponentByUId( path[0] );
+		}
+		else if (path[0] == "material")
+		{
+			target = this.getMaterial();
+			varname = path[1];
+		}
+		else if (path[0] == "flags")
+		{
+			target = this.flags;
+			varname = path[1];
+		}
+		else
+		{
+			target = this.getComponent( path[0] );
+			varname = path[1];
+		}
+
+		if(!target)
+			return null;
+	}
+	else //�?
+	{
+	}
+
+	if(!target) //unknown target
+		return null;
+
+	//this was moved to Component.prototype.getPropertyInfoFromPath  (if any errors check cases)
+	if( target != this && target.getPropertyInfoFromPath ) //avoid weird recursion
+		return target.getPropertyInfoFromPath( no_slice ? path : path.slice(1) );
+
+	return null;
+}
+
+/**
+* Returns the value of a property given a locator in string format
+* @method getPropertyValue
+* @param {String} locaator
+* @return {*} the value of that property
+**/
+SceneNode.prototype.getPropertyValue = function( locator )
+{
+	var path = locator.split("/");
+	return this.getPropertyValueFromPath(path);
+}
+
+/**
+* Returns the value of a property given a locator in path format
+* @method getPropertyValueFromPath
+* @param {Array} locator in path format (array)
+* @return {*} the value of that property
+**/
+SceneNode.prototype.getPropertyValueFromPath = function( path )
+{
+	var target = this;
+	var varname = path[0];
+	var no_slice = false;
+
+	if(path.length == 0)
+		return null
+    else if(path.length == 1) //compo or //var
+	{
+		if(path[0][0] == "@")
+			return this.getComponentByUId( path[0] );
+		else if (path[0] == "material")
+			return this.getMaterial();
+		var target = this.getComponent( path[0] );
+		if(target)
+			return target;
+
+		switch(path[0])
+		{
+			case "matrix":
+			case "x":
+			case "y": 
+			case "z": 
+			case "position":
+			case "rotX":
+			case "rotY":
+			case "rotZ":
+				target = this.transform;
+				varname = path[0];
+				no_slice = true;
+				break;
+			default: 
+				target = this;
+				varname = path[0];
+			break;
+		}
+	}
+    else if(path.length > 1) //compo/var
+	{
+		if(path[0][0] == "@")
+		{
+			varname = path[1];
+			target = this.getComponentByUId( path[0] );
+		}
+		else if (path[0] == "material")
+		{
+			target = this.getMaterial();
+			varname = path[1];
+		}
+		else if (path[0] == "flags")
+		{
+			target = this.flags;
+			varname = path[1];
+		}
+		else if (path[0] == "visible")
+		{
+			target = this;
+			varname = path[0];
+		}
+		else
+		{
+			target = this.getComponent( path[0] );
+			varname = path[1];
+		}
+
+		if(!target)
+			return null;
+	}
+	else //�?
+	{
+	}
+
+	var v = undefined;
+
+	if( target.getPropertyValueFromPath && target != this )
+	{
+		var r = target.getPropertyValueFromPath( no_slice ? path : path.slice(1) );
+		if(r)
+			return r;
+	}
+
+	//to know the value of a property of the given target
+	if( target.getPropertyValue && target != this )
+		v = target.getPropertyValue( varname );
+
+	//special case when the component doesnt specify any locator info but the property referenced does
+	//used in TextureFX
+	if (v === undefined && path.length > 2 && target[ varname ] && target[ varname ].getPropertyValueFromPath )
+	{
+		var r = target[ varname ].getPropertyValueFromPath( no_slice ? path.slice(1) : path.slice(2) );
+		if(r)
+		{
+			r.node = this;
+			return r;
+		}
+	}
+
+	if(v === undefined && target[ varname ] === undefined )
+		return null;
+	return v !== undefined ? v : target[ varname ];
+}
+
+/**
+* assigns a value to a property given the locator for that property
+* @method setPropertyValue
+* @param {String} locator
+* @param {*} value
+**/
+SceneNode.prototype.setPropertyValue = function( locator, value )
+{
+	var path = locator.split("/");
+	return this.setPropertyValueFromPath(path, value, 0);
+}
+
+/**
+* given a locator in path mode (array) and a value, it searches for the corresponding value and applies it
+* @method setPropertyValueFromPath
+* @param {Array} path
+* @param {*} value
+* @param {Number} [optional] offset used to skip the firsst positions in the array
+**/
+SceneNode.prototype.setPropertyValueFromPath = function( path, value, offset )
+{
+	offset = offset || 0;
+
+	if(this.flags && this.flags.locked)
+		return; //lock ignores changes from animations or graphs
+
+	var target = null;
+	var varname = path[offset];
+
+	if(path.length > (offset+1))
+	{
+		if(path[offset][0] == "@")
+		{
+			varname = path[offset+1];
+			target = this.getComponentByUId( path[offset] );
+		}
+		else if( path[offset] == "material" )
+		{
+			target = this.getMaterial();
+			varname = path[offset+1];
+		}
+		else if( path[offset] == "flags" )
+		{
+			target = this.flags;
+			varname = path[offset+1];
+		}
+		else if( path[offset] == "visible" )
+		{
+			target = this;
+			varname = path[offset];
+		}
+		else 
+		{
+			target = this.getComponent( path[offset] );
+			varname = path[offset+1];
+		}
+
+		if(!target)
+			return null;
+	}
+	else { //special cases 
+		switch ( path[offset] )
+		{
+			case "matrix": target = this.transform; break;
+			case "position":
+			case "rotation":
+			case "x":
+			case "y":
+			case "z":
+			case "xrotation": 
+			case "yrotation": 
+			case "zrotation": 
+				target = this.transform; 
+				varname = path[offset];
+				break;
+			case "translate.X": target = this.transform; varname = "x"; break;
+			case "translate.Y": target = this.transform; varname = "y"; break;
+			case "translate.Z": target = this.transform; varname = "z"; break;
+			case "rotateX.ANGLE": target = this.transform; varname = "pitch"; break;
+			case "rotateY.ANGLE": target = this.transform; varname = "yaw"; break;
+			case "rotateZ.ANGLE": target = this.transform; varname = "roll"; break;
+			default: target = this; //null
+		}
+	}
+
+	if(!target)
+		return null;
+
+	if(target.setPropertyValueFromPath && target != this)
+		if( target.setPropertyValueFromPath( path, value, offset+1 ) === true )
+			return target;
+	
+	if(target.setPropertyValue  && target != this)
+		if( target.setPropertyValue( varname, value ) === true )
+			return target;
+
+	if( target[ varname ] === undefined )
+		return;
+
+	//special case when the component doesnt specify any locator info but the property referenced does
+	//used in TextureFX
+	if ( path.length > 2 && target[ varname ] && target[ varname ].setPropertyValueFromPath )
+		return target[ varname ].setPropertyValueFromPath( path, value, offset+2 );
+
+	//disabled because if the vars has a setter it wont be called using the array.set
+	//if( target[ varname ] !== null && target[ varname ].set )
+	//	target[ varname ].set( value );
+	//else
+		target[ varname ] = value;
+
+	return target;
+}
+
+/**
+* Returns all the resources used by this node and its components (you can include the resources from the children too)
+* @method getResources
+* @param {Object} res object where to store the resources used (in "res_name":LS.TYPE format)
+* @param {Boolean} include_children if you want to add also the resources used by the children nodes
+* @return {Object} the same object passed is returned 
+**/
+SceneNode.prototype.getResources = function( res, include_children )
+{
+	//resources in components
+	for(var i in this._components)
+		if( this._components[i].getResources )
+			this._components[i].getResources( res );
+
+	//res in material
+	if(this.material)
+	{
+		if( this.material.constructor === String )
+		{
+			if(this.material[0] != ":") //not a local material, then its a reference
+			{
+				res[this.material] = LS.Material;
+			}
+		}
+
+		var mat = this.getMaterial();
+		if(mat)
+			mat.getResources( res );
+	}
+
+	//prefab
+	if(this.prefab)
+		res[ this.prefab ] = LS.Prefab;
+
+	//propagate
+	if(include_children)
+		for(var i in this._children)
+			this._children[i].getResources(res, true);
+
+	return res;
+}
+
+SceneNode.prototype.getTransform = function() {
+	return this.transform;
+}
+
+//Helpers
+
+SceneNode.prototype.getMesh = function( use_lod_mesh ) {
+	var mesh = this.mesh;
+	var mesh_renderer = this.getComponent( LS.Components.MeshRenderer );
+	if(!mesh && mesh_renderer)
+	{
+		if(use_lod_mesh)
+			mesh = mesh_renderer.lod_mesh;
+		if(!mesh)
+			mesh = mesh_renderer.mesh;
+	}
+	if(!mesh)
+		return null;
+	if(mesh.constructor === String)
+		return LS.ResourcesManager.meshes[mesh];
+	return mesh;
+}
+
+//Light component
+SceneNode.prototype.getLight = function() {
+	return this.light;
+}
+
+//Camera component
+SceneNode.prototype.getCamera = function() {
+	return this.camera;
+}
+
+/**
+* Allows to load some kind of resource and associate it to this node.
+* It can be for prefabs, meshes, scenes from daes, etc
+* @method load
+* @param {string} url
+* @param {Function} on_complete
+**/
+SceneNode.prototype.load = function( url, on_complete )
+{
+	var that = this;
+	LS.ResourcesManager.load( url, inner );
+	function inner( resource )
+	{
+		if(!resource)
+			return;
+		that.assign( resource );
+		if(on_complete)
+			on_complete();
+	}
+}
+
+/**
+* Assign a resource/element inteligently to a node: if it is a mesh it creates a MeshRenderer, if it is a Material it assigns it, if it is an animation creates a PlayAnimation, if it is a prefab assigns the prefab. etc
+* @method assign
+* @param {*} resource the resource to assign (it also accepts a resource filename that has been previously loaded).
+* @param {Function} on_complete
+**/
+SceneNode.prototype.assign = function( item, extra )
+{
+	if(!item)
+	{
+		console.error("assignResource cannot have null as resource");
+		return;
+	}
+
+	//assume is the filename of a resource
+	if(item.constructor === String)
+		item = LS.ResourcesManager.getResource( item );
+
+	if(!item)
+		return;
+
+	switch( item.constructor )
+	{
+		case LS.SceneNode: 
+			this.addChild( item );
+			break;
+		case LS.Scene:
+			var node = this;
+			item.loadScripts( null, function(){
+				item.loadResources( function(){ 
+					node.addChild( item.root.clone() );
+				});
+			});
+			break;
+		case LS.Prefab: 
+			this.prefab = item.fullpath || item.filename; 
+			break;
+		case GL.Mesh: 
+			var component = this.getComponent( LS.Components.MeshRenderer );
+			if(component)
+				component.configure({ mesh: item.fullpath || item.filename });
+			else
+				this.addComponent( new LS.MeshRenderer({ mesh: mesh_name, submesh_id: submesh_id }) );
+			break;
+		case LS.Animation: 
+			var comp = this.getComponent( LS.Components.PlayAnimation );
+			if(!comp)
+				comp = this.addComponent( new LS.Components.PlayAnimation() );
+			comp.animation = item.fullpath || item.filename;
+			break;
+		case LS.Resource: //generic resource
+			var ext = LS.ResourcesManager.getExtension( item.filename );
+			if(ext == "js") //scripts
+			{
+				var comp = this.getComponent( LS.Components.ScriptFromFile );
+				if(!comp)
+					comp = this.addComponent( new LS.Components.ScriptFromFile() );
+				comp.src = item.fullpath || item.filename;
+			}
+			break;
+		default:
+			console.error("feature not supported loading this type of resource" , item );
+	}
+}
+
+/**
+* Simple way to assign a mesh to a node, it created a MeshRenderer component or reuses and existing one and assigns the mesh
+* @method setMesh
+* @param {string} mesh_name the name of the mesh (path to the file)
+* @param {Number} submesh_id if you want to assign a submesh
+**/
+SceneNode.prototype.setMesh = function(mesh_name, submesh_id)
+{
+	var component = this.getComponent( LS.Components.MeshRenderer );
+	if(component)
+		component.configure({ mesh: mesh_name, submesh_id: submesh_id });
+	else
+		this.addComponent( new LS.MeshRenderer({ mesh: mesh_name, submesh_id: submesh_id }) );
+}
+
+SceneNode.prototype.getMaterial = function()
+{
+	if (!this.material)
+		return null;
+	if(this.material.constructor === String)
+	{
+		if( !this._in_tree )
+			return null;
+		if( this.material[0] == "@" )//uid
+			return LS.ResourcesManager.materials_by_uid[ this.material ];
+		return LS.ResourcesManager.materials[ this.material ];
+	}
+	return this.material;
+}
+
+/**
+* Apply prefab info (skipping the root components) to node, so all children will be removed and components lost and overwritten
+* It is called from prefab.applyToNodes when a prefab is loaded in memory
+* @method reloadFromPrefab
+**/
+SceneNode.prototype.reloadFromPrefab = function()
+{
+	if(!this.prefab)
+		return;
+
+	var prefab = LS.ResourcesManager.resources[ this.prefab ];
+	if(!prefab)
+		return;
+
+	if( prefab.constructor !== LS.Prefab )
+		throw("prefab must be a LS.Prefab class");
+
+	//apply info
+	this.removeAllChildren();
+	this.init( true, true ); //keep components, keep_info
+	var prefab_data = prefab.prefab_data;
+	
+	//remove all but children info (prefabs overwrite only children info)
+	prefab_data = { children: prefab.prefab_data.children };
+
+	//uid data is already removed from the prefab
+	this.configure( prefab_data );
+
+	//load secondary resources 
+	var resources = this.getResources( {}, true );
+	LS.ResourcesManager.loadResources( resources );
+
+	LEvent.trigger( this, "prefabReady", prefab );
+}
+
+
+/**
+* Assigns this node to one layer
+* @method setLayer
+* @param {number|String} the index of the layer or the name (according to scene.layer_names)
+* @param {boolean} value 
+*/
+SceneNode.prototype.setLayer = function( num_or_name, value )
+{
+	if( num_or_name == null )
+		throw("setLayer expects layer");
+
+	var num;
+
+	if(num_or_name.constructor === String)
+	{
+		var scene = this.scene || LS.GlobalScene;
+		var layer_num = scene.layer_names.indexOf( num_or_name );
+		if(layer_num == -1)
+		{
+			console.error("Layer with name:",num_or_name,"not found in scene");
+			return;
+		}
+		num = layer_num;
+	}
+	else
+		num = num_or_name;
+
+	var f = 1<<num;
+	this.layers = (this.layers & (~f));
+	if(value)
+		this.layers |= f;
+}
+
+/**
+* checks if this node is in the given layer
+* @method isInLayer
+* @param {number|String} index of layer or name according to scene.layer_names
+* @return {boolean} true if belongs to this layer
+*/
+SceneNode.prototype.isInLayer = function( num_or_name )
+{
+	if( num_or_name == null )
+		throw("setLayer expects layer");
+
+	var num;
+
+	if(num_or_name.constructor === String)
+	{
+		var scene = this.scene || LS.GlobalScene;
+		var layer_num = scene.layer_names.indexOf( num_or_name );
+		if(layer_num == -1)
+		{
+			console.error("Layer with name:",num_or_name,"not found in scene");
+			return;
+		}
+		num = layer_num;
+	}
+	else
+		num = num_or_name;
+
+	return (this.layers & (1<<num)) !== 0;
+}
+
+SceneNode.prototype.getLayers = function()
+{
+	var r = [];
+	if(!this.scene)
+		return r;
+
+	for(var i = 0; i < 32; ++i)
+	{
+		if( this.layers & (1<<i) )
+			r.push( this.scene.layer_names[i] || ("layer"+i) );
+	}
+	return r;
+}
+
+/**
+* Returns the root node of the prefab incase it is inside a prefab, otherwise null
+* @method insidePrefab
+* @return {Object} returns the node where the prefab starts
+*/
+SceneNode.prototype.insidePrefab = function()
+{
+	var aux = this;
+	while( aux )
+	{
+		if(aux.prefab)
+			return aux;
+		aux = aux._parentNode;
+	}
+	return null;
+}
+
+/**
+* remember clones this node and returns the new copy (you need to add it to the scene to see it)
+* @method clone
+* @return {Object} returns a cloned version of this node
+*/
+SceneNode.prototype.clone = function()
+{
+	var scene = this._in_tree;
+
+	var new_name = scene ? scene.generateUniqueNodeName( this._name ) : this._name ;
+	var newnode = new LS.SceneNode( new_name );
+	var info = this.serialize();
+
+	//remove all uids from nodes and components
+	LS.clearUIds( info );
+
+	info.uid = LS.generateUId("NODE-");
+	newnode.configure( info );
+
+	return newnode;
+}
+
+/**
+* Configure this node from an object containing the info
+* @method configure
+* @param {Object} info the object with all the info (comes from the serialize method)
+*/
+SceneNode.prototype.configure = function(info)
+{
+	//identifiers parsing
+	if (info.name)
+		this.setName(info.name);
+	else if (info.id)
+		this.setName(info.id);
+	if(info.layers !== undefined)
+		this.layers = info.layers;
+
+	if (info.uid)
+		this.uid = info.uid;
+
+	if (info.className && info.className.constructor == String)	
+		this.className = info.className;
+
+	if(info.node_type)
+	{
+		this.node_type = info.node_type;
+		if(info.node_type == "JOINT") //used in editor
+			this._is_bone = true;
+	}
+
+	//some helpers (mostly for when loading from js object that come from importers or code)
+	if(info.camera)
+		this.addComponent( new LS.Camera( info.camera ) );
+
+	if(info.light)
+		this.addComponent( new LS.Light( info.light ) );
+
+	//in case more than one mesh in on e node
+	if(info.meshes)
+	{
+		for(var i = 0; i < info.meshes.length; ++i)
+			this.addMeshComponents( info.meshes[i], info );
+	}
+	else if(info.mesh)
+		this.addMeshComponents( info.mesh, info );
+
+	//transform in matrix format could come from importers so we leave it
+	if((info.position || info.model || info.transform) && !this.transform)
+		this.addComponent( new LS.Transform() );
+	if(info.position) 
+		this.transform.position = info.position;
+	if(info.model) 
+		this.transform.fromMatrix( info.model ); 
+	if(info.matrix) 
+		this.transform.fromMatrix( info.matrix ); 
+	if(info.transform) 
+		this.transform.configure( info.transform ); 
+
+	//first the no components
+	if(info.material)
+	{
+		var mat_classname = info.material.material_class;
+		if(!mat_classname || mat_classname == "newStandardMaterial") //legacy
+			mat_classname = "StandardMaterial";
+		var constructor = LS.MaterialClasses[mat_classname];
+		if(constructor)
+			this.material = typeof(info.material) == "string" ? info.material : new constructor( info.material );
+		else
+			console.warn("Material not found: " + mat_classname );
+	}
+
+	if(info.flags) //merge
+		for(var i in info.flags)
+			this.flags[i] = info.flags[i];
+	
+	//add animation tracks player
+	if(info.animation)
+	{
+		this.animation = info.animation;
+		this.addComponent( new LS.Components.PlayAnimation({ animation: this.animation }) );
+	}
+
+	//extra user info
+	if(info.extra)
+		this.extra = info.extra;
+
+	if(info.editor)
+		this._editor = info.editor;
+
+
+	if(info.comments)
+		this.comments = info.comments;
+
+	//restore components
+	if(info.components)
+		this.configureComponents( info );
+
+	if(info.prefab && !this._is_root)  //is_root because in some weird situations the prefab was set to the root node
+		this.prefab = info.prefab; //assign and calls this.reloadFromPrefab();
+	else //configure children if it is not a prefab
+		this.configureChildren(info);
+
+	LEvent.trigger(this,"configure",info);
+}
+
+//adds components according to a mesh
+//used mostly to addapt a node to a collada mesh info
+SceneNode.prototype.addMeshComponents = function( mesh_id, extra_info )
+{
+	extra_info = extra_info || {};
+
+	if(!mesh_id)
+		return;
+
+	if( mesh_id.constructor !== String )
+	{
+		extra_info = mesh_id;
+		mesh_id = extra_info.mesh;
+		if(!mesh_id)
+		{
+			console.warn("Mesh info without mesh id");
+			return null;
+		}
+	}
+
+	var mesh = LS.ResourcesManager.meshes[ mesh_id ];
+
+	if(!mesh)
+	{
+		console.warn( "SceneNode mesh not found: " + mesh_id );
+		return;
+	}
+
+	var mesh_render_config = { mesh: mesh_id };
+
+	if(extra_info.submesh_id !== undefined)
+		mesh_render_config.submesh_id = extra_info.submesh_id;
+	if(extra_info.morph_targets !== undefined)
+		mesh_render_config.morph_targets = extra_info.morph_targets;
+	if(extra_info.material !== undefined)
+		mesh_render_config.material = extra_info.material;
+
+	var compo = new LS.Components.MeshRenderer( mesh_render_config );
+
+	//parsed meshes have info about primitive
+	if( mesh.primitive )
+    {
+        switch(mesh.primitive)
+        {
+    		case 'points': compo.primitive = GL.POINTS; break;
+    		case 'lines': compo.primitive = GL.LINES; break;
+    		case 'line_strip': compo.primitive = GL.LINE_STRIP; break;
+        }
+		delete mesh.primitive;
+    }
+
+	//add MeshRenderer
+	this.addComponent( compo );
+
+	//skinning
+	if(mesh && mesh.bones)
+	{
+		compo = new LS.Components.SkinDeformer({ search_bones_in_parent: false }); //search_bones_in_parent is false because usually DAEs come that way
+		this.addComponent( compo );
+	}
+
+	//morph targets
+	if( mesh && mesh.morph_targets )
+	{
+		var compo = new LS.Components.MorphDeformer( { morph_targets: mesh.morph_targets } );
+		this.addComponent( compo );
+	}
+
+}
+
+/**
+* Serializes this node by creating an object with all the info
+* it contains info about the components too
+* @method serialize
+* @param {bool} ignore_prefab serializing wont returns children if it is a prefab, if you set this to ignore_prefab it will return all the info
+* @return {Object} returns the object with the info
+*/
+SceneNode.prototype.serialize = function( ignore_prefab, simplified )
+{
+	var o = {
+		object_class: "SceneNode"
+	};
+
+	if(this._name) 
+		o.name = this._name;
+	if(this.uid) 
+		o.uid = this.uid;
+	if(this.className) 
+		o.className = this.className;
+	o.layers = this.layers;
+
+	//work in progress
+	if(this.node_type)
+		o.node_type = this.node_type;
+
+	//modules
+	if(this.mesh && typeof(this.mesh) == "string") 
+		o.mesh = this.mesh; //do not save procedural meshes
+	if(this.submesh_id != null) 
+		o.submesh_id = this.submesh_id;
+	if(this.material) 
+		o.material = typeof(this.material) == "string" ? this.material : this.material.serialize( simplified );
+	if(this.prefab && !ignore_prefab && !this._is_root ) 
+		o.prefab = this.prefab;
+
+	if(this.flags) 
+		o.flags = LS.cloneObject(this.flags);
+
+	//extra user info
+	if(this.extra) 
+		o.extra = this.extra;
+	if(this.comments) 
+		o.comments = this.comments;
+
+	if(this._children && (!this.prefab || ignore_prefab) )
+		o.children = this.serializeChildren( simplified );
+
+	if(this._editor)
+		o.editor = this._editor;
+
+	//save components
+	this.serializeComponents( o, simplified );
+
+	//extra serializing info
+	LEvent.trigger(this,"serialize",o);
+
+	return o;
+}
+
+//used to recompute matrix so when parenting one node it doesnt lose its global transformation
+SceneNode.prototype._onChildAdded = function( child_node, recompute_transform )
+{
+	if(recompute_transform && this.transform)
+	{
+		var M = child_node.transform.getGlobalMatrix(); //get son transform
+		var M_parent = this.transform.getGlobalMatrix(); //parent transform
+		mat4.invert(M_parent,M_parent);
+		child_node.transform.fromMatrix( mat4.multiply(M_parent,M_parent,M) );
+		child_node.transform.getGlobalMatrix(); //refresh
+	}
+	//link transform
+	if(this.transform)
+	{
+		if(!child_node.transform)
+			child_node.transform.addComponent( new LS.Transform() );
+		child_node.transform._parent = this.transform;
+	}
+}
+
+SceneNode.prototype._onChangeParent = function( future_parent, recompute_transform )
+{
+	if(recompute_transform && future_parent.transform)
+	{
+		var M = this.transform.getGlobalMatrix(); //get son transform
+		var M_parent = future_parent.transform.getGlobalMatrix(); //parent transform
+		mat4.invert(M_parent,M_parent);
+		this.transform.fromMatrix( mat4.multiply(M_parent,M_parent,M) );
+	}
+	//link transform
+	if(future_parent.transform)
+		this.transform._parent = future_parent.transform;
+}
+
+SceneNode.prototype._onChildRemoved = function( node, recompute_transform, remove_components )
+{
+	if(this.transform)
+	{
+		//unlink transform
+		if(node.transform)
+		{
+			if(recompute_transform)
+			{
+				var m = node.transform.getGlobalMatrix();
+				node.transform._parent = null;
+				node.transform.fromMatrix(m);
+			}
+			else
+				node.transform._parent = null;
+		}
+	}
+
+	if( remove_components )
+		node.removeAllComponents();
+}
+
+//Computes the bounding box from the render instance of this node
+//doesnt take into account children
+SceneNode.prototype.getBoundingBox = function( bbox, only_instances )
+{
+	bbox = bbox || BBox.create();
+	var render_instances = this._instances;
+	if(render_instances)
+		for(var i = 0; i < render_instances.length; ++i)
+		{
+			if(i == 0)
+				bbox.set( render_instances[i].aabb );
+			else
+				BBox.merge( bbox, bbox, render_instances[i].aabb );
+		}
+
+	if(only_instances)
+		return bbox;
+
+	if( (!render_instances || render_instances.length == 0) && this.transform )
+		return BBox.fromPoint( this.transform.getGlobalPosition() );
+
+	return bbox;
+}
+
+LS.Scene.Node = SceneNode;
+LS.SceneNode = SceneNode;
+LS.Classes.SceneNode = SceneNode;
+
 ///@FILE:../src/resources/resource.js
 ///@INFO: BASE
 /**
@@ -43359,7 +46732,8 @@ Script.API_functions = {};
 Script.API_events_to_function = {};
 
 Script.defineAPIFunction = function( func_name, target, event, info ) {
-	event = event || func_name;
+	if(!event)
+		throw("Script function requires event");
 	target = target || Script.BIND_TO_SCENE;
 	var data = { name: func_name, target: target, event: event, info: info };
 	Script.API_functions[ func_name ] = data;
@@ -43373,7 +46747,7 @@ Script.defineAPIFunction( "onFinish", Script.BIND_TO_SCENE, LS.EVENT.FINISH );
 Script.defineAPIFunction( "onPrefabReady", Script.BIND_TO_NODE, "prefabReady" );
 //behaviour
 Script.defineAPIFunction( "onUpdate", Script.BIND_TO_SCENE, LS.EVENT.UPDATE );
-Script.defineAPIFunction( "onFixedUpdate", Script.BIND_TO_SCENE, "fixedUpdate" );
+Script.defineAPIFunction( "onFixedUpdate", Script.BIND_TO_SCENE, LS.EVENT.FIXED_UPDATE );
 Script.defineAPIFunction( "onNodeClicked", Script.BIND_TO_NODE, "node_clicked" );
 Script.defineAPIFunction( "onClicked", Script.BIND_TO_NODE, "clicked" );
 //rendering
@@ -46567,3367 +49941,6 @@ InteractiveController.prototype._onMouse = function(type, e)
 
 
 LS.registerComponent( InteractiveController );
-
-///@FILE:../src/scene.js
-///@INFO: BASE
-/**
-* The Scene contains all the info about the Scene and nodes
-*
-* @class Scene
-* @constructor
-*/
-
-//event definitions for scene
-EVENT.INIT = "init";
-EVENT.CLEAR = "clear";
-EVENT.PRECONFIGURE = "preConfigure";
-EVENT.CONFIGURE = "configure";
-EVENT.CHANGE = "change";
-EVENT.LOAD = "load";
-EVENT.LOAD_COMPLETED = "load_completed";
-EVENT.AWAKE = "awake";
-EVENT.START = "start";
-EVENT.PAUSE = "pause";
-EVENT.UNPAUSE = "unpause";
-EVENT.COLLECT_RENDER_INSTANCES = "collectRenderInstances";
-EVENT.COLLECT_PHYSIC_INSTANCES = "collectPhysicInstances";
-EVENT.COLLECT_LIGHTS = "collectLights";
-EVENT.COLLECT_CAMERAS = "collectCameras";
-EVENT.COLLECT_DATA = "collectData";
-EVENT.SERIALIZE = "serialize";
-EVENT.FINISH = "finish";
-
-function Scene()
-{
-	this.uid = LS.generateUId("TREE-");
-
-	this._state = LS.STOPPED;
-
-	this._root = new LS.SceneNode("root");
-	this._root.removeAllComponents();
-	this._root._is_root  = true;
-	this._root._in_tree = this;
-	this._nodes = [ this._root ];
-	this._nodes_by_name = { "root" : this._root };
-	this._nodes_by_uid = {};
-	this._nodes_by_uid[ this._root.uid ] = this._root;
-	this._components_by_uid = {};
-
-	//used to stored info when collecting from nodes
-	this._uniforms = {};
-	this._instances = [];
-	this._lights = [];
-	this._cameras = [];
-	this._colliders = [];
-	this._reflection_probes = [];
-
-	//MOST OF THE PARAMETERS ARE CREATED IN init() METHOD
-
-	//in case the resources base path are located somewhere else, if null the default is used
-	this.external_repository = null;
-
-	//work in progress, not finished yet. This will contain all the objects in cells
-	this._spatial_container = new LS.SpatialContainer();
-
-	this.external_scripts = []; //external scripts that must be loaded before initializing the scene (mostly libraries used by this scene)
-	this.global_scripts = []; //scripts that are located in the resources folder and must be loaded before launching the app
-	this.preloaded_resources = {}; //resources that must be loaded, appart from the ones in the components
-
-	//track with global animations of the scene
-	this.animation = null;
-
-	//FEATURES NOT YET FULLY IMPLEMENTED
-	this._local_resources = {}; //used to store resources that go with the scene
-	this.texture_atlas = null;
-
-	this.layer_names = ["main","secondary"];
-
-	LEvent.bind( this, "treeItemAdded", this.onNodeAdded, this );
-	LEvent.bind( this, "treeItemRemoved", this.onNodeRemoved, this );
-
-	this._shaderblock_info = null;
-
-	this.init();
-}
-
-//LS.extendClass( Scene, ComponentContainer ); //scene could also have components
-
-Object.defineProperty( Scene.prototype, "root", {
-	enumerable: true,
-	get: function() {
-		return this._root;
-	},
-	set: function(v) {
-		throw("Root node cannot be replaced");
-	}
-});
-
-Object.defineProperty( Scene.prototype, "time", {
-	enumerable: true,
-	get: function() {
-		return this._time;
-	},
-	set: function(v) {
-		throw("Cannot set time directly");
-	}
-});
-
-Object.defineProperty( Scene.prototype, "state", {
-	enumerable: true,
-	get: function() {
-		return this._state;
-	},
-	set: function(v) {
-		throw("Cannot set state directly, use start, finish, pause, unpause");
-	}
-});
-
-Object.defineProperty( Scene.prototype, "globalTime", {
-	enumerable: true,
-	get: function() {
-		return this._global_time;
-	},
-	set: function(v) {
-		throw("Cannot set global_time directly");
-	}
-});
-
-Object.defineProperty( Scene.prototype, "frame", {
-	enumerable: true,
-	get: function() {
-		return this._frame;
-	},
-	set: function(v) {
-		throw("Cannot set frame directly");
-	}
-});
-
-//Some useful events
-Scene.supported_events = ["start","update","finish","clear","beforeReload","change","afterRender","configure","nodeAdded","nodeChangeParent","nodeComponentRemoved","reload","renderPicking","scene_loaded","serialize"];
-
-//methods
-
-/**
-* This initializes the content of the scene.
-* Call it to clear the scene content
-*
-* @method init
-* @return {Boolean} Returns true on success
-*/
-Scene.prototype.init = function()
-{
-	this.id = "";
-	//this.materials = {}; //shared materials cache: moved to LS.RM.resources
-	this.external_repository = null;
-
-	this.global_scripts = [];
-	this.external_scripts = [];
-	this.preloaded_resources = {};
-	this.texture_atlas = null;
-
-	this._root.removeAllComponents();
-	this._root.uid = LS.generateUId("NODE-");
-
-	this._nodes = [ this._root ];
-	this._nodes_by_name = { "root": this._root };
-	this._nodes_by_uid = {};
-	this._nodes_by_uid[ this._root.uid ] = this._root;
-	this._components_by_uid = {};
-
-	//WIP
-	this._spatial_container.clear();
-
-	//default components
-	this.info = new LS.Components.GlobalInfo();
-	this._root.addComponent( this.info );
-	this._root.addComponent( new LS.Camera({ eye:[0,100,100], center:[0,0,0]} ) );
-	this._root.addComponent( new LS.Light({ position: vec3.fromValues(100,100,100), target: vec3.fromValues(0,0,0) }) );
-
-	this._frame = 0;
-	this._last_collect_frame = -1; //force collect
-	this._state = LS.STOPPED;
-
-	this._time = 0;
-	this._global_time = 0; //in seconds
-	this._start_time = 0; //in seconds
-	this._last_dt = 1/60; //in seconds
-	this._must_redraw = true;
-	this._fixed_update_timestep = 1/60;
-	this._remaining_fixed_update_time = 0;
-
-	if(this.selected_node) 
-		delete this.selected_node;
-
-	this.layer_names = ["main","secondary"];
-	this.animation = null;
-	this._local_resources = {}; //not used yet
-	this.extra = {};
-}
-
-/**
-* Clears the scene using the init function
-* and trigger a "clear" LEvent
-*
-* @method clear
-*/
-Scene.prototype.clear = function()
-{
-	//remove all nodes to ensure no lose callbacks are left
-	while(this._root._children && this._root._children.length)
-		this._root.removeChild(this._root._children[0], false, true ); //recompute_transform, remove_components
-
-	//remove scene components
-	this._root.processActionInComponents("onRemovedFromNode",this); //send to components
-	this._root.processActionInComponents("onRemovedFromScene",this); //send to components
-
-	this._instances.length = 0;
-	this._lights.length = 0;
-	this._cameras.length = 0;
-	this._colliders.length = 0;
-	this._reflection_probes.length = 0;
-	this._local_resources = {};
-
-	this.init();
-	/**
-	 * Fired when the whole scene is cleared
-	 *
-	 * @event clear
-	 */
-	LEvent.trigger(this, EVENT.CLEAR );
-	LEvent.trigger(this, EVENT.CHANGE );
-}
-
-/**
-* Configure the Scene using an object (the object can be obtained from the function serialize)
-* Inserts the nodes, configure them, and change the parameters
-* ATTENTION: Destroys all previously existing info
-*
-* @method configure
-* @param {Object} scene_info the object containing all the info about the nodes and config of the scene
-*/
-Scene.prototype.configure = function( scene_info )
-{
-	if(!scene_info || scene_info.constructor === String)
-		throw("Scene configure requires object");
-
-	LEvent.trigger(this, EVENT.PRECONFIGURE, scene_info);
-
-	this._root.removeAllComponents(); //remove light, camera, skybox
-
-	//this._components = [];
-	//this.camera = this.light = null; //legacy
-
-	if(scene_info.uid)
-		this.uid = scene_info.uid;
-
-	if((scene_info.object_class || scene_info.object_type) != "Scene") //legacy
-		console.warn("Warning: object set to scene doesnt look like a propper one.", scene_info);
-
-	if(scene_info.external_repository)
-		this.external_repository = scene_info.external_repository;
-
-	//extra info that the user wanted to save (comments, etc)
-	if(scene_info.extra)
-		this.extra = scene_info.extra;
-
-	//this clears all the nodes
-	if(scene_info.root)
-	{
-		this._spatial_container.clear(); // is this necessary?
-		LS._pending_encoded_objects = [];
-		this._root.configure( scene_info.root );
-		LS.resolvePendingEncodedObjects();
-	}
-
-	if( scene_info.global_scripts )
-		this.global_scripts = scene_info.global_scripts.concat();
-
-	if( scene_info.external_scripts )
-		this.external_scripts = scene_info.external_scripts.concat();
-
-	if( scene_info.preloaded_resources )
-		this.preloaded_resources = LS.cloneObject( scene_info.preloaded_resources );
-
-	if( scene_info.local_resources )
-		this._local_resources = scene_info.local_resources;
-
-	if( scene_info.layer_names )
-		this.layer_names = scene_info.layer_names.concat();
-
-	if( scene_info.animation )
-		this.animation = new LS.Animation( scene_info.animation );
-
-	//if(scene_info.components)
-	//	this.configureComponents( scene_info );
-
-	if( scene_info.editor )
-		this._editor = scene_info.editor;
-
-	if( scene_info.texture_atlas )
-		this.texture_atlas = scene_info.texture_atlas;
-
-	/**
-	 * Fired after the scene has been configured
-	 * @event configure
-	 * @param {Object} scene_info contains all the info to do the configuration
-	 */
-	LEvent.trigger(this, EVENT.CONFIGURE,scene_info);
-	LEvent.trigger(this, EVENT.AWAKE );
-	/**
-	 * Fired when something changes in the scene
-	 * @event change
-	 * @param {Object} scene_info contains all the info to do the configuration
-	 */
-	LEvent.trigger(this, EVENT.CHANGE );
-}
-
-/**
-* Creates and object containing all the info about the scene and nodes.
-* The oposite of configure.
-* It calls the serialize method in every node
-*
-* @method serialize
-* @return {Object} return a JS Object with all the scene info
-*/
-
-Scene.prototype.serialize = function( simplified  )
-{
-	var o = {};
-
-	o.uid = this.uid;
-	o.object_class = LS.getObjectClassName(this);
-
-	o.external_repository = this.external_repository;
-
-	//o.nodes = [];
-	o.extra = this.extra || {};
-
-	//add nodes
-	o.root = this.root.serialize( false, simplified );
-
-	if(this.animation)
-		o.animation = this.animation.serialize();
-
-	o.layer_names = this.layer_names.concat();
-	o.global_scripts = this.global_scripts.concat();
-	o.external_scripts = this.external_scripts.concat();
-	o.preloaded_resources = LS.cloneObject( this.preloaded_resources );
-	o.texture_atlas = LS.cloneObject( this.texture_atlas );
-	o.local_resources = LS.cloneObject( this._local_resources );
-
-	if( this._editor )
-		o.editor = this._editor;
-
-	//this.serializeComponents( o );
-
-	/**
-	 * Fired after the scene has been serialized to an object
-	 * @event serialize
-	 * @param {Object} object to store the persistent info
-	 */
-	LEvent.trigger(this,EVENT.SERIALIZE,o);
-
-	return o;
-}
-
-
-/**
-* Assigns a scene from a JSON description (or WBIN,ZIP)
-*
-* @method setFromJSON
-* @param {String} data JSON object containing the scene
-* @param {Function}[on_complete=null] the callback to call when the scene is ready
-* @param {Function}[on_error=null] the callback to call if there is a  loading error
-* @param {Function}[on_progress=null] it is called while loading the scene info (not the associated resources)
-* @param {Function}[on_resources_loaded=null] it is called when all the resources had been loaded
-* @param {Function}[on_scripts_loaded=null] the callback to call when the loading is complete but before assigning the scene
-*/
-
-Scene.prototype.setFromJSON = function( data, on_complete, on_error, on_progress, on_resources_loaded, on_scripts_loaded )
-{
-	if(!data)
-		return;
-
-	var that = this;
-
-	if(data.constructor === String)
-	{
-		try
-		{
-			data = JSON.parse( data );
-		}
-		catch (err)
-		{
-			console.log("Error: " + err );
-			return;
-		}
-	}
-
-	var scripts = LS.Scene.getScriptsList( data, true );
-
-	//check JSON for special scripts
-	if ( scripts.length )
-		this.loadScripts( scripts, function(){ inner_success( data ); }, inner_error );
-	else
-		inner_success( data );
-
-	function inner_success( response )
-	{
-		if(on_scripts_loaded)
-			on_scripts_loaded(that,response);
-
-		that.init();
-		that.configure(response);
-
-		if( that.texture_atlas )
-			LS.RM.loadTextureAtlas( that.texture_atlas, inner_preloaded_all );
-		else
-			inner_preloaded_all();
-	}
-
-	function inner_preloaded_all()
-	{
-		that.loadResources( inner_all_loaded );
-		/**
-		 * Fired when the scene has been loaded but before the resources
-		 * @event load
-		 */
-		LEvent.trigger(that, EVENT.LOAD );
-
-		if(!LS.ResourcesManager.isLoading())
-			inner_all_loaded();
-
-		if(on_complete)
-			on_complete(that);
-	}
-
-	function inner_all_loaded()
-	{
-		if(on_resources_loaded)
-			on_resources_loaded(that);
-		/**
-		 * Fired after all resources have been loaded
-		 * @event loadCompleted
-		 */
-		LEvent.trigger( that, EVENT.LOAD_COMPLETED );
-	}
-
-	function inner_error(err,script_url)
-	{
-		console.error("Error loading script: " + script_url);
-		if(on_error)
-			on_error(err);
-	}
-}
-
-
-/**
-* Loads a scene from a relative url pointing to a JSON description (or WBIN,ZIP)
-* Warning: this url is not passed through the LS.ResourcesManager so the url is absolute
-*
-* @method load
-* @param {String} url where the JSON object containing the scene is stored
-* @param {Function}[on_complete=null] the callback to call when the loading is complete
-* @param {Function}[on_error=null] the callback to call if there is a  loading error
-* @param {Function}[on_progress=null] it is called while loading the scene info (not the associated resources)
-* @param {Function}[on_resources_loaded=null] it is called when all the resources had been loaded
-*/
-
-Scene.prototype.load = function( url, on_complete, on_error, on_progress, on_resources_loaded, on_loaded )
-{
-	if(!url)
-		return;
-
-	var that = this;
-
-	var extension = LS.ResourcesManager.getExtension( url );
-	var format_info = LS.Formats.getFileFormatInfo( extension );
-	if(!format_info) //hack, to avoid errors
-		format_info = { dataType: "json" };
-
-	//request scene file using our own library
-	LS.Network.request({
-		url: url,
-		nocache: true,
-		dataType: extension == "json" ? "json" : (format_info.dataType || "text"), //datatype of json is text...
-		success: extension == "json" ? inner_json_loaded : inner_data_loaded,
-		progress: on_progress,
-		error: inner_error
-	});
-
-	this._state = LS.LOADING;
-
-	/**
-	 * Fired before loading scene
-	 * @event beforeLoad
-	 */
-	LEvent.trigger(this,"beforeLoad");
-
-	function inner_data_loaded( response )
-	{
-		//process whatever we loaded (in case it is a pack)
-		LS.ResourcesManager.processResource( url, response, null, inner_data_processed );
-	}
-
-	function inner_data_processed( pack_url, pack )
-	{
-		if(!pack)
-			return;
-
-		//for DAEs
-		if( pack.object_class == "Scene")
-		{
-			inner_json_loaded( pack );
-			return;
-		}
-		else if( pack.object_class == "SceneNode") 
-		{
-			var root = pack.serialize();
-			inner_json_loaded( { object_class: "Scene", root: root } );
-			return;
-		}
-
-		//for packs
-		if( !pack._data || !pack._data["scene.json"] )
-		{
-			console.error("Error loading PACK, doesnt look like it has a valid scene inside");
-			return;
-		}
-		var scene = JSON.parse( pack._data["scene.json"] );
-
-		inner_json_loaded( scene );
-	}
-
-	function inner_json_loaded( response )
-	{
-		if( response.constructor !== Object )
-			throw("response must be object");
-
-		var scripts = LS.Scene.getScriptsList( response, true );
-
-		//check JSON for special scripts
-		if ( scripts.length )
-			that.loadScripts( scripts, function(){ inner_success(response); }, on_error );
-		else
-			inner_success( response );
-	}
-
-	function inner_success( response )
-	{
-		if(on_loaded)
-			on_loaded(that, url);
-
-		that.init();
-		that.configure(response);
-
-		if(on_complete)
-			on_complete(that, url);
-
-		that.loadResources( inner_all_loaded );
-		LEvent.trigger(that, EVENT.LOAD );
-
-		if(!LS.ResourcesManager.isLoading())
-			inner_all_loaded();
-	}
-
-	function inner_all_loaded()
-	{
-		if(on_resources_loaded)
-			on_resources_loaded(that, url);
-		LEvent.trigger(that, EVENT.LOAD_COMPLETED );
-	}
-
-	function inner_error(e)
-	{
-		var err_code = (e && e.target) ? e.target.status : 0;
-		console.warn("Error loading scene: " + url + " -> " + err_code);
-		if(on_error)
-			on_error(url, err_code, e);
-	}
-}
-
-
-/**
-* Loads a scene from a relative url pointing to a JSON description (or WBIN,ZIP)
-* It uses the resources folder as the root folder (in comparison with the regular load function)
-*
-* @method loadFromResources
-* @param {String} url where the JSON object containing the scene is stored
-* @param {Function}[on_complete=null] the callback to call when the loading is complete
-* @param {Function}[on_error=null] the callback to call if there is a  loading error
-* @param {Function}[on_progress=null] it is called while loading the scene info (not the associated resources)
-* @param {Function}[on_resources_loaded=null] it is called when all the resources had been loaded
-*/
-Scene.prototype.loadFromResources = function( url, on_complete, on_error, on_progress, on_resources_loaded )
-{
-	url = LS.ResourcesManager.getFullURL( url );
-	this.load( url, on_complete, on_error, on_progress, on_resources_loaded );
-}
-
-
-
-/**
-* Static method, returns a list of all the scripts that must be loaded, in order and with the full path
-*
-* @method Scene.getScriptsList
-* @param {Scene|Object} scene the object containing info about the scripts (could be a scene or a JSON object)
-* @param {Boolean} allow_local if we allow local resources
-* @param {Boolean} full_paths if true it will return the full path to every resource
-*/
-Scene.getScriptsList = function( scene, allow_local, full_paths )
-{
-	if(!scene)
-		throw("Scene.getScriptsList: scene cannot be null");
-
-	var scripts = [];
-	if ( scene.external_scripts && scene.external_scripts.length )
-		scripts = scripts.concat( scene.external_scripts );
-	if ( scene.global_scripts && scene.global_scripts.length )
-	{
-		for(var i in scene.global_scripts)
-		{
-			var script_url = scene.global_scripts[i];
-			if(!script_url || LS.ResourcesManager.getExtension( script_url ) != "js" )
-				continue;
-
-			var res = LS.ResourcesManager.getResource( script_url );
-			if(res)
-			{
-				if( allow_local )
-					script_url = LS.ResourcesManager.cleanFullpath( script_url );
-			}
-
-			if(full_paths)
-				script_url = LS.ResourcesManager.getFullURL( script_url );
-
-			scripts.push( script_url );
-		}
-	}
-	return scripts;
-}
-
-//reloads external and global scripts taking into account if they come from wbins
-Scene.prototype.loadScripts = function( scripts, on_complete, on_error, force_reload )
-{
-	if(!LS.allow_scripts)
-	{
-		console.error("LiteScene.allow_scripts is set to false, so scripts imported into this scene are ignored.");
-		if(on_complete)
-			on_complete();
-		return;
-	}
-
-	//get a list of scripts (they cannot be fullpaths)
-	scripts = scripts || LS.Scene.getScriptsList( this, true );
-
-	if(!scripts.length)
-	{
-		if(on_complete)
-			on_complete();
-		return;
-	}
-
-	if( LS._block_scripts )
-	{
-		console.error("Safety: LS.block_scripts enabled, cannot request script");
-		return;
-	}
-
-	//All this is to allow the use of scripts that are in memory (they came packed inside a WBin with the scene)
-	var final_scripts = [];
-	var revokable = [];
-
-	for(var i in scripts)
-	{
-		var script_url = scripts[i];
-		var is_external = this.external_scripts.indexOf( script_url ) != -1;
-		if( !is_external )
-		{
-			var res = LS.ResourcesManager.getResource( script_url );
-			if(!res || force_reload)
-			{
-				var final_url = LS.ResourcesManager.getFullURL( script_url );
-				final_scripts.push( final_url );
-				continue;
-			}
-
-			var blob = new Blob([res.data],{encoding:"UTF-8", type: 'text/plain;charset=UTF-8'});
-			var objectURL = URL.createObjectURL( blob );
-			final_scripts.push( objectURL );
-			revokable.push( objectURL );
-		}
-		else
-			final_scripts.push( script_url );
-	}
-
-	LS.Network.requestScript( final_scripts, inner_complete, on_error );
-
-	function inner_complete()
-	{
-		//revoke urls created
-		for(var i in revokable)
-			URL.revokeObjectURL( revokable[i] );
-
-		if(on_complete)
-			on_complete();
-	}
-}
-
-//used to ensure that components use the right class when the class comes from a global script
-Scene.prototype.checkComponentsCodeModification = function()
-{
-	for(var i = 0; i < this._nodes.length; ++i )
-	{
-		//current components
-		var node = this._nodes[i];
-		for(var j = 0; j < node._components.length; ++j)
-		{
-			var compo = node._components[j];
-			var class_name = LS.getObjectClassName( compo );
-			if( compo.constructor == LS.MissingComponent )
-				class_name = compo._comp_class;
-
-			var current_class = LS.Components[ class_name ];
-			if( !current_class || current_class == compo.constructor ) //already uses the right class
-				continue;
-
-			//replace class instance in-place
-			var data = compo.serialize();
-			var new_compo = new current_class( data );
-			var index = node.getIndexOfComponent( compo );
-			node.removeComponent( compo );
-			node.addComponent( new_compo, index );
-			console.log("Class replaced: " + class_name );
-		}
-	}
-}
-
-Scene.prototype.appendScene = function(scene)
-{
-	//clone: because addNode removes it from scene.nodes array
-	var nodes = scene.root.childNodes;
-
-	/*
-	//bring materials
-	for(var i in scene.materials)
-		this.materials[i] = scene.materials[i];
-	*/
-	
-	//add every node one by one
-	for(var i in nodes)
-	{
-		var node = nodes[i];
-		var new_node = new LS.SceneNode( node.id );
-		this.root.addChild( new_node );
-		new_node.configure( node.constructor == LS.SceneNode ? node.serialize() : node  );
-	}
-}
-
-Scene.prototype.getCamera = function()
-{
-	var camera = this._root.camera;
-	if(camera) 
-		return camera;
-
-	if(this._cameras && this._cameras.length)
-		return this._cameras[0];
-
-	this.collectData(); //slow
-	return this._cameras[0];
-}
-
-/**
-* Returns an array with all the cameras enabled in the scene
-*
-* @method getActiveCameras
-* @param {boolean} force [optional] if you want to collect the cameras again, otherwise it returns the last ones collected
-* @return {Array} cameras
-*/
-Scene.prototype.getActiveCameras = function( force )
-{
-	if(force)
-		LEvent.trigger(this, EVENT.COLLECT_CAMERAS, this._cameras );
-	return this._cameras;
-}
-
-/**
-* Returns an array with all the cameras in the scene (even if they are disabled)
-*
-* @method getAllCameras
-* @return {Array} cameras
-*/
-Scene.prototype.getAllCameras = function()
-{
-	var cameras = [];
-	for(var i = 0; i < this._nodes.length; ++i)
-	{
-		var node = this._nodes[i];
-		var node_cameras = node.getComponents( LS.Components.Camera );
-		if(node_cameras && node_cameras.length)
-			cameras = cameras.concat( node_cameras );
-	}
-	return cameras;
-}
-
-Scene.prototype.getLight = function()
-{
-	return this._root.light;
-}
-
-/**
-* Returns an array with all the lights enabled in the scene
-*
-* @method getActiveLights
-* @param {boolean} force [optional] if you want to collect the lights again, otherwise it returns the last ones collected
-* @return {Array} lights
-*/
-Scene.prototype.getActiveLights = function( force )
-{
-	if(force)
-		LEvent.trigger(this, EVENT.COLLECT_LIGHTS, this._lights );
-	return this._lights;
-}
-
-Scene.prototype.onNodeAdded = function(e,node)
-{
-	//remove from old scene
-	if(node._in_tree && node._in_tree != this)
-		throw("Cannot add a node from other scene, clone it");
-
-	if( node._name && !this._nodes_by_name[ node._name ] )
-		this._nodes_by_name[ node._name ] = node;
-
-	/*
-	//generate unique id
-	if(node.id && node.id != -1)
-	{
-		if(this._nodes_by_id[node.id] != null)
-			node.id = node.id + "_" + (Math.random() * 1000).toFixed(0);
-		this._nodes_by_id[node.id] = node;
-	}
-	*/
-
-	//store by uid
-	if(!node.uid || this._nodes_by_uid[ node.uid ])
-		node._uid = LS.generateUId("NODE-");
-	//if( this._nodes_by_uid[ node.uid ] )
-	//	console.warn("There are more than one node with the same UID: ", node.uid );
-	this._nodes_by_uid[ node.uid ] = node;
-
-	//store nodes linearly
-	this._nodes.push(node);
-
-	node.processActionInComponents("onAddedToScene",this); //send to components
-	for(var i = 0; i < node._components.length; ++i)
-		if(node._components[i].uid)
-			this._components_by_uid[ node._components[i].uid ] = node._components[i];
-		else
-			console.warn("component without uid?", node._components[i].uid );
-
-	/**
-	 * Fired when a new node is added to this scene
-	 *
-	 * @event nodeAdded
-	 * @param {LS.SceneNode} node
-	 */
-	LEvent.trigger(this,"nodeAdded", node);
-	LEvent.trigger(this, EVENT.CHANGE );
-}
-
-Scene.prototype.onNodeRemoved = function(e,node)
-{
-	var pos = this._nodes.indexOf(node);
-	if(pos == -1) 
-		return;
-
-	this._nodes.splice(pos,1);
-	if(node._name && this._nodes_by_name[ node._name ] == node )
-		delete this._nodes_by_name[ node._name ];
-	if(node.uid)
-		delete this._nodes_by_uid[ node.uid ];
-
-	//node.processActionInComponents("onRemovedFromNode",node);
-	node.processActionInComponents("onRemovedFromScene",this); //send to components
-	for(var i = 0; i < node._components.length; ++i)
-		delete this._components_by_uid[ node._components[i].uid ];
-
-	/**
-	 * Fired after a node has been removed
-	 *
-	 * @event nodeRemoved
-	 * @param {LS.SceneNode} node
-	 */
-	LEvent.trigger(this,"nodeRemoved", node);
-	LEvent.trigger(this, EVENT.CHANGE );
-	return true;
-}
-
-/**
-* all nodes are stored in an array, this function recomputes the array so they are in the right order in case one has changed order
-*
-* @method recomputeNodesArray
-*/
-Scene.prototype.recomputeNodesArray = function()
-{
-	var nodes = this._nodes;
-	var pos = 0;
-	inner( this._root );
-
-	function inner(node)
-	{
-		nodes[pos] = node;
-		pos+=1;
-		if(!node._children || !node._children.length)
-			return;
-		for(var i = 0; i < node._children.length; ++i)
-			inner( node._children[i] );
-	}
-}
-
-//WIP
-Scene.prototype.attachSceneElement = function( element )
-{
-	this._spatial_container.add( element );
-}
-
-Scene.prototype.detachSceneElement = function( element )
-{
-	this._spatial_container.remove( element );
-}
-
-
-/**
-* Returns the array containing all the nodes in the scene
-*
-* @method getNodes
-* @param {bool} recompute [optional] in case you want to rearrange the nodes
-* @return {Array} array containing every SceneNode in the scene
-*/
-Scene.prototype.getNodes = function( recompute )
-{
-	if(recompute)
-		this.recomputeNodesArray();
-	return this._nodes;
-}
-
-/**
-* retrieves a Node based on the name, path ( name|childname|etc ) or uid
-*
-* @method getNode
-* @param {String} name node name to search
-* @return {Object} the node or null if it didnt find it
-*/
-Scene.prototype.getNode = function( name )
-{
-	if(name == "")
-		return this.root;
-	if(!name || name.constructor !== String)
-		return null;
-	if(name.charAt(0) == LS._uid_prefix)
-		return this._nodes_by_uid[ name ];
-
-	// the | char is used to specify a node child of another node
-	if( name.indexOf("|") != -1)
-	{
-		var tokens = name.split("|");
-		var node = this.root; //another option could be to start in this._nodes_by_name[ tokens[0] ]
-		for(var i = 0; i < tokens.length && node; ++i)
-			node = node.getChildByName( tokens[i] );
-		return node;
-	}
-
-	return this._nodes_by_name[ name ];
-}
-
-/**
-* retrieves a Node that matches that name. It is fast because they are stored in an object.
-* If more than one object has the same name, the first one added to the tree is returned
-*
-* @method getNodeByName
-* @param {String} name name of the node
-* @return {Object} the node or null if it didnt find it
-*/
-Scene.prototype.getNodeByName = function( name )
-{
-	return this._nodes_by_name[ name ];
-}
-
-/**
-* retrieves a Node based on a given uid. It is fast because they are stored in an object
-*
-* @method getNodeByUId
-* @param {String} uid uid of the node
-* @return {Object} the node or null if it didnt find it
-*/
-Scene.prototype.getNodeByUId = function( uid )
-{
-	return this._nodes_by_uid[ uid ];
-}
-
-/**
-* retrieves a Node by its index
-*
-* @method getNodeByIndex
-* @param {Number} node index
-* @return {Object} returns the node at the 'index' position in the nodes array
-*/
-Scene.prototype.getNodeByIndex = function(index)
-{
-	return this._nodes[ index ];
-}
-
-//for those who are more traditional
-Scene.prototype.getElementById = Scene.prototype.getNode;
-
-/**
-* retrieves a node array filtered by the filter function
-*
-* @method filterNodes
-* @param {function} filter a callback function that receives every node and must return true or false
-* @return {Array} array containing the nodes that passes the filter
-*/
-Scene.prototype.filterNodes = function( filter )
-{
-	var r = [];
-	for(var i = 0; i < this._nodes.length; ++i)
-		if( filter(this._nodes[i]) )
-			r.push(this._nodes[i]);
-	return r;
-}
-
-/**
-* searches the component with this uid, it iterates through all the nodes and components (slow)
-*
-* @method findComponentByUId
-* @param {String} uid uid of the node
-* @return {Object} component or null
-*/
-Scene.prototype.findComponentByUId = function(uid)
-{
-	for(var i = 0; i < this._nodes.length; ++i)
-	{
-		var compo = this._nodes[i].getComponentByUId( uid );
-		if(compo)
-			return compo;
-	}
-	return null;
-}
-
-/**
-* searches the material with this uid, it iterates through all the nodes (slow)
-*
-* @method findMaterialByUId
-* @param {String} uid uid of the material
-* @return {Object} Material or null
-*/
-Scene.prototype.findMaterialByUId = function(uid)
-{
-	if(LS.RM.materials[uid])
-		return LS.RM.materials[uid];
-
-	for(var i = 0; i < this._nodes.length; ++i)
-	{
-		var material = this._nodes[i].getMaterial();
-		if(material && material.uid == uid)
-			return material;
-	}
-
-	return null;
-}
-
-
-/**
-* Returns information of a node component property based on the locator of that property
-* Locators are in the form of "{NODE_UID}/{COMPONENT_UID}/{property_name}"
-*
-* @method getPropertyInfo
-* @param {String} locator locator of the property
-* @return {Object} object with node, component, name, and value
-*/
-Scene.prototype.getPropertyInfo = function( property_uid )
-{
-	var path = property_uid.split("/");
-
-	var start = path[0].substr(0,5);
-
-	//for global materials
-	if( start == "@MAT-")
-	{
-		var material = LS.RM.materials_by_uid[ path[0] ];
-		if(!material)
-			return null;
-		return material.getPropertyInfoFromPath( path.slice(1) );
-	}
-
-	//for components
-	if( start == "@COMP")
-	{
-		var comp = this.findComponentByUId( path[0] );
-		if(!comp)
-			return null;
-		if(path.length == 1)
-			return {
-				node: comp.root,
-				target: comp,
-				name: comp ? LS.getObjectClassName( comp ) : "",
-				type: "component",
-				value: comp
-			};
-		return comp.getPropertyInfoFromPath( path.slice(1) );
-	}
-
-	//for regular locators
-	var node = this.getNode( path[0] );
-	if(!node)
-		return null;
-
-	return node.getPropertyInfoFromPath( path.slice(1) );
-}
-
-/**
-* Returns information of a node component property based on the locator of that property
-* Locators are in the form of "{NODE_UID}/{COMPONENT_UID}/{property_name}"
-*
-* @method getPropertyInfoFromPath
-* @param {Array} path
-* @return {Object} object with node, component, name, and value
-*/
-Scene.prototype.getPropertyInfoFromPath = function( path )
-{
-	if(path[0].substr(0,5) == "@MAT-")
-	{
-		var material = LS.RM.materials_by_uid[ path[0] ];
-		if(!material)
-			return null;
-		return material.getPropertyInfoFromPath( path.slice(1) );
-	}
-
-	var node = this.getNode( path[0] );
-	if(!node)
-		return null;
-	return node.getPropertyInfoFromPath( path.slice(1) );
-}
-
-
-/**
-* Assigns a value to the property of a component in a node based on the locator of that property
-* Locators are in the form of "{NODE_UID}/{COMPONENT_UID}/{property_name}"
-*
-* @method getPropertyValue
-* @param {String} locator locator of the property
-* @param {*} value the value to assign
-* @param {SceneNode} root [Optional] if you want to limit the locator to search inside a node
-* @return {Component} the target where the action was performed
-*/
-Scene.prototype.getPropertyValue = function( locator, root_node )
-{
-	var path = property_uid.split("/");
-
-	if(path[0].substr(0,5) == "@MAT-")
-	{
-		var material = LS.RM.materials_by_uid[ path[0] ];
-		if(!material)
-			return null;
-		return material.getPropertyValueFromPath( path.slice(1) );
-	}
-
-	var node = this.getNode( path[0] );
-	if(!node)
-		return null;
-	return node.getPropertyValueFromPath( path.slice(1) );
-}
-
-Scene.prototype.getPropertyValueFromPath = function( path )
-{
-	if(path[0].substr(0,5) == "@MAT-")
-	{
-		var material = LS.RM.materials_by_uid[ path[0] ];
-		if(!material)
-			return null;
-		return material.getPropertyValueFromPath( path.slice(1) );
-	}
-	var node = this.getNode( path[0] );
-	if(!node)
-		return null;
-	return node.getPropertyValueFromPath( path.slice(1) );
-}
-
-/**
-* Assigns a value to the property of a component in a node based on the locator of that property
-* Locators are in the form of "{NODE_UID}/{COMPONENT_UID}/{property_name}"
-*
-* @method setPropertyValue
-* @param {String} locator locator of the property
-* @param {*} value the value to assign
-* @param {SceneNode} root [Optional] if you want to limit the locator to search inside a node
-* @return {Component} the target where the action was performed
-*/
-Scene.prototype.setPropertyValue = function( locator, value, root_node )
-{
-	var path = locator.split("/");
-	this.setPropertyValueFromPath( path, value, root_node, 0 );
-}
-
-/**
-* Assigns a value to the property of a component in a node based on the locator that property
-* Locators are in the form of "{NODE_UID}/{COMPONENT_UID}/{property_name}"
-*
-* @method setPropertyValueFromPath
-* @param {Array} path a property locator split by "/"
-* @param {*} value the value to assign
-* @param {SceneNode} root_node [optional] the root node where you want to search the locator (this is to limit the locator to a branch of the scene tree)
-* @param {Number} offset [optional] used to avoir generating garbage, instead of slicing the array every time, we pass the array index
-* @return {Component} the target where the action was performed
-*/
-Scene.prototype.setPropertyValueFromPath = function( path, value, root_node, offset )
-{
-	offset = offset || 0;
-	if(path.length < (offset+1))
-		return;
-
-	if(path[offset].substr(0,5) == "@MAT-")
-	{
-		var material = LS.RM.materials_by_uid[ path[offset] ];
-		if(!material)
-			return null;
-		return material.setPropertyValueFromPath( path, value, offset + 1 );
-	}
-
-	//get node
-	var node = root_node ? root_node.findNode( path[offset] ) : this.getNode( path[offset] );
-	if(!node)
-		return null;
-
-	return node.setPropertyValueFromPath( path, value, offset + 1 );
-}
-
-
-/**
-* Returns the resources used by the scene
-* includes the nodes, components, preloads and global_scripts
-* doesn't include external_scripts
-*
-* @method getResources
-* @param {Object} resources [optional] object with resources
-* @param {Boolean} as_array [optional] returns data in array format instead of object format
-* @param {Boolean} skip_in_pack [optional] skips resources that come from a pack
-* @param {Boolean} skip_local [optional] skips resources whose name starts with ":" (considered local resources)
-* @return {Object|Array} the resources in object format (or if as_array is true, then an array)
-*/
-Scene.prototype.getResources = function( resources, as_array, skip_in_pack, skip_local )
-{
-	resources = resources || {};
-
-	//to get the resources as array
-	var array = null;
-	if(resources.constructor === Array)
-	{
-		array = resources;
-		resources = {};
-		as_array = true;
-	}
-
-	//first the preload
-	//resources that must be preloaded (because they will be used in the future)
-	if(this.preloaded_resources)
-		for(var i in this.preloaded_resources)
-			resources[ i ] = true;
-
-	if(this.texture_atlas)
-		resources[ this.texture_atlas.filename ] = true;
-
-	//global scripts
-	for(var i = 0; i < this.global_scripts.length; ++i)
-		if( this.global_scripts[i] )
-			resources[ this.global_scripts[i] ] = true;
-
-	//resources from nodes
-	for(var i = 0; i < this._nodes.length; ++i)
-		this._nodes[i].getResources( resources );
-
-	//remove the resources that belong to packs or prefabs
-	if(skip_in_pack)
-		for(var i in resources)
-		{
-			var resource = LS.ResourcesManager.resources[i];
-			if(!resource)
-				continue;
-			if(resource && (resource.from_prefab || resource.from_pack))
-				delete resources[i];
-		}
-
-	//remove the resources that are local (generated by the system)
-	if(skip_local)
-		for(var i in resources)
-		{
-			if(i[0] == ":")
-				delete resources[i];
-		}
-
-	//check if any resource requires another resource (a material that requires textures)
-	for(var i in resources)
-	{
-		var resource = LS.ResourcesManager.resources[i];
-		if(!resource)
-			continue;
-		if(resource.getResources)
-			resource.getResources(resources);
-	}
-
-	//Hack: sometimes some component add this shit
-	delete resources[""];
-	delete resources["null"];
-
-	//return as object
-	if(!as_array)
-		return resources;
-
-	//return as array
-	var r = array || [];
-	for(var i in resources)
-		r.push(i);
-	return r;
-}
-
-/**
-* Loads all the resources of all the nodes in this scene
-* it sends a signal to every node to get all the resources info
-* and load them in bulk using the ResourceManager
-*
-* @method loadResources
-* @param {Function} on_complete called when the load of all the resources is complete
-*/
-Scene.prototype.loadResources = function( on_complete )
-{
-	//resources is an object format
-	var resources = this.getResources([]);
-
-	//used for scenes with special repository folders
-	var options = {};
-	if( this.external_repository )
-		options.external_repository = this.external_repository;
-
-	//count resources
-	var num_resources = 0;
-	for(var i in resources)
-		++num_resources;
-
-	//load them
-	if(num_resources == 0)
-	{
-		if(on_complete)
-			on_complete();
-		return;
-	}
-
-	LEvent.bind( LS.ResourcesManager, "end_loading_resources", on_loaded );
-	LS.ResourcesManager.loadResources( resources );
-
-	function on_loaded()
-	{
-		LEvent.unbind( LS.ResourcesManager, "end_loading_resources", on_loaded );
-		if(on_complete)
-			on_complete();
-	}
-}
-
-
-/**
-* Adds a resource that must be loaded when the scene is loaded
-*
-* @method addPreloadResource
-* @param {String} fullpath the name of the resource
-*/
-Scene.prototype.addPreloadResource = function( fullpath )
-{
-	this.preloaded_resources[ fullpath ] = true;
-}
-
-/**
-* Remove a resource from the list of resources to preload
-*
-* @method removePreloadResource
-* @param {String} fullpath the name of the resource
-*/
-Scene.prototype.removePreloadResource = function( fullpath )
-{
-	delete this.preloaded_resources[ fullpath ];
-}
-
-
-/**
-* start the scene (triggers an "start" event)
-*
-* @method start
-* @param {Number} dt delta time
-*/
-Scene.prototype.start = function()
-{
-	if(this._state == LS.PLAYING)
-		return;
-
-	this._state = LS.PLAYING;
-	this._start_time = getTime() * 0.001;
-	/**
-	 * Fired when the nodes need to be initialized
-	 *
-	 * @event init
-	 * @param {LS.Scene} scene
-	 */
-	LEvent.trigger(this, EVENT.INIT, this);
-	this.triggerInNodes( EVENT.INIT );
-	/**
-	 * Fired when the scene is starting to play
-	 *
-	 * @event start
-	 * @param {LS.Scene} scene
-	 */
-	LEvent.trigger(this, EVENT.START ,this);
-	this.triggerInNodes( EVENT.START );
-}
-
-/**
-* pauses the scene (triggers an "pause" event)
-*
-* @method pause
-*/
-Scene.prototype.pause = function()
-{
-	if( this._state != LS.PLAYING )
-		return;
-
-	this._state = LS.PAUSED;
-	/**
-	 * Fired when the scene pauses (mostly in the editor)
-	 *
-	 * @event pause
-	 * @param {LS.Scene} scene
-	 */
-	LEvent.trigger(this, EVENT.PAUSE,this);
-	this.triggerInNodes( EVENT.PAUSE );
-	this.purgeResidualEvents();
-}
-
-/**
-* unpauses the scene (triggers an "unpause" event)
-*
-* @method unpause
-*/
-Scene.prototype.unpause = function()
-{
-	if(this._state != LS.PAUSED)
-		return;
-
-	this._state = LS.PLAYING;
-	/**
-	 * Fired when the scene unpauses (mostly in the editor)
-	 *
-	 * @event unpause
-	 * @param {LS.Scene} scene
-	 */
-	LEvent.trigger(this, EVENT.UNPAUSE,this);
-	this.triggerInNodes( EVENT.UNPAUSE );
-	this.purgeResidualEvents();
-}
-
-
-/**
-* stop the scene (triggers an "finish" event)
-*
-* @method finish
-* @param {Number} dt delta time
-*/
-Scene.prototype.finish = function()
-{
-	if(this._state == LS.STOPPED)
-		return;
-
-	this._state = LS.STOPPED;
-	/**
-	 * Fired when the scene stops playing
-	 *
-	 * @event finish
-	 * @param {LS.Scene} scene
-	 */
-	LEvent.trigger(this, EVENT.FINISH,this);
-	this.triggerInNodes( EVENT.FINISH );
-	this.purgeResidualEvents();
-}
-
-/**
-* This methods crawls the whole tree and collects all the useful info (cameras, lights, render instances, colliders, etc)
-* Mostly rendering stuff but also some collision info.
-* TO DO: refactor this so it doesnt redo the same task in every frame, only if changes are made
-* @param {Array} cameras [optional] an array of cameras in case we want to force some viewpoint
-* @method collectData
-*/
-Scene.prototype.collectData = function( cameras )
-{
-	var instances = this._instances;
-	var lights = this._lights;
-	var colliders = this._colliders;
-
-	//empty containers
-	instances.length = 0;
-	lights.length = 0;
-	colliders.length = 0;
-
-	//first collect cameras (in case we want to filter nodes by proximity to camera
-	if(!cameras || cameras.length == 0)
-	{
-		cameras = this._cameras;
-		cameras.length = 0;
-		LEvent.trigger( this, EVENT.COLLECT_CAMERAS, cameras );
-	}
-
-	//get nodes: TODO find nodes close to the active cameras
-	var nodes = this.getNodes();
-
-	//collect render instances and lights
-	for(var i = 0, l = nodes.length; i < l; ++i)
-	{
-		var node = nodes[i];
-
-		//skip stuff inside invisible nodes
-		if(node.flags.visible == false) 
-			continue;
-
-		//compute global matrix: shouldnt it be already computed?
-		if(node.transform)
-			node.transform.updateGlobalMatrix();
-
-		//clear instances per node: TODO: if static maybe just leave it as it is
-		node._instances.length = 0;
-
-		//get render instances: remember, triggers only support one parameter
-		LEvent.trigger( node, EVENT.COLLECT_RENDER_INSTANCES, node._instances );
-		LEvent.trigger( node, EVENT.COLLECT_PHYSIC_INSTANCES, colliders );
-
-		//concatenate all instances in a single array
-		instances.push.apply(instances, node._instances);
-	}
-
-	//we also collect from the scene itself (used for lights, skybox, etc)
-	LEvent.trigger( this, EVENT.COLLECT_RENDER_INSTANCES, instances );
-	LEvent.trigger( this, EVENT.COLLECT_PHYSIC_INSTANCES, colliders );
-	LEvent.trigger( this, EVENT.COLLECT_LIGHTS, lights );
-
-	//before processing (in case somebody wants to add some data to the containers)
-	LEvent.trigger( this, EVENT.COLLECT_DATA );
-
-	//for each render instance collected
-	for(var i = 0, l = instances.length; i < l; ++i)
-	{
-		var instance = instances[i];
-
-		//compute the axis aligned bounding box
-		if(instance.use_bounding)
-			instance.updateAABB();
-	}
-
-	//for each physics instance collected
-	for(var i = 0, l = colliders.length; i < l; ++i)
-	{
-		var collider = colliders[i];
-		collider.updateAABB();
-	}
-
-	//remember when was last time I collected to avoid repeating it
-	this._last_collect_frame = this._frame;
-}
-
-/**
-* updates the scene (it handles variable update and fixedUpdate)
-*
-* @method update
-* @param {Number} dt delta time in seconds
-*/
-Scene.prototype.update = function(dt)
-{
-	/**
-	 * Fired before doing an update
-	 *
-	 * @event beforeUpdate
-	 * @param {LS.Scene} scene
-	 */
-	LEvent.trigger(this,"beforeUpdate", this);
-
-	this._global_time = getTime() * 0.001;
-	//this._time = this._global_time - this._start_time;
-	this._time += dt;
-	this._last_dt = dt;
-
-	/**
-	 * Fired while updating
-	 *
-	 * @event update
-	 * @param {number} dt
-	 */
-	LEvent.trigger(this,"update", dt);
-
-	/**
-	 * Fired while updating but using a fixed timestep (1/60)
-	 *
-	 * @event fixedUpdate
-	 * @param {number} dt
-	 */
-	if(this._fixed_update_timestep > 0)
-	{
-		this._remaining_fixed_update_time += dt;
-		if(LEvent.hasBind(this,"fixedUpdate"))
-			while( this._remaining_fixed_update_time > this._fixed_update_timestep )
-			{
-				LEvent.trigger(this, "fixedUpdate", this._fixed_update_timestep );
-				this._remaining_fixed_update_time -= this._fixed_update_timestep;
-			}
-		else
-			this._remaining_fixed_update_time = this._remaining_fixed_update_time % this._fixed_update_timestep;
-	}
-
-	/**
-	 * Fired after updating the scene
-	 *
-	 * @event afterUpdate
-	 */
-	LEvent.trigger(this,"afterUpdate", this);
-}
-
-/**
-* triggers an event to all nodes in the scene
-* this is slow if the scene has too many nodes, thats why we use bindings
-*
-* @method triggerInNodes
-* @param {String} event_type event type name
-* @param {Object} data data to send associated to the event
-*/
-
-Scene.prototype.triggerInNodes = function(event_type, data)
-{
-	LEvent.triggerArray( this._nodes, event_type, data);
-}
-
-/**
-* generate a unique node name given a prefix
-*
-* @method generateUniqueNodeName
-* @param {String} prefix the prefix, if not given then "node" is used
-* @return {String} a node name that it is not in the scene
-*/
-Scene.prototype.generateUniqueNodeName = function(prefix)
-{
-	prefix = prefix || "node";
-	var i = 1;
-
-	var pos = prefix.lastIndexOf("_");
-	if(pos)
-	{
-		var n = prefix.substr(pos+1);
-		if( parseInt(n) )
-		{
-			i = parseInt(n);
-			prefix = prefix.substr(0,pos);
-		}
-	}
-
-	var node_name = prefix + "_" + i;
-	while( this.getNode(node_name) != null )
-		node_name = prefix + "_" + (i++);
-	return node_name;
-}
-
-/**
-* Marks that this scene must be rendered again
-*
-* @method requestFrame
-*/
-Scene.prototype.requestFrame = function()
-{
-	this._must_redraw = true;
-	LEvent.trigger( this, "requestFrame" );
-}
-
-Scene.prototype.refresh = Scene.prototype.requestFrame; //DEPRECATED
-
-/**
-* returns current scene time (remember that scene time remains freezed if the scene is not playing)
-*
-* @method getTime
-* @return {Number} scene time in seconds
-*/
-Scene.prototype.getTime = function()
-{
-	return this._time;
-}
-
-//This is ugly but sometimes if scripts fail there is a change the could get hooked to the scene forever
-//so this way we remove any event that belongs to a component thats doesnt belong to this scene tree
-Scene.prototype.purgeResidualEvents = function()
-{
-	if(!this.__events)
-		return;
-
-	//crawl all 
-	for(var i in this.__events)
-	{
-		var event = this.__events[i];
-		if(!event)
-			continue;
-		var to_keep = [];
-		for(var j = 0; j < event.length; ++j)
-		{
-			var inst = event[j][1];
-			if(inst && LS.isClassComponent( inst.constructor ) )
-			{
-				//no attached node or node not attached to any scene
-				if(!inst._root || inst._root.scene !== this )
-				{
-					console.warn("Event attached to the Scene belongs to a removed node, purged. Event:",i,"Class:", LS.getObjectClassName( inst ) );
-					continue; //skip keeping it, so it will no longer exist
-				}
-			}
-			to_keep.push(event[j]);
-		}
-		this.__events[i] = to_keep;
-	}
-}
-
-/**
-* returns an array with the name of all the layers given a layers mask
-*
-* @method getLayerNames
-* @param {Number} layers a number with the enabled layers in bit mask format, if ommited all layers are returned
-* @return {Array} array of strings with the layer names
-*/
-Scene.prototype.getLayerNames = function(layers)
-{
-	var r = [];
-
-	for(var i = 0; i < 32; ++i)
-	{
-		if( layers === undefined || layers & (1<<i) )
-			r.push( this.layer_names[i] || ("layer"+i) );
-	}
-	return r;
-}
-
-/**
-* returns an array with all the components in the scene and scenenodes that matches this class
-*
-* @method findNodeComponents
-* @param {String||Component} type the type of the components to search (could be a string with the name or the class itself)
-* @return {Array} array with the components found
-*/
-Scene.prototype.findNodeComponents = function( type )
-{
-	if(!type)
-		return;
-
-	var find_component = null;
-	if(type.constructor === String)
-		find_component = LS.Components[ type ];
-	else
-		find_component = type;
-	if(!find_component)
-		return;
-
-	var result = [];
-	var nodes = this._nodes;
-	for(var i = 0; i < nodes.length; ++i)
-	{
-		var node = nodes[i];
-		var components = node._components;
-		for(var j = 0; j < components.length; ++j)
-			if( components[j].constructor === find_component )
-				result.push( components[j] );
-	}
-	return result;
-}
-
-/**
-* Allows to instantiate a prefab from the fullpath of the resource
-*
-* @method instantiate
-* @param {String} prefab_url the filename to the resource containing the prefab
-* @param {vec3} position where to instantiate
-* @param {quat} rotation the orientation
-* @param {SceneNode} parent [optional] if no parent then scene.root will be used
-* @return {SceneNode} the resulting prefab node
-*/
-Scene.prototype.instantiate = function( prefab_url, position, rotation, parent )
-{
-	if(!prefab_url || prefab_url.constructor !== String)
-		throw("prefab must be the url to the prefab");
-
-	var node = new LS.SceneNode();
-	if(position && position.length === 3)
-		node.transform.position = position;
-	if(rotation && rotation.length === 4)
-		node.transform.rotation = rotation;
-
-	parent = parent || this.root;
-	parent.addChild( node );
-
-	node.prefab = prefab_url;
-
-	return node;
-}
-
-/**
-* returns a pack containing all the scene and resources, used to save a scene to harddrive
-*
-* @method toPack
-* @param {String} fullpath a given fullpath name, it will be assigned to the scene with the appropiate extension
-* @param {Array} resources [optional] array with all the resources to add, if no array is given it will get the active resources in this scene
-* @return {LS.Pack} the pack
-*/
-Scene.prototype.toPack = function( fullpath, resources )
-{
-	fullpath = fullpath || "unnamed_scene";
-
-	//change name to valid name
-	var basename = LS.RM.removeExtension( fullpath, true );
-	var final_fullpath = basename + ".SCENE.wbin";
-
-	//extract json info
-	var scene_json = JSON.stringify( this.serialize() );
-
-	//get all resources
-	if(!resources)
-		resources = this.getResources( null, true, true, true );
-
-	//create pack
-	var pack = LS.Pack.createPack( LS.RM.getFilename( final_fullpath ), resources, { "scene.json": scene_json } );
-	pack.fullpath = final_fullpath;
-	pack.category = "Scene";
-
-	return pack;
-}
-
-//WIP: this is in case we have static nodes in the scene
-Scene.prototype.updateStaticObjects = function()
-{
-	var old = LS.allow_static;
-	LS.allow_static = false;
-	this.collectData();
-	LS.allow_static = old;
-}
-
-/**
-* search for the nearest reflection probe to the point
-*
-* @method findNearestReflectionProbe
-* @param {vec3} position
-* @return {LS.ReflectionProbe} the reflection probe
-*/
-Scene.prototype.findNearestReflectionProbe = function( position )
-{
-	if(!this._reflection_probes.length)
-		return null;
-
-	if( this._reflection_probes.length == 1 )
-		return this._reflection_probes[0];
-
-	var probes = this._reflection_probes;
-	var min_dist = 1000000;
-	var nearest_probe = null;
-	for(var i = 0; i < probes.length; ++i)
-	{
-		var probe = probes[i];
-		var dist = vec3.distance( position, probe._position );
-		if( dist > min_dist )
-			continue;
-		min_dist = dist;
-		nearest_probe = probe;
-	}
-	return nearest_probe;
-}
-
-
-//tells to all the components, nodes, materials, etc, that one resource has changed its name so they can update it inside
-Scene.prototype.sendResourceRenamedEvent = function( old_name, new_name, resource )
-{
-	//scene globals that use resources
-	for(var i = 0; i < this.external_scripts.length; i++)
-	{
-		if(this.external_scripts[i] == old_name)
-			this.external_scripts[i] = new_name;
-	}
-
-	for(var i = 0; i < this.global_scripts.length; i++)
-	{
-		if(this.global_scripts[i] == old_name)
-			this.global_scripts[i] = new_name;
-	}
-
-	for(var i in this.preloaded_resources)
-	{
-		if(i == old_name)
-		{
-			delete this.preloaded_resources[old_name];
-			this.preloaded_resources[ new_name ] = true;
-		}
-	}
-
-	if( this.texture_atlas && this.texture_atlas.filename == old_name )
-		this.texture_atlas.filename = new_name;
-
-	//to nodes
-	var nodes = this._nodes.concat();
-
-	//for every node
-	for(var i = 0; i < nodes.length; i++)
-	{
-		//nodes
-		var node = nodes[i];
-
-		//prefabs
-		if( node.prefab && node.prefab === old_name )
-			node.prefab = new_name; //does this launch a reload prefab? dont know
-
-		//components
-		for(var j = 0; j < node._components.length; j++)
-		{
-			var component = node._components[j];
-			if(component.onResourceRenamed)
-				component.onResourceRenamed( old_name, new_name, resource )
-		}
-
-		//materials
-		if( node.material )
-		{
-			if( node.material == old_name )
-				node.material = new_name;
-			else
-			{
-				var material = node.getMaterial();
-				if( material && material.onResourceRenamed )
-				{
-					var modified = material.onResourceRenamed( old_name, new_name, resource );
-					if(modified) //we need this to remove material._original_data or anything that could interfiere
-						LS.RM.resourceModified( material );
-				}
-				else
-					console.warn("sendResourceRenamedEvent: Material not found or it didnt have a onResourceRenamed");
-			}
-		}
-	}
-}
-
-//used to search a resource according to the data path of this scene
-Scene.prototype.getDataPath = function( path )
-{
-	path = path || "";
-	var folder = this.extra.data_folder || this.extra.folder;
-	return LS.RM.cleanFullpath( folder + "/" + path );
-}
-
-
-/**
-* Creates and returns an scene animation track
-*
-* @method createAnimation
-* @return {LS.Animation} the animation track
-*/
-Scene.prototype.createAnimation = function()
-{
-	if(this.animation)
-		return this.animation;
-	this.animation = new LS.Animation();
-	this.animation.name = LS.Animation.DEFAULT_SCENE_NAME;
-	this.animation.createTake( "default", LS.Animation.DEFAULT_DURATION );
-	return this.animation;
-}
-
-LS.Scene = Scene;
-LS.Classes.Scene = Scene;
-LS.Classes.SceneTree = Scene; //LEGACY
-
-
-///@FILE:../src/sceneNode.js
-///@INFO: BASE
-//****************************************************************************
-
-/**
-* The SceneNode class represents and object in the scene
-* Is the base class for all objects in the scene as meshes, lights, cameras, and so
-*
-* @class SceneNode
-* @param {String} name the name for this node (otherwise a random one is computed)
-* @constructor
-*/
-
-function SceneNode( name )
-{
-	if(name && name.constructor !== String)
-	{
-		name = null;
-		console.warn("SceneNode constructor first parameter must be a String with the name");
-	}
-
-	//Generic identifying info
-	this._name = name || ("node_" + (Math.random() * 10000).toFixed(0)); //generate random number
-	this._uid = LS.generateUId("NODE-");
-	this._classList = {}; //to store classes
-	this.layers = 3|0; //32 bits for layers (force to int)
-	this.node_type = null; //used to store a string defining the node info
-
-	//more generic info
-	this._prefab = null;
-	this._material = null;
-
-	//from Componentcontainer
-	this._components = []; //used for logic actions
-
-	//from CompositePattern
-	this._parentNode = null;
-	this._children = null;
-	this._in_tree = null;
-	this._instances = []; //render instances
-
-	//flags
-	this.flags = {
-		visible: true,
-		is_static: false,
-		selectable: true,
-		locked: false
-	};
-
-	this.init(false,true);
-
-	/** Fired here (from Transform) when the node transform changes
-	 * @event transformChanged
-	 */
-}
-
-SceneNode.prototype.init = function( keep_components, keep_info )
-{
-	if(!keep_info)
-	{
-		this.layers = 3|0; //32 bits for layers (force to int)
-		this._name = name || ("node_" + (Math.random() * 10000).toFixed(0)); //generate random number
-		this._uid = LS.generateUId("NODE-");
-		this._classList = {};
-
-		//material
-		this._material = null;
-		this.extra = {}; //for extra info
-		this.node_type = null;
-
-		//flags
-		this.flags = {
-			visible: true,
-			is_static: false,
-			selectable: true
-		};
-	}
-
-	//Basic components
-	if(!keep_components)
-	{
-		if( this._components && this._components.length )
-			console.warn("SceneNode.init() should not be called if it contains components, call clear instead");
-		this._components = []; //used for logic actions
-		this.addComponent( new LS.Transform() );
-	}
-}
-
-//get methods from other classes
-LS.extendClass( SceneNode, ComponentContainer ); //container methods
-LS.extendClass( SceneNode, CompositePattern ); //container methods
-
-/**
-* changes the node name
-* @method setName
-* @param {String} new_name the new name
-* @return {Object} returns true if the name changed
-*/
-
-Object.defineProperty( SceneNode.prototype, 'name', {
-	set: function(name)
-	{
-		this.setName( name );
-	},
-	get: function(){
-		return this._name;
-	},
-	enumerable: true
-});
-
-Object.defineProperty( SceneNode.prototype, 'fullname', {
-	set: function(name)
-	{
-		throw("You cannot set fullname, it depends on the parent nodes");
-	},
-	get: function(){
-		return this.getPathName();
-	},
-	enumerable: false
-});
-
-//Changing the UID  has lots of effects (because nodes are indexed by UID in the scene)
-//If you want to catch the event of the uid_change, remember, the previous uid is stored in LS.SceneNode._last_uid_changed (it is not passed in the event)
-Object.defineProperty( SceneNode.prototype, 'uid', {
-	set: function(uid)
-	{
-		if(!uid)
-			return;
-
-		//valid uid?
-		if(uid[0] != LS._uid_prefix)
-		{
-			console.warn("Invalid UID, renaming it to: " + uid );
-			uid = LS._uid_prefix + uid;
-		}
-
-		//no changes?
-		if(uid == this._uid)
-			return;
-
-		SceneNode._last_uid_changed = this._uid; //hack, in case we want the previous uid of a node 
-
-		//update scene tree indexing
-		if( this._in_tree && this._in_tree._nodes_by_uid[ this.uid ] )
-			delete this._in_tree._nodes_by_uid[ this.uid ];
-		this._uid = uid;
-		if( this._in_tree )
-			this._in_tree._nodes_by_uid[ this.uid ] = this;
-		//events
-		LEvent.trigger( this, "uid_changed", uid );
-		if(this._in_tree)
-			LEvent.trigger( this._in_tree, "node_uid_changed", this );
-	},
-	get: function(){
-		return this._uid;
-	},
-	enumerable: true
-});
-
-
-Object.defineProperty( SceneNode.prototype, 'visible', {
-	set: function(v)
-	{
-		this.flags.visible = v;
-		if( this._children )
-		for(var i = 0; i < this._children.length; ++i )
-			this._children[i].visible = v;
-	},
-	get: function(){
-		return this.flags.visible;
-	},
-	enumerable: true
-});
-
-Object.defineProperty( SceneNode.prototype, 'is_static', {
-	set: function(v)
-	{
-		this.flags.is_static = v;
-		if( v && this._children )
-		for(var i = 0; i < this._children.length; ++i )
-			this._children[i].is_static = v;
-	},
-	get: function(){
-		return this.flags.is_static;
-	},
-	enumerable: true
-});
-
-Object.defineProperty( SceneNode.prototype, 'material', {
-	set: function(v)
-	{
-		if( this._material == v )
-			return;
-
-		this._material = v;
-		if(v)
-		{
-			if(v.constructor === String)
-				return;
-			if(v._root && v._root != this) //has root and its not me
-				console.warn( "Cannot assign a material of one SceneNode to another, you must clone it or register it" )
-			else
-				v._root = this; //link
-		}
-		LEvent.trigger( this, "materialChanged" );
-	},
-	get: function(){
-		return this._material;
-	},
-	enumerable: true
-});
-
-Object.defineProperty( SceneNode.prototype, 'prefab', {
-	set: function(name)
-	{
-		this._prefab = name;
-		if(!this._prefab)
-			return;
-		var prefab = LS.RM.getResource(name);
-		var that = this;
-		if(prefab)
-			this.reloadFromPrefab();
-		else 
-			LS.ResourcesManager.load( name, function(){
-				that.reloadFromPrefab();
-			});
-	},
-	get: function(){
-		return this._prefab;
-	},
-	enumerable: true
-});
-
-SceneNode.prototype.clear = function()
-{
-	this.removeAllComponents();
-	this.removeAllChildren();
-	this.init();
-}
-
-SceneNode.prototype.setName = function(new_name)
-{
-	if(this._name == new_name) 
-		return true; //no changes
-
-	//check that the name is valid (doesnt have invalid characters)
-	if(!LS.validateName(new_name))
-	{
-		console.warn("invalid name for node: " + new_name );
-		//new_name = new_name.replace(/[^a-z0-9\.\-]/gi,"_");
-		return false;
-	}
-
-	var scene = this._in_tree;
-	if(!scene)
-	{
-		this._name = new_name;
-		return true;
-	}
-
-	//remove old link
-	if( this._name )
-		delete scene._nodes_by_name[ this._name ];
-
-	//assign name
-	this._name = new_name;
-
-	//we already have another node with this name
-	if( new_name && !scene._nodes_by_name[ new_name ] )
-		scene._nodes_by_name[ this._name ] = this;
-
-	/**
-	 * Node changed name
-	 *
-	 * @event name_changed
-	 * @param {String} new_name
-	 */
-	LEvent.trigger( this, "name_changed", new_name );
-	if(scene)
-		LEvent.trigger( scene, "node_name_changed", this );
-	return true;
-}
-
-Object.defineProperty( SceneNode.prototype, 'classList', {
-	get: function() { return this._classList },
-	set: function(v) {},
-	enumerable: false
-});
-
-/**
-* @property className {String}
-*/
-Object.defineProperty( SceneNode.prototype, 'className', {
-	get: function() {
-			var keys = null;
-			if(Object.keys)
-				keys = Object.keys(this._classList); 
-			else
-			{
-				keys = [];
-				for(var k in this._classList)
-					keys.push(k);
-			}
-			return keys.join(" ");
-		},
-	set: function(v) { 
-		this._classList = {};
-		if(!v)
-			return;
-		var t = v.split(" ");
-		for(var i in t)
-			this._classList[ t[i] ] = true;
-	},
-	enumerable: true
-});
-
-/**
-* Destroys this node
-* @method destroy
-* @param {number} time [optional] time in seconds to wait till destroying the node
-**/
-SceneNode.prototype.destroy = function( time )
-{
-	if(time && time.constructor === Number && time > 0)
-	{
-		setTimeout( this.destroy.bind(this,0), time * 0.001 );
-		return;
-	}
-
-	LEvent.trigger( this, "destroy" );
-	this.removeAllComponents();
-	if(this.children)
-		while(this.children.length)
-			this.children[0].destroy();
-	if(this._parentNode)
-		this._parentNode.removeChild( this );
-}
-
-/**
-* Returns the locator string of this node
-* @method getLocator
-* @param {string} property_name [optional] you can pass the name of a property in this node to get the locator of that one
-* @return {String} the locator string of this node
-**/
-SceneNode.prototype.getLocator = function( property_name )
-{
-	if(!property_name)
-		return this.uid;
-	return this.uid + "/" + property_name;
-}
-
-/**
-* Returns and object with info about a property given a locator
-* @method getPropertyInfo
-* @param {string} locator
-* @return {Object} object with { node, target, name, value and type }
-**/
-SceneNode.prototype.getPropertyInfo = function( locator )
-{
-	var path = locator.split("/");
-	return this.getPropertyInfoFromPath(path);
-}
-
-/**
-* Returns and object with info about a property given a locator in path format
-* @method getPropertyInfoFromPath
-* @param {Array} path a locator in path format (split by /)
-* @return {Object} object with { node, target, name, value and type }
-**/
-SceneNode.prototype.getPropertyInfoFromPath = function( path )
-{
-	var target = this;
-	var varname = path[0];
-	var no_slice = false;
-
-	if(path.length == 0)
-	{
-		return {
-			node: this,
-			target: null,
-			name: "",
-			value: this,
-			type: "node" //node because thats the global type for nodes
-		};
-	}
-    else if(path.length == 1) //compo or //var
-	{
-		if(path[0][0] == "@") //compo uid
-		{
-			target = this.getComponentByUId( path[0] );
-			return {
-				node: this,
-				target: target,
-				name: target ? LS.getObjectClassName( target ) : "",
-				type: "component",
-				value: target
-			};
-		}
-		else if (path[0] == "material")
-		{
-			target = this.getMaterial();
-			return {
-				node: this,
-				target: target,
-				name: target ? LS.getObjectClassName( target ) : "",
-				type: "material",
-				value: target
-			};
-		}
-		else if (path[0] == "visible")
-		{
-			return {
-				node: this,
-				target: this,
-				name: "visible",
-				type: "boolean",
-				value: this.visible
-			};
-		}
-
-		var target = this.getComponent( path[0] );
-		if(target)
-		{
-			return {
-				node: this,
-				target: target,
-				name: target ? LS.getObjectClassName( target ) : "",
-				type: "component",
-				value: target
-			};
-		}
-
-		//special cases for a node
-		switch(path[0])
-		{
-			case "matrix":
-			case "x":
-			case "y": 
-			case "z": 
-			case "position":
-			case "rotX":
-			case "rotY":
-			case "rotZ":
-				target = this.transform;
-				varname = path[0];
-				no_slice = true;
-				break;
-			default: 
-				target = this;
-				varname = path[0];
-			break;
-		}
-	}
-    else if(path.length > 1) //compo/var
-	{
-		if(path[0][0] == "@")
-		{
-			varname = path[1];
-			target = this.getComponentByUId( path[0] );
-		}
-		else if (path[0] == "material")
-		{
-			target = this.getMaterial();
-			varname = path[1];
-		}
-		else if (path[0] == "flags")
-		{
-			target = this.flags;
-			varname = path[1];
-		}
-		else
-		{
-			target = this.getComponent( path[0] );
-			varname = path[1];
-		}
-
-		if(!target)
-			return null;
-	}
-	else //�?
-	{
-	}
-
-	if(!target) //unknown target
-		return null;
-
-	//this was moved to Component.prototype.getPropertyInfoFromPath  (if any errors check cases)
-	if( target != this && target.getPropertyInfoFromPath ) //avoid weird recursion
-		return target.getPropertyInfoFromPath( no_slice ? path : path.slice(1) );
-
-	return null;
-}
-
-/**
-* Returns the value of a property given a locator in string format
-* @method getPropertyValue
-* @param {String} locaator
-* @return {*} the value of that property
-**/
-SceneNode.prototype.getPropertyValue = function( locator )
-{
-	var path = locator.split("/");
-	return this.getPropertyValueFromPath(path);
-}
-
-/**
-* Returns the value of a property given a locator in path format
-* @method getPropertyValueFromPath
-* @param {Array} locator in path format (array)
-* @return {*} the value of that property
-**/
-SceneNode.prototype.getPropertyValueFromPath = function( path )
-{
-	var target = this;
-	var varname = path[0];
-	var no_slice = false;
-
-	if(path.length == 0)
-		return null
-    else if(path.length == 1) //compo or //var
-	{
-		if(path[0][0] == "@")
-			return this.getComponentByUId( path[0] );
-		else if (path[0] == "material")
-			return this.getMaterial();
-		var target = this.getComponent( path[0] );
-		if(target)
-			return target;
-
-		switch(path[0])
-		{
-			case "matrix":
-			case "x":
-			case "y": 
-			case "z": 
-			case "position":
-			case "rotX":
-			case "rotY":
-			case "rotZ":
-				target = this.transform;
-				varname = path[0];
-				no_slice = true;
-				break;
-			default: 
-				target = this;
-				varname = path[0];
-			break;
-		}
-	}
-    else if(path.length > 1) //compo/var
-	{
-		if(path[0][0] == "@")
-		{
-			varname = path[1];
-			target = this.getComponentByUId( path[0] );
-		}
-		else if (path[0] == "material")
-		{
-			target = this.getMaterial();
-			varname = path[1];
-		}
-		else if (path[0] == "flags")
-		{
-			target = this.flags;
-			varname = path[1];
-		}
-		else if (path[0] == "visible")
-		{
-			target = this;
-			varname = path[0];
-		}
-		else
-		{
-			target = this.getComponent( path[0] );
-			varname = path[1];
-		}
-
-		if(!target)
-			return null;
-	}
-	else //�?
-	{
-	}
-
-	var v = undefined;
-
-	if( target.getPropertyValueFromPath && target != this )
-	{
-		var r = target.getPropertyValueFromPath( no_slice ? path : path.slice(1) );
-		if(r)
-			return r;
-	}
-
-	//to know the value of a property of the given target
-	if( target.getPropertyValue && target != this )
-		v = target.getPropertyValue( varname );
-
-	//special case when the component doesnt specify any locator info but the property referenced does
-	//used in TextureFX
-	if (v === undefined && path.length > 2 && target[ varname ] && target[ varname ].getPropertyValueFromPath )
-	{
-		var r = target[ varname ].getPropertyValueFromPath( no_slice ? path.slice(1) : path.slice(2) );
-		if(r)
-		{
-			r.node = this;
-			return r;
-		}
-	}
-
-	if(v === undefined && target[ varname ] === undefined )
-		return null;
-	return v !== undefined ? v : target[ varname ];
-}
-
-/**
-* assigns a value to a property given the locator for that property
-* @method setPropertyValue
-* @param {String} locator
-* @param {*} value
-**/
-SceneNode.prototype.setPropertyValue = function( locator, value )
-{
-	var path = locator.split("/");
-	return this.setPropertyValueFromPath(path, value, 0);
-}
-
-/**
-* given a locator in path mode (array) and a value, it searches for the corresponding value and applies it
-* @method setPropertyValueFromPath
-* @param {Array} path
-* @param {*} value
-* @param {Number} [optional] offset used to skip the firsst positions in the array
-**/
-SceneNode.prototype.setPropertyValueFromPath = function( path, value, offset )
-{
-	offset = offset || 0;
-
-	if(this.flags && this.flags.locked)
-		return; //lock ignores changes from animations or graphs
-
-	var target = null;
-	var varname = path[offset];
-
-	if(path.length > (offset+1))
-	{
-		if(path[offset][0] == "@")
-		{
-			varname = path[offset+1];
-			target = this.getComponentByUId( path[offset] );
-		}
-		else if( path[offset] == "material" )
-		{
-			target = this.getMaterial();
-			varname = path[offset+1];
-		}
-		else if( path[offset] == "flags" )
-		{
-			target = this.flags;
-			varname = path[offset+1];
-		}
-		else if( path[offset] == "visible" )
-		{
-			target = this;
-			varname = path[offset];
-		}
-		else 
-		{
-			target = this.getComponent( path[offset] );
-			varname = path[offset+1];
-		}
-
-		if(!target)
-			return null;
-	}
-	else { //special cases 
-		switch ( path[offset] )
-		{
-			case "matrix": target = this.transform; break;
-			case "position":
-			case "rotation":
-			case "x":
-			case "y":
-			case "z":
-			case "xrotation": 
-			case "yrotation": 
-			case "zrotation": 
-				target = this.transform; 
-				varname = path[offset];
-				break;
-			case "translate.X": target = this.transform; varname = "x"; break;
-			case "translate.Y": target = this.transform; varname = "y"; break;
-			case "translate.Z": target = this.transform; varname = "z"; break;
-			case "rotateX.ANGLE": target = this.transform; varname = "pitch"; break;
-			case "rotateY.ANGLE": target = this.transform; varname = "yaw"; break;
-			case "rotateZ.ANGLE": target = this.transform; varname = "roll"; break;
-			default: target = this; //null
-		}
-	}
-
-	if(!target)
-		return null;
-
-	if(target.setPropertyValueFromPath && target != this)
-		if( target.setPropertyValueFromPath( path, value, offset+1 ) === true )
-			return target;
-	
-	if(target.setPropertyValue  && target != this)
-		if( target.setPropertyValue( varname, value ) === true )
-			return target;
-
-	if( target[ varname ] === undefined )
-		return;
-
-	//special case when the component doesnt specify any locator info but the property referenced does
-	//used in TextureFX
-	if ( path.length > 2 && target[ varname ] && target[ varname ].setPropertyValueFromPath )
-		return target[ varname ].setPropertyValueFromPath( path, value, offset+2 );
-
-	//disabled because if the vars has a setter it wont be called using the array.set
-	//if( target[ varname ] !== null && target[ varname ].set )
-	//	target[ varname ].set( value );
-	//else
-		target[ varname ] = value;
-
-	return target;
-}
-
-/**
-* Returns all the resources used by this node and its components (you can include the resources from the children too)
-* @method getResources
-* @param {Object} res object where to store the resources used (in "res_name":LS.TYPE format)
-* @param {Boolean} include_children if you want to add also the resources used by the children nodes
-* @return {Object} the same object passed is returned 
-**/
-SceneNode.prototype.getResources = function( res, include_children )
-{
-	//resources in components
-	for(var i in this._components)
-		if( this._components[i].getResources )
-			this._components[i].getResources( res );
-
-	//res in material
-	if(this.material)
-	{
-		if( this.material.constructor === String )
-		{
-			if(this.material[0] != ":") //not a local material, then its a reference
-			{
-				res[this.material] = LS.Material;
-			}
-		}
-
-		var mat = this.getMaterial();
-		if(mat)
-			mat.getResources( res );
-	}
-
-	//prefab
-	if(this.prefab)
-		res[ this.prefab ] = LS.Prefab;
-
-	//propagate
-	if(include_children)
-		for(var i in this._children)
-			this._children[i].getResources(res, true);
-
-	return res;
-}
-
-SceneNode.prototype.getTransform = function() {
-	return this.transform;
-}
-
-//Helpers
-
-SceneNode.prototype.getMesh = function( use_lod_mesh ) {
-	var mesh = this.mesh;
-	var mesh_renderer = this.getComponent( LS.Components.MeshRenderer );
-	if(!mesh && mesh_renderer)
-	{
-		if(use_lod_mesh)
-			mesh = mesh_renderer.lod_mesh;
-		if(!mesh)
-			mesh = mesh_renderer.mesh;
-	}
-	if(!mesh)
-		return null;
-	if(mesh.constructor === String)
-		return LS.ResourcesManager.meshes[mesh];
-	return mesh;
-}
-
-//Light component
-SceneNode.prototype.getLight = function() {
-	return this.light;
-}
-
-//Camera component
-SceneNode.prototype.getCamera = function() {
-	return this.camera;
-}
-
-/**
-* Allows to load some kind of resource and associate it to this node.
-* It can be for prefabs, meshes, scenes from daes, etc
-* @method load
-* @param {string} url
-* @param {Function} on_complete
-**/
-SceneNode.prototype.load = function( url, on_complete )
-{
-	var that = this;
-	LS.ResourcesManager.load( url, inner );
-	function inner( resource )
-	{
-		if(!resource)
-			return;
-		that.assign( resource );
-		if(on_complete)
-			on_complete();
-	}
-}
-
-/**
-* Assign a resource/element inteligently to a node: if it is a mesh it creates a MeshRenderer, if it is a Material it assigns it, if it is an animation creates a PlayAnimation, if it is a prefab assigns the prefab. etc
-* @method assign
-* @param {*} resource the resource to assign (it also accepts a resource filename that has been previously loaded).
-* @param {Function} on_complete
-**/
-SceneNode.prototype.assign = function( item, extra )
-{
-	if(!item)
-	{
-		console.error("assignResource cannot have null as resource");
-		return;
-	}
-
-	//assume is the filename of a resource
-	if(item.constructor === String)
-		item = LS.ResourcesManager.getResource( item );
-
-	if(!item)
-		return;
-
-	switch( item.constructor )
-	{
-		case LS.SceneNode: 
-			this.addChild( item );
-			break;
-		case LS.Scene:
-			var node = this;
-			item.loadScripts( null, function(){
-				item.loadResources( function(){ 
-					node.addChild( item.root.clone() );
-				});
-			});
-			break;
-		case LS.Prefab: 
-			this.prefab = item.fullpath || item.filename; 
-			break;
-		case GL.Mesh: 
-			var component = this.getComponent( LS.Components.MeshRenderer );
-			if(component)
-				component.configure({ mesh: item.fullpath || item.filename });
-			else
-				this.addComponent( new LS.MeshRenderer({ mesh: mesh_name, submesh_id: submesh_id }) );
-			break;
-		case LS.Animation: 
-			var comp = this.getComponent( LS.Components.PlayAnimation );
-			if(!comp)
-				comp = this.addComponent( new LS.Components.PlayAnimation() );
-			comp.animation = item.fullpath || item.filename;
-			break;
-		case LS.Resource: //generic resource
-			var ext = LS.ResourcesManager.getExtension( item.filename );
-			if(ext == "js") //scripts
-			{
-				var comp = this.getComponent( LS.Components.ScriptFromFile );
-				if(!comp)
-					comp = this.addComponent( new LS.Components.ScriptFromFile() );
-				comp.src = item.fullpath || item.filename;
-			}
-			break;
-		default:
-			console.error("feature not supported loading this type of resource" , item );
-	}
-}
-
-/**
-* Simple way to assign a mesh to a node, it created a MeshRenderer component or reuses and existing one and assigns the mesh
-* @method setMesh
-* @param {string} mesh_name the name of the mesh (path to the file)
-* @param {Number} submesh_id if you want to assign a submesh
-**/
-SceneNode.prototype.setMesh = function(mesh_name, submesh_id)
-{
-	var component = this.getComponent( LS.Components.MeshRenderer );
-	if(component)
-		component.configure({ mesh: mesh_name, submesh_id: submesh_id });
-	else
-		this.addComponent( new LS.MeshRenderer({ mesh: mesh_name, submesh_id: submesh_id }) );
-}
-
-SceneNode.prototype.getMaterial = function()
-{
-	if (!this.material)
-		return null;
-	if(this.material.constructor === String)
-	{
-		if( !this._in_tree )
-			return null;
-		if( this.material[0] == "@" )//uid
-			return LS.ResourcesManager.materials_by_uid[ this.material ];
-		return LS.ResourcesManager.materials[ this.material ];
-	}
-	return this.material;
-}
-
-/**
-* Apply prefab info (skipping the root components) to node, so all children will be removed and components lost and overwritten
-* It is called from prefab.applyToNodes when a prefab is loaded in memory
-* @method reloadFromPrefab
-**/
-SceneNode.prototype.reloadFromPrefab = function()
-{
-	if(!this.prefab)
-		return;
-
-	var prefab = LS.ResourcesManager.resources[ this.prefab ];
-	if(!prefab)
-		return;
-
-	if( prefab.constructor !== LS.Prefab )
-		throw("prefab must be a LS.Prefab class");
-
-	//apply info
-	this.removeAllChildren();
-	this.init( true, true ); //keep components, keep_info
-	var prefab_data = prefab.prefab_data;
-	
-	//remove all but children info (prefabs overwrite only children info)
-	prefab_data = { children: prefab.prefab_data.children };
-
-	//uid data is already removed from the prefab
-	this.configure( prefab_data );
-
-	//load secondary resources 
-	var resources = this.getResources( {}, true );
-	LS.ResourcesManager.loadResources( resources );
-
-	LEvent.trigger( this, "prefabReady", prefab );
-}
-
-
-/**
-* Assigns this node to one layer
-* @method setLayer
-* @param {number|String} the index of the layer or the name (according to scene.layer_names)
-* @param {boolean} value 
-*/
-SceneNode.prototype.setLayer = function( num_or_name, value )
-{
-	if( num_or_name == null )
-		throw("setLayer expects layer");
-
-	var num;
-
-	if(num_or_name.constructor === String)
-	{
-		var scene = this.scene || LS.GlobalScene;
-		var layer_num = scene.layer_names.indexOf( num_or_name );
-		if(layer_num == -1)
-		{
-			console.error("Layer with name:",num_or_name,"not found in scene");
-			return;
-		}
-		num = layer_num;
-	}
-	else
-		num = num_or_name;
-
-	var f = 1<<num;
-	this.layers = (this.layers & (~f));
-	if(value)
-		this.layers |= f;
-}
-
-/**
-* checks if this node is in the given layer
-* @method isInLayer
-* @param {number|String} index of layer or name according to scene.layer_names
-* @return {boolean} true if belongs to this layer
-*/
-SceneNode.prototype.isInLayer = function( num_or_name )
-{
-	if( num_or_name == null )
-		throw("setLayer expects layer");
-
-	var num;
-
-	if(num_or_name.constructor === String)
-	{
-		var scene = this.scene || LS.GlobalScene;
-		var layer_num = scene.layer_names.indexOf( num_or_name );
-		if(layer_num == -1)
-		{
-			console.error("Layer with name:",num_or_name,"not found in scene");
-			return;
-		}
-		num = layer_num;
-	}
-	else
-		num = num_or_name;
-
-	return (this.layers & (1<<num)) !== 0;
-}
-
-SceneNode.prototype.getLayers = function()
-{
-	var r = [];
-	if(!this.scene)
-		return r;
-
-	for(var i = 0; i < 32; ++i)
-	{
-		if( this.layers & (1<<i) )
-			r.push( this.scene.layer_names[i] || ("layer"+i) );
-	}
-	return r;
-}
-
-/**
-* Returns the root node of the prefab incase it is inside a prefab, otherwise null
-* @method insidePrefab
-* @return {Object} returns the node where the prefab starts
-*/
-SceneNode.prototype.insidePrefab = function()
-{
-	var aux = this;
-	while( aux )
-	{
-		if(aux.prefab)
-			return aux;
-		aux = aux._parentNode;
-	}
-	return null;
-}
-
-/**
-* remember clones this node and returns the new copy (you need to add it to the scene to see it)
-* @method clone
-* @return {Object} returns a cloned version of this node
-*/
-SceneNode.prototype.clone = function()
-{
-	var scene = this._in_tree;
-
-	var new_name = scene ? scene.generateUniqueNodeName( this._name ) : this._name ;
-	var newnode = new LS.SceneNode( new_name );
-	var info = this.serialize();
-
-	//remove all uids from nodes and components
-	LS.clearUIds( info );
-
-	info.uid = LS.generateUId("NODE-");
-	newnode.configure( info );
-
-	return newnode;
-}
-
-/**
-* Configure this node from an object containing the info
-* @method configure
-* @param {Object} info the object with all the info (comes from the serialize method)
-*/
-SceneNode.prototype.configure = function(info)
-{
-	//identifiers parsing
-	if (info.name)
-		this.setName(info.name);
-	else if (info.id)
-		this.setName(info.id);
-	if(info.layers !== undefined)
-		this.layers = info.layers;
-
-	if (info.uid)
-		this.uid = info.uid;
-
-	if (info.className && info.className.constructor == String)	
-		this.className = info.className;
-
-	if(info.node_type)
-	{
-		this.node_type = info.node_type;
-		if(info.node_type == "JOINT") //used in editor
-			this._is_bone = true;
-	}
-
-	//some helpers (mostly for when loading from js object that come from importers or code)
-	if(info.camera)
-		this.addComponent( new LS.Camera( info.camera ) );
-
-	if(info.light)
-		this.addComponent( new LS.Light( info.light ) );
-
-	//in case more than one mesh in on e node
-	if(info.meshes)
-	{
-		for(var i = 0; i < info.meshes.length; ++i)
-			this.addMeshComponents( info.meshes[i], info );
-	}
-	else if(info.mesh)
-		this.addMeshComponents( info.mesh, info );
-
-	//transform in matrix format could come from importers so we leave it
-	if((info.position || info.model || info.transform) && !this.transform)
-		this.addComponent( new LS.Transform() );
-	if(info.position) 
-		this.transform.position = info.position;
-	if(info.model) 
-		this.transform.fromMatrix( info.model ); 
-	if(info.matrix) 
-		this.transform.fromMatrix( info.matrix ); 
-	if(info.transform) 
-		this.transform.configure( info.transform ); 
-
-	//first the no components
-	if(info.material)
-	{
-		var mat_classname = info.material.material_class;
-		if(!mat_classname || mat_classname == "newStandardMaterial") //legacy
-			mat_classname = "StandardMaterial";
-		var constructor = LS.MaterialClasses[mat_classname];
-		if(constructor)
-			this.material = typeof(info.material) == "string" ? info.material : new constructor( info.material );
-		else
-			console.warn("Material not found: " + mat_classname );
-	}
-
-	if(info.flags) //merge
-		for(var i in info.flags)
-			this.flags[i] = info.flags[i];
-	
-	//add animation tracks player
-	if(info.animation)
-	{
-		this.animation = info.animation;
-		this.addComponent( new LS.Components.PlayAnimation({ animation: this.animation }) );
-	}
-
-	//extra user info
-	if(info.extra)
-		this.extra = info.extra;
-
-	if(info.editor)
-		this._editor = info.editor;
-
-
-	if(info.comments)
-		this.comments = info.comments;
-
-	//restore components
-	if(info.components)
-		this.configureComponents( info );
-
-	if(info.prefab && !this._is_root)  //is_root because in some weird situations the prefab was set to the root node
-		this.prefab = info.prefab; //assign and calls this.reloadFromPrefab();
-	else //configure children if it is not a prefab
-		this.configureChildren(info);
-
-	LEvent.trigger(this,"configure",info);
-}
-
-//adds components according to a mesh
-//used mostly to addapt a node to a collada mesh info
-SceneNode.prototype.addMeshComponents = function( mesh_id, extra_info )
-{
-	extra_info = extra_info || {};
-
-	if(!mesh_id)
-		return;
-
-	if( mesh_id.constructor !== String )
-	{
-		extra_info = mesh_id;
-		mesh_id = extra_info.mesh;
-		if(!mesh_id)
-		{
-			console.warn("Mesh info without mesh id");
-			return null;
-		}
-	}
-
-	var mesh = LS.ResourcesManager.meshes[ mesh_id ];
-
-	if(!mesh)
-	{
-		console.warn( "SceneNode mesh not found: " + mesh_id );
-		return;
-	}
-
-	var mesh_render_config = { mesh: mesh_id };
-
-	if(extra_info.submesh_id !== undefined)
-		mesh_render_config.submesh_id = extra_info.submesh_id;
-	if(extra_info.morph_targets !== undefined)
-		mesh_render_config.morph_targets = extra_info.morph_targets;
-	if(extra_info.material !== undefined)
-		mesh_render_config.material = extra_info.material;
-
-	var compo = new LS.Components.MeshRenderer( mesh_render_config );
-
-	//parsed meshes have info about primitive
-	if( mesh.primitive )
-    {
-        switch(mesh.primitive)
-        {
-    		case 'points': compo.primitive = GL.POINTS; break;
-    		case 'lines': compo.primitive = GL.LINES; break;
-    		case 'line_strip': compo.primitive = GL.LINE_STRIP; break;
-        }
-		delete mesh.primitive;
-    }
-
-	//add MeshRenderer
-	this.addComponent( compo );
-
-	//skinning
-	if(mesh && mesh.bones)
-	{
-		compo = new LS.Components.SkinDeformer({ search_bones_in_parent: false }); //search_bones_in_parent is false because usually DAEs come that way
-		this.addComponent( compo );
-	}
-
-	//morph targets
-	if( mesh && mesh.morph_targets )
-	{
-		var compo = new LS.Components.MorphDeformer( { morph_targets: mesh.morph_targets } );
-		this.addComponent( compo );
-	}
-
-}
-
-/**
-* Serializes this node by creating an object with all the info
-* it contains info about the components too
-* @method serialize
-* @param {bool} ignore_prefab serializing wont returns children if it is a prefab, if you set this to ignore_prefab it will return all the info
-* @return {Object} returns the object with the info
-*/
-SceneNode.prototype.serialize = function( ignore_prefab, simplified )
-{
-	var o = {
-		object_class: "SceneNode"
-	};
-
-	if(this._name) 
-		o.name = this._name;
-	if(this.uid) 
-		o.uid = this.uid;
-	if(this.className) 
-		o.className = this.className;
-	o.layers = this.layers;
-
-	//work in progress
-	if(this.node_type)
-		o.node_type = this.node_type;
-
-	//modules
-	if(this.mesh && typeof(this.mesh) == "string") 
-		o.mesh = this.mesh; //do not save procedural meshes
-	if(this.submesh_id != null) 
-		o.submesh_id = this.submesh_id;
-	if(this.material) 
-		o.material = typeof(this.material) == "string" ? this.material : this.material.serialize( simplified );
-	if(this.prefab && !ignore_prefab && !this._is_root ) 
-		o.prefab = this.prefab;
-
-	if(this.flags) 
-		o.flags = LS.cloneObject(this.flags);
-
-	//extra user info
-	if(this.extra) 
-		o.extra = this.extra;
-	if(this.comments) 
-		o.comments = this.comments;
-
-	if(this._children && (!this.prefab || ignore_prefab) )
-		o.children = this.serializeChildren( simplified );
-
-	if(this._editor)
-		o.editor = this._editor;
-
-	//save components
-	this.serializeComponents( o, simplified );
-
-	//extra serializing info
-	LEvent.trigger(this,"serialize",o);
-
-	return o;
-}
-
-//used to recompute matrix so when parenting one node it doesnt lose its global transformation
-SceneNode.prototype._onChildAdded = function( child_node, recompute_transform )
-{
-	if(recompute_transform && this.transform)
-	{
-		var M = child_node.transform.getGlobalMatrix(); //get son transform
-		var M_parent = this.transform.getGlobalMatrix(); //parent transform
-		mat4.invert(M_parent,M_parent);
-		child_node.transform.fromMatrix( mat4.multiply(M_parent,M_parent,M) );
-		child_node.transform.getGlobalMatrix(); //refresh
-	}
-	//link transform
-	if(this.transform)
-	{
-		if(!child_node.transform)
-			child_node.transform.addComponent( new LS.Transform() );
-		child_node.transform._parent = this.transform;
-	}
-}
-
-SceneNode.prototype._onChangeParent = function( future_parent, recompute_transform )
-{
-	if(recompute_transform && future_parent.transform)
-	{
-		var M = this.transform.getGlobalMatrix(); //get son transform
-		var M_parent = future_parent.transform.getGlobalMatrix(); //parent transform
-		mat4.invert(M_parent,M_parent);
-		this.transform.fromMatrix( mat4.multiply(M_parent,M_parent,M) );
-	}
-	//link transform
-	if(future_parent.transform)
-		this.transform._parent = future_parent.transform;
-}
-
-SceneNode.prototype._onChildRemoved = function( node, recompute_transform, remove_components )
-{
-	if(this.transform)
-	{
-		//unlink transform
-		if(node.transform)
-		{
-			if(recompute_transform)
-			{
-				var m = node.transform.getGlobalMatrix();
-				node.transform._parent = null;
-				node.transform.fromMatrix(m);
-			}
-			else
-				node.transform._parent = null;
-		}
-	}
-
-	if( remove_components )
-		node.removeAllComponents();
-}
-
-//Computes the bounding box from the render instance of this node
-//doesnt take into account children
-SceneNode.prototype.getBoundingBox = function( bbox, only_instances )
-{
-	bbox = bbox || BBox.create();
-	var render_instances = this._instances;
-	if(render_instances)
-		for(var i = 0; i < render_instances.length; ++i)
-		{
-			if(i == 0)
-				bbox.set( render_instances[i].aabb );
-			else
-				BBox.merge( bbox, bbox, render_instances[i].aabb );
-		}
-
-	if(only_instances)
-		return bbox;
-
-	if( (!render_instances || render_instances.length == 0) && this.transform )
-		return BBox.fromPoint( this.transform.getGlobalPosition() );
-
-	return bbox;
-}
-
-LS.Scene.Node = SceneNode;
-LS.SceneNode = SceneNode;
-LS.Classes.SceneNode = SceneNode;
 
 ///@FILE:../src/render/basePipeline.js
 ///@INFO: BASE

@@ -10122,7 +10122,7 @@ GL.augmentEvent = function(e, root_element)
 	else if (e.type == "mouseup")
 	{
 		//gl.mouse.buttons = gl.mouse.buttons & ~(1 << e.which);
-		if(gl.mouse.buttons == 0)
+		if(e.buttons == 0)
 			this.dragging = false;
 	}
 

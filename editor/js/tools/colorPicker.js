@@ -31,7 +31,7 @@ var colorPickerTool = {
 
 	mousedown: function(e)
 	{
-		if (e.which != GL.LEFT_MOUSE_BUTTON)
+		if (e.which != 1)
 			return;
 
 		var color = this.getColorFromMouse(e);

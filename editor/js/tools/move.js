@@ -124,7 +124,7 @@ var moveTool = {
 		if(!this.enabled) 
 			return;
 
-		if(e.which != GL.LEFT_MOUSE_BUTTON) 
+		if(e.which != 1) 
 			return;
 
 		this._freeze_axis = true;
@@ -179,7 +179,7 @@ var moveTool = {
 
 		if(!this.enabled) 
 			return;
-		if(e.which != GL.LEFT_MOUSE_BUTTON) 
+		if(e.which != 1) 
 			return;
 
 		this._freeze_axis = false;
@@ -217,7 +217,7 @@ var moveTool = {
 		ray.end = vec3.add( vec3.create(), ray.origin, vec3.scale(vec3.create(), ray.direction, 10000) );
 		moveTool._last_ray = ray;
 
-		if (e.dragging && e.which == GL.LEFT_MOUSE_BUTTON) {
+		if (e.dragging && e.which == 1) {
 
 			var f = 0.001 * ToolUtils.computeDistanceFactor(center);
 			var delta = vec3.create();

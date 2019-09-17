@@ -64,7 +64,7 @@ var TestCollisionsTool = {
 		//return;
 		
 		//test
-		if(e.dragging && e.which == GL.LEFT_MOUSE_BUTTON && !e.ctrlKey)
+		if(e.dragging && e.which == 1 && !e.ctrlKey)
 		{
 			var camera = ToolUtils.getCamera();
 			var ray = camera.getRayInPixel( e.canvasx, e.canvasy );

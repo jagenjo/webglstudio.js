@@ -115,7 +115,7 @@ var rotateNodeTool = {
 
 	mousedown: function(e) {
 		if(!this.enabled) return;
-		if(e.which != GL.LEFT_MOUSE_BUTTON)
+		if(e.which != 1)
 			return;
 
 		var node = SelectionModule.getSelectedNode();
@@ -172,7 +172,7 @@ var rotateNodeTool = {
 		LS.GlobalScene.refresh();
 
 		//is mouse clicked
-		if (e.dragging && e.which == GL.LEFT_MOUSE_BUTTON)
+		if (e.dragging && e.which == 1)
 		{
 			if(!this._on_top_of)
 				return;

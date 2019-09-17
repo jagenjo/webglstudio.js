@@ -1,6 +1,6 @@
 var parentingNodeTool = {
 	name: "parenting",
-	description: "Drag to parent nodes",
+	description: "Drag to parent node",
 	section: "foo",
 	icon: "imgs/mini-icon-tree.png",
 
@@ -51,7 +51,7 @@ var parentingNodeTool = {
 
 	mousedown: function(e)
 	{
-		if (e.which != GL.LEFT_MOUSE_BUTTON)
+		if (e.which != 1)
 			return;
 
 		var instance_info = LS.Picking.getInstanceAtCanvasPosition( e.canvasx, e.canvasy, ToolUtils.getCamera() );

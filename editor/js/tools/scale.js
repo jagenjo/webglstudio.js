@@ -70,7 +70,7 @@ var scaleNodeTool = {
 	},
 
 	mousedown: function(e) {
-		if(!this.enabled || e.which != GL.LEFT_MOUSE_BUTTON) return;
+		if(!this.enabled || e.which != 1) return;
 
 		var node = SelectionModule.getSelectedNode();
 		if(!node || !node.transform) 
@@ -112,7 +112,7 @@ var scaleNodeTool = {
 
 		var pos2D = camera.project(this._center);
 
-		if (e.dragging && e.which == GL.LEFT_MOUSE_BUTTON) {
+		if (e.dragging && e.which == 1) {
 
 			if(!scaleNodeTool._on_top_of)
 			{

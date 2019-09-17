@@ -11473,9 +11473,12 @@ global.BBox = GL.BBox = {
 		bb[3] = halfsize[0];
 		bb[4] = halfsize[1];
 		bb[5] = halfsize[2];
-
-		vec3.sub(bb.subarray(6,9), bb.subarray(0,3), bb.subarray(3,6) );
-		vec3.add(bb.subarray(9,12), bb.subarray(0,3), bb.subarray(3,6) );
+		bb[6] = bb[0] - bb[3];
+		bb[7] = bb[1] - bb[4];
+		bb[8] = bb[2] - bb[5];
+		bb[9] = bb[0] + bb[3];
+		bb[10] = bb[1] + bb[4];
+		bb[11] = bb[2] + bb[5];
 		if(radius)
 			bb[12] = radius;
 		else

@@ -13053,6 +13053,7 @@ Scene.prototype.setFromJSON = function( data, on_complete, on_error, on_progress
 	}
 
 	var scripts = LS.Scene.getScriptsList( data, true );
+	this.external_scripts = data.external_scripts; //must be copyed before, because it is used inside loadScripts to check origin 
 
 	//check JSON for special scripts
 	if ( scripts.length )
@@ -13330,7 +13331,7 @@ Scene.prototype.loadScripts = function( scripts, on_complete, on_error, force_re
 	{
 		var script_url = scripts[i];
 		var is_external = this.external_scripts.indexOf( script_url ) != -1;
-		if( !is_external )
+		if( !is_external ) //comes from scene.external_scripts
 		{
 			var res = LS.ResourcesManager.getResource( script_url );
 			if(!res || force_reload)

@@ -156,7 +156,7 @@ var AddPointsTool = {
 			}
 		}
 
-		if(e.which == GL.LEFT_MOUSE_BUTTON && !e.ctrlKey && !this.continuous) //continuos is add while dragging, like painting
+		if(e.which == 1 && !e.ctrlKey && !this.continuous) //continuos is add while dragging, like painting
 		{
 			//test first closer point
 			var index = this.findNearestPointIndex(this.click_pos, 20);
@@ -192,7 +192,7 @@ var AddPointsTool = {
 			return;
 		
 		//test
-		if(e.dragging && e.which == GL.LEFT_MOUSE_BUTTON && this.continuous)
+		if(e.dragging && e.which == 1 && this.continuous)
 		{
 			var point = this.computePoint(e);
 			if(point)

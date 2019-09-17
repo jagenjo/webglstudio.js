@@ -93,7 +93,7 @@ var manipulateTool = {
 	{
 		if(!this.enabled) 
 			return;
-		if(e.which != GL.LEFT_MOUSE_BUTTON) 
+		if(e.which != 1)  //LEFT (do not use GL.LEFT_MOUSE_BUTTON because which use special format)
 			return;
 
 		var selection = SelectionModule.getSelection();
@@ -186,7 +186,7 @@ var manipulateTool = {
 		}
 
 		var ret = null;
-		if(e.dragging && this.state_action && e.which == GL.LEFT_MOUSE_BUTTON)
+		if(e.dragging && this.state_action && e.which == 1)
 			ret = this.onMouseDrag(e);
 
 		EditorModule.updateInspector();

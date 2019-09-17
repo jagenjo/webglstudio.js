@@ -44,7 +44,7 @@ var VolumeTool = {
 
 	mousedown: function(e)
 	{
-		if (e.which != GL.LEFT_MOUSE_BUTTON)
+		if (e.which != 1)
 			return;
 
 		var camera = RenderModule.getActiveCamera();

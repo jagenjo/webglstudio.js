@@ -9,6 +9,11 @@ var GL = global.GL = {};
 
 if(typeof(glMatrix) == "undefined")
 	throw("litegl.js requires gl-matrix to work. It must be included before litegl.");
+else
+{
+	if(!global.vec2)
+		throw("litegl.js does not support gl-matrix 3.0, download 2.8 https://github.com/toji/gl-matrix/releases/tag/v2.8.1");
+}
 
 //polyfill
 global.requestAnimationFrame = global.requestAnimationFrame || global.mozRequestAnimationFrame || global.webkitRequestAnimationFrame || function(callback) { setTimeout(callback, 1000 / 60); };

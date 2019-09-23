@@ -849,8 +849,9 @@ AnimationModule.export_animation_formats["anim"] = function( take ){
 AnimationModule.export_animation_formats["skanim"] = exportTakeInSKANIM;
 	
 function exportTakeInSKANIM( take, sampling, duration ) {
-	sampling = sampling || 30;
-	duration = duration || take.duration;
+	sampling = sampling || 30; //samples per second
+	duration = duration || take.duration; //duration in seconds
+	var total_samples = Math.floor( duration * sampling ); //total number of samples
 
 	var lines = [];
 	if(!take.tracks.length)

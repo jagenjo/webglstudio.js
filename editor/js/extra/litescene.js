@@ -1542,6 +1542,17 @@ var LS = {
 		LS._pending_encoded_objects = null;
 	},
 
+	switchGlobalScene: function( scene )
+	{
+		if(scene === LS.GlobalScene)
+			return;
+		if( scene === null || scene.constructor !== LS.Scene )
+			throw("Not an scene");
+		var old_scene = LS.GlobalScene;
+		LEvent.trigger( LS, "global_scene_changed", scene );
+		LS.GlobalScene = scene;
+	},
+
 	/**
 	* Clears all the uids inside this object and children (it also works with serialized object)
 	* @method clearUIds
@@ -6975,7 +6986,9 @@ var normalbuffer_block = LS.Shaders.normalbuffer_block = new LS.ShaderBlock("nor
 normalbuffer_block.addCode( GL.FRAGMENT_SHADER, "", "" );
 normalbuffer_block.register();
 
-
+//used when a mesh contains extra buffers
+var instancing_block = LS.Shaders.instancing_block = new LS.ShaderBlock("instancing");
+instancing_block.register();
 ///@FILE:../src/formats.js
 ///@INFO: BASE
 /**
@@ -8453,11 +8466,13 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	LS.Renderer.bindSamplers( this._samplers ); //material samplers
 	LS.Renderer.bindSamplers( instance.samplers ); //RI samplers (like morph targets encoded in textures)
 
-	//blocks for extra streams
+	//blocks for extra streams and instancing
 	if( instance.vertex_buffers["colors"] )
 		block_flags |= LS.Shaders.vertex_color_block.flag_mask;
 	if( instance.vertex_buffers["coords1"] )
 		block_flags |= LS.Shaders.coord1_block.flag_mask;
+	if( instance.instanced_models && instance.instanced_models.length && gl.extensions.ANGLE_instanced_arrays ) //use instancing if supported
+		block_flags |= LS.Shaders.instancing_block.flag_mask;
 
 	//for those cases
 	if(this.onRenderInstance)
@@ -9079,7 +9094,7 @@ function StandardMaterial(o)
 
 	this._samplers = [];
 
-	//this._allows_instancing = true; //WIP
+	this._allows_instancing = true;
 	this.needsUpdate = true;
 
 	if(o) 
@@ -9628,6 +9643,7 @@ precision mediump float;\n\
 //global defines from blocks\n\
 #pragma shaderblock \"vertex_color\"\n\
 #pragma shaderblock \"coord1\"\n\
+#pragma shaderblock \"instancing\"\n\
 \n\
 attribute vec3 a_vertex;\n\
 attribute vec3 a_normal;\n\
@@ -9889,6 +9905,7 @@ varying vec3 v_normal;\n\
 varying vec2 v_uvs;\n\
 varying vec4 v_screenpos;\n\
 \n\
+#pragma shaderblock \"instancing\"\n\
 //matrices\n\
 #ifdef BLOCK_INSTANCING\n\
 	attribute mat4 u_model;\n\
@@ -10018,6 +10035,7 @@ varying vec3 v_local_pos;\n\
 varying vec3 v_local_normal;\n\
 \n\
 //matrices\n\
+#pragma shaderblock \"instancing\"\n\
 #ifdef BLOCK_INSTANCING\n\
 	attribute mat4 u_model;\n\
 #else\n\
@@ -26535,12 +26553,13 @@ function RenderInstance( node, component )
 	this.uniforms = {};
 	this.samplers = [];
 
-	this.instanced_models = [];
+	//array of all the model matrix for all the instanced
+	this.instanced_models = null;
 
 	this.shader_block_flags = 0;
 	this.shader_blocks = [];
 
-	this.picking_node = null; //for picking
+	this.picking_node = null; //in case of picking, which node to reference
 
 	//this.deformers = []; //TODO
 
@@ -26560,17 +26579,21 @@ RenderInstance.SORT_FAR_FIRST = 2;
 
 RenderInstance.fast_normalmatrix = false; //avoid doint the inverse transpose for normal matrix, and just copies the model
 
-RenderInstance.prototype.fromNode = function(node)
+RenderInstance.prototype.fromNode = function(node, skip_matrices)
 {
 	if(!node)
 		throw("no node");
 	this.node = node;
-	if(node.transform)
-		this.setMatrix( node.transform._global_matrix );
-	else
-		this.setMatrix( LS.IDENTITY );
-	mat4.multiplyVec3( this.position, this.matrix, LS.ZEROS );
 	this.layers = node.layers;
+
+	if(!skip_matrices)
+	{
+		if(node.transform)
+			this.setMatrix( node.transform._global_matrix );
+		else
+			this.setMatrix( LS.IDENTITY );
+		mat4.multiplyVec3( this.position, this.matrix, LS.ZEROS );
+	}
 }
 
 //set the matrix 
@@ -26836,10 +26859,35 @@ RenderInstance.prototype.render = function(shader, primitive)
 		this.vertex_buffers["colors"] = this.mesh.vertexBuffers["colors"];
 	}
 
-	shader.drawBuffers( this.vertex_buffers,
-	  this.index_buffer,
-	  primitive !== undefined ? primitive : this.primitive,
-	  this.range[0], this.range[1] );
+
+	if(primitive === undefined)
+		primitive = this.primitive;
+
+	//instancing
+	if(this.instanced_models && this.instanced_models.length)
+	{
+		if( shader.attributes["u_model"] ) //if extension enabled
+		{
+			if(!this._instanced_uniforms)
+				this._instanced_uniforms = {};
+			this._instanced_uniforms.u_model = this.instanced_models;
+			shader.drawInstanced( this.mesh, primitive,
+			  this.index_buffer, this._instanced_uniforms,
+			  this.range[0], this.range[1], this.instanced_models.length );
+		}
+		else //not supported the extension
+		{
+			for(var i = 0; i < this.instanced_models.length; ++i)
+			{
+				shader.setUniform("u_model", this.instanced_models[i] );
+				shader.drawBuffers( this.vertex_buffers, this.index_buffer, primitive, this.range[0], this.range[1] );
+			}
+		}
+	}
+	else //no instancing
+	{
+		shader.drawBuffers( this.vertex_buffers, this.index_buffer, primitive, this.range[0], this.range[1] );
+	}
 }
 
 RenderInstance.prototype.addShaderBlock = function( block, uniforms )
@@ -27561,7 +27609,7 @@ var Renderer = {
 	_main_camera: null,
 
 	_visible_cameras: null,
-	_visible_lights: null,
+	_active_lights: null, //array of lights that are active in the scene
 	_visible_instances: null,
 	_visible_materials: [],
 	_near_lights: [],
@@ -28356,7 +28404,7 @@ var Renderer = {
 		result.length = 0; //clear old lights
 
 		//it uses the lights gathered by prepareVisibleData
-		var lights = this._visible_lights;
+		var lights = this._active_lights;
 		if(!lights || !lights.length)
 			return result;
 
@@ -28388,9 +28436,9 @@ var Renderer = {
 		scene = scene || this._current_scene;
 		render_settings = render_settings || this.default_render_settings;
 		LEvent.trigger( scene, EVENT.RENDER_SHADOWS, render_settings );
-		for(var i = 0; i < this._visible_lights.length; ++i)
+		for(var i = 0; i < this._active_lights.length; ++i)
 		{
-			var light = this._visible_lights[i];
+			var light = this._active_lights[i];
 			light.prepare( render_settings );
 			light.onGenerateShadowmap();
 		}
@@ -28726,13 +28774,13 @@ var Renderer = {
 
 		//store all the info
 		this._visible_instances = scene._instances;
-		this._visible_lights = scene._lights;
+		this._active_lights = scene._lights;
 		this._visible_cameras = cameras; 
 		//this._visible_materials = materials;
 
 		//prepare lights (collect data and generate shadowmaps)
-		for(var i = 0, l = this._visible_lights.length; i < l; ++i)
-			this._visible_lights[i].prepare( render_settings );
+		for(var i = 0, l = this._active_lights.length; i < l; ++i)
+			this._active_lights[i].prepare( render_settings );
 
 		LEvent.trigger( scene, EVENT.AFTER_COLLECT_DATA, scene );
 	},
@@ -36669,7 +36717,7 @@ Object.defineProperty( MeshRenderer.prototype, 'primitive', {
 		if( v < -1 || v > 10 )
 			return;
 		this._primitive = v;
-		this.updateRIs();
+		//this.updateRIs();
 	},
 	enumerable: true
 });
@@ -36683,7 +36731,7 @@ Object.defineProperty( MeshRenderer.prototype, 'material', {
 	get: function() { return this._material; },
 	set: function(v) { 
 		this._material = v;
-		this.updateRIs();
+		//this.updateRIs();
 	},
 	enumerable: true
 });
@@ -36697,7 +36745,7 @@ Object.defineProperty( MeshRenderer.prototype, 'mesh', {
 	get: function() { return this._mesh; },
 	set: function(v) { 
 		this._mesh = v;
-		this.updateRIs();
+		//this.updateRIs();
 	},
 	enumerable: true
 });
@@ -36711,7 +36759,7 @@ Object.defineProperty( MeshRenderer.prototype, 'lod_mesh', {
 	get: function() { return this._lod_mesh; },
 	set: function(v) { 
 		this._lod_mesh = v;
-		this.updateRIs();
+		//this.updateRIs();
 	},
 	enumerable: true
 });
@@ -36774,14 +36822,14 @@ MeshRenderer.prototype.onRemovedFromScene = function( scene )
 
 MeshRenderer.prototype.onAddedToNode = function( node )
 {
-	LEvent.bind( node, "materialChanged", this.updateRIs, this );
+	//LEvent.bind( node, "materialChanged", this.updateRIs, this );
 	LEvent.bind( node, "collectRenderInstances", this.onCollectInstances, this );
 	this._RI.node = node;
 }
 
 MeshRenderer.prototype.onRemovedFromNode = function( node )
 {
-	LEvent.unbind( node, "materialChanged", this.updateRIs, this );
+	//LEvent.unbind( node, "materialChanged", this.updateRIs, this );
 	LEvent.unbind( node, "collectRenderInstances", this.onCollectInstances, this );
 }
 
@@ -36914,78 +36962,6 @@ MeshRenderer.prototype.checkRenderInstances = function()
 	}
 }
 
-//called everytime something affecting this RIs configuration changes
-MeshRenderer.prototype.updateRIs = function()
-{
-	return;
-
-	var node = this._root;
-	if(!node)
-		return;
-
-	var RI = this._RI;
-	var is_static = this._root.flags && this._root.flags.is_static;
-	var transform = this._root.transform;
-
-	//optimize: TODO
-	//if( is_static && LS.allow_static && !this._must_update_static && (!transform || (transform && this._transform_version == transform._version)) )
-	//	return instances.push( RI );
-
-	//assigns matrix, layers
-	RI.fromNode( this._root );
-
-	//material (after flags because it modifies the flags)
-	var material = null;
-	if(this.material)
-		material = LS.ResourcesManager.getResource( this.material );
-	else
-		material = this._root.getMaterial();
-	RI.setMaterial( material );
-
-	//buffers from mesh and bounding
-	var mesh = LS.ResourcesManager.getMesh( this._mesh );
-	if( mesh )
-	{
-		RI.setMesh( mesh, this.primitive );
-		if(this._submesh_id != -1 && this._submesh_id != null && mesh.info && mesh.info.groups)
-		{
-			var group = mesh.info.groups[this._submesh_id];
-			if(group)
-				RI.setRange( group.start, group.length );
-		}
-		else
-			RI.setRange(0,-1);
-	}
-	else
-	{
-		RI.setMesh( null );
-		RI.setRange(0,-1);
-		if(this._once_binding_index != null)
-			this._once_binding_index = LS.ResourcesManager.onceLoaded( this._mesh, this.updateRIs.bind(this ) );
-	}
-
-	//used for raycasting
-	/*
-	if(this.lod_mesh)
-	{
-		if( this.lod_mesh.constructor === String )
-			RI.collision_mesh = LS.ResourcesManager.resources[ this.lod_mesh ];
-		else
-			RI.collision_mesh = this.lod_mesh;
-		//RI.setLODMesh( RI.collision_mesh );
-	}
-	else
-	*/
-		RI.collision_mesh = mesh;
-
-	//mark it as ready once no more changes should be applied
-	if( is_static && LS.allow_static && !this.isLoading() )
-	{
-		this._must_update_static = false;
-		this._transform_version = transform ? transform._version : 0;
-	}
-}
-
 //*
 //MeshRenderer.prototype.getRenderInstance = function(options)
 MeshRenderer.prototype.onCollectInstances = function(e, instances)
@@ -37066,6 +37042,79 @@ MeshRenderer.prototype.onCollectInstances = function(e, instances)
 
 	instances.push( RI );
 }
+
+/*
+//called everytime something affecting this RIs configuration changes
+MeshRenderer.prototype.updateRIs = function()
+{
+	return;
+
+	var node = this._root;
+	if(!node)
+		return;
+
+	var RI = this._RI;
+	var is_static = this._root.flags && this._root.flags.is_static;
+	var transform = this._root.transform;
+
+	//optimize: TODO
+	//if( is_static && LS.allow_static && !this._must_update_static && (!transform || (transform && this._transform_version == transform._version)) )
+	//	return instances.push( RI );
+
+	//assigns matrix, layers
+	RI.fromNode( this._root );
+
+	//material (after flags because it modifies the flags)
+	var material = null;
+	if(this.material)
+		material = LS.ResourcesManager.getResource( this.material );
+	else
+		material = this._root.getMaterial();
+	RI.setMaterial( material );
+
+	//buffers from mesh and bounding
+	var mesh = LS.ResourcesManager.getMesh( this._mesh );
+	if( mesh )
+	{
+		RI.setMesh( mesh, this.primitive );
+		if(this._submesh_id != -1 && this._submesh_id != null && mesh.info && mesh.info.groups)
+		{
+			var group = mesh.info.groups[this._submesh_id];
+			if(group)
+				RI.setRange( group.start, group.length );
+		}
+		else
+			RI.setRange(0,-1);
+	}
+	else
+	{
+		RI.setMesh( null );
+		RI.setRange(0,-1);
+		if(this._once_binding_index != null)
+			this._once_binding_index = LS.ResourcesManager.onceLoaded( this._mesh, this.updateRIs.bind(this ) );
+	}
+
+	//used for raycasting
+	if(this.lod_mesh)
+	{
+		if( this.lod_mesh.constructor === String )
+			RI.collision_mesh = LS.ResourcesManager.resources[ this.lod_mesh ];
+		else
+			RI.collision_mesh = this.lod_mesh;
+		//RI.setLODMesh( RI.collision_mesh );
+	}
+	else
+		RI.collision_mesh = mesh;
+
+	//mark it as ready once no more changes should be applied
+	if( is_static && LS.allow_static && !this.isLoading() )
+	{
+		this._must_update_static = false;
+		this._transform_version = transform ? transform._version : 0;
+	}
+}
+*/
+
 
 //not fully tested
 MeshRenderer.prototype.onCollectInstancesSubmaterials = function(instances)
@@ -47778,13 +47827,12 @@ function Cloner(o)
 	this.lod_mesh = null;
 	this.material = null;
 
-	this._custom_matrices = [];
+	this._instances_matrix = [];
+
+	this._RI = new LS.RenderInstance( null, this );
 
 	if(o)
 		this.configure(o);
-
-	if(!Cloner._identity) //used to avoir garbage
-		Cloner._identity = mat4.create();
 }
 
 Cloner.GRID_MODE = 1;
@@ -47804,26 +47852,30 @@ Cloner["@count"] = { type:"vec3", min:1, step:1, precision: 0 };
 Cloner.prototype.onAddedToScene = function(scene)
 {
 	LEvent.bind(scene, "collectRenderInstances", this.onCollectInstances, this);
-	LEvent.bind(scene, "afterCollectData", this.onUpdateInstances, this);
+	//LEvent.bind(scene, "afterCollectData", this.onUpdateInstances, this);
 }
 
 
 Cloner.prototype.onRemovedFromScene = function(scene)
 {
 	LEvent.unbind(scene, "collectRenderInstances", this.onCollectInstances, this);
-	LEvent.unbind(scene, "afterCollectData", this.onUpdateInstances, this);
+	//LEvent.unbind(scene, "afterCollectData", this.onUpdateInstances, this);
 }
 
 Cloner.prototype.getMesh = function() {
 	if( this.mesh && this.mesh.constructor === String )
-		return ResourcesManager.meshes[ this.mesh ];
+		return LS.ResourcesManager.meshes[ this.mesh ];
 	return this.mesh;
 }
 
 Cloner.prototype.getLODMesh = function() {
 	if( this.lod_mesh && this.lod_mesh.constructor === String )
-		return ResourcesManager.meshes[this.lod_mesh];
+		return LS.ResourcesManager.meshes[this.lod_mesh];
 	return this.lod_mesh;
+}
+
+Cloner.prototype.getAnyMesh = function() {
+	return (this.getMesh() || this.getLODMesh());
 }
 
 Cloner.prototype.getResources = function(res)
@@ -47844,6 +47896,162 @@ Cloner.prototype.onResourceRenamed = function( old_name, new_name, resource )
 		this.lod_mesh = new_name;
 }
 
+Cloner.prototype.onCollectInstances = function(e, instances)
+{
+	if(!this.enabled)
+		return;
+
+	var mesh = this.getAnyMesh();
+	if(!mesh)
+		return null;
+
+	var node = this._root;
+	if(!this._root)
+		return;
+
+	var RI = this._RI;
+	var is_static = this._root.flags && this._root.flags.is_static;
+	var transform = this._root.transform;
+	RI.layers = node.layers;
+
+	RI.fromNode( this._root, true );
+	RI.setMatrix( LS.IDENTITY, LS.IDENTITY ); //RI matrix is ignored in instanced rendering
+
+	//material (after flags because it modifies the flags)
+	var material = null;
+	if(this.material)
+		material = LS.ResourcesManager.getResource( this.material );
+	else
+		material = this._root.getMaterial();
+	RI.setMaterial( material );
+
+	//buffers from mesh and bounding
+	RI.setMesh( mesh, this.primitive );
+	RI.use_bounding = false; //TODO: use the bounding
+
+	if(this.submesh_id != -1 && this.submesh_id != null && mesh.info && mesh.info.groups)
+	{
+		var group = mesh.info.groups[this.submesh_id];
+		if(group)
+		{
+			RI.setRange( group.start, group.length );
+			if( group.bounding )
+				RI.setBoundingBox( group.bounding );
+		}
+	}
+	else
+		RI.setRange(0,-1);
+
+	RI.collision_mesh = mesh;
+
+	//compute the matrices for every instance
+	this.computeInstancesMatrix(RI);
+
+	//no instances?
+	if(this._instances_matrix.length == 0)
+		return;
+
+	instances.push( RI );
+}
+
+Cloner.prototype.computeInstancesMatrix = function( RI )
+{
+	var global = this._root.transform.getGlobalMatrixRef();
+	RI.instanced_models = this._instances_matrix;
+
+	var countx = this._count[0]|0;
+	var county = this._count[1]|0;
+	var countz = this._count[2]|0;
+
+	var node = this._root;
+	var hsize = vec3.create();
+	var offset = vec3.create();
+	var tmp = vec3.create();
+	var zero = vec3.create();
+	RI.picking_node = null; //?
+
+	//Set position according to the cloner mode
+	if(this.mode == Cloner.GRID_MODE)
+	{
+		var total = countx * county * countz;
+		this._instances_matrix.length = total;
+		if( total == 0 )
+			return;
+
+		//compute offsets
+		vec3.scale( hsize, this.size, 0.5 );
+		if( countx > 1) offset[0] = this.size[0] / ( countx - 1);
+		else hsize[0] = 0;
+		if( county > 1) offset[1] = this.size[1] / ( county - 1);
+		else hsize[1] = 0;
+		if( countz > 1) offset[2] = this.size[2] / ( countz - 1);
+		else hsize[2] = 0;
+
+		var i = 0;
+
+		for(var x = 0; x < countx; ++x)
+		for(var y = 0; y < county; ++y)
+		for(var z = 0; z < countz; ++z)
+		{
+			var model = this._instances_matrix[i];
+			if(!model)
+				model = this._instances_matrix[i] = mat4.create();
+			tmp[0] = x * offset[0] - hsize[0];
+			tmp[1] = y * offset[1] - hsize[1];
+			tmp[2] = z * offset[2] - hsize[2];
+			mat4.translate( model, global, tmp );
+			++i;
+		}
+	}
+	else if(this.mode == Cloner.RADIAL_MODE)
+	{
+		var total = countx;
+		this._instances_matrix.length = total;
+		if( total == 0 )
+			return;
+		var offset = Math.PI * 2 / total;
+
+		for(var i = 0; i < total; ++i)
+		{
+			var model = this._instances_matrix[i];
+			if(!model)
+				model = this._instances_matrix[i] = mat4.create();
+			tmp[0] = Math.sin( offset * i ) * this.size[0];
+			tmp[1] = 0;
+			tmp[2] = Math.cos( offset * i ) * this.size[0];
+			model.set( global );
+			mat4.translate( model, model, tmp );
+			mat4.rotateY( model,model, offset * i );
+		}
+	}
+	else if(this.mode == Cloner.CHILDREN_MODE)
+	{
+		if(!this._root || !this._root._children)
+		{
+			this._instances_matrix.length = 0;
+			return;
+		}
+
+		var total = this._root._children.length;
+		this._instances_matrix.length = total;
+		if( total == 0 )
+			return;
+
+		for(var i = 0; i < total; ++i)
+		{
+			var model = this._instances_matrix[i];
+			if(!model)
+				model = this._instances_matrix[i] = mat4.create();
+			var childnode = this._root._children[i];
+			if(!childnode)
+				continue;
+			if( childnode.transform )
+				childnode.transform.getGlobalMatrix( model );
+		}
+	}
+}
+
+/*
 Cloner.generateTransformKey = function(count, hsize, offset)
 {
 	var key = new Float32Array(9);
@@ -48028,7 +48236,7 @@ Cloner.prototype.onUpdateInstances = function(e, dt)
 		}
 	}
 }
-
+*/
 
 
 LS.registerComponent(Cloner);

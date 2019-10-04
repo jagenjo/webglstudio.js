@@ -187,7 +187,12 @@ var LiteGUI = {
 	* @param {String} class_name
 	*/
 	removeClass: function( elem, selector, class_name ){
-		var list = (elem || document).querySelectorAll( class_name );
+		if(!class_name)
+		{
+			class_name = selector;
+			selector = "." + selector;
+		}
+		var list = (elem || document).querySelectorAll( selector );
 		for(var i = 0; i < list.length; ++i)
 			list[i].classList.remove(class_name);
 	},
@@ -684,6 +689,32 @@ var LiteGUI = {
 	},
 
 	/**
+	* Useful to create elements from a text like '<div><span class="title"></span></div>' and an object like { ".title":"mytitle" }
+	* @method createListItem
+	* @param {String} code
+	* @param {Object} values it will use innerText in the elements that matches that selector
+	* @param {Object} style
+	* @return {HTMLElement} 
+	**/
+	createListItem: function( code, values, style )
+	{
+		var elem = document.createElement("span");
+		elem.innerHTML = code;
+		elem = elem.childNodes[0]; //to get the node
+		if(values)
+		for(var i in values)
+		{
+			var subelem = elem.querySelector(i);
+			if(subelem)
+				subelem.innerText = values[i];
+		}
+		if(style)
+		for(var i in style)
+			elem.style[i] = style[i];
+		return elem;
+	},
+
+	/**
 	* Request script and inserts it in the DOM
 	* @method createButton
 	* @param {String} id
@@ -1174,7 +1205,9 @@ var LiteGUI = {
 		refresh: "&#8634;",
 		gear: "&#9881;",
 		open_folder: "&#128194;",
-		download: "&#11123;"
+		download: "&#11123;",
+		tick: "&#10003;",
+		trash: "&#128465;"
 	},
 	
 	//given a html entity string it returns the equivalent unicode character
@@ -1724,6 +1757,7 @@ LiteGUI.Button = Button;
 function SearchBox( value, options )
 {
 	options = options || {};
+	value = value || "";
 	var element = document.createElement("div");
 	element.className = "litegui searchbox";
 	var placeholder = (options.placeholder != null ? options.placeholder : "Search");
@@ -2662,6 +2696,114 @@ function LineEditor(value, options)
 }
 
 LiteGUI.LineEditor = LineEditor;
+
+
+function ComplexList( options )
+{
+	options = options || {};
+
+	this.root = document.createElement("div");
+	this.root.className = "litecomplexlist";
+
+	this.item_code = options.item_code || "<div class='listitem'><span class='tick'><span>"+LiteGUI.special_codes.tick+"</span></span><span class='title'></span><button class='trash'>"+LiteGUI.special_codes.close+"</button></div>";
+
+	if(options.height)
+		this.root.style.height = LiteGUI.sizeToCSS( options.height );
+
+	this.selected = null;
+	this.onItemSelected = null;
+	this.onItemToggled = null;
+	this.onItemRemoved = null;
+}
+
+ComplexList.prototype.addTitle = function( text )
+{
+	var elem = LiteGUI.createElement("div",".listtitle",text);
+	this.root.appendChild( elem );
+	return elem;
+}
+
+ComplexList.prototype.addHTML = function( html, on_click )
+{
+	var elem = LiteGUI.createElement("div",".listtext", html );
+	if(on_click)
+		elem.addEventListener("mousedown", on_click);
+	this.root.appendChild( elem );
+	return elem;
+}
+
+ComplexList.prototype.clear = function()
+{
+	this.root.innerHTML = "";
+}
+
+ComplexList.prototype.addItem = function( item, text, is_enabled, can_be_removed )
+{
+	var title = text || item.content || item.name;
+	var elem = LiteGUI.createListItem( this.item_code, { ".title": title } );
+	elem.item = item;
+
+	if(is_enabled)
+		elem.classList.add("enabled");
+
+	if(!can_be_removed)
+		elem.querySelector(".trash").style.display = "none";
+
+	var that = this;
+	elem.addEventListener("mousedown", function(e){
+		e.preventDefault();
+		this.setSelected(true);
+		if(that.onItemSelected)
+			that.onItemSelected( item, elem );
+	});
+	elem.querySelector(".tick").addEventListener("mousedown",  function(e){
+		e.preventDefault();
+		elem.classList.toggle("enabled");
+		if(that.onItemToggled)
+			that.onItemToggled( item, elem, elem.classList.contains("enabled"));
+	});
+
+	elem.querySelector(".trash").addEventListener("mousedown",function(e){
+		e.preventDefault();
+		e.stopPropagation();
+		e.stopImmediatePropagation();
+		if(that.onItemRemoved)
+			that.onItemRemoved( item, elem );
+	});
+
+	elem.setContent = function(v, is_html){
+		if(is_html)
+			elem.querySelector(".title").innerHTML = v;
+		else
+			elem.querySelector(".title").innerText = v;
+	}
+
+	elem.toggleEnabled = function(v){
+		elem.classList.toggle("enabled");
+	}
+
+	elem.setSelected = function(v)
+	{
+		LiteGUI.removeClass( that.root, "selected" );
+		if(v)
+			this.classList.add("selected");
+		else
+			this.classList.remove("selected");
+		that.selected = elem.item;
+	}
+
+	elem.show = function() { this.style.display = ""; }
+	elem.hide = function() { this.style.display = "none"; }
+
+	this.root.appendChild( elem );
+	return elem;
+}
+
+LiteGUI.ComplexList = ComplexList;
+
+
+
+
 
 })();
 //enclose in a scope
@@ -7068,6 +7210,21 @@ function Inspector( options )
 	this.className = this.root.className;
 
 	this.widgets_per_row = options.widgets_per_row || 1;
+}
+
+Inspector.prototype.getValues = function()
+{
+	var r = {};
+	for(var i in this.widgets_by_name)
+		r[i] = this.widgets_by_name[i].getValue();
+	return r;
+}
+
+Inspector.prototype.setValues = function(v)
+{
+	for(var i in v)
+		if( this.widgets_by_name[i] )
+			this.widgets_by_name[i].setValue( v[i] );
 }
 
 //append the inspector to a parent

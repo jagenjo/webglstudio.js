@@ -463,44 +463,6 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 	inspector.addSlider("Detail", material.detail_factor, { pretitle: AnimationModule.getKeyframeCode( material, "detail_factor" ), min:-2,max:2,step:0.01, callback: function (value) { material.detail_factor = value; }});
 	inspector.addVector2("Det. Tiling", material.detail_scale, { pretitle: AnimationModule.getKeyframeCode( material, "detail_scale" ), min:-40,max:40,step:0.1, callback: function (value) { material.detail_scale = value; }});
 
-	/*
-	inspector.addTitle("Extra");
-	inspector.addSlider("Extra factor", material.extra_factor, { pretitle: AnimationModule.getKeyframeCode( material, "extra_factor" ), callback: function (value) { material.extra_factor = value; }});
-	inspector.addColor("Extra color", material.extra_color, { pretitle: AnimationModule.getKeyframeCode( material, "extra_color" ), callback: function(color) { vec3.copy(material.extra_color,color); } });
-	*/
-
-	/*
-	inspector.addTitle("Shader");
-	if( material._view_shader_code )
-	{
-		var coding_container = inspector.addContainer( null,null, { height: 300} );
-		var codepad = new CodingPadWidget();
-		coding_container.appendChild( codepad.root );
-		codepad.editInstanceCode( material, { id: material.uid, title: "Shader", lang:"glsl", help: material.constructor.coding_help, getCode: function(){ return material.extra_surface_shader_code; }, setCode: function(code){ material.extra_surface_shader_code = code; } } );
-	}
-	inspector.addButton("", !material._view_shader_code ? "Edit Shader" : "Hide Shader", { callback: function() { 
-		material._view_shader_code = !material._view_shader_code;
-		inspector.refresh();
-		//CodingModule.openTab();
-		//CodingModule.editInstanceCode( material, { id: material.uid, title: "Shader", lang:"glsl", help: material.constructor.coding_help } );
-	}});
-	*/
-
-	/*
-	inspector.addTitle("Shader");
-	inspector.addButton(null, "Edit Shader", { callback: function() { 
-		CodingModule.openTab();
-		CodingModule.editInstanceCode( material, { 
-			id: material.uid, 
-			title: "Shader", 
-			lang:"glsl", 
-			help: material.constructor.coding_help, 
-			getCode: function(){ return material.extra_surface_shader_code; },
-			setCode: function(code){ material.extra_surface_shader_code = code; }
-		});
-	}});
-	*/
-
 	inspector.beginGroup("Textures",{title:true});
 
 	var texture_channels = material.getTextureChannels();

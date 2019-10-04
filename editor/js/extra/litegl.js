@@ -8280,7 +8280,14 @@ Shader.prototype.drawInstanced = function( mesh, primitive, indices, instanced_u
 		length = buffer.buffer.length / buffer.buffer.spacing;
 	}
 
-	var indexBuffer = indices ? mesh.getIndexBuffer( indices ) : null;
+	var indexBuffer = null;
+	if(indices)
+	{
+		if(indices.constructor === GL.Buffer)
+			indexBuffer = indices;
+		else
+			indexBuffer = mesh.getIndexBuffer( indices );
+	}
 
 	//range rendering
 	var offset = 0; //in bytes

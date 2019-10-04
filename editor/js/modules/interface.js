@@ -832,7 +832,8 @@ function addGenericResource ( name, value, options, resource_classname )
 	element.addEventListener("dragover",function(e){ 
 		var path = e.dataTransfer.getData( "res-fullpath" );
 		var type = e.dataTransfer.getData( "res-type" );
-		if(path) // && (type == "Texture" || type == "Image") )
+		var has_locator = e.dataTransfer.types.indexOf("locator") != -1;
+		if(path || has_locator) // && (type == "Texture" || type == "Image") )
 			e.preventDefault();
 	},true);
 	element.addEventListener("drop", function(e){
@@ -856,6 +857,16 @@ function addGenericResource ( name, value, options, resource_classname )
 			value = input.value = e.dataTransfer.getData("text/uri-list");
 			LiteGUI.trigger( input, "change" );
 			e.stopPropagation();
+		}
+		else if( e.dataTransfer.getData("locator") )
+		{
+			var r = LSQ.get( e.dataTransfer.getData("locator") );
+			if(r)
+				input.value = r;
+		}
+		else
+		{
+			console.log("unknown item drop on resource text box");
 		}
 		e.preventDefault();
 		return false;
@@ -1097,7 +1108,8 @@ LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
 	element.addEventListener("dragover",function(e){ 
 		var path = e.dataTransfer.getData("res-fullpath");
 		var type = e.dataTransfer.getData( "res-type" );
-		if(path) // && (type == "Texture" || type == "Image") )
+		var has_locator = e.dataTransfer.types.indexOf("locator") != -1;
+		if(path || has_locator) // && (type == "Texture" || type == "Image") )
 			e.preventDefault();
 	},true);
 	element.addEventListener("drop", function(e){
@@ -1119,6 +1131,12 @@ LiteGUI.Inspector.prototype.addTextureSampler = function(name, value, options)
 		else if (e.dataTransfer.getData("text/uri-list") )
 		{
 			input.value = e.dataTransfer.getData("text/uri-list");
+			LiteGUI.trigger( input, "change" );
+			e.stopPropagation();
+		}
+		else if (e.dataTransfer.getData("locator") )
+		{
+			input.value = LSQ.get( e.dataTransfer.getData("locator") );
 			LiteGUI.trigger( input, "change" );
 			e.stopPropagation();
 		}

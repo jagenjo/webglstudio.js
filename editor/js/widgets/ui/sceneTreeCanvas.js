@@ -23,7 +23,18 @@ function SceneTreeWidget( options )
 		that.onDraw();
 	}});
 
+	this.search.root.style.width = "calc( 100% - 30px )";
+	this.search.root.style.display = "inline-block";
+
 	this.root.appendChild( this.search.root );
+
+	//options button
+	this.button =  document.createElement("button");
+	this.button.className = "litebutton flat";
+	this.button.style.width = "24px";
+	this.button.innerHTML = LiteGUI.special_codes.navicon;
+	this.root.appendChild( this.button );
+	this.button.addEventListener("click", this.showOptionsDialog.bind(this) );
 
 	var root_uid = scene.root.uid;
 
@@ -39,6 +50,10 @@ function SceneTreeWidget( options )
 	this.dragging_scroll = false;
 	this.locked = false;
 	this.max_visible_items = 1;
+
+	this.filter_layers = 0xFF;
+	this.filter_by_camera = false;
+	this.filter_by_distance = false;
 
 	this.canvas = document.createElement("canvas");
 	this.canvas.width = 100;
@@ -69,11 +84,11 @@ function SceneTreeWidget( options )
 	//bind events to scene
 	this.root.addEventListener("DOMNodeInsertedIntoDocument", function(){ 
 		that.bindEvents( LS.GlobalScene );
-		LEvent.bind( CORE, "global_scene_selected", that.onGlobalSceneSelected, that );
+		LEvent.bind( CORE, "global_scene_changed", that.onGlobalSceneSelected, that );
 	});
 	this.root.addEventListener("DOMNodeRemovedFromDocument", function(){ 
 		that.unbindEvents();
-		LEvent.unbind( CORE, "global_scene_selected", that.onGlobalSceneSelected, that );
+		LEvent.unbind( CORE, "global_scene_changed", that.onGlobalSceneSelected, that );
 	});
 
 	this.canvas.addEventListener("mousedown", function(){
@@ -108,6 +123,7 @@ SceneTreeWidget.prototype.onDraw = function()
 	var prev_selected = this.prev_selected;
 	var visible_nodes = this.visible_nodes;
 	visible_nodes.length = 0;
+	var filter_layers = this.filter_layers;
 
 	var selected_node = SelectionModule.getSelectedNode();
 	this.prev_selected.clear();
@@ -118,11 +134,11 @@ SceneTreeWidget.prototype.onDraw = function()
 			this.prev_selected.add(aux);
 	}
 
-	//first step, collect nodes
+	//first step, collect nodes and store them in visible_nodes
 	var scroll = this.scroll_items;
 	var max_items = this.max_visible_items = Math.ceil((canvas.height - 20) / line_height);
 	var last_item = max_items + scroll;
-	inner_fetch( scene.root, 0, -1 );
+	inner_fetch( scene.root, 0, -1 ); //recursive search
 	this.num_items = num_items;
 
 	this.scroll_items = Math.clamp( this.scroll_items, 0, num_items - 2);
@@ -136,6 +152,8 @@ SceneTreeWidget.prototype.onDraw = function()
 	{
 		var info = visible_nodes[i];
 		var node = info[0];
+		if( !(node.layers & filter_layers) )
+			continue;
 		var level = info[2];
 		var child_nodes = node._children;
 		var has_children = child_nodes && child_nodes.length;
@@ -609,7 +627,6 @@ SceneTreeWidget.prototype.onKeyDown = function( e )
 	}
 }
 
-
 SceneTreeWidget._doNothing = function doNothing(e) { e.preventDefault(); return false; };
 
 //Catch events from the LS.Scene to update the tree automatically
@@ -774,4 +791,21 @@ SceneTreeWidget.prototype.testFilteringRule = function( node )
 		return true;
 
 	return false;
+}
+
+SceneTreeWidget.prototype.showOptionsDialog = function()
+{
+	var dialog = new LiteGUI.Dialog( { title: "Tree Options", close: true, width: 400, height: 280, draggable: true } );
+	var inspector = new LiteGUI.Inspector( { name_width: 140, scroll: true, resizable: true, full: true } );
+	dialog.add(inspector);
+
+	var that = this;
+	inspector.addTitle("Filters");
+	inspector.addLayers( "By Layers", this.filter_layers, { callback: function(v){ that.filter_layers = v; }});
+	//inspector.addCheckbox( "By Camera", this.filter_by_camera, { callback: function(v){ that.filter_by_camera = v; }});
+	//inspector.addCheckbox( "By Distance", this.filter_by_distance, { callback: function(v){ that.filter_by_distance = v; }});
+	inspector.addButton( null, "Apply filter", { callback: function(v){ that.refresh(); }});
+
+	dialog.adjustSize();
+	dialog.show();	
 }

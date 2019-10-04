@@ -1482,6 +1482,12 @@ button.litebutton {
     vertical-align: top;	
 }
 
+button.litebutton.flat {
+	background: #32302D;
+    box-shadow: 0 0 0 transparent;
+	border: 0;
+}
+
 button.litebutton:hover:not(:disabled) {
     background: #aab !important;
 }
@@ -2212,3 +2218,15 @@ table.litetable  tr:nth-child(even)
 .liteconsole .foot input:focus{
     outline: none;
 }
+
+.litecomplexlist { background-color: black; padding: 4px; overflow: auto; }
+.litecomplexlist .listitem { border-radius: 2px; margin: 2px; padding: 2px; background-color: #2A2A2A; cursor: pointer; line-height: 2em; }
+.litecomplexlist .listitem:hover { background-color: #363636; } 
+.litecomplexlist .listitem.selected { background-color: #354a5f; } 
+.litecomplexlist .listtitle { margin: 4px; margin-top: 10px; font-size: 1.2em; color: #AAA; }
+.litecomplexlist .listitem .title { color: #8e96a7; width: calc(100% - 60px); display: inline-block; padding-left: 10px; font-size: 1.2em; vertical-align: middle; } 
+.litecomplexlist .listitem .tick { cursor: pointer; text-align: center; width: 24px; height: 24px; display: inline-block; margin: 4px; color: #AFA; vertical-align: top; background-color: black; border-radius: 2px; }
+.litecomplexlist .listitem .tick span { transform: translate(0,0px); display: inline-block; }
+.litecomplexlist .listitem:not(.enabled) .tick { color: black; }
+.litecomplexlist .listitem button { border:0; background-color: #363636; border-radius: 4px; color: #9c9c9c; vertical-align: middle; margin-bottom: 0; }
+.litecomplexlist .listtext { cursor: pointer; text-align: center; }

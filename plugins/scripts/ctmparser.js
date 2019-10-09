@@ -64,5 +64,3 @@ LS.Network.requestScript("js/plugins/extra/ctm.js");
 LS.Formats.addSupportedFormat( "ctm", CTMParser );
 
 
-if(typeof(CORE) !== "undefined" )
-	CORE.registerPlugin( CTMParser );

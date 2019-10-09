@@ -16,11 +16,6 @@ var SpriteSheets = {
 		LiteGUI.menubar.add("Window/Spritesheets", { callback: function() { SpriteSheets.showDialog(); }});
 	},
 
-	deinit: function()
-	{
-		LiteGUI.menubar.remove("Window/Spritesheets");
-	},
-
 	showDialog: function()
 	{
 		var dialog = LiteGUI.Dialog.getDialog("screencapture_panel");
@@ -138,5 +133,5 @@ var SpriteSheets = {
 	}
 };
 
-CORE.registerPlugin( SpriteSheets );
+SpriteSheets.init();
 

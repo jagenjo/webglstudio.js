@@ -7,16 +7,6 @@ var UnknownMeshTool = {
 		LiteGUI.menubar.add("Window/unknown Mesh", { callback: function() { UnknownMeshTool.showDialog(); }});
 	},
 
-	deinit: function()
-	{
-		LiteGUI.menubar.remove("Window/unknown Mesh");
-		if(this.node)
-		{
-			this.node.parentNode.removeChild( this.node );
-			this.node = null;
-		}
-	},
-
 	showDialog: function()
 	{
 		var dialog = new LiteGUI.Dialog("unknownMesh", {title:"Unknown Mesh", close: true, width: 300, height: 120, scroll: false, draggable: true});
@@ -132,4 +122,4 @@ var UnknownMeshTool = {
 	}
 };
 
-CORE.registerPlugin( UnknownMeshTool );
+

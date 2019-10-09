@@ -14,12 +14,6 @@ var DeployerTool = {
 		LiteGUI.menubar.add("Project/Deploy", { callback: function() { DeployerTool.showDialog(); }});
 
 		//load local settings
-
-	},
-
-	deinit: function()
-	{
-		LiteGUI.menubar.remove("Project/Deploy");
 	},
 
 	showDialog: function()
@@ -276,5 +270,6 @@ var DeployerTool = {
 	}
 };
 
-CORE.registerPlugin( DeployerTool );
+DeployerTool.init();
+
 

@@ -47855,7 +47855,6 @@ Cloner.prototype.onAddedToScene = function(scene)
 	//LEvent.bind(scene, "afterCollectData", this.onUpdateInstances, this);
 }
 
-
 Cloner.prototype.onRemovedFromScene = function(scene)
 {
 	LEvent.unbind(scene, "collectRenderInstances", this.onCollectInstances, this);
@@ -48049,27 +48048,18 @@ Cloner.prototype.computeInstancesMatrix = function( RI )
 				childnode.transform.getGlobalMatrix( model );
 		}
 	}
+	else if( this.mode == Cloner.CUSTOM_MODE )
+	{
+		//nothing, should be done by a script modifying this._instances_matrix
+	}
+}
+
+Cloner.prototype.setInstancesMatrices = function(a)
+{
+	this._instances_matrix = a;
 }
 
 /*
-Cloner.generateTransformKey = function(count, hsize, offset)
-{
-	var key = new Float32Array(9);
-	key.set(count);
-	key.set(hsize,3);
-	key.set(offset,6);
-	return key;
-}
-
-Cloner.compareKeys = function(a,b)
-{
-	for(var i = 0; i < a.length; ++i)
-		if(a[i] != b[i])
-			return false;
-	return true;
-}
-
-
 Cloner.prototype.onCollectInstances = function(e, instances)
 {
 	if(!this.enabled)

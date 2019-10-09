@@ -6,12 +6,11 @@ var PluginsModule = {
 	official_addons_repository_url: "https://www.webglstudio.org/addons/", //for the scene
 	official_plugins_repository_url: "https://www.webglstudio.org/plugins/", //for the editor
 
-	preferences_panel: [ { name:"plugins", title:"Plugins", icon:null } ],
-	plugins: [], //loaded plugins
+	//preferences_panel: [ { name:"plugins", title:"Plugins", icon:null } ],
 
 	preferences: {
 		addons: { repository_url: "", list: [] },
-		plugins: { repository_url: "", list: [] } //list has "enabled" flag
+		plugins: { repository_url: "", list: [] } 
 	},
 
 	init: function()
@@ -19,7 +18,6 @@ var PluginsModule = {
 		var mainmenu = LiteGUI.menubar;
 		mainmenu.add("Window/Plugins", { callback: function() { PluginsModule.showPluginsDialog(); }});
 
-		LiteGUI.bind( CORE.root, "plugin_registered", this.onNewPlugin.bind(this) );
 		this.loadPlugins();
 
 		LiteGUI.addCSS("\
@@ -35,21 +33,31 @@ var PluginsModule = {
 			.scripts_container .user_script.selected .title { color: #ddd; !important }\n\
 		");
 	},
-	loadPlugins: function()
+
+	//called by core after loading the preferences from localStorage
+	//restores preferences for plugins
+	onPreferencesLoaded: function()
 	{
+		//legacy code
 		if(	!this.preferences.plugins )
 			this.preferences.plugins = { repository_url: "", list: [] };
-
 		if(!this.preferences.plugins.list )
 			this.preferences.plugins.list = [];
 
+		var plugins = this.preferences.plugins.list;
+
+		//assign preferences?
+	},
+
+	loadPlugins: function()
+	{
 		var plugins = this.preferences.plugins.list;
 		for(var i = 0; i < plugins.length; ++i)
 		{
 			var plugin = plugins[i];
 			if(!plugin.enabled)
 				continue;
-			this.loadPlugin( info.full_url );
+			this.loadPlugin( plugin.full_url );
 		}
 	},
 
@@ -65,176 +73,23 @@ var PluginsModule = {
 		return null;
 	},
 
-	/*
-	showPluginsDialog: function( on_callback )
-	{
-		var dialog = new LiteGUI.Dialog( { title: "Plugins", close: true, width: 800, height: 380, scroll: false, draggable: true } );
-
-		var area = new LiteGUI.Area({width:"100%",height:"100%"});
-		area.split("horizontal",["50%",null]);
-		dialog.add(area);
-
-		var url = PluginsModule.preferences.custom_plugins_url || PluginsModule.plugins_url;
-		var selected = null;
-		var plugins = this.preferences.plugins;
-
-		var inspector_left = new LiteGUI.Inspector( { scroll: true, resizable: true, full: true } );
-		area.getSection(0).add( inspector_left );
-
-		var inspector_right = new LiteGUI.Inspector( { scroll: true, name_width: 150, resizable: true, full: true } );
-		area.getSection(1).add( inspector_right );
-
-		inspector_left.addTitle("Plugins");
-
-		var container = inspector_left.startContainer("",{ width: "calc( 100% - 10px )", height: 380});
-		container.style.backgroundColor = "black";
-		container.style.padding = "5px";
-		container.style.overflow = "auto";
-
-		inspector_left.widgets_per_row = 4;
-		for(var i = 0; i < plugins.length; ++i)
-		{
-			var plugin = plugins[i];
-			inspector_left.addCheckbox(null, plugin.enabled, { plugin: plugin, width: 60, callback: function(v){ this.options.plugin.enabled = v; }});
-			inspector_left.addInfo(null, plugin.name, { width: "calc(100% - 120px)" });
-			inspector_left.addButton(null, InterfaceModule.icons.trash, { plugin: plugin, width: 30,
-				callback: function(){
-					PluginsModule.removePlugin( this.options.plugin );
-					PreferencesModule.updateDialogContent();
-				}
-			});
-			inspector_left.addButton(null, InterfaceModule.icons.refresh, { plugin: plugin, width: 30,
-				callback: function(){
-					var selected = this.options.plugin;
-					var plugin = PluginsModule.removePlugin( selected );
-					if(!plugin || !plugin.url)
-						return;
-					PluginsModule.loadPlugin( plugin.url, function(){ PreferencesModule.updateDialogContent(); } );
-					PreferencesModule.updateDialogContent();
-				}
-			});
-		}
-
-		inspector_left.endContainer({ width: "100%", height: 380});
-
-
-		//left
-		inspector_left.addString("Repository", url, { width: "80%", callback: function(v){
-			url = PluginsModule.preferences.custom_plugins_url = v;
-		}});
-		inspector_left.addButton(null, LiteGUI.special_codes.refresh, { width: "20%", callback: function(){
-			PluginsModule.fetchList( url, inner );
-		}});
-
-		inspector_left.addTitle("Available Scripts");
-		var list = inspector_left.addList(null,[],{ height: 270, callback: function(v){
-			selected = v;
-			title.setValue(v.name);
-			author.setValue(v.author);
-			version.setValue(v.version);
-			description.setValue(v.description);
-		}});
-
-		//fetch list
-		this.fetchList( url, inner );
-
-		function inner(v)
-		{
-			if(!v)
-				return;
-			list.updateItems(v.scripts);
-		}
-
-		dialog.show();
-	},
-	*/
-
-	onShowPreferencesPanel: function(name,widgets)
-	{
- 		if(name != "plugins")
-			return;
-
-		var plugins = this.preferences.plugins;
-
-		widgets.addTitle("Plugins");
-
-		var container = widgets.startContainer("",{ width: "calc( 100% - 10px )", height: 380});
-		container.style.backgroundColor = "black";
-		container.style.padding = "5px";
-		container.style.overflow = "auto";
-
-		widgets.widgets_per_row = 4;
-		for(var i = 0; i < plugins.length; ++i)
-		{
-			var plugin = plugins[i];
-			widgets.addCheckbox(null, plugin.enabled, { plugin: plugin, width: 60, callback: function(v){ this.options.plugin.enabled = v; }});
-			widgets.addInfo(null, plugin.name, { width: "calc(100% - 120px)" });
-			widgets.addButton(null, InterfaceModule.icons.trash, { plugin: plugin, width: 30,
-				callback: function(){
-					PluginsModule.removePlugin( this.options.plugin );
-					PreferencesModule.updateDialogContent();
-				}
-			});
-			widgets.addButton(null, InterfaceModule.icons.refresh, { plugin: plugin, width: 30,
-				callback: function(){
-					var selected = this.options.plugin;
-					var plugin = PluginsModule.removePlugin( selected );
-					if(!plugin || !plugin.url)
-						return;
-					PluginsModule.loadPlugin( plugin.url, function(){ PreferencesModule.updateDialogContent(); } );
-					PreferencesModule.updateDialogContent();
-				}
-			});
-		}
-
-		widgets.endContainer({ width: "100%", height: 380});
-
-		widgets.widgets_per_row = 1;
-		widgets.addStringButton("Add Plugin URL","js/plugins/", { button:"+", callback_button: function(value) { 
-			console.log("Loading: " + value);
-			PluginsModule.loadPlugin( value, function(){
-				PreferencesModule.updateDialogContent();
-				PreferencesModule.changeSection("plugins");
-			}, function(){
-				LiteGUI.alert("Plugin cannot be loaded");
-			});
-		}});
-
-		widgets.addButton("Fetch from official repository","Search",function(v){
-			PluginsModule.showPluginsDialog(function(v){
-				
-			});
-		});
-	},
-
 	loadPlugin: function( url, on_complete, on_error )
 	{
-		var last_plugin = CORE.last_plugin;
-
+		//fetch plugin code
 		LiteGUI.requireScript( url, inner_loaded, on_error );
 
+		//once loaded
 		function inner_loaded()
 		{
-			var plugin = CORE.last_plugin;
-			if( last_plugin != plugin )
-			{
-				//somethign loaded
-				console.log( "Plugin loaded: " + plugin.name );
-				PluginsModule.registerPlugin( plugin, url );
-				if(on_complete)
-					on_complete(true);
-			}
-			else
-			{
-				var placeholder_plugin = { name: LS.RM.getFilename(url) };
-				PluginsModule.registerPlugin( placeholder_plugin, url );
-				console.log("Plugin without module?");
-				if(on_complete)
-					on_complete(false);
-			}
+			var plugin_info = PluginsModule.getPluginInfo( url );
+			//somethign loaded
+			console.log( "Plugin loaded: " + url );
+			if(on_complete)
+				on_complete(true);
 		}
 	},
 
+	/*
 	onNewPlugin: function( e )
 	{
 		//assign preferences
@@ -277,22 +132,6 @@ var PluginsModule = {
 		return plugin;
 	},
 
-	onPreferencesLoaded: function()
-	{
-		//store preferences
-		for(var i in this.plugins)
-		{
-			var plugin = this.plugins[i];
-			for(var j in this.preferences.plugins)
-			{
-				var plugin_info = this.preferences.plugins[j];
-				if(plugin.url != plugin_info.url )
-					continue;
-				plugin_info.preferences = plugin.preferences;
-			}
-		}
-	},
-
 	removePlugin: function( name_or_plugin )
 	{
 		var index = -1;
@@ -327,27 +166,111 @@ var PluginsModule = {
 		CORE.removeModule( plugin );
 		return plugin;
 	},
+	*/
 
 	reset: function()
 	{
-		this.plugins = [];
+		//this.plugins = [];
 	},
 
 	showPluginsDialog: function( on_callback )
 	{
-		//this.showExternalListDialog("plugins" );
+		var options = {
+			title: "Plugins",
+			preferences: PluginsModule.preferences.plugins,
+			official_url: PluginsModule.official_plugins_repository_url,
+			on_is_included: function( url ) {
+				var info = PluginsModule.getPluginInfo( url );
+				return info && info.enabled;
+			},
+			on_include_in_list: function( url, plugin ) {
+				var info = PluginsModule.getPluginInfo( url );
+				if(!info)
+					PluginsModule.preferences.plugins.list.push( plugin );
+				else
+					console.warn("already in the list");
+			},
+			on_remove_from_list: function( url, plugin ) {
+				var info = PluginsModule.getPluginInfo( url );
+				var index = PluginsModule.preferences.plugins.list.indexOf( info );
+				if(index != -1)
+					PluginsModule.preferences.plugins.list.splice( index, 1 );
+			},
+			on_toggle_script: function( url, item ) {
+				var info = PluginsModule.getPluginInfo( url );
+				if(!info)
+				{
+					PluginsModule.preferences.plugins.list.push(item);
+					info = item;
+				}
+
+				if(!info.enabled)
+				{
+					info.enabled = true;
+					PluginsModule.loadPlugin( url );
+				}
+				else
+				{
+					var index = PluginsModule.preferences.plugins.list.indexOf( info );
+					if(index != -1)
+						PluginsModule.preferences.plugins.list.splice( index, 1 );
+					LiteGUI.alert("Plugin removed, you must reload the website to have effect.");
+				}
+			}
+		};
+
+		this.showExternalScriptsDialog( options, on_callback );
 	},
 
 	showAddonsDialog: function( on_callback )
 	{
-		var dialog = new LiteGUI.Dialog( { title: "Addons Scripts", close: true, width: 800, height: 480, scroll: false, draggable: true } );
+		var options = {
+			title: "Addons Scripts",
+			preferences: PluginsModule.preferences.addons,
+			official_url: PluginsModule.official_addons_repository_url,
+			on_include_in_list: function(url) {
+				if( LS.GlobalScene.external_scripts.indexOf( url ) == -1 )
+					LS.GlobalScene.external_scripts.push( url );
+			},
+			on_remove_from_list: function(url) {
+				var index = LS.GlobalScene.external_scripts.indexOf( url );
+				if(index != -1)
+					LS.GlobalScene.external_scripts.splice( index, 1 );
+			},
+			on_is_included: function( url ) {
+				return LS.GlobalScene.external_scripts.indexOf( url ) != -1;
+			},
+			on_toggle_script: function( url, item ) {
+				var index = LS.GlobalScene.external_scripts.indexOf( url );
+				if(index == -1) //not installed
+				{
+					LS.GlobalScene.external_scripts.push( url );
+					LS.GlobalScene.loadScripts( null, on_callback );
+					return true;
+				}
+				else //installed
+				{
+					LS.GlobalScene.external_scripts.splice( index, 1 );
+					return false;
+				}
+			}
+		};
+
+		this.showExternalScriptsDialog( options, on_callback );
+	},
+
+	//** ADDONS ****************************************
+
+	showExternalScriptsDialog: function( options, on_callback )
+	{
+		var dialog = new LiteGUI.Dialog( { title: options.title, close: true, width: 800, height: 480, scroll: false, draggable: true } );
 
 		var area = new LiteGUI.Area({width:"100%",height:"100%"});
 		area.split("horizontal",["50%",null]);
 		dialog.add(area);
 
-		var preferences = PluginsModule.preferences.addons;
-		var official_url = PluginsModule.official_addons_repository_url;
+		var preferences = options.preferences;
+		var official_url = options.official_url;
 		var official_list = [];
 
 		var repository_url = preferences.repository_url || official_url;
@@ -383,14 +306,11 @@ var PluginsModule = {
 				return;
 			if(v == "Include")
 			{
-				if( LS.GlobalScene.external_scripts.indexOf( selected.full_url ) == -1 )
-					LS.GlobalScene.external_scripts.push( selected.full_url );
+				options.on_include_in_list( selected.full_url, selected );
 			}
 			else if(v == "Remove")
 			{
-				var index = LS.GlobalScene.external_scripts.indexOf( selected.full_url );
-				if(index != -1)
-					LS.GlobalScene.external_scripts.splice( index, 1 );
+				options.on_remove_from_list( selected.full_url, selected )
 			}
 			else if( v == "Clear")
 				inner_clear_form();
@@ -509,7 +429,8 @@ var PluginsModule = {
 		function updateScriptsList()
 		{
 			scripts_list.clear();
-			scripts_list.addTitle("Repository Scripts");
+			scripts_list.addTitle("Repository");
+			var official_urls = {};
 
 			for(var i in official_list)
 			{
@@ -517,13 +438,14 @@ var PluginsModule = {
 				if( list_filter && item.name.toLowerCase().indexOf( list_filter ) == -1 )
 					continue;
 				var title = item.name;
-				var is_included = LS.GlobalScene.external_scripts.indexOf( item.full_url ) != -1;
+				var is_included = options.on_is_included( item.full_url );
 				var elem = scripts_list.addItem( item, "", is_included, false );
 				elem.setContent( "<span>" + escapeHtmlEntities(title) + "<span><span class='subtitle'>" + escapeHtmlEntities(item.author) + " v"+item.version+"</span>", true );
 				elem.classList.add("repository_script");
+				official_urls[ item.full_url ] = true;
 			}
 
-			scripts_list.addTitle("User Scripts");
+			scripts_list.addTitle("Local");
 			if(preferences.list && preferences.list.length)
 			{
 				var user_list = preferences.list;
@@ -532,8 +454,10 @@ var PluginsModule = {
 					var item = user_list[i];
 					if( list_filter && item.name.toLowerCase().indexOf( list_filter ) == -1 )
 						continue;
+					if( official_urls[ item.full_url ] )
+						continue;
 					var title = item.name;
-					var is_included = LS.GlobalScene.external_scripts.indexOf( item.full_url ) != -1;
+					var is_included = options.on_is_included( item.full_url );
 					var elem = scripts_list.addItem( item, "", is_included, true );
 					elem.setContent( "<span>" + escapeHtmlEntities(title) + "<span><span class='subtitle'>" + escapeHtmlEntities(item.author) + " v"+item.version+"</span>", true );
 					elem.classList.add("user_script");
@@ -548,18 +472,10 @@ var PluginsModule = {
 			//search in current list
 			var url = LS.RM.cleanFullpath( item.full_url );
 			var scripts_array = null;
-			var index = LS.GlobalScene.external_scripts.indexOf( url );
-			if(index == -1) //not installed
-			{
-				LS.GlobalScene.external_scripts.push( url );
-				LS.GlobalScene.loadScripts( null, on_callback );
+			if( options.on_toggle_script( url, item, elem ) )
 				elem.classList.add("included");
-			}
-			else //installed
-			{
-				LS.GlobalScene.external_scripts.splice( index, 1 );
+			else
 				elem.classList.remove("included");
-			}
 			if(on_callback)
 				on_callback();
 			return true;

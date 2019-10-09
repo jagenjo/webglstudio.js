@@ -8,12 +8,7 @@ var DayLightTool = {
 	init: function()
 	{
 		LiteGUI.menubar.add("Actions/Tools/day light", { callback: function() { DayLightTool.showDialog(); }});
-	},
-
-	deinit: function()
-	{
-		LiteGUI.menubar.remove("Actions/Tools/day light");
-	},
+	}
 
 	showDialog: function()
 	{
@@ -80,4 +75,3 @@ var DayLightTool = {
 }
 
 CORE.registerModule( DayLightTool );
-//LiteGUI.trigger( CORE, "plugin_registered", DayLightTool );

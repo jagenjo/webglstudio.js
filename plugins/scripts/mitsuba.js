@@ -26,11 +26,6 @@ var MitsubaTool = {
 		LiteGUI.menubar.add("Window/Mitsuba", { callback: function() { MitsubaTool.showDialog(); }});
 	},
 
-	deinit: function()
-	{
-		LiteGUI.menubar.remove("Window/Mitsuba");
-	},
-
 	showDialog: function()
 	{
 		var that = this;
@@ -678,8 +673,6 @@ var MitsubaTool = {
 		return file;
 	}
 };
-
-CORE.registerPlugin( MitsubaTool );
 
 //Format
 /*

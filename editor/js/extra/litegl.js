@@ -1873,6 +1873,71 @@ quat.fromAxisAngle = function(axis, rad)
     return out;
 }
 
+//from https://answers.unity.com/questions/467614/what-is-the-source-code-of-quaternionlookrotation.html
+quat.lookRotation = (function(){
+	var vector = vec3.create();
+	var vector2 = vec3.create();
+	var vector3 = vec3.create();
+
+	return function( q, front, up )
+	{
+		vec3.normalize(vector,front);
+		vec3.cross( vector2, up, vector );
+		vec3.normalize(vector2,vector2);
+		vec3.cross( vector3, vector, vector2 );
+
+		var m00 = vector2[0];
+		var m01 = vector2[1];
+		var m02 = vector2[2];
+		var m10 = vector3[0];
+		var m11 = vector3[1];
+		var m12 = vector3[2];
+		var m20 = vector[0];
+		var m21 = vector[1];
+		var m22 = vector[2];
+
+		var num8 = (m00 + m11) + m22;
+
+		 if (num8 > 0)
+		 {
+			 var num = Math.sqrt(num8 + 1);
+			 q[3] = num * 0.5;
+			 num = 0.5 / num;
+			 q[0] = (m12 - m21) * num;
+			 q[1] = (m20 - m02) * num;
+			 q[2] = (m01 - m10) * num;
+			 return q;
+		 }
+		 if ((m00 >= m11) && (m00 >= m22))
+		 {
+			 var num7 = Math.sqrt(((1 + m00) - m11) - m22);
+			 var num4 = 0.5 / num7;
+			 q[0] = 0.5 * num7;
+			 q[1] = (m01 + m10) * num4;
+			 q[2] = (m02 + m20) * num4;
+			 q[3] = (m12 - m21) * num4;
+			 return q;
+		 }
+		 if (m11 > m22)
+		 {
+			 var num6 = Math.sqrt(((1 + m11) - m00) - m22);
+			 var num3 = 0.5 / num6;
+			 q[0] = (m10+ m01) * num3;
+			 q[1] = 0.5 * num6;
+			 q[2] = (m21 + m12) * num3;
+			 q[3] = (m20 - m02) * num3;
+			 return q; 
+		 }
+		 var num5 = Math.sqrt(((1 + m22) - m00) - m11);
+		 var num2 = 0.5 / num5;
+		 q[0] = (m20 + m02) * num2;
+		 q[1] = (m21 + m12) * num2;
+		 q[2] = 0.5 * num5;
+		 q[3] = (m01 - m10) * num2;
+		 return q;
+	};
+})();
+
 /*
 quat.toEuler = function(out, quat) {
 	var q = quat;

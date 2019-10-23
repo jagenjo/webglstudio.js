@@ -471,6 +471,8 @@ function generalNodeWidget( name, value, options, force_node )
 		e.preventDefault();
 		e.stopPropagation();
 		var node_uid = e.dataTransfer.getData("node_uid");
+		if(!node_uid)
+			console.warn("no node_uid found in event");
 		if(force_node) //options.use_node
 		{
 			value = LS.GlobalScene.getNode( node_uid );

@@ -65,6 +65,7 @@
 		"js/modules/graph.js",
 		"js/modules/quickbar.js",
 		"js/modules/packTools.js",
+		"js/modules/capture.js",
 		"js/modules/generic.js",
 		"js/modules/lab.js",
 		"js/modules/shaders.js",

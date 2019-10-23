@@ -431,7 +431,7 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 	inspector.addColor("Color", material.color, { pretitle: AnimationModule.getKeyframeCode( material, "color" ), callback: function(color) { material.color = color; } });
 	inspector.addColor("Ambient", material.ambient, { pretitle: AnimationModule.getKeyframeCode( material, "ambient" ),callback: function(color) { material.ambient = color; } });
 	inspector.addSlider("Backlight", material.backlight_factor, { pretitle: AnimationModule.getKeyframeCode( material, "backlight_factor" ),min: 0, step:0.01, max:1, callback: function (value) { material.backlight_factor = value; } });
-	inspector.addCheckbox("Constant diffuse", material.constant_diffuse, { pretitle: AnimationModule.getKeyframeCode( material, "constant_diffuse" ), callback: function (value) { material.constant_diffuse = value; }});
+ 	inspector.addSlider("Translucency", material.translucency, { pretitle: AnimationModule.getKeyframeCode( material, "translucency" ),min: 0, step:0.01, max:1, callback: function (value) { material.translucency = value; }});
 
 	inspector.addSlider("Specular", material.specular_factor, { pretitle: AnimationModule.getKeyframeCode( material, "specular_factor" ), min: 0, step:0.01, max:2, callback: function (value) { material.specular_factor = value; } });
 	inspector.addSlider("Spec. gloss", material.specular_gloss, { pretitle: AnimationModule.getKeyframeCode( material, "specular_gloss" ), min:1,max:20, callback: function (value) { material.specular_gloss = value; } });
@@ -453,6 +453,7 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 
 	inspector.addSlider("Normalmap factor", material.normalmap_factor, { pretitle: AnimationModule.getKeyframeCode( material, "normalmap_factor" ), min: 0, step:0.01, max:1.5, callback: function (value) { material.normalmap_factor = value; } });
 	inspector.addColor("Extra Color", material.extra, { pretitle: AnimationModule.getKeyframeCode( material, "extra" ), callback: function(color) { material.extra = color; } });
+	inspector.addNumber("Point Size", material.point_size, { pretitle: AnimationModule.getKeyframeCode( material, "point_size" ), callback: function(v) { material.point_size = v; } });
 
 	inspector.addTitle("Velvet");
 	inspector.addColor("Velvet", material.velvet, { pretitle: AnimationModule.getKeyframeCode( material, "velvet" ), callback: function(color) { vec3.copy(material.velvet,color); }});
@@ -620,7 +621,27 @@ LS.MaterialClasses.GraphMaterial["@inspector"] = function( material, inspector )
 		ShadersModule.openTab();
 		ShadersModule.editGraph( material, { id: material.filename, title: material.filename } );
 	}});
-	//inspector.addTitle("Properties");
+
+	material.updatePropertiesFromGraph();
+	var props = material.getProperties();
+	if(props)
+	{
+		inspector.addTitle("Properties");
+		for(var i in props)
+		{
+			var type = props[i];
+			var prop = material._properties_by_name[ i ];
+			inspector.add( type, i, prop.value, { prop: prop, callback: inner_modify });
+		}
+	}
+
+	function inner_modify(v)
+	{
+		if( this.options.prop.value.length && this.options.prop.value.set )
+			this.options.prop.value.set( v );
+		else
+			this.options.prop.value = v;
+	}
 }
 
 LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector, is_fx )

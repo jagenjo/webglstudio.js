@@ -1614,14 +1614,14 @@ function beautifyCode( code, reserved, skip_css )
 	reserved = reserved || ["abstract", "else", "instanceof", "super", "boolean", "enum", "int", "switch", "break", "export", "interface", "synchronized", "byte", "extends", "let", "this", "case", "false", "long", "throw", "catch", "final", "native", "throws", "char", "finally", "new", "transient", "class", "float", "null", "true", "const", "for", "package", "try", "continue", "function", "private", "typeof", "debugger", "goto", "protected", "var", "default", "if", "public", "void", "delete", "implements", "return", "volatile", "do", "import", "short", "while", "double", "in", "static", "with"];
 
 	//reserved words
-	code = code.replace(/(\w+)/g, function(v) {
+	code = code.replace(/\b(\w+)\b/g, function(v) {
 		if(reserved.indexOf(v) != -1)
 			return "<span class='rsv'>" + v + "</span>";
 		return v;
 	});
 
 	//numbers
-	code = code.replace(/([0-9]+)/g, function(v) {
+	code = code.replace(/\b([0-9]+)\b/g, function(v) {
 		return "<span class='num'>" + v + "</span>";
 	});
 
@@ -1641,10 +1641,11 @@ function beautifyCode( code, reserved, skip_css )
 		return "<span class='str'>" + v + "</span>";
 	});
 
-	//comments
-	code = code.replace(/(\/\/[a-zA-Z0-9\?\!\(\)_ ]*)/g, function(v) {
-		return "<span class='cmnt'>" + v + "</span>";
+	//comments 
+	code = code.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, function(v) { ///(\/\/[a-zA-Z0-9\?\!\(\)_ ]*)/g
+		return "<span class='cmnt'>" + v.replace(/<[^>]*>/g, "") + "</span>";
 	});
+
 
 	if(!skip_css)
 		code = "<style>.obj { color: #79B; } .prop { color: #B97; }	.str,.num { color: #A79; } .cmnt { color: #798; } .rsv { color: #9AB; } </style>" + code;

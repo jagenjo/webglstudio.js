@@ -297,10 +297,12 @@ var PluginsModule = {
 		inspector_right.endContainer();
 
 		//buttons: clear, update, include, test
-		var include_button = inspector_right.addButtons(null,["Include","Remove","Clear","Save"],{ callback: function(v){
+		var include_button = inspector_right.addButtons(null,["Include","Remove","Clear","Store","View Code"],{ callback: function(v){
 
-			if( v == "Save")
+			if( v == "Store")
 				inner_add_custom_script();
+			else if( v == "Clear")
+				inner_clear_form();
 
 			if(!selected)
 				return;
@@ -312,8 +314,8 @@ var PluginsModule = {
 			{
 				options.on_remove_from_list( selected.full_url, selected )
 			}
-			else if( v == "Clear")
-				inner_clear_form();
+			else if( v == "View Code")
+				inner_view_code( selected.full_url );
 
 			if(on_callback)
 				on_callback();
@@ -423,6 +425,13 @@ var PluginsModule = {
 			script_repository_widget.setValue("");
 			selected = null;
 			LiteGUI.removeClass( scripts_container, ".selected", "selected" );
+		}
+
+		function inner_view_code(url)
+		{
+			LS.Network.requestText( url, function(code) {
+				EditorModule.checkCode( code );
+			});
 		}
 
 		//refresh the list

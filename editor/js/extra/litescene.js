@@ -2763,10 +2763,15 @@ var Input = {
 		RIGHT:2
 	},
 
-	//according to the specification
+	//according to the specification, read from which
 	LEFT_MOUSE_BUTTON: 0,
 	MIDDLE_MOUSE_BUTTON: 1,
 	RIGHT_MOUSE_BUTTON: 2,
+
+	//MouseEvent.buttons use a different identifier than e.which...
+	BUTTONS_LEFT: 1,
+	//BUTTONS_RIGHT: 2,
+	//BUTTONS_MIDDLE: 3,
 
 	Keyboard: null, //gl.keys
 	Keyboard_previous: {},
@@ -6989,6 +6994,17 @@ normalbuffer_block.register();
 //used when a mesh contains extra buffers
 var instancing_block = LS.Shaders.instancing_block = new LS.ShaderBlock("instancing");
 instancing_block.register();
+
+//@point size with perspective
+var pointparticles_block = new LS.ShaderBlock("pointparticles");
+pointparticles_block.bindEvent("vs_final", "\n\
+	gl_PointSize = u_point_size * u_viewport.w * u_camera_perspective.z / gl_Position.w;\n\
+	#ifdef EXTRA2_BLOCK\n\
+		gl_PointSize *= a_extra2.x;\n\
+	#endif\n\
+");
+pointparticles_block.register();
+
 ///@FILE:../src/formats.js
 ///@INFO: BASE
 /**
@@ -7451,8 +7467,9 @@ Material.COORDS_UV0 = 0;
 Material.COORDS_UV1 = 1;
 Material.COORDS_UV0_TRANSFORMED = 2;
 Material.COORDS_UV1_TRANSFORMED = 3;
+Material.COORDS_UV_POINTCOORD = 4;
 
-Material.TEXTURE_COORDINATES = { "uv0":Material.COORDS_UV0, "uv1":Material.COORDS_UV1, "uv0_transformed":Material.COORDS_UV0_TRANSFORMED, "uv1_transformed":Material.COORDS_UV1_TRANSFORMED };
+Material.TEXTURE_COORDINATES = { "uv0":Material.COORDS_UV0, "uv1":Material.COORDS_UV1, "uv0_transformed":Material.COORDS_UV0_TRANSFORMED, "uv1_transformed":Material.COORDS_UV1_TRANSFORMED, "uv_pointcoord": Material.COORDS_UV_POINTCOORD  };
 
 Material.available_shaders = ["default","global","lowglobal","phong_texture","flat","normal","phong","flat_texture","cell_outline"];
 
@@ -9040,6 +9057,7 @@ function StandardMaterial(o)
 	this.specular_on_alpha = false;
 
 	this.backlight_factor = 0;
+	this.translucency = 0;
 
 	this.reflection_factor = 0.0;
 	this.reflection_fresnel = 1.0;
@@ -9060,6 +9078,7 @@ function StandardMaterial(o)
 	this._texture_settings = new Uint8Array(9);
 
 	this.use_scene_ambient = true;
+	this.point_size = 1.0;
 
 	this.createProperty( "extra", new Float32Array([1,1,1,1]), "color" ); //used in special situations
 
@@ -9280,6 +9299,7 @@ StandardMaterial.prototype.getShaderCode = function( instance, render_settings, 
 	//generate code
 	var code = {
 		vs_local: "",
+		vs_global: "",
 		fs: "",
 		fs_shadows: ""
 	};
@@ -9296,7 +9316,10 @@ StandardMaterial.prototype.getShaderCode = function( instance, render_settings, 
 		uvs[3] = (vec3(uvs[1],1.0) * u_texture_matrix).xy;\n\
 	#else\n\
 		uvs[3] = uvs[2];\n\
-	#endif\n";
+	#endif\n\
+	uvs[4] = gl_PointCoord;\n\
+	";
+
 	code.fs += uvs_common;
 	code.fs_shadows += uvs_common;
 
@@ -9393,11 +9416,13 @@ StandardMaterial.prototype.fillUniforms = function( scene, options )
 	uniforms.u_reflection_info[0] = this.reflection_factor;
 	uniforms.u_reflection_info[1] = this.reflection_fresnel;
 	uniforms.u_backlight_factor = this.backlight_factor;
+	uniforms.u_translucency = this.translucency;
 	uniforms.u_normal_info[0] = this.normalmap_factor;
 	uniforms.u_normal_info[1] = this.normalmap_tangent ? 1 : 0;
 	uniforms.u_displacementmap_factor = this.displacementmap_factor;
 	uniforms.u_velvet_info.set( this._velvet );
 	uniforms.u_velvet_info[3] = this.velvet_additive ? this.velvet_exp : -this.velvet_exp;
+	uniforms.u_point_size = this.point_size;
 
 	//iterate through textures in the material
 	var last_texture_slot = 0;
@@ -9460,6 +9485,7 @@ StandardMaterial.prototype.setProperty = function(name, value)
 		case "specular_factor":
 		case "specular_gloss":
 		case "backlight_factor":
+		case "translucency":
 		case "reflection_factor":
 		case "reflection_fresnel":
 		case "velvet_exp":
@@ -9470,6 +9496,7 @@ StandardMaterial.prototype.setProperty = function(name, value)
 		case "displacementmap_factor":
 		case "detail_factor":
 		case "emissive_extra":
+		case "point_size":
 		//strings
 		case "shader_name":
 		//bools
@@ -9522,9 +9549,11 @@ StandardMaterial.prototype.getPropertiesInfo = function()
 		specular_factor: LS.TYPES.NUMBER,
 		specular_gloss: LS.TYPES.NUMBER,
 		backlight_factor: LS.TYPES.NUMBER,
+		translucency: LS.TYPES.NUMBER,
 		reflection_factor: LS.TYPES.NUMBER,
 		reflection_fresnel: LS.TYPES.NUMBER,
 		velvet_exp: LS.TYPES.NUMBER,
+		point_size: LS.TYPES.NUMBER,
 
 		normalmap_factor: LS.TYPES.NUMBER,
 		bumpmap_factor: LS.TYPES.NUMBER,
@@ -9564,6 +9593,7 @@ StandardMaterial.prototype.getPropertyInfoFromPath = function( path )
 	{
 		case "blend_mode":
 		case "backlight_factor":
+		case "translucency":
 		case "reflection_factor":
 		case "reflection_fresnel":
 		case "velvet_exp":
@@ -9572,6 +9602,7 @@ StandardMaterial.prototype.getPropertyInfoFromPath = function( path )
 		case "displacementmap_factor":
 		case "emissive_extra":
 		case "detail_factor":
+		case "point_size":
 			type = LS.TYPES.NUMBER; break;
 		case "extra":
 			type = LS.TYPES.VEC4; break;
@@ -9619,7 +9650,7 @@ LS.Classes["newStandardMaterial"] = StandardMaterial;
 var UVS_CODE = "\n\
 uniform int u_texture_settings[11];\n\
 \n\
-vec2 uvs[4];\n\
+vec2 uvs[5];\n\
 vec2 getUVs(int index)\n\
 {\n\
 	if(index == 0)\n\
@@ -9630,6 +9661,8 @@ vec2 getUVs(int index)\n\
 		return uvs[2];\n\
 	if(index == 3)\n\
 		return uvs[3];\n\
+	if(index == 4)\n\
+		return uvs[4];\n\
 	return uvs[0];\n\
 }\n\
 ";
@@ -9782,6 +9815,7 @@ uniform vec3 u_detail_info;\n\
 uniform mat3 u_texture_matrix;\n\
 uniform vec4 u_extra_color;\n\
 uniform float u_backlight_factor;\n\
+uniform float u_translucency;\n\
 \n\
 uniform sampler2D color_texture;\n\
 uniform sampler2D opacity_texture;\n\
@@ -9858,6 +9892,7 @@ void main() {\n\
 		o.Normal *= -1.0;\n\
 	FinalLight FINALLIGHT = computeLight( o, IN, LIGHT );\n\
 	FINALLIGHT.Diffuse += u_backlight_factor * max(0.0, dot(FINALLIGHT.Vector, -o.Normal));\n\
+	FINALLIGHT.Diffuse = mix(FINALLIGHT.Diffuse,1.0, u_translucency);\n\
 	vec4 final_color = vec4( 0.0,0.0,0.0, o.Alpha );\n\
 	#ifdef SPEC_ON_ALPHA\n\
 		final_color.a += FINALLIGHT.Specular;\n\
@@ -10052,6 +10087,7 @@ uniform sampler2D displacement_texture;\n\
 uniform float u_time;\n\
 uniform vec4 u_viewport;\n\
 uniform float u_point_size;\n\
+uniform vec3 u_camera_perspective;\n\
 \n\
 #pragma shaderblock \"light\"\n\
 #pragma shaderblock \"morphing\"\n\
@@ -10730,6 +10766,7 @@ void main() {\n\
 }\n\
 ";
 ///@FILE:../src/materials/graphMaterial.js
+//allows to create shaders using the graph editor
 function GraphMaterial(o)
 {
 	ShaderMaterial.call(this,null); //do not pass the data object, it is called later
@@ -10824,9 +10861,8 @@ GraphMaterial.prototype.getShaderCode = function( instance, render_settings, pas
 {
 	if(!this._graphcode || !this._graphcode.getShaderCode)
 		return null;
-	return this._graphcode.getShaderCode();
+	return this._graphcode.getShaderCode(null, GraphMaterial.code_template );
 }
-
 
 /**
 * Collects all the resources needed by this material (textures)
@@ -10891,6 +10927,47 @@ GraphMaterial.prototype.processGraph = function( skip_events, on_complete )
 	}
 }
 
+GraphMaterial.prototype.updatePropertiesFromGraph = function()
+{
+	var new_properties = [];
+	var new_properties_by_name = {};
+
+	var graph = this.graph;
+	if(!graph)
+	{
+		this._properties = new_properties;
+		this._properties_by_name = new_properties_by_name;
+		return;
+	}
+
+	//search for uniforms
+	var uniform_nodes = graph.findNodesByType("shader/uniform");
+	for(var i in uniform_nodes)
+	{
+		var node = uniform_nodes[i];
+		var name = node.properties.name;
+		var type = node.properties.type;
+
+		var old_p = this._properties_by_name[ name ];
+		var value = old_p ? old_p.value : LS.cloneObject( node.properties.value );
+
+		var p = { name: name, type: type, value: value };
+		new_properties.push( p );
+		new_properties_by_name[ name ] = p;
+	}
+
+	this._properties = new_properties;
+	this._properties_by_name = new_properties_by_name;
+}
+
+GraphMaterial.prototype.fillUniforms = function()
+{
+	for(var i in this._properties )
+	{
+		var p = this._properties[i];
+		this._uniforms[ p.name ] = p.value;
+	}
+}
 
 /**
 * gets all the properties and its types
@@ -10899,20 +10976,16 @@ GraphMaterial.prototype.processGraph = function( skip_events, on_complete )
 */
 GraphMaterial.prototype.getProperties = function()
 {
-	var o = {
-		color:"vec3",
-		opacity:"number",
-		shader_name: "string",
-		blend_mode: "number",
-		code: "string"
-	};
+	var graph = this.graph;
+	if(!graph)
+		return null;
 
-	//from this material
-	for(var i in this.properties)
+	var o = {};
+	for(var i = 0; i < this._properties.length; ++i)
 	{
-		var prop = this.properties[i];
-		o[prop.name] = prop.type;
-	}	
+		var p = this._properties[i];
+		o[ p.name ] = p.type;
+	}
 
 	return o;
 }
@@ -11031,7 +11104,216 @@ GraphMaterial.prototype.setTexture = function(texture, channel, uvs) {
 LS.registerMaterialClass( GraphMaterial );
 LS.GraphMaterial = GraphMaterial;
 
-
+GraphMaterial.code_template = "\n\
+\n\
+\n\
+\\color.vs\n\
+\n\
+precision mediump float;\n\
+attribute vec3 a_vertex;\n\
+attribute vec3 a_normal;\n\
+attribute vec2 a_coord;\n\
+#pragma shaderblock \"vertex_color\"\n\
+#pragma shaderblock \"coord1\"\n\
+#ifdef BLOCK_COORD1\n\
+	attribute vec2 a_coord1;\n\
+	varying vec2 v_uvs1;\n\
+#endif\n\
+#ifdef BLOCK_VERTEX_COLOR\n\
+	attribute vec4 a_color;\n\
+	varying vec4 v_vertex_color;\n\
+#endif\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+varying vec3 v_local_pos;\n\
+varying vec3 v_local_normal;\n\
+\n\
+//matrices\n\
+uniform mat4 u_model;\n\
+uniform mat4 u_normal_model;\n\
+uniform mat4 u_view;\n\
+uniform mat4 u_viewprojection;\n\
+\n\
+//globals\n\
+uniform float u_time;\n\
+uniform vec4 u_viewport;\n\
+uniform float u_point_size;\n\
+\n\
+#pragma shaderblock \"morphing\"\n\
+#pragma shaderblock \"skinning\"\n\
+\n\
+//camera\n\
+uniform vec3 u_camera_eye;\n\
+{{vs_out}}\n\
+void main() {\n\
+	\n\
+	vec4 vertex4 = vec4(a_vertex,1.0);\n\
+	v_local_pos = a_vertex;\n\
+	v_local_normal = a_normal;\n\
+	v_normal = a_normal;\n\
+	v_uvs = a_coord;\n\
+	#ifdef BLOCK_COORD1\n\
+		v_uvs1 = a_coord1;\n\
+	#endif\n\
+	#ifdef BLOCK_VERTEX_COLOR\n\
+		v_vertex_color = a_color;\n\
+	#endif\n\
+  \n\
+  //deforms\n\
+  {{vs_local}}\n\
+  applyMorphing( vertex4, v_normal );\n\
+  applySkinning( vertex4, v_normal );\n\
+	\n\
+	//vertex\n\
+	v_pos = (u_model * vertex4).xyz;\n\
+  \n\
+  \n\
+	//normal\n\
+	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+    {{vs_global}}\n\
+	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
+}\n\
+\n\
+\\color.fs\n\
+\n\
+precision mediump float;\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec3 v_local_pos;\n\
+varying vec3 v_local_normal;\n\
+varying vec2 v_uvs;\n\
+#pragma shaderblock \"vertex_color\"\n\
+#pragma shaderblock \"coord1\"\n\
+#ifdef BLOCK_COORD1\n\
+	varying vec2 v_uvs1;\n\
+#endif\n\
+#ifdef BLOCK_VERTEX_COLOR\n\
+	varying vec4 v_vertex_color;\n\
+#endif\n\
+\n\
+//globals\n\
+uniform vec3 u_camera_eye;\n\
+uniform vec4 u_clipping_plane;\n\
+uniform float u_time;\n\
+uniform vec4 u_background_color;\n\
+uniform vec4 u_material_color;\n\
+#pragma snippet \"input\"\n\
+\n\
+#pragma snippet \"testClippingPlane\"\n\
+\n\
+{{fs_out}}\n\
+\n\
+void main() {\n\
+	Input IN = getInput();\n\
+	if(testClippingPlane(u_clipping_plane,IN.worldPos) < 0.0)\n\
+		discard;\n\
+	\n\
+	IN.vertex = v_local_pos;\n\
+	IN.normal = v_local_normal;\n\
+	#ifdef BLOCK_VERTEX_COLOR\n\
+		IN.color = v_vertex_color;\n\
+	#endif\n\
+	#ifdef BLOCK_COORD1\n\
+		IN.uv1 = v_uvs1;\n\
+	#endif\n\
+	vec4 _final_color = vec4(1.0);\n\
+	{{fs_code}}\n\
+	gl_FragColor = _final_color;\n\
+}\n\
+\n\
+\\shadow.vs\n\
+\n\
+precision mediump float;\n\
+attribute vec3 a_vertex;\n\
+attribute vec3 a_normal;\n\
+attribute vec2 a_coord;\n\
+#ifdef USE_COLORS\n\
+attribute vec4 a_color;\n\
+#endif\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec3 v_local_pos;\n\
+varying vec3 v_local_normal;\n\
+varying vec2 v_uvs;\n\
+\n\
+//matrices\n\
+uniform mat4 u_model;\n\
+uniform mat4 u_normal_model;\n\
+uniform mat4 u_view;\n\
+uniform mat4 u_viewprojection;\n\
+\n\
+//globals\n\
+uniform float u_time;\n\
+uniform vec4 u_viewport;\n\
+uniform float u_point_size;\n\
+\n\
+#pragma shaderblock \"morphing\"\n\
+#pragma shaderblock \"skinning\"\n\
+\n\
+//camera\n\
+uniform vec3 u_camera_eye;\n\
+{{vs_out}}\n\
+void main() {\n\
+	\n\
+	vec4 vertex4 = vec4(a_vertex,1.0);\n\
+	v_local_pos = a_vertex;\n\
+	v_local_normal = a_normal;\n\
+	v_normal = a_normal;\n\
+	v_uvs = a_coord;\n\
+  \n\
+  //deforms\n\
+  {{vs_local}}\n\
+  applyMorphing( vertex4, v_normal );\n\
+  applySkinning( vertex4, v_normal );\n\
+	\n\
+	//vertex\n\
+	v_pos = (u_model * vertex4).xyz;\n\
+  \n\
+  \n\
+	//normal\n\
+	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+    {{vs_global}}\n\
+	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
+}\n\
+\\shadow.fs\n\
+\n\
+precision mediump float;\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+varying vec3 v_local_pos;\n\
+varying vec3 v_local_normal;\n\
+\n\
+//globals\n\
+uniform vec3 u_camera_eye;\n\
+uniform vec4 u_clipping_plane;\n\
+uniform vec4 u_material_color;\n\
+\n\
+uniform mat3 u_texture_matrix;\n\
+\n\
+#pragma snippet \"input\"\n\
+#pragma snippet \"surface\"\n\
+#pragma snippet \"perturbNormal\"\n\
+#define SHADOWMAP\n\
+\n\
+{{fs_out}}\n\
+\n\
+void main() {\n\
+	Input IN = getInput();\n\
+	IN.vertex = v_local_pos;\n\
+	IN.normal = v_local_normal;\n\
+	gl_FragColor = vec4(u_material_color,1.0);\n\
+}\n\
+";
 ///@FILE:../src/componentContainer.js
 ///@INFO: BASE
 /*
@@ -19862,7 +20144,7 @@ GraphCode.prototype.propagate = function()
 
 //used in graph materials
 //as_string for debug
-GraphCode.prototype.getShaderCode = function( as_string )
+GraphCode.prototype.getShaderCode = function( as_string, template )
 {
 	if( this._shader_code && this._code_version == this._graph._version && !as_string )
 		return this._shader_code;
@@ -19870,13 +20152,41 @@ GraphCode.prototype.getShaderCode = function( as_string )
 	if(!this._shader_code)
 		this._shader_code = new LS.ShaderCode();
 
+	var surface_node = this._graph.findNodesByClass("shader/fs_output");
+	if(!surface_node)
+		return null;
+
+	var context = {
+		vs_out: "",
+		vs_local: "",
+		vs_global: "",
+		fs_out: "",
+		fs_code: ""
+	};
+
+	var nodes = this._graph._nodes_in_order;
+	if(nodes)
+		for(var i = 0; i < nodes.length; ++i)
+		{
+			var node = nodes[i];
+			if( node.onGetCode )
+				node.onGetCode( "glsl", context );
+		}
+
+	if( as_string )
+		return context.fs_out;
+
+	this._shader_code.code = LS.ShaderCode.replaceCode( template, context );
+	this._code_version = this._graph._version;
+	return this._shader_code;
+
 	//find final node
 	//assuming a SurfaceShader here
+	/*
 	var surface_node = this._graph.findNodesByClass("shader/surface");
 	if(!surface_node)
 		return null;
 
-	var final_code = LS.SurfaceMaterial.code_template;
 	var context = { uniforms: [] };
 	var graph_code = "";
 
@@ -19912,9 +20222,10 @@ GraphCode.prototype.getShaderCode = function( as_string )
 	if( as_string )
 		return context.fs_out;
 
-	this._shader_code.code = LS.ShaderCode.replaceCode( final_code, context );
+	this._shader_code.code = LS.ShaderCode.replaceCode( template, context );
 	this._code_version = this._graph._version;
 	return this._shader_code;
+	*/
 }
 
 LS.GraphCode = GraphCode;
@@ -20166,6 +20477,30 @@ if(typeof(LiteGraph) != "undefined")
 					break;
 			}
 		}
+	}
+
+	LGraphSceneNode.prototype.onDrawBackground = function(ctx)
+	{
+		var node = this._node;
+		if(!node)
+		{
+			this.boxcolor = null;
+			return;
+		}
+
+		var highlight = node._is_selected;
+
+		if(highlight)
+		{
+			this.boxcolor = "#FA0";
+			if(!this.flags.collapsed)
+			{
+				ctx.fillStyle = "#FA0";
+				ctx.fillRect(0,0,this.size[0],2);
+			}
+		}
+		else
+			this.boxcolor = null;
 	}
 
 	LGraphSceneNode.prototype.getComponents = function(result)
@@ -20507,9 +20842,34 @@ if(typeof(LiteGraph) != "undefined")
 		return this.title || LGraphLocatorProperty.title;
 	}
 
+	LGraphLocatorProperty.prototype.onDrawBackground = function(ctx)
+	{
+		var info = this._last_info;
+		if(!info)
+		{
+			this.boxcolor = null;
+			return;
+		}
+
+		var highlight = info.node && info.node._is_selected;
+
+		if(highlight)
+		{
+			this.boxcolor = "#FA0";
+			if(!this.flags.collapsed)
+			{
+				ctx.fillStyle = "#FA0";
+				ctx.fillRect(0,0,this.size[0],2);
+			}
+		}
+		else
+			this.boxcolor = null;
+	}
+
 	LGraphLocatorProperty.prototype.onExecute = function()
 	{
 		var info = this.getLocatorInfo();
+		this._last_info = info;
 
 		if(info && info.target)
 		{
@@ -20550,7 +20910,7 @@ if(typeof(LiteGraph) != "undefined")
 	{
 		this.addInput("target","Component");
 		this.addInput("toggle",LiteGraph.ACTION);
-		this.properties = {property_name:"enabled"};
+		this.properties = { property_name: "enabled" };
 	}
 
 	LGraphToggleValue.title = "Toggle";
@@ -23386,6 +23746,24 @@ if(typeof(LiteGraph) != "undefined")
 		return "LINK_" + node.id + "_" + num;
 	}
 
+	var valueToGLSL = LiteGraph.valueToGLSL = function valueToGLSL( type, v )
+	{
+		var n = 5; //num decimals
+		switch(type)
+		{
+			case 'float': return v.toFixed(n); break;
+			case 'vec2': return "vec2(" + v[0].toFixed(n) + "," + v[1].toFixed(n) + ")"; break;
+			case 'color3':
+			case 'vec3': return "vec3(" + v[0].toFixed(n) + "," + v[1].toFixed(n) + "," + v[2].toFixed(n) + ")"; break;
+			case 'color4':
+			case 'vec4': return "vec4(" + v[0].toFixed(n) + "," + v[1].toFixed(n) + "," + v[2].toFixed(n) + "," + v[3].toFixed(n) + ")"; break;
+			default:
+				throw("unknown glsl type");
+		}
+
+		return "";
+	}
+
 	LiteGraph.registerShaderNode = function registerShaderNode( name, ctor )
 	{
 		ctor.filter = "shader";
@@ -23395,418 +23773,137 @@ if(typeof(LiteGraph) != "undefined")
 		LiteGraph.registerNodeType("shader/" + name, ctor );
 	}
 
+	var GLSL_types = ["float","vec2","vec3","vec4","mat3","mat4","texture2D","textureCube"];
+	var GLSL_types_const = ["float","vec2","vec3","vec4"];
+
 	var typeToGLSL = {
 		number: "float",
 		color: "vec3",
 		color4: "vec4"
 	};
 
-	LiteGraph.generatePreviewShader = function(node)
+	function LGraphShaderConstant()
 	{
-		//get ancestors
-		var nodes = node.graph.getAncestors(node);
-		var context = { uniforms: [] };
-		var graph_code = "";
-		var nodes = this._graph._nodes_in_order;
-		for(var i = 0; i < nodes.length; ++i)
+		this.addOutput("","float");
+
+		this.properties = {
+			type: "float",
+			value: 0
+		};
+
+		this.addWidget("combo","type","float",null, { values: GLSL_types_const, property: "type" } );
+		this.updateWidgets();
+	}
+
+	LGraphShaderConstant.title = "const";
+
+	LGraphShaderConstant.prototype.onPropertyChanged = function(name,value)
+	{
+		var that = this;
+		if(name == "type")
 		{
-			var node = nodes[i];
-			if( node.onGetCode )
-				graph_code += node.onGetCode( "glsl", context );
+			this.disconnectOutput(0);
+			this.outputs[0].type = value;
+			this.widgets.length = 1; //remove extra widgets
+			this.updateWidgets();
 		}
+	}
 
-		var uniforms_code = "";
-		for(var i = 0; i < context.uniforms.length; ++i)
+	LGraphShaderConstant.prototype.updateWidgets = function()
+	{
+		var that = this;
+		switch(this.properties.type)
 		{
-			var uniform = context.uniforms[i];
-			uniforms_code += "uniform " + uniform.type + " " + uniform.link_name + ";\n";
+			case 'float': 
+				this.properties.value = 0;
+				this.addWidget("number","v",0,{ property: "value" });
+				break;
+			case 'vec2': 
+				this.properties.value = [0,0];
+				this.addWidget("number","x",0,function(v){ that.properties.value[0] = v; }); 
+				this.addWidget("number","y",0,function(v){ that.properties.value[1] = v; }); 
+				break;
+			case 'vec3': 
+				this.properties.value = [0,0,0];
+				this.addWidget("number","x",0,function(v){ that.properties.value[0] = v; }); 
+				this.addWidget("number","y",0,function(v){ that.properties.value[1] = v; }); 
+				this.addWidget("number","z",0,function(v){ that.properties.value[2] = v; }); 
+				break;
+			case 'vec4': 
+				this.properties.value = [0,0,0,0];
+				this.addWidget("number","x",0,function(v){ that.properties.value[0] = v; }); 
+				this.addWidget("number","y",0,function(v){ that.properties.value[1] = v; }); 
+				this.addWidget("number","z",0,function(v){ that.properties.value[2] = v; }); 
+				this.addWidget("number","w",0,function(v){ that.properties.value[3] = v; }); 
+				break;
+			default:
+				console.error("unknown type for constant");
 		}
-
 	}
 
-	//base function
-	/*
-	function ShaderCodeFragment( code )
-	{
-		this.id = -1;
-		this.code = "";
-		this.inputs = [];
-		this.outputs = [];
-		this.properties = [];
-	}
-
-	ShaderCodeFragment.prototype.toString = function()
-	{
-		
-	}
-
-	//use
-	function LGraphShaderFloat()
-	{
-		this.addOutput("v","number");
-		this.properties = { value: 0, uniform: "" };
-	}
-
-	LGraphShaderFloat.prototype.onGenerateCode = function( context )
-	{
-		if(!this._fragment)
-			this._fragment = new ShaderCodeFragment("float @OUT_0 = @PROP_0;\n");
-		var output = getOutputLinkID( this, 0 );
-		this._fragment.outputs[0] = output;
-		this.setOutputData(0, this._fragment );
-	}
-
-	function LGraphShaderScale()
-	{
-		this.addInput("in","number");
-		this.addInput("f","number");
-		this.addOutput("out","number");
-	}
-
-	LGraphShaderScale.prototype.onGenerateCode = function( context )
-	{
-		if(!this._fragment)
-			this._fragment = new ShaderCodeFragment("float @OUT_0 = @PROP_0;\n");
-		var output = getOutputLinkID( this, 0 );
-		this._fragment.outputs[0] = output;
-		this.setOutputData(0, this._fragment );
-	}
-	*/
-
-	function createShaderConstantNode( type, value )
-	{
-		var original_type = type;
-		var ctor_code = "this.addOutput(\"v\",\""+type+"\");\n";
-		ctor_code += "this.properties = { value: "+JSON.stringify(value)+", uniform:\"\"};\n";
-		var ctor = new Function( ctor_code );
-
-		type = typeToGLSL[type] || type;
-
-		var getcode_code = "if( lang != \"glsl\" ) return \"\";\n";
-		getcode_code += "var output = LiteGraph.getOutputLinkID( this, 0, true );\n";
-		getcode_code += "if(this.properties.uniform)\n 	{ context.uniforms.push({ name: this.properties.uniform, link_name: output, type: \""+type+"\", value: this.properties.value });\n return \"\";	}";
-		getcode_code += "return \"\\t "+type+" \"+output+\" = "+type+"(\"+String(this.properties.value)+\");\\n\";\n";
-		ctor.prototype.onGetCode = new Function( "lang","context", getcode_code );
-
-		var exec_code = "this.setOutputDataType( 0, \""+type+"\" );\n";
-		ctor.prototype.onExecute = new Function( exec_code );
-				
-		LiteGraph.registerShaderNode( original_type.toLowerCase(), ctor );
-		ctor.title = original_type;
-		ctor.desc = "Shader constant " + original_type;
-
-		ctor.prototype.getTitle = function()
-		{
-			if(this.flags.collapsed)
-				return String( this.properties.value );
-			return this.title;
-		}
-
-		ctor.prototype.onDrawBackground = function(){ 
-			if( this.properties.value.length < 5 )
-				this.outputs[0].label = String( this.properties.value );
-		}
-		return ctor;
-	}
-
-	createShaderConstantNode("float", 1 );
-	createShaderConstantNode("vec2", [0,0] );
-	createShaderConstantNode("vec3", [0,0,0] );
-	createShaderConstantNode("color", [1,1,1] );
-	createShaderConstantNode("vec4", [0,0,0,0] );
-	createShaderConstantNode("color4", [1,1,1,1] );
-	createShaderConstantNode("mat3", [1,0,0,0,1,0,0,0,1] );
-	createShaderConstantNode("mat4", [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1] );
-
-	function createShaderOperationNode( name, inputs, output, op_code, title )
-	{
-		if(inputs.length >= 10)
-			throw("cannot be used with more than 10 vars, regexp not supporting it");
-
-		var ctor_code = "this.addOutput(\"v\",\""+output+"\");\n";
-		for(var i = 0; i < inputs.length; ++i)
-			ctor_code += "this.addInput(\"" + String.fromCharCode(65+i)	+ "\",\"" + inputs[i] + "\");\n";
-		var ctor = new Function( ctor_code );
-
-		var exec_code = "	if( lang != \"glsl\" ) return \"\";\n";
-		exec_code += "	var code = \"\";\n";
-		for(var i = 0; i < inputs.length; ++i)
-		{
-			var type = typeToGLSL[inputs[i]] || inputs[i];
-			exec_code += "var input_" + i + " = LiteGraph.getInputLinkID( this, "+i+" );\n";
-			exec_code += "if(input_" + i + " == null) input_" + i + " = \"" + type + "(1.0)\";\n";
-			op_code = op_code.replace( new RegExp("@" + i,"gi"), "\" + input_" + i + " + \"");
-		}
-
-		exec_code += "	var output = LiteGraph.getOutputLinkID(this, 0, true);\n";
-		exec_code += "	return \"\\t  "+(typeToGLSL[output] || output)+" \"+output+\" = "+op_code+";\\n\";\n";
-		ctor.prototype.onGetCode = new Function( "lang", exec_code );
-
-		if(title)
-			ctor.prototype.getTitle = new Function( " return \"" + title + "\";" );
-				
-		ctor.title = name;
-		ctor.filter = "shader";
-		LiteGraph.registerShaderNode( name.toLowerCase(), ctor );
-
-		return ctor;
-	}
-
-	createShaderOperationNode("Float->Vec2", ["float"], "vec2", "vec2(@0)", "vec2" );
-	createShaderOperationNode("Float->Vec3", ["float"], "vec3", "vec3(@0)", "vec3" );
-	createShaderOperationNode("Add Float", ["float","float"], "float", "@0 + @1", "A+B" );
-	createShaderOperationNode("Add Vec3", ["vec3","vec3"], "vec3", "@0 + @1", "A+B" );
-	createShaderOperationNode("Sub Vec3", ["vec3","vec3"], "vec3", "@0 - @1", "A-B" );
-	createShaderOperationNode("Scale Vec3", ["vec3","float"], "vec3", "@0 * @1", "A*B" );
-	createShaderOperationNode("Sub Float", ["float","float"], "float", "@0 - @1", "A-B" );
-	createShaderOperationNode("Normalize Vec2", ["vec2"], "vec2", "normalize(@0)", "normalize" );
-	createShaderOperationNode("Normalize Vec3", ["vec3"], "vec3", "normalize(@0)", "normalize"  );
-	createShaderOperationNode("Exp Float", ["float"], "float", "exp(@0)", "exp" );
-	createShaderOperationNode("Pow Float", ["float","float"], "float", "pow(@0,@1)", "pow" );
-	createShaderOperationNode("Pow Vec3", ["vec3","float"], "vec3", "pow(@0,@1)", "pow" );
-	createShaderOperationNode("Float->Vec3", ["float"], "vec3", "vec3(@0)", "vec3" );
-	createShaderOperationNode("Dot", ["vec3","vec3"], "float", "dot(@0,@1)", "dot" );
-	createShaderOperationNode("Cross", ["vec3","vec3"], "vec3", "cross(@0,@1)", "cross" );
-	createShaderOperationNode("Abs Vec3", ["vec3"], "vec3", "abs(@0)", "abs" );
-	createShaderOperationNode("Abs Float", ["float"], "float", "abs(@0)", "abs" );
-
-	function LGraphShaderSurface()
-	{
-		this.addInput("Albedo","vec3");
-		this.addInput("Emission","vec3");
-		this.addInput("Normal","vec3");
-		this.addInput("Specular","float");
-		this.addInput("Gloss","float");
-		this.addInput("Reflectivity","float");
-		this.addInput("Alpha","float");
-		this.size = [90,110];
-
-		this.properties = {};
-	}
-
-	LGraphShaderSurface.title = "Surface";
-	LGraphShaderSurface.desc = "Surface properties";
-
-	LGraphShaderSurface.prototype.onExecute = function()
-	{
-	}
-
-	LGraphShaderSurface.prototype.onGetCode = function( lang )
+	LGraphShaderConstant.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
 			return "";
+		var value = valueToGLSL( this.properties.type, this.properties.value );
+		var link_name = getOutputLinkID(this,0);
+		if(!link_name) //not connected
+			return;
 
-		/* created from GraphCode so it can add the graph code in between
-		var surface_code = "void surf( in Input IN, inout SurfaceOutput o ) {\n\
-		o.Albedo = vec3(1.0) * IN.color.xyz;\n\
-		o.Normal = IN.worldNormal;\n\
-		o.Emission = vec3(0.0);\n\
-		o.Specular = 1.0;\n\
-		o.Gloss = 40.0;\n\
-		o.Reflectivity = 0.0;\n\
-		o.Alpha = IN.color.a;\n";
-		*/
-
-		var code = "\n";
-		var input = getInputLinkID( this, 0 );
-		if( input )
-			code += "\t o.Albedo = "+input+";\n";
-		input = getInputLinkID( this, 1 );
-		if( input )
-			code += "\t o.Emission = "+input+";\n";
-		input = getInputLinkID( this, 2 );
-		if( input )
-			code += "\t o.Normal = "+input+";\n";
-		input = getInputLinkID( this, 3 );
-		if( input )
-			code += "\t o.Specular = "+input+";\n";
-		input = getInputLinkID( this, 4 );
-		if( input )
-			code += "\t o.Gloss = "+input+";\n";
-		input = getInputLinkID( this, 5 );
-		if( input )
-			code += "\t o.Reflectivity = "+input+";\n";
-		input = getInputLinkID( this, 6 );
-		if( input )
-			code += "\t o.Alpha = "+input+";\n";
-
-		return code;
+		var code = "	" + this.properties.type + " " + link_name + " = " + value + ";";
+		context.fs_code += code;
 	}
 
-	LiteGraph.registerShaderNode( "surface", LGraphShaderSurface );
+	LiteGraph.registerShaderNode( "constant", LGraphShaderConstant );
 
-	function LGraphShaderColor()
+
+	//for shader uniforms
+	function LGraphShaderUniform()
 	{
-		this.addOutput("c","vec3");
+		this.addOutput("","float");
+
 		this.properties = {
-			value: [1,1,1],
-			uniform: ""
+			name: "u_name",
+			type: "float"
 		};
+
+		this.addWidget("text","name","u_name", "name" );
+		this.addWidget("combo","type","float", null, { values: GLSL_types, property: "type" });
+		this.updateWidgets();
 	}
 
-	//mult vec3
-	function LGraphShaderVec3ToXYZ()
+	LGraphShaderUniform.title = "Uniform";
+
+	LGraphShaderUniform.prototype.onPropertyChanged = function(name,value)
 	{
-		this.addInput("in","vec3");
-		this.addOutput("x","float");
-		this.addOutput("y","float");
-		this.addOutput("z","float");
+		if(name == "type")
+			this.disconnectOutput(0);
+		this.outputs[0].type = value;
+		this.widgets.length = 2; //remove extra widgets
+		this.updateWidgets();
 	}
 
-	LGraphShaderVec3ToXYZ.title = "Vec3->XYZ";
-	LGraphShaderVec3ToXYZ.desc = "Split vec3";
-	LGraphShaderVec3ToXYZ.filter = "shader";
+	LGraphShaderUniform.prototype.updateWidgets = LGraphShaderConstant.prototype.updateWidgets;
 
-	LGraphShaderVec3ToXYZ.prototype.onGetCode = function(type)
+	LGraphShaderUniform.prototype.onGetCode = function( lang, context )
 	{
-		if(type != "glsl")
+		if( lang != "glsl" )
 			return "";
-		var input = getInputLinkID( this, 0 );
-		var output_0 = getOutputLinkID( this, 0 );
-		var output_1 = getOutputLinkID( this, 1 );
-		var output_2 = getOutputLinkID( this, 2 );
-		if(!input)
-			return "";
+		var code = "	uniform " + this.properties.type + " " + this.properties.name + ";"
+		context.vs_out += code;
+		context.fs_out += code;
 
-		var str = "";
-		if(input && output_0)
-			str +="	float "+output_0+" = "+ input +".x;\n";
-		if(input && output_0)
-			str +="	float "+output_1+" = "+ input +".y;\n";
-		if(input && output_0)
-			str +="	float "+output_2+" = "+ input +".z;\n";
-		return str;
-	}
-
-	LiteGraph.registerShaderNode( "Vec3toXYZ", LGraphShaderVec3ToXYZ );
-
-
-	/*
-	function LGraphShaderAbs()
-	{
-		this.addInput("in");
-		this.addOutput("out");
-	}
-
-	LGraphShaderAbs.title = "Scale";
-	LGraphShaderAbs.desc = "Multiply by number";
-	LGraphShaderAbs.filter = "shader";
-
-	LGraphShaderAbs.prototype.onGetCode = function(type)
-	{
-		if(type != "glsl")
-			return "";
-		var input = getInputLinkID( this, 0 );
-		var output = getOutputLinkID( this, 0 );
-		if(input && output)
-			return "vec3 "+output+" = "+ input_0 +" * "+ input_1 +";\n";
-		return "";
-	}
-
-	LiteGraph.registerNodeType("shader/scale", LGraphShaderAbs );
-	*/
-
-	/*
-	function LGraphShaderFloat()
-	{
-		this.addOutput("out","number");
-		this.properties = { value: 1, uniform: "" };
-	}
-
-	LGraphShaderFloat.title = "Const";
-	LGraphShaderFloat.desc = "Multiply by number";
-	LGraphShaderFloat.filter = "shader";
-
-	LGraphShaderFloat.prototype.onGetCode = function( type, context )
-	{
-		if(type != "glsl")
-			return "";
-
-		var output = getOutputLinkID( this, 0 );
-		if(!output)
-			return "";
-
-		if(this.properties.uniform)
+		var link_name = getOutputLinkID(this,0);
+		if(link_name)
 		{
-			context.uniforms.push({ name: this.properties.uniform, link_name: output, type: "float", value: this.properties.value });
-			return "";
+			var code = "	" + this.properties.type + " " + link_name + " = " + this.properties.name + ";\n";
+			context.vs_code += code;
+			context.fs_code += code;
 		}
-
-		return "float "+output+" = "+ this.properties.value.toFixed(3) +";\n";
 	}
 
-	LiteGraph.registerNodeType("shader/float", LGraphShaderFloat );
-	*/
+	LiteGraph.registerShaderNode( "uniform", LGraphShaderUniform );
 
-	function LGraphShaderSampler2D()
-	{
-		this.addOutput("out","sampler2d");
-		this.properties = { name:"texture", value: "" };
-	}
-
-	LGraphShaderSampler2D.title = "Texture";
-	LGraphShaderSampler2D.desc = "To pass a texture";
-
-	LGraphShaderSampler2D.prototype.onGetCode = function( type, context )
-	{
-		if(type != "glsl")
-			return "";
-
-		var output = getOutputLinkID( this, 0 );
-		if(!output)
-			return "";
-		context.uniforms.push({ name: this.properties.name, link_name: output, type: "sampler2D", value: this.properties.value });
-	}
-
-	//LiteGraph.registerNodeType("shader/sampler2D", LGraphShaderSampler2D );
-	//LiteGraph.registerShaderNode( "scale", LGraphShaderScale );
-
-
-	/*
-	function LGraphShaderDot()
-	{
-		this.addInput("A","vec3");
-		this.addInput("B","vec3");
-		this.addOutput("out","number");
-		this.properties = {};
-	}
-
-	LGraphShaderDot.title = "Dot";
-	LGraphShaderDot.desc = "Dot product of two vec3";
-	LGraphShaderDot.filter = "shader";
-
-	LGraphShaderDot.prototype.onGetCode = function( type, context )
-	{
-		if(type != "glsl")
-			return "";
-
-		var input_A = getInputLinkID( this, 0 );
-		var input_B = getInputLinkID( this, 1 );
-		var output = getOutputLinkID( this, 0 );
-		if(!output || !input_A || !input_B)
-			return "";
-
-		return "\t  float "+output+" = dot("+ input_A +","+ input_B+");\n";
-	}
-
-	LiteGraph.registerNodeType("shader/dot", LGraphShaderDot );
-	*/
-
-
-
-	/*
-		vec4 color;\n\
-		vec3 vertex;\n\
-		vec3 normal;\n\
-		vec2 uv;\n\
-		vec2 uv1;\n\
-		\n\
-		vec3 camPos;\n\
-		vec3 viewDir;\n\
-		vec3 worldPos;\n\
-		vec3 worldNormal;\n\
-		vec4 screenPos;\n\
-	*/
 
 	function LGraphShaderVertex()
 	{
@@ -23819,7 +23916,6 @@ if(typeof(LiteGraph) != "undefined")
 		this.addOutput("viewDir","vec3");
 		this.addOutput("camPos","vec3");
 		this.addOutput("color","vec4");
-		this.size = [97,156];
 	}
 
 	LGraphShaderVertex.title = "Vertex";
@@ -23858,10 +23954,258 @@ if(typeof(LiteGraph) != "undefined")
 		output = getOutputLinkID( this, 8 );
 		if(output)
 			code += "\t vec4 "+output+" = IN.color;\n";
-		return code;
+
+		context.fs_code += code;
 	}
 
 	LiteGraph.registerShaderNode( "vertex", LGraphShaderVertex );
+
+
+	var GLSL_operations_desc = {
+		"radians": "T radians(T degrees)",
+		"degrees": "T degrees(T radians)",
+		"sin": "T sin(T angle)",
+		"cos": "T cos(T angle)",
+		"tan": "T tan(T angle)",
+		"asin": "T asin(T x)",
+		"acos": "T acos(T x)",
+		"atan": "T atan(T x)",
+		"atan2": "T atan(T x,T y)",
+		"pow": "T pow(T x,T y)",
+		"exp": "T exp(T x)",
+		"log": "T log(T x)",
+		"exp2": "T exp2(T x)",
+		"log2": "T log2(T x)",
+		"sqrt": "T sqrt(T x)",
+		"inversesqrt": "T inversesqrt(T x)",
+		"abs": "T abs(T x)",
+		"sign": "T sign(T x)",
+		"floor": "T floor(T x)",
+		"ceil": "T ceil(T x)",
+		"fract": "T fract(T x)",
+		"mod": "T mod(T x,T y)", //"T mod(T x,float y)"
+		"min": "T min(T x,T y)",
+		"max": "T max(T x,T y)",
+		"clamp": "T clamp(T x,T minVal,T maxVal)",
+		"mix": "T mix(T x,T y,T a)", //"T mix(T x,T y,float a)"
+		"step": "T step(T edge, T x)", //"T step(float edge, T x)"
+		"smoothstep": "T smoothstep(T edge, T x)", //"T smoothstep(float edge, T x)"
+		"length":"float length(T x)",
+		"distance":"float distance(T p0, T p1)",
+		"normalize":"T normalize(T x)",
+		"dot": "float dot(T x,T y)",
+		"cross": "vec3 cross(vec3 x,vec3 y)"
+		//faceforward, reflect, refract
+	};
+
+	var GLSL_operations = {}
+	for(var i in GLSL_operations_desc)
+	{
+		var op = GLSL_operations_desc[i];
+		var index = op.indexOf(" ");
+		var return_type = op.substr(0,index);
+		var index2 = op.indexOf("(",index);
+		var func = op.substr(index,index2-index);
+		var params = op.substr(index2 + 1, op.length - index2 - 2).split(",");
+		GLSL_operations[i] = { return_type: return_type, func: func, params: params };
+	}
+
+	function LGraphShaderOperation()
+	{
+		this.addInput("A","");
+		this.addInput("B","");
+		this.addInput("C","");
+		this.addOutput("","");
+
+		this.properties = {
+			operation: "dot"
+		};
+
+		var that = this;
+		this.addWidget("combo","Op.","dot",function(v){
+			if(that.properties.operation == v)
+				return;
+			that.properties.operation = v;
+			that.recomputeOutput();
+		},{ values: Object.keys( GLSL_operations ) });
+	}
+
+	LGraphShaderOperation.title = "Op.";
+
+	LGraphShaderOperation.prototype.recomputeOutput = function()
+	{
+		var op = GLSL_operations[ this.properties.operation ];
+		if(!op)
+			return;
+		var return_type = op.return_type;
+		if( return_type == "T" )
+		{
+			//type is variable and depends on the input type
+			var input_node = this.getInputNode(0);
+			if(input_node && input_node.requestOutputType)
+				return_type = input_node.requestOutputType(0);
+			else
+			{
+				var input_type = this.getInputDataType(0);
+				if( input_type )
+					return_type = input_type;
+			}
+		}
+
+		if(return_type == "T")
+			console.warn("type cannot be deducted from graph");
+
+		if(this.outputs[0].type != return_type)
+			this.disconnectOutput(0);
+		this.outputs[0].type = return_type;
+	}
+
+	LGraphShaderOperation.prototype.getTitle = function()
+	{
+		return this.properties.operation;
+	}
+
+	LGraphShaderOperation.prototype.onGetCode = function( lang, context )
+	{
+		if( lang != "glsl" )
+			return "";
+
+		var op = GLSL_operations[ this.properties.operation ];
+
+		var inputA = getInputLinkID( this, 0 );
+		var inputB = getInputLinkID( this, 1 );
+		var inputC = getInputLinkID( this, 2 );
+		var output = getOutputLinkID( this, 0 );
+
+		if(!inputA || !output)
+			return;
+
+		var return_type = op.return_type;
+		if( return_type == "T" )
+			return_type = this.getInputDataType(0);
+
+		if(op.params.length == 2 && !inputB)
+			return;
+		if(op.params.length == 3 && !inputC)
+			return;
+
+		var code = "";
+		if( op.params.length == 1 )
+			code = return_type + " " + output + " = " +  op.func + "(" + inputA + ");\n";
+		else if( op.params.length == 2 )
+			code = return_type + " " + output + " = " +  op.func + "(" + inputA + "," + inputB + ");\n";
+		else if( op.params.length == 3 )
+			code = return_type + " " + output + " = " +  op.func + "(" + inputA + "," + inputB + "," + inputC + ");\n";
+		context.fs_code += code;
+	}
+
+	LGraphShaderOperation.prototype.onPropertyChanged = function(name,value,prev_value)
+	{
+		if(name == "operation")
+		{
+		}
+	}
+
+	LiteGraph.registerShaderNode( "operation", LGraphShaderOperation );
+
+
+	//fragment shader output
+	function LGraphShaderFSOutput()
+	{
+		this.addInput("","float,vec2,vec3,vec4");
+	}
+
+	LGraphShaderFSOutput.title = "FragOutput";
+
+	LGraphShaderFSOutput.prototype.onGetCode = function( lang, context )
+	{
+		if( lang != "glsl" )
+			return "";
+		var link = getInputLinkID(this,0);
+		if(!link) //not connected
+			return;
+
+		var type = this.getInputDataType(0);
+		if(type == "vec4")
+			context.fs_code += "	_final_color = " + link + ";";
+		else if(type == "vec3")
+			context.fs_code += "	_final_color = vec4( " + link + ",1.0);";
+		else if(type == "vec2")
+			context.fs_code += "	_final_color = vec4( " + link + ",0.0,1.0);";
+		else if(type == "float")
+			context.fs_code += "	_final_color = vec4( " + link + " );";
+		else
+			console.warn( "FSOutput type not valid", type );
+	}
+
+	LiteGraph.registerShaderNode( "fs_output", LGraphShaderFSOutput );
+
+	//illumination output
+	function LGraphShaderPhong()
+	{
+		this.addInput("albedo","vec3");
+		this.addInput("ambient","vec3");
+		this.addInput("emission","vec3");
+		this.addInput("normal","vec3");
+		this.addInput("specular","float");
+		this.addInput("gloss","float");
+		this.addInput("alpha","float");
+		this.addInput("reflectivity","float");
+		this.addInput("extra","vec3");
+		this.addInput("out","vec4");
+	}
+
+	LGraphShaderPhong.prototype.onGetCode = function( lang, context )
+	{
+		if( lang != "glsl" )
+			return "";
+
+		var code = "SurfaceOutput o;\n";
+		var input = getInputLinkID( this, 0 );
+		if( input )
+			code += "\t o.Albedo = "+input+";\n";
+		input = getInputLinkID( this, 1 );
+		if( input )
+			code += "\t o.Emission = "+input+";\n";
+		input = getInputLinkID( this, 2 );
+		if( input )
+			code += "\t o.Ambient= "+input+";\n";
+		input = getInputLinkID( this, 3 );
+		if( input )
+			code += "\t o.Normal = "+input+";\n";
+		input = getInputLinkID( this, 4 );
+		if( input )
+			code += "\t o.Specular = "+input+";\n";
+		input = getInputLinkID( this, 5 );
+		if( input )
+			code += "\t o.Gloss = "+input+";\n";
+		input = getInputLinkID( this, 6 );
+		if( input )
+			code += "\t o.Reflectivity = "+input+";\n";
+		input = getInputLinkID( this, 7 );
+		if( input )
+			code += "\t o.Alpha = "+input+";\n";
+
+		code += "\n\
+		vec4 final_color = vec4(0.0);\n\
+		Light LIGHT = getLight();\n\
+		FinalLight final_light = computeLight( o, IN, LIGHT );\n\
+		final_color.xyz = applyLight( o, final_light );\n\
+		final_color.a = o.Alpha;\n\
+		if( o.Reflectivity > 0.0 )\n\
+			final_color = applyReflection( IN, o, final_color );\n\
+		\n\
+		";
+		
+		context.fs_functions += "\n\
+			#pragma shaderblock \"light\"\n\
+			#pragma shaderblock \"applyReflection\"\n\
+		";
+		context.fs_code += code;
+	}
+
+	LiteGraph.registerShaderNode( "BasicIllumination", LGraphShaderPhong );
+
 }
 ///@FILE:../src/helpers/path.js
 ///@INFO: UNCOMMON
@@ -41499,10 +41843,12 @@ Target.prototype.updateOrientation = function()
 		//up.set([0,1,0]);
 	}
 
+	/*
 	mat4.lookAt( Target.temp_mat, position, target_position, up );
 	quat.fromMat4( transform._rotation, Target.temp_mat );
+	*/
 
-	//transform.lookAt( position, target_position, up, true );
+	transform.lookAt( position, target_position, up, true );
 
 	switch( this.front )
 	{
@@ -43744,12 +44090,12 @@ ParticleEmissor.prototype.onCollectInstances = function(e, instances, options)
 		//enable extra2
 		RI.addShaderBlock( LS.Shaders.extra2_block );
 		//enable point particles 
-		RI.addShaderBlock( ParticleEmissor.point_block );
+		RI.addShaderBlock( pointparticles_block );
 	}
 	else
 	{
 		RI.removeShaderBlock( LS.Shaders.extra2_block );
-		RI.removeShaderBlock( ParticleEmissor.point_block );
+		RI.removeShaderBlock( pointparticles_block );
 	}
 
 	if(this.follow_emitter)
@@ -43787,14 +44133,6 @@ LS.Particle = Particle;
 LS.registerComponent(ParticleEmissor);
 
 
-//@paraboloid render
-var point_code = "\n\
-	gl_PointSize = u_point_size * a_extra2.x * u_viewport.w * u_camera_perspective.z / gl_Position.w;\n\
-";
-
-var pointparticles_block = ParticleEmissor.point_block = new LS.ShaderBlock("pointparticles");
-pointparticles_block.bindEvent("vs_final", point_code);
-pointparticles_block.register();
 
 
 
@@ -43930,7 +44268,6 @@ function PointCloud(o)
 	this._points = [];
 
 	this.size = 1;
-	this.texture_grid_size = 1;
 
 	//material
 	this.texture = null;
@@ -43939,16 +44276,18 @@ function PointCloud(o)
 	this.additive_blending = false;
 
 	this.use_node_material = false; 
-	this.premultiplied_alpha = false;
 	this.in_world_coordinates = false;
 	this.sort_in_z = false; //slower
+	this.use_perspective = false;
 
 	this.serialize_points = true; //disable if the points shouldnt be stored (if they are generated by another component on runtime)
 
 	if(o)
 		this.configure(o);
 
-	this._last_id = 0;
+	this._render_instance = new LS.RenderInstance(null, this);
+	this._min = vec3.create();
+	this._max = vec3.create();
 
 	//debug
 	/*
@@ -43978,6 +44317,13 @@ Object.defineProperty( PointCloud.prototype, "num_points", {
 	get: function() { return this._points.length; },
 	enumerable: true
 });
+
+Object.defineProperty( PointCloud.prototype, "mustUpdate", {
+	set: function(v) { this._mustUpdate = v; },
+	get: function() { return this._mustUpdate; },
+	enumerable: false
+});
+
 
 PointCloud.prototype.addPoint = function( position, color, size, frame_id )
 {
@@ -44022,15 +44368,24 @@ PointCloud.prototype.setPoint = function(id, position, color, size, frame_id )
 		data[7] = size;
 	if(frame_id !== undefined )
 		data[8] = frame_id;
+	else
+		data[8] = id;
 
 	this._must_update = true;
 }
 
+//returns a point structure as [x,y,z, r,g,b,a, size, index]
+PointCloud.prototype.getPoint = function(id)
+{
+	return this._points[id];
+}
+
+/*
 PointCloud.prototype.setPointsFromMesh = function( mesh )
 {
 	//TODO
 }
-
+*/
 
 PointCloud.prototype.removePoint = function(id)
 {
@@ -44091,6 +44446,9 @@ PointCloud.prototype.createMesh = function ()
 
 PointCloud.prototype.updateMesh = function ( camera )
 {
+	if(!this._points.length)
+		return;
+
 	var max_points = this.max_points|0;
 	if( this._mesh_max_points != max_points) 
 		this.createMesh();
@@ -44110,25 +44468,44 @@ PointCloud.prototype.updateMesh = function ( camera )
 		points.sort(function(a,b) { return a[9] < b[9] ? 1 : (a[9] > b[9] ? -1 : 0); });
 	}
 
+	var min = this._min;
+	var max = this._max;
+
 	//update mesh
 	var i = 0, f = 0;
 	var vertices = this._vertices;
 	var colors = this._colors;
 	var extra2 = this._extra2;
-	var premultiply = this.premultiplied_alpha;
+
+	min[0] = max[0] = points[0][0];
+	min[1] = max[1] = points[0][1];
+	min[2] = max[2] = points[0][2];
 
 	for(var iPoint = 0; iPoint < points.length; ++iPoint)
 	{
 		if( iPoint*3 >= vertices.length)
 			break; //too many points
-		var p = points[iPoint];
 
-		vertices.set(p.subarray(0,3), iPoint * 3);
+		var p = points[iPoint];
+		vertices[ iPoint*3 ] = p[0];
+		vertices[ iPoint*3+1 ] = p[1];
+		vertices[ iPoint*3+2 ] = p[2];
+
+		if(p[0] < min[0]) min[0] = p[0];
+		if(p[1] < min[1]) min[1] = p[1];
+		if(p[2] < min[2]) min[2] = p[2];
+		if(p[0] > max[0]) max[0] = p[0];
+		if(p[1] > max[1]) max[1] = p[1];
+		if(p[2] > max[2]) max[2] = p[2];
+
 		var c = p.subarray(3,7);
-		if(premultiply)
-			vec3.scale(c,c,c[3]);
-		colors.set(c, iPoint * 4);
-		extra2.set(p.subarray(7,9), iPoint * 2);
+		colors[iPoint * 4] = p[3]; 
+		colors[iPoint * 4+1] = p[4];
+		colors[iPoint * 4+2] = p[5];
+		colors[iPoint * 4+3] = p[6];
+
+		extra2[iPoint * 2] = p[7];
+		extra2[iPoint * 2 + 1] = p[8];
 	}
 
 	//upload geometry
@@ -44153,64 +44530,58 @@ PointCloud.prototype.onCollectInstances = function(e, instances, options)
 
 	var camera = LS.Renderer._current_camera;
 
-	if(this._last_premultiply !== this.premultiplied_alpha )
-		this._must_update = true;
-
 	if(this._must_update)
 		this.updateMesh( camera );
 
 	if(!this._material)
-	{
-		this._material = new LS.StandardMaterial({});
-		this._material.extra_macros = { 
-			USE_POINT_CLOUD: "", //for the stream with sizes
-			USE_TEXTURED_POINTS: "" //for texturing the points
-		};
-	}
+		this._material = new LS.StandardMaterial();
 
 	var material = this._material;
 
 	material.color.set(this.color);
-
-	if(this.premultiplied_alpha)
-		material.opacity = 1.0 - 0.01;
-	else
-		material.opacity = this.global_opacity - 0.01;
-	this._last_premultiply = this.premultiplied_alpha;
-
-	material.setTexture( LS.Material.COLOR, this.texture );
+	material.opacity = this.global_opacity;
+	material.setTexture( LS.Material.COLOR, this.texture, { uvs: Material.COORDS_UV_POINTCOORD } );
 	material.blend_mode = this.additive_blending ? LS.Blend.ADD : LS.Blend.ALPHA;
-	material.constant_diffuse = true;
+	material.flags.depth_write = !this.additive_blending;
+	material.translucency = 1;
+	material.flags.ignore_lights = false;
 
 	if(!this._mesh)
 		return null;
 
 	var RI = this._render_instance;
-	if(!RI)
-		this._render_instance = RI = new LS.RenderInstance(this._root, this);
+	RI.fromNode( this._root );
 
 	if(this.in_world_coordinates && this._root.transform )
 		RI.matrix.set( this._root.transform._global_matrix );
 	else
 		mat4.copy( RI.matrix, PointCloud._identity );
 
-	/*
-	if(this.follow_emitter)
-		mat4.translate( RI.matrix, PointCloud._identity, this._root.transform._position );
-	else
-		mat4.copy( RI.matrix, PointCloud._identity );
-	*/
-
 	var material = (this._root.material && this.use_node_material) ? this._root.getMaterial() : this._material;
 	mat4.multiplyVec3(RI.center, RI.matrix, vec3.create());
 
 	RI.uniforms.u_point_size = this.size;
+
+	if( this.use_perspective )
+	{
+		//enable extra2
+		RI.addShaderBlock( LS.Shaders.extra2_block );
+		//enable point particles 
+		RI.addShaderBlock( pointparticles_block );
+	}
+	else
+	{
+		RI.removeShaderBlock( LS.Shaders.extra2_block );
+		RI.removeShaderBlock( pointparticles_block );
+	}
 
 	RI.setMaterial( material );
 	RI.setMesh( this._mesh, gl.POINTS );
 	var primitives = this._points.length;
 	if(primitives > this._vertices.length / 3)
 		primitives = this._vertices.length / 3;
+
+	BBox.setMinMax( this._render_instance.oobb, this._min, this._max );
 
 	RI.setRange(0, primitives );
 	instances.push(RI);

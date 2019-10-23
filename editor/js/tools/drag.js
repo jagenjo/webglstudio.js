@@ -51,7 +51,7 @@ var dragNodeTool = {
 		img.src = "imgs/mini-icon-ball.png";
 		e.dataTransfer.setDragImage( img, 0, 0 );
 
-		if (e.buttons != GL.LEFT_MOUSE_BUTTON)
+		if (e.buttons != LS.Input.BUTTONS_LEFT) //left
 			return;
 
 		var instance_info = LS.Picking.getInstanceAtCanvasPosition( e.canvasx, e.canvasy, ToolUtils.getCamera() );

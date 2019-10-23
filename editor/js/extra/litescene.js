@@ -41779,7 +41779,7 @@ function Target(o)
 	this.cylindrical = false;
 	this.front = Target.NEGZ;
 	this.up = Target.POSY;
-	this.use_iterative_method = true;
+	this.use_iterative_method = false; //this method reuses previous orientation as a reinforcement to avoid weird cases but it gives an approxiate orientation
 	
 	this._global_position = vec3.create();
 	this._target_position = vec3.create();

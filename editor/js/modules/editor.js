@@ -406,14 +406,18 @@ var EditorModule = {
 		dialog.adjustSize();
 	},
 
-	showEditPropertiesDialog: function( properties, valid_fields, callback )
+	showEditPropertiesDialog: function( properties, valid_fields, callback, parent )
 	{
 		valid_fields = valid_fields || ["string","number","vec2","vec3","vec4","color","texture","enum"];
 		var selected = null;
 		var properties_by_name = {};
 
-		var dialog = new LiteGUI.Dialog( { title: "Edit Properties", parent:"#visor", close: true, minimize: true, width: 600, height: 300, resizable:true, draggable: true } );
+		var dialog = new LiteGUI.Dialog( { title: "Edit Properties", parent: parent, close: true, minimize: true, width: 600, height: 300, resizable:true, draggable: true } );
 		dialog.show();
+		dialog.on_close = function(){
+			if(callback)
+				callback(properties);
+		}
 
 		//list
 		var area = new LiteGUI.Area();
@@ -472,6 +476,7 @@ var EditorModule = {
 			}
 
 			inspector.clear();
+			inspector.addTitle("Property");
 
 			var property = properties_by_name[ selected ];
 			if(!property)
@@ -533,10 +538,11 @@ var EditorModule = {
 			}});
 			*/
 			inspector.addButton(null,"Close",{ callback: function() {
-				if(callback)
-					callback(properties);
 				dialog.close();
 			}});
+
+			if(callback)
+				callback(properties);
 		}
 
 		function inner_value_widget(property, change)

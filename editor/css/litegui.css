@@ -100,6 +100,10 @@
 	color: #888;
 }
 
+.inspector.dark .wtitle {
+	background-color: #323232;
+}
+
 .inspector .wtitle:first-child {
 	/*margin-top: 0;*/
 }
@@ -796,6 +800,7 @@ div {
 	box-sizing: border-box;	
 	width: 100%;
 	height: 100%;
+	position: relative;
 	/* outline: 2px solid red; */
 }
 

@@ -1881,6 +1881,11 @@
             var links = [];
             for (var i = 0; i < data.links.length; ++i) {
                 var link_data = data.links[i];
+				if(!link_data) //weird bug
+				{
+					console.warn("serialized graph link data contains errors, skipping.");
+					continue;
+				}
                 var link = new LLink();
                 link.configure(link_data);
                 links[link.id] = link;
@@ -2129,7 +2134,7 @@
                 for (var k in info.properties) {
                     this.properties[k] = info.properties[k];
                     if (this.onPropertyChanged) {
-                        this.onPropertyChanged(k, info.properties[k]);
+                        this.onPropertyChanged( k, info.properties[k] );
                     }
                 }
                 continue;
@@ -2193,13 +2198,22 @@
             }
         }
 
-        if (info.widgets_values && this.widgets) {
-            for (var i = 0; i < info.widgets_values.length; ++i) {
-                if (this.widgets[i]) {
-                    this.widgets[i].value = info.widgets_values[i];
-                }
-            }
-        }
+		if( this.widgets )
+		{
+			for (var i = 0; i < this.widgets.length; ++i)
+			{
+				var w = this.widgets[i];
+				if(w.options && w.options.property && this.properties[ w.options.property ])
+					w.value = JSON.parse( JSON.stringify( this.properties[ w.options.property ] ) );
+			}
+			if (info.widgets_values) {
+				for (var i = 0; i < info.widgets_values.length; ++i) {
+					if (this.widgets[i]) {
+						this.widgets[i].value = info.widgets_values[i];
+					}
+				}
+			}
+		}
 
         if (this.onConfigure) {
             this.onConfigure(info);

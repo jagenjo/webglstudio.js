@@ -17,6 +17,8 @@ var ShadersModule = {
 		if( !LS.GraphMaterial )
 			return;
 
+		LiteGUI.Inspector.widget_constructors["float"] = "addNumber";
+
 		//Register in CanvasManager to render the border on playmode
 		//RenderModule.canvas_manager.addWidget( PlayModule, 10 );
 
@@ -24,7 +26,7 @@ var ShadersModule = {
 			//get the canvas
 			ShadersModule.enabled = true;
 			RenderModule.canvas_manager.addWidget( ShadersModule );
-			var canvas = RenderModule.appendViewportTo( ShadersModule.area.content );
+			var canvas = RenderModule.appendViewportTo( ShadersModule._canvas_area );
 			ShadersModule.graphcanvas.setCanvas( canvas, true );
 		},
 		callback_leave: function() {
@@ -49,14 +51,138 @@ var ShadersModule = {
 
 		//create area
 		var area = this.area = new LiteGUI.Area( { className: "shaderarea", height: -30});
+		area.root.style.position = "relative";
+		area.root.style.overflow = "hidden";
 		this.root.appendChild( area.root );
+
+		//canvas area
+		var canvas_area = this._canvas_area = LiteGUI.createElement("div",".shader_canvas_area");
+		area.add( canvas_area );
 
 		//graphs
 		this.graph = null;
 		this.graphcanvas = new LiteGraph.LGraphCanvas(null,null,{ skip_render: true });
 		this.graphcanvas.onShowNodePanel = this.onShowNodePanel.bind(this);
 		this.graphcanvas.onRenderBackground = this.onRenderCanvasBackground.bind(this);
+		//this.graphcanvas.onDropItem = this.onDropItem.bind(this); //does not apply as this uses another canvas
 		this.graphcanvas.filter = "shader";
+		this.graphcanvas.ds.offset[0] = 280; //offset a little bit to avoid overlaping with the sidebar
+
+		//toolset
+		var sidebar = new LiteGUI.Panel({width: 256, height: "calc( 100% - 256px )", position: [0,0] }); 
+		sidebar.root.style.background = "#1A1A1A";
+		area.add(sidebar);
+
+		var sidebar_inspector = this.sidebar_inspector = new LiteGUI.Inspector( { className: "dark" });
+		sidebar.add( sidebar_inspector );
+		this.updateSidebar();
+	},
+
+	updateSidebar: function()
+	{
+		var sidebar_inspector = this.sidebar_inspector;
+		sidebar_inspector.clear();
+
+		sidebar_inspector.addTitle("Properties",{ collapsable: true });
+
+		var material = this.material;
+		if(material && material.graphcode)
+		{
+			var properties = material.graphcode.properties;
+			for(var i in properties)
+			{
+				var p = properties[i];
+				sidebar_inspector.addString( p.type, p.name, { pretitle: ShadersModule.getBulletCode( material, p.name ), disabled:true });
+			}
+		}
+
+		sidebar_inspector.addSeparator();
+
+		sidebar_inspector.addButton(null,"Edit Properties",function(v){
+			var material = ShadersModule.material;
+			if(!material || !material.graphcode)
+				return;
+			EditorModule.showEditPropertiesDialog( material.graphcode.properties, LS.GraphMaterial.valid_properties, function(prop){
+				console.log(prop);	
+				ShadersModule.updateSidebar();
+			});
+		});
+
+		/*
+		sidebar_inspector.addSection("Nodes");
+		this.nodes_container = sidebar_inspector.addContainer(".nodes_available",{ height: 200 });
+		this.nodes_container.style.backgroundColor = "#111";
+		*/
+
+		InterfaceModule.attachBulletsBehaviour( sidebar_inspector, ".bullet_icon", inner_onBulletClick, inner_onBulletRightClick, inner_onBulletDragStart );
+
+		function inner_onBulletClick(e)
+		{
+			console.log("create node?");
+		}
+
+		function inner_onBulletRightClick(e)
+		{
+			console.log("show property menu?");
+		}
+
+		function inner_onBulletDragStart(e)
+		{
+			e.dataTransfer.setData("nodetype","shader/uniform");
+			e.dataTransfer.setData("propname","name");
+			var name = e.target.dataset["propname"];
+			e.dataTransfer.setData("propvalue", name );
+		}
+	},
+
+	getBulletCode: function( target, property, options )
+	{
+		if(!target.getLocator)
+			return "";
+		var locator = target.getLocator();
+		if(!locator)
+			return "";
+
+		var prefab = LS.checkLocatorBelongsToPrefab( locator );
+		if( prefab )
+			locator = LS.convertLocatorFromUIDsToName( locator );
+
+		return "<span title='Drag property for "+property+"' class='bullet_icon' data-propertyname='" + property + "' data-propname='"+property+"' data-propertyuid='" + locator + "/" + property + "' ></span>";
+	},
+
+	//called from Core when droping into the WebGLCanvas
+	onItemDrop: function(e)
+	{
+		e.preventDefault();
+		e.stopPropagation();
+		e.stopImmediatePropagation();
+
+		var graph = this.graph;
+		if(!graph)
+			return;
+
+		var nodetype = e.dataTransfer.getData("nodetype");
+		var graphnode = LiteGraph.createNode( nodetype );
+		if(!graphnode)
+		{
+			console.log("unknown node type:", nodetype );
+			return;
+		}
+
+		var prop_name = e.dataTransfer.getData("propname");
+		var prop_value = e.dataTransfer.getData("propvalue");
+		if(prop_name)
+			graphnode.setProperty(prop_name, prop_value);
+
+		var s = Math.floor(LiteGraph.NODE_TITLE_HEIGHT * 0.5);
+		this.graphcanvas.adjustMouseEvent(e);
+		graphnode.pos[0] = e.canvasX - s;
+		graphnode.pos[1] = e.canvasY + s;
+
+		//get active graph
+		graph.add( graphnode );
+
+		return true;
 	},
 
 	openTab: function()
@@ -66,11 +192,15 @@ var ShadersModule = {
 
 	editGraph: function( material, options )
 	{
+		this.material = material;
 		var graphcode = material.graphcode;
 		if(!graphcode)
 			return;
 		this.graph = graphcode.graph;
 		this.graphcanvas.setGraph( this.graph );
+		this.updateSidebar();
+
+		window.SHADERGRAPH = this.graph;
 	},
 
 	onNewGraph: function()
@@ -254,3 +384,5 @@ var ShadersModule = {
 };
 
 CORE.registerModule( ShadersModule );
+
+

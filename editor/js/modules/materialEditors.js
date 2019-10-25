@@ -531,7 +531,7 @@ LS.MaterialClasses.SurfaceMaterial["@inspector"] = function( material, inspector
 		if(v == "Add Property")
 			EditorModule.showAddPropertyDialog(inner_on_newproperty, ["number","vec2","vec3","vec4","color","texture","cubemap","sampler"] );
 		else 
-			EditorModule.showEditPropertiesDialog( material.properties, ["number","vec2","vec3","vec4","color","texture","cubemap","sampler"], inner_on_editproperties );
+			EditorModule.showEditPropertiesDialog( material.properties, ["number","vec2","vec3","vec4","color","texture","cubemap","sampler"], inner_on_editproperties, "#visor" );
 	}});
 
 	inspector.addTitle("Shader & Flags");

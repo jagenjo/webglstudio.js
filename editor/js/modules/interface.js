@@ -1002,12 +1002,15 @@ LiteGUI.Inspector.prototype.addGraph = function( name, value, options )
 		if(path && path.indexOf(".json") == -1)
 			return;
 
+		/*
+		//if there is already a graph? dont do anything
 		var graph = LS.RM.getResource( path );
 		if(graph)
 		{
 			//GraphModule.editInstanceGraph( graph, null, true );
 			return;
 		}
+		*/
 
 		var default_filename = "";
 		if (options.graph_type == LS.GraphCode.SHADER_GRAPH)
@@ -1017,12 +1020,14 @@ LiteGUI.Inspector.prototype.addGraph = function( name, value, options )
 
 		DriveModule.showSelectFolderFilenameDialog(null, function( folder, filename, fullpath ){
 			//GraphModule.editInstanceGraph( resource );
-			var graph = new LS.GraphCode();
+			var graphcode = new LS.GraphCode();
 			if(options.graph_type)
-				graph.type = options.graph_type;
-			LS.RM.registerResource( fullpath, graph );
+				graphcode.type = options.graph_type;
+			if( graphcode.type == LS.GraphCode.SHADER_GRAPH && LS.MaterialClasses.GraphMaterial.default_graph )
+				graphcode.graph.configure( LS.MaterialClasses.GraphMaterial.default_graph );
+			LS.RM.registerResource( fullpath, graphcode );
 			if(options.callback)
-				options.callback( fullpath, graph );
+				options.callback( fullpath, graphcode );
 			that.refresh();
 		}, { button: "Create", filename: default_filename, folder: DriveModule.getSceneBaseFolder(), extension:"GRAPH.json" } );
 		return;

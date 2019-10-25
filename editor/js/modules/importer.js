@@ -91,8 +91,10 @@ var ImporterModule  = {
 		GL.augmentEvent( evt );
 		var node = null;
 		if(evt.canvasx !== undefined ) //canvas drop
+		{
 			node = RenderModule.getNodeAtCanvasPosition( evt.canvasx, evt.canvasy );
 			options.node = node;
+		}
 		options.event = evt;
 
 		//files

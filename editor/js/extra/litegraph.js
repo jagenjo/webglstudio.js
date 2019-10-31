@@ -5928,7 +5928,7 @@ LGraphNode.prototype.executeAction = function(action)
                     } //not selected
                     clipboard_info.links.push([
                         target_node._relative_id,
-                        j,
+                        link_info.origin_slot, //j,
                         node._relative_id,
                         link_info.target_slot
                     ]);
@@ -9288,56 +9288,49 @@ LGraphNode.prototype.executeAction = function(action)
             } else {
                 var c = 0;
                 str = str.toLowerCase();
+				var filter = graphcanvas.filter || graphcanvas.graph.filter;
+
                 //extras
                 for (var i in LiteGraph.searchbox_extras) {
                     var extra = LiteGraph.searchbox_extras[i];
                     if (extra.desc.toLowerCase().indexOf(str) === -1) {
                         continue;
                     }
-                    addResult(extra.desc, "searchbox_extra");
-                    if (
-                        LGraphCanvas.search_limit !== -1 &&
-                        c++ > LGraphCanvas.search_limit
-                    ) {
+					var ctor = LiteGraph.registered_node_types[ extra.type ];
+					if( ctor && ctor.filter && ctor.filter != filter )
+						continue;
+                    addResult( extra.desc, "searchbox_extra" );
+                    if ( LGraphCanvas.search_limit !== -1 && c++ > LGraphCanvas.search_limit ) {
                         break;
                     }
                 }
 
-				var filter = graphcanvas.graph.filter;
-
-                if (Array.prototype.filter) {
-                    //filter supported
-                    //types
-                    var keys = Object.keys(LiteGraph.registered_node_types);
-                    var filtered = keys.filter(function(item) {
-						if(filter && item.filter != filter )
-							return -1;
-                        return item.toLowerCase().indexOf(str) !== -1;
-                    });
-                    for (var i = 0; i < filtered.length; i++) {
-                        addResult(filtered[i]);
-                        if (
-                            LGraphCanvas.search_limit !== -1 &&
-                            c++ > LGraphCanvas.search_limit
-                        ) {
-                            break;
-                        }
-                    }
+				var filtered = null;
+                if (Array.prototype.filter) { //filter supported
+                    var keys = Object.keys( LiteGraph.registered_node_types ); //types
+                    var filtered = keys.filter( inner_test_filter );
                 } else {
+					filtered = [];
                     for (var i in LiteGraph.registered_node_types) {
-						if(filter && LiteGraph.registered_node_types[i].filter != filter )
-							continue;
-                        if (i.indexOf(str) != -1) {
-                            addResult(i);
-                            if (
-                                LGraphCanvas.search_limit !== -1 &&
-                                c++ > LGraphCanvas.search_limit
-                            ) {
-                                break;
-                            }
-                        }
+						if( inner_test_filter(i) )
+							filtered.push(i);
                     }
                 }
+
+				for (var i = 0; i < filtered.length; i++) {
+					addResult(filtered[i]);
+					if ( LGraphCanvas.search_limit !== -1 && c++ > LGraphCanvas.search_limit ) {
+						break;
+					}
+				}
+
+				function inner_test_filter( type )
+				{
+					var ctor = LiteGraph.registered_node_types[ type ];
+					if(filter && ctor.filter != filter )
+						return false;
+					return type.toLowerCase().indexOf(str) !== -1;
+				}
             }
 
             function addResult(type, className) {
@@ -13392,7 +13385,7 @@ if (typeof exports != "undefined") {
 
     MathClamp.title = "Clamp";
     MathClamp.desc = "Clamp number between min and max";
-    MathClamp.filter = "shader";
+    //MathClamp.filter = "shader";
 
     MathClamp.prototype.onExecute = function() {
         var v = this.getInputData(0);

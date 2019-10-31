@@ -22,6 +22,13 @@ var ShadersModule = {
 		//Register in CanvasManager to render the border on playmode
 		//RenderModule.canvas_manager.addWidget( PlayModule, 10 );
 
+		LiteGUI.addCSS("	.shader-prop { cursor: pointer; }\n\
+			.shader-prop .winfo { margin: 4px; padding: 4px; padding-left: 10px; background: #4d223f; 2px 2px 2px black; border-radius: 8px; overflow: hidden; }\n\
+			.shader-prop .winfo:hover { background: #444; 2px 2px 2px black; }\n\
+			.shader-prop .winfo .type { padding: 0 20px; opacity: 0.5; font-size: 0.95em; }\n\
+			.shader-prop .winfo .name { font-size: 1.2em; color: white; }\n\
+		");
+
 		this.tab = LiteGUI.main_tabs.addTab("Shaders", {id:"shaderstab", bigicon: this.bigicon, size: "full", module: this, callback: function() {
 			//get the canvas
 			ShadersModule.enabled = true;
@@ -92,7 +99,12 @@ var ShadersModule = {
 			for(var i in properties)
 			{
 				var p = properties[i];
-				sidebar_inspector.addString( p.type, p.name, { pretitle: ShadersModule.getBulletCode( material, p.name ), disabled:true });
+				//sidebar_inspector.addString( p.type, p.name, { pretitle: ShadersModule.getBulletCode( material, p.name ), disabled:true });
+				var pelem = sidebar_inspector.addInfo(null,"<span class='bullet_icon'></span><span class='type'></span><span class='name'></span>");
+				pelem.dataset["propname"] = p.name;
+				pelem.classList.add("shader-prop");
+				pelem.querySelector(".type").innerText = p.type;
+				pelem.querySelector(".name").innerText = p.name;
 			}
 		}
 
@@ -114,7 +126,7 @@ var ShadersModule = {
 		this.nodes_container.style.backgroundColor = "#111";
 		*/
 
-		InterfaceModule.attachBulletsBehaviour( sidebar_inspector, ".bullet_icon", inner_onBulletClick, inner_onBulletRightClick, inner_onBulletDragStart );
+		InterfaceModule.attachBulletsBehaviour( sidebar_inspector, ".shader-prop", inner_onBulletClick, inner_onBulletRightClick, inner_onBulletDragStart );
 
 		function inner_onBulletClick(e)
 		{
@@ -246,7 +258,7 @@ var ShadersModule = {
 		var graphcode = this.graph._graphcode;
 		if(!graphcode)
 			return;
-		EditorModule.checkCode( graphcode.getShaderCode( true ) );
+		EditorModule.checkCode( graphcode.getShaderCode( true ), "Shader Code" );
 	},
 
 	onShowNodePanel: function( node )

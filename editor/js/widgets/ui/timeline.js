@@ -29,6 +29,7 @@ function Timeline( options )
 	this._visible_keyframes = [];
 	this.scroll_curves_y = 0;
 	this.curves_scale_y = 1;
+	this._selection_rectangle = null;
 }
 
 Timeline.widget_name = "Timeline";
@@ -437,10 +438,19 @@ Timeline.prototype.redrawCanvas = function()
 	this.drawTracksSidebar( canvas, ctx );
 
 	//main content ***********************************
+	this._visible_keyframes.length = 0;
 	if(this.mode == "keyframes")
 		this.drawKeyframesView( canvas, ctx );
 	else if(this.mode == "curves")
 		this.drawCurvesView( canvas, ctx );
+
+	//selection
+	if(this._selection_rectangle)
+	{
+		var r = this._selection_rectangle;
+		ctx.strokeStyle = "#FF0";
+		ctx.strokeRect( r[0] - 0.5, r[1] - 0.5, r[2] - r[0], r[3] - r[1] );
+	}
 
 	//extra info
 	var duration = take.duration;
@@ -486,7 +496,7 @@ Timeline.prototype.redrawCanvas = function()
 		ctx.restore();
 	}
 
-	//triangles on the side
+	//scroll triangles on the side
 	if(data.last_track < data.num_tracks - 1)
 	{
 		ctx.save();
@@ -564,12 +574,12 @@ Timeline.prototype.drawCurvesView = function( canvas, ctx )
 		keyframe_width = 10;
 
 	var selection = this.session.selection;
-	this._visible_keyframes.length = 0;
 	var visible_keyframes = this._visible_keyframes;
 
 	for(var i = 0; i < data.total_tracks; i++)
 	{
-		var track = take.tracks[ data.first_track + i ];
+		var track_index = data.first_track + i;
+		var track = take.tracks[ track_index ];
 		var num = track.getNumberOfKeyframes();
 		var y = timeline_height + i * line_height;
 		ctx.fillStyle = ctx.strokeStyle = "#9AF";
@@ -633,7 +643,14 @@ Timeline.prototype.drawCurvesView = function( canvas, ctx )
 			var w = keyframe_width;
 			var h = line_height - 4;
 
-			var is_selected_keyframe = selection && selection.type == "keyframe" && selection.track == i && selection.keyframe == j;
+			var is_selected_keyframe = false;
+			if(selection)
+			{
+				if (selection.type == "keyframe" && selection.track == i && selection.keyframe == j)
+					is_selected_keyframe = true;
+				else if (selection.type == "keyframes" && selection.hashed[ i*10000 + j ] )
+					is_selected_keyframe = true;
+			}
 
 			ctx.fillStyle = ctx.strokeStyle = is_selected_keyframe ? "#FC6" : "#AAA";
 			ctx.beginPath();
@@ -643,7 +660,7 @@ Timeline.prototype.drawCurvesView = function( canvas, ctx )
 				ctx.rect( posx - 4, v - 4, 8, 8 );
 				//[posx,v,i,j,0]
 				if(v >= - 5 && v < canvas.height + 5)
-					visible_keyframes.push([posx,v,i,j,0]);
+					visible_keyframes.push([track_index,j,posx,v,0]);
 			}
 			else if(track.value_size > 1)
 			{
@@ -661,7 +678,7 @@ Timeline.prototype.drawCurvesView = function( canvas, ctx )
 					}
 					ctx.rect( posx - 4, v - 4, 8, 8 );
 					if(v >= - 5 && v < canvas.height + 5)
-						visible_keyframes.push([posx,v,i,j,k]);
+						visible_keyframes.push([track_index,j,posx,v,k]);
 				}
 				if( Math.abs(min_v - max_v) > 0.001 ) //vertical line
 					ctx.rect( posx - 1, min_v, 1, max_v - min_v );
@@ -699,9 +716,12 @@ Timeline.prototype.drawKeyframesView = function( canvas, ctx )
 	var keyframe_width = data.keyframe_width;
 	var selection = this.session.selection;
 
+	var vks = this._visible_keyframes;
+
 	for(var i = 0; i < data.total_tracks; i++)
 	{
-		var track = take.tracks[ data.first_track + i ];
+		var track_index = data.first_track + i;
+		var track = take.tracks[ track_index ];
 		var num = track.getNumberOfKeyframes();
 		if(num == 0)
 			continue;
@@ -716,7 +736,16 @@ Timeline.prototype.drawKeyframesView = function( canvas, ctx )
 			if(keyframe[0] < data.start_time || keyframe[0] > data.end_time)
 				continue;
 
-			if(selection && selection.type == "keyframe" && selection.track == i && selection.keyframe == j)
+			var is_selected = false;
+			if(selection)
+			{
+				if (selection.type == "keyframe" && selection.track == i && selection.keyframe == j)
+					is_selected = true;
+				else if (selection.type == "keyframes" && selection.hashed[ i*10000 + j ] )
+					is_selected = true;
+			}
+
+			if(is_selected)
 				ctx.fillStyle = "#FC6";
 			else
 				ctx.fillStyle = "#9AF";
@@ -735,6 +764,8 @@ Timeline.prototype.drawKeyframesView = function( canvas, ctx )
 				//mini line
 				if(track.enabled)
 					timeline_keyframe_lines.push( posx );
+
+				vks.push([track_index,j,posx,offset_y]);
 
 				//keyframe
 				ctx.beginPath();
@@ -1173,37 +1204,65 @@ Timeline.prototype.onMouse = function(e)
 	var item = this.getMouseItem(e);
 	this.canvas.style.cursor = item ? item.cursor : "default";
 	this._last_item = item;
+	var now = getTime();
+
+	console.log( this.session.selection ? this.session.selection.type : "no selection" );//debug
+
 
 	if( e.type == "mousedown" )
 	{
 		LiteGUI.focus_widget = this;
 		this.mouse_dragging = true;
 
-		if(item)
+		if(item) //something below the mouse (could be keyframe or track or background)
 		{
-			var now = getTime();
-			if( this._last_click_time && ( now - this._last_click_time ) < 200 ) //dbl click
+			console.log(item);
+
+			if (e.ctrlKey && item.type == "background")
 			{
-				var time = this.session.current_time;
-				var track = this.current_take.tracks[ item.track ];
-				if( item.type == "keyframe" && track )
-				{	
-					if( track.type == "events")
-						this.showAddEventKeyframeDialog( track, time, track.getKeyframe( item.keyframe ) );
-					else
-						this.showEditKeyframeDialog( track, time, track.getKeyframe( item.keyframe ), item.keyframe );
-				}
-				if(item.type == "track" && track)
-					this.showTrackOptionsDialog( track );
-				//this.showPropertyInfo( this.current_take.tracks[ item.track ] );
+				this._selection_rectangle = [e.mousex, e.mousey,e.mousex, e.mousey];
 			}
-			this._last_click_time = now;
-
-
-			if(item.draggable)
-				this._item_dragged = item;
 			else
-				this._item_dragged = null;
+			{
+				//on double click
+				if( this._last_click_time && ( now - this._last_click_time ) < 200 ) 
+				{
+					var time = this.session.current_time;
+					var track = this.current_take.tracks[ item.track ];
+					if( item.type == "keyframe" && track )
+					{	
+						if( track.type == "events")
+							this.showAddEventKeyframeDialog( track, time, track.getKeyframe( item.keyframe ) );
+						else
+							this.showEditKeyframeDialog( track, time, track.getKeyframe( item.keyframe ), item.keyframe );
+					}
+					if(item.type == "track" && track)
+						this.showTrackOptionsDialog( track );
+					//this.showPropertyInfo( this.current_take.tracks[ item.track ] );
+				}
+				else 
+				{
+					if( this.session.selection && this.session.selection.type == "keyframes" && this.session.selection.hashed[ item.track * 10000 + item.keyframe ] )
+					{
+						//start dragging multiple keyframes
+						this.addUndoTakeEdited(this.current_take.serialize());
+					}
+					else
+						this.session.selection = item;
+					if(this.mode == "keyframes") //changes time on keyframe selection
+					{
+						var time = this.canvasXToTime( e.mousex );
+						this.setCurrentTime( time );
+					}
+				}
+
+				this._last_click_time = now;
+
+				if(item.draggable)
+					this._item_dragged = item;
+				else
+					this._item_dragged = null;
+			}
 
 			if(item.type == "timeline")
 				this.setCurrentTime( this.canvasXToTime( e.mousex ) );
@@ -1233,7 +1292,12 @@ Timeline.prototype.onMouse = function(e)
 	{
 		if( this.mouse_dragging )
 		{
-			if( this._item_dragged )
+			if( this._selection_rectangle )
+			{
+				this._selection_rectangle[2] = e.mousex;
+				this._selection_rectangle[3] = e.mousey;
+			}
+			else if( this._item_dragged )
 			{
 				if( this._item_dragged.type == "timeline" )
 				{
@@ -1254,34 +1318,94 @@ Timeline.prototype.onMouse = function(e)
 					var track = this.current_take.tracks[ this._item_dragged.track ];
 					if(track.packed_data)
 						track.unpackData();
-
 					//set new time
 					var keyframe = track.data[this._item_dragged.keyframe];
-					keyframe[0] = newt;
+					var diff = newt - keyframe[0];
 
-					if( this.mode =="curves" && this._item_dragged.value_index >= 0 )
+					//multiple keyframes
+					if( this.session.selection && this.session.selection.type == "keyframes" )
 					{
-						var v = this.convertCanvasToValue( e.mousey );
-						if(track.value_size == 1)
-							keyframe[1] = v;
-						else if(track.value_size > 1 && this._item_dragged.value_index < track.value_size)
-							keyframe[1][this._item_dragged.value_index] = v;
-						if(track._type_index == LS.TYPES_INDEX.TRANS10 )
+						var keyframes = this.session.selection.keyframes;
+						var item_track = track;
+						var item_keyframe = keyframe;
+						var changed_tracks = {};
+						var changed_keyframes = {};
+						if(diff)
+						for(var i = 0; i < keyframes.length; ++i)
 						{
-							var q = keyframe[1].subarray(3,7);
-							quat.normalize( q,q );
+							var kf = keyframes[i];
+							var kf_key = kf[0] * 10000 + kf[1];
+							if( changed_keyframes[ kf_key ] ) //this is to avoid moving several times a keyframe that contains several values (represented as individual keyframes in the timeline curve editor)
+								continue;
+							changed_keyframes[ kf_key ] = true;
+							var track = this.current_take.tracks[ kf[0] ];
+							if(track.packed_data)
+								track.unpackData();
+							var keyframe = track.data[ kf[1] ];
+							keyframe[0] += diff;
+
+							//ugly solution but when moving keyframes the selection index is invalidated because it pos in the track array has changed
+							//so we need to compute how many slots have changed
+							var offset = 0;
+							if( diff > 0 )
+							{
+								for(var j = kf[1] + 1; j < track.data.length; ++j)
+								{
+									if( track.data[j][0] >= keyframe[0] )
+										break;
+									offset++;
+								}
+							}
+							else //diff < 0
+							{
+								for(var j = kf[1] - 1; j >= 0; --j)
+								{
+									if( track.data[j][0] <= keyframe[0] )
+										break;
+									offset--;
+								}
+							}
+							if(offset)
+							{
+								delete this.session.selection.hashed[ kf[0] * 10000 + kf[1] ];
+								kf[1] += offset;
+								this.session.selection.hashed[ kf[0] * 10000 + kf[1] ] = kf;
+							}
+							changed_tracks[kf[0]] = track;
 						}
-						else if(track._type_index == LS.TYPES_INDEX.QUAT )
-							quat.normalize( keyframe[1], keyframe[1] );
+
+						for(var i in changed_tracks)
+							changed_tracks[i].sortKeyframes();
+
+						this._item_dragged.keyframe = item_track.data.indexOf(item_keyframe); //in case it was moved
+					}
+					else //single keyframe
+					{
+						keyframe[0] = newt;
+						if( this.mode =="curves" && this._item_dragged.value_index >= 0 )
+						{
+							var v = this.convertCanvasToValue( e.mousey );
+							if(track.value_size == 1)
+								keyframe[1] = v;
+							else if(track.value_size > 1 && this._item_dragged.value_index < track.value_size)
+								keyframe[1][this._item_dragged.value_index] = v;
+							if(track._type_index == LS.TYPES_INDEX.TRANS10 )
+							{
+								var q = keyframe[1].subarray(3,7);
+								quat.normalize( q,q );
+							}
+							else if(track._type_index == LS.TYPES_INDEX.QUAT )
+								quat.normalize( keyframe[1], keyframe[1] );
+						}
+
+						track.sortKeyframes();
+						//in case its index changed after sorting them, update info
+						var index = track.data.indexOf(keyframe);
+						if(this.selection && this.selection.type == "keyframe" && this.selection.track == this._item_dragged.track && this.selection.keyframe == this._item_dragged.keyframe)
+							this.selection.keyframe = index;
+						this._item_dragged.keyframe = index;
 					}
 
-					track.sortKeyframes();
-					//in case its index changed after sorting them, update info
-					var index = track.data.indexOf(keyframe);
-					if(this.selection && this.selection.type == "keyframe" && this.selection.track == this._item_dragged.track && this.selection.keyframe == this._item_dragged.keyframe)
-						this.selection.keyframe = index;
-
-					this._item_dragged.keyframe = index;
 					this.animationModified();
 
 					if(this.preview)
@@ -1326,6 +1450,26 @@ Timeline.prototype.onMouse = function(e)
 		ref_window.document.body.removeEventListener("mousemove", this._binded_mouseup );
 		ref_window.document.body.removeEventListener("mouseup", this._binded_mouseup );
 
+		if( this._selection_rectangle )
+		{
+			var r = this._selection_rectangle;
+			if(r[2] < r[0] ) //swap so 0 and 1 have the minimum size
+			{
+				var tmp = r[0];
+				r[0] = r[2];
+				r[2] = tmp;
+			}
+			if(r[3] < r[1] )
+			{
+				var tmp = r[1];
+				r[1] = r[3];
+				r[3] = tmp;
+			}
+			this.selectRegion( r );
+			this._selection_rectangle = null;
+		}
+
+
 		if(this.preview && this._item_dragged && this._item_dragged.type == "timeline")
 			EditorModule.refreshAttributes();
 
@@ -1339,6 +1483,11 @@ Timeline.prototype.onMouse = function(e)
 		this.redrawCanvas();
 
 	return true;
+}
+
+Timeline.prototype.moveKeyframe = function( keyframe, offset_t, offset_y )
+{
+
 }
 
 Timeline.prototype.onKeyDown = function(e)
@@ -2128,6 +2277,7 @@ Timeline.prototype.toggleEnabledInAllTracks = function()
 	}
 }
 
+//this returns the object under the moue (BUT ALSO MODIFIES THE SELECION!!)
 Timeline.prototype.getMouseItem = function( e )
 {
 	if(!this.current_take)
@@ -2166,11 +2316,11 @@ Timeline.prototype.getMouseItem = function( e )
 		for(var i = 0; i < visible_keyframes.length; ++i)
 		{
 			var kf = visible_keyframes[i];
-			if( Math.abs( e.mousex - kf[0] ) > 5 || Math.abs( e.mousey - kf[1] ) > 5 )
+			if( Math.abs( e.mousex - kf[2] ) > 5 || Math.abs( e.mousey - kf[3] ) > 5 )
 				continue;
 			keyframe_info = kf;
-			track_index = keyframe_info[2];
-			keyframe_index = keyframe_info[3];
+			track_index = keyframe_info[0];
+			keyframe_index = keyframe_info[1];
 			value_index = keyframe_info[4];
 			track = this.current_take.tracks[ track_index ];
 			break;
@@ -2270,6 +2420,7 @@ Timeline.prototype.getMouseItem = function( e )
 	this._must_redraw = true;
 	var animation_filename = this.current_animation.fullpath || this.current_animation.filename;
 
+	/*
 	if(e.type == "mousedown" )
 	{
 		if(over)
@@ -2281,6 +2432,7 @@ Timeline.prototype.getMouseItem = function( e )
 		else
 			this.session.selection = null;
 	}
+	*/
 
 	if(over)
 		return { type: "keyframe", animation: animation_filename, track: track_index, keyframe: keyframe_index, value_index: value_index , cursor: "crosshair", draggable: true };
@@ -2306,6 +2458,33 @@ Timeline.prototype.selectKeyframe = function( track_index, keyframe_index )
 	this.redrawCanvas();
 }
 
+Timeline.prototype.selectRegion = function( region )
+{
+	var animation_filename = this.current_animation.fullpath || this.current_animation.filename;
+	var take = this.current_take;
+	var duration = take.duration;
+	var data = this._timeline_data;
+	var current_time = data.current_time;
+
+	this.session.selection = null;
+
+	//only used in keyframe mode
+	var start_track_index = Math.floor((region[0] - this.canvas_info.timeline_height) / this.canvas_info.row_height) + this.session.scroll_y;
+	var end_track_index = Math.floor((region[2] - this.canvas_info.timeline_height) / this.canvas_info.row_height) + this.session.scroll_y;
+
+	var visible_keyframes = this._visible_keyframes;
+	for(var i = 0; i < visible_keyframes.length; ++i)
+	{
+		var kf = visible_keyframes[i];
+		if( region[0] > kf[2] + 5 || region[2] < kf[2] - 5 || region[1] > kf[3] + 5 || region[3] < kf[3] - 5 )
+			continue;
+		if( !this.session.selection )
+			this.session.selection = { type: "keyframes", animation: animation_filename, keyframes:[], hashed: {} };
+		this.session.selection.keyframes.push(kf);
+		this.session.selection.hashed[ kf[0] * 10000 + kf[1] ] = kf;
+
+	}
+}
 
 Timeline.prototype.onPrettifyNames = function()
 {

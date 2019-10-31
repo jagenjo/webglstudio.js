@@ -10049,6 +10049,8 @@ Inspector.prototype.addArray = function( name, value, options )
 //creates an empty container but it is not set active
 Inspector.prototype.addContainer = function(name, options)
 {
+	if(name && name.constructor !== String)
+		console.warn("LiteGUI.Inspector.addContainer first parameter must be a string with the name");
 	var element = this.startContainer(null,options);
 	this.endContainer();
 	return element;

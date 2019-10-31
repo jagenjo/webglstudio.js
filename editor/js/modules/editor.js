@@ -307,10 +307,11 @@ var EditorModule = {
 	},
 
 	//given a code it shows in a tab
-	checkCode: function( code )
+	checkCode: function( code, tabtitle )
 	{
 		if(!code)
 			return;
+		tabtitle = tabtitle || "Code";
 		console.log(code); //helps navigating
 		code = LiteGUI.htmlEncode( code ); //otherwise < is probleamtic
 		var w = window.open("",'_blank');
@@ -318,6 +319,7 @@ var EditorModule = {
 		var str = beautifyCode( code );
 		w.document.write("<pre>"+str+"</pre>");
 		w.document.close();
+		w.document.title = tabtitle;
 		return w;
 	},
 
@@ -470,8 +472,8 @@ var EditorModule = {
 			properties_by_name = {};
 			for(var i in properties)
 			{
-				if(!selected)
-					selected = properties[i].name;
+				//if(!selected)
+				//	selected = properties[i].name;
 				properties_by_name[ properties[i].name ] = properties[i];
 			}
 
@@ -1613,11 +1615,32 @@ var EditorModule = {
 			list_widget.updateItems(mats);
 		}});
 
-		list_widget = widgets.addList(null, mats, { height: 140, callback: inner_selected });
+		list_widget = widgets.addList( null, mats, { height: 140, callback: inner_selected, callback_dblclick: inner_add });
 		widgets.widgets_per_row = 1;
 
-		widgets.addButton(null,"Add", { className:"big", callback: function()
-		{ 
+		var info_area = widgets.addContainer("", { height:110 });
+		info_area.style.padding = "8px";
+		info_area.style.background = "#111";
+		info_area.style.borderRadius = "2px";
+
+		widgets.addButton(null,"Add", { className:"big", callback: inner_add });
+
+		dialog.add( widgets );
+		dialog.adjustSize();
+
+		function inner_selected(value)
+		{
+			selected = value;
+			if(value)
+			{
+				var desc = value.ctor.description || "No description available for this material.";
+				desc = desc.replace(/\n/g, "<br />");
+				info_area.innerHTML = desc;
+			}
+		}
+
+		function inner_add()
+		{
 			if(!node || !selected )
 			{
 				if( on_complete )
@@ -1636,14 +1659,6 @@ var EditorModule = {
 			RenderModule.requestFrame();
 			if( on_complete )
 				on_complete( material );
-		}});
-
-		dialog.add( widgets );
-		dialog.adjustSize();
-
-		function inner_selected(value)
-		{
-			selected = value;
 		}
 	},
 

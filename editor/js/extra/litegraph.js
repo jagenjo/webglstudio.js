@@ -10177,7 +10177,8 @@ LGraphNode.prototype.executeAction = function(action)
         if (
             options.event &&
             options.event.constructor !== MouseEvent &&
-            options.event.constructor !== CustomEvent
+            options.event.constructor !== CustomEvent &&
+	    options.event.constructor !== PointerEvent
         ) {
             console.error(
                 "Event passed to ContextMenu is not of type MouseEvent or CustomEvent. Ignoring it."
@@ -10659,7 +10660,7 @@ if (typeof exports != "undefined") {
         this.enabled = true;
 
         //create inner graph
-        this.subgraph = new LGraph();
+        this.subgraph = new LiteGraph.LGraph();
         this.subgraph._subgraph_node = this;
         this.subgraph._is_subgraph = true;
 

@@ -17058,8 +17058,19 @@ Take.prototype.addTrack = function( track )
 	this.tracks.push( track );
 }
 
+/**
+* returns a track given its index or the property string
+* @method getTrack
+* @param {Number|String} property could be index or property
+* @return {LS.Animation.Track} the track
+*/
 Take.prototype.getTrack = function( property )
 {
+	if(property == null)
+		return null;
+	if(property.constructor === Number)
+		return this.tracks[property];
+	if(property.constructor === String)
 	for(var i = 0; i < this.tracks.length; ++i)
 		if(this.tracks[i].property == property)
 			return this.tracks[i];

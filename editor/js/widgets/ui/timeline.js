@@ -1206,7 +1206,7 @@ Timeline.prototype.onMouse = function(e)
 	this._last_item = item;
 	var now = getTime();
 
-	console.log( this.session.selection ? this.session.selection.type : "no selection" );//debug
+	//console.log( this.session.selection ? this.session.selection.type : "no selection" );//debug
 
 
 	if( e.type == "mousedown" )
@@ -2228,15 +2228,25 @@ Timeline.prototype.removeSelection = function()
 
 	var selection = this.session.selection;
 	this.session.selection = null;
-	var track = this.current_take.tracks[ selection.track ];
+	var take = this.current_take;
+	var track = take.tracks[ selection.track ];
 	if (selection.type == "keyframe")
 	{
 		if(track)
 		{
 			this.addUndoTrackEdited( track );
 			track.removeKeyframe( selection.keyframe );
-			this.session.selection = null;
-			this.redrawCanvas();
+		}
+	}
+	else if (selection.type == "keyframes")
+	{
+		this.addUndoTakeEdited(take.serialize());
+		//back to forth to avoid invalidating indices after removing
+		for(var i = selection.keyframes.length - 1; i >= 0; --i)
+		{
+			var kf = selection.keyframes[i];
+			var track = take.getTrack( kf[0] );
+			track.removeKeyframe( kf[1] );
 		}
 	}
 	else if (selection.type == "track")
@@ -2244,9 +2254,7 @@ Timeline.prototype.removeSelection = function()
 		if(track)
 		{
 			this.addUndoTrackRemoved( track );
-			this.current_take.removeTrack( track );
-			this.session.selection = null;
-			this.redrawCanvas();
+			take.removeTrack( track );
 		}
 	}
 	else if (selection.type == "multitrack")
@@ -2255,14 +2263,13 @@ Timeline.prototype.removeSelection = function()
 		{
 			var tracks = [];
 			for(var i = 0; i < selection.tracks.length; ++i)
-				tracks.push( this.current_take.tracks[ selection.tracks[i] ] );
+				tracks.push( take.tracks[ selection.tracks[i] ] );
 			this.addUndoTrackRemoved( tracks );
 			for(var i = 0; i < tracks.length; ++i)
-				this.current_take.removeTrack( tracks[i] );
-			this.session.selection = null;
+				take.removeTrack( tracks[i] );
 		}
-		this.redrawCanvas();
 	}
+	this.redrawCanvas();
 	LS.GlobalScene.refresh();
 }
 

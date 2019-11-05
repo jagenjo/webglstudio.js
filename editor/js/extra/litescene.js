@@ -17348,6 +17348,8 @@ Track.prototype.configure = function( o )
 		{
 			if( this.packed_data )
 				this.data = new Float32Array( o.data );
+			else
+				this.data = o.data.concat();
 		}
 		//else
 		//	this.unpackData();

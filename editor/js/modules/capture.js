@@ -33,10 +33,14 @@ var Capture = {
 		LiteGUI.addCSS("\n\
 			.record-tools { position: absolute; top: 0px; left: 50%; background-color: #111; border-radius: 0 0 10px 10px; }\n\
 			.record-tools.recording { background-color: #422; } \n\
+			.record-tools .button { cursor: pointer; }\n\
 			.record-tools .record { background-color: transparent; display: inline-block; color: #f00; font-size: 3em; transform: translate(0,2px); }\n\
 			.record-tools .time { display: inline-block; transform: translate(0,-2px); text-align: center; width: 100px; color: #aaa; font-size: 1.4em; }\n\
 			.record-tools.recording .time { color: #fff; } \n\
-			.record-tools .settings { background-color: transparent; display: inline-block; transform: translate(0,2px); }\n\
+			.record-tools .settings { opacity: 0.7; display: inline-block; transform: translate(0,2px); }\n\
+			.record-tools .settings:hover { opacity: 1; }\n\
+			.record-tools .close { font-size: 1.8em; margin-left: 10px; display: inline-block; transform: translate(0,2px); }\n\
+			.record-tools .close:hover { color: white; }\n\
 		");
 
 		//this.showVideoCaptureDialog();
@@ -119,9 +123,9 @@ var Capture = {
 		}
 			
 		var container = this.videocapture_container = document.createElement("div");
-		container.innerHTML = "<div class='tool-button record'>&#9679;</div><span class='time'>0:00</span><div class='tool-button settings' style='display: inline-block;'><img src='imgs/mini-cog.png'></div>";
+		container.innerHTML = "<div class='tool-button record'>&#9679;</div><span class='time'>0:00</span><img class='settings button' src='imgs/mini-cog.png'><span class='close button'>"+ LiteGUI.special_codes.close +"</span>";
 		container.className = 'record-tools';
-		document.querySelector("#visor").appendChild(container);
+		document.body.appendChild(container);
 
 		var record_button = container.querySelector('.record');
 		record_button.addEventListener('mousedown', function(e){
@@ -143,6 +147,7 @@ var Capture = {
 		});
 
 		container.querySelector('.settings').addEventListener("mousedown", this.showCaptureSettingsDialog.bind(this) );
+		container.querySelector('.close').addEventListener("mousedown", this.showVideoCaptureDialog.bind(this) );
 	},
 
 	showCaptureSettingsDialog: function()

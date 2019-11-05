@@ -410,7 +410,7 @@ var EditorModule = {
 
 	showEditPropertiesDialog: function( properties, valid_fields, callback, parent )
 	{
-		valid_fields = valid_fields || ["string","number","vec2","vec3","vec4","color","texture","enum"];
+		valid_fields = valid_fields || ["string","number","vec2","vec3","vec4","texture","enum"];
 		var selected = null;
 		var properties_by_name = {};
 
@@ -506,7 +506,7 @@ var EditorModule = {
 
 			inspector.addCombo("Type", property.type, { values: valid_fields, callback: function(v) {
 				var change = false;
-				if(v != property.value)
+				if(v != property.type)
 				{
 					property.type = v;
 					change = true;
@@ -517,6 +517,22 @@ var EditorModule = {
 				EditorModule.refreshAttributes();
 			}});
 
+			var valid_widgets = null;
+			if( property.type == "number" )
+				valid_widgets = ["number","slider"];
+			else if( property.type == "vec3")
+				valid_widgets = ["vec3","color"];
+			else if( property.type == "vec4")
+				valid_widgets = ["vec4","color"];
+
+			if(valid_widgets)
+			inspector.addCombo("Widget", property.widget || "", { values: valid_widgets, callback: function(v) {
+				var change = false;
+				property.widget = v;
+				inner_value_widget( property, change );
+				inner_update_properties();
+				EditorModule.refreshAttributes();
+			}});
 
 			//value_widget = inspector.addNumber("Value", property.value, { step: property.step, callback: function(v){ property.value = v; }});
 			inner_value_widget(property);
@@ -549,7 +565,7 @@ var EditorModule = {
 
 		function inner_value_widget(property, change)
 		{
-			var type = property.type;
+			var type = property.widget || property.type;
 
 			if(type == "number")
 			{

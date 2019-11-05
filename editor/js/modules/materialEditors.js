@@ -623,15 +623,14 @@ LS.MaterialClasses.GraphMaterial["@inspector"] = function( material, inspector )
 	}});
 
 	material.updatePropertiesFromGraph();
-	var props = material.getProperties();
+	var props = material._properties;
 	if(props)
 	{
 		inspector.addTitle("Properties");
 		for(var i in props)
 		{
-			var type = props[i];
-			var prop = material._properties_by_name[ i ];
-			inspector.add( type, i, prop.value, { prop: prop, callback: inner_modify });
+			var prop = props[i];
+			inspector.add( prop.widget || prop.type, prop.name, prop.value, { prop: prop, callback: inner_modify });
 		}
 	}
 

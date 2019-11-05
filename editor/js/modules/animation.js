@@ -1006,6 +1006,17 @@ LS.Animation.Take.prototype.onlyRotations = function()
 	for(var i = 0; i < this.tracks.length; ++i)
 	{
 		var track = this.tracks[i];
+		if(!track.enabled)
+			continue;
+
+		if(track._type == "vec3") //position, scale
+		{
+			this.removeTrack( track );
+			--i;
+			num += 1;
+			continue;
+		}
+
 		if( track.onlyRotations() )
 			num += 1;
 	}

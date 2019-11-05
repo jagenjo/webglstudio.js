@@ -10836,8 +10836,12 @@ Object.defineProperty( GraphMaterial.prototype, "filename", {
 		return this._filename;
 	},
 	set: function(v) {
-		if(this._filename == v)
+		if( this._filename == v )
+		{
+			if( (v && this._graphcode) || (!v && !this._graphcode) )
 			return;
+		}
+
 		if(v) //to avoid double slashes
 			v = LS.ResourcesManager.cleanFullpath( v );
 		this._filename = v;
@@ -10970,7 +10974,7 @@ GraphMaterial.prototype.updatePropertiesFromGraph = function()
 		var old_p = this._properties_by_name[ prop.name ];
 		var value = old_p && old_p.type == prop.type ? old_p.value : LS.cloneObject( prop.value );
 
-		var p = { name: prop.name, type: prop.type, value: value };
+		var p = { name: prop.name, type: prop.type, widget: prop.widget || null, value: value };
 		new_properties.push( p );
 		new_properties_by_name[ prop.name ] = p;
 	}
@@ -11031,9 +11035,9 @@ GraphMaterial.prototype.onResourceRenamed = function (old_name, new_name, resour
 	Material.prototype.onResourceRenamed.call( this, old_name, new_name, resource );
 
 	//specific
-	for(var i in this.properties)
+	for(var i in this._properties)
 	{
-		var prop = this.properties[i];
+		var prop = this._properties[i];
 		if( prop.value == old_name)
 			prop.value = new_name;
 	}
@@ -11053,9 +11057,9 @@ GraphMaterial.prototype.getProperty = function(name)
 	if( name.substr(0,4) == "tex_")
 		return this.textures[ name.substr(4) ];
 
-	for(var i in this.properties)
+	for(var i in this._properties)
 	{
-		var prop = this.properties[i];
+		var prop = this._properties[i];
 		if(prop.name == name)
 			return prop.value;
 	}	
@@ -11074,9 +11078,9 @@ GraphMaterial.prototype.setProperty = function(name, value)
 	if( Material.prototype.setProperty.call(this,name,value) )
 		return true;
 
-	for(var i in this.properties)
+	for(var i in this._properties)
 	{
-		var prop = this.properties[i];
+		var prop = this._properties[i];
 		if(prop.name != name)
 			continue;
 		prop.value = value;
@@ -11091,9 +11095,9 @@ GraphMaterial.prototype.getTextureChannels = function()
 {
 	var channels = [];
 
-	for(var i in this.properties)
+	for(var i in this._properties)
 	{
-		var prop = this.properties[i];
+		var prop = this._properties[i];
 		if(prop.type != "texture" && prop.type != "cubemap")
 			continue;
 		channels.push(prop.name);
@@ -11110,9 +11114,9 @@ GraphMaterial.prototype.getTextureChannels = function()
 */
 GraphMaterial.prototype.setTexture = function(texture, channel, uvs) {
 
-	for(var i in this.properties)
+	for(var i in this._properties)
 	{
-		var prop = this.properties[i];
+		var prop = this._properties[i];
 		if(prop.type != "texture" && prop.type != "cubemap")
 			continue;
 		if(channel && prop.name != channel) //assign to the channel or if there is no channel just to the first one
@@ -11133,7 +11137,7 @@ GraphMaterial.prototype.setTexture = function(texture, channel, uvs) {
 LS.registerMaterialClass( GraphMaterial );
 LS.GraphMaterial = GraphMaterial;
 
-//GraphMaterial.default_graph = {"last_node_id":2,"last_link_id":1,"nodes":[{"id":1,"type":"shader/phong","pos":[113,98],"size":[140,186],"flags":{},"order":0,"mode":0,"inputs":[{"name":"albedo","type":"vec3","link":null},{"name":"ambient","type":"vec3","link":null},{"name":"emission","type":"vec3","link":null},{"name":"normal","type":"vec3","link":null},{"name":"specular","type":"float","link":null},{"name":"gloss","type":"float","link":null},{"name":"alpha","type":"float","link":null},{"name":"reflectivity","type":"float","link":null},{"name":"extra","type":"vec4","link":null}],"outputs":[{"name":"out","type":"vec4","links":[1]}],"properties":{}},{"id":2,"type":"shader/fs_output","pos":[389,99],"size":[140,26],"flags":{},"order":1,"mode":0,"inputs":[{"name":"","type":"T,float,vec2,vec3,vec4","link":1}],"properties":{}}],"links":[[1,1,0,2,0,"T,float,vec2,vec3,vec4"]],"groups":[],"config":{},"version":0.4}
+GraphMaterial.default_graph = {"last_node_id":2,"last_link_id":1,"nodes":[{"id":2,"type":"shader/phong","pos":[328,242],"size":[140,186],"flags":{},"order":0,"mode":0,"inputs":[{"name":"albedo","type":"vec3","link":null},{"name":"ambient","type":"vec3","link":null},{"name":"emission","type":"vec3","link":null},{"name":"normal","type":"vec3","link":null},{"name":"specular","type":"float","link":null},{"name":"gloss","type":"float","link":null},{"name":"reflectivity","type":"float","link":null},{"name":"alpha","type":"float","link":null},{"name":"extra","type":"vec4","link":null}],"outputs":[{"name":"out","type":"vec4","links":[1]}],"properties":{}},{"id":1,"type":"shader/fs_output","pos":[651,241],"size":[140,26],"flags":{},"order":1,"mode":0,"inputs":[{"name":"","type":"T,float,vec2,vec3,vec4","link":1}],"properties":{}}],"links":[[1,2,0,1,0,"T,float,vec2,vec3,vec4"]],"groups":[],"config":{},"version":0.4}
 
 GraphMaterial.code_template = "\n\
 \n\
@@ -23865,6 +23869,13 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphShaderConstant.title = "const";
 
+	LGraphShaderConstant.prototype.getTitle = function()
+	{
+		if(this.flags.collapsed)
+			return valueToGLSL( this.properties.value, this.properties.type );
+		return "Const";
+	}
+
 	LGraphShaderConstant.prototype.onPropertyChanged = function(name,value)
 	{
 		var that = this;
@@ -24183,9 +24194,10 @@ if(typeof(LiteGraph) != "undefined")
 			return_type = this.getInputDataType(0);
 
 		if(op.params.length == 2 && !inputB)
-			return;
+			inputB = "0.0";
+			
 		if(op.params.length == 3 && !inputC)
-			return;
+			inputC = "1.0";
 
 		var code = "";
 		if( op.params.length == 1 )
@@ -24383,6 +24395,11 @@ if(typeof(LiteGraph) != "undefined")
 			_surf_color = applyReflection( IN, o, _surf_color );\n\
 		vec4 "+ output_name +" = _surf_color;\n\
 		";
+
+		context.vs_out += "\n\
+			#pragma shaderblock \"light\"\n\
+		";
+		context.vs_global += "  applyLight(v_pos);\n";
 		
 		context.fs_out += "\n\
 			#pragma shaderblock \"light\"\n\
@@ -24752,31 +24769,31 @@ if(typeof(LiteGraph) != "undefined")
 		if( outlink_xyz )
 			code += "	vec3 " + outlink_xyz + " = " + varname + ".xyz;\n";
 
-		var outlink_x = getOutputLinkID(this,1);
+		var outlink_x = getOutputLinkID(this,2);
 		if( outlink_x )
 			code += "	float " + outlink_x + " = " + varname + ".x;\n";
 
-		var outlink_y = getOutputLinkID(this,2);
+		var outlink_y = getOutputLinkID(this,3);
 		if( outlink_y )
 			code += "	float " + outlink_y + " = " + varname + ".y;\n";
 
-		var outlink_z = getOutputLinkID(this,3);
+		var outlink_z = getOutputLinkID(this,4);
 		if( outlink_z )
 			code += "	float " + outlink_z + " = " + varname + ".z;\n";
 
-		var outlink_w = getOutputLinkID(this,4);
+		var outlink_w = getOutputLinkID(this,5);
 		if( outlink_w )
 			code += "	float " + outlink_w + " = " + varname + ".w;\n";
 
-		var outlink_xy = getOutputLinkID(this,5);
+		var outlink_xy = getOutputLinkID(this,6);
 		if( outlink_xy )
 			code += "	vec2 " + outlink_xy + " = " + varname + ".xy;\n";
 
-		var outlink_yz = getOutputLinkID(this,6);
+		var outlink_yz = getOutputLinkID(this,7);
 		if( outlink_yz )
 			code += "	vec2 " + outlink_yz + " = " + varname + ".yz;\n";
 
-		var outlink_zw = getOutputLinkID(this,7);
+		var outlink_zw = getOutputLinkID(this,8);
 		if( outlink_zw )
 			code += "	vec2 " + outlink_zw + " = " + varname + ".zw;\n";
 

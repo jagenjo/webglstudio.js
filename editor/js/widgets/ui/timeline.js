@@ -12,6 +12,7 @@ function Timeline( options )
 	this.paths_widget = false;
 	this.autoresize = true;
 	this.show_paths = false; //show trajectories in the 3D view
+	this.show_keyframes = true; //render keyframes in timeline
 
 	this.current_take = null;
 
@@ -108,6 +109,7 @@ Timeline.prototype.createInterface = function( options )
 	widgets.addIcon(null, false, { title:"next keyframe", image: "imgs/icons-timeline.png", index: 3, toggle: false, callback: function(v){ that.nextKeyframe(); } } );
 	widgets.addIcon(null, false, { title:"record", image: "imgs/icons-timeline.png", index: 10, toggle: true, callback: function(v){ return that.toggleRecording(v); } } );
 	this.paths_widget = widgets.addIcon(null, this.show_paths, { title:"show paths", image: "imgs/icons-timeline.png", index: 12, toggle: true, callback: function(v){ RenderModule.requestFrame(); return that.show_paths = v; } } );
+	widgets.addIcon(null, this.show_keyframes, { title:"show keyframes", image: "imgs/icons-timeline.png", index: 14, toggle: true, callback: function(v){ RenderModule.requestFrame(); return that.show_keyframes = v; that.redrawCanvas(); } } );
 	//widgets.addCheckbox("Curves", this.mode == "curves", { width: 80, callback: function(v){ that.mode = v ? "curves" : "keyframes"; that.redrawCanvas(); } } );
 	widgets.addButton(null, LiteGUI.special_codes.refresh, { width: 30, callback: function(v,e){ that.resetView(); } });
 
@@ -419,6 +421,8 @@ Timeline.prototype.redrawCanvas = function()
 	ctx.fillRect(0,0, canvas.width, canvas.height );
 
 	var take = this.current_take;
+	var margin = this.session ? this.session.left_margin : 200;
+	var timeline_height = this.canvas_info.timeline_height;
 
 	if(!this.current_take)
 	{
@@ -438,11 +442,23 @@ Timeline.prototype.redrawCanvas = function()
 	this.drawTracksSidebar( canvas, ctx );
 
 	//main content ***********************************
-	this._visible_keyframes.length = 0;
-	if(this.mode == "keyframes")
-		this.drawKeyframesView( canvas, ctx );
-	else if(this.mode == "curves")
-		this.drawCurvesView( canvas, ctx );
+	if(this.show_keyframes)
+	{
+		this._visible_keyframes.length = 0;
+		if(this.mode == "keyframes")
+			this.drawKeyframesView( canvas, ctx );
+		else if(this.mode == "curves")
+			this.drawCurvesView( canvas, ctx );
+	}
+	else
+	{
+		ctx.save();
+		ctx.fillStyle = "#000";
+		ctx.textAlign = "center";
+		ctx.font = "60px Arial";
+		ctx.fillText("KEYFRAMES VIEW DISABLED", (canvas.width + margin) * 0.5 , canvas.height * 0.7 );
+		ctx.restore();
+	}
 
 	//selection
 	if(this._selection_rectangle)
@@ -456,8 +472,6 @@ Timeline.prototype.redrawCanvas = function()
 	var duration = take.duration;
 	var data = this._timeline_data;
 	var current_time = data.current_time;
-	var margin = this.session.left_margin;
-	var timeline_height = this.canvas_info.timeline_height;
 
 	//current time marker vertical line
 	var true_pos = Math.round( this.canvasTimeToX( this.session.current_time ) ) + 0.5;
@@ -735,6 +749,8 @@ Timeline.prototype.drawKeyframesView = function( canvas, ctx )
 			var keyframe = track.getKeyframe(j);
 			if(keyframe[0] < data.start_time || keyframe[0] > data.end_time)
 				continue;
+			var posx = this.canvasTimeToX( keyframe[0] );
+			var offset_y = y + line_height * 0.5;
 
 			var is_selected = false;
 			if(selection)
@@ -751,15 +767,12 @@ Timeline.prototype.drawKeyframesView = function( canvas, ctx )
 				ctx.fillStyle = "#9AF";
 			ctx.strokeStyle = ctx.fillStyle;
 
-			var posx = this.canvasTimeToX( keyframe[0] );
-
 			if( track.type != "events" ) //diamonds
 			{
 				if( (posx + 5) < margin)
 					continue;
 
 				ctx.save();
-				var offset_y = y + line_height * 0.5;
 
 				//mini line
 				if(track.enabled)

@@ -25,7 +25,7 @@ var ShadersModule = {
 		LiteGUI.addCSS("	.shader-prop { cursor: pointer; }\n\
 			.shader-prop .winfo { margin: 4px; padding: 4px; padding-left: 10px; background: #4d223f; 2px 2px 2px black; border-radius: 8px; overflow: hidden; }\n\
 			.shader-prop .winfo:hover { background: #444; 2px 2px 2px black; }\n\
-			.shader-prop .winfo .type { padding: 0 20px; opacity: 0.5; font-size: 0.95em; }\n\
+			.shader-prop .winfo .type { padding: 0 10px; opacity: 0.5; font-size: 0.95em; width: 80px; display: inline-block; }\n\
 			.shader-prop .winfo .name { font-size: 1.2em; color: white; }\n\
 		");
 

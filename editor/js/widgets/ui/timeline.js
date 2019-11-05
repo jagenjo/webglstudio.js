@@ -1218,6 +1218,7 @@ Timeline.prototype.onMouse = function(e)
 	this.canvas.style.cursor = item ? item.cursor : "default";
 	this._last_item = item;
 	var now = getTime();
+	var take = this.current_take;
 
 	//console.log( this.session.selection ? this.session.selection.type : "no selection" );//debug
 
@@ -1241,7 +1242,7 @@ Timeline.prototype.onMouse = function(e)
 				if( this._last_click_time && ( now - this._last_click_time ) < 200 ) 
 				{
 					var time = this.session.current_time;
-					var track = this.current_take.tracks[ item.track ];
+					var track = take.tracks[ item.track ];
 					if( item.type == "keyframe" && track )
 					{	
 						if( track.type == "events")
@@ -1253,12 +1254,13 @@ Timeline.prototype.onMouse = function(e)
 						this.showTrackOptionsDialog( track );
 					//this.showPropertyInfo( this.current_take.tracks[ item.track ] );
 				}
-				else 
+				else //first click
 				{
 					if( this.session.selection && this.session.selection.type == "keyframes" && this.session.selection.hashed[ item.track * 10000 + item.keyframe ] )
 					{
 						//start dragging multiple keyframes
-						this.addUndoTakeEdited(this.current_take.serialize());
+						console.log("saving undo of take");
+						this.addUndoTakeEdited(take.serialize());
 					}
 					else
 						this.session.selection = item;
@@ -1280,11 +1282,11 @@ Timeline.prototype.onMouse = function(e)
 			if(item.type == "timeline")
 				this.setCurrentTime( this.canvasXToTime( e.mousex ) );
 			//else if(item.type == "track")
-			//	this.showPropertyInfo( this.current_take.tracks[ item.track ] );
+			//	this.showPropertyInfo( take.tracks[ item.track ] );
 
 			if(item.type == "keyframe")
 			{
-				var track = this.current_take.tracks[ item.track ];
+				var track = take.tracks[ item.track ];
 				//this.addUndoTrackEdited( track );
 			}
 
@@ -1328,7 +1330,7 @@ Timeline.prototype.onMouse = function(e)
 				{
 					var newt = this.canvasXToTime( e.mousex );
 					newt = Math.round( newt * this.framerate ) / this.framerate; //round
-					var track = this.current_take.tracks[ this._item_dragged.track ];
+					var track = take.tracks[ this._item_dragged.track ];
 					if(track.packed_data)
 						track.unpackData();
 					//set new time
@@ -1343,54 +1345,44 @@ Timeline.prototype.onMouse = function(e)
 						var item_keyframe = keyframe;
 						var changed_tracks = {};
 						var changed_keyframes = {};
-						if(diff)
-						for(var i = 0; i < keyframes.length; ++i)
+						if( Math.abs(diff) > 0.000001 ) //to avoid rounding errors
 						{
-							var kf = keyframes[i];
-							var kf_key = kf[0] * 10000 + kf[1];
-							if( changed_keyframes[ kf_key ] ) //this is to avoid moving several times a keyframe that contains several values (represented as individual keyframes in the timeline curve editor)
-								continue;
-							changed_keyframes[ kf_key ] = true;
-							var track = this.current_take.tracks[ kf[0] ];
-							if(track.packed_data)
-								track.unpackData();
-							var keyframe = track.data[ kf[1] ];
-							keyframe[0] += diff;
+							for(var i = 0; i < keyframes.length; ++i)
+							{
+								var kf = keyframes[i];
+								var kf_key = kf[0] * 10000 + kf[1];
+								if( changed_keyframes[ kf_key ] ) //this is to avoid moving several times a keyframe that contains several values (represented as individual keyframes in the timeline curve editor)
+									continue;
+								var track = take.tracks[ kf[0] ];
+								if(track.packed_data)
+									track.unpackData();
+								var keyframe = track.data[ kf[1] ];
+								keyframe[0] += diff;
+								kf[5] = keyframe;
+								changed_keyframes[ kf_key ] = kf;
+								changed_tracks[kf[0]] = track;
+							}
 
-							//ugly solution but when moving keyframes the selection index is invalidated because it pos in the track array has changed
-							//so we need to compute how many slots have changed
-							var offset = 0;
-							if( diff > 0 )
+							for(var i in changed_tracks)
+								changed_tracks[i].sortKeyframes();
+
+							//remap keyframes
+							this.session.selection.keyframes = [];
+							this.session.selection.hashed = {};
+							for(var i in changed_keyframes)
 							{
-								for(var j = kf[1] + 1; j < track.data.length; ++j)
-								{
-									if( track.data[j][0] >= keyframe[0] )
-										break;
-									offset++;
-								}
+								var kf = changed_keyframes[i];
+								var keyframe = kf[5];
+								var track = take.tracks[ kf[0] ];
+								kf[1] = track.data.indexOf( keyframe );
+								this.session.selection.keyframes.push( kf );
+								var kf_key = kf[0] * 10000 + kf[1];
+								this.session.selection.hashed[ kf_key ] = kf;
 							}
-							else //diff < 0
-							{
-								for(var j = kf[1] - 1; j >= 0; --j)
-								{
-									if( track.data[j][0] <= keyframe[0] )
-										break;
-									offset--;
-								}
-							}
-							if(offset)
-							{
-								delete this.session.selection.hashed[ kf[0] * 10000 + kf[1] ];
-								kf[1] += offset;
-								this.session.selection.hashed[ kf[0] * 10000 + kf[1] ] = kf;
-							}
-							changed_tracks[kf[0]] = track;
+
+							this._item_dragged.keyframe = item_track.data.indexOf( item_keyframe ); //in case it was moved
+
 						}
-
-						for(var i in changed_tracks)
-							changed_tracks[i].sortKeyframes();
-
-						this._item_dragged.keyframe = item_track.data.indexOf(item_keyframe); //in case it was moved
 					}
 					else //single keyframe
 					{
@@ -1853,10 +1845,13 @@ Timeline.prototype.addUndoTakeEdited = function( info )
 		return;
 
 	var that = this;
+	var selection = null;
+	if(this.session && this.session.selection)
+		selection = JSON.stringify( this.session.selection );
 
 	UndoModule.addUndoStep({ 
-		title: "Take edited ",
-		data: { animation: that.current_animation.name, take: info.name, data: info },
+		title: "Take edited",
+		data: { animation: that.current_animation.name, take: info.name, data: info, selection: selection },
 		callback_undo: function(d) {
 			var anim = d.animation == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation ];
 			if(!anim)
@@ -1866,6 +1861,8 @@ Timeline.prototype.addUndoTakeEdited = function( info )
 				return;
 			d.new_data = take.serialize();
 			take.configure( d.data );
+			if(d.selection)
+				that.session.selection = JSON.parse(d.selection);
 			that.animationModified();
 			that.redrawCanvas();
 		},

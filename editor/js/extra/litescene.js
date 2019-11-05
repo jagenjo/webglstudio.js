@@ -35522,6 +35522,13 @@ Camera.prototype.lookAt = function( eye, center, up )
 {
 	if( this._root && this._root.transform )
 	{
+		//transform from global to local
+		if(this._root._parent && this._root._parent.transform )
+		{
+			eye = this._root._parent.transform.globalToLocal( eye, vec3.create() );
+			center = this._root._parent.transform.globalToLocal( center, vec3.create() );
+			up = this._root._parent.transform.globalVectorToLocal( up, vec3.create() );
+		}
 		this._root.transform.lookAt(eye,center,up);
 		this._eye.set(LS.ZEROS);
 		this._up.set([0,1,0]);

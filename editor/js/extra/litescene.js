@@ -8422,6 +8422,7 @@ ShaderMaterial.prototype.assignOldProperties = function( old_properties )
 }
 
 ShaderMaterial.nolights_vec4 = new Float32Array([0,0,0,1]);
+ShaderMaterial.missing_color = new Float32Array([1,0,1,1]);
 
 //called from LS.Renderer when rendering an instance
 ShaderMaterial.prototype.renderInstance = function( instance, render_settings, pass )
@@ -8429,7 +8430,12 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 	//get shader code
 	var shader_code = this.getShaderCode( instance, render_settings, pass );
 	if(!shader_code || shader_code.constructor !== LS.ShaderCode )
-		return true; //skip rendering
+	{
+		//return true; //skip rendering
+		shader_code = LS.ShaderCode.getDefaultCode( instance, render_settings, pass  ); //use default shader
+		if( pass.id == COLOR_PASS.id) //to assign some random color
+			this._uniforms.u_material_color = ShaderMaterial.missing_color;
+	}
 
 	//this is in case the shader has been modified in the editor (reapplies the shadercode to the material)
 	if( shader_code._version !== this._shader_version && this.processShaderCode )
@@ -8640,7 +8646,8 @@ ShaderMaterial.prototype.renderPickingInstance = function( instance, render_sett
 	//get shader code
 	var shader_code = this.getShaderCode( instance, render_settings, pass );
 	if(!shader_code || shader_code.constructor !== LS.ShaderCode )
-		return;
+		shader_code = LS.ShaderCode.getDefaultCode( instance, render_settings, pass  ); //use default shader
+
 
 	//some globals
 	var renderer = LS.Renderer;
@@ -19990,6 +19997,16 @@ ShaderCode.parseShaderLab = function( code )
 	}
 
 	return root;
+}
+
+ShaderCode.getDefaultCode = function( instance,  render_settings, pass )
+{
+	if( ShaderCode.default_code_instance )
+		return ShaderCode.default_code_instance;
+
+	var shader_code = ShaderCode.default_code_instance = new LS.ShaderCode();
+	shader_code.code = ShaderCode.flat_code;
+	return shader_code;
 }
 
 ShaderCode.flat_code = "\\color.vs\n\

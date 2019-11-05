@@ -1848,17 +1848,26 @@ Timeline.prototype.addUndoTakeEdited = function( info )
 	var selection = null;
 	if(this.session && this.session.selection)
 		selection = JSON.stringify( this.session.selection );
+	var animation_filename = "";
+	if( this.current_animation.filename )
+		animation_filename = this.current_animation.fullpath || this.current_animation.filename;
 
 	UndoModule.addUndoStep({ 
 		title: "Take edited",
-		data: { animation: that.current_animation.name, take: info.name, data: info, selection: selection },
+		data: { animation: animation_filename, take: info.name, data: info, selection: selection },
 		callback_undo: function(d) {
 			var anim = d.animation == LS.Animation.DEFAULT_SCENE_NAME ? LS.GlobalScene.animation : LS.ResourcesManager.resources[ d.animation ];
 			if(!anim)
+			{
+				console.warn("anim not found");
 				return;
+			}
 			var take = anim.getTake(d.take);
 			if(!take)
+			{
+				console.warn("take not found");
 				return;
+			}
 			d.new_data = take.serialize();
 			take.configure( d.data );
 			if(d.selection)

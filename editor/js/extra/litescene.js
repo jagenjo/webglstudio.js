@@ -17380,7 +17380,7 @@ Track.prototype.serialize = function()
 			if(this.data.concat)
 				o.data = this.data.concat(); //regular array, clone it
 			else
-				o.data = new this.data.constructor( o.data ); //clone for typed arrays (weird, this should never happen but it does)
+				o.data = new this.data.constructor( this.data ); //clone for typed arrays (weird, this should never happen but it does)
 		}
 		else //pack data
 		{

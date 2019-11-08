@@ -9099,7 +9099,7 @@ function StandardMaterial(o)
 	this.use_scene_ambient = true;
 	this.point_size = 1.0;
 
-	this.createProperty( "extra", new Float32Array([1,1,1,1]), "color" ); //used in special situations
+	this.createProperty( "extra", new Float32Array([0,0,0,1]), "color" ); //used in special situations
 
 	//used to change the render state
 	this.flags = {
@@ -23962,11 +23962,16 @@ if(typeof(LiteGraph) != "undefined")
 
 		this.properties = {
 			name: "",
+			type: ""
 		};
 	}
 
 	LGraphShaderUniform.title = "Uniform";
 	LGraphShaderUniform.title_color = "#524";
+
+	LGraphShaderUniform.widgets_info = {
+		type: { widget: "combo", values: ["","float","vec2","vec3","vec4","mat3","mat4"]}
+	};
 
 	LGraphShaderUniform.prototype.getTitle = function()
 	{
@@ -23977,9 +23982,13 @@ if(typeof(LiteGraph) != "undefined")
 	{
 		var prop_info = this.getProperty();
 		if(!prop_info)
+		{
+			if( this.properties.type != "" )
+				return "LINK_" + this.id + "_" + num;
 			return null;
+		}
 
-		if(prop_info.type == "texture")
+		if(prop_info.type == "texture") //special case, sampler cannot be assigned to vars
 			return "u_" + prop_info.name;
 
 		var output = this.outputs[num];
@@ -24011,11 +24020,16 @@ if(typeof(LiteGraph) != "undefined")
 		if( lang != "glsl" )
 			return "";
 
+		var link_name = getOutputLinkID(this,0);
+
 		var prop_info = this.getProperty();
 		if(!prop_info)
-			return;
+		{
+			if( this.properties.type != "" )
+				return this.properties.type + " " + link_name + " = u_" + prop_info.name + ";\n";
+			return "";
+		}
 
-		var link_name = getOutputLinkID(this,0);
 		if(link_name)
 		{
 			var code = "";
@@ -24869,7 +24883,10 @@ if(typeof(LiteGraph) != "undefined")
 			min_value2: 0,
 			max_value2: 1
 		};
-		//this.addWidget("number","min",0
+		this.addWidget("number","min",0,"min_value");
+		this.addWidget("number","max",1,"max_value");
+		this.addWidget("number","min2",0,"min_value2");
+		this.addWidget("number","max2",1,"max_value2");
 	}
 
 	LGraphShaderRemap.title = "Remap";
@@ -24877,6 +24894,12 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderRemap.prototype.onPropertyChanged = function()
 	{
 		 this.graph._version++;
+	}
+
+	LGraphShaderRemap.prototype.onConnectionsChange = function()
+	{
+		var return_type = this.getInputDataType(0);
+		this.outputs[0].type = return_type || "T";
 	}
 
 	LGraphShaderRemap.prototype.onGetCode = function( lang, context )
@@ -24911,6 +24934,47 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LiteGraph.registerShaderNode( "remap", LGraphShaderRemap );
+
+
+	//worldtoLocal
+
+	//texCoordTransform
+
+	//noise
+
+	//toWorldNormal
+	function LGraphShaderNormalTransform()
+	{
+		this.addInput("in","vec3");
+		this.addOutput("out","vec3");
+		this.properties = {
+			tangent_space: true,
+		};
+		this.addWidget("toggle","tangent",true,"tangent_space");
+	}
+
+	LGraphShaderNormalTransform.title = "NormalTransform";
+
+	LGraphShaderNormalTransform.prototype.onPropertyChanged = function()
+	{
+		 this.graph._version++;
+	}
+
+
+	LGraphShaderNormalTransform.prototype.onGetCode = function( lang, context )
+	{
+		if( lang != "glsl" )
+			return "";
+		var inlink = getInputLinkID(this,0);
+		var outlink = getOutputLinkID(this,0);
+		if(!outlink) //not connected
+			return;
+
+		context.fs_snippets = "perturbNormal";
+		//context.fs_code += "	vec3 " + outlink + " = normalize( perturbNormal( "+worldNormal+", "+viewdir+", "+uv+", "+inlink+" ));\n\";
+	}
+
+	//LiteGraph.registerShaderNode( "normalTransform", LGraphShaderNormalTransform );
 
 }
 ///@FILE:../src/helpers/path.js
@@ -29050,8 +29114,12 @@ var Renderer = {
 		//render helpers (guizmos)
 		if(render_settings.render_helpers)
 		{
+			if(GL.FBO.current) //rendering to multibuffer gives warnings if the shader outputs to a single fragColor
+				GL.FBO.current.toSingle(); //so we disable multidraw for debug rendering (which uses a single render shader)
 			LEvent.trigger(this, EVENT.RENDER_HELPERS, camera );
 			LEvent.trigger(scene, EVENT.RENDER_HELPERS, camera );
+			if(GL.FBO.current)
+				GL.FBO.current.toMulti();
 		}
 	},
 
@@ -29180,7 +29248,28 @@ var Renderer = {
 		gl.clearStencil( 0x0 );
 
 		//do the clearing
+		if(GL.FBO.current)
+			GL.FBO.current.toSingle();
 		gl.clear( ( camera.clear_color ? gl.COLOR_BUFFER_BIT : 0) | (camera.clear_depth ? gl.DEPTH_BUFFER_BIT : 0) | gl.STENCIL_BUFFER_BIT );
+		if(GL.FBO.current)
+			GL.FBO.current.toMulti();
+
+		//in case of multibuffer we want to clear with black the secondary buffers with black
+		if( GL.FBO.current )
+			GL.FBO.current.clearSecondary( LS.ZEROS4 );
+		/*
+		if( fbo && fbo.color_textures.length > 1 && gl.extensions.WEBGL_draw_buffers )
+		{
+			var ext = gl.extensions.WEBGL_draw_buffers;
+			var new_order = [gl.NONE];
+			for(var i = 1; i < fbo.order.length; ++i)
+				new_order.push(fbo.order[i]);
+			ext.drawBuffersWEBGL( new_order );
+			gl.clearColor( 0,0,0,0 );
+			gl.clear( gl.COLOR_BUFFER_BIT );
+			GL.FBO.current.toMulti();
+		}
+		*/
 
 		gl.disable( gl.SCISSOR_TEST );
 		gl.disable( gl.STENCIL_TEST );
@@ -39095,7 +39184,6 @@ MorphDeformer.prototype.getProperty = function(name)
 		}
 	}
 }
-
 
 MorphDeformer.prototype.getPropertiesInfo = function()
 {

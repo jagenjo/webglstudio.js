@@ -190,8 +190,10 @@ var AnimationModule = {
 
 		function inner_refresh_left()
 		{
-			var widgets = widgets1;
+			if(!animation)
+				return;
 
+			var widgets = widgets1;
 			var selected_take = animation.takes[ selected_take_name ];
 			var duration = selected_take ? selected_take.duration : 0;
 			var tracks = selected_take ? selected_take.tracks.length : 0;
@@ -1099,6 +1101,40 @@ LS.Animation.Take.prototype.stretchTracks = function( duration )
 }
 
 
+LS.Animation.Take.prototype.replacePrefix = function(v)
+{
+	for(var i = 0; i < this.tracks.length; ++i)
+	{
+		var track = this.tracks[i];
+		var t = track.property.split("/");
+		var node = track.getPropertyNode();
+		var name = t[0];
+		if(name[0]=="@")
+			continue;
+		var parts = name.split("_");
+		if(parts.length > 1)
+		{
+			if(v)
+				parts[0] = v;
+			else
+				parts.shift();
+		}
+		else
+		{
+			if(v)
+				parts.unshift(String(v));
+		}
+		var newnodename = parts.join("_");
+		t[0] = newnodename;
+		track.property = t.join("/");
+		track.name = track.property;
+		if(node)
+			node.name = newnodename;
+	}
+}
+
+
+
 /**
 * removes keyframes that are before or after the time range
 * @method trim
@@ -1172,7 +1208,6 @@ LS.Animation.Track.prototype.removeScaling = function()
 	}
 	return true;
 }
-
 
 LS.Animation.Track.prototype.onlyRotations = (function()
 {

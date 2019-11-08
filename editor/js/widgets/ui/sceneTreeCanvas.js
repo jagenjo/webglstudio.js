@@ -76,7 +76,7 @@ function SceneTreeWidget( options )
 	this.canvas.addEventListener("contextmenu", SceneTreeWidget._doNothing );
 
 	this._drop_callback = this.processItemDrop.bind(this);
-	this.canvas.addEventListener("drop",this._drop_callback,true);
+	this.canvas.addEventListener("drop", this._drop_callback, true); 
 
 
 	this.visible_nodes = [];
@@ -513,7 +513,7 @@ SceneTreeWidget.prototype.processDrag = function(e)
 	this._drop_document_callback = this.processItemDrop.bind(this);
 
 	var ref_window = LiteGUI.getElementWindow(this.root);
-	ref_window.document.addEventListener("drop",this._drop_document_callback,true);
+	ref_window.document.addEventListener("drop",this._drop_document_callback,true); //this is dangerous as it can trigger in wrong drops
 
 	var img = document.createElement("img");
 	img.src = "imgs/mini-icon-node.png";
@@ -542,12 +542,18 @@ SceneTreeWidget.prototype.processDocumentDrop = function(e){
 }
 
 //drop inside the canvas
-SceneTreeWidget.prototype.processItemDrop = function(event){
+SceneTreeWidget.prototype.processItemDrop = function(event)
+{
+	//warning: sometimes it is triggered when droping FROM the canvas to other elements in the DOM (due to binding to the document)
+	if( event.target != this.canvas )
+	{
+		this.dragging_node = null;
+		return; 
+	}
 
 	var b = this.canvas.getBoundingClientRect();
 	var x = event.pageX - b.left;
 	var y = event.pageY - b.top;
-
 
 	var info = this.getItemAtPos(y);
 	if(!info || !info[0])

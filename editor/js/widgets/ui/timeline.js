@@ -31,6 +31,7 @@ function Timeline( options )
 	this.scroll_curves_y = 0;
 	this.curves_scale_y = 1;
 	this._selection_rectangle = null;
+
 }
 
 Timeline.widget_name = "Timeline";
@@ -1634,10 +1635,13 @@ Timeline.prototype.showOptionsContextMenu = function( e )
 {
 	var that = this;
 	var options = ["New Animation","Load Animation","Scene Animation",null,"Prettify Names","Baking Tools"];
-	var animation_options = {title:"Animation Options",disabled:!this.current_take};
-	options.push(animation_options);
+	var animation_options = { title: "Animation Options", disabled: !this.current_take };
+	options.push( animation_options );
 
-	var menu = new LiteGUI.ContextMenu( options, { event: e, callback: function(v) {
+	LEvent.trigger( Timeline, "options_menu", [options,this], false, true );
+
+	var menu = new LiteGUI.ContextMenu( options, { event: e, ignore_item_callbacks: true, callback: function(v) {
+
 		if(v == "New Animation")
 			that.showNewAnimationDialog();
 		else if(v == "Load Animation")
@@ -1650,6 +1654,8 @@ Timeline.prototype.showOptionsContextMenu = function( e )
 			that.onShowBakingDialog();
 		else if(v == animation_options)
 			that.onShowAnimationOptionsDialog();
+		else if(v.callback)
+			v.callback(v, that);
 	}});
 }
 
@@ -3240,41 +3246,13 @@ Timeline.actions.take["Remove Disabled Tracks"] = function( animation, take )
 
 Timeline.actions.take["Set prefix in tracks nodename"] = function( animation, take )
 {
-	LiteGUI.prompt("Change name prefix for tracks",inner)
+	LiteGUI.prompt("Change name prefix for tracks",inner);
 
 	function inner(v)
 	{
 		if(v === null)
 			return;
-
-		for(var i = 0; i < take.tracks.length; ++i)
-		{
-			var track = take.tracks[i];
-			var t = track.property.split("/");
-			var node = track.getPropertyNode();
-			var name = t[0];
-			if(name[0]=="@")
-				continue;
-			var parts = name.split("_");
-			if(parts.length > 1)
-			{
-				if(v)
-					parts[0] = v;
-				else
-					parts.shift();
-			}
-			else
-			{
-				if(v)
-					parts.unshift(String(v));
-			}
-			var newnodename = parts.join("_");
-			t[0] = newnodename;
-			track.property = t.join("/");
-			track.name = track.property;
-			if(node)
-				node.name = newnodename;
-		}
+		take.replacePrefix(v);
 	}
 }
 

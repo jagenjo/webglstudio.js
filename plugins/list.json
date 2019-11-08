@@ -1,6 +1,14 @@
 {
 	"scripts":[
 		{
+			"name":"Animation Retargeting",
+			"author":"Javi Agenjo",
+			"version": "0.1",
+			"script_url":"scripts/retargeting.js",
+			"includes":[],
+			"description":"Transform animation to match another skeleton"
+		},
+		{
 			"name":"FBX Importer (experimental)",
 			"author":"Javi Agenjo",
 			"version": "0.1",

@@ -17167,7 +17167,8 @@ if (typeof exports != "undefined") {
 			antialiasing: false,
 			filter: true,
 			disable_alpha: false,
-			gamma: 1.0
+			gamma: 1.0,
+			viewport: [0,0,1,1]
 		};
 		this.size[0] = 130;
 	}
@@ -17175,6 +17176,7 @@ if (typeof exports != "undefined") {
 	LGraphTextureToViewport.title = "to Viewport";
 	LGraphTextureToViewport.desc = "Texture to viewport";
 
+	LGraphTextureToViewport._prev_viewport = new Float32Array(4);
 	LGraphTextureToViewport.prototype.onExecute = function() {
 		var tex = this.getInputData(0);
 		if (!tex) {
@@ -17203,6 +17205,12 @@ if (typeof exports != "undefined") {
 			this.properties.filter ? gl.LINEAR : gl.NEAREST
 		);
 
+		var old_viewport = LGraphTextureToViewport._prev_viewport;
+		old_viewport.set( gl.viewport_data );
+		var new_view = this.properties.viewport;
+		gl.viewport( old_viewport[0] + old_viewport[2] * new_view[0], old_viewport[1] + old_viewport[3] * new_view[1], old_viewport[2] * new_view[2], old_viewport[3] * new_view[3] );
+		var viewport = gl.getViewport(); //gl.getParameter(gl.VIEWPORT);
+
 		if (this.properties.antialiasing) {
 			if (!LGraphTextureToViewport._shader) {
 				LGraphTextureToViewport._shader = new GL.Shader(
@@ -17211,7 +17219,6 @@ if (typeof exports != "undefined") {
 				);
 			}
 
-			var viewport = gl.getViewport(); //gl.getParameter(gl.VIEWPORT);
 			var mesh = Mesh.getScreenQuad();
 			tex.bind(0);
 			LGraphTextureToViewport._shader
@@ -17238,6 +17245,8 @@ if (typeof exports != "undefined") {
 				tex.toViewport();
 			}
 		}
+
+		gl.viewport( old_viewport[0], old_viewport[1], old_viewport[2], old_viewport[3] );
 	};
 
 	LGraphTextureToViewport.prototype.onGetInputs = function() {
@@ -18639,7 +18648,7 @@ if (typeof exports != "undefined") {
 		this.addInput("Mixer", "Texture");
 
 		this.addOutput("Texture", "Texture");
-		this.properties = { factor: 0.5, precision: LGraphTexture.DEFAULT };
+		this.properties = { factor: 0.5, size_from_biggest: true, invert: false, precision: LGraphTexture.DEFAULT };
 		this._uniforms = {
 			u_textureA: 0,
 			u_textureB: 1,
@@ -18677,7 +18686,7 @@ if (typeof exports != "undefined") {
 		var factor = this.getInputData(3);
 
 		this._tex = LGraphTexture.getTargetTexture(
-			texA,
+			this.properties.size_from_biggest && texB.width > texA.width ? texB : texA,
 			this._tex,
 			this.properties.precision
 		);
@@ -18709,9 +18718,11 @@ if (typeof exports != "undefined") {
 			uniforms.u_mix.set([f, f, f, f]);
 		}
 
+		var invert = this.properties.invert;
+
 		this._tex.drawTo(function() {
-			texA.bind(0);
-			texB.bind(1);
+			texA.bind( invert ? 1 : 0 );
+			texB.bind( invert ? 0 : 1 );
 			if (texMix) {
 				texMix.bind(2);
 			}

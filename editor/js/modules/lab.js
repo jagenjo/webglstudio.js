@@ -212,7 +212,33 @@ var LabModule = {
 			}\
 		');
 
-		//TODO: shadowmap shader
+		//for shadowmaps
+		this._depth_shader = new GL.Shader('\
+			precision highp float;\n\
+			attribute vec3 a_vertex;\n\
+			attribute vec2 a_coord;\n\
+			varying vec2 v_coord;\n\
+			uniform mat4 u_mvp;\n\
+			void main() {\n\
+				v_coord = a_coord;\n\
+				gl_Position = u_mvp * vec4(a_vertex,1.0);\n\
+			}\
+			','\
+			precision highp float;\n\
+			varying vec2 v_coord;\n\
+			uniform vec2 u_near_far;\n\
+			uniform float u_exposure;\n\
+			uniform sampler2D u_texture;\n\
+			void main() {\n\
+				vec2 coord = v_coord;\n\
+				float depth = texture2D( u_texture, coord ).x;\n\
+				float zNear = u_near_far.x;\n\
+				float zFar = u_near_far.y;\n\
+				float z = (2.0 * zNear) / (zFar + zNear - depth * (zFar - zNear));\n\
+				z *= u_exposure;\n\
+			  gl_FragColor = vec4(z,z,z,1.0);\n\
+			}\
+		');
 	},
 
 	render: function()
@@ -337,11 +363,20 @@ var LabModule = {
 				if(tex.texture_type == gl.TEXTURE_2D)
 				{
 					//LS.Draw.renderPlane([posx + size*0.6, posy + size*0.6, 0], [size*0.5,-size*0.5], tex );
-					if(this.channels == "RGBA")
-						gl.enable( gl.BLEND );
-					else 
+					if( tex.format == GL.DEPTH_COMPONENT ) //depth
+					{
 						gl.disable( gl.BLEND );
-					LS.Draw.renderPlane([ gl._matrix[6] + (posx + w*0.5) * gl._matrix[0], gl._matrix[7] + (posy + h*0.5) * gl._matrix[4], 0], [ w*0.5 * gl._matrix[0], -h*0.5 * gl._matrix[4] ], tex, this._channel_shader );
+						this._depth_shader.uniforms({ u_near_far: [ tex.near, tex.far ], u_exposure: this.exposure });
+						LS.Draw.renderPlane([ gl._matrix[6] + (posx + w*0.5) * gl._matrix[0], gl._matrix[7] + (posy + h*0.5) * gl._matrix[4], 0], [ w*0.5 * gl._matrix[0], -h*0.5 * gl._matrix[4] ], tex, this._depth_shader );
+					}
+					else //color
+					{
+						if(this.channels == "RGBA")
+							gl.enable( gl.BLEND );
+						else 
+							gl.disable( gl.BLEND );
+						LS.Draw.renderPlane([ gl._matrix[6] + (posx + w*0.5) * gl._matrix[0], gl._matrix[7] + (posy + h*0.5) * gl._matrix[4], 0], [ w*0.5 * gl._matrix[0], -h*0.5 * gl._matrix[4] ], tex, this._channel_shader );
+					}
 					gl.enable( gl.BLEND );
 				}
 				else if(tex.texture_type == gl.TEXTURE_CUBE_MAP)//cubemaps

@@ -11221,6 +11221,9 @@ void main() {\n\
 \n\
 \\color.fs\n\
 \n\
+#ifdef DRAW_BUFFERS\n\
+	#extension GL_EXT_draw_buffers : require \n\
+#endif\n\
 precision mediump float;\n\
 \n\
 //varyings\n\
@@ -11264,8 +11267,23 @@ void main() {\n\
 		IN.uv1 = v_uvs1;\n\
 	#endif\n\
 	vec4 _final_color = vec4(1.0);\n\
+	vec4 _final_color1 = vec4(0.0);\n\
 	{{fs_code}}\n\
-	gl_FragColor = _final_color;\n\
+	\n\
+	#ifdef DRAW_BUFFERS\n\
+	  gl_FragData[0] = _final_color;\n\
+	  #ifdef BLOCK_FIRSTPASS\n\
+		  #ifdef BLOCK_NORMALBUFFER\n\
+			  gl_FragData[1] = vec4( o.Normal * 0.5 + vec3(0.5), 1.0 );\n\
+		  #else\n\
+			  gl_FragData[1] = _final_color1;\n\
+		  #endif\n\
+	  #else\n\
+		  gl_FragData[1] = vec4(0.0);\n\
+	 #endif\n\
+	#else\n\
+	  gl_FragColor = _final_color;\n\
+	#endif\n\
 }\n\
 \n\
 \\shadow.vs\n\
@@ -24318,6 +24336,7 @@ if(typeof(LiteGraph) != "undefined")
 	function LGraphShaderFSOutput()
 	{
 		this.addInput("","T,float,vec2,vec3,vec4");
+		this.addInput("","T,float,vec2,vec3,vec4");
 	}
 
 	LGraphShaderFSOutput.title = "FragOutput";
@@ -24342,6 +24361,22 @@ if(typeof(LiteGraph) != "undefined")
 			context.fs_code += "	_final_color = vec4( " + link + " );\n";
 		else
 			console.warn( "FSOutput type not valid", type );
+
+		var link = getInputLinkID(this,1);
+		if(link)
+		{
+			var type = this.getInputDataType(1);
+			if(type == "vec4")
+				context.fs_code += "	_final_color1 = " + link + ";\n";
+			else if(type == "vec3")
+				context.fs_code += "	_final_color1 = vec4( " + link + ",1.0);\n";
+			else if(type == "vec2")
+				context.fs_code += "	_final_color1 = vec4( " + link + ",0.0,1.0);\n";
+			else if(type == "float")
+				context.fs_code += "	_final_color1 = vec4( " + link + " );\n";
+			else
+				console.warn( "FSOutput type not valid", type );
+		}
 	}
 
 	LiteGraph.registerShaderNode( "fs_output", LGraphShaderFSOutput );
@@ -24359,6 +24394,7 @@ if(typeof(LiteGraph) != "undefined")
 		this.addInput("alpha","float");
 		this.addInput("extra","vec4");
 		this.addOutput("out","vec4");
+		this.addOutput("light","vec3");
 	}
 
 	LGraphShaderPhong.title = "Phong";
@@ -24369,6 +24405,7 @@ if(typeof(LiteGraph) != "undefined")
 			return "";
 
 		var output_name = getOutputLinkID( this, 0 );
+		var output1_name = getOutputLinkID( this, 1 );
 		if(!output_name)
 			return;
 
@@ -24428,6 +24465,9 @@ if(typeof(LiteGraph) != "undefined")
 			_surf_color = applyReflection( IN, o, _surf_color );\n\
 		vec4 "+ output_name +" = _surf_color;\n\
 		";
+
+		if(output1_name)
+			code += "	vec3 " + output1_name + " = final_light.Ambient + final_light.Color * final_light.Diffuse * final_light.Attenuation * final_light.Shadow;\n";
 
 		context.vs_out += "\n\
 			#pragma shaderblock \"light\"\n\
@@ -32402,6 +32442,7 @@ function Shadowmap( light )
 
 Shadowmap.use_shadowmap_depth_texture = true;
 
+//enable block
 Shadowmap.prototype.getReadShaderBlock = function()
 {
 	if( this.texture.format != GL.DEPTH_COMPONENT )
@@ -32500,8 +32541,9 @@ Shadowmap.prototype.generate = function( instances, render_settings, precompute_
 	for(var i = 0; i < sides; ++i) //in case of omni
 	{
 		var shadow_camera = light.getLightCamera(i);
-		this.shadow_params[2] = shadow_camera.near;
-		this.shadow_params[3] = shadow_camera.far;
+		shadow_camera.near;
+		this.shadow_params[2] = this.texture.near = shadow_camera.near;
+		this.shadow_params[3] = this.texture.far = shadow_camera.far;
 		LS.Renderer.enableCamera( shadow_camera, render_settings, true );
 
 		var viewport_y = 0;
@@ -32509,7 +32551,7 @@ Shadowmap.prototype.generate = function( instances, render_settings, precompute_
 			viewport_y = i * viewport_height;
 		gl.viewport(0,viewport_y,viewport_width,viewport_height);
 
-		if(this.reverse_faces)
+		if(this.reverse_faces) //used to avoid leaking in some situations
 			LS.Renderer._reverse_faces = true;
 
 		//RENDER INSTANCES in the shadowmap
@@ -32561,7 +32603,12 @@ Shadowmap.prototype.toViewport = function()
 Shadowmap._enabled_vertex_code ="\n\
 	#pragma snippet \"light_structs\"\n\
 	varying vec4 v_light_coord;\n\
-	void applyLight( vec3 pos ) { v_light_coord = u_light_matrix * vec4(pos,1.0); }\n\
+	void applyLight( vec3 pos ) { \n\
+		if( u_light_info.x == 1.0 ) //Omni\n\
+			v_light_coord.xyz = pos - u_light_position;\n\
+		else\n\
+			v_light_coord = u_light_matrix * vec4(pos,1.0);\n\
+	}\n\
 ";
 
 Shadowmap._disabled_vertex_code ="\n\
@@ -32588,6 +32635,16 @@ Shadowmap._enabled_fragment_code = "\n\
 			return depth.x;\n\
 		#endif\n\
 	}\n\
+	float VectorToDepthValue(vec3 Vec)\n\
+	{\n\
+		vec3 AbsVec = abs(Vec);\n\
+		float LocalZcomp = max(AbsVec.x, max(AbsVec.y, AbsVec.z));\n\
+		float n = u_shadow_params.z;\n\
+		float f = u_shadow_params.w;\n\
+		float NormZComp = (f+n) / (f-n) - (2.0*f*n)/(f-n)/LocalZcomp;\n\
+		return (NormZComp + 1.0) * 0.5;\n\
+	}\n\
+	\n\
 	float texsize = 1.0 / u_shadow_params.x;\n\
 	float real_depth = 0.0;\n\
 	\n\
@@ -32604,17 +32661,47 @@ Shadowmap._enabled_fragment_code = "\n\
 		return f*f*f*(f*(f*6.0-15.0)+10.0);\n\
 	}\n\
 	\n\
+	vec2 vec3ToCubemap2D( vec3 v )\n\
+	{\n\
+		vec3 abs_ = abs(v);\n\
+		float max_ = max(max(abs_.x, abs_.y), abs_.z); // Get the largest component\n\
+		vec3 weights = step(max_, abs_); // 1.0 for the largest component, 0.0 for the others\n\
+		float sign_ = dot(weights, sign(v)) * 0.5 + 0.5; // 0 or 1\n\
+		float sc = dot(weights, mix(vec3(v.z, v.x, -v.x), vec3(-v.z, v.x, v.x), sign_));\n\
+	    float tc = dot(weights, mix(vec3(-v.y, -v.z, -v.y), vec3(-v.y, v.z, -v.y), sign_));\n\
+	    vec2 uv = (vec2(sc, tc) / max_) * 0.5 + 0.5;\n\
+		// Offset into the right region of the texture\n\
+		float offsetY = dot(weights, vec3(1.0, 3.0, 5.0)) - sign_;\n\
+		uv.y = (uv.y + offsetY) / 6.0;\n\
+		return uv;\n\
+	}\n\
+	\n\
 	float testShadow( Light LIGHT )\n\
 	{\n\
 		vec3 offset = vec3(0.0);\n\
 		float depth = 0.0;\n\
 		float bias = u_shadow_params.y;\n\
 		\n\
-		vec2 sample = (v_light_coord.xy / v_light_coord.w) * vec2(0.5) + vec2(0.5) + offset.xy;\n\
+		vec2 sample;\n\
+		if( LIGHT.Info.x == 1.0 ) //Omni\n\
+		{\n\
+			vec3 l_vector = (v_pos - u_light_position);\n\
+			float dist = length(l_vector);\n\
+			float pixel_z = VectorToDepthValue( l_vector );\n\
+			if(pixel_z >= 0.998)\n\
+				return 0.0; //fixes a little bit the far edge bug\n\
+			//vec4 depth_color = textureCube( shadowmap, l_vector + offset * dist );\n\
+			sample = vec3ToCubemap2D( l_vector/dist );\n\
+			vec4 depth_color = texture2D( shadowmap, sample );\n\
+			float ShadowVec = UnpackDepth( depth_color );\n\
+			if ( ShadowVec > pixel_z - bias )\n\
+				return 1.0; //no shadow\n\
+			return 0.0; //full shadow\n\
+		}\n\
+		sample = (v_light_coord.xy / v_light_coord.w) * vec2(0.5) + vec2(0.5) + offset.xy;\n\
 		//is inside light frustum\n\
 		if (clamp(sample, 0.0, 1.0) != sample) \n\
-			return LIGHT.Info.x == 3.0 ? 1.0 : 0.0; //outside of shadowmap, no shadow\n\
-		\n\
+			return LIGHT.Info.x == 3.0 ? 1.0 : 0.0; //directional: outside of shadowmap, no shadow\n\
 		real_depth = (v_light_coord.z - bias) / v_light_coord.w * 0.5 + 0.5;\n\
 		#ifdef BLOCK_DEPTH_IN_COLOR\n\
 			//real_depth = linearDepthNormalized( real_depth, u_shadow_params.z, u_shadow_params.w );\n\
@@ -47002,7 +47089,17 @@ ReflectionProbe.prototype.renderProbe = function( visualize_irradiance, picking_
 		var shader = GL.Shader.getCubemapShowShader();
 
         if(visualize_irradiance)
-		    this._irradiance_texture.bind(0);
+		{
+			if(this._irradiance_texture)
+			    this._irradiance_texture.bind(0);
+			else if(this._irradiance_shs)
+			{
+				shader = LS.Components.ReflectionProbe.sh_shader;
+				if(!shader)
+					shader = LS.Components.ReflectionProbe.sh_shader = new GL.Shader( GL.Shader.DEFAULT_VERTEX_SHADER, LS.Components.IrradianceCache.fs_shader_code );
+				shader.uniforms({ u_sh_coeffs: this._irradiance_shs });
+			}
+		}
         else
 		    this._texture.bind(0);
             

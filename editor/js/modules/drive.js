@@ -1312,6 +1312,10 @@ var DriveModule = {
 			return null;
 		}
 
+		//nothing to see
+		if(resource.constructor === GL.Texture && resource.texture_type == GL.TEXTURE_CUBE_MAP)
+			return null;
+
 		if( resource.updatePreview )
 		{
 			resource.updatePreview( this.preview_size );

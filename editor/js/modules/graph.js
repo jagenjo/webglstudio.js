@@ -53,6 +53,7 @@ var GraphModule = {
 		this.root.appendChild( graph_area.root );
 		graph_area.split("vertical",[null,"50%"],true);
 		this.graph_3D_area = graph_area.getSection(0).content;
+		this.graph_3D_area.style.backgroundColor = "black";
 
 		LiteGUI.bind( graph_area, "split_moved", function(e){
 			that.tabs_widget.onResize();

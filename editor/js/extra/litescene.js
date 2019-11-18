@@ -6743,6 +6743,7 @@ LS.Shaders.registerSnippet("input","\n\
 				vec2 uv1;\n\
 				\n\
 				vec3 camPos;\n\
+				float camDist;\n\
 				vec3 viewDir;\n\
 				vec3 worldPos;\n\
 				vec3 worldNormal;\n\
@@ -6759,7 +6760,9 @@ LS.Shaders.registerSnippet("input","\n\
 				IN.uv1 = IN.uv;\n\
 				\n\
 				IN.camPos = u_camera_eye;\n\
-				IN.viewDir = normalize(u_camera_eye - v_pos);\n\
+				IN.viewDir = u_camera_eye - v_pos;\n\
+				IN.camDist = length(IN.viewDir);\n\
+				IN.viewDir /= IN.camDist;\n\
 				IN.worldPos = v_pos;\n\
 				IN.worldNormal = normalize(v_normal);\n\
 				//IN.screenPos = vec4( (v_screenpos.xy / v_screenpos.w) * 0.5 + vec2(0.5), v_screenpos.zw );  //sometimes we need also z and w, thats why we pass all\n\
@@ -6780,6 +6783,7 @@ LS.Shaders.registerSnippet("structs","\n\
 				\n\
 				vec3 camPos;\n\
 				vec3 viewDir;\n\
+				float camDist;\n\
 				vec3 worldPos;\n\
 				vec3 worldNormal;\n\
 				vec4 screenPos;\n\
@@ -6960,6 +6964,22 @@ LS.Shaders.registerSnippet("computePointSize","\n\
 			}\n\
 	");
 
+LS.Shaders.registerSnippet("vec3ToCubemap2D","\n\
+	vec2 vec3ToCubemap2D( vec3 v )\n\
+	{\n\
+		vec3 abs_ = abs(v);\n\
+		float max_ = max(max(abs_.x, abs_.y), abs_.z); // Get the largest component\n\
+		vec3 weights = step(max_, abs_); // 1.0 for the largest component, 0.0 for the others\n\
+		float sign_ = dot(weights, sign(v)) * 0.5 + 0.5; // 0 or 1\n\
+		float sc = dot(weights, mix(vec3(v.z, v.x, -v.x), vec3(-v.z, v.x, v.x), sign_));\n\
+	    float tc = dot(weights, mix(vec3(-v.y, -v.z, -v.y), vec3(-v.y, v.z, -v.y), sign_));\n\
+	    vec2 uv = (vec2(sc, tc) / max_) * 0.5 + 0.5;\n\
+		// Offset into the right region of the texture\n\
+		float offsetY = dot(weights, vec3(1.0, 3.0, 5.0)) - sign_;\n\
+		uv.y = (uv.y + offsetY) / 6.0;\n\
+		return uv;\n\
+	}\n\
+");
 
 //base blocks that behave more like booleans 
 
@@ -9040,6 +9060,13 @@ ShaderMaterial.getDefaultPickingShaderCode = function()
 	return sc;
 }
 
+ShaderMaterial.createFlatMaterial = function()
+{
+	var material = new LS.ShaderMaterial();
+	material.code = LS.ShaderCode.getDefaultCode();
+	return material;
+}
+
 LS.registerMaterialClass( ShaderMaterial );
 LS.ShaderMaterial = ShaderMaterial;
 
@@ -9691,7 +9718,7 @@ vec2 getUVs(int index)\n\
 StandardMaterial.code_template = "\n\
 \n\
 \n\
-\\color.vs\n\
+\\default.vs\n\
 \n\
 precision mediump float;\n\
 //global defines from blocks\n\
@@ -9718,6 +9745,7 @@ varying vec3 v_normal;\n\
 varying vec2 v_uvs;\n\
 varying vec3 v_local_pos;\n\
 varying vec3 v_local_normal;\n\
+varying vec4 v_screenpos;\n\
 \n\
 //matrices\n\
 #ifdef BLOCK_INSTANCING\n\
@@ -9788,6 +9816,7 @@ void main() {\n\
 	\n\
 	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
 	gl_PointSize = u_point_size;\n\
+	v_screenpos = gl_Position;\n\
 	#pragma event \"vs_final\"\n\
 }\n\
 \n\
@@ -9817,6 +9846,7 @@ varying vec3 v_local_normal;\n\
 #ifdef BLOCK_VERTEX_COLOR\n\
 	varying vec4 v_vertex_color;\n\
 #endif\n\
+varying vec4 v_screenpos;\n\
 \n\
 //globals\n\
 uniform vec4 u_viewport;\n\
@@ -9947,78 +9977,6 @@ void main() {\n\
 	#pragma event \"fs_final\"\n\
 }\n\
 \n\
-\\shadow.vs\n\
-\n\
-precision mediump float;\n\
-attribute vec3 a_vertex;\n\
-attribute vec3 a_normal;\n\
-attribute vec2 a_coord;\n\
-varying vec3 v_local_pos;\n\
-varying vec3 v_local_normal;\n\
-\n\
-//varyings\n\
-varying vec3 v_pos;\n\
-varying vec3 v_normal;\n\
-varying vec2 v_uvs;\n\
-varying vec4 v_screenpos;\n\
-\n\
-#pragma shaderblock \"instancing\"\n\
-//matrices\n\
-#ifdef BLOCK_INSTANCING\n\
-	attribute mat4 u_model;\n\
-#else\n\
-	uniform mat4 u_model;\n\
-#endif\n\
-uniform mat4 u_normal_model;\n\
-uniform mat4 u_view;\n\
-uniform mat4 u_viewprojection;\n\
-//material\n\
-uniform float u_displacementmap_factor;\n\
-uniform sampler2D displacement_texture;\n\
-\n\
-//globals\n\
-uniform float u_time;\n\
-uniform vec4 u_viewport;\n\
-uniform float u_point_size;\n\
-\n\
-#pragma shaderblock \"light\"\n\
-#pragma shaderblock \"morphing\"\n\
-#pragma shaderblock \"skinning\"\n\
-\n\
-//camera\n\
-uniform vec3 u_camera_eye;\n\
-uniform vec2 u_camera_planes;\n\
-\n\
-{{vs_out}}\n\
-\n\
-void main() {\n\
-	\n\
-	vec4 vertex4 = vec4(a_vertex,1.0);\n\
-	v_local_pos = a_vertex;\n\
-	v_local_normal = a_normal;\n\
-	v_normal = a_normal;\n\
-	v_uvs = a_coord;\n\
-  \n\
-  //deforms\n\
-  {{vs_local}}\n\
-  applyMorphing( vertex4, v_normal );\n\
-  applySkinning( vertex4, v_normal );\n\
-	\n\
-	//vertex\n\
-	v_pos = (u_model * vertex4).xyz;\n\
-  \n\
-  applyLight(v_pos);\n\
-  \n\
-	//normal\n\
-	#ifdef SHADERBLOCK_INSTANCING\n\
-		v_normal = (u_model * vec4(v_normal,0.0)).xyz;\n\
-	#else\n\
-		v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
-	#endif\n\
-	{{vs_global}}\n\
-	v_screenpos = u_viewprojection * vec4(v_pos,1.0);\n\
-	gl_Position = v_screenpos;\n\
-}\n\
 \\shadow.fs\n\
 \n\
 precision mediump float;\n\
@@ -10073,82 +10031,6 @@ void main() {\n\
 	final_color = PackDepth32(depth);\n\
 	{{fs_shadow_encode}}\n\
 	gl_FragColor = final_color;\n\
-}\n\
-\\picking.vs\n\
-\n\
-precision mediump float;\n\
-attribute vec3 a_vertex;\n\
-attribute vec3 a_normal;\n\
-attribute vec2 a_coord;\n\
-#ifdef VERTEX_COLOR_BLOCK\n\
-	attribute vec4 a_color;\n\
-#endif\n\
-\n\
-//varyings\n\
-varying vec3 v_pos;\n\
-varying vec3 v_normal;\n\
-varying vec2 v_uvs;\n\
-varying vec3 v_local_pos;\n\
-varying vec3 v_local_normal;\n\
-\n\
-//matrices\n\
-#pragma shaderblock \"instancing\"\n\
-#ifdef BLOCK_INSTANCING\n\
-	attribute mat4 u_model;\n\
-#else\n\
-	uniform mat4 u_model;\n\
-#endif\n\
-uniform mat4 u_normal_model;\n\
-uniform mat4 u_view;\n\
-uniform mat4 u_viewprojection;\n\
-//material\n\
-uniform float u_displacementmap_factor;\n\
-uniform sampler2D displacement_texture;\n\
-\n\
-//globals\n\
-uniform float u_time;\n\
-uniform vec4 u_viewport;\n\
-uniform float u_point_size;\n\
-uniform vec3 u_camera_perspective;\n\
-\n\
-#pragma shaderblock \"light\"\n\
-#pragma shaderblock \"morphing\"\n\
-#pragma shaderblock \"skinning\"\n\
-\n\
-//camera\n\
-uniform vec3 u_camera_eye;\n\
-\n\
-{{vs_out}}\n\
-\n\
-#pragma event \"vs_functions\"\n\
-\n\
-void main() {\n\
-	\n\
-	vec4 vertex4 = vec4(a_vertex,1.0);\n\
-	v_local_pos = a_vertex;\n\
-	v_local_normal = a_normal;\n\
-	v_normal = a_normal;\n\
-	v_uvs = a_coord;\n\
-  \n\
-  //deforms\n\
-  {{vs_local}}\n\
-  applyMorphing( vertex4, v_normal );\n\
-  applySkinning( vertex4, v_normal );\n\
-	\n\
-	//vertex\n\
-	v_pos = (u_model * vertex4).xyz;\n\
-  \n\
-  applyLight(v_pos);\n\
-  \n\
-	//normal\n\
-	#ifdef SHADERBLOCK_INSTANCING\n\
-		v_normal = (u_model * vec4(v_normal,0.0)).xyz;\n\
-	#else\n\
-		v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
-	#endif\n\
-  {{vs_global}}\n\
-	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
-	#pragma event \"vs_final\"\n\
 }\n\
 \\picking.fs\n\
 	precision mediump float;\n\
@@ -10905,6 +10787,13 @@ GraphMaterial.prototype.getShaderCode = function( instance, render_settings, pas
 */
 GraphMaterial.prototype.getResources = function (res)
 {
+	for(var i = 0; i < this._properties.length; ++i)
+	{
+		var p = this._properties[i];
+		if(p.type == "texture" && p.value )
+			res[ p.value ] = GL.Texture;
+	}
+
 	if(!this._graphcode)
 		return res;
 
@@ -10921,7 +10810,7 @@ GraphMaterial.prototype.serialize = function() {
 		uid: this.uid,
 		material_class: LS.getObjectClassName(this),
 		filename: this.filename,
-		properties: null //TO DO
+		properties: LS.cloneObject( this._properties )
 	}
 	return o;
 }
@@ -10929,6 +10818,15 @@ GraphMaterial.prototype.serialize = function() {
 
 GraphMaterial.prototype.configure = function(o) { 
 	LS.cloneObject(o, this);
+	if(o.properties)
+	{
+		this._properties = LS.cloneObject( o.properties );
+		for(var i = 0; i < this._properties.length; ++i)
+		{
+			var p = this._properties[i];
+			this._properties_by_name[ p.name ] = p;
+		}
+	}
 	this.processGraph();
 }
 
@@ -11000,7 +10898,7 @@ GraphMaterial.prototype.fillUniforms = function()
 		if(p.type == "texture")
 		{
 			var index = samp_index++;
-			this._samplers[ index ] = p.value;
+			this._samplers[ index ] = p.value || ":white";
 			this._uniforms[ "u_" + p.name ] = index;
 		}
 		else
@@ -11148,8 +11046,7 @@ GraphMaterial.default_graph = {"last_node_id":2,"last_link_id":1,"nodes":[{"id":
 
 GraphMaterial.code_template = "\n\
 \n\
-\n\
-\\color.vs\n\
+\\default.vs\n\
 \n\
 precision mediump float;\n\
 attribute vec3 a_vertex;\n\
@@ -11247,6 +11144,10 @@ uniform vec4 u_clipping_plane;\n\
 uniform float u_time;\n\
 uniform vec4 u_background_color;\n\
 uniform vec4 u_material_color;\n\
+uniform mat4 u_model;\n\
+uniform mat4 u_normal_model;\n\
+uniform mat4 u_view;\n\
+uniform mat4 u_viewprojection;\n\
 #pragma snippet \"input\"\n\
 \n\
 #pragma snippet \"testClippingPlane\"\n\
@@ -11268,7 +11169,7 @@ void main() {\n\
 	#endif\n\
 	vec4 _final_color = vec4(1.0);\n\
 	vec4 _final_color1 = vec4(0.0);\n\
-	{{fs_code}}\n\
+{{fs_code}}\n\
 	\n\
 	#ifdef DRAW_BUFFERS\n\
 	  gl_FragData[0] = _final_color;\n\
@@ -11286,62 +11187,6 @@ void main() {\n\
 	#endif\n\
 }\n\
 \n\
-\\shadow.vs\n\
-\n\
-precision mediump float;\n\
-attribute vec3 a_vertex;\n\
-attribute vec3 a_normal;\n\
-attribute vec2 a_coord;\n\
-#ifdef USE_COLORS\n\
-attribute vec4 a_color;\n\
-#endif\n\
-\n\
-//varyings\n\
-varying vec3 v_pos;\n\
-varying vec3 v_normal;\n\
-varying vec3 v_local_pos;\n\
-varying vec3 v_local_normal;\n\
-varying vec2 v_uvs;\n\
-\n\
-//matrices\n\
-uniform mat4 u_model;\n\
-uniform mat4 u_normal_model;\n\
-uniform mat4 u_view;\n\
-uniform mat4 u_viewprojection;\n\
-\n\
-//globals\n\
-uniform float u_time;\n\
-uniform vec4 u_viewport;\n\
-uniform float u_point_size;\n\
-\n\
-#pragma shaderblock \"morphing\"\n\
-#pragma shaderblock \"skinning\"\n\
-\n\
-//camera\n\
-uniform vec3 u_camera_eye;\n\
-{{vs_out}}\n\
-void main() {\n\
-	\n\
-	vec4 vertex4 = vec4(a_vertex,1.0);\n\
-	v_local_pos = a_vertex;\n\
-	v_local_normal = a_normal;\n\
-	v_normal = a_normal;\n\
-	v_uvs = a_coord;\n\
-  \n\
-  //deforms\n\
-  {{vs_local}}\n\
-  applyMorphing( vertex4, v_normal );\n\
-  applySkinning( vertex4, v_normal );\n\
-	\n\
-	//vertex\n\
-	v_pos = (u_model * vertex4).xyz;\n\
-  \n\
-  \n\
-	//normal\n\
-	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
-    {{vs_global}}\n\
-	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
-}\n\
 \\shadow.fs\n\
 \n\
 precision mediump float;\n\
@@ -14883,7 +14728,7 @@ Scene.prototype.findNearestReflectionProbe = function( position )
 	for(var i = 0; i < probes.length; ++i)
 	{
 		var probe = probes[i];
-		var dist = vec3.distance( position, probe._position );
+		var dist = vec3.squaredDistance( position, probe._position );
 		if( dist > min_dist )
 			continue;
 		min_dist = dist;
@@ -19582,6 +19427,12 @@ ShaderCode.prototype.processCode = function()
 	var num_subfiles = 0;
 	var init_code = null; 
 
+	//add default codes
+	if(!subfiles["default.vs"])
+		subfiles["default.vs"] = ShaderCode.default_vs;
+	if(!subfiles["default.fs"])
+		subfiles["default.fs"] = ShaderCode.default_fs;
+
 	for(var i in subfiles)
 	{
 		var subfile_name = i;
@@ -19621,8 +19472,6 @@ ShaderCode.prototype.processCode = function()
 		}
 
 		var name = LS.ResourcesManager.removeExtension( subfile_name );
-		if(name == "default")
-			name = "color"; //LEGACY fix
 		var extension = LS.ResourcesManager.getExtension( subfile_name );
 
 		if(extension == "vs" || extension == "fs")
@@ -19725,9 +19574,10 @@ ShaderCode.prototype.getShader = function( render_mode, block_flags )
 			return shader;
 	}
 
-	//search for the code
+	//search for the code 'color', or 'shadow'
 	var code = this._code_parts[ render_mode ];
-	if(!code)
+	var default_code = this._code_parts.default;
+	if(!code && !default_code)
 		return null;
 
 	var context = {}; //used to store metaprogramming defined vars in the shader
@@ -19751,17 +19601,21 @@ ShaderCode.prototype.getShader = function( render_mode, block_flags )
 	var vs_code = null;
 	if(render_mode == "fx")
 		vs_code = GL.Shader.SCREEN_VERTEX_SHADER;
-	else if( !code.vs )
-		return null;
-	else //vs is a GLSLCode 
+	else if( code && code.vs )
 		vs_code = code.vs.getFinalCode( GL.VERTEX_SHADER, block_flags, context );
+	else if( default_code && default_code.vs )
+		vs_code = default_code.vs.getFinalCode( GL.VERTEX_SHADER, block_flags, context );
+	else 
+		return null;
 
 	//fragment shader code
-	if( !code.fs )
-		return;
-
-	//fs is a GLSLCode 
-	var fs_code = code.fs.getFinalCode( GL.FRAGMENT_SHADER, block_flags, context );
+	var fs_code = null;
+	if( code && code.fs )
+		fs_code = code.fs.getFinalCode( GL.FRAGMENT_SHADER, block_flags, context );
+	else if( default_code && default_code.fs )
+		fs_code = default_code.fs.getFinalCode( GL.FRAGMENT_SHADER, block_flags, context );
+	else 
+		return null;
 
 	//no code or code includes something missing
 	if(!vs_code || !fs_code) 
@@ -20027,52 +19881,95 @@ ShaderCode.getDefaultCode = function( instance,  render_settings, pass )
 	return shader_code;
 }
 
-ShaderCode.flat_code = "\\color.vs\n\
-	precision mediump float;\n\
-	attribute vec3 a_vertex;\n\
-	uniform mat4 u_model;\n\
-	uniform mat4 u_viewprojection;\n\
-	void main() {\n\
-		vec4 vertex4 = vec4(a_vertex,1.0);\n\
-		gl_Position = (u_viewprojection * u_model) * vertex4;\n\
-	}\n\
-\\color.fs\n\
-	precision mediump float;\n\
-	uniform vec4 u_material_color;\n\
-	void main() {\n\
-		gl_FragColor = u_material_color;\n\
-	}\n\
-\\picking.vs\n\
-	precision mediump float;\n\
-	attribute vec3 a_vertex;\n\
-	uniform mat4 u_model;\n\
-	uniform mat4 u_viewprojection;\n\
-	void main() {\n\
-		vec4 vertex4 = vec4(a_vertex,1.0);\n\
-		gl_Position = (u_viewprojection * u_model) * vertex4;\n\
-	}\n\
-\\picking.fs\n\
-	precision mediump float;\n\
-	uniform vec4 u_material_color;\n\
-	void main() {\n\
-		gl_FragColor = u_material_color;\n\
-	}\n\
-\\shadow.vs\n\
-	precision mediump float;\n\
-	attribute vec3 a_vertex;\n\
-	uniform mat4 u_model;\n\
-	uniform mat4 u_viewprojection;\n\
-	void main() {\n\
-		vec4 vertex4 = vec4(a_vertex,1.0);\n\
-		gl_Position = (u_viewprojection * u_model) * vertex4;\n\
-	}\n\
-\\shadow.fs\n\
+//default vertex shader code
+ShaderCode.default_vs = "\n\
+precision mediump float;\n\
+attribute vec3 a_vertex;\n\
+attribute vec3 a_normal;\n\
+attribute vec2 a_coord;\n\
+#pragma shaderblock \"vertex_color\"\n\
+#pragma shaderblock \"coord1\"\n\
+#ifdef BLOCK_COORD1\n\
+	attribute vec2 a_coord1;\n\
+	varying vec2 v_uvs1;\n\
+#endif\n\
+#ifdef BLOCK_VERTEX_COLOR\n\
+	attribute vec4 a_color;\n\
+	varying vec4 v_vertex_color;\n\
+#endif\n\
+\n\
+//varyings\n\
+varying vec3 v_pos;\n\
+varying vec3 v_normal;\n\
+varying vec2 v_uvs;\n\
+varying vec3 v_local_pos;\n\
+varying vec3 v_local_normal;\n\
+varying vec4 v_screenpos;\n\
+\n\
+//matrices\n\
+uniform mat4 u_model;\n\
+uniform mat4 u_normal_model;\n\
+uniform mat4 u_view;\n\
+uniform mat4 u_viewprojection;\n\
+\n\
+//globals\n\
+uniform float u_time;\n\
+uniform vec4 u_viewport;\n\
+uniform float u_point_size;\n\
+\n\
+#pragma shaderblock \"morphing\"\n\
+#pragma shaderblock \"skinning\"\n\
+\n\
+//camera\n\
+uniform vec3 u_camera_eye;\n\
+void main() {\n\
+	\n\
+	vec4 vertex4 = vec4(a_vertex,1.0);\n\
+	v_local_pos = a_vertex;\n\
+	v_local_normal = a_normal;\n\
+	v_normal = a_normal;\n\
+	v_uvs = a_coord;\n\
+	#ifdef BLOCK_COORD1\n\
+		v_uvs1 = a_coord1;\n\
+	#endif\n\
+	#ifdef BLOCK_VERTEX_COLOR\n\
+		v_vertex_color = a_color;\n\
+	#endif\n\
+  \n\
+  //deforms\n\
+  applyMorphing( vertex4, v_normal );\n\
+  applySkinning( vertex4, v_normal );\n\
+	\n\
+	//vertex\n\
+	v_pos = (u_model * vertex4).xyz;\n\
+  \n\
+  \n\
+	//normal\n\
+	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
+	v_screenpos = gl_Position;\n\
+}\n\
+"
+
+//default fragment shader code
+ShaderCode.default_fs = "\n\
 	precision mediump float;\n\
 	uniform vec4 u_material_color;\n\
 	void main() {\n\
 		gl_FragColor = u_material_color;\n\
 	}\n\
 ";
+
+ShaderCode.flat_code = "\\default.vs\n\
+" + ShaderCode.default_vs + "\n\
+\\color.fs\n\
+"+ ShaderCode.default_fs +"\n\
+\\picking.fs\n\
+"+ ShaderCode.default_fs +"\n\
+\\shadow.fs\n\
+"+ ShaderCode.default_fs +"\n\
+";
+
 
 LS.ShaderCode = ShaderCode;
 LS.registerResourceClass( ShaderCode );
@@ -20267,17 +20164,6 @@ GraphCode.prototype.getShaderCode = function( as_string, template )
 		fs_code: ""
 	};
 
-	//expand requested functions
-	var fs_snippets_code = "";
-	for(var i in context.fs_snippets)
-		fs_snippets_code += "#pragma snippet \"" + context.fs_snippets[i] + "\"\n";
-	context.fs_out += fs_snippets_code;
-
-	var fs_functions_code = "";
-	for(var i in context.fs_functions)
-		fs_functions_code += context.fs_functions[i] + "\n";
-	context.fs_out += fs_functions_code;
-
 	//place uniforms
 	for(var i = 0; i < this.properties.length; ++i)
 	{
@@ -20299,6 +20185,20 @@ GraphCode.prototype.getShaderCode = function( as_string, template )
 	if( as_string )
 		return context.fs_code;
 
+	//expand requested functions
+	var fs_snippets_code = "";
+	for(var i in context.fs_snippets)
+		fs_snippets_code += "#pragma snippet \"" + i + "\"\n";
+	if(fs_snippets_code)
+		context.fs_out = fs_snippets_code + "\n" + context.fs_out;
+
+	var fs_functions_code = "";
+	for(var i in context.fs_functions)
+		fs_functions_code += context.fs_functions[i] + "\n";
+	if(fs_functions_code)
+		context.fs_out = fs_functions_code + "\n" + context.fs_out;
+
+
 	this._shader_code.code = LS.ShaderCode.replaceCode( template, context );
 	this._code_version = this._graph._version;
 	return this._shader_code;
@@ -20307,6 +20207,157 @@ GraphCode.prototype.getShaderCode = function( as_string, template )
 LS.GraphCode = GraphCode;
 LS.registerResourceClass( GraphCode );
 
+///@FILE:../src/graph/core.js
+///@INFO: GRAPHS
+if(typeof(LiteGraph) != "undefined")
+{
+	//gets a resource
+	function LGraphResource() {
+		this.addOutput("out", "");
+		this.properties = {
+			filename: "",
+			type: ""
+		};
+	}
+
+	LGraphResource.title = "resource";
+	LGraphResource.desc = "gets a resource";
+
+	LGraphResource.widgets_info = {
+		filename: { widget: "resource" }
+	};
+
+	LGraphResource.prototype.onExecute = function() {
+		var res = null;
+		if(this.properties.filename)
+			res = LS.ResourcesManager.resources[this.properties.filename];
+
+		//wrong type
+		if( res && this.properties.type && res.constructor.name.toLowerCase() !== this.properties.type.toLowerCase() )
+			res = null;
+
+		this.setOutputData(0,res);
+	}
+
+	LGraphResource.prototype.getResources = function(o)
+	{
+		if(this.properties.filename)
+			o[this.properties.filename] = true;
+	}
+
+	LiteGraph.registerNodeType( "core/resource", LGraphResource );	
+
+
+	function LGraphGetMesh() {
+		this.addOutput("out", "mesh");
+		this.properties = {
+			name: ""
+		};
+	}
+
+	LGraphGetMesh.title = "mesh";
+	LGraphGetMesh.desc = "gets mesh";
+
+	LGraphGetMesh.widgets_info = {
+		name: { widget: "mesh" }
+	};
+
+	LGraphGetMesh.prototype.onExecute = function() {
+		var mesh = null;
+		if(this.properties.name)
+			mesh = LS.ResourcesManager.meshes[this.properties.name];
+		if(mesh && mesh.constructor !== GL.Mesh)
+			mesh = null;
+		this.setOutputData(0,mesh);
+	}
+
+	LGraphGetMesh.prototype.getResources = function(o)
+	{
+		if(this.properties.name)
+			o[this.properties.name] = true;
+	}
+
+	LiteGraph.registerNodeType( "geometry/mesh", LGraphGetMesh );	
+
+
+	//****************************************
+
+	function LGraphRenderMeshInScene() {
+		this.addInput("mesh", "mesh");
+		this.addInput("material", "material");
+		this.addInput("mat4", "mat4");
+		this.addInput("instances", "array");
+
+		this.properties = {
+			enabled: true,
+			primitive: GL.TRIANGLES,
+			use_node_transform: true,
+			use_node_material: true,
+		};
+	}
+
+	LGraphRenderMeshInScene.title = "Render";
+	LGraphRenderMeshInScene.desc = "renders a mesh with a material inside the scene";
+
+	LGraphRenderMeshInScene.PRIMITIVE_VALUES = { "points":GL.POINTS, "lines":GL.LINES, "line_loop":GL.LINE_LOOP,"line_strip":GL.LINE_STRIP, "triangles":GL.TRIANGLES, "triangle_fan":GL.TRIANGLE_FAN, "triangle_strip":GL.TRIANGLE_STRIP };
+
+	LGraphRenderMeshInScene.widgets_info = {
+		primitive: { widget: "combo", values: LGraphRenderMeshInScene.PRIMITIVE_VALUES }
+	};
+
+	LGraphRenderMeshInScene.prototype.onExecute = function() {
+
+		if(!this.properties.enabled)
+			return;
+
+		//as renderinstance
+		if(!this._RI)
+			this._RI = new LS.RenderInstance();
+
+		//root node
+		var node = this.graph._scenenode;
+		if(!node)
+			return;
+		this._RI.fromNode( node, true );
+
+		var mesh = this.getInputData(0);
+		if(!mesh)
+			return;
+		this._RI.setMesh( mesh );
+
+		//material
+		var material = this.getInputData(1);
+		if(!material && this.properties.use_node_material)
+			material = node.getMaterial();
+		if(!material)
+			material = LS.Renderer.default_material;
+		this._RI.setMaterial( material );
+
+		this._RI.primitive = this.properties.primitive;
+
+		//transform
+		var model = this.getInputData(2);
+		if(!model)
+		{
+			if(this.properties.use_node_transform && node && node.transform )
+				model = node.transform.getGlobalMatrixRef();
+			else
+				model = LS.IDENTITY;
+		}
+			
+		this._RI.setMatrix( model );
+
+		//instancing
+		var instances = this.getInputData(4);
+		if(instances)
+			this._RI.instanced_models = instances;
+
+		LS.Renderer.addImmediateRenderInstance( this._RI );
+	}
+
+	LiteGraph.registerNodeType( "geometry/render_mesh_in_scene", LGraphRenderMeshInScene );
+	
+}
 ///@FILE:../src/graph/scene.js
 ///@INFO: GRAPHS
 if(typeof(LiteGraph) != "undefined")
@@ -20672,12 +20723,48 @@ if(typeof(LiteGraph) != "undefined")
 	global.LGraphMaterial = function()
 	{
 		this.properties = { material_id: "", node_id: "" };
-		this.addInput("Material","Material");
-		this.size = [100,30];
+		this.addInput("","Material");
+		this.addOutput("","Material");
+		this.material = null;
+
+		this.addWidget("button","Create", "", this.onCreateMaterial.bind(this) );
 	}
 
 	LGraphMaterial.title = "Material";
 	LGraphMaterial.desc = "Material of a node";
+
+	LGraphMaterial.prototype.onCreateMaterial = function(w, graphcanvas, node, pos, event)
+	{
+		var types = Object.keys( LS.MaterialClasses );
+		types.push(null,"clear");
+		var menu = new LiteGraph.ContextMenu(types, { event: event, callback: inner });
+		var that = this;
+		function inner(v)
+		{
+			if(v == "clear")
+			{
+				that.material = null;
+				return;
+			}
+
+			if(!LS.MaterialClasses[ v ])
+				return;
+			var mat = new LS.MaterialClasses[ v ];
+			that.material = mat;
+			EditorModule.inspect( that );
+		}
+	}
+
+	LGraphMaterial.prototype.getResources = function(res)
+	{
+		if(this.material && this.material.getResources)
+			this.material.getResources(res);
+	}
+
+	LGraphTexture.prototype.onResourceRenamed = function( old_name, new_name ) {
+		if(this.material && this.material.onResourceRenamed)
+			this.material.onResourceRenamed( old_name, new_name );
+	};
 
 	LGraphMaterial.prototype.onExecute = function()
 	{
@@ -20700,18 +20787,24 @@ if(typeof(LiteGraph) != "undefined")
 
 		//write outputs
 		if(this.outputs)
-		for(var i = 0; i < this.outputs.length; ++i)
 		{
-			var output = this.outputs[i];
-			if(!output.links || !output.links.length)
-				continue;
-			var v = mat.getProperty( output.name );
-			this.setOutputData( i, v );
+			this.setOutputData( 0, mat );
+			for(var i = 1; i < this.outputs.length; ++i)
+			{
+				var output = this.outputs[i];
+				if(!output.links || !output.links.length)
+					continue;
+				var v = mat.getProperty( output.name );
+				this.setOutputData( i, v );
+			}
 		}
 	}
 
 	LGraphMaterial.prototype.getMaterial = function()
 	{
+		if(this.material)
+			return this.material;
+
 		//if it has an input material, use that one
 		var slot = this.findInputSlot("Material");
 		if( slot != -1)
@@ -20769,14 +20862,41 @@ if(typeof(LiteGraph) != "undefined")
 		*/
 	}
 
+	LGraphMaterial.prototype.onSerialize = function(o)
+	{
+		if( this.material && this.material.serialize )
+		{
+			o.material = this.material.serialize();
+			o.material.className = LS.getObjectClassName( this.material );
+		}
+	}
+
+	LGraphMaterial.prototype.onConfigure = function(o)
+	{
+		if(o.material)
+		{
+			var ctor = LS.MaterialClasses[ o.material.className ];
+			if(ctor)
+			{
+				this.material = new ctor();
+				this.material.configure( o.material );
+			}
+		}
+	}
+
 	LGraphMaterial.prototype.onInspect = function( inspector )
 	{
 		var that = this;
+		var mat = this.getMaterial();
+		if(mat)
+			EditorModule.showMaterialProperties( mat, inspector );
+		/*
 		inspector.addButton(null, "Inspect material", function(){
 			var mat = that.getMaterial();
 			if(mat)
 				EditorModule.inspect( mat );
 		});
+		*/
 	}
 
 	LiteGraph.registerNodeType("scene/material", LGraphMaterial );
@@ -22480,38 +22600,6 @@ if(typeof(LiteGraph) != "undefined")
 		area[1] = y;
 	}
 
-
-	function LGraphGetMesh() {
-		this.addOutput("out", "mesh");
-		this.properties = {
-			name: ""
-		};
-	}
-
-	LGraphGetMesh.title = "mesh";
-	LGraphGetMesh.desc = "gets mesh";
-
-	LGraphGetMesh.widgets_info = {
-		name: { widget: "resource" }
-	};
-
-	LGraphGetMesh.prototype.onExecute = function() {
-		var mesh = null;
-		if(this.properties.name)
-			mesh = LS.ResourcesManager.meshes[this.properties.name];
-		if(mesh && mesh.constructor !== GL.Mesh)
-			mesh = null;
-		this.setOutputData(0,mesh);
-	}
-
-	LGraphGetMesh.prototype.getResources = function(o)
-	{
-		if(this.properties.name)
-			o[this.properties.name] = true;
-	}
-
-	LiteGraph.registerNodeType( "geometry/getMesh", LGraphGetMesh );	
-
 	//special kind of node
 	function LGraphGUIPanel()
 	{
@@ -22960,6 +23048,7 @@ if(typeof(LiteGraph) != "undefined")
 		this.addInput("y","number");
 		this.addOutput("[]","array");
 		this.addOutput("obj","object");
+		this.addOutput("img","image");
 		this.addProperty("circular",false);
 		this.points = [];
 		this.weights = [];
@@ -22990,6 +23079,17 @@ if(typeof(LiteGraph) != "undefined")
 		this.computeWeights(pos);
 		this.setOutputData(0, this.weights );
 		this.setOutputData(1, this.weights_obj );
+
+		if(this.isOutputConnected(2))
+		{
+			if(!this.temp_canvas)
+				this.temp_canvas = document.createElement("canvas");
+			this.temp_canvas.width = this.size[0];
+			this.temp_canvas.height = this.size[1];
+			var temp_ctx = this.temp_canvas.getContext("2d");
+			this.renderToCanvas( temp_ctx, this.temp_canvas );
+			this.setOutputData(2, this.temp_canvas );
+		}
 	}
 	
 	//now to compute the final weight we iterate for every cell to see if our point is nearer to the cell than the nearest point of the cell,
@@ -23081,18 +23181,56 @@ if(typeof(LiteGraph) != "undefined")
 	{
 		if(this.flags.collapsed)
 			return;
-		var pos = this.current_pos;
+
+		this.renderToCanvas( ctx );
+
+		//weights
 		var margin = this.margin;
+		var w = this.size[0];
+		var h = this.size[1];
+
+		ctx.save();
+		ctx.fillStyle = "black";
+		ctx.fillRect( margin, h - margin + 2, w - margin * 2, margin - 4);
+		ctx.strokeStyle = "white";
+		ctx.strokeRect( margin, h - margin + 2, w - margin * 2, margin - 4);
+		ctx.textAlign = "center";
+		ctx.fillStyle = "white";
+		ctx.fillText( "Visualize Weights", w * 0.5, h - margin * 0.3 );
+		ctx.textAlign = "left";
+
+		if(this.weights.length && this._visualize_weights)
+		{
+			var x = w + 5;
+			var y = 16; //h - this.weights.length * 5 - 10;
+			for(var i = 0; i < this.weights.length; ++i)
+			{
+				var c = LGraphMap2D.colors[i % LGraphMap2D.colors.length];
+				ctx.fillStyle = "black";
+				ctx.fillRect(x, y + i*5, 100,4 );
+				ctx.fillStyle = "rgb(" + ((c[0]*255)|0) + "," + ((c[1]*255)|0) + "," + ((c[2]*255)|0) + ")";
+				ctx.fillRect(x, y + i*5, this.weights[i]*100,4 );
+			}
+		}
+		ctx.restore();
+	}
+
+	LGraphMap2D.prototype.renderToCanvas = function( ctx, canvas )
+	{
+		var pos = this.current_pos;
 		var circular = this.properties.circular;
 		var show_names = this.show_names;
+		var margin = this.margin;
+		var w = canvas ? canvas.width : this.size[0];
+		var h = canvas ? canvas.height : this.size[1];
 
 		ctx.fillStyle = "black";
 		ctx.strokeStyle = "#BBB";
 		if(circular)
 		{
-			this.circle_center[0] = this.size[0] * 0.5;
-			this.circle_center[1] = this.size[1] * 0.5;
-			this.circle_radius = this.size[1] * 0.5 - margin;
+			this.circle_center[0] = w * 0.5;
+			this.circle_center[1] = h * 0.5;
+			this.circle_radius = h * 0.5 - margin;
 			ctx.lineWidth = 2;
 			ctx.beginPath();
 			ctx.arc( this.circle_center[0], this.circle_center[1], this.circle_radius, 0, Math.PI * 2 );
@@ -23108,8 +23246,8 @@ if(typeof(LiteGraph) != "undefined")
 		}
 		else
 		{
-			ctx.fillRect(margin,margin,this.size[0]-margin*2, this.size[1]-margin*2);
-			ctx.strokeRect(margin,margin,this.size[0]-margin*2, this.size[1]-margin*2);
+			ctx.fillRect(margin,margin,w-margin*2, h-margin*2);
+			ctx.strokeRect(margin,margin,w-margin*2, h-margin*2);
 		}
 
 		var image = this.precomputeWeightsToImage( pos );
@@ -23127,7 +23265,7 @@ if(typeof(LiteGraph) != "undefined")
 				ctx.restore();
 			}
 			else
-				ctx.drawImage( image, margin, margin,this.size[0]-margin*2, this.size[1]-margin*2 );
+				ctx.drawImage( image, margin, margin,w-margin*2, h-margin*2 );
 			ctx.imageSmoothingEnabled = true;
 			ctx.globalAlpha = 1;
 		}
@@ -23142,10 +23280,10 @@ if(typeof(LiteGraph) != "undefined")
 				x = x*0.5 + 0.5;
 				y = y*0.5 + 0.5;
 			}
-			x = x * (this.size[0]-margin*2) + margin;
-			y = y * (this.size[1]-margin*2) + margin;
-			x = Math.clamp( x, margin, this.size[0]-margin);
-			y = Math.clamp( y, margin, this.size[1]-margin);
+			x = x * (w-margin*2) + margin;
+			y = y * (h-margin*2) + margin;
+			x = Math.clamp( x, margin, w-margin);
+			y = Math.clamp( y, margin, h-margin);
 			ctx.fillStyle = point == this._selected_point ? "#9DF" : "#789";
 			ctx.beginPath();
 			ctx.arc(x,y,3,0,Math.PI*2);
@@ -23163,38 +23301,15 @@ if(typeof(LiteGraph) != "undefined")
 			x = x*0.5 + 0.5;
 			y = y*0.5 + 0.5;
 		}
-		x = x * (this.size[0]-margin*2) + margin;
-		y = y * (this.size[1]-margin*2) + margin;
-		x = Math.clamp( x, margin, this.size[0]-margin);
-		y = Math.clamp( y, margin, this.size[1]-margin);
+		x = x * (w-margin*2) + margin;
+		y = y * (h-margin*2) + margin;
+		x = Math.clamp( x, margin, w-margin);
+		y = Math.clamp( y, margin, h-margin);
 		ctx.arc(x,y,5,0,Math.PI*2);
 		ctx.fill();
 
-		//weights
-		ctx.save();
-		ctx.fillStyle = "black";
-		ctx.fillRect( margin, this.size[1] - margin + 2, this.size[0] - margin * 2, margin - 4);
-		ctx.strokeStyle = "white";
-		ctx.strokeRect( margin, this.size[1] - margin + 2, this.size[0] - margin * 2, margin - 4);
-		ctx.textAlign = "center";
-		ctx.fillStyle = "white";
-		ctx.fillText( "Visualize Weights", this.size[0] * 0.5, this.size[1] - margin * 0.3 );
-		ctx.textAlign = "left";
-
-		if(this.weights.length && this._visualize_weights)
-		{
-			var x = this.size[0] + 5;
-			var y = 16; //this.size[1] - this.weights.length * 5 - 10;
-			for(var i = 0; i < this.weights.length; ++i)
-			{
-				var c = LGraphMap2D.colors[i % LGraphMap2D.colors.length];
-				ctx.fillStyle = "black";
-				ctx.fillRect(x, y + i*5, 100,4 );
-				ctx.fillStyle = "rgb(" + ((c[0]*255)|0) + "," + ((c[1]*255)|0) + "," + ((c[2]*255)|0) + ")";
-				ctx.fillRect(x, y + i*5, this.weights[i]*100,4 );
-			}
-		}
-		ctx.restore();
+		if(canvas)
+			canvas.mustUpdate = true;
 	}
 
 	LGraphMap2D.prototype.addPoint = function( name, pos )
@@ -24044,7 +24159,7 @@ if(typeof(LiteGraph) != "undefined")
 		if(!prop_info)
 		{
 			if( this.properties.type != "" )
-				return this.properties.type + " " + link_name + " = u_" + prop_info.name + ";\n";
+				context.fs_code += this.properties.type + " " + link_name + " = u_" + prop_info.name + ";\n";
 			return "";
 		}
 
@@ -24058,6 +24173,24 @@ if(typeof(LiteGraph) != "undefined")
 		}
 	}
 
+
+	LGraphShaderUniform.prototype.onDrawBackground = function(ctx, graphcanvas)
+	{
+		if(ctx !== gl || this.size[1] < 10 || this.flags.collapsed )
+			return;
+		var prop_info = this.getProperty();
+		var material = graphcanvas._material;
+		if(!material || !prop_info)
+			return;
+		var prop = material._properties_by_name[ prop_info.name ];
+		if(prop && prop.type == "texture" && prop.value)
+		{
+			var texture = LS.ResourcesManager.textures[ prop.value ];
+			if(texture)
+				ctx.drawImage( texture, 0,0, this.size[0], this.size[1] );
+		}
+	}
+
 	LiteGraph.registerShaderNode( "uniform", LGraphShaderUniform );
 
 	function LGraphShaderVertex()
@@ -24068,10 +24201,11 @@ if(typeof(LiteGraph) != "undefined")
 		this.addOutput("local_normal","vec3");
 		this.addOutput("uv","vec2");
 		this.addOutput("uv1","vec2");
+		this.addOutput("color","vec4");
 		this.addOutput("screen","vec4");
 		this.addOutput("viewDir","vec3");
 		this.addOutput("camPos","vec3");
-		this.addOutput("color","vec4");
+		this.addOutput("camDist","float");
 	}
 
 	LGraphShaderVertex.title = "Vertex";
@@ -24104,16 +24238,19 @@ if(typeof(LiteGraph) != "undefined")
 			code += "\t vec2 "+output+" = IN.uv1;\n";
 		output = getOutputLinkID( this, 6 );
 		if(output)
-			code += "\t vec4 "+output+" = IN.screenPos;\n";
+			code += "\t vec4 "+output+" = IN.color;\n";
 		output = getOutputLinkID( this, 7 );
 		if(output)
-			code += "\t vec3 "+output+" = IN.viewDir;\n";
+			code += "\t vec4 "+output+" = IN.screenPos;\n";
 		output = getOutputLinkID( this, 8 );
 		if(output)
-			code += "\t vec3 "+output+" = IN.camPos;\n";
+			code += "\t vec3 "+output+" = IN.viewDir;\n";
 		output = getOutputLinkID( this, 9 );
 		if(output)
-			code += "\t vec4 "+output+" = IN.color;\n";
+			code += "\t vec3 "+output+" = IN.camPos;\n";
+		output = getOutputLinkID( this, 10 );
+		if(output)
+			code += "\t float "+output+" = IN.camDist;\n";
 
 		context.fs_code += code;
 	}
@@ -24280,7 +24417,9 @@ if(typeof(LiteGraph) != "undefined")
 		this.addOutput("","T");
 
 		this.properties = {
-			op: "+"
+			op: "+",
+			A: 1.0,
+			B: 1.0
 		};
 
 		var that = this;
@@ -24308,10 +24447,14 @@ if(typeof(LiteGraph) != "undefined")
 		var inputB = getInputLinkID( this, 1 );
 		var output = getOutputLinkID( this, 0 );
 
-		if(!inputA || !inputB || !output)
+		if(!output)
 			return;
+		if(!inputA)
+			inputA = valueToGLSL(this.properties.A);
+		if(!inputB)
+			inputB = valueToGLSL(this.properties.B);
 
-		var return_type = this.getInputDataType(0);
+		var return_type = this.getInputDataType(0) || this.getInputDataType(1) || "float";
 		var code = return_type + " " + output + " = " + inputA + " " + this.properties.op + " " + inputB + ";\n";
 		context.fs_code += code;
 	}
@@ -24513,6 +24656,7 @@ if(typeof(LiteGraph) != "undefined")
 		this.addOutput("rgba","vec4");
 		this.addOutput("rgb","vec3");
 		this.addOutput("a","float");
+		this.properties = { uv_scale: [1,1], uv_offset: [0,0] };
 		this.size = [160,64];
 	}
 
@@ -24541,9 +24685,18 @@ if(typeof(LiteGraph) != "undefined")
 				context.fs_code += "	float " + outlink3 + " = 0.0;\n";
 			return;
 		}
+		
+		//uvs
+		var uvs_var = getShaderNodeVarName(this, "uvs" );
+		context.fs_code += "	vec2 " + uvs_var + " = " + ( in_uv_link ? in_uv_link : "v_uvs") + ";\n";
 
-		var temp_var = getShaderNodeVarName(this);
-		context.fs_code += "	vec4 " + temp_var + " = texture2D(" + in_tex_link + ", "+( in_uv_link ? in_uv_link : "v_uvs")+");\n";
+		if(this.properties.uv_scale[0] != 1 || this.properties.uv_scale[1] != 1 )
+			context.fs_code += "	" + uvs_var + " *= " + valueToGLSL(this.properties.uv_scale) + ";\n";
+		if(this.properties.uv_offset[0] != 0 || this.properties.uv_offset[1] != 0 )
+			context.fs_code += "	" + uvs_var + " += " + valueToGLSL(this.properties.uv_offset) + ";\n";
+
+		var temp_var = getShaderNodeVarName(this, "texcolor" );
+		context.fs_code += "	vec4 " + temp_var + " = texture2D(" + in_tex_link + ", "+uvs_var+");\n";
 		if(outlink)
 			context.fs_code += "	vec4 " + outlink + " = " + temp_var + ";\n";
 		if(outlink2)
@@ -24986,9 +25139,12 @@ if(typeof(LiteGraph) != "undefined")
 	function LGraphShaderNormalTransform()
 	{
 		this.addInput("in","vec3");
+		this.addInput("factor","float");
 		this.addOutput("out","vec3");
 		this.properties = {
+			adjust_range: true,
 			tangent_space: true,
+			invert_xy: true
 		};
 		this.addWidget("toggle","tangent",true,"tangent_space");
 	}
@@ -25000,21 +25156,46 @@ if(typeof(LiteGraph) != "undefined")
 		 this.graph._version++;
 	}
 
-
 	LGraphShaderNormalTransform.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
 			return "";
 		var inlink = getInputLinkID(this,0);
+		var factor_link = getInputLinkID(this,1);
 		var outlink = getOutputLinkID(this,0);
 		if(!outlink) //not connected
 			return;
 
-		context.fs_snippets = "perturbNormal";
-		//context.fs_code += "	vec3 " + outlink + " = normalize( perturbNormal( "+worldNormal+", "+viewdir+", "+uv+", "+inlink+" ));\n\";
+		context.fs_snippets["perturbNormal"] = true;
+
+		var ws_normal_var = getShaderNodeVarName(this, "ws_normal" );
+		var tex_normal_var = getShaderNodeVarName(this, "tex_normal" );
+
+		if(!inlink)
+		{
+			context.fs_code += "	vec3 " + outlink + " = v_normal;\n";
+			return;
+		}
+
+		var code = "";
+		code += "	vec3 " + ws_normal_var + " = IN.worldNormal;\n";
+		code += "	vec3 " + tex_normal_var + " = "+inlink+";\n";
+		if( this.properties.invert_xy )
+			code += "	" + tex_normal_var + ".xy = vec2(1.0) - " + tex_normal_var + ".xy;\n";
+		if( this.properties.adjust_range && !this.properties.tangent_space )
+				code += "	" + tex_normal_var + " = "+tex_normal_var+" * 2.0 - vec3(1.0);\n";
+		//code += "	" + tex_normal_var + " = normalize("+tex_normal_var+");\n";
+		if(this.properties.tangent_space)
+			code += "	vec3 " + outlink + " = perturbNormal( "+ws_normal_var+", IN.viewDir, v_uvs, "+tex_normal_var+" );\n";
+		else
+			code += "	vec3 " + outlink + " = (u_normal_model * vec4("+tex_normal_var+",0.0)).xyz;\n";
+		if( factor_link )
+			code += "	" + outlink + " = mix( "+ws_normal_var+", " + outlink + ", " + factor_link +");\n";
+		code += "	" + outlink + " = normalize( "+outlink+" );\n";
+		context.fs_code += code;
 	}
 
-	//LiteGraph.registerShaderNode( "normalTransform", LGraphShaderNormalTransform );
+	LiteGraph.registerShaderNode( "normalTransform", LGraphShaderNormalTransform );
 
 }
 ///@FILE:../src/helpers/path.js
@@ -29849,7 +30030,7 @@ var Renderer = {
 				this._main_camera = new LS.Camera(); // ??
 		}
 
-
+		//nearest reflection probe to camera
 		var nearest_reflection_probe = scene.findNearestReflectionProbe( this._main_camera.getEye() );
 
 		instances = instances || scene._instances;
@@ -29891,7 +30072,7 @@ var Renderer = {
 
 			//find nearest reflection probe
 			if( scene._reflection_probes.length && !this._ignore_reflection_probes )
-				instance._nearest_reflection_probe = nearest_reflection_probe;//scene.findNearestReflectionProbe( instance.center );
+				instance._nearest_reflection_probe = scene.findNearestReflectionProbe( instance.center ); //nearest_reflection_probe;
 			else
 				instance._nearest_reflection_probe = null;
 
@@ -29908,26 +30089,11 @@ var Renderer = {
 			}
 
 			//add to queues
-			var queue_index = instance.material.queue;
-			var queue = null;
-			if( queue_index === undefined || queue_index === LS.RenderQueue.DEFAULT )
-			{
-				//TODO: maybe this case should be treated directly in StandardMaterial
-				if( instance.material._render_state.blend )
-					queue = this._queues[ LS.RenderQueue.TRANSPARENT ];
-				else
-					queue = this._queues[ LS.RenderQueue.GEOMETRY ];
-			}
-			else
-			{
-				queue = this._queues[ queue_index ];
-				if(!queue)
-					LS.Renderer.createRenderQueue( queue_index );
-			}
+			var queue = this.addInstanceToQueue( instance );
 			if(!queue)
 				continue;
-			queue.add( instance );
 
+			//clear camera visibility mask (every flag represents a camera index)
 			instance._camera_visibility = 0|0;
 		}
 
@@ -29942,14 +30108,8 @@ var Renderer = {
 
 		LEvent.trigger( scene, EVENT.PREPARE_MATERIALS );
 
-		//pack all macros, uniforms, and samplers relative to this instance in single containers
 		for(var i = 0, l = instances.length; i < l; ++i)
-		{
-			var instance = instances[i];
-			var node = instance.node;
-			var material = instance.material;
 			instance.index = i;
-		}
 
 		//store all the info
 		this._visible_instances = scene._instances;
@@ -29962,6 +30122,30 @@ var Renderer = {
 			this._active_lights[i].prepare( render_settings );
 
 		LEvent.trigger( scene, EVENT.AFTER_COLLECT_DATA, scene );
+	},
+
+	addInstanceToQueue: function( instance )
+	{
+		var queue_index = instance.material.queue;
+		var queue = null;
+		if( queue_index === undefined || queue_index === LS.RenderQueue.DEFAULT )
+		{
+			//TODO: maybe this case should be treated directly in StandardMaterial
+			if( instance.material._render_state.blend )
+				queue = this._queues[ LS.RenderQueue.TRANSPARENT ];
+			else
+				queue = this._queues[ LS.RenderQueue.GEOMETRY ];
+		}
+		else
+		{
+			queue = this._queues[ queue_index ];
+			if(!queue)
+				LS.Renderer.createRenderQueue( queue_index );
+		}
+		if(!queue)
+			return;
+		queue.add( instance );	
+		return queue;
 	},
 
 	/**
@@ -30114,6 +30298,28 @@ var Renderer = {
 		if(!pass)
 			pass = COLOR_PASS;
 		this._current_pass = pass;
+	},
+
+	addImmediateRenderInstance: function( instance )
+	{
+		if(!instance.material)
+			return;
+
+		//this is done in collect so...
+		instance.updateAABB(); 
+
+		//add material to the list of visible materials
+		if( instance.material._last_frame_update != this._frame )
+		{
+			instance.material._last_frame_update = this._frame;
+			this._visible_materials.push( instance.material );
+			if( instance.material.prepare )
+				instance.material.prepare( this._current_scene );
+		}
+
+		this.addInstanceToQueue( instance );
+
+		this._visible_instances.push( instance );
 	},
 	
 	/**
@@ -32661,20 +32867,7 @@ Shadowmap._enabled_fragment_code = "\n\
 		return f*f*f*(f*(f*6.0-15.0)+10.0);\n\
 	}\n\
 	\n\
-	vec2 vec3ToCubemap2D( vec3 v )\n\
-	{\n\
-		vec3 abs_ = abs(v);\n\
-		float max_ = max(max(abs_.x, abs_.y), abs_.z); // Get the largest component\n\
-		vec3 weights = step(max_, abs_); // 1.0 for the largest component, 0.0 for the others\n\
-		float sign_ = dot(weights, sign(v)) * 0.5 + 0.5; // 0 or 1\n\
-		float sc = dot(weights, mix(vec3(v.z, v.x, -v.x), vec3(-v.z, v.x, v.x), sign_));\n\
-	    float tc = dot(weights, mix(vec3(-v.y, -v.z, -v.y), vec3(-v.y, v.z, -v.y), sign_));\n\
-	    vec2 uv = (vec2(sc, tc) / max_) * 0.5 + 0.5;\n\
-		// Offset into the right region of the texture\n\
-		float offsetY = dot(weights, vec3(1.0, 3.0, 5.0)) - sign_;\n\
-		uv.y = (uv.y + offsetY) / 6.0;\n\
-		return uv;\n\
-	}\n\
+	#pragma snippet \"vec3ToCubemap2D\"\n\
 	\n\
 	float testShadow( Light LIGHT )\n\
 	{\n\
@@ -32689,7 +32882,7 @@ Shadowmap._enabled_fragment_code = "\n\
 			float dist = length(l_vector);\n\
 			float pixel_z = VectorToDepthValue( l_vector );\n\
 			if(pixel_z >= 0.998)\n\
-				return 0.0; //fixes a little bit the far edge bug\n\
+				return 1.0; //fixes a little bit the far edge bug\n\
 			//vec4 depth_color = textureCube( shadowmap, l_vector + offset * dist );\n\
 			sample = vec3ToCubemap2D( l_vector/dist );\n\
 			vec4 depth_color = texture2D( shadowmap, sample );\n\
@@ -37475,7 +37668,7 @@ Light.prototype.updateLightCamera = function( face_index )
 		var target = Light._temp_target;
 		vec3.add( target, Light._temp_position, info.dir );
 		camera.center = target;
-		camera.fov = 45;
+		camera.fov = 90;
 		camera.up = info.up;
 	}
 	else

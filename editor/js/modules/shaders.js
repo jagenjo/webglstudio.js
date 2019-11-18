@@ -210,6 +210,8 @@ var ShadersModule = {
 			return;
 		this.graph = graphcode.graph;
 		this.graphcanvas.setGraph( this.graph );
+		this.graphcanvas._material = material;
+
 		this.updateSidebar();
 
 		window.SHADERGRAPH = this.graph;

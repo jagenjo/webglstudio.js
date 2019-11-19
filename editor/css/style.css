@@ -266,7 +266,8 @@ body.player #work-area, body.player #main-area  {
 }
 
 .file-list .file-item:hover {
-	transform: scale(1.1);
+	/*transform: scale(1.1);*/
+	outline: 1px solid #EEE;
 }
 
 .file-list .file-item .info {

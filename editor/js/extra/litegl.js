@@ -8365,7 +8365,7 @@ Shader.prototype.drawBuffers = function( vertexBuffers, indexBuffer, mode, range
 
 Shader._instancing_arrays = [];
 
-Shader.prototype.drawInstanced = function( mesh, primitive, indices, instanced_uniforms, range_start, range_length, num_intances )
+Shader.prototype.drawInstanced = function( mesh, primitive, indices, instanced_uniforms, range_start, range_length, num_instances )
 {
 	if(range_length === 0)
 		return;
@@ -8500,8 +8500,8 @@ Shader.prototype.drawInstanced = function( mesh, primitive, indices, instanced_u
 		index+=1;
 	}
 
-	if( num_intances )
-		batch_length = num_intances;
+	if( num_instances )
+		batch_length = num_instances;
 
 	if( ext ) //webgl 1.0
 	{

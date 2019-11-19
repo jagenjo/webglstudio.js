@@ -9227,6 +9227,10 @@ LGraphNode.prototype.executeAction = function(action)
         dialog.style.left = left + "px";
         dialog.style.top = top + "px";
 
+		//To avoid out of screen problems
+		if(event.layerY > (rect.height - 200)) 
+            helper.style.maxHeight = (rect.height - event.layerY - 20) + "px";
+
 		/*
         var offsetx = -20;
         var offsety = -20;
@@ -9323,7 +9327,7 @@ LGraphNode.prototype.executeAction = function(action)
                 return;
             }
             selected.classList.add("selected");
-            selected.scrollIntoView({block: "end", behaviour: "smooth"});
+            selected.scrollIntoView({block: "end", behavior: "smooth"});
         }
 
         function refreshHelper() {
@@ -14512,6 +14516,69 @@ if (typeof exports != "undefined") {
 
 (function(global) {
     var LiteGraph = global.LiteGraph;
+
+
+	function Math3DMat4()
+	{
+        this.addInput("T", "vec3");
+        this.addInput("R", "vec3");
+        this.addInput("S", "vec3");
+        this.addOutput("mat4", "mat4");
+		this.properties = {
+			"T":[0,0,0],
+			"R":[0,0,0],
+			"S":[1,1,1],
+			R_in_degrees: true
+		};
+		this._result = mat4.create();
+		this._must_update = true;
+	}
+
+	Math3DMat4.title = "mat4";
+	Math3DMat4.temp_quat = new Float32Array([0,0,0,1]);
+	Math3DMat4.temp_mat4 = new Float32Array(16);
+	Math3DMat4.temp_vec3 = new Float32Array(3);
+
+	Math3DMat4.prototype.onPropertyChanged = function(name, value)
+	{
+		this._must_update = true;
+	}
+
+	Math3DMat4.prototype.onExecute = function()
+	{
+		var M = this._result;
+		var Q = Math3DMat4.temp_quat;
+		var temp_mat4 = Math3DMat4.temp_mat4;
+		var temp_vec3 = Math3DMat4.temp_vec3;
+
+		var T = this.getInputData(0);
+		var R = this.getInputData(1);
+		var S = this.getInputData(2);
+
+		if( this._must_update || T || R || S )
+		{
+			T = T || this.properties.T;
+			R = R || this.properties.R;
+			S = S || this.properties.S;
+			mat4.identity( M );
+			mat4.translate( M, M, T );
+			if(this.properties.R_in_degrees)
+			{
+				temp_vec3.set( R );
+				vec3.scale(temp_vec3,temp_vec3,DEG2RAD);
+				quat.fromEuler( Q, temp_vec3 );
+			}
+			else
+				quat.fromEuler( Q, R );
+			mat4.fromQuat( temp_mat4, Q );
+			mat4.multiply( M, M, temp_mat4 );
+			mat4.scale( M, M, S );
+		}
+
+		this.setOutputData(0, M);		
+	}
+
+    LiteGraph.registerNodeType("math3d/mat4", Math3DMat4);
 
     //Math 3D operation
     function Math3DOperation() {
@@ -20886,23 +20953,32 @@ void main(void){\n\
 	}
 
 	function LGraphPoints3D() {
+
+		this.addInput("ref", "");
+
 		this.addOutput("out", "geometry");
 		this.addOutput("points", "array");
 		this.properties = {
 			radius: 1,
 			num_points: 4096,
 			regular: false,
-			mode: LGraphPoints3D.SPHERE
+			mode: LGraphPoints3D.SPHERE,
+			force_update: false
 		};
 
 		this.points = new Float32Array( this.properties.num_points * 3 );
 		this.must_update = true;
 		this.version = 0;
 
+		var that = this;
+		this.addWidget("button","update",null, function(){ that.must_update = true; });
+
 		this.geometry = {
 			vertices: null,
 			_id: generateGeometryId()
 		}
+
+		this._old_ref = null;
 	}
 
 	global.LGraphPoints3D = LGraphPoints3D;
@@ -20915,7 +20991,9 @@ void main(void){\n\
 	LGraphPoints3D.HEMISPHERE = 12;
 	LGraphPoints3D.INSIDE_SPHERE = 13;
 
-	LGraphPoints3D.MODE_VALUES = { "rectangle":LGraphPoints3D.RECTANGLE, "circle":LGraphPoints3D.CIRCLE, "cube":LGraphPoints3D.CUBE, "sphere":LGraphPoints3D.SPHERE, "hemisphere":LGraphPoints3D.HEMISPHERE, "inside_sphere":LGraphPoints3D.INSIDE_SPHERE };
+	LGraphPoints3D.MESH_TRIANGLE = 20;
+
+	LGraphPoints3D.MODE_VALUES = { "rectangle":LGraphPoints3D.RECTANGLE, "circle":LGraphPoints3D.CIRCLE, "cube":LGraphPoints3D.CUBE, "sphere":LGraphPoints3D.SPHERE, "hemisphere":LGraphPoints3D.HEMISPHERE, "inside_sphere":LGraphPoints3D.INSIDE_SPHERE, "mesh_triangle":LGraphPoints3D.MESH_TRIANGLE };
 
 	LGraphPoints3D.widgets_info = {
 		mode: { widget: "combo", values: LGraphPoints3D.MODE_VALUES }
@@ -20930,7 +21008,15 @@ void main(void){\n\
 	}
 
 	LGraphPoints3D.prototype.onExecute = function() {
-		if(this.must_update)
+
+		var ref = this.getInputData(0);
+		if( ref != this._old_ref || (ref && ref._version != this._old_ref_version) )
+		{
+			this._old_ref = ref;
+			this.must_update = true;
+		}
+
+		if(this.must_update || this.properties.force_update )
 		{
 			this.must_update = false;
 			this.updatePoints();
@@ -20942,7 +21028,27 @@ void main(void){\n\
 		this.setOutputData( 0, this.geometry );
 	}
 
-	LGraphPoints3D.generatePoints = function( radius, num_points, mode, points, regular )
+	LGraphPoints3D.prototype.updatePoints = function() {
+		var num_points = this.properties.num_points|0;
+		if(num_points < 1)
+			num_points = 1;
+		if(!this.points || this.points.length != num_points * 3)
+			this.points = new Float32Array( num_points * 3 );
+
+		var points = this.points;
+		var radius = this.properties.radius;
+		var mode = this.properties.mode;
+
+		var ref = this.getInputData(0);
+		this._old_ref_version = ref ? ref._version : null;
+
+		this.points = LGraphPoints3D.generatePoints( radius, num_points, mode, this.points, this.properties.regular, ref );
+
+		this.version++;
+	}
+
+	//global
+	LGraphPoints3D.generatePoints = function( radius, num_points, mode, points, regular, ref )
 	{
 		var size = num_points * 3;
 		if(!points || points.length != size)
@@ -21004,57 +21110,25 @@ void main(void){\n\
 					points[i+2] = (Math.random() - 0.5) * radius * 2;
 				}
 			else if( mode == LGraphPoints3D.SPHERE)
-				for(var i = 0; i < size; i+=3)
-				{
-					var r1 = Math.random();
-					var r2 = Math.random();
-					var x = 2 * Math.cos( 2 * Math.PI * r1 ) * Math.sqrt( r2 * (1-r2) );
-					var y = 1 - 2 * r2;
-					var z = 2 * Math.sin( 2 * Math.PI * r1 ) * Math.sqrt( r2 * (1-r2) );
-					points[i] = x * radius;
-					points[i+1] = y * radius;
-					points[i+2] = z * radius;
-				}			
+			{
+				LGraphPoints3D.generateSphere( points, size, radius );
+			}
 			else if( mode == LGraphPoints3D.HEMISPHERE)
-				for(var i = 0; i < size; i+=3)
-				{
-					var r1 = Math.random();
-					var r2 = Math.random();
-					var x = Math.cos( 2 * Math.PI * r1 ) * Math.sqrt(1 - r2*r2 );
-					var y = r2;
-					var z = Math.sin( 2 * Math.PI * r1 ) * Math.sqrt(1 - r2*r2 );
-					points[i] = x * radius;
-					points[i+1] = y * radius;
-					points[i+2] = z * radius;
-				}
+			{
+				LGraphPoints3D.generateHemisphere( points, size, radius );
+			}
 			else if( mode == LGraphPoints3D.CIRCLE)
-				for(var i = 0; i < size; i+=3)
-				{
-					var r1 = Math.random();
-					var r2 = Math.random();
-					var x = Math.cos( 2 * Math.PI * r1 ) * Math.sqrt(1 - r2*r2 );
-					var y = r2;
-					var z = Math.sin( 2 * Math.PI * r1 ) * Math.sqrt(1 - r2*r2 );
-					points[i] = x * radius;
-					points[i+1] = 0;
-					points[i+2] = z * radius;
-				}
+			{
+				LGraphPoints3D.generateInsideCircle( points, size, radius );
+			}
 			else if( mode == LGraphPoints3D.INSIDE_SPHERE)
-				for(var i = 0; i < size; i+=3)
-				{
-					var u = Math.random();
-					var v = Math.random();
-					var theta = u * 2.0 * Math.PI;
-					var phi = Math.acos(2.0 * v - 1.0);
-					var r = Math.cbrt(Math.random()) * radius;
-					var sinTheta = Math.sin(theta);
-					var cosTheta = Math.cos(theta);
-					var sinPhi = Math.sin(phi);
-					var cosPhi = Math.cos(phi);
-					points[i] = r * sinPhi * cosTheta;
-					points[i+1] = r * sinPhi * sinTheta;
-					points[i+2] = r * cosPhi;
-				}
+			{
+				LGraphPoints3D.generateInsideSphere( points, size, radius );
+			}
+			else if( mode == LGraphPoints3D.MESH_TRIANGLE)
+			{
+				LGraphPoints3D.generateFromObject( points, size, ref );
+			}
 			else
 				console.warn("wrong mode in LGraphPoints3D");
 		}
@@ -21062,20 +21136,115 @@ void main(void){\n\
 		return points;
 	}
 
-	LGraphPoints3D.prototype.updatePoints = function() {
-		var num_points = this.properties.num_points|0;
-		if(num_points < 1)
-			num_points = 1;
-		if(this.points.length != num_points * 3)
-			this.points = new Float32Array( num_points * 3 );
+	LGraphPoints3D.generateSphere = function (points, size, radius)
+	{
+		for(var i = 0; i < size; i+=3)
+		{
+			var r1 = Math.random();
+			var r2 = Math.random();
+			var x = 2 * Math.cos( 2 * Math.PI * r1 ) * Math.sqrt( r2 * (1-r2) );
+			var y = 1 - 2 * r2;
+			var z = 2 * Math.sin( 2 * Math.PI * r1 ) * Math.sqrt( r2 * (1-r2) );
+			points[i] = x * radius;
+			points[i+1] = y * radius;
+			points[i+2] = z * radius;
+		}			
+	}
 
-		var points = this.points;
-		var radius = this.properties.radius;
-		var mode = this.properties.mode;
+	LGraphPoints3D.generateHemisphere = function (points, size, radius)
+	{
+		for(var i = 0; i < size; i+=3)
+		{
+			var r1 = Math.random();
+			var r2 = Math.random();
+			var x = Math.cos( 2 * Math.PI * r1 ) * Math.sqrt(1 - r2*r2 );
+			var y = r2;
+			var z = Math.sin( 2 * Math.PI * r1 ) * Math.sqrt(1 - r2*r2 );
+			points[i] = x * radius;
+			points[i+1] = y * radius;
+			points[i+2] = z * radius;
+		}
+	}
 
-		this.points = LGraphPoints3D.generatePoints( radius, num_points, mode, this.points, this.properties.regular );
+	LGraphPoints3D.generateInsideCircle = function (points, size, radius)
+	{
+		for(var i = 0; i < size; i+=3)
+		{
+			var r1 = Math.random();
+			var r2 = Math.random();
+			var x = Math.cos( 2 * Math.PI * r1 ) * Math.sqrt(1 - r2*r2 );
+			var y = r2;
+			var z = Math.sin( 2 * Math.PI * r1 ) * Math.sqrt(1 - r2*r2 );
+			points[i] = x * radius;
+			points[i+1] = 0;
+			points[i+2] = z * radius;
+		}
+	}
 
-		this.version++;
+	LGraphPoints3D.generateInsideSphere = function (points, size, radius)
+	{
+		for(var i = 0; i < size; i+=3)
+		{
+			var u = Math.random();
+			var v = Math.random();
+			var theta = u * 2.0 * Math.PI;
+			var phi = Math.acos(2.0 * v - 1.0);
+			var r = Math.cbrt(Math.random()) * radius;
+			var sinTheta = Math.sin(theta);
+			var cosTheta = Math.cos(theta);
+			var sinPhi = Math.sin(phi);
+			var cosPhi = Math.cos(phi);
+			points[i] = r * sinPhi * cosTheta;
+			points[i+1] = r * sinPhi * sinTheta;
+			points[i+2] = r * cosPhi;
+		}	
+	}
+
+	LGraphPoints3D.generateFromObject = function (points, size, ref)
+	{
+		var vertices = null;
+		var normals = null;
+		var indices = null;
+		if( ref && ref.constructor === GL.Mesh )
+		{
+			vertices = ref.vertexBuffers.vertices.data;
+			normals = ref.vertexBuffers.normals ? ref.vertexBuffers.normals.data : null;
+			indices = ref.indexBuffers.indices ? ref.indexBuffers.indices.data : null;
+			if(!indices)
+				indices = ref.indexBuffers.triangles ? ref.indexBuffers.triangles.data : null;
+		}
+		if(!vertices)
+			return null;
+		var num_triangles = indices ? indices.length / 3 : vertices.length / (3*3);
+		for(var i = 0; i < size; i+=3)
+		{
+			var s = Math.random();
+			var t = Math.random();
+			var index = Math.floor(Math.random() * num_triangles);
+			//get random triangle
+			var a = 0;
+			var b = 0;
+			var c = 0;
+			if(indices)
+			{
+				a = indices[index*3]*3;
+				b = indices[index*3+1]*3;
+				c = indices[index*3+2]*3;
+			}
+			else
+			{
+				a = index*9;
+				b = index*9+3;
+				c = index*9+6;
+			}
+			var sqrt_s = Math.sqrt(s);
+			var af = 1 - sqrt_s;
+			var bf = sqrt_s * ( 1 - t);
+			var cf = t * sqrt_s;
+			points[i] = af * vertices[a] + bf*vertices[b] + cf*vertices[c];
+			points[i+1] = af * vertices[a+1] + bf*vertices[b+1] + cf*vertices[c+1];
+			points[i+2] = af * vertices[a+2] + bf*vertices[b+2] + cf*vertices[c+2];
+		}
 	}
 
 	LiteGraph.registerNodeType( "geometry/points3D", LGraphPoints3D );
@@ -21086,40 +21255,185 @@ void main(void){\n\
 		this.addInput("points", "geometry");
 		this.addOutput("instances", "array");
 		this.properties = {
-			mode: "vertical"
+			mode: 1
 		};
 
+		this.must_update = true;
 		this.matrices = [];
 	}
 
-	LGraphPointsToInstances.title = "points to inst";
+	LGraphPointsToInstances.VERTICAL = 1;
+	LGraphPointsToInstances.SPHERICAL = 2;
+	LGraphPointsToInstances.RANDOM = 3;
+	LGraphPointsToInstances.RANDOM_VERTICAL = 4;
 
-	LGraphPointsToInstances.modes = ["vertical","spherical"];
+	LGraphPointsToInstances.modes = {"vertical":1,"spherical":2,"random":3,"random_vertical":4};
+	LGraphPointsToInstances.widgets_info = {
+		mode: { widget: "combo", values: LGraphPointsToInstances.modes }
+	};
+
+	LGraphPointsToInstances.title = "points to inst";
 
 	LGraphPointsToInstances.prototype.onExecute = function()
 	{
 		var geo = this.getInputData(0);
-		if( !geo || !this.isOutputConnected(0) )
+		if( !geo )
+		{
+			this.setOutputData(0,null);
+			return;
+		}
+
+		if( !this.isOutputConnected(0) )
 			return;
 
-		var vertices = geo.vertices;
-		var matrices = this.matrices;
-		if( matrices.length != vertices.length )
-			matrices = this.matrices = Array(vertices.length);
-		var identity = mat4.create();
-		for(var i = 0; i < vertices.length; i += 3)
-		{
-			var m = matrices[i];
-			if(!m)
-				m = matrices[i] = mat4.create();
-			m.set( identity );
-			mat4.setTranslation(m, vertices[i], vertices[i+1], vertices[i+2] );
-		}
+		if( geo._version != this._version || geo._id != this._geometry_id )
+			this.updateInstances( geo );
 
 		this.setOutputData( 0, this.matrices );
 	}
 
+	LGraphPointsToInstances.prototype.updateInstances = function( geometry )
+	{
+		var vertices = geometry.vertices;
+		if(!vertices)
+			return null;
+
+		var matrices = this.matrices;
+		var num_points = vertices.length / 3;
+		if( matrices.length != num_points)
+			matrices.length = num_points;
+		var identity = mat4.create();
+		var temp = vec3.create();
+		var zero = vec3.create();
+		var UP = vec3.fromValues(0,1,0);
+		var R = quat.create();
+
+		var front = vec3.create();
+		var right = vec3.create();
+		var top = vec3.create();
+
+		for(var i = 0; i < vertices.length; i += 3)
+		{
+			var index = i/3;
+			var m = matrices[index];
+			if(!m)
+				m = matrices[index] = mat4.create();
+			m.set( identity );
+			var point = vertices.subarray(i,i+3);
+
+			switch(this.properties.mode)
+			{
+				case LGraphPointsToInstances.VERTICAL: 
+					mat4.setTranslation( m, point );
+					break;
+				case LGraphPointsToInstances.SPHERICAL: 
+					front.set( point );
+					vec3.normalize( front, front );
+					vec3.cross( right, UP, front );
+					vec3.normalize( right, right );
+					vec3.cross( top, front, right );
+					vec3.normalize( top, top );
+					m.set(right,0);
+					m.set(top,4);
+					m.set(front,8);
+					mat4.setTranslation( m, point );
+					break;
+				case LGraphPointsToInstances.RANDOM:
+					temp[0] = Math.random()*2 - 1;
+					temp[1] = Math.random()*2 - 1;
+					temp[2] = Math.random()*2 - 1;
+					vec3.normalize( temp, temp );
+					quat.setAxisAngle( R, temp, Math.random() * 2 * Math.PI );
+					mat4.fromQuat(m, R);
+					mat4.setTranslation( m, point );
+					break;
+				case LGraphPointsToInstances.RANDOM_VERTICAL:
+					quat.setAxisAngle( R, UP, Math.random() * 2 * Math.PI );
+					mat4.fromQuat(m, R);
+					mat4.setTranslation( m, point );
+					break;
+			}
+		}
+
+		this._version = geometry._version;
+		this._geometry_id = geometry._id;
+	}
+
 	LiteGraph.registerNodeType( "geometry/points_to_instances", LGraphPointsToInstances );
+
+
+	function LGraphGeometryTransform() {
+		this.addInput("in", "geometry");
+		this.addInput("mat4", "mat4");
+		this.addOutput("out", "geometry");
+		this.properties = {};
+
+		this.geometry = {
+			type: "triangles",
+			vertices: null,
+			_id: generateGeometryId()
+		};
+
+		this._last_geometry_id = -1;
+		this._last_version = -1;
+		this._last_key = "";
+
+		this.must_update = true;
+	}
+
+	LGraphGeometryTransform.title = "Transform";
+
+	LGraphGeometryTransform.prototype.onExecute = function() {
+
+		if( !this.isOutputConnected(0) )
+			return;
+
+		var geo = this.getInputData(0);
+		var model = this.getInputData(1);
+
+		if(!geo || !geo.vertices || !geo.vertices.length)
+			return;
+
+		if(!model)
+		{
+			this.setOutputData(0,geo);
+			return;
+		}
+
+		var key = typedArrayToArray(model).join(",");
+
+		if( this.must_update || geo._id != this._last_geometry_id || geo._version != this._last_version || key != this._last_key )
+		{
+			this.updateGeometry(geo, model);
+			this._last_key = key;
+			this._last_version = geo._version;
+			this._last_geometry_id = geo._id;
+			this.must_update = false;
+		}
+
+		this.setOutputData(0,this.geometry);
+	}
+
+	LGraphGeometryTransform.prototype.updateGeometry = function(geometry, model) {
+		var old_vertices = geometry.vertices;
+		var vertices = this.geometry.vertices;
+		if( !vertices || vertices.length != old_vertices.length )
+			vertices = this.geometry.vertices = new Float32Array( old_vertices.length );
+		var temp = vec3.create();
+
+		for(var i = 0, l = vertices.length; i < l; i+=3)
+		{
+			temp[0] = old_vertices[i]; temp[1] = old_vertices[i+1]; temp[2] = old_vertices[i+2]; 
+			mat4.multiplyVec3( temp, model, temp );
+			vertices[i] = temp[0]; vertices[i+1] = temp[1]; vertices[i+2] = temp[2];
+		}
+
+		this.geometry.type = geometry.type;
+		this.geometry._version++;
+	}
+
+	LiteGraph.registerNodeType( "geometry/transform", LGraphGeometryTransform );
+
 
 	function LGraphGeometryPolygon() {
 		this.addInput("sides", "number");
@@ -21128,6 +21442,7 @@ void main(void){\n\
 		this.properties = { sides: 6, radius: 1 }
 
 		this.geometry = {
+			type: "line_loop",
 			vertices: null,
 			_id: generateGeometryId()
 		};
@@ -21179,6 +21494,96 @@ void main(void){\n\
 	}
 
 	LiteGraph.registerNodeType( "geometry/polygon", LGraphGeometryPolygon );
+
+
+	function LGraphGeometryExtrude() {
+
+		this.addInput("", "geometry");
+		this.addOutput("", "geometry");
+		this.properties = { top_cap: true, bottom_cap: true, offset: [0,100,0] };
+		this.version = -1;
+
+		this._last_geo_version = -1;
+		this._must_update = true;
+	}
+
+	LGraphGeometryExtrude.title = "extrude";
+
+	LGraphGeometryExtrude.prototype.onPropertyChanged = function(name, value)
+	{
+		this._must_update = true;
+	}
+
+	LGraphGeometryExtrude.prototype.onExecute = function()
+	{
+		var geo = this.getInputData(0);
+		if( !geo || !this.isOutputConnected(0) )
+			return;
+
+		if(geo.version != this._last_geo_version || this._must_update)
+		{
+			this._geo = this.extrudeGeometry( geo, this._geo );
+			if(this._geo)
+				this._geo.version = this.version++;
+			this._must_update = false;
+		}
+
+		this.setOutputData(0, this._geo);
+	}
+
+	LGraphGeometryExtrude.prototype.extrudeGeometry = function( geo )
+	{
+		//for every pair of vertices
+		var vertices = geo.vertices;
+		var num_points = vertices.length / 3;
+
+		var tempA = vec3.create();
+		var tempB = vec3.create();
+		var tempC = vec3.create();
+		var tempD = vec3.create();
+		var offset = new Float32Array( this.properties.offset );
+
+		if(geo.type == "line_loop")
+		{
+			var new_vertices = new Float32Array( num_points * 6 * 3 ); //every points become 6 ( caps not included )
+			var npos = 0;
+			for(var i = 0, l = vertices.length; i < l; i += 3)
+			{
+				tempA[0] = vertices[i]; tempA[1] = vertices[i+1]; tempA[2] = vertices[i+2];
+
+				if( i+3 < l ) //loop
+				{
+					tempB[0] = vertices[i+3]; tempB[1] = vertices[i+4]; tempB[2] = vertices[i+5];
+				}
+				else
+				{
+					tempB[0] = vertices[0]; tempB[1] = vertices[1]; tempB[2] = vertices[2];
+				}
+
+				vec3.add( tempC, tempA, offset );
+				vec3.add( tempD, tempB, offset );
+
+				new_vertices.set( tempA, npos ); npos += 3;
+				new_vertices.set( tempB, npos ); npos += 3;
+				new_vertices.set( tempC, npos ); npos += 3;
+
+				new_vertices.set( tempB, npos ); npos += 3;
+				new_vertices.set( tempD, npos ); npos += 3;
+				new_vertices.set( tempC, npos ); npos += 3;
+			}
+		}
+
+		var out_geo = {
+			_id: generateGeometryId(),
+			type: "triangles",
+			vertices: new_vertices
+		};
+
+		return out_geo;
+	}
+
+	LiteGraph.registerNodeType( "geometry/extrude", LGraphGeometryExtrude );
+
 
 	function LGraphGeometryEval() {
 		this.addInput("in", "geometry");
@@ -21546,6 +21951,7 @@ function LGraphGeometryDisplace() {
 			this.mesh.addBuffer( "normals", mesh_buffer );
 		}
 
+		this.mesh.updateBoundingBox();
 		this.geometry_id = this.mesh.id = geometry._id;
 		this.version = this.mesh.version = geometry._version;
 		return this.mesh;
@@ -21666,6 +22072,81 @@ function LGraphGeometryDisplace() {
 
 	//**************************
 
+
+	function LGraphGeometryPrimitive() {
+		this.addInput("size", "number");
+		this.addOutput("out", "mesh");
+		this.properties = { type: 1, size: 1, subdivisions: 32 };
+
+		this.version = (Math.random() * 100000)|0;
+		this.last_info = { type: -1, size: -1, subdivisions: -1 };
+	}
+
+	LGraphGeometryPrimitive.title = "Primitive";
+
+	LGraphGeometryPrimitive.VALID = { "CUBE":1, "PLANE":2, "CYLINDER":3, "SPHERE":4, "CIRCLE":5, "HEMISPHERE":6, "ICOSAHEDRON":7, "CONE":8, "QUAD":9 };
+	LGraphGeometryPrimitive.widgets_info = {
+		type: { widget: "combo", values: LGraphGeometryPrimitive.VALID }
+	};
+
+	LGraphGeometryPrimitive.prototype.onExecute = function() {
+
+		if( !this.isOutputConnected(0) )
+			return;
+
+		var size = this.getInputOrProperty("size");
+
+		//update
+		if( this.last_info.type != this.properties.type || this.last_info.size != size || this.last_info.subdivisions != this.properties.subdivisions )
+			this.updateMesh( this.properties.type, size, this.properties.subdivisions );
+
+		this.setOutputData(0,this._mesh);
+	}
+
+	LGraphGeometryPrimitive.prototype.updateMesh = function(type, size, subdivisions)
+	{
+		subdivisions = Math.max(0,subdivisions)|0;
+
+		switch (type)
+		{
+			case 1: //CUBE: 
+				this._mesh = GL.Mesh.cube({size: size, normals:true,coords:true});
+				break;
+			case 2: //PLANE:
+				this._mesh = GL.Mesh.plane({size: size, xz: true, detail: subdivisions, normals:true,coords:true});
+				break;
+			case 3: //CYLINDER:
+				this._mesh = GL.Mesh.cylinder({size: size, subdivisions: subdivisions, normals:true,coords:true});
+				break;
+			case 4: //SPHERE:
+				this._mesh = GL.Mesh.sphere({size: size, "long": subdivisions, lat: subdivisions, normals:true,coords:true});
+				break;
+			case 5: //CIRCLE:
+				this._mesh = GL.Mesh.circle({size: size, slices: subdivisions, normals:true, coords:true});
+				break;
+			case 6: //HEMISPHERE:
+				this._mesh = GL.Mesh.sphere({size: size, "long": subdivisions, lat: subdivisions, normals:true, coords:true, hemi: true});
+				break;
+			case 7: //ICOSAHEDRON:
+				this._mesh = GL.Mesh.icosahedron({size: size, subdivisions:subdivisions });
+				break;
+			case 8: //CONE:
+				this._mesh = GL.Mesh.cone({radius: size, height: size, subdivisions:subdivisions });
+				break;
+			case 9: //QUAD:
+				this._mesh = GL.Mesh.plane({size: size, xz: false, detail: subdivisions, normals:true, coords:true });
+				break;
+		}
+
+		this.last_info.type = type;
+		this.last_info.size = size;
+		this.last_info.subdivisions = subdivisions;
+		this._mesh.version = this.version++;
+	}
+
+	LiteGraph.registerNodeType( "geometry/mesh_primitive", LGraphGeometryPrimitive );
+
+
 	function LGraphRenderPoints() {
 		this.addInput("in", "geometry");
 		this.addInput("mat4", "mat4");
@@ -21703,7 +22184,7 @@ function LGraphGeometryDisplace() {
 	LGraphRenderPoints.prototype.updateMesh = function(geometry)
 	{
 		var buffer = this.buffer;
-		if(!this.buffer || this.buffer.data.length != geometry.vertices.length)
+		if(!this.buffer || !this.buffer.data || this.buffer.data.length != geometry.vertices.length)
 			this.buffer = new GL.Buffer( GL.ARRAY_BUFFER, geometry.vertices,3,GL.DYNAMIC_DRAW);
 		else
 		{

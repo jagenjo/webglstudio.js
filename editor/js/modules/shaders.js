@@ -35,6 +35,7 @@ var ShadersModule = {
 			RenderModule.canvas_manager.addWidget( ShadersModule );
 			var canvas = RenderModule.appendViewportTo( ShadersModule._canvas_area );
 			ShadersModule.graphcanvas.setCanvas( canvas, true );
+			canvas.height = canvas.parentNode.offsetHeight;
 		},
 		callback_leave: function() {
 			ShadersModule.graphcanvas.setCanvas( null, true );
@@ -64,6 +65,7 @@ var ShadersModule = {
 
 		//canvas area
 		var canvas_area = this._canvas_area = LiteGUI.createElement("div",".shader_canvas_area");
+		canvas_area.style.height = "100%";
 		area.add( canvas_area );
 
 		//graphs

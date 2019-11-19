@@ -3470,21 +3470,33 @@ var GUI = {
 	},
 
 	/**
-	* Renders an immediate gui BOX, used as background
-	*
+	* Renders an immediate gui BOX, used as background for panels
+	* It blocks mouse events
 	* @method Box
 	* @param {Array} area [x,y,width,height]
 	* @param {String} color a color in string format "#AFAFAF"
+	* @param {Number} border_radius [optional] 
+	* @param {Number} bottom_border_radius [optional] 
 	*/
-	Box: function( area, color )
+	Box: function( area, color, border_radius, bottom_border_radius )
 	{
 		if(!area)
 			throw("No area");
 		this.blockEventArea( area );
 
+		border_radius = border_radius || 0;
+		bottom_border_radius = bottom_border_radius || border_radius;
+
 		var ctx = gl;
 		ctx.fillStyle = color || "#333";
-		ctx.fillRect( area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3] );
+		if( border_radius )
+		{
+			ctx.beginPath();
+			ctx.roundRect( area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3], border_radius, bottom_border_radius );
+			ctx.fill();
+		}
+		else
+			ctx.fillRect( area[0] + this._offset[0], area[1] + this._offset[1], area[2], area[3] );
 	},
 
 	/**
@@ -7035,6 +7047,66 @@ pointparticles_block.bindEvent("vs_final", "\n\
 ");
 pointparticles_block.register();
 
+
+LS.Shaders.registerSnippet("snoise","\n\
+//	Simplex 3D Noise \n\
+//	by Ian McEwan, Ashima Arts\n\
+vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}\n\
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}\n\
+float snoise(vec3 v){ \n\
+  const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;\n\
+  const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);\n\
+// First corner\n\
+  vec3 i  = floor(v + dot(v, C.yyy) );\n\
+  vec3 x0 =   v - i + dot(i, C.xxx) ;\n\
+// Other corners\n\
+  vec3 g = step(x0.yzx, x0.xyz);\n\
+  vec3 l = 1.0 - g;\n\
+  vec3 i1 = min( g.xyz, l.zxy );\n\
+  vec3 i2 = max( g.xyz, l.zxy );\n\
+  //  x0 = x0 - 0. + 0.0 * C \n\
+  vec3 x1 = x0 - i1 + 1.0 * C.xxx;\n\
+  vec3 x2 = x0 - i2 + 2.0 * C.xxx;\n\
+  vec3 x3 = x0 - 1. + 3.0 * C.xxx;\n\
+// Permutations\n\
+  i = mod(i, 289.0 ); \n\
+  vec4 p = permute( permute( permute( \n\
+             i.z + vec4(0.0, i1.z, i2.z, 1.0 ))\n\
+           + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) \n\
+           + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));\n\
+// Gradients\n\
+// ( N*N points uniformly over a square, mapped onto an octahedron.)\n\
+  float n_ = 1.0/7.0; // N=7\n\
+  vec3  ns = n_ * D.wyz - D.xzx;\n\
+  vec4 j = p - 49.0 * floor(p * ns.z *ns.z);  //  mod(p,N*N)\n\
+  vec4 x_ = floor(j * ns.z);\n\
+  vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)\n\
+  vec4 x = x_ *ns.x + ns.yyyy;\n\
+  vec4 y = y_ *ns.x + ns.yyyy;\n\
+  vec4 h = 1.0 - abs(x) - abs(y);\n\
+  vec4 b0 = vec4( x.xy, y.xy );\n\
+  vec4 b1 = vec4( x.zw, y.zw );\n\
+  vec4 s0 = floor(b0)*2.0 + 1.0;\n\
+  vec4 s1 = floor(b1)*2.0 + 1.0;\n\
+  vec4 sh = -step(h, vec4(0.0));\n\
+  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;\n\
+  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;\n\
+  vec3 p0 = vec3(a0.xy,h.x);\n\
+  vec3 p1 = vec3(a0.zw,h.y);\n\
+  vec3 p2 = vec3(a1.xy,h.z);\n\
+  vec3 p3 = vec3(a1.zw,h.w);\n\
+//Normalise gradients\n\
+  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));\n\
+  p0 *= norm.x;\n\
+  p1 *= norm.y;\n\
+  p2 *= norm.z;\n\
+  p3 *= norm.w;\n\
+// Mix final noise value\n\
+  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);\n\
+  m = m * m;\n\
+  return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), \n\
+                                dot(p2,x2), dot(p3,x3) ) );\n\
+}");
 ///@FILE:../src/formats.js
 ///@INFO: BASE
 /**
@@ -20266,7 +20338,7 @@ if(typeof(LiteGraph) != "undefined")
 		var mesh = null;
 		if(this.properties.name)
 			mesh = LS.ResourcesManager.meshes[this.properties.name];
-		if(mesh && mesh.constructor !== GL.Mesh)
+		if(mesh && (mesh.constructor !== GL.Mesh || mesh.ready === false) )
 			mesh = null;
 		this.setOutputData(0,mesh);
 	}
@@ -20348,9 +20420,12 @@ if(typeof(LiteGraph) != "undefined")
 		this._RI.setMatrix( model );
 
 		//instancing
-		var instances = this.getInputData(4);
+		var instances = this.getInputData(3);
 		if(instances)
 			this._RI.instanced_models = instances;
+		else
+			this._RI.instanced_models = null;
+		this._RI.use_bounding = !instances;
 
 		LS.Renderer.addImmediateRenderInstance( this._RI );
 	}
@@ -20889,7 +20964,10 @@ if(typeof(LiteGraph) != "undefined")
 		var that = this;
 		var mat = this.getMaterial();
 		if(mat)
+		{
+			inspector.addTitle("Material (" + LS.getObjectClassName(mat) + ")" );
 			EditorModule.showMaterialProperties( mat, inspector );
+		}
 		/*
 		inspector.addButton(null, "Inspect material", function(){
 			var mat = that.getMaterial();
@@ -22603,10 +22681,13 @@ if(typeof(LiteGraph) != "undefined")
 	//special kind of node
 	function LGraphGUIPanel()
 	{
-		this.properties = { enabled: true, title: "", color: [0.1,0.1,0.1], opacity: 0.7, titlecolor: [0,0,0], position: [10,10], size: [300,200], rounding: 8, corner: LiteGraph.CORNER_TOP_LEFT };
-		this._pos = vec4.create();
+		this.addOutput("pos","vec2");
+		this.addOutput("enabled","boolean");
+		this.properties = { enabled: true, draggable: false, title: "", color: [0.1,0.1,0.1], opacity: 0.7, titlecolor: [0,0,0], position: [10,10], size: [300,200], rounding: 8, corner: LiteGraph.CORNER_TOP_LEFT };
+		this._area = vec4.create();
 		this._color = vec4.create();
 		this._titlecolor = vec4.create();
+		this._offset = [0,0];
 	}
 
 	LGraphGUIPanel.title = "GUIPanel";
@@ -22618,21 +22699,33 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphGUIPanel["@titlecolor"] = { type:"color" };
 	LGraphGUIPanel["@opacity"] = { widget:"slider", min:0,max:1 };
 
+	LGraphGUIPanel.prototype.onExecute = function()
+	{
+		this.setOutputData(0, this._area );
+		this.setOutputData(1, this.properties.enabled );
+	}
+
 	LGraphGUIPanel.prototype.onRenderGUI = function()
 	{ 
+		this.properties.enabled = this.getInputOrProperty("enabled");
+		if(this.properties.enabled === false)
+			return;
+
 		var ctx = window.gl;
-		if(!ctx || !this.properties.enabled)
+		if(!ctx)
 			return;
 
 		this._color.set( this.properties.color || [0.1,0.1,0.1] );
 		this._color[3] = this.properties.opacity;
 		ctx.fillColor = this._color;
-		positionToArea( this.properties.position, this.properties.corner, this._pos );
-		this._pos[2] = this.properties.size[0];
-		this._pos[3] = this.properties.size[1];
+		positionToArea( this.properties.position, this.properties.corner, this._area );
+		this._area[0] += this._offset[0];
+		this._area[1] += this._offset[1];
+		this._area[2] = this.properties.size[0];
+		this._area[3] = this.properties.size[1];
 
 		//var mouse = LS.Input.current_click;
-		//var clicked = LS.Input.isEventInRect( mouse, this._pos, LS.GUI._offset );
+		//var clicked = LS.Input.isEventInRect( mouse, this._area, LS.GUI._offset );
 		//if(clicked)
 		//	LS.Input.current_click = false; //consume event
 
@@ -22643,11 +22736,11 @@ if(typeof(LiteGraph) != "undefined")
 		if(rounding > 0)
 		{
 			ctx.beginPath();
-			ctx.roundRect( this._pos[0], this._pos[1], this.properties.size[0], this.properties.size[1], rounding, rounding );
+			ctx.roundRect( this._area[0], this._area[1], this.properties.size[0], this.properties.size[1], rounding, rounding );
 			ctx.fill();
 		}
 		else
-			ctx.fillRect( this._pos[0], this._pos[1], this.properties.size[0], this.properties.size[1] );
+			ctx.fillRect( this._area[0], this._area[1], this.properties.size[0], this.properties.size[1] );
 
 		if(this.properties.title)
 		{
@@ -22657,15 +22750,50 @@ if(typeof(LiteGraph) != "undefined")
 			if(rounding > 0)
 			{
 				ctx.beginPath();
-				ctx.roundRect( this._pos[0], this._pos[1], this.properties.size[0], 30, rounding, 0 );
+				ctx.roundRect( this._area[0], this._area[1], this.properties.size[0], 30, rounding, 0 );
 				ctx.fill();
 			}
 			else
-				ctx.fillRect( this._pos[0], this._pos[1], this.properties.size[0], 30 );
+				ctx.fillRect( this._area[0], this._area[1], this.properties.size[0], 30 );
 			ctx.fillColor = [0.8,0.8,0.8,this.properties.opacity];
 			ctx.font = "20px Arial";
-			ctx.fillText( this.properties.title, 10 + this._pos[0],24 + this._pos[1]);
+			ctx.fillText( this.properties.title, 10 + this._area[0],24 + this._area[1]);
 		}
+	}
+
+	LGraphGUIPanel.prototype.onMouse = function(e,v)
+	{
+		if(!this.properties.enabled || !this.properties.draggable )
+			return;
+
+		var area = this._area;
+		var x = e.mousex;
+		var y = e.mousey;
+		if( e.type == "mousedown" )
+		{
+			//check if inside
+			if( x >= area[0] && x < (area[0] + area[2]) && 
+				y >= area[1] && y < (area[1] + area[3]) )
+			{
+				this._dragging = true;
+				return true;
+			}
+		}
+		else if( e.type == "mousemove" )
+		{
+			if( this._dragging )
+			{
+				this._offset[0] += e.deltax;
+				this._offset[1] += e.deltay;
+				return true;
+			}
+		}
+		else //mouse up
+			this._dragging = false;
+	}
+
+	LGraphGUIPanel.prototype.onGetInputs = function(){
+		return [["enabled","boolean"]];
 	}
 
 	LiteGraph.registerNodeType("gui/panel", LGraphGUIPanel );
@@ -22742,7 +22870,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphGUIImage["@opacity"] = { widget:"slider", min:0,max:1 };
 
 	LGraphGUIImage.prototype.onGetInputs = function(){
-		return [["enabled","boolean"]];
+		return [["enabled","boolean"],["parent_pos","vec2"]];
 	}
 
 	LGraphGUIImage.prototype.onRenderGUI = function()
@@ -22768,6 +22896,12 @@ if(typeof(LiteGraph) != "undefined")
 		ctx.globalAlpha *= this.properties.opacity;
 		var x = this._pos[0];
 		var y = this._pos[1];
+		var parent_pos = this.getInputOrProperty("parent_pos");
+		if(parent_pos)
+		{
+			x += parent_pos[0];
+			y += parent_pos[1];
+		}
 		var w = this.properties.size[0];
 		var h = this.properties.size[1];
 		if(this.properties.keep_aspect)
@@ -22803,11 +22937,19 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUISlider.prototype.onRenderGUI = function()
 	{
-		if(!this.properties.enabled)
+		if(!this.getInputOrProperty("enabled"))
 			return;
 		positionToArea( this.properties.position, this.properties.corner, this._area );
 		this._area[2] = this.properties.size[0];
 		this._area[3] = this.properties.size[1];
+
+		var parent_pos = this.getInputOrProperty("parent_pos");
+		if(parent_pos)
+		{
+			this._area[0] += parent_pos[0];
+			this._area[1] += parent_pos[1];
+		}
+
 		this.properties.value = LS.GUI.HorizontalSlider( this._area, Number(this.properties.value), Number(this.properties.min), Number(this.properties.max), true );
 		if(this.properties.text)
 		{
@@ -22826,7 +22968,7 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LGraphGUISlider.prototype.onGetInputs = function(){
-		return [["enabled","boolean"]];
+		return [["enabled","boolean"],["parent_pos","vec2"]];
 	}
 
 	LiteGraph.registerNodeType("gui/slider", LGraphGUISlider );
@@ -22845,9 +22987,16 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIToggle.prototype.onRenderGUI = function()
 	{
-		if(!this.properties.enabled)
+		if(!this.getInputOrProperty("enabled"))
 			return;
+
 		positionToArea( this.properties.position, this.properties.corner, this._area );
+		var parent_pos = this.getInputOrProperty("parent_pos");
+		if(parent_pos)
+		{
+			this._area[0] += parent_pos[0];
+			this._area[1] += parent_pos[1];
+		}
 		this._area[2] = this.properties.size[0];
 		this._area[3] = this.properties.size[1];
 		this.properties.value = LS.GUI.Toggle( this._area, this.properties.value, this.properties.text );
@@ -22856,6 +23005,10 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphGUIToggle.prototype.onExecute = function()
 	{
 		this.setOutputData(0, this.properties.value );
+	}
+
+	LGraphGUIToggle.prototype.onGetInputs = function(){
+		return [["enabled","boolean"],["parent_pos","vec2"]];
 	}
 
 	LiteGraph.registerNodeType("gui/toggle", LGraphGUIToggle );
@@ -22875,9 +23028,15 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIButton.prototype.onRenderGUI = function()
 	{
-		if(!this.properties.enabled)
+		if(!this.getInputOrProperty("enabled"))
 			return;
 		positionToArea( this.properties.position, this.properties.corner, this._area );
+		var parent_pos = this.getInputOrProperty("parent_pos");
+		if(parent_pos)
+		{
+			this._area[0] += parent_pos[0];
+			this._area[1] += parent_pos[1];
+		}
 		this._area[2] = this.properties.size[0];
 		this._area[3] = this.properties.size[1];
 		this._was_pressed = LS.GUI.Button( this._area, this.properties.text );
@@ -22895,11 +23054,10 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LGraphGUIButton.prototype.onGetInputs = function(){
-		return [["enabled","boolean"]];
+		return [["enabled","boolean"],["parent_pos","vec2"]];
 	}
 
 	LiteGraph.registerNodeType("gui/button", LGraphGUIButton );
-
 
 	function LGraphGUIMultipleChoice()
 	{
@@ -22942,12 +23100,21 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIMultipleChoice.prototype.onRenderGUI = function()
 	{
-		if(!this._values.length || !this.properties.enabled )
+		var enabled = this.getInputDataByName("enabled");
+
+		if(!this._values.length || !enabled )
 			return;
 
 		var selected = this.properties.selected = Math.floor( this.properties.selected );
 		positionToArea( this.properties.position, this.properties.corner, this._area );
 		var ctx = gl;
+		
+		var parent_pos = this.getInputOrProperty("parent_pos");
+		if(parent_pos)
+		{
+			this._area[0] += parent_pos[0];
+			this._area[1] += parent_pos[1];
+		}
 
 		if(this.properties.one_line)
 		{
@@ -23013,7 +23180,7 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LGraphGUIMultipleChoice.prototype.onGetInputs = function(){
-		return [["enabled","boolean"],["options","array"],["next",LiteGraph.ACTION],["prev",LiteGraph.ACTION]];
+		return [["enabled","boolean"],["parent_pos","vec2"],["options","array"],["next",LiteGraph.ACTION],["prev",LiteGraph.ACTION]];
 	}
 
 	LGraphGUIMultipleChoice.prototype.onExecute = function()
@@ -24480,10 +24647,16 @@ if(typeof(LiteGraph) != "undefined")
 	{
 		this.addInput("","T,float,vec2,vec3,vec4");
 		this.addInput("","T,float,vec2,vec3,vec4");
+		this.addWidget("button","Config", null, this.onConfig.bind(this) );
 	}
 
 	LGraphShaderFSOutput.title = "FragOutput";
 	LGraphShaderFSOutput.title_color = "#345";
+
+	LGraphShaderFSOutput.prototype.onConfig = function()
+	{
+		
+	}
 
 	LGraphShaderFSOutput.prototype.onGetCode = function( lang, context )
 	{
@@ -25134,6 +25307,141 @@ if(typeof(LiteGraph) != "undefined")
 	//texCoordTransform
 
 	//noise
+	function LGraphShaderNoise()
+	{
+		this.addInput("in","vec3"); //optional
+		this.addOutput("out","vec3");
+		this.properties = {
+			world_space: true,
+		};
+		this.addWidget("toggle","world space",true,"world_space");
+	}
+
+	LGraphShaderNoise.title = "Noise";
+
+	LGraphShaderNoise.prototype.onPropertyChanged = function()
+	{
+		 this.graph._version++;
+	}
+
+	LGraphShaderNoise.prototype.onGetCode = function( lang, context )
+	{
+		if( lang != "glsl" )
+			return "";
+		var outlink = getOutputLinkID(this,0);
+		if(!outlink) //not connected
+			return;
+
+		var inlink =  getInputLinkID(this,0);
+		if(!inlink)
+			inlink = this.properties.world_space ? "v_pos" : "v_local_pos";
+
+		context.fs_functions["getFlatNormal"] = "vec3 getFlatNormal(vec3 pos)\n{\n  vec3 A = dFdx( pos );\n  vec3 B = dFdy( pos );\n  return normalize( cross(A,B) );\n}\n";
+		context.fs_code += "	vec3 " + outlink + " = getFlatNormal("+inlink+");";
+	}
+
+	LiteGraph.registerShaderNode( "noise", LGraphShaderNoise );
+
+	//custom code
+	function LGraphShaderCustom()
+	{
+		this.addInput("in_float","float");
+		this.addInput("in_vec2","vec2");
+		this.addInput("in_vec3","vec3");
+		this.addInput("in_vec4","vec4");
+		this.addOutput("out_float","float");
+		this.addOutput("out_vec2","vec2");
+		this.addOutput("out_vec3","vec3");
+		this.addOutput("out_vec4","vec4");
+		this.properties = {
+			code: "out_vec3 = in_vec3 * 2.0;"
+		};
+	}
+
+	LGraphShaderCustom.title = "Custom";
+
+    LGraphShaderCustom["@code"] = { widget: "code" };
+
+	LGraphShaderCustom.prototype.onPropertyChanged = function()
+	{
+		 this.graph._version++;
+	}
+
+	LGraphShaderCustom.prototype.onGetCode = function( lang, context )
+	{
+		if( lang != "glsl" )
+			return "";
+
+		var outlink1 = getOutputLinkID(this,0);
+		var outlink2 = getOutputLinkID(this,1);
+		var outlink3 = getOutputLinkID(this,2);
+		var outlink4 = getOutputLinkID(this,3);
+		if(!outlink1 && !outlink2 && !outlink3 && !outlink4 )
+			return;
+
+		var inlink1 = getInputLinkID(this,0) || "0.0";
+		var inlink2 = getInputLinkID(this,1) || "vec2(0.0)";
+		var inlink3 = getInputLinkID(this,2) || "vec3(0.0)";
+		var inlink4 = getInputLinkID(this,3) || "vec4(0.0)";
+
+		var func_name = getShaderNodeVarName(this, "customFunc" );
+
+		var code = "void " + func_name + "(in float in_float, in vec2 in_vec2, in vec3 in_vec3, in vec4 in_vec4, out float out_float, out vec2 out_vec2, out vec3 out_vec3, out vec4 out_vec4) {\n";
+		code += this.properties.code + ";\n}";
+		context.fs_out += code;
+
+		outlink1 = outlink1 || getShaderNodeVarName(this, "out1" );
+		outlink2 = outlink2 || getShaderNodeVarName(this, "out2" );
+		outlink3 = outlink3 || getShaderNodeVarName(this, "out3" );
+		outlink4 = outlink4 || getShaderNodeVarName(this, "out4" );
+
+		code = "";
+		code += "	float " + outlink1 + " = 0.0;\n";
+		code += "	vec2 " + outlink2 + " = vec2(0.0);\n";
+		code += "	vec3 " + outlink3 + " = vec3(0.0);\n";
+		code += "	vec4 " + outlink4 + " = vec4(0.0);\n";
+		code += "	" + func_name + "("+inlink1+","+inlink2+","+inlink3+","+inlink4+","+outlink1+","+outlink2+","+outlink3+","+outlink4+");\n";
+
+		context.fs_code += code;
+	}
+
+	LiteGraph.registerShaderNode( "custom", LGraphShaderCustom );
+
+	//flat normal
+	function LGraphShaderFlatNormal()
+	{
+		this.addInput("in","vec3"); //optional
+		this.addOutput("out","vec3");
+		this.properties = {
+			world_space: true,
+		};
+		this.addWidget("toggle","world space",true,"world_space");
+	}
+
+	LGraphShaderFlatNormal.title = "FlatNormal";
+
+	LGraphShaderFlatNormal.prototype.onPropertyChanged = function()
+	{
+		 this.graph._version++;
+	}
+
+	LGraphShaderFlatNormal.prototype.onGetCode = function( lang, context )
+	{
+		if( lang != "glsl" )
+			return "";
+		var outlink = getOutputLinkID(this,0);
+		if(!outlink) //not connected
+			return;
+
+		var inlink =  getInputLinkID(this,0);
+		if(!inlink)
+			inlink = this.properties.world_space ? "v_pos" : "v_local_pos";
+
+		context.fs_functions["getFlatNormal"] = "vec3 getFlatNormal(vec3 pos)\n{\n  vec3 A = dFdx( pos );\n  vec3 B = dFdy( pos );\n  return normalize( cross(A,B) );\n}\n";
+		context.fs_code += "	vec3 " + outlink + " = getFlatNormal("+inlink+");";
+	}
+
+	LiteGraph.registerShaderNode( "flatNormal", LGraphShaderFlatNormal );
 
 	//toWorldNormal
 	function LGraphShaderNormalTransform()
@@ -43842,6 +44150,9 @@ GraphComponent.prototype.onAddedToScene = function( scene )
 	LEvent.bind( scene , "afterRenderScene", this.onSceneEvent, this );
 	LEvent.bind( scene , "update", this.onSceneEvent, this );
 	LEvent.bind( scene , "renderGUI", this.onRenderGUI, this );
+	LEvent.bind( scene, "mousedown", this.onMouse, this );
+	LEvent.bind( scene, "mousemove", this.onMouse, this );
+	LEvent.bind( scene, "mouseup", this.onMouse, this );
 }
 
 GraphComponent.prototype.onRemovedFromScene = function( scene )
@@ -43857,6 +44168,9 @@ GraphComponent.prototype.onRemovedFromScene = function( scene )
 	LEvent.unbind( scene, "afterRenderScene", this.onSceneEvent, this );
 	LEvent.unbind( scene, "update", this.onSceneEvent, this );
 	LEvent.unbind( scene, "renderGUI", this.onRenderGUI, this );
+	LEvent.unbind( scene, "mousedown", this.onMouse, this );
+	LEvent.unbind( scene, "mousemove", this.onMouse, this );
+	LEvent.unbind( scene, "mouseup", this.onMouse, this );
 }
 
 GraphComponent.prototype.onResourceRenamed = function( old_name, new_name, resource )
@@ -43871,6 +44185,13 @@ GraphComponent.prototype.onRenderGUI = function( e, canvas )
 	if( !this.enabled || !this._root.visible )
 		return;
 	this._graph.sendEventToAllNodes("onRenderGUI", canvas );
+}
+
+GraphComponent.prototype.onMouse = function( e, canvas )
+{
+	if( !this.enabled || !this._root.visible )
+		return;
+	this._graph.sendEventToAllNodes("onMouse", canvas );
 }
 
 GraphComponent.prototype.onSceneEvent = function( event_type, event_data )

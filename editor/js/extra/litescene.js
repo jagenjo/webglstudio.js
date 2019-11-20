@@ -11134,6 +11134,7 @@ attribute vec2 a_coord;\n\
 	attribute vec4 a_color;\n\
 	varying vec4 v_vertex_color;\n\
 #endif\n\
+#pragma shaderblock \"instancing\"\n\
 \n\
 //varyings\n\
 varying vec3 v_pos;\n\
@@ -11143,7 +11144,12 @@ varying vec3 v_local_pos;\n\
 varying vec3 v_local_normal;\n\
 \n\
 //matrices\n\
-uniform mat4 u_model;\n\
+#ifdef BLOCK_INSTANCING\n\
+	attribute mat4 u_model;\n\
+	varying mat4 v_model;\n\
+#else\n\
+	uniform mat4 u_model;\n\
+#endif\n\
 uniform mat4 u_normal_model;\n\
 uniform mat4 u_view;\n\
 uniform mat4 u_viewprojection;\n\
@@ -11183,8 +11189,12 @@ void main() {\n\
   \n\
   \n\
 	//normal\n\
-	v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
-    {{vs_global}}\n\
+	#ifdef BLOCK_INSTANCING\n\
+		v_normal = (u_model * vec4(v_normal,0.0)).xyz;\n\
+	#else\n\
+		v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
+	#endif\n\
+	{{vs_global}}\n\
 	gl_Position = u_viewprojection * vec4(v_pos,1.0);\n\
 }\n\
 \n\
@@ -11209,6 +11219,7 @@ varying vec2 v_uvs;\n\
 #ifdef BLOCK_VERTEX_COLOR\n\
 	varying vec4 v_vertex_color;\n\
 #endif\n\
+#pragma shaderblock \"instancing\"\n\
 \n\
 //globals\n\
 uniform vec3 u_camera_eye;\n\
@@ -11216,7 +11227,12 @@ uniform vec4 u_clipping_plane;\n\
 uniform float u_time;\n\
 uniform vec4 u_background_color;\n\
 uniform vec4 u_material_color;\n\
-uniform mat4 u_model;\n\
+#ifdef BLOCK_INSTANCING\n\
+	mat4 u_model;\n\
+	varying mat4 v_model;\n\
+#else\n\
+	uniform mat4 u_model;\n\
+#endif\n\
 uniform mat4 u_normal_model;\n\
 uniform mat4 u_view;\n\
 uniform mat4 u_viewprojection;\n\
@@ -11231,6 +11247,9 @@ void main() {\n\
 	if(testClippingPlane(u_clipping_plane,IN.worldPos) < 0.0)\n\
 		discard;\n\
 	\n\
+	#ifdef BLOCK_INSTANCING\n\
+		u_model = v_model;\n\
+	#endif\n\
 	IN.vertex = v_local_pos;\n\
 	IN.normal = v_local_normal;\n\
 	#ifdef BLOCK_VERTEX_COLOR\n\
@@ -23100,7 +23119,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphGUIMultipleChoice.prototype.onRenderGUI = function()
 	{
-		var enabled = this.getInputDataByName("enabled");
+		var enabled = this.getInputOrProperty("enabled");
 
 		if(!this._values.length || !enabled )
 			return;
@@ -25310,11 +25329,8 @@ if(typeof(LiteGraph) != "undefined")
 	function LGraphShaderNoise()
 	{
 		this.addInput("in","vec3"); //optional
-		this.addOutput("out","vec3");
-		this.properties = {
-			world_space: true,
-		};
-		this.addWidget("toggle","world space",true,"world_space");
+		this.addOutput("out","float");
+		this.properties = { scale: 1.0 };
 	}
 
 	LGraphShaderNoise.title = "Noise";
@@ -25332,12 +25348,15 @@ if(typeof(LiteGraph) != "undefined")
 		if(!outlink) //not connected
 			return;
 
-		var inlink =  getInputLinkID(this,0);
+		var inlink = getInputLinkID(this,0);
 		if(!inlink)
-			inlink = this.properties.world_space ? "v_pos" : "v_local_pos";
+		{
+			context.fs_code += "	float " + outlink + " = 0.0;\n";
+			return;
+		}
 
-		context.fs_functions["getFlatNormal"] = "vec3 getFlatNormal(vec3 pos)\n{\n  vec3 A = dFdx( pos );\n  vec3 B = dFdy( pos );\n  return normalize( cross(A,B) );\n}\n";
-		context.fs_code += "	vec3 " + outlink + " = getFlatNormal("+inlink+");";
+		context.fs_snippets["snoise"] = true;
+		context.fs_code += "	float " + outlink + " = snoise("+inlink+" * "+this.properties.scale.toFixed(3)+");\n";
 	}
 
 	LiteGraph.registerShaderNode( "noise", LGraphShaderNoise );

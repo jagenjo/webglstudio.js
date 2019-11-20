@@ -20954,7 +20954,7 @@ void main(void){\n\
 
 	function LGraphPoints3D() {
 
-		this.addInput("ref", "");
+		this.addInput("obj", "");
 
 		this.addOutput("out", "geometry");
 		this.addOutput("points", "array");
@@ -20978,7 +20978,7 @@ void main(void){\n\
 			_id: generateGeometryId()
 		}
 
-		this._old_ref = null;
+		this._old_obj = null;
 	}
 
 	global.LGraphPoints3D = LGraphPoints3D;
@@ -20991,9 +20991,9 @@ void main(void){\n\
 	LGraphPoints3D.HEMISPHERE = 12;
 	LGraphPoints3D.INSIDE_SPHERE = 13;
 
-	LGraphPoints3D.MESH_TRIANGLE = 20;
+	LGraphPoints3D.OBJECT = 20;
 
-	LGraphPoints3D.MODE_VALUES = { "rectangle":LGraphPoints3D.RECTANGLE, "circle":LGraphPoints3D.CIRCLE, "cube":LGraphPoints3D.CUBE, "sphere":LGraphPoints3D.SPHERE, "hemisphere":LGraphPoints3D.HEMISPHERE, "inside_sphere":LGraphPoints3D.INSIDE_SPHERE, "mesh_triangle":LGraphPoints3D.MESH_TRIANGLE };
+	LGraphPoints3D.MODE_VALUES = { "rectangle":LGraphPoints3D.RECTANGLE, "circle":LGraphPoints3D.CIRCLE, "cube":LGraphPoints3D.CUBE, "sphere":LGraphPoints3D.SPHERE, "hemisphere":LGraphPoints3D.HEMISPHERE, "inside_sphere":LGraphPoints3D.INSIDE_SPHERE, "object":LGraphPoints3D.OBJECT };
 
 	LGraphPoints3D.widgets_info = {
 		mode: { widget: "combo", values: LGraphPoints3D.MODE_VALUES }
@@ -21009,10 +21009,10 @@ void main(void){\n\
 
 	LGraphPoints3D.prototype.onExecute = function() {
 
-		var ref = this.getInputData(0);
-		if( ref != this._old_ref || (ref && ref._version != this._old_ref_version) )
+		var obj = this.getInputData(0);
+		if( obj != this._old_obj || (obj && obj._version != this._old_obj_version) )
 		{
-			this._old_ref = ref;
+			this._old_obj = obj;
 			this.must_update = true;
 		}
 
@@ -21039,16 +21039,16 @@ void main(void){\n\
 		var radius = this.properties.radius;
 		var mode = this.properties.mode;
 
-		var ref = this.getInputData(0);
-		this._old_ref_version = ref ? ref._version : null;
+		var obj = this.getInputData(0);
+		this._old_obj_version = obj ? obj._version : null;
 
-		this.points = LGraphPoints3D.generatePoints( radius, num_points, mode, this.points, this.properties.regular, ref );
+		this.points = LGraphPoints3D.generatePoints( radius, num_points, mode, this.points, this.properties.regular, obj );
 
 		this.version++;
 	}
 
 	//global
-	LGraphPoints3D.generatePoints = function( radius, num_points, mode, points, regular, ref )
+	LGraphPoints3D.generatePoints = function( radius, num_points, mode, points, regular, obj )
 	{
 		var size = num_points * 3;
 		if(!points || points.length != size)
@@ -21125,9 +21125,9 @@ void main(void){\n\
 			{
 				LGraphPoints3D.generateInsideSphere( points, size, radius );
 			}
-			else if( mode == LGraphPoints3D.MESH_TRIANGLE)
+			else if( mode == LGraphPoints3D.OBJECT)
 			{
-				LGraphPoints3D.generateFromObject( points, size, ref );
+				LGraphPoints3D.generateFromObject( points, size, obj );
 			}
 			else
 				console.warn("wrong mode in LGraphPoints3D");
@@ -21200,18 +21200,21 @@ void main(void){\n\
 		}	
 	}
 
-	LGraphPoints3D.generateFromObject = function (points, size, ref)
+	LGraphPoints3D.generateFromObject = function (points, size, obj)
 	{
+		if(!obj)
+			return;
+
 		var vertices = null;
 		var normals = null;
 		var indices = null;
-		if( ref && ref.constructor === GL.Mesh )
+		if( obj.constructor === GL.Mesh )
 		{
-			vertices = ref.vertexBuffers.vertices.data;
-			normals = ref.vertexBuffers.normals ? ref.vertexBuffers.normals.data : null;
-			indices = ref.indexBuffers.indices ? ref.indexBuffers.indices.data : null;
+			vertices = obj.vertexBuffers.vertices.data;
+			normals = obj.vertexBuffers.normals ? obj.vertexBuffers.normals.data : null;
+			indices = obj.indexBuffers.indices ? obj.indexBuffers.indices.data : null;
 			if(!indices)
-				indices = ref.indexBuffers.triangles ? ref.indexBuffers.triangles.data : null;
+				indices = obj.indexBuffers.triangles ? obj.indexBuffers.triangles.data : null;
 		}
 		if(!vertices)
 			return null;

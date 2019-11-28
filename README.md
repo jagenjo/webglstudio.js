@@ -11,7 +11,7 @@ Some important WebGLStudio.js features:
  * A full 3D graphics engine ([LiteScene.js](https://github.com/jagenjo/litescene.js)) that supports multiple lights, shadowmaps, realtime reflections, custom materials, postFX, skinning, animation, and much more.
  * An easily extended, component-based system for controlling the rendering pipeline and interaction event hooks 
  * An easy to use, what you see is what you get (WYSIWYG) editor that provides a single interface for all coding, graph compositing and timeline features.
- * A graph editor for controlling behaviours and post-processing effects.
+ * A graph editor for controlling behaviours, shaders and post-processing effects, using [LiteGraph.js](https://github.com/jagenjo/litegraph.js).
  * Supports the [LiteFileSystem.js](https://github.com/jagenjo/litefilesystem.js), a virtual file system that allows drag-and-drop storage of resources on the web, with configurable quotas, users and shared folders.
  * Export and share your work by sending a single link.
 

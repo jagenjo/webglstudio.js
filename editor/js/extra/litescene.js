@@ -2247,6 +2247,7 @@ LS.RUNNING = 1; //LEGACY
 LS.ZEROS = vec3.create();
 LS.ZEROS4 = vec4.create();
 LS.ONES = vec3.fromValues(1,1,1);
+LS.ONES4 = vec4.fromValues(1,1,1,1);
 LS.TOP = vec3.fromValues(0,1,0);
 LS.BOTTOM = vec3.fromValues(0,-1,0);
 LS.RIGHT = vec3.fromValues(1,0,0);
@@ -9122,6 +9123,7 @@ ShaderMaterial.prototype.onResourceRenamed = function (old_name, new_name, resou
 	return v;
 }
 
+
 ShaderMaterial.getDefaultPickingShaderCode = function()
 {
 	if( ShaderMaterial.default_picking_shader_code )
@@ -9132,10 +9134,11 @@ ShaderMaterial.getDefaultPickingShaderCode = function()
 	return sc;
 }
 
+//creates a material with flat color, used for debug stuff, shadowmaps, picking, etc
 ShaderMaterial.createFlatMaterial = function()
 {
 	var material = new LS.ShaderMaterial();
-	material.code = LS.ShaderCode.getDefaultCode();
+	material.shader_code = LS.ShaderCode.getDefaultCode();
 	return material;
 }
 
@@ -9876,7 +9879,7 @@ void main() {\n\
 	applyLight(v_pos);\n\
 	\n\
 	//normal\n\
-	#ifdef SHADERBLOCK_INSTANCING\n\
+	#ifdef BLOCK_INSTANCING\n\
 		v_normal = (u_model * vec4(v_normal,0.0)).xyz;\n\
 	#else\n\
 		v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
@@ -11147,6 +11150,7 @@ varying vec3 v_local_normal;\n\
 #ifdef BLOCK_INSTANCING\n\
 	attribute mat4 u_model;\n\
 	varying mat4 v_model;\n\
+	//varying float v_instance_id;\n\
 #else\n\
 	uniform mat4 u_model;\n\
 #endif\n\
@@ -11191,6 +11195,7 @@ void main() {\n\
 	//normal\n\
 	#ifdef BLOCK_INSTANCING\n\
 		v_normal = (u_model * vec4(v_normal,0.0)).xyz;\n\
+		//v_instance_id = gl_InstanceID;\n\
 	#else\n\
 		v_normal = (u_normal_model * vec4(v_normal,0.0)).xyz;\n\
 	#endif\n\
@@ -11230,8 +11235,10 @@ uniform vec4 u_material_color;\n\
 #ifdef BLOCK_INSTANCING\n\
 	mat4 u_model;\n\
 	varying mat4 v_model;\n\
+	//varying v_instance_id;\n\
 #else\n\
 	uniform mat4 u_model;\n\
+	//float v_instance_id;\n\
 #endif\n\
 uniform mat4 u_normal_model;\n\
 uniform mat4 u_view;\n\
@@ -11249,6 +11256,8 @@ void main() {\n\
 	\n\
 	#ifdef BLOCK_INSTANCING\n\
 		u_model = v_model;\n\
+	#else\n\
+		//v_instance_id = 0.0;\n\
 	#endif\n\
 	IN.vertex = v_local_pos;\n\
 	IN.normal = v_local_normal;\n\
@@ -11404,7 +11413,22 @@ ComponentContainer.prototype.configureComponents = function( info )
 	//this is to avoid problems with components that check if the node has other components and if not they create it
 	for(var i = 0, l = to_configure.length; i < l; i+=2)
 	{
-		to_configure[i].configure( to_configure[i+1] );
+		if(LS.catch_exceptions)
+		{
+			var comp = to_configure[i];
+			var data = to_configure[i+1];
+			try
+			{
+				comp.configure( data );
+			}
+			catch (err)
+			{
+				console.error("Error found when configuring node of type ", LS.getObjectClassName(comp),", skipping. All data for this component is lost.");
+				console.error(err);
+			}
+		}
+		else
+			comp.configure( data );
 	}
 }
 
@@ -20051,13 +20075,8 @@ ShaderCode.default_fs = "\n\
 	}\n\
 ";
 
-ShaderCode.flat_code = "\\default.vs\n\
-" + ShaderCode.default_vs + "\n\
+ShaderCode.flat_code = "\n\
 \\color.fs\n\
-"+ ShaderCode.default_fs +"\n\
-\\picking.fs\n\
-"+ ShaderCode.default_fs +"\n\
-\\shadow.fs\n\
 "+ ShaderCode.default_fs +"\n\
 ";
 
@@ -20377,7 +20396,7 @@ if(typeof(LiteGraph) != "undefined")
 		this.addInput("mesh", "mesh");
 		this.addInput("material", "material");
 		this.addInput("mat4", "mat4");
-		this.addInput("instances", "array");
+		this.addInput("instances", "[mat4]");
 
 		this.properties = {
 			enabled: true,
@@ -24262,7 +24281,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderConstant.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
+			return;
 		var value = valueToGLSL( this.properties.value, this.properties.type );
 		var link_name = getOutputLinkID(this,0);
 		if(!link_name) //not connected
@@ -24337,7 +24356,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderUniform.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
+			return;
 
 		var link_name = getOutputLinkID(this,0);
 
@@ -24346,7 +24365,7 @@ if(typeof(LiteGraph) != "undefined")
 		{
 			if( this.properties.type != "" )
 				context.fs_code += this.properties.type + " " + link_name + " = u_" + prop_info.name + ";\n";
-			return "";
+			return;
 		}
 
 		if(link_name)
@@ -24381,14 +24400,14 @@ if(typeof(LiteGraph) != "undefined")
 
 	function LGraphShaderVertex()
 	{
-		this.addOutput("position","vec3");
-		this.addOutput("local_position","vec3");
+		this.addOutput("worldPos","vec3");
+		this.addOutput("vertex","vec3");
 		this.addOutput("normal","vec3");
 		this.addOutput("local_normal","vec3");
 		this.addOutput("uv","vec2");
 		this.addOutput("uv1","vec2");
 		this.addOutput("color","vec4");
-		this.addOutput("screen","vec4");
+		this.addOutput("screenPos","vec4");
 		this.addOutput("viewDir","vec3");
 		this.addOutput("camPos","vec3");
 		this.addOutput("camDist","float");
@@ -24398,50 +24417,60 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderVertex.desc = "Reads info from vertex shader";
 	LGraphShaderVertex.title_color = "#542";
 
+	LGraphShaderVertex.props = ["worldPos","vertex","worldNormal","normal","uv","uv1","color","screen","viewDir","camPos","camDist"];
+	LGraphShaderVertex.props_types = ["vec3","vec3","vec3","vec3","vec2","vec2","vec4","vec4","vec3","vec3","float"];
+
 	LGraphShaderVertex.prototype.onGetCode = function( type, context )
 	{
 		if(type != "glsl")
-			return "";
+			return;
 
 		var code = "";
-		var output = getOutputLinkID( this, 0 );
-		if(output)
-			code += "\t vec3 "+output+" = IN.worldPos;\n";
-		output = getOutputLinkID( this, 1 );
-		if(output)
-			code += "\t vec3 "+output+" = IN.vertex;\n";
-		output = getOutputLinkID( this, 2 );
-		if(output)
-			code += "\t vec3 "+output+" = IN.worldNormal;\n";
-		output = getOutputLinkID( this, 3 );
-		if(output)
-			code += "\t vec3 "+output+" = IN.normal;\n";
-		output = getOutputLinkID( this, 4 );
-		if(output)
-			code += "\t vec2 "+output+" = IN.uv;\n";
-		output = getOutputLinkID( this, 5 );
-		if(output)
-			code += "\t vec2 "+output+" = IN.uv1;\n";
-		output = getOutputLinkID( this, 6 );
-		if(output)
-			code += "\t vec4 "+output+" = IN.color;\n";
-		output = getOutputLinkID( this, 7 );
-		if(output)
-			code += "\t vec4 "+output+" = IN.screenPos;\n";
-		output = getOutputLinkID( this, 8 );
-		if(output)
-			code += "\t vec3 "+output+" = IN.viewDir;\n";
-		output = getOutputLinkID( this, 9 );
-		if(output)
-			code += "\t vec3 "+output+" = IN.camPos;\n";
-		output = getOutputLinkID( this, 10 );
-		if(output)
-			code += "\t float "+output+" = IN.camDist;\n";
 
+		for(var i = 0; i < LGraphShaderVertex.props.length; ++i)
+		{
+			var output = getOutputLinkID( this, i );
+			if(!output)
+				continue;
+			var propname = LGraphShaderVertex.props[i];
+			var proptype = LGraphShaderVertex.props_types[i];
+			code += "\t "+proptype+" "+output+" = IN."+propname+";\n";
+		}
 		context.fs_code += code;
 	}
 
 	LiteGraph.registerShaderNode( "vertex", LGraphShaderVertex );
+
+	/* not supported by WebGL1.0
+	function LGraphShaderElementId()
+	{
+		this.addOutput("instance","float");
+		//gl_VertexID only available in WebGL2
+	}
+
+	LGraphShaderElementId.title = "Id";
+	LGraphShaderElementId.desc = "returns the id of a instance";
+	LGraphShaderElementId.title_color = "#542";
+
+	LGraphShaderElementId.prototype.onGetCode = function( type, context )
+	{
+		if(type != "glsl")
+			return;
+		var output = getOutputLinkID( this, 0 );
+		if(!output)
+			return;
+		var code = "\n\
+	#ifdef BLOCK_INSTANCING\n\
+		float "+output+" = v_instance_id;\n\
+	#else\n\
+		float "+output+" = 0.0;\n\
+	#endif\n\
+	";
+		context.fs_code += code;
+	}
+
+	LiteGraph.registerShaderNode( "id", LGraphShaderElementId );
+	*/
 
 
 	var GLSL_functions_desc = {
@@ -24551,7 +24580,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderFunction.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
+			return;
 
 		var op = GLSL_functions[ this.properties.func ];
 
@@ -24627,7 +24656,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderOperator.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
+			return;
 
 		var inputA = getInputLinkID( this, 0 );
 		var inputB = getInputLinkID( this, 1 );
@@ -24680,7 +24709,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderFSOutput.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
+			return;
 		var link = getInputLinkID(this,0);
 		if(!link) //not connected
 			return;
@@ -24729,7 +24758,8 @@ if(typeof(LiteGraph) != "undefined")
 		this.addInput("alpha","float");
 		this.addInput("extra","vec4");
 		this.addOutput("out","vec4");
-		this.addOutput("light","vec3");
+		this.addOutput("light","FinalLight");
+		this.addOutput("surface","SurfaceOutput");
 	}
 
 	LGraphShaderPhong.title = "Phong";
@@ -24737,72 +24767,57 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderPhong.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
-
-		var output_name = getOutputLinkID( this, 0 );
-		var output1_name = getOutputLinkID( this, 1 );
-		if(!output_name)
 			return;
 
-		var code = "SurfaceOutput o;\n";
+		var output_name = getOutputLinkID( this, 0 );
+		var output_light = getOutputLinkID( this, 1 );
+		var output_surface = getOutputLinkID( this, 2 );
+		if(!output_name && !output_light && !output_surface )
+			return;
+
+		var surface_name = getShaderNodeVarName(this,"SURFACE");
+		var code = "SurfaceOutput "+surface_name+";\n";
 		var input = getInputLinkID( this, 0 );
-		if( input )
-			code += "\t o.Albedo = "+input+";\n";
-		else
-			code += "\t o.Albedo = vec3(1.0);\n";
+		code += "\t "+surface_name+".Albedo = " + ( input ? input : "vec3(1.0)" ) + ";\n";
 		input = getInputLinkID( this, 1 );
-		if( input )
-			code += "\t o.Ambient= "+input+";\n";
-		else
-			code += "\t o.Ambient = vec3(1.0);\n";
+		code += "\t "+surface_name+".Ambient = " + ( input ? input : "vec3(1.0)" ) + ";\n";
 		input = getInputLinkID( this, 2 );
-		if( input )
-			code += "\t o.Emission = "+input+";\n";
-		else
-			code += "\t o.Emission = vec3(0.0);\n";
+		code += "\t "+surface_name+".Emission = " + ( input ? input : "vec3(0.0)" ) + ";\n";
 		input = getInputLinkID( this, 3 );
-		if( input )
-			code += "\t o.Normal = "+input+";\n";
-		else
-			code += "\t o.Normal = IN.worldNormal;\n";
+		code += "\t "+surface_name+".Normal = " + ( input ? input : "IN.worldNormal" ) + ";\n";
 		input = getInputLinkID( this, 4 );
-		if( input )
-			code += "\t o.Specular = "+input+";\n";
-		else
-			code += "\t o.Specular = 0.0;\n";
+		code += "\t "+surface_name+".Specular = " + ( input ? input : "0.0" ) + ";\n";
 		input = getInputLinkID( this, 5 );
-		if( input )
-			code += "\t o.Gloss = "+input+";\n";
-		else
-			code += "\t o.Gloss = 10.0;\n";
+		code += "\t "+surface_name+".Gloss = " + ( input ? input : "10.0" ) + ";\n";
 		input = getInputLinkID( this, 6 );
-		if( input )
-			code += "\t o.Reflectivity = "+input+";\n";
-		else
-			code += "\t o.Reflectivity = 0.0;\n";
+		code += "\t "+surface_name+".Reflectivity = " + ( input ? input : "0.0" ) + ";\n";
 		input = getInputLinkID( this, 7 );
-		if( input )
-			code += "\t o.Alpha = "+input+";\n";
-		else
-			code += "\t o.Alpha = 1.0;\n";
+		code += "\t "+surface_name+".Alpha = " + ( input ? input : "1.0" ) + ";\n";
 		input = getInputLinkID( this, 8 );
-		if( input )
-			code += "\t o.Extra = "+input+";\n";
-		else
-			code += "\t o.Extra = vec4(0.0);\n";
+		code += "\t "+surface_name+".Extra = " + ( input ? input : "vec4(0.0)" ) + ";\n";
+
 		code += "\n\
-		vec4 _surf_color = vec4(0.0);\n\
 		Light LIGHT = getLight();\n\
-		FinalLight final_light = computeLight( o, IN, LIGHT );\n\
-		_surf_color.xyz = applyLight( o, final_light );\n\
-		_surf_color.a = o.Alpha;\n\
-		if( o.Reflectivity > 0.0 )\n\
-			_surf_color = applyReflection( IN, o, _surf_color );\n\
-		vec4 "+ output_name +" = _surf_color;\n\
+		FinalLight final_light = computeLight( "+surface_name+", IN, LIGHT );\n\
 		";
 
-		if(output1_name)
-			code += "	vec3 " + output1_name + " = final_light.Ambient + final_light.Color * final_light.Diffuse * final_light.Attenuation * final_light.Shadow;\n";
+		if(output_name)
+		{
+			code += "\n\
+			vec4 _surf_color = vec4(0.0);\n\
+			_surf_color.xyz = applyLight( "+surface_name+", final_light );\n\
+			_surf_color.a = "+surface_name+".Alpha;\n\
+			if( "+surface_name+".Reflectivity > 0.0 )\n\
+				_surf_color = applyReflection( IN, "+surface_name+", _surf_color );\n\
+			vec4 "+ output_name +" = _surf_color;\n\
+			";
+		}
+
+		if(output_light)
+			code += "	FinalLight " + output_light + " = final_light;\n";
+
+		if(output_surface)
+			code += "	SurfaceOutput " + output_surface + " = "+surface_name+";\n";
 
 		context.vs_out += "\n\
 			#pragma shaderblock \"light\"\n\
@@ -24818,6 +24833,89 @@ if(typeof(LiteGraph) != "undefined")
 
 	LiteGraph.registerShaderNode( "phong", LGraphShaderPhong );
 
+	//illumination output
+	function LGraphShaderPhongLightInfo()
+	{
+		this.addInput("light","FinalLight");
+		this.addInput("color","vec3");
+		this.addInput("ambient","vec3");
+		this.addInput("diffuse","float");
+		this.addInput("specular","float");
+		this.addInput("emission","vec3");
+		this.addInput("reflectivity","float");
+		this.addInput("attenuation","float");
+		this.addInput("shadow","float");
+		this.addInput("vector","vec3");
+
+		this.addOutput("light","FinalLight");
+		this.addOutput("color","vec3");
+		this.addOutput("ambient","vec3");
+		this.addOutput("diffuse","float");
+		this.addOutput("specular","float");
+		this.addOutput("emission","vec3");
+		this.addOutput("reflectivity","float");
+		this.addOutput("attenuation","float");
+		this.addOutput("shadow","float");
+		this.addOutput("vector","vec3");
+	}
+
+	LGraphShaderPhongLightInfo.title = "PhongFinalLight";
+
+	LGraphShaderPhongLightInfo.props = ["light","color","ambient","diffuse","specular","emission","reflectivity","attenuation","shadow","vector"];
+	LGraphShaderPhongLightInfo.propstypes = ["FinalLight","vec3","vec3","float","float","vec3","float","float","float","vec3"];
+
+	LGraphShaderPhongLightInfo.prototype.onGetCode = function( lang, context )
+	{
+		if( lang != "glsl" )
+			return;
+
+		var varname = getShaderNodeVarName(this,"LIGHT");
+
+		var code = "	FinalLight " + varname + ";\n";
+		var input = getInputLinkID( this, 0 );
+		if(input)
+			code += "	" + varname + " = " + input + ";\n";
+
+		var inputs_code = "";
+		var outputs_code = "";
+		for(var i = 1; i < LGraphShaderPhongLightInfo.props.length; ++i)
+		{
+			var propname = LGraphShaderPhongLightInfo.props[i];
+			var input = getInputLinkID( this, i );
+			if(input)
+				input_code += "	" + varname + "." + propname + " = " + input + ";\n";
+			var output = getOutputLinkID( this, i );
+			if(output)
+			{
+				var proptype = LGraphShaderPhongLightInfo.propstypes[i];
+				output_code += "	" + proptype + " " + output + " = " + varname + "." + propname + ";\n";
+			}
+		}
+
+		code += inputs_code + "\n";
+		code += outputs_code + "\n";
+
+		var output = getOutputLinkID( this, 0 );
+		if(output)
+			code += "	FinalLight " + output + " = " + varname + ";\n";
+
+		context.vs_out += "\n#pragma shaderblock \"light\"\n";
+		context.fs_out += "\n#pragma shaderblock \"light\"\n";
+		context.fs_code += code;
+	}
+
+	LiteGraph.registerShaderNode( "phongLightInfo", LGraphShaderPhongLightInfo );
+
+	//fragment shader output
+	function LGraphShaderPhongApplyLight()
+	{
+		this.addInput("","FinalLight");
+		this.addInput("","FinalLight");
+		this.addOutput("","vec4");
+		this.properties = { scale: 1 };
+		this.addWidget("number","scale",1,"scale");
+	}
+
 
 	//fragment shader output
 	function LGraphShaderTime()
@@ -24832,7 +24930,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderTime.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
+			return;
 		var link = getOutputLinkID(this,0);
 		if(!link) //not connected
 			return;
@@ -24857,7 +24955,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderTexture2DSample.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
+			return;
 
 		var in_tex_link = getInputLinkID(this,0);
 		var in_uv_link = getInputLinkID(this,1);
@@ -24914,7 +25012,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderTextureCubeSample.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
+			return;
 
 		var in_tex_link = getInputLinkID(this,0);
 		var in_uv_link = getInputLinkID(this,1);
@@ -24972,7 +25070,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderVec2.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
+			return;
 
 		var props = this.properties;
 
@@ -25038,7 +25136,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderVec3.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
+			return;
 
 		var props = this.properties;
 		var varname = getShaderNodeVarName(this);
@@ -25138,7 +25236,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderVec4.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
+			return;
 
 		var props = this.properties;
 		var varname = getShaderNodeVarName(this);
@@ -25245,7 +25343,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderQuantize.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
+			return;
 		var inlink = getInputLinkID(this,0);
 		var outlink = getOutputLinkID(this,0);
 		if(!inlink || !outlink) //not connected
@@ -25290,7 +25388,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderRemap.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
+			return;
 		var inlink = getInputLinkID(this,0);
 		var outlink = getOutputLinkID(this,0);
 		if(!outlink) //not connected
@@ -25343,7 +25441,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderNoise.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
+			return;
 		var outlink = getOutputLinkID(this,0);
 		if(!outlink) //not connected
 			return;
@@ -25389,7 +25487,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderCustom.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
+			return;
 
 		var outlink1 = getOutputLinkID(this,0);
 		var outlink2 = getOutputLinkID(this,1);
@@ -25447,7 +25545,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderFlatNormal.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
+			return;
 		var outlink = getOutputLinkID(this,0);
 		if(!outlink) //not connected
 			return;
@@ -25486,7 +25584,7 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphShaderNormalTransform.prototype.onGetCode = function( lang, context )
 	{
 		if( lang != "glsl" )
-			return "";
+			return;
 		var inlink = getInputLinkID(this,0);
 		var factor_link = getInputLinkID(this,1);
 		var outlink = getOutputLinkID(this,0);
@@ -29146,14 +29244,35 @@ LS.RenderFrameContext = RenderFrameContext;
 //RenderQueue is in charge of storing the RenderInstances that must be rendered
 //There could be several RenderQueue (for opaque, transparent, overlays, etc)
 //It works similar to the one in Unity
-function RenderQueue( sort_mode )
+function RenderQueue( value, sort_mode, options )
 {
+	this.value = value || 0;
 	this.sort_mode = sort_mode || LS.RenderQueue.NO_SORT;
+	this.range_start = 0;
+	this.range_end = 9;
+	this.must_clone_buffers = false; //used for readback rendering like refracion
+	//this.visible_in_pass = null;
+
+	//container for all instances that belong to this render queue
 	this.instances = [];
+
+	//callbacks
+	this.onStart = null;
+	this.onFinish = null;
+
+	//configure
+	if(options)
+		for(var i in options)
+			this[i] = options[i];
 }
+
+RenderQueue.readback_allowed = true;
 
 RenderQueue.prototype.sort = function()
 {
+	if(!this.instances.length)
+		return;
+
 	var func = null;
 	switch(this.sort_mode)
 	{
@@ -29176,12 +29295,38 @@ RenderQueue.prototype.clear = function()
 	this.instances.length = 0;
 }
 
-RenderQueue.DEFAULT = 0;
-RenderQueue.BACKGROUND = 5;
-RenderQueue.GEOMETRY = 10;
-RenderQueue.TRANSPARENT = 15;
-RenderQueue.READBACK_COLOR = 20;
-RenderQueue.OVERLAY = 25;
+RenderQueue.prototype.start = function( pass, render_settings )
+{
+	if(this.onStart)
+	{
+		var r = this.onStart( pass, render_settings); //cancels rendering
+		if (r === false)
+			return false;
+	}
+
+	if(this.instances.length && this.must_clone_buffers && RenderQueue.readback_allowed && pass === LS.COLOR_PASS )
+	{
+		if( LS.RenderFrameContext.current )
+			LS.RenderFrameContext.current.cloneBuffers();
+		//cubemaps are not cloned... too much work
+	}
+}
+
+//not used...
+RenderQueue.prototype.finish = function( pass )
+{
+	if(this.onFinish)
+		this.onFinish( pass, render_settings );
+}
+
+
+//we use 5 so from 0 to 9 is one queue, from 10 to 19 another one, etc
+RenderQueue.DEFAULT =		0;
+RenderQueue.BACKGROUND =	5;
+RenderQueue.GEOMETRY =		15;
+RenderQueue.TRANSPARENT =	25;
+RenderQueue.READBACK_COLOR = 35;
+RenderQueue.OVERLAY =		45;
 
 RenderQueue.NO_SORT = 0;
 RenderQueue.SORT_NEAR_TO_FAR = 1;
@@ -29213,7 +29358,6 @@ var SHADOW_PASS = LS.SHADOW_PASS = { name: "shadow", id: 2 };
 var PICKING_PASS = LS.PICKING_PASS = { name: "picking", id: 3 };
 
 //events
-
 EVENT.BEFORE_RENDER = "beforeRender";
 EVENT.READY_TO_RENDER = "readyToRender";
 EVENT.RENDER_SHADOWS = "renderShadows";
@@ -29383,24 +29527,8 @@ var Renderer = {
 
 		this._active_samples.length = max_texture_units;
 
-		//set render queues
-		this.createRenderQueue( LS.RenderQueue.BACKGROUND, LS.RenderQueue.NO_SORT );
-		this.createRenderQueue( LS.RenderQueue.GEOMETRY, LS.RenderQueue.SORT_NEAR_TO_FAR );
-		this.createRenderQueue( LS.RenderQueue.TRANSPARENT, LS.RenderQueue.SORT_FAR_TO_NEAR );
+		this.createRenderQueues();
 
-		//very special queue that must change the renderframecontext before start rendering anything
-		this.createRenderQueue( LS.RenderQueue.READBACK_COLOR, LS.RenderQueue.SORT_FAR_TO_NEAR, {
-			onStart: function( render_settings, pass ){
-				if(pass.name === "color")
-				{
-					if( LS.RenderFrameContext.current )
-						LS.RenderFrameContext.current.cloneBuffers();
-					//if it is a cubemap where we are rendering, we cannot clone that face easily, too much work, so...
-				}
-			}
-		});
-
-		this.createRenderQueue( LS.RenderQueue.OVERLAY, LS.RenderQueue.NO_SORT );
 		this._full_viewport.set([0,0,gl.drawingBufferWidth,gl.drawingBufferHeight]);
 
 		this._uniforms.u_viewport = gl.viewport_data;
@@ -29637,9 +29765,6 @@ var Renderer = {
 		//set as active camera and set viewport
 		this.enableCamera( camera, render_settings, render_settings.skip_viewport, scene ); 
 
-		//compute the rendering order
-		this.sortRenderQueues( camera, render_settings );
-
 		//clear buffer
 		this.clearBuffer( camera, render_settings );
 
@@ -29823,12 +29948,9 @@ var Renderer = {
 		gl.disable( gl.STENCIL_TEST );
 	},
 
-	sortRenderQueues: function( camera, render_settings )
+	//clears render queues and inserts objects according to their settings
+	updateRenderQueues: function( camera, instances )
 	{
-		var instances = this._visible_instances;
-		if(!instances)
-			return;
-
 		//compute distance to camera
 		var camera_eye = camera.getEye( this._temp_cameye );
 		for(var i = 0, l = instances.length; i < l; ++i)
@@ -29838,11 +29960,40 @@ var Renderer = {
 				instance._dist = vec3.dist( instance.center, camera_eye );
 		}
 
-		//sort queues
-		for(var i = 0, l = this._queues.length; i < l; ++i)
+		var queues = this._queues;
+
+		//clear render queues
+		for(var i = 0; i < queues.length; ++i)
+			if(queues[i])
+				queues[i].clear();
+
+		//add to their queues
+		for(var i = 0, l = instances.length; i < l; ++i)
 		{
-			var queue = this._queues[i];
-			if(!queue || !queue.sort_mode)
+			var instance = instances[i];
+			if( !instance || !instance.material || !instance._is_visible )
+				continue;
+
+			//queue index use the tens digit
+			var queue_index = Math.floor( instance.material.queue * 0.1 );
+			var queue = queues[ queue_index ];
+			if( !queue )
+			{
+				//TODO: maybe this case should be treated directly in StandardMaterial
+				if( instance.material._render_state.blend )
+					queue = this._renderqueue_transparent;
+				else
+					queue = this._renderqueue_geometry;
+			}
+			if(queue)
+				queue.add( instance );
+		}
+
+		//sort queues
+		for(var i = 0, l = queues.length; i < l; ++i)
+		{
+			var queue = queues[i];
+			if(!queue || !queue.sort_mode || !queue.instances.length)
 				continue;
 			queue.sort();
 		}
@@ -29903,7 +30054,6 @@ var Renderer = {
 		var apply_frustum_culling = render_settings.frustum_culling;
 		var frustum_planes = camera.updateFrustumPlanes();
 		var layers_filter = camera.layers & render_settings.layers;
-		var instancing_supported = gl.webgl_version > 1 || gl.extensions["ANGLE_instanced_arrays"];
 
 		LEvent.trigger( scene, EVENT.BEFORE_RENDER_INSTANCES, render_settings );
 		//scene.triggerInNodes( EVENT.BEFORE_RENDER_INSTANCES, render_settings );
@@ -29930,8 +30080,7 @@ var Renderer = {
 
 		var instancing_data = this._instancing_data;
 
-
-		//compute visibility pass: checks which RIs are visible from this camera
+		//compute visibility pass: checks which RIs are visible from this camera according to its flags, layers and AABB
 		for(var i = 0, l = render_instances.length; i < l; ++i)
 		{
 			//render instance
@@ -29971,19 +30120,10 @@ var Renderer = {
 			instance._is_visible = true;
 			if(camera_index_flag) //shadowmap cameras dont have an index
 				instance._camera_visibility |= camera_index_flag;
-
-
-			//TODO: if material supports instancing WIP
-			/*
-			if( instancing_supported && material._allows_instancing && !instance._shader_blocks.length )
-			{
-				var instancing_ri_info = null;
-				if(!instancing_data[ material._index ] )
-					instancing_data[ material._index ] = instancing_ri_info = [];
-				instancing_ri_info.push( instance );
-			}
-			*/
 		}
+
+		//separate in render queues, and sort them according to distance or priority
+		this.updateRenderQueues( camera, render_instances, render_settings );
 
 		var start = this._rendered_instances;
 		var debug_instance = this._debug_instance;
@@ -29996,9 +30136,8 @@ var Renderer = {
 				continue;
 
 			//used to change RenderFrameContext stuff (cloning textures for refraction, etc)
-			if(queue.onStart)
-				if( queue.onStart( render_settings, pass ) === false )
-					continue;
+			if(queue.start( pass, render_settings ) == false)
+				continue;
 
 			var render_instances = queue.instances;
 
@@ -30029,13 +30168,12 @@ var Renderer = {
 				else
 					continue;
 
-				//some instances do a post render action
+				//some instances do a post render action (DEPRECATED)
 				if(instance.onPostRender)
 					instance.onPostRender( render_settings );
 			}
 
-			if(queue.onFinish)
-				queue.onFinish( render_settings, pass );
+			queue.finish( pass, render_settings );
 		}
 
 		this.resetGLState( render_settings );
@@ -30053,6 +30191,21 @@ var Renderer = {
 
 		return this._rendered_instances - start;
 	},
+
+	/*
+	groupingInstances: function(instances)
+	{
+		//TODO: if material supports instancing WIP
+		var instancing_supported = gl.webgl_version > 1 || gl.extensions["ANGLE_instanced_arrays"];
+		if( instancing_supported && material._allows_instancing && !instance._shader_blocks.length )
+		{
+			var instancing_ri_info = null;
+			if(!instancing_data[ material._index ] )
+				instancing_data[ material._index ] = instancing_ri_info = [];
+			instancing_ri_info.push( instance );
+		}
+	},
+	*/
 
 	renderGUI: function( render_settings )
 	{
@@ -30291,6 +30444,7 @@ var Renderer = {
 	/**
 	* Collects and process the rendering instances, cameras and lights that are visible
 	* Its a prepass shared among all rendering passes
+	* Called ONCE per frame from LS.Renderer.render before iterating cameras
 	* Warning: rendering order is computed here, so it is shared among all the cameras (TO DO, move somewhere else)
 	*
 	* @method processVisibleData
@@ -30303,6 +30457,7 @@ var Renderer = {
 		//options = options || {};
 		//options.scene = scene;
 		var frame = scene._frame;
+		instances = instances || scene._instances;
 
 		this._current_scene = scene;
 		//compute global scene info
@@ -30345,7 +30500,6 @@ var Renderer = {
 			}
 			else
 				camera._overwrite_material = null;
-
 		}
 
 		//define the main camera (the camera used for some algorithms)
@@ -30360,14 +30514,27 @@ var Renderer = {
 		//nearest reflection probe to camera
 		var nearest_reflection_probe = scene.findNearestReflectionProbe( this._main_camera.getEye() );
 
-		instances = instances || scene._instances;
-		var camera = this._main_camera; // || scene.getCamera();
-		var camera_eye = camera.getEye( this._temp_cameye );
+		//process instances
+		this.processRenderInstances( instances, materials, scene );
 
-		//clear render queues
-		for(var i = 0; i < this._queues.length; ++i)
-			if(this._queues[i])
-				this._queues[i].clear();
+		//store all the info
+		this._visible_instances = scene._instances;
+		this._active_lights = scene._lights;
+		this._visible_cameras = cameras; 
+		//this._visible_materials = materials;
+
+		//prepare lights (collect data and generate shadowmaps)
+		for(var i = 0, l = this._active_lights.length; i < l; ++i)
+			this._active_lights[i].prepare( render_settings );
+
+		LEvent.trigger( scene, EVENT.AFTER_COLLECT_DATA, scene );
+	},
+
+	//this processes the instances 
+	processRenderInstances: function( instances, materials, scene )
+	{
+		materials = materials || this._visible_materials;
+		var frame = scene._frame;
 
 		//process render instances (add stuff if needed, gather materials)
 		for(var i = 0, l = instances.length; i < l; ++i)
@@ -30395,7 +30562,7 @@ var Renderer = {
 			}
 
 			//add extra info: distance to main camera (used for sorting)
-			instance._dist = vec3.dist( instance.center, camera_eye );
+			instance._dist = 0;
 
 			//find nearest reflection probe
 			if( scene._reflection_probes.length && !this._ignore_reflection_probes )
@@ -30415,13 +30582,9 @@ var Renderer = {
 				}
 			}
 
-			//add to queues
-			var queue = this.addInstanceToQueue( instance );
-			if(!queue)
-				continue;
-
 			//clear camera visibility mask (every flag represents a camera index)
 			instance._camera_visibility = 0|0;
+			instance.index = i;
 		}
 
 		//prepare materials 
@@ -30434,45 +30597,6 @@ var Renderer = {
 		}
 
 		LEvent.trigger( scene, EVENT.PREPARE_MATERIALS );
-
-		for(var i = 0, l = instances.length; i < l; ++i)
-			instance.index = i;
-
-		//store all the info
-		this._visible_instances = scene._instances;
-		this._active_lights = scene._lights;
-		this._visible_cameras = cameras; 
-		//this._visible_materials = materials;
-
-		//prepare lights (collect data and generate shadowmaps)
-		for(var i = 0, l = this._active_lights.length; i < l; ++i)
-			this._active_lights[i].prepare( render_settings );
-
-		LEvent.trigger( scene, EVENT.AFTER_COLLECT_DATA, scene );
-	},
-
-	addInstanceToQueue: function( instance )
-	{
-		var queue_index = instance.material.queue;
-		var queue = null;
-		if( queue_index === undefined || queue_index === LS.RenderQueue.DEFAULT )
-		{
-			//TODO: maybe this case should be treated directly in StandardMaterial
-			if( instance.material._render_state.blend )
-				queue = this._queues[ LS.RenderQueue.TRANSPARENT ];
-			else
-				queue = this._queues[ LS.RenderQueue.GEOMETRY ];
-		}
-		else
-		{
-			queue = this._queues[ queue_index ];
-			if(!queue)
-				LS.Renderer.createRenderQueue( queue_index );
-		}
-		if(!queue)
-			return;
-		queue.add( instance );	
-		return queue;
 	},
 
 	/**
@@ -30597,27 +30721,19 @@ var Renderer = {
 		return null;
 	},
 
-	/**
-	* Adds a new RenderQueue to the Renderer.
-	*
-	* @method addRenderQueue
-	* @param {RenderQueue} name name of the render pass as in render_passes
-	* @param {Number} sorting which algorithm use to sort ( LS.RenderQueue.NO_SORT, LS.RenderQueue.SORT_NEAR_TO_FAR, LS.RenderQueue.SORT_FAR_TO_NEAR )
-	* @param {Object} options extra stuff to add to the queue ( like callbacks onStart, onFinish )
-	* @return {Number} index of the render queue
-	*/
-	createRenderQueue: function( index, sorting, options )
+	createRenderQueues: function()
 	{
-		if(index === undefined)
-			throw("RenderQueue must have index");
-		var queue = new LS.RenderQueue( sorting );
-		if( this._queues[ index ] )
-			console.warn("There is already a RenderQueue in slot ",index );
-		this._queues[ index ] = queue;
+		this._queues.length = 0;
 
-		if(options)
-			for(var i in options)
-				queue[i] = options[i];
+		this._queues.push( new LS.RenderQueue( LS.RenderQueue.BACKGROUND, LS.RenderQueue.NO_SORT ) );
+
+		this._renderqueue_geometry = new LS.RenderQueue( LS.RenderQueue.GEOMETRY, LS.RenderQueue.SORT_NEAR_TO_FAR )
+		this._queues.push( this._renderqueue_geometry );
+		this._renderqueue_transparent = new LS.RenderQueue( LS.RenderQueue.TRANSPARENT, LS.RenderQueue.SORT_FAR_TO_NEAR );
+		this._queues.push( this._renderqueue_transparent );
+
+		this._queues.push( new LS.RenderQueue( LS.RenderQueue.READBACK_COLOR, LS.RenderQueue.SORT_FAR_TO_NEAR , { must_clone_buffers: true }));
+		this._queues.push( new LS.RenderQueue( LS.RenderQueue.OVERLAY, LS.RenderQueue.SORT_BY_PRIORITY ) );
 	},
 
 	setRenderPass: function( pass )
@@ -32287,9 +32403,9 @@ var Draw = {
 	},
 
 	/**
-	* Renders an image
+	* Renders an image in 2D (billboarded)
 	* @method renderImage
-	* @param {vec3} position
+	* @param {vec3} position that will be projected
 	* @param {Image|Texture|String} image from an URL, or a texture
 	* @param {number} size [optional=10]
 	* @param {boolean} fixed_size [optional=false] (camera distance do not affect size)
@@ -32303,7 +32419,10 @@ var Draw = {
 
 		if(typeof(image) == "string")
 		{
-			texture = this.images[image];
+			if(window.LS)
+				texture = LS.ResourcesManager.textures[image];
+			if(!texture)
+				texture = this.images[image];
 			if(texture == null)
 			{
 				Draw.images[image] = 1; //loading
@@ -33045,6 +33164,8 @@ Shadowmap.prototype.generate = function( instances, render_settings, precompute_
 		}
 	}
 
+	var prev_pass = LS.Renderer._current_pass;
+
 	LS.Renderer.setRenderPass( SHADOW_PASS );
 	LS.Renderer._current_light = light;
 	var tmp_layer = render_settings.layers;
@@ -33098,7 +33219,7 @@ Shadowmap.prototype.generate = function( instances, render_settings, precompute_
 	gl.colorMask(true,true,true,true);
 
 	render_settings.layers = tmp_layer;
-	LS.Renderer.setRenderPass( COLOR_PASS );
+	LS.Renderer.setRenderPass( prev_pass );
 	LS.Renderer._current_light = null;
 	
 	if(this.onPostProcessShadowMap)
@@ -33511,6 +33632,7 @@ var Picking = {
 	{
 		//to visualize picking buffer
 		LS.Renderer.setRenderPass( v ? LS.PICKING_PASS : LS.COLOR_PASS );
+		LS.GlobalScene.requestFrame();
 	}
 };
 

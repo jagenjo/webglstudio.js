@@ -5,6 +5,9 @@ var SelectionModule = {
 	selection: null, // { uid, instance, node, info }
 	selection_array: [],
 
+	last_selection_change: 0, //used from blinking
+	blink: 0,
+
 	init: function()
 	{
 		LEvent.bind( LS.GlobalScene, "treeItemRemoved", this.onNodeRemoved, this );
@@ -38,6 +41,9 @@ var SelectionModule = {
 	//expect something along { instance: *, node: SceneNode, uid: String, data: * }
 	setSelection: function( selection, skip_events )
 	{
+		this.last_selection_change = getTime();
+		this.blink = 4;
+
 		//clear selection
 		if (!selection)
 		{

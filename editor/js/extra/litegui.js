@@ -5655,18 +5655,22 @@ LiteGUI.Console = Console;
 		if(!item)
 			return;
 
-		var rects = this.root.getClientRects();
-		if(!rects.length)
-			return false;
-		var r = rects[0];
-		var h = r.height;
+		var container = this.root.parentNode;
+
+		if(!container)
+			return;
+
+		var rect = container.getBoundingClientRect();
+		if(!rect)
+			return;
+		var h = rect.height;
 		var x = ( parseInt( item.dataset["level"] ) + this.indent_offset) * Tree.INDENT + 50;
 
-		this.root.scrollTop = item.offsetTop - (h * 0.5)|0;
-		if( r.width * 0.75 < x )
-			this.root.scrollLeft = x;
+		container.scrollTop = item.offsetTop - (h * 0.5)|0;
+		if( rect.width * 0.75 < x )
+			container.scrollLeft = x;
 		else
-			this.root.scrollLeft = 0;
+			container.scrollLeft = 0;
 	}
 
 	/**

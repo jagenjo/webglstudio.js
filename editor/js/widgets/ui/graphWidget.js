@@ -538,7 +538,7 @@ GraphWidget.prototype.onGetExtraMenuOptions = function(options)
 
 	return [null,{ content: "Add " + className, callback: inner_add.bind(this) }];
 
-	function inner_add( node, e )
+	function inner_add( node, options, e )
 	{
 		var graphnode = null;
 

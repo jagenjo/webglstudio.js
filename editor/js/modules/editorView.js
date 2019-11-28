@@ -185,6 +185,11 @@ var EditorView = {
 		//used to render script tools gizmos
 		LEvent.trigger( LS.GlobalScene, "renderEditor" );
 
+		//outline
+		var selected_node = SelectionModule.getSelectedNode();
+		if( selected_node && selected_node._instances.length )
+			this.renderInstancesOutline( selected_node._instances, [1,0.75,0.5,0.75] );
+
 		gl.depthFunc( gl.LESS );
 		gl.viewport(0,0,gl.canvas.width,gl.canvas.height); //??
 	},
@@ -238,7 +243,69 @@ var EditorView = {
 		}
 
 		LS.Picking.renderPickingPoints();
-	}
+	},
+
+	renderInstancesOutline: function( instances, color )
+	{
+		var current_view = RenderModule.getActiveViewport();
+		var viewport = current_view.viewport_pixels;
+		if(!current_view._outline_buffer || current_view._outline_buffer.width != viewport[2] || current_view._outline_buffer.height != viewport[3] )
+			current_view._outline_buffer = new GL.Texture( viewport[2], viewport[3] );
+		var texture = current_view._outline_buffer;
+
+		var camera = LS.Renderer._current_camera;
+
+		texture.drawTo(function(){
+			gl.clearColor(0,0,0,0);
+			gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
+
+			var mat = camera._overwrite_material || null;
+			if(!this._outline_material)
+			{
+				this._outline_material = LS.ShaderMaterial.createFlatMaterial();
+				this._outline_material.color = [1,1,1,1];
+				this._outline_material._render_state.depth_test = false;
+				this._outline_material._render_state.cull_face = false;
+			}
+
+			this._outline_material.prepare(LS.Renderer._current_scene);
+			camera._overwrite_material = this._outline_material;
+			LS.RenderQueue.readback_allowed = false;
+			LS.Renderer.renderInstances( LS.Renderer._current_render_settings, instances );
+			LS.RenderQueue.readback_allowed = true;
+			camera._overwrite_material = mat;
+		});
+
+		var outline_shader = this._outline_shader;
+		if(!this._outline_shader)
+			outline_shader = this._outline_shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, this.outline_shader_code );
+		outline_shader.setUniform("u_viewport", gl.viewport_data );
+		outline_shader.setUniform("u_color", color || LS.ONES4 );
+		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+		gl.enable( gl.BLEND );
+		gl.disable( gl.DEPTH_TEST );
+		texture.toViewport( outline_shader );
+		gl.disable( gl.BLEND );
+		gl.enable( gl.DEPTH_TEST );
+	},
+
+	outline_shader_code: "\n\
+		precision mediump float;\n\
+		varying vec2 v_coord;\n\
+		uniform sampler2D u_texture;\n\
+		uniform vec4 u_viewport;\n\
+		uniform vec4 u_color;\n\
+		void main() {\n\
+			vec2 ix = vec2( 1.0 / u_viewport.z, 0.0 );\n\
+			vec2 iy = vec2( 0.0, 1.0 / u_viewport.w );\n\
+			float C = texture2D(u_texture,v_coord).x;\n\
+			float L = texture2D(u_texture,v_coord - ix).x;\n\
+			float T = texture2D(u_texture,v_coord - iy).x;\n\
+			float LT = texture2D(u_texture,v_coord - iy - ix).x;\n\
+			float edge = clamp(abs(C-L) + abs(C-T) + abs(C-LT),0.0,1.0);\n\
+			gl_FragColor = vec4(u_color.xyz,u_color.a * edge);\n\
+		}\n\
+	"
 };
 
 
@@ -246,6 +313,19 @@ CORE.registerModule( EditorView );
 
 
 // GIZMOS *****************************
+var selected_shader_code = "\n\
+\\color.fs\n\
+	precision mediump float;\n\
+	uniform vec4 u_material_color;\n\
+	void main() {\n\
+		float dis = -1.0;\n\
+		if( mod(gl_FragCoord.x,4.0) <= 1.0 && mod(gl_FragCoord.y,4.0) <= 1.0 )\n\
+			dis *= -1.0;\n\
+		if(dis < 0.0)\n\
+			discard;\n\
+		gl_FragColor = u_material_color;\n\
+	}\n\
+"
 
 LS.SceneNode.prototype.renderEditor = function( node_selected )
 {
@@ -254,12 +334,38 @@ LS.SceneNode.prototype.renderEditor = function( node_selected )
 
 	LS.Draw.setColor([0.3,0.3,0.3,0.5]);
 	gl.enable(gl.BLEND);
+	var camera = LS.Renderer._current_camera;
 
 	var probe_links = EditorView.preferences.render_probes_link ? [] : null;
 
 	//if this node has render instances...
 	if(this._instances)
 	{
+		//this code makes the instances blink when selected
+		if( 0 && SelectionModule.blink > 0 && node_selected && this._instances.length) //render selected as brighter
+		{
+			--SelectionModule.blink;
+			LS.GlobalScene.requestFrame();
+
+			if( SelectionModule.blink % 2 == 1 )
+			{
+				var mat = camera._overwrite_material || null;
+				if(!this._selection_material)
+				{
+					this._selection_material = new LS.ShaderMaterial();
+					this._selection_material.shader_code = new LS.ShaderCode(selected_shader_code);
+					this._selection_material.color = [1,0.5,0.0,1];
+					this._selection_material._render_state.depth_func = GL.EQUAL;
+				}
+
+				this._selection_material.prepare(LS.Renderer._current_scene);
+				camera._overwrite_material = this._selection_material;
+				LS.Renderer.renderInstances( LS.Renderer._current_render_settings, this._instances );
+				camera._overwrite_material = mat;
+			}
+		}
+
+		//this render debug info like boundings
 		for(var i = 0; i < this._instances.length; ++i)
 		{
 			var instance = this._instances[i];

@@ -43,6 +43,8 @@ GraphWidget.prototype.init = function( options )
 	top_widgets.addButton(null,"Run Step", this.onStepGraph.bind(this) );
 	top_widgets.addCheckbox("Redraw",this.redraw_canvas, { callback: function(v){ that.redraw_canvas = v; } } );
 	/* top_widgets.addButton(null,"Overgraph", this.onSelectOvergraph.bind(this) ); */
+	top_widgets.addButton(null,"Detach", { width: 80, callback: this.onDetachGraph.bind(this) });
+
 	this.root.appendChild( top_widgets.root );
 
 	//create area
@@ -302,6 +304,14 @@ GraphWidget.prototype.onShowNodePanel = function( node )
 	var inspector = this.inspector || EditorModule.inspector;
 	inspector.inspect( node, false, node.constructor.type );
 	this.inspected_node = node;
+}
+
+GraphWidget.prototype.onDetachGraph = function()
+{
+	//create floating window
+	var dialog = InterfaceModule.createFloatingDialog(null, CORE.Widgets_by_name.Graph, true );
+	if(this.current_graph_info.instance)
+		dialog.widget.editInstanceGraph( this.current_graph_info.instance );
 }
 
 //in case you want to have the option to drop stuff in the editor

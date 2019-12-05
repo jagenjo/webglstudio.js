@@ -11117,7 +11117,7 @@ GraphMaterial.prototype.setTexture = function(texture, channel, uvs) {
 LS.registerMaterialClass( GraphMaterial );
 LS.GraphMaterial = GraphMaterial;
 
-GraphMaterial.default_graph = {"last_node_id":2,"last_link_id":1,"nodes":[{"id":2,"type":"shader/phong","pos":[328,242],"size":[140,186],"flags":{},"order":0,"mode":0,"inputs":[{"name":"albedo","type":"vec3","link":null},{"name":"ambient","type":"vec3","link":null},{"name":"emission","type":"vec3","link":null},{"name":"normal","type":"vec3","link":null},{"name":"specular","type":"float","link":null},{"name":"gloss","type":"float","link":null},{"name":"reflectivity","type":"float","link":null},{"name":"alpha","type":"float","link":null},{"name":"extra","type":"vec4","link":null}],"outputs":[{"name":"out","type":"vec4","links":[1]}],"properties":{}},{"id":1,"type":"shader/fs_output","pos":[651,241],"size":[140,26],"flags":{},"order":1,"mode":0,"inputs":[{"name":"","type":"T,float,vec2,vec3,vec4","link":1}],"properties":{}}],"links":[[1,2,0,1,0,"T,float,vec2,vec3,vec4"]],"groups":[],"config":{},"version":0.4}
+GraphMaterial.default_graph = {"last_node_id":2,"last_link_id":1,"nodes":[{"id":2,"type":"shader/phong","pos":[328,242],"size":[140,186],"flags":{},"order":0,"mode":0,"inputs":[{"name":"albedo","type":"vec3","link":null},{"name":"ambient","type":"vec3","link":null},{"name":"emission","type":"vec3","link":null},{"name":"normal","type":"vec3","link":null},{"name":"specular","type":"float","link":null},{"name":"gloss","type":"float","link":null},{"name":"reflectivity","type":"float","link":null},{"name":"alpha","type":"float","link":null},{"name":"extra","type":"vec4","link":null}],"outputs":[{"name":"out","type":"vec4","links":[1]}],"properties":{}},{"id":1,"type":"shader/fs_output","pos":[651,241],"size":[140,66],"flags":{},"order":1,"mode":0,"inputs":[{"name":"","type":"T,float,vec2,vec3,vec4","link":1}],"properties":{}}],"links":[[1,2,0,1,0,"T,float,vec2,vec3,vec4"]],"groups":[],"config":{},"version":0.4}
 
 GraphMaterial.code_template = "\n\
 \n\
@@ -18193,7 +18193,15 @@ LS.Interpolators["texture"] = function( a, b, t, last )
 }
 
 ///@FILE:../src/resources/skeletalAnimation.js
-//standalone class for skeletal animations
+// Standalone class for skeletal animations
+// By Javi Agenjo (@tamat)
+// ***************************************
+// It uses a filetype called SKANIM, the format is similar to BVH but much more easy to parser
+// ASCII Format description:
+// HEADER: {duration}, {samples_per_second}, {num_keyframes}, {num_bones}
+// FOR EVERY BONE (ordered by hierarchy): B{bone index}, {bone_name}, {bind matrix of bone in mat44}
+// KEYFRAMES HEADER: @{num_animated_bones},{index to bone referenced by the first matrix}, {index to bone referenced by the second matrix}, ...
+// KEYFRAME: K{time},{mat4},{mat4},{mat4},....
 
 function lerp(a,b,f) { return a*(1.0-f)+b*f; }
 
@@ -20475,6 +20483,8 @@ if(typeof(LiteGraph) != "undefined")
 ///@INFO: GRAPHS
 if(typeof(LiteGraph) != "undefined")
 {
+	//scene/component is in another file, components.js
+	
 	/* Scene LNodes ***********************/
 
 	global.LGraphScene = function()
@@ -20690,6 +20700,7 @@ if(typeof(LiteGraph) != "undefined")
 			{
 				case "SceneNode": this.setOutputData( i, node ); break;
 				case "Material": this.setOutputData( i, node.getMaterial() ); break;
+				case "Mesh": this.setOutputData( i, node.getMesh() ); break;
 				case "Transform": this.setOutputData( i, node.transform ); break;
 				case "Global Model": this.setOutputData( i, node.transform ? node.transform._global_matrix : LS.IDENTITY ); break;
 				case "Name": this.setOutputData( i, node.name ); break;
@@ -20814,7 +20825,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphSceneNode.prototype.onGetOutputs = function()
 	{
-		var result = [["SceneNode","SceneNode"],["Visible","boolean"],["Material","Material"],["Name","string"],["UID","string"],["Global Model","mat4"],["Children","scenenode[]"],["on_clicked",LiteGraph.EVENT]];
+		var result = [["SceneNode","SceneNode"],["Visible","boolean"],["Material","Material"],["Mesh","Mesh"],["Name","string"],["UID","string"],["Global Model","mat4"],["Children","scenenode[]"],["on_clicked",LiteGraph.EVENT]];
 		return this.getComponents(result);
 	}
 
@@ -21186,7 +21197,11 @@ if(typeof(LiteGraph) != "undefined")
 		if(info && info.target)
 		{
 			if( this.inputs.length && this.inputs[0].link !== null )
-				LSQ.setFromInfo( info, this.getInputData(0) );
+			{
+				var v = this.getInputData(0);
+				if(v !== undefined)
+					LSQ.setFromInfo( info, v );
+			}
 			if( this.outputs.length && this.outputs[0].links && this.outputs[0].links.length )
 				this.setOutputData( 0, LSQ.getFromInfo( info ));
 		}
@@ -21555,6 +21570,9 @@ if(typeof(LiteGraph) != "undefined")
 		for(var i in attrs)
 			result.push( [i, attrs[i]] );
 
+		if(compo.constructor.getExtraProperties)
+			compo.constructor.getExtraProperties( result );
+
 		if(compo.getExtraProperties)
 			compo.getExtraProperties( result );
 
@@ -21869,7 +21887,7 @@ else
 
 
 
-// Texture Blur *****************************************
+// Stack of FX *****************************************
 function LGraphFXStack()
 {
 	this.addInput("Color","Texture");
@@ -23053,9 +23071,11 @@ if(typeof(LiteGraph) != "undefined")
 
 	function LGraphGUIButton()
 	{
-		this.addOutput("on",LiteGraph.EVENT);
+		this.addOutput("",LiteGraph.EVENT);
 		this.addOutput("was_pressed");
 		this.properties = { enabled: true, text:"clickme", position: [20,20], size: [140,40], corner: LiteGraph.CORNER_TOP_LEFT };
+		this.widgets_start_y = 2;
+		this.addWidget("text","text","clickme","text");
 		this._area = vec4.create();
 		this._was_pressed = false;
 	}
@@ -24211,6 +24231,129 @@ if(typeof(LiteGraph) != "undefined")
 		color4: "vec4"
 	};
 
+	//fragment shader output
+	function LGraphShaderFSOutput()
+	{
+		this.addInput("","T,float,vec2,vec3,vec4");
+		this.addInput("","T,float,vec2,vec3,vec4");
+		this.addWidget("button","Config", null, this.onConfig.bind(this) );
+	}
+
+	LGraphShaderFSOutput.title = "FragOutput";
+	LGraphShaderFSOutput.title_color = "#345";
+	LGraphShaderFSOutput.output = "fragment";
+
+	LGraphShaderFSOutput.prototype.onConfig = function()
+	{
+		
+	}
+
+	LGraphShaderFSOutput.prototype.onGetCode = function( lang, context )
+	{
+		if( lang != "glsl" )
+			return;
+		var link = getInputLinkID(this,0);
+		if(!link) //not connected
+			return;
+
+		var type = this.getInputDataType(0);
+		if(type == "vec4")
+			context.fs_code += "	_final_color = " + link + ";\n";
+		else if(type == "vec3")
+			context.fs_code += "	_final_color = vec4( " + link + ",1.0);\n";
+		else if(type == "vec2")
+			context.fs_code += "	_final_color = vec4( " + link + ",0.0,1.0);\n";
+		else if(type == "float")
+			context.fs_code += "	_final_color = vec4( " + link + " );\n";
+		else
+			console.warn( "FSOutput type not valid", type );
+
+		var link = getInputLinkID(this,1);
+		if(link)
+		{
+			var type = this.getInputDataType(1);
+			if(type == "vec4")
+				context.fs_code += "	_final_color1 = " + link + ";\n";
+			else if(type == "vec3")
+				context.fs_code += "	_final_color1 = vec4( " + link + ",1.0);\n";
+			else if(type == "vec2")
+				context.fs_code += "	_final_color1 = vec4( " + link + ",0.0,1.0);\n";
+			else if(type == "float")
+				context.fs_code += "	_final_color1 = vec4( " + link + " );\n";
+			else
+				console.warn( "FSOutput type not valid", type );
+		}
+	}
+
+	LiteGraph.registerShaderNode( "fs_output", LGraphShaderFSOutput );
+
+	/*
+	//fragment shader output
+	function LGraphShaderOutput()
+	{
+		this.addInput("position","T,float,vec2,vec3,vec4");
+		this.addInput("color0","T,float,vec2,vec3,vec4");
+		this.addInput("color1","T,float,vec2,vec3,vec4");
+		this.addWidget("button","Config", null, this.onConfig.bind(this) );
+	}
+
+	LGraphShaderOutput.title = "ShaderOutput";
+	LGraphShaderOutput.title_color = "#345";
+	LGraphShaderOutput.output = "fragment";
+
+	LGraphShaderOutput.prototype.onConfig = function()
+	{
+		
+	}
+
+	LGraphShaderOutput.prototype.onDrawBackground = function(ctx)
+	{
+		if(this.flags.collapsed)
+			return;
+		ctx.fillStyle = "#543";
+		ctx.fillRect(0,0,this.size[0],LiteGraph.NODE_SLOT_HEIGHT);
+	}
+
+	LGraphShaderOutput.prototype.onGetCode = function( lang, context )
+	{
+		if( lang != "glsl" )
+			return;
+		var link = getInputLinkID(this,0);
+		if(!link) //not connected
+			return;
+
+		var type = this.getInputDataType(0);
+		if(type == "vec4")
+			context.fs_code += "	_final_color = " + link + ";\n";
+		else if(type == "vec3")
+			context.fs_code += "	_final_color = vec4( " + link + ",1.0);\n";
+		else if(type == "vec2")
+			context.fs_code += "	_final_color = vec4( " + link + ",0.0,1.0);\n";
+		else if(type == "float")
+			context.fs_code += "	_final_color = vec4( " + link + " );\n";
+		else
+			console.warn( "FSOutput type not valid", type );
+
+		var link = getInputLinkID(this,1);
+		if(link)
+		{
+			var type = this.getInputDataType(1);
+			if(type == "vec4")
+				context.fs_code += "	_final_color1 = " + link + ";\n";
+			else if(type == "vec3")
+				context.fs_code += "	_final_color1 = vec4( " + link + ",1.0);\n";
+			else if(type == "vec2")
+				context.fs_code += "	_final_color1 = vec4( " + link + ",0.0,1.0);\n";
+			else if(type == "float")
+				context.fs_code += "	_final_color1 = vec4( " + link + " );\n";
+			else
+				console.warn( "FSOutput type not valid", type );
+		}
+	}
+
+	LiteGraph.registerShaderNode( "output", LGraphShaderOutput );
+	*/
+
 	function LGraphShaderConstant()
 	{
 		this.addOutput("","float");
@@ -24689,61 +24832,6 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LiteGraph.registerShaderNode( "operation", LGraphShaderOperator );
-
-	//fragment shader output
-	function LGraphShaderFSOutput()
-	{
-		this.addInput("","T,float,vec2,vec3,vec4");
-		this.addInput("","T,float,vec2,vec3,vec4");
-		this.addWidget("button","Config", null, this.onConfig.bind(this) );
-	}
-
-	LGraphShaderFSOutput.title = "FragOutput";
-	LGraphShaderFSOutput.title_color = "#345";
-
-	LGraphShaderFSOutput.prototype.onConfig = function()
-	{
-		
-	}
-
-	LGraphShaderFSOutput.prototype.onGetCode = function( lang, context )
-	{
-		if( lang != "glsl" )
-			return;
-		var link = getInputLinkID(this,0);
-		if(!link) //not connected
-			return;
-
-		var type = this.getInputDataType(0);
-		if(type == "vec4")
-			context.fs_code += "	_final_color = " + link + ";\n";
-		else if(type == "vec3")
-			context.fs_code += "	_final_color = vec4( " + link + ",1.0);\n";
-		else if(type == "vec2")
-			context.fs_code += "	_final_color = vec4( " + link + ",0.0,1.0);\n";
-		else if(type == "float")
-			context.fs_code += "	_final_color = vec4( " + link + " );\n";
-		else
-			console.warn( "FSOutput type not valid", type );
-
-		var link = getInputLinkID(this,1);
-		if(link)
-		{
-			var type = this.getInputDataType(1);
-			if(type == "vec4")
-				context.fs_code += "	_final_color1 = " + link + ";\n";
-			else if(type == "vec3")
-				context.fs_code += "	_final_color1 = vec4( " + link + ",1.0);\n";
-			else if(type == "vec2")
-				context.fs_code += "	_final_color1 = vec4( " + link + ",0.0,1.0);\n";
-			else if(type == "float")
-				context.fs_code += "	_final_color1 = vec4( " + link + " );\n";
-			else
-				console.warn( "FSOutput type not valid", type );
-		}
-	}
-
-	LiteGraph.registerShaderNode( "fs_output", LGraphShaderFSOutput );
 
 	//illumination output
 	function LGraphShaderPhong()
@@ -25622,7 +25710,42 @@ if(typeof(LiteGraph) != "undefined")
 
 	LiteGraph.registerShaderNode( "normalTransform", LGraphShaderNormalTransform );
 
+	// VERTEX ***************************************************
+
+	/*
+
+	//set point size
+	function LGraphShaderPointSize()
+	{
+		this.addInput("in","float");
+		this.properties = {};
+	}
+
+	LGraphShaderPointSize.title = "PointSize";
+	LGraphShaderPointSize.title_color = "#724";
+	LGraphShaderPointSize.output = "vertex";
+
+	LGraphShaderPointSize.prototype.onGetCode = function( lang, context )
+	{
+		if( lang != "glsl" )
+			return;
+		var inlink = getInputLinkID(this,0);
+		if(!inlink) //not connected
+			return;
+		context.vs_global += "	 gl_PointSize = " + inlink + ";";
+	}
+
+	LiteGraph.registerShaderNode( "pointSize", LGraphShaderPointSize );
+
+	*/
+
 }
+
+/*
+
+
+
+*/
 ///@FILE:../src/helpers/path.js
 ///@INFO: UNCOMMON
 /** Path
@@ -28395,9 +28518,9 @@ RenderInstance.prototype.computeNormalMatrix = function()
 */
 RenderInstance.prototype.applyTransform = function( matrix, normal_matrix )
 {
-	mat4.mul( this.matrix, this.matrix, matrix );
+	mat4.mul( this.matrix, matrix, this.matrix );
 	if( normal_matrix )
-		mat4.mul( this.normal_matrix, this.normal_matrix, normal_matrix );
+		mat4.mul( this.normal_matrix, normal_matrix, this.normal_matrix );
 	else
 		this.computeNormalMatrix();
 }
@@ -29973,20 +30096,7 @@ var Renderer = {
 			var instance = instances[i];
 			if( !instance || !instance.material || !instance._is_visible )
 				continue;
-
-			//queue index use the tens digit
-			var queue_index = Math.floor( instance.material.queue * 0.1 );
-			var queue = queues[ queue_index ];
-			if( !queue )
-			{
-				//TODO: maybe this case should be treated directly in StandardMaterial
-				if( instance.material._render_state.blend )
-					queue = this._renderqueue_transparent;
-				else
-					queue = this._renderqueue_geometry;
-			}
-			if(queue)
-				queue.add( instance );
+			this.addInstanceToQueue( instance );
 		}
 
 		//sort queues
@@ -29997,6 +30107,26 @@ var Renderer = {
 				continue;
 			queue.sort();
 		}
+	},
+
+	addInstanceToQueue: function(instance)
+	{
+		var queues = this._queues;
+
+		//queue index use the tens digit
+		var queue_index = Math.floor( instance.material.queue * 0.1 );
+		var queue = queues[ queue_index ];
+		if( !queue )
+		{
+			//TODO: maybe this case should be treated directly in StandardMaterial
+			if( instance.material._render_state.blend )
+				queue = this._renderqueue_transparent;
+			else
+				queue = this._renderqueue_geometry;
+		}
+		if(queue)
+			queue.add( instance );
+		return queue;
 	},
 
 	/**
@@ -30515,7 +30645,7 @@ var Renderer = {
 		var nearest_reflection_probe = scene.findNearestReflectionProbe( this._main_camera.getEye() );
 
 		//process instances
-		this.processRenderInstances( instances, materials, scene );
+		this.processRenderInstances( instances, materials, scene, render_settings );
 
 		//store all the info
 		this._visible_instances = scene._instances;
@@ -30535,6 +30665,7 @@ var Renderer = {
 	{
 		materials = materials || this._visible_materials;
 		var frame = scene._frame;
+		render_settings = render_settings || this._current_render_settings;
 
 		//process render instances (add stuff if needed, gather materials)
 		for(var i = 0, l = instances.length; i < l; ++i)
@@ -33544,7 +33675,7 @@ var Picking = {
 		if( pos ) //not tested yet
 		{
 			var ray = camera.getRay( pos[0], pos[1] );
-			var instances_collisions = LS.Physics.raycastRenderInstances( ray.origin, ray.direction );
+			var instances_collisions = LS.Physics.raycastRenderInstances( ray.origin, ray.direction, { add_instances_without_aabb: true } );
 			if( instances_collisions )
 			{
 				instances = Array( instances_collisions.length );
@@ -34024,6 +34155,12 @@ var Physics = {
 
 			if(instance.material && instance.material.render_state.blend && ignore_transparent)
 				continue; //avoid semitransparent
+
+			if( !instance.use_bounding && options.add_instances_without_aabb)
+			{
+				collisions.push( new LS.Collision( instance.node, instance, vec3.clone(origin), 0, vec3.clone(direction), null ) );
+				continue;
+			}
 
 			//test against AABB
 			var collision_point = vec3.create();
@@ -41967,6 +42104,7 @@ SceneInclude.prototype.onAddedToScene = function(scene)
 	LEvent.bind( scene, "collectData", this.onCollectData, this );
 	LEvent.bind( scene, "start", this.onStart, this );
 	LEvent.bind( scene, "update", this.onUpdate, this );
+	LEvent.bind( scene, "fillSceneUniforms", this.fillSceneUniforms, this);
 
 	for(var i in SceneInclude.propagable_events)
 		LEvent.bind( scene, SceneInclude.propagable_events[i], this.onEvent, this );
@@ -41982,11 +42120,18 @@ SceneInclude.prototype.onRemovedFromScene = function(scene)
 	LEvent.unbind( scene, "collectData", this.onCollectData, this );
 	LEvent.unbind( scene, "start", this.onStart, this );
 	LEvent.unbind( scene, "update", this.onUpdate, this );
+	LEvent.unbind( scene, "fillSceneUniforms", this.fillSceneUniforms, this);
 
 	//unbind all
 	var events = SceneInclude.propagable_events.concat( SceneInclude.fx_propagable_events );
 	for(var i in events)
 		LEvent.unbind( scene, events[i], this.onEvent, this );
+}
+
+//redirect
+SceneInclude.prototype.fillSceneUniforms = function(e)
+{
+	LEvent.trigger( this._scene, "fillSceneUniforms" );
 }
 
 //we need special functions for this events because they need function calls, not events
@@ -42100,11 +42245,14 @@ SceneInclude.prototype.unload = function()
 
 SceneInclude.prototype.reloadScene = function()
 {
+	var that = this;
 	this._scene_is_ready = false;
+	var scene = LS.GlobalScene;
+	var inner_scene = this._scene;
 
 	SceneInclude.recursive_level += 1;
 	if(SceneInclude.recursive_level < SceneInclude.max_recursive_level )
-		this._scene.loadFromResources( this._scene_path, inner.bind(this) );
+		this._scene.loadFromResources( this._scene_path, inner.bind(this),null,null,inner_resloaded );
 	SceneInclude.recursive_level -= 1;
 
 	function inner()
@@ -42113,6 +42261,17 @@ SceneInclude.prototype.reloadScene = function()
 		this._scene_is_ready = true;
 		if(this._root.scene._state == LS.PLAYING )
 			this._scene.start();
+	}
+
+	function inner_resloaded()
+	{
+		LS.Renderer.regenerateShadowmaps();
+		for(var i = 0; i < inner_scene._reflection_probes.length; ++i)
+		{
+			if(scene._reflection_probes.indexOf(inner_scene._reflection_probes[i]) == -1)
+				scene._reflection_probes.push( inner_scene._reflection_probes[i] );
+		}
+		LS.Components.ReflectionProbe.updateAll()
 	}
 }
 
@@ -46738,7 +46897,7 @@ PlayAnimation.prototype.getAnimation = function( name )
 	name = name === undefined ? this.animation : name;
 
 	if(!name || name[0] == "@") 
-		return this._root.scene.animation;
+		return this._root && this._root.scene ? this._root.scene : LS.GlobalScene;
 	var anim = LS.ResourcesManager.getResource( name );
 	if( anim && anim.constructor === LS.Animation )
 		return anim;
@@ -47882,6 +48041,11 @@ IrradianceCache["@intensity_color"] = { type:"color" };
 IrradianceCache.default_coeffs = new Float32Array([ 0,0,0, 0.5,0.75,1, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0 ]);
 
 IrradianceCache.use_sh_low = false; //set to false before shader compilation to use 9 coeffs instead of 4
+
+IrradianceCache.getExtraProperties = function(r)
+{
+	r.push(["recompute",LiteGraph.ACTION]);
+}
 
 IrradianceCache.prototype.onAddedToScene = function(scene)
 {

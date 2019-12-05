@@ -8,6 +8,7 @@ var CORE = {
 
 	Modules: [], //registered modules
 	Widgets: [], //valid tab widgets (used by GenericTabsWidget)
+	Widgets_by_name: {}, //valid tab widgets (used by GenericTabsWidget)
 	Scenes: [], //current scenes
 	ProxyScene: {},
 
@@ -380,7 +381,9 @@ var CORE = {
 
 	registerWidget: function( widget )
 	{
-		this.Widgets.push( { title: widget.widget_name || widget.name, "class": widget });
+		var name = widget.widget_name || widget.name;
+		this.Widgets.push( { title: name, "class": widget });
+		this.Widgets_by_name[ name ] = widget;
 	},
 
 	// hub to redirect to the propper place

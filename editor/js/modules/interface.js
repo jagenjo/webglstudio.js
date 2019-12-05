@@ -243,6 +243,33 @@ var InterfaceModule = {
 		}
 	},
 
+	createFloatingDialog: function( parent, widget_class, detach )
+	{
+		var dialog = new LiteGUI.Dialog( { title:"Panel", fullcontent: true, closable: true, detachable: true, draggable: true, minimize: true, resizable: true, parent: parent, width: 800, height: 500 });
+		var widget = null;
+		if(widget_class)
+		{
+			var widget = new widget_class();
+			dialog.add( widget );
+			dialog.widget = widget;
+		}
+
+		dialog.on_close = function()
+		{
+			if(widget)
+				widget.unbindEvents();		
+		}
+		dialog.on_resize = function()
+		{
+			if(widget)
+				widget.onResize();
+		}
+		dialog.show();
+		if(detach)
+			dialog.detachWindow();
+		return dialog;
+	},
+
 	//something dragged into the canvas
 	onItemDrop: function(e)
 	{

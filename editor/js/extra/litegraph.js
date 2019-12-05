@@ -7110,12 +7110,15 @@ LGraphNode.prototype.executeAction = function(action)
             ctx.globalAlpha = 1;
 
             if (node.widgets) {
+				var widgets_y = max_y;
                 if (horizontal || node.widgets_up) {
-                    max_y = 2;
+                    widgets_y = 2;
                 }
+				if( node.widgets_start_y != null )
+                    widgets_y = node.widgets_start_y;
                 this.drawNodeWidgets(
                     node,
-                    max_y,
+                    widgets_y,
                     ctx,
                     this.node_widget && this.node_widget[0] == node
                         ? this.node_widget[1]

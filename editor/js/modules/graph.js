@@ -79,7 +79,6 @@ var GraphModule = {
 			inspector.addButton(null,"Side", { width: 80, callback: function(){
 				GraphModule.showSidePanel();
 			}});
-
 		});
 
 		this.tabs_widget.addWidgetTab( GraphWidget );

@@ -7416,9 +7416,9 @@ function Material( o )
 	* render queue: which order should this be rendered
 	* @property queue
 	* @type {Number}
-	* @default LS.RenderQueue.DEFAULT
+	* @default LS.RenderQueue.AUTO
 	*/
-	this._queue = LS.RenderQueue.DEFAULT;
+	this._queue = LS.RenderQueue.AUTO;
 
 	/**
 	* render state: which flags should be used (in StandardMaterial this is overwritten due to the multipass lighting)
@@ -7751,6 +7751,9 @@ Material.prototype.setProperty = function( name, value )
 	{
 		//numbers
 		case "queue": 
+			if(value === 0)
+				value = RenderQueue.AUTO; //legacy
+			//nobreak
 		case "opacity": 
 			if(value !== null && value.constructor === Number)
 				this[name] = value; 
@@ -29369,15 +29372,15 @@ LS.RenderFrameContext = RenderFrameContext;
 //It works similar to the one in Unity
 function RenderQueue( value, sort_mode, options )
 {
+	//container for all instances that belong to this render queue
+	this.instances = [];
+
 	this.value = value || 0;
 	this.sort_mode = sort_mode || LS.RenderQueue.NO_SORT;
 	this.range_start = 0;
 	this.range_end = 9;
 	this.must_clone_buffers = false; //used for readback rendering like refracion
 	//this.visible_in_pass = null;
-
-	//container for all instances that belong to this render queue
-	this.instances = [];
 
 	//callbacks
 	this.onStart = null;
@@ -29444,7 +29447,7 @@ RenderQueue.prototype.finish = function( pass )
 
 
 //we use 5 so from 0 to 9 is one queue, from 10 to 19 another one, etc
-RenderQueue.DEFAULT =		0;
+RenderQueue.AUTO =			-1;
 RenderQueue.BACKGROUND =	5;
 RenderQueue.GEOMETRY =		15;
 RenderQueue.TRANSPARENT =	25;
@@ -30112,18 +30115,24 @@ var Renderer = {
 	addInstanceToQueue: function(instance)
 	{
 		var queues = this._queues;
+		var queue = null;
 
-		//queue index use the tens digit
-		var queue_index = Math.floor( instance.material.queue * 0.1 );
-		var queue = queues[ queue_index ];
-		if( !queue )
+		if( instance.material.queue == RenderQueue.AUTO || instance.material.queue == 0) //0 for LEGACY
 		{
-			//TODO: maybe this case should be treated directly in StandardMaterial
 			if( instance.material._render_state.blend )
 				queue = this._renderqueue_transparent;
 			else
 				queue = this._renderqueue_geometry;
 		}
+		else
+		{
+			//queue index use the tens digit
+			var queue_index = Math.floor( instance.material.queue * 0.1 );
+			queue = queues[ queue_index ];
+		}
+
+		if( !queue )
+			queue = this._renderqueue_geometry;
 		if(queue)
 			queue.add( instance );
 		return queue;

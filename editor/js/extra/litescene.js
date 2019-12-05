@@ -30661,7 +30661,7 @@ var Renderer = {
 	},
 
 	//this processes the instances 
-	processRenderInstances: function( instances, materials, scene )
+	processRenderInstances: function( instances, materials, scene, render_settings )
 	{
 		materials = materials || this._visible_materials;
 		var frame = scene._frame;

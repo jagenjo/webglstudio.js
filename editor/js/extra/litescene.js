@@ -30117,7 +30117,7 @@ var Renderer = {
 		var queues = this._queues;
 		var queue = null;
 
-		if( instance.material.queue == RenderQueue.AUTO || instance.material.queue == 0) //0 for LEGACY
+		if( instance.material.queue == RenderQueue.AUTO || instance.material.queue == null ) 
 		{
 			if( instance.material._render_state.blend )
 				queue = this._renderqueue_transparent;

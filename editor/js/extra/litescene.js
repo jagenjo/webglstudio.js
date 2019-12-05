@@ -46905,8 +46905,9 @@ PlayAnimation.prototype.getAnimation = function( name )
 {
 	name = name === undefined ? this.animation : name;
 
+	var scene = this._root && this._root.scene ? this._root.scene : LS.GlobalScene;
 	if(!name || name[0] == "@") 
-		return this._root && this._root.scene ? this._root.scene : LS.GlobalScene;
+		return scene.animation;
 	var anim = LS.ResourcesManager.getResource( name );
 	if( anim && anim.constructor === LS.Animation )
 		return anim;

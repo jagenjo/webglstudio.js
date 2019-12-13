@@ -11892,7 +11892,9 @@ ComponentContainer.prototype.processActionInComponents = function( method_name, 
 			if(skip_scripts)
 				continue;
 
-			if(comp._script)
+			if(comp.callMethod)
+				comp.callMethod( method_name, params, true );
+			else if(comp._script)
 				comp._script.callMethod( method_name, params, true );
 		}
 	}
@@ -20332,6 +20334,81 @@ LS.registerResourceClass( GraphCode );
 ///@INFO: GRAPHS
 if(typeof(LiteGraph) != "undefined")
 {
+	function LGraphTween() {
+		this.addInput("tween", LiteGraph.ACTION);
+		this.addInput("value", "");
+		this.addInput("prop", "");
+		this.addOutput("start", LiteGraph.EVENT);
+		this.addOutput("finish", LiteGraph.EVENT);
+
+		this.properties = {
+			duration: 1,
+			locator: ""
+		};
+	}
+
+	LGraphTween.title = "Tween";
+	LGraphTween.desc = "tween between two values";
+
+	LGraphTween.prototype.onAction = function( action, param )
+	{
+		var in_node = this.getInputNode(2);
+		var scene = this.graph._scene || LS.GlobalScene; //subgraphs do not have an scene assigned
+		var info = null;
+
+		if(in_node)
+		{	
+			if(!in_node.getLocatorInfo )
+				return;
+			info = in_node.getLocatorInfo();
+		}
+		else if( this.properties.locator )
+		{
+			if(!this._locator_split)
+				this._locator_split = this.properties.locator.split("/");
+			info = scene.getPropertyInfoFromPath( this._locator_split );
+		}
+
+		if(!info)
+			return;
+
+		var target_value = this.getInputData(1);
+		if( target_value == null )
+			return;
+
+		var that = this;
+
+		this.triggerSlot(0);
+		LS.Tween.easeProperty( info.target, info.name, target_value, this.properties.duration, null, inner_complete );
+
+		function inner_complete()
+		{
+			that.triggerSlot(1);			
+		}
+	}
+
+	LGraphTween.prototype.onPropertyChanged = function(name,value)
+	{
+		if(name == "locator")
+		{
+			if( value )
+				this._locator_split = value.split("/");
+			else
+				this._locator_split = null;
+		}
+	}
+
+	LGraphTween.prototype.onDropItem = function( event )
+	{
+		var locator = event.dataTransfer.getData("uid");
+		if(!locator)
+			return;
+		this.properties.locator = locator;
+		return true;
+	}
+
+	LiteGraph.registerNodeType( "core/tween", LGraphTween );	
+
 	//gets a resource
 	function LGraphResource() {
 		this.addOutput("out", "");
@@ -21143,6 +21220,19 @@ if(typeof(LiteGraph) != "undefined")
 		return this._locator_info;
 	}
 
+	LGraphLocatorProperty.prototype.onDropItem = function( event )
+	{
+		var item_type = event.dataTransfer.getData("type");
+		//if(item_type != "property")
+		//	return;
+		var locator = event.dataTransfer.getData("uid");
+		if(!locator)
+			return;
+		this.properties.locator = locator;
+		this.onExecute();
+		return true;
+	}
+
 	LGraphLocatorProperty.prototype.onPropertyChanged = function(name,value)
 	{
 		if(name == "locator")
@@ -21208,6 +21298,8 @@ if(typeof(LiteGraph) != "undefined")
 			if( this.outputs.length && this.outputs[0].links && this.outputs[0].links.length )
 				this.setOutputData( 0, LSQ.getFromInfo( info ));
 		}
+
+		this.setOutputData( 1, this.properties.locator );
 	}
 
 	LGraphLocatorProperty.prototype.onInspect = function( inspector )
@@ -21229,6 +21321,11 @@ if(typeof(LiteGraph) != "undefined")
 		inspector.add( type, info.name, info.value, { callback: function(v){
 			LS.setObjectProperty( info.target, info.name, v );
 		}});
+	}
+
+	LGraphLocatorProperty.prototype.onGetOutputs = function()
+	{
+		return [["locator","string"]];
 	}
 
 	LiteGraph.registerNodeType("scene/property", LGraphLocatorProperty );
@@ -22586,6 +22683,246 @@ if( LiteGraph.Nodes.LGraphTextureCanvas2D )
 
 	LiteGraph.registerNodeType("texture/canvas2DfromScript", LGraphTextureCanvas2DFromScript);
 }
+
+function LGraphSSAO()
+{
+	this.addInput("depth","Texture");
+	this.addInput("camera","Camera");
+	this.addOutput("out","Texture");
+	this.properties = { enabled: true, intensity: 1, radius: 5, precision: LGraphTexture.DEFAULT };
+
+	this._uniforms = { 
+		tDepth:0,
+		samples: 64,
+		u_resolution: vec2.create(),
+		radius: 5,
+		zNear: 0.1,
+		zFar: 1000
+	};
+}
+
+LGraphSSAO.widgets_info = {
+	"precision": { widget:"combo", values: litegraph_texture_found ? LGraphTexture.MODE_VALUES : [] }
+};
+
+LGraphSSAO.title = "SSAO";
+LGraphSSAO.desc = "Screen Space Ambient Occlusion";
+
+LGraphSSAO.prototype.onExecute = function()
+{
+	var depth = this.getInputData(0);
+	var camera = this.getInputData(1);
+
+	if( !this.isOutputConnected(0) || !depth || !camera)
+		return; //saves work
+
+	var enabled = this.getInputData(2);
+	if(enabled != null)
+		this.properties.enabled = Boolean( enabled );
+
+	if(this.properties.precision === LGraphTexture.PASS_THROUGH || this.properties.enabled === false )
+	{
+		this.setOutputData(0, GL.Texture.getWhiteTexture() );
+		return;
+	}
+
+	var width = depth.width;
+	var height = depth.height;
+	var type = this.precision === LGraphTexture.LOW ? gl.UNSIGNED_BYTE : gl.HIGH_PRECISION_FORMAT;
+	if (this.precision === LGraphTexture.DEFAULT)
+		type = gl.UNSIGNED_BYTE;
+	if(!this._tex || this._tex.width != width || this._tex.height != height || this._tex.type != type )
+		this._tex = new GL.Texture( width, height, { type: type, format: gl.RGBA, filter: gl.LINEAR });
+
+	var shader = null;
+	if(!LGraphSSAO._shader)
+		LGraphSSAO._shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphSSAO.pixel_shader );
+	shader = LGraphSSAO._shader;
+
+	var intensity = this.properties.intensity;
+
+	var uniforms = this._uniforms;
+	uniforms.u_resolution.set([width,height]);
+	uniforms.zNear = camera.near;
+	uniforms.zFar = camera.far;
+	uniforms.radius = this.properties.radius;
+	uniforms.strength = intensity;
+
+	this._tex.drawTo(function() {
+		gl.disable( gl.DEPTH_TEST );
+		gl.disable( gl.CULL_FACE );
+		gl.disable( gl.BLEND );
+		depth.bind(0);
+		var mesh = GL.Mesh.getScreenQuad();
+		shader.uniforms( uniforms ).draw( mesh );
+	});
+
+	this.setOutputData( 0, this._tex );
+}
+
+//from https://github.com/spite/Wagner/blob/master/fragment-shaders/ssao-simple-fs.glsl
+LGraphSSAO.pixel_shader = "\n\
+precision mediump float;\n\
+varying vec2 v_coord;\n\
+uniform sampler2D tDepth;\n\
+uniform vec2 u_resolution;\n\
+uniform float zNear;\n\
+uniform float zFar;\n\
+uniform float strength;\n\
+#define PI    3.14159265\n\
+\n\
+float width; //texture width\n\
+float height; //texture height\n\
+\n\
+vec2 texCoord;\n\
+\n\
+//general stuff\n\
+\n\
+//user variables\n\
+uniform int samples; //ao sample count //64.0\n\
+uniform float radius; //ao radius //5.0\n\
+\n\
+float aoclamp = 0.125; //depth clamp - reduces haloing at screen edges\n\
+bool noise = true; //use noise instead of pattern for sample dithering\n\
+float noiseamount = 0.0002; //dithering amount\n\
+\n\
+float diffarea = 0.3; //self-shadowing reduction\n\
+float gdisplace = 0.4; //gauss bell center //0.4\n\
+\n\
+bool mist = false; //use mist?\n\
+float miststart = 0.0; //mist start\n\
+float mistend = zFar; //mist end\n\
+bool onlyAO = false; //use only ambient occlusion pass?\n\
+float lumInfluence = 0.7; //how much luminance affects occlusion\n\
+\n\
+vec2 rand(vec2 coord) //generating noise/pattern texture for dithering\n\
+{\n\
+  float noiseX = ((fract(1.0-coord.s*(width/2.0))*0.25)+(fract(coord.t*(height/2.0))*0.75))*2.0-1.0;\n\
+  float noiseY = ((fract(1.0-coord.s*(width/2.0))*0.75)+(fract(coord.t*(height/2.0))*0.25))*2.0-1.0;\n\
+  if (noise)\n\
+  {\n\
+    noiseX = clamp(fract(sin(dot(coord ,vec2(12.9898,78.233))) * 43758.5453),0.0,1.0)*2.0-1.0;\n\
+    noiseY = clamp(fract(sin(dot(coord ,vec2(12.9898,78.233)*2.0)) * 43758.5453),0.0,1.0)*2.0-1.0;\n\
+  }\n\
+  return vec2(noiseX,noiseY)*noiseamount;\n\
+}\n\
+\n\
+float doMist()\n\
+{\n\
+  float zdepth = texture2D(tDepth,texCoord.xy).x;\n\
+  float depth = -zFar * zNear / (zdepth * (zFar - zNear) - zFar);\n\
+  return clamp((depth-miststart)/mistend,0.0,1.0);\n\
+}\n\
+\n\
+float readDepth(vec2 coord)\n\
+{\n\
+  if (v_coord.x<0.0||v_coord.y<0.0) return 1.0;\n\
+  else {\n\
+    float z_b = texture2D(tDepth, coord ).x;\n\
+    float z_n = 2.0 * z_b - 1.0;\n\
+    return (2.0 * zNear) / (zFar + zNear - z_n * (zFar-zNear));\n\
+  }\n\
+}\n\
+\n\
+int compareDepthsFar(float depth1, float depth2) {\n\
+  float garea = 2.0; //gauss bell width\n\
+  float diff = (depth1 - depth2)*100.0; //depth difference (0-100)\n\
+  //reduce left bell width to avoid self-shadowing\n\
+  return diff<gdisplace ? 0 : 1;\n\
+}\n\
+\n\
+float compareDepths(float depth1, float depth2)\n\
+{\n\
+  float garea = 2.0; //gauss bell width\n\
+  float diff = (depth1 - depth2)*100.0; //depth difference (0-100)\n\
+  //reduce left bell width to avoid self-shadowing\n\
+  if (diff<gdisplace)\n\
+  {\n\
+    garea = diffarea;\n\
+  }\n\
+	\n\
+  float gauss = pow(2.7182,-2.0*(diff-gdisplace)*(diff-gdisplace)/(garea*garea));\n\
+  return gauss;\n\
+}\n\
+\n\
+float calAO(float depth,float dw, float dh)\n\
+{\n\
+  float dd = (1.0-depth)*radius;\n\
+\n\
+  float temp = 0.0;\n\
+  float temp2 = 0.0;\n\
+  float coordw = v_coord.x + dw*dd;\n\
+  float coordh = v_coord.y + dh*dd;\n\
+  float coordw2 = v_coord.x - dw*dd;\n\
+  float coordh2 = v_coord.y - dh*dd;\n\
+\n\
+  vec2 coord = vec2(coordw , coordh);\n\
+  vec2 coord2 = vec2(coordw2, coordh2);\n\
+\n\
+  float cd = readDepth(coord);\n\
+  int far = compareDepthsFar(depth, cd);\n\
+  temp = compareDepths(depth, cd);\n\
+  //DEPTH EXTRAPOLATION:\n\
+  if (far > 0)\n\
+  {\n\
+    temp2 = compareDepths(readDepth(coord2),depth);\n\
+    temp += (1.0-temp)*temp2;\n\
+  }\n\
+\n\
+  return temp;\n\
+}\n\
+\n\
+void main(void)\n\
+{\n\
+	width = u_resolution.x; //texture width\n\
+	height = u_resolution.y; //texture height\n\
+	texCoord = v_coord;\n\
+	vec2 noise = rand(texCoord);\n\
+	float depth = readDepth(texCoord);\n\
+	\n\
+	float w = (1.0 / width)/clamp(depth,aoclamp,1.0)+(noise.x*(1.0-noise.x));\n\
+	float h = (1.0 / height)/clamp(depth,aoclamp,1.0)+(noise.y*(1.0-noise.y));\n\
+	\n\
+	float pw = 0.0;\n\
+	float ph = 0.0;\n\
+	\n\
+	float ao = 0.0;\n\
+	\n\
+	float dl = PI * (3.0 - sqrt(5.0));\n\
+	float dz = 1.0 / float(samples);\n\
+	float l = 0.0;\n\
+	float z = 1.0 - dz/2.0;\n\
+	\n\
+	for (int i = 0; i < 64; i++)\n\
+	{\n\
+		if (i > samples) break;\n\
+		float r = sqrt(1.0 - z);\n\
+		\n\
+		pw = cos(l) * r;\n\
+		ph = sin(l) * r;\n\
+		ao += calAO(depth,pw*w,ph*h);\n\
+		z = z - dz;\n\
+		l = l + dl;\n\
+	}\n\
+\n\
+\n\
+  ao /= float(samples);\n\
+  ao *= strength;\n\
+  ao = 1.0-ao;\n\
+\n\
+  if (mist)\n\
+  {\n\
+    ao = mix(ao, 1.0, doMist());\n\
+  }\n\
+\n\
+	vec3 final = vec3(ao); //ambient occlusion only\n\
+  gl_FragColor = vec4(final,1.0);\n\
+}\n\
+";
+
+LiteGraph.registerNodeType("texture/SSAO", LGraphSSAO );
+
+
 /*
 function LGraphDepthAwareUpscale()
 {
@@ -23109,7 +23446,7 @@ if(typeof(LiteGraph) != "undefined")
 		if(enabled === false || enabled === true)
 			this.properties.enabled = enabled;
 		if(this._was_pressed)
-			this.trigger("on");
+			this.triggerSlot(0);
 		this.setOutputData(1, this._was_pressed );
 		this._was_pressed = false;
 	}
@@ -27191,6 +27528,7 @@ LS.Tween = {
 
 	current_easings: [],
 	_alife: [], //temporal array
+	_temp: [], //another temporal
 
 	reset: function()
 	{
@@ -27210,7 +27548,7 @@ LS.Tween = {
 		if( !object )
 			throw("ease object cannot be null");
 		if( target === undefined )
-			throw("target vaue must be defined");
+			throw("target value must be defined");
 		if(object[property] === undefined)
 			throw("property not found in object, must be initialized to a value");
 
@@ -27327,6 +27665,8 @@ LS.Tween = {
 			return;
 
 		var easings = this.current_easings;
+		this.current_easings = this._temp; //empty it to control incomming tweens during this update
+		this.current_easings.length = 0;
 		var alive = this._alife;
 		alive.length = easings.length;
 		var pos = 0;
@@ -27381,6 +27721,10 @@ LS.Tween = {
 		}
 
 		alive.length = pos; //trim
+
+		//add incomming tweens
+		for(var i = 0; i < this.current_easings.length; ++i)
+			alive.push( this.current_easings[i] );
 
 		this.current_easings = alive;
 		this._alife = easings;
@@ -49421,17 +49765,7 @@ Script.prototype.onScriptEvent = function( event_type, params )
 		return;
 
 	//special case: sometimes we want to pass several parameters to the 
-	var expand = false;
 	var type = event_type;
-	/*
-	if( type.constructor !== String && type.constructor !== Number ) //you can pass an event directly, in that case it will send all directly
-	{
-		type = event_type.type;
-		params = Array.prototype.slice.call(arguments, 0);
-		expand = true;
-	}
-	*/
-
 	if(!type)
 		throw("Event without type");
 
@@ -49439,26 +49773,36 @@ Script.prototype.onScriptEvent = function( event_type, params )
 	if(!event_info)
 		return; //????
 
+	return this.callMethod( event_info.name, params );
+}
+
+/**
+* safely executes a function inside the script given a name
+* @method callMethod
+*/
+Script.prototype.callMethod = function( name, params, expand )
+{
 	var has_breakpoint = false;
 	if( this._breakpoints )
 	{
-		if( this._breakpoints[ event_info.name ] )
+		if( this._breakpoints[ name ] )
 		{
 			has_breakpoint = true;
-			this.setBreakpoint( event_info.name, false );
+			this.setBreakpoint( name, false );
 		}
 	}
 
-	if( this._blocked_functions.has( event_info.name ) ) //prevent calling code with errors
+	if( this._blocked_functions.has( name ) ) //prevent calling code with errors
 	{
-		console.warn("Script: blocked function trying to be executed, skipping: " + event_info.name );
+		console.warn("Script: blocked function trying to be executed, skipping: " + name );
 		return;
 	}
 
 	if(has_breakpoint)
 		{{debugger}}; //stops the execution if the console is open
 
-	var r = this._script.callMethod( event_info.name, params, expand, this );
+	//this method will call onError if error happens
+	var r = this._script.callMethod( name, params, expand, this );
 	return r;
 }
 
@@ -51695,15 +52039,15 @@ Canvas3D.prototype.projectMouse = function()
 
 	//hacks to work with the LS.GUI...
 	//*
-	this._local_mouse.mousex = this._mouse[0];
-	this._local_mouse.mousey = this._mouse[1];
+	this._local_mouse.mousex = this._local_mouse.x = this._mouse[0];
+	this._local_mouse.mousey = this._local_mouse.y = this._mouse[1];
 	this._prev_mouse = LS.Input.Mouse;
 	LS.Input.Mouse = this._local_mouse;
 
 	if( LS.Input.current_click )
 	{
-		this._local_mouse_click.mousex = this._mouse[0];
-		this._local_mouse_click.mousey = this._mouse[1];
+		this._local_mouse_click.mousex = this._local_mouse.x = this._mouse[0];
+		this._local_mouse_click.mousey = this._local_mouse.y = this._mouse[1];
 		this._prev_click_mouse = LS.Input.current_click;
 		LS.Input.current_click = this._local_mouse_click;
 	}

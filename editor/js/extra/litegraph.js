@@ -2718,19 +2718,13 @@
             return;
         }
 
-        if (this.graph) {
+        if (this.graph)
             this.graph._last_trigger_time = LiteGraph.getTime();
-        }
 
         for (var i = 0; i < this.outputs.length; ++i) {
             var output = this.outputs[i];
-            if (
-                !output ||
-                output.type !== LiteGraph.EVENT ||
-                (action && output.name != action)
-            ) {
+            if ( !output || output.type !== LiteGraph.EVENT || (action && output.name != action) )
                 continue;
-            }
             this.triggerSlot(i, param);
         }
     };
@@ -19300,10 +19294,106 @@ if (typeof exports != "undefined") {
 		}\n\
 		";
 
-	LiteGraph.registerNodeType(
-		"texture/depth_range",
-		LGraphTextureDepthRange
-	);
+	LiteGraph.registerNodeType( "texture/depth_range", LGraphTextureDepthRange );
+
+
+	// Texture Depth *****************************************
+	function LGraphTextureLinearDepth() {
+		this.addInput("Texture", "Texture");
+		this.addOutput("Texture", "Texture");
+		this.properties = {
+			precision: LGraphTexture.DEFAULT,
+			invert: false
+		};
+		this._uniforms = {
+			u_texture: 0,
+			u_near: 0.1,
+			u_far: 10000
+		};
+	}
+
+	LGraphTextureLinearDepth.widgets_info = {
+		precision: { widget: "combo", values: LGraphTexture.MODE_VALUES }
+	};
+
+	LGraphTextureLinearDepth.title = "Linear Depth";
+	LGraphTextureLinearDepth.desc = "Creates a color texture with linear depth";
+
+	LGraphTextureLinearDepth.prototype.onExecute = function() {
+		if (!this.isOutputConnected(0)) {
+			return;
+		} //saves work
+
+		var tex = this.getInputData(0);
+		if (!tex || (tex.format != gl.DEPTH_COMPONENT && tex.format != gl.DEPTH_STENCIL) ) {
+			return;
+		}
+
+		var precision = this.properties.precision == LGraphTexture.HIGH ? gl.HIGH_PRECISION_FORMAT : gl.UNSIGNED_BYTE;
+
+		if ( !this._temp_texture || this._temp_texture.type != precision || this._temp_texture.width != tex.width || this._temp_texture.height != tex.height ) {
+			this._temp_texture = new GL.Texture(tex.width, tex.height, {
+				type: precision,
+				format: gl.RGB,
+				filter: gl.LINEAR
+			});
+		}
+
+		var uniforms = this._uniforms;
+
+		uniforms.u_near = tex.near_far_planes[0];
+		uniforms.u_far = tex.near_far_planes[1];
+		uniforms.u_invert = this.properties.invert ? 1 : 0;
+
+		gl.disable(gl.BLEND);
+		gl.disable(gl.DEPTH_TEST);
+		var mesh = Mesh.getScreenQuad();
+		if(!LGraphTextureLinearDepth._shader)
+			LGraphTextureLinearDepth._shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphTextureLinearDepth.pixel_shader);
+		var shader = LGraphTextureLinearDepth._shader;
+
+		//NEAR AND FAR PLANES
+		var planes = null;
+		if (tex.near_far_planes) {
+			planes = tex.near_far_planes;
+		} else if (window.LS && LS.Renderer._main_camera) {
+			planes = LS.Renderer._main_camera._uniforms.u_camera_planes;
+		} else {
+			planes = [0.1, 1000];
+		} //hardcoded
+		uniforms.u_camera_planes = planes;
+
+		this._temp_texture.drawTo(function() {
+			tex.bind(0);
+			shader.uniforms(uniforms).draw(mesh);
+		});
+
+		this._temp_texture.near_far_planes = planes;
+		this.setOutputData(0, this._temp_texture);
+	};
+
+	LGraphTextureLinearDepth.pixel_shader =
+		"precision highp float;\n\
+		precision highp float;\n\
+		varying vec2 v_coord;\n\
+		uniform sampler2D u_texture;\n\
+		uniform float u_near;\n\
+		uniform float u_far;\n\
+		uniform int u_invert;\n\
+		\n\
+		void main() {\n\
+			float zNear = u_near;\n\
+			float zFar = u_far;\n\
+			float depth = texture2D(u_texture, v_coord).x;\n\
+			depth = depth * 2.0 - 1.0;\n\
+			float f = zNear * (depth + 1.0) / (zFar + zNear - depth * (zFar - zNear));\n\
+			if( u_invert == 1 )\n\
+				f = 1.0 - f;\n\
+			gl_FragColor = vec4(vec3(f),1.0);\n\
+		}\n\
+		";
+
+	LiteGraph.registerNodeType( "texture/linear_depth", LGraphTextureLinearDepth );
 
 	// Texture Blur *****************************************
 	function LGraphTextureBlur() {
@@ -20869,6 +20959,7 @@ void main(void){\n\
 			//rgb = xyYtoRGB(xyY);\n\
 			//second\n\
 			rgb = (rgb / lum) * Ld;\n\
+			rgb = max(rgb,vec3(0.001));\n\
 			rgb = pow( rgb, vec3( u_igamma ) );\n\
 			gl_FragColor = vec4( rgb, color.a );\n\
 		}";

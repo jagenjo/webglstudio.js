@@ -473,7 +473,7 @@ LS.MaterialClasses.StandardMaterial["@inspector"] = function( material, inspecto
 		var channel = texture_channels[i];
 		var sampler = material.getTextureSampler(channel);
 
-		inspector.addTextureSampler( channel, sampler, { channel: channel, material: material, callback: function(sampler) {
+		inspector.addTextureSampler( channel, sampler, { pretitle: AnimationModule.getKeyframeCode( material, "textures/" + channel ), channel: channel, material: material, callback: function(sampler) {
 			if(!sampler.texture)
 				sampler = null;
 			var channel = this.options ? this.options.channel : this.channel;

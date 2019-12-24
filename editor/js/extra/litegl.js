@@ -8867,6 +8867,20 @@ Shader.createFX = function(code, uniforms, shader)
 	return shader;
 }
 
+/**
+* Given a shader code with some vars inside (like {{varname}}) and an object with the variable values, it will replace them.
+* @method Shader.replaceCodeUsingContext
+* @param {string} code string containg code and vars in {{varname}} format
+* @param {object} context object containing all var values
+*/
+Shader.replaceCodeUsingContext = function( code_template, context )
+{
+	return code_template.replace(/\{\{[a-zA-Z0-9_]*\}\}/g, function(v){
+		v = v.replace( /[\{\}]/g, "" );
+		return context[v] || "";
+	});
+}
+
 Shader.removeComments = function(code, one_line)
 {
 	if(!code)

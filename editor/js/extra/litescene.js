@@ -19902,10 +19902,7 @@ ShaderCode.removeComments = function( code )
 
 ShaderCode.replaceCode = function( code, context )
 {
-	return code.replace(/\{\{[a-zA-Z0-9_]*\}\}/g, function(v){
-		v = v.replace( /[\{\}]/g, "" );
-		return context[v] || "";
-	});
+	return GL.Shader.replaceCodeUsingContext( code, context );
 }
 
 //WIP: parses ShaderLab (unity) syntax
@@ -20273,10 +20270,19 @@ GraphCode.prototype.getShaderCode = function( as_string, template )
 	if(!this._shader_code)
 		this._shader_code = new LS.ShaderCode();
 
-	var surface_node = this._graph.findNodesByClass("shader/fs_output");
-	if(!surface_node)
+	var output_node = this._graph.findNodesByClass("shader/output");
+	if(!output_node)
 		return null;
 
+	//get code
+	var code = output_node.getShaderCode( template );
+	if( as_string )
+		return code;
+	this._shader_code.code = code;
+	this._code_version = this._graph._version;
+	return this._shader_code;
+
+	/*
 	var context = {
 		vs_out: "",
 		vs_local: "",
@@ -20325,6 +20331,7 @@ GraphCode.prototype.getShaderCode = function( as_string, template )
 	this._shader_code.code = LS.ShaderCode.replaceCode( template, context );
 	this._code_version = this._graph._version;
 	return this._shader_code;
+	*/
 }
 
 LS.GraphCode = GraphCode;
@@ -24505,6 +24512,24 @@ if(typeof(LiteGraph) != "undefined")
 		return "LINK_" + link.origin_id + "_" + link.origin_slot;
 	}
 
+	var getInputLinkCode = LiteGraph.geInputLinkCode = function geInputLinkCode( node, slot, section, context )
+	{
+		var info = node.getInputInfo( num );	
+		if(!info)
+			return null;
+		if(info.link == -1)
+			return null;
+		var link = node.graph.links[ info.link ];
+		if(!link)
+			return null;
+		var connected_node = node.getInputNode(num);
+		if(!connected_node)
+			return null;
+
+		connected_node.getShaderCode( section );
+
+	}
+
 	var getOutputLinkID = LiteGraph.getOutputLinkID = function getOutputLinkID( node, num, force )
 	{
 		var info = node.getOutputInfo( num );	
@@ -24571,97 +24596,88 @@ if(typeof(LiteGraph) != "undefined")
 		color4: "vec4"
 	};
 
-	//fragment shader output
-	function LGraphShaderFSOutput()
+	function ShaderContext()
 	{
-		this.addInput("","T,float,vec2,vec3,vec4");
-		this.addInput("","T,float,vec2,vec3,vec4");
-		this.addWidget("button","Config", null, this.onConfig.bind(this) );
+		this.vs_uniforms = {};
+		this.vs_out = "";
+		this.vs_local = "";
+		this.vs_global = "";
+		this.fs_uniforms = {};
+		this.fs_snippets = {}; //to request once snippets from LS.Shaders.snippets
+		this.fs_functions = {}; //to add once functions code
+		this.fs_out = "";
+		this.fs_code = "";
 	}
 
-	LGraphShaderFSOutput.title = "FragOutput";
-	LGraphShaderFSOutput.title_color = "#345";
-	LGraphShaderFSOutput.output = "fragment";
-
-	LGraphShaderFSOutput.prototype.onConfig = function()
+	//parameter has priority
+	ShaderContext.prototype.merge = function(context)
 	{
-		
+		for(var i in context.vs_uniforms)
+			this.vs_uniforms[i] = context.vs_uniforms[i];
+		for(var i in context.fs_uniforms)
+			this.fs_uniforms[i] = context.fs_uniforms[i];
+		for(var i in context.fs_snippets)
+			this.fs_snippets[i] = context.fs_snippets[i];
+		for(var i in context.fs_functions)
+			this.fs_functions[i] = context.fs_functions[i];
+		this.vs_out = context.vs_out + this.vs_out;
+		this.vs_local = context.vs_local + this.vs_local;
+		this.vs_global = context.vs_global + this.vs_global;
+		this.fs_out = context.fs_out + this.fs_out;
+		this.fs_code = context.fs_code + this.fs_code;
 	}
 
-	LGraphShaderFSOutput.prototype.onGetCode = function( lang, context )
+	function ShaderPart()
 	{
-		if( lang != "glsl" )
-			return;
-		var link = getInputLinkID(this,0);
-		if(!link) //not connected
-			return;
-
-		var type = this.getInputDataType(0);
-		if(type == "vec4")
-			context.fs_code += "	_final_color = " + link + ";\n";
-		else if(type == "vec3")
-			context.fs_code += "	_final_color = vec4( " + link + ",1.0);\n";
-		else if(type == "vec2")
-			context.fs_code += "	_final_color = vec4( " + link + ",0.0,1.0);\n";
-		else if(type == "float")
-			context.fs_code += "	_final_color = vec4( " + link + " );\n";
-		else
-			console.warn( "FSOutput type not valid", type );
-
-		var link = getInputLinkID(this,1);
-		if(link)
-		{
-			var type = this.getInputDataType(1);
-			if(type == "vec4")
-				context.fs_code += "	_final_color1 = " + link + ";\n";
-			else if(type == "vec3")
-				context.fs_code += "	_final_color1 = vec4( " + link + ",1.0);\n";
-			else if(type == "vec2")
-				context.fs_code += "	_final_color1 = vec4( " + link + ",0.0,1.0);\n";
-			else if(type == "float")
-				context.fs_code += "	_final_color1 = vec4( " + link + " );\n";
-			else
-				console.warn( "FSOutput type not valid", type );
-		}
+		this.uniforms = {};
+		this.snippets = {};
+		this.functions = {};
+		this.out = "";
+		this.code = "";
 	}
 
-	LiteGraph.registerShaderNode( "fs_output", LGraphShaderFSOutput );
+	//******************************************************
 
-	/*
 	//fragment shader output
 	function LGraphShaderOutput()
 	{
-		this.addInput("position","T,float,vec2,vec3,vec4");
-		this.addInput("color0","T,float,vec2,vec3,vec4");
+		this.addInput("position","vec4");
+		this.addInput("point_size","float");
+		this.addInput("color","T,float,vec2,vec3,vec4");
 		this.addInput("color1","T,float,vec2,vec3,vec4");
-		this.addWidget("button","Config", null, this.onConfig.bind(this) );
 	}
 
-	LGraphShaderOutput.title = "ShaderOutput";
+	LGraphShaderOutput.title = "Output";
 	LGraphShaderOutput.title_color = "#345";
-	LGraphShaderOutput.output = "fragment";
+
+	LGraphShaderOutput.prototype.drawBackground = function(ctx)
+	{
+		ctx.fillStyle = "#121";
+		ctx.fillRect(0,0,size[0], 2*LiteGraph.NODE_SLOT_HEIGHT );
+	}
 
 	LGraphShaderOutput.prototype.onConfig = function()
 	{
 		
 	}
 
-	LGraphShaderOutput.prototype.onDrawBackground = function(ctx)
+	LGraphShaderOutput.prototype.onGetShaderCode = function( template )
 	{
-		if(this.flags.collapsed)
-			return;
-		ctx.fillStyle = "#543";
-		ctx.fillRect(0,0,this.size[0],LiteGraph.NODE_SLOT_HEIGHT);
-	}
+		var context = new ShaderContext();
 
-	LGraphShaderOutput.prototype.onGetCode = function( lang, context )
-	{
-		if( lang != "glsl" )
-			return;
 		var link = getInputLinkID(this,0);
 		if(!link) //not connected
-			return;
+		{
+			var code = GL.Shader.replaceCodeUsingContext( template, context );
+			return code;
+		}
 
+		processInputLinkContext(this,0,"VS",context);
+		var vs_code = getInputLinkCode(this,1,"VS",context);
+		var fs_code = getInputLinkCode(this,2,"FS",context);
+		var fs_code = getInputLinkCode(this,3,"FS",context);
+
+		/*
 		var type = this.getInputDataType(0);
 		if(type == "vec4")
 			context.fs_code += "	_final_color = " + link + ";\n";
@@ -24689,10 +24705,10 @@ if(typeof(LiteGraph) != "undefined")
 			else
 				console.warn( "FSOutput type not valid", type );
 		}
+		*/
 	}
 
 	LiteGraph.registerShaderNode( "output", LGraphShaderOutput );
-	*/
 
 	function LGraphShaderConstant()
 	{
@@ -24761,10 +24777,8 @@ if(typeof(LiteGraph) != "undefined")
 		}
 	}
 
-	LGraphShaderConstant.prototype.onGetCode = function( lang, context )
+	LGraphShaderConstant.prototype.onGetShaderContext = function( section )
 	{
-		if( lang != "glsl" )
-			return;
 		var value = valueToGLSL( this.properties.value, this.properties.type );
 		var link_name = getOutputLinkID(this,0);
 		if(!link_name) //not connected

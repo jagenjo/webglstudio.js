@@ -16277,7 +16277,8 @@ if (typeof exports != "undefined") {
 	LGraphCanvas.link_type_colors["Texture"] = "#987";
 
 	function LGraphTexture() {
-		this.addOutput("Texture", "Texture");
+		this.addOutput("tex", "Texture");
+		this.addOutput("name", "string");
 		this.properties = { name: "", filter: true };
 		this.size = [
 			LGraphTexture.image_preview_size,
@@ -16489,6 +16490,8 @@ if (typeof exports != "undefined") {
 		}
 
 		if (!tex) {
+			this.setOutputData( 0, null );
+			this.setOutputData( 1, "" );
 			return;
 		}
 
@@ -16500,9 +16503,10 @@ if (typeof exports != "undefined") {
 			tex.setParameter(gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 		}
 
-		this.setOutputData(0, tex);
+		this.setOutputData( 0, tex );
+		this.setOutputData( 1, tex.fullpath || tex.filename );
 
-		for (var i = 1; i < this.outputs.length; i++) {
+		for (var i = 2; i < this.outputs.length; i++) {
 			var output = this.outputs[i];
 			if (!output) {
 				continue;
@@ -21440,6 +21444,7 @@ void main(void){\n\
 	function LGraphPoints3D() {
 
 		this.addInput("obj", "");
+		this.addInput("radius", "number");
 
 		this.addOutput("out", "geometry");
 		this.addOutput("points", "[vec3]");
@@ -21466,6 +21471,7 @@ void main(void){\n\
 		}
 
 		this._old_obj = null;
+		this._last_radius = null;
 	}
 
 	global.LGraphPoints3D = LGraphPoints3D;
@@ -21504,6 +21510,15 @@ void main(void){\n\
 			this.must_update = true;
 		}
 
+		var radius = this.getInputData(1);
+		if(radius == null)
+			radius = this.properties.radius;
+		if( this._last_radius != radius )
+		{
+			this._last_radius = radius;
+			this.must_update = true;
+		}
+
 		if(this.must_update || this.properties.force_update )
 		{
 			this.must_update = false;
@@ -21533,7 +21548,7 @@ void main(void){\n\
 		else
 			this.normals = null;
 
-		var radius = this.properties.radius;
+		var radius = this._last_radius || this.properties.radius;
 		var mode = this.properties.mode;
 
 		var obj = this.getInputData(0);
@@ -21683,7 +21698,7 @@ void main(void){\n\
 			temp[1] = points[i+1];
 			temp[2] = points[i+2];
 			vec3.normalize(temp,temp);
-			points.set(temp,i);
+			normals.set(temp,i);
 		}
 	}
 

@@ -35814,8 +35814,13 @@ Transform.prototype.orientTo = (function() {
 		if(in_world)
 		{
 			this.getGlobalPosition( temp_pos );
-			vec3.sub( temp_front, temp_front, temp_pos );
+			vec3.sub( temp_front, temp_pos, temp_front );
 		}
+		else
+		{
+			vec3.sub( temp_front, this._position, temp_front );
+		}
+
 		vec3.normalize( temp_front, temp_front );
 		if(iterative_method)
 		{

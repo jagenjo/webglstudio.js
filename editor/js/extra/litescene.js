@@ -29841,7 +29841,7 @@ var COLOR_PASS = LS.COLOR_PASS = { name: "color", id: 1 };
 var SHADOW_PASS = LS.SHADOW_PASS = { name: "shadow", id: 2 };
 var PICKING_PASS = LS.PICKING_PASS = { name: "picking", id: 3 };
 
-//events
+//render events
 EVENT.BEFORE_RENDER = "beforeRender";
 EVENT.READY_TO_RENDER = "readyToRender";
 EVENT.RENDER_SHADOWS = "renderShadows";
@@ -35801,6 +35801,7 @@ Transform.prototype.orientTo = (function() {
 	var temp_front = vec3.create();
 	var temp_right = vec3.create();
 	var temp_top = vec3.create();
+	var temp_pos = vec3.create();
 	//function
 	return function( pos, in_world, top, iterative_method )
 	{
@@ -35810,6 +35811,11 @@ Transform.prototype.orientTo = (function() {
 			this._parent.globalToLocal( pos, temp_front );
 		else
 			temp_front.set( pos );
+		if(in_world)
+		{
+			this.getGlobalPosition( temp_pos );
+			vec3.sub( temp_front, temp_front, temp_pos );
+		}
 		vec3.normalize( temp_front, temp_front );
 		if(iterative_method)
 		{

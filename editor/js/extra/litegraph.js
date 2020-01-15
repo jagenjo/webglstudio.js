@@ -1014,7 +1014,7 @@
      * @method arrange
      */
     LGraph.prototype.arrange = function(margin) {
-        margin = margin || 40;
+        margin = margin || 100;
 
         var nodes = this.computeExecutionOrder(false, true);
         var columns = [];
@@ -1035,7 +1035,7 @@
                 continue;
             }
             var max_size = 100;
-            var y = margin;
+            var y = margin + LiteGraph.NODE_TITLE_HEIGHT;
             for (var j = 0; j < column.length; ++j) {
                 var node = column[j];
                 node.pos[0] = x;
@@ -1043,7 +1043,7 @@
                 if (node.size[0] > max_size) {
                     max_size = node.size[0];
                 }
-                y += node.size[1] + margin;
+                y += node.size[1] + margin + LiteGraph.NODE_TITLE_HEIGHT;
             }
             x += max_size + margin;
         }

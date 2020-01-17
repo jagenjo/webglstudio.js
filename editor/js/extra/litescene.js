@@ -8607,7 +8607,7 @@ ShaderMaterial.prototype.renderInstance = function( instance, render_settings, p
 
 	//for those cases
 	if(this.onRenderInstance)
-		this.onRenderInstance( instance );
+		this.onRenderInstance( instance, pass );
 
 	if( pass == SHADOW_PASS )
 	{
@@ -35807,20 +35807,26 @@ Transform.prototype.orientTo = (function() {
 	{
 		top = top || LS.TOP;
 		//convert to local space
+		/*
 		if(in_world && this._parent)
+		{
 			this._parent.globalToLocal( pos, temp_front );
+		}
 		else
 			temp_front.set( pos );
+		*/
+
 		if(in_world)
 		{
 			this.getGlobalPosition( temp_pos );
-			vec3.sub( temp_front, temp_pos, temp_front );
+			vec3.sub( temp_front, pos, temp_pos );
 		}
 		else
-		{
-			vec3.sub( temp_front, this._position, temp_front );
-		}
+			temp_front.set( pos );
 
+		vec3.scale( temp_front,temp_front,-1); //reverse?
+
+		//vec3.sub( temp_front, temp_pos, temp_front );
 		vec3.normalize( temp_front, temp_front );
 		if(iterative_method)
 		{

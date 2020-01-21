@@ -1814,7 +1814,7 @@ function ContextMenu( values, options )
 		}
 	}
 
-	if( options.event && options.event.constructor.name !== "MouseEvent" && options.event.constructor.name !== "CustomEvent" )
+	if( options.event && options.event.constructor.name !== "MouseEvent" && options.event.constructor.name !== "PointerEvent" && options.event.constructor.name !== "CustomEvent" )
 	{
 		console.error("Event passed to ContextMenu is not of type MouseEvent or CustomEvent. Ignoring it.");
 		options.event = null;

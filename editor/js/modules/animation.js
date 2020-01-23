@@ -922,6 +922,12 @@ function exportTakeInSKANIM( take, sampling, duration ) {
 		total_samples--;
 	}
 
+	if(total_samples <= 0)
+	{
+		time_offset = 0;
+		total_samples = 1;
+	}
+
 	//duration in seconds, samples per second, num. samples, number of bones in the skeleton
 	lines.push( [ duration.toFixed(3), sampling, total_samples, out.length ].join(",") );
 
@@ -946,7 +952,14 @@ function exportTakeInSKANIM( take, sampling, duration ) {
 			else
 				data.push( typedArrayToArray( mat4.create() ) );
 		}
-		lines.push( "K" + data.flat().join(",") );
+		var flat_data = data.flat();
+
+		//avoid ugly strings
+		for(var j = 0; j < flat_data.length; ++j)
+			if( Math.abs( flat_data[j] ) < 0.000001 )
+				flat_data[j] = 0;
+				
+		lines.push( "K" + flat_data.join(",") );
 	}
 
 	return lines.join("\n");

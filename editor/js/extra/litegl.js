@@ -9372,8 +9372,14 @@ GL.create = function(options) {
 	canvas.gl = gl;
 	gl.context_id = this.last_context_id++;
 
-	//get some common extensions for webgl 1
+	//get all supported extensions
+	var supported_extensions = gl.getSupportedExtensions();
 	gl.extensions = {};
+	for(var i in supported_extensions)
+		gl.extensions[ supported_extensions[i] ] = gl.getExtension( supported_extensions[i] );
+	gl.derivatives_supported = gl.extensions['OES_standard_derivatives'] != null || gl.webgl_version > 1;
+
+	/*
 	gl.extensions["OES_standard_derivatives"] = gl.derivatives_supported = gl.getExtension('OES_standard_derivatives') || false;
 	gl.extensions["WEBGL_depth_texture"] = gl.getExtension("WEBGL_depth_texture") || gl.getExtension("WEBKIT_WEBGL_depth_texture") || gl.getExtension("MOZ_WEBGL_depth_texture");
 	gl.extensions["OES_element_index_uint"] = gl.getExtension("OES_element_index_uint");
@@ -9396,6 +9402,7 @@ GL.create = function(options) {
 	gl.extensions["OES_texture_half_float_linear"] = gl.getExtension("OES_texture_half_float_linear");
 	if(gl.extensions["OES_texture_half_float_linear"])
 		gl.extensions["OES_texture_half_float"] = gl.getExtension("OES_texture_half_float");
+	*/
 
 	if( gl.webgl_version == 1 )
 		gl.HIGH_PRECISION_FORMAT = gl.extensions["OES_texture_half_float"] ? GL.HALF_FLOAT_OES : (gl.extensions["OES_texture_float"] ? GL.FLOAT : GL.UNSIGNED_BYTE); //because Firefox dont support half float

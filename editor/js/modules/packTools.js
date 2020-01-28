@@ -4,6 +4,7 @@ var PackTools = {
 	init: function()
 	{
 		LiteGUI.menubar.add("Node/Create Prefab", { callback: function() { PackTools.showCreatePrefabDialog(); }} );
+		LiteGUI.menubar.add("Node/Link to Prefab", { callback: function() { PackTools.showLinkToPrefabDialog(); }} );
 		LiteGUI.menubar.add("Actions/Create Pack", { callback: function() { PackTools.showCreatePackDialog(); }} );
 	},
 
@@ -182,6 +183,42 @@ var PackTools = {
 
 		dialog.add(widgets);
 		dialog.adjustSize(5);
+	},
+
+	showLinkToPrefabDialog: function( node )
+	{
+		node = node || SelectionModule.getSelectedNode();
+		if(!node)
+		{
+			LiteGUI.alert("No node selected");
+			return;
+		}
+
+		var dialog = new LiteGUI.Dialog({ id: "dialog_link_to_prefab", title:"Link to Prefab", close: true, width: 600, height: 270, scroll: false, draggable: true, resizable: true});
+		dialog.show();
+
+		var prefab = node.prefab || "";
+
+		var widgets = new LiteGUI.Inspector({});
+		widgets.addResource("Resource", prefab, { callback: function(v){
+			prefab = v;
+		}});
+
+		widgets.addString("Link", prefab, { callback: function(v){
+			prefab = v;
+		}});
+
+		widgets.addButton(null,"Apply", inner_apply);
+		dialog.add(widgets);
+		dialog.adjustSize(5);
+
+		function inner_apply()
+		{
+			node.prefab = prefab;
+			node.reloadFromPrefab();
+			EditorModule.refreshAttributes();
+			dialog.close();
+		}
 	},
 
 	//not called when saving a scene, thats in DriveModule.checkResourcesSaved

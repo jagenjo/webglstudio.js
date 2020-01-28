@@ -528,8 +528,12 @@ var DriveModule = {
 
 		if( server_resource )
 		{
+			inspector.widgets_per_row = 2;
 			var link = LS.ResourcesManager.getFullURL( resource.remotepath || resource.fullpath || resource.filename );
 			inspector.addInfo("Link", "<a target='_blank' href='"+link+"'>link to the file</a>" );
+			var local_link = resource.remotepath || resource.fullpath || resource.filename;
+			inspector.addString("Local Link", local_link, { name_width: 100, disabled: true } );
+			inspector.widgets_per_row = 1;
 		}
 
 		if(local_resource)

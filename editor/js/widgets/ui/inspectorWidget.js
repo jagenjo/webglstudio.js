@@ -464,8 +464,8 @@ InspectorWidget.prototype.inspectScene = function( scene )
 		container.style.backgroundColor = "#252525";
 		for(var i in scene.preloaded_resources)
 		{			
-			inspector.addStringButton(null, i, { callback: function(v){
-					var old = this.getValue();
+			inspector.addStringButton(null, i, { resname: i, callback: function(v){
+					var old = this.options.resname;
 					if(old == v)
 						return;
 					delete scene.preloaded_resources[old];

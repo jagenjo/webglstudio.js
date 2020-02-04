@@ -44303,7 +44303,7 @@ GeometricPrimitive.prototype.updateMesh = function()
 	switch (this._geometry)
 	{
 		case GeometricPrimitive.CUBE: 
-			this._mesh = GL.Mesh.cube({size: this.size, normals:true,coords:true});
+			this._mesh = GL.Mesh.cube({size: this.size, normals:true,coords:true, wireframe: true});
 			break;
 		case GeometricPrimitive.PLANE:
 			this._mesh = GL.Mesh.plane({size: this.size, xz: true, detail: subdivisions, normals:true,coords:true});
@@ -45410,33 +45410,39 @@ FXGraphComponent.prototype.showFBO = function()
 {
 	if(!this.enabled || !this._root.visible)
 		return;
-
 	this.frame.disable();
+	this.applyGraphToRenderFrameContext( this.frame );
+}
 
-	LS.ResourcesManager.textures[":color_" + this.uid] = this.frame._color_texture;
-	LS.ResourcesManager.textures[":depth_" + this.uid] = this.frame._depth_texture;
-	if(this.frame.num_extra_textures)
+FXGraphComponent.prototype.applyGraphToRenderFrameContext = function( frame )
+{
+	LS.ResourcesManager.textures[":color_" + this.uid] = frame._color_texture;
+	LS.ResourcesManager.textures[":depth_" + this.uid] = frame._depth_texture;
+	if(frame.num_extra_textures)
 	{
-		for(var i = 0; i < this.frame.num_extra_textures; ++i)
-			LS.ResourcesManager.textures[":extra"+ i +"_" + this.uid] = this.frame._textures[i+1];
+		for(var i = 0; i < frame.num_extra_textures; ++i)
+			LS.ResourcesManager.textures[":extra"+ i +"_" + this.uid] = frame._textures[i+1];
 	}
 
 	if(this.use_node_camera && this._viewport)
 	{
 		gl.setViewport( this._viewport );
-		this.applyGraph();
-		gl.setViewport( this.frame._fbo._old_viewport );
+		this.executeGraph( frame.filter_texture );
+		gl.setViewport( frame._fbo._old_viewport );
 	}
 	else
-		this.applyGraph();
+		this.executeGraph( frame.filter_texture );
 }
 
 
 //take the resulting textures and pass them through the graph
-FXGraphComponent.prototype.applyGraph = function()
+FXGraphComponent.prototype.executeGraph = function( filter_textures )
 {
 	if(!this._graph)
 		return;
+
+	if( filter_textures === undefined )
+		filter_textures = true;
 
 	if(!this._graph_frame_node)
 		this._graph_frame_node = this._graph.findNodesByTitle("Rendered Frame")[0];
@@ -45448,7 +45454,7 @@ FXGraphComponent.prototype.applyGraph = function()
 
 	if(this._graph_viewport_node) //force antialiasing
 	{
-		this._graph_viewport_node.properties.filter = this.frame.filter_texture;
+		this._graph_viewport_node.properties.filter = filter_textures;
 		this._graph_viewport_node.properties.antialiasing = this.use_antialiasing;
 	}
 

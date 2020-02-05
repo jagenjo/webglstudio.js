@@ -991,7 +991,7 @@ this.createSampler(\"Spec. Texture\",\"u_specular_texture\");\n\
 this.createSampler(\"Normal Texture\",\"u_normal_texture\",{ missing:'normal' });\n\
 this._light_mode = 1;\n\
 \n\
-\\color.vs\n\
+\\default.vs\n\
 \n\
 precision mediump float;\n\
 attribute vec3 a_vertex;\n\
@@ -1060,6 +1060,7 @@ uniform sampler2D u_texture;\n\
 uniform sampler2D u_specular_texture;\n\
 uniform sampler2D u_normal_texture;\n\
 \n\
+#pragma snippet \"input\"\n\
 #pragma shaderblock \"light\"\n\
 #pragma shaderblock \"applyReflection\"\n\
 \n\
@@ -1118,6 +1119,7 @@ uniform mat4 u_view;\n\
 uniform mat4 u_viewprojection;\n\
 \n\
 //globals\n\
+uniform vec3 u_camera_eye;\n\
 uniform float u_time;\n\
 uniform vec4 u_viewport;\n\
 uniform float u_point_size;\n\

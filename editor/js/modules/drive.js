@@ -673,7 +673,7 @@ var DriveModule = {
 		}});
 		
 		var widget = inspector.addButton(null,"Download", {callback: function(){
-			if(local_resource)
+			if(local_resource || resource.constructor === GL.Texture) //hack to allow to download textures generaeted by the engine (they do not have a local resource associated  because they are not stored in RM)
 			{
 				var file = DriveModule.getResourceAsBlob( resource );
 				if(!file)

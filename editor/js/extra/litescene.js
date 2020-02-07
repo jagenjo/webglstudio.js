@@ -9094,6 +9094,23 @@ ShaderMaterial.prototype.createProperty = function( name, value, type, options )
 }
 
 /**
+* returns the value of a property taking into account dynamic properties defined in the material
+* @method getProperty
+* @param {String} name the property name as it should be shown
+* @param {*} value of the property
+*/
+ShaderMaterial.prototype.getProperty = function(name)
+{
+	var r = Material.prototype.getProperty.call( this, name );
+	if(r != null)
+		return;
+	var p = this._properties_by_name[ name ];
+	if (p)
+		return p.value;
+	return null;
+}
+
+/**
 * Event used to inform if one resource has changed its name
 * @method onResourceRenamed
 * @param {Object} resources object where all the resources are stored
@@ -41529,21 +41546,20 @@ Skybox.prototype.onCollectInstances = function(e, instances)
 		else
 			mat.color.set([this.intensity, this.intensity, this.intensity]);
 
-		mat.setProperty( "Texture", texture_name );
-
-		/*
-		var sampler = mat.setTexture( LS.Material.COLOR, texture_name );
-		//sampler.gamma = this.gamma;
-		if(texture && texture.texture_type == gl.TEXTURE_2D)
+		var texture = LS.RM.textures[ texture_name ];
+		if(texture)
 		{
-			sampler.uvs = "polar_vertex";
-			texture.bind(0);
-			texture.setParameter( gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE ); //to avoid going up
-			texture.setParameter( gl.TEXTURE_MIN_FILTER, gl.LINEAR ); //avoid ugly error in atan2 edges
+			if(texture.texture_type == GL.TEXTURE_2D)
+			{
+				mat._uniforms.u_tex_type = 0;
+				mat.setProperty( "texture2D", texture_name );
+			}
+			else
+			{
+				mat._uniforms.u_tex_type = 1;
+				mat.setProperty( "textureCube", texture_name );
+			}
 		}
-		else
-			sampler.uvs = "0";
-		*/
 	}
 
 	RI.setMesh( mesh );
@@ -41598,18 +41614,18 @@ Skybox.prototype.bakeToCubemap = function( size, render_settings )
 
 Skybox.shader_code = "\n\
 \\js\n\
-	this.createSampler(\"Texture\",\"u_color_texture\", { magFilter: GL.LINEAR, missing: \"white\"} );\n\
+	this.createSampler(\"texture2D\",\"u_color_texture\", { magFilter: GL.LINEAR, missing: \"white\"} );\n\
+	this.createSampler(\"textureCube\",\"u_color_cubemap\", { magFilter: GL.LINEAR, missing: \"white\"} );\n\
 	this.queue = LS.RenderQueue.BACKGROUND;\n\
 	this.render_state.cull_face = false;\n\
 	this.render_state.front_face = GL.CW;\n\
 	this.render_state.depth_test = false;\n\
-	this.render_state.front_face = GL.CW;\n\
 	this.flags.ignore_frustum = true;\n\
 	this.flags.ignore_lights = true;\n\
 	this.flags.cast_shadows = false;\n\
 	this.flags.receive_shadows = false;\n\
 \n\
-\\color.vs\n\
+\\default.vs\n\
 	precision mediump float;\n\
 	attribute vec3 a_vertex;\n\
 	varying vec3 v_world_position;\n\
@@ -41620,35 +41636,26 @@ Skybox.shader_code = "\n\
 		v_world_position = vertex4.xyz;\n\
 		gl_Position = u_viewprojection * vertex4;\n\
 	}\n\
-\\color.fs\n\
+\\default.fs\n\
 	precision mediump float;\n\
 	varying vec3 v_world_position;\n\
 	uniform vec4 u_material_color;\n\
 	uniform vec3 u_camera_eye;\n\
-	uniform samplerCube u_color_texture;\n\
+	uniform int u_tex_type;\n\
+	uniform samplerCube u_color_cubemap;\n\
+	uniform sampler2D u_color_texture;\n\
 	vec2 polarToCartesian(in vec3 V)\n\
 	{\n\
 		return vec2( 0.5 - (atan(V.z, V.x) / -6.28318531), asin(V.y) / 1.57079633 * 0.5 + 0.5);\n\
 	}\n\
 	void main() {\n\
 		vec3 E = normalize( v_world_position - u_camera_eye);\n\
-		vec4 color = textureCube( u_color_texture, E );\n\
+		vec4 color;\n\
+		if( u_tex_type == 0 )\n\
+			color = texture2D( u_color_texture, polarToCartesian(E) );\n\
+		else\n\
+			color = textureCube( u_color_cubemap, E );\n\
 		gl_FragColor = u_material_color * color;\n\
-	}\n\
-\\picking.vs\n\
-	precision mediump float;\n\
-	attribute vec3 a_vertex;\n\
-	uniform mat4 u_model;\n\
-	uniform mat4 u_viewprojection;\n\
-	void main() {\n\
-		vec4 vertex4 = vec4(a_vertex,1.0);\n\
-		gl_Position = (u_viewprojection * u_model) * vertex4;\n\
-	}\n\
-\\picking.fs\n\
-	precision mediump float;\n\
-	uniform vec4 u_material_color;\n\
-	void main() {\n\
-		gl_FragColor = u_material_color;\n\
 	}\n\
 ";
 
@@ -47209,7 +47216,7 @@ PlayAnimation.prototype.onUpdateAnimation = function(dt)
 
 	LEvent.trigger( this._root, "after_animation" ); //to modify skeleton after applying an animation
 	if(this.onAfterAnimation)
-		this.onAfterAnimation(time);
+		this.onAfterAnimation(take, time);
 
 	this._last_time = time; //TODO, add support for pingpong events in tracks
 	//take.actionPerSample( this.current_time, this._processSample.bind( this ), { disabled_tracks: this.disabled_tracks } );

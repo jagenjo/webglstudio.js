@@ -2160,7 +2160,7 @@ LSQ.setFromInfo = function( info, value )
 	if( target.setPropertyValue  )
 		if( target.setPropertyValue( info.name, value ) === true )
 			return target;
-	if( target[ info.name ] === undefined )
+	if( target[ info.name ] === undefined && info.value === undefined )
 		return;
 	target[ info.name ] = value;	
 }
@@ -7637,6 +7637,11 @@ Material.prototype.configure = function(o)
 */
 Material.prototype.serialize = function( simplified )
 {
+	//remove hardcoded data from containers before serializing
+	for(var i in this.textures)
+		if (this.textures[i] && this.textures[i].constructor === GL.Texture)
+			this.textures[i] = null;
+
 	var o = LS.cloneObject(this);
 	delete o.filename;
 	delete o.fullpath;
@@ -7772,8 +7777,13 @@ Material.prototype.setProperty = function( name, value )
 		case "textures":
 			for(var i in value)
 			{
-				var tex = value[i];
-				if( tex && tex.constructor === String )
+				var tex = value[i]; //sampler
+				if(tex == null)
+				{
+					delete this.textures[i];
+					continue;
+				}
+				if( tex.constructor === String )
 					tex = { texture: tex, uvs: 0, wrap: 0, minFilter: 0, magFilter: 0 };
 				tex._must_update = true;
 				this.textures[i] = tex;
@@ -7839,7 +7849,18 @@ Material.prototype.getPropertyInfoFromPath = function( path )
 		case "color": 
 			type = "vec3"; break;
 		case "textures":
-			type = "Texture"; break;
+			if( path.length > 1 )
+			{
+				return {
+					node: this._root,
+					target: this.textures,
+					name: path[1],
+					value: this.textures[path[1]] || null,
+					type: "Texture"
+				}
+			}
+			type = "Texture"; 
+			break;
 		default:
 			return null;
 	}
@@ -9577,7 +9598,14 @@ StandardMaterial.prototype.fillUniforms = function( scene, options )
 		if(!sampler)
 			continue;
 
-		var texture = sampler.texture;
+		var texture = null;
+		
+		//hardcoded textures
+		if(sampler.constructor === GL.Texture)
+			texture = sampler;
+		else
+			texture = sampler.texture;
+
 		if(!texture)
 			continue;
 
@@ -20733,7 +20761,15 @@ if(typeof(LiteGraph) != "undefined")
 		//first check input
 		if(this.inputs && this.inputs[0])
 			node_id = this.getInputData(0);
-		if(node_id)
+
+		if( node_id && node_id.constructor === LS.SceneNode )
+		{
+			if(this._node != node_id)
+				this.bindNodeEvents(node_id);
+			return node_id;
+		}
+
+		if(node_id && node_id.constructor === String)
 			this.properties.node_id = node_id;
 
 		//then check properties
@@ -23098,6 +23134,27 @@ if(typeof(LiteGraph) != "undefined")
 		area[1] = y;
 	}
 
+
+	function LGraphInputMouse()
+	{
+		this.addOutput("pos","vec2");
+		this.addOutput("left_button","boolean");
+		this.addOutput("right_button","boolean");
+		this.properties = {};
+	}
+
+	LGraphInputMouse.title = "Mouse";
+	LGraphInputMouse.desc = "Mouse state info";
+
+	LGraphInputMouse.prototype.onExecute = function()
+	{
+		this.setOutputData(0, LS.Input.Mouse.position );
+		this.setOutputData(1, LS.Input.Mouse.buttons & LS.Input.BUTTONS_LEFT );
+		this.setOutputData(2, LS.Input.Mouse.buttons & LS.Input.BUTTONS_RIGHT );
+	}
+
+	LiteGraph.registerNodeType("input/mouse", LGraphInputMouse );
+
 	//special kind of node
 	function LGraphGUIPanel()
 	{
@@ -24422,6 +24479,35 @@ if(typeof(LiteGraph) != "undefined")
 
 	//******************************************
 
+	function LGraphCameraRay()
+	{
+		this.addInput("camera","component,camera");
+		this.addInput("pos2D","vec2");
+		this.addOutput("ray","ray");
+		this.properties = {
+			reverse_y: false
+		};
+		this._ray = new LS.Ray();
+	}
+
+	LGraphCameraRay.title = "Camera Ray";
+
+	LGraphCameraRay.prototype.onExecute = function()
+	{
+		var camera = this.getInputData(0) || LS.Renderer._current_camera;
+		var pos = this.getInputData(1);
+		if(!camera || camera.constructor != LS.Camera || !pos)
+			return;
+		var viewport = null;
+		var y = pos[1];
+		if( this.properties.reverse_y )
+			y = gl.canvas.height - pos[1];
+		camera.getRay( pos[0], y, viewport, false, this._ray );
+		this.setOutputData(0, this._ray);
+	}
+
+	LiteGraph.registerNodeType("math3d/camera_ray", LGraphCameraRay );
+
 	function LGraphCameraProject()
 	{
 		this.addInput("camera","component,camera");
@@ -24458,6 +24544,75 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LiteGraph.registerNodeType("math3d/camera_project", LGraphCameraProject );
+
+	//*****************************
+
+	function LGraphRayPlaneTest()
+	{
+		this.addInput("ray","ray");
+		this.addInput("P","vec3");
+		this.addInput("N","vec3");
+		this.addOutput("pos","vec3");
+		this.properties = {};
+	}
+
+	LGraphRayPlaneTest.title = "Ray-Plane test";
+
+	LGraphRayPlaneTest.prototype.onExecute = function()
+	{
+		var ray = this.getInputData(0);
+		var p = this.getInputData(1);
+		var n = this.getInputData(2);
+		if(!ray || ray.constructor != LS.Ray )
+			return;
+		if(!p)
+			p = LS.ZEROS;
+		if(!n)
+			n = LS.TOP;
+		var r = ray.testPlane(p,n);
+		this.setOutputData( 0, ray.collision_point );
+	}
+
+	LiteGraph.registerNodeType("math3d/rayplane-test", LGraphRayPlaneTest );
+
+
+	function LGraphRayCollidersTest()
+	{
+		this.addInput("ray","ray");
+		this.addOutput("collides","boolean");
+		this.addOutput("node","scenenode");
+		this.addOutput("pos","vec3");
+		this.addOutput("normal","vec3");
+		this.properties = { max_dist: 1000, layers: 0xFF };
+		this.options = {};
+	}
+
+	LGraphRayCollidersTest.title = "Ray-Colliders test";
+	LGraphRayCollidersTest["@layers"] = { widget:"layers" };
+
+	LGraphRayCollidersTest.prototype.onExecute = function()
+	{
+		var ray = this.getInputData(0);
+		if(!ray || ray.constructor != LS.Ray )
+			return;
+		var options = this.options;
+		options.max_dist = this.properties.max_dist;
+		options.normal = this.isInputConnected(3);
+		options.layers = this.properties.layers;
+		var collisions = LS.Physics.raycast( ray.origin, ray.direction, options );
+		if( collisions && collisions.length )
+		{
+			var coll = collisions[0];
+			this.setOutputData( 0, true );
+			this.setOutputData( 1, coll.node );
+			this.setOutputData( 2, coll.position );
+			this.setOutputData( 3, coll.normal );
+		}
+		else
+			this.setOutputData( 0, false );
+	}
+
+	LiteGraph.registerNodeType("math3d/raycolliders-test", LGraphRayCollidersTest );
 
 	//*********************************************
 
@@ -31862,6 +32017,11 @@ DebugRender.prototype.renderColliders = function( scene )
 			LS.Draw.translate( BBox.getCenter(oobb) );
 			LS.Draw.renderWireBox( halfsize[0]*2, halfsize[1]*2, halfsize[2]*2 );
 		}
+		else if(instance.type == LS.PhysicsInstance.PLANE)
+		{
+			LS.Draw.translate( BBox.getCenter(oobb) );
+			LS.Draw.renderWireBox( halfsize[0]*2, 0.0001, halfsize[2]*2 );
+		}
 		else if(instance.type == LS.PhysicsInstance.SPHERE)
 		{
 			//Draw.scale(,halfsize[0],halfsize[0]);
@@ -34268,7 +34428,7 @@ var Physics = {
 	* @param {vec3} origin in world space
 	* @param {vec3} direction in world space
 	* @param {Object} options ( max_dist maxium distance, layers which layers to check, scene, first_collision )
-	* @return {Array} Array of Collision objects containing all the nodes that collided with the ray or null in the form [SceneNode, Collider, collision point, distance]
+	* @return {Array} Array of Collision objects containing all the nodes that collided with the ray or null in the form of a LS.Collision
 	*/
 	raycast: function( origin, direction, options )
 	{
@@ -34298,7 +34458,7 @@ var Physics = {
 		//for every instance
 		for(var i = 0; i < colliders.length; ++i)
 		{
-			var instance = colliders[i];
+			var instance = colliders[i]; //of LS.Collider
 
 			if( (layers & instance.layers) === 0 )
 				continue;
@@ -34319,6 +34479,15 @@ var Physics = {
 					continue;
 				if(compute_normal)
 					collision_normal = vec3.sub( vec3.create(), collision_point, instance.center );
+			}
+			else if( instance.type == PhysicsInstance.PLANE )
+			{
+				var N = vec3.fromValues(0,1,0);
+				mat4.rotateVec3( N, model, N );
+				if(!geo.testRayPlane( origin, direction, instance.center, N, collision_point, max_distance))
+					continue;
+				if(compute_normal)
+					collision_normal = N;
 			}
 			else //the rest test first with the local BBox
 			{
@@ -41788,6 +41957,7 @@ function Collider(o)
 
 Collider.icon = "mini-icon-collider.png";
 
+Collider.PLANE = LS.PhysicsInstance.PLANE;
 Collider.BOX = LS.PhysicsInstance.BOX;
 Collider.SPHERE = LS.PhysicsInstance.SPHERE;
 Collider.MESH = LS.PhysicsInstance.MESH;
@@ -41796,7 +41966,7 @@ Collider.MESH = LS.PhysicsInstance.MESH;
 Collider["@size"] = { type: "vec3", step: 0.01 };
 Collider["@center"] = { type: "vec3", step: 0.01 };
 Collider["@mesh"] = { type: "mesh" };
-Collider["@shape"] = { type:"enum", values: {"Box": Collider.BOX, "Sphere": Collider.SPHERE, "Mesh": Collider.MESH }};
+Collider["@shape"] = { type:"enum", values: {"Plane":Collider.PLANE, "Box": Collider.BOX, "Sphere": Collider.SPHERE, "Mesh": Collider.MESH }};
 
 //Collider["@adjustToNodeBounding"] = { type:"action" };
 
@@ -41886,6 +42056,11 @@ Collider.prototype.onGetColliders = function(e, colliders)
 		else
 			BBox.setCenterHalfsize( PI.oobb, this.center, this.size);
 	}
+	else if(PI.type === LS.PhysicsInstance.PLANE)
+	{
+		this.size[1] = 0.0001; //flatten
+		BBox.setCenterHalfsize( PI.oobb, this.center, this.size );
+	}
 
 	if(mesh)
 		vec3.copy( PI.center, BBox.getCenter( mesh.bounding ) );
@@ -41905,6 +42080,7 @@ Collider.prototype.onGetColliders = function(e, colliders)
 	colliders.push(PI);
 }
 
+//rendered from LS.DebugRender.prototype.renderColliders
 
 LS.registerComponent( Collider );
 ///@FILE:../src/components/customData.js

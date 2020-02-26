@@ -98,7 +98,7 @@ var LabModule = {
 			inspector.addCombo("Axis", this.meshes_axis, { values:["X","Y","Z"], callback: function(v){
 				LabModule.meshes_axis = v;			
 			}});		
-			inspector.addCombo("Render Mode", this.meshes_mode, { values:["phong_wireframe","phong","wireframe","X-RAY","UV_wireframe"], callback: function(v){
+			inspector.addCombo("Render Mode", this.meshes_mode, { values:["phong_wireframe","phong","normal","wireframe","X-RAY","UV_wireframe","Normal Cloud"], callback: function(v){
 				LabModule.meshes_mode = v;			
 			}});		
 			inspector.addCheckbox("Cull face", this.cull_face, { callback: function(v){
@@ -156,6 +156,25 @@ var LabModule = {
 			}\
 		');
 
+		this._normal_shader = new GL.Shader('\
+			precision mediump float;\n\
+			attribute vec3 a_vertex;\n\
+			attribute vec3 a_normal;\n\
+			varying vec3 v_normal;\n\
+			uniform mat4 u_model;\n\
+			uniform mat4 u_mvp;\n\
+			void main() {\n\
+				v_normal = (u_model * vec4(a_normal,0.0)).xyz;\n\
+				gl_Position = u_mvp * vec4(a_vertex,1.0);\n\
+			}\
+			','\
+			precision mediump float;\n\
+			varying vec3 v_normal;\n\
+			void main() {\n\
+			  gl_FragColor = vec4(abs(v_normal),1.0);\n\
+			}\
+		');
+
 		this._uv_shader = new GL.Shader('\
 			precision mediump float;\n\
 			attribute vec3 a_vertex;\n\
@@ -172,6 +191,27 @@ var LabModule = {
 			uniform vec4 u_color;\n\
 			void main() {\n\
 			  gl_FragColor = u_color;\n\
+			}\
+		');
+
+		this._normal_cloud_shader = new GL.Shader('\
+			precision mediump float;\n\
+			attribute vec3 a_vertex;\n\
+			attribute vec3 a_normal;\n\
+			varying vec3 v_color;\n\
+			uniform mat4 u_model;\n\
+			uniform mat4 u_mvp;\n\
+			void main() {\n\
+				v_color = abs(a_normal);\n\
+				gl_Position = u_mvp * vec4(a_normal,1.0);\n\
+				gl_PointSize = 4.0;\n\
+			}\
+			','\
+			precision mediump float;\n\
+			varying vec3 v_color;\n\
+			uniform vec4 u_color;\n\
+			void main() {\n\
+			  gl_FragColor = vec4(v_color,1.0);\n\
 			}\
 		');
 
@@ -446,11 +486,20 @@ var LabModule = {
 		if( this.meshes_mode.indexOf("wireframe") != -1 )
 			wireframe_shader = LS.Draw.shader;
 		var blend = false;
+		var primitive = gl.TRIANGLES;
 		if( this.meshes_mode == "X-RAY" )
 		{
 			shader = LS.Draw.shader;
 			LS.Draw.setColor(0.05,0.05,0.05,1);
 			blend = true;
+		}
+		else if( this.meshes_mode == "normal" )
+			shader = this._normal_shader;
+		else if( this.meshes_mode == "Normal Cloud" )
+		{
+			shader = this._normal_cloud_shader;
+			LS.Draw.setColor(1,1,1,1);
+			primitive = gl.POINTS;
 		}
 		else if( this.meshes_mode == "UV_wireframe" )
 		{
@@ -488,6 +537,11 @@ var LabModule = {
 				var halfsize = BBox.getHalfsize( bounding );
 				var center = BBox.getCenter( bounding );
 				var radius = vec3.length( halfsize );
+				if(shader == this._normal_cloud_shader)
+				{
+					radius = 2;
+					center = null;
+				}
 				mesh_camera.setPerspective( 45,1,0.1,radius * 4 );
 
 				if(this.meshes_axis == "Y")
@@ -498,7 +552,9 @@ var LabModule = {
 				LS.Draw.pushCamera();
 				LS.Draw.setCamera( mesh_camera );
 				LS.Draw.setMatrix( matrix );
-				LS.Draw.translate( -center[0], -center[1], -center[2]);
+
+				if(center)
+					LS.Draw.translate( -center[0], -center[1], -center[2]);
 
 				gl.viewport( startx, starty, sizex, sizey );
 
@@ -520,7 +576,7 @@ var LabModule = {
 					gl.disable( gl.CULL_FACE );
 
 				if(shader)
-					LS.Draw.renderMesh( mesh, gl.TRIANGLES, shader );
+					LS.Draw.renderMesh( mesh, primitive, shader );
 				gl.enable( gl.BLEND );
 
 				if( wireframe_shader && mesh.vertexBuffers["vertices"] ) //wireframe

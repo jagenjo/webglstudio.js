@@ -192,9 +192,9 @@
 			//used to know which nodes create when dragging files to the canvas
             if (base_class.supported_extensions) {
                 for (var i in base_class.supported_extensions) {
-                    this.node_types_by_file_extension[
-                        base_class.supported_extensions[i].toLowerCase()
-                    ] = base_class;
+					var ext = base_class.supported_extensions[i];
+					if(ext && ext.constructor === String)
+	                    this.node_types_by_file_extension[ ext.toLowerCase() ] = base_class;
                 }
             }
         },
@@ -683,24 +683,29 @@
         interval = interval || 0;
         var that = this;
 
-        if (
-            interval == 0 &&
-            typeof window != "undefined" &&
-            window.requestAnimationFrame
-        ) {
+		//execute once per frame
+        if ( interval == 0 && typeof window != "undefined" && window.requestAnimationFrame ) {
             function on_frame() {
                 if (that.execution_timer_id != -1) {
                     return;
                 }
                 window.requestAnimationFrame(on_frame);
+				if(that.onBeforeStep)
+					that.onBeforeStep();
                 that.runStep(1, !this.catch_errors);
+				if(that.onAfterStep)
+					that.onAfterStep();
             }
             this.execution_timer_id = -1;
             on_frame();
-        } else {
+        } else { //execute every 'interval' ms
             this.execution_timer_id = setInterval(function() {
                 //execute
+				if(that.onBeforeStep)
+					that.onBeforeStep();
                 that.runStep(1, !this.catch_errors);
+				if(that.onAfterStep)
+					that.onAfterStep();
             }, interval);
         }
     };
@@ -1895,7 +1900,7 @@
 
         //copy all stored fields
         for (var i in data) {
-			if(i == "nodes" || i == "groups")
+			if(i == "nodes" || i == "groups" ) //links must be accepted
 				continue;
             this[i] = data[i];
         }
@@ -9423,11 +9428,7 @@ LGraphNode.prototype.executeAction = function(action)
         return dialog;
     };
 
-    LGraphCanvas.prototype.showEditPropertyValue = function(
-        node,
-        property,
-        options
-    ) {
+    LGraphCanvas.prototype.showEditPropertyValue = function( node, property, options ) {
         if (!node || node.properties[property] === undefined) {
             return;
         }
@@ -9550,9 +9551,13 @@ LGraphNode.prototype.executeAction = function(action)
             if (node.onPropertyChanged) {
                 node.onPropertyChanged(property, value);
             }
+			if(options.onclose)
+				options.onclose();
             dialog.close();
             node.setDirtyCanvas(true, true);
         }
+
+		return dialog;
     };
 
     LGraphCanvas.prototype.createDialog = function(html, options) {
@@ -17053,15 +17058,14 @@ if (typeof exports != "undefined") {
 			precision: LGraphTexture.DEFAULT
 		};
 
-		this.properties.code =
-			"//time: time in seconds\n//texSize: vec2 with res\nuniform float u_value;\nuniform vec4 u_color;\n\nvoid main() {\n  vec2 uv = v_coord;\n  vec3 color = vec3(0.0);\n	//your code here\n	color.xy=uv;\n\ngl_FragColor = vec4(color, 1.0);\n}\n";
+		this.properties.code = LGraphTextureShader.pixel_shader;
 		this._uniforms = { u_value: 1, u_color: vec4.create(), in_texture: 0, texSize: vec2.create(), time: 0 };
 	}
 
 	LGraphTextureShader.title = "Shader";
 	LGraphTextureShader.desc = "Texture shader";
 	LGraphTextureShader.widgets_info = {
-		code: { type: "code" },
+		code: { type: "code", lang: "glsl" },
 		precision: { widget: "combo", values: LGraphTexture.MODE_VALUES }
 	};
 
@@ -17164,10 +17168,7 @@ if (typeof exports != "undefined") {
 		}
 
 		this._shader_code = this.properties.code;
-		this._shader = new GL.Shader(
-			Shader.SCREEN_VERTEX_SHADER,
-			LGraphTextureShader.pixel_shader + this.properties.code
-		);
+		this._shader = new GL.Shader( Shader.SCREEN_VERTEX_SHADER, this.properties.code );
 		if (!this._shader) {
 			this.boxcolor = "red";
 			return null;
@@ -17240,10 +17241,20 @@ if (typeof exports != "undefined") {
 	};
 
 	LGraphTextureShader.pixel_shader =
-		"precision highp float;\n\
-		\n\
-		varying vec2 v_coord;\n\
-		uniform float time;\n\
+"precision highp float;\n\
+\n\
+varying vec2 v_coord;\n\
+uniform float time; //time in seconds\n\
+uniform vec2 texSize; //tex resolution\n\
+uniform float u_value;\n\
+uniform vec4 u_color;\n\n\
+void main() {\n\
+	vec2 uv = v_coord;\n\
+	vec3 color = vec3(0.0);\n\
+	//your code here\n\
+	color.xy=uv;\n\n\
+	gl_FragColor = vec4(color, 1.0);\n\
+}\n\
 ";
 
 	LiteGraph.registerNodeType("texture/shader", LGraphTextureShader);
@@ -21204,7 +21215,7 @@ void main(void){\n\
 		this.addInput("v");
 		this.addOutput("out", "Texture");
 		this.properties = {
-			code: "",
+			code: LGraphTextureCanvas2D.default_code,
 			width: 512,
 			height: 512,
 			clear: true,
@@ -21213,11 +21224,14 @@ void main(void){\n\
 		};
 		this._func = null;
 		this._temp_texture = null;
+		this.compileCode();
 	}
 
 	LGraphTextureCanvas2D.title = "Canvas2D";
 	LGraphTextureCanvas2D.desc = "Executes Canvas2D code inside a texture or the viewport.";
 	LGraphTextureCanvas2D.help = "Set width and height to 0 to match viewport size.";
+
+	LGraphTextureCanvas2D.default_code = "//vars: canvas,ctx,time\nctx.fillStyle='red';\nctx.fillRect(0,0,50,50);\n";
 
 	LGraphTextureCanvas2D.widgets_info = {
 		precision: { widget: "combo", values: LGraphTexture.MODE_VALUES },
@@ -26943,7 +26957,7 @@ LiteGraph.registerNodeType("audio/waveShaper", LGAudioWaveShaper);
         }
     };
 
-    LGAudioScript["@code"] = { widget: "code" };
+    LGAudioScript["@code"] = { widget: "code", type: "code" };
 
     LGAudioScript.prototype.onStart = function() {
         this.audionode.onaudioprocess = this._callback;

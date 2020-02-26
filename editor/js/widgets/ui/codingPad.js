@@ -68,9 +68,13 @@ CodingPadWidget.prototype.bindEvents = function()
 	LEvent.bind( LS.ResourcesManager, "resource_renamed", this.onResourceRenamed, this );
 	LEvent.bind( CodingPadWidget, "code_changed", this.onCodeChanged, this);
 
-	LEvent.bind( LS.Components.Script, "code_error", this.onScriptError, this );
+	//not used?
+	//LEvent.bind( LS.Components.Script, "code_error", this.onScriptError, this );
+	//LEvent.bind( LS.Components.Script, "code_no_errors", this.onScriptNoErrors, this );
+
 	LEvent.bind( LS, "exception", this.onGlobalError, this ); //from LS.safeCall
 	LEvent.bind( LS, "code_error", this.onCodeError, this );//this triggers when shader error
+	LEvent.bind( LS, "code_no_errors", this.onCodeNoErrors, this );
 }
 
 CodingPadWidget.prototype.unbindEvents = function()
@@ -571,28 +575,20 @@ CodingPadWidget.prototype.processCodeInScripts = function()
 }
 
 //errors
-CodingPadWidget.prototype.markLine = function(num)
+CodingPadWidget.prototype.markLine = function(num, keep_current)
 {
 	var cm = this.editor;
 
-	if(typeof(num) == "undefined" && this.last_error_line != null)
+	//clear all marked lines
+	if(!keep_current)
 	{
 		var lines = cm.lineCount();
 		for(var i = 0; i < lines; i++)
 			cm.removeLineClass( i, "background", "error-line");
-		//cm.removeLineClass( this.last_error_line, "background", "error-line");
-		this.last_error_line = null;
-		return;
 	}
 
-	if(typeof(num) != "undefined")
-	{
-		if(this.last_error_line != null)
-			cm.removeLineClass( this.last_error_line, "background", "error-line");
-
-		this.last_error_line = num;
+	if(num != null)
 		cm.addLineClass(num, "background", "error-line");
-	}
 }
 
 CodingPadWidget.prototype.getState = function(skip_content)
@@ -796,17 +792,9 @@ CodingPadWidget.prototype.onShowHelp = function()
 	CodingModule.showCodingHelp( info.options );
 }
 
-CodingPadWidget.prototype.onScriptError = function( e, instance_err )
-{
-	//console.log("pad code error:",error_info);
-
-	/*
-	var info = this.getCurrentCodeInfo();
-	if(!info || info.instance != instance_err[0])
-		return;
-	this.showError(instance_err[1]);
-	*/
-}
+//CodingPadWidget.prototype.onScriptError = function( e, instance_err )
+//{
+//}
 
 CodingPadWidget.prototype.onCodeError = function( e, error_info )
 {
@@ -816,6 +804,15 @@ CodingPadWidget.prototype.onCodeError = function( e, error_info )
 		return;
 	if(error_info.line >= 0)
 		this.markLine(error_info.line);
+}
+
+//clear the editor of old markers
+CodingPadWidget.prototype.onCodeNoErrors = function( e, info )
+{
+	var current_info = this.getCurrentCodeInfo();
+	if(current_info.resource != info.instance)
+		return;
+	this.markLine(null);
 }
 
 //throw from exceptions from LS.safeCall

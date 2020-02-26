@@ -9564,7 +9564,10 @@ Inspector.prototype.addButtons = function(name, value, options)
 	{
 		for(var i in value)
 		{
-			code += "<button class='litebutton' tabIndex='"+this.tab_index+"' style='"+style+"'>"+value[i]+"</button>";
+			var title = "";
+			if( options.title && options.title.constructor === Array)
+				title = options.title[i] || "";
+			code += "<button class='litebutton' title='"+title+"' tabIndex='"+this.tab_index+"' style='"+style+"'>"+value[i]+"</button>";
 			this.tab_index++;
 		}
 	}

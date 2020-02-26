@@ -1777,11 +1777,19 @@ var LS = {
 	},
 
 	//we do it in a function to make it more standard and traceable
+	//used by the editor to show the error
 	dispatchCodeError: function( err, line, resource, extra )
 	{
 		var error_info = { error: err, line: line, resource: resource, extra: extra };
 		console.error(error_info);
 		LEvent.trigger( this, "code_error", error_info );
+	},
+
+	//used to tell the editor it must remove the error marker
+	dispatchNoErrors: function( resource, extra )
+	{
+		var info = { resource: resource, extra: extra };
+		LEvent.trigger( this, "code_no_errors", info );
 	},
 
 	convertToString: function( data )
@@ -8256,6 +8264,8 @@ function ShaderMaterial( o )
 
 	this._version = -1;	
 
+	this._last_valid_properties = null; //used to recover from a shader error
+
 	if(o) 
 		this.configure(o);
 }
@@ -8435,6 +8445,14 @@ ShaderMaterial.prototype.processShaderCode = function()
 		return false;
 
 	var old_properties = this._properties_by_name;
+	if( shader_code._has_error ) //save them
+		this._last_valid_properties = old_properties; 
+	else if( this._last_valid_properties )
+	{
+		old_properties = this._last_valid_properties;
+		this._last_valid_properties = null;
+	}
+
 	this._properties.length = 0;
 	this._properties_by_name = {};
 	this._passes = {};
@@ -8487,6 +8505,7 @@ ShaderMaterial.prototype.processShaderCode = function()
 
 	//restore old values
 	this.assignOldProperties( old_properties );
+
 }
 
 //used after changing the code of the ShaderCode and wanting to reload the material keeping the old properties
@@ -19852,13 +19871,17 @@ ShaderCode.prototype.compileShader = function( vs_code, fs_code )
 		console.groupEnd();
 	}
 
+	var shader = null;
+
 	if(!LS.catch_exceptions)
-		return new GL.Shader( vs_code, fs_code );
+	{
+		shader = new GL.Shader( vs_code, fs_code );
+	}
 	else
 	{
 		try
 		{
-			return new GL.Shader( vs_code, fs_code );
+			shader = new GL.Shader( vs_code, fs_code );
 		}
 		catch(err)
 		{
@@ -19878,7 +19901,14 @@ ShaderCode.prototype.compileShader = function( vs_code, fs_code )
 			LS.dispatchCodeError( err, code_line, this, "shader" );
 		}
 	}
-	return null;
+
+	if(shader)
+	{
+		if( LS.debug )
+			console.log(" + shader compiled: ", this.fullpath || this.filename );
+		LS.dispatchNoErrors( this, "shader" );
+	}
+	return shader;
 }
 
 ShaderCode.prototype.clearCache =  function()
@@ -20739,6 +20769,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphSceneNode.title = "SceneNode";
 	LGraphSceneNode.desc = "Node on the scene";
+	LGraphSceneNode.highlight_color = "#CCC";
 
 	LGraphSceneNode.prototype.onRemoved = function()
 	{
@@ -20872,10 +20903,10 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphSceneNode.prototype.onDrawBackground = function(ctx)
 	{
-		var node = this._node;
+		var node = this.getNode();
 		if(!node)
 		{
-			this.boxcolor = null;
+			this.boxcolor = "red";
 			return;
 		}
 
@@ -20883,10 +20914,10 @@ if(typeof(LiteGraph) != "undefined")
 
 		if(highlight)
 		{
-			this.boxcolor = "#FA0";
+			this.boxcolor = LGraphSceneNode.highlight_color;
 			if(!this.flags.collapsed)
 			{
-				ctx.fillStyle = "#FA0";
+				ctx.fillStyle = LGraphSceneNode.highlight_color;
 				ctx.fillRect(0,0,this.size[0],2);
 			}
 		}
@@ -21264,6 +21295,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphLocatorProperty.title = "Property";
 	LGraphLocatorProperty.desc = "A property of a node or component of the scene specified by its locator string";
+	LGraphLocatorProperty.highlight_color = "#CCC";
 
 	LGraphLocatorProperty.prototype.getLocatorInfo = function( force )
 	{
@@ -21320,10 +21352,10 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphLocatorProperty.prototype.onDrawBackground = function(ctx)
 	{
-		var info = this._last_info;
+		var info = this.getLocatorInfo();
 		if(!info)
 		{
-			this.boxcolor = null;
+			this.boxcolor = "red";
 			return;
 		}
 
@@ -21331,10 +21363,10 @@ if(typeof(LiteGraph) != "undefined")
 
 		if(highlight)
 		{
-			this.boxcolor = "#FA0";
-			if(!this.flags.collapsed)
+			this.boxcolor = LGraphLocatorProperty.highlight_color;
+			if(!this.flags.collapsed) //render line
 			{
-				ctx.fillStyle = "#FA0";
+				ctx.fillStyle = LGraphLocatorProperty.highlight_color;
 				ctx.fillRect(0,0,this.size[0],2);
 			}
 		}
@@ -21530,6 +21562,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphComponent.title = "Component";
 	LGraphComponent.desc = "A component from a node";
+	LGraphComponent.highlight_color = "#CCC";
 
 	LGraphComponent.prototype.onRemoved = function()
 	{
@@ -21621,11 +21654,32 @@ if(typeof(LiteGraph) != "undefined")
 			this.setOutputData( slot, compo[ output.name ] );
 	}
 
-	LGraphComponent.prototype.onDrawBackground = function()
+	LGraphComponent.prototype.onDrawBackground = function(ctx)
 	{
 		var compo = this.getComponent();
-		if(compo)
+		if(compo && compo._root)
+		{
+			this.boxcolor = null;
+			var color = null;
+			if(compo._root._is_selected)
+				color = LGraphComponent.highlight_color;
+			if(compo._is_selected)
+				color = "#39F";
+
+			if(color)
+			{
+				this.boxcolor = color;
+				if(!this.flags.collapsed)
+				{
+					ctx.fillStyle = color;
+					ctx.fillRect(0,0,this.size[0],2);
+				}
+			}
+
 			this.title = LS.getClassName( compo.constructor );
+		}
+		else
+			this.boxcolor = "red";
 	}
 
 	LGraphComponent.prototype.onConnectionsChange = function( type, slot, created, link_info, slot_info )
@@ -24578,6 +24632,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	function LGraphRayCollidersTest()
 	{
+		this.addInput("enabled","boolean");
 		this.addInput("ray","ray");
 		this.addOutput("collides","boolean");
 		this.addOutput("node","scenenode");
@@ -24592,8 +24647,9 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphRayCollidersTest.prototype.onExecute = function()
 	{
-		var ray = this.getInputData(0);
-		if(!ray || ray.constructor != LS.Ray )
+		var enabled = this.getInputData(0);
+		var ray = this.getInputData(1);
+		if(!enabled || !ray || ray.constructor != LS.Ray )
 			return;
 		var options = this.options;
 		options.max_dist = this.properties.max_dist;

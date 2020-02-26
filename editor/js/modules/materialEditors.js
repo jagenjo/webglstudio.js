@@ -648,9 +648,11 @@ LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector,
 	inspector.addTitle("Properties");
 
 	inspector.addShader("shader", material.shader, { pretitle: AnimationModule.getKeyframeCode( material, "shader" ), 
-		callback: function(v) { 
+		callback: function(v) {
+			UndoModule.saveMaterialChangeUndo(material);
 			material.shader = v; 
 			inspector.refresh();
+			LS.GlobalScene.requestFrame();
 		}, callback_refresh: function(){
 			material.processShaderCode();
 		}

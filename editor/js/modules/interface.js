@@ -23,8 +23,8 @@ var InterfaceModule = {
 	},
 
 	icons: {
-		refresh: "<img src='imgs/mini-icon-refresh.png'/>",
-		trash: "<img src='imgs/mini-icon-trash.png'/>"
+		refresh: '<img src="imgs/mini-icon-refresh.png">', //last slash removed to avoid problems comparing in addButtons
+		trash: '<img src="imgs/mini-icon-trash.png">'
 	},
 
 	init: function()
@@ -958,7 +958,7 @@ LiteGUI.Inspector.prototype.addMaterial = function( name,value, options)
 			return;
 		EditorModule.inspect( material, this.inspector );
 	}});
-	this.addButton(null,"<img src='imgs/mini-icon-trash.png'/>",{ width: "10%", callback: function(){
+	this.addButton(null,InterfaceModule.icons.trash,{ width: "10%", callback: function(){
 		r.setValue("");
 	}});
 	this.widgets_per_row -= 2;
@@ -1260,23 +1260,24 @@ LiteGUI.Inspector.prototype.addShader = function( name, value, options )
 
 	options.width = "80%";
 	options.resource_classname = "ShaderCode";
+	options.name_width = 80;
 
 	inspector.widgets_per_row += 1;
 
 	var widget = inspector.addResource( name, value, options );
 
-	inspector.addButtons( null, [LiteGUI.special_codes.refresh, "{}"], { skip_wchange: true, width: "20%", callback: inner } );
+	inspector.addButtons( null, [LiteGUI.special_codes.refresh, "{...}", InterfaceModule.icons.trash], { skip_wchange: true, title:["Refresh Code","Edit code","Remove"],width: "20%", callback: inner } );
 
 	inspector.widgets_per_row -= 1;
 
-	function inner(v)
+	function inner(v,e)
 	{
 		if( v == LiteGUI.htmlEncode( LiteGUI.special_codes.refresh ) )
 		{
 			if(options.callback_refresh)
 				options.callback_refresh.call( widget );//material.processShaderCode();
 		}
-		else if( v == "{}" )
+		else if( v == "{...}" )
 		{
 			//no shader, ask to create it
 			if(!value)
@@ -1295,6 +1296,18 @@ LiteGUI.Inspector.prototype.addShader = function( name, value, options )
 						inner_create_shader();
 				});
 		}
+		else if( v == InterfaceModule.icons.trash )
+		{
+			if(!e.shiftKey) //skip confirmation
+				LiteGUI.confirm("Do you want to remove this shader?",function(v){
+					if(v)
+						options.callback(null);
+				});
+			else
+				options.callback(null);
+		}
+		else
+			console.log(v);
 
 		function inner_create_shader()
 		{

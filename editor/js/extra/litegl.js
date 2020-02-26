@@ -2203,10 +2203,6 @@ quat.lookAt = (function(){
 		return out;
 	}
 })();
-
-
-
-
 /**
 * @namespace GL
 */
@@ -7340,7 +7336,6 @@ Texture.nextPOT = function( size )
 {
 	return Math.pow( 2, Math.ceil( Math.log(size) / Math.log(2) ) );
 }
-
 /** 
 * FBO for FrameBufferObjects, FBOs are used to store the render inside one or several textures 
 * Supports multibuffer and depthbuffer texture, useful for deferred rendering
@@ -7377,7 +7372,6 @@ function FBO( textures, depth_texture, stencil, gl )
 	//save state
 	this._old_fbo_handler = null;
 	this._old_viewport = new Float32Array(4);
-	this.order = null;
 }
 
 GL.FBO = FBO;
@@ -7622,7 +7616,7 @@ FBO.prototype.update = function( skip_disable )
 }
 
 /**
-* Enables this FBO (from now on all the render will be stored in the textures attached to this FBO)
+* Enables this FBO (from now on all the render will be stored in the textures attached to this FBO
 * It stores the previous viewport to restore it afterwards, and changes it to full FBO size
 * @method bind
 * @param {boolean} keep_old keeps the previous FBO is one was attached to restore it afterwards
@@ -7648,7 +7642,6 @@ FBO.prototype.bind = function( keep_old )
 		this.depth_texture._in_current_fbo = true;
 
 	gl.viewport( 0,0, this.width, this.height );
-	FBO.current = this;
 }
 
 /**
@@ -7667,7 +7660,6 @@ FBO.prototype.unbind = function()
 		this.color_textures[i]._in_current_fbo = false;
 	if(this.depth_texture)
 		this.depth_texture._in_current_fbo = false;
-	FBO.current = null;
 }
 
 //binds another FBO without switch back to previous (faster)
@@ -7690,8 +7682,6 @@ FBO.prototype.switchTo = function( next_fbo )
 		next_fbo.color_textures[i]._in_current_fbo = true;
 	if(next_fbo.depth_texture)
 		next_fbo.depth_texture._in_current_fbo = true;
-
-	FBO.current = next_fbo;
 }
 
 FBO.prototype.delete = function()
@@ -7720,51 +7710,6 @@ FBO.testSupport = function( type, format ) {
 	}
 	FBO.supported[ name ] = true;
 	return true;
-}
-
-FBO.prototype.toSingle = function()
-{
-	if( this.color_textures.length < 2 )
-		return; //nothing to do
-	var ext = gl.extensions.WEBGL_draw_buffers;
-	if( ext )
-		ext.drawBuffersWEBGL( [ this.order[0] ] );
-	else
-		gl.drawBuffers( [ this.order[0] ] );
-}
-
-FBO.prototype.toMulti = function()
-{
-	if( this.color_textures.length < 2 )
-		return; //nothing to do
-	var ext = gl.extensions.WEBGL_draw_buffers;
-	if( ext )
-		ext.drawBuffersWEBGL( this.order );
-	else
-		gl.drawBuffers( this.order );
-}
-
-//clears only the secondary buffers (not the main one)
-FBO.prototype.clearSecondary = function( color )
-{
-	if(!this.order || this.order.length < 2)
-		return;
-
-	var ext = gl.extensions.WEBGL_draw_buffers;
-	var new_order = [gl.NONE];
-	for(var i = 1; i < this.order.length; ++i)
-		new_order.push(this.order[i]);
-	if(ext)
-		ext.drawBuffersWEBGL( new_order );
-	else
-		gl.drawBuffers( new_order );
-	gl.clearColor( color[0],color[1],color[2],color[3] );
-	gl.clear( gl.COLOR_BUFFER_BIT );
-
-	if(ext)
-		ext.drawBuffersWEBGL( this.order );
-	else
-		gl.drawBuffers( this.order );
 }
 
 
@@ -8379,7 +8324,7 @@ Shader.prototype.drawBuffers = function( vertexBuffers, indexBuffer, mode, range
 
 Shader._instancing_arrays = [];
 
-Shader.prototype.drawInstanced = function( mesh, primitive, indices, instanced_uniforms, range_start, range_length, num_instances )
+Shader.prototype.drawInstanced = function( mesh, primitive, indices, instanced_uniforms, range_start, range_length, num_intances )
 {
 	if(range_length === 0)
 		return;
@@ -8419,14 +8364,7 @@ Shader.prototype.drawInstanced = function( mesh, primitive, indices, instanced_u
 		length = buffer.buffer.length / buffer.buffer.spacing;
 	}
 
-	var indexBuffer = null;
-	if(indices)
-	{
-		if(indices.constructor === GL.Buffer)
-			indexBuffer = indices;
-		else
-			indexBuffer = mesh.getIndexBuffer( indices );
-	}
+	var indexBuffer = indices ? mesh.getIndexBuffer( indices ) : null;
 
 	//range rendering
 	var offset = 0; //in bytes
@@ -8514,8 +8452,8 @@ Shader.prototype.drawInstanced = function( mesh, primitive, indices, instanced_u
 		index+=1;
 	}
 
-	if( num_instances )
-		batch_length = num_instances;
+	if( num_intances )
+		batch_length = num_intances;
 
 	if( ext ) //webgl 1.0
 	{
@@ -9372,14 +9310,8 @@ GL.create = function(options) {
 	canvas.gl = gl;
 	gl.context_id = this.last_context_id++;
 
-	//get all supported extensions
-	var supported_extensions = gl.getSupportedExtensions();
+	//get some common extensions for webgl 1
 	gl.extensions = {};
-	for(var i in supported_extensions)
-		gl.extensions[ supported_extensions[i] ] = gl.getExtension( supported_extensions[i] );
-	gl.derivatives_supported = gl.extensions['OES_standard_derivatives'] != null || gl.webgl_version > 1;
-
-	/*
 	gl.extensions["OES_standard_derivatives"] = gl.derivatives_supported = gl.getExtension('OES_standard_derivatives') || false;
 	gl.extensions["WEBGL_depth_texture"] = gl.getExtension("WEBGL_depth_texture") || gl.getExtension("WEBKIT_WEBGL_depth_texture") || gl.getExtension("MOZ_WEBGL_depth_texture");
 	gl.extensions["OES_element_index_uint"] = gl.getExtension("OES_element_index_uint");
@@ -9402,7 +9334,6 @@ GL.create = function(options) {
 	gl.extensions["OES_texture_half_float_linear"] = gl.getExtension("OES_texture_half_float_linear");
 	if(gl.extensions["OES_texture_half_float_linear"])
 		gl.extensions["OES_texture_half_float"] = gl.getExtension("OES_texture_half_float");
-	*/
 
 	if( gl.webgl_version == 1 )
 		gl.HIGH_PRECISION_FORMAT = gl.extensions["OES_texture_half_float"] ? GL.HALF_FLOAT_OES : (gl.extensions["OES_texture_float"] ? GL.FLOAT : GL.UNSIGNED_BYTE); //because Firefox dont support half float
@@ -9614,7 +9545,6 @@ GL.create = function(options) {
 		canvas.addEventListener("mousedown", onmouse);
 		canvas.addEventListener("mousemove", onmouse);
 		canvas.addEventListener("dragstart", onmouse);
-		//canvas.addEventListener("mouseup", onmouse); ??
 		if(capture_wheel)
 		{
 			canvas.addEventListener("mousewheel", onmouse, false);
@@ -9678,7 +9608,6 @@ GL.create = function(options) {
 		} 
 		else if(e.eventType == "mouseup")
 		{
-			//console.log("mouseup");
 			if(gl.mouse.buttons == 0) //no more buttons pressed
 			{
 				canvas.addEventListener("mousemove", onmouse);

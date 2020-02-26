@@ -87,6 +87,8 @@ var SelectionModule = {
 
 		if(selection.node)
 			selection.node._is_selected = true;
+		if(selection.instance && selection.instance.constructor.is_component)
+			selection.instance._is_selected = true;
 
 		//send event
 		if(!skip_events)
@@ -102,9 +104,11 @@ var SelectionModule = {
 		{
 			for(var i = 0; i < SelectionModule.selection_array.length; i++)
 			{
-				var node = SelectionModule.selection_array[i].node;
-				if(node)
-					node._is_selected = false;
+				var s = SelectionModule.selection_array[i];
+				if(s.instance && s.instance._is_selected)
+					s.instance._is_selected = false;
+				if(s.node)
+					s.node._is_selected = false;
 			}
 		}
 
@@ -148,6 +152,8 @@ var SelectionModule = {
 		this.selection_array.push( selection );
 		if(selection.node)
 			selection.node._is_selected = true;
+		if(selection.instance && selection.instance.constructor.is_component)
+			selection.node._is_selected = true;
 
 		//repaint
 		RenderModule.requestFrame();
@@ -166,7 +172,8 @@ var SelectionModule = {
 				this.selection_array.splice(i,1);
 				if(selection.node)
 					selection.node._is_selected = false;
-
+				if(selection.instance && selection.instance._is_selected)
+					selection.instance._is_selected = false;
 
 				if(selection == this.selection)
 				{

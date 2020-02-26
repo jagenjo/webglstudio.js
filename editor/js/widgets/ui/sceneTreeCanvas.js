@@ -145,6 +145,9 @@ SceneTreeWidget.prototype.onDraw = function()
 	if(this.scroll_items < 0)
 		this.scroll_items = 0;
 
+	var max_icons = Math.floor( (canvas.width * 0.4) / line_height );
+	var scroll_is_visible = this.scroll_items || num_items * line_height > canvas.height;
+
 	//then render
 	var x = 30;
 	var y = 20;
@@ -188,9 +191,38 @@ SceneTreeWidget.prototype.onDraw = function()
 			ctx.fillRect( 0, y, canvas.width, line_height );
 		}
 
+		//render text
 		ctx.fillStyle = (is_highlight || is_selected) ? "#FFF" : ( is_over ? "#CCC" : ( is_prev_selected ? "#99B" : "#999" ) );
 		ctx.fillText( node.name, start_x + 20, y + line_height * 0.7 );
 
+		//right side icons
+		var l2 = node._components.length;
+		if(l2 > max_icons) l2 = max_icons;
+		ctx.fillStyle = "#333";
+		var right_offset = (scroll_is_visible ? -20 : 0) + canvas.width - l2 * line_height;
+		for(var j = 0; j < l2; ++j)
+		{
+			var comp = node._components[j];
+			ctx.globalAlpha = 0.4;
+			ctx.fillRect( right_offset + j * line_height + 0.5, y + 0.5, line_height - 2, line_height - 2);
+			ctx.globalAlpha = comp._is_selected ? 1 : 0.5;
+			if(comp.enabled === false)
+				ctx.globalAlpha = 0.2;
+			if(comp.constructor.icon_img)
+			{
+				if( comp.constructor.icon_img.width )
+					ctx.drawImage( comp.constructor.icon_img, right_offset + j * line_height + 3, y + 3 );
+			}
+			else if( comp.constructor.icon )
+			{
+				comp.constructor.icon_img = new Image();
+				comp.constructor.icon_img.src = 'imgs/' + comp.constructor.icon;
+				comp.constructor.icon_img.onload = this.refresh.bind(this);
+			}
+		}
+		ctx.globalAlpha = 1;
+
+		//box
 		if(is_selected)
 			ctx.fillStyle = "#FFF";
 		else if(is_highlight)
@@ -259,7 +291,7 @@ SceneTreeWidget.prototype.onDraw = function()
 	*/
 
 	//render scroll
-	if( this.scroll_items || num_items * line_height > canvas.height )
+	if( scroll_is_visible )
 	{
 		ctx.fillStyle = "#999";
 		ctx.fillRect( canvas.width - 10, (this.scroll_items / num_items) * canvas.height, 10, (max_items / num_items) * canvas.height);
@@ -328,6 +360,7 @@ SceneTreeWidget.prototype.getItemAtPos = function(y)
 
 SceneTreeWidget.prototype.processMouse = function(e)
 {
+	var canvas = this.canvas;
 	var b = this.canvas.getBoundingClientRect();
 	var x = e.pageX - b.left;
 	var y = e.pageY - b.top;
@@ -335,6 +368,8 @@ SceneTreeWidget.prototype.processMouse = function(e)
 	var line_height = this.line_height;
 	this.mouse[0] = x;
 	this.mouse[1] = y;
+	var max_icons = Math.floor( (canvas.width * 0.4) / line_height );
+	var scroll_is_visible = this.scroll_items || this.num_items * line_height > canvas.height;
 	var block = true;
 	var now = getTime();
 
@@ -347,6 +382,7 @@ SceneTreeWidget.prototype.processMouse = function(e)
 		{
 			this.dragging_scroll = false;
 
+			//scrollbar
 			if( x >= this.canvas.width - 10 )
 			{
 				this.dragging_scroll = true;
@@ -422,11 +458,22 @@ SceneTreeWidget.prototype.processMouse = function(e)
 				e.click_time = now - this.last_click_time;
 				if( e.click_time < 200 )
 				{
+					var clicked_object = this.clicked_node;
+					//check if compo clicked
+					var l2 = Math.min( this.clicked_node._components.length, max_icons );
+					var left_offset =  (scroll_is_visible ? -20 : 0) + (canvas.width - line_height * l2);
+					if( x > left_offset )
+					{
+						//clicked a compo
+						var compo_index = Math.floor((x - left_offset) / line_height);
+						clicked_object = this.clicked_node._components[ compo_index ];
+					}
+
 					if(e.shiftKey)
-						SelectionModule.addToSelection( this.clicked_node );
+						SelectionModule.addToSelection( clicked_object );
 					else
-						SelectionModule.setSelection( this.clicked_node );
-					EditorModule.inspect( this.clicked_node );
+						SelectionModule.setSelection( clicked_object );
+					EditorModule.inspect( clicked_object );
 				}
 				else if( this.dragging_node ) //dragging
 				{

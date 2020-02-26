@@ -200,11 +200,25 @@
     margin-top: -150px;
     margin-left: -200px;
 
-    background-color: #151515;
+    background-color: #222222;
 
     min-width: 400px;
-    min-height: 300px;
-    box-shadow: 0 0 2px black;
+    min-height: 200px;
+    box-shadow: 0 0 4px black;
+
+	border-radius: 4px;
+}
+
+.litegraph-editor .dialog .close {
+    float: right;
+	margin: 4px;
+	margin-right: 10px;
+	cursor: pointer;
+	font-size: 1.4em;
+}
+
+.litegraph-editor .dialog .dialog-header {
+	border: 1px solid black;
 }
 
 .litegraph-editor .dialog .dialog-header,
@@ -222,7 +236,56 @@
 .litegraph-editor .dialog .dialog-content {
     height: calc(100% - 40px);
     width: calc(100% - 10px);
-    background-color: black;
+    /*background-color: black;*/
     margin: 4px;
     display: inline-block;
+}
+
+.litegraph-editor .dialog .property {
+	font-size: 1.4em;
+	background-color: #333;
+	margin-bottom: 2px;
+	padding: 0;
+}
+
+.litegraph-editor .dialog .property_name {
+    display: inline-block;
+    text-align: left;
+    width: 120px;
+    height: 1.2em;
+    background-color: #444;
+	padding: 2px;
+	padding-left: 4px;
+	overflow: hidden;
+}
+
+.litegraph-editor .dialog .property_value {
+    display: inline-block;
+    text-align: right;
+    background-color: #111;
+    width: calc( 100% - 122px );
+    height: 1.2em;
+	padding: 2px;
+    padding-right: 10px;
+	overflow: hidden;
+	cursor: pointer;
+}
+
+.litegraph-editor textarea.code, .litegraph-editor div.code {
+	height: 100%;
+	width: 100%;
+	background-color: black;
+	padding: 4px;
+	font: 16px monospace;
+	overflow: auto;
+	resize: none;
+	outline: none;
+}
+
+.litegraph-editor .codeflask {
+	background-color: #2a2a2a;
+}
+
+.litegraph-editor .codeflask textarea {
+	opacity: 0;
 }

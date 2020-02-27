@@ -2322,6 +2322,11 @@ LS.RESOURCE_TYPES[ LS.TYPES.ANIMATION ] = true;
 
 //Events
 var EVENT = LS.EVENT = {};
+//events are defined in the file that triggers them:
+//- renderer.js: render related events (RENDER_INSTANCES,etc)
+//- scene.js: scene related (INIT,START,UPDATE)
+//- input.js: player related (MOUSEDOWN,KEYDOWN)
+
 
 /**
 * A Ray that contains an origin and a direction (it uses the Ray class from litegl, so to check documentation go to litegl doc
@@ -2738,6 +2743,16 @@ LS.Network = Network;
 //mouse.mousey 0 is top
 //mouse.canvasy 0 is bottom
 //mouse.y is mousey
+
+EVENT.MOUSEDOWN = "mousedown";
+EVENT.MOUSEMOVE = "mousemove";
+EVENT.MOUSEUP = "mouseup";
+EVENT.MOUSEWHEEL = "mousewheel";
+EVENT.TOUCHSTART = "touchstart";
+EVENT.TOUCHMOVE = "touchmove";
+EVENT.TOUCHEND = "touchend";
+EVENT.KEYDOWN = "keydown";
+EVENT.KEYUP = "keyup";
 
 var Input = {
 	mapping: {
@@ -13058,6 +13073,7 @@ EVENT.AWAKE = "awake";
 EVENT.START = "start";
 EVENT.PAUSE = "pause";
 EVENT.UNPAUSE = "unpause";
+EVENT.FINISH = "finish";
 EVENT.BEFORE_UPDATE = "before_update";
 EVENT.UPDATE = "update";
 EVENT.FIXED_UPDATE = "fixedUpdate";
@@ -13068,7 +13084,6 @@ EVENT.COLLECT_LIGHTS = "collectLights";
 EVENT.COLLECT_CAMERAS = "collectCameras";
 EVENT.COLLECT_DATA = "collectData";
 EVENT.SERIALIZE = "serialize";
-EVENT.FINISH = "finish";
 EVENT.NODE_ADDED = "nodeAdded";
 EVENT.NODE_REMOVED = "nodeRemoved";
 EVENT.REQUEST_FRAME = "requestFrame";
@@ -43514,18 +43529,18 @@ CameraController["@mouse_wheel_action"] = { type:"enum", values: CameraControlle
 
 CameraController.prototype.onAddedToScene = function( scene )
 {
-	LEvent.bind( scene, "start",this.onStart,this);
-	LEvent.bind( scene, "finish",this.onFinish,this);
-	LEvent.bind( scene, "mousedown",this.onMouse,this);
-	LEvent.bind( scene, "mousemove",this.onMouse,this);
-	LEvent.bind( scene, "mousewheel",this.onMouse,this);
-	LEvent.bind( scene, "touchstart",this.onTouch,this);
-	LEvent.bind( scene, "touchmove",this.onTouch,this);
-	LEvent.bind( scene, "touchend",this.onTouch,this);
-	LEvent.bind( scene, "keydown",this.onKey,this);
-	LEvent.bind( scene, "keyup",this.onKey,this);
-	LEvent.bind( scene, "update",this.onUpdate,this);
-	LEvent.bind( scene, "renderGUI",this.onRenderGUI,this);
+	LEvent.bind( scene, LS.EVENT.START,this.onStart,this);
+	LEvent.bind( scene, LS.EVENT.FINISH,this.onFinish,this);
+	LEvent.bind( scene, LS.EVENT.MOUSEDOWN,this.onMouse,this);
+	LEvent.bind( scene, LS.EVENT.MOUSEMOVE,this.onMouse,this);
+	LEvent.bind( scene, LS.EVENT.MOUSEWHEEL,this.onMouse,this);
+	LEvent.bind( scene, LS.EVENT.TOUCHSTART,this.onTouch,this);
+	LEvent.bind( scene, LS.EVENT.TOUCHMOVE,this.onTouch,this);
+	LEvent.bind( scene, LS.EVENT.TOUCHEND,this.onTouch,this);
+	LEvent.bind( scene, LS.EVENT.KEYDOWN,this.onKey,this);
+	LEvent.bind( scene, LS.EVENT.KEYUP,this.onKey,this);
+	LEvent.bind( scene, LS.EVENT.UPDATE,this.onUpdate,this);
+	LEvent.bind( scene, LS.EVENT.RENDERGUI,this.onRenderGUI,this);
 }
 
 CameraController.prototype.onRemovedFromScene = function( scene )
@@ -45063,37 +45078,38 @@ GraphComponent.prototype.onRemovedFromNode = function(node)
 GraphComponent.prototype.onAddedToScene = function( scene )
 {
 	this._graph._scene = scene;
-	LEvent.bind( scene , "init", this.onSceneEvent, this );
-	LEvent.bind( scene , "start", this.onSceneEvent, this );
-	LEvent.bind( scene , "pause", this.onSceneEvent, this );
-	LEvent.bind( scene , "unpause", this.onSceneEvent, this );
-	LEvent.bind( scene , "finish", this.onSceneEvent, this );
-	LEvent.bind( scene , "beforeRenderMainPass", this.onSceneEvent, this );
-	LEvent.bind( scene , "beforeRenderScene", this.onSceneEvent, this );
-	LEvent.bind( scene , "afterRenderScene", this.onSceneEvent, this );
-	LEvent.bind( scene , "update", this.onSceneEvent, this );
-	LEvent.bind( scene , "renderGUI", this.onRenderGUI, this );
-	LEvent.bind( scene, "mousedown", this.onMouse, this );
-	LEvent.bind( scene, "mousemove", this.onMouse, this );
-	LEvent.bind( scene, "mouseup", this.onMouse, this );
+
+	LEvent.bind( scene, LS.EVENT.INIT, this.onSceneEvent, this );
+	LEvent.bind( scene, LS.EVENT.START, this.onSceneEvent, this );
+	LEvent.bind( scene, LS.EVENT.PAUSE, this.onSceneEvent, this );
+	LEvent.bind( scene, LS.EVENT.UNPAUSE, this.onSceneEvent, this );
+	LEvent.bind( scene, LS.EVENT.FINISH, this.onSceneEvent, this );
+	LEvent.bind( scene, LS.EVENT.BEFORE_RENDER_MAIN_PASS, this.onSceneEvent, this );
+	LEvent.bind( scene, LS.EVENT.BEFORE_RENDER_SCENE, this.onSceneEvent, this );
+	LEvent.bind( scene, LS.EVENT.AFTER_RENDER_SCENE, this.onSceneEvent, this );
+	LEvent.bind( scene, LS.EVENT.UPDATE, this.onSceneEvent, this );
+	LEvent.bind( scene, LS.EVENT.RENDER_GUI, this.onRenderGUI, this );
+	LEvent.bind( scene, LS.EVENT.MOUSEDOWN, this.onMouse, this );
+	LEvent.bind( scene, LS.EVENT.MOUSEMOVE, this.onMouse, this );
+	LEvent.bind( scene, LS.EVENT.MOUSEUP, this.onMouse, this );
 }
 
 GraphComponent.prototype.onRemovedFromScene = function( scene )
 {
 	this._graph._scene = null;
-	LEvent.unbind( scene, "init", this.onSceneEvent, this );
-	LEvent.unbind( scene, "start", this.onSceneEvent, this );
-	LEvent.unbind( scene, "pause", this.onSceneEvent, this );
-	LEvent.unbind( scene, "unpause", this.onSceneEvent, this );
-	LEvent.unbind( scene, "finish", this.onSceneEvent, this );
-	LEvent.unbind( scene, "beforeRenderMainPass", this.onSceneEvent, this );
-	LEvent.unbind( scene, "beforeRenderScene", this.onSceneEvent, this );
-	LEvent.unbind( scene, "afterRenderScene", this.onSceneEvent, this );
-	LEvent.unbind( scene, "update", this.onSceneEvent, this );
-	LEvent.unbind( scene, "renderGUI", this.onRenderGUI, this );
-	LEvent.unbind( scene, "mousedown", this.onMouse, this );
-	LEvent.unbind( scene, "mousemove", this.onMouse, this );
-	LEvent.unbind( scene, "mouseup", this.onMouse, this );
+	LEvent.unbind( scene, LS.EVENT.INIT, this.onSceneEvent, this );
+	LEvent.unbind( scene, LS.EVENT.START, this.onSceneEvent, this );
+	LEvent.unbind( scene, LS.EVENT.PAUSE, this.onSceneEvent, this );
+	LEvent.unbind( scene, LS.EVENT.UNPAUSE, this.onSceneEvent, this );
+	LEvent.unbind( scene, LS.EVENT.FINISH, this.onSceneEvent, this );
+	LEvent.unbind( scene, LS.EVENT.BEFORE_RENDER_MAIN_PASS, this.onSceneEvent, this );
+	LEvent.unbind( scene, LS.EVENT.BEFORE_RENDER_SCENE, this.onSceneEvent, this );
+	LEvent.unbind( scene, LS.EVENT.AFTER_RENDER_SCENE, this.onSceneEvent, this );
+	LEvent.unbind( scene, LS.EVENT.UPDATE, this.onSceneEvent, this );
+	LEvent.unbind( scene, LS.EVENT.RENDER_GUI, this.onRenderGUI, this );
+	LEvent.unbind( scene, LS.EVENT.MOUSEDOWN, this.onMouse, this );
+	LEvent.unbind( scene, LS.EVENT.MOUSEMOVE, this.onMouse, this );
+	LEvent.unbind( scene, LS.EVENT.MOUSEUP, this.onMouse, this );
 }
 
 GraphComponent.prototype.onResourceRenamed = function( old_name, new_name, resource )
@@ -45524,24 +45540,15 @@ FXGraphComponent.prototype.onRemovedFromNode = function(node)
 	//LEvent.unbind( LS.GlobalScene, "beforeRenderMainPass", this.onBeforeRender, this );
 }
 
-FXGraphComponent.prototype.onAddedToScene = function(scene)
-{
-	LEvent.bind( scene , "renderGUI", this.onRenderGUI, this );
-}
-
-FXGraphComponent.prototype.onRemovedFromScene = function(scene)
-{
-	LEvent.unbind( scene , "renderGUI", this.onRenderGUI, this );
-}
-
 FXGraphComponent.prototype.onAddedToScene = function( scene )
 {
 	if(!this._graph) //in case it wasnt connected
 		return;
 	this._graph._scene = scene;
-	LEvent.bind( scene, "beforeRender", this.onBeforeRender, this );
-	LEvent.bind( scene, "enableFrameContext", this.onEnableContext, this );
-	LEvent.bind( scene, "showFrameContext", this.onAfterRender, this );
+	LEvent.bind( scene, LS.EVENT.BEFORE_RENDER, this.onBeforeRender, this );
+	LEvent.bind( scene, LS.EVENT.ENABLE_FRAME_CONTEXT, this.onEnableContext, this );
+	LEvent.bind( scene, LS.EVENT.SHOW_FRAME_CONTEXT, this.onAfterRender, this );
+	LEvent.bind( scene , LS.EVENT.RENDER_GUI, this.onRenderGUI, this );
 }
 
 FXGraphComponent.prototype.onRemovedFromScene = function( scene )
@@ -45549,9 +45556,10 @@ FXGraphComponent.prototype.onRemovedFromScene = function( scene )
 	if(!this._graph) //in case it wasnt connected
 		return;
 	this._graph._scene = null;
-	LEvent.unbind( scene, "beforeRender", this.onBeforeRender, this );
-	LEvent.unbind( scene, "enableFrameContext", this.onEnableContext, this );
-	LEvent.unbind( scene, "showFrameContext", this.onAfterRender, this );
+	LEvent.unbind( scene, LS.EVENT.BEFORE_RENDER, this.onBeforeRender, this );
+	LEvent.unbind( scene, LS.EVENT.ENABLE_FRAME_CONTEXT, this.onEnableContext, this );
+	LEvent.unbind( scene, LS.EVENT.SHOW_FRAME_CONTEXT, this.onAfterRender, this );
+	LEvent.unbind( scene, LS.EVENT.RENDER_GUI, this.onRenderGUI, this );
 
 	LS.ResourcesManager.unregisterResource( ":color_" + this.uid );
 	LS.ResourcesManager.unregisterResource( ":depth_" + this.uid );
@@ -53501,6 +53509,10 @@ if( !LS.Shaders.getShaderBlock("applyIrradiance") )
 * @constructor
 * @param {Object} options settings for the webgl context creation
 */
+
+EVENT.RENDER_LOADING = "render_loading";
+EVENT.FILEDROP = "fileDrop";
+
 function Player(options)
 {
 	options = options || {};
@@ -53933,7 +53945,7 @@ Player.prototype.enableLoadingBar = function()
 
 Player.prototype._onfiledrop = function( file, evt )
 {
-	return LEvent.trigger( LS.GlobalScene, "fileDrop", { file: file, event: evt } );
+	return LEvent.trigger( LS.GlobalScene, LS.EVENT.FILEDROP, { file: file, event: evt } );
 }
 
 Player.prototype.showPlayDialog = function()
@@ -53980,7 +53992,7 @@ Player.prototype._ondraw = function( force )
 	if(this.loading && this.loading.visible )
 	{
 		this.renderLoadingBar( this.loading );
-		LEvent.trigger( this.scene, "render_loading" );
+		LEvent.trigger( this.scene, LS.EVENT.RENDER_LOADING );
 		if(this.onDrawLoading)
 			this.onDrawLoading();
 	}

@@ -204,9 +204,15 @@
 
     min-width: 400px;
     min-height: 200px;
-    box-shadow: 0 0 4px black;
+	box-shadow: 0 0 4px #111;
+    border-radius: 6px;
+}
 
-	border-radius: 4px;
+.litegraph-editor .dialog.settings {
+	left: 10px;
+	top: 10px;
+	height: calc( 100% - 20px );
+	margin: auto;
 }
 
 .litegraph-editor .dialog .close {
@@ -217,14 +223,17 @@
 	font-size: 1.4em;
 }
 
-.litegraph-editor .dialog .dialog-header {
-	border: 1px solid black;
+.litegraph-editor .dialog .close:hover {
+	color: white;
 }
 
-.litegraph-editor .dialog .dialog-header,
-.litegraph-editor .dialog .dialog-footer {
-    height: 40px;
+.litegraph-editor .dialog .dialog-header {
+	color: #AAA;
+	border-bottom: 1px solid #161616;
 }
+
+.litegraph-editor .dialog .dialog-header { height: 40px; }
+.litegraph-editor .dialog .dialog-footer { height: 50px; padding: 10px; border-top: 1px solid #1a1a1a;}
 
 .litegraph-editor .dialog .dialog-header .dialog-title {
     font: 20px "Arial";
@@ -234,27 +243,47 @@
 }
 
 .litegraph-editor .dialog .dialog-content {
-    height: calc(100% - 40px);
+    height: calc(100% - 90px);
     width: calc(100% - 10px);
     /*background-color: black;*/
-    margin: 4px;
+    padding: 4px;
     display: inline-block;
+	color: #AAA;
+}
+
+.litegraph-editor .dialog .node_type {
+	font-size: 1.2em;
+	display: block;
+	margin: 10px;
+}
+
+.litegraph-editor .dialog .node_desc {
+	opacity: 0.5;
+	display: block;
+	margin: 10px;
+}
+
+.litegraph-editor .dialog .separator {
+	display: block;
+	width: calc( 100% - 4px );
+	height: 1px;
+	border-top: 1px solid #000;
+	border-bottom: 1px solid #333;
+	margin: 10px 2px;
+	padding: 0;
 }
 
 .litegraph-editor .dialog .property {
-	font-size: 1.4em;
-	background-color: #333;
 	margin-bottom: 2px;
 	padding: 0;
 }
 
 .litegraph-editor .dialog .property_name {
+	color: #737373;
     display: inline-block;
     text-align: left;
+    vertical-align: top;
     width: 120px;
-    height: 1.2em;
-    background-color: #444;
-	padding: 2px;
 	padding-left: 4px;
 	overflow: hidden;
 }
@@ -262,14 +291,38 @@
 .litegraph-editor .dialog .property_value {
     display: inline-block;
     text-align: right;
-    background-color: #111;
+	color: #AAA;
+	background-color: #1A1A1A;
     width: calc( 100% - 122px );
-    height: 1.2em;
-	padding: 2px;
-    padding-right: 10px;
+    padding: 4px;
+	padding-right: 12px;
 	overflow: hidden;
 	cursor: pointer;
+	border-radius: 3px;
 }
+
+.litegraph-editor .dialog .property_value:hover {
+	color: white;
+}
+
+.litegraph-editor .dialog button {
+	border-radius: 4px;
+    padding: 4px 20px;
+    margin-left: 0px;
+    background-color: #060606;
+    color: #8e8e8e;
+}
+
+.litegraph-editor .dialog button:hover {
+    background-color: #111;
+    color: #FFF;
+}
+
+.litegraph-editor .dialog button.delete:hover {
+    background-color: #F33;
+    color: black;
+}
+
 
 .litegraph-editor textarea.code, .litegraph-editor div.code {
 	height: 100%;

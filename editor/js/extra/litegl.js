@@ -7372,6 +7372,7 @@ function FBO( textures, depth_texture, stencil, gl )
 	//save state
 	this._old_fbo_handler = null;
 	this._old_viewport = new Float32Array(4);
+	this.order = null;
 }
 
 GL.FBO = FBO;
@@ -7616,7 +7617,7 @@ FBO.prototype.update = function( skip_disable )
 }
 
 /**
-* Enables this FBO (from now on all the render will be stored in the textures attached to this FBO
+* Enables this FBO (from now on all the render will be stored in the textures attached to this FBO)
 * It stores the previous viewport to restore it afterwards, and changes it to full FBO size
 * @method bind
 * @param {boolean} keep_old keeps the previous FBO is one was attached to restore it afterwards
@@ -7642,6 +7643,7 @@ FBO.prototype.bind = function( keep_old )
 		this.depth_texture._in_current_fbo = true;
 
 	gl.viewport( 0,0, this.width, this.height );
+	FBO.current = this;
 }
 
 /**
@@ -7660,6 +7662,7 @@ FBO.prototype.unbind = function()
 		this.color_textures[i]._in_current_fbo = false;
 	if(this.depth_texture)
 		this.depth_texture._in_current_fbo = false;
+	FBO.current = null;
 }
 
 //binds another FBO without switch back to previous (faster)
@@ -7682,6 +7685,8 @@ FBO.prototype.switchTo = function( next_fbo )
 		next_fbo.color_textures[i]._in_current_fbo = true;
 	if(next_fbo.depth_texture)
 		next_fbo.depth_texture._in_current_fbo = true;
+
+	FBO.current = next_fbo;
 }
 
 FBO.prototype.delete = function()
@@ -7712,6 +7717,50 @@ FBO.testSupport = function( type, format ) {
 	return true;
 }
 
+FBO.prototype.toSingle = function()
+{
+	if( this.color_textures.length < 2 )
+		return; //nothing to do
+	var ext = gl.extensions.WEBGL_draw_buffers;
+	if( ext )
+		ext.drawBuffersWEBGL( [ this.order[0] ] );
+	else
+		gl.drawBuffers( [ this.order[0] ] );
+}
+
+FBO.prototype.toMulti = function()
+{
+	if( this.color_textures.length < 2 )
+		return; //nothing to do
+	var ext = gl.extensions.WEBGL_draw_buffers;
+	if( ext )
+		ext.drawBuffersWEBGL( this.order );
+	else
+		gl.drawBuffers( this.order );
+}
+
+//clears only the secondary buffers (not the main one)
+FBO.prototype.clearSecondary = function( color )
+{
+	if(!this.order || this.order.length < 2)
+		return;
+
+	var ext = gl.extensions.WEBGL_draw_buffers;
+	var new_order = [gl.NONE];
+	for(var i = 1; i < this.order.length; ++i)
+		new_order.push(this.order[i]);
+	if(ext)
+		ext.drawBuffersWEBGL( new_order );
+	else
+		gl.drawBuffers( new_order );
+	gl.clearColor( color[0],color[1],color[2],color[3] );
+	gl.clear( gl.COLOR_BUFFER_BIT );
+
+	if(ext)
+		ext.drawBuffersWEBGL( this.order );
+	else
+		gl.drawBuffers( this.order );
+}
 
 
 /**

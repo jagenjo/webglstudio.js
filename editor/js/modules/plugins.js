@@ -49,6 +49,7 @@ var PluginsModule = {
 		//assign preferences?
 	},
 
+	//called on startup
 	loadPlugins: function()
 	{
 		var plugins = this.preferences.plugins.list;
@@ -73,6 +74,7 @@ var PluginsModule = {
 		return null;
 	},
 
+	//loads one single plugin
 	loadPlugin: function( url, on_complete, on_error )
 	{
 		//fetch plugin code

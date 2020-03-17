@@ -305,6 +305,10 @@
 	color: white;
 }
 
+.litegraph-editor .dialog .property.boolean .property_value {
+	padding-right: 30px;
+}
+
 .litegraph-editor .dialog button {
 	border-radius: 4px;
     padding: 4px 20px;

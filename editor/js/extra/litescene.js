@@ -954,6 +954,9 @@ var LS = {
 	*/
 	registerComponent: function( component, old_classname ) { 
 
+		//to know from what file does it come from
+		//console.log( document.currentScript.src );
+
 		//allows to register several at the same time
 		var name = LS.getClassName( component );
 
@@ -2589,7 +2592,7 @@ var Network = {
 			var script = document.createElement('script');
 			script.num = i;
 			script.type = 'text/javascript';
-			script.src = url[i];
+			script.src = url[i] + "?" + LS.RM.getNoCache(true);
 			script.async = false;
 			//if( script.src.substr(0,5) == "blob:") //local scripts could contain utf-8
 				script.charset = "UTF-8";
@@ -14983,7 +14986,21 @@ Scene.prototype.sendResourceRenamedEvent = function( old_name, new_name, resourc
 		{
 			var component = node._components[j];
 			if(component.onResourceRenamed)
-				component.onResourceRenamed( old_name, new_name, resource )
+				component.onResourceRenamed( old_name, new_name, resource );
+			else //automatic
+			{
+				for(var k in component)
+				{
+					if(component[k] != old_name )
+						continue;
+					var propinfo = component.constructor["@" + k];
+					if(!propinfo)
+						continue;
+					var type = propinfo.type || propinfo.widget;
+					if(type || type == LS.TYPES.RESOURCE || LS.ResourceClasses[ type ]) //is a resource
+						component[k] = new_name;
+				}
+			}
 		}
 
 		//materials
@@ -15077,6 +15094,9 @@ function SceneNode( name )
 	this._children = null;
 	this._in_tree = null;
 	this._instances = []; //render instances
+
+	//bounding box in world space
+	//this._aabb = BBox.create();
 
 	//flags
 	this.flags = {
@@ -15775,8 +15795,26 @@ SceneNode.prototype.getResources = function( res, include_children )
 {
 	//resources in components
 	for(var i in this._components)
-		if( this._components[i].getResources )
-			this._components[i].getResources( res );
+	{
+		var comp = this._components[i];
+		if( comp.getResources )
+			comp.getResources( res );
+		else
+		{
+			//automatic
+			for(var j in comp)
+			{
+				if(!comp[j] || comp[j].constructor === Function)
+					continue;
+				var propinfo = comp.constructor["@" + j];
+				if(!propinfo)
+					continue;
+				var type = propinfo.type || propinfo.widget;
+				if(type || type == LS.TYPES.RESOURCE || LS.ResourceClasses[ type ]) //is a resource
+					res[ comp[j] ] = LS.ResourceClasses[ type ];
+			}
+		}
+	}
 
 	//res in material
 	if(this.material)
@@ -20360,7 +20398,7 @@ GraphCode.prototype.getShaderCode = function( as_string, template )
 	if(!this._shader_code)
 		this._shader_code = new LS.ShaderCode();
 
-	var output_node = this._graph.findNodesByClass("shader/output");
+	var output_node = this._graph.findNodesByClass("shader/output")[0];
 	if(!output_node)
 		return null;
 
@@ -20645,7 +20683,10 @@ if(typeof(LiteGraph) != "undefined")
 		//instancing
 		var instances = this.getInputData(3);
 		if(instances)
-			this._RI.instanced_models = instances;
+		{
+			//if(model == LS.IDENTITY) //if not multiply all by model?
+				this._RI.instanced_models = instances;
+		}
 		else
 			this._RI.instanced_models = null;
 		this._RI.use_bounding = !instances;
@@ -20808,6 +20849,7 @@ if(typeof(LiteGraph) != "undefined")
 		if(this.inputs && this.inputs[0])
 			node_id = this.getInputData(0);
 
+		//hardcoded node
 		if( node_id && node_id.constructor === LS.SceneNode )
 		{
 			if(this._node != node_id)
@@ -20822,7 +20864,7 @@ if(typeof(LiteGraph) != "undefined")
 		if(	!node_id && this.properties.node_id )
 			node_id = this.properties.node_id;
 
-		if( node_id == "@" )
+		if( node_id == "@" || !node_id )
 		{
 			if( this.graph._scenenode )
 				return this.graph._scenenode;
@@ -30597,6 +30639,7 @@ var Renderer = {
 
 		//set as the current camera
 		this._current_camera = camera;
+		LS.Camera.current = camera;
 
 		//Draw allows to render debug info easily
 		if(LS.Draw)
@@ -32041,6 +32084,9 @@ DebugRender.prototype.renderGrid = function()
 	else
 	{
 		//texture grid
+		gl.enable( gl.POLYGON_OFFSET_FILL );
+		gl.depthFunc( gl.LEQUAL );
+		gl.polygonOffset(1,-100.0);
 		gl.enable(gl.BLEND);
 		this.grid_texture.bind(0);
 		gl.depthMask( false );
@@ -32049,6 +32095,9 @@ DebugRender.prototype.renderGrid = function()
 		LS.Draw.scale( 10000, 10000, 10000 );
 		LS.Draw.renderMesh( this.plane_mesh, gl.TRIANGLES, settings.grid_plane == "xy" ? this.grid_shader_xy : (settings.grid_plane == "yz" ? this.grid_shader_yz : this.grid_shader) );
 		gl.depthMask( true );
+		gl.depthFunc( gl.LESS );
+		gl.disable( gl.POLYGON_OFFSET_FILL );
+		gl.polygonOffset(0,0);
 	}
 
 	LS.Draw.pop();
@@ -32134,7 +32183,7 @@ DebugRender.prototype.renderPaths = function( scene )
 DebugRender.prototype.createMeshes = function()
 {
 	//plane
-	this.plane_mesh = GL.Mesh.plane({xz:true});
+	this.plane_mesh = GL.Mesh.plane({xz:true, detail: 10});
 
 	//grid
 	var dist = 10;
@@ -36592,6 +36641,9 @@ function Camera(o)
 
 Camera.icon = "mini-icon-camera.png";
 
+Camera.main = null; //to store the main camera of the scene
+Camera.current = null; //to store the current camera
+
 Camera.PERSPECTIVE = 1;
 Camera.ORTHOGRAPHIC = 2; //orthographic adapted to aspect ratio of viewport
 Camera.ORTHO2D = 3; //orthographic with manually defined left,right,top,bottom
@@ -37068,11 +37120,20 @@ Camera.prototype.onRemovedFromNode = function(node)
 
 Camera.prototype.onAddedToScene = function(scene)
 {
+	if(!LS.Camera.main)
+		LS.Camera.main = this;
 	LEvent.bind( scene, "collectCameras", this.onCollectCameras, this ); //here because we store them in node
 }
 
 Camera.prototype.onRemovedFromScene = function(scene)
 {
+	if(LS.Camera.main == this)
+	{
+		var cams = scene.root.findComponents("Camera");
+		if(cams && cams.length)
+			LS.Camera.main = cams[0];
+	}
+
 	LEvent.unbind( scene, "collectCameras", this.onCollectCameras, this );
 
 	if(this._frame) //free memory
@@ -44696,7 +44757,7 @@ Object.defineProperty( GlobalInfo.prototype, 'render_settings', {
 	enumerable: true
 });
 
-
+//called when updating the coefficients from the editor
 GlobalInfo.prototype.computeIrradiance = function( position, near, far, background_color )
 {
 	if(!LS.Components.IrradianceCache)
@@ -44735,7 +44796,7 @@ GlobalInfo.prototype.onRemovedFromScene = function(scene)
 
 GlobalInfo.prototype.fillSceneUniforms = function()
 {
-	if(this.irradiance && 0)
+	if(this.irradiance && 1)
 	{
 		if(!this._irradiance_final)
 			this._irradiance_final = new Float32Array( this.irradiance.length );

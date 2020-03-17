@@ -200,6 +200,20 @@
         },
 
         /**
+         * removes a node type from the system
+         * @method unregisterNodeType
+         * @param {String|Object} type name of the node or the node constructor itself
+         */
+        unregisterNodeType: function(type) {
+			var base_class = type.constructor === String ? this.registered_node_types[type] : type;
+			if(!base_class)
+				throw("node type not found: " + type );
+			delete this.registered_node_types[base_class.type];
+			if(base_class.constructor.name)
+				delete this.Nodes[base_class.constructor.name];
+		},
+
+        /**
          * Create a new nodetype by passing a function, it wraps it with a proper class and generates inputs according to the parameters of the function.
          * Useful to wrap simple methods that do not require properties, and that only process some input to generate an output.
          * @method wrapFunctionAsNode
@@ -8397,14 +8411,18 @@ LGraphNode.prototype.executeAction = function(action)
                                     w.value = w.options.max;
                                 }
                             } else if (delta) { //used for combos 
-                                var index = values.indexOf(w.value) + delta;
+								var values_list = values.constructor === Array ? values : Object.keys(values);
+                                var index = values_list.indexOf(w.value) + delta;
                                 if (index >= values.length) {
                                     index = 0;
                                 }
                                 if (index < 0) {
-                                    index = values.length - 1;
+                                    index = values_list.length - 1;
                                 }
-                                w.value = values[index];
+								if( values.constructor === Array )
+	                                w.value = values[index];
+								else
+	                                w.value = values[ values_list[index] ];
                             } else { //combo
                                 var menu = new LiteGraph.ContextMenu(values,{
                                         scale: Math.max(1, this.ds.scale),
@@ -21602,8 +21620,9 @@ void main(void){\n\
 
 	LGraphPoints3D.OBJECT = 20;
 	LGraphPoints3D.OBJECT_UNIFORMLY = 21;
+	LGraphPoints3D.OBJECT_INSIDE = 22;
 
-	LGraphPoints3D.MODE_VALUES = { "rectangle":LGraphPoints3D.RECTANGLE, "circle":LGraphPoints3D.CIRCLE, "cube":LGraphPoints3D.CUBE, "sphere":LGraphPoints3D.SPHERE, "hemisphere":LGraphPoints3D.HEMISPHERE, "inside_sphere":LGraphPoints3D.INSIDE_SPHERE, "object":LGraphPoints3D.OBJECT, "object_uniformly":LGraphPoints3D.OBJECT_UNIFORMLY };
+	LGraphPoints3D.MODE_VALUES = { "rectangle":LGraphPoints3D.RECTANGLE, "circle":LGraphPoints3D.CIRCLE, "cube":LGraphPoints3D.CUBE, "sphere":LGraphPoints3D.SPHERE, "hemisphere":LGraphPoints3D.HEMISPHERE, "inside_sphere":LGraphPoints3D.INSIDE_SPHERE, "object":LGraphPoints3D.OBJECT, "object_uniformly":LGraphPoints3D.OBJECT_UNIFORMLY, "object_inside":LGraphPoints3D.OBJECT_INSIDE };
 
 	LGraphPoints3D.widgets_info = {
 		mode: { widget: "combo", values: LGraphPoints3D.MODE_VALUES }
@@ -21701,7 +21720,7 @@ void main(void){\n\
 				if(normals)
 				{
 					for(var i = 0; i < normals.length; i+=3)
-						normals.set(i, UP);
+						normals.set(UP, i);
 				}
 			}
 			else if( mode == LGraphPoints3D.SPHERE)
@@ -21732,7 +21751,7 @@ void main(void){\n\
 				if(normals)
 				{
 					for(var i = 0; i < normals.length; i+=3)
-						normals.set(i, UP);
+						normals.set(UP, i);
 				}
 			}
 		}
@@ -21749,7 +21768,7 @@ void main(void){\n\
 				if(normals)
 				{
 					for(var i = 0; i < normals.length; i+=3)
-						normals.set(i, UP);
+						normals.set(UP, i);
 				}
 			}
 			else if( mode == LGraphPoints3D.CUBE)
@@ -21763,7 +21782,7 @@ void main(void){\n\
 				if(normals)
 				{
 					for(var i = 0; i < normals.length; i+=3)
-						normals.set(i, UP);
+						normals.set(UP, i);
 				}
 			}
 			else if( mode == LGraphPoints3D.SPHERE)
@@ -21797,6 +21816,12 @@ void main(void){\n\
 			else if( mode == LGraphPoints3D.OBJECT_UNIFORMLY)
 			{
 				LGraphPoints3D.generateFromObject( points, normals, size, obj, true );
+			}
+			else if( mode == LGraphPoints3D.OBJECT_INSIDE)
+			{
+				LGraphPoints3D.generateFromInsideObject( points, size, obj );
+				//if(normals)
+				//	LGraphPoints3D.generateSphericalNormals( points, normals );
 			}
 			else
 				console.warn("wrong mode in LGraphPoints3D");
@@ -22003,6 +22028,36 @@ void main(void){\n\
 		}
 	}
 
+	LGraphPoints3D.generateFromInsideObject = function( points, size, mesh )
+	{
+		if(!mesh || mesh.constructor !== GL.Mesh)
+			return;
+
+		var aabb = mesh.getBoundingBox();
+		if(!mesh.octree)
+			mesh.octree = new GL.Octree( mesh );
+		var octree = mesh.octree;
+		var origin = vec3.create();
+		var direction = vec3.fromValues(1,0,0);
+		var temp = vec3.create();
+		var i = 0;
+		var tries = 0;
+		while(i < size && tries < points.length * 10) //limit to avoid problems
+		{
+			tries += 1
+			var r = vec3.random(temp); //random point inside the aabb
+			r[0] = (r[0] * 2 - 1) * aabb[3] + aabb[0];
+			r[1] = (r[1] * 2 - 1) * aabb[4] + aabb[1];
+			r[2] = (r[2] * 2 - 1) * aabb[5] + aabb[2];
+			origin.set(r);
+			var hit = octree.testRay( origin, direction, 0, 10000, true, GL.Octree.ALL );
+			if(!hit || hit.length % 2 == 0) //not inside
+				continue;
+			points.set( r, i );
+			i+=3;
+		}
+	}
+
 	LiteGraph.registerNodeType( "geometry/points3D", LGraphPoints3D );
 
 
@@ -22011,11 +22066,13 @@ void main(void){\n\
 		this.addInput("points", "geometry");
 		this.addOutput("instances", "[mat4]");
 		this.properties = {
-			mode: 1
+			mode: 1,
+			autoupdate: true
 		};
 
 		this.must_update = true;
 		this.matrices = [];
+		this.first_time = true;
 	}
 
 	LGraphPointsToInstances.NORMAL = 0;
@@ -22043,8 +22100,13 @@ void main(void){\n\
 		if( !this.isOutputConnected(0) )
 			return;
 
-		if( geo._version != this._version || geo._id != this._geometry_id )
+		var has_changed = (geo._version != this._version || geo._id != this._geometry_id);
+
+		if( has_changed && this.properties.autoupdate || this.first_time )
+		{
+			this.first_time = false;
 			this.updateInstances( geo );
+		}
 
 		this.setOutputData( 0, this.matrices );
 	}
@@ -22148,7 +22210,8 @@ void main(void){\n\
 		this.geometry = {
 			type: "triangles",
 			vertices: null,
-			_id: generateGeometryId()
+			_id: generateGeometryId(),
+			_version: 0
 		};
 
 		this._last_geometry_id = -1;
@@ -22267,7 +22330,7 @@ void main(void){\n\
 		this.addInput("sides", "number");
 		this.addInput("radius", "number");
 		this.addOutput("out", "geometry");
-		this.properties = { sides: 6, radius: 1 }
+		this.properties = { sides: 6, radius: 1, uvs: false }
 
 		this.geometry = {
 			type: "line_loop",
@@ -22305,6 +22368,13 @@ void main(void){\n\
 		if( !vertices || vertices.length != num )
 			vertices = this.geometry.vertices = new Float32Array( 3*sides );
 		var delta = (Math.PI * 2) / sides;
+		var gen_uvs = this.properties.uvs;
+		if(gen_uvs)
+		{
+			uvs = this.geometry.coords = new Float32Array( 3*sides );
+		}
+
+
 		for(var i = 0; i < sides; ++i)
 		{
 			var angle = delta * -i;
@@ -22314,6 +22384,12 @@ void main(void){\n\
 			vertices[i*3] = x;
 			vertices[i*3+1] = y;
 			vertices[i*3+2] = z;
+
+			if(gen_uvs)
+			{
+				
+
+			}
 		}
 		this.geometry._id = ++this.geometry_id;
 		this.geometry._version = ++this.version;
@@ -24819,6 +24895,8 @@ function LGraphGeometryDisplace() {
         new MIDIInterface(function(midi) {
             that._midi = midi;
         });
+
+		this.addWidget("combo","Device",this.properties.port,{ property: "port", values: this.getMIDIOutputs.bind(this) });
     }
 
     LGMIDIOut.MIDIInterface = MIDIInterface;
@@ -24827,21 +24905,27 @@ function LGraphGeometryDisplace() {
     LGMIDIOut.desc = "Sends MIDI to output channel";
     LGMIDIOut.color = MIDI_COLOR;
 
-    LGMIDIOut.prototype.getPropertyInfo = function(name) {
+    LGMIDIOut.prototype.onGetPropertyInfo = function(name) {
         if (!this._midi) {
             return;
         }
 
         if (name == "port") {
-            var values = {};
-            for (var i = 0; i < this._midi.output_ports.size; ++i) {
-                var output = this._midi.output_ports.get(i);
-                values[i] =
-                    i + ".- " + output.name + " version:" + output.version;
-            }
+			var values = this.getMIDIOutputs();
             return { type: "enum", values: values };
         }
     };
+
+	LGMIDIOut.prototype.getMIDIOutputs = function()
+	{
+		var values = {};
+		for (var i = 0; i < this._midi.output_ports.size; ++i) {
+			var output = this._midi.output_ports.get(i);
+			if(output)
+				values[i] = i + ".- " + output.name + " version:" + output.version;
+		}
+		return values;
+	}
 
     LGMIDIOut.prototype.onAction = function(event, midi_event) {
         //console.log(midi_event);
@@ -24863,6 +24947,7 @@ function LGraphGeometryDisplace() {
     };
 
     LiteGraph.registerNodeType("midi/output", LGMIDIOut);
+
 
     function LGMIDIShow() {
         this.addInput("on_midi", LiteGraph.EVENT);

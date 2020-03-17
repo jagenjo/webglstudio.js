@@ -8413,7 +8413,14 @@ Shader.prototype.drawInstanced = function( mesh, primitive, indices, instanced_u
 		length = buffer.buffer.length / buffer.buffer.spacing;
 	}
 
-	var indexBuffer = indices ? mesh.getIndexBuffer( indices ) : null;
+	var indexBuffer = null;
+	if( indices )
+	{
+		if( indices.constructor === String) 
+			indexBuffer = mesh.getIndexBuffer( indices );
+		else if( indices.constructor === GL.Buffer )
+			indexBuffer = indices;
+	}
 
 	//range rendering
 	var offset = 0; //in bytes
@@ -11822,6 +11829,11 @@ Octree.MAX_OCTREE_DEPTH = 8;
 Octree.OCTREE_MARGIN_RATIO = 0.01;
 Octree.OCTREE_MIN_MARGIN = 0.1;
 
+//mode
+Octree.NEAREST = 0; //returns the nearest collision
+Octree.FIRST = 1; //returns the first collision
+Octree.ALL = 2;  //returns the all collisions
+
 var octree_tested_boxes = 0;
 var octree_tested_triangles = 0;
 
@@ -12018,6 +12030,8 @@ Octree.prototype.trim = function(node)
 * @param {vec3} direction ray direction position
 * @param {number} dist_min
 * @param {number} dist_max
+* @param {number} test_backfaces if rays colliding with the back face must be considered a valid collision
+* @param {number} mode which mode to use (Octree.NEAREST: nearest collision to origin, Octree.FIRST: first collision detected (fastest), Octree.ALL: all collision (slowest)
 * @return {HitTest} object containing pos and normal
 */
 Octree.prototype.testRay = (function(){ 
@@ -12026,10 +12040,11 @@ Octree.prototype.testRay = (function(){
 	var min_temp = vec3.create();
 	var max_temp = vec3.create();
 
-	return function(origin, direction, dist_min, dist_max, test_backfaces )
+	return function(origin, direction, dist_min, dist_max, test_backfaces, mode )
 	{
 		octree_tested_boxes = 0;
 		octree_tested_triangles = 0;
+		mode = mode || Octree.NEAREST;
 
 		if(!this.root)
 		{
@@ -12045,18 +12060,99 @@ Octree.prototype.testRay = (function(){
 		if(!test) //no collision with mesh bounding box
 			return null;
 
-		var test = Octree.testRayInNode( this.root, origin_temp, direction_temp, test_backfaces );
-		if(test != null)
-		{
-			var pos = vec3.scale( vec3.create(), direction, test.t );
-			vec3.add( pos, pos, origin );
-			test.pos = pos;
-			return test;
-		}
+		var test = Octree.testRayInNode( this.root, origin_temp, direction_temp, test_backfaces, mode );
+		if(test == null )
+			return null;
 
-		return null;
+		if(mode == Octree.ALL)
+			return test;
+
+		var pos = vec3.scale( vec3.create(), direction, test.t );
+		vec3.add( pos, pos, origin );
+		test.pos = pos;
+		return test;
 	}
 })();
+
+//tests collisions with a node of the octree and its children
+//WARNING: cannot use static here, it uses recursion
+Octree.testRayInNode = function( node, origin, direction, test_backfaces, mode )
+{
+	var test = null;
+	var prev_test = null;
+	octree_tested_boxes += 1;
+
+	//test faces
+	if(node.faces)
+		for(var i = 0, l = node.faces.length; i < l; ++i)
+		{
+			var face = node.faces[i];
+			octree_tested_triangles += 1;
+			test = Octree.hitTestTriangle( origin, direction, face.subarray(0,3) , face.subarray(3,6), face.subarray(6,9), test_backfaces );
+			if (test == null)
+				continue;
+			if(mode == Octree.FIRST)
+				return test;
+			if(mode == Octree.ALL)
+			{
+				if(!prev_test)
+					prev_test = [];
+				prev_test.push(test);
+			}
+			else { //find closer
+				test.face = face;
+				if(prev_test)
+					prev_test.mergeWith( test );
+				else
+					prev_test = test;
+			}
+		}
+
+	//WARNING: cannot use statics here, this function uses recursion
+	var child_min = vec3.create();
+	var child_max = vec3.create();
+
+	//test children nodes faces
+	var child;
+	if(node.c)
+		for(var i = 0; i < node.c.length; ++i)
+		{
+			child = node.c[i];
+			child_min.set( child.min );
+			child_max.set( child.max );
+
+			//test with node box
+			test = Octree.hitTestBox( origin, direction, child_min, child_max );
+			if( test == null )
+				continue;
+
+			//nodebox behind current collision, then ignore node
+			if(mode != Octree.ALL && prev_test && test.t > prev_test.t)
+				continue;
+
+			//test collision with node
+			test = Octree.testRayInNode( child, origin, direction, test_backfaces, mode );
+			if(test == null)
+				continue;
+			if(mode == Octree.FIRST)
+				return test;
+
+			if(mode == Octree.ALL)
+			{
+				if(!prev_test)
+					prev_test = [];
+				prev_test.push(test);
+			}
+			else {
+				if(prev_test)
+					prev_test.mergeWith( test );
+				else
+					prev_test = test;
+			}
+		}
+
+	return prev_test;
+}
 
 /**
 * test collision between sphere and the triangles in the octree (only test if there is any vertex inside the sphere)
@@ -12081,65 +12177,6 @@ Octree.prototype.testSphere = function( origin, radius )
 		return false; //out of the box
 
 	return Octree.testSphereInNode( this.root, origin, rr );
-}
-
-//WARNING: cannot use static here, it uses recursion
-Octree.testRayInNode = function( node, origin, direction, test_backfaces )
-{
-	var test = null;
-	var prev_test = null;
-	octree_tested_boxes += 1;
-
-	//test faces
-	if(node.faces)
-		for(var i = 0, l = node.faces.length; i < l; ++i)
-		{
-			var face = node.faces[i];
-			octree_tested_triangles += 1;
-			test = Octree.hitTestTriangle( origin, direction, face.subarray(0,3) , face.subarray(3,6), face.subarray(6,9), test_backfaces );
-			if (test==null)
-				continue;
-			test.face = face;
-			if(prev_test)
-				prev_test.mergeWith( test );
-			else
-				prev_test = test;
-		}
-
-	//WARNING: cannot use statics here, this function uses recursion
-	var child_min = vec3.create();
-	var child_max = vec3.create();
-
-	//test children nodes faces
-	var child;
-	if(node.c)
-		for(var i = 0; i < node.c.length; ++i)
-		{
-			child = node.c[i];
-			child_min.set( child.min );
-			child_max.set( child.max );
-
-			//test with node box
-			test = Octree.hitTestBox( origin, direction, child_min, child_max );
-			if( test == null )
-				continue;
-
-			//nodebox behind current collision, then ignore node
-			if(prev_test && test.t > prev_test.t)
-				continue;
-
-			//test collision with node
-			test = Octree.testRayInNode( child, origin, direction, test_backfaces );
-			if(test == null)
-				continue;
-
-			if(prev_test)
-				prev_test.mergeWith( test );
-			else
-				prev_test = test;
-		}
-
-	return prev_test;
 }
 
 //WARNING: cannot use static here, it uses recursion

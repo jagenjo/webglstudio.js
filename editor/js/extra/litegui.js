@@ -7447,7 +7447,7 @@ Inspector.prototype.inspectInstance = function( instance, properties, properties
 					case String: properties_info[i] = { type: "string" }; break;
 					case Boolean: properties_info[i] = { type: "boolean" }; break;
 					default:
-						if( v && v.length )
+						if( v && (v.constructor === Array || v.constructor.BYTES_PER_ELEMENT) ) //Array or typed_array
 						{
 							var is_number = v[0] != null && v[0].constructor === Number;
 							switch(v.length)

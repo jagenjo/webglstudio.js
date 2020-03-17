@@ -52,8 +52,8 @@ function SceneTreeWidget( options )
 	this.max_visible_items = 1;
 
 	this.filter_layers = 0xFF;
+	this.filter_components = "";
 	this.filter_by_camera = false;
-	this.filter_by_distance = false;
 
 	this.canvas = document.createElement("canvas");
 	this.canvas.width = 100;
@@ -124,6 +124,9 @@ SceneTreeWidget.prototype.onDraw = function()
 	var visible_nodes = this.visible_nodes;
 	visible_nodes.length = 0;
 	var filter_layers = this.filter_layers;
+	var filter_components = this.filter_components;
+	var filter_by_camera = this.filter_by_camera;
+	var camera = LS.Renderer._current_camera;
 
 	var selected_node = SelectionModule.getSelectedNode();
 	this.prev_selected.clear();
@@ -157,6 +160,9 @@ SceneTreeWidget.prototype.onDraw = function()
 		var node = info[0];
 		if( !(node.layers & filter_layers) )
 			continue;
+		if( filter_components && node.findComponents(filter_components).length == 0 )
+			continue;
+		//if( filter_by_camera && 
 		var level = info[2];
 		var child_nodes = node._children;
 		var has_children = child_nodes && child_nodes.length;
@@ -370,6 +376,7 @@ SceneTreeWidget.prototype.processMouse = function(e)
 	this.mouse[1] = y;
 	var max_icons = Math.floor( (canvas.width * 0.4) / line_height );
 	var scroll_is_visible = this.scroll_items || this.num_items * line_height > canvas.height;
+	var scroll_width = 10;
 	var block = true;
 	var now = getTime();
 
@@ -383,7 +390,7 @@ SceneTreeWidget.prototype.processMouse = function(e)
 			this.dragging_scroll = false;
 
 			//scrollbar
-			if( x >= this.canvas.width - 10 )
+			if( scroll_is_visible && x >= this.canvas.width - scroll_width )
 			{
 				this.dragging_scroll = true;
 				var f = Math.clamp( y / this.canvas.height,0,1);
@@ -396,7 +403,7 @@ SceneTreeWidget.prototype.processMouse = function(e)
 					this.last_click_time = now;
 					var level = info[2];
 					var start_x = 30 + level * this.indent + this.scroll_x;
-					if( x > start_x + 10 )
+					if( x > start_x + 10 ) //node
 					{
 						this.dragging_node = node;
 						this.clicked_node = node;
@@ -467,6 +474,8 @@ SceneTreeWidget.prototype.processMouse = function(e)
 						//clicked a compo
 						var compo_index = Math.floor((x - left_offset) / line_height);
 						clicked_object = this.clicked_node._components[ compo_index ];
+						if(clicked_object._editor && clicked_object._editor.collapsed )
+							clicked_object._editor.collapsed = false;
 					}
 
 					if(e.shiftKey)
@@ -855,7 +864,8 @@ SceneTreeWidget.prototype.showOptionsDialog = function()
 	var that = this;
 	inspector.addTitle("Filters");
 	inspector.addLayers( "By Layers", this.filter_layers, { callback: function(v){ that.filter_layers = v; }});
-	//inspector.addCheckbox( "By Camera", this.filter_by_camera, { callback: function(v){ that.filter_by_camera = v; }});
+	inspector.addString( "By Component", this.filter_components, { callback: function(v){ that.filter_components = v; }});
+	inspector.addCheckbox( "By Camera", this.filter_by_camera, { callback: function(v){ that.filter_by_camera = v; }});
 	//inspector.addCheckbox( "By Distance", this.filter_by_distance, { callback: function(v){ that.filter_by_distance = v; }});
 	inspector.addButton( null, "Apply filter", { callback: function(v){ that.refresh(); }});
 

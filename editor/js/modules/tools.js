@@ -163,7 +163,7 @@ var ToolsModule = {
 		if(!RenderModule.frame_updated)
 			return;
 
-		if(!this._active_camera)
+		if(!this._active_camera || this._active_camera != LS.Renderer._current_camera)
 			return;
 		var camera = this._active_camera;
 		LS.Renderer.enableCamera( camera ); //sets viewport, update matrices and set Draw

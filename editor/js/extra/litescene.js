@@ -14997,7 +14997,7 @@ Scene.prototype.sendResourceRenamedEvent = function( old_name, new_name, resourc
 					if(!propinfo)
 						continue;
 					var type = propinfo.type || propinfo.widget;
-					if(type || type == LS.TYPES.RESOURCE || LS.ResourceClasses[ type ]) //is a resource
+					if(type && (type == LS.TYPES.RESOURCE || LS.ResourceClasses[ type ])) //is a resource
 						component[k] = new_name;
 				}
 			}
@@ -15804,13 +15804,13 @@ SceneNode.prototype.getResources = function( res, include_children )
 			//automatic
 			for(var j in comp)
 			{
-				if(!comp[j] || comp[j].constructor === Function)
+				if(!comp[j] || comp[j].constructor === Function || j[0] == "_")
 					continue;
 				var propinfo = comp.constructor["@" + j];
 				if(!propinfo)
 					continue;
 				var type = propinfo.type || propinfo.widget;
-				if(type || type == LS.TYPES.RESOURCE || LS.ResourceClasses[ type ]) //is a resource
+				if(type && (type == LS.TYPES.RESOURCE || LS.ResourceClasses[ type ]) ) //is a resource
 					res[ comp[j] ] = LS.ResourceClasses[ type ];
 			}
 		}
@@ -20625,7 +20625,7 @@ if(typeof(LiteGraph) != "undefined")
 			enabled: true,
 			primitive: GL.TRIANGLES,
 			use_node_transform: true,
-			use_node_material: true,
+			use_node_material: true
 		};
 	}
 
@@ -24605,7 +24605,7 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphCameraRay.prototype.onExecute = function()
 	{
-		var camera = this.getInputData(0) || LS.Renderer._current_camera;
+		var camera = this.getInputData(0) || LS.Renderer.getCurrentCamera();
 		var pos = this.getInputData(1);
 		if(!camera || camera.constructor != LS.Camera || !pos)
 			return;
@@ -24695,24 +24695,36 @@ if(typeof(LiteGraph) != "undefined")
 		this.addOutput("node","scenenode");
 		this.addOutput("pos","vec3");
 		this.addOutput("normal","vec3");
-		this.properties = { max_dist: 1000, layers: 0xFF };
+		this.properties = { max_dist: 1000, layers: 0xFF, mode: 0 };
 		this.options = {};
 	}
 
+	LGraphRayCollidersTest.COLLIDERS = 0;
+	LGraphRayCollidersTest.RENDERINSTANCES_BOUNDING = 1;
+	LGraphRayCollidersTest.RENDERINSTANCES_MESH = 2;
+
 	LGraphRayCollidersTest.title = "Ray-Colliders test";
 	LGraphRayCollidersTest["@layers"] = { widget:"layers" };
+	LGraphRayCollidersTest["@mode"] = { type:"enum", values: { "colliders": LGraphRayCollidersTest.COLLIDERS, "renderInstance_bounding": LGraphRayCollidersTest.RENDERINSTANCES_BOUNDING, "renderInstance_mesh": LGraphRayCollidersTest.RENDERINSTANCES_MESH } };
 
 	LGraphRayCollidersTest.prototype.onExecute = function()
 	{
 		var enabled = this.getInputData(0);
 		var ray = this.getInputData(1);
-		if(!enabled || !ray || ray.constructor != LS.Ray )
+		if(enabled === false || !ray || ray.constructor != LS.Ray )
 			return;
 		var options = this.options;
 		options.max_dist = this.properties.max_dist;
 		options.normal = this.isInputConnected(3);
 		options.layers = this.properties.layers;
-		var collisions = LS.Physics.raycast( ray.origin, ray.direction, options );
+		options.triangle_collision = this.properties.mode == LGraphRayCollidersTest.RENDERINSTANCES_MESH;
+			
+		var collisions = null;
+		if(this.properties.mode == LGraphRayCollidersTest.COLLIDERS)
+			collisions = LS.Physics.raycast( ray.origin, ray.direction, options );
+		else 
+			collisions = LS.Physics.raycastRenderInstances( ray.origin, ray.direction, options );
+
 		if( collisions && collisions.length )
 		{
 			var coll = collisions[0];
@@ -26257,7 +26269,7 @@ if(typeof(LiteGraph) != "undefined")
 		this.addInput("in","vec3"); //optional
 		this.addOutput("out","vec3");
 		this.properties = {
-			world_space: true,
+			world_space: true
 		};
 		this.addWidget("toggle","world space",true,"world_space");
 	}
@@ -30409,7 +30421,7 @@ var Renderer = {
 		this.processVisibleData( scene, render_settings, cameras );
 
 		//Define the main camera, the camera that should be the most important (used for LOD info, or shadowmaps)
-		cameras = cameras && cameras.length ? cameras : this._visible_cameras;
+		cameras = cameras && cameras.length ? cameras : scene._cameras;//this._visible_cameras;
 		if(cameras.length == 0)
 			throw("no cameras");
 		this._visible_cameras = cameras; //the cameras being rendered
@@ -45225,7 +45237,10 @@ GraphComponent.prototype.onSceneEvent = function( event_type, event_data )
 	}
 
 	if(this.on_event == event_type)
-		this.runGraph();
+	{
+		if(this._root._in_tree && this.enabled )// && this._root.visible )
+			this.runGraph();
+	}
 }
 
 GraphComponent.prototype.trigger = function(e)
@@ -45236,16 +45251,11 @@ GraphComponent.prototype.trigger = function(e)
 
 GraphComponent.prototype.runGraph = function()
 {
-	if(!this._root._in_tree || !this.enabled || !this._root.visible)
-		return;
-
-	//if(!this._graphcode || this._graphcode._version != this._graph_version )
-	//	this.processGraph();
-
 	if(this.from_file && !this._graphcode)
 		return;
 
 	this._graph.runStep( 1, LS.catch_exceptions );
+
 	if(this.force_redraw)
 		this._root.scene.requestFrame();
 }
@@ -45355,6 +45365,13 @@ GraphComponent.prototype.setPropertyValue = function( property, value )
 			n.properties.value = value;
 		return true;
 	}
+}
+
+GraphComponent.prototype.getActions = function( actions )
+{
+	actions = actions || {};
+	actions["runGraph"] = "function";
+	return actions;
 }
 
 GraphComponent.prototype.getComponentTitle = function()
@@ -50179,6 +50196,7 @@ Script.prototype.onAddedToScene = function( scene )
 	//avoid to parse it again
 	if(this._script && this._script._context && this._script._context._initialized )
 	{
+		this.hookEvents(); //because they were unbinded before
 		if(this._script._context.onBind)
 			this._script._context.onBind();
 		return;

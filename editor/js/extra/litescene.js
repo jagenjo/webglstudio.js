@@ -24711,7 +24711,7 @@ if(typeof(LiteGraph) != "undefined")
 	{
 		var enabled = this.getInputData(0);
 		var ray = this.getInputData(1);
-		if(enabled === false || !ray || ray.constructor != LS.Ray )
+		if(enabled === false || enabled === 0 || enabled === null || !ray || ray.constructor != LS.Ray )
 			return;
 		var options = this.options;
 		options.max_dist = this.properties.max_dist;

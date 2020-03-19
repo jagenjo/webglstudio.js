@@ -516,6 +516,8 @@ var PluginsModule = {
 			{
 				var script = v.scripts[i];
 				script.repository_url = url;
+				if( script.repository_url.indexOf("://") != -1 ) //absolute path
+					script.repository_url = "";
 				script.full_url = script.repository_url + script.script_url;
 			}
 			on_complete(v);

@@ -4313,7 +4313,7 @@ var ResourcesManager = {
 	resource_once_callbacks: {}, //callback called once
 
 	virtual_file_systems: {}, //protocols associated to urls  "VFS":"../"
-	skip_proxy_extensions: ["mp3","wav","ogg"], //this file formats should not be passed through the proxy
+	skip_proxy_extensions: ["mp3","wav","ogg","mp4","webm"], //this file formats should not be passed through the proxy
 	force_nocache_extensions: ["js","glsl","json"], //this file formats should be reloaded without using the cache
 	nocache_files: {}, //this is used by the editor to avoid using cached version of recently loaded files
 

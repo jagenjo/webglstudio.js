@@ -1231,7 +1231,7 @@ Timeline.prototype.onMouse = function(e)
 
 		if(item) //something below the mouse (could be keyframe or track or background)
 		{
-			console.log(item);
+			//console.log(item);
 
 			if (e.ctrlKey && item.type == "background")
 			{
@@ -1257,18 +1257,21 @@ Timeline.prototype.onMouse = function(e)
 				}
 				else //first click
 				{
-					if( this.session.selection && this.session.selection.type == "keyframes" && this.session.selection.hashed[ item.track * 10000 + item.keyframe ] )
+					if(e.mousex > this.session.left_margin )
 					{
-						//start dragging multiple keyframes
-						console.log("saving undo of take");
-						this.addUndoTakeEdited(take.serialize());
-					}
-					else
-						this.session.selection = item;
-					if(this.mode == "keyframes") //changes time on keyframe selection
-					{
-						var time = this.canvasXToTime( e.mousex );
-						this.setCurrentTime( time );
+						if( this.session.selection && this.session.selection.type == "keyframes" && this.session.selection.hashed[ item.track * 10000 + item.keyframe ] )
+						{
+							//start dragging multiple keyframes
+							console.log("saving undo of take");
+							this.addUndoTakeEdited(take.serialize());
+						}
+						else
+							this.session.selection = item;
+						if(this.mode == "keyframes" && item && item.type =="keyframe") //changes time on keyframe selection
+						{
+							var time = this.canvasXToTime( e.mousex );
+							this.setCurrentTime( time );
+						}
 					}
 				}
 

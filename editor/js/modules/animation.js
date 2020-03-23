@@ -209,7 +209,7 @@ var AnimationModule = {
 				widgets1.refresh();
 				widgets2.refresh();
 			}});
-			widgets.addButtons( null, ["Clone","Copy","Paste","Delete"], function(v){
+			widgets.addButtons( null, ["Clone","Copy","Paste","Delete","Clear"], function(v){
 				if(v == "Clone")
 				{
 					var data = selected_take.serialize();
@@ -232,6 +232,16 @@ var AnimationModule = {
 					data._object_class = "LS.Animation.Take";
 					if( selected_take )
 						LiteGUI.toClipboard( data, true );
+				}
+				else if(v == "Clear")
+				{
+					that.addUndoAnimationEdited( animation, timeline );
+					if(selected_take)
+						selected_take.clear();
+					that.animationModified( animation, timeline );
+					widgets2.refresh();
+					if(timeline)
+						timeline.redrawCanvas();
 				}
 				else if(v == "Paste")
 				{

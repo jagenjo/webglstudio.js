@@ -276,14 +276,16 @@ global.cartesianToPolar = function( out, x,y,z )
 //Global Scope
 //better array conversion to string for serializing
 var typed_arrays = [ Uint8Array, Int8Array, Uint16Array, Int16Array, Uint32Array, Int32Array, Float32Array, Float64Array ];
-function typedToArray(){ 
+function typedToArray(){
 	return Array.prototype.slice.call(this);
 }
-typed_arrays.forEach( function(v) { 
+typed_arrays.forEach( function(v) {
 	if(!v.prototype.toJSON)
 		Object.defineProperty( v.prototype, "toJSON", {
 			value: typedToArray,
-			enumerable: false
+			enumerable: false,
+            configurable: true,
+            writable: true
 		});
 });
 
@@ -337,7 +339,7 @@ global.getClassName = function getClassName(obj)
 /**
 * clone one object recursively, only allows objects containing number,strings,typed-arrays or other objects
 * @method cloneObject
-* @param {Object} object 
+* @param {Object} object
 * @param {Object} target if omited an empty object is created
 * @return {Object}
 */
@@ -432,7 +434,7 @@ if(typeof(Image) != "undefined") //not existing inside workers
 }
 
 //you must pass an object with characters to replace and replace with what {"a":"A","c":"C"}
-if(!String.prototype.hasOwnProperty("replaceAll")) 
+if(!String.prototype.hasOwnProperty("replaceAll"))
 	Object.defineProperty(String.prototype, "replaceAll", {
 		value: function(words){
 			var str = this;
@@ -441,7 +443,7 @@ if(!String.prototype.hasOwnProperty("replaceAll"))
 			return str;
 		},
 		enumerable: false
-	});	
+	});
 
 /*
 String.prototype.replaceAll = function(words){
@@ -453,7 +455,7 @@ String.prototype.replaceAll = function(words){
 */
 
 //used for hashing keys
-if(!String.prototype.hasOwnProperty("hashCode")) 
+if(!String.prototype.hasOwnProperty("hashCode"))
 	Object.defineProperty(String.prototype, "hashCode", {
 		value: function(){
 			var hash = 0, i, c, l;
@@ -466,7 +468,7 @@ if(!String.prototype.hasOwnProperty("hashCode"))
 			return hash;
 		},
 		enumerable: false
-	});	
+	});
 
 //avoid errors when Typed array is expected and regular array is found
 //Array.prototype.subarray = Array.prototype.slice;
@@ -504,16 +506,16 @@ global.extendClass = GL.extendClass = function extendClass( target, origin ) {
 		for(var i = 0; i < prop_names.length; ++i) //only enumerables
 		{
 			var name = prop_names[i];
-			//if(!origin.prototype.hasOwnProperty(name)) 
+			//if(!origin.prototype.hasOwnProperty(name))
 			//	continue;
 
 			if(target.prototype.hasOwnProperty(name)) //avoid overwritting existing ones
 				continue;
 
-			//copy getters 
+			//copy getters
 			if(origin.prototype.__lookupGetter__(name))
 				target.prototype.__defineGetter__(name, origin.prototype.__lookupGetter__(name));
-			else 
+			else
 				target.prototype[name] = origin.prototype[name];
 
 			//and setters
@@ -522,11 +524,11 @@ global.extendClass = GL.extendClass = function extendClass( target, origin ) {
 		}
 	}
 
-	if(!target.hasOwnProperty("superclass")) 
+	if(!target.hasOwnProperty("superclass"))
 		Object.defineProperty(target, "superclass", {
 			get: function() { return origin },
 			enumerable: false
-		});	
+		});
 }
 
 
@@ -572,7 +574,7 @@ global.HttpRequest = GL.request = function HttpRequest( url, params, callback, e
 	{
 		LEvent.trigger(xhr,"fail",err);
 	}
-	
+
 	if(options)
 	{
 		for(var i in options)
@@ -610,10 +612,10 @@ global.getFileExtension = function getFileExtension(url)
 	if(question != -1)
 		url = url.substr(0,question);
 	var point = url.lastIndexOf(".");
-	if(point == -1) 
+	if(point == -1)
 		return "";
 	return url.substr(point+1).toLowerCase();
-} 
+}
 
 
 //allows to pack several (text)files inside one single file (useful for shaders)
@@ -623,7 +625,7 @@ global.loadFileAtlas = GL.loadFileAtlas = function loadFileAtlas(url, callback, 
 	var deferred_callback = null;
 
 	HttpRequest(url, null, function(data) {
-		var files = GL.processFileAtlas(data); 
+		var files = GL.processFileAtlas(data);
 		if(callback)
 			callback(files);
 		if(deferred_callback)
@@ -669,7 +671,7 @@ global.processFileAtlas = GL.processFileAtlas = function(data, skip_trim)
 global.halfFloatToFloat = function( h )
 {
 	function convertMantissa(i) {
-	    if (i == 0) 
+	    if (i == 0)
 			return 0
 		else if (i < 1024)
 		{
@@ -709,7 +711,7 @@ global.halfFloatToFloat = function( h )
 
 	var v = convertMantissa( convertOffset( h >> 10) + (h & 0x3ff) ) + convertExponent(h >> 10);
 	var a = new Uint32Array([v]);
-	return (new Float32Array(a.buffer))[0]; 
+	return (new Float32Array(a.buffer))[0];
 }
 */
 
@@ -722,7 +724,7 @@ global.typedArrayToArray = function(array)
 	return r;
 }
 
-global.RGBToHex = function(r, g, b) { 
+global.RGBToHex = function(r, g, b) {
 	r = Math.min(255, r*255)|0;
 	g = Math.min(255, g*255)|0;
 	b = Math.min(255, b*255)|0;
@@ -864,6 +866,7 @@ global.hexColorToRGBA = (function() {
 	return color;
 	}
 })();
+
 /**
  * @fileoverview dds - Utilities for loading DDS texture files
  * @author Brandon Jones
@@ -4699,6 +4702,111 @@ Mesh.circle = function( options, gl ) {
 		buffers.wireframe = wireframe;
 	}
 
+	return GL.Mesh.load( buffers, options, gl );
+}
+
+/**
+* Returns a ring mesh 
+* @method Mesh.ring
+* @param {Object} options valid options: radius, thickness, xz = in xz plane, otherwise xy plane
+*/
+Mesh.ring = function( options, gl ) {
+	options = options || {};
+	var size = options.size || options.radius || 1;
+	var thickness = options.thickness || size * 0.1;
+	var slices = Math.ceil(options.slices || 24);
+	var xz = options.xz || false;
+	var empty = options.empty || false;
+	if(slices < 3) slices = 3;
+	var delta = (2 * Math.PI) / slices;
+
+	var center = vec3.create();
+	var A = vec3.create();
+	var B = vec3.create();
+	var N = vec3.fromValues(0,0,1);
+	var uv_center = vec2.fromValues(0.5,0.5);
+	var uv = vec2.create();
+
+	if(xz) N.set([0,1,0]);
+
+	var index = xz ? 2 : 1;
+
+	var vertices = new Float32Array(3 * (slices * 2 + 2));
+	var normals = new Float32Array(3 * (slices * 2 + 2));
+	var coords = new Float32Array(2 * (slices * 2 + 2));
+	var triangles = null;
+
+	var sin = 0;
+	var cos = 0;
+
+	//compute vertices
+	for(var i = 0; i <= slices; ++i )
+	{
+		sin = Math.sin( delta * i );
+		cos = Math.cos( delta * i );
+
+		A[0] = sin * (size - thickness);
+		A[index] = cos * (size - thickness);
+		uv[0] = i/slices;
+		uv[1] = 0;
+		vertices.set(A, i * 6);
+		normals.set(N, i * 6);
+		coords.set(uv, i * 4);
+
+		B[0] = sin * (size + thickness);
+		B[index] = cos * (size + thickness);
+		uv[1] = 1;
+		vertices.set(B, i * 6+3);
+		normals.set(N, i * 6+3);
+		coords.set(uv, i * 4+2);
+	}
+
+	if(empty)
+	{
+		vertices = vertices.subarray(3);
+		normals = vertices.subarray(3);
+		coords = vertices.subarray(2);
+		triangles = null;
+	}
+	else
+	{
+		var triangles = new Uint16Array(6 * slices);
+		var offset = 2;
+		var offset2 = 1;
+		if(xz)
+		{
+			offset = 1;
+			offset2 = 2;
+		}
+
+		//compute indices
+		for(var i = 0; i < slices; ++i )
+		{
+			triangles[i*6] = i*2;
+			triangles[i*6+1] = i*2+offset;
+			triangles[i*6+2] = i*2+offset2;
+			triangles[i*6+3] = i*2+offset2;
+			triangles[i*6+4] = i*2+offset;
+			triangles[i*6+5] = i*2+3;
+		}
+	}
+
+	options.bounding = BBox.fromCenterHalfsize( [0,0,0], xz ? [size+thickness,0,size+thickness] : [size+thickness,size+thickness,0] );
+
+	var buffers = {vertices: vertices, normals: normals, coords: coords, triangles: triangles};
+
+	if(options.wireframe)
+	{
+		var wireframe = new Uint16Array(slices*4);
+		for(var i = 0; i < slices; i++)
+		{
+			wireframe[i*4] = i*2;
+			wireframe[i*4+1] = i*2+2;
+			wireframe[i*4+2] = i*2+1;
+			wireframe[i*4+3] = i*2+3;
+		}
+		buffers.wireframe = wireframe;
+	}
 	return GL.Mesh.load( buffers, options, gl );
 }
 

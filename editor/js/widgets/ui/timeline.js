@@ -32,6 +32,7 @@ function Timeline( options )
 	this.curves_scale_y = 1;
 	this._selection_rectangle = null;
 
+	this.background = null; //used to render stuff in the background of the timeline
 }
 
 Timeline.widget_name = "Timeline";
@@ -103,7 +104,7 @@ Timeline.prototype.createInterface = function( options )
 	//this.play_widget = widgets.addCheckbox("Play", !!this.playing, { callback: function(v){ that.playing = !that.playing ; } } );
 	widgets.addButton(null, "Edit", { width: 60, callback: function(){ that.mode = that.mode == "keyframes" ? "curves" : "keyframes"; that.redrawCanvas(); } } );
 	this.preview_widget = widgets.addIcon(null, !!this.preview, { image: "imgs/icons-timeline.png", index: 6, title:"preview",  callback: function(v){ that.preview = !that.preview ; } } );
-	this.play_widget = widgets.addIcon(null, !!this.playing, { title:"play", image: "imgs/icons-timeline.png",  callback: function(v){ that.playing = !that.playing ; } } );
+	this.play_widget = widgets.addIcon(null, !!this.playing, { title:"play", image: "imgs/icons-timeline.png",  callback: function(v){ that.playPreview(v); } });
 	widgets.addIcon(null, false, { title:"zoom in", image: "imgs/icons-timeline.png", index: 8, toggle: false, callback: function(v){ that.zoom(1.05); 	that.redrawCanvas(); } } );
 	widgets.addIcon(null, false, { title:"zoom out", image: "imgs/icons-timeline.png", index: 7, toggle: false, callback: function(v){ that.zoom(0.95); that.redrawCanvas(); } } );
 	widgets.addIcon(null, false, { title:"previous keyframe", image: "imgs/icons-timeline.png", index: 2, toggle: false, callback: function(v){ that.prevKeyframe(); } } );
@@ -181,6 +182,25 @@ Timeline.prototype.resetView = function()
 
 	this.session.seconds_to_pixels = ( w - this.session.left_margin - 50 ) / duration;
 	this.redrawCanvas();
+}
+
+Timeline.prototype.playPreview = function(v){ 
+
+	if(v === undefined)
+		v = !this.playing;
+	this.playing = v;
+	if( this.background && this.background.audio && this.background.audio.duration)
+	{
+		if(this.playing)
+		{
+			this.background.audio.currentTime = this._timeline_data.current_time;
+			this.background.audio.play();
+		}
+		else
+		{
+			this.background.audio.pause();
+		}
+	}
 }
 
 Timeline.prototype.onNewAnimation = function( name, duration, folder )
@@ -424,6 +444,7 @@ Timeline.prototype.redrawCanvas = function()
 	var take = this.current_take;
 	var margin = this.session ? this.session.left_margin : 200;
 	var timeline_height = this.canvas_info.timeline_height;
+	var data = this._timeline_data;
 
 	if(!this.current_take)
 	{
@@ -441,6 +462,16 @@ Timeline.prototype.redrawCanvas = function()
 
 	//draw tracks info in the left side
 	this.drawTracksSidebar( canvas, ctx );
+
+	//render audio wave (useful sometimes)
+	if(this.background && this.background.img )
+	{
+		var x = this.canvasTimeToX(0);
+		var img = this.background.img;
+		ctx.imageSmoothingEnabled = false;
+		ctx.drawImage( img, x, this.canvas.height - img.height, data.seconds_to_pixels * img.width / 120, img.height * 2);
+		ctx.imageSmoothingEnabled = true;
+	}
 
 	//main content ***********************************
 	if(this.show_keyframes)
@@ -933,7 +964,6 @@ Timeline.prototype.drawTracksSidebar = function( canvas, ctx )
 	ctx.fillRect( margin, timeline_height, canvas.width - margin, canvas.height - timeline_height );
 	ctx.globalAlpha = 1;
 
-
 	//bg lines
 	ctx.strokeStyle = "#444";
 	ctx.beginPath();
@@ -1085,6 +1115,9 @@ Timeline.prototype.setCurrentTime = function( time, skip_redraw )
 		this.session.last_time = this.session.current_time;
 		LS.GlobalScene.refresh();
 	}
+
+	if( this.background && this.background.audio && this.background.audio.duration && this.playing && Math.abs( this.background.audio.currentTime - time) > 0.1 )
+		this.background.audio.currentTime = time;
 }
 
 Timeline.prototype.applyPreview = function()
@@ -1503,6 +1536,9 @@ Timeline.prototype.onKeyDown = function(e)
 {
 	switch( e.keyCode )
 	{
+		case 32:
+			this.playPreview();
+			break;
 		case 8:
 		case 46: //delete key 
 			this.removeSelection();
@@ -3124,29 +3160,30 @@ Timeline.prototype.onItemDrop = function(e)
 	if( locator )
 	{
 		this.processInsertLocator( locator, { add_keyframe: false } );
-		/*
-		var info = LS.GlobalScene.getPropertyInfo( locator );
-		if(!info)
-			return;
+		return;
+	}
 
-		var name = info.name;
-		if(!name && info.node)
-			name = info.node.name;
-
-		if( info.type == "component" || info.type == "node" || info.type == "object" )
+	if(e.dataTransfer.files.length)
+	{
+		var files = e.dataTransfer.files;
+		for(var i = 0; i < files.length; ++i)
 		{
-			this.createTrack({ name: name, locator: locator, type: "events" });
+			var file = files[0];
+			var ext = LS.RM.getExtension(file.name);
+			if(ext == "mp3" || ext == "wav" || ext == "ogg")
+			{
+				var that = this;
+				var background = this.background = {};
+				var url = URL.createObjectURL(file);
+				Timeline.getAudioWaveImage(url, function(img){
+					background.img = img;
+					background.audio = new Audio();
+					background.audio.src = url;
+					background.audio.autoplay = false;
+					that.redrawCanvas();
+				});
+			}
 		}
-		else
-		{
-			var type = info.type;
-			if(type == "object")
-				type = "events";
-			this.createTrack({ name: name, locator: locator, type: type });
-		}
-
-		this.animationModified();
-		*/
 	}
 }
 
@@ -3276,3 +3313,64 @@ Timeline.actions.track["Remove scaling"] = function( track, take, animation )
 	track.removeScaling();
 }
 
+//used to previsualize audio
+Timeline.wave_cache = {};
+Timeline.getAudioWaveImage = function( url, callback, onError )
+{
+	if(Timeline.wave_cache[url])
+		return Timeline.wave_cache[url];
+
+	window.AudioContext = window.AudioContext || window.webkitAudioContext;
+	var context = Timeline.audio_context;
+	if(!context)
+		context = Timeline.audio_context = new AudioContext();
+
+	Timeline.wave_cache[url] = 1;
+
+	var request = new XMLHttpRequest();
+	  request.open('GET', url, true);
+	  request.responseType = 'arraybuffer';
+
+	  // Decode asynchronously
+	  request.onload = function() {
+		context.decodeAudioData( request.response, function(buffer) {
+			var start_time = performance.now();
+			var canvas = document.createElement("canvas");
+			canvas.width = Math.round(buffer.duration * 120); //120 samples per second
+			canvas.height = 64;
+			var h2 = canvas.height / 2;
+			//document.body.appendChild(canvas);
+			var delta = (buffer.length / canvas.width);// * buffer.numberOfChannels;
+			var ctx = canvas.getContext("2d");
+			ctx.clearRect(0,0,canvas.width,canvas.height);
+			ctx.fillStyle = ctx.strokeStyle = "white";
+			var data = buffer.getChannelData(0);
+			var pos = 0;
+			var delta_ceil = Math.ceil(delta);
+			ctx.beginPath();
+			for(var i = 0; i < buffer.length; i += delta)
+			{
+				var min = 0;
+				var max = 0;
+				var start = Math.floor(i);
+				for(var j = 0; j < delta_ceil; ++j)
+				{
+					var v = data[j + start];
+					if(min > v) min = v;
+					if(max < v) max = v;
+				}
+				var y = (1 + min) * h2;
+				ctx.moveTo( pos, y );
+				ctx.lineTo( pos, y + h2 * (max - min) );
+				++pos;
+			}
+			ctx.stroke();
+			canvas.buffer = buffer;
+			Timeline.wave_cache[url] = canvas;
+			console.log( "wave image generation time: " + ((performance.now() - start_time)*0.001).toFixed(3) + "s");
+			if(callback)
+				callback(canvas,url);
+		}, onError);
+	  }
+	  request.send();
+}

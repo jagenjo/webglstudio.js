@@ -1674,6 +1674,10 @@ Timeline.prototype.showOptionsContextMenu = function( e )
 {
 	var that = this;
 	var options = ["New Animation","Load Animation","Scene Animation",null,"Prettify Names","Baking Tools"];
+
+	if(this.background)
+		options.push("Remove Background");
+
 	var animation_options = { title: "Animation Options", disabled: !this.current_take };
 	options.push( animation_options );
 
@@ -1691,6 +1695,13 @@ Timeline.prototype.showOptionsContextMenu = function( e )
 			that.onPrettifyNames();
 		else if(v == "Baking Tools")
 			that.onShowBakingDialog();
+		else if(v == "Remove Background")
+		{
+			if(that.background && that.background.audio)
+				that.background.audio.pause();
+			that.background = null;
+			that.redrawCanvas();
+		}
 		else if(v == animation_options)
 			that.onShowAnimationOptionsDialog();
 		else if(v.callback)
@@ -3150,7 +3161,6 @@ Timeline.prototype.onItemDrop = function(e)
 {
 	if(!this.current_animation)
 		this.onSceneAnimation(); //create scene animation
-
 
 	var type = e.dataTransfer.getData("type");
 	var locator = e.dataTransfer.getData("locator");

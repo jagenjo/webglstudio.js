@@ -14293,7 +14293,23 @@ Scene.prototype.setPropertyValueFromPath = function( path, value, root_node, off
 	}
 
 	//get node
-	var node = root_node ? root_node.findNode( path[offset] ) : this.getNode( path[offset] );
+	var node = null;
+	if( root_node )
+	{
+		var name = path[offset];
+		if( name.indexOf("|") != -1)
+		{
+			var tokens = name.split("|");
+			var node = root_node;
+			for(var i = 0; i < tokens.length && node; ++i)
+				node = node.getChildByName( tokens[i] );
+		}
+		else
+			node = root_node.findNode( path[offset] );
+	}
+	else
+		node = this.getNode( path[offset] );
+
 	if(!node)
 		return null;
 

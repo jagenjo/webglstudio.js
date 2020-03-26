@@ -1303,7 +1303,7 @@ Timeline.prototype.onMouse = function(e)
 							console.log("saving undo of take");
 							this.addUndoTakeEdited(take.serialize());
 						}
-						else if(item.type == "background" )
+						else if(item.type == "background" ) //special case
 						{
 							this.dragging_background = true;
 						}
@@ -1536,7 +1536,9 @@ Timeline.prototype.onMouse = function(e)
 			this.selectRegion( r );
 			this._selection_rectangle = null;
 		}
-
+		if( ( now - this._last_click_time ) < 200 ) { //fast click
+			this.session.selection = item;
+		}
 
 		if(this.preview && this._item_dragged && this._item_dragged.type == "timeline")
 			EditorModule.refreshAttributes();

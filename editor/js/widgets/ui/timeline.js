@@ -1383,6 +1383,8 @@ Timeline.prototype.onMouse = function(e)
 						var keyframe = track.data[this._item_dragged.keyframe];
 						if(track.value_size == 1)
 							keyframe[1] += e.deltay * 0.02;
+						else for(var k = 0; k < track.value_size; ++k)
+							keyframe[1][k] *= 1 + e.deltay * 0.02;
 						this.animationModified();
 						if(this.preview)
 							this.applyPreview();

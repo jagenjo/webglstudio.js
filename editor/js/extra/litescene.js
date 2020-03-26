@@ -40755,10 +40755,13 @@ MorphDeformer.prototype.setProperty = function(name, value)
 		name = name.substr(5);
 		var t = name.split("_");
 		var num = parseInt( t[0] );
-		if( num < this.morph_targets.length )
+		if( num >= 0 && num < this.morph_targets.length )
 		{
 			if( t[1] == "weight" )
-				this.morph_targets[ num ].weight = value;
+			{
+				if(!isNaN(value)) //this happened some times...
+					this.morph_targets[ num ].weight = value;
+			}
 			else if( t[1] == "mesh" )
 				this.morph_targets[ num ].mesh = value;
 		}

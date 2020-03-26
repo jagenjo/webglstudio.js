@@ -1648,9 +1648,9 @@ Timeline.prototype.onMouseWheel = function(e)
 		if( this.mode == "curves" && e.mousey > this.canvas_info.timeline_height )
 		{
 			if(e.deltaY > 0)
-				this.curves_scale_y *= 0.95;
+				this.curves_scale_y *= e.shiftKey ? 0.5 : 0.95;
 			else
-				this.curves_scale_y *= 1.05;
+				this.curves_scale_y *= e.shiftKey ? 2 : 1.05;
 		}
 		else //keyframes
 		{
@@ -3040,8 +3040,11 @@ Timeline.prototype.showEditKeyframeDialog = function( track, time, keyframe, key
 	if( LiteGUI.Inspector.widget_constructors[ type ] )
 		widgets.add( type, "Value", value, { callback: function(v){
 			that.addUndoTrackEdited( track );
-			for(var i = 0; i < track.value_size; ++i)
-				keyframe[1][i] = v[i];
+			if( track.value_size == 1)
+				keyframe[1][0] = v;
+			else
+				for(var i = 0; i < track.value_size; ++i)
+					keyframe[1][i] = v[i];
 			if(preview)
 				that.applyPreview();
 			that.redrawCanvas();
@@ -3173,6 +3176,18 @@ Timeline.prototype.onItemDrop = function(e)
 		return;
 	}
 
+	if( type == "resource" )
+	{
+		var fullpath = e.dataTransfer.getData("res-fullpath");
+		var ext = LS.RM.getExtension(fullpath);
+		if(ext == "mp3" || ext == "wav" || ext == "ogg")
+		{
+			var url = LS.RM.getFullURL(fullpath);
+			this.setAudioBackground(url);
+		}
+		return;
+	}
+
 	if(e.dataTransfer.files.length)
 	{
 		var files = e.dataTransfer.files;
@@ -3182,19 +3197,24 @@ Timeline.prototype.onItemDrop = function(e)
 			var ext = LS.RM.getExtension(file.name);
 			if(ext == "mp3" || ext == "wav" || ext == "ogg")
 			{
-				var that = this;
-				var background = this.background = {};
 				var url = URL.createObjectURL(file);
-				Timeline.getAudioWaveImage(url, function(img){
-					background.img = img;
-					background.audio = new Audio();
-					background.audio.src = url;
-					background.audio.autoplay = false;
-					that.redrawCanvas();
-				});
+				this.setAudioBackground(url);
 			}
 		}
 	}
+}
+
+Timeline.prototype.setAudioBackground = function(url)
+{
+	var background = this.background = {};
+	var that = this;
+	Timeline.getAudioWaveImage(url, function(img){
+		background.img = img;
+		background.audio = new Audio();
+		background.audio.src = url;
+		background.audio.autoplay = false;
+		that.redrawCanvas();
+	});
 }
 
 //used for special actions
@@ -3257,6 +3277,16 @@ Timeline.actions.take["Only Rotations"] = function( animation, take )
 Timeline.actions.take["Remove scaling"] = function( animation, take )
 {
 	return take.removeScaling();
+}
+
+Timeline.actions.take["Clear Keyframes"] = function( animation, take )
+{
+	for(var i = 0; i < take.tracks.length; ++i)
+	{
+		var track = take.tracks[i];
+		track.clear();
+	}
+	return 1;
 }
 
 Timeline.actions.take["Mask tracks with selected nodes"] = function( animation, take )
@@ -3347,7 +3377,7 @@ Timeline.getAudioWaveImage = function( url, callback, onError )
 			var start_time = performance.now();
 			var canvas = document.createElement("canvas");
 			canvas.width = Math.round(buffer.duration * 120); //120 samples per second
-			canvas.height = 64;
+			canvas.height = 128;
 			var h2 = canvas.height / 2;
 			//document.body.appendChild(canvas);
 			var delta = (buffer.length / canvas.width);// * buffer.numberOfChannels;

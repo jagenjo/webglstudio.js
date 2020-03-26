@@ -4250,13 +4250,15 @@ Mesh.fromURL = function(url, on_complete, gl, options)
 
 	var pos = url.lastIndexOf(".");
 	var extension = url.substr(pos+1).toLowerCase();
+	if(options.extension)
+		extension = options.extension;
 	options.binary = Mesh.binary_file_formats[ extension ];
 
 	HttpRequest( url, null, function(data) {
 		mesh.parse( data, extension );
 		delete mesh["ready"];
 		if(on_complete)
-			on_complete.call(mesh,mesh, url);
+			on_complete.call(mesh, mesh, url);
 	}, function(err){
 		if(on_complete)
 			on_complete(null);
@@ -6000,13 +6002,7 @@ Texture.prototype.drawTo = function(callback, params)
 	return this;
 }
 
-/**
-* Static version of drawTo meant to be used with several buffers
-* @method drawToColorAndDepth
-* @param {Texture} color_texture
-* @param {Texture} depth_texture
-* @param {Function} callback
-*/
+/*
 Texture.drawTo = function( color_textures, callback, depth_texture )
 {
 	var w = -1,
@@ -6112,13 +6108,6 @@ Texture.drawTo = function( color_textures, callback, depth_texture )
 	gl.viewport(v[0], v[1], v[2], v[3]);
 }
 
-/**
-* Similar to drawTo but it also stores the depth in a depth texture
-* @method drawToColorAndDepth
-* @param {Texture} color_texture
-* @param {Texture} depth_texture
-* @param {Function} callback
-*/
 Texture.drawToColorAndDepth = function( color_texture, depth_texture, callback ) {
 	var gl = color_texture.gl; //static function
 
@@ -6145,7 +6134,7 @@ Texture.drawToColorAndDepth = function( color_texture, depth_texture, callback )
 
 	gl.viewport(v[0], v[1], v[2], v[3]);
 }
-
+*/
 
 
 /**
@@ -6216,7 +6205,7 @@ Texture.prototype.copyTo = function( target_texture, shader, uniforms ) {
 			var attachment_point = target_texture.format == gl.DEPTH_STENCIL ? gl.DEPTH_STENCIL_ATTACHMENT : gl.DEPTH_ATTACHMENT;
 			gl.framebufferTexture2D( gl.FRAMEBUFFER, attachment_point, gl.TEXTURE_2D, target_texture.handler, 0);
 
-			var complete = gl.checkFramebufferStatus( gl.FRAMEBUFFER );
+			var complete = gl.checkFramebufferStatus( gl.FRAMEBUFFER ); //this line is slow according to Mozilla?
 			if(complete !== gl.FRAMEBUFFER_COMPLETE)
 				throw("FBO not complete: " + complete);
 
@@ -13009,7 +12998,14 @@ Mesh.parseOBJ = function(text, options)
 	if( mesh.bounding.radius == 0 || isNaN(mesh.bounding.radius))
 		console.log("no radius found in mesh");
 	//console.log(mesh);
-	return mesh;
+	if(options.only_data)
+		return mesh;
+
+	//creates and returns a GL.Mesh
+	var final_mesh = null;
+	final_mesh = Mesh.load( mesh, null, options.mesh );
+	final_mesh.updateBoundingBox();
+	return final_mesh;
 
 	//this function helps reuse triplets that have been created before
 	function getIndex( str )
@@ -13116,7 +13112,7 @@ Mesh.parseOBJ = function(text, options)
 	}
 }
 
-/*
+/* old 
 Mesh.parseOBJ = function( text, options )
 {
 	options = options || {};
@@ -13423,7 +13419,7 @@ Mesh.parseOBJ = function( text, options )
 	final_mesh.updateBoundingBox();
 	return final_mesh;
 }
-*/
+//*/
 
 Mesh.parsers["obj"] = Mesh.parseOBJ;
 

@@ -635,19 +635,6 @@ function computeSharedInitialString(array)
 	return first.length;
 }
 
-function removeSharedString(array)
-{
-	var n = computeSharedInitialString(array);
-	array = array.map(function(a){ 
-		a = a.substr(n);
-		var last = a.lastIndexOf(".");
-		if(last != -1)
-			return a.substr(0,last);
-		return a;
-	});
-	return array;
-}
-
 LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 {
 	inspector.widgets_per_row = 2;
@@ -662,12 +649,13 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 		if(LS.Components.MorphDeformer.use_sliders)
 		{
 			var names = component.morph_targets.map(function(a){return a.mesh;});
-			names = removeSharedString(names);
+			names = MorphDeformer.removeSharedString(names);
 			inspector.widgets_per_row = 2;
 			for(var i = 0; i < component.morph_targets.length; i++)
 			{
+				var pretty_name = names[i].replace(/_/g," ");
 				var morph = component.morph_targets[i];
-				inspector.addSlider(names[i].replace(/_/g," "), morph.weight, { min: -1, max: 1, width: "calc(100% - 40px)", pretitle: AnimationModule.getKeyframeCode( component, "morphs/"+i+"/weight" ), morph_index: i, callback: function(v) { 
+				inspector.addSlider(pretty_name, morph.weight, { min: -1, max: 1, width: "calc(100% - 40px)", pretitle: AnimationModule.getKeyframeCode( component, "morphs/"+i+"/weight" ), morph_index: i, callback: function(v) { 
 					component.setMorphWeight( this.options.morph_index, v );
 					LS.GlobalScene.refresh();
 				}});

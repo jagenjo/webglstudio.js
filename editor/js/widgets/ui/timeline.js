@@ -31,6 +31,7 @@ function Timeline( options )
 	this.scroll_curves_y = 0;
 	this.curves_scale_y = 1;
 	this._selection_rectangle = null;
+	this._prev_mouse = [0,0];
 
 	this.background = null; //used to render stuff in the background of the timeline
 }
@@ -1247,6 +1248,10 @@ Timeline.prototype.onMouse = function(e)
 	e.mousey = e.pageY - b.top;
 	e.canvasx = e.mousex;
 	e.canvasy = b.height - e.mousey;
+	e.deltax = e.mousex - this._prev_mouse[0];
+	e.deltay = e.mousey - this._prev_mouse[1];
+	this._prev_mouse[0] = e.mousex;
+	this._prev_mouse[1] = e.mousey;
 
 	var item = this.getMouseItem(e);
 	this.canvas.style.cursor = item ? item.cursor : "default";
@@ -1297,6 +1302,10 @@ Timeline.prototype.onMouse = function(e)
 							//start dragging multiple keyframes
 							console.log("saving undo of take");
 							this.addUndoTakeEdited(take.serialize());
+						}
+						else if(item.type == "background" )
+						{
+							this.dragging_background = true;
 						}
 						else
 							this.session.selection = item;
@@ -1365,11 +1374,25 @@ Timeline.prototype.onMouse = function(e)
 				}
 				else if( this._item_dragged.type == "keyframe" )
 				{
-					var newt = this.canvasXToTime( e.mousex );
-					newt = Math.round( newt * this.framerate ) / this.framerate; //round
 					var track = take.tracks[ this._item_dragged.track ];
 					if(track.packed_data)
 						track.unpackData();
+
+					if(e.ctrlKey)
+					{
+						var keyframe = track.data[this._item_dragged.keyframe];
+						if(track.value_size == 1)
+							keyframe[1] += e.deltay * 0.02;
+						this.animationModified();
+						if(this.preview)
+							this.applyPreview();
+						e.preventDefault();
+						e.stopPropagation();
+						return;
+					}
+
+					var newt = this.canvasXToTime( e.mousex );
+					newt = Math.round( newt * this.framerate ) / this.framerate; //round
 					//set new time
 					var keyframe = track.data[this._item_dragged.keyframe];
 					var diff = newt - keyframe[0];
@@ -1466,7 +1489,7 @@ Timeline.prototype.onMouse = function(e)
 					*/
 
 				}
-				else if( this._item_dragged.type == "background" )
+				else if( this._item_dragged.type == "background" || this.dragging_background)
 				{
 					//*
 					var old = this.canvasXToTime( this.prev_mouse[0] );
@@ -1491,6 +1514,7 @@ Timeline.prototype.onMouse = function(e)
 		var ref_window = LiteGUI.getElementWindow(this.canvas);
 		ref_window.document.body.removeEventListener("mousemove", this._binded_mouseup );
 		ref_window.document.body.removeEventListener("mouseup", this._binded_mouseup );
+		this.dragging_background = false;
 
 		if( this._selection_rectangle )
 		{
@@ -1739,7 +1763,7 @@ Timeline.prototype.onContextMenu = function( e )
 
 	values.push( { title: "Add New Track", callback: this.showNewTrack.bind(this) } );
 	values.push( { title: "Mark tracks of selected node", callback: this.selectTracksOfNode.bind(this) } );
-	values.push( { title: "Assign Node Names", callback: this.assignNodeNames.bind(this) } );
+	values.push( { title: "Beautify Names", callback: this.beautifyNames.bind(this) } );
 	values.push( null );
 
 	if(item.type == "keyframe" && track.type == "events")
@@ -2758,7 +2782,7 @@ Timeline.prototype.showNewAnimationDialog = function()
 	dialog.show( null, this.root );
 }
 
-Timeline.prototype.assignNodeNames = function()
+Timeline.prototype.beautifyNames = function()
 {
 	if(!this.current_take)
 		return;
@@ -2773,7 +2797,11 @@ Timeline.prototype.assignNodeNames = function()
 		var node = info.node;
 		if(!node)
 			continue;
-		track.name = track.getIDasName() || track.property;
+		track.name = "";
+		if(info.component && info.component.getPrettyName)
+			track.name = info.component.getPrettyName( info, track._property, track._property_path );
+		if(!track.name)
+			track.name = track.getIDasName() || track.property;
 	}
 	this.redrawCanvas();
 }
@@ -3041,7 +3069,7 @@ Timeline.prototype.showEditKeyframeDialog = function( track, time, keyframe, key
 		widgets.add( type, "Value", value, { callback: function(v){
 			that.addUndoTrackEdited( track );
 			if( track.value_size == 1)
-				keyframe[1][0] = v;
+				keyframe[1] = v;
 			else
 				for(var i = 0; i < track.value_size; ++i)
 					keyframe[1][i] = v[i];

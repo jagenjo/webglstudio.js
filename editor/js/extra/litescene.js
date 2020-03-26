@@ -40698,6 +40698,35 @@ MorphDeformer.prototype.setMorphWeight = function(index, value)
 	this.morph_targets[index].weight = value;
 }
 
+MorphDeformer.prototype.getPrettyName = function( info, locator, locator_path )
+{
+	//console.log(locator_path);
+	if(locator_path[ locator_path.length - 1 ] == "weight")
+	{
+		var names = this.morph_targets.map(function(a){return a.mesh;});
+		names = MorphDeformer.removeSharedString(names); //remove part
+		var index = this.morph_targets.indexOf( info.target );
+		if(index != -1)
+		{
+			var name = names[index].replace(/_/g," ");
+			return info.node.name + "::" + name;
+		}
+	}
+}
+
+MorphDeformer.removeSharedString = function(array)
+{
+	var n = computeSharedInitialString(array);
+	array = array.map(function(a){ 
+		a = a.substr(n);
+		var last = a.lastIndexOf(".");
+		if(last != -1)
+			return a.substr(0,last);
+		return a;
+	});
+	return array;
+}
+
 MorphDeformer.prototype.getPropertyInfoFromPath = function( path )
 {
 	if(path[0] != "morphs")
@@ -40720,6 +40749,7 @@ MorphDeformer.prototype.getPropertyInfoFromPath = function( path )
 
 	return {
 		node: this._root,
+		component: this,
 		target: this.morph_targets[num],
 		name: varname,
 		value: this.morph_targets[num][ varname ] !== undefined ? this.morph_targets[num][ varname ] : null,

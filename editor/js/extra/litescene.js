@@ -40062,7 +40062,11 @@ Object.defineProperty( MorphDeformer.prototype, "name_weights", {
 		{
 			var m = this.morph_targets[i];
 			if(v[m.mesh] !== undefined)
-				m.weight = Number(v[m.mesh]);
+			{
+				var weight = Number(v[m.mesh]);
+				if(!isNaN(weight))	
+					m.weight = weight;
+			}
 		}
 	},
 	get: function()
@@ -40693,7 +40697,7 @@ MorphDeformer.prototype.setMorphMesh = function(index, value)
 */
 MorphDeformer.prototype.setMorphWeight = function(index, value)
 {
-	if(index >= this.morph_targets.length)
+	if( index >= this.morph_targets.length || isNaN(value) )
 		return;
 	this.morph_targets[index].weight = value;
 }
@@ -40762,6 +40766,9 @@ MorphDeformer.prototype.setPropertyValueFromPath = function( path, value, offset
 	offset = offset || 0;
 
 	if( path.length < (offset+1) )
+		return;
+
+	if(isNaN(value))
 		return;
 
 	if( path[offset] != "morphs" )

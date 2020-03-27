@@ -1449,20 +1449,38 @@ Timeline.prototype.onMouse = function(e)
 					else //single keyframe
 					{
 						keyframe[0] = newt;
-						if( this.mode =="curves" && this._item_dragged.value_index >= 0 )
+						if( this.mode =="curves" && this._item_dragged.value_index >= 0 ) //dragging values
 						{
 							var v = this.convertCanvasToValue( e.mousey );
 							if(track.value_size == 1)
 								keyframe[1] = v;
-							else if(track.value_size > 1 && this._item_dragged.value_index < track.value_size)
-								keyframe[1][this._item_dragged.value_index] = v;
-							if(track._type_index == LS.TYPES_INDEX.TRANS10 )
+							else if(track.value_size > 1)
 							{
-								var q = keyframe[1].subarray(3,7);
-								quat.normalize( q,q );
+								if(!track.packed_data)
+								{
+									if(this._item_dragged.value_index < track.value_size)
+										keyframe[1][this._item_dragged.value_index] = v;
+									if(track._type_index == LS.TYPES_INDEX.TRANS10 )
+									{
+										var q = keyframe[1].subarray(3,7);
+										quat.normalize( q,q );
+									}
+									else if(track._type_index == LS.TYPES_INDEX.QUAT )
+										quat.normalize( keyframe[1], keyframe[1] );
+								}
+								else
+								{
+									if(this._item_dragged.value_index < track.value_size)
+										keyframe[1+this._item_dragged.value_index] = v;
+									var q = null;
+									if(track._type_index == LS.TYPES_INDEX.TRANS10 )
+										q = keyframe.subarray(4,8);
+									else if(track._type_index == LS.TYPES_INDEX.QUAT )
+										q = keyframe.subarray(1,5);
+									if(q) //quaternions must be normalized
+										quat.normalize( q, q );
+								}
 							}
-							else if(track._type_index == LS.TYPES_INDEX.QUAT )
-								quat.normalize( keyframe[1], keyframe[1] );
 						}
 
 						track.sortKeyframes();
@@ -3072,11 +3090,7 @@ Timeline.prototype.showEditKeyframeDialog = function( track, time, keyframe, key
 	if( LiteGUI.Inspector.widget_constructors[ type ] )
 		widgets.add( type, "Value", value, { callback: function(v){
 			that.addUndoTrackEdited( track );
-			if( track.value_size == 1)
-				keyframe[1] = v;
-			else
-				for(var i = 0; i < track.value_size; ++i)
-					keyframe[1][i] = v[i];
+			Timeline.assignKeyframeValue( track, keyframe, v );
 			if(preview)
 				that.applyPreview();
 			that.redrawCanvas();
@@ -3097,6 +3111,29 @@ Timeline.prototype.showEditKeyframeDialog = function( track, time, keyframe, key
 	dialog.show( null, this.root );
 }
 
+Timeline.assignKeyframeValue = function(track,keyframe,v)
+{
+	if( track.value_size == 1 )
+		v = isNaN( Number(v) ) ? 0 : Number(v);
+	if(!track.packed_data)
+	{
+		if( track.value_size == 0 ) //strings,booleans,...
+			keyframe[1] = v;
+		else if( track.value_size == 1 ) //single values 
+			keyframe[1] = v; //NaN controlled
+		else if( track.value_size > 1 )
+			for(var i = 0; i < track.value_size; ++i)
+				keyframe[1][i] = v[i];
+	}
+	else //packed
+	{
+		if( track.value_size == 1 ) //single values
+			keyframe[1] = v; //NaN controlled
+		else if( track.value_size > 1 )
+			for(var i = 0; i < track.value_size; ++i)
+				keyframe[1+i] = v[i];
+	}
+}
 
 Timeline.prototype.toggleRecording = function(v)
 {
@@ -3366,6 +3403,40 @@ Timeline.actions.take["Set prefix in tracks nodename"] = function( animation, ta
 			return;
 		take.replacePrefix(v);
 	}
+}
+
+//in case some pesky NaN enters the animation values...
+Timeline.actions.take["Clear errors"] = function( animation, take )
+{
+	for(var i = 0; i < take.tracks.length; ++i)
+	{
+		var track = take.tracks[i];
+		if(track.packed_data)
+			track.unpackData();
+
+		for(var j = 0; j < track.data.length; ++j)
+		{
+			var keyframe = track.data[j];
+			if( isNaN( keyframe[0] ) ) //remove
+			{
+				track.data.splice(j,1);
+				j--;
+				continue;
+			}
+			if( track.value_size == 1 )
+			{
+				if( isNaN(keyframe[1] ) )
+					keyframe[1] = 0;
+			}
+			else if( track.value_size > 1 )
+			{
+				for(var k = 0; k < track.value_size; ++k)
+					if( isNaN(keyframe[1][k] ) )
+						keyframe[1][k] = 0;
+			}
+		}
+	}
+	return take.tracks.length;
 }
 
 //*****************

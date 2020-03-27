@@ -5341,6 +5341,24 @@ Mesh.icosahedron = function( options, gl ) {
 
 	return new GL.Mesh.load({vertices: vertices, coords: coords, normals: normals, triangles: indices},options,gl);
 }
+
+/**
+* Returns a closed extruded shape from a 2D closed line
+* @method Mesh.extrudedShape
+* @param {Object} options valid options: radius, subdivisions (max: 6)
+*/
+Mesh.shape = function( line, options, gl ) {
+	if(typeof(earcut) === "undefined")
+		throw("To use GL.Mesh.shape you must include earcut.js: https://raw.githubusercontent.com/mapbox/earcut/master/src/earcut.js");
+	if(!line || !line.length || line.length % 2 == 1)
+		throw("GL.Mesh.shape line missing, must be an array of 2D vertices");
+
+	if(line[0].constructor === Array)
+		line = earcut.flatten( line );
+	var triangulation = earcut( line );
+	console.log(line);
+}
+
 /**
 * @namespace GL
 */

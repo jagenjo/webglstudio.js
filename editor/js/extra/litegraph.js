@@ -26051,7 +26051,6 @@ function LGraphGeometryDisplace() {
         }
 
         if (this.properties.autoplay) {
-			this.trigger("start");
 			this.playBuffer(this._audiobuffer);
         }
     };
@@ -26165,7 +26164,10 @@ function LGraphGeometryDisplace() {
         audionode.playbackRate.value = this.properties.playbackRate;
         this._audionodes.push(audionode);
         audionode.connect(this.audionode); //connect to gain
-        this._audionodes.push(audionode);
+
+		this._audionodes.push(audionode);
+
+		this.trigger("start");
 
         audionode.onended = function() {
             //console.log("ended!");

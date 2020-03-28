@@ -7310,6 +7310,7 @@ LGraphNode.prototype.executeAction = function(action)
 
 		if(text == null)
 			return;
+		text = text.substr(0,30); //avoid weird
 
 		ctx.font = "14px Courier New";
 		var info = ctx.measureText(text);
@@ -8321,8 +8322,7 @@ LGraphNode.prototype.executeAction = function(action)
                         }
                         ctx.fillStyle = text_color;
                         ctx.textAlign = "right";
-                        ctx.fillText(w.value, width - margin * 2, y + H * 0.7);
-
+                        ctx.fillText(String(w.value).substr(0,30), width - margin * 2, y + H * 0.7); //30 chars max
 						ctx.restore();
                     }
                     break;
@@ -11513,6 +11513,17 @@ if (typeof exports != "undefined") {
         this.setOutputData(0, this.properties["value"]);
     };
 
+	ConstantString.prototype.onDropFile = function(file)
+	{
+		var that = this;
+		var reader = new FileReader();
+		reader.onload = function(e)
+		{
+			that.setProperty("value",e.target.result);
+		}
+		reader.readAsText(file);
+	}
+
     LiteGraph.registerNodeType("basic/string", ConstantString);
 
     function ConstantData() {
@@ -11556,6 +11567,59 @@ if (typeof exports != "undefined") {
     };
 
     LiteGraph.registerNodeType("basic/data", ConstantData);
+
+    function ArrayElement() {
+        this.addInput("array", "array,table,string");
+        this.addInput("index", "number");
+        this.addOutput("value", "");
+		this.addProperty("index",0);
+    }
+
+    ArrayElement.title = "Array[i]";
+    ArrayElement.desc = "Returns an element from an array";
+
+    ArrayElement.prototype.onExecute = function() {
+        var array = this.getInputData(0);
+        var index = this.getInputData(1);
+		if(index == null)
+			index = this.properties.index;
+		if(array == null || index == null )
+			return;
+        this.setOutputData(0, array[Math.floor(Number(index))] );
+    };
+
+    LiteGraph.registerNodeType("basic/array[]", ArrayElement);
+
+    function TableElement() {
+        this.addInput("table", "table");
+        this.addInput("row", "number");
+        this.addInput("col", "number");
+        this.addOutput("value", "");
+		this.addProperty("row",0);
+		this.addProperty("column",0);
+    }
+
+    TableElement.title = "Table[row][col]";
+    TableElement.desc = "Returns an element from a table";
+
+    TableElement.prototype.onExecute = function() {
+        var table = this.getInputData(0);
+        var row = this.getInputData(1);
+        var col = this.getInputData(2);
+		if(row == null)
+			row = this.properties.row;
+		if(col == null)
+			col = this.properties.column;
+		if(table == null || row == null || col == null)
+			return;
+		var row = table[Math.floor(Number(row))];
+		if(row)
+	        this.setOutputData(0, row[Math.floor(Number(col))] );
+		else
+	        this.setOutputData(0, null );
+    };
+
+    LiteGraph.registerNodeType("basic/table[][]", TableElement);
 
     function ObjectProperty() {
         this.addInput("obj", "");
@@ -15345,8 +15409,8 @@ if (typeof exports != "undefined") {
     LiteGraph.wrapFunctionAsNode(
         "string/compare",
         compare,
-        ["String", "String"],
-        "Boolean"
+        ["string", "string"],
+        "boolean"
     );
 
     function concatenate(a, b) {
@@ -15362,8 +15426,8 @@ if (typeof exports != "undefined") {
     LiteGraph.wrapFunctionAsNode(
         "string/concatenate",
         concatenate,
-        ["String", "String"],
-        "String"
+        ["string", "string"],
+        "string"
     );
 
     function contains(a, b) {
@@ -15376,8 +15440,8 @@ if (typeof exports != "undefined") {
     LiteGraph.wrapFunctionAsNode(
         "string/contains",
         contains,
-        ["String", "String"],
-        "Boolean"
+        ["string", "string"],
+        "boolean"
     );
 
     function toUpperCase(a) {
@@ -15390,22 +15454,25 @@ if (typeof exports != "undefined") {
     LiteGraph.wrapFunctionAsNode(
         "string/toUpperCase",
         toUpperCase,
-        ["String"],
-        "String"
+        ["string"],
+        "string"
     );
 
-    function split(a, b) {
-        if (a != null && a.constructor === String) {
-            return a.split(b || " ");
+    function split(str, separator) {
+		if(separator == null)
+			separator = this.properties.separator;
+        if (str != null && str.constructor === String) {
+            return str.split(separator || " ");
         }
-        return [a];
+        return [str];
     }
 
     LiteGraph.wrapFunctionAsNode(
         "string/split",
-        toUpperCase,
-        ["String", "String"],
-        "Array"
+        split,
+        ["string", "string"],
+        "array",
+		{ separator: "," }
     );
 
     function toFixed(a) {
@@ -15418,10 +15485,39 @@ if (typeof exports != "undefined") {
     LiteGraph.wrapFunctionAsNode(
         "string/toFixed",
         toFixed,
-        ["Number"],
-        "String",
+        ["number"],
+        "string",
         { precision: 0 }
     );
+
+
+    function StringToTable() {
+        this.addInput("", "string");
+        this.addOutput("", "table");
+        this.addProperty("value", "");
+        this.addProperty("separator", ",");
+        this.size = [180, 30];
+		this._table = null;
+    }
+
+    StringToTable.title = "toTable";
+    StringToTable.desc = "Splits a string to table";
+
+    StringToTable.prototype.onExecute = function() {
+        var input = this.getInputData(0);
+		if(!input)
+			return;
+		var separator = this.properties.separator || ",";
+		if(input != this._str)
+		{
+			this._str = input;
+			this._table = input.split("\n").map(function(a){ return a.trim().split(separator)});
+		}
+        this.setOutputData(0, this._table );
+    };
+
+    LiteGraph.registerNodeType("string/toTable", StringToTable);
+
 })(this);
 
 (function(global) {

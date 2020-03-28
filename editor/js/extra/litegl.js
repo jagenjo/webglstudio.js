@@ -5344,7 +5344,7 @@ Mesh.icosahedron = function( options, gl ) {
 
 /**
 * Returns a closed extruded shape from a 2D closed line
-* @method Mesh.extrudedShape
+* @method Mesh.shape
 * @param {Object} options valid options: radius, subdivisions (max: 6)
 */
 Mesh.shape = function( line, options, gl ) {
@@ -5357,6 +5357,7 @@ Mesh.shape = function( line, options, gl ) {
 		line = earcut.flatten( line );
 	var triangulation = earcut( line );
 	console.log(line);
+	return null;
 }
 
 /**

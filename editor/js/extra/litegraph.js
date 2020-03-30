@@ -11394,27 +11394,8 @@ if (typeof exports != "undefined") {
             enumerable: true
         });
 
-        this.name_widget = this.addWidget(
-            "text",
-            "Name",
-            this.properties.name,
-            function(v) {
-                if (!v) {
-                    return;
-                }
-                that.properties.name = v;
-            }
-        );
-        this.type_widget = this.addWidget(
-            "text",
-            "Type",
-            this.properties.type,
-            function(v) {
-                v = v || "";
-                that.properties.type = v;
-            }
-        );
-
+        this.name_widget = this.addWidget("text","Name",this.properties.name,"name");
+        this.type_widget = this.addWidget("text","Type",this.properties.type,"type");
         this.widgets_up = true;
         this.size = [180, 60];
     }
@@ -11453,12 +11434,7 @@ if (typeof exports != "undefined") {
     function ConstantNumber() {
         this.addOutput("value", "number");
         this.addProperty("value", 1.0);
-        this.widget = this.addWidget(
-            "number",
-            "value",
-            1,
-            "value"
-        );
+        this.widget = this.addWidget("number","value",1,"value");
         this.widgets_up = true;
         this.size = [180, 30];
     }
@@ -11487,12 +11463,7 @@ if (typeof exports != "undefined") {
     function ConstantBoolean() {
         this.addOutput("", "boolean");
         this.addProperty("value", true);
-        this.widget = this.addWidget(
-            "toggle",
-            "value",
-            true,
-            "value"
-        );
+        this.widget = this.addWidget("toggle","value",true,"value");
         this.widgets_up = true;
         this.size = [140, 30];
     }
@@ -11510,12 +11481,7 @@ if (typeof exports != "undefined") {
     function ConstantString() {
         this.addOutput("", "string");
         this.addProperty("value", "");
-        this.widget = this.addWidget(
-            "text",
-            "value",
-            "",
-            "value" //link to property value
-        );
+        this.widget = this.addWidget("text","value","","value");  //link to property value
         this.widgets_up = true;
         this.size = [180, 30];
     }
@@ -11542,15 +11508,101 @@ if (typeof exports != "undefined") {
 
     LiteGraph.registerNodeType("basic/string", ConstantString);
 
+    function ConstantFile() {
+        this.addInput("url", "");
+        this.addOutput("", "");
+        this.addProperty("url", "");
+        this.addProperty("type", "text");
+        this.widget = this.addWidget("text","url","","url");
+        this.size = [140, 30];
+        this._data = null;
+    }
+
+    ConstantFile.title = "Const File";
+    ConstantFile.desc = "Fetches a file from an url";
+    ConstantFile["@type"] = { type: "enum", values: ["text","arraybuffer","blob","json"] };
+
+    ConstantFile.prototype.onPropertyChanged = function(name, value) {
+        if (name == "url")
+		{
+			if( value == null || value == "")
+				this._data = null;
+			else
+			{
+				this.fetchFile(value);
+			}
+		}
+	}
+
+    ConstantFile.prototype.onExecute = function() {
+		var url = this.getInputData(0) || this.properties.url;
+		if(url && (url != this._url || this._type != this.properties.type))
+			this.fetchFile(url);
+        this.setOutputData(0, this._data );
+    };
+
+    ConstantFile.prototype.fetchFile = function(url) {
+		var that = this;
+		this._url = url;
+		this._type = this.properties.type;
+        if (url.substr(0, 4) == "http" && LiteGraph.proxy) {
+            url = LiteGraph.proxy + url.substr(url.indexOf(":") + 3);
+        }
+		fetch(url)
+		.then(function(response) {
+			if(!response.ok)
+			{
+				that._data = null;
+	            that.boxcolor = "red";
+			}
+
+			if(that.properties.type == "arraybuffer")
+				return response.arrayBuffer();
+			else if(that.properties.type == "text")
+				return response.text();
+			else if(that.properties.type == "json")
+				return response.json();
+			else if(that.properties.type == "blob")
+				return response.blob();
+		})
+		.then(function(data) {
+			that._data = data;
+            that.boxcolor = "#AEA";
+		})
+		.catch(function(error) {
+            that.boxcolor = "#AEA";
+			console.error("error fetching file:",url);
+		});
+    };
+
+	ConstantFile.prototype.onDropFile = function(file)
+	{
+		var that = this;
+		this._url = file.name;
+		this._type = this.properties.type;
+		this.properties.url = file.name;
+		var reader = new FileReader();
+		reader.onload = function(e)
+		{
+			var v = e.target.result;
+			if( that.properties.type == "json" )
+				v = JSON.parse(v);
+			that._data = v;
+		}
+		if(that.properties.type == "arraybuffer")
+			reader.readAsArrayBuffer(file);
+		else if(that.properties.type == "text" || that.properties.type == "json")
+			reader.readAsText(file);
+		else if(that.properties.type == "blob")
+			return reader.readAsBinaryString(file);
+	}
+
+    LiteGraph.registerNodeType("basic/file", ConstantFile);
+
     function ConstantData() {
         this.addOutput("", "");
         this.addProperty("value", "");
-        this.widget = this.addWidget(
-            "text",
-            "json",
-            "",
-            this.setValue.bind(this)
-        );
+        this.widget = this.addWidget("text","json","","value");
         this.widgets_up = true;
         this.size = [140, 30];
         this._value = null;
@@ -11558,11 +11610,6 @@ if (typeof exports != "undefined") {
 
     ConstantData.title = "Const Data";
     ConstantData.desc = "Constant Data";
-
-    ConstantData.prototype.setValue = function(v) {
-        this.properties.value = v;
-        this.onPropertyChanged("value", v);
-    };
 
     ConstantData.prototype.onPropertyChanged = function(name, value) {
         this.widget.value = value;
@@ -11641,12 +11688,7 @@ if (typeof exports != "undefined") {
         this.addInput("obj", "");
         this.addOutput("", "");
         this.addProperty("value", "");
-        this.widget = this.addWidget(
-            "text",
-            "prop.",
-            "",
-            this.setValue.bind(this)
-        );
+        this.widget = this.addWidget("text","prop.","",this.setValue.bind(this) );
         this.widgets_up = true;
         this.size = [140, 30];
         this._value = null;
@@ -15477,16 +15519,24 @@ if (typeof exports != "undefined") {
     function split(str, separator) {
 		if(separator == null)
 			separator = this.properties.separator;
-        if (str != null && str.constructor === String) {
-            return str.split(separator || " ");
-        }
-        return [str];
+        if (str == null )
+	        return [];
+		if( str.constructor === String )
+			return str.split(separator || " ");
+		else if( str.constructor === Array )
+		{
+			var r = [];
+			for(var i = 0; i < str.length; ++i)
+				r[i] = str[i].split(separator || " ");
+			return r;
+		}
+        return null;
     }
 
     LiteGraph.wrapFunctionAsNode(
         "string/split",
         split,
-        ["string", "string"],
+        ["string,array", "string"],
         "array",
 		{ separator: "," }
     );

@@ -8290,8 +8290,17 @@ LGraphNode.prototype.executeAction = function(action)
                                 y + H * 0.7
                             );
                         } else {
+							var v = w.value;
+							if( w.options.values )
+							{
+								var values = w.options.values;
+								if( values.constructor === Function )
+									values = values();
+								if(values && values.constructor !== Array)
+									v = values[ w.value ];
+							}
                             ctx.fillText(
-                                w.value,
+                                v,
                                 width - margin * 2 - 20,
                                 y + H * 0.7
                             );
@@ -8408,6 +8417,7 @@ LGraphNode.prototype.executeAction = function(action)
                             if (values && values.constructor === Function) {
                                 values = w.options.values(w, node);
                             }
+							var values_list = values.constructor === Array ? values : Object.keys(values);
 
                             var delta = x < 40 ? -1 : x > width - 40 ? 1 : 0;
                             if (w.type == "number") {
@@ -8418,21 +8428,25 @@ LGraphNode.prototype.executeAction = function(action)
                                 if ( w.options.max != null && w.value > w.options.max ) {
                                     w.value = w.options.max;
                                 }
-                            } else if (delta) { //used for combos 
-								var values_list = values.constructor === Array ? values : Object.keys(values);
-                                var index = values_list.indexOf(w.value) + delta;
-                                if (index >= values.length) {
-                                    index = 0;
+                            } else if (delta) { //clicked in arrow, used for combos 
+								var index = -1;
+								if(values.constructor === Object)
+									index = values_list.indexOf( String( w.value ) ) + delta;
+								else
+									index = values_list.indexOf( w.value ) + delta;
+                                if (index >= values_list.length) {
+                                    index = values_list.length - 1;
                                 }
                                 if (index < 0) {
-                                    index = values_list.length - 1;
+                                    index = 0;
                                 }
 								if( values.constructor === Array )
 	                                w.value = values[index];
 								else
-	                                w.value = values[ values_list[index] ];
-                            } else { //combo
-                                var menu = new LiteGraph.ContextMenu(values,{
+	                                w.value = index;
+                            } else { //combo clicked 
+								var text_values = values != values_list ? Object.values(values) : values;
+                                var menu = new LiteGraph.ContextMenu(text_values, {
                                         scale: Math.max(1, this.ds.scale),
                                         event: event,
                                         className: "dark",
@@ -8440,6 +8454,8 @@ LGraphNode.prototype.executeAction = function(action)
                                     },
                                     ref_window);
                                 function inner_clicked(v, option, event) {
+									if(values != values_list)
+										v = text_values.indexOf(v);
                                     this.value = v;
                                     inner_value_change(this, v);
                                     that.dirty_canvas = true;
@@ -24694,7 +24710,7 @@ function LGraphGeometryDisplace() {
         MIDIEvent.commands_reversed[MIDIEvent.commands[i]] = i;
     }
 
-    //MIDI wrapper
+    //MIDI wrapper, instantiate by MIDIIn and MIDIOut
     function MIDIInterface(on_ready, on_error) {
         if (!navigator.requestMIDIAccess) {
             this.error = "not suppoorted";
@@ -24713,9 +24729,12 @@ function LGraphGeometryDisplace() {
             cc: []
         };
 
-        navigator
-            .requestMIDIAccess()
-            .then(this.onMIDISuccess.bind(this), this.onMIDIFailure.bind(this));
+		this.input_ports = null;
+		this.input_ports_info = [];
+		this.output_ports = null;
+		this.output_ports_info = [];
+
+        navigator.requestMIDIAccess().then(this.onMIDISuccess.bind(this), this.onMIDIFailure.bind(this));
     }
 
     MIDIInterface.input = null;
@@ -24736,80 +24755,34 @@ function LGraphGeometryDisplace() {
     MIDIInterface.prototype.updatePorts = function() {
         var midi = this.midi;
         this.input_ports = midi.inputs;
+		this.input_ports_info = [];
+        this.output_ports = midi.outputs;
+		this.output_ports_info = [];
+
         var num = 0;
 
         var it = this.input_ports.values();
         var it_value = it.next();
         while (it_value && it_value.done === false) {
             var port_info = it_value.value;
-            console.log(
-                "Input port [type:'" +
-                    port_info.type +
-                    "'] id:'" +
-                    port_info.id +
-                    "' manufacturer:'" +
-                    port_info.manufacturer +
-                    "' name:'" +
-                    port_info.name +
-                    "' version:'" +
-                    port_info.version +
-                    "'"
-            );
+			this.input_ports_info.push(port_info);
+            console.log( "Input port [type:'" + port_info.type + "'] id:'" + port_info.id + "' manufacturer:'" + port_info.manufacturer + "' name:'" + port_info.name + "' version:'" + port_info.version + "'" );
             num++;
             it_value = it.next();
         }
         this.num_input_ports = num;
 
         num = 0;
-        this.output_ports = midi.outputs;
         var it = this.output_ports.values();
         var it_value = it.next();
         while (it_value && it_value.done === false) {
             var port_info = it_value.value;
-            console.log(
-                "Output port [type:'" +
-                    port_info.type +
-                    "'] id:'" +
-                    port_info.id +
-                    "' manufacturer:'" +
-                    port_info.manufacturer +
-                    "' name:'" +
-                    port_info.name +
-                    "' version:'" +
-                    port_info.version +
-                    "'"
-            );
+			this.output_ports_info.push(port_info);
+            console.log( "Output port [type:'" + port_info.type + "'] id:'" + port_info.id + "' manufacturer:'" + port_info.manufacturer + "' name:'" + port_info.name + "' version:'" + port_info.version + "'" );
             num++;
             it_value = it.next();
         }
         this.num_output_ports = num;
-
-        /* OLD WAY
-	for (var i = 0; i < this.input_ports.size; ++i) {
-		  var input = this.input_ports.get(i);
-		  if(!input)
-			  continue; //sometimes it is null?!
-			console.log( "Input port [type:'" + input.type + "'] id:'" + input.id +
-		  "' manufacturer:'" + input.manufacturer + "' name:'" + input.name +
-		  "' version:'" + input.version + "'" );
-			num++;
-	  }
-	this.num_input_ports = num;
-
-
-	num = 0;
-	this.output_ports = midi.outputs;
-	for (var i = 0; i < this.output_ports.size; ++i) {
-		  var output = this.output_ports.get(i);
-		  if(!output)
-			  continue; 
-		console.log( "Output port [type:'" + output.type + "'] id:'" + output.id +
-		  "' manufacturer:'" + output.manufacturer + "' name:'" + output.name +
-		  "' version:'" + output.version + "'" );
-			num++;
-	  }
-	this.num_output_ports = num;
-	*/
     };
 
     MIDIInterface.prototype.onMIDIFailure = function(msg) {
@@ -24859,7 +24832,7 @@ function LGraphGeometryDisplace() {
             return;
         }
 
-        var output_port = this.output_ports.get("output-" + port);
+        var output_port = this.output_ports_info[port];//this.output_ports.get("output-" + port);
         if (!output_port) {
             return;
         }
@@ -24906,10 +24879,9 @@ function LGraphGeometryDisplace() {
 
         if (name == "port") {
             var values = {};
-            for (var i = 0; i < this._midi.input_ports.size; ++i) {
-                var input = this._midi.input_ports.get("input-" + i);
-                values[i] =
-                    i + ".- " + input.name + " version:" + input.version;
+            for (var i = 0; i < this._midi.input_ports_info.length; ++i) {
+                var input = this._midi.input_ports_info[i];
+                values[i] = i + ".- " + input.name + " version:" + input.version;
             }
             return { type: "enum", values: values };
         }
@@ -25007,9 +24979,10 @@ function LGraphGeometryDisplace() {
         var that = this;
         new MIDIInterface(function(midi) {
             that._midi = midi;
+			that.widget.options.values = that.getMIDIOutputs();
         });
-
-		this.addWidget("combo","Device",this.properties.port,{ property: "port", values: this.getMIDIOutputs.bind(this) });
+		this.widget = this.addWidget("combo","Device",this.properties.port,{ property: "port", values: this.getMIDIOutputs.bind(this) });
+		this.size = [340,60];
     }
 
     LGMIDIOut.MIDIInterface = MIDIInterface;
@@ -25028,14 +25001,20 @@ function LGraphGeometryDisplace() {
             return { type: "enum", values: values };
         }
     };
+	LGMIDIOut.default_ports = {0:"unknown"};
 
 	LGMIDIOut.prototype.getMIDIOutputs = function()
 	{
 		var values = {};
-		for (var i = 0; i < this._midi.output_ports.size; ++i) {
-			var output = this._midi.output_ports.get(i);
-			if(output)
-				values[i] = i + ".- " + output.name + " version:" + output.version;
+		if(!this._midi)
+			return LGMIDIOut.default_ports;
+		if(this._midi.output_ports_info)
+		for (var i = 0; i < this._midi.output_ports_info.length; ++i) {
+			var output = this._midi.output_ports_info[i];
+			if(!output)
+				continue;
+			var name = i + ".- " + output.name + " version:" + output.version;
+			values[i] = name;
 		}
 		return values;
 	}
@@ -25046,7 +25025,7 @@ function LGraphGeometryDisplace() {
             return;
         }
         if (event == "send") {
-            this._midi.sendMIDI(this.port, midi_event);
+            this._midi.sendMIDI(this.properties.port, midi_event);
         }
         this.trigger("midi", midi_event);
     };

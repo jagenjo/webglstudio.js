@@ -11514,7 +11514,6 @@ if (typeof exports != "undefined") {
         this.addProperty("url", "");
         this.addProperty("type", "text");
         this.widget = this.addWidget("text","url","","url");
-        this.size = [140, 30];
         this._data = null;
     }
 
@@ -11543,6 +11542,13 @@ if (typeof exports != "undefined") {
 
     ConstantFile.prototype.fetchFile = function(url) {
 		var that = this;
+		if(!url || url.constructor !== String)
+		{
+			that._data = null;
+            that.boxcolor = null;
+			return;
+		}
+
 		this._url = url;
 		this._type = this.properties.type;
         if (url.substr(0, 4) == "http" && LiteGraph.proxy) {
@@ -11551,10 +11557,7 @@ if (typeof exports != "undefined") {
 		fetch(url)
 		.then(function(response) {
 			if(!response.ok)
-			{
-				that._data = null;
-	            that.boxcolor = "red";
-			}
+				 throw new Error("File not found");
 
 			if(that.properties.type == "arraybuffer")
 				return response.arrayBuffer();
@@ -11570,7 +11573,8 @@ if (typeof exports != "undefined") {
             that.boxcolor = "#AEA";
 		})
 		.catch(function(error) {
-            that.boxcolor = "#AEA";
+			that._data = null;
+            that.boxcolor = "red";
 			console.error("error fetching file:",url);
 		});
     };
@@ -11584,6 +11588,7 @@ if (typeof exports != "undefined") {
 		var reader = new FileReader();
 		reader.onload = function(e)
 		{
+            that.boxcolor = "#AEA";
 			var v = e.target.result;
 			if( that.properties.type == "json" )
 				v = JSON.parse(v);
@@ -11797,6 +11802,18 @@ if (typeof exports != "undefined") {
 
     LiteGraph.registerNodeType("basic/variable", Variable);
 
+    function length(v) {
+        if(v && v.length != null)
+			return Number(v.length);
+		return 0;
+    }
+
+    LiteGraph.wrapFunctionAsNode(
+        "basic/length",
+        length,
+        ["*"],
+        "number"
+    );
 
 	function DownloadData() {
         this.size = [60, 30];
@@ -15559,10 +15576,10 @@ if (typeof exports != "undefined") {
 
     function StringToTable() {
         this.addInput("", "string");
-        this.addOutput("", "table");
+        this.addOutput("table", "table");
+        this.addOutput("rows", "number");
         this.addProperty("value", "");
         this.addProperty("separator", ",");
-        this.size = [180, 30];
 		this._table = null;
     }
 
@@ -15574,12 +15591,14 @@ if (typeof exports != "undefined") {
 		if(!input)
 			return;
 		var separator = this.properties.separator || ",";
-		if(input != this._str)
+		if(input != this._str || separator != this._last_separator )
 		{
+			this._last_separator = separator;
 			this._str = input;
 			this._table = input.split("\n").map(function(a){ return a.trim().split(separator)});
 		}
         this.setOutputData(0, this._table );
+        this.setOutputData(1, this._table ? this._table.length : 0 );
     };
 
     LiteGraph.registerNodeType("string/toTable", StringToTable);

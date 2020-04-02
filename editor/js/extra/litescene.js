@@ -2592,7 +2592,10 @@ var Network = {
 			var script = document.createElement('script');
 			script.num = i;
 			script.type = 'text/javascript';
-			script.src = url[i] + "?" + LS.RM.getNoCache(true);
+			var full_url = url[i].trim();
+			if(full_url.substr(0,5) != "blob:")
+				full_url += "?" + LS.RM.getNoCache(true);
+			script.src = full_url;
 			script.async = false;
 			//if( script.src.substr(0,5) == "blob:") //local scripts could contain utf-8
 				script.charset = "UTF-8";
@@ -13127,8 +13130,8 @@ function Scene()
 	//work in progress, not finished yet. This will contain all the objects in cells
 	this._spatial_container = new LS.SpatialContainer();
 
-	this.external_scripts = []; //external scripts that must be loaded before initializing the scene (mostly libraries used by this scene)
-	this.global_scripts = []; //scripts that are located in the resources folder and must be loaded before launching the app
+	this.external_scripts = []; //external scripts that must be loaded before initializing the scene (mostly libraries used by this scene) they do not have access to the data in the scene
+	this.global_scripts = []; //scripts that are located in the resources folder and must be loaded before launching the app. they have access to the scene data
 	this.preloaded_resources = {}; //resources that must be loaded, appart from the ones in the components
 
 	//track with global animations of the scene
@@ -13702,6 +13705,9 @@ Scene.getScriptsList = function( scene, allow_local, full_paths )
 			scripts.push( script_url );
 		}
 	}
+
+	scripts = scripts.map(function(a){ return a.trim(); }); //careful with spaces
+
 	return scripts;
 }
 
@@ -13750,6 +13756,7 @@ Scene.prototype.loadScripts = function( scripts, on_complete, on_error, force_re
 				continue;
 			}
 
+			//we use blobs because we have the data locally but we need to load it from an url (the script loader works like that)
 			var blob = new Blob([res.data],{encoding:"UTF-8", type: 'text/plain;charset=UTF-8'});
 			var objectURL = URL.createObjectURL( blob );
 			final_scripts.push( objectURL );
@@ -54415,7 +54422,7 @@ var parserOBJ = {
 					for(var i = 1; i < tokens.length; ++i)
 						polygon_indices.push( getIndex( tokens[i] ) );
 					group.indices.push( polygon_indices[0], polygon_indices[1], polygon_indices[2] );
-					//polygons are break intro triangles
+					//polygons are break intro triangles (assuming they are convex!)
 					for(var i = 2; i < polygon_indices.length-1; ++i)
 						group.indices.push( polygon_indices[0], polygon_indices[i], polygon_indices[i+1] );
 					break;

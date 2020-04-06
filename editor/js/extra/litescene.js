@@ -24657,7 +24657,7 @@ if(typeof(LiteGraph) != "undefined")
     LGraphRemapWeights.prototype.onGetOutputs = function() {
         var r = [["selected","string"]];
 		var type = null;
-		switch(dimensions)
+		switch(this.properties.dimensions)
 		{
 			case 2: type = "vec2"; break;
 			case 3: type = "vec3"; break;

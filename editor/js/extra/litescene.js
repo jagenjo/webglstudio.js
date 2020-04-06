@@ -23695,6 +23695,12 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphGUIMultipleChoice.desc = "Renders a multiple choice widget on the main canvas";
 	LGraphGUIMultipleChoice["@corner"] = corner_options;
 
+	LGraphGUIMultipleChoice.prototype.onPropertyChanged = function(name,value)
+	{
+		if(name == "values")
+			this._values = value.split(";");
+	}
+
 	LGraphGUIMultipleChoice.prototype.onAction = function(name, param)
 	{
 		if(name == "prev")

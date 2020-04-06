@@ -11650,6 +11650,51 @@ if (typeof exports != "undefined") {
 
     LiteGraph.registerNodeType("basic/data", ConstantData);
 
+	//to store json objects
+    function ConstantArray() {
+        this.addInput("", "");
+        this.addOutput("", "array");
+        this.addProperty("value", "");
+        this.widget = this.addWidget("text","array","","value");
+        this.widgets_up = true;
+        this.size = [140, 30];
+        this._value = null;
+    }
+
+    ConstantArray.title = "Const Array";
+    ConstantArray.desc = "Constant Array";
+
+    ConstantArray.prototype.onPropertyChanged = function(name, value) {
+        this.widget.value = value;
+        if (value == null || value == "") {
+            return;
+        }
+
+        try {
+            this._value = JSON.parse(value);
+            this.boxcolor = "#AEA";
+        } catch (err) {
+            this.boxcolor = "red";
+        }
+    };
+
+    ConstantArray.prototype.onExecute = function() {
+        var v = this.getInputData(0);
+		if(v && v.length)
+		{
+			if(!this._value)
+				this._value = new Array();
+			this._value.length = v.length;
+			for(var i = 0; i < v.length; ++i)
+				this._value[i] = v[i];
+		}
+		this.setOutputData(0, this._value);
+    };
+
+	ConstantArray.prototype.setValue = ConstantNumber.prototype.setValue;
+
+    LiteGraph.registerNodeType("basic/array", ConstantArray);
+
     function ArrayElement() {
         this.addInput("array", "array,table,string");
         this.addInput("index", "number");

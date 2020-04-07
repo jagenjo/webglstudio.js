@@ -1299,7 +1299,7 @@ function enableWebGLCanvas( canvas, options )
 		if(this.textAlign == "right")
 			offset = x + point_size * 0.5;
 		else if(this.textAlign == "center")
-			offset = x * 0.5;
+			offset = (x + point_size * 0.5 ) * 0.5;
 		if(offset)
 			for(var i = 0; i < points.length; i += 3)
 				points[i] -= offset;
@@ -1334,8 +1334,19 @@ function enableWebGLCanvas( canvas, options )
 		var atlas = createFontAtlas.call( this, this._font_family, this._font_mode );
 		var info = atlas.info;
 		var point_size = Math.ceil( this._font_size * 1.1 );
-		var spacing = point_size * atlas.info.spacing / atlas.info.char_size - 1 ;
-		return { width: text.length * spacing, height: point_size };
+		var textsize = 0;
+		for(var i = 0; i < text.length; ++i)
+		{
+			var charinfo = info.kernings[ text[i] ];
+			if(charinfo)
+				textsize += charinfo.nwidth;
+			else
+				textsize += spacing / info.char_size;
+		}
+		//var spacing = point_size * info.spacing / info.char_size - 1;
+		//textsize = text.length * spacing;
+		textsize *= point_size;
+		return { width: textsize, height: point_size };
 	}
 
 	function createFontAtlas( fontname, fontmode, force )

@@ -24556,14 +24556,8 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphRemapWeights.prototype.removeWeight = function( name )
 	{
-		var index = Object.keys(this.current_weights).indexOf(name);
-		if(index == -1)
-		{
-			console.error("weight not found");
-			return;
-		}
 		for(var i = 0; i < this.points.length; ++i)
-			this.points[i].weights.splice(index,1);
+			delete this.points[i].weights[name];
 		delete this.current_weights[name];
 	}
 

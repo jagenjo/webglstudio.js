@@ -24554,6 +24554,19 @@ if(typeof(LiteGraph) != "undefined")
 		o.enabled = this.enabled;
 	}
 
+	LGraphRemapWeights.prototype.removeWeight = function( name )
+	{
+		var index = Object.keys(this.current_weights).indexOf(name);
+		if(index == -1)
+		{
+			console.error("weight not found");
+			return;
+		}
+		for(var i = 0; i < this.points.length; ++i)
+			this.points[i].weights.splice(index,1);
+		delete this.current_weights[name];
+	}
+
 	LGraphRemapWeights.prototype.onConfigure = function(o)
 	{
 		if(o.enabled !== undefined)
@@ -24644,13 +24657,24 @@ if(typeof(LiteGraph) != "undefined")
 			default: type = "number"; break;
 		}
 
+		inspector.widgets_per_row = 2;
 		if(type)
 		for(var i in this.current_weights)
 		{
-			inspector.add( type, i, this.current_weights[i], { name_width: "80%", index: i, callback: function(v){
-				node.current_weights[ this.options.index ] = v;
+			var name = i;
+			inspector.add( type, name, this.current_weights[ name ], { width: "calc(100% - 40px)", name_width: "80%", index: name, callback: function(v){
+				node.current_weights[ name ] = v;
+			}});
+			inspector.addButton( null, InterfaceModule.icons.trash, { width: 30, index: name, callback: function(v){
+				var name = this.options.index;
+				LiteGUI.confirm("Are you sure? It will be removed from all points", function(v){
+					if(v)
+						node.removeWeight( name );
+					inspector.refresh();
+				});
 			}});
 		}
+		inspector.widgets_per_row = 1;
 
 		inspector.addStringButton("Add Weight","", { button: "+", callback_button: function(v){
 			node.current_weights[v] = dimensions == 1 ? 1 : new Array(dimensions).fill(0);

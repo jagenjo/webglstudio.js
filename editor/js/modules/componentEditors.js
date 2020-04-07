@@ -649,7 +649,7 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 		if(LS.Components.MorphDeformer.use_sliders)
 		{
 			var names = component.morph_targets.map(function(a){return a.mesh;});
-			names = MorphDeformer.removeSharedString(names);
+			names = LS.Components.MorphDeformer.removeSharedString(names);
 			inspector.widgets_per_row = 2;
 			for(var i = 0; i < component.morph_targets.length; i++)
 			{

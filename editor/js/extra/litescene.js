@@ -5789,10 +5789,13 @@ LS.ResourcesManager.processImage = function( filename, data, options, callback )
 				texture._original_data = data;
 		}
 
-		if( !LS.ResourcesManager.keep_urls )
-			URL.revokeObjectURL( objectURL ); //free memory
-		else
-			texture._local_url = objectURL; //used in strange situations
+		if( objectURL )
+		{
+			if( !LS.ResourcesManager.keep_urls )
+				URL.revokeObjectURL( objectURL ); //free memory
+			else
+				texture._local_url = objectURL; //used in strange situations
+		}
 
 		if(callback)
 			callback(filename,texture,options);

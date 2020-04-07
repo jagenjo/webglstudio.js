@@ -658,9 +658,9 @@ var ImporterModule  = {
 			}
 
 			//remove original file if the extension has changed
-			var file_extension = LS.RM.getExtension( file.filename );
+			var file_extension = LS.RM.getExtension( filename );
 			var res_extension = LS.RM.getExtension( resource.fullpath || resource.filename );
-			if( file_extension != res_extension )
+			if( file_extension != res_extension ) //remove original data
 			{
 				resource._original_file = null;
 				resource._original_data = null;

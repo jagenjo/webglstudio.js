@@ -5616,9 +5616,10 @@ global.Texture = GL.Texture = function Texture( width, height, options, gl ) {
 		return new Uint8Array( data );
 	}
 
-	//gl.TEXTURE_1D is not supported by WebGL...
+	this.setUploadOptions(options);
 
 	//here we create all **********************************
+	//gl.TEXTURE_1D is not supported by WebGL...
 	if(this.texture_type == GL.TEXTURE_2D)
 	{
 		//create the texture

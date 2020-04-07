@@ -639,18 +639,21 @@ var ImporterModule  = {
 					filename = filename + ".wbin";
 					LS.ResourcesManager.renameResource( resource.filename, filename );
 				}
-				if( resource.constructor == GL.Texture && (!format || !format["native"]) )
+				if( resource.constructor == GL.Texture )
 				{
-					resource._original_data = null;
-					var blob = resource.toBlob(true);
-					var reader = new FileReader();
-					reader.onload = function() {
-						resource._original_data = this.result;
-					};
-					reader.readAsArrayBuffer( blob );
+					if( !format || ( !format["native"] && !format["skip_conversion"]) )
+					{
+						resource._original_data = null;
+						var blob = resource.toBlob(true);
+						var reader = new FileReader();
+						reader.onload = function() {
+							resource._original_data = this.result;
+						};
+						reader.readAsArrayBuffer( blob );
 
-					filename = filename + ".png";
-					LS.ResourcesManager.renameResource( resource.filename, filename );
+						filename = filename + ".png";
+						LS.ResourcesManager.renameResource( resource.filename, filename );
+					}
 				}
 			}
 

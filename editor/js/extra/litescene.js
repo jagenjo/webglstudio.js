@@ -40714,7 +40714,7 @@ MorphDeformer.prototype.createGeometryTexture = function( data_buffer, texture )
 	var buffer_padded = new Float32Array( width * height * 3 );
 	buffer_padded.set( stream_data );
 	if(!texture || texture.width != width || texture.height != height )
-		texture = new GL.Texture( width, height, { format: gl.RGB, type: gl.FLOAT, filter: gl.NEAREST, wrap: gl.CLAMP_TO_EDGE, pixel_data: buffer_padded, no_flip: true });
+		texture = new GL.Texture( width, height, { format: gl.RGB, type: gl.FLOAT, filter: gl.NEAREST, wrap: gl.CLAMP_TO_EDGE, pixel_data: buffer_padded, no_flip: false });
 	else
 		texture.uploadData( buffer_padded );
 	return texture;

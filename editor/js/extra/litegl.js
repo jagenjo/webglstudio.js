@@ -4261,7 +4261,7 @@ Mesh.fromURL = function(url, on_complete, gl, options)
 		mesh.parse( data, extension, options );
 		delete mesh["ready"];
 		if(on_complete)
-			on_complete.call(mesh, mesh, url);
+			on_complete.call(mesh, mesh, url, options);
 	}, function(err){
 		if(on_complete)
 			on_complete(null);

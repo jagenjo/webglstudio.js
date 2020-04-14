@@ -648,12 +648,20 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 	{
 		if(LS.Components.MorphDeformer.use_sliders)
 		{
+			inspector.addString("Filter", LS.Components.MorphDeformer.filter || "", { callback: function(v) { 
+				LS.Components.MorphDeformer.filter = v;
+				inspector.refresh();
+			}});
+
 			var names = component.morph_targets.map(function(a){return a.mesh;});
 			names = LS.Components.MorphDeformer.removeSharedString(names);
 			inspector.widgets_per_row = 2;
 			for(var i = 0; i < component.morph_targets.length; i++)
 			{
 				var pretty_name = names[i].replace(/_/g," ");
+				if(LS.Components.MorphDeformer.filter && pretty_name.toLowerCase().indexOf( LS.Components.MorphDeformer.filter.toLowerCase() ) == -1 )
+					continue;
+
 				var morph = component.morph_targets[i];
 				inspector.addSlider(pretty_name, morph.weight, { min: -1, max: 1, width: "calc(100% - 40px)", pretitle: AnimationModule.getKeyframeCode( component, "morphs/"+i+"/weight" ), morph_index: i, callback: function(v) { 
 					component.setMorphWeight( this.options.morph_index, v );

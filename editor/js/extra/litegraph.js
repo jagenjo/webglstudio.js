@@ -13871,6 +13871,7 @@ if (typeof exports != "undefined") {
         var in_max = this.properties.in_max;
         var out_min = this.properties.out_min;
         var out_max = this.properties.out_max;
+		/*
 		if( in_min > in_max )
 		{
 			in_min = in_max;
@@ -13881,6 +13882,7 @@ if (typeof exports != "undefined") {
 			out_min = out_max;
 			out_max = this.properties.out_min;
 		}
+		*/
 
         this._last_v = ((v - in_min) / (in_max - in_min)) * (out_max - out_min) + out_min;
         this.setOutputData(0, this._last_v);
@@ -15446,6 +15448,7 @@ if (typeof exports != "undefined") {
 			var target_max = this.properties.target_max;
 
 			//swap to avoid errors
+			/*
 			if(range_min > range_max)
 			{
 				range_min = range_max;
@@ -15457,6 +15460,7 @@ if (typeof exports != "undefined") {
 				target_min = target_max;
 				target_max = this.properties.target_min;
 			}
+			*/
 
 			for(var i = 0; i < 3; ++i)
 			{

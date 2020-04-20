@@ -6700,6 +6700,8 @@ Texture.fromURL = function( url, options, on_complete, gl ) {
 			if(!img_data)
 				return;
 			options.texture = texture;
+			if(img_data.flipY)
+				options.no_flip = true;
 			if(img_data.format == "RGB")
 				texture.format = gl.RGB;
 			texture = GL.Texture.fromMemory( img_data.width, img_data.height, img_data.pixels, options );
@@ -6754,26 +6756,15 @@ Texture.parseTGA = function(data)
 	img.imageSize = img.width * img.height * img.bytesPerPixel;
 	img.pixels = data.subarray(18,18+img.imageSize);
 	img.pixels = new Uint8Array( img.pixels ); 	//clone
-	if(	(header[5] & (1<<4)) == 0) //hack, needs swap
+	img.flipY = ((header[5] & (1<<5)) == 0); //needs swap in Y
+	//TGA comes in BGR format so we swap it, this is slooooow
+	for(var i = 0; i < img.imageSize; i+= img.bytesPerPixel)
 	{
-		//TGA comes in BGR format so we swap it, this is slooooow
-		for(var i = 0; i < img.imageSize; i+= img.bytesPerPixel)
-		{
-			var temp = img.pixels[i];
-			img.pixels[i] = img.pixels[i+2];
-			img.pixels[i+2] = temp;
-		}
-		header[5] |= 1<<4; //mark as swaped
-		img.format = img.bpp == 32 ? "RGBA" : "RGB";
+		var temp = img.pixels[i];
+		img.pixels[i] = img.pixels[i+2];
+		img.pixels[i+2] = temp;
 	}
-	else
-		img.format = img.bpp == 32 ? "RGBA" : "RGB";
-	//some extra bytes to avoid alignment problems
-	//img.pixels = new Uint8Array( img.imageSize + 14);
-	//img.pixels.set( data.subarray(18,18+img.imageSize), 0);
-	img.flipY = true;
-	//img.format = img.bpp == 32 ? "BGRA" : "BGR";
-	//trace("TGA info: " + img.width + "x" + img.height );
+	img.format = img.bpp == 32 ? "RGBA" : "RGB";
 	return img;
 }
 

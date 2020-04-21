@@ -44344,6 +44344,7 @@ function Target(o)
 	this.cylindrical = false;
 	this.front = Target.NEGZ;
 	this.up = Target.POSY;
+	this.roll = 0;
 	this.use_iterative_method = false; //this method reuses previous orientation as a reinforcement to avoid weird cases but it gives an approxiate orientation
 	
 	this._global_position = vec3.create();
@@ -44456,6 +44457,9 @@ Target.prototype.updateOrientation = function()
 		case Target.NEGZ:
 		default:
 	}
+
+	if(this.roll)
+		quat.rotateZ( transform._rotation, transform._rotation, this.roll * DEG2RAD );
 
 	transform._on_change();
 }

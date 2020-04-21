@@ -8493,7 +8493,10 @@ LGraphNode.prototype.executeAction = function(action)
                             if (values && values.constructor === Function) {
                                 values = w.options.values(w, node);
                             }
-							var values_list = values.constructor === Array ? values : Object.keys(values);
+							var values_list = null;
+							
+							if( w.type != "number")
+								values_list = values.constructor === Array ? values : Object.keys(values);
 
                             var delta = x < 40 ? -1 : x > width - 40 ? 1 : 0;
                             if (w.type == "number") {
@@ -10193,8 +10196,8 @@ LGraphNode.prototype.executeAction = function(action)
 
     //API *************************************************
     //like rect but rounded corners
-    if (this.CanvasRenderingContext2D) {
-        CanvasRenderingContext2D.prototype.roundRect = function(
+    if (global.CanvasRenderingContext2D) {
+        global.CanvasRenderingContext2D.prototype.roundRect = function(
             x,
             y,
             width,
@@ -27613,10 +27616,10 @@ LiteGraph.registerNodeType("audio/waveShaper", LGAudioWaveShaper);
         this._ws.onmessage = function(e) {
             that.boxcolor = "#AFA";
             var data = JSON.parse(e.data);
-            if (data.room && data.room != this.properties.room) {
+            if (data.room && data.room != that.properties.room) {
                 return;
             }
-            if (e.data.type == 1) {
+            if (data.type == 1) {
                 if (
                     data.data.object_class &&
                     LiteGraph[data.data.object_class]
@@ -27632,7 +27635,7 @@ LiteGraph.registerNodeType("audio/waveShaper", LGAudioWaveShaper);
                     that.triggerSlot(0, data.data);
                 }
             } else {
-                that._last_received_data[e.data.channel || 0] = data.data;
+                that._last_received_data[data.channel || 0] = data.data;
             }
         };
         this._ws.onerror = function(e) {

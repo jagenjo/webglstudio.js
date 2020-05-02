@@ -51,7 +51,7 @@ function SceneTreeWidget( options )
 	this.locked = false;
 	this.max_visible_items = 1;
 
-	this.filter_layers = 0xFF;
+	this.filter_layers = 0xFFFF; //show all
 	this.filter_components = "";
 	this.filter_by_camera = false;
 

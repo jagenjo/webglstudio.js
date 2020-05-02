@@ -10196,8 +10196,8 @@ LGraphNode.prototype.executeAction = function(action)
 
     //API *************************************************
     //like rect but rounded corners
-    if (global.CanvasRenderingContext2D) {
-        global.CanvasRenderingContext2D.prototype.roundRect = function(
+    if (typeof(window) != "undefined" && window.CanvasRenderingContext2D) {
+        window.CanvasRenderingContext2D.prototype.roundRect = function(
             x,
             y,
             width,
@@ -10539,11 +10539,13 @@ LGraphNode.prototype.executeAction = function(action)
 
             var body_rect = document.body.getBoundingClientRect();
             var root_rect = root.getBoundingClientRect();
+			if(body_rect.height == 0)
+				console.error("document.body height is 0. That is dangerous, set html,body { height: 100%; }");
 
-            if (left > body_rect.width - root_rect.width - 10) {
+            if (body_rect.width && left > body_rect.width - root_rect.width - 10) {
                 left = body_rect.width - root_rect.width - 10;
             }
-            if (top > body_rect.height - root_rect.height - 10) {
+            if (body_rect.height && top > body_rect.height - root_rect.height - 10) {
                 top = body_rect.height - root_rect.height - 10;
             }
         }

@@ -271,29 +271,35 @@ LS.Components.Light["@inspector"] = function(light, inspector)
 	inspector.addCheckbox("Const Diff.", !!light.constant_diffuse, { callback: function(v) { light.constant_diffuse = v; }});
 	inspector.addCheckbox("Specular", light.use_specular != false, { callback: function(v) { light.use_specular = v; }});
 	inspector.widgets_per_row = 1;
+
 	inspector.addTitle("Shadow");
 	inspector.addCheckbox("Cast. shadows", light.cast_shadows, { pretitle: AnimationModule.getKeyframeCode( light, "cast_shadows"), callback: function(v) { light.cast_shadows = v; inspector.refresh(); }});
 
-	if(light.cast_shadows)
+	if(light.cast_shadows && light._shadowmap )
 	{
-		inspector.widgets_per_row = 2;
+		inspector.widgets_per_row = 1;
 		//inspector.addCheckbox("Reverse faces", light.hard_shadows, { pretitle: AnimationModule.getKeyframeCode( light, "hard_shadows"), callback: function(v) { light.hard_shadows = v; }});
-		inspector.addCheckbox("Hard shadows", light.hard_shadows, { pretitle: AnimationModule.getKeyframeCode( light, "hard_shadows"), callback: function(v) { light.hard_shadows = v; }});
-		inspector.addLayers("Shadows Layers", light.shadows_layers, { pretitle: AnimationModule.getKeyframeCode( light, "shadows_layers"), callback: function (value) { 
-			light.shadows_layers = value;
+		//inspector.addCheckbox("Hard shadows", light.hard_shadows, { pretitle: AnimationModule.getKeyframeCode( light, "hard_shadows"), callback: function(v) { light.hard_shadows = v; }});
+		inspector.addLayers("Shadows Layers", light._shadowmap.layers, { pretitle: AnimationModule.getKeyframeCode( light, "layers"), callback: function (value) { 
+			light._shadowmap.layers = value;
 			inspector.refresh();
 		}});
 		inspector.widgets_per_row = 2;
 		inspector.addNumber("Near", light.near, { pretitle: AnimationModule.getKeyframeCode( light, "near"), callback: function (value) { light.near = value;}});
 		inspector.addNumber("Far", light.far, { pretitle: AnimationModule.getKeyframeCode( light, "far"), callback: function (value) { light.far = value; }});
 		inspector.widgets_per_row = 1;
-		inspector.addNumber("Shadow bias", light.shadow_bias, { pretitle: AnimationModule.getKeyframeCode( light, "shadow_bias"), step: 0.001, precision: 3, min:-0.5, callback: function (value) { light.shadow_bias = value; }});
-		inspector.addCombo("Shadowmap size", !light.shadowmap_resolution ? "Default" : light.shadowmap_resolution, { pretitle: AnimationModule.getKeyframeCode( light, "shadowmap_resolution"), values: ["Default",256,512,1024,2048,4096], callback: function(v) { 
+		inspector.addNumber("Bias", light._shadowmap.bias, { pretitle: AnimationModule.getKeyframeCode( light._shadowmap, "bias"), step: 0.001, precision: 3, min:-0.5, callback: function (value) { light._shadowmap.bias = value; }});
+		inspector.addCombo("Resolution", !light._shadowmap.resolution ? "Default" : light._shadowmap.resolution, { pretitle: AnimationModule.getKeyframeCode( light, "resolution"), values: ["Default",256,512,1024,2048,4096], callback: function(v) { 
 			if(v == "Default")
-				light.shadowmap_resolution = 0; 
+				light._shadowmap.resolution = 0; 
 			else
-				light.shadowmap_resolution = parseFloat(v); 
+				light._shadowmap.resolution = parseFloat(v); 
 		}});
+		inspector.widgets_per_row = 2;
+		inspector.addCheckbox("Hard Shadows", light._shadowmap.shadow_mode == 0, { pretitle: AnimationModule.getKeyframeCode( light, "reverse_faces"), callback: function(v) { light._shadowmap.shadow_mode = !v ? 1 : 0; }});
+		inspector.addCheckbox("Reverse Faces", light._shadowmap.reverse_faces, { pretitle: AnimationModule.getKeyframeCode( light, "reverse_faces"), callback: function(v) { light._shadowmap.reverse_faces = v; }});
+		inspector.addCheckbox("Linear Filter", light._shadowmap.linear_filter, { pretitle: AnimationModule.getKeyframeCode( light, "reverse_faces"), callback: function(v) { light._shadowmap.linear_filter = v; }});
+		inspector.widgets_per_row = 1;
 	}
 
 	inspector.addTitle("Textures");

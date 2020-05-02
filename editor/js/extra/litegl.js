@@ -5674,7 +5674,7 @@ Texture.prototype.computeInternalFormat = function()
 	//automatic selection of internal format for depth textures to avoid problems between webgl1 and 2
 	if( this.format == GL.DEPTH_COMPONENT )
 	{
-		this.minFilter = this.magFilter = GL.NEAREST;
+		this.minFilter = GL.NEAREST; //this.magFilter = 
 
 		if( gl.webgl_version == 2 ) 
 		{
@@ -9811,6 +9811,7 @@ GL.create = function(options) {
 		var post = global.requestAnimationFrame;
 		var time = getTime();
 		var context = this;
+		var last_mouse_buttons = 0;
 
 		//loop only if browser tab visible
 		function loop() {
@@ -9822,7 +9823,8 @@ GL.create = function(options) {
 			var now = getTime();
 			var dt = (now - time) * 0.001;
 			if(context.mouse)
-				context.mouse.last_buttons = context.mouse.buttons;
+				context.mouse.last_buttons = last_mouse_buttons;
+			last_mouse_buttons = context.mouse.buttons;
 			if (context.onupdate) 
 				context.onupdate(dt);
 			LEvent.trigger( context, "update", dt);

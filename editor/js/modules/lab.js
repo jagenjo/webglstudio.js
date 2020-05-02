@@ -406,7 +406,7 @@ var LabModule = {
 					if( tex.format == GL.DEPTH_COMPONENT ) //depth
 					{
 						gl.disable( gl.BLEND );
-						this._depth_shader.uniforms({ u_near_far: [ tex.near, tex.far ], u_exposure: this.exposure });
+						this._depth_shader.uniforms({ u_near_far: tex.near_far_planes, u_exposure: this.exposure });
 						LS.Draw.renderPlane([ gl._matrix[6] + (posx + w*0.5) * gl._matrix[0], gl._matrix[7] + (posy + h*0.5) * gl._matrix[4], 0], [ w*0.5 * gl._matrix[0], -h*0.5 * gl._matrix[4] ], tex, this._depth_shader );
 					}
 					else //color

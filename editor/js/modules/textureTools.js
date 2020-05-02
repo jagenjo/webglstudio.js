@@ -382,9 +382,9 @@ color.xyz = normalize(normal) * 0.5 + vec3(0.5);\n",
 GL.Texture.prototype.inspect = function( widgets, skip_default_widgets )
 {
 	var texture = this;
-	var formats = { 6407: "gl.RGB", 6408: "gl.RGBA", };
+	var formats = { 6407: "gl.RGB", 6408: "gl.RGBA", 6402: "gl.DEPTH_COMPONENT", 34041: "gl.DEPTH_STENCIL" };
 	var texture_types = { 3553: "gl.TEXTURE_2D", 34067: "gl.TEXTURE_CUBE_MAP" };
-	var types = { 5121: "gl.UNSIGNED_BYTE", 36193: "gl.HALF_FLOAT_OES", 5126: "gl.FLOAT" };
+	var types = { 5121: "gl.UNSIGNED_BYTE", 36193: "gl.HALF_FLOAT_OES", 5126: "gl.FLOAT", 5125: "gl.UNSIGNED_INT", 34042: "gl.UNSIGNED_INT_24_8_WEBGL" };
 
 	widgets.addString("Filename", texture.filename || "" );
 	widgets.addStringButton("Width", texture.width, { button: "POT", callback_button: resize_to_pot });

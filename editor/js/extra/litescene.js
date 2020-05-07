@@ -22900,7 +22900,7 @@ function LGraphReprojectDepth()
 	this.addInput("color","Texture");
 	this.addInput("depth","Texture");
 	this.addInput("camera","Camera,Component");
-	this.properties = { enabled: true, pointSize: 1, offset: 0, triangles: false, filter: true, layers:0xFF };
+	this.properties = { enabled: true, pointSize: 1, offset: 0, triangles: false, depth_is_linear: false, skip_center: false, layers:0xFF };
 
 	this._view_matrix = mat4.create();
 	this._projection_matrix = mat4.create();
@@ -22911,6 +22911,7 @@ function LGraphReprojectDepth()
 		u_point_size: 1,
 		u_depth_offset: 0,
 		u_ires: vec2.create(),
+		u_near_far: vec2.create(),
 		u_color_texture:0,
 		u_depth_texture:1,
 		u_vp: this._viewprojection_matrix
@@ -22933,7 +22934,12 @@ LGraphReprojectDepth.prototype.onExecute = function()
 	if( !depth || !camera || camera.constructor !== LS.Camera )
 		return;
 
-	color = color || GL.Texture.getWhiteTexture();
+	var no_color = false;
+	if(!color)
+	{
+		color = GL.Texture.getWhiteTexture();
+		no_color = true;
+	}
 
 	if(!LiteGraph.LGraphRender.onRequestCameraMatrices)
 	{
@@ -22957,20 +22963,27 @@ LGraphReprojectDepth.prototype.onExecute = function()
 	var uniforms = this._uniforms;
 	uniforms.u_point_size = this.properties.pointSize;
 	uniforms.u_depth_offset = this.properties.offset;
-	uniforms.u_ires.set([1/depth.width,1/depth.height]);
+	uniforms.u_is_linear = this.properties.depth_is_linear ? 1 : 0;
+	uniforms.u_use_depth_as_color = no_color ? 1 : 0;
+	uniforms.u_near_far.set(depth.near_far_planes ? depth.near_far_planes : [0,1]);
+	if(this.properties.skip_center)
+		uniforms.u_ires.set([0,0]);
+	else
+		uniforms.u_ires.set([1/depth.width,1/depth.height]);
 	mat4.invert( uniforms.u_depth_ivp, camera._viewprojection_matrix );
 	gl.enable( gl.DEPTH_TEST );
 	gl.disable( gl.BLEND );
 	color.bind(0);
-	gl.texParameteri( color.texture_type, gl.TEXTURE_MAG_FILTER, this.properties.filter ? gl.LINEAR : gl.NEAREST );
+	gl.texParameteri( color.texture_type, gl.TEXTURE_MAG_FILTER, this.properties.skip_center ? gl.LINEAR : gl.NEAREST );
 	depth.bind(1);
-	gl.texParameteri( depth.texture_type, gl.TEXTURE_MAG_FILTER, this.properties.filter ? gl.LINEAR : gl.NEAREST );
+	gl.texParameteri( depth.texture_type, gl.TEXTURE_MAG_FILTER, this.properties.skip_center ? gl.LINEAR : gl.NEAREST );
 	shader.uniforms( uniforms ).draw( mesh, this.properties.triangles ? gl.TRIANGLES : gl.POINTS );
 }
 
 
 LGraphReprojectDepth.vertex_shader = "\n\
 	\n\
+	precision highp float;\n\
 	attribute vec3 a_vertex;\n\
 	attribute vec2 a_coord;\n\
 	uniform sampler2D u_color_texture;\n\
@@ -22980,14 +22993,34 @@ LGraphReprojectDepth.vertex_shader = "\n\
 	uniform vec2 u_ires;\n\
 	uniform float u_depth_offset;\n\
 	uniform float u_point_size;\n\
+	uniform vec2 u_near_far;\n\
+	uniform int u_is_linear;\n\
+	uniform int u_use_depth_as_color;\n\
 	varying vec4 color;\n\
 	\n\
 	void main() {\n\
-		color = texture2D( u_color_texture, a_coord );\n\
-		float depth = texture2D( u_depth_texture, a_coord ).x * 2.0 - 1.0;\n\
-		vec4 pos2d = vec4( (a_coord)*2.0-vec2(1.0),depth + u_depth_offset,1.0);\n\
+		vec2 uv = a_coord + u_ires * 0.5;\n\
+		float depth = texture2D( u_depth_texture, uv ).x;\n\
+		if(u_is_linear == 1)\n\
+		{\n\
+			//must delinearize, doesnt work...\n\
+			//lz = u_near_far.x * (depth + 1.0) / (u_near_far.y + u_near_far.x - depth * (u_near_far.y - u_near_far.x));\n\
+			//depth = depth * 0.5 + 0.5;\n\
+			//depth = depth * 2.0 - 1.0;\n\
+			depth = ((u_near_far.x + u_near_far.y) * depth + u_near_far.x) / (1.0 + u_near_far.y - u_near_far.x);\n\
+			//depth = depth * 0.5 + 0.5;\n\
+			//depth = depth * 2.0 - 1.0;\n\
+		}\n\
+		else\n\
+			depth = depth * 2.0 - 1.0;\n\
+		if(u_use_depth_as_color == 1)\n\
+			color = vec4( depth * 0.5 + 0.5);\n\
+		else\n\
+			color = texture2D( u_color_texture, uv );\n\
+		vec4 pos2d = vec4( uv*2.0-vec2(1.0),depth + u_depth_offset,1.0);\n\
 		vec4 pos3d = u_depth_ivp * pos2d;\n\
-		//pos3d.xyz = pos3d.xyz / pos3d.w;\n\
+		//if(u_must_linearize == 0)\n\
+		//	pos3d /= pos3d.w;\n\
 		gl_Position = u_vp * pos3d;\n\
 		gl_PointSize = u_point_size;\n\
 	}\n\

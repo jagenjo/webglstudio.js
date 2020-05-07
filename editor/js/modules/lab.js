@@ -271,10 +271,10 @@ var LabModule = {
 			uniform sampler2D u_texture;\n\
 			void main() {\n\
 				vec2 coord = v_coord;\n\
-				float depth = texture2D( u_texture, coord ).x;\n\
+				float depth = texture2D( u_texture, coord ).x * 2.0 - 1.0;\n\
 				float zNear = u_near_far.x;\n\
 				float zFar = u_near_far.y;\n\
-				float z = (2.0 * zNear) / (zFar + zNear - depth * (zFar - zNear));\n\
+				float z = zNear * (depth + 1.0) / (zFar + zNear - depth * (zFar - zNear));\n\
 				z *= u_exposure;\n\
 			  gl_FragColor = vec4(z,z,z,1.0);\n\
 			}\

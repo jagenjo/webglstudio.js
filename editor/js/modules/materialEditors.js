@@ -667,6 +667,7 @@ LS.MaterialClasses.ShaderMaterial["@inspector"] = function( material, inspector,
 		inspector.addInfo(null,"Shader not loaded");
 	else
 	{
+		inspector.addRenderState("Render State", material.render_state, {} );
 		if(!is_fx)
 		{
 			//inspector.addCombo("Blend mode", material.blend_mode, { pretitle: AnimationModule.getKeyframeCode( material, "blend_mode" ), values: LS.Blend, callback: function (value) { material.blend_mode = value }});

@@ -8471,7 +8471,7 @@ ShaderMaterial.prototype.processShaderCode = function()
 		return false;
 
 	var old_properties = this._properties_by_name;
-	var old_state = this._render_state.serialize():
+	var old_state = this._render_state.serialize();
 	if( shader_code._has_error ) //save them
 		this._last_valid_properties = old_properties; 
 	else if( this._last_valid_properties )

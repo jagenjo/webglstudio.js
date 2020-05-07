@@ -44143,8 +44143,14 @@ CameraController.prototype.processMouseButtonMoveEvent = function( mode, mouse_e
 			else
 			{
 				var eye = cam.getEye();
-				node.transform.globalToLocal( eye, eye );
-				node.transform.orbit( -yaw, [0,1,0], eye );
+				var center = cam.getCenter();
+				var v = vec3.create();
+				vec3.sub( v, eye, center );
+				vec3.rotateY(v,v,yaw*DEG2RAD);
+				vec3.add( v,v,center );
+				node.transform.lookAt(v,center,[0,1,0],true);
+				//node.transform.globalToLocal( center, center );
+				//node.transform.orbit( -yaw, [0,1,0], center );
 				cam.updateMatrices();
 			}
 			changed = true;
@@ -44164,8 +44170,18 @@ CameraController.prototype.processMouseButtonMoveEvent = function( mode, mouse_e
 			else
 			{
 				var eye = cam.getEye();
-				node.transform.globalToLocal( eye, eye );
-				node.transform.orbit( -pitch, right, eye );
+				var center = cam.getCenter();
+				var v = vec3.create();
+				vec3.sub( v, eye, center );
+				var R = quat.create();
+				quat.setAxisAngle(R,right,-pitch*DEG2RAD);
+				vec3.transformQuat(v,v,R);
+				vec3.add( v,v,center );
+				node.transform.lookAt(v,center,[0,1,0],true);
+				//var center = cam.getCenter();
+				//node.transform.globalToLocal( center, center );
+				//node.transform.orbit( -pitch, right, center );
+				cam.updateMatrices();
 			}
 			changed = true;
 		}
@@ -44183,9 +44199,9 @@ CameraController.prototype.processMouseButtonMoveEvent = function( mode, mouse_e
 			}
 			else
 			{
-				var eye = cam.getEye();
-				node.transform.globalToLocal( eye, eye );
-				node.transform.orbit( -yaw, [0,1,0], eye );
+				var center = cam.getCenter();
+				node.transform.globalToLocal( center, center );
+				node.transform.orbit( -yaw, [0,1,0], center );
 				cam.updateMatrices();
 			}
 			changed = true;

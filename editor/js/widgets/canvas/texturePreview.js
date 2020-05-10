@@ -18,6 +18,7 @@ function TexturePreviewWidget()
 	this.scale = 1;
 	this.offset = vec2.create();
 	this.xray_mode = false;
+	this.linearize_depth = false;
 	this._texture = null;
 	this._uniforms = {
 		u_texture: 0,
@@ -56,6 +57,14 @@ TexturePreviewWidget.prototype.onRender = function( ctx, viewport )
 		shader = TexturePreviewWidget._shader_cube;
 		if(!shader)
 			shader = TexturePreviewWidget._shader_cube = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, TexturePreviewWidget.pixel_shader, { USE_CUBEMAP: "" } );
+	}
+	else if(texture.format == GL.DEPTH_COMPONENT && this.linearize_depth)
+	{
+		shader = TexturePreviewWidget._shader_depth;
+		if(!shader)
+			shader = TexturePreviewWidget._shader_depth = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, TexturePreviewWidget.pixel_shader, { USE_DEPTH: "" } );
+		if(texture.near_far_planes)
+			this._uniforms.u_near_far = texture.near_far_planes;
 	}
 	else
 	{
@@ -176,6 +185,9 @@ TexturePreviewWidget.prototype.inspect = function( inspector )
 	inspector.addCheckbox("XRay mode", this.xray_mode, { callback: function(v){
 		that.xray_mode = v;
 	}});
+	inspector.addCheckbox("Linearize depth", this.linearize_depth, { callback: function(v){
+		that.linearize_depth = v;
+	}});
 
 	inspector.addSeparator();
 
@@ -197,6 +209,7 @@ TexturePreviewWidget.pixel_shader = "precision highp float;\n\
 	uniform vec2 u_resolution;\n\
 	uniform float u_scale;\n\
 	uniform float u_gamma;\n\
+	uniform vec2 u_near_far;\n\
 	uniform vec2 u_offset;\n\
 	\n\
 	#define PI 3.14159265358979323846264\n\
@@ -212,7 +225,15 @@ TexturePreviewWidget.pixel_shader = "precision highp float;\n\
 			vec3 N = vec3( -cos(alpha) * cos(beta), sin(beta), sin(alpha) * cos(beta) );\
 			vec4 color = textureCube( u_texture, N );\n\
 		#else\n\
-			vec4 color = texture2D( u_texture, uv );\n\
+			#ifdef USE_DEPTH\n\
+				float depth = texture2D( u_texture, uv ).x;\n\
+				float zNear = u_near_far.x;\n\
+				float zFar = u_near_far.y;\n\
+				float z = zNear * (depth + 1.0) / (zFar + zNear - depth * (zFar - zNear));\n\
+				vec4 color = vec4(z);\n\
+			#else\n\
+				vec4 color = texture2D( u_texture, uv );\n\
+			#endif\n\
 		#endif\n\
 		color *= u_exposition;\n\
 		if( u_channel == 0 )\n\

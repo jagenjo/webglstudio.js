@@ -289,6 +289,12 @@ var AnimationModule = {
 		{
 			var widgets = widgets2;
 
+			if(!animation)
+			{
+				LiteGUI.alert("No animation selected");
+				return;
+			}
+
 			var selected_take = animation.takes[ selected_take_name ];
 			console.log(selected_take);
 			var duration = selected_take ? selected_take.duration : 0;

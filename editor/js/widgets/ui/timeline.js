@@ -219,6 +219,8 @@ Timeline.prototype.onNewAnimation = function( name, duration, folder )
 
 	LS.ResourcesManager.registerResource( animation.name, animation );
 	this.redrawCanvas();
+
+	return animation;
 }
 
 //called when an animation has been modified
@@ -452,7 +454,20 @@ Timeline.prototype.redrawCanvas = function()
 		ctx.font = "50px Arial";
 		ctx.textAlign = "center";
 		ctx.fillStyle = "#111";
-		ctx.fillText("No animation clip", canvas.width * 0.5, canvas.height * 0.5);
+		var centerx = canvas.width * 0.5;
+		var centery = canvas.height * 0.5;
+		ctx.save();
+		ctx.translate(centerx,centery);
+		ctx.fillText("No animation clip", 0, -20);
+		ctx.font = "24px Arial";
+		var hover = Timeline.isInsideRect(this._prev_mouse,centerx-140,centery+10,280,46);
+		ctx.fillStyle = hover ? "#999" : "#444";
+		ctx.beginPath();
+		ctx.roundRect(-140,10,280,46,5);
+		ctx.fill();
+		ctx.fillStyle = hover ? "white" : "#888";
+		ctx.fillText("Open Scene Anim", 0, 40);
+		ctx.restore();
 		return;
 	}
 
@@ -800,7 +815,7 @@ Timeline.prototype.drawKeyframesView = function( canvas, ctx )
 				ctx.fillStyle = "#9AF";
 			ctx.strokeStyle = ctx.fillStyle;
 
-			if( track.type != "events" ) //diamonds
+			if( track.type != "event" ) //diamonds
 			{
 				if( (posx + 5) < margin)
 					continue;
@@ -1264,6 +1279,13 @@ Timeline.prototype.onMouse = function(e)
 
 	if( e.type == "mousedown" )
 	{
+		if(!this.current_take)
+		{
+			var anim = LS.GlobalScene.animation || this.onNewAnimation();
+			this.setAnimation(anim, LS.Animation.DEFAULT_SCENE_NAME);
+			this._must_redraw = true;
+			return;
+		}
 		LiteGUI.focus_widget = this;
 		this.mouse_dragging = true;
 
@@ -1284,7 +1306,7 @@ Timeline.prototype.onMouse = function(e)
 					var track = take.tracks[ item.track ];
 					if( item.type == "keyframe" && track )
 					{	
-						if( track.type == "events")
+						if( track.type == "event")
 							this.showAddEventKeyframeDialog( track, time, track.getKeyframe( item.keyframe ) );
 						else
 							this.showEditKeyframeDialog( track, time, track.getKeyframe( item.keyframe ), item.keyframe );
@@ -1351,6 +1373,8 @@ Timeline.prototype.onMouse = function(e)
 	}
 	else if( e.type == "mousemove" )
 	{
+		if(!this.current_take)
+			this._must_redraw = true;
 		if( this.mouse_dragging )
 		{
 			if( this._selection_rectangle )
@@ -1788,14 +1812,14 @@ Timeline.prototype.onContextMenu = function( e )
 	values.push( { title: "Beautify Names", callback: this.beautifyNames.bind(this) } );
 	values.push( null );
 
-	if(item.type == "keyframe" && track.type == "events")
+	if(item.type == "keyframe" && track.type == "event")
 		values.push( { title: "Edit Event", callback: inner_edit_event_keyframe } );
 
 	if(track)
 	{
 		values.push( { title:"Actions", has_submenu: true, callback: inner_actions } );
 		values.push( { title: "Select Node", callback: inner_select } );
-		if(track.type == "events")
+		if(track.type == "event")
 			values.push( { title: "Add Event", callback: inner_add_event_keyframe } );
 		else
 			values.push( { title: "Add Keyframe", callback: inner_add_keyframe } );
@@ -2243,7 +2267,7 @@ Timeline.prototype.processInsertLocator = function( locator, options )
 		{
 			var type = info.type;
 			if(type == "object" || type == "function" || type == LS.TYPES.SCENENODE || type == LS.TYPES.COMPONENT )
-				type = "events";
+				type = "event";
 
 			track = take.createTrack( { name: name, property: track_locator, type: type, value_size: size, interpolation: interpolation, duration: this.session.end_time, data: [] } );
 			track._original_locator = original_locator;
@@ -2286,8 +2310,14 @@ Timeline.prototype.insertKeyframe = function( track, only_different, time )
 	if(!info)
 		return false;
 
+	var value = info.value;
+
 	//only store if the value is different
-	if( only_different && track._last_sample !== undefined )
+	if(info.type == "component")
+	{
+		value = [];
+	}
+	else if( only_different && track._last_sample !== undefined )
 	{
 		//sample
 		if( track.value_size == 1)
@@ -2309,8 +2339,11 @@ Timeline.prototype.insertKeyframe = function( track, only_different, time )
 	}
 
 	//add
-	track.addKeyframe( time , info.value );
+	var keyframe_index = track.addKeyframe( time , value );
 	this.animationModified();
+
+	if(info.type == "component")
+		this.showAddEventKeyframeDialog(track, time, track.data[keyframe_index] );
 
 	this._must_redraw = true;
 	RenderModule.requestFrame();
@@ -2896,7 +2929,7 @@ Timeline.prototype.showNewTrack = function()
 						value_size = info.value.length;
 				}
 				else if(info.type == "component" || info.type == "object")
-					info.type = "events";
+					info.type = "event";
 			}
 
 			that.createTrack({ name: widgets.values["Name"], locator: locator, type: (info ? info.type : null), value_size: value_size, interpolation: widgets.values["Interpolation"] });
@@ -3516,4 +3549,11 @@ Timeline.getAudioWaveImage = function( url, callback, onError )
 		}, onError);
 	  }
 	  request.send();
+}
+
+Timeline.isInsideRect = function(mouse,x,y,w,h)
+{
+	if( mouse[0] < x || mouse[0] > (x + w) || mouse[1] < y || mouse[1] > (y+h))
+		return false;
+	return true;
 }

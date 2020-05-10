@@ -299,6 +299,11 @@ LS.Components.Light["@inspector"] = function(light, inspector)
 		inspector.addCheckbox("Hard Shadows", light._shadowmap.shadow_mode == 0, { pretitle: AnimationModule.getKeyframeCode( light, "reverse_faces"), callback: function(v) { light._shadowmap.shadow_mode = !v ? 1 : 0; }});
 		inspector.addCheckbox("Reverse Faces", light._shadowmap.reverse_faces, { pretitle: AnimationModule.getKeyframeCode( light, "reverse_faces"), callback: function(v) { light._shadowmap.reverse_faces = v; }});
 		inspector.addCheckbox("Linear Filter", light._shadowmap.linear_filter, { pretitle: AnimationModule.getKeyframeCode( light, "reverse_faces"), callback: function(v) { light._shadowmap.linear_filter = v; }});
+		inspector.addButton(null, "Show Shadowmap", { callback: function(v) { 
+			var preview = new TexturePreviewWidget();
+			preview._texture = light._shadowmap._texture;
+			RenderModule.canvas_manager.root.addChild( preview );
+		}});
 		inspector.widgets_per_row = 1;
 	}
 
@@ -1174,6 +1179,13 @@ LS.Components.IrradianceCache.onShowProperties = function( component, inspector 
 	inspector.widgets_per_row = 1;
 
 }
+
+if(LS.Components.MediaPlayer)
+	LS.Components.MediaPlayer.onShowProperties = function( component, inspector )
+	{
+		inspector.addButtons( null, ["Play","Stop"], function(v){ if(v == "Play") component.play(); else component.stop(); });
+	}
+
 
 if(LS.Components.Spline)
 LS.Components.Spline.onShowProperties = function( component, inspector )

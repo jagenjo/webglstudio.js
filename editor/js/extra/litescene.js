@@ -52986,13 +52986,13 @@ Object.defineProperty( MediaPlayer.prototype, "src", {
 
 Object.defineProperty( MediaPlayer.prototype, "time", {
 	set: function(v){
-		this._media.currentTime = time;
+		this._media.currentTime = v;
 	},
 	get: function()
 	{
 		return this._media.currentTime;
 	},
-	enumerable: false
+	enumerable: true
 });
 
 Object.defineProperty( MediaPlayer.prototype, "texture", {
@@ -53042,13 +53042,12 @@ Object.defineProperty( MediaPlayer.prototype, "volume", {
 
 Object.defineProperty( MediaPlayer.prototype, "duration", {
 	set: function(v){
-		throw("MediaPlayer duration cannot be assigned, is read-only");
 	},
 	get: function()
 	{
 		return this._media.duration;
 	},
-	enumerable: false
+	enumerable: true
 });
 
 Object.defineProperty( MediaPlayer.prototype, "playback_rate", {

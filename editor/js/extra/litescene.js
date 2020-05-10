@@ -53163,6 +53163,7 @@ MediaPlayer.prototype.load = function( url, force )
 
 MediaPlayer.prototype.bindVideoEvents = function( video )
 {
+	var that = this;
 	video._component = this;
 
 	if(video.has_litescene_events)
@@ -53178,6 +53179,7 @@ MediaPlayer.prototype.bindVideoEvents = function( video )
 		this.height = this.videoHeight;
 		if(!this._component)
 			return;
+		LEvent.trigger(this._component,"loaded");
 		var scene = this._component._root ? this._component._root.scene : null;
 		if(scene && scene.state === LS.RUNNING && this._component._autoplay)
 			this._component.play();
@@ -53212,7 +53214,8 @@ MediaPlayer.prototype.bindVideoEvents = function( video )
 	this._media.addEventListener("ended",function(e) {
 		if(!this._component)
 			return;
-		console.log("Ended.");
+		console.log("Media Ended");
+		LEvent.trigger(that,"end");
 		var scene = this._component._root ? this._component._root.scene : null;
 		if(scene && scene.state === LS.RUNNING && this._component._autoplay)
 		{
@@ -53225,7 +53228,10 @@ MediaPlayer.prototype.bindVideoEvents = function( video )
 MediaPlayer.prototype.play = function()
 {
 	if(this._media.duration)
+	{
+		LEvent.trigger(this,"play");
 		this._media.play();
+	}
 }
 
 MediaPlayer.prototype.playPause = function()
@@ -53331,6 +53337,11 @@ MediaPlayer.prototype.onCollectInstances = function( e, RIs )
 	this._plane_ri.fromNode( this._root ); //update model
 	this._material.setTexture("color", this._texture );
 	RIs.push( this._plane_ri);
+}
+
+MediaPlayer.prototype.getEvents = function()
+{
+	return { "loaded": "event", "play": "event", "end": "event" };
 }
 
 LS.registerComponent( MediaPlayer );

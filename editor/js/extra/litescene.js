@@ -54282,6 +54282,8 @@ Player.prototype.loadScene = function(url, on_complete, on_progress)
 		if(window.onSceneReady)
 			window.onSceneReady();
 		window.postMessage("ready","*");
+		if(window.top)
+			window.top.postMessage("ready","*");
 		if(on_complete)
 			on_complete();
 	}
@@ -54382,6 +54384,8 @@ Player.prototype.play = function()
 		LS.GUI.reset(); //clear GUI
 	this.scene.start();
 	window.postMessage("start","*");
+	if(window.top)
+		window.top.postMessage("start","*");
 }
 
 /**
@@ -54395,6 +54399,8 @@ Player.prototype.stop = function()
 	if(LS.GUI)
 		LS.GUI.reset(); //clear GUI
 	window.postMessage("stop","*");
+	if(window.top)
+		window.top.postMessage("stop","*");
 }
 
 /**

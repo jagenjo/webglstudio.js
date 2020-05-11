@@ -54281,6 +54281,7 @@ Player.prototype.loadScene = function(url, on_complete, on_progress)
 		setTimeout(function(){ that._ondraw( true ); },1000); //render a frame after some time to ensure loading
 		if(window.onSceneReady)
 			window.onSceneReady();
+		window.postMessage("ready",window.parent);
 		if(on_complete)
 			on_complete();
 	}
@@ -54380,6 +54381,7 @@ Player.prototype.play = function()
 	if(LS.GUI)
 		LS.GUI.reset(); //clear GUI
 	this.scene.start();
+	window.postMessage("start",window.parent);
 }
 
 /**
@@ -54392,6 +54394,7 @@ Player.prototype.stop = function()
 	this.scene.finish();
 	if(LS.GUI)
 		LS.GUI.reset(); //clear GUI
+	window.postMessage("stop",window.parent);
 }
 
 /**

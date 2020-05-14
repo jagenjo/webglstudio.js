@@ -24510,11 +24510,15 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphRemapWeights.title = "Remap Weights";
 
+	LGraphRemapWeights["@dimensions"] = { widget:"number", min:1,step:1,precision:0 };
+
 	LGraphRemapWeights.prototype.onPropertyChanged = function(name,value)
 	{
 		if(name != "dimensions" || this.properties.dimensions == value)
 			return;
 		this.properties.dimensions = value || 1;
+
+		//adjust dimensions
 		var dim = this.properties.dimensions;
 		for(var i in this.current_weights)
 		{

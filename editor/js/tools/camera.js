@@ -201,7 +201,7 @@ var cameraTool = {
 					update_frame = true;
 				}
 			}
-			else
+			else if( camera._editor.destination_eye )
 			{
 				camera._editor.destination_eye.set( camera.eye );
 				camera._editor.destination_center.set( camera.center );

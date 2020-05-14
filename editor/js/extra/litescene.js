@@ -7819,6 +7819,11 @@ Material.prototype.setProperty = function( name, value )
 				}
 				if( tex.constructor === String )
 					tex = { texture: tex, uvs: 0, wrap: 0, minFilter: 0, magFilter: 0 };
+				if( tex.constructor !== GL.Texture && tex.constructor != Object )
+				{
+					console.warn("invalid value for texture:",tex);
+					break;
+				}
 				tex._must_update = true;
 				this.textures[i] = tex;
 				if( tex.uvs != null && tex.uvs.constructor === String )
@@ -30752,8 +30757,11 @@ var Renderer = {
 		if(render_settings.render_fx)
 			LEvent.trigger( scene, EVENT.ENABLE_FRAME_CONTEXT, render_settings );
 
-		//render all cameras
-		this.renderFrameCameras( cameras, render_settings );
+		//render what every camera can see
+		if(this.onCustomRenderFrameCameras)
+			this.onCustomRenderFrameCameras( cameras, render_settings );
+		else
+			this.renderFrameCameras( cameras, render_settings );
 
 		//keep original viewport
 		if( render_settings.keep_viewport )
@@ -30810,7 +30818,10 @@ var Renderer = {
 
 			//main render
 			this.startGPUQuery("main");
-			this.renderFrame( current_camera, render_settings ); 
+			if(this.onCustomRenderFrame)
+				this.onCustomRenderFrame( current_camera, render_settings ); 
+			else
+				this.renderFrame( current_camera, render_settings ); 
 			this.endGPUQuery();
 
 			//show buffer on the screen
@@ -30856,7 +30867,10 @@ var Renderer = {
 		LEvent.trigger(this, EVENT.COMPUTE_VISIBILITY, this._visible_instances );
 
 		//here we render all the instances
-		this.renderInstances( render_settings, this._visible_instances );
+		if(this.onCustomRenderInstances)
+			this.onCustomRenderInstances( render_settings, this._visible_instances );
+		else
+			this.renderInstances( render_settings, this._visible_instances );
 
 		//send after events
 		LEvent.trigger( scene, EVENT.AFTER_RENDER_SCENE, camera );
@@ -53539,7 +53553,7 @@ LS.Shaders.registerSnippet("light_structs","\n\
 	uniform mat4 u_light_matrix; //projection to light screen space\n\
 	uniform vec3 u_ambient_light;\n\
 	struct Light {\n\
-		lowp vec4 Info; //type of light (3: DIRECTIONAL), falloff type, pass index, num passes \n\
+		lowp vec4 Info; //type of light (1:OMNI, 2: SPOT, 3: DIRECTIONAL), falloff type, pass index, num passes \n\
 		vec3 Color;\n\
 		vec3 Ambient;\n\
 		vec3 Position;\n\
@@ -53767,8 +53781,17 @@ Light._light_texture_fragment_enabled_code ="\n\
 uniform sampler2D light_texture;\n\
 void applyLightTexture( in Input IN, inout Light LIGHT )\n\
 {\n\
-	vec4 v = LIGHT.Matrix * vec4( IN.worldPos,1.0 );\n\
-	vec2 uv = v.xy / v.w * 0.5 + vec2(0.5);\n\
+	vec2 uv;\n\
+	if(LIGHT.Info.x == 1.0) //omni\n\
+	{\n\
+		vec3 V = normalize(IN.worldPos - LIGHT.Position);\n\
+		uv = vec2( 0.5 - (atan(V.z, V.x) / -6.28318531), asin(V.y) / 1.57079633 * 0.5 + 0.5);\n\
+	}\n\
+	else\n\
+	{\n\
+		vec4 v = LIGHT.Matrix * vec4( IN.worldPos,1.0 );\n\
+		uv = v.xy / v.w * 0.5 + vec2(0.5);\n\
+	}\n\
 	LIGHT.Color *= texture2D( light_texture, uv ).xyz;\n\
 }\n\
 ";

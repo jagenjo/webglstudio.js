@@ -24828,7 +24828,7 @@ if(typeof(LiteGraph) != "undefined")
 		for(var i in this.current_weights)
 		{
 			var name = i;
-			inspector.add( type, name, this.current_weights[ name ], { width: "calc(100% - 40px)", name_width: "80%", index: name, callback: function(v){
+			inspector.add( type, name || "", this.current_weights[ name ], { width: "calc(100% - 40px)", name_width: 160, index: name, callback: function(v){
 				node.current_weights[ name ] = v;
 			}});
 			inspector.addButton( null, InterfaceModule.icons.trash, { width: 30, index: name, callback: function(v){
@@ -24843,6 +24843,11 @@ if(typeof(LiteGraph) != "undefined")
 		inspector.widgets_per_row = 1;
 
 		inspector.addStringButton("Add Weight","", { button: "+", callback_button: function(v){
+			if(!v)
+			{
+				LiteGUI.alert("You must specify a name");
+				return;
+			}
 			node.current_weights[v] = dimensions == 1 ? 1 : new Array(dimensions).fill(0);
 			inspector.refresh();
 		}});
@@ -30331,7 +30336,7 @@ LS.RenderFrameContext = RenderFrameContext;
 //It works similar to the one in Unity
 function RenderQueue( value, sort_mode, options )
 {
-	this.enabled = true;
+	this.enabled = true; //if disabled it will be skipped
 
 	//container for all instances that belong to this render queue
 	this.instances = [];

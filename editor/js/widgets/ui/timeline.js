@@ -283,6 +283,8 @@ Timeline.prototype.setAnimation = function( animation, take_name )
 				takes.push(i);
 			this.take_widget.setOptionValues( takes, take_name );
 		}
+		
+		this.current_take = animation.takes[ take_name ];
 		return;
 	}
 
@@ -2715,7 +2717,7 @@ Timeline.prototype.onShowAnimationOptionsDialog = function()
 	//interpolation
 	widgets.widgets_per_row = 2;
 	var interpolation = Timeline.interpolation_values["linear"];
-	widgets.addCombo("Set Interpolation to all tracks", interpolation, { values: Timeline.interpolation_values, width: "80%", callback: function(v){
+	widgets.addCombo("Set Interpolation to all tracks", interpolation, { name_width: 200, values: Timeline.interpolation_values, width: "80%", callback: function(v){
 		interpolation = v;	
 	}});
 
@@ -2727,6 +2729,9 @@ Timeline.prototype.onShowAnimationOptionsDialog = function()
 	}});
 	widgets.widgets_per_row = 1;
 
+	widgets.addButton(null,"Download JSON",{ callback: function(){
+		LiteGUI.downloadFile( "animation.json", JSON.stringify( that.current_animation.serialize() ) );
+	}});
 	
 	widgets.addSeparator();
 	widgets.addButton(null,"Close", function(){
@@ -3266,6 +3271,7 @@ Timeline.prototype.onItemDrop = function(e)
 {
 	if(!this.current_animation)
 		this.onSceneAnimation(); //create scene animation
+	var that = this;
 
 	var type = e.dataTransfer.getData("type");
 	var locator = e.dataTransfer.getData("locator");
@@ -3301,6 +3307,21 @@ Timeline.prototype.onItemDrop = function(e)
 			{
 				var url = URL.createObjectURL(file);
 				this.setAudioBackground(url);
+			}
+			else if(ext == "json")
+			{
+				var reader = new FileReader();			
+				reader = new FileReader();
+				reader.onload = function(e){
+					console.log("configuring current animation from JSON");
+					var data = e.target.result;
+					data = JSON.parse(data);
+					that.addUndoAnimationEdited();
+					that.current_animation.configure(data);
+					that.setAnimation( that.current_animation );
+					that.animationModified();
+				};
+				reader.readAsText(file);
 			}
 		}
 	}

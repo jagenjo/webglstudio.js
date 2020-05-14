@@ -5461,6 +5461,16 @@ var ResourcesManager = {
 		return this.materials[ name_or_id ];
 	},
 
+	convertFilenameToLocator: function( filename )
+	{
+		return "@RES-" + filename.replace(/\//gi,"\\");
+	},
+
+	convertLocatorToFilename: function( locator )
+	{
+		return locator.substr(5).replace(/\\/gi,"/");
+	},
+
 	/**
 	* Binds a callback for when a resource is loaded (in case you need to do something special)
 	*
@@ -8134,6 +8144,9 @@ Material.prototype.getCategory = function()
 
 Material.prototype.getLocator = function()
 {
+	if(this.filename)
+		return LS.ResourcesManager.convertFilenameToLocator(this.fullpath || this.filename);
+
 	if(this._root)
 		return this._root.uid + "/material";
 	return this.uid;
@@ -14173,6 +14186,18 @@ Scene.prototype.getPropertyInfo = function( property_uid )
 
 	var start = path[0].substr(0,5);
 
+	//for resources
+	if( start == "@RES-")
+	{
+		var filename = LS.ResourcesManager.convertLocatorToFilename(path[0]);
+		var resource = LS.ResourcesManager.getResource(filename);
+		if(path.length == 1)
+			return resource;
+		if(resource && resource.getPropertyInfoFromPath)
+			return resource.getPropertyInfoFromPath( path.slice(1) );
+		return null;
+	}
+
 	//for global materials
 	if( start == "@MAT-")
 	{
@@ -14217,7 +14242,20 @@ Scene.prototype.getPropertyInfo = function( property_uid )
 */
 Scene.prototype.getPropertyInfoFromPath = function( path )
 {
-	if(path[0].substr(0,5) == "@MAT-")
+	var start = path[0].substr(0,5);
+	//for resources
+	if( start == "@RES-")
+	{
+		var filename = LS.ResourcesManager.convertLocatorToFilename(path[0]);
+		var resource = LS.ResourcesManager.getResource(filename);
+		if(path.length == 1)
+			return resource;
+		if(resource && resource.getPropertyInfoFromPath)
+			return resource.getPropertyInfoFromPath( path.slice(1) );
+		return null;
+	}
+
+	if(start == "@MAT-")
 	{
 		var material = LS.RM.materials_by_uid[ path[0] ];
 		if(!material)
@@ -14233,8 +14271,7 @@ Scene.prototype.getPropertyInfoFromPath = function( path )
 
 
 /**
-* Assigns a value to the property of a component in a node based on the locator of that property
-* Locators are in the form of "{NODE_UID}/{COMPONENT_UID}/{property_name}"
+* returns the value of a property given its locator
 *
 * @method getPropertyValue
 * @param {String} locator locator of the property
@@ -14244,25 +14281,28 @@ Scene.prototype.getPropertyInfoFromPath = function( path )
 */
 Scene.prototype.getPropertyValue = function( locator, root_node )
 {
-	var path = property_uid.split("/");
-
-	if(path[0].substr(0,5) == "@MAT-")
-	{
-		var material = LS.RM.materials_by_uid[ path[0] ];
-		if(!material)
-			return null;
-		return material.getPropertyValueFromPath( path.slice(1) );
-	}
-
-	var node = this.getNode( path[0] );
-	if(!node)
-		return null;
-	return node.getPropertyValueFromPath( path.slice(1) );
+	var path = locator.split("/");
+	if(root_node)
+		return root_node.getPropertyValueFromPath( path );
+	return this.getPropertyValueFromPath( path );
 }
 
 Scene.prototype.getPropertyValueFromPath = function( path )
 {
-	if(path[0].substr(0,5) == "@MAT-")
+	var start = path[0].substr(0,5);
+
+	if( start == "@RES-")
+	{
+		var filename = LS.ResourcesManager.convertLocatorToFilename(path[0]);
+		var resource = LS.ResourcesManager.getResource(filename);
+		if(path.length == 1)
+			return resource;
+		if(resource && resource.getPropertyInfoFromPath)
+			return resource.getPropertyInfoFromPath( path.slice(1) );
+		return null;
+	}
+
+	if(start == "@MAT-")
 	{
 		var material = LS.RM.materials_by_uid[ path[0] ];
 		if(!material)
@@ -14308,7 +14348,23 @@ Scene.prototype.setPropertyValueFromPath = function( path, value, root_node, off
 	if(path.length < (offset+1))
 		return;
 
-	if(path[offset].substr(0,5) == "@MAT-")
+	var start = path[offset].substr(0,5);
+
+	if( start == "@RES-")
+	{
+		var filename = LS.ResourcesManager.convertLocatorToFilename(path[0]);
+		var resource = LS.ResourcesManager.getResource(filename);
+		if(path.length == 1)
+		{
+			console.warn("assigning a value to a locator with only the name of a resource doesn't make any sense");
+			return null; 
+		}
+		if( resource && resource.setPropertyValueFromPath )
+			return resource.setPropertyValueFromPath( path, value, offset + 1 );
+		return null;
+	}
+
+	if(start == "@MAT-")
 	{
 		var material = LS.RM.materials_by_uid[ path[offset] ];
 		if(!material)
@@ -24833,7 +24889,7 @@ if(typeof(LiteGraph) != "undefined")
 		{
 			var name = i;
 			inspector.add( type, name || "", this.current_weights[ name ], { width: "calc(100% - 40px)", name_width: 160, index: name, callback: function(v){
-				node.current_weights[ name ] = v;
+				node.current_weights[ this.options.name ] = v;
 			}});
 			inspector.addButton( null, InterfaceModule.icons.trash, { width: 30, index: name, callback: function(v){
 				var name = this.options.index;

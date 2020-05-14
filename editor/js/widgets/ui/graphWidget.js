@@ -327,20 +327,33 @@ GraphWidget.prototype.onDropItem = function( e )
 
 	var graph = this.graphcanvas.getCurrentGraph();
 
-	if(!graph)
-		return false;
-
 	//scene node
 	var item_type = e.dataTransfer.getData("type");
+
 
 	//get function in charge of processing drop
 	var callback = GraphWidget.item_drop_types[ item_type ];
 	if( !callback )
 		return false; 
 
-	//get node
-	var graphnode = callback(e);
-	if(!graphnode)
+	if(!graph && item_type == "Component")
+	{
+		var node_uid = e.dataTransfer.getData("node_uid");
+		var uid = e.dataTransfer.getData("uid");
+		var node = LS.GlobalScene.getNode(node_uid);
+		if(!node)
+			return;
+		var comp = node.getComponentByUId(uid);
+		if(comp && comp.graph)
+			graph = comp.graph;
+		if(graph)
+			this.graphcanvas.setGraph(graph);
+		return;
+	}
+
+	//in case is a node
+	var graphnode = callback(e, graph);
+	if(!graph || !graphnode)
 		return false;
 
 	//position node

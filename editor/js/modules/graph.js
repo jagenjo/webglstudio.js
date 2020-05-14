@@ -35,6 +35,7 @@ var GraphModule = {
 
 		//Used to render the over graph
 		RenderModule.canvas_manager.addWidget( this );
+		InterfaceModule.lower_tabs_widget.addWidgetTab( GraphWidget );
 
 		//setup LiteGraph
 		LiteGraph.node_images_path = this.litegraph_path + "/nodes_data/";

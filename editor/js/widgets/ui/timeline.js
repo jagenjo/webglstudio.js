@@ -3009,7 +3009,34 @@ Timeline.prototype.showTrackOptionsDialog = function( track )
 			that.redrawCanvas();
 		}});
 
-		if( track.property[0] == "@" )
+		var start = track.property.substr(0,5);
+
+		if( start == "@RES-" )
+		{
+			widgets.addButton(null,"Nothing", { width: "30%", callback: function(){
+			}});
+			widgets.widgets_per_row = 1;
+
+			var path = track.property.split("/");
+			var filename = LS.RM.convertLocatorToFilename(path[0]);
+			widgets.addResource("Res Filename",filename, { callback: function(v){
+				if(!v)
+					return;
+				var path = track.property.split("/");
+				path[0] = LS.RM.convertFilenameToLocator(v);
+				track.property = path.join("/");
+				that.animationModified();
+				widgets.refresh();
+			}});
+			widgets.widgets_per_row = 2;
+		}
+		else if( start == "@MAT-" )
+		{
+			//nothing to do but I need a button
+			widgets.addButton(null,"", { width: "30%", callback: function(){
+			}});
+		}
+		else if( start == "@COMP" )
 			widgets.addButton(null,"Convert to Names", { width: "30%", callback: function(){
 				track.convertIDtoName();
 				widgets.refresh();

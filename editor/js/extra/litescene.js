@@ -24332,9 +24332,11 @@ if(typeof(LiteGraph) != "undefined")
 			pos = [this.current_pos[0], this.current_pos[1]];
 		pos[0] = Math.clamp( pos[0], -1,1 );
 		pos[1] = Math.clamp( pos[1], -1,1 );
-		this.points.push({ name: name, pos: pos });
+		var point = { name: name, pos: pos };
+		this.points.push(point);
 		this._values_changed = true;
 		this.setDirtyCanvas(true);
+		return point;
 	}
 
 	LGraphMap2D.prototype.removePoint = function(name)
@@ -24867,6 +24869,17 @@ if(typeof(LiteGraph) != "undefined")
 			if(!node._selected_point)
 				return;
 			node.assignCurrentWeightsToPoint(node._selected_point);
+			inspector.refresh();
+		}});
+
+		inspector.addStringButton("New Point","", { button: "+", callback_button: function(v){
+			if(!v)
+			{
+				LiteGUI.alert("You must specify a name");
+				return;
+			}
+			var weights = JSON.parse( JSON.stringify( node.current_weights) );
+			node._selected_point = node.addPoint(v,weights);
 			inspector.refresh();
 		}});
 

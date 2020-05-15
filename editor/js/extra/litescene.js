@@ -30673,6 +30673,7 @@ var Renderer = {
 		this._gray_texture = new GL.Texture(1,1, { pixel_data: [128,128,128,255] });
 		this._white_texture = new GL.Texture(1,1, { pixel_data: [255,255,255,255] });
 		this._normal_texture = new GL.Texture(1,1, { pixel_data: [128,128,255,255] });
+		this._white_cubemap_texture = new GL.Texture(1,1, { texture_type: gl.TEXTURE_CUBE_MAP, pixel_data: (new Uint8Array(6*4)).fill(255) });
 		this._missing_texture = this._gray_texture;
 		var internal_textures = [ this._black_texture, this._gray_texture, this._white_texture, this._normal_texture, this._missing_texture ];
 		internal_textures.forEach(function(t){ t._is_internal = true; });
@@ -31593,7 +31594,12 @@ var Renderer = {
 						case "white": tex = this._white_texture; break;
 						case "gray": tex = this._gray_texture; break;
 						case "normal": tex = this._normal_texture; break;
-						default: tex = this._missing_texture;
+						case "cubemap": tex = this._white_cubemap_texture; break;
+						default: 
+							if(sampler.is_cubemap) //must be manually specified
+								tex = this._white_cubemap_texture;
+							else
+								tex = this._missing_texture;
 					}
 				}
 				else

@@ -5634,8 +5634,19 @@ global.Texture = GL.Texture = function Texture( width, height, options, gl ) {
 	}
 	else if(this.texture_type == GL.TEXTURE_CUBE_MAP)
 	{
+		var facesize = width*width*(this.format == GL.RGBA ? 4 : 3);
 		for(var i = 0; i < 6; ++i)
-			gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, pixel_data ? pixel_data[i] : null );
+		{
+			var cubemap_data = pixel_data;
+			if(cubemap_data)
+			{
+				if(cubemap_data.constructor === Array) //six arrays
+					cubemap_data = cubemap_data[i];
+				else //all data mixed in a single array
+					cubemap_data.subarray(facesize*i, facesize*(i+1));
+			}
+			gl.texImage2D( gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, cubemap_data || null );
+		}
 	}
 	else if(this.texture_type == GL.TEXTURE_3D)
 	{

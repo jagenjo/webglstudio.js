@@ -8051,15 +8051,16 @@ FBO.testSupport = function( type, format ) {
 	return true;
 }
 
-FBO.prototype.toSingle = function()
+FBO.prototype.toSingle = function(index)
 {
+	index = index || 0;
 	if( this.color_textures.length < 2 )
 		return; //nothing to do
 	var ext = gl.extensions.WEBGL_draw_buffers;
 	if( ext )
-		ext.drawBuffersWEBGL( [ this.order[0] ] );
+		ext.drawBuffersWEBGL( [ this.order[index] ] );
 	else
-		gl.drawBuffers( [ this.order[0] ] );
+		gl.drawBuffers( [ this.order[index] ] );
 }
 
 FBO.prototype.toMulti = function()

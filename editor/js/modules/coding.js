@@ -890,6 +890,9 @@ void main() {\n\
 \n\
 \\color.fs\n\
 \n\
+#ifdef DRAW_BUFFERS\n\
+	#extension GL_EXT_draw_buffers : require \n\
+#endif\n\
 precision mediump float;\n\
 //varyings\n\
 varying vec3 v_pos;\n\
@@ -902,8 +905,11 @@ uniform sampler2D u_texture;\n\
 uniform vec4 u_material_color; //color and alpha\n\
 void main() {\n\
 	vec4 color = u_material_color * texture2D( u_texture, v_uvs );\n\
-	gl_FragColor = color;\n\
-}\n\
+#ifdef DRAW_BUFFERS\n\
+        gl_FragData[0] = color;\n\
+    #else\n\
+        gl_FragColor = color;\n\
+    #endif}\n\
 \n\
 ";
 
@@ -1042,6 +1048,9 @@ void main() {\n\
 \n\
 \\color.fs\n\
 \n\
+#ifdef DRAW_BUFFERS\n\
+	#extension GL_EXT_draw_buffers : require \n\
+#endif\n\
 precision mediump float;\n\
 \n\
 //varyings\n\
@@ -1085,7 +1094,11 @@ void main() {\n\
 	final_color.a = surface_color.a;\n\
 	if( o.Reflectivity > 0.0 )\n\
 		final_color = applyReflection( IN, o, final_color );\n\
-	gl_FragColor = final_color;\n\
+	#ifdef DRAW_BUFFERS\n\
+		gl_FragData[0] = final_color;\n\
+	#else\n\
+		gl_FragColor = final_color;\n\
+	#endif\n\
 }\n\
 ";
 
@@ -1141,6 +1154,9 @@ void main() {\n\
 \n\
 \\color.fs\n\
 \n\
+#ifdef DRAW_BUFFERS\n\
+	#extension GL_EXT_draw_buffers : require \n\
+#endif\n\
 precision mediump float;\n\
 //varyings\n\
 varying vec3 v_pos;\n\
@@ -1165,7 +1181,11 @@ void main() {\n\
 		color.xyz = u_ground_color * (1.0 - abs(N.y));\n\
 	else\n\
 		color.xyz = mix( color.xyz, fog_color, 1.0 - N.y );\n\
-	gl_FragColor = color;\n\
+	#ifdef DRAW_BUFFERS\n\
+		gl_FragData[0] = color;\n\
+	#else\n\
+		gl_FragColor = color;\n\
+	#endif\n\
 }\n\
 \n\
 ";

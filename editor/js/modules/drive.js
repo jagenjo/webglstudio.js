@@ -1531,6 +1531,9 @@ var DriveModule = {
 		//add to nocache
 		LS.RM.nocache_files[ resource.fullpath ] = getTime();
 
+		if(!ProfileModule.session)
+			return;
+
 		this.serverUploadResource( resource, resource.fullpath,
 			function(v, msg) {  //after resource saved
 				if(v)
@@ -2119,6 +2122,12 @@ var DriveModule = {
 	serverUploadResource: function( resource, fullpath, on_complete, on_error, on_progress )
 	{
 		var filename = resource.filename;
+
+		if(!ProfileModule.session)
+		{
+			LiteGUI.alert("you are not logged in, file cannot be saved on server");
+			return;
+		}
 
 		if( resource.in_server && LS.ResourcesManager.resources[ fullpath ] )
 			resource = LS.ResourcesManager.resources[ fullpath ];

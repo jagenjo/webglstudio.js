@@ -19729,6 +19729,7 @@ function ShaderCode( code )
 }
 
 ShaderCode.help_url = "https://github.com/jagenjo/litescene.js/blob/master/guides/shaders.md";
+//ShaderCode.examples //defined from webglstudio coding.js
 
 //block types
 ShaderCode.CODE = 1;
@@ -19990,6 +19991,10 @@ ShaderCode.prototype.getShader = function( render_mode, block_flags )
 	var shader = this.compileShader( vs_code, fs_code );
 	if(!shader)
 		return null;
+
+	//check if this shader will support rendering to draw buffers
+	var clean_fs_code = LS.ShaderCode.removeComments( fs_code );
+	shader.supports_drawbuffers = clean_fs_code.indexOf("gl_FragData") != -1;
 
 	//DEBUG
 	if(LS.debug)
@@ -20319,10 +20324,17 @@ void main() {\n\
 
 //default fragment shader code
 ShaderCode.default_fs = "\n\
+	#ifdef DRAW_BUFFERS\n\
+		#extension GL_EXT_draw_buffers : require \n\
+	#endif\n\
 	precision mediump float;\n\
 	uniform vec4 u_material_color;\n\
 	void main() {\n\
-		gl_FragColor = u_material_color;\n\
+		#ifdef DRAW_BUFFERS\n\
+			gl_FragData[0] = u_material_color;\n\
+		#else\n\
+			gl_FragColor = u_material_color;\n\
+		#endif\n\
 	}\n\
 ";
 
@@ -29766,6 +29778,13 @@ RenderInstance.prototype.render = function(shader, primitive)
 	if(primitive === undefined)
 		primitive = this.primitive;
 
+	var changed_draw_buffers = false;
+	if(!shader.supports_drawbuffers && GL.FBO.current && GL.FBO.current.color_textures.length > 1)
+	{
+		changed_draw_buffers = true;
+		GL.FBO.current.toSingle();
+	}
+
 	//instancing
 	if(this.instanced_models && this.instanced_models.length)
 	{
@@ -29791,6 +29810,9 @@ RenderInstance.prototype.render = function(shader, primitive)
 	{
 		shader.drawBuffers( this.vertex_buffers, this.index_buffer, primitive, this.range[0], this.range[1] );
 	}
+
+	if(changed_draw_buffers)
+		GL.FBO.current.toMulti();
 }
 
 RenderInstance.prototype.addShaderBlock = function( block, uniforms )

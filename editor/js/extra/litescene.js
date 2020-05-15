@@ -24889,7 +24889,7 @@ if(typeof(LiteGraph) != "undefined")
 		{
 			var name = i;
 			inspector.add( type, name || "", this.current_weights[ name ], { width: "calc(100% - 40px)", name_width: 160, index: name, callback: function(v){
-				node.current_weights[ this.options.name ] = v;
+				node.current_weights[ this.options.index ] = v;
 			}});
 			inspector.addButton( null, InterfaceModule.icons.trash, { width: 30, index: name, callback: function(v){
 				var name = this.options.index;

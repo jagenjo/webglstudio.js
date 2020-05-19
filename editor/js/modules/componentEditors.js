@@ -73,6 +73,7 @@ LS.Components.Transform["@inspector"] = function(transform, inspector)
 
 	var euler = quat.toEuler( vec3.create(), transform._rotation );
 	vec3.scale(euler,euler, RAD2DEG );
+	//sort by axis, not by yaw,pitch,roll
 	var rot = [euler[2],euler[0],euler[1]];
 
 	inspector.addVector3("Rotation", rot, { 
@@ -80,6 +81,7 @@ LS.Components.Transform["@inspector"] = function(transform, inspector)
 		pretitle: AnimationModule.getKeyframeCode( transform, "rotation"),
 		callback: function(r) {
 			vec3.scale(r,r, DEG2RAD );
+			//back to axis
 			var euler = [r[1],r[2],r[0]];
 			transform.setRotationFromEuler(euler);
 		}, callback_before: function() {

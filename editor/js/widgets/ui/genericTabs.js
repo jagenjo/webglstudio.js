@@ -17,10 +17,13 @@ GenericTabsWidget.prototype.init = function( options )
 
 	if(options.id)
 		this.root.id = options.id;
+
+	if(options.joinable)
+		this.joinable = true;
 	
 	//tabs for every file
 	var tabs = this.tabs = new LiteGUI.Tabs( { height: "100%" });
-	this.splice_button = tabs.addButtonTab( "slice_tab", "|", this.onSliceTab.bind(this) );
+	//this.options_button = tabs.addButtonTab( "options_tab", LiteGUI.special_codes.navicon, this.onOptionsTab.bind(this) );
 	tabs.addPlusTab( this.onPlusTab.bind(this) );
 	this.root.add( tabs );
 	/*tabs.root.style.marginTop = "4px";*/
@@ -97,18 +100,42 @@ GenericTabsWidget.prototype.onPlusTab = function( tab_id, e )
 	}});
 }
 
-GenericTabsWidget.prototype.onSliceTab = function( tab_id, e )
+GenericTabsWidget.prototype.onOptionsTab = function( tab_id, e )
+{
+	var that = this;
+	var options = ["Split"];
+	if(this.joinable)
+		options.push("Join");
+	var menu = new LiteGUI.ContextMenu( options, { event: e, callback: function(value, options) {
+		if(value == "Split")
+			that.splitTab();
+		else if(value == "Join")
+			that.joinTabs();
+	}});
+}
+
+GenericTabsWidget.prototype.splitTab = function()
 {
 	var that = this;
 	var area = new LiteGUI.Area({ width: "100%" });
 	area.split( LiteGUI.Area.HORIZONTAL, ["50%",null], true );
 	area.getSection(0).content.appendChild( this.tabs.root );
-	this.tabs.removeTab("slice_tab");
 
-	var gentabs = new GenericTabsWidget();
+	var gentabs = new GenericTabsWidget({ joinable:true });
+	gentabs.area = area;
+	gentabs.prev_gentabs = this;
 	area.getSection(1).add( gentabs );
 
 	this.root.appendChild(area.root);
+}
+
+GenericTabsWidget.prototype.joinTabs = function()
+{
+	if(!this.prev_gentabs)
+		return;
+	this.area.root.innerHTML = "";
+	this.area.root.appendChild( this.area.sections[0].content );
+	//this.prev_gentabs.root.parentNode.parentNode.appendChild( this.prev_gentabs.root );
 }
 
 GenericTabsWidget.prototype.openInstanceTab = function( instance )

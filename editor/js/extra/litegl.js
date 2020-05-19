@@ -13156,6 +13156,13 @@ Mesh.parseOBJ = function(text, options)
 		return null;
 	}
 
+	if(options.flip_normals && normals_buffer_data.length)
+	{
+		var normals = normals_buffer_data;
+		for(var i = 0; i < normals.length; ++i)
+			normals[i] *= -1;
+	}
+
 	//create typed arrays
 	mesh.vertices = new Float32Array( vertices_buffer_data );
 	if ( normals_buffer_data.length )

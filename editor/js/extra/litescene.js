@@ -1526,6 +1526,7 @@ var LS = {
 		return null;
 	},
 
+	//used during scene configure because when configuring objects they may have nodes encoded in the properties
 	resolvePendingEncodedObjects: function()
 	{
 		if(!LS._pending_encoded_objects)
@@ -12255,7 +12256,7 @@ CompositePattern.prototype.serializeChildren = function( simplified )
 * @method configureChildren
 * @return {Array} o array containing all serialized data 
 */
-CompositePattern.prototype.configureChildren = function(o)
+CompositePattern.prototype.configureChildren = function( o, components_aside )
 {
 	if(!o.children)
 		return;
@@ -12274,7 +12275,7 @@ CompositePattern.prototype.configureChildren = function(o)
 		//add before configure, so every child has a scene tree
 		this.addChild(node);
 		//we configure afterwards otherwise children wouldnt have a scene tree to bind anything
-		node.configure(c);
+		node.configure(c, components_aside);
 	}
 }
 
@@ -12657,7 +12658,7 @@ BaseComponent.prototype.configure = function(o)
 		return;
 	if( o.uid ) 
 		this.uid = o.uid;
-	LS.cloneObject( o, this, false, true ); 
+	LS.cloneObject( o, this, false, true, true ); 
 
 	if( this.onConfigure )
 		this.onConfigure( o );
@@ -13364,9 +13365,14 @@ Scene.prototype.configure = function( scene_info )
 	//this clears all the nodes
 	if(scene_info.root)
 	{
-		this._spatial_container.clear(); // is this necessary?
+		this._spatial_container.clear(); // is this necessary? never used
+		//two passes configure, first nodes, then components, in case a component requires a node
+		var pending_components = []; 
+		//components info could store data about other nodes/components, better catch it in case they are created later during the process
 		LS._pending_encoded_objects = [];
-		this._root.configure( scene_info.root );
+		this._root.configure( scene_info.root, pending_components );
+		for(var i = 0; i < pending_components.length; i+=2)
+			pending_components[i].configureComponents( pending_components[i+1] );
 		LS.resolvePendingEncodedObjects();
 	}
 
@@ -16247,8 +16253,9 @@ SceneNode.prototype.clone = function()
 * Configure this node from an object containing the info
 * @method configure
 * @param {Object} info the object with all the info (comes from the serialize method)
+* @param {Array} components_aside array to store the data about components so they are configured after creating the scene has been created
 */
-SceneNode.prototype.configure = function(info)
+SceneNode.prototype.configure = function(info, components_aside)
 {
 	//identifiers parsing
 	if (info.name)
@@ -16334,14 +16341,19 @@ SceneNode.prototype.configure = function(info)
 	if(info.comments)
 		this.comments = info.comments;
 
-	//restore components
+	//configure components
 	if(info.components)
-		this.configureComponents( info );
+	{
+		if(components_aside)
+			components_aside.push( this, info );
+		else
+			this.configureComponents( info );
+	}
 
 	if(info.prefab && !this._is_root)  //is_root because in some weird situations the prefab was set to the root node
 		this.prefab = info.prefab; //assign and calls this.reloadFromPrefab();
 	else //configure children if it is not a prefab
-		this.configureChildren(info);
+		this.configureChildren(info, components_aside);
 
 	LEvent.trigger(this,"configure",info);
 }
@@ -24576,6 +24588,7 @@ if(typeof(LiteGraph) != "undefined")
 		});
 		this.size = [170,80];
 		this._selected_point = null;
+		this._dims = 1;
 	}
 
 	LGraphRemapWeights.title = "Remap Weights";
@@ -24584,12 +24597,24 @@ if(typeof(LiteGraph) != "undefined")
 
 	LGraphRemapWeights.prototype.onPropertyChanged = function(name,value)
 	{
-		if(name != "dimensions" || this.properties.dimensions == value)
+		if(name != "dimensions" || this._dims == value)
 			return;
-		this.properties.dimensions = value || 1;
+
+		//this.properties.dimensions = value || 1; //already changed
 
 		//adjust dimensions
-		var dim = this.properties.dimensions;
+		var dim = value;
+		this._dims = value;
+
+		for(var i = 0; i < this.points.length; ++i)
+		{
+			var p = this.points[i];
+			for(var j in p.weights )
+			{
+				p.weights[j] = dim == 1 ? 0 : new Array(dim).fill(0);
+			}
+		}
+
 		for(var i in this.current_weights)
 		{
 			if( this.current_weights[i] == null )
@@ -24814,6 +24839,8 @@ if(typeof(LiteGraph) != "undefined")
 		if( o.current_weights )
 			this.current_weights = o.current_weights;
 		this.properties.dimensions = o.properties.dimensions || 1;
+		this._dims = this.properties.dimensions;
+
 		if(o.points)
 		{
 			this.points = o.points;

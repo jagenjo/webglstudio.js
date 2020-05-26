@@ -2,27 +2,24 @@ var Capture = {
 
 	name: "Capture",
 	preferences: {
+		codec: "webm",
 		quality: "medium",
 		framerate: 30,
 		use_rendering_framerate: true
 	},
+	
+	codecs: {
+		webm: "video/webm; codecs=vp9" /*, 
+		ogg: "video/ogg",
+		mp4: "video/mp4; codecs=\"avc1.4d002a\"",
+		mov: "video/quicktime"*/
+	},
 
-	media_options:
+	quality: //videoBitsPerSecond
 	{
-		"high":	{
-			mimeType: "video/webm; codecs=vp9", 
-			videoBitsPerSecond : 50000000,
-		},
-
-		"medium": {
-			mimeType: "video/webm; codecs=vp9", 
-			videoBitsPerSecond : 25000000,
-		},
-
-		"low": {
-			mimeType: "video/webm; codecs=vp9", 
-			videoBitsPerSecond : 2500000,
-		},
+		"high":	50000000,
+		"medium": 25000000,
+		"low": 2500000
 	},
 
 	init: function()
@@ -54,6 +51,9 @@ var Capture = {
 			videoBitsPerSecond : 25000000,
 		};
 
+		var mimetype = media_options.mimeType.substr(0, media_options.mimeType.indexOf(";"));
+		var codec = media_options.codec_filename;
+
 		//get video
 		var stream = this._stream = gl.canvas.captureStream( framerate );
 		
@@ -62,7 +62,19 @@ var Capture = {
 
 		var recordedChunks = this._recordedChunks = [];
 
-		var mediaRecorder = this._mediaRecorder = new MediaRecorder( this._stream, media_options );
+		var mediaRecorder = null;
+		try
+		{
+			mediaRecorder = this._mediaRecorder = new MediaRecorder( this._stream, media_options );
+		}
+		catch (err)
+		{
+			console.error(err);
+			console.error("codec info: ", media_options );
+			LiteGUI.alert("The codec selected is not supported by your system.");
+			Capture._mediaRecorder = null;
+			return false;
+		}
 
 		mediaRecorder.ondataavailable = handleDataAvailable;
 		mediaRecorder.start();
@@ -71,18 +83,19 @@ var Capture = {
 		if(this.videocapture_container)
 			this.videocapture_container.classList.add("recording");
 
+		//DOWNLOAD TO DISK **********************
 		function handleDataAvailable(event) {
 		  if (event.data.size > 0)
 			recordedChunks.push(event.data);
 			var blob = new Blob( recordedChunks, {
-				type: "video/webm"
+				type: mimetype
 			});
 			var url = URL.createObjectURL(blob);
 			var a = document.createElement("a");
 			document.body.appendChild(a);
 			a.style = "display: none";
 			a.href = url;
-			a.download = "capture.webm";
+			a.download = "capture." + codec;
 			a.click();
 			window.URL.revokeObjectURL(url);
 
@@ -100,6 +113,8 @@ var Capture = {
 			var seconds = time % 60;
 			Capture.videocapture_container.querySelector(".time").innerHTML = minutes + ":" + (seconds < 10 ? "0":"") + seconds;
 		},1000);
+
+		return true;
 	},
 
 	stopRecording: function()
@@ -138,11 +153,18 @@ var Capture = {
 			}
 			else
 			{
-				this.innerHTML = "&#9632;";//stop
-				this.style.color = "#FFF";
+				var media_options = {
+					codec_filename: Capture.preferences.codec || "webm",
+					mimeType: Capture.codecs[ Capture.preferences.codec ] || "video/webm; codecs=vp9",
+					videoBitsPerSecond: Capture.quality[ Capture.preferences.quality ] || 25000000
+				};
 
-				var media_options = Capture.media_options[ Capture.preferences.quality ]
-				Capture.startRecording( Capture.preferences.use_rendering_framerate ? undefined : Capture.preferences.framerate, media_options );
+				//this function returns false if it couldnt start recording
+				if( Capture.startRecording( Capture.preferences.use_rendering_framerate ? undefined : Capture.preferences.framerate, media_options ) )
+				{
+					this.innerHTML = "&#9632;";//stop
+					this.style.color = "#FFF";
+				}
 			}
 		});
 
@@ -157,7 +179,8 @@ var Capture = {
 		dialog.add(inspector);
 		var preferences = this.preferences;
 
-		inspector.addCombo("Quality", preferences.quality, { values: ["high","medium","low"], callback: function(v){ preferences.quality = v; }});
+		inspector.addCombo("Codec", preferences.codec, { values: Object.keys( this.codecs ), callback: function(v){ preferences.codec = v; }});
+		inspector.addCombo("Quality", preferences.quality, { values: Object.keys( this.quality ), callback: function(v){ preferences.quality = v; }});
 		inspector.addNumber("Framerate", preferences.framerate, { step:1, min:0, max:90, callback: function(v){ preferences.framerate = v; }});
 		inspector.addCheckbox("Use Rendering Framerate", preferences.use_rendering_framerate, { callback: function(v){ preferences.use_rendering_framerate = v; }});
 		

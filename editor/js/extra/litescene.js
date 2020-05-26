@@ -3826,9 +3826,11 @@ var GUI = {
 	* @param {String} text the text to show in the textfield
 	* @param {Number} max_length to limit the text, otherwise leave blank
 	* @param {Boolean} is_password set to true to show as password
+	* @param {Function} on_intro callback executed when clicked intro/return key
+	* @param {Boolean} keep_focus_on_intro retains focus after intro
 	* @return {Boolean} the current state of the checkbox (will be different from value if it was pressed)
 	*/
-	TextField: function( area, text, max_length, is_password )
+	TextField: function( area, text, max_length, is_password, on_intro, keep_focus_on_intro )
 	{
 		if(!area)
 			throw("No area");
@@ -3871,7 +3873,17 @@ var GUI = {
 				switch(key.keyCode)
 				{
 					case 8: text = text.substr(0, text.length - 1 ); break; //backspace
-					case 13: this.pressed_enter = true; break; //return
+					case 13: 
+						this.pressed_enter = true;
+						if(!keep_focus_on_intro)
+							LS.Input.last_click = null;
+						if(on_intro)
+						{
+							var r = on_intro(text);
+							if(r != null)
+								text = r;
+						}
+						break; //return
 					case 32: if(text.length < max_length) text += " "; break;
 					default:
 						if(text.length < max_length && key.key && key.key.length == 1) //length because control keys send a string like "Shift"
@@ -3915,6 +3927,11 @@ var GUI = {
 		ctx.fillText( final_text + cursor, area[0] + margin*2 + this._offset[0], area[1] + area[3] * 0.75 + this._offset[1] );
 
 		return text;
+	},
+
+	isTextFieldSelected: function( area )
+	{
+		return LS.Input.last_click && LS.Input.isEventInRect( LS.Input.last_click, area, this._offset );
 	},
 
 	/**
@@ -22997,7 +23014,7 @@ function LGraphReprojectDepth()
 	this.addInput("color","Texture");
 	this.addInput("depth","Texture");
 	this.addInput("camera","Camera,Component");
-	this.properties = { enabled: true, pointSize: 1, offset: 0, triangles: false, depth_is_linear: false, skip_center: false, layers:0xFF };
+	this.properties = { enabled: true, pointSize: 1, offset: 0, factor: 1, triangles: false, depth_is_linear: false, skip_center: false, layers:0xFF };
 
 	this._view_matrix = mat4.create();
 	this._projection_matrix = mat4.create();
@@ -23011,6 +23028,7 @@ function LGraphReprojectDepth()
 		u_near_far: vec2.create(),
 		u_color_texture:0,
 		u_depth_texture:1,
+		u_factor: this.properties.factor,
 		u_vp: this._viewprojection_matrix
 	};
 }
@@ -23022,6 +23040,12 @@ LGraphReprojectDepth.widgets_info = {
 LGraphReprojectDepth.title = "Reproj.Depth";
 LGraphReprojectDepth.desc = "Reproject Depth";
 
+LGraphReprojectDepth.prototype.onGetInputs = function()
+{
+	return [["enabled","boolean"],["factor","number"]];
+}
+
+
 LGraphReprojectDepth.prototype.onExecute = function()
 {
 	var color = this.getInputData(0);
@@ -23029,6 +23053,10 @@ LGraphReprojectDepth.prototype.onExecute = function()
 	var camera = this.getInputData(2);
 
 	if( !depth || !camera || camera.constructor !== LS.Camera )
+		return;
+
+	var enabled = this.getInputOrProperty("enabled");
+	if(!enabled)
 		return;
 
 	var no_color = false;
@@ -23049,7 +23077,6 @@ LGraphReprojectDepth.prototype.onExecute = function()
 	if(!(LS.Renderer._current_layers_filter & this.properties.layers ))
 		return;
 
-	var enabled = this.properties.enabled;
 	var mesh = this._mesh;
 	if(!mesh)
 		mesh = this._mesh = GL.Mesh.plane({detailX: depth.width, detailY: depth.height});
@@ -23063,6 +23090,8 @@ LGraphReprojectDepth.prototype.onExecute = function()
 	uniforms.u_is_linear = this.properties.depth_is_linear ? 1 : 0;
 	uniforms.u_use_depth_as_color = no_color ? 1 : 0;
 	uniforms.u_near_far.set(depth.near_far_planes ? depth.near_far_planes : [0,1]);
+	uniforms.u_factor = this.getInputOrProperty("factor");
+
 	if(this.properties.skip_center)
 		uniforms.u_ires.set([0,0]);
 	else
@@ -23090,6 +23119,7 @@ LGraphReprojectDepth.vertex_shader = "\n\
 	uniform vec2 u_ires;\n\
 	uniform float u_depth_offset;\n\
 	uniform float u_point_size;\n\
+	uniform float u_factor;\n\
 	uniform vec2 u_near_far;\n\
 	uniform int u_is_linear;\n\
 	uniform int u_use_depth_as_color;\n\
@@ -23097,7 +23127,7 @@ LGraphReprojectDepth.vertex_shader = "\n\
 	\n\
 	void main() {\n\
 		vec2 uv = a_coord + u_ires * 0.5;\n\
-		float depth = texture2D( u_depth_texture, uv ).x;\n\
+		float depth = texture2D( u_depth_texture, uv ).x * u_factor;\n\
 		if(u_is_linear == 1)\n\
 		{\n\
 			//must delinearize, doesnt work...\n\
@@ -23930,6 +23960,82 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LiteGraph.registerNodeType("gui/button", LGraphGUIButton );
+
+
+	function LGraphGUITextField()
+	{
+		this.addInput("","string");
+		this.addInput("clear",LiteGraph.ACTION);
+		this.addOutput("change",LiteGraph.EVENT);
+		this.addOutput("str");
+		this.properties = { enabled: true, caption:"", value: "", clear_on_intro: false, keep_focus_on_intro: false, position: [20,20], size: [200,40], corner: LiteGraph.CORNER_TOP_LEFT };
+		this.widgets_start_y = 2;
+		this.addWidget("text","Caption","","caption");
+		this._area = vec4.create();
+		this._changed = false;
+		this._prev_value = "";
+	}
+
+	LGraphGUITextField.title = "GUITextField";
+	LGraphGUITextField.desc = "Renders a input text widget on the main canvas";
+	LGraphGUITextField["@corner"] = corner_options;
+
+	LGraphGUITextField.prototype.onRenderGUI = function()
+	{
+		if(!this.getInputOrProperty("enabled"))
+			return;
+		positionToArea( this.properties.position, this.properties.corner, this._area );
+		var parent_pos = this.getInputOrProperty("parent_pos");
+		if(parent_pos)
+		{
+			this._area[0] += parent_pos[0];
+			this._area[1] += parent_pos[1];
+		}
+		this._area[2] = this.properties.size[0];
+		this._area[3] = this.properties.size[1];
+		if(this.properties.caption != null)
+		{
+			this._area[2] *= 0.5;
+			LS.GUI.Label( this._area, String( this.properties.caption ) );
+			this._area[0] += this._area[2] * 0.5;
+		}
+		var that = this;
+		this.properties.value = LS.GUI.TextField( this._area, this.properties.value, null, false, function(){
+			that._changed = true;
+			that._value = that.properties.value;
+			if( that.properties.clear_on_intro)
+				return "";
+		}, this.properties.keep_focus_on_intro );
+	}
+
+	LGraphGUITextField.prototype.onAction = function(name)
+	{
+		//clear
+		this.properties.value = "";
+	}
+
+	LGraphGUITextField.prototype.onExecute = function()
+	{
+		var enabled = this.getInputDataByName("enabled");
+		if(enabled === false || enabled === true)
+			this.properties.enabled = enabled;
+		var str = this.getInputData(0);
+		if(str != null)
+			this.setProperty("caption",str);
+		if(this._value != this._last_value && this._changed)
+		{
+			this._changed = false;
+			this._last_value = this._value;
+			this.triggerSlot(0);
+		}
+		this.setOutputData(1, this.properties.value );
+	}
+
+	LGraphGUITextField.prototype.onGetInputs = function(){
+		return [["enabled","boolean"],["parent_pos","vec2"]];
+	}
+
+	LiteGraph.registerNodeType("gui/textfield", LGraphGUITextField );
 
 	function LGraphGUIMultipleChoice()
 	{
@@ -30581,6 +30687,7 @@ EVENT.AFTER_RENDER = "afterRender";
 EVENT.BEFORE_RENDER_FRAME = "beforeRenderFrame";
 EVENT.BEFORE_RENDER_SCENE = "beforeRenderScene";
 EVENT.COMPUTE_VISIBILITY = "computeVisibility";
+EVENT.AFTER_RENDER_FRAME = "afterRenderFrame";
 EVENT.AFTER_RENDER_SCENE = "afterRenderScene";
 EVENT.RENDER_HELPERS = "renderHelpers";
 EVENT.RENDER_PICKING = "renderPicking";
@@ -30731,12 +30838,12 @@ var Renderer = {
 		this.ENVIRONMENT_TEXTURE_SLOT = max_texture_units - 3;
 		this.IRRADIANCE_TEXTURE_SLOT = max_texture_units - 4;
 
-		this.LIGHTPROJECTOR_TEXTURE_SLOT = max_texture_units - 5;
-		this.LIGHTEXTRA_TEXTURE_SLOT = max_texture_units - 6;
+		this.BONES_TEXTURE_SLOT = max_texture_units - 5;
+		this.MORPHS_TEXTURE_SLOT = max_texture_units - 6;
+		this.MORPHS_TEXTURE2_SLOT = max_texture_units - 7;
 
-		this.BONES_TEXTURE_SLOT = max_texture_units - 7;
-		this.MORPHS_TEXTURE_SLOT = max_texture_units - 8;
-		this.MORPHS_TEXTURE2_SLOT = max_texture_units - 9;
+		this.LIGHTPROJECTOR_TEXTURE_SLOT = max_texture_units - 8;
+		this.LIGHTEXTRA_TEXTURE_SLOT = max_texture_units - 9;
 
 		this._active_samples.length = max_texture_units;
 
@@ -31586,9 +31693,9 @@ var Renderer = {
 
 		var allow_textures = this.allow_textures; //used for debug
 
-		for(var i = 0; i < samplers.length; ++i)
+		for(var slot = 0; slot < samplers.length; ++slot)
 		{
-			var sampler = samplers[i];
+			var sampler = samplers[slot];
 			if(!sampler) 
 				continue;
 
@@ -31637,8 +31744,8 @@ var Renderer = {
 			if(tex._in_current_fbo) 
 				tex = this._missing_texture;
 
-			tex.bind( i );
-			this._active_samples[i] = tex;
+			tex.bind( slot );
+			this._active_samples[slot] = tex;
 
 			//texture properties
 			if(sampler)// && sampler._must_update ) //disabled because samplers ALWAYS must set to the value, in case the same texture is used in several places in the scene
@@ -37574,7 +37681,7 @@ Object.defineProperty( Camera.prototype, "frame", {
 	get: function() {
 		return this._frame;
 	},
-	enumerable: false
+	enumerable: true //its ok, serialize is manual
 });
 
 /**
@@ -37590,7 +37697,7 @@ Object.defineProperty( Camera.prototype, "frame_color_texture", {
 			return null;
 		return this._frame.getColorTexture();
 	},
-	enumerable: false
+	enumerable: true //its ok, serialize is manual
 });
 
 /**
@@ -37606,7 +37713,7 @@ Object.defineProperty( Camera.prototype, "frame_depth_texture", {
 			return null;
 		return this._frame.getDepthTexture();
 	},
-	enumerable: false
+	enumerable: true //its ok, serialize is manual
 });
 
 
@@ -45502,51 +45609,54 @@ LS.GlobalInfo = GlobalInfo;
 ///@FILE:../src/components/graphComponents.js
 ///@INFO: GRAPHS
 /* Requires LiteGraph.js ******************************/
-
-//on include, link to resources manager
-if(typeof(LGraphTexture) != "undefined")
-{
-	//link LGraph textures system with LiteScene
-	LGraphTexture.getTexturesContainer = function() { return LS.ResourcesManager.textures };
-	LGraphTexture.storeTexture = function(name, texture) { return LS.ResourcesManager.registerResource(name, texture); };
-	LGraphTexture.loadTexture = LS.ResourcesManager.load.bind( LS.ResourcesManager );
-
-	LiteGraph.allow_scripts = LS.allow_scripts; //let graphs that contain code execute it
-}
-
-if(typeof(LiteGraph.LGraphRender) != "undefined")
-{
-	LiteGraph.LGraphRender.onRequestCameraMatrices = function(view,proj,viewproj)
-	{
-		var camera = LS.Renderer.getCurrentCamera();
-		if(!camera)
-			return;
-		view.set( camera._view_matrix );
-		proj.set( camera._projection_matrix );
-		viewproj.set( camera._viewprojection_matrix );
-	}
-}
-
-
-if( typeof(LGAudio) != "undefined" )
-{
-	LGAudio.onProcessAudioURL = function(url)
-	{
-		return LS.RM.getFullURL(url);
-	}
-}
-
 if(typeof(LiteGraph) != "undefined")
 {
-	LiteGraph.onNodeTypeReplaced = function(name,ctor,old)
+	//on include, link to resources manager
+	if(typeof(LGraphTexture) != "undefined")
 	{
-		var comps = LS.GlobalScene.findNodeComponents( LS.Components.GraphComponent );
-		comps = comps.concat( LS.GlobalScene.findNodeComponents( LS.Components.FXGraphComponent ) );
-		for(var i = 0; i < comps.length; ++i)
-			comps[i].graph.checkNodeTypes();
+		//link LGraph textures system with LiteScene
+		LGraphTexture.getTexturesContainer = function() { return LS.ResourcesManager.textures };
+		LGraphTexture.storeTexture = function(name, texture) { return LS.ResourcesManager.registerResource(name, texture); };
+		LGraphTexture.loadTexture = LS.ResourcesManager.load.bind( LS.ResourcesManager );
+
+		LiteGraph.allow_scripts = LS.allow_scripts; //let graphs that contain code execute it
+	}
+
+	if(typeof(LiteGraph.LGraphRender) != "undefined")
+	{
+		LiteGraph.LGraphRender.onRequestCameraMatrices = function(view,proj,viewproj)
+		{
+			var camera = LS.Renderer.getCurrentCamera();
+			if(!camera)
+				return;
+			view.set( camera._view_matrix );
+			proj.set( camera._projection_matrix );
+			viewproj.set( camera._viewprojection_matrix );
+		}
+	}
+
+
+	if( typeof(LGAudio) != "undefined" )
+	{
+		LGAudio.onProcessAudioURL = function(url)
+		{
+			return LS.RM.getFullURL(url);
+		}
+	}
+
+	if(typeof(LiteGraph) != "undefined")
+	{
+		LiteGraph.onNodeTypeReplaced = function(name,ctor,old)
+		{
+			var comps = LS.GlobalScene.findNodeComponents( LS.Components.GraphComponent );
+			comps = comps.concat( LS.GlobalScene.findNodeComponents( LS.Components.FXGraphComponent ) );
+			for(var i = 0; i < comps.length; ++i)
+				comps[i].graph.checkNodeTypes();
+		}
 	}
 }
-
+else
+	console.warn("Litegraph.js not present, graph nodes would not be available.");
 
 
 /**
@@ -49602,7 +49712,9 @@ IrradianceCache.prototype.encodeCacheInTexture = function()
 	//create texture
 	if( !this._sh_texture || this._sh_texture.height != this._irradiance_shs.length || this._sh_texture.type != sh_texture_type )
 	{
-		this._sh_texture = new GL.Texture(9, this._irradiance_shs.length, { format: gl.RGB, type: sh_texture_type, magFilter: gl.NEAREST, minFilter: gl.NEAREST, wrap: gl.CLAMP_TO_EDGE });
+		var w = 9;
+		var h = this._irradiance_shs.length;
+		this._sh_texture = new GL.Texture(w, h, { format: gl.RGB, type: sh_texture_type, magFilter: gl.NEAREST, minFilter: gl.NEAREST, wrap: gl.CLAMP_TO_EDGE });
 		LS.ResourcesManager.registerResource( ":IR_SHs", this._sh_texture ); //debug
 	}
 
@@ -50114,7 +50226,7 @@ var irradiance_code = "\n\
 	vec3 computeSHRadianceAtPosition( in vec3 pos, in vec3 normal )\n\
 	{\n\
 		vec3 local_pos = (u_irradiance_imatrix * vec4(pos + u_irradiance_distance * normal, 1.0)).xyz - vec3(0.5);\n\
-		local_pos = clamp( local_pos, vec3(0.0), u_irradiance_subdivisions - vec3(1.0));\n\
+		local_pos = clamp( local_pos + vec3(0.5), vec3(0.0), u_irradiance_subdivisions - vec3(1.0));\n\
 		return computeSHRadianceAtLocalPos( local_pos, normal );\n\
 		\n\
 	}\n\

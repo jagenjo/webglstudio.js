@@ -8712,6 +8712,7 @@ Shader.prototype.drawBuffers = function( vertexBuffers, indexBuffer, mode, range
 	  } else {
 		gl.drawArrays(mode, offset, length);
 	  }
+	  gl.draw_calls++;
 	}
 
 	return this;
@@ -9784,6 +9785,8 @@ GL.create = function(options) {
 	gl.textures = {};
 	gl.meshes = {};
 
+	gl.draw_calls = 0;
+
 	/**
 	* sets this context as the current global gl context (in case you have more than one)
 	* @method makeCurrent
@@ -10117,6 +10120,8 @@ GL.create = function(options) {
 		simulatedEvent.originalEvent = simulatedEvent;
 		simulatedEvent.is_touch = true;
 		first.target.dispatchEvent( simulatedEvent );
+
+		//if we block this touch (to avoid weird canvas draggings) then we are blocking the gestures
 		e.preventDefault();
 	}
 
@@ -10676,6 +10681,8 @@ GL.isMobile = function()
 	if( (navigator.userAgent.match(/iPhone/i)) || 
 		(navigator.userAgent.match(/iPod/i)) || 
 		(navigator.userAgent.match(/iPad/i)) || 
+		(navigator.userAgent.match(/SamsungBrowser/i)) || 
+		(navigator.userAgent.match(/Mobile\ VR/i)) || 
 		(navigator.userAgent.match(/Android/i))) {
 		return this.mobile = true;
 	}

@@ -50025,6 +50025,7 @@ var cubemapFaceNormals = [
 
 // give me a cubemap, its size and number of channels
 // and i'll give you spherical harmonics
+//from here: https://github.com/nicknikolov/cubemap-sh/blob/master/index.js
 function computeSH( faces, cubemapSize, ch) {
   var size = cubemapSize || 128
   var channels = ch || 4

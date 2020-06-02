@@ -216,7 +216,18 @@ var EditorModule = {
 	{
 		if(!this.inspector.instance)
 			return;
-		this.inspect(this.inspector.instance);
+
+		var instance = this.inspector.instance;
+
+		//special case, refreshing with something that doesnt exist anymore (like when reloading a scene)
+		if(instance.constructor === LS.SceneNode && instance.scene == null)
+		{
+			var new_node = LS.GlobalScene.getNodeById( instance.uid );
+			if(new_node)
+				this.inspector.instance = instance = new_node;
+		}
+
+		this.inspect(instance);
 	},
 
 	updateInspector: function( object )

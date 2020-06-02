@@ -537,6 +537,9 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 				return;
 			}
 
+			if(!node.scene)
+				inspector.addInfo(null,"<span class='warning'>Warning: This node doesnt belong to any scene</span>");
+
 			inspector.widgets_per_row = 2;
 			inspector.addString("name", node._name || "", { name_width: 80, callback: function(v) {
 				if(!v)
@@ -893,6 +896,11 @@ LiteGUI.Inspector.prototype.showComponent = function(component, inspector)
 	LiteGUI.bind( section, "wchange", function(e) { 
 		CORE.afterUserAction("component_changed", component );
 	});
+
+	if(!component._root)
+		inspector.addInfo(null,"<span class='warning'>Warning: This component doesnt belong to any node</span>");
+	else if(!component._root.scene)
+		inspector.addInfo(null,"<span class='warning'>Warning: This component doesnt belong to any scene</span>");
 
 	//it has special editor
 	if( component_class.inspect )

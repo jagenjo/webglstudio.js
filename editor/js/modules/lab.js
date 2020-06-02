@@ -403,7 +403,7 @@ var LabModule = {
 				if(tex.texture_type == gl.TEXTURE_2D)
 				{
 					//LS.Draw.renderPlane([posx + size*0.6, posy + size*0.6, 0], [size*0.5,-size*0.5], tex );
-					if( tex.format == GL.DEPTH_COMPONENT ) //depth
+					if( tex.format == GL.DEPTH_COMPONENT || tex.format == GL.DEPTH_STENCIL )
 					{
 						gl.disable( gl.BLEND );
 						this._depth_shader.uniforms({ u_near_far: tex.near_far_planes, u_exposure: this.exposure });

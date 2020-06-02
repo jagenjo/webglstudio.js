@@ -38,7 +38,12 @@ SillyClient.prototype.connect = function( url, room_name, on_connect, on_message
 		throw("You must specify the server URL of the SillyServer");
 
 	if(this.socket)
+	{
+		this.socket.onmessage = null;
+		this.socket.onclose = null;
 		this.socket.close();
+	}
+	this.clients = {};
 
 	if(typeof(WebSocket) == "undefined")
 		WebSocket = window.MozWebSocket;
@@ -52,22 +57,36 @@ SillyClient.prototype.connect = function( url, room_name, on_connect, on_message
 	if(this.feedback)
 		params = "?feedback=1";
 
+	var protocol = "";
+	if( url.substr(0,3) != "ws:" && url.substr(0,4) != "wss:" )
+	{
+		protocol = location.protocol == "http:" ? "ws://" : "wss://"; //default protocol
+	}
+
+	var final_url = this._final_url = protocol + url + "/" + room_name + params;
+
 	//connect
-	this.socket = new WebSocket("ws://"+url+"/" + room_name + params );
+	this.socket = new WebSocket( final_url );
 	this.socket.binaryType = "arraybuffer";
 	this.socket.onopen = function(){  
 		that.is_connected = true;
+		that.room = { 
+			name: room_name,
+			clients: []
+		};
 		if(SillyClient.verbose)
-			console.log("Socket has been opened! :)");  
+			console.log("SillyClient socket opened");  
 		if(on_connect && typeof(on_connect) == "function" )
 			on_connect();
 		if(that.on_connect)
-			that.on_connect();
+			that.on_connect(that);
 	}
 
-	this.socket.addEventListener("close", function(e) {
+	this.socket.onclose = function(e) {
 		if(SillyClient.verbose)
-			console.log("Socket has been closed: ", e); 
+			console.log("SillyClient socket has been closed: ", e); 
+		if(that.socket != this)
+			return;
 		if(on_close)
 			on_close();
 		if(that.on_close)
@@ -75,17 +94,20 @@ SillyClient.prototype.connect = function( url, room_name, on_connect, on_message
 		that.socket = null;
 		that.room = null;
 		that.is_connected = false;
-	});
+	};
 
 	this.socket.onmessage = function(msg){  
+		if(that.socket != this)
+			return;
+
 		that.info_received += 1;
 
-		if(msg.data.constructor === ArrayBuffer )
+		if( msg.data.constructor === ArrayBuffer )
 		{
 			var buffer = msg.data;
 			processArrayBuffer( buffer );
 		}
-		else if(msg.data.constructor === String )
+		else if( msg.data.constructor === String )
 		{
 			var tokens = msg.data.split("|"); //author id | cmd | data
 			if(tokens.length < 3)
@@ -136,6 +158,8 @@ SillyClient.prototype.close = function()
 
 	this.socket.close();
 	this.socket = null;
+	this.clients = {};
+	this.is_connected = false;
 }
 
 //Process events 
@@ -233,13 +257,28 @@ SillyClient.prototype.sendMessage = function( msg, target_ids )
 	this.info_transmitted += 1;
 }
 
+SillyClient.prototype.getBaseURL = function()
+{
+	var url = this.url;
+	var protocol = location.protocol + "//";
+	if( url.indexOf("wss://") != -1)
+	{
+		protocol = "https://";
+		url = url.substr(6);
+	}
+	var index = url.indexOf("/");
+	var host = url.substr(0,index);
+	return protocol + host;
+}
+
 //To store temporal information in the server
 SillyClient.prototype.storeData = function(key, value, on_complete)
 {
 	if(!this.url)
 		throw("Cannot storeData if not connected to the server");
 	var req = new XMLHttpRequest();
-	req.open('GET', "http://" + this.url + "/data?action=set&key="+key + ((value !== undefined && value !== null) ? "&value="+value : ""), true);
+	var base_url = this.getBaseURL();
+	req.open('GET', base_url + "/data?action=set&key="+key + ((value !== undefined && value !== null) ? "&value="+value : ""), true);
 	req.onreadystatechange = function (aEvt) {
 	  if (req.readyState == 4) {
 		 if(req.status != 200)
@@ -257,7 +296,8 @@ SillyClient.prototype.loadData = function(key, on_complete)
 	if(!this.url)
 		throw("Cannot loadData if not connected to the server");
 	var req = new XMLHttpRequest();
-	req.open('GET', "http://" + this.url + "/data?action=get&key="+key, true);
+	var base_url = this.getBaseURL();
+	req.open('GET', base_url + "/data?action=get&key="+key, true);
 	req.onreadystatechange = function (aEvt) {
 	  if (req.readyState == 4) {
 		 if(req.status != 200)
@@ -274,7 +314,8 @@ SillyClient.prototype.loadData = function(key, on_complete)
 SillyClient.prototype.getReport = function( on_complete )
 {
 	var req = new XMLHttpRequest();
-	req.open('GET', "http://" + this.url + "/info", true);
+	var base_url = this.getBaseURL();
+	req.open('GET', base_url + "/info", true);
 	req.onreadystatechange = function (aEvt) {
 	  if (req.readyState == 4) {
 		 if(req.status != 200)
@@ -287,11 +328,38 @@ SillyClient.prototype.getReport = function( on_complete )
 	req.send(null);
 }
 
+//Returns a report with information about clients connected and rooms open
+SillyClient.getReport = function( url, on_complete )
+{
+	var req = new XMLHttpRequest();
+	var protocol = location.protocol + "//";
+	if( url.indexOf("wss://") != -1)
+	{
+		protocol = "https://";
+		url = url.substr(6);
+	}
+	var index = url.indexOf("/");
+	var host = url.substr(0,index);
+	req.open('GET', protocol + host + "/info", true);
+	req.onreadystatechange = function (aEvt) {
+	  if (req.readyState == 4) {
+		 if(req.status != 200)
+			return console.error("Error getting report: ", req.responseText );
+		 var resp = JSON.parse(req.responseText);
+		 if(on_complete)
+			 on_complete( resp );
+	  }
+	};
+	req.send(null);
+}
+
+
 //Returns info about a room (which clients are connected now)
 SillyClient.prototype.getRoomInfo = function( name, on_complete )
 {
 	var req = new XMLHttpRequest();
-	req.open('GET', "http://" + this.url + "/room/" + name, true);
+	var base_url = this.getBaseURL();
+	req.open('GET', base_url + "/room/" + name, true);
 	req.onreadystatechange = function (aEvt) {
 	  if (req.readyState == 4) {
 		 if(req.status != 200)
@@ -305,10 +373,12 @@ SillyClient.prototype.getRoomInfo = function( name, on_complete )
 }
 
 //Returns a list with all the open rooms that start with txt (txt must be at least 6 characters long)
-SillyClient.prototype.findRooms = function( txt, on_complete )
+SillyClient.prototype.findRooms = function( name_str, on_complete )
 {
+	name_str = name_str || "";
 	var req = new XMLHttpRequest();
-	req.open('GET', "http://" + this.url + "/find?name=" + name, true);
+	var base_url = this.getBaseURL();
+	req.open('GET', base_url + "/find?name=" + name_str, true);
 	req.onreadystatechange = function (aEvt) {
 	  if (req.readyState == 4) {
 		 if(req.status != 200)

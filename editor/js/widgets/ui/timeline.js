@@ -2329,11 +2329,17 @@ Timeline.prototype.insertKeyframe = function( track, only_different, time )
 		}
 		else if(track.value_size > 1)
 		{
+			var is_different = false;
 			for(var i = 0; i < track.value_size; ++i)
 			{
-				if( Math.abs(track._last_sample[i] - info.value[i]) < 0.0001 )
-					return false; //same value
+				if( Math.abs(track._last_sample[i] - info.value[i]) > 0.0001 )
+				{
+					is_different = true;
+					break;
+				}
 			}
+			if(!is_different)
+				return false; //there were no changes
 		}
 		else
 			if( track._last_sample == info.value )
@@ -2352,7 +2358,7 @@ Timeline.prototype.insertKeyframe = function( track, only_different, time )
 	return true;
 }
 
-//used when recording
+//creates a keyframe on every track where there values has changed (used when recording)
 Timeline.prototype.sampleAllTracks = function( only_different, time )
 {
 	if(!this.current_take)

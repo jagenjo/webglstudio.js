@@ -1484,7 +1484,7 @@ button.litebutton {
     margin: 2px;
     padding: 2px;
     text-shadow: 0 1px 1px black;
-    vertical-align: top;	
+    vertical-align: top;
 }
 
 button.litebutton.flat {
@@ -1499,6 +1499,10 @@ button.litebutton:hover:not(:disabled) {
 
 button.litebutton:active:not(:disabled) {
     background: #fff !important;
+}
+
+button.litebutton:focus:not(:disabled) {
+	outline: 1px solid #777;
 }
 
 button.litebutton:disabled {

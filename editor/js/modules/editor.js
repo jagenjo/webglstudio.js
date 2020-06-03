@@ -222,7 +222,7 @@ var EditorModule = {
 		//special case, refreshing with something that doesnt exist anymore (like when reloading a scene)
 		if(instance.constructor === LS.SceneNode && instance.scene == null)
 		{
-			var new_node = LS.GlobalScene.getNodeById( instance.uid );
+			var new_node = LS.GlobalScene.getNodeByUId( instance.uid );
 			if(new_node)
 				this.inspector.instance = instance = new_node;
 		}

@@ -9321,7 +9321,7 @@ function StandardMaterial(o)
 	this.bumpmap_factor = 1.0;
 
 	this.displacementmap_factor = 0.1;
-	this._texture_settings = new Uint8Array(9);
+	this._texture_settings = new Uint8Array(11);
 
 	this.use_scene_ambient = true;
 	this.point_size = 1.0;

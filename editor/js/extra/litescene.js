@@ -21741,9 +21741,9 @@ if(typeof(LiteGraph) != "undefined")
 	LGraphFrame.prototype.onInspect = function( inspector )
 	{
 		var that = this;
-		var render_context = this.graph.component.frame;
 		if(this.graph.component)
 		{
+			var render_context = this.graph.component.frame;
 			inspector.showObjectFields( render_context );
 			inspector.addSeparator();
 			inspector.addCheckbox("Antialiasing", this.graph.component.use_antialiasing, function(v){ that.graph.component.use_antialiasing = v; });

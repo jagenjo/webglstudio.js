@@ -538,6 +538,15 @@ LS.FXStack.prototype.inspect = function( inspector, component )
 							this.options.fx[ this.options.fx_name ] = v;
 						}				
 					});
+				else if(uniform.type == "bool")
+					inspector.addCheckbox( j, fx[j] !== undefined ? fx[j] : uniform.value, {
+						pretitle: component ? AnimationModule.getKeyframeCode( component, "fx/"+i+"/"+j ) : "",
+						fx_name: j,
+						fx: fx,
+						callback: function(v){
+							this.options.fx[ this.options.fx_name ] = v;
+						}				
+					});
 				else if(uniform.type == "color3")
 					inspector.addColor( j, fx[j] !== undefined ? fx[j] : uniform.value, {
 						pretitle: component ? AnimationModule.getKeyframeCode( component, "fx/"+i+"/"+j ) : "",

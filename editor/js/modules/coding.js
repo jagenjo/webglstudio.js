@@ -111,7 +111,7 @@ var CodingModule = //do not change
 	openTab: function()
 	{
 		LiteGUI.main_tabs.selectTab( this.name );
-		this.show3DWindow( true );
+		this.show3DWindow( this.show_sceneview );
 	},
 
 	//close coding tab ( back to scene view )

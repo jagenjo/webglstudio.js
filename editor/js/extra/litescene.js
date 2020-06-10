@@ -1780,6 +1780,13 @@ var LS = {
 		return null;
 	},
 
+	getDebugRender: function()
+	{
+		if(!LS.debug_render)
+			LS.debug_render = new LS.DebugRender();
+		return LS.debug_render;
+	},
+
 	//we do it in a function to make it more standard and traceable
 	//used by the editor to show the error
 	dispatchCodeError: function( err, line, resource, extra )
@@ -4191,8 +4198,37 @@ var GUI = {
 		return value;
 	},
 
+	Pad: function( area, value, background )
+	{
+		this.DragArea( area, value );
+		var ctx = this._ctx;
+
+		if( background && ( background.constructor === GL.Texture || background.constructor === HTMLImageElement || background.constructor === HTMLCanvasElement) )
+		{
+			ctx.drawImage( background, area[0], area[1], area[2], area[3] );
+		}
+		else
+		{
+			ctx.globalAlpha = 1;
+			ctx.fillStyle = this.GUIStyle.backgroundColor;
+			ctx.fillRect( area[0]-2, area[1]-2, area[2]+4, area[3]+4 );
+			ctx.fillStyle = "black";
+			ctx.fillRect( area[0], area[1], area[2], area[3] );
+		}
+
+		//ball
+		ctx.fillStyle = "white";
+		ctx.globalAlpha = 1;
+		var x = area[0] + value[0] * area[2];
+		var y = area[1] + value[1] * area[3];
+		//ctx.fillRect( x-5, y-5, 10,10 );
+		ctx.beginPath();
+		ctx.arc( x, y, 5, 0, 2 * Math.PI, false );
+		ctx.fill();
+	},
+
 	//*
-	DragArea: function( area, value )
+	DragArea: function( area, value, only_delta )
 	{
 		if(!area)
 			throw("No area");
@@ -4224,13 +4260,24 @@ var GUI = {
 			is_selected = true;
 			if( LS.Input.Mouse.dragging )
 			{
-				value[0] += LS.Input.Mouse.deltax || 0;
-				value[1] += LS.Input.Mouse.deltay || 0;
+				if(only_delta)
+				{
+					value[0] += LS.Input.Mouse.deltax || 0;
+					value[1] += LS.Input.Mouse.deltay || 0;
+				}
+				else
+				{
+					var x = (LS.Input.Mouse.x - area[0]) / area[2];
+					var y = (LS.Input.Mouse.y - area[1]) / area[3];
+					value[0] = Math.clamp(x,0,1);
+					value[1] = Math.clamp(y,0,1);
+				}
 			}
 		}
 
 		return value;
 	},
+
 	//*/
 
 	pushStyle: function()
@@ -20992,6 +21039,14 @@ if(typeof(LiteGraph) != "undefined")
 		this.bindNodeEvents( this._component );
 	}
 
+	LGraphSceneNode.prototype.getTitle = function()
+	{
+		var node = this._node || this.getNode();
+		if(node)
+			return node.name;
+		return this.title;
+	}
+
 	LGraphSceneNode.prototype.getNode = function()
 	{
 		var node_id = null;
@@ -24178,6 +24233,119 @@ if(typeof(LiteGraph) != "undefined")
 	}
 
 	LiteGraph.registerNodeType("gui/multiple_choice", LGraphGUIMultipleChoice );
+
+
+	//special kind of node
+	function LGraphGUIPad()
+	{
+		this.addInput("bg","image,texture");
+		this.addOutput("x","number");
+		this.addOutput("y","number");
+		this.addOutput("v","vec2");
+		this.properties = { enabled: true, value: [0,0], position: [20,20], min:[0,0], max:[1,1], size: [200,200], corner: LiteGraph.CORNER_TOP_LEFT };
+		this._area = vec4.create();
+		this._value_norm = vec2.create();
+	}
+
+	LGraphGUIPad.title = "GUIPad";
+	LGraphGUIPad.desc = "Renders a 2D pad on the main canvas";
+	LGraphGUIPad["@corner"] = corner_options;
+
+	LGraphGUIPad.prototype.onRenderGUI = function()
+	{
+		if(!this.getInputOrProperty("enabled"))
+			return;
+		positionToArea( this.properties.position, this.properties.corner, this._area );
+		this._area[2] = this.properties.size[0];
+		this._area[3] = this.properties.size[1];
+		var parent_pos = this.getInputOrProperty("parent_pos");
+		if(parent_pos)
+		{
+			this._area[0] += parent_pos[0];
+			this._area[1] += parent_pos[1];
+		}
+
+		var bg = this.getInputData(0);
+
+		var rangex = (this.properties.max[0] - this.properties.min[0]);
+		var rangey = (this.properties.max[1] - this.properties.min[1]);
+		this._value_norm[0] = (this.properties.value[0] - this.properties.min[0]) / rangex;
+		this._value_norm[1] = (this.properties.value[1] - this.properties.min[1]) / rangey;
+
+		LS.GUI.Pad( this._area, this._value_norm, bg );
+
+		this.properties.value[0] = this.properties.min[0] + this._value_norm[0] * rangex;
+		this.properties.value[1] = this.properties.min[1] + this._value_norm[1] * rangey;
+	}
+
+	LGraphGUIPad.prototype.onExecute = function()
+	{
+		if(this.inputs && this.inputs.length)
+			this.properties.enabled = this.getInputOrProperty("enabled");
+		this.setOutputData(0, this.properties.value[0] );
+		this.setOutputData(1, this.properties.value[1] );
+		this.setOutputData(2, this.properties.value );
+	}
+
+	LGraphGUIPad.prototype.onGetInputs = function(){
+		return [["enabled","boolean"],["parent_pos","vec2"]];
+	}
+
+	LiteGraph.registerNodeType("gui/pad", LGraphGUIPad );
+
+	//*****************************************************
+
+	//text in 3D
+	function LGraphDebugText()
+	{
+		this.addInput("text");
+		this.properties = { enabled: true, text: "", font: "", position: [0,0,0], scale: 0.1, color: [1,1,1,1], precision: 3 };
+		this._pos = vec2.create();
+		this._text = "";
+	}
+
+	LGraphDebugText.title = "DebugText";
+	LGraphDebugText.desc = "renders text on world space";
+
+	LGraphDebugText["@color"] = { type:"color" };
+
+	LGraphDebugText.prototype.onGetInputs = function(){
+		return [["enabled","boolean"]];
+	}
+
+	LGraphDebugText.prototype.onExecute = function()
+	{
+		var v = this.getInputData(0);
+		if(v != null)
+		{
+			if( v.constructor === Number )
+				this._text = v.toFixed( this.properties.precision );
+			else
+				this._text = String(v);
+		}
+		else
+			this._text = this.properties.text;
+
+		if(this._text.length == 0)
+			return;
+
+		var node = this.graph._scenenode;
+		LS.Draw.setColor( this.properties.color );
+		gl.disable( gl.CULL_FACE );
+		if(node && node.transform )
+		{
+			LS.Draw.push();
+			LS.Draw.setMatrix( node.transform.getGlobalMatrixRef() );
+			LS.Draw.renderText( this._text, this.properties.position, this.properties.scale );
+			LS.Draw.pop();
+		}
+		else
+			LS.Draw.renderText( this._text, this.properties.position );
+		gl.enable( gl.CULL_FACE );
+	}
+
+	LiteGraph.registerNodeType("debug/text", LGraphDebugText );
+
 
 
 	//based in the NNI distance 
@@ -27410,10 +27578,16 @@ FXStack.available_fx = {
 	},
 	"quantize": {
 		name: "Quantize",
+		functions: ["dither"],
 		uniforms: {
-			levels: { name: "u_levels", type: "float", value: 8, step: 1, min: 1 }
+			levels: { name: "u_levels", type: "float", value: 8, step: 1, min: 1 },
+			dither: { name: "u_dither", type: "float", value: 0.1, max: 1 }
 		},
-		code:"color.xyz = floor(color.xyz * u_levels@) / u_levels@;"
+		code:"\n\
+		if( u_dither@ > 0.0 )\n\
+			color.xyz = floor(color.xyz * u_levels@ + (vec3(dither(color.x),dither(color.y),dither(color.z)) - vec3(0.5)) * u_dither@ ) / u_levels@;\n\
+		else\n\
+			color.xyz = floor(color.xyz * u_levels@) / u_levels@;\n"
 	},
 	"edges": {
 		name: "Edges",
@@ -27552,6 +27726,82 @@ FXStack.available_functions = {
 				}\n\
 			}\n\
 		",
+	//ugly but effective: https://github.com/hughsk/glsl-dither/blob/master/8x8.glsl
+	dither8x8: "\n\
+		float dither8x8(vec2 position, float brightness) {\n\
+		  int x = int(mod(position.x, 8.0));\n\
+		  int y = int(mod(position.y, 8.0));\n\
+		  int index = x + y * 8;\n\
+		  float limit = 0.0;\n\
+		  if (x < 8) {\n\
+			if (index == 0) limit = 0.015625;\n\
+			else if (index == 1) limit = 0.515625;\n\
+			else if (index == 2) limit = 0.140625;\n\
+			else if (index == 3) limit = 0.640625;\n\
+			else if (index == 4) limit = 0.046875;\n\
+			else if (index == 5) limit = 0.546875;\n\
+			else if (index == 6) limit = 0.171875;\n\
+			else if (index == 7) limit = 0.671875;\n\
+			else if (index == 8) limit = 0.765625;\n\
+			else if (index == 9) limit = 0.265625;\n\
+			else if (index == 10) limit = 0.890625;\n\
+			else if (index == 11) limit = 0.390625;\n\
+			else if (index == 12) limit = 0.796875;\n\
+			else if (index == 13) limit = 0.296875;\n\
+			else if (index == 14) limit = 0.921875;\n\
+			else if (index == 15) limit = 0.421875;\n\
+			else if (index == 16) limit = 0.203125;\n\
+			else if (index == 17) limit = 0.703125;\n\
+			else if (index == 18) limit = 0.078125;\n\
+			else if (index == 19) limit = 0.578125;\n\
+			else if (index == 20) limit = 0.234375;\n\
+			else if (index == 21) limit = 0.734375;\n\
+			else if (index == 22) limit = 0.109375;\n\
+			else if (index == 23) limit = 0.609375;\n\
+			else if (index == 24) limit = 0.953125;\n\
+			else if (index == 25) limit = 0.453125;\n\
+			else if (index == 26) limit = 0.828125;\n\
+			else if (index == 27) limit = 0.328125;\n\
+			else if (index == 28) limit = 0.984375;\n\
+			else if (index == 29) limit = 0.484375;\n\
+			else if (index == 30) limit = 0.859375;\n\
+			else if (index == 31) limit = 0.359375;\n\
+			else if (index == 32) limit = 0.0625;\n\
+			else if (index == 33) limit = 0.5625;\n\
+			else if (index == 34) limit = 0.1875;\n\
+			else if (index == 35) limit = 0.6875;\n\
+			else if (index == 36) limit = 0.03125;\n\
+			else if (index == 37) limit = 0.53125;\n\
+			else if (index == 38) limit = 0.15625;\n\
+			else if (index == 39) limit = 0.65625;\n\
+			else if (index == 40) limit = 0.8125;\n\
+			else if (index == 41) limit = 0.3125;\n\
+			else if (index == 42) limit = 0.9375;\n\
+			else if (index == 43) limit = 0.4375;\n\
+			else if (index == 44) limit = 0.78125;\n\
+			else if (index == 45) limit = 0.28125;\n\
+			else if (index == 46) limit = 0.90625;\n\
+			else if (index == 47) limit = 0.40625;\n\
+			else if (index == 48) limit = 0.25;\n\
+			else if (index == 49) limit = 0.75;\n\
+			else if (index == 50) limit = 0.125;\n\
+			else if (index == 51) limit = 0.625;\n\
+			else if (index == 52) limit = 0.21875;\n\
+			else if (index == 53) limit = 0.71875;\n\
+			else if (index == 54) limit = 0.09375;\n\
+			else if (index == 55) limit = 0.59375;\n\
+			else if (index == 56) limit = 1.0;\n\
+			else if (index == 57) limit = 0.5;\n\
+			else if (index == 58) limit = 0.875;\n\
+			else if (index == 59) limit = 0.375;\n\
+			else if (index == 60) limit = 0.96875;\n\
+			else if (index == 61) limit = 0.46875;\n\
+			else if (index == 62) limit = 0.84375;\n\
+			else if (index == 63) limit = 0.34375;\n\
+		  }\n\
+		  return brightness < limit ? 0.0 : 1.0;\n\
+		}\n",
+
 	LUT:  "vec3 LUT(in vec3 color, in sampler2D textureB) {\n\
 		 lowp vec3 textureColor = clamp( color, vec3(0.0), vec3(1.0) );\n\
 		 mediump float blueColor = textureColor.b * 63.0;\n\
@@ -33943,18 +34193,22 @@ var Draw = {
 	* @method renderText
 	* @param {string} text
 	* @param {vec3} position [optional] 3D coordinate in relation to matrix
+	* @param {number} scale [optional] scale modifier, default 1
 	*/
-	renderText: function( text, position )
+	renderText: function( text, position, scale )
 	{
 		position = position || LS.ZEROS;
+		scale = scale || 1;
+		var l = text.length;
+		if(l==0 || scale == 0)
+			return;
 
 		if(!Draw.font_atlas)
 			this.createFontAtlas();
 		var atlas = this.font_atlas;
-		var l = text.length;
-		var char_size = atlas.atlas.char_size;
+		var char_size = atlas.atlas.char_size * scale;
 		var i_char_size = 1 / atlas.atlas.char_size;
-		var spacing = atlas.atlas.spacing;
+		var spacing = atlas.atlas.spacing * scale;
 
 		var num_valid_chars = 0;
 		for(var i = 0; i < l; ++i)
@@ -45847,8 +46101,8 @@ GraphComponent.prototype.getResources = function(res)
 GraphComponent.prototype.onAddedToNode = function(node)
 {
 	this._graph._scenenode = node;
-	if( this._default_node )
-		this._default_node.properties.node_id = node.uid;
+	//if( this._default_node )
+	//	this._default_node.properties.node_id = node.uid;
 	//catch the global rendering
 	//LEvent.bind( LS.GlobalScene, "beforeRenderMainPass", this.onBeforeRender, this );
 }
@@ -54972,7 +55226,7 @@ Player.prototype.setDebugRender = function(v)
 	{
 		if(!v)
 			return;
-		this.debug_render = new LS.DebugRender();
+		this.debug_render = LS.getDebugRender();
 	}
 
 	if(v)

@@ -675,15 +675,21 @@ var RenderModule = {
 			node.transform.rotateY( options.rotate );
 		}
 
-		var new_material = null;
-		if( material.constructor === String )
-			new_material = material;
-		else
+		if( material.constructor === String ) //reference to a shared material
+			node.material = material;
+		else //implicit material
 		{
-			new_material = new material.constructor();
-			new_material.configure( material.serialize() );
+			//canot use the same, as it is linked to its original node, I must clone it
+			if(!this._materials)
+				this._materials = {};
+			if(!this._materials[ material.uid ])
+			{
+				var new_material = new material.constructor();
+				this._materials[ material.uid ] = new_material;
+			}
+			node.material = this._materials[ material.uid ];
+			node.material.configure( material.serialize() );
 		}
-		node.material = new_material;
 
 		if(options.to_viewport)
 		{

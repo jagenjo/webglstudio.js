@@ -2947,7 +2947,7 @@ var Input = {
 		return !!document.pointerLockElement;
 	},
 
-	//called from LS.Player when onmouse
+	//called from LS.Player when onmouse (or from RenderModule in editor)
 	//returns true if the event was blocked
 	onMouse: function(e)
 	{
@@ -2969,11 +2969,17 @@ var Input = {
 		//save it in case we need to know where was the last click
 		if(e.type == "mousedown")
 		{
+			if(e.button == 0)
+				this.last_click = e;
 			this.current_click = e;
 			LS.triggerCoroutines( "click", e );
 		}
 		else if(e.type == "mouseup")
+		{
+			if(e.button == 0)
+				this.last_click = null;
 			this.current_click = null;
+		}
 
 		//we test if this event should be sent to the components or it was blocked by the GUI
 		return LS.GUI.testEventInBlockedArea(e);

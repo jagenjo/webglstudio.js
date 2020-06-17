@@ -18438,6 +18438,69 @@ void main() {\n\
 		LGraphTextureDownsample
 	);
 
+
+
+	function LGraphTextureResize() {
+		this.addInput("Texture", "Texture");
+		this.addOutput("", "Texture");
+		this.properties = {
+			size: [512,512],
+			generate_mipmaps: false,
+			precision: LGraphTexture.DEFAULT
+		};
+	}
+
+	LGraphTextureResize.title = "Resize";
+	LGraphTextureResize.desc = "Resize Texture";
+	LGraphTextureResize.widgets_info = {
+		iterations: { type: "number", step: 1, precision: 0, min: 0 },
+		precision: { widget: "combo", values: LGraphTexture.MODE_VALUES }
+	};
+
+	LGraphTextureResize.prototype.onExecute = function() {
+		var tex = this.getInputData(0);
+		if (!tex && !this._temp_texture) {
+			return;
+		}
+
+		if (!this.isOutputConnected(0)) {
+			return;
+		} //saves work
+
+		//we do not allow any texture different than texture 2D
+		if (!tex || tex.texture_type !== GL.TEXTURE_2D) {
+			return;
+		}
+
+		var width = this.properties.size[0] | 0;
+		var height = this.properties.size[1] | 0;
+		if(width == 0)
+			width = tex.width;
+		if(height == 0)
+			height = tex.height;
+		var type = tex.type;
+		if (this.properties.precision === LGraphTexture.LOW) {
+			type = gl.UNSIGNED_BYTE;
+		} else if (this.properties.precision === LGraphTexture.HIGH) {
+			type = gl.HIGH_PRECISION_FORMAT;
+		}
+
+		if( !this._texture || this._texture.width != width || this._texture.height != height || this._texture.type != type )
+			this._texture = new GL.Texture( width, height, { type: type } );
+
+		tex.copyTo( this._texture );
+
+		if (this.properties.generate_mipmaps) {
+			this._texture.bind(0);
+			gl.generateMipmap(this._texture.texture_type);
+			this._texture.unbind(0);
+		}
+
+		this.setOutputData(0, this._texture);
+	};
+
+	LiteGraph.registerNodeType( "texture/resize", LGraphTextureResize );
+
 	// Texture Average  *****************************************
 	function LGraphTextureAverage() {
 		this.addInput("Texture", "Texture");
@@ -19105,7 +19168,7 @@ void main() {\n\
 		this.addInput("Texture", "Texture");
 		this.addInput("Atlas", "Texture");
 		this.addOutput("", "Texture");
-		this.properties = { enabled: true, num_row_symbols: 4, symbol_size: 16, brightness: 1, colorize: false, filter: false, invert: false, precision: LGraphTexture.DEFAULT, texture: null };
+		this.properties = { enabled: true, num_row_symbols: 4, symbol_size: 16, brightness: 1, colorize: false, filter: false, invert: false, precision: LGraphTexture.DEFAULT, generate_mipmaps: false, texture: null };
 
 		if (!LGraphTextureEncode._shader) {
 			LGraphTextureEncode._shader = new GL.Shader( Shader.SCREEN_VERTEX_SHADER, LGraphTextureEncode.pixel_shader );
@@ -19180,6 +19243,12 @@ void main() {\n\
 			symbols_tex.bind(1);
 			tex.toViewport(LGraphTextureEncode._shader, uniforms);
 		});
+
+		if (this.properties.generate_mipmaps) {
+			this._tex.bind(0);
+			gl.generateMipmap(this._tex.texture_type);
+			this._tex.unbind(0);
+		}
 
 		this.setOutputData(0, this._tex);
 	};

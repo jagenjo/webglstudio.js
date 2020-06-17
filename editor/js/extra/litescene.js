@@ -2976,8 +2976,8 @@ var Input = {
 		}
 		else if(e.type == "mouseup")
 		{
-			if(e.button == 0)
-				this.last_click = null;
+			//if(e.button == 0) //last click is the last position clicked
+			//	this.last_click = null;
 			this.current_click = null;
 		}
 

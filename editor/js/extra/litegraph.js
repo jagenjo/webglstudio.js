@@ -17518,7 +17518,7 @@ if (typeof exports != "undefined") {
 					u_texture: 0,
 					u_textureB: 1,
 					value: value,
-					texSize: [width, height],
+					texSize: [width, height,1/width,1/height],
 					time: time
 				})
 				.draw(mesh);
@@ -17533,7 +17533,7 @@ if (typeof exports != "undefined") {
 		uniform sampler2D u_texture;\n\
 		uniform sampler2D u_textureB;\n\
 		varying vec2 v_coord;\n\
-		uniform vec2 texSize;\n\
+		uniform vec4 texSize;\n\
 		uniform float time;\n\
 		uniform float value;\n\
 		\n\
@@ -17570,6 +17570,20 @@ if (typeof exports != "undefined") {
 	LGraphTextureOperation.registerPreset("displace","texture2D(u_texture, uv + (colorB.xy - vec2(0.5)) * value).xyz");
 	LGraphTextureOperation.registerPreset("grayscale","vec3(color.x + color.y + color.z) * value / 3.0");
 	LGraphTextureOperation.registerPreset("saturation","mix( vec3(color.x + color.y + color.z) / 3.0, color, value )");
+	LGraphTextureOperation.registerPreset("normalmap","\n\
+		float z0 = texture2D(u_texture, uv + vec2(-texSize.z, -texSize.w) ).x;\n\
+		float z1 = texture2D(u_texture, uv + vec2(0.0, -texSize.w) ).x;\n\
+		float z2 = texture2D(u_texture, uv + vec2(texSize.z, -texSize.w) ).x;\n\
+		float z3 = texture2D(u_texture, uv + vec2(-texSize.z, 0.0) ).x;\n\
+		float z4 = color.x;\n\
+		float z5 = texture2D(u_texture, uv + vec2(texSize.z, 0.0) ).x;\n\
+		float z6 = texture2D(u_texture, uv + vec2(-texSize.z, texSize.w) ).x;\n\
+		float z7 = texture2D(u_texture, uv + vec2(0.0, texSize.w) ).x;\n\
+		float z8 = texture2D(u_texture, uv + vec2(texSize.z, texSize.w) ).x;\n\
+		vec3 normal = vec3( z2 + 2.0*z4 + z7 - z0 - 2.0*z3 - z5, z5 + 2.0*z6 + z7 -z0 - 2.0*z1 - z2, 1.0 );\n\
+		normal.xy *= value;\n\
+		result.xyz = normalize(normal) * 0.5 + vec3(0.5);\n\
+	");
 	LGraphTextureOperation.registerPreset("threshold","vec3(color.x > colorB.x * value ? 1.0 : 0.0,color.y > colorB.y * value ? 1.0 : 0.0,color.z > colorB.z * value ? 1.0 : 0.0)");
 
 	//webglstudio stuff...
@@ -17602,7 +17616,7 @@ if (typeof exports != "undefined") {
 		};
 
 		this.properties.code = LGraphTextureShader.pixel_shader;
-		this._uniforms = { u_value: 1, u_color: vec4.create(), in_texture: 0, texSize: vec2.create(), time: 0 };
+		this._uniforms = { u_value: 1, u_color: vec4.create(), in_texture: 0, texSize: vec4.create(), time: 0 };
 	}
 
 	LGraphTextureShader.title = "Shader";
@@ -17768,6 +17782,8 @@ if (typeof exports != "undefined") {
 		}
 		uniforms.texSize[0] = w;
 		uniforms.texSize[1] = h;
+		uniforms.texSize[2] = 1/w;
+		uniforms.texSize[3] = 1/h;
 		uniforms.time = this.graph.getTime();
 		uniforms.u_value = this.properties.u_value;
 		uniforms.u_color.set( this.properties.u_color );
@@ -17788,7 +17804,7 @@ if (typeof exports != "undefined") {
 \n\
 varying vec2 v_coord;\n\
 uniform float time; //time in seconds\n\
-uniform vec2 texSize; //tex resolution\n\
+uniform vec4 texSize; //tex resolution\n\
 uniform float u_value;\n\
 uniform vec4 u_color;\n\n\
 void main() {\n\

@@ -9009,22 +9009,59 @@ ShaderMaterial.prototype.getPropertyInfoFromPath = function( path )
 
 	var varname = path[0];
 
+	var prop = this._properties_by_name[ varname ];
+	if(!prop)
+		return null;
+
+	var type = prop.type;
+	if(type == "float" || type == "int")
+		type = "number";
+
+	return {
+		node: this._root,
+		target: this,
+		name: prop.name,
+		value: prop.value,
+		type: type
+	};
+
+	/*
 	for(var i = 0, l = this.properties.length; i < l; ++i )
 	{
 		var prop = this.properties[i];
 		if(prop.name != varname)
 			continue;
 
+		var type = prop.type;
+		if(type == "float" || type == "int")
+			type = "number";
+
 		return {
 			node: this._root,
 			target: this,
 			name: prop.name,
 			value: prop.value,
-			type: prop.type
+			type: type
 		};
 	}
-
 	return;
+	*/
+}
+
+ShaderMaterial.prototype.setPropertyValue = function( name, value )
+{
+	//redirect to base material
+	if( Material.prototype.setProperty.call(this,name,value) )
+		return;
+
+	var prop = this._properties_by_name[ name ];
+	if(!prop)
+		return null;
+
+	if(prop.value && prop.value.set)
+		prop.value.set( value );
+	else
+		prop.value = value;
 }
 
 //get shader code
@@ -27591,7 +27628,11 @@ FXStack.available_fx = {
 		},
 		code:"\n\
 		if( u_dither@ > 0.0 )\n\
-			color.xyz = floor(color.xyz * u_levels@ + (vec3(dither(color.x),dither(color.y),dither(color.z)) - vec3(0.5)) * u_dither@ ) / u_levels@;\n\
+		{\n\
+			vec3 qcolor@ = floor(color.xyz * u_levels@) / u_levels@;\n\
+			vec3 diff@ = (color.xyz - qcolor@) * u_levels@ * u_dither@;\n\
+			color.xyz = qcolor@ + vec3(dither(diff@.x),dither(diff@.y),dither(diff@.z)) / u_levels@;\n\
+		}\n\
 		else\n\
 			color.xyz = floor(color.xyz * u_levels@) / u_levels@;\n"
 	},

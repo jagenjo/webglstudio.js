@@ -54,6 +54,7 @@ GraphWidget.prototype.init = function( options )
 	var canvas = this.canvas = createCanvas(100,100);
 	area.add( this.canvas );
 	area.content.style.backgroundColor = "#222";
+	this.canvas.parentNode.classList.add( "litegraph" );
 
 	this.graphcanvas = new LGraphCanvas( this.canvas, null, { autoresize: true } );
 	this.graphcanvas.background_image = GraphWidget.litegraph_background;

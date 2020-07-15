@@ -664,7 +664,9 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 		component.mode = value; 
 	}});
 
-	inspector.addCheckbox("Use Sliders", LS.Components.MorphDeformer.use_sliders, { name_width: 80, width:"30%", callback: function(v){ LS.Components.MorphDeformer.use_sliders = v; inspector.refresh(); }});
+	inspector.addCheckbox("Use Sliders", LS.Components.MorphDeformer.use_sliders, { name_width: 80, width:"30%", callback: function(v){ 
+		LS.Components.MorphDeformer.use_sliders = v; inspector.refresh();
+	}});
 
 	inspector.addButton(null,"Edit Morph Targets", { width: "30%", callback: function() { 
 		//component.morph_targets.push({ mesh:"", weight: 0.0 });
@@ -694,11 +696,13 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 					continue;
 
 				inspector.addSlider(pretty_name, morph.weight, { min: -1, max: 1, width: "calc(100% - 40px)", pretitle: AnimationModule.getKeyframeCode( component, "morphs/"+i+"/weight" ), morph_index: i, callback: function(v) { 
+					CORE.userAction("component_changed",component);
 					component.setMorphWeight( this.options.morph_index, v );
 					LS.GlobalScene.refresh();
 				}});
 
 				inspector.addButton(null, "0", { width: "40px", morph_index: i, callback: function() { 
+					CORE.userAction("component_changed",component);
 					component.setMorphWeight( this.options.morph_index, 0 );
 					inspector.refresh();
 					LS.GlobalScene.refresh();
@@ -713,17 +717,19 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 			{
 				var morph = component.morph_targets[i];
 				inspector.addMesh("", morph.mesh, { pretitle: AnimationModule.getKeyframeCode( component, "morphs/"+i+"/mesh" ), name_width: 20, align: "right", width: "60%", morph_index: i, callback: function(v) { 
+					CORE.userAction("component_changed",component);
 					component.setMorphMesh( this.options.morph_index, v );
 					LS.GlobalScene.refresh();
 				}});
 
 				inspector.addNumber("", morph.weight, { pretitle: AnimationModule.getKeyframeCode( component, "morphs/"+i+"/weight" ), name_width: 20, width: "25%", step: 0.01, morph_index: i, callback: function(v) { 
+					CORE.userAction("component_changed",component);
 					component.setMorphWeight( this.options.morph_index, v );
 					LS.GlobalScene.refresh();
 				}});
 
 				inspector.addButton(null, InterfaceModule.icons.trash, { width: "15%", morph_index: i, callback: function() { 
-					UndoModule.saveComponentChangeUndo( component );
+					CORE.userAction("component_changed",component);
 					component.removeMorph( this.options.morph_index );
 					inspector.refresh();
 					LS.GlobalScene.refresh();
@@ -736,7 +742,7 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 	inspector.widgets_per_row = 2;
 
 	inspector.addButton(null,"Add New Morph Target", { callback: function() { 
-		UndoModule.saveComponentChangeUndo( component );
+		CORE.userAction("component_changed",component);
 		component.morph_targets.push({ mesh:"", weight: 0.0 });
 		inspector.refresh();
 	}});
@@ -766,7 +772,11 @@ EditorModule.showMorphsDialog = function( component )
 	{
 		inspector.clear();
 
-		inspector.addCheckbox("delta_meshes", component.delta_meshes, { callback: function(v){ component.delta_meshes = v; }});
+		inspector.addCheckbox("delta_meshes", component.delta_meshes, { callback: function(v){ 
+			CORE.userAction("component_changed",component);
+			component.delta_meshes = v;
+		}});
+
 		inspector.addButton(null,"Recompute short names", { callback: function(v){
 			for(var i = 0; i < component.morph_targets.length; i++)
 			{
@@ -781,6 +791,7 @@ EditorModule.showMorphsDialog = function( component )
 						continue;
 					component.setMorphName( i, pretty_name );
 				}
+				CORE.userAction("component_changed",component);
 				EditorModule.refreshAttributes();
 				inspector.refresh();
 			}
@@ -805,7 +816,7 @@ EditorModule.showMorphsDialog = function( component )
 			}});
 
 			inspector.addButton(null, InterfaceModule.icons.trash, { width: "10%", morph_index: i, callback: function() { 
-				UndoModule.saveComponentChangeUndo( component );
+				CORE.userAction("component_changed",component);
 				component.removeMorph( this.options.morph_index );
 				inspector.refresh();
 				LS.GlobalScene.refresh();
@@ -816,7 +827,7 @@ EditorModule.showMorphsDialog = function( component )
 		inspector.endContainer();
 
 		inspector.addButton(null,"Add New Morph Target", { callback: function() { 
-			UndoModule.saveComponentChangeUndo( component );
+			CORE.userAction("component_changed",component);
 			component.morph_targets.push({ mesh:"", weight: 0.0 });
 			inspector.refresh();
 		}});

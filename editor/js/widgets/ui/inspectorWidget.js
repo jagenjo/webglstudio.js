@@ -571,12 +571,22 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 				}});
 
 				inspector.addButton( null, LiteGUI.special_codes.navicon, { height: "1em", width: 30, callback: function(v,evt){
-					var menu = new LiteGUI.ContextMenu( ["Show Prefab Info","Choose Prefab","Reload from Prefab","Update to Prefab",null,"Unlink prefab"], { title:"Prefab Menu", event: evt, callback: function(action) {
+					var options = ["Show Prefab Info","Choose Prefab","Reload from Prefab","Update to Prefab",null,"Unlink prefab"];
+					if( node.prefab )
+					{
+						var res = LS.ResourcesManager.getResource( node.prefab );
+						if(res.fullpath)
+							options.push("Save");													
+					}
+
+					var menu = new LiteGUI.ContextMenu( options, { title:"Prefab Menu", event: evt, callback: function(action) {
+						var prefab = LS.ResourcesManager.getResource( node.prefab );
+						if(!prefab)
+							return;
+
 						if(action == "Show Prefab Info")
 						{
-							var res = LS.ResourcesManager.getResource( node.prefab );
-							if(res)
-								PackTools.showPackDialog( res );
+							PackTools.showPackDialog( prefab );
 						}
 						else if(action == "Choose Prefab")
 						{
@@ -591,7 +601,6 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 							//add prefab to resources otherwise all the info will be lost
 							var prefab_fullpath = node.prefab;
 							CORE.userAction("node_changed",node);
-							var prefab = LS.RM.resources[ node.prefab ];
 							if( prefab && prefab.containsResources() )
 							{
 								var prefab_fullpath = node.prefab;
@@ -613,6 +622,13 @@ InspectorWidget.prototype.inspectNode = function( node, component_to_focus )
 						else if(action == "Update to Prefab")
 						{
 							PackTools.updatePrefabFromNode(node);
+							inspector.refresh();
+							RenderModule.requestFrame();
+						}
+						else if(action == "Save")
+						{
+							PackTools.updatePrefabFromNode(node);
+							DriveModule.saveResource( prefab );
 							inspector.refresh();
 							RenderModule.requestFrame();
 						}

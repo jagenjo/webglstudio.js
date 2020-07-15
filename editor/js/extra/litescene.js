@@ -41038,7 +41038,8 @@ Object.defineProperty( MorphDeformer.prototype, "name_weights", {
 		for(var i = 0; i < this.morph_targets.length; ++i)
 		{
 			var m = this.morph_targets[i];
-			result[ m.name ] = m.weight;
+			if(m.name)
+				result[ m.name ] = m.weight;
 		}
 		return result;
 	},

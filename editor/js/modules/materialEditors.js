@@ -773,6 +773,11 @@ EditorModule.showTextureSamplerInfo = function( sampler, options )
 		LS.GlobalScene.refresh();
 	}});
 
+	widgets.addButtons("Debug", ["black","white","gray","flatnormal"], { callback: function(v) {
+		sampler.texture = ":" + v;
+		LS.GlobalScene.refresh();
+	}});
+
 	if(material )
 	{
 		if( material.constructor === LS.StandardMaterial )

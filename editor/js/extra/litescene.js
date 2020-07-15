@@ -41026,7 +41026,7 @@ Object.defineProperty( MorphDeformer.prototype, "name_weights", {
 			var m = this.morph_targets[i];
 			if(v[m.name] !== undefined)
 			{
-				var weight = Number(v[m.mesh]);
+				var weight = Number(v[m.name]);
 				if(!isNaN(weight))	
 					m.weight = weight;
 			}
@@ -41038,7 +41038,7 @@ Object.defineProperty( MorphDeformer.prototype, "name_weights", {
 		for(var i = 0; i < this.morph_targets.length; ++i)
 		{
 			var m = this.morph_targets[i];
-			result[ m.mesh ] = m.weight;
+			result[ m.name ] = m.weight;
 		}
 		return result;
 	},

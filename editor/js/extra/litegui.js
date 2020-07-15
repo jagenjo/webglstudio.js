@@ -8788,7 +8788,7 @@ Inspector.prototype.addSlider = function(name, value, options)
 	this.values[name] = value;
 
 	var element = this.createWidget(name,"<span class='inputfield full'>\
-				<input tabIndex='"+this.tab_index+"' type='text' class='slider-text fixed nano' value='"+value+"' /><span class='slider-container'></span></span>", options);
+				<input tabIndex='"+this.tab_index+"' type='text' class='slider-text fixed liteslider-value' value='"+value+"' /><span class='slider-container'></span></span>", options);
 
 	var slider_container = element.querySelector(".slider-container");
 

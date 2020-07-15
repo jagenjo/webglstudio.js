@@ -659,11 +659,19 @@ function computeSharedInitialString(array)
 
 LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 {
-	inspector.widgets_per_row = 2;
-	inspector.addCombo("mode",component.mode, { name_width: 100, values: LS.Components.MorphDeformer["@mode"].values, width:"60%", callback: function (value) { 
+	inspector.widgets_per_row = 3;
+	inspector.addCombo("mode",component.mode, { name_width: 60, values: LS.Components.MorphDeformer["@mode"].values, width:"40%", callback: function (value) { 
 		component.mode = value; 
 	}});
-	inspector.addCheckbox("delta_meshes", component.delta_meshes, { name_width: 120, width:"40%", callback: function(v){ component.delta_meshes = v; }});
+
+	inspector.addCheckbox("Use Sliders", LS.Components.MorphDeformer.use_sliders, { name_width: 80, width:"30%", callback: function(v){ LS.Components.MorphDeformer.use_sliders = v; inspector.refresh(); }});
+
+	inspector.addButton(null,"Edit Morph Targets", { width: "30%", callback: function() { 
+		//component.morph_targets.push({ mesh:"", weight: 0.0 });
+		EditorModule.showMorphsDialog( component );
+		//inspector.refresh();
+	}});
+
 	inspector.widgets_per_row = 1;
 
 	if( component.morph_targets.length )
@@ -680,11 +688,11 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 			inspector.widgets_per_row = 2;
 			for(var i = 0; i < component.morph_targets.length; i++)
 			{
-				var pretty_name = names[i].replace(/_/g," ");
+				var morph = component.morph_targets[i];
+				var pretty_name = morph.name || names[i].replace(/_/g," ");
 				if(LS.Components.MorphDeformer.filter && pretty_name.toLowerCase().indexOf( LS.Components.MorphDeformer.filter.toLowerCase() ) == -1 )
 					continue;
 
-				var morph = component.morph_targets[i];
 				inspector.addSlider(pretty_name, morph.weight, { min: -1, max: 1, width: "calc(100% - 40px)", pretitle: AnimationModule.getKeyframeCode( component, "morphs/"+i+"/weight" ), morph_index: i, callback: function(v) { 
 					component.setMorphWeight( this.options.morph_index, v );
 					LS.GlobalScene.refresh();
@@ -715,7 +723,8 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 				}});
 
 				inspector.addButton(null, InterfaceModule.icons.trash, { width: "15%", morph_index: i, callback: function() { 
-					component.morph_targets.splice( this.options.morph_index, 1);
+					UndoModule.saveComponentChangeUndo( component );
+					component.removeMorph( this.options.morph_index );
 					inspector.refresh();
 					LS.GlobalScene.refresh();
 				}});
@@ -724,18 +733,96 @@ LS.Components.MorphDeformer["@inspector"] = function(component, inspector)
 		inspector.widgets_per_row = 1;
 	}
 
-	inspector.widgets_per_row = 3;
-	inspector.addButton(null,"Add Morph Target", { width: "55%", callback: function() { 
+	inspector.widgets_per_row = 2;
+
+	inspector.addButton(null,"Add New Morph Target", { callback: function() { 
+		UndoModule.saveComponentChangeUndo( component );
 		component.morph_targets.push({ mesh:"", weight: 0.0 });
 		inspector.refresh();
 	}});
-	inspector.addButton(null,"Zero", { width: "15%", callback: function() { 
+
+	inspector.addButton(null,"Zero All", { callback: function() { 
 		component.clearWeights();
 		inspector.refresh();
 	}});
-	inspector.addCheckbox("Use Sliders", LS.Components.MorphDeformer.use_sliders, { name_width: 80, width:"30%", callback: function(v){ LS.Components.MorphDeformer.use_sliders = v; inspector.refresh(); }});
 
 	inspector.widgets_per_row = 1;
+}
+
+EditorModule.showMorphsDialog = function( component )
+{
+	if(!component)
+		return;
+
+	var dialog = new LiteGUI.Dialog({ id: "dialog_show_morphs", title:"Morphs", close: true, width: 600, height: 520, resizable: true, scroll: true, draggable: true});
+
+	var inspector = new LiteGUI.Inspector({ height: "100%", noscroll: true });
+	dialog.add( inspector );
+	dialog.show('fade');
+	inspector.on_refresh = inner_refresh;
+	inspector.refresh();
+
+	function inner_refresh()
+	{
+		inspector.clear();
+
+		inspector.addCheckbox("delta_meshes", component.delta_meshes, { callback: function(v){ component.delta_meshes = v; }});
+		inspector.addButton(null,"Recompute short names", { callback: function(v){
+			for(var i = 0; i < component.morph_targets.length; i++)
+			{
+				var morph = component.morph_targets[i];
+				var names = component.morph_targets.map(function(a){return a.mesh;});
+				names = LS.Components.MorphDeformer.removeSharedString(names);
+				inspector.widgets_per_row = 2;
+				for(var i = 0; i < component.morph_targets.length; i++)
+				{
+					var pretty_name = names[i].replace(/_/g," ");
+					if(LS.Components.MorphDeformer.filter && pretty_name.toLowerCase().indexOf( LS.Components.MorphDeformer.filter.toLowerCase() ) == -1 )
+						continue;
+					component.setMorphName( i, pretty_name );
+				}
+				EditorModule.refreshAttributes();
+				inspector.refresh();
+			}
+		}});
+
+		var container = inspector.startContainer("scrollable",{ height: 430, scrollable: true });
+
+		inspector.widgets_per_row = 3;
+		for(var i = 0; i < component.morph_targets.length; i++)
+		{
+			var morph = component.morph_targets[i];
+
+			inspector.addString(String(i) + " Name", morph.name || "", { name_width: 80, width: "40%", morph_index: i, callback: function(v) { 
+				component.setMorphName( this.options.morph_index, v );
+				EditorModule.refreshAttributes();
+				LS.GlobalScene.refresh();
+			}});
+
+			inspector.addMesh(null, morph.mesh, { name_width: 80, align: "right", width: "50%", morph_index: i, callback: function(v) { 
+				component.setMorphMesh( this.options.morph_index, v );
+				LS.GlobalScene.refresh();
+			}});
+
+			inspector.addButton(null, InterfaceModule.icons.trash, { width: "10%", morph_index: i, callback: function() { 
+				UndoModule.saveComponentChangeUndo( component );
+				component.removeMorph( this.options.morph_index );
+				inspector.refresh();
+				LS.GlobalScene.refresh();
+			}});
+		}
+		inspector.widgets_per_row = 1;
+
+		inspector.endContainer();
+
+		inspector.addButton(null,"Add New Morph Target", { callback: function() { 
+			UndoModule.saveComponentChangeUndo( component );
+			component.morph_targets.push({ mesh:"", weight: 0.0 });
+			inspector.refresh();
+		}});
+	}
+
+	return dialog;
 }
 
 if(LS.Components.SkinDeformer)

@@ -853,6 +853,8 @@ if( typeof(GL) === "undefined" )
 
 var LS = {
 
+	Version: 0.5,
+
 	//systems: defined in their own files
 	ResourcesManager: null,
 	Picking: null,
@@ -6650,6 +6652,7 @@ GLSLCode.pragma_methods["include"] = {
 		pragma_info.include_subfile = subfile;
 		this.includes[ pragma_info.include ] = true;
 	},
+
 	getCode: function( shader_type, fragment, block_flags, context )
 	{
 		var extra_code = "";
@@ -8977,6 +8980,10 @@ ShaderMaterial.prototype.getResources = function ( res )
 {
 	if(this.shader)
 		res[ this.shader ] = LS.ShaderCode;
+
+	var shadercode = LS.ResourcesManager.getResource( this._shader );
+	if(shadercode)
+		shadercode.getResources( res );
 
 	for(var i in this._properties)
 	{
@@ -13537,6 +13544,8 @@ Scene.prototype.configure = function( scene_info )
 Scene.prototype.serialize = function( simplified  )
 {
 	var o = {};
+
+	o.version = LS.Version;
 
 	o.uid = this.uid;
 	o.object_class = LS.getObjectClassName(this);
@@ -19884,6 +19893,22 @@ Object.defineProperty( ShaderCode.prototype, "version", {
 	}
 });
 
+ShaderCode.prototype.getResources = function( res )
+{
+	for(var i in this._code_parts)
+	{
+		var part = this._code_parts[i];
+
+		for(var j in part)
+		{
+			var m = part[j];
+			for(var k in m.includes)
+			{
+				res[ k ] = true;
+			}
+		}
+	}
+}
 
 //parse the code
 //store in a easy to use way
@@ -40944,6 +40969,9 @@ function MorphDeformer(o)
 	*/
 	this.morph_targets = [];
 
+	//used to speed up search of morphs by its name instead of index
+	this._morph_targets_by_name = {};
+
 	if(global.gl)
 	{
 		if(MorphDeformer.max_supported_vertex_attribs === undefined)
@@ -40951,7 +40979,6 @@ function MorphDeformer(o)
 		if(MorphDeformer.max_supported_morph_targets_using_streams === undefined)
 			MorphDeformer.max_supported_morph_targets_using_streams = (gl.getParameter( gl.MAX_VERTEX_ATTRIBS ) - 6) / 2; //6 reserved for vertex, normal, uvs, uvs2, weights, bones. 
 	}
-
 	
 	this._stream_weights = new Float32Array( 4 );
 	this._uniforms = { u_morph_weights: this._stream_weights, u_morph_info: 0 };
@@ -40974,8 +41001,52 @@ MorphDeformer.prototype.onAddedToNode = function(node)
 	LEvent.bind( node, "collectRenderInstances", this.onCollectInstances, this );
 }
 
+MorphDeformer.prototype.onConfigure = function(o)
+{
+	this.updateNamesIndex();
+}
+
+MorphDeformer.prototype.updateNamesIndex = function()
+{
+	for(var i = 0; i < this.morph_targets.length; ++i)
+	{
+		var morph = this.morph_targets[i];
+		if(morph.name)
+			this._morph_targets_by_name[ morph.name ] = morph;
+	}
+}
+
 //object with name:weight
 Object.defineProperty( MorphDeformer.prototype, "name_weights", {
+	set: function(v) {
+		if(!v)
+			return;
+		for(var i = 0; i < this.morph_targets.length; ++i)
+		{
+			var m = this.morph_targets[i];
+			if(v[m.name] !== undefined)
+			{
+				var weight = Number(v[m.mesh]);
+				if(!isNaN(weight))	
+					m.weight = weight;
+			}
+		}
+	},
+	get: function()
+	{
+		var result = {};
+		for(var i = 0; i < this.morph_targets.length; ++i)
+		{
+			var m = this.morph_targets[i];
+			result[ m.mesh ] = m.weight;
+		}
+		return result;
+	},
+	enumeration: false
+});
+
+//object with mesh:weight
+Object.defineProperty( MorphDeformer.prototype, "mesh_weights", {
 	set: function(v) {
 		if(!v)
 			return;
@@ -41586,16 +41657,48 @@ MorphDeformer.prototype.recomputeGeometryTextures = function()
 /**
 * returns the index of the morph target that uses this mesh
 * @method getMorphIndex
+* @param {String} name the name or the mesh url (filename) 
+* @return {number} the index
+*/
+MorphDeformer.prototype.getMorphIndex = function( name )
+{
+	//check precomputed index
+	var morph = this._morph_targets_by_name[ name ];
+	if( morph )
+	{
+		var index = this.morph_targets.indexOf( morph );
+		if(index != -1)
+			return index;
+	}
+
+	//search manually
+	for(var i = 0; i < this.morph_targets.length; ++i)
+	{
+		if (this.morph_targets[i].mesh == mesh_name )
+			return i;
+	}
+	return -1;
+}
+
+/**
+* returns the index of the morph target that uses this mesh
+* @method getMorphIndex
 * @param {String} mesh_name the name (filename) of the mesh in the morph target
 * @return {number} the index
 */
-MorphDeformer.prototype.getMorphIndex = function(mesh_name)
+MorphDeformer.prototype.removeMorph = function( index )
 {
-	for(var i = 0; i < this.morph_targets.length; ++i)
-		if (this.morph_targets[i].mesh == mesh_name )
-			return i;
-	return -1;
+	if(index >= this.morph_targets.length)
+		return;
+	var morph = this.morph_targets[index];
+	if(morph)
+	{
+		this.morph_targets.splice( index, 1 );
+		if(morph.name)
+			delete this._morph_targets_by_name[ morph.name];
+	}
 }
+
 
 /**
 * sets the mesh for a morph target
@@ -41607,7 +41710,7 @@ MorphDeformer.prototype.setMorphMesh = function(index, value)
 {
 	if(index >= this.morph_targets.length)
 		return;
-	this.morph_targets[index].mesh = value;
+	this.morph_targets[ index ].mesh = value;
 }
 
 /**
@@ -41620,9 +41723,30 @@ MorphDeformer.prototype.setMorphWeight = function(index, value)
 {
 	if( index >= this.morph_targets.length || isNaN(value) )
 		return;
-	this.morph_targets[index].weight = value;
+	this.morph_targets[ index ].weight = value;
 }
 
+/**
+* sets a special name for the morph target, used when matching morph targets between nodes
+* @method setMorphName
+* @param {number} index the index of the morph target
+* @param {String} name
+*/
+MorphDeformer.prototype.setMorphName = function(index, value)
+{
+	if( index >= this.morph_targets.length )
+		return;
+	var morph = this.morph_targets[ index ];
+	if(!morph || morph.name == value)
+		return;
+
+	if( this._morph_targets_by_name[ value ] && this._morph_targets_by_name[ value ] != morph )
+		console.warn("There is already a morph target with that name: ", value );
+	morph.name = value;
+	this._morph_targets_by_name[ value ] = morph;
+}
+
+//computes a name shorter than the mesh url based on the common info
 MorphDeformer.prototype.getPrettyName = function( info, locator, locator_path )
 {
 	//console.log(locator_path);
@@ -41728,6 +41852,8 @@ MorphDeformer.prototype.setProperty = function(name, value)
 		this.weights = value;
 	else if( name == "name_weights" )
 		this.name_weights = value;
+	else if( name == "mesh_weights" )
+		this.mesh_weights = value;
 }
 
 MorphDeformer.prototype.getProperty = function(name)
@@ -41754,7 +41880,8 @@ MorphDeformer.prototype.getPropertiesInfo = function()
 	var properties = {
 		enabled: "boolean",
 		weights: "array",
-		name_weights: "object"
+		name_weights: "object",
+		mesh_weights: "object"
 	};
 
 	for(var i = 0; i < this.morph_targets.length; i++)
@@ -41851,6 +41978,7 @@ MorphDeformer.computeMeshDifference = function( mesh_a, mesh_b )
 	return diff;
 }
 
+//show in the graphcanvas
 MorphDeformer.prototype.onInspectNode = function( inspector, graphnode )
 {
 	var that = this;

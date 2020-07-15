@@ -2091,9 +2091,14 @@ table.litetable  tr:nth-child(even)
 .liteslider {
 	display: inline-block;
 	position: relative; 
-	width: calc(100% - 2em);
+	width: calc(100% - 50px);
 	height: 1.2em;
 	cursor: pointer;
+}
+
+.liteslider-value {
+	width: 40px;
+	padding-left: 5px;
 }
 
 .slider-container {

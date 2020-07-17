@@ -2012,10 +2012,9 @@ var DriveModule = {
 		}});
 	},
 
+	//returns a list of files that should be cached
 	retrieveNoCacheFiles: function()
 	{
-		console.log("load");
-
 		//this helps avoiding cached version of files recently saved
 		var files = localStorage.getItem( "wgl_nocache_files" );
 		if( files && files != "undefined" ) //it happens...
@@ -2031,7 +2030,6 @@ var DriveModule = {
 				}
 		}
 	},
-
 
 	onUnload: function()
 	{

@@ -2655,6 +2655,9 @@ DriveModule.registerAssignResourceCallback( "Mesh", function( fullpath, restype,
 			if(position)
 				node.transform.position = position;
 		}
+
+		if(node)
+			CORE.userAction( "node_created", node );
 	}
 
 	SelectionModule.setSelection( node );
@@ -2702,6 +2705,7 @@ DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], 
 		if(!node.material)
 			node.material = new LS.StandardMaterial();
 		node.material.setTexture( "color" , fullpath );
+		CORE.userAction( "node_created", node );
 	}
 	else if(action == "sprite")
 	{
@@ -2714,6 +2718,7 @@ DriveModule.registerAssignResourceCallback(["Texture","image/jpg","image/png"], 
 		if(texture)
 			component.size = [texture.width, texture.height];
 		EditorModule.getAddRootNode().addChild( node );
+		CORE.userAction( "node_created", node );
 	}
 
 	if(component)
@@ -2800,6 +2805,7 @@ DriveModule.registerAssignResourceCallback("component", function( fullpath, rest
 			node.addComponent( compo );
 			EditorModule.refreshAttributes();
 			RenderModule.requestFrame();
+			CORE.userAction( "node_changed", node );
 		}
 	});
 });
@@ -2879,6 +2885,7 @@ DriveModule.registerAssignResourceCallback("Prefab", function( fullpath, restype
 			node.transform.position = position;
 		EditorModule.inspect( node );
 		SelectionModule.setSelection( node );
+		CORE.userAction( "node_created", node );
 	});
 });
 
@@ -2895,6 +2902,7 @@ DriveModule.registerAssignResourceCallback("Animation", function( fullpath, rest
 			node.addComponent( comp );
 		}
 		comp.animation = filename;
+		CORE.userAction( "node_changed", node );
 		EditorModule.inspect( node );
 	});
 });
@@ -2919,6 +2927,7 @@ DriveModule.registerAssignResourceCallback("SkeletalAnimation", function( fullpa
 			node.addComponent( comp );
 		}
 		comp.animation = filename;
+		CORE.userAction( "node_changed", node );
 		EditorModule.inspect( node );
 	});
 });

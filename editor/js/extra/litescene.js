@@ -12496,7 +12496,7 @@ Object.defineProperty( CompositePattern.prototype, "parentNode", {
 		return this._parentNode;
 	},
 	set: function(v) {
-		//TODO
+		throw("parentNode cannot be assigned, use parent.addChild(node) instead.");
 	}
 });
 
@@ -28676,13 +28676,6 @@ LS.Tween = {
 		this._alife = [];
 	},
 
-	/*
-	ease: function()
-	{
-		this.easeProperty(
-	},
-	*/
-
 	easeProperty: function( object, property, target, time, easing_function, on_complete, on_progress )
 	{
 		if( !object )
@@ -28798,6 +28791,23 @@ LS.Tween = {
 		return data;
 	},
 
+	cancelEaseObject: function( object, property )
+	{
+		if( !this.current_easings.length )
+			return;
+		
+		var easings = this.current_easings;
+		for(var i = 0, l = easings.length; i < l; ++i)
+		{
+			var item = easings[i];
+			if( item.object != object)
+				continue;
+			if( property && item.property != property)
+				continue;
+			item.cancel = true;
+		}
+	},
+
 	//updates all the active tweens
 	update: function( dt )
 	{
@@ -28817,6 +28827,10 @@ LS.Tween = {
 			var item = easings[i];
 			item.current += dt;
 			var t = 1;
+
+			if(item.cancel) //wont be added to the alive list
+				continue;
+
 			if(item.current < item.time)
 			{
 				t = item.current / item.time;
@@ -31081,6 +31095,8 @@ var Renderer = {
 		gui: 0
 	},
 
+	//to measure performance
+	timer_queries_enabled: false,
 	_timer_queries: {},
 	_waiting_queries: false,
 
@@ -32500,7 +32516,7 @@ var Renderer = {
 
 	startGPUQuery: function( name )
 	{
-		if(!gl.extensions["disjoint_timer_query"]) //if not supported
+		if(!gl.extensions["disjoint_timer_query"] || !this.timer_queries_enabled) //if not supported
 			return;
 		if(this._waiting_queries)
 			return;
@@ -32514,7 +32530,7 @@ var Renderer = {
 
 	endGPUQuery: function()
 	{
-		if(!gl.extensions["disjoint_timer_query"]) //if not supported
+		if(!gl.extensions["disjoint_timer_query"] || !this.timer_queries_enabled) //if not supported
 			return;
 		if(this._waiting_queries)
 			return;
@@ -32525,7 +32541,7 @@ var Renderer = {
 
 	resolveQueries: function()
 	{
-		if(!gl.extensions["disjoint_timer_query"]) //if not supported
+		if(!gl.extensions["disjoint_timer_query"] || !this.timer_queries_enabled) //if not supported
 			return;
 
 		//var err = gl.getError();
@@ -46917,6 +46933,11 @@ FXGraphComponent.prototype.executeGraph = function( filter_textures )
 	this._graph_frame_node._extra_texture = ":extra0_" + this.uid;
 	this._graph_frame_node._camera = this._last_camera;
 	this._graph_frame_node._extra_texture = ":extra0_" + this.uid;
+
+	//force depth texture rendering if the graph requires it
+	//take into account that because at this moment the rendering is already done, it wont have effect till next frame
+	if( this._graph_frame_node.isOutputConnected(1) )
+		this.frame.use_depth_texture = true;
 
 	if(this._graph_viewport_node) //force antialiasing
 	{

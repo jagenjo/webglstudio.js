@@ -179,9 +179,9 @@ var GraphModule = {
 		if(!this._link_texture || !GraphModule._force_render)
 			return;
 
-		var h = gl.canvas.height * 0.8;
-		var w = h * (this._link_texture.width / this._link_texture.height);
-		gl.drawImage( this._link_texture, 50, gl.canvas.height * 0.1,w,h );
+		var w = gl.canvas.width;
+		var h = gl.canvas.height;
+		gl.drawImage( this._link_texture, 50, gl.canvas.height, w, h );
 		return;
 	},
 

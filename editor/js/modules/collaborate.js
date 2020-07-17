@@ -1,24 +1,29 @@
 var CollaborateModule = {
+
 	name: "Collaborate",
 	enabled: false,
 	server: null,
 	connected: false,
 
-	username: "",
+	current_username: "",
 	room_name: "",
-	server_host: null,
-	server_port: 0,
-	default_port: 55000,
 	actions: {},
+
+	user_selected: null,
 
 	refresh_rate: 400, //ms
 
 	log_history: [],
 	max_history: 100,
 
+	preferences: {
+		server_url: "",
+		username: ""
+	},
+
 	settings: {
 		show_cameras: true,
-		username: "",
+		lock_camera: false
 	},
 
 	init: function()
@@ -44,23 +49,24 @@ var CollaborateModule = {
 		ctx.start2D();
 		ctx.fillStyle = "red";
 
-		for(var i in this.server.clients)
-		{
-			var user = this.server.clients[i];
-			var info = user.info;
-			if(!info || user.id == this.server.user_id )
-				continue;
+		if(this.preferences.show_cameras)
+			for(var i in this.server.clients)
+			{
+				var user = this.server.clients[i];
+				var info = user.info;
+				if(!info || user.id == this.server.user_id )
+					continue;
 
-			var pos = camera.project( info.camera.eye );
-			ctx.fillRect( pos[0], gl.viewport_data[3] - pos[1], 10,10 );
+				var pos = camera.project( info.camera.eye );
+				ctx.fillRect( pos[0], gl.viewport_data[3] - pos[1], 10,10 );
 
-			/*
-			LS.Draw.push();
-			LS.Draw.translate( info.camera.eye );
-			LS.Draw.renderSolidSphere(1);
-			LS.Draw.pop();
-			*/
-		}
+				/*
+				LS.Draw.push();
+				LS.Draw.translate( info.camera.eye );
+				LS.Draw.renderSolidSphere(1);
+				LS.Draw.pop();
+				*/
+			}
 		ctx.finish2D();
 	},
 
@@ -112,7 +118,10 @@ var CollaborateModule = {
 				this.log( { type: "scene", username: user.name, user_id: user.id, scene: packet.scene });
 				break;
 			case "user_info":
+				//info about user view
 				user.info = packet.info;
+				if(this.preferences.lock_camera && this.user_selected && user.id == this.user_selected.id )
+					this.viewFromUserCamera(user);
 				break;
 			case "user_action":
 				this.onRemoteUserAction( packet.info, user );
@@ -126,25 +135,43 @@ var CollaborateModule = {
 		}
 	},
 
+	viewFromUserCamera: function( user )
+	{
+		var user_data = this.server.clients[ user.id ];
+		if(!user_data || !user_data.info || !user_data.info.camera )
+			return;
+
+		var camera = RenderModule.getActiveCamera();
+		camera.configure( user_data.info.camera );
+		LS.GlobalScene.requestFrame();
+	},
+
 	connect: function( room_name )
 	{
 		if(!room_name)
+		{
+			this.log("Error, room name missing");
 			return;
+		}
 
 		var that = this;
 		this.connected = false;
 
-		var server_host = this.server_host;
-		if(!server_host)
-			server_host = location.host;
-		var url = server_host + ":" + (this.server_port || this.default_port);
+		var server_url = this.preferences.server_url;
+		if(!server_url)
+		{
+			if( CORE.config.sillyserver_url )
+				server_url = CORE.config.sillyserver_url;
+			else
+				server_url = location.host + ":55000";
+		}
 		this.room_name = room_name;
 
 		if(!this.server)
 			this.server = new SillyClient();
-		this.server.connect( url , "_WGLS_COLLABORATE_" + room_name );
+		this.server.connect( server_url , "_WGLS_COLLABORATE_" + room_name );
 
-		this.log("Connecting...");
+		this.log("Connecting to " + server_url + " ...");
 
 		this.server.on_error = function(err){
 			that.log("Error connecting");
@@ -154,7 +181,7 @@ var CollaborateModule = {
 
 		this.server.on_user_connected = function(id){
 			//that.onDataUpdated();
-			this.sendMessage( { action: "enter", username: that.username }, id );
+			this.sendMessage( { action: "enter", username: that.preferences.username }, id );
 		};
 
 		this.server.on_user_disconnected = this.onDisconnected.bind(this);
@@ -162,6 +189,7 @@ var CollaborateModule = {
 		this.server.on_close = function(){
 			that.log("Disconnected");
 			that.server_id = null;
+			that.user_selected = null;
 			that.connected = false;
 			that.onDataUpdated();
 		}
@@ -177,18 +205,19 @@ var CollaborateModule = {
 	{
 		this.log("Connected!");
 		var id = this.server.user_id;
-		if(!this.username)
-			this.username = "user_" + id;
+		this.current_username = this.preferences.username;
+		if(!this.current_username)
+			this.current_username = "user_" + id;
 		this.server_id = id;
 		this.connected = true;
-		this.server.clients[ this.server.user_id ].name = this.username;
+		this.server.clients[ this.server.user_id ].name = this.current_username;
 		this.onDataUpdated();
-		this.server.sendMessage( { action: "enter", username: this.username } );
+		this.server.sendMessage( { action: "enter", username: this.current_username } );
 		var min_user = this.getMainUser();
 		if( min_user && min_user.id != this.server.user_id )
 		{
 			this.log("Requesting scene to " + min_user.id );
-			this.server.sendMessage( { action: "request_download", data: "scene", username: this.username }, min_user.id );
+			this.server.sendMessage( { action: "request_download", data: "scene", username: this.current_username }, min_user.id );
 		}
 		else
 			this.log("You are the first user in the room.");
@@ -206,6 +235,8 @@ var CollaborateModule = {
 		var user = this.server.clients[ id ];
 		if(!user)
 			return;
+		if(this.user_selected && this.user_selected.id == id)
+			this.user_selected = null;
 		that.log( { type: "disconnected", username: user.name } );
 		LEvent.unbind( LS.Renderer, "renderHelpers", this.renderView, this );
 		//LEvent.unbind( LS.Renderer, "renderPicking", this.renderPicking, this );
@@ -335,8 +366,11 @@ var CollaborateModule = {
 		LiteGUI.trigger( this, "data_updated", info );
 	},
 
+	//called from user_action and after_user_action
 	onUserAction: function( action )
 	{
+		//console.log( action );
+
 		if(!this.connected)
 			return;
 
@@ -352,8 +386,29 @@ var CollaborateModule = {
 			case "node_created":
 				action_info.data = action[1].serialize();
 				break;
+			case "node_renamed":
+				var node = action[1];
+				if(node)
+					action_info.data = { uid: node.uid, name: node.name };
+				break;
+			case "node_parenting":
+				var node = action[1];
+				var parent = action[2];
+				var index = -1;//parent.childNodes.indexOf( node );
+				if(node && parent)
+					action_info.data = { uid: node.uid, parent_uid: parent.uid, index: index };
+				break;
 			case "node_deleted":
-				//TODO
+				var node = action[1];
+				if(node)
+					action_info.data = node.uid;
+				break;
+			case "selection_removed":
+				var uids = [];
+				var selection = action[1];
+				for(var i in selection)
+					uids.push({ uid: selection[i].uid, comp_class: selection[i].comp_class });
+				action_info.data = uids;
 				break;
 			case "node_transform":
 				var node = action[1];
@@ -398,6 +453,19 @@ var CollaborateModule = {
 				action_info.node_uid = node.uid;
 				action_info.component_uid = component.uid;
 				break;
+			case "nodes_cloned":
+				var info = action[1];
+				var data = [];
+				for(var i = 0; i < info.uids.length; ++i)
+				{
+					var uid = info.uids[i];
+					var node = LS.GlobalScene.getNode( uid );
+					if(!node)
+						continue;
+					data.push({uid: uid, data: node.serialize(), parent_uid: node.parentNode.uid });
+				}
+				action_info.data = data;
+				break;
 		}
 
 		if(!action_info)
@@ -422,6 +490,40 @@ var CollaborateModule = {
 				var node = new LS.SceneNode();
 				node.configure( action.data );
 				LS.GlobalScene.root.addChild( node );
+				break;
+			case "node_renamed":
+				var node = LS.GlobalScene.getNodeByUId( action.data.uid );
+				if(node)
+					node.name = action.data.name;
+				break;
+			case "node_deleted":
+				var node = LS.GlobalScene.getNodeByUId( action.data );
+				if(node)
+					node.parentNode.removeChild( node );
+				break;
+			case "node_parenting":
+				var node = LS.GlobalScene.getNodeByUId( action.data.uid );
+				var parent = LS.GlobalScene.getNodeByUId( action.data.parent_uid );
+				if(node && parent)
+					parent.addChild( node, action.data.index );
+				break;
+			case "selection_removed":
+				for(var i in action.data)
+				{
+					var info = action.data[i];
+					if( info.comp_class ) //component
+					{
+						var comp = LS.GlobalScene.findComponentByUId( info.uid );
+						if(comp && comp._root)
+							comp._root.removeComponent( comp );
+					}
+					else //node
+					{
+						var node = LS.GlobalScene.getNodeByUId( info.uid );
+						if(node)
+							node.parentNode.removeChild( node );
+					}
+				}
 				break;
 			case "node_transform": 
 				var node = LS.GlobalScene.getNode( action.node_uid );
@@ -493,7 +595,7 @@ var CollaborateModule = {
 				if(!component)
 					return;
 				component.configure( component_info );
-				log_param = " to component " + LS.getObjectClassname( component );
+				log_param = " to component " + LS.getObjectClassName( component );
 				break;
 			case "component_deleted":
 				var node = LS.GlobalScene.getNode( action.node_uid );
@@ -504,7 +606,23 @@ var CollaborateModule = {
 				if(!component)
 					return;
 				node.removeComponent( component );
-				log_param = " to component " + LS.getObjectClassname( component );
+				log_param = " to component " + LS.getObjectClassName( component );
+				break;
+			case "nodes_cloned":
+				var nodes = action.data;
+				for(var i = 0; i < nodes.length; ++i)
+				{
+					var node_info = nodes[i];
+					var node = LS.GlobalScene.getNode( node_info.uid );
+					if(node)
+						continue;
+					var parent = LS.GlobalScene.getNode( node_info.parent_uid );
+					if(!parent)
+						continue;
+					node = new LS.SceneNode();
+					parent.addChild( node );
+					node.configure( node_info.data );
+				}
 				break;
 		}
 

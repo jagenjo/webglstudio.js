@@ -2,6 +2,8 @@ function CollaborateWidget( options )
 {
 	options = options || {};
 	this.options = options;
+
+	//it used module
 	this.module = CollaborateModule;
 
 	this.root = LiteGUI.createElement( "div", null, null, { width:"100%", height:"100%" } );
@@ -32,7 +34,6 @@ function CollaborateWidget( options )
 	else
 		this.init();
 
-	this.user_selected = null;
 	var that = this;
 
 	this.root.addEventListener("DOMNodeInsertedIntoDocument", function(){ 
@@ -102,6 +103,12 @@ CollaborateWidget.prototype.updateWidgets = function()
 
 	var inspector = this.inspector;
 	inspector.clear();
+
+	inspector.addString("Server", module.preferences.server_url, { callback: function(v){
+		if(!v)
+			return;
+		module.preferences.server_url = v;
+	}});
 	//inspector.addTitle("Collaborate");
 	inspector.addString("Username", module.username, { callback: function(v){
 		if(!v)
@@ -114,8 +121,10 @@ CollaborateWidget.prototype.updateWidgets = function()
 			that.updateWidgets();
 		}
 	}});
-	inspector.addString("Room", module.room_name, { disabled: module.connected, callback: function(v){
+	inspector.addStringButton("Room", module.room_name, { button: "Copy", button_width: 60, disabled: module.connected, callback: function(v){
 		module.room_name = v;
+	},callback_button: function(v){
+		LiteGUI.toClipboard(v);
 	}});
 	inspector.addButton( null, module.connected ? "Disconnect from server" : "Connect to server", function(){
 		if(!module.connected)
@@ -131,10 +140,11 @@ CollaborateWidget.prototype.updateWidgets = function()
 		values.push( { content: users[i].name || i, id: i, user: users[i] } );
 
 	inspector.addList(null, values, { height: 100,
-		selected: this.user_selected,
+		selected: module.user_selected,
 		callback: function(v)
 		{
-			that.user_selected = v.user;
+			module.user_selected = v.user;
+			module.viewFromUserCamera( v.user );
 		}
 	});
 
@@ -145,9 +155,16 @@ CollaborateWidget.prototype.updateWidgets = function()
 			module.sendSceneTo();
 	}});
 
-	inspector.addCheckbox("Show Cameras", module.show_cameras, function(v){
-		module.show_cameras = v;
+
+	inspector.widgets_per_row = 2;
+	inspector.addCheckbox("Show Cameras", module.preferences.show_cameras, function(v){
+		module.preferences.show_cameras = v;
 	});
+
+	inspector.addCheckbox("Lock View", module.preferences.lock_camera, function(v){
+		module.preferences.lock_camera = v;
+	});
+	inspector.widgets_per_row = 1;
 }
 
 CollaborateWidget.prototype.bindEvents = function()

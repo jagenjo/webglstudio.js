@@ -479,36 +479,7 @@ var SelectionModule = {
 			var created_uids = [];
 			for(var i in result)
 				created_uids.push( result[i].uid );
-			//DELETE NODES
-			UndoModule.addUndoStep({ 
-				title: "Cloned " + (created_uids.length > 1 ? "nodes" : "node"),
-				data: { uids: created_uids, old_selection: old_selection },
-				callback_undo: function(d) {
-					d.removed = [];
-					for(var i in d.uids)
-					{
-						var uid = d.uids[i];
-						var node = LS.GlobalScene.getNodeByUId(uid);
-						if(node)
-						{
-							d.removed.push([ node.parentNode.uid, node ]);
-							node.destroy();
-						}
-					}
-					SelectionModule.setSelectionFromUIds( d.old_selection );
-				},
-				callback_redo: function(d)
-				{
-					for(var i in d.removed)
-					{
-						var n = d.removed[i];
-						var node = LS.GlobalScene.getNode(n[0]);
-						if(node)
-							node.addChild( n[1] );
-					}
-					d.removed = null;
-				}
-			});
+			CORE.userAction("nodes_cloned", { uids: created_uids, old_selection: old_selection } );
 		}
 
 		return result;
@@ -533,12 +504,12 @@ var SelectionModule = {
 			//remove node
 			if( selection.instance.constructor === LS.SceneNode && !selection.instance._is_root )
 			{
-				data_removed.push( { parent_uid: node.parentNode.uid, index: node.parentNode.childNodes.indexOf( node ), node_data: node.serialize() } );
+				data_removed.push( { uid: node.uid, parent_uid: node.parentNode.uid, index: node.parentNode.childNodes.indexOf( node ), node_data: node.serialize() } );
 				node.parentNode.removeChild(node);
 			} //removed component
 			else if( selection.instance._root && selection.instance._root.constructor === LS.SceneNode )
 			{
-				data_removed.push( { node_uid: node.uid, comp_class: LS.getObjectClassName( selection.instance ), comp: selection.instance.serialize() } );
+				data_removed.push( { uid: node.uid, node_uid: node.uid, comp_class: LS.getObjectClassName( selection.instance ), comp: selection.instance.serialize() } );
 				node.removeComponent( selection.instance );
 			}
 		}

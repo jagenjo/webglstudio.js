@@ -534,7 +534,7 @@ SceneTreeWidget.prototype.onChangeParent = function(node, parent, index )
 	if(node.parentNode == parent && index == null) //nothing to do
 		return;
 
-	CORE.userAction("node_parenting", node);
+	CORE.userAction("node_parenting", node, parent );
 	var global = node.transform.getGlobalMatrix();
 	if(index != null)
 	{

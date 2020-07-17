@@ -170,7 +170,8 @@ var UndoModule = {
 			case "node_renamed": this.saveNodeRenamedUndo( data, data2 ); break;
 			case "node_transform": this.saveNodeTransformUndo( data ); break;
 			case "nodes_transform": this.saveNodesTransformUndo( data ); break;
-			case "node_parenting": this.saveNodeParentingUndo( data ); break;
+			case "nodes_cloned": this.saveNodesClonedUndo( data ); break;
+			case "node_parenting": this.saveNodeParentingUndo( data, data2 ); break;
 			case "component_created": this.saveComponentCreatedUndo( data ); break;
 			case "component_changed": this.saveComponentChangeUndo( data ); break;
 			case "component_deleted": this.saveComponentDeletedUndo( data ); break;
@@ -390,7 +391,7 @@ var UndoModule = {
 		});
 	},
 
-	saveNodeParentingUndo: function( node )
+	saveNodeParentingUndo: function( node, parent_node )
 	{
 		if(!node || !node.parentNode)
 			return;
@@ -561,6 +562,43 @@ var UndoModule = {
 				node.addComponent( component );
 				LEvent.trigger( node, "changed" );
 				SelectionModule.setSelection( component );
+			}
+		});
+	},
+
+	//{ uids: [ uids... ], old_selection: [ uids...] }
+	saveNodesClonedUndo: function( info )
+	{
+		if(!info.uids || !info.uids.length)
+			return;
+
+		this.addUndoStep({ 
+			title: "Cloned " + (info.uids.length > 1 ? "nodes" : "node"),
+			data: info,
+			callback_undo: function(d) {
+				d.removed = [];
+				for(var i in d.uids)
+				{
+					var uid = d.uids[i];
+					var node = LS.GlobalScene.getNodeByUId(uid);
+					if(node)
+					{
+						d.removed.push([ node.parentNode.uid, node ]);
+						node.destroy();
+					}
+				}
+				SelectionModule.setSelectionFromUIds( d.old_selection );
+			},
+			callback_redo: function(d)
+			{
+				for(var i in d.removed)
+				{
+					var n = d.removed[i];
+					var node = LS.GlobalScene.getNode(n[0]);
+					if(node)
+						node.addChild( n[1] );
+				}
+				d.removed = null;
 			}
 		});
 	},

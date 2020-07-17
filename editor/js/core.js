@@ -80,6 +80,8 @@ var CORE = {
 		for(var i in imports_list)
 		{
 			var import_name = imports_list[i];
+			if(import_name[0] == "#")
+				continue;
 			import_name = import_name.split("/").join("<span class='foldername-slash'>/</span>");
 			CORE.log( "<span id='msg-import-"+ (num++) + "' class='tinybox'></span> <span class='name'>" + import_name + "</span>" );
 		}

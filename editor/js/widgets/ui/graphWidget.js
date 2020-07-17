@@ -68,6 +68,7 @@ GraphWidget.prototype.init = function( options )
 	this.graphcanvas.onMenuNodeOutputs = this.onMenuNodeOutputs.bind(this);
 	this.graphcanvas.getExtraMenuOptions = this.onGetExtraMenuOptions.bind(this);
 	this.graphcanvas.onDrawLinkTooltip = this.onDrawLinkTooltip.bind(this);
+	this.graphcanvas.onAfterChange = this.onAfterGraphModified.bind(this);
 
 	this.root.addEventListener("DOMNodeInsertedIntoDocument", function(){ 
 		that.bindEvents(); 
@@ -261,6 +262,15 @@ GraphWidget.prototype.isInstance = function( instance, options )
 	if(this.current_graph_info && this.current_graph_info.instance == instance)
 		return true;
 	return false;
+}
+
+GraphWidget.prototype.onAfterGraphModified = function()
+{
+	var component = null;
+	var instance = this.getInstance();
+	if(!instance || !instance.constructor.is_component)
+		return;
+	CORE.userAction("component_changed", instance );
 }
 
 GraphWidget.prototype.saveGraph = function()
@@ -712,8 +722,11 @@ LiteGraph.addNodeMethod( "inspect", function( inspector )
 	function inner_assign(v)
 	{
 		//safe way
+		graphnode.graph.beforeChange();
 		LS.setObjectProperty( graphnode.properties, this.options.field_name, v );
 		graphnode._version++;
+		graphnode.graph.afterChange();
+
 		if( graphnode.onPropertyChanged )
 			graphnode.onPropertyChanged( this.options.field_name, v );
 

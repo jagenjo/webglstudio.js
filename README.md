@@ -2,7 +2,7 @@
     <img src="https://raw.githubusercontent.com/jagenjo/webglstudio.js/master/press/images/logo.png" alt="WebGLStudio">
 </p>
 
-**WEBGLSTUDIO HAS BEEN MOVED TO A NEW PROJECT CALLED ONEDIT.ORG, THIS REPOSITORY IS NOW DEAD**
+# WEBGLSTUDIO HAS BEEN MOVED TO A NEW PROJECT CALLED ONEDIT.ORG, THIS REPOSITORY IS NOW DEAD
 
 # WebGLStudio.js
 

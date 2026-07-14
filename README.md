@@ -2,7 +2,7 @@
     <img src="https://raw.githubusercontent.com/jagenjo/webglstudio.js/master/press/images/logo.png" alt="WebGLStudio">
 </p>
 
-# WEBGLSTUDIO IS IN A MIGRATION PROCESS TO A NEW REPO. STAY TUNNED
+# WEBGLSTUDIO HAS BEEN ABANDONED, IT MIGRATED TO [ONEDIT.ORG](https://onedit.org)
 
 # WebGLStudio.js
 
